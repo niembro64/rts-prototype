@@ -614,6 +614,14 @@ export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.3;
 export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN = 5;
 export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
 
+/** World-space radius over which nearby angled terrain attenuates the green
+ *  grass mask. Even a completely flat triangle that falls within this radius
+ *  of a steep face is treated as partially sloped — so the grass / green
+ *  base color fades smoothly inward from cliffs toward the center of the
+ *  flat region rather than snapping to full green right at the cliff base.
+ *  Larger values widen the fade band; 0 disables it. */
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 800;
+
 /** Same idea as the ground detail texture, but applied to every surface that
  *  is NOT part of the base 0-height flat zone — cliffs, mountain faces,
  *  plateaus. Sampled triplanar in the shader so vertical surfaces render

@@ -23,6 +23,7 @@ import {
   TERRAIN_GROUND_DETAIL_ENABLED,
   TERRAIN_GROUND_DETAIL_HEIGHT_MAX,
   TERRAIN_GROUND_DETAIL_HEIGHT_MIN,
+  TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS,
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
@@ -68,6 +69,7 @@ import {
   terrainPrecomputedShadow,
   terrainSunShade,
 } from './SunLighting';
+import { getSimWasm } from '../sim-wasm/init';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
@@ -107,6 +109,89 @@ function rawSrgbVec3(hex: number): THREE.Vector3 {
 function triangleDebugHash01(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
   return x - Math.floor(x);
+}
+
+// Polar offset + falloff weight for sampling slope around a mesh vertex when
+// baking the per-vertex neighborhood slope. The weight peaks at the vertex
+// (1.0) and decays linearly to 0 at TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS.
+type NeighborhoodSlopeSample = { dx: number; dz: number; weight: number };
+
+const NEIGHBORHOOD_SLOPE_KERNEL: NeighborhoodSlopeSample[] = (() => {
+  const samples: NeighborhoodSlopeSample[] = [{ dx: 0, dz: 0, weight: 1 }];
+  const R = TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS;
+  if (R <= 0) return samples;
+  // Three concentric rings at 1/3, 2/3, full radius. More samples in outer
+  // rings so the angular spacing on the ground stays roughly uniform —
+  // otherwise a thin cliff could slip between two widely-spaced outer rays.
+  const rings = [
+    { rFrac: 1 / 3, count: 8 },
+    { rFrac: 2 / 3, count: 12 },
+    { rFrac: 1.0, count: 16 },
+  ];
+  for (const ring of rings) {
+    const d = ring.rFrac * R;
+    const weight = 1 - ring.rFrac;
+    for (let k = 0; k < ring.count; k++) {
+      // Stagger the angular phase per ring so the rays don't all line up
+      // along the same compass headings.
+      const a = (k / ring.count + ring.rFrac * 0.13) * Math.PI * 2;
+      samples.push({ dx: Math.cos(a) * d, dz: Math.sin(a) * d, weight });
+    }
+  }
+  return samples;
+})();
+
+const _neighborhoodWasmScratch = new Float64Array(3);
+
+// Returns slope ∈ [0, 1] at (x, z) where 0 = perfectly flat, 1 = vertical.
+// Uses the WASM terrain when installed (no allocations) and falls back to the
+// JS mesh-sampling path otherwise — that path allocates a normal object per
+// call, which is acceptable since this function only runs at terrain-build
+// time, not per-frame.
+function sampleTerrainSlope(
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+): number {
+  const sim = getSimWasm();
+  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+    const ok = sim.terrainGetSurfaceNormal(x, z, _neighborhoodWasmScratch);
+    if (ok !== 0) {
+      const ny = _neighborhoodWasmScratch[1];
+      return 1 - Math.min(1, Math.abs(ny));
+    }
+  }
+  const normal = terrainMeshNormalFromSample(
+    getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
+  );
+  return 1 - Math.min(1, Math.abs(normal.ny));
+}
+
+// Distance-weighted max slope over the kernel above. Captures the
+// influence of any nearby angled face — even one that the vertex itself
+// is not part of — so the grass mask in the shader can fade smoothly
+// inward from cliffs instead of snapping to full green right at the base.
+function computeNeighborhoodSlope(
+  x: number,
+  z: number,
+  vertexSlope: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+): number {
+  let best = vertexSlope;
+  for (let i = 1; i < NEIGHBORHOOD_SLOPE_KERNEL.length; i++) {
+    const s = NEIGHBORHOOD_SLOPE_KERNEL[i];
+    const sx = x + s.dx;
+    const sz = z + s.dz;
+    if (sx < 0 || sz < 0 || sx > mapWidth || sz > mapHeight) continue;
+    const slope = sampleTerrainSlope(sx, sz, mapWidth, mapHeight, cellSize);
+    const weighted = slope * s.weight;
+    if (weighted > best) best = weighted;
+  }
+  return best;
 }
 
 function writeTriangleDebugColor(
@@ -265,11 +350,13 @@ export class CaptureTileRenderer3D {
           '#include <common>',
           [
             'attribute float terrainShade;',
+            'attribute float terrainNeighborhoodSlope;',
             'attribute float terrainHorizonFade;',
             'attribute vec3 triangleDebugColor;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
+            'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
@@ -282,6 +369,7 @@ export class CaptureTileRenderer3D {
             'vTerrainWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
             'vTerrainShade = terrainShade;',
             'vTerrainSlope = 1.0 - clamp(abs(normal.y), 0.0, 1.0);',
+            'vTerrainNeighborhoodSlope = terrainNeighborhoodSlope;',
             'vTerrainHorizonFade = terrainHorizonFade;',
             'vTriangleDebugColor = triangleDebugColor;',
           ].join('\n'),
@@ -318,6 +406,7 @@ export class CaptureTileRenderer3D {
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
+            'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
@@ -352,13 +441,16 @@ export class CaptureTileRenderer3D {
             '  vec3 dpdy = dFdy(vTerrainWorldPos);',
             '  vec3 geomNormal = normalize(cross(dpdx, dpdy));',
             '  float geomSlope = 1.0 - abs(geomNormal.y);',
-            '  // The smooth-shaded vTerrainSlope leaks tilt from cliff-edge vertices',
-            '  // into neighboring flat fragments via vertex-normal averaging. That',
-            '  // leak gives us a smooth buffer on the flat top approaching a ridge —',
-            '  // at a sharp 90° edge the geometric term has no fade of its own.',
-            '  // Amplifying the smooth term widens the buffer so the fade reaches',
-            '  // further into the genuinely flat ground next to any steep edge.',
-            '  float bufferSlope = clamp(vTerrainSlope * 2.5, 0.0, 1.0);',
+            '  // vTerrainNeighborhoodSlope is baked per-vertex at terrain build',
+            '  // time: it is the distance-weighted max slope sampled in a ring',
+            '  // around the vertex (radius = TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_',
+            '  // FADE_RADIUS). Even a perfectly flat triangle near a cliff',
+            '  // carries the cliffs slope here, attenuated by how far away it',
+            '  // is — so the grass mask fades smoothly inward from any steep',
+            '  // edge instead of snapping to full green right at the base.',
+            '  // The smooth-shaded vTerrainSlope still contributes so the per-',
+            '  // fragment fade across the immediate triangle edge stays sharp.',
+            '  float bufferSlope = clamp(max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope), 0.0, 1.0);',
             '  float maskSlope = max(geomSlope, bufferSlope);',
             '  float flatDetail = (1.0 - smoothstep(0.05, 0.50, maskSlope)) * (1.0 - shoreline);',
             '  // Restrict the grass texture to the base 0-height flat zone only.',
@@ -446,7 +538,7 @@ export class CaptureTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v26';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v27';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -739,6 +831,7 @@ export class CaptureTileRenderer3D {
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
     const terrainShades: number[] = [];
+    const terrainNeighborhoodSlopes: number[] = [];
     const terrainHorizonFades: number[] = [];
     const terrainIndices: number[] = [];
     const terrainDebugLevels: number[] = [];
@@ -785,6 +878,17 @@ export class CaptureTileRenderer3D {
         terrainPositions.push(wx, terrainHeight + MANA_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
+        const vertexSlope = 1 - Math.min(1, Math.abs(normal.ny));
+        terrainNeighborhoodSlopes.push(
+          computeNeighborhoodSlope(
+            wx,
+            wz,
+            vertexSlope,
+            this.mapWidth,
+            this.mapHeight,
+            cellSize,
+          ),
+        );
         const precomputedShadow = terrainPrecomputedShadow(
           wx,
           wz,
@@ -844,6 +948,9 @@ export class CaptureTileRenderer3D {
           terrainPositions.push(x, y, z);
           terrainNormals.push(nx, 0, nz);
           terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
+          // Map-boundary side walls are vertical cliffs — neighborhood slope
+          // is 1.0 so the grass mask fully suppresses any green tint here.
+          terrainNeighborhoodSlopes.push(1);
           terrainHorizonFades.push(this.getTerrainHorizonFade(x, z));
           return idx;
         };
@@ -927,6 +1034,10 @@ export class CaptureTileRenderer3D {
         for (let i = 0; i < 4; i++) {
           terrainNormals.push(0, 1, 0);
           terrainShades.push(1);
+          // Infinity-shelf quads sit at the underwater horizon and are
+          // already shoreline-masked out of the grass zone, so the exact
+          // value here is cosmetic — pick "flat" to match the geometry.
+          terrainNeighborhoodSlopes.push(0);
           terrainHorizonFades.push(1);
         }
         terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -946,6 +1057,7 @@ export class CaptureTileRenderer3D {
       const debugPositions = new Float32Array(debugVertexCount * 3);
       const debugNormals = new Float32Array(debugVertexCount * 3);
       const debugTerrainShades = new Float32Array(debugVertexCount);
+      const debugTerrainNeighborhoodSlopes = new Float32Array(debugVertexCount);
       const debugTerrainHorizonFades = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
 
@@ -960,6 +1072,7 @@ export class CaptureTileRenderer3D {
         debugNormals[dst3 + 1] = terrainNormals[src3 + 1];
         debugNormals[dst3 + 2] = terrainNormals[src3 + 2];
         debugTerrainShades[dst] = terrainShades[src];
+        debugTerrainNeighborhoodSlopes[dst] = terrainNeighborhoodSlopes[src];
         debugTerrainHorizonFades[dst] = terrainHorizonFades[src];
         const triangleIndex = Math.floor(dst / 3);
         writeTriangleDebugColor(
@@ -973,6 +1086,7 @@ export class CaptureTileRenderer3D {
       geometry.setAttribute('position', new THREE.BufferAttribute(debugPositions, 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(debugNormals, 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
+      geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(debugTerrainNeighborhoodSlopes, 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(debugTerrainHorizonFades, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
     } else {
@@ -980,6 +1094,7 @@ export class CaptureTileRenderer3D {
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(terrainPositions), 3));
       geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(terrainNormals), 3));
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
+      geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(new Float32Array(terrainNeighborhoodSlopes), 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(new Float32Array(terrainHorizonFades), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
