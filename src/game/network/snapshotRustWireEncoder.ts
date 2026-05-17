@@ -25,6 +25,7 @@ import {
   getEconomySnapshotWireSource,
 } from './stateSerializerEconomy';
 import {
+  ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
@@ -32,6 +33,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
@@ -59,6 +61,10 @@ type SnapshotServerMeta = NetworkServerSnapshotMeta;
 
 const _utf8 = new TextEncoder();
 const _buildingWaypointTypeStrings: string[] = [];
+const _entityActionStrings: string[] = [];
+const _entityActionStringGlobalSlots: number[] = [];
+const _entityWaypointStrings: string[] = [];
+const _entityWaypointStringGlobalSlots: number[] = [];
 const _economyPlayerIds: number[] = [];
 const _snapshotKeys: string[] = [];
 const EMPTY_STRING_SLOTS = new Map<string, number>();
@@ -479,6 +485,9 @@ function encodeEntityWireRow(
   if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
     const values = source.unitRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    if (!copyEntityActionRowsIntoScratch(sim, source, values[base + 71], values[base + 63])) {
+      return false;
+    }
     if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 70], values[base + 65])) {
       return false;
     }
@@ -564,6 +573,12 @@ function encodeEntityWireRow(
     if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 31], values[base + 23])) {
       return false;
     }
+    if (!copyEntityFactoryQueueRowsIntoScratch(sim, source, values[base + 32], values[base + 25])) {
+      return false;
+    }
+    if (!copyEntityWaypointRowsIntoScratch(sim, source, values[base + 33], values[base + 30])) {
+      return false;
+    }
     api.encodeEntityBuilding(
       values[base + 0],
       values[base + 1],
@@ -603,6 +618,68 @@ function encodeEntityWireRow(
   return false;
 }
 
+function copyEntityActionRowsIntoScratch(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+  offset: number,
+  count: number,
+): boolean {
+  if (count <= 0) return true;
+  if (offset < 0 || offset + count > source.actionRows.count) return false;
+
+  const rows = source.actionRows.values;
+  const srcBase = offset * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+  _entityActionStrings.length = 0;
+  _entityActionStringGlobalSlots.length = 0;
+  for (let i = 0; i < count; i++) {
+    const srcRow = srcBase + i * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    if (rows[srcRow + 9] === 0) continue;
+    const globalSlot = rows[srcRow + 10];
+    if (
+      !Number.isInteger(globalSlot) ||
+      globalSlot < 0 ||
+      globalSlot >= source.actionStrings.length
+    ) {
+      return false;
+    }
+    if (_entityActionStringGlobalSlots.indexOf(globalSlot) >= 0) continue;
+    _entityActionStringGlobalSlots.push(globalSlot);
+    _entityActionStrings.push(source.actionStrings[globalSlot]);
+  }
+  packOrderedStringsIntoScratch(sim, _entityActionStrings);
+
+  const api = sim.snapshotEncode;
+  api.actionScratchEnsure(count);
+  const view = new Float64Array(
+    sim.memory.buffer,
+    api.actionScratchPtr(),
+    count * api.actionScratchStride,
+  );
+  for (let i = 0; i < count; i++) {
+    const srcRow = srcBase + i * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    const dstRow = i * api.actionScratchStride;
+    view[dstRow + 0] = rows[srcRow + 0];
+    view[dstRow + 1] = rows[srcRow + 1];
+    view[dstRow + 2] = rows[srcRow + 2];
+    view[dstRow + 3] = rows[srcRow + 3];
+    view[dstRow + 4] = rows[srcRow + 4];
+    view[dstRow + 5] = rows[srcRow + 5];
+    view[dstRow + 6] = rows[srcRow + 6];
+    view[dstRow + 7] = rows[srcRow + 7];
+    view[dstRow + 8] = rows[srcRow + 8];
+    view[dstRow + 9] = rows[srcRow + 9];
+    view[dstRow + 10] = rows[srcRow + 9] !== 0
+      ? _entityActionStringGlobalSlots.indexOf(rows[srcRow + 10])
+      : 0;
+    view[dstRow + 11] = rows[srcRow + 11];
+    view[dstRow + 12] = rows[srcRow + 12];
+    view[dstRow + 13] = rows[srcRow + 13];
+    view[dstRow + 14] = rows[srcRow + 14];
+    view[dstRow + 15] = rows[srcRow + 15];
+  }
+  return true;
+}
+
 function copyEntityTurretRowsIntoScratch(
   sim: SimWasm,
   source: EntitySnapshotWireSource,
@@ -636,6 +713,73 @@ function copyEntityTurretRowsIntoScratch(
     view[dstRow + 9] = src[srcRow + 9];
     view[dstRow + 10] = src[srcRow + 10];
     view[dstRow + 11] = src[srcRow + 11];
+  }
+  return true;
+}
+
+function copyEntityFactoryQueueRowsIntoScratch(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+  offset: number,
+  count: number,
+): boolean {
+  if (count <= 0) return true;
+  if (offset < 0 || offset + count > source.factoryQueueRows.count) return false;
+
+  const api = sim.snapshotEncode;
+  api.factoryQueueScratchEnsure(count);
+  const view = new Uint32Array(sim.memory.buffer, api.factoryQueueScratchPtr(), count);
+  const src = source.factoryQueueRows.values;
+  for (let i = 0; i < count; i++) {
+    view[i] = src[offset + i];
+  }
+  return true;
+}
+
+function copyEntityWaypointRowsIntoScratch(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+  offset: number,
+  count: number,
+): boolean {
+  if (count <= 0) return true;
+  if (offset < 0 || offset + count > source.waypointRows.count) return false;
+
+  const rows = source.waypointRows.values;
+  const srcBase = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+  _entityWaypointStrings.length = 0;
+  _entityWaypointStringGlobalSlots.length = 0;
+  for (let i = 0; i < count; i++) {
+    const srcRow = srcBase + i * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    const globalSlot = rows[srcRow + 4];
+    if (
+      !Number.isInteger(globalSlot) ||
+      globalSlot < 0 ||
+      globalSlot >= source.waypointStrings.length
+    ) {
+      return false;
+    }
+    if (_entityWaypointStringGlobalSlots.indexOf(globalSlot) >= 0) continue;
+    _entityWaypointStringGlobalSlots.push(globalSlot);
+    _entityWaypointStrings.push(source.waypointStrings[globalSlot]);
+  }
+  packOrderedStringsIntoScratch(sim, _entityWaypointStrings);
+
+  const api = sim.snapshotEncode;
+  api.waypointScratchEnsure(count);
+  const view = new Float64Array(
+    sim.memory.buffer,
+    api.waypointScratchPtr(),
+    count * api.waypointScratchStride,
+  );
+  for (let i = 0; i < count; i++) {
+    const srcRow = srcBase + i * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    const dstRow = i * api.waypointScratchStride;
+    view[dstRow + 0] = rows[srcRow + 0];
+    view[dstRow + 1] = rows[srcRow + 1];
+    view[dstRow + 2] = rows[srcRow + 2];
+    view[dstRow + 3] = rows[srcRow + 3];
+    view[dstRow + 4] = _entityWaypointStringGlobalSlots.indexOf(rows[srcRow + 4]);
   }
   return true;
 }

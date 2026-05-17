@@ -64,9 +64,11 @@ export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 71;
-export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 32;
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 72;
+export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
+export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 12;
+export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireRows = {
   values: number[];
@@ -79,7 +81,12 @@ export type EntitySnapshotWireSource = {
   basicRows: EntitySnapshotWireRows;
   unitRows: EntitySnapshotWireRows;
   buildingRows: EntitySnapshotWireRows;
+  actionRows: EntitySnapshotWireRows;
+  actionStrings: string[];
   turretRows: EntitySnapshotWireRows;
+  factoryQueueRows: EntitySnapshotWireRows;
+  waypointRows: EntitySnapshotWireRows;
+  waypointStrings: string[];
 };
 
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
@@ -109,7 +116,12 @@ const entityWireSource: EntitySnapshotWireSource = {
   basicRows: { values: [], count: 0 },
   unitRows: { values: [], count: 0 },
   buildingRows: { values: [], count: 0 },
+  actionRows: { values: [], count: 0 },
+  actionStrings: [],
   turretRows: { values: [], count: 0 },
+  factoryQueueRows: { values: [], count: 0 },
+  waypointRows: { values: [], count: 0 },
+  waypointStrings: [],
 };
 const entityWireSources = new WeakMap<object, EntitySnapshotWireSource>();
 
@@ -254,12 +266,48 @@ function resetEntitySnapshotWireSource(): void {
   entityWireSource.basicRows.count = 0;
   entityWireSource.unitRows.count = 0;
   entityWireSource.buildingRows.count = 0;
+  entityWireSource.actionRows.count = 0;
+  entityWireSource.actionStrings.length = 0;
   entityWireSource.turretRows.count = 0;
+  entityWireSource.factoryQueueRows.count = 0;
+  entityWireSource.waypointRows.count = 0;
+  entityWireSource.waypointStrings.length = 0;
 }
 
 function appendRawEntityWireRow(): void {
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_RAW);
   entityWireSource.rowIndices.push(-1);
+}
+
+function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | undefined): number {
+  if (actions === undefined || actions.length === 0) return -1;
+  const rows = entityWireSource.actionRows;
+  const offset = rows.count;
+  const values = rows.values;
+  const strings = entityWireSource.actionStrings;
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    const base = (rows.count + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    values[base + 0] = action.type;
+    values[base + 1] = action.pos !== undefined ? 1 : 0;
+    values[base + 2] = action.pos?.x ?? 0;
+    values[base + 3] = action.pos?.y ?? 0;
+    values[base + 4] = action.posZ !== undefined ? 1 : 0;
+    values[base + 5] = action.posZ ?? 0;
+    values[base + 6] = action.pathExp === true ? 1 : 0;
+    values[base + 7] = action.targetId !== undefined ? 1 : 0;
+    values[base + 8] = action.targetId ?? 0;
+    values[base + 9] = action.buildingType !== undefined ? 1 : 0;
+    values[base + 10] = action.buildingType !== undefined ? strings.length : 0;
+    if (action.buildingType !== undefined) strings.push(action.buildingType);
+    values[base + 11] = action.grid !== undefined ? 1 : 0;
+    values[base + 12] = action.grid?.x ?? 0;
+    values[base + 13] = action.grid?.y ?? 0;
+    values[base + 14] = action.buildingId !== undefined ? 1 : 0;
+    values[base + 15] = action.buildingId ?? 0;
+  }
+  rows.count += actions.length;
+  return offset;
 }
 
 function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | undefined): number {
@@ -285,6 +333,38 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 11] = src.currentForceFieldRange ?? 0;
   }
   rows.count += turrets.length;
+  return offset;
+}
+
+function appendFactoryQueueWireRows(queue: readonly number[] | undefined): number {
+  if (queue === undefined || queue.length === 0) return -1;
+  const rows = entityWireSource.factoryQueueRows;
+  const offset = rows.count;
+  const values = rows.values;
+  for (let i = 0; i < queue.length; i++) {
+    values[rows.count + i] = queue[i];
+  }
+  rows.count += queue.length;
+  return offset;
+}
+
+function appendWaypointWireRows(waypoints: readonly FactorySub['waypoints'][number][] | undefined): number {
+  if (waypoints === undefined || waypoints.length === 0) return -1;
+  const rows = entityWireSource.waypointRows;
+  const offset = rows.count;
+  const values = rows.values;
+  const strings = entityWireSource.waypointStrings;
+  for (let i = 0; i < waypoints.length; i++) {
+    const waypoint = waypoints[i];
+    const base = (rows.count + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    values[base + 0] = waypoint.pos.x;
+    values[base + 1] = waypoint.pos.y;
+    values[base + 2] = waypoint.posZ !== undefined ? 1 : 0;
+    values[base + 3] = waypoint.posZ ?? 0;
+    values[base + 4] = strings.length;
+    strings.push(waypoint.type);
+  }
+  rows.count += waypoints.length;
   return offset;
 }
 
@@ -327,6 +407,7 @@ function appendUnitEntityWireRow(
   const buildTargetId = unit.buildTargetId;
   const actions = unit.actions;
   const turrets = unit.turrets;
+  const actionOffset = appendActionWireRows(actions);
   const turretOffset = appendTurretWireRows(turrets);
 
   values[base + 0] = entity.id;
@@ -400,6 +481,7 @@ function appendUnitEntityWireRow(
   values[base + 68] = build !== undefined ? build.paid.energy : 0;
   values[base + 69] = build !== undefined ? build.paid.metal : 0;
   values[base + 70] = turretOffset;
+  values[base + 71] = actionOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rows.count);
   rows.count++;
@@ -417,6 +499,8 @@ function appendBuildingEntityWireRow(
   const solar = building.solar;
   const turrets = building.turrets;
   const turretOffset = appendTurretWireRows(turrets);
+  const factoryQueueOffset = appendFactoryQueueWireRows(factory?.queue);
+  const factoryWaypointOffset = appendWaypointWireRows(factory?.waypoints);
   values[base + 0] = entity.id;
   values[base + 1] = entity.pos.x;
   values[base + 2] = entity.pos.y;
@@ -449,6 +533,8 @@ function appendBuildingEntityWireRow(
   values[base + 29] = factory !== undefined ? factory.metalRate : 0;
   values[base + 30] = factory !== undefined ? factory.waypoints.length : 0;
   values[base + 31] = turretOffset;
+  values[base + 32] = factoryQueueOffset;
+  values[base + 33] = factoryWaypointOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
   entityWireSource.rowIndices.push(rows.count);
   rows.count++;
@@ -460,15 +546,7 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     entity.unit !== undefined &&
     entity.building === undefined
   ) {
-    const unit = entity.unit;
-    const actions = unit.actions;
-    if (
-      actions !== undefined && actions.length > 0
-    ) {
-      appendRawEntityWireRow();
-      return;
-    }
-    appendUnitEntityWireRow(entity, unit);
+    appendUnitEntityWireRow(entity, entity.unit);
     return;
   }
 
@@ -477,12 +555,7 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     entity.building !== undefined &&
     entity.unit === undefined
   ) {
-    const building = entity.building;
-    if (building.factory !== undefined) {
-      appendRawEntityWireRow();
-      return;
-    }
-    appendBuildingEntityWireRow(entity, building);
+    appendBuildingEntityWireRow(entity, entity.building);
     return;
   }
 
