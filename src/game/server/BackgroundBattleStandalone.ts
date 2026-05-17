@@ -11,7 +11,11 @@ import {
 import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
 import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import { isFarFromWater } from '../sim/Terrain';
-import { makeMapOvalMetrics, mapOvalPointAt } from '../sim/mapOval';
+import {
+  makeMapOvalMetrics,
+  mapOvalPointAt,
+  type MapOvalMetrics,
+} from '../sim/mapOval';
 import { expandPathActions } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import type { BuildingGrid } from '../sim/buildGrid';
@@ -134,6 +138,42 @@ function spawnUnit(
   return unit;
 }
 
+function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): number {
+  let count = 0;
+  for (const unit of world.getUnitsByPlayer(playerId)) {
+    if (unit.unit?.unitType === 'commander') continue;
+    count++;
+  }
+  return count;
+}
+
+function sampleCenterSpawnPoint(
+  oval: MapOvalMetrics,
+  centerRadius: number,
+  mapWidth: number,
+  mapHeight: number,
+  waterBuffer: number,
+  maxAttempts: number,
+): { x: number; y: number } | null {
+  let dryFallback: { x: number; y: number } | null = null;
+  let anyFallback: { x: number; y: number } | null = null;
+
+  for (let k = 0; k < maxAttempts; k++) {
+    const spawnAngle = Math.random() * Math.PI * 2;
+    const spawnDist = Math.sqrt(Math.random()) * centerRadius;
+    const point = mapOvalPointAt(oval, spawnAngle, spawnDist);
+    anyFallback = point;
+    if (!dryFallback && isFarFromWater(point.x, point.y, mapWidth, mapHeight, 0)) {
+      dryFallback = point;
+    }
+    if (isFarFromWater(point.x, point.y, mapWidth, mapHeight, waterBuffer)) {
+      return point;
+    }
+  }
+
+  return dryFallback ?? anyFallback;
+}
+
 // Spawn units for the background battle. Teams + their angular bands
 // on the spawn oval come from DEMO_CONFIG so 3-vs-3 (or 2-vs-2, 4-vs-4)
 // works without code changes.
@@ -175,11 +215,13 @@ export function spawnBackgroundUnitsStandalone(
     // characteristic demo-battle clash.
     //
     // Water exclusion: each candidate (x, y) is rejection-sampled
-    // against `isFarFromWater`. After centerSpawnWaterMaxAttempts
-    // failures the unit is skipped — the central disk is the SAME
-    // sample area as before, just with the wet portion carved out.
+    // against `isFarFromWater`. If the buffered search fails, fall
+    // back to an unbuffered dry candidate, then finally to the last
+    // sampled center-radius point. The demo's startup contract is to
+    // fill the center battle immediately instead of silently dropping
+    // units on terrain presets whose center disk is mostly water.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
-    // Initial demo spawn fills each team's slice of the global unit cap
+    // Initial demo spawn fills each team's non-commander slice of the global unit cap
     // — `unitCapPerPlayer` (= maxTotalUnits / numPlayers). The demo
     // starts at FULL CAP so the user immediately sees the battle at
     // the intended scale; reinforcement ticks below pick up any units
@@ -191,31 +233,25 @@ export function spawnBackgroundUnitsStandalone(
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
-      const pUnits = world.getUnitsByPlayer(playerId).length;
+      const pUnits = countInitialDemoUnitsByPlayer(world, playerId);
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
-        let spawnX = 0;
-        let spawnY = 0;
-        let found = false;
-        for (let k = 0; k < maxAttempts; k++) {
-          const spawnAngle = Math.random() * Math.PI * 2;
-          const spawnDist = Math.sqrt(Math.random()) * centerRadius;
-          const point = mapOvalPointAt(oval, spawnAngle, spawnDist);
-          spawnX = point.x;
-          spawnY = point.y;
-          if (isFarFromWater(spawnX, spawnY, mapWidth, mapHeight, waterBuffer)) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) continue;
+        const spawn = sampleCenterSpawnPoint(
+          oval,
+          centerRadius,
+          mapWidth,
+          mapHeight,
+          waterBuffer,
+          maxAttempts,
+        );
+        if (!spawn) continue;
 
         // Waypoint = diametrically opposite point through center.
-        const targetX = cx - (spawnX - cx);
-        const targetY = cy - (spawnY - cy);
+        const targetX = cx - (spawn.x - cx);
+        const targetY = cy - (spawn.y - cy);
 
         const unit = spawnUnit(
-          world, physics, playerId, spawnX, spawnY, targetX, targetY,
+          world, physics, playerId, spawn.x, spawn.y, targetX, targetY,
           buildingGrid, DEMO_CONFIG.initialUnitWaypointType, allowedTypes,
         );
         if (unit) spawned.push(unit);

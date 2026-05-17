@@ -117,7 +117,10 @@ export async function createBackgroundBattle(
   // the player would see far fewer than the cap-derived per-team count.
   // Lobby preview short-circuits this: no AI = no production = the
   // selection is meaningless, so we just pass an empty allowed set.
-  const storedDemoUnits = loadStoredDemoUnits() ?? getDefaultDemoUnits();
+  const savedDemoUnits = loadStoredDemoUnits();
+  const storedDemoUnits = savedDemoUnits && savedDemoUnits.length > 0
+    ? savedDemoUnits
+    : getDefaultDemoUnits();
   const initialAllowedTypes = isLobbyPreview
     ? new Set<string>()
     : new Set(BACKGROUND_UNIT_TYPES.filter(ut => storedDemoUnits.includes(ut)));

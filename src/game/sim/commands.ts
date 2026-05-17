@@ -39,7 +39,6 @@ export type {
   SetForceFieldsBlockTargetingCommand,
   SetForceFieldReflectionModeCommand,
   SetFogOfWarEnabledCommand,
-  SetCameraAoiCommand,
   Command,
 } from '@/types/commands';
 

@@ -15,8 +15,6 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkManager';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
-import { SNAPSHOT_CONFIG } from '../../config';
-import { shouldRunOnStride } from '../math';
 import {
   PROJECTILE_TYPE_UNKNOWN,
   TURRET_ID_UNKNOWN,
@@ -43,7 +41,6 @@ type PooledVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
 export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   deltaEnabled: boolean;
-  tick: number;
   visibility?: SnapshotVisibility;
   projectileSpawns?: ProjectileSpawnEvent[];
   projectileDespawns?: ProjectileDespawnEvent[];
@@ -211,28 +208,6 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
   return update;
 }
 
-/** Pick the owned vs observed projectile update stride for this
- *  recipient. FOW-OPT-14 broadens the owned-side check from a bare
- *  ownerId === recipientPlayerId equality to the team-aware
- *  isOwnedByRecipientOrAlly: under FOW-06, allied projectiles should
- *  ride the smoother owned-stride update cadence — otherwise a
- *  teammate's missile arc snaps along at the lower-rate observed
- *  stride from the local player's POV, defeating the team-vision
- *  invariant. Falls back to the owned stride when no visibility is
- *  present (admin / spectator observers see everything as theirs). */
-function shouldSendProjectileSideChannel(
-  ownerId: PlayerId | undefined,
-  visibility: SnapshotVisibility | undefined,
-  tick: number,
-): boolean {
-  const ownedStride = !visibility || visibility.isOwnedByRecipientOrAlly(ownerId);
-  const rawStride = ownedStride
-    ? SNAPSHOT_CONFIG.ownedProjectileUpdateStride
-    : SNAPSHOT_CONFIG.observedProjectileUpdateStride;
-  const stride = Math.max(1, Math.floor(rawStride));
-  return shouldRunOnStride(tick, stride);
-}
-
 function shouldSendProjectileAtPoint(
   ownerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
@@ -318,7 +293,6 @@ function resetProjectilePools(): void {
 export function serializeProjectileSnapshot({
   world,
   deltaEnabled,
-  tick,
   visibility,
   projectileSpawns,
   projectileDespawns,
@@ -469,7 +443,6 @@ export function serializeProjectileSnapshot({
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
       const projectile = world.getEntity(vu.id)?.projectile;
-      if (!shouldSendProjectileSideChannel(projectile?.ownerId, visibility, tick)) continue;
       if (
         !shouldSendProjectileAtPoint(
           projectile?.ownerId,
@@ -503,7 +476,6 @@ export function serializeProjectileSnapshot({
       const entity = lineProjectiles[i];
       const proj = entity.projectile;
       if (!proj) continue;
-      if (!shouldSendProjectileSideChannel(proj.ownerId, visibility, tick)) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
       if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;

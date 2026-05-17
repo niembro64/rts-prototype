@@ -8,10 +8,7 @@ import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { captureSnapshotEntityStates, serializeGameState } from '../network/stateSerializer';
-import type {
-  SerializeGameStateOptions,
-  SnapshotAoiBounds,
-} from '../network/stateSerializer';
+import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
@@ -52,9 +49,6 @@ export type SnapshotListenerEntry = {
   playerId?: PlayerId;
   trackingKey: string;
   deltaTrackingKey: string;
-  aoi?: SnapshotAoiBounds;
-  forceKeyframe?: boolean;
-  staticTerrainSent?: boolean;
   /** Team shroud-version sum at the last keyframe where we shipped
    *  the shroud bitmap to this listener (issues.txt FOW-OPT-02).
    *  Compared against the live sum each keyframe to skip the
@@ -196,19 +190,11 @@ export class ServerSnapshotPublisher {
     // pool — see FOW-OPT-07 / snapshotPool.ts); subsequent teammates
     // hand back the same array reference. Admin / spectator listeners
     // (no team mask) fall through to fresh per-call serialization.
-    // Minimap is keyed by team + aoi-enabled status because the output
-    // collapses to `undefined` when aoi is unset; bundling both cohorts
-    // into one slot would hand mismatched data to whichever teammate
-    // arrived second.
     const teamAudioCache = new Map<string, SerializerAudioOverride>();
     const teamSprayCache = new Map<string, SerializerSprayOverride>();
     const teamMinimapCache = new Map<string, SerializerMinimapOverride>();
 
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
-      const forceKeyframe = listener.forceKeyframe === true;
-      const listenerIsDelta = isDelta && !forceKeyframe;
-      const aoiRefreshKeyframe = isDelta && forceKeyframe;
-      listener.forceKeyframe = false;
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
       // minimap payloads. The first teammate to hit each cache slot
@@ -234,19 +220,16 @@ export class ServerSnapshotPublisher {
           };
           teamSprayCache.set(teamKey, sprayOverride);
         }
-        const minimapAoiEnabled = listener.aoi !== undefined;
-        const minimapKey = `${teamKey}:${minimapAoiEnabled ? '1' : '0'}`;
-        minimapOverride = teamMinimapCache.get(minimapKey);
+        minimapOverride = teamMinimapCache.get(teamKey);
         if (!minimapOverride) {
           minimapOverride = {
             value: serializeMinimapSnapshotEntities(
               input.world,
-              minimapAoiEnabled,
               visibility,
               listener.deltaTrackingKey,
             ),
           };
-          teamMinimapCache.set(minimapKey, minimapOverride);
+          teamMinimapCache.set(teamKey, minimapOverride);
         }
       }
       const serializeOptions: SerializeGameStateOptions = {
@@ -256,7 +239,6 @@ export class ServerSnapshotPublisher {
         dirtyEntityFields: this.dirtyFieldsBuf,
         removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
-        aoi: listener.aoi,
         visibility,
         audioOverride,
         sprayOverride,
@@ -264,7 +246,7 @@ export class ServerSnapshotPublisher {
       };
       const state = serializeGameState(
         input.world,
-        listenerIsDelta,
+        isDelta,
         gamePhase,
         winnerId,
         sprayTargets,
@@ -281,19 +263,11 @@ export class ServerSnapshotPublisher {
       state.capture = captureTiles.length > 0
         ? { tiles: captureTiles, cellSize: input.captureSystem.getCellSize() }
         : undefined;
-      // AOI movement can force a recipient-only full entity snapshot.
-      // Terrain/buildability are static after battle start. Keep the
-      // initial seed, then avoid resending those large blobs on AOI
-      // refreshes or regular AOI-scoped full keyframes.
-      const shouldSendStaticTerrain =
-        !listenerIsDelta &&
-        !aoiRefreshKeyframe &&
-        (listener.aoi === undefined || listener.staticTerrainSent !== true);
+      const shouldSendStaticTerrain = !isDelta;
       state.terrain = shouldSendStaticTerrain ? input.terrainTileMap : undefined;
       state.buildability = shouldSendStaticTerrain
         ? input.terrainBuildabilityGrid
         : undefined;
-      if (shouldSendStaticTerrain) listener.staticTerrainSent = true;
       // FOW-11 shroud payload: ship only on keyframes, only when the
       // team's bitmap has new content since the last ship to this
       // listener (FOW-OPT-02). The version sum monotonically increases
@@ -304,7 +278,7 @@ export class ServerSnapshotPublisher {
       // (FOW-OPT-11) via shroudPayloadCache.
       state.shroud = undefined;
       if (
-        !listenerIsDelta &&
+        !isDelta &&
         listener.playerId !== undefined &&
         input.world.fogOfWarEnabled
       ) {

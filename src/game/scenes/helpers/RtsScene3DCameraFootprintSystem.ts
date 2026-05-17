@@ -1,13 +1,8 @@
 import * as THREE from 'three';
-import { getRenderMode } from '@/clientBarConfig';
-import type { GameConnection } from '../../server/GameConnection';
-import type { PlayerId } from '../../sim/types';
 import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from '../../sim/Terrain';
 import type { FootprintBounds, FootprintQuad } from '../../ViewportFootprint';
 
 const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
-const CAMERA_AOI_SEND_INTERVAL_MS = 250;
-const CAMERA_AOI_BOUNDS_EPSILON = 64;
 const RENDER_SCOPE_PLANE_Y = [
   TILE_FLOOR_Y,
   0,
@@ -40,23 +35,15 @@ export class RtsScene3DCameraFootprintSystem {
     { x: 0, y: 0 },
     { x: 0, y: 0 },
   ];
-  private cameraAoiUpdateTimer = CAMERA_AOI_SEND_INTERVAL_MS;
-  private lastCameraAoiMode: ReturnType<typeof getRenderMode> | null = null;
-  private lastCameraAoiBounds: FootprintBounds | null = null;
 
   constructor(
     private readonly mapWidth: number,
     private readonly mapHeight: number,
-    private readonly gameConnection: GameConnection,
-    private readonly getTick: () => number,
-    private readonly getLocalPlayerId: () => PlayerId,
-    private readonly shouldSendCameraAoi: () => boolean,
   ) {}
 
-  update(camera: THREE.Camera, deltaMs: number): RtsScene3DCameraFootprintResult {
+  update(camera: THREE.Camera): RtsScene3DCameraFootprintResult {
     this.computeCameraQuad(camera);
     const bounds = this.computeRenderScopeBounds(camera, this.cameraQuad);
-    this.maybeSendCameraAoi(deltaMs, this.cameraQuad, bounds);
     return {
       quad: this.cameraQuad,
       bounds,
@@ -72,67 +59,6 @@ export class RtsScene3DCameraFootprintSystem {
     this.writePointOnHorizontalPlane(camera,  1,  1, 0, this.cameraQuad[1]);
     this.writePointOnHorizontalPlane(camera,  1, -1, 0, this.cameraQuad[2]);
     this.writePointOnHorizontalPlane(camera, -1, -1, 0, this.cameraQuad[3]);
-  }
-
-  private cameraAoiBoundsChanged(
-    next: FootprintBounds,
-    mode: ReturnType<typeof getRenderMode>,
-  ): boolean {
-    const prev = this.lastCameraAoiBounds;
-    if (this.lastCameraAoiMode !== mode || !prev) return true;
-    return (
-      Math.abs(prev.minX - next.minX) > CAMERA_AOI_BOUNDS_EPSILON ||
-      Math.abs(prev.maxX - next.maxX) > CAMERA_AOI_BOUNDS_EPSILON ||
-      Math.abs(prev.minY - next.minY) > CAMERA_AOI_BOUNDS_EPSILON ||
-      Math.abs(prev.maxY - next.maxY) > CAMERA_AOI_BOUNDS_EPSILON
-    );
-  }
-
-  private maybeSendCameraAoi(
-    deltaMs: number,
-    quad: FootprintQuad,
-    bounds: FootprintBounds,
-  ): void {
-    if (!this.shouldSendCameraAoi()) return;
-    this.cameraAoiUpdateTimer += deltaMs;
-    const mode = getRenderMode();
-    const modeChanged = this.lastCameraAoiMode !== mode;
-    if (
-      this.cameraAoiUpdateTimer < CAMERA_AOI_SEND_INTERVAL_MS &&
-      !modeChanged
-    ) {
-      return;
-    }
-    if (mode !== 'all' && !this.cameraAoiBoundsChanged(bounds, mode)) return;
-
-    this.cameraAoiUpdateTimer = 0;
-    this.lastCameraAoiMode = mode;
-    this.lastCameraAoiBounds = {
-      minX: bounds.minX,
-      maxX: bounds.maxX,
-      minY: bounds.minY,
-      maxY: bounds.maxY,
-    };
-    this.gameConnection.sendCommand({
-      type: 'setCameraAoi',
-      tick: this.getTick(),
-      playerId: this.getLocalPlayerId(),
-      mode,
-      quad: [
-        { x: Math.round(quad[0].x), y: Math.round(quad[0].y) },
-        { x: Math.round(quad[1].x), y: Math.round(quad[1].y) },
-        { x: Math.round(quad[2].x), y: Math.round(quad[2].y) },
-        { x: Math.round(quad[3].x), y: Math.round(quad[3].y) },
-      ],
-      bounds: mode === 'all'
-        ? undefined
-        : {
-            minX: Math.round(bounds.minX),
-            maxX: Math.round(bounds.maxX),
-            minY: Math.round(bounds.minY),
-            maxY: Math.round(bounds.maxY),
-          },
-    });
   }
 
   private computeRenderScopeBounds(

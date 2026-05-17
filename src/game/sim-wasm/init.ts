@@ -597,7 +597,7 @@ export interface SpatialApi {
   queryUnitsAndBuildingsInRadius: (
     x: number, y: number, z: number, r: number,
   ) => number;
-  /** 2D rect AoI: [nUnits, nBuildings, unit_slots..., building_slots...]. */
+  /** 2D rect query: [nUnits, nBuildings, unit_slots..., building_slots...]. */
   queryUnitsAndBuildingsInRect2D: (
     minX: number, maxX: number, minY: number, maxY: number,
   ) => number;

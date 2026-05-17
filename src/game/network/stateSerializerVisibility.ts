@@ -94,8 +94,8 @@ export class SnapshotVisibility {
    *  resolution still distinguishes owned from observed entities
    *  even with `fogOfWarEnabled=false`. Used by isOwnedByRecipientOrAlly
    *  so every ownership check across the serializer treats allies
-   *  symmetrically with the recipient — private fields, AOI
-   *  persistence, delta resolution, kill credit, the lot.
+   *  symmetrically with the recipient — private fields, delta
+   *  resolution, kill credit, the lot.
    *
    *  Stored as a number bitmask (issues.txt FOW-OPT-10) — playerId p
    *  maps to bit (p - 1), so PlayerIds 1..31 fit. isOwnedByRecipientOrAlly
@@ -194,7 +194,7 @@ export class SnapshotVisibility {
   /** True when the given playerId belongs to the recipient or one of
    *  their allies. Works regardless of fog status — a recipient with
    *  fog disabled still gets the team-aware "this is one of ours"
-   *  answer for delta resolution, AOI persistence, etc. */
+   *  answer for delta resolution, ownership checks, etc. */
   isOwnedByRecipientOrAlly(playerId: PlayerId | undefined): boolean {
     if (playerId === undefined) return false;
     return (this.viewMask & (1 << (playerId - 1))) !== 0;

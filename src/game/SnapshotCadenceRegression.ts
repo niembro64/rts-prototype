@@ -127,7 +127,6 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setFogOfWarEnabled':
     case 'setSimQuality':
     case 'setSimSignalStates':
-    case 'setCameraAoi':
       return false;
     default:
       return true;

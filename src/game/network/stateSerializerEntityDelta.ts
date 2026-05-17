@@ -102,7 +102,6 @@ export type DeltaTrackingState = {
 export const removedEntityIdsBuf: number[] = [];
 export const dirtyEntityIdsBuf: EntityId[] = [];
 export const dirtyEntityFieldsBuf: number[] = [];
-export const aoiRemovedEntityIdsBuf: EntityId[] = [];
 
 export const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_HP |

@@ -48,11 +48,9 @@ function writeMinimapEntity(
 
 export function serializeMinimapSnapshotEntities(
   world: WorldState,
-  enabled: boolean,
   visibility?: SnapshotVisibility,
   trackingKey?: string | number,
 ): NetworkServerSnapshotMinimapEntity[] | undefined {
-  if (!enabled) return undefined;
   const state = getOrCreateSnapshotPool(minimapPools, resolveSnapshotPoolKey(trackingKey));
   state.index = 0;
   state.buf.length = 0;

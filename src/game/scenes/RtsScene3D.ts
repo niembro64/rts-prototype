@@ -338,10 +338,6 @@ export class RtsScene3D {
     this.cameraFootprintSystem = new RtsScene3DCameraFootprintSystem(
       this.mapWidth,
       this.mapHeight,
-      this.gameConnection,
-      () => this.clientViewState.getTick(),
-      () => this.localPlayerId,
-      () => !this.backgroundMode && !this.lobbyPreview,
     );
     this.minimapSystem = new RtsScene3DMinimapSystem(
       this.clientViewState,

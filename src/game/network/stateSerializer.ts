@@ -32,7 +32,6 @@ import {
 } from './stateSerializerVisibility';
 import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
-  aoiRemovedEntityIdsBuf as _aoiRemovedIdsBuf,
   copyPrevState,
   type DeltaTrackingState,
   type PrevEntityState,
@@ -90,16 +89,6 @@ function captureToRustBaseline(
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _visibilityHiddenIdsBuf: EntityId[] = [];
-const _aoiCandidateUnits: Entity[] = [];
-const _aoiCandidateBuildings: Entity[] = [];
-
-// Upper bound for getAoiPadding across every entity shape: unit
-// padding is 100; building padding is max(width, height) * 0.5 + 150
-// (~250 for the largest buildings currently in the game). The spatial
-// grid query rect is expanded by this so entities at the precise
-// padded edge still appear in the candidate set; the exact per-entity
-// pad check downstream (isEntityInsideAoi) culls them precisely.
-const AOI_RECT_PADDING = 300;
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -143,7 +132,6 @@ export type SerializeGameStateOptions = {
    * baseline precision; observed entities can use coarser thresholds.
    */
   recipientPlayerId?: PlayerId;
-  aoi?: SnapshotAoiBounds;
   visibility?: SnapshotVisibility;
   /**
    * When the publisher has already built a team-shared output for this
@@ -170,31 +158,15 @@ export type SerializerMinimapOverride = {
   value: NetworkServerSnapshotMinimapEntity[] | undefined;
 };
 
-export type SnapshotAoiBounds = {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-};
-
-function getAoiPadding(entity: Entity): number {
-  if (entity.unit) return 100;
-  const building = entity.building;
-  if (!building) return 100;
-  return Math.max(building.width, building.height) * 0.5 + 150;
-}
-
 /** Entity acceptance gate for the per-recipient snapshot pass
  *  (issues.txt FOW-OPT-13 — hoisted from a per-call closure to avoid
  *  allocating a fresh arrow function per recipient per snapshot). */
 function acceptsSerializedEntity(
   entity: Entity,
-  aoi: SnapshotAoiBounds | undefined,
   visibility: SnapshotVisibility,
 ): boolean {
   return (
     (entity.type === 'unit' || entity.type === 'building') &&
-    isEntityInsideAoi(entity, aoi, visibility) &&
     visibility.isEntityVisible(entity)
   );
 }
@@ -265,89 +237,6 @@ function processRemovedEntities(
   }
 }
 
-function isEntityInsideAoi(
-  entity: Entity,
-  aoi: SnapshotAoiBounds | undefined,
-  visibility: SnapshotVisibility | undefined,
-): boolean {
-  if (!aoi) return true;
-  // Keep owned-or-allied entities authoritative even while the camera
-  // is away so selections, queued orders, and team intel do not
-  // evaporate as the user pans. FOW-06 broadens this from "recipient"
-  // to "recipient or ally" via the shared visibility helper.
-  if (visibility && visibility.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) {
-    return true;
-  }
-  const padding = getAoiPadding(entity);
-  const x = entity.transform.x;
-  const y = entity.transform.y;
-  return (
-    x >= aoi.minX - padding &&
-    x <= aoi.maxX + padding &&
-    y >= aoi.minY - padding &&
-    y <= aoi.maxY + padding
-  );
-}
-
-/** Pre-filter units + buildings by AoI rect via the spatial grid,
- *  augmented by per-player owned-or-ally entities (which bypass AoI).
- *  The per-listener entity sweeps used to walk world.getUnits() and
- *  world.getBuildings() in full and reject the ~95% outside the
- *  camera with the per-entity AABB test in isEntityInsideAoi. With
- *  10k entities and 4 listeners that's 80k entity touches per delta.
- *  Asking the grid for cells overlapping the (padded) AoI rect drops
- *  the foreign-entity walk to just the cells the camera actually sees;
- *  owned-or-ally entities are picked up via the per-player caches.
- *
- *  Buckets are disjoint by construction so callers never see a
- *  duplicate: the spatial-grid walk emits ONLY non-owned-or-ally
- *  entities, the per-player walk emits ONLY recipient + ally entities.
- *  Same union of accepted entities as the old full-world walk under
- *  isEntityInsideAoi, just with the bulk of the rejection moved into
- *  the spatial broadphase. */
-function buildAoiCandidates(
-  world: WorldState,
-  aoi: SnapshotAoiBounds,
-  visibility: SnapshotVisibility,
-  recipientPlayerId: PlayerId | undefined,
-): void {
-  _aoiCandidateUnits.length = 0;
-  _aoiCandidateBuildings.length = 0;
-
-  const rect = spatialGrid.queryUnitsAndBuildingsInRect2D(
-    aoi.minX - AOI_RECT_PADDING,
-    aoi.maxX + AOI_RECT_PADDING,
-    aoi.minY - AOI_RECT_PADDING,
-    aoi.maxY + AOI_RECT_PADDING,
-  );
-  const rectUnits = rect.units;
-  for (let i = 0; i < rectUnits.length; i++) {
-    const u = rectUnits[i];
-    if (visibility.isOwnedByRecipientOrAlly(u.ownership?.playerId)) continue;
-    _aoiCandidateUnits.push(u);
-  }
-  const rectBuildings = rect.buildings;
-  for (let i = 0; i < rectBuildings.length; i++) {
-    const b = rectBuildings[i];
-    if (visibility.isOwnedByRecipientOrAlly(b.ownership?.playerId)) continue;
-    _aoiCandidateBuildings.push(b);
-  }
-
-  if (recipientPlayerId !== undefined) {
-    const ownUnits = world.getUnitsByPlayer(recipientPlayerId);
-    for (let i = 0; i < ownUnits.length; i++) _aoiCandidateUnits.push(ownUnits[i]);
-    const ownBuildings = world.getBuildingsByPlayer(recipientPlayerId);
-    for (let i = 0; i < ownBuildings.length; i++) _aoiCandidateBuildings.push(ownBuildings[i]);
-    const allies = world.getAllies(recipientPlayerId);
-    for (const allyId of allies) {
-      const allyUnits = world.getUnitsByPlayer(allyId);
-      for (let i = 0; i < allyUnits.length; i++) _aoiCandidateUnits.push(allyUnits[i]);
-      const allyBuildings = world.getBuildingsByPlayer(allyId);
-      for (let i = 0; i < allyBuildings.length; i++) _aoiCandidateBuildings.push(allyBuildings[i]);
-    }
-  }
-}
-
 // Serialize WorldState to network format.
 // When isDelta=true, only changed/new entities are included plus removedEntityIds.
 // When isDelta=false (keyframe), all entities are included (same as before).
@@ -368,7 +257,6 @@ export function serializeGameState(
 ): NetworkServerSnapshot {
   const tracking = getDeltaTrackingState(options?.trackingKey);
   const recipientPlayerId = options?.recipientPlayerId;
-  const aoi = options?.aoi;
   const visibility = options?.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
   const tick = world.getTick();
   // Phase 10 D.3f — Rust-side baseline sync. Resolved once per
@@ -385,9 +273,8 @@ export function serializeGameState(
   // Serialize units and buildings (projectiles handled via spawn/despawn events).
   // FOW-OPT-13: acceptsSerializedEntity / forgetTrackedEntity /
   // processRemovedEntities used to be per-call closures here; they're
-  // now module-scope helpers that take (tracking, visibility, aoi)
-  // as explicit params, dropping three closure allocations per
-  // serialize.
+  // now module-scope helpers with explicit params, dropping closure
+  // allocations per serialize.
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
 
   if (options?.removedEntities) {
@@ -414,76 +301,41 @@ export function serializeGameState(
       }
     }
 
-    // Merged AoI + visibility cleanup. Both filters used to iterate
-    // tracking.prevEntityIds independently — for a player with both
-    // AoI and FOW that's two passes over the same set plus a redundant
-    // AoI re-check in the visibility pass. One classifying loop now
-    // handles it: each entity is checked against AoI first (when
-    // active) and then, if it passes, against visibility (when active).
-    const aoiActive = aoi !== undefined;
-    const visibilityActive = visibility.isFiltered;
-    if (aoiActive || visibilityActive) {
-      if (aoiActive) _aoiRemovedIdsBuf.length = 0;
-      if (visibilityActive) _visibilityHiddenIdsBuf.length = 0;
+    if (visibility.isFiltered) {
+      _visibilityHiddenIdsBuf.length = 0;
       for (const id of tracking.prevEntityIds) {
         const entity = world.getEntity(id);
-        if (!entity) {
-          // Missing entity. Pre-merge, the AoI pass pushed it to
-          // _aoiRemovedIdsBuf only when visibility was inactive
-          // (visibility-active cleanup is handled by the ghost-position
-          // sweep further down). Keep the same gating here.
-          if (aoiActive && !visibilityActive) _aoiRemovedIdsBuf.push(id);
+        if (!entity) continue;
+        if (visibility.isEntityVisible(entity)) {
+          // Re-entered vision: any ghost-position record from a
+          // prior out-of-sight stretch is now stale. The dirty loop
+          // below will resume normal delta updates against the
+          // existing prevStates baseline (issues.txt FOW-02).
+          tracking.ghostedBuildingPositions.delete(id);
           continue;
         }
-        if (aoiActive) {
-          if (entity.type !== 'unit' && entity.type !== 'building') {
-            _aoiRemovedIdsBuf.push(id);
-            continue;
-          }
-          if (!isEntityInsideAoi(entity, aoi, visibility)) {
-            _aoiRemovedIdsBuf.push(id);
-            continue;
-          }
-        }
-        if (visibilityActive) {
-          if (visibility.isEntityVisible(entity)) {
-            // Re-entered vision: any ghost-position record from a
-            // prior out-of-sight stretch is now stale. The dirty loop
-            // below will resume normal delta updates against the
-            // existing prevStates baseline (issues.txt FOW-02).
-            tracking.ghostedBuildingPositions.delete(id);
-            continue;
-          }
-          if (entity.type === 'unit') {
-            // Mobile unit out of vision: drop the client's copy
-            // entirely. A stale ghost at a no-longer-current position
-            // would be a lie.
-            _visibilityHiddenIdsBuf.push(id);
-          } else if (entity.type === 'building') {
-            // Static building out of vision: keep the client's
-            // last-seen copy (FOW-02) AND record the position so a
-            // future cleanup pass can drop the ghost once the player
-            // re-scouts the area and either confirms the building is
-            // still there (dirty loop handles it) or finds it gone
-            // (FOW-02b cleanup below).
-            if (!tracking.ghostedBuildingPositions.has(id)) {
-              tracking.ghostedBuildingPositions.set(id, {
-                x: entity.transform.x,
-                y: entity.transform.y,
-              });
-            }
+        if (entity.type === 'unit') {
+          // Mobile unit out of vision: drop the client's copy
+          // entirely. A stale ghost at a no-longer-current position
+          // would be a lie.
+          _visibilityHiddenIdsBuf.push(id);
+        } else if (entity.type === 'building') {
+          // Static building out of vision: keep the client's
+          // last-seen copy (FOW-02) AND record the position so a
+          // future cleanup pass can drop the ghost once the player
+          // re-scouts the area and either confirms the building is
+          // still there (dirty loop handles it) or finds it gone
+          // (FOW-02b cleanup below).
+          if (!tracking.ghostedBuildingPositions.has(id)) {
+            tracking.ghostedBuildingPositions.set(id, {
+              x: entity.transform.x,
+              y: entity.transform.y,
+            });
           }
         }
       }
-      if (aoiActive) {
-        for (let i = 0; i < _aoiRemovedIdsBuf.length; i++) {
-          forgetTrackedEntity(tracking, _aoiRemovedIdsBuf[i], true, baselineSim, baselineHandle);
-        }
-      }
-      if (visibilityActive) {
-        for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
-          forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true, baselineSim, baselineHandle);
-        }
+      for (let i = 0; i < _visibilityHiddenIdsBuf.length; i++) {
+        forgetTrackedEntity(tracking, _visibilityHiddenIdsBuf[i], true, baselineSim, baselineHandle);
       }
     }
 
@@ -497,7 +349,7 @@ export function serializeGameState(
 
     for (let i = 0; i < sourceDirtyIds.length; i++) {
       const entity = world.getEntity(sourceDirtyIds[i]);
-      if (!entity || !acceptsSerializedEntity(entity, aoi, visibility)) continue;
+      if (!entity || !acceptsSerializedEntity(entity, visibility)) continue;
       const dirtyFields = sourceDirtyFields[i] ?? 0;
       const prev = getPrevState(tracking, entity.id);
       const isNew = !tracking.prevEntityIds.has(entity.id);
@@ -527,24 +379,16 @@ export function serializeGameState(
     }
 
     if (visibility.isFiltered) {
-      let visibilitySources: ReadonlyArray<readonly Entity[]>;
-      if (aoi !== undefined) {
-        // Spatial-broadphase: ask the grid for entities inside the
-        // AoI rect, then re-attach owned-or-ally entities (which bypass
-        // AoI and may sit anywhere on the map). The precise per-entity
-        // pad + visibility check inside acceptsSerializedEntity below
-        // still runs.
-        buildAoiCandidates(world, aoi, visibility, recipientPlayerId);
-        visibilitySources = [_aoiCandidateUnits, _aoiCandidateBuildings];
-      } else {
-        visibilitySources = [world.getUnits(), world.getBuildings()];
-      }
+      const visibilitySources: ReadonlyArray<readonly Entity[]> = [
+        world.getUnits(),
+        world.getBuildings(),
+      ];
       for (let s = 0; s < visibilitySources.length; s++) {
         const source = visibilitySources[s];
         for (let i = 0; i < source.length; i++) {
           const entity = source[i];
           if (tracking.prevEntityIds.has(entity.id)) continue;
-          if (!acceptsSerializedEntity(entity, aoi, visibility)) continue;
+          if (!acceptsSerializedEntity(entity, visibility)) continue;
           tracking.prevEntityIds.add(entity.id);
           const next = getNextEntityState(entity);
           const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
@@ -594,23 +438,15 @@ export function serializeGameState(
     // (e.g. capture-tile entities) means appending one more source
     // here, not duplicating another loop.
     //
-    // When the listener has an AoI, scope the source arrays via the
-    // spatial grid the same way the delta visibility sweep does —
-    // foreign entities by AoI-rect broadphase + owned-or-ally by
-    // per-player cache. The precise rect + visibility filter inside
-    // acceptsSerializedEntity still culls the candidate set.
-    let keyframeSources: ReadonlyArray<readonly Entity[]>;
-    if (aoi !== undefined) {
-      buildAoiCandidates(world, aoi, visibility, recipientPlayerId);
-      keyframeSources = [_aoiCandidateUnits, _aoiCandidateBuildings];
-    } else {
-      keyframeSources = [world.getUnits(), world.getBuildings()];
-    }
+    const keyframeSources: ReadonlyArray<readonly Entity[]> = [
+      world.getUnits(),
+      world.getBuildings(),
+    ];
     for (let s = 0; s < keyframeSources.length; s++) {
       const source = keyframeSources[s];
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
-        if (!acceptsSerializedEntity(entity, aoi, visibility)) continue;
+        if (!acceptsSerializedEntity(entity, visibility)) continue;
         tracking.currentEntityIds.add(entity.id);
         const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
@@ -656,7 +492,7 @@ export function serializeGameState(
   // is distinguishable from a present-but-undefined value.
   const netMinimapEntities = options?.minimapOverride
     ? options.minimapOverride.value
-    : serializeMinimapSnapshotEntities(world, aoi !== undefined, visibility, options?.trackingKey);
+    : serializeMinimapSnapshotEntities(world, visibility, options?.trackingKey);
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
@@ -679,7 +515,6 @@ export function serializeGameState(
   const netProjectiles = serializeProjectileSnapshot({
     world,
     deltaEnabled,
-    tick,
     visibility,
     projectileSpawns,
     projectileDespawns,

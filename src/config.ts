@@ -197,13 +197,6 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
     rotationVelocityThresholdMultiplier: 4,
   },
 
-  /** Projectile side-channel cadence in emitted snapshots. Spawns and
-   *  despawns always ship immediately; this only gates live velocity
-   *  corrections and authoritative beam path updates. At normal 5-10
-   *  SPS, snapshot cadence is already the throttle, so live projectile
-   *  and beam corrections should not be sub-strided by ownership. */
-  ownedProjectileUpdateStride: 1,
-  observedProjectileUpdateStride: 1,
 };
 
 // Re-export bar config values used by sim/server code

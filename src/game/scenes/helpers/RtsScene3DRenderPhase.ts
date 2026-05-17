@@ -194,10 +194,7 @@ export class RtsScene3DRenderPhase {
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
     const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
 
-    const cameraFootprint = this.cameraFootprintSystem.update(
-      this.threeApp.camera,
-      deltaMs,
-    );
+    const cameraFootprint = this.cameraFootprintSystem.update(this.threeApp.camera);
     const cameraQuad = cameraFootprint.quad;
     this.renderScope.setQuad(
       cameraQuad,

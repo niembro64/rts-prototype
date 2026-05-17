@@ -15,8 +15,6 @@ export type SnapshotConfig = {
   rotationVelocityThreshold: number;
   ownedEntityDelta: SnapshotDeltaResolutionConfig;
   observedEntityDelta: SnapshotDeltaResolutionConfig;
-  ownedProjectileUpdateStride: number;
-  observedProjectileUpdateStride: number;
 };
 
 export type EmaLowConfig = {

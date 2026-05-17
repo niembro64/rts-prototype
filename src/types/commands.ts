@@ -1,7 +1,6 @@
 // Command types extracted from game/sim/commands.ts
 
 import type { EntityId, WaypointType, BuildingType, PlayerId } from './sim';
-import type { RenderMode } from './graphics';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { ForceFieldReflectionMode } from './shotTypes';
 import type { TiltEmaMode } from '../shellConfig';
@@ -44,8 +43,7 @@ export type CommandType =
   | 'setForceFieldReflectionMode'
   | 'setFogOfWarEnabled'
   | 'setSimQuality'
-  | 'setSimSignalStates'
-  | 'setCameraAoi';
+  | 'setSimSignalStates';
 
 export type BaseCommand = {
   type: CommandType;
@@ -325,23 +323,6 @@ export type SetSimSignalStatesCommand = BaseCommand & {
   units?: string;
 };
 
-export type CameraAoiPoint = { x: number; y: number };
-
-export type CameraAoiBounds = {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-};
-
-export type SetCameraAoiCommand = BaseCommand & {
-  type: 'setCameraAoi';
-  mode: RenderMode;
-  playerId?: PlayerId;
-  quad?: readonly [CameraAoiPoint, CameraAoiPoint, CameraAoiPoint, CameraAoiPoint];
-  bounds?: CameraAoiBounds;
-};
-
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -380,5 +361,4 @@ export type Command =
   | SetForceFieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
   | SetSimQualityCommand
-  | SetSimSignalStatesCommand
-  | SetCameraAoiCommand;
+  | SetSimSignalStatesCommand;

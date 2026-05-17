@@ -116,7 +116,7 @@ export class WorldState {
    *  play: pairs / triples / etc. of players list each other. The
    *  visibility filter unions all allied players' vision sources, and
    *  the snapshot serializer treats allied entities as friendly for
-   *  private-detail / delta-resolution / AOI purposes. Populated at
+   *  private-detail and delta-resolution purposes. Populated at
    *  game start by ServerBootstrap when the lobby has team configuration;
    *  never mutated mid-game (alliances are not currently switchable). */
   public alliesByPlayer: Map<PlayerId, ReadonlySet<PlayerId>> = new Map();
