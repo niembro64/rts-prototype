@@ -1372,8 +1372,8 @@ type ProjectileSpawnFixture = {
   sourceEntityId: number;
   turretIndex: number;
   barrelIndex: number;
-  isDGun?: true;
-  fromParentDetonation?: true;
+  isDGun?: boolean;
+  fromParentDetonation?: boolean;
   beam?: { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } };
   targetEntityId?: number;
   homingTurnRate?: number;
@@ -1399,7 +1399,7 @@ type BeamUpdateFixture = {
   id: number;
   points: BeamPointFixture[];
   obstructionT?: number;
-  endpointDamageable?: false;  // tri-state — undefined or false (true never sent)
+  endpointDamageable?: boolean;
 };
 type ProjectilesFixture = {
   spawns?: ProjectileSpawnFixture[];
@@ -1449,8 +1449,8 @@ function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: Projectil
     if (s.maxLifespan !== undefined) flags |= 0x01;
     if (s.shotId !== undefined) flags |= 0x02;
     if (s.sourceTurretId !== undefined) flags |= 0x04;
-    if (s.isDGun === true) flags |= 0x08;
-    if (s.fromParentDetonation === true) flags |= 0x10;
+    if (s.isDGun !== undefined) flags |= s.isDGun ? 0x08 : 0x100;
+    if (s.fromParentDetonation !== undefined) flags |= s.fromParentDetonation ? 0x10 : 0x200;
     if (s.beam !== undefined) flags |= 0x20;
     if (s.targetEntityId !== undefined) flags |= 0x40;
     if (s.homingTurnRate !== undefined) flags |= 0x80;
@@ -1516,7 +1516,7 @@ function packBeamUpdatesIntoScratch(
     headerView[h + 0] = u.id;
     let flags = 0;
     if (u.obstructionT !== undefined) flags |= 0x01;
-    if (u.endpointDamageable === false) flags |= 0x02;
+    if (u.endpointDamageable !== undefined) flags |= u.endpointDamageable ? 0x04 : 0x02;
     headerView[h + 1] = flags;
     headerView[h + 2] = u.obstructionT ?? 0;
     headerView[h + 3] = u.points.length;
@@ -2766,6 +2766,37 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             obstructionT: 0.5,
           },
         ],
+      },
+      isDelta: true,
+    },
+    // Explicit false/true projectile booleans are rare in production
+    // serializers but must not force raw MessagePack fallback for
+    // ad-hoc/debug DTOs.
+    {
+      tick: 904, entities: [], economy: {},
+      projectiles: {
+        spawns: [{
+          id: 12010,
+          pos: { x: 10, y: 20, z: 30 },
+          rotation: 1.25,
+          velocity: { x: 0, y: 5, z: 0 },
+          projectileType: 1,
+          turretId: 2,
+          playerId: 1,
+          sourceEntityId: 100,
+          turretIndex: 0,
+          barrelIndex: 1,
+          isDGun: false,
+          fromParentDetonation: false,
+        }],
+        beamUpdates: [{
+          id: 12011,
+          points: [
+            { x: 10, y: 10, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+          ],
+          endpointDamageable: true,
+        }],
       },
       isDelta: true,
     },

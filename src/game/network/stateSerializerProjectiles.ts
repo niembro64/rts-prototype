@@ -32,6 +32,21 @@ export const PROJECTILE_VELOCITY_WIRE_STRIDE = 7;
 export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
 export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 15;
 
+const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
+const PROJECTILE_SPAWN_FLAG_SHOT_ID = 0x002;
+const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID = 0x004;
+const PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE = 0x008;
+const PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE = 0x010;
+const PROJECTILE_SPAWN_FLAG_BEAM = 0x020;
+const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID = 0x040;
+const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE = 0x080;
+const PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE = 0x100;
+const PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE = 0x200;
+
+const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T = 0x01;
+const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE = 0x02;
+const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE = 0x04;
+
 export type ProjectileSnapshotWireRows = {
   values: number[];
   count: number;
@@ -296,14 +311,22 @@ export function writeProjectileSpawnWireRow(
   values[base + 24] = spawn.homingTurnRate ?? 0;
   values[base + 25] = 0;
   let flags = 0;
-  if (spawn.maxLifespan !== undefined) flags |= 0x01;
-  if (spawn.shotId !== undefined) flags |= 0x02;
-  if (spawn.sourceTurretId !== undefined) flags |= 0x04;
-  if (spawn.isDGun === true) flags |= 0x08;
-  if (spawn.fromParentDetonation === true) flags |= 0x10;
-  if (spawn.beam !== undefined) flags |= 0x20;
-  if (spawn.targetEntityId !== undefined) flags |= 0x40;
-  if (spawn.homingTurnRate !== undefined) flags |= 0x80;
+  if (spawn.maxLifespan !== undefined) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
+  if (spawn.shotId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
+  if (spawn.sourceTurretId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
+  if (spawn.isDGun !== undefined) {
+    flags |= spawn.isDGun
+      ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
+      : PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE;
+  }
+  if (spawn.fromParentDetonation !== undefined) {
+    flags |= spawn.fromParentDetonation
+      ? PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE
+      : PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE;
+  }
+  if (spawn.beam !== undefined) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
+  if (spawn.targetEntityId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
+  if (spawn.homingTurnRate !== undefined) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
   values[base + 26] = flags;
 }
 
@@ -396,8 +419,12 @@ export function writeBeamUpdateWireRow(
 ): void {
   values[base + 0] = update.id;
   let flags = 0;
-  if (update.obstructionT !== undefined) flags |= 0x01;
-  if (update.endpointDamageable === false) flags |= 0x02;
+  if (update.obstructionT !== undefined) flags |= PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T;
+  if (update.endpointDamageable !== undefined) {
+    flags |= update.endpointDamageable
+      ? PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE
+      : PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE;
+  }
   values[base + 1] = flags;
   values[base + 2] = update.obstructionT ?? 0;
   values[base + 3] = update.points.length;

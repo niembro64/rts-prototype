@@ -1493,18 +1493,7 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
 }
 
 function canEncodeProjectiles(projectiles: SnapshotProjectiles): boolean {
-  const spawns = projectiles.spawns;
-  if (spawns) {
-    for (const spawn of spawns) {
-      if (spawn.isDGun === false || spawn.fromParentDetonation === false) return false;
-    }
-  }
-  const beamUpdates = projectiles.beamUpdates;
-  if (beamUpdates) {
-    for (const beam of beamUpdates) {
-      if (beam.endpointDamageable === true) return false;
-    }
-  }
+  void projectiles;
   return true;
 }
 

@@ -39,6 +39,9 @@ serverMeta is now Rust-emitted, including numeric and string snapshot/keyframe
 display values.
 Full-keyframe static terrain and buildability are now Rust-emitted instead of
 using raw top-level MessagePack fallback.
+Explicit false projectile-spawn booleans and explicit true beam
+endpointDamageable values are now represented in the flat projectile scratch
+flags and emitted by Rust instead of forcing raw projectiles fallback.
 The Rust-backed encode adapter now avoids array-helper allocation in the
 remaining DTO packing bridge for snapshot key collection, economy player IDs,
 factory waypoint strings, projectile despawn IDs, and audio death/impact

@@ -6950,7 +6950,8 @@ pub fn snapshot_encode_proj_vel_scratch_ensure(count: u32) {
 ///   [25]   reserved (future expansion)
 ///   [26]   flags: bit 0 maxLifespan, 1 shotId, 2 sourceTurretId,
 ///          3 isDGun(true), 4 fromParentDetonation(true), 5 beam,
-///          6 targetEntityId, 7 homingTurnRate.
+///          6 targetEntityId, 7 homingTurnRate, 8 isDGun(false),
+///          9 fromParentDetonation(false).
 const SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE: usize = 27;
 
 struct SnapshotEncodeProjSpawnScratch {
@@ -6991,7 +6992,8 @@ pub fn snapshot_encode_proj_spawn_scratch_ensure(count: u32) {
 
 /// Beam-update header scratch — 4 f64 per update:
 ///   [0]   id
-///   [1]   flags: bit 0 has_obstructionT, bit 1 has_endpointDamageable_false
+///   [1]   flags: bit 0 has_obstructionT, bit 1 has_endpointDamageable_false,
+///         bit 2 has_endpointDamageable_true
 ///   [2]   obstructionT (qRot value, only valid if flag set)
 ///   [3]   point_count (u32 as f64, points come from beam_point_scratch
 ///         in order — first update's points then next update's, etc.)
@@ -7804,11 +7806,15 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let has_max_lifespan = (flags & 0x01) != 0;
             let has_shot_id = (flags & 0x02) != 0;
             let has_source_turret_id = (flags & 0x04) != 0;
-            let has_is_dgun = (flags & 0x08) != 0;
-            let has_from_parent = (flags & 0x10) != 0;
+            let has_is_dgun_true = (flags & 0x08) != 0;
+            let has_from_parent_true = (flags & 0x10) != 0;
             let has_beam = (flags & 0x20) != 0;
             let has_target = (flags & 0x40) != 0;
             let has_homing = (flags & 0x80) != 0;
+            let has_is_dgun_false = (flags & 0x100) != 0;
+            let has_from_parent_false = (flags & 0x200) != 0;
+            let has_is_dgun = has_is_dgun_true || has_is_dgun_false;
+            let has_from_parent = has_from_parent_true || has_from_parent_false;
 
             // Field count = always-present 9 (id, pos, rotation,
             // velocity, projectileType, turretId, playerId,
@@ -7865,11 +7871,11 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             w.write_uint(scratch.buf[base + 16] as u64);
             if has_is_dgun {
                 w.write_str("isDGun");
-                w.write_bool(true);
+                w.write_bool(has_is_dgun_true);
             }
             if has_from_parent {
                 w.write_str("fromParentDetonation");
-                w.write_bool(true);
+                w.write_bool(has_from_parent_true);
             }
             if has_beam {
                 w.write_str("beam");
@@ -7955,7 +7961,9 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let id = header_scratch.buf[h] as u32;
             let flags = header_scratch.buf[h + 1] as u32;
             let has_obstruction_t = (flags & 0x01) != 0;
-            let has_endpoint_damageable = (flags & 0x02) != 0;
+            let has_endpoint_damageable_false = (flags & 0x02) != 0;
+            let has_endpoint_damageable_true = (flags & 0x04) != 0;
+            let has_endpoint_damageable = has_endpoint_damageable_false || has_endpoint_damageable_true;
             let obstruction_t = header_scratch.buf[h + 2];
             let point_count = header_scratch.buf[h + 3] as usize;
 
@@ -8056,7 +8064,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             }
             if has_endpoint_damageable {
                 w.write_str("endpointDamageable");
-                w.write_bool(false);
+                w.write_bool(has_endpoint_damageable_true);
             }
         }
     }
