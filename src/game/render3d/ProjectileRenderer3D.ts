@@ -24,7 +24,8 @@ const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CON
 const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RADIAL_SEGMENTS * 6;
 const TAIL_HISTORY_MAX_SAMPLES = 5;
 const TAIL_HISTORY_MIN_MOVE_SQ = 0.01;
-const TAIL_HISTORY_MIN_AGE_SEC = 1 / 240;
+const TAIL_HISTORY_MIN_ARC_STEP = 0.1;
+const TAIL_CURVE_EMA_HALF_LIFE_SEC = 0.08;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 const IDENTITY_QUAT = new THREE.Quaternion();
 const CURVED_CONE_COS = Array.from(
@@ -56,6 +57,10 @@ type ProjectileTailHistory = {
   x2: number; y2: number; z2: number; t2: number;
   x3: number; y3: number; z3: number; t3: number;
   x4: number; y4: number; z4: number; t4: number;
+  curveReady: boolean;
+  curveUpdatedAt: number;
+  curveAx: number; curveAy: number; curveAz: number;
+  curveBx: number; curveBy: number; curveBz: number;
 };
 
 type DynamicCurvedConeGeometry = {
@@ -339,6 +344,10 @@ export class ProjectileRenderer3D {
         x2: x, y2: y, z2: z, t2: nowMs,
         x3: x, y3: y, z3: z, t3: nowMs,
         x4: x, y4: y, z4: z, t4: nowMs,
+        curveReady: false,
+        curveUpdatedAt: nowMs,
+        curveAx: 0, curveAy: 0, curveAz: 0,
+        curveBx: 0, curveBy: 0, curveBz: 0,
       };
       this.projectileTailHistories.set(id, history);
       return history;
@@ -370,92 +379,137 @@ export class ProjectileRenderer3D {
     const vy = proj?.velocityY ?? 0;
     const vz = proj?.velocityZ ?? 0;
     const speed = Math.hypot(vx, vy, vz);
-    let ax = 0;
-    let ay = 0;
-    let az = 0;
-    let bx = 0;
-    let by = 0;
-    let bz = 0;
-    let useParabola = false;
+    let candidateAx = 0;
+    let candidateAy = 0;
+    let candidateAz = 0;
+    let candidateBx = speed > 1e-6 ? -vx / speed : -Math.cos(entity.transform.rotation);
+    let candidateBy = speed > 1e-6 ? -vy / speed : -Math.sin(entity.transform.rotation);
+    let candidateBz = speed > 1e-6 ? -vz / speed : 0;
+    let fitValid = false;
 
-    if (history.samples >= 3 && speed > 1e-6) {
+    if (history.samples >= 3) {
       let s2 = 0;
       let s3 = 0;
       let s4 = 0;
       let rx1 = 0; let ry1 = 0; let rz1 = 0;
       let rx2 = 0; let ry2 = 0; let rz2 = 0;
       let validSamples = 0;
+      let arcDistance = 0;
+      let prevX = history.x0;
+      let prevY = history.y0;
+      let prevZ = history.z0;
 
       for (let sample = 1; sample < history.samples; sample++) {
         let sx = history.x1;
         let sy = history.y1;
         let sz = history.z1;
-        let st = history.t1;
         if (sample === 2) {
-          sx = history.x2; sy = history.y2; sz = history.z2; st = history.t2;
+          sx = history.x2; sy = history.y2; sz = history.z2;
         } else if (sample === 3) {
-          sx = history.x3; sy = history.y3; sz = history.z3; st = history.t3;
+          sx = history.x3; sy = history.y3; sz = history.z3;
         } else if (sample === 4) {
-          sx = history.x4; sy = history.y4; sz = history.z4; st = history.t4;
+          sx = history.x4; sy = history.y4; sz = history.z4;
         }
 
-        const age = (history.t0 - st) / 1000;
-        if (age < TAIL_HISTORY_MIN_AGE_SEC) continue;
-        const age2 = age * age;
-        s2 += age2;
-        s3 += age2 * age;
-        s4 += age2 * age2;
+        const stepX = sx - prevX;
+        const stepY = sy - prevY;
+        const stepZ = sz - prevZ;
+        arcDistance += Math.hypot(stepX, stepY, stepZ);
+        prevX = sx; prevY = sy; prevZ = sz;
+        if (arcDistance < TAIL_HISTORY_MIN_ARC_STEP) continue;
+
+        const arc2 = arcDistance * arcDistance;
+        s2 += arc2;
+        s3 += arc2 * arcDistance;
+        s4 += arc2 * arc2;
         const dx = sx - history.x0;
         const dy = sy - history.y0;
         const dz = sz - history.z0;
-        rx1 += age * dx;
-        ry1 += age * dy;
-        rz1 += age * dz;
-        rx2 += age2 * dx;
-        ry2 += age2 * dy;
-        rz2 += age2 * dz;
+        rx1 += arcDistance * dx;
+        ry1 += arcDistance * dy;
+        rz1 += arcDistance * dz;
+        rx2 += arc2 * dx;
+        ry2 += arc2 * dy;
+        rz2 += arc2 * dz;
         validSamples++;
       }
 
       const denom = s2 * s4 - s3 * s3;
       if (validSamples >= 2 && Math.abs(denom) > 1e-9) {
         const invDenom = 1 / denom;
-        bx = (rx1 * s4 - rx2 * s3) * invDenom;
-        by = (ry1 * s4 - ry2 * s3) * invDenom;
-        bz = (rz1 * s4 - rz2 * s3) * invDenom;
-        ax = (s2 * rx2 - s3 * rx1) * invDenom;
-        ay = (s2 * ry2 - s3 * ry1) * invDenom;
-        az = (s2 * rz2 - s3 * rz1) * invDenom;
-        useParabola = Number.isFinite(ax + ay + az + bx + by + bz);
+        candidateBx = (rx1 * s4 - rx2 * s3) * invDenom;
+        candidateBy = (ry1 * s4 - ry2 * s3) * invDenom;
+        candidateBz = (rz1 * s4 - rz2 * s3) * invDenom;
+        candidateAx = (s2 * rx2 - s3 * rx1) * invDenom;
+        candidateAy = (s2 * ry2 - s3 * ry1) * invDenom;
+        candidateAz = (s2 * rz2 - s3 * rz1) * invDenom;
+        fitValid = Number.isFinite(
+          candidateAx + candidateAy + candidateAz +
+          candidateBx + candidateBy + candidateBz,
+        );
       }
     }
 
-    if (!useParabola) {
-      const inv = speed > 1e-6 ? 1 / speed : 0;
-      bx = speed > 1e-6 ? -vx * inv * speed : -Math.cos(entity.transform.rotation);
-      by = speed > 1e-6 ? -vy * inv * speed : -Math.sin(entity.transform.rotation);
-      bz = speed > 1e-6 ? -vz * inv * speed : 0;
+    if (!fitValid) {
+      candidateAx = 0; candidateAy = 0; candidateAz = 0;
+      candidateBx = speed > 1e-6 ? -vx / speed : -Math.cos(entity.transform.rotation);
+      candidateBy = speed > 1e-6 ? -vy / speed : -Math.sin(entity.transform.rotation);
+      candidateBz = speed > 1e-6 ? -vz / speed : 0;
+    }
+    let candidateLen = Math.hypot(candidateBx, candidateBy, candidateBz);
+    if (candidateLen <= 1e-6) {
+      candidateAx = 0; candidateAy = 0; candidateAz = 0;
+      candidateBx = speed > 1e-6 ? -vx / speed : -Math.cos(entity.transform.rotation);
+      candidateBy = speed > 1e-6 ? -vy / speed : -Math.sin(entity.transform.rotation);
+      candidateBz = speed > 1e-6 ? -vz / speed : 0;
+      candidateLen = Math.hypot(candidateBx, candidateBy, candidateBz);
+    }
+    if (candidateLen > 1e-6) {
+      const invCandidateLen = 1 / candidateLen;
+      candidateBx *= invCandidateLen;
+      candidateBy *= invCandidateLen;
+      candidateBz *= invCandidateLen;
+      candidateAx *= invCandidateLen * invCandidateLen;
+      candidateAy *= invCandidateLen * invCandidateLen;
+      candidateAz *= invCandidateLen * invCandidateLen;
     }
 
-    const tailTimeSec = speed > 1e-6 ? length / speed : length;
+    const curveDt = Math.max(0, (history.t0 - history.curveUpdatedAt) / 1000);
+    const curveBlend = history.curveReady
+      ? 1 - Math.pow(0.5, curveDt / TAIL_CURVE_EMA_HALF_LIFE_SEC)
+      : 1;
+    history.curveAx += (candidateAx - history.curveAx) * curveBlend;
+    history.curveAy += (candidateAy - history.curveAy) * curveBlend;
+    history.curveAz += (candidateAz - history.curveAz) * curveBlend;
+    history.curveBx += (candidateBx - history.curveBx) * curveBlend;
+    history.curveBy += (candidateBy - history.curveBy) * curveBlend;
+    history.curveBz += (candidateBz - history.curveBz) * curveBlend;
+    history.curveReady = true;
+    history.curveUpdatedAt = history.t0;
+
+    const curveLen = Math.hypot(history.curveBx, history.curveBy, history.curveBz);
+    if (curveLen > 1e-6) {
+      const invCurveLen = 1 / curveLen;
+      history.curveBx *= invCurveLen;
+      history.curveBy *= invCurveLen;
+      history.curveBz *= invCurveLen;
+      history.curveAx *= invCurveLen * invCurveLen;
+      history.curveAy *= invCurveLen * invCurveLen;
+      history.curveAz *= invCurveLen * invCurveLen;
+    }
+
     const positions = this.curvedCone.positions;
     const normals = this.curvedCone.normals;
     const vertexBase = slot * CURVED_CONE_VERTS_PER_TAIL;
     for (let segment = 0; segment <= CURVED_CONE_CURVE_SEGMENTS; segment++) {
       const u = segment / CURVED_CONE_CURVE_SEGMENTS;
-      const age = tailTimeSec * u;
-      const px = useParabola
-        ? history.x0 + bx * age + ax * age * age
-        : history.x0 + bx * age;
-      const py = useParabola
-        ? history.y0 + by * age + ay * age * age
-        : history.y0 + by * age;
-      const pz = useParabola
-        ? history.z0 + bz * age + az * age * age
-        : history.z0 + bz * age;
-      const tx = useParabola ? bx + 2 * ax * age : bx;
-      const ty = useParabola ? by + 2 * ay * age : by;
-      const tz = useParabola ? bz + 2 * az * age : bz;
+      const tailDistance = length * u;
+      const px = history.x0 + history.curveBx * tailDistance + history.curveAx * tailDistance * tailDistance;
+      const py = history.y0 + history.curveBy * tailDistance + history.curveAy * tailDistance * tailDistance;
+      const pz = history.z0 + history.curveBz * tailDistance + history.curveAz * tailDistance * tailDistance;
+      const tx = history.curveBx + 2 * history.curveAx * tailDistance;
+      const ty = history.curveBy + 2 * history.curveAy * tailDistance;
+      const tz = history.curveBz + 2 * history.curveAz * tailDistance;
       this.setCurveBasis(tx, ty, tz);
       const ringRadius = radius * (1 - u);
       for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
