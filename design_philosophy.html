@@ -320,6 +320,34 @@
         <li>Ground contact is spring and friction behavior against terrain, not a clamp disguised as physics.</li>
       </ul>
 
+      <h3>Gravity is universal; thrust answers it</h3>
+      <p>
+        Every body with mass feels gravity every tick, without exception. The
+        authoritative sim should never special-case &ldquo;this projectile
+        ignores gravity&rdquo; as a free pass. If a rocket, missile, or other
+        guided shot needs to fly a clean line to its target, it does so by
+        producing thrust that cancels the gravitational pull, not by opting out
+        of the force.
+      </p>
+      <p>
+        This applies inside the real-time homing equation itself. A guided
+        projectile&rsquo;s steering update should compute the lateral correction
+        toward the predicted intercept and, in the same step, add a vertical
+        thrust component sized to counteract <code>g &middot; m</code> on this
+        tick. The visible flight path can look indistinguishable from
+        &ldquo;gravity off,&rdquo; but the physics stays whole: the body has
+        mass, the world pulls it down, the engine pushes back, and any failure
+        of the engine &mdash; out of fuel, seeker lost, lifespan expired
+        &mdash; drops the body the way a spent missile drops in the real world.
+      </p>
+      <ul class="rule-list">
+        <li>Gravity is applied to every mass body every tick. No <code>ignoresGravity</code> shortcut, no projectile-class exemption, no &ldquo;flat trajectory&rdquo; flag that bypasses integration.</li>
+        <li>Guided projectiles add a counter-gravity thrust term inside the same homing/steering update that produces lateral correction toward the target. Guidance and gravity-cancellation are one acceleration vector, not two systems.</li>
+        <li>The counter-gravity term is bounded by the projectile&rsquo;s available thrust. A weak or under-powered rocket should sag, not teleport &mdash; the homing math saturates, it does not lie.</li>
+        <li>Spent or failed guidance returns the body to ballistic motion automatically, because gravity was never turned off; only the thrust opposing it stopped.</li>
+        <li>Hover, jump, and any other &ldquo;defies gravity&rdquo; behavior follows the same shape: a force that fights <code>g &middot; m</code>, not a conditional that skips it.</li>
+      </ul>
+
       <h3>Discrete gameplay still enters through physical effects</h3>
       <p>
         Commands, economy, construction, fog, build queues, and ownership are intentionally discrete
@@ -663,6 +691,7 @@
         <li>Keep snapshots sparse, recipient-aware, and low cadence by default.</li>
         <li>Keep client prediction physically compatible with the server, especially for motion and projectiles.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
+        <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
