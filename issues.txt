@@ -59,10 +59,10 @@ encode bridge copies those rows into WASM scratch for production snapshots and
 only walks projectile DTOs for ad-hoc/debug snapshots that do not carry the flat
 wire source.
 Entity snapshot serialization now publishes serializer-owned flat wire rows for
-basic entities, unit rows without variable action/turret payloads, and building
-rows without variable turret/factory payloads. The Rust encode bridge consumes
-those rows before falling back to DTO walking for the remaining variable-shape
-entity payloads.
+basic entities, unit rows, building rows, entity turrets, unit actions, factory
+queues, and factory waypoints. The Rust encode bridge consumes those rows
+before falling back to DTO walking only for ad-hoc/debug entity arrays without a
+registered wire source or unsupported mixed entity shapes.
 Entity turret payloads now also publish serializer-owned flat wire rows and are
 copied directly into WASM turret scratch for unit and non-factory building
 entities, so turret-bearing combat entities no longer require the encode bridge
