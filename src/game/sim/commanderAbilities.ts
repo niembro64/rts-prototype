@@ -174,7 +174,6 @@ export class CommanderAbilitiesSystem {
     const refundScale = RECLAIM_REFUND_FRACTION * (hpRemoved / maxHp);
     economyManager.addStockpile(playerId, {
       energy: value.energy * refundScale,
-      mana: value.mana * refundScale,
       metal: value.metal * refundScale,
     });
 

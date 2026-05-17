@@ -292,7 +292,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     build !== undefined ? 1 : 0,
     build?.complete === true ? 1 : 0,
     build?.paid.energy ?? 0,
-    build?.paid.mana ?? 0,
     build?.paid.metal ?? 0,
   );
   return true;
@@ -343,7 +342,6 @@ function encodeBuildingEntity(
     building.hp.max,
     building.build.complete ? 1 : 0,
     building.build.paid.energy,
-    building.build.paid.mana,
     building.build.paid.metal,
     building.metalExtractionRate !== undefined ? 1 : 0,
     building.metalExtractionRate ?? 0,
@@ -356,7 +354,6 @@ function encodeBuildingEntity(
     factory?.progress ?? 0,
     factory?.producing === true ? 1 : 0,
     factory?.energyRate ?? 0,
-    factory?.manaRate ?? 0,
     factory?.metalRate ?? 0,
     factory?.waypoints.length ?? 0,
   );
@@ -489,16 +486,11 @@ function packEconomyIntoScratch(
     view[base + 3] = src.income.base;
     view[base + 4] = src.income.production;
     view[base + 5] = src.expenditure;
-    view[base + 6] = src.mana.stockpile.curr;
-    view[base + 7] = src.mana.stockpile.max;
-    view[base + 8] = src.mana.income.base;
-    view[base + 9] = src.mana.income.territory;
-    view[base + 10] = src.mana.expenditure;
-    view[base + 11] = src.metal.stockpile.curr;
-    view[base + 12] = src.metal.stockpile.max;
-    view[base + 13] = src.metal.income.base;
-    view[base + 14] = src.metal.income.extraction;
-    view[base + 15] = src.metal.expenditure;
+    view[base + 6] = src.metal.stockpile.curr;
+    view[base + 7] = src.metal.stockpile.max;
+    view[base + 8] = src.metal.income.base;
+    view[base + 9] = src.metal.income.extraction;
+    view[base + 10] = src.metal.expenditure;
   }
   return ids.length;
 }

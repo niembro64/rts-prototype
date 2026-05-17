@@ -398,16 +398,6 @@ export class GameServer {
       spatialGrid.getOccupiedCellsForCapture(),
       dtSec,
     );
-
-    // Update mana income from territory. The capture system's
-    // running totals are already in mana/sec, weighted per-tile by
-    // the central-hotspot multiplier — same weighting the GRID
-    // renderer uses for tile brightness, so what you see is what
-    // you earn.
-    const productionRates = this.captureSystem.getManaProductionRatesByPlayer();
-    for (const playerId of this.playerIds) {
-      economyManager.setManaTerritory(playerId, productionRates.get(playerId) ?? 0);
-    }
   }
 
   // Sync positions and velocities from physics bodies to entities

@@ -8,7 +8,6 @@
     "hp": 200,
     "cost": {
       "energy": 100,
-      "mana": 100,
       "metal": 100
     },
     "energyProduction": 50,
@@ -33,7 +32,6 @@
     "hp": 100,
     "cost": {
       "energy": 60,
-      "mana": 60,
       "metal": 60
     },
     "energyProduction": 50,
@@ -58,7 +56,6 @@
     "hp": 800,
     "cost": {
       "energy": 300,
-      "mana": 300,
       "metal": 300
     },
     "energyProduction": null,
@@ -93,7 +90,6 @@
     "hp": 250,
     "cost": {
       "energy": 80,
-      "mana": 80,
       "metal": 80
     },
     "energyProduction": null,
@@ -118,7 +114,6 @@
     "hp": 450,
     "cost": {
       "energy": 400,
-      "mana": 180,
       "metal": 280
     },
     "energyProduction": null,
@@ -145,7 +140,6 @@
     "hp": 8000,
     "cost": {
       "energy": 1500,
-      "mana": 1500,
       "metal": 1500
     },
     "energyProduction": null,
@@ -179,7 +173,6 @@
     "hp": 8000,
     "cost": {
       "energy": 1500,
-      "mana": 1500,
       "metal": 1500
     },
     "energyProduction": null,

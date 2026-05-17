@@ -44,9 +44,6 @@ function isStockEmpty(n: number): boolean {
 const energyPct = computed(() =>
   Math.min(100, Math.round((props.economy.stockpile.curr / props.economy.stockpile.max) * 100))
 );
-const manaPct = computed(() =>
-  Math.min(100, Math.round((props.economy.mana.stockpile.curr / props.economy.mana.stockpile.max) * 100))
-);
 const metalPct = computed(() =>
   Math.min(100, Math.round((props.economy.metal.stockpile.curr / props.economy.metal.stockpile.max) * 100))
 );
@@ -68,15 +65,11 @@ const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.un
 const playerDotStyle = computed(() => ({ backgroundColor: props.playerColor }));
 const unitCapStyle = computed(() => ({ color: unitCapColor.value }));
 const energyBarStyle = computed(() => ({ width: energyPct.value + '%' }));
-const manaBarStyle = computed(() => ({ width: manaPct.value + '%' }));
 const metalBarStyle = computed(() => ({ width: metalPct.value + '%' }));
 
 const energyStockDisplay = computed(() => fmtStock(props.economy.stockpile.curr));
 const energyProduceDisplay = computed(() => fmtMag(props.economy.income.total));
 const energyConsumeDisplay = computed(() => fmtMag(props.economy.expenditure));
-const manaStockDisplay = computed(() => fmtStock(props.economy.mana.stockpile.curr));
-const manaProduceDisplay = computed(() => fmtMag(props.economy.mana.income.total));
-const manaConsumeDisplay = computed(() => fmtMag(props.economy.mana.expenditure));
 const metalStockDisplay = computed(() => fmtStock(props.economy.metal.stockpile.curr));
 const metalProduceDisplay = computed(() => fmtMag(props.economy.metal.income.total));
 const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditure));
@@ -176,37 +169,6 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
         <span class="resource-flow">
           <span class="flow-label">consume</span>
           <span class="flow-value">{{ energyConsumeDisplay }}</span>
-        </span>
-      </div>
-    </div>
-
-    <!-- Mana block -->
-    <div
-      class="resource-block mana-block"
-      :class="{ 'resource-empty': isStockEmpty(economy.mana.stockpile.curr) }"
-    >
-      <div class="resource-summary">
-        <div class="resource-header">
-          <span class="resource-icon">💎</span>
-          <span class="resource-label">MANA</span>
-        </div>
-        <div class="resource-row">
-          <span class="resource-stock">{{ manaStockDisplay }}</span>
-          <span class="resource-sep">/</span>
-          <span class="resource-max">{{ economy.mana.stockpile.max }}</span>
-        </div>
-      </div>
-      <div class="resource-bar">
-        <div class="resource-bar-fill mana-fill" :style="manaBarStyle"></div>
-      </div>
-      <div class="resource-flows">
-        <span class="resource-flow">
-          <span class="flow-label">produce</span>
-          <span class="flow-value">{{ manaProduceDisplay }}</span>
-        </span>
-        <span class="resource-flow">
-          <span class="flow-label">consume</span>
-          <span class="flow-value">{{ manaConsumeDisplay }}</span>
         </span>
       </div>
     </div>
@@ -390,7 +352,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   color: #ff7777;
 }
 
-/* ── Resource blocks (Energy / Mana) ── */
+/* Resource blocks */
 .resource-block {
   --resource-accent: #ddd;
   display: flex;
@@ -423,7 +385,6 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 }
 
 .energy-block { --resource-accent: #ffcc00; }
-.mana-block { --resource-accent: #44aaff; }
 .metal-block { --resource-accent: #d8a878; }
 
 .resource-icon {

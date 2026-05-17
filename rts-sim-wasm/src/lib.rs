@@ -4950,7 +4950,6 @@ struct EntityMetaPool {
     is_commander: Vec<u8>,
     build_complete: Vec<u8>,
     build_paid_energy: Vec<f32>,
-    build_paid_mana: Vec<f32>,
     build_paid_metal: Vec<f32>,
     /// -1 sentinel for "no build target"; otherwise the target EntityId.
     build_target_id: Vec<i32>,
@@ -4978,7 +4977,6 @@ impl EntityMetaPool {
             is_commander: Vec::new(),
             build_complete: Vec::new(),
             build_paid_energy: Vec::new(),
-            build_paid_mana: Vec::new(),
             build_paid_metal: Vec::new(),
             build_target_id: Vec::new(),
             suspension_spring_offset: Vec::new(),
@@ -5004,7 +5002,6 @@ impl EntityMetaPool {
         self.is_commander.resize(needed, 0);
         self.build_complete.resize(needed, 0);
         self.build_paid_energy.resize(needed, 0.0);
-        self.build_paid_mana.resize(needed, 0.0);
         self.build_paid_metal.resize(needed, 0.0);
         self.build_target_id.resize(needed, -1);
         self.suspension_spring_offset.resize(needed, 0.0);
@@ -5029,7 +5026,6 @@ impl EntityMetaPool {
         self.is_commander[s] = 0;
         self.build_complete[s] = 0;
         self.build_paid_energy[s] = 0.0;
-        self.build_paid_mana[s] = 0.0;
         self.build_paid_metal[s] = 0.0;
         self.build_target_id[s] = -1;
         self.suspension_spring_offset[s] = 0.0;
@@ -5090,7 +5086,6 @@ pub fn entity_meta_set_unit(
     is_commander: u8,
     build_complete: u8,
     build_paid_energy: f32,
-    build_paid_mana: f32,
     build_paid_metal: f32,
     build_target_id: i32,
     suspension_spring_offset: f32,
@@ -5110,7 +5105,6 @@ pub fn entity_meta_set_unit(
     pool.is_commander[s] = is_commander;
     pool.build_complete[s] = build_complete;
     pool.build_paid_energy[s] = build_paid_energy;
-    pool.build_paid_mana[s] = build_paid_mana;
     pool.build_paid_metal[s] = build_paid_metal;
     pool.build_target_id[s] = build_target_id;
     pool.suspension_spring_offset[s] = suspension_spring_offset;
@@ -5182,7 +5176,6 @@ entity_meta_ptr_export!(entity_meta_combat_mode_ptr, combat_mode, u8);
 entity_meta_ptr_export!(entity_meta_is_commander_ptr, is_commander, u8);
 entity_meta_ptr_export!(entity_meta_build_complete_ptr, build_complete, u8);
 entity_meta_ptr_export!(entity_meta_build_paid_energy_ptr, build_paid_energy, f32);
-entity_meta_ptr_export!(entity_meta_build_paid_mana_ptr, build_paid_mana, f32);
 entity_meta_ptr_export!(entity_meta_build_paid_metal_ptr, build_paid_metal, f32);
 entity_meta_ptr_export!(entity_meta_build_target_id_ptr, build_target_id, i32);
 entity_meta_ptr_export!(entity_meta_suspension_spring_offset_ptr, suspension_spring_offset, f32);
@@ -6357,7 +6350,6 @@ pub fn snapshot_encode_entity_unit(
     has_build: u8,
     build_complete: u8,
     build_paid_energy: f64,
-    build_paid_mana: f64,
     build_paid_metal: f64,
 ) -> u32 {
     let w = messagepack_writer();
@@ -6558,11 +6550,9 @@ pub fn snapshot_encode_entity_unit(
         w.write_str("complete");
         w.write_bool(build_complete != 0);
         w.write_str("paid");
-        w.write_map_header(3);
+        w.write_map_header(2);
         w.write_str("energy");
         w.write_number(build_paid_energy);
-        w.write_str("mana");
-        w.write_number(build_paid_mana);
         w.write_str("metal");
         w.write_number(build_paid_metal);
     }
@@ -6742,7 +6732,6 @@ pub fn snapshot_encode_entity_building(
     hp_max: f64,
     build_complete: u8,
     build_paid_energy: f64,
-    build_paid_mana: f64,
     build_paid_metal: f64,
     has_metal_extraction_rate: u8,
     metal_extraction_rate: f64,
@@ -6755,7 +6744,6 @@ pub fn snapshot_encode_entity_building(
     factory_progress: f64,
     factory_producing: u8,
     factory_energy_rate: f64,
-    factory_mana_rate: f64,
     factory_metal_rate: f64,
     factory_waypoint_count: u32,
 ) -> u32 {
@@ -6809,11 +6797,9 @@ pub fn snapshot_encode_entity_building(
     w.write_str("complete");
     w.write_bool(build_complete != 0);
     w.write_str("paid");
-    w.write_map_header(3);
+    w.write_map_header(2);
     w.write_str("energy");
     w.write_number(build_paid_energy);
-    w.write_str("mana");
-    w.write_number(build_paid_mana);
     w.write_str("metal");
     w.write_number(build_paid_metal);
 
@@ -6886,7 +6872,7 @@ pub fn snapshot_encode_entity_building(
 
     if has_factory != 0 {
         w.write_str("factory");
-        w.write_map_header(7);  // queue, progress, producing, energyRate, manaRate, metalRate, waypoints
+        w.write_map_header(6);  // queue, progress, producing, energyRate, metalRate, waypoints
 
         let qc = factory_queue_count as usize;
         w.write_str("queue");
@@ -6906,9 +6892,6 @@ pub fn snapshot_encode_entity_building(
 
         w.write_str("energyRate");
         w.write_number(factory_energy_rate);
-
-        w.write_str("manaRate");
-        w.write_number(factory_mana_rate);
 
         w.write_str("metalRate");
         w.write_number(factory_metal_rate);
@@ -7576,20 +7559,17 @@ fn audio_event_source_type_str(code: u8) -> &'static str {
     }
 }
 
-/// Economy scratch — 16 f64 per player (caller must pack in ASCENDING
+/// Economy scratch — 11 f64 per player (caller must pack in ASCENDING
 /// playerId order to match @msgpack/msgpack's iteration of a JS
 /// object with integer-string keys).
 ///   [0]   playerId (becomes the outer-map string key)
 ///   [1..3] stockpile.curr, stockpile.max
 ///   [3..5] income.base, income.production
 ///   [5]   expenditure
-///   [6..8] mana.stockpile.curr, mana.stockpile.max
-///   [8..10] mana.income.base, mana.income.territory
-///   [10]  mana.expenditure
-///   [11..13] metal.stockpile.curr, metal.stockpile.max
-///   [13..15] metal.income.base, metal.income.extraction
-///   [15]  metal.expenditure
-const SNAPSHOT_ENCODE_ECONOMY_STRIDE: usize = 16;
+///   [6..8] metal.stockpile.curr, metal.stockpile.max
+///   [8..10] metal.income.base, metal.income.extraction
+///   [10]  metal.expenditure
+const SNAPSHOT_ENCODE_ECONOMY_STRIDE: usize = 11;
 
 struct SnapshotEncodeEconomyScratch {
     buf: Vec<f64>,
@@ -8346,9 +8326,9 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         let key_str = u32_to_decimal(&mut key_buf, player_id);
         w.write_str(key_str);
 
-        // Per-player DTO field count = 5 (stockpile, income,
-        // expenditure, mana, metal — all required).
-        w.write_map_header(5);
+        // Per-player DTO field count = 4 (stockpile, income,
+        // expenditure, metal — all required).
+        w.write_map_header(4);
         // stockpile: { curr, max }
         w.write_str("stockpile");
         w.write_map_header(2);
@@ -8362,8 +8342,8 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         // expenditure
         w.write_str("expenditure");
         w.write_number(scratch.buf[base + 5]);
-        // mana: { stockpile, income, expenditure }
-        w.write_str("mana");
+        // metal: { stockpile, income, expenditure }
+        w.write_str("metal");
         w.write_map_header(3);
         w.write_str("stockpile");
         w.write_map_header(2);
@@ -8372,22 +8352,9 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         w.write_str("income");
         w.write_map_header(2);
         w.write_str("base"); w.write_number(scratch.buf[base + 8]);
-        w.write_str("territory"); w.write_number(scratch.buf[base + 9]);
+        w.write_str("extraction"); w.write_number(scratch.buf[base + 9]);
         w.write_str("expenditure");
         w.write_number(scratch.buf[base + 10]);
-        // metal: { stockpile, income, expenditure }
-        w.write_str("metal");
-        w.write_map_header(3);
-        w.write_str("stockpile");
-        w.write_map_header(2);
-        w.write_str("curr"); w.write_number(scratch.buf[base + 11]);
-        w.write_str("max"); w.write_number(scratch.buf[base + 12]);
-        w.write_str("income");
-        w.write_map_header(2);
-        w.write_str("base"); w.write_number(scratch.buf[base + 13]);
-        w.write_str("extraction"); w.write_number(scratch.buf[base + 14]);
-        w.write_str("expenditure");
-        w.write_number(scratch.buf[base + 15]);
     }
     w.buf.len() as u32
 }

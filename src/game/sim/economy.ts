@@ -3,9 +3,6 @@ import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
   BASE_INCOME_PER_SECOND,
-  STARTING_MANA,
-  MAX_MANA,
-  BASE_MANA_PER_SECOND,
   STARTING_METAL,
   MAX_METAL,
   BASE_METAL_PER_SECOND,
@@ -17,9 +14,6 @@ export const ECONOMY_CONSTANTS = {
   maxStockpile: MAX_STOCKPILE,
   baseIncome: BASE_INCOME_PER_SECOND,
   startingStockpile: STARTING_STOCKPILE,
-  maxMana: MAX_MANA,
-  baseManaIncome: BASE_MANA_PER_SECOND,
-  startingMana: STARTING_MANA,
   maxMetal: MAX_METAL,
   baseMetalIncome: BASE_METAL_PER_SECOND,
   startingMetal: STARTING_METAL,
@@ -32,11 +26,6 @@ export function createEconomyState(): EconomyState {
     stockpile: { curr: ECONOMY_CONSTANTS.startingStockpile, max: ECONOMY_CONSTANTS.maxStockpile },
     income: { base: ECONOMY_CONSTANTS.baseIncome, production: 0 },
     expenditure: 0,
-    mana: {
-      stockpile: { curr: ECONOMY_CONSTANTS.startingMana, max: ECONOMY_CONSTANTS.maxMana },
-      income: { base: ECONOMY_CONSTANTS.baseManaIncome, territory: 0 },
-      expenditure: 0,
-    },
     metal: {
       stockpile: { curr: ECONOMY_CONSTANTS.startingMetal, max: ECONOMY_CONSTANTS.maxMetal },
       income: { base: ECONOMY_CONSTANTS.baseMetalIncome, extraction: 0 },
@@ -83,12 +72,6 @@ export class EconomyManager {
     economy.income.production = state.income.production;
     economy.expenditure = state.expenditure;
 
-    economy.mana.stockpile.curr = state.mana.stockpile.curr;
-    economy.mana.stockpile.max = state.mana.stockpile.max;
-    economy.mana.income.base = state.mana.income.base;
-    economy.mana.income.territory = state.mana.income.territory;
-    economy.mana.expenditure = state.mana.expenditure;
-
     economy.metal.stockpile.curr = state.metal.stockpile.curr;
     economy.metal.stockpile.max = state.metal.stockpile.max;
     economy.metal.income.base = state.metal.income.base;
@@ -112,12 +95,6 @@ export class EconomyManager {
   removeProduction(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.income.production = Math.max(0, economy.income.production - amount);
-  }
-
-  // Set mana territory income (called each tick from capture system)
-  setManaTerritory(playerId: PlayerId, amount: number): void {
-    const economy = this.getOrCreateEconomy(playerId);
-    economy.mana.income.territory = amount;
   }
 
   // Add to metal extraction income (when an extractor completes)
@@ -172,20 +149,10 @@ export class EconomyManager {
   addStockpile(playerId: PlayerId, amount: ResourceCost): ResourceCost {
     const economy = this.getOrCreateEconomy(playerId);
     const energy = Math.max(0, Math.min(amount.energy, economy.stockpile.max - economy.stockpile.curr));
-    const mana = Math.max(0, Math.min(amount.mana, economy.mana.stockpile.max - economy.mana.stockpile.curr));
     const metal = Math.max(0, Math.min(amount.metal, economy.metal.stockpile.max - economy.metal.stockpile.curr));
     economy.stockpile.curr += energy;
-    economy.mana.stockpile.curr += mana;
     economy.metal.stockpile.curr += metal;
-    return { energy, mana, metal };
-  }
-
-  // Try to spend mana (returns amount actually spent)
-  trySpendMana(playerId: PlayerId, amount: number): number {
-    const economy = this.getOrCreateEconomy(playerId);
-    const actualSpend = Math.min(amount, economy.mana.stockpile.curr);
-    economy.mana.stockpile.curr -= actualSpend;
-    return actualSpend;
+    return { energy, metal };
   }
 
   // Try to spend metal (returns amount actually spent)
@@ -196,32 +163,17 @@ export class EconomyManager {
     return actualSpend;
   }
 
-  // Record mana expenditure (called by distribution system)
-  recordManaExpenditure(playerId: PlayerId, amount: number): void {
-    const economy = this.getOrCreateEconomy(playerId);
-    economy.mana.expenditure += amount;
-  }
-
   // Record metal expenditure (called by distribution system)
   recordMetalExpenditure(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.metal.expenditure += amount;
   }
 
-  // Update economy each tick (energy + mana + metal income).
-  //
-  // `hasCommander(playerId)` gates the BASE mana income: a team only
-  // earns its passive mana drip while it still has a living commander
-  // on the field. Lose your commander → mana production stops (you
-  // can still spend whatever's stockpiled). Energy and metal stay
-  // unconditional so a commander-less team can keep paying for solar
-  // panels, existing builds, and harvesting deposits. Predicate is
-  // optional — when omitted, both incomes credit unconditionally
-  // (single-player sandbox / tests).
-  update(dtMs: number, hasCommander?: (playerId: PlayerId) => boolean): void {
+  // Update economy each tick (energy + metal income).
+  update(dtMs: number, _hasCommander?: (playerId: PlayerId) => boolean): void {
     const dtSec = dtMs / 1000;
 
-    for (const [playerId, economy] of this.economies) {
+    for (const economy of this.economies.values()) {
       // Energy income — unconditional.
       const totalEnergy = economy.income.base + economy.income.production;
       economy.stockpile.curr = Math.min(
@@ -229,18 +181,6 @@ export class EconomyManager {
         economy.stockpile.max,
       );
       economy.expenditure = 0;
-
-      // Mana income — base requires a living commander; territory
-      // income (capture-flag drip) keeps flowing because it's tied to
-      // physical map control, not commander presence.
-      const commanderAlive = hasCommander ? hasCommander(playerId) : true;
-      const baseManaThisTick = commanderAlive ? economy.mana.income.base : 0;
-      const totalMana = baseManaThisTick + economy.mana.income.territory;
-      economy.mana.stockpile.curr = Math.min(
-        economy.mana.stockpile.curr + totalMana * dtSec,
-        economy.mana.stockpile.max,
-      );
-      economy.mana.expenditure = 0;
 
       // Metal income — base + extraction (from completed extractors
       // sitting on deposits). Unconditional, like energy.

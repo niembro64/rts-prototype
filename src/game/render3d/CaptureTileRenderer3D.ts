@@ -15,7 +15,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 import {
   LAND_CELL_SIZE,
   MAP_BG_COLOR,
-  MANA_TILE_GROUND_LIFT,
+  LAND_TILE_GROUND_LIFT,
   HORIZON_RENDER_EXTEND,
   GROUND_RENDER_ORDER,
   TERRAIN_GROUND_BASE_COLOR,
@@ -676,7 +676,7 @@ export class CaptureTileRenderer3D {
       cellsX,
       cellsY,
       cellSize,
-      MANA_TILE_GROUND_LIFT,
+      LAND_TILE_GROUND_LIFT,
       TERRAIN_HORIZON_BLEND_CONFIG.enabled ? 1 : 0,
       TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeStart,
       TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeEnd,
@@ -888,7 +888,7 @@ export class CaptureTileRenderer3D {
         const normal = terrainMeshNormalFromSample(sample);
         const idx = terrainPositions.length / 3;
         meshVertexToTerrainVertex[i] = idx;
-        terrainPositions.push(wx, terrainHeight + MANA_TILE_GROUND_LIFT, wz);
+        terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
         const vertexSlope = 1 - Math.min(1, Math.abs(normal.ny));
@@ -1032,7 +1032,7 @@ export class CaptureTileRenderer3D {
         getTerrainMapBoundaryFade(0, this.mapHeight * 0.5, this.mapWidth, this.mapHeight) >= 1;
       if (!sideMidpointsAreShelf) return;
 
-      const y = TERRAIN_CIRCLE_UNDERWATER_HEIGHT + MANA_TILE_GROUND_LIFT;
+      const y = TERRAIN_CIRCLE_UNDERWATER_HEIGHT + LAND_TILE_GROUND_LIFT;
       const outer = HORIZON_RENDER_EXTEND;
       const W = this.mapWidth;
       const H = this.mapHeight;

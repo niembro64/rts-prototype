@@ -35,7 +35,7 @@ export const CONSTRUCTION_HAZARD_COLORS = {
 } as const;
 
 /** Construction tower orbital spin. The renderer EMAs the summed
- * resource transfer-rate fractions (energy + mana + metal) using the
+ * resource transfer-rate fractions (energy + metal) using the
  * selected PLAYER CLIENT DRIFT preset, then advances the three-tower
  * cluster around the emitter center by
  * `radPerSec * smoothedResourceRateSum`. */

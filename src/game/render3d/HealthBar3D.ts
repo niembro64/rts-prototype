@@ -41,7 +41,6 @@ const STYLE = {
   fgColorLow: HP_BAR_COLOR_LOW,
   fgColorBuild: HP_BAR_COLOR_BUILD,
   fgColorEnergy: SHELL_BAR_COLORS.energy,
-  fgColorMana: SHELL_BAR_COLORS.mana,
   fgColorMetal: SHELL_BAR_COLORS.metal,
   fgAlpha: SHELL_BAR_FG_ALPHA,
   worldStackGap: ENTITY_HUD_BAR_STACK_GAP,
@@ -56,7 +55,6 @@ type BarMode =
   | 'healthLow'
   | 'build'
   | 'energyBar'
-  | 'manaBar'
   | 'metalBar';
 
 type BarState = {
@@ -85,7 +83,6 @@ function repaintBar(bar: Bar, ratio: number, mode: BarMode): boolean {
     mode === 'build' ? STYLE.fgColorBuild :
     mode === 'healthLow' ? STYLE.fgColorLow :
     mode === 'energyBar' ? STYLE.fgColorEnergy :
-    mode === 'manaBar' ? STYLE.fgColorMana :
     mode === 'metalBar' ? STYLE.fgColorMetal :
     STYLE.fgColorHigh;
   ctx.globalAlpha = STYLE.fgAlpha;
@@ -174,11 +171,11 @@ export class HealthBar3D {
     }
   }
 
-  /** Stack the three per-resource bars on top of the HP bar when a
-   *  buildable is in progress. Construction uses a fixed four-row
+  /** Stack the per-resource bars on top of the HP bar when a
+   *  buildable is in progress. Construction uses a fixed three-row
    *  layout until completion so full resource rows do not disappear
    *  and visually reflow the remaining bars. Order from the bottom:
-   *  HP, energy, mana, metal. Returns the next stack index. */
+   *  HP, energy, metal. Returns the next stack index. */
   private placeResourceBars(
     buildable: Buildable,
     worldX: number,
@@ -190,9 +187,6 @@ export class HealthBar3D {
     let stack = stackStart;
     const e = getResourceFillRatio(buildable, 'energy');
     this.placeBar(e, 'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack);
-    stack++;
-    const m = getResourceFillRatio(buildable, 'mana');
-    this.placeBar(m, 'manaBar', worldX, worldBaseY, worldZ, worldWidth, stack);
     stack++;
     const t = getResourceFillRatio(buildable, 'metal');
     this.placeBar(t, 'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack);
@@ -258,7 +252,7 @@ export class HealthBar3D {
     let stack = 0;
     if (showHp) {
       // HP is its own thing — green/red by ratio, never the legacy
-      // single-bar 'build' color. The user wants the three resource
+      // single-bar 'build' color. The user wants the resource
       // bars to be the "build progress", not a combined ratio.
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';

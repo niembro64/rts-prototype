@@ -46,7 +46,7 @@ export { LAND_CELL_SIZE } from './mapSizeConfig';
 // Default square map span in canonical land cells. Demo Battle and Real Battle
 // use the same option set and server/client math, while their selected size is
 // persisted per mode. Keep this odd so the map has exactly one central
-// land/mana tile.
+// land tile.
 export const MAP_LAND_CELLS_WIDTH = MAP_DIMENSION_CONFIG.width.default;
 export const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 
@@ -64,12 +64,12 @@ export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
 // this at 0 for normal play: the terrain renderer, host sim, and client
 // prediction all share the same authoritative triangle surface. Use waypoint
 // and floating-cell overlay lifts for readability instead of moving terrain.
-export const MANA_TILE_GROUND_LIFT = 0;
+export const LAND_TILE_GROUND_LIFT = 0;
 
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up
-// so mana-tile LOD and overlay layers do not hide them.
+// so terrain LOD and overlay layers do not hide them.
 export const WAYPOINT_GROUND_LIFT = 12;
 
 // Host-server spatial-grid debug snapshots are intentionally throttled
@@ -380,15 +380,6 @@ export const MAX_STOCKPILE = 1000;
 /** Base energy income per second (before solar panels) */
 export const BASE_INCOME_PER_SECOND = 10;
 
-/** Starting mana stockpile for each player */
-export const STARTING_MANA = 200;
-
-/** Maximum mana stockpile capacity */
-export const MAX_MANA = 1000;
-
-/** Base mana income per second (before territory) */
-export const BASE_MANA_PER_SECOND = 5;
-
 /** Starting metal stockpile for each player */
 export const STARTING_METAL = 200;
 
@@ -403,13 +394,6 @@ export const BASE_METAL_PER_SECOND = 2;
 /** Metal produced per second by each completed extractor sitting on a
  *  metal deposit. Tuned so 1 extractor ≈ 1 solar in income scale. */
 export const EXTRACTOR_METAL_PER_SECOND = 50;
-
-// Per-tile territory mana income uses BASE_MANA_PER_SECOND above as
-// the perimeter rate, scaled by the central-hotspot config in
-// captureConfig.ts (MANA_CENTER_TILE_MULTIPLIER, MANA_HOTSPOT_RADIUS_FRACTION).
-// A team's per-tile income is `flag_height × tile_rate`, where the
-// flag height is its OWNERSHIP RATIO and the tile rate comes from
-// the hotspot falloff.
 
 // =============================================================================
 // UNIT CAP
@@ -704,10 +688,10 @@ export const CONTACT_SHADOW_RENDER_CONFIG = {
   maxSunOffset: 70,
 } as const;
 
-// Seam-safe mana tile terrain texture. These waves are evaluated from
-// world-space X/Z only, so adjacent mana tiles share exact vertex colors
+// Seam-safe land tile terrain texture. These waves are evaluated from
+// world-space X/Z only, so adjacent land tiles share exact vertex colors
 // on shared edges and corners.
-/** Global period multiplier for every sine wave in MANA_TILE_TEXTURE.
+/** Global period multiplier for every sine wave in LAND_TILE_TEXTURE.
  *
  *  1.0 = the configured tile-width periods below.
  *  2.0 = all waves are twice as wide / slower-changing.
@@ -716,40 +700,40 @@ export const CONTACT_SHADOW_RENDER_CONFIG = {
  *  This replaces the old local `mmult` scale multiplier. The current
  *  value preserves the previous `mmult = 0.02` broad-stroke period.
  */
-export const MANA_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
-/** Static baked mana-surface texture resolution. Higher values preserve
+export const LAND_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
+/** Static baked land-surface texture resolution. Higher values preserve
  *  more procedural texture detail without requiring more terrain
  *  triangles; cost is one small GPU texture per map. */
-export const MANA_TILE_TEXTURE_PIXELS_PER_TILE = 32;
-/** Master switch for the procedural sine-wave swirls in the mana/ground texture.
+export const LAND_TILE_TEXTURE_PIXELS_PER_TILE = 32;
+/** Master switch for the procedural sine-wave swirls in the land/ground texture.
  *  When false, the terrain keeps a flat base color and still receives baked
  *  lighting/shadows from TERRAIN_SHADOW_RENDER_CONFIG. */
-export const MANA_TILE_TEXTURE_SWIRLS_ENABLED = true;
+export const LAND_TILE_TEXTURE_SWIRLS_ENABLED = true;
 
-const manaTileWaveScale = (tileWidths: number): number =>
+const landTileWaveScale = (tileWidths: number): number =>
   (Math.PI * 2) /
-  (LAND_CELL_SIZE * tileWidths * MANA_TILE_TEXTURE_PERIOD_MULTIPLIER);
+  (LAND_CELL_SIZE * tileWidths * LAND_TILE_TEXTURE_PERIOD_MULTIPLIER);
 
-export const MANA_TILE_TEXTURE = {
+export const LAND_TILE_TEXTURE = {
   xWaves: [
-    { scale: manaTileWaveScale(20.4), phase: 1.31, amplitude: 0.14 },
-    { scale: manaTileWaveScale(17.8), phase: 4.76, amplitude: 0.16 },
+    { scale: landTileWaveScale(20.4), phase: 1.31, amplitude: 0.14 },
+    { scale: landTileWaveScale(17.8), phase: 4.76, amplitude: 0.16 },
   ],
   zWaves: [
-    { scale: manaTileWaveScale(32.7), phase: 2.38, amplitude: 0.11 },
-    { scale: manaTileWaveScale(23.6), phase: 5.11, amplitude: 0.14 },
+    { scale: landTileWaveScale(32.7), phase: 2.38, amplitude: 0.11 },
+    { scale: landTileWaveScale(23.6), phase: 5.11, amplitude: 0.14 },
   ],
   cross: {
     // Keep this at 0 by default: a strong `(x + z)` term reads as a
-    // regular 45-degree pattern across the mana grid.
-    scale: manaTileWaveScale(61.5),
+    // regular 45-degree pattern across the land grid.
+    scale: landTileWaveScale(61.5),
     phase: 1.9,
     amplitude: 0,
     xInfluence: 0.31,
     zInfluence: -0.73,
   },
   fleck: {
-    xScale: manaTileWaveScale(35.2),
+    xScale: landTileWaveScale(35.2),
     zScaleMultiplier: 0.61,
     xPhase: 3.37,
     zPhase: 0.94,
@@ -757,10 +741,10 @@ export const MANA_TILE_TEXTURE = {
     power: 1.6,
   },
   vein: {
-    xScale: manaTileWaveScale(38.5),
-    zScale: manaTileWaveScale(53.7),
-    xWarpScale: manaTileWaveScale(34.3),
-    zWarpScale: manaTileWaveScale(61.9),
+    xScale: landTileWaveScale(38.5),
+    zScale: landTileWaveScale(53.7),
+    xWarpScale: landTileWaveScale(34.3),
+    zWarpScale: landTileWaveScale(61.9),
     xWarpAmplitude: 3.2,
     zWarpAmplitude: 2.6,
     amplitude: 0.18,
@@ -775,7 +759,7 @@ export const MANA_TILE_TEXTURE = {
   tone: {
     // Signed grayscale texture layer. The combined procedural wave
     // signal maps negative -> black, zero -> gray, positive -> white,
-    // then blends back into the mana-tile base color.
+    // then blends back into the land-tile base color.
     neutral: 0.28,
     contrast: 0.88,
     mix: 0.36,
@@ -786,9 +770,9 @@ export const MANA_TILE_TEXTURE = {
   },
 } as const;
 
-export const MANA_TILE_TEXTURE_CACHE_KEY = JSON.stringify({
-  swirlsEnabled: MANA_TILE_TEXTURE_SWIRLS_ENABLED,
-  texture: MANA_TILE_TEXTURE,
+export const LAND_TILE_TEXTURE_CACHE_KEY = JSON.stringify({
+  swirlsEnabled: LAND_TILE_TEXTURE_SWIRLS_ENABLED,
+  texture: LAND_TILE_TEXTURE,
 });
 
 // Scorched earth burn mark colors and decay

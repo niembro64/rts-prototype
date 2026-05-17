@@ -2,11 +2,11 @@ import type { Buildable, Entity, ResourceCost } from './types';
 
 export type ResourceKind = keyof ResourceCost;
 
-export const RESOURCE_KINDS: ReadonlyArray<ResourceKind> = ['energy', 'mana', 'metal'];
+export const RESOURCE_KINDS: ReadonlyArray<ResourceKind> = ['energy', 'metal'];
 export const BUILDABLE_INITIAL_HP = 1;
 
 export function makeZeroResourceCost(): ResourceCost {
-  return { energy: 0, mana: 0, metal: 0 };
+  return { energy: 0, metal: 0 };
 }
 
 export function getInitialBuildHp(maxHp: number): number {
@@ -41,7 +41,7 @@ export function getResourceFillRatio(b: Buildable, kind: ResourceKind): number {
   return Math.min(1, Math.max(0, b.paid[kind] / req));
 }
 
-/** Average fill across the three resources. Drives HP during
+/** Average fill across the construction resources. Drives HP during
  *  construction and the shell's overall completion fraction. */
 export function getBuildFraction(b: Buildable): number {
   let sum = 0;
@@ -87,5 +87,5 @@ export function isShell(entity: Entity): boolean {
 }
 
 export function cloneResourceCost(c: ResourceCost): ResourceCost {
-  return { energy: c.energy, mana: c.mana, metal: c.metal };
+  return { energy: c.energy, metal: c.metal };
 }

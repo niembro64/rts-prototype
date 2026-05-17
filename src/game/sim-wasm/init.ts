@@ -95,7 +95,6 @@ import __wbg_init, {
   entity_meta_is_commander_ptr,
   entity_meta_build_complete_ptr,
   entity_meta_build_paid_energy_ptr,
-  entity_meta_build_paid_mana_ptr,
   entity_meta_build_paid_metal_ptr,
   entity_meta_build_target_id_ptr,
   entity_meta_suspension_spring_offset_ptr,
@@ -685,7 +684,7 @@ export interface EntityMetaApi {
     combatMode: number,
     isCommander: number,
     buildComplete: number,
-    buildPaidEnergy: number, buildPaidMana: number, buildPaidMetal: number,
+    buildPaidEnergy: number, buildPaidMetal: number,
     buildTargetId: number,
     suspensionSpringOffset: number, suspensionSpringVelocity: number,
     jumpAirborne: number, jumpTimer: number,
@@ -715,7 +714,6 @@ export interface EntityMetaApi {
   readonly isCommanderPtr: () => number;
   readonly buildCompletePtr: () => number;
   readonly buildPaidEnergyPtr: () => number;
-  readonly buildPaidManaPtr: () => number;
   readonly buildPaidMetalPtr: () => number;
   readonly buildTargetIdPtr: () => number;
   readonly suspensionSpringOffsetPtr: () => number;
@@ -944,7 +942,6 @@ export interface SnapshotEncodeApi {
     hasBuild: number,
     buildComplete: number,
     buildPaidEnergy: number,
-    buildPaidMana: number,
     buildPaidMetal: number,
   ) => number;
   /** Raw pointer to the D.2 MessagePack writer scratch. Refreshed
@@ -984,7 +981,6 @@ export interface SnapshotEncodeApi {
     hpMax: number,
     buildComplete: number,
     buildPaidEnergy: number,
-    buildPaidMana: number,
     buildPaidMetal: number,
     hasMetalExtractionRate: number,
     metalExtractionRate: number,
@@ -997,7 +993,6 @@ export interface SnapshotEncodeApi {
     factoryProgress: number,
     factoryProducing: number,
     factoryEnergyRate: number,
-    factoryManaRate: number,
     factoryMetalRate: number,
     factoryWaypointCount: number,
   ) => number;
@@ -1621,7 +1616,6 @@ export function initSimWasm(): Promise<SimWasm> {
           isCommanderPtr: entity_meta_is_commander_ptr,
           buildCompletePtr: entity_meta_build_complete_ptr,
           buildPaidEnergyPtr: entity_meta_build_paid_energy_ptr,
-          buildPaidManaPtr: entity_meta_build_paid_mana_ptr,
           buildPaidMetalPtr: entity_meta_build_paid_metal_ptr,
           buildTargetIdPtr: entity_meta_build_target_id_ptr,
           suspensionSpringOffsetPtr: entity_meta_suspension_spring_offset_ptr,
@@ -1704,7 +1698,7 @@ export function initSimWasm(): Promise<SimWasm> {
           captureHeightScratchStride: 2,
           economyScratchPtr: snapshot_encode_economy_scratch_ptr,
           economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
-          economyScratchStride: 16,
+          economyScratchStride: 11,
           emitAudioEvents: snapshot_encode_envelope_emit_audio_events,
           audioEventScratchPtr: snapshot_encode_audio_event_scratch_ptr,
           audioEventScratchEnsure: snapshot_encode_audio_event_scratch_ensure,

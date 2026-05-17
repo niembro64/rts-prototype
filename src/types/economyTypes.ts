@@ -2,6 +2,5 @@
 
 export type ResourceCost = {
   energy: number;
-  mana: number;
   metal: number;
 };

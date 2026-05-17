@@ -246,7 +246,6 @@ function placeCompleteBuilding(
       isProducing: false,
       waypoints: [{ x: wp.x, y: wp.y, type: factoryWaypoint.type }],
       energyRateFraction: 0,
-      manaRateFraction: 0,
       metalRateFraction: 0,
     };
   }

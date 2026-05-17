@@ -502,7 +502,6 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       e.commander ? 1 : 0,
       buildable && !buildable.isComplete ? 0 : 1,
       buildable?.paid.energy ?? 0,
-      buildable?.paid.mana ?? 0,
       buildable?.paid.metal ?? 0,
       e.builder?.currentBuildTarget ?? -1,
       u.suspension?.offsetZ ?? 0,

@@ -30,11 +30,6 @@ export function serializeEconomySnapshot(
         stockpile: { curr: eco.stockpile.curr, max: eco.stockpile.max },
         income: { base: eco.income.base, production: eco.income.production },
         expenditure: eco.expenditure,
-        mana: {
-          stockpile: { curr: eco.mana.stockpile.curr, max: eco.mana.stockpile.max },
-          income: { base: eco.mana.income.base, territory: eco.mana.income.territory },
-          expenditure: eco.mana.expenditure,
-        },
         metal: {
           stockpile: { curr: eco.metal.stockpile.curr, max: eco.metal.stockpile.max },
           income: { base: eco.metal.income.base, extraction: eco.metal.income.extraction },

@@ -6,7 +6,7 @@ import {
   WATER_LEVEL,
 } from '@/game/sim/Terrain';
 import { MAP_BG_COLOR } from '@/config';
-import { getCaptureTileDisplayColor } from '@/game/sim/manaProduction';
+import { getCaptureTileDisplayColor } from '@/game/sim/captureTileDisplay';
 import { minimapPointerToWorld } from './minimapHelpers';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
@@ -71,7 +71,7 @@ let canvasCtx: CanvasRenderingContext2D | null = null;
 // minimap pixel as wet (height < WATER_LEVEL) or dry; that classification
 // only changes when the underlying terrain changes, but the loop itself
 // runs whenever ANY backgroundKey component changes — including
-// captureVersion (per-tile mana value changes), gridOverlayIntensity, etc.
+// captureVersion (per-tile ownership changes), gridOverlayIntensity, etc.
 //
 // Pre-compute the wet/dry decision into a Uint8Array keyed by terrain
 // version + canvas size + map dimensions. Subsequent backgroundLayer
@@ -176,12 +176,10 @@ function drawBackgroundLayer(): void {
   // dict lookups inside the hot loop.
   //
   // Identical proportional brightness model the 3D floating cells
-  // overlay uses — see manaProduction.ts. We
+  // overlay uses. We
   // pre-resolve the FINAL blended RGB per tile once, then the
   // per-pixel hot loop is a flat array lookup. Each tile's
-  // brightness is `intensity × tileMana / maxTileMana`, so the
-  // centre tile reaches the GRID-overlay ceiling and every other
-  // tile scales down in exact proportion to its mana/sec.
+  // brightness is based only on ownership height and overlay intensity.
   const overlayActive = showTerrain && captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
   let tileFinalR: Uint8ClampedArray | null = null;
   let tileFinalG: Uint8ClampedArray | null = null;

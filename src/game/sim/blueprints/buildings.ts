@@ -23,7 +23,7 @@ export type BuildingBlueprint = {
   gridDepth: number;
   hp: number;
   /** Authored per-resource build cost. BUILDING_CONFIGS applies
-   *  COST_MULTIPLIER. Each resource bar fills independently from the
+   *  COST_MULTIPLIER. Each construction bar fills independently from the
    *  owner's stockpile. */
   cost: ResourceCost;
   energyProduction: number | null;

@@ -1,10 +1,10 @@
 // Energy distribution system - extracted from Simulation.ts
-// Now distributes ALL THREE resources (energy / mana / metal)
+// Distributes construction resources (energy / metal)
 // independently among each player's active consumers. Each in-progress
-// Buildable carries its own `paid.{energy,mana,metal}` accumulator and
-// fills toward `required.{energy,mana,metal}`; the bar that gets less
+// Buildable carries its own `paid` accumulator and
+// fills toward `required`; the bar that gets less
 // stockpile fills slower than the others, exactly the user-facing
-// "three independent bars" intent.
+// independent-bar intent.
 
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
@@ -64,9 +64,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   for (const factoryEntity of world.getFactoryBuildings()) {
     const fc = factoryEntity.factory;
     if (!fc) continue;
-    if (fc.energyRateFraction !== 0 || fc.manaRateFraction !== 0 || fc.metalRateFraction !== 0) {
+    if (fc.energyRateFraction !== 0 || fc.metalRateFraction !== 0) {
       fc.energyRateFraction = 0;
-      fc.manaRateFraction = 0;
       fc.metalRateFraction = 0;
     }
   }
@@ -193,9 +192,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   }
 
   // ── Per-player resource distribution ──
-  // Each of the three resources flows independently. A consumer with
+  // Each construction resource flows independently. A consumer with
   // remaining > 0 in resource X pulls a share of player.X.stockpile.
-  // The same construction-rate cap applies to energy, mana, and metal
+  // The same construction-rate cap applies to energy and metal
   // lanes, so no resource bar can burst to full just because it is not
   // energy. When stockpile of one resource runs dry, that bar pauses
   // while the others keep filling — exactly the independent-bar UX.
@@ -204,7 +203,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (!economy || indices.length === 0) continue;
 
     // Healing is energy-only — bookkeep separately so it doesn't
-    // block mana/metal flow to other consumers.
+    // block metal flow to other consumers.
     let buildCount = 0;
     let healCount = 0;
     for (const idx of indices) {
@@ -215,11 +214,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const equalEnergyShare = totalEnergyConsumers > 0
       ? economy.stockpile.curr / totalEnergyConsumers
       : 0;
-    const equalManaShare = buildCount > 0 ? economy.mana.stockpile.curr / buildCount : 0;
     const equalMetalShare = buildCount > 0 ? economy.metal.stockpile.curr / buildCount : 0;
 
     let totalEnergySpent = 0;
-    let totalManaSpent = 0;
     let totalMetalSpent = 0;
 
     for (const idx of indices) {
@@ -228,15 +225,12 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         const buildable = c.entity.buildable;
         if (!buildable) continue;
         const remE = getRemainingResource(buildable, 'energy');
-        const remM = getRemainingResource(buildable, 'mana');
         const remT = getRemainingResource(buildable, 'metal');
         const spendE = Math.min(equalEnergyShare, remE, c.maxResourcePerTick);
-        const spendM = Math.min(equalManaShare, remM, c.maxResourcePerTick);
         const spendT = Math.min(equalMetalShare, remT, c.maxResourcePerTick);
         if (spendE > 0) buildable.paid.energy += spendE;
-        if (spendM > 0) buildable.paid.mana += spendM;
         if (spendT > 0) buildable.paid.metal += spendT;
-        if (spendE > 0 || spendM > 0 || spendT > 0) {
+        if (spendE > 0 || spendT > 0) {
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
           if (c.sourceFactoryId !== undefined) {
             const factory = world.getEntity(c.sourceFactoryId);
@@ -248,11 +242,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
               const cap = c.maxResourcePerTick;
               if (cap > 0) {
                 factory.factory.energyRateFraction = spendE / cap;
-                factory.factory.manaRateFraction = spendM / cap;
                 factory.factory.metalRateFraction = spendT / cap;
               } else {
                 factory.factory.energyRateFraction = 0;
-                factory.factory.manaRateFraction = 0;
                 factory.factory.metalRateFraction = 0;
               }
               world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
@@ -260,7 +252,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           }
         }
         totalEnergySpent += spendE;
-        totalManaSpent += spendM;
         totalMetalSpent += spendT;
       } else {
         // Healing — energy only.
@@ -277,10 +268,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
 
     economy.stockpile.curr = Math.max(0, economy.stockpile.curr - totalEnergySpent);
-    economy.mana.stockpile.curr = Math.max(0, economy.mana.stockpile.curr - totalManaSpent);
     economy.metal.stockpile.curr = Math.max(0, economy.metal.stockpile.curr - totalMetalSpent);
     economyManager.recordExpenditure(playerId, totalEnergySpent / dtSec);
-    economyManager.recordManaExpenditure(playerId, totalManaSpent / dtSec);
     economyManager.recordMetalExpenditure(playerId, totalMetalSpent / dtSec);
   }
 }

@@ -327,7 +327,7 @@ export type UnitBlueprint = {
   bodyCenterHeight: number;
   mass: number;
   /** Per-resource build cost (authored). BUILDING/UNIT configs apply
-   *  COST_MULTIPLIER on top. Each resource fills its own bar
+   *  COST_MULTIPLIER on top. Each construction resource fills its own bar
    *  independently from the owner's stockpile. */
   cost: ResourceCost;
   turrets: TurretMount[];

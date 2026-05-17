@@ -178,7 +178,6 @@ export function snapClientNonVisualState(
     entity.factory.currentBuildProgress = sf.progress;
     entity.factory.isProducing = sf.producing;
     entity.factory.energyRateFraction = sf.energyRate ?? 0;
-    entity.factory.manaRateFraction = sf.manaRate ?? 0;
     entity.factory.metalRateFraction = sf.metalRate ?? 0;
     const wps = sf.waypoints;
     if (wps.length > 0) {

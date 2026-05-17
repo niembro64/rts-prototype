@@ -37,7 +37,6 @@ type ConstructionTowerSpinRig = {
 
 const RESOURCE_SPRAY_COLORS = [
   hexStringToRgb(SHELL_BAR_COLORS.energy),
-  hexStringToRgb(SHELL_BAR_COLORS.mana),
   hexStringToRgb(SHELL_BAR_COLORS.metal),
 ] as const;
 
@@ -90,7 +89,6 @@ export class ConstructionVisualController3D {
 
     const targetId = commander.builder?.currentBuildTarget ?? null;
     let targetRateE = 0;
-    let targetRateM = 0;
     let targetRateT = 0;
     if (targetId !== null && commander.builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
@@ -98,21 +96,17 @@ export class ConstructionVisualController3D {
       if (target && buildable && !buildable.isComplete) {
         if (rig.lastPaidTargetId !== targetId) {
           rig.lastPaid.energy = buildable.paid.energy;
-          rig.lastPaid.mana = buildable.paid.mana;
           rig.lastPaid.metal = buildable.paid.metal;
           rig.lastPaidTargetId = targetId;
         }
         const dE = Math.max(0, buildable.paid.energy - rig.lastPaid.energy);
-        const dM = Math.max(0, buildable.paid.mana - rig.lastPaid.mana);
         const dT = Math.max(0, buildable.paid.metal - rig.lastPaid.metal);
         rig.lastPaid.energy = buildable.paid.energy;
-        rig.lastPaid.mana = buildable.paid.mana;
         rig.lastPaid.metal = buildable.paid.metal;
 
         const cap = commander.builder.constructionRate * dtSec;
         if (cap > 0) {
           targetRateE = Math.max(0, Math.min(1, dE / cap));
-          targetRateM = Math.max(0, Math.min(1, dM / cap));
           targetRateT = Math.max(0, Math.min(1, dT / cap));
         }
       }
@@ -120,8 +114,8 @@ export class ConstructionVisualController3D {
       rig.lastPaidTargetId = null;
     }
 
-    this.updateConstructionTowerSpin(rig, targetRateE + targetRateM + targetRateT, dtSec);
-    this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateM, targetRateT, rateAlpha);
+    this.updateConstructionTowerSpin(rig, targetRateE + targetRateT, dtSec);
+    this.blendSmoothedRates(rig.smoothedRates, targetRateE, targetRateT, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.applyShowerFromSmoothedRates(rig);
 
@@ -186,10 +180,9 @@ export class ConstructionVisualController3D {
     const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
     const rateAlpha = halfLifeBlend(dtSec, halfLife);
     const targetEnergy = active ? Math.max(0, Math.min(1, factory?.energyRateFraction ?? 0)) : 0;
-    const targetMana   = active ? Math.max(0, Math.min(1, factory?.manaRateFraction   ?? 0)) : 0;
     const targetMetal  = active ? Math.max(0, Math.min(1, factory?.metalRateFraction  ?? 0)) : 0;
-    this.updateConstructionTowerSpin(rig, targetEnergy + targetMana + targetMetal, dtSec);
-    this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMana, targetMetal, rateAlpha);
+    this.updateConstructionTowerSpin(rig, targetEnergy + targetMetal, dtSec);
+    this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMetal, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
 
     if (!active) {
@@ -333,20 +326,18 @@ export class ConstructionVisualController3D {
   }
 
   private blendSmoothedRates(
-    smoothed: { energy: number; mana: number; metal: number },
+    smoothed: { energy: number; metal: number },
     targetEnergy: number,
-    targetMana: number,
     targetMetal: number,
     alpha: number,
   ): void {
     smoothed.energy += (targetEnergy - smoothed.energy) * alpha;
-    smoothed.mana   += (targetMana   - smoothed.mana)   * alpha;
     smoothed.metal  += (targetMetal  - smoothed.metal)  * alpha;
   }
 
   private blendDisplaySmoothedRates(
-    display: { energy: number; mana: number; metal: number },
-    smoothed: { energy: number; mana: number; metal: number },
+    display: { energy: number; metal: number },
+    smoothed: { energy: number; metal: number },
     dtSec: number,
   ): void {
     const alpha = halfLifeBlend(
@@ -354,7 +345,6 @@ export class ConstructionVisualController3D {
       BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC[BUILD_RATE_DISPLAY_EMA_MODE],
     );
     display.energy += (smoothed.energy - display.energy) * alpha;
-    display.mana   += (smoothed.mana   - display.mana)   * alpha;
     display.metal  += (smoothed.metal  - display.metal)  * alpha;
   }
 
@@ -363,14 +353,13 @@ export class ConstructionVisualController3D {
     showerRadius: number;
     pylonHeight: number;
     pylonBaseY: number;
-    displaySmoothedRates: { energy: number; mana: number; metal: number };
+    displaySmoothedRates: { energy: number; metal: number };
   }): void {
-    const smoothed: readonly [number, number, number] = [
+    const smoothed: readonly [number, number] = [
       rig.displaySmoothedRates.energy,
-      rig.displaySmoothedRates.mana,
       rig.displaySmoothedRates.metal,
     ];
-    for (let i = 0; i < rig.showers.length && i < 3; i++) {
+    for (let i = 0; i < rig.showers.length && i < smoothed.length; i++) {
       const shower = rig.showers[i];
       const r = smoothed[i];
       if (r < 0.01) {
@@ -389,7 +378,7 @@ export class ConstructionVisualController3D {
       pylonTopsLocal: THREE.Vector3[];
       sprayTravelSpeed: number;
       sprayParticleRadius: number;
-      displaySmoothedRates: { energy: number; mana: number; metal: number };
+      displaySmoothedRates: { energy: number; metal: number };
     },
     group: THREE.Group,
     sourceId: EntityId,
@@ -398,12 +387,11 @@ export class ConstructionVisualController3D {
     targetWorld: THREE.Vector3,
     targetRadius: number,
   ): void {
-    const smoothed: readonly [number, number, number] = [
+    const smoothed: readonly [number, number] = [
       rig.displaySmoothedRates.energy,
-      rig.displaySmoothedRates.mana,
       rig.displaySmoothedRates.metal,
     ];
-    for (let i = 0; i < rig.pylonTopsLocal.length && i < 3; i++) {
+    for (let i = 0; i < rig.pylonTopsLocal.length && i < smoothed.length; i++) {
       const rate = smoothed[i];
       if (rate < 0.05) continue;
       this._factorySpraySourceWorld

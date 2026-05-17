@@ -504,11 +504,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   color: #ffcc00;
 }
 
-.cost-mana {
-  color: #44aaff;
-}
-
-/* Unified resource cost (energy + mana + metal — same number from each pool). */
+/* Unified construction cost across energy and metal. */
 .cost-resource {
   color: #c8c8d8;
 }

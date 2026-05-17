@@ -13,7 +13,6 @@
     "mass": 30,
     "cost": {
       "energy": 50,
-      "mana": 50,
       "metal": 50
     },
     "turrets": [
@@ -65,7 +64,6 @@
     "mass": 40,
     "cost": {
       "energy": 90,
-      "mana": 90,
       "metal": 90
     },
     "turrets": [
@@ -115,7 +113,6 @@
     "mass": 30,
     "cost": {
       "energy": 350,
-      "mana": 350,
       "metal": 350
     },
     "turrets": [
@@ -171,7 +168,6 @@
     "mass": 300,
     "cost": {
       "energy": 300,
-      "mana": 300,
       "metal": 300
     },
     "turrets": [
@@ -221,7 +217,6 @@
     "mass": 200,
     "cost": {
       "energy": 220,
-      "mana": 220,
       "metal": 220
     },
     "turrets": [
@@ -271,7 +266,6 @@
     "mass": 20,
     "cost": {
       "energy": 35,
-      "mana": 35,
       "metal": 35
     },
     "turrets": [
@@ -330,7 +324,6 @@
     "mass": 1000,
     "cost": {
       "energy": 1200,
-      "mana": 1200,
       "metal": 1200
     },
     "turrets": [
@@ -380,7 +373,6 @@
     "mass": 2500,
     "cost": {
       "energy": 4000,
-      "mana": 4000,
       "metal": 4000
     },
     "turrets": [
@@ -448,7 +440,6 @@
     "mass": 1000,
     "cost": {
       "energy": 3000,
-      "mana": 3000,
       "metal": 3000
     },
     "turrets": [
@@ -572,7 +563,6 @@
     "mass": 1500,
     "cost": {
       "energy": 2500,
-      "mana": 2500,
       "metal": 2500
     },
     "turrets": [
@@ -621,7 +611,6 @@
     "mass": 30,
     "cost": {
       "energy": 300,
-      "mana": 300,
       "metal": 300
     },
     "turrets": [
@@ -682,7 +671,6 @@
     "mass": 90,
     "cost": {
       "energy": 190,
-      "mana": 190,
       "metal": 190
     },
     "turrets": [
@@ -730,7 +718,6 @@
     "mass": 25,
     "cost": {
       "energy": 120,
-      "mana": 120,
       "metal": 120
     },
     "turrets": [
@@ -780,7 +767,6 @@
     "mass": 300,
     "cost": {
       "energy": 400,
-      "mana": 400,
       "metal": 400
     },
     "turrets": [

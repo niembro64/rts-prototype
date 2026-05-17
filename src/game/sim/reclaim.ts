@@ -22,7 +22,6 @@ export function getReclaimResourceValue(target: Entity): ResourceCost {
     );
     return {
       energy: target.buildable.paid.energy / buildFraction,
-      mana: target.buildable.paid.mana / buildFraction,
       metal: target.buildable.paid.metal / buildFraction,
     };
   }

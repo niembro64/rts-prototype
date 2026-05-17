@@ -290,7 +290,6 @@ function createUnitFromNetwork(
     entity.buildable = createBuildable(
       {
         energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
-        mana: unitBlueprint.cost.mana * COST_MULTIPLIER,
         metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
       },
       { paid: u.build.paid },
@@ -400,7 +399,6 @@ function createBuildingFromNetwork(
       isProducing: f.producing ?? false,
       waypoints,
       energyRateFraction: f.energyRate ?? 0,
-      manaRateFraction: f.manaRate ?? 0,
       metalRateFraction: f.metalRate ?? 0,
     };
   }

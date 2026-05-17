@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   CONTACT_SHADOW_RENDER_CONFIG,
   GROUND_RENDER_ORDER,
-  MANA_TILE_GROUND_LIFT,
+  LAND_TILE_GROUND_LIFT,
 } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { Entity } from '../sim/types';
@@ -242,7 +242,7 @@ export class ContactShadowRenderer3D {
     if (sx < 0 || sy < 0 || sx > this.mapWidth || sy > this.mapHeight) return false;
 
     const ground = getTerrainMeshHeight(sx, sy, this.mapWidth, this.mapHeight) +
-      MANA_TILE_GROUND_LIFT +
+      LAND_TILE_GROUND_LIFT +
       CONTACT_SHADOW_RENDER_CONFIG.lift;
     const n = getTerrainMeshNormal(sx, sy, this.mapWidth, this.mapHeight);
     this.normal.set(n.nx, n.nz, n.ny).normalize();

@@ -13,10 +13,10 @@ export const DEFAULT_BUILDING_HUD_LAYOUT: EntityHudBlueprint = {
   barsOffsetAboveTop: entityHudConfig.defaultBuildingHudLayout.barsOffsetAboveTop,
 };
 
-/** Distance between stacked HUD bars: HP, energy, mana, metal. */
+/** Distance between stacked HUD bars: HP, energy, metal. */
 export const ENTITY_HUD_BAR_STACK_GAP = entityHudConfig.barStackGap;
 
-/** The full status stack is HP + three resource build bars. Name
+/** The full status stack is HP + resource build bars. Name
  *  labels sit above this full potential stack so they do not move when
  *  a shell gains or loses visible resource bars. */
 export const ENTITY_HUD_BAR_STACK_ROWS = entityHudConfig.barStackRows;

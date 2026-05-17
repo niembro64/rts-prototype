@@ -391,7 +391,7 @@ function copyVec3OptionalInto(
 function createNetworkUnitBuildState(): NonNullable<NetworkUnitSnapshot['build']> {
   return {
     complete: false,
-    paid: { energy: 0, mana: 0, metal: 0 },
+    paid: { energy: 0, metal: 0 },
   };
 }
 
@@ -401,7 +401,6 @@ function copyNetworkUnitBuildState(
 ): NonNullable<NetworkUnitSnapshot['build']> {
   dst.complete = src.complete;
   dst.paid.energy = src.paid.energy;
-  dst.paid.mana = src.paid.mana;
   dst.paid.metal = src.paid.metal;
   return dst;
 }

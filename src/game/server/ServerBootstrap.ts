@@ -157,11 +157,9 @@ export class ServerBootstrap {
     // tile is naturally split among all teams). Tiles flagged dirty
     // here flow out in the next snapshot regardless of keyframe / delta.
     //
-    // Tell the capture system about the map up front so its
-    // per-tile mana-production weights (hotspot multiplier) are
-    // available during update() AND for the initial radial paint.
-    // The renderer pulls the same weights so on-screen brightness
-    // and income stay in lockstep.
+    // Tell the capture system about the map up front so per-tile
+    // ownership data is available during update() and for the initial
+    // radial paint.
     const captureSystem = new CaptureSystem();
     captureSystem.setMapSize(mapWidth, mapHeight, LAND_CELL_SIZE);
     captureSystem.initializeRadialOwnership(

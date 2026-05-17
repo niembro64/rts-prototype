@@ -388,7 +388,7 @@ defineProps<{
         <BarLabel>DEBUG:</BarLabel>
         <BarButton
           :active="model.triangleDebug"
-          title="TRIS - debug-color every terrain/mana mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
+          title="TRIS - debug-color every terrain mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
           @click="model.toggleTriangleDebug"
         >TRIS</BarButton>
         <BarButton

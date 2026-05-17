@@ -13,7 +13,6 @@ function buildBuildingConfig(type: BuildingType): BuildingConfig {
     hp: bp.hp,
     cost: {
       energy: bp.cost.energy * COST_MULTIPLIER,
-      mana: bp.cost.mana * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     },
     energyProduction: bp.energyProduction,
@@ -52,7 +51,6 @@ export function getUnitBuildConfig(unitId: string) {
     name: bp.name,
     cost: {
       energy: bp.cost.energy * COST_MULTIPLIER,
-      mana: bp.cost.mana * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     },
     radius: { ...bp.radius },

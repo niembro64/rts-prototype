@@ -201,7 +201,7 @@ export class ThreeApp {
 
     installSunLighting(this.scene, mapWidth, mapHeight);
 
-    // No standalone ground slab — the mana cubes ARE the world's
+    // No standalone ground slab — the land tiles ARE the world's
     // mass. CaptureTileRenderer3D extends each tile cube far below
     // y=0 (see CUBE_FLOOR_Y) so the side walls read as the substrate
     // / "earth" of the map when viewed from oblique angles. This

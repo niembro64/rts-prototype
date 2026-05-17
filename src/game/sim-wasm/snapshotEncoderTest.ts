@@ -245,7 +245,7 @@ type UnitFixture = BasicEntityFixture & {
     turrets?: TurretFixture[];
     build?: {
       complete: boolean;
-      paid: { energy: number; mana: number; metal: number };
+      paid: { energy: number; metal: number };
     };
   };
 };
@@ -781,7 +781,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         build: {
           complete: false,
-          paid: { energy: 25, mana: 0, metal: 15 },
+          paid: { energy: 25, metal: 15 },
         },
       },
     },
@@ -793,7 +793,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         build: {
           complete: true,
-          paid: { energy: 100, mana: 50, metal: 200 },
+          paid: { energy: 100, metal: 200 },
         },
       },
     },
@@ -806,7 +806,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 5, y: 0, z: 0 },
         build: {
           complete: false,
-          paid: { energy: 33.3, mana: 11.1, metal: 55.5 },
+          paid: { energy: 33.3, metal: 55.5 },
         },
       },
     },
@@ -917,7 +917,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasBuild = build !== undefined ? 1 : 0;
     const buildComplete = build?.complete === true ? 1 : 0;
     const buildPaidEnergy = build?.paid.energy ?? 0;
-    const buildPaidMana = build?.paid.mana ?? 0;
     const buildPaidMetal = build?.paid.metal ?? 0;
     messagepack_writer_clear();
     snapshot_encode_entity_unit(
@@ -968,7 +967,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       hasBuild,
       buildComplete,
       buildPaidEnergy,
-      buildPaidMana,
       buildPaidMetal,
     );
     const ptr = messagepack_writer_ptr();
@@ -1004,7 +1002,6 @@ type FactoryFixture = {
   progress: number;
   producing: boolean;
   energyRate: number;
-  manaRate: number;
   metalRate: number;
   waypoints: WaypointFixture[];
 };
@@ -1022,7 +1019,7 @@ type BuildingFixture = {
     hp: { curr: number; max: number };
     build: {
       complete: boolean;
-      paid: { energy: number; mana: number; metal: number };
+      paid: { energy: number; metal: number };
     };
     metalExtractionRate?: number;
     solar?: { open: boolean };
@@ -1066,7 +1063,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       id: 2000, type: 'building', pos: { x: 1000, y: 1000, z: 0 }, rotation: 0, playerId: 1,
       building: {
         hp: { curr: 500, max: 500 },
-        build: { complete: true, paid: { energy: 100, mana: 0, metal: 50 } },
+        build: { complete: true, paid: { energy: 100, metal: 50 } },
       },
     },
     // Full record: type + dim + hp + build
@@ -1076,7 +1073,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 2,
         dim: { x: 8, y: 8 },
         hp: { curr: 1000, max: 1000 },
-        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        build: { complete: true, paid: { energy: 500, metal: 200 } },
       },
     },
     // Under-construction shell (incomplete build)
@@ -1086,7 +1083,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 255,
         dim: { x: 4, y: 4 },
         hp: { curr: 30, max: 300 },
-        build: { complete: false, paid: { energy: 25, mana: 0, metal: 10 } },
+        build: { complete: false, paid: { energy: 25, metal: 10 } },
       },
     },
     // Extractor (has metalExtractionRate)
@@ -1096,7 +1093,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 3,
         dim: { x: 4, y: 4 },
         hp: { curr: 200, max: 200 },
-        build: { complete: true, paid: { energy: 50, mana: 0, metal: 100 } },
+        build: { complete: true, paid: { energy: 50, metal: 100 } },
         metalExtractionRate: 12.5,
       },
     },
@@ -1107,7 +1104,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 0,
         dim: { x: 4, y: 4 },
         hp: { curr: 150, max: 150 },
-        build: { complete: true, paid: { energy: 0, mana: 0, metal: 80 } },
+        build: { complete: true, paid: { energy: 0, metal: 80 } },
         solar: { open: true },
       },
     },
@@ -1116,7 +1113,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       id: 2005, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
         hp: { curr: 150, max: 150 },
-        build: { complete: true, paid: { energy: 0, mana: 0, metal: 80 } },
+        build: { complete: true, paid: { energy: 0, metal: 80 } },
         solar: { open: false },
       },
     },
@@ -1127,7 +1124,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 255,
         dim: { x: 2, y: 2 },
         hp: { curr: 400, max: 400 },
-        build: { complete: true, paid: { energy: 100, mana: 0, metal: 100 } },
+        build: { complete: true, paid: { energy: 100, metal: 100 } },
         turrets: [
           {
             turret: {
@@ -1145,7 +1142,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       id: 2007, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x8,
       building: {
         hp: { curr: 950, max: 1000 },
-        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        build: { complete: true, paid: { energy: 500, metal: 200 } },
       },
     },
     // Everything together — full record with all optional fields populated
@@ -1155,7 +1152,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 3,
         dim: { x: 6, y: 6 },
         hp: { curr: 880, max: 1000 },
-        build: { complete: true, paid: { energy: 200, mana: 50, metal: 300 } },
+        build: { complete: true, paid: { energy: 200, metal: 300 } },
         metalExtractionRate: 25,
         solar: { open: true },
         turrets: [
@@ -1173,13 +1170,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 2,
         dim: { x: 8, y: 8 },
         hp: { curr: 1000, max: 1000 },
-        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        build: { complete: true, paid: { energy: 500, metal: 200 } },
         factory: {
           queue: [],
           progress: 0,
           producing: false,
           energyRate: 0,
-          manaRate: 0,
           metalRate: 0,
           waypoints: [
             { pos: { x: 100, y: 100 }, type: 'move' },
@@ -1192,13 +1188,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       id: 2101, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x80,
       building: {
         hp: { curr: 1000, max: 1000 },
-        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        build: { complete: true, paid: { energy: 500, metal: 200 } },
         factory: {
           queue: [3, 7, 12],
           progress: 0.42,
           producing: true,
           energyRate: 0.85,
-          manaRate: 0,
           metalRate: 0.5,
           waypoints: [
             { pos: { x: 200, y: 200 }, type: 'move' },
@@ -1211,13 +1206,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       id: 2102, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
       building: {
         hp: { curr: 1000, max: 1000 },
-        build: { complete: true, paid: { energy: 500, mana: 0, metal: 200 } },
+        build: { complete: true, paid: { energy: 500, metal: 200 } },
         factory: {
           queue: [1],
           progress: 0.05,
           producing: true,
           energyRate: 0.3,
-          manaRate: 0,
           metalRate: 0.3,
           waypoints: [
             { pos: { x: 100, y: 100 }, type: 'move' },
@@ -1234,13 +1228,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         type: 255,
         dim: { x: 10, y: 10 },
         hp: { curr: 5000, max: 5000 },
-        build: { complete: true, paid: { energy: 0, mana: 0, metal: 0 } },
+        build: { complete: true, paid: { energy: 0, metal: 0 } },
         factory: {
           queue: [99, 100, 101, 102],
           progress: 0.9,
           producing: true,
           energyRate: 1.0,
-          manaRate: 0.5,
           metalRate: 0.7,
           waypoints: [
             { pos: { x: 2200, y: 2200 }, type: 'move' },
@@ -1288,7 +1281,6 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       f.building.hp.curr, f.building.hp.max,
       f.building.build.complete ? 1 : 0,
       f.building.build.paid.energy,
-      f.building.build.paid.mana,
       f.building.build.paid.metal,
       f.building.metalExtractionRate !== undefined ? 1 : 0,
       f.building.metalExtractionRate ?? 0,
@@ -1301,7 +1293,6 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       factory?.progress ?? 0,
       factory?.producing === true ? 1 : 0,
       factory?.energyRate ?? 0,
-      factory?.manaRate ?? 0,
       factory?.metalRate ?? 0,
       factory?.waypoints.length ?? 0,
     );
@@ -1761,11 +1752,6 @@ type EconomyPlayerFixture = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
   expenditure: number;
-  mana: {
-    stockpile: { curr: number; max: number };
-    income: { base: number; territory: number };
-    expenditure: number;
-  };
   metal: {
     stockpile: { curr: number; max: number };
     income: { base: number; extraction: number };
@@ -1774,7 +1760,7 @@ type EconomyPlayerFixture = {
 };
 type EconomyFixture = Record<number, EconomyPlayerFixture>;
 
-const ECONOMY_SCRATCH_STRIDE = 16;
+const ECONOMY_SCRATCH_STRIDE = 11;
 
 function packEconomyIntoScratch(
   memory: WebAssembly.Memory,
@@ -1795,16 +1781,11 @@ function packEconomyIntoScratch(
     view[base + 3] = e.income.base;
     view[base + 4] = e.income.production;
     view[base + 5] = e.expenditure;
-    view[base + 6] = e.mana.stockpile.curr;
-    view[base + 7] = e.mana.stockpile.max;
-    view[base + 8] = e.mana.income.base;
-    view[base + 9] = e.mana.income.territory;
-    view[base + 10] = e.mana.expenditure;
-    view[base + 11] = e.metal.stockpile.curr;
-    view[base + 12] = e.metal.stockpile.max;
-    view[base + 13] = e.metal.income.base;
-    view[base + 14] = e.metal.income.extraction;
-    view[base + 15] = e.metal.expenditure;
+    view[base + 6] = e.metal.stockpile.curr;
+    view[base + 7] = e.metal.stockpile.max;
+    view[base + 8] = e.metal.income.base;
+    view[base + 9] = e.metal.income.extraction;
+    view[base + 10] = e.metal.expenditure;
   }
   return ids.length;
 }
@@ -2013,7 +1994,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           id: 200, type: 'building', pos: { x: 1000, y: 1000, z: 0 }, rotation: 0, playerId: 1,
           building: {
             hp: { curr: 500, max: 500 },
-            build: { complete: true, paid: { energy: 100, mana: 0, metal: 50 } },
+            build: { complete: true, paid: { energy: 100, metal: 50 } },
           },
         },
       ], economy: {}, isDelta: false,
@@ -2035,7 +2016,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             type: 255,
             dim: { x: 4, y: 4 },
             hp: { curr: 300, max: 300 },
-            build: { complete: true, paid: { energy: 50, mana: 0, metal: 30 } },
+            build: { complete: true, paid: { energy: 50, metal: 30 } },
           },
         },
       ], economy: {}, isDelta: true,
@@ -2495,11 +2476,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           stockpile: { curr: 500, max: 1000 },
           income: { base: 25, production: 12 },
           expenditure: 8,
-          mana: {
-            stockpile: { curr: 100, max: 500 },
-            income: { base: 5, territory: 3 },
-            expenditure: 2,
-          },
           metal: {
             stockpile: { curr: 200, max: 800 },
             income: { base: 10, extraction: 4 },
@@ -2518,11 +2494,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           stockpile: { curr: 50, max: 200 },
           income: { base: 5, production: 0 },
           expenditure: 3,
-          mana: {
-            stockpile: { curr: 0, max: 100 },
-            income: { base: 1, territory: 0 },
-            expenditure: 0,
-          },
           metal: {
             stockpile: { curr: 10, max: 200 },
             income: { base: 2, extraction: 0 },
@@ -2533,11 +2504,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           stockpile: { curr: 1000, max: 1000 },
           income: { base: 30, production: 20 },
           expenditure: 15,
-          mana: {
-            stockpile: { curr: 500, max: 500 },
-            income: { base: 8, territory: 5 },
-            expenditure: 3,
-          },
           metal: {
             stockpile: { curr: 800, max: 800 },
             income: { base: 15, extraction: 8 },
@@ -2940,7 +2906,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           build !== undefined ? 1 : 0,
           build?.complete === true ? 1 : 0,
           build?.paid.energy ?? 0,
-          build?.paid.mana ?? 0,
           build?.paid.metal ?? 0,
         );
       } else {
@@ -2970,7 +2935,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           b.building.hp.curr, b.building.hp.max,
           b.building.build.complete ? 1 : 0,
           b.building.build.paid.energy,
-          b.building.build.paid.mana,
           b.building.build.paid.metal,
           b.building.metalExtractionRate !== undefined ? 1 : 0,
           b.building.metalExtractionRate ?? 0,
@@ -2982,7 +2946,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           factory?.progress ?? 0,
           factory?.producing === true ? 1 : 0,
           factory?.energyRate ?? 0,
-          factory?.manaRate ?? 0,
           factory?.metalRate ?? 0,
           factory?.waypoints.length ?? 0,
         );

@@ -731,7 +731,7 @@ export type NetworkServerSnapshotEntity = {
      *  the unit becomes active. */
     build?: {
       complete: boolean;
-      paid: { energy: number; mana: number; metal: number };
+      paid: { energy: number; metal: number };
     };
   };
   building?: {
@@ -744,14 +744,14 @@ export type NetworkServerSnapshotEntity = {
      *  here — clients re-derive it from the blueprint. */
     dim?: Vec2;
     hp: { curr: number; max: number };
-    /** `paid.{e,m,m}` carries the per-resource accumulator so the
-     *  client can render three independent build bars; `required` is
+    /** `paid` carries the per-resource accumulator so the
+     *  client can render independent build bars; `required` is
      *  omitted because the client re-derives it from the entity's
-     *  blueprint. The avg-of-three fill ratio (formerly `progress`)
+     *  blueprint. The aggregate fill ratio (formerly `progress`)
      *  is computed client-side via `getBuildFraction(buildable)`. */
     build: {
       complete: boolean;
-      paid: { energy: number; mana: number; metal: number };
+      paid: { energy: number; metal: number };
     };
     /** Extractor output in metal/sec after footprint coverage is applied. */
     metalExtractionRate?: number;
@@ -764,17 +764,16 @@ export type NetworkServerSnapshotEntity = {
     factory?: {
       /** Queue of unit type codes (see UNIT_TYPE_* / unitTypeToCode). */
       queue: number[];
-      /** Avg-of-three fill of the factory's currentShellId, or 0 if
+      /** Average fill of the factory's currentShellId, or 0 if
        *  the factory hasn't spawned a shell yet. The client re-derives
        *  per-resource bars from the shell entity itself; this field is
        *  kept as a convenience for the build-queue UI strip. */
       progress: number;
       producing: boolean;
       /** Per-resource transfer rate this tick (0..1 fraction of the
-       *  factory's max rate cap). Drives the three "shower" cylinders
+       *  factory's max rate cap). Drives the resource "shower" cylinders
        *  around the factory's pylons. */
       energyRate: number;
-      manaRate: number;
       metalRate: number;
       /** `posZ` carries the click-altitude of the player-issued
        *  factory waypoint; absent for synthetic / legacy waypoints
@@ -788,11 +787,6 @@ export type NetworkServerSnapshotEconomy = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
   expenditure: number;
-  mana: {
-    stockpile: { curr: number; max: number };
-    income: { base: number; territory: number };
-    expenditure: number;
-  };
   metal: {
     stockpile: { curr: number; max: number };
     income: { base: number; extraction: number };

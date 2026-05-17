@@ -21,7 +21,7 @@ export type ProductionRateIndicatorRig = {
 
 export type ConstructionEmitterRig = {
   group: THREE.Group;
-  /** Same per-resource pylon trio the factory uses: energy / mana / metal. */
+  /** Same per-resource pylon pair the factory uses: energy / metal. */
   showers: THREE.Mesh[];
   towerOrbitParts: ConstructionTowerOrbitPart[];
   showerRadius: number;
@@ -31,13 +31,13 @@ export type ConstructionEmitterRig = {
   pylonTopBaseLocals: THREE.Vector3[];
   sprayTravelSpeed: number;
   sprayParticleRadius: number;
-  smoothedRates: { energy: number; mana: number; metal: number };
+  smoothedRates: { energy: number; metal: number };
   /** Second-stage display EMA layered on top of `smoothedRates`. Drives
    *  the visible shower height + build-spray emission so motion eases
    *  in/out of changes instead of tracking the first stage 1:1. */
-  displaySmoothedRates: { energy: number; mana: number; metal: number };
+  displaySmoothedRates: { energy: number; metal: number };
   lastPaidTargetId: number | null;
-  lastPaid: { energy: number; mana: number; metal: number };
+  lastPaid: { energy: number; metal: number };
   towerSpinAmount: number;
   /** Second-stage display EMA layered on top of `towerSpinAmount`. The
    *  visible tower spin uses this so spin-up / spin-down eases in. */
@@ -53,7 +53,7 @@ type ConstructionPylonTrio = {
   pylonTopBaseLocals: THREE.Vector3[];
 };
 
-export type ConstructionTowerResource = 'energy' | 'mana' | 'metal';
+export type ConstructionTowerResource = 'energy' | 'metal';
 type ConstructionTowerSize = 'large' | 'small';
 
 type ConstructionTowerVariant = {
@@ -95,7 +95,6 @@ void main() {
 
 const CONSTRUCTION_RESOURCE_COLORS = {
   energy: 0xf5d442,
-  mana: 0x7ad7ff,
   metal: BUILDING_PALETTE.metalResource,
 } as const;
 
@@ -110,22 +109,18 @@ function makeShowerMat(hex: number): THREE.MeshBasicMaterial {
 }
 
 const energyShowerMat = makeShowerMat(CONSTRUCTION_RESOURCE_COLORS.energy);
-const manaShowerMat = makeShowerMat(CONSTRUCTION_RESOURCE_COLORS.mana);
 const metalShowerMat = makeShowerMat(CONSTRUCTION_RESOURCE_COLORS.metal);
 const energyCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.energy });
-const manaCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.mana });
 const metalCapMat = new THREE.MeshLambertMaterial({ color: CONSTRUCTION_RESOURCE_COLORS.metal });
 
 const CONSTRUCTION_TOWER_VARIANTS: readonly ConstructionTowerVariant[] = [
   { resource: 'energy', showerMaterial: energyShowerMat, capMaterial: energyCapMat },
-  { resource: 'mana', showerMaterial: manaShowerMat, capMaterial: manaCapMat },
   { resource: 'metal', showerMaterial: metalShowerMat, capMaterial: metalCapMat },
 ] as const;
 
 const CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE: Record<ConstructionTowerResource, ConstructionTowerVariant> = {
   energy: CONSTRUCTION_TOWER_VARIANTS[0],
-  mana: CONSTRUCTION_TOWER_VARIANTS[1],
-  metal: CONSTRUCTION_TOWER_VARIANTS[2],
+  metal: CONSTRUCTION_TOWER_VARIANTS[1],
 };
 
 const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
@@ -244,10 +239,10 @@ export function buildConstructionEmitterRigFromTurretConfig(
     pylonTopBaseLocals: pylonTrio.pylonTopBaseLocals,
     sprayTravelSpeed: spec.particleTravelSpeed,
     sprayParticleRadius: spec.particleRadius,
-    smoothedRates: { energy: 0, mana: 0, metal: 0 },
-    displaySmoothedRates: { energy: 0, mana: 0, metal: 0 },
+    smoothedRates: { energy: 0, metal: 0 },
+    displaySmoothedRates: { energy: 0, metal: 0 },
     lastPaidTargetId: null,
-    lastPaid: { energy: 0, mana: 0, metal: 0 },
+    lastPaid: { energy: 0, metal: 0 },
     towerSpinAmount: 0,
     displayTowerSpinAmount: 0,
     towerSpinPhase: 0,
@@ -261,10 +256,8 @@ export function disposeConstructionEmitterGeoms(): void {
   frameMat.dispose();
   constructionBandMat.dispose();
   energyShowerMat.dispose();
-  manaShowerMat.dispose();
   metalShowerMat.dispose();
   energyCapMat.dispose();
-  manaCapMat.dispose();
   metalCapMat.dispose();
 }
 

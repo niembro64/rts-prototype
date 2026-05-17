@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { LAND_CELL_SIZE, MANA_TILE_TEXTURE, MAP_BG_COLOR } from '../../config';
+import { LAND_CELL_SIZE, LAND_TILE_TEXTURE, MAP_BG_COLOR } from '../../config';
 import type { NetworkCaptureTile } from '@/types/capture';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
@@ -10,7 +10,7 @@ import {
   assertCanonicalLandCellSize,
 } from '../landGrid';
 import { getTerrainMapBoundaryFade } from '../sim/Terrain';
-import { getCaptureTileDisplayColor } from '../sim/manaProduction';
+import { getCaptureTileDisplayColor } from '../sim/captureTileDisplay';
 import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 import { configureSpriteTexture } from './threeUtils';
 
@@ -29,8 +29,8 @@ function clamp01(v: number): number {
 
 function captureOverlayOpacity(intensity: number): number {
   const t = clamp01(intensity);
-  return MANA_TILE_TEXTURE.overlayOpacity.min +
-    (MANA_TILE_TEXTURE.overlayOpacity.max - MANA_TILE_TEXTURE.overlayOpacity.min) * t;
+  return LAND_TILE_TEXTURE.overlayOpacity.min +
+    (LAND_TILE_TEXTURE.overlayOpacity.max - LAND_TILE_TEXTURE.overlayOpacity.min) * t;
 }
 
 function hasCaptureHeight(heights: NetworkCaptureTile['heights']): boolean {
@@ -321,7 +321,7 @@ export class LodGridCells2D {
     }
 
     const cellSize = normalizeLandCellSize(rawCellSize || LAND_CELL_SIZE);
-    assertCanonicalLandCellSize('floating mana cells cell size', cellSize);
+    assertCanonicalLandCellSize('floating capture cells cell size', cellSize);
     const cellsX = Math.max(1, Math.ceil(this.mapWidth / cellSize));
     const cellsY = Math.max(1, Math.ceil(this.mapHeight / cellSize));
     const textureRebuilt = this.ensureOverlayTexture(cellsX, cellsY);

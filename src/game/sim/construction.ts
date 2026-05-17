@@ -142,7 +142,6 @@ export class ConstructionSystem {
         isProducing: false,
         waypoints: [{ x: wp.x, y: wp.y, type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE }],
         energyRateFraction: 0,
-        manaRateFraction: 0,
         metalRateFraction: 0,
       };
     }

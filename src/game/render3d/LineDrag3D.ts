@@ -21,7 +21,7 @@ import type { WaypointType } from '../sim/types';
 import { WAYPOINT_COLORS } from '../uiLabels';
 import { WAYPOINT_GROUND_LIFT } from '../../config';
 
-// Lift values chosen so the preview reads above the mana-tile overlay at
+// Lift values chosen so the preview reads above the capture-tile overlay at
 // every terrain LOD. Keep these tied to the persistent waypoint lift so
 // issued commands and the drag preview stay visually aligned.
 //

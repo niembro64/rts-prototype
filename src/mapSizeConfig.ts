@@ -16,13 +16,13 @@ export type MapDimensionAxisConfig = {
 };
 
 // Canonical 2D land partition size. All broad ground-space systems
-// should derive from this: host spatial-grid XY columns, capture/mana
+// should derive from this: host spatial-grid XY columns, capture
 // tiles, terrain/water tiles, and player-client object LOD cells.
 export const LAND_CELL_SIZE = mapSizeConfig.landCellSize;
 
 /** Single source for map-size option generation. Width and length both use
  *  this same base cell count, then grow by 1.5x per option. Keep generated
- *  sizes odd so maps have exactly one central land/mana cell. */
+ *  sizes odd so maps have exactly one central land cell. */
 export const MAP_DIMENSION_BASE_LAND_CELLS =
   mapSizeConfig.mapDimensionBaseLandCells;
 const MAP_DIMENSION_AXIS_GROWTH = mapSizeConfig.mapDimensionAxisGrowth;
@@ -41,7 +41,7 @@ export const MAP_GENERATION_EXTENT_FRACTION =
 
 /** Round a land-cell axis count to the nearest positive odd integer.
  *  Map dimensions are required to be odd so every map has exactly
- *  one central land/mana cell. */
+ *  one central land cell. */
 export function nearestOddLandCellCount(value: number): number {
   const floor = Math.floor(value);
   const lowerOdd = floor % 2 === 1 ? floor : floor - 1;

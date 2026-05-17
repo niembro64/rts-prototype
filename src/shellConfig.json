@@ -15,7 +15,6 @@
   "shellBar": {
     "colors": {
       "energy": "#f5d442",
-      "mana": "#7ad7ff",
       "metal": "#d09060"
     },
     "bgColor": "#333333",

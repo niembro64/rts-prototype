@@ -22,7 +22,7 @@ type UseGameCanvasSceneUiOptions = {
 
 /** Deep-merge `src` into the reactive `dest` field by field. The
  *  obvious `Object.assign(dest, src)` would swap each top-level nested
- *  reference (stockpile/income/mana/...) with a fresh plain object
+ *  reference (stockpile/income/metal/...) with a fresh plain object
  *  from buildEconomyInfo, which forces Vue to invalidate every
  *  consumer of the parent path even when the leaf scalars are
  *  unchanged — TopBar paid the cost of re-evaluating ~12 computed
@@ -37,13 +37,6 @@ function applyEconomyInfo(dest: EconomyInfo, src: EconomyInfo): void {
   dest.income.total = src.income.total;
   dest.expenditure = src.expenditure;
   dest.netFlow = src.netFlow;
-  dest.mana.stockpile.curr = src.mana.stockpile.curr;
-  dest.mana.stockpile.max = src.mana.stockpile.max;
-  dest.mana.income.base = src.mana.income.base;
-  dest.mana.income.territory = src.mana.income.territory;
-  dest.mana.income.total = src.mana.income.total;
-  dest.mana.expenditure = src.mana.expenditure;
-  dest.mana.netFlow = src.mana.netFlow;
   dest.metal.stockpile.curr = src.metal.stockpile.curr;
   dest.metal.stockpile.max = src.metal.stockpile.max;
   dest.metal.income.base = src.metal.income.base;
@@ -101,12 +94,6 @@ export function useGameCanvasSceneUi({
     income: { base: 5, production: 0, total: 5 },
     expenditure: 0,
     netFlow: 5,
-    mana: {
-      stockpile: { curr: 200, max: 1000 },
-      income: { base: 5, territory: 0, total: 5 },
-      expenditure: 0,
-      netFlow: 5,
-    },
     metal: {
       stockpile: { curr: 200, max: 1000 },
       income: { base: 2, extraction: 0, total: 2 },

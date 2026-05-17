@@ -1,8 +1,8 @@
 // Construction shell visuals + behaviour — shared config.
 //
 // A "shell" is the inert in-world entity created when a player queues
-// a unit at a factory or starts a building. It carries three
-// independent resource accumulators (energy / mana / metal) that fill
+// a unit at a factory or starts a building. It carries independent
+// resource accumulators (energy / metal) that fill
 // from the owner's stockpile. Until every accumulator hits its
 // blueprint cost the entity is rendered as a colorless shell, with no
 // animations / combat / production / income. Per-mesh shell fallbacks are
@@ -72,7 +72,7 @@ export const BUILD_BUBBLE_RADIUS_PUSH_MULT =
   shellConfig.buildBubble.radiusPushMult;
 
 /** Bar palette + layout. Both the HP bar (with its build-mode overlay)
- *  and the three construction-resource bars (energy / mana / metal)
+ *  and the construction-resource bars (energy / metal)
  *  read these knobs so all bar tunables live in one place. */
 export const SHELL_BAR_COLORS = shellConfig.shellBar.colors;
 

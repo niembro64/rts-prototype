@@ -136,7 +136,6 @@ export class FactoryProductionSystem {
     const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitType);
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
-      mana: bp.cost.mana * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     });
     // Start the shell barely alive — it grows toward maxHp as the avg
@@ -272,10 +271,6 @@ export class FactoryProductionSystem {
           economy.stockpile.max,
           economy.stockpile.curr + shell.buildable.paid.energy,
         );
-        economy.mana.stockpile.curr = Math.min(
-          economy.mana.stockpile.max,
-          economy.mana.stockpile.curr + shell.buildable.paid.mana,
-        );
         economy.metal.stockpile.curr = Math.min(
           economy.metal.stockpile.max,
           economy.metal.stockpile.curr + shell.buildable.paid.metal,
@@ -292,7 +287,7 @@ export class FactoryProductionSystem {
   }
 
   // Get build queue for display. The head's progress comes from the
-  // shell entity (avg of the three resource bars).
+  // shell entity (average of the resource bars).
   getBuildQueue(factory: Entity, world?: WorldState): { unitId: string; progress: number }[] {
     if (!factory.factory) return [];
     return factory.factory.buildQueue.map((unitId, index) => {

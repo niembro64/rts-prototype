@@ -327,9 +327,7 @@ export class Simulation {
     this.windState = sampleWindState(this.simElapsedMs);
     this.windPowerTracker.update(this.world, this.windState);
 
-    // Update economy (income, production). Mana base income is gated
-    // on a living commander — pass the predicate so a team that's
-    // lost its commander stops earning passive mana.
+    // Update economy income and production.
     economyManager.update(dtMs, (pid) => this.world.isCommanderAlive(pid));
 
     // Update each unit's smoothed surface normal BEFORE the systems

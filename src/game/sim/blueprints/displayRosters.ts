@@ -21,7 +21,7 @@ export type BuildingRosterDisplay = {
 };
 
 function scaledTotalCost(cost: ResourceCost): number {
-  return (cost.energy + cost.mana + cost.metal) * COST_MULTIPLIER;
+  return (cost.energy + cost.metal) * COST_MULTIPLIER;
 }
 
 function fallbackShortName(id: string): string {

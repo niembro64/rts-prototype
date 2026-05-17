@@ -157,13 +157,13 @@ function createPooledEntry(): PooledEntry {
       type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
       build: {
         complete: false,
-        paid: { energy: 0, mana: 0, metal: 0 },
+        paid: { energy: 0, metal: 0 },
       },
       metalExtractionRate: undefined,
     },
     factorySub: {
       queue: [], progress: 0, producing: false,
-      energyRate: 0, manaRate: 0, metalRate: 0,
+      energyRate: 0, metalRate: 0,
       waypoints: [],
     },
     turrets,
@@ -324,7 +324,6 @@ export function serializeEntitySnapshot(
           complete: entity.buildable.isComplete,
           paid: {
             energy: entity.buildable.paid.energy,
-            mana: entity.buildable.paid.mana,
             metal: entity.buildable.paid.metal,
           },
         };
@@ -394,12 +393,10 @@ export function serializeEntitySnapshot(
           const buildable = entity.buildable;
           b.build.complete = buildable.isComplete;
           b.build.paid.energy = buildable.paid.energy;
-          b.build.paid.mana = buildable.paid.mana;
           b.build.paid.metal = buildable.paid.metal;
         } else {
           b.build.complete = true;
           b.build.paid.energy = 0;
-          b.build.paid.mana = 0;
           b.build.paid.metal = 0;
         }
         if (entity.building.activeState) {
@@ -444,7 +441,6 @@ export function serializeEntitySnapshot(
           }
           f.producing = entity.factory.isProducing;
           f.energyRate = entity.factory.energyRateFraction;
-          f.manaRate = entity.factory.manaRateFraction;
           f.metalRate = entity.factory.metalRateFraction;
 
           const wps = entity.factory.waypoints;

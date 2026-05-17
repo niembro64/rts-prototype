@@ -30,12 +30,11 @@ export type FactoryConstructionRig = {
   unitGhost: THREE.Mesh;
   unitCore: THREE.Mesh;
   sparks: THREE.Mesh[];
-  /** The three resource "showers" — translucent cylinders surrounding
-   *  the factory's three structural pylons. Each fills bottom-up with
+  /** The resource "showers" — translucent cylinders surrounding
+   *  the factory's structural pylons. Each fills bottom-up with
    *  its resource's transfer-rate fraction (0..1):
    *    showers[0] = energy (yellow)
-   *    showers[1] = mana   (cyan)
-   *    showers[2] = metal  (copper)
+   *    showers[1] = metal  (copper)
    *  `pylonHeight` and `pylonBaseY` (the pylon's bottom edge in
    *  chassis-local Y) are stored so the per-frame update can scale
    *  each shower with the live rate without re-deriving metrics. */
@@ -49,7 +48,7 @@ export type FactoryConstructionRig = {
   pylonHeight: number;
   pylonBaseY: number;
   /** Chassis-local position of each pylon's top, in the same order
-   *  as `showers` (energy / mana / metal). The per-frame update
+   *  as `showers` (energy / metal). The per-frame update
    *  uses these as the SOURCE of the per-resource colored build
    *  sprays — each spray runs from a pylon top to the build spot. */
   pylonTopsLocal: THREE.Vector3[];
@@ -63,11 +62,11 @@ export type FactoryConstructionRig = {
    *  the same order as `showers`. The renderer EMAs the live sim
    *  rates into these so the showers + sprays don't pop on per-tick
    *  step changes. Zeroed at rig creation. */
-  smoothedRates: { energy: number; mana: number; metal: number };
+  smoothedRates: { energy: number; metal: number };
   /** Second-stage display EMA layered on top of `smoothedRates`. Drives
    *  the visible shower height + build-spray emission so motion eases
    *  in/out of changes instead of tracking the first stage 1:1. */
-  displaySmoothedRates: { energy: number; mana: number; metal: number };
+  displaySmoothedRates: { energy: number; metal: number };
   towerSpinAmount: number;
   /** Second-stage display EMA layered on top of `towerSpinAmount`. The
    *  visible tower spin uses this so spin-up / spin-down eases in. */
@@ -111,7 +110,7 @@ const constructionOrbGeom = new THREE.SphereGeometry(1, 12, 8);
 
 /** Factory: compact radial construction tower.
  *
- *  The tower is the large version of the same shared three-pylon
+ *  The tower is the large version of the same shared resource-pylon
  *  construction emitter used by the commander's build turret:
  *  dark-gray resource pillars, team-colored bases, black/white
  *  construction bands on those bases, fixed resource endcaps, and
@@ -178,8 +177,8 @@ export function buildFactoryMesh(
       pylonTopBaseLocals: constructionRig.pylonTopBaseLocals,
       sprayTravelSpeed: constructionRig.sprayTravelSpeed,
       sprayParticleRadius: constructionRig.sprayParticleRadius,
-      smoothedRates: { energy: 0, mana: 0, metal: 0 },
-      displaySmoothedRates: { energy: 0, mana: 0, metal: 0 },
+      smoothedRates: { energy: 0, metal: 0 },
+      displaySmoothedRates: { energy: 0, metal: 0 },
       towerSpinAmount: 0,
       displayTowerSpinAmount: 0,
       towerSpinPhase: 0,

@@ -209,12 +209,12 @@ export function getAllUnitBlueprints(): UnitBlueprint[] {
 }
 
 // Normalized cost: total per-build cost / max total across buildables.
-// "Total" is the sum across the three resource axes — gives a single
+// "Total" is the sum across the resource axes — gives a single
 // scalar for UI rank/scale display while honouring per-resource costs.
 let _costNormCache: { max: number } | null = null;
 
-function totalCost(c: { energy: number; mana: number; metal: number }): number {
-  return c.energy + c.mana + c.metal;
+function totalCost(c: { energy: number; metal: number }): number {
+  return c.energy + c.metal;
 }
 
 function getCostNorm(): { max: number } {
@@ -231,7 +231,7 @@ function getCostNorm(): { max: number } {
 }
 
 export function getNormalizedUnitCost(unitBlueprint: {
-  cost: { energy: number; mana: number; metal: number };
+  cost: { energy: number; metal: number };
 }): number {
   const { max } = getCostNorm();
   return max > 0 ? totalCost(unitBlueprint.cost) / max : 0;

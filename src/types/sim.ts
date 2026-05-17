@@ -549,20 +549,15 @@ export type Projectile = {
   lastSentVelZ?: number;
 };
 
-// Economy state per player. Each pool (energy / mana / metal) has its
+// Economy state per player. Each pool (energy / metal) has its
 // own stockpile, income breakdown, and expenditure tally. Buildables
-// author independent per-resource costs (`ResourceCost` triple) and
+// author independent per-resource costs and
 // each pool fills its own `paid` accumulator; the build is gated by
 // whichever pool is most scarce. See ResourceCost / Buildable below.
 export type EconomyState = {
   stockpile: { curr: number; max: number };
   income: { base: number; production: number };
   expenditure: number;
-  mana: {
-    stockpile: { curr: number; max: number };
-    income: { base: number; territory: number };
-    expenditure: number;
-  };
   metal: {
     stockpile: { curr: number; max: number };
     income: { base: number; extraction: number };
@@ -571,8 +566,8 @@ export type EconomyState = {
 };
 
 // Buildable component. While a unit/building is under construction it
-// lives in the world as an inert "shell" — `paid.{e,m,m}` accumulate
-// from the owner's stockpiles toward `required.{e,m,m}`. This
+// lives in the world as an inert "shell" — `paid` accumulates
+// from the owner's stockpiles toward `required`. This
 // component exists only while the entity is under construction; once
 // activation succeeds, constructionLifecycle removes it. During
 // construction, HP grows by the positive delta in average fill ratio;
@@ -641,7 +636,7 @@ export type UnitBuildConfig = {
 // blocked). Once the shell flips `isComplete`, it leaves the spot and
 // the factory clears `currentShellId` to take the next queue entry.
 //
-// `currentBuildProgress` is the avg-of-three fill ratio of that shell,
+// `currentBuildProgress` is the average fill ratio of that shell,
 // kept as a pure UI/snapshot mirror so the build-queue strip can draw a
 // single progress fraction without looking up the shell entity. On the
 // server it is refreshed when resources flow into the shell; on the
@@ -656,11 +651,10 @@ export type Factory = {
   waypoints: Waypoint[];
   /** Per-resource transfer rate this tick, expressed as a fraction
    *  (0..1) of the factory's `maxResourcePerTick` cap for the active
-   *  shell. Drives the three vertical "shower" cylinders around the
+   *  shell. Drives the vertical "shower" cylinders around the
    *  factory's pylons in the 3D renderer. Reset to 0 between shells
    *  and whenever the factory isn't producing. */
   energyRateFraction: number;
-  manaRateFraction: number;
   metalRateFraction: number;
 };
 

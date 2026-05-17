@@ -74,12 +74,6 @@ export type EconomyInfo = {
   income: { base: number; production: number; total: number };
   expenditure: number;
   netFlow: number;
-  mana: {
-    stockpile: { curr: number; max: number };
-    income: { base: number; territory: number; total: number };
-    expenditure: number;
-    netFlow: number;
-  };
   metal: {
     stockpile: { curr: number; max: number };
     income: { base: number; extraction: number; total: number };
@@ -236,7 +230,7 @@ export type SprayTarget = {
    *  the renderer paints particles in this color instead of the
    *  source's team-primary color. Used by the factory's per-resource
    *  build sprays so each pylon's stream reads as its resource
-   *  (energy / mana / metal) regardless of team. */
+   *  (energy / metal) regardless of team. */
   colorRGB?: { r: number; g: number; b: number };
 };
 
@@ -288,7 +282,7 @@ export type EnergyConsumer = {
   sourceFactoryId?: EntityId;
   /** Remaining resource work this consumer needs to finish. Healing
    *  stores energy repair cost; building stores total construction
-   *  resource remaining across energy, mana, and metal. */
+   *  resource remaining across energy and metal. */
   remainingCost: number;
   playerId: PlayerId;
   maxResourcePerTick: number;

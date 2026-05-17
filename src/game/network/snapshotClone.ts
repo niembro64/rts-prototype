@@ -44,11 +44,6 @@ function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapsh
     stockpile: { curr: e.stockpile.curr, max: e.stockpile.max },
     income: { base: e.income.base, production: e.income.production },
     expenditure: e.expenditure,
-    mana: {
-      stockpile: { curr: e.mana.stockpile.curr, max: e.mana.stockpile.max },
-      income: { base: e.mana.income.base, territory: e.mana.income.territory },
-      expenditure: e.mana.expenditure,
-    },
     metal: {
       stockpile: { curr: e.metal.stockpile.curr, max: e.metal.stockpile.max },
       income: { base: e.metal.income.base, extraction: e.metal.income.extraction },
@@ -81,7 +76,6 @@ function copyBuildStateInto(
 ): ReusableBuildState {
   dst.complete = src.complete;
   dst.paid.energy = src.paid.energy;
-  dst.paid.mana = src.paid.mana;
   dst.paid.metal = src.paid.metal;
   return dst;
 }
@@ -91,7 +85,7 @@ function createReusableBuilding(): ReusableEntityBuilding {
     hp: { curr: 0, max: 0 },
     build: {
       complete: false,
-      paid: { energy: 0, mana: 0, metal: 0 },
+      paid: { energy: 0, metal: 0 },
     },
   };
 }
@@ -102,7 +96,6 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.progress = src.progress;
   dst.producing = src.producing;
   dst.energyRate = src.energyRate;
-  dst.manaRate = src.manaRate;
   dst.metalRate = src.metalRate;
   dst.waypoints.length = src.waypoints.length;
   for (let i = 0; i < src.waypoints.length; i++) {
@@ -157,7 +150,6 @@ function copyBuildingInto(
         progress: 0,
         producing: false,
         energyRate: 0,
-        manaRate: 0,
         metalRate: 0,
         waypoints: [],
       };
@@ -224,11 +216,6 @@ function copyEconomyInto(
   dst.income.base = src.income.base;
   dst.income.production = src.income.production;
   dst.expenditure = src.expenditure;
-  dst.mana.stockpile.curr = src.mana.stockpile.curr;
-  dst.mana.stockpile.max = src.mana.stockpile.max;
-  dst.mana.income.base = src.mana.income.base;
-  dst.mana.income.territory = src.mana.income.territory;
-  dst.mana.expenditure = src.mana.expenditure;
   dst.metal.stockpile.curr = src.metal.stockpile.curr;
   dst.metal.stockpile.max = src.metal.stockpile.max;
   dst.metal.income.base = src.metal.income.base;
