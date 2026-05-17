@@ -201,7 +201,7 @@ export class ProjectileRenderer3D {
           this.coneInstanced.setMatrixAt(coneCount++, this.projMatrix);
         }
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
-          this.composeProjectileFinMatrix(tx, ty, tz, r, r * finSizeMult);
+          this.composeProjectileFinMatrix(tx, ty, tz, tailLength, r * finSizeMult);
           this.finInstanced.setMatrixAt(finCount++, this.projMatrix);
         }
       }
@@ -277,13 +277,13 @@ export class ProjectileRenderer3D {
 
   private composeProjectileFinMatrix(
     x: number, y: number, z: number,
-    bodyRadius: number,
+    rearOffset: number,
     finScale: number,
   ): void {
     this.projPos.set(
-      x + this.projDir.x * bodyRadius,
-      z + this.projDir.y * bodyRadius,
-      y + this.projDir.z * bodyRadius,
+      x + this.projDir.x * rearOffset,
+      z + this.projDir.y * rearOffset,
+      y + this.projDir.z * rearOffset,
     );
     this.projScale.setScalar(finScale);
     this.projMatrix.compose(this.projPos, this.projQuat, this.projScale);
@@ -419,18 +419,20 @@ export class ProjectileRenderer3D {
 }
 
 // Local +Y aligns with projDir (rocket-rearward) after the instance
-// quaternion is applied, matching the cone/cylinder tail convention.
+// quaternion is applied. The local origin sits at the fin's rear edge so
+// the caller can place it directly at the rocket tail end; the fin tapers
+// forward along local -Y toward the rocket body.
 function createProjectileFinGeometry(): THREE.BufferGeometry {
-  const FIN_FRONT = 0;
-  const FIN_BACK = 2;
+  const FIN_FORWARD = -2;
+  const FIN_REAR = 0;
   const FIN_OUT = 1;
   const fin = (axis: 'x' | 'z', sign: 1 | -1): number[] => {
     const ox = axis === 'x' ? sign * FIN_OUT : 0;
     const oz = axis === 'z' ? sign * FIN_OUT : 0;
     return [
-      0, FIN_FRONT, 0,
-      0, FIN_BACK, 0,
-      ox, FIN_BACK, oz,
+      0, FIN_FORWARD, 0,
+      0, FIN_REAR, 0,
+      ox, FIN_REAR, oz,
     ];
   };
   const verts = new Float32Array([
