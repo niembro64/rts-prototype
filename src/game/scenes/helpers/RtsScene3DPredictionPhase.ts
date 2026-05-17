@@ -1,6 +1,7 @@
 import type { GraphicsConfig } from '@/types/graphics';
 import type { PerspectiveCamera } from 'three';
 import type { ClientViewState } from '../../network/ClientViewState';
+import { CLIENT_PREDICTION_DIAGNOSTICS } from '../../network/ClientPredictionDiagnostics';
 import { snapshotLod, type Lod3DState } from '../../render3d/Lod3D';
 import { RenderLodGrid } from '../../render3d/RenderLodGrid';
 
@@ -26,12 +27,14 @@ export class RtsScene3DPredictionPhase {
     this.renderLodGrid.beginFrame(renderLod.view, graphicsConfig);
 
     const predStart = performance.now();
-    this.clientViewState.applyPrediction(options.deltaMs);
+    const targetAge = this.clientViewState.applyPrediction(options.deltaMs);
+    const predMs = performance.now() - predStart;
+    CLIENT_PREDICTION_DIAGNOSTICS.recordFrame({ predictionMs: predMs, targetAge });
 
     return {
       renderLod,
       graphicsConfig,
-      predMs: performance.now() - predStart,
+      predMs,
     };
   }
 }

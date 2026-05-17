@@ -1,5 +1,6 @@
 import { EMA_CONFIG, EMA_INITIAL_VALUES } from '../../../config';
 import type { ClientViewState } from '../../network/ClientViewState';
+import { CLIENT_PREDICTION_DIAGNOSTICS } from '../../network/ClientPredictionDiagnostics';
 import type {
   NetworkServerSnapshotMeta,
   NetworkServerSnapshotSimEvent,
@@ -95,6 +96,7 @@ export class RtsScene3DSnapshotIntake {
       correction: applyStats.correction,
       now,
     });
+    CLIENT_PREDICTION_DIAGNOSTICS.recordSnapshotApply(applyStats.correction);
 
     if (options.clientRenderEnabled && options.audio) {
       options.audio.scheduler.recordSnapshot(now);

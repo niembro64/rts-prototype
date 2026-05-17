@@ -340,8 +340,8 @@ export function serializeProjectileSnapshot({
           : 0;
         out.turretIndex = ps.turretIndex;
         out.barrelIndex = ps.barrelIndex;
-        out.isDGun = ps.isDGun;
-        out.fromParentDetonation = ps.fromParentDetonation;
+        out.isDGun = ps.isDGun === true ? true : undefined;
+        out.fromParentDetonation = ps.fromParentDetonation === true ? true : undefined;
         if (ps.beam) {
           out._beamStart.x = ps.beam.start.x;
           out._beamStart.y = ps.beam.start.y;

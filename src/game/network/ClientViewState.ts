@@ -45,6 +45,10 @@ import { ClientPredictionCadence } from './ClientPredictionCadence';
 import { clientUnitPredictionIsSettled } from './ClientUnitPrediction';
 import { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
 import { ClientPredictionStepper } from './ClientPredictionStepper';
+import type {
+  ClientPredictionCorrectionStats,
+  ClientPredictionTargetAgeStats,
+} from './ClientPredictionDiagnostics';
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
@@ -53,11 +57,7 @@ import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
 export type ClientSnapshotApplyStats = {
-  correction: {
-    count: number;
-    totalDistance: number;
-    maxDistance: number;
-  };
+  correction: ClientPredictionCorrectionStats;
 };
 
 export class ClientViewState {
@@ -428,6 +428,12 @@ export class ClientViewState {
         count: 0,
         totalDistance: 0,
         maxDistance: 0,
+        velocityCount: 0,
+        totalVelocityDelta: 0,
+        maxVelocityDelta: 0,
+        targetAgeCount: 0,
+        totalTargetAgeMs: 0,
+        maxTargetAgeMs: 0,
       },
     };
     if (state.terrain) {
@@ -452,6 +458,11 @@ export class ClientViewState {
       const cf = netEntity.changedFields;
       const isFull = cf == null;
       const isBuildingUpdate = netEntity.type === 'building';
+      const existing = this.entities.get(netEntity.id);
+      const previousTarget = this.serverTargets.get(netEntity.id);
+      const previousTargetAgeMs = previousTarget?.updatedAtMs
+        ? Math.max(0, now - previousTarget.updatedAtMs)
+        : 0;
       if (isBuildingUpdate) {
         // Building bodies are static, but armed buildings still use the
         // same turret target/prediction path as units.
@@ -468,6 +479,7 @@ export class ClientViewState {
             target.rotation = netEntity.rotation;
           }
           this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
+          target.updatedAtMs = now;
         } else if (isFull) {
           this.serverTargets.delete(netEntity.id);
           this.clearPredictionAccum(netEntity.id);
@@ -482,9 +494,9 @@ export class ClientViewState {
         this.clearTargetPredictionAccum(netEntity.id);
         applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
         this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets, isFull);
+        target.updatedAtMs = now;
       }
 
-      const existing = this.entities.get(netEntity.id);
       if (existing && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
         const dx = existing.transform.x - netEntity.pos.x;
         const dy = existing.transform.y - netEntity.pos.y;
@@ -494,6 +506,26 @@ export class ClientViewState {
         applyStats.correction.totalDistance += distance;
         if (distance > applyStats.correction.maxDistance) {
           applyStats.correction.maxDistance = distance;
+        }
+        if (previousTargetAgeMs > 0) {
+          applyStats.correction.targetAgeCount++;
+          applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
+          if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
+            applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
+          }
+        }
+        const netVelocity = netEntity.unit?.velocity;
+        const localUnit = existing.unit;
+        if (localUnit && netVelocity && (isFull || (cf & ENTITY_CHANGED_VEL) !== 0)) {
+          const dvx = (localUnit.velocityX ?? 0) - netVelocity.x;
+          const dvy = (localUnit.velocityY ?? 0) - netVelocity.y;
+          const dvz = (localUnit.velocityZ ?? 0) - netVelocity.z;
+          const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+          applyStats.correction.velocityCount++;
+          applyStats.correction.totalVelocityDelta += velocityDelta;
+          if (velocityDelta > applyStats.correction.maxVelocityDelta) {
+            applyStats.correction.maxVelocityDelta = velocityDelta;
+          }
         }
       }
 
@@ -569,7 +601,7 @@ export class ClientViewState {
     // running local mirror/unit/building beam traces in applyPrediction.
     if (state.projectiles?.beamUpdates) {
       for (const update of state.projectiles.beamUpdates) {
-        this.projectileStore.applyBeamUpdate(update);
+        this.projectileStore.applyBeamUpdate(update, now);
       }
     }
 
@@ -597,6 +629,7 @@ export class ClientViewState {
           target.velocityX = vu.velocity.x;
           target.velocityZ = vu.velocity.z;
           target.velocityY = vu.velocity.y;
+          target.updatedAtMs = now;
           this.clearTargetPredictionAccum(vu.id);
           this.projectileStore.markVelocityUpdateActive(entity, vu.id);
         }
@@ -677,8 +710,8 @@ export class ClientViewState {
    * 1. Predict: advance positions using velocity/acceleration
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
-  applyPrediction(deltaMs: number): void {
-    this.predictionStepper.apply(deltaMs);
+  applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {
+    return this.predictionStepper.apply(deltaMs);
   }
 
   // === Accessors for rendering and input ===

@@ -43,6 +43,9 @@ The Rust-backed encode adapter now avoids array-helper allocation in the
 remaining DTO packing bridge for snapshot key collection, economy player IDs,
 factory waypoint strings, projectile despawn IDs, and audio death/impact
 context selection.
+Projectile spawn DTOs now normalize optional boolean flags so false values are
+omitted before the Rust wire adapter sees them, keeping ordinary projectile
+snapshots on the Rust path instead of raw MessagePack fallback.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes
@@ -83,16 +86,19 @@ real prediction/correction path. But the high 64 SPS default can hide weak spots
 and local command feedback is still mostly visual-only previews: selection,
 build ghost, line-drag targets, and waypoint drawing. Most gameplay-visible
 state waits for the authoritative snapshot.
+DP-03 client prediction diagnostics now exist behind ?dp03=1 /
+VITE_BA_DP03_CLIENT_PREDICTION=1. They expose
+window.__BA_DP03_CLIENT_PREDICTION__.stats() for per-frame prediction cost,
+active target age, correction distance, correction velocity, and correction
+target age. Capture notes live in docs/dp-03-client-prediction-diagnostics.md.
 
 Steps:
 1. Run and record correction behavior with the DP-01 5-10 SPS default.
-2. Add prediction diagnostics for per-frame prediction cost, correction distance,
-   correction velocity, and target age.
-3. Add local intent previews for move, attack, guard, build, repair, reclaim,
+2. Add local intent previews for move, attack, guard, build, repair, reclaim,
    scan, production, and factory waypoints without mutating authoritative state.
-4. Confirm projectiles, beams, force fields, jump arcs, hover lift, and turret
+3. Confirm projectiles, beams, force fields, jump arcs, hover lift, and turret
    rotation can coast through at least 500-1000 ms of missing snapshots.
-5. Add a deliberately delayed/dropped snapshot test mode and keep it passing.
+4. Add a deliberately delayed/dropped snapshot test mode and keep it passing.
 
 DP-04 - Harden the command authority boundary.
 

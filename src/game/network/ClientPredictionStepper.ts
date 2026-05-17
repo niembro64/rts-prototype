@@ -19,6 +19,7 @@ import {
   type ServerTarget,
 } from './ClientPredictionTargets';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
+import type { ClientPredictionTargetAgeStats } from './ClientPredictionDiagnostics';
 
 type ClientPredictionStepperOptions = {
   entities: Map<EntityId, Entity>;
@@ -42,6 +43,18 @@ type ClientPredictionStepperOptions = {
 
 function angleDeltaAbs(a: number, b: number): number {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
+function noteTargetAge(
+  stats: ClientPredictionTargetAgeStats,
+  updatedAtMs: number | undefined,
+  now: number,
+): void {
+  if (!updatedAtMs || updatedAtMs <= 0) return;
+  const ageMs = Math.max(0, now - updatedAtMs);
+  stats.activeTargets++;
+  stats.totalTargetAgeMs += ageMs;
+  if (ageMs > stats.maxTargetAgeMs) stats.maxTargetAgeMs = ageMs;
 }
 
 function applyBeamPathPrediction(
@@ -179,7 +192,7 @@ export class ClientPredictionStepper {
     this.frameCounter = 0;
   }
 
-  apply(deltaMs: number): void {
+  apply(deltaMs: number): ClientPredictionTargetAgeStats {
     const {
       entities,
       serverTargets,
@@ -203,8 +216,14 @@ export class ClientPredictionStepper {
     this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
     if (this.frameCounter === 0) this.frameCounter = 1;
 
+    const now = performance.now();
+    const targetAgeStats: ClientPredictionTargetAgeStats = {
+      activeTargets: 0,
+      totalTargetAgeMs: 0,
+      maxTargetAgeMs: 0,
+    };
     const preset = getDriftPreset(getDriftMode());
-    projectileSpawns.drain(performance.now(), applyProjectileSpawn);
+    projectileSpawns.drain(now, applyProjectileSpawn);
 
     const forceFieldsEnabled = getServerForceFieldsEnabled();
     setForceFieldsEnabledForPrediction(forceFieldsEnabled);
@@ -229,6 +248,7 @@ export class ClientPredictionStepper {
       }
 
       const beamTarget = beamPathTargets.get(id);
+      noteTargetAge(targetAgeStats, beamTarget?.updatedAtMs, now);
       if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, preset)) {
         beamPathsChanged = true;
       }
@@ -244,6 +264,7 @@ export class ClientPredictionStepper {
       }
 
       const target = serverTargets.get(id);
+      noteTargetAge(targetAgeStats, target?.updatedAtMs, now);
       if (entity.unit) {
         applyClientUnitVisualPrediction({
           entity,
@@ -288,6 +309,7 @@ export class ClientPredictionStepper {
       }
 
       const target = serverTargets.get(id);
+      noteTargetAge(targetAgeStats, target?.updatedAtMs, now);
       const predictionStride = predictionCadence.frameStride();
       const predictionStep = predictionCadence.consumeDelta(
         entity.id,
@@ -317,5 +339,6 @@ export class ClientPredictionStepper {
         deleteEntityLocalState(entity.id);
       }
     }
+    return targetAgeStats;
   }
 }

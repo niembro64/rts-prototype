@@ -27,6 +27,9 @@ export const GAME_DIAGNOSTICS = {
   snapshotEncodeInstrumentation:
     envFlag('VITE_BA_DP02_SNAPSHOT_WIRE') ||
     queryFlag('dp02', 'snapshotEncodeInstrumentation', 'snapshotWireStats'),
+  clientPredictionDiagnostics:
+    envFlag('VITE_BA_DP03_CLIENT_PREDICTION') ||
+    queryFlag('dp03', 'clientPredictionDiagnostics', 'predictionDiagnostics'),
 };
 
 export function debugLog(enabled: boolean, ...args: unknown[]): void {

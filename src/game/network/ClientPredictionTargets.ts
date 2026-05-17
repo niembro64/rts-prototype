@@ -3,6 +3,7 @@ import type { BeamPoint } from '../../types/sim';
 // Lightweight copy of server state used for per-frame drift in client prediction.
 // Owns its data instead of retaining references to pooled serializer objects.
 export type ServerTarget = {
+  updatedAtMs: number;
   x: number;
   y: number;
   z: number;
@@ -44,6 +45,7 @@ export type ServerTarget = {
 
 export function createServerTarget(): ServerTarget {
   return {
+    updatedAtMs: 0,
     x: 0, y: 0, z: 0, rotation: 0,
     velocityX: 0, velocityY: 0, velocityZ: 0,
     movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
@@ -57,13 +59,14 @@ export function createServerTarget(): ServerTarget {
 }
 
 export type BeamPathTarget = {
+  updatedAtMs: number;
   points: BeamPoint[];
   obstructionT?: number;
   endpointDamageable?: boolean;
 };
 
 export function createBeamPathTarget(): BeamPathTarget {
-  return { points: [] };
+  return { updatedAtMs: 0, points: [] };
 }
 
 // Module-level free list of BeamPoint objects. Beam paths grow and

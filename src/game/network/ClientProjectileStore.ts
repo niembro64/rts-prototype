@@ -76,7 +76,7 @@ export class ClientProjectileStore {
     }
   }
 
-  applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate): void {
+  applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate, now = performance.now()): void {
     const entity = this.options.entities.get(update.id);
     const proj = entity?.projectile;
     if (!entity || !proj) return;
@@ -86,6 +86,7 @@ export class ClientProjectileStore {
       target = createBeamPathTarget();
       this.beamPathTargets.set(update.id, target);
     }
+    target.updatedAtMs = now;
     target.obstructionT = update.obstructionT;
     target.endpointDamageable = update.endpointDamageable;
 
