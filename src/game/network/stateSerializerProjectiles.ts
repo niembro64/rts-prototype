@@ -22,6 +22,7 @@ import {
   shotIdToCode,
   turretIdToCode,
 } from '../../types/network';
+import { definePooledScratchProperty } from './snapshotPooledScratch';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
@@ -119,12 +120,15 @@ function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
     beam: undefined,
     targetEntityId: undefined,
     homingTurnRate: undefined,
-    _pos: { x: 0, y: 0, z: 0 },
-    _velocity: { x: 0, y: 0, z: 0 },
-    _beamStart: { x: 0, y: 0, z: 0 },
-    _beamEnd: { x: 0, y: 0, z: 0 },
-    _beam: { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } },
-  };
+  } as PooledProjectileSpawn;
+  definePooledScratchProperty(spawn, '_pos', { x: 0, y: 0, z: 0 });
+  definePooledScratchProperty(spawn, '_velocity', { x: 0, y: 0, z: 0 });
+  definePooledScratchProperty(spawn, '_beamStart', { x: 0, y: 0, z: 0 });
+  definePooledScratchProperty(spawn, '_beamEnd', { x: 0, y: 0, z: 0 });
+  definePooledScratchProperty(spawn, '_beam', {
+    start: { x: 0, y: 0, z: 0 },
+    end: { x: 0, y: 0, z: 0 },
+  });
   spawn.pos = spawn._pos;
   spawn.velocity = spawn._velocity;
   spawn._beam.start = spawn._beamStart;
@@ -141,9 +145,9 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
     id: 0,
     pos: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
-    _pos: { x: 0, y: 0, z: 0 },
-    _velocity: { x: 0, y: 0, z: 0 },
-  };
+  } as PooledVelocityUpdate;
+  definePooledScratchProperty(update, '_pos', { x: 0, y: 0, z: 0 });
+  definePooledScratchProperty(update, '_velocity', { x: 0, y: 0, z: 0 });
   update.pos = update._pos;
   update.velocity = update._velocity;
   return update;

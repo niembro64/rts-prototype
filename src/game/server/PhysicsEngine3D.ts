@@ -331,6 +331,7 @@ export class PhysicsEngine3D {
   // foreground game and the background battle don't share static
   // cells. Set in the constructor.
   private staticsHandle: number = 0;
+  private disposed = false;
 
   // Ignore a specific static body for a specific dynamic body. Same
   // purpose as the 2D engine: a newly spawned unit shouldn't immediately
@@ -615,15 +616,27 @@ export class PhysicsEngine3D {
 
   /** Release WASM-side resources owned by this engine. Call once at
    *  teardown — GameServer.stop does this. After dispose, no other
-   *  method on this instance is safe to call (the static-broadphase
-   *  handle is gone). The dynamic / static body pools are NOT freed
-   *  here; the caller is responsible for `removeBody(body)` on each
-   *  prior to disposing the engine. */
+   *  method on this instance is safe to call. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
     const sim = getSimWasm();
-    if (sim !== undefined) {
-      sim.engineStaticsDestroy(this.staticsHandle);
+    if (sim === undefined) return;
+
+    refreshAndBindBody3DPool(sim.pool);
+    while (this.bodies.length > 0) {
+      this.removeBody(this.bodies[this.bodies.length - 1]);
     }
+    this.dynamicBodies.length = 0;
+    this.staticBodies.length = 0;
+    this.bodyBySlot.length = 0;
+    this.ignoreStatic.clear();
+    this.awakeDynamicBodyCount = 0;
+    this.stepSyncEntityIds.length = 0;
+    this.stepSyncEntityIdSet.clear();
+
+    sim.engineStaticsDestroy(this.staticsHandle);
   }
 
   step(dtSec: number): void {

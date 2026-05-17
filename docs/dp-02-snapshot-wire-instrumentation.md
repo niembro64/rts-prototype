@@ -88,3 +88,55 @@ location.reload()
 ```
 
 Change the stored snapshot rate to `8` or `10` between captures, then reload.
+
+## Forced-JS Baseline Capture
+
+Run date: 2026-05-17
+
+Command path:
+
+- Vite dev server: `npm run dev -- --port 5175` (served on 5176 because 5175 was occupied)
+- Browser URL: `http://127.0.0.1:5176/budget-annihilation/dp02-harness.html?dp02=1&dp02js=1`
+- Automation: headless Google Chrome via Playwright
+- Harness: custom in-memory HTML page importing Vite modules, then creating `GameServer` + `LocalGameConnection` directly. The harness marks the local listener ready before `server.start()` so captures measure the normal post-startup snapshot stream without renderer cost.
+- Scenario shape: five-player demo battle, all background unit types enabled, `terrainCenter=flat`, `terrainDividers=mountain`, `terrainMapShape=circle`, `keyframeRatio=1/64`, forced JS MessagePack sender.
+
+Notes:
+
+- Capture windows ran for 25 seconds after a warmup row proved the listener was receiving delta snapshots at the requested unit band.
+- The 1k rows include regular 1/64 keyframes inside the measurement window. The 5k rows did not hit a keyframe during their shorter measured snapshot count.
+- Measured SPS is the actual encoded snapshot rate, not the configured cap. At 5k units, the current JS DTO + MessagePack path and simulation work cap the host near 2 encoded snapshots/sec in this harness.
+- The first 5k attempt exposed a teardown leak where `PhysicsEngine3D.dispose()` destroyed only the static broadphase handle and left BodyPool slots allocated across server restarts. The leak was fixed before the baseline below was recorded.
+- The table was refreshed after the 2026-05-17 parity burn-down that made pooled DTO scratch fields non-enumerable. Before that fix, JS MessagePack also serialized private `_pos` / `_velocity` scratch copies and produced larger 1k payloads.
+
+| Cap | Configured SPS | Seconds | Samples | Measured SPS | Full | Delta | Units Avg | Units Max | Bytes Avg | Bytes Max | Encode ms | Encode ms Max |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 5 | 24.9 | 117 | 4.70 | 1 | 116 | 999 | 1,005 | 739,975 | 1,822,671 | 6.40 | 18.9 |
+| 1,000 | 8 | 25.0 | 167 | 6.69 | 2 | 165 | 1,000 | 1,003 | 549,660 | 1,565,109 | 4.99 | 18.8 |
+| 1,000 | 10 | 24.9 | 196 | 7.87 | 3 | 193 | 999 | 1,005 | 545,977 | 1,685,764 | 5.01 | 20.5 |
+| 5,000 | 5 | 25.4 | 40 | 1.58 | 0 | 40 | 5,003 | 5,005 | 2,082,840 | 2,191,917 | 20.05 | 21.5 |
+| 5,000 | 8 | 25.4 | 40 | 1.57 | 0 | 40 | 5,000 | 5,005 | 2,069,095 | 2,214,722 | 19.85 | 21.7 |
+| 5,000 | 10 | 25.3 | 43 | 1.70 | 0 | 43 | 5,002 | 5,005 | 2,071,818 | 2,217,744 | 20.07 | 21.7 |
+
+## Rust Parity Burn-Down Notes
+
+Run date: 2026-05-17
+
+The first parity probe after the forced-JS baseline showed zero raw entity fallback but byte mismatches on nearly every delta. Decoding the JS and Rust bytes showed the same semantic snapshot data; the byte gap came from two JS-side DTO issues:
+
+- Pooled audio/projectile DTO scratch fields such as `_pos`, `_velocity`, `_beamStart`, `_beamEnd`, and `_beam` were enumerable, so JS MessagePack serialized private pool internals that Rust intentionally omitted.
+- Runtime entity DTOs deleted `changedFields` on full snapshots and later re-added it after `unit` / `building`, producing a different MessagePack key order than the Rust encoder and byte-equality fixtures.
+
+Fixes:
+
+- Pooled scratch fields are now defined as non-enumerable.
+- Entity DTOs keep `changedFields`, `unit`, and `building` as stable optional properties so `changedFields` preserves its insertion order before the subobject.
+
+Post-fix parity probes:
+
+| Cap | Configured SPS | Seconds | Samples | Rust Sends | JS Sends | Matches | Mismatches | Raw Entities | Raw Top-Level |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 1,000 | 5 | 12.1 | 55 | 55 | 0 | 55 | 0 | 0 | `terrain`, `buildability` on the full keyframe |
+| 5,000 | 5 | 13.0 | 22 | 22 | 0 | 22 | 0 | 0 | `terrain`, `buildability` on the full keyframe |
+
+Remaining DP-02 parity work: port the full-keyframe static `terrain` and `buildability` top-level fields, then continue probing less common audio/projectile variants and remote recipients.

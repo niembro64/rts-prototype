@@ -142,7 +142,16 @@ function createPooledEntry(): PooledEntry {
   const waypoints: WaypointDto[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
   return {
-    entity: { id: 0, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1 as PlayerId },
+    entity: {
+      id: 0,
+      type: 'unit',
+      pos: { x: 0, y: 0, z: 0 },
+      rotation: 0,
+      playerId: 1 as PlayerId,
+      changedFields: undefined,
+      unit: undefined,
+      building: undefined,
+    },
     unitSub: createNetworkUnitSnapshot(),
     unitMovementAccel: { x: 0, y: 0, z: 0 },
     unitSuspension: {
@@ -207,11 +216,7 @@ export function serializeEntitySnapshot(
   ne.id = entity.id;
   ne.type = entity.type;
   ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
-  if (isFull) {
-    delete ne.changedFields;
-  } else {
-    ne.changedFields = changedFields;
-  }
+  ne.changedFields = isFull ? undefined : changedFields;
 
   if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
     ne.pos.x = qPos(entity.transform.x);

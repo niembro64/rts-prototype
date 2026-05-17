@@ -13,6 +13,7 @@ import {
   resolveSnapshotPoolKey,
   type SnapshotPool,
 } from './snapshotPool';
+import { definePooledScratchProperty } from './snapshotPooledScratch';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
@@ -41,8 +42,8 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
     killerPlayerId: undefined,
     victimPlayerId: undefined,
     audioOnly: undefined,
-    _pos: { x: 0, y: 0, z: 0 },
-  };
+  } as PooledSimEvent;
+  definePooledScratchProperty(event, '_pos', { x: 0, y: 0, z: 0 });
   event.pos = event._pos;
   return event;
 }
