@@ -5,6 +5,8 @@ export type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
 
 // Drift half-lives (seconds). How long to close 50% of the gap to the
 // server value. Smaller = snappier correction, larger = smoother/lazier.
+// SNAP is just halfLife=0 — the EMA formula's natural limit is alpha=1
+// (100% blend per step), so SNAP is "immediate EMA" with no special case.
 export const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
   snap: { movement: { pos: 0, vel: 0 }, rotation: { pos: 0, vel: 0 } },
   // FAST closes corrections ~twice as fast as MID. SLOW is deliberately
@@ -24,9 +26,10 @@ export const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
 };
 
 /** Frame-rate independent EMA blend factor from a half-life in seconds.
- *  halfLife=0 means snap immediately. */
+ *  halfLife=0 collapses to alpha=1 (immediate / 100% blend) via the
+ *  formula's natural limit — no special branch needed. */
 export function halfLifeBlend(dt: number, halfLife: number): number {
-  return halfLife <= 0 ? 1 : 1 - Math.pow(0.5, dt / halfLife);
+  return 1 - Math.pow(0.5, dt / halfLife);
 }
 
 export function getDriftPreset(mode: DriftMode): DriftPreset {
