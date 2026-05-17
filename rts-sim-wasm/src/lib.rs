@@ -7459,6 +7459,54 @@ pub fn snapshot_encode_shroud_scratch_ensure(byte_count: u32) {
     }
 }
 
+/// Shared numeric scratch for low-frequency top-level snapshot
+/// payloads such as terrain and buildability. JS packs one or more
+/// number arrays back-to-back, then passes offsets/counts into the
+/// dedicated envelope emitters below.
+struct SnapshotEncodeNumberScratch {
+    buf: Vec<f64>,
+}
+
+struct SnapshotEncodeNumberScratchHolder(UnsafeCell<Option<SnapshotEncodeNumberScratch>>);
+unsafe impl Sync for SnapshotEncodeNumberScratchHolder {}
+static SNAPSHOT_ENCODE_NUMBER_SCRATCH: SnapshotEncodeNumberScratchHolder =
+    SnapshotEncodeNumberScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_number_scratch() -> &'static mut SnapshotEncodeNumberScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_NUMBER_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodeNumberScratch { buf: vec![0.0; 4096] });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_number_scratch_ptr() -> *const f64 {
+    snapshot_encode_number_scratch().buf.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn snapshot_encode_number_scratch_ensure(number_count: u32) {
+    let s = snapshot_encode_number_scratch();
+    if s.buf.len() < number_count as usize {
+        s.buf.resize(number_count as usize, 0.0);
+    }
+}
+
+#[inline]
+fn write_number_array_from_scratch(w: &mut MessagePackWriter, offset: u32, count: u32) {
+    let scratch = snapshot_encode_number_scratch();
+    let start = offset as usize;
+    let n = count as usize;
+    w.write_array_header(n);
+    for i in 0..n {
+        w.write_number(scratch.buf[start + i]);
+    }
+}
+
 /// Scan-pulse scratch — 6 f64 per pulse:
 ///   [0] playerId   [1] x   [2] y   [3] z
 ///   [4] radius     [5] expiresAtTick
@@ -8547,6 +8595,108 @@ pub fn snapshot_encode_envelope_emit_shroud(
     w.write_number(cell_size);
     w.write_str("bitmap");
     w.write_bin(&scratch.buf[0..n]);
+    w.buf.len() as u32
+}
+
+/// Append the static `terrain` top-level snapshot key. Full keyframes
+/// use this to ship the authoritative TerrainTileMap without falling
+/// back to JS object MessagePack encoding.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_terrain(
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    subdiv: f64,
+    cells_x: f64,
+    cells_y: f64,
+    vertices_x: f64,
+    vertices_y: f64,
+    version: f64,
+    mesh_vertex_coords_offset: u32,
+    mesh_vertex_coords_count: u32,
+    mesh_vertex_heights_offset: u32,
+    mesh_vertex_heights_count: u32,
+    mesh_triangle_indices_offset: u32,
+    mesh_triangle_indices_count: u32,
+    mesh_triangle_levels_offset: u32,
+    mesh_triangle_levels_count: u32,
+    mesh_triangle_neighbor_indices_offset: u32,
+    mesh_triangle_neighbor_indices_count: u32,
+    mesh_triangle_neighbor_levels_offset: u32,
+    mesh_triangle_neighbor_levels_count: u32,
+    mesh_cell_triangle_offsets_offset: u32,
+    mesh_cell_triangle_offsets_count: u32,
+    mesh_cell_triangle_indices_offset: u32,
+    mesh_cell_triangle_indices_count: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    w.write_str("terrain");
+    w.write_map_header(17);
+
+    w.write_str("mapWidth"); w.write_number(map_width);
+    w.write_str("mapHeight"); w.write_number(map_height);
+    w.write_str("cellSize"); w.write_number(cell_size);
+    w.write_str("subdiv"); w.write_number(subdiv);
+    w.write_str("cellsX"); w.write_number(cells_x);
+    w.write_str("cellsY"); w.write_number(cells_y);
+    w.write_str("verticesX"); w.write_number(vertices_x);
+    w.write_str("verticesY"); w.write_number(vertices_y);
+    w.write_str("version"); w.write_number(version);
+
+    w.write_str("meshVertexCoords");
+    write_number_array_from_scratch(w, mesh_vertex_coords_offset, mesh_vertex_coords_count);
+    w.write_str("meshVertexHeights");
+    write_number_array_from_scratch(w, mesh_vertex_heights_offset, mesh_vertex_heights_count);
+    w.write_str("meshTriangleIndices");
+    write_number_array_from_scratch(w, mesh_triangle_indices_offset, mesh_triangle_indices_count);
+    w.write_str("meshTriangleLevels");
+    write_number_array_from_scratch(w, mesh_triangle_levels_offset, mesh_triangle_levels_count);
+    w.write_str("meshTriangleNeighborIndices");
+    write_number_array_from_scratch(w, mesh_triangle_neighbor_indices_offset, mesh_triangle_neighbor_indices_count);
+    w.write_str("meshTriangleNeighborLevels");
+    write_number_array_from_scratch(w, mesh_triangle_neighbor_levels_offset, mesh_triangle_neighbor_levels_count);
+    w.write_str("meshCellTriangleOffsets");
+    write_number_array_from_scratch(w, mesh_cell_triangle_offsets_offset, mesh_cell_triangle_offsets_count);
+    w.write_str("meshCellTriangleIndices");
+    write_number_array_from_scratch(w, mesh_cell_triangle_indices_offset, mesh_cell_triangle_indices_count);
+
+    w.buf.len() as u32
+}
+
+/// Append the static `buildability` top-level snapshot key. The
+/// configKey string is read from string scratch; flags/levels are read
+/// from the shared numeric scratch as JS-number arrays so MessagePack
+/// integer/float selection stays byte-identical with @msgpack/msgpack.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_buildability(
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    cells_x: f64,
+    cells_y: f64,
+    version: f64,
+    config_key_slot: u32,
+    flags_offset: u32,
+    flags_count: u32,
+    levels_offset: u32,
+    levels_count: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    w.write_str("buildability");
+    w.write_map_header(9);
+
+    w.write_str("mapWidth"); w.write_number(map_width);
+    w.write_str("mapHeight"); w.write_number(map_height);
+    w.write_str("cellSize"); w.write_number(cell_size);
+    w.write_str("cellsX"); w.write_number(cells_x);
+    w.write_str("cellsY"); w.write_number(cells_y);
+    w.write_str("version"); w.write_number(version);
+    w.write_str("configKey"); write_string_from_scratch(w, config_key_slot);
+    w.write_str("flags");
+    write_number_array_from_scratch(w, flags_offset, flags_count);
+    w.write_str("levels");
+    write_number_array_from_scratch(w, levels_offset, levels_count);
+
     w.buf.len() as u32
 }
 

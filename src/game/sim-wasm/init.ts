@@ -153,6 +153,10 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
+  snapshot_encode_envelope_emit_terrain,
+  snapshot_encode_envelope_emit_buildability,
+  snapshot_encode_number_scratch_ptr,
+  snapshot_encode_number_scratch_ensure,
   snapshot_encode_envelope_emit_spray_targets,
   snapshot_encode_spray_scratch_ptr,
   snapshot_encode_spray_scratch_ensure,
@@ -1131,6 +1135,55 @@ export interface SnapshotEncodeApi {
   shroudScratchPtr: () => number;
   /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
   shroudScratchEnsure: (byteCount: number) => void;
+  /** Emit `terrain: TerrainTileMap`. Terrain number arrays must be
+   *  packed into number scratch, with offsets/counts passed for each
+   *  array in TerrainTileMap field order. */
+  emitTerrain: (
+    mapWidth: number,
+    mapHeight: number,
+    cellSize: number,
+    subdiv: number,
+    cellsX: number,
+    cellsY: number,
+    verticesX: number,
+    verticesY: number,
+    version: number,
+    meshVertexCoordsOffset: number,
+    meshVertexCoordsCount: number,
+    meshVertexHeightsOffset: number,
+    meshVertexHeightsCount: number,
+    meshTriangleIndicesOffset: number,
+    meshTriangleIndicesCount: number,
+    meshTriangleLevelsOffset: number,
+    meshTriangleLevelsCount: number,
+    meshTriangleNeighborIndicesOffset: number,
+    meshTriangleNeighborIndicesCount: number,
+    meshTriangleNeighborLevelsOffset: number,
+    meshTriangleNeighborLevelsCount: number,
+    meshCellTriangleOffsetsOffset: number,
+    meshCellTriangleOffsetsCount: number,
+    meshCellTriangleIndicesOffset: number,
+    meshCellTriangleIndicesCount: number,
+  ) => number;
+  /** Emit `buildability: TerrainBuildabilityGrid`. configKey must be
+   *  in string scratch; flags/levels live in number scratch. */
+  emitBuildability: (
+    mapWidth: number,
+    mapHeight: number,
+    cellSize: number,
+    cellsX: number,
+    cellsY: number,
+    version: number,
+    configKeySlot: number,
+    flagsOffset: number,
+    flagsCount: number,
+    levelsOffset: number,
+    levelsCount: number,
+  ) => number;
+  /** Shared Float64 scratch for top-level numeric arrays. */
+  numberScratchPtr: () => number;
+  /** Pre-grow the shared numeric scratch to hold `numberCount` f64s. */
+  numberScratchEnsure: (numberCount: number) => void;
   /** Emit `sprayTargets: [...]`. Sits between economy and projectiles
    *  in iteration order. Reads `count` entries (16 f64 each) from the
    *  spray scratch. */
@@ -1651,6 +1704,10 @@ export function initSimWasm(): Promise<SimWasm> {
           emitShroud: snapshot_encode_envelope_emit_shroud,
           shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
           shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
+          emitTerrain: snapshot_encode_envelope_emit_terrain,
+          emitBuildability: snapshot_encode_envelope_emit_buildability,
+          numberScratchPtr: snapshot_encode_number_scratch_ptr,
+          numberScratchEnsure: snapshot_encode_number_scratch_ensure,
           emitSprayTargets: snapshot_encode_envelope_emit_spray_targets,
           sprayScratchPtr: snapshot_encode_spray_scratch_ptr,
           sprayScratchEnsure: snapshot_encode_spray_scratch_ensure,

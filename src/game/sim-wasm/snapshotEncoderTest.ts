@@ -34,6 +34,10 @@ import {
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
+  snapshot_encode_envelope_emit_terrain,
+  snapshot_encode_envelope_emit_buildability,
+  snapshot_encode_number_scratch_ptr,
+  snapshot_encode_number_scratch_ensure,
   snapshot_encode_minimap_scratch_ptr,
   snapshot_encode_minimap_scratch_ensure,
   snapshot_encode_beam_update_scratch_ptr,
@@ -1858,6 +1862,113 @@ function packShroudBitmapIntoScratch(
   view.set(bitmap);
 }
 
+const _numberArrayOffsets: number[] = [];
+
+function packNumberArraysIntoScratch(
+  memory: WebAssembly.Memory,
+  arrays: readonly (readonly number[])[],
+): readonly number[] {
+  _numberArrayOffsets.length = 0;
+  let total = 0;
+  for (let i = 0; i < arrays.length; i++) {
+    _numberArrayOffsets.push(total);
+    total += arrays[i].length;
+  }
+  snapshot_encode_number_scratch_ensure(Math.max(total, 1));
+  const ptr = snapshot_encode_number_scratch_ptr();
+  const view = new Float64Array(memory.buffer, ptr, total);
+  let offset = 0;
+  for (let i = 0; i < arrays.length; i++) {
+    const src = arrays[i];
+    for (let j = 0; j < src.length; j++) {
+      view[offset + j] = src[j];
+    }
+    offset += src.length;
+  }
+  return _numberArrayOffsets;
+}
+
+type TerrainFixture = {
+  mapWidth: number;
+  mapHeight: number;
+  cellSize: number;
+  subdiv: number;
+  cellsX: number;
+  cellsY: number;
+  verticesX: number;
+  verticesY: number;
+  version: number;
+  meshVertexCoords: number[];
+  meshVertexHeights: number[];
+  meshTriangleIndices: number[];
+  meshTriangleLevels: number[];
+  meshTriangleNeighborIndices: number[];
+  meshTriangleNeighborLevels: number[];
+  meshCellTriangleOffsets: number[];
+  meshCellTriangleIndices: number[];
+};
+
+function emitTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFixture): void {
+  const arrays = [
+    terrain.meshVertexCoords,
+    terrain.meshVertexHeights,
+    terrain.meshTriangleIndices,
+    terrain.meshTriangleLevels,
+    terrain.meshTriangleNeighborIndices,
+    terrain.meshTriangleNeighborLevels,
+    terrain.meshCellTriangleOffsets,
+    terrain.meshCellTriangleIndices,
+  ] as const;
+  const offsets = packNumberArraysIntoScratch(memory, arrays);
+  snapshot_encode_envelope_emit_terrain(
+    terrain.mapWidth,
+    terrain.mapHeight,
+    terrain.cellSize,
+    terrain.subdiv,
+    terrain.cellsX,
+    terrain.cellsY,
+    terrain.verticesX,
+    terrain.verticesY,
+    terrain.version,
+    offsets[0], terrain.meshVertexCoords.length,
+    offsets[1], terrain.meshVertexHeights.length,
+    offsets[2], terrain.meshTriangleIndices.length,
+    offsets[3], terrain.meshTriangleLevels.length,
+    offsets[4], terrain.meshTriangleNeighborIndices.length,
+    offsets[5], terrain.meshTriangleNeighborLevels.length,
+    offsets[6], terrain.meshCellTriangleOffsets.length,
+    offsets[7], terrain.meshCellTriangleIndices.length,
+  );
+}
+
+type BuildabilityFixture = {
+  mapWidth: number;
+  mapHeight: number;
+  cellSize: number;
+  cellsX: number;
+  cellsY: number;
+  version: number;
+  configKey: string;
+  flags: number[];
+  levels: number[];
+};
+
+function emitBuildabilityFixture(memory: WebAssembly.Memory, buildability: BuildabilityFixture): void {
+  const offsets = packNumberArraysIntoScratch(memory, [buildability.flags, buildability.levels]);
+  packStringsIntoScratch(memory, [buildability.configKey]);
+  snapshot_encode_envelope_emit_buildability(
+    buildability.mapWidth,
+    buildability.mapHeight,
+    buildability.cellSize,
+    buildability.cellsX,
+    buildability.cellsY,
+    buildability.version,
+    0,
+    offsets[0], buildability.flags.length,
+    offsets[1], buildability.levels.length,
+  );
+}
+
 type ScanPulseFixture = {
   playerId: number;
   x: number; y: number; z: number;
@@ -1901,6 +2012,8 @@ type EnvelopeFixture = {
   visibilityFiltered?: boolean;
   scanPulses?: ScanPulseFixture[];
   shroud?: ShroudFixture;
+  terrain?: TerrainFixture;
+  buildability?: BuildabilityFixture;
 };
 
 function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
@@ -2656,6 +2769,44 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       },
       isDelta: true,
     },
+    // Full keyframe static terrain + buildability after the common
+    // envelope tail. The small arrays preserve the real DTO field
+    // order without making the dev parity fixture heavy.
+    {
+      tick: 1000, entities: [], economy: {},
+      gameState: { phase: 'battle' },
+      isDelta: false,
+      terrain: {
+        mapWidth: 400,
+        mapHeight: 300,
+        cellSize: 20,
+        subdiv: 2,
+        cellsX: 20,
+        cellsY: 15,
+        verticesX: 41,
+        verticesY: 31,
+        version: 7,
+        meshVertexCoords: [0, 0, 20, 0, 0, 20],
+        meshVertexHeights: [0, 1.5, -2],
+        meshTriangleIndices: [0, 1, 2],
+        meshTriangleLevels: [0],
+        meshTriangleNeighborIndices: [-1, 2, 3],
+        meshTriangleNeighborLevels: [-1, 1, 1],
+        meshCellTriangleOffsets: [0, 1, 1],
+        meshCellTriangleIndices: [0],
+      },
+      buildability: {
+        mapWidth: 400,
+        mapHeight: 300,
+        cellSize: 40,
+        cellsX: 10,
+        cellsY: 8,
+        version: 7,
+        configKey: 'plateau-a',
+        flags: [1, 0, 1, 1],
+        levels: [0, 0, 2, 2],
+      },
+    },
   ];
 
   let passed = 0;
@@ -2674,6 +2825,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     const hasVisibilityFiltered = f.visibilityFiltered !== undefined ? 1 : 0;
     const hasScanPulses = f.scanPulses !== undefined ? 1 : 0;
     const hasShroud = f.shroud !== undefined ? 1 : 0;
+    const hasTerrain = f.terrain !== undefined ? 1 : 0;
+    const hasBuildability = f.buildability !== undefined ? 1 : 0;
     const totalKeyCount =
       2 /* tick + entities */ +
       hasMinimap +
@@ -2686,7 +2839,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       hasRemovedIds +
       hasVisibilityFiltered +
       hasScanPulses +
-      hasShroud;
+      hasShroud +
+      hasTerrain +
+      hasBuildability;
 
     // Pre-pack all scratches before any kernel call. String scratch
     // collects every string needed by THIS envelope's encode (waypoint
@@ -2941,6 +3096,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       snapshot_encode_envelope_emit_shroud(
         f.shroud.gridW, f.shroud.gridH, f.shroud.cellSize, f.shroud.bitmap.length,
       );
+    }
+    if (hasTerrain && f.terrain) {
+      emitTerrainFixture(memory, f.terrain);
+    }
+    if (hasBuildability && f.buildability) {
+      emitBuildabilityFixture(memory, f.buildability);
     }
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();

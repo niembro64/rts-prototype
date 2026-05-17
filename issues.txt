@@ -34,9 +34,11 @@ src/game/sim-wasm/snapshotEncoderTest.ts checks byte-equality fixtures.
 The normal envelope tail is now Rust-emitted for gameState, isDelta,
 removedEntityIds, and visibilityFiltered when the snapshot key order is
 compatible; raw top-level fallback remains for unported/debug fields such as
-grid, terrain/buildability, and unsupported audio/projectile variants.
+grid and unsupported audio/projectile variants.
 serverMeta is now Rust-emitted, including numeric and string snapshot/keyframe
 display values.
+Full-keyframe static terrain and buildability are now Rust-emitted instead of
+using raw top-level MessagePack fallback.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes
@@ -53,11 +55,11 @@ raw MessagePack fallback counters so the remaining burn-down is measurable.
 Normal 1k and 5k delta parity probes now send through Rust with zero mismatches
 and zero raw entity fallback after making pooled DTO scratch fields
 non-enumerable and stabilizing entity changedFields key order. Full-keyframe
-raw top-level fallback remains for terrain and buildability.
+terrain/buildability parity now stays on the Rust path.
 
 Steps:
-1. Use the Rust parity flag to burn down byte mismatches, raw entity fallback,
-   and raw top-level fallback until normal live snapshots are fully Rust-encoded.
+1. Keep the Rust parity flag focused on debug-grid and unsupported variant raw
+   fallback while normal live snapshots stay fully Rust-encoded.
 2. Remove DTO construction from the hottest entity/projectile/economy paths by
    writing directly from SoA/WASM-side pools into the binary envelope.
 3. Keep the old object decoder only as a temporary compatibility/debug path, then

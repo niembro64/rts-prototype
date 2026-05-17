@@ -12,6 +12,7 @@ import type {
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
 } from './NetworkTypes';
+import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
   getSimWasm,
   SNAPSHOT_ENTITY_TYPE_BUILDING,
@@ -55,6 +56,14 @@ function isFiniteNumberOrString(value: unknown): value is number | string {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function isFiniteNumberArray(value: unknown): value is readonly number[] {
+  if (!Array.isArray(value)) return false;
+  for (let i = 0; i < value.length; i++) {
+    if (!isFiniteNumber(value[i])) return false;
+  }
+  return true;
 }
 
 function writeStringsIntoScratch(
@@ -1080,6 +1089,117 @@ function packShroudIntoScratch(sim: SimWasm, shroud: NonNullable<NetworkServerSn
     .set(shroud.bitmap);
 }
 
+const _numberArrayOffsets: number[] = [];
+
+function packNumberArraysIntoScratch(
+  sim: SimWasm,
+  arrays: readonly (readonly number[])[],
+): readonly number[] {
+  _numberArrayOffsets.length = 0;
+  let total = 0;
+  for (let i = 0; i < arrays.length; i++) {
+    _numberArrayOffsets.push(total);
+    total += arrays[i].length;
+  }
+  const api = sim.snapshotEncode;
+  api.numberScratchEnsure(Math.max(total, 1));
+  const view = new Float64Array(sim.memory.buffer, api.numberScratchPtr(), total);
+  let offset = 0;
+  for (let i = 0; i < arrays.length; i++) {
+    const src = arrays[i];
+    for (let j = 0; j < src.length; j++) {
+      view[offset + j] = src[j];
+    }
+    offset += src.length;
+  }
+  return _numberArrayOffsets;
+}
+
+function canEncodeTerrain(terrain: TerrainTileMap): boolean {
+  return (
+    isFiniteNumber(terrain.mapWidth) &&
+    isFiniteNumber(terrain.mapHeight) &&
+    isFiniteNumber(terrain.cellSize) &&
+    isFiniteNumber(terrain.subdiv) &&
+    isFiniteNumber(terrain.cellsX) &&
+    isFiniteNumber(terrain.cellsY) &&
+    isFiniteNumber(terrain.verticesX) &&
+    isFiniteNumber(terrain.verticesY) &&
+    isFiniteNumber(terrain.version) &&
+    isFiniteNumberArray(terrain.meshVertexCoords) &&
+    isFiniteNumberArray(terrain.meshVertexHeights) &&
+    isFiniteNumberArray(terrain.meshTriangleIndices) &&
+    isFiniteNumberArray(terrain.meshTriangleLevels) &&
+    isFiniteNumberArray(terrain.meshTriangleNeighborIndices) &&
+    isFiniteNumberArray(terrain.meshTriangleNeighborLevels) &&
+    isFiniteNumberArray(terrain.meshCellTriangleOffsets) &&
+    isFiniteNumberArray(terrain.meshCellTriangleIndices)
+  );
+}
+
+function emitTerrain(sim: SimWasm, terrain: TerrainTileMap): void {
+  const arrays = [
+    terrain.meshVertexCoords,
+    terrain.meshVertexHeights,
+    terrain.meshTriangleIndices,
+    terrain.meshTriangleLevels,
+    terrain.meshTriangleNeighborIndices,
+    terrain.meshTriangleNeighborLevels,
+    terrain.meshCellTriangleOffsets,
+    terrain.meshCellTriangleIndices,
+  ] as const;
+  const offsets = packNumberArraysIntoScratch(sim, arrays);
+  sim.snapshotEncode.emitTerrain(
+    terrain.mapWidth,
+    terrain.mapHeight,
+    terrain.cellSize,
+    terrain.subdiv,
+    terrain.cellsX,
+    terrain.cellsY,
+    terrain.verticesX,
+    terrain.verticesY,
+    terrain.version,
+    offsets[0], terrain.meshVertexCoords.length,
+    offsets[1], terrain.meshVertexHeights.length,
+    offsets[2], terrain.meshTriangleIndices.length,
+    offsets[3], terrain.meshTriangleLevels.length,
+    offsets[4], terrain.meshTriangleNeighborIndices.length,
+    offsets[5], terrain.meshTriangleNeighborLevels.length,
+    offsets[6], terrain.meshCellTriangleOffsets.length,
+    offsets[7], terrain.meshCellTriangleIndices.length,
+  );
+}
+
+function canEncodeBuildability(buildability: TerrainBuildabilityGrid): boolean {
+  return (
+    isFiniteNumber(buildability.mapWidth) &&
+    isFiniteNumber(buildability.mapHeight) &&
+    isFiniteNumber(buildability.cellSize) &&
+    isFiniteNumber(buildability.cellsX) &&
+    isFiniteNumber(buildability.cellsY) &&
+    isFiniteNumber(buildability.version) &&
+    typeof buildability.configKey === 'string' &&
+    isFiniteNumberArray(buildability.flags) &&
+    isFiniteNumberArray(buildability.levels)
+  );
+}
+
+function emitBuildability(sim: SimWasm, buildability: TerrainBuildabilityGrid): void {
+  const offsets = packNumberArraysIntoScratch(sim, [buildability.flags, buildability.levels]);
+  packOrderedStringsIntoScratch(sim, [buildability.configKey]);
+  sim.snapshotEncode.emitBuildability(
+    buildability.mapWidth,
+    buildability.mapHeight,
+    buildability.cellSize,
+    buildability.cellsX,
+    buildability.cellsY,
+    buildability.version,
+    0,
+    offsets[0], buildability.flags.length,
+    offsets[1], buildability.levels.length,
+  );
+}
+
 function packRemovedIdsIntoScratch(sim: SimWasm, ids: readonly number[]): void {
   if (ids.length === 0) return;
   const api = sim.snapshotEncode;
@@ -1167,6 +1287,26 @@ function emitTopLevelKey(
       const shroud = value as NonNullable<NetworkServerSnapshot['shroud']>;
       packShroudIntoScratch(sim, shroud);
       api.emitShroud(shroud.gridW, shroud.gridH, shroud.cellSize, shroud.bitmap.length);
+      return;
+    }
+    case 'terrain': {
+      const terrain = value as TerrainTileMap;
+      if (!canEncodeTerrain(terrain)) {
+        rawTopLevelKeys.push(key);
+        emitRawKeyValue(api, key, value);
+        return;
+      }
+      emitTerrain(sim, terrain);
+      return;
+    }
+    case 'buildability': {
+      const buildability = value as TerrainBuildabilityGrid;
+      if (!canEncodeBuildability(buildability)) {
+        rawTopLevelKeys.push(key);
+        emitRawKeyValue(api, key, value);
+        return;
+      }
+      emitBuildability(sim, buildability);
       return;
     }
     default:
