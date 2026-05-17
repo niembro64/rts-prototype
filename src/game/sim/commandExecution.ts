@@ -48,6 +48,10 @@ import { setWeaponTarget } from './combat/targetIndex';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
 import {
+  ATTACK_AREA_MAX_RADIUS,
+  REPAIR_AREA_MAX_RADIUS,
+} from './commandLimits';
+import {
   getActionIntentStart,
   getFirstActionIntentEnd,
   getLastActionIntentFinalIndex,
@@ -56,9 +60,6 @@ import {
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
-const REPAIR_AREA_MAX_RADIUS = 500;
-const ATTACK_AREA_MAX_RADIUS = 700;
-
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
   const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
   return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;

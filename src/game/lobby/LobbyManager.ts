@@ -148,7 +148,7 @@ export async function createBackgroundBattle(
     spawnDemoInitialState: !isLobbyPreview,
   });
 
-  const connection = new LocalGameConnection(server, resolvedLocalPlayerId);
+  const connection = new LocalGameConnection(server, resolvedLocalPlayerId, 'local-offline');
   applyStoredBattleServerSettings(server, mode, { ipAddress });
 
   // Tell the AI / UI layer about the same selection (the GameServer

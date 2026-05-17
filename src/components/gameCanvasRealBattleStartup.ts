@@ -8,7 +8,10 @@ import {
 } from '../battleBarConfig';
 import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../game/sim/Terrain';
 import { GameServer } from '../game/server/GameServer';
-import { LocalGameConnection } from '../game/server/LocalGameConnection';
+import {
+  LocalGameConnection,
+  type LocalCommandAuthorityMode,
+} from '../game/server/LocalGameConnection';
 import { RemoteGameConnection } from '../game/server/RemoteGameConnection';
 import { applyStoredBattleServerSettings } from '../game/server/battleServerSettings';
 import type { GameConnection } from '../game/server/GameConnection';
@@ -63,8 +66,9 @@ export function createRemoteRealBattleConnection(): GameConnection {
 export function createLocalRealBattleConnection(
   server: GameServer,
   localPlayerId: PlayerId | undefined,
+  commandAuthorityMode: LocalCommandAuthorityMode = 'player',
 ): GameConnection {
-  return new LocalGameConnection(server, localPlayerId);
+  return new LocalGameConnection(server, localPlayerId, commandAuthorityMode);
 }
 
 export async function createRealBattleServer({

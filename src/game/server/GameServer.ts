@@ -69,6 +69,13 @@ import {
   isForceFieldReflectionMode,
   type ForceFieldReflectionMode,
 } from '../../types/shotTypes';
+import {
+  canApplyServerControlCommand,
+  canBypassGameplayOwnership,
+  commandAuthorityPlayerId,
+  type CommandAuthority,
+} from './commandAuthority';
+import { sanitizeCommand } from './commandSanitizer';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -435,73 +442,77 @@ export class GameServer {
   }
 
   // Receive a command from a client
-  receiveCommand(command: Command, fromPlayerId?: PlayerId): void {
+  receiveCommand(command: Command, authority: CommandAuthority): void {
+    const sanitizedCommand = sanitizeCommand(command, this.world);
+    if (!sanitizedCommand) return;
+
     // Intercept server config commands (don't need tick synchronization)
-    switch (command.type) {
+    switch (sanitizedCommand.type) {
       case 'setSnapshotRate':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setSnapshotRate(command.rate);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setSnapshotRate(sanitizedCommand.rate);
         return;
       case 'setKeyframeRatio':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setKeyframeRatio(command.ratio);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setKeyframeRatio(sanitizedCommand.ratio);
         return;
       case 'setTickRate':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setTickRate(command.rate);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setTickRate(sanitizedCommand.rate);
         return;
       case 'setTiltEmaMode':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
+        if (!this.canApplyServerControlCommand(authority)) return;
         // updateUnitTilt reads its mode from the unitTilt module's
         // private state; flipping it from a command keeps host +
         // every client running with the same effective EMA the
         // moment the user clicks the bar button.
-        setTiltEmaMode(command.mode);
+        setTiltEmaMode(sanitizedCommand.mode);
         return;
       case 'setSendGridInfo':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setSendGridInfo(command.enabled);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setSendGridInfo(sanitizedCommand.enabled);
         return;
       case 'setBackgroundUnitType':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setBackgroundUnitTypeEnabled(command.unitType, command.enabled);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setBackgroundUnitTypeEnabled(sanitizedCommand.unitType, sanitizedCommand.enabled);
         return;
       case 'setMaxTotalUnits':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.world.maxTotalUnits = command.maxTotalUnits;
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.world.maxTotalUnits = sanitizedCommand.maxTotalUnits;
         return;
       case 'setMirrorsEnabled':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setMirrorsEnabled(command.enabled);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setMirrorsEnabled(sanitizedCommand.enabled);
         return;
       case 'setForceFieldsEnabled':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setForceFieldsEnabled(command.enabled);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setForceFieldsEnabled(sanitizedCommand.enabled);
         return;
       case 'setForceFieldsBlockTargeting':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setForceFieldsBlockTargeting(command.enabled);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setForceFieldsBlockTargeting(sanitizedCommand.enabled);
         return;
       case 'setForceFieldReflectionMode':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setForceFieldReflectionMode(command.mode);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setForceFieldReflectionMode(sanitizedCommand.mode);
         return;
       case 'setFogOfWarEnabled':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setFogOfWarEnabled(command.enabled);
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setFogOfWarEnabled(sanitizedCommand.enabled);
         return;
     }
-    const authorizedCommand = this.authorizeGameplayCommand(command, fromPlayerId);
+    const authorizedCommand = this.authorizeGameplayCommand(sanitizedCommand, authority);
     if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
   }
 
-  private canApplyServerControlCommand(fromPlayerId?: PlayerId): boolean {
-    if (fromPlayerId === undefined) return true;
-    return fromPlayerId === this.playerIds[0];
+  private canApplyServerControlCommand(authority: CommandAuthority): boolean {
+    return canApplyServerControlCommand(authority, this.playerIds[0]);
   }
 
-  private authorizeGameplayCommand(command: Command, fromPlayerId?: PlayerId): Command | null {
-    if (fromPlayerId === undefined) return command;
+  private authorizeGameplayCommand(command: Command, authority: CommandAuthority): Command | null {
+    if (canBypassGameplayOwnership(authority)) return command;
+    const playerId = commandAuthorityPlayerId(authority);
+    if (playerId === undefined) return null;
 
     switch (command.type) {
       case 'select':
@@ -511,58 +522,58 @@ export class GameServer {
         return null;
 
       case 'ping':
-        return this.authorizePingCommand(command, fromPlayerId);
+        return this.authorizePingCommand(command, playerId);
 
       case 'scan':
-        return this.authorizeScanCommand(command, fromPlayerId);
+        return this.authorizeScanCommand(command, playerId);
 
       case 'move':
-        return this.authorizeMoveCommand(command, fromPlayerId);
+        return this.authorizeMoveCommand(command, playerId);
 
       case 'stop':
       case 'clearQueuedOrders':
       case 'removeLastQueuedOrder':
-        return this.authorizeUnitListCommand(command, fromPlayerId);
+        return this.authorizeUnitListCommand(command, playerId);
 
       case 'wait':
-        return this.authorizeUnitListCommand(command, fromPlayerId);
+        return this.authorizeUnitListCommand(command, playerId);
 
       case 'setJumpEnabled':
-        return this.authorizeUnitListCommand(command, fromPlayerId);
+        return this.authorizeUnitListCommand(command, playerId);
 
       case 'setFireEnabled':
-        return this.authorizeUnitListCommand(command, fromPlayerId);
+        return this.authorizeUnitListCommand(command, playerId);
 
       case 'attack':
       case 'attackGround':
       case 'attackArea':
-        return this.authorizeUnitListCommand(command, fromPlayerId);
+        return this.authorizeUnitListCommand(command, playerId);
 
       case 'guard':
-        if (!this.isOwnedEntity(command.targetId, fromPlayerId)) return null;
-        return this.authorizeUnitListCommand(command, fromPlayerId);
+        if (!this.isOwnedEntity(command.targetId, playerId)) return null;
+        return this.authorizeUnitListCommand(command, playerId);
 
       case 'startBuild':
-        return this.isOwnedEntity(command.builderId, fromPlayerId) ? command : null;
+        return this.isOwnedEntity(command.builderId, playerId) ? command : null;
 
       case 'queueUnit':
       case 'cancelQueueItem':
       case 'setRallyPoint':
       case 'setFactoryWaypoints':
-        return this.isOwnedFactory(command.factoryId, fromPlayerId) ? command : null;
+        return this.isOwnedFactory(command.factoryId, playerId) ? command : null;
 
       case 'fireDGun':
-        return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
+        return this.isOwnedEntity(command.commanderId, playerId) ? command : null;
 
       case 'repair':
-        if (!this.isOwnedEntity(command.commanderId, fromPlayerId)) return null;
-        return this.isOwnedEntity(command.targetId, fromPlayerId) ? command : null;
+        if (!this.isOwnedEntity(command.commanderId, playerId)) return null;
+        return this.isOwnedEntity(command.targetId, playerId) ? command : null;
 
       case 'repairArea':
-        return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
+        return this.isOwnedEntity(command.commanderId, playerId) ? command : null;
 
       case 'reclaim':
-        return this.isOwnedEntity(command.commanderId, fromPlayerId) ? command : null;
+        return this.isOwnedEntity(command.commanderId, playerId) ? command : null;
 
       default:
         return null;

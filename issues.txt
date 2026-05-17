@@ -140,22 +140,22 @@ safe gameplay commands.
 Current:
 GameServer.receiveCommand already keeps server-control commands host-only for
 network players and filters many gameplay commands by owned entity/factory.
-However, fromPlayerId === undefined is an admin override, server-control commands
-apply immediately outside the normal command queue, and several command payloads
-still need a single sanitization layer for finite values, map bounds, radii,
-queue indexes, unit/building IDs, and enum strings.
+Command callers now pass an explicit authority mode: host-admin, local-offline,
+player, or spectator. Spectator/local undefined command attribution no longer
+falls through to an admin override. All command paths now pass through a single
+server-side sanitizer before authorization; it rejects malformed ticks, entity
+IDs, queue indexes, unit/building IDs, waypoint/tilt/force-field enum strings,
+and boolean flags, clamps x/y targets to the map, caps area radii, and caps
+factory waypoint counts. However, ownership authorization still lives in
+GameServer, and server-control commands apply immediately outside the normal
+command queue.
 
 Steps:
-1. Replace the implicit undefined-player override with explicit authority modes:
-   host-admin, local-offline, player, spectator.
-2. Create a single sanitize/authorize command module used by local, host, and
-   remote command paths.
-3. Clamp target coordinates to the map, reject non-finite values, cap radii and
-   waypoint counts, validate queue indexes, and validate unit/building/shot enum
-   values before enqueue.
-4. Decide which server-control commands are truly immediate and which should be
+1. Move the remaining ownership authorization helpers into the command boundary
+   module so sanitization and authorization have one owner.
+2. Decide which server-control commands are truly immediate and which should be
    queued or snapshot-versioned.
-5. Add hostile-client tests for wrong-owner unit IDs, mixed-owner selections,
+3. Add hostile-client tests for wrong-owner unit IDs, mixed-owner selections,
    bad coordinates, invalid queue indexes, invalid unit IDs, and spectator input.
 
 DP-05 - Make AOI and fog filtering the default remote snapshot path.

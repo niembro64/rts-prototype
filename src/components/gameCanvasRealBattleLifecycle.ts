@@ -85,7 +85,7 @@ export function useGameCanvasRealBattleLifecycle(): GameCanvasRealBattleLifecycl
     }
 
     network.onCommandReceived = (command, fromPlayerId) => {
-      getCurrentServer()?.receiveCommand(command, fromPlayerId);
+      getCurrentServer()?.receiveCommand(command, { mode: 'player', playerId: fromPlayerId });
     };
   }
 

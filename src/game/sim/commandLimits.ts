@@ -1,0 +1,3 @@
+export const REPAIR_AREA_MAX_RADIUS = 500;
+export const ATTACK_AREA_MAX_RADIUS = 700;
+export const MAX_FACTORY_WAYPOINTS_PER_COMMAND = 64;

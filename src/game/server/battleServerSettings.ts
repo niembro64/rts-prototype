@@ -14,6 +14,7 @@ import {
   loadStoredTiltEmaMode,
 } from '../../serverBarConfig';
 import type { GameServer } from './GameServer';
+import type { CommandAuthority } from './commandAuthority';
 
 export type StoredBattleServerSettingsOptions = {
   ipAddress?: string;
@@ -25,6 +26,7 @@ export function applyStoredBattleServerSettings(
   mode: BattleMode,
   options: StoredBattleServerSettingsOptions = {},
 ): void {
+  const authority: CommandAuthority = { mode: 'host-admin' };
   server.setTickRate(loadStoredTickRate());
   server.setSnapshotRate(loadStoredSnapshotRate());
   server.setKeyframeRatio(loadStoredKeyframeRatio());
@@ -32,7 +34,7 @@ export function applyStoredBattleServerSettings(
     type: 'setTiltEmaMode',
     tick: 0,
     mode: loadStoredTiltEmaMode(),
-  });
+  }, authority);
 
   if (options.ipAddress !== undefined) {
     server.setIpAddress(options.ipAddress);
@@ -42,37 +44,37 @@ export function applyStoredBattleServerSettings(
       type: 'setMaxTotalUnits',
       tick: 0,
       maxTotalUnits: options.maxTotalUnits,
-    });
+    }, authority);
   }
 
   server.receiveCommand({
     type: 'setMirrorsEnabled',
     tick: 0,
     enabled: loadStoredMirrorsEnabled(mode),
-  });
+  }, authority);
   server.receiveCommand({
     type: 'setForceFieldsEnabled',
     tick: 0,
     enabled: loadStoredForceFieldsEnabled(mode),
-  });
+  }, authority);
   server.receiveCommand({
     type: 'setForceFieldsBlockTargeting',
     tick: 0,
     enabled: loadStoredForceFieldsBlockTargeting(mode),
-  });
+  }, authority);
   server.receiveCommand({
     type: 'setForceFieldReflectionMode',
     tick: 0,
     mode: loadStoredForceFieldReflectionMode(mode),
-  });
+  }, authority);
   server.receiveCommand({
     type: 'setFogOfWarEnabled',
     tick: 0,
     enabled: loadStoredFogOfWarEnabled(mode),
-  });
+  }, authority);
   server.receiveCommand({
     type: 'setSendGridInfo',
     tick: 0,
     enabled: loadStoredGrid(mode),
-  });
+  }, authority);
 }

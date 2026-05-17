@@ -9,6 +9,9 @@ import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
 import { encodeNetworkSnapshot } from '../network/snapshotWireCodec';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
+import type { CommandAuthority } from './commandAuthority';
+
+export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 
 export class LocalGameConnection implements GameConnection {
   readonly sharesAuthoritativeState = true;
@@ -20,22 +23,26 @@ export class LocalGameConnection implements GameConnection {
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotListenerKey: string;
   private gameOverListenerRef: GameOverCallback;
-  /** Who this client acts as for command attribution. `undefined` =
-   *  admin / spectator (no command authority — sendCommand still
-   *  reaches the server but with `fromPlayerId` blank, so the
-   *  server's authorization layer treats every gameplay command as
-   *  an admin override). */
+  /** Who this client acts as for command attribution. `undefined`
+   *  is an explicit spectator authority: the server receives the
+   *  command but rejects gameplay and server-control mutations. */
   private commandPlayerId?: PlayerId;
+  private commandAuthorityMode: LocalCommandAuthorityMode;
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
    *  commandPlayerId so a true spectator can view-as-N without being
    *  able to issue orders as N (issues.txt FOW-07). */
   private filterPlayerId?: PlayerId;
 
-  constructor(server: GameServer, playerId?: PlayerId) {
+  constructor(
+    server: GameServer,
+    playerId?: PlayerId,
+    commandAuthorityMode: LocalCommandAuthorityMode = 'player',
+  ) {
     this.server = server;
     this.commandPlayerId = playerId;
     this.filterPlayerId = playerId;
+    this.commandAuthorityMode = commandAuthorityMode;
     this.snapshotListenerKey = this.subscribeSnapshots(playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
@@ -116,7 +123,17 @@ export class LocalGameConnection implements GameConnection {
   }
 
   sendCommand(command: Command): void {
-    this.server.receiveCommand(command, this.commandPlayerId);
+    this.server.receiveCommand(command, this.commandAuthority());
+  }
+
+  private commandAuthority(): CommandAuthority {
+    if (this.commandPlayerId === undefined) {
+      return { mode: 'spectator', playerId: this.filterPlayerId };
+    }
+    return {
+      mode: this.commandAuthorityMode,
+      playerId: this.commandPlayerId,
+    };
   }
 
   markClientReady(): void {
