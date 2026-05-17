@@ -9,7 +9,6 @@ export function createInitialMinimapData(
   const viewHeight = Math.min(600, mapHeight);
   return {
     contentVersion: 0,
-    captureVersion: 0,
     mapWidth,
     mapHeight,
     entities: [],
@@ -20,9 +19,6 @@ export function createInitialMinimapData(
       { x: 0, y: viewHeight },
     ],
     cameraYaw: 0,
-    captureTiles: [],
-    captureCellSize: 0,
-    gridOverlayIntensity: 0,
     showTerrain: true,
     wind: undefined,
   };
@@ -33,14 +29,10 @@ export function applyMinimapContentData(
   source: MinimapData,
 ): void {
   target.contentVersion = source.contentVersion;
-  target.captureVersion = source.captureVersion;
   target.entities = source.entities;
   target.mapWidth = source.mapWidth;
   target.mapHeight = source.mapHeight;
   target.cameraYaw = source.cameraYaw;
-  target.captureTiles = source.captureTiles;
-  target.captureCellSize = source.captureCellSize;
-  target.gridOverlayIntensity = source.gridOverlayIntensity;
   target.showTerrain = source.showTerrain;
   target.wind = source.wind;
 }

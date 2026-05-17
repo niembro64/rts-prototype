@@ -2,7 +2,7 @@ import type { EntityId, PlayerId } from './types';
 import { magnitude } from '../math';
 
 // Fine building footprint grid. This intentionally subdivides the
-// canonical LAND_CELL_SIZE cells used for capture/terrain.
+// canonical LAND_CELL_SIZE terrain cells.
 export const BUILD_GRID_CELL_SIZE = 20; // 20x20 world units per cell
 
 export type { GridCell } from '@/types/ui';

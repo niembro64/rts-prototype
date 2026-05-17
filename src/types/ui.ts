@@ -97,26 +97,11 @@ export type MinimapEntity = {
   radarOnly?: boolean;
 };
 
-/** One captured grid cell carried across to the minimap. Mirrors the
- *  3D floating cells overlay's per-tile data exactly so the two
- *  renderers can share a blend formula. cx / cy are integer cell
- *  indices into the `cellSize`-spaced grid; `heights` is a sparse
- *  per-team flag-height map (0–1). */
-export type MinimapCaptureTile = {
-  cx: number;
-  cy: number;
-  heights: Record<number, number>;
-};
-
 export type MinimapData = {
   /** Incremented whenever the minimap content layer changes. This lets
    *  callers reuse entity records without depending on array identity
    *  for redraws. */
   contentVersion: number;
-  /** Incremented only when the terrain/capture background data changes.
-   *  Entity position refreshes should not force the minimap to repaint
-   *  the slow per-pixel terrain/capture layer. */
-  captureVersion: number;
   mapWidth: number;
   mapHeight: number;
   entities: MinimapEntity[];
@@ -132,23 +117,7 @@ export type MinimapData = {
    *  world directions in current screen-space rather than map-space. */
   cameraYaw: number;
 
-  /** Per-tile capture data, paralleled with the 3D floating cells
-   *  overlay. Empty array when the GRID overlay is OFF — the minimap
-   *  uses this as the signal to skip the team-color overlay (one
-   *  switch keeps minimap brightness in lockstep with the 3D grid). */
-  captureTiles: readonly MinimapCaptureTile[];
-  /** World-units side length of a capture grid cell. 0 means "no
-   *  capture data this frame" (e.g. server hasn't sent anything yet);
-   *  the minimap renderer falls back to skipping the overlay. */
-  captureCellSize: number;
-  /** Lerp factor from neutral → dominant team color. Mirrors the
-   *  PLAYER CLIENT GRID intensity (zero → 0, low → 0.04, medium →
-   *  0.1, high → 0.8) so minimap brightness tracks the 3D scene's
-   *  brightness exactly. */
-  gridOverlayIntensity: number;
-  /** Whether to draw the terrain (land + water) layer. This is no
-   *  longer tied to GRID visibility; GRID only controls the capture
-   *  color overlay. */
+  /** Whether to draw the terrain (land + water) layer. */
   showTerrain: boolean;
   wind?: { x: number; y: number; speed: number };
 };

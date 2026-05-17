@@ -24,7 +24,6 @@ const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 type SnapshotEncodeApi = SimWasm['snapshotEncode'];
 type SnapshotUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type SnapshotBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
-type SnapshotCapture = NonNullable<NetworkServerSnapshot['capture']>;
 type SnapshotProjectiles = NonNullable<NetworkServerSnapshot['projectiles']>;
 type SnapshotServerMeta = NetworkServerSnapshotMeta;
 
@@ -1081,44 +1080,6 @@ function packShroudIntoScratch(sim: SimWasm, shroud: NonNullable<NetworkServerSn
     .set(shroud.bitmap);
 }
 
-function packCaptureIntoScratch(sim: SimWasm, capture: SnapshotCapture): void {
-  if (capture.tiles.length === 0) return;
-  let totalHeights = 0;
-  for (const tile of capture.tiles) totalHeights += Object.keys(tile.heights).length;
-
-  const api = sim.snapshotEncode;
-  api.captureTileScratchEnsure(capture.tiles.length);
-  if (totalHeights > 0) api.captureHeightScratchEnsure(totalHeights);
-  const tileView = new Float64Array(
-    sim.memory.buffer,
-    api.captureTileScratchPtr(),
-    capture.tiles.length * api.captureTileScratchStride,
-  );
-  const heightView = totalHeights > 0
-    ? new Float64Array(
-        sim.memory.buffer,
-        api.captureHeightScratchPtr(),
-        totalHeights * api.captureHeightScratchStride,
-      )
-    : new Float64Array(0);
-
-  let heightOffset = 0;
-  for (let i = 0; i < capture.tiles.length; i++) {
-    const tile = capture.tiles[i];
-    const tileBase = i * api.captureTileScratchStride;
-    tileView[tileBase + 0] = tile.cx;
-    tileView[tileBase + 1] = tile.cy;
-    const playerIds = Object.keys(tile.heights).map(Number).sort((a, b) => a - b);
-    tileView[tileBase + 2] = playerIds.length;
-    for (let j = 0; j < playerIds.length; j++) {
-      const heightBase = (heightOffset + j) * api.captureHeightScratchStride;
-      heightView[heightBase + 0] = playerIds[j];
-      heightView[heightBase + 1] = tile.heights[playerIds[j]];
-    }
-    heightOffset += playerIds.length;
-  }
-}
-
 function packRemovedIdsIntoScratch(sim: SimWasm, ids: readonly number[]): void {
   if (ids.length === 0) return;
   const api = sim.snapshotEncode;
@@ -1206,12 +1167,6 @@ function emitTopLevelKey(
       const shroud = value as NonNullable<NetworkServerSnapshot['shroud']>;
       packShroudIntoScratch(sim, shroud);
       api.emitShroud(shroud.gridW, shroud.gridH, shroud.cellSize, shroud.bitmap.length);
-      return;
-    }
-    case 'capture': {
-      const capture = value as SnapshotCapture;
-      packCaptureIntoScratch(sim, capture);
-      api.emitCapture(capture.tiles.length, capture.cellSize);
       return;
     }
     default:

@@ -108,6 +108,11 @@ function bindBody3DPool(views: BodyPoolViews): void {
   _poolViews = views;
 }
 
+function refreshAndBindBody3DPool(views: BodyPoolViews): void {
+  views.refreshViews();
+  bindBody3DPool(views);
+}
+
 function pv(): BodyPoolViews {
   if (_poolViews === undefined) {
     throw new Error(
@@ -359,11 +364,15 @@ export class PhysicsEngine3D {
         'PhysicsEngine3D: sim-wasm pool not initialised. Construct PhysicsEngine3D only after `await initSimWasm()`.',
       );
     }
-    bindBody3DPool(sim.pool);
     // Phase 3f: allocate this engine's static-cuboid broadphase
     // handle. Foreground game + LobbyManager background battle each
     // call new PhysicsEngine3D and so each get their own handle.
+    // Creating the handle can grow WASM memory, which detaches the
+    // BodyPool typed-array views. Refresh before binding so bodies
+    // spawned immediately after construction keep their authored
+    // positions instead of writing through stale views.
     this.staticsHandle = sim.engineStaticsCreate();
+    refreshAndBindBody3DPool(sim.pool);
   }
 
   /** Wire in the terrain heightmap so spring/friction contact uses
@@ -390,6 +399,7 @@ export class PhysicsEngine3D {
     entityId?: EntityId,
     initialZ?: number,
   ): Body3D {
+    refreshAndBindBody3DPool(getSimWasm()!.pool);
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
     const z = Number.isFinite(initialZ)
       ? initialZ!
@@ -426,6 +436,7 @@ export class PhysicsEngine3D {
     baseZ: number,
     label: string,
   ): Body3D {
+    refreshAndBindBody3DPool(getSimWasm()!.pool);
     const body = Body3D.allocate({
       shape: 'cuboid',
       isStatic: true,
@@ -590,12 +601,16 @@ export class PhysicsEngine3D {
 
   private addStaticToBroadphase(body: Body3D): void {
     if (body.shape !== 'cuboid') return;
-    getSimWasm()!.engineStaticsAdd(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
+    const sim = getSimWasm()!;
+    sim.engineStaticsAdd(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
+    refreshAndBindBody3DPool(sim.pool);
   }
 
   private removeStaticFromBroadphase(body: Body3D): void {
     if (body.shape !== 'cuboid') return;
-    getSimWasm()!.engineStaticsRemove(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
+    const sim = getSimWasm()!;
+    sim.engineStaticsRemove(this.staticsHandle, body.slot, CONTACT_CELL_SIZE);
+    refreshAndBindBody3DPool(sim.pool);
   }
 
   /** Release WASM-side resources owned by this engine. Call once at

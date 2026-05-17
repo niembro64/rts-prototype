@@ -6,15 +6,13 @@ import {
   WATER_LEVEL,
 } from '@/game/sim/Terrain';
 import { MAP_BG_COLOR } from '@/config';
-import { getCaptureTileDisplayColor } from '@/game/sim/captureTileDisplay';
 import { minimapPointerToWorld } from './minimapHelpers';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
 
-// Same neutral baseline the 3D floating cells overlay uses (lifted from
-// MAP_BG_COLOR), so unowned cells on the minimap match unowned cells in
-// the 3D scene exactly.
+// Neutral land baseline lifted from MAP_BG_COLOR so the minimap
+// background matches the scene's untextured map floor.
 const NEUTRAL_R = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G = (MAP_BG_COLOR >> 8) & 0xff;
 const NEUTRAL_B = MAP_BG_COLOR & 0xff;
@@ -54,8 +52,8 @@ const scale = computed(() => ({
   y: size.value.h / props.data.mapHeight,
 }));
 
-// Offscreen canvas holding the "slow layer" — terrain/capture
-// background and entity markers. Regenerated only when props.data
+// Offscreen canvas holding the "slow layer" — terrain background and
+// entity markers. Regenerated only when props.data
 // changes (entity refresh cadence is 20 Hz, throttled by the scene).
 // The main visible canvas composites this + strokes the camera quad
 // every frame; that hot path is ~1 drawImage + 1 polygon stroke, so
@@ -69,15 +67,11 @@ let canvasCtx: CanvasRenderingContext2D | null = null;
 
 // Water-mask cache. drawBackgroundLayer's pixel loop classifies each
 // minimap pixel as wet (height < WATER_LEVEL) or dry; that classification
-// only changes when the underlying terrain changes, but the loop itself
-// runs whenever ANY backgroundKey component changes — including
-// captureVersion (per-tile ownership changes), gridOverlayIntensity, etc.
+// only changes when the underlying terrain changes.
 //
 // Pre-compute the wet/dry decision into a Uint8Array keyed by terrain
-// version + canvas size + map dimensions. Subsequent backgroundLayer
-// rebuilds (capture-tile / overlay churn) just read 1 byte per pixel
-// instead of doing an O(1) mesh sample (or, before the migration off
-// analytical getTerrainHeight, a 5x slope-gated plateau evaluation).
+// version + canvas size + map dimensions. Subsequent background rebuilds
+// just read 1 byte per pixel instead of doing an O(1) mesh sample.
 let waterMask: Uint8Array | null = null;
 let waterMaskKey = '';
 
@@ -140,19 +134,14 @@ function drawBackgroundLayer(): void {
   if (!backgroundCtx || !background) return;
   const ctx = backgroundCtx;
   const { mapWidth, mapHeight } = props.data;
-  const scaleX = scale.value.x;
-  const scaleY = scale.value.y;
   const w = size.value.w;
   const h = size.value.h;
-  const { captureTiles, captureVersion, captureCellSize, gridOverlayIntensity, showTerrain } = props.data;
+  const { showTerrain } = props.data;
   const nextKey = [
     w,
     h,
     mapWidth,
     mapHeight,
-    captureVersion,
-    captureCellSize,
-    gridOverlayIntensity,
     showTerrain ? 1 : 0,
   ].join('|');
   if (nextKey === backgroundKey) return;
@@ -170,55 +159,6 @@ function drawBackgroundLayer(): void {
   // putImageData ignores canvas composite ops (it stamps raw RGBA),
   // so writing a fully-opaque per-pixel color avoids the alpha-mask
   // dance you'd need with a transparent overlay.
-  // Pre-resolve the per-tile dominant-team color + max flag height into
-  // flat lookup arrays before the per-pixel loop. Each pixel just maps
-  // its world coords to a (cx, cy) and hits these arrays — no nested
-  // dict lookups inside the hot loop.
-  //
-  // Identical proportional brightness model the 3D floating cells
-  // overlay uses. We
-  // pre-resolve the FINAL blended RGB per tile once, then the
-  // per-pixel hot loop is a flat array lookup. Each tile's
-  // brightness is based only on ownership height and overlay intensity.
-  const overlayActive = showTerrain && captureCellSize > 0 && gridOverlayIntensity > 0 && captureTiles.length > 0;
-  let tileFinalR: Uint8ClampedArray | null = null;
-  let tileFinalG: Uint8ClampedArray | null = null;
-  let tileFinalB: Uint8ClampedArray | null = null;
-  let tileHasColor: Uint8Array | null = null;
-  let tileCellsX = 0;
-  let tileCellsY = 0;
-  if (overlayActive) {
-    tileCellsX = Math.max(1, Math.ceil(mapWidth / captureCellSize));
-    tileCellsY = Math.max(1, Math.ceil(mapHeight / captureCellSize));
-    const n = tileCellsX * tileCellsY;
-    tileFinalR = new Uint8ClampedArray(n);
-    tileFinalG = new Uint8ClampedArray(n);
-    tileFinalB = new Uint8ClampedArray(n);
-    tileHasColor = new Uint8Array(n);
-    for (let i = 0; i < captureTiles.length; i++) {
-      const tile = captureTiles[i];
-      const { cx, cy } = tile;
-      if (cx < 0 || cx >= tileCellsX || cy < 0 || cy >= tileCellsY) continue;
-      const color = getCaptureTileDisplayColor(
-        tile.heights,
-        cx, cy,
-        captureCellSize,
-        mapWidth,
-        mapHeight,
-        gridOverlayIntensity,
-        NEUTRAL_R,
-        NEUTRAL_G,
-        NEUTRAL_B,
-      );
-      if (!color.hasColor) continue;
-      const idx = cy * tileCellsX + cx;
-      tileFinalR[idx] = color.r;
-      tileFinalG[idx] = color.g;
-      tileFinalB[idx] = color.b;
-      tileHasColor[idx] = 1;
-    }
-  }
-
   const waterImg = ctx.createImageData(w, h);
   const waterPixels = waterImg.data;
   // Water color same family as the 3D water plane; background mirrors
@@ -227,8 +167,7 @@ function drawBackgroundLayer(): void {
   let pi = 0;
   if (!showTerrain) {
     // Terrain hidden: stamp the dark map bg under every pixel and let
-    // the entity dots ride on top. Normal play keeps terrain visible
-    // even when GRID/capture color is off.
+    // the entity dots ride on top.
     for (let py = 0; py < h; py++) {
       for (let px = 0; px < w; px++, pi += 4) {
         waterPixels[pi]     = NEUTRAL_R;
@@ -240,34 +179,17 @@ function drawBackgroundLayer(): void {
   } else {
     // Water is a flat plane at WATER_LEVEL — a pixel is "wet" iff the
     // continuous heightmap underneath it dips below that plane. We
-    // pre-bake that decision into a Uint8Array keyed by terrain
-    // version (see ensureWaterMask) so capture-tile / overlay
-    // churn doesn't re-sample the heightmap every rebuild — the
-    // audit measured ~32k getTerrainHeight calls per pass on a
-    // 180×180 minimap, ~5x more expensive after slope-gated plateaus.
+    // pre-bake that decision into a Uint8Array keyed by terrain version
+    // (see ensureWaterMask).
     const mask = ensureWaterMask(w, h, mapWidth, mapHeight);
     let mi = 0;
     for (let py = 0; py < h; py++) {
-      const worldY = py / scaleY;
-      const ty = overlayActive ? Math.floor(worldY / captureCellSize) : 0;
       for (let px = 0; px < w; px++, pi += 4, mi++) {
-        const worldX = px / scaleX;
         let outR: number, outG: number, outB: number;
         if (mask[mi]) {
           outR = waterR; outG = waterG; outB = waterB;
         } else {
           outR = NEUTRAL_R; outG = NEUTRAL_G; outB = NEUTRAL_B;
-          if (overlayActive && tileFinalR && tileFinalG && tileFinalB && tileHasColor) {
-            const tx = Math.floor(worldX / captureCellSize);
-            if (tx >= 0 && tx < tileCellsX && ty >= 0 && ty < tileCellsY) {
-              const idx = ty * tileCellsX + tx;
-              if (tileHasColor[idx]) {
-                outR = tileFinalR[idx];
-                outG = tileFinalG[idx];
-                outB = tileFinalB[idx];
-              }
-            }
-          }
         }
         waterPixels[pi]     = outR;
         waterPixels[pi + 1] = outG;
@@ -440,12 +362,8 @@ function handlePointerEnd(event: PointerEvent): void {
 watch(
   () => [
     props.data.contentVersion,
-    props.data.captureVersion,
     props.data.mapWidth,
     props.data.mapHeight,
-    props.data.captureTiles,
-    props.data.captureCellSize,
-    props.data.gridOverlayIntensity,
     props.data.showTerrain,
   ],
   () => { drawEntityLayer(); compose(); },

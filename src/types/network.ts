@@ -533,10 +533,6 @@ export type NetworkServerSnapshot = {
     searchCells: NetworkServerSnapshotGridCell[];
     cellSize: number;
   };
-  capture?: {
-    tiles: import('./capture').NetworkCaptureTile[];
-    cellSize: number;
-  };
   terrain?: TerrainTileMap;
   buildability?: TerrainBuildabilityGrid;
   isDelta: boolean;

@@ -60,8 +60,8 @@ export type GraphicsConfig = {
   objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;
-  captureTileFrameStride: number;
-  captureTileSideWalls: boolean;
+  terrainTileFrameStride: number;
+  terrainTileSideWalls: boolean;
   waterSubdivisions: number;
   waterFrameStride: number;
   waterWaveAmplitude: number;

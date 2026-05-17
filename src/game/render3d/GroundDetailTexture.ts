@@ -21,7 +21,7 @@ import {
 // 4096² @ 8 px/world = 512 world unit tile; 64 MB GPU memory.
 export const GROUND_DETAIL_TEXTURE_PIXELS = 4096;
 // How many world units one tile spans. The shader also samples a second
-// rotated+rescaled copy of this texture (see CaptureTileRenderer3D), so the
+// rotated+rescaled copy of this texture (see TerrainTileRenderer3D), so the
 // *visible* repeat period is the LCM of two co-prime scales on top of this
 // literal tile — effectively unbounded at normal RTS zoom levels.
 export const GROUND_DETAIL_TILE_WORLD_SIZE = 512;

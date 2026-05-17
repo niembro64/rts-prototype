@@ -55,10 +55,9 @@ export type {
   EconomyInfo,
   MinimapEntity,
   MinimapData,
-  MinimapCaptureTile,
   UIInputState as InputState,
 } from '@/types/ui';
-import type { UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, MinimapCaptureTile, UIInputState as InputState } from '@/types/ui';
+import type { UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
 
 // Build selection info from entity source and input state
 export function buildSelectionInfo(
@@ -194,22 +193,13 @@ export function buildEconomyInfo(
   };
 }
 
-// Build minimap data from entities. captureTiles + captureCellSize +
-// gridOverlayIntensity flow straight through to Minimap.vue so the
-// minimap can paint the same per-team color overlay (with the same
-// blend math) the 3D floating cells overlay paints. When intensity is
-// 0 (GRID overlay = off) the minimap renderer skips the overlay
-// entirely — one switch ties minimap brightness to 3D brightness.
+// Build minimap data from entities and the terrain background.
 export function buildMinimapData(
   entitySource: UIEntitySource,
   mapWidth: number,
   mapHeight: number,
   cameraQuad: MinimapData['cameraQuad'],
   cameraYaw: number,
-  captureTiles: readonly MinimapCaptureTile[],
-  captureVersion: number,
-  captureCellSize: number,
-  gridOverlayIntensity: number,
   showTerrain: boolean,
   wind?: { x: number; y: number; speed: number },
   entityOverride?: readonly MinimapEntity[] | null,
@@ -217,15 +207,11 @@ export function buildMinimapData(
 ): MinimapData {
   const data = out ?? {
     contentVersion: 0,
-    captureVersion: 0,
     mapWidth,
     mapHeight,
     entities: [],
     cameraQuad,
     cameraYaw,
-    captureTiles,
-    captureCellSize,
-    gridOverlayIntensity,
     showTerrain,
     wind,
   };
@@ -268,12 +254,8 @@ export function buildMinimapData(
   data.mapWidth = mapWidth;
   data.mapHeight = mapHeight;
   data.contentVersion += 1;
-  data.captureVersion = captureVersion;
   data.cameraQuad = cameraQuad;
   data.cameraYaw = cameraYaw;
-  data.captureTiles = captureTiles;
-  data.captureCellSize = captureCellSize;
-  data.gridOverlayIntensity = gridOverlayIntensity;
   data.showTerrain = showTerrain;
   data.wind = wind;
   return data;

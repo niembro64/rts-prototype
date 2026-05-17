@@ -1,7 +1,7 @@
 // HOST SERVER sim throttling is intentionally absent — the host always
 // runs at MAX fidelity. This module survives only to give the sim hot
-// paths (targeting, beam, projectile collision, capture) a single
-// place to read their per-tick tunables; every value is hardcoded to
+// paths (targeting, beam, projectile collision) a single place to read
+// their per-tick tunables; every value is hardcoded to
 // the "every tick, no caps" setting.
 
 export type SimDetailConfig = {
@@ -19,8 +19,6 @@ export type SimDetailConfig = {
   targetingDensityStride: number;
   /** Every-tick projectile collision check. */
   projectileCollisionStride: number;
-  /** Every-tick capture system update. */
-  captureStride: number;
 };
 
 const DETAIL: SimDetailConfig = {
@@ -31,7 +29,6 @@ const DETAIL: SimDetailConfig = {
   targetingDensityThreshold: Number.MAX_SAFE_INTEGER,
   targetingDensityStride: 1,
   projectileCollisionStride: 1,
-  captureStride: 1,
 };
 
 export function getSimDetailConfig(): SimDetailConfig {

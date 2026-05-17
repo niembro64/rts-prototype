@@ -55,7 +55,6 @@ import __wbg_init, {
   spatial_set_unit,
   spatial_set_projectile,
   spatial_set_building,
-  spatial_sync_building_capture_for_slot,
   spatial_unset_slot,
   spatial_query_units_in_radius,
   spatial_query_buildings_in_radius,
@@ -69,7 +68,6 @@ import __wbg_init, {
   spatial_query_enemy_units_in_radius,
   spatial_query_enemy_projectiles_in_radius,
   spatial_query_enemy_units_and_projectiles_in_radius,
-  spatial_query_occupied_cells_for_capture,
   spatial_query_occupied_cells_debug,
   spatial_scratch_ptr,
   spatial_scratch_len,
@@ -158,11 +156,6 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_spray_targets,
   snapshot_encode_spray_scratch_ptr,
   snapshot_encode_spray_scratch_ensure,
-  snapshot_encode_envelope_emit_capture,
-  snapshot_encode_capture_tile_scratch_ptr,
-  snapshot_encode_capture_tile_scratch_ensure,
-  snapshot_encode_capture_height_scratch_ptr,
-  snapshot_encode_capture_height_scratch_ensure,
   snapshot_encode_economy_scratch_ptr,
   snapshot_encode_economy_scratch_ensure,
   snapshot_encode_envelope_emit_audio_events,
@@ -532,8 +525,8 @@ export interface SpatialApi {
    *  constant. `initialSlotCapacity` is a hint — pools grow on
    *  demand if exceeded. */
   init: (cellSize: number, initialSlotCapacity: number) => void;
-  /** Drop all cells, capture votes, and slot kind tags. Slot
-   *  storage is retained (free list reset). */
+  /** Drop all cells and slot kind tags. Slot storage is retained
+   *  (free list reset). */
   clear: () => void;
   /** Allocate a new slot or pop one off the free list. Returns the
    *  slot id; the JS-side wrapper stores `Map<EntityId, slot>`. */
@@ -561,9 +554,7 @@ export interface SpatialApi {
     isProjectileType: number,
   ) => void;
   /** Insert / re-insert a building at slot. The grid buckets the
-   *  building into every cell its (hx, hy, hz) half-extents touch.
-   *  Capture votes resync — pass entity_active=0 to suppress votes
-   *  without unbucketing the slot. */
+   *  building into every cell its (hx, hy, hz) half-extents touch. */
   setBuilding: (
     slot: number,
     x: number, y: number, z: number,
@@ -572,11 +563,8 @@ export interface SpatialApi {
     hpAlive: number,
     entityActive: number,
   ) => void;
-  /** Re-sync the building's capture votes after isEntityActive flips
-   *  (e.g. construction completion). Cell membership is unchanged. */
-  syncBuildingCaptureForSlot: (slot: number) => void;
-  /** Drop the slot from any cell bucket + capture vote it currently
-   *  holds. Marks the slot kind as UNSET so future queries skip it. */
+  /** Drop the slot from any cell bucket it currently holds. Marks
+   *  the slot kind as UNSET so future queries skip it. */
   unsetSlot: (slot: number) => void;
 
   // ---------- Queries (return slot-id counts) ----------
@@ -646,9 +634,6 @@ export interface SpatialApi {
     x: number, y: number, z: number, r: number,
     excludePlayer: number,
   ) => number;
-  /** Capture-vote summary. Output: [nCells, per cell: (landKey: i32,
-   *  nPlayers, p0, p1, ...)]. PlayerIds are u8. */
-  queryOccupiedCellsForCapture: () => number;
   /** Debug: per-cell unique-player listing. Output: [nCells, per
    *  cell: (cx: i32, cy: i32, cz: i32, nPlayers, p0, p1, ...)]. */
   queryOccupiedCellsDebug: () => number;
@@ -1157,25 +1142,6 @@ export interface SnapshotEncodeApi {
   sprayScratchEnsure: (count: number) => void;
   /** Stride per spray entry (f64 count). */
   readonly sprayScratchStride: number;
-  /** Emit `capture: { tiles: [...], cellSize }`. Tiles come from the
-   *  capture-tile-header scratch (3 f64 each); per-tile heights come
-   *  from the flat heights scratch (2 f64 each). */
-  emitCapture: (tileCount: number, cellSize: number) => number;
-  /** Raw pointer to the capture-tile-header scratch. */
-  captureTileScratchPtr: () => number;
-  /** Pre-grow the capture-tile-header scratch to hold `count` tiles. */
-  captureTileScratchEnsure: (count: number) => void;
-  /** Stride per capture-tile header (f64 count). */
-  readonly captureTileScratchStride: number;
-  /** Raw pointer to the capture-tile heights scratch (flat across
-   *  all tiles in pool order). Caller must sort heights ASCENDING by
-   *  playerId per tile. */
-  captureHeightScratchPtr: () => number;
-  /** Pre-grow the heights scratch to hold `count` total height
-   *  entries across all tiles. */
-  captureHeightScratchEnsure: (count: number) => void;
-  /** Stride per height entry (f64 count: playerId + value). */
-  readonly captureHeightScratchStride: number;
   /** Raw pointer to the economy scratch (Float64Array, 16 f64 per
    *  player — see lib.rs SNAPSHOT_ENCODE_ECONOMY_STRIDE for layout).
    *  Caller must sort entries ASCENDING by playerId. */
@@ -1689,13 +1655,6 @@ export function initSimWasm(): Promise<SimWasm> {
           sprayScratchPtr: snapshot_encode_spray_scratch_ptr,
           sprayScratchEnsure: snapshot_encode_spray_scratch_ensure,
           sprayScratchStride: 16,
-          emitCapture: snapshot_encode_envelope_emit_capture,
-          captureTileScratchPtr: snapshot_encode_capture_tile_scratch_ptr,
-          captureTileScratchEnsure: snapshot_encode_capture_tile_scratch_ensure,
-          captureTileScratchStride: 3,
-          captureHeightScratchPtr: snapshot_encode_capture_height_scratch_ptr,
-          captureHeightScratchEnsure: snapshot_encode_capture_height_scratch_ensure,
-          captureHeightScratchStride: 2,
           economyScratchPtr: snapshot_encode_economy_scratch_ptr,
           economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
           economyScratchStride: 11,
@@ -1751,7 +1710,6 @@ export function initSimWasm(): Promise<SimWasm> {
           setUnit: spatial_set_unit,
           setProjectile: spatial_set_projectile,
           setBuilding: spatial_set_building,
-          syncBuildingCaptureForSlot: spatial_sync_building_capture_for_slot,
           unsetSlot: spatial_unset_slot,
           queryUnitsInRadius: spatial_query_units_in_radius,
           queryBuildingsInRadius: spatial_query_buildings_in_radius,
@@ -1765,7 +1723,6 @@ export function initSimWasm(): Promise<SimWasm> {
           queryEnemyUnitsInRadius: spatial_query_enemy_units_in_radius,
           queryEnemyProjectilesInRadius: spatial_query_enemy_projectiles_in_radius,
           queryEnemyUnitsAndProjectilesInRadius: spatial_query_enemy_units_and_projectiles_in_radius,
-          queryOccupiedCellsForCapture: spatial_query_occupied_cells_for_capture,
           queryOccupiedCellsDebug: spatial_query_occupied_cells_debug,
           scratchPtr: spatial_scratch_ptr,
           scratchLen: spatial_scratch_len,

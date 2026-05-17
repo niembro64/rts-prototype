@@ -1,4 +1,3 @@
-import { getGridOverlay, getGridOverlayIntensity } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { MinimapData, UIEntitySource } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -12,7 +11,6 @@ export class RtsScene3DMinimapSystem {
   private updateTimer = 0;
   private dataScratch: MinimapData = {
     contentVersion: 0,
-    captureVersion: 0,
     mapWidth: 0,
     mapHeight: 0,
     entities: [],
@@ -23,9 +21,6 @@ export class RtsScene3DMinimapSystem {
       { x: 0, y: 0 },
     ],
     cameraYaw: 0,
-    captureTiles: [],
-    captureCellSize: 0,
-    gridOverlayIntensity: 0,
     showTerrain: true,
     wind: undefined,
   };
@@ -60,11 +55,6 @@ export class RtsScene3DMinimapSystem {
   ): void {
     if (!onMinimapUpdate) return;
 
-    const captureTiles = this.clientViewState.getCaptureTiles();
-    const captureVersion = this.clientViewState.getCaptureVersion();
-    const captureCellSize = this.clientViewState.getCaptureCellSize();
-    const gridMode = getGridOverlay();
-    const intensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
     onMinimapUpdate(
       buildMinimapData(
         entitySource,
@@ -72,10 +62,6 @@ export class RtsScene3DMinimapSystem {
         this.mapHeight,
         cameraQuad,
         cameraYaw,
-        captureTiles,
-        captureVersion,
-        captureCellSize,
-        intensity,
         true,
         this.clientViewState.getServerMeta()?.wind,
         this.clientViewState.getMinimapEntitiesOverride(),
@@ -87,7 +73,7 @@ export class RtsScene3DMinimapSystem {
   private getUpdateInterval(graphicsConfig: GraphicsConfig): number {
     const renderStrideScale = Math.min(
       4,
-      Math.max(1, graphicsConfig.captureTileFrameStride | 0),
+      Math.max(1, graphicsConfig.terrainTileFrameStride | 0),
     );
     const unitCount = this.clientViewState.getServerMeta()?.units?.count ?? 0;
     const unitScale =

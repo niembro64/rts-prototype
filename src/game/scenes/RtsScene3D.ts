@@ -29,7 +29,7 @@ import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
 import { BeamRenderer3D } from '../render3d/BeamRenderer3D';
 import { ForceFieldRenderer3D } from '../render3d/ForceFieldRenderer3D';
-import { CaptureTileRenderer3D } from '../render3d/CaptureTileRenderer3D';
+import { TerrainTileRenderer3D } from '../render3d/TerrainTileRenderer3D';
 import { MetalDepositRenderer3D } from '../render3d/MetalDepositRenderer3D';
 import { EnvironmentPropRenderer3D } from '../render3d/EnvironmentPropRenderer3D';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
@@ -155,7 +155,7 @@ export class RtsScene3D {
   private legInstancedRenderer!: LegInstancedRenderer;
   private beamRenderer!: BeamRenderer3D;
   private forceFieldRenderer!: ForceFieldRenderer3D;
-  private captureTileRenderer!: CaptureTileRenderer3D;
+  private terrainTileRenderer!: TerrainTileRenderer3D;
   private metalDeposits: MetalDeposit[] = [];
   private metalDepositRenderer: MetalDepositRenderer3D | null = null;
   private environmentPropRenderer: EnvironmentPropRenderer3D | null = null;
@@ -440,7 +440,7 @@ export class RtsScene3D {
       this.renderScope,
       (eid) => this.entityRenderer.getUnitYawGroup(eid),
     );
-    this.captureTileRenderer = new CaptureTileRenderer3D(
+    this.terrainTileRenderer = new TerrainTileRenderer3D(
       this.threeApp.world,
       this.clientViewState,
       this.mapWidth,
@@ -634,7 +634,7 @@ export class RtsScene3D {
         entityRenderer: this.entityRenderer,
         beamRenderer: this.beamRenderer,
         forceFieldRenderer: this.forceFieldRenderer,
-        captureTileRenderer: this.captureTileRenderer,
+        terrainTileRenderer: this.terrainTileRenderer,
         metalDepositRenderer: this.metalDepositRenderer,
         environmentPropRenderer: this.environmentPropRenderer,
         contactShadowRenderer: this.contactShadowRenderer,
@@ -1452,7 +1452,7 @@ export class RtsScene3D {
       contactShadowRenderer: this.contactShadowRenderer,
       beamRenderer: this.beamRenderer,
       forceFieldRenderer: this.forceFieldRenderer,
-      captureTileRenderer: this.captureTileRenderer,
+      terrainTileRenderer: this.terrainTileRenderer,
       waterRenderer: this.waterRenderer,
       explosionRenderer: this.explosionRenderer,
       forceFieldImpactRenderer: this.forceFieldImpactRenderer,

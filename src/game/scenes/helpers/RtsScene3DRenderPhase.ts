@@ -1,8 +1,4 @@
 import * as THREE from 'three';
-import {
-  getGridOverlay,
-  getGridOverlayIntensity,
-} from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -13,7 +9,7 @@ import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { Input3DManager } from '../../render3d/Input3DManager';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import type { ForceFieldRenderer3D } from '../../render3d/ForceFieldRenderer3D';
-import type { CaptureTileRenderer3D } from '../../render3d/CaptureTileRenderer3D';
+import type { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
 import type { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
 import type { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
@@ -47,7 +43,7 @@ export type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
   beamRenderer: BeamRenderer3D;
   forceFieldRenderer: ForceFieldRenderer3D;
-  captureTileRenderer: CaptureTileRenderer3D;
+  terrainTileRenderer: TerrainTileRenderer3D;
   metalDepositRenderer: MetalDepositRenderer3D | null;
   environmentPropRenderer: EnvironmentPropRenderer3D | null;
   contactShadowRenderer: ContactShadowRenderer3D | null;
@@ -141,7 +137,7 @@ export class RtsScene3DRenderPhase {
       entityRenderer,
       beamRenderer,
       forceFieldRenderer,
-      captureTileRenderer,
+      terrainTileRenderer,
       metalDepositRenderer,
       environmentPropRenderer,
       contactShadowRenderer,
@@ -174,13 +170,9 @@ export class RtsScene3DRenderPhase {
       ],
       false,
     );
-    const gridMode = getGridOverlay();
-    const gridOverlayIntensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
     lodGridCells2D?.update(
       graphicsConfig.objectLodCellSize,
       false,
-      gridMode !== 'off',
-      gridOverlayIntensity,
     );
     metalDepositRenderer?.update(
       graphicsConfig,
@@ -234,7 +226,7 @@ export class RtsScene3DRenderPhase {
       this.renderFrameIndex,
       this.renderScope,
     );
-    captureTileRenderer.update(
+    terrainTileRenderer.update(
       graphicsConfig,
       renderLod,
       renderLodGrid,

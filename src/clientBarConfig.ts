@@ -10,7 +10,6 @@ import type {
   CameraSmoothMode,
   DriftMode,
   PredictionMode,
-  GridOverlay,
   SoundCategory,
   RangeType,
   ProjRangeType,
@@ -111,16 +110,6 @@ export const CLIENT_CONFIG = {
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
   lobbyVisible: { default: { mobile: true, desktop: true } },
-  gridOverlay: {
-    default: 'zero' as const,
-    options: [
-      { value: 'off' as const, label: 'OFF' },
-      { value: 'zero' as const, label: 'ZERO' },
-      { value: 'low' as const, label: 'LOW' },
-      { value: 'medium' as const, label: 'MED' },
-      { value: 'high' as const, label: 'HI' },
-    ],
-  },
   waypointDetail: {
     default: 'simple' as const,
     options: [
@@ -190,7 +179,6 @@ const DRAG_PAN_STORAGE_KEY = 'player-client-drag-pan';
 // from the original prefix and `player-client-lobby-visible` from the
 // brief stop during the namespace rename).
 const LOBBY_VISIBLE_STORAGE_KEY = 'demo-battle-lobby-visible';
-const GRID_OVERLAY_STORAGE_KEY = 'player-client-grid-overlay';
 const WAYPOINT_DETAIL_STORAGE_KEY = 'player-client-waypoint-detail';
 
 // Migration table — old `rts-*` keys → new `player-client-*` keys.
@@ -223,7 +211,6 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   // original `rts-` prefix AND the brief stop in `player-client-`.
   ['rts-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
   ['player-client-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
-  ['rts-grid-overlay', GRID_OVERLAY_STORAGE_KEY],
   ['rts-waypoint-detail', WAYPOINT_DETAIL_STORAGE_KEY],
 ];
 
@@ -453,17 +440,6 @@ function loadFromStorage(): void {
   if (storedLobbyVisible !== null) {
     currentLobbyVisible = storedLobbyVisible === 'true';
   }
-  const storedGridOverlay = readPersisted(GRID_OVERLAY_STORAGE_KEY);
-  if (
-    storedGridOverlay &&
-    (storedGridOverlay === 'off' ||
-      storedGridOverlay === 'zero' ||
-      storedGridOverlay === 'low' ||
-      storedGridOverlay === 'medium' ||
-      storedGridOverlay === 'high')
-  ) {
-    currentGridOverlay = storedGridOverlay;
-  }
   const storedWaypointDetail = readPersisted(WAYPOINT_DETAIL_STORAGE_KEY);
   if (storedWaypointDetail === 'simple' || storedWaypointDetail === 'detailed') {
     currentWaypointDetail = storedWaypointDetail;
@@ -472,8 +448,8 @@ function loadFromStorage(): void {
 
 // NOTE: loadFromStorage() is invoked at the very bottom of this file,
 // after every module-level `let current*` declaration — otherwise the
-// grid-overlay block below would hit a temporal-dead-zone ReferenceError
-// because that state variable is declared later in the file.
+// waypoint-detail block below would hit a temporal-dead-zone
+// ReferenceError because that state variable is declared later in the file.
 
 export function getGraphicsConfig(): GraphicsConfig {
   return PLAYER_CLIENT_MAX_GRAPHICS_CONFIG;
@@ -699,40 +675,6 @@ export function getLobbyVisible(): boolean {
 export function setLobbyVisible(visible: boolean): void {
   currentLobbyVisible = visible;
   persist(LOBBY_VISIBLE_STORAGE_KEY, String(visible));
-}
-
-// ── Grid Overlay ──
-
-// Lerp factor from neutral → dominant team color in the capture-tile
-// blend (mix = clamp(intensity * 3 * height, 0, 1)).
-//
-// Tier semantics:
-//   off     — terrain and water remain visible; land texture and capture tint are hidden.
-//   zero    — land terrain texture visible, capture ownership tint hidden.
-//   low     — gentle team tint (subtle ownership read at a glance).
-//   medium  — old "low" intensity, the previous default.
-//   high    — saturated team color, used as a strategic overview.
-const GRID_OVERLAY_INTENSITIES: Record<GridOverlay, number> = {
-  off: 0.0,
-  zero: 0.0,
-  low: 0.04,
-  medium: 0.1,
-  high: 0.8,
-};
-
-let currentGridOverlay: GridOverlay = _cd.gridOverlay.default;
-
-export function getGridOverlay(): GridOverlay {
-  return currentGridOverlay;
-}
-
-export function getGridOverlayIntensity(): number {
-  return GRID_OVERLAY_INTENSITIES[currentGridOverlay];
-}
-
-export function setGridOverlay(mode: GridOverlay): void {
-  currentGridOverlay = mode;
-  persist(GRID_OVERLAY_STORAGE_KEY, mode);
 }
 
 // ── Waypoint detail mode ──

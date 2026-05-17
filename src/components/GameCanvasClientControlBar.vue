@@ -53,19 +53,6 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>GRID:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.gridOverlay.options"
-            :key="opt.value"
-            :active="model.gridOverlay === opt.value"
-            title="Territory capture overlay intensity"
-            @click="model.changeGridOverlay(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
         <BarLabel>WAYPOINTS:</BarLabel>
         <BarButtonGroup>
           <BarButton

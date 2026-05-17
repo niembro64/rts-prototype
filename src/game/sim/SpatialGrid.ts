@@ -29,8 +29,6 @@ import {
 // underlying WASM scratch buffer is re-written on every query call
 // and the JS-side reusable arrays are overwritten in tandem.
 
-export type CaptureCell = { key: number; players: PlayerId[] };
-
 // LOS query default — matches MAX_UNIT_SHOT_RADIUS in the Rust impl.
 // Used implicitly by enemy-entities queries; JS-side wrapper passes
 // raw radius and Rust adds the pad.
@@ -62,7 +60,6 @@ export class SpatialGrid {
   private readonly queryResultBuildings: Entity[] = [];
   private readonly queryResultProjectiles: Entity[] = [];
   private readonly queryResultAll: Entity[] = [];
-  private readonly captureResult: CaptureCell[] = [];
 
   private readonly _unitsAndProjResult: { units: Entity[]; projectiles: Entity[] } = {
     units: [], projectiles: [],
@@ -234,26 +231,6 @@ export class SpatialGrid {
     }
   }
 
-  syncBuildingCapture(entity: Entity): void {
-    const slot = this.slotByEntityId.get(entity.id);
-    if (slot === undefined) return;
-    if (!entity.building) return;
-    // Re-bucketing on geometry/owner change uses setBuilding — same
-    // path as addBuilding, which re-runs the cell sweep + capture
-    // resync. Buildings don't move so this is a rare path; the
-    // common case is just the capture-vote refresh after isEntityActive
-    // flips at construction completion.
-    const b = entity.building;
-    this.api().setBuilding(
-      slot,
-      entity.transform.x, entity.transform.y, entity.transform.z,
-      b.width / 2, b.height / 2, b.depth / 2,
-      entity.ownership?.playerId ?? 0,
-      b.hp > 0 ? 1 : 0,
-      isEntityActive(entity) ? 1 : 0,
-    );
-  }
-
   // ===================== Result readback helpers =====================
 
   /** Construct a Uint32Array view over the WASM scratch buffer for
@@ -415,37 +392,10 @@ export class SpatialGrid {
     return this._unitsAndBuildingsResult;
   }
 
-  // ===================== Capture / debug =====================
+  // ===================== Debug =====================
 
   getCellSize(): number {
     return this.cellSize;
-  }
-
-  /** Reusable CaptureCell array — DO NOT STORE THE REFERENCE. The
-   *  underlying slots are written into the WASM scratch buffer and
-   *  reconstructed JS-side per call. */
-  getOccupiedCellsForCapture(): CaptureCell[] {
-    const total = this.api().queryOccupiedCellsForCapture();
-    const slots = this.readScratch(total);
-    this.captureResult.length = 0;
-    if (total === 0) return this.captureResult;
-    const nCells = slots[0];
-    let read = 1;
-    for (let i = 0; i < nCells; i++) {
-      // Rust wrote the land-cell key as i32 (the int32 bit pattern
-      // matches JS `packLandCellKey` exactly); read it back via the
-      // unsigned slot and re-interpret. Math.fround round-trip works
-      // because the bit pattern is preserved.
-      const keyU32 = slots[read++];
-      const key = keyU32 | 0;  // ToInt32 — matches the JS path's key shape.
-      const nPlayers = slots[read++];
-      const players: PlayerId[] = [];
-      for (let p = 0; p < nPlayers; p++) {
-        players.push(slots[read++]);
-      }
-      this.captureResult.push({ key, players });
-    }
-    return this.captureResult;
   }
 
   /** Per-cell unique-player debug listing. Reusable array; do not

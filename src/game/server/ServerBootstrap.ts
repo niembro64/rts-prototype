@@ -3,14 +3,13 @@
 // Owns the procedural sequence the GameServer constructor used to run
 // inline: terrain shape configuration, metal deposit generation, terrain
 // mesh / buildability grid construction, physics + WorldState + Simulation
-// creation, capture-grid radial paint, and the initial entity spawn (with
-// physics bodies). Pulled out of GameServer so the host class is left with
-// instance-level concerns (tick scheduling, EMAs, listeners, callbacks).
+// creation, and the initial entity spawn (with physics bodies). Pulled out
+// of GameServer so the host class is left with instance-level concerns
+// (tick scheduling, EMAs, listeners, callbacks).
 //
 // Order dependencies are documented inline; callers should treat the
 // `bootstrap` result as the canonical wired-up state for one game session.
 
-import { CAPTURE_CONFIG } from '../../captureConfig';
 import {
   LAND_CELL_SIZE,
   UNIT_THRUST_MULTIPLIER_GAME,
@@ -20,7 +19,6 @@ import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { GameServerConfig } from '@/types/game';
 import { CommandQueue } from '../sim/commands';
-import { CaptureSystem } from '../sim/CaptureSystem';
 import { Simulation } from '../sim/Simulation';
 import { WorldState } from '../sim/WorldState';
 import {
@@ -35,7 +33,6 @@ import {
 } from '../sim/Terrain';
 import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
 import {
-  FIRST_PLAYER_ANGLE,
   spawnInitialBases,
   spawnInitialEntities,
   spawnMetalExtractorsOnDeposits,
@@ -50,7 +47,6 @@ export interface BootstrappedServerWorld {
   world: WorldState;
   simulation: Simulation;
   commandQueue: CommandQueue;
-  captureSystem: CaptureSystem;
   playerIds: PlayerId[];
   backgroundMode: boolean;
   backgroundAllowedTypes: Set<string>;
@@ -150,24 +146,6 @@ export class ServerBootstrap {
       world.maxTotalUnits = config.initialMaxTotalUnits;
     }
 
-    // Pre-paint the capture grid into per-team radial sectors. Same
-    // oval-space angular layout the spawn oval and terrain dividers use, so
-    // each team starts with the territory in front of their base.
-    // Border tiles get area-weighted partial ownership (the centre
-    // tile is naturally split among all teams). Tiles flagged dirty
-    // here flow out in the next snapshot regardless of keyframe / delta.
-    //
-    // Tell the capture system about the map up front so per-tile
-    // ownership data is available during update() and for the initial
-    // radial paint.
-    const captureSystem = new CaptureSystem();
-    captureSystem.setMapSize(mapWidth, mapHeight, LAND_CELL_SIZE);
-    captureSystem.initializeRadialOwnership(
-      mapWidth, mapHeight, LAND_CELL_SIZE,
-      playerIds, FIRST_PLAYER_ANGLE,
-      CAPTURE_CONFIG.initialOwnershipHeight,
-    );
-
     // AI player configuration
     const aiPlayerIds = config.aiPlayerIds ?? (backgroundMode ? [...playerIds] : []);
     const spawnDemoInitialState =
@@ -207,7 +185,6 @@ export class ServerBootstrap {
       world,
       simulation,
       commandQueue,
-      captureSystem,
       playerIds,
       backgroundMode,
       backgroundAllowedTypes,

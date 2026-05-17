@@ -320,6 +320,38 @@
         <li>Ground contact is spring and friction behavior against terrain, not a clamp disguised as physics.</li>
       </ul>
 
+      <h3>Locomotion is arrival control, not waypoint seeking</h3>
+      <p>
+        Movement should not be a magnetic pull toward the next waypoint. A position-only seek
+        controller looks acceptable on slow, high-friction units, but it breaks down as soon as a
+        body has meaningful momentum. Hovercraft expose the failure most clearly: the unit keeps
+        accelerating toward a point even when its current velocity already guarantees overshoot,
+        then crosses the point, gets pulled back, and oscillates like an undamped spring.
+      </p>
+      <p>
+        The locomotion question is not &ldquo;which direction is the waypoint?&rdquo; It is
+        &ldquo;what acceleration do I need, under this unit&rsquo;s force limits, to arrive at the
+        desired state?&rdquo; That desired state includes both position and velocity. A final command
+        point usually wants near-zero velocity. An intermediate waypoint may want a through-velocity
+        aligned with the next path segment, so the unit flows through the path instead of stopping
+        at every corner.
+      </p>
+      <p>
+        Every locomotion profile should therefore compute force from both position error and
+        velocity error. If a unit is close to its intended spot but still moving quickly, the correct
+        thrust is often opposite its current velocity, even if the target remains slightly ahead.
+        This is controlled arrival: a damped physical controller that spends stopping distance
+        before it runs out, saturates against the unit&rsquo;s available thrust, and prevents
+        waypoint overshoot from turning into visible oscillation.
+      </p>
+      <ul class="rule-list">
+        <li>Pathfinding chooses where the body should go; locomotion chooses how the body physically arrives there.</li>
+        <li>Waypoints are desired motion states, not magnets. They carry an intended position and, when useful, an intended pass-through velocity.</li>
+        <li>Final command points should use braking-aware arrival so the body settles without orbiting, bouncing, or springing back across the destination.</li>
+        <li>Hovercraft, ground units, and air units use the same high-level arrival controller; they differ only by mass, thrust, friction, damping, turn authority, contact model, and vertical constraints.</li>
+        <li>Hovercraft should remain slippery because their physical limits say so, not because the controller ignores velocity until after overshoot has happened.</li>
+      </ul>
+
       <h3>Gravity is universal; thrust answers it</h3>
       <p>
         Every body with mass feels gravity every tick, without exception. The
@@ -776,6 +808,7 @@
         <li>Keep snapshots sparse, recipient-aware, and low cadence by default.</li>
         <li>Keep client prediction physically compatible with the server, especially for motion and projectiles.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
+        <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>

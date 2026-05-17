@@ -1,7 +1,6 @@
-// CaptureTileRenderer3D — authoritative terrain mesh.
+// TerrainTileRenderer3D — authoritative terrain mesh.
 //
-// Resource/capture coloring lives in LodGridCells2D's floating cells overlay.
-// This renderer owns only the pickable/rendered ground surface and debug build
+// This renderer owns the pickable/rendered ground surface and debug build
 // grid tint, so gameplay terrain and visible terrain remain one shared mesh.
 
 import * as THREE from 'three';
@@ -229,7 +228,7 @@ type CachedTerrainGeometry = {
   lastUsedFrame: number;
 };
 
-export class CaptureTileRenderer3D {
+export class TerrainTileRenderer3D {
   private terrainMesh: THREE.Mesh;
   private terrainGeometry: THREE.BufferGeometry;
   private terrainMaterial: THREE.MeshLambertMaterial;
@@ -683,7 +682,7 @@ export class CaptureTileRenderer3D {
       TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeStartDistance,
       TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeEndDistance,
       graphicsConfig.tier,
-      graphicsConfig.captureTileSideWalls ? 1 : 0,
+      graphicsConfig.terrainTileSideWalls ? 1 : 0,
       triangleDebug ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
       getTerrainVersion(),
@@ -928,7 +927,7 @@ export class CaptureTileRenderer3D {
         terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
       }
 
-      if (graphicsConfig.captureTileSideWalls) {
+      if (graphicsConfig.terrainTileSideWalls) {
         const edgeCounts = new Map<string, { a: number; b: number; count: number }>();
         const addEdge = (a: number, b: number): void => {
           const lo = Math.min(a, b);
@@ -1126,9 +1125,7 @@ export class CaptureTileRenderer3D {
   ): void {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
 
-    let cellSize = this.clientViewState.getCaptureCellSize();
-    if (cellSize <= 0) cellSize = LAND_CELL_SIZE;
-    cellSize = normalizeLandCellSize(cellSize);
+    const cellSize = normalizeLandCellSize(LAND_CELL_SIZE);
 
     const triangleDebug = getTriangleDebug();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;

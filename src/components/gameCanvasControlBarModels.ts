@@ -7,7 +7,6 @@ import type {
   CameraSmoothMode,
   DriftMode,
   PredictionMode,
-  GridOverlay,
   ProjRangeType,
   RangeType,
   SoundCategory,
@@ -81,7 +80,6 @@ export type GameCanvasClientControlBarModel = {
   readonly playerClientEnabled: boolean;
   readonly displayedClientTime: string;
   readonly displayedClientIp: string;
-  readonly gridOverlay: GridOverlay;
   readonly waypointDetail: WaypointDetail;
   readonly logicMsAvg: number;
   readonly logicMsHi: number;
@@ -134,7 +132,6 @@ export type GameCanvasClientControlBarModel = {
   readonly cameraSmoothMode: CameraSmoothMode;
   resetClientDefaults(): void;
   togglePlayerClientEnabled(): void;
-  changeGridOverlay(mode: GridOverlay): void;
   changeWaypointDetail(mode: WaypointDetail): void;
   toggleAudioSmoothing(): void;
   toggleBurnMarks(): void;

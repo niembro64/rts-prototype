@@ -1,6 +1,6 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
-import type { Entity, EntityId, PlayerId, UnitAction } from './types';
+import type { Entity, EntityId, PlayerId, Unit, UnitAction } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
 import { updateShroudBitmaps } from './shroudBitmap';
@@ -46,6 +46,7 @@ import {
   ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_TURRETS,
 } from '@/types/network';
+import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
@@ -64,6 +65,10 @@ import {
   shiftUnitAction,
   spliceUnitActions,
 } from './unitActions';
+import {
+  LOCOMOTION_FORCE_SCALE,
+  getLocomotionForceProfile,
+} from './locomotion';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -113,6 +118,13 @@ const MAX_REPLANS_PER_TICK = 5;
  *  a problem that won't improve from one tick to the next. */
 const REPLAN_FAILURE_COOLDOWN = -60;
 
+const ARRIVAL_RADIUS = 15;
+const ARRIVAL_FINAL_RADIUS = 5;
+const ARRIVAL_STOP_SPEED = 0.5;
+const ARRIVAL_CONTROL_RADIUS = 220;
+const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
+const ARRIVAL_THROUGH_SPEED = 120;
+const ARRIVAL_MIN_ACCEL = 0.001;
 
 export class Simulation {
   private world: WorldState;
@@ -386,7 +398,7 @@ export class Simulation {
 
     // Update all units movement (calculates target velocities) and
     // refresh their spatial-grid cells in the same pass.
-    this.updateUnits();
+    this.updateUnits(dtMs / 1000);
 
     // Update non-unit spatial indices. Unit cells are refreshed inside
     // updateUnits() to avoid another full unit walk.
@@ -690,11 +702,11 @@ export class Simulation {
 
   // Update unit movement with action queue processing.
   // unit.thrustDirX/Y is what GameServer.applyForces reads — a (0, 0)
-  // means "no thrust this tick; contact braking/drag will slow or hold us". The
-  // authoritative physics velocity stays in unit.velocityX/Y/Z and
-  // is only overwritten by syncFromPhysics, so lead-prediction in
+  // means "no powered thrust this tick"; vector magnitude scales drive
+  // force. The authoritative physics velocity stays in unit.velocityX/Y/Z
+  // and is only overwritten by syncFromPhysics, so lead-prediction in
   // turretSystem reads the real velocity, not this thrust target.
-  private updateUnits(): void {
+  private updateUnits(dtSec: number): void {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;
 
@@ -780,9 +792,9 @@ export class Simulation {
           continue;
         }
 
-        // Thrust toward target
-        this.applyThrustToward(unit, dx, dy, distance);
-        movingUnits.push(entity);
+        if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
+          movingUnits.push(entity);
+        }
         continue;
       }
 
@@ -808,8 +820,9 @@ export class Simulation {
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.applyThrustToward(unit, dx, dy, distance);
-          movingUnits.push(entity);
+          if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
+            movingUnits.push(entity);
+          }
         } else {
           if ((unit.stuckTicks ?? 0) < 0) {
             unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
@@ -843,8 +856,9 @@ export class Simulation {
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.applyThrustToward(unit, dx, dy, distance);
-          movingUnits.push(entity);
+          if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
+            movingUnits.push(entity);
+          }
         } else {
           unit.stuckTicks = 0;
         }
@@ -877,13 +891,15 @@ export class Simulation {
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          this.applyThrustToward(unit, dx, dy, distance);
-          movingUnits.push(entity);
+          if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
+            movingUnits.push(entity);
+          }
         } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
           unit.stuckTicks = 0;
         } else {
-          this.applyThrustToward(unit, targetDx, targetDy, targetDistance);
-          movingUnits.push(entity);
+          if (this.applyArrivalThrust(entity, currentAction, targetDx, targetDy, targetDistance, dtSec)) {
+            movingUnits.push(entity);
+          }
         }
         continue;
       }
@@ -906,16 +922,18 @@ export class Simulation {
       const dy = currentAction.y - transform.y;
       const distance = magnitude(dx, dy);
 
-      // Close enough to waypoint - advance to next action, no thrust
-      if (distance < 15) {
+      // Close enough to waypoint - advance to next action once arrival
+      // velocity is also acceptable. Final command points brake before
+      // they complete instead of dropping thrust while still moving fast.
+      if (this.hasArrivedAtAction(entity, currentAction, distance)) {
         this.advanceAction(entity);
         unit.stuckTicks = 0;
         continue;
       }
 
-      // Thrust toward waypoint
-      this.applyThrustToward(unit, dx, dy, distance);
-      movingUnits.push(entity);
+      if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
+        movingUnits.push(entity);
+      }
     }
 
     // Stuck-detection / replan pass — runs after every unit has had
@@ -1052,12 +1070,112 @@ export class Simulation {
     }
   }
 
-  /** Set the unit's thrust vector toward a (dx, dy) offset whose
-   *  pre-computed magnitude is `distance`. Locomotion physics owns
-   *  propulsion strength; actions only author desired direction. */
-  private applyThrustToward(unit: NonNullable<Entity['unit']>, dx: number, dy: number, distance: number): void {
-    unit.thrustDirX = dx / distance;
-    unit.thrustDirY = dy / distance;
+  /** Velocity-aware arrival controller. The action supplies a desired
+   *  position; current physics velocity decides whether we should keep
+   *  pulling toward it, bleed speed, or thrust directly against motion.
+   *  The resulting thrust vector carries both direction and force
+   *  fraction; UnitForceSystem clamps it against the unit's authored
+   *  drive profile. */
+  private applyArrivalThrust(
+    entity: Entity,
+    action: UnitAction,
+    dx: number,
+    dy: number,
+    distance: number,
+    dtSec: number,
+  ): boolean {
+    const unit = entity.unit;
+    const body = entity.body?.physicsBody;
+    if (!unit || !body || distance <= 0.0001) {
+      if (unit) {
+        unit.thrustDirX = 0;
+        unit.thrustDirY = 0;
+      }
+      return false;
+    }
+
+    const maxAccel = this.getUnitHorizontalDriveAccel(unit);
+    if (maxAccel <= ARRIVAL_MIN_ACCEL) {
+      unit.thrustDirX = dx / distance;
+      unit.thrustDirY = dy / distance;
+      return true;
+    }
+
+    const targetVelocity = this.getActionArrivalTargetVelocity(unit, action);
+    const controlRadius = Math.max(ARRIVAL_CONTROL_RADIUS, unit.radius.push * 8);
+    const positionGain = maxAccel / controlRadius;
+    const velocityGain = 2 * Math.sqrt(positionGain);
+    const responseGain = dtSec > 0
+      ? Math.min(1 / ARRIVAL_RESPONSE_TIME_SEC, 1 / dtSec)
+      : 1 / ARRIVAL_RESPONSE_TIME_SEC;
+    const dampingGain = Math.max(velocityGain, responseGain);
+
+    let accelX = dx * positionGain + (targetVelocity.x - body.vx) * dampingGain;
+    let accelY = dy * positionGain + (targetVelocity.y - body.vy) * dampingGain;
+
+    if (!Number.isFinite(accelX) || !Number.isFinite(accelY)) {
+      unit.thrustDirX = 0;
+      unit.thrustDirY = 0;
+      return false;
+    }
+
+    const accelLen = magnitude(accelX, accelY);
+    if (accelLen <= ARRIVAL_MIN_ACCEL) {
+      unit.thrustDirX = 0;
+      unit.thrustDirY = 0;
+      return false;
+    }
+
+    const thrustScale = Math.min(1, accelLen / maxAccel);
+    const invAccelLen = 1 / accelLen;
+    accelX *= invAccelLen * thrustScale;
+    accelY *= invAccelLen * thrustScale;
+    unit.thrustDirX = accelX;
+    unit.thrustDirY = accelY;
+    return true;
+  }
+
+  private hasArrivedAtAction(entity: Entity, action: UnitAction, distance: number): boolean {
+    const arrivalRadius = action.isPathExpansion || action.type === 'patrol'
+      ? ARRIVAL_RADIUS
+      : ARRIVAL_FINAL_RADIUS;
+    if (distance >= arrivalRadius) return false;
+    if (action.isPathExpansion || action.type === 'patrol') return true;
+    const body = entity.body?.physicsBody;
+    const unit = entity.unit;
+    const vx = body?.vx ?? unit?.velocityX ?? 0;
+    const vy = body?.vy ?? unit?.velocityY ?? 0;
+    return magnitude(vx, vy) <= ARRIVAL_STOP_SPEED;
+  }
+
+  private getActionArrivalTargetVelocity(
+    unit: Unit,
+    action: UnitAction,
+  ): { x: number; y: number } {
+    const next = action.isPathExpansion ? unit.actions[1] : undefined;
+    if (!next) return { x: 0, y: 0 };
+    const dx = next.x - action.x;
+    const dy = next.y - action.y;
+    const distance = magnitude(dx, dy);
+    if (distance <= 0.0001) return { x: 0, y: 0 };
+    const currentSpeed = magnitude(unit.velocityX ?? 0, unit.velocityY ?? 0);
+    const throughSpeed = Math.max(ARRIVAL_THROUGH_SPEED, currentSpeed);
+    return {
+      x: dx / distance * throughSpeed,
+      y: dy / distance * throughSpeed,
+    };
+  }
+
+  private getUnitHorizontalDriveAccel(unit: Unit): number {
+    const force = getLocomotionForceProfile(
+      unit.locomotion,
+      unit.mass,
+      this.world.thrustMultiplier,
+      LOCOMOTION_FORCE_SCALE,
+    );
+    const physicsMass = unit.mass * UNIT_MASS_MULTIPLIER;
+    if (!Number.isFinite(physicsMass) || physicsMass <= 0) return 0;
+    return force.tractionForceMagnitude * 1e6 / physicsMass;
   }
 
   /** True when any non-visual turret is engaged with a target, so the
@@ -1114,6 +1232,10 @@ export class Simulation {
       const body = entity.body.physicsBody;
       const speed = magnitude(body.vx, body.vy);
       if (speed >= STUCK_VEL_THRESHOLD) {
+        unit.stuckTicks = 0;
+        continue;
+      }
+      if (this.isSettlingAtFinalWaypoint(entity)) {
         unit.stuckTicks = 0;
         continue;
       }
@@ -1208,6 +1330,16 @@ export class Simulation {
     setUnitActions(entity.unit, newPath);
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return true;
+  }
+
+  private isSettlingAtFinalWaypoint(entity: Entity): boolean {
+    const unit = entity.unit;
+    const action = unit?.actions[0];
+    if (!action || action.isPathExpansion || action.type === 'patrol') return false;
+    if (action.type !== 'move' && action.type !== 'fight') return false;
+    const dx = action.x - entity.transform.x;
+    const dy = action.y - entity.transform.y;
+    return magnitude(dx, dy) < ARRIVAL_RADIUS;
   }
 
   private tryRefreshAttackApproach(

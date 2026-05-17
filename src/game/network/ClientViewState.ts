@@ -16,7 +16,6 @@ import type {
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { MinimapEntity } from '@/types/ui';
-import type { NetworkCaptureTile } from '@/types/capture';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { economyManager } from '../sim/economy';
 import { createEntityFromNetwork } from './helpers';
@@ -34,7 +33,6 @@ import {
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
 import { EntityCacheManager } from '../sim/EntityCacheManager';
-import { ClientCaptureTileStore } from './ClientCaptureTileStore';
 import { ClientMinimapOverrideStore } from './ClientMinimapOverrideStore';
 import { ClientSprayTargetStore } from './ClientSprayTargetStore';
 import {
@@ -107,7 +105,6 @@ export class ClientViewState {
   private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
   private gridCellSize: number = 0;
   private terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null;
-  private captureTileStore = new ClientCaptureTileStore();
 
   // Server metadata from latest snapshot
   private serverMeta: NetworkServerSnapshotMeta | null = null;
@@ -439,7 +436,6 @@ export class ClientViewState {
     }
     if (state.buildability) {
       this.terrainBuildabilityGrid = state.buildability;
-      this.captureTileStore.setTerrainBuildabilityGrid(state.buildability);
     }
     this.currentTick = state.tick;
     this.minimapOverrideStore.applySnapshot(state.minimapEntities, state.isDelta);
@@ -668,8 +664,6 @@ export class ClientViewState {
       this.gridSearchCells = [];
       this.gridCellSize = 0;
     }
-
-    this.captureTileStore.applySnapshot(state.capture, state.isDelta);
 
     // Store server metadata
     if (state.serverMeta) {
@@ -947,26 +941,6 @@ export class ClientViewState {
     return this.gridCellSize;
   }
 
-  getCaptureTiles(): NetworkCaptureTile[] {
-    return this.captureTileStore.getTiles();
-  }
-
-  consumeCaptureTileChanges(): {
-    version: number;
-    full: boolean;
-    tiles: NetworkCaptureTile[];
-  } {
-    return this.captureTileStore.consumeChanges();
-  }
-
-  getCaptureCellSize(): number {
-    return this.captureTileStore.getCellSize();
-  }
-
-  getCaptureVersion(): number {
-    return this.captureTileStore.getVersion();
-  }
-
   getServerMeta(): NetworkServerSnapshotMeta | null {
     return this.serverMeta;
   }
@@ -986,7 +960,6 @@ export class ClientViewState {
     this.gridSearchCells = [];
     this.gridCellSize = 0;
     this.terrainBuildabilityGrid = null;
-    this.captureTileStore.reset();
     this.serverMeta = null;
     this.predictionStepper.reset();
     this.predictionCadence.clearAll();

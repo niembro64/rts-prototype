@@ -243,7 +243,6 @@ const {
   clientTiltEmaMode,
   edgeScrollEnabled,
   dragPanEnabled,
-  gridOverlay,
   waypointDetail,
   soundToggles,
   rangeToggles,
@@ -281,7 +280,6 @@ const {
   changeDriftMode,
   changePredictionMode,
   changeClientTiltEmaMode,
-  changeGridOverlay,
   changeWaypointDetail,
   toggleEdgeScroll,
   toggleDragPan,
@@ -735,7 +733,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   playerClientEnabled: playerClientEnabled.value,
   displayedClientTime: displayedClientTime.value,
   displayedClientIp: displayedClientIp.value,
-  gridOverlay: gridOverlay.value,
   waypointDetail: waypointDetail.value,
   logicMsAvg: logicMsAvg.value,
   logicMsHi: logicMsHi.value,
@@ -788,7 +785,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraSmoothMode: cameraSmoothMode.value,
   resetClientDefaults,
   togglePlayerClientEnabled,
-  changeGridOverlay,
   changeWaypointDetail,
   toggleAudioSmoothing,
   toggleBurnMarks,
@@ -824,7 +820,6 @@ watchEffect(() => {
   m.playerClientEnabled = playerClientEnabled.value;
   m.displayedClientTime = displayedClientTime.value;
   m.displayedClientIp = displayedClientIp.value;
-  m.gridOverlay = gridOverlay.value;
   m.waypointDetail = waypointDetail.value;
   m.logicMsAvg = logicMsAvg.value;
   m.logicMsHi = logicMsHi.value;

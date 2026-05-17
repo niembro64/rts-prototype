@@ -52,7 +52,6 @@ import { setTiltEmaMode } from '../sim/unitTilt';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { updateCombatActivityFlags } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
-import type { CaptureSystem } from '../sim/CaptureSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { initSimWasm } from '../sim-wasm/init';
@@ -130,8 +129,6 @@ export class GameServer {
   private startupReadyListenerKeys = new Set<string>();
   private startupGateOpen = false;
 
-  // Territory capture system
-  private captureSystem: CaptureSystem;
   private debugGridPublisher = new ServerDebugGridPublisher();
   private snapshotPublisher = new ServerSnapshotPublisher();
 
@@ -167,7 +164,7 @@ export class GameServer {
     this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
     // Bootstrap the entire world: terrain, physics, world state, sim,
-    // capture grid, initial spawn. Ordering is tightly constrained
+    // and initial spawn. Ordering is tightly constrained
     // (terrain shape before deposits, deposits before terrain tile map,
     // tile map before physics ground lookup, etc.) and lives inside
     // ServerBootstrap so this constructor can stay focused on
@@ -177,7 +174,6 @@ export class GameServer {
     this.world = boot.world;
     this.simulation = boot.simulation;
     this.commandQueue = boot.commandQueue;
-    this.captureSystem = boot.captureSystem;
     this.playerIds = boot.playerIds;
     this.backgroundMode = boot.backgroundMode;
     this.backgroundAllowedTypes = boot.backgroundAllowedTypes;
@@ -393,11 +389,6 @@ export class GameServer {
     // anchor has its authoritative velocity for this tick.
     this.unitSuspensionSystem.update(dtMs);
 
-    // Update territory capture (uses spatial grid occupancy) every tick.
-    this.captureSystem.update(
-      spatialGrid.getOccupiedCellsForCapture(),
-      dtSec,
-    );
   }
 
   // Sync positions and velocities from physics bodies to entities
@@ -424,7 +415,6 @@ export class GameServer {
     this.snapshotPublisher.emit({
       world: this.world,
       simulation: this.simulation,
-      captureSystem: this.captureSystem,
       debugGridPublisher: this.debugGridPublisher,
       listeners: this.snapshotListeners,
       terrainTileMap: this.terrainTileMap,

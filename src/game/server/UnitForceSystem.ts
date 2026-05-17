@@ -11,7 +11,7 @@ import {
   isWaterAt,
   projectHorizontalOntoSlope,
 } from '../sim/Terrain';
-import { getLocomotionForceProfile } from '../sim/locomotion';
+import { LOCOMOTION_FORCE_SCALE, getLocomotionForceProfile } from '../sim/locomotion';
 import {
   unitJumpCanRelease,
   getUnitJumpSpringEnergy,
@@ -45,8 +45,6 @@ const WATER_PROBE_DY = [
   0, -0.7071067811865475, -1, -0.7071067811865477,
 ];
 const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
-const MATTER_FORCE_SCALE = 150000;
-
 // Phase 4 + 3e — deferred batch buffer for the hover orientation
 // quaternion spring. UnitForceSystem.applyForces gathers per-hover
 // (orientation, omega, target yaw/pitch/roll) into this buffer
@@ -145,7 +143,9 @@ export class UnitForceSystem {
         continue;
       }
 
-      // Action-system thrust target — a HORIZONTAL desired direction.
+      // Action-system thrust target — a HORIZONTAL desired acceleration
+      // vector. Direction aims the drive force; magnitude scales how much
+      // of the authored force profile is used this tick.
       // Locomotion owns propulsion: driveForce is the authored motor
       // strength and traction is how much of that force couples into
       // the ground. Sloped terrain projects the direction onto the
@@ -156,6 +156,8 @@ export class UnitForceSystem {
       const dirY = entity.unit.thrustDirY ?? 0;
       const dirLenSq = dirX * dirX + dirY * dirY;
       const hasThrustDir = dirLenSq > 0.0001;
+      const thrustInputMag = hasThrustDir ? Math.sqrt(dirLenSq) : 0;
+      const thrustScale = Math.min(1, thrustInputMag);
       const jumpIntent = this.getJumpIntent(entity.unit, entity.combat, hasThrustDir);
 
       // Sleeping units that aren't being asked to thrust, react to a
@@ -248,17 +250,18 @@ export class UnitForceSystem {
         thrustForceZ = (liftK / altitude - mass * vzDampPerMass * body.vz) / 1e6;
 
         if (hasThrustDir) {
-          const invDirMag = 1 / Math.sqrt(dirLenSq);
+          const invDirMag = 1 / thrustInputMag;
           const useDirX = dirX * invDirMag;
           const useDirY = dirY * invDirMag;
           const locomotionForce = getLocomotionForceProfile(
             entity.unit.locomotion,
             entity.unit.mass,
             this.world.thrustMultiplier,
-            MATTER_FORCE_SCALE,
+            LOCOMOTION_FORCE_SCALE,
           );
-          thrustForceX = useDirX * locomotionForce.tractionForceMagnitude;
-          thrustForceY = useDirY * locomotionForce.tractionForceMagnitude;
+          const thrustMagnitude = locomotionForce.tractionForceMagnitude * thrustScale;
+          thrustForceX = useDirX * thrustMagnitude;
+          thrustForceY = useDirY * thrustMagnitude;
         }
 
         // Quaternion orientation spring. Target yaw points along the
@@ -376,7 +379,7 @@ export class UnitForceSystem {
           entity.unit.locomotion,
           entity.unit.mass,
           this.world.thrustMultiplier,
-          MATTER_FORCE_SCALE,
+          LOCOMOTION_FORCE_SCALE,
         );
         const radius = body.radius || 10;
         const inWater = isWaterAt(body.x, body.y, mw, mh);
@@ -404,7 +407,7 @@ export class UnitForceSystem {
             // No z thrust — water surface is flat, no slope to climb out of.
           }
         } else if (hasThrustDir) {
-          const invDirMag = 1 / Math.sqrt(dirLenSq);
+          const invDirMag = 1 / thrustInputMag;
           let useDirX = dirX * invDirMag;
           let useDirY = dirY * invDirMag;
 
@@ -440,7 +443,7 @@ export class UnitForceSystem {
           }
 
           if (useDirX !== 0 || useDirY !== 0) {
-            const thrustMagnitude = locomotionForce.tractionForceMagnitude;
+            const thrustMagnitude = locomotionForce.tractionForceMagnitude * thrustScale;
             // Project horizontal thrust onto the slope tangent so
             // hill-climbing produces the right z-aware force. Slope
             // normal is land-only (Terrain.getSurfaceNormal excludes

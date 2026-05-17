@@ -2285,8 +2285,8 @@ pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
 // ─────────────────────────────────────────────────────────────────
 //  Phase 7 — SpatialGrid: 3D voxel hash in WASM linear memory
 //
-//  Big-bang port of src/game/sim/SpatialGrid.ts (1438 lines, 8 query
-//  families, 6 mutation methods, capture-vote subsystem). The JS-side
+//  Big-bang port of src/game/sim/SpatialGrid.ts (1438 lines, query
+//  families and mutation methods). The JS-side
 //  SpatialGrid.ts becomes a thin wrapper that delegates here while
 //  preserving the existing public surface so callers are unchanged.
 //
@@ -2300,11 +2300,6 @@ pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
 //  pack_contact_cell_key — JS-side packCell produces an identical
 //  bit pattern, so a future debugger can cross-reference cell ids.
 //
-//  Land-cell capture: spatialCubeKeyToLandCellKey in JS does
-//  `Math.floor(cubeKey / 0x10000) | 0` which is `(cubeKey >> 16)` as
-//  a 32-bit signed integer. Our cube key is u64; we drop the low
-//  16 bits (cz biased) and reinterpret the next 32 bits as i32 to
-//  produce the JS-equivalent land cell key.
 // ─────────────────────────────────────────────────────────────────
 
 const SPATIAL_KIND_UNSET: u8 = 0;
@@ -2342,17 +2337,6 @@ impl SpatialCellBucket {
     }
 }
 
-struct SpatialCaptureCell {
-    key: i32,
-    players: Vec<u8>,
-}
-
-#[derive(Clone, Copy)]
-struct SpatialCaptureVote {
-    key: i32,
-    player_id: u8,
-}
-
 struct SpatialGridState {
     cell_size: f64,
     half_cell_size: f64,
@@ -2380,11 +2364,6 @@ struct SpatialGridState {
 
     // Multi-cell building tracking. Empty for non-buildings.
     building_cells: Vec<Vec<u64>>,
-
-    // Capture votes
-    capture_by_cell: HashMap<i32, SpatialCaptureCell>,
-    unit_capture_votes: HashMap<u32, SpatialCaptureVote>,
-    building_capture_votes: HashMap<u32, Vec<SpatialCaptureVote>>,
 
     // Free list
     free_slots: Vec<u32>,
@@ -2418,9 +2397,6 @@ impl SpatialGridState {
             slot_proj_is_projectile_type: Vec::new(),
             slot_cube_key: Vec::new(),
             building_cells: Vec::new(),
-            capture_by_cell: HashMap::new(),
-            unit_capture_votes: HashMap::new(),
-            building_capture_votes: HashMap::new(),
             free_slots: Vec::new(),
             next_slot: 0,
             nearby_cells: Vec::new(),
@@ -2465,15 +2441,6 @@ fn spatial_get_cell_key(state: &SpatialGridState, x: f64, y: f64, z: f64) -> u64
     let cy = spatial_cell_xy(y, state.cell_size);
     let cz = spatial_cell_z(z, state.cell_size, state.half_cell_size);
     pack_contact_cell_key(cx, cy, cz)
-}
-
-/// JS `spatialCubeKeyToLandCellKey(cubeKey)` ≡
-/// `Math.floor(cubeKey / 0x10000) | 0` ≡ `(cubeKey >> 16) as i32`.
-/// Our cube key = (cxb << 32) | (cyb << 16) | czb; dropping the low
-/// 16 bits gives (cxb << 16) | cyb, which is exactly JS `packLandCellKey`.
-#[inline]
-fn spatial_cube_to_land_key(cube_key: u64) -> i32 {
-    ((cube_key >> 16) as u32) as i32
 }
 
 fn spatial_get_or_create_cell<'a>(state: &'a mut SpatialGridState, key: u64) -> &'a mut SpatialCellBucket {
@@ -2525,83 +2492,6 @@ fn spatial_remove_building_from_cell(state: &mut SpatialGridState, cell_key: u64
         }
     }
     spatial_prune_cell_if_empty(state, cell_key);
-}
-
-fn spatial_add_capture_vote(state: &mut SpatialGridState, key: i32, player_id: u8) {
-    let entry = state.capture_by_cell.entry(key).or_insert_with(|| SpatialCaptureCell {
-        key,
-        players: Vec::new(),
-    });
-    entry.players.push(player_id);
-}
-
-fn spatial_remove_capture_vote(state: &mut SpatialGridState, key: i32, player_id: u8) {
-    if let Some(entry) = state.capture_by_cell.get_mut(&key) {
-        if let Some(idx) = entry.players.iter().rposition(|&p| p == player_id) {
-            let last = entry.players.len() - 1;
-            if idx != last { entry.players.swap(idx, last); }
-            entry.players.pop();
-        }
-        if entry.players.is_empty() {
-            state.capture_by_cell.remove(&key);
-        }
-    }
-}
-
-fn spatial_remove_unit_capture_vote(state: &mut SpatialGridState, slot: u32) {
-    if let Some(prev) = state.unit_capture_votes.remove(&slot) {
-        spatial_remove_capture_vote(state, prev.key, prev.player_id);
-    }
-}
-
-fn spatial_sync_unit_capture(state: &mut SpatialGridState, slot: u32, cube_key: u64) {
-    let kind = state.slot_kind[slot as usize];
-    let owner = state.slot_owner_player[slot as usize];
-    let alive = state.slot_hp_alive[slot as usize];
-    let should_vote = kind == SPATIAL_KIND_UNIT && owner != 0 && alive != 0;
-    if !should_vote {
-        spatial_remove_unit_capture_vote(state, slot);
-        return;
-    }
-    let land_key = spatial_cube_to_land_key(cube_key);
-    if let Some(prev) = state.unit_capture_votes.get(&slot).copied() {
-        if prev.key == land_key && prev.player_id == owner {
-            return;
-        }
-        spatial_remove_capture_vote(state, prev.key, prev.player_id);
-    }
-    spatial_add_capture_vote(state, land_key, owner);
-    state.unit_capture_votes.insert(slot, SpatialCaptureVote { key: land_key, player_id: owner });
-}
-
-fn spatial_remove_building_capture_votes(state: &mut SpatialGridState, slot: u32) {
-    if let Some(votes) = state.building_capture_votes.remove(&slot) {
-        for v in &votes {
-            spatial_remove_capture_vote(state, v.key, v.player_id);
-        }
-    }
-}
-
-fn spatial_sync_building_capture(state: &mut SpatialGridState, slot: u32) {
-    spatial_remove_building_capture_votes(state, slot);
-    let kind = state.slot_kind[slot as usize];
-    let owner = state.slot_owner_player[slot as usize];
-    let alive = state.slot_hp_alive[slot as usize];
-    let active = state.slot_entity_active[slot as usize];
-    if kind != SPATIAL_KIND_BUILDING || owner == 0 || alive == 0 || active == 0 {
-        return;
-    }
-    let cells = state.building_cells[slot as usize].clone();
-    if cells.is_empty() { return; }
-    let mut votes = Vec::with_capacity(cells.len());
-    for &cube_key in &cells {
-        let land_key = spatial_cube_to_land_key(cube_key);
-        spatial_add_capture_vote(state, land_key, owner);
-        votes.push(SpatialCaptureVote { key: land_key, player_id: owner });
-    }
-    if !votes.is_empty() {
-        state.building_capture_votes.insert(slot, votes);
-    }
 }
 
 #[inline]
@@ -2668,9 +2558,6 @@ pub fn spatial_init(cell_size: f64, initial_slot_capacity: u32) {
     state.half_cell_size = cell_size * 0.5;
     state.cells.clear();
     state.cell_pool.clear();
-    state.capture_by_cell.clear();
-    state.unit_capture_votes.clear();
-    state.building_capture_votes.clear();
     state.free_slots.clear();
     state.next_slot = 0;
     state.nearby_cells.clear();
@@ -2715,9 +2602,6 @@ pub fn spatial_clear() {
     let state = spatial_grid();
     state.cells.clear();
     state.cell_pool.clear();
-    state.capture_by_cell.clear();
-    state.unit_capture_votes.clear();
-    state.building_capture_votes.clear();
     // Reset slot ownership but keep allocations.
     for k in state.slot_kind.iter_mut() { *k = SPATIAL_KIND_UNSET; }
     for c in state.building_cells.iter_mut() { c.clear(); }
@@ -2770,8 +2654,7 @@ pub fn spatial_free_slot(slot: u32) {
 
 /// Insert or update a unit at slot. owner_player == 0 means "no owner"
 /// (matches the JS `entity.ownership?.playerId ?? 0`). hp_alive is the
-/// HP > 0 flag — pass 0 to skip the capture vote without bucketing the
-/// slot, which mirrors updateUnit's "dead unit → remove" branch.
+/// HP > 0 flag — pass 0 to remove the slot.
 #[wasm_bindgen]
 pub fn spatial_set_unit(
     slot: u32,
@@ -2808,7 +2691,6 @@ pub fn spatial_set_unit(
         spatial_get_or_create_cell(state, new_key).units.push(slot);
         state.slot_cube_key[s] = new_key;
     }
-    spatial_sync_unit_capture(state, slot, new_key);
 }
 
 #[wasm_bindgen]
@@ -2898,14 +2780,6 @@ pub fn spatial_set_building(
         }
     }
     state.building_cells[s] = keys;
-    spatial_sync_building_capture(state, slot);
-}
-
-/// Re-sync the building capture votes for a slot (e.g. after the
-/// building's `isEntityActive` flag flips). Cells aren't re-bucketed.
-#[wasm_bindgen]
-pub fn spatial_sync_building_capture_for_slot(slot: u32) {
-    spatial_sync_building_capture(spatial_grid(), slot);
 }
 
 #[wasm_bindgen]
@@ -2917,7 +2791,6 @@ pub fn spatial_unset_slot(slot: u32) {
         SPATIAL_KIND_UNIT => {
             let key = state.slot_cube_key[s];
             spatial_remove_unit_from_cell(state, key, slot);
-            spatial_remove_unit_capture_vote(state, slot);
         }
         SPATIAL_KIND_PROJECTILE => {
             let key = state.slot_cube_key[s];
@@ -2928,7 +2801,6 @@ pub fn spatial_unset_slot(slot: u32) {
             for k in &old_cells {
                 spatial_remove_building_from_cell(state, *k, slot);
             }
-            spatial_remove_building_capture_votes(state, slot);
         }
         _ => {}
     }
@@ -3643,34 +3515,7 @@ pub fn spatial_query_enemy_units_and_projectiles_in_radius(
     (2 + n_units + n_projectiles) as u32
 }
 
-// ===================== Capture / debug queries =====================
-
-/// Emits captureResult into scratch_u32 as a flat header-prefixed
-/// stream: [n_cells, (key_i32, n_players, p0, p1, ...) per cell].
-/// Caller reads slot 0 = cell count, then walks each cell's prefix.
-#[wasm_bindgen]
-pub fn spatial_query_occupied_cells_for_capture() -> u32 {
-    let state = spatial_grid();
-    state.scratch_u32.clear();
-    // Reserve header slot for n_cells.
-    state.scratch_u32.push(0);
-    let mut n_cells = 0u32;
-    let cells_iter: Vec<&SpatialCaptureCell> = state.capture_by_cell.values().collect();
-    let mut buf = std::mem::take(&mut state.scratch_u32);
-    for cell in cells_iter {
-        if cell.players.is_empty() { continue; }
-        buf.push(cell.key as u32);
-        buf.push(cell.players.len() as u32);
-        for &p in &cell.players {
-            buf.push(p as u32);
-        }
-        n_cells += 1;
-    }
-    buf[0] = n_cells;
-    let len = buf.len() as u32;
-    state.scratch_u32 = buf;
-    len
-}
+// ===================== Debug queries =====================
 
 /// Emits occupied-cells debug info as
 /// [n_cells, (cx, cy, cz, n_players, p0, p1, ...) per cell]
@@ -7239,90 +7084,6 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
     }
 }
 
-/// Capture-tile header scratch — 3 f64 per tile:
-///   [0] cx
-///   [1] cy
-///   [2] heights_count (drives the per-tile slice of the heights scratch)
-const SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE: usize = 3;
-
-struct SnapshotEncodeCaptureTileScratch {
-    buf: Vec<f64>,
-}
-
-struct SnapshotEncodeCaptureTileScratchHolder(UnsafeCell<Option<SnapshotEncodeCaptureTileScratch>>);
-unsafe impl Sync for SnapshotEncodeCaptureTileScratchHolder {}
-static SNAPSHOT_ENCODE_CAPTURE_TILE_SCRATCH: SnapshotEncodeCaptureTileScratchHolder =
-    SnapshotEncodeCaptureTileScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-fn snapshot_encode_capture_tile_scratch() -> &'static mut SnapshotEncodeCaptureTileScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_CAPTURE_TILE_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeCaptureTileScratch {
-                buf: vec![0.0; SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE * 32],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_capture_tile_scratch_ptr() -> *const f64 {
-    snapshot_encode_capture_tile_scratch().buf.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_capture_tile_scratch_ensure(count: u32) {
-    let needed = (count as usize) * SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE;
-    let s = snapshot_encode_capture_tile_scratch();
-    if s.buf.len() < needed {
-        s.buf.resize(needed, 0.0);
-    }
-}
-
-/// Capture-tile heights scratch — 2 f64 per (playerId, height) entry,
-/// flat across all tiles in pool order. Caller must sort heights
-/// ASCENDING by playerId per tile (matches JS Object iteration order
-/// for integer-string keys).
-const SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE: usize = 2;
-
-struct SnapshotEncodeCaptureHeightScratch {
-    buf: Vec<f64>,
-}
-
-struct SnapshotEncodeCaptureHeightScratchHolder(UnsafeCell<Option<SnapshotEncodeCaptureHeightScratch>>);
-unsafe impl Sync for SnapshotEncodeCaptureHeightScratchHolder {}
-static SNAPSHOT_ENCODE_CAPTURE_HEIGHT_SCRATCH: SnapshotEncodeCaptureHeightScratchHolder =
-    SnapshotEncodeCaptureHeightScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-fn snapshot_encode_capture_height_scratch() -> &'static mut SnapshotEncodeCaptureHeightScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_CAPTURE_HEIGHT_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeCaptureHeightScratch {
-                buf: vec![0.0; SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE * 64],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_capture_height_scratch_ptr() -> *const f64 {
-    snapshot_encode_capture_height_scratch().buf.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_capture_height_scratch_ensure(count: u32) {
-    let needed = (count as usize) * SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE;
-    let s = snapshot_encode_capture_height_scratch();
-    if s.buf.len() < needed {
-        s.buf.resize(needed, 0.0);
-    }
-}
-
 /// Death-context scratch — 16 f64 per deathContext (one per audio
 /// event that has the has_deathContext flag set). Caller packs in
 /// the same order as the audio events appear; Rust walks audio
@@ -8786,60 +8547,6 @@ pub fn snapshot_encode_envelope_emit_shroud(
     w.write_number(cell_size);
     w.write_str("bitmap");
     w.write_bin(&scratch.buf[0..n]);
-    w.buf.len() as u32
-}
-
-/// Append `capture: { tiles: [...], cellSize }`. Sits AFTER shroud
-/// in iteration order — both shroud and capture are lazy-added to
-/// _snapshotBuf (shroud inside stateSerializer, capture inside the
-/// publisher). Reads tile headers (3 f64 each) from the capture-tile
-/// scratch, slicing per-tile heights from the flat heights scratch.
-///
-/// Per-tile heights map keys are encoded as base-10 string keys to
-/// match @msgpack/msgpack's emit of a JS object with integer-string
-/// keys (Object.keys on `{1: 0.5}` yields the string "1").
-#[wasm_bindgen]
-pub fn snapshot_encode_envelope_emit_capture(tile_count: u32, cell_size: f64) -> u32 {
-    let w = messagepack_writer();
-    let n = tile_count as usize;
-    let tiles = snapshot_encode_capture_tile_scratch();
-    let heights = snapshot_encode_capture_height_scratch();
-    w.write_str("capture");
-    // Wrapper field count: tiles + cellSize (always present in
-    // production publisher's object literal).
-    w.write_map_header(2);
-    w.write_str("tiles");
-    w.write_array_header(n);
-    let mut height_offset: usize = 0;
-    let mut key_buf = [0u8; 12];
-    for i in 0..n {
-        let tb = i * SNAPSHOT_ENCODE_CAPTURE_TILE_STRIDE;
-        let cx = tiles.buf[tb] as i64;
-        let cy = tiles.buf[tb + 1] as i64;
-        let height_count = tiles.buf[tb + 2] as usize;
-
-        // Per-tile DTO field count: cx, cy, heights (always present).
-        w.write_map_header(3);
-        w.write_str("cx");
-        w.write_int(cx);
-        w.write_str("cy");
-        w.write_int(cy);
-        w.write_str("heights");
-        w.write_map_header(height_count);
-        for h in 0..height_count {
-            let hb = (height_offset + h) * SNAPSHOT_ENCODE_CAPTURE_HEIGHT_STRIDE;
-            let player_id = heights.buf[hb] as u32;
-            let value = heights.buf[hb + 1];
-            // base-10 itoa into a stack buffer (no allocation). u32::MAX
-            // is 10 digits; 12-byte buffer is safe.
-            let key_str = u32_to_decimal(&mut key_buf, player_id);
-            w.write_str(key_str);
-            w.write_number(value);
-        }
-        height_offset += height_count;
-    }
-    w.write_str("cellSize");
-    w.write_number(cell_size);
     w.buf.len() as u32
 }
 

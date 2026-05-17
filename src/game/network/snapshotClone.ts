@@ -192,21 +192,6 @@ function createReusableEntity(): NetworkServerSnapshotEntity {
   };
 }
 
-type ReusableCaptureTile = NonNullable<NetworkServerSnapshot['capture']>['tiles'][number];
-
-function createReusableCaptureTile(): ReusableCaptureTile {
-  return { cx: 0, cy: 0, heights: {} };
-}
-
-function copyCaptureTileInto(src: ReusableCaptureTile, dst: ReusableCaptureTile): ReusableCaptureTile {
-  dst.cx = src.cx;
-  dst.cy = src.cy;
-  const heights = dst.heights;
-  for (const key in heights) delete heights[key];
-  for (const key in src.heights) heights[key] = src.heights[key];
-  return dst;
-}
-
 function copyEconomyInto(
   src: NetworkServerSnapshotEconomy,
   dst: NetworkServerSnapshotEconomy,
@@ -248,7 +233,6 @@ export class ReusableNetworkSnapshotCloner {
   private beamUpdates: NetworkServerSnapshotBeamUpdate[] = [];
   private projectiles: NonNullable<NetworkServerSnapshot['projectiles']> = {};
   private grid: NonNullable<NetworkServerSnapshot['grid']> = { cells: [], searchCells: [], cellSize: 0 };
-  private capture: NonNullable<NetworkServerSnapshot['capture']> = { tiles: [], cellSize: 0 };
   private gameState: NonNullable<NetworkServerSnapshot['gameState']> = { phase: 'battle' };
   // Pooled serverMeta + each of its optional sub-objects. The previous
   // implementation rebuilt the whole tree as a fresh object literal
@@ -288,7 +272,6 @@ export class ReusableNetworkSnapshotCloner {
     this.projectiles.beamUpdates = undefined;
     this.grid.cells.length = 0;
     this.grid.searchCells.length = 0;
-    this.capture.tiles.length = 0;
     this.removedEntityIds.length = 0;
     this.snapshot.sprayTargets = undefined;
     this.snapshot.audioEvents = undefined;
@@ -297,7 +280,6 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.minimapEntities = undefined;
     this.snapshot.projectiles = undefined;
     this.snapshot.grid = undefined;
-    this.snapshot.capture = undefined;
     this.snapshot.terrain = undefined;
     this.snapshot.buildability = undefined;
     this.snapshot.gameState = undefined;
@@ -430,18 +412,6 @@ export class ReusableNetworkSnapshotCloner {
       dst.grid = this.grid;
     } else {
       dst.grid = undefined;
-    }
-    if (state.capture) {
-      this.capture.tiles = this.copyRequiredArray(
-        state.capture.tiles,
-        this.capture.tiles,
-        createReusableCaptureTile,
-        copyCaptureTileInto,
-      );
-      this.capture.cellSize = state.capture.cellSize;
-      dst.capture = this.capture;
-    } else {
-      dst.capture = undefined;
     }
     dst.terrain = state.terrain ? cloneTerrainTileMap(state.terrain) : undefined;
     dst.buildability = state.buildability

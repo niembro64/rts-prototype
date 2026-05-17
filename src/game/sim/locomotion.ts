@@ -11,6 +11,8 @@ export const LOCOMOTION_TRACTION = {
   hover: 1.0,
 } as const;
 
+export const LOCOMOTION_FORCE_SCALE = 150000;
+
 export type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
 
 export const LOCOMOTION_MAX_SLOPE_DEG: Record<LocomotionType, number> = {

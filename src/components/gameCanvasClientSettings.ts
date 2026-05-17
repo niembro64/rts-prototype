@@ -17,7 +17,6 @@ import {
   getPredictionMode,
   getEdgeScrollEnabled,
   getBurnMarks,
-  getGridOverlay,
   getLegsRadiusToggle,
   getLocomotionMarks,
   getProjRangeToggle,
@@ -39,7 +38,6 @@ import {
   setPredictionMode,
   setEdgeScrollEnabled,
   setBurnMarks,
-  setGridOverlay,
   setLegsRadiusToggle,
   setLocomotionMarks,
   setProjRangeToggle,
@@ -58,7 +56,6 @@ import type {
   CameraFovDegrees,
   DriftMode,
   PredictionMode,
-  GridOverlay,
   ProjRangeType,
   RangeType,
   SoundCategory,
@@ -87,7 +84,6 @@ export function useGameCanvasClientSettings({
   const clientTiltEmaMode = ref<DriftMode>(getClientTiltEmaMode());
   const edgeScrollEnabled = ref(getEdgeScrollEnabled());
   const dragPanEnabled = ref(getDragPanEnabled());
-  const gridOverlay = ref<GridOverlay>(getGridOverlay());
   const waypointDetail = ref<WaypointDetail>(getWaypointDetail());
   const soundToggles = reactive<Record<SoundCategory, boolean>>({
     fire: getSoundToggle('fire'),
@@ -258,11 +254,6 @@ export function useGameCanvasClientSettings({
     clientTiltEmaMode.value = mode;
   }
 
-  function changeGridOverlay(mode: GridOverlay): void {
-    setGridOverlay(mode);
-    gridOverlay.value = mode;
-  }
-
   function changeWaypointDetail(mode: WaypointDetail): void {
     setWaypointDetail(mode);
     waypointDetail.value = mode;
@@ -360,8 +351,6 @@ export function useGameCanvasClientSettings({
         toggleSoundCategory(cat);
       }
     }
-    gridOverlay.value = cd.gridOverlay.default;
-    setGridOverlay(cd.gridOverlay.default);
     waypointDetail.value = cd.waypointDetail.default;
     setWaypointDetail(cd.waypointDetail.default);
     if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
@@ -401,7 +390,6 @@ export function useGameCanvasClientSettings({
     clientTiltEmaMode,
     edgeScrollEnabled,
     dragPanEnabled,
-    gridOverlay,
     waypointDetail,
     soundToggles,
     rangeToggles,
@@ -439,7 +427,6 @@ export function useGameCanvasClientSettings({
     changeDriftMode,
     changePredictionMode,
     changeClientTiltEmaMode,
-    changeGridOverlay,
     changeWaypointDetail,
     toggleEdgeScroll,
     toggleDragPan,

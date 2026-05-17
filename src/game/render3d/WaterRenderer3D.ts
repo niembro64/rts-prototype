@@ -1,7 +1,7 @@
 // WaterRenderer3D — transparent, flat water at WATER_LEVEL.
 //
 // Water is one large horizontal plane. The submerged land that makes
-// CIRCLE perimeter mode continuous is emitted by CaptureTileRenderer3D
+// CIRCLE perimeter mode continuous is emitted by TerrainTileRenderer3D
 // as part of the terrain mesh itself, so edge terrain and off-map
 // terrain share one material/shader/color path.
 

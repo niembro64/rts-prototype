@@ -145,11 +145,12 @@ export type CachedMirrorPanel = {
 // the client). Anyone reading "how fast is this unit moving" — lead
 // prediction, debris recoil, locomotion animation — should read these.
 //
-// `thrustDirX/Y` is the desired-thrust unit vector (the action system's
-// "where do I want to go this tick?") that GameServer.applyForces
-// reads to push the body. Decoupling thrust from velocity prevents the
-// action system from clobbering the velocity field mid-tick before
-// turretSystem's lead math runs.
+// `thrustDirX/Y` is the desired horizontal thrust vector that
+// GameServer.applyForces reads to push the body. Its direction is the
+// desired acceleration direction; its magnitude is clamped to [0, 1]
+// and scales the unit's available drive force. Decoupling thrust from
+// velocity prevents the action system from clobbering the velocity
+// field mid-tick before turretSystem's lead math runs.
 export type Unit = {
   unitType: string;
   locomotion: UnitLocomotion;
@@ -175,9 +176,9 @@ export type Unit = {
   movementAccelX?: number;
   movementAccelY?: number;
   movementAccelZ?: number;
-  /** Desired thrust direction for this tick. Magnitude is irrelevant
-   *  (applyForces normalizes), but the action system encodes
-   *  "stationary" as (0, 0). */
+  /** Desired thrust vector for this tick. Magnitude is a force fraction
+   *  (0..1 after clamping); the action system encodes "stationary" as
+   *  (0, 0). */
   thrustDirX?: number;
   thrustDirY?: number;
   /** Optional surface-contact jump actuator. Units without this use the

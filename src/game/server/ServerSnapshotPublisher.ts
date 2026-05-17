@@ -25,7 +25,6 @@ import { computeTeamShroudVersionSum } from '../sim/shroudBitmap';
 import type { NetworkServerSnapshotShroud } from '../../types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
-import type { CaptureSystem } from '../sim/CaptureSystem';
 import type { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
 
@@ -58,7 +57,7 @@ export type SnapshotListenerEntry = {
    *  Allocated via sim.snapshotBaseline.create() on add, released
    *  via destroy() on remove. The mirror of the JS-side
    *  DeltaTrackingState.prevStates map for the same listener;
-   *  populated per-tick by the (upcoming) capture pass. Undefined
+   *  populated per-tick by the serializer's baseline pass. Undefined
    *  if the listener was registered before initSimWasm resolved. */
   snapshotBaselineHandle?: number;
 };
@@ -66,7 +65,6 @@ export type SnapshotListenerEntry = {
 export type ServerSnapshotPublisherInput = {
   world: WorldState;
   simulation: Simulation;
-  captureSystem: CaptureSystem;
   debugGridPublisher: ServerDebugGridPublisher;
   listeners: readonly SnapshotListenerEntry[];
   terrainTileMap: TerrainTileMap;
@@ -126,7 +124,6 @@ export class ServerSnapshotPublisher {
     // ghost cleanup, so the parallel id array would be dead-loaded.
     // We only pass removedEntities below.
 
-    const captureTiles = input.captureSystem.consumeSnapshot(isDelta);
     const wind = input.simulation.getWindState();
     const serverMeta = this.metaBuilder.build({
       tickAvg: input.tpsAvg,
@@ -252,9 +249,6 @@ export class ServerSnapshotPublisher {
         serializeOptions,
       );
 
-      state.capture = captureTiles.length > 0
-        ? { tiles: captureTiles, cellSize: input.captureSystem.getCellSize() }
-        : undefined;
       const shouldSendStaticTerrain = !isDelta;
       state.terrain = shouldSendStaticTerrain ? input.terrainTileMap : undefined;
       state.buildability = shouldSendStaticTerrain

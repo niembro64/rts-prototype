@@ -435,7 +435,7 @@ export function serializeGameState(
     // categories take exactly the same path — pool an entry, capture
     // its prev state for delta tracking — so we walk both source
     // arrays through one body. Adding a new entity-shaped category
-    // (e.g. capture-tile entities) means appending one more source
+    // (e.g. future entity-like payloads) means appending one more source
     // here, not duplicating another loop.
     //
     const keyframeSources: ReadonlyArray<readonly Entity[]> = [

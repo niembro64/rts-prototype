@@ -219,7 +219,7 @@ export class BurnMark3D {
     // Single material for the whole trail — per-vertex colors encode each
     // mark's age-based shade and alpha. DoubleSide so marks read from a
     // camera under the ground, polygonOffset so they always win the
-    // depth test against the capture-tile grid below.
+    // depth test against the terrain tile grid below.
     this.mat = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,

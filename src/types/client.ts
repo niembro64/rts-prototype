@@ -21,7 +21,6 @@ export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type PredictionMode = 'pos' | 'vel' | 'acc';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraFovDegrees = 10 | 20 | 30 | 60 | 120;
-export type GridOverlay = 'off' | 'zero' | 'low' | 'medium' | 'high';
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
  *  click points and shortcut lines between them — the convention in
  *  most RTS games. DETAILED shows every intermediate waypoint that
@@ -83,6 +82,5 @@ export type ClientBarConfig = {
   readonly projRangeToggles: BooleanSetting;
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
-  readonly gridOverlay: LabeledOptionsConfig<GridOverlay>;
   readonly waypointDetail: LabeledOptionsConfig<WaypointDetail>;
 };
