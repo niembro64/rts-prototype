@@ -4,12 +4,25 @@ import type { NetworkServerSnapshotMinimapEntity } from './NetworkManager';
 import { createMinimapEntityDto } from './snapshotDtoCopy';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
 import {
+  ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
+} from './stateSerializerEntities';
+import {
   deleteSnapshotPoolForKey,
   getOrCreateSnapshotPool,
   getPooledItem,
   resolveSnapshotPoolKey,
   type SnapshotPool,
 } from './snapshotPool';
+import {
+  createFloat64WireRows,
+  reserveFloat64WireRows,
+  type Float64WireRows,
+} from './snapshotWireRows';
+
+export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 6;
+
+export type MinimapSnapshotWireSource = Float64WireRows;
 
 /** Per-listener pool of NetworkServerSnapshotMinimapEntity DTOs
  *  (issues.txt FOW-OPT-20, mirrors FOW-OPT-07 for audio). The previous
@@ -19,9 +32,12 @@ import {
  *  overwrite the cached slots. Per-listener pools keep each cached
  *  reference stable across the publisher's emit loop. */
 const minimapPools = new Map<string, SnapshotPool<NetworkServerSnapshotMinimapEntity>>();
+const minimapWireSourcesByKey = new Map<string, MinimapSnapshotWireSource>();
+const minimapWireSources = new WeakMap<object, MinimapSnapshotWireSource>();
 
 export function resetMinimapPoolForKey(key: string | number | undefined): void {
   deleteSnapshotPoolForKey(minimapPools, key);
+  if (key !== undefined) minimapWireSourcesByKey.delete(String(key));
 }
 
 function qPos(n: number): number {
@@ -46,12 +62,54 @@ function writeMinimapEntity(
   return out;
 }
 
+function getOrCreateMinimapWireSource(
+  key: string,
+  entries: NetworkServerSnapshotMinimapEntity[],
+): MinimapSnapshotWireSource {
+  let source = minimapWireSourcesByKey.get(key);
+  if (source === undefined) {
+    source = createFloat64WireRows();
+    minimapWireSourcesByKey.set(key, source);
+  }
+  source.count = 0;
+  minimapWireSources.set(entries, source);
+  return source;
+}
+
+function appendMinimapWireRow(
+  source: MinimapSnapshotWireSource,
+  entity: Entity,
+  radarOnly: boolean,
+): void {
+  const rowIndex = reserveFloat64WireRows(source, 1, MINIMAP_SNAPSHOT_WIRE_STRIDE);
+  const values = source.values;
+  const base = rowIndex * MINIMAP_SNAPSHOT_WIRE_STRIDE;
+  values[base + 0] = entity.id;
+  values[base + 1] = qPos(entity.transform.x);
+  values[base + 2] = qPos(entity.transform.y);
+  values[base + 3] = entity.unit
+    ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
+    : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+  values[base + 4] = entity.ownership?.playerId ?? 1;
+  let flags = 0;
+  if (radarOnly) flags |= 0x01;
+  values[base + 5] = flags;
+}
+
+export function getMinimapSnapshotWireSource(
+  entries: readonly NetworkServerSnapshotMinimapEntity[],
+): MinimapSnapshotWireSource | undefined {
+  return minimapWireSources.get(entries);
+}
+
 export function serializeMinimapSnapshotEntities(
   world: WorldState,
   visibility?: SnapshotVisibility,
   trackingKey?: string | number,
 ): NetworkServerSnapshotMinimapEntity[] | undefined {
-  const state = getOrCreateSnapshotPool(minimapPools, resolveSnapshotPoolKey(trackingKey));
+  const poolKey = resolveSnapshotPoolKey(trackingKey);
+  const state = getOrCreateSnapshotPool(minimapPools, poolKey);
+  const wireSource = getOrCreateMinimapWireSource(poolKey, state.buf);
   state.index = 0;
   state.buf.length = 0;
 
@@ -76,6 +134,7 @@ export function serializeMinimapSnapshotEntities(
       const radarOnly = visibility !== undefined && !visibility.isEntityVisible(entity);
       const out = getPooledItem(state, createMinimapEntityDto);
       writeMinimapEntity(out, entity, radarOnly);
+      appendMinimapWireRow(wireSource, entity, radarOnly);
       state.buf.push(out);
     }
   }

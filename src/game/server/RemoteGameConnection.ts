@@ -4,26 +4,32 @@ import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallba
 import type { Command } from '../sim/commands';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { networkManager } from '../network/NetworkManager';
+import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 
 export class RemoteGameConnection implements GameConnection {
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
+  private snapshotImpairment = createSnapshotImpairmentQueue('remote');
 
   constructor() {
     // Wire NetworkManager's state received callback
     networkManager.onStateReceived = (state: NetworkServerSnapshot) => {
-      if (this.snapshotCallback) {
-        this.snapshotCallback(state);
-      } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
-        this.pendingSnapshot = state;
-      }
-
-      // Check for game over in received state
-      if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
-        this.gameOverCallback?.(state.gameState.winnerId);
-      }
+      this.snapshotImpairment.schedule(state, (deliveredState) => {
+        this.receiveSnapshot(deliveredState);
+      });
     };
+  }
+
+  private receiveSnapshot(state: NetworkServerSnapshot): void {
+    if (this.snapshotCallback) {
+      this.snapshotCallback(state);
+    } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
+      this.pendingSnapshot = state;
+    }
+    if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
+      this.gameOverCallback?.(state.gameState.winnerId);
+    }
   }
 
   sendCommand(command: Command): void {
@@ -54,6 +60,7 @@ export class RemoteGameConnection implements GameConnection {
   }
 
   disconnect(): void {
+    this.snapshotImpairment.clear();
     this.snapshotCallback = null;
     this.gameOverCallback = null;
     this.pendingSnapshot = null;

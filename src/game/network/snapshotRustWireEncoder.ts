@@ -50,6 +50,10 @@ import {
   writeProjectileVelocityUpdateWireRow,
 } from './stateSerializerProjectiles';
 import {
+  MINIMAP_SNAPSHOT_WIRE_STRIDE,
+  getMinimapSnapshotWireSource,
+} from './stateSerializerMinimap';
+import {
   activeFloat64WireValues,
   activeUint32WireValues,
   type Float64WireRows,
@@ -828,6 +832,16 @@ function packMinimapIntoScratch(
   if (entries.length === 0) return;
   const api = sim.snapshotEncode;
   api.minimapScratchEnsure(entries.length);
+  const source = getMinimapSnapshotWireSource(entries);
+  if (source !== undefined && source.count === entries.length) {
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.minimapScratchPtr(),
+      source,
+      MINIMAP_SNAPSHOT_WIRE_STRIDE,
+    );
+    return;
+  }
   const view = new Float64Array(
     sim.memory.buffer,
     api.minimapScratchPtr(),

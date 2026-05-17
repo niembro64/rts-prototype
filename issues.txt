@@ -80,6 +80,9 @@ Entity, projectile, and economy flat wire row buffers now use grow-only typed
 array storage instead of boxed JavaScript number arrays, so the Rust bridge
 copies active packed numeric rows into WASM scratch without array-length
 trimming or whole-capacity copies.
+Minimap snapshot serialization now publishes per-listener flat wire rows, so
+the Rust-backed envelope copies high-count minimap entries into WASM scratch
+without walking the pooled minimap DTO array at encode time.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes
@@ -121,6 +124,10 @@ VITE_BA_DP03_CLIENT_PREDICTION=1. They expose
 window.__BA_DP03_CLIENT_PREDICTION__.stats() for per-frame prediction cost,
 active target age, correction distance, correction velocity, and correction
 target age. Capture notes live in docs/dp-03-client-prediction-diagnostics.md.
+DP-03 snapshot impairment now exists behind ?dp03impair=1 /
+VITE_BA_DP03_SNAPSHOT_IMPAIRMENT=1, with deterministic delay, jitter, and
+drop-every-N controls for both local in-memory and remote WebRTC snapshot
+delivery. It exposes window.__BA_DP03_SNAPSHOT_IMPAIRMENT__.
 
 Steps:
 1. Run and record correction behavior with the DP-01 5-10 SPS default.
@@ -128,7 +135,7 @@ Steps:
    scan, production, and factory waypoints without mutating authoritative state.
 3. Confirm projectiles, beams, force fields, jump arcs, hover lift, and turret
    rotation can coast through at least 500-1000 ms of missing snapshots.
-4. Add a deliberately delayed/dropped snapshot test mode and keep it passing.
+4. Keep the deliberately delayed/dropped snapshot test mode passing.
 
 DP-04 - Harden the command authority boundary.
 

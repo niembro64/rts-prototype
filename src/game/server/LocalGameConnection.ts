@@ -5,8 +5,9 @@ import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
-import { ReusableNetworkSnapshotCloner } from '../network/snapshotClone';
+import { ReusableNetworkSnapshotCloner, cloneNetworkSnapshot } from '../network/snapshotClone';
 import { encodeNetworkSnapshot } from '../network/snapshotWireCodec';
+import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import type { CommandAuthority } from './commandAuthority';
@@ -21,6 +22,7 @@ export class LocalGameConnection implements GameConnection {
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
+  private snapshotImpairment = createSnapshotImpairmentQueue('local');
   private snapshotListenerKey: string;
   private gameOverListenerRef: GameOverCallback;
   /** Who this client acts as for command attribution. `undefined`
@@ -75,6 +77,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   private rebindFilter(playerId: PlayerId | undefined): void {
+    this.snapshotImpairment.clear();
     this.server.removeSnapshotListener(this.snapshotListenerKey);
     SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(this.snapshotListenerKey, 'local');
     this.filterPlayerId = playerId;
@@ -91,14 +94,22 @@ export class LocalGameConnection implements GameConnection {
   private subscribeSnapshots(playerId: PlayerId | undefined): string {
     return this.server.addSnapshotListener((state) => {
       this.recordLocalSnapshotWireCost(state);
-      if (this.snapshotCallback) {
-        this.snapshotCallback(state);
-      } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
-        this.pendingSnapshot = state.isDelta
-          ? state
-          : this.pendingSnapshotCloner.clone(state);
-      }
+      this.snapshotImpairment.schedule(
+        state,
+        (deliveredState) => this.receiveSnapshot(deliveredState),
+        cloneNetworkSnapshot,
+      );
     }, playerId);
+  }
+
+  private receiveSnapshot(state: NetworkServerSnapshot): void {
+    if (this.snapshotCallback) {
+      this.snapshotCallback(state);
+    } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
+      this.pendingSnapshot = state.isDelta
+        ? state
+        : this.pendingSnapshotCloner.clone(state);
+    }
   }
 
   private recordLocalSnapshotWireCost(state: NetworkServerSnapshot): void {
@@ -158,6 +169,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   disconnect(): void {
+    this.snapshotImpairment.clear();
     this.server.removeSnapshotListener(this.snapshotListenerKey);
     SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(this.snapshotListenerKey, 'local');
     this.server.removeGameOverListener(this.gameOverListenerRef);
