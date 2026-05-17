@@ -11,9 +11,12 @@ import {
   isProjectileShot,
   isRocketLikeShot,
 } from './types';
+import shotProfileConfig from './shotProfileConfig.json';
 
-export const PROJECTILE_CYLINDER_LENGTH_MULT_DEFAULT = 4.0;
-export const PROJECTILE_CYLINDER_DIAMETER_MULT_DEFAULT = 0.5;
+export const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
+export const ROCKET_TAIL_LENGTH_MULT = shotProfileConfig.rocketTailLengthMult;
+export const PROJECTILE_TAIL_RADIUS_MULT = shotProfileConfig.projectileTailRadiusMult;
+export const ROCKET_FIN_SIZE_MULT = shotProfileConfig.rocketFinSizeMult;
 
 const _profileCache = new WeakMap<ActiveProjectileShot, ShotProfile>();
 
@@ -42,12 +45,12 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
 function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
   const collisionRadius = shot.collision.radius;
   return {
-    projectileShape: shot.shape ?? 'sphere',
     projectileBodyRadius: collisionRadius,
-    cylinderLengthMult:
-      shot.cylinderShape?.lengthMult ?? PROJECTILE_CYLINDER_LENGTH_MULT_DEFAULT,
-    cylinderDiameterMult:
-      shot.cylinderShape?.diameterMult ?? PROJECTILE_CYLINDER_DIAMETER_MULT_DEFAULT,
+    projectileTailShape: shot.type === 'rocket' ? 'cylinder' : 'cone',
+    projectileTailLengthMult:
+      shot.type === 'rocket' ? ROCKET_TAIL_LENGTH_MULT : PLASMA_TAIL_LENGTH_MULT,
+    projectileTailRadiusMult: PROJECTILE_TAIL_RADIUS_MULT,
+    projectileFinSizeMult: shot.type === 'rocket' ? ROCKET_FIN_SIZE_MULT : 0,
     debugCollisionRadius: collisionRadius,
     debugExplosionRadius: shot.explosion?.radius ?? 0,
     smokeTrail: shot.smokeTrail,
@@ -85,10 +88,11 @@ function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
     throw new Error(`Cannot build line shot visual profile for shot.type=${shot.type}`);
   }
   return {
-    projectileShape: 'sphere',
     projectileBodyRadius: 0,
-    cylinderLengthMult: PROJECTILE_CYLINDER_LENGTH_MULT_DEFAULT,
-    cylinderDiameterMult: PROJECTILE_CYLINDER_DIAMETER_MULT_DEFAULT,
+    projectileTailShape: 'none',
+    projectileTailLengthMult: ROCKET_TAIL_LENGTH_MULT,
+    projectileTailRadiusMult: PROJECTILE_TAIL_RADIUS_MULT,
+    projectileFinSizeMult: 0,
     debugCollisionRadius: shot.radius,
     debugExplosionRadius: 0,
     burnMarkWidth: shot.width * 2,

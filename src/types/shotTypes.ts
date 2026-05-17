@@ -2,7 +2,8 @@ import type { SoundEntry } from './audio';
 import type { ShotId } from './blueprintIds';
 import type { EntityId, PlayerId } from './entityTypes';
 
-export type ProjectileShotKind = 'projectile' | 'rocket';
+export type ProjectileShotKind = 'plasma' | 'rocket';
+export type ProjectileTailShape = 'cone' | 'cylinder' | 'none';
 
 /** The set of `shot.type` values that mirror panels reflect. Adding
  *  one here automatically wires the new type into the aim solver,
@@ -55,7 +56,7 @@ export type ShotExplosion = {
  * origin whenever the parent shot explodes.
  */
 export type SubmunitionSpec = {
-  /** Shot blueprint ID for each spawned child. Must be a 'projectile' shot. */
+  /** Shot blueprint ID for each spawned child. Must be a plasma/rocket shot. */
   shotId: ShotId;
   /** Number of children spawned per parent explosion. */
   count: number;
@@ -68,8 +69,8 @@ export type SubmunitionSpec = {
   reflectedVelocityDamper?: number;
 };
 
-/** Per-shot rocket-cylinder dimensions. Both values are multiples of
- *  the projectile's `collision.radius`. */
+/** @deprecated Projectile visuals are now type-derived: plasma uses a
+ *  12x-radius cone tail, rocket uses an 8x-radius cylinder tail. */
 export type CylinderShapeSpec = {
   /** World-space length of the rendered pill = collision.radius times this. */
   lengthMult?: number;
@@ -117,9 +118,9 @@ export type ProjectileShotBlueprint = {
   homingTurnRate?: number;
   /** Cosmetic smoke trail config. Sim-side: no effect. */
   smokeTrail?: SmokeTrailSpec;
-  /** Cosmetic 3D-client mesh shape for the projectile body. */
+  /** @deprecated Ignored by the 3D projectile renderer. */
   shape?: 'sphere' | 'cylinder';
-  /** Cylinder dimensions when `shape === 'cylinder'`. */
+  /** @deprecated Ignored by the 3D projectile renderer. */
   cylinderShape?: CylinderShapeSpec;
 };
 
@@ -197,9 +198,9 @@ export type ProjectileShot = {
   ignoresGravity?: boolean;
   /** Cosmetic smoke-trail config. */
   smokeTrail?: SmokeTrailSpec;
-  /** Cosmetic 3D-client mesh shape. */
+  /** @deprecated Ignored by the 3D projectile renderer. */
   shape?: 'sphere' | 'cylinder';
-  /** Cylinder dimensions when `shape === 'cylinder'`. */
+  /** @deprecated Ignored by the 3D projectile renderer. */
   cylinderShape?: CylinderShapeSpec;
 };
 
@@ -304,10 +305,12 @@ export type ShotRuntimeProfile = {
 };
 
 export type ShotVisualProfile = {
-  projectileShape: 'sphere' | 'cylinder';
   projectileBodyRadius: number;
-  cylinderLengthMult: number;
-  cylinderDiameterMult: number;
+  projectileTailShape: ProjectileTailShape;
+  projectileTailLengthMult: number;
+  projectileTailRadiusMult: number;
+  /** Per-fin size as a multiple of the body radius. 0 means no fins. */
+  projectileFinSizeMult: number;
   debugCollisionRadius: number;
   debugExplosionRadius: number;
   smokeTrail?: SmokeTrailSpec;
@@ -323,7 +326,7 @@ export type ShotProfile = {
 };
 
 export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
-  return shot.type === 'projectile' || shot.type === 'rocket';
+  return shot.type === 'plasma' || shot.type === 'rocket';
 }
 
 /** Rocket-class predicate: a projectile shot whose `ignoresGravity` flag is set. */
@@ -335,6 +338,6 @@ export function isRocketLikeShot(shot: ShotConfig): boolean {
 export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 2000): number {
   if (shot.type === 'beam') return Infinity;
   if (shot.type === 'laser') return shot.duration;
-  if (shot.type === 'projectile' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
+  if (shot.type === 'plasma' || shot.type === 'rocket') return shot.lifespan ?? fallbackLifespan;
   return fallbackLifespan;
 }
