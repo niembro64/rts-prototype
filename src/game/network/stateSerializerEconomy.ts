@@ -1,13 +1,15 @@
 import type { PlayerId } from '../sim/types';
 import { economyManager } from '../sim/economy';
 import type { NetworkServerSnapshotEconomy } from './NetworkManager';
+import {
+  createFloat64WireRows,
+  reserveFloat64WireRows,
+  type Float64WireRows,
+} from './snapshotWireRows';
 
 export const ECONOMY_SNAPSHOT_WIRE_STRIDE = 11;
 
-export type EconomySnapshotWireSource = {
-  values: number[];
-  count: number;
-};
+export type EconomySnapshotWireSource = Float64WireRows;
 
 const economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<
   PlayerId,
@@ -18,10 +20,7 @@ const economyEntryPool: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as R
   NetworkServerSnapshotEconomy
 >;
 const economyKeys: PlayerId[] = [];
-const economyWireSource: EconomySnapshotWireSource = {
-  values: [],
-  count: 0,
-};
+const economyWireSource: EconomySnapshotWireSource = createFloat64WireRows();
 const economyWireSources = new WeakMap<object, EconomySnapshotWireSource>([
   [economyBuf, economyWireSource],
 ]);
@@ -104,12 +103,14 @@ export function serializeEconomySnapshot(
       entry.metal.expenditure = eco.metal.expenditure;
       economyKeys.push(pid);
       economyBuf[pid] = entry;
-      const base = economyWireSource.count * ECONOMY_SNAPSHOT_WIRE_STRIDE;
+      const base = reserveFloat64WireRows(
+        economyWireSource,
+        1,
+        ECONOMY_SNAPSHOT_WIRE_STRIDE,
+      ) * ECONOMY_SNAPSHOT_WIRE_STRIDE;
       copyEconomyIntoWireRow(pid, entry, base);
-      economyWireSource.count++;
     }
   }
-  economyWireSource.values.length = economyWireSource.count * ECONOMY_SNAPSHOT_WIRE_STRIDE;
 
   return economyBuf;
 }

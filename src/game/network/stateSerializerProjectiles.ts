@@ -23,6 +23,14 @@ import {
   turretIdToCode,
 } from '../../types/network';
 import { definePooledScratchProperty } from './snapshotPooledScratch';
+import {
+  createFloat64WireRows,
+  createUint32WireRows,
+  reserveFloat64WireRows,
+  reserveUint32WireRows,
+  type Float64WireRows,
+  type Uint32WireRows,
+} from './snapshotWireRows';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
@@ -47,20 +55,15 @@ const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T = 0x01;
 const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE = 0x02;
 const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE = 0x04;
 
-export type ProjectileSnapshotWireRows = {
-  values: number[];
-  count: number;
-};
-
 export type ProjectileSnapshotWireSource = {
-  spawns: ProjectileSnapshotWireRows;
-  despawns: ProjectileSnapshotWireRows;
-  velocityUpdates: ProjectileSnapshotWireRows;
-  beamUpdates: ProjectileSnapshotWireRows;
-  beamPoints: ProjectileSnapshotWireRows;
+  spawns: Float64WireRows;
+  despawns: Uint32WireRows;
+  velocityUpdates: Float64WireRows;
+  beamUpdates: Float64WireRows;
+  beamPoints: Float64WireRows;
 };
 
-type MutableNumberRow = number[] | Float64Array;
+type MutableNumberRow = Float64Array;
 
 type PooledProjectileSpawn = NetworkServerSnapshotProjectileSpawn & {
   _pos: Vec3;
@@ -107,11 +110,11 @@ const _projectilesBuf: ProjectileSnapshot = {
   beamUpdates: undefined,
 };
 const projectileWireSource: ProjectileSnapshotWireSource = {
-  spawns: { values: [], count: 0 },
-  despawns: { values: [], count: 0 },
-  velocityUpdates: { values: [], count: 0 },
-  beamUpdates: { values: [], count: 0 },
-  beamPoints: { values: [], count: 0 },
+  spawns: createFloat64WireRows(),
+  despawns: createUint32WireRows(),
+  velocityUpdates: createFloat64WireRows(),
+  beamUpdates: createFloat64WireRows(),
+  beamPoints: createFloat64WireRows(),
 };
 const projectileWireSources = new WeakMap<object, ProjectileSnapshotWireSource>([
   [_projectilesBuf, projectileWireSource],
@@ -266,18 +269,6 @@ function resetProjectileWireSource(): void {
   projectileWireSource.beamPoints.count = 0;
 }
 
-function trimProjectileWireRows(rows: ProjectileSnapshotWireRows, stride: number): void {
-  rows.values.length = rows.count * stride;
-}
-
-function finalizeProjectileWireSource(): void {
-  trimProjectileWireRows(projectileWireSource.spawns, PROJECTILE_SPAWN_WIRE_STRIDE);
-  trimProjectileWireRows(projectileWireSource.despawns, PROJECTILE_DESPAWN_WIRE_STRIDE);
-  trimProjectileWireRows(projectileWireSource.velocityUpdates, PROJECTILE_VELOCITY_WIRE_STRIDE);
-  trimProjectileWireRows(projectileWireSource.beamUpdates, PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
-  trimProjectileWireRows(projectileWireSource.beamPoints, PROJECTILE_BEAM_POINT_WIRE_STRIDE);
-}
-
 export function writeProjectileSpawnWireRow(
   values: MutableNumberRow,
   base: number,
@@ -332,18 +323,18 @@ export function writeProjectileSpawnWireRow(
 
 function copyProjectileSpawnIntoWireRow(spawn: NetworkServerSnapshotProjectileSpawn): void {
   const rows = projectileWireSource.spawns;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_SPAWN_WIRE_STRIDE);
   writeProjectileSpawnWireRow(
     rows.values,
-    rows.count * PROJECTILE_SPAWN_WIRE_STRIDE,
+    rowIndex * PROJECTILE_SPAWN_WIRE_STRIDE,
     spawn,
   );
-  rows.count++;
 }
 
 function copyProjectileDespawnIntoWireRow(despawn: NetworkServerSnapshotProjectileDespawn): void {
   const rows = projectileWireSource.despawns;
-  rows.values[rows.count] = despawn.id;
-  rows.count++;
+  const rowIndex = reserveUint32WireRows(rows, 1, PROJECTILE_DESPAWN_WIRE_STRIDE);
+  rows.values[rowIndex] = despawn.id;
 }
 
 export function writeProjectileVelocityUpdateWireRow(
@@ -362,12 +353,12 @@ export function writeProjectileVelocityUpdateWireRow(
 
 function copyProjectileVelocityUpdateIntoWireRow(update: NetworkServerSnapshotVelocityUpdate): void {
   const rows = projectileWireSource.velocityUpdates;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_VELOCITY_WIRE_STRIDE);
   writeProjectileVelocityUpdateWireRow(
     rows.values,
-    rows.count * PROJECTILE_VELOCITY_WIRE_STRIDE,
+    rowIndex * PROJECTILE_VELOCITY_WIRE_STRIDE,
     update,
   );
-  rows.count++;
 }
 
 export function writeBeamPointWireRow(
@@ -404,12 +395,12 @@ export function writeBeamPointWireRow(
 
 function copyBeamPointIntoWireRow(point: NetworkServerSnapshotBeamPoint): void {
   const rows = projectileWireSource.beamPoints;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_BEAM_POINT_WIRE_STRIDE);
   writeBeamPointWireRow(
     rows.values,
-    rows.count * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+    rowIndex * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
     point,
   );
-  rows.count++;
 }
 
 export function writeBeamUpdateWireRow(
@@ -432,12 +423,12 @@ export function writeBeamUpdateWireRow(
 
 function copyBeamUpdateIntoWireRow(update: NetworkServerSnapshotBeamUpdate): void {
   const rows = projectileWireSource.beamUpdates;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
   writeBeamUpdateWireRow(
     rows.values,
-    rows.count * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+    rowIndex * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
     update,
   );
-  rows.count++;
 }
 
 export function getProjectileSnapshotWireSource(
@@ -773,7 +764,6 @@ export function serializeProjectileSnapshot({
     if (_beamUpdateBuf.length > 0) netBeamUpdates = _beamUpdateBuf;
   }
 
-  finalizeProjectileWireSource();
   if (!netProjectileSpawns && !netProjectileDespawns && !netVelocityUpdates && !netBeamUpdates) {
     return undefined;
   }

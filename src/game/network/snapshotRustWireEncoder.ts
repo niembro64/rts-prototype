@@ -43,13 +43,18 @@ import {
   PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
   getProjectileSnapshotWireSource,
-  type ProjectileSnapshotWireRows,
   type ProjectileSnapshotWireSource,
   writeBeamPointWireRow,
   writeBeamUpdateWireRow,
   writeProjectileSpawnWireRow,
   writeProjectileVelocityUpdateWireRow,
 } from './stateSerializerProjectiles';
+import {
+  activeFloat64WireValues,
+  activeUint32WireValues,
+  type Float64WireRows,
+  type Uint32WireRows,
+} from './snapshotWireRows';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -1309,20 +1314,22 @@ function packProjSpawnsIntoScratch(
 function copyFloatWireRowsIntoScratch(
   sim: SimWasm,
   ptr: number,
-  rows: ProjectileSnapshotWireRows,
+  rows: Float64WireRows,
   stride: number,
 ): void {
   if (rows.count === 0) return;
-  new Float64Array(sim.memory.buffer, ptr, rows.count * stride).set(rows.values);
+  new Float64Array(sim.memory.buffer, ptr, rows.count * stride)
+    .set(activeFloat64WireValues(rows, stride));
 }
 
 function copyUint32WireRowsIntoScratch(
   sim: SimWasm,
   ptr: number,
-  rows: ProjectileSnapshotWireRows,
+  rows: Uint32WireRows,
 ): void {
   if (rows.count === 0) return;
-  new Uint32Array(sim.memory.buffer, ptr, rows.count).set(rows.values);
+  new Uint32Array(sim.memory.buffer, ptr, rows.count)
+    .set(activeUint32WireValues(rows, 1));
 }
 
 function packProjectileWireSourceIntoScratch(

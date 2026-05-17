@@ -34,6 +34,14 @@ import {
   type WaypointDto,
 } from './snapshotDtoCopy';
 import {
+  createFloat64WireRows,
+  createUint32WireRows,
+  reserveFloat64WireRows,
+  reserveUint32WireRows,
+  type Float64WireRows,
+  type Uint32WireRows,
+} from './snapshotWireRows';
+import {
   clearNetworkUnitActions,
   clearNetworkUnitCombatMode,
   clearNetworkUnitJump,
@@ -70,22 +78,17 @@ export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 12;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
-export type EntitySnapshotWireRows = {
-  values: number[];
-  count: number;
-};
-
 export type EntitySnapshotWireSource = {
   kinds: number[];
   rowIndices: number[];
-  basicRows: EntitySnapshotWireRows;
-  unitRows: EntitySnapshotWireRows;
-  buildingRows: EntitySnapshotWireRows;
-  actionRows: EntitySnapshotWireRows;
+  basicRows: Float64WireRows;
+  unitRows: Float64WireRows;
+  buildingRows: Float64WireRows;
+  actionRows: Float64WireRows;
   actionStrings: string[];
-  turretRows: EntitySnapshotWireRows;
-  factoryQueueRows: EntitySnapshotWireRows;
-  waypointRows: EntitySnapshotWireRows;
+  turretRows: Float64WireRows;
+  factoryQueueRows: Uint32WireRows;
+  waypointRows: Float64WireRows;
   waypointStrings: string[];
 };
 
@@ -113,14 +116,14 @@ type PooledEntry = {
 const entityWireSource: EntitySnapshotWireSource = {
   kinds: [],
   rowIndices: [],
-  basicRows: { values: [], count: 0 },
-  unitRows: { values: [], count: 0 },
-  buildingRows: { values: [], count: 0 },
-  actionRows: { values: [], count: 0 },
+  basicRows: createFloat64WireRows(),
+  unitRows: createFloat64WireRows(),
+  buildingRows: createFloat64WireRows(),
+  actionRows: createFloat64WireRows(),
   actionStrings: [],
-  turretRows: { values: [], count: 0 },
-  factoryQueueRows: { values: [], count: 0 },
-  waypointRows: { values: [], count: 0 },
+  turretRows: createFloat64WireRows(),
+  factoryQueueRows: createUint32WireRows(),
+  waypointRows: createFloat64WireRows(),
   waypointStrings: [],
 };
 const entityWireSources = new WeakMap<object, EntitySnapshotWireSource>();
@@ -282,12 +285,12 @@ function appendRawEntityWireRow(): void {
 function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | undefined): number {
   if (actions === undefined || actions.length === 0) return -1;
   const rows = entityWireSource.actionRows;
-  const offset = rows.count;
+  const offset = reserveFloat64WireRows(rows, actions.length, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
   const values = rows.values;
   const strings = entityWireSource.actionStrings;
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
-    const base = (rows.count + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
     values[base + 0] = action.type;
     values[base + 1] = action.pos !== undefined ? 1 : 0;
     values[base + 2] = action.pos?.x ?? 0;
@@ -306,19 +309,18 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
     values[base + 14] = action.buildingId !== undefined ? 1 : 0;
     values[base + 15] = action.buildingId ?? 0;
   }
-  rows.count += actions.length;
   return offset;
 }
 
 function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | undefined): number {
   if (turrets === undefined || turrets.length === 0) return -1;
   const rows = entityWireSource.turretRows;
-  const offset = rows.count;
+  const offset = reserveFloat64WireRows(rows, turrets.length, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
   const values = rows.values;
   for (let i = 0; i < turrets.length; i++) {
     const src = turrets[i];
     const angular = src.turret.angular;
-    const base = (rows.count + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
     values[base + 0] = angular.rot;
     values[base + 1] = angular.vel;
     values[base + 2] = angular.acc;
@@ -332,31 +334,29 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 10] = src.currentForceFieldRange !== undefined ? 1 : 0;
     values[base + 11] = src.currentForceFieldRange ?? 0;
   }
-  rows.count += turrets.length;
   return offset;
 }
 
 function appendFactoryQueueWireRows(queue: readonly number[] | undefined): number {
   if (queue === undefined || queue.length === 0) return -1;
   const rows = entityWireSource.factoryQueueRows;
-  const offset = rows.count;
+  const offset = reserveUint32WireRows(rows, queue.length, 1);
   const values = rows.values;
   for (let i = 0; i < queue.length; i++) {
-    values[rows.count + i] = queue[i];
+    values[offset + i] = queue[i];
   }
-  rows.count += queue.length;
   return offset;
 }
 
 function appendWaypointWireRows(waypoints: readonly FactorySub['waypoints'][number][] | undefined): number {
   if (waypoints === undefined || waypoints.length === 0) return -1;
   const rows = entityWireSource.waypointRows;
-  const offset = rows.count;
+  const offset = reserveFloat64WireRows(rows, waypoints.length, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
   const values = rows.values;
   const strings = entityWireSource.waypointStrings;
   for (let i = 0; i < waypoints.length; i++) {
     const waypoint = waypoints[i];
-    const base = (rows.count + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
     values[base + 0] = waypoint.pos.x;
     values[base + 1] = waypoint.pos.y;
     values[base + 2] = waypoint.posZ !== undefined ? 1 : 0;
@@ -364,14 +364,14 @@ function appendWaypointWireRows(waypoints: readonly FactorySub['waypoints'][numb
     values[base + 4] = strings.length;
     strings.push(waypoint.type);
   }
-  rows.count += waypoints.length;
   return offset;
 }
 
 function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
   const rows = entityWireSource.basicRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
   const values = rows.values;
-  const base = rows.count * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
   values[base + 0] = entity.id;
   values[base + 1] = entity.type === 'unit'
     ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
@@ -384,8 +384,7 @@ function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
   values[base + 7] = entity.changedFields !== undefined ? 1 : 0;
   values[base + 8] = entity.changedFields ?? 0;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
-  entityWireSource.rowIndices.push(rows.count);
-  rows.count++;
+  entityWireSource.rowIndices.push(rowIndex);
 }
 
 function appendUnitEntityWireRow(
@@ -393,8 +392,9 @@ function appendUnitEntityWireRow(
   unit: UnitSub,
 ): void {
   const rows = entityWireSource.unitRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
   const values = rows.values;
-  const base = rows.count * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   const movementAccel = unit.movementAccel;
   const surfaceNormal = unit.surfaceNormal;
   const suspension = unit.suspension;
@@ -483,8 +483,7 @@ function appendUnitEntityWireRow(
   values[base + 70] = turretOffset;
   values[base + 71] = actionOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-  entityWireSource.rowIndices.push(rows.count);
-  rows.count++;
+  entityWireSource.rowIndices.push(rowIndex);
 }
 
 function appendBuildingEntityWireRow(
@@ -492,8 +491,9 @@ function appendBuildingEntityWireRow(
   building: BuildingSub,
 ): void {
   const rows = entityWireSource.buildingRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
   const values = rows.values;
-  const base = rows.count * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
   const factory = building.factory;
   const dim = building.dim;
   const solar = building.solar;
@@ -536,8 +536,7 @@ function appendBuildingEntityWireRow(
   values[base + 32] = factoryQueueOffset;
   values[base + 33] = factoryWaypointOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
-  entityWireSource.rowIndices.push(rows.count);
-  rows.count++;
+  entityWireSource.rowIndices.push(rowIndex);
 }
 
 function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void {

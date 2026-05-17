@@ -76,6 +76,10 @@ orders can stay on the flat entity row path without encode-time DTO walking.
 Factory queue and waypoint payloads now publish serializer-owned flat wire rows
 plus a compact waypoint string table, so factory buildings can stay on the flat
 entity row path instead of forcing the encode bridge to walk factory DTOs.
+Entity, projectile, and economy flat wire row buffers now use grow-only typed
+array storage instead of boxed JavaScript number arrays, so the Rust bridge
+copies active packed numeric rows into WASM scratch without array-length
+trimming or whole-capacity copies.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes
