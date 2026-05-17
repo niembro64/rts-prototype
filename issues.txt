@@ -67,8 +67,8 @@ captured on 2026-05-17 in docs/dp-02-snapshot-wire-instrumentation.md.
 DP-02 Rust parity comparison exists in development behind ?dp02rust=1 /
 VITE_BA_DP02_RUST_SNAPSHOT_WIRE=1. The legacy JS sender can be forced with
 ?dp02js=1 / VITE_BA_DP02_FORCE_JS_SNAPSHOT_WIRE=1. Otherwise, the parity path
-compares the Rust-backed send bytes with JavaScript MessagePack bytes and falls
-back to JS for any mismatching dev snapshot. It exposes
+compares the Rust-backed send bytes with JavaScript MessagePack bytes without
+swapping the outgoing sender back to JS on mismatch. It exposes
 window.__BA_DP02_RUST_SNAPSHOT_WIRE__.stats(). Unported DTO pieces use explicit
 raw MessagePack fallback counters so the remaining burn-down is measurable.
 Normal 1k and 5k delta parity probes now send through Rust with zero mismatches
@@ -77,12 +77,8 @@ non-enumerable and stabilizing entity changedFields key order. Full-keyframe
 terrain/buildability parity now stays on the Rust path.
 
 Steps:
-1. Keep the Rust parity flag focused on debug-grid and unsupported variant raw
-   fallback while normal live snapshots stay fully Rust-encoded.
-2. Remove DTO construction from the hottest entity/projectile/economy paths by
+1. Remove DTO construction from the hottest entity/projectile/economy paths by
    writing directly from SoA/WASM-side pools into the binary envelope.
-3. Keep the old object decoder only as a temporary compatibility/debug path, then
-   delete it once no sender emits object snapshots.
 
 DP-03 - Make client prediction prove itself at low snapshot cadence.
 

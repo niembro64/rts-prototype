@@ -550,10 +550,9 @@ export class NetworkManager {
         }
         return;
       case 'state':
-        // Client receives state from host. Host now ships state as a
-        // MessagePack Uint8Array; legacy JSON-string form is still
-        // accepted as a fallback so a mixed-version game doesn't crash
-        // on the first frame after upgrade.
+        // Client receives state from host. Host ships snapshots as a
+        // MessagePack Uint8Array so PeerJS carries one flat binary
+        // payload instead of a deep object tree.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
           const hostConn = this.connections.get(1);

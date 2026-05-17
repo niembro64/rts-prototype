@@ -32,8 +32,9 @@ DTO pieces that are not ported yet use explicit raw MessagePack fallback inside
 the Rust-owned envelope so live snapshots can still be compared end to end.
 
 In development, the parity flag also builds JavaScript `@msgpack/msgpack` bytes
-from the same DTO and compares them with the Rust-backed bytes. If a mismatch is
-found, the dev send falls back to the JavaScript bytes for that snapshot.
+from the same DTO and compares them with the Rust-backed bytes. Mismatches are
+logged and counted, but the outgoing snapshot stays on the Rust-backed sender so
+normal live traffic remains on the owned binary path while parity is measured.
 
 The compare path exposes:
 
@@ -139,4 +140,6 @@ Post-fix parity probes:
 | 1,000 | 5 | 12.1 | 55 | 55 | 0 | 55 | 0 | 0 | `terrain`, `buildability` on the full keyframe |
 | 5,000 | 5 | 13.0 | 22 | 22 | 0 | 22 | 0 | 0 | `terrain`, `buildability` on the full keyframe |
 
-Remaining DP-02 parity work: port the full-keyframe static `terrain` and `buildability` top-level fields, then continue probing less common audio/projectile variants and remote recipients.
+The full-keyframe static `terrain` and `buildability` top-level fields now stay
+on the Rust path. Remaining DP-02 parity work is focused on debug-grid raw
+fallback, less common audio/projectile variants, and remote recipients.

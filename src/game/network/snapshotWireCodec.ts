@@ -59,10 +59,7 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
       noteRustSnapshotWireResult(rustResult);
       if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
         const jsBytes = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
-        if (!compareRustSnapshotWireResult(state, jsBytes, rustResult)) {
-          rustSnapshotWireStats.jsSends++;
-          return jsBytes;
-        }
+        compareRustSnapshotWireResult(state, jsBytes, rustResult);
       }
       rustSnapshotWireStats.rustSends++;
       return rustResult.bytes;

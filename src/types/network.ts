@@ -259,7 +259,7 @@ export type LobbySettings = {
 
 // Server → Client
 export type NetworkServerSnapshotMessage =
-  | { type: 'state'; gameId?: string; data: NetworkServerSnapshot | string | Uint8Array | ArrayBuffer }
+  | { type: 'state'; gameId?: string; data: Uint8Array | ArrayBuffer }
   | { type: 'playerAssignment'; playerId: PlayerId; gameId?: string }
   | {
       type: 'gameStart';

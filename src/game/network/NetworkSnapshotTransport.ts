@@ -62,7 +62,10 @@ export class NetworkSnapshotTransport {
     };
   }
 
-  decodeReceivedState(raw: unknown, hostDataChannel?: RTCDataChannel): NetworkServerSnapshot {
+  decodeReceivedState(
+    raw: Uint8Array | ArrayBuffer,
+    hostDataChannel?: RTCDataChannel,
+  ): NetworkServerSnapshot {
     this.snapshotsReceived++;
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsReceived % 100 === 0) {
       debugLog(
@@ -72,20 +75,8 @@ export class NetworkSnapshotTransport {
     }
 
     const decodeStart = performance.now();
-    let bytes: number | undefined;
-    let state: NetworkServerSnapshot;
-    if (raw instanceof Uint8Array) {
-      bytes = raw.byteLength;
-      state = decodeNetworkSnapshot(raw);
-    } else if (raw instanceof ArrayBuffer) {
-      bytes = raw.byteLength;
-      state = decodeNetworkSnapshot(raw);
-    } else if (typeof raw === 'string') {
-      bytes = raw.length;
-      state = JSON.parse(raw);
-    } else {
-      state = raw as NetworkServerSnapshot;
-    }
+    const bytes = raw.byteLength;
+    const state = decodeNetworkSnapshot(raw);
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotDecode({
       rate: state.serverMeta?.snaps.rate,
       bytes,
