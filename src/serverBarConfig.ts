@@ -5,7 +5,7 @@ import { TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from './shellConfig';
 export const HOST_SNAPSHOT_RATE_NORMAL_MIN = 5;
 export const HOST_SNAPSHOT_RATE_NORMAL_MAX = 10;
 export const HOST_SNAPSHOT_RATE_DIAGNOSTIC_MIN = 16;
-export const HOST_SNAPSHOT_RATE_DEFAULT: SnapshotRate = 8;
+export const HOST_SNAPSHOT_RATE_DEFAULT: SnapshotRate = 16;
 export const HOST_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
   1, 4, 5, 8, 10, 16, 32, 64, 128,
 ];
@@ -86,7 +86,7 @@ export const SERVER_CONFIG = {
   keyframe: {
     // Fraction of DIFFSNAPs that are actually FULLSNAPs.
     // Each option is 4× rarer (skips one power of two): 1/1, 1/4, 1/16, 1/64.
-    default: (1 / 64) as KeyframeRatio,
+    default: (1 / 16) as KeyframeRatio,
     options: [
       'ALL',
       1 / 4,
