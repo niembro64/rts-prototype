@@ -35,7 +35,6 @@ import {
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_JUMP,
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -237,11 +236,6 @@ export function getEntityDeltaChangedFields(
         Math.abs(next.velocityY - prev.velocityY) > velTh ||
         Math.abs(next.velocityZ - prev.velocityZ) > velTh) {
       mask |= ENTITY_CHANGED_VEL;
-    }
-    if (Math.abs(next.movementAccelX - prev.movementAccelX) > velTh ||
-        Math.abs(next.movementAccelY - prev.movementAccelY) > velTh ||
-        Math.abs(next.movementAccelZ - prev.movementAccelZ) > velTh) {
-      mask |= ENTITY_CHANGED_MOVEMENT_ACCEL;
     }
     if (next.hp !== prev.hp) {
       mask |= ENTITY_CHANGED_HP;

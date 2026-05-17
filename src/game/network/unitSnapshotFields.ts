@@ -5,7 +5,6 @@ import type {
 } from './NetworkTypes';
 import type { ServerTarget } from './ClientPredictionTargets';
 import {
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -106,13 +105,6 @@ export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapsho
   if (isFiniteNumber(src.mass)) unit.mass = src.mass;
 }
 
-export function applyNetworkUnitMovementAccel(unit: Unit, src: NetworkUnitSnapshot): void {
-  const accel = src.movementAccel;
-  unit.movementAccelX = accel?.x ?? 0;
-  unit.movementAccelY = accel?.y ?? 0;
-  unit.movementAccelZ = accel?.z ?? 0;
-}
-
 export function applyNetworkSuspensionState(
   entity: Entity,
   suspension: NetworkUnitSnapshot['suspension'] | undefined | null,
@@ -188,14 +180,6 @@ export function readNetworkUnitVelocity(src: NetworkUnitSnapshot | undefined): V
   };
 }
 
-export function readNetworkUnitMovementAccel(src: NetworkUnitSnapshot | undefined): Vec3 {
-  return {
-    x: finiteOr(src?.movementAccel?.x, 0),
-    y: finiteOr(src?.movementAccel?.y, 0),
-    z: finiteOr(src?.movementAccel?.z, 0),
-  };
-}
-
 export function readNetworkUnitSurfaceNormal(
   src: NetworkUnitSnapshot | undefined,
 ): { nx: number; ny: number; nz: number } {
@@ -240,22 +224,6 @@ export function writeNetworkUnitVelocity(
   dst.velocity.x = qVel(unit.velocityX ?? 0);
   dst.velocity.y = qVel(unit.velocityY ?? 0);
   dst.velocity.z = qVel(unit.velocityZ ?? 0);
-}
-
-export function writeNetworkUnitMovementAccel(
-  dst: NetworkUnitSnapshot,
-  unit: Unit,
-  out: Vec3,
-  qVel: Quantize,
-): void {
-  out.x = qVel(unit.movementAccelX ?? 0);
-  out.y = qVel(unit.movementAccelY ?? 0);
-  out.z = qVel(unit.movementAccelZ ?? 0);
-  dst.movementAccel = out;
-}
-
-export function clearNetworkUnitMovementAccel(dst: NetworkUnitSnapshot): void {
-  dst.movementAccel = undefined;
 }
 
 export function writeNetworkUnitSurfaceNormal(
@@ -436,7 +404,6 @@ export function copyNetworkUnitSnapshotInto(
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
-  dst.movementAccel = copyVec3OptionalInto(src.movementAccel, dst.movementAccel);
   if (src.surfaceNormal) {
     const sn = dst.surfaceNormal ?? (dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 });
     sn.nx = src.surfaceNormal.nx;
@@ -475,7 +442,6 @@ export function copyNetworkUnitSnapshotInto(
     dst.orientation = undefined;
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
-  dst.angularAcceleration3 = copyVec3OptionalInto(src.angularAcceleration3, dst.angularAcceleration3);
   dst.fireEnabled = src.fireEnabled;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
@@ -543,12 +509,6 @@ export function applyNetworkUnitDriftFieldsToTarget(
       target.velocityZ = v.z;
     }
   }
-  if (isFull || (cf & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
-    const accel = src.unit?.movementAccel;
-    target.movementAccelX = accel?.x ?? 0;
-    target.movementAccelY = accel?.y ?? 0;
-    target.movementAccelZ = accel?.z ?? 0;
-  }
   if (isFull || (cf & ENTITY_CHANGED_JUMP)) {
     const jump = src.unit?.jump;
     target.jumpActive = jump?.active === true;
@@ -584,15 +544,5 @@ export function applyNetworkUnitDriftFieldsToTarget(
     target.angularVelocityX = undefined;
     target.angularVelocityY = undefined;
     target.angularVelocityZ = undefined;
-  }
-  const aa = src.unit?.angularAcceleration3;
-  if (aa) {
-    target.angularAccelerationX = aa.x;
-    target.angularAccelerationY = aa.y;
-    target.angularAccelerationZ = aa.z;
-  } else if (isFull || (cf & ENTITY_CHANGED_MOVEMENT_ACCEL)) {
-    target.angularAccelerationX = undefined;
-    target.angularAccelerationY = undefined;
-    target.angularAccelerationZ = undefined;
   }
 }

@@ -1,5 +1,12 @@
-import { getClientTiltEmaMode, getPredictionMode } from '@/clientBarConfig';
-import { GRAVITY, LAND_CELL_SIZE } from '../../config';
+import {
+  getClientTiltEmaMode,
+  getMovementPosEmaMode,
+  getMovementVelEmaMode,
+  getPredictionMode,
+  getRotationPosEmaMode,
+  getRotationVelEmaMode,
+} from '@/clientBarConfig';
+import { LAND_CELL_SIZE } from '../../config';
 import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity } from '../sim/types';
 import {
@@ -7,7 +14,7 @@ import {
   lerpAngle,
   magnitude3,
 } from '../math';
-import { halfLifeBlend, type DriftPreset } from './driftEma';
+import { getChannelBlend, halfLifeBlend } from './driftEma';
 import type { PredictionStep } from './ClientPredictionCadence';
 import { advanceUnitSuspension } from '../sim/unitSuspension';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
@@ -24,7 +31,6 @@ import type { ServerTarget } from './ClientPredictionTargets';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
-const PREDICTION_ACCEL_EPSILON_SQ = 0.1 * 0.1;
 const PREDICTION_ROT_EPSILON = 0.001;
 const PREDICTION_TURRET_EPSILON = 0.001;
 const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
@@ -92,19 +98,15 @@ function advanceSharedUnitMotionPrediction(
   groundOffset: number,
   airDamp: number,
   groundDamp: number,
-  movementAccelX: number,
-  movementAccelY: number,
-  movementAccelZ: number,
 ): boolean {
   // PLAYER CLIENT bar: PREDICT mode gates how aggressively the
-  // client extrapolates physics between snapshots.
-  //   'pos' — no integration. The drift lerp toward target.x downstream
+  // client extrapolates motion between snapshots.
+  //   'pos' — no integration. The per-channel drift lerp downstream
   //            still pulls the entity to snapshot position; this just
-  //            stops the client from running the F=ma chain itself.
-  //   'vel' — integrate position from velocity but treat acceleration
-  //            (movement input AND gravity) as zero, so velocity stays
-  //            at whatever the snapshot last said.
-  //   'acc' — full F=ma extrapolation (default).
+  //            stops the client from running any kinematic step itself.
+  //   'vel' — integrate position from the last-seen velocity each
+  //            frame. Acceleration is never on the wire (the client
+  //            ships velocity, not forces), so there is no ACC mode.
   const mode = getPredictionMode();
   const groundZ = getPredictionGroundZ(motion.x, motion.y);
   const penetration = groundZ - (motion.z - groundOffset);
@@ -117,16 +119,8 @@ function advanceSharedUnitMotionPrediction(
     return contact;
   }
 
-  const useAccel = mode === 'acc';
-  const poweredAx = useAccel && contact ? movementAccelX : 0;
-  const poweredAy = useAccel && contact ? movementAccelY : 0;
-  const poweredAz = useAccel && contact ? movementAccelZ : 0;
-  const poweredAccelSq =
-    poweredAx * poweredAx + poweredAy * poweredAy + poweredAz * poweredAz;
-
   if (
     contact &&
-    poweredAccelSq <= PREDICTION_ACCEL_EPSILON_SQ &&
     penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
     motionVelocitySq(motion) <= PREDICTION_VEL_EPSILON_SQ
   ) {
@@ -137,13 +131,17 @@ function advanceSharedUnitMotionPrediction(
     return true;
   }
 
+  // Powered acceleration intentionally zero: the client receives
+  // velocity-only and integrates that forward. Gravity is owned by the
+  // server-side force solver — re-applying it here would stale-double
+  // the pull against the velocity already encoded in the snapshot.
   advanceUnitMotionPhysicsMutable(
     motion,
     dt,
     groundOffset,
-    poweredAx,
-    poweredAy,
-    poweredAz - (useAccel ? GRAVITY : 0),
+    0,
+    0,
+    0,
     airDamp,
     groundDamp,
     // Jump launches are server-authored events; prediction only
@@ -180,9 +178,6 @@ function advanceTargetExtrapolation(
     target.bodyCenterHeight,
     airDamp,
     groundDamp,
-    target.movementAccelX ?? 0,
-    target.movementAccelY ?? 0,
-    target.movementAccelZ ?? 0,
   );
 
   target.x = targetMotionScratch.x;
@@ -199,9 +194,6 @@ function advanceUnitMotionState(
   dt: number,
   airDamp: number,
   groundDamp: number,
-  movementAccelX: number,
-  movementAccelY: number,
-  movementAccelZ: number,
 ): boolean {
   return advanceSharedUnitMotionPrediction(
     motion,
@@ -209,9 +201,6 @@ function advanceUnitMotionState(
     unit.bodyCenterHeight,
     airDamp,
     groundDamp,
-    movementAccelX,
-    movementAccelY,
-    movementAccelZ,
   );
 }
 
@@ -219,16 +208,16 @@ export function applyClientUnitVisualPrediction(options: {
   entity: Entity;
   target: UnitPredictionTarget | undefined;
   deltaMs: number;
-  preset: DriftPreset;
   mapWidth: number;
   mapHeight: number;
 }): void {
-  const { entity, target, deltaMs, preset, mapWidth, mapHeight } = options;
+  const { entity, target, deltaMs, mapWidth, mapHeight } = options;
   if (!entity.unit) return;
   const dt = deltaMs / 1000;
-  const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
-  const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
-  const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
+  const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
+  const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
+  const rotPosBlend = getChannelBlend(getRotationPosEmaMode(), dt);
+  const rotVelBlend = getChannelBlend(getRotationVelEmaMode(), dt);
   const airDamp = getUnitAirFrictionDamp(dt);
   const groundDamp = getUnitGroundFrictionDamp(dt);
   predictionMapWidth = mapWidth;
@@ -252,9 +241,6 @@ export function applyClientUnitVisualPrediction(options: {
     dt,
     airDamp,
     groundDamp,
-    entity.unit.movementAccelX ?? 0,
-    entity.unit.movementAccelY ?? 0,
-    entity.unit.movementAccelZ ?? 0,
   );
   entity.transform.x = motionScratch.x;
   entity.transform.y = motionScratch.y;
@@ -266,47 +252,56 @@ export function applyClientUnitVisualPrediction(options: {
 
   if (!target) return;
 
-  entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
-  entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
-  entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
-  entity.transform.rotation = lerpAngle(
-    entity.transform.rotation,
-    target.rotation,
-    rotPosDrift,
-  );
+  // Movement position channel — ignore / snap / EMA.
+  if (movPosBlend >= 0) {
+    entity.transform.x = lerp(entity.transform.x, target.x, movPosBlend);
+    entity.transform.y = lerp(entity.transform.y, target.y, movPosBlend);
+    entity.transform.z = lerp(entity.transform.z, target.z, movPosBlend);
+  }
 
-  entity.unit.velocityX = lerp(
-    entity.unit.velocityX ?? 0,
-    target.velocityX ?? 0,
-    movVelDrift,
-  );
-  entity.unit.velocityY = lerp(
-    entity.unit.velocityY ?? 0,
-    target.velocityY ?? 0,
-    movVelDrift,
-  );
-  entity.unit.velocityZ = lerp(
-    entity.unit.velocityZ ?? 0,
-    target.velocityZ ?? 0,
-    movVelDrift,
-  );
+  // Rotation position channel — covers the body yaw scalar AND, below,
+  // each turret's rotation/pitch.
+  if (rotPosBlend >= 0) {
+    entity.transform.rotation = lerpAngle(
+      entity.transform.rotation,
+      target.rotation,
+      rotPosBlend,
+    );
+  }
 
-  // Full 3-DOF orientation drift for hover-style units. Snap toward
-  // the server target's quaternion using the same per-frame drift
-  // factor as position. We use componentwise lerp + renormalize
-  // rather than slerp because the per-frame drift is small (a few
-  // percent of the remaining error) and componentwise lerp is much
-  // cheaper. For PREDICT VEL/ACC the integration step against omega
-  // (and alpha) is owned by the server-side spring already; the
-  // client only needs to track the resulting orientation.
-  if (target.orientation && entity.unit.orientation) {
+  // Movement velocity channel.
+  if (movVelBlend >= 0) {
+    entity.unit.velocityX = lerp(
+      entity.unit.velocityX ?? 0,
+      target.velocityX ?? 0,
+      movVelBlend,
+    );
+    entity.unit.velocityY = lerp(
+      entity.unit.velocityY ?? 0,
+      target.velocityY ?? 0,
+      movVelBlend,
+    );
+    entity.unit.velocityZ = lerp(
+      entity.unit.velocityZ ?? 0,
+      target.velocityZ ?? 0,
+      movVelBlend,
+    );
+  }
+
+  // Full 3-DOF orientation drift for hover-style units. The body
+  // quaternion is the rotation-position channel for hovers; we use the
+  // same blend factor as the yaw scalar so changing the rotation-pos
+  // EMA mode affects both ground and hover bodies consistently. We
+  // componentwise-lerp + renormalize rather than slerp because the
+  // per-frame blend is small (a few percent of the remaining error)
+  // and componentwise lerp is much cheaper.
+  if (rotPosBlend >= 0 && target.orientation && entity.unit.orientation) {
     const eo = entity.unit.orientation;
     const to = target.orientation;
-    eo.x = lerp(eo.x, to.x, movPosDrift);
-    eo.y = lerp(eo.y, to.y, movPosDrift);
-    eo.z = lerp(eo.z, to.z, movPosDrift);
-    eo.w = lerp(eo.w, to.w, movPosDrift);
-    // Renormalize cheaply.
+    eo.x = lerp(eo.x, to.x, rotPosBlend);
+    eo.y = lerp(eo.y, to.y, rotPosBlend);
+    eo.z = lerp(eo.z, to.z, rotPosBlend);
+    eo.w = lerp(eo.w, to.w, rotPosBlend);
     const m2 = eo.x * eo.x + eo.y * eo.y + eo.z * eo.z + eo.w * eo.w;
     if (m2 > 1e-12) {
       const inv = 1 / Math.sqrt(m2);
@@ -314,6 +309,22 @@ export function applyClientUnitVisualPrediction(options: {
     }
   }
 
+  // Hover angular velocity — paired with orientation. Blends with the
+  // rotation-velocity channel.
+  if (
+    rotVelBlend >= 0
+    && entity.unit.angularVelocity3
+    && target.angularVelocityX !== undefined
+  ) {
+    const av = entity.unit.angularVelocity3;
+    av.x = lerp(av.x, target.angularVelocityX, rotVelBlend);
+    av.y = lerp(av.y, target.angularVelocityY ?? 0, rotVelBlend);
+    av.z = lerp(av.z, target.angularVelocityZ ?? 0, rotVelBlend);
+  }
+
+  // Tilt EMA is its own knob — orthogonal to the per-channel snapshot
+  // drift — because it smooths a SERVER-side EMA's output (slope
+  // normal), not a snapshot drift correction. Always applied.
   const tiltAlpha = halfLifeBlend(dt, TILT_EMA_HALF_LIFE_SEC[getClientTiltEmaMode()]);
   const sn = entity.unit.surfaceNormal;
   const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * tiltAlpha;
@@ -332,22 +343,20 @@ export function applyClientCombatExpensivePrediction(options: {
   entity: Entity;
   target: UnitPredictionTarget | undefined;
   predictionStep: PredictionStep;
-  preset: DriftPreset;
   forceFieldsEnabled: boolean;
 }): void {
-  const { entity, target, predictionStep, preset, forceFieldsEnabled } = options;
+  const { entity, target, predictionStep, forceFieldsEnabled } = options;
   if (!entity.combat) return;
   const dt = predictionStep.entityDeltaMs / 1000;
   const targetDt = predictionStep.targetDeltaMs / 1000;
-  const rotPosDrift = halfLifeBlend(dt, preset.rotation.pos);
-  const rotVelDrift = halfLifeBlend(dt, preset.rotation.vel);
+  const rotPosBlend = getChannelBlend(getRotationPosEmaMode(), dt);
+  const rotVelBlend = getChannelBlend(getRotationVelEmaMode(), dt);
 
   // PREDICT mode gates turret yaw / pitch integration. POS skips both
-  // and just lerps toward the snapshot rotation; VEL / ACC integrate
-  // rotation from angular velocity. Angular acceleration is no longer
-  // sent on the wire (it's an instantaneous spring force, unstable to
-  // integrate under arbitrary client dt), so the velocity-only path
-  // is the same in VEL and ACC mode.
+  // and only the per-channel rotation-position EMA pulls toward the
+  // snapshot rotation. VEL integrates rotation from angular velocity.
+  // Angular acceleration is not on the wire, so the velocity-only
+  // integrator is the only available kinematic step.
   const predictionMode = getPredictionMode();
   const integrateRotation = predictionMode !== 'pos';
   const turrets = entity.combat.turrets;
@@ -365,26 +374,22 @@ export function applyClientCombatExpensivePrediction(options: {
         tw.rotation += tw.angularVelocity * targetDt;
         tw.pitch += tw.pitchVelocity * targetDt;
       }
-      weapon.rotation = lerpAngle(
-        weapon.rotation,
-        tw.rotation,
-        rotPosDrift,
-      );
-      weapon.angularVelocity = lerp(
-        weapon.angularVelocity,
-        tw.angularVelocity,
-        rotVelDrift,
-      );
-      weapon.pitch = lerpAngle(
-        weapon.pitch,
-        tw.pitch,
-        rotPosDrift,
-      );
-      weapon.pitchVelocity = lerp(
-        weapon.pitchVelocity,
-        tw.pitchVelocity,
-        rotVelDrift,
-      );
+      if (rotPosBlend >= 0) {
+        weapon.rotation = lerpAngle(weapon.rotation, tw.rotation, rotPosBlend);
+        weapon.pitch = lerpAngle(weapon.pitch, tw.pitch, rotPosBlend);
+      }
+      if (rotVelBlend >= 0) {
+        weapon.angularVelocity = lerp(
+          weapon.angularVelocity,
+          tw.angularVelocity,
+          rotVelBlend,
+        );
+        weapon.pitchVelocity = lerp(
+          weapon.pitchVelocity,
+          tw.pitchVelocity,
+          rotVelBlend,
+        );
+      }
     }
 
     const shot = weapon.config.shot;
@@ -407,9 +412,13 @@ export function applyClientCombatExpensivePrediction(options: {
       next = Math.max(cur - progressDelta, 0);
     }
 
+    // The force-field range is a slow visual transition, not a
+    // snapshot-drift channel. It rides along with rotation-position
+    // when an EMA is selected; under IGNORE it follows local
+    // prediction only, matching the old single-driftMode behavior.
     const serverRange = tw?.forceFieldRange;
-    if (serverRange !== undefined) {
-      next = lerp(next, serverRange, rotPosDrift);
+    if (serverRange !== undefined && rotPosBlend >= 0) {
+      next = lerp(next, serverRange, rotPosBlend);
     }
     if (!weapon.forceField) {
       weapon.forceField = { range: next, transition: 0 };
@@ -430,20 +439,12 @@ export function clientUnitPredictionIsSettled(
     const vy = unit.velocityY ?? 0;
     const vz = unit.velocityZ ?? 0;
     if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
-    const ax = unit.movementAccelX ?? 0;
-    const ay = unit.movementAccelY ?? 0;
-    const az = unit.movementAccelZ ?? 0;
-    if (ax * ax + ay * ay + az * az > PREDICTION_ACCEL_EPSILON_SQ) return false;
 
     if (target) {
       const tvx = target.velocityX ?? 0;
       const tvy = target.velocityY ?? 0;
       const tvz = target.velocityZ ?? 0;
       if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
-      const tax = target.movementAccelX ?? 0;
-      const tay = target.movementAccelY ?? 0;
-      const taz = target.movementAccelZ ?? 0;
-      if (tax * tax + tay * tay + taz * taz > PREDICTION_ACCEL_EPSILON_SQ) return false;
 
       const dx = entity.transform.x - target.x;
       const dy = entity.transform.y - target.y;

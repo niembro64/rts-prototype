@@ -1,28 +1,22 @@
-import type { DriftMode } from '@/types/client';
+import type { DriftChannelMode } from '@/types/client';
 
-export type DriftAxis = { pos: number; vel: number };
-export type DriftPreset = { movement: DriftAxis; rotation: DriftAxis };
-
-// Drift half-lives (seconds). How long to close 50% of the gap to the
-// server value. Smaller = snappier correction, larger = smoother/lazier.
-// SNAP is just halfLife=0 — the EMA formula's natural limit is alpha=1
-// (100% blend per step), so SNAP is "immediate EMA" with no special case.
-export const DRIFT_PRESETS: Record<DriftMode, DriftPreset> = {
-  snap: { movement: { pos: 0, vel: 0 }, rotation: { pos: 0, vel: 0 } },
-  // FAST closes corrections ~twice as fast as MID. SLOW is deliberately
-  // lazy for a weightier view of remote state.
-  fast: {
-    movement: { pos: 0.0175, vel: 0.010 },
-    rotation: { pos: 0.0175, vel: 0.010 },
-  },
-  mid: {
-    movement: { pos: 0.035, vel: 0.020 },
-    rotation: { pos: 0.035, vel: 0.020 },
-  },
-  slow: {
-    movement: { pos: 8, vel: 4 },
-    rotation: { pos: 8, vel: 4 },
-  },
+/** Half-life (seconds) per snapshot-drift channel mode. The mode-only
+ *  decision space means each channel has one knob (the mode) that
+ *  selects from this table. Smaller half-life closes the gap to the
+ *  server target faster; larger leaves the rendered value lazier.
+ *
+ *  'ignore' returns a sentinel (-1) so the caller can branch on it.
+ *  'snap'   collapses to alpha=1 via halfLife=0 — the EMA formula's
+ *           natural limit (no special case needed).
+ *  fast / medium / slow span roughly 1.5 orders of magnitude so the
+ *  visible difference between adjacent settings is obvious without
+ *  tuning a custom number per channel. */
+export const DRIFT_CHANNEL_HALF_LIFE_SEC: Record<DriftChannelMode, number> = {
+  ignore: -1,
+  snap: 0,
+  fast: 0.020,
+  medium: 0.080,
+  slow: 0.500,
 };
 
 /** Frame-rate independent EMA blend factor from a half-life in seconds.
@@ -32,6 +26,12 @@ export function halfLifeBlend(dt: number, halfLife: number): number {
   return 1 - Math.pow(0.5, dt / halfLife);
 }
 
-export function getDriftPreset(mode: DriftMode): DriftPreset {
-  return DRIFT_PRESETS[mode];
+/** Compute the per-frame blend factor for a channel mode. Returns -1
+ *  for 'ignore' so the caller can skip applying the snapshot value
+ *  entirely; 1 for 'snap' (immediate replacement); the half-life
+ *  blend otherwise. */
+export function getChannelBlend(mode: DriftChannelMode, dt: number): number {
+  if (mode === 'ignore') return -1;
+  if (mode === 'snap') return 1;
+  return halfLifeBlend(dt, DRIFT_CHANNEL_HALF_LIFE_SEC[mode]);
 }

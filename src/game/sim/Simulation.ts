@@ -43,7 +43,6 @@ import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
 import {
   ENTITY_CHANGED_ACTIONS,
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_TURRETS,
 } from '@/types/network';
 import { UNIT_MASS_MULTIPLIER } from '../../config';
@@ -722,9 +721,9 @@ export class Simulation {
       if (entity.buildable && !entity.buildable.isComplete) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
-        if (setUnitMovementAcceleration(unit, 0, 0, 0)) {
-          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
-        }
+        // Acceleration is sim-only state now (not shipped on the
+        // wire); reset it without flagging a delta.
+        setUnitMovementAcceleration(unit, 0, 0, 0);
         if (entity.combat) {
           entity.combat.priorityTargetId = undefined;
           entity.combat.priorityTargetPoint = undefined;
@@ -735,9 +734,7 @@ export class Simulation {
       // Default: no thrust (contact braking/drag will slow or hold the unit)
       unit.thrustDirX = 0;
       unit.thrustDirY = 0;
-      if (setUnitMovementAcceleration(unit, 0, 0, 0)) {
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
-      }
+      setUnitMovementAcceleration(unit, 0, 0, 0);
 
       // Clear priority target — re-set below by attack / attack-ground actions.
       if (entity.combat) {

@@ -7,7 +7,6 @@ import {
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_JUMP,
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_SUSPENSION,
@@ -24,7 +23,6 @@ import {
   applyNetworkUnitCombatMode,
   applyNetworkSuspensionState,
   applyNetworkUnitActions,
-  applyNetworkUnitMovementAccel,
   applyNetworkUnitStaticFields,
 } from './unitSnapshotFields';
 import {
@@ -60,9 +58,6 @@ export function snapClientNonVisualState(
       ) || cacheDirty;
     }
     applyNetworkUnitStaticFields(entity.unit, su);
-    if (isFull || cf! & ENTITY_CHANGED_MOVEMENT_ACCEL) {
-      applyNetworkUnitMovementAccel(entity.unit, su);
-    }
     if (isFull || cf! & ENTITY_CHANGED_SUSPENSION) {
       applyNetworkSuspensionState(entity, su.suspension);
     }

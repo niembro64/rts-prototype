@@ -602,16 +602,10 @@ export type NetworkServerSnapshotTurret = {
       rot: number;
       /** Yaw angular velocity (rad/s). */
       vel: number;
-      /** Yaw angular acceleration (rad/s²) from this tick's
-       *  damped-spring step. PREDICT ACC clients integrate
-       *  `vel += acc · dt` before stepping `rot`. */
-      acc: number;
       /** Pitch (vertical aim, elevation angle). */
       pitch: number;
       /** Pitch angular velocity (rad/s). */
       pitchVel: number;
-      /** Pitch angular acceleration (rad/s²); same role as `acc`. */
-      pitchAcc: number;
     };
   };
   targetId?: number;
@@ -644,10 +638,10 @@ export const ENTITY_CHANGED_NORMAL    = 1 << 8;
  *  separate from POS because the locomotion anchor can remain still
  *  while the chassis spring bounces relative to it. */
 export const ENTITY_CHANGED_SUSPENSION = 1 << 9;
-/** Current server-authored movement acceleration changed. This lets
- *  clients predict powered ground movement with the same force input
- *  the server applied, without cloning the full command planner. */
-export const ENTITY_CHANGED_MOVEMENT_ACCEL = 1 << 10;
+// Bit 1 << 10 was ENTITY_CHANGED_MOVEMENT_ACCEL. Acceleration is no
+// longer shipped on the wire — the client integrates from velocity
+// only — so the bit is unused. Left intentionally empty so JUMP keeps
+// its existing position rather than renumbering downstream consumers.
 /** Grounded jump actuator state changed. This is separate from visible
  *  suspension so jump-capable units do not need chassis spring state. */
 export const ENTITY_CHANGED_JUMP = 1 << 11;
@@ -675,10 +669,6 @@ export type NetworkServerSnapshotEntity = {
     bodyCenterHeight?: number;
     mass?: number;
     velocity: Vec3;
-    /** Server-authored movement/traction acceleration for client
-     *  prediction. Excludes gravity, terrain spring, damping, jump
-     *  actuation, and transient external knockback/recoil forces. */
-    movementAccel?: Vec3;
     /** Per-unit smoothed surface normal (unit-length nx, ny, nz). The
      *  sim EMA-blends raw → smoothed each tick (see updateUnitTilt) so
      *  the rendered chassis tilt and the slope-tilted turret world
@@ -709,13 +699,11 @@ export type NetworkServerSnapshotEntity = {
      *  this when present and falls back to the yaw scalar otherwise. */
     orientation?: { x: number; y: number; z: number; w: number };
     /** Angular velocity 3-vector in world frame (rad/s). Paired with
-     *  `orientation`; used by PREDICT VEL/ACC clients to extrapolate
-     *  rotation between snapshots. */
+     *  `orientation`; PREDICT VEL clients integrate omega forward each
+     *  frame between snapshots. Angular acceleration is intentionally
+     *  not shipped (see design philosophy: client extrapolates from
+     *  velocity, never re-derives server-side forces). */
     angularVelocity3?: Vec3;
-    /** Angular acceleration 3-vector in world frame (rad/s²). Paired
-     *  with `orientation`; used by PREDICT ACC clients (omega += alpha
-     *  * dt before the orientation step). */
-    angularAcceleration3?: Vec3;
     fireEnabled?: boolean;
     isCommander?: boolean;
     buildTargetId?: number | null;

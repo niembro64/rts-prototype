@@ -116,8 +116,8 @@ type TurretFixture = {
   turret: {
     id: number;
     angular: {
-      rot: number; vel: number; acc: number;
-      pitch: number; pitchVel: number; pitchAcc: number;
+      rot: number; vel: number;
+      pitch: number; pitchVel: number;
     };
   };
   targetId?: number;
@@ -222,7 +222,6 @@ type UnitFixture = BasicEntityFixture & {
     radius?: { body: number; shot: number; push: number };
     bodyCenterHeight?: number;
     mass?: number;
-    movementAccel?: { x: number; y: number; z: number };
     surfaceNormal?: { nx: number; ny: number; nz: number };
     suspension?: {
       offset: { x: number; y: number; z: number };
@@ -236,7 +235,6 @@ type UnitFixture = BasicEntityFixture & {
     };
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
-    angularAcceleration3?: { x: number; y: number; z: number };
     fireEnabled?: false;
     isCommander?: true;
     buildTargetId?: number | null;
@@ -292,16 +290,14 @@ function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixtu
     const base = i * TURRET_SCRATCH_STRIDE;
     view[base + 0] = t.turret.angular.rot;
     view[base + 1] = t.turret.angular.vel;
-    view[base + 2] = t.turret.angular.acc;
-    view[base + 3] = t.turret.angular.pitch;
-    view[base + 4] = t.turret.angular.pitchVel;
-    view[base + 5] = t.turret.angular.pitchAcc;
-    view[base + 6] = t.turret.id;
-    view[base + 7] = t.state;
-    view[base + 8] = t.targetId !== undefined ? 1 : 0;
-    view[base + 9] = t.targetId ?? 0;
-    view[base + 10] = t.currentForceFieldRange !== undefined ? 1 : 0;
-    view[base + 11] = t.currentForceFieldRange ?? 0;
+    view[base + 2] = t.turret.angular.pitch;
+    view[base + 3] = t.turret.angular.pitchVel;
+    view[base + 4] = t.turret.id;
+    view[base + 5] = t.state;
+    view[base + 6] = t.targetId !== undefined ? 1 : 0;
+    view[base + 7] = t.targetId ?? 0;
+    view[base + 8] = t.currentForceFieldRange !== undefined ? 1 : 0;
+    view[base + 9] = t.currentForceFieldRange ?? 0;
   }
 }
 
@@ -385,32 +381,22 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         surfaceNormal: { nx: -707, ny: 0, nz: 707 },
       },
     },
-    // movementAccel only (e.g. a unit accelerating from rest on flat ground)
-    {
-      id: 2, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
-      unit: {
-        hp: { curr: 100, max: 100 },
-        velocity: { x: 0, y: 0, z: 0 },
-        movementAccel: { x: 50, y: 0, z: 0 },
-      },
-    },
-    // movementAccel + surfaceNormal together (cruising up a slope)
+    // Cruising up a slope (acceleration no longer on the wire — the
+    // client extrapolates from velocity only, see design philosophy).
     {
       id: 33, type: 'unit', pos: { x: 5000, y: 5000, z: 200 }, rotation: 1571, playerId: 2,
       unit: {
         hp: { curr: 88, max: 120 },
         velocity: { x: 100, y: 50, z: 5 },
-        movementAccel: { x: 80, y: 40, z: 0 },
         surfaceNormal: { nx: 100, ny: 100, nz: 985 },
       },
     },
-    // movementAccel with delta path + negative components
+    // Delta path with negative velocity components.
     {
       id: 511, type: 'unit', pos: { x: 1, y: 2, z: 3 }, rotation: -100, playerId: 3, changedFields: 0x404,
       unit: {
         hp: { curr: 200, max: 200 },
         velocity: { x: -200, y: 0, z: 0 },
-        movementAccel: { x: -150, y: -100, z: 0 },
       },
     },
     // suspension without legContact (legged walker airborne mid-step)
@@ -438,13 +424,13 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         },
       },
     },
-    // suspension + movementAccel + surfaceNormal (mid-stride on slope)
+    // suspension + surfaceNormal (mid-stride on slope, acceleration
+    // omitted — no longer shipped).
     {
       id: 330, type: 'unit', pos: { x: 5000, y: 5000, z: 200 }, rotation: 1571, playerId: 2, changedFields: 0x204,
       unit: {
         hp: { curr: 75, max: 120 },
         velocity: { x: 50, y: 25, z: 3 },
-        movementAccel: { x: 40, y: 20, z: 0 },
         surfaceNormal: { nx: 100, ny: 100, nz: 985 },
         suspension: {
           offset: { x: -10, y: 5, z: 100 },
@@ -489,13 +475,14 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         jump: { enabled: true, launchSeq: 9999 },
       },
     },
-    // Everything together — jumping unit on a slope
+    // Everything together — jumping unit on a slope (acceleration not
+    // shipped; the per-channel EMA on the client smooths the approach
+    // to the freshly arrived target).
     {
       id: 414, type: 'unit', pos: { x: 1000, y: 2000, z: 300 }, rotation: -1571, playerId: 3, changedFields: 0x80F,
       unit: {
         hp: { curr: 60, max: 100 },
         velocity: { x: 75, y: -25, z: 200 },
-        movementAccel: { x: 50, y: 0, z: 0 },
         surfaceNormal: { nx: 50, ny: -100, nz: 990 },
         suspension: {
           offset: { x: 0, y: 0, z: 150 },
@@ -524,7 +511,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         angularVelocity3: { x: 0, y: 0, z: 50 },
       },
     },
-    // ACC-client hover unit: full triad (banking into a turn)
+    // Hover unit banking into a turn (angular acceleration no longer
+    // shipped; client integrates rotation from angular velocity only).
     {
       id: 512, type: 'unit', pos: { x: 500, y: 500, z: 800 }, rotation: 1571, playerId: 3, changedFields: 0x4,
       unit: {
@@ -532,10 +520,9 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 200, y: 100, z: 10 },
         orientation: { x: -100, y: 0, z: 707, w: 700 },
         angularVelocity3: { x: 0, y: -30, z: 100 },
-        angularAcceleration3: { x: 0, y: 0, z: 50 },
       },
     },
-    // Negative quaternion components + negative angular vectors
+    // Negative quaternion components + negative angular velocity vector.
     {
       id: 513, type: 'unit', pos: { x: -100, y: -200, z: 600 }, rotation: -1571, playerId: 1,
       unit: {
@@ -543,7 +530,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: -50, y: -100, z: -20 },
         orientation: { x: -174, y: -342, z: -924, w: 1 },
         angularVelocity3: { x: -25, y: -50, z: -75 },
-        angularAcceleration3: { x: -10, y: -20, z: -30 },
       },
     },
     // fireEnabled (hold-fire mode)
@@ -603,7 +589,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
           {
             turret: {
               id: 5,
-              angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 },
+              angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 },
             },
             state: 0,  // idle
           },
@@ -620,7 +606,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
           {
             turret: {
               id: 12,
-              angular: { rot: 1.235, vel: 0.5, acc: -0.1, pitch: 0.3, pitchVel: 0.05, pitchAcc: 0 },
+              angular: { rot: 1.235, vel: 0.5, pitch: 0.3, pitchVel: 0.05 },
             },
             targetId: 887,
             state: 2,  // engaged
@@ -638,7 +624,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
           {
             turret: {
               id: 33,
-              angular: { rot: 0, vel: 0, acc: 0, pitch: 1.571, pitchVel: 0, pitchAcc: 0 },
+              angular: { rot: 0, vel: 0, pitch: 1.571, pitchVel: 0 },
             },
             targetId: 1234,
             state: 1,  // tracking
@@ -655,16 +641,16 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         turrets: [
           {
-            turret: { id: 1, angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+            turret: { id: 1, angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 0,
           },
           {
-            turret: { id: 2, angular: { rot: 1.5, vel: 0.1, acc: 0, pitch: 0.2, pitchVel: 0, pitchAcc: 0 } },
+            turret: { id: 2, angular: { rot: 1.5, vel: 0.1, pitch: 0.2, pitchVel: 0 } },
             targetId: 999,
             state: 2,
           },
           {
-            turret: { id: 3, angular: { rot: -0.5, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+            turret: { id: 3, angular: { rot: -0.5, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 1,
             currentForceFieldRange: 100,
           },
@@ -678,7 +664,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 1000, max: 1000 },
         velocity: { x: 0, y: 0, z: 0 },
         turrets: Array.from({ length: 8 }, (_, i): TurretFixture => ({
-          turret: { id: i, angular: { rot: i * 0.1, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+          turret: { id: i, angular: { rot: i * 0.1, vel: 0, pitch: 0, pitchVel: 0 } },
           state: i % 3,
         })),
       },
@@ -764,7 +750,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
           {
             turret: {
               id: 7,
-              angular: { rot: 1.5, vel: 0.2, acc: 0, pitch: 0.1, pitchVel: 0, pitchAcc: 0 },
+              angular: { rot: 1.5, vel: 0.2, pitch: 0.1, pitchVel: 0 },
             },
             targetId: 888,
             state: 2,
@@ -873,8 +859,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
-    const ma = f.unit.movementAccel;
-    const hasMovementAccel = ma !== undefined ? 1 : 0;
     const sn = f.unit.surfaceNormal;
     const hasNormal = sn !== undefined ? 1 : 0;
     const sp = f.unit.suspension;
@@ -885,8 +869,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasOrientation = or !== undefined ? 1 : 0;
     const av = f.unit.angularVelocity3;
     const hasAngularVelocity3 = av !== undefined ? 1 : 0;
-    const aa = f.unit.angularAcceleration3;
-    const hasAngularAcceleration3 = aa !== undefined ? 1 : 0;
     const hasFireEnabled = f.unit.fireEnabled === false ? 1 : 0;
     const hasIsCommander = f.unit.isCommander === true ? 1 : 0;
     const hasBuildTargetId = f.unit.buildTargetId !== undefined ? 1 : 0;
@@ -935,8 +917,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       f.unit.bodyCenterHeight ?? 0,
       f.unit.mass !== undefined ? 1 : 0,
       f.unit.mass ?? 0,
-      hasMovementAccel,
-      ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
       hasNormal,
       sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
       hasSuspension,
@@ -952,8 +932,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
       hasAngularVelocity3,
       av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
-      hasAngularAcceleration3,
-      aa?.x ?? 0, aa?.y ?? 0, aa?.z ?? 0,
       hasFireEnabled,
       hasIsCommander,
       hasBuildTargetId,
@@ -1128,7 +1106,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
           {
             turret: {
               id: 9,
-              angular: { rot: 1.5, vel: 0.2, acc: 0, pitch: 0.5, pitchVel: 0, pitchAcc: 0 },
+              angular: { rot: 1.5, vel: 0.2, pitch: 0.5, pitchVel: 0 },
             },
             targetId: 1234,
             state: 2,
@@ -1156,7 +1134,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         solar: { open: true },
         turrets: [
           {
-            turret: { id: 1, angular: { rot: 0, vel: 0, acc: 0, pitch: 0, pitchVel: 0, pitchAcc: 0 } },
+            turret: { id: 1, angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 0,
           },
         ],
@@ -2934,13 +2912,11 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     for (const e of f.entities) {
       if (e.type === 'unit') {
         const u = e as UnitFixture;
-        const ma = u.unit.movementAccel;
         const sn = u.unit.surfaceNormal;
         const sp = u.unit.suspension;
         const jp = u.unit.jump;
         const or = u.unit.orientation;
         const av = u.unit.angularVelocity3;
-        const aa = u.unit.angularAcceleration3;
         const ufActions = u.unit.actions;
         const turrets = u.unit.turrets;
         const build = u.unit.build;
@@ -2973,7 +2949,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           u.unit.bodyCenterHeight ?? 0,
           u.unit.mass !== undefined ? 1 : 0,
           u.unit.mass ?? 0,
-          ma !== undefined ? 1 : 0, ma?.x ?? 0, ma?.y ?? 0, ma?.z ?? 0,
           sn !== undefined ? 1 : 0, sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
           sp !== undefined ? 1 : 0,
           sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
@@ -2985,7 +2960,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           jp?.launchSeq !== undefined ? 1 : 0, jp?.launchSeq ?? 0,
           or !== undefined ? 1 : 0, or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
           av !== undefined ? 1 : 0, av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
-          aa !== undefined ? 1 : 0, aa?.x ?? 0, aa?.y ?? 0, aa?.z ?? 0,
           u.unit.fireEnabled === false ? 1 : 0,
           u.unit.isCommander === true ? 1 : 0,
           u.unit.buildTargetId !== undefined ? 1 : 0,

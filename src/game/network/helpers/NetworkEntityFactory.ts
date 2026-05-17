@@ -32,7 +32,6 @@ import {
   decodeNetworkUnitType,
   readNetworkUnitBodyCenterHeight,
   readNetworkUnitMass,
-  readNetworkUnitMovementAccel,
   readNetworkUnitRadius,
   readNetworkUnitSurfaceNormal,
   readNetworkUnitVelocity,
@@ -54,9 +53,12 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   turret.rotation = wire.angular.rot;
   turret.pitch = wire.angular.pitch;
   turret.angularVelocity = wire.angular.vel;
-  turret.angularAcceleration = wire.angular.acc;
   turret.pitchVelocity = wire.angular.pitchVel;
-  turret.pitchAcceleration = wire.angular.pitchAcc;
+  // angularAcceleration / pitchAcceleration are no longer shipped on
+  // the wire (the sim still writes them for its own turret physics,
+  // but the client never receives them and predicts rotation from
+  // angular velocity only). Leave the client-side values at the
+  // runtimeTurrets default of 0.
   turret.forceField = nw.currentForceFieldRange !== undefined && nw.currentForceFieldRange !== null
     ? { range: nw.currentForceFieldRange, transition: turret.forceField?.transition ?? 0 }
     : undefined;
@@ -189,7 +191,6 @@ function createUnitFromNetwork(
   const actions = decodeNetworkUnitActions(u?.actions);
   const radius = readNetworkUnitRadius(u, defaultRadius);
   const velocity = readNetworkUnitVelocity(u);
-  const movementAccel = readNetworkUnitMovementAccel(u);
   const surfaceNormal = readNetworkUnitSurfaceNormal(u);
   let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
   try {
@@ -215,9 +216,9 @@ function createUnitFromNetwork(
       velocityX: velocity.x,
       velocityY: velocity.y,
       velocityZ: velocity.z,
-      movementAccelX: movementAccel.x,
-      movementAccelY: movementAccel.y,
-      movementAccelZ: movementAccel.z,
+      // movementAccelX/Y/Z stay undefined on the client — server-side
+      // sim writes them for force integration, but the client never
+      // receives them and integrates position from velocity only.
       jump: createUnitJump(unitBlueprint?.locomotion.physics.jump),
       mirrorPanels: [],
       mirrorBoundRadius: 0,
@@ -237,9 +238,9 @@ function createUnitFromNetwork(
       angularVelocity3: u?.angularVelocity3
         ? { x: u.angularVelocity3.x, y: u.angularVelocity3.y, z: u.angularVelocity3.z }
         : (u?.orientation ? { x: 0, y: 0, z: 0 } : undefined),
-      angularAcceleration3: u?.angularAcceleration3
-        ? { x: u.angularAcceleration3.x, y: u.angularAcceleration3.y, z: u.angularAcceleration3.z }
-        : (u?.orientation ? { x: 0, y: 0, z: 0 } : undefined),
+      // angularAcceleration3 stays undefined on the client (sim-only —
+      // not on the wire).
+      angularAcceleration3: u?.orientation ? { x: 0, y: 0, z: 0 } : undefined,
     },
   };
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);

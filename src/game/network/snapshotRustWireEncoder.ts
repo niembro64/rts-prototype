@@ -225,16 +225,14 @@ function packTurretsIntoScratch(
     const base = i * api.turretScratchStride;
     view[base + 0] = angular.rot;
     view[base + 1] = angular.vel;
-    view[base + 2] = angular.acc;
-    view[base + 3] = angular.pitch;
-    view[base + 4] = angular.pitchVel;
-    view[base + 5] = angular.pitchAcc;
-    view[base + 6] = src.turret.id;
-    view[base + 7] = src.state;
-    view[base + 8] = src.targetId !== undefined ? 1 : 0;
-    view[base + 9] = src.targetId ?? 0;
-    view[base + 10] = src.currentForceFieldRange !== undefined ? 1 : 0;
-    view[base + 11] = src.currentForceFieldRange ?? 0;
+    view[base + 2] = angular.pitch;
+    view[base + 3] = angular.pitchVel;
+    view[base + 4] = src.turret.id;
+    view[base + 5] = src.state;
+    view[base + 6] = src.targetId !== undefined ? 1 : 0;
+    view[base + 7] = src.targetId ?? 0;
+    view[base + 8] = src.currentForceFieldRange !== undefined ? 1 : 0;
+    view[base + 9] = src.currentForceFieldRange ?? 0;
   }
 }
 
@@ -273,13 +271,11 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
   if (turrets) packTurretsIntoScratch(sim, turrets);
 
   const api = sim.snapshotEncode;
-  const movementAccel = unit.movementAccel;
   const surfaceNormal = unit.surfaceNormal;
   const suspension = unit.suspension;
   const jump = unit.jump;
   const orientation = unit.orientation;
   const angularVelocity = unit.angularVelocity3;
-  const angularAcceleration = unit.angularAcceleration3;
   const build = unit.build;
   api.encodeEntityUnit(
     entity.id,
@@ -302,10 +298,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     unit.bodyCenterHeight ?? 0,
     unit.mass !== undefined ? 1 : 0,
     unit.mass ?? 0,
-    movementAccel !== undefined ? 1 : 0,
-    movementAccel?.x ?? 0,
-    movementAccel?.y ?? 0,
-    movementAccel?.z ?? 0,
     surfaceNormal !== undefined ? 1 : 0,
     surfaceNormal?.nx ?? 0,
     surfaceNormal?.ny ?? 0,
@@ -332,10 +324,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     angularVelocity?.x ?? 0,
     angularVelocity?.y ?? 0,
     angularVelocity?.z ?? 0,
-    angularAcceleration !== undefined ? 1 : 0,
-    angularAcceleration?.x ?? 0,
-    angularAcceleration?.y ?? 0,
-    angularAcceleration?.z ?? 0,
     unit.fireEnabled === false ? 1 : 0,
     unit.isCommander === true ? 1 : 0,
     unit.buildTargetId !== undefined ? 1 : 0,
@@ -494,10 +482,10 @@ function encodeEntityWireRow(
   if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
     const values = source.unitRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-    if (!copyEntityActionRowsIntoScratch(sim, source, values[base + 71], values[base + 63])) {
+    if (!copyEntityActionRowsIntoScratch(sim, source, values[base + 63], values[base + 55])) {
       return false;
     }
-    if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 70], values[base + 65])) {
+    if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 62], values[base + 57])) {
       return false;
     }
     api.encodeEntityUnit(
@@ -564,14 +552,6 @@ function encodeEntityWireRow(
       values[base + 59],
       values[base + 60],
       values[base + 61],
-      values[base + 62],
-      values[base + 63],
-      values[base + 64],
-      values[base + 65],
-      values[base + 66],
-      values[base + 67],
-      values[base + 68],
-      values[base + 69],
     );
     return true;
   }
@@ -720,8 +700,6 @@ function copyEntityTurretRowsIntoScratch(
     view[dstRow + 7] = src[srcRow + 7];
     view[dstRow + 8] = src[srcRow + 8];
     view[dstRow + 9] = src[srcRow + 9];
-    view[dstRow + 10] = src[srcRow + 10];
-    view[dstRow + 11] = src[srcRow + 11];
   }
   return true;
 }

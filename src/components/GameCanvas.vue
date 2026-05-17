@@ -238,7 +238,10 @@ const {
   beamSnapToTurret,
   triangleDebug,
   buildGridDebug,
-  driftMode,
+  movementPosEma,
+  movementVelEma,
+  rotationPosEma,
+  rotationVelEma,
   predictionMode,
   clientTiltEmaMode,
   edgeScrollEnabled,
@@ -277,7 +280,10 @@ const {
   toggleBeamSnapToTurret,
   toggleTriangleDebug,
   toggleBuildGridDebug,
-  changeDriftMode,
+  changeMovementPosEma,
+  changeMovementVelEma,
+  changeRotationPosEma,
+  changeRotationVelEma,
   changePredictionMode,
   changeClientTiltEmaMode,
   changeWaypointDetail,
@@ -758,7 +764,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
   beamSnapToTurret: beamSnapToTurret.value,
-  driftMode: driftMode.value,
+  movementPosEma: movementPosEma.value,
+  movementVelEma: movementVelEma.value,
+  rotationPosEma: rotationPosEma.value,
+  rotationVelEma: rotationVelEma.value,
   predictionMode: predictionMode.value,
   clientTiltEmaMode: clientTiltEmaMode.value,
   allPanActive: allPanActive.value,
@@ -790,7 +799,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleBurnMarks,
   toggleLocomotionMarks,
   toggleBeamSnapToTurret,
-  changeDriftMode,
+  changeMovementPosEma,
+  changeMovementVelEma,
+  changeRotationPosEma,
+  changeRotationVelEma,
   changePredictionMode,
   changeClientTiltEmaMode,
   toggleAllPan,
@@ -845,7 +857,10 @@ watchEffect(() => {
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
-  m.driftMode = driftMode.value;
+  m.movementPosEma = movementPosEma.value;
+  m.movementVelEma = movementVelEma.value;
+  m.rotationPosEma = rotationPosEma.value;
+  m.rotationVelEma = rotationVelEma.value;
   m.predictionMode = predictionMode.value;
   m.clientTiltEmaMode = clientTiltEmaMode.value;
   m.allPanActive = allPanActive.value;

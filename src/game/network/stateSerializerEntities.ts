@@ -7,7 +7,6 @@ import type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotTurret,
 } from './NetworkManager';
-import type { Vec3 } from '../../types/vec2';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
@@ -15,7 +14,6 @@ import {
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_JUMP,
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -45,7 +43,6 @@ import {
   clearNetworkUnitActions,
   clearNetworkUnitCombatMode,
   clearNetworkUnitJump,
-  clearNetworkUnitMovementAccel,
   clearNetworkUnitStaticFields,
   clearNetworkUnitSurfaceNormal,
   clearNetworkUnitSuspension,
@@ -72,10 +69,18 @@ export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 72;
+// Unit row layout: see appendUnitEntityWireRow for the exact slot order.
+// Stride shrank from 72 → 64 when the 4 movementAccel slots and 4
+// angularAcceleration slots were removed from the wire (acceleration is
+// no longer shipped — client integrates from velocity only).
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 64;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
-export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 12;
+// Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
+// targetId, hasForceFieldRange, forceFieldRange. Stride shrank from
+// 12 → 10 when the 2 angular acceleration slots (acc, pitchAcc) were
+// removed alongside movementAccel.
+export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 10;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireSource = {
@@ -99,7 +104,6 @@ type FactorySub = NonNullable<BuildingSub['factory']>;
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   unitSub: UnitSub;
-  unitMovementAccel: Vec3;
   unitSuspension: NonNullable<UnitSub['suspension']>;
   unitJump: NonNullable<UnitSub['jump']>;
   unitRadius: { body: number; shot: number; push: number };
@@ -167,14 +171,13 @@ function writeTurretsToPool(
     t.id = turretIdToCode(src.config.id);
     t.angular.rot = qRot(src.rotation);
     t.angular.vel = qRot(src.angularVelocity);
-    // Acceleration is the instantaneous damped-spring force at this
-    // tick (depends on error-to-target), not a constant. The client
-    // predicts turret motion from velocity alone to avoid injecting a
-    // stale angular acceleration across snapshot gaps.
-    t.angular.acc = 0;
+    // Acceleration intentionally omitted from the wire: it's the
+    // instantaneous damped-spring force at this tick (depends on
+    // error-to-target), not a constant, and integrating it across an
+    // arbitrary client-side dt overshoots. Clients predict turret
+    // motion from velocity alone.
     t.angular.pitch = qRot(src.pitch);
     t.angular.pitchVel = qRot(src.pitchVelocity);
-    t.angular.pitchAcc = 0;
     dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
       ? undefined
       : src.target ?? undefined;
@@ -203,7 +206,6 @@ function createPooledEntry(): PooledEntry {
       building: undefined,
     },
     unitSub: createNetworkUnitSnapshot(),
-    unitMovementAccel: { x: 0, y: 0, z: 0 },
     unitSuspension: {
       offset: { x: 0, y: 0, z: 0 },
       velocity: { x: 0, y: 0, z: 0 },
@@ -323,16 +325,14 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
     values[base + 0] = angular.rot;
     values[base + 1] = angular.vel;
-    values[base + 2] = angular.acc;
-    values[base + 3] = angular.pitch;
-    values[base + 4] = angular.pitchVel;
-    values[base + 5] = angular.pitchAcc;
-    values[base + 6] = src.turret.id;
-    values[base + 7] = src.state;
-    values[base + 8] = src.targetId !== undefined ? 1 : 0;
-    values[base + 9] = src.targetId ?? 0;
-    values[base + 10] = src.currentForceFieldRange !== undefined ? 1 : 0;
-    values[base + 11] = src.currentForceFieldRange ?? 0;
+    values[base + 2] = angular.pitch;
+    values[base + 3] = angular.pitchVel;
+    values[base + 4] = src.turret.id;
+    values[base + 5] = src.state;
+    values[base + 6] = src.targetId !== undefined ? 1 : 0;
+    values[base + 7] = src.targetId ?? 0;
+    values[base + 8] = src.currentForceFieldRange !== undefined ? 1 : 0;
+    values[base + 9] = src.currentForceFieldRange ?? 0;
   }
   return offset;
 }
@@ -395,13 +395,11 @@ function appendUnitEntityWireRow(
   const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
   const values = rows.values;
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-  const movementAccel = unit.movementAccel;
   const surfaceNormal = unit.surfaceNormal;
   const suspension = unit.suspension;
   const jump = unit.jump;
   const orientation = unit.orientation;
   const angularVelocity = unit.angularVelocity3;
-  const angularAcceleration = unit.angularAcceleration3;
   const build = unit.build;
   const radius = unit.radius;
   const buildTargetId = unit.buildTargetId;
@@ -433,55 +431,47 @@ function appendUnitEntityWireRow(
   values[base + 20] = unit.bodyCenterHeight ?? 0;
   values[base + 21] = unit.mass !== undefined ? 1 : 0;
   values[base + 22] = unit.mass ?? 0;
-  values[base + 23] = movementAccel !== undefined ? 1 : 0;
-  values[base + 24] = movementAccel !== undefined ? movementAccel.x : 0;
-  values[base + 25] = movementAccel !== undefined ? movementAccel.y : 0;
-  values[base + 26] = movementAccel !== undefined ? movementAccel.z : 0;
-  values[base + 27] = surfaceNormal !== undefined ? 1 : 0;
-  values[base + 28] = surfaceNormal !== undefined ? surfaceNormal.nx : 0;
-  values[base + 29] = surfaceNormal !== undefined ? surfaceNormal.ny : 0;
-  values[base + 30] = surfaceNormal !== undefined ? surfaceNormal.nz : 0;
-  values[base + 31] = suspension !== undefined ? 1 : 0;
-  values[base + 32] = suspension !== undefined ? suspension.offset.x : 0;
-  values[base + 33] = suspension !== undefined ? suspension.offset.y : 0;
-  values[base + 34] = suspension !== undefined ? suspension.offset.z : 0;
-  values[base + 35] = suspension !== undefined ? suspension.velocity.x : 0;
-  values[base + 36] = suspension !== undefined ? suspension.velocity.y : 0;
-  values[base + 37] = suspension !== undefined ? suspension.velocity.z : 0;
-  values[base + 38] = suspension !== undefined && suspension.legContact === true ? 1 : 0;
-  values[base + 39] = jump !== undefined ? 1 : 0;
-  values[base + 40] = jump !== undefined && jump.enabled === true ? 1 : 0;
-  values[base + 41] = jump !== undefined && jump.active === true ? 1 : 0;
-  values[base + 42] = jump !== undefined && jump.launchSeq !== undefined ? 1 : 0;
-  values[base + 43] = jump !== undefined && jump.launchSeq !== undefined ? jump.launchSeq : 0;
-  values[base + 44] = orientation !== undefined ? 1 : 0;
-  values[base + 45] = orientation !== undefined ? orientation.x : 0;
-  values[base + 46] = orientation !== undefined ? orientation.y : 0;
-  values[base + 47] = orientation !== undefined ? orientation.z : 0;
-  values[base + 48] = orientation !== undefined ? orientation.w : 0;
-  values[base + 49] = angularVelocity !== undefined ? 1 : 0;
-  values[base + 50] = angularVelocity !== undefined ? angularVelocity.x : 0;
-  values[base + 51] = angularVelocity !== undefined ? angularVelocity.y : 0;
-  values[base + 52] = angularVelocity !== undefined ? angularVelocity.z : 0;
-  values[base + 53] = angularAcceleration !== undefined ? 1 : 0;
-  values[base + 54] = angularAcceleration !== undefined ? angularAcceleration.x : 0;
-  values[base + 55] = angularAcceleration !== undefined ? angularAcceleration.y : 0;
-  values[base + 56] = angularAcceleration !== undefined ? angularAcceleration.z : 0;
-  values[base + 57] = unit.fireEnabled === false ? 1 : 0;
-  values[base + 58] = unit.isCommander === true ? 1 : 0;
-  values[base + 59] = buildTargetId !== undefined ? 1 : 0;
-  values[base + 60] = buildTargetId === null ? 1 : 0;
-  values[base + 61] = typeof buildTargetId === 'number' ? buildTargetId : 0;
-  values[base + 62] = actions !== undefined ? 1 : 0;
-  values[base + 63] = actions !== undefined ? actions.length : 0;
-  values[base + 64] = turrets !== undefined ? 1 : 0;
-  values[base + 65] = turrets !== undefined ? turrets.length : 0;
-  values[base + 66] = build !== undefined ? 1 : 0;
-  values[base + 67] = build !== undefined && build.complete === true ? 1 : 0;
-  values[base + 68] = build !== undefined ? build.paid.energy : 0;
-  values[base + 69] = build !== undefined ? build.paid.metal : 0;
-  values[base + 70] = turretOffset;
-  values[base + 71] = actionOffset;
+  values[base + 23] = surfaceNormal !== undefined ? 1 : 0;
+  values[base + 24] = surfaceNormal !== undefined ? surfaceNormal.nx : 0;
+  values[base + 25] = surfaceNormal !== undefined ? surfaceNormal.ny : 0;
+  values[base + 26] = surfaceNormal !== undefined ? surfaceNormal.nz : 0;
+  values[base + 27] = suspension !== undefined ? 1 : 0;
+  values[base + 28] = suspension !== undefined ? suspension.offset.x : 0;
+  values[base + 29] = suspension !== undefined ? suspension.offset.y : 0;
+  values[base + 30] = suspension !== undefined ? suspension.offset.z : 0;
+  values[base + 31] = suspension !== undefined ? suspension.velocity.x : 0;
+  values[base + 32] = suspension !== undefined ? suspension.velocity.y : 0;
+  values[base + 33] = suspension !== undefined ? suspension.velocity.z : 0;
+  values[base + 34] = suspension !== undefined && suspension.legContact === true ? 1 : 0;
+  values[base + 35] = jump !== undefined ? 1 : 0;
+  values[base + 36] = jump !== undefined && jump.enabled === true ? 1 : 0;
+  values[base + 37] = jump !== undefined && jump.active === true ? 1 : 0;
+  values[base + 38] = jump !== undefined && jump.launchSeq !== undefined ? 1 : 0;
+  values[base + 39] = jump !== undefined && jump.launchSeq !== undefined ? jump.launchSeq : 0;
+  values[base + 40] = orientation !== undefined ? 1 : 0;
+  values[base + 41] = orientation !== undefined ? orientation.x : 0;
+  values[base + 42] = orientation !== undefined ? orientation.y : 0;
+  values[base + 43] = orientation !== undefined ? orientation.z : 0;
+  values[base + 44] = orientation !== undefined ? orientation.w : 0;
+  values[base + 45] = angularVelocity !== undefined ? 1 : 0;
+  values[base + 46] = angularVelocity !== undefined ? angularVelocity.x : 0;
+  values[base + 47] = angularVelocity !== undefined ? angularVelocity.y : 0;
+  values[base + 48] = angularVelocity !== undefined ? angularVelocity.z : 0;
+  values[base + 49] = unit.fireEnabled === false ? 1 : 0;
+  values[base + 50] = unit.isCommander === true ? 1 : 0;
+  values[base + 51] = buildTargetId !== undefined ? 1 : 0;
+  values[base + 52] = buildTargetId === null ? 1 : 0;
+  values[base + 53] = typeof buildTargetId === 'number' ? buildTargetId : 0;
+  values[base + 54] = actions !== undefined ? 1 : 0;
+  values[base + 55] = actions !== undefined ? actions.length : 0;
+  values[base + 56] = turrets !== undefined ? 1 : 0;
+  values[base + 57] = turrets !== undefined ? turrets.length : 0;
+  values[base + 58] = build !== undefined ? 1 : 0;
+  values[base + 59] = build !== undefined && build.complete === true ? 1 : 0;
+  values[base + 60] = build !== undefined ? build.paid.energy : 0;
+  values[base + 61] = build !== undefined ? build.paid.metal : 0;
+  values[base + 62] = turretOffset;
+  values[base + 63] = actionOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -603,8 +593,7 @@ export function serializeEntitySnapshot(
       ENTITY_CHANGED_BUILDING |
       ENTITY_CHANGED_NORMAL |
       ENTITY_CHANGED_SUSPENSION |
-      ENTITY_CHANGED_JUMP |
-      ENTITY_CHANGED_MOVEMENT_ACCEL;
+      ENTITY_CHANGED_JUMP;
     const hasUnitFields = isFull || (changedFields! & unitFieldMask);
 
     if (hasUnitFields) {
@@ -632,13 +621,6 @@ export function serializeEntitySnapshot(
         }
       }
 
-      // Acceleration is an instantaneous force value, not a constant.
-      // Integrating it on the client over an arbitrary prediction-stride
-      // dt overshoots — the client's EMA-toward-velocity already smooths
-      // approach to a new target, so movementAccel adds bandwidth + jitter
-      // for no visual benefit. Always omit from the wire.
-      clearNetworkUnitMovementAccel(u);
-
       if (
         isFull ||
         (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))
@@ -660,11 +642,15 @@ export function serializeEntitySnapshot(
         clearNetworkUnitJump(u);
       }
 
-      // Full orientation triad (quat + omega + alpha) for entities
-      // that have one — currently hover units. Ground units have
-      // these undefined on the entity and we omit them from the
-      // wire entirely (MessagePack drops undefined fields), so this
-      // adds zero overhead for the vast majority of snapshots.
+      // Orientation + angular velocity for entities that have one —
+      // currently hover units. Ground units have these undefined on
+      // the entity and we omit them from the wire entirely (MessagePack
+      // drops undefined fields), so this adds zero overhead for the
+      // vast majority of snapshots. Angular acceleration is not
+      // shipped: instantaneous second derivative is unstable to
+      // integrate under arbitrary client dt, and the per-channel
+      // rotation-velocity EMA on the client already smooths approach
+      // to a freshly-arrived target.
       const orient = entity.unit.orientation;
       if (orient) {
         u.orientation = orient;
@@ -673,10 +659,6 @@ export function serializeEntitySnapshot(
         u.orientation = undefined;
         u.angularVelocity3 = undefined;
       }
-      // Same reasoning as movementAccel + per-turret angular acc:
-      // instantaneous second derivative is unstable to integrate
-      // under arbitrary client dt. Always omit from the wire.
-      u.angularAcceleration3 = undefined;
 
       if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
         writeNetworkUnitCombatMode(u, entity);

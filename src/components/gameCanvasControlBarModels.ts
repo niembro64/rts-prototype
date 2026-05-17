@@ -5,6 +5,7 @@ import type {
   AudioScope,
   CameraFovDegrees,
   CameraSmoothMode,
+  DriftChannelMode,
   DriftMode,
   PredictionMode,
   ProjRangeType,
@@ -105,7 +106,10 @@ export type GameCanvasClientControlBarModel = {
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;
   readonly beamSnapToTurret: boolean;
-  readonly driftMode: DriftMode;
+  readonly movementPosEma: DriftChannelMode;
+  readonly movementVelEma: DriftChannelMode;
+  readonly rotationPosEma: DriftChannelMode;
+  readonly rotationVelEma: DriftChannelMode;
   readonly predictionMode: PredictionMode;
   readonly clientTiltEmaMode: DriftMode;
   readonly allPanActive: boolean;
@@ -137,7 +141,10 @@ export type GameCanvasClientControlBarModel = {
   toggleBurnMarks(): void;
   toggleLocomotionMarks(): void;
   toggleBeamSnapToTurret(): void;
-  changeDriftMode(mode: DriftMode): void;
+  changeMovementPosEma(mode: DriftChannelMode): void;
+  changeMovementVelEma(mode: DriftChannelMode): void;
+  changeRotationPosEma(mode: DriftChannelMode): void;
+  changeRotationVelEma(mode: DriftChannelMode): void;
   changePredictionMode(mode: PredictionMode): void;
   changeClientTiltEmaMode(mode: DriftMode): void;
   toggleAllPan(): void;

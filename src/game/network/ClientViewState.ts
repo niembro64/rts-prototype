@@ -28,7 +28,6 @@ import {
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_SUSPENSION,
   ENTITY_CHANGED_JUMP,
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -248,10 +247,8 @@ export class ClientViewState {
         target.turrets.push({
           rotation: 0,
           angularVelocity: 0,
-          angularAcceleration: 0,
           pitch: 0,
           pitchVelocity: 0,
-          pitchAcceleration: 0,
           forceFieldRange: undefined,
         });
       }
@@ -260,10 +257,8 @@ export class ClientViewState {
         const wireAng = turrets[i].turret.angular;
         target.turrets[i].rotation = wireAng.rot;
         target.turrets[i].angularVelocity = wireAng.vel;
-        target.turrets[i].angularAcceleration = wireAng.acc;
         target.turrets[i].pitch = wireAng.pitch;
         target.turrets[i].pitchVelocity = wireAng.pitchVel;
-        target.turrets[i].pitchAcceleration = wireAng.pitchAcc;
         target.turrets[i].forceFieldRange = turrets[i].currentForceFieldRange ?? undefined;
       }
       return true;
@@ -326,7 +321,6 @@ export class ClientViewState {
         ENTITY_CHANGED_POS |
         ENTITY_CHANGED_ROT |
         ENTITY_CHANGED_VEL |
-        ENTITY_CHANGED_MOVEMENT_ACCEL |
         // Reactivate prediction when only the surface normal moved
         // (host's tilt EMA is still settling on a stationary unit, or
         // the host flipped tilt mode). Otherwise the new target.normal

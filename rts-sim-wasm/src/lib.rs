@@ -5596,7 +5596,6 @@ const ENTITY_CHANGED_TURRETS: u32 = 1 << 5;
 const ENTITY_CHANGED_BUILDING: u32 = 1 << 6;
 const ENTITY_CHANGED_FACTORY: u32 = 1 << 7;
 const ENTITY_CHANGED_NORMAL: u32 = 1 << 8;
-const ENTITY_CHANGED_MOVEMENT_ACCEL: u32 = 1 << 10;
 
 const SNAPSHOT_NORMAL_THRESHOLD: f64 = 0.001;
 const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
@@ -5666,12 +5665,12 @@ pub fn snapshot_baseline_diff_slot(
         {
             mask |= ENTITY_CHANGED_VEL;
         }
-        if (movement_accel_x - b.movement_accel_x[s]).abs() > vel_threshold
-            || (movement_accel_y - b.movement_accel_y[s]).abs() > vel_threshold
-            || (movement_accel_z - b.movement_accel_z[s]).abs() > vel_threshold
-        {
-            mask |= ENTITY_CHANGED_MOVEMENT_ACCEL;
-        }
+        // movement_accel_x/y/z params remain on the ABI for now but are
+        // no longer compared against baseline: server stopped shipping
+        // acceleration on the wire, so the per-axis bit is dead.
+        let _ = movement_accel_x;
+        let _ = movement_accel_y;
+        let _ = movement_accel_z;
         let cur_hp = {
             let meta = entity_meta_pool();
             if s < meta.hp_curr.len() { meta.hp_curr[s] } else { 0.0 }
@@ -5780,17 +5779,17 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 
 /// Encoder turret scratch — JS pre-fills with already-quantized
 /// turret values, then the encoder reads from it when emitting the
-/// turrets array. Layout per turret (12 f64 = 96 bytes):
-///   [0..6]  qRot(rotation, vel, acc, pitch, pitchVel, pitchAcc)
-///   [6]     turret-id code (TurretTypeCode as f64)
-///   [7]     state code (TurretStateCode as f64)
-///   [8]     has_target_id (0 or 1)
-///   [9]     target_id (raw entity id as f64; ignored when has_target_id==0)
-///   [10]    has_force_field_range (0 or 1)
-///   [11]    force_field_range (raw value; ignored when has_ff_range==0)
+/// turrets array. Layout per turret (10 f64 = 80 bytes):
+///   [0..4]  qRot(rotation, vel, pitch, pitchVel)
+///   [4]     turret-id code (TurretTypeCode as f64)
+///   [5]     state code (TurretStateCode as f64)
+///   [6]     has_target_id (0 or 1)
+///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
+///   [8]     has_force_field_range (0 or 1)
+///   [9]     force_field_range (raw value; ignored when has_ff_range==0)
 ///
 /// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
-const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 12;
+const SNAPSHOT_ENCODE_TURRET_STRIDE: usize = 10;
 
 struct SnapshotEncodeTurretScratch {
     buf: Vec<f64>,
@@ -6164,8 +6163,6 @@ pub fn snapshot_encode_entity_unit(
     body_center_height: f64,
     has_mass: u8,
     mass: f64,
-    has_movement_accel: u8,
-    qmov_x: f64, qmov_y: f64, qmov_z: f64,
     has_surface_normal: u8,
     qnormal_x: f64, qnormal_y: f64, qnormal_z: f64,
     has_suspension: u8,
@@ -6181,8 +6178,6 @@ pub fn snapshot_encode_entity_unit(
     qorient_x: f64, qorient_y: f64, qorient_z: f64, qorient_w: f64,
     has_angular_velocity3: u8,
     qangvel_x: f64, qangvel_y: f64, qangvel_z: f64,
-    has_angular_acceleration3: u8,
-    qangacc_x: f64, qangacc_y: f64, qangacc_z: f64,
     has_fire_enabled: u8,
     has_is_commander: u8,
     has_build_target_id: u8,
@@ -6217,13 +6212,11 @@ pub fn snapshot_encode_entity_unit(
     if has_body_center_height != 0 { unit_field_count += 1; }
     if has_mass != 0 { unit_field_count += 1; }
     if has_is_commander != 0 { unit_field_count += 1; }
-    if has_movement_accel != 0 { unit_field_count += 1; }
     if has_surface_normal != 0 { unit_field_count += 1; }
     if has_suspension != 0 { unit_field_count += 1; }
     if has_jump != 0 { unit_field_count += 1; }
     if has_orientation != 0 { unit_field_count += 1; }
     if has_angular_velocity3 != 0 { unit_field_count += 1; }
-    if has_angular_acceleration3 != 0 { unit_field_count += 1; }
     if has_fire_enabled != 0 { unit_field_count += 1; }
     if has_build != 0 { unit_field_count += 1; }
     if has_actions != 0 { unit_field_count += 1; }
@@ -6278,17 +6271,6 @@ pub fn snapshot_encode_entity_unit(
     if has_is_commander != 0 {
         w.write_str("isCommander");
         w.write_bool(true);
-    }
-
-    if has_movement_accel != 0 {
-        w.write_str("movementAccel");
-        w.write_map_header(3);
-        w.write_str("x");
-        w.write_number(qmov_x);
-        w.write_str("y");
-        w.write_number(qmov_y);
-        w.write_str("z");
-        w.write_number(qmov_z);
     }
 
     if has_surface_normal != 0 {
@@ -6368,17 +6350,6 @@ pub fn snapshot_encode_entity_unit(
         w.write_number(qangvel_y);
         w.write_str("z");
         w.write_number(qangvel_z);
-    }
-
-    if has_angular_acceleration3 != 0 {
-        w.write_str("angularAcceleration3");
-        w.write_map_header(3);
-        w.write_str("x");
-        w.write_number(qangacc_x);
-        w.write_str("y");
-        w.write_number(qangacc_y);
-        w.write_str("z");
-        w.write_number(qangacc_z);
     }
 
     // Tri-state scalar/boolean optionals — JS emits them as
@@ -6490,18 +6461,16 @@ pub fn snapshot_encode_entity_unit(
             let base = t * SNAPSHOT_ENCODE_TURRET_STRIDE;
             let qrot = scratch.buf[base];
             let qvel = scratch.buf[base + 1];
-            let qacc = scratch.buf[base + 2];
-            let qpitch = scratch.buf[base + 3];
-            let qpitch_vel = scratch.buf[base + 4];
-            let qpitch_acc = scratch.buf[base + 5];
-            let turret_id_code = scratch.buf[base + 6];
-            let state_code = scratch.buf[base + 7];
-            let has_target = scratch.buf[base + 8] != 0.0;
-            let target_id_raw = scratch.buf[base + 9];
-            let has_ff_range = scratch.buf[base + 10] != 0.0;
-            let ff_range_raw = scratch.buf[base + 11];
+            let qpitch = scratch.buf[base + 2];
+            let qpitch_vel = scratch.buf[base + 3];
+            let turret_id_code = scratch.buf[base + 4];
+            let state_code = scratch.buf[base + 5];
+            let has_target = scratch.buf[base + 6] != 0.0;
+            let target_id_raw = scratch.buf[base + 7];
+            let has_ff_range = scratch.buf[base + 8] != 0.0;
+            let ff_range_raw = scratch.buf[base + 9];
 
-            // turret DTO: { turret: { id, angular: {6 fields} }, [targetId,]
+            // turret DTO: { turret: { id, angular: {4 fields} }, [targetId,]
             // state, [currentForceFieldRange] }
             let mut turret_field_count: usize = 2; // turret + state
             if has_target { turret_field_count += 1; }
@@ -6513,19 +6482,15 @@ pub fn snapshot_encode_entity_unit(
             w.write_str("id");
             w.write_number(turret_id_code);
             w.write_str("angular");
-            w.write_map_header(6);
+            w.write_map_header(4);
             w.write_str("rot");
             w.write_number(qrot);
             w.write_str("vel");
             w.write_number(qvel);
-            w.write_str("acc");
-            w.write_number(qacc);
             w.write_str("pitch");
             w.write_number(qpitch);
             w.write_str("pitchVel");
             w.write_number(qpitch_vel);
-            w.write_str("pitchAcc");
-            w.write_number(qpitch_acc);
 
             if has_target {
                 w.write_str("targetId");
@@ -6667,16 +6632,14 @@ pub fn snapshot_encode_entity_building(
             let base = t * SNAPSHOT_ENCODE_TURRET_STRIDE;
             let qrot_t = scratch.buf[base];
             let qvel = scratch.buf[base + 1];
-            let qacc = scratch.buf[base + 2];
-            let qpitch = scratch.buf[base + 3];
-            let qpitch_vel = scratch.buf[base + 4];
-            let qpitch_acc = scratch.buf[base + 5];
-            let turret_id_code = scratch.buf[base + 6];
-            let state_code = scratch.buf[base + 7];
-            let has_target = scratch.buf[base + 8] != 0.0;
-            let target_id_raw = scratch.buf[base + 9];
-            let has_ff_range = scratch.buf[base + 10] != 0.0;
-            let ff_range_raw = scratch.buf[base + 11];
+            let qpitch = scratch.buf[base + 2];
+            let qpitch_vel = scratch.buf[base + 3];
+            let turret_id_code = scratch.buf[base + 4];
+            let state_code = scratch.buf[base + 5];
+            let has_target = scratch.buf[base + 6] != 0.0;
+            let target_id_raw = scratch.buf[base + 7];
+            let has_ff_range = scratch.buf[base + 8] != 0.0;
+            let ff_range_raw = scratch.buf[base + 9];
 
             let mut turret_field_count: usize = 2; // turret + state
             if has_target { turret_field_count += 1; }
@@ -6688,19 +6651,15 @@ pub fn snapshot_encode_entity_building(
             w.write_str("id");
             w.write_number(turret_id_code);
             w.write_str("angular");
-            w.write_map_header(6);
+            w.write_map_header(4);
             w.write_str("rot");
             w.write_number(qrot_t);
             w.write_str("vel");
             w.write_number(qvel);
-            w.write_str("acc");
-            w.write_number(qacc);
             w.write_str("pitch");
             w.write_number(qpitch);
             w.write_str("pitchVel");
             w.write_number(qpitch_vel);
-            w.write_str("pitchAcc");
-            w.write_number(qpitch_acc);
 
             if has_target {
                 w.write_str("targetId");

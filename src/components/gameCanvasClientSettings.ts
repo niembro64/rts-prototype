@@ -13,8 +13,11 @@ import {
   getCameraSmoothMode,
   getClientTiltEmaMode,
   getDragPanEnabled,
-  getDriftMode,
+  getMovementPosEmaMode,
+  getMovementVelEmaMode,
   getPredictionMode,
+  getRotationPosEmaMode,
+  getRotationVelEmaMode,
   getEdgeScrollEnabled,
   getBurnMarks,
   getLegsRadiusToggle,
@@ -34,8 +37,11 @@ import {
   setCameraSmoothMode,
   setClientTiltEmaMode,
   setDragPanEnabled,
-  setDriftMode,
+  setMovementPosEmaMode,
+  setMovementVelEmaMode,
   setPredictionMode,
+  setRotationPosEmaMode,
+  setRotationVelEmaMode,
   setEdgeScrollEnabled,
   setBurnMarks,
   setLegsRadiusToggle,
@@ -54,6 +60,7 @@ import { musicPlayer } from '../game/audio/MusicPlayer';
 import type {
   AudioScope,
   CameraFovDegrees,
+  DriftChannelMode,
   DriftMode,
   PredictionMode,
   ProjRangeType,
@@ -79,7 +86,10 @@ export function useGameCanvasClientSettings({
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
-  const driftMode = ref<DriftMode>(getDriftMode());
+  const movementPosEma = ref<DriftChannelMode>(getMovementPosEmaMode());
+  const movementVelEma = ref<DriftChannelMode>(getMovementVelEmaMode());
+  const rotationPosEma = ref<DriftChannelMode>(getRotationPosEmaMode());
+  const rotationVelEma = ref<DriftChannelMode>(getRotationVelEmaMode());
   const predictionMode = ref<PredictionMode>(getPredictionMode());
   const clientTiltEmaMode = ref<DriftMode>(getClientTiltEmaMode());
   const edgeScrollEnabled = ref(getEdgeScrollEnabled());
@@ -239,9 +249,24 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = newValue;
   }
 
-  function changeDriftMode(mode: DriftMode): void {
-    setDriftMode(mode);
-    driftMode.value = mode;
+  function changeMovementPosEma(mode: DriftChannelMode): void {
+    setMovementPosEmaMode(mode);
+    movementPosEma.value = mode;
+  }
+
+  function changeMovementVelEma(mode: DriftChannelMode): void {
+    setMovementVelEmaMode(mode);
+    movementVelEma.value = mode;
+  }
+
+  function changeRotationPosEma(mode: DriftChannelMode): void {
+    setRotationPosEmaMode(mode);
+    rotationPosEma.value = mode;
+  }
+
+  function changeRotationVelEma(mode: DriftChannelMode): void {
+    setRotationVelEmaMode(mode);
+    rotationVelEma.value = mode;
   }
 
   function changePredictionMode(mode: PredictionMode): void {
@@ -325,8 +350,14 @@ export function useGameCanvasClientSettings({
     triangleDebug.value = cd.triangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
     buildGridDebug.value = cd.buildGridDebug.default;
-    setDriftMode(cd.driftMode.default);
-    driftMode.value = cd.driftMode.default;
+    setMovementPosEmaMode(cd.movementPosEma.default);
+    movementPosEma.value = cd.movementPosEma.default;
+    setMovementVelEmaMode(cd.movementVelEma.default);
+    movementVelEma.value = cd.movementVelEma.default;
+    setRotationPosEmaMode(cd.rotationPosEma.default);
+    rotationPosEma.value = cd.rotationPosEma.default;
+    setRotationVelEmaMode(cd.rotationVelEma.default);
+    rotationVelEma.value = cd.rotationVelEma.default;
     setPredictionMode(cd.predictionMode.default);
     predictionMode.value = cd.predictionMode.default;
     setClientTiltEmaMode(cd.tiltEma.default);
@@ -385,7 +416,10 @@ export function useGameCanvasClientSettings({
     beamSnapToTurret,
     triangleDebug,
     buildGridDebug,
-    driftMode,
+    movementPosEma,
+    movementVelEma,
+    rotationPosEma,
+    rotationVelEma,
     predictionMode,
     clientTiltEmaMode,
     edgeScrollEnabled,
@@ -424,7 +458,10 @@ export function useGameCanvasClientSettings({
     toggleBeamSnapToTurret,
     toggleTriangleDebug,
     toggleBuildGridDebug,
-    changeDriftMode,
+    changeMovementPosEma,
+    changeMovementVelEma,
+    changeRotationPosEma,
+    changeRotationVelEma,
     changePredictionMode,
     changeClientTiltEmaMode,
     changeWaypointDetail,

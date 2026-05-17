@@ -273,9 +273,59 @@
       <ul class="rule-list">
         <li>Share physical kernels for body motion, projectile stepping, recoil, hover, jump, turret pose, terrain sampling, and collision helpers.</li>
         <li>Keep authoritative-only systems on the host: command validation, economy, construction completion, targeting truth, damage, fog filtering, unit creation and death, and victory.</li>
-        <li>Predict visible state locally: movement, velocity, acceleration, turret rotation, beam path presentation, projectile travel, force-field presentation, and local command intent.</li>
-        <li>Use snapshots as correction targets. The client may drift, snap, or reset toward <code>pos</code>, <code>vel</code>, <code>acc</code>, rotation, health, orders, and event state, but it does not argue with them.</li>
+        <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, force-field presentation, and local command intent.</li>
+        <li>Use snapshots as correction targets. The client stores the most recent server target per entity and decides per channel — movement position, movement velocity, rotation position, rotation velocity — whether to ignore it, snap to it, or EMA toward it. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
       </ul>
+
+      <h3>Prediction is velocity-based</h3>
+      <p>
+        The client prediction integrator advances position from the
+        last-seen velocity each frame. It does not re-integrate
+        acceleration. The authoritative simulation owns force inputs
+        (movement thrust, turret spring torque, gravity, ground spring,
+        recoil, impulse), and those forces produce velocities and
+        positions the snapshot eventually carries. The client never sees
+        the acceleration vector itself, so it cannot stale-integrate it
+        across a snapshot gap and overshoot when the authoritative force
+        flips sign before the next correction arrives.
+      </p>
+      <p>
+        The client&rsquo;s <code>PREDICT</code> mode therefore exposes
+        just two settings: <code>POS</code> snaps straight to the
+        snapshot position (no integration); <code>VEL</code> integrates
+        position from velocity each frame. There is no <code>ACC</code>
+        option — and consequently no <code>movementAccel</code> or
+        <code>angularAcceleration</code> on the wire — because
+        instantaneous second derivatives are not stable to integrate
+        under arbitrary client dt and the EMA-toward-velocity already
+        smooths the approach to a freshly-arrived target.
+      </p>
+
+      <h3>EMA channels are independent</h3>
+      <p>
+        Each prediction channel has its own EMA control: <code>movement
+        position</code>, <code>movement velocity</code>, <code>rotation
+        position</code>, and <code>rotation velocity</code>. The four
+        controls share the same five modes — <code>ignore</code>,
+        <code>snap</code>, <code>fast</code>, <code>medium</code>,
+        <code>slow</code> — and the client always stores the most recent
+        snapshot value per channel so the chosen mode can be applied
+        afresh every client tick.
+      </p>
+      <ul class="rule-list">
+        <li><code>ignore</code> &mdash; the stored snapshot value exists but the client never applies it to the rendered entity for that channel. Prediction (if any) continues from the last applied value forever.</li>
+        <li><code>snap</code> &mdash; each client tick the rendered value is replaced with the latest stored snapshot value for that channel. No smoothing.</li>
+        <li><code>fast</code> / <code>medium</code> / <code>slow</code> &mdash; each tick the rendered value blends toward the latest stored snapshot value using a frame-rate independent EMA whose half-life is determined by the mode.</li>
+      </ul>
+      <p>
+        Splitting the EMA per channel means a player can keep movement
+        snappy while letting rotation drift gently, or freeze rotation
+        entirely while velocity catches up. The mode is a render-time
+        decision, not a snapshot-decode decision: the target store
+        always accepts the newest authoritative value, and the
+        per-channel mode controls only how the rendered state walks
+        toward it.
+      </p>
 
       <h3>Rendering samples prediction</h3>
       <p>
@@ -806,7 +856,8 @@
         <li>Keep rendering decoupled from simulation cadence; <code>requestAnimationFrame</code> samples state, it does not define truth.</li>
         <li>Keep commands small, direct, validated, and host-owned.</li>
         <li>Keep snapshots sparse, recipient-aware, and low cadence by default.</li>
-        <li>Keep client prediction physically compatible with the server, especially for motion and projectiles.</li>
+        <li>Keep client prediction physically compatible with the server, especially for motion and projectiles. Ship velocity, not acceleration: the server owns force inputs, the wire ships their integrated result, and the client extrapolates from velocity only.</li>
+        <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity) with the same five modes (ignore, snap, fast, medium, slow) so playtesters can tune each channel independently without rebuilds.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>

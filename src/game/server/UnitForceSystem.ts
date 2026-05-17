@@ -24,7 +24,6 @@ import {
 import { canJumpLandAwayFromWater } from '../sim/unitJumpLanding';
 import { isUnitGroundPointAtOrBelowTerrain } from '../sim/unitGroundPhysics';
 import {
-  ENTITY_CHANGED_MOVEMENT_ACCEL,
   ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_ROT,
 } from '../../types/network';
@@ -133,9 +132,9 @@ export class UnitForceSystem {
       entity.transform.z = body.z;
 
       if (entity.buildable && !entity.buildable.isComplete) {
-        if (setUnitMovementAcceleration(entity.unit, 0, 0, 0)) {
-          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
-        }
+        // Acceleration is no longer shipped on the wire — only update
+        // the sim-side value; no markSnapshotDirty needed.
+        setUnitMovementAcceleration(entity.unit, 0, 0, 0);
         if (entity.combat) {
           entity.combat.priorityTargetId = undefined;
           entity.combat.priorityTargetPoint = undefined;
@@ -333,14 +332,12 @@ export class UnitForceSystem {
           continue;
         }
         const movementAccelScale = body.mass > 0 ? 1e6 / body.mass : 0;
-        if (setUnitMovementAcceleration(
+        setUnitMovementAcceleration(
           entity.unit,
           thrustForceX * movementAccelScale,
           thrustForceY * movementAccelScale,
           thrustForceZ * movementAccelScale,
-        )) {
-          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
-        }
+        );
         this.physics.applyForce(body, totalForceX * 1e6, totalForceY * 1e6, totalForceZ * 1e6);
         continue;
       }
@@ -476,18 +473,17 @@ export class UnitForceSystem {
       ) {
         continue;
       }
-      // Ship only the persistent movement/traction acceleration for
-      // client prediction. Jump, gravity, terrain spring, damping, and
-      // transient external forces are handled through their own paths.
+      // Cache the persistent movement/traction acceleration on the sim
+      // entity for force-system bookkeeping. The wire no longer carries
+      // it (client predicts position from velocity only), so no
+      // markSnapshotDirty here.
       const movementAccelScale = body.mass > 0 ? 1e6 / body.mass : 0;
-      if (setUnitMovementAcceleration(
+      setUnitMovementAcceleration(
         entity.unit,
         thrustForceX * movementAccelScale,
         thrustForceY * movementAccelScale,
         thrustForceZ * movementAccelScale,
-      )) {
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_MOVEMENT_ACCEL);
-      }
+      );
       if (totalForceX === 0 && totalForceY === 0 && totalForceZ === 0) {
         continue;
       }

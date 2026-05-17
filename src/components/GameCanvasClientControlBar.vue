@@ -297,7 +297,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Client prediction physics order: POS snaps to snapshot position only; VEL also integrates server-reported velocity each frame; ACC integrates the full F=ma chain (position from velocity AND velocity from acceleration).">PREDICT:</BarLabel>
+        <BarLabel title="Client prediction physics order: POS snaps to snapshot position only; VEL integrates server-reported velocity each frame. Acceleration is not on the wire, so there is no ACC mode.">PREDICT:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.predictionMode.options"
@@ -310,28 +310,54 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>PHYSICS EMA:</BarLabel>
+        <BarLabel title="Movement position EMA. IGN ignores the snapshot position; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">MOV POS:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            :active="model.driftMode === 'snap'"
-            title="Snap instantly to new server state"
-            @click="model.changeDriftMode('snap')"
-          >SNAP</BarButton>
+            v-for="opt in CLIENT_CONFIG.movementPosEma.options"
+            :key="opt.value"
+            :active="model.movementPosEma === opt.value"
+            :title="`Movement position EMA: ${opt.label}.`"
+            @click="model.changeMovementPosEma(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Movement velocity EMA. IGN ignores the snapshot velocity; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">MOV VEL:</BarLabel>
+        <BarButtonGroup>
           <BarButton
-            :active="model.driftMode === 'fast'"
-            title="Fast interpolation to server state"
-            @click="model.changeDriftMode('fast')"
-          >FAST</BarButton>
+            v-for="opt in CLIENT_CONFIG.movementVelEma.options"
+            :key="opt.value"
+            :active="model.movementVelEma === opt.value"
+            :title="`Movement velocity EMA: ${opt.label}.`"
+            @click="model.changeMovementVelEma(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Rotation position EMA. Covers body yaw, hover orientation, and turret yaw/pitch. IGN ignores the snapshot rotation; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">ROT POS:</BarLabel>
+        <BarButtonGroup>
           <BarButton
-            :active="model.driftMode === 'mid'"
-            title="Medium interpolation to server state"
-            @click="model.changeDriftMode('mid')"
-          >MID</BarButton>
+            v-for="opt in CLIENT_CONFIG.rotationPosEma.options"
+            :key="opt.value"
+            :active="model.rotationPosEma === opt.value"
+            :title="`Rotation position EMA: ${opt.label}.`"
+            @click="model.changeRotationPosEma(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Rotation velocity EMA. Covers body angular velocity and turret angular/pitch velocity. IGN ignores the snapshot angular velocity; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">ROT VEL:</BarLabel>
+        <BarButtonGroup>
           <BarButton
-            :active="model.driftMode === 'slow'"
-            title="Slow interpolation to server state"
-            @click="model.changeDriftMode('slow')"
-          >SLOW</BarButton>
+            v-for="opt in CLIENT_CONFIG.rotationVelEma.options"
+            :key="opt.value"
+            :active="model.rotationVelEma === opt.value"
+            :title="`Rotation velocity EMA: ${opt.label}.`"
+            @click="model.changeRotationVelEma(opt.value)"
+          >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

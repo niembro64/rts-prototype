@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { getDriftMode } from '@/clientBarConfig';
+import {
+  getRotationPosEmaMode,
+  getRotationVelEmaMode,
+} from '@/clientBarConfig';
 import {
   BUILD_RATE_EMA_HALF_LIFE_SEC,
   BUILD_RATE_EMA_MODE,
@@ -10,7 +13,16 @@ import {
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
-import { getDriftPreset, halfLifeBlend } from '../network/driftEma';
+import { DRIFT_CHANNEL_HALF_LIFE_SEC, halfLifeBlend } from '../network/driftEma';
+import type { DriftChannelMode } from '@/types/client';
+
+/** Visual animation half-life lookup — falls back to 'medium' for
+ *  'ignore' (the snapshot-drift channel's 'ignore' is meaningless for
+ *  decorative motion like wind-turbine fan smoothing). */
+function visualAnimHalfLife(mode: DriftChannelMode): number {
+  if (mode === 'ignore') return DRIFT_CHANNEL_HALF_LIFE_SEC.medium;
+  return DRIFT_CHANNEL_HALF_LIFE_SEC[mode];
+}
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
@@ -347,14 +359,15 @@ export class BuildingAnimationController3D {
       this.windFanYaw = targetYaw;
       this.windVisualSpeed = targetSpeed;
     } else {
-      const preset = getDriftPreset(getDriftMode());
+      const rotPosHalfLife = visualAnimHalfLife(getRotationPosEmaMode());
+      const rotVelHalfLife = visualAnimHalfLife(getRotationVelEmaMode());
       this.windFanYaw = lerpAngle(
         this.windFanYaw,
         targetYaw,
         halfLifeBlend(
           dtSec,
           this.scaledWindTurbineHalfLife(
-            preset.rotation.pos,
+            rotPosHalfLife,
             WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.fanYaw,
           ),
         ),
@@ -365,7 +378,7 @@ export class BuildingAnimationController3D {
         halfLifeBlend(
           dtSec,
           this.scaledWindTurbineHalfLife(
-            preset.rotation.vel,
+            rotVelHalfLife,
             WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.bladeSpeed,
           ),
         ),

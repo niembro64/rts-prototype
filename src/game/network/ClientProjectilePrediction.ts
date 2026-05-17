@@ -1,9 +1,8 @@
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { isLineShotType } from '@/types/sim';
 import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
-import { getPredictionMode } from '@/clientBarConfig';
 import { getSurfaceHeight } from '../sim/Terrain';
-import { getEntityAcceleration3, getEntityVelocity3 } from '../sim/combat/combatUtils';
+import { getEntityVelocity3 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   applyHomingSteering,
@@ -14,7 +13,11 @@ import {
   type KinematicState3,
   type KinematicVec3,
 } from '../math';
-import { halfLifeBlend, type DriftPreset } from './driftEma';
+import { getChannelBlend } from './driftEma';
+import {
+  getMovementPosEmaMode,
+  getMovementVelEmaMode,
+} from '@/clientBarConfig';
 import type { PredictionStep } from './ClientPredictionCadence';
 
 type ProjectilePredictionTarget = {
@@ -54,16 +57,12 @@ const _clientHomingIntercept: KinematicInterceptSolution = {
 function applyClientProjectileHoming(options: {
   entity: Entity;
   dt: number;
-  mapWidth: number;
-  mapHeight: number;
   getEntity: (id: EntityId) => Entity | undefined;
   findNearestEnemyForRocket: (projectile: Entity, ownerId: PlayerId) => Entity | null;
 }): void {
   const {
     entity,
     dt,
-    mapWidth,
-    mapHeight,
     getEntity,
     findNearestEnemyForRocket,
   } = options;
@@ -89,14 +88,14 @@ function applyClientProjectileHoming(options: {
     }
   }
   if (targetValid && homingTarget) {
-    // PREDICT mode picks which target derivatives feed the homing intercept
-    // solver. VEL assumes constant target velocity; ACC includes target
-    // acceleration. Projectile gravity is universal in both modes.
-    // POS would skip homing steering entirely, but projectiles get no
-    // per-tick snapshot updates (only spawn/despawn events), so without
-    // local steering they'd fly straight forever — treat POS as VEL.
-    const predictionMode = getPredictionMode();
-    const useAccel = predictionMode === 'acc';
+    // Homing intercept solver runs with target velocity only. Target
+    // acceleration is no longer estimated client-side — the server owns
+    // every force input and the wire ships its integrated velocity, so
+    // there is no stable per-tick acceleration vector to feed the
+    // intercept math. POS would skip homing steering entirely, but
+    // projectiles get no per-tick snapshot updates (only spawn/despawn
+    // events), so without local steering they'd fly straight forever —
+    // treat POS as VEL here.
     const aimPoint = resolveTargetAimPoint(
       homingTarget,
       entity.transform.x, entity.transform.y, entity.transform.z,
@@ -106,18 +105,10 @@ function applyClientProjectileHoming(options: {
     let steerY = aimPoint.y;
     let steerZ = aimPoint.z;
     const targetVelocity = getEntityVelocity3(homingTarget, _clientHomingTargetVelocity);
-    const targetAcceleration = useAccel
-      ? getEntityAcceleration3(
-          homingTarget,
-          _clientHomingTargetAcceleration,
-          (x, y) => getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
-        )
-      : (
-          _clientHomingTargetAcceleration.x = 0,
-          _clientHomingTargetAcceleration.y = 0,
-          _clientHomingTargetAcceleration.z = 0,
-          _clientHomingTargetAcceleration
-        );
+    _clientHomingTargetAcceleration.x = 0;
+    _clientHomingTargetAcceleration.y = 0;
+    _clientHomingTargetAcceleration.z = 0;
+    const targetAcceleration = _clientHomingTargetAcceleration;
     const targetSpeedSq =
       targetVelocity.x * targetVelocity.x +
       targetVelocity.y * targetVelocity.y +
@@ -182,7 +173,6 @@ export function applyClientProjectilePrediction(options: {
   entity: Entity;
   target: ProjectilePredictionTarget | undefined;
   predictionStep: PredictionStep;
-  preset: DriftPreset;
   mapWidth: number;
   mapHeight: number;
   getEntity: (id: EntityId) => Entity | undefined;
@@ -192,7 +182,6 @@ export function applyClientProjectilePrediction(options: {
     entity,
     target,
     predictionStep,
-    preset,
     mapWidth,
     mapHeight,
     getEntity,
@@ -207,8 +196,10 @@ export function applyClientProjectilePrediction(options: {
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
   const targetDt = predictionStep.targetDeltaMs / 1000;
-  const movPosDrift = halfLifeBlend(dt, preset.movement.pos);
-  const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
+  // Projectiles follow the same per-channel movement EMAs as units —
+  // ignore / snap / fast / medium / slow. <0 = ignore.
+  const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
+  const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
   proj.timeAlive += entityDeltaMs;
 
   // PREDICT mode picks which authored derivatives feed extrapolation.
@@ -234,12 +225,16 @@ export function applyClientProjectilePrediction(options: {
     } else {
       target.z += target.velocityZ * targetDt;
     }
-    entity.transform.x = lerp(entity.transform.x, target.x, movPosDrift);
-    entity.transform.y = lerp(entity.transform.y, target.y, movPosDrift);
-    entity.transform.z = lerp(entity.transform.z, target.z, movPosDrift);
-    proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelDrift);
-    proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelDrift);
-    proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelDrift);
+    if (movPosBlend >= 0) {
+      entity.transform.x = lerp(entity.transform.x, target.x, movPosBlend);
+      entity.transform.y = lerp(entity.transform.y, target.y, movPosBlend);
+      entity.transform.z = lerp(entity.transform.z, target.z, movPosBlend);
+    }
+    if (movVelBlend >= 0) {
+      proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelBlend);
+      proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelBlend);
+      proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelBlend);
+    }
     entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
   }
 
@@ -263,8 +258,6 @@ export function applyClientProjectilePrediction(options: {
   applyClientProjectileHoming({
     entity,
     dt,
-    mapWidth,
-    mapHeight,
     getEntity,
     findNearestEnemyForRocket,
   });

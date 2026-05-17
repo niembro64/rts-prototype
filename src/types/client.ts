@@ -7,18 +7,36 @@ import type {
 import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
+/** Legacy four-mode smoothing space (snap / fast / mid / slow) still
+ *  used by the chassis-tilt EMA and the camera-smoothing knob. Per-
+ *  channel snapshot drift uses DriftChannelMode below (adds 'ignore'
+ *  and renames 'mid' → 'medium'). */
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
+/** Per-channel drift smoothing mode. Each of the four prediction
+ *  channels (movement position, movement velocity, rotation position,
+ *  rotation velocity) selects independently:
+ *    ignore — never apply the stored snapshot value for this channel
+ *             to the rendered entity. Prediction (if any) keeps
+ *             running from the last applied value forever.
+ *    snap   — every client tick, replace the rendered value with the
+ *             latest stored snapshot value for this channel. No EMA.
+ *    fast/medium/slow — every client tick, EMA the rendered value
+ *             toward the latest stored snapshot value using a
+ *             frame-rate-independent half-life (smaller = snappier,
+ *             larger = softer).
+ *  The most recent server snapshot for each channel is always stored;
+ *  the per-channel mode controls only what to do with it per tick. */
+export type DriftChannelMode = 'ignore' | 'snap' | 'fast' | 'medium' | 'slow';
 /** Client-side prediction physics order. Selected on the PLAYER
- *  CLIENT bar; the prediction integrators read it before stepping
- *  position / velocity / acceleration each frame.
+ *  CLIENT bar; the prediction integrator reads it before stepping
+ *  position each frame.
  *    pos — snap straight to the snapshot position; do not integrate
- *          velocity or acceleration. Most jittery, lowest cpu.
- *    vel — integrate position from velocity each frame; ignore the
- *          server-reported acceleration when extrapolating.
- *    acc — full F=ma: integrate position from velocity AND velocity
- *          from acceleration each frame. Smoothest motion under high
- *          server-frame intervals; matches the simulation's authority. */
-export type PredictionMode = 'pos' | 'vel' | 'acc';
+ *          velocity. Lowest cpu, most jittery.
+ *    vel — integrate position from velocity each frame. Smoothest
+ *          inter-snapshot motion. The wire never carries acceleration
+ *          (the server owns force inputs and only ships their
+ *          integrated velocity), so there is no ACC mode. */
+export type PredictionMode = 'pos' | 'vel';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraFovDegrees = 10 | 20 | 30 | 60 | 120;
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
@@ -63,14 +81,23 @@ export type ClientBarConfig = {
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
-  readonly driftMode: DefaultSetting<DriftMode>;
-  /** Prediction physics order — POS / VEL / ACC. See PredictionMode
-   *  for semantics. Default 'acc' matches existing behaviour (full
-   *  F=ma extrapolation). */
+  /** Per-channel client-side drift EMAs. Each channel selects from the
+   *  same five modes (ignore / snap / fast / medium / slow). The
+   *  rendered entity always stores the most recent snapshot value for
+   *  the channel; the mode decides per tick whether to skip, snap, or
+   *  blend toward it. */
+  readonly movementPosEma: LabeledOptionsConfig<DriftChannelMode>;
+  readonly movementVelEma: LabeledOptionsConfig<DriftChannelMode>;
+  readonly rotationPosEma: LabeledOptionsConfig<DriftChannelMode>;
+  readonly rotationVelEma: LabeledOptionsConfig<DriftChannelMode>;
+  /** Prediction physics order — POS / VEL. See PredictionMode for
+   *  semantics. Default 'vel' integrates position from the last-seen
+   *  velocity. There is no ACC mode (the wire does not carry
+   *  acceleration). */
   readonly predictionMode: LabeledOptionsConfig<PredictionMode>;
   /** Per-frame chassis-tilt EMA on the client. Layered on top of the
-   *  HOST SERVER tilt EMA. Same SNAP/FAST/MID/SLOW shape as
-   *  driftMode (DriftMode) so the half-life table is reused. */
+   *  HOST SERVER tilt EMA. Uses DriftMode (snap / fast / mid / slow)
+   *  — tilt is always applied; there's no 'ignore' equivalent. */
   readonly tiltEma: LabeledOptionsConfig<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;

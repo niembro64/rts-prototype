@@ -10,9 +10,19 @@ import {
   SHELL_BAR_COLORS,
 } from '@/shellConfig';
 import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
-import { getDriftMode } from '@/clientBarConfig';
+import { getRotationVelEmaMode } from '@/clientBarConfig';
+import type { DriftChannelMode } from '@/types/client';
 import type { ClientViewState } from '../network/ClientViewState';
-import { halfLifeBlend, getDriftPreset } from '../network/driftEma';
+import { DRIFT_CHANNEL_HALF_LIFE_SEC, halfLifeBlend } from '../network/driftEma';
+
+/** Construction-tower decorative spin smoothing tracks the rotation
+ *  velocity channel from the per-channel snapshot EMAs, falling back
+ *  to 'medium' when the user selects 'ignore' (decorative animation
+ *  has no useful 'ignore' semantics). */
+function visualAnimHalfLife(mode: DriftChannelMode): number {
+  if (mode === 'ignore') return DRIFT_CHANNEL_HALF_LIFE_SEC.medium;
+  return DRIFT_CHANNEL_HALF_LIFE_SEC[mode];
+}
 import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -283,10 +293,10 @@ export class ConstructionVisualController3D {
     dtSec: number,
   ): void {
     if (rig.towerOrbitParts.length === 0) return;
-    const preset = getDriftPreset(getDriftMode());
+    const rotVelHalfLife = visualAnimHalfLife(getRotationVelEmaMode());
     const alpha = halfLifeBlend(
       dtSec,
-      preset.rotation.vel * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
+      rotVelHalfLife * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
     );
     const target = Math.max(0, resourceRateSum);
     const amountBefore = rig.displayTowerSpinAmount;

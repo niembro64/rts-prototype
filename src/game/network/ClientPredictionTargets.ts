@@ -11,9 +11,6 @@ export type ServerTarget = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  movementAccelX: number;
-  movementAccelY: number;
-  movementAccelZ: number;
   surfaceNormalX: number;
   surfaceNormalY: number;
   surfaceNormalZ: number;
@@ -29,16 +26,11 @@ export type ServerTarget = {
   angularVelocityX?: number;
   angularVelocityY?: number;
   angularVelocityZ?: number;
-  angularAccelerationX?: number;
-  angularAccelerationY?: number;
-  angularAccelerationZ?: number;
   turrets: {
     rotation: number;
     angularVelocity: number;
-    angularAcceleration: number;
     pitch: number;
     pitchVelocity: number;
-    pitchAcceleration: number;
     forceFieldRange: number | undefined;
   }[];
 };
@@ -48,7 +40,6 @@ export function createServerTarget(): ServerTarget {
     updatedAtMs: 0,
     x: 0, y: 0, z: 0, rotation: 0,
     velocityX: 0, velocityY: 0, velocityZ: 0,
-    movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
     surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
     bodyCenterHeight: 0,
     jumpActive: false,

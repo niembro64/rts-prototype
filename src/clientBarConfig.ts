@@ -8,6 +8,7 @@ import type {
   AudioScope,
   CameraFovDegrees,
   CameraSmoothMode,
+  DriftChannelMode,
   DriftMode,
   PredictionMode,
   SoundCategory,
@@ -45,17 +46,66 @@ export const CLIENT_CONFIG = {
   beamSnapToTurret: { default: true },
   triangleDebug: { default: false },
   buildGridDebug: { default: false },
-  driftMode: { default: 'mid' as const },
-  /** Prediction physics order: POS / VEL / ACC. Default 'acc' (full
-   *  F=ma extrapolation — matches the original behaviour); 'vel'
-   *  ignores reported acceleration when extrapolating; 'pos' skips
-   *  integration entirely and snaps straight to snapshot position. */
+  /** Prediction physics order: POS / VEL. Default 'vel' (integrate
+   *  position from the last-seen velocity each frame); 'pos' skips
+   *  integration entirely and snaps straight to snapshot position.
+   *  There is no ACC mode — acceleration is not shipped on the wire,
+   *  so the client cannot integrate it. */
   predictionMode: {
-    default: 'acc' as const,
+    default: 'vel' as const,
     options: [
       { value: 'pos' as const, label: 'POS' },
       { value: 'vel' as const, label: 'VEL' },
-      { value: 'acc' as const, label: 'ACC' },
+    ],
+  },
+  /** Per-channel snapshot drift EMAs. Each channel chooses
+   *  independently from the same five-mode space:
+   *    IGNORE — never apply this channel's snapshot value.
+   *    SNAP   — replace the rendered value with the snapshot every tick.
+   *    FAST/MED/SLOW — EMA toward the snapshot with the named half-life.
+   *  The most recent snapshot value is always stored per channel; the
+   *  mode controls only what the per-tick predict step does with it.
+   *  Defaults: position channels MED (visible smoothing), velocity
+   *  channels FAST (closes velocity drift faster than position drift —
+   *  matches the old preset table's pos/vel ratio). */
+  movementPosEma: {
+    default: 'medium' as const,
+    options: [
+      { value: 'ignore' as const, label: 'IGN' },
+      { value: 'snap' as const, label: 'SNAP' },
+      { value: 'fast' as const, label: 'FAST' },
+      { value: 'medium' as const, label: 'MED' },
+      { value: 'slow' as const, label: 'SLOW' },
+    ],
+  },
+  movementVelEma: {
+    default: 'fast' as const,
+    options: [
+      { value: 'ignore' as const, label: 'IGN' },
+      { value: 'snap' as const, label: 'SNAP' },
+      { value: 'fast' as const, label: 'FAST' },
+      { value: 'medium' as const, label: 'MED' },
+      { value: 'slow' as const, label: 'SLOW' },
+    ],
+  },
+  rotationPosEma: {
+    default: 'medium' as const,
+    options: [
+      { value: 'ignore' as const, label: 'IGN' },
+      { value: 'snap' as const, label: 'SNAP' },
+      { value: 'fast' as const, label: 'FAST' },
+      { value: 'medium' as const, label: 'MED' },
+      { value: 'slow' as const, label: 'SLOW' },
+    ],
+  },
+  rotationVelEma: {
+    default: 'fast' as const,
+    options: [
+      { value: 'ignore' as const, label: 'IGN' },
+      { value: 'snap' as const, label: 'SNAP' },
+      { value: 'fast' as const, label: 'FAST' },
+      { value: 'medium' as const, label: 'MED' },
+      { value: 'slow' as const, label: 'SLOW' },
     ],
   },
   /** Client-side chassis-tilt EMA. Layered ON TOP of the host's
@@ -161,7 +211,10 @@ const LOCOMOTION_MARKS_STORAGE_KEY = 'player-client-locomotion-marks';
 const BEAM_SNAP_TO_TURRET_STORAGE_KEY = 'player-client-beam-snap-to-turret';
 const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
 const BUILD_GRID_DEBUG_STORAGE_KEY = 'player-client-build-grid-debug';
-const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
+const MOVEMENT_POS_EMA_STORAGE_KEY = 'player-client-movement-pos-ema';
+const MOVEMENT_VEL_EMA_STORAGE_KEY = 'player-client-movement-vel-ema';
+const ROTATION_POS_EMA_STORAGE_KEY = 'player-client-rotation-pos-ema';
+const ROTATION_VEL_EMA_STORAGE_KEY = 'player-client-rotation-vel-ema';
 const PREDICTION_MODE_STORAGE_KEY = 'player-client-prediction-mode';
 const TILT_EMA_MODE_STORAGE_KEY = 'player-client-tilt-ema-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
@@ -197,7 +250,11 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   // they will eventually fall out as users press RESET CLIENT.
   ['rts-triangle-debug', TRIANGLE_DEBUG_STORAGE_KEY],
   ['rts-build-grid-debug', BUILD_GRID_DEBUG_STORAGE_KEY],
-  ['rts-drift-mode', DRIFT_MODE_STORAGE_KEY],
+  // The unified `player-client-drift-mode` key was split into four
+  // per-channel EMAs (movement-pos, movement-vel, rotation-pos,
+  // rotation-vel). The legacy key intentionally does NOT migrate to any
+  // of them — each new channel starts at its own default. The legacy
+  // value is left as dead localStorage; RESET CLIENT eventually wipes it.
   ['rts-sound-toggles', SOUND_TOGGLES_STORAGE_KEY],
   ['rts-range-toggles', RANGE_TOGGLES_STORAGE_KEY],
   ['rts-proj-range-toggles', PROJ_RANGE_TOGGLES_STORAGE_KEY],
@@ -256,7 +313,10 @@ let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
-let currentDriftMode: DriftMode = _cd.driftMode.default;
+let currentMovementPosEma: DriftChannelMode = _cd.movementPosEma.default;
+let currentMovementVelEma: DriftChannelMode = _cd.movementVelEma.default;
+let currentRotationPosEma: DriftChannelMode = _cd.rotationPosEma.default;
+let currentRotationVelEma: DriftChannelMode = _cd.rotationVelEma.default;
 let currentPredictionMode: PredictionMode = _cd.predictionMode.default;
 let currentClientTiltEmaMode: DriftMode = _cd.tiltEma.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
@@ -272,6 +332,19 @@ let currentLobbyVisible: boolean = _isMobile
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
   return _cd.cameraFov.options.some((opt) => opt.value === value);
+}
+
+function isDriftChannelMode(value: unknown): value is DriftChannelMode {
+  return value === 'ignore'
+    || value === 'snap'
+    || value === 'fast'
+    || value === 'medium'
+    || value === 'slow';
+}
+
+function readDriftChannelMode(storageKey: string, fallback: DriftChannelMode): DriftChannelMode {
+  const stored = readPersisted(storageKey);
+  return isDriftChannelMode(stored) ? stored : fallback;
 }
 
 // ── Load from localStorage on module init ──
@@ -356,21 +429,26 @@ function loadFromStorage(): void {
       currentCameraFovDegrees = parsed;
     }
   }
-  const storedDriftMode = readPersisted(DRIFT_MODE_STORAGE_KEY);
-  if (
-    storedDriftMode &&
-    (storedDriftMode === 'snap' ||
-      storedDriftMode === 'fast' ||
-      storedDriftMode === 'mid' ||
-      storedDriftMode === 'slow')
-  ) {
-    currentDriftMode = storedDriftMode;
-  }
+  currentMovementPosEma = readDriftChannelMode(
+    MOVEMENT_POS_EMA_STORAGE_KEY,
+    currentMovementPosEma,
+  );
+  currentMovementVelEma = readDriftChannelMode(
+    MOVEMENT_VEL_EMA_STORAGE_KEY,
+    currentMovementVelEma,
+  );
+  currentRotationPosEma = readDriftChannelMode(
+    ROTATION_POS_EMA_STORAGE_KEY,
+    currentRotationPosEma,
+  );
+  currentRotationVelEma = readDriftChannelMode(
+    ROTATION_VEL_EMA_STORAGE_KEY,
+    currentRotationVelEma,
+  );
   const storedPredictionMode = readPersisted(PREDICTION_MODE_STORAGE_KEY);
   if (
     storedPredictionMode === 'pos' ||
-    storedPredictionMode === 'vel' ||
-    storedPredictionMode === 'acc'
+    storedPredictionMode === 'vel'
   ) {
     currentPredictionMode = storedPredictionMode;
   }
@@ -606,13 +684,40 @@ export function setBuildGridDebug(enabled: boolean): void {
   persist(BUILD_GRID_DEBUG_STORAGE_KEY, String(enabled));
 }
 
-export function getDriftMode(): DriftMode {
-  return currentDriftMode;
+export function getMovementPosEmaMode(): DriftChannelMode {
+  return currentMovementPosEma;
 }
 
-export function setDriftMode(mode: DriftMode): void {
-  currentDriftMode = mode;
-  persist(DRIFT_MODE_STORAGE_KEY, mode);
+export function setMovementPosEmaMode(mode: DriftChannelMode): void {
+  currentMovementPosEma = mode;
+  persist(MOVEMENT_POS_EMA_STORAGE_KEY, mode);
+}
+
+export function getMovementVelEmaMode(): DriftChannelMode {
+  return currentMovementVelEma;
+}
+
+export function setMovementVelEmaMode(mode: DriftChannelMode): void {
+  currentMovementVelEma = mode;
+  persist(MOVEMENT_VEL_EMA_STORAGE_KEY, mode);
+}
+
+export function getRotationPosEmaMode(): DriftChannelMode {
+  return currentRotationPosEma;
+}
+
+export function setRotationPosEmaMode(mode: DriftChannelMode): void {
+  currentRotationPosEma = mode;
+  persist(ROTATION_POS_EMA_STORAGE_KEY, mode);
+}
+
+export function getRotationVelEmaMode(): DriftChannelMode {
+  return currentRotationVelEma;
+}
+
+export function setRotationVelEmaMode(mode: DriftChannelMode): void {
+  currentRotationVelEma = mode;
+  persist(ROTATION_VEL_EMA_STORAGE_KEY, mode);
 }
 
 export function getPredictionMode(): PredictionMode {

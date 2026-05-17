@@ -1,7 +1,10 @@
-import { getDriftMode, getPredictionMode } from '@/clientBarConfig';
+import {
+  getMovementPosEmaMode,
+  getPredictionMode,
+} from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
 import { lerp } from '../math';
-import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
+import { getChannelBlend } from './driftEma';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
 import {
   applyClientCombatExpensivePrediction,
@@ -61,14 +64,13 @@ function applyBeamPathPrediction(
   entity: Entity,
   target: BeamPathTarget,
   deltaMs: number,
-  preset: DriftPreset,
+  movPosBlend: number,
 ): boolean {
   const proj = entity.projectile;
   if (!proj) return false;
   const tgtPts = target.points;
   if (tgtPts.length === 0) return false;
 
-  const blend = halfLifeBlend(deltaMs / 1000, preset.movement.pos);
   const dt = deltaMs / 1000;
   let changed = false;
 
@@ -85,27 +87,18 @@ function applyBeamPathPrediction(
 
   // PREDICT mode gates whether we step the snapshot beam-path target
   // forward each frame. 'pos' freezes the target at its last snapshot
-  // value (the lerp below still pulls the rendered point toward it).
-  // 'vel' steps position from velocity but treats acceleration as
-  // zero. 'acc' is the full F=ma extrapolation.
+  // value (the per-channel movement-pos EMA below still pulls the
+  // rendered point toward it when not in IGNORE mode). 'vel' steps
+  // position from velocity. Acceleration is not on the wire, so the
+  // per-vertex `ax/ay/az` slots stay at 0 and the integrator never
+  // reads them — there is no ACC mode.
   const predictionMode = getPredictionMode();
   if (predictionMode !== 'pos') {
-    const useAccel = predictionMode === 'acc';
-    const halfDtSq = 0.5 * dt * dt;
     for (let i = 0; i < tgtPts.length; i++) {
       const tp = tgtPts[i];
-      if (useAccel) {
-        tp.x += tp.vx * dt + tp.ax * halfDtSq;
-        tp.y += tp.vy * dt + tp.ay * halfDtSq;
-        tp.z += tp.vz * dt + tp.az * halfDtSq;
-        tp.vx += tp.ax * dt;
-        tp.vy += tp.ay * dt;
-        tp.vz += tp.az * dt;
-      } else {
-        tp.x += tp.vx * dt;
-        tp.y += tp.vy * dt;
-        tp.z += tp.vz * dt;
-      }
+      tp.x += tp.vx * dt;
+      tp.y += tp.vy * dt;
+      tp.z += tp.vz * dt;
     }
   }
 
@@ -127,9 +120,9 @@ function applyBeamPathPrediction(
       continue;
     }
     const px = pp.x, py = pp.y, pz = pp.z;
-    const nx = lerp(px, tp.x, blend);
-    const ny = lerp(py, tp.y, blend);
-    const nz = lerp(pz, tp.z, blend);
+    const nx = movPosBlend < 0 ? px : lerp(px, tp.x, movPosBlend);
+    const ny = movPosBlend < 0 ? py : lerp(py, tp.y, movPosBlend);
+    const nz = movPosBlend < 0 ? pz : lerp(pz, tp.z, movPosBlend);
     if (
       Math.abs(nx - px) > 1e-4 ||
       Math.abs(ny - py) > 1e-4 ||
@@ -222,7 +215,10 @@ export class ClientPredictionStepper {
       totalTargetAgeMs: 0,
       maxTargetAgeMs: 0,
     };
-    const preset = getDriftPreset(getDriftMode());
+    // Beam paths follow the movement-position channel for their per-
+    // vertex EMA. Projectiles use the same channel through
+    // applyClientProjectilePrediction (passed via the same blend).
+    const beamMovPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const forceFieldsEnabled = getServerForceFieldsEnabled();
@@ -249,7 +245,7 @@ export class ClientPredictionStepper {
 
       const beamTarget = beamPathTargets.get(id);
       noteTargetAge(targetAgeStats, beamTarget?.updatedAtMs, now);
-      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, preset)) {
+      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamMovPosBlend)) {
         beamPathsChanged = true;
       }
     }
@@ -270,7 +266,6 @@ export class ClientPredictionStepper {
           entity,
           target,
           deltaMs,
-          preset,
           mapWidth: getMapWidth(),
           mapHeight: getMapHeight(),
         });
@@ -289,7 +284,6 @@ export class ClientPredictionStepper {
             entity,
             target,
             predictionStep,
-            preset,
             forceFieldsEnabled,
           });
         }
@@ -323,7 +317,6 @@ export class ClientPredictionStepper {
         entity,
         target,
         predictionStep,
-        preset,
         mapWidth: getMapWidth(),
         mapHeight: getMapHeight(),
         getEntity: (entityId) => entities.get(entityId),
