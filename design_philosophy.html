@@ -398,7 +398,7 @@
         <li>Use <code>Rust</code> compiled to <code>WebAssembly</code> for dense numeric simulation kernels.</li>
         <li>Move physics, projectile stepping, collision kernels, pathfinding kernels, terrain sampling, targeting batches, visibility packing, and snapshot-diff kernels toward WASM when the data can be batched.</li>
         <li>Use struct-of-arrays storage in WASM linear memory for bodies, projectiles, turrets, spatial indices, and other high-count state.</li>
-        <li>Keep <code>TypeScript</code> as orchestration: UI, commands, networking glue, configuration, scene lifecycle, and code that would pay too much JS/WASM boundary cost.</li>
+        <li>Keep <code>TypeScript</code> as orchestration: UI, commands, networking glue, scene lifecycle, and code that would pay too much JS/WASM boundary cost. Configuration and blueprints are data, not TypeScript &mdash; see <strong>Config Is Data, Not Code</strong>.</li>
         <li>Do not use a general-purpose JavaScript physics engine, ECS framework, pathfinding framework, or game framework in the authoritative sim hot path.</li>
       </ul>
 
@@ -476,7 +476,69 @@
         shot should not secretly define a unit. A building should not smuggle combat behavior except
         by mounting turrets. A unit should not duplicate shot physics. Cross-piece behavior should be
         expressed through explicit references and narrow data contracts, so designers can recombine
-        pieces freely and the simulation can keep hot paths simple.
+        pieces freely and the simulation can keep hot paths simple. These pieces are authored as
+        data, not code &mdash; see <strong>Config Is Data, Not Code</strong>.
+      </p>
+    </section>
+
+    <section>
+      <h2>Config Is Data, Not Code</h2>
+      <p>
+        Blueprints, tuning tables, and authored content belong in language-neutral data files
+        &mdash; JSON today, possibly a more compact schema-validated format later &mdash; not in
+        TypeScript modules. As the simulation moves toward Rust and WebAssembly, every piece of
+        TypeScript-only data is a wall between the current code and the end-state engine. A
+        blueprint authored as a <code>.ts</code> file forces TypeScript to stay in the simulation
+        loop forever, because Rust cannot import it. The same blueprint authored as
+        <code>.json</code> is read by both, owned by neither, and survives the language migration
+        intact.
+      </p>
+      <p>
+        This is the data-side counterpart to <strong>Languages and Frameworks</strong>. That
+        section commits the hot kernels to Rust/WASM. This section commits to making sure the
+        data those kernels need is not trapped inside a TypeScript module that prevents the
+        migration from ever completing. Configuration in code looks convenient on the way in;
+        it becomes a permanent dependency on the language you were trying to leave.
+      </p>
+
+      <h3>What belongs in JSON</h3>
+      <ul class="rule-list">
+        <li>Unit, turret, shot, locomotion, and building blueprints &mdash; every field on every atomic gameplay piece.</li>
+        <li>Tuning tables: damage curves, hover constants, friction values, mass tables, range tables, cost tables, build-time tables, recoil profiles.</li>
+        <li>Maps, scenarios, starting layouts, preset compositions, AI tuning, and any other authored content.</li>
+        <li>Wire codes, enum value-to-name maps, and cross-language identifiers that both TS and Rust must agree on. One file, two consumers, zero drift.</li>
+      </ul>
+
+      <h3>How to express behavior as data</h3>
+      <p>
+        Blueprints must not contain TypeScript functions, closures, or computed references. If a
+        behavior requires a decision &mdash; damage falloff over range, turret aim style, shot
+        trajectory shape, hover response curve &mdash; it is encoded as a discriminated union of
+        data shapes that the simulation interprets, never as a callback smuggled into a blueprint.
+        The blueprint says <code>{ "shape": "parabolic", "peak": 40, "gravity": 9.8 }</code>; the
+        simulation knows how to read that shape. This keeps every blueprint serializable,
+        diffable, hot-reloadable, and parseable by Rust without a JavaScript runtime in the room.
+      </p>
+
+      <h3>Schema is the contract</h3>
+      <ul class="rule-list">
+        <li>One schema per atomic piece, declared in one canonical place, lives next to the data it describes.</li>
+        <li>TypeScript types and Rust structs are <em>generated</em> from the schema. They are not hand-maintained in two languages &mdash; that would just relocate the duplication problem from data to types.</li>
+        <li>Loaders in both TypeScript and Rust validate against the schema at startup. A blueprint that fails validation is a build error or a startup failure, not a silent runtime divergence.</li>
+        <li>Adding a field is a schema change. Both code generators run. Both languages see the field at the same time. There is no &ldquo;I added it on the TS side and Rust never saw it&rdquo; class of drift.</li>
+        <li>Defaults live in the schema, not in the loader. Every consumer reads the same defaulted shape.</li>
+      </ul>
+
+      <h3>Migration direction</h3>
+      <p>
+        Every blueprint file moved from <code>.ts</code> to <code>.json</code> is a step toward
+        removing TypeScript from the simulation entirely. The shape stays the same; the syntax
+        changes; the callers stop importing a module and start loading a file. As blueprints
+        become data, the Rust/WASM simulation gains the ability to consume them directly, and
+        the TypeScript blueprint modules disappear under <strong>Delete The Old Path</strong>.
+        The end state is a simulation written entirely in Rust, loading entirely from JSON, with
+        TypeScript surviving only as UI, networking glue, and orchestration &mdash; exactly the
+        role <strong>Languages and Frameworks</strong> reserves for it.
       </p>
     </section>
 
@@ -606,6 +668,7 @@
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
         <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
+        <li>Author blueprints, tuning tables, maps, and other content as JSON data validated by a shared schema, not as TypeScript modules. Data the Rust/WASM simulation cannot read is a wall that prevents the TS-to-Rust migration from ever completing.</li>
         <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
         <li>Design every feature with 5,000 units in mind before celebrating it at 50 units.</li>
       </ul>
