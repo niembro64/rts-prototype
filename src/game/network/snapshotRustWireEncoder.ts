@@ -20,6 +20,10 @@ import {
   SNAPSHOT_ENTITY_TYPE_UNIT,
   type SimWasm,
 } from '../sim-wasm/init';
+import {
+  ECONOMY_SNAPSHOT_WIRE_STRIDE,
+  getEconomySnapshotWireSource,
+} from './stateSerializerEconomy';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -33,6 +37,7 @@ const _utf8 = new TextEncoder();
 const _buildingWaypointTypeStrings: string[] = [];
 const _economyPlayerIds: number[] = [];
 const _snapshotKeys: string[] = [];
+const EMPTY_STRING_SLOTS = new Map<string, number>();
 
 function hasValue<T>(value: T | undefined): value is T {
   return value !== undefined;
@@ -97,9 +102,9 @@ function packStringsIntoScratch(
   sim: SimWasm,
   strings: readonly string[],
 ): Map<string, number> {
-  const slotByString = new Map<string, number>();
-  if (strings.length === 0) return slotByString;
+  if (strings.length === 0) return EMPTY_STRING_SLOTS;
 
+  const slotByString = new Map<string, number>();
   const utf8Bytes: Uint8Array[] = [];
   let totalBytes = 0;
   for (const s of strings) {
@@ -330,13 +335,12 @@ function encodeBuildingEntity(
   if (turrets) packTurretsIntoScratch(sim, turrets);
 
   const factory = building.factory;
-  let stringSlots = new Map<string, number>();
   if (factory) {
     _buildingWaypointTypeStrings.length = 0;
     for (let i = 0; i < factory.waypoints.length; i++) {
       _buildingWaypointTypeStrings.push(factory.waypoints[i].type);
     }
-    stringSlots = packStringsIntoScratch(sim, _buildingWaypointTypeStrings);
+    const stringSlots = packStringsIntoScratch(sim, _buildingWaypointTypeStrings);
     packFactoryQueueIntoScratch(sim, factory.queue);
     packWaypointsIntoScratch(sim, factory.waypoints, stringSlots);
   }
@@ -482,6 +486,35 @@ function packEconomyIntoScratch(
   sim: SimWasm,
   economy: Record<number, NetworkServerSnapshotEconomy>,
 ): number {
+  const source = getEconomySnapshotWireSource(economy);
+  if (source !== undefined) {
+    const count = source.count;
+    if (count === 0) return 0;
+    const api = sim.snapshotEncode;
+    api.economyScratchEnsure(count);
+    const view = new Float64Array(
+      sim.memory.buffer,
+      api.economyScratchPtr(),
+      count * api.economyScratchStride,
+    );
+    for (let i = 0; i < count; i++) {
+      const srcBase = i * ECONOMY_SNAPSHOT_WIRE_STRIDE;
+      const dstBase = i * api.economyScratchStride;
+      view[dstBase + 0] = source.values[srcBase + 0];
+      view[dstBase + 1] = source.values[srcBase + 1];
+      view[dstBase + 2] = source.values[srcBase + 2];
+      view[dstBase + 3] = source.values[srcBase + 3];
+      view[dstBase + 4] = source.values[srcBase + 4];
+      view[dstBase + 5] = source.values[srcBase + 5];
+      view[dstBase + 6] = source.values[srcBase + 6];
+      view[dstBase + 7] = source.values[srcBase + 7];
+      view[dstBase + 8] = source.values[srcBase + 8];
+      view[dstBase + 9] = source.values[srcBase + 9];
+      view[dstBase + 10] = source.values[srcBase + 10];
+    }
+    return count;
+  }
+
   _economyPlayerIds.length = 0;
   for (const key in economy) {
     if (Object.prototype.hasOwnProperty.call(economy, key)) {

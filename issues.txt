@@ -43,6 +43,13 @@ The Rust-backed encode adapter now avoids array-helper allocation in the
 remaining DTO packing bridge for snapshot key collection, economy player IDs,
 factory waypoint strings, projectile despawn IDs, and audio death/impact
 context selection.
+Economy snapshot serialization now pools each per-player DTO entry and publishes
+a serializer-owned flat wire row buffer, so the Rust encoder no longer has to
+enumerate economy object keys or walk nested economy DTO fields on production
+snapshots.
+The Rust encode bridge also reuses the empty string-slot table so ordinary unit
+and factoryless-building entity emits do not allocate a Map just to encode no
+strings.
 Projectile spawn DTOs now normalize optional boolean flags so false values are
 omitted before the Rust wire adapter sees them, keeping ordinary projectile
 snapshots on the Rust path instead of raw MessagePack fallback.
