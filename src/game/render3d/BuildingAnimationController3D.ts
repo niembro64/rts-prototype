@@ -33,6 +33,7 @@ const BUILDING_FORTIFY_ANIM_ALPHA = 0.12;
 const _solarPetalDirection = new THREE.Vector3();
 const _extractorBladeQuat = new THREE.Quaternion();
 const _extractorBladePos = new THREE.Vector3();
+const _extractorBladeScale = new THREE.Vector3();
 const _windBladeQuat = new THREE.Quaternion();
 
 /** Reciprocal of the extractor's configured ceiling rate, computed
@@ -210,7 +211,9 @@ export class BuildingAnimationController3D {
             // Slerp each blade between its baked open and closed
             // transforms. The closed pose lays the blade flat against
             // one face of the hexagonal pyramid; six blades cover the
-            // six faces. userData carries the precomputed endpoints.
+            // six faces. userData carries the precomputed endpoints —
+            // including a closed scale that reshapes the blade from a
+            // long paddle into a face-fitting panel.
             for (const child of rotor.children) {
               const anim = child.userData.extractorBlade as ExtractorBladeAnim | undefined;
               if (!anim) continue;
@@ -218,6 +221,8 @@ export class BuildingAnimationController3D {
               child.quaternion.copy(_extractorBladeQuat);
               _extractorBladePos.copy(anim.openPos).lerp(anim.closedPos, close);
               child.position.copy(_extractorBladePos);
+              _extractorBladeScale.copy(anim.openScale).lerp(anim.closedScale, close);
+              child.scale.copy(_extractorBladeScale);
             }
           }
         }
