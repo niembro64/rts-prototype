@@ -1,19 +1,7 @@
 import type {
-  GraphicsQuality,
   ConcreteGraphicsQuality,
   GraphicsConfig,
   RenderMode,
-  LegStyle,
-  BeamStyle,
-  ProjectileStyle,
-  FireExplosionStyle,
-  DeathExplosionStyle,
-  TurretStyle,
-  ForceTurretStyle,
-  UnitShape,
-  UnitRenderMode,
-  CameraSphereRadii,
-  RenderObjectLodTier,
 } from './types/graphics';
 import type { ClientBarConfig } from './types/client';
 import type {
@@ -29,30 +17,13 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from './types/client';
-import { CAMERA_FOV_DEGREES, MAX_TOTAL_UNITS, WATER_RENDER_CONFIG } from './config';
+import { CAMERA_FOV_DEGREES } from './config';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
-import {
-  PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL,
-  LOD_THRESHOLDS,
-  LOD_HYSTERESIS,
-  LOD_SIGNALS_ENABLED,
-  LOD_SIGNAL_DEFAULTS,
-} from '@/lodConfig';
-import { isSignalState, type SignalState, type LodSignalStates } from './types/lod';
+import { PLAYER_CLIENT_MAX_GRAPHICS_CONFIG } from './playerClientGraphicsConfig';
 
 export type { CameraSmoothMode } from './types/client';
 
 export const CLIENT_CONFIG = {
-  graphics: {
-    default: 'auto' as const,
-    options: [
-      { value: 'min' as const, label: 'MIN' },
-      { value: 'low' as const, label: 'LOW' },
-      { value: 'medium' as const, label: 'MED' },
-      { value: 'high' as const, label: 'HI' },
-      { value: 'max' as const, label: 'MAX' },
-    ],
-  },
   render: {
     default: 'padded' as const,
     options: [
@@ -73,11 +44,8 @@ export const CLIENT_CONFIG = {
   burnMarks: { default: false },
   locomotionMarks: { default: true },
   beamSnapToTurret: { default: true },
-  lodShellRings: { default: false },
-  lodGridBorders: { default: false },
   triangleDebug: { default: false },
   buildGridDebug: { default: false },
-  baseLodMode: { default: false },
   driftMode: { default: 'mid' as const },
   /** Prediction physics order: POS / VEL / ACC. Default 'acc' (full
    *  F=ma extrapolation — matches the original behaviour); 'vel'
@@ -143,7 +111,6 @@ export const CLIENT_CONFIG = {
   projRangeToggles: { default: false },
   unitRadiusToggles: { default: false },
   lobbyVisible: { default: { mobile: true, desktop: true } },
-  unitCapFallback: { default: MAX_TOTAL_UNITS },
   gridOverlay: {
     default: 'zero' as const,
     options: [
@@ -190,237 +157,6 @@ export const PROJ_RANGE_TYPES: ProjRangeType[] = [
 
 export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
 
-// Re-export the per-signal toggles so the UI layer can hide buttons
-// for disabled signals without importing lodConfig directly.
-export { LOD_SIGNALS_ENABLED } from '@/lodConfig';
-
-// ── Graphics quality configs (built from lodConfig) ──
-const D = PLAYER_CLIENT_GRAPHICS_LEVEL_OF_DETAIL;
-const GRAPHICS_CONFIGS: Record<ConcreteGraphicsQuality, GraphicsConfig> = {
-  min: {
-    tier: 'min',
-    unitRenderMode: D.UNIT_RENDER_MODE.min as UnitRenderMode,
-    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.min },
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
-    hudFrameStride: D.HUD_FRAME_STRIDE.min,
-    effectFrameStride: D.EFFECT_FRAME_STRIDE.min,
-    clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.min,
-    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.min,
-    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.min,
-    waterSubdivisions: D.WATER_SUBDIVISIONS.min,
-    waterFrameStride: D.WATER_FRAME_STRIDE.min,
-    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.min,
-    waterOpacity: WATER_RENDER_CONFIG.opacity,
-    unitShape: D.UNIT_SHAPE.min as UnitShape,
-    legs: D.LEGS.min as LegStyle,
-    treadsAnimated: D.TREADS_ANIMATED.min,
-    chassisDetail: D.CHASSIS_DETAIL.min,
-    paletteShading: D.PALETTE_SHADING.min,
-    turretStyle: D.TURRET_STYLE.min as TurretStyle,
-    forceTurretStyle: D.FORCE_TURRET_STYLE.min as ForceTurretStyle,
-    barrelSpin: D.BARREL_SPIN.min,
-    beamStyle: D.BEAM_STYLE.min as BeamStyle,
-    beamGlow: D.BEAM_GLOW.min,
-    antialias: D.ANTIALIAS.min,
-    burnMarkDensity: D.BURN_MARK_DENSITY.min,
-    groundPrintDensity: D.GROUND_PRINT_DENSITY.min,
-    smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.min,
-    projectileStyle: D.PROJECTILE_STYLE.min as ProjectileStyle,
-    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.min as FireExplosionStyle,
-    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.min as DeathExplosionStyle,
-    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.min,
-    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.min,
-    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.min as DeathExplosionStyle,
-  },
-  low: {
-    tier: 'low',
-    unitRenderMode: D.UNIT_RENDER_MODE.low as UnitRenderMode,
-    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.low },
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
-    hudFrameStride: D.HUD_FRAME_STRIDE.low,
-    effectFrameStride: D.EFFECT_FRAME_STRIDE.low,
-    clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.low,
-    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.low,
-    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.low,
-    waterSubdivisions: D.WATER_SUBDIVISIONS.low,
-    waterFrameStride: D.WATER_FRAME_STRIDE.low,
-    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.low,
-    waterOpacity: WATER_RENDER_CONFIG.opacity,
-    unitShape: D.UNIT_SHAPE.low as UnitShape,
-    legs: D.LEGS.low as LegStyle,
-    treadsAnimated: D.TREADS_ANIMATED.low,
-    chassisDetail: D.CHASSIS_DETAIL.low,
-    paletteShading: D.PALETTE_SHADING.low,
-    turretStyle: D.TURRET_STYLE.low as TurretStyle,
-    forceTurretStyle: D.FORCE_TURRET_STYLE.low as ForceTurretStyle,
-    barrelSpin: D.BARREL_SPIN.low,
-    beamStyle: D.BEAM_STYLE.low as BeamStyle,
-    beamGlow: D.BEAM_GLOW.low,
-    antialias: D.ANTIALIAS.low,
-    burnMarkDensity: D.BURN_MARK_DENSITY.low,
-    groundPrintDensity: D.GROUND_PRINT_DENSITY.low,
-    smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.low,
-    projectileStyle: D.PROJECTILE_STYLE.low as ProjectileStyle,
-    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.low as FireExplosionStyle,
-    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.low as DeathExplosionStyle,
-    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.low,
-    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.low,
-    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.low as DeathExplosionStyle,
-  },
-  medium: {
-    tier: 'medium',
-    unitRenderMode: D.UNIT_RENDER_MODE.medium as UnitRenderMode,
-    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.medium },
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
-    hudFrameStride: D.HUD_FRAME_STRIDE.medium,
-    effectFrameStride: D.EFFECT_FRAME_STRIDE.medium,
-    clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.medium,
-    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.medium,
-    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.medium,
-    waterSubdivisions: D.WATER_SUBDIVISIONS.medium,
-    waterFrameStride: D.WATER_FRAME_STRIDE.medium,
-    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.medium,
-    waterOpacity: WATER_RENDER_CONFIG.opacity,
-    unitShape: D.UNIT_SHAPE.medium as UnitShape,
-    legs: D.LEGS.medium as LegStyle,
-    treadsAnimated: D.TREADS_ANIMATED.medium,
-    chassisDetail: D.CHASSIS_DETAIL.medium,
-    paletteShading: D.PALETTE_SHADING.medium,
-    turretStyle: D.TURRET_STYLE.medium as TurretStyle,
-    forceTurretStyle: D.FORCE_TURRET_STYLE.medium as ForceTurretStyle,
-    barrelSpin: D.BARREL_SPIN.medium,
-    beamStyle: D.BEAM_STYLE.medium as BeamStyle,
-    beamGlow: D.BEAM_GLOW.medium,
-    antialias: D.ANTIALIAS.medium,
-    burnMarkDensity: D.BURN_MARK_DENSITY.medium,
-    groundPrintDensity: D.GROUND_PRINT_DENSITY.medium,
-    smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.medium,
-    projectileStyle: D.PROJECTILE_STYLE.medium as ProjectileStyle,
-    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.medium as FireExplosionStyle,
-    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.medium as DeathExplosionStyle,
-    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.medium,
-    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.medium,
-    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.medium as DeathExplosionStyle,
-  },
-  high: {
-    tier: 'high',
-    unitRenderMode: D.UNIT_RENDER_MODE.high as UnitRenderMode,
-    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.high },
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
-    hudFrameStride: D.HUD_FRAME_STRIDE.high,
-    effectFrameStride: D.EFFECT_FRAME_STRIDE.high,
-    clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.high,
-    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.high,
-    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.high,
-    waterSubdivisions: D.WATER_SUBDIVISIONS.high,
-    waterFrameStride: D.WATER_FRAME_STRIDE.high,
-    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.high,
-    waterOpacity: WATER_RENDER_CONFIG.opacity,
-    unitShape: D.UNIT_SHAPE.high as UnitShape,
-    legs: D.LEGS.high as LegStyle,
-    treadsAnimated: D.TREADS_ANIMATED.high,
-    chassisDetail: D.CHASSIS_DETAIL.high,
-    paletteShading: D.PALETTE_SHADING.high,
-    turretStyle: D.TURRET_STYLE.high as TurretStyle,
-    forceTurretStyle: D.FORCE_TURRET_STYLE.high as ForceTurretStyle,
-    barrelSpin: D.BARREL_SPIN.high,
-    beamStyle: D.BEAM_STYLE.high as BeamStyle,
-    beamGlow: D.BEAM_GLOW.high,
-    antialias: D.ANTIALIAS.high,
-    burnMarkDensity: D.BURN_MARK_DENSITY.high,
-    groundPrintDensity: D.GROUND_PRINT_DENSITY.high,
-    smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.high,
-    projectileStyle: D.PROJECTILE_STYLE.high as ProjectileStyle,
-    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.high as FireExplosionStyle,
-    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.high as DeathExplosionStyle,
-    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.high,
-    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.high,
-    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.high as DeathExplosionStyle,
-  },
-  max: {
-    tier: 'max',
-    unitRenderMode: D.UNIT_RENDER_MODE.max as UnitRenderMode,
-    cameraSphereRadii: { ...D.CAMERA_SPHERE_RADII.max },
-    objectLodCellSize: D.OBJECT_LOD_CELL_SIZE,
-    hudFrameStride: D.HUD_FRAME_STRIDE.max,
-    effectFrameStride: D.EFFECT_FRAME_STRIDE.max,
-    clientPhysicsPredictionFramesSkip: D.CLIENT_PHYSICS_PREDICTION_FRAMES_SKIP.max,
-    captureTileFrameStride: D.CAPTURE_TILE_FRAME_STRIDE.max,
-    captureTileSideWalls: D.CAPTURE_TILE_SIDE_WALLS.max,
-    waterSubdivisions: D.WATER_SUBDIVISIONS.max,
-    waterFrameStride: D.WATER_FRAME_STRIDE.max,
-    waterWaveAmplitude: D.WATER_WAVE_AMPLITUDE.max,
-    waterOpacity: WATER_RENDER_CONFIG.opacity,
-    unitShape: D.UNIT_SHAPE.max as UnitShape,
-    legs: D.LEGS.max as LegStyle,
-    treadsAnimated: D.TREADS_ANIMATED.max,
-    chassisDetail: D.CHASSIS_DETAIL.max,
-    paletteShading: D.PALETTE_SHADING.max,
-    turretStyle: D.TURRET_STYLE.max as TurretStyle,
-    forceTurretStyle: D.FORCE_TURRET_STYLE.max as ForceTurretStyle,
-    barrelSpin: D.BARREL_SPIN.max,
-    beamStyle: D.BEAM_STYLE.max as BeamStyle,
-    beamGlow: D.BEAM_GLOW.max,
-    antialias: D.ANTIALIAS.max,
-    burnMarkDensity: D.BURN_MARK_DENSITY.max,
-    groundPrintDensity: D.GROUND_PRINT_DENSITY.max,
-    smokeTrailFramesSkip: D.SMOKE_TRAIL_FRAMES_SKIP.max,
-    projectileStyle: D.PROJECTILE_STYLE.max as ProjectileStyle,
-    fireExplosionStyle: D.FIRE_EXPLOSION_STYLE.max as FireExplosionStyle,
-    materialExplosionStyle: D.MATERIAL_EXPLOSION_STYLE.max as DeathExplosionStyle,
-    materialExplosionPieceBudget: D.MATERIAL_EXPLOSION_PIECE_BUDGET.max,
-    materialExplosionPhysicsFramesSkip: D.MATERIAL_EXPLOSION_PHYSICS_FRAMES_SKIP.max,
-    deathExplosionStyle: D.DEATH_EXPLOSION_STYLE.max as DeathExplosionStyle,
-  },
-};
-
-// ── BASE-mode configs ──
-// "BASE" is a PLAYER CLIENT bar toggle. When ON, the user's MIN/LOW/MED/HI/MAX
-// pick is applied UNIFORMLY to every entity on screen — the per-entity
-// camera-sphere distance resolver is bypassed entirely. Conceptually this
-// is "the truly fixed version of each tier", as opposed to today's
-// classic tiers which cap a per-entity object-tier resolved from camera
-// distance (so close units look richer than far ones even at MIN).
-//
-// Implementation:
-//   1. cameraSphereRadii is zeroed so any callsite that still walks the
-//      shells (debug rings, structural cache keys) sees "no shells active"
-//      rather than stale values from the CS variant.
-//   2. forcedObjectTier is set to the single object-tier that today's
-//      camera-sphere ladder uses as the FLOOR for that graphics tier —
-//      the inverse of MAX_GRAPHICS_TIER_BY_OBJECT in RenderObjectLod.ts.
-//      Read down the column: at graphics tier 'min' the highest object
-//      tier permitted is 'marker'; at 'low' it's 'impostor'; etc.
-//   3. The resolver (resolveRenderObjectLodForDistanceSq) and the per-
-//      frame RenderLodGrid both short-circuit on forcedObjectTier, so no
-//      distance arithmetic runs when BASE is on.
-const ZERO_CAMERA_SPHERES: CameraSphereRadii = {
-  rich: 0,
-  simple: 0,
-  mass: 0,
-  impostor: 0,
-};
-
-const BASE_FORCED_OBJECT_TIER: Record<ConcreteGraphicsQuality, RenderObjectLodTier> = {
-  min: 'marker',
-  low: 'impostor',
-  medium: 'mass',
-  high: 'simple',
-  max: 'rich',
-};
-
-const GRAPHICS_CONFIGS_BASE: Record<ConcreteGraphicsQuality, GraphicsConfig> =
-  Object.fromEntries(
-    (Object.keys(GRAPHICS_CONFIGS) as ConcreteGraphicsQuality[]).map((q) => [
-      q,
-      {
-        ...GRAPHICS_CONFIGS[q],
-        cameraSphereRadii: { ...ZERO_CAMERA_SPHERES },
-        forcedObjectTier: BASE_FORCED_OBJECT_TIER[q],
-      },
-    ]),
-  ) as Record<ConcreteGraphicsQuality, GraphicsConfig>;
-
 // ── localStorage keys (module-private) ──
 // Every key in this file is for the PLAYER CLIENT bar — namespace
 // prefix `player-client-` makes that explicit in DevTools and lets
@@ -428,18 +164,14 @@ const GRAPHICS_CONFIGS_BASE: Record<ConcreteGraphicsQuality, GraphicsConfig> =
 // player-client) be wiped/inspected independently. The previous
 // `rts-*` keys are migrated on first load via `migrateKey()` so
 // existing users don't lose their preferences across this rename.
-const STORAGE_KEY = 'player-client-graphics-quality';
 const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
 const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
 const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
 const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks-v2';
 const LOCOMOTION_MARKS_STORAGE_KEY = 'player-client-locomotion-marks';
 const BEAM_SNAP_TO_TURRET_STORAGE_KEY = 'player-client-beam-snap-to-turret';
-const LOD_SHELL_RINGS_STORAGE_KEY = 'player-client-lod-shell-rings';
-const LOD_GRID_BORDERS_STORAGE_KEY = 'player-client-lod-grid-borders';
 const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
 const BUILD_GRID_DEBUG_STORAGE_KEY = 'player-client-build-grid-debug';
-const BASE_LOD_MODE_STORAGE_KEY = 'player-client-base-lod-mode';
 const DRIFT_MODE_STORAGE_KEY = 'player-client-drift-mode';
 const PREDICTION_MODE_STORAGE_KEY = 'player-client-prediction-mode';
 const TILT_EMA_MODE_STORAGE_KEY = 'player-client-tilt-ema-mode';
@@ -459,14 +191,12 @@ const DRAG_PAN_STORAGE_KEY = 'player-client-drag-pan';
 // brief stop during the namespace rename).
 const LOBBY_VISIBLE_STORAGE_KEY = 'demo-battle-lobby-visible';
 const GRID_OVERLAY_STORAGE_KEY = 'player-client-grid-overlay';
-const LOD_SIGNAL_STATES_STORAGE_KEY = 'player-client-lod-signal-states';
 const WAYPOINT_DETAIL_STORAGE_KEY = 'player-client-waypoint-detail';
 
 // Migration table — old `rts-*` keys → new `player-client-*` keys.
 // Run once at module init (inside `loadFromStorage` below) so the
 // rename is invisible to existing users.
 const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
-  ['rts-graphics-quality', STORAGE_KEY],
   ['rts-render-mode', RENDER_MODE_STORAGE_KEY],
   ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
   ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
@@ -477,8 +207,6 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   // `rts-burn-marks`, `player-client-burn-marks`, and
   // `player-client-ground-marks` are left as dead localStorage data;
   // they will eventually fall out as users press RESET CLIENT.
-  ['rts-lod-shell-rings', LOD_SHELL_RINGS_STORAGE_KEY],
-  ['rts-lod-grid-borders', LOD_GRID_BORDERS_STORAGE_KEY],
   ['rts-triangle-debug', TRIANGLE_DEBUG_STORAGE_KEY],
   ['rts-build-grid-debug', BUILD_GRID_DEBUG_STORAGE_KEY],
   ['rts-drift-mode', DRIFT_MODE_STORAGE_KEY],
@@ -496,13 +224,11 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
   ['player-client-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
   ['rts-grid-overlay', GRID_OVERLAY_STORAGE_KEY],
-  ['rts-lod-signal-states', LOD_SIGNAL_STATES_STORAGE_KEY],
   ['rts-waypoint-detail', WAYPOINT_DETAIL_STORAGE_KEY],
 ];
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
-let currentQuality: GraphicsQuality = _cd.graphics.default;
 let currentRenderMode: RenderMode = _cd.render.default;
 const currentRangeToggles: Record<RangeType, boolean> = {
   trackAcquire: _cd.rangeToggles.default,
@@ -541,14 +267,8 @@ let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
-let currentLodShellRings: boolean = _cd.lodShellRings.default;
-let currentLodGridBorders: boolean = _cd.lodGridBorders.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
-// "BASE" toggle — fixes the active graphics tier across every entity by
-// short-circuiting the camera-sphere resolver. See GRAPHICS_CONFIGS_BASE
-// above for the full picture.
-let currentBaseLodMode: boolean = _cd.baseLodMode.default;
 let currentDriftMode: DriftMode = _cd.driftMode.default;
 let currentPredictionMode: PredictionMode = _cd.predictionMode.default;
 let currentClientTiltEmaMode: DriftMode = _cd.tiltEma.default;
@@ -562,24 +282,6 @@ const _isMobile = typeof navigator !== 'undefined' &&
 let currentLobbyVisible: boolean = _isMobile
   ? _cd.lobbyVisible.default.mobile
   : _cd.lobbyVisible.default.desktop;
-let currentZoom: number = 1.0;
-let currentServerTpsRatio: number = 1.0;
-let currentRenderTpsRatio: number = 1.0;
-let currentUnitCount: number = 0;
-// Units LOD fallback before a server snapshot lands. GameCanvas
-// overrides this every frame with the authoritative cap from
-// serverMeta.units.max.
-let currentUnitCap: number = _cd.unitCapFallback.default;
-let prevZoomRank: number = 4;
-let prevServerTpsRank: number = 4;
-let prevRenderTpsRank: number = 4;
-// Per-signal tri-state. Seeded from LOD_SIGNAL_DEFAULTS (the single
-// source of truth for first-load + DEFAULTS-button state); click-cycle
-// updates this and the resolver consults it on every getEffectiveQuality()
-// call.
-let currentSignalStates: LodSignalStates = { ...LOD_SIGNAL_DEFAULTS };
-let prevUnitsRank: number = 4;
-let serverTpsAvailable: boolean = false;
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
   return _cd.cameraFov.options.some((opt) => opt.value === value);
@@ -598,52 +300,6 @@ function loadFromStorage(): void {
   // we read anything. Idempotent: if the new key already exists the
   // old one is just deleted; if neither exists nothing happens.
   for (const [oldK, newK] of LEGACY_KEY_MIGRATIONS) migrateKey(oldK, newK);
-  const storedQuality = readPersisted(STORAGE_KEY);
-  if (storedQuality) {
-    // Migrate legacy 'auto-X' values to 'auto' + a SOLO state on the
-    // matching signal (others OFF). The user clicked "auto-tps" in a
-    // previous session, so they meant "let SERVER TPS alone drive the LOD"
-    // under the new explicit SERVER/RENDER TPS split.
-    if (storedQuality === 'auto-zoom') {
-      currentQuality = 'auto';
-      currentSignalStates = { zoom: 'solo', serverTps: 'off', renderTps: 'off', units: 'off' };
-    } else if (storedQuality === 'auto-tps') {
-      currentQuality = 'auto';
-      currentSignalStates = { zoom: 'off', serverTps: 'solo', renderTps: 'off', units: 'off' };
-    } else if (storedQuality === 'auto-fps') {
-      currentQuality = 'auto';
-      currentSignalStates = { zoom: 'off', serverTps: 'off', renderTps: 'solo', units: 'off' };
-    } else if (storedQuality === 'auto-units') {
-      currentQuality = 'auto';
-      currentSignalStates = { zoom: 'off', serverTps: 'off', renderTps: 'off', units: 'solo' };
-    } else if (
-      storedQuality === 'auto' ||
-      storedQuality === 'min' ||
-      storedQuality === 'low' ||
-      storedQuality === 'medium' ||
-      storedQuality === 'high' ||
-      storedQuality === 'max'
-    ) {
-      currentQuality = storedQuality;
-    }
-  }
-  // Per-signal tri-state — separate key so it survives manual-tier
-  // picks. Validates each field independently; a malformed key just
-  // falls through to the default ('active').
-  const storedSignals = readPersisted(LOD_SIGNAL_STATES_STORAGE_KEY);
-  if (storedSignals) {
-    try {
-      const parsed = JSON.parse(storedSignals);
-      if (parsed && typeof parsed === 'object') {
-        if (isSignalState(parsed.zoom)) currentSignalStates.zoom = parsed.zoom;
-        if (isSignalState(parsed.serverTps)) currentSignalStates.serverTps = parsed.serverTps;
-        else if (isSignalState(parsed.tps)) currentSignalStates.serverTps = parsed.tps;
-        if (isSignalState(parsed.renderTps)) currentSignalStates.renderTps = parsed.renderTps;
-        else if (isSignalState(parsed.fps)) currentSignalStates.renderTps = parsed.fps;
-        if (isSignalState(parsed.units)) currentSignalStates.units = parsed.units;
-      }
-    } catch { /* ignore malformed */ }
-  }
   const storedRenderMode = readPersisted(RENDER_MODE_STORAGE_KEY);
   if (
     storedRenderMode &&
@@ -679,14 +335,6 @@ function loadFromStorage(): void {
   if (storedBeamSnapToTurret !== null) {
     currentBeamSnapToTurret = storedBeamSnapToTurret === 'true';
   }
-  const storedLodShellRings = readPersisted(LOD_SHELL_RINGS_STORAGE_KEY);
-  if (storedLodShellRings !== null) {
-    currentLodShellRings = storedLodShellRings === 'true';
-  }
-  const storedLodGridBorders = readPersisted(LOD_GRID_BORDERS_STORAGE_KEY);
-  if (storedLodGridBorders !== null) {
-    currentLodGridBorders = storedLodGridBorders === 'true';
-  }
   const storedTriangleDebug = readPersisted(TRIANGLE_DEBUG_STORAGE_KEY);
   if (storedTriangleDebug !== null) {
     currentTriangleDebug = storedTriangleDebug === 'true';
@@ -694,10 +342,6 @@ function loadFromStorage(): void {
   const storedBuildGridDebug = readPersisted(BUILD_GRID_DEBUG_STORAGE_KEY);
   if (storedBuildGridDebug !== null) {
     currentBuildGridDebug = storedBuildGridDebug === 'true';
-  }
-  const storedBaseLodMode = readPersisted(BASE_LOD_MODE_STORAGE_KEY);
-  if (storedBaseLodMode !== null) {
-    currentBaseLodMode = storedBaseLodMode === 'true';
   }
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
@@ -831,205 +475,14 @@ function loadFromStorage(): void {
 // grid-overlay block below would hit a temporal-dead-zone ReferenceError
 // because that state variable is declared later in the file.
 
-// ── Getters / setters ──
-
-export function getGraphicsQuality(): GraphicsQuality {
-  return currentQuality;
-}
-
-export function setGraphicsQuality(quality: GraphicsQuality): void {
-  currentQuality = quality;
-  persist(STORAGE_KEY, quality);
-}
-
-/** Read the current state of one PLAYER CLIENT LOD signal. */
-export function getLodSignalState(signal: keyof LodSignalStates): SignalState {
-  return currentSignalStates[signal];
-}
-
-/** Read the whole signal-state object (read-only view). The UI uses
- *  this to compute button classes per signal in one pass. */
-export function getLodSignalStates(): Readonly<LodSignalStates> {
-  return currentSignalStates;
-}
-
-/** Click-cycle: OFF → ACTIVE → SOLO → OFF. Promoting a signal to
- *  SOLO demotes any previously-SOLO signal back to ACTIVE so that
- *  exactly one SOLO is held at a time. Persisted on every change. */
-export function cycleLodSignalState(signal: keyof LodSignalStates): SignalState {
-  const cur = currentSignalStates[signal];
-  const next: SignalState =
-    cur === 'off' ? 'active' : cur === 'active' ? 'solo' : 'off';
-  if (next === 'solo') {
-    // Demote whoever else was SOLO (at most one).
-    (Object.keys(currentSignalStates) as (keyof LodSignalStates)[]).forEach((k) => {
-      if (k !== signal && currentSignalStates[k] === 'solo') {
-        currentSignalStates[k] = 'active';
-      }
-    });
-  }
-  currentSignalStates = { ...currentSignalStates, [signal]: next };
-  persistJson(LOD_SIGNAL_STATES_STORAGE_KEY, currentSignalStates);
-  return next;
-}
-
-/** Reset every PLAYER CLIENT LOD signal to its LOD_SIGNAL_DEFAULTS
- *  value and persist. Wired to the DEFAULTS button in the client bar
- *  so first-load defaults and the reset button stay in lockstep. */
-export function resetLodSignalStates(): LodSignalStates {
-  currentSignalStates = { ...LOD_SIGNAL_DEFAULTS };
-  persistJson(LOD_SIGNAL_STATES_STORAGE_KEY, currentSignalStates);
-  return currentSignalStates;
-}
-
-export function setCurrentZoom(zoom: number): void {
-  currentZoom = zoom;
-}
-
-export function setCurrentServerTpsRatio(ratio: number): void {
-  currentServerTpsRatio = ratio;
-}
-
-export function setCurrentRenderTpsRatio(ratio: number): void {
-  currentRenderTpsRatio = ratio;
-}
-
-export function setCurrentUnitCount(count: number): void {
-  currentUnitCount = count;
-}
-
-export function setCurrentUnitCap(cap: number): void {
-  // Guard against 0 — `count / cap` would NaN out and break the ratio
-  // ladder. The configured fallback stays in place until a real cap arrives.
-  if (cap > 0) currentUnitCap = cap;
-}
-
-export function setServerTpsAvailable(available: boolean): void {
-  serverTpsAvailable = available;
-}
-
-export function getServerTpsAvailable(): boolean {
-  return serverTpsAvailable;
-}
-
-const RANK_TO_QUALITY: ConcreteGraphicsQuality[] = [
-  'min', 'low', 'medium', 'high', 'max',
-];
-
-function toArray(t: { low: number; medium: number; high: number; max: number }): number[] {
-  return [t.low, t.medium, t.high, t.max];
-}
-
-const ZOOM_THRESHOLDS = toArray(LOD_THRESHOLDS.zoom);
-const SERVER_TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.serverTps);
-const RENDER_TPS_THRESHOLDS = toArray(LOD_THRESHOLDS.renderTps);
-const UNITS_THRESHOLDS = toArray(LOD_THRESHOLDS.units);
-
-function ratioToRank(
-  ratio: number,
-  thresholds: number[],
-  prevRank: number,
-  hysteresis: number,
-): number {
-  let rank = 0;
-  for (let i = 0; i < thresholds.length; i++) {
-    const threshold = thresholds[i];
-    const effectiveThreshold = i + 1 > prevRank
-      ? threshold + hysteresis
-      : threshold - hysteresis;
-    if (ratio >= effectiveThreshold) rank = i + 1;
-  }
-  return rank;
-}
-
-function zoomToRank(prevRank: number): number {
-  const h = LOD_HYSTERESIS.zoom;
-  let rank = 0;
-  for (let i = 0; i < ZOOM_THRESHOLDS.length; i++) {
-    const threshold = ZOOM_THRESHOLDS[i];
-    const ratio = currentZoom / threshold;
-    const effectiveRatio = i + 1 > prevRank ? 1 + h : 1 - h;
-    if (ratio >= effectiveRatio) rank = i + 1;
-  }
-  return rank;
-}
-
-/** Current unit-fullness ratio, normalized so it shares the
- *  ratioToRank semantics with TPS:
- *      ratio = 1 − count / cap
- *  An empty world is 1.0; a full world is 0.0. Higher ratio earns
- *  a higher tier — same direction as the other auto modes, so the
- *  shared ratioToRank helper drives all four signals. */
-function unitsRatio(): number {
-  if (currentUnitCap <= 0) return 1;
-  const fullness = currentUnitCount / currentUnitCap;
-  if (fullness <= 0) return 1;
-  if (fullness >= 1) return 0;
-  return 1 - fullness;
-}
-
-export function getEffectiveQuality(): ConcreteGraphicsQuality {
-  switch (currentQuality) {
-    case 'auto': {
-      // AUTO mode honors per-signal tri-state.
-      //
-      // 1. Compute each signal's rank (only for signals enabled in
-      //    LOD_SIGNALS_ENABLED — disabled signals are completely
-      //    invisible to the resolver, regardless of user state).
-      // 2. If ANY signal is in SOLO state: that one alone drives the
-      //    rank; everything else is ignored. (Click-cycle ensures at
-      //    most one signal is SOLO.)
-      // 3. Otherwise: min over all signals in ACTIVE state.
-      // 4. If no signals contribute (all OFF or all disabled), fall
-      //    back to MAX.
-      //
-      // Rank state (prevXRank) is updated whenever the signal is at
-      // least eligible (enabled + not OFF) so a flip from ACTIVE
-      // back to SOLO doesn't see a stale rank.
-      const states = currentSignalStates;
-      const zoomEligible = LOD_SIGNALS_ENABLED.zoom && states.zoom !== 'off';
-      const serverTpsEligible = LOD_SIGNALS_ENABLED.serverTps && states.serverTps !== 'off' && serverTpsAvailable;
-      const renderTpsEligible = LOD_SIGNALS_ENABLED.renderTps && states.renderTps !== 'off';
-      const unitsEligible = LOD_SIGNALS_ENABLED.units && states.units !== 'off';
-
-      if (zoomEligible) prevZoomRank = zoomToRank(prevZoomRank);
-      if (serverTpsEligible) prevServerTpsRank = ratioToRank(currentServerTpsRatio, SERVER_TPS_THRESHOLDS, prevServerTpsRank, LOD_HYSTERESIS.serverTps);
-      if (renderTpsEligible) prevRenderTpsRank = ratioToRank(currentRenderTpsRatio, RENDER_TPS_THRESHOLDS, prevRenderTpsRank, LOD_HYSTERESIS.renderTps);
-      if (unitsEligible) prevUnitsRank = ratioToRank(unitsRatio(), UNITS_THRESHOLDS, prevUnitsRank, LOD_HYSTERESIS.units);
-
-      // Solo override.
-      if (zoomEligible && states.zoom === 'solo') return RANK_TO_QUALITY[prevZoomRank];
-      if (serverTpsEligible && states.serverTps === 'solo') return RANK_TO_QUALITY[prevServerTpsRank];
-      if (renderTpsEligible && states.renderTps === 'solo') return RANK_TO_QUALITY[prevRenderTpsRank];
-      if (unitsEligible && states.units === 'solo') return RANK_TO_QUALITY[prevUnitsRank];
-
-      // Min over actives.
-      let minRank = 4;
-      let any = false;
-      if (zoomEligible && states.zoom === 'active') { any = true; if (prevZoomRank < minRank) minRank = prevZoomRank; }
-      if (serverTpsEligible && states.serverTps === 'active') { any = true; if (prevServerTpsRank < minRank) minRank = prevServerTpsRank; }
-      if (renderTpsEligible && states.renderTps === 'active') { any = true; if (prevRenderTpsRank < minRank) minRank = prevRenderTpsRank; }
-      if (unitsEligible && states.units === 'active') { any = true; if (prevUnitsRank < minRank) minRank = prevUnitsRank; }
-      return any ? RANK_TO_QUALITY[minRank] : RANK_TO_QUALITY[4];
-    }
-    case 'min':
-    case 'low':
-    case 'medium':
-    case 'high':
-    case 'max':
-      return currentQuality;
-  }
-}
-
 export function getGraphicsConfig(): GraphicsConfig {
-  const quality = getEffectiveQuality();
-  return currentBaseLodMode ? GRAPHICS_CONFIGS_BASE[quality] : GRAPHICS_CONFIGS[quality];
+  return PLAYER_CLIENT_MAX_GRAPHICS_CONFIG;
 }
 
 export function getGraphicsConfigFor(
-  quality: ConcreteGraphicsQuality,
+  _quality: ConcreteGraphicsQuality,
 ): GraphicsConfig {
-  return currentBaseLodMode ? GRAPHICS_CONFIGS_BASE[quality] : GRAPHICS_CONFIGS[quality];
+  return getGraphicsConfig();
 }
 
 export function getRenderMode(): RenderMode {
@@ -1159,24 +612,6 @@ export function setBeamSnapToTurret(enabled: boolean): void {
   persist(BEAM_SNAP_TO_TURRET_STORAGE_KEY, String(enabled));
 }
 
-export function getLodShellRings(): boolean {
-  return currentLodShellRings;
-}
-
-export function setLodShellRings(enabled: boolean): void {
-  currentLodShellRings = enabled;
-  persist(LOD_SHELL_RINGS_STORAGE_KEY, String(enabled));
-}
-
-export function getLodGridBorders(): boolean {
-  return currentLodGridBorders;
-}
-
-export function setLodGridBorders(enabled: boolean): void {
-  currentLodGridBorders = enabled;
-  persist(LOD_GRID_BORDERS_STORAGE_KEY, String(enabled));
-}
-
 export function getTriangleDebug(): boolean {
   return currentTriangleDebug;
 }
@@ -1193,15 +628,6 @@ export function getBuildGridDebug(): boolean {
 export function setBuildGridDebug(enabled: boolean): void {
   currentBuildGridDebug = enabled;
   persist(BUILD_GRID_DEBUG_STORAGE_KEY, String(enabled));
-}
-
-export function getBaseLodMode(): boolean {
-  return currentBaseLodMode;
-}
-
-export function setBaseLodMode(enabled: boolean): void {
-  currentBaseLodMode = enabled;
-  persist(BASE_LOD_MODE_STORAGE_KEY, String(enabled));
 }
 
 export function getDriftMode(): DriftMode {

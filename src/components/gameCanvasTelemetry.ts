@@ -1,25 +1,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { GOOD_TPS, LOD_EMA_SOURCE } from '../lodConfig';
-import {
-  getEffectiveQuality,
-  setCurrentRenderTpsRatio,
-  setCurrentServerTpsRatio,
-  setCurrentUnitCap,
-  setCurrentUnitCount,
-  setServerTpsAvailable,
-} from '../clientBarConfig';
 import type { GameScene } from '../game/createGame';
-import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
-import type { ConcreteGraphicsQuality } from '../types/graphics';
-
-type ReadableRef<T> = { readonly value: T };
 
 type GameCanvasTelemetryOptions = {
   getScene: () => GameScene | null;
-  displayServerTpsAvg: ReadableRef<number>;
-  displayServerTpsWorst: ReadableRef<number>;
-  serverMetaFromSnapshot: ReadableRef<NetworkServerSnapshotMeta | null>;
-  showServerControls: ReadableRef<boolean>;
 };
 
 function setRefIfChanged<T>(target: { value: T }, value: T): void {
@@ -33,12 +16,7 @@ function setNumberRefIfChanged(target: { value: number }, value: number, epsilon
 
 export function useGameCanvasTelemetry({
   getScene,
-  displayServerTpsAvg,
-  displayServerTpsWorst,
-  serverMetaFromSnapshot,
-  showServerControls,
 }: GameCanvasTelemetryOptions) {
-  const effectiveQuality = ref<ConcreteGraphicsQuality>(getEffectiveQuality());
   const frameMsAvg = ref(0);
   const frameMsHi = ref(0);
   const renderMsAvg = ref(0);
@@ -94,21 +72,6 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(fullSnapAvgRate, fullSnapStats.avgRate, 0.05);
       setNumberRefIfChanged(fullSnapWorstRate, fullSnapStats.worstRate, 0.05);
     }
-
-    const serverTpsVal = LOD_EMA_SOURCE.serverTps === 'avg'
-      ? displayServerTpsAvg.value
-      : displayServerTpsWorst.value;
-    const renderTpsVal = LOD_EMA_SOURCE.renderTps === 'avg'
-      ? renderTpsAvg.value
-      : renderTpsWorst.value;
-    setCurrentServerTpsRatio(serverTpsVal / GOOD_TPS);
-    setCurrentRenderTpsRatio(renderTpsVal / GOOD_TPS);
-
-    const meta = serverMetaFromSnapshot.value;
-    setCurrentUnitCount(meta?.units.count ?? 0);
-    if (meta?.units.max !== undefined) setCurrentUnitCap(meta.units.max);
-    setServerTpsAvailable(showServerControls.value);
-    setRefIfChanged(effectiveQuality, getEffectiveQuality());
   }
 
   onMounted(() => {
@@ -125,7 +88,6 @@ export function useGameCanvasTelemetry({
   return {
     currentZoom,
     displayGpuMs,
-    effectiveQuality,
     frameMsAvg,
     frameMsHi,
     fullSnapAvgRate,

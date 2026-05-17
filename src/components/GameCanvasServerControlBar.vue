@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { GOOD_TPS } from '../lodConfig';
+import { GOOD_TPS } from '../telemetryConfig';
 import {
   SERVER_CONFIG,
   snapshotRateHz,

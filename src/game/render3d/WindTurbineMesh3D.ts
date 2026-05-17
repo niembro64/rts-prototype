@@ -22,10 +22,22 @@ import {
   windTrimMat,
 } from './BuildingMeshPrimitives3D';
 
+/** Per-blade open/closed orientation pair. Animator slerps each blade
+ *  between these as the wind turbine transitions in/out of its stowed
+ *  pose. The pivot stays at the rotor hub — the blade tip swings from
+ *  radial-fan to "tight against the pole" by reorienting the blade's
+ *  spanwise (local Y) axis from in-plane to rotor-axis-aligned. */
+export type WindBladeAnim = {
+  openQuat: THREE.Quaternion;
+  closedQuat: THREE.Quaternion;
+};
+
 export type WindTurbineRig = {
   root: THREE.Mesh;
   rotor: THREE.Mesh;
   rateIndicator?: ProductionRateIndicatorRig;
+  /** Authored pitch applied to root.rotation.x at full close (1.0). */
+  closedPitch: number;
 };
 
 export function buildWindTurbineMesh(
@@ -109,9 +121,43 @@ export function buildWindTurbineMesh(
   nose.rotation.x = Math.PI / 2;
   rotor.add(nose);
 
+  // Each blade is created at its open-pose rotation around the rotor's
+  // Z axis (the spin axis). For the stowed pose we want all three blades
+  // to point along rotor-local -Z so that, after the root pitches up
+  // (rotor +Z → world +Y), they end up hanging straight down past the
+  // top of the tower. The 3 blades share the same downward axis but
+  // their chord widths point in different horizontal directions (120°
+  // apart), so they don't actually z-fight — kept at exactly 0 to make
+  // the closed pose read as "tight against the pole".
+  const _stowRadialOffset = 0;
   for (let i = 0; i < 3; i++) {
     const angle = (i / 3) * Math.PI * 2;
     const blade = makeTurbineBlade(windBladeMat, bladeLen, bladeW, bladeThickness, angle);
+    const openQuat = blade.quaternion.clone();
+
+    // Closed pose, blade-local basis in the rotor's frame:
+    //   Y (spanwise) ≈ rotor-local -Z, with a small wedge toward the
+    //     original radial out so the three blades fan very slightly
+    //     and don't overlap exactly.
+    //   X (chord width) = original radial direction in rotor XY plane
+    //     so the blade's flat face still presents outward.
+    //   Z = Y × X-equivalent, kept right-handed via cross product.
+    const radialOpen = new THREE.Vector3(-Math.sin(angle), Math.cos(angle), 0);
+    const closedY = new THREE.Vector3(
+      radialOpen.x * _stowRadialOffset,
+      radialOpen.y * _stowRadialOffset,
+      -Math.sqrt(1 - _stowRadialOffset * _stowRadialOffset),
+    ).normalize();
+    const closedX = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0);
+    const closedZ = new THREE.Vector3().crossVectors(closedX, closedY).normalize();
+    // Re-orthogonalize X against Y (the radial offset slightly tilts
+    // closedY out of the original X-Y plane, so re-derive X = Y × Z).
+    closedX.copy(closedY).cross(closedZ).normalize();
+    const closedBasis = new THREE.Matrix4().makeBasis(closedX, closedY, closedZ);
+    const closedQuat = new THREE.Quaternion().setFromRotationMatrix(closedBasis);
+
+    const anim: WindBladeAnim = { openQuat, closedQuat };
+    blade.userData.windBlade = anim;
     rotor.add(blade);
   }
 
@@ -120,6 +166,14 @@ export function buildWindTurbineMesh(
     primary,
     details,
     height: baseH,
-    windRig: { root, rotor, rateIndicator: energyRateIndicator.rig },
+    windRig: {
+      root,
+      rotor,
+      rateIndicator: energyRateIndicator.rig,
+      // Pitch the nacelle to point straight up. The root's open-pose
+      // pitch is 0 (horizontal nacelle); -π/2 sends it skyward so the
+      // rotor sits at the top of the tower with its face pointing up.
+      closedPitch: -Math.PI / 2,
+    },
   };
 }

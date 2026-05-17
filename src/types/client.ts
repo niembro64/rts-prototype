@@ -4,7 +4,7 @@ import type {
   LabeledOptionsConfig,
   PlatformBooleanDefaults,
 } from './bars';
-import type { ConcreteGraphicsQuality, GraphicsQuality, RenderMode } from './graphics';
+import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
@@ -50,10 +50,6 @@ export type UnitRadiusType = 'visual' | 'shot' | 'push';
 export type SoundDefaults = Record<SoundCategory, boolean>;
 
 export type ClientBarConfig = {
-  readonly graphics: LabeledOptionsConfig<
-    ConcreteGraphicsQuality,
-    GraphicsQuality
-  >;
   readonly render: LabeledOptionsConfig<RenderMode>;
   readonly audio: LabeledOptionsConfig<Exclude<AudioScope, 'off'>>;
   readonly audioSmoothing: BooleanSetting;
@@ -66,15 +62,8 @@ export type ClientBarConfig = {
    *  part of the unit silhouettes' motion. */
   readonly locomotionMarks: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
-  readonly lodShellRings: BooleanSetting;
-  readonly lodGridBorders: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
-  /** "BASE" toggle: when on, the chosen MIN/LOW/MED/HI/MAX tier is
-   *  applied to every entity uniformly (camera-sphere distance
-   *  resolution disabled). When off (default), tiers behave as today
-   *  — they cap a per-entity object-tier resolved from camera distance. */
-  readonly baseLodMode: BooleanSetting;
   readonly driftMode: DefaultSetting<DriftMode>;
   /** Prediction physics order — POS / VEL / ACC. See PredictionMode
    *  for semantics. Default 'acc' matches existing behaviour (full
@@ -94,7 +83,6 @@ export type ClientBarConfig = {
   readonly projRangeToggles: BooleanSetting;
   readonly unitRadiusToggles: BooleanSetting;
   readonly lobbyVisible: DefaultSetting<PlatformBooleanDefaults>;
-  readonly unitCapFallback: DefaultSetting<number>;
   readonly gridOverlay: LabeledOptionsConfig<GridOverlay>;
   readonly waypointDetail: LabeledOptionsConfig<WaypointDetail>;
 };

@@ -271,9 +271,20 @@ export type CombatComponent = {
 // width (x-footprint) × height (y-footprint) × depth (z, vertical).
 // The physics engine stores the building as a cuboid centered at
 // (transform.x, transform.y, depth/2) so the base sits on the ground.
-export type SolarCollectorState = {
+/** Shared "fortifiable producer" state for solar collectors, wind
+ *  turbines, and metal extractors. See buildingActiveState.ts. */
+export type BuildingActiveState = {
+  /** True while the building is open and producing. False once the
+   *  damage-grace timer has expired or the building started closed. */
   open: boolean;
+  /** Sim-only tracking flag mirroring the open state — drives the
+   *  per-type production deltas in setBuildingProducing. */
   producing: boolean;
+  /** Counts down from BUILDING_DAMAGE_DELAY_MS once the building has
+   *  been hit. The transition to closed fires when this reaches zero. */
+  damageDelayMs: number;
+  /** Counts down from BUILDING_REOPEN_DELAY_MS while closed. The
+   *  transition back to open fires when this reaches zero. */
   reopenDelayMs: number;
 };
 
@@ -288,7 +299,7 @@ export type Building = {
    *  bounding-circle radius for every candidate evaluation. Immutable
    *  for the life of the building (dimensions never change). */
   targetRadius: number;
-  solar?: SolarCollectorState;
+  activeState?: BuildingActiveState;
 };
 
 // Turret configuration (compiled turret definition)

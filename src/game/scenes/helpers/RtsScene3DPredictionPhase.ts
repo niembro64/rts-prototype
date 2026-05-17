@@ -1,4 +1,3 @@
-import { setCurrentZoom } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { PerspectiveCamera } from 'three';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -22,16 +21,12 @@ export class RtsScene3DPredictionPhase {
     viewportHeightPx: number;
     zoom: number;
   }): RtsScene3DPredictionPhaseResult {
-    setCurrentZoom(options.zoom);
-
     const renderLod = snapshotLod(options.camera, options.viewportHeightPx);
     const graphicsConfig = renderLod.gfx;
     this.renderLodGrid.beginFrame(renderLod.view, graphicsConfig);
 
     const predStart = performance.now();
-    this.clientViewState.applyPrediction(options.deltaMs, {
-      physicsPredictionFramesSkip: graphicsConfig.clientPhysicsPredictionFramesSkip,
-    });
+    this.clientViewState.applyPrediction(options.deltaMs);
 
     return {
       renderLod,

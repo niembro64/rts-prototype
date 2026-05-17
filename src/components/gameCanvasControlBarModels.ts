@@ -15,13 +15,8 @@ import type {
   WaypointDetail,
 } from '../types/client';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
-import type { LodSignalStates } from '../types/lod';
 import type { TiltEmaMode } from '../shellConfig';
-import type {
-  ConcreteGraphicsQuality,
-  GraphicsQuality,
-  RenderMode,
-} from '../types/graphics';
+import type { RenderMode } from '../types/graphics';
 
 export type ControlBarStyle = Record<string, string>;
 
@@ -118,14 +113,7 @@ export type GameCanvasClientControlBarModel = {
   readonly allPanActive: boolean;
   readonly dragPanEnabled: boolean;
   readonly edgeScrollEnabled: boolean;
-  readonly graphicsQuality: GraphicsQuality;
-  readonly effectiveQuality: ConcreteGraphicsQuality;
-  readonly clientAnySolo: boolean;
-  readonly clientSignalStates: LodSignalStates;
   readonly showServerControls: boolean;
-  readonly baseLodMode: boolean;
-  readonly lodShellRings: boolean;
-  readonly lodGridBorders: boolean;
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly renderMode: RenderMode;
@@ -158,11 +146,6 @@ export type GameCanvasClientControlBarModel = {
   toggleAllPan(): void;
   toggleDragPan(): void;
   toggleEdgeScroll(): void;
-  changeGraphicsQuality(quality: GraphicsQuality): void;
-  cycleClientSignal(signal: keyof LodSignalStates): void;
-  toggleBaseLodMode(): void;
-  toggleLodShellRings(): void;
-  toggleLodGridBorders(): void;
   toggleTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   changeRenderMode(mode: RenderMode): void;

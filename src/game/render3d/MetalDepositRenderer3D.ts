@@ -20,7 +20,7 @@ import {
 } from './RenderObjectLod';
 import { RenderLodGrid } from './RenderLodGrid';
 
-const PLAYER_CLIENT_DEPOSIT_LOD: Record<ConcreteGraphicsQuality, {
+const DEPOSIT_MESH_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, {
   radialStep: number;
   radiusScale: number;
   material: 'lambert' | 'standard';
@@ -44,7 +44,7 @@ const DEPOSIT_MAX_RADIAL_SEGMENTS = 64;
 const DEPOSIT_BASE = new THREE.Color(0x272b2e);
 const DEPOSIT_DARK = new THREE.Color(0x111416);
 const DEPOSIT_LIGHT = new THREE.Color(0x6f7678);
-const DEPOSIT_LOD_TIERS: readonly ConcreteGraphicsQuality[] = [
+const DEPOSIT_GRAPHICS_TIERS: readonly ConcreteGraphicsQuality[] = [
   'min',
   'low',
   'medium',
@@ -52,13 +52,13 @@ const DEPOSIT_LOD_TIERS: readonly ConcreteGraphicsQuality[] = [
   'max',
 ];
 
-type DepositLodNodeMap = Partial<Record<ConcreteGraphicsQuality, THREE.Group>>;
+type DepositGraphicsNodeMap = Partial<Record<ConcreteGraphicsQuality, THREE.Group>>;
 
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
   private deposits: ReadonlyArray<MetalDeposit>;
   private records: Array<{
-    nodes: DepositLodNodeMap;
+    nodes: DepositGraphicsNodeMap;
     tier: ConcreteGraphicsQuality | null;
     objectTier: RenderObjectLodTier | null;
   }> = [];
@@ -91,10 +91,7 @@ export class MetalDepositRenderer3D {
       const objectTier = lodGrid.resolve(d.x, d.height, d.y);
       record.objectTier = objectTier;
       // Metal deposits are terrain resources, not rich actor graphs.
-      // Their mesh detail should visibly follow the camera-sphere band
-      // itself; the global PLAYER CLIENT LOD already changes the sphere
-      // radii. Capping this by global tier made all visible deposits look
-      // identical at MIN/LOW and read as "not responding" to the rings.
+      // Their mesh detail follows the camera-sphere band directly.
       const tier = objectLodToCameraSphereGraphicsTier(objectTier);
       if (tier !== record.tier) this.setDepositTier(i, tier);
       const node = record.nodes[tier];
@@ -109,10 +106,10 @@ export class MetalDepositRenderer3D {
   private buildAll(tier: ConcreteGraphicsQuality): void {
     for (let i = 0; i < this.deposits.length; i++) {
       const record = this.records[i];
-      for (const lodTier of DEPOSIT_LOD_TIERS) {
-        const node = this.buildDepositNode(i, lodTier);
-        node.visible = lodTier === tier;
-        record.nodes[lodTier] = node;
+      for (const graphicsTier of DEPOSIT_GRAPHICS_TIERS) {
+        const node = this.buildDepositNode(i, graphicsTier);
+        node.visible = graphicsTier === tier;
+        record.nodes[graphicsTier] = node;
         this.group.add(node);
       }
       record.tier = tier;
@@ -133,13 +130,13 @@ export class MetalDepositRenderer3D {
 
   private buildDepositNode(index: number, tier: ConcreteGraphicsQuality): THREE.Group {
     const d = this.deposits[index];
-    const lod = PLAYER_CLIENT_DEPOSIT_LOD[tier];
-    const r = d.resourceHalfSize * lod.radiusScale;
+    const meshDetail = DEPOSIT_MESH_BY_GRAPHICS_TIER[tier];
+    const r = d.resourceHalfSize * meshDetail.radiusScale;
     const coinHeight = METAL_DEPOSIT_CONFIG.coinHeight;
     const node = new THREE.Group();
     const mesh = new THREE.Mesh(
-      makeDepositCoinGeometry(d.id, r, lod.radialStep, coinHeight),
-      this.getMaterial(lod.material),
+      makeDepositCoinGeometry(d.id, r, meshDetail.radialStep, coinHeight),
+      this.getMaterial(meshDetail.material),
     );
     node.add(mesh);
     // The mesh contains only the above-ground crown. Relying on the
@@ -162,7 +159,7 @@ export class MetalDepositRenderer3D {
 
   dispose(): void {
     for (const record of this.records) {
-      for (const tier of DEPOSIT_LOD_TIERS) {
+      for (const tier of DEPOSIT_GRAPHICS_TIERS) {
         const node = record.nodes[tier];
         if (!node) continue;
         disposeDepositNode(node);

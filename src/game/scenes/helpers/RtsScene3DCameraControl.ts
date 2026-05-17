@@ -8,7 +8,7 @@ import type { ThreeApp } from '../../render3d/ThreeApp';
 //
 // Two zoom-shaped values:
 //
-//   `zoom`     - LOD ratio (`baseDistance / orbit.distance`). Higher = more
+//   `zoom`     - Display ratio (`baseDistance / orbit.distance`). Higher = more
 //                zoomed in. Used for save/restore camera state, UI/legacy
 //                camera reads, and any code path that needs a multiplicative
 //                scalar relative to the default framing.

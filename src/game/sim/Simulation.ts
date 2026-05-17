@@ -50,7 +50,7 @@ import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
 import { getUnitBlueprint } from './blueprints';
-import { updateSolarCollectors } from './solarCollector';
+import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
 import { WindPowerTracker, sampleWindState, type WindState } from './wind';
@@ -319,9 +319,11 @@ export class Simulation {
       executeCommand(cmdCtx, command);
     }
 
-    // Solar collectors are stateful: damage closes them, a quiet
-    // debounce reopens them, and production follows that open state.
-    updateSolarCollectors(this.world, dtMs);
+    // Solar collectors, wind turbines, and metal extractors share a
+    // fortifiable-producer lifecycle: a 2 s grace timer arms on the
+    // first hit, the building snaps closed once it expires, and a
+    // 5 s quiet debounce reopens it. Production follows the open flag.
+    updateBuildingActiveStates(this.world, dtMs);
     this.windState = sampleWindState(this.simElapsedMs);
     this.windPowerTracker.update(this.world, this.windState);
 

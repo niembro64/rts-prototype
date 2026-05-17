@@ -138,8 +138,8 @@ export function buildTurretMesh3D(
   }
 
   // Skip the head sphere entirely for:
-  //  - turretStyle='none' (min LOD): no body, no barrels — chassis only.
-  //  - force-field turrets at ANY LOD: the ForceFieldRenderer3D's glowing
+  //  - turretStyle='none': no body, no barrels — chassis only.
+  //  - force-field turrets at any detail: the ForceFieldRenderer3D's glowing
   //    sphere is the whole visual.
   //  - deps.skipHead=true: the caller is rendering the head through the
   //    shared `turretHeadInstanced` InstancedMesh path — see

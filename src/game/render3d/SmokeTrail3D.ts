@@ -13,12 +13,12 @@
 // scale, alpha, and color ride on the InstancedMesh's instance
 // matrix + custom InstancedBufferAttributes (aAlpha, aColor). The
 // fragment shader is `gl_FragColor = vec4(vColor, vAlpha);` — no
-// fancy per-tier visual variants. Higher LOD just means more puffs;
+// fancy per-tier visual variants. Higher detail just means more puffs;
 // the puffs themselves look identical at every tier.
 //
-// LOD: density scales with `smokeTrailFramesSkip`, while the existing
+// Detail: density scales with `smokeTrailFramesSkip`, while the existing
 // fireExplosionStyle tier still caps the total particle budget. Higher
-// LOD also stretches each puff's lifespan so the trail is both denser
+// detail also stretches each puff's lifespan so the trail is both denser
 // AND longer, giving a clear visual upgrade at MAX without unbounded
 // cost at MIN.
 
@@ -57,7 +57,7 @@ const DEFAULT_COLOR = 0xcccccc;
 const MAX_PARTICLES = 4000;
 const SMOKE_EVICTION_SCAN = 16;
 
-const LOD_PARTICLE_CAP: Record<FireExplosionStyle, number> = {
+const PARTICLE_CAP_BY_EXPLOSION_STYLE: Record<FireExplosionStyle, number> = {
   flash: 700,
   spark: 1200,
   burst: 2200,
@@ -65,7 +65,7 @@ const LOD_PARTICLE_CAP: Record<FireExplosionStyle, number> = {
   inferno: MAX_PARTICLES,
 };
 
-const LOD_LIFESPAN_MULT: Record<ConcreteGraphicsQuality, number> = {
+const LIFESPAN_MULT_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, number> = {
   min: 0.5,
   low: 0.65,
   medium: 0.8,
@@ -90,12 +90,32 @@ type Puff = {
   threeX: number;
   threeY: number;
   threeZ: number;
+  threeVX: number;
+  threeVY: number;
+  threeVZ: number;
   /** Unpacked sRGB color for this puff. Stored on the Puff (not on
    *  a shared material) so shots with different `color` fields can
    *  coexist in the same instanced mesh. */
   r: number;
   g: number;
   b: number;
+};
+
+export type SmokePuffEmitter = {
+  x: number;
+  y: number;
+  z: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
+  emitFramesSkip?: number;
+  lifespanMs?: number;
+  startRadius?: number;
+  endRadius?: number;
+  startAlpha?: number;
+  color?: number;
+  phase?: number;
+  scopePadding?: number;
 };
 
 const SMOKE_VERTEX_SHADER = `
@@ -141,6 +161,7 @@ export class SmokeTrail3D {
   private readonly _emitPoint = { x: 0, y: 0, z: 0 };
   private _scratchMat = new THREE.Matrix4();
   private emissionCursor = 0;
+  private emitterCursor = 0;
   private evictionCursor = 0;
   private colorUpdateMin = Number.POSITIVE_INFINITY;
   private colorUpdateMax = -1;
@@ -189,20 +210,21 @@ export class SmokeTrail3D {
     dtMs: number,
     renderFrameIndex: number,
     scope?: ViewportFootprint,
+    emitters?: readonly SmokePuffEmitter[],
   ): void {
-    if (projectiles.length === 0 && this.active.length === 0) return;
+    if (projectiles.length === 0 && this.active.length === 0 && (!emitters || emitters.length === 0)) return;
 
     const dtSec = dtMs / 1000;
 
-    // Sample LOD once per render frame. Smoke density is controlled
+    // Sample graphics settings once per render frame. Smoke density is controlled
     // by integer frame skips, not elapsed milliseconds, so trail
-    // spacing stays consistent under hitches and across LOD tiers.
+    // spacing stays consistent under hitches and across graphics tiers.
     const gfx = getGraphicsConfig();
     const style = (gfx.fireExplosionStyle as FireExplosionStyle) ?? 'burst';
-    const lodFramesSkip = Math.max(0, gfx.smokeTrailFramesSkip | 0);
-    const lodLifeMult = LOD_LIFESPAN_MULT[gfx.tier] ?? 0.8;
-    const particleCap = Math.min(MAX_PARTICLES, LOD_PARTICLE_CAP[style] ?? 2200);
-    const defaultLifespanSec = Math.max(0.001, (DEFAULT_LIFESPAN_MS * lodLifeMult) / 1000);
+    const frameSkip = Math.max(0, gfx.smokeTrailFramesSkip | 0);
+    const lifeMult = LIFESPAN_MULT_BY_GRAPHICS_TIER[gfx.tier] ?? 0.8;
+    const particleCap = Math.min(MAX_PARTICLES, PARTICLE_CAP_BY_EXPLOSION_STYLE[style] ?? 2200);
+    const defaultLifespanSec = Math.max(0.001, (DEFAULT_LIFESPAN_MS * lifeMult) / 1000);
 
     // 1) Advance + fade existing puffs in place. Dead ones are
     //    swap-popped: the last live puff takes the dead slot's index,
@@ -230,6 +252,10 @@ export class SmokeTrail3D {
       // more like smoke dissipating than linear alpha crossfading.
       const k = 1 - t;
       const alpha = p.startAlpha * k * k;
+
+      p.threeX += p.threeVX * dtSec;
+      p.threeY += p.threeVY * dtSec;
+      p.threeZ += p.threeVZ * dtSec;
 
       this._scratchMat.makeScale(r, r, r);
       this._scratchMat.setPosition(p.threeX, p.threeY, p.threeZ);
@@ -259,7 +285,7 @@ export class SmokeTrail3D {
       if (scope && !scope.inScope(e.transform.x, e.transform.y, SMOKE_SCOPE_PADDING)) continue;
 
       const shotFramesSkip = Math.max(0, spec.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
-      const stride = Math.max(1, Math.max(lodFramesSkip, shotFramesSkip) + 1);
+      const stride = Math.max(1, Math.max(frameSkip, shotFramesSkip) + 1);
       // Phase by projectile id so a salvo does not allocate every puff
       // on the same frame at low LOD.
       if ((renderFrameIndex + (e.id % stride)) % stride !== 0) continue;
@@ -282,9 +308,10 @@ export class SmokeTrail3D {
         const visual = proj.config.shotProfile.visual;
         const spec = visual.smokeTrail!;
         const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
-        const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lodLifeMult) / 1000;
+        const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000;
         this.spawnPuff(
           emit.x, emit.y, emit.z,
+          0, 0, 0,
           lifespanSec,
           spec.startRadius ?? DEFAULT_START_RADIUS,
           spec.endRadius ?? DEFAULT_END_RADIUS,
@@ -293,6 +320,39 @@ export class SmokeTrail3D {
           particleCap,
         );
       }
+    }
+
+    if (emitters && emitters.length > 0 && particleCap > 0) {
+      const steadyBudget = Math.max(1, Math.ceil((particleCap * dtSec) / defaultLifespanSec));
+      const len = emitters.length;
+      const start = this.emitterCursor % len;
+      let emitted = 0;
+      for (let n = 0; n < len && emitted < steadyBudget; n++) {
+        const emitter = emitters[(start + n) % len];
+        const padding = emitter.scopePadding ?? SMOKE_SCOPE_PADDING;
+        if (scope && !scope.inScope(emitter.x, emitter.y, padding)) continue;
+        const framesSkip = Math.max(0, emitter.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
+        const stride = Math.max(1, Math.max(frameSkip, framesSkip) + 1);
+        const phase = emitter.phase ?? 0;
+        if ((renderFrameIndex + phase) % stride !== 0) continue;
+
+        const lifespanSec = Math.max(
+          0.001,
+          ((emitter.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000,
+        );
+        this.spawnPuff(
+          emitter.x, emitter.y, emitter.z,
+          emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
+          lifespanSec,
+          emitter.startRadius ?? DEFAULT_START_RADIUS,
+          emitter.endRadius ?? DEFAULT_END_RADIUS,
+          emitter.startAlpha ?? DEFAULT_START_ALPHA,
+          emitter.color ?? DEFAULT_COLOR,
+          particleCap,
+        );
+        emitted++;
+      }
+      this.emitterCursor = (start + Math.max(1, steadyBudget)) % len;
     }
 
     // 3) Push attribute updates to GPU and bound the draw to the
@@ -365,6 +425,7 @@ export class SmokeTrail3D {
 
   private spawnPuff(
     simX: number, simY: number, simZ: number,
+    simVX: number, simVY: number, simVZ: number,
     lifespanSec: number,
     startRadius: number,
     endRadius: number,
@@ -389,6 +450,9 @@ export class SmokeTrail3D {
       threeX: simX,
       threeY: simZ,
       threeZ: simY,
+      threeVX: simVX,
+      threeVY: simVZ,
+      threeVZ: simVY,
       r, g, b,
     };
 

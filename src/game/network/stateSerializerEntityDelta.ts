@@ -344,7 +344,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   }
 
   prev.buildProgress = entity.buildable ? getBuildFraction(entity.buildable) : 0;
-  prev.solarOpen = entity.building?.solar?.open === false ? 0 : 1;
+  prev.solarOpen = entity.building?.activeState?.open === false ? 0 : 1;
   prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
   prev.isProducing = entity.factory?.isProducing ? 1 : 0;
   prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
@@ -521,7 +521,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       f?.isProducing ? 1 : 0,
       Math.min(f?.buildQueue.length ?? 0, 255),
       f?.currentBuildProgress ?? 0,
-      b.solar?.open === false ? 0 : 1,
+      b.activeState?.open === false ? 0 : 1,
       e.buildable ? getBuildFraction(e.buildable) : 1,
     );
   }

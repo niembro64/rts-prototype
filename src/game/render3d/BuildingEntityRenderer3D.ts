@@ -140,7 +140,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     solarRig: shape.solarRig,
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
-    solarOpenAmount: entity.building?.solar?.open === false ? 0 : 1,
+    solarOpenAmount: entity.building?.activeState?.open === false ? 0 : 1,
   };
 }
 

@@ -8,6 +8,10 @@ export const BUILDING_PALETTE = {
   cyanGlass: 0x82dce9,
   constructionAmber: 0xe8cd72,
   constructionSpark: 0xdbe9ee,
+  /** Metal-resource color — matches the metal coin/shower tint in
+   *  ConstructionEmitterMesh3D and the "metal" income bar. Used for the
+   *  metal extractor's spinning blades. */
+  metalResource: 0xd09060,
 } as const;
 
 export const SHINY_GRAY_METAL_MATERIAL = {

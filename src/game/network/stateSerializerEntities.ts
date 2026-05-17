@@ -118,10 +118,9 @@ function writeTurretsToPool(
     t.angular.rot = qRot(src.rotation);
     t.angular.vel = qRot(src.angularVelocity);
     // Acceleration is the instantaneous damped-spring force at this
-    // tick (depends on error-to-target), not a constant. Integrating
-    // it on the client under a long LOD prediction-stride dt blows
-    // up angular velocity — so we omit it from the wire and let the
-    // client predict turret motion from velocity alone.
+    // tick (depends on error-to-target), not a constant. The client
+    // predicts turret motion from velocity alone to avoid injecting a
+    // stale angular acceleration across snapshot gaps.
     t.angular.acc = 0;
     t.angular.pitch = qRot(src.pitch);
     t.angular.pitchVel = qRot(src.pitchVelocity);
@@ -403,9 +402,12 @@ export function serializeEntitySnapshot(
           b.build.paid.mana = 0;
           b.build.paid.metal = 0;
         }
-        if (entity.building.solar) {
+        if (entity.building.activeState) {
+          // Wire field name is `solar` for legacy reasons; semantically
+          // carries the shared BuildingActiveState open flag for solar,
+          // wind, and extractor.
           const s = poolEntry.solarSub;
-          s.open = entity.building.solar.open;
+          s.open = entity.building.activeState.open;
           b.solar = s;
         }
       }

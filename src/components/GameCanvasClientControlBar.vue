@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { CLIENT_CONFIG, LOD_SIGNALS_ENABLED } from '../clientBarConfig';
-import { GOOD_TPS } from '../lodConfig';
+import { CLIENT_CONFIG } from '../clientBarConfig';
+import { GOOD_TPS } from '../telemetryConfig';
 import { snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
@@ -171,7 +171,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="PLAYER CLIENT update-loop ticks per second. This includes prediction/input/render prep cadence and is the client-side TPS signal for LOD.">R-TPS:</BarLabel>
+        <BarLabel title="PLAYER CLIENT update-loop ticks per second. This includes prediction/input/render prep cadence.">R-TPS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -385,88 +385,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>LOD:</BarLabel>
-        <BarButton
-          :active="model.graphicsQuality === 'auto' && !model.clientAnySolo"
-          :active-level="model.graphicsQuality === 'auto' && model.clientAnySolo"
-          title="Auto-adjust graphics quality from the lowest active client signal"
-          @click="model.changeGraphicsQuality('auto')"
-        >AUTO</BarButton>
-        <BarButtonGroup>
-          <BarButton
-            v-if="LOD_SIGNALS_ENABLED.zoom"
-            :active="model.graphicsQuality === 'auto' && model.clientSignalStates.zoom === 'solo'"
-            :active-level="
-              model.graphicsQuality === 'auto'
-                && model.clientSignalStates.zoom === 'active'
-                && !model.clientAnySolo
-            "
-            :title="`Zoom signal - click to cycle off / active / solo. Currently ${model.clientSignalStates.zoom}.`"
-            @click="model.cycleClientSignal('zoom')"
-          >ZOOM</BarButton>
-          <BarButton
-            v-if="LOD_SIGNALS_ENABLED.serverTps"
-            :active="model.graphicsQuality === 'auto' && model.clientSignalStates.serverTps === 'solo'"
-            :active-level="
-              model.graphicsQuality === 'auto'
-                && model.clientSignalStates.serverTps === 'active'
-                && !model.clientAnySolo
-                && model.showServerControls
-            "
-            :title="`Server TPS signal - click to cycle off / active / solo. Currently ${model.clientSignalStates.serverTps}.`"
-            @click="model.cycleClientSignal('serverTps')"
-          >S-TPS</BarButton>
-          <BarButton
-            v-if="LOD_SIGNALS_ENABLED.renderTps"
-            :active="model.graphicsQuality === 'auto' && model.clientSignalStates.renderTps === 'solo'"
-            :active-level="
-              model.graphicsQuality === 'auto'
-                && model.clientSignalStates.renderTps === 'active'
-                && !model.clientAnySolo
-            "
-            :title="`Render TPS signal - click to cycle off / active / solo. Currently ${model.clientSignalStates.renderTps}.`"
-            @click="model.cycleClientSignal('renderTps')"
-          >R-TPS</BarButton>
-          <BarButton
-            v-if="LOD_SIGNALS_ENABLED.units"
-            :active="model.graphicsQuality === 'auto' && model.clientSignalStates.units === 'solo'"
-            :active-level="
-              model.graphicsQuality === 'auto'
-                && model.clientSignalStates.units === 'active'
-                && !model.clientAnySolo
-            "
-            :title="`World fullness signal - click to cycle off / active / solo. Currently ${model.clientSignalStates.units}.`"
-            @click="model.cycleClientSignal('units')"
-          >UNITS</BarButton>
-        </BarButtonGroup>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.graphics.options"
-            :key="opt.value"
-            :active="model.graphicsQuality === opt.value"
-            :active-level="
-              model.effectiveQuality === opt.value &&
-              model.graphicsQuality !== opt.value
-            "
-            :title="`${opt.value} graphics quality`"
-            @click="model.changeGraphicsQuality(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="model.baseLodMode"
-          title="BASE - when ON, the chosen MIN/LOW/MED/HI/MAX tier applies UNIFORMLY to every entity (camera-sphere distance resolution disabled). When OFF, tiers cap a per-entity object-tier resolved from camera distance, so close units render richer than far units."
-          @click="model.toggleBaseLodMode"
-        >BASE</BarButton>
-        <BarButton
-          :active="model.lodShellRings"
-          title="Show object-LOD shell intersections on the terrain around the camera"
-          @click="model.toggleLodShellRings"
-        >RINGS</BarButton>
-        <BarButton
-          :active="model.lodGridBorders"
-          title="Show object-LOD spatial grid tiles as 2D ground-plane outlines"
-          @click="model.toggleLodGridBorders"
-        >CELLS</BarButton>
+        <BarLabel>DEBUG:</BarLabel>
         <BarButton
           :active="model.triangleDebug"
           title="TRIS - debug-color every terrain/mana mesh triangle so triangle reduction and flat-tile optimization are visually obvious"

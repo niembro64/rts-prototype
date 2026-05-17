@@ -71,9 +71,8 @@ export function resolveRenderObjectLodForDistanceSq(
   shells: RenderObjectLodShellDistances,
   forced?: RenderObjectLodTier,
 ): RenderObjectLodTier {
-  // BASE mode short-circuit: when the active GraphicsConfig pins a
-  // forced tier, every entity gets that tier regardless of distance.
-  // Callers pass `gfx.forcedObjectTier` through to here.
+  // Fixed-detail short-circuit: when the active GraphicsConfig pins a
+  // tier, every entity gets that tier regardless of distance.
   if (forced) return forced;
   if (shells.rich > 0 && distanceSq <= shells.rich * shells.rich) return 'rich';
   if (shells.simple > 0 && distanceSq <= shells.simple * shells.simple) return 'simple';

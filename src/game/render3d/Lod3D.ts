@@ -1,13 +1,13 @@
-// Lod3D — LOD state tracking for the 3D renderer.
+// Lod3D — graphics state tracking for the 3D renderer.
 //
 // The 2D renderer reads getGraphicsConfig() on the fly for every draw call.
 // The 3D renderer builds meshes once and animates transforms per frame, so
-// it needs explicit state: which LOD did we build this unit at, and does
-// that match the current global LOD? When they diverge, the entity's mesh
-// gets torn down and rebuilt at the new level.
+// it needs explicit state: which graphics shape did we build this unit at,
+// and does that match the current config? When they diverge, the entity's
+// mesh gets torn down and rebuilt at the new level.
 //
 // To avoid comparing every GraphicsConfig field, we compress the subset of
-// LOD axes that affect 3D geometry into a single string `lodKey`. Unit
+// graphics axes that affect 3D geometry into a single string `lodKey`. Unit
 // meshes store their build-time key; Render3DEntities compares it to the
 // current key each frame.
 
@@ -15,7 +15,7 @@ import type * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 
-/** Stringified LOD key covering every GraphicsConfig axis that affects 3D
+/** Stringified graphics key covering every GraphicsConfig axis that affects 3D
  *  geometry (not just runtime transforms). Two meshes share a key iff they
  *  were built against equivalent graphics settings. */
 export function lodKey(gfx: GraphicsConfig): string {
@@ -38,14 +38,14 @@ export function lodKey(gfx: GraphicsConfig): string {
     gfx.forceTurretStyle,
     gfx.paletteShading ? 'ps' : '-',
     // MED+ flag controlling animated accents that cost setup (e.g. mirror
-    // sparkles). In key so toggling the LOD tier rebuilds affected meshes.
+    // sparkles). In key so toggling the graphics tier rebuilds affected meshes.
     gfx.barrelSpin ? 'bs' : '-',
     // MAX-only intensifier (e.g. secondary mirror glint). Same reason.
     gfx.beamGlow ? 'bg' : '-',
   ].join('|');
 }
 
-/** Current LOD snapshot — read once per frame, not per draw. */
+/** Current graphics snapshot — read once per frame, not per draw. */
 export type Lod3DState = {
   gfx: GraphicsConfig;
   key: string;
@@ -63,7 +63,7 @@ export type RenderViewLodState = {
   fovYRad: number;
 };
 
-const DEFAULT_VIEW_LOD: RenderViewLodState = {
+const DEFAULT_RENDER_VIEW: RenderViewLodState = {
   viewportHeightPx: 1,
   cameraX: 0,
   cameraY: 0,
@@ -91,7 +91,7 @@ export function snapshotLod(
   viewportHeightPx: number = 1,
 ): Lod3DState {
   const gfx = getGraphicsConfig();
-  let view = DEFAULT_VIEW_LOD;
+  let view = DEFAULT_RENDER_VIEW;
   if (camera) {
     const me = camera.matrixWorld.elements;
     view = {

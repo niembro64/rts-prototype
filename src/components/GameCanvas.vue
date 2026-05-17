@@ -230,20 +230,14 @@ const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
 const {
-  graphicsQuality,
-  clientSignalStates,
-  clientAnySolo,
   renderMode,
   audioScope,
   audioSmoothing,
   burnMarks,
   locomotionMarks,
   beamSnapToTurret,
-  lodShellRings,
-  lodGridBorders,
   triangleDebug,
   buildGridDebug,
-  baseLodMode,
   driftMode,
   predictionMode,
   clientTiltEmaMode,
@@ -267,8 +261,6 @@ const {
   SOUND_LABELS,
   SOUND_TOOLTIPS,
   resetClientDefaults,
-  changeGraphicsQuality,
-  cycleClientSignal,
   changeRenderMode,
   changeAudioScope,
   toggleRange,
@@ -284,11 +276,8 @@ const {
   toggleBurnMarks,
   toggleLocomotionMarks,
   toggleBeamSnapToTurret,
-  toggleLodShellRings,
-  toggleLodGridBorders,
   toggleTriangleDebug,
   toggleBuildGridDebug,
-  toggleBaseLodMode,
   changeDriftMode,
   changePredictionMode,
   changeClientTiltEmaMode,
@@ -384,7 +373,6 @@ const displayServerTpsWorst = computed(
 const {
   currentZoom,
   displayGpuMs,
-  effectiveQuality,
   frameMsAvg,
   frameMsHi,
   fullSnapAvgRate,
@@ -403,10 +391,6 @@ const {
   snapWorstRate,
 } = useGameCanvasTelemetry({
   getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? foregroundGame.getScene(),
-  displayServerTpsAvg,
-  displayServerTpsWorst,
-  serverMetaFromSnapshot,
-  showServerControls,
 });
 const displayServerCpuAvg = computed(
   () => serverMetaFromSnapshot.value?.cpu?.avg ?? 0,
@@ -704,8 +688,8 @@ watchEffect(() => {
 
 // Same reactive() pattern as battleControlBarModel: stable proxy
 // identity so per-field changes only trigger renders of bindings that
-// actually read the changed field. See the battle bar comment above
-// for the why.
+  // actually read the changed field. See the battle bar comment above
+  // for the why.
 const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
@@ -744,9 +728,8 @@ watchEffect(() => {
 });
 
 // Same reactive() pattern as the other two bar models. This one is
-// the biggest (~60 fields) so the parent + child re-render savings
-// scale the most here in a fully-instrumented client (LOD signals,
-// sound/range/radius toggles all push fields per tick).
+// the biggest bar model, so the parent + child re-render savings
+// scale across sound/range/radius toggles and live telemetry.
 const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   barStyle: clientBarVars.value,
   playerClientEnabled: playerClientEnabled.value,
@@ -784,14 +767,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   allPanActive: allPanActive.value,
   dragPanEnabled: dragPanEnabled.value,
   edgeScrollEnabled: edgeScrollEnabled.value,
-  graphicsQuality: graphicsQuality.value,
-  effectiveQuality: effectiveQuality.value,
-  clientAnySolo: clientAnySolo.value,
-  clientSignalStates: clientSignalStates.value,
   showServerControls: showServerControls.value,
-  baseLodMode: baseLodMode.value,
-  lodShellRings: lodShellRings.value,
-  lodGridBorders: lodGridBorders.value,
   triangleDebug: triangleDebug.value,
   buildGridDebug: buildGridDebug.value,
   renderMode: renderMode.value,
@@ -824,11 +800,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleAllPan,
   toggleDragPan,
   toggleEdgeScroll,
-  changeGraphicsQuality,
-  cycleClientSignal,
-  toggleBaseLodMode,
-  toggleLodShellRings,
-  toggleLodGridBorders,
   toggleTriangleDebug,
   toggleBuildGridDebug,
   changeRenderMode,
@@ -885,14 +856,7 @@ watchEffect(() => {
   m.allPanActive = allPanActive.value;
   m.dragPanEnabled = dragPanEnabled.value;
   m.edgeScrollEnabled = edgeScrollEnabled.value;
-  m.graphicsQuality = graphicsQuality.value;
-  m.effectiveQuality = effectiveQuality.value;
-  m.clientAnySolo = clientAnySolo.value;
-  m.clientSignalStates = clientSignalStates.value;
   m.showServerControls = showServerControls.value;
-  m.baseLodMode = baseLodMode.value;
-  m.lodShellRings = lodShellRings.value;
-  m.lodGridBorders = lodGridBorders.value;
   m.triangleDebug = triangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
   m.renderMode = renderMode.value;

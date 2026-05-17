@@ -10,15 +10,13 @@ type BarButtonSize = 'small' | 'large';
 
 const props = withDefaults(defineProps<{
   /** ACTIVE state — bg + border fully colored, white text.
-   *  The "this is THE selected option" highlight (single-pick
-   *  groups, solo LOD signals). Mutually exclusive with
+   *  The "this is THE selected option" highlight. Mutually exclusive with
    *  `activeLevel` in normal use; if both are passed, `active`
    *  wins because its CSS rules have higher specificity. */
   active?: boolean;
   /** ACTIVE-LEVEL state — text-only white highlight, bg + border
-   *  match the muted OFF state. Used for the middle tier of
-   *  tri-state controls (e.g. LOD signals in ACTIVE-but-not-SOLO
-   *  mode) where the indicator should read as "engaged" without
+   *  match the muted OFF state. Used for secondary active states
+   *  where the indicator should read as "engaged" without
    *  competing visually with the SOLO highlight. */
   activeLevel?: boolean;
   /** Disabled state — non-clickable + visually muted. */

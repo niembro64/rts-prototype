@@ -60,6 +60,7 @@ import { MirrorPose3D } from './MirrorPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
+import type { SmokePuffEmitter } from './SmokeTrail3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -131,6 +132,7 @@ export class Render3DEntities {
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
   private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
+  private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
 
   private barrelSpinState = new UnitBarrelSpinState3D();
   private mirrorPose = new MirrorPose3D();
@@ -327,11 +329,9 @@ export class Render3DEntities {
     sharedLodGrid?: RenderLodGrid,
     featureFlags?: { mirrorsEnabled?: boolean },
   ): void {
-    // Refresh LOD snapshot once per frame. Unit meshes compare their
-    // own effective object-tier key inside updateUnitMeshes(), so global
-    // LOD changes no longer tear down every unit at once. That avoids a
-    // large hitch when the user changes PLAYER CLIENT LOD or the camera
-    // sphere config while thousands of units are alive.
+    // Refresh the render-detail snapshot once per frame. Unit meshes compare
+    // their own effective object-tier key inside updateUnitMeshes(), so a
+    // camera sphere config change does not tear down every unit at once.
     const newLod = lodOverride ?? snapshotLod(this.camera, this.getViewportHeight());
     this.lod = newLod;
     this.objectLodGrid = sharedLodGrid ?? this.ownedObjectLodGrid;
@@ -410,6 +410,7 @@ export class Render3DEntities {
       }
     }
     if (entity.combat?.hasActiveCombat) return true;
+    if (unit?.locomotion.type === 'hover') return true;
     const cachedX = mesh.unitDetailCachedX;
     if (
       cachedX === undefined ||
@@ -469,6 +470,7 @@ export class Render3DEntities {
   }
 
   private updateUnits(): void {
+    this.hoverSmokeEmitters.length = 0;
     const unitRenderMode = this.lod.gfx.unitRenderMode;
 
     if (unitRenderMode === 'mass') {
@@ -790,6 +792,7 @@ export class Render3DEntities {
           this.clientViewState.getMapWidth(),
           this.clientViewState.getMapHeight(),
           this.legRenderer,
+          this.hoverSmokeEmitters,
         );
       }
       this.markRichUnitDetailsUpdated(e, m);
@@ -838,6 +841,10 @@ export class Render3DEntities {
 
   getFactorySprayTargets(): readonly SprayTarget[] {
     return this.constructionVisuals.getFactorySprayTargets();
+  }
+
+  getHoverSmokeEmitters(): readonly SmokePuffEmitter[] {
+    return this.hoverSmokeEmitters;
   }
 
   getTurretMountWorldState(entityId: EntityId, turretIdx: number): TurretMountEntry | null {

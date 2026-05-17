@@ -1,5 +1,5 @@
 // Locomotion3D — thin dispatcher over the per-locomotion-type rig
-// modules (LegRig3D, TreadRig3D, WheelRig3D). Each rig owns its build,
+// modules (LegRig3D, TreadRig3D, WheelRig3D, HoverRig3D). Each rig owns its build,
 // update, and (for legs) state-snapshot logic. This file only:
 //   - exposes the discriminated `Locomotion3DMesh` union,
 //   - dispatches to the correct rig at build / update / destroy time,
@@ -39,8 +39,14 @@ import {
   buildWheels,
   updateWheels,
 } from './WheelRig3D';
+import {
+  type HoverMesh,
+  buildHoverFans,
+  updateHoverFans,
+} from './HoverRig3D';
+import type { SmokePuffEmitter } from './SmokeTrail3D';
 
-export type Locomotion3DMesh = TreadMesh | WheelMesh | LegMesh | undefined;
+export type Locomotion3DMesh = TreadMesh | WheelMesh | LegMesh | HoverMesh | undefined;
 
 export type { LegStateSnapshot };
 export { TREAD_HEIGHT };
@@ -123,6 +129,11 @@ export function buildLocomotion(
       if (mesh) mesh.lodKey = lodKey;
       return mesh;
     }
+    case 'hover': {
+      const mesh = buildHoverFans(unitGroup, unitRadius, loc.config, entity.id);
+      mesh.lodKey = lodKey;
+      return mesh;
+    }
   }
 }
 
@@ -135,6 +146,7 @@ export function updateLocomotion(
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
+  hoverSmokeEmitters?: SmokePuffEmitter[],
 ): void {
   if (!mesh) return;
   switch (mesh.type) {
@@ -146,6 +158,9 @@ export function updateLocomotion(
       return;
     case 'legs':
       updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
+      return;
+    case 'hover':
+      updateHoverFans(mesh, entity, dtMs, hoverSmokeEmitters);
       return;
   }
 }

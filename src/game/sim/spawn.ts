@@ -3,6 +3,7 @@ import type { Entity, PlayerId, BuildingType } from './types';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
+import { setUnitFacingYaw } from './unitOrientation';
 import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
@@ -14,7 +15,12 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
 import { isWaterAt } from './Terrain';
-import { ensureSolarCollectorState, startSolarCollectorClosed } from './solarCollector';
+import {
+  activateBuildingActiveState,
+  buildingTypeHasActiveState,
+  ensureBuildingActiveState,
+  startBuildingActiveStateClosed,
+} from './buildingActiveState';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import {
   getLayoutPlayerCount,
@@ -76,7 +82,7 @@ function spawnCommander(
   facingAngle: number
 ): Entity {
   const commander = world.createUnitFromBlueprint(x, y, playerId, 'commander');
-  commander.transform.rotation = facingAngle;
+  setUnitFacingYaw(commander, facingAngle);
   aimTurretsToward(commander, world.mapWidth / 2, world.mapHeight / 2);
   world.addEntity(commander);
   return commander;
@@ -207,8 +213,8 @@ function placeCompleteBuilding(
 
   entity.buildingType = buildingType;
   applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
-  if (buildingType === 'solar') {
-    ensureSolarCollectorState(entity);
+  if (buildingTypeHasActiveState(buildingType)) {
+    ensureBuildingActiveState(entity);
   }
 
   if (entity.building) {
@@ -246,7 +252,9 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'solar' && config.energyProduction) {
-    startSolarCollectorClosed(world, entity);
+    startBuildingActiveStateClosed(world, entity);
+  } else if (buildingTypeHasActiveState(buildingType)) {
+    activateBuildingActiveState(world, entity);
   }
 
   // Buildings whose blueprint declares turrets get a CombatComponent

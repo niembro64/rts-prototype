@@ -15,6 +15,23 @@ import {
 
 const extractorPyramidGeom = createHexFrustumGeometry();
 
+/** Hexagonal frustum proportions (top/bottom radii) hard-coded in
+ *  createHexFrustumGeometry. We re-derive the closed-pose blade slope
+ *  from the same constants so it stays in lockstep with the pyramid art. */
+const PYRAMID_TOP_RADIUS_FRACTION = 0.17;
+const PYRAMID_BOTTOM_RADIUS_FRACTION = 0.5;
+
+/** Per-blade open/closed transform pair. The animator stores the current
+ *  blend factor (0 = open, 1 = closed) and slerps between these on each
+ *  frame. Closed pose pivots each blade down to lie flat against the
+ *  matching pyramid face so the six blades together "cover" the building. */
+export type ExtractorBladeAnim = {
+  openPos: THREE.Vector3;
+  closedPos: THREE.Vector3;
+  openQuat: THREE.Quaternion;
+  closedQuat: THREE.Quaternion;
+};
+
 /** Per-LOD rotor meshes for the extractor. The detail system gates
  *  visibility by tier so only ONE rotor is on-screen at a time, but
  *  the animator advances the same yaw on every entry — flipping LOD
@@ -75,6 +92,7 @@ export function buildMetalExtractorMesh(
   const simpleRotor = makeExtractorRotor(
     bladeLen, bladeWidth, bladeThickness,
     6, rotorY, Math.PI / 6, bladeRootRadius, 0.5,
+    width, depth, pyramidHeight,
   );
   details.push(detail(simpleRotor, 'min', undefined, 'extractorRotor'));
 
@@ -98,6 +116,9 @@ function makeExtractorRotor(
   angleOffset: number,
   bladeRootRadius: number,
   bladeLengthScale: number = 1,
+  buildingWidth: number,
+  buildingDepth: number,
+  pyramidHeight: number,
 ): THREE.Mesh {
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
@@ -109,6 +130,18 @@ function makeExtractorRotor(
   const horizontalSpan = fullHorizontalSpan * bladeLengthScale;
   const verticalDrop = fullVerticalDrop * bladeLengthScale;
   const bladeAxisLength = Math.hypot(horizontalSpan, verticalDrop);
+
+  // Closed-pose geometry: the blade lies flat against the matching
+  // pyramid face, hinged at the rotor center. The pyramid face is a
+  // trapezoid running from a top hexagon (radius ≈ TOP_FRAC × half-width)
+  // down to a bottom hexagon (radius ≈ BOTTOM_FRAC × half-width). We
+  // place the closed blade tip at the bottom-edge midpoint and orient
+  // it along the face slope so its width naturally lies across the face.
+  const halfMinDim = Math.min(buildingWidth, buildingDepth) * 0.5;
+  const pyramidTopRadius = PYRAMID_TOP_RADIUS_FRACTION * halfMinDim;
+  const pyramidBottomRadius = PYRAMID_BOTTOM_RADIUS_FRACTION * halfMinDim;
+  const pyramidSlopeRise = pyramidHeight;
+  const pyramidSlopeRun = pyramidBottomRadius - pyramidTopRadius;
 
   for (let i = 0; i < bladeCount; i++) {
     const angle = angleOffset + (i / bladeCount) * Math.PI * 2;
@@ -135,6 +168,65 @@ function makeExtractorRotor(
       centerZ,
     );
     applyBasis(blade, bladeDir, normalDir, tangentDir);
+
+    // Cache the OPEN transform straight off the live mesh — applyBasis
+    // has just written it, so a copy is the cheapest way to snapshot
+    // both rotation and the offset center we picked above.
+    const openPos = blade.position.clone();
+    const openQuat = blade.quaternion.clone();
+
+    // Closed pose: blade tip rides the pyramid-face midline. The blade
+    // axis runs from the rotor center (which sits a little above the
+    // pyramid top) down to the face midpoint at half-pyramid-height.
+    // The closed bladeDir points along that line; the closed blade
+    // center sits at the line's midpoint.
+    const faceTopX = radialDir.x * pyramidTopRadius;
+    const faceTopZ = radialDir.z * pyramidTopRadius;
+    const faceTopY = pyramidHeight;
+    const faceBottomX = radialDir.x * pyramidBottomRadius;
+    const faceBottomZ = radialDir.z * pyramidBottomRadius;
+    const faceBottomY = 0;
+    // Rotor sits at (0, y, 0) in building frame. The blade's local
+    // coords are relative to the rotor.
+    const closedTopX = faceTopX;
+    const closedTopY = faceTopY - y;
+    const closedTopZ = faceTopZ;
+    const closedBottomX = faceBottomX;
+    const closedBottomY = faceBottomY - y;
+    const closedBottomZ = faceBottomZ;
+    const closedCenter = new THREE.Vector3(
+      (closedTopX + closedBottomX) * 0.5,
+      (closedTopY + closedBottomY) * 0.5,
+      (closedTopZ + closedBottomZ) * 0.5,
+    );
+    const closedBladeDir = new THREE.Vector3(
+      closedBottomX - closedTopX,
+      closedBottomY - closedTopY,
+      closedBottomZ - closedTopZ,
+    ).normalize();
+    // Normal points outward from the pyramid face — for a frustum that's
+    // (radial out, +Y up) tilted by the face slope.
+    const closedNormalDir = new THREE.Vector3(
+      radialDir.x * pyramidSlopeRise,
+      pyramidSlopeRun,
+      radialDir.z * pyramidSlopeRise,
+    ).normalize();
+    const closedTangentDir = new THREE.Vector3()
+      .crossVectors(closedNormalDir, closedBladeDir)
+      .normalize();
+    const closedBasis = new THREE.Matrix4().makeBasis(
+      closedBladeDir, closedNormalDir, closedTangentDir,
+    );
+    const closedQuat = new THREE.Quaternion().setFromRotationMatrix(closedBasis);
+
+    const anim: ExtractorBladeAnim = {
+      openPos,
+      closedPos: closedCenter,
+      openQuat,
+      closedQuat,
+    };
+    blade.userData.extractorBlade = anim;
+
     rotor.add(blade);
   }
 

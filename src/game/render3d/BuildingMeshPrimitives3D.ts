@@ -27,7 +27,14 @@ export const windGlassMat = new THREE.MeshStandardMaterial({
   metalness: 1.0,
   roughness: 0.04,
 });
-export const extractorBladeMat = new THREE.MeshStandardMaterial(SHINY_GRAY_METAL_MATERIAL);
+/** Spinning blades on the metal extractor. Tinted with the metal-resource
+ *  color so the building reads as "metal" at a glance — it used to share
+ *  SHINY_GRAY_METAL_MATERIAL with structural trim, which made the extractor
+ *  visually indistinguishable from the wind turbine's nacelle. */
+export const extractorBladeMat = new THREE.MeshStandardMaterial({
+  ...SHINY_GRAY_METAL_MATERIAL,
+  color: BUILDING_PALETTE.metalResource,
+});
 export const invisibleMat = new THREE.MeshBasicMaterial({
   color: 0x000000,
   transparent: true,

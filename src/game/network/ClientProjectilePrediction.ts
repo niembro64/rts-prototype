@@ -15,7 +15,7 @@ import {
   type KinematicVec3,
 } from '../math';
 import { halfLifeBlend, type DriftPreset } from './driftEma';
-import type { PredictionStep } from './ClientPredictionLod';
+import type { PredictionStep } from './ClientPredictionCadence';
 
 type ProjectilePredictionTarget = {
   x: number;

@@ -81,9 +81,8 @@ export type CylinderShapeSpec = {
 /** Per-shot smoke-trail tunables. Every field is optional; the
  *  3D renderer fills in engine-wide defaults for anything omitted. */
 export type SmokeTrailSpec = {
-  /** Render frames to skip between puff spawns for this shot at the
-   *  highest-quality cadence. The active PLAYER CLIENT LOD can only
-   *  increase this skip count. Default: 0 (sample every render frame at MAX). */
+  /** Render frames to skip between puff spawns for this shot.
+   *  Default: 0 (sample every render frame). */
   emitFramesSkip?: number;
   /** Per-puff lifespan in ms at max LOD. Default: 1400. */
   lifespanMs?: number;

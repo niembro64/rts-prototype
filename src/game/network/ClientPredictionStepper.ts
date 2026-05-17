@@ -2,10 +2,7 @@ import { getDriftMode, getPredictionMode } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
 import { lerp } from '../math';
 import { getDriftPreset, halfLifeBlend, type DriftPreset } from './driftEma';
-import {
-  ClientPredictionLod,
-  type PredictionLodContext,
-} from './ClientPredictionLod';
+import { ClientPredictionCadence } from './ClientPredictionCadence';
 import {
   applyClientCombatExpensivePrediction,
   applyClientUnitVisualPrediction,
@@ -28,7 +25,7 @@ type ClientPredictionStepperOptions = {
   serverTargets: Map<EntityId, ServerTarget>;
   beamPathTargets: Map<EntityId, BeamPathTarget>;
   projectileSpawns: ProjectileSpawnQueue;
-  predictionLod: ClientPredictionLod;
+  predictionCadence: ClientPredictionCadence;
   rocketTargetFinder: ClientRocketTargetFinder;
   activeEntityPredictionIds: Set<EntityId>;
   activeProjectilePredictionIds: Set<EntityId>;
@@ -182,13 +179,13 @@ export class ClientPredictionStepper {
     this.frameCounter = 0;
   }
 
-  apply(deltaMs: number, lod?: PredictionLodContext): void {
+  apply(deltaMs: number): void {
     const {
       entities,
       serverTargets,
       beamPathTargets,
       projectileSpawns,
-      predictionLod,
+      predictionCadence,
       rocketTargetFinder,
       activeEntityPredictionIds,
       activeProjectilePredictionIds,
@@ -242,7 +239,7 @@ export class ClientPredictionStepper {
       const entity = entities.get(id);
       if (!entity?.unit && !entity?.combat) {
         activeEntityPredictionIds.delete(id);
-        predictionLod.clear(id);
+        predictionCadence.clear(id);
         continue;
       }
 
@@ -259,12 +256,8 @@ export class ClientPredictionStepper {
         dirtyUnitRenderIds.add(id);
       }
       if (entity.combat && entity.combat.turrets.length > 0) {
-        const predictionStride = predictionLod.frameStride(
-          entity,
-          lod,
-          (sourceId) => entities.get(sourceId)?.selectable?.selected === true,
-        );
-        const predictionStep = predictionLod.consumeDelta(
+        const predictionStride = predictionCadence.frameStride();
+        const predictionStep = predictionCadence.consumeDelta(
           entity.id,
           this.frameCounter,
           deltaMs,
@@ -283,7 +276,7 @@ export class ClientPredictionStepper {
 
       if (clientUnitPredictionIsSettled(entity, target, forceFieldsEnabled)) {
         activeEntityPredictionIds.delete(id);
-        predictionLod.clear(id);
+        predictionCadence.clear(id);
       }
     }
 
@@ -295,12 +288,8 @@ export class ClientPredictionStepper {
       }
 
       const target = serverTargets.get(id);
-      const predictionStride = predictionLod.frameStride(
-        entity,
-        lod,
-        (sourceId) => entities.get(sourceId)?.selectable?.selected === true,
-      );
-      const predictionStep = predictionLod.consumeDelta(
+      const predictionStride = predictionCadence.frameStride();
+      const predictionStep = predictionCadence.consumeDelta(
         entity.id,
         this.frameCounter,
         deltaMs,

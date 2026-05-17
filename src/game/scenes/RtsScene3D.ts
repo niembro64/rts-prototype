@@ -692,7 +692,7 @@ export class RtsScene3D {
   update(_time: number, delta: number): void {
     const frameStart = performance.now();
 
-    // PLAYER CLIENT scene/update loop cadence used by the client LOD resolver.
+    // PLAYER CLIENT scene/update loop cadence used by telemetry.
     if (delta > 0) {
       const rate = 1000 / delta;
       this.renderTpsTracker.update(rate);

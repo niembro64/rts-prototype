@@ -10,6 +10,16 @@
 export type Quat = { x: number; y: number; z: number; w: number };
 export type AngularVec3 = { x: number; y: number; z: number };
 
+/** Set a yaw-only world +Z orientation. Used by spawn/direct-facing
+ *  paths so hover units' quaternion pose agrees with transform.rotation. */
+export function setQuatFromYaw(q: Quat, yaw: number): void {
+  const half = yaw * 0.5;
+  q.x = 0;
+  q.y = 0;
+  q.z = Math.sin(half);
+  q.w = Math.cos(half);
+}
+
 /** Yaw extraction (rotation about world +Z) from a unit quaternion.
  *  Used per-tick by UnitForceSystem to read the current heading
  *  before computing target yaw — cheap enough to keep JS-side.

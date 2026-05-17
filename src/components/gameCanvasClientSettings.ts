@@ -1,15 +1,12 @@
 import { computed, reactive, ref } from 'vue';
 import {
   CLIENT_CONFIG,
-  LOD_SIGNALS_ENABLED,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
   SOUND_CATEGORIES,
-  cycleLodSignalState,
   getAudioScope,
   getAudioSmoothing,
-  getBaseLodMode,
   getBeamSnapToTurret,
   getBuildGridDebug,
   getCameraFovDegrees,
@@ -19,14 +16,10 @@ import {
   getDriftMode,
   getPredictionMode,
   getEdgeScrollEnabled,
-  getGraphicsQuality,
   getBurnMarks,
   getGridOverlay,
   getLegsRadiusToggle,
   getLocomotionMarks,
-  getLodGridBorders,
-  getLodShellRings,
-  getLodSignalStates,
   getProjRangeToggle,
   getRangeToggle,
   getRenderMode,
@@ -34,10 +27,8 @@ import {
   getTriangleDebug,
   getUnitRadiusToggle,
   getWaypointDetail,
-  resetLodSignalStates,
   setAudioScope,
   setAudioSmoothing,
-  setBaseLodMode,
   setBeamSnapToTurret,
   setBuildGridDebug,
   setCameraFovDegrees,
@@ -47,13 +38,10 @@ import {
   setDriftMode,
   setPredictionMode,
   setEdgeScrollEnabled,
-  setGraphicsQuality,
   setBurnMarks,
   setGridOverlay,
   setLegsRadiusToggle,
   setLocomotionMarks,
-  setLodGridBorders,
-  setLodShellRings,
   setProjRangeToggle,
   setRangeToggle,
   setRenderMode,
@@ -77,7 +65,7 @@ import type {
   UnitRadiusType,
   WaypointDetail,
 } from '../types/client';
-import type { GraphicsQuality, RenderMode } from '../types/graphics';
+import type { RenderMode } from '../types/graphics';
 
 type UseGameCanvasClientSettingsOptions = {
   applyCameraFovDegrees: (fov: CameraFovDegrees) => void;
@@ -86,25 +74,14 @@ type UseGameCanvasClientSettingsOptions = {
 export function useGameCanvasClientSettings({
   applyCameraFovDegrees,
 }: UseGameCanvasClientSettingsOptions) {
-  const graphicsQuality = ref<GraphicsQuality>(getGraphicsQuality());
-  const clientSignalStates = ref({ ...getLodSignalStates() });
-  const clientAnySolo = computed(() =>
-    (LOD_SIGNALS_ENABLED.zoom && clientSignalStates.value.zoom === 'solo') ||
-    (LOD_SIGNALS_ENABLED.serverTps && clientSignalStates.value.serverTps === 'solo') ||
-    (LOD_SIGNALS_ENABLED.renderTps && clientSignalStates.value.renderTps === 'solo') ||
-    (LOD_SIGNALS_ENABLED.units && clientSignalStates.value.units === 'solo'),
-  );
   const renderMode = ref<RenderMode>(getRenderMode());
   const audioScope = ref<AudioScope>(getAudioScope());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
-  const lodShellRings = ref<boolean>(getLodShellRings());
-  const lodGridBorders = ref<boolean>(getLodGridBorders());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
-  const baseLodMode = ref<boolean>(getBaseLodMode());
   const driftMode = ref<DriftMode>(getDriftMode());
   const predictionMode = ref<PredictionMode>(getPredictionMode());
   const clientTiltEmaMode = ref<DriftMode>(getClientTiltEmaMode());
@@ -149,16 +126,6 @@ export function useGameCanvasClientSettings({
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
-
-  function changeGraphicsQuality(quality: GraphicsQuality): void {
-    setGraphicsQuality(quality);
-    graphicsQuality.value = quality;
-  }
-
-  function cycleClientSignal(signal: 'zoom' | 'serverTps' | 'renderTps' | 'units'): void {
-    cycleLodSignalState(signal);
-    clientSignalStates.value = { ...getLodSignalStates() };
-  }
 
   function changeRenderMode(mode: RenderMode): void {
     setRenderMode(mode);
@@ -264,18 +231,6 @@ export function useGameCanvasClientSettings({
     beamSnapToTurret.value = newValue;
   }
 
-  function toggleLodShellRings(): void {
-    const newValue = !lodShellRings.value;
-    setLodShellRings(newValue);
-    lodShellRings.value = newValue;
-  }
-
-  function toggleLodGridBorders(): void {
-    const newValue = !lodGridBorders.value;
-    setLodGridBorders(newValue);
-    lodGridBorders.value = newValue;
-  }
-
   function toggleTriangleDebug(): void {
     const newValue = !triangleDebug.value;
     setTriangleDebug(newValue);
@@ -286,12 +241,6 @@ export function useGameCanvasClientSettings({
     const newValue = !buildGridDebug.value;
     setBuildGridDebug(newValue);
     buildGridDebug.value = newValue;
-  }
-
-  function toggleBaseLodMode(): void {
-    const newValue = !baseLodMode.value;
-    setBaseLodMode(newValue);
-    baseLodMode.value = newValue;
   }
 
   function changeDriftMode(mode: DriftMode): void {
@@ -371,7 +320,6 @@ export function useGameCanvasClientSettings({
 
   function resetClientDefaults(): void {
     const cd = CLIENT_CONFIG;
-    changeGraphicsQuality(cd.graphics.default);
     changeRenderMode(cd.render.default);
     changeAudioScope(cd.audio.default);
     setAudioSmoothing(cd.audioSmoothing.default);
@@ -382,16 +330,10 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = cd.locomotionMarks.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
-    setLodShellRings(cd.lodShellRings.default);
-    lodShellRings.value = cd.lodShellRings.default;
-    setLodGridBorders(cd.lodGridBorders.default);
-    lodGridBorders.value = cd.lodGridBorders.default;
     setTriangleDebug(cd.triangleDebug.default);
     triangleDebug.value = cd.triangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
     buildGridDebug.value = cd.buildGridDebug.default;
-    setBaseLodMode(cd.baseLodMode.default);
-    baseLodMode.value = cd.baseLodMode.default;
     setDriftMode(cd.driftMode.default);
     driftMode.value = cd.driftMode.default;
     setPredictionMode(cd.predictionMode.default);
@@ -425,8 +367,6 @@ export function useGameCanvasClientSettings({
     if (legsRadiusToggle.value !== cd.legsRadius.default) toggleLegsRadius();
     setCameraMode(cd.cameraSmooth.default);
     changeCameraFovDegrees(cd.cameraFov.default);
-    resetLodSignalStates();
-    clientSignalStates.value = { ...getLodSignalStates() };
   }
 
   const SOUND_LABELS: Record<SoundCategory, string> = {
@@ -448,20 +388,14 @@ export function useGameCanvasClientSettings({
   };
 
   return {
-    graphicsQuality,
-    clientSignalStates,
-    clientAnySolo,
     renderMode,
     audioScope,
     audioSmoothing,
     burnMarks,
     locomotionMarks,
     beamSnapToTurret,
-    lodShellRings,
-    lodGridBorders,
     triangleDebug,
     buildGridDebug,
-    baseLodMode,
     driftMode,
     predictionMode,
     clientTiltEmaMode,
@@ -485,8 +419,6 @@ export function useGameCanvasClientSettings({
     SOUND_LABELS,
     SOUND_TOOLTIPS,
     resetClientDefaults,
-    changeGraphicsQuality,
-    cycleClientSignal,
     changeRenderMode,
     changeAudioScope,
     toggleRange,
@@ -502,11 +434,8 @@ export function useGameCanvasClientSettings({
     toggleBurnMarks,
     toggleLocomotionMarks,
     toggleBeamSnapToTurret,
-    toggleLodShellRings,
-    toggleLodGridBorders,
     toggleTriangleDebug,
     toggleBuildGridDebug,
-    toggleBaseLodMode,
     changeDriftMode,
     changePredictionMode,
     changeClientTiltEmaMode,

@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import {
   getGridOverlay,
   getGridOverlayIntensity,
-  getLodGridBorders,
-  getLodShellRings,
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
@@ -174,13 +172,13 @@ export class RtsScene3DRenderPhase {
         { tier: 'mass', distance: lodShells.mass },
         { tier: 'impostor', distance: lodShells.impostor },
       ],
-      getLodShellRings(),
+      false,
     );
     const gridMode = getGridOverlay();
     const gridOverlayIntensity = gridMode !== 'off' ? getGridOverlayIntensity() : 0;
     lodGridCells2D?.update(
       graphicsConfig.objectLodCellSize,
-      getLodGridBorders(),
+      false,
       gridMode !== 'off',
       gridOverlayIntensity,
     );
@@ -313,6 +311,7 @@ export class RtsScene3DRenderPhase {
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
         this.renderScope,
+        entityRenderer.getHoverSmokeEmitters(),
       );
       this.smokeTrailAccumMs = 0;
     }

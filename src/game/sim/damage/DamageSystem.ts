@@ -27,10 +27,11 @@ import {
 } from '../combat/lineShotRange';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
-  SOLAR_CLOSED_DAMAGE_MULTIPLIER,
-  isSolarCollectorDamageReduced,
-  notifySolarCollectorDamaged,
-} from '../solarCollector';
+  BUILDING_CLOSED_DAMAGE_MULTIPLIER,
+  buildingTypeHasActiveState,
+  isBuildingActiveStateFortified,
+  notifyBuildingActiveStateDamaged,
+} from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
 
 
@@ -1085,11 +1086,11 @@ export class DamageSystem {
         }
       }
     } else if (entity.building && entity.building.hp > 0) {
-      const effectiveDamage = isSolarCollectorDamageReduced(entity)
-        ? damage * SOLAR_CLOSED_DAMAGE_MULTIPLIER
+      const effectiveDamage = isBuildingActiveStateFortified(entity)
+        ? damage * BUILDING_CLOSED_DAMAGE_MULTIPLIER
         : damage;
-      if (entity.buildingType === 'solar') {
-        notifySolarCollectorDamaged(this.world, entity);
+      if (buildingTypeHasActiveState(entity.buildingType)) {
+        notifyBuildingActiveStateDamaged(this.world, entity);
       }
       entity.building.hp -= effectiveDamage;
       this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);

@@ -497,6 +497,19 @@ export class WorldState {
     return this.cache.getSolarBuildings();
   }
 
+  // Get metal extractor buildings (cached - DO NOT MODIFY returned array)
+  getExtractorBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getExtractorBuildings();
+  }
+
+  // Get every building that uses the shared BuildingActiveState fortify
+  // mechanic — solar + wind + extractor.
+  getActiveStateBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getActiveStateBuildings();
+  }
+
   // Get fabricator/factory buildings (cached - DO NOT MODIFY returned array)
   getFactoryBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
@@ -675,11 +688,18 @@ export class WorldState {
   ): Entity {
     const id = this.generateEntityId();
 
-    // Initial altitude = local terrain + authored body-center height
-    // plus the shared spawn lift. The lift is measured at the
-    // locomotion ground point, so gravity/terrain spring settle every
-    // newly-created unit through the same physics path.
+    // Initial altitude = local terrain + the unit's stable spawn
+    // center height. Ground units start just above their authored
+    // body-center height so gravity/terrain spring settle them through
+    // the same physics path. Hover units start at their authored
+    // equilibrium hover height; dropping them at ground height makes
+    // the inverse-distance lift kick violently on the first tick.
     const groundZ = this.getGroundZ(x, y);
+    const spawnCenterHeight = locomotion.type === 'hover' &&
+      locomotion.hoverHeight !== undefined &&
+      Number.isFinite(locomotion.hoverHeight)
+      ? locomotion.hoverHeight
+      : bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
     // Seed the per-unit smoothed normal with the raw normal at the
     // spawn position so the first tick after spawn doesn't snap from
     // the flat default to a tilted slope. The cache lookup also seeds
@@ -691,7 +711,7 @@ export class WorldState {
       transform: {
         x,
         y,
-        z: groundZ + bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+        z: groundZ + spawnCenterHeight,
         rotation: 0,
       },
       selectable: { selected: false },

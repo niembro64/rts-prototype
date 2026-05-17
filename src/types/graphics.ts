@@ -1,11 +1,4 @@
-// AUTO is the meta-mode; specific signals are toggled per-signal via
-// their tri-state ('off' | 'active' | 'solo'). The legacy
-// 'auto-zoom' / 'auto-tps' / 'auto-fps' / 'auto-units' values were
-// effectively single-signal SOLO modes; they're folded into the
-// signal-state model now and migrated at load time.
-export type AutoGraphicsQuality = 'auto';
 export type ConcreteGraphicsQuality = 'min' | 'low' | 'medium' | 'high' | 'max';
-export type GraphicsQuality = AutoGraphicsQuality | ConcreteGraphicsQuality;
 export type RenderMode = 'window' | 'padded' | 'all';
 
 export type BeamStyle = 'simple' | 'standard' | 'detailed' | 'complex';
@@ -39,7 +32,7 @@ export type CameraSphereRadii = {
   impostor: number;
 };
 
-/** Per-entity render LOD bands the LOD resolver may select. Lives in
+/** Per-entity render detail bands the renderer may select. Lives in
  *  this types module (not under render3d/) so that GraphicsConfig can
  *  reference it without a render-into-types layering inversion.
  *  RenderObjectLod.ts re-exports this name unchanged. */
@@ -59,18 +52,14 @@ export type GraphicsConfig = {
   tier: ConcreteGraphicsQuality;
   unitRenderMode: UnitRenderMode;
   cameraSphereRadii: CameraSphereRadii;
-  /** PLAYER CLIENT "BASE" mode override. When set, every entity / cell
-   *  renders at this single tier — the per-frame LOD resolver returns
-   *  it directly instead of consulting cameraSphereRadii distances. The
-   *  shell radii in this config are all zero in that case so that any
-   *  callsite that still walks the shells (e.g. ground debug rings)
-   *  draws nothing rather than stale-but-active bands. Undefined =
-   *  classic camera-sphere-resolved behaviour. */
+  /** Fixed object-detail override. When set, every entity / cell renders
+   *  at this single tier instead of consulting cameraSphereRadii distances.
+   *  The player client pins this to rich and leaves the shell radii at zero,
+   *  so distance, load, and persisted settings cannot reduce detail. */
   forcedObjectTier?: RenderObjectLodTier;
   objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;
-  clientPhysicsPredictionFramesSkip: number;
   captureTileFrameStride: number;
   captureTileSideWalls: boolean;
   waterSubdivisions: number;

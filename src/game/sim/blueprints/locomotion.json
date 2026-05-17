@@ -367,7 +367,12 @@
       "jump": null
     },
     "config": {
-      "hoverHeight": 120
+      "hoverHeight": 120,
+      "fanDistX": 0.58,
+      "fanDistY": 0.62,
+      "fanRadius": 0.32,
+      "fanRingTubeRadius": 0.035,
+      "fanOutwardAngleDeg": 14
     }
   }
 }

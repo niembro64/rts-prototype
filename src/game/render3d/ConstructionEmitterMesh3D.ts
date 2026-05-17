@@ -96,7 +96,7 @@ void main() {
 const CONSTRUCTION_RESOURCE_COLORS = {
   energy: 0xf5d442,
   mana: 0x7ad7ff,
-  metal: 0xd09060,
+  metal: BUILDING_PALETTE.metalResource,
 } as const;
 
 function makeShowerMat(hex: number): THREE.MeshBasicMaterial {

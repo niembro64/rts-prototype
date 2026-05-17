@@ -333,8 +333,19 @@ function createBuildingFromNetwork(
       hp: b.hp?.curr ?? config.hp,
       maxHp: b.hp?.max ?? config.hp,
       targetRadius: Math.sqrt(width * width + height * height) / 2,
-      solar: buildingType === 'solar'
-        ? { open: b.solar?.open ?? false, producing: false, reopenDelayMs: 0 }
+      // The wire field `solar` carries the shared BuildingActiveState
+      // open flag for solar / wind / extractor; map it back into the
+      // generic `activeState` slot. Solar starts closed by default;
+      // wind & extractor start open.
+      activeState: (buildingType === 'solar'
+        || buildingType === 'wind'
+        || buildingType === 'extractor')
+        ? {
+            open: b.solar?.open ?? (buildingType !== 'solar'),
+            producing: false,
+            damageDelayMs: 0,
+            reopenDelayMs: 0,
+          }
         : undefined,
     },
     buildingType,

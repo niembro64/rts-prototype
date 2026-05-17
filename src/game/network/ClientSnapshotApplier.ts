@@ -141,14 +141,27 @@ export function snapClientNonVisualState(
   }
 
   if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
+    // Wire field name is `solar` for legacy reasons; semantically the
+    // shared BuildingActiveState open flag for solar / wind / extractor.
     if (sb.solar) {
-      entity.building.solar = {
+      entity.building.activeState = {
         open: sb.solar.open,
-        producing: entity.building.solar?.producing ?? false,
-        reopenDelayMs: entity.building.solar?.reopenDelayMs ?? 0,
+        producing: entity.building.activeState?.producing ?? false,
+        damageDelayMs: entity.building.activeState?.damageDelayMs ?? 0,
+        reopenDelayMs: entity.building.activeState?.reopenDelayMs ?? 0,
       };
-    } else if (isFull && entity.buildingType === 'solar') {
-      entity.building.solar = { open: false, producing: false, reopenDelayMs: 0 };
+    } else if (
+      isFull
+      && (entity.buildingType === 'solar'
+        || entity.buildingType === 'wind'
+        || entity.buildingType === 'extractor')
+    ) {
+      entity.building.activeState = {
+        open: entity.buildingType !== 'solar',
+        producing: false,
+        damageDelayMs: 0,
+        reopenDelayMs: 0,
+      };
     }
   }
 

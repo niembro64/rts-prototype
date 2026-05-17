@@ -27,7 +27,7 @@ export type {
   BuildingAnchorProfile,
   UnitAction,
   UnitLocomotion,
-  SolarCollectorState,
+  BuildingActiveState,
   Unit,
   Building,
   ForceFieldBarrierConfig,

@@ -238,7 +238,11 @@ export class UnitForceSystem {
         // (MATTER_FORCE_SCALE = 150000) because they're authored as
         // Matter.js drive forces; lift + damping are clean Newtonian
         // formulas and bypass that scale.
-        const mass = entity.unit.mass;
+        // Use the actual dynamic-body mass. Body3D stores blueprint
+        // mass after UNIT_MASS_MULTIPLIER, and gravity is applied as
+        // acceleration in the integrator, so hover lift must produce
+        // body.mass * GRAVITY at equilibrium.
+        const mass = body.mass;
         const liftK = mass * GRAVITY * hoverHeight;
         const vzDampPerMass = 2 * Math.sqrt(GRAVITY / hoverHeight);
         thrustForceZ = (liftK / altitude - mass * vzDampPerMass * body.vz) / 1e6;

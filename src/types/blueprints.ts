@@ -246,13 +246,19 @@ export type LocomotionPhysics = {
   jump: UnitJumpConfig | null;
 };
 
-/** Hover locomotion (drones, gunships) — no ground contact, no
- *  wheels/treads/legs render. The hoverHeight specifies the target
- *  altitude above the terrain directly under the unit; the inverse-
- *  distance lift integrator in UnitForceSystem sizes the upward force
- *  so equilibrium sits at this altitude (F_up = m·g there). */
+/** Hover locomotion (drones, gunships) — no ground contact. The
+ *  hoverHeight specifies the target altitude above the terrain
+ *  directly under the unit; fan fields drive the visible ducted
+ *  rotors that push smoke downward and slightly outward. */
 export type HoverConfig = {
   hoverHeight: number;
+  fanDistX: number;
+  fanDistY: number;
+  fanRadius: number;
+  fanRingTubeRadius: number;
+  /** Degrees each duct tilts away from the unit center. The exhaust
+   *  smoke uses the same local axis so the plume matches the fan. */
+  fanOutwardAngleDeg?: number;
 };
 
 export type LocomotionBlueprint =

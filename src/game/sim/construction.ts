@@ -11,7 +11,7 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
 import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
-import { ensureSolarCollectorState } from './solarCollector';
+import { buildingTypeHasActiveState, ensureBuildingActiveState } from './buildingActiveState';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, getInitialBuildHp } from './buildableHelpers';
@@ -104,8 +104,8 @@ export class ConstructionSystem {
     // Set building type
     entity.buildingType = buildingType;
     applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
-    if (buildingType === 'solar') {
-      ensureSolarCollectorState(entity);
+    if (buildingTypeHasActiveState(buildingType)) {
+      ensureBuildingActiveState(entity);
     }
     if (buildingType === 'extractor') {
       // Inactive at construction start. The completion handler runs
@@ -193,8 +193,8 @@ export class ConstructionSystem {
 
     entity.buildingType = buildingType;
     applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
-    if (buildingType === 'solar') {
-      ensureSolarCollectorState(entity);
+    if (buildingTypeHasActiveState(buildingType)) {
+      ensureBuildingActiveState(entity);
     }
 
     return entity;

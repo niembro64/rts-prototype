@@ -32,9 +32,9 @@
 // arriving at their stored target point) instead of dying mid-stream
 // when the build target completes.
 //
-// LOD: particle count scales with `fireExplosionStyle` (flash → inferno
-// ≈ 0.15× → 1.0×) — matching the 2D intensity multiplier — so low LODs
-// get a handful of particles and MAX LOD gets the full fan. Zero-
+// Detail: particle count scales with `fireExplosionStyle` (flash → inferno
+// ≈ 0.15× → 1.0×) — matching the 2D intensity multiplier — so low detail
+// gets a handful of particles and MAX detail gets the full fan. Zero-
 // intensity sprays (idle commanders) skip entirely.
 
 import * as THREE from 'three';

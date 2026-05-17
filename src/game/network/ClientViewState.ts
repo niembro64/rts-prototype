@@ -43,17 +43,13 @@ import {
 } from './ClientPredictionTargets';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
 import { ClientSelectionState } from './ClientSelectionState';
-import {
-  ClientPredictionLod,
-  type PredictionLodContext,
-} from './ClientPredictionLod';
+import { ClientPredictionCadence } from './ClientPredictionCadence';
 import { clientUnitPredictionIsSettled } from './ClientUnitPrediction';
 import { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
 import { ClientPredictionStepper } from './ClientPredictionStepper';
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
-export type { PredictionLodContext } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -122,11 +118,7 @@ export class ClientViewState {
   private entitySetVersion = 0;
   private projectileCacheDirty = false;
 
-  // Client prediction uses one global PLAYER CLIENT cadence. Camera
-  // distance can reduce render richness, but it must not make far
-  // entities receive fewer prediction steps or fewer snapshot
-  // corrections than nearby entities.
-  private predictionLod = new ClientPredictionLod();
+  private predictionCadence = new ClientPredictionCadence();
   private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
   private selectionState = new ClientSelectionState(
@@ -160,7 +152,7 @@ export class ClientViewState {
       serverTargets: this.serverTargets,
       beamPathTargets: this.projectileStore.beamPathTargets,
       projectileSpawns: this.projectileStore.projectileSpawns,
-      predictionLod: this.predictionLod,
+      predictionCadence: this.predictionCadence,
       rocketTargetFinder: this.rocketTargetFinder,
       activeEntityPredictionIds: this.activeEntityPredictionIds,
       activeProjectilePredictionIds: this.projectileStore.activeProjectilePredictionIds,
@@ -207,11 +199,11 @@ export class ClientViewState {
   }
 
   private clearPredictionAccum(id: EntityId): void {
-    this.predictionLod.clear(id);
+    this.predictionCadence.clear(id);
   }
 
   private clearTargetPredictionAccum(id: EntityId): void {
-    this.predictionLod.clearTarget(id);
+    this.predictionCadence.clearTarget(id);
   }
 
   private getOrCreateServerTarget(id: EntityId): ServerTarget {
@@ -691,8 +683,8 @@ export class ClientViewState {
    * 1. Predict: advance positions using velocity/acceleration
    * 2. Drift: EMA blend position/velocity/rotation toward server targets
    */
-  applyPrediction(deltaMs: number, lod?: PredictionLodContext): void {
-    this.predictionStepper.apply(deltaMs, lod);
+  applyPrediction(deltaMs: number): void {
+    this.predictionStepper.apply(deltaMs);
   }
 
   // === Accessors for rendering and input ===
@@ -997,7 +989,7 @@ export class ClientViewState {
     this.captureTileStore.reset();
     this.serverMeta = null;
     this.predictionStepper.reset();
-    this.predictionLod.clearAll();
+    this.predictionCadence.clearAll();
     this.rocketTargetFinder.clear();
     this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();

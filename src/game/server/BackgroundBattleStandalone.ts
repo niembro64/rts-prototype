@@ -18,6 +18,7 @@ import {
 } from '../sim/mapOval';
 import { expandPathActions } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
+import { setUnitFacingYaw } from '../sim/unitOrientation';
 import type { BuildingGrid } from '../sim/buildGrid';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
@@ -113,7 +114,7 @@ function spawnUnit(
   if (!unitType) return null;
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitType);
 
-  unit.transform.rotation = Math.atan2(targetY - y, targetX - x);
+  setUnitFacingYaw(unit, Math.atan2(targetY - y, targetX - x));
   aimTurretsToward(unit, targetX, targetY);
 
   if (unit.unit) {

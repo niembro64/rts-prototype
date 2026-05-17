@@ -180,10 +180,17 @@ export function releaseDepositsForExtractor(
       const list = promoted.ownedDepositIds ?? (promoted.ownedDepositIds = []);
       if (!list.includes(depositId)) list.push(depositId);
       // Promoted extractor gains exactly one deposit's worth of
-      // income. Update both its stored rate and the player's tally.
+      // income. Update its stored rate immediately; only credit the
+      // player when the extractor is currently OPEN — a fortified
+      // (closed) extractor accumulates potential rate via
+      // `metalExtractionRate` but pays nothing until it reopens, at
+      // which point setBuildingProducing(open=true) adds the full rate
+      // (including the new deposit) back to the player's tally.
       syncExtractorRate(promoted);
       world.markSnapshotDirty(promoted.id, ENTITY_CHANGED_BUILDING);
-      economyManager.addMetalExtraction(promoted.ownership.playerId, perDeposit);
+      if (promoted.building?.activeState?.open !== false) {
+        economyManager.addMetalExtraction(promoted.ownership.playerId, perDeposit);
+      }
     }
   }
 

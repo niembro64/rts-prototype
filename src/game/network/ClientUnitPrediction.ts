@@ -8,7 +8,7 @@ import {
   magnitude3,
 } from '../math';
 import { halfLifeBlend, type DriftPreset } from './driftEma';
-import type { PredictionStep } from './ClientPredictionLod';
+import type { PredictionStep } from './ClientPredictionCadence';
 import { advanceUnitSuspension } from '../sim/unitSuspension';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import {
@@ -236,8 +236,7 @@ export function applyClientUnitVisualPrediction(options: {
 
   if (target) {
     // Unit body motion is a visual contract, not an optional detail.
-    // Keep this smooth at render cadence while LOD throttles heavier
-    // turret / force-field prediction elsewhere.
+    // Keep this smooth at render cadence.
     advanceTargetExtrapolation(target, dt, airDamp, groundDamp);
   }
 

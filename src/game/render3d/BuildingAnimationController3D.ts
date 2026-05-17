@@ -22,10 +22,18 @@ import type { ProductionRateIndicatorRig } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
+import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
+/** Per-frame blend toward the building's target open/closed pose
+ *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
+ *  solar petal animator's feel — smooth but not laggy. */
+const BUILDING_FORTIFY_ANIM_ALPHA = 0.12;
 const _solarPetalDirection = new THREE.Vector3();
+const _extractorBladeQuat = new THREE.Quaternion();
+const _extractorBladePos = new THREE.Vector3();
+const _windBladeQuat = new THREE.Quaternion();
 
 /** Reciprocal of the extractor's configured ceiling rate, computed
  *  once at module load. The per-frame rotor loop multiplies by this
@@ -58,6 +66,13 @@ export class BuildingAnimationController3D {
    *  speed. Indexed by entity id; entries get pruned when the
    *  extractor despawns. */
   private extractorRotorPhases = new Map<EntityId, number>();
+  /** Per-entity "closed amount" for the extractor's blade fold (0 =
+   *  spinning open, 1 = folded flat against the pyramid). Smoothed
+   *  toward the server's open flag with BUILDING_FORTIFY_ANIM_ALPHA. */
+  private extractorCloseAmounts = new Map<EntityId, number>();
+  /** Per-entity "closed amount" for the wind turbine's stowed pose
+   *  (nacelle tilts skyward + blades fold against the pole). */
+  private windCloseAmounts = new Map<EntityId, number>();
 
   constructor(
     clientViewState: ClientViewState,
@@ -88,6 +103,8 @@ export class BuildingAnimationController3D {
     this.removeAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
     this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
     this.extractorRotorPhases.delete(id);
+    this.extractorCloseAmounts.delete(id);
+    this.windCloseAmounts.delete(id);
     this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
   }
 
@@ -104,7 +121,7 @@ export class BuildingAnimationController3D {
         const entity = this.clientViewState.getEntity(id);
         if (!mesh || !entity) continue;
         this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
-        const open = entity.building?.solar?.open !== false;
+        const open = entity.building?.activeState?.open !== false;
         this.applyProductionRateIndicator(
           mesh.solarRig?.rateIndicator,
           open ? 1 : 0,
@@ -120,13 +137,26 @@ export class BuildingAnimationController3D {
       const wind = this.clientViewState.getServerMeta()?.wind;
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       const normalizedWindRate = wind ? wind.speed / WIND_SPEED_MAX : 0;
+      const closeAmounts = this.windCloseAmounts;
       for (const id of this.windBuildingIds) {
         const mesh = buildingMeshes.get(id);
-        if (!mesh) continue;
-        this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true);
+        const entity = this.clientViewState.getEntity(id);
+        if (!mesh || !entity) continue;
+        const open = entity.building?.activeState?.open !== false;
+        const closeTarget = open ? 0 : 1;
+        let close = closeAmounts.get(id) ?? closeTarget;
+        close = Math.abs(closeTarget - close) < 0.002
+          ? closeTarget
+          : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
+        closeAmounts.set(id, close);
+
+        this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true, close);
         this.applyProductionRateIndicator(
           mesh.windRig?.rateIndicator,
-          normalizedWindRate,
+          // Closed turbines produce no energy — collapse the rate
+          // indicator to match. The sim already filters them out of
+          // WindPowerTracker, this just keeps the visual in sync.
+          normalizedWindRate * (1 - close),
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
@@ -138,31 +168,57 @@ export class BuildingAnimationController3D {
       // Each extractor advances its own rotor phase by dt × base ×
       // coverageFraction, so spin scales 1:1 with metal-per-second.
       // 0 covered tiles → stationary; full coverage → full base rate.
+      // While the extractor is fortified (closed) we suspend spin
+      // entirely — the blades have folded down against the pyramid
+      // sides and are no longer producing.
       const invBase = INV_EXTRACTOR_BASE_PRODUCTION;
       const dtRate = spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC;
       const twoPi = Math.PI * 2;
       const phases = this.extractorRotorPhases;
+      const closeAmounts = this.extractorCloseAmounts;
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       for (const id of this.extractorBuildingIds) {
         const mesh = buildingMeshes.get(id);
         const entity = this.clientViewState.getEntity(id);
         if (!mesh || !entity) continue;
-        const rate = entity.metalExtractionRate ?? 0;
+        const open = entity.building?.activeState?.open !== false;
+        // Smooth fold blend so toggling closed doesn't snap the blades.
+        const closeTarget = open ? 0 : 1;
+        let close = closeAmounts.get(id) ?? closeTarget;
+        close = Math.abs(closeTarget - close) < 0.002
+          ? closeTarget
+          : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
+        closeAmounts.set(id, close);
+
+        const rate = open ? (entity.metalExtractionRate ?? 0) : 0;
         const normalizedRate = rate * invBase;
         let phase = phases.get(id);
         if (phase === undefined) phase = id * 0.173; // first-frame jitter seed
-        phase = (phase + dtRate * normalizedRate) % twoPi;
+        phase = (phase + dtRate * normalizedRate * (1 - close)) % twoPi;
         phases.set(id, phase);
-        // Inline the rig write. Every per-tier rotor in the rig
-        // array gets the same yaw — only one is visible at a time
-        // (tier-gated by detail.minTier/maxTier), so writing the
-        // hidden one is just a property assign with no GPU work.
+
         const rig = mesh.extractorRig;
         if (rig && mesh.buildingCachedDetailsReady === true) {
-          const yaw = -phase;
+          // Spin only applies while the blades are mostly open; as they
+          // fold the rotor settles to its rest yaw and the per-blade
+          // closed-pose quaternion takes over.
+          const yaw = -phase * (1 - close);
           const rotors = rig.rotors;
           for (let r = 0; r < rotors.length; r++) {
-            rotors[r].rotation.y = yaw;
+            const rotor = rotors[r];
+            rotor.rotation.y = yaw;
+            // Slerp each blade between its baked open and closed
+            // transforms. The closed pose lays the blade flat against
+            // one face of the hexagonal pyramid; six blades cover the
+            // six faces. userData carries the precomputed endpoints.
+            for (const child of rotor.children) {
+              const anim = child.userData.extractorBlade as ExtractorBladeAnim | undefined;
+              if (!anim) continue;
+              _extractorBladeQuat.copy(anim.openQuat).slerp(anim.closedQuat, close);
+              child.quaternion.copy(_extractorBladeQuat);
+              _extractorBladePos.copy(anim.openPos).lerp(anim.closedPos, close);
+              child.position.copy(_extractorBladePos);
+            }
           }
         }
         this.applyProductionRateIndicator(
@@ -203,6 +259,8 @@ export class BuildingAnimationController3D {
     this.factoryBuildingIds.length = 0;
     this.factoryBuildingIdSet.clear();
     this.extractorRotorPhases.clear();
+    this.extractorCloseAmounts.clear();
+    this.windCloseAmounts.clear();
     this.windFanYaw = null;
     this.windVisualSpeed = null;
     this.windRotorPhase = 0;
@@ -235,7 +293,7 @@ export class BuildingAnimationController3D {
     detailsReady: boolean,
   ): void {
     if (e.buildingType !== 'solar' || !m.buildingDetails || !detailsReady) return;
-    const target = e.building?.solar?.open === false ? 0 : 1;
+    const target = e.building?.activeState?.open === false ? 0 : 1;
     const current = m.solarOpenAmount ?? target;
     const next = Math.abs(target - current) < 0.002
       ? target
@@ -316,10 +374,31 @@ export class BuildingAnimationController3D {
     return baseHalfLife * multiplier;
   }
 
-  private updateWindTurbineRig(m: EntityMesh, detailsReady: boolean): void {
+  private updateWindTurbineRig(
+    m: EntityMesh,
+    detailsReady: boolean,
+    closeAmount: number,
+  ): void {
     if (!m.windRig || !detailsReady || !m.windRig.root.visible || this.windFanYaw === null) return;
-    m.windRig.root.rotation.y = this.windFanYaw - m.group.rotation.y;
-    m.windRig.rotor.rotation.z = this.windRotorPhase;
+    // Root yaws to follow the wind direction (open) but pitches up to
+    // the stowed angle as the turbine closes. Yaw weight tapers to 0 in
+    // the closed pose so the nacelle settles to a deterministic skyward
+    // orientation instead of bobbing with the wind while folded.
+    m.windRig.root.rotation.y = (this.windFanYaw - m.group.rotation.y) * (1 - closeAmount);
+    m.windRig.root.rotation.x = m.windRig.closedPitch * closeAmount;
+    // Spin only while the rotor is mostly extended. As the blades fold
+    // toward the pole the rotor settles to a fixed rest phase so the
+    // baked closed quaternions match exactly.
+    m.windRig.rotor.rotation.z = this.windRotorPhase * (1 - closeAmount);
+    // Slerp each blade between its baked open and closed quaternions.
+    for (const child of m.windRig.rotor.children) {
+      const anim = child.userData.windBlade as
+        | { openQuat: THREE.Quaternion; closedQuat: THREE.Quaternion }
+        | undefined;
+      if (!anim) continue;
+      _windBladeQuat.copy(anim.openQuat).slerp(anim.closedQuat, closeAmount);
+      child.quaternion.copy(_windBladeQuat);
+    }
   }
 
   private applyProductionRateIndicator(
