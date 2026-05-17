@@ -39,6 +39,10 @@ serverMeta is now Rust-emitted, including numeric and string snapshot/keyframe
 display values.
 Full-keyframe static terrain and buildability are now Rust-emitted instead of
 using raw top-level MessagePack fallback.
+The Rust-backed encode adapter now avoids array-helper allocation in the
+remaining DTO packing bridge for snapshot key collection, economy player IDs,
+factory waypoint strings, projectile despawn IDs, and audio death/impact
+context selection.
 DP-02 encode instrumentation now exists behind ?dp02=1 /
 VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
 byte size per listener, snapshot rate, and unit-count band, and exposes

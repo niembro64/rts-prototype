@@ -6,6 +6,7 @@ import type {
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotMinimapEntity,
+  NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotMeta,
   NetworkServerSnapshotSimEvent,
@@ -29,6 +30,9 @@ type SnapshotProjectiles = NonNullable<NetworkServerSnapshot['projectiles']>;
 type SnapshotServerMeta = NetworkServerSnapshotMeta;
 
 const _utf8 = new TextEncoder();
+const _buildingWaypointTypeStrings: string[] = [];
+const _economyPlayerIds: number[] = [];
+const _snapshotKeys: string[] = [];
 
 function hasValue<T>(value: T | undefined): value is T {
   return value !== undefined;
@@ -328,8 +332,11 @@ function encodeBuildingEntity(
   const factory = building.factory;
   let stringSlots = new Map<string, number>();
   if (factory) {
-    const strings = factory.waypoints.map((waypoint) => waypoint.type);
-    stringSlots = packStringsIntoScratch(sim, strings);
+    _buildingWaypointTypeStrings.length = 0;
+    for (let i = 0; i < factory.waypoints.length; i++) {
+      _buildingWaypointTypeStrings.push(factory.waypoints[i].type);
+    }
+    stringSlots = packStringsIntoScratch(sim, _buildingWaypointTypeStrings);
     packFactoryQueueIntoScratch(sim, factory.queue);
     packWaypointsIntoScratch(sim, factory.waypoints, stringSlots);
   }
@@ -475,17 +482,24 @@ function packEconomyIntoScratch(
   sim: SimWasm,
   economy: Record<number, NetworkServerSnapshotEconomy>,
 ): number {
-  const ids = Object.keys(economy).map(Number).sort((a, b) => a - b);
-  if (ids.length === 0) return 0;
+  _economyPlayerIds.length = 0;
+  for (const key in economy) {
+    if (Object.prototype.hasOwnProperty.call(economy, key)) {
+      _economyPlayerIds.push(Number(key));
+    }
+  }
+  if (_economyPlayerIds.length === 0) return 0;
+  _economyPlayerIds.sort((a, b) => a - b);
+
   const api = sim.snapshotEncode;
-  api.economyScratchEnsure(ids.length);
+  api.economyScratchEnsure(_economyPlayerIds.length);
   const view = new Float64Array(
     sim.memory.buffer,
     api.economyScratchPtr(),
-    ids.length * api.economyScratchStride,
+    _economyPlayerIds.length * api.economyScratchStride,
   );
-  for (let i = 0; i < ids.length; i++) {
-    const playerId = ids[i];
+  for (let i = 0; i < _economyPlayerIds.length; i++) {
+    const playerId = _economyPlayerIds[i];
     const src = economy[playerId];
     const base = i * api.economyScratchStride;
     view[base + 0] = playerId;
@@ -500,7 +514,7 @@ function packEconomyIntoScratch(
     view[base + 9] = src.metal.income.extraction;
     view[base + 10] = src.metal.expenditure;
   }
-  return ids.length;
+  return _economyPlayerIds.length;
 }
 
 function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
@@ -689,21 +703,24 @@ function packDeathContextsIntoScratch(
   events: readonly NetworkServerSnapshotSimEvent[],
   stringSlots: Map<string, number>,
 ): void {
-  const eventsWithDeath = events.filter((event) => event.deathContext !== undefined);
-  if (eventsWithDeath.length === 0) return;
+  let deathContextCount = 0;
+  let totalPoses = 0;
+  for (let i = 0; i < events.length; i++) {
+    const context = events[i].deathContext;
+    if (context === undefined) continue;
+    deathContextCount++;
+    totalPoses += context.turretPoses?.length ?? 0;
+  }
+  if (deathContextCount === 0) return;
 
   const api = sim.snapshotEncode;
-  api.deathContextScratchEnsure(eventsWithDeath.length);
+  api.deathContextScratchEnsure(deathContextCount);
   const view = new Float64Array(
     sim.memory.buffer,
     api.deathContextScratchPtr(),
-    eventsWithDeath.length * api.deathContextScratchStride,
+    deathContextCount * api.deathContextScratchStride,
   );
 
-  let totalPoses = 0;
-  for (const event of eventsWithDeath) {
-    totalPoses += event.deathContext?.turretPoses?.length ?? 0;
-  }
   let poseView: Float64Array | undefined;
   if (totalPoses > 0) {
     api.turretPoseScratchEnsure(totalPoses);
@@ -714,10 +731,12 @@ function packDeathContextsIntoScratch(
     );
   }
 
+  let deathContextIndex = 0;
   let poseOffset = 0;
-  for (let i = 0; i < eventsWithDeath.length; i++) {
-    const context = eventsWithDeath[i].deathContext!;
-    const base = i * api.deathContextScratchStride;
+  for (let i = 0; i < events.length; i++) {
+    const context = events[i].deathContext;
+    if (context === undefined) continue;
+    const base = deathContextIndex * api.deathContextScratchStride;
     view[base + 0] = context.unitVel.x;
     view[base + 1] = context.unitVel.y;
     view[base + 2] = context.hitDir.x;
@@ -753,6 +772,7 @@ function packDeathContextsIntoScratch(
       }
       poseOffset += context.turretPoses.length;
     }
+    deathContextIndex++;
   }
 }
 
@@ -760,18 +780,24 @@ function packImpactContextsIntoScratch(
   sim: SimWasm,
   events: readonly NetworkServerSnapshotSimEvent[],
 ): void {
-  const eventsWithImpact = events.filter((event) => event.impactContext !== undefined);
-  if (eventsWithImpact.length === 0) return;
+  let impactContextCount = 0;
+  for (let i = 0; i < events.length; i++) {
+    if (events[i].impactContext !== undefined) impactContextCount++;
+  }
+  if (impactContextCount === 0) return;
+
   const api = sim.snapshotEncode;
-  api.impactContextScratchEnsure(eventsWithImpact.length);
+  api.impactContextScratchEnsure(impactContextCount);
   const view = new Float64Array(
     sim.memory.buffer,
     api.impactContextScratchPtr(),
-    eventsWithImpact.length * api.impactContextScratchStride,
+    impactContextCount * api.impactContextScratchStride,
   );
-  for (let i = 0; i < eventsWithImpact.length; i++) {
-    const context = eventsWithImpact[i].impactContext!;
-    const base = i * api.impactContextScratchStride;
+  let impactContextIndex = 0;
+  for (let i = 0; i < events.length; i++) {
+    const context = events[i].impactContext;
+    if (context === undefined) continue;
+    const base = impactContextIndex * api.impactContextScratchStride;
     view[base + 0] = context.collisionRadius;
     view[base + 1] = context.explosionRadius;
     view[base + 2] = context.projectile.pos.x;
@@ -783,6 +809,7 @@ function packImpactContextsIntoScratch(
     view[base + 8] = context.entity.collisionRadius;
     view[base + 9] = context.penetrationDir.x;
     view[base + 10] = context.penetrationDir.y;
+    impactContextIndex++;
   }
 }
 
@@ -918,12 +945,15 @@ function packProjSpawnsIntoScratch(
   }
 }
 
-function packProjDespawnsIntoScratch(sim: SimWasm, ids: readonly number[]): void {
-  if (ids.length === 0) return;
+function packProjDespawnsIntoScratch(
+  sim: SimWasm,
+  despawns: readonly NetworkServerSnapshotProjectileDespawn[],
+): void {
+  if (despawns.length === 0) return;
   const api = sim.snapshotEncode;
-  api.projDespawnScratchEnsure(ids.length);
-  const view = new Uint32Array(sim.memory.buffer, api.projDespawnScratchPtr(), ids.length);
-  for (let i = 0; i < ids.length; i++) view[i] = ids[i];
+  api.projDespawnScratchEnsure(despawns.length);
+  const view = new Uint32Array(sim.memory.buffer, api.projDespawnScratchPtr(), despawns.length);
+  for (let i = 0; i < despawns.length; i++) view[i] = despawns[i].id;
 }
 
 function packProjVelocityUpdatesIntoScratch(
@@ -1026,7 +1056,7 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
   const velocityUpdates = projectiles.velocityUpdates;
   const beamUpdates = projectiles.beamUpdates;
   if (spawns) packProjSpawnsIntoScratch(sim, spawns);
-  if (despawns) packProjDespawnsIntoScratch(sim, despawns.map((despawn) => despawn.id));
+  if (despawns) packProjDespawnsIntoScratch(sim, despawns);
   if (velocityUpdates) packProjVelocityUpdatesIntoScratch(sim, velocityUpdates);
   if (beamUpdates) packBeamUpdatesIntoScratch(sim, beamUpdates);
   sim.snapshotEncode.emitProjectiles(
@@ -1393,7 +1423,17 @@ export function encodeNetworkSnapshotWithRustFallback(
   const sim = getSimWasm();
   if (!sim) return null;
 
-  const keys = Object.keys(state).filter((key) => hasValue((state as Record<string, unknown>)[key]));
+  _snapshotKeys.length = 0;
+  const stateRecord = state as Record<string, unknown>;
+  for (const key in stateRecord) {
+    if (
+      Object.prototype.hasOwnProperty.call(stateRecord, key) &&
+      hasValue(stateRecord[key])
+    ) {
+      _snapshotKeys.push(key);
+    }
+  }
+  const keys = _snapshotKeys;
   if (keys[0] !== 'tick' || keys[1] !== 'entities') return null;
 
   const api = sim.snapshotEncode;
