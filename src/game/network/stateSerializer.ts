@@ -21,7 +21,11 @@ import {
 import { SNAPSHOT_CONFIG } from '../../config';
 import { serializeAudioEvents } from './stateSerializerAudio';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
-import { resetEntitySnapshotPool, serializeEntitySnapshot } from './stateSerializerEntities';
+import {
+  registerEntitySnapshotWireSource,
+  resetEntitySnapshotPool,
+  serializeEntitySnapshot,
+} from './stateSerializerEntities';
 import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
@@ -89,6 +93,7 @@ function captureToRustBaseline(
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _visibilityHiddenIdsBuf: EntityId[] = [];
+registerEntitySnapshotWireSource(_entityBuf);
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {

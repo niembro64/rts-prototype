@@ -25,6 +25,16 @@ import {
   getEconomySnapshotWireSource,
 } from './stateSerializerEconomy';
 import {
+  ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  getEntitySnapshotWireSource,
+  type EntitySnapshotWireSource,
+} from './stateSerializerEntities';
+import {
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
@@ -429,6 +439,160 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
     );
     return true;
   }
+  return false;
+}
+
+function canUseEntityWireSource(
+  source: EntitySnapshotWireSource | undefined,
+  entities: readonly NetworkServerSnapshotEntity[],
+): source is EntitySnapshotWireSource {
+  return source !== undefined && source.kinds.length === entities.length;
+}
+
+function encodeEntityWireRow(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+  entityIndex: number,
+): boolean {
+  const kind = source.kinds[entityIndex];
+  const rowIndex = source.rowIndices[entityIndex];
+  const api = sim.snapshotEncode;
+
+  if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC) {
+    const values = source.basicRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+    api.encodeEntityBasic(
+      values[base + 0],
+      values[base + 1],
+      values[base + 2],
+      values[base + 3],
+      values[base + 4],
+      values[base + 5],
+      values[base + 6],
+      values[base + 7],
+      values[base + 8],
+    );
+    return true;
+  }
+
+  if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+    const values = source.unitRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    api.encodeEntityUnit(
+      values[base + 0],
+      SNAPSHOT_ENTITY_TYPE_UNIT,
+      values[base + 1],
+      values[base + 2],
+      values[base + 3],
+      values[base + 4],
+      values[base + 5],
+      values[base + 6],
+      values[base + 7],
+      values[base + 8],
+      values[base + 9],
+      values[base + 10],
+      values[base + 11],
+      values[base + 12],
+      values[base + 13],
+      values[base + 14],
+      values[base + 15],
+      values[base + 16],
+      values[base + 17],
+      values[base + 18],
+      values[base + 19],
+      values[base + 20],
+      values[base + 21],
+      values[base + 22],
+      values[base + 23],
+      values[base + 24],
+      values[base + 25],
+      values[base + 26],
+      values[base + 27],
+      values[base + 28],
+      values[base + 29],
+      values[base + 30],
+      values[base + 31],
+      values[base + 32],
+      values[base + 33],
+      values[base + 34],
+      values[base + 35],
+      values[base + 36],
+      values[base + 37],
+      values[base + 38],
+      values[base + 39],
+      values[base + 40],
+      values[base + 41],
+      values[base + 42],
+      values[base + 43],
+      values[base + 44],
+      values[base + 45],
+      values[base + 46],
+      values[base + 47],
+      values[base + 48],
+      values[base + 49],
+      values[base + 50],
+      values[base + 51],
+      values[base + 52],
+      values[base + 53],
+      values[base + 54],
+      values[base + 55],
+      values[base + 56],
+      values[base + 57],
+      values[base + 58],
+      values[base + 59],
+      values[base + 60],
+      values[base + 61],
+      values[base + 62],
+      values[base + 63],
+      values[base + 64],
+      values[base + 65],
+      values[base + 66],
+      values[base + 67],
+      values[base + 68],
+      values[base + 69],
+    );
+    return true;
+  }
+
+  if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
+    const values = source.buildingRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+    api.encodeEntityBuilding(
+      values[base + 0],
+      values[base + 1],
+      values[base + 2],
+      values[base + 3],
+      values[base + 4],
+      values[base + 5],
+      values[base + 6],
+      values[base + 7],
+      values[base + 8],
+      values[base + 9],
+      values[base + 10],
+      values[base + 11],
+      values[base + 12],
+      values[base + 13],
+      values[base + 14],
+      values[base + 15],
+      values[base + 16],
+      values[base + 17],
+      values[base + 18],
+      values[base + 19],
+      values[base + 20],
+      values[base + 21],
+      values[base + 22],
+      values[base + 23],
+      values[base + 24],
+      values[base + 25],
+      values[base + 26],
+      values[base + 27],
+      values[base + 28],
+      values[base + 29],
+      values[base + 30],
+    );
+    return true;
+  }
+
   return false;
 }
 
@@ -1510,8 +1674,14 @@ export function encodeNetworkSnapshotWithRustFallback(
 
   let rustEntityCount = 0;
   let rawEntityCount = 0;
-  for (const entity of state.entities) {
-    if (encodeEntity(sim, entity)) {
+  const entityWireSource = getEntitySnapshotWireSource(state.entities);
+  const useEntityWireSource = canUseEntityWireSource(entityWireSource, state.entities);
+  for (let i = 0; i < state.entities.length; i++) {
+    const entity = state.entities[i];
+    if (
+      (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource!, i)) ||
+      encodeEntity(sim, entity)
+    ) {
       rustEntityCount++;
     } else {
       rawEntityCount++;
