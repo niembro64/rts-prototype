@@ -496,6 +496,52 @@
     </section>
 
     <section>
+      <h2>Explicit Absence</h2>
+      <p>
+        We are moving away from optional properties and optional chaining in our own simulation,
+        server, prediction, and entity-state code. Absence should be declared, not inferred. A
+        field should always exist with a typed value, and the absence of a value should be
+        expressed as <code>null</code> (or a numeric sentinel in hot paths), so every site that
+        reads it must make an explicit decision about what to do when the value is missing.
+      </p>
+      <p>
+        The problem we are solving is "seemingly ready when actually not." An optional field
+        collapses three different failure modes into the same silent no-op: not yet initialized,
+        semantically inapplicable, and previously torn down. An
+        <code>entity.turret?.fire()</code> chain swallows all three. The unit just does not shoot,
+        no stack trace, no symptom anyone can grep for. In a multiplayer RTS with pooled state
+        and delta-encoded snapshots, that class of bug compounds.
+      </p>
+
+      <h3>Why this matters more in this codebase</h3>
+      <ul class="rule-list">
+        <li>Pooled objects (snapshot DTOs, prediction state, audio events, scratch buffers) carry zombie fields between users when those fields are <code>T?</code> rather than <code>T | null</code> with an explicit reset on release.</li>
+        <li>V8 deoptimizes when objects have shape variance. <code>field: T | null = null</code> keeps the hidden class uniform and the JIT happy, which is measurable in 5,000-unit per-tick loops.</li>
+        <li>Snapshot serialization already encodes presence explicitly on the wire. Aligning the in-memory model with that contract eliminates a category of "I sent it but the receiver never had the property" drift bugs.</li>
+        <li>Determinism requires that absence is a decision, not a coincidence. <code>?.</code> hides the decision; <code>if (x === null)</code> forces it into the code under review.</li>
+      </ul>
+
+      <h3>Scope of the rule</h3>
+      <ul class="rule-list">
+        <li>Inside our own simulation, server, prediction, networking, and entity-state modules: no <code>?:</code> on properties, no <code>?.</code> on access. Use <code>T | null</code> with explicit guards.</li>
+        <li>At third-party boundaries (Three.js, Phaser, browser APIs, WebRTC, Matter): pragmatic optional chaining is acceptable. Wrap the boundary; keep our domain strict.</li>
+        <li>Function parameters with defaults (<code>fn(x: number = 0)</code>) are a different concept and remain allowed.</li>
+        <li>"Field is semantically inapplicable to this kind of entity" is not an optional field. It is a discriminated union. Express it that way.</li>
+        <li>In numeric hot loops, prefer a sentinel value (<code>targetId = -1</code>, <code>tetherId = -1</code>) over <code>number | null</code>. It avoids both the boxed null check and the shape variance, and it composes with WASM SoA storage.</li>
+      </ul>
+
+      <h3>Migration direction</h3>
+      <p>
+        This is a direction, not a hard cutover. We are not freezing the codebase to flip a lint
+        switch. The rule we live by is simple: every file we touch should leave with fewer
+        optional properties and fewer optional-chaining accesses than it had on the way in.
+        Convert the field, fix the callers in that file, and move on. Over time the migration
+        completes itself, the lint rule follows once the burden is small, and we stop shipping
+        bugs that hide behind silent absence.
+      </p>
+    </section>
+
+    <section>
       <h2>What New Code Should Optimize For</h2>
       <ul class="rule-list">
         <li>Keep the authoritative sim headless and portable. It should not depend on DOM, Vue, or Three.js.</li>
@@ -508,6 +554,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
+        <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
         <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
         <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
         <li>Design every feature with 5,000 units in mind before celebrating it at 50 units.</li>
