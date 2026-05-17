@@ -7,7 +7,6 @@ export type ServerSnapshotMetaInput = {
   tickAvg: number;
   tickLow: number;
   tickRateHz: TickRate;
-  tickTargetHz: TickRate;
   snapshotRate: SnapshotRate;
   keyframeRatio: KeyframeRatio;
   ipAddress: string;
@@ -23,9 +22,6 @@ export type ServerSnapshotMetaInput = {
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
-  simQuality: string;
-  effectiveSimQuality: string;
-  simSignals: { tps: string; cpu: string; units: string };
   wind: {
     x: number;
     y: number;
@@ -60,7 +56,6 @@ export class ServerSnapshotMetaBuilder {
         avg: input.tickAvg,
         low: input.tickLow,
         rate: input.tickRateHz,
-        target: input.tickTargetHz,
       },
       snaps: { rate: input.snapshotRate, keyframes: input.keyframeRatio },
       server: { time: this.formatServerTime(), ip: input.ipAddress },
@@ -76,11 +71,6 @@ export class ServerSnapshotMetaBuilder {
       forceFieldReflectionMode: input.forceFieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,
       cpu: { avg: cpuAvg, hi: cpuHi },
-      simLod: {
-        picked: input.simQuality,
-        effective: input.effectiveSimQuality,
-        signals: { ...input.simSignals },
-      },
       wind: {
         x: input.wind.x,
         y: input.wind.y,

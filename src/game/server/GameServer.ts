@@ -33,19 +33,6 @@ import type { DeathContext } from '../sim/combat';
 import { ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_POS, ENTITY_CHANGED_TURRETS, ENTITY_CHANGED_VEL } from '../../types/network';
 import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
-import {
-  setSimQuality,
-  setSimTpsRatio,
-  setSimCpuRatio,
-  setSimUnitCount,
-  setSimUnitCap,
-  getSimQuality,
-  getEffectiveSimQuality,
-  getSimDetailConfig,
-  tickSimQuality,
-  setSimSignalStates,
-} from '../sim/simQuality';
-import type { ServerSimQuality } from '@/types/serverSimLod';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
   DEFAULT_KEYFRAME_RATIO,
@@ -59,7 +46,6 @@ import {
   normalizeSnapshotRate,
   snapshotRateIntervalMs,
 } from '../../serverBarConfig';
-import { SERVER_SIM_LOD_EMA_SOURCE } from '../../serverSimLodConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
 import { setTiltEmaMode } from '../sim/unitTilt';
@@ -102,14 +88,6 @@ export class GameServer {
   // Game loop
   private tickLoop = new ServerTickLoop();
   private tickRateHz: number;
-  /** User's configured target. The setInterval rate (`tickRateHz`)
-   *  may be auto-lowered below this when the host can't keep up;
-   *  this field is the ceiling adaptation can claw back toward. */
-  private userTickRateHz: number;
-  /** Tick counter for the adaptive-rate check (separate from
-   *  world.tick because the check fires every N ticks regardless of
-   *  the world's own counter). */
-  private _adaptCheckTicks = 0;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
@@ -174,7 +152,6 @@ export class GameServer {
 
   constructor(config: GameServerConfig, physics?: PhysicsEngine3D) {
     this.tickRateHz = 60;
-    this.userTickRateHz = 60;
 
     // Start visible host TPS/CPU EMAs at 0.0. TPS climbs as ticks are
     // measured; CPU load starts at 0% measured work.
@@ -310,13 +287,6 @@ export class GameServer {
       }
 
       this.recordTickWork(performance.now() - workStart);
-
-      // Adaptive rate: every ~64 ticks check whether we're chronically
-      // over (halve effective rate) or chronically under (claw back
-      // toward user's pick). This is the FLOOR that guarantees the
-      // tick loop completes even when the host genuinely can't do
-      // userTickRateHz worth of work per second.
-      this.maybeAdaptTickRate();
     });
   }
 
@@ -407,14 +377,6 @@ export class GameServer {
     const dtMs = Math.min(delta, MAX_TICK_DT_MS);
     const dtSec = dtMs / 1000;
 
-    // Push host signals into the SERVER LOD driver, then resolve
-    // the effective tier ONCE for this tick. Every getSimDetailConfig()
-    // call inside the upcoming sim systems hits the cached answer
-    // instead of re-running the AUTO resolver per beam projectile /
-    // per mirror turret.
-    this.refreshSimQualitySignals();
-    tickSimQuality();
-
     // Update simulation (calculates thrust velocities, runs combat, etc.)
     this.simulation.update(dtMs);
 
@@ -431,17 +393,11 @@ export class GameServer {
     // anchor has its authoritative velocity for this tick.
     this.unitSuspensionSystem.update(dtMs);
 
-    // Update territory capture (uses spatial grid occupancy). Same
-    // skip-and-scale-dt pattern as other low-detail systems at low
-    // LOD: the time-integral of flag accumulation matches the
-    // every-tick path; tile colours just step in coarser intervals.
-    const captureStride = Math.max(1, getSimDetailConfig().captureStride | 0);
-    if (captureStride === 1 || this.world.getTick() % captureStride === 0) {
-      this.captureSystem.update(
-        spatialGrid.getOccupiedCellsForCapture(),
-        dtSec * captureStride,
-      );
-    }
+    // Update territory capture (uses spatial grid occupancy) every tick.
+    this.captureSystem.update(
+      spatialGrid.getOccupiedCellsForCapture(),
+      dtSec,
+    );
 
     // Update mana income from territory. The capture system's
     // running totals are already in mana/sec, weighted per-tile by
@@ -486,7 +442,6 @@ export class GameServer {
       tpsAvg: this.tpsAvg,
       tpsLow: this.tpsLow,
       tickRateHz: this.tickRateHz,
-      userTickRateHz: this.userTickRateHz,
       maxSnapshotsDisplay: this.maxSnapshotsDisplay,
       keyframeRatioDisplay: this.keyframeRatioDisplay,
       keyframeRatio: this.keyframeRatio,
@@ -496,8 +451,6 @@ export class GameServer {
       tickMsAvg: this.tickMsAvg,
       tickMsHi: this.tickMsHi,
       tickMsInitialized: this.tickMsInitialized,
-      simQuality: this.getSimQuality(),
-      effectiveSimQuality: this.getEffectiveSimQuality(),
     });
   }
 
@@ -556,20 +509,6 @@ export class GameServer {
       case 'setFogOfWarEnabled':
         if (!this.canApplyServerControlCommand(fromPlayerId)) return;
         this.setFogOfWarEnabled(command.enabled);
-        return;
-      case 'setSimQuality':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        this.setSimQuality(command.quality as ServerSimQuality);
-        return;
-      case 'setSimSignalStates':
-        if (!this.canApplyServerControlCommand(fromPlayerId)) return;
-        // Each field is optional; only the ones the user just clicked
-        // will be present. setSimSignalStates validates internally.
-        setSimSignalStates({
-          tps: command.tps as ('off' | 'active' | 'solo' | undefined),
-          cpu: command.cpu as ('off' | 'active' | 'solo' | undefined),
-          units: command.units as ('off' | 'active' | 'solo' | undefined),
-        });
         return;
     }
     const authorizedCommand = this.authorizeGameplayCommand(command, fromPlayerId);
@@ -898,110 +837,11 @@ export class GameServer {
     this.maxSnapshotIntervalMs = snapshotRateIntervalMs(normalizedRate);
   }
 
-  /** Change HOST SERVER LOD tier ('auto' / 'auto-tps' / 'auto-cpu' /
-   *  'auto-units' / 'min'..'max'). Drives sim throttling: targeting
-   *  reacquire stride, beam path stride, mirror bisector iters,
-   *  density-cap thresholds. The host client picks this in the UI. */
-  setSimQuality(q: ServerSimQuality): void {
-    setSimQuality(q);
-  }
-
-  getSimQuality(): ServerSimQuality {
-    return getSimQuality();
-  }
-
-  getEffectiveSimQuality(): ReturnType<typeof getEffectiveSimQuality> {
-    return getEffectiveSimQuality();
-  }
-
-  /** Push the host's current TPS / CPU / units stats into the LOD
-   *  driver. Called once per tick from `tick()`, immediately before
-   *  the sim runs, so every throttle that reads getSimDetailConfig()
-   *  this tick sees a freshly-resolved tier. */
-  private refreshSimQualitySignals(): void {
-    // TPS ratio = actual / target. Source is configurable in
-    // serverSimLodConfig.ts so HOST SERVER TPS can use either steady
-    // avg or pessimistic low without touching this runtime path.
-    const tickStats = this.getTickStats();
-    const tpsForLod = SERVER_SIM_LOD_EMA_SOURCE.tps === 'avg'
-      ? tickStats.avgFps
-      : tickStats.worstFps;
-    setSimTpsRatio(tpsForLod / Math.max(1, this.tickRateHz));
-
-    // CPU ratio = headroom = 1 − (cpu load / 100). The cpu fields
-    // live as percent-of-tick-budget; they can exceed 100 when
-    // we're falling behind. Source is configurable: 'avg' uses steady
-    // load, while 'low' uses the spike/high load because that produces
-    // lower pessimistic headroom. Clamp to [0, 1] for the LOD signal
-    // so a momentary overshoot doesn't push the rank below MIN.
-    const tickBudgetMs = 1000 / this.tickRateHz;
-    const tickMsForLod = SERVER_SIM_LOD_EMA_SOURCE.cpu === 'avg'
-      ? this.tickMsAvg
-      : this.tickMsHi;
-    const cpuLoad = this.tickMsInitialized
-      ? Math.min(100, Math.max(0, (tickMsForLod / tickBudgetMs) * 100))
-      : 0;
-    setSimCpuRatio(1 - cpuLoad / 100);
-
-    // Units fullness — same shape as the client side.
-    setSimUnitCount(this.world.getUnits().length);
-    setSimUnitCap(this.world.maxTotalUnits);
-  }
-
   // Change simulation tick rate (restarts the game loop interval).
-  // This is the user's configured target — adaptive rate may
-  // lower the EFFECTIVE rate below this when the host is overloaded.
   setTickRate(hz: number): void {
-    this.userTickRateHz = hz;
     this.tickRateHz = hz;
     if (this.tickLoop.isRunning()) {
       this.startGameLoop();
-    }
-  }
-
-  /** Adaptive rate evaluation. Called every N ticks. When the EMA
-   *  per-tick CPU load is sustained above 150% of the budget, halve
-   *  the effective tick rate (down to 4 Hz floor). When it's
-   *  sustained below 50%, double back up toward the user's pick.
-   *
-   *  Why not the LOD ladder alone: the LOD throttles cut targeting,
-   *  beam tracing, force fields, capture — but every other system
-   *  (physics step, projectile motion, collision) still runs every
-   *  tick. If the host can only do 16 ticks of work per second,
-   *  trying to fire 128 of them just buries the loop. Drop the
-   *  target, complete every tick, sim runs slower in real time but
-   *  the game stays responsive.
-   *
-   *  Floor at 4 Hz. Below that the snapshot rate is too low for
-   *  remote clients to interpolate cleanly anyway, and the host
-   *  has bigger problems. */
-  private maybeAdaptTickRate(): void {
-    this._adaptCheckTicks++;
-    // Check every ~64 ticks. At a healthy 60 TPS that's ~1s, at a
-    // crushed 6 TPS it's ~10s — both reasonable cadences for an
-    // automated rate change.
-    if (this._adaptCheckTicks < 64) return;
-    this._adaptCheckTicks = 0;
-
-    if (!this.tickMsInitialized) return;
-
-    const tickBudgetMs = 1000 / this.tickRateHz;
-    const loadAvg = this.tickMsAvg / tickBudgetMs;
-
-    const FLOOR_HZ = 4;
-    if (loadAvg > 1.5 && this.tickRateHz > FLOOR_HZ) {
-      // Halve, snapping to int. Don't drop below floor.
-      const next = Math.max(FLOOR_HZ, Math.floor(this.tickRateHz / 2));
-      if (next !== this.tickRateHz) {
-        this.tickRateHz = next;
-        if (this.tickLoop.isRunning()) this.startGameLoop();
-      }
-    } else if (loadAvg < 0.5 && this.tickRateHz < this.userTickRateHz) {
-      const next = Math.min(this.userTickRateHz, this.tickRateHz * 2);
-      if (next !== this.tickRateHz) {
-        this.tickRateHz = next;
-        if (this.tickLoop.isRunning()) this.startGameLoop();
-      }
     }
   }
 

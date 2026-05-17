@@ -41,9 +41,7 @@ export type CommandType =
   | 'setForceFieldsEnabled'
   | 'setForceFieldsBlockTargeting'
   | 'setForceFieldReflectionMode'
-  | 'setFogOfWarEnabled'
-  | 'setSimQuality'
-  | 'setSimSignalStates';
+  | 'setFogOfWarEnabled';
 
 export type BaseCommand = {
   type: CommandType;
@@ -307,22 +305,6 @@ export type SetFogOfWarEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetSimQualityCommand = BaseCommand & {
-  type: 'setSimQuality';
-  // Stored as the raw string union — keeps the wire format simple
-  // and lets msgpack delta-encode by reference.
-  quality: string;
-};
-
-export type SetSimSignalStatesCommand = BaseCommand & {
-  type: 'setSimSignalStates';
-  // Each field is one of 'off' | 'active' | 'solo'. Sent whenever
-  // the host client cycles a signal's state.
-  tps?: string;
-  cpu?: string;
-  units?: string;
-};
-
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -359,6 +341,4 @@ export type Command =
   | SetForceFieldsEnabledCommand
   | SetForceFieldsBlockTargetingCommand
   | SetForceFieldReflectionModeCommand
-  | SetFogOfWarEnabledCommand
-  | SetSimQualityCommand
-  | SetSimSignalStatesCommand;
+  | SetFogOfWarEnabledCommand;

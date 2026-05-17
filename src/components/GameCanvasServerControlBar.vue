@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { CLIENT_CONFIG } from '../clientBarConfig';
 import { GOOD_TPS } from '../lodConfig';
 import {
   SERVER_CONFIG,
@@ -7,7 +6,6 @@ import {
   snapshotRateLabel,
   snapshotRateTitle,
 } from '../serverBarConfig';
-import { SERVER_SIM_LOD_SIGNALS_ENABLED } from '../serverSimLodConfig';
 import type { TiltEmaMode } from '../shellConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
@@ -71,14 +69,13 @@ function secPerFullsnap(ratio: number): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>TARGET TPS:</BarLabel>
+        <BarLabel>TARGET SERVER TPS:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="rate in SERVER_CONFIG.tickRate.options"
             :key="rate"
-            :active="model.displayTargetTickRate === rate"
-            :active-level="model.displayTickRate === rate && model.displayTargetTickRate !== rate"
-            :title="`Target ${rate} simulation ticks per second. Effective TPS cap is currently ${model.displayTickRate}.`"
+            :active="model.displayTickRate === rate"
+            :title="`Run the host at ${rate} simulation ticks per second.`"
             @click="model.setTickRateValue(rate)"
           >{{ rate }}</BarButton>
         </BarButtonGroup>
@@ -199,65 +196,6 @@ function secPerFullsnap(ratio: number): string {
                 : `1e-${Math.round(-Math.log10(opt as number))}`
           }}</BarButton>
         </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>LOD:</BarLabel>
-        <BarButton
-          :active="model.serverSimQuality === 'auto' && !model.serverAnySolo"
-          :active-level="model.serverSimQuality === 'auto' && model.serverAnySolo"
-          title="Auto-adjust sim throttling (lowest of TPS, CPU, units)"
-          @click="model.setSimQualityValue('auto')"
-        >AUTO</BarButton>
-        <BarButtonGroup>
-          <BarButton
-            v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.tps"
-            :active="model.serverSimQuality === 'auto' && model.serverSignalStates.tps === 'solo'"
-            :active-level="
-              model.serverSimQuality === 'auto'
-                && model.serverSignalStates.tps === 'active'
-                && !model.serverAnySolo
-            "
-            :title="`Server TPS signal - click to cycle off / active / solo. Currently ${model.serverSignalStates.tps}.`"
-            @click="model.cycleServerSignal('tps')"
-          >TPS</BarButton>
-          <BarButton
-            v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.cpu"
-            :active="model.serverSimQuality === 'auto' && model.serverSignalStates.cpu === 'solo'"
-            :active-level="
-              model.serverSimQuality === 'auto'
-                && model.serverSignalStates.cpu === 'active'
-                && !model.serverAnySolo
-            "
-            :title="`Host CPU load signal - click to cycle off / active / solo. Currently ${model.serverSignalStates.cpu}.`"
-            @click="model.cycleServerSignal('cpu')"
-          >CPU</BarButton>
-          <BarButton
-            v-if="SERVER_SIM_LOD_SIGNALS_ENABLED.units"
-            :active="model.serverSimQuality === 'auto' && model.serverSignalStates.units === 'solo'"
-            :active-level="
-              model.serverSimQuality === 'auto'
-                && model.serverSignalStates.units === 'active'
-                && !model.serverAnySolo
-            "
-            :title="`World fullness signal - click to cycle off / active / solo. Currently ${model.serverSignalStates.units}.`"
-            @click="model.cycleServerSignal('units')"
-          >UNITS</BarButton>
-        </BarButtonGroup>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.graphics.options"
-            :key="opt.value"
-            :active="model.serverSimQuality === opt.value"
-            :active-level="
-              model.effectiveSimQuality === opt.value &&
-              model.serverSimQuality !== opt.value
-            "
-            :title="`Lock sim throttling to ${opt.value} tier`"
-            @click="model.setSimQualityValue(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-        <BarDivider />
       </BarControlGroup>
     </div>
   </div>

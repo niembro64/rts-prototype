@@ -125,8 +125,6 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setForceFieldsBlockTargeting':
     case 'setForceFieldReflectionMode':
     case 'setFogOfWarEnabled':
-    case 'setSimQuality':
-    case 'setSimSignalStates':
       return false;
     default:
       return true;

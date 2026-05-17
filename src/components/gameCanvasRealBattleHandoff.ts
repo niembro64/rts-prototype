@@ -10,7 +10,6 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { CameraFovDegrees } from '../types/client';
-import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import { bindGameCanvasNetworkCallbacks } from './gameCanvasNetworkCallbacks';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
@@ -33,8 +32,6 @@ type UseGameCanvasRealBattleHandoffOptions = {
   playerClientEnabled: Ref<boolean>;
   cameraFovDegrees: Ref<CameraFovDegrees>;
   localIpAddress: Ref<string>;
-  serverSimQuality: Ref<ServerSimQuality>;
-  serverSignalStates: Ref<ServerSimSignalStates>;
   hasServer: Ref<boolean>;
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;
@@ -71,8 +68,6 @@ export function useGameCanvasRealBattleHandoff({
   playerClientEnabled,
   cameraFovDegrees,
   localIpAddress,
-  serverSimQuality,
-  serverSignalStates,
   hasServer,
   networkNotice,
   lobbyError,
@@ -109,8 +104,6 @@ export function useGameCanvasRealBattleHandoff({
       playerClientEnabled,
       cameraFovDegrees,
       localIpAddress,
-      serverSimQuality,
-      serverSignalStates,
       hasServer,
       network,
       lifecycle,

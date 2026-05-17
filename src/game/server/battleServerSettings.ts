@@ -13,14 +13,11 @@ import {
   loadStoredTickRate,
   loadStoredTiltEmaMode,
 } from '../../serverBarConfig';
-import type { ServerSimQuality, ServerSimSignalStates } from '../../types/serverSimLod';
 import type { GameServer } from './GameServer';
 
 export type StoredBattleServerSettingsOptions = {
   ipAddress?: string;
   maxTotalUnits?: number;
-  simQuality?: ServerSimQuality;
-  simSignalStates?: ServerSimSignalStates;
 };
 
 export function applyStoredBattleServerSettings(
@@ -37,18 +34,6 @@ export function applyStoredBattleServerSettings(
     mode: loadStoredTiltEmaMode(),
   });
 
-  if (options.simQuality !== undefined) {
-    server.setSimQuality(options.simQuality);
-  }
-  if (options.simSignalStates) {
-    server.receiveCommand({
-      type: 'setSimSignalStates',
-      tick: 0,
-      tps: options.simSignalStates.tps,
-      cpu: options.simSignalStates.cpu,
-      units: options.simSignalStates.units,
-    });
-  }
   if (options.ipAddress !== undefined) {
     server.setIpAddress(options.ipAddress);
   }

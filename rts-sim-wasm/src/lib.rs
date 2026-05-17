@@ -7838,7 +7838,6 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     ticks_avg: f64,
     ticks_low: f64,
     ticks_rate: f64,
-    ticks_target: f64,
     snaps_rate_is_string: u8,
     snaps_rate: f64,
     snaps_rate_slot: u32,
@@ -7867,11 +7866,6 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     fog_of_war_enabled: u8,
     cpu_avg: f64,
     cpu_hi: f64,
-    sim_lod_picked_slot: u32,
-    sim_lod_effective_slot: u32,
-    sim_lod_signal_tps_slot: u32,
-    sim_lod_signal_cpu_slot: u32,
-    sim_lod_signal_units_slot: u32,
     wind_x: f64,
     wind_y: f64,
     wind_speed: f64,
@@ -7880,7 +7874,7 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 ) -> u32 {
     let w = messagepack_writer();
 
-    let mut field_count: usize = 9; // ticks, snaps, server, grid, units, cpu, simLod, wind, tiltEma
+    let mut field_count: usize = 8; // ticks, snaps, server, grid, units, cpu, wind, tiltEma
     if has_mirrors_enabled != 0 { field_count += 1; }
     if has_force_fields_enabled != 0 { field_count += 1; }
     if has_force_fields_block_targeting != 0 { field_count += 1; }
@@ -7891,11 +7885,10 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     w.write_map_header(field_count);
 
     w.write_str("ticks");
-    w.write_map_header(4);
+    w.write_map_header(3);
     w.write_str("avg"); w.write_number(ticks_avg);
     w.write_str("low"); w.write_number(ticks_low);
     w.write_str("rate"); w.write_number(ticks_rate);
-    w.write_str("target"); w.write_number(ticks_target);
 
     w.write_str("snaps");
     w.write_map_header(2);
@@ -7968,16 +7961,6 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     w.write_map_header(2);
     w.write_str("avg"); w.write_number(cpu_avg);
     w.write_str("hi"); w.write_number(cpu_hi);
-
-    w.write_str("simLod");
-    w.write_map_header(3);
-    w.write_str("picked"); write_string_from_scratch(w, sim_lod_picked_slot);
-    w.write_str("effective"); write_string_from_scratch(w, sim_lod_effective_slot);
-    w.write_str("signals");
-    w.write_map_header(3);
-    w.write_str("tps"); write_string_from_scratch(w, sim_lod_signal_tps_slot);
-    w.write_str("cpu"); write_string_from_scratch(w, sim_lod_signal_cpu_slot);
-    w.write_str("units"); write_string_from_scratch(w, sim_lod_signal_units_slot);
 
     w.write_str("wind");
     w.write_map_header(4);

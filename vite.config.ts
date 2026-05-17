@@ -27,7 +27,6 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'persistence.ts' ||
     srcPath === 'playerNamesConfig.ts' ||
     srcPath === 'serverBarConfig.ts' ||
-    srcPath === 'serverSimLodConfig.ts' ||
     srcPath === 'shellConfig.ts' ||
     srcPath === 'uiLabels.ts' ||
     srcPath === 'game/sim/blueprints/unitRoster.ts' ||

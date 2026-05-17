@@ -907,10 +907,6 @@ export const UNIT_HP_MULTIPLIER = 2.0;
  */
 export const UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND = 3;
 
-// TARGETING_REACQUIRE_STRIDE moved to serverSimLodConfig.ts as part of
-// the HOST SERVER LOD ladder — the stride is now picked per-tick from
-// the resolved sim quality tier. See simQuality.getSimDetailConfig().
-
 // UNIT_STATS removed — now in blueprints
 
 // PROJECTILE_STATS removed — now in blueprints

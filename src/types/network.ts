@@ -461,10 +461,9 @@ export type NetworkServerSnapshotMeta = {
   ticks: {
     avg: number;
     low: number;
-    /** Effective tick rate after adaptive host throttling. */
+    /** HOST SERVER TARGET TPS — the host runs at this rate without
+     *  any adaptive slowdown. */
     rate: TickRate;
-    /** User-selected HOST SERVER TARGET TPS. */
-    target: TickRate;
   };
   snaps: { rate: SnapshotRate; keyframes: KeyframeRatio };
   server: { time: string; ip: string };
@@ -480,18 +479,6 @@ export type NetworkServerSnapshotMeta = {
    *  on jumps and decays slowly. Both can exceed 100 when the server is
    *  falling behind (tick work > tick budget). */
   cpu?: { avg: number; hi: number };
-  /** HOST SERVER LOD state. `picked` is the user's choice (auto or a
-   *  fixed tier). `effective` is the concrete tier that's actually
-   *  driving sim throttling this tick (after the auto resolver
-   *  runs). `signals` carries the per-signal tri-state so the host
-   *  bar can render off / active / solo on each button — same shape
-   *  the client side uses for its own LOD bar. Wire format is bare
-   *  strings — keeps msgpack delta-friendly. */
-  simLod?: {
-    picked: string;
-    effective: string;
-    signals?: { tps: string; cpu: string; units: string };
-  };
   wind?: {
     x: number;
     y: number;
@@ -500,9 +487,8 @@ export type NetworkServerSnapshotMeta = {
   };
   /** HOST SERVER chassis-tilt EMA mode (TILT_EMA_HALF_LIFE_SEC key).
    *  Bare string on the wire — the value space is just 'snap' / 'fast'
-   *  / 'mid' / 'slow', matching the same delta-friendly pattern as
-   *  simLod.picked. Remote clients read this so their HOST SERVER tilt
-   *  bar reflects the host's setting rather than their own stale
+   *  / 'mid' / 'slow'. Remote clients read this so their HOST SERVER
+   *  tilt bar reflects the host's setting rather than their own stale
    *  localStorage. */
   tiltEma?: TiltEmaMode;
 };

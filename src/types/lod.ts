@@ -21,8 +21,7 @@ export type EmaStat = 'avg' | 'low';
  *    - 'solo'  — overrides every other signal; only this one drives
  *                the rank. At most one signal can be SOLO at a time;
  *                clicking a signal to SOLO demotes any prior SOLO
- *                back to ACTIVE.
- *  Identical shape on the HOST SERVER side (see types/serverSimLod.ts). */
+ *                back to ACTIVE. */
 export type SignalState = 'off' | 'active' | 'solo';
 
 /** Runtime guard for `SignalState` — used at every persistence /

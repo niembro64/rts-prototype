@@ -5,7 +5,6 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
 import type { CameraFovDegrees } from '../types/client';
-import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import { setPlayerClientRenderEnabled } from './gameCanvasChromeState';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
 import type { GameCanvasForegroundSceneBinding } from './gameCanvasForegroundSceneBinding';
@@ -38,8 +37,6 @@ export type StartRealBattleWithPlayersOptions = {
   playerClientEnabled: Ref<boolean>;
   cameraFovDegrees: Ref<CameraFovDegrees>;
   localIpAddress: Ref<string>;
-  serverSimQuality: Ref<ServerSimQuality>;
-  serverSignalStates: Ref<ServerSimSignalStates>;
   hasServer: Ref<boolean>;
   network: NetworkManager;
   lifecycle: GameCanvasRealBattleLifecycle;
@@ -123,8 +120,6 @@ export async function startRealBattleWithPlayers(
 
       applySettingsAndStartRealBattleServer(createdServer, {
         ipAddress: options.localIpAddress.value,
-        simQuality: options.serverSimQuality.value,
-        simSignalStates: options.serverSignalStates.value,
       });
       if (options.networkRole.value === 'host') {
         options.lifecycle.scheduleRecoveryKeyframes(

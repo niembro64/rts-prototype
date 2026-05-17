@@ -509,7 +509,6 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isFiniteNumber(meta.ticks.avg) ||
     !isFiniteNumber(meta.ticks.low) ||
     !isFiniteNumber(meta.ticks.rate) ||
-    !isFiniteNumber(meta.ticks.target) ||
     !meta.snaps ||
     !isFiniteNumberOrString(meta.snaps.rate) ||
     !isFiniteNumberOrString(meta.snaps.keyframes) ||
@@ -532,13 +531,6 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !meta.cpu ||
     !isFiniteNumber(meta.cpu.avg) ||
     !isFiniteNumber(meta.cpu.hi) ||
-    !meta.simLod ||
-    typeof meta.simLod.picked !== 'string' ||
-    typeof meta.simLod.effective !== 'string' ||
-    !meta.simLod.signals ||
-    typeof meta.simLod.signals.tps !== 'string' ||
-    typeof meta.simLod.signals.cpu !== 'string' ||
-    typeof meta.simLod.signals.units !== 'string' ||
     !meta.wind ||
     !isFiniteNumber(meta.wind.x) ||
     !isFiniteNumber(meta.wind.y) ||
@@ -586,11 +578,6 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     forceFieldReflectionModeSlot = pushString(meta.forceFieldReflectionMode);
   }
 
-  const simLodPickedSlot = pushString(meta.simLod!.picked);
-  const simLodEffectiveSlot = pushString(meta.simLod!.effective);
-  const simLodSignalTpsSlot = pushString(meta.simLod!.signals!.tps);
-  const simLodSignalCpuSlot = pushString(meta.simLod!.signals!.cpu);
-  const simLodSignalUnitsSlot = pushString(meta.simLod!.signals!.units);
   const tiltEmaSlot = pushString(meta.tiltEma!);
   packOrderedStringsIntoScratch(sim, strings);
 
@@ -598,7 +585,6 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.ticks.avg,
     meta.ticks.low,
     meta.ticks.rate,
-    meta.ticks.target,
     typeof snapsRate === 'string' ? 1 : 0,
     typeof snapsRate === 'string' ? 0 : snapsRate,
     snapsRateSlot,
@@ -627,11 +613,6 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.fogOfWarEnabled === true ? 1 : 0,
     meta.cpu!.avg,
     meta.cpu!.hi,
-    simLodPickedSlot,
-    simLodEffectiveSlot,
-    simLodSignalTpsSlot,
-    simLodSignalCpuSlot,
-    simLodSignalUnitsSlot,
     meta.wind!.x,
     meta.wind!.y,
     meta.wind!.speed,

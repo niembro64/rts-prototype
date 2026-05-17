@@ -266,11 +266,11 @@ export class ReusableNetworkSnapshotCloner {
   // Pooled serverMeta + each of its optional sub-objects. The previous
   // implementation rebuilt the whole tree as a fresh object literal
   // every snapshot (6 nested spreads); these reusable slots cut that
-  // to in-place field copies. Inner objects (cpu/simLod/wind) are kept
+  // to in-place field copies. Inner objects (cpu/wind) are kept
   // allocated even when src lacks them; the dst.serverMeta.cpu pointer
   // toggles to undefined instead of dropping the buffer.
   private serverMeta: NonNullable<NetworkServerSnapshot['serverMeta']> = {
-    ticks: { avg: 0, low: 0, rate: 0, target: 0 },
+    ticks: { avg: 0, low: 0, rate: 0 },
     snaps: { rate: 0, keyframes: 0 },
     server: { time: '', ip: '' },
     grid: false,
@@ -278,11 +278,6 @@ export class ReusableNetworkSnapshotCloner {
   };
   private serverMetaUnitsAllowed: string[] = [];
   private serverMetaCpu = { avg: 0, hi: 0 };
-  private serverMetaSimLodSignals = { tps: '', cpu: '', units: '' };
-  private serverMetaSimLod: NonNullable<NonNullable<NetworkServerSnapshot['serverMeta']>['simLod']> = {
-    picked: '',
-    effective: '',
-  };
   private serverMetaWind = { x: 0, y: 0, speed: 0, angle: 0 };
   private removedEntityIds: number[] = [];
 
@@ -397,7 +392,6 @@ export class ReusableNetworkSnapshotCloner {
       dsm.ticks.avg = sm.ticks.avg;
       dsm.ticks.low = sm.ticks.low;
       dsm.ticks.rate = sm.ticks.rate;
-      dsm.ticks.target = sm.ticks.target;
       dsm.snaps.rate = sm.snaps.rate;
       dsm.snaps.keyframes = sm.snaps.keyframes;
       dsm.server.time = sm.server.time;
@@ -427,21 +421,6 @@ export class ReusableNetworkSnapshotCloner {
         dsm.cpu = this.serverMetaCpu;
       } else {
         dsm.cpu = undefined;
-      }
-      if (sm.simLod) {
-        this.serverMetaSimLod.picked = sm.simLod.picked;
-        this.serverMetaSimLod.effective = sm.simLod.effective;
-        if (sm.simLod.signals) {
-          this.serverMetaSimLodSignals.tps = sm.simLod.signals.tps;
-          this.serverMetaSimLodSignals.cpu = sm.simLod.signals.cpu;
-          this.serverMetaSimLodSignals.units = sm.simLod.signals.units;
-          this.serverMetaSimLod.signals = this.serverMetaSimLodSignals;
-        } else {
-          this.serverMetaSimLod.signals = undefined;
-        }
-        dsm.simLod = this.serverMetaSimLod;
-      } else {
-        dsm.simLod = undefined;
       }
       if (sm.wind) {
         this.serverMetaWind.x = sm.wind.x;

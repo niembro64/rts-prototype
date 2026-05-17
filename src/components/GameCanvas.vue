@@ -34,18 +34,13 @@ import {
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
-  loadStoredSimQuality,
-  loadStoredSimSignalStates,
   loadStoredTiltEmaMode,
   snapshotRateHz,
 } from '../serverBarConfig';
 import type { TiltEmaMode } from '../shellConfig';
-import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
-import { isSignalState } from '../types/lod';
 import { getPlayerColor } from './uiUtils';
 import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
-import type { ConcreteGraphicsQuality } from '../types/graphics';
 import type { CameraFovDegrees } from '../types/client';
 import {
   setPlayerClientRenderEnabled,
@@ -423,80 +418,10 @@ const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ?? SERVER_CONFIG.tickRate.default,
 );
-const displayTargetTickRate = computed(
-  () =>
-    serverMetaFromSnapshot.value?.ticks.target ?? displayTickRate.value,
-);
-// HOST SERVER LOD pick — driven from local persistence + sent to the
-// server via setSimQuality command. Effective tier (after the auto
-// resolver) is read from the server's snapshot meta — the server
-// runs the resolver each tick and ships both the picked AND
-// effective values, so the bar lights the picked button as
-// background AND the effective tier as white text just like the
-// PLAYER CLIENT bar does.
-const serverSimQuality = ref<ServerSimQuality>(loadStoredSimQuality());
 // HOST SERVER chassis-tilt EMA mode. Picks the half-life used by the
 // sim's updateUnitTilt (TILT_EMA_HALF_LIFE_SEC[mode]). Persisted to
 // localStorage and pushed via setTiltEmaMode command.
 const serverTiltEmaMode = ref<TiltEmaMode>(loadStoredTiltEmaMode());
-// HOST SERVER per-signal tri-state — persisted locally and pushed
-// to the server via setSimSignalStates command.
-const serverSignalStates = ref<ServerSimSignalStates>(loadStoredSimSignalStates());
-// True when any HOST SERVER signal is SOLO. Same role as
-// clientAnySolo — controls whether AUTO is the level (background)
-// or just a parent indicator (white text).
-const serverAnySolo = computed(() =>
-  serverSignalStates.value.tps === 'solo' ||
-  serverSignalStates.value.cpu === 'solo' ||
-  serverSignalStates.value.units === 'solo',
-);
-// effective is one of the concrete tiers ('min'..'max') or '' before
-// the first snapshot. The wire format is plain string; narrow the
-// computed result so the v-bind class equality checks don't fall
-// through TypeScript's `any` widening.
-const effectiveSimQuality = computed<ConcreteGraphicsQuality | ''>(
-  () => {
-    const v = serverMetaFromSnapshot.value?.simLod?.effective;
-    if (v === 'min' || v === 'low' || v === 'medium' || v === 'high' || v === 'max') {
-      return v;
-    }
-    return '';
-  },
-);
-// Reconcile from server snapshot. The host's localStorage is the
-// source of truth at boot (the `setSimQuality` command goes from
-// host client to GameServer). For REMOTE clients connecting to
-// someone else's server, their localStorage is irrelevant — the
-// host already chose. Sync from `simLod.picked` whenever it differs
-// from the local ref so the bar lights the correct "active" button.
-const VALID_SIM_QUALITIES = new Set<string>([
-  'auto', 'auto-tps', 'auto-cpu', 'auto-units',
-  'min', 'low', 'medium', 'high', 'max',
-]);
-watch(
-  () => serverMetaFromSnapshot.value?.simLod?.picked,
-  (picked) => {
-    if (!picked) return;
-    if (!VALID_SIM_QUALITIES.has(picked)) return;
-    if (picked === serverSimQuality.value) return;
-    serverSimQuality.value = picked as ServerSimQuality;
-  },
-);
-// Same reconciliation for the per-signal tri-state — non-host
-// clients pick up whatever the host actually configured.
-watch(
-  () => serverMetaFromSnapshot.value?.simLod?.signals,
-  (signals) => {
-    if (!signals) return;
-    const updated: ServerSimSignalStates = { ...serverSignalStates.value };
-    let changed = false;
-    if (isSignalState(signals.tps) && signals.tps !== updated.tps) { updated.tps = signals.tps; changed = true; }
-    if (isSignalState(signals.cpu) && signals.cpu !== updated.cpu) { updated.cpu = signals.cpu; changed = true; }
-    if (isSignalState(signals.units) && signals.units !== updated.units) { updated.units = signals.units; changed = true; }
-    if (changed) serverSignalStates.value = updated;
-  },
-  { deep: true },
-);
 // HOST SERVER tilt EMA — the host applies its setting via the
 // setTiltEmaMode command, but remote clients render this control
 // from snapshot meta (their own localStorage is irrelevant once
@@ -575,16 +500,12 @@ const {
   setNetworkUpdateRate,
   setTickRateValue,
   setTiltEmaModeValue,
-  setSimQualityValue,
-  cycleServerSignal,
   setKeyframeRatioValue,
   resetGridInfoToDefault,
 } = useGameCanvasServerSettings({
   currentBattleMode,
   displayGridInfo,
-  serverSimQuality,
   serverTiltEmaMode,
-  serverSignalStates,
   getActiveConnection: () => activeConnection,
 });
 
@@ -630,8 +551,6 @@ const {
   playerClientEnabled,
   cameraFovDegrees,
   localIpAddress,
-  serverSimQuality,
-  serverSignalStates,
   hasServer,
   networkNotice,
   lobbyError,
@@ -792,7 +711,6 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   barStyle: serverBarVars.value,
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
-  displayTargetTickRate: displayTargetTickRate.value,
   displayTickRate: displayTickRate.value,
   serverTiltEmaMode: serverTiltEmaMode.value,
   displayServerTpsAvg: displayServerTpsAvg.value,
@@ -801,17 +719,11 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   displayServerCpuHi: displayServerCpuHi.value,
   displaySnapshotRate: displaySnapshotRate.value,
   displayKeyframeRatio: displayKeyframeRatio.value,
-  serverSimQuality: serverSimQuality.value,
-  serverAnySolo: serverAnySolo.value,
-  serverSignalStates: serverSignalStates.value,
-  effectiveSimQuality: effectiveSimQuality.value,
   resetServerDefaults,
   setTickRateValue,
   setTiltEmaModeValue,
   setNetworkUpdateRate,
   setKeyframeRatioValue,
-  setSimQualityValue,
-  cycleServerSignal,
 });
 watchEffect(() => {
   const m = serverControlBarModel as {
@@ -821,7 +733,6 @@ watchEffect(() => {
   m.barStyle = serverBarVars.value;
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
-  m.displayTargetTickRate = displayTargetTickRate.value;
   m.displayTickRate = displayTickRate.value;
   m.serverTiltEmaMode = serverTiltEmaMode.value;
   m.displayServerTpsAvg = displayServerTpsAvg.value;
@@ -830,10 +741,6 @@ watchEffect(() => {
   m.displayServerCpuHi = displayServerCpuHi.value;
   m.displaySnapshotRate = displaySnapshotRate.value;
   m.displayKeyframeRatio = displayKeyframeRatio.value;
-  m.serverSimQuality = serverSimQuality.value;
-  m.serverAnySolo = serverAnySolo.value;
-  m.serverSignalStates = serverSignalStates.value;
-  m.effectiveSimQuality = effectiveSimQuality.value;
 });
 
 // Same reactive() pattern as the other two bar models. This one is

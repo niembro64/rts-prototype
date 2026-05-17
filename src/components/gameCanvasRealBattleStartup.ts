@@ -15,7 +15,6 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
-import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 
 export type RealBattleStartupTerrain = {
   terrainCenter: TerrainShape;
@@ -33,8 +32,6 @@ export type CreateRealBattleServerOptions = {
 
 export type StartRealBattleServerOptions = {
   ipAddress: string;
-  simQuality: ServerSimQuality;
-  simSignalStates: ServerSimSignalStates;
 };
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
@@ -93,8 +90,6 @@ export function applySettingsAndStartRealBattleServer(
   applyStoredBattleServerSettings(server, 'real', {
     ipAddress: options.ipAddress,
     maxTotalUnits: loadStoredRealCap(),
-    simQuality: options.simQuality,
-    simSignalStates: options.simSignalStates,
   });
   server.start();
 }

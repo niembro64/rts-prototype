@@ -1074,10 +1074,6 @@ export function updateProjectiles(
         const fullEndZ = endpoint.z;
 
         // Find beam path (with possible reflections off mirror units).
-        // Throttle stride comes from the HOST SERVER LOD tier — MAX
-        // re-traces every tick, MIN every 8. Beam visuals tolerate
-        // slight staleness so the trade is mostly invisible until
-        // pretty low tiers.
         const collisionRadius = proj.config.shotProfile.runtime.collisionRadius;
         const beamStride = Math.max(1, simDetail.beamPathStride | 0);
         if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= beamStride) {

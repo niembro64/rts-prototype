@@ -215,11 +215,6 @@ function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRa
   return distSq > maxRangeWithTargetSq(outermostReleaseRange(ranges), 'release', targetRadius);
 }
 
-// Density-cap thresholds + stride for the dense-crowd fallback used
-// inside the inner targeting loops are now read per-tick from the
-// HOST SERVER LOD tier (see simQuality.ts). Lower tiers tighten the
-// threshold AND raise the stride so heavy crowds bound out faster.
-
 function isMirrorTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
   return getMirrorTargetScore(enemy, mirrorUnitId) > 0;
 }
@@ -552,16 +547,6 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
 export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
-  // Stagger key — only this fraction of units does heavy spatial-grid
-  // re-acquisition work this tick. Per-tick state (target validation,
-  // FSM transitions, weapon position cache, priority targets) still
-  // runs for every unit so a target dying or running out of range
-  // disengages the firing weapon on the same tick.
-  //
-  // The stride + density caps come from the HOST SERVER LOD tier so
-  // the host's CPU/TPS/units load steers how much targeting work each
-  // tick does. MAX = stride 1 (every unit, every tick); MIN = stride
-  // 16 (worst-case ~267ms acquire latency at 60 TPS, but 16x cheaper).
   const lod = getSimDetailConfig();
   const stride = Math.max(1, lod.targetingReacquireStride | 0);
   const tick = world.getTick();

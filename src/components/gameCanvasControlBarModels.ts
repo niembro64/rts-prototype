@@ -16,7 +16,6 @@ import type {
 } from '../types/client';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
 import type { LodSignalStates } from '../types/lod';
-import type { ServerSimQuality, ServerSimSignalStates } from '../types/serverSimLod';
 import type { TiltEmaMode } from '../shellConfig';
 import type {
   ConcreteGraphicsQuality,
@@ -67,7 +66,6 @@ export type GameCanvasServerControlBarModel = {
   readonly barStyle: ControlBarStyle;
   readonly displayServerTime: string;
   readonly displayServerIp: string;
-  readonly displayTargetTickRate: TickRate;
   readonly displayTickRate: TickRate;
   readonly serverTiltEmaMode: TiltEmaMode;
   readonly displayServerTpsAvg: number;
@@ -76,17 +74,11 @@ export type GameCanvasServerControlBarModel = {
   readonly displayServerCpuHi: number;
   readonly displaySnapshotRate: SnapshotRate;
   readonly displayKeyframeRatio: KeyframeRatio;
-  readonly serverSimQuality: ServerSimQuality;
-  readonly serverAnySolo: boolean;
-  readonly serverSignalStates: ServerSimSignalStates;
-  readonly effectiveSimQuality: ConcreteGraphicsQuality | '';
   resetServerDefaults(): void;
   setTickRateValue(rate: TickRate): void;
   setTiltEmaModeValue(mode: TiltEmaMode): void;
   setNetworkUpdateRate(rate: SnapshotRate): void;
   setKeyframeRatioValue(ratio: KeyframeRatio): void;
-  setSimQualityValue(quality: ServerSimQuality): void;
-  cycleServerSignal(signal: keyof ServerSimSignalStates): void;
 };
 
 export type GameCanvasClientControlBarModel = {

@@ -1,6 +1,5 @@
 import { SNAPSHOT_CONFIG } from '../../config';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
-import { getSimSignalStates } from '../sim/simQuality';
 import { getTiltEmaMode } from '../sim/unitTilt';
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
@@ -75,7 +74,6 @@ export type ServerSnapshotPublisherInput = {
   tpsAvg: number;
   tpsLow: number;
   tickRateHz: TickRate;
-  userTickRateHz: TickRate;
   maxSnapshotsDisplay: SnapshotRate;
   keyframeRatioDisplay: KeyframeRatio;
   keyframeRatio: number;
@@ -85,8 +83,6 @@ export type ServerSnapshotPublisherInput = {
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
-  simQuality: string;
-  effectiveSimQuality: string;
 };
 
 export class ServerSnapshotPublisher {
@@ -136,7 +132,6 @@ export class ServerSnapshotPublisher {
       tickAvg: input.tpsAvg,
       tickLow: input.tpsLow,
       tickRateHz: input.tickRateHz,
-      tickTargetHz: input.userTickRateHz,
       snapshotRate: input.maxSnapshotsDisplay,
       keyframeRatio: input.keyframeRatioDisplay,
       ipAddress: input.ipAddress,
@@ -152,9 +147,6 @@ export class ServerSnapshotPublisher {
       tickMsAvg: input.tickMsAvg,
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,
-      simQuality: input.simQuality,
-      effectiveSimQuality: input.effectiveSimQuality,
-      simSignals: getSimSignalStates(),
       wind,
       tiltEmaMode: getTiltEmaMode(),
     });
