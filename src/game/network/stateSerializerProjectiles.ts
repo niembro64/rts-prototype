@@ -26,6 +26,27 @@ import { definePooledScratchProperty } from './snapshotPooledScratch';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
+export const PROJECTILE_SPAWN_WIRE_STRIDE = 27;
+export const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
+export const PROJECTILE_VELOCITY_WIRE_STRIDE = 7;
+export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
+export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 15;
+
+export type ProjectileSnapshotWireRows = {
+  values: number[];
+  count: number;
+};
+
+export type ProjectileSnapshotWireSource = {
+  spawns: ProjectileSnapshotWireRows;
+  despawns: ProjectileSnapshotWireRows;
+  velocityUpdates: ProjectileSnapshotWireRows;
+  beamUpdates: ProjectileSnapshotWireRows;
+  beamPoints: ProjectileSnapshotWireRows;
+};
+
+type MutableNumberRow = number[] | Float64Array;
+
 type PooledProjectileSpawn = NetworkServerSnapshotProjectileSpawn & {
   _pos: Vec3;
   _velocity: Vec3;
@@ -70,6 +91,16 @@ const _projectilesBuf: ProjectileSnapshot = {
   velocityUpdates: undefined,
   beamUpdates: undefined,
 };
+const projectileWireSource: ProjectileSnapshotWireSource = {
+  spawns: { values: [], count: 0 },
+  despawns: { values: [], count: 0 },
+  velocityUpdates: { values: [], count: 0 },
+  beamUpdates: { values: [], count: 0 },
+  beamPoints: { values: [], count: 0 },
+};
+const projectileWireSources = new WeakMap<object, ProjectileSnapshotWireSource>([
+  [_projectilesBuf, projectileWireSource],
+]);
 
 function qPos(n: number): number {
   return Math.round(n);
@@ -212,6 +243,182 @@ function getPooledVelocityUpdate(): PooledVelocityUpdate {
   return update;
 }
 
+function resetProjectileWireSource(): void {
+  projectileWireSource.spawns.count = 0;
+  projectileWireSource.despawns.count = 0;
+  projectileWireSource.velocityUpdates.count = 0;
+  projectileWireSource.beamUpdates.count = 0;
+  projectileWireSource.beamPoints.count = 0;
+}
+
+function trimProjectileWireRows(rows: ProjectileSnapshotWireRows, stride: number): void {
+  rows.values.length = rows.count * stride;
+}
+
+function finalizeProjectileWireSource(): void {
+  trimProjectileWireRows(projectileWireSource.spawns, PROJECTILE_SPAWN_WIRE_STRIDE);
+  trimProjectileWireRows(projectileWireSource.despawns, PROJECTILE_DESPAWN_WIRE_STRIDE);
+  trimProjectileWireRows(projectileWireSource.velocityUpdates, PROJECTILE_VELOCITY_WIRE_STRIDE);
+  trimProjectileWireRows(projectileWireSource.beamUpdates, PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
+  trimProjectileWireRows(projectileWireSource.beamPoints, PROJECTILE_BEAM_POINT_WIRE_STRIDE);
+}
+
+export function writeProjectileSpawnWireRow(
+  values: MutableNumberRow,
+  base: number,
+  spawn: NetworkServerSnapshotProjectileSpawn,
+): void {
+  values[base + 0] = spawn.id;
+  values[base + 1] = spawn.pos.x;
+  values[base + 2] = spawn.pos.y;
+  values[base + 3] = spawn.pos.z;
+  values[base + 4] = spawn.rotation;
+  values[base + 5] = spawn.velocity.x;
+  values[base + 6] = spawn.velocity.y;
+  values[base + 7] = spawn.velocity.z;
+  values[base + 8] = spawn.projectileType;
+  values[base + 9] = spawn.maxLifespan ?? 0;
+  values[base + 10] = spawn.turretId;
+  values[base + 11] = spawn.shotId ?? 0;
+  values[base + 12] = spawn.sourceTurretId ?? 0;
+  values[base + 13] = spawn.playerId;
+  values[base + 14] = spawn.sourceEntityId;
+  values[base + 15] = spawn.turretIndex;
+  values[base + 16] = spawn.barrelIndex;
+  const beam = spawn.beam;
+  values[base + 17] = beam !== undefined ? beam.start.x : 0;
+  values[base + 18] = beam !== undefined ? beam.start.y : 0;
+  values[base + 19] = beam !== undefined ? beam.start.z : 0;
+  values[base + 20] = beam !== undefined ? beam.end.x : 0;
+  values[base + 21] = beam !== undefined ? beam.end.y : 0;
+  values[base + 22] = beam !== undefined ? beam.end.z : 0;
+  values[base + 23] = spawn.targetEntityId ?? 0;
+  values[base + 24] = spawn.homingTurnRate ?? 0;
+  values[base + 25] = 0;
+  let flags = 0;
+  if (spawn.maxLifespan !== undefined) flags |= 0x01;
+  if (spawn.shotId !== undefined) flags |= 0x02;
+  if (spawn.sourceTurretId !== undefined) flags |= 0x04;
+  if (spawn.isDGun === true) flags |= 0x08;
+  if (spawn.fromParentDetonation === true) flags |= 0x10;
+  if (spawn.beam !== undefined) flags |= 0x20;
+  if (spawn.targetEntityId !== undefined) flags |= 0x40;
+  if (spawn.homingTurnRate !== undefined) flags |= 0x80;
+  values[base + 26] = flags;
+}
+
+function copyProjectileSpawnIntoWireRow(spawn: NetworkServerSnapshotProjectileSpawn): void {
+  const rows = projectileWireSource.spawns;
+  writeProjectileSpawnWireRow(
+    rows.values,
+    rows.count * PROJECTILE_SPAWN_WIRE_STRIDE,
+    spawn,
+  );
+  rows.count++;
+}
+
+function copyProjectileDespawnIntoWireRow(despawn: NetworkServerSnapshotProjectileDespawn): void {
+  const rows = projectileWireSource.despawns;
+  rows.values[rows.count] = despawn.id;
+  rows.count++;
+}
+
+export function writeProjectileVelocityUpdateWireRow(
+  values: MutableNumberRow,
+  base: number,
+  update: NetworkServerSnapshotVelocityUpdate,
+): void {
+  values[base + 0] = update.id;
+  values[base + 1] = update.pos.x;
+  values[base + 2] = update.pos.y;
+  values[base + 3] = update.pos.z;
+  values[base + 4] = update.velocity.x;
+  values[base + 5] = update.velocity.y;
+  values[base + 6] = update.velocity.z;
+}
+
+function copyProjectileVelocityUpdateIntoWireRow(update: NetworkServerSnapshotVelocityUpdate): void {
+  const rows = projectileWireSource.velocityUpdates;
+  writeProjectileVelocityUpdateWireRow(
+    rows.values,
+    rows.count * PROJECTILE_VELOCITY_WIRE_STRIDE,
+    update,
+  );
+  rows.count++;
+}
+
+export function writeBeamPointWireRow(
+  values: MutableNumberRow,
+  base: number,
+  point: NetworkServerSnapshotBeamPoint,
+): void {
+  values[base + 0] = point.x;
+  values[base + 1] = point.y;
+  values[base + 2] = point.z;
+  values[base + 3] = point.vx;
+  values[base + 4] = point.vy;
+  values[base + 5] = point.vz;
+  values[base + 6] = point.ax;
+  values[base + 7] = point.ay;
+  values[base + 8] = point.az;
+  let flags = 0;
+  if (point.mirrorEntityId !== undefined) flags |= 0x01;
+  if (point.reflectorKind !== undefined) {
+    flags |= 0x02;
+    if (point.reflectorKind === 'forceField') flags |= 0x04;
+  }
+  if (point.reflectorPlayerId !== undefined) flags |= 0x08;
+  if (point.normalX !== undefined) flags |= 0x10;
+  if (point.normalY !== undefined) flags |= 0x20;
+  if (point.normalZ !== undefined) flags |= 0x40;
+  values[base + 9] = flags;
+  values[base + 10] = point.mirrorEntityId ?? 0;
+  values[base + 11] = point.reflectorPlayerId ?? 0;
+  values[base + 12] = point.normalX ?? 0;
+  values[base + 13] = point.normalY ?? 0;
+  values[base + 14] = point.normalZ ?? 0;
+}
+
+function copyBeamPointIntoWireRow(point: NetworkServerSnapshotBeamPoint): void {
+  const rows = projectileWireSource.beamPoints;
+  writeBeamPointWireRow(
+    rows.values,
+    rows.count * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+    point,
+  );
+  rows.count++;
+}
+
+export function writeBeamUpdateWireRow(
+  values: MutableNumberRow,
+  base: number,
+  update: NetworkServerSnapshotBeamUpdate,
+): void {
+  values[base + 0] = update.id;
+  let flags = 0;
+  if (update.obstructionT !== undefined) flags |= 0x01;
+  if (update.endpointDamageable === false) flags |= 0x02;
+  values[base + 1] = flags;
+  values[base + 2] = update.obstructionT ?? 0;
+  values[base + 3] = update.points.length;
+}
+
+function copyBeamUpdateIntoWireRow(update: NetworkServerSnapshotBeamUpdate): void {
+  const rows = projectileWireSource.beamUpdates;
+  writeBeamUpdateWireRow(
+    rows.values,
+    rows.count * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+    update,
+  );
+  rows.count++;
+}
+
+export function getProjectileSnapshotWireSource(
+  projectiles: ProjectileSnapshot,
+): ProjectileSnapshotWireSource | undefined {
+  return projectileWireSources.get(projectiles);
+}
+
 function shouldSendProjectileAtPoint(
   ownerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
@@ -303,6 +510,7 @@ export function serializeProjectileSnapshot({
   projectileVelocityUpdates,
 }: SerializeProjectileSnapshotOptions): ProjectileSnapshot | undefined {
   resetProjectilePools();
+  resetProjectileWireSource();
 
   // Full keyframes synthesize spawns for every live projectile entity so a
   // client that missed the original spawn event can still recover it.
@@ -358,6 +566,7 @@ export function serializeProjectileSnapshot({
           : undefined;
         out.homingTurnRate = ps.homingTurnRate;
         _spawnBuf.push(out);
+        copyProjectileSpawnIntoWireRow(out);
         if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
       }
     }
@@ -429,6 +638,7 @@ export function serializeProjectileSnapshot({
           : undefined;
         out.homingTurnRate = proj.homingTurnRate;
         _spawnBuf.push(out);
+        copyProjectileSpawnIntoWireRow(out);
       }
     }
     if (_spawnBuf.length > 0) netProjectileSpawns = _spawnBuf;
@@ -441,6 +651,7 @@ export function serializeProjectileSnapshot({
       const out = getPooledProjectileDespawn();
       out.id = projectileDespawns[i].id;
       _despawnBuf.push(out);
+      copyProjectileDespawnIntoWireRow(out);
     }
     netProjectileDespawns = _despawnBuf;
   }
@@ -472,6 +683,7 @@ export function serializeProjectileSnapshot({
       out._velocity.y = vu.velocity.y;
       out._velocity.z = vu.velocity.z;
       _velUpdateBuf.push(out);
+      copyProjectileVelocityUpdateIntoWireRow(out);
     }
     if (_velUpdateBuf.length > 0) netVelocityUpdates = _velUpdateBuf;
   }
@@ -525,13 +737,16 @@ export function serializeProjectileSnapshot({
         out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : undefined;
         out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : undefined;
         dstPts[p] = out;
+        copyBeamPointIntoWireRow(out);
       }
 
       _beamUpdateBuf.push(update);
+      copyBeamUpdateIntoWireRow(update);
     }
     if (_beamUpdateBuf.length > 0) netBeamUpdates = _beamUpdateBuf;
   }
 
+  finalizeProjectileWireSource();
   if (!netProjectileSpawns && !netProjectileDespawns && !netVelocityUpdates && !netBeamUpdates) {
     return undefined;
   }

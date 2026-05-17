@@ -24,6 +24,19 @@ import {
   ECONOMY_SNAPSHOT_WIRE_STRIDE,
   getEconomySnapshotWireSource,
 } from './stateSerializerEconomy';
+import {
+  PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
+  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  getProjectileSnapshotWireSource,
+  type ProjectileSnapshotWireRows,
+  type ProjectileSnapshotWireSource,
+  writeBeamPointWireRow,
+  writeBeamUpdateWireRow,
+  writeProjectileSpawnWireRow,
+  writeProjectileVelocityUpdateWireRow,
+} from './stateSerializerProjectiles';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -937,45 +950,99 @@ function packProjSpawnsIntoScratch(
     spawns.length * api.projSpawnScratchStride,
   );
   for (let i = 0; i < spawns.length; i++) {
-    const spawn = spawns[i];
-    const base = i * api.projSpawnScratchStride;
-    view[base + 0] = spawn.id;
-    view[base + 1] = spawn.pos.x;
-    view[base + 2] = spawn.pos.y;
-    view[base + 3] = spawn.pos.z;
-    view[base + 4] = spawn.rotation;
-    view[base + 5] = spawn.velocity.x;
-    view[base + 6] = spawn.velocity.y;
-    view[base + 7] = spawn.velocity.z;
-    view[base + 8] = spawn.projectileType;
-    view[base + 9] = spawn.maxLifespan ?? 0;
-    view[base + 10] = spawn.turretId;
-    view[base + 11] = spawn.shotId ?? 0;
-    view[base + 12] = spawn.sourceTurretId ?? 0;
-    view[base + 13] = spawn.playerId;
-    view[base + 14] = spawn.sourceEntityId;
-    view[base + 15] = spawn.turretIndex;
-    view[base + 16] = spawn.barrelIndex;
-    view[base + 17] = spawn.beam?.start.x ?? 0;
-    view[base + 18] = spawn.beam?.start.y ?? 0;
-    view[base + 19] = spawn.beam?.start.z ?? 0;
-    view[base + 20] = spawn.beam?.end.x ?? 0;
-    view[base + 21] = spawn.beam?.end.y ?? 0;
-    view[base + 22] = spawn.beam?.end.z ?? 0;
-    view[base + 23] = spawn.targetEntityId ?? 0;
-    view[base + 24] = spawn.homingTurnRate ?? 0;
-    view[base + 25] = 0;
-    let flags = 0;
-    if (spawn.maxLifespan !== undefined) flags |= 0x01;
-    if (spawn.shotId !== undefined) flags |= 0x02;
-    if (spawn.sourceTurretId !== undefined) flags |= 0x04;
-    if (spawn.isDGun === true) flags |= 0x08;
-    if (spawn.fromParentDetonation === true) flags |= 0x10;
-    if (spawn.beam !== undefined) flags |= 0x20;
-    if (spawn.targetEntityId !== undefined) flags |= 0x40;
-    if (spawn.homingTurnRate !== undefined) flags |= 0x80;
-    view[base + 26] = flags;
+    writeProjectileSpawnWireRow(view, i * api.projSpawnScratchStride, spawns[i]);
   }
+}
+
+function copyFloatWireRowsIntoScratch(
+  sim: SimWasm,
+  ptr: number,
+  rows: ProjectileSnapshotWireRows,
+  stride: number,
+): void {
+  if (rows.count === 0) return;
+  new Float64Array(sim.memory.buffer, ptr, rows.count * stride).set(rows.values);
+}
+
+function copyUint32WireRowsIntoScratch(
+  sim: SimWasm,
+  ptr: number,
+  rows: ProjectileSnapshotWireRows,
+): void {
+  if (rows.count === 0) return;
+  new Uint32Array(sim.memory.buffer, ptr, rows.count).set(rows.values);
+}
+
+function packProjectileWireSourceIntoScratch(
+  sim: SimWasm,
+  source: ProjectileSnapshotWireSource,
+): void {
+  const api = sim.snapshotEncode;
+  const spawns = source.spawns;
+  if (spawns.count > 0) {
+    api.projSpawnScratchEnsure(spawns.count);
+    copyFloatWireRowsIntoScratch(sim, api.projSpawnScratchPtr(), spawns, PROJECTILE_SPAWN_WIRE_STRIDE);
+  }
+
+  const despawns = source.despawns;
+  if (despawns.count > 0) {
+    api.projDespawnScratchEnsure(despawns.count);
+    copyUint32WireRowsIntoScratch(sim, api.projDespawnScratchPtr(), despawns);
+  }
+
+  const velocityUpdates = source.velocityUpdates;
+  if (velocityUpdates.count > 0) {
+    api.projVelScratchEnsure(velocityUpdates.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.projVelScratchPtr(),
+      velocityUpdates,
+      PROJECTILE_VELOCITY_WIRE_STRIDE,
+    );
+  }
+
+  const beamUpdates = source.beamUpdates;
+  if (beamUpdates.count > 0) {
+    api.beamUpdateScratchEnsure(beamUpdates.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.beamUpdateScratchPtr(),
+      beamUpdates,
+      PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+    );
+  }
+
+  const beamPoints = source.beamPoints;
+  if (beamPoints.count > 0) {
+    api.beamPointScratchEnsure(beamPoints.count);
+    copyFloatWireRowsIntoScratch(
+      sim,
+      api.beamPointScratchPtr(),
+      beamPoints,
+      PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+    );
+  }
+}
+
+function canUseProjectileWireSource(
+  source: ProjectileSnapshotWireSource | undefined,
+  projectiles: SnapshotProjectiles,
+): source is ProjectileSnapshotWireSource {
+  const spawnCount = projectiles.spawns !== undefined ? projectiles.spawns.length : 0;
+  const despawnCount = projectiles.despawns !== undefined ? projectiles.despawns.length : 0;
+  const velocityUpdateCount = projectiles.velocityUpdates !== undefined
+    ? projectiles.velocityUpdates.length
+    : 0;
+  const beamUpdateCount = projectiles.beamUpdates !== undefined
+    ? projectiles.beamUpdates.length
+    : 0;
+  return (
+    source !== undefined &&
+    source.spawns.count === spawnCount &&
+    source.despawns.count === despawnCount &&
+    source.velocityUpdates.count === velocityUpdateCount &&
+    source.beamUpdates.count === beamUpdateCount
+  );
 }
 
 function packProjDespawnsIntoScratch(
@@ -1002,15 +1069,7 @@ function packProjVelocityUpdatesIntoScratch(
     updates.length * api.projVelScratchStride,
   );
   for (let i = 0; i < updates.length; i++) {
-    const update = updates[i];
-    const base = i * api.projVelScratchStride;
-    view[base + 0] = update.id;
-    view[base + 1] = update.pos.x;
-    view[base + 2] = update.pos.y;
-    view[base + 3] = update.pos.z;
-    view[base + 4] = update.velocity.x;
-    view[base + 5] = update.velocity.y;
-    view[base + 6] = update.velocity.z;
+    writeProjectileVelocityUpdateWireRow(view, i * api.projVelScratchStride, updates[i]);
   }
 }
 
@@ -1042,42 +1101,14 @@ function packBeamUpdatesIntoScratch(
   for (let i = 0; i < updates.length; i++) {
     const update = updates[i];
     const headerBase = i * api.beamUpdateScratchStride;
-    headerView[headerBase + 0] = update.id;
-    let flags = 0;
-    if (update.obstructionT !== undefined) flags |= 0x01;
-    if (update.endpointDamageable === false) flags |= 0x02;
-    headerView[headerBase + 1] = flags;
-    headerView[headerBase + 2] = update.obstructionT ?? 0;
-    headerView[headerBase + 3] = update.points.length;
+    writeBeamUpdateWireRow(headerView, headerBase, update);
 
     for (let p = 0; p < update.points.length; p++) {
-      const point = update.points[p];
-      const pointBase = (pointOffset + p) * api.beamPointScratchStride;
-      pointView[pointBase + 0] = point.x;
-      pointView[pointBase + 1] = point.y;
-      pointView[pointBase + 2] = point.z;
-      pointView[pointBase + 3] = point.vx;
-      pointView[pointBase + 4] = point.vy;
-      pointView[pointBase + 5] = point.vz;
-      pointView[pointBase + 6] = point.ax;
-      pointView[pointBase + 7] = point.ay;
-      pointView[pointBase + 8] = point.az;
-      let pointFlags = 0;
-      if (point.mirrorEntityId !== undefined) pointFlags |= 0x01;
-      if (point.reflectorKind !== undefined) {
-        pointFlags |= 0x02;
-        if (point.reflectorKind === 'forceField') pointFlags |= 0x04;
-      }
-      if (point.reflectorPlayerId !== undefined) pointFlags |= 0x08;
-      if (point.normalX !== undefined) pointFlags |= 0x10;
-      if (point.normalY !== undefined) pointFlags |= 0x20;
-      if (point.normalZ !== undefined) pointFlags |= 0x40;
-      pointView[pointBase + 9] = pointFlags;
-      pointView[pointBase + 10] = point.mirrorEntityId ?? 0;
-      pointView[pointBase + 11] = point.reflectorPlayerId ?? 0;
-      pointView[pointBase + 12] = point.normalX ?? 0;
-      pointView[pointBase + 13] = point.normalY ?? 0;
-      pointView[pointBase + 14] = point.normalZ ?? 0;
+      writeBeamPointWireRow(
+        pointView,
+        (pointOffset + p) * api.beamPointScratchStride,
+        update.points[p],
+      );
     }
     pointOffset += update.points.length;
   }
@@ -1088,10 +1119,15 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
   const despawns = projectiles.despawns;
   const velocityUpdates = projectiles.velocityUpdates;
   const beamUpdates = projectiles.beamUpdates;
-  if (spawns) packProjSpawnsIntoScratch(sim, spawns);
-  if (despawns) packProjDespawnsIntoScratch(sim, despawns);
-  if (velocityUpdates) packProjVelocityUpdatesIntoScratch(sim, velocityUpdates);
-  if (beamUpdates) packBeamUpdatesIntoScratch(sim, beamUpdates);
+  const wireSource = getProjectileSnapshotWireSource(projectiles);
+  if (canUseProjectileWireSource(wireSource, projectiles)) {
+    packProjectileWireSourceIntoScratch(sim, wireSource);
+  } else {
+    if (spawns) packProjSpawnsIntoScratch(sim, spawns);
+    if (despawns) packProjDespawnsIntoScratch(sim, despawns);
+    if (velocityUpdates) packProjVelocityUpdatesIntoScratch(sim, velocityUpdates);
+    if (beamUpdates) packBeamUpdatesIntoScratch(sim, beamUpdates);
+  }
   sim.snapshotEncode.emitProjectiles(
     spawns !== undefined ? 1 : 0,
     spawns?.length ?? 0,
