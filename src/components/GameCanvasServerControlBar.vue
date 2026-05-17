@@ -174,7 +174,7 @@ function secPerFullsnap(ratio: number): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>FULLSNAP:</BarLabel>
+        <BarLabel title="Fraction of DIFFSNAPs that are actually FULLSNAPs.">FULLSNAP:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in SERVER_CONFIG.keyframe.options"
@@ -182,7 +182,7 @@ function secPerFullsnap(ratio: number): string {
             :active="model.displayKeyframeRatio === opt"
             :title="
               opt === 'ALL'
-                ? 'Every snapshot is a full keyframe'
+                ? 'Every snapshot is a full keyframe (1/1)'
                 : opt === 'NONE'
                   ? 'Never send full keyframes (delta only)'
                   : secPerFullsnap(opt as number)
@@ -190,10 +190,10 @@ function secPerFullsnap(ratio: number): string {
             @click="model.setKeyframeRatioValue(opt)"
           >{{
             opt === 'ALL'
-              ? 'ALL'
+              ? '1/1'
               : opt === 'NONE'
                 ? 'NONE'
-                : `1e-${Math.round(-Math.log10(opt as number))}`
+                : `1/${Math.round(1 / (opt as number))}`
           }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

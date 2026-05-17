@@ -84,12 +84,14 @@ export const SERVER_CONFIG = {
     // headroom for low-unit-count tests and snapshot/prediction debugging.
   },
   keyframe: {
-    default: (1 / Math.pow(2, 9)) as KeyframeRatio,
+    // Fraction of DIFFSNAPs that are actually FULLSNAPs.
+    // Each option is 4× rarer (skips one power of two): 1/1, 1/4, 1/16, 1/64.
+    default: (1 / 64) as KeyframeRatio,
     options: [
       'ALL',
-      1 / Math.pow(2, 3),
-      1 / Math.pow(2, 6),
-      1 / Math.pow(2, 9),
+      1 / 4,
+      1 / 16,
+      1 / 64,
       'NONE',
     ] as readonly KeyframeRatio[],
   },
