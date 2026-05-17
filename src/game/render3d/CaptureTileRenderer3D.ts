@@ -23,6 +23,7 @@ import {
   TERRAIN_GROUND_DETAIL_ENABLED,
   TERRAIN_GROUND_DETAIL_HEIGHT_MAX,
   TERRAIN_GROUND_DETAIL_HEIGHT_MIN,
+  TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF,
   TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS,
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
@@ -113,24 +114,36 @@ function triangleDebugHash01(n: number): number {
 
 // Polar offset + falloff weight for sampling slope around a mesh vertex when
 // baking the per-vertex neighborhood slope. The weight peaks at the vertex
-// (1.0) and decays linearly to 0 at TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS.
+// (1.0) and decays toward 0 at TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS
+// per `(1 - distance / radius) ^ FALLOFF`.
 type NeighborhoodSlopeSample = { dx: number; dz: number; weight: number };
+
+// Anything below this weight × max-possible-slope (= 1.0) is below the
+// shader's smoothstep(0.05, 0.50, ...) threshold and therefore can never
+// pull a flat vertex out of "full green" — so we can prune those samples.
+const NEIGHBORHOOD_SLOPE_WEIGHT_FLOOR = 0.05;
 
 const NEIGHBORHOOD_SLOPE_KERNEL: NeighborhoodSlopeSample[] = (() => {
   const samples: NeighborhoodSlopeSample[] = [{ dx: 0, dz: 0, weight: 1 }];
   const R = TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS;
+  const falloff = TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF;
   if (R <= 0) return samples;
-  // Three concentric rings at 1/3, 2/3, full radius. More samples in outer
-  // rings so the angular spacing on the ground stays roughly uniform —
-  // otherwise a thin cliff could slip between two widely-spaced outer rays.
+  // Five concentric rings give a smooth distance gradient — three rings
+  // left visible banding when the per-vertex weight stepped between
+  // discrete levels. Outer rings get more samples so angular resolution
+  // stays roughly constant on the ground (a thin cliff can't slip between
+  // two adjacent rays).
   const rings = [
-    { rFrac: 1 / 3, count: 8 },
-    { rFrac: 2 / 3, count: 12 },
-    { rFrac: 1.0, count: 16 },
+    { rFrac: 0.2, count: 6 },
+    { rFrac: 0.4, count: 10 },
+    { rFrac: 0.6, count: 14 },
+    { rFrac: 0.8, count: 18 },
+    { rFrac: 1.0, count: 22 },
   ];
   for (const ring of rings) {
+    const weight = Math.pow(1 - ring.rFrac, falloff);
+    if (weight < NEIGHBORHOOD_SLOPE_WEIGHT_FLOOR) continue;
     const d = ring.rFrac * R;
-    const weight = 1 - ring.rFrac;
     for (let k = 0; k < ring.count; k++) {
       // Stagger the angular phase per ring so the rays don't all line up
       // along the same compass headings.

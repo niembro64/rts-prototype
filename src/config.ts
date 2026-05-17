@@ -619,8 +619,18 @@ export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
  *  of a steep face is treated as partially sloped — so the grass / green
  *  base color fades smoothly inward from cliffs toward the center of the
  *  flat region rather than snapping to full green right at the cliff base.
- *  Larger values widen the fade band; 0 disables it. */
-export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 800;
+ *  Beyond this radius the fade decays to zero, so the deep interior of a
+ *  flat region reaches full grass. Larger = wider fade band; 0 disables it. */
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 500;
+
+/** Exponent applied to the linear distance term when computing each ring
+ *  sample's weight: weight = (1 - distance / radius) ^ FALLOFF. Higher
+ *  values concentrate the influence near the cliff and let grass recover
+ *  to full strength sooner as you move into the flat region. 1 = linear
+ *  (broad fade reaching nearly the full radius), 2 = quadratic (most of
+ *  the fade happens in the first half of the radius — recommended), 3+ =
+ *  even faster recovery into full grass. */
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF = 2;
 
 /** Same idea as the ground detail texture, but applied to every surface that
  *  is NOT part of the base 0-height flat zone — cliffs, mountain faces,
