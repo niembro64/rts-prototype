@@ -417,7 +417,9 @@
         stack of general-purpose frameworks. If a library saves time but costs measurable simulation
         or rendering throughput, it should be treated as temporary scaffolding. The end-state engine
         should be raw enough that we know where every per-frame allocation, buffer upload, kernel
-        call, draw call, and branch-heavy world scan comes from.
+        call, draw call, and branch-heavy world scan comes from. When scaffolding is replaced by
+        owned code, the scaffolding leaves the tree in the same change &mdash; see
+        <strong>Delete The Old Path</strong>.
       </p>
     </section>
 
@@ -491,8 +493,55 @@
         <li>Extract shared helpers before copying code into a second place.</li>
         <li>Keep constants, enums, labels, thresholds, and wire codes in one canonical module.</li>
         <li>Put command construction, authorization, and sanitization behind shared functions instead of reimplementing branches in components.</li>
-        <li>When duplication is temporary during a migration, leave a specific removal path and delete the old path as soon as parity is proven.</li>
+        <li>When duplication is temporary during a migration, delete the old path in the same change that proves the new one. See <strong>Delete The Old Path</strong>.</li>
       </ul>
+    </section>
+
+    <section>
+      <h2>Delete The Old Path</h2>
+      <p>
+        Migration is not done when the new path works. Migration is done when the old path is gone.
+        As we remove libraries, port hot kernels from TypeScript to Rust/WASM, replace framework
+        helpers with owned code, and rebuild renderer paths on raw GPU APIs, the old implementation
+        must be removed in the same change that lands the new one. Two implementations of the same
+        behavior is two sources of truth, two places to fix bugs, two places to read when something
+        looks wrong six months later, and a near certainty that one of them will drift.
+      </p>
+      <p>
+        This is the active counterpart to <strong>Single Source Of Truth</strong>. SSoT is the
+        static rule: do not write the same logic twice. Delete The Old Path is the dynamic rule
+        that keeps SSoT true while the codebase is in motion. Every time we replace a system, the
+        replacement is incomplete until the predecessor file is deleted, its imports are gone, its
+        config flags are gone, its wire codes are gone, and its tests are gone or repointed.
+      </p>
+
+      <h3>Why this matters here specifically</h3>
+      <ul class="rule-list">
+        <li>We are actively moving from JavaScript object loops and JavaScript physics math toward Rust/WASM kernels over typed-array linear memory. Leaving the JS implementation alongside the WASM kernel guarantees one becomes the de-facto path and the other rots, undetected, until something invokes it and produces a result that disagrees with the live path.</li>
+        <li>We are moving from Three.js convenience helpers toward owned buffers, owned shaders, and direct instancing. A renderer with both shapes present makes it impossible to reason about draw-call count, allocation behavior, material compilation, or culling &mdash; the two paths interfere even when only one is supposed to be active.</li>
+        <li>Pooled DTOs, prediction state, snapshot buffers, and entity-state shapes are sensitive to dead code paths that still write to them. A &ldquo;removed&rdquo; system that still touches pooled fields is a class of zombie-write bug that does not surface in normal tests.</li>
+        <li>Future readers &mdash; including future-us &mdash; should never have to ask &ldquo;is this the current path or the old one?&rdquo;. The codebase should answer that question by only containing the current path.</li>
+      </ul>
+
+      <h3>Rules during a migration</h3>
+      <ul class="rule-list">
+        <li>The change that introduces the replacement is the change that deletes the predecessor. Not the next change. Not a follow-up cleanup ticket.</li>
+        <li>If parity proof genuinely needs more than one change, the predecessor lives behind a single named flag, with a single owner, and a recorded removal target. There is no &ldquo;we&rsquo;ll come back to it.&rdquo;</li>
+        <li>Do not keep &ldquo;just in case&rdquo; copies of the old implementation in <code>legacy/</code>, <code>old/</code>, <code>_unused/</code>, or sibling files with a <code>.old</code> suffix. Git history is the just-in-case copy.</li>
+        <li>Delete the imports, the dead branches, the feature flag, the legacy wire codes, the unused config knobs, and the tests that exercise only the dead path. A half-deleted system is worse than an undeleted one because it looks intentional.</li>
+        <li>If a library is being replaced, remove the dependency from <code>package.json</code>, <code>Cargo.toml</code>, and the lockfiles &mdash; not just the call sites. A still-installed library will be re-adopted by the next person reaching for the easy answer.</li>
+        <li>Renaming files is not a migration. If the new path lives next to the old path with a slightly different name and both still compile, no migration has happened &mdash; only confusion has been added.</li>
+      </ul>
+
+      <h3>What &ldquo;removed&rdquo; means</h3>
+      <p>
+        Removed means the code is not in the working tree, not behind a flag, not in a
+        <code>legacy/</code> folder, not in a sibling file with a <code>.old</code> suffix, and not
+        in commented-out blocks. Git history is the archive; the working tree is the current truth.
+        When someone greps for the name of an old function and finds zero matches, the migration is
+        done. When they find one match in the active path and one match in a stale path, the
+        migration is still in progress, and the next person to touch either file should finish it.
+      </p>
     </section>
 
     <section>
@@ -554,6 +603,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
+        <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
         <li>Use Rust/WASM, TypeScript orchestration, and custom GPU shader code; keep frameworks out of simulation and rendering hot paths.</li>
         <li>Move dense numeric kernels toward WASM when batching can beat JS object loops.</li>
