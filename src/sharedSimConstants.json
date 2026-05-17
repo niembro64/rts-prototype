@@ -1,0 +1,11 @@
+{
+  "gravity": 100,
+  "unitGroundContactEpsilon": 0.001,
+  "unitGroundSpringAccelPerWorldUnit": 900,
+  "unitGroundSpringDampingRatio": 1,
+  "unitGroundPassiveReboundMaxSpeed": 5,
+  "bodySleepSpeedSq": 0.25,
+  "bodySleepAccelSq": 0.000001,
+  "bodySleepTicks": 12,
+  "bodySleepGroundPenetrationEps": 0.1
+}

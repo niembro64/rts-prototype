@@ -3,28 +3,26 @@
  *  Kept dependency-free so UI config, server spawning, factories, and
  *  selection panels can all derive their unit inventory from the same
  *  source without pulling in the full blueprint/config graph. */
-export const BUILDABLE_UNIT_IDS = [
-  'jackal',
-  'lynx',
-  'badger',
-  'mongoose',
-  'mammoth',
-  'tick',
-  'tarantula',
-  'loris',
-  'daddy',
-  'widow',
-  'formik',
-  'hippo',
-  'hovercraft',
-] as const;
+import { isUnitTypeId, type UnitTypeId } from '../../../types/blueprintIds';
+import unitRoster from './unitRoster.json';
 
-export type BuildableUnitId = typeof BUILDABLE_UNIT_IDS[number];
+export type BuildableUnitId = Exclude<UnitTypeId, 'commander'>;
+
+function readBuildableUnitIds(): BuildableUnitId[] {
+  return unitRoster.buildableUnitIds.map((unitId) => {
+    if (!isUnitTypeId(unitId) || unitId === 'commander') {
+      throw new Error(`Invalid buildable unit id in unitRoster.json: ${unitId}`);
+    }
+    return unitId;
+  });
+}
+
+export const BUILDABLE_UNIT_IDS = readBuildableUnitIds();
 
 const BUILDABLE_UNIT_ID_SET = new Set<string>(BUILDABLE_UNIT_IDS);
-const DEFAULT_DISABLED_DEMO_UNIT_IDS = new Set<string>([
-  'daddy',
-]);
+const DEFAULT_DISABLED_DEMO_UNIT_IDS = new Set<string>(
+  unitRoster.defaultDisabledDemoUnitIds,
+);
 
 export function isDemoUnitEnabledByDefault(unitId: string): boolean {
   return !DEFAULT_DISABLED_DEMO_UNIT_IDS.has(unitId);

@@ -287,7 +287,7 @@ export function buildLegs(
   legLod: LegLod,
   bodyShape: UnitBodyShape,
   chassisLiftY: number,
-  legAttachHeightFrac: number | undefined,
+  legAttachHeightFrac: number | null,
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
@@ -332,7 +332,7 @@ export function buildLegs(
     // body segment the leg sits under. Units whose visible body is a
     // turret can author legAttachHeightFrac as an absolute terrain-up
     // height fraction, in the same coordinate system as turret mount.z.
-    const hipY = legAttachHeightFrac !== undefined
+    const hipY = legAttachHeightFrac !== null
       ? legAttachHeightFrac * r
       : chassisLiftY + getSegmentMidYAt(bodyShape, r, legCfg.attachOffsetX);
 

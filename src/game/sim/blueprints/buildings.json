@@ -1,0 +1,207 @@
+{
+  "solar": {
+    "id": "solar",
+    "name": "Solar",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "gridDepth": 1,
+    "hp": 200,
+    "cost": {
+      "energy": 100,
+      "mana": 100,
+      "metal": 100
+    },
+    "energyProduction": 50,
+    "metalProduction": null,
+    "constructionRate": null,
+    "renderProfile": "solar",
+    "visualHeight": 52,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "cloak": null,
+    "turrets": [],
+    "detector": null
+  },
+  "wind": {
+    "id": "wind",
+    "name": "Wind",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 5,
+    "hp": 100,
+    "cost": {
+      "energy": 60,
+      "mana": 60,
+      "metal": 60
+    },
+    "energyProduction": 50,
+    "metalProduction": null,
+    "constructionRate": null,
+    "renderProfile": "wind",
+    "visualHeight": 250,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": -10
+    },
+    "cloak": null,
+    "turrets": [],
+    "detector": null
+  },
+  "factory": {
+    "id": "factory",
+    "name": "Fabricator",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 6,
+    "hp": 800,
+    "cost": {
+      "energy": 300,
+      "mana": 300,
+      "metal": 300
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": 100,
+    "renderProfile": "factory",
+    "visualHeight": 30,
+    "anchorProfile": "factoryTower",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "cloak": null,
+    "turrets": [
+      {
+        "turretId": "constructionTurret",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 38
+        },
+        "visualVariant": "large"
+      }
+    ],
+    "detector": null
+  },
+  "extractor": {
+    "id": "extractor",
+    "name": "Extractor",
+    "gridWidth": 5,
+    "gridHeight": 5,
+    "gridDepth": 2,
+    "hp": 250,
+    "cost": {
+      "energy": 80,
+      "mana": 80,
+      "metal": 80
+    },
+    "energyProduction": null,
+    "metalProduction": 50,
+    "constructionRate": null,
+    "renderProfile": "extractor",
+    "visualHeight": 50,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 38
+    },
+    "cloak": null,
+    "turrets": [],
+    "detector": null
+  },
+  "radar": {
+    "id": "radar",
+    "name": "Radar",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 7,
+    "hp": 450,
+    "cost": {
+      "energy": 400,
+      "mana": 180,
+      "metal": 280
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "renderProfile": "radar",
+    "visualHeight": 150,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 16
+    },
+    "cloak": null,
+    "turrets": [],
+    "detector": {
+      "radius": 1800
+    }
+  },
+  "megaBeamTower": {
+    "id": "megaBeamTower",
+    "name": "Beam Tower",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 4,
+    "hp": 8000,
+    "cost": {
+      "energy": 1500,
+      "mana": 1500,
+      "metal": 1500
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "renderProfile": "megaBeamTower",
+    "visualHeight": 80,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "cloak": null,
+    "turrets": [
+      {
+        "turretId": "towerBeamTurret",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 98
+        }
+      }
+    ],
+    "detector": null
+  },
+  "cannonTower": {
+    "id": "cannonTower",
+    "name": "Cannon Tower",
+    "gridWidth": 2,
+    "gridHeight": 2,
+    "gridDepth": 4,
+    "hp": 8000,
+    "cost": {
+      "energy": 1500,
+      "mana": 1500,
+      "metal": 1500
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "renderProfile": "cannonTower",
+    "visualHeight": 72,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "cloak": null,
+    "turrets": [
+      {
+        "turretId": "towerCannonTurret",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 88
+        }
+      }
+    ],
+    "detector": null
+  }
+}

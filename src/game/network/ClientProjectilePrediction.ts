@@ -89,9 +89,9 @@ function applyClientProjectileHoming(options: {
     }
   }
   if (targetValid && homingTarget) {
-    // PREDICT mode picks which derivatives feed the homing intercept
-    // solver. VEL assumes constant velocities (target accel + projectile
-    // gravity treated as zero); ACC is the full kinematic intercept.
+    // PREDICT mode picks which target derivatives feed the homing intercept
+    // solver. VEL assumes constant target velocity; ACC includes target
+    // acceleration. Projectile gravity is universal in both modes.
     // POS would skip homing steering entirely, but projectiles get no
     // per-tick snapshot updates (only spawn/despawn events), so without
     // local steering they'd fly straight forever — treat POS as VEL.
@@ -148,10 +148,7 @@ function applyClientProjectileHoming(options: {
       _clientHomingTargetState.acceleration.z = targetAcceleration.z;
       _clientHomingProjectileAcceleration.x = 0;
       _clientHomingProjectileAcceleration.y = 0;
-      _clientHomingProjectileAcceleration.z =
-        useAccel && !proj.config.shotProfile.runtime.ignoresGravity
-          ? -GRAVITY
-          : 0;
+      _clientHomingProjectileAcceleration.z = -GRAVITY;
       const remainingSec = Number.isFinite(proj.maxLifespan)
         ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
         : undefined;
@@ -214,23 +211,17 @@ export function applyClientProjectilePrediction(options: {
   const movVelDrift = halfLifeBlend(dt, preset.movement.vel);
   proj.timeAlive += entityDeltaMs;
 
-  // PREDICT mode picks which derivatives feed projectile extrapolation.
+  // PREDICT mode picks which authored derivatives feed extrapolation.
   // Projectiles have no per-tick snapshot positions to snap to (only
-  // spawn / despawn events), so position integration always runs — POS
-  // is treated as VEL here. 'vel' integrates position from velocity but
-  // skips gravity; 'acc' is the full ballistic chain (default).
-  const predictionMode = getPredictionMode();
-  const integrateAcceleration = predictionMode === 'acc';
-
+  // spawn / despawn events), so position integration always runs. Gravity
+  // is universal for projectiles in every prediction mode.
   // Drift projectile position + velocity toward server target
   // (smooth correction). Server velocity updates are sparse, so gravity
   // is also applied to the target path between corrections.
   const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
   if (target) {
-    const targetIgnoresGravity =
-      proj.config.shotProfile.runtime.ignoresGravity;
-    if (integrateAcceleration && !targetIgnoresGravity && !terrainFollow) {
+    if (!terrainFollow) {
       target.velocityZ -= GRAVITY * targetDt;
     }
     const targetPrevZ = target.z;
@@ -253,12 +244,10 @@ export function applyClientProjectilePrediction(options: {
   }
 
   // Traveling projectiles: dead-reckon using (possibly steered)
-  // velocity in full 3D. Ballistic projectiles take gravity; rockets
-  // travel on pure thrust and are bent only by homing.
-  const ignoresGravity =
-    proj.config.shotProfile.runtime.ignoresGravity;
+  // velocity in full 3D. Gravity is universal; homing only changes
+  // how guided shots respond to it.
   const prevTerrainFollowZ = entity.transform.z;
-  if (integrateAcceleration && !ignoresGravity && !terrainFollow) {
+  if (!terrainFollow) {
     proj.velocityZ -= GRAVITY * dt;
   }
   entity.transform.x += proj.velocityX * dt;

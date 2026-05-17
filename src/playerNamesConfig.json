@@ -1,0 +1,26 @@
+{
+  "storageKey": "player-client-username",
+  "funnyDemoNames": [
+    "Sergeant Sandwich",
+    "Captain Underpants",
+    "General Mayhem",
+    "Major Disappointment",
+    "Colonel Cluck",
+    "Brigadier Bumblefoot",
+    "Marshal Marshmallow",
+    "Admiral Whiskers",
+    "Commander Cookie",
+    "Lieutenant Llama",
+    "Doctor Doom-Adjacent",
+    "Professor Pickles",
+    "Baron Banana",
+    "Lord Lemon",
+    "Duchess Doodle",
+    "Sir Ribbington",
+    "Lady Lasertag",
+    "Chairman Chum",
+    "Director Disaster",
+    "Premier Pumpkin"
+  ],
+  "maxNameLength": 24
+}

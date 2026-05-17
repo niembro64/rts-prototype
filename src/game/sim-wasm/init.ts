@@ -371,8 +371,8 @@ export interface SimWasm {
    *  `poolStepPackedProjectilesBatch`. */
   readonly projectilePool: ProjectilePoolViews;
   /** Per-tick ballistic integrator for slots 0..count of the
-   *  projectile pool. Applies gravity (gated on `hasGravity[i]`)
-   *  and integrates position. Same math as the inner loop in
+   *  projectile pool. Applies gravity and integrates position.
+   *  Same math as the inner loop in
    *  projectileSystem._updatePackedProjectilesJS but runs entirely
    *  in WASM with no per-projectile boundary call. */
   readonly poolStepPackedProjectilesBatch: (count: number, dtSec: number) => void;

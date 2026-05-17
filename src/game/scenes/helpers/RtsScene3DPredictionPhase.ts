@@ -2,7 +2,6 @@ import { setCurrentZoom } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { PerspectiveCamera } from 'three';
 import type { ClientViewState } from '../../network/ClientViewState';
-import type { PredictionLodTier } from '../../network/ClientPredictionLod';
 import { snapshotLod, type Lod3DState } from '../../render3d/Lod3D';
 import { RenderLodGrid } from '../../render3d/RenderLodGrid';
 
@@ -31,16 +30,7 @@ export class RtsScene3DPredictionPhase {
 
     const predStart = performance.now();
     this.clientViewState.applyPrediction(options.deltaMs, {
-      cameraX: renderLod.view.cameraX,
-      cameraY: renderLod.view.cameraY,
-      cameraZ: renderLod.view.cameraZ,
-      richDistance: 0,
-      simpleDistance: 0,
-      massDistance: 0,
-      impostorDistance: 0,
-      cellSize: graphicsConfig.objectLodCellSize,
       physicsPredictionFramesSkip: graphicsConfig.clientPhysicsPredictionFramesSkip,
-      resolveTier: this.resolvePredictionTier,
     });
 
     return {
@@ -49,13 +39,4 @@ export class RtsScene3DPredictionPhase {
       predMs: performance.now() - predStart,
     };
   }
-
-  private readonly resolvePredictionTier = (
-    worldX: number,
-    worldY: number,
-    worldZ: number,
-  ): PredictionLodTier => {
-    const tier = this.renderLodGrid.resolve(worldX, worldY, worldZ);
-    return tier === 'hero' ? 'rich' : tier;
-  };
 }

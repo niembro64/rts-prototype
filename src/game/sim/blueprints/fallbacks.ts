@@ -1,9 +1,5 @@
 import type { UnitBodyShape } from './types';
+import fallbacks from './fallbacks.json';
 
-export const FALLBACK_UNIT_BODY_SHAPE = {
-  kind: 'composite',
-  parts: [
-    { kind: 'circle', offsetForward: -1.1, radiusFrac: 1.15, yFrac: 1.15 },
-    { kind: 'circle', offsetForward: 0.3, radiusFrac: 0.55, yFrac: 0.55 },
-  ],
-} satisfies UnitBodyShape;
+export const FALLBACK_UNIT_BODY_SHAPE =
+  fallbacks.unitBodyShape as UnitBodyShape;

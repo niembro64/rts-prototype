@@ -4,11 +4,12 @@ import {
   UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT,
   UNIT_GROUND_SPRING_DAMPING_RATIO,
 } from '../../config';
+import sharedSimConstants from '../../sharedSimConstants.json';
 import type { Unit } from './types';
 
 export type GroundNormal = { nx: number; ny: number; nz: number };
 
-export const UNIT_GROUND_CONTACT_EPSILON = 1e-3;
+export const UNIT_GROUND_CONTACT_EPSILON = sharedSimConstants.unitGroundContactEpsilon;
 const GROUND_SPRING_DAMPING_ACCEL_PER_SPEED =
   Math.max(0, UNIT_GROUND_SPRING_DAMPING_RATIO) *
   2 *

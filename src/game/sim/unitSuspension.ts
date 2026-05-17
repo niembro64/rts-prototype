@@ -24,7 +24,7 @@ function cloneSuspensionConfig(config: UnitSuspensionConfig): UnitSuspensionConf
 }
 
 export function createUnitSuspension(
-  config: UnitSuspensionConfig | undefined,
+  config: UnitSuspensionConfig | null | undefined,
 ): UnitSuspensionState | undefined {
   if (!config) return undefined;
   return {

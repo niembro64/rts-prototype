@@ -1,0 +1,11 @@
+{
+  "defaultUnitHudLayout": {
+    "barsOffsetAboveTop": 12
+  },
+  "defaultBuildingHudLayout": {
+    "barsOffsetAboveTop": 12
+  },
+  "barStackGap": 3,
+  "barStackRows": 4,
+  "nameGapAboveBars": 4
+}

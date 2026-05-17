@@ -291,7 +291,7 @@ export function getEntityAcceleration3(
   } else if (entity.projectile) {
     out.x = 0;
     out.y = 0;
-    out.z = entity.projectile.config.shotProfile.runtime.ignoresGravity ? 0 : -GRAVITY;
+    out.z = -GRAVITY;
   } else {
     out.x = 0;
     out.y = 0;

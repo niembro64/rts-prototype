@@ -2,21 +2,21 @@ import type { WorldState } from './WorldState';
 import type { Entity, PlayerId } from './types';
 
 export type EntitySensorBlueprint = {
-  cloak?: { enabled: boolean };
-  detector?: { radius: number };
+  cloak: { enabled: boolean } | null;
+  detector: { radius: number } | null;
 };
 
 export function applyEntitySensorBlueprint(
   entity: Entity,
   blueprint: EntitySensorBlueprint,
 ): void {
-  if (blueprint.cloak?.enabled === true) {
+  if (blueprint.cloak !== null && blueprint.cloak.enabled === true) {
     entity.cloak = { enabled: true };
   } else {
     delete entity.cloak;
   }
 
-  const detectorRadius = blueprint.detector?.radius ?? 0;
+  const detectorRadius = blueprint.detector !== null ? blueprint.detector.radius : 0;
   if (Number.isFinite(detectorRadius) && detectorRadius > 0) {
     entity.detector = { radius: detectorRadius };
   } else {

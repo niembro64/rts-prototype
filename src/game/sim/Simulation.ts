@@ -49,6 +49,7 @@ import {
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
+import { getUnitBlueprint } from './blueprints';
 import { updateSolarCollectors } from './solarCollector';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
@@ -887,9 +888,14 @@ export class Simulation {
         continue;
       }
 
-      // Check if unit should stop for combat (fight or patrol mode with any engaged turret)
+      // Fight/patrol halt is per-blueprint: each unit's
+      // fightStopEngagedRatio decides when "enough" turrets are engaged to
+      // stop and brawl. `null` means never halt — march through enemy
+      // fire with turrets engaging opportunistically (canonical RTS
+      // attack-move). Distinct from the always-halt-on-engagement
+      // helper used for attack / attackGround / guard.
       if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
-        if (this.shouldStopForEngagedCombat(entity)) {
+        if (this.shouldStopForFightCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
         }
@@ -1069,6 +1075,31 @@ export class Simulation {
       ) return true;
     }
     return false;
+  }
+
+  /** Fight/patrol variant of the engagement halt check. Halts only when
+   *  the engaged-turret fraction crosses the unit blueprint's
+   *  fightStopEngagedRatio. `null` ratio = never halt (skirmishers
+   *  march through fire). visualOnly turrets are excluded from both
+   *  the engaged count and the denominator. */
+  private shouldStopForFightCombat(entity: Entity): boolean {
+    if (!entity.unit) return false;
+    const ratio = getUnitBlueprint(entity.unit.unitType).fightStopEngagedRatio;
+    if (ratio === null) return false;
+    const combat = entity.combat;
+    if (!combat || combat.turrets.length === 0) return false;
+    let total = 0;
+    let engaged = 0;
+    for (const turret of combat.turrets) {
+      if (turret.config.visualOnly) continue;
+      total++;
+      if (
+        turret.state === 'engaged' &&
+        (turret.target !== null || combat.priorityTargetPoint !== undefined)
+      ) engaged++;
+    }
+    if (total === 0) return false;
+    return engaged >= total * ratio;
   }
 
   /** Per-tick stuck check. For each unit that wanted to move this

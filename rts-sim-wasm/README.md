@@ -91,11 +91,11 @@ with runtime feature detection.
   steady-state allocations don't trigger grows. Bump
   `PRE_GROW_TARGET_PAGES` in `init.ts` if Phase 7/9/10 ports push
   past that.
-- Numerical constants in the integrator kernels (GRAVITY,
-  UNIT_GROUND_SPRING_*, SLEEP_*, WATER_LEVEL_*) are duplicated
-  Rust-side from `config.ts` / `terrainConfig.ts`. If you change a
-  tuning value in TS, mirror it in `lib.rs` or the two integrators
-  will drift.
+- Cross-language physics constants used by both TypeScript and WASM
+  are generated into Rust from `src/sharedSimConstants.json`;
+  TypeScript re-exports the same values from `config.ts` or imports
+  them directly in narrow helpers. Add new shared TS/WASM tuning values
+  there instead of hardcoding them in `lib.rs`.
 
 ## CI
 

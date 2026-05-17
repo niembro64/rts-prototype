@@ -596,11 +596,11 @@ export type BuildingConfig = {
   gridDepth: number;
   hp: number;
   cost: ResourceCost;
-  energyProduction?: number;
-  metalProduction?: number;
+  energyProduction: number | null;
+  metalProduction: number | null;
   /** Max resource units per second this building can add to each
    *  construction resource lane of its active shell. */
-  constructionRate?: number;
+  constructionRate: number | null;
   renderProfile: BuildingRenderProfile;
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;

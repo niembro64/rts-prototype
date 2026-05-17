@@ -1,0 +1,39 @@
+{
+  "tileFloorY": -1200,
+  "waterLevelFraction": 0.71,
+  "terrainFineTriangleSubdiv": 3,
+  "terrainTriangleMaxHeightError": 20,
+  "terrainTriangleMaxNeighborLevelDelta": 1,
+  "terrainTriangleFinalRepairMaxPasses": 3,
+  "terrainTriangleSampleCentroid": true,
+  "terrainTrianglePreserveWaterline": true,
+  "terrainTriangleVertexKeyScale": 1000,
+  "terrainShapeMagnitude": 800,
+  "terrainDTerrain": 500,
+  "terrainCirclePerimeterEdgeFraction": 0.49,
+  "terrainCirclePerimeterTransitionWidthFraction": 0.1,
+  "terrainGenerationEdgeTransitionWidthFraction": 0.04,
+  "plateau": {
+    "enabled": true,
+    "shelfFractionOfStep": 0.99,
+    "rampEdgeSharpness": 0,
+    "buildableShelfHeightTolerance": 20,
+    "slopeSampleDistanceLandCellMultiplier": 0.5,
+    "fullTerraceMaxSlope": 0.45,
+    "noTerraceMinSlope": 0.9
+  },
+  "ripple": {
+    "radiusFraction": 0.4,
+    "phase": 1.7,
+    "components": [
+      { "wavelength": 200, "magnitude": 0.9 },
+      { "wavelength": 600, "magnitude": 0 },
+      { "wavelength": 600, "magnitude": 0 }
+    ]
+  },
+  "ridge": {
+    "innerRadiusFraction": 0.1,
+    "outerRadiusFraction": 0.4,
+    "halfWidthFraction": 0.08
+  }
+}

@@ -31,7 +31,7 @@ export type {
   MirrorPanel,
   ConstructionEmitterSize,
   ConstructionEmitterVisualSpec,
-  TurretAimArcType,
+  TurretAimAngleType,
   TurretAimLockOnType,
   TurretAimStyle,
   TurretRadiusConfig,

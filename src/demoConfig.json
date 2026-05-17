@@ -1,0 +1,27 @@
+{
+  "playerCount": 8,
+  "solarCount": 5,
+  "windCount": 4,
+  "megaBeamTowerCount": 4,
+  "cannonTowerCount": 4,
+  "radarCount": 2,
+  "arcSectorFraction": 0.7,
+  "spawnMarginPx": 100,
+  "baseRings": {
+    "solar": { "radiusFraction": 0.8 },
+    "wind": { "radiusFraction": 0.75 },
+    "commander": { "radiusFraction": 0.7 },
+    "radar": { "radiusFraction": 0.65 },
+    "fabricator": { "radiusFraction": 0.6 },
+    "cannonTower": { "radiusFraction": 0.45 },
+    "megaBeamTower": { "radiusFraction": 0.4 }
+  },
+  "initialUnitWaypointType": "fight",
+  "factoryWaypointType": "fight",
+  "factoryWaypointDistance": 1.22,
+  "aiInverseCostWeighting": true,
+  "centerSpawnRadius": 0.2,
+  "centerSpawnSectorFraction": 0.6,
+  "centerSpawnWaterBufferPx": 40,
+  "centerSpawnWaterMaxAttempts": 32
+}

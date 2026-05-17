@@ -1,24 +1,9 @@
-// Ballistic aim solver — pick the pitch angle that lands a projectile
-// with speed `v` under constant gravity `g` on a target at horizontal
-// distance `d` and vertical offset `h` from the launch origin.
-//
-// Given a flat-ground starting point, the projectile equation is:
-//   x(t) = v·cos(θ)·t
-//   z(t) = v·sin(θ)·t - ½·g·t²
-//
-// Eliminating t (= d / (v·cos(θ))) and using 1/cos²(θ) = 1 + tan²(θ),
-// the problem reduces to a quadratic in tan(θ):
-//
-//   A·tan²(θ) − d·tan(θ) + (h + A) = 0        where A = g·d² / (2·v²)
-//
-// The quadratic has two real roots whenever the discriminant
-//   v⁴ − g·(g·d² + 2·h·v²) ≥ 0
-// is non-negative. Both roots are valid firing angles — one low /
-// direct-fire, one high / lofted. Beyond the discriminant threshold
-// the target is out of range and no ballistic solution exists.
-//
-// This file is imported by both the server turret system and the
-// client for any future prediction. Zero state, pure function.
+// Ballistic aim helpers. The core solver finds intercept time for
+// origin, target, and projectile states under constant acceleration;
+// solveTurretShotAngles is the single turret-facing API that turns
+// that intercept into yaw/pitch. Low arcs use the earliest root, high
+// arcs keep the later lofted root. This file is imported by both the
+// authoritative sim and client prediction. Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
 
@@ -59,11 +44,30 @@ export type KinematicInterceptSolution = {
   launchVelocity: KinematicVec3;
 };
 
+export type TurretShotArcPreference = 'low' | 'high';
+
+export type TurretShotAngleInput = {
+  origin: KinematicState3;
+  target: KinematicState3;
+  projectileSpeed: number;
+  /** Absolute projectile acceleration after launch, in world units/s^2. */
+  projectileAcceleration: KinematicVec3;
+  arcPreference: TurretShotArcPreference;
+  maxTimeSec?: number;
+};
+
+export type TurretShotAngleSolution = KinematicInterceptSolution & {
+  yaw: number;
+  pitch: number;
+  direction: KinematicVec3;
+};
+
 const INTERCEPT_SAMPLE_COUNT = 64;
 const INTERCEPT_BISECT_STEPS = 14;
 const INTERCEPT_MIN_TIME = 1 / 120;
 const INTERCEPT_MAX_TIME = 30;
 const INTERCEPT_ROOT_EPSILON = 1e-5;
+const SHOT_DIRECTION_EPSILON = 1e-6;
 
 function isFiniteVec3(v: KinematicVec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -88,9 +92,16 @@ function defaultInterceptMaxTime(input: KinematicInterceptInput): number {
   const dist = Math.hypot(dx, dy, dz);
   const speed = input.projectileSpeed;
   const baseTime = speed > 1e-6 ? dist / speed : 0;
-  const relAx = input.target.acceleration.x - input.projectileAcceleration.x;
-  const relAy = input.target.acceleration.y - input.projectileAcceleration.y;
-  const relAz = input.target.acceleration.z - input.projectileAcceleration.z;
+  const originAccel = input.origin.acceleration;
+  const relAx =
+    (input.target.acceleration.x - originAccel.x) -
+    (input.projectileAcceleration.x - originAccel.x);
+  const relAy =
+    (input.target.acceleration.y - originAccel.y) -
+    (input.projectileAcceleration.y - originAccel.y);
+  const relAz =
+    (input.target.acceleration.z - originAccel.z) -
+    (input.projectileAcceleration.z - originAccel.z);
   const relAccel = Math.hypot(relAx, relAy, relAz);
   const accelTime = relAccel > 1e-6 ? (2 * speed) / relAccel : 0;
   return clampTime(Math.max(2, baseTime * 8 + 4, accelTime * 2 + 1));
@@ -100,16 +111,23 @@ function interceptFunction(input: KinematicInterceptInput, t: number): number {
   const origin = input.origin;
   const target = input.target;
   const projectileAcc = input.projectileAcceleration;
+  const originAcc = origin.acceleration;
+  const relProjectileAx = projectileAcc.x - originAcc.x;
+  const relProjectileAy = projectileAcc.y - originAcc.y;
+  const relProjectileAz = projectileAcc.z - originAcc.z;
+  const relTargetAx = target.acceleration.x - originAcc.x;
+  const relTargetAy = target.acceleration.y - originAcc.y;
+  const relTargetAz = target.acceleration.z - originAcc.z;
 
   const relX = target.position.x - origin.position.x +
     (target.velocity.x - origin.velocity.x) * t +
-    0.5 * (target.acceleration.x - projectileAcc.x) * t * t;
+    0.5 * (relTargetAx - relProjectileAx) * t * t;
   const relY = target.position.y - origin.position.y +
     (target.velocity.y - origin.velocity.y) * t +
-    0.5 * (target.acceleration.y - projectileAcc.y) * t * t;
+    0.5 * (relTargetAy - relProjectileAy) * t * t;
   const relZ = target.position.z - origin.position.z +
     (target.velocity.z - origin.velocity.z) * t +
-    0.5 * (target.acceleration.z - projectileAcc.z) * t * t;
+    0.5 * (relTargetAz - relProjectileAz) * t * t;
 
   return Math.hypot(relX, relY, relZ) - input.projectileSpeed * t;
 }
@@ -201,6 +219,45 @@ export function solveKinematicIntercept(
     return solveKinematicInterceptWasm(sim, input, out);
   }
   return solveKinematicInterceptTs(input, out);
+}
+
+/**
+ * Canonical turret shot-angle solver. Callers provide the full kinematic
+ * state of the firing mount and target plus the projectile acceleration;
+ * this returns the yaw/pitch for the launch velocity that actually reaches
+ * the target. `low` selects the earliest intercept root, `high` keeps the
+ * later lofted root when one exists.
+ */
+export function solveTurretShotAngles(
+  input: TurretShotAngleInput,
+  out: TurretShotAngleSolution,
+): TurretShotAngleSolution | null {
+  const intercept = solveKinematicIntercept({
+    origin: input.origin,
+    target: input.target,
+    projectileSpeed: input.projectileSpeed,
+    projectileAcceleration: input.projectileAcceleration,
+    preferLateSolution: input.arcPreference === 'high',
+    maxTimeSec: input.maxTimeSec,
+  }, out);
+  if (intercept === null) return null;
+
+  const launch = out.launchVelocity;
+  const horizontal = Math.hypot(launch.x, launch.y);
+  const speed = Math.hypot(horizontal, launch.z);
+  if (!Number.isFinite(speed) || speed <= SHOT_DIRECTION_EPSILON) return null;
+
+  out.direction.x = launch.x / speed;
+  out.direction.y = launch.y / speed;
+  out.direction.z = launch.z / speed;
+  out.yaw = horizontal > SHOT_DIRECTION_EPSILON
+    ? Math.atan2(launch.y, launch.x)
+    : Math.atan2(
+        out.aimPoint.y - input.origin.position.y,
+        out.aimPoint.x - input.origin.position.x,
+      );
+  out.pitch = Math.atan2(launch.z, horizontal);
+  return out;
 }
 
 function solveKinematicInterceptWasm(

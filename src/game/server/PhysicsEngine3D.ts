@@ -53,7 +53,7 @@
 // for an RTS with a few hundred units this is enough and keeps the
 // code small enough to audit at a glance.
 
-import { UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
+import { BODY_SLEEP_TICKS, UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
@@ -298,12 +298,11 @@ const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 // common query to the immediate 3x3x3 neighborhood while the dynamic
 // range below still handles future oversized bodies correctly.
 const CONTACT_CELL_SIZE = 160;
-// SLEEP_TICKS still consumed by the JS-side `sleepBody` (initial
-// counter value when JS triggers a manual sleep). The TS-side
-// thresholds (SPEED_SQ, ACCEL_SQ, GROUND_PENETRATION_EPS) used
-// to gate the integrate-time sleep transition now live in the
+// BODY_SLEEP_TICKS is still consumed by the JS-side `sleepBody`
+// (initial counter value when JS triggers a manual sleep). The
+// TS-side thresholds (SPEED_SQ, ACCEL_SQ, GROUND_PENETRATION_EPS)
+// used to gate the integrate-time sleep transition now live in the
 // Rust kernel — see rts-sim-wasm/src/lib.rs `pool_step_integrate`.
-const SLEEP_TICKS = 12;
 
 export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
@@ -556,7 +555,7 @@ export class PhysicsEngine3D {
       body.sleeping = true;
       this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
     }
-    body.sleepTicks = SLEEP_TICKS;
+    body.sleepTicks = BODY_SLEEP_TICKS;
     body.ax = 0;
     body.ay = 0;
     body.az = 0;

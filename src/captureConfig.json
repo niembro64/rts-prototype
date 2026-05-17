@@ -1,0 +1,11 @@
+{
+  "capture": {
+    "raiseRatePerUnit": 0.9,
+    "lowerRatePerUnit": 0.1,
+    "contestedDecay": false,
+    "contestedDecayRate": 0.1,
+    "initialOwnershipHeight": 1
+  },
+  "manaCenterTileMultiplier": 20,
+  "manaHotspotRadiusFraction": 0.3
+}

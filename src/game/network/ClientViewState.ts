@@ -53,7 +53,7 @@ import { ClientPredictionStepper } from './ClientPredictionStepper';
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
-export type { PredictionLodContext, PredictionLodTier } from './ClientPredictionLod';
+export type { PredictionLodContext } from './ClientPredictionLod';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -122,10 +122,10 @@ export class ClientViewState {
   private entitySetVersion = 0;
   private projectileCacheDirty = false;
 
-  // Client prediction is LOD-stepped by the same camera-centered 3D
-  // cells used by rendering. Far entities accumulate elapsed time and
-  // run less often instead of paying turret/projectile/beam prediction
-  // cost every browser frame.
+  // Client prediction uses one global PLAYER CLIENT cadence. Camera
+  // distance can reduce render richness, but it must not make far
+  // entities receive fewer prediction steps or fewer snapshot
+  // corrections than nearby entities.
   private predictionLod = new ClientPredictionLod();
   private activeEntityPredictionIds: Set<EntityId> = new Set();
   private dirtyUnitRenderIds: Set<EntityId> = new Set();
@@ -488,7 +488,7 @@ export class ClientViewState {
         // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
         const target = this.getOrCreateServerTarget(netEntity.id);
         // A fresh server target supersedes any sparse-prediction time
-        // accumulated before this snapshot. Otherwise far entities can
+        // accumulated before this snapshot. Otherwise an entity can
         // extrapolate the newest target by time that already belonged
         // to an older target and visibly overshoot.
         this.clearTargetPredictionAccum(netEntity.id);

@@ -36,7 +36,7 @@ export const LOS_DROP_GRACE_TICKS = 4;
 /** Whether this turret's targeting must respect line-of-sight occlusion. */
 export function weaponNeedsLineOfSight(weapon: Turret): boolean {
   const cfg = weapon.config;
-  if (cfg.aimStyle.arcType === 'ballisticArcHight') return false;
+  if (cfg.aimStyle.angleType === 'ballisticArcHigh') return false;
   if (cfg.verticalLauncher) return false;
   if (cfg.shot?.type === 'force') return false;
   if (cfg.passive) return false;

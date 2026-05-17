@@ -1,0 +1,56 @@
+{
+  "shellPaleRgb": [0.88, 0.88, 0.88],
+  "shellPaleHex": 14737632,
+  "buildBubble": {
+    "ghostColorHex": 14211288,
+    "ghostOpacity": 0.45,
+    "coreColorHex": 16053492,
+    "coreOpacity": 0.85,
+    "pulseColorHex": 13158600,
+    "pulseOpacity": 0.7,
+    "sparkColorHex": 16777215,
+    "sparkOpacity": 0.9,
+    "radiusPushMult": 2
+  },
+  "shellBar": {
+    "colors": {
+      "energy": "#f5d442",
+      "mana": "#7ad7ff",
+      "metal": "#d09060"
+    },
+    "bgColor": "#333333",
+    "bgAlpha": 0.8,
+    "fgAlpha": 0.9,
+    "worldHeight": 4,
+    "canvasWidth": 128,
+    "canvasHeight": 16,
+    "hideAtFull": true
+  },
+  "hpBar": {
+    "colorHigh": "#44dd44",
+    "colorLow": "#ff4444",
+    "colorBuild": "#4488ff",
+    "lowThreshold": 0.3
+  },
+  "buildRateEmaHalfLifeSec": {
+    "snap": 0,
+    "fast": 0.05,
+    "mid": 0.18,
+    "slow": 0.5
+  },
+  "buildRateEmaMode": "mid",
+  "buildRateDisplayEmaHalfLifeSec": {
+    "snap": 0,
+    "fast": 0.05,
+    "mid": 0.18,
+    "slow": 0.5
+  },
+  "buildRateDisplayEmaMode": "mid",
+  "tiltEmaHalfLifeSec": {
+    "snap": 0,
+    "fast": 0.05,
+    "mid": 0.18,
+    "slow": 0.5
+  },
+  "tiltEmaModeDefault": "fast"
+}

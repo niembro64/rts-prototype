@@ -18,10 +18,10 @@ export function isLineShotType(t: string): t is LineShotType {
 }
 
 export type ForceFieldBarrierRatioConfig = {
-  outerRatio?: number;       // percentage of range (ignored if rimWidth set)
-  rimWidth?: number;         // fixed world-space outer radius
+  outerRatio?: number | null;       // percentage of range (ignored if rimWidth set)
+  rimWidth?: number | null;         // fixed world-space outer radius
   /** Downward sphere-center offset as a multiple of the computed outer radius. */
-  originOffsetRadiusRatio?: number;
+  originOffsetRadiusRatio?: number | null;
   color: number;
   alpha: number;
   particleAlpha: number;
@@ -102,26 +102,24 @@ export type ProjectileShotBlueprint = {
   id: ShotId;
   mass: number;
   collision: ShotCollision;
-  /** Optional. Omit for carrier shots that only release submunitions. */
-  explosion?: ShotExplosion;
+  /** Null for carrier shots that only release submunitions. */
+  explosion: ShotExplosion | null;
   /** When true, the projectile runs detonation logic at the end of `lifespan`. */
   detonateOnExpiry: boolean;
-  lifespan?: number;
+  lifespan: number | null;
   /** Fractional per-instance lifespan variance. `0.1` means plus/minus 10%. */
-  lifespanVariance?: number;
-  hitSound?: SoundEntry;
+  lifespanVariance: number | null;
+  hitSound: SoundEntry | null;
   /** Cluster behavior. */
-  submunitions?: SubmunitionSpec;
-  /** When true, gravity is not applied to this projectile's vertical velocity. */
-  ignoresGravity?: boolean;
+  submunitions: SubmunitionSpec | null;
   /** Maximum yaw rate (radians / sec) the projectile applies while homing. */
-  homingTurnRate?: number;
+  homingTurnRate: number | null;
   /** Cosmetic smoke trail config. Sim-side: no effect. */
-  smokeTrail?: SmokeTrailSpec;
+  smokeTrail: SmokeTrailSpec | null;
   /** @deprecated Ignored by the 3D projectile renderer. */
-  shape?: 'sphere' | 'cylinder';
+  shape: 'sphere' | 'cylinder' | null;
   /** @deprecated Ignored by the 3D projectile renderer. */
-  cylinderShape?: CylinderShapeSpec;
+  cylinderShape: CylinderShapeSpec | null;
 };
 
 export type BeamShotBlueprint = {
@@ -135,7 +133,7 @@ export type BeamShotBlueprint = {
   width: number;
   /** Endpoint damage sphere radius. */
   damageSphere: { radius: number };
-  hitSound?: SoundEntry;
+  hitSound: SoundEntry | null;
 };
 
 export type LaserShotBlueprint = {
@@ -150,7 +148,7 @@ export type LaserShotBlueprint = {
   /** Endpoint damage sphere radius. */
   damageSphere: { radius: number };
   duration: number;
-  hitSound?: SoundEntry;
+  hitSound: SoundEntry | null;
 };
 
 export type ShotBlueprint =
@@ -194,8 +192,6 @@ export type ProjectileShot = {
   trailLength?: number;
   /** Cluster / flak-burst behavior. */
   submunitions?: SubmunitionSpec;
-  /** Rocket/missile flag; gravity is not applied to vz while this shot is in flight. */
-  ignoresGravity?: boolean;
   /** Cosmetic smoke-trail config. */
   smokeTrail?: SmokeTrailSpec;
   /** @deprecated Ignored by the 3D projectile renderer. */
@@ -289,7 +285,6 @@ export type ShotRuntimeProfile = {
   isProjectile: boolean;
   isLine: boolean;
   isRocketLike: boolean;
-  ignoresGravity: boolean;
   /** Swept/projectile collider radius for traveling shots, or line trace radius. */
   collisionRadius: number;
   /** Radius written into ImpactContext for audio/death effects. */
@@ -329,9 +324,9 @@ export function isProjectileShot(shot: ShotConfig): shot is ProjectileShot {
   return shot.type === 'plasma' || shot.type === 'rocket';
 }
 
-/** Rocket-class predicate: a projectile shot whose `ignoresGravity` flag is set. */
+/** Rocket-class predicate used for seeker behavior and visuals. */
 export function isRocketLikeShot(shot: ShotConfig): boolean {
-  return isProjectileShot(shot) && shot.ignoresGravity === true;
+  return isProjectileShot(shot) && shot.type === 'rocket';
 }
 
 /** Static (no-RNG) max lifespan for a shot. */

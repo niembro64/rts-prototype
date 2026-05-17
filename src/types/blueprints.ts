@@ -61,18 +61,22 @@ export type TurretRadiusConfig = {
   body: number;
 };
 
-export type TurretAimArcType = 'rayDirect' | 'ballisticArcLow' | 'ballisticArcHight';
+export type TurretAimAngleType =
+  | 'rayDirect'
+  | 'rayBisectTurretAndBody'
+  | 'ballisticArcLow'
+  | 'ballisticArcHigh';
 export type TurretAimLockOnType = 'lockOnToTurret' | 'lockOnToBody';
 export type TurretAimStyle = {
-  arcType: TurretAimArcType;
+  angleType: TurretAimAngleType;
   lockOnType: TurretAimLockOnType;
 };
 
 export type TurretBlueprint = {
   id: TurretId;
-  projectileId?: ShotId;
+  projectileId: ShotId | null;
   range: number;
-  cooldown?: number;
+  cooldown: number;
   color: number;
   turretTurnAccel: number;
   turretDrag: number;
@@ -80,36 +84,36 @@ export type TurretBlueprint = {
   rangeMultiplierOverrides: TurretRangeOverrides;
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
-  launchForce?: number;
-  isManualFire?: boolean;
-  passive?: boolean;
+  launchForce: number;
+  isManualFire: boolean;
+  passive: boolean;
   /** How runtime resolves the turret's world-space body center. The
    *  default authored mode uses the host blueprint mount. Unit-body-
    *  center mode is for turrets whose gameplay body is exactly the
    *  owning unit's target center, e.g. Loris mirrors. */
-  mountMode?: 'authored' | 'unitBodyCenter';
-  spread?: { angle?: number; pelletCount?: number };
-  burst?: { count?: number; delay?: number };
-  forceField?: {
-    angle?: number;
-    transitionTime?: number;
-    barrier?: ForceFieldBarrierRatioConfig;
-  };
-  mirrorPanels?: MirrorPanel[];
-  audio?: { fireSound?: SoundEntry };
+  mountMode: 'authored' | 'unitBodyCenter';
+  spread: { angle: number; pelletCount: number } | null;
+  burst: { count: number; delay: number } | null;
+  forceField: {
+    angle: number;
+    transitionTime: number;
+    barrier: ForceFieldBarrierRatioConfig | null;
+  } | null;
+  mirrorPanels: MirrorPanel[];
+  audio: { fireSound: SoundEntry } | null;
   radius: TurretRadiusConfig;
   /** Explicit aiming solver mode:
-   *  - arcType: rayDirect for straight-line aim, ballisticArcLow for
-   *    lower gravity solutions, ballisticArcHight for lofted gravity solutions
+   *  - angleType: rayDirect for straight-line aim,
+   *    rayBisectTurretAndBody for mirror normals, ballisticArcLow for
+   *    lower gravity solutions, ballisticArcHigh for lofted gravity solutions
    *  - lockOnType: lock onto the target's body/collider or a target turret mount */
   aimStyle: TurretAimStyle;
   /** Vertical launch system. When true, the turret ignores the normal
    *  yaw+pitch aim math and stays pointed straight up (pitch = π/2).
    *  Each fired projectile launches upward with a random cone
    *  deviation (`spread.angle` governs how far off vertical) — a
-   *  homing-guided rocket is expected to take over from there. Pairs
-   *  with the rocket-class shot flag `ignoresGravity`. */
-  verticalLauncher?: boolean;
+   *  homing-guided rocket is expected to take over from there. */
+  verticalLauncher: boolean;
   /** Spawn pitch in radians, applied once when the turret instance is
    *  created (createUnitRuntimeTurrets/createBuildingRuntimeTurrets).
    *  Default 0 = barrel
@@ -118,7 +122,7 @@ export type TurretBlueprint = {
    *  the aim solver runs, this initial value is overwritten by the
    *  per-tick solution and the damper takes over. Pitch is clamped
    *  to [-π/2, +π/2] by turretSystem; pass π/2 for "straight up". */
-  idlePitch?: number;
+  idlePitch: number;
   /** Aim short of the target so the round lands on the ground at
    *  this fraction of the weapon→target distance, and let the
    *  submunition bounce/spread carry the rest. The aim point is
@@ -133,12 +137,12 @@ export type TurretBlueprint = {
    *  "aim AT the target" behaviour. Only meaningful for
    *  ballistic projectile turrets — beams / lasers / vertical
    *  launchers ignore it. */
-  groundAimFraction?: number;
+  groundAimFraction: number | null;
   /** Visual-only construction hardware. These turret blueprints still
    *  mount through normal unit/building hardpoints, but combat systems
    *  ignore them and the renderer builds the shared construction
    *  emitter instead of weapon barrels. */
-  constructionEmitter?: ConstructionEmitterVisualSpec;
+  constructionEmitter: ConstructionEmitterVisualSpec | null;
 };
 
 /** Chassis-local 3D mount offset, authored in body-radius fractions.
@@ -239,7 +243,7 @@ export type LocomotionPhysics = {
   /** Optional spring-energy jump actuator layered on locomotion.
    *  Belongs on locomotion because the actuator is a property of the
    *  legs/wheels/treads, not the chassis. */
-  jump?: UnitJumpConfig;
+  jump: UnitJumpConfig | null;
 };
 
 /** Hover locomotion (drones, gunships) — no ground contact, no
@@ -328,20 +332,29 @@ export type UnitBlueprint = {
   /** Hide the rendered chassis while keeping bodyShape for logical
    *  mount/leg/debris math. Used by units whose weapon turret is meant
    *  to visually replace the whole body. */
-  hideChassis?: boolean;
+  hideChassis: boolean;
   /** Optional absolute leg hip/attach height in radius.body fractions,
    *  measured from terrain in the same coordinate system as turret
    *  mount.z. Use only for units whose visible body is a turret or
    *  custom rig rather than the logical bodyShape segment. */
-  legAttachHeightFrac?: number;
+  legAttachHeightFrac: number | null;
   locomotion: LocomotionBlueprint;
   /** Optional chassis-vs-locomotion spring. When omitted the unit
    *  body stays rigidly attached to locomotion, matching legacy
    *  behavior. */
-  suspension?: UnitSuspensionConfig;
-  builder?: { buildRange: number; constructionRate: number };
-  dgun?: { turretId: TurretId; energyCost: number };
-  cloak?: CloakBlueprint;
-  detector?: DetectorBlueprint;
-  deathSound?: SoundEntry;
+  suspension: UnitSuspensionConfig | null;
+  builder: { buildRange: number; constructionRate: number } | null;
+  dgun: { turretId: TurretId; energyCost: number } | null;
+  cloak: CloakBlueprint | null;
+  detector: DetectorBlueprint | null;
+  deathSound: SoundEntry | null;
+  /** Fraction of this unit's non-visual turrets that must be engaged
+   *  before a 'fight' or 'patrol' action halts movement. `null` =
+   *  never halt for combat — the unit marches through enemy fire,
+   *  turrets engaging opportunistically (canonical RTS attack-move).
+   *  A number means "stop when engagedCount >= turrets * ratio"; e.g.
+   *  0.9 for single-turret = halt on first engagement, 0.5 for a
+   *  6-turret unit = halt when at least 3 turrets are firing. Lets
+   *  siege/heavy units brawl in place while skirmishers keep moving. */
+  fightStopEngagedRatio: number | null;
 };

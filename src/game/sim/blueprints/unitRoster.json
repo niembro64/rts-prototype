@@ -1,0 +1,20 @@
+{
+  "buildableUnitIds": [
+    "jackal",
+    "lynx",
+    "badger",
+    "mongoose",
+    "mammoth",
+    "tick",
+    "tarantula",
+    "loris",
+    "daddy",
+    "widow",
+    "formik",
+    "hippo",
+    "hovercraft"
+  ],
+  "defaultDisabledDemoUnitIds": [
+    "daddy"
+  ]
+}

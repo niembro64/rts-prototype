@@ -205,7 +205,6 @@ export class ClientPredictionStepper {
 
     this.frameCounter = (this.frameCounter + 1) & 0x3fffffff;
     if (this.frameCounter === 0) this.frameCounter = 1;
-    predictionLod.beginFrame(lod);
 
     const preset = getDriftPreset(getDriftMode());
     projectileSpawns.drain(performance.now(), applyProjectileSpawn);
@@ -260,9 +259,7 @@ export class ClientPredictionStepper {
         dirtyUnitRenderIds.add(id);
       }
       if (entity.combat && entity.combat.turrets.length > 0) {
-        const predictionTier = predictionLod.resolveTier(entity, lod);
         const predictionStride = predictionLod.frameStride(
-          predictionTier,
           entity,
           lod,
           (sourceId) => entities.get(sourceId)?.selectable?.selected === true,
@@ -298,9 +295,7 @@ export class ClientPredictionStepper {
       }
 
       const target = serverTargets.get(id);
-      const predictionTier = predictionLod.resolveTier(entity, lod);
       const predictionStride = predictionLod.frameStride(
-        predictionTier,
         entity,
         lod,
         (sourceId) => entities.get(sourceId)?.selectable?.selected === true,

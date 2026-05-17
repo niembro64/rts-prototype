@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
-import { isLineShot, isLineShotType, isProjectileShot } from '../types';
+import { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -249,7 +249,6 @@ export function registerPackedProjectile(entity: Entity): void {
   if (!isPackedProjectileEligible(entity)) return;
   if (_packedProjectileSlots.has(entity.id)) return;
   const proj = entity.projectile!;
-  const profile = proj.config.shotProfile.runtime;
   const slot = _packedProjectileCount++;
   ensurePackedProjectileCapacity(_packedProjectileCount);
   _packedProjectileSlots.set(entity.id, slot);
@@ -262,7 +261,7 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
   _packedProjectileTimeAlive[slot] = proj.timeAlive;
-  _packedProjectileHasGravity[slot] = profile.ignoresGravity ? 0 : 1;
+  _packedProjectileHasGravity[slot] = 1;
 }
 
 export function unregisterPackedProjectile(id: EntityId): void {
@@ -350,7 +349,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
-      if (isProjectileShot(shot) && shot.ignoresGravity !== true && weapon.ballisticAimInRange === false) {
+      if (isProjectileShot(shot) && !isRocketLikeShot(shot) && weapon.ballisticAimInRange === false) {
         continue;
       }
 
@@ -739,16 +738,13 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = entity.transform.y;
     proj.prevZ = entity.transform.z;
 
-    // Gravity integration: vz loses GRAVITY·dt each tick. Ballistic
-    // projectiles (shells, mortar rounds) arc under this; rockets
-    // opt out via `ignoresGravity`, so they travel in a straight
-    // line on thrust alone and are steered purely by homing. D-gun
-    // waves are their own terrain-following projectile class: they
-    // move horizontally and snap to local terrain height every tick.
-    const ignoresGravity = proj.config.shotProfile.runtime.ignoresGravity;
+    // Gravity integration: every traveling projectile with mass loses
+    // GRAVITY·dt each tick. D-gun waves are their own terrain-following
+    // projectile class: they move horizontally and snap to local terrain
+    // height every tick.
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
     const prevTerrainFollowZ = entity.transform.z;
-    if (!ignoresGravity && !terrainFollow) {
+    if (!terrainFollow) {
       proj.velocityZ -= GRAVITY * dtSec;
     }
 
@@ -783,7 +779,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // center points. Speed is preserved, so the missile still behaves
     // like a thrust-guided weapon.
     //
-    // Rocket-class shots (ignoresGravity=true) take an additional
+    // Rocket-class shots take an additional
     // seeker-behavior step: if the locked target dies or leaves the
     // sim, the rocket scans for the nearest enemy via the spatial
     // grid and re-locks. Ballistic shots (cannons, mortars) stay on
@@ -851,7 +847,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           _homingTargetState.acceleration.z = targetAcceleration.z;
           _homingProjectileAcceleration.x = 0;
           _homingProjectileAcceleration.y = 0;
-          _homingProjectileAcceleration.z = proj.config.shotProfile.runtime.ignoresGravity ? 0 : -GRAVITY;
+          _homingProjectileAcceleration.z = -GRAVITY;
           const remainingSec = Number.isFinite(proj.maxLifespan)
             ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
             : undefined;

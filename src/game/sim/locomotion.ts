@@ -41,7 +41,7 @@ function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
 export function createLocomotionPhysics(
   type: LocomotionType,
   driveForce: number,
-  jump?: UnitJumpConfig,
+  jump: UnitJumpConfig | null = null,
   maxSlopeDeg = LOCOMOTION_MAX_SLOPE_DEG[type],
 ): LocomotionPhysics {
   assertPositiveFinite(`${type}.driveForce`, driveForce);

@@ -40,6 +40,7 @@ import {
   MAP_DIMENSION_CONFIG,
   nearestOddLandCellCount,
 } from './mapSizeConfig';
+import sharedSimConstants from './sharedSimConstants.json';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // Default square map span in canonical land cells. Demo Battle and Real Battle
@@ -323,7 +324,7 @@ export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
  *  RTS-scale ballistics rather than real-world 9.8 m/s²; the map is
  *  ~3000 wu wide and shots travel hundreds of units per second, so
  *  heavier gravity would flatten every arc into a short lob. */
-export const GRAVITY = 500;
+export const GRAVITY = sharedSimConstants.gravity;
 
 /** Free-flight unit velocity damping per 60 Hz frame.
  *  Applied equally to x/y/z while a unit is in free flight. This is
@@ -340,20 +341,26 @@ export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME = 0.15;
 /** Terrain spring acceleration per world-unit of ground-point
  *  penetration. Force is mass * acceleration, so all unit masses
  *  settle at the same tiny gravity sag depth. */
-export const UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT = 900;
+export const UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT =
+  sharedSimConstants.unitGroundSpringAccelPerWorldUnit;
 
 /** Damping ratio for the terrain spring along the terrain normal.
  *  1 is critical damping for the spring's authored acceleration
  *  frequency. The ground never pulls downward; damping only reduces
  *  or increases the upward spring response. */
-export const UNIT_GROUND_SPRING_DAMPING_RATIO = 1;
+export const UNIT_GROUND_SPRING_DAMPING_RATIO =
+  sharedSimConstants.unitGroundSpringDampingRatio;
 
 /** Maximum outward terrain-normal velocity passive ground contact can
  *  produce. This permits small damped settling oscillation, but stops
  *  the terrain spring from acting like a jump actuator. Explicit jump
  *  forces can add their own per-tick outward velocity above this cap;
  *  they do not let passive spring rebound bypass the cap entirely. */
-export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED = 5;
+export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED =
+  sharedSimConstants.unitGroundPassiveReboundMaxSpeed;
+
+/** Body sleep transition tick threshold shared with the WASM integrator. */
+export const BODY_SLEEP_TICKS = sharedSimConstants.bodySleepTicks;
 
 /** D-gun wave altitude above local terrain. The D-gun is no longer a
  *  ballistic shell; it rides the terrain at this offset until its

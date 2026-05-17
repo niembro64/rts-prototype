@@ -186,7 +186,7 @@ export function getDebrisUnitProfile(
       const hipZ = lc.attachOffsetY;
       // Hip Y matches Locomotion3D: either an authored absolute
       // attach height or the lifted midpoint of the body segment.
-      const hipY = bp.legAttachHeightFrac !== undefined
+      const hipY = bp.legAttachHeightFrac !== null
         ? bp.legAttachHeightFrac * r
         : chassisLiftY + getSegmentMidYAt(bp.bodyShape, r, hipX);
       const restDist =

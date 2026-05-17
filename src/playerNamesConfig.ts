@@ -11,35 +11,15 @@
 // Designed extensibly: per-entity names (future "rename your factory")
 // route through the same module — see entityNameOverride / setEntityName
 // helpers in @/game/render3d/EntityName.
+import playerNamesConfig from './playerNamesConfig.json';
 
-const STORAGE_KEY = 'player-client-username';
+const STORAGE_KEY = playerNamesConfig.storageKey;
 
 /** The 20 names. Pattern: title + silly noun, rank-and-file military
  *  flavour with a wink — fits the RTS silhouette without picking a
  *  fight with anyone in particular. The list is `as const` so callers
  *  see exact union types and IDEs autocomplete the values. */
-const FUNNY_DEMO_NAMES = [
-  'Sergeant Sandwich',
-  'Captain Underpants',
-  'General Mayhem',
-  'Major Disappointment',
-  'Colonel Cluck',
-  'Brigadier Bumblefoot',
-  'Marshal Marshmallow',
-  'Admiral Whiskers',
-  'Commander Cookie',
-  'Lieutenant Llama',
-  'Doctor Doom-Adjacent',
-  'Professor Pickles',
-  'Baron Banana',
-  'Lord Lemon',
-  'Duchess Doodle',
-  'Sir Ribbington',
-  'Lady Lasertag',
-  'Chairman Chum',
-  'Director Disaster',
-  'Premier Pumpkin',
-] as const;
+const FUNNY_DEMO_NAMES = playerNamesConfig.funnyDemoNames;
 
 type FunnyName = typeof FUNNY_DEMO_NAMES[number];
 
@@ -116,4 +96,4 @@ export function getDefaultPlayerName(playerId: number): string {
 /** Soft cap on persisted/edited usernames — protects the HUD layout and
  *  keeps the canvas-texture name labels from blowing past their texture
  *  width. The TopBar input enforces this too. */
-export const MAX_NAME_LENGTH = 24;
+export const MAX_NAME_LENGTH = playerNamesConfig.maxNameLength;

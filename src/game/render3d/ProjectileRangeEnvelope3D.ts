@@ -10,7 +10,7 @@ import {
 } from '../math';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId, ProjectileShot, Turret } from '../sim/types';
-import { getShotMaxLifespan, isProjectileShot } from '../sim/types';
+import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { getUnitGroundZ } from '../sim/unitGeometry';
@@ -118,7 +118,7 @@ export class ProjectileRangeEnvelope3D {
       ring.mesh.position.set(mount.x, baseY, mount.y);
 
       const key = `${entity.id}:${turretIndex}:${shot.id}:${shot.launchForce}:${shot.mass}:`
-        + `${shot.lifespan ?? 0}:${shot.ignoresGravity === true ? 1 : 0}:`
+        + `${shot.lifespan ?? 0}:${isRocketLikeShot(shot) ? 1 : 0}:`
         + `${mapWidth}:${mapHeight}`;
       if (ring.cacheKey !== key || ring.framesUntilRecompute <= 0) {
         this.writeEnvelopeGeometry(ring, mount.x, mount.y, mount.z, shot, speed, mapWidth, mapHeight, baseY);
@@ -274,7 +274,7 @@ export class ProjectileRangeEnvelope3D {
     const mapLimit = this.rayDistanceToMapEdge(originX, originY, dirX, dirY, mapWidth, mapHeight);
     if (mapLimit <= 0) return 0;
 
-    if (shot.ignoresGravity === true) {
+    if (isRocketLikeShot(shot)) {
       const lifeMs = getShotMaxLifespan(shot);
       if (!Number.isFinite(lifeMs)) return mapLimit;
       return Math.min(mapLimit, speed * lifeMs / 1000);

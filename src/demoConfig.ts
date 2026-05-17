@@ -1,28 +1,29 @@
 // Demo game configuration — controls initial base layout for AI battles
+import demoConfig from './demoConfig.json';
 
 export type DemoBattleWaypointType = 'move' | 'fight';
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
-  playerCount: 8,
+  playerCount: demoConfig.playerCount,
 
   /** Number of solar collectors per player on the dedicated solar arc. */
-  solarCount: 5,
+  solarCount: demoConfig.solarCount,
 
   /** Number of wind turbines per player on the dedicated wind arc.
    *  Solar and wind used to share one ring with alternating placements;
    *  they now occupy independent radii so each silhouette reads on its
    *  own ring. */
-  windCount: 4,
+  windCount: demoConfig.windCount,
 
   /** Number of megaBeam defense towers per player on the beam tower ring. */
-  megaBeamTowerCount: 4,
+  megaBeamTowerCount: demoConfig.megaBeamTowerCount,
 
   /** Number of cannon defense towers per player on the cannon tower ring. */
-  cannonTowerCount: 4,
+  cannonTowerCount: demoConfig.cannonTowerCount,
 
   /** Number of radar towers per player on the sensor ring. */
-  radarCount: 2,
+  radarCount: demoConfig.radarCount,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
@@ -31,13 +32,13 @@ export const DEMO_CONFIG = {
    * gap so buildings don't crowd the barrier-slice edges.
    * 0.85 = use 85% of the team slice, leave 15% as buffer.
    */
-  arcSectorFraction: 0.7,
+  arcSectorFraction: demoConfig.arcSectorFraction,
 
   /**
    * Spawn radius margin in px. Distance from map edge to spawn point.
    * Larger = spawn points further from edge, more room behind base.
    */
-  spawnMarginPx: 100,
+  spawnMarginPx: demoConfig.spawnMarginPx,
 
   /**
    * DEMO BATTLE base-ring radii. These work like metal deposit
@@ -46,15 +47,7 @@ export const DEMO_CONFIG = {
    * commander-only spawn radius for real battles, matching the previous
    * shared behavior.
    */
-  baseRings: {
-    solar: { radiusFraction: 0.8 },
-    wind: { radiusFraction: 0.75 },
-    commander: { radiusFraction: 0.7 },
-    radar: { radiusFraction: 0.65 },
-    fabricator: { radiusFraction: 0.6 },
-    cannonTower: { radiusFraction: 0.45 },
-    megaBeamTower: { radiusFraction: 0.4 },
-  },
+  baseRings: demoConfig.baseRings,
 
   /**
    * DEMO BATTLE initial-spawn unit order type. 'fight' makes the
@@ -63,7 +56,7 @@ export const DEMO_CONFIG = {
    * produces the messy mid-map clash the demo is supposed to read as.
    * Switch to 'move' to restore the no-stop "march to waypoint" path.
    */
-  initialUnitWaypointType: 'fight' as DemoBattleWaypointType,
+  initialUnitWaypointType: demoConfig.initialUnitWaypointType as DemoBattleWaypointType,
 
   /**
    * DEMO BATTLE factory/fabricator-produced unit order type. Same
@@ -72,20 +65,20 @@ export const DEMO_CONFIG = {
    * prebuilt AI factories; real-battle factories use
    * REAL_BATTLE_FACTORY_WAYPOINT_TYPE in config.ts.
    */
-  factoryWaypointType: 'fight' as DemoBattleWaypointType,
+  factoryWaypointType: demoConfig.factoryWaypointType as DemoBattleWaypointType,
 
   /**
    * How far (as a fraction of factory→map-center distance) the default
    * factory waypoint is placed. 0.5 = halfway to center, 1.0 = center,
    * 1.5 = past center.
    */
-  factoryWaypointDistance: 1.22,
+  factoryWaypointDistance: demoConfig.factoryWaypointDistance,
 
   /**
    * Whether AI uses inverse-cost weighting when picking units to queue.
    * true = cheaper units queued more often. false = all units equally likely.
    */
-  aiInverseCostWeighting: true,
+  aiInverseCostWeighting: demoConfig.aiInverseCostWeighting,
 
   /**
    * Initial unit spawn radius from map center, as a ratio of map height.
@@ -93,14 +86,14 @@ export const DEMO_CONFIG = {
    * (between map center and the spawn circle) and fight toward the
    * opposite side through center. 0.5 = half the map height.
    */
-  centerSpawnRadius: 0.2,
+  centerSpawnRadius: demoConfig.centerSpawnRadius,
 
   /**
    * Angular spread of each team's initial unit cluster, as a fraction
    * of that team's full angular sector (2π / playerCount). Smaller =
    * tighter team grouping at spawn.
    */
-  centerSpawnSectorFraction: 0.6,
+  centerSpawnSectorFraction: demoConfig.centerSpawnSectorFraction,
 
   /**
    * Minimum sim-unit clearance from any water cell when picking an
@@ -111,7 +104,7 @@ export const DEMO_CONFIG = {
    * slack and a tick of inertia headroom before they could possibly
    * brush the shoreline.
    */
-  centerSpawnWaterBufferPx: 40,
+  centerSpawnWaterBufferPx: demoConfig.centerSpawnWaterBufferPx,
 
   /**
    * How many candidate positions to try per unit when rejection-
@@ -119,5 +112,5 @@ export const DEMO_CONFIG = {
    * skipped (no fallback into water). 32 keeps total work bounded
    * even on maps where most of the central disk is submerged.
    */
-  centerSpawnWaterMaxAttempts: 32,
+  centerSpawnWaterMaxAttempts: demoConfig.centerSpawnWaterMaxAttempts,
 };

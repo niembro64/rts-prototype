@@ -138,6 +138,7 @@ export class SmokeTrail3D {
   private active: Puff[] = [];
   // Scratch buffers reused across frames to avoid per-frame allocs.
   private _eligible: Entity[] = [];
+  private readonly _emitPoint = { x: 0, y: 0, z: 0 };
   private _scratchMat = new THREE.Matrix4();
   private emissionCursor = 0;
   private evictionCursor = 0;
@@ -277,10 +278,13 @@ export class SmokeTrail3D {
       }
       for (let n = 0; n < emissions; n++) {
         const e = eligible[(start + n) % eligible.length];
-        const spec = e.projectile!.config.shotProfile.visual.smokeTrail!;
+        const proj = e.projectile!;
+        const visual = proj.config.shotProfile.visual;
+        const spec = visual.smokeTrail!;
+        const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
         const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lodLifeMult) / 1000;
         this.spawnPuff(
-          e.transform.x, e.transform.y, e.transform.z,
+          emit.x, emit.y, emit.z,
           lifespanSec,
           spec.startRadius ?? DEFAULT_START_RADIUS,
           spec.endRadius ?? DEFAULT_END_RADIUS,
@@ -316,6 +320,39 @@ export class SmokeTrail3D {
       this.colorUpdateMin = Number.POSITIVE_INFINITY;
       this.colorUpdateMax = -1;
     }
+  }
+
+  private getTailEmitterPoint(
+    entity: Entity,
+    tailLengthMult: number,
+  ): { x: number; y: number; z: number } {
+    const out = this._emitPoint;
+    const proj = entity.projectile;
+    const radius = proj?.config.shotProfile.visual.projectileBodyRadius ?? 0;
+    const tailLength = radius * Math.max(0, tailLengthMult);
+    const x = entity.transform.x;
+    const y = entity.transform.y;
+    const z = entity.transform.z;
+    out.x = x;
+    out.y = y;
+    out.z = z;
+    if (!proj || tailLength <= 0) return out;
+
+    const vx = proj.velocityX;
+    const vy = proj.velocityY;
+    const vz = proj.velocityZ;
+    const len2 = vx * vx + vy * vy + vz * vz;
+    if (len2 > 1e-6) {
+      const inv = 1 / Math.sqrt(len2);
+      out.x = x - vx * inv * tailLength;
+      out.y = y - vy * inv * tailLength;
+      out.z = z - vz * inv * tailLength;
+      return out;
+    }
+
+    out.x = x - Math.cos(entity.transform.rotation) * tailLength;
+    out.y = y - Math.sin(entity.transform.rotation) * tailLength;
+    return out;
   }
 
   private writePuffColor(index: number, puff: Puff): void {

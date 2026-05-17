@@ -1,0 +1,868 @@
+{
+  "lightTurret": {
+    "id": "lightTurret",
+    "projectileId": "lightShot",
+    "range": 200,
+    "cooldown": 450,
+    "launchForce": 1250,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 2
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.lightTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 3
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "pulseTurret": {
+    "id": "pulseTurret",
+    "projectileId": "mediumShot",
+    "range": 160,
+    "cooldown": 3000,
+    "launchForce": 2800,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleMultiBarrel",
+      "barrelCount": 2,
+      "barrelLength": 1.2,
+      "orbitRadius": 0.65,
+      "spin": {
+        "idle": 2,
+        "max": 10,
+        "accel": 80,
+        "decel": 30
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": true,
+    "color": 16777215,
+    "spread": {
+      "angle": 0.39269908169872414,
+      "pelletCount": 1
+    },
+    "burst": {
+      "count": 4,
+      "delay": 100
+    },
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.pulseTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 9
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "cannonTurret": {
+    "id": "cannonTurret",
+    "projectileId": "heavyShot",
+    "range": 1000,
+    "cooldown": 2300,
+    "launchForce": 20000,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 1.4
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.5,
+        "release": 0.45
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.cannonTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 10
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "mortarTurret": {
+    "id": "mortarTurret",
+    "projectileId": "mortarShot",
+    "range": 1000,
+    "cooldown": 6000,
+    "launchForce": 30000,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0.75
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.5,
+        "release": 0.45
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.mortarTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": 1,
+    "radius": {
+      "body": 9
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcHigh",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "gatlingMortarTurret": {
+    "id": "gatlingMortarTurret",
+    "projectileId": "mortarShot",
+    "range": 2000,
+    "cooldown": 500,
+    "launchForce": 40000,
+    "turretTurnAccel": 20,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleMultiBarrel",
+      "barrelCount": 6,
+      "barrelLength": 1,
+      "orbitRadius": 0.9,
+      "spin": {
+        "idle": 2,
+        "max": 10,
+        "accel": 30,
+        "decel": 10
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.5,
+        "release": 0.45
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.gatlingMortarTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": 1,
+    "radius": {
+      "body": 32
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcHigh",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "hippoGatlingTurret": {
+    "id": "hippoGatlingTurret",
+    "projectileId": "mediumShot",
+    "range": 300,
+    "cooldown": 130,
+    "launchForce": 2000,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleMultiBarrel",
+      "barrelCount": 5,
+      "barrelLength": 0.8,
+      "orbitRadius": 0.4,
+      "spin": {
+        "idle": 2,
+        "max": 10,
+        "accel": 20,
+        "decel": 10
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": true,
+    "color": 16777215,
+    "spread": {
+      "angle": 0.19634954084936207,
+      "pelletCount": 1
+    },
+    "burst": {
+      "count": 1,
+      "delay": 80
+    },
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.hippoGatlingTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 16
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "salvoRocketTurret": {
+    "id": "salvoRocketTurret",
+    "projectileId": "lightRocket",
+    "range": 800,
+    "cooldown": 2000,
+    "launchForce": 500,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "coneMultiBarrel",
+      "barrelCount": 3,
+      "barrelLength": 0.01,
+      "baseOrbit": 0,
+      "tipOrbit": 0.9,
+      "spin": {
+        "idle": 2,
+        "max": 10,
+        "accel": 10,
+        "decel": 5
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.6,
+        "release": 0.55
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0.7853981633974483,
+      "pelletCount": 3
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.salvoRocketTurret"
+      }
+    },
+    "verticalLauncher": true,
+    "idlePitch": 1.5707963267948966,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 8
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "dgunTurret": {
+    "id": "dgunTurret",
+    "projectileId": "disruptorShot",
+    "range": 150,
+    "cooldown": 0,
+    "launchForce": 8400,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 1,
+      "barrelThickness": 8
+    },
+    "isManualFire": true,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16746496,
+    "spread": null,
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.dgunTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 8
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "mirrorTurret": {
+    "id": "mirrorTurret",
+    "projectileId": "beamShot",
+    "range": 300,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0
+    },
+    "isManualFire": false,
+    "passive": true,
+    "mountMode": "unitBodyCenter",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": {
+        "acquire": 1.1,
+        "release": 1.2
+      }
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 1.5707963267948966,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [
+      {
+        "offsetX": 0,
+        "offsetY": 0,
+        "angle": 0
+      }
+    ],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 1.5707963267948966,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 8
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayBisectTurretAndBody",
+      "lockOnType": "lockOnToTurret"
+    }
+  },
+  "beamTurret": {
+    "id": "beamTurret",
+    "projectileId": "beamShot",
+    "range": 250,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0.6
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.beamTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 8
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "miniBeam": {
+    "id": "miniBeam",
+    "projectileId": "miniBeamShot",
+    "range": 180,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0.5
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.miniBeam"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 3
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "megaBeamTurret": {
+    "id": "megaBeamTurret",
+    "projectileId": "megaBeamShot",
+    "range": 350,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0.6,
+      "barrelThickness": 8
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.megaBeamTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 14
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "forceTurret": {
+    "id": "forceTurret",
+    "projectileId": null,
+    "range": 540,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "complexSingleEmitter",
+      "grate": {
+        "shape": "circle",
+        "count": 5,
+        "length": 0,
+        "width": 0.45,
+        "taper": 0.5,
+        "baseOffset": 0,
+        "originOffset": 0,
+        "thickness": 1.5,
+        "reversePhase": true
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "forceField": {
+      "angle": 6.283185307179586,
+      "transitionTime": 500,
+      "barrier": {
+        "outerRatio": 0.8,
+        "originOffsetRadiusRatio": 0.3,
+        "color": 16777215,
+        "alpha": 0.05,
+        "particleAlpha": 0.2,
+        "rimWidth": null
+      }
+    },
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.forceTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 12
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "constructionTurret": {
+    "id": "constructionTurret",
+    "projectileId": null,
+    "range": 0,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0
+    },
+    "isManualFire": true,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 8
+    },
+    "constructionEmitter": {
+      "defaultSize": "small",
+      "particleTravelSpeed": 50,
+      "particleRadius": 1.5,
+      "sizes": {
+        "small": {
+          "towerSize": "small",
+          "pylonHeight": 10,
+          "pylonOffset": 3,
+          "innerPylonRadius": 1.5,
+          "showerRadius": 3
+        },
+        "large": {
+          "towerSize": "large",
+          "pylonHeight": 50,
+          "pylonOffset": 15,
+          "innerPylonRadius": 2,
+          "showerRadius": 5
+        }
+      }
+    },
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "towerBeamTurret": {
+    "id": "towerBeamTurret",
+    "projectileId": "towerBeamShot",
+    "range": 350,
+    "cooldown": 0,
+    "launchForce": 0,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 0.8,
+      "barrelThickness": 8
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": null,
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.megaBeamTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 18
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "towerCannonTurret": {
+    "id": "towerCannonTurret",
+    "projectileId": "heavyShot",
+    "range": 1500,
+    "cooldown": 1500,
+    "launchForce": 22000,
+    "turretTurnAccel": 180,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "simpleSingleBarrel",
+      "barrelLength": 3,
+      "barrelThickness": 9
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.5,
+        "release": 0.45
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.cannonTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 16
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  }
+}

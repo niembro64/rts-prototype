@@ -1,0 +1,100 @@
+{
+  "signalsEnabled": {
+    "tps": true,
+    "cpu": true,
+    "units": true
+  },
+  "signalDefaults": {
+    "tps": "active",
+    "cpu": "off",
+    "units": "off"
+  },
+  "qualityDefault": "auto",
+  "detail": {
+    "TARGETING_REACQUIRE_STRIDE": {
+      "min": 16,
+      "low": 8,
+      "medium": 4,
+      "high": 2,
+      "max": 1
+    },
+    "BEAM_PATH_STRIDE": {
+      "min": 8,
+      "low": 5,
+      "medium": 3,
+      "high": 2,
+      "max": 1
+    },
+    "BEAM_PATH_TRACE_BUDGET": {
+      "min": 32,
+      "low": 64,
+      "medium": 96,
+      "high": 160,
+      "max": 256
+    },
+    "MIRROR_BISECTOR_ITERATIONS": {
+      "min": 1,
+      "low": 1,
+      "medium": 2,
+      "high": 2,
+      "max": 3
+    },
+    "TARGETING_DENSITY_THRESHOLD": {
+      "min": 32,
+      "low": 64,
+      "medium": 96,
+      "high": 192,
+      "max": 100000
+    },
+    "TARGETING_DENSITY_STRIDE": {
+      "min": 8,
+      "low": 6,
+      "medium": 4,
+      "high": 3,
+      "max": 2
+    },
+    "PROJECTILE_COLLISION_STRIDE": {
+      "min": 4,
+      "low": 3,
+      "medium": 2,
+      "high": 1,
+      "max": 1
+    },
+    "CAPTURE_STRIDE": {
+      "min": 4,
+      "low": 2,
+      "medium": 1,
+      "high": 1,
+      "max": 1
+    }
+  },
+  "thresholds": {
+    "tps": {
+      "low": 0.3,
+      "medium": 0.4,
+      "high": 0.6,
+      "max": 0.8
+    },
+    "cpu": {
+      "low": 0.2,
+      "medium": 0.4,
+      "high": 0.65,
+      "max": 0.85
+    },
+    "units": {
+      "low": 0.2,
+      "medium": 0.3,
+      "high": 0.4,
+      "max": 0.5
+    }
+  },
+  "hysteresis": {
+    "tps": 0.05,
+    "cpu": 0.05,
+    "units": 0.05
+  },
+  "emaSource": {
+    "tps": "avg",
+    "cpu": "avg"
+  }
+}

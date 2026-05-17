@@ -1,4 +1,5 @@
 import type { Entity, Turret } from '../types';
+import { isProjectileShot } from '../types';
 
 export type MirrorTargetTurretPick = {
   turret: Turret;
@@ -8,7 +9,7 @@ export type MirrorTargetTurretPick = {
 
 /** Sustained DPS for a turret based on its compiled shot config and
  *  cooldown. Beams sustain their authored `dps` continuously; lasers
- *  pulse for `duration` out of every `cooldown` window; projectile
+ *  pulse for `duration` out of every `cooldown` window; plasma/rocket
  *  shots deliver `explosion.damage` per `cooldown` ms. Force shots
  *  and turrets without a damaging shot return 0 and are filtered out. */
 function turretDps(turret: Turret): number {
@@ -19,7 +20,7 @@ function turretDps(turret: Turret): number {
     const period = Math.max(shot.duration, turret.config.cooldown);
     return period > 0 ? (shot.dps * shot.duration) / period : 0;
   }
-  if (shot.type === 'projectile' || shot.type === 'rocket') {
+  if (isProjectileShot(shot)) {
     const damage = shot.explosion?.damage ?? 0;
     return turret.config.cooldown > 0
       ? (damage * 1000) / turret.config.cooldown

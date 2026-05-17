@@ -27,7 +27,9 @@ function cloneJumpConfig(config: UnitJumpConfig): UnitJumpConfig {
   };
 }
 
-export function createUnitJump(config: UnitJumpConfig | undefined): UnitJumpState | undefined {
+export function createUnitJump(
+  config: UnitJumpConfig | null | undefined,
+): UnitJumpState | undefined {
   if (!config) return undefined;
   return {
     config: cloneJumpConfig(config),

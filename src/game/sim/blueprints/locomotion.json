@@ -1,0 +1,373 @@
+{
+  "jackal": {
+    "type": "wheels",
+    "physics": {
+      "driveForce": 300,
+      "traction": 0.45,
+      "maxSlopeDeg": 10,
+      "jump": null
+    },
+    "config": {
+      "wheelDistX": 0.6,
+      "wheelDistY": 0.7,
+      "treadLength": 0.5,
+      "treadWidth": 0.15,
+      "wheelRadius": 0.28,
+      "rotationSpeed": 1
+    }
+  },
+  "lynx": {
+    "type": "treads",
+    "physics": {
+      "driveForce": 170,
+      "traction": 0.75,
+      "maxSlopeDeg": 20,
+      "jump": null
+    },
+    "config": {
+      "treadOffset": 0.8,
+      "treadLength": 1.6,
+      "treadWidth": 0.45,
+      "wheelRadius": 0.12,
+      "rotationSpeed": 1
+    }
+  },
+  "daddy": {
+    "type": "legs",
+    "physics": {
+      "driveForce": 200,
+      "traction": 1,
+      "maxSlopeDeg": 70,
+      "jump": null
+    },
+    "config": {
+      "upperThickness": 2.5,
+      "lowerThickness": 2,
+      "hipRadius": 1.5,
+      "kneeRadius": 0.8,
+      "lerpDuration": 200,
+      "leftSide": [
+        {
+          "attachOffsetXFrac": 0.3,
+          "attachOffsetYFrac": -0.2,
+          "upperLegLengthFrac": 4.5,
+          "lowerLegLengthFrac": 5.3999999999999995,
+          "snapTriggerAngle": 1.4451326206513049,
+          "snapTargetAngle": -0.9738937226128359,
+          "snapDistanceMultiplier": 0.74,
+          "extensionThreshold": 0.96
+        },
+        {
+          "attachOffsetXFrac": -0.3,
+          "attachOffsetYFrac": -0.3,
+          "upperLegLengthFrac": 4.5,
+          "lowerLegLengthFrac": 5.3999999999999995,
+          "snapTriggerAngle": 3.1101767270538954,
+          "snapTargetAngle": -1.82212373908208,
+          "snapDistanceMultiplier": 0.5,
+          "extensionThreshold": 0.99
+        }
+      ]
+    }
+  },
+  "badger": {
+    "type": "treads",
+    "physics": {
+      "driveForce": 200,
+      "traction": 0.75,
+      "maxSlopeDeg": 20,
+      "jump": null
+    },
+    "config": {
+      "treadOffset": 0.85,
+      "treadLength": 1.7,
+      "treadWidth": 0.55,
+      "wheelRadius": 0.12,
+      "rotationSpeed": 1
+    }
+  },
+  "mongoose": {
+    "type": "wheels",
+    "physics": {
+      "driveForce": 220,
+      "traction": 0.45,
+      "maxSlopeDeg": 10,
+      "jump": null
+    },
+    "config": {
+      "wheelDistX": 0.65,
+      "wheelDistY": 0.7,
+      "treadLength": 0.5,
+      "treadWidth": 0.3,
+      "wheelRadius": 0.22,
+      "rotationSpeed": 1
+    }
+  },
+  "tick": {
+    "type": "legs",
+    "physics": {
+      "driveForce": 120,
+      "traction": 1,
+      "maxSlopeDeg": 70,
+      "jump": {
+        "springStiffness": 10000,
+        "compression": 50,
+        "powerRandomMultiplier": 0.5,
+        "horizontalRandomMultiplier": 0,
+        "mode": "always",
+        "releaseChancePerTick": 0.02
+      }
+    },
+    "config": {
+      "upperThickness": 2,
+      "lowerThickness": 1.5,
+      "hipRadius": 1,
+      "kneeRadius": 1.5,
+      "lerpDuration": 100,
+      "leftSide": [
+        {
+          "attachOffsetXFrac": 0.25,
+          "attachOffsetYFrac": -0.15,
+          "upperLegLengthFrac": 0.5,
+          "lowerLegLengthFrac": 0.55,
+          "snapTriggerAngle": 1.4451326206513049,
+          "snapTargetAngle": -0.9738937226128359,
+          "snapDistanceMultiplier": 0.74,
+          "extensionThreshold": 0.96
+        },
+        {
+          "attachOffsetXFrac": -0.25,
+          "attachOffsetYFrac": -0.15,
+          "upperLegLengthFrac": 0.5,
+          "lowerLegLengthFrac": 0.55,
+          "snapTriggerAngle": 3.1101767270538954,
+          "snapTargetAngle": -1.82212373908208,
+          "snapDistanceMultiplier": 0.5,
+          "extensionThreshold": 0.99
+        }
+      ]
+    }
+  },
+  "mammoth": {
+    "type": "treads",
+    "physics": {
+      "driveForce": 60,
+      "traction": 0.75,
+      "maxSlopeDeg": 20,
+      "jump": null
+    },
+    "config": {
+      "treadOffset": 0.9,
+      "treadLength": 2,
+      "treadWidth": 0.6,
+      "wheelRadius": 0.175,
+      "rotationSpeed": 1
+    }
+  },
+  "formik": {
+    "type": "legs",
+    "physics": {
+      "driveForce": 60,
+      "traction": 1,
+      "maxSlopeDeg": 70,
+      "jump": null
+    },
+    "config": {
+      "upperThickness": 9,
+      "lowerThickness": 8,
+      "hipRadius": 5.5,
+      "kneeRadius": 7.5,
+      "lerpDuration": 320,
+      "leftSide": [
+        {
+          "attachOffsetXFrac": 0.42,
+          "attachOffsetYFrac": -0.28,
+          "upperLegLengthFrac": 0.91,
+          "lowerLegLengthFrac": 1.0555999999999999,
+          "snapTriggerAngle": 1.319468914507713,
+          "snapTargetAngle": -0.8796459430051422,
+          "snapDistanceMultiplier": 0.7,
+          "extensionThreshold": 0.96
+        },
+        {
+          "attachOffsetXFrac": 0.02,
+          "attachOffsetYFrac": -0.36,
+          "upperLegLengthFrac": 0.91,
+          "lowerLegLengthFrac": 1.0555999999999999,
+          "snapTriggerAngle": 2.261946710584651,
+          "snapTargetAngle": -1.413716694115407,
+          "snapDistanceMultiplier": 0.62,
+          "extensionThreshold": 0.98
+        },
+        {
+          "attachOffsetXFrac": -0.48,
+          "attachOffsetYFrac": -0.3,
+          "upperLegLengthFrac": 0.91,
+          "lowerLegLengthFrac": 1.0555999999999999,
+          "snapTriggerAngle": 3.204424506661589,
+          "snapTargetAngle": -1.9477874452256718,
+          "snapDistanceMultiplier": 0.54,
+          "extensionThreshold": 0.99
+        }
+      ]
+    }
+  },
+  "widow": {
+    "type": "legs",
+    "physics": {
+      "driveForce": 70,
+      "traction": 1,
+      "maxSlopeDeg": 70,
+      "jump": null
+    },
+    "config": {
+      "upperThickness": 7,
+      "lowerThickness": 6,
+      "hipRadius": 4,
+      "kneeRadius": 6,
+      "lerpDuration": 300,
+      "leftSide": [
+        {
+          "attachOffsetXFrac": 0.4,
+          "attachOffsetYFrac": -0.4,
+          "upperLegLengthFrac": 1.045,
+          "lowerLegLengthFrac": 1.2539999999999998,
+          "snapTriggerAngle": 1.4451326206513049,
+          "snapTargetAngle": -0.9738937226128359,
+          "snapDistanceMultiplier": 0.74,
+          "extensionThreshold": 0.96
+        },
+        {
+          "attachOffsetXFrac": -0.4,
+          "attachOffsetYFrac": -0.4,
+          "upperLegLengthFrac": 1.045,
+          "lowerLegLengthFrac": 1.2539999999999998,
+          "snapTriggerAngle": 3.1101767270538954,
+          "snapTargetAngle": -1.82212373908208,
+          "snapDistanceMultiplier": 0.5,
+          "extensionThreshold": 0.99
+        }
+      ]
+    }
+  },
+  "hippo": {
+    "type": "treads",
+    "physics": {
+      "driveForce": 55,
+      "traction": 0.75,
+      "maxSlopeDeg": 20,
+      "jump": null
+    },
+    "config": {
+      "treadOffset": 1.1,
+      "treadLength": 2.6,
+      "treadWidth": 0.55,
+      "wheelRadius": 0.2,
+      "rotationSpeed": 1
+    }
+  },
+  "tarantula": {
+    "type": "legs",
+    "physics": {
+      "driveForce": 200,
+      "traction": 1,
+      "maxSlopeDeg": 70,
+      "jump": null
+    },
+    "config": {
+      "upperThickness": 6.5,
+      "lowerThickness": 6,
+      "hipRadius": 3.5,
+      "kneeRadius": 6,
+      "lerpDuration": 200,
+      "leftSide": [
+        {
+          "attachOffsetXFrac": 0.3,
+          "attachOffsetYFrac": -0.2,
+          "upperLegLengthFrac": 1.045,
+          "lowerLegLengthFrac": 1.2539999999999998,
+          "snapTriggerAngle": 1.4451326206513049,
+          "snapTargetAngle": -0.9738937226128359,
+          "snapDistanceMultiplier": 0.74,
+          "extensionThreshold": 0.96
+        },
+        {
+          "attachOffsetXFrac": -0.3,
+          "attachOffsetYFrac": -0.2,
+          "upperLegLengthFrac": 1.045,
+          "lowerLegLengthFrac": 1.2539999999999998,
+          "snapTriggerAngle": 3.1101767270538954,
+          "snapTargetAngle": -1.82212373908208,
+          "snapDistanceMultiplier": 0.5,
+          "extensionThreshold": 0.99
+        }
+      ]
+    }
+  },
+  "loris": {
+    "type": "treads",
+    "physics": {
+      "driveForce": 160,
+      "traction": 0.75,
+      "maxSlopeDeg": 20,
+      "jump": null
+    },
+    "config": {
+      "treadOffset": 0.85,
+      "treadLength": 1.7,
+      "treadWidth": 0.5,
+      "wheelRadius": 0.12,
+      "rotationSpeed": 1
+    }
+  },
+  "commander": {
+    "type": "legs",
+    "physics": {
+      "driveForce": 50,
+      "traction": 1,
+      "maxSlopeDeg": 70,
+      "jump": null
+    },
+    "config": {
+      "upperThickness": 8,
+      "lowerThickness": 7,
+      "hipRadius": 5,
+      "kneeRadius": 7,
+      "lerpDuration": 200,
+      "leftSide": [
+        {
+          "attachOffsetXFrac": 0.4,
+          "attachOffsetYFrac": -0.5,
+          "upperLegLengthFrac": 1.1,
+          "lowerLegLengthFrac": 1.32,
+          "snapTriggerAngle": 1.4451326206513049,
+          "snapTargetAngle": -0.9738937226128359,
+          "snapDistanceMultiplier": 0.74,
+          "extensionThreshold": 0.96
+        },
+        {
+          "attachOffsetXFrac": -0.4,
+          "attachOffsetYFrac": -0.5,
+          "upperLegLengthFrac": 1.1,
+          "lowerLegLengthFrac": 1.32,
+          "snapTriggerAngle": 3.1101767270538954,
+          "snapTargetAngle": -1.82212373908208,
+          "snapDistanceMultiplier": 0.5,
+          "extensionThreshold": 0.99
+        }
+      ]
+    }
+  },
+  "hovercraft": {
+    "type": "hover",
+    "physics": {
+      "driveForce": 240,
+      "traction": 1,
+      "maxSlopeDeg": 89,
+      "jump": null
+    },
+    "config": {
+      "hoverHeight": 120
+    }
+  }
+}

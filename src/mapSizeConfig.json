@@ -1,0 +1,9 @@
+{
+  "landCellSize": 200,
+  "mapDimensionBaseLandCells": 7,
+  "mapDimensionAxisGrowth": 1.5,
+  "mapDimensionAxisOptionCount": 8,
+  "defaultMapWidthLandCells": 53,
+  "defaultMapLengthLandCells": 53,
+  "mapGenerationExtentFraction": 0.85
+}

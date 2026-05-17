@@ -14,7 +14,7 @@
 // the index because:
 //   - laser: pulsed line shot. Auto-expires after `duration`, so a
 //     dead target just means the pulse hits empty space and despawns.
-//   - projectile / rocket: fire-and-forget. No persistent owner-target
+//   - plasma / rocket: fire-and-forget. No persistent owner-target
 //     relationship to clean up.
 //   - force: spherical barrier around the firing turret with no
 //     specific target.

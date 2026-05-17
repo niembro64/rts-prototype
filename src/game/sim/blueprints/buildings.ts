@@ -1,9 +1,9 @@
 /**
- * Building Blueprints
+ * Building blueprints.
  *
- * Single source of truth for authored building facts. Runtime building
- * configs, client render profiles, and targeting/hover anchors all derive
- * from this table.
+ * Authored building facts live in buildings.json. This module keeps
+ * the current TypeScript API for validation, renderer helpers, and
+ * derived runtime config while the blueprint table itself is data.
  */
 
 import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
@@ -12,13 +12,8 @@ import type {
   DetectorBlueprint,
   EntityHudBlueprint,
 } from '../../../types/blueprints';
-import {
-  EXTRACTOR_METAL_PER_SECOND,
-  METAL_DEPOSIT_RESOURCE_CELLS,
-  SOLAR_ENERGY_PER_SECOND,
-  WIND_ENERGY_PER_SECOND,
-} from '../../../config';
-import { CONSTRUCTION_TURRET_HEAD_RADIUS } from './turrets';
+import rawBuildingBlueprints from './buildings.json';
+import { assertExplicitFields } from './jsonValidation';
 
 export type BuildingBlueprint = {
   id: BuildingType;
@@ -31,36 +26,56 @@ export type BuildingBlueprint = {
    *  COST_MULTIPLIER. Each resource bar fills independently from the
    *  owner's stockpile. */
   cost: ResourceCost;
-  energyProduction?: number;
-  metalProduction?: number;
-  constructionRate?: number;
+  energyProduction: number | null;
+  metalProduction: number | null;
+  constructionRate: number | null;
   renderProfile: BuildingRenderProfile;
   /** Primary visual/anchor height above ground, in world units. */
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
   hud: EntityHudBlueprint;
+  cloak: null;
   /** Optional reusable turret hardpoints mounted on this building.
    *  Building mount coordinates are absolute world units relative to
    *  the building center/base, not body-radius fractions like units. */
-  turrets?: BuildingTurretMount[];
-  detector?: DetectorBlueprint;
+  turrets: BuildingTurretMount[];
+  detector: DetectorBlueprint | null;
 };
 
+export const BUILDING_BLUEPRINTS =
+  rawBuildingBlueprints as Record<BuildingType, BuildingBlueprint>;
+
+const BUILDING_EXPLICIT_FIELDS = [
+  'energyProduction',
+  'metalProduction',
+  'constructionRate',
+  'turrets',
+  'detector',
+  'cloak',
+] as const;
+
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
-export const SOLAR_BUILDING_VISUAL_HEIGHT = 52;
-export const WIND_BUILDING_VISUAL_HEIGHT = 250;
-export const FACTORY_BASE_VISUAL_HEIGHT = 30;
-export const EXTRACTOR_BUILDING_VISUAL_HEIGHT = 50;
-export const RADAR_BUILDING_VISUAL_HEIGHT = 150;
-export const MEGA_BEAM_TOWER_VISUAL_HEIGHT = 80;
-export const CANNON_TOWER_VISUAL_HEIGHT = 72;
+export const SOLAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.solar.visualHeight;
+export const WIND_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.wind.visualHeight;
+export const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.factory.visualHeight;
+export const EXTRACTOR_BUILDING_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.extractor.visualHeight;
+export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.radar.visualHeight;
+export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.megaBeamTower.visualHeight;
+export const CANNON_TOWER_VISUAL_HEIGHT =
+  BUILDING_BLUEPRINTS.cannonTower.visualHeight;
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
-  FACTORY_BASE_VISUAL_HEIGHT + CONSTRUCTION_TURRET_HEAD_RADIUS;
+  BUILDING_BLUEPRINTS.factory.turrets[0]?.mount.z ?? FACTORY_BASE_VISUAL_HEIGHT;
 /** Pivot height for the megaBeam turret on the tower — head sits just
  *  above the body socket so the barrel clears the tapered hex shaft. */
-export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z = MEGA_BEAM_TOWER_VISUAL_HEIGHT + 18;
+export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z =
+  BUILDING_BLUEPRINTS.megaBeamTower.turrets[0]?.mount.z ??
+  MEGA_BEAM_TOWER_VISUAL_HEIGHT;
 /** Pivot height for the cannon tower's heavier static turret head. */
-export const CANNON_TOWER_TURRET_MOUNT_Z = CANNON_TOWER_VISUAL_HEIGHT + 16;
+export const CANNON_TOWER_TURRET_MOUNT_Z =
+  BUILDING_BLUEPRINTS.cannonTower.turrets[0]?.mount.z ??
+  CANNON_TOWER_VISUAL_HEIGHT;
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;
@@ -113,149 +128,8 @@ export function getFactoryBuildingVisualMetrics(
   };
 }
 
-export const BUILDING_BLUEPRINTS: Record<BuildingType, BuildingBlueprint> = {
-  solar: {
-    id: 'solar',
-    name: 'Solar',
-    gridWidth: 3,
-    gridHeight: 3,
-    gridDepth: 1,
-    hp: 200,
-    cost: { energy: 100, mana: 100, metal: 100 },
-    energyProduction: SOLAR_ENERGY_PER_SECOND,
-    renderProfile: 'solar',
-    visualHeight: SOLAR_BUILDING_VISUAL_HEIGHT,
-    anchorProfile: 'constantVisualTop',
-    hud: {
-      barsOffsetAboveTop: 12,
-    },
-  },
-  wind: {
-    id: 'wind',
-    name: 'Wind',
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 5,
-    hp: 100,
-    cost: { energy: 60, mana: 60, metal: 60 },
-    energyProduction: WIND_ENERGY_PER_SECOND,
-    renderProfile: 'wind',
-    visualHeight: WIND_BUILDING_VISUAL_HEIGHT,
-    anchorProfile: 'constantVisualTop',
-    hud: {
-      barsOffsetAboveTop: -10,
-    },
-  },
-  factory: {
-    id: 'factory',
-    name: 'Fabricator',
-    // Fabricators are just their construction tower. Units are assembled
-    // outside this small blocking footprint, not inside a reserved yard.
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 6,
-    hp: 800,
-    cost: { energy: 300, mana: 300, metal: 300 },
-    constructionRate: 100,
-    renderProfile: 'factory',
-    visualHeight: FACTORY_BASE_VISUAL_HEIGHT,
-    anchorProfile: 'factoryTower',
-    hud: {
-      barsOffsetAboveTop: 12,
-    },
-    turrets: [
-      {
-        turretId: 'constructionTurret',
-        mount: { x: 0, y: 0, z: FACTORY_CONSTRUCTION_TURRET_MOUNT_Z },
-        visualVariant: 'large',
-      },
-    ],
-  },
-  extractor: {
-    id: 'extractor',
-    name: 'Extractor',
-    // Matches the logical square metal-deposit footprint exactly.
-    gridWidth: METAL_DEPOSIT_RESOURCE_CELLS,
-    gridHeight: METAL_DEPOSIT_RESOURCE_CELLS,
-    gridDepth: 2,
-    hp: 250,
-    cost: { energy: 80, mana: 80, metal: 80 },
-    metalProduction: EXTRACTOR_METAL_PER_SECOND,
-    renderProfile: 'extractor',
-    visualHeight: EXTRACTOR_BUILDING_VISUAL_HEIGHT,
-    anchorProfile: 'constantVisualTop',
-    hud: {
-      barsOffsetAboveTop: 38,
-    },
-  },
-  radar: {
-    id: 'radar',
-    name: 'Radar',
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 7,
-    hp: 450,
-    cost: { energy: 400, mana: 180, metal: 280 },
-    renderProfile: 'radar',
-    visualHeight: RADAR_BUILDING_VISUAL_HEIGHT,
-    anchorProfile: 'constantVisualTop',
-    hud: {
-      barsOffsetAboveTop: 16,
-    },
-    detector: { radius: 1800 },
-  },
-  megaBeamTower: {
-    id: 'megaBeamTower',
-    name: 'Beam Tower',
-    // Compact square footprint; the silhouette reads as TALL, not wide.
-    // gridDepth controls the static collider height (in cells = 20wu),
-    // and is tuned so the cuboid matches the rendered visualHeight.
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 4,
-    hp: 8000,
-    cost: { energy: 1500, mana: 1500, metal: 1500 },
-    renderProfile: 'megaBeamTower',
-    visualHeight: MEGA_BEAM_TOWER_VISUAL_HEIGHT,
-    anchorProfile: 'constantVisualTop',
-    hud: {
-      barsOffsetAboveTop: 12,
-    },
-    turrets: [
-      {
-        // Tower-specific turret: same range/audio family as the
-        // Widow's megaBeam mount, but larger and firing towerBeamShot
-        // (10x dps). The Widow keeps the regular megaBeamTurret so
-        // its balance and silhouette are unchanged.
-        turretId: 'towerBeamTurret',
-        mount: { x: 0, y: 0, z: MEGA_BEAM_TOWER_TURRET_MOUNT_Z },
-      },
-    ],
-  },
-  cannonTower: {
-    id: 'cannonTower',
-    name: 'Cannon Tower',
-    gridWidth: 2,
-    gridHeight: 2,
-    gridDepth: 4,
-    hp: 8000,
-    cost: { energy: 1500, mana: 1500, metal: 1500 },
-    renderProfile: 'cannonTower',
-    visualHeight: CANNON_TOWER_VISUAL_HEIGHT,
-    anchorProfile: 'constantVisualTop',
-    hud: {
-      barsOffsetAboveTop: 12,
-    },
-    turrets: [
-      {
-        turretId: 'towerCannonTurret',
-        mount: { x: 0, y: 0, z: CANNON_TOWER_TURRET_MOUNT_Z },
-      },
-    ],
-  },
-};
-
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
+  assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
   if (id !== blueprint.id) {
     throw new Error(`Building blueprint key mismatch: key '${id}' has id '${blueprint.id}'`);
   }
@@ -278,28 +152,6 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
     throw new Error(
       `Invalid building blueprint ${id}: HUD barsOffsetAboveTop must be finite`,
     );
-  }
-  if (
-    blueprint.detector &&
-    (!Number.isFinite(blueprint.detector.radius) || blueprint.detector.radius <= 0)
-  ) {
-    throw new Error(
-      `Invalid building blueprint ${id}: detector radius must be positive`,
-    );
-  }
-  if (blueprint.turrets) {
-    for (let i = 0; i < blueprint.turrets.length; i++) {
-      const mount = blueprint.turrets[i].mount;
-      if (
-        !Number.isFinite(mount.x) ||
-        !Number.isFinite(mount.y) ||
-        !Number.isFinite(mount.z)
-      ) {
-        throw new Error(
-          `Invalid building turret mount for ${id}[${i}] ${blueprint.turrets[i].turretId}: mount x/y/z must be finite`,
-        );
-      }
-    }
   }
 }
 

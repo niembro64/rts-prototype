@@ -1,0 +1,12 @@
+{
+  "hazardColors": {
+    "yellowHex": 14921774,
+    "blackHex": 1252129,
+    "yellowRgb": [0.89, 0.69, 0.18],
+    "blackRgb": [0.075, 0.105, 0.13]
+  },
+  "towerSpin": {
+    "radPerSec": 0.42,
+    "driftHalfLifeMultiplier": 1
+  }
+}

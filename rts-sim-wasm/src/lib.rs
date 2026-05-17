@@ -44,28 +44,12 @@ pub fn __init() {
 // ─────────────────────────────────────────────────────────────────
 //  Unit-motion integrator constants
 //
-//  These mirror src/config.ts and src/game/sim/unitGroundPhysics.ts.
-//  Authoritative source-of-truth is the TS config; Rust hardcodes
-//  the same values so the two integrators produce identical motion.
-//  If a tuning value changes in config.ts, update the matching
-//  const below.
+//  Cross-language tuning values that must not drift are generated
+//  from src/sharedSimConstants.json by build.rs.
 // ─────────────────────────────────────────────────────────────────
 
-const UNIT_GROUND_CONTACT_EPSILON: f64 = 1e-3;
-const UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT: f64 = 900.0;
-const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED: f64 = 5.0;
-// = ratio (1.0) * 2 * sqrt(UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT)
-//   = 1 * 2 * sqrt(900) = 60.0 exactly.
-const GROUND_SPRING_DAMPING_ACCEL_PER_SPEED: f64 = 60.0;
-
-// Mirrors src/config.ts `export const GRAVITY = 500;`
-const GRAVITY: f64 = 500.0;
-
-// Mirrors PhysicsEngine3D.ts sleep heuristic constants.
-const SLEEP_SPEED_SQ: f64 = 0.25;
-const SLEEP_ACCEL_SQ: f64 = 1e-6;
-const SLEEP_TICKS: f64 = 12.0;
-const SLEEP_GROUND_PENETRATION_EPS: f64 = 0.1;
+// Generated from src/sharedSimConstants.json by rts-sim-wasm/build.rs.
+include!(concat!(env!("OUT_DIR"), "/shared_sim_constants.rs"));
 
 #[inline]
 fn is_in_contact(penetration: f64) -> bool {
@@ -1783,7 +1767,7 @@ pub fn apply_homing_steering(
 }
 
 /// Per-tick ballistic integrator. For slots 0..count:
-///   if has_gravity[i] != 0: vel_z[i] -= GRAVITY * dt_sec
+///   vel_z[i] -= GRAVITY * dt_sec
 ///   pos_x[i] += vel_x[i] * dt_sec
 ///   pos_y[i] += vel_y[i] * dt_sec
 ///   pos_z[i] += vel_z[i] * dt_sec
@@ -1794,9 +1778,7 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
     let n = count as usize;
     debug_assert!(n <= PROJECTILE_POOL_CAPACITY_USIZE);
     for i in 0..n {
-        if p.has_gravity[i] != 0 {
-            p.vel_z[i] -= GRAVITY * dt_sec;
-        }
+        p.vel_z[i] -= GRAVITY * dt_sec;
         p.pos_x[i] += p.vel_x[i] * dt_sec;
         p.pos_y[i] += p.vel_y[i] * dt_sec;
         p.pos_z[i] += p.vel_z[i] * dt_sec;
