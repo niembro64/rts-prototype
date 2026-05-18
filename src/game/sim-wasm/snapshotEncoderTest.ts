@@ -70,9 +70,12 @@ import {
 } from './pkg/rts_sim_wasm';
 
 const WAYPOINT_SCRATCH_STRIDE = 5;
+// Acceleration is no longer shipped on the wire; the turret scratch
+// shrank from 12 → 10 f64 per turret (drop angular.acc and
+// angular.pitchAcc) — matches SNAPSHOT_ENCODE_TURRET_STRIDE in lib.rs.
 import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
 
-const TURRET_SCRATCH_STRIDE = 12;
+const TURRET_SCRATCH_STRIDE = 10;
 const ACTION_SCRATCH_STRIDE = 16;
 
 const _utf8 = new TextEncoder();
