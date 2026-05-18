@@ -4,26 +4,34 @@ import type { Entity } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
-const FAN_RING_COLOR = 0x273038;
+const FAN_RING_COLOR = 0x000000;
 const FAN_BLADE_COLOR = 0x9fb0b8;
-const FAN_HUB_COLOR = 0x46525a;
+const FAN_HUB_COLOR = 0xffffff;
 const HOVER_SMOKE_COLOR = 0xcccccc;
 const FAN_SPIN_RAD_PER_SEC = 42;
 const FAN_SMOKE_SPEED = 60;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 
-const ringGeom = new THREE.TorusGeometry(1, 0.08, 8, 28);
-const ductGeom = new THREE.CylinderGeometry(1, 1, 1, 28, 1, true);
-const hubGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
-const bladeGeom = new THREE.BoxGeometry(1, 1, 1);
+const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
+const hubGeom = new THREE.SphereGeometry(1, 18, 12);
+const bladeGeom = new THREE.CylinderGeometry(1, 1, 1, 14);
 const ringMat = new THREE.MeshBasicMaterial({ color: FAN_RING_COLOR });
-const ductMat = new THREE.MeshBasicMaterial({ color: FAN_RING_COLOR, side: THREE.DoubleSide });
 const bladeMat = new THREE.MeshBasicMaterial({ color: FAN_BLADE_COLOR });
 const hubMat = new THREE.MeshBasicMaterial({ color: FAN_HUB_COLOR });
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
 const _fanWorldDir = new THREE.Vector3();
+
+function getRingGeom(tubeRatio: number): THREE.TorusGeometry {
+  const key = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
+  let geom = ringGeomByTubeRatio.get(key);
+  if (!geom) {
+    geom = new THREE.TorusGeometry(1, key, 16, 40);
+    ringGeomByTubeRatio.set(key, geom);
+  }
+  return geom;
+}
 
 type HoverFan = {
   group: THREE.Group;
@@ -46,8 +54,9 @@ export function buildHoverFans(
 ): HoverMesh {
   const group = new THREE.Group();
   const fanRadius = Math.max(1, unitRadius * cfg.fanRadius);
-  const ringTubeScale = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
-  const fanY = -Math.max(0.6, ringTubeScale * 0.9);
+  const ringTubeRadius = Math.max(0.35, unitRadius * cfg.fanRingTubeRadius);
+  const ringTubeRatio = ringTubeRadius / fanRadius;
+  const fanY = -Math.max(0.6, ringTubeRadius * 0.9);
   const fx = unitRadius * cfg.fanDistX;
   const fz = unitRadius * cfg.fanDistY;
   const outwardAngleRad = THREE.MathUtils.degToRad(
@@ -72,23 +81,22 @@ export function buildHoverFans(
         fanGroup.quaternion.setFromUnitVectors(LOCAL_EXHAUST_DIR, exhaustDir);
       }
 
-      const duct = new THREE.Mesh(ductGeom, ductMat);
-      duct.scale.set(fanRadius * 1.02, Math.max(0.45, ringTubeScale * 2.1), fanRadius * 1.02);
-      fanGroup.add(duct);
-
-      const ring = new THREE.Mesh(ringGeom, ringMat);
+      const ring = new THREE.Mesh(getRingGeom(ringTubeRatio), ringMat);
       ring.rotation.x = Math.PI / 2;
-      ring.scale.set(fanRadius, fanRadius, ringTubeScale);
+      ring.scale.setScalar(fanRadius);
       fanGroup.add(ring);
 
       const rotor = new THREE.Group();
-      const bladeLength = fanRadius * 1.45;
-      const bladeWidth = Math.max(0.45, fanRadius * 0.18);
-      const bladeThickness = Math.max(0.12, ringTubeScale * 0.35);
+      const hubRadius = fanRadius * 0.22;
+      const bladeRootRadius = hubRadius * 0.9;
+      const bladeTipRadius = fanRadius * 0.82;
+      const bladeLength = Math.max(0.2, bladeTipRadius - bladeRootRadius);
+      const bladeRadius = Math.max(0.12, ringTubeRadius * 0.42);
       for (let i = 0; i < 4; i++) {
         const blade = new THREE.Mesh(bladeGeom, bladeMat);
-        blade.position.x = fanRadius * 0.28;
-        blade.scale.set(bladeLength * 0.5, bladeThickness, bladeWidth);
+        blade.position.x = bladeRootRadius + bladeLength * 0.5;
+        blade.rotation.z = Math.PI / 2;
+        blade.scale.set(bladeRadius, bladeLength, bladeRadius);
         const bladePivot = new THREE.Group();
         bladePivot.rotation.y = (i * Math.PI) / 2;
         bladePivot.add(blade);
@@ -96,12 +104,12 @@ export function buildHoverFans(
       }
 
       const hub = new THREE.Mesh(hubGeom, hubMat);
-      hub.scale.set(fanRadius * 0.22, Math.max(0.2, ringTubeScale * 0.8), fanRadius * 0.22);
+      hub.scale.setScalar(hubRadius);
       rotor.add(hub);
       fanGroup.add(rotor);
 
       const emitter = new THREE.Object3D();
-      emitter.position.set(0, -Math.max(0.35, ringTubeScale * 0.9), 0);
+      emitter.position.set(0, -Math.max(0.35, ringTubeRadius * 0.9), 0);
       fanGroup.add(emitter);
 
       group.add(fanGroup);
