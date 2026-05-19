@@ -19,18 +19,15 @@ export type LocomotionFootSurfaceSample = LocomotionSurfaceNormal & {
 
 /** Per-part floor-clamp result. The visual rig hands in the part's
  *  natural world Y (what it would render at if terrain weren't a
- *  consideration) and gets back the rendered Y plus a contact flag.
- *  Contact is "the terrain term won": the part is resting on the
- *  surface because the natural position would have been at or below
- *  it. Animation cycles for that part should advance only when this
- *  bit is true. */
+ *  consideration) and gets back the rendered Y. The clamp is purely
+ *  positional — the rig EMAs its movement-position channel toward
+ *  this value every frame, no contact bit involved. */
 export type LocomotionPartClamp = {
   /** Terrain height under the part's world XZ. */
   groundY: number;
-  /** Where the part should actually render (Y in world units). */
+  /** Where the part should actually render (Y in world units). Equal
+   *  to `max(naturalWorldY, groundY + clearance)`. */
   renderedY: number;
-  /** True iff the part is grounded — natural <= terrain + clearance. */
-  contact: boolean;
 };
 
 /** Floor-clamp one body-local part (a wheel center, a tread sample, a
@@ -38,7 +35,7 @@ export type LocomotionPartClamp = {
  *  is one-sided: parts can float above the ground but never tunnel
  *  through it. Use a positive `clearance` to push the rendered Y up
  *  by the part's "ground offset" (e.g. wheel radius), so the part's
- *  bottom rests on terrain when contact is true. */
+ *  bottom rests on terrain when the terrain term wins. */
 export function sampleLocomotionPartClamp(
   worldX: number,
   worldZ: number,
@@ -49,11 +46,9 @@ export function sampleLocomotionPartClamp(
 ): LocomotionPartClamp {
   const groundY = getLocomotionSurfaceHeight(worldX, worldZ, mapWidth, mapHeight);
   const floorY = groundY + clearance;
-  const contact = naturalWorldY <= floorY;
   return {
     groundY,
-    renderedY: contact ? floorY : naturalWorldY,
-    contact,
+    renderedY: naturalWorldY < floorY ? floorY : naturalWorldY,
   };
 }
 

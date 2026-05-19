@@ -1,15 +1,13 @@
 // WheelRig3D — four real cylindrical tires for wheeled units (jackal,
-// mongoose, …). Each tire is a small simulated object with continuous
-// state in the four canonical visual channels (movement position,
-// movement velocity, rotation position, rotation velocity). Ground
-// contact never overwrites state — it only switches the EMA tau that
-// couples the velocity channels toward their in-contact targets
-// (lift toward terrain, angular velocity toward body-motion-derived
-// spin rate). Off-contact: long tau drag, slow decay. Effect: a tire
-// leaving the ground keeps spinning at whatever rate it had and slowly
-// loses momentum to air drag; a tire touching down quickly catches up
-// to body motion through friction. Neither transition snaps. See the
-// "Locomotion Visuals Are Frontend" section of design_philosophy.html.
+// mongoose, …). Each tire carries the four canonical visual state
+// channels (movement position, movement velocity, rotation position,
+// rotation velocity). Animation always plays off body motion — the
+// rig never asks "is this tire on the ground?" The floor clamp + lift
+// EMA handle position; the angular-velocity EMA handles spin. Outside
+// wheels travel farther than inside wheels and can rotate opposite
+// directions during a pivot because each tire has its own signed
+// chassis-local distance. See the "Locomotion Visuals Are Frontend"
+// section of design_philosophy.html.
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
@@ -28,18 +26,16 @@ import {
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 
-// Movement-position EMA tau for the per-tire suspension lift. Short
-// when in contact (terrain pushes the wheel up promptly), longer when
-// off (the wheel settles back toward its chassis-natural position
-// gently rather than snapping when terrain disappears under it).
-const WHEEL_LIFT_TAU_CONTACT_SEC = 0.08;
-const WHEEL_LIFT_TAU_FREE_SEC = 0.30;
-// Rotation-velocity EMA tau for tire angular velocity. Short when in
-// contact so wheels grip body motion tightly; very long when off so an
-// airborne tire keeps spinning at its current rate and decays slowly
-// via air drag.
-const WHEEL_OMEGA_TAU_CONTACT_SEC = 0.04;
-const WHEEL_OMEGA_TAU_FREE_SEC = 5.0;
+// Movement-position EMA tau for the per-tire suspension lift. Drives
+// the wheel toward the floor-clamp target each frame; long enough
+// that terrain undulations read as suspension travel, short enough
+// that the wheel doesn't lag behind the chassis on rolling ground.
+const WHEEL_LIFT_TAU_SEC = 0.12;
+// Rotation-velocity EMA tau for tire angular velocity. Short enough
+// that the wheel reads as gripping body motion tightly, long enough
+// that a sudden velocity change in the body motion doesn't manifest
+// as an instantaneous spin rate change.
+const WHEEL_OMEGA_TAU_SEC = 0.04;
 
 const WHEEL_COLOR = 0x2a2f36;
 
@@ -58,25 +54,20 @@ const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
  *                          (owned by three.js; integrated below)
  *    rotation velocity  →  `angularVelocity`  (rad/s around axle)
  *
- *  Ground contact never overwrites these. It only switches which tau
- *  the EMA uses to drive the velocity channel toward its target. */
+ *  Position EMAs toward the floor clamp every frame; angular velocity
+ *  EMAs toward the body-motion-derived spin rate every frame. */
 export type WheelMount = {
   localX: number;
   localZ: number;
   wheelR: number;
-  /** Per-tire ground-contact flag derived from the floor clamp. True
-   *  when the terrain term won the per-frame `max()` — i.e. the tire
-   *  is being pushed up by the surface. Used to pick the coupling tau,
-   *  not to gate state updates. */
-  contact: boolean;
   /** Movement-position channel: chassis-local Y offset added on top of
    *  the baseline mount Y (`wheelR`). EMA'd toward `max(0, terrainLift)`
    *  every frame, so the wheel smoothly rises and falls over terrain
-   *  instead of teleporting between in-contact and off-contact heights. */
+   *  instead of teleporting when terrain changes under it. */
   lift: number;
   /** Rotation-velocity channel: tire angular velocity in rad/s around
-   *  its axle. Always integrated forward; the EMA tau (contact vs free)
-   *  determines how aggressively it tracks body motion. */
+   *  its axle. EMA-couples toward `signedDistance / dt / wheelR` every
+   *  frame; rotation integrates from this. */
   angularVelocity: number;
 };
 
@@ -141,7 +132,6 @@ export function buildWheels(
         localX: sx * fx,
         localZ: sz * fz,
         wheelR,
-        contact: true,
         lift: 0,
         angularVelocity: 0,
       });
@@ -170,10 +160,9 @@ const _wheelWorld = { x: 0, y: 0, z: 0 };
 /** Per-frame: integrate each tire's four visual channels forward.
  *  Movement-position (lift) EMA-tracks the floor clamp under the
  *  tire; rotation-velocity (angular velocity) EMA-tracks the
- *  body-motion-derived target spin rate when in contact and decays
- *  via air drag when not. Rotation position is integrated from
- *  angular velocity. No channel ever snaps at the contact boundary —
- *  only the EMA tau switches. */
+ *  body-motion-derived spin rate. Rotation position integrates from
+ *  angular velocity. Animation always plays — the rig doesn't check
+ *  whether the tire is touching the ground. */
 export function updateWheels(
   mesh: WheelMesh,
   entity: Entity,
@@ -190,6 +179,8 @@ export function updateWheels(
   // lift back to a local-frame adjustment.
   const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
   const normalY = Math.max(0.35, n.nz);
+  const liftAlpha = emaAlpha(dtSec, WHEEL_LIFT_TAU_SEC);
+  const omegaAlpha = emaAlpha(dtSec, WHEEL_OMEGA_TAU_SEC);
 
   const count = Math.min(mesh.wheels.length, mesh.wheelContacts.length);
   for (let i = 0; i < count; i++) {
@@ -211,37 +202,30 @@ export function updateWheels(
       naturalWorldY, mount.wheelR,
       mapWidth, mapHeight,
     );
-    mount.contact = clamp.contact;
 
     // ── Movement-position channel: lift ──────────────────────────
     // Target = the world-Y lift the clamp asks for, translated back
-    // into chassis-local Y. EMA-converge toward it. On contact the
-    // tau is short (terrain pushes the wheel up promptly); off
-    // contact the target is 0 and the tau is longer so the wheel
-    // settles back toward its mount without a snap.
+    // into chassis-local Y. EMA-converge toward it. When terrain
+    // disappears under the wheel, target drops to 0 and the wheel
+    // settles back toward its mount over the lift tau instead of
+    // teleporting down.
     const worldLift = clamp.renderedY - naturalWorldY;
     const targetLift = worldLift > 0 ? worldLift / normalY : 0;
-    const liftTau = mount.contact ? WHEEL_LIFT_TAU_CONTACT_SEC : WHEEL_LIFT_TAU_FREE_SEC;
-    mount.lift += (targetLift - mount.lift) * emaAlpha(dtSec, liftTau);
+    mount.lift += (targetLift - mount.lift) * liftAlpha;
     wheelGroup.position.y = mount.wheelR + mount.lift;
 
     // ── Rotation-velocity channel: angularVelocity ───────────────
-    // Always advance rolling phase tracking so the contact-point
-    // history stays continuous across brief liftoffs; derive the
-    // target spin rate from that signed distance only when in
-    // contact (ground friction couples toward it). When off contact
-    // the target is 0 with a long tau, modeling air drag.
+    // Target spin rate is always derived from the per-tire signed
+    // chassis-local distance. Reverse motion comes for free because
+    // signedDistance is signed; pivots show opposite spin on opposite
+    // wheels because each tire has its own contact and target.
     const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i]);
     const tireR = Math.max(1, mount.wheelR);
-    const targetOmega = mount.contact ? signedDistance / dtSec / tireR : 0;
-    const omegaTau = mount.contact ? WHEEL_OMEGA_TAU_CONTACT_SEC : WHEEL_OMEGA_TAU_FREE_SEC;
-    mount.angularVelocity += (targetOmega - mount.angularVelocity) * emaAlpha(dtSec, omegaTau);
+    const targetOmega = signedDistance / dtSec / tireR;
+    mount.angularVelocity += (targetOmega - mount.angularVelocity) * omegaAlpha;
 
     // ── Rotation-position channel: tire rotation ─────────────────
-    // Integrate from the velocity channel. Reverse motion comes for
-    // free because targetOmega is signed; pivots show opposite
-    // spin on opposite wheels because each tire has its own signed
-    // distance and its own angular velocity.
+    // Integrate from the velocity channel.
     mesh.wheels[i].rotation.y += mount.angularVelocity * dtSec;
   }
 }

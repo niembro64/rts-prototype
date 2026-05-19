@@ -1,7 +1,7 @@
 // TreadRig3D — tread slab + internal wheels + animated cleat strip,
 // for tracked locomotion units. The rig itself is a static slab of
 // boxes + cylindrical end caps; per-frame motion (wheel spin and
-// cleat scroll) is driven by per-side ground-contact distance.
+// cleat scroll) is driven by per-side body motion.
 //
 // Each side (left/right ribbon) lives in its own sub-group and carries
 // the four canonical visual state channels:
@@ -11,13 +11,12 @@
 //   rotation position  →  `beltPhase` (where cleats sit on the belt loop)
 //   rotation velocity  →  `beltVelocity` (linear m/s along belt tangent)
 //
-// Ground contact never overwrites these — it only switches which EMA
-// tau drives the velocity channels toward their in-contact targets.
-// Off contact: long tau, slow drift; cleats keep scrolling at whatever
-// speed they had, the side lifts gently back toward its natural mount
-// position. Internal wheels read their angular velocity from the same
-// per-side beltVelocity / wheelR, so the whole side spins as one
-// continuous mechanism. See the "Locomotion Visuals Are Frontend"
+// Animation always plays — the rig doesn't check whether the side is
+// touching ground. Position EMAs toward the floor-clamp target every
+// frame; belt velocity EMAs toward the per-side body-motion-derived
+// target every frame. Internal wheels read their angular velocity
+// from the parent side's beltVelocity / wheelR so the whole side
+// moves as one mechanism. See the "Locomotion Visuals Are Frontend"
 // section of design_philosophy.html.
 
 import * as THREE from 'three';
@@ -47,17 +46,17 @@ const TREAD_CLEAT_HEIGHT = 1.1;
 const TREAD_CLEAT_WIDTH_FRAC = 1.0;
 const TREAD_CLEAT_LENGTH_FRAC = 0.36;
 
-// Movement-position EMA tau for the per-side lift. Short on contact
-// (terrain pushes the ribbon up promptly), longer off contact so the
-// side settles toward its mount gently when terrain disappears.
-const TREAD_LIFT_TAU_CONTACT_SEC = 0.08;
-const TREAD_LIFT_TAU_FREE_SEC = 0.30;
+// Movement-position EMA tau for the per-side lift. Drives the side
+// toward the floor-clamp target each frame; long enough that terrain
+// undulations read as suspension travel, short enough that the side
+// doesn't lag the chassis on rolling ground.
+const TREAD_LIFT_TAU_SEC = 0.12;
 // Rotation-velocity EMA tau for cleat scroll velocity (and internal
 // wheel angular velocity, derived from the same per-side beltVelocity).
-// Short on contact (treads grip body motion); very long off contact so
-// the belt keeps scrolling and drains energy slowly via air drag.
-const TREAD_BELT_TAU_CONTACT_SEC = 0.04;
-const TREAD_BELT_TAU_FREE_SEC = 5.0;
+// Short enough that treads grip body motion tightly, long enough that
+// a sudden velocity change doesn't manifest as an instantaneous cleat
+// scroll rate change.
+const TREAD_BELT_TAU_SEC = 0.04;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
@@ -71,28 +70,24 @@ const cleatMat = new THREE.MeshBasicMaterial({ color: 0x3a4046 });
  *  frame where local origin is the side's lateral offset, so the
  *  per-frame floor clamp can rewrite local Y without touching any
  *  child. `lift` / `beltPhase` / `beltVelocity` are the four visual
- *  state channels for the side; `contact` is the regime selector
- *  (which EMA tau to use). */
+ *  state channels for the side. */
 export type TreadSide = {
   /** -1 for the left rail, +1 for the right rail. */
   side: -1 | 1;
   /** Lateral offset from chassis center (= side * cfg.treadOffset). */
   lateralOffset: number;
   group: THREE.Group;
-  /** True when any of the side's sample points are pushed up by
-   *  terrain this frame. Picks the coupling tau, not a state gate. */
-  contact: boolean;
   /** Movement-position channel: side group local Y offset above the
    *  baseline 0. EMA-converges toward whatever lift the floor clamp
-   *  requires; off contact, decays back toward 0 with a longer tau. */
+   *  requires every frame. */
   lift: number;
   /** Rotation-position channel: cleat phase distance along the belt
    *  loop. Integrated from `beltVelocity * dt` every frame; wraps to
    *  `cleatLoopLength` when laying out cleats. */
   beltPhase: number;
   /** Rotation-velocity channel: cleat scroll velocity in world units
-   *  per second along the belt tangent. Couples to body motion through
-   *  ground friction when in contact; drifts under air drag when not. */
+   *  per second along the belt tangent. EMA-couples to the per-side
+   *  body-motion signed distance every frame. */
   beltVelocity: number;
 };
 
@@ -169,7 +164,6 @@ export function buildTreads(
       side,
       lateralOffset: side * offset,
       group: sideGroup,
-      contact: true,
       lift: 0,
       beltPhase: 0,
       beltVelocity: 0,
@@ -253,8 +247,9 @@ const _treadWorld = { x: 0, y: 0, z: 0 };
  *  floor clamp drives the lift channel via EMA; the per-side signed
  *  distance drives the beltVelocity channel via EMA. beltPhase
  *  integrates from beltVelocity and feeds the cleat layout. Internal
- *  wheels integrate from the same per-side beltVelocity / wheelR. No
- *  channel snaps at the contact boundary — only the tau switches. */
+ *  wheels integrate from the same per-side beltVelocity / wheelR.
+ *  Animation always plays — the rig doesn't check whether the side
+ *  is touching ground. */
 export function updateTreads(
   mesh: TreadMesh,
   entity: Entity,
@@ -270,6 +265,8 @@ export function updateTreads(
   // `worldLift / normal.z` (with the same 0.35 floor LegRig3D uses).
   const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
   const normalY = Math.max(0.35, n.nz);
+  const liftAlpha = emaAlpha(dtSec, TREAD_LIFT_TAU_SEC);
+  const beltAlpha = emaAlpha(dtSec, TREAD_BELT_TAU_SEC);
 
   // Sample localX positions along each side's belt straight section:
   // rear, mid, front. The slab's bottom sits at world Y = side world
@@ -284,10 +281,8 @@ export function updateTreads(
 
     // ── Movement-position channel: lift ──────────────────────────
     // Walk the 3 sample points, take the max world-lift required by
-    // any of them. EMA-converge `lift` toward that target with the
-    // contact/free tau. Contact = any sample is pushed up by terrain.
+    // any of them. EMA-converge `lift` toward that target every frame.
     let maxRequiredLocalLift = 0;
-    let anyContact = false;
     for (let p = 0; p < sampleLocalXs.length; p++) {
       const localX = sampleLocalXs[p];
       transformChassisToWorld(
@@ -300,33 +295,26 @@ export function updateTreads(
         naturalWorldY, mesh.treadRadius,
         mapWidth, mapHeight,
       );
-      if (clamp.contact) anyContact = true;
       const worldLift = clamp.renderedY - naturalWorldY;
       if (worldLift > 0) {
         const localLift = worldLift / normalY;
         if (localLift > maxRequiredLocalLift) maxRequiredLocalLift = localLift;
       }
     }
-    sideEntry.contact = anyContact;
-    const liftTau = anyContact ? TREAD_LIFT_TAU_CONTACT_SEC : TREAD_LIFT_TAU_FREE_SEC;
-    sideEntry.lift += (maxRequiredLocalLift - sideEntry.lift) * emaAlpha(dtSec, liftTau);
+    sideEntry.lift += (maxRequiredLocalLift - sideEntry.lift) * liftAlpha;
     sideEntry.group.position.y = sideEntry.lift;
 
     // ── Rotation-velocity channel: beltVelocity ──────────────────
-    // Always advance per-side contact tracking so signed distance
-    // history stays continuous across brief liftoffs. Derive the
-    // target scroll velocity only when in contact (ground friction
-    // couples toward it); when off contact the target is 0 with a
-    // long tau (air drag), so the belt drifts to a stop rather than
-    // freezing instantly.
+    // Target scroll velocity is always derived from the per-side
+    // signed distance. The EMA gives the belt a hair of inertia so
+    // a sudden body velocity change doesn't manifest as a cleat-scroll
+    // discontinuity.
     const contact = mesh.treadContacts[s];
     const signedDistance = contact !== undefined
       ? sampleRollingContactDistance(entity, contact)
       : 0;
-    const targetBeltVelocity = anyContact ? signedDistance / dtSec : 0;
-    const beltTau = anyContact ? TREAD_BELT_TAU_CONTACT_SEC : TREAD_BELT_TAU_FREE_SEC;
-    sideEntry.beltVelocity +=
-      (targetBeltVelocity - sideEntry.beltVelocity) * emaAlpha(dtSec, beltTau);
+    const targetBeltVelocity = signedDistance / dtSec;
+    sideEntry.beltVelocity += (targetBeltVelocity - sideEntry.beltVelocity) * beltAlpha;
 
     // ── Rotation-position channel: beltPhase ─────────────────────
     // Integrate from the velocity channel. Wraps modulo cleatLoopLength

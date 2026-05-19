@@ -705,78 +705,48 @@
         smoke length and altitude shading look right.</li>
       </ul>
 
-      <h3>The contract every rig honors</h3>
+      <h3>Always animate; terrain only clamps position</h3>
       <p>
-        Each rig answers the same three questions per frame, in its own primitive:
-      </p>
-      <ul class="rule-list">
-        <li><strong>Where is this part in the world?</strong> Derived from the chassis transform and
-        the part&rsquo;s body-local position. No terrain query yet.</li>
-        <li><strong>What is the terrain doing under it?</strong> A shared heightmap sample (and
-        normal, when the rig cares about local slope alignment).</li>
-        <li><strong>Where do I render it, and is it touching the ground?</strong> Clamp the rendered
-        Y to <code>max(natural, terrain + clearance)</code>. The boolean falls out of the same
-        <code>max()</code> &mdash; the part is in contact iff the terrain term won. There is no
-        separate decision to be made.</li>
-      </ul>
-
-      <h3>Contact is a force, not a switch</h3>
-      <p>
-        The rig must never overwrite visual state at the contact boundary. A tire leaving the
-        ground keeps spinning at the rate it had; a tire touching down catches up to body motion
-        gradually. Neither transition snaps. Concretely: every rig holds the same four canonical
-        visual state channels the client-prediction layer already uses, named the same way and
-        integrated the same way:
+        Every rig integrates the same four canonical visual state channels every frame &mdash;
+        the same channels the client-prediction layer uses for entity motion, named the same way
+        and reasoned about the same way:
       </p>
       <ul class="rule-list">
         <li><strong>Movement position</strong> &mdash; where the part sits in chassis-local Y
-        (wheel lift, tread side lift). Integrated from the movement-velocity channel via the
-        per-channel EMA tau.</li>
-        <li><strong>Movement velocity</strong> &mdash; rate of change of the movement position.
-        Couples toward <code>(targetPos − pos) / tau</code> in contact; decays toward 0 off
-        contact.</li>
+        (wheel lift, tread side lift). EMA-converges toward the floor-clamp target every frame.</li>
+        <li><strong>Movement velocity</strong> &mdash; rate of change of movement position;
+        integrated implicitly from the position EMA.</li>
         <li><strong>Rotation position</strong> &mdash; rolling angle (wheel rotation around its
         axle) or belt phase (where cleats sit on the loop). Integrated from rotation velocity.</li>
         <li><strong>Rotation velocity</strong> &mdash; angular velocity for wheels, linear belt
-        velocity for treads. Couples toward the body-motion-derived target in contact; decays via
-        air drag off contact.</li>
+        velocity for treads. EMA-couples toward the body-motion-derived target every frame.</li>
       </ul>
       <p>
-        Ground contact only chooses which tau drives each velocity channel toward its target.
-        In contact: short tau, friction couples velocity toward body-motion target (and lift
-        toward the terrain clamp). Off contact: long tau, drag carries velocity toward 0 (and
-        lift toward 0, returning the part to its mount). The integration step never reads contact
-        directly; the contact bit only selects the tau. This gives:
+        The rig does not ask "is this part touching ground?" The velocity channels always couple
+        to body motion; the position channels always couple to the floor clamp. A tire over a dip
+        spins at the body-motion rate and floats slightly above terrain (target lift = 0). A tire
+        cresting a hill spins at the same rate and rides up the surface (target lift > 0). When
+        the body stops moving, the velocity channels EMA toward zero on the same tau they always
+        use &mdash; cleats coast to rest over a beat, wheels spin down naturally. Simpler than
+        switching coupling regimes, and visually indistinguishable in normal play.
       </p>
-      <ul class="rule-list">
-        <li>No velocity snap at the coupling boundary &mdash; the wheel's angular velocity is the
-        same one frame before and one frame after the contact transition; only its
-        <em>convergence target</em> changed.</li>
-        <li>No position snap either &mdash; the lift channel is EMA'd through the boundary, so a
-        tire dropping off a crest settles back to its mount over a few hundred milliseconds rather
-        than teleporting down.</li>
-        <li>Reverse motion plays animations in reverse, because the velocity channel is signed.</li>
-        <li>A pivot shows opposite-direction spin on opposite wheels because each tire has its own
-        signed-distance contact sample and its own angular velocity.</li>
-        <li>An airborne tire keeps spinning at its current rate and decays through air drag instead
-        of pretending to be frozen. A pivoting tank's outer cleats keep flowing for a moment after
-        a stop command, then drift to rest.</li>
-      </ul>
 
-      <h3>Per-part, not per-chassis</h3>
+      <h3>Per-part position, not per-chassis</h3>
       <p>
-        The single-bit-per-unit version of this rule is wrong. A four-wheeled vehicle straddling a
-        crest has two wheels on dirt and two in air; collapsing that to one boolean either jitters
-        the spin or pretends nothing changed. Wheels track per-tire, treads per-side, legs per-foot,
-        hover not at all (it tracks <em>clearance</em> instead). The rig knows what its primitives
-        are; uniformity is in the shape of the contract, not in the bits.
+        Floor clamping is per primitive. A four-wheeled vehicle straddling a crest has two wheels
+        rising over the terrain and two floating in air over the dip; the rig clamps each tire
+        independently. Treads sample three points along each side ribbon and lift the side to
+        clear the max. Legs sample under each foot. Hover doesn't clamp parts but does sample a
+        per-frame <em>clearance</em> scalar for fan smoke and altitude shading. The rig knows what
+        its primitives are; uniformity is in the shape of the contract, not in the bits.
       </p>
 
       <h3>Floor clamping is a hard invariant, not a tunable</h3>
       <ul class="rule-list">
         <li>The clamp is non-optional. Every rig writes
-        <code>renderedY = max(naturalY, terrainY + clearance)</code> for every part it owns. No
-        flag, no debug toggle, no edge case where parts are allowed to drop under the surface.</li>
+        <code>renderedY = max(naturalY, terrainY + clearance)</code> for every part it owns, then
+        EMA-converges the part's movement-position channel toward that value. No flag, no debug
+        toggle, no edge case where parts are allowed to drop under the surface.</li>
         <li>Floating above terrain is acceptable; tunneling through it is not. When the sim chassis
         is over a dip, individual wheels are allowed to read as &ldquo;slightly floating&rdquo;
         rather than pretending to droop on suspension we do not have.</li>
@@ -789,11 +759,13 @@
         contradiction.</li>
       </ul>
 
-      <h3>Contact bits do not cross the wire</h3>
+      <h3>Nothing about locomotion visuals crosses the wire</h3>
       <p>
-        Per-part contact is computed from terrain + chassis position, both of which the client
-        already has. Putting it on the wire is what got us into the jump-state-on-the-wire mess in
-        the first place. Compute it locally every frame and throw it away after rendering.
+        Every input the rig needs &mdash; chassis transform, terrain heightmap, body velocity,
+        surface normal &mdash; the client already has. Computing this on the server and shipping
+        it would burn bandwidth on per-frame visual state that only matters within the next
+        render call. Compute it locally, render it, throw it away. Putting any of it on the wire
+        is what got us into the jump-state-on-the-wire mess in the first place.
       </p>
     </section>
 
@@ -1025,8 +997,7 @@
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
-        <li>Derive per-part contact from the floor clamp (contact = terrain term won), one bit per primitive (per-tire, per-side, per-foot). Hover replaces the bit with a per-frame clearance scalar that drives fan smoke and altitude shading. Contact bits never cross the wire.</li>
-        <li>Treat contact as a force on the per-part visual state, not a switch over it. Every rig carries the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and ground contact only selects which EMA tau couples each velocity channel toward its target. Velocity and position must be continuous through the coupling boundary; never overwrite state at the moment contact toggles.</li>
+        <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
