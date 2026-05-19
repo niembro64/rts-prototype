@@ -28,24 +28,6 @@ Keep the TypeScript behavior as the reference while designing a data-oriented ta
 MIGRATION PLAN (each phase = its own PR; each lands one kernel and deletes
 the TS path it replaces, never both alongside — see "Delete The Old Path").
 
-AIM-08.1 — SoA input schema for armed entities + turrets
-  Define Rust-side structs-of-arrays in linear memory for the targeting
-  inputs every kernel will need:
-    - Entity slab: id, ownerPlayerId, posX/Y/Z, velX/Y/Z, radiusShot,
-      hp, flags (alive, observable, hasCombat, ...)
-    - Turret slab: parentEntityIdx, mountX/Y/Z (world), mountVx/Y/Z,
-      rotation, pitch, state, target, ranges (fire.max/min/tracking),
-      aimError, losBlockedTicks, configFlags (needsLOS, needsBallistic,
-      verticalLauncher)
-    - Field slab: id, ownerEntityIdx, centerX/Y/Z, radius
-  No kernels yet — just the slab definitions, allocators, and a
-  per-tick "rebuild from Entity/Turret JS objects" stamping pass. Old
-  TS path still runs and is still authoritative.
-
-  Done when: stamping pass writes correct values for every armed
-  entity and every turret on a test scenario; parity shim sees both
-  slab and JS state agree.
-
 AIM-08.2 — Port LOS / FF / arc-FF gates as SoA batch
   Move hasCombatLineOfSight, hasForceFieldClearance,
   hasArcForceFieldClearance into a Rust kernel that takes

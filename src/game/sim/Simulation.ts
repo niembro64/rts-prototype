@@ -23,6 +23,7 @@ import {
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
 import { checkTargetingParity } from './combat/targetingParityHarness';
+import { stampTargetingInputSlabs } from './combat/targetingInputStamping';
 import {
   updateProjectiles,
   checkProjectileCollisions,
@@ -469,6 +470,11 @@ export class Simulation {
   private updateCombat(dtMs: number): void {
     // Update weapon cooldowns, targeting, and firing state in one armed-unit pass.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
+    // AIM-08.1 — stamp the SoA targeting input slabs from the just-
+    // updated JS turret state. Today the slab is a non-authoritative
+    // shadow used by the parity harness; AIM-08.2..5 add the kernels
+    // that read from it.
+    stampTargetingInputSlabs(this.world);
     // AIM-08.0 — debug-only parity check against the upcoming SoA path.
     checkTargetingParity(this.world);
 

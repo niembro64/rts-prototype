@@ -120,6 +120,58 @@ import __wbg_init, {
   turret_pool_pitch_acceleration_ptr,
   turret_pool_force_field_range_ptr,
   turret_pool_target_id_ptr,
+  combat_targeting_init,
+  combat_targeting_clear,
+  combat_targeting_max_turrets_per_entity,
+  combat_targeting_entity_capacity,
+  combat_targeting_set_entity,
+  combat_targeting_unset_entity,
+  combat_targeting_set_turret,
+  combat_targeting_entity_flags,
+  combat_targeting_turret_count,
+  combat_targeting_entity_id_ptr,
+  combat_targeting_entity_owner_player_id_ptr,
+  combat_targeting_entity_pos_x_ptr,
+  combat_targeting_entity_pos_y_ptr,
+  combat_targeting_entity_pos_z_ptr,
+  combat_targeting_entity_vel_x_ptr,
+  combat_targeting_entity_vel_y_ptr,
+  combat_targeting_entity_vel_z_ptr,
+  combat_targeting_entity_radius_shot_ptr,
+  combat_targeting_entity_hp_ptr,
+  combat_targeting_entity_flags_ptr,
+  combat_targeting_turret_count_per_entity_ptr,
+  combat_targeting_turret_mount_x_ptr,
+  combat_targeting_turret_mount_y_ptr,
+  combat_targeting_turret_mount_z_ptr,
+  combat_targeting_turret_mount_vx_ptr,
+  combat_targeting_turret_mount_vy_ptr,
+  combat_targeting_turret_mount_vz_ptr,
+  combat_targeting_turret_rotation_ptr,
+  combat_targeting_turret_pitch_ptr,
+  combat_targeting_turret_state_ptr,
+  combat_targeting_turret_target_id_ptr,
+  combat_targeting_turret_fire_max_acquire_sq_ptr,
+  combat_targeting_turret_fire_max_release_sq_ptr,
+  combat_targeting_turret_fire_min_acquire_sq_ptr,
+  combat_targeting_turret_fire_min_release_sq_ptr,
+  combat_targeting_turret_tracking_acquire_sq_ptr,
+  combat_targeting_turret_tracking_release_sq_ptr,
+  combat_targeting_turret_outermost_acquire_ptr,
+  combat_targeting_turret_aim_error_yaw_ptr,
+  combat_targeting_turret_aim_error_pitch_ptr,
+  combat_targeting_turret_los_blocked_ticks_ptr,
+  combat_targeting_turret_config_flags_ptr,
+  force_field_pool_clear,
+  force_field_pool_count,
+  force_field_pool_set_count,
+  force_field_pool_set_field,
+  force_field_pool_id_ptr,
+  force_field_pool_owner_entity_id_ptr,
+  force_field_pool_center_x_ptr,
+  force_field_pool_center_y_ptr,
+  force_field_pool_center_z_ptr,
+  force_field_pool_radius_ptr,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
   snapshot_baseline_clear,
@@ -498,6 +550,13 @@ export interface SimWasm {
    *  indexed at fixed offsets. JS-side population lands with D.3
    *  alongside the entity-meta capture pass. */
   readonly turretPool: TurretPoolApi;
+  /** AIM-08.1 — Targeting input slabs, stamped from JS each tick.
+   *  Source of truth for the SoA targeting kernels landing in
+   *  AIM-08.2..5; the TS FSM remains authoritative until AIM-08.6. */
+  readonly combatTargeting: CombatTargetingApi;
+  /** AIM-08.1 — Compact list of active force fields rebuilt each
+   *  tick from getActiveForceFields(). */
+  readonly forceFieldPool: ForceFieldPoolApi;
   /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
    *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
    *  no consumer reads from it yet. */
@@ -757,6 +816,146 @@ export interface TurretPoolApi {
   readonly pitchAccelerationPtr: () => number;
   readonly forceFieldRangePtr: () => number;
   readonly targetIdPtr: () => number;
+}
+
+/** AIM-08.1 — Entity-flag bits packed into the combat-targeting entity
+ *  slab's `flags` field. Mirrors `CT_ENTITY_FLAG_*` in lib.rs. */
+export const CT_ENTITY_FLAG_ALIVE = 1 << 0;
+export const CT_ENTITY_FLAG_HAS_COMBAT = 1 << 1;
+export const CT_ENTITY_FLAG_FIRE_ENABLED = 1 << 2;
+export const CT_ENTITY_FLAG_BUILDABLE_COMPLETE = 1 << 3;
+
+/** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
+ *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */
+export const CT_TURRET_CFG_NEEDS_LOS = 1 << 0;
+export const CT_TURRET_CFG_NEEDS_BALLISTIC = 1 << 1;
+export const CT_TURRET_CFG_VERTICAL_LAUNCHER = 1 << 2;
+export const CT_TURRET_CFG_IS_MANUAL_FIRE = 1 << 3;
+export const CT_TURRET_CFG_PASSIVE = 1 << 4;
+export const CT_TURRET_CFG_VISUAL_ONLY = 1 << 5;
+export const CT_TURRET_CFG_SHOT_IS_FORCE = 1 << 6;
+export const CT_TURRET_CFG_HAS_TRACKING_RANGE = 1 << 7;
+
+/** AIM-08.1 — FSM state encodings. Mirrors `CT_TURRET_STATE_*`. */
+export const CT_TURRET_STATE_IDLE = 0;
+export const CT_TURRET_STATE_TRACKING = 1;
+export const CT_TURRET_STATE_ENGAGED = 2;
+
+/** AIM-08.1 — Targeting input slabs. The JS stamping pass populates
+ *  these once per tick before the (still-authoritative) TS targeting
+ *  FSM runs; AIM-08.2..5 add the SoA kernels that read from them, and
+ *  AIM-08.6 deletes the TS path and makes the slab authoritative.
+ *  Ranges land pre-squared so the kernel can compare against distSq
+ *  without re-multiplying; `outermostAcquire` is the raw radius the
+ *  broadphase spatial query wants. */
+export interface CombatTargetingApi {
+  init: (initialEntityCapacity: number) => void;
+  clear: () => void;
+  /** Mirrors `COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY` (= 8). */
+  maxTurretsPerEntity: () => number;
+  entityCapacity: () => number;
+  setEntity: (
+    entitySlot: number,
+    entityId: number,
+    ownerPlayerId: number,
+    posX: number,
+    posY: number,
+    posZ: number,
+    velX: number,
+    velY: number,
+    velZ: number,
+    radiusShot: number,
+    hp: number,
+    flags: number,
+    turretCount: number,
+  ) => void;
+  unsetEntity: (entitySlot: number) => void;
+  setTurret: (
+    entitySlot: number,
+    turretIdx: number,
+    mountX: number,
+    mountY: number,
+    mountZ: number,
+    mountVx: number,
+    mountVy: number,
+    mountVz: number,
+    rotation: number,
+    pitch: number,
+    state: number,
+    targetId: number,
+    fireMaxAcquireSq: number,
+    fireMaxReleaseSq: number,
+    fireMinAcquireSq: number,
+    fireMinReleaseSq: number,
+    trackingAcquireSq: number,
+    trackingReleaseSq: number,
+    outermostAcquire: number,
+    aimErrorYaw: number,
+    aimErrorPitch: number,
+    losBlockedTicks: number,
+    configFlags: number,
+  ) => void;
+  entityFlags: (entitySlot: number) => number;
+  turretCount: (entitySlot: number) => number;
+  readonly entityIdPtr: () => number;
+  readonly entityOwnerPlayerIdPtr: () => number;
+  readonly entityPosXPtr: () => number;
+  readonly entityPosYPtr: () => number;
+  readonly entityPosZPtr: () => number;
+  readonly entityVelXPtr: () => number;
+  readonly entityVelYPtr: () => number;
+  readonly entityVelZPtr: () => number;
+  readonly entityRadiusShotPtr: () => number;
+  readonly entityHpPtr: () => number;
+  readonly entityFlagsPtr: () => number;
+  readonly turretCountPerEntityPtr: () => number;
+  readonly turretMountXPtr: () => number;
+  readonly turretMountYPtr: () => number;
+  readonly turretMountZPtr: () => number;
+  readonly turretMountVxPtr: () => number;
+  readonly turretMountVyPtr: () => number;
+  readonly turretMountVzPtr: () => number;
+  readonly turretRotationPtr: () => number;
+  readonly turretPitchPtr: () => number;
+  readonly turretStatePtr: () => number;
+  readonly turretTargetIdPtr: () => number;
+  readonly turretFireMaxAcquireSqPtr: () => number;
+  readonly turretFireMaxReleaseSqPtr: () => number;
+  readonly turretFireMinAcquireSqPtr: () => number;
+  readonly turretFireMinReleaseSqPtr: () => number;
+  readonly turretTrackingAcquireSqPtr: () => number;
+  readonly turretTrackingReleaseSqPtr: () => number;
+  readonly turretOutermostAcquirePtr: () => number;
+  readonly turretAimErrorYawPtr: () => number;
+  readonly turretAimErrorPitchPtr: () => number;
+  readonly turretLosBlockedTicksPtr: () => number;
+  readonly turretConfigFlagsPtr: () => number;
+}
+
+/** AIM-08.1 — Force field input slab. Compact list of `count` active
+ *  fields, rebuilt from scratch each tick from the JS-side
+ *  getActiveForceFields(). Owner entity id sentinels: -1 means the
+ *  field is not tied to a stamped entity (kernels skip self-shielding
+ *  by comparing owner id against the firing entity id). */
+export interface ForceFieldPoolApi {
+  clear: () => void;
+  count: () => number;
+  setCount: (count: number) => void;
+  setField: (
+    idx: number,
+    id: number,
+    ownerEntityId: number,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+  ) => void;
+  readonly idPtr: () => number;
+  readonly ownerEntityIdPtr: () => number;
+  readonly centerXPtr: () => number;
+  readonly centerYPtr: () => number;
+  readonly centerZPtr: () => number;
+  readonly radiusPtr: () => number;
 }
 
 /** Phase 10 D.3b — Per-recipient snapshot baseline registry. Each
@@ -1437,6 +1636,9 @@ export function initSimWasm(): Promise<SimWasm> {
       // Phase 10 D.1b — turret sub-pool. Per-entity turret arrays
       // indexed at fixed offsets up to MAX_TURRETS_PER_ENTITY = 8.
       turret_pool_init(1024);
+      // AIM-08.1 — targeting input slabs. Same 1024-slot hint as the
+      // other pools; auto-grows past it.
+      combat_targeting_init(1024);
       // Phase 10 D.2 — verify the hand-rolled MessagePack encoder
       // matches its expected byte output across 21 fixture cases.
       // Returns a bitmask of failed cases (0 = all pass). Future
@@ -1657,6 +1859,62 @@ export function initSimWasm(): Promise<SimWasm> {
           pitchAccelerationPtr: turret_pool_pitch_acceleration_ptr,
           forceFieldRangePtr: turret_pool_force_field_range_ptr,
           targetIdPtr: turret_pool_target_id_ptr,
+        },
+        combatTargeting: {
+          init: combat_targeting_init,
+          clear: combat_targeting_clear,
+          maxTurretsPerEntity: combat_targeting_max_turrets_per_entity,
+          entityCapacity: combat_targeting_entity_capacity,
+          setEntity: combat_targeting_set_entity,
+          unsetEntity: combat_targeting_unset_entity,
+          setTurret: combat_targeting_set_turret,
+          entityFlags: combat_targeting_entity_flags,
+          turretCount: combat_targeting_turret_count,
+          entityIdPtr: combat_targeting_entity_id_ptr,
+          entityOwnerPlayerIdPtr: combat_targeting_entity_owner_player_id_ptr,
+          entityPosXPtr: combat_targeting_entity_pos_x_ptr,
+          entityPosYPtr: combat_targeting_entity_pos_y_ptr,
+          entityPosZPtr: combat_targeting_entity_pos_z_ptr,
+          entityVelXPtr: combat_targeting_entity_vel_x_ptr,
+          entityVelYPtr: combat_targeting_entity_vel_y_ptr,
+          entityVelZPtr: combat_targeting_entity_vel_z_ptr,
+          entityRadiusShotPtr: combat_targeting_entity_radius_shot_ptr,
+          entityHpPtr: combat_targeting_entity_hp_ptr,
+          entityFlagsPtr: combat_targeting_entity_flags_ptr,
+          turretCountPerEntityPtr: combat_targeting_turret_count_per_entity_ptr,
+          turretMountXPtr: combat_targeting_turret_mount_x_ptr,
+          turretMountYPtr: combat_targeting_turret_mount_y_ptr,
+          turretMountZPtr: combat_targeting_turret_mount_z_ptr,
+          turretMountVxPtr: combat_targeting_turret_mount_vx_ptr,
+          turretMountVyPtr: combat_targeting_turret_mount_vy_ptr,
+          turretMountVzPtr: combat_targeting_turret_mount_vz_ptr,
+          turretRotationPtr: combat_targeting_turret_rotation_ptr,
+          turretPitchPtr: combat_targeting_turret_pitch_ptr,
+          turretStatePtr: combat_targeting_turret_state_ptr,
+          turretTargetIdPtr: combat_targeting_turret_target_id_ptr,
+          turretFireMaxAcquireSqPtr: combat_targeting_turret_fire_max_acquire_sq_ptr,
+          turretFireMaxReleaseSqPtr: combat_targeting_turret_fire_max_release_sq_ptr,
+          turretFireMinAcquireSqPtr: combat_targeting_turret_fire_min_acquire_sq_ptr,
+          turretFireMinReleaseSqPtr: combat_targeting_turret_fire_min_release_sq_ptr,
+          turretTrackingAcquireSqPtr: combat_targeting_turret_tracking_acquire_sq_ptr,
+          turretTrackingReleaseSqPtr: combat_targeting_turret_tracking_release_sq_ptr,
+          turretOutermostAcquirePtr: combat_targeting_turret_outermost_acquire_ptr,
+          turretAimErrorYawPtr: combat_targeting_turret_aim_error_yaw_ptr,
+          turretAimErrorPitchPtr: combat_targeting_turret_aim_error_pitch_ptr,
+          turretLosBlockedTicksPtr: combat_targeting_turret_los_blocked_ticks_ptr,
+          turretConfigFlagsPtr: combat_targeting_turret_config_flags_ptr,
+        },
+        forceFieldPool: {
+          clear: force_field_pool_clear,
+          count: force_field_pool_count,
+          setCount: force_field_pool_set_count,
+          setField: force_field_pool_set_field,
+          idPtr: force_field_pool_id_ptr,
+          ownerEntityIdPtr: force_field_pool_owner_entity_id_ptr,
+          centerXPtr: force_field_pool_center_x_ptr,
+          centerYPtr: force_field_pool_center_y_ptr,
+          centerZPtr: force_field_pool_center_z_ptr,
+          radiusPtr: force_field_pool_radius_ptr,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

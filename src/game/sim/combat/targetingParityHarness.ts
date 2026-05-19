@@ -24,6 +24,12 @@
 import type { WorldState } from '../WorldState';
 import type { EntityId, TurretState } from '../types';
 import { GAME_DIAGNOSTICS } from '../../diagnostics';
+import { spatialGrid } from '../SpatialGrid';
+import {
+  CT_TURRET_STATE_ENGAGED,
+  CT_TURRET_STATE_TRACKING,
+  getSimWasm,
+} from '../../sim-wasm/init';
 
 type TurretParityRecord = {
   entityId: EntityId;
@@ -35,11 +41,13 @@ type TurretParityRecord = {
   losBlockedTicks: number;
 };
 
-// Float epsilon for aimError comparisons. The TS path uses
-// double-precision math; the SoA path will use f64 in Rust through
-// WASM, so the values should be bit-identical. Leave headroom for the
-// odd Math.atan2 reorder while we burn in the parity work.
-const AIM_ERROR_EPSILON = 1e-9;
+// Float epsilon for aimError comparisons. AIM-08.1 stores aimError as
+// f32 in the Rust slab (matches the TurretPool rotation/pitch pattern
+// and halves memory), so the slab→f64 round trip truncates at ~1e-7
+// for radian-scale values. AIM-08.5+ kernels will compute aimError
+// from the same inputs as the TS path, so any divergence beyond this
+// epsilon is a real bug, not a representation artifact.
+const AIM_ERROR_EPSILON = 1e-5;
 
 // Rate-limit parity warnings so a systematic mismatch can't flood the
 // console. Matches the cap pattern used by verifyRustDiffMask.
@@ -86,6 +94,10 @@ function captureTsSnapshot(world: WorldState): void {
   for (const entity of world.getArmedEntities()) {
     const combat = entity.combat;
     if (!combat) continue;
+    // The slab is keyed by spatial slot; entities without one are
+    // invisible to the SoA kernel and would always read as "missing-
+    // in-soa". Skip them on both sides so the diff stays meaningful.
+    if (spatialGrid.getSlot(entity.id) < 0) continue;
     const turrets = combat.turrets;
     for (let i = 0; i < turrets.length; i++) {
       const t = turrets[i];
@@ -102,12 +114,57 @@ function captureTsSnapshot(world: WorldState): void {
   }
 }
 
-// AIM-08.1+ will populate this from the SoA slab the next phase lands.
-// Today the slab does not exist, so the snapshot is empty — which makes
-// the diff a no-op and the "zero per-tick diff" Done-when criteria
-// trivially satisfied.
-function captureSoaSnapshot(_world: WorldState): void {
+function decodeSlabTurretState(encoded: number): TurretState {
+  if (encoded === CT_TURRET_STATE_ENGAGED) return 'engaged';
+  if (encoded === CT_TURRET_STATE_TRACKING) return 'tracking';
+  return 'idle';
+}
+
+// AIM-08.1 — populate the SoA snapshot by reading the combat-targeting
+// slab. The slab is stamped from JS state in the same tick by
+// stampTargetingInputSlabs, so under this phase the slab is always a
+// post-FSM copy of the JS turret state. AIM-08.2..5 land kernels that
+// produce these fields on their own; the diff with the TS path then
+// validates each kernel against the still-authoritative TS FSM.
+function captureSoaSnapshot(world: WorldState): void {
   releaseSnapshot(_soaSnapshot);
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  const ct = sim.combatTargeting;
+  const max = ct.maxTurretsPerEntity();
+  // Cover the same armed-entity set as the TS snapshot. The stamping
+  // pass writes every armed entity's turrets — including dead ones,
+  // which keep their combat component and need FSM parity too. Gating
+  // here on the slab's turret count instead of the ALIVE flag matches
+  // that behaviour.
+  for (const entity of world.getArmedEntities()) {
+    if (!entity.combat) continue;
+    const slot = spatialGrid.getSlot(entity.id);
+    if (slot < 0) continue;
+    const count = ct.turretCount(slot);
+    if (count === 0) continue;
+    const memory = sim.memory;
+    const turretBase = slot * max;
+    const turretEnd = turretBase + count;
+    const stateView = new Uint8Array(memory.buffer, ct.turretStatePtr(), turretEnd);
+    const targetView = new Int32Array(memory.buffer, ct.turretTargetIdPtr(), turretEnd);
+    const yawErrView = new Float32Array(memory.buffer, ct.turretAimErrorYawPtr(), turretEnd);
+    const pitchErrView = new Float32Array(memory.buffer, ct.turretAimErrorPitchPtr(), turretEnd);
+    const losView = new Uint16Array(memory.buffer, ct.turretLosBlockedTicksPtr(), turretEnd);
+    for (let i = 0; i < count; i++) {
+      const idx = turretBase + i;
+      const r = acquireRecord();
+      r.entityId = entity.id;
+      r.turretIndex = i;
+      const tid = targetView[idx];
+      r.target = tid < 0 ? null : (tid as EntityId);
+      r.state = decodeSlabTurretState(stateView[idx]);
+      r.aimErrorYaw = yawErrView[idx];
+      r.aimErrorPitch = pitchErrView[idx];
+      r.losBlockedTicks = losView[idx];
+      _soaSnapshot.push(r);
+    }
+  }
 }
 
 function reportMismatch(

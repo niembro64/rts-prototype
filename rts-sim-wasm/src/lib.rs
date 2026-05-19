@@ -5849,6 +5849,575 @@ pub fn turret_pool_entity_capacity() -> u32 {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// AIM-08.1 — Targeting input slabs
+//
+// Per-tick stamping from JS state of every input the upcoming
+// targeting kernels (AIM-08.2..5) will read. The TS targeting FSM in
+// targetingSystem.ts remains authoritative until AIM-08.5; the slabs
+// are a non-authoritative shadow today. AIM-08.6 deletes the JS path
+// and the slab becomes the source of truth.
+//
+// Layout:
+//   - Entity slab (keyed by spatial-grid entity slot): hp, owner,
+//     position, velocity, shot radius, flags.
+//   - Turret slab (keyed by entity_slot * MAX_PER_ENTITY + turret_idx):
+//     world mount kinematics, rotation/pitch, FSM state, target,
+//     pre-squared range envelopes (fire max + min + tracking),
+//     aim error, losBlockedTicks, packed config flags.
+//   - Field slab (compact list of `count` active force fields): id,
+//     owner entity id, center, radius. Rebuilt from scratch each tick.
+// ─────────────────────────────────────────────────────────────────
+
+pub const COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY: u32 = TURRET_POOL_MAX_PER_ENTITY;
+
+// Entity-flag bits — packed into `entity_flags`.
+pub const CT_ENTITY_FLAG_ALIVE: u8 = 1 << 0;
+pub const CT_ENTITY_FLAG_HAS_COMBAT: u8 = 1 << 1;
+pub const CT_ENTITY_FLAG_FIRE_ENABLED: u8 = 1 << 2;
+pub const CT_ENTITY_FLAG_BUILDABLE_COMPLETE: u8 = 1 << 3;
+
+// Turret-config-flag bits — packed into `turret_config_flags`.
+pub const CT_TURRET_CFG_NEEDS_LOS: u8 = 1 << 0;
+pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u8 = 1 << 1;
+pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u8 = 1 << 2;
+pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u8 = 1 << 3;
+pub const CT_TURRET_CFG_PASSIVE: u8 = 1 << 4;
+pub const CT_TURRET_CFG_VISUAL_ONLY: u8 = 1 << 5;
+pub const CT_TURRET_CFG_SHOT_IS_FORCE: u8 = 1 << 6;
+pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u8 = 1 << 7;
+
+// FSM state encodings — match TurretState string order in TS.
+pub const CT_TURRET_STATE_IDLE: u8 = 0;
+pub const CT_TURRET_STATE_TRACKING: u8 = 1;
+pub const CT_TURRET_STATE_ENGAGED: u8 = 2;
+
+struct CombatTargetingPool {
+    // Per-entity, indexed by spatial-grid slot.
+    entity_id: Vec<i32>,
+    entity_owner_player_id: Vec<u8>,
+    entity_pos_x: Vec<f64>,
+    entity_pos_y: Vec<f64>,
+    entity_pos_z: Vec<f64>,
+    entity_vel_x: Vec<f64>,
+    entity_vel_y: Vec<f64>,
+    entity_vel_z: Vec<f64>,
+    entity_radius_shot: Vec<f64>,
+    entity_hp: Vec<f32>,
+    entity_flags: Vec<u8>,
+
+    // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
+    turret_count_per_entity: Vec<u8>,
+    turret_mount_x: Vec<f64>,
+    turret_mount_y: Vec<f64>,
+    turret_mount_z: Vec<f64>,
+    turret_mount_vx: Vec<f64>,
+    turret_mount_vy: Vec<f64>,
+    turret_mount_vz: Vec<f64>,
+    turret_rotation: Vec<f32>,
+    turret_pitch: Vec<f32>,
+    turret_state: Vec<u8>,
+    turret_target_id: Vec<i32>,
+    // Pre-squared range envelopes. Sentinels: fire_min_*_sq <= 0 means
+    // "no min preference"; tracking_*_sq <= 0 and the
+    // HAS_TRACKING_RANGE flag together encode "no separate tracking
+    // shell — fire.max is the outermost release boundary".
+    turret_fire_max_acquire_sq: Vec<f64>,
+    turret_fire_max_release_sq: Vec<f64>,
+    turret_fire_min_acquire_sq: Vec<f64>,
+    turret_fire_min_release_sq: Vec<f64>,
+    turret_tracking_acquire_sq: Vec<f64>,
+    turret_tracking_release_sq: Vec<f64>,
+    // Raw acquire distance for the outermost shell (tracking when
+    // present, fire.max otherwise) — used by the broadphase spatial
+    // query, which wants the un-squared radius.
+    turret_outermost_acquire: Vec<f64>,
+    turret_aim_error_yaw: Vec<f32>,
+    turret_aim_error_pitch: Vec<f32>,
+    turret_los_blocked_ticks: Vec<u16>,
+    turret_config_flags: Vec<u8>,
+}
+
+impl CombatTargetingPool {
+    fn empty() -> Self {
+        Self {
+            entity_id: Vec::new(),
+            entity_owner_player_id: Vec::new(),
+            entity_pos_x: Vec::new(),
+            entity_pos_y: Vec::new(),
+            entity_pos_z: Vec::new(),
+            entity_vel_x: Vec::new(),
+            entity_vel_y: Vec::new(),
+            entity_vel_z: Vec::new(),
+            entity_radius_shot: Vec::new(),
+            entity_hp: Vec::new(),
+            entity_flags: Vec::new(),
+            turret_count_per_entity: Vec::new(),
+            turret_mount_x: Vec::new(),
+            turret_mount_y: Vec::new(),
+            turret_mount_z: Vec::new(),
+            turret_mount_vx: Vec::new(),
+            turret_mount_vy: Vec::new(),
+            turret_mount_vz: Vec::new(),
+            turret_rotation: Vec::new(),
+            turret_pitch: Vec::new(),
+            turret_state: Vec::new(),
+            turret_target_id: Vec::new(),
+            turret_fire_max_acquire_sq: Vec::new(),
+            turret_fire_max_release_sq: Vec::new(),
+            turret_fire_min_acquire_sq: Vec::new(),
+            turret_fire_min_release_sq: Vec::new(),
+            turret_tracking_acquire_sq: Vec::new(),
+            turret_tracking_release_sq: Vec::new(),
+            turret_outermost_acquire: Vec::new(),
+            turret_aim_error_yaw: Vec::new(),
+            turret_aim_error_pitch: Vec::new(),
+            turret_los_blocked_ticks: Vec::new(),
+            turret_config_flags: Vec::new(),
+        }
+    }
+
+    fn ensure_entity_capacity(&mut self, entity_slot: u32) {
+        let entity_needed = (entity_slot as usize) + 1;
+        if self.entity_id.len() < entity_needed {
+            self.entity_id.resize(entity_needed, -1);
+            self.entity_owner_player_id.resize(entity_needed, 0);
+            self.entity_pos_x.resize(entity_needed, 0.0);
+            self.entity_pos_y.resize(entity_needed, 0.0);
+            self.entity_pos_z.resize(entity_needed, 0.0);
+            self.entity_vel_x.resize(entity_needed, 0.0);
+            self.entity_vel_y.resize(entity_needed, 0.0);
+            self.entity_vel_z.resize(entity_needed, 0.0);
+            self.entity_radius_shot.resize(entity_needed, 0.0);
+            self.entity_hp.resize(entity_needed, 0.0);
+            self.entity_flags.resize(entity_needed, 0);
+            self.turret_count_per_entity.resize(entity_needed, 0);
+        }
+        let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+        if self.turret_mount_x.len() < turret_needed {
+            self.turret_mount_x.resize(turret_needed, 0.0);
+            self.turret_mount_y.resize(turret_needed, 0.0);
+            self.turret_mount_z.resize(turret_needed, 0.0);
+            self.turret_mount_vx.resize(turret_needed, 0.0);
+            self.turret_mount_vy.resize(turret_needed, 0.0);
+            self.turret_mount_vz.resize(turret_needed, 0.0);
+            self.turret_rotation.resize(turret_needed, 0.0);
+            self.turret_pitch.resize(turret_needed, 0.0);
+            self.turret_state.resize(turret_needed, CT_TURRET_STATE_IDLE);
+            self.turret_target_id.resize(turret_needed, -1);
+            self.turret_fire_max_acquire_sq.resize(turret_needed, 0.0);
+            self.turret_fire_max_release_sq.resize(turret_needed, 0.0);
+            self.turret_fire_min_acquire_sq.resize(turret_needed, 0.0);
+            self.turret_fire_min_release_sq.resize(turret_needed, 0.0);
+            self.turret_tracking_acquire_sq.resize(turret_needed, 0.0);
+            self.turret_tracking_release_sq.resize(turret_needed, 0.0);
+            self.turret_outermost_acquire.resize(turret_needed, 0.0);
+            self.turret_aim_error_yaw.resize(turret_needed, 0.0);
+            self.turret_aim_error_pitch.resize(turret_needed, 0.0);
+            self.turret_los_blocked_ticks.resize(turret_needed, 0);
+            self.turret_config_flags.resize(turret_needed, 0);
+        }
+    }
+
+    fn clear_all(&mut self) {
+        for f in self.entity_flags.iter_mut() {
+            *f = 0;
+        }
+        for c in self.turret_count_per_entity.iter_mut() {
+            *c = 0;
+        }
+    }
+
+    fn unset_entity(&mut self, entity_slot: u32) {
+        let s = entity_slot as usize;
+        if s >= self.entity_flags.len() {
+            return;
+        }
+        self.entity_flags[s] = 0;
+        self.turret_count_per_entity[s] = 0;
+    }
+}
+
+struct CombatTargetingPoolHolder(UnsafeCell<Option<CombatTargetingPool>>);
+unsafe impl Sync for CombatTargetingPoolHolder {}
+static COMBAT_TARGETING: CombatTargetingPoolHolder =
+    CombatTargetingPoolHolder(UnsafeCell::new(None));
+
+#[inline]
+fn combat_targeting_pool() -> &'static mut CombatTargetingPool {
+    unsafe {
+        let cell = &mut *COMBAT_TARGETING.0.get();
+        if cell.is_none() {
+            *cell = Some(CombatTargetingPool::empty());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_init(initial_entity_capacity: u32) {
+    let pool = combat_targeting_pool();
+    pool.ensure_entity_capacity(initial_entity_capacity);
+    pool.clear_all();
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_clear() {
+    combat_targeting_pool().clear_all();
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_max_turrets_per_entity() -> u32 {
+    COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_entity_capacity() -> u32 {
+    combat_targeting_pool().entity_id.len() as u32
+}
+
+/// Bulk per-entity stamp. Called once per armed entity per tick by the
+/// JS stamping pass. `flags` is the OR'd `CT_ENTITY_FLAG_*` bits.
+/// `turret_count` advertises how many `combat_targeting_set_turret`
+/// calls will follow for this slot — past the count, slots hold stale
+/// data and the kernel gates on `turret_count_per_entity`.
+#[wasm_bindgen]
+pub fn combat_targeting_set_entity(
+    entity_slot: u32,
+    entity_id: i32,
+    owner_player_id: u8,
+    pos_x: f64,
+    pos_y: f64,
+    pos_z: f64,
+    vel_x: f64,
+    vel_y: f64,
+    vel_z: f64,
+    radius_shot: f64,
+    hp: f32,
+    flags: u8,
+    turret_count: u8,
+) {
+    let pool = combat_targeting_pool();
+    pool.ensure_entity_capacity(entity_slot);
+    let s = entity_slot as usize;
+    pool.entity_id[s] = entity_id;
+    pool.entity_owner_player_id[s] = owner_player_id;
+    pool.entity_pos_x[s] = pos_x;
+    pool.entity_pos_y[s] = pos_y;
+    pool.entity_pos_z[s] = pos_z;
+    pool.entity_vel_x[s] = vel_x;
+    pool.entity_vel_y[s] = vel_y;
+    pool.entity_vel_z[s] = vel_z;
+    pool.entity_radius_shot[s] = radius_shot;
+    pool.entity_hp[s] = hp;
+    pool.entity_flags[s] = flags;
+    let max = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as u8;
+    pool.turret_count_per_entity[s] = if turret_count > max { max } else { turret_count };
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_unset_entity(entity_slot: u32) {
+    combat_targeting_pool().unset_entity(entity_slot);
+}
+
+/// Bulk per-turret stamp. The range arguments are pre-squared so the
+/// kernel can compare against distSq without re-multiplying.
+/// `outermost_acquire` is the raw (un-squared) outermost-shell acquire
+/// distance — the broadphase spatial query wants a radius, not a
+/// squared radius, so storing it lets the kernel avoid sqrt.
+#[wasm_bindgen]
+pub fn combat_targeting_set_turret(
+    entity_slot: u32,
+    turret_idx: u32,
+    mount_x: f64,
+    mount_y: f64,
+    mount_z: f64,
+    mount_vx: f64,
+    mount_vy: f64,
+    mount_vz: f64,
+    rotation: f32,
+    pitch: f32,
+    state: u8,
+    target_id: i32,
+    fire_max_acquire_sq: f64,
+    fire_max_release_sq: f64,
+    fire_min_acquire_sq: f64,
+    fire_min_release_sq: f64,
+    tracking_acquire_sq: f64,
+    tracking_release_sq: f64,
+    outermost_acquire: f64,
+    aim_error_yaw: f32,
+    aim_error_pitch: f32,
+    los_blocked_ticks: u16,
+    config_flags: u8,
+) {
+    let pool = combat_targeting_pool();
+    pool.ensure_entity_capacity(entity_slot);
+    debug_assert!(turret_idx < COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY);
+    let global_idx = (entity_slot as usize)
+        * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        + (turret_idx as usize);
+    pool.turret_mount_x[global_idx] = mount_x;
+    pool.turret_mount_y[global_idx] = mount_y;
+    pool.turret_mount_z[global_idx] = mount_z;
+    pool.turret_mount_vx[global_idx] = mount_vx;
+    pool.turret_mount_vy[global_idx] = mount_vy;
+    pool.turret_mount_vz[global_idx] = mount_vz;
+    pool.turret_rotation[global_idx] = rotation;
+    pool.turret_pitch[global_idx] = pitch;
+    pool.turret_state[global_idx] = state;
+    pool.turret_target_id[global_idx] = target_id;
+    pool.turret_fire_max_acquire_sq[global_idx] = fire_max_acquire_sq;
+    pool.turret_fire_max_release_sq[global_idx] = fire_max_release_sq;
+    pool.turret_fire_min_acquire_sq[global_idx] = fire_min_acquire_sq;
+    pool.turret_fire_min_release_sq[global_idx] = fire_min_release_sq;
+    pool.turret_tracking_acquire_sq[global_idx] = tracking_acquire_sq;
+    pool.turret_tracking_release_sq[global_idx] = tracking_release_sq;
+    pool.turret_outermost_acquire[global_idx] = outermost_acquire;
+    pool.turret_aim_error_yaw[global_idx] = aim_error_yaw;
+    pool.turret_aim_error_pitch[global_idx] = aim_error_pitch;
+    pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
+    pool.turret_config_flags[global_idx] = config_flags;
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_entity_flags(entity_slot: u32) -> u8 {
+    let pool = combat_targeting_pool();
+    let s = entity_slot as usize;
+    if s >= pool.entity_flags.len() {
+        return 0;
+    }
+    pool.entity_flags[s]
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_turret_count(entity_slot: u32) -> u8 {
+    let pool = combat_targeting_pool();
+    let s = entity_slot as usize;
+    if s >= pool.turret_count_per_entity.len() {
+        return 0;
+    }
+    pool.turret_count_per_entity[s]
+}
+
+macro_rules! combat_targeting_ptr_export {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[wasm_bindgen]
+        pub fn $name() -> *const $ty {
+            combat_targeting_pool().$field.as_ptr()
+        }
+    };
+}
+
+combat_targeting_ptr_export!(combat_targeting_entity_id_ptr, entity_id, i32);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_owner_player_id_ptr,
+    entity_owner_player_id,
+    u8
+);
+combat_targeting_ptr_export!(combat_targeting_entity_pos_x_ptr, entity_pos_x, f64);
+combat_targeting_ptr_export!(combat_targeting_entity_pos_y_ptr, entity_pos_y, f64);
+combat_targeting_ptr_export!(combat_targeting_entity_pos_z_ptr, entity_pos_z, f64);
+combat_targeting_ptr_export!(combat_targeting_entity_vel_x_ptr, entity_vel_x, f64);
+combat_targeting_ptr_export!(combat_targeting_entity_vel_y_ptr, entity_vel_y, f64);
+combat_targeting_ptr_export!(combat_targeting_entity_vel_z_ptr, entity_vel_z, f64);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_radius_shot_ptr,
+    entity_radius_shot,
+    f64
+);
+combat_targeting_ptr_export!(combat_targeting_entity_hp_ptr, entity_hp, f32);
+combat_targeting_ptr_export!(combat_targeting_entity_flags_ptr, entity_flags, u8);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_count_per_entity_ptr,
+    turret_count_per_entity,
+    u8
+);
+combat_targeting_ptr_export!(combat_targeting_turret_mount_x_ptr, turret_mount_x, f64);
+combat_targeting_ptr_export!(combat_targeting_turret_mount_y_ptr, turret_mount_y, f64);
+combat_targeting_ptr_export!(combat_targeting_turret_mount_z_ptr, turret_mount_z, f64);
+combat_targeting_ptr_export!(combat_targeting_turret_mount_vx_ptr, turret_mount_vx, f64);
+combat_targeting_ptr_export!(combat_targeting_turret_mount_vy_ptr, turret_mount_vy, f64);
+combat_targeting_ptr_export!(combat_targeting_turret_mount_vz_ptr, turret_mount_vz, f64);
+combat_targeting_ptr_export!(combat_targeting_turret_rotation_ptr, turret_rotation, f32);
+combat_targeting_ptr_export!(combat_targeting_turret_pitch_ptr, turret_pitch, f32);
+combat_targeting_ptr_export!(combat_targeting_turret_state_ptr, turret_state, u8);
+combat_targeting_ptr_export!(combat_targeting_turret_target_id_ptr, turret_target_id, i32);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_fire_max_acquire_sq_ptr,
+    turret_fire_max_acquire_sq,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_fire_max_release_sq_ptr,
+    turret_fire_max_release_sq,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_fire_min_acquire_sq_ptr,
+    turret_fire_min_acquire_sq,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_fire_min_release_sq_ptr,
+    turret_fire_min_release_sq,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_tracking_acquire_sq_ptr,
+    turret_tracking_acquire_sq,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_tracking_release_sq_ptr,
+    turret_tracking_release_sq,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_outermost_acquire_ptr,
+    turret_outermost_acquire,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_aim_error_yaw_ptr,
+    turret_aim_error_yaw,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_aim_error_pitch_ptr,
+    turret_aim_error_pitch,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_los_blocked_ticks_ptr,
+    turret_los_blocked_ticks,
+    u16
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_config_flags_ptr,
+    turret_config_flags,
+    u8
+);
+
+// ─────────────────────────────────────────────────────────────────
+// AIM-08.1 — Force field input slab
+//
+// Compact list of `count` active force fields, rebuilt from scratch
+// each tick from the JS-side getActiveForceFields(). Owner entity id
+// is the entity that emits the field (sentinel -1 if not tied to one);
+// kernels use it to skip self-shielding when an emitter targets enemies
+// outside its own bubble.
+// ─────────────────────────────────────────────────────────────────
+
+struct ForceFieldPool {
+    count: u32,
+    id: Vec<i32>,
+    owner_entity_id: Vec<i32>,
+    center_x: Vec<f64>,
+    center_y: Vec<f64>,
+    center_z: Vec<f64>,
+    radius: Vec<f64>,
+}
+
+impl ForceFieldPool {
+    fn empty() -> Self {
+        Self {
+            count: 0,
+            id: Vec::new(),
+            owner_entity_id: Vec::new(),
+            center_x: Vec::new(),
+            center_y: Vec::new(),
+            center_z: Vec::new(),
+            radius: Vec::new(),
+        }
+    }
+
+    fn ensure_capacity(&mut self, count: u32) {
+        let needed = count as usize;
+        if self.id.len() < needed {
+            self.id.resize(needed, -1);
+            self.owner_entity_id.resize(needed, -1);
+            self.center_x.resize(needed, 0.0);
+            self.center_y.resize(needed, 0.0);
+            self.center_z.resize(needed, 0.0);
+            self.radius.resize(needed, 0.0);
+        }
+    }
+}
+
+struct ForceFieldPoolHolder(UnsafeCell<Option<ForceFieldPool>>);
+unsafe impl Sync for ForceFieldPoolHolder {}
+static FORCE_FIELD_POOL: ForceFieldPoolHolder = ForceFieldPoolHolder(UnsafeCell::new(None));
+
+#[inline]
+fn force_field_pool() -> &'static mut ForceFieldPool {
+    unsafe {
+        let cell = &mut *FORCE_FIELD_POOL.0.get();
+        if cell.is_none() {
+            *cell = Some(ForceFieldPool::empty());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn force_field_pool_clear() {
+    force_field_pool().count = 0;
+}
+
+#[wasm_bindgen]
+pub fn force_field_pool_count() -> u32 {
+    force_field_pool().count
+}
+
+#[wasm_bindgen]
+pub fn force_field_pool_set_count(count: u32) {
+    let pool = force_field_pool();
+    pool.ensure_capacity(count);
+    pool.count = count;
+}
+
+#[wasm_bindgen]
+pub fn force_field_pool_set_field(
+    idx: u32,
+    id: i32,
+    owner_entity_id: i32,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+) {
+    let pool = force_field_pool();
+    pool.ensure_capacity(idx + 1);
+    let i = idx as usize;
+    pool.id[i] = id;
+    pool.owner_entity_id[i] = owner_entity_id;
+    pool.center_x[i] = center_x;
+    pool.center_y[i] = center_y;
+    pool.center_z[i] = center_z;
+    pool.radius[i] = radius;
+}
+
+macro_rules! force_field_pool_ptr_export {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[wasm_bindgen]
+        pub fn $name() -> *const $ty {
+            force_field_pool().$field.as_ptr()
+        }
+    };
+}
+
+force_field_pool_ptr_export!(force_field_pool_id_ptr, id, i32);
+force_field_pool_ptr_export!(
+    force_field_pool_owner_entity_id_ptr,
+    owner_entity_id,
+    i32
+);
+force_field_pool_ptr_export!(force_field_pool_center_x_ptr, center_x, f64);
+force_field_pool_ptr_export!(force_field_pool_center_y_ptr, center_y, f64);
+force_field_pool_ptr_export!(force_field_pool_center_z_ptr, center_z, f64);
+force_field_pool_ptr_export!(force_field_pool_radius_ptr, radius, f64);
+
+// ─────────────────────────────────────────────────────────────────
 // Snapshot baselines (Phase 10 D.3b)
 //
 // Per-recipient snapshot of the last-shipped entity state. Mirrors
