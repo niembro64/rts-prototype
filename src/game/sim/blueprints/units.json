@@ -47,7 +47,7 @@
     "deathSound": {
       "$audio": "event.death.jackal"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "jackal"
   },
   "lynx": {
@@ -96,7 +96,7 @@
     "deathSound": {
       "$audio": "event.death.lynx"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "lynx"
   },
   "daddy": {
@@ -151,7 +151,7 @@
     "deathSound": {
       "$audio": "event.death.daddy"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "daddy"
   },
   "badger": {
@@ -200,7 +200,7 @@
     "deathSound": {
       "$audio": "event.death.badger"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "badger"
   },
   "mongoose": {
@@ -249,7 +249,7 @@
     "deathSound": {
       "$audio": "event.death.mongoose"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "mongoose"
   },
   "tick": {
@@ -307,7 +307,7 @@
     "deathSound": {
       "$audio": "event.death.tick"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "tick"
   },
   "mammoth": {
@@ -356,7 +356,7 @@
     "deathSound": {
       "$audio": "event.death.mammoth"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "mammoth"
   },
   "formik": {
@@ -423,7 +423,7 @@
     "deathSound": {
       "$audio": "event.death.formik"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "formik"
   },
   "widow": {
@@ -546,7 +546,7 @@
     "deathSound": {
       "$audio": "event.death.widow"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "widow"
   },
   "hippo": {
@@ -594,7 +594,7 @@
     "deathSound": {
       "$audio": "event.death.hippo"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "hippo"
   },
   "tarantula": {
@@ -654,7 +654,7 @@
     "deathSound": {
       "$audio": "event.death.tarantula"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "tarantula"
   },
   "loris": {
@@ -701,7 +701,7 @@
     "deathSound": {
       "$audio": "event.death.loris"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "loris"
   },
   "hovercraft": {
@@ -750,7 +750,7 @@
     "deathSound": {
       "$audio": "event.death.hovercraft"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "hovercraft"
   },
   "commander": {
@@ -842,7 +842,7 @@
     "deathSound": {
       "$audio": "event.death.commander"
     },
-    "fightStopEngagedRatio": null,
+    "fightStopEngagedRatio": 0.5,
     "locomotionId": "commander"
   }
 }
