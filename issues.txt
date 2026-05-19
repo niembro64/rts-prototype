@@ -28,19 +28,6 @@ Keep the TypeScript behavior as the reference while designing a data-oriented ta
 MIGRATION PLAN (each phase = its own PR; each lands one kernel and deletes
 the TS path it replaces, never both alongside — see "Delete The Old Path").
 
-AIM-08.0 — Parity harness
-  Add a per-tick assertion shim that runs both the existing TS targeting
-  pass and a (initially empty) "SoA outputs" snapshot side-by-side and
-  diffs the per-turret (target, state, aimErrorYaw, aimErrorPitch,
-  losBlockedTicks). Behind a debug flag; off in prod. The shim is the
-  contract every subsequent phase has to satisfy on every supported
-  scenario before its phase's PR lands. Without this, parity is a
-  vibe; with it, parity is grep-able.
-
-  Done when: the shim runs over an existing replay/test scenario and
-  reports zero per-tick diff against the unchanged TS path (modulo
-  acceptable float epsilon).
-
 AIM-08.1 — SoA input schema for armed entities + turrets
   Define Rust-side structs-of-arrays in linear memory for the targeting
   inputs every kernel will need:

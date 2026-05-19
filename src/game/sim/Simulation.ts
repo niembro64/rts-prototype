@@ -22,6 +22,7 @@ import {
   unregisterPackedProjectile,
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
+import { checkTargetingParity } from './combat/targetingParityHarness';
 import {
   updateProjectiles,
   checkProjectileCollisions,
@@ -468,6 +469,8 @@ export class Simulation {
   private updateCombat(dtMs: number): void {
     // Update weapon cooldowns, targeting, and firing state in one armed-unit pass.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
+    // AIM-08.0 — debug-only parity check against the upcoming SoA path.
+    checkTargetingParity(this.world);
 
     // Update laser sounds based on targeting state (every frame)
     if (this.world.getBeamUnits().length > 0) {
