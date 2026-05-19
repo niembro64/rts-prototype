@@ -22,8 +22,8 @@ import { findClosestPanelHit } from '../combat/MirrorPanelHit';
 import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import {
-  distanceToLineShotRangeCircle,
-  type LineShotRangeCircle,
+  distanceToLineShotRangeSphere,
+  type LineShotRangeSphere,
 } from '../combat/lineShotRange';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
@@ -217,11 +217,12 @@ export class DamageSystem {
   // spheres — full 3D.
   //
   // Damage is clipped at the first of: a unit hit, a building hit, a
-  // ground hit, the firing turret's 2D range circle, or the configured
+  // ground hit, the firing turret's 3D range sphere, or the configured
   // max segment count. Mirrors and force fields bounce; reflected
-  // segments are clipped against the same original range circle instead
-  // of a separate 3D max length. A range-circle endpoint is an open
-  // ray for visuals, not a physical impact point.
+  // segments are clipped against the same original sphere so the total
+  // 3D path length cannot exceed the weapon's physical reach. A
+  // range-sphere endpoint is an open ray for visuals, not a physical
+  // impact point.
   //
   // Mirror panels are tilted rectangles; force fields are spherical
   // reflectors whose crossing direction comes from battle config. Buildings
@@ -233,7 +234,7 @@ export class DamageSystem {
     sourceEntityId: EntityId,
     lineWidth: number,
     maxSegments: number = 4,
-    rangeCircle?: LineShotRangeCircle,
+    rangeSphere?: LineShotRangeSphere,
   ): {
     endX: number; endY: number; endZ: number;
     obstructionT?: number;
@@ -251,27 +252,27 @@ export class DamageSystem {
     let excludePanelIndex = -1; // -1 = exclude entire entity (source), >= 0 = exclude only that panel
 
     for (let segmentIndex = 0; segmentIndex < segmentLimit; segmentIndex++) {
-      if (rangeCircle) {
+      if (rangeSphere) {
         const segDx = curEX - curSX;
         const segDy = curEY - curSY;
         const segDz = curEZ - curSZ;
         const segLen = Math.hypot(segDx, segDy, segDz);
         if (segLen <= 1e-9) break;
         const invSegLen = 1 / segLen;
-        const circleDistance = distanceToLineShotRangeCircle(
-          curSX, curSY,
-          segDx * invSegLen, segDy * invSegLen,
-          rangeCircle,
+        const sphereDistance = distanceToLineShotRangeSphere(
+          curSX, curSY, curSZ,
+          segDx * invSegLen, segDy * invSegLen, segDz * invSegLen,
+          rangeSphere,
         );
-        if (circleDistance === null || circleDistance <= 1e-6) {
+        if (sphereDistance === null || sphereDistance <= 1e-6) {
           curEX = curSX;
           curEY = curSY;
           curEZ = curSZ;
           break;
         }
-        curEX = curSX + segDx * invSegLen * circleDistance;
-        curEY = curSY + segDy * invSegLen * circleDistance;
-        curEZ = curSZ + segDz * invSegLen * circleDistance;
+        curEX = curSX + segDx * invSegLen * sphereDistance;
+        curEY = curSY + segDy * invSegLen * sphereDistance;
+        curEZ = curSZ + segDz * invSegLen * sphereDistance;
       }
 
       const hit = this.findBeamSegmentHit(
@@ -285,7 +286,7 @@ export class DamageSystem {
           endY: curEY,
           endZ: curEZ,
           reflections,
-          endpointDamageable: rangeCircle === undefined,
+          endpointDamageable: rangeSphere === undefined,
           segmentLimitReached: false,
         };
       }
@@ -397,21 +398,21 @@ export class DamageSystem {
       curSX = hit.x;
       curSY = hit.y;
       curSZ = hit.z;
-      if (rangeCircle) {
-        const circleDistance = distanceToLineShotRangeCircle(
-          curSX, curSY,
-          reflDirX, reflDirY,
-          rangeCircle,
+      if (rangeSphere) {
+        const sphereDistance = distanceToLineShotRangeSphere(
+          curSX, curSY, curSZ,
+          reflDirX, reflDirY, reflDirZ,
+          rangeSphere,
         );
-        if (circleDistance === null || circleDistance <= 1e-6) {
+        if (sphereDistance === null || sphereDistance <= 1e-6) {
           curEX = hit.x;
           curEY = hit.y;
           curEZ = hit.z;
           break;
         }
-        curEX = hit.x + reflDirX * circleDistance;
-        curEY = hit.y + reflDirY * circleDistance;
-        curEZ = hit.z + reflDirZ * circleDistance;
+        curEX = hit.x + reflDirX * sphereDistance;
+        curEY = hit.y + reflDirY * sphereDistance;
+        curEZ = hit.z + reflDirZ * sphereDistance;
       } else {
         const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
         remainingRange = Math.max(0, remainingRange - travelled);
@@ -434,7 +435,7 @@ export class DamageSystem {
       endY: curEY,
       endZ: curEZ,
       reflections,
-      endpointDamageable: rangeCircle === undefined,
+      endpointDamageable: rangeSphere === undefined,
       segmentLimitReached: false,
     };
   }

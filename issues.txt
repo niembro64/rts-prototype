@@ -13,19 +13,6 @@ DESIGN PHILOSOPHY GAP PLAN
 
 AIMING / TARGETING SYSTEM ISSUES
 
-AIM-04 - Targeting and line-shot range are still ground-plane ranges, not full 3D ranges.
-
-Evidence:
-- src/game/sim/combat/targetingSystem.ts:94-99 explicitly treats targeting ranges as ground-plane circles.
-- src/game/sim/combat/targetingSystem.ts:448-452 ranks candidates by XY distance only.
-- src/game/sim/combat/lineShotRange.ts:9-11 and 37-57 extend beams/lasers until their XY projection leaves a 2D circle, which can make steeply pitched line shots much longer in 3D.
-
-Why it matters:
-design_philosophy.html says altitude and contact are real gameplay inputs, but weapon range currently ignores vertical separation for target validity. That may be a deliberate RTS-style range model, but it is a design gap as written because high/low targets can be targetable by horizontal range even when the true 3D distance is much larger.
-
-Fix direction:
-Choose and document the intended contract. If range should be physical, convert targeting, range overlays, line-shot endpoints, and release/acquire hysteresis to 3D or to explicit projectile-specific envelopes. If range should remain ground-projected for BAR-style readability, document that as an intentional exception to the full-3D rule.
-
 AIM-05 - Homing guidance is kinematic velocity steering, not bounded force/thrust physics.
 
 Evidence:

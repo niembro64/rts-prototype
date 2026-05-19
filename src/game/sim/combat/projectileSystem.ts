@@ -31,7 +31,7 @@ import { updateCombatActivityFlags } from './combatActivity';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
-import { resolveLineShotRangeCircleEndpoint, type LineShotRangeCircle } from './lineShotRange';
+import { resolveLineShotRangeSphereEndpoint, type LineShotRangeSphere } from './lineShotRange';
 import { spatialGrid } from '../SpatialGrid';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
@@ -151,7 +151,7 @@ const _fireMountVelocity = { x: 0, y: 0, z: 0 };
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
-const _lineShotRangeCircle: LineShotRangeCircle = { centerX: 0, centerY: 0, radius: 0 };
+const _lineShotRangeSphere: LineShotRangeSphere = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
 const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
@@ -512,19 +512,19 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
 
         if (isBeamWeapon) {
-          // Line shots are bounded by the turret's 2D firing circle,
-          // not by a fixed 3D segment length. Pitching up/down can make
-          // the actual 3D beam longer than the horizontal range; the
-          // terminal point is where the ray's XY projection exits the
-          // fire-release circle.
-          const rangeCircle = _lineShotRangeCircle;
-          rangeCircle.centerX = weaponX;
-          rangeCircle.centerY = weaponY;
-          rangeCircle.radius = weapon.ranges.fire.max.release;
-          const endpoint = resolveLineShotRangeCircleEndpoint(
+          // Line shots are bounded by the turret's 3D firing sphere.
+          // Beam length is true 3D distance — a pitched beam exits the
+          // sphere at the same radius as a level one, so altitude
+          // separation costs reach the way physical range should.
+          const rangeSphere = _lineShotRangeSphere;
+          rangeSphere.centerX = weaponX;
+          rangeSphere.centerY = weaponY;
+          rangeSphere.centerZ = mountZ;
+          rangeSphere.radius = weapon.ranges.fire.max.release;
+          const endpoint = resolveLineShotRangeSphereEndpoint(
             spawnX, spawnY, spawnZ,
             dirX, dirY, dirZ,
-            rangeCircle,
+            rangeSphere,
             _lineShotRangeEnd,
           );
           const endX = endpoint.x;
@@ -1075,17 +1075,18 @@ export function updateProjectiles(
         clearBeamReflectorMetadata(startPoint);
 
         // Per-tick re-trace. The beam is bounded by the firing
-        // turret's 2D fire-release circle, not by fixed 3D length. The
-        // first segment runs to the circle edge; reflected segments are
-        // clipped against the same original circle inside findBeamPath.
-        const rangeCircle = _lineShotRangeCircle;
-        rangeCircle.centerX = beamMount.x;
-        rangeCircle.centerY = beamMount.y;
-        rangeCircle.radius = weapon.ranges.fire.max.release;
-        const endpoint = resolveLineShotRangeCircleEndpoint(
+        // turret's 3D fire-release sphere. The first segment runs to the
+        // sphere edge; reflected segments are clipped against the same
+        // original sphere inside findBeamPath.
+        const rangeSphere = _lineShotRangeSphere;
+        rangeSphere.centerX = beamMount.x;
+        rangeSphere.centerY = beamMount.y;
+        rangeSphere.centerZ = beamMount.z;
+        rangeSphere.radius = weapon.ranges.fire.max.release;
+        const endpoint = resolveLineShotRangeSphereEndpoint(
           beamMount.x, beamMount.y, beamMount.z,
           dirX, dirY, dirZ,
-          rangeCircle,
+          rangeSphere,
           _lineShotRangeEnd,
         );
         const fullEndX = endpoint.x;
@@ -1100,7 +1101,7 @@ export function updateProjectiles(
           proj.sourceEntityId,
           collisionRadius,
           BEAM_MAX_SEGMENTS,
-          rangeCircle,
+          rangeSphere,
         );
 
         // Resize the polyline to [start, ...reflections, end] and

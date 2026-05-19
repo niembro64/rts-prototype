@@ -391,6 +391,15 @@
         no velocity or acceleration, and targeting/ballistic solvers must receive raw kinematic
         values plus the universal gravity constant instead of entity IDs or optional lookup inputs.
       </p>
+      <p>
+        Weapon range is a 3D envelope, not a ground-plane circle. Targeting acquire/release
+        hysteresis, line-shot beam length, and broadphase candidate filters all use true 3D
+        distance from the turret mount. An aircraft directly overhead at the weapon&rsquo;s max
+        radius is reachable; the same target at the same horizontal distance but at twice the
+        altitude is not. Range overlays on the ground show the sphere&rsquo;s ground projection
+        (<code>sqrt(R² − h²)</code> where <code>h</code> is mount height above terrain), so the
+        ring honestly represents where ground targets can be hit.
+      </p>
 
       <h3>Mass must matter</h3>
       <ul class="rule-list">

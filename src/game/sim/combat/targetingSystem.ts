@@ -10,7 +10,7 @@ import {
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
-import { distanceSquared } from '../../math';
+import { distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -105,12 +105,12 @@ function minRangePrefersTargetSq(
   const minRange = rangeEdgeValue(range, edge);
   if (minRange <= 0) return true;
 
-  // Targeting ranges are ground-plane circles. For max range a target
-  // is valid if its near edge is reachable in XY (dist <= max + radius).
-  // For min preference it is preferred if its far edge reaches outside
-  // the soft inner radius (dist >= min - radius). This keeps large
-  // targets from being ranked as "too close" just because their center
-  // is near.
+  // Targeting ranges are 3D spheres around the weapon mount. For max
+  // range a target is valid if its near edge is reachable in 3D
+  // (dist <= max + radius). For min preference it is preferred if its
+  // far edge reaches outside the soft inner radius
+  // (dist >= min - radius). This keeps large targets from being ranked
+  // as "too close" just because their center is near.
   const threshold = minRange - targetRadius;
   if (threshold <= 0) return true;
   const thresholdSq = targetRadius <= 0 ? rangeEdgeSq(range, edge) : threshold * threshold;
@@ -212,9 +212,9 @@ function currentFireTargetRankSq(
     return { rank: TARGET_RANK_NONE, distSq: Infinity };
   }
   const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
-  const distSq = distanceSquared(
-    weapon.worldPos.x, weapon.worldPos.y,
-    targetPosition.x, targetPosition.y,
+  const distSq = distanceSquared3(
+    weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+    targetPosition.x, targetPosition.y, targetPosition.z,
   );
   return {
     rank: fireTargetPreferenceRankSq(weapon.ranges, edge, distSq, targetRadius),
@@ -438,6 +438,7 @@ function scoreAndFilterCandidate(
   enemy: Entity,
   weaponX: number,
   weaponY: number,
+  weaponZ: number,
   rankCandidate: CandidateRanker,
   minimumRank: TargetPreferenceRank,
   seed: TargetCandidateChoice,
@@ -458,9 +459,9 @@ function scoreAndFilterCandidate(
   }
   const enemyRadius = getTargetCandidateRadius(enemy);
   const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
-  const distSq = distanceSquared(
-    weaponX, weaponY,
-    enemyPosition.x, enemyPosition.y,
+  const distSq = distanceSquared3(
+    weaponX, weaponY, weaponZ,
+    enemyPosition.x, enemyPosition.y, enemyPosition.z,
   );
   const rank = rankCandidate(weapon.ranges, 'acquire', distSq, enemyRadius);
   if (rank < minimumRank) return false;
@@ -543,7 +544,7 @@ function chooseBestTargetCandidate(
     const enemy = candidates[ci];
     if (!scoreAndFilterCandidate(
       world, source, weapon, enemy,
-      weaponX, weaponY,
+      weaponX, weaponY, weaponZ,
       rankCandidate, minimumRank, seed,
       isPassive, sourcePlayerId,
       _candScratchScore,
@@ -637,7 +638,7 @@ function chooseBestTargetCandidate(
 
     if (!scoreAndFilterCandidate(
       world, source, weapon, enemy,
-      weaponX, weaponY,
+      weaponX, weaponY, weaponZ,
       rankCandidate, minimumRank, seed,
       isPassive, sourcePlayerId,
       _candScratchScore,
@@ -853,7 +854,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           continue;
         }
 
-        const distSq = distanceSquared(wpx, wpy, priorityPoint.x, priorityPoint.y);
+        const distSq = distanceSquared3(
+          wpx, wpy, wpz,
+          priorityPoint.x, priorityPoint.y, priorityPoint.z,
+        );
         if (!hasWeaponBallisticSolutionToPoint(world, unit, weapon, priorityPoint, wpx, wpy, wpz)) {
           weapon.state = 'tracking';
           continue;
@@ -934,9 +938,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           }
 
           const priorityPosition = getEntityPosition3d(priorityTarget, _targetingTargetPosition);
-          const distSq = distanceSquared(
-            wpx, wpy,
-            priorityPosition.x, priorityPosition.y,
+          const distSq = distanceSquared3(
+            wpx, wpy, wpz,
+            priorityPosition.x, priorityPosition.y, priorityPosition.z,
           );
           if (!hasWeaponBallisticSolution(world, unit, weapon, priorityTarget, wpx, wpy, wpz)) {
             setWeaponTarget(weapon, unit, wi, null);
@@ -996,9 +1000,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const wpy = weapon.worldPos!.y;
         const wpz = weapon.worldPos!.z;
         const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
-        const distSq = distanceSquared(
-          wpx, wpy,
-          targetPosition.x, targetPosition.y,
+        const distSq = distanceSquared3(
+          wpx, wpy, wpz,
+          targetPosition.x, targetPosition.y, targetPosition.z,
         );
         if (!hasWeaponBallisticSolution(world, unit, weapon, target, wpx, wpy, wpz)) {
           setWeaponTarget(weapon, unit, wi, null);
