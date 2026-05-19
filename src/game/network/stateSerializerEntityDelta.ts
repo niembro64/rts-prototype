@@ -34,7 +34,6 @@ import {
   ENTITY_CHANGED_COMBAT_MODE,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -121,8 +120,7 @@ export const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY |
   ENTITY_CHANGED_COMBAT_MODE |
-  ENTITY_CHANGED_SUSPENSION |
-  ENTITY_CHANGED_JUMP;
+  ENTITY_CHANGED_SUSPENSION;
 
 const trackingStates = new Map<string, DeltaTrackingState>();
 const capturedNextStates = new Map<EntityId, PrevEntityState>();
@@ -375,12 +373,11 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
 
 /** Phase 10 D.3g — compute the Rust-side diff mask for one entity
  *  and warn if it doesn't match `expectedJsMask` (the raw
- *  getEntityDeltaChangedFields output, before dirtyForcedFields and
- *  jumpAnchorFields are OR'd in). Caller must gate on
- *  `VERIFY_RUST_DIFF`, `!isNew`, and the listener actually having a
- *  WASM baseline handle. Cheap no-op when slotUsed returns 0
- *  (baseline isn't fresh yet — the JS path's isNew check covers
- *  that case). */
+ *  getEntityDeltaChangedFields output, before dirtyForcedFields are
+ *  OR'd in). Caller must gate on `VERIFY_RUST_DIFF`, `!isNew`, and
+ *  the listener actually having a WASM baseline handle. Cheap no-op
+ *  when slotUsed returns 0 (baseline isn't fresh yet — the JS path's
+ *  isNew check covers that case). */
 export function verifyRustDiffMask(
   entity: Entity,
   next: PrevEntityState,
@@ -609,8 +606,6 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       e.builder?.currentBuildTarget ?? -1,
       u.suspension?.offsetZ ?? 0,
       u.suspension?.velocityZ ?? 0,
-      u.jump?.active ? 1 : 0,
-      u.jump?.launchSeq ?? 0,
       buildable ? getBuildFraction(buildable) : 0,
     );
   } else if (e.building) {

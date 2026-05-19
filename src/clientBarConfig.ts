@@ -106,12 +106,12 @@ export const CLIENT_CONFIG = {
     ],
   },
   /** Client-side unit ground normal EMA. Layered ON TOP of the host's
-   *  HOST SERVER UNIT GROUND NORMAL EMA — sim-side smoothing reduces triangle-jump
-   *  noise before serialization, then this knob smooths further on
-   *  the receiving client (per render frame, gliding toward each
-   *  snapshot's value the same way position drift glides toward
-   *  target.x). SNAP = no client smoothing, identical to the
-   *  pre-feature behavior. */
+   *  HOST SERVER UNIT GROUND NORMAL EMA — sim-side smoothing reduces
+   *  triangle-edge normal discontinuities before serialization, then
+   *  this knob smooths further on the receiving client (per render
+   *  frame, gliding toward each snapshot's value the same way position
+   *  drift glides toward target.x). SNAP = no client smoothing,
+   *  identical to the pre-feature behavior. */
   unitGroundNormalEma: {
     default: 'fast' as const,
     options: [

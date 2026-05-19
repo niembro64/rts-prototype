@@ -19,7 +19,7 @@ export const TERRAIN_FINE_TRIANGLE_SUBDIV = terrainConfig.terrainFineTriangleSub
  *  terraced, waterline, and ridge cells keep more triangles. */
 export const TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR = terrainConfig.terrainTriangleMaxHeightError;
 
-/** Maximum hierarchy-level jump allowed across touching triangle edges.
+/** Maximum hierarchy-level delta allowed across touching triangle edges.
  *  `1` gives a 2:1 balanced transition band around high-detail terrain. */
 export const TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA =
   terrainConfig.terrainTriangleMaxNeighborLevelDelta;

@@ -18,7 +18,6 @@ import type {
   ScanCommand,
   SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
-  SetJumpEnabledCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -64,8 +63,6 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeUnitListCommand(command, tick);
     case 'wait':
       return sanitizeWaitCommand(command, tick);
-    case 'setJumpEnabled':
-      return sanitizeSetJumpEnabledCommand(command, tick);
     case 'setFireEnabled':
       return sanitizeSetFireEnabledCommand(command, tick);
     case 'attack':
@@ -253,13 +250,6 @@ function sanitizeWaitCommand(command: WaitCommand, tick: number): WaitCommand | 
   return entityIds === null || typeof command.queue !== 'boolean'
     ? null
     : { ...command, tick, entityIds, queue: command.queue };
-}
-
-function sanitizeSetJumpEnabledCommand(command: SetJumpEnabledCommand, tick: number): SetJumpEnabledCommand | null {
-  const entityIds = sanitizeEntityIdArray(command.entityIds);
-  return entityIds === null || typeof command.enabled !== 'boolean'
-    ? null
-    : { ...command, tick, entityIds, enabled: command.enabled };
 }
 
 function sanitizeSetFireEnabledCommand(command: SetFireEnabledCommand, tick: number): SetFireEnabledCommand | null {

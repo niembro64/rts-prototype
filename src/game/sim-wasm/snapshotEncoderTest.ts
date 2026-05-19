@@ -252,11 +252,6 @@ type UnitFixture = BasicEntityFixture & {
       velocity: { x: number; y: number; z: number };
       legContact?: true;
     };
-    jump?: {
-      enabled: boolean;
-      active?: true;
-      launchSeq?: number;
-    };
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
     fireEnabled?: false;
@@ -475,45 +470,9 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         },
       },
     },
-    // jump enabled=false, no active, no launchSeq (idle jumper)
-    {
-      id: 410, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
-      unit: {
-        hp: { curr: 100, max: 100 },
-        velocity: { x: 0, y: 0, z: 0 },
-        jump: { enabled: false },
-      },
-    },
-    // jump enabled=true, no active, no launchSeq (armed but pre-launch)
-    {
-      id: 411, type: 'unit', pos: { x: 100, y: 0, z: 0 }, rotation: 0, playerId: 1,
-      unit: {
-        hp: { curr: 100, max: 100 },
-        velocity: { x: 0, y: 0, z: 0 },
-        jump: { enabled: true },
-      },
-    },
-    // jump enabled=true, active=true, launchSeq (mid-flight after launch)
-    {
-      id: 412, type: 'unit', pos: { x: 200, y: 0, z: 500 }, rotation: 0, playerId: 1,
-      unit: {
-        hp: { curr: 90, max: 100 },
-        velocity: { x: 50, y: 0, z: 100 },
-        jump: { enabled: true, active: true, launchSeq: 42 },
-      },
-    },
-    // jump with launchSeq only (no active) + delta path
-    {
-      id: 413, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2, changedFields: 0x800,
-      unit: {
-        hp: { curr: 50, max: 50 },
-        velocity: { x: 0, y: 0, z: 0 },
-        jump: { enabled: true, launchSeq: 9999 },
-      },
-    },
-    // Everything together — jumping unit on a slope (acceleration not
-    // shipped; the per-channel EMA on the client smooths the approach
-    // to the freshly arrived target).
+    // Everything together — unit on a slope (acceleration not shipped;
+    // the per-channel EMA on the client smooths the approach to the
+    // freshly arrived target).
     {
       id: 414, type: 'unit', pos: { x: 1000, y: 2000, z: 300 }, rotation: -1571, playerId: 3, changedFields: 0x80F,
       unit: {
@@ -525,7 +484,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
           velocity: { x: 0, y: 0, z: 50 },
           legContact: true,
         },
-        jump: { enabled: true, active: true, launchSeq: 123 },
       },
     },
     // POS-client hover unit: orientation only, no angular fields
@@ -900,8 +858,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const hasNormal = sn !== undefined ? 1 : 0;
     const sp = f.unit.suspension;
     const hasSuspension = sp !== undefined ? 1 : 0;
-    const jp = f.unit.jump;
-    const hasJump = jp !== undefined ? 1 : 0;
     const or = f.unit.orientation;
     const hasOrientation = or !== undefined ? 1 : 0;
     const av = f.unit.angularVelocity3;
@@ -960,11 +916,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
       sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
       sp?.legContact === true ? 1 : 0,
-      hasJump,
-      jp?.enabled === true ? 1 : 0,
-      jp?.active === true ? 1 : 0,
-      jp?.launchSeq !== undefined ? 1 : 0,
-      jp?.launchSeq ?? 0,
       hasOrientation,
       or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
       hasAngularVelocity3,
@@ -2976,7 +2927,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         const u = e as UnitFixture;
         const sn = u.unit.surfaceNormal;
         const sp = u.unit.suspension;
-        const jp = u.unit.jump;
         const or = u.unit.orientation;
         const av = u.unit.angularVelocity3;
         const ufActions = u.unit.actions;
@@ -3016,10 +2966,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
           sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
           sp?.legContact === true ? 1 : 0,
-          jp !== undefined ? 1 : 0,
-          jp?.enabled === true ? 1 : 0,
-          jp?.active === true ? 1 : 0,
-          jp?.launchSeq !== undefined ? 1 : 0, jp?.launchSeq ?? 0,
           or !== undefined ? 1 : 0, or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
           av !== undefined ? 1 : 0, av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
           u.unit.fireEnabled === false ? 1 : 0,

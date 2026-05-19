@@ -22,7 +22,6 @@ import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { dropWeaponsForUnit } from './combat/targetIndex';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { createUnitSuspension } from './unitSuspension';
-import { createUnitJump } from './unitJump';
 import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 
@@ -792,7 +791,6 @@ export class WorldState {
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
     );
-    entity.unit!.jump = createUnitJump(bp.locomotion.physics.jump);
     entity.unit!.suspension = createUnitSuspension(bp.suspension);
     applyEntitySensorBlueprint(entity, bp);
 

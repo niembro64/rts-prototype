@@ -20,8 +20,6 @@ export type SelectionInfo = {
   hasCommander: boolean;
   hasBuilder: boolean;
   hasDGun: boolean;
-  hasJump: boolean;
-  jumpEnabled: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;
   isWaiting: boolean;
@@ -51,7 +49,6 @@ export type SelectionActions = {
   clearQueuedOrders: () => void;
   removeLastQueuedOrder: () => void;
   toggleSelectedWait: () => void;
-  toggleSelectedJump: () => void;
   toggleSelectedFire: () => void;
   toggleAttackArea: () => void;
   toggleAttackGround: () => void;

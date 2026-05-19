@@ -172,8 +172,6 @@ function advanceSharedUnitMotionPrediction(
     0,
     airDamp,
     groundDamp,
-    // Jump launches are server-authored events; prediction only
-    // integrates the resulting position/velocity after that snap.
     0,
     0,
     0,

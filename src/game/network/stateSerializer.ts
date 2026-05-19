@@ -13,11 +13,6 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { GamePhase } from '../../types/network';
-import {
-  ENTITY_CHANGED_JUMP,
-  ENTITY_CHANGED_POS,
-  ENTITY_CHANGED_VEL,
-} from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 import { serializeAudioEvents } from './stateSerializerAudio';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
@@ -365,15 +360,12 @@ export function serializeGameState(
       tracking.prevEntityIds.add(entity.id);
       const next = getNextEntityState(entity);
       const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS;
-      const jumpAnchorFields = (dirtyFields & ENTITY_CHANGED_JUMP)
-        ? ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
-        : 0;
       const rawDeltaMask = isNew
         ? 0
         : getEntityDeltaChangedFields(entity, prev, next, visibility);
       const changedFields = isNew
         ? undefined
-        : rawDeltaMask | dirtyForcedFields | jumpAnchorFields;
+        : rawDeltaMask | dirtyForcedFields;
       if (!isNew && baselineHandle !== undefined) {
         verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle);
       }

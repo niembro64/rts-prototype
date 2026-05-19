@@ -22,11 +22,9 @@ import { updateCombatActivityFlags } from '../../sim/combat/combatActivity';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
 import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
-import { createUnitJump } from '../../sim/unitJump';
 import { computeUnitActionHash } from '../../sim/unitActions';
 import { applyEntitySensorBlueprint } from '../../sim/cloakDetection';
 import {
-  applyNetworkJumpState,
   applyNetworkSuspensionState,
   decodeNetworkUnitActions,
   decodeNetworkUnitType,
@@ -220,7 +218,6 @@ function createUnitFromNetwork(
       // movementAccelX/Y/Z stay undefined on the client — server-side
       // sim writes them for force integration, but the client never
       // receives them and integrates position from velocity only.
-      jump: createUnitJump(unitBlueprint?.locomotion.physics.jump),
       mirrorPanels: [],
       mirrorBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
@@ -258,7 +255,6 @@ function createUnitFromNetwork(
     updateCombatActivityFlags(entity.combat);
   }
   applyNetworkSuspensionState(entity, u?.suspension);
-  applyNetworkJumpState(entity, u?.jump);
 
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the

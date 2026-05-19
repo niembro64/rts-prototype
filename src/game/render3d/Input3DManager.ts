@@ -398,10 +398,6 @@ export class Input3DManager {
     this.onPingModeChange?.(true);
   }
 
-  toggleSelectedJump(): void {
-    this.enqueueSetJumpEnabledCommand();
-  }
-
   toggleSelectedFire(): void {
     this.enqueueSetFireEnabledCommand();
   }
@@ -758,7 +754,7 @@ export class Input3DManager {
 
     // Mirror the command hotkeys one-for-one. M/F/H switch waypoint mode;
     // S stops selected units; U removes the last queued order; X clears queued orders; W toggles wait;
-    // J toggles jump permission; E toggles fire permission;
+    // E toggles fire permission;
     // A toggles area attack; T toggles attack-ground; G toggles guard; R toggles area repair; C toggles reclaim; P toggles ping;
     // B/number/D drive the commander mode state machine;
     // Escape runs the shared cancel-mode-or-clear-selection convention.
@@ -792,9 +788,6 @@ export class Input3DManager {
         break;
       case 'w':
         this.enqueueWaitCommand(e.shiftKey);
-        break;
-      case 'j':
-        this.enqueueSetJumpEnabledCommand();
         break;
       case 'e':
         this.enqueueSetFireEnabledCommand();
@@ -958,26 +951,6 @@ export class Input3DManager {
       tick: this.context.getTick(),
       targetX: world.x,
       targetY: world.y,
-    });
-  }
-
-  private enqueueSetJumpEnabledCommand(): void {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
-    const entityIds: EntityId[] = [];
-    let allEnabled = true;
-    for (let i = 0; i < selectedUnits.length; i++) {
-      const unit = selectedUnits[i];
-      if (!unit.unit?.jump) continue;
-      entityIds.push(unit.id);
-      if (unit.unit.jump.enabled === false) allEnabled = false;
-    }
-    if (entityIds.length === 0) return;
-    this.localCommandQueue.enqueue({
-      type: 'setJumpEnabled',
-      tick: this.context.getTick(),
-      entityIds,
-      enabled: !allEnabled,
     });
   }
 

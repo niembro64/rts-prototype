@@ -72,8 +72,6 @@ export function buildSelectionInfo(
   const commander = selectedUnits.find(isCommander);
   const builder = selectedUnits.find(u => u.builder !== undefined);
   const dgunner = commander;
-  let jumpCount = 0;
-  let allJumpEnabled = true;
   let fireControlCount = 0;
   let allFireEnabled = true;
   let waitingCount = 0;
@@ -83,11 +81,6 @@ export function buildSelectionInfo(
     const actions = selectedUnit.unit?.actions;
     if (actions?.[0]?.type === 'wait') waitingCount++;
     if (actions && hasQueuedActionIntents(actions)) hasQueuedOrders = true;
-    const jump = selectedUnit.unit?.jump;
-    if (jump) {
-      jumpCount++;
-      if (jump.enabled === false) allJumpEnabled = false;
-    }
     const combat = selectedUnit.combat;
     if (combat && combat.turrets.length > 0) {
       fireControlCount++;
@@ -118,8 +111,6 @@ export function buildSelectionInfo(
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
     hasDGun: dgunner !== undefined,
-    hasJump: jumpCount > 0,
-    jumpEnabled: jumpCount > 0 && allJumpEnabled,
     hasFireControl: fireControlCount > 0,
     fireEnabled: fireControlCount > 0 && allFireEnabled,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,

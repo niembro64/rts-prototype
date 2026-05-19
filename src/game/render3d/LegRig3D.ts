@@ -104,8 +104,6 @@ const FOOT_PAD_MIN_HALF_HEIGHT = 0.35;
 const FOOT_PAD_GROUND_CLEARANCE = 0.35;
 const AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT = 0.7;
 const AIRBORNE_MAX_REACH_FRACTION = 0.96;
-const JUMP_AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT = 1.0;
-const JUMP_AIRBORNE_MAX_REACH_FRACTION = 0.995;
 const AIRBORNE_BASE_EXTENSION = 0.65;
 const AIRBORNE_NEAR_GROUND_REACH_FRACTION = 1.2;
 const AIRBORNE_DESCENT_SPEED_FOR_FULL_EXTENSION = 45;
@@ -722,9 +720,6 @@ function updateAirborneLegPose(
   );
   const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
   const descentSpeed = Math.max(0, -(entity.unit?.velocityZ ?? 0));
-  // Jump-capable legged units should read as pushing off / bracing for
-  // landing while airborne, not tucking their knees under the chassis.
-  const useJumpExtensionPose = entity.unit?.jump !== undefined;
 
   for (const leg of mesh.legs) {
     if (leg.restSphere) leg.restSphere.visible = false;
@@ -735,11 +730,7 @@ function updateAirborneLegPose(
     const hipLocalX = c.attachOffsetX;
     const hipLocalY = leg.hipY;
     const hipLocalZ = c.attachOffsetY;
-    const touchdownDistance = restDistance * (
-      useJumpExtensionPose
-        ? JUMP_AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT
-        : AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT
-    );
+    const touchdownDistance = restDistance * AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT;
     const touchdownLocalX = hipLocalX + Math.cos(c.snapTargetAngle) * touchdownDistance;
     const touchdownLocalZ = hipLocalZ + Math.sin(c.snapTargetAngle) * touchdownDistance;
 
@@ -769,11 +760,7 @@ function updateAirborneLegPose(
       touchdownLocalX - hipLocalX,
       touchdownLocalZ - hipLocalZ,
     );
-    const maxReach = tl * (
-      useJumpExtensionPose
-        ? JUMP_AIRBORNE_MAX_REACH_FRACTION
-        : AIRBORNE_MAX_REACH_FRACTION
-    );
+    const maxReach = tl * AIRBORNE_MAX_REACH_FRACTION;
     const verticalReach = Math.sqrt(
       Math.max(0, maxReach * maxReach - horizontalReach * horizontalReach),
     );
@@ -787,9 +774,7 @@ function updateAirborneLegPose(
       bodyClearance / Math.max(1, maxReach * AIRBORNE_NEAR_GROUND_REACH_FRACTION),
     );
     const descent01 = clamp01(descentSpeed / AIRBORNE_DESCENT_SPEED_FOR_FULL_EXTENSION);
-    const extension01 = useJumpExtensionPose
-      ? 1
-      : Math.max(AIRBORNE_BASE_EXTENSION, nearGround01, descent01);
+    const extension01 = Math.max(AIRBORNE_BASE_EXTENSION, nearGround01, descent01);
     const footLocalY = hipLocalY + (touchdownLocalY - hipLocalY) * extension01;
 
     transformChassisToWorld(
@@ -830,7 +815,6 @@ function updateAirborneLegPose(
       footX, footY, footZ,
       footSurface.nx, footSurface.nz, footSurface.ny,
       chassisUpX, chassisUpY, chassisUpZ,
-      useJumpExtensionPose,
     );
   }
 }
@@ -851,7 +835,6 @@ function writeLegRenderPose(
   chassisUpX: number,
   chassisUpY: number,
   chassisUpZ: number,
-  forceStraightKnee = false,
 ): void {
   const c = leg.config;
   if (mesh.legLod === 'simple') {
@@ -863,18 +846,12 @@ function writeLegRenderPose(
       leg.shellPool,
     );
   } else {
-    const knee = forceStraightKnee
-      ? kneeOnLegLine(
-        hipWorldX, hipWorldY, hipWorldZ,
-        footX, footY, footZ,
-        c.upperLegLength, c.lowerLegLength,
-      )
-      : kneeFromIK(
-        hipWorldX, hipWorldY, hipWorldZ,
-        footX, footY, footZ,
-        c.upperLegLength, c.lowerLegLength,
-        chassisUpX, chassisUpY, chassisUpZ,
-      );
+    const knee = kneeFromIK(
+      hipWorldX, hipWorldY, hipWorldZ,
+      footX, footY, footZ,
+      c.upperLegLength, c.lowerLegLength,
+      chassisUpX, chassisUpY, chassisUpZ,
+    );
     legRenderer.updateUpper(
       leg.upperSlot,
       hipWorldX, hipWorldY, hipWorldZ,
@@ -914,25 +891,6 @@ function writeLegRenderPose(
     footNormalX, footNormalY, footNormalZ,
     leg.shellPool,
   );
-}
-
-function kneeOnLegLine(
-  hipX: number,
-  hipY: number,
-  hipZ: number,
-  footX: number,
-  footY: number,
-  footZ: number,
-  upperLen: number,
-  lowerLen: number,
-): { x: number; y: number; z: number } {
-  const totalLen = upperLen + lowerLen;
-  const ratio = totalLen > 1e-6 ? upperLen / totalLen : 0.5;
-  return {
-    x: hipX + (footX - hipX) * ratio,
-    y: hipY + (footY - hipY) * ratio,
-    z: hipZ + (footZ - hipZ) * ratio,
-  };
 }
 
 function initializeLegAt(

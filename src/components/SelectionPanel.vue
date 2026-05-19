@@ -154,17 +154,6 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-key">X</span>
         </button>
         <button
-          v-if="selection.hasJump"
-          class="action-btn"
-          :class="{ active: selection.jumpEnabled }"
-          :style="{ '--btn-color': '#ffe08a' }"
-          title="Toggle whether selected units are allowed to jump"
-          @click="actions.toggleSelectedJump()"
-        >
-          <span class="btn-label">Jump</span>
-          <span class="btn-key">J</span>
-        </button>
-        <button
           v-if="selection.hasFireControl"
           class="action-btn"
           :class="{ active: selection.fireEnabled }"

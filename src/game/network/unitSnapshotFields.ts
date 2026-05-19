@@ -8,7 +8,6 @@ import {
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_VEL,
   actionTypeToCode,
   codeToActionType,
@@ -28,7 +27,6 @@ import {
 export type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
 export type NetworkUnitRadius = NonNullable<NetworkUnitSnapshot['radius']>;
 export type NetworkUnitSuspension = NonNullable<NetworkUnitSnapshot['suspension']>;
-export type NetworkUnitJump = NonNullable<NetworkUnitSnapshot['jump']>;
 
 type Vec3 = { x: number; y: number; z: number };
 type Quantize = (n: number) => number;
@@ -118,21 +116,6 @@ export function applyNetworkSuspensionState(
   state.velocityY = suspension.velocity.y;
   state.velocityZ = suspension.velocity.z;
   state.legContact = suspension.legContact === true;
-}
-
-export function applyNetworkJumpState(
-  entity: Entity,
-  jump: NetworkUnitSnapshot['jump'] | undefined | null,
-): boolean {
-  const state = entity.unit?.jump;
-  if (!state || !jump) return false;
-  const prevLaunchSeq = state.launchSeq;
-  state.enabled = jump.enabled !== false;
-  state.active = jump.active === true;
-  if (isFiniteNumber(jump.launchSeq)) {
-    state.launchSeq = jump.launchSeq;
-  }
-  return state.launchSeq !== prevLaunchSeq;
 }
 
 export function applyNetworkUnitCombatMode(
@@ -269,22 +252,6 @@ export function clearNetworkUnitSuspension(dst: NetworkUnitSnapshot): void {
   dst.suspension = undefined;
 }
 
-export function writeNetworkUnitJump(
-  dst: NetworkUnitSnapshot,
-  unit: Unit,
-  out: NetworkUnitJump,
-): void {
-  const jump = unit.jump;
-  if (!jump) {
-    dst.jump = undefined;
-    return;
-  }
-  out.enabled = jump.enabled;
-  out.active = jump.active ? true : undefined;
-  out.launchSeq = jump.launchSeq > 0 ? jump.launchSeq : undefined;
-  dst.jump = out;
-}
-
 export function writeNetworkUnitCombatMode(
   dst: NetworkUnitSnapshot,
   entity: Entity,
@@ -294,10 +261,6 @@ export function writeNetworkUnitCombatMode(
 
 export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
   dst.fireEnabled = undefined;
-}
-
-export function clearNetworkUnitJump(dst: NetworkUnitSnapshot): void {
-  dst.jump = undefined;
 }
 
 export function writeNetworkUnitActions(
@@ -381,10 +344,6 @@ function createNetworkUnitSuspensionState(): NetworkUnitSuspension {
   };
 }
 
-function createNetworkUnitJumpState(): NetworkUnitJump {
-  return {};
-}
-
 export function copyNetworkUnitSnapshotInto(
   src: NetworkUnitSnapshot,
   dst: NetworkUnitSnapshot,
@@ -434,14 +393,6 @@ export function copyNetworkUnitSnapshotInto(
     suspension.legContact = src.suspension.legContact;
   } else {
     dst.suspension = undefined;
-  }
-  if (src.jump) {
-    const jump = dst.jump ?? (dst.jump = createNetworkUnitJumpState());
-    jump.enabled = src.jump.enabled;
-    jump.active = src.jump.active;
-    jump.launchSeq = src.jump.launchSeq;
-  } else {
-    dst.jump = undefined;
   }
   if (src.orientation) {
     const o = dst.orientation ?? (dst.orientation = { x: 0, y: 0, z: 0, w: 1 });
@@ -519,18 +470,6 @@ export function applyNetworkUnitDriftFieldsToTarget(
       target.velocityY = v.y;
       target.velocityZ = v.z;
     }
-  }
-  if (isFull || (cf & ENTITY_CHANGED_JUMP)) {
-    const jump = src.unit?.jump;
-    target.jumpActive = jump?.active === true;
-    if (isFiniteNumber(jump?.launchSeq)) {
-      const launchSeq = jump.launchSeq;
-      if (launchSeq > target.jumpLaunchSeq) {
-        target.predictedGroundContact = false;
-      }
-      target.jumpLaunchSeq = launchSeq;
-    }
-    if (!target.jumpActive) target.predictedGroundContact = true;
   }
   // Full 3-DOF orientation triad for hover-style entities. The
   // wire field is gated on the entity having one server-side, so

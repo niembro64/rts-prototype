@@ -20,7 +20,6 @@ export type CommandType =
   | 'setRallyPoint'
   | 'setFactoryWaypoints'
   | 'fireDGun'
-  | 'setJumpEnabled'
   | 'setFireEnabled'
   | 'repair'
   | 'repairArea'
@@ -164,12 +163,6 @@ export type FireDGunCommand = BaseCommand & {
   targetZ?: number;
 };
 
-export type SetJumpEnabledCommand = BaseCommand & {
-  type: 'setJumpEnabled';
-  entityIds: EntityId[];
-  enabled: boolean;
-};
-
 export type SetFireEnabledCommand = BaseCommand & {
   type: 'setFireEnabled';
   entityIds: EntityId[];
@@ -255,7 +248,7 @@ export type SetTickRateCommand = BaseCommand & {
 };
 
 /** Pick the smoothing strength for the per-unit ground normal EMA
- *  (see updateUnitGroundNormal). SNAP = no smoothing (raw triangle-jump);
+ *  (see updateUnitGroundNormal). SNAP = no smoothing (raw triangle-edge);
  *  FAST/MID/SLOW = increasing half-life. Goes through the regular
  *  command queue so host + every connected client run with the same
  *  effective EMA, just like setTickRate / setSnapshotRate. */
@@ -320,7 +313,6 @@ export type Command =
   | SetRallyPointCommand
   | SetFactoryWaypointsCommand
   | FireDGunCommand
-  | SetJumpEnabledCommand
   | SetFireEnabledCommand
   | RepairCommand
   | RepairAreaCommand

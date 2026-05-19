@@ -152,7 +152,7 @@ export const BUILD_RATE_DISPLAY_EMA_MODE =
  *  HOST SERVER bar at runtime.
  *
  *  Reference points:
- *    SNAP — 0     (no smoothing; raw triangle-jump normal)
+ *    SNAP — 0     (no smoothing; raw triangle-edge normal)
  *    FAST — 0.05  (~50ms, snaps to slope changes quickly)
  *    MID  — 0.18  (~180ms, calm but responsive — current default)
  *    SLOW — 0.5   (~500ms, deliberately laggy / weighty look)

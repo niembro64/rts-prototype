@@ -180,7 +180,7 @@
       </div>
       <div class="principle">
         <b>Physics is the language</b>
-        Movement, recoil, collision, hover, jump, beams, blast pressure, and terrain contact are
+        Movement, recoil, collision, hover, beams, blast pressure, and terrain contact are
         force and mass problems before they are gameplay effects.
       </div>
     </section>
@@ -203,7 +203,7 @@
         The preferred implementation is shared code, not shared authority. Physical kernels and
         battlefield contracts should be described once and reused by both the authoritative sim and
         the client prediction sim where that reuse buys correctness: body integration, forces,
-        projectile motion, terrain sampling, turret pose, hover, jump, and collision math. That does
+        projectile motion, terrain sampling, turret pose, hover, and collision math. That does
         not mean every browser must run every authoritative system. Economy, construction truth,
         target ownership, fog filtering, damage resolution, entity creation and removal, and victory
         stay host-owned unless a specific prediction problem proves otherwise.
@@ -295,7 +295,7 @@
         source of gameplay truth.
       </p>
       <ul class="rule-list">
-        <li>Share physical kernels for body motion, projectile stepping, recoil, hover, jump, turret pose, terrain sampling, and collision helpers.</li>
+        <li>Share physical kernels for body motion, projectile stepping, recoil, hover, turret pose, terrain sampling, and collision helpers.</li>
         <li>Keep authoritative-only systems on the host: command validation, economy, construction completion, targeting truth, damage, fog filtering, unit creation and death, and victory.</li>
         <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, force-field presentation, and local command intent.</li>
         <li>Use snapshots as correction targets. The client stores the most recent server target per entity. Position channels — movement position and rotation position — always apply correction by snapping or EMA-blending toward it; velocity channels — movement velocity and rotation velocity — can additionally ignore the snapshot derivative when that is useful for prediction testing. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
@@ -372,7 +372,7 @@
         The game should be more physics based than its inspiration. BAR is the ergonomic and strategic
         reference point; this project should make the physical world more fundamental. The rule of
         thumb is <code>F = M * A</code>. If a gameplay feature moves, pushes, resists, falls, recoils,
-        hovers, jumps, blocks, crushes, reflects, or explodes, it should be described through forces
+        hovers, blocks, crushes, reflects, or explodes, it should be described through forces
         acting on masses and integrated into motion.
       </p>
 
@@ -380,7 +380,7 @@
       <p>
         The sim uses a real 3D state: horizontal <code>x/y</code>, vertical <code>z</code>, velocity,
         acceleration, gravity, surface normals, sphere and cuboid bodies, terrain contact, building
-        collision, unit collision, projectile collision, hover lift, and jump actuation. The renderer
+        collision, unit collision, projectile collision, and hover lift. The renderer
         can simplify distant visuals, but the authoritative sim should treat altitude and contact as
         real gameplay inputs.
       </p>
@@ -458,7 +458,7 @@
         <li>Guided projectiles add a counter-gravity thrust term inside the same homing/steering update that produces lateral correction toward the target. Guidance and gravity-cancellation are one acceleration vector, not two systems.</li>
         <li>The counter-gravity term is bounded by the projectile&rsquo;s available thrust. A weak or under-powered rocket should sag, not teleport &mdash; the homing math saturates, it does not lie.</li>
         <li>Spent or failed guidance returns the body to ballistic motion automatically, because gravity was never turned off; only the thrust opposing it stopped.</li>
-        <li>Hover, jump, and any other &ldquo;defies gravity&rdquo; behavior follows the same shape: a force that fights <code>g &middot; m</code>, not a conditional that skips it.</li>
+        <li>Hover and any other &ldquo;defies gravity&rdquo; behavior follows the same shape: a force that fights <code>g &middot; m</code>, not a conditional that skips it.</li>
       </ul>
 
       <h3>Discrete gameplay still enters through physical effects</h3>

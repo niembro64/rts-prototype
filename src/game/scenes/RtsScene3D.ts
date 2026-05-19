@@ -1237,10 +1237,6 @@ export class RtsScene3D {
     this.inputManager?.toggleSelectedWait();
   }
 
-  public toggleSelectedJump(): void {
-    this.inputManager?.toggleSelectedJump();
-  }
-
   public toggleSelectedFire(): void {
     this.inputManager?.toggleSelectedFire();
   }

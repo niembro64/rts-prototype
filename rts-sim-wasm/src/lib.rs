@@ -5340,7 +5340,7 @@ pub fn messagepack_self_test() -> u32 {
 //  velocity, orientation, etc. already live in BodyPool / projectile
 //  pool / quat orientation views. This pool covers the *snapshot-
 //  only* state: HP, ownership tag, combat mode, build progress,
-//  suspension/jump kinematics, factory/solar booleans, build target
+//  suspension kinematics, factory/solar booleans, build target
 //  reference.
 //
 //  Slot space is shared with SpatialGrid (Phase 7) — JS resolves the
@@ -5378,8 +5378,6 @@ struct EntityMetaPool {
     build_target_id: Vec<i32>,
     suspension_spring_offset: Vec<f32>,
     suspension_spring_velocity: Vec<f32>,
-    jump_airborne: Vec<u8>,
-    jump_timer: Vec<f32>,
 
     // Building-specific
     factory_is_producing: Vec<u8>,
@@ -5404,8 +5402,6 @@ impl EntityMetaPool {
             build_target_id: Vec::new(),
             suspension_spring_offset: Vec::new(),
             suspension_spring_velocity: Vec::new(),
-            jump_airborne: Vec::new(),
-            jump_timer: Vec::new(),
             factory_is_producing: Vec::new(),
             factory_build_queue_len: Vec::new(),
             factory_progress: Vec::new(),
@@ -5431,8 +5427,6 @@ impl EntityMetaPool {
         self.build_target_id.resize(needed, -1);
         self.suspension_spring_offset.resize(needed, 0.0);
         self.suspension_spring_velocity.resize(needed, 0.0);
-        self.jump_airborne.resize(needed, 0);
-        self.jump_timer.resize(needed, 0.0);
         self.factory_is_producing.resize(needed, 0);
         self.factory_build_queue_len.resize(needed, 0);
         self.factory_progress.resize(needed, 0.0);
@@ -5457,8 +5451,6 @@ impl EntityMetaPool {
         self.build_target_id[s] = -1;
         self.suspension_spring_offset[s] = 0.0;
         self.suspension_spring_velocity[s] = 0.0;
-        self.jump_airborne[s] = 0;
-        self.jump_timer[s] = 0.0;
         self.factory_is_producing[s] = 0;
         self.factory_build_queue_len[s] = 0;
         self.factory_progress[s] = 0.0;
@@ -5521,8 +5513,6 @@ pub fn entity_meta_set_unit(
     build_target_id: i32,
     suspension_spring_offset: f32,
     suspension_spring_velocity: f32,
-    jump_airborne: u8,
-    jump_timer: f32,
     build_progress: f32,
 ) {
     let pool = entity_meta_pool();
@@ -5540,8 +5530,6 @@ pub fn entity_meta_set_unit(
     pool.build_target_id[s] = build_target_id;
     pool.suspension_spring_offset[s] = suspension_spring_offset;
     pool.suspension_spring_velocity[s] = suspension_spring_velocity;
-    pool.jump_airborne[s] = jump_airborne;
-    pool.jump_timer[s] = jump_timer;
     pool.build_progress[s] = build_progress;
 }
 
@@ -5621,8 +5609,6 @@ entity_meta_ptr_export!(
     suspension_spring_velocity,
     f32
 );
-entity_meta_ptr_export!(entity_meta_jump_airborne_ptr, jump_airborne, u8);
-entity_meta_ptr_export!(entity_meta_jump_timer_ptr, jump_timer, f32);
 entity_meta_ptr_export!(
     entity_meta_factory_is_producing_ptr,
     factory_is_producing,
@@ -6098,8 +6084,8 @@ pub fn snapshot_baseline_live_count() -> u32 {
 // into the per-recipient baseline. Transform / velocity / normal /
 // action data come in as parameters (the JS-side authoritative
 // source is the entity object); HP and the variable-shape fields
-// (turrets, build/factory/solar state, suspension, jump) come from
-// the already-populated entity-meta + turret pools.
+// (turrets, build/factory/solar state, suspension) come from the
+// already-populated entity-meta + turret pools.
 
 #[wasm_bindgen]
 pub fn snapshot_baseline_capture_unit_slot(
@@ -6160,7 +6146,7 @@ pub fn snapshot_baseline_capture_unit_slot(
         b.action_hash[s] = action_hash;
     }
 
-    // HP + build/suspension/jump from the entity-meta pool.
+    // HP + build/suspension from the entity-meta pool.
     let meta = entity_meta_pool();
     if s < meta.hp_curr.len() {
         if is_full || (changed_fields & ENTITY_CHANGED_HP) != 0 {
@@ -7016,11 +7002,6 @@ pub fn snapshot_encode_entity_unit(
     qsuspension_vel_y: f64,
     qsuspension_vel_z: f64,
     suspension_leg_contact: u8,
-    has_jump: u8,
-    jump_enabled: u8,
-    jump_active: u8,
-    has_jump_launch_seq: u8,
-    jump_launch_seq: u32,
     has_orientation: u8,
     qorient_x: f64,
     qorient_y: f64,
@@ -7092,9 +7073,6 @@ pub fn snapshot_encode_entity_unit(
         unit_field_count += 1;
     }
     if has_suspension != 0 {
-        unit_field_count += 1;
-    }
-    if has_jump != 0 {
         unit_field_count += 1;
     }
     if has_orientation != 0 {
@@ -7207,28 +7185,6 @@ pub fn snapshot_encode_entity_unit(
         if suspension_leg_contact != 0 {
             w.write_str("legContact");
             w.write_bool(true);
-        }
-    }
-
-    if has_jump != 0 {
-        let mut jump_field_count: usize = 1; // enabled (always present)
-        if jump_active != 0 {
-            jump_field_count += 1;
-        }
-        if has_jump_launch_seq != 0 {
-            jump_field_count += 1;
-        }
-        w.write_str("jump");
-        w.write_map_header(jump_field_count);
-        w.write_str("enabled");
-        w.write_bool(jump_enabled != 0);
-        if jump_active != 0 {
-            w.write_str("active");
-            w.write_bool(true);
-        }
-        if has_jump_launch_seq != 0 {
-            w.write_str("launchSeq");
-            w.write_uint(jump_launch_seq as u64);
         }
     }
 

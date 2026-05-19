@@ -1,7 +1,7 @@
 // EMA tracker for millisecond durations (frame/render/logic time).
 // Tracks:
 //   - avg : exponential moving average
-//   - hi  : spike tracker — fast climb on jumps, slow decay down (for
+//   - hi  : spike tracker — fast climb on spikes, slow decay down (for
 //           detecting worst-case frame spikes)
 //   - lo  : floor tracker — fast adopt on a new minimum, slow drift up
 //           (for "best frame we've ever hit" as a self-calibrating

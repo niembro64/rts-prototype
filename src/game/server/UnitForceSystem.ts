@@ -12,24 +12,13 @@ import {
   projectHorizontalOntoSlope,
 } from '../sim/Terrain';
 import { LOCOMOTION_FORCE_SCALE, getLocomotionForceProfile } from '../sim/locomotion';
-import {
-  unitJumpCanRelease,
-  getUnitJumpSpringEnergy,
-  sampleUnitJumpLaunchForce,
-  unitJumpHasActuatorWork,
-  unitJumpWantsActuator,
-  type UnitJumpLaunchForce,
-  type UnitJumpIntent,
-} from '../sim/unitJump';
-import { canJumpLandAwayFromWater } from '../sim/unitJumpLanding';
 import { isUnitGroundPointAtOrBelowTerrain } from '../sim/unitGroundPhysics';
 import {
-  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_ROT,
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
-import type { CombatComponent, Entity, EntityId, Unit } from '../sim/types';
+import type { Entity, EntityId, Unit } from '../sim/types';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { quatYaw } from '../math/Quaternion';
@@ -87,15 +76,12 @@ export class UnitForceSystem {
 
   private readonly physicsForceUnitIdsBuf: EntityId[] = [];
   private readonly physicsCandidateUnitIdsBuf: EntityId[] = [];
-  private readonly jumpActuatorUnitIds: EntityId[] = [];
   private readonly physicsActiveUnitIds = new Set<EntityId>();
-  private jumpActuatorUnitSetVersion = -1;
   private _idleBrakeForceX = 0;
   private _idleBrakeForceY = 0;
   private _idleBrakeForceZ = 0;
   private _waterOutX = 0;
   private _waterOutY = 0;
-  private readonly _jumpLaunchForce: UnitJumpLaunchForce = { x: 0, y: 0, z: 0 };
   private waterOutCache = new Map<number, WaterOutCacheEntry>();
   private waterOutCacheTerrainVersion = -1;
 
@@ -157,28 +143,16 @@ export class UnitForceSystem {
       const hasThrustDir = dirLenSq > 0.0001;
       const thrustInputMag = hasThrustDir ? Math.sqrt(dirLenSq) : 0;
       const thrustScale = Math.min(1, thrustInputMag);
-      const jumpIntent = this.getJumpIntent(entity.unit, entity.combat, hasThrustDir);
 
-      // Sleeping units that aren't being asked to thrust, react to a
-      // force, or run a leg actuator short-circuit before the heavier
-      // per-body work. `hasForce` is a single Map.has (no allocation)
-      // where `getFinalForce` would build a scratch tuple.
-      const hasJumpActuatorWork = this.hasJumpActuatorWork(entity.unit, jumpIntent);
-      if (body.sleeping && !hasThrustDir && !forceAccumulator.hasForce(entity.id) && !hasJumpActuatorWork) {
+      // Sleeping units that aren't being asked to thrust or react to a
+      // force short-circuit before the heavier per-body work. `hasForce`
+      // is a single Map.has (no allocation) where `getFinalForce` would
+      // build a scratch tuple.
+      if (body.sleeping && !hasThrustDir && !forceAccumulator.hasForce(entity.id)) {
         continue;
       }
 
       const groundContact = this.hasUnitGroundContact(entity.unit, body);
-      const jumpStateChanged = this.applyJumpActuator(
-        entity.unit,
-        body,
-        groundContact || this.physics.hasUpwardSurfaceContact(body),
-        dtSec,
-        jumpIntent,
-      );
-      if (jumpStateChanged) {
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_JUMP);
-      }
 
       const externalForce = forceAccumulator.getFinalForce(entity.id);
       const externalFx = (externalForce?.fx ?? 0) / 3600;
@@ -550,7 +524,6 @@ export class UnitForceSystem {
   }
 
   private collectPhysicsForceUnitIds(): void {
-    this.refreshJumpActuatorUnitIds();
     const ids = this.physicsForceUnitIdsBuf;
     const seen = this.physicsActiveUnitIds;
     ids.length = 0;
@@ -579,66 +552,6 @@ export class UnitForceSystem {
     for (let i = 0; i < candidates.length; i++) {
       pushId(candidates[i]);
     }
-
-    const jumpIds = this.jumpActuatorUnitIds;
-    for (let i = 0; i < jumpIds.length; i++) {
-      const entity = this.world.getEntity(jumpIds[i]);
-      if (!entity?.unit || !entity.body?.physicsBody) continue;
-      if (entity.buildable && !entity.buildable.isComplete) continue;
-      if (this.hasJumpActuatorWork(
-        entity.unit,
-        this.getJumpIntent(entity.unit, entity.combat),
-      )) {
-        pushId(entity.id);
-      }
-    }
-  }
-
-  private refreshJumpActuatorUnitIds(): void {
-    const version = this.world.getUnitSetVersion();
-    if (version === this.jumpActuatorUnitSetVersion) return;
-    this.jumpActuatorUnitSetVersion = version;
-
-    const ids = this.jumpActuatorUnitIds;
-    ids.length = 0;
-    const units = this.world.getUnits();
-    for (let i = 0; i < units.length; i++) {
-      const unit = units[i].unit;
-      if (!unit || getUnitJumpSpringEnergy(unit) <= 0) continue;
-      ids.push(units[i].id);
-    }
-  }
-
-  private getJumpIntent(
-    unit: Unit,
-    combat: CombatComponent | undefined,
-    knownHasThrustDir?: boolean,
-  ): UnitJumpIntent {
-    const moving = knownHasThrustDir ?? this.unitHasThrustDir(unit);
-    return {
-      moving,
-      combat: this.hasCombatJumpIntent(combat),
-    };
-  }
-
-  private unitHasThrustDir(unit: Unit): boolean {
-    const dirX = unit.thrustDirX ?? 0;
-    const dirY = unit.thrustDirY ?? 0;
-    return dirX * dirX + dirY * dirY > 0.0001;
-  }
-
-  private hasCombatJumpIntent(combat: CombatComponent | undefined): boolean {
-    return !!combat && (
-      combat.priorityTargetId !== undefined ||
-      combat.priorityTargetPoint !== undefined ||
-      combat.hasActiveCombat ||
-      combat.activeTurretMask !== 0 ||
-      combat.firingTurretMask !== 0
-    );
-  }
-
-  private hasJumpActuatorWork(unit: Unit, intent: UnitJumpIntent): boolean {
-    return unitJumpHasActuatorWork(unit, intent);
   }
 
   private hasUnitGroundContact(unit: Unit, body: Body3D): boolean {
@@ -646,72 +559,6 @@ export class UnitForceSystem {
       unit,
       body.z,
       this.world.getGroundZ(body.x, body.y),
-    );
-  }
-
-  private applyJumpActuator(
-    unit: Unit,
-    body: Body3D,
-    surfaceContact: boolean,
-    dtSec: number,
-    intent: UnitJumpIntent,
-  ): boolean {
-    const jump = unit.jump;
-    if (!jump) return false;
-
-    const beforeRequested = jump.requested;
-    const beforeActive = jump.active;
-    const beforeLaunchSeq = jump.launchSeq;
-
-    const wantsJump = unitJumpWantsActuator(unit, intent);
-    const releaseJump = unitJumpCanRelease(unit, surfaceContact, body.vz, intent);
-    jump.requested = false;
-
-    if (!surfaceContact || !wantsJump) {
-      jump.active = false;
-      return (
-        jump.requested !== beforeRequested ||
-        jump.active !== beforeActive
-      );
-    }
-    if (!releaseJump) {
-      return jump.requested !== beforeRequested;
-    }
-
-    const jumpForce = sampleUnitJumpLaunchForce(unit, dtSec, this._jumpLaunchForce);
-    if (jumpForce.z <= 0) {
-      jump.active = false;
-      return (
-        jump.requested !== beforeRequested ||
-        jump.active !== beforeActive
-      );
-    }
-
-    if (!canJumpLandAwayFromWater(body, {
-      dtSec,
-      launchForce: jumpForce.z,
-      launchForceX: jumpForce.x,
-      launchForceY: jumpForce.y,
-      mapWidth: this.world.mapWidth,
-      mapHeight: this.world.mapHeight,
-      getGroundZ: (x, y) => this.world.getGroundZ(x, y),
-    })) {
-      jump.active = false;
-      return (
-        jump.requested !== beforeRequested ||
-        jump.active !== beforeActive
-      );
-    }
-
-    this.physics.applyForce(body, jumpForce.x, jumpForce.y, jumpForce.z, {
-      canLaunchFromGround: true,
-    });
-    jump.launchSeq++;
-    jump.active = true;
-    return (
-      jump.requested !== beforeRequested ||
-      jump.active !== beforeActive ||
-      jump.launchSeq !== beforeLaunchSeq
     );
   }
 

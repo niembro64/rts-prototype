@@ -16,7 +16,6 @@ import type {
   ScanCommand,
   RemoveLastQueuedOrderCommand,
   SetFireEnabledCommand,
-  SetJumpEnabledCommand,
   StopCommand,
   WaitCommand,
 } from '../sim/commands';
@@ -541,9 +540,6 @@ export class GameServer {
       case 'wait':
         return this.authorizeUnitListCommand(command, playerId);
 
-      case 'setJumpEnabled':
-        return this.authorizeUnitListCommand(command, playerId);
-
       case 'setFireEnabled':
         return this.authorizeUnitListCommand(command, playerId);
 
@@ -625,9 +621,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
+    command: SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
     playerId: PlayerId,
-  ): SetJumpEnabledCommand | SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
+  ): SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 

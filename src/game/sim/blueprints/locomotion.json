@@ -4,8 +4,7 @@
     "physics": {
       "driveForce": 300,
       "traction": 0.45,
-      "maxSlopeDeg": 10,
-      "jump": null
+      "maxSlopeDeg": 10
     },
     "config": {
       "wheelDistX": 0.6,
@@ -21,8 +20,7 @@
     "physics": {
       "driveForce": 170,
       "traction": 0.75,
-      "maxSlopeDeg": 20,
-      "jump": null
+      "maxSlopeDeg": 20
     },
     "config": {
       "treadOffset": 0.8,
@@ -37,8 +35,7 @@
     "physics": {
       "driveForce": 200,
       "traction": 1,
-      "maxSlopeDeg": 70,
-      "jump": null
+      "maxSlopeDeg": 70
     },
     "config": {
       "upperThickness": 2.5,
@@ -75,8 +72,7 @@
     "physics": {
       "driveForce": 200,
       "traction": 0.75,
-      "maxSlopeDeg": 20,
-      "jump": null
+      "maxSlopeDeg": 20
     },
     "config": {
       "treadOffset": 0.85,
@@ -91,8 +87,7 @@
     "physics": {
       "driveForce": 220,
       "traction": 0.45,
-      "maxSlopeDeg": 10,
-      "jump": null
+      "maxSlopeDeg": 10
     },
     "config": {
       "wheelDistX": 0.65,
@@ -108,15 +103,7 @@
     "physics": {
       "driveForce": 120,
       "traction": 1,
-      "maxSlopeDeg": 70,
-      "jump": {
-        "springStiffness": 10000,
-        "compression": 50,
-        "powerRandomMultiplier": 0.5,
-        "horizontalRandomMultiplier": 0,
-        "mode": "always",
-        "releaseChancePerTick": 0.02
-      }
+      "maxSlopeDeg": 70
     },
     "config": {
       "upperThickness": 2,
@@ -153,8 +140,7 @@
     "physics": {
       "driveForce": 60,
       "traction": 0.75,
-      "maxSlopeDeg": 20,
-      "jump": null
+      "maxSlopeDeg": 20
     },
     "config": {
       "treadOffset": 0.9,
@@ -169,8 +155,7 @@
     "physics": {
       "driveForce": 60,
       "traction": 1,
-      "maxSlopeDeg": 70,
-      "jump": null
+      "maxSlopeDeg": 70
     },
     "config": {
       "upperThickness": 9,
@@ -217,8 +202,7 @@
     "physics": {
       "driveForce": 70,
       "traction": 1,
-      "maxSlopeDeg": 70,
-      "jump": null
+      "maxSlopeDeg": 70
     },
     "config": {
       "upperThickness": 7,
@@ -255,8 +239,7 @@
     "physics": {
       "driveForce": 55,
       "traction": 0.75,
-      "maxSlopeDeg": 20,
-      "jump": null
+      "maxSlopeDeg": 20
     },
     "config": {
       "treadOffset": 1.1,
@@ -271,8 +254,7 @@
     "physics": {
       "driveForce": 200,
       "traction": 1,
-      "maxSlopeDeg": 70,
-      "jump": null
+      "maxSlopeDeg": 70
     },
     "config": {
       "upperThickness": 6.5,
@@ -309,8 +291,7 @@
     "physics": {
       "driveForce": 160,
       "traction": 0.75,
-      "maxSlopeDeg": 20,
-      "jump": null
+      "maxSlopeDeg": 20
     },
     "config": {
       "treadOffset": 0.85,
@@ -325,8 +306,7 @@
     "physics": {
       "driveForce": 50,
       "traction": 1,
-      "maxSlopeDeg": 70,
-      "jump": null
+      "maxSlopeDeg": 70
     },
     "config": {
       "upperThickness": 8,
@@ -363,8 +343,7 @@
     "physics": {
       "driveForce": 240,
       "traction": 1,
-      "maxSlopeDeg": 89,
-      "jump": null
+      "maxSlopeDeg": 89
     },
     "config": {
       "hoverHeight": 120,

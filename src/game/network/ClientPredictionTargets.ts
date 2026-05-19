@@ -15,8 +15,6 @@ export type ServerTarget = {
   surfaceNormalY: number;
   surfaceNormalZ: number;
   bodyCenterHeight: number;
-  jumpActive: boolean;
-  jumpLaunchSeq: number;
   predictedGroundContact: boolean;
   /** Full 3-DOF orientation triad, populated only when the snapshot
    *  carries an `orientation` field (hover units etc.). Undefined for
@@ -42,8 +40,6 @@ export function createServerTarget(): ServerTarget {
     velocityX: 0, velocityY: 0, velocityZ: 0,
     surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
     bodyCenterHeight: 0,
-    jumpActive: false,
-    jumpLaunchSeq: 0,
     predictedGroundContact: true,
     turrets: [],
   };

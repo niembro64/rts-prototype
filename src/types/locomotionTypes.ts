@@ -24,8 +24,7 @@ export type UnitLocomotion = {
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local
  *  axes: x = forward, y = lateral/left, z = up. This is visual/body
- *  compliance around the authoritative physics body; jump lift itself
- *  is applied as force to the physics body. */
+ *  compliance around the authoritative physics body. */
 export type UnitSuspensionConfig = {
   /** Hooke spring stiffness in force / world-unit. */
   stiffness: number;
@@ -36,41 +35,6 @@ export type UnitSuspensionConfig = {
   /** Maximum absolute visual displacement in each local axis. Ground
    *  contact is owned by the physics body, not this clamp. */
   maxOffset?: { x?: number; y?: number; z?: number };
-};
-
-export type UnitJumpConfig = {
-  /** Spring constant for the charged launch spring, in force / world-unit. */
-  springStiffness: number;
-  /** Preloaded spring compression distance. Potential energy is
-   *  0.5 * springStiffness * compression^2. */
-  compression: number;
-  /** Symmetric per-launch power variation. 0.2 means 80%-120% jump power. */
-  powerRandomMultiplier?: number;
-  /** Maximum random horizontal launch force as a fraction of vertical force.
-   *  0.25 means each jump gets 0%-25% extra force in a random XY direction. */
-  horizontalRandomMultiplier?: number;
-  /** Manual jumps require a scripted request; always jumps release once per ground contact. */
-  mode?: 'manual' | 'always';
-  /** Per-tick probability that an `always`-mode unit actually fires its
-   *  spring while the rest of the release conditions hold. Default 1
-   *  (the legacy behavior — every tick on the ground re-launches). At
-   *  values below 1 the unit hops with random spacing — e.g. 0.02 at
-   *  60 TPS gives an average of one launch every ~0.83 s instead of
-   *  the continuous "every landing" bounce. Manual jumps (jump.requested)
-   *  bypass the gate so a scripted command still fires immediately. */
-  releaseChancePerTick?: number;
-};
-
-export type UnitJumpState = {
-  config: UnitJumpConfig;
-  /** Player-controlled permission for automatic jump release. */
-  enabled: boolean;
-  /** Reserved for direct jump requests and consumed by the next actuator tick. */
-  requested: boolean;
-  /** True after a spring release; recharge is allowed once grounded and no longer moving outward. */
-  active: boolean;
-  /** Monotonic server-authored launch edge counter used by clients to reset visual drift. */
-  launchSeq: number;
 };
 
 export type UnitSuspensionState = {

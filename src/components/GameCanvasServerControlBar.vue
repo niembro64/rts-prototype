@@ -88,7 +88,7 @@ function fullSnapLabel(opt: string | number): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Per-unit ground normal EMA. SNAP = no smoothing (raw triangle-jump), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitGroundNormal half-life.">UNIT GROUND NORMAL EMA:</BarLabel>
+        <BarLabel title="Per-unit ground normal EMA. SNAP = no smoothing (raw triangle-edge), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitGroundNormal half-life.">UNIT GROUND NORMAL EMA:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="mode in SERVER_CONFIG.unitGroundNormalEma.options"

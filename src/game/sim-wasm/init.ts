@@ -97,8 +97,6 @@ import __wbg_init, {
   entity_meta_build_target_id_ptr,
   entity_meta_suspension_spring_offset_ptr,
   entity_meta_suspension_spring_velocity_ptr,
-  entity_meta_jump_airborne_ptr,
-  entity_meta_jump_timer_ptr,
   entity_meta_factory_is_producing_ptr,
   entity_meta_factory_build_queue_len_ptr,
   entity_meta_factory_progress_ptr,
@@ -661,8 +659,8 @@ export interface SpatialApi {
 
 /** Phase 10 D.1 — Entity-meta SoA pool. Per-entity scalar fields
  *  the snapshot serializer reads (HP, build state, combat mode,
- *  suspension, jump, factory/solar booleans). Slot space is shared
- *  with SpatialGrid — JS calls `setUnit(slot, ...)` /
+ *  suspension, factory/solar booleans). Slot space is shared with
+ *  SpatialGrid — JS calls `setUnit(slot, ...)` /
  *  `setBuilding(slot, ...)` once per dirty entity per snapshot
  *  tick. Position / velocity / orientation continue to live in
  *  BodyPool (Phase 3d). Variable-length arrays (turrets, actions)
@@ -680,7 +678,6 @@ export interface EntityMetaApi {
     buildPaidEnergy: number, buildPaidMetal: number,
     buildTargetId: number,
     suspensionSpringOffset: number, suspensionSpringVelocity: number,
-    jumpAirborne: number, jumpTimer: number,
     buildProgress: number,
   ) => void;
   setBuilding: (
@@ -711,8 +708,6 @@ export interface EntityMetaApi {
   readonly buildTargetIdPtr: () => number;
   readonly suspensionSpringOffsetPtr: () => number;
   readonly suspensionSpringVelocityPtr: () => number;
-  readonly jumpAirbornePtr: () => number;
-  readonly jumpTimerPtr: () => number;
   readonly factoryIsProducingPtr: () => number;
   readonly factoryBuildQueueLenPtr: () => number;
   readonly factoryProgressPtr: () => number;
@@ -787,8 +782,8 @@ export interface SnapshotBaselineApi {
   /** How many baselines are currently live (created minus destroyed). */
   liveCount: () => number;
   /** D.3c — capture one unit slot's current state into the baseline.
-   *  Pulls HP / build / suspension / jump from the entity-meta pool
-   *  and per-turret state from the turret pool; takes transform,
+   *  Pulls HP / build / suspension from the entity-meta pool and
+   *  per-turret state from the turret pool; takes transform,
    *  velocity, movement accel, normal, action hash, and turret
    *  engagement / target bits as parameters. Auto-grows. */
   captureUnitSlot: (
@@ -912,11 +907,6 @@ export interface SnapshotEncodeApi {
     qsuspensionOffsetX: number, qsuspensionOffsetY: number, qsuspensionOffsetZ: number,
     qsuspensionVelX: number, qsuspensionVelY: number, qsuspensionVelZ: number,
     suspensionLegContact: number,
-    hasJump: number,
-    jumpEnabled: number,
-    jumpActive: number,
-    hasJumpLaunchSeq: number,
-    jumpLaunchSeq: number,
     hasOrientation: number,
     qorientX: number, qorientY: number, qorientZ: number, qorientW: number,
     hasAngularVelocity3: number,
@@ -1641,8 +1631,6 @@ export function initSimWasm(): Promise<SimWasm> {
           buildTargetIdPtr: entity_meta_build_target_id_ptr,
           suspensionSpringOffsetPtr: entity_meta_suspension_spring_offset_ptr,
           suspensionSpringVelocityPtr: entity_meta_suspension_spring_velocity_ptr,
-          jumpAirbornePtr: entity_meta_jump_airborne_ptr,
-          jumpTimerPtr: entity_meta_jump_timer_ptr,
           factoryIsProducingPtr: entity_meta_factory_is_producing_ptr,
           factoryBuildQueueLenPtr: entity_meta_factory_build_queue_len_ptr,
           factoryProgressPtr: entity_meta_factory_progress_ptr,

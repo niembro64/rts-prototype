@@ -1,5 +1,4 @@
 import type { LocomotionBlueprint, LocomotionPhysics } from '@/types/blueprints';
-import type { UnitJumpConfig } from '@/types/locomotionTypes';
 import type { UnitLocomotion } from './types';
 
 export const LOCOMOTION_TRACTION = {
@@ -43,7 +42,6 @@ function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
 export function createLocomotionPhysics(
   type: LocomotionType,
   driveForce: number,
-  jump: UnitJumpConfig | null = null,
   maxSlopeDeg = LOCOMOTION_MAX_SLOPE_DEG[type],
 ): LocomotionPhysics {
   assertPositiveFinite(`${type}.driveForce`, driveForce);
@@ -52,7 +50,6 @@ export function createLocomotionPhysics(
     driveForce,
     traction: LOCOMOTION_TRACTION[type],
     maxSlopeDeg,
-    jump,
   };
 }
 

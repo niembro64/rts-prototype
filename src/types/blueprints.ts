@@ -11,7 +11,7 @@ import type { TurretRangeOverrides } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
 import type { ForceFieldBarrierRatioConfig } from './shotTypes';
-import type { UnitJumpConfig, UnitSuspensionConfig } from './locomotionTypes';
+import type { UnitSuspensionConfig } from './locomotionTypes';
 
 // Re-export for consumers
 export type {
@@ -240,10 +240,6 @@ export type LocomotionPhysics = {
   /** Maximum traversable terrain slope in degrees from horizontal.
    *  A* treats steeper cells as blocked for this locomotion profile. */
   maxSlopeDeg: number;
-  /** Optional spring-energy jump actuator layered on locomotion.
-   *  Belongs on locomotion because the actuator is a property of the
-   *  legs/wheels/treads, not the chassis. */
-  jump: UnitJumpConfig | null;
 };
 
 /** Hover locomotion (drones, gunships) — no ground contact. The

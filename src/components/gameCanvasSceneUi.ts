@@ -64,8 +64,6 @@ export function useGameCanvasSceneUi({
     hasCommander: false,
     hasBuilder: false,
     hasDGun: false,
-    hasJump: false,
-    jumpEnabled: false,
     hasFireControl: false,
     fireEnabled: false,
     isWaiting: false,
@@ -170,9 +168,6 @@ export function useGameCanvasSceneUi({
     },
     toggleSelectedWait: () => {
       getActiveBattleScene()?.toggleSelectedWait();
-    },
-    toggleSelectedJump: () => {
-      getActiveBattleScene()?.toggleSelectedJump();
     },
     toggleSelectedFire: () => {
       getActiveBattleScene()?.toggleSelectedFire();

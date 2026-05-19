@@ -7,7 +7,6 @@
  */
 
 import rawLocomotionBlueprints from './locomotion.json';
-import { assertExplicitFields } from './jsonValidation';
 import type { LocomotionBlueprint } from './types';
 
 export const UNIT_LOCOMOTION_BLUEPRINTS =
@@ -24,9 +23,4 @@ for (const [id, blueprint] of Object.entries(UNIT_LOCOMOTION_BLUEPRINTS)) {
   ) {
     throw new Error(`Invalid locomotion blueprint ${id}: driveForce must be positive`);
   }
-  assertExplicitFields(
-    `locomotion blueprint ${id}.physics`,
-    blueprint.physics,
-    ['jump'],
-  );
 }

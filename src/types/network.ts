@@ -475,7 +475,7 @@ export type NetworkServerSnapshotMeta = {
   fogOfWarEnabled?: boolean;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
-   *  on jumps and decays slowly. Both can exceed 100 when the server is
+   *  on spikes and decays slowly. Both can exceed 100 when the server is
    *  falling behind (tick work > tick budget). */
   cpu?: { avg: number; hi: number };
   wind?: {
@@ -637,13 +637,11 @@ export const ENTITY_CHANGED_NORMAL    = 1 << 8;
  *  separate from POS because the locomotion anchor can remain still
  *  while the chassis spring bounces relative to it. */
 export const ENTITY_CHANGED_SUSPENSION = 1 << 9;
-// Bit 1 << 10 was ENTITY_CHANGED_MOVEMENT_ACCEL. Acceleration is no
-// longer shipped on the wire — the client integrates from velocity
-// only — so the bit is unused. Left intentionally empty so JUMP keeps
-// its existing position rather than renumbering downstream consumers.
-/** Grounded jump actuator state changed. This is separate from visible
- *  suspension so jump-capable units do not need chassis spring state. */
-export const ENTITY_CHANGED_JUMP = 1 << 11;
+// Bits 1 << 10 and 1 << 11 were previously assigned to retired wire
+// channels (acceleration-on-the-wire and a vertical-launch actuator,
+// respectively). The bits are intentionally left empty so COMBAT_MODE
+// keeps its existing position rather than renumbering downstream
+// consumers.
 /** Player-controlled combat mode such as fire/hold-fire changed. */
 export const ENTITY_CHANGED_COMBAT_MODE = 1 << 12;
 
@@ -687,11 +685,6 @@ export type NetworkServerSnapshotEntity = {
       offset: Vec3;
       velocity: Vec3;
       legContact?: boolean;
-    };
-    jump?: {
-      enabled?: boolean;
-      active?: boolean;
-      launchSeq?: number;
     };
     /** Full 3-DOF orientation triad for entities that need roll or
      *  arbitrary orientation (hover drones banking into turns, future

@@ -216,7 +216,7 @@ export class OrbitCamera {
   /** Rigid-tumble orbit state — preserves camera position AND
    *  orientation at orbit drag-start. Subsequent yaw/pitch deltas
    *  rotate the camera around `orbitPivot` rigidly: pivot stays
-   *  exactly where it was on screen, no re-centering jump on the
+   *  exactly where it was on screen, no re-centering snap on the
    *  first frame. After the drag ends, the orbit state (target,
    *  yaw, pitch, distance) is synthesized from the new camera
    *  position so future pan/zoom/apply behave normally. */
@@ -529,7 +529,7 @@ export class OrbitCamera {
         const angle = this.touchAngle(e);
         if (dist > 1 && this.touchLastDistance > 1) {
           // Fingers apart means zoom in. Clamp the per-event factor
-          // so browser event bursts cannot create a jarring jump.
+          // so browser event bursts cannot create a jarring snap.
           const factor = Math.min(1.25, Math.max(0.8, this.touchLastDistance / dist));
           this.zoomByFactorAt(center.x, center.y, factor);
         }
@@ -890,7 +890,7 @@ export class OrbitCamera {
    *  produces y = minY at the current distance. Subsequent zoom /
    *  pan operations then use the steeper pitch and the angle carries
    *  through. We recompute (x, y, z) from the new pitch so this same
-   *  frame already renders the post-lift orbit (no inter-frame jump
+   *  frame already renders the post-lift orbit (no inter-frame snap
    *  on the next render). */
   apply(): void {
     this.constrainTargets();
@@ -979,7 +979,7 @@ export class OrbitCamera {
    *  0 = snap (each input applies instantly, original behavior).
    *  Any positive value enables exponential smoothing of all
    *  to-state changes (zoom dolly + pan target shift) at that
-   *  time-constant. Idempotent. Setting to 0 mid-animation jumps
+   *  time-constant. Idempotent. Setting to 0 mid-animation snaps
    *  the rendered state to the to-state so it doesn't look frozen. */
   setSmoothTau(seconds: number): void {
     const clamped = Math.max(0, seconds);

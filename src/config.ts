@@ -353,9 +353,7 @@ export const UNIT_GROUND_SPRING_DAMPING_RATIO =
 
 /** Maximum outward terrain-normal velocity passive ground contact can
  *  produce. This permits small damped settling oscillation, but stops
- *  the terrain spring from acting like a jump actuator. Explicit jump
- *  forces can add their own per-tick outward velocity above this cap;
- *  they do not let passive spring rebound bypass the cap entirely. */
+ *  the terrain spring from launching units off the surface. */
 export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED =
   sharedSimConstants.unitGroundPassiveReboundMaxSpeed;
 

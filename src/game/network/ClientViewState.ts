@@ -27,7 +27,6 @@ import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_SUSPENSION,
-  ENTITY_CHANGED_JUMP,
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -211,30 +210,6 @@ export class ClientViewState {
     return target;
   }
 
-  private networkJumpLaunchSeqAdvanced(
-    entity: Entity,
-    server: NetworkServerSnapshotEntity,
-  ): boolean {
-    const unit = entity.unit;
-    const nextLaunchSeq = server.unit?.jump?.launchSeq;
-    if (!unit?.jump || !Number.isFinite(nextLaunchSeq)) return false;
-    return nextLaunchSeq! > unit.jump.launchSeq;
-  }
-
-  private resetUnitMotionToServerTarget(entity: Entity, target: ServerTarget): void {
-    const unit = entity.unit;
-    if (!unit) return;
-    entity.transform.x = target.x;
-    entity.transform.y = target.y;
-    entity.transform.z = target.z;
-    unit.velocityX = target.velocityX ?? 0;
-    unit.velocityY = target.velocityY ?? 0;
-    unit.velocityZ = target.velocityZ ?? 0;
-    this.clearPredictionAccum(entity.id);
-    this.clearTargetPredictionAccum(entity.id);
-    this.dirtyUnitRenderIds.add(entity.id);
-  }
-
   private copyNetworkTurretsToTarget(
     target: ServerTarget,
     turrets:
@@ -327,10 +302,9 @@ export class ClientViewState {
         // would land but applyClientUnitVisualPrediction's EMA — which
         // owns the entity.unit.surfaceNormal lerp — wouldn't run.
         ENTITY_CHANGED_NORMAL |
-        // Suspension and jump actuator state can affect prediction even
-        // if the quantized body position did not move.
-        ENTITY_CHANGED_SUSPENSION |
-        ENTITY_CHANGED_JUMP
+        // Suspension state can affect prediction even if the quantized
+        // body position did not move.
+        ENTITY_CHANGED_SUSPENSION
       )) !== 0 ||
       Array.isArray(server.unit?.turrets)
     ) {
@@ -541,16 +515,11 @@ export class ClientViewState {
         }
       } else {
         // Existing entity — snap non-visual state immediately
-        const resetMotionFromJump = this.networkJumpLaunchSeqAdvanced(existing, netEntity);
         if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
           cacheNeedsInvalidate = true;
         }
         if (snapClientNonVisualState(existing, netEntity)) {
           this.cache.invalidate();
-        }
-        if (resetMotionFromJump) {
-          const target = this.serverTargets.get(netEntity.id);
-          if (target) this.resetUnitMotionToServerTarget(existing, target);
         }
         this.markNetworkEntityPredictionActive(netEntity, existing);
       }

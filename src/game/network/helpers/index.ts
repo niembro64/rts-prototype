@@ -8,6 +8,5 @@ export {
 } from './NetworkEntityFactory';
 
 export {
-  applyNetworkJumpState,
   applyNetworkSuspensionState,
 } from '../unitSnapshotFields';

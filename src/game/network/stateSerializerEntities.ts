@@ -13,7 +13,6 @@ import {
   ENTITY_CHANGED_COMBAT_MODE,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -42,14 +41,12 @@ import {
 import {
   clearNetworkUnitActions,
   clearNetworkUnitCombatMode,
-  clearNetworkUnitJump,
   clearNetworkUnitStaticFields,
   clearNetworkUnitSurfaceNormal,
   clearNetworkUnitSuspension,
   createNetworkUnitSnapshot,
   writeNetworkUnitActions,
   writeNetworkUnitCombatMode,
-  writeNetworkUnitJump,
   writeNetworkUnitStaticFields,
   writeNetworkUnitSurfaceNormal,
   writeNetworkUnitSuspension,
@@ -72,8 +69,9 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit row layout: see appendUnitEntityWireRow for the exact slot order.
 // Stride shrank from 72 → 64 when the 4 movementAccel slots and 4
 // angularAcceleration slots were removed from the wire (acceleration is
-// no longer shipped — client integrates from velocity only).
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 64;
+// no longer shipped — client integrates from velocity only). Stride
+// shrank from 64 → 59 when 5 retired actuator-state slots were dropped.
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 59;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 34;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 16;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
@@ -108,7 +106,6 @@ type PooledEntry = {
   unitHp: NonNullable<UnitSub['hp']>;
   unitVelocity: NonNullable<UnitSub['velocity']>;
   unitSuspension: NonNullable<UnitSub['suspension']>;
-  unitJump: NonNullable<UnitSub['jump']>;
   unitRadius: { body: number; shot: number; push: number };
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
@@ -227,7 +224,6 @@ function createPooledEntry(): PooledEntry {
       offset: { x: 0, y: 0, z: 0 },
       velocity: { x: 0, y: 0, z: 0 },
     },
-    unitJump: {},
     unitRadius: { body: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
@@ -414,7 +410,6 @@ function appendUnitEntityWireRow(
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   const surfaceNormal = unit.surfaceNormal;
   const suspension = unit.suspension;
-  const jump = unit.jump;
   const orientation = unit.orientation;
   const angularVelocity = unit.angularVelocity3;
   const build = unit.build;
@@ -461,35 +456,30 @@ function appendUnitEntityWireRow(
   values[base + 32] = suspension !== undefined ? suspension.velocity.y : 0;
   values[base + 33] = suspension !== undefined ? suspension.velocity.z : 0;
   values[base + 34] = suspension !== undefined && suspension.legContact === true ? 1 : 0;
-  values[base + 35] = jump !== undefined ? 1 : 0;
-  values[base + 36] = jump !== undefined && jump.enabled === true ? 1 : 0;
-  values[base + 37] = jump !== undefined && jump.active === true ? 1 : 0;
-  values[base + 38] = jump !== undefined && jump.launchSeq !== undefined ? 1 : 0;
-  values[base + 39] = jump !== undefined && jump.launchSeq !== undefined ? jump.launchSeq : 0;
-  values[base + 40] = orientation !== undefined ? 1 : 0;
-  values[base + 41] = orientation !== undefined ? orientation.x : 0;
-  values[base + 42] = orientation !== undefined ? orientation.y : 0;
-  values[base + 43] = orientation !== undefined ? orientation.z : 0;
-  values[base + 44] = orientation !== undefined ? orientation.w : 0;
-  values[base + 45] = angularVelocity !== undefined ? 1 : 0;
-  values[base + 46] = angularVelocity !== undefined ? angularVelocity.x : 0;
-  values[base + 47] = angularVelocity !== undefined ? angularVelocity.y : 0;
-  values[base + 48] = angularVelocity !== undefined ? angularVelocity.z : 0;
-  values[base + 49] = unit.fireEnabled === false ? 1 : 0;
-  values[base + 50] = unit.isCommander === true ? 1 : 0;
-  values[base + 51] = buildTargetId !== undefined ? 1 : 0;
-  values[base + 52] = buildTargetId === null ? 1 : 0;
-  values[base + 53] = typeof buildTargetId === 'number' ? buildTargetId : 0;
-  values[base + 54] = actions !== undefined ? 1 : 0;
-  values[base + 55] = actions !== undefined ? actions.length : 0;
-  values[base + 56] = turrets !== undefined ? 1 : 0;
-  values[base + 57] = turrets !== undefined ? turrets.length : 0;
-  values[base + 58] = build !== undefined ? 1 : 0;
-  values[base + 59] = build !== undefined && build.complete === true ? 1 : 0;
-  values[base + 60] = build !== undefined ? build.paid.energy : 0;
-  values[base + 61] = build !== undefined ? build.paid.metal : 0;
-  values[base + 62] = turretOffset;
-  values[base + 63] = actionOffset;
+  values[base + 35] = orientation !== undefined ? 1 : 0;
+  values[base + 36] = orientation !== undefined ? orientation.x : 0;
+  values[base + 37] = orientation !== undefined ? orientation.y : 0;
+  values[base + 38] = orientation !== undefined ? orientation.z : 0;
+  values[base + 39] = orientation !== undefined ? orientation.w : 0;
+  values[base + 40] = angularVelocity !== undefined ? 1 : 0;
+  values[base + 41] = angularVelocity !== undefined ? angularVelocity.x : 0;
+  values[base + 42] = angularVelocity !== undefined ? angularVelocity.y : 0;
+  values[base + 43] = angularVelocity !== undefined ? angularVelocity.z : 0;
+  values[base + 44] = unit.fireEnabled === false ? 1 : 0;
+  values[base + 45] = unit.isCommander === true ? 1 : 0;
+  values[base + 46] = buildTargetId !== undefined ? 1 : 0;
+  values[base + 47] = buildTargetId === null ? 1 : 0;
+  values[base + 48] = typeof buildTargetId === 'number' ? buildTargetId : 0;
+  values[base + 49] = actions !== undefined ? 1 : 0;
+  values[base + 50] = actions !== undefined ? actions.length : 0;
+  values[base + 51] = turrets !== undefined ? 1 : 0;
+  values[base + 52] = turrets !== undefined ? turrets.length : 0;
+  values[base + 53] = build !== undefined ? 1 : 0;
+  values[base + 54] = build !== undefined && build.complete === true ? 1 : 0;
+  values[base + 55] = build !== undefined ? build.paid.energy : 0;
+  values[base + 56] = build !== undefined ? build.paid.metal : 0;
+  values[base + 57] = turretOffset;
+  values[base + 58] = actionOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -613,8 +603,7 @@ export function serializeEntitySnapshot(
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
       ENTITY_CHANGED_BUILDING |
-      ENTITY_CHANGED_SUSPENSION |
-      ENTITY_CHANGED_JUMP;
+      ENTITY_CHANGED_SUSPENSION;
     const hasSurfaceNormalFields = isFull ||
       (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL));
     const hasOrientationFields = entity.unit.orientation !== undefined &&
@@ -668,12 +657,6 @@ export function serializeEntitySnapshot(
         writeNetworkUnitSuspension(u, entity.unit, poolEntry.unitSuspension, qSuspension, qVel);
       } else {
         clearNetworkUnitSuspension(u);
-      }
-
-      if (isFull || (changedFields! & ENTITY_CHANGED_JUMP)) {
-        writeNetworkUnitJump(u, entity.unit, poolEntry.unitJump);
-      } else {
-        clearNetworkUnitJump(u);
       }
 
       // Orientation + angular velocity for entities that have one —

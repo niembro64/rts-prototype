@@ -21,7 +21,6 @@ import type {
   SelectCommand,
   SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
-  SetJumpEnabledCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -36,12 +35,11 @@ import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_JUMP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
-import { setUnitJumpEnabled } from './unitJump';
 import { pushUnitAction, setUnitActions, shiftUnitAction, spliceUnitActions, unshiftUnitAction } from './unitActions';
 import { clearCombatActivityFlags } from './combat/combatActivity';
 import { setWeaponTarget } from './combat/targetIndex';
@@ -129,9 +127,6 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'fireDGun':
       executeFireDGunCommand(ctx, command);
-      break;
-    case 'setJumpEnabled':
-      executeSetJumpEnabledCommand(ctx, command);
       break;
     case 'setFireEnabled':
       executeSetFireEnabledCommand(ctx, command);
@@ -628,16 +623,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   };
   ctx.onSimEvent?.(dgunSimEvent);
   ctx.pendingSimEvents.push(dgunSimEvent);
-}
-
-function executeSetJumpEnabledCommand(ctx: CommandContext, command: SetJumpEnabledCommand): void {
-  for (let i = 0; i < command.entityIds.length; i++) {
-    const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (!entity?.unit) continue;
-    if (setUnitJumpEnabled(entity.unit, command.enabled)) {
-      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_JUMP);
-    }
-  }
 }
 
 function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabledCommand): void {

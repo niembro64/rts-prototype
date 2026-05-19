@@ -23,8 +23,8 @@
 //   unit ↔ ground    — soft spring along the terrain normal, measured
 //                      from the unit's locomotion ground point.
 //   unit ↔ building  — full 3D (sphere vs cuboid) so tall buildings
-//                      are blockers and short ones can be jumped over
-//                      by units whose ground point is above terrain.
+//                      are blockers and short ones can be cleared by
+//                      units whose ground point is above terrain.
 //   unit ↔ unit      — full 3D sphere-vs-sphere push. Two units at
 //                      the same altitude behave exactly like 2D
 //                      horizontal jostle; two at different altitudes

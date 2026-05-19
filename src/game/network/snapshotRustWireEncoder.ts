@@ -246,8 +246,6 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     )) ||
     (unit.bodyCenterHeight !== undefined && !Number.isFinite(unit.bodyCenterHeight)) ||
     (unit.mass !== undefined && !Number.isFinite(unit.mass)) ||
-    (unit.jump !== undefined && unit.jump.enabled === undefined) ||
-    unit.jump?.active === false ||
     unit.suspension?.legContact === false ||
     unit.fireEnabled === true ||
     unit.isCommander === false
@@ -272,7 +270,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
   const api = sim.snapshotEncode;
   const surfaceNormal = unit.surfaceNormal;
   const suspension = unit.suspension;
-  const jump = unit.jump;
   const orientation = unit.orientation;
   const angularVelocity = unit.angularVelocity3;
   const build = unit.build;
@@ -309,11 +306,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     suspension?.velocity.y ?? 0,
     suspension?.velocity.z ?? 0,
     suspension?.legContact === true ? 1 : 0,
-    jump !== undefined ? 1 : 0,
-    jump?.enabled === true ? 1 : 0,
-    jump?.active === true ? 1 : 0,
-    jump?.launchSeq !== undefined ? 1 : 0,
-    jump?.launchSeq ?? 0,
     orientation !== undefined ? 1 : 0,
     orientation?.x ?? 0,
     orientation?.y ?? 0,
@@ -481,10 +473,10 @@ function encodeEntityWireRow(
   if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
     const values = source.unitRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-    if (!copyEntityActionRowsIntoScratch(sim, source, values[base + 63], values[base + 55])) {
+    if (!copyEntityActionRowsIntoScratch(sim, source, values[base + 58], values[base + 50])) {
       return false;
     }
-    if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 62], values[base + 57])) {
+    if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 57], values[base + 52])) {
       return false;
     }
     api.encodeEntityUnit(
@@ -546,11 +538,6 @@ function encodeEntityWireRow(
       values[base + 54],
       values[base + 55],
       values[base + 56],
-      values[base + 57],
-      values[base + 58],
-      values[base + 59],
-      values[base + 60],
-      values[base + 61],
     );
     return true;
   }

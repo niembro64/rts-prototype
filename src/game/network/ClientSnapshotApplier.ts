@@ -6,7 +6,6 @@ import {
   ENTITY_CHANGED_COMBAT_MODE,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_JUMP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_SUSPENSION,
@@ -19,7 +18,6 @@ import {
   refreshUnitTurretsFromNetwork,
 } from './helpers';
 import {
-  applyNetworkJumpState,
   applyNetworkUnitCombatMode,
   applyNetworkSuspensionState,
   applyNetworkUnitActions,
@@ -60,9 +58,6 @@ export function snapClientNonVisualState(
     applyNetworkUnitStaticFields(entity.unit, su);
     if (isFull || cf! & ENTITY_CHANGED_SUSPENSION) {
       applyNetworkSuspensionState(entity, su.suspension);
-    }
-    if (isFull || cf! & ENTITY_CHANGED_JUMP) {
-      applyNetworkJumpState(entity, su.jump);
     }
     if (isFull || cf! & ENTITY_CHANGED_COMBAT_MODE) {
       applyNetworkUnitCombatMode(entity, su);

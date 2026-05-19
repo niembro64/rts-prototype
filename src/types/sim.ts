@@ -16,7 +16,7 @@ import type {
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { EntityId, PlayerId } from './entityTypes';
-import type { UnitJumpState, UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
+import type { UnitLocomotion, UnitSuspensionState } from './locomotionTypes';
 import type { ResourceCost } from './economyTypes';
 import type {
   ActiveProjectileShot,
@@ -45,7 +45,7 @@ export type {
   TurretRanges,
 } from './combatTypes';
 export type { EntityId, PlayerId } from './entityTypes';
-export type { UnitJumpState, UnitLocomotion } from './locomotionTypes';
+export type { UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 export type { TurretAimStyle } from './blueprints';
@@ -170,9 +170,9 @@ export type Unit = {
   velocityY?: number;
   velocityZ?: number;
   /** Authoritative movement/traction acceleration applied this tick,
-   *  excluding gravity, terrain spring, air/ground damping, jump
-   *  actuation, and transient external forces. Clients use this as the
-   *  powered-movement input for force-based visual prediction. */
+   *  excluding gravity, terrain spring, air/ground damping, and
+   *  transient external forces. Clients use this as the powered-movement
+   *  input for force-based visual prediction. */
   movementAccelX?: number;
   movementAccelY?: number;
   movementAccelZ?: number;
@@ -181,9 +181,6 @@ export type Unit = {
    *  (0, 0). */
   thrustDirX?: number;
   thrustDirY?: number;
-  /** Optional surface-contact jump actuator. Units without this use the
-   *  exact same force/contact path and simply never add launch force. */
-  jump?: UnitJumpState;
   /** Optional runtime spring state for the visible chassis relative
    *  to the locomotion anchor. Omitted means rigid legacy attachment. */
   suspension?: UnitSuspensionState;
