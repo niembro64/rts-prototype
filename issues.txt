@@ -27,30 +27,6 @@ The client can keep a stale targetId after a same-presence target switch, and it
 Fix direction:
 Track exact per-turret target IDs and pitch velocities in the JS PrevEntityState and in the Rust snapshot baseline, compare target IDs exactly, compare pitch velocity against the rotation-velocity threshold, and add a regression for same-state target switches.
 
-AIM-02 - Top-K LOS filtering can make weapons ignore valid visible targets.
-
-Evidence:
-- src/game/sim/combat/targetingSystem.ts:423-427 collects only the top TARGETING_TOPK_LOS pre-LOS candidates.
-- src/game/sim/combat/targetingSystem.ts:505-541 checks LOS/force-field/ballistic gates only for that small pool and returns the seed if all pooled candidates are blocked.
-
-Why it matters:
-In dense fights, the four closest or highest-ranked candidates can be behind terrain, buildings, units, or shields while the fifth candidate is valid. The weapon then keeps its old target or stays idle even though a visible target exists. The comment at src/game/sim/combat/targetingSystem.ts:505-508 says blocked candidates are rejected, but candidates outside the top-K are never tested.
-
-Fix direction:
-Keep the cheap rank pass, but continue filling/testing candidates until a valid LOS/clearance/ballistic target is found, or use an adaptive fallback scan after top-K fails. Add a test with K blocked candidates and one valid candidate behind them.
-
-AIM-03 - The batched acquisition broadphase can miss large targets whose edge is in range.
-
-Evidence:
-- src/game/sim/combat/targetingSystem.ts:78-82 accepts targets out to range + targetRadius.
-- src/game/sim/combat/targetingSystem.ts:945-1004 builds the spatial query radius from maxAcquireRange + maxWeaponOffset only, without any possible target radius.
-
-Why it matters:
-Large buildings or future large units can be legally targetable by near edge but absent from the candidate array because their center is outside the batched spatial query. Priority attack can still work because it bypasses the acquisition broadphase, so auto-targeting and ordered targeting can disagree.
-
-Fix direction:
-Make the broadphase radius match the exact range contract by including the maximum target acquisition radius, or make the spatial query radius-aware so entities whose volumes overlap the query are returned.
-
 AIM-04 - Targeting and line-shot range are still ground-plane ranges, not full 3D ranges.
 
 Evidence:

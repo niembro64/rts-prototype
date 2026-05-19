@@ -101,6 +101,14 @@ export class WorldState {
   private snapshotDirtyFields = new Map<EntityId, number>();
   private pendingDeathCheckIds = new Set<EntityId>();
   private surfaceNormalCache = new Map<number, SurfaceNormal>();
+  // Monotonically-growing upper bound on `getTargetRadius(e)` across all
+  // unit/building entities ever added to this world. Used by the
+  // targeting broadphase to expand its 2D circle query so large targets
+  // whose edge falls within a weapon's range, but whose center sits
+  // outside the unit-centered batch radius, still enter the candidate
+  // array. Stale-too-large is harmless: per-candidate distance checks
+  // still enforce the exact range contract.
+  private maxTargetableRadius: number = 0;
   public rng: SeededRNG;
 
   // Current player being controlled
@@ -312,8 +320,22 @@ export class WorldState {
     this.entities.set(entity.id, entity);
     if (entity.type === 'unit') this.unitSetVersion++;
     if (entity.type === 'building') this.buildingVersion++;
+    if (entity.type === 'unit' || entity.type === 'building') {
+      const r = entity.unit
+        ? entity.unit.radius.shot
+        : (entity.building ? entity.building.targetRadius : 0);
+      if (r > this.maxTargetableRadius) this.maxTargetableRadius = r;
+    }
     this.markSnapshotDirty(entity.id, 0xff);
     this.cache.invalidate();
+  }
+
+  /** Upper bound on `getTargetRadius(e)` for any unit/building entity
+   *  in the world. Grows monotonically as larger entities spawn; never
+   *  shrinks when entities die (stale-too-large just sizes broadphase
+   *  queries slightly wider than strictly needed). */
+  getMaxTargetableRadius(): number {
+    return this.maxTargetableRadius;
   }
 
   // Remove entity from world

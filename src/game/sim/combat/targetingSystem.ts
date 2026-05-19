@@ -1,7 +1,7 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '../types';
+import type { Entity, EntityId, HysteresisRange, PlayerId, Turret, TurretRanges } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { decrementCooldown, getTargetRadius, updateWeaponWorldKinematics } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
@@ -54,6 +54,12 @@ const _unitNearForceFields: ActiveForceFieldRef[] = [];
 // TARGETING_TOPK_LOS so the expensive segment-vs-terrain walk runs at
 // most K times per call, instead of once per LOS-eligible candidate.
 const TARGETING_TOPK_LOS = 4;
+// Adaptive fallback budget for Pass C. When all TARGETING_TOPK_LOS best
+// candidates are blocked by LOS / force-field / ballistic gates, Pass C
+// walks the remaining candidates (in input order) and LOS-tests them
+// until a valid one is found or the budget runs out. Together with the
+// top-K LOS pass this caps the per-call gate cost at K + budget walks.
+const TARGETING_FALLBACK_LOS_BUDGET = 12;
 const _candPoolEnemies: Entity[] = [];
 const _candPoolRanks: TargetPreferenceRank[] = [];
 const _candPoolDistSqs: number[] = [];
@@ -121,6 +127,14 @@ type TargetPreferenceRank =
   | typeof TARGET_RANK_TRACKING_ONLY
   | typeof TARGET_RANK_FIRE_FALLBACK
   | typeof TARGET_RANK_FIRE_PREFERRED;
+
+// Reused per-candidate score output. Filled by scoreAndFilterCandidate
+// and read by Pass A's bubble sort placement and Pass C's fallback walk.
+const _candScratchScore: {
+  rank: TargetPreferenceRank;
+  distSq: number;
+  mirrorScore: number;
+} = { rank: TARGET_RANK_NONE, distSq: 0, mirrorScore: 0 };
 
 function fireTargetPreferenceRankSq(
   ranges: TurretRanges,
@@ -402,6 +416,90 @@ function getTargetCandidateRadius(enemy: Entity): number {
     : (enemy.building ? getTargetRadius(enemy) : 0);
 }
 
+/** Cheap pre-LOS gate. Filters by cloak observability, passive-weapon
+ *  mirror-priority, configured minimum rank, and the seed-beat
+ *  contract. On accept, writes the candidate's {rank, distSq,
+ *  mirrorScore} into the supplied scratch and returns true. The same
+ *  helper drives Pass A (pool placement) and Pass C (fallback
+ *  per-candidate test) so the gate definition lives in one place. */
+function scoreAndFilterCandidate(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  enemy: Entity,
+  weaponX: number,
+  weaponY: number,
+  rankCandidate: CandidateRanker,
+  minimumRank: TargetPreferenceRank,
+  seed: TargetCandidateChoice,
+  isPassive: boolean,
+  sourcePlayerId: PlayerId | undefined,
+  out: { rank: TargetPreferenceRank; distSq: number; mirrorScore: number },
+): boolean {
+  if (
+    sourcePlayerId === undefined ||
+    !canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId)
+  ) {
+    return false;
+  }
+  let mirrorScore = 0;
+  if (isPassive) {
+    mirrorScore = getMirrorTargetScore(enemy, source.id);
+    if (mirrorScore <= 0) return false;
+  }
+  const enemyRadius = getTargetCandidateRadius(enemy);
+  const distSq = distanceSquared(
+    weaponX, weaponY,
+    enemy.transform.x, enemy.transform.y,
+  );
+  const rank = rankCandidate(weapon.ranges, 'acquire', distSq, enemyRadius);
+  if (rank < minimumRank) return false;
+
+  const beatsSeed = isPassive
+    ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, seed.mirrorScore, seed.rank, seed.distSq)
+    : isBetterTargetCandidate(rank, distSq, seed.rank, seed.distSq);
+  if (!beatsSeed) return false;
+  out.rank = rank;
+  out.distSq = distSq;
+  out.mirrorScore = mirrorScore;
+  return true;
+}
+
+/** Combined LOS + force-field + ballistic gate for a single candidate.
+ *  Returns true only when the weapon could actually fire on this
+ *  target right now. The gates are evaluated in order of increasing
+ *  cost; force-field check is skipped when no fields are active. */
+function passesWeaponFireGates(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  enemy: Entity,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+  needsLOS: boolean,
+  needsForceFieldClearance: boolean,
+  activeForceFields: readonly ActiveForceFieldRef[],
+): boolean {
+  if (needsLOS && !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
+    return false;
+  }
+  if (
+    needsForceFieldClearance &&
+    !hasWeaponForceFieldClearance(
+      world, source, weapon, enemy,
+      weaponX, weaponY, weaponZ,
+      activeForceFields,
+    )
+  ) {
+    return false;
+  }
+  if (!hasWeaponBallisticSolution(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
+    return false;
+  }
+  return true;
+}
+
 function chooseBestTargetCandidate(
   world: WorldState,
   source: Entity,
@@ -433,35 +531,16 @@ function chooseBestTargetCandidate(
 
   for (let ci = 0; ci < candidates.length; ci++) {
     const enemy = candidates[ci];
-    if (
-      sourcePlayerId === undefined ||
-      !canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId)
-    ) {
-      continue;
-    }
-    let mirrorScore = 0;
-    if (isPassive) {
-      mirrorScore = getMirrorTargetScore(enemy, source.id);
-      if (mirrorScore <= 0) continue;
-    }
-
-    const enemyRadius = getTargetCandidateRadius(enemy);
-    const distSq = distanceSquared(
+    if (!scoreAndFilterCandidate(
+      world, source, weapon, enemy,
       weaponX, weaponY,
-      enemy.transform.x, enemy.transform.y,
-    );
-    const rank = rankCandidate(
-      weapon.ranges,
-      'acquire',
-      distSq,
-      enemyRadius,
-    );
-    if (rank < minimumRank) continue;
-
-    const beatsSeed = isPassive
-      ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, seed.mirrorScore, seed.rank, seed.distSq)
-      : isBetterTargetCandidate(rank, distSq, seed.rank, seed.distSq);
-    if (!beatsSeed) continue;
+      rankCandidate, minimumRank, seed,
+      isPassive, sourcePlayerId,
+      _candScratchScore,
+    )) continue;
+    const rank = _candScratchScore.rank;
+    const distSq = _candScratchScore.distSq;
+    const mirrorScore = _candScratchScore.mirrorScore;
 
     if (topCount < TARGETING_TOPK_LOS) {
       _candPoolEnemies[topCount] = enemy;
@@ -502,39 +581,70 @@ function chooseBestTargetCandidate(
     }
   }
 
-  // Pass B: LOS + force-field clearance, best-first. The first
-  // top-K entry that passes both gates wins; remaining (worse) entries
-  // are skipped. If all top-K are blocked, the seed survives — matching
-  // the old behaviour where every blocked candidate was simply rejected.
+  // Pass B: LOS + force-field + ballistic gate, best-first over the
+  // top-K pool. The first top-K entry that passes wins.
   for (let k = 0; k < topCount; k++) {
     const enemy = _candPoolEnemies[k];
-    if (
-      needsLOS &&
-      !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)
-    ) {
-      continue;
-    }
-    if (
-      needsForceFieldClearance &&
-      !hasWeaponForceFieldClearance(
-        world,
-        source,
-        weapon,
-        enemy,
-        weaponX, weaponY, weaponZ,
-        activeForceFields,
-      )
-    ) {
-      continue;
-    }
-    if (!hasWeaponBallisticSolution(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
-      continue;
-    }
+    if (!passesWeaponFireGates(
+      world, source, weapon, enemy,
+      weaponX, weaponY, weaponZ,
+      needsLOS, needsForceFieldClearance, activeForceFields,
+    )) continue;
     return {
       target: enemy,
       rank: _candPoolRanks[k],
       distSq: _candPoolDistSqs[k],
       mirrorScore: _candPoolMirrorScores[k],
+    };
+  }
+
+  // Pass C: adaptive fallback. Every top-K candidate failed a gate,
+  // but the broadphase may still hold a valid target that was ranked
+  // lower than the top-K worst. Walk the remaining candidates in
+  // input order and gate them up to TARGETING_FALLBACK_LOS_BUDGET
+  // times — the first pass-through wins. This bounds the total LOS
+  // walks per call at TARGETING_TOPK_LOS + TARGETING_FALLBACK_LOS_BUDGET
+  // while ensuring weapons don't silently sit idle when valid visible
+  // targets exist beyond the cheap top-K window.
+  if (topCount === 0) {
+    return {
+      target: seed.target,
+      rank: seed.rank,
+      distSq: seed.distSq,
+      mirrorScore: seed.mirrorScore,
+    };
+  }
+  let fallbackBudget = TARGETING_FALLBACK_LOS_BUDGET;
+  for (let ci = 0; ci < candidates.length && fallbackBudget > 0; ci++) {
+    const enemy = candidates[ci];
+    // Skip candidates already evaluated in Pass B. topCount is small
+    // (TARGETING_TOPK_LOS), so this linear membership check is cheap.
+    let inTopK = false;
+    for (let k = 0; k < topCount; k++) {
+      if (_candPoolEnemies[k] === enemy) { inTopK = true; break; }
+    }
+    if (inTopK) continue;
+
+    if (!scoreAndFilterCandidate(
+      world, source, weapon, enemy,
+      weaponX, weaponY,
+      rankCandidate, minimumRank, seed,
+      isPassive, sourcePlayerId,
+      _candScratchScore,
+    )) continue;
+
+    fallbackBudget--;
+    if (!passesWeaponFireGates(
+      world, source, weapon, enemy,
+      weaponX, weaponY, weaponZ,
+      needsLOS, needsForceFieldClearance, activeForceFields,
+    )) continue;
+
+    return {
+      target: enemy,
+      rank: _candScratchScore.rank,
+      distSq: _candScratchScore.distSq,
+      mirrorScore: _candScratchScore.mirrorScore,
     };
   }
 
@@ -994,7 +1104,15 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     let batchedEnemies: Entity[] | null = null;
     _unitNearForceFields.length = 0;
     if (needsAnyQuery) {
-      const batchRadius = maxAcquireRange + maxWeaponOffset;
+      // The spatial grid query is center-based: a candidate enters the
+      // result only if its center sits inside the circle. The targeting
+      // range contract treats a target as in range when its near edge
+      // is reachable (dist <= range + targetRadius), so the broadphase
+      // must add the maximum possible target radius — otherwise a
+      // large building's center can sit outside `maxAcquireRange +
+      // maxWeaponOffset` while its hull is well within firing range,
+      // and the per-weapon distance gate would have accepted it.
+      const batchRadius = maxAcquireRange + maxWeaponOffset + world.getMaxTargetableRadius();
       const ux = unit.transform.x;
       const uy = unit.transform.y;
       const uz = unit.transform.z;
