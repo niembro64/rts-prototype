@@ -28,18 +28,56 @@ Keep the TypeScript behavior as the reference while designing a data-oriented ta
 MIGRATION PLAN (each phase = its own PR; each lands one kernel and deletes
 the TS path it replaces, never both alongside — see "Delete The Old Path").
 
-AIM-08.2 — Port LOS / FF / arc-FF gates as SoA batch
-  Move hasCombatLineOfSight, hasForceFieldClearance,
-  hasArcForceFieldClearance into a Rust kernel that takes
-    (armedEntityIdx, candidateEntityIdx, weaponIdx) -> clearance bits
-  using the slabs from .1. Already-WASM terrain LOS becomes a slab read
-  instead of a per-call dispatch. Delete the JS implementations from
-  lineOfSight.ts in the same PR; targetingSystem.ts calls the slab
-  kernel.
+AIM-08.2 — Port FF / arc-FF gates to Rust kernels [LANDED, partial]
+  The force-field clearance gates now dispatch to Rust:
+    force_field_clearance_segment(sx,sy,sz, tx,ty,tz, excludeOwner,
+                                  maxCrossings) -> 0|1
+    force_field_clearance_arc(launchXYZ, launchVxVyVz, flightTime,
+                              excludeOwner, maxCrossings)     -> 0|1
+  Both read the FF pool slab stamped pre-FSM by stampForceFieldPool
+  (split out of stampTargetingInputSlabs so the slab is current-tick
+  when the FSM enters). The JS hasForceFieldClearance /
+  hasArcForceFieldClearance bodies in lineOfSight.ts are now thin WASM
+  dispatchers; the segmentCrossesForceFieldBoundary helper,
+  FORCE_FIELD_GRAZE_EPS, and ARC_FF_CLEARANCE_SAMPLES JS constants are
+  gone. The per-unit _unitNearForceFields pre-filter is also gone —
+  the Rust loop is fast enough that pre-filtering would just trade one
+  cache-friendly Rust pass for one cache-friendly Rust pass plus a JS
+  fan-out.
+  The fast-path lives at the FSM level: forceFieldsActive (boolean,
+  computed once per tick from world.forceFieldsBlockTargeting &&
+  getActiveForceFields().length > 0) propagates through the gate
+  callers and short-circuits before any aim-point resolve or kernel
+  dispatch.
 
-  Done when: every gate call in targetingSystem.ts dispatches once to
-  Rust for the whole batch; lineOfSight.ts has zero JS-side gate
-  implementations; parity shim is clean.
+  Deferred to AIM-08.LOS below: hasCombatLineOfSight still composes a
+  WASM terrain LOS dispatch with a JS-side entity-LOS spatial-grid
+  walk. Porting the entity-LOS part needs a slab of all units +
+  buildings (positions, radii, IDs) so the Rust kernel can iterate
+  blockers in linear memory; that's a chunkier change than the FF
+  port and is more naturally bundled with the FSM port in .5 (which
+  needs candidate / entity slabs anyway). The phase as originally
+  written conflated three gates that have very different data
+  dependencies — splitting it lets us land the trivially-portable
+  ones now and pay for the entity slab when other phases also need
+  it.
+
+AIM-08.LOS — Port hasCombatLineOfSight to Rust (entity-blocker slab)
+  Add an entity-blocker slab (or extend an existing one) that carries
+  the data hasEntityLineOfSight currently reads from JS: every live
+  unit's center + push radius and every live building's center +
+  half-extents, plus stable IDs for the source/target exclusion.
+  Replace hasCombatLineOfSight's body with a single Rust dispatch
+  that does terrain LOS (existing terrain_has_line_of_sight) plus an
+  entity LOS scan over the slab (line-vs-sphere for units, line-vs-
+  AABB for buildings, source/target excluded). Delete
+  hasEntityLineOfSight and the terrain-LOS thin wrapper from
+  lineOfSight.ts; the JS file shrinks to nothing more than the
+  weapon-shape predicate (weaponNeedsLineOfSight) and the constants
+  the FSM still needs (LOS_DROP_GRACE_TICKS).
+
+  Done when: lineOfSight.ts has zero per-call gate math in JS; the
+  WASM kernel is the only LOS implementation; parity shim is clean.
 
 AIM-08.3 — Port candidate scoring + ranking
   Move scoreAndFilterCandidate, fireTargetPreferenceRankSq,

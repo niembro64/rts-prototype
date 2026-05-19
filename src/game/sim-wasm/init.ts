@@ -172,6 +172,8 @@ import __wbg_init, {
   force_field_pool_center_y_ptr,
   force_field_pool_center_z_ptr,
   force_field_pool_radius_ptr,
+  force_field_clearance_segment,
+  force_field_clearance_arc,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
   snapshot_baseline_clear,
@@ -956,6 +958,29 @@ export interface ForceFieldPoolApi {
   readonly centerYPtr: () => number;
   readonly centerZPtr: () => number;
   readonly radiusPtr: () => number;
+  /** AIM-08.2 — direct-segment force-field clearance. Returns 1 if
+   *  the segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings`
+   *  non-self field spheres, 0 otherwise. Pass -1 as
+   *  `excludeOwnerEntityId` to disable the self-exclude. Endpoint
+   *  grazes within FORCE_FIELD_GRAZE_EPS don't count. Reads the FF
+   *  slab rebuilt each tick by stampForceFieldPool. */
+  readonly clearanceSegment: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    excludeOwnerEntityId: number,
+    maxCrossings: number,
+  ) => number;
+  /** AIM-08.2 — ballistic-arc force-field clearance. Walks the
+   *  parabola `pos = launch + v·t − 0.5·g·ẑ·t²` from 0..flightTime,
+   *  same interior-sampling rule as the segment kernel. Returns 1 if
+   *  total crossings ≤ `maxCrossings`, 0 otherwise. */
+  readonly clearanceArc: (
+    launchX: number, launchY: number, launchZ: number,
+    launchVx: number, launchVy: number, launchVz: number,
+    flightTime: number,
+    excludeOwnerEntityId: number,
+    maxCrossings: number,
+  ) => number;
 }
 
 /** Phase 10 D.3b — Per-recipient snapshot baseline registry. Each
@@ -1915,6 +1940,8 @@ export function initSimWasm(): Promise<SimWasm> {
           centerYPtr: force_field_pool_center_y_ptr,
           centerZPtr: force_field_pool_center_z_ptr,
           radiusPtr: force_field_pool_radius_ptr,
+          clearanceSegment: force_field_clearance_segment,
+          clearanceArc: force_field_clearance_arc,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

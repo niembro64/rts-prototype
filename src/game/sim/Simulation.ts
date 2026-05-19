@@ -23,7 +23,10 @@ import {
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
 import { checkTargetingParity } from './combat/targetingParityHarness';
-import { stampTargetingInputSlabs } from './combat/targetingInputStamping';
+import {
+  stampCombatTargetingPool,
+  stampForceFieldPool,
+} from './combat/targetingInputStamping';
 import {
   updateProjectiles,
   checkProjectileCollisions,
@@ -468,13 +471,19 @@ export class Simulation {
 
   // Update combat systems
   private updateCombat(dtMs: number): void {
+    // AIM-08.2 — stamp the FF pool BEFORE the FSM so the force-field
+    // clearance kernels read current-tick data. The JS path used to
+    // call getActiveForceFields() at the top of the FSM for the same
+    // reason; this preserves the same one-tick-stale envelope (the
+    // list is produced by the previous tick's updateForceFieldState).
+    stampForceFieldPool(this.world);
     // Update weapon cooldowns, targeting, and firing state in one armed-unit pass.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
-    // AIM-08.1 — stamp the SoA targeting input slabs from the just-
+    // AIM-08.1 — stamp the combat targeting slab from the just-
     // updated JS turret state. Today the slab is a non-authoritative
-    // shadow used by the parity harness; AIM-08.2..5 add the kernels
-    // that read from it.
-    stampTargetingInputSlabs(this.world);
+    // shadow used by the parity harness; AIM-08.5 will move this
+    // before the FSM and add a writeback pass.
+    stampCombatTargetingPool(this.world);
     // AIM-08.0 — debug-only parity check against the upcoming SoA path.
     checkTargetingParity(this.world);
 

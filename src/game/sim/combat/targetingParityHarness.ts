@@ -121,11 +121,12 @@ function decodeSlabTurretState(encoded: number): TurretState {
 }
 
 // AIM-08.1 — populate the SoA snapshot by reading the combat-targeting
-// slab. The slab is stamped from JS state in the same tick by
-// stampTargetingInputSlabs, so under this phase the slab is always a
-// post-FSM copy of the JS turret state. AIM-08.2..5 land kernels that
-// produce these fields on their own; the diff with the TS path then
-// validates each kernel against the still-authoritative TS FSM.
+// slab. AIM-08.2 split stamping into stampForceFieldPool (pre-FSM) and
+// stampCombatTargetingPool (post-FSM); this harness reads the latter,
+// so under the current phase the slab is always a post-FSM copy of the
+// JS turret state. AIM-08.3..5 land kernels that produce these fields
+// on their own; the diff with the TS path then validates each kernel
+// against the still-authoritative TS FSM.
 function captureSoaSnapshot(world: WorldState): void {
   releaseSnapshot(_soaSnapshot);
   const sim = getSimWasm();

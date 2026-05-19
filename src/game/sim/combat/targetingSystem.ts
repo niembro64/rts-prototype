@@ -29,7 +29,7 @@ import {
   weaponNeedsLineOfSight,
 } from './lineOfSight';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
-import { getActiveForceFields, type ActiveForceFieldRef } from './forceFieldTurret';
+import { getActiveForceFields } from './forceFieldTurret';
 
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
@@ -37,7 +37,6 @@ const _ffTargetPoint = { x: 0, y: 0, z: 0 };
 const _targetingTargetPosition = { x: 0, y: 0, z: 0 };
 const _targetingEnemyPosition = { x: 0, y: 0, z: 0 };
 const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
-const _emptyForceFields: readonly ActiveForceFieldRef[] = [];
 // Per-unit reusable mask of "weapon system disabled" flags, filled in
 // the Pass 0 reset walk and consumed by every subsequent pass. Avoids
 // calling weaponSystemDisabled 8+ times per weapon per tick (~9× the
@@ -51,13 +50,6 @@ const _weaponDisabled: boolean[] = [];
 // {NONE, Infinity}; Pass 2 still gates those slots out before reading.
 const _cachedFireRanks: TargetPreferenceRank[] = [];
 const _cachedFireDistSqs: number[] = [];
-// Per-unit reusable sub-list of force fields whose sphere overlaps the
-// firing unit's candidate-scan radius. Pass 2 / Pass 3 hand this to
-// chooseBestTargetCandidate so the per-candidate clearance loop only
-// considers fields that could possibly intersect a segment to anything
-// inside batchRadius. Priority-target and Pass-1 paths keep using the
-// full list (their targets can sit beyond batchRadius).
-const _unitNearForceFields: ActiveForceFieldRef[] = [];
 // Top-K pool used by chooseBestTargetCandidate to defer LOS / force-field
 // segment walks until after a cheap rank+distance ranking pass. Sized at
 // TARGETING_TOPK_LOS so the expensive segment-vs-terrain walk runs at
@@ -359,7 +351,11 @@ function hasWeaponLineOfSightToPoint(
  *  barriers" gameplay rule. The source unit's OWN field is skipped so
  *  a force-field emitter can target enemies outside its shield, and
  *  any other weapon mounted on the same unit can fight from within
- *  the protective sphere. */
+ *  the protective sphere.
+ *
+ *  `forceFieldsActive` is the per-tick fast-path flag: false when the
+ *  feature is disabled or no fields are emitted; lets the caller skip
+ *  the aim-point resolve and kernel dispatch entirely. */
 function hasWeaponForceFieldClearance(
   world: WorldState,
   source: Entity,
@@ -368,9 +364,9 @@ function hasWeaponForceFieldClearance(
   weaponX: number,
   weaponY: number,
   weaponZ: number,
-  activeForceFields: readonly ActiveForceFieldRef[],
+  forceFieldsActive: boolean,
 ): boolean {
-  if (activeForceFields.length === 0) return true;
+  if (!forceFieldsActive) return true;
   const targetPoint = resolveTargetAimPoint(
     target,
     weaponX, weaponY, weaponZ,
@@ -384,7 +380,6 @@ function hasWeaponForceFieldClearance(
   return hasForceFieldClearance(
     weaponX, weaponY, weaponZ,
     targetPoint.x, targetPoint.y, targetPoint.z,
-    activeForceFields,
     { excludeOwnerEntityId: source.id },
   );
 }
@@ -395,13 +390,12 @@ function hasWeaponForceFieldClearanceToPoint(
   weaponX: number,
   weaponY: number,
   weaponZ: number,
-  activeForceFields: readonly ActiveForceFieldRef[],
+  forceFieldsActive: boolean,
 ): boolean {
-  if (activeForceFields.length === 0) return true;
+  if (!forceFieldsActive) return true;
   return hasForceFieldClearance(
     weaponX, weaponY, weaponZ,
     point.x, point.y, point.z,
-    activeForceFields,
     { excludeOwnerEntityId: sourceEntityId },
   );
 }
@@ -434,9 +428,9 @@ function hasWeaponArcAwareForceFieldClearance(
   weapon: Turret,
   target: Entity,
   weaponX: number, weaponY: number, weaponZ: number,
-  activeForceFields: readonly ActiveForceFieldRef[],
+  forceFieldsActive: boolean,
 ): boolean {
-  if (activeForceFields.length === 0) return true;
+  if (!forceFieldsActive) return true;
   if (weapon.config.verticalLauncher === true) return true;
   if (weaponNeedsBallisticSolution(weapon)) {
     return hasArcForceFieldClearance(
@@ -445,14 +439,13 @@ function hasWeaponArcAwareForceFieldClearance(
       _targetingBallisticAim.launchVelocity.y,
       _targetingBallisticAim.launchVelocity.z,
       _targetingBallisticAim.flightTime,
-      activeForceFields,
       { excludeOwnerEntityId: source.id },
     );
   }
   return hasWeaponForceFieldClearance(
     world, source, weapon, target,
     weaponX, weaponY, weaponZ,
-    activeForceFields,
+    forceFieldsActive,
   );
 }
 
@@ -465,9 +458,9 @@ function hasWeaponArcAwareForceFieldClearanceToPoint(
   weapon: Turret,
   point: Vec3,
   weaponX: number, weaponY: number, weaponZ: number,
-  activeForceFields: readonly ActiveForceFieldRef[],
+  forceFieldsActive: boolean,
 ): boolean {
-  if (activeForceFields.length === 0) return true;
+  if (!forceFieldsActive) return true;
   if (weapon.config.verticalLauncher === true) return true;
   if (weaponNeedsBallisticSolution(weapon)) {
     return hasArcForceFieldClearance(
@@ -476,12 +469,11 @@ function hasWeaponArcAwareForceFieldClearanceToPoint(
       _targetingBallisticAim.launchVelocity.y,
       _targetingBallisticAim.launchVelocity.z,
       _targetingBallisticAim.flightTime,
-      activeForceFields,
       { excludeOwnerEntityId: source.id },
     );
   }
   return hasWeaponForceFieldClearanceToPoint(
-    source.id, point, weaponX, weaponY, weaponZ, activeForceFields,
+    source.id, point, weaponX, weaponY, weaponZ, forceFieldsActive,
   );
 }
 
@@ -573,8 +565,7 @@ function passesWeaponFireGates(
   weaponY: number,
   weaponZ: number,
   needsLOS: boolean,
-  needsForceFieldClearance: boolean,
-  activeForceFields: readonly ActiveForceFieldRef[],
+  forceFieldsActive: boolean,
 ): boolean {
   if (needsLOS && !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
     return false;
@@ -583,11 +574,11 @@ function passesWeaponFireGates(
     return false;
   }
   if (
-    needsForceFieldClearance &&
+    forceFieldsActive &&
     !hasWeaponArcAwareForceFieldClearance(
       world, source, weapon, enemy,
       weaponX, weaponY, weaponZ,
-      activeForceFields,
+      forceFieldsActive,
     )
   ) {
     return false;
@@ -603,13 +594,12 @@ function chooseBestTargetCandidate(
   rankCandidate: CandidateRanker,
   minimumRank: TargetPreferenceRank,
   seed: TargetCandidateChoice,
-  activeForceFields: readonly ActiveForceFieldRef[],
+  forceFieldsActive: boolean,
 ): TargetCandidateChoice {
   const weaponX = weapon.worldPos.x;
   const weaponY = weapon.worldPos.y;
   const weaponZ = weapon.worldPos.z;
   const needsLOS = weaponNeedsLineOfSight(weapon);
-  const needsForceFieldClearance = activeForceFields.length > 0;
   const sourcePlayerId = source.ownership?.playerId;
   const isPassive = weapon.config.passive === true;
 
@@ -683,7 +673,7 @@ function chooseBestTargetCandidate(
     if (!passesWeaponFireGates(
       world, source, weapon, enemy,
       weaponX, weaponY, weaponZ,
-      needsLOS, needsForceFieldClearance, activeForceFields,
+      needsLOS, forceFieldsActive,
     )) continue;
     return {
       target: enemy,
@@ -732,7 +722,7 @@ function chooseBestTargetCandidate(
     if (!passesWeaponFireGates(
       world, source, weapon, enemy,
       weaponX, weaponY, weaponZ,
-      needsLOS, needsForceFieldClearance, activeForceFields,
+      needsLOS, forceFieldsActive,
     )) continue;
 
     return {
@@ -802,13 +792,16 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
   const tick = world.getTick();
-  // Force-field LOS gate. Cached once per tick — every turret and
-  // candidate pair reads the same list. The list is populated by the
-  // previous tick's updateForceFieldState, so newly-formed fields take
-  // effect on the next targeting pass (≤16 ms at 60 TPS).
-  const activeForceFields = world.forceFieldsBlockTargeting
-    ? getActiveForceFields()
-    : _emptyForceFields;
+  // Force-field gate fast-path. The Rust force_field_clearance_*
+  // kernels read the FF pool slab stamped pre-FSM by
+  // stampForceFieldPool, but the JS wrappers still need a cheap
+  // tick-level early-out so we can skip the aim-point resolve when no
+  // fields are emitted (or the feature is disabled). The list is
+  // produced by the previous tick's updateForceFieldState, so newly-
+  // formed fields take effect on the next targeting pass (≤16 ms at
+  // 60 TPS).
+  const forceFieldsActive = world.forceFieldsBlockTargeting
+    && getActiveForceFields().length > 0;
 
   for (const unit of world.getArmedEntities()) {
     if (!unit.ownership || !unit.combat) continue;
@@ -946,7 +939,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           continue;
         }
         const ffClear = hasWeaponArcAwareForceFieldClearanceToPoint(
-          unit, weapon, priorityPoint, wpx, wpy, wpz, activeForceFields,
+          unit, weapon, priorityPoint, wpx, wpy, wpz, forceFieldsActive,
         );
         if (!ffClear) {
           weapon.state = 'idle';
@@ -1033,7 +1026,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           const ffClear = hasWeaponArcAwareForceFieldClearance(
             world, unit, weapon, priorityTarget,
             wpx, wpy, wpz,
-            activeForceFields,
+            forceFieldsActive,
           );
           if (!ffClear) {
             setWeaponTarget(weapon, unit, wi, null);
@@ -1129,7 +1122,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             weapon,
             target,
             wpx, wpy, wpz,
-            activeForceFields,
+            forceFieldsActive,
           );
         weapon.losBlockedTicks = losBlocked
           ? weapon.losBlockedTicks + 1
@@ -1213,7 +1206,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // ~18 cells deep (full terrain span) to 3-6 cells in ground
     // engagements.
     let batchedEnemies: Entity[] | null = null;
-    _unitNearForceFields.length = 0;
     if (needsAnyQuery) {
       // The spatial grid query is center-based: a candidate enters the
       // result only if its center sits inside the circle. The targeting
@@ -1232,24 +1224,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         ux, uy, batchRadius, playerId,
         uz - batchRadius, uz + batchRadius,
       );
-      // Pre-filter active force fields to ones whose sphere overlaps
-      // the firing unit's candidate-scan sphere. Any field outside
-      // (unit center ± batchRadius + field radius) cannot intersect a
-      // segment from the unit to a candidate inside batchRadius — its
-      // boundary check would always return "no crossing" so iterating
-      // it per candidate is pure waste.
-      if (activeForceFields.length > 0) {
-        for (let i = 0; i < activeForceFields.length; i++) {
-          const f = activeForceFields[i];
-          const dx = f.centerX - ux;
-          const dy = f.centerY - uy;
-          const dz = f.centerZ - uz;
-          const r = f.radius + batchRadius;
-          if (dx * dx + dy * dy + dz * dz <= r * r) {
-            _unitNearForceFields.push(f);
-          }
-        }
-      }
     }
 
     // Pass 2: Re-evaluate tracking weapons and close-range fallback
@@ -1299,7 +1273,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           rank: cachedRank,
           mirrorScore: seedMirrorScore,
         },
-        _unitNearForceFields,
+        forceFieldsActive,
       );
 
       if (choice.target) {
@@ -1332,7 +1306,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           rank: TARGET_RANK_NONE,
           mirrorScore: 0,
         },
-        _unitNearForceFields,
+        forceFieldsActive,
       );
 
       if (choice.target) {

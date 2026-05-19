@@ -1,18 +1,22 @@
-// AIM-08.1 — Per-tick stamping of the SoA targeting input slabs.
+// AIM-08.1/.2 — Per-tick stamping of the SoA targeting input slabs.
 //
-// Walks world.getArmedEntities() and the active force-field list once
-// per tick, writes every input the upcoming targeting kernels
-// (AIM-08.2..5) will need into the combat-targeting and force-field
-// slabs, and leaves the TS path in targetingSystem.ts authoritative.
-// Today only the AIM-08.0 parity harness reads from the slab; once
-// kernels land, the same data feeds them.
+// Split into two passes:
 //
-// Stamping runs AFTER updateTargetingAndFiringState in this phase so
-// the slab carries the post-FSM state and the parity check is a
-// trivial slab-vs-JS sync verification. AIM-08.2 will introduce
-// kernels that need pre-FSM inputs; at that point stamping moves
-// before the FSM and a small writeback pass syncs FSM-mutated fields
-// back into the slab.
+//   stampForceFieldPool — runs BEFORE updateTargetingAndFiringState.
+//     The AIM-08.2 force-field clearance kernels read the FF slab
+//     during the FSM, so the slab must be current-tick data on entry.
+//     Respects world.forceFieldsBlockTargeting; when the feature is
+//     disabled the slab is rebuilt at count=0 so the kernels return
+//     "clear" without inspecting individual fields.
+//
+//   stampCombatTargetingPool — runs AFTER updateTargetingAndFiringState.
+//     Captures the post-FSM (target, state, aimError, losBlockedTicks)
+//     tuple for the AIM-08.0 parity harness. AIM-08.5 will move this
+//     before the FSM and add a writeback pass; for now the JS FSM
+//     remains authoritative and the slab is its shadow.
+//
+// stampTargetingInputSlabs() is the convenience wrapper that runs
+// both passes — kept for callers that don't care about the split.
 
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
@@ -75,11 +79,44 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   return f;
 }
 
-export function stampTargetingInputSlabs(world: WorldState): void {
+/** Rebuild the FF pool slab from getActiveForceFields(). Runs BEFORE
+ *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels
+ *  read current-tick data — the JS targeting gate path used the same
+ *  list, so this preserves byte-for-byte parity with the previous
+ *  implementation.
+ *
+ *  When world.forceFieldsBlockTargeting is false, the slab is rebuilt
+ *  at count=0 instead. The kernels short-circuit on empty pools and
+ *  return "clear", matching the JS `_emptyForceFields` substitution. */
+export function stampForceFieldPool(world: WorldState): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  const fields = sim.forceFieldPool;
+  if (!world.forceFieldsBlockTargeting) {
+    fields.setCount(0);
+    return;
+  }
+  const active = getActiveForceFields();
+  fields.setCount(active.length);
+  for (let i = 0; i < active.length; i++) {
+    const f = active[i];
+    fields.setField(
+      i,
+      f.entityId,
+      f.entityId,
+      f.centerX, f.centerY, f.centerZ,
+      f.radius,
+    );
+  }
+}
+
+/** Capture the post-FSM (target, state, aimError, losBlockedTicks)
+ *  tuple for every armed entity's turrets so the AIM-08.0 parity
+ *  harness can diff slab vs JS. Runs AFTER updateTargetingAndFiringState. */
+export function stampCombatTargetingPool(world: WorldState): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   const targeting = sim.combatTargeting;
-  const fields = sim.forceFieldPool;
 
   // Drop every slot's ALIVE flag and turret count so dead entities and
   // shrunk turret arrays naturally disappear; kernels gate on those
@@ -148,19 +185,11 @@ export function stampTargetingInputSlabs(world: WorldState): void {
       );
     }
   }
+}
 
-  // Force fields are a flat list, not entity-keyed; rebuild from
-  // scratch each tick.
-  const active = getActiveForceFields();
-  fields.setCount(active.length);
-  for (let i = 0; i < active.length; i++) {
-    const f = active[i];
-    fields.setField(
-      i,
-      f.entityId,
-      f.entityId,
-      f.centerX, f.centerY, f.centerZ,
-      f.radius,
-    );
-  }
+/** Convenience wrapper that runs both passes back-to-back. Used by
+ *  callers that don't need to interleave the FSM between them. */
+export function stampTargetingInputSlabs(world: WorldState): void {
+  stampForceFieldPool(world);
+  stampCombatTargetingPool(world);
 }

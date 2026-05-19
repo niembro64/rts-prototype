@@ -6,14 +6,13 @@
 // gatlings) needs a clear sightline from its turret head to the target
 // aim point before it can lock on or keep firing.
 
-import { GRAVITY, LAND_CELL_SIZE } from '../../../config';
+import { LAND_CELL_SIZE } from '../../../config';
 import { lineSphereIntersectionT, rayBoxIntersectionT } from '../../math';
 import { getSimWasm } from '../../sim-wasm/init';
 import { spatialGrid } from '../SpatialGrid';
 import type { WorldState } from '../WorldState';
 import type { EntityId, Turret } from '../../../types/sim';
 import { UNIT_BLUEPRINTS } from '../blueprints/units';
-import type { ActiveForceFieldRef } from './forceFieldTurret';
 
 /** Step the LOS ray at this fraction of LAND_CELL_SIZE. Half-cell is
  *  the natural floor: terrain features authored at cell scale cannot
@@ -144,48 +143,6 @@ export function hasEntityLineOfSight(
   return true;
 }
 
-/** True if the segment from (sx,sy,sz) to (tx,ty,tz) crosses the
- *  spherical boundary of `field` — i.e., the field is physically
- *  "in the way" of the line. Boundary crossings near the segment
- *  endpoints (within FORCE_FIELD_GRAZE_EPS) are treated as
- *  non-blocking so a turret or target sitting on a shield edge
- *  doesn't flicker between locked and unlocked. */
-const FORCE_FIELD_GRAZE_EPS = 1e-6;
-function segmentCrossesForceFieldBoundary(
-  sx: number, sy: number, sz: number,
-  tx: number, ty: number, tz: number,
-  cx: number, cy: number, cz: number,
-  radius: number,
-): boolean {
-  // Cheap AABB reject before the quadratic. A shield off to one side of
-  // the segment's bounding box can't possibly contribute a crossing.
-  if (Math.max(sx, tx) < cx - radius || Math.min(sx, tx) > cx + radius) return false;
-  if (Math.max(sy, ty) < cy - radius || Math.min(sy, ty) > cy + radius) return false;
-  if (Math.max(sz, tz) < cz - radius || Math.min(sz, tz) > cz + radius) return false;
-
-  const dx = tx - sx;
-  const dy = ty - sy;
-  const dz = tz - sz;
-  const a = dx * dx + dy * dy + dz * dz;
-  if (a < 1e-9) return false;
-
-  const fx = sx - cx;
-  const fy = sy - cy;
-  const fz = sz - cz;
-  const b = 2 * (fx * dx + fy * dy + fz * dz);
-  const c = fx * fx + fy * fy + fz * fz - radius * radius;
-  const disc = b * b - 4 * a * c;
-  if (disc < 0) return false;
-
-  const sqrtDisc = Math.sqrt(disc);
-  const invDenom = 1 / (2 * a);
-  const t1 = (-b - sqrtDisc) * invDenom;
-  const t2 = (-b + sqrtDisc) * invDenom;
-  const lo = FORCE_FIELD_GRAZE_EPS;
-  const hi = 1 - FORCE_FIELD_GRAZE_EPS;
-  return (t1 > lo && t1 < hi) || (t2 > lo && t2 < hi);
-}
-
 export type ForceFieldClearanceOptions = {
   /** Number of force fields a turret may "see through." 0 = any
    *  intervening field blocks lock-on (default). Future targeting
@@ -198,6 +155,12 @@ export type ForceFieldClearanceOptions = {
    *  unit (teammate or enemy) still block. */
   excludeOwnerEntityId?: number;
 };
+
+/** AIM-08.2 — Sentinel passed to the Rust kernel when no owner is
+ *  excluded. -1 cannot collide with a real entityId because entity ids
+ *  are non-negative; the kernel skips a field iff its stamped owner
+ *  matches the sentinel-or-real value handed in. */
+const NO_EXCLUDED_OWNER = -1;
 
 /** True if no active force-field sphere stands between the segment's
  *  endpoints. Force fields are physical, team-agnostic barriers — the
@@ -212,105 +175,60 @@ export type ForceFieldClearanceOptions = {
  *  `hasArcForceFieldClearance` instead so the targeting test walks the
  *  same parabolic envelope the projectile will actually fly.
  *
- *  Performance: caller passes the per-tick cached field list (from
- *  getActiveForceFields()). With a typical handful of fields and the
- *  cheap AABB pre-check, this stays well under a microsecond per call. */
+ *  Implementation: dispatches to the Rust `force_field_clearance_segment`
+ *  kernel, which reads the FF pool slab stamped each tick by
+ *  stampForceFieldPool. Endpoint grazes (within FORCE_FIELD_GRAZE_EPS)
+ *  don't count, matching the projectile-collision behaviour so lock-on
+ *  agrees with what the simulator will actually let through. */
 export function hasForceFieldClearance(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
-  fields: readonly ActiveForceFieldRef[],
   options: ForceFieldClearanceOptions = {},
 ): boolean {
-  if (fields.length === 0) return true;
+  const sim = getSimWasm();
+  if (sim === undefined) return true;
   const maxCrossings = options.maxCrossings ?? 0;
-  const excludeOwnerEntityId = options.excludeOwnerEntityId;
-  let crossings = 0;
-  for (let i = 0; i < fields.length; i++) {
-    const f = fields[i];
-    if (f.entityId === excludeOwnerEntityId) continue;
-    if (
-      segmentCrossesForceFieldBoundary(
-        sx, sy, sz,
-        tx, ty, tz,
-        f.centerX, f.centerY, f.centerZ,
-        f.radius,
-      )
-    ) {
-      crossings++;
-      if (crossings > maxCrossings) return false;
-    }
-  }
-  return true;
+  const excludeOwnerEntityId = options.excludeOwnerEntityId ?? NO_EXCLUDED_OWNER;
+  return (
+    sim.forceFieldPool.clearanceSegment(
+      sx, sy, sz,
+      tx, ty, tz,
+      excludeOwnerEntityId,
+      maxCrossings,
+    ) === 1
+  );
 }
-
-/** Number of straight-line segments used to approximate a parabolic
- *  ballistic-arc trajectory for force-field clearance sampling. 16
- *  segments is plenty for the arcs typical in this game (sub-1000 wu
- *  range, sub-3s flight time) — small enough that even thin shields
- *  can't squeeze between two samples, large enough that the per-call
- *  cost is dominated by the field iteration, not the sampling. */
-const ARC_FF_CLEARANCE_SAMPLES = 16;
 
 /** True if the parabolic ballistic arc described by
  *  (launch position, launch velocity, flight time, universal gravity)
  *  does not enter any non-self force-field sphere between launch and
  *  impact. The arc-aware counterpart of `hasForceFieldClearance`:
- *  walks the same `pos = p₀ + v·t + ½·a·t²` envelope the projectile
+ *  walks the same `pos = p₀ + v·t − 0.5·g·ẑ·t²` envelope the projectile
  *  integrator advances each tick, so lock-on rules and projectile-
  *  collision rules agree on which shields stop a shot.
  *
- *  Implementation samples ARC_FF_CLEARANCE_SAMPLES interior points
- *  along the arc and tests each per non-self field. Endpoint samples
- *  (launch and impact) are intentionally skipped: shells that graze a
- *  shield exactly at the muzzle or at the impact point don't count as
- *  blocked, matching the FORCE_FIELD_GRAZE_EPS behaviour of the
- *  straight-segment test. */
+ *  Implementation: dispatches to the Rust `force_field_clearance_arc`
+ *  kernel, which interior-samples the parabola (i=1..N-1) so the same
+ *  "endpoints don't count" rule applies as for the straight test. */
 export function hasArcForceFieldClearance(
   launchX: number, launchY: number, launchZ: number,
   launchVx: number, launchVy: number, launchVz: number,
   flightTime: number,
-  fields: readonly ActiveForceFieldRef[],
   options: ForceFieldClearanceOptions = {},
 ): boolean {
-  if (fields.length === 0) return true;
-  if (!Number.isFinite(flightTime) || flightTime <= 0) return true;
-
+  const sim = getSimWasm();
+  if (sim === undefined) return true;
   const maxCrossings = options.maxCrossings ?? 0;
-  const excludeOwnerEntityId = options.excludeOwnerEntityId;
-  let crossings = 0;
-
-  // Sample the interior of the arc — i = 1..N-1 — so the same
-  // "endpoints don't count" rule applies as for the straight test.
-  // For each field, ask: does any interior sample lie strictly inside
-  // the sphere? If yes, the trajectory crosses that field's boundary
-  // somewhere in (0, flightTime) and the shot is blocked.
-  for (let f = 0; f < fields.length; f++) {
-    const field = fields[f];
-    if (field.entityId === excludeOwnerEntityId) continue;
-    const cx = field.centerX;
-    const cy = field.centerY;
-    const cz = field.centerZ;
-    const rSq = field.radius * field.radius;
-    let inside = false;
-    for (let i = 1; i < ARC_FF_CLEARANCE_SAMPLES; i++) {
-      const t = (i / ARC_FF_CLEARANCE_SAMPLES) * flightTime;
-      const x = launchX + launchVx * t;
-      const y = launchY + launchVy * t;
-      const z = launchZ + launchVz * t - 0.5 * GRAVITY * t * t;
-      const dx = x - cx;
-      const dy = y - cy;
-      const dz = z - cz;
-      if (dx * dx + dy * dy + dz * dz < rSq) {
-        inside = true;
-        break;
-      }
-    }
-    if (inside) {
-      crossings++;
-      if (crossings > maxCrossings) return false;
-    }
-  }
-  return true;
+  const excludeOwnerEntityId = options.excludeOwnerEntityId ?? NO_EXCLUDED_OWNER;
+  return (
+    sim.forceFieldPool.clearanceArc(
+      launchX, launchY, launchZ,
+      launchVx, launchVy, launchVz,
+      flightTime,
+      excludeOwnerEntityId,
+      maxCrossings,
+    ) === 1
+  );
 }
 
 /** Full direct-fire sightline: terrain plus live unit/building
