@@ -249,6 +249,30 @@
         <li>Backpressure should drop or coarsen snapshots before it lets the browser build an unbounded send queue.</li>
       </ul>
 
+      <h3>Delta thresholds match channel semantics</h3>
+      <p>
+        A <code>FULLSNAP</code> is a recovery baseline. A <code>DIFFSNAP</code> is a minimal update
+        from the last value actually sent to that recipient for that channel. Delta decisions must
+        not compare only against the previous full snapshot, and they must not compare against an
+        unsent local tick value. The baseline advances independently per field when that field is
+        emitted.
+      </p>
+      <p>
+        Position-like channels use absolute error because their meaning is spatial: movement
+        position uses world-unit distance, and rotation position uses radians or quaternion angular
+        distance. Derivative channels use relative error because their meaning is rate: movement
+        velocity and rotation velocity should ask whether the new velocity is meaningfully different
+        by percentage from the last velocity sent, not whether it moved by one fixed unit. The same
+        rule applies to any future acceleration-like derivative channel.
+      </p>
+      <p>
+        Derivative comparisons must treat zero as a semantic edge. If the last sent velocity was
+        non-zero and the current authoritative velocity is zero, the relative change is effectively
+        unbounded and the zero must be sent. Decaying velocities should keep producing deltas as they
+        change by meaningful percentages, so the client eventually learns that motion has stopped
+        instead of integrating an old non-zero derivative forever.
+      </p>
+
       <h3>Client prediction is an explicit contract</h3>
       <p>
         The client view should continue to run smoothly whether snapshots arrive at 60 Hz, 10 Hz,

@@ -10,7 +10,12 @@ import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getMirrorTargetScore } from './mirrorTargetPriority';
-import { resolveTargetAimPoint } from './aimSolver';
+import {
+  createTurretAimScratch,
+  resolveTargetAimPoint,
+  solveTurretAim,
+  solveTurretAimAtGroundPoint,
+} from './aimSolver';
 import {
   LOS_DROP_GRACE_TICKS,
   hasCombatLineOfSight,
@@ -53,6 +58,7 @@ const _candPoolEnemies: Entity[] = [];
 const _candPoolRanks: TargetPreferenceRank[] = [];
 const _candPoolDistSqs: number[] = [];
 const _candPoolMirrorScores: number[] = [];
+const _targetingBallisticAim = createTurretAimScratch();
 
 function nextTargetingReacquireTick(tick: number): number {
   return tick + 1;
@@ -221,6 +227,56 @@ function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
     (weapon.config.passive && !world.mirrorsEnabled) ||
     (weapon.config.shot?.type === 'force' && !world.forceFieldsEnabled)
   );
+}
+
+function weaponNeedsBallisticSolution(weapon: Turret): boolean {
+  const angleType = weapon.config.aimStyle.angleType;
+  return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
+}
+
+function hasWeaponBallisticSolution(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  target: Entity,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+): boolean {
+  if (!weaponNeedsBallisticSolution(weapon)) return true;
+  const solved = solveTurretAim(
+    source,
+    weapon,
+    target,
+    weaponX, weaponY, weaponZ,
+    weapon.pitch,
+    world.getTick(),
+    (x, y) => world.getGroundZ(x, y),
+    _targetingBallisticAim,
+  );
+  return solved?.hasBallisticSolution === true;
+}
+
+function hasWeaponBallisticSolutionToPoint(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  point: Vec3,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+): boolean {
+  if (!weaponNeedsBallisticSolution(weapon)) return true;
+  const solved = solveTurretAimAtGroundPoint(
+    source,
+    weapon,
+    point,
+    weaponX, weaponY, weaponZ,
+    weapon.pitch,
+    (x, y) => world.getGroundZ(x, y),
+    _targetingBallisticAim,
+  );
+  return solved.hasBallisticSolution === true;
 }
 
 function hasWeaponLineOfSight(
@@ -471,6 +527,9 @@ function chooseBestTargetCandidate(
     ) {
       continue;
     }
+    if (!hasWeaponBallisticSolution(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
+      continue;
+    }
     return {
       target: enemy,
       rank: _candPoolRanks[k],
@@ -675,6 +734,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         }
 
         const distSq = distanceSquared(wpx, wpy, priorityPoint.x, priorityPoint.y);
+        if (!hasWeaponBallisticSolutionToPoint(world, unit, weapon, priorityPoint, wpx, wpy, wpz)) {
+          weapon.state = 'tracking';
+          continue;
+        }
         if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, 0)) {
           weapon.state = 'engaged';
         } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, 0)) {
@@ -750,12 +813,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             continue;
           }
 
-          setWeaponTarget(weapon, unit, wi, priorityId);
           const distSq = distanceSquared(
             wpx, wpy,
             priorityTarget.transform.x, priorityTarget.transform.y,
           );
+          if (!hasWeaponBallisticSolution(world, unit, weapon, priorityTarget, wpx, wpy, wpz)) {
+            setWeaponTarget(weapon, unit, wi, null);
+            weapon.state = 'idle';
+            continue;
+          }
 
+          setWeaponTarget(weapon, unit, wi, priorityId);
           if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
             weapon.state = 'engaged';
           } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
@@ -810,6 +878,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           wpx, wpy,
           target.transform.x, target.transform.y,
         );
+        if (!hasWeaponBallisticSolution(world, unit, weapon, target, wpx, wpy, wpz)) {
+          setWeaponTarget(weapon, unit, wi, null);
+          weapon.state = 'idle';
+          continue;
+        }
 
         // LOS gating: a blocked sightline (direct-fire terrain/entity
         // occluders) or an intervening force-field sphere demotes

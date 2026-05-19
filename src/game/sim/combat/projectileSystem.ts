@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
-import { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot } from '../types';
+import { isLineShot, isLineShotType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -11,6 +11,8 @@ import {
   getTransformCosSin,
   applyHomingSteering,
   countBarrels,
+  integrateConstantAccelerationPosition,
+  integrateConstantAccelerationVelocity,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
@@ -348,7 +350,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
-      if (isProjectileShot(shot) && !isRocketLikeShot(shot) && weapon.ballisticAimInRange === false) {
+      if (isProjectileShot(shot) && weapon.ballisticAimInRange === false) {
         continue;
       }
 
@@ -631,7 +633,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 // Reusable array for homing velocity updates (avoid per-frame allocation)
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
 
-// 3D projectile integration: explicit-Euler advance on (x, y, z).
+// 3D projectile integration: exact constant-acceleration advance on
+// (x, y, z). This must stay paired with the ballistic aim solver,
+// which solves against the same `pos + v*t + 0.5*a*t^2` equation.
 // Gravity constant lives in config.ts so it's shared with the physics
 // engine, client dead-reckoning, debris, and explosion sparks.
 
@@ -740,25 +744,29 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = entity.transform.y;
     proj.prevZ = entity.transform.z;
 
-    // Gravity integration: every traveling projectile with mass loses
-    // GRAVITY·dt each tick. D-gun waves are their own terrain-following
-    // projectile class: they move horizontally and snap to local terrain
-    // height every tick.
+    // Gravity integration: every traveling projectile with mass follows
+    // the same constant-acceleration equation the turret aim solver
+    // uses. D-gun waves are their own terrain-following projectile
+    // class: they move horizontally and snap to local terrain height
+    // every tick.
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
     const prevTerrainFollowZ = entity.transform.z;
+    const nextZ = terrainFollow
+      ? prevTerrainFollowZ
+      : integrateConstantAccelerationPosition(entity.transform.z, proj.velocityZ, -GRAVITY, dtSec);
     if (!terrainFollow) {
-      proj.velocityZ -= GRAVITY * dtSec;
+      proj.velocityZ = integrateConstantAccelerationVelocity(proj.velocityZ, -GRAVITY, dtSec);
     }
 
     entity.transform.x += proj.velocityX * dtSec;
     entity.transform.y += proj.velocityY * dtSec;
     if (terrainFollow) {
-      const nextZ = world.getGroundZ(entity.transform.x, entity.transform.y) +
+      const terrainZ = world.getGroundZ(entity.transform.x, entity.transform.y) +
         (entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT);
-      proj.velocityZ = dtSec > 0 ? (nextZ - prevTerrainFollowZ) / dtSec : 0;
-      entity.transform.z = nextZ;
+      proj.velocityZ = dtSec > 0 ? (terrainZ - prevTerrainFollowZ) / dtSec : 0;
+      entity.transform.z = terrainZ;
     } else {
-      entity.transform.z += proj.velocityZ * dtSec;
+      entity.transform.z = nextZ;
     }
 
     const wasSourceCleared = !!proj.hasLeftSource;

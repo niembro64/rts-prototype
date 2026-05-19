@@ -22,10 +22,9 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { getMovementAngle, resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
+import { resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
-import { TURRET_RETURN_TO_FORWARD } from '../../../config';
 import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -188,16 +187,11 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       }
 
       if (!hasActiveTarget) {
-        // No target: pitch settles to 0 (barrel horizontal); yaw
-        // either glides toward forward (match movement direction)
-        // or coasts via the damper with target = current angle (no
-        // pull), letting the existing damping bleed velocity off.
-        targetPitch = 0;
-        if (TURRET_RETURN_TO_FORWARD) {
-          targetAngle = getMovementAngle(unit);
-        } else {
-          targetAngle = weapon.rotation;
-        }
+        // No target means no authored default pose. Hold the current
+        // yaw/pitch as the spring target and let the normal derivative
+        // state decay through the same integrator used while tracking.
+        targetAngle = weapon.rotation;
+        targetPitch = weapon.pitch;
       }
 
       // --- 2) Damped-spring integrate both axes toward targets. ---

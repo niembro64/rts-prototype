@@ -1,7 +1,7 @@
 import type { Vec3 } from '@/types/vec2';
 import type { TurretAimLockOnType } from '@/types/blueprints';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
-import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../types';
+import { getShotMaxLifespan, isProjectileShot } from '../types';
 import {
   clamp,
   getTransformCosSin,
@@ -507,10 +507,6 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   return true;
 }
 
-function projectileCanFallbackToRay(shot: ProjectileShot): boolean {
-  return isRocketLikeShot(shot);
-}
-
 function solveProjectileShotAngles(
   shot: ProjectileShot,
   launchSpeed: number,
@@ -539,6 +535,24 @@ function copyShotAngleSolution(
   out.hasBallisticSolution = true;
 }
 
+function writeNoBallisticSolutionAim(
+  weapon: Turret,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  currentPitch: number,
+  out: ProjectileTurretAim,
+): void {
+  out.yaw = weapon.rotation;
+  out.pitch = currentPitch;
+  out.hasBallisticSolution = false;
+  writeFallbackDirectionAimPoint(
+    mountX, mountY, mountZ,
+    out.yaw, out.pitch,
+    out.aim,
+  );
+}
+
 export function solveProjectileTurretAim(
   source: Entity,
   weapon: Turret,
@@ -546,7 +560,7 @@ export function solveProjectileTurretAim(
   mountX: number,
   mountY: number,
   mountZ: number,
-  _currentPitch: number,
+  currentPitch: number,
   inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
@@ -588,9 +602,6 @@ export function solveProjectileTurretAim(
   writeKinematicStateAt(_originState, mountX, mountY, mountZ, originVelocity, originAcceleration);
   writeKinematicState(_targetState, out.aim, targetVelocity, targetAcceleration);
 
-  const horizDist = Math.hypot(out.aim.x - mountX, out.aim.y - mountY);
-  const heightDiff = out.aim.z - mountZ;
-  const fallbackYaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
   const shotAngles = solveProjectileShotAngles(
     shot,
     launchSpeed,
@@ -600,9 +611,12 @@ export function solveProjectileTurretAim(
   if (shotAngles) {
     copyShotAngleSolution(shotAngles, out);
   } else {
-    out.yaw = fallbackYaw;
-    out.hasBallisticSolution = projectileCanFallbackToRay(shot);
-    out.pitch = Math.atan2(heightDiff, horizDist);
+    writeNoBallisticSolutionAim(
+      weapon,
+      mountX, mountY, mountZ,
+      currentPitch,
+      out,
+    );
   }
   writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
   return out;
@@ -615,6 +629,7 @@ export function solveProjectileTurretAimAtPoint(
   mountX: number,
   mountY: number,
   mountZ: number,
+  currentPitch: number,
   inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
@@ -638,10 +653,6 @@ export function solveProjectileTurretAimAtPoint(
     out.aim.z = groundHeightAt(out.aim.x, out.aim.y);
   }
 
-  const yaw = Math.atan2(out.aim.y - mountY, out.aim.x - mountX);
-  const horizDist = Math.hypot(out.aim.x - mountX, out.aim.y - mountY);
-  const heightDiff = out.aim.z - mountZ;
-
   writeKinematicStateAt(_originState, mountX, mountY, mountZ, originVelocity, originAcceleration);
   writeKinematicState(_targetState, out.aim, out.targetVelocity, out.targetAcceleration);
 
@@ -654,9 +665,12 @@ export function solveProjectileTurretAimAtPoint(
   if (shotAngles) {
     copyShotAngleSolution(shotAngles, out);
   } else {
-    out.yaw = yaw;
-    out.hasBallisticSolution = projectileCanFallbackToRay(shot);
-    out.pitch = Math.atan2(heightDiff, horizDist);
+    writeNoBallisticSolutionAim(
+      weapon,
+      mountX, mountY, mountZ,
+      currentPitch,
+      out,
+    );
   }
   writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
   return out;
@@ -694,6 +708,7 @@ export function solveTurretAimAtGroundPoint(
       weapon,
       aimPoint,
       mountX, mountY, mountZ,
+      currentPitch,
       true,
       groundHeightAt,
       out,

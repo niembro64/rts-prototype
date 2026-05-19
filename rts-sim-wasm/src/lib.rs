@@ -1778,22 +1778,28 @@ pub fn apply_homing_steering(
     out_buf[3] = (rot_yn * speed).atan2(rot_xn * speed);
 }
 
-/// Per-tick ballistic integrator. For slots 0..count:
-///   vel_z[i] -= GRAVITY * dt_sec
+/// Per-tick ballistic integrator. For slots 0..count, advances with the
+/// same constant-acceleration equation the ballistic aim solver uses:
 ///   pos_x[i] += vel_x[i] * dt_sec
 ///   pos_y[i] += vel_y[i] * dt_sec
-///   pos_z[i] += vel_z[i] * dt_sec
+///   pos_z[i] += vel_z[i] * dt_sec - 0.5 * GRAVITY * dt_sec^2
+///   vel_z[i] -= GRAVITY * dt_sec
 /// Same math as the inner loop in projectileSystem._updatePackedProjectilesJS.
 #[wasm_bindgen]
 pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
     let p = projectile_pool();
     let n = count as usize;
     debug_assert!(n <= PROJECTILE_POOL_CAPACITY_USIZE);
+    let half_dt_sq = 0.5 * dt_sec * dt_sec;
     for i in 0..n {
-        p.vel_z[i] -= GRAVITY * dt_sec;
         p.pos_x[i] += p.vel_x[i] * dt_sec;
         p.pos_y[i] += p.vel_y[i] * dt_sec;
-        p.pos_z[i] += p.vel_z[i] * dt_sec;
+        if p.has_gravity[i] != 0 {
+            p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
+            p.vel_z[i] -= GRAVITY * dt_sec;
+        } else {
+            p.pos_z[i] += p.vel_z[i] * dt_sec;
+        }
     }
 }
 

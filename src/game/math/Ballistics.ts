@@ -1,9 +1,10 @@
 // Ballistic aim helpers. The core solver finds intercept time for
 // origin, target, and projectile states under constant acceleration;
 // solveTurretShotAngles is the single turret-facing API that turns
-// that intercept into yaw/pitch. Low arcs use the earliest root, high
-// arcs keep the later lofted root. This file is imported by both the
-// authoritative sim and client prediction. Zero state, pure functions.
+// that intercept into yaw/pitch. Low arcs use the earliest root. High
+// arcs require a distinct later lofted root instead of silently using
+// the only/low root. This file is imported by both the authoritative
+// sim and client prediction. Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
 
@@ -67,7 +68,25 @@ const INTERCEPT_BISECT_STEPS = 14;
 const INTERCEPT_MIN_TIME = 1 / 120;
 const INTERCEPT_MAX_TIME = 30;
 const INTERCEPT_ROOT_EPSILON = 1e-5;
+const HIGH_ARC_MIN_TIME_SEPARATION = 1 / 120;
 const SHOT_DIRECTION_EPSILON = 1e-6;
+
+export function integrateConstantAccelerationPosition(
+  position: number,
+  velocity: number,
+  acceleration: number,
+  dtSec: number,
+): number {
+  return position + velocity * dtSec + 0.5 * acceleration * dtSec * dtSec;
+}
+
+export function integrateConstantAccelerationVelocity(
+  velocity: number,
+  acceleration: number,
+  dtSec: number,
+): number {
+  return velocity + acceleration * dtSec;
+}
 
 function isFiniteVec3(v: KinematicVec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -193,6 +212,11 @@ function writeInterceptSolution(
 // window (initSimWasm hasn't resolved) and as a reference impl.
 const _interceptInputScratch = new Float64Array(22);
 const _interceptOutScratch = new Float64Array(7);
+const _lowArcProbeSolution: KinematicInterceptSolution = {
+  time: 0,
+  aimPoint: { x: 0, y: 0, z: 0 },
+  launchVelocity: { x: 0, y: 0, z: 0 },
+};
 
 /**
  * Constant-acceleration intercept solver. Both origin and target are
@@ -225,21 +249,39 @@ export function solveKinematicIntercept(
  * Canonical turret shot-angle solver. Callers provide the full kinematic
  * state of the firing mount and target plus the projectile acceleration;
  * this returns the yaw/pitch for the launch velocity that actually reaches
- * the target. `low` selects the earliest intercept root, `high` keeps the
- * later lofted root when one exists.
+ * the target. `low` selects the earliest intercept root. `high` keeps the
+ * later lofted root only when it is distinct from the earliest root.
  */
 export function solveTurretShotAngles(
   input: TurretShotAngleInput,
   out: TurretShotAngleSolution,
 ): TurretShotAngleSolution | null {
-  const intercept = solveKinematicIntercept({
+  const interceptInput: KinematicInterceptInput = {
     origin: input.origin,
     target: input.target,
     projectileSpeed: input.projectileSpeed,
     projectileAcceleration: input.projectileAcceleration,
-    preferLateSolution: input.arcPreference === 'high',
+    preferLateSolution: false,
     maxTimeSec: input.maxTimeSec,
-  }, out);
+  };
+
+  let intercept: KinematicInterceptSolution | null = null;
+  if (input.arcPreference === 'high') {
+    const lowIntercept = solveKinematicIntercept(interceptInput, _lowArcProbeSolution);
+    interceptInput.preferLateSolution = true;
+    intercept = solveKinematicIntercept(interceptInput, out);
+    if (
+      intercept !== null &&
+      (
+        lowIntercept === null ||
+        intercept.time <= lowIntercept.time + HIGH_ARC_MIN_TIME_SEPARATION
+      )
+    ) {
+      return null;
+    }
+  } else {
+    intercept = solveKinematicIntercept(interceptInput, out);
+  }
   if (intercept === null) return null;
 
   const launch = out.launchVelocity;

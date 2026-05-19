@@ -9,312 +9,121 @@ As we go make sure we are not creating duplicate code, we should be reusing code
 
 DESIGN PHILOSOPHY GAP PLAN
 
-Source of goal: design_philosophy.html
-Current baseline checked against: the current TypeScript/Vue/Three.js/Rust-WASM codebase.
+==============================================================================
 
-These items are ordered so each step creates a better foundation for the next one.
-Delete each whole item when the current implementation fully matches the goal.
+AIMING / TARGETING SYSTEM ISSUES
 
-DP-02 - Turn snapshots into an owned binary wire path instead of JS DTOs plus
-library MessagePack on the hot path.
+AIM-01 - Turret delta snapshots can miss target switches and pitch-velocity changes.
 
-Goal:
-Snapshots should be compact binary payloads. The hot path should not rely on
-deep JSON-like object trees, generic encoders, or avoidable per-snapshot object
-walks.
+Evidence:
+- src/game/network/stateSerializerEntities.ts:164-190 serializes each turret's targetId and pitchVel when ENTITY_CHANGED_TURRETS is emitted.
+- src/game/network/stateSerializerEntityDelta.ts:50-70 stores targetBits, turretRots, turretAngVels, turretPitches, and forceFieldRanges, but does not store per-turret target IDs or pitch velocities.
+- src/game/network/stateSerializerEntityDelta.ts:256-274 compares targetBits only, so target A -> target B with both non-null does not dirty the turret by itself.
+- src/game/network/stateSerializerEntityDelta.ts:329-336 captures rotation, yaw velocity, pitch, and force-field range, but not pitchVelocity.
 
-Current:
-src/game/network/stateSerializer.ts still builds pooled JavaScript snapshot
-DTOs. The production snapshot wire path is now Rust-first:
-src/game/network/snapshotWireCodec.ts asks the Rust-backed envelope encoder for
-bytes and falls back to @msgpack/msgpack only when WASM is unavailable, DTO key
-order is unsupported, or a development parity check catches a mismatch. The
-Rust crate already has snapshot_encode_* and envelope encoder functions, and
-src/game/sim-wasm/snapshotEncoderTest.ts checks byte-equality fixtures.
-The normal envelope tail is now Rust-emitted for gameState, isDelta,
-removedEntityIds, and visibilityFiltered when the snapshot key order is
-compatible; raw top-level fallback remains for unported/debug fields such as
-grid and unsupported audio/projectile variants.
-serverMeta is now Rust-emitted, including numeric and string snapshot/keyframe
-display values.
-Full-keyframe static terrain and buildability are now Rust-emitted instead of
-using raw top-level MessagePack fallback.
-Explicit false projectile-spawn booleans and explicit true beam
-endpointDamageable values are now represented in the flat projectile scratch
-flags and emitted by Rust instead of forcing raw projectiles fallback.
-The Rust-backed encode adapter now avoids array-helper allocation in the
-remaining DTO packing bridge for snapshot key collection, economy player IDs,
-factory waypoint strings, projectile despawn IDs, and audio death/impact
-context selection.
-Economy snapshot serialization now pools each per-player DTO entry and publishes
-a serializer-owned flat wire row buffer, so the Rust encoder no longer has to
-enumerate economy object keys or walk nested economy DTO fields on production
-snapshots.
-The Rust encode bridge also reuses the empty string-slot table so ordinary unit
-and factoryless-building entity emits do not allocate a Map just to encode no
-strings.
-Projectile spawn DTOs now normalize optional boolean flags so false values are
-omitted before the Rust wire adapter sees them, keeping ordinary projectile
-snapshots on the Rust path instead of raw MessagePack fallback.
-Projectile snapshot serialization now publishes serializer-owned flat wire rows
-for spawns, despawns, velocity updates, beam updates, and beam points. The Rust
-encode bridge copies those rows into WASM scratch for production snapshots and
-only walks projectile DTOs for ad-hoc/debug snapshots that do not carry the flat
-wire source.
-Entity snapshot serialization now publishes serializer-owned flat wire rows for
-basic entities, unit rows, building rows, entity turrets, unit actions, factory
-queues, and factory waypoints. The Rust encode bridge consumes those rows
-before falling back to DTO walking only for ad-hoc/debug entity arrays without a
-registered wire source or unsupported mixed entity shapes.
-Entity turret payloads now also publish serializer-owned flat wire rows and are
-copied directly into WASM turret scratch for unit and non-factory building
-entities, so turret-bearing combat entities no longer require the encode bridge
-to walk pooled turret DTOs.
-Unit action payloads now publish serializer-owned flat wire rows plus a compact
-per-snapshot action string table, so units with queued move/attack/build style
-orders can stay on the flat entity row path without encode-time DTO walking.
-Factory queue and waypoint payloads now publish serializer-owned flat wire rows
-plus a compact waypoint string table, so factory buildings can stay on the flat
-entity row path instead of forcing the encode bridge to walk factory DTOs.
-Entity, projectile, and economy flat wire row buffers now use grow-only typed
-array storage instead of boxed JavaScript number arrays, so the Rust bridge
-copies active packed numeric rows into WASM scratch without array-length
-trimming or whole-capacity copies.
-Minimap snapshot serialization now publishes per-listener flat wire rows, so
-the Rust-backed envelope copies high-count minimap entries into WASM scratch
-without walking the pooled minimap DTO array at encode time.
-DP-02 encode instrumentation now exists behind ?dp02=1 /
-VITE_BA_DP02_SNAPSHOT_WIRE=1. It reports active snapshot wire encode time and
-byte size per listener, snapshot rate, and unit-count band, and exposes
-window.__BA_DP02_SNAPSHOT_WIRE__ for repeatable captures.
-The forced-JS MessagePack baseline at 5/8/10 SPS for 1k and 5k units was
-captured on 2026-05-17 in docs/dp-02-snapshot-wire-instrumentation.md.
-DP-02 Rust parity comparison exists in development behind ?dp02rust=1 /
-VITE_BA_DP02_RUST_SNAPSHOT_WIRE=1. The legacy JS sender can be forced with
-?dp02js=1 / VITE_BA_DP02_FORCE_JS_SNAPSHOT_WIRE=1. Otherwise, the parity path
-compares the Rust-backed send bytes with JavaScript MessagePack bytes without
-swapping the outgoing sender back to JS on mismatch. It exposes
-window.__BA_DP02_RUST_SNAPSHOT_WIRE__.stats(). Unported DTO pieces use explicit
-raw MessagePack fallback counters so the remaining burn-down is measurable.
-Normal 1k and 5k delta parity probes now send through Rust with zero mismatches
-and zero raw entity fallback after making pooled DTO scratch fields
-non-enumerable and stabilizing entity changedFields key order. Full-keyframe
-terrain/buildability parity now stays on the Rust path.
+Why it matters:
+The client can keep a stale targetId after a same-presence target switch, and it can keep stale pitchVelocity even though the client prediction path integrates turret pitch from pitch velocity. This violates the snapshot philosophy that deltas are based on the last value actually sent per channel.
 
-Steps:
-1. Remove DTO construction from the hottest entity/projectile/economy paths by
-   writing directly from SoA/WASM-side pools into the binary envelope.
+Fix direction:
+Track exact per-turret target IDs and pitch velocities in the JS PrevEntityState and in the Rust snapshot baseline, compare target IDs exactly, compare pitch velocity against the rotation-velocity threshold, and add a regression for same-state target switches.
 
-DP-03 - Make client prediction prove itself at low snapshot cadence.
+AIM-02 - Top-K LOS filtering can make weapons ignore valid visible targets.
 
-Goal:
-The client sim should stay smooth at render cadence whether snapshots arrive at
-60 Hz, 10 Hz, 5 Hz, or briefly not at all. Commands should feel immediate through
-local intent feedback, not by giving the client authority.
+Evidence:
+- src/game/sim/combat/targetingSystem.ts:423-427 collects only the top TARGETING_TOPK_LOS pre-LOS candidates.
+- src/game/sim/combat/targetingSystem.ts:505-541 checks LOS/force-field/ballistic gates only for that small pool and returns the seed if all pooled candidates are blocked.
 
-Current:
-ClientViewState, ClientPredictionStepper, ClientUnitPrediction, projectile spawn
-queues, beam path targets, drift modes, and prediction LOD already implement a
-real prediction/correction path. But the high 64 SPS default can hide weak spots,
-and local command feedback is still mostly visual-only previews: selection,
-build ghost, line-drag targets, and waypoint drawing. Most gameplay-visible
-state waits for the authoritative snapshot.
-DP-03 client prediction diagnostics now exist behind ?dp03=1 /
-VITE_BA_DP03_CLIENT_PREDICTION=1. They expose
-window.__BA_DP03_CLIENT_PREDICTION__.stats() for per-frame prediction cost,
-active target age, correction distance, correction velocity, and correction
-target age. Capture notes live in docs/dp-03-client-prediction-diagnostics.md.
-DP-03 snapshot impairment now exists behind ?dp03impair=1 /
-VITE_BA_DP03_SNAPSHOT_IMPAIRMENT=1, with deterministic delay, jitter, and
-drop-every-N controls for both local in-memory and remote WebRTC snapshot
-delivery. It exposes window.__BA_DP03_SNAPSHOT_IMPAIRMENT__.
+Why it matters:
+In dense fights, the four closest or highest-ranked candidates can be behind terrain, buildings, units, or shields while the fifth candidate is valid. The weapon then keeps its old target or stays idle even though a visible target exists. The comment at src/game/sim/combat/targetingSystem.ts:505-508 says blocked candidates are rejected, but candidates outside the top-K are never tested.
 
-Steps:
-1. Run and record correction behavior with the DP-01 5-10 SPS default.
-2. Add local intent previews for move, attack, guard, build, repair, reclaim,
-   scan, production, and factory waypoints without mutating authoritative state.
-3. Confirm projectiles, beams, force fields, jump arcs, hover lift, and turret
-   rotation can coast through at least 500-1000 ms of missing snapshots.
-4. Keep the deliberately delayed/dropped snapshot test mode passing.
+Fix direction:
+Keep the cheap rank pass, but continue filling/testing candidates until a valid LOS/clearance/ballistic target is found, or use an adaptive fallback scan after top-K fails. Add a test with K blocked candidates and one valid candidate behind them.
 
-DP-04 - Harden the command authority boundary.
+AIM-03 - The batched acquisition broadphase can miss large targets whose edge is in range.
 
-Goal:
-Client commands go directly to the authoritative host. The host validates player
-authority, filters illegal unit IDs, clamps unsafe parameters, and enqueues only
-safe gameplay commands.
+Evidence:
+- src/game/sim/combat/targetingSystem.ts:78-82 accepts targets out to range + targetRadius.
+- src/game/sim/combat/targetingSystem.ts:945-1004 builds the spatial query radius from maxAcquireRange + maxWeaponOffset only, without any possible target radius.
 
-Current:
-GameServer.receiveCommand already keeps server-control commands host-only for
-network players and filters many gameplay commands by owned entity/factory.
-Command callers now pass an explicit authority mode: host-admin, local-offline,
-player, or spectator. Spectator/local undefined command attribution no longer
-falls through to an admin override. All command paths now pass through a single
-server-side sanitizer before authorization; it rejects malformed ticks, entity
-IDs, queue indexes, unit/building IDs, waypoint/tilt/force-field enum strings,
-and boolean flags, clamps x/y targets to the map, caps area radii, and caps
-factory waypoint counts. However, ownership authorization still lives in
-GameServer, and server-control commands apply immediately outside the normal
-command queue.
+Why it matters:
+Large buildings or future large units can be legally targetable by near edge but absent from the candidate array because their center is outside the batched spatial query. Priority attack can still work because it bypasses the acquisition broadphase, so auto-targeting and ordered targeting can disagree.
 
-Steps:
-1. Move the remaining ownership authorization helpers into the command boundary
-   module so sanitization and authorization have one owner.
-2. Decide which server-control commands are truly immediate and which should be
-   queued or snapshot-versioned.
-3. Add hostile-client tests for wrong-owner unit IDs, mixed-owner selections,
-   bad coordinates, invalid queue indexes, invalid unit IDs, and spectator input.
+Fix direction:
+Make the broadphase radius match the exact range contract by including the maximum target acquisition radius, or make the spatial query radius-aware so entities whose volumes overlap the query are returned.
 
-DP-05 - Make AOI and fog filtering the default remote snapshot path.
+AIM-04 - Targeting and line-shot range are still ground-plane ranges, not full 3D ranges.
 
-Goal:
-Area-of-interest, fog filtering, minimap filtering, removals, shroud state, and
-recipient-specific deltas are server responsibilities. Full-world snapshots are
-for global observers, recovery, or debugging, not normal remote play.
+Evidence:
+- src/game/sim/combat/targetingSystem.ts:94-99 explicitly treats targeting ranges as ground-plane circles.
+- src/game/sim/combat/targetingSystem.ts:448-452 ranks candidates by XY distance only.
+- src/game/sim/combat/lineShotRange.ts:9-11 and 37-57 extend beams/lasers until their XY projection leaves a 2D circle, which can make steeply pitched line shots much longer in 3D.
 
-Current:
-ServerSnapshotPublisher, stateSerializerVisibility, shroud bitmaps, AOI listener
-bounds, team caches, recipient delta tracking, and static-terrain suppression
-already point in the right direction. The remaining gap is proving that every
-normal remote listener always has the correct recipient filter and AOI behavior,
-and that fallback keyframes/debug paths do not leak unnecessary full-world state.
+Why it matters:
+design_philosophy.html says altitude and contact are real gameplay inputs, but weapon range currently ignores vertical separation for target validity. That may be a deliberate RTS-style range model, but it is a design gap as written because high/low targets can be targetable by horizontal range even when the true 3D distance is much larger.
 
-Steps:
-1. Audit every addSnapshotListener call and mark whether it is player-filtered,
-   spectator/global, lobby preview, or debug.
-2. Ensure remote real-battle clients start with a player-filtered listener before
-   any gameplay snapshot can be sent.
-3. Make camera AOI updates robust when the client is loading, tab-throttled, or
-   has not sent a camera footprint yet.
-4. Add snapshot-size and entity-count telemetry split by full, delta, AOI, and
-   visibility-filtered output.
-5. Add tests for hidden enemies, out-of-AOI enemies, destroyed out-of-vision
-   buildings, shroud keyframes, scan pulses, and spectator/global views.
+Fix direction:
+Choose and document the intended contract. If range should be physical, convert targeting, range overlays, line-shot endpoints, and release/acquire hysteresis to 3D or to explicit projectile-specific envelopes. If range should remain ground-projected for BAR-style readability, document that as an intentional exception to the full-3D rule.
 
-DP-06 - Move remaining high-count simulation hot paths toward SoA and WASM.
+AIM-05 - Homing guidance is kinematic velocity steering, not bounded force/thrust physics.
 
-Goal:
-Dense simulation work should use stable IDs, packed numeric fields, typed arrays,
-struct-of-arrays storage, and WASM kernels where batching beats JS object loops.
-TypeScript should orchestrate, not own high-count numeric loops.
+Evidence:
+- design_philosophy.html:429-454 says guided projectiles should counter gravity with thrust inside the steering update, and that counter-gravity should be bounded by available thrust.
+- src/game/math/HomingSteering.ts:1-12 and 31-45 rotate the velocity vector toward the target and preserve speed.
+- src/game/sim/combat/projectileSystem.ts:784-890 applies gravity, computes an intercept, then rotates velocity with applyHomingSteering.
 
-Current:
-Several important systems already moved in this direction: Body3D pool,
-projectile pool, spatial grid, pathfinder, terrain mesh sampling, hover
-orientation batch, snapshot baseline diff, and parts of snapshot encoding.
-But authoritative world state is still a Map<EntityId, Entity>, many systems
-iterate cached Entity[] lists, and hot paths such as targeting, construction,
-energy, capture, cloak/detection, combat activity, factory production, and some
-projectile/collision branches still operate through object graphs.
+Why it matters:
+The current homing path effectively lets steering erase gravity's directional effect by rotating post-gravity velocity back toward the target ray. Projectile mass and available thrust do not bound the correction. A weak rocket cannot sag naturally under insufficient lift, which conflicts with the physics model.
 
-Steps:
-1. Produce a per-system tick-cost profile at 1k, 3k, and 5k active units.
-2. Rank systems by cost and allocation rate, not by code size.
-3. Convert the top offenders to typed-array/SoA storage behind the existing
-   public APIs first.
-4. Batch numeric kernels into Rust/WASM only after the data is already contiguous.
-5. Keep TypeScript as orchestration and remove old object-loop paths after parity
-   tests pass.
+Fix direction:
+Represent homing as an acceleration/thrust budget: lateral guidance plus counter-gravity in one bounded vector, integrated through the same projectile physics path. Keep the current Rodrigues function only as a temporary visual approximation if needed, with a removal target.
 
-DP-07 - Complete the mass/force contract for battlefield interactions.
+AIM-06 - Ballistic lead uses partial acceleration as if it were physical acceleration.
 
-Goal:
-Movement, recoil, collision, hover, jump, beams, blast pressure, force fields,
-and terrain contact should reduce to mass, force, acceleration, velocity,
-position, collision, and correction wherever they physically move things.
+Evidence:
+- src/types/sim.ts:139-153 says velocity is authoritative and thrustDir is the desired drive input.
+- src/game/sim/combat/combatUtils.ts:281-300 builds acceleration from unit.movementAccel plus optional gravity only.
+- src/game/sim/combat/aimSolver.ts:442-520 feeds that acceleration into the constant-acceleration ballistic solver.
+- src/game/sim/combat/projectileSystem.ts:824-860 repeats the same acceleration input for homing intercept prediction.
 
-Current:
-The project already has real 3D state, Body3D, terrain contact, dynamic z,
-unit-vs-unit/building collision, force accumulation, propulsion, recoil,
-explosion knockback, beam force, hover lift, jump actuation, and shared motion
-math. Gaps remain where force handling is still partly 2D, where some gameplay
-effects mutate state discretely without a physical effect, and where heavy/light
-mass response is not continuously tested across every force producer.
+Why it matters:
+movementAccel excludes important real forces such as terrain spring, damping, jump actuation, collision correction, recoil, and external impulses. The solver can therefore produce "exact" intercepts against an acceleration state that is not actually the derivative of authoritative velocity.
 
-Steps:
-1. Audit every call that moves, pushes, clamps, teleports, reflects, explodes,
-   hovers, jumps, or corrects a unit/projectile.
-2. Convert force producers to explicit 3D force/impulse fields where vertical
-   behavior matters.
-3. Add tests that compare light/medium/heavy units under the same recoil,
-   explosion, beam, collision, force-field, hover, and jump inputs.
-4. Keep discrete systems discrete, but ensure their battlefield output enters as
-   bodies, forces, energy, mass, constraints, or collisions.
-5. Document any intentional non-physical shortcuts as temporary with a scale or
-   gameplay reason.
+Fix direction:
+Either feed the solver an actual authoritative body acceleration from the physics step, or make the lead model explicitly velocity-only for units unless a real acceleration source is available. Do not mix partial gameplay intent acceleration into a physical constant-acceleration solver without naming that approximation.
 
-DP-08 - Tighten atomic gameplay blueprint boundaries.
+AIM-07 - Force-field targeting clearance for arcs uses a straight segment, not the shot trajectory.
 
-Goal:
-locomotion, unit, turret, shot, and building definitions should each own one
-clear job and compose through explicit references. A unit should be able to swap
-locomotion profiles, turret sets, shot profiles, or factories without hidden
-coupling.
+Evidence:
+- src/game/sim/combat/targetingSystem.ts:332-365 applies force-field clearance to all weapons, including high arcs.
+- src/game/sim/combat/lineOfSight.ts:202-237 checks only whether the straight source-to-target segment crosses a field boundary.
 
-Current:
-The blueprint files are already split into units, locomotion, turrets, shots,
-buildings, and display rosters. The remaining coupling is still visible:
-UnitBlueprint embeds locomotion objects and many visual/HUD/audio details;
-TurretBlueprint mixes projectile reference, launch force, aiming, range, barrel
-visuals, audio, mirror panels, force fields, and construction emitters; Shot
-Blueprint mixes physics/damage with smoke/audio/render shape details.
+Why it matters:
+High-arc ballistic shots and vertical launchers do not travel along the straight source-to-target chord. Targeting can reject an arc that would physically clear a shield, or allow an arc whose actual projectile path would hit the shield. Projectile collision later uses the moving projectile segment, so lock-on rules and impact rules can disagree.
 
-Steps:
-1. Define narrow runtime contracts for locomotion, unit, turret, shot, building,
-   visual, audio, and UI metadata.
-2. Change unit definitions to reference locomotion IDs and turret-set IDs rather
-   than embedding mutable object-shaped configs.
-3. Move visual-only barrel/body/smoke/HUD/audio data out of authoritative sim
-   blueprints or into clearly named visual subcontracts.
-4. Make turret-to-shot and building-to-turret links explicit IDs with validation
-   tests.
-5. Add a recombination test that creates a unit with swapped locomotion, swapped
-   turret set, swapped shot profile, and a different factory without touching
-   unrelated systems.
+Fix direction:
+Use a trajectory-aware shield query for projectile weapons, conservative enough for performance but based on the same ballistic path envelope the projectile will actually follow. At minimum, document straight-segment clearance as an intentional conservative targeting rule.
 
-DP-09 - Move high-count rendering away from framework-owned scene graph paths.
+AIM-08 - Aiming/targeting hot paths remain TypeScript object loops instead of WASM/SoA batches.
 
-Goal:
-Three.js can remain a productive prototype shell, but bottlenecked renderer paths
-should move to owned buffers, owned shaders, direct instancing, and eventually
-raw WebGL2/WebGPU where needed.
+Evidence:
+- design_philosophy.html:520-570 and 614-619 call out targeting batches, per-unit loops, projectile stepping, and spatial queries as migration targets for Rust/WASM over typed memory.
+- src/game/sim/combat/targetingSystem.ts:405-545 and 609-1122 still run the targeting FSM, candidate ranking, LOS gating, and ballistic gating over Entity/Turret objects in TypeScript.
 
-Current:
-The renderer is built around Three.js with substantial custom instancing, object
-LOD, render LOD grids, shared geometry/materials, and GPU timing. That matches
-the prototype phase but not the long-term raw-rendering goal for thousands of
-units and effects.
+Why it matters:
+The current code has good local pooling and some WASM helpers, but the main targeting loop still scales as JS object orchestration over armed entities and candidate arrays. That is acceptable for prototype correctness, but it is not aligned with the stated 5,000-unit architecture.
 
-Steps:
-1. Measure draw calls, buffer uploads, material switches, CPU render prep, GPU
-   frame time, and per-LOD object counts at 1k, 3k, and 5k units.
-2. Identify the first renderer path where Three.js overhead blocks scale.
-3. Move that path to owned instanced buffers and custom shaders while keeping the
-   same visual contract.
-4. Repeat for units, projectiles, beams, terrain overlays, labels, debris, and
-   high-count effects in cost order.
-5. Keep Three.js only where it is not measurable bottleneck or where replacement
-   would not improve scale.
+Fix direction:
+Keep the TypeScript behavior as the reference while designing a data-oriented targeting batch: flat turret/entity inputs, candidate slots, visibility/LOS results, target output IDs/states, and parity checks during migration. Delete the old path when parity is proven.
 
-DP-10 - Add scale-target benchmarks and budgets.
+AIM-09 - Combat/targeting state still relies on optional fields in hot domain objects.
 
-Goal:
-Every major implementation decision should be evaluated against thousands of
-active units in a browser, with a path toward larger scenes. A feature that works
-at 50 or 200 units is not done unless it has a scale story.
+Evidence:
+- design_philosophy.html:827-859 says simulation, prediction, networking, and entity-state modules should prefer explicit nulls or numeric sentinels over optional properties.
+- src/types/sim.ts:390-445 still has optional turret fields such as worldPos, worldVelocity, aimTargetYaw, aimErrorYaw, ballisticAimInRange, forceField, and losBlockedTicks.
+- Combat state also uses optional priorityTargetId, priorityTargetPoint, and nextCombatProbeTick.
 
-Current:
-The app exposes useful live telemetry: server TPS/CPU, render TPS, frame/render/
-logic/GPU timing, long task timing, snapshot rates, unit count, LOD states, and
-debug overlays. There is no obvious automated benchmark gate that runs standard
-1k/3k/5k scenarios and records pass/fail budgets.
+Why it matters:
+These fields sit directly in aiming, targeting, snapshot, and prediction paths. Optional shape changes and optional chaining make absence easy to miss and work against the intended SoA/WASM migration.
 
-Steps:
-1. Add deterministic benchmark scenarios for idle armies, moving armies, heavy
-   targeting, projectile-heavy combat, fog/AOI, construction, and mixed battles.
-2. Record server tick cost, render cost, prediction cost, snapshot encode/decode
-   cost, bytes/sec, allocations, and long tasks.
-3. Define budget thresholds for 1k, 3k, and 5k active units.
-4. Make benchmark output easy to compare before/after each performance change.
-5. Use those budgets to decide when a JS object-loop or Three.js path must move
-   to SoA/WASM or owned GPU buffers.
+Fix direction:
+When touching these files, migrate hot combat fields toward explicit nulls or numeric sentinels. For example, targetId can become -1 in packed/hot representations, cached world mount fields can always exist with worldPosTick = -1, and aim-error fields can be initialized to 0 with an explicit hasAimTarget flag if needed.

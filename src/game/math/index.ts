@@ -57,6 +57,8 @@ export {
   type TurretShotAngleSolution,
   type TurretShotArcPreference,
   computeInterceptTime,
+  integrateConstantAccelerationPosition,
+  integrateConstantAccelerationVelocity,
   solveKinematicIntercept,
   solveTurretShotAngles,
 } from './Ballistics';

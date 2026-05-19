@@ -1,5 +1,7 @@
 import type { TurretConfig, TurretRanges } from './types';
+import { isProjectileShot } from './types';
 import { buildAllTurretConfigs } from './blueprints';
+import { GRAVITY } from '../../config';
 
 // Turret configurations — built from blueprints at init time
 export const TURRET_CONFIGS: Record<string, TurretConfig> =
@@ -14,6 +16,22 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
   };
 }
 
+function usesBallisticArc(config: TurretConfig): boolean {
+  const angleType = config.aimStyle.angleType;
+  return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
+}
+
+function effectiveBallisticBaseRange(config: TurretConfig): number {
+  if (!usesBallisticArc(config)) return config.range;
+  const shot = config.shot;
+  if (!shot || !isProjectileShot(shot) || shot.mass <= 1e-6) return config.range;
+  const speed = shot.launchForce / shot.mass;
+  if (!Number.isFinite(speed) || speed <= 1e-6 || GRAVITY <= 0) return config.range;
+  const flatGroundMaxRange = (speed * speed) / GRAVITY;
+  if (!Number.isFinite(flatGroundMaxRange) || flatGroundMaxRange <= 0) return config.range;
+  return Math.min(config.range, flatGroundMaxRange);
+}
+
 // Compute hysteresis range pairs for a turret.
 //
 //   `fire.max`  — hard outer firing envelope, always present
@@ -26,7 +44,7 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
 // The blueprint authors all of these as multipliers of the turret's
 // own `range` so doubling `range` doubles every shell at once.
 export function computeTurretRanges(config: TurretConfig): TurretRanges {
-  const baseRange = config.range;
+  const baseRange = effectiveBallisticBaseRange(config);
   const m = config.rangeOverrides;
   const fireMax = makeHysteresisRange(
     baseRange * m.engageRangeMax.acquire,

@@ -6,6 +6,8 @@ import { getEntityVelocity3 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   applyHomingSteering,
+  integrateConstantAccelerationPosition,
+  integrateConstantAccelerationVelocity,
   lerp,
   magnitude3,
   solveKinematicIntercept,
@@ -212,8 +214,11 @@ export function applyClientProjectilePrediction(options: {
   const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
   if (target) {
+    const nextTargetZ = terrainFollow
+      ? target.z
+      : integrateConstantAccelerationPosition(target.z, target.velocityZ, -GRAVITY, targetDt);
     if (!terrainFollow) {
-      target.velocityZ -= GRAVITY * targetDt;
+      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, -GRAVITY, targetDt);
     }
     const targetPrevZ = target.z;
     target.x += target.velocityX * targetDt;
@@ -223,7 +228,7 @@ export function applyClientProjectilePrediction(options: {
       target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
       target.z = nextZ;
     } else {
-      target.z += target.velocityZ * targetDt;
+      target.z = nextTargetZ;
     }
     if (movPosBlend >= 0) {
       entity.transform.x = lerp(entity.transform.x, target.x, movPosBlend);
@@ -242,8 +247,11 @@ export function applyClientProjectilePrediction(options: {
   // velocity in full 3D. Gravity is universal; homing only changes
   // how guided shots respond to it.
   const prevTerrainFollowZ = entity.transform.z;
+  const nextProjectileZ = terrainFollow
+    ? entity.transform.z
+    : integrateConstantAccelerationPosition(entity.transform.z, proj.velocityZ, -GRAVITY, dt);
   if (!terrainFollow) {
-    proj.velocityZ -= GRAVITY * dt;
+    proj.velocityZ = integrateConstantAccelerationVelocity(proj.velocityZ, -GRAVITY, dt);
   }
   entity.transform.x += proj.velocityX * dt;
   entity.transform.y += proj.velocityY * dt;
@@ -252,7 +260,7 @@ export function applyClientProjectilePrediction(options: {
     proj.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
     entity.transform.z = nextZ;
   } else {
-    entity.transform.z += proj.velocityZ * dt;
+    entity.transform.z = nextProjectileZ;
   }
 
   applyClientProjectileHoming({
