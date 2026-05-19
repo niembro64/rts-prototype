@@ -13,20 +13,6 @@ DESIGN PHILOSOPHY GAP PLAN
 
 AIMING / TARGETING SYSTEM ISSUES
 
-AIM-06 - Ballistic lead uses partial acceleration as if it were physical acceleration.
-
-Evidence:
-- src/types/sim.ts:139-153 says velocity is authoritative and thrustDir is the desired drive input.
-- src/game/sim/combat/combatUtils.ts:281-300 builds acceleration from unit.movementAccel plus optional gravity only.
-- src/game/sim/combat/aimSolver.ts:442-520 feeds that acceleration into the constant-acceleration ballistic solver.
-- src/game/sim/combat/projectileSystem.ts:824-860 repeats the same acceleration input for homing intercept prediction.
-
-Why it matters:
-movementAccel excludes important real forces such as terrain spring, damping, jump actuation, collision correction, recoil, and external impulses. The solver can therefore produce "exact" intercepts against an acceleration state that is not actually the derivative of authoritative velocity.
-
-Fix direction:
-Either feed the solver an actual authoritative body acceleration from the physics step, or make the lead model explicitly velocity-only for units unless a real acceleration source is available. Do not mix partial gameplay intent acceleration into a physical constant-acceleration solver without naming that approximation.
-
 AIM-07 - Force-field targeting clearance for arcs uses a straight segment, not the shot trajectory.
 
 Evidence:

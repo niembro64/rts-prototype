@@ -282,12 +282,31 @@ export function getEntityAcceleration3d(
   out: Vec3,
 ): Vec3 {
   if (entity.unit) {
-    // Targeting consumes raw kinematic acceleration. Do not infer gravity
-    // from suspension/altitude here; supported units without authored
-    // vertical acceleration should contribute 0, not projectile-like freefall.
-    out.x = entity.unit.movementAccelX ?? 0;
-    out.y = entity.unit.movementAccelY ?? 0;
-    out.z = entity.unit.movementAccelZ ?? 0;
+    // Units report zero acceleration to the constant-acceleration
+    // ballistic / intercept solver — i.e. lead is velocity-only.
+    //
+    // We do not track the unit's authoritative body acceleration
+    // (true derivative of velocity). The `movementAccel` field that
+    // used to live here is only the per-tick thrust intent and
+    // excludes the rest of the force budget the body actually feels
+    // — terrain spring, ground / air damping, recoil, collision
+    // response, blast impulses, drag — so feeding it into a
+    // `p + v·t + ½·a·t²` predictor produced "exact" intercepts
+    // against an acceleration vector that wasn't the derivative of
+    // the authoritative velocity. The client never received
+    // movementAccel on the wire either, so server-side lead with
+    // intent acceleration also disagreed with client-side lead with
+    // zero acceleration, drifting predicted intercepts between the
+    // two simulations.
+    //
+    // Returning zero here makes both sides agree: the solver leads a
+    // straight extrapolation of the last-seen velocity. When we one
+    // day track real body acceleration (finite-diff of velocity, or
+    // a published acceleration channel) this is the single place to
+    // wire it in.
+    out.x = 0;
+    out.y = 0;
+    out.z = 0;
   } else if (entity.projectile) {
     out.x = 0;
     out.y = 0;
