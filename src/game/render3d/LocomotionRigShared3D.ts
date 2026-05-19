@@ -207,3 +207,16 @@ export function kneeFromIK(
 export function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
+
+/** Frame-rate-independent EMA blend factor: `state += (target − state)
+ *  * emaAlpha(dt, tau)` drives `state` toward `target` with the given
+ *  time constant. At dt = tau the blend covers 1 − 1/e ≈ 63%, at
+ *  dt = 3·tau it covers 95%. Use it the same way for the four visual
+ *  state channels every locomotion rig carries (movement position,
+ *  movement velocity, rotation position, rotation velocity) — only the
+ *  tau differs between in-contact (friction) and off-contact (drag)
+ *  regimes, never the integration shape. */
+export function emaAlpha(dtSec: number, tauSec: number): number {
+  if (tauSec <= 0) return 1;
+  return 1 - Math.exp(-dtSec / tauSec);
+}

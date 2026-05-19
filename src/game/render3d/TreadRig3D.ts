@@ -3,12 +3,22 @@
 // boxes + cylindrical end caps; per-frame motion (wheel spin and
 // cleat scroll) is driven by per-side ground-contact distance.
 //
-// Each side (left/right ribbon) lives in its own sub-group so it can
-// be floor-clamped above terrain independently. A tread crossing a
-// crest sees the higher of three sample points along its length and
-// rises just enough to clear it, never tunneling. The cleat scroll
-// for that side is gated on its own contact bit. See the "Locomotion
-// Visuals Are Frontend" section of design_philosophy.html.
+// Each side (left/right ribbon) lives in its own sub-group and carries
+// the four canonical visual state channels:
+//
+//   movement position  →  side group local Y (`lift`)
+//   movement velocity  →  integrated from lift via the EMA on `lift`
+//   rotation position  →  `beltPhase` (where cleats sit on the belt loop)
+//   rotation velocity  →  `beltVelocity` (linear m/s along belt tangent)
+//
+// Ground contact never overwrites these — it only switches which EMA
+// tau drives the velocity channels toward their in-contact targets.
+// Off contact: long tau, slow drift; cleats keep scrolling at whatever
+// speed they had, the side lifts gently back toward its natural mount
+// position. Internal wheels read their angular velocity from the same
+// per-side beltVelocity / wheelR, so the whole side spins as one
+// continuous mechanism. See the "Locomotion Visuals Are Frontend"
+// section of design_philosophy.html.
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
@@ -17,6 +27,7 @@ import { TREAD_CHASSIS_LIFT_Y } from '../math/BodyDimensions';
 import {
   type LocomotionBase,
   type RollingContactState,
+  emaAlpha,
   rollingContact,
   sampleRollingContactDistance,
   transformChassisToWorld,
@@ -36,6 +47,18 @@ const TREAD_CLEAT_HEIGHT = 1.1;
 const TREAD_CLEAT_WIDTH_FRAC = 1.0;
 const TREAD_CLEAT_LENGTH_FRAC = 0.36;
 
+// Movement-position EMA tau for the per-side lift. Short on contact
+// (terrain pushes the ribbon up promptly), longer off contact so the
+// side settles toward its mount gently when terrain disappears.
+const TREAD_LIFT_TAU_CONTACT_SEC = 0.08;
+const TREAD_LIFT_TAU_FREE_SEC = 0.30;
+// Rotation-velocity EMA tau for cleat scroll velocity (and internal
+// wheel angular velocity, derived from the same per-side beltVelocity).
+// Short on contact (treads grip body motion); very long off contact so
+// the belt keeps scrolling and drains energy slowly via air drag.
+const TREAD_BELT_TAU_CONTACT_SEC = 0.04;
+const TREAD_BELT_TAU_FREE_SEC = 5.0;
+
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
@@ -47,18 +70,30 @@ const cleatMat = new THREE.MeshBasicMaterial({ color: 0x3a4046 });
  *  slab, end caps, internal wheels, and animated cleats — all in a
  *  frame where local origin is the side's lateral offset, so the
  *  per-frame floor clamp can rewrite local Y without touching any
- *  child. `contact` is the gate for that side's cleat scroll. */
+ *  child. `lift` / `beltPhase` / `beltVelocity` are the four visual
+ *  state channels for the side; `contact` is the regime selector
+ *  (which EMA tau to use). */
 export type TreadSide = {
   /** -1 for the left rail, +1 for the right rail. */
   side: -1 | 1;
   /** Lateral offset from chassis center (= side * cfg.treadOffset). */
   lateralOffset: number;
   group: THREE.Group;
-  /** Per-side ground-contact flag derived from the floor clamp. True
-   *  when the terrain term won the per-frame `max()` for any of the
-   *  side's sample points — i.e. some part of the ribbon is touching
-   *  ground. Cleat scroll advances only while this is true. */
+  /** True when any of the side's sample points are pushed up by
+   *  terrain this frame. Picks the coupling tau, not a state gate. */
   contact: boolean;
+  /** Movement-position channel: side group local Y offset above the
+   *  baseline 0. EMA-converges toward whatever lift the floor clamp
+   *  requires; off contact, decays back toward 0 with a longer tau. */
+  lift: number;
+  /** Rotation-position channel: cleat phase distance along the belt
+   *  loop. Integrated from `beltVelocity * dt` every frame; wraps to
+   *  `cleatLoopLength` when laying out cleats. */
+  beltPhase: number;
+  /** Rotation-velocity channel: cleat scroll velocity in world units
+   *  per second along the belt tangent. Couples to body motion through
+   *  ground friction when in contact; drifts under air drag when not. */
+  beltVelocity: number;
 };
 
 export type TreadMesh = {
@@ -66,15 +101,16 @@ export type TreadMesh = {
   group: THREE.Group;
   sides: TreadSide[];
   wheels: THREE.Mesh[];
-  wheelContacts: RollingContactState[];
   /** Per-internal-wheel side index (0 or 1) into `sides[]`, so the
-   *  per-frame loop knows which side gates the spin. */
+   *  per-frame loop knows which beltVelocity drives this wheel. */
   wheelSide: number[];
+  /** Per-side rolling contact at (0, ±offset). Tracks the world XY of
+   *  each ribbon's center so per-frame signed distance can be sampled
+   *  as the input to the belt-velocity EMA. */
   treadContacts: RollingContactState[];
   /** Animated cleat strips around the tread belt (empty when
-   *  treadsAnimated is off). Each side scrolls from that side's own
-   *  ground-contact motion, so a turning tread can crawl one side
-   *  forward and the other backward. */
+   *  treadsAnimated is off). The first half is the left side, the
+   *  second half the right side; layout consumes `beltPhase` per side. */
   cleats: THREE.Mesh[];
   cleatSpacing: number;
   cleatLoopLength: number;
@@ -103,7 +139,6 @@ export function buildTreads(
 
   const sides: TreadSide[] = [];
   const wheels: THREE.Mesh[] = [];
-  const wheelContacts: RollingContactState[] = [];
   const wheelSide: number[] = [];
   const cleats: THREE.Mesh[] = [];
   let cleatSpacing = 0;
@@ -135,6 +170,9 @@ export function buildTreads(
       lateralOffset: side * offset,
       group: sideGroup,
       contact: true,
+      lift: 0,
+      beltPhase: 0,
+      beltVelocity: 0,
     });
   }
 
@@ -146,12 +184,13 @@ export function buildTreads(
   if (animatedWheels) {
     // Internal wheels — mostly hidden inside the slab but ensure the
     // chassis-speed → wheel-rotation rate stays consistent with what the
-    // visible cleats display.
+    // visible cleats display. Their angular velocity is derived from
+    // their parent side's beltVelocity, so the whole side moves as
+    // one mechanism (cleats and wheels can't desync).
     const wheelCount = Math.max(2, Math.round(cfg.treadLength * 2));
     const wheelR = Math.max(1, r * cfg.wheelRadius);
     for (let s = 0; s < 2; s++) {
       const sideGroup = sides[s].group;
-      const side = sides[s].side;
       for (let i = 0; i < wheelCount; i++) {
         const t = (i + 0.5) / wheelCount;
         const x = -length / 2 + t * length;
@@ -162,10 +201,6 @@ export function buildTreads(
         sideGroup.add(w);
         wheels.push(w);
         wheelSide.push(s);
-        // Rolling contact in chassis frame still carries the side
-        // offset so the sampling math sees the wheel's true world
-        // position, even though the mesh is parented to a side group.
-        wheelContacts.push(rollingContact(x, side * offset));
       }
     }
 
@@ -200,7 +235,6 @@ export function buildTreads(
     sides,
     wheels,
     wheelSide,
-    wheelContacts,
     treadContacts,
     cleats,
     cleatSpacing,
@@ -212,21 +246,23 @@ export function buildTreads(
   };
 }
 
-// Scratch reused per frame so the tread loop never allocates. One
-// sample-point world coord and one ribbon-clearance accumulator.
+// Scratch reused per frame so the tread loop never allocates.
 const _treadWorld = { x: 0, y: 0, z: 0 };
 
-/** Per-frame: floor-clamp each side ribbon, roll internal wheels
- *  whose side is in contact, and scroll cleats along each grounded
- *  belt loop. Sides are sampled at front, middle, and rear localX so
- *  a tank cresting a hill catches the highest point under its belt
- *  and lifts to clear it — no tunneling. */
+/** Per-frame: integrate each side's four visual channels forward. The
+ *  floor clamp drives the lift channel via EMA; the per-side signed
+ *  distance drives the beltVelocity channel via EMA. beltPhase
+ *  integrates from beltVelocity and feeds the cleat layout. Internal
+ *  wheels integrate from the same per-side beltVelocity / wheelR. No
+ *  channel snaps at the contact boundary — only the tau switches. */
 export function updateTreads(
   mesh: TreadMesh,
   entity: Entity,
+  dtMs: number,
   mapWidth: number,
   mapHeight: number,
 ): void {
+  const dtSec = Math.max(0.001, dtMs / 1000);
   const bodyCenterHeight = entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0;
   // Convert a world-Y lift back into a chassis-local Y delta. Tilt
   // rotates local Y through the surface normal; the local lift needed
@@ -245,13 +281,15 @@ export function updateTreads(
 
   for (let s = 0; s < mesh.sides.length; s++) {
     const sideEntry = mesh.sides[s];
+
+    // ── Movement-position channel: lift ──────────────────────────
+    // Walk the 3 sample points, take the max world-lift required by
+    // any of them. EMA-converge `lift` toward that target with the
+    // contact/free tau. Contact = any sample is pushed up by terrain.
     let maxRequiredLocalLift = 0;
     let anyContact = false;
     for (let p = 0; p < sampleLocalXs.length; p++) {
       const localX = sampleLocalXs[p];
-      // Natural world position of this sample point on the side's
-      // belt — chassis-local (localX, 0, lateralOffset) with the
-      // side group's natural Y of 0 baked in.
       transformChassisToWorld(
         localX, 0, sideEntry.lateralOffset,
         entity, bodyCenterHeight, mapWidth, mapHeight, _treadWorld,
@@ -270,34 +308,51 @@ export function updateTreads(
       }
     }
     sideEntry.contact = anyContact;
-    sideEntry.group.position.y = maxRequiredLocalLift;
+    const liftTau = anyContact ? TREAD_LIFT_TAU_CONTACT_SEC : TREAD_LIFT_TAU_FREE_SEC;
+    sideEntry.lift += (maxRequiredLocalLift - sideEntry.lift) * emaAlpha(dtSec, liftTau);
+    sideEntry.group.position.y = sideEntry.lift;
+
+    // ── Rotation-velocity channel: beltVelocity ──────────────────
+    // Always advance per-side contact tracking so signed distance
+    // history stays continuous across brief liftoffs. Derive the
+    // target scroll velocity only when in contact (ground friction
+    // couples toward it); when off contact the target is 0 with a
+    // long tau (air drag), so the belt drifts to a stop rather than
+    // freezing instantly.
+    const contact = mesh.treadContacts[s];
+    const signedDistance = contact !== undefined
+      ? sampleRollingContactDistance(entity, contact)
+      : 0;
+    const targetBeltVelocity = anyContact ? signedDistance / dtSec : 0;
+    const beltTau = anyContact ? TREAD_BELT_TAU_CONTACT_SEC : TREAD_BELT_TAU_FREE_SEC;
+    sideEntry.beltVelocity +=
+      (targetBeltVelocity - sideEntry.beltVelocity) * emaAlpha(dtSec, beltTau);
+
+    // ── Rotation-position channel: beltPhase ─────────────────────
+    // Integrate from the velocity channel. Wraps modulo cleatLoopLength
+    // implicitly inside the cleat layout helper.
+    sideEntry.beltPhase += sideEntry.beltVelocity * dtSec;
   }
 
-  // Internal wheels roll from their own contact centers, gated on
-  // their parent side's contact bit.
-  const wheelCount = Math.min(mesh.wheels.length, mesh.wheelContacts.length);
-  for (let i = 0; i < wheelCount; i++) {
-    const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i]);
-    if (!mesh.sides[mesh.wheelSide[i]].contact) continue;
-    if (Math.abs(signedDistance) <= 1e-4) continue;
-    const wheelR = Math.max(1, mesh.wheels[i].scale.x);
-    mesh.wheels[i].rotation.y += signedDistance / wheelR;
+  // Internal wheels: angular velocity = parent side's beltVelocity / wheelR.
+  // Rotation integrates from that. Same tau, same regime — wheels and
+  // cleats on one side move as one mechanism.
+  for (let i = 0; i < mesh.wheels.length; i++) {
+    const sideIdx = mesh.wheelSide[i];
+    const side = mesh.sides[sideIdx];
+    if (!side) continue;
+    const tireR = Math.max(1, mesh.wheels[i].scale.x);
+    const omega = side.beltVelocity / tireR;
+    mesh.wheels[i].rotation.y += omega * dtSec;
   }
 
-  // Cleats scroll along the slab length at the same linear speed.
-  // Advance one signed phase per tread side and lay out cleats modulo
-  // spacing so they look continuous regardless of cumulative distance.
-  // Cleat phase always tracks (so brief liftoffs don't desync the
-  // belt visually), but the visible offset only advances on contact.
+  // Lay out cleats from each side's beltPhase.
   if (mesh.cleats.length > 0 && mesh.cleatSpacing > 0) {
     const spacing = mesh.cleatSpacing;
     const cleatsPerSide = mesh.cleats.length / 2;
     for (let s = 0; s < 2; s++) {
-      const contact = mesh.treadContacts[s];
-      if (!contact) continue;
-      sampleRollingContactDistance(entity, contact);
-      if (!mesh.sides[s].contact) continue;
-      const phaseOff = wrappedRollingPhase(contact.phase, mesh.cleatLoopLength);
+      const sideEntry = mesh.sides[s];
+      const phaseOff = wrappedRollingPhase(sideEntry.beltPhase, mesh.cleatLoopLength);
       const baseIdx = s * cleatsPerSide;
       for (let i = 0; i < cleatsPerSide; i++) {
         layoutTreadCleat(

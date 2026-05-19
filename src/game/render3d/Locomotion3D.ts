@@ -151,10 +151,10 @@ export function updateLocomotion(
   if (!mesh) return;
   switch (mesh.type) {
     case 'wheels':
-      updateWheels(mesh, entity, mapWidth, mapHeight);
+      updateWheels(mesh, entity, dtMs, mapWidth, mapHeight);
       return;
     case 'treads':
-      updateTreads(mesh, entity, mapWidth, mapHeight);
+      updateTreads(mesh, entity, dtMs, mapWidth, mapHeight);
       return;
     case 'legs':
       updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);

@@ -720,17 +720,47 @@
         separate decision to be made.</li>
       </ul>
 
-      <h3>Contact gates animation cycles</h3>
+      <h3>Contact is a force, not a switch</h3>
       <p>
-        Wheels spin only when in contact AND the body moved. Tread cleats scroll only when their
-        side is in contact AND the body moved. Leg steps advance only between plants, which is the
-        contact condition by another name. This gives three desirable behaviors for free:
+        The rig must never overwrite visual state at the contact boundary. A tire leaving the
+        ground keeps spinning at the rate it had; a tire touching down catches up to body motion
+        gradually. Neither transition snaps. Concretely: every rig holds the same four canonical
+        visual state channels the client-prediction layer already uses, named the same way and
+        integrated the same way:
       </p>
       <ul class="rule-list">
-        <li>Reverse motion plays animations in reverse, because signed distance is signed.</li>
-        <li>Airborne or skidding wheels freeze instead of pretending to spin against nothing.</li>
-        <li>A unit pivoting in place &mdash; outer wheels forward, inner wheels backward &mdash;
-        shows opposite-direction spin without any special-case turn detection.</li>
+        <li><strong>Movement position</strong> &mdash; where the part sits in chassis-local Y
+        (wheel lift, tread side lift). Integrated from the movement-velocity channel via the
+        per-channel EMA tau.</li>
+        <li><strong>Movement velocity</strong> &mdash; rate of change of the movement position.
+        Couples toward <code>(targetPos − pos) / tau</code> in contact; decays toward 0 off
+        contact.</li>
+        <li><strong>Rotation position</strong> &mdash; rolling angle (wheel rotation around its
+        axle) or belt phase (where cleats sit on the loop). Integrated from rotation velocity.</li>
+        <li><strong>Rotation velocity</strong> &mdash; angular velocity for wheels, linear belt
+        velocity for treads. Couples toward the body-motion-derived target in contact; decays via
+        air drag off contact.</li>
+      </ul>
+      <p>
+        Ground contact only chooses which tau drives each velocity channel toward its target.
+        In contact: short tau, friction couples velocity toward body-motion target (and lift
+        toward the terrain clamp). Off contact: long tau, drag carries velocity toward 0 (and
+        lift toward 0, returning the part to its mount). The integration step never reads contact
+        directly; the contact bit only selects the tau. This gives:
+      </p>
+      <ul class="rule-list">
+        <li>No velocity snap at the coupling boundary &mdash; the wheel's angular velocity is the
+        same one frame before and one frame after the contact transition; only its
+        <em>convergence target</em> changed.</li>
+        <li>No position snap either &mdash; the lift channel is EMA'd through the boundary, so a
+        tire dropping off a crest settles back to its mount over a few hundred milliseconds rather
+        than teleporting down.</li>
+        <li>Reverse motion plays animations in reverse, because the velocity channel is signed.</li>
+        <li>A pivot shows opposite-direction spin on opposite wheels because each tire has its own
+        signed-distance contact sample and its own angular velocity.</li>
+        <li>An airborne tire keeps spinning at its current rate and decays through air drag instead
+        of pretending to be frozen. A pivoting tank's outer cleats keep flowing for a moment after
+        a stop command, then drift to rest.</li>
       </ul>
 
       <h3>Per-part, not per-chassis</h3>
@@ -995,7 +1025,8 @@
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
-        <li>Derive per-part contact from the floor clamp (contact = terrain term won), one bit per primitive (per-tire, per-side, per-foot), and gate rolling / scrolling / stepping animation cycles on it. Hover replaces the bit with a per-frame clearance scalar that drives fan smoke and altitude shading. Contact bits never cross the wire.</li>
+        <li>Derive per-part contact from the floor clamp (contact = terrain term won), one bit per primitive (per-tire, per-side, per-foot). Hover replaces the bit with a per-frame clearance scalar that drives fan smoke and altitude shading. Contact bits never cross the wire.</li>
+        <li>Treat contact as a force on the per-part visual state, not a switch over it. Every rig carries the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and ground contact only selects which EMA tau couples each velocity channel toward its target. Velocity and position must be continuous through the coupling boundary; never overwrite state at the moment contact toggles.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
