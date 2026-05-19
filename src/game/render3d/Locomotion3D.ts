@@ -151,16 +151,16 @@ export function updateLocomotion(
   if (!mesh) return;
   switch (mesh.type) {
     case 'wheels':
-      updateWheels(mesh, entity);
+      updateWheels(mesh, entity, mapWidth, mapHeight);
       return;
     case 'treads':
-      updateTreads(mesh, entity);
+      updateTreads(mesh, entity, mapWidth, mapHeight);
       return;
     case 'legs':
       updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
       return;
     case 'hover':
-      updateHoverFans(mesh, entity, dtMs, hoverSmokeEmitters);
+      updateHoverFans(mesh, entity, dtMs, mapWidth, mapHeight, hoverSmokeEmitters);
       return;
   }
 }

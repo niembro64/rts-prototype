@@ -1,8 +1,26 @@
+// HoverRig3D — ducted fan ring + downward smoke columns for hover
+// locomotion. Hover never contacts ground, so the visuals contract
+// (see "Locomotion Visuals Are Frontend" in design_philosophy.html)
+// inverts: the rig tracks per-frame `clearance` (chassis world Y −
+// terrain Y) instead of a contact boolean, and the floor clamp is a
+// soft safety — the rendered rig group is lifted at minimum
+// HOVER_FLOOR_MARGIN above terrain so a stale snapshot can never park
+// fans inside the dirt.
+
 import * as THREE from 'three';
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
+import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
+
+/** Minimum world-Y gap the rendered fan ring is allowed to have above
+ *  terrain. The sim is supposed to keep hovers above ground via the
+ *  inverse-distance lift force, but a bad snapshot or a 1-tick
+ *  interpolation glitch can briefly drop the rendered chassis below.
+ *  The rig group lifts itself by enough to keep fans visible above
+ *  the surface in that case. */
+const HOVER_FLOOR_MARGIN = 1;
 
 const FAN_RING_COLOR = 0x000000;
 const FAN_BLADE_COLOR = 0x9fb0b8;
@@ -44,6 +62,11 @@ export type HoverMesh = {
   type: 'hover';
   group: THREE.Group;
   fans: HoverFan[];
+  /** Most recent world-Y gap between the chassis and terrain below
+   *  it. Updated every frame in updateHoverFans. Useful to other
+   *  client systems (smoke length, dust kick-up, altitude shading)
+   *  that key off the hover gap rather than absolute altitude. */
+  clearance: number;
 } & LocomotionBase;
 
 export function buildHoverFans(
@@ -138,16 +161,33 @@ export function buildHoverFans(
   }
 
   unitGroup.add(group);
-  return { type: 'hover', group, fans, geometryKey: '' };
+  return { type: 'hover', group, fans, clearance: 0, geometryKey: '' };
 }
 
 export function updateHoverFans(
   mesh: HoverMesh,
-  _entity: Entity,
+  entity: Entity,
   dtMs: number,
+  mapWidth: number,
+  mapHeight: number,
   smokeOut?: SmokePuffEmitter[],
 ): void {
   const dtSec = dtMs / 1000;
+
+  // Per-frame clearance + soft floor safety. The chassis world Y is
+  // sim altitude (entity.transform.z); the rendered rig group is a
+  // child of the unitGroup, so local-Y adjustments shift it relative
+  // to that chassis. Lift the group by whatever it takes to keep the
+  // fans at least HOVER_FLOOR_MARGIN above terrain. On the common
+  // case (chassis floating cleanly above ground) this is a no-op.
+  const chassisWorldY = entity.transform.z;
+  const groundY = getLocomotionSurfaceHeight(
+    entity.transform.x, entity.transform.y, mapWidth, mapHeight,
+  );
+  const rawClearance = chassisWorldY - groundY;
+  const floorDeficit = HOVER_FLOOR_MARGIN - rawClearance;
+  mesh.group.position.y = floorDeficit > 0 ? floorDeficit : 0;
+  mesh.clearance = Math.max(rawClearance, HOVER_FLOOR_MARGIN);
 
   for (let i = 0; i < mesh.fans.length; i++) {
     const fan = mesh.fans[i];

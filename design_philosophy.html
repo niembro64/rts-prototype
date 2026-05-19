@@ -665,6 +665,109 @@
     </section>
 
     <section>
+      <h2>Locomotion Visuals Are Frontend</h2>
+      <p>
+        Authority owns chassis position. The renderer owns where the parts of the chassis appear
+        in the world. The sim publishes one point — the unit&rsquo;s body center, at its
+        authoritative altitude. From there the rig is responsible for putting every wheel, cleat,
+        foot, or fan exactly where the renderer says it should be, and that &ldquo;should be&rdquo;
+        must respect terrain as a hard floor.
+      </p>
+      <p>
+        This is the right boundary for three reasons. One: the renderer already has the terrain
+        heightmap loaded for shading and contact shadows; sampling it under a wheel or foot is
+        cheap. Two: per-part terrain queries scale linearly with visible units, not authoritative
+        units &mdash; off-screen and LOD-culled units skip the work for free. Three: it removes a
+        whole class of net-bug, because a chassis can never wedge a wheel under a hill that exists
+        only on the client&rsquo;s mesh. The visual rig is downstream of sim authority, never
+        upstream.
+      </p>
+
+      <h3>The four locomotions</h3>
+      <ul class="rule-list">
+        <li><strong>Wheels</strong> &mdash; a chassis driven through discrete rigid contact patches at
+        fixed body-local positions. Visually: cylindrical tires, each spinning around its own axle,
+        rolling phase derived from how far that local contact point traveled in the world this
+        frame. Each tire owes the ground a contact patch &mdash; the bottom of the cylinder is the
+        contract.</li>
+        <li><strong>Treads</strong> &mdash; two infinite belts that share chassis velocity but read it
+        as continuous tangential motion. Visually: scrolling cleat rails along the belt path; the
+        belt itself never moves relative to the chassis. The contract is the entire underside of
+        each ribbon sitting on terrain.</li>
+        <li><strong>Legs</strong> &mdash; discrete step events: a foot plants, the chassis advances
+        past it, the foot lifts and swings to a new plant. IK solves hip&rarr;knee&rarr;foot for the
+        rendered pose. The contract is per-foot, not per-chassis &mdash; feet must touch terrain on
+        plant and swing through air during transit.</li>
+        <li><strong>Hover</strong> &mdash; a chassis that never touches anything; a duct array
+        balances gravity with downward thrust against the air column underneath. Visually: spinning
+        fans, downward smoke columns, chassis riding a target altitude. The contract is
+        <em>anti-contact</em>: the gap is the feature, and that gap must be measurable per frame so
+        smoke length and altitude shading look right.</li>
+      </ul>
+
+      <h3>The contract every rig honors</h3>
+      <p>
+        Each rig answers the same three questions per frame, in its own primitive:
+      </p>
+      <ul class="rule-list">
+        <li><strong>Where is this part in the world?</strong> Derived from the chassis transform and
+        the part&rsquo;s body-local position. No terrain query yet.</li>
+        <li><strong>What is the terrain doing under it?</strong> A shared heightmap sample (and
+        normal, when the rig cares about local slope alignment).</li>
+        <li><strong>Where do I render it, and is it touching the ground?</strong> Clamp the rendered
+        Y to <code>max(natural, terrain + clearance)</code>. The boolean falls out of the same
+        <code>max()</code> &mdash; the part is in contact iff the terrain term won. There is no
+        separate decision to be made.</li>
+      </ul>
+
+      <h3>Contact gates animation cycles</h3>
+      <p>
+        Wheels spin only when in contact AND the body moved. Tread cleats scroll only when their
+        side is in contact AND the body moved. Leg steps advance only between plants, which is the
+        contact condition by another name. This gives three desirable behaviors for free:
+      </p>
+      <ul class="rule-list">
+        <li>Reverse motion plays animations in reverse, because signed distance is signed.</li>
+        <li>Airborne or skidding wheels freeze instead of pretending to spin against nothing.</li>
+        <li>A unit pivoting in place &mdash; outer wheels forward, inner wheels backward &mdash;
+        shows opposite-direction spin without any special-case turn detection.</li>
+      </ul>
+
+      <h3>Per-part, not per-chassis</h3>
+      <p>
+        The single-bit-per-unit version of this rule is wrong. A four-wheeled vehicle straddling a
+        crest has two wheels on dirt and two in air; collapsing that to one boolean either jitters
+        the spin or pretends nothing changed. Wheels track per-tire, treads per-side, legs per-foot,
+        hover not at all (it tracks <em>clearance</em> instead). The rig knows what its primitives
+        are; uniformity is in the shape of the contract, not in the bits.
+      </p>
+
+      <h3>Floor clamping is a hard invariant, not a tunable</h3>
+      <ul class="rule-list">
+        <li>The clamp is non-optional. Every rig writes
+        <code>renderedY = max(naturalY, terrainY + clearance)</code> for every part it owns. No
+        flag, no debug toggle, no edge case where parts are allowed to drop under the surface.</li>
+        <li>Floating above terrain is acceptable; tunneling through it is not. When the sim chassis
+        is over a dip, individual wheels are allowed to read as &ldquo;slightly floating&rdquo;
+        rather than pretending to droop on suspension we do not have.</li>
+        <li>The clamp uses the same smoothed surface normal the chassis tilt consumes
+        (<code>updateUnitGroundNormal</code>). One canonical value, no drift between &ldquo;how the
+        body leans&rdquo; and &ldquo;where the wheels sit.&rdquo;</li>
+        <li>Hover gets a soft floor too: the rendered rig group is clamped at least
+        <code>ε</code> above terrain, so a bad snapshot can never park fans inside dirt. The
+        authoritative chassis altitude is untouched &mdash; the renderer just refuses to draw a
+        contradiction.</li>
+      </ul>
+
+      <h3>Contact bits do not cross the wire</h3>
+      <p>
+        Per-part contact is computed from terrain + chassis position, both of which the client
+        already has. Putting it on the wire is what got us into the jump-state-on-the-wire mess in
+        the first place. Compute it locally every frame and throw it away after rendering.
+      </p>
+    </section>
+
+    <section>
       <h2>BAR Inspiration, Project Identity</h2>
       <p>
         Beyond All Reason is the comparison point for command ergonomics, readable large battles,
@@ -891,6 +994,8 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
+        <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
+        <li>Derive per-part contact from the floor clamp (contact = terrain term won), one bit per primitive (per-tire, per-side, per-foot), and gate rolling / scrolling / stepping animation cycles on it. Hover replaces the bit with a per-frame clearance scalar that drives fan smoke and altitude shading. Contact bits never cross the wire.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>

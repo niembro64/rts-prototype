@@ -17,6 +17,46 @@ export type LocomotionFootSurfaceSample = LocomotionSurfaceNormal & {
   visualFootY: number;
 };
 
+/** Per-part floor-clamp result. The visual rig hands in the part's
+ *  natural world Y (what it would render at if terrain weren't a
+ *  consideration) and gets back the rendered Y plus a contact flag.
+ *  Contact is "the terrain term won": the part is resting on the
+ *  surface because the natural position would have been at or below
+ *  it. Animation cycles for that part should advance only when this
+ *  bit is true. */
+export type LocomotionPartClamp = {
+  /** Terrain height under the part's world XZ. */
+  groundY: number;
+  /** Where the part should actually render (Y in world units). */
+  renderedY: number;
+  /** True iff the part is grounded — natural <= terrain + clearance. */
+  contact: boolean;
+};
+
+/** Floor-clamp one body-local part (a wheel center, a tread sample, a
+ *  hover fan ring) against the terrain under its world XZ. The clamp
+ *  is one-sided: parts can float above the ground but never tunnel
+ *  through it. Use a positive `clearance` to push the rendered Y up
+ *  by the part's "ground offset" (e.g. wheel radius), so the part's
+ *  bottom rests on terrain when contact is true. */
+export function sampleLocomotionPartClamp(
+  worldX: number,
+  worldZ: number,
+  naturalWorldY: number,
+  clearance: number,
+  mapWidth: number,
+  mapHeight: number,
+): LocomotionPartClamp {
+  const groundY = getLocomotionSurfaceHeight(worldX, worldZ, mapWidth, mapHeight);
+  const floorY = groundY + clearance;
+  const contact = naturalWorldY <= floorY;
+  return {
+    groundY,
+    renderedY: contact ? floorY : naturalWorldY,
+    contact,
+  };
+}
+
 export type LocomotionGroundContactSample = {
   grounded: boolean;
   groundY: number;

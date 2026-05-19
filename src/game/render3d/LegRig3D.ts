@@ -7,6 +7,14 @@
 // (upper hip→knee + lower knee→foot) drawn through a shared
 // LegInstancedRenderer; the IK that places the knee lives here.
 //
+// In the language of "Locomotion Visuals Are Frontend"
+// (design_philosophy.html): the per-leg primitive is the foot, the
+// floor clamp is `Math.max(footY, footSurface.visualFootY)` baked
+// into the step / placement code below, and the per-leg contact bit
+// is `!leg.isSliding` — true while the foot is planted, false while
+// it lerps to a new ground spot. Step cycle advance (lerpProgress)
+// is gated on motion the same way wheels gate spin on contact.
+//
 // Animation state worth surviving a mesh rebuild is
 // captured/restored via captureLegState / applyLegState — only the
 // foot-position / lerp / phase fields, not the renderer slot indices
