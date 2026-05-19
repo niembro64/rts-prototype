@@ -67,6 +67,18 @@ export type PrevEntityState = {
   turretRots: number[];
   turretAngVels: number[];
   turretPitches: number[];
+  // Per-turret pitch velocity. Tracked separately from yaw velocity so
+  // pitch-only changes (and zero-edge transitions on a freshly stopped
+  // pitch axis) dirty the turret. Client prediction integrates pitch
+  // from this channel, so missing updates leave the client integrating
+  // a stale derivative across snapshot gaps.
+  turretPitchVels: number[];
+  // Per-turret exact target ID (or -1 when null). Replaces the
+  // targetBits aggregate as the source of truth for "target switched":
+  // a same-presence switch from A→B with both non-null is invisible to
+  // the bitmask but must still dirty the turret so the client tracks
+  // the new lock.
+  turretTargetIds: number[];
   forceFieldRanges: number[];
   normalX: number;
   normalY: number;
@@ -121,11 +133,15 @@ function createPrevEntityState(): PrevEntityState {
   const turretRots: number[] = [];
   const turretAngVels: number[] = [];
   const turretPitches: number[] = [];
+  const turretPitchVels: number[] = [];
+  const turretTargetIds: number[] = [];
   const forceFieldRanges: number[] = [];
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) {
     turretRots.push(0);
     turretAngVels.push(0);
     turretPitches.push(0);
+    turretPitchVels.push(0);
+    turretTargetIds.push(-1);
     forceFieldRanges.push(0);
   }
   return {
@@ -134,7 +150,10 @@ function createPrevEntityState(): PrevEntityState {
     movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
-    weaponCount: 0, turretRots, turretAngVels, turretPitches, forceFieldRanges,
+    weaponCount: 0,
+    turretRots, turretAngVels, turretPitches,
+    turretPitchVels, turretTargetIds,
+    forceFieldRanges,
     normalX: 0, normalY: 0, normalZ: 1,
     buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
   };
@@ -263,6 +282,8 @@ export function getEntityDeltaChangedFields(
           if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
               Math.abs(next.turretAngVels[i] - prev.turretAngVels[i]) > rotVelTh ||
               Math.abs(next.turretPitches[i] - prev.turretPitches[i]) > rotPosTh ||
+              Math.abs(next.turretPitchVels[i] - prev.turretPitchVels[i]) > rotVelTh ||
+              next.turretTargetIds[i] !== prev.turretTargetIds[i] ||
               Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
             mask |= ENTITY_CHANGED_TURRETS;
             turretsAlreadyChanged = true;
@@ -324,6 +345,8 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretRots.push(0);
       prev.turretAngVels.push(0);
       prev.turretPitches.push(0);
+      prev.turretPitchVels.push(0);
+      prev.turretTargetIds.push(-1);
       prev.forceFieldRanges.push(0);
     }
     for (let i = 0; i < combatTurrets.length; i++) {
@@ -333,6 +356,8 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretRots[i] = w.rotation;
       prev.turretAngVels[i] = w.angularVelocity;
       prev.turretPitches[i] = w.pitch;
+      prev.turretPitchVels[i] = w.pitchVelocity;
+      prev.turretTargetIds[i] = w.target ?? -1;
       prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
   }
@@ -434,12 +459,16 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
     to.turretRots.push(0);
     to.turretAngVels.push(0);
     to.turretPitches.push(0);
+    to.turretPitchVels.push(0);
+    to.turretTargetIds.push(-1);
     to.forceFieldRanges.push(0);
   }
   for (let i = 0; i < from.weaponCount; i++) {
     to.turretRots[i] = from.turretRots[i];
     to.turretAngVels[i] = from.turretAngVels[i];
     to.turretPitches[i] = from.turretPitches[i];
+    to.turretPitchVels[i] = from.turretPitchVels[i];
+    to.turretTargetIds[i] = from.turretTargetIds[i];
     to.forceFieldRanges[i] = from.forceFieldRanges[i];
   }
   // Shrink to the actual weapon count so entities that briefly carried
@@ -449,6 +478,8 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
     to.turretRots.length = from.weaponCount;
     to.turretAngVels.length = from.weaponCount;
     to.turretPitches.length = from.weaponCount;
+    to.turretPitchVels.length = from.weaponCount;
+    to.turretTargetIds.length = from.weaponCount;
     to.forceFieldRanges.length = from.weaponCount;
   }
   to.buildProgress = from.buildProgress;
@@ -502,18 +533,24 @@ export function copySentPrevState(
       to.turretRots.push(0);
       to.turretAngVels.push(0);
       to.turretPitches.push(0);
+      to.turretPitchVels.push(0);
+      to.turretTargetIds.push(-1);
       to.forceFieldRanges.push(0);
     }
     for (let i = 0; i < from.weaponCount; i++) {
       to.turretRots[i] = from.turretRots[i];
       to.turretAngVels[i] = from.turretAngVels[i];
       to.turretPitches[i] = from.turretPitches[i];
+      to.turretPitchVels[i] = from.turretPitchVels[i];
+      to.turretTargetIds[i] = from.turretTargetIds[i];
       to.forceFieldRanges[i] = from.forceFieldRanges[i];
     }
     if (to.turretRots.length > from.weaponCount) {
       to.turretRots.length = from.weaponCount;
       to.turretAngVels.length = from.weaponCount;
       to.turretPitches.length = from.weaponCount;
+      to.turretPitchVels.length = from.weaponCount;
+      to.turretTargetIds.length = from.weaponCount;
       to.forceFieldRanges.length = from.weaponCount;
     }
   }

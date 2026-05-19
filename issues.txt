@@ -13,20 +13,6 @@ DESIGN PHILOSOPHY GAP PLAN
 
 AIMING / TARGETING SYSTEM ISSUES
 
-AIM-01 - Turret delta snapshots can miss target switches and pitch-velocity changes.
-
-Evidence:
-- src/game/network/stateSerializerEntities.ts:164-190 serializes each turret's targetId and pitchVel when ENTITY_CHANGED_TURRETS is emitted.
-- src/game/network/stateSerializerEntityDelta.ts:50-70 stores targetBits, turretRots, turretAngVels, turretPitches, and forceFieldRanges, but does not store per-turret target IDs or pitch velocities.
-- src/game/network/stateSerializerEntityDelta.ts:256-274 compares targetBits only, so target A -> target B with both non-null does not dirty the turret by itself.
-- src/game/network/stateSerializerEntityDelta.ts:329-336 captures rotation, yaw velocity, pitch, and force-field range, but not pitchVelocity.
-
-Why it matters:
-The client can keep a stale targetId after a same-presence target switch, and it can keep stale pitchVelocity even though the client prediction path integrates turret pitch from pitch velocity. This violates the snapshot philosophy that deltas are based on the last value actually sent per channel.
-
-Fix direction:
-Track exact per-turret target IDs and pitch velocities in the JS PrevEntityState and in the Rust snapshot baseline, compare target IDs exactly, compare pitch velocity against the rotation-velocity threshold, and add a regression for same-state target switches.
-
 AIM-04 - Targeting and line-shot range are still ground-plane ranges, not full 3D ranges.
 
 Evidence:

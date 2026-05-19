@@ -5880,6 +5880,15 @@ struct SnapshotBaseline {
     turret_rots: Vec<f32>,
     turret_ang_vels: Vec<f32>,
     turret_pitches: Vec<f32>,
+    // Per-turret pitch velocity baseline. Compared with rot_vel_threshold
+    // so pitch-only motion (and zero-edge transitions) dirties the turret
+    // independently from yaw velocity.
+    turret_pitch_vels: Vec<f32>,
+    // Per-turret target ID baseline (-1 = no target). Replaces the
+    // target_bits aggregate as the source of truth for "target switched":
+    // a same-presence A→B switch with both IDs non-null is invisible to
+    // the bitmask but must still dirty the turret.
+    turret_target_ids: Vec<i32>,
     force_field_ranges: Vec<f32>,
     normal_x: Vec<f64>,
     normal_y: Vec<f64>,
@@ -5915,6 +5924,8 @@ impl SnapshotBaseline {
             turret_rots: Vec::new(),
             turret_ang_vels: Vec::new(),
             turret_pitches: Vec::new(),
+            turret_pitch_vels: Vec::new(),
+            turret_target_ids: Vec::new(),
             force_field_ranges: Vec::new(),
             normal_x: Vec::new(),
             normal_y: Vec::new(),
@@ -5954,6 +5965,8 @@ impl SnapshotBaseline {
         self.turret_rots.resize(turret_needed, 0.0);
         self.turret_ang_vels.resize(turret_needed, 0.0);
         self.turret_pitches.resize(turret_needed, 0.0);
+        self.turret_pitch_vels.resize(turret_needed, 0.0);
+        self.turret_target_ids.resize(turret_needed, -1);
         self.force_field_ranges.resize(turret_needed, 0.0);
         self.normal_x.resize(needed, 0.0);
         self.normal_y.resize(needed, 0.0);
@@ -6173,6 +6186,8 @@ pub fn snapshot_baseline_capture_unit_slot(
                 b.turret_rots[dst] = turret.rotation[src];
                 b.turret_ang_vels[dst] = turret.angular_velocity[src];
                 b.turret_pitches[dst] = turret.pitch[src];
+                b.turret_pitch_vels[dst] = turret.pitch_velocity[src];
+                b.turret_target_ids[dst] = turret.target_id[src];
                 b.force_field_ranges[dst] = turret.force_field_range[src];
             }
         } else {
@@ -6277,6 +6292,8 @@ pub fn snapshot_baseline_capture_building_slot(
                 b.turret_rots[dst] = turret.rotation[src];
                 b.turret_ang_vels[dst] = turret.angular_velocity[src];
                 b.turret_pitches[dst] = turret.pitch[src];
+                b.turret_pitch_vels[dst] = turret.pitch_velocity[src];
+                b.turret_target_ids[dst] = turret.target_id[src];
                 b.force_field_ranges[dst] = turret.force_field_range[src];
             }
         } else {
@@ -6467,6 +6484,9 @@ pub fn snapshot_baseline_diff_slot(
                         > rot_vel_threshold
                     || ((turret.pitch[idx] - b.turret_pitches[idx]).abs() as f64)
                         > rot_pos_threshold
+                    || ((turret.pitch_velocity[idx] - b.turret_pitch_vels[idx]).abs() as f64)
+                        > rot_vel_threshold
+                    || turret.target_id[idx] != b.turret_target_ids[idx]
                     || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs()
                         > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD
                 {
