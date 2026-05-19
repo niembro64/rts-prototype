@@ -25,3 +25,97 @@ The current code has good local pooling and some WASM helpers, but the main targ
 Fix direction:
 Keep the TypeScript behavior as the reference while designing a data-oriented targeting batch: flat turret/entity inputs, candidate slots, visibility/LOS results, target output IDs/states, and parity checks during migration. Delete the old path when parity is proven.
 
+MIGRATION PLAN (each phase = its own PR; each lands one kernel and deletes
+the TS path it replaces, never both alongside — see "Delete The Old Path").
+
+AIM-08.0 — Parity harness
+  Add a per-tick assertion shim that runs both the existing TS targeting
+  pass and a (initially empty) "SoA outputs" snapshot side-by-side and
+  diffs the per-turret (target, state, aimErrorYaw, aimErrorPitch,
+  losBlockedTicks). Behind a debug flag; off in prod. The shim is the
+  contract every subsequent phase has to satisfy on every supported
+  scenario before its phase's PR lands. Without this, parity is a
+  vibe; with it, parity is grep-able.
+
+  Done when: the shim runs over an existing replay/test scenario and
+  reports zero per-tick diff against the unchanged TS path (modulo
+  acceptable float epsilon).
+
+AIM-08.1 — SoA input schema for armed entities + turrets
+  Define Rust-side structs-of-arrays in linear memory for the targeting
+  inputs every kernel will need:
+    - Entity slab: id, ownerPlayerId, posX/Y/Z, velX/Y/Z, radiusShot,
+      hp, flags (alive, observable, hasCombat, ...)
+    - Turret slab: parentEntityIdx, mountX/Y/Z (world), mountVx/Y/Z,
+      rotation, pitch, state, target, ranges (fire.max/min/tracking),
+      aimError, losBlockedTicks, configFlags (needsLOS, needsBallistic,
+      verticalLauncher)
+    - Field slab: id, ownerEntityIdx, centerX/Y/Z, radius
+  No kernels yet — just the slab definitions, allocators, and a
+  per-tick "rebuild from Entity/Turret JS objects" stamping pass. Old
+  TS path still runs and is still authoritative.
+
+  Done when: stamping pass writes correct values for every armed
+  entity and every turret on a test scenario; parity shim sees both
+  slab and JS state agree.
+
+AIM-08.2 — Port LOS / FF / arc-FF gates as SoA batch
+  Move hasCombatLineOfSight, hasForceFieldClearance,
+  hasArcForceFieldClearance into a Rust kernel that takes
+    (armedEntityIdx, candidateEntityIdx, weaponIdx) -> clearance bits
+  using the slabs from .1. Already-WASM terrain LOS becomes a slab read
+  instead of a per-call dispatch. Delete the JS implementations from
+  lineOfSight.ts in the same PR; targetingSystem.ts calls the slab
+  kernel.
+
+  Done when: every gate call in targetingSystem.ts dispatches once to
+  Rust for the whole batch; lineOfSight.ts has zero JS-side gate
+  implementations; parity shim is clean.
+
+AIM-08.3 — Port candidate scoring + ranking
+  Move scoreAndFilterCandidate, fireTargetPreferenceRankSq,
+  acquisitionTargetPreferenceRankSq, isBetterTargetCandidate,
+  isBetterMirrorTargetCandidate into a Rust kernel that takes the
+  per-turret candidate slice and writes (bestCandidateIdx, rank,
+  distSq, mirrorScore) per turret. The top-K + fallback budget bubble
+  sort moves with it. Delete the JS ranking from targetingSystem.ts.
+
+  Done when: the chooseBestTargetCandidate function in JS is a single
+  dispatch to a Rust kernel, returning the chosen idx; old ranking
+  helpers are gone from the tree; parity shim is clean.
+
+AIM-08.4 — Port ballistic solve to SoA
+  solveTurretAim / solveTurretAimAtGroundPoint /
+  hasWeaponBallisticSolution become a Rust kernel that takes turret
+  slab indices + target positions and writes (hasSolution, flightTime,
+  launchVx/Vy/Vz, yaw, pitch). aimSolver.ts shrinks to a thin JS
+  bridge. The arc-FF check from .2 then reads the same kernel's
+  flightTime / launchVelocity instead of a JS scratch.
+
+  Done when: aimSolver.ts no longer owns ballistic math; the
+  ProjectileTurretAim scratch is replaced by slab outputs; parity
+  shim is clean for ballisticArcLow + ballisticArcHigh + VLS shapes.
+
+AIM-08.5 — Port the targeting FSM
+  The per-armed-entity loop (Pass 0 mount kinematics, Pass 1 existing-
+  lock re-validation, Pass 2 candidate scan, fire-gate dispatch, state
+  transitions, losBlockedTicks decay) becomes the top-level Rust
+  kernel that consumes all of .1-.4 and writes new turret targets +
+  states back into the slab. JS dispatch becomes a single
+  rustTargetingTick(...) call. Delete targetingSystem.ts FSM logic.
+
+  Done when: targetingSystem.ts only contains the slab-rebuild
+  stamping pass (or has moved to its own file); parity shim runs
+  end-to-end clean across the supported scenarios.
+
+AIM-08.6 — Port the writeback + tear down the parity harness
+  After .5, snapshot serialization and rendering still read JS
+  Entity.combat.turrets[]. Drop a thin writeback pass that copies
+  slab → JS Turret each tick (for snapshot encoder consumption), and
+  remove the parity harness from .0. The slab is now the source of
+  truth.
+
+  Done when: the TS targeting pass is gone from the working tree, the
+  combat slabs are the per-tick authority, and the parity harness has
+  been deleted in the same PR as its last consumer.
+
