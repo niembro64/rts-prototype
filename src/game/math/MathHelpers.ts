@@ -150,10 +150,9 @@ export type DampedRotationOptions = {
 
 /** Result object reused across calls — copy `angle` / `angularVel` /
  *  `angularAcc` out before another `integrateDampedRotation` call.
- *  `angularAcc` is the spring acceleration that produced `angularVel`
- *  this step (rad/s²); callers serializing for client extrapolation
- *  read it so the client can integrate ω += α·dt under the PREDICT
- *  ACC mode. */
+ *  `angularAcc` is the average acceleration across this stable spring
+ *  step (rad/s²). It is sim/debug state; acceleration is not shipped on
+ *  the snapshot wire. */
 const _dampedRotationResult = { angle: 0, angularVel: 0, angularAcc: 0 };
 // Module-scope scratch for the WASM dispatch — written by Rust into
 // (angle, angularVel, angularAcc) at indices 0..3.
@@ -162,8 +161,11 @@ const _dampedRotationWasmScratch = new Float64Array(3);
 /** Damped-spring single-axis rotation integrator:
  *
  *    accel = (target − angle) · k  −  angularVel · c
- *    angularVel += accel · dtSec
- *    angle      += angularVel · dtSec
+ *
+ *  The implementation solves the spring exactly for the supplied
+ *  timestep instead of using explicit Euler. That keeps turret yaw and
+ *  pitch stable when the host tick rate is low or the client prediction
+ *  frame has a long dt.
  *
  *  `k` is the stiffness; `c = 2·√k` produces critical damping (no
  *  overshoot). Pass `{ wrap: true }` for yaw axes, or
@@ -205,16 +207,63 @@ export function integrateDampedRotation(
     _dampedRotationResult.angularAcc = _dampedRotationWasmScratch[2];
     return _dampedRotationResult;
   }
-  // Bootstrap-window fallback — pure-TS impl kept structurally
-  // identical to the Rust kernel so motion is bit-identical across
-  // the swap.
-  const diff = options?.wrap
-    ? normalizeAngle(targetAngle - angle)
-    : targetAngle - angle;
-  const accel = diff * k - angularVel * c;
-  let newVel = angularVel + accel * dtSec;
-  let newAngle = angle + newVel * dtSec;
-  let outAcc = accel;
+  // Bootstrap-window fallback — pure-TS impl kept on the same stable
+  // equations as the Rust kernel so motion does not change character
+  // across the swap.
+  const safeDt = Math.max(0, Number.isFinite(dtSec) ? dtSec : 0);
+  const safeK = Math.max(0, Number.isFinite(k) ? k : 0);
+  const safeC = Math.max(0, Number.isFinite(c) ? c : 0);
+  const safeVel = Number.isFinite(angularVel) ? angularVel : 0;
+  const safeTarget = Number.isFinite(targetAngle) ? targetAngle : 0;
+  const relativeAngle = options?.wrap
+    ? normalizeAngle(angle - safeTarget)
+    : (Number.isFinite(angle) ? angle : 0) - safeTarget;
+
+  let newRelative = relativeAngle;
+  let newVel = safeVel;
+  if (safeDt > 0 && safeK > 0) {
+    const discriminant = safeC * safeC - 4 * safeK;
+    if (Math.abs(discriminant) <= 1e-9) {
+      const r = -safeC / 2;
+      const b = safeVel - r * relativeAngle;
+      const e = Math.exp(r * safeDt);
+      newRelative = (relativeAngle + b * safeDt) * e;
+      newVel = (b + r * (relativeAngle + b * safeDt)) * e;
+    } else if (discriminant > 0) {
+      const root = Math.sqrt(discriminant);
+      const r1 = (-safeC + root) / 2;
+      const r2 = (-safeC - root) / 2;
+      const denom = r1 - r2;
+      const a = denom !== 0 ? (safeVel - r2 * relativeAngle) / denom : relativeAngle;
+      const b = relativeAngle - a;
+      const e1 = Math.exp(r1 * safeDt);
+      const e2 = Math.exp(r2 * safeDt);
+      newRelative = a * e1 + b * e2;
+      newVel = a * r1 * e1 + b * r2 * e2;
+    } else {
+      const alpha = -safeC / 2;
+      const omega = Math.sqrt(-discriminant) / 2;
+      const a = relativeAngle;
+      const b = omega > 0 ? (safeVel - alpha * relativeAngle) / omega : 0;
+      const e = Math.exp(alpha * safeDt);
+      const cos = Math.cos(omega * safeDt);
+      const sin = Math.sin(omega * safeDt);
+      newRelative = e * (a * cos + b * sin);
+      newVel = e * (
+        alpha * (a * cos + b * sin) +
+        (-a * omega * sin + b * omega * cos)
+      );
+    }
+  } else if (safeDt > 0 && safeC > 0) {
+    const e = Math.exp(-safeC * safeDt);
+    newRelative = relativeAngle + safeVel * (1 - e) / safeC;
+    newVel = safeVel * e;
+  } else if (safeDt > 0) {
+    newRelative = relativeAngle + safeVel * safeDt;
+  }
+
+  let newAngle = safeTarget + newRelative;
+  let outAcc = safeDt > 0 ? (newVel - safeVel) / safeDt : 0;
   if (options?.wrap) {
     newAngle = normalizeAngle(newAngle);
   }

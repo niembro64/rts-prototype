@@ -198,7 +198,7 @@ export class UnitMeshBuilder3D {
       bodyShape,
       hideChassis,
       turrets: turretMeshes,
-      lodKey: unitRenderKey,
+      geometryKey: unitRenderKey,
       smoothChassisSlots,
       polyChassisSlot,
       chassisLift: liftGroup.position.y,

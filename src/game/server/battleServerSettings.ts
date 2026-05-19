@@ -11,7 +11,7 @@ import {
   loadStoredKeyframeRatio,
   loadStoredSnapshotRate,
   loadStoredTickRate,
-  loadStoredTiltEmaMode,
+  loadStoredUnitGroundNormalEmaMode,
 } from '../../serverBarConfig';
 import type { GameServer } from './GameServer';
 import type { CommandAuthority } from './commandAuthority';
@@ -31,9 +31,9 @@ export function applyStoredBattleServerSettings(
   server.setSnapshotRate(loadStoredSnapshotRate());
   server.setKeyframeRatio(loadStoredKeyframeRatio());
   server.receiveCommand({
-    type: 'setTiltEmaMode',
+    type: 'setUnitGroundNormalEmaMode',
     tick: 0,
-    mode: loadStoredTiltEmaMode(),
+    mode: loadStoredUnitGroundNormalEmaMode(),
   }, authority);
 
   if (options.ipAddress !== undefined) {

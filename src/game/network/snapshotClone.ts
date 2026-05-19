@@ -121,9 +121,19 @@ function copyBuildingInto(
   } else {
     dst.dim = undefined;
   }
-  dst.hp.curr = src.hp.curr;
-  dst.hp.max = src.hp.max;
-  copyBuildStateInto(src.build, dst.build);
+  if (src.hp) {
+    const hp = dst.hp ?? (dst.hp = { curr: 0, max: 0 });
+    hp.curr = src.hp.curr;
+    hp.max = src.hp.max;
+  } else {
+    dst.hp = undefined;
+  }
+  dst.build = src.build
+    ? copyBuildStateInto(src.build, dst.build ?? {
+        complete: false,
+        paid: { energy: 0, metal: 0 },
+      })
+    : undefined;
   dst.metalExtractionRate = src.metalExtractionRate;
   if (src.solar) {
     if (!dst.solar) dst.solar = { open: true };
@@ -167,9 +177,14 @@ function copyEntityInto(
 ): NetworkServerSnapshotEntity {
   dst.id = src.id;
   dst.type = src.type;
-  dst.pos.x = src.pos.x;
-  dst.pos.y = src.pos.y;
-  dst.pos.z = src.pos.z;
+  if (src.pos) {
+    if (!dst.pos) dst.pos = { x: 0, y: 0, z: 0 };
+    dst.pos.x = src.pos.x;
+    dst.pos.y = src.pos.y;
+    dst.pos.z = src.pos.z;
+  } else {
+    dst.pos = undefined;
+  }
   dst.rotation = src.rotation;
   dst.playerId = src.playerId;
   dst.changedFields = src.changedFields;
@@ -400,7 +415,7 @@ export class ReusableNetworkSnapshotCloner {
       } else {
         dsm.wind = undefined;
       }
-      dsm.tiltEma = sm.tiltEma;
+      dsm.unitGroundNormalEma = sm.unitGroundNormalEma;
       dst.serverMeta = dsm;
     } else {
       dst.serverMeta = undefined;

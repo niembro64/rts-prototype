@@ -34,10 +34,10 @@ import {
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
-  loadStoredTiltEmaMode,
+  loadStoredUnitGroundNormalEmaMode,
   snapshotRateHz,
 } from '../serverBarConfig';
-import type { TiltEmaMode } from '../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import { getPlayerColor } from './uiUtils';
 import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
@@ -243,7 +243,7 @@ const {
   rotationPosEma,
   rotationVelEma,
   predictionMode,
-  clientTiltEmaMode,
+  clientUnitGroundNormalEmaMode,
   edgeScrollEnabled,
   dragPanEnabled,
   waypointDetail,
@@ -285,7 +285,7 @@ const {
   changeRotationPosEma,
   changeRotationVelEma,
   changePredictionMode,
-  changeClientTiltEmaMode,
+  changeClientUnitGroundNormalEmaMode,
   changeWaypointDetail,
   toggleEdgeScroll,
   toggleDragPan,
@@ -406,21 +406,21 @@ const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ?? SERVER_CONFIG.tickRate.default,
 );
-// HOST SERVER chassis-tilt EMA mode. Picks the half-life used by the
-// sim's updateUnitTilt (TILT_EMA_HALF_LIFE_SEC[mode]). Persisted to
-// localStorage and pushed via setTiltEmaMode command.
-const serverTiltEmaMode = ref<TiltEmaMode>(loadStoredTiltEmaMode());
-// HOST SERVER tilt EMA — the host applies its setting via the
-// setTiltEmaMode command, but remote clients render this control
+// HOST SERVER unit ground normal EMA mode. Picks the half-life used by the
+// sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
+// localStorage and pushed via setUnitGroundNormalEmaMode command.
+const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(loadStoredUnitGroundNormalEmaMode());
+// HOST SERVER unit ground normal EMA — the host applies its setting via the
+// setUnitGroundNormalEmaMode command, but remote clients render this control
 // from snapshot meta (their own localStorage is irrelevant once
 // connected). Reconcile when the host's value differs.
 watch(
-  () => serverMetaFromSnapshot.value?.tiltEma,
+  () => serverMetaFromSnapshot.value?.unitGroundNormalEma,
   (mode) => {
     if (!mode) return;
-    if (!SERVER_CONFIG.tiltEma.options.includes(mode as TiltEmaMode)) return;
-    if (mode === serverTiltEmaMode.value) return;
-    serverTiltEmaMode.value = mode as TiltEmaMode;
+    if (!SERVER_CONFIG.unitGroundNormalEma.options.includes(mode as UnitGroundNormalEmaMode)) return;
+    if (mode === serverUnitGroundNormalEmaMode.value) return;
+    serverUnitGroundNormalEmaMode.value = mode as UnitGroundNormalEmaMode;
   },
 );
 const displaySnapshotRate = computed(
@@ -433,13 +433,10 @@ const displayKeyframeRatio = computed(
     serverMetaFromSnapshot.value?.snaps.keyframes ??
     SERVER_CONFIG.keyframe.default,
 );
-// Bar-fill target for FSPS. The host's keyframe ratio describes
-// "every Nth snapshot is a keyframe" — so the expected FSPS is
-// snapsPerSec × ratio. 'ALL' clamps to the snapshot rate; 'NONE'
-// has no recurring keyframes so we still draw a tiny non-zero
-// target (1 fps) so the bar isn't divide-by-zero.
+// Bar-fill target for FSPS: full snapshots are a configurable fraction
+// of the host DIFFSNAP rate.
 const fullSnapBarTarget = computed(() => {
-  const sps = snapshotRateHz(displaySnapshotRate.value);
+  const sps = snapshotRateHz(displaySnapshotRate.value, displayTickRate.value);
   const kf = displayKeyframeRatio.value;
   if (kf === 'NONE') return 1;
   if (kf === 'ALL') return sps;
@@ -487,13 +484,13 @@ const {
   resetServerDefaults,
   setNetworkUpdateRate,
   setTickRateValue,
-  setTiltEmaModeValue,
+  setUnitGroundNormalEmaModeValue,
   setKeyframeRatioValue,
   resetGridInfoToDefault,
 } = useGameCanvasServerSettings({
   currentBattleMode,
   displayGridInfo,
-  serverTiltEmaMode,
+  serverUnitGroundNormalEmaMode,
   getActiveConnection: () => activeConnection,
 });
 
@@ -700,7 +697,7 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
   displayTickRate: displayTickRate.value,
-  serverTiltEmaMode: serverTiltEmaMode.value,
+  serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   displayServerTpsAvg: displayServerTpsAvg.value,
   displayServerTpsWorst: displayServerTpsWorst.value,
   displayServerCpuAvg: displayServerCpuAvg.value,
@@ -709,7 +706,7 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   displayKeyframeRatio: displayKeyframeRatio.value,
   resetServerDefaults,
   setTickRateValue,
-  setTiltEmaModeValue,
+  setUnitGroundNormalEmaModeValue,
   setNetworkUpdateRate,
   setKeyframeRatioValue,
 });
@@ -722,7 +719,7 @@ watchEffect(() => {
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
   m.displayTickRate = displayTickRate.value;
-  m.serverTiltEmaMode = serverTiltEmaMode.value;
+  m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.displayServerTpsAvg = displayServerTpsAvg.value;
   m.displayServerTpsWorst = displayServerTpsWorst.value;
   m.displayServerCpuAvg = displayServerCpuAvg.value;
@@ -756,6 +753,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   currentZoom: currentZoom.value,
   snapAvgRate: snapAvgRate.value,
   snapWorstRate: snapWorstRate.value,
+  displayTickRate: displayTickRate.value,
   displaySnapshotRate: displaySnapshotRate.value,
   fullSnapAvgRate: fullSnapAvgRate.value,
   fullSnapWorstRate: fullSnapWorstRate.value,
@@ -769,7 +767,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   rotationPosEma: rotationPosEma.value,
   rotationVelEma: rotationVelEma.value,
   predictionMode: predictionMode.value,
-  clientTiltEmaMode: clientTiltEmaMode.value,
+  clientUnitGroundNormalEmaMode: clientUnitGroundNormalEmaMode.value,
   allPanActive: allPanActive.value,
   dragPanEnabled: dragPanEnabled.value,
   edgeScrollEnabled: edgeScrollEnabled.value,
@@ -804,7 +802,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   changeRotationPosEma,
   changeRotationVelEma,
   changePredictionMode,
-  changeClientTiltEmaMode,
+  changeClientUnitGroundNormalEmaMode,
   toggleAllPan,
   toggleDragPan,
   toggleEdgeScroll,
@@ -849,6 +847,7 @@ watchEffect(() => {
   m.currentZoom = currentZoom.value;
   m.snapAvgRate = snapAvgRate.value;
   m.snapWorstRate = snapWorstRate.value;
+  m.displayTickRate = displayTickRate.value;
   m.displaySnapshotRate = displaySnapshotRate.value;
   m.fullSnapAvgRate = fullSnapAvgRate.value;
   m.fullSnapWorstRate = fullSnapWorstRate.value;
@@ -862,7 +861,7 @@ watchEffect(() => {
   m.rotationPosEma = rotationPosEma.value;
   m.rotationVelEma = rotationVelEma.value;
   m.predictionMode = predictionMode.value;
-  m.clientTiltEmaMode = clientTiltEmaMode.value;
+  m.clientUnitGroundNormalEmaMode = clientUnitGroundNormalEmaMode.value;
   m.allPanActive = allPanActive.value;
   m.dragPanEnabled = dragPanEnabled.value;
   m.edgeScrollEnabled = edgeScrollEnabled.value;

@@ -103,13 +103,18 @@ type FactorySub = NonNullable<BuildingSub['factory']>;
 
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
+  entityPos: { x: number; y: number; z: number };
   unitSub: UnitSub;
+  unitHp: NonNullable<UnitSub['hp']>;
+  unitVelocity: NonNullable<UnitSub['velocity']>;
   unitSuspension: NonNullable<UnitSub['suspension']>;
   unitJump: NonNullable<UnitSub['jump']>;
   unitRadius: { body: number; shot: number; push: number };
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
   buildingSub: BuildingSub;
+  buildingHp: NonNullable<BuildingSub['hp']>;
+  buildingBuild: NonNullable<BuildingSub['build']>;
   factorySub: FactorySub;
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
@@ -194,18 +199,30 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createActionDto());
   const waypoints: WaypointDto[] = [];
   for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
+  const entityPos = { x: 0, y: 0, z: 0 };
+  const unitSub = createNetworkUnitSnapshot();
+  const unitHp = unitSub.hp ?? (unitSub.hp = { curr: 0, max: 0 });
+  const unitVelocity = unitSub.velocity ?? (unitSub.velocity = { x: 0, y: 0, z: 0 });
+  const buildingHp = { curr: 0, max: 0 };
+  const buildingBuild = {
+    complete: false,
+    paid: { energy: 0, metal: 0 },
+  };
   return {
     entity: {
       id: 0,
       type: 'unit',
-      pos: { x: 0, y: 0, z: 0 },
+      pos: entityPos,
       rotation: 0,
       playerId: 1 as PlayerId,
       changedFields: undefined,
       unit: undefined,
       building: undefined,
     },
-    unitSub: createNetworkUnitSnapshot(),
+    entityPos,
+    unitSub,
+    unitHp,
+    unitVelocity,
     unitSuspension: {
       offset: { x: 0, y: 0, z: 0 },
       velocity: { x: 0, y: 0, z: 0 },
@@ -215,13 +232,12 @@ function createPooledEntry(): PooledEntry {
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
-      type: undefined, dim: undefined, hp: { curr: 0, max: 0 },
-      build: {
-        complete: false,
-        paid: { energy: 0, metal: 0 },
-      },
+      type: undefined, dim: undefined, hp: buildingHp,
+      build: buildingBuild,
       metalExtractionRate: undefined,
     },
+    buildingHp,
+    buildingBuild,
     factorySub: {
       queue: [], progress: 0, producing: false,
       energyRate: 0, metalRate: 0,
@@ -372,14 +388,15 @@ function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
   const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
   const values = rows.values;
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  const pos = entity.pos;
   values[base + 0] = entity.id;
   values[base + 1] = entity.type === 'unit'
     ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
     : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
-  values[base + 2] = entity.pos.x;
-  values[base + 3] = entity.pos.y;
-  values[base + 4] = entity.pos.z;
-  values[base + 5] = entity.rotation;
+  values[base + 2] = pos?.x ?? 0;
+  values[base + 3] = pos?.y ?? 0;
+  values[base + 4] = pos?.z ?? 0;
+  values[base + 5] = entity.rotation ?? 0;
   values[base + 6] = entity.playerId;
   values[base + 7] = entity.changedFields !== undefined ? 1 : 0;
   values[base + 8] = entity.changedFields ?? 0;
@@ -407,20 +424,21 @@ function appendUnitEntityWireRow(
   const turrets = unit.turrets;
   const actionOffset = appendActionWireRows(actions);
   const turretOffset = appendTurretWireRows(turrets);
+  const pos = entity.pos;
 
   values[base + 0] = entity.id;
-  values[base + 1] = entity.pos.x;
-  values[base + 2] = entity.pos.y;
-  values[base + 3] = entity.pos.z;
-  values[base + 4] = entity.rotation;
+  values[base + 1] = pos?.x ?? 0;
+  values[base + 2] = pos?.y ?? 0;
+  values[base + 3] = pos?.z ?? 0;
+  values[base + 4] = entity.rotation ?? 0;
   values[base + 5] = entity.playerId;
   values[base + 6] = entity.changedFields !== undefined ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
-  values[base + 8] = unit.hp.curr;
-  values[base + 9] = unit.hp.max;
-  values[base + 10] = unit.velocity.x;
-  values[base + 11] = unit.velocity.y;
-  values[base + 12] = unit.velocity.z;
+  values[base + 8] = unit.hp?.curr ?? 0;
+  values[base + 9] = unit.hp?.max ?? 0;
+  values[base + 10] = unit.velocity?.x ?? 0;
+  values[base + 11] = unit.velocity?.y ?? 0;
+  values[base + 12] = unit.velocity?.z ?? 0;
   values[base + 13] = unit.unitType !== undefined ? 1 : 0;
   values[base + 14] = unit.unitType ?? 0;
   values[base + 15] = radius !== undefined ? 1 : 0;
@@ -491,11 +509,12 @@ function appendBuildingEntityWireRow(
   const turretOffset = appendTurretWireRows(turrets);
   const factoryQueueOffset = appendFactoryQueueWireRows(factory?.queue);
   const factoryWaypointOffset = appendWaypointWireRows(factory?.waypoints);
+  const pos = entity.pos;
   values[base + 0] = entity.id;
-  values[base + 1] = entity.pos.x;
-  values[base + 2] = entity.pos.y;
-  values[base + 3] = entity.pos.z;
-  values[base + 4] = entity.rotation;
+  values[base + 1] = pos?.x ?? 0;
+  values[base + 2] = pos?.y ?? 0;
+  values[base + 3] = pos?.z ?? 0;
+  values[base + 4] = entity.rotation ?? 0;
   values[base + 5] = entity.playerId;
   values[base + 6] = entity.changedFields !== undefined ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
@@ -504,11 +523,11 @@ function appendBuildingEntityWireRow(
   values[base + 10] = dim !== undefined ? 1 : 0;
   values[base + 11] = dim !== undefined ? dim.x : 0;
   values[base + 12] = dim !== undefined ? dim.y : 0;
-  values[base + 13] = building.hp.curr;
-  values[base + 14] = building.hp.max;
-  values[base + 15] = building.build.complete ? 1 : 0;
-  values[base + 16] = building.build.paid.energy;
-  values[base + 17] = building.build.paid.metal;
+  values[base + 13] = building.hp?.curr ?? 0;
+  values[base + 14] = building.hp?.max ?? 0;
+  values[base + 15] = building.build?.complete ? 1 : 0;
+  values[base + 16] = building.build?.paid.energy ?? 0;
+  values[base + 17] = building.build?.paid.metal ?? 0;
   values[base + 18] = building.metalExtractionRate !== undefined ? 1 : 0;
   values[base + 19] = building.metalExtractionRate ?? 0;
   values[base + 20] = solar !== undefined ? 1 : 0;
@@ -573,11 +592,15 @@ export function serializeEntitySnapshot(
   ne.type = entity.type;
   ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
   ne.changedFields = isFull ? undefined : changedFields;
+  ne.pos = undefined;
+  ne.rotation = undefined;
 
   if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
-    ne.pos.x = qPos(entity.transform.x);
-    ne.pos.y = qPos(entity.transform.y);
-    ne.pos.z = qPos(entity.transform.z);
+    const pos = poolEntry.entityPos;
+    pos.x = qPos(entity.transform.x);
+    pos.y = qPos(entity.transform.y);
+    pos.z = qPos(entity.transform.z);
+    ne.pos = pos;
   }
   if (isFull || (changedFields & ENTITY_CHANGED_ROT)) {
     ne.rotation = qRot(entity.transform.rotation);
@@ -589,16 +612,26 @@ export function serializeEntitySnapshot(
   if (entity.type === 'unit' && entity.unit) {
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
-      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT |
       ENTITY_CHANGED_BUILDING |
-      ENTITY_CHANGED_NORMAL |
       ENTITY_CHANGED_SUSPENSION |
       ENTITY_CHANGED_JUMP;
-    const hasUnitFields = isFull || (changedFields! & unitFieldMask);
+    const hasSurfaceNormalFields = isFull ||
+      (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL));
+    const hasOrientationFields = entity.unit.orientation !== undefined &&
+      (isFull || (changedFields! & ENTITY_CHANGED_ROT));
+    const hasAngularVelocityFields = entity.unit.orientation !== undefined &&
+      (isFull || (changedFields! & ENTITY_CHANGED_VEL));
+    const hasUnitFields = isFull ||
+      (changedFields! & unitFieldMask) ||
+      hasSurfaceNormalFields ||
+      hasOrientationFields ||
+      hasAngularVelocityFields;
 
     if (hasUnitFields) {
       const u = poolEntry.unitSub;
       ne.unit = u;
+      u.hp = undefined;
+      u.velocity = undefined;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -612,12 +645,13 @@ export function serializeEntitySnapshot(
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_VEL)) {
+        u.velocity = poolEntry.unitVelocity;
         if (canSeePrivateDetails) {
           writeNetworkUnitVelocity(u, entity.unit, qVel);
         } else {
-          u.velocity.x = 0;
-          u.velocity.y = 0;
-          u.velocity.z = 0;
+          poolEntry.unitVelocity.x = 0;
+          poolEntry.unitVelocity.y = 0;
+          poolEntry.unitVelocity.z = 0;
         }
       }
 
@@ -652,11 +686,14 @@ export function serializeEntitySnapshot(
       // rotation-velocity EMA on the client already smooths approach
       // to a freshly-arrived target.
       const orient = entity.unit.orientation;
-      if (orient) {
+      if (orient && (isFull || (changedFields! & ENTITY_CHANGED_ROT))) {
         u.orientation = orient;
-        u.angularVelocity3 = entity.unit.angularVelocity3 ?? undefined;
       } else {
         u.orientation = undefined;
+      }
+      if (orient && (isFull || (changedFields! & ENTITY_CHANGED_VEL))) {
+        u.angularVelocity3 = entity.unit.angularVelocity3 ?? undefined;
+      } else {
         u.angularVelocity3 = undefined;
       }
 
@@ -667,8 +704,10 @@ export function serializeEntitySnapshot(
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
-        u.hp.curr = entity.unit.hp;
-        u.hp.max = entity.unit.maxHp;
+        const hp = poolEntry.unitHp;
+        hp.curr = entity.unit.hp;
+        hp.max = entity.unit.maxHp;
+        u.hp = hp;
       }
 
       u.build = undefined;
@@ -698,7 +737,7 @@ export function serializeEntitySnapshot(
       }
 
       u.buildTargetId = undefined;
-      if (canSeePrivateDetails && entity.builder) {
+      if (canSeePrivateDetails && entity.builder && (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS))) {
         const targetId = entity.builder.currentBuildTarget ?? undefined;
         u.buildTargetId = canReferenceEntityId(targetId) ? targetId ?? null : null;
       }
@@ -713,6 +752,8 @@ export function serializeEntitySnapshot(
     if (hasBuildingFields) {
       const b = poolEntry.buildingSub;
       ne.building = b;
+      b.hp = undefined;
+      b.build = undefined;
       b.solar = undefined;
       b.metalExtractionRate = undefined;
       b.turrets = undefined;
@@ -737,21 +778,25 @@ export function serializeEntitySnapshot(
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
-        b.hp.curr = entity.building.hp;
-        b.hp.max = entity.building.maxHp;
+        const hp = poolEntry.buildingHp;
+        hp.curr = entity.building.hp;
+        hp.max = entity.building.maxHp;
+        b.hp = hp;
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) {
+        const build = poolEntry.buildingBuild;
         if (entity.buildable) {
           const buildable = entity.buildable;
-          b.build.complete = buildable.isComplete;
-          b.build.paid.energy = buildable.paid.energy;
-          b.build.paid.metal = buildable.paid.metal;
+          build.complete = buildable.isComplete;
+          build.paid.energy = buildable.paid.energy;
+          build.paid.metal = buildable.paid.metal;
         } else {
-          b.build.complete = true;
-          b.build.paid.energy = 0;
-          b.build.paid.metal = 0;
+          build.complete = true;
+          build.paid.energy = 0;
+          build.paid.metal = 0;
         }
+        b.build = build;
         if (entity.building.activeState) {
           // Wire field name is `solar` for legacy reasons; semantically
           // carries the shared BuildingActiveState open flag for solar,

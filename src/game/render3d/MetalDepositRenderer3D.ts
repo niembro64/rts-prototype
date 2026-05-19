@@ -5,20 +5,13 @@
 // shares the logical square resource footprint.
 //
 // The gameplay/logical area is a square build-cell footprint; this renderer
-// draws one flattened irregular ore marker. Higher LODs keep
-// more of the same deterministic perimeter samples, so the outline refines
-// without adding a second mound/cap shape.
+// draws one flattened irregular ore marker at the single frontend
+// graphics detail level.
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
-import type { Lod3DState } from './Lod3D';
-import {
-  objectLodToCameraSphereGraphicsTier,
-  type RenderObjectLodTier,
-} from './RenderObjectLod';
-import { RenderLodGrid } from './RenderLodGrid';
 
 const DEPOSIT_MESH_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, {
   radialStep: number;
@@ -36,34 +29,19 @@ const DEPOSIT_MESH_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, {
   max:    { radialStep: 1, radiusScale: 1, material: 'standard' },
 };
 
-// All deposit LODs are sampled from this same seed grid. Lower tiers keep
-// every Nth point; higher tiers insert the skipped points, so the silhouette
-// refines instead of reshuffling when crossing a camera-sphere boundary.
 const DEPOSIT_MAX_RADIAL_SEGMENTS = 64;
 
 const DEPOSIT_BASE = new THREE.Color(0x272b2e);
 const DEPOSIT_DARK = new THREE.Color(0x111416);
 const DEPOSIT_LIGHT = new THREE.Color(0x6f7678);
-const DEPOSIT_GRAPHICS_TIERS: readonly ConcreteGraphicsQuality[] = [
-  'min',
-  'low',
-  'medium',
-  'high',
-  'max',
-];
-
-type DepositGraphicsNodeMap = Partial<Record<ConcreteGraphicsQuality, THREE.Group>>;
-
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
   private deposits: ReadonlyArray<MetalDeposit>;
   private records: Array<{
-    nodes: DepositGraphicsNodeMap;
+    node: THREE.Group;
     tier: ConcreteGraphicsQuality | null;
-    objectTier: RenderObjectLodTier | null;
   }> = [];
   private materials = new Map<string, THREE.Material>();
-  private lodGrid = new RenderLodGrid();
 
   constructor(
     parentWorld: THREE.Group,
@@ -73,58 +51,39 @@ export class MetalDepositRenderer3D {
     this.deposits = deposits;
     this.group = new THREE.Group();
     parentWorld.add(this.group);
-    this.records = deposits.map(() => ({ nodes: {}, tier: null, objectTier: null }));
+    this.records = [];
     this.buildAll(initialTier);
   }
 
-  update(
-    graphicsConfig: GraphicsConfig,
-    lod: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
-  ): void {
+  update(graphicsConfig: GraphicsConfig): void {
     if (this.deposits.length === 0) return;
-    const lodGrid = sharedLodGrid ?? this.lodGrid;
-    if (!sharedLodGrid) lodGrid.beginFrame(lod.view, graphicsConfig);
+    const tier = graphicsConfig.tier;
     for (let i = 0; i < this.deposits.length; i++) {
-      const d = this.deposits[i];
       const record = this.records[i];
-      const objectTier = lodGrid.resolve(d.x, d.height, d.y);
-      record.objectTier = objectTier;
-      // Metal deposits are terrain resources, not rich actor graphs.
-      // Their mesh detail follows the camera-sphere band directly.
-      const tier = objectLodToCameraSphereGraphicsTier(objectTier);
       if (tier !== record.tier) this.setDepositTier(i, tier);
-      const node = record.nodes[tier];
-      if (node) {
-        node.visible = true;
-        node.userData.objectLodTier = objectTier;
-        node.userData.graphicsTier = tier;
-      }
+      record.node.visible = true;
+      record.node.userData.graphicsTier = tier;
     }
   }
 
   private buildAll(tier: ConcreteGraphicsQuality): void {
     for (let i = 0; i < this.deposits.length; i++) {
-      const record = this.records[i];
-      for (const graphicsTier of DEPOSIT_GRAPHICS_TIERS) {
-        const node = this.buildDepositNode(i, graphicsTier);
-        node.visible = graphicsTier === tier;
-        record.nodes[graphicsTier] = node;
-        this.group.add(node);
-      }
-      record.tier = tier;
+      const node = this.buildDepositNode(i, tier);
+      node.visible = true;
+      this.records[i] = { node, tier };
+      this.group.add(node);
     }
   }
 
   private setDepositTier(index: number, tier: ConcreteGraphicsQuality): void {
     const record = this.records[index];
     if (record.tier === tier) return;
-    if (record.tier) {
-      const previous = record.nodes[record.tier];
-      if (previous) previous.visible = false;
-    }
-    const next = record.nodes[tier];
-    if (next) next.visible = true;
+    disposeDepositNode(record.node);
+    this.group.remove(record.node);
+    const next = this.buildDepositNode(index, tier);
+    next.visible = true;
+    this.group.add(next);
+    record.node = next;
     record.tier = tier;
   }
 
@@ -159,13 +118,8 @@ export class MetalDepositRenderer3D {
 
   dispose(): void {
     for (const record of this.records) {
-      for (const tier of DEPOSIT_GRAPHICS_TIERS) {
-        const node = record.nodes[tier];
-        if (!node) continue;
-        disposeDepositNode(node);
-        this.group.remove(node);
-        delete record.nodes[tier];
-      }
+      disposeDepositNode(record.node);
+      this.group.remove(record.node);
       record.tier = null;
     }
     for (const material of this.materials.values()) material.dispose();

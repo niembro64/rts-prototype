@@ -138,7 +138,7 @@ export function buildHoverFans(
   }
 
   unitGroup.add(group);
-  return { type: 'hover', group, fans, lodKey: '' };
+  return { type: 'hover', group, fans, geometryKey: '' };
 }
 
 export function updateHoverFans(

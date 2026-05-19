@@ -45,11 +45,11 @@
     "slow": 0.5
   },
   "buildRateDisplayEmaMode": "mid",
-  "tiltEmaHalfLifeSec": {
+  "unitGroundNormalEmaHalfLifeSec": {
     "snap": 0,
     "fast": 0.05,
     "mid": 0.18,
     "slow": 0.5
   },
-  "tiltEmaModeDefault": "fast"
+  "unitGroundNormalEmaModeDefault": "fast"
 }

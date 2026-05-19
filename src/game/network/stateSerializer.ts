@@ -37,6 +37,7 @@ import {
 import {
   SNAPSHOT_DIRTY_FORCE_FIELDS,
   copyPrevState,
+  copySentPrevState,
   type DeltaTrackingState,
   type PrevEntityState,
   dirtyEntityFieldsBuf as _dirtyEntityFieldsBuf,
@@ -57,23 +58,26 @@ export {
   resetDeltaTrackingForKey,
 } from './stateSerializerEntityDelta';
 
-/** Phase 10 D.3f — capture one entity's just-emitted next state
- *  into the recipient's Rust-side snapshot baseline. Mirrors the
- *  JS-side copyPrevState that runs alongside it. The caller must
- *  have already populated the entity-meta + turret pools for this
- *  entity via D.3a's captureSnapshotEntityStates pass. */
+/** Phase 10 D.3f — capture one entity's just-emitted state into the
+ *  recipient's Rust-side snapshot baseline. `changedFields ===
+ *  undefined` means full/new record; otherwise only the emitted field
+ *  groups advance, mirroring copySentPrevState. The caller must have
+ *  already populated the entity-meta + turret pools for this entity
+ *  via D.3a's captureSnapshotEntityStates pass. */
 function captureToRustBaseline(
   sim: SimWasm,
   handle: number,
   entity: Entity,
   next: PrevEntityState,
   tick: number,
+  changedFields: number | undefined,
 ): void {
   const slot = spatialGrid.getSlot(entity.id);
   if (slot < 0) return;
+  const baselineChangedFields = changedFields ?? 0xFFFF_FFFF;
   if (entity.type === 'unit') {
     sim.snapshotBaseline.captureUnitSlot(
-      handle, slot, tick,
+      handle, slot, tick, baselineChangedFields,
       next.x, next.y, next.z, next.rotation,
       next.velocityX, next.velocityY, next.velocityZ,
       next.movementAccelX, next.movementAccelY, next.movementAccelZ,
@@ -83,7 +87,7 @@ function captureToRustBaseline(
     );
   } else if (entity.type === 'building') {
     sim.snapshotBaseline.captureBuildingSlot(
-      handle, slot, tick,
+      handle, slot, tick, baselineChangedFields,
       next.x, next.y, next.z, next.rotation,
       next.isEngagedBits, next.targetBits,
     );
@@ -376,9 +380,9 @@ export function serializeGameState(
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
-        copyPrevState(next, prev);
+        copySentPrevState(next, prev, changedFields);
         if (baselineSim !== undefined && baselineHandle !== undefined) {
-          captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick);
+          captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, changedFields);
         }
       }
     }
@@ -401,7 +405,7 @@ export function serializeGameState(
           const prev = getPrevState(tracking, entity.id);
           copyPrevState(next, prev);
           if (baselineSim !== undefined && baselineHandle !== undefined) {
-            captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick);
+            captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, undefined);
           }
         }
       }
@@ -459,7 +463,7 @@ export function serializeGameState(
         const next = getNextEntityState(entity);
         copyPrevState(next, prev);
         if (baselineSim !== undefined && baselineHandle !== undefined) {
-          captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick);
+          captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, undefined);
         }
       }
     }

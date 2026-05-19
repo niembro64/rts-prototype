@@ -106,8 +106,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return SERVER_CONFIG.tickRate.options.includes(command.rate)
         ? { ...command, tick }
         : null;
-    case 'setTiltEmaMode':
-      return SERVER_CONFIG.tiltEma.options.includes(command.mode)
+    case 'setUnitGroundNormalEmaMode':
+      return SERVER_CONFIG.unitGroundNormalEma.options.includes(command.mode)
         ? { ...command, tick }
         : null;
     case 'setSendGridInfo':

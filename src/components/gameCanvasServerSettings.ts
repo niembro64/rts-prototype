@@ -11,16 +11,16 @@ import {
   saveKeyframeRatio,
   saveSnapshotRate,
   saveTickRate,
-  saveTiltEmaMode,
+  saveUnitGroundNormalEmaMode,
 } from '../serverBarConfig';
-import type { TiltEmaMode } from '../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
 
 export type GameCanvasServerSettings = {
   resetServerDefaults(): void;
   setNetworkUpdateRate(rate: SnapshotRate): void;
   setTickRateValue(rate: TickRate): void;
-  setTiltEmaModeValue(mode: TiltEmaMode): void;
+  setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
   setKeyframeRatioValue(ratio: KeyframeRatio): void;
   toggleSendGridInfo(): void;
   resetGridInfoToDefault(): void;
@@ -29,14 +29,14 @@ export type GameCanvasServerSettings = {
 export type GameCanvasServerSettingsOptions = {
   currentBattleMode: ComputedRef<BattleMode>;
   displayGridInfo: ComputedRef<boolean>;
-  serverTiltEmaMode: Ref<TiltEmaMode>;
+  serverUnitGroundNormalEmaMode: Ref<UnitGroundNormalEmaMode>;
   getActiveConnection: () => GameConnection | null;
 };
 
 export function useGameCanvasServerSettings({
   currentBattleMode,
   displayGridInfo,
-  serverTiltEmaMode,
+  serverUnitGroundNormalEmaMode,
   getActiveConnection,
 }: GameCanvasServerSettingsOptions): GameCanvasServerSettings {
   function setNetworkUpdateRate(rate: SnapshotRate): void {
@@ -54,10 +54,10 @@ export function useGameCanvasServerSettings({
     saveTickRate(rate);
   }
 
-  function setTiltEmaModeValue(mode: TiltEmaMode): void {
-    getActiveConnection()?.sendCommand({ type: 'setTiltEmaMode', tick: 0, mode });
-    saveTiltEmaMode(mode);
-    serverTiltEmaMode.value = mode;
+  function setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void {
+    getActiveConnection()?.sendCommand({ type: 'setUnitGroundNormalEmaMode', tick: 0, mode });
+    saveUnitGroundNormalEmaMode(mode);
+    serverUnitGroundNormalEmaMode.value = mode;
   }
 
   function setKeyframeRatioValue(ratio: KeyframeRatio): void {
@@ -90,7 +90,7 @@ export function useGameCanvasServerSettings({
     resetServerDefaults,
     setNetworkUpdateRate,
     setTickRateValue,
-    setTiltEmaModeValue,
+    setUnitGroundNormalEmaModeValue,
     setKeyframeRatioValue,
     toggleSendGridInfo,
     resetGridInfoToDefault,

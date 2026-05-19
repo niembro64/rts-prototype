@@ -9,7 +9,7 @@ import {
 import type { ShotId, TurretId } from './blueprintIds';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, EntityType, PlayerId, TurretState } from './sim';
-import type { TiltEmaMode } from '../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
 // ── Bit-packed enum codes for the wire format ─────────────────────
 // String enums compress poorly even after msgpack — every "tracking"
@@ -442,9 +442,8 @@ export type NetworkServerSnapshotBeamUpdate = {
   id: number;
   /** Polyline vertices (≥ 2). Index 0 = start (turret mount center), last = end
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
-   *  own position, velocity, and acceleration — the start updates
-   *  every tick, while the end and reflections finite-diff across the
-   *  (LOD-strided) re-trace cadence. */
+   *  own position, velocity, and acceleration from the authoritative
+   *  every-tick beam trace. */
   points: NetworkServerSnapshotBeamPoint[];
   obstructionT?: number;
   /** False when the authoritative path has no physical impact endpoint,
@@ -485,12 +484,12 @@ export type NetworkServerSnapshotMeta = {
     speed: number;
     angle: number;
   };
-  /** HOST SERVER chassis-tilt EMA mode (TILT_EMA_HALF_LIFE_SEC key).
+  /** HOST SERVER unit ground normal EMA mode (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC key).
    *  Bare string on the wire — the value space is just 'snap' / 'fast'
    *  / 'mid' / 'slow'. Remote clients read this so their HOST SERVER
-   *  tilt bar reflects the host's setting rather than their own stale
-   *  localStorage. */
-  tiltEma?: TiltEmaMode;
+   *  unit ground normal bar reflects the host's setting rather than
+   *  their own stale localStorage. */
+  unitGroundNormalEma?: UnitGroundNormalEmaMode;
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
@@ -630,9 +629,9 @@ export const ENTITY_CHANGED_BUILDING  = 1 << 6;
 export const ENTITY_CHANGED_FACTORY   = 1 << 7;
 /** The unit's smoothed surface normal moved past wire precision while
  *  the unit didn't (e.g. EMA still settling after the unit stopped, or
- *  a tilt-mode change kicked off fresh drift). Without this bit the
+ *  a unit-ground-normal mode change kicked off fresh drift). Without this bit the
  *  normal could only ride POS-bit deltas, so stationary units would
- *  hold a stale tilt until they moved or until the next keyframe. */
+ *  hold a stale normal until they moved or until the next keyframe. */
 export const ENTITY_CHANGED_NORMAL    = 1 << 8;
 /** Visible chassis suspension offset/velocity changed. This is
  *  separate from POS because the locomotion anchor can remain still
@@ -652,9 +651,12 @@ export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
   /** 3D position (x,y = plane, z = altitude). The 2D client reads only
-   *  x/y; the 3D client reads all three. */
-  pos: Vec3;
-  rotation: number;
+   *  x/y; the 3D client reads all three. Present on full records and
+   *  on deltas whose changedFields include ENTITY_CHANGED_POS. */
+  pos?: Vec3;
+  /** Present on full records and on deltas whose changedFields include
+   *  ENTITY_CHANGED_ROT. */
+  rotation?: number;
   playerId: PlayerId;
   changedFields?: number | null;
   unit?: {
@@ -662,21 +664,21 @@ export type NetworkServerSnapshotEntity = {
      *  ordinary deltas after the entity has been created.
      *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
     unitType?: number;
-    hp: { curr: number; max: number };
+    hp?: { curr: number; max: number };
     /** Unit radii. Static on full records and omitted from ordinary
      *  deltas unless the unit blueprint/runtime radius changes. */
     radius?: { body?: number; shot?: number; push?: number };
     bodyCenterHeight?: number;
     mass?: number;
-    velocity: Vec3;
+    velocity?: Vec3;
     /** Per-unit smoothed surface normal (unit-length nx, ny, nz). The
-     *  sim EMA-blends raw → smoothed each tick (see updateUnitTilt) so
+     *  sim EMA-blends raw → smoothed each tick (see updateUnitGroundNormal) so
      *  the rendered chassis tilt and the slope-tilted turret world
      *  mounts can read the same canonical value here instead of
      *  re-querying the position-keyed terrain cache and getting a
      *  triangle-snapping raw normal. Quantized to 0.001 precision on
      *  the wire (qNormal); ~3 bytes per unit per snapshot after delta
-     *  encoding. Omitted on snapshots where the unit's tilt didn't
+     *  encoding. Omitted on snapshots where the unit's normal didn't
      *  change since last keyframe. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
     /** Runtime chassis suspension relative to the locomotion anchor.
@@ -727,13 +729,13 @@ export type NetworkServerSnapshotEntity = {
      *  depth (vertical extent) lives on the building entity, not
      *  here — clients re-derive it from the blueprint. */
     dim?: Vec2;
-    hp: { curr: number; max: number };
+    hp?: { curr: number; max: number };
     /** `paid` carries the per-resource accumulator so the
      *  client can render independent build bars; `required` is
      *  omitted because the client re-derives it from the entity's
      *  blueprint. The aggregate fill ratio (formerly `progress`)
      *  is computed client-side via `getBuildFraction(buildable)`. */
-    build: {
+    build?: {
       complete: boolean;
       paid: { energy: number; metal: number };
     };

@@ -3,7 +3,7 @@
 import type { EntityId, WaypointType, BuildingType, PlayerId } from './sim';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { ForceFieldReflectionMode } from './shotTypes';
-import type { TiltEmaMode } from '../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
 export type CommandType =
   | 'select'
@@ -33,7 +33,7 @@ export type CommandType =
   | 'setSnapshotRate'
   | 'setKeyframeRatio'
   | 'setTickRate'
-  | 'setTiltEmaMode'
+  | 'setUnitGroundNormalEmaMode'
   | 'setSendGridInfo'
   | 'setBackgroundUnitType'
   | 'setMaxTotalUnits'
@@ -254,14 +254,14 @@ export type SetTickRateCommand = BaseCommand & {
   rate: TickRate;
 };
 
-/** Pick the smoothing strength for the per-unit chassis-tilt EMA
- *  (see updateUnitTilt). SNAP = no smoothing (raw triangle-jump);
+/** Pick the smoothing strength for the per-unit ground normal EMA
+ *  (see updateUnitGroundNormal). SNAP = no smoothing (raw triangle-jump);
  *  FAST/MID/SLOW = increasing half-life. Goes through the regular
  *  command queue so host + every connected client run with the same
  *  effective EMA, just like setTickRate / setSnapshotRate. */
-export type SetTiltEmaModeCommand = BaseCommand & {
-  type: 'setTiltEmaMode';
-  mode: TiltEmaMode;
+export type SetUnitGroundNormalEmaModeCommand = BaseCommand & {
+  type: 'setUnitGroundNormalEmaMode';
+  mode: UnitGroundNormalEmaMode;
 };
 
 export type SetSendGridInfoCommand = BaseCommand & {
@@ -333,7 +333,7 @@ export type Command =
   | SetSnapshotRateCommand
   | SetKeyframeRatioCommand
   | SetTickRateCommand
-  | SetTiltEmaModeCommand
+  | SetUnitGroundNormalEmaModeCommand
   | SetSendGridInfoCommand
   | SetBackgroundUnitTypeCommand
   | SetMaxTotalUnitsCommand

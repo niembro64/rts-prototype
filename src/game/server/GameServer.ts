@@ -48,7 +48,7 @@ import {
 } from '../../serverBarConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
-import { setTiltEmaMode } from '../sim/unitTilt';
+import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { updateCombatActivityFlags } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
@@ -115,10 +115,12 @@ export class GameServer {
   // Game over tracking
   private isGameOver: boolean = false;
 
-  // Tick rate tracking (EMA-based). Seeded in the constructor body.
+  // Tick rate tracking (EMA-based). Starts empty; the first real tick
+  // period seeds both lanes so the low lane does not report startup
+  // zero as a real server-cadence sample.
   private tpsAvg: number = 0;
   private tpsLow: number = 0;
-  private tpsInitialized: boolean = true;
+  private tpsInitialized: boolean = false;
 
   // Per-tick CPU cost tracking (ms). EMA-smoothed average and "hi" spike
   // value, same tier semantics as FRAME_TIMING_EMA. Computed from
@@ -157,10 +159,11 @@ export class GameServer {
   constructor(config: GameServerConfig, physics?: PhysicsEngine3D) {
     this.tickRateHz = 60;
 
-    // Start visible host TPS/CPU EMAs at 0.0. TPS climbs as ticks are
-    // measured; CPU load starts at 0% measured work.
+    // Start visible host TPS at 0.0 until the first real tick period
+    // seeds the EMA. CPU load starts at 0% measured work.
     this.tpsAvg = 0;
     this.tpsLow = 0;
+    this.tpsInitialized = false;
     this.tickMsAvg = 0;
     this.tickMsHi = 0;
     const maxSnaps = normalizeSnapshotRate(
@@ -262,8 +265,8 @@ export class GameServer {
   }
 
   private startGameLoop(): void {
-    // Run simulation at configured tick rate
-    // Snapshots are emitted at end of tick, gated by maxSnapshotIntervalMs
+    // Run simulation at configured tick rate. Snapshot interval is normally
+    // uncapped, which emits once at the end of every server tick.
     this.tickLoop.start(this.tickRateHz, (tickNow, delta) => {
       // Measure how much CPU the tick body actually consumed, separately
       // from its *period* (which the TPS EMA tracks). Snapshot emission is
@@ -460,13 +463,13 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(authority)) return;
         this.setTickRate(sanitizedCommand.rate);
         return;
-      case 'setTiltEmaMode':
+      case 'setUnitGroundNormalEmaMode':
         if (!this.canApplyServerControlCommand(authority)) return;
-        // updateUnitTilt reads its mode from the unitTilt module's
+        // updateUnitGroundNormal reads its mode from the unitGroundNormal module's
         // private state; flipping it from a command keeps host +
         // every client running with the same effective EMA the
         // moment the user clicks the bar button.
-        setTiltEmaMode(sanitizedCommand.mode);
+        setUnitGroundNormalEmaMode(sanitizedCommand.mode);
         return;
       case 'setSendGridInfo':
         if (!this.canApplyServerControlCommand(authority)) return;
@@ -820,8 +823,8 @@ export class GameServer {
     this.snapshotPublisher.forceNextKeyframe();
   }
 
-  // Change max snapshots per second cap. Legacy/invalid rates are normalized
-  // through the host snapshot-rate options before reaching the hot path.
+  // Change snapshot cadence. Invalid/legacy rates normalize to the
+  // configured HOST SERVER DIFFSNAP default.
   setSnapshotRate(rate: SnapshotRate): void {
     const normalizedRate = normalizeSnapshotRate(rate);
     this.maxSnapshotsDisplay = normalizedRate;
@@ -830,7 +833,11 @@ export class GameServer {
 
   // Change simulation tick rate (restarts the game loop interval).
   setTickRate(hz: number): void {
+    if (this.tickRateHz === hz) return;
     this.tickRateHz = hz;
+    this.tpsAvg = 0;
+    this.tpsLow = 0;
+    this.tpsInitialized = false;
     if (this.tickLoop.isRunning()) {
       this.startGameLoop();
     }

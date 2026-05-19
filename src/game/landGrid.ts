@@ -38,12 +38,6 @@ export function assertCanonicalLandCellSize(label: string, cellSize: number): vo
   }
 }
 
-export function assertCanonicalLandGridSymmetry(
-  objectLodCellSize: number = CANONICAL_LAND_CELL_SIZE,
-): void {
-  assertCanonicalLandCellSize('PLAYER_CLIENT objectLodCellSize', objectLodCellSize);
-}
-
 export function landCellCountForSpan(span: number, cellSize: number = LAND_CELL_SIZE): number {
   return Math.max(1, Math.ceil(Math.max(0, span) / normalizeLandCellSize(cellSize)));
 }

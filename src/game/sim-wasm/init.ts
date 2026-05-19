@@ -791,6 +791,7 @@ export interface SnapshotBaselineApi {
     handle: number,
     slot: number,
     tick: number,
+    changedFields: number,
     x: number, y: number, z: number,
     rotation: number,
     velocityX: number, velocityY: number, velocityZ: number,
@@ -812,6 +813,7 @@ export interface SnapshotBaselineApi {
     handle: number,
     slot: number,
     tick: number,
+    changedFields: number,
     x: number, y: number, z: number,
     rotation: number,
     isEngagedBits: number,
@@ -1064,7 +1066,7 @@ export interface SnapshotEncodeApi {
     windY: number,
     windSpeed: number,
     windAngle: number,
-    tiltEmaSlot: number,
+    unitGroundNormalEmaSlot: number,
   ) => number;
   /** Close the envelope. Emits gameState (if hasGameState), isDelta,
    *  removedEntityIds (if hasRemovedIds), visibilityFiltered (if

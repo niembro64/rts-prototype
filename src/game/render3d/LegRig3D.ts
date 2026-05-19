@@ -7,7 +7,7 @@
 // (upper hip→knee + lower knee→foot) drawn through a shared
 // LegInstancedRenderer; the IK that places the knee lives here.
 //
-// Animation state worth surviving an LOD-driven mesh rebuild is
+// Animation state worth surviving a mesh rebuild is
 // captured/restored via captureLegState / applyLegState — only the
 // foot-position / lerp / phase fields, not the renderer slot indices
 // or per-leg config refs (those are bound to the freshly-built
@@ -219,7 +219,7 @@ export type LegMesh = {
   stepRadius: number;
 } & LocomotionBase;
 
-/** Per-leg state worth surviving an LOD-driven mesh rebuild — every
+/** Per-leg state worth surviving a mesh rebuild — every
  *  scalar that says "where is this foot RIGHT NOW and what is it
  *  doing?". The cylinder/joint pool slot indices and config refs
  *  intentionally aren't here; those are bound to the freshly-built
@@ -409,7 +409,7 @@ export function buildLegs(
     config: cfg,
     legLod,
     stepRadius,
-    lodKey: '',
+    geometryKey: '',
   };
 }
 

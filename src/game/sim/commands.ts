@@ -30,7 +30,7 @@ export type {
   SetSnapshotRateCommand,
   SetKeyframeRatioCommand,
   SetTickRateCommand,
-  SetTiltEmaModeCommand,
+  SetUnitGroundNormalEmaModeCommand,
   SetSendGridInfoCommand,
   SetBackgroundUnitTypeCommand,
   SetMaxTotalUnitsCommand,

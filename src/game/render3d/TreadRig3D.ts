@@ -153,7 +153,7 @@ export function buildTreads(
     treadStraightLength: straightLength,
     treadRadius,
     printWidth,
-    lodKey: '',
+    geometryKey: '',
   };
 }
 

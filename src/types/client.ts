@@ -8,13 +8,17 @@ import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 /** Legacy four-mode smoothing space (snap / fast / mid / slow) still
- *  used by the chassis-tilt EMA and the camera-smoothing knob. Per-
- *  channel snapshot drift uses DriftChannelMode below (adds 'ignore'
- *  and renames 'mid' → 'medium'). */
+ *  used by the unit ground normal EMA and the camera-smoothing knob.
+ *  Per-channel snapshot drift uses PositionDriftChannelMode /
+ *  DriftChannelMode below (renames 'mid' → 'medium'). */
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
-/** Per-channel drift smoothing mode. Each of the four prediction
- *  channels (movement position, movement velocity, rotation position,
- *  rotation velocity) selects independently:
+/** Position-channel drift smoothing mode. Position channels always
+ *  apply authoritative correction; they can snap or EMA, but cannot
+ *  ignore the latest stored snapshot value. */
+export type PositionDriftChannelMode = 'snap' | 'fast' | 'medium' | 'slow';
+/** Per-channel drift smoothing mode. Velocity channels add an
+ *  'ignore' option because letting prediction keep its current
+ *  derivative is meaningful there:
  *    ignore — never apply the stored snapshot value for this channel
  *             to the rendered entity. Prediction (if any) keeps
  *             running from the last applied value forever.
@@ -26,7 +30,7 @@ export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
  *             larger = softer).
  *  The most recent server snapshot for each channel is always stored;
  *  the per-channel mode controls only what to do with it per tick. */
-export type DriftChannelMode = 'ignore' | 'snap' | 'fast' | 'medium' | 'slow';
+export type DriftChannelMode = 'ignore' | PositionDriftChannelMode;
 /** Client-side prediction physics order. Selected on the PLAYER
  *  CLIENT bar; the prediction integrator reads it before stepping
  *  position each frame.
@@ -81,24 +85,23 @@ export type ClientBarConfig = {
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
-  /** Per-channel client-side drift EMAs. Each channel selects from the
-   *  same five modes (ignore / snap / fast / medium / slow). The
-   *  rendered entity always stores the most recent snapshot value for
-   *  the channel; the mode decides per tick whether to skip, snap, or
-   *  blend toward it. */
-  readonly movementPosEma: LabeledOptionsConfig<DriftChannelMode>;
+  /** Per-channel client-side drift EMAs. Position channels select from
+   *  snap / fast / medium / slow. Velocity channels also allow ignore.
+   *  The rendered entity always stores the most recent snapshot value
+   *  for the channel; the mode decides per tick how to apply it. */
+  readonly movementPosEma: LabeledOptionsConfig<PositionDriftChannelMode>;
   readonly movementVelEma: LabeledOptionsConfig<DriftChannelMode>;
-  readonly rotationPosEma: LabeledOptionsConfig<DriftChannelMode>;
+  readonly rotationPosEma: LabeledOptionsConfig<PositionDriftChannelMode>;
   readonly rotationVelEma: LabeledOptionsConfig<DriftChannelMode>;
   /** Prediction physics order — POS / VEL. See PredictionMode for
    *  semantics. Default 'vel' integrates position from the last-seen
    *  velocity. There is no ACC mode (the wire does not carry
    *  acceleration). */
   readonly predictionMode: LabeledOptionsConfig<PredictionMode>;
-  /** Per-frame chassis-tilt EMA on the client. Layered on top of the
-   *  HOST SERVER tilt EMA. Uses DriftMode (snap / fast / mid / slow)
-   *  — tilt is always applied; there's no 'ignore' equivalent. */
-  readonly tiltEma: LabeledOptionsConfig<DriftMode>;
+  /** Per-frame unit ground normal EMA on the client. Layered on top of
+   *  the HOST SERVER unit ground normal EMA. Uses DriftMode
+   *  (snap / fast / mid / slow). */
+  readonly unitGroundNormalEma: LabeledOptionsConfig<DriftMode>;
   readonly legsRadius: BooleanSetting;
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;
   readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;

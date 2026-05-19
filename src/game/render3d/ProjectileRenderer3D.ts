@@ -4,11 +4,7 @@ import { getProjRangeToggle } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import type { Lod3DState } from './Lod3D';
-import {
-  objectLodToGraphicsTier,
-  type RenderObjectLodTier,
-} from './RenderObjectLod';
+import type { RenderFrameState3D } from './RenderFrameState3D';
 import {
   detachObject,
   disposeGeometries,
@@ -74,7 +70,6 @@ export type ProjectileRenderer3DOptions = {
   clientViewState: ClientViewState;
   scope: ViewportFootprint;
   radiusSphereGeom: THREE.BufferGeometry;
-  resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
 };
 
 export class ProjectileRenderer3D {
@@ -82,7 +77,6 @@ export class ProjectileRenderer3D {
   private readonly clientViewState: ClientViewState;
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
-  private readonly resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
 
   private readonly projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private readonly projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
@@ -136,7 +130,6 @@ export class ProjectileRenderer3D {
     this.clientViewState = options.clientViewState;
     this.scope = options.scope;
     this.radiusSphereGeom = options.radiusSphereGeom;
-    this.resolveObjectLod = options.resolveObjectLod;
 
     this.sphereInstanced = new THREE.InstancedMesh(
       this.projectileGeom,
@@ -175,7 +168,7 @@ export class ProjectileRenderer3D {
     this.world.add(this.finInstanced);
   }
 
-  update(lod: Lod3DState): void {
+  update(frameState: RenderFrameState3D): void {
     const projectiles = this.clientViewState.collectTravelingProjectiles(
       this.projectileRenderScratch,
     );
@@ -204,15 +197,8 @@ export class ProjectileRenderer3D {
         continue;
       }
 
-      const objectTier = this.resolveObjectLod(e);
-      if (objectTier === 'marker') {
-        this.hideProjRadiusMeshes(e.id);
-        continue;
-      }
-
-      const projectileGraphicsTier = objectLodToGraphicsTier(objectTier, lod.gfx.tier);
-      const richProjectile =
-        objectTier === 'rich' || objectTier === 'hero' || objectTier === 'simple';
+      const projectileGraphicsTier = frameState.gfx.tier;
+      const richProjectile = true;
       const visualProfile = e.projectile?.config.shotProfile.visual;
       const radius = visualProfile?.projectileBodyRadius ?? 4;
       const radiusScale = PROJECTILE_RADIUS_BY_TIER[projectileGraphicsTier];

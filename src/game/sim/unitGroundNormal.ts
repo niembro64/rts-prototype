@@ -1,4 +1,4 @@
-// Per-unit chassis-tilt EMA. The terrain mesh is piecewise-flat at
+// Per-unit ground normal EMA. The terrain mesh is piecewise-flat at
 // the triangle level, so the raw surface normal returned by
 // `getSurfaceNormal(x, y)` SNAPS each time a unit crosses a triangle
 // edge. Without smoothing, that snap shows up as visible jitter on the
@@ -25,32 +25,36 @@
 import type { WorldState } from './WorldState';
 import { magnitude3 } from '../math';
 import { halfLifeBlend } from '../network/driftEma';
-import { TILT_EMA_HALF_LIFE_SEC, TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from '../../shellConfig';
+import {
+  UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC,
+  UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT,
+  type UnitGroundNormalEmaMode,
+} from '../../shellConfig';
 import { ENTITY_CHANGED_NORMAL } from '../../types/network';
 
-let _activeMode: TiltEmaMode = TILT_EMA_MODE_DEFAULT;
+let _activeMode: UnitGroundNormalEmaMode = UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT;
 const SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
 
-/** Set the active tilt EMA mode. Wired to the HOST SERVER bar in
+/** Set the active unit ground normal EMA mode. Wired to the HOST SERVER bar in
  *  Phase 3; until then this is a programmatic knob. */
-export function setTiltEmaMode(mode: TiltEmaMode): void {
+export function setUnitGroundNormalEmaMode(mode: UnitGroundNormalEmaMode): void {
   _activeMode = mode;
 }
 
-export function getTiltEmaMode(): TiltEmaMode {
+export function getUnitGroundNormalEmaMode(): UnitGroundNormalEmaMode {
   return _activeMode;
 }
 
-export function getTiltEmaHalfLife(): number {
-  return TILT_EMA_HALF_LIFE_SEC[_activeMode];
+export function getUnitGroundNormalEmaHalfLife(): number {
+  return UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[_activeMode];
 }
 
 /** Update every unit's smoothed surface normal in place. Called once
  *  per sim tick from `Simulation.update()` BEFORE consumers (commander
  *  abilities, turret kinematics, locomotion) so this-tick reads see
  *  the freshly-blended value. */
-export function updateUnitTilt(world: WorldState, dtMs: number): void {
-  const halfLife = getTiltEmaHalfLife();
+export function updateUnitGroundNormal(world: WorldState, dtMs: number): void {
+  const halfLife = getUnitGroundNormalEmaHalfLife();
   const dtSec = dtMs / 1000;
   const alpha = halfLifeBlend(dtSec, halfLife);
 

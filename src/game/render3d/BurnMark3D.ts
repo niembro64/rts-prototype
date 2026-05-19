@@ -479,7 +479,7 @@ export class BurnMark3D {
     dirX: number, dirZ: number,
     width: number,
   ): void {
-    // LOD-driven cap — if full, just drop this sample. Aging will free
+    // Fixed visual cap — if full, just drop this sample. Aging will free
     // slots soon enough.
     if (this.marks.length >= this._currentCap || this.marks.length >= MAX_MARKS) {
       state.lastEndX = endX;

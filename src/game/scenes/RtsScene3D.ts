@@ -36,13 +36,6 @@ import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConf
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
-import { LodShellGround3D } from '../render3d/LodShellGround3D';
-import { LodGridCells2D } from '../render3d/LodGridCells2D';
-import {
-  getRenderObjectLodShellDistances,
-  objectLodToGraphicsTier,
-  resolveRenderObjectLodForDistanceSq,
-} from '../render3d/RenderObjectLod';
 
 /** Same color the per-mesh leg path used. Single uniform value
  *  across the whole shared pool — legs aren't team-tinted. */
@@ -63,10 +56,7 @@ import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
 import { RtsScene3DPredictionPhase } from './helpers/RtsScene3DPredictionPhase';
 import type { NetworkServerSnapshotSimEvent } from '../network/NetworkTypes';
-import {
-  getGraphicsConfig,
-  getGraphicsConfigFor,
-} from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import { CommandQueue, type Command } from '../sim/commands';
 import { getTerrainDividerTeamCount } from '../sim/playerLayout';
 import {
@@ -78,10 +68,6 @@ import {
   setTerrainMapShape,
   setMetalDepositFlatZones,
 } from '../sim/Terrain';
-import {
-  normalizeLodCellSize,
-} from '../lodGridMath';
-import { landCellCenterForSize, landCellIndexForSize } from '../landGrid';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
@@ -200,8 +186,6 @@ export class RtsScene3D {
    *  lobby-preview contexts that don't have a roster wired up. */
   private lookupPlayerName: (id: PlayerId) => string | null = () => null;
   private waypoint3D: Waypoint3D | null = null;
-  private lodShellGround3D: LodShellGround3D | null = null;
-  private lodGridCells2D: LodGridCells2D | null = null;
 
   // Single canonical cursor → 3D ground picker (raycaster against
   // the rendered terrain mesh). Shared by the orbit camera and the
@@ -548,18 +532,6 @@ export class RtsScene3D {
         this.mapWidth, this.mapHeight,
         (id) => this.clientViewState.getEntity(id),
       );
-      this.lodShellGround3D = new LodShellGround3D(
-        this.threeApp.world,
-        this.mapWidth,
-        this.mapHeight,
-        (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
-      );
-      this.lodGridCells2D = new LodGridCells2D(
-        this.threeApp.world,
-        this.mapWidth,
-        this.mapHeight,
-        this.clientViewState,
-      );
     }
 
     // Wire raycast-based selection + move commands. The shared
@@ -652,8 +624,6 @@ export class RtsScene3D {
         healthBar3D: this.healthBar3D,
         nameLabel3D: this.nameLabel3D,
         waypoint3D: this.waypoint3D,
-        lodShellGround3D: this.lodShellGround3D,
-        lodGridCells2D: this.lodGridCells2D,
       },
       () => this.localPlayerId,
       () => this.inputManager,
@@ -774,14 +744,14 @@ export class RtsScene3D {
     this.selectionSystem.rebuildEntityCachesIfNeeded();
 
     const { effectDtMs } = renderPhase.beginRenderFrame();
-    // Camera smoothing must step BEFORE visibility scope and view-LOD
-    // decisions. Otherwise CPU culling, prediction cadence, and
+    // Camera smoothing must step BEFORE visibility scope decisions.
+    // Otherwise CPU culling, prediction cadence, and
     // rich-unit selection trail the rendered camera by one frame
     // during dolly/pan.
     this.cameraFramingSystem.tickCameraSmoothing(effectDtMs / 1000);
     const viewportHeightPx = this.threeApp.renderer.domElement.clientHeight;
     const {
-      renderLod,
+      renderFrameState,
       graphicsConfig,
       predMs,
     } = this.predictionPhase.run({
@@ -795,8 +765,7 @@ export class RtsScene3D {
       deltaMs: delta,
       effectDtMs,
       graphicsConfig,
-      renderLod,
-      renderLodGrid: this.predictionPhase.renderLodGrid,
+      renderFrameState,
     });
     if (
       !this.rendererWarmupStarted &&
@@ -864,26 +833,11 @@ export class RtsScene3D {
   }
 
   private graphicsConfigForEffectCell(
-    simX: number,
+    _simX: number,
     _simY: number,
-    simZ: number,
+    _simZ: number,
   ): GraphicsConfig | null {
-    const base = getGraphicsConfig();
-    const shells = getRenderObjectLodShellDistances(base);
-    const cellSize = normalizeLodCellSize(base.objectLodCellSize);
-    const cx = landCellCenterForSize(landCellIndexForSize(simX, cellSize), cellSize);
-    const cz = landCellCenterForSize(landCellIndexForSize(simZ, cellSize), cellSize);
-    const camera = this.threeApp.camera.position;
-    const dx = cx - camera.x;
-    const dy = -camera.y;
-    const dz = cz - camera.z;
-    const objectTier = resolveRenderObjectLodForDistanceSq(
-      dx * dx + dy * dy + dz * dz,
-      shells,
-      base.forcedObjectTier,
-    );
-    if (objectTier === 'marker') return null;
-    return getGraphicsConfigFor(objectLodToGraphicsTier(objectTier, base.tier));
+    return getGraphicsConfig();
   }
 
   /**
@@ -1444,8 +1398,6 @@ export class RtsScene3D {
       healthBar3D: this.healthBar3D,
       nameLabel3D: this.nameLabel3D,
       waypoint3D: this.waypoint3D,
-      lodShellGround3D: this.lodShellGround3D,
-      lodGridCells2D: this.lodGridCells2D,
       entityRenderer: this.entityRenderer,
       metalDepositRenderer: this.metalDepositRenderer,
       environmentPropRenderer: this.environmentPropRenderer,
@@ -1472,8 +1424,6 @@ export class RtsScene3D {
     this.healthBar3D = null;
     this.nameLabel3D = null;
     this.waypoint3D = null;
-    this.lodShellGround3D = null;
-    this.lodGridCells2D = null;
     this.metalDepositRenderer = null;
     this.environmentPropRenderer = null;
     this.contactShadowRenderer = null;

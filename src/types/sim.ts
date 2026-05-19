@@ -192,10 +192,11 @@ export type Unit = {
   /** Per-unit smoothed surface normal at the unit's footprint. The
    *  terrain mesh is piecewise-flat at the triangle level, so the raw
    *  normal SNAPS each time the unit crosses a triangle edge. The sim
-   *  EMA-blends raw → stored every tick (see updateUnitTilt) so chassis
+   *  EMA-blends raw → stored every tick (see updateUnitGroundNormal) so chassis
    *  tilt, turret world mounts, and rendered tilt all read one
    *  smoothed-but-physically-grounded value. Initialized at spawn to
-   *  the raw normal at the spawn position; written by the tilt system. */
+   *  the raw normal at the spawn position; written by the unit ground
+   *  normal system. */
   surfaceNormal: { nx: number; ny: number; nz: number };
   /** Optional full 3-DOF orientation, used by entities that need
    *  roll or arbitrary orientation (hover drones banking into turns,
@@ -507,9 +508,8 @@ export type Projectile = {
   prevStartVx?: number;
   prevStartVy?: number;
   prevStartVz?: number;
-  /** Internal: previous re-trace tick's end position. Used to compute
-   *  the end-point velocity/acceleration across the re-trace stride.
-   *  Not serialized. */
+  /** Internal: previous beam-trace tick's end position. Used to compute
+   *  the end-point velocity/acceleration. Not serialized. */
   prevEndX?: number;
   prevEndY?: number;
   prevEndZ?: number;
@@ -519,9 +519,9 @@ export type Projectile = {
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
   prevEndTick?: number;
-  /** Internal: previous re-trace tick's reflection points keyed by
+  /** Internal: previous beam-trace tick's reflection points keyed by
    *  mirrorEntityId. Used to finite-diff each reflection point's
-   *  velocity across the re-trace stride. Not serialized. */
+   *  velocity. Not serialized. */
   prevReflectionPoints?: {
     mirrorEntityId: EntityId;
     x: number;

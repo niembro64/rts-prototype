@@ -208,7 +208,7 @@ defineProps<{
                 :style="
                   statBarStyle(
                     model.snapAvgRate,
-                    snapshotRateHz(model.displaySnapshotRate),
+                    snapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
                   )
                 "
               ></div>
@@ -225,7 +225,7 @@ defineProps<{
                 :style="
                   statBarStyle(
                     model.snapWorstRate,
-                    snapshotRateHz(model.displaySnapshotRate),
+                    snapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
                   )
                 "
               ></div>
@@ -235,7 +235,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Full keyframe snapshots received per second (state.isDelta === false). Driven by the host's keyframe ratio.">FSPS:</BarLabel>
+        <BarLabel title="Full keyframe snapshots received per second (state.isDelta === false).">FSPS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -310,7 +310,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Movement position EMA. IGN ignores the snapshot position; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">MOV POS:</BarLabel>
+        <BarLabel title="Movement position EMA. SNAP replaces every tick; FAST/MED/SLOW EMA toward the snapshot position with the named half-life.">MOV POS:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.movementPosEma.options"
@@ -336,7 +336,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Rotation position EMA. Covers body yaw, hover orientation, and turret yaw/pitch. IGN ignores the snapshot rotation; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">ROT POS:</BarLabel>
+        <BarLabel title="Rotation position EMA. Covers body yaw, hover orientation, and turret yaw/pitch. SNAP replaces every tick; FAST/MED/SLOW EMA toward the snapshot rotation with the named half-life.">ROT POS:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.rotationPosEma.options"
@@ -362,14 +362,14 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Per-frame chassis-tilt EMA on the client. Layered on top of the HOST SERVER TILT EMA - sim smooths first, then this knob smooths further at render cadence.">TILT EMA:</BarLabel>
+        <BarLabel title="Per-frame unit ground normal EMA on the client. Layered on top of the HOST SERVER UNIT GROUND NORMAL EMA - sim smooths first, then this knob smooths further at render cadence.">UNIT GROUND NORMAL EMA:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="opt in CLIENT_CONFIG.tiltEma.options"
+            v-for="opt in CLIENT_CONFIG.unitGroundNormalEma.options"
             :key="opt.value"
-            :active="model.clientTiltEmaMode === opt.value"
-            :title="`Set client-side chassis-tilt EMA to ${opt.label}.`"
-            @click="model.changeClientTiltEmaMode(opt.value)"
+            :active="model.clientUnitGroundNormalEmaMode === opt.value"
+            :title="`Set client-side unit ground normal EMA to ${opt.label}.`"
+            @click="model.changeClientUnitGroundNormalEmaMode(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

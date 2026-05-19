@@ -20,7 +20,6 @@ import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, c
 import { findClosestPanelHit } from './MirrorPanelHit';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal } from '../Terrain';
-import { getSimDetailConfig } from '../simQuality';
 import { spatialGrid } from '../SpatialGrid';
 import { LAND_CELL_SIZE, ROCKET_REFLECTOR_COLLISION_MODE } from '../../../config';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -376,17 +375,13 @@ export function checkProjectileCollisions(
   const spawnEvents = _collisionSpawnEvents;
   const velocityUpdates = _collisionVelocityUpdates;
   let reflectorImpactEvents = 0;
-  const projectileCollisionStride = Math.max(1, getSimDetailConfig().projectileCollisionStride | 0);
-  const collisionDtMs = dtMs * projectileCollisionStride;
-  const tick = world.getTick();
+  const collisionDtMs = dtMs;
 
   for (const projEntity of world.getProjectiles()) {
     if (!projEntity.projectile || !projEntity.ownership) continue;
 
     const proj = projEntity.projectile;
     const config = proj.config;
-    const processCollision = projectileCollisionStride === 1 ||
-      ((projEntity.id + tick) % projectileCollisionStride) === 0;
     // Projectile entities always use projectile/beam/laser shot types (never force)
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
     const damageSourceKey = proj.sourceTurretId ?? shotId;
@@ -425,7 +420,7 @@ export function checkProjectileCollisions(
     let reflectorHitX = 0;
     let reflectorHitY = 0;
     let reflectorHitZ = 0;
-    if (processCollision && proj.projectileType === 'projectile') {
+    if (proj.projectileType === 'projectile') {
       const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
       const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
       const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
@@ -763,104 +758,99 @@ export function checkProjectileCollisions(
 
     // Handle different projectile types with unified damage system
     if (isLineShotType(proj.projectileType)) {
-      if (!processCollision) {
-        // Beam endpoints still update every tick in updateProjectiles();
-        // only the expensive damage query is staggered under server LOD.
-      } else {
-        if (proj.obstructionTick === undefined) {
-          // Path tracing is globally budgeted. A newly-created beam that
-          // has not received its first authoritative trace should not deal
-          // endpoint damage at its provisional max-range visual endpoint.
-          continue;
-        }
-        // Beam/laser damage: single area zone at truncated endpoint
-        const beamShot = config.shot as BeamShot | LaserShot;
-        const points = proj.points;
-        const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
-        const impactX = lastPoint?.x ?? projEntity.transform.x;
-        const impactY = lastPoint?.y ?? projEntity.transform.y;
-        const impactZ = lastPoint?.z ?? projEntity.transform.z;
-        const dtSec = collisionDtMs / 1000;
-
-        const damageSphereRadius = runtimeProfile.damageRadius;
-        if (!updateProjectileSourceClearance(
-          world.getEntity(proj.sourceEntityId),
-          proj,
-          impactX, impactY, impactZ,
-          runtimeProfile.collisionRadius,
-        )) {
-          continue;
-        }
-
-        // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
-        const tickDamage = beamShot.dps * dtSec;
-        const tickForce = beamShot.force * dtSec;
-
-        // Beam direction for hit knockback
-        const beamAngle = projEntity.transform.rotation;
-        const beamDirX = Math.cos(beamAngle);
-        const beamDirY = Math.sin(beamAngle);
-
-        // Reflected beams: attribute damage/kills to the last reflector
-        // entity that redirected the beam (= last polyline vertex with a
-        // mirrorEntityId, a legacy field name). Points layout:
-        // [start, ...reflections, end]; when the max-segment cap is hit,
-        // the endpoint itself can be the terminal reflector.
-        let lastMirrorEntityId: EntityId | undefined;
-        if (points) {
-          for (let i = points.length - 1; i >= 1; i--) {
-            const mid = points[i].mirrorEntityId;
-            if (mid !== undefined) { lastMirrorEntityId = mid; break; }
-          }
-        }
-        const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
-        const endpointDamageable = proj.endpointDamageable !== false;
-        const result = endpointDamageable
-          ? damageSystem.applyDamage({
-              type: 'area',
-              sourceEntityId: damageSourceId,
-              ownerId: projEntity.ownership.playerId,
-              damage: tickDamage,
-              excludeEntities: _emptyExcludeSet,
-              center: { x: impactX, y: impactY, z: impactZ },
-              radius: damageSphereRadius,
-              knockbackForce: tickForce,
-            })
-          : null;
-
-        if (result) applyKnockbackForces(result.knockbacks, forceAccumulator);
-
-        // Apply beam force (knockback only, no damage) to each reflector entity.
-        // Walk segment-by-segment along the polyline; whenever a vertex
-        // carries a mirrorEntityId, the segment ENTERING that vertex is
-        // the incoming beam direction at that reflector.
-        if (points && points.length > 1 && forceAccumulator) {
-          for (let i = 1; i < points.length; i++) {
-            const refl = points[i];
-            if (refl.mirrorEntityId === undefined) continue;
-            const prev = points[i - 1];
-            const segDx = refl.x - prev.x;
-            const segDy = refl.y - prev.y;
-            const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
-            if (segLen > 0) {
-              const dirX = segDx / segLen;
-              const dirY = segDy / segLen;
-              forceAccumulator.addForce(refl.mirrorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
-            }
-          }
-        }
-
-        if (result) {
-          emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
-          collectKillsWithDeathAudio(
-            result, world, damageSourceKey, damageSourceType,
-            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-            proj.sourceEntityId,
-          );
-        }
-
-        // Note: beam recoil is applied in fireTurrets() based on weapon.state
+      if (proj.obstructionTick === undefined) {
+        // A newly-created beam that has not received its first
+        // authoritative trace should not deal endpoint damage at its
+        // provisional max-range visual endpoint.
+        continue;
       }
+      // Beam/laser damage: single area zone at truncated endpoint
+      const beamShot = config.shot as BeamShot | LaserShot;
+      const points = proj.points;
+      const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
+      const impactX = lastPoint?.x ?? projEntity.transform.x;
+      const impactY = lastPoint?.y ?? projEntity.transform.y;
+      const impactZ = lastPoint?.z ?? projEntity.transform.z;
+      const dtSec = collisionDtMs / 1000;
+
+      const damageSphereRadius = runtimeProfile.damageRadius;
+      if (!updateProjectileSourceClearance(
+        world.getEntity(proj.sourceEntityId),
+        proj,
+        impactX, impactY, impactZ,
+        runtimeProfile.collisionRadius,
+      )) {
+        continue;
+      }
+
+      // Per-tick damage and force (DPS/force scaled by dt for framerate independence)
+      const tickDamage = beamShot.dps * dtSec;
+      const tickForce = beamShot.force * dtSec;
+
+      // Beam direction for hit knockback
+      const beamAngle = projEntity.transform.rotation;
+      const beamDirX = Math.cos(beamAngle);
+      const beamDirY = Math.sin(beamAngle);
+
+      // Reflected beams: attribute damage/kills to the last reflector
+      // entity that redirected the beam (= last polyline vertex with a
+      // mirrorEntityId, a legacy field name). Points layout:
+      // [start, ...reflections, end]; when the max-segment cap is hit,
+      // the endpoint itself can be the terminal reflector.
+      let lastMirrorEntityId: EntityId | undefined;
+      if (points) {
+        for (let i = points.length - 1; i >= 1; i--) {
+          const mid = points[i].mirrorEntityId;
+          if (mid !== undefined) { lastMirrorEntityId = mid; break; }
+        }
+      }
+      const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
+      const endpointDamageable = proj.endpointDamageable !== false;
+      const result = endpointDamageable
+        ? damageSystem.applyDamage({
+            type: 'area',
+            sourceEntityId: damageSourceId,
+            ownerId: projEntity.ownership.playerId,
+            damage: tickDamage,
+            excludeEntities: _emptyExcludeSet,
+            center: { x: impactX, y: impactY, z: impactZ },
+            radius: damageSphereRadius,
+            knockbackForce: tickForce,
+          })
+        : null;
+
+      if (result) applyKnockbackForces(result.knockbacks, forceAccumulator);
+
+      // Apply beam force (knockback only, no damage) to each reflector entity.
+      // Walk segment-by-segment along the polyline; whenever a vertex
+      // carries a mirrorEntityId, the segment ENTERING that vertex is
+      // the incoming beam direction at that reflector.
+      if (points && points.length > 1 && forceAccumulator) {
+        for (let i = 1; i < points.length; i++) {
+          const refl = points[i];
+          if (refl.mirrorEntityId === undefined) continue;
+          const prev = points[i - 1];
+          const segDx = refl.x - prev.x;
+          const segDy = refl.y - prev.y;
+          const segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+          if (segLen > 0) {
+            const dirX = segDx / segLen;
+            const dirY = segDy / segLen;
+            forceAccumulator.addForce(refl.mirrorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
+          }
+        }
+      }
+
+      if (result) {
+        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
+        collectKillsWithDeathAudio(
+          result, world, damageSourceKey, damageSourceType,
+          unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+          proj.sourceEntityId,
+        );
+      }
+
+      // Note: beam recoil is applied in fireTurrets() based on weapon.state
     } else {
       if (reflectedProjectile) {
         // Reflection already consumed this tick's swept segment. Start
@@ -870,9 +860,6 @@ export function checkProjectileCollisions(
         proj.collisionStartX = projEntity.transform.x;
         proj.collisionStartY = projEntity.transform.y;
         proj.collisionStartZ = projEntity.transform.z;
-      } else if (!processCollision) {
-        // Keep collisionStart intact so the next processed tick sweeps
-        // the full skipped path instead of only the most recent segment.
       } else {
         // Traveling projectiles use swept 3D volume collision (prevents tunneling)
         const projShot = config.shot as ProjectileShot;

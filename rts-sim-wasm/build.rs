@@ -1,9 +1,8 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    let manifest_dir = PathBuf::from(
-        env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is required"),
-    );
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is required"));
     let constants_path = manifest_dir.join("../src/sharedSimConstants.json");
     println!("cargo:rerun-if-changed={}", constants_path.display());
 

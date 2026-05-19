@@ -243,11 +243,18 @@ pub fn step_unit_motion(
         m,
         dt_sec,
         ground_offset,
-        ax, ay, az,
-        air_damp, ground_damp,
-        launch_ax, launch_ay, launch_az,
+        ax,
+        ay,
+        az,
+        air_damp,
+        ground_damp,
+        launch_ax,
+        launch_ay,
+        launch_az,
         ground_z,
-        normal_x, normal_y, normal_z,
+        normal_x,
+        normal_y,
+        normal_z,
     );
 }
 
@@ -262,7 +269,6 @@ pub fn step_unit_motion(
 //  the TS bootstrap fallback in unitMotionIntegration.ts) and the
 //  pool-backed kernels below.
 // ─────────────────────────────────────────────────────────────────
-
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 3d — Body3D SoA pool in WASM linear memory
@@ -414,7 +420,11 @@ impl BodyPool {
     fn free_slot(&mut self, slot: u32) {
         let i = slot as usize;
         debug_assert!(i < POOL_CAPACITY_USIZE);
-        debug_assert_ne!(self.flags[i] & BODY_FLAG_OCCUPIED, 0, "freeing already-free slot");
+        debug_assert_ne!(
+            self.flags[i] & BODY_FLAG_OCCUPIED,
+            0,
+            "freeing already-free slot"
+        );
         self.flags[i] = 0;
         self.free_slots.push(slot);
     }
@@ -606,9 +616,7 @@ pub fn pool_step_integrate(
         let mut just_slept = false;
         if authored_accel_sq <= SLEEP_ACCEL_SQ && speed_sq <= SLEEP_SPEED_SQ {
             let next_penetration = g_z - (motion[2] - ground_offset);
-            if is_in_contact(next_penetration)
-                && next_penetration <= SLEEP_GROUND_PENETRATION_EPS
-            {
+            if is_in_contact(next_penetration) && next_penetration <= SLEEP_GROUND_PENETRATION_EPS {
                 sleep_ticks += 1.0;
                 if sleep_ticks >= SLEEP_TICKS {
                     p.pos_z[slot] = g_z + ground_offset;
@@ -734,8 +742,7 @@ pub fn pool_resolve_sphere_sphere(
                                 // tie-break case (centers exactly coincident).
                                 let a_id = slot_a as u64;
                                 let b_id = slot_b as u64;
-                                let seed = (a_id
-                                    .wrapping_mul(73856093)
+                                let seed = (a_id.wrapping_mul(73856093)
                                     ^ b_id.wrapping_mul(19349663))
                                     as u32;
                                 let angle =
@@ -962,10 +969,11 @@ struct EngineStaticsTable {
 
 struct EngineStaticsHolder(UnsafeCell<EngineStaticsTable>);
 unsafe impl Sync for EngineStaticsHolder {}
-static ENGINE_STATICS: EngineStaticsHolder = EngineStaticsHolder(UnsafeCell::new(EngineStaticsTable {
-    handles: Vec::new(),
-    free_list: Vec::new(),
-}));
+static ENGINE_STATICS: EngineStaticsHolder =
+    EngineStaticsHolder(UnsafeCell::new(EngineStaticsTable {
+        handles: Vec::new(),
+        free_list: Vec::new(),
+    }));
 
 #[inline]
 fn engine_statics(handle: u32) -> &'static mut EngineStatics {
@@ -1020,8 +1028,14 @@ pub fn engine_statics_destroy(handle: u32) {
     unsafe {
         let v = &mut *ENGINE_STATICS.0.get();
         let idx = handle as usize;
-        debug_assert!(idx < v.handles.len(), "engine_statics_destroy: handle out of range");
-        debug_assert!(v.handles[idx].is_some(), "engine_statics_destroy: handle already destroyed");
+        debug_assert!(
+            idx < v.handles.len(),
+            "engine_statics_destroy: handle out of range"
+        );
+        debug_assert!(
+            v.handles[idx].is_some(),
+            "engine_statics_destroy: handle already destroyed"
+        );
         v.handles[idx] = None;
         v.free_list.push(handle);
     }
@@ -1319,17 +1333,8 @@ pub fn quat_hover_orientation_step_batch(
     debug_assert!(buf.len() >= count * QUAT_HOVER_BATCH_STRIDE);
     for i in 0..count {
         let base = i * QUAT_HOVER_BATCH_STRIDE;
-        let mut orientation = [
-            buf[base],
-            buf[base + 1],
-            buf[base + 2],
-            buf[base + 3],
-        ];
-        let mut omega = [
-            buf[base + 4],
-            buf[base + 5],
-            buf[base + 6],
-        ];
+        let mut orientation = [buf[base], buf[base + 1], buf[base + 2], buf[base + 3]];
+        let mut omega = [buf[base + 4], buf[base + 5], buf[base + 6]];
         let target_yaw = buf[base + 7];
         let target_pitch = buf[base + 8];
         let target_roll = buf[base + 9];
@@ -1535,20 +1540,21 @@ fn intercept_default_max_time(input: &[f64; 22]) -> f64 {
     } else {
         0.0
     };
-    intercept_clamp_time((2.0_f64).max(base_time * 8.0 + 4.0).max(accel_time * 2.0 + 1.0))
+    intercept_clamp_time(
+        (2.0_f64)
+            .max(base_time * 8.0 + 4.0)
+            .max(accel_time * 2.0 + 1.0),
+    )
 }
 
 #[inline]
 fn intercept_function(input: &[f64; 22], t: f64) -> f64 {
-    let rel_x = input[9] - input[0]
-        + (input[12] - input[3]) * t
-        + 0.5 * (input[15] - input[18]) * t * t;
-    let rel_y = input[10] - input[1]
-        + (input[13] - input[4]) * t
-        + 0.5 * (input[16] - input[19]) * t * t;
-    let rel_z = input[11] - input[2]
-        + (input[14] - input[5]) * t
-        + 0.5 * (input[17] - input[20]) * t * t;
+    let rel_x =
+        input[9] - input[0] + (input[12] - input[3]) * t + 0.5 * (input[15] - input[18]) * t * t;
+    let rel_y =
+        input[10] - input[1] + (input[13] - input[4]) * t + 0.5 * (input[16] - input[19]) * t * t;
+    let rel_z =
+        input[11] - input[2] + (input[14] - input[5]) * t + 0.5 * (input[17] - input[20]) * t * t;
     (rel_x * rel_x + rel_y * rel_y + rel_z * rel_z).sqrt() - input[21] * t
 }
 
@@ -1666,9 +1672,15 @@ pub fn solve_kinematic_intercept(
 #[wasm_bindgen]
 pub fn apply_homing_steering(
     out_buf: &mut [f64],
-    vel_x: f64, vel_y: f64, vel_z: f64,
-    target_x: f64, target_y: f64, target_z: f64,
-    current_x: f64, current_y: f64, current_z: f64,
+    vel_x: f64,
+    vel_y: f64,
+    vel_z: f64,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    current_x: f64,
+    current_y: f64,
+    current_z: f64,
     homing_turn_rate: f64,
     dt_sec: f64,
 ) {
@@ -1789,9 +1801,9 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
 //  Phase 6a — Damped-spring single-axis rotation integrator
 //
 //  Mirrors src/game/math/MathHelpers.ts integrateDampedRotation.
-//  Used by both server (turretSystem per tick) and client
-//  prediction (applyClientCombatExpensivePrediction per frame) so
-//  authoritative + predicted turret motion stay bit-identical.
+//  Used by the authoritative turretSystem per tick. Client prediction
+//  consumes the emitted angle/velocity and coasts from velocity only,
+//  so this kernel is the source of the turret spring contract.
 //
 //  Options on the TS side are an object: { wrap?, minAngle?, maxAngle? }.
 //  We encode them into a u32 flags word plus two scalar slots:
@@ -1852,15 +1864,85 @@ pub fn integrate_damped_rotation(
     let has_min = flags & DAMPED_ROTATION_FLAG_HAS_MIN != 0;
     let has_max = flags & DAMPED_ROTATION_FLAG_HAS_MAX != 0;
 
-    let diff = if wrap {
-        normalize_angle_ts(target_angle - angle)
+    let safe_dt = if dt_sec.is_finite() {
+        dt_sec.max(0.0)
     } else {
-        target_angle - angle
+        0.0
     };
-    let accel = diff * k - angular_vel * c;
-    let mut new_vel = angular_vel + accel * dt_sec;
-    let mut new_angle = angle + new_vel * dt_sec;
-    let mut out_acc = accel;
+    let safe_k = if k.is_finite() { k.max(0.0) } else { 0.0 };
+    let safe_c = if c.is_finite() { c.max(0.0) } else { 0.0 };
+    let safe_angle = if angle.is_finite() { angle } else { 0.0 };
+    let safe_vel = if angular_vel.is_finite() {
+        angular_vel
+    } else {
+        0.0
+    };
+    let safe_target = if target_angle.is_finite() {
+        target_angle
+    } else {
+        0.0
+    };
+
+    let relative_angle = if wrap {
+        normalize_angle_ts(safe_angle - safe_target)
+    } else {
+        safe_angle - safe_target
+    };
+
+    let mut new_relative = relative_angle;
+    let mut new_vel = safe_vel;
+    if safe_dt > 0.0 && safe_k > 0.0 {
+        let discriminant = safe_c * safe_c - 4.0 * safe_k;
+        if discriminant.abs() <= 1e-9 {
+            let r = -safe_c / 2.0;
+            let b = safe_vel - r * relative_angle;
+            let e = (r * safe_dt).exp();
+            new_relative = (relative_angle + b * safe_dt) * e;
+            new_vel = (b + r * (relative_angle + b * safe_dt)) * e;
+        } else if discriminant > 0.0 {
+            let root = discriminant.sqrt();
+            let r1 = (-safe_c + root) / 2.0;
+            let r2 = (-safe_c - root) / 2.0;
+            let denom = r1 - r2;
+            let a = if denom != 0.0 {
+                (safe_vel - r2 * relative_angle) / denom
+            } else {
+                relative_angle
+            };
+            let b = relative_angle - a;
+            let e1 = (r1 * safe_dt).exp();
+            let e2 = (r2 * safe_dt).exp();
+            new_relative = a * e1 + b * e2;
+            new_vel = a * r1 * e1 + b * r2 * e2;
+        } else {
+            let alpha = -safe_c / 2.0;
+            let omega = (-discriminant).sqrt() / 2.0;
+            let a = relative_angle;
+            let b = if omega > 0.0 {
+                (safe_vel - alpha * relative_angle) / omega
+            } else {
+                0.0
+            };
+            let e = (alpha * safe_dt).exp();
+            let cos = (omega * safe_dt).cos();
+            let sin = (omega * safe_dt).sin();
+            new_relative = e * (a * cos + b * sin);
+            new_vel = e * (alpha * (a * cos + b * sin) + (-a * omega * sin + b * omega * cos));
+        }
+    } else if safe_dt > 0.0 && safe_c > 0.0 {
+        let e = (-safe_c * safe_dt).exp();
+        new_relative = relative_angle + safe_vel * (1.0 - e) / safe_c;
+        new_vel = safe_vel * e;
+    } else if safe_dt > 0.0 {
+        new_relative = relative_angle + safe_vel * safe_dt;
+    }
+
+    let mut new_angle = safe_target + new_relative;
+    let mut out_acc = if safe_dt > 0.0 {
+        (new_vel - safe_vel) / safe_dt
+    } else {
+        0.0
+    };
     if wrap {
         new_angle = normalize_angle_ts(new_angle);
     }
@@ -1927,9 +2009,9 @@ struct TerrainGrid {
     // mesh storage — names mirror TerrainTileMap field names in
     // src/types/terrain.ts (without the "mesh" prefix since this is
     // already inside a terrain struct).
-    vertex_coords: Vec<f64>,        // (x, z) pairs, length = 2 * vertex_count
+    vertex_coords: Vec<f64>, // (x, z) pairs, length = 2 * vertex_count
     vertex_heights: Vec<f64>,
-    triangle_indices: Vec<i32>,     // (ia, ib, ic) triples, length = 3 * triangle_count
+    triangle_indices: Vec<i32>, // (ia, ib, ic) triples, length = 3 * triangle_count
     triangle_levels: Vec<i32>,
     neighbor_indices: Vec<i32>,
     neighbor_levels: Vec<i32>,
@@ -2002,9 +2084,11 @@ pub fn terrain_install_mesh(
     t.neighbor_levels.clear();
     t.neighbor_levels.extend_from_slice(neighbor_levels);
     t.cell_triangle_offsets.clear();
-    t.cell_triangle_offsets.extend_from_slice(cell_triangle_offsets);
+    t.cell_triangle_offsets
+        .extend_from_slice(cell_triangle_offsets);
     t.cell_triangle_indices.clear();
-    t.cell_triangle_indices.extend_from_slice(cell_triangle_indices);
+    t.cell_triangle_indices
+        .extend_from_slice(cell_triangle_indices);
     t.map_width = map_width;
     t.map_height = map_height;
     t.cell_size = cell_size;
@@ -2032,7 +2116,11 @@ pub fn terrain_clear() {
 
 #[wasm_bindgen]
 pub fn terrain_is_installed() -> u32 {
-    if terrain_grid().installed { 1 } else { 0 }
+    if terrain_grid().installed {
+        1
+    } else {
+        0
+    }
 }
 
 #[wasm_bindgen]
@@ -2049,10 +2137,14 @@ pub fn terrain_metadata(out_buf: &mut [f64]) {
 
 #[inline]
 fn terrain_barycentric_at(
-    px: f64, pz: f64,
-    ax: f64, az: f64,
-    bx: f64, bz: f64,
-    cx: f64, cz: f64,
+    px: f64,
+    pz: f64,
+    ax: f64,
+    az: f64,
+    bx: f64,
+    bz: f64,
+    cx: f64,
+    cz: f64,
 ) -> Option<(f64, f64, f64)> {
     let denom = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
     if denom.abs() <= TERRAIN_MESH_EPSILON {
@@ -2080,16 +2172,26 @@ fn normalize_barycentric_weights(wa: f64, wb: f64, wc: f64) -> (f64, f64, f64) {
 /// Triangle sample tuple: (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch).
 /// Same shape as TerrainTriangleSample in terrainTileMap.ts.
 type TerrainTriangleSample = (
-    f64, f64, f64,  // weights
-    f64, f64, f64,  // a (x, z, h)
-    f64, f64, f64,  // b
-    f64, f64, f64,  // c
+    f64,
+    f64,
+    f64, // weights
+    f64,
+    f64,
+    f64, // a (x, z, h)
+    f64,
+    f64,
+    f64, // b
+    f64,
+    f64,
+    f64, // c
 );
 
 fn terrain_triangle_sample_at(
     t: &TerrainGrid,
-    px: f64, pz: f64,
-    cell_x: i32, cell_y: i32,
+    px: f64,
+    pz: f64,
+    cell_x: i32,
+    cell_y: i32,
 ) -> Option<TerrainTriangleSample> {
     if cell_x < 0 || cell_y < 0 || cell_x >= t.cells_x || cell_y >= t.cells_y {
         return None;
@@ -2134,10 +2236,7 @@ fn terrain_triangle_sample_at(
         let bh = t.vertex_heights.get(ib).copied().unwrap_or(0.0);
         let ch = t.vertex_heights.get(ic).copied().unwrap_or(0.0);
         let sample = (
-            final_wa, final_wb, final_wc,
-            ax, az, ah,
-            bx, bz, bh,
-            cx, cz, ch,
+            final_wa, final_wb, final_wc, ax, az, ah, bx, bz, bh, cx, cz, ch,
         );
         if score >= -1e-5 {
             return Some(sample);
@@ -2152,10 +2251,26 @@ fn terrain_triangle_sample_at(
 fn terrain_clamp_to_cell(t: &TerrainGrid, x: f64, z: f64) -> (f64, f64, i32, i32) {
     let max_x = t.cells_x as f64 * t.cell_size;
     let max_z = t.cells_y as f64 * t.cell_size;
-    let px = if x <= 0.0 { 0.0 } else if x >= max_x { max_x } else { x };
-    let pz = if z <= 0.0 { 0.0 } else if z >= max_z { max_z } else { z };
-    let cell_x = ((px / t.cell_size).floor() as i32).max(0).min(t.cells_x - 1);
-    let cell_y = ((pz / t.cell_size).floor() as i32).max(0).min(t.cells_y - 1);
+    let px = if x <= 0.0 {
+        0.0
+    } else if x >= max_x {
+        max_x
+    } else {
+        x
+    };
+    let pz = if z <= 0.0 {
+        0.0
+    } else if z >= max_z {
+        max_z
+    } else {
+        z
+    };
+    let cell_x = ((px / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_x - 1);
+    let cell_y = ((pz / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_y - 1);
     (px, pz, cell_x, cell_y)
 }
 
@@ -2191,8 +2306,12 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
 /// boundary).
 #[wasm_bindgen]
 pub fn terrain_has_line_of_sight(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
     step_len: f64,
 ) -> u32 {
     let t = terrain_grid();
@@ -2317,7 +2436,7 @@ const SPATIAL_MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS: usize = 8192;
 // Z-band defaults for ground-plane queries — match TILE_FLOOR_Y and
 // TERRAIN_MAX_RENDER_Y in src/game/sim/terrain/terrainConfig.ts.
 const SPATIAL_TILE_FLOOR_Y: f64 = -1200.0;
-const SPATIAL_TERRAIN_MAX_RENDER_Y: f64 = 1600.0;  // TERRAIN_SHAPE_MAGNITUDE(800) * 2
+const SPATIAL_TERRAIN_MAX_RENDER_Y: f64 = 1600.0; // TERRAIN_SHAPE_MAGNITUDE(800) * 2
 
 #[derive(Default)]
 struct SpatialCellBucket {
@@ -2443,7 +2562,10 @@ fn spatial_get_cell_key(state: &SpatialGridState, x: f64, y: f64, z: f64) -> u64
     pack_contact_cell_key(cx, cy, cz)
 }
 
-fn spatial_get_or_create_cell<'a>(state: &'a mut SpatialGridState, key: u64) -> &'a mut SpatialCellBucket {
+fn spatial_get_or_create_cell<'a>(
+    state: &'a mut SpatialGridState,
+    key: u64,
+) -> &'a mut SpatialCellBucket {
     if !state.cells.contains_key(&key) {
         let bucket = state.cell_pool.pop().unwrap_or_default();
         state.cells.insert(key, bucket);
@@ -2465,7 +2587,9 @@ fn spatial_remove_unit_from_cell(state: &mut SpatialGridState, cell_key: u64, sl
     if let Some(bucket) = state.cells.get_mut(&cell_key) {
         if let Some(idx) = bucket.units.iter().position(|&s| s == slot) {
             let last = bucket.units.len() - 1;
-            if idx != last { bucket.units.swap(idx, last); }
+            if idx != last {
+                bucket.units.swap(idx, last);
+            }
             bucket.units.pop();
         }
     }
@@ -2476,7 +2600,9 @@ fn spatial_remove_projectile_from_cell(state: &mut SpatialGridState, cell_key: u
     if let Some(bucket) = state.cells.get_mut(&cell_key) {
         if let Some(idx) = bucket.projectiles.iter().position(|&s| s == slot) {
             let last = bucket.projectiles.len() - 1;
-            if idx != last { bucket.projectiles.swap(idx, last); }
+            if idx != last {
+                bucket.projectiles.swap(idx, last);
+            }
             bucket.projectiles.pop();
         }
     }
@@ -2487,7 +2613,9 @@ fn spatial_remove_building_from_cell(state: &mut SpatialGridState, cell_key: u64
     if let Some(bucket) = state.cells.get_mut(&cell_key) {
         if let Some(idx) = bucket.buildings.iter().position(|&s| s == slot) {
             let last = bucket.buildings.len() - 1;
-            if idx != last { bucket.buildings.swap(idx, last); }
+            if idx != last {
+                bucket.buildings.swap(idx, last);
+            }
             bucket.buildings.pop();
         }
     }
@@ -2513,9 +2641,15 @@ fn spatial_dist_sq2(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 
 #[inline]
 fn spatial_dist_sq_to_aabb3(
-    bx: f64, by: f64, bz: f64,
-    hx: f64, hy: f64, hz: f64,
-    px: f64, py: f64, pz: f64,
+    bx: f64,
+    by: f64,
+    bz: f64,
+    hx: f64,
+    hy: f64,
+    hz: f64,
+    px: f64,
+    py: f64,
+    pz: f64,
 ) -> f64 {
     let min_x = bx - hx;
     let max_x = bx + hx;
@@ -2523,9 +2657,27 @@ fn spatial_dist_sq_to_aabb3(
     let max_y = by + hy;
     let min_z = bz - hz;
     let max_z = bz + hz;
-    let cxp = if px < min_x { min_x } else if px > max_x { max_x } else { px };
-    let cyp = if py < min_y { min_y } else if py > max_y { max_y } else { py };
-    let czp = if pz < min_z { min_z } else if pz > max_z { max_z } else { pz };
+    let cxp = if px < min_x {
+        min_x
+    } else if px > max_x {
+        max_x
+    } else {
+        px
+    };
+    let cyp = if py < min_y {
+        min_y
+    } else if py > max_y {
+        max_y
+    } else {
+        py
+    };
+    let czp = if pz < min_z {
+        min_z
+    } else if pz > max_z {
+        max_z
+    } else {
+        pz
+    };
     let dx = cxp - px;
     let dy = cyp - py;
     let dz = czp - pz;
@@ -2533,17 +2685,25 @@ fn spatial_dist_sq_to_aabb3(
 }
 
 #[inline]
-fn spatial_dist_sq_to_aabb2(
-    bx: f64, by: f64,
-    hx: f64, hy: f64,
-    px: f64, py: f64,
-) -> f64 {
+fn spatial_dist_sq_to_aabb2(bx: f64, by: f64, hx: f64, hy: f64, px: f64, py: f64) -> f64 {
     let min_x = bx - hx;
     let max_x = bx + hx;
     let min_y = by - hy;
     let max_y = by + hy;
-    let cxp = if px < min_x { min_x } else if px > max_x { max_x } else { px };
-    let cyp = if py < min_y { min_y } else if py > max_y { max_y } else { py };
+    let cxp = if px < min_x {
+        min_x
+    } else if px > max_x {
+        max_x
+    } else {
+        px
+    };
+    let cyp = if py < min_y {
+        min_y
+    } else if py > max_y {
+        max_y
+    } else {
+        py
+    };
     let dx = cxp - px;
     let dy = cyp - py;
     dx * dx + dy * dy
@@ -2603,16 +2763,24 @@ pub fn spatial_clear() {
     state.cells.clear();
     state.cell_pool.clear();
     // Reset slot ownership but keep allocations.
-    for k in state.slot_kind.iter_mut() { *k = SPATIAL_KIND_UNSET; }
-    for c in state.building_cells.iter_mut() { c.clear(); }
-    for cube in state.slot_cube_key.iter_mut() { *cube = 0; }
+    for k in state.slot_kind.iter_mut() {
+        *k = SPATIAL_KIND_UNSET;
+    }
+    for c in state.building_cells.iter_mut() {
+        c.clear();
+    }
+    for cube in state.slot_cube_key.iter_mut() {
+        *cube = 0;
+    }
     state.free_slots.clear();
     state.next_slot = 0;
 }
 
 fn spatial_ensure_slot_capacity(state: &mut SpatialGridState, slot: u32) {
     let needed = (slot as usize) + 1;
-    if state.slot_kind.len() >= needed { return; }
+    if state.slot_kind.len() >= needed {
+        return;
+    }
     state.slot_kind.resize(needed, SPATIAL_KIND_UNSET);
     state.slot_owner_player.resize(needed, 0);
     state.slot_x.resize(needed, 0.0);
@@ -2658,8 +2826,11 @@ pub fn spatial_free_slot(slot: u32) {
 #[wasm_bindgen]
 pub fn spatial_set_unit(
     slot: u32,
-    x: f64, y: f64, z: f64,
-    radius_push: f64, radius_shot: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius_push: f64,
+    radius_shot: f64,
     owner_player: u8,
     hp_alive: u8,
 ) {
@@ -2696,7 +2867,9 @@ pub fn spatial_set_unit(
 #[wasm_bindgen]
 pub fn spatial_set_projectile(
     slot: u32,
-    x: f64, y: f64, z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
     owner_player: u8,
     is_projectile_type: u8,
 ) {
@@ -2715,11 +2888,15 @@ pub fn spatial_set_projectile(
         let old_key = state.slot_cube_key[s];
         if old_key != new_key {
             spatial_remove_projectile_from_cell(state, old_key, slot);
-            spatial_get_or_create_cell(state, new_key).projectiles.push(slot);
+            spatial_get_or_create_cell(state, new_key)
+                .projectiles
+                .push(slot);
             state.slot_cube_key[s] = new_key;
         }
     } else {
-        spatial_get_or_create_cell(state, new_key).projectiles.push(slot);
+        spatial_get_or_create_cell(state, new_key)
+            .projectiles
+            .push(slot);
         state.slot_cube_key[s] = new_key;
     }
 }
@@ -2731,8 +2908,12 @@ pub fn spatial_set_projectile(
 #[wasm_bindgen]
 pub fn spatial_set_building(
     slot: u32,
-    x: f64, y: f64, z: f64,
-    hx: f64, hy: f64, hz: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    hx: f64,
+    hy: f64,
+    hz: f64,
     owner_player: u8,
     hp_alive: u8,
     entity_active: u8,
@@ -2786,7 +2967,9 @@ pub fn spatial_set_building(
 pub fn spatial_unset_slot(slot: u32) {
     let state = spatial_grid();
     let s = slot as usize;
-    if s >= state.slot_kind.len() { return; }
+    if s >= state.slot_kind.len() {
+        return;
+    }
     match state.slot_kind[s] {
         SPATIAL_KIND_UNIT => {
             let key = state.slot_cube_key[s];
@@ -2812,7 +2995,13 @@ pub fn spatial_unset_slot(slot: u32) {
 
 // ===================== Cell-sweep helpers =====================
 
-fn spatial_collect_cells_in_radius(state: &mut SpatialGridState, x: f64, y: f64, z: f64, radius: f64) {
+fn spatial_collect_cells_in_radius(
+    state: &mut SpatialGridState,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+) {
     state.nearby_cells.clear();
     let cs = state.cell_size;
     let hcs = state.half_cell_size;
@@ -2833,8 +3022,11 @@ fn spatial_collect_cells_in_radius(state: &mut SpatialGridState, x: f64, y: f64,
 
 fn spatial_collect_cells_in_circle2d(
     state: &mut SpatialGridState,
-    x: f64, y: f64, radius: f64,
-    z_min: f64, z_max: f64,
+    x: f64,
+    y: f64,
+    radius: f64,
+    z_min: f64,
+    z_max: f64,
 ) {
     state.nearby_cells.clear();
     let cs = state.cell_size;
@@ -2856,13 +3048,21 @@ fn spatial_collect_cells_in_circle2d(
 
 fn spatial_collect_cells_along_line(
     state: &mut SpatialGridState,
-    x1: f64, y1: f64, z1: f64,
-    x2: f64, y2: f64, z2: f64,
+    x1: f64,
+    y1: f64,
+    z1: f64,
+    x2: f64,
+    y2: f64,
+    z2: f64,
     line_width: f64,
 ) -> bool {
     state.nearby_cells.clear();
-    if !x1.is_finite() || !y1.is_finite() || !z1.is_finite()
-        || !x2.is_finite() || !y2.is_finite() || !z2.is_finite()
+    if !x1.is_finite()
+        || !y1.is_finite()
+        || !z1.is_finite()
+        || !x2.is_finite()
+        || !y2.is_finite()
+        || !z2.is_finite()
         || !line_width.is_finite()
     {
         return false;
@@ -2890,7 +3090,9 @@ fn spatial_collect_cells_along_line(
     }
     let cell_count = cells_x * cells_y * cells_z;
     if cell_count > SPATIAL_MAX_LINE_QUERY_CELLS {
-        return spatial_fill_occupied_cells_for_line(state, min_x, max_x, min_y, max_y, min_z, max_z);
+        return spatial_fill_occupied_cells_for_line(
+            state, min_x, max_x, min_y, max_y, min_z, max_z,
+        );
     }
     for cx in min_cx..=max_cx {
         for cy in min_cy..=max_cy {
@@ -2904,9 +3106,12 @@ fn spatial_collect_cells_along_line(
 
 fn spatial_fill_occupied_cells_for_line(
     state: &mut SpatialGridState,
-    min_x: f64, max_x: f64,
-    min_y: f64, max_y: f64,
-    min_z: f64, max_z: f64,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    min_z: f64,
+    max_z: f64,
 ) -> bool {
     state.nearby_cells.clear();
     if state.cells.len() > SPATIAL_MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS {
@@ -2926,13 +3131,19 @@ fn spatial_fill_occupied_cells_for_line(
         let cz = (czb - CONTACT_CELL_BIAS) as f64;
         let cell_min_x = cx * cs;
         let cell_max_x = cell_min_x + cs;
-        if cell_max_x < min_x || cell_min_x > max_x { continue; }
+        if cell_max_x < min_x || cell_min_x > max_x {
+            continue;
+        }
         let cell_min_y = cy * cs;
         let cell_max_y = cell_min_y + cs;
-        if cell_max_y < min_y || cell_min_y > max_y { continue; }
+        if cell_max_y < min_y || cell_min_y > max_y {
+            continue;
+        }
         let cell_min_z = cz * cs - hcs;
         let cell_max_z = cell_min_z + cs;
-        if cell_max_z < min_z || cell_min_z > max_z { continue; }
+        if cell_max_z < min_z || cell_min_z > max_z {
+            continue;
+        }
         state.nearby_cells.push(key);
     }
     true
@@ -2945,7 +3156,9 @@ fn spatial_push_unit_if_in_radius(
     state: &SpatialGridState,
     out: &mut Vec<u32>,
     slot: u32,
-    x: f64, y: f64, z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
     radius: f64,
     radius_sq: f64,
     exclude_player: u8,
@@ -2954,17 +3167,25 @@ fn spatial_push_unit_if_in_radius(
     ground_plane_only: bool,
 ) {
     let s = slot as usize;
-    if state.slot_kind[s] != SPATIAL_KIND_UNIT { return; }
+    if state.slot_kind[s] != SPATIAL_KIND_UNIT {
+        return;
+    }
     let owner = state.slot_owner_player[s];
-    if exclude_player != 0 && owner == exclude_player { return; }
-    if require_alive && state.slot_hp_alive[s] == 0 { return; }
+    if exclude_player != 0 && owner == exclude_player {
+        return;
+    }
+    if require_alive && state.slot_hp_alive[s] == 0 {
+        return;
+    }
 
     let mut check_radius_sq = radius_sq;
     if include_shot_radius {
         let shot = state.slot_radius_shot[s];
         // JS path: `if (shotRadius === undefined) return;` We treat
         // 0.0 as "no shot radius" since units always set it positively.
-        if shot <= 0.0 { return; }
+        if shot <= 0.0 {
+            return;
+        }
         let check_radius = radius + shot;
         check_radius_sq = check_radius * check_radius;
     }
@@ -2986,15 +3207,23 @@ fn spatial_push_enemy_projectile_if_in_radius(
     state: &SpatialGridState,
     out: &mut Vec<u32>,
     slot: u32,
-    x: f64, y: f64, z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
     radius_sq: f64,
     exclude_player: u8,
 ) {
     let s = slot as usize;
-    if state.slot_kind[s] != SPATIAL_KIND_PROJECTILE { return; }
-    if state.slot_proj_is_projectile_type[s] == 0 { return; }
+    if state.slot_kind[s] != SPATIAL_KIND_PROJECTILE {
+        return;
+    }
+    if state.slot_proj_is_projectile_type[s] == 0 {
+        return;
+    }
     let owner = state.slot_owner_player[s];
-    if owner == exclude_player { return; }
+    if owner == exclude_player {
+        return;
+    }
     let dx = state.slot_x[s] - x;
     let dy = state.slot_y[s] - y;
     let dz = state.slot_z[s] - z;
@@ -3009,30 +3238,49 @@ fn spatial_push_building_if_in_radius(
     dedup: &mut std::collections::HashSet<u32>,
     out: &mut Vec<u32>,
     slot: u32,
-    x: f64, y: f64, z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
     radius_sq: f64,
     exclude_player: u8,
     require_alive: bool,
     ground_plane_only: bool,
 ) {
-    if !dedup.insert(slot) { return; }
+    if !dedup.insert(slot) {
+        return;
+    }
     let s = slot as usize;
-    if state.slot_kind[s] != SPATIAL_KIND_BUILDING { return; }
+    if state.slot_kind[s] != SPATIAL_KIND_BUILDING {
+        return;
+    }
     let owner = state.slot_owner_player[s];
-    if exclude_player != 0 && owner == exclude_player { return; }
-    if require_alive && state.slot_hp_alive[s] == 0 { return; }
+    if exclude_player != 0 && owner == exclude_player {
+        return;
+    }
+    if require_alive && state.slot_hp_alive[s] == 0 {
+        return;
+    }
 
     let dist_sq = if ground_plane_only {
         spatial_dist_sq_to_aabb2(
-            state.slot_x[s], state.slot_y[s],
-            state.slot_aabb_hx[s], state.slot_aabb_hy[s],
-            x, y,
+            state.slot_x[s],
+            state.slot_y[s],
+            state.slot_aabb_hx[s],
+            state.slot_aabb_hy[s],
+            x,
+            y,
         )
     } else {
         spatial_dist_sq_to_aabb3(
-            state.slot_x[s], state.slot_y[s], state.slot_z[s],
-            state.slot_aabb_hx[s], state.slot_aabb_hy[s], state.slot_aabb_hz[s],
-            x, y, z,
+            state.slot_x[s],
+            state.slot_y[s],
+            state.slot_z[s],
+            state.slot_aabb_hx[s],
+            state.slot_aabb_hy[s],
+            state.slot_aabb_hz[s],
+            x,
+            y,
+            z,
         )
     };
     if dist_sq <= radius_sq {
@@ -3046,7 +3294,10 @@ fn spatial_push_building_if_in_radius(
 /// are written to `scratch_u32[0..count]`; JS reads via the buffer ptr.
 #[wasm_bindgen]
 pub fn spatial_query_units_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
     exclude_player: u8,
     require_alive: u8,
 ) -> u32 {
@@ -3060,8 +3311,18 @@ pub fn spatial_query_units_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.units {
                 spatial_push_unit_if_in_radius(
-                    state, &mut out, slot, x, y, z, radius, radius_sq,
-                    exclude_player, require_alive != 0, false, false,
+                    state,
+                    &mut out,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius,
+                    radius_sq,
+                    exclude_player,
+                    require_alive != 0,
+                    false,
+                    false,
                 );
             }
         }
@@ -3073,7 +3334,10 @@ pub fn spatial_query_units_in_radius(
 
 #[wasm_bindgen]
 pub fn spatial_query_buildings_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
     exclude_player: u8,
     require_alive: u8,
 ) -> u32 {
@@ -3089,8 +3353,17 @@ pub fn spatial_query_buildings_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.buildings {
                 spatial_push_building_if_in_radius(
-                    state, &mut dedup, &mut out, slot, x, y, z, radius_sq,
-                    exclude_player, require_alive != 0, false,
+                    state,
+                    &mut dedup,
+                    &mut out,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius_sq,
+                    exclude_player,
+                    require_alive != 0,
+                    false,
                 );
             }
         }
@@ -3105,9 +3378,7 @@ pub fn spatial_query_buildings_in_radius(
 ///   [n_units, n_buildings, unit_slot0..n, building_slot0..m]
 /// JS slices the header to get the two counts.
 #[wasm_bindgen]
-pub fn spatial_query_units_and_buildings_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
-) -> u32 {
+pub fn spatial_query_units_and_buildings_in_radius(x: f64, y: f64, z: f64, radius: f64) -> u32 {
     let state = spatial_grid();
     state.scratch_u32.clear();
     // Reserve header slots [n_units, n_buildings].
@@ -3125,8 +3396,7 @@ pub fn spatial_query_units_and_buildings_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.units {
                 spatial_push_unit_if_in_radius(
-                    state, &mut buf, slot, x, y, z, radius, radius_sq,
-                    0, false, false, false,
+                    state, &mut buf, slot, x, y, z, radius, radius_sq, 0, false, false, false,
                 );
             }
         }
@@ -3138,8 +3408,7 @@ pub fn spatial_query_units_and_buildings_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.buildings {
                 spatial_push_building_if_in_radius(
-                    state, &mut dedup, &mut buf, slot, x, y, z, radius_sq,
-                    0, false, false,
+                    state, &mut dedup, &mut buf, slot, x, y, z, radius_sq, 0, false, false,
                 );
             }
         }
@@ -3155,12 +3424,15 @@ pub fn spatial_query_units_and_buildings_in_radius(
 
 #[wasm_bindgen]
 pub fn spatial_query_units_and_buildings_in_rect_2d(
-    min_x: f64, max_x: f64, min_y: f64, max_y: f64,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
 ) -> u32 {
     let state = spatial_grid();
     state.scratch_u32.clear();
-    state.scratch_u32.push(0);  // header: n_units
-    state.scratch_u32.push(0);  // header: n_buildings
+    state.scratch_u32.push(0); // header: n_units
+    state.scratch_u32.push(0); // header: n_buildings
     state.dedup.clear();
     let cs = state.cell_size;
     let hcs = state.half_cell_size;
@@ -3213,13 +3485,16 @@ pub fn spatial_query_units_and_buildings_in_rect_2d(
 
 #[wasm_bindgen]
 pub fn spatial_query_enemy_entities_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
     exclude_player: u8,
 ) -> u32 {
     let state = spatial_grid();
     state.scratch_u32.clear();
-    state.scratch_u32.push(0);  // n_units
-    state.scratch_u32.push(0);  // n_buildings
+    state.scratch_u32.push(0); // n_units
+    state.scratch_u32.push(0); // n_buildings
     state.dedup.clear();
     // Pad cell search by max shot radius — matches JS impl.
     spatial_collect_cells_in_radius(state, x, y, z, radius + SPATIAL_MAX_UNIT_SHOT_RADIUS);
@@ -3232,8 +3507,18 @@ pub fn spatial_query_enemy_entities_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.units {
                 spatial_push_unit_if_in_radius(
-                    state, &mut buf, slot, x, y, z, radius, radius_sq,
-                    exclude_player, true, true, false,
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius,
+                    radius_sq,
+                    exclude_player,
+                    true,
+                    true,
+                    false,
                 );
             }
         }
@@ -3244,8 +3529,17 @@ pub fn spatial_query_enemy_entities_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.buildings {
                 spatial_push_building_if_in_radius(
-                    state, &mut dedup, &mut buf, slot, x, y, z, radius_sq,
-                    exclude_player, true, false,
+                    state,
+                    &mut dedup,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius_sq,
+                    exclude_player,
+                    true,
+                    false,
                 );
             }
         }
@@ -3261,16 +3555,26 @@ pub fn spatial_query_enemy_entities_in_radius(
 
 #[wasm_bindgen]
 pub fn spatial_query_enemy_entities_in_circle_2d(
-    x: f64, y: f64, radius: f64,
+    x: f64,
+    y: f64,
+    radius: f64,
     exclude_player: u8,
-    z_min: f64, z_max: f64,
+    z_min: f64,
+    z_max: f64,
 ) -> u32 {
     let state = spatial_grid();
     state.scratch_u32.clear();
     state.scratch_u32.push(0);
     state.scratch_u32.push(0);
     state.dedup.clear();
-    spatial_collect_cells_in_circle2d(state, x, y, radius + SPATIAL_MAX_UNIT_SHOT_RADIUS, z_min, z_max);
+    spatial_collect_cells_in_circle2d(
+        state,
+        x,
+        y,
+        radius + SPATIAL_MAX_UNIT_SHOT_RADIUS,
+        z_min,
+        z_max,
+    );
     let radius_sq = radius * radius;
     let nearby = std::mem::take(&mut state.nearby_cells);
     let mut buf = std::mem::take(&mut state.scratch_u32);
@@ -3280,8 +3584,18 @@ pub fn spatial_query_enemy_entities_in_circle_2d(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.units {
                 spatial_push_unit_if_in_radius(
-                    state, &mut buf, slot, x, y, 0.0, radius, radius_sq,
-                    exclude_player, true, true, true,
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    0.0,
+                    radius,
+                    radius_sq,
+                    exclude_player,
+                    true,
+                    true,
+                    true,
                 );
             }
         }
@@ -3292,8 +3606,17 @@ pub fn spatial_query_enemy_entities_in_circle_2d(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.buildings {
                 spatial_push_building_if_in_radius(
-                    state, &mut dedup, &mut buf, slot, x, y, 0.0, radius_sq,
-                    exclude_player, true, true,
+                    state,
+                    &mut dedup,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    0.0,
+                    radius_sq,
+                    exclude_player,
+                    true,
+                    true,
                 );
             }
         }
@@ -3309,8 +3632,12 @@ pub fn spatial_query_enemy_entities_in_circle_2d(
 
 #[wasm_bindgen]
 pub fn spatial_query_units_along_line(
-    x1: f64, y1: f64, z1: f64,
-    x2: f64, y2: f64, z2: f64,
+    x1: f64,
+    y1: f64,
+    z1: f64,
+    x2: f64,
+    y2: f64,
+    z2: f64,
     line_width: f64,
 ) -> u32 {
     let state = spatial_grid();
@@ -3340,8 +3667,12 @@ pub fn spatial_query_units_along_line(
 
 #[wasm_bindgen]
 pub fn spatial_query_buildings_along_line(
-    x1: f64, y1: f64, z1: f64,
-    x2: f64, y2: f64, z2: f64,
+    x1: f64,
+    y1: f64,
+    z1: f64,
+    x2: f64,
+    y2: f64,
+    z2: f64,
     line_width: f64,
 ) -> u32 {
     let state = spatial_grid();
@@ -3371,16 +3702,20 @@ pub fn spatial_query_buildings_along_line(
 
 #[wasm_bindgen]
 pub fn spatial_query_entities_along_line(
-    x1: f64, y1: f64, z1: f64,
-    x2: f64, y2: f64, z2: f64,
+    x1: f64,
+    y1: f64,
+    z1: f64,
+    x2: f64,
+    y2: f64,
+    z2: f64,
     line_width: f64,
 ) -> u32 {
     let state = spatial_grid();
     state.scratch_u32.clear();
-    state.scratch_u32.push(0);  // n_units
-    state.scratch_u32.push(0);  // n_buildings
+    state.scratch_u32.push(0); // n_units
+    state.scratch_u32.push(0); // n_buildings
     if !spatial_collect_cells_along_line(state, x1, y1, z1, x2, y2, z2, line_width) {
-        return 2;  // headers only, both zero
+        return 2; // headers only, both zero
     }
     state.dedup.clear();
     let nearby = std::mem::take(&mut state.nearby_cells);
@@ -3421,7 +3756,10 @@ pub fn spatial_query_entities_along_line(
 
 #[wasm_bindgen]
 pub fn spatial_query_enemy_units_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
     exclude_player: u8,
 ) -> u32 {
     let state = spatial_grid();
@@ -3434,8 +3772,18 @@ pub fn spatial_query_enemy_units_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.units {
                 spatial_push_unit_if_in_radius(
-                    state, &mut buf, slot, x, y, z, radius, radius_sq,
-                    exclude_player, false, false, false,
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius,
+                    radius_sq,
+                    exclude_player,
+                    false,
+                    false,
+                    false,
                 );
             }
         }
@@ -3448,7 +3796,10 @@ pub fn spatial_query_enemy_units_in_radius(
 
 #[wasm_bindgen]
 pub fn spatial_query_enemy_projectiles_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
     exclude_player: u8,
 ) -> u32 {
     let state = spatial_grid();
@@ -3461,7 +3812,14 @@ pub fn spatial_query_enemy_projectiles_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.projectiles {
                 spatial_push_enemy_projectile_if_in_radius(
-                    state, &mut buf, slot, x, y, z, radius_sq, exclude_player,
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius_sq,
+                    exclude_player,
                 );
             }
         }
@@ -3474,13 +3832,16 @@ pub fn spatial_query_enemy_projectiles_in_radius(
 
 #[wasm_bindgen]
 pub fn spatial_query_enemy_units_and_projectiles_in_radius(
-    x: f64, y: f64, z: f64, radius: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
     exclude_player: u8,
 ) -> u32 {
     let state = spatial_grid();
     state.scratch_u32.clear();
-    state.scratch_u32.push(0);  // n_units
-    state.scratch_u32.push(0);  // n_projectiles
+    state.scratch_u32.push(0); // n_units
+    state.scratch_u32.push(0); // n_projectiles
     spatial_collect_cells_in_radius(state, x, y, z, radius);
     let radius_sq = radius * radius;
     let nearby = std::mem::take(&mut state.nearby_cells);
@@ -3490,8 +3851,18 @@ pub fn spatial_query_enemy_units_and_projectiles_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.units {
                 spatial_push_unit_if_in_radius(
-                    state, &mut buf, slot, x, y, z, radius, radius_sq,
-                    exclude_player, false, false, false,
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius,
+                    radius_sq,
+                    exclude_player,
+                    false,
+                    false,
+                    false,
                 );
             }
         }
@@ -3502,7 +3873,14 @@ pub fn spatial_query_enemy_units_and_projectiles_in_radius(
         if let Some(bucket) = state.cells.get(key) {
             for &slot in &bucket.projectiles {
                 spatial_push_enemy_projectile_if_in_radius(
-                    state, &mut buf, slot, x, y, z, radius_sq, exclude_player,
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    radius_sq,
+                    exclude_player,
                 );
             }
         }
@@ -3527,11 +3905,14 @@ pub fn spatial_query_occupied_cells_debug() -> u32 {
     state.scratch_u32.clear();
     state.scratch_u32.push(0);
     let mut n_cells = 0u32;
-    let cells_iter: Vec<(u64, &SpatialCellBucket)> = state.cells.iter().map(|(k, v)| (*k, v)).collect();
+    let cells_iter: Vec<(u64, &SpatialCellBucket)> =
+        state.cells.iter().map(|(k, v)| (*k, v)).collect();
     let mut buf = std::mem::take(&mut state.scratch_u32);
     let mut seen_players: std::collections::HashSet<u8> = std::collections::HashSet::new();
     for (key, bucket) in cells_iter {
-        if bucket.units.is_empty() { continue; }
+        if bucket.units.is_empty() {
+            continue;
+        }
         seen_players.clear();
         for &slot in &bucket.units {
             let owner = state.slot_owner_player[slot as usize];
@@ -3539,7 +3920,9 @@ pub fn spatial_query_occupied_cells_debug() -> u32 {
                 seen_players.insert(owner);
             }
         }
-        if seen_players.is_empty() { continue; }
+        if seen_players.is_empty() {
+            continue;
+        }
         // Unpack cube key.
         let czb = (key & 0xFFFF) as i64;
         let cyb = ((key >> 16) & 0xFFFF) as i64;
@@ -3579,7 +3962,9 @@ pub fn spatial_scratch_len() -> u32 {
 #[wasm_bindgen]
 pub fn spatial_slot_kind(slot: u32) -> u8 {
     let state = spatial_grid();
-    if (slot as usize) >= state.slot_kind.len() { return SPATIAL_KIND_UNSET; }
+    if (slot as usize) >= state.slot_kind.len() {
+        return SPATIAL_KIND_UNSET;
+    }
     state.slot_kind[slot as usize]
 }
 
@@ -3634,8 +4019,8 @@ struct PathfinderState {
     bfs_queue: Vec<u32>,
 
     // Cache keys — invalidated on terrain/building/grid-dim change.
-    terrain_only_key: u64,  // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
-    full_mask_key: u128,    // = tVer | bVer | gridW | gridH
+    terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
+    full_mask_key: u128,   // = tVer | bVer | gridW | gridH
 
     // Sorted snap offsets — populated once per grid-dim change.
     snap_offsets: Vec<(i16, i16)>,
@@ -3647,8 +4032,11 @@ struct PathfinderState {
 impl PathfinderState {
     fn empty() -> Self {
         Self {
-            grid_w: 0, grid_h: 0, n: 0,
-            map_width: 0.0, map_height: 0.0,
+            grid_w: 0,
+            grid_h: 0,
+            n: 0,
+            map_width: 0.0,
+            map_height: 0.0,
             blocked: Vec::new(),
             terrain_blocked: Vec::new(),
             terrain_normal_z: Vec::new(),
@@ -3687,9 +4075,13 @@ fn pathfinder_build_snap_offsets(state: &mut PathfinderState) {
     let mut list: Vec<(i16, i16, i32)> = Vec::new();
     for dy in -r..=r {
         for dx in -r..=r {
-            if dx == 0 && dy == 0 { continue; }
+            if dx == 0 && dy == 0 {
+                continue;
+            }
             let d2 = dx * dx + dy * dy;
-            if d2 > r * r { continue; }
+            if d2 > r * r {
+                continue;
+            }
             list.push((dx as i16, dy as i16, d2));
         }
     }
@@ -3720,16 +4112,25 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.n = n;
     state.map_width = map_width;
     state.map_height = map_height;
-    state.blocked.clear(); state.blocked.resize(n, 0);
-    state.terrain_blocked.clear(); state.terrain_blocked.resize(n, 0);
-    state.terrain_normal_z.clear(); state.terrain_normal_z.resize(n, 1.0);
-    state.cc_labels.clear(); state.cc_labels.resize(n, 0);
-    state.g_score.clear(); state.g_score.resize(n, f32::INFINITY);
-    state.f_score.clear(); state.f_score.resize(n, f32::INFINITY);
-    state.parent.clear(); state.parent.resize(n, -1);
-    state.closed.clear(); state.closed.resize(n, 0);
+    state.blocked.clear();
+    state.blocked.resize(n, 0);
+    state.terrain_blocked.clear();
+    state.terrain_blocked.resize(n, 0);
+    state.terrain_normal_z.clear();
+    state.terrain_normal_z.resize(n, 1.0);
+    state.cc_labels.clear();
+    state.cc_labels.resize(n, 0);
+    state.g_score.clear();
+    state.g_score.resize(n, f32::INFINITY);
+    state.f_score.clear();
+    state.f_score.resize(n, f32::INFINITY);
+    state.parent.clear();
+    state.parent.resize(n, -1);
+    state.closed.clear();
+    state.closed.resize(n, 0);
     state.heap.clear();
-    state.bfs_queue.clear(); state.bfs_queue.resize(n, 0);
+    state.bfs_queue.clear();
+    state.bfs_queue.resize(n, 0);
     state.terrain_only_key = u64::MAX;
     state.full_mask_key = u128::MAX;
     pathfinder_build_snap_offsets(state);
@@ -3782,8 +4183,11 @@ fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
 }
 
 fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terrain_version: u32) {
-    let key = ((terrain_version as u64) << 32) | ((state.grid_w as u64) << 16) | (state.grid_h as u64);
-    if key == state.terrain_only_key { return; }
+    let key =
+        ((terrain_version as u64) << 32) | ((state.grid_w as u64) << 16) | (state.grid_h as u64);
+    if key == state.terrain_only_key {
+        return;
+    }
 
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -3813,7 +4217,9 @@ fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terrain_version:
     // Step 2 — dilate by TERRAIN_INFLATION_CELLS into terrain_blocked.
     // Map-edge cells within `tk` of any border are blocked.
     let tk = PATHFINDER_TERRAIN_INFLATION_CELLS;
-    for cell in state.terrain_blocked.iter_mut() { *cell = 0; }
+    for cell in state.terrain_blocked.iter_mut() {
+        *cell = 0;
+    }
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let out_idx = (gy * grid_w + gx) as usize;
@@ -3856,7 +4262,9 @@ pub fn pathfinder_rebuild_mask_and_cc(
         | ((building_version as u128) << 64)
         | ((state.grid_w as u128) << 32)
         | (state.grid_h as u128);
-    if key == state.full_mask_key { return; }
+    if key == state.full_mask_key {
+        return;
+    }
 
     // Start from cached terrain mask.
     let grid_w = state.grid_w;
@@ -3872,11 +4280,15 @@ pub fn pathfinder_rebuild_mask_and_cc(
         i += 2;
         for dy in -bk..=bk {
             let ny = gy + dy;
-            if ny < 0 || ny >= grid_h { continue; }
+            if ny < 0 || ny >= grid_h {
+                continue;
+            }
             let row = ny * grid_w;
             for dx in -bk..=bk {
                 let nx = gx + dx;
-                if nx < 0 || nx >= grid_w { continue; }
+                if nx < 0 || nx >= grid_w {
+                    continue;
+                }
                 state.blocked[(row + nx) as usize] = 1;
             }
         }
@@ -3886,8 +4298,12 @@ pub fn pathfinder_rebuild_mask_and_cc(
     state.cc_labels.fill(0);
     let mut next_label: i16 = 1;
     for seed in 0..state.n {
-        if state.blocked[seed] == 1 || state.cc_labels[seed] != 0 { continue; }
-        if next_label > 32_000 { break; }
+        if state.blocked[seed] == 1 || state.cc_labels[seed] != 0 {
+            continue;
+        }
+        if next_label > 32_000 {
+            break;
+        }
         state.cc_labels[seed] = next_label;
         let mut q_head = 0usize;
         let mut q_tail = 0usize;
@@ -3900,14 +4316,22 @@ pub fn pathfinder_rebuild_mask_and_cc(
             let cgy = (idx - cgx) / grid_w;
             for dy in -1..=1 {
                 let ny = cgy + dy;
-                if ny < 0 || ny >= grid_h { continue; }
+                if ny < 0 || ny >= grid_h {
+                    continue;
+                }
                 let row = ny * grid_w;
                 for dx in -1..=1 {
-                    if dx == 0 && dy == 0 { continue; }
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
                     let nx = cgx + dx;
-                    if nx < 0 || nx >= grid_w { continue; }
+                    if nx < 0 || nx >= grid_w {
+                        continue;
+                    }
                     let nidx = (row + nx) as usize;
-                    if state.blocked[nidx] == 1 || state.cc_labels[nidx] != 0 { continue; }
+                    if state.blocked[nidx] == 1 || state.cc_labels[nidx] != 0 {
+                        continue;
+                    }
                     state.cc_labels[nidx] = next_label;
                     state.bfs_queue[q_tail] = nidx as u32;
                     q_tail += 1;
@@ -3922,26 +4346,40 @@ pub fn pathfinder_rebuild_mask_and_cc(
 
 #[inline]
 fn pathfinder_is_cell_passable(state: &PathfinderState, idx: usize, min_normal_z: f32) -> bool {
-    if state.blocked[idx] == 1 { return false; }
-    if min_normal_z <= 0.0 { return true; }
+    if state.blocked[idx] == 1 {
+        return false;
+    }
+    if min_normal_z <= 0.0 {
+        return true;
+    }
     state.terrain_normal_z[idx] >= min_normal_z
 }
 
 #[inline]
-fn pathfinder_is_grid_cell_passable(state: &PathfinderState, gx: i32, gy: i32, min_normal_z: f32) -> bool {
-    if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h { return false; }
+fn pathfinder_is_grid_cell_passable(
+    state: &PathfinderState,
+    gx: i32,
+    gy: i32,
+    min_normal_z: f32,
+) -> bool {
+    if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
+        return false;
+    }
     pathfinder_is_cell_passable(state, (gy * state.grid_w + gx) as usize, min_normal_z)
 }
 
 fn pathfinder_find_nearest_open(
     state: &PathfinderState,
-    gx: i32, gy: i32,
+    gx: i32,
+    gy: i32,
     min_normal_z: f32,
 ) -> Option<(i32, i32)> {
     for &(dx, dy) in &state.snap_offsets {
         let nx = gx + dx as i32;
         let ny = gy + dy as i32;
-        if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h { continue; }
+        if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
+            continue;
+        }
         if pathfinder_is_cell_passable(state, (ny * state.grid_w + nx) as usize, min_normal_z) {
             return Some((nx, ny));
         }
@@ -3951,18 +4389,23 @@ fn pathfinder_find_nearest_open(
 
 fn pathfinder_find_nearest_in_component(
     state: &PathfinderState,
-    gx: i32, gy: i32,
+    gx: i32,
+    gy: i32,
     component: i16,
     min_normal_z: f32,
 ) -> Option<(i32, i32)> {
-    if component <= 0 { return None; }
+    if component <= 0 {
+        return None;
+    }
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     // Fast snap-radius scan first.
     for &(dx, dy) in &state.snap_offsets {
         let nx = gx + dx as i32;
         let ny = gy + dy as i32;
-        if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h { continue; }
+        if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h {
+            continue;
+        }
         let idx = (ny * grid_w + nx) as usize;
         if state.cc_labels[idx] == component
             && pathfinder_is_cell_passable(state, idx, min_normal_z)
@@ -3977,8 +4420,12 @@ fn pathfinder_find_nearest_in_component(
         let dy = ny - gy;
         for nx in 0..grid_w {
             let idx = (row + nx) as usize;
-            if state.cc_labels[idx] != component { continue; }
-            if !pathfinder_is_cell_passable(state, idx, min_normal_z) { continue; }
+            if state.cc_labels[idx] != component {
+                continue;
+            }
+            if !pathfinder_is_cell_passable(state, idx, min_normal_z) {
+                continue;
+            }
             let dx = nx - gx;
             let d2 = dx * dx + dy * dy;
             if best.map_or(true, |(_, _, bd)| d2 < bd) {
@@ -4021,13 +4468,19 @@ fn pathfinder_heap_pop(state: &mut PathfinderState) -> u32 {
             let l = (i << 1) + 1;
             let r = l + 1;
             let mut s = i;
-            if l < len && state.f_score[state.heap[l] as usize] < state.f_score[state.heap[s] as usize] {
+            if l < len
+                && state.f_score[state.heap[l] as usize] < state.f_score[state.heap[s] as usize]
+            {
                 s = l;
             }
-            if r < len && state.f_score[state.heap[r] as usize] < state.f_score[state.heap[s] as usize] {
+            if r < len
+                && state.f_score[state.heap[r] as usize] < state.f_score[state.heap[s] as usize]
+            {
                 s = r;
             }
-            if s == i { break; }
+            if s == i {
+                break;
+            }
             state.heap.swap(i, s);
             i = s;
         }
@@ -4039,12 +4492,18 @@ const PATHFINDER_NEIGHBOR_DX: [i32; 8] = [1, -1, 0, 0, 1, 1, -1, -1];
 const PATHFINDER_NEIGHBOR_DY: [i32; 8] = [0, 0, 1, -1, 1, -1, 1, -1];
 // Neighbour costs: 1.0 for cardinal, SQRT2 for diagonal.
 const PATHFINDER_NEIGHBOR_COST: [f32; 8] = [
-    1.0, 1.0, 1.0, 1.0,
-    PATHFINDER_SQRT2, PATHFINDER_SQRT2, PATHFINDER_SQRT2, PATHFINDER_SQRT2,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    PATHFINDER_SQRT2,
+    PATHFINDER_SQRT2,
+    PATHFINDER_SQRT2,
+    PATHFINDER_SQRT2,
 ];
 
 struct AStarResult {
-    cells: Vec<u32>,   // sequence of cell indices from start to goal (excluding start)
+    cells: Vec<u32>, // sequence of cell indices from start to goal (excluding start)
     goal_gx: i32,
     goal_gy: i32,
     reached_goal: bool,
@@ -4052,18 +4511,28 @@ struct AStarResult {
 
 fn pathfinder_a_star(
     state: &mut PathfinderState,
-    start_gx: i32, start_gy: i32,
-    goal_gx: i32, goal_gy: i32,
+    start_gx: i32,
+    start_gy: i32,
+    goal_gx: i32,
+    goal_gy: i32,
     min_normal_z: f32,
 ) -> Option<AStarResult> {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     let n = state.n;
     // Reset scratch.
-    for v in state.g_score.iter_mut() { *v = f32::INFINITY; }
-    for v in state.f_score.iter_mut() { *v = f32::INFINITY; }
-    for v in state.parent.iter_mut() { *v = -1; }
-    for v in state.closed.iter_mut() { *v = 0; }
+    for v in state.g_score.iter_mut() {
+        *v = f32::INFINITY;
+    }
+    for v in state.f_score.iter_mut() {
+        *v = f32::INFINITY;
+    }
+    for v in state.parent.iter_mut() {
+        *v = -1;
+    }
+    for v in state.closed.iter_mut() {
+        *v = 0;
+    }
     state.heap.clear();
 
     let start_idx = (start_gy * grid_w + start_gx) as usize;
@@ -4083,10 +4552,15 @@ fn pathfinder_a_star(
     while !state.heap.is_empty() && expanded < PATHFINDER_MAX_A_STAR_NODES {
         let cur = pathfinder_heap_pop(state);
         let cur_us = cur as usize;
-        if state.closed[cur_us] != 0 { continue; }
+        if state.closed[cur_us] != 0 {
+            continue;
+        }
         state.closed[cur_us] = 1;
         expanded += 1;
-        if cur == goal_idx { found = true; break; }
+        if cur == goal_idx {
+            found = true;
+            break;
+        }
 
         let cur_i32 = cur as i32;
         let cgx = cur_i32 % grid_w;
@@ -4094,10 +4568,16 @@ fn pathfinder_a_star(
         for k in 0..8 {
             let nx = cgx + PATHFINDER_NEIGHBOR_DX[k];
             let ny = cgy + PATHFINDER_NEIGHBOR_DY[k];
-            if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h { continue; }
+            if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h {
+                continue;
+            }
             let nidx = (ny * grid_w + nx) as usize;
-            if !pathfinder_is_cell_passable(state, nidx, min_normal_z) { continue; }
-            if state.closed[nidx] != 0 { continue; }
+            if !pathfinder_is_cell_passable(state, nidx, min_normal_z) {
+                continue;
+            }
+            if state.closed[nidx] != 0 {
+                continue;
+            }
             let tentative = state.g_score[cur_us] + PATHFINDER_NEIGHBOR_COST[k];
             if tentative < state.g_score[nidx] {
                 state.parent[nidx] = cur as i32;
@@ -4125,7 +4605,8 @@ fn pathfinder_a_star(
     }
     // If parent chain didn't reach start, target is unreachable from
     // start in the discovered subgraph — treat as no path.
-    if !path.is_empty() && state.parent[*path.last().unwrap() as usize] == -1
+    if !path.is_empty()
+        && state.parent[*path.last().unwrap() as usize] == -1
         && (*path.last().unwrap() as i32) != start_idx as i32
     {
         // Final node has no parent and isn't start — unreachable.
@@ -4146,8 +4627,10 @@ fn pathfinder_a_star(
 /// Supercover Bresenham LOS — true iff every cell crossed is unblocked.
 fn pathfinder_has_los(
     state: &PathfinderState,
-    x0: f64, y0: f64,
-    x1: f64, y1: f64,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
     min_normal_z: f32,
 ) -> bool {
     let mut gx = (x0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
@@ -4161,18 +4644,34 @@ fn pathfinder_has_los(
     let mut err = dx - dy;
     let max_steps = dx + dy + 2;
     for _ in 0..max_steps {
-        if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h { return false; }
-        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z) { return false; }
-        if gx == tgx && gy == tgy { return true; }
+        if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
+            return false;
+        }
+        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z) {
+            return false;
+        }
+        if gx == tgx && gy == tgy {
+            return true;
+        }
         let e2 = 2 * err;
         let a_x = e2 > -dy;
         let a_y = e2 < dx;
         if a_x && a_y {
-            if !pathfinder_is_grid_cell_passable(state, gx + sx, gy, min_normal_z) { return false; }
-            if !pathfinder_is_grid_cell_passable(state, gx, gy + sy, min_normal_z) { return false; }
+            if !pathfinder_is_grid_cell_passable(state, gx + sx, gy, min_normal_z) {
+                return false;
+            }
+            if !pathfinder_is_grid_cell_passable(state, gx, gy + sy, min_normal_z) {
+                return false;
+            }
         }
-        if a_x { err -= dy; gx += sx; }
-        if a_y { err += dx; gy += sy; }
+        if a_x {
+            err -= dy;
+            gx += sx;
+        }
+        if a_y {
+            err += dx;
+            gy += sy;
+        }
     }
     false
 }
@@ -4195,8 +4694,10 @@ fn pathfinder_cell_center(gx: i32, gy: i32) -> (f64, f64) {
 /// for the current terrain/building state before calling this.
 #[wasm_bindgen]
 pub fn pathfinder_find_path(
-    start_x: f64, start_y: f64,
-    goal_x: f64, goal_y: f64,
+    start_x: f64,
+    start_y: f64,
+    goal_x: f64,
+    goal_y: f64,
     min_normal_z: f32,
 ) -> u32 {
     let state = pathfinder_state();
@@ -4273,7 +4774,12 @@ pub fn pathfinder_find_path(
     }
 
     let a_star_result = match pathfinder_a_star(
-        state, start_cell_gx, start_cell_gy, goal_cell_gx, goal_cell_gy, min_normal_z,
+        state,
+        start_cell_gx,
+        start_cell_gy,
+        goal_cell_gx,
+        goal_cell_gy,
+        min_normal_z,
     ) {
         Some(r) => r,
         None => {
@@ -4395,11 +4901,15 @@ struct MessagePackWriter {
 impl MessagePackWriter {
     #[allow(dead_code)]
     fn new() -> Self {
-        Self { buf: Vec::with_capacity(64) }
+        Self {
+            buf: Vec::with_capacity(64),
+        }
     }
 
     fn with_capacity(cap: usize) -> Self {
-        Self { buf: Vec::with_capacity(cap) }
+        Self {
+            buf: Vec::with_capacity(cap),
+        }
     }
 
     fn clear(&mut self) {
@@ -4434,7 +4944,10 @@ impl MessagePackWriter {
         }
         // Integer if v fits exactly in i64/u64 AND has no fractional
         // part. JS msgpack treats `1.0` as an integer.
-        if v.fract() == 0.0 && v >= -9_223_372_036_854_775_808.0 && v <= 18_446_744_073_709_551_615.0 {
+        if v.fract() == 0.0
+            && v >= -9_223_372_036_854_775_808.0
+            && v <= 18_446_744_073_709_551_615.0
+        {
             // Use u64 path for non-negative >= 2^63 (above i64 range).
             if v >= 0.0 {
                 let u = v as u64;
@@ -4625,61 +5138,88 @@ pub fn messagepack_self_test() -> u32 {
 
     // case 0: nil
     w.write_nil();
-    if !check(&mut w, &[0xC0], 0) { failures |= 1 << 0; }
+    if !check(&mut w, &[0xC0], 0) {
+        failures |= 1 << 0;
+    }
 
     // case 1: true / false
     w.write_bool(true);
     w.write_bool(false);
-    if !check(&mut w, &[0xC3, 0xC2], 1) { failures |= 1 << 1; }
+    if !check(&mut w, &[0xC3, 0xC2], 1) {
+        failures |= 1 << 1;
+    }
 
     // case 2: positive fixint 0, 127
     w.write_number(0.0);
     w.write_number(127.0);
-    if !check(&mut w, &[0x00, 0x7F], 2) { failures |= 1 << 2; }
+    if !check(&mut w, &[0x00, 0x7F], 2) {
+        failures |= 1 << 2;
+    }
 
     // case 3: negative fixint -1, -32
     w.write_number(-1.0);
     w.write_number(-32.0);
-    if !check(&mut w, &[0xFF, 0xE0], 3) { failures |= 1 << 3; }
+    if !check(&mut w, &[0xFF, 0xE0], 3) {
+        failures |= 1 << 3;
+    }
 
     // case 4: uint8 (128, 255)
     w.write_number(128.0);
     w.write_number(255.0);
-    if !check(&mut w, &[0xCC, 0x80, 0xCC, 0xFF], 4) { failures |= 1 << 4; }
+    if !check(&mut w, &[0xCC, 0x80, 0xCC, 0xFF], 4) {
+        failures |= 1 << 4;
+    }
 
     // case 5: uint16 (256, 65535)
     w.write_number(256.0);
     w.write_number(65535.0);
-    if !check(&mut w, &[0xCD, 0x01, 0x00, 0xCD, 0xFF, 0xFF], 5) { failures |= 1 << 5; }
+    if !check(&mut w, &[0xCD, 0x01, 0x00, 0xCD, 0xFF, 0xFF], 5) {
+        failures |= 1 << 5;
+    }
 
     // case 6: uint32 (65536, 4294967295)
     w.write_number(65536.0);
     w.write_number(4_294_967_295.0);
-    if !check(&mut w, &[0xCE, 0x00, 0x01, 0x00, 0x00, 0xCE, 0xFF, 0xFF, 0xFF, 0xFF], 6) {
+    if !check(
+        &mut w,
+        &[0xCE, 0x00, 0x01, 0x00, 0x00, 0xCE, 0xFF, 0xFF, 0xFF, 0xFF],
+        6,
+    ) {
         failures |= 1 << 6;
     }
 
     // case 7: int8 (-33, -128)
     w.write_number(-33.0);
     w.write_number(-128.0);
-    if !check(&mut w, &[0xD0, 0xDF, 0xD0, 0x80], 7) { failures |= 1 << 7; }
+    if !check(&mut w, &[0xD0, 0xDF, 0xD0, 0x80], 7) {
+        failures |= 1 << 7;
+    }
 
     // case 8: int16 (-129, -32768)
     w.write_number(-129.0);
     w.write_number(-32768.0);
-    if !check(&mut w, &[0xD1, 0xFF, 0x7F, 0xD1, 0x80, 0x00], 8) { failures |= 1 << 8; }
+    if !check(&mut w, &[0xD1, 0xFF, 0x7F, 0xD1, 0x80, 0x00], 8) {
+        failures |= 1 << 8;
+    }
 
     // case 9: int32 (-32769, -2147483648)
     w.write_number(-32769.0);
     w.write_number(-2_147_483_648.0);
-    if !check(&mut w, &[
-        0xD2, 0xFF, 0xFF, 0x7F, 0xFF,
-        0xD2, 0x80, 0x00, 0x00, 0x00,
-    ], 9) { failures |= 1 << 9; }
+    if !check(
+        &mut w,
+        &[0xD2, 0xFF, 0xFF, 0x7F, 0xFF, 0xD2, 0x80, 0x00, 0x00, 0x00],
+        9,
+    ) {
+        failures |= 1 << 9;
+    }
 
     // case 10: float64 0.5 (non-integer)
     w.write_number(0.5);
-    if !check(&mut w, &[0xCB, 0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 10) {
+    if !check(
+        &mut w,
+        &[0xCB, 0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        10,
+    ) {
         failures |= 1 << 10;
     }
 
@@ -4690,55 +5230,78 @@ pub fn messagepack_self_test() -> u32 {
     // we just check the marker + length.
     let nan_ok = bytes.len() == 9 && bytes[0] == 0xCB;
     w.clear();
-    if !nan_ok { failures |= 1 << 11; }
+    if !nan_ok {
+        failures |= 1 << 11;
+    }
 
     // case 12: fixstr ""
     w.write_str("");
-    if !check(&mut w, &[0xA0], 12) { failures |= 1 << 12; }
+    if !check(&mut w, &[0xA0], 12) {
+        failures |= 1 << 12;
+    }
 
     // case 13: fixstr "hi"
     w.write_str("hi");
-    if !check(&mut w, &[0xA2, b'h', b'i'], 13) { failures |= 1 << 13; }
+    if !check(&mut w, &[0xA2, b'h', b'i'], 13) {
+        failures |= 1 << 13;
+    }
 
     // case 14: str8 — 32-byte string
     let s32 = "abcdefghijklmnopqrstuvwxyz012345"; // 32 bytes
     w.write_str(s32);
     let bytes = w.as_slice();
-    let str8_ok = bytes.len() == 34 && bytes[0] == 0xD9 && bytes[1] == 32 && &bytes[2..] == s32.as_bytes();
+    let str8_ok =
+        bytes.len() == 34 && bytes[0] == 0xD9 && bytes[1] == 32 && &bytes[2..] == s32.as_bytes();
     w.clear();
-    if !str8_ok { failures |= 1 << 14; }
+    if !str8_ok {
+        failures |= 1 << 14;
+    }
 
     // case 15: fixarray with 3 entries
     w.write_array_header(3);
     w.write_number(1.0);
     w.write_number(2.0);
     w.write_number(3.0);
-    if !check(&mut w, &[0x93, 0x01, 0x02, 0x03], 15) { failures |= 1 << 15; }
+    if !check(&mut w, &[0x93, 0x01, 0x02, 0x03], 15) {
+        failures |= 1 << 15;
+    }
 
     // case 16: array16 with 16 entries
     w.write_array_header(16);
-    for _ in 0..16 { w.write_number(0.0); }
+    for _ in 0..16 {
+        w.write_number(0.0);
+    }
     let bytes = w.as_slice();
     let arr16_ok = bytes.len() == 19
-        && bytes[0] == 0xDC && bytes[1] == 0 && bytes[2] == 16
+        && bytes[0] == 0xDC
+        && bytes[1] == 0
+        && bytes[2] == 16
         && bytes[3..].iter().all(|&b| b == 0x00);
     w.clear();
-    if !arr16_ok { failures |= 1 << 16; }
+    if !arr16_ok {
+        failures |= 1 << 16;
+    }
 
     // case 17: fixmap (k:v) "a" → 1
     w.write_map_header(1);
     w.write_str("a");
     w.write_number(1.0);
-    if !check(&mut w, &[0x81, 0xA1, b'a', 0x01], 17) { failures |= 1 << 17; }
+    if !check(&mut w, &[0x81, 0xA1, b'a', 0x01], 17) {
+        failures |= 1 << 17;
+    }
 
     // case 18: empty fixmap, empty fixarray
     w.write_map_header(0);
     w.write_array_header(0);
-    if !check(&mut w, &[0x80, 0x90], 18) { failures |= 1 << 18; }
+    if !check(&mut w, &[0x80, 0x90], 18) {
+        failures |= 1 << 18;
+    }
 
     // case 19: bin8 — 3 bytes
     w.write_bin(&[0x01, 0x02, 0x03]);
-    if !check(&mut w, &[0xC4, 0x03, 0x01, 0x02, 0x03], 19) { failures |= 1 << 19; }
+    if !check(&mut w, &[0xC4, 0x03, 0x01, 0x02, 0x03], 19) {
+        failures |= 1 << 19;
+    }
 
     // case 20: nested — map { "arr": [1, 2, "hi"] }
     w.write_map_header(1);
@@ -4747,10 +5310,15 @@ pub fn messagepack_self_test() -> u32 {
     w.write_number(1.0);
     w.write_number(2.0);
     w.write_str("hi");
-    if !check(&mut w, &[
-        0x81, 0xA3, b'a', b'r', b'r',
-        0x93, 0x01, 0x02, 0xA2, b'h', b'i',
-    ], 20) { failures |= 1 << 20; }
+    if !check(
+        &mut w,
+        &[
+            0x81, 0xA3, b'a', b'r', b'r', 0x93, 0x01, 0x02, 0xA2, b'h', b'i',
+        ],
+        20,
+    ) {
+        failures |= 1 << 20;
+    }
 
     failures
 }
@@ -4838,7 +5406,9 @@ impl EntityMetaPool {
 
     fn ensure_capacity(&mut self, slot: u32) {
         let needed = (slot as usize) + 1;
-        if self.entity_type.len() >= needed { return; }
+        if self.entity_type.len() >= needed {
+            return;
+        }
         self.entity_type.resize(needed, ENTITY_META_TYPE_UNSET);
         self.player_id.resize(needed, 0);
         self.hp_curr.resize(needed, 0.0);
@@ -4862,7 +5432,9 @@ impl EntityMetaPool {
 
     fn unset_slot(&mut self, slot: u32) {
         let s = slot as usize;
-        if s >= self.entity_type.len() { return; }
+        if s >= self.entity_type.len() {
+            return;
+        }
         self.entity_type[s] = ENTITY_META_TYPE_UNSET;
         self.player_id[s] = 0;
         self.hp_curr[s] = 0.0;
@@ -4905,13 +5477,17 @@ pub fn entity_meta_init(initial_capacity: u32) {
     let pool = entity_meta_pool();
     pool.ensure_capacity(initial_capacity);
     // Reset slot tags so a re-init drops stale state.
-    for k in pool.entity_type.iter_mut() { *k = ENTITY_META_TYPE_UNSET; }
+    for k in pool.entity_type.iter_mut() {
+        *k = ENTITY_META_TYPE_UNSET;
+    }
 }
 
 #[wasm_bindgen]
 pub fn entity_meta_clear() {
     let pool = entity_meta_pool();
-    for k in pool.entity_type.iter_mut() { *k = ENTITY_META_TYPE_UNSET; }
+    for k in pool.entity_type.iter_mut() {
+        *k = ENTITY_META_TYPE_UNSET;
+    }
     // Other fields stay at their resize-defaults; tag check gates
     // any future read.
 }
@@ -4995,7 +5571,9 @@ pub fn entity_meta_unset(slot: u32) {
 #[wasm_bindgen]
 pub fn entity_meta_type(slot: u32) -> u8 {
     let pool = entity_meta_pool();
-    if (slot as usize) >= pool.entity_type.len() { return ENTITY_META_TYPE_UNSET; }
+    if (slot as usize) >= pool.entity_type.len() {
+        return ENTITY_META_TYPE_UNSET;
+    }
     pool.entity_type[slot as usize]
 }
 
@@ -5023,12 +5601,28 @@ entity_meta_ptr_export!(entity_meta_build_complete_ptr, build_complete, u8);
 entity_meta_ptr_export!(entity_meta_build_paid_energy_ptr, build_paid_energy, f32);
 entity_meta_ptr_export!(entity_meta_build_paid_metal_ptr, build_paid_metal, f32);
 entity_meta_ptr_export!(entity_meta_build_target_id_ptr, build_target_id, i32);
-entity_meta_ptr_export!(entity_meta_suspension_spring_offset_ptr, suspension_spring_offset, f32);
-entity_meta_ptr_export!(entity_meta_suspension_spring_velocity_ptr, suspension_spring_velocity, f32);
+entity_meta_ptr_export!(
+    entity_meta_suspension_spring_offset_ptr,
+    suspension_spring_offset,
+    f32
+);
+entity_meta_ptr_export!(
+    entity_meta_suspension_spring_velocity_ptr,
+    suspension_spring_velocity,
+    f32
+);
 entity_meta_ptr_export!(entity_meta_jump_airborne_ptr, jump_airborne, u8);
 entity_meta_ptr_export!(entity_meta_jump_timer_ptr, jump_timer, f32);
-entity_meta_ptr_export!(entity_meta_factory_is_producing_ptr, factory_is_producing, u8);
-entity_meta_ptr_export!(entity_meta_factory_build_queue_len_ptr, factory_build_queue_len, u8);
+entity_meta_ptr_export!(
+    entity_meta_factory_is_producing_ptr,
+    factory_is_producing,
+    u8
+);
+entity_meta_ptr_export!(
+    entity_meta_factory_build_queue_len_ptr,
+    factory_build_queue_len,
+    u8
+);
 entity_meta_ptr_export!(entity_meta_factory_progress_ptr, factory_progress, f32);
 entity_meta_ptr_export!(entity_meta_solar_open_ptr, solar_open, u8);
 entity_meta_ptr_export!(entity_meta_build_progress_ptr, build_progress, f32);
@@ -5108,7 +5702,9 @@ impl TurretPool {
 
     fn unset_entity(&mut self, entity_slot: u32) {
         let s = entity_slot as usize;
-        if s >= self.count_per_entity.len() { return; }
+        if s >= self.count_per_entity.len() {
+            return;
+        }
         self.count_per_entity[s] = 0;
         // Per-turret fields stay at last value; consumers gate on count.
     }
@@ -5133,13 +5729,17 @@ fn turret_pool() -> &'static mut TurretPool {
 pub fn turret_pool_init(initial_entity_capacity: u32) {
     let pool = turret_pool();
     pool.ensure_entity_capacity(initial_entity_capacity);
-    for c in pool.count_per_entity.iter_mut() { *c = 0; }
+    for c in pool.count_per_entity.iter_mut() {
+        *c = 0;
+    }
 }
 
 #[wasm_bindgen]
 pub fn turret_pool_clear() {
     let pool = turret_pool();
-    for c in pool.count_per_entity.iter_mut() { *c = 0; }
+    for c in pool.count_per_entity.iter_mut() {
+        *c = 0;
+    }
 }
 
 #[wasm_bindgen]
@@ -5176,8 +5776,8 @@ pub fn turret_pool_set_turret(
     let pool = turret_pool();
     pool.ensure_entity_capacity(entity_slot);
     debug_assert!(turret_idx < TURRET_POOL_MAX_PER_ENTITY);
-    let global_idx = (entity_slot as usize) * (TURRET_POOL_MAX_PER_ENTITY as usize)
-        + (turret_idx as usize);
+    let global_idx =
+        (entity_slot as usize) * (TURRET_POOL_MAX_PER_ENTITY as usize) + (turret_idx as usize);
     pool.rotation[global_idx] = rotation;
     pool.angular_velocity[global_idx] = angular_velocity;
     pool.angular_acceleration[global_idx] = angular_acceleration;
@@ -5196,7 +5796,9 @@ pub fn turret_pool_unset_entity(entity_slot: u32) {
 #[wasm_bindgen]
 pub fn turret_pool_count(entity_slot: u32) -> u8 {
     let pool = turret_pool();
-    if (entity_slot as usize) >= pool.count_per_entity.len() { return 0; }
+    if (entity_slot as usize) >= pool.count_per_entity.len() {
+        return 0;
+    }
     pool.count_per_entity[entity_slot as usize]
 }
 
@@ -5212,7 +5814,11 @@ macro_rules! turret_pool_ptr_export {
 turret_pool_ptr_export!(turret_pool_count_per_entity_ptr, count_per_entity, u8);
 turret_pool_ptr_export!(turret_pool_rotation_ptr, rotation, f32);
 turret_pool_ptr_export!(turret_pool_angular_velocity_ptr, angular_velocity, f32);
-turret_pool_ptr_export!(turret_pool_angular_acceleration_ptr, angular_acceleration, f32);
+turret_pool_ptr_export!(
+    turret_pool_angular_acceleration_ptr,
+    angular_acceleration,
+    f32
+);
 turret_pool_ptr_export!(turret_pool_pitch_ptr, pitch, f32);
 turret_pool_ptr_export!(turret_pool_pitch_velocity_ptr, pitch_velocity, f32);
 turret_pool_ptr_export!(turret_pool_pitch_acceleration_ptr, pitch_acceleration, f32);
@@ -5249,10 +5855,16 @@ struct SnapshotBaseline {
     // f32 storage triggered a bit-10 (MOVEMENT_ACCEL) divergence
     // when JS f64 values straddled an f32 rounding step that the
     // baseline read flipped on threshold compare.
-    x: Vec<f64>, y: Vec<f64>, z: Vec<f64>,
+    x: Vec<f64>,
+    y: Vec<f64>,
+    z: Vec<f64>,
     rotation: Vec<f64>,
-    velocity_x: Vec<f64>, velocity_y: Vec<f64>, velocity_z: Vec<f64>,
-    movement_accel_x: Vec<f64>, movement_accel_y: Vec<f64>, movement_accel_z: Vec<f64>,
+    velocity_x: Vec<f64>,
+    velocity_y: Vec<f64>,
+    velocity_z: Vec<f64>,
+    movement_accel_x: Vec<f64>,
+    movement_accel_y: Vec<f64>,
+    movement_accel_z: Vec<f64>,
     hp: Vec<f32>,
     action_count: Vec<u16>,
     action_hash: Vec<u32>,
@@ -5263,7 +5875,9 @@ struct SnapshotBaseline {
     turret_ang_vels: Vec<f32>,
     turret_pitches: Vec<f32>,
     force_field_ranges: Vec<f32>,
-    normal_x: Vec<f64>, normal_y: Vec<f64>, normal_z: Vec<f64>,
+    normal_x: Vec<f64>,
+    normal_y: Vec<f64>,
+    normal_z: Vec<f64>,
     build_progress: Vec<f32>,
     solar_open: Vec<u8>,
     factory_progress: Vec<f32>,
@@ -5276,10 +5890,16 @@ impl SnapshotBaseline {
         Self {
             used: Vec::new(),
             last_tick: Vec::new(),
-            x: Vec::new(), y: Vec::new(), z: Vec::new(),
+            x: Vec::new(),
+            y: Vec::new(),
+            z: Vec::new(),
             rotation: Vec::new(),
-            velocity_x: Vec::new(), velocity_y: Vec::new(), velocity_z: Vec::new(),
-            movement_accel_x: Vec::new(), movement_accel_y: Vec::new(), movement_accel_z: Vec::new(),
+            velocity_x: Vec::new(),
+            velocity_y: Vec::new(),
+            velocity_z: Vec::new(),
+            movement_accel_x: Vec::new(),
+            movement_accel_y: Vec::new(),
+            movement_accel_z: Vec::new(),
             hp: Vec::new(),
             action_count: Vec::new(),
             action_hash: Vec::new(),
@@ -5290,7 +5910,9 @@ impl SnapshotBaseline {
             turret_ang_vels: Vec::new(),
             turret_pitches: Vec::new(),
             force_field_ranges: Vec::new(),
-            normal_x: Vec::new(), normal_y: Vec::new(), normal_z: Vec::new(),
+            normal_x: Vec::new(),
+            normal_y: Vec::new(),
+            normal_z: Vec::new(),
             build_progress: Vec::new(),
             solar_open: Vec::new(),
             factory_progress: Vec::new(),
@@ -5301,7 +5923,9 @@ impl SnapshotBaseline {
 
     fn ensure_capacity(&mut self, slot: u32) {
         let needed = (slot as usize) + 1;
-        if self.used.len() >= needed { return; }
+        if self.used.len() >= needed {
+            return;
+        }
         self.used.resize(needed, 0);
         self.last_tick.resize(needed, 0);
         self.x.resize(needed, 0.0);
@@ -5337,12 +5961,16 @@ impl SnapshotBaseline {
 
     fn unset_slot(&mut self, slot: u32) {
         let s = slot as usize;
-        if s >= self.used.len() { return; }
+        if s >= self.used.len() {
+            return;
+        }
         self.used[s] = 0;
     }
 
     fn clear(&mut self) {
-        for u in self.used.iter_mut() { *u = 0; }
+        for u in self.used.iter_mut() {
+            *u = 0;
+        }
     }
 }
 
@@ -5353,7 +5981,10 @@ struct SnapshotBaselineRegistry {
 
 impl SnapshotBaselineRegistry {
     fn new() -> Self {
-        Self { baselines: Vec::new(), free_list: Vec::new() }
+        Self {
+            baselines: Vec::new(),
+            free_list: Vec::new(),
+        }
     }
 
     fn create(&mut self) -> u32 {
@@ -5368,7 +5999,9 @@ impl SnapshotBaselineRegistry {
 
     fn destroy(&mut self, handle: u32) {
         let h = handle as usize;
-        if h >= self.baselines.len() { return; }
+        if h >= self.baselines.len() {
+            return;
+        }
         if self.baselines[h].is_some() {
             self.baselines[h] = None;
             self.free_list.push(handle);
@@ -5450,57 +6083,95 @@ pub fn snapshot_baseline_capture_unit_slot(
     handle: u32,
     slot: u32,
     tick: u32,
-    x: f64, y: f64, z: f64,
+    changed_fields: u32,
+    x: f64,
+    y: f64,
+    z: f64,
     rotation: f64,
-    velocity_x: f64, velocity_y: f64, velocity_z: f64,
-    movement_accel_x: f64, movement_accel_y: f64, movement_accel_z: f64,
-    normal_x: f64, normal_y: f64, normal_z: f64,
+    velocity_x: f64,
+    velocity_y: f64,
+    velocity_z: f64,
+    movement_accel_x: f64,
+    movement_accel_y: f64,
+    movement_accel_z: f64,
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
     action_count: u16,
     action_hash: u32,
     is_engaged_bits: u32,
     target_bits: u32,
 ) {
     let registry = snapshot_baseline_registry();
-    let Some(b) = registry.get_mut(handle) else { return; };
+    let Some(b) = registry.get_mut(handle) else {
+        return;
+    };
     b.ensure_capacity(slot);
     let s = slot as usize;
+    let is_full = b.used[s] == 0 || changed_fields == SNAPSHOT_BASELINE_CAPTURE_FULL;
     b.used[s] = 1;
     b.last_tick[s] = tick;
-    b.x[s] = x; b.y[s] = y; b.z[s] = z;
-    b.rotation[s] = rotation;
-    b.velocity_x[s] = velocity_x; b.velocity_y[s] = velocity_y; b.velocity_z[s] = velocity_z;
-    b.movement_accel_x[s] = movement_accel_x;
-    b.movement_accel_y[s] = movement_accel_y;
-    b.movement_accel_z[s] = movement_accel_z;
-    b.normal_x[s] = normal_x; b.normal_y[s] = normal_y; b.normal_z[s] = normal_z;
-    b.action_count[s] = action_count;
-    b.action_hash[s] = action_hash;
-    b.is_engaged_bits[s] = is_engaged_bits;
-    b.target_bits[s] = target_bits;
+    if is_full || (changed_fields & ENTITY_CHANGED_POS) != 0 {
+        b.x[s] = x;
+        b.y[s] = y;
+        b.z[s] = z;
+    }
+    if is_full || (changed_fields & ENTITY_CHANGED_ROT) != 0 {
+        b.rotation[s] = rotation;
+    }
+    if is_full || (changed_fields & ENTITY_CHANGED_VEL) != 0 {
+        b.velocity_x[s] = velocity_x;
+        b.velocity_y[s] = velocity_y;
+        b.velocity_z[s] = velocity_z;
+        b.movement_accel_x[s] = movement_accel_x;
+        b.movement_accel_y[s] = movement_accel_y;
+        b.movement_accel_z[s] = movement_accel_z;
+    }
+    if is_full || (changed_fields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL)) != 0 {
+        b.normal_x[s] = normal_x;
+        b.normal_y[s] = normal_y;
+        b.normal_z[s] = normal_z;
+    }
+    if is_full || (changed_fields & ENTITY_CHANGED_ACTIONS) != 0 {
+        b.action_count[s] = action_count;
+        b.action_hash[s] = action_hash;
+    }
 
     // HP + build/suspension/jump from the entity-meta pool.
     let meta = entity_meta_pool();
     if s < meta.hp_curr.len() {
-        b.hp[s] = meta.hp_curr[s];
-        b.build_progress[s] = if s < meta.build_progress.len() { meta.build_progress[s] } else { 0.0 };
+        if is_full || (changed_fields & ENTITY_CHANGED_HP) != 0 {
+            b.hp[s] = meta.hp_curr[s];
+        }
+        if is_full || (changed_fields & ENTITY_CHANGED_BUILDING) != 0 {
+            b.build_progress[s] = if s < meta.build_progress.len() {
+                meta.build_progress[s]
+            } else {
+                0.0
+            };
+        }
     }
 
     // Turret state from the turret pool.
-    let turret = turret_pool();
-    if s < turret.count_per_entity.len() {
-        let count = turret.count_per_entity[s];
-        b.weapon_count[s] = count;
-        let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
-        for t in 0..(count as usize) {
-            let src = base + t;
-            let dst = base + t;
-            b.turret_rots[dst] = turret.rotation[src];
-            b.turret_ang_vels[dst] = turret.angular_velocity[src];
-            b.turret_pitches[dst] = turret.pitch[src];
-            b.force_field_ranges[dst] = turret.force_field_range[src];
+    if is_full || (changed_fields & ENTITY_CHANGED_TURRETS) != 0 {
+        b.is_engaged_bits[s] = is_engaged_bits;
+        b.target_bits[s] = target_bits;
+        let turret = turret_pool();
+        if s < turret.count_per_entity.len() {
+            let count = turret.count_per_entity[s];
+            b.weapon_count[s] = count;
+            let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
+            for t in 0..(count as usize) {
+                let src = base + t;
+                let dst = base + t;
+                b.turret_rots[dst] = turret.rotation[src];
+                b.turret_ang_vels[dst] = turret.angular_velocity[src];
+                b.turret_pitches[dst] = turret.pitch[src];
+                b.force_field_ranges[dst] = turret.force_field_range[src];
+            }
+        } else {
+            b.weapon_count[s] = 0;
         }
-    } else {
-        b.weapon_count[s] = 0;
     }
 }
 
@@ -5509,58 +6180,102 @@ pub fn snapshot_baseline_capture_building_slot(
     handle: u32,
     slot: u32,
     tick: u32,
-    x: f64, y: f64, z: f64,
+    changed_fields: u32,
+    x: f64,
+    y: f64,
+    z: f64,
     rotation: f64,
     is_engaged_bits: u32,
     target_bits: u32,
 ) {
     let registry = snapshot_baseline_registry();
-    let Some(b) = registry.get_mut(handle) else { return; };
+    let Some(b) = registry.get_mut(handle) else {
+        return;
+    };
     b.ensure_capacity(slot);
     let s = slot as usize;
+    let is_full = b.used[s] == 0 || changed_fields == SNAPSHOT_BASELINE_CAPTURE_FULL;
     b.used[s] = 1;
     b.last_tick[s] = tick;
-    b.x[s] = x; b.y[s] = y; b.z[s] = z;
-    b.rotation[s] = rotation;
-    // Buildings don't move — clear physics-fields so a stray emit can't
-    // pick up stale unit data left over from a slot recycle.
-    b.velocity_x[s] = 0.0; b.velocity_y[s] = 0.0; b.velocity_z[s] = 0.0;
-    b.movement_accel_x[s] = 0.0;
-    b.movement_accel_y[s] = 0.0;
-    b.movement_accel_z[s] = 0.0;
-    b.is_engaged_bits[s] = is_engaged_bits;
-    b.target_bits[s] = target_bits;
+    if is_full || (changed_fields & ENTITY_CHANGED_POS) != 0 {
+        b.x[s] = x;
+        b.y[s] = y;
+        b.z[s] = z;
+    }
+    if is_full || (changed_fields & ENTITY_CHANGED_ROT) != 0 {
+        b.rotation[s] = rotation;
+    }
+    if is_full {
+        // Buildings don't move — clear physics-fields so a stray emit can't
+        // pick up stale unit data left over from a slot recycle.
+        b.velocity_x[s] = 0.0;
+        b.velocity_y[s] = 0.0;
+        b.velocity_z[s] = 0.0;
+        b.movement_accel_x[s] = 0.0;
+        b.movement_accel_y[s] = 0.0;
+        b.movement_accel_z[s] = 0.0;
+    }
 
     // HP + factory/solar/build progress from the entity-meta pool.
     let meta = entity_meta_pool();
     if s < meta.hp_curr.len() {
-        b.hp[s] = meta.hp_curr[s];
-        b.build_progress[s] = if s < meta.build_progress.len() { meta.build_progress[s] } else { 1.0 };
-        b.factory_progress[s] = if s < meta.factory_progress.len() { meta.factory_progress[s] } else { 0.0 };
-        b.is_producing[s] = if s < meta.factory_is_producing.len() { meta.factory_is_producing[s] } else { 0 };
-        b.build_queue_len[s] = if s < meta.factory_build_queue_len.len() { meta.factory_build_queue_len[s] } else { 0 };
-        b.solar_open[s] = if s < meta.solar_open.len() { meta.solar_open[s] } else { 1 };
+        if is_full || (changed_fields & ENTITY_CHANGED_HP) != 0 {
+            b.hp[s] = meta.hp_curr[s];
+        }
+        if is_full || (changed_fields & ENTITY_CHANGED_BUILDING) != 0 {
+            b.build_progress[s] = if s < meta.build_progress.len() {
+                meta.build_progress[s]
+            } else {
+                1.0
+            };
+            b.solar_open[s] = if s < meta.solar_open.len() {
+                meta.solar_open[s]
+            } else {
+                1
+            };
+        }
+        if is_full || (changed_fields & ENTITY_CHANGED_FACTORY) != 0 {
+            b.factory_progress[s] = if s < meta.factory_progress.len() {
+                meta.factory_progress[s]
+            } else {
+                0.0
+            };
+            b.is_producing[s] = if s < meta.factory_is_producing.len() {
+                meta.factory_is_producing[s]
+            } else {
+                0
+            };
+            b.build_queue_len[s] = if s < meta.factory_build_queue_len.len() {
+                meta.factory_build_queue_len[s]
+            } else {
+                0
+            };
+        }
     }
 
     // Turret state — buildings with defense turrets (combat) need
     // weapon_count + per-turret state captured the same as units, or
     // the diff kernel would see ENTITY_CHANGED_TURRETS divergence
     // every tick.
-    let turret = turret_pool();
-    if s < turret.count_per_entity.len() {
-        let count = turret.count_per_entity[s];
-        b.weapon_count[s] = count;
-        let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
-        for t in 0..(count as usize) {
-            let src = base + t;
-            let dst = base + t;
-            b.turret_rots[dst] = turret.rotation[src];
-            b.turret_ang_vels[dst] = turret.angular_velocity[src];
-            b.turret_pitches[dst] = turret.pitch[src];
-            b.force_field_ranges[dst] = turret.force_field_range[src];
+    if is_full || (changed_fields & ENTITY_CHANGED_TURRETS) != 0 {
+        b.is_engaged_bits[s] = is_engaged_bits;
+        b.target_bits[s] = target_bits;
+        let turret = turret_pool();
+        if s < turret.count_per_entity.len() {
+            let count = turret.count_per_entity[s];
+            b.weapon_count[s] = count;
+            let base = s * (SNAPSHOT_BASELINE_MAX_TURRETS_PER_ENTITY as usize);
+            for t in 0..(count as usize) {
+                let src = base + t;
+                let dst = base + t;
+                b.turret_rots[dst] = turret.rotation[src];
+                b.turret_ang_vels[dst] = turret.angular_velocity[src];
+                b.turret_pitches[dst] = turret.pitch[src];
+                b.force_field_ranges[dst] = turret.force_field_range[src];
+            }
+        } else {
+            b.weapon_count[s] = 0;
         }
-    } else {
-        b.weapon_count[s] = 0;
     }
 }
 
@@ -5569,9 +6284,13 @@ pub fn snapshot_baseline_capture_building_slot(
 #[wasm_bindgen]
 pub fn snapshot_baseline_slot_used(handle: u32, slot: u32) -> u8 {
     let registry = snapshot_baseline_registry();
-    let Some(b) = registry.get_mut(handle) else { return 0; };
+    let Some(b) = registry.get_mut(handle) else {
+        return 0;
+    };
     let s = slot as usize;
-    if s >= b.used.len() { return 0; }
+    if s >= b.used.len() {
+        return 0;
+    }
     b.used[s]
 }
 
@@ -5580,9 +6299,13 @@ pub fn snapshot_baseline_slot_used(handle: u32, slot: u32) -> u8 {
 #[wasm_bindgen]
 pub fn snapshot_baseline_slot_last_tick(handle: u32, slot: u32) -> u32 {
     let registry = snapshot_baseline_registry();
-    let Some(b) = registry.get_mut(handle) else { return 0; };
+    let Some(b) = registry.get_mut(handle) else {
+        return 0;
+    };
     let s = slot as usize;
-    if s >= b.last_tick.len() { return 0; }
+    if s >= b.last_tick.len() {
+        return 0;
+    }
     b.last_tick[s]
 }
 
@@ -5597,6 +6320,7 @@ const ENTITY_CHANGED_BUILDING: u32 = 1 << 6;
 const ENTITY_CHANGED_FACTORY: u32 = 1 << 7;
 const ENTITY_CHANGED_NORMAL: u32 = 1 << 8;
 
+const SNAPSHOT_BASELINE_CAPTURE_FULL: u32 = u32::MAX;
 const SNAPSHOT_NORMAL_THRESHOLD: f64 = 0.001;
 const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
 
@@ -5624,11 +6348,19 @@ pub fn snapshot_baseline_diff_slot(
     handle: u32,
     slot: u32,
     kind: u8,
-    x: f64, y: f64, z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
     rotation: f64,
-    velocity_x: f64, velocity_y: f64, velocity_z: f64,
-    movement_accel_x: f64, movement_accel_y: f64, movement_accel_z: f64,
-    normal_x: f64, normal_y: f64, normal_z: f64,
+    velocity_x: f64,
+    velocity_y: f64,
+    velocity_z: f64,
+    movement_accel_x: f64,
+    movement_accel_y: f64,
+    movement_accel_z: f64,
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
     action_count: u16,
     action_hash: u32,
     is_engaged_bits: u32,
@@ -5642,9 +6374,13 @@ pub fn snapshot_baseline_diff_slot(
     has_factory: u8,
 ) -> u32 {
     let registry = snapshot_baseline_registry();
-    let Some(b) = registry.get_mut(handle) else { return 0; };
+    let Some(b) = registry.get_mut(handle) else {
+        return 0;
+    };
     let s = slot as usize;
-    if s >= b.used.len() || b.used[s] == 0 { return 0; }
+    if s >= b.used.len() || b.used[s] == 0 {
+        return 0;
+    }
 
     let mut mask: u32 = 0;
 
@@ -5673,7 +6409,11 @@ pub fn snapshot_baseline_diff_slot(
         let _ = movement_accel_z;
         let cur_hp = {
             let meta = entity_meta_pool();
-            if s < meta.hp_curr.len() { meta.hp_curr[s] } else { 0.0 }
+            if s < meta.hp_curr.len() {
+                meta.hp_curr[s]
+            } else {
+                0.0
+            }
         };
         if cur_hp != b.hp[s] {
             mask |= ENTITY_CHANGED_HP;
@@ -5690,7 +6430,11 @@ pub fn snapshot_baseline_diff_slot(
         if has_buildable != 0 {
             let cur_build = {
                 let meta = entity_meta_pool();
-                if s < meta.build_progress.len() { meta.build_progress[s] } else { 0.0 }
+                if s < meta.build_progress.len() {
+                    meta.build_progress[s]
+                } else {
+                    0.0
+                }
             };
             if cur_build != b.build_progress[s] {
                 mask |= ENTITY_CHANGED_BUILDING;
@@ -5702,7 +6446,9 @@ pub fn snapshot_baseline_diff_slot(
         let turret = turret_pool();
         let cur_weapon_count = if s < turret.count_per_entity.len() {
             turret.count_per_entity[s]
-        } else { 0 };
+        } else {
+            0
+        };
         if cur_weapon_count != b.weapon_count[s] {
             mask |= ENTITY_CHANGED_TURRETS;
         } else if cur_weapon_count > 0 {
@@ -5711,9 +6457,12 @@ pub fn snapshot_baseline_diff_slot(
             for t in 0..(cur_weapon_count as usize) {
                 let idx = base + t;
                 if ((turret.rotation[idx] - b.turret_rots[idx]).abs() as f64) > rot_pos_threshold
-                    || ((turret.angular_velocity[idx] - b.turret_ang_vels[idx]).abs() as f64) > rot_vel_threshold
-                    || ((turret.pitch[idx] - b.turret_pitches[idx]).abs() as f64) > rot_pos_threshold
-                    || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs() > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD
+                    || ((turret.angular_velocity[idx] - b.turret_ang_vels[idx]).abs() as f64)
+                        > rot_vel_threshold
+                    || ((turret.pitch[idx] - b.turret_pitches[idx]).abs() as f64)
+                        > rot_pos_threshold
+                    || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs()
+                        > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD
                 {
                     turrets_changed = true;
                     break;
@@ -5730,19 +6479,43 @@ pub fn snapshot_baseline_diff_slot(
 
     if kind == SNAPSHOT_DIFF_KIND_BUILDING {
         let meta = entity_meta_pool();
-        let cur_hp = if s < meta.hp_curr.len() { meta.hp_curr[s] } else { 0.0 };
+        let cur_hp = if s < meta.hp_curr.len() {
+            meta.hp_curr[s]
+        } else {
+            0.0
+        };
         if cur_hp != b.hp[s] {
             mask |= ENTITY_CHANGED_HP;
         }
-        let cur_build = if s < meta.build_progress.len() { meta.build_progress[s] } else { 0.0 };
-        let cur_solar = if s < meta.solar_open.len() { meta.solar_open[s] } else { 1 };
+        let cur_build = if s < meta.build_progress.len() {
+            meta.build_progress[s]
+        } else {
+            0.0
+        };
+        let cur_solar = if s < meta.solar_open.len() {
+            meta.solar_open[s]
+        } else {
+            1
+        };
         if cur_build != b.build_progress[s] || cur_solar != b.solar_open[s] {
             mask |= ENTITY_CHANGED_BUILDING;
         }
         if has_factory != 0 {
-            let cur_fp = if s < meta.factory_progress.len() { meta.factory_progress[s] } else { 0.0 };
-            let cur_ip = if s < meta.factory_is_producing.len() { meta.factory_is_producing[s] } else { 0 };
-            let cur_bql = if s < meta.factory_build_queue_len.len() { meta.factory_build_queue_len[s] } else { 0 };
+            let cur_fp = if s < meta.factory_progress.len() {
+                meta.factory_progress[s]
+            } else {
+                0.0
+            };
+            let cur_ip = if s < meta.factory_is_producing.len() {
+                meta.factory_is_producing[s]
+            } else {
+                0
+            };
+            let cur_bql = if s < meta.factory_build_queue_len.len() {
+                meta.factory_build_queue_len[s]
+            } else {
+                0
+            };
             if cur_fp != b.factory_progress[s]
                 || cur_ip != b.is_producing[s]
                 || cur_bql != b.build_queue_len[s]
@@ -5948,7 +6721,9 @@ struct SnapshotEncodeFactoryQueueScratch {
     buf: Vec<u32>,
 }
 
-struct SnapshotEncodeFactoryQueueScratchHolder(UnsafeCell<Option<SnapshotEncodeFactoryQueueScratch>>);
+struct SnapshotEncodeFactoryQueueScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeFactoryQueueScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeFactoryQueueScratchHolder {}
 static SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH: SnapshotEncodeFactoryQueueScratchHolder =
     SnapshotEncodeFactoryQueueScratchHolder(UnsafeCell::new(None));
@@ -5958,7 +6733,9 @@ fn snapshot_encode_factory_queue_scratch() -> &'static mut SnapshotEncodeFactory
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_FACTORY_QUEUE_SCRATCH.0.get();
         if cell.is_none() {
-            *cell = Some(SnapshotEncodeFactoryQueueScratch { buf: vec![0u32; 16] });
+            *cell = Some(SnapshotEncodeFactoryQueueScratch {
+                buf: vec![0u32; 16],
+            });
         }
         cell.as_mut().unwrap()
     }
@@ -6045,8 +6822,8 @@ fn write_string_from_scratch(w: &mut MessagePackWriter, slot: u32) {
     w.write_str(s);
 }
 
-/// Write the six envelope key-value pairs (id, type, pos, rotation,
-/// playerId, changedFields) shared by every encoder kernel. Caller
+/// Write the sparse envelope key-value pairs (id, type, optional pos,
+/// optional rotation, playerId, changedFields) shared by every encoder kernel. Caller
 /// is responsible for writing the parent map header with the right
 /// key count (envelope keys + sub-object keys). `changed_fields` is
 /// emitted only when `has_changed_fields != 0` so the full-snapshot
@@ -6055,12 +6832,18 @@ fn write_entity_envelope_keys(
     w: &mut MessagePackWriter,
     id: u32,
     type_tag: u8,
-    qpos_x: f64, qpos_y: f64, qpos_z: f64,
+    qpos_x: f64,
+    qpos_y: f64,
+    qpos_z: f64,
     qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
 ) {
+    let is_full = has_changed_fields == 0;
+    let has_pos = is_full || (changed_fields & ENTITY_CHANGED_POS) != 0;
+    let has_rotation = is_full || (changed_fields & ENTITY_CHANGED_ROT) != 0;
+
     w.write_str("id");
     w.write_uint(id as u64);
 
@@ -6071,17 +6854,21 @@ fn write_entity_envelope_keys(
         _ => w.write_str(""),
     }
 
-    w.write_str("pos");
-    w.write_map_header(3);
-    w.write_str("x");
-    w.write_number(qpos_x);
-    w.write_str("y");
-    w.write_number(qpos_y);
-    w.write_str("z");
-    w.write_number(qpos_z);
+    if has_pos {
+        w.write_str("pos");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_number(qpos_x);
+        w.write_str("y");
+        w.write_number(qpos_y);
+        w.write_str("z");
+        w.write_number(qpos_z);
+    }
 
-    w.write_str("rotation");
-    w.write_number(qrot);
+    if has_rotation {
+        w.write_str("rotation");
+        w.write_number(qrot);
+    }
 
     w.write_str("playerId");
     w.write_uint(player_id as u64);
@@ -6092,8 +6879,23 @@ fn write_entity_envelope_keys(
     }
 }
 
-/// Encode the always-present entity envelope: `{id, type, pos,
-/// rotation, playerId [, changedFields]}` — the five fields every
+fn entity_envelope_key_count(has_changed_fields: u8, changed_fields: u32) -> usize {
+    let is_full = has_changed_fields == 0;
+    let mut key_count: usize = 3; // id, type, playerId
+    if is_full || (changed_fields & ENTITY_CHANGED_POS) != 0 {
+        key_count += 1;
+    }
+    if is_full || (changed_fields & ENTITY_CHANGED_ROT) != 0 {
+        key_count += 1;
+    }
+    if has_changed_fields != 0 {
+        key_count += 1;
+    }
+    key_count
+}
+
+/// Encode the entity envelope: `{id, type, [pos,] [rotation,] playerId
+/// [, changedFields]}` — the base fields every
 /// NetworkServerSnapshotEntity carries plus the optional delta mask.
 /// Output written to the D.2 writer; returns the number of bytes.
 ///
@@ -6116,22 +6918,27 @@ pub fn snapshot_encode_entity_basic(
     let w = messagepack_writer();
     let start = w.buf.len();
 
-    let mut key_count: usize = 5;
-    if has_changed_fields != 0 {
-        key_count += 1;
-    }
+    let key_count = entity_envelope_key_count(has_changed_fields, changed_fields);
     w.write_map_header(key_count);
     write_entity_envelope_keys(
-        w, id, type_tag,
-        qpos_x, qpos_y, qpos_z, qrot,
-        player_id, has_changed_fields, changed_fields,
+        w,
+        id,
+        type_tag,
+        qpos_x,
+        qpos_y,
+        qpos_z,
+        qrot,
+        player_id,
+        has_changed_fields,
+        changed_fields,
     );
     (w.buf.len() - start) as u32
 }
 
-/// Encode an entity with a unit sub-object. Mandatory keys: `hp` +
-/// `velocity`. Optional keys gated by `has_*` flags: movementAccel,
-/// surfaceNormal, suspension.
+/// Encode an entity with a unit sub-object. Delta records only emit
+/// `hp` and `velocity` when the corresponding changedFields bit is set.
+/// Optional keys gated by `has_*` flags: movementAccel, surfaceNormal,
+/// suspension.
 ///
 /// suspension is nested: `{offset, velocity, [legContact]}`. The
 /// `legContact` key is either `true` or absent (never `false`) —
@@ -6145,14 +6952,18 @@ pub fn snapshot_encode_entity_basic(
 pub fn snapshot_encode_entity_unit(
     id: u32,
     type_tag: u8,
-    qpos_x: f64, qpos_y: f64, qpos_z: f64,
+    qpos_x: f64,
+    qpos_y: f64,
+    qpos_z: f64,
     qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
     changed_fields: u32,
     hp_curr: f64,
     hp_max: f64,
-    qvel_x: f64, qvel_y: f64, qvel_z: f64,
+    qvel_x: f64,
+    qvel_y: f64,
+    qvel_z: f64,
     has_unit_type: u8,
     unit_type_code: u32,
     has_radius: u8,
@@ -6164,10 +6975,16 @@ pub fn snapshot_encode_entity_unit(
     has_mass: u8,
     mass: f64,
     has_surface_normal: u8,
-    qnormal_x: f64, qnormal_y: f64, qnormal_z: f64,
+    qnormal_x: f64,
+    qnormal_y: f64,
+    qnormal_z: f64,
     has_suspension: u8,
-    qsuspension_offset_x: f64, qsuspension_offset_y: f64, qsuspension_offset_z: f64,
-    qsuspension_vel_x: f64, qsuspension_vel_y: f64, qsuspension_vel_z: f64,
+    qsuspension_offset_x: f64,
+    qsuspension_offset_y: f64,
+    qsuspension_offset_z: f64,
+    qsuspension_vel_x: f64,
+    qsuspension_vel_y: f64,
+    qsuspension_vel_z: f64,
     suspension_leg_contact: u8,
     has_jump: u8,
     jump_enabled: u8,
@@ -6175,9 +6992,14 @@ pub fn snapshot_encode_entity_unit(
     has_jump_launch_seq: u8,
     jump_launch_seq: u32,
     has_orientation: u8,
-    qorient_x: f64, qorient_y: f64, qorient_z: f64, qorient_w: f64,
+    qorient_x: f64,
+    qorient_y: f64,
+    qorient_z: f64,
+    qorient_w: f64,
     has_angular_velocity3: u8,
-    qangvel_x: f64, qangvel_y: f64, qangvel_z: f64,
+    qangvel_x: f64,
+    qangvel_y: f64,
+    qangvel_z: f64,
     has_fire_enabled: u8,
     has_is_commander: u8,
     has_build_target_id: u8,
@@ -6195,52 +7017,100 @@ pub fn snapshot_encode_entity_unit(
     let w = messagepack_writer();
     let start = w.buf.len();
 
-    let mut key_count: usize = 5 + 1; // envelope + unit
-    if has_changed_fields != 0 {
-        key_count += 1;
-    }
+    let mut key_count = entity_envelope_key_count(has_changed_fields, changed_fields);
+    key_count += 1; // unit
     w.write_map_header(key_count);
     write_entity_envelope_keys(
-        w, id, type_tag,
-        qpos_x, qpos_y, qpos_z, qrot,
-        player_id, has_changed_fields, changed_fields,
+        w,
+        id,
+        type_tag,
+        qpos_x,
+        qpos_y,
+        qpos_z,
+        qrot,
+        player_id,
+        has_changed_fields,
+        changed_fields,
     );
 
-    let mut unit_field_count: usize = 2; // hp + velocity
-    if has_unit_type != 0 { unit_field_count += 1; }
-    if has_radius != 0 { unit_field_count += 1; }
-    if has_body_center_height != 0 { unit_field_count += 1; }
-    if has_mass != 0 { unit_field_count += 1; }
-    if has_is_commander != 0 { unit_field_count += 1; }
-    if has_surface_normal != 0 { unit_field_count += 1; }
-    if has_suspension != 0 { unit_field_count += 1; }
-    if has_jump != 0 { unit_field_count += 1; }
-    if has_orientation != 0 { unit_field_count += 1; }
-    if has_angular_velocity3 != 0 { unit_field_count += 1; }
-    if has_fire_enabled != 0 { unit_field_count += 1; }
-    if has_build != 0 { unit_field_count += 1; }
-    if has_actions != 0 { unit_field_count += 1; }
-    if has_turrets != 0 { unit_field_count += 1; }
-    if has_build_target_id != 0 { unit_field_count += 1; }
+    let is_full = has_changed_fields == 0;
+    let has_hp = is_full || (changed_fields & ENTITY_CHANGED_HP) != 0;
+    let has_velocity = is_full || (changed_fields & ENTITY_CHANGED_VEL) != 0;
+    let mut unit_field_count: usize = 0;
+    if has_hp {
+        unit_field_count += 1;
+    }
+    if has_velocity {
+        unit_field_count += 1;
+    }
+    if has_unit_type != 0 {
+        unit_field_count += 1;
+    }
+    if has_radius != 0 {
+        unit_field_count += 1;
+    }
+    if has_body_center_height != 0 {
+        unit_field_count += 1;
+    }
+    if has_mass != 0 {
+        unit_field_count += 1;
+    }
+    if has_is_commander != 0 {
+        unit_field_count += 1;
+    }
+    if has_surface_normal != 0 {
+        unit_field_count += 1;
+    }
+    if has_suspension != 0 {
+        unit_field_count += 1;
+    }
+    if has_jump != 0 {
+        unit_field_count += 1;
+    }
+    if has_orientation != 0 {
+        unit_field_count += 1;
+    }
+    if has_angular_velocity3 != 0 {
+        unit_field_count += 1;
+    }
+    if has_fire_enabled != 0 {
+        unit_field_count += 1;
+    }
+    if has_build != 0 {
+        unit_field_count += 1;
+    }
+    if has_actions != 0 {
+        unit_field_count += 1;
+    }
+    if has_turrets != 0 {
+        unit_field_count += 1;
+    }
+    if has_build_target_id != 0 {
+        unit_field_count += 1;
+    }
 
     w.write_str("unit");
     w.write_map_header(unit_field_count);
 
-    w.write_str("hp");
-    w.write_map_header(2);
-    w.write_str("curr");
-    w.write_number(hp_curr);
-    w.write_str("max");
-    w.write_number(hp_max);
+    if has_hp {
+        w.write_str("hp");
+        w.write_map_header(2);
+        w.write_str("curr");
+        w.write_number(hp_curr);
+        w.write_str("max");
+        w.write_number(hp_max);
+    }
 
-    w.write_str("velocity");
-    w.write_map_header(3);
-    w.write_str("x");
-    w.write_number(qvel_x);
-    w.write_str("y");
-    w.write_number(qvel_y);
-    w.write_str("z");
-    w.write_number(qvel_z);
+    if has_velocity {
+        w.write_str("velocity");
+        w.write_map_header(3);
+        w.write_str("x");
+        w.write_number(qvel_x);
+        w.write_str("y");
+        w.write_number(qvel_y);
+        w.write_str("z");
+        w.write_number(qvel_z);
+    }
 
     if has_unit_type != 0 {
         w.write_str("unitType");
@@ -6311,9 +7181,13 @@ pub fn snapshot_encode_entity_unit(
     }
 
     if has_jump != 0 {
-        let mut jump_field_count: usize = 1;  // enabled (always present)
-        if jump_active != 0 { jump_field_count += 1; }
-        if has_jump_launch_seq != 0 { jump_field_count += 1; }
+        let mut jump_field_count: usize = 1; // enabled (always present)
+        if jump_active != 0 {
+            jump_field_count += 1;
+        }
+        if has_jump_launch_seq != 0 {
+            jump_field_count += 1;
+        }
         w.write_str("jump");
         w.write_map_header(jump_field_count);
         w.write_str("enabled");
@@ -6362,7 +7236,7 @@ pub fn snapshot_encode_entity_unit(
 
     if has_build != 0 {
         w.write_str("build");
-        w.write_map_header(2);  // complete + paid
+        w.write_map_header(2); // complete + paid
         w.write_str("complete");
         w.write_bool(build_complete != 0);
         w.write_str("paid");
@@ -6401,13 +7275,27 @@ pub fn snapshot_encode_entity_unit(
             // pathExp, targetId, buildingType, grid, buildingId.
             // ignoreUndefined drops absent keys.
             let mut action_field_count: usize = 1; // type (always present)
-            if has_pos { action_field_count += 1; }
-            if has_pos_z { action_field_count += 1; }
-            if path_exp { action_field_count += 1; }
-            if has_target_id { action_field_count += 1; }
-            if has_building_type { action_field_count += 1; }
-            if has_grid { action_field_count += 1; }
-            if has_building_id { action_field_count += 1; }
+            if has_pos {
+                action_field_count += 1;
+            }
+            if has_pos_z {
+                action_field_count += 1;
+            }
+            if path_exp {
+                action_field_count += 1;
+            }
+            if has_target_id {
+                action_field_count += 1;
+            }
+            if has_building_type {
+                action_field_count += 1;
+            }
+            if has_grid {
+                action_field_count += 1;
+            }
+            if has_building_id {
+                action_field_count += 1;
+            }
             w.write_map_header(action_field_count);
 
             w.write_str("type");
@@ -6473,8 +7361,12 @@ pub fn snapshot_encode_entity_unit(
             // turret DTO: { turret: { id, angular: {4 fields} }, [targetId,]
             // state, [currentForceFieldRange] }
             let mut turret_field_count: usize = 2; // turret + state
-            if has_target { turret_field_count += 1; }
-            if has_ff_range { turret_field_count += 1; }
+            if has_target {
+                turret_field_count += 1;
+            }
+            if has_ff_range {
+                turret_field_count += 1;
+            }
             w.write_map_header(turret_field_count);
 
             w.write_str("turret");
@@ -6520,16 +7412,19 @@ pub fn snapshot_encode_entity_unit(
 }
 
 /// Encode a building entity DTO: `{...envelope, building: {
-///   [type,] [dim,] hp, build, [metalExtractionRate,] [solar,] [turrets]
+///   [type,] [dim,] [hp,] [build,] [metalExtractionRate,] [solar,] [turrets]
 /// }}` — covers everything except the factory sub-object (next commit).
 ///
-/// hp + build are always present (the JS pool initializer creates them
-/// non-undefined). Other building-sub fields are gated by their `has_*`
-/// flags. Turrets reuse the same scratch as units (D.3j-9).
+/// hp + build are sparse on delta records and are emitted only when
+/// their changedFields group is set. Other building-sub fields are gated
+/// by their `has_*` flags. Turrets reuse the same scratch as units
+/// (D.3j-9).
 #[wasm_bindgen]
 pub fn snapshot_encode_entity_building(
     id: u32,
-    qpos_x: f64, qpos_y: f64, qpos_z: f64,
+    qpos_x: f64,
+    qpos_y: f64,
+    qpos_z: f64,
     qrot: f64,
     player_id: u8,
     has_changed_fields: u8,
@@ -6537,7 +7432,8 @@ pub fn snapshot_encode_entity_building(
     has_type: u8,
     type_code: f64,
     has_dim: u8,
-    dim_x: f64, dim_y: f64,
+    dim_x: f64,
+    dim_y: f64,
     hp_curr: f64,
     hp_max: f64,
     build_complete: u8,
@@ -6560,24 +7456,50 @@ pub fn snapshot_encode_entity_building(
     let w = messagepack_writer();
     let start = w.buf.len();
 
-    let mut key_count: usize = 5 + 1; // envelope + building
-    if has_changed_fields != 0 {
-        key_count += 1;
-    }
+    let mut key_count = entity_envelope_key_count(has_changed_fields, changed_fields);
+    key_count += 1; // building
     w.write_map_header(key_count);
     write_entity_envelope_keys(
-        w, id, SNAPSHOT_ENTITY_TYPE_BUILDING,
-        qpos_x, qpos_y, qpos_z, qrot,
-        player_id, has_changed_fields, changed_fields,
+        w,
+        id,
+        SNAPSHOT_ENTITY_TYPE_BUILDING,
+        qpos_x,
+        qpos_y,
+        qpos_z,
+        qrot,
+        player_id,
+        has_changed_fields,
+        changed_fields,
     );
 
-    let mut building_field_count: usize = 2; // hp + build
-    if has_type != 0 { building_field_count += 1; }
-    if has_dim != 0 { building_field_count += 1; }
-    if has_metal_extraction_rate != 0 { building_field_count += 1; }
-    if has_solar != 0 { building_field_count += 1; }
-    if has_turrets != 0 { building_field_count += 1; }
-    if has_factory != 0 { building_field_count += 1; }
+    let is_full = has_changed_fields == 0;
+    let has_hp = is_full || (changed_fields & ENTITY_CHANGED_HP) != 0;
+    let has_build = is_full || (changed_fields & ENTITY_CHANGED_BUILDING) != 0;
+    let mut building_field_count: usize = 0;
+    if has_hp {
+        building_field_count += 1;
+    }
+    if has_build {
+        building_field_count += 1;
+    }
+    if has_type != 0 {
+        building_field_count += 1;
+    }
+    if has_dim != 0 {
+        building_field_count += 1;
+    }
+    if has_metal_extraction_rate != 0 {
+        building_field_count += 1;
+    }
+    if has_solar != 0 {
+        building_field_count += 1;
+    }
+    if has_turrets != 0 {
+        building_field_count += 1;
+    }
+    if has_factory != 0 {
+        building_field_count += 1;
+    }
 
     w.write_str("building");
     w.write_map_header(building_field_count);
@@ -6595,23 +7517,27 @@ pub fn snapshot_encode_entity_building(
         w.write_number(dim_y);
     }
 
-    w.write_str("hp");
-    w.write_map_header(2);
-    w.write_str("curr");
-    w.write_number(hp_curr);
-    w.write_str("max");
-    w.write_number(hp_max);
+    if has_hp {
+        w.write_str("hp");
+        w.write_map_header(2);
+        w.write_str("curr");
+        w.write_number(hp_curr);
+        w.write_str("max");
+        w.write_number(hp_max);
+    }
 
-    w.write_str("build");
-    w.write_map_header(2);
-    w.write_str("complete");
-    w.write_bool(build_complete != 0);
-    w.write_str("paid");
-    w.write_map_header(2);
-    w.write_str("energy");
-    w.write_number(build_paid_energy);
-    w.write_str("metal");
-    w.write_number(build_paid_metal);
+    if has_build {
+        w.write_str("build");
+        w.write_map_header(2);
+        w.write_str("complete");
+        w.write_bool(build_complete != 0);
+        w.write_str("paid");
+        w.write_map_header(2);
+        w.write_str("energy");
+        w.write_number(build_paid_energy);
+        w.write_str("metal");
+        w.write_number(build_paid_metal);
+    }
 
     if has_metal_extraction_rate != 0 {
         w.write_str("metalExtractionRate");
@@ -6642,8 +7568,12 @@ pub fn snapshot_encode_entity_building(
             let ff_range_raw = scratch.buf[base + 9];
 
             let mut turret_field_count: usize = 2; // turret + state
-            if has_target { turret_field_count += 1; }
-            if has_ff_range { turret_field_count += 1; }
+            if has_target {
+                turret_field_count += 1;
+            }
+            if has_ff_range {
+                turret_field_count += 1;
+            }
             w.write_map_header(turret_field_count);
 
             w.write_str("turret");
@@ -6676,7 +7606,7 @@ pub fn snapshot_encode_entity_building(
 
     if has_factory != 0 {
         w.write_str("factory");
-        w.write_map_header(6);  // queue, progress, producing, energyRate, metalRate, waypoints
+        w.write_map_header(6); // queue, progress, producing, energyRate, metalRate, waypoints
 
         let qc = factory_queue_count as usize;
         w.write_str("queue");
@@ -6825,7 +7755,9 @@ fn snapshot_encode_proj_despawn_scratch() -> &'static mut SnapshotEncodeProjDesp
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_PROJ_DESPAWN_SCRATCH.0.get();
         if cell.is_none() {
-            *cell = Some(SnapshotEncodeProjDespawnScratch { buf: vec![0u32; 32] });
+            *cell = Some(SnapshotEncodeProjDespawnScratch {
+                buf: vec![0u32; 32],
+            });
         }
         cell.as_mut().unwrap()
     }
@@ -7070,7 +8002,9 @@ struct SnapshotEncodeDeathContextScratch {
     buf: Vec<f64>,
 }
 
-struct SnapshotEncodeDeathContextScratchHolder(UnsafeCell<Option<SnapshotEncodeDeathContextScratch>>);
+struct SnapshotEncodeDeathContextScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeDeathContextScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeDeathContextScratchHolder {}
 static SNAPSHOT_ENCODE_DEATH_CONTEXT_SCRATCH: SnapshotEncodeDeathContextScratchHolder =
     SnapshotEncodeDeathContextScratchHolder(UnsafeCell::new(None));
@@ -7158,7 +8092,9 @@ struct SnapshotEncodeImpactContextScratch {
     buf: Vec<f64>,
 }
 
-struct SnapshotEncodeImpactContextScratchHolder(UnsafeCell<Option<SnapshotEncodeImpactContextScratch>>);
+struct SnapshotEncodeImpactContextScratchHolder(
+    UnsafeCell<Option<SnapshotEncodeImpactContextScratch>>,
+);
 unsafe impl Sync for SnapshotEncodeImpactContextScratchHolder {}
 static SNAPSHOT_ENCODE_IMPACT_CONTEXT_SCRATCH: SnapshotEncodeImpactContextScratchHolder =
     SnapshotEncodeImpactContextScratchHolder(UnsafeCell::new(None));
@@ -7401,7 +8337,9 @@ fn snapshot_encode_shroud_scratch() -> &'static mut SnapshotEncodeShroudScratch 
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_SHROUD_SCRATCH.0.get();
         if cell.is_none() {
-            *cell = Some(SnapshotEncodeShroudScratch { buf: vec![0u8; 4096] });
+            *cell = Some(SnapshotEncodeShroudScratch {
+                buf: vec![0u8; 4096],
+            });
         }
         cell.as_mut().unwrap()
     }
@@ -7438,7 +8376,9 @@ fn snapshot_encode_number_scratch() -> &'static mut SnapshotEncodeNumberScratch 
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_NUMBER_SCRATCH.0.get();
         if cell.is_none() {
-            *cell = Some(SnapshotEncodeNumberScratch { buf: vec![0.0; 4096] });
+            *cell = Some(SnapshotEncodeNumberScratch {
+                buf: vec![0.0; 4096],
+            });
         }
         cell.as_mut().unwrap()
     }
@@ -7528,7 +8468,9 @@ fn snapshot_encode_removed_ids_scratch() -> &'static mut SnapshotEncodeRemovedId
     unsafe {
         let cell = &mut *SNAPSHOT_ENCODE_REMOVED_IDS_SCRATCH.0.get();
         if cell.is_none() {
-            *cell = Some(SnapshotEncodeRemovedIdsScratch { buf: vec![0u32; 16] });
+            *cell = Some(SnapshotEncodeRemovedIdsScratch {
+                buf: vec![0u32; 16],
+            });
         }
         cell.as_mut().unwrap()
     }
@@ -7553,11 +8495,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 /// optional envelope key the caller will subsequently emit (the
 /// continue function counts only the ones it's about to write).
 #[wasm_bindgen]
-pub fn snapshot_encode_envelope_begin(
-    tick: u32,
-    entity_count: u32,
-    total_key_count: u32,
-) {
+pub fn snapshot_encode_envelope_begin(tick: u32, entity_count: u32, total_key_count: u32) {
     let w = messagepack_writer();
     w.buf.clear();
     w.write_map_header(total_key_count as usize);
@@ -7624,21 +8562,34 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 ) -> u32 {
     let w = messagepack_writer();
 
-    let mut field_count: usize = 8; // ticks, snaps, server, grid, units, cpu, wind, tiltEma
-    if has_mirrors_enabled != 0 { field_count += 1; }
-    if has_force_fields_enabled != 0 { field_count += 1; }
-    if has_force_fields_block_targeting != 0 { field_count += 1; }
-    if has_force_field_reflection_mode != 0 { field_count += 1; }
-    if has_fog_of_war_enabled != 0 { field_count += 1; }
+    let mut field_count: usize = 8; // ticks, snaps, server, grid, units, cpu, wind, unitGroundNormalEma
+    if has_mirrors_enabled != 0 {
+        field_count += 1;
+    }
+    if has_force_fields_enabled != 0 {
+        field_count += 1;
+    }
+    if has_force_fields_block_targeting != 0 {
+        field_count += 1;
+    }
+    if has_force_field_reflection_mode != 0 {
+        field_count += 1;
+    }
+    if has_fog_of_war_enabled != 0 {
+        field_count += 1;
+    }
 
     w.write_str("serverMeta");
     w.write_map_header(field_count);
 
     w.write_str("ticks");
     w.write_map_header(3);
-    w.write_str("avg"); w.write_number(ticks_avg);
-    w.write_str("low"); w.write_number(ticks_low);
-    w.write_str("rate"); w.write_number(ticks_rate);
+    w.write_str("avg");
+    w.write_number(ticks_avg);
+    w.write_str("low");
+    w.write_number(ticks_low);
+    w.write_str("rate");
+    w.write_number(ticks_rate);
 
     w.write_str("snaps");
     w.write_map_header(2);
@@ -7657,16 +8608,24 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 
     w.write_str("server");
     w.write_map_header(2);
-    w.write_str("time"); write_string_from_scratch(w, server_time_slot);
-    w.write_str("ip"); write_string_from_scratch(w, server_ip_slot);
+    w.write_str("time");
+    write_string_from_scratch(w, server_time_slot);
+    w.write_str("ip");
+    write_string_from_scratch(w, server_ip_slot);
 
     w.write_str("grid");
     w.write_bool(grid_enabled != 0);
 
     let mut units_field_count: usize = 0;
-    if has_units_allowed != 0 { units_field_count += 1; }
-    if has_units_max != 0 { units_field_count += 1; }
-    if has_units_count != 0 { units_field_count += 1; }
+    if has_units_allowed != 0 {
+        units_field_count += 1;
+    }
+    if has_units_max != 0 {
+        units_field_count += 1;
+    }
+    if has_units_count != 0 {
+        units_field_count += 1;
+    }
     w.write_str("units");
     w.write_map_header(units_field_count);
     if has_units_allowed != 0 {
@@ -7709,17 +8668,23 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 
     w.write_str("cpu");
     w.write_map_header(2);
-    w.write_str("avg"); w.write_number(cpu_avg);
-    w.write_str("hi"); w.write_number(cpu_hi);
+    w.write_str("avg");
+    w.write_number(cpu_avg);
+    w.write_str("hi");
+    w.write_number(cpu_hi);
 
     w.write_str("wind");
     w.write_map_header(4);
-    w.write_str("x"); w.write_number(wind_x);
-    w.write_str("y"); w.write_number(wind_y);
-    w.write_str("speed"); w.write_number(wind_speed);
-    w.write_str("angle"); w.write_number(wind_angle);
+    w.write_str("x");
+    w.write_number(wind_x);
+    w.write_str("y");
+    w.write_number(wind_y);
+    w.write_str("speed");
+    w.write_number(wind_speed);
+    w.write_str("angle");
+    w.write_number(wind_angle);
 
-    w.write_str("tiltEma");
+    w.write_str("unitGroundNormalEma");
     write_string_from_scratch(w, tilt_ema_slot);
 
     w.buf.len() as u32
@@ -7742,11 +8707,21 @@ pub fn snapshot_encode_envelope_emit_projectiles(
 ) {
     let w = messagepack_writer();
     let mut nested_count: usize = 0;
-    if has_spawns != 0 { nested_count += 1; }
-    if has_despawns != 0 { nested_count += 1; }
-    if has_velocity_updates != 0 { nested_count += 1; }
-    if has_beam_updates != 0 { nested_count += 1; }
-    if nested_count == 0 { return; }
+    if has_spawns != 0 {
+        nested_count += 1;
+    }
+    if has_despawns != 0 {
+        nested_count += 1;
+    }
+    if has_velocity_updates != 0 {
+        nested_count += 1;
+    }
+    if has_beam_updates != 0 {
+        nested_count += 1;
+    }
+    if nested_count == 0 {
+        return;
+    }
 
     w.write_str("projectiles");
     w.write_map_header(nested_count);
@@ -7779,14 +8754,30 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             // velocity, projectileType, turretId, playerId,
             // sourceEntityId, turretIndex, barrelIndex) -> 10.
             let mut field_count: usize = 10;
-            if has_max_lifespan { field_count += 1; }
-            if has_shot_id { field_count += 1; }
-            if has_source_turret_id { field_count += 1; }
-            if has_is_dgun { field_count += 1; }
-            if has_from_parent { field_count += 1; }
-            if has_beam { field_count += 1; }
-            if has_target { field_count += 1; }
-            if has_homing { field_count += 1; }
+            if has_max_lifespan {
+                field_count += 1;
+            }
+            if has_shot_id {
+                field_count += 1;
+            }
+            if has_source_turret_id {
+                field_count += 1;
+            }
+            if has_is_dgun {
+                field_count += 1;
+            }
+            if has_from_parent {
+                field_count += 1;
+            }
+            if has_beam {
+                field_count += 1;
+            }
+            if has_target {
+                field_count += 1;
+            }
+            if has_homing {
+                field_count += 1;
+            }
             w.write_map_header(field_count);
 
             // Pool order from createPooledProjectileSpawn.
@@ -7794,16 +8785,22 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             w.write_uint(scratch.buf[base] as u64);
             w.write_str("pos");
             w.write_map_header(3);
-            w.write_str("x"); w.write_number(scratch.buf[base + 1]);
-            w.write_str("y"); w.write_number(scratch.buf[base + 2]);
-            w.write_str("z"); w.write_number(scratch.buf[base + 3]);
+            w.write_str("x");
+            w.write_number(scratch.buf[base + 1]);
+            w.write_str("y");
+            w.write_number(scratch.buf[base + 2]);
+            w.write_str("z");
+            w.write_number(scratch.buf[base + 3]);
             w.write_str("rotation");
             w.write_number(scratch.buf[base + 4]);
             w.write_str("velocity");
             w.write_map_header(3);
-            w.write_str("x"); w.write_number(scratch.buf[base + 5]);
-            w.write_str("y"); w.write_number(scratch.buf[base + 6]);
-            w.write_str("z"); w.write_number(scratch.buf[base + 7]);
+            w.write_str("x");
+            w.write_number(scratch.buf[base + 5]);
+            w.write_str("y");
+            w.write_number(scratch.buf[base + 6]);
+            w.write_str("z");
+            w.write_number(scratch.buf[base + 7]);
             w.write_str("projectileType");
             w.write_uint(scratch.buf[base + 8] as u64);
             if has_max_lifespan {
@@ -7841,14 +8838,20 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 w.write_map_header(2);
                 w.write_str("start");
                 w.write_map_header(3);
-                w.write_str("x"); w.write_number(scratch.buf[base + 17]);
-                w.write_str("y"); w.write_number(scratch.buf[base + 18]);
-                w.write_str("z"); w.write_number(scratch.buf[base + 19]);
+                w.write_str("x");
+                w.write_number(scratch.buf[base + 17]);
+                w.write_str("y");
+                w.write_number(scratch.buf[base + 18]);
+                w.write_str("z");
+                w.write_number(scratch.buf[base + 19]);
                 w.write_str("end");
                 w.write_map_header(3);
-                w.write_str("x"); w.write_number(scratch.buf[base + 20]);
-                w.write_str("y"); w.write_number(scratch.buf[base + 21]);
-                w.write_str("z"); w.write_number(scratch.buf[base + 22]);
+                w.write_str("x");
+                w.write_number(scratch.buf[base + 20]);
+                w.write_str("y");
+                w.write_number(scratch.buf[base + 21]);
+                w.write_str("z");
+                w.write_number(scratch.buf[base + 22]);
             }
             if has_target {
                 w.write_str("targetEntityId");
@@ -7922,15 +8925,20 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let has_obstruction_t = (flags & 0x01) != 0;
             let has_endpoint_damageable_false = (flags & 0x02) != 0;
             let has_endpoint_damageable_true = (flags & 0x04) != 0;
-            let has_endpoint_damageable = has_endpoint_damageable_false || has_endpoint_damageable_true;
+            let has_endpoint_damageable =
+                has_endpoint_damageable_false || has_endpoint_damageable_true;
             let obstruction_t = header_scratch.buf[h + 2];
             let point_count = header_scratch.buf[h + 3] as usize;
 
             // BeamUpdate DTO field count = always 2 (id + points) +
             // optional obstructionT + optional endpointDamageable.
             let mut field_count: usize = 2;
-            if has_obstruction_t { field_count += 1; }
-            if has_endpoint_damageable { field_count += 1; }
+            if has_obstruction_t {
+                field_count += 1;
+            }
+            if has_endpoint_damageable {
+                field_count += 1;
+            }
             w.write_map_header(field_count);
 
             // Pool order in createPooledBeamUpdate: id, points,
@@ -7967,26 +8975,47 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 // BeamPoint DTO field count = always 9 (x,y,z,vx,vy,vz,
                 // ax,ay,az) + optional reflector + normal fields.
                 let mut pf_count: usize = 9;
-                if has_mirror_id { pf_count += 1; }
-                if has_reflector_kind { pf_count += 1; }
-                if has_reflector_player { pf_count += 1; }
-                if has_normal_x { pf_count += 1; }
-                if has_normal_y { pf_count += 1; }
-                if has_normal_z { pf_count += 1; }
+                if has_mirror_id {
+                    pf_count += 1;
+                }
+                if has_reflector_kind {
+                    pf_count += 1;
+                }
+                if has_reflector_player {
+                    pf_count += 1;
+                }
+                if has_normal_x {
+                    pf_count += 1;
+                }
+                if has_normal_y {
+                    pf_count += 1;
+                }
+                if has_normal_z {
+                    pf_count += 1;
+                }
                 w.write_map_header(pf_count);
 
                 // Pool order from createPooledBeamPoint: x, y, z,
                 // vx, vy, vz, ax, ay, az, [mirrorEntityId,
                 // reflectorKind, reflectorPlayerId, normalX/Y/Z].
-                w.write_str("x"); w.write_number(x);
-                w.write_str("y"); w.write_number(y);
-                w.write_str("z"); w.write_number(z);
-                w.write_str("vx"); w.write_number(vx);
-                w.write_str("vy"); w.write_number(vy);
-                w.write_str("vz"); w.write_number(vz);
-                w.write_str("ax"); w.write_number(ax);
-                w.write_str("ay"); w.write_number(ay);
-                w.write_str("az"); w.write_number(az);
+                w.write_str("x");
+                w.write_number(x);
+                w.write_str("y");
+                w.write_number(y);
+                w.write_str("z");
+                w.write_number(z);
+                w.write_str("vx");
+                w.write_number(vx);
+                w.write_str("vy");
+                w.write_number(vy);
+                w.write_str("vz");
+                w.write_number(vz);
+                w.write_str("ax");
+                w.write_number(ax);
+                w.write_str("ay");
+                w.write_number(ay);
+                w.write_str("az");
+                w.write_number(az);
                 if has_mirror_id {
                     w.write_str("mirrorEntityId");
                     w.write_uint(mirror_id as u64);
@@ -8108,13 +9137,17 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         // stockpile: { curr, max }
         w.write_str("stockpile");
         w.write_map_header(2);
-        w.write_str("curr"); w.write_number(scratch.buf[base + 1]);
-        w.write_str("max"); w.write_number(scratch.buf[base + 2]);
+        w.write_str("curr");
+        w.write_number(scratch.buf[base + 1]);
+        w.write_str("max");
+        w.write_number(scratch.buf[base + 2]);
         // income: { base, production }
         w.write_str("income");
         w.write_map_header(2);
-        w.write_str("base"); w.write_number(scratch.buf[base + 3]);
-        w.write_str("production"); w.write_number(scratch.buf[base + 4]);
+        w.write_str("base");
+        w.write_number(scratch.buf[base + 3]);
+        w.write_str("production");
+        w.write_number(scratch.buf[base + 4]);
         // expenditure
         w.write_str("expenditure");
         w.write_number(scratch.buf[base + 5]);
@@ -8123,12 +9156,16 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
         w.write_map_header(3);
         w.write_str("stockpile");
         w.write_map_header(2);
-        w.write_str("curr"); w.write_number(scratch.buf[base + 6]);
-        w.write_str("max"); w.write_number(scratch.buf[base + 7]);
+        w.write_str("curr");
+        w.write_number(scratch.buf[base + 6]);
+        w.write_str("max");
+        w.write_number(scratch.buf[base + 7]);
         w.write_str("income");
         w.write_map_header(2);
-        w.write_str("base"); w.write_number(scratch.buf[base + 8]);
-        w.write_str("extraction"); w.write_number(scratch.buf[base + 9]);
+        w.write_str("base");
+        w.write_number(scratch.buf[base + 8]);
+        w.write_str("extraction");
+        w.write_number(scratch.buf[base + 9]);
         w.write_str("expenditure");
         w.write_number(scratch.buf[base + 10]);
     }
@@ -8192,16 +9229,36 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         // Per-event field count: 3 always (type, turretId, pos) +
         // optionals.
         let mut field_count: usize = 3;
-        if has_source_type { field_count += 1; }
-        if has_source_key { field_count += 1; }
-        if has_player_id { field_count += 1; }
-        if has_entity_id { field_count += 1; }
-        if has_death_context { field_count += 1; }
-        if has_impact_context { field_count += 1; }
-        if has_ff_impact { field_count += 1; }
-        if has_killer { field_count += 1; }
-        if has_victim { field_count += 1; }
-        if has_audio_only { field_count += 1; }
+        if has_source_type {
+            field_count += 1;
+        }
+        if has_source_key {
+            field_count += 1;
+        }
+        if has_player_id {
+            field_count += 1;
+        }
+        if has_entity_id {
+            field_count += 1;
+        }
+        if has_death_context {
+            field_count += 1;
+        }
+        if has_impact_context {
+            field_count += 1;
+        }
+        if has_ff_impact {
+            field_count += 1;
+        }
+        if has_killer {
+            field_count += 1;
+        }
+        if has_victim {
+            field_count += 1;
+        }
+        if has_audio_only {
+            field_count += 1;
+        }
         w.write_map_header(field_count);
 
         // Pool-iteration order as documented above.
@@ -8219,9 +9276,12 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         }
         w.write_str("pos");
         w.write_map_header(3);
-        w.write_str("x"); w.write_number(pos_x);
-        w.write_str("y"); w.write_number(pos_y);
-        w.write_str("z"); w.write_number(pos_z);
+        w.write_str("x");
+        w.write_number(pos_x);
+        w.write_str("y");
+        w.write_number(pos_y);
+        w.write_str("z");
+        w.write_number(pos_z);
         if has_player_id {
             w.write_str("playerId");
             w.write_uint(player_id as u64);
@@ -8259,12 +9319,24 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             // Field count: 6 always (unitVel, hitDir, projectileVel,
             // attackMagnitude, radius, color) + optionals.
             let mut dc_field_count: usize = 6;
-            if has_visual_radius { dc_field_count += 1; }
-            if has_push_radius { dc_field_count += 1; }
-            if has_base_z { dc_field_count += 1; }
-            if has_unit_type { dc_field_count += 1; }
-            if has_rotation { dc_field_count += 1; }
-            if has_turret_poses { dc_field_count += 1; }
+            if has_visual_radius {
+                dc_field_count += 1;
+            }
+            if has_push_radius {
+                dc_field_count += 1;
+            }
+            if has_base_z {
+                dc_field_count += 1;
+            }
+            if has_unit_type {
+                dc_field_count += 1;
+            }
+            if has_rotation {
+                dc_field_count += 1;
+            }
+            if has_turret_poses {
+                dc_field_count += 1;
+            }
 
             w.write_str("deathContext");
             w.write_map_header(dc_field_count);
@@ -8274,16 +9346,22 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             // pushRadius, baseZ, color, unitType, rotation, turretPoses.
             w.write_str("unitVel");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(unit_vel_x);
-            w.write_str("y"); w.write_number(unit_vel_y);
+            w.write_str("x");
+            w.write_number(unit_vel_x);
+            w.write_str("y");
+            w.write_number(unit_vel_y);
             w.write_str("hitDir");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(hit_dir_x);
-            w.write_str("y"); w.write_number(hit_dir_y);
+            w.write_str("x");
+            w.write_number(hit_dir_x);
+            w.write_str("y");
+            w.write_number(hit_dir_y);
             w.write_str("projectileVel");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(proj_vel_x);
-            w.write_str("y"); w.write_number(proj_vel_y);
+            w.write_str("x");
+            w.write_number(proj_vel_x);
+            w.write_str("y");
+            w.write_number(proj_vel_y);
             w.write_str("attackMagnitude");
             w.write_number(attack_magnitude);
             w.write_str("radius");
@@ -8319,8 +9397,10 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
                     let pitch = pose_scratch.buf[pb + 1];
                     // Inner pose DTO: {rotation, pitch}
                     w.write_map_header(2);
-                    w.write_str("rotation"); w.write_number(rot);
-                    w.write_str("pitch"); w.write_number(pitch);
+                    w.write_str("rotation");
+                    w.write_number(rot);
+                    w.write_str("pitch");
+                    w.write_number(pitch);
                 }
                 pose_offset += turret_pose_count;
             }
@@ -8353,24 +9433,32 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_map_header(2);
             w.write_str("pos");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(proj_pos_x);
-            w.write_str("y"); w.write_number(proj_pos_y);
+            w.write_str("x");
+            w.write_number(proj_pos_x);
+            w.write_str("y");
+            w.write_number(proj_pos_y);
             w.write_str("vel");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(proj_vel_x);
-            w.write_str("y"); w.write_number(proj_vel_y);
+            w.write_str("x");
+            w.write_number(proj_vel_x);
+            w.write_str("y");
+            w.write_number(proj_vel_y);
             w.write_str("entity");
             w.write_map_header(2);
             w.write_str("vel");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(entity_vel_x);
-            w.write_str("y"); w.write_number(entity_vel_y);
+            w.write_str("x");
+            w.write_number(entity_vel_x);
+            w.write_str("y");
+            w.write_number(entity_vel_y);
             w.write_str("collisionRadius");
             w.write_number(entity_radius);
             w.write_str("penetrationDir");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(pen_dir_x);
-            w.write_str("y"); w.write_number(pen_dir_y);
+            w.write_str("x");
+            w.write_number(pen_dir_x);
+            w.write_str("y");
+            w.write_number(pen_dir_y);
             impact_offset += 1;
         }
         if has_ff_impact {
@@ -8380,9 +9468,12 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_map_header(2);
             w.write_str("normal");
             w.write_map_header(3);
-            w.write_str("x"); w.write_number(ff_nx);
-            w.write_str("y"); w.write_number(ff_ny);
-            w.write_str("z"); w.write_number(ff_nz);
+            w.write_str("x");
+            w.write_number(ff_nx);
+            w.write_str("y");
+            w.write_number(ff_ny);
+            w.write_str("z");
+            w.write_number(ff_nz);
             w.write_str("playerId");
             w.write_uint(ff_player_id as u64);
         }
@@ -8426,8 +9517,12 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         // Outer field count: source, target, type, intensity always +
         // optional speed + particleRadius.
         let mut field_count: usize = 4;
-        if has_speed { field_count += 1; }
-        if has_particle_radius { field_count += 1; }
+        if has_speed {
+            field_count += 1;
+        }
+        if has_particle_radius {
+            field_count += 1;
+        }
         w.write_map_header(field_count);
 
         // source: { id, pos: {x, y}, [z], playerId } in pool order.
@@ -8438,8 +9533,10 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         w.write_uint(scratch.buf[base] as u64);
         w.write_str("pos");
         w.write_map_header(2);
-        w.write_str("x"); w.write_number(scratch.buf[base + 1]);
-        w.write_str("y"); w.write_number(scratch.buf[base + 2]);
+        w.write_str("x");
+        w.write_number(scratch.buf[base + 1]);
+        w.write_str("y");
+        w.write_number(scratch.buf[base + 2]);
         if has_source_z {
             w.write_str("z");
             w.write_number(scratch.buf[base + 3]);
@@ -8450,16 +9547,24 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         // target: { id, pos: {x, y}, [z], [dim], [radius] } in pool order.
         w.write_str("target");
         let mut tgt_field_count: usize = 2;
-        if has_target_z { tgt_field_count += 1; }
-        if has_target_dim { tgt_field_count += 1; }
-        if has_target_radius { tgt_field_count += 1; }
+        if has_target_z {
+            tgt_field_count += 1;
+        }
+        if has_target_dim {
+            tgt_field_count += 1;
+        }
+        if has_target_radius {
+            tgt_field_count += 1;
+        }
         w.write_map_header(tgt_field_count);
         w.write_str("id");
         w.write_uint(scratch.buf[base + 5] as u64);
         w.write_str("pos");
         w.write_map_header(2);
-        w.write_str("x"); w.write_number(scratch.buf[base + 6]);
-        w.write_str("y"); w.write_number(scratch.buf[base + 7]);
+        w.write_str("x");
+        w.write_number(scratch.buf[base + 6]);
+        w.write_str("y");
+        w.write_number(scratch.buf[base + 7]);
         if has_target_z {
             w.write_str("z");
             w.write_number(scratch.buf[base + 8]);
@@ -8467,8 +9572,10 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         if has_target_dim {
             w.write_str("dim");
             w.write_map_header(2);
-            w.write_str("x"); w.write_number(scratch.buf[base + 9]);
-            w.write_str("y"); w.write_number(scratch.buf[base + 10]);
+            w.write_str("x");
+            w.write_number(scratch.buf[base + 9]);
+            w.write_str("y");
+            w.write_number(scratch.buf[base + 10]);
         }
         if has_target_radius {
             w.write_str("radius");
@@ -8476,7 +9583,11 @@ pub fn snapshot_encode_envelope_emit_spray_targets(count: u32) -> u32 {
         }
 
         w.write_str("type");
-        if type_is_heal { w.write_str("heal"); } else { w.write_str("build"); }
+        if type_is_heal {
+            w.write_str("heal");
+        } else {
+            w.write_str("build");
+        }
         w.write_str("intensity");
         w.write_number(scratch.buf[base + 12]);
         if has_speed {
@@ -8600,15 +9711,24 @@ pub fn snapshot_encode_envelope_emit_terrain(
     w.write_str("terrain");
     w.write_map_header(17);
 
-    w.write_str("mapWidth"); w.write_number(map_width);
-    w.write_str("mapHeight"); w.write_number(map_height);
-    w.write_str("cellSize"); w.write_number(cell_size);
-    w.write_str("subdiv"); w.write_number(subdiv);
-    w.write_str("cellsX"); w.write_number(cells_x);
-    w.write_str("cellsY"); w.write_number(cells_y);
-    w.write_str("verticesX"); w.write_number(vertices_x);
-    w.write_str("verticesY"); w.write_number(vertices_y);
-    w.write_str("version"); w.write_number(version);
+    w.write_str("mapWidth");
+    w.write_number(map_width);
+    w.write_str("mapHeight");
+    w.write_number(map_height);
+    w.write_str("cellSize");
+    w.write_number(cell_size);
+    w.write_str("subdiv");
+    w.write_number(subdiv);
+    w.write_str("cellsX");
+    w.write_number(cells_x);
+    w.write_str("cellsY");
+    w.write_number(cells_y);
+    w.write_str("verticesX");
+    w.write_number(vertices_x);
+    w.write_str("verticesY");
+    w.write_number(vertices_y);
+    w.write_str("version");
+    w.write_number(version);
 
     w.write_str("meshVertexCoords");
     write_number_array_from_scratch(w, mesh_vertex_coords_offset, mesh_vertex_coords_count);
@@ -8619,13 +9739,29 @@ pub fn snapshot_encode_envelope_emit_terrain(
     w.write_str("meshTriangleLevels");
     write_number_array_from_scratch(w, mesh_triangle_levels_offset, mesh_triangle_levels_count);
     w.write_str("meshTriangleNeighborIndices");
-    write_number_array_from_scratch(w, mesh_triangle_neighbor_indices_offset, mesh_triangle_neighbor_indices_count);
+    write_number_array_from_scratch(
+        w,
+        mesh_triangle_neighbor_indices_offset,
+        mesh_triangle_neighbor_indices_count,
+    );
     w.write_str("meshTriangleNeighborLevels");
-    write_number_array_from_scratch(w, mesh_triangle_neighbor_levels_offset, mesh_triangle_neighbor_levels_count);
+    write_number_array_from_scratch(
+        w,
+        mesh_triangle_neighbor_levels_offset,
+        mesh_triangle_neighbor_levels_count,
+    );
     w.write_str("meshCellTriangleOffsets");
-    write_number_array_from_scratch(w, mesh_cell_triangle_offsets_offset, mesh_cell_triangle_offsets_count);
+    write_number_array_from_scratch(
+        w,
+        mesh_cell_triangle_offsets_offset,
+        mesh_cell_triangle_offsets_count,
+    );
     w.write_str("meshCellTriangleIndices");
-    write_number_array_from_scratch(w, mesh_cell_triangle_indices_offset, mesh_cell_triangle_indices_count);
+    write_number_array_from_scratch(
+        w,
+        mesh_cell_triangle_indices_offset,
+        mesh_cell_triangle_indices_count,
+    );
 
     w.buf.len() as u32
 }
@@ -8652,13 +9788,20 @@ pub fn snapshot_encode_envelope_emit_buildability(
     w.write_str("buildability");
     w.write_map_header(9);
 
-    w.write_str("mapWidth"); w.write_number(map_width);
-    w.write_str("mapHeight"); w.write_number(map_height);
-    w.write_str("cellSize"); w.write_number(cell_size);
-    w.write_str("cellsX"); w.write_number(cells_x);
-    w.write_str("cellsY"); w.write_number(cells_y);
-    w.write_str("version"); w.write_number(version);
-    w.write_str("configKey"); write_string_from_scratch(w, config_key_slot);
+    w.write_str("mapWidth");
+    w.write_number(map_width);
+    w.write_str("mapHeight");
+    w.write_number(map_height);
+    w.write_str("cellSize");
+    w.write_number(cell_size);
+    w.write_str("cellsX");
+    w.write_number(cells_x);
+    w.write_str("cellsY");
+    w.write_number(cells_y);
+    w.write_str("version");
+    w.write_number(version);
+    w.write_str("configKey");
+    write_string_from_scratch(w, config_key_slot);
     w.write_str("flags");
     write_number_array_from_scratch(w, flags_offset, flags_count);
     w.write_str("levels");

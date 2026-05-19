@@ -1,5 +1,5 @@
 import {
-  getClientTiltEmaMode,
+  getClientUnitGroundNormalEmaMode,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPredictionMode,
@@ -7,12 +7,14 @@ import {
   getRotationVelEmaMode,
 } from '@/clientBarConfig';
 import { LAND_CELL_SIZE } from '../../config';
-import { TILT_EMA_HALF_LIFE_SEC } from '@/shellConfig';
+import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity } from '../sim/types';
 import {
+  clamp,
   lerp,
   lerpAngle,
   magnitude3,
+  normalizeAngle,
 } from '../math';
 import { getChannelBlend, halfLifeBlend } from './driftEma';
 import type { PredictionStep } from './ClientPredictionCadence';
@@ -34,11 +36,37 @@ const PREDICTION_VEL_EPSILON_SQ = 0.01 * 0.01;
 const PREDICTION_ROT_EPSILON = 0.001;
 const PREDICTION_TURRET_EPSILON = 0.001;
 const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
+const TURRET_PITCH_MIN = -Math.PI / 2;
+const TURRET_PITCH_MAX = Math.PI / 2;
 
 type UnitPredictionTarget = ServerTarget;
 
 function angleDeltaAbs(a: number, b: number): number {
   return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
+function advanceTurretYaw(angle: number, angularVelocity: number, dt: number): number {
+  const safeAngle = Number.isFinite(angle) ? angle : 0;
+  const safeVelocity = Number.isFinite(angularVelocity) ? angularVelocity : 0;
+  const safeDt = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+  return normalizeAngle(safeAngle + safeVelocity * safeDt);
+}
+
+// Reused in the per-turret prediction loop; callers copy fields immediately.
+const turretPitchStepScratch = { pitch: 0, pitchVelocity: 0 };
+function advanceTurretPitch(
+  pitch: number,
+  pitchVelocity: number,
+  dt: number,
+): { pitch: number; pitchVelocity: number } {
+  const safePitch = Number.isFinite(pitch) ? pitch : 0;
+  const safeVelocity = Number.isFinite(pitchVelocity) ? pitchVelocity : 0;
+  const safeDt = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+  const nextPitch = safePitch + safeVelocity * safeDt;
+  const clampedPitch = clamp(nextPitch, TURRET_PITCH_MIN, TURRET_PITCH_MAX);
+  turretPitchStepScratch.pitch = clampedPitch;
+  turretPitchStepScratch.pitchVelocity = clampedPitch === nextPitch ? safeVelocity : 0;
+  return turretPitchStepScratch;
 }
 
 const motionScratch: MutableUnitMotion3 = {
@@ -252,7 +280,7 @@ export function applyClientUnitVisualPrediction(options: {
 
   if (!target) return;
 
-  // Movement position channel — ignore / snap / EMA.
+  // Movement position channel — snap / EMA.
   if (movPosBlend >= 0) {
     entity.transform.x = lerp(entity.transform.x, target.x, movPosBlend);
     entity.transform.y = lerp(entity.transform.y, target.y, movPosBlend);
@@ -322,14 +350,17 @@ export function applyClientUnitVisualPrediction(options: {
     av.z = lerp(av.z, target.angularVelocityZ ?? 0, rotVelBlend);
   }
 
-  // Tilt EMA is its own knob — orthogonal to the per-channel snapshot
+  // Unit Ground Normal EMA is its own knob — orthogonal to the per-channel snapshot
   // drift — because it smooths a SERVER-side EMA's output (slope
   // normal), not a snapshot drift correction. Always applied.
-  const tiltAlpha = halfLifeBlend(dt, TILT_EMA_HALF_LIFE_SEC[getClientTiltEmaMode()]);
+  const normalAlpha = halfLifeBlend(
+    dt,
+    UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[getClientUnitGroundNormalEmaMode()],
+  );
   const sn = entity.unit.surfaceNormal;
-  const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * tiltAlpha;
-  const tny = sn.ny + (target.surfaceNormalY - sn.ny) * tiltAlpha;
-  const tnz = sn.nz + (target.surfaceNormalZ - sn.nz) * tiltAlpha;
+  const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * normalAlpha;
+  const tny = sn.ny + (target.surfaceNormalY - sn.ny) * normalAlpha;
+  const tnz = sn.nz + (target.surfaceNormalZ - sn.nz) * normalAlpha;
   const tlen = magnitude3(tnx, tny, tnz);
   if (tlen > 1e-6) {
     const inv = 1 / tlen;
@@ -364,19 +395,27 @@ export function applyClientCombatExpensivePrediction(options: {
     const weapon = turrets[i];
     if (weapon.config.visualOnly) continue;
     if (integrateRotation) {
-      weapon.rotation += weapon.angularVelocity * dt;
-      weapon.pitch += weapon.pitchVelocity * dt;
+      weapon.rotation = advanceTurretYaw(weapon.rotation, weapon.angularVelocity, dt);
+      const pitchStep = advanceTurretPitch(weapon.pitch, weapon.pitchVelocity, dt);
+      weapon.pitch = pitchStep.pitch;
+      weapon.pitchVelocity = pitchStep.pitchVelocity;
     }
 
     const tw = target?.turrets?.[i];
     if (tw) {
       if (integrateRotation) {
-        tw.rotation += tw.angularVelocity * targetDt;
-        tw.pitch += tw.pitchVelocity * targetDt;
+        tw.rotation = advanceTurretYaw(tw.rotation, tw.angularVelocity, targetDt);
+        const targetPitchStep = advanceTurretPitch(tw.pitch, tw.pitchVelocity, targetDt);
+        tw.pitch = targetPitchStep.pitch;
+        tw.pitchVelocity = targetPitchStep.pitchVelocity;
       }
       if (rotPosBlend >= 0) {
-        weapon.rotation = lerpAngle(weapon.rotation, tw.rotation, rotPosBlend);
-        weapon.pitch = lerpAngle(weapon.pitch, tw.pitch, rotPosBlend);
+        weapon.rotation = normalizeAngle(lerpAngle(weapon.rotation, tw.rotation, rotPosBlend));
+        weapon.pitch = clamp(
+          lerpAngle(weapon.pitch, tw.pitch, rotPosBlend),
+          TURRET_PITCH_MIN,
+          TURRET_PITCH_MAX,
+        );
       }
       if (rotVelBlend >= 0) {
         weapon.angularVelocity = lerp(
@@ -414,8 +453,7 @@ export function applyClientCombatExpensivePrediction(options: {
 
     // The force-field range is a slow visual transition, not a
     // snapshot-drift channel. It rides along with rotation-position
-    // when an EMA is selected; under IGNORE it follows local
-    // prediction only, matching the old single-driftMode behavior.
+    // correction.
     const serverRange = tw?.forceFieldRange;
     if (serverRange !== undefined && rotPosBlend >= 0) {
       next = lerp(next, serverRange, rotPosBlend);

@@ -7,6 +7,7 @@ import type {
   CameraSmoothMode,
   DriftChannelMode,
   DriftMode,
+  PositionDriftChannelMode,
   PredictionMode,
   ProjRangeType,
   RangeType,
@@ -15,7 +16,7 @@ import type {
   WaypointDetail,
 } from '../types/client';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../types/server';
-import type { TiltEmaMode } from '../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import type { RenderMode } from '../types/graphics';
 
 export type ControlBarStyle = Record<string, string>;
@@ -62,7 +63,7 @@ export type GameCanvasServerControlBarModel = {
   readonly displayServerTime: string;
   readonly displayServerIp: string;
   readonly displayTickRate: TickRate;
-  readonly serverTiltEmaMode: TiltEmaMode;
+  readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly displayServerTpsAvg: number;
   readonly displayServerTpsWorst: number;
   readonly displayServerCpuAvg: number;
@@ -71,7 +72,7 @@ export type GameCanvasServerControlBarModel = {
   readonly displayKeyframeRatio: KeyframeRatio;
   resetServerDefaults(): void;
   setTickRateValue(rate: TickRate): void;
-  setTiltEmaModeValue(mode: TiltEmaMode): void;
+  setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
   setNetworkUpdateRate(rate: SnapshotRate): void;
   setKeyframeRatioValue(ratio: KeyframeRatio): void;
 };
@@ -98,6 +99,7 @@ export type GameCanvasClientControlBarModel = {
   readonly currentZoom: number;
   readonly snapAvgRate: number;
   readonly snapWorstRate: number;
+  readonly displayTickRate: TickRate;
   readonly displaySnapshotRate: SnapshotRate;
   readonly fullSnapAvgRate: number;
   readonly fullSnapWorstRate: number;
@@ -106,12 +108,12 @@ export type GameCanvasClientControlBarModel = {
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;
   readonly beamSnapToTurret: boolean;
-  readonly movementPosEma: DriftChannelMode;
+  readonly movementPosEma: PositionDriftChannelMode;
   readonly movementVelEma: DriftChannelMode;
-  readonly rotationPosEma: DriftChannelMode;
+  readonly rotationPosEma: PositionDriftChannelMode;
   readonly rotationVelEma: DriftChannelMode;
   readonly predictionMode: PredictionMode;
-  readonly clientTiltEmaMode: DriftMode;
+  readonly clientUnitGroundNormalEmaMode: DriftMode;
   readonly allPanActive: boolean;
   readonly dragPanEnabled: boolean;
   readonly edgeScrollEnabled: boolean;
@@ -141,12 +143,12 @@ export type GameCanvasClientControlBarModel = {
   toggleBurnMarks(): void;
   toggleLocomotionMarks(): void;
   toggleBeamSnapToTurret(): void;
-  changeMovementPosEma(mode: DriftChannelMode): void;
+  changeMovementPosEma(mode: PositionDriftChannelMode): void;
   changeMovementVelEma(mode: DriftChannelMode): void;
-  changeRotationPosEma(mode: DriftChannelMode): void;
+  changeRotationPosEma(mode: PositionDriftChannelMode): void;
   changeRotationVelEma(mode: DriftChannelMode): void;
   changePredictionMode(mode: PredictionMode): void;
-  changeClientTiltEmaMode(mode: DriftMode): void;
+  changeClientUnitGroundNormalEmaMode(mode: DriftMode): void;
   toggleAllPan(): void;
   toggleDragPan(): void;
   toggleEdgeScroll(): void;

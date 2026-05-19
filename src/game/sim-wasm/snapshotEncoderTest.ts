@@ -74,6 +74,13 @@ const WAYPOINT_SCRATCH_STRIDE = 5;
 // shrank from 12 → 10 f64 per turret (drop angular.acc and
 // angular.pitchAcc) — matches SNAPSHOT_ENCODE_TURRET_STRIDE in lib.rs.
 import { SNAPSHOT_ENTITY_TYPE_UNIT, SNAPSHOT_ENTITY_TYPE_BUILDING } from './init';
+import {
+  ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
+} from '@/types/network';
 
 const TURRET_SCRATCH_STRIDE = 10;
 const ACTION_SCRATCH_STRIDE = 16;
@@ -150,6 +157,19 @@ type BasicEntityFixture = {
   changedFields?: number;
 };
 
+function fixtureHasField(f: BasicEntityFixture, bit: number): boolean {
+  return f.changedFields === undefined || (f.changedFields & bit) !== 0;
+}
+
+function sparseBasicFixture<T extends BasicEntityFixture>(f: T): T {
+  if (f.changedFields === undefined) return f;
+  return {
+    ...f,
+    pos: fixtureHasField(f, ENTITY_CHANGED_POS) ? f.pos : undefined,
+    rotation: fixtureHasField(f, ENTITY_CHANGED_ROT) ? f.rotation : undefined,
+  } as T;
+}
+
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -184,7 +204,8 @@ function runEntityBasicCases(memory: WebAssembly.Memory): { passed: number; fail
   let passed = 0;
   let failed = 0;
   for (const f of fixtures) {
-    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+    const wireFixture = sparseBasicFixture(f);
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
@@ -249,6 +270,18 @@ type UnitFixture = BasicEntityFixture & {
     };
   };
 };
+
+function sparseUnitFixture(f: UnitFixture): UnitFixture {
+  if (f.changedFields === undefined) return f;
+  return {
+    ...sparseBasicFixture(f),
+    unit: {
+      ...f.unit,
+      hp: fixtureHasField(f, ENTITY_CHANGED_HP) ? f.unit.hp : undefined,
+      velocity: fixtureHasField(f, ENTITY_CHANGED_VEL) ? f.unit.velocity : undefined,
+    },
+  } as UnitFixture;
+}
 
 function packActionsIntoScratch(
   memory: WebAssembly.Memory,
@@ -858,7 +891,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
   let passed = 0;
   let failed = 0;
   for (const f of fixtures) {
-    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+    const wireFixture = sparseUnitFixture(f);
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const typeTag = f.type === 'unit' ? SNAPSHOT_ENTITY_TYPE_UNIT : SNAPSHOT_ENTITY_TYPE_BUILDING;
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
@@ -1007,6 +1041,18 @@ type BuildingFixture = {
     factory?: FactoryFixture;
   };
 };
+
+function sparseBuildingFixture(f: BuildingFixture): BuildingFixture {
+  if (f.changedFields === undefined) return f;
+  return {
+    ...sparseBasicFixture(f),
+    building: {
+      ...f.building,
+      hp: fixtureHasField(f, ENTITY_CHANGED_HP) ? f.building.hp : undefined,
+      build: fixtureHasField(f, ENTITY_CHANGED_BUILDING) ? f.building.build : undefined,
+    },
+  } as BuildingFixture;
+}
 
 function packFactoryQueueIntoScratch(memory: WebAssembly.Memory, queue: number[]): void {
   if (queue.length === 0) return;
@@ -1226,7 +1272,8 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
   let passed = 0;
   let failed = 0;
   for (const f of fixtures) {
-    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+    const wireFixture = sparseBuildingFixture(f);
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const hasChanged = f.changedFields !== undefined ? 1 : 0;
     const changed = f.changedFields ?? 0;
     const stringList: string[] = [];
@@ -1996,6 +2043,17 @@ type EnvelopeFixture = {
   terrain?: TerrainFixture;
   buildability?: BuildabilityFixture;
 };
+
+function sparseEnvelopeFixture(f: EnvelopeFixture): EnvelopeFixture {
+  return {
+    ...f,
+    entities: f.entities.map((entity) =>
+      entity.type === 'unit'
+        ? sparseUnitFixture(entity as UnitFixture)
+        : sparseBuildingFixture(entity as BuildingFixture),
+    ),
+  };
+}
 
 function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
   if (ids.length === 0) return;
@@ -2824,7 +2882,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
   let passed = 0;
   let failed = 0;
   for (const f of fixtures) {
-    const jsBytes = msgpackEncode(f, SNAPSHOT_ENCODE_OPTIONS);
+    const wireFixture = sparseEnvelopeFixture(f);
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
 
     const hasMinimap = f.minimapEntities !== undefined ? 1 : 0;
     const hasSprayTargets = f.sprayTargets !== undefined ? 1 : 0;

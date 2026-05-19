@@ -65,7 +65,7 @@ export function getChassisLift(blueprint: UnitBlueprint, unitRadius: number): nu
   return getChassisLiftY(blueprint, unitRadius);
 }
 
-export function lodKeyFor(gfx: GraphicsConfig): string {
+export function geometryKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
 }
 
@@ -106,17 +106,17 @@ export function buildLocomotion(
   const loc = bp.locomotion;
   if (!loc) return undefined;
 
-  const lodKey = lodKeyFor(gfx);
+  const geometryKey = geometryKeyFor(gfx);
 
   switch (loc.type) {
     case 'treads': {
       const mesh = buildTreads(unitGroup, unitRadius, loc.config, gfx.treadsAnimated);
-      mesh.lodKey = lodKey;
+      mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'wheels': {
       const mesh = buildWheels(unitGroup, unitRadius, loc.config);
-      mesh.lodKey = lodKey;
+      mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'legs': {
@@ -126,12 +126,12 @@ export function buildLocomotion(
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
         mapWidth, mapHeight, legRenderer,
       );
-      if (mesh) mesh.lodKey = lodKey;
+      if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'hover': {
       const mesh = buildHoverFans(unitGroup, unitRadius, loc.config, entity.id);
-      mesh.lodKey = lodKey;
+      mesh.geometryKey = geometryKey;
       return mesh;
     }
   }

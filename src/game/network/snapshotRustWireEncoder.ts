@@ -256,7 +256,6 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
 
 function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, unit: SnapshotUnit): boolean {
   if (unitNeedsRawFallback(unit)) return false;
-  if (!unit.hp || !unit.velocity) return false;
 
   const actions = unit.actions;
   const turrets = unit.turrets;
@@ -280,14 +279,14 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
   api.encodeEntityUnit(
     entity.id,
     SNAPSHOT_ENTITY_TYPE_UNIT,
-    entity.pos.x, entity.pos.y, entity.pos.z,
-    entity.rotation,
+    entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+    entity.rotation ?? 0,
     entity.playerId,
     entity.changedFields !== undefined ? 1 : 0,
     entity.changedFields ?? 0,
-    unit.hp.curr,
-    unit.hp.max,
-    unit.velocity.x, unit.velocity.y, unit.velocity.z,
+    unit.hp?.curr ?? 0,
+    unit.hp?.max ?? 0,
+    unit.velocity?.x ?? 0, unit.velocity?.y ?? 0, unit.velocity?.z ?? 0,
     unit.unitType !== undefined ? 1 : 0,
     unit.unitType ?? 0,
     unit.radius !== undefined ? 1 : 0,
@@ -343,8 +342,6 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
 
 function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
   return (
-    !building.hp ||
-    !building.build ||
     (building.type !== undefined && typeof building.type !== 'number') ||
     (building.factory?.queue.some((code) => !isUint(code, 0xFFFF_FFFF)) ?? false)
   );
@@ -374,8 +371,8 @@ function encodeBuildingEntity(
 
   api.encodeEntityBuilding(
     entity.id,
-    entity.pos.x, entity.pos.y, entity.pos.z,
-    entity.rotation,
+    entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+    entity.rotation ?? 0,
     entity.playerId,
     entity.changedFields !== undefined ? 1 : 0,
     entity.changedFields ?? 0,
@@ -384,11 +381,11 @@ function encodeBuildingEntity(
     building.dim !== undefined ? 1 : 0,
     building.dim?.x ?? 0,
     building.dim?.y ?? 0,
-    building.hp.curr,
-    building.hp.max,
-    building.build.complete ? 1 : 0,
-    building.build.paid.energy,
-    building.build.paid.metal,
+    building.hp?.curr ?? 0,
+    building.hp?.max ?? 0,
+    building.build?.complete ? 1 : 0,
+    building.build?.paid.energy ?? 0,
+    building.build?.paid.metal ?? 0,
     building.metalExtractionRate !== undefined ? 1 : 0,
     building.metalExtractionRate ?? 0,
     building.solar !== undefined ? 1 : 0,
@@ -407,11 +404,13 @@ function encodeBuildingEntity(
 }
 
 function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolean {
+  const isFull = entity.changedFields === undefined;
   if (
     !isUint(entity.id, 0xFFFF_FFFF) ||
     !isUint(entity.playerId, 0xFF) ||
     entity.changedFields === null ||
-    (entity.changedFields !== undefined && !isUint(entity.changedFields, 0xFFFF_FFFF))
+    (entity.changedFields !== undefined && !isUint(entity.changedFields, 0xFFFF_FFFF)) ||
+    (isFull && (entity.pos === undefined || entity.rotation === undefined))
   ) {
     return false;
   }
@@ -421,8 +420,8 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,
       SNAPSHOT_ENTITY_TYPE_UNIT,
-      entity.pos.x, entity.pos.y, entity.pos.z,
-      entity.rotation,
+      entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+      entity.rotation ?? 0,
       entity.playerId,
       entity.changedFields !== undefined ? 1 : 0,
       entity.changedFields ?? 0,
@@ -435,8 +434,8 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,
       SNAPSHOT_ENTITY_TYPE_BUILDING,
-      entity.pos.x, entity.pos.y, entity.pos.z,
-      entity.rotation,
+      entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+      entity.rotation ?? 0,
       entity.playerId,
       entity.changedFields !== undefined ? 1 : 0,
       entity.changedFields ?? 0,
@@ -945,7 +944,7 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isFiniteNumber(meta.wind.y) ||
     !isFiniteNumber(meta.wind.speed) ||
     !isFiniteNumber(meta.wind.angle) ||
-    typeof meta.tiltEma !== 'string'
+    typeof meta.unitGroundNormalEma !== 'string'
   ) {
     return false;
   }
@@ -987,7 +986,7 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     forceFieldReflectionModeSlot = pushString(meta.forceFieldReflectionMode);
   }
 
-  const tiltEmaSlot = pushString(meta.tiltEma!);
+  const unitGroundNormalEmaSlot = pushString(meta.unitGroundNormalEma!);
   packOrderedStringsIntoScratch(sim, strings);
 
   sim.snapshotEncode.emitServerMeta(
@@ -1026,7 +1025,7 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.wind!.y,
     meta.wind!.speed,
     meta.wind!.angle,
-    tiltEmaSlot,
+    unitGroundNormalEmaSlot,
   );
 }
 

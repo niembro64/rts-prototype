@@ -72,8 +72,8 @@ export function disposeMesh(
 /** Set the same minFilter + magFilter + `generateMipmaps = false`
  *  triplet that every CanvasTexture / sprite texture in this
  *  directory uses. `filter` picks Linear (smooth, default — health
- *  bars, name labels, waypoints, sun disk) vs Nearest (pixel-crisp —
- *  LOD grid debug overlay). Other texture flags (`flipY`,
+ *  bars, name labels, waypoints, sun disk) vs Nearest (pixel-crisp
+ *  UI/debug overlays). Other texture flags (`flipY`,
  *  `needsUpdate`, `colorSpace`) stay at the call site since they
  *  vary per consumer. */
 export function configureSpriteTexture(

@@ -1,4 +1,3 @@
-import type { RenderObjectLodTier } from '@/types/graphics';
 import { LAND_CELL_SIZE } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { getSpawnPositionForSeat } from '../sim/spawn';
@@ -25,7 +24,6 @@ export type EnvironmentPlacement = {
   rotation: number;
   height: number;
   radius: number;
-  minTier: RenderObjectLodTier;
 };
 
 export type EnvironmentPlacementGenerationOptions = {
@@ -40,7 +38,6 @@ type PlacementOptions = {
   height?: number;
   radius?: number;
   rotation?: number;
-  minTier?: RenderObjectLodTier;
   waterBuffer?: number;
 };
 
@@ -50,7 +47,6 @@ type RandomPlacementProfile = Readonly<{
   heightScaleMax: number;
   radiusScaleMin: number;
   radiusScaleMax: number;
-  minTier?: RenderObjectLodTier;
   waterBuffer: number;
 }>;
 
@@ -118,7 +114,6 @@ export function generateEnvironmentPlacements(
       heightScaleMax: 1.35,
       radiusScaleMin: 0.65,
       radiusScaleMax: 1.25,
-      minTier: 'mass',
       waterBuffer: DEFAULT_GRASS_WATER_BUFFER,
     },
   );
@@ -155,7 +150,6 @@ function addRandomEnvironmentAssetPlacements(
         spec.defaultRadius *
         randRange(rng, profile.radiusScaleMin, profile.radiusScaleMax),
       rotation: rng() * Math.PI * 2,
-      minTier: profile.minTier,
       waterBuffer: profile.waterBuffer,
     });
     if (added) placed++;
@@ -196,7 +190,6 @@ function tryAddPlacement(
     rotation: options.rotation ?? 0,
     height,
     radius,
-    minTier: options.minTier ?? spec.minTier,
   });
   return true;
 }

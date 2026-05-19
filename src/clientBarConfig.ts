@@ -1,5 +1,4 @@
 import type {
-  ConcreteGraphicsQuality,
   GraphicsConfig,
   RenderMode,
 } from './types/graphics';
@@ -10,6 +9,7 @@ import type {
   CameraSmoothMode,
   DriftChannelMode,
   DriftMode,
+  PositionDriftChannelMode,
   PredictionMode,
   SoundCategory,
   RangeType,
@@ -58,11 +58,10 @@ export const CLIENT_CONFIG = {
       { value: 'vel' as const, label: 'VEL' },
     ],
   },
-  /** Per-channel snapshot drift EMAs. Each channel chooses
-   *  independently from the same five-mode space:
-   *    IGNORE — never apply this channel's snapshot value.
-   *    SNAP   — replace the rendered value with the snapshot every tick.
-   *    FAST/MED/SLOW — EMA toward the snapshot with the named half-life.
+  /** Per-channel snapshot drift EMAs. Position channels always apply
+   *  correction and choose from SNAP / FAST / MED / SLOW. Velocity
+   *  channels also expose IGNORE because keeping the predicted
+   *  derivative can be meaningful there.
    *  The most recent snapshot value is always stored per channel; the
    *  mode controls only what the per-tick predict step does with it.
    *  Defaults: position channels MED (visible smoothing), velocity
@@ -71,7 +70,6 @@ export const CLIENT_CONFIG = {
   movementPosEma: {
     default: 'medium' as const,
     options: [
-      { value: 'ignore' as const, label: 'IGN' },
       { value: 'snap' as const, label: 'SNAP' },
       { value: 'fast' as const, label: 'FAST' },
       { value: 'medium' as const, label: 'MED' },
@@ -91,7 +89,6 @@ export const CLIENT_CONFIG = {
   rotationPosEma: {
     default: 'medium' as const,
     options: [
-      { value: 'ignore' as const, label: 'IGN' },
       { value: 'snap' as const, label: 'SNAP' },
       { value: 'fast' as const, label: 'FAST' },
       { value: 'medium' as const, label: 'MED' },
@@ -108,14 +105,14 @@ export const CLIENT_CONFIG = {
       { value: 'slow' as const, label: 'SLOW' },
     ],
   },
-  /** Client-side chassis-tilt EMA. Layered ON TOP of the host's
-   *  HOST SERVER TILT EMA — sim-side smoothing reduces triangle-jump
+  /** Client-side unit ground normal EMA. Layered ON TOP of the host's
+   *  HOST SERVER UNIT GROUND NORMAL EMA — sim-side smoothing reduces triangle-jump
    *  noise before serialization, then this knob smooths further on
    *  the receiving client (per render frame, gliding toward each
    *  snapshot's value the same way position drift glides toward
    *  target.x). SNAP = no client smoothing, identical to the
    *  pre-feature behavior. */
-  tiltEma: {
+  unitGroundNormalEma: {
     default: 'fast' as const,
     options: [
       { value: 'snap' as const, label: 'SNAP' },
@@ -216,7 +213,7 @@ const MOVEMENT_VEL_EMA_STORAGE_KEY = 'player-client-movement-vel-ema';
 const ROTATION_POS_EMA_STORAGE_KEY = 'player-client-rotation-pos-ema';
 const ROTATION_VEL_EMA_STORAGE_KEY = 'player-client-rotation-vel-ema';
 const PREDICTION_MODE_STORAGE_KEY = 'player-client-prediction-mode';
-const TILT_EMA_MODE_STORAGE_KEY = 'player-client-tilt-ema-mode';
+const UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY = 'player-client-unit-ground-normal-ema-mode';
 const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
 const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
 const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'player-client-proj-range-toggles';
@@ -234,9 +231,9 @@ const DRAG_PAN_STORAGE_KEY = 'player-client-drag-pan';
 const LOBBY_VISIBLE_STORAGE_KEY = 'demo-battle-lobby-visible';
 const WAYPOINT_DETAIL_STORAGE_KEY = 'player-client-waypoint-detail';
 
-// Migration table — old `rts-*` keys → new `player-client-*` keys.
-// Run once at module init (inside `loadFromStorage` below) so the
-// rename is invisible to existing users.
+// Migration table — old `rts-*` keys and renamed player-client keys
+// → current storage keys. Run once at module init (inside
+// `loadFromStorage` below) so renames are invisible to existing users.
 const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-render-mode', RENDER_MODE_STORAGE_KEY],
   ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
@@ -269,6 +266,7 @@ const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
   ['player-client-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
   ['rts-waypoint-detail', WAYPOINT_DETAIL_STORAGE_KEY],
+  ['player-client-tilt-ema-mode', UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY],
 ];
 
 // ── Runtime state ──
@@ -313,12 +311,12 @@ let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
-let currentMovementPosEma: DriftChannelMode = _cd.movementPosEma.default;
+let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
 let currentMovementVelEma: DriftChannelMode = _cd.movementVelEma.default;
-let currentRotationPosEma: DriftChannelMode = _cd.rotationPosEma.default;
+let currentRotationPosEma: PositionDriftChannelMode = _cd.rotationPosEma.default;
 let currentRotationVelEma: DriftChannelMode = _cd.rotationVelEma.default;
 let currentPredictionMode: PredictionMode = _cd.predictionMode.default;
-let currentClientTiltEmaMode: DriftMode = _cd.tiltEma.default;
+let currentClientUnitGroundNormalEmaMode: DriftMode = _cd.unitGroundNormalEma.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
 };
@@ -342,9 +340,24 @@ function isDriftChannelMode(value: unknown): value is DriftChannelMode {
     || value === 'slow';
 }
 
+function isPositionDriftChannelMode(value: unknown): value is PositionDriftChannelMode {
+  return value === 'snap'
+    || value === 'fast'
+    || value === 'medium'
+    || value === 'slow';
+}
+
 function readDriftChannelMode(storageKey: string, fallback: DriftChannelMode): DriftChannelMode {
   const stored = readPersisted(storageKey);
   return isDriftChannelMode(stored) ? stored : fallback;
+}
+
+function readPositionDriftChannelMode(
+  storageKey: string,
+  fallback: PositionDriftChannelMode,
+): PositionDriftChannelMode {
+  const stored = readPersisted(storageKey);
+  return isPositionDriftChannelMode(stored) ? stored : fallback;
 }
 
 // ── Load from localStorage on module init ──
@@ -429,7 +442,7 @@ function loadFromStorage(): void {
       currentCameraFovDegrees = parsed;
     }
   }
-  currentMovementPosEma = readDriftChannelMode(
+  currentMovementPosEma = readPositionDriftChannelMode(
     MOVEMENT_POS_EMA_STORAGE_KEY,
     currentMovementPosEma,
   );
@@ -437,7 +450,7 @@ function loadFromStorage(): void {
     MOVEMENT_VEL_EMA_STORAGE_KEY,
     currentMovementVelEma,
   );
-  currentRotationPosEma = readDriftChannelMode(
+  currentRotationPosEma = readPositionDriftChannelMode(
     ROTATION_POS_EMA_STORAGE_KEY,
     currentRotationPosEma,
   );
@@ -452,15 +465,15 @@ function loadFromStorage(): void {
   ) {
     currentPredictionMode = storedPredictionMode;
   }
-  const storedClientTilt = readPersisted(TILT_EMA_MODE_STORAGE_KEY);
+  const storedClientUnitGroundNormal = readPersisted(UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY);
   if (
-    storedClientTilt &&
-    (storedClientTilt === 'snap' ||
-      storedClientTilt === 'fast' ||
-      storedClientTilt === 'mid' ||
-      storedClientTilt === 'slow')
+    storedClientUnitGroundNormal &&
+    (storedClientUnitGroundNormal === 'snap' ||
+      storedClientUnitGroundNormal === 'fast' ||
+      storedClientUnitGroundNormal === 'mid' ||
+      storedClientUnitGroundNormal === 'slow')
   ) {
-    currentClientTiltEmaMode = storedClientTilt;
+    currentClientUnitGroundNormalEmaMode = storedClientUnitGroundNormal;
   }
   const storedSoundToggles = readPersisted(SOUND_TOGGLES_STORAGE_KEY);
   if (storedSoundToggles) {
@@ -531,12 +544,6 @@ function loadFromStorage(): void {
 
 export function getGraphicsConfig(): GraphicsConfig {
   return PLAYER_CLIENT_MAX_GRAPHICS_CONFIG;
-}
-
-export function getGraphicsConfigFor(
-  _quality: ConcreteGraphicsQuality,
-): GraphicsConfig {
-  return getGraphicsConfig();
 }
 
 export function getRenderMode(): RenderMode {
@@ -684,11 +691,11 @@ export function setBuildGridDebug(enabled: boolean): void {
   persist(BUILD_GRID_DEBUG_STORAGE_KEY, String(enabled));
 }
 
-export function getMovementPosEmaMode(): DriftChannelMode {
+export function getMovementPosEmaMode(): PositionDriftChannelMode {
   return currentMovementPosEma;
 }
 
-export function setMovementPosEmaMode(mode: DriftChannelMode): void {
+export function setMovementPosEmaMode(mode: PositionDriftChannelMode): void {
   currentMovementPosEma = mode;
   persist(MOVEMENT_POS_EMA_STORAGE_KEY, mode);
 }
@@ -702,11 +709,11 @@ export function setMovementVelEmaMode(mode: DriftChannelMode): void {
   persist(MOVEMENT_VEL_EMA_STORAGE_KEY, mode);
 }
 
-export function getRotationPosEmaMode(): DriftChannelMode {
+export function getRotationPosEmaMode(): PositionDriftChannelMode {
   return currentRotationPosEma;
 }
 
-export function setRotationPosEmaMode(mode: DriftChannelMode): void {
+export function setRotationPosEmaMode(mode: PositionDriftChannelMode): void {
   currentRotationPosEma = mode;
   persist(ROTATION_POS_EMA_STORAGE_KEY, mode);
 }
@@ -729,18 +736,18 @@ export function setPredictionMode(mode: PredictionMode): void {
   persist(PREDICTION_MODE_STORAGE_KEY, mode);
 }
 
-/** Active client-side chassis-tilt EMA mode. Returns the user's bar
+/** Active client-side unit ground normal EMA mode. Returns the user's bar
  *  selection on the PLAYER CLIENT bar; reads as 'snap' (no smoothing)
  *  by default. Reused for the per-frame predict-side EMA in
- *  ClientViewState that glides each unit's tilt toward the snapshot's
+ *  ClientViewState that glides each unit's surface normal toward the snapshot's
  *  target.surfaceNormal. */
-export function getClientTiltEmaMode(): DriftMode {
-  return currentClientTiltEmaMode;
+export function getClientUnitGroundNormalEmaMode(): DriftMode {
+  return currentClientUnitGroundNormalEmaMode;
 }
 
-export function setClientTiltEmaMode(mode: DriftMode): void {
-  currentClientTiltEmaMode = mode;
-  persist(TILT_EMA_MODE_STORAGE_KEY, mode);
+export function setClientUnitGroundNormalEmaMode(mode: DriftMode): void {
+  currentClientUnitGroundNormalEmaMode = mode;
+  persist(UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY, mode);
 }
 
 export function getSoundToggle(category: SoundCategory): boolean {

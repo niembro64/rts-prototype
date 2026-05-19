@@ -5,10 +5,9 @@ import type { Entity, EntityId, HysteresisRange, Turret, TurretRanges } from '..
 import type { Vec3 } from '@/types/vec2';
 import { decrementCooldown, getTargetRadius, updateWeaponWorldKinematics } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
-import { distanceSquared, shouldRunOnStride } from '../../math';
+import { distanceSquared } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
-import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getMirrorTargetScore } from './mirrorTargetPriority';
 import { resolveTargetAimPoint } from './aimSolver';
@@ -55,11 +54,8 @@ const _candPoolRanks: TargetPreferenceRank[] = [];
 const _candPoolDistSqs: number[] = [];
 const _candPoolMirrorScores: number[] = [];
 
-function nextTargetingReacquireTick(unitId: number, tick: number, stride: number): number {
-  if (stride <= 1) return tick + 1;
-  const phase = (unitId + tick) % stride;
-  const ticksUntil = phase === 0 ? stride : stride - phase;
-  return tick + ticksUntil;
+function nextTargetingReacquireTick(tick: number): number {
+  return tick + 1;
 }
 
 function rangeEdgeValue(range: HysteresisRange, edge: 'acquire' | 'release'): number {
@@ -355,9 +351,6 @@ function chooseBestTargetCandidate(
   source: Entity,
   weapon: Turret,
   candidates: Entity[],
-  tick: number,
-  densityThreshold: number,
-  densityStride: number,
   rankCandidate: CandidateRanker,
   minimumRank: TargetPreferenceRank,
   seed: TargetCandidateChoice,
@@ -366,9 +359,6 @@ function chooseBestTargetCandidate(
   const weaponX = weapon.worldPos!.x;
   const weaponY = weapon.worldPos!.y;
   const weaponZ = weapon.worldPos!.z;
-  const denseScan = candidates.length > densityThreshold;
-  const scanStride = denseScan ? densityStride : 1;
-  const scanStart = denseScan ? tick % scanStride : 0;
   const needsLOS = weaponNeedsLineOfSight(weapon);
   const needsForceFieldClearance = activeForceFields.length > 0;
   const sourcePlayerId = source.ownership?.playerId;
@@ -385,7 +375,7 @@ function chooseBestTargetCandidate(
   _candPoolMirrorScores.length = 0;
   let topCount = 0;
 
-  for (let ci = scanStart; ci < candidates.length; ci += scanStride) {
+  for (let ci = 0; ci < candidates.length; ci++) {
     const enemy = candidates[ci];
     if (
       sourcePlayerId === undefined ||
@@ -547,11 +537,7 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 // PERFORMANCE: Multi-weapon units batch a single spatial query instead of per-weapon queries
 export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
-  const lod = getSimDetailConfig();
-  const stride = Math.max(1, lod.targetingReacquireStride | 0);
   const tick = world.getTick();
-  const densityThreshold = lod.targetingDensityThreshold;
-  const densityStride = Math.max(1, lod.targetingDensityStride | 0);
   // Force-field LOS gate. Cached once per tick — every turret and
   // candidate pair reads the same list. The list is populated by the
   // previous tick's updateForceFieldState, so newly-formed fields take
@@ -628,48 +614,19 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     _weaponDisabled.length = weapons.length;
     if (!hasEnabledWeapon) {
-      combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
+      combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
       continue;
     }
 
-    let hasLiveWeaponState = false;
-    for (let i = 0; i < weapons.length; i++) {
-      const weapon = weapons[i];
-      if (_weaponDisabled[i]) continue;
-      if (
-        weapon.target !== null ||
-        weapon.state !== 'idle' ||
-        Math.abs(weapon.angularVelocity) > 0.0001 ||
-        Math.abs(weapon.pitchVelocity) > 0.0001
-      ) {
-        hasLiveWeaponState = true;
-        break;
-      }
-    }
-    const forcedProbeDue = priorityId === undefined &&
-      priorityPoint === undefined &&
-      scheduledProbeTick !== undefined &&
-      scheduledProbeTick <= tick;
-    const shouldReacquire = forcedProbeDue || shouldRunOnStride(tick, stride, unit.id);
-    if (
-      priorityId === undefined &&
-      priorityPoint === undefined &&
-      !hasLiveWeaponState &&
-      !hasCooldownState &&
-      !shouldReacquire
-    ) {
-      combat.nextCombatProbeTick = nextTargetingReacquireTick(unit.id, tick, stride);
-      continue;
-    }
     combat.nextCombatProbeTick = undefined;
 
     // Pass 0: Compute authoritative per-turret mount kinematics once.
     // Targeting, aiming, firing, force fields, and beam retracing all
     // read the same cached 3D mount pose/velocity through combatUtils.
     const unitGroundZ = getUnitGroundZ(unit);
-    // Surface normal comes from the unit's smoothed-tilt EMA so all
+    // Surface normal comes from the unit ground normal EMA so all
     // turret kinematics for this unit on this tick read one canonical
-    // value (matches the per-unit slope basis updateUnitTilt produced).
+    // value (matches the per-unit slope basis updateUnitGroundNormal produced).
     const surfaceN = unit.unit?.surfaceNormal;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
@@ -912,22 +869,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
 
-    // Stagger gate — each unit reaches the heavy reacquire passes only
-    // every Nth tick (offset by id so units stay desynced and the work
-    // spreads evenly). New / idle weapons acquire within at most one
-    // stride window (~67 ms at stride=4, 60 Hz), which is below the
-    // perceptible threshold for combat reaction. Validation already ran
-    // above so an out-of-range or dead target was cleared this tick.
-    if (!shouldReacquire) {
-      if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
-      else if (priorityId === undefined) {
-        combat.nextCombatProbeTick = hasCooldownState
-          ? tick + 1
-          : nextTargetingReacquireTick(unit.id, tick, stride);
-      }
-      continue;
-    }
-
     // Pre-scan: find whether any weapon needs a candidate scan, plus
     // the max acquire range + max weapon offset across every enabled
     // weapon. The radius is intentionally unit-centered and wide
@@ -1047,9 +988,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         unit,
         weapon,
         batchedEnemies,
-        tick,
-        densityThreshold,
-        densityStride,
         fireTargetPreferenceRankSq,
         TARGET_RANK_FIRE_FALLBACK,
         {
@@ -1083,9 +1021,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         unit,
         weapon,
         batchedEnemies,
-        tick,
-        densityThreshold,
-        densityStride,
         acquisitionTargetPreferenceRankSq,
         TARGET_RANK_TRACKING_ONLY,
         {
@@ -1110,7 +1045,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     else if (priorityId === undefined) {
       combat.nextCombatProbeTick = hasCooldownState
         ? tick + 1
-        : nextTargetingReacquireTick(unit.id, tick, stride);
+        : nextTargetingReacquireTick(tick);
     }
   }
 

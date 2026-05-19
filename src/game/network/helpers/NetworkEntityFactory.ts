@@ -163,6 +163,7 @@ export function refreshBuildingTurretsFromNetwork(
  */
 export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity): Entity | null {
   const { id, type, pos, rotation, playerId } = netEntity;
+  if (!pos || rotation === undefined) return null;
 
   if (type === 'unit') {
     return createUnitFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
@@ -199,13 +200,13 @@ function createUnitFromNetwork(
   const entity: Entity = {
     id,
     type: 'unit',
-    transform: { x, y, z: netEntity.pos.z, rotation },
+    transform: { x, y, z: netEntity.pos?.z ?? 0, rotation },
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
       unitType,
-      hp: u?.hp.curr ?? 100,
-      maxHp: u?.hp.max ?? 100,
+      hp: u?.hp?.curr ?? 100,
+      maxHp: u?.hp?.max ?? 100,
       radius,
       bodyCenterHeight: readNetworkUnitBodyCenterHeight(u, radius.push),
       locomotion: getUnitLocomotion(unitType),
@@ -225,7 +226,7 @@ function createUnitFromNetwork(
       // Smoothed surface normal: hydrated from the wire when present
       // (full keyframes always carry it, per-tick deltas ship it on
       // ENTITY_CHANGED_POS). Defaults to flat-up so non-keyframe
-      // creations or pre-tilt-EMA snapshots don't leave a zero normal
+      // creations or pre-unit-ground-normal-EMA snapshots don't leave a zero normal
       // for downstream consumers.
       surfaceNormal,
       suspension: createUnitSuspension(unitBlueprint?.suspension),
@@ -323,7 +324,7 @@ function createBuildingFromNetwork(
   const entity: Entity = {
     id,
     type: 'building',
-    transform: { x, y, z: netEntity.pos.z, rotation },
+    transform: { x, y, z: netEntity.pos?.z ?? 0, rotation },
     ownership: { playerId },
     selectable: { selected: false },
     building: {

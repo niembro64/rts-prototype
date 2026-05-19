@@ -1,7 +1,7 @@
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
 import type { ForceFieldReflectionMode } from '../../types/shotTypes';
-import type { TiltEmaMode } from '../../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../../shellConfig';
 
 export type ServerSnapshotMetaInput = {
   tickAvg: number;
@@ -28,7 +28,7 @@ export type ServerSnapshotMetaInput = {
     speed: number;
     angle: number;
   };
-  tiltEmaMode: TiltEmaMode;
+  unitGroundNormalEmaMode: UnitGroundNormalEmaMode;
 };
 
 export class ServerSnapshotMetaBuilder {
@@ -77,7 +77,7 @@ export class ServerSnapshotMetaBuilder {
         speed: input.wind.speed,
         angle: input.wind.angle,
       },
-      tiltEma: input.tiltEmaMode,
+      unitGroundNormalEma: input.unitGroundNormalEmaMode,
     };
   }
 

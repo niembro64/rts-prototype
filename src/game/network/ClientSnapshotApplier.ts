@@ -45,7 +45,7 @@ export function snapClientNonVisualState(
   const su = server.unit;
   let cacheDirty = false;
   if (entity.unit && su) {
-    if (isFull || cf! & ENTITY_CHANGED_HP) {
+    if ((isFull || cf! & ENTITY_CHANGED_HP) && su.hp) {
       entity.unit.hp = su.hp.curr;
       entity.unit.maxHp = su.hp.max;
       cacheDirty = true;
@@ -94,12 +94,12 @@ export function snapClientNonVisualState(
 
   const sb = server.building;
   if (entity.building) {
-    if (isFull || cf! & ENTITY_CHANGED_POS) {
+    if ((isFull || cf! & ENTITY_CHANGED_POS) && server.pos) {
       entity.transform.x = server.pos.x;
       entity.transform.y = server.pos.y;
       entity.transform.z = server.pos.z;
     }
-    if (isFull || cf! & ENTITY_CHANGED_ROT) {
+    if ((isFull || cf! & ENTITY_CHANGED_ROT) && server.rotation !== undefined) {
       entity.transform.rotation = server.rotation;
     }
   }
@@ -121,13 +121,13 @@ export function snapClientNonVisualState(
     entity.metalExtractionRate = sb.metalExtractionRate;
   }
 
-  if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_HP)) {
+  if (entity.building && sb?.hp && (isFull || cf! & ENTITY_CHANGED_HP)) {
     entity.building.hp = sb.hp.curr;
     entity.building.maxHp = sb.hp.max;
     cacheDirty = true;
   }
 
-  if (entity.building && sb && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
+  if (entity.building && sb?.build && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
     cacheDirty = applyNetworkBuildState(
       entity,
       sb.build,

@@ -15,11 +15,6 @@ import { isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret, getGraphicsConfig } from '@/clientBarConfig';
-import type { Lod3DState } from './Lod3D';
-import { objectLodToGraphicsTier, type RenderObjectLodTier } from './RenderObjectLod';
-import { RenderLodGrid } from './RenderLodGrid';
-import { normalizeLodCellSize } from '../lodGridMath';
-import { landCellIndexForSize } from '../landGrid';
 import { detachObject, disposeMesh } from './threeUtils';
 
 // Cylinder radius is the sim's `shot.radius` (= shot.width / 2), scaled
@@ -46,15 +41,6 @@ export type TurretMountResolver = {
     entityId: number,
     turretIdx: number,
   ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
-};
-
-const BEAM_LOD_ORDER: Record<RenderObjectLodTier, number> = {
-  marker: 0,
-  impostor: 1,
-  mass: 2,
-  simple: 3,
-  rich: 4,
-  hero: 5,
 };
 
 const BEAM_OPACITY_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
@@ -171,9 +157,6 @@ export class BeamRenderer3D {
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
   private scope: ViewportFootprint;
-  private ownedLodGrid = new RenderLodGrid();
-  private frameLodGrid = this.ownedLodGrid;
-  private lodActive = false;
   private frameGfx: GraphicsConfig = getGraphicsConfig();
   private lastContentVersion = -1;
   private lastRenderKey = '';
@@ -246,33 +229,6 @@ export class BeamRenderer3D {
     this.endpointMesh.renderOrder = 13;
     this.endpointMesh.count = 0;
     this.root.add(this.endpointMesh);
-  }
-
-  private resolvePointLod(simX: number, simY: number, simZ: number): RenderObjectLodTier {
-    if (!this.lodActive) return 'rich';
-    return this.frameLodGrid.resolve(simX, simZ, simY);
-  }
-
-  private richerLod(a: RenderObjectLodTier, b: RenderObjectLodTier): RenderObjectLodTier {
-    return BEAM_LOD_ORDER[b] > BEAM_LOD_ORDER[a] ? b : a;
-  }
-
-  private resolveBeamLod(
-    startX: number,
-    startY: number,
-    startZ: number,
-    endX: number,
-    endY: number,
-    endZ: number,
-  ): RenderObjectLodTier {
-    let tier = this.resolvePointLod(startX, startY, startZ);
-    tier = this.richerLod(tier, this.resolvePointLod(endX, endY, endZ));
-    tier = this.richerLod(tier, this.resolvePointLod(
-      (startX + endX) * 0.5,
-      (startY + endY) * 0.5,
-      (startZ + endZ) * 0.5,
-    ));
-    return tier;
   }
 
   private placeSegment(
@@ -362,39 +318,21 @@ export class BeamRenderer3D {
     );
   }
 
-  private makeRenderKey(lod?: Lod3DState): string {
-    if (!lod) return `none|${this.frameGfx.tier}|${this.scope.getVersion()}`;
-    const size = normalizeLodCellSize(this.frameGfx.objectLodCellSize);
-    const view = lod.view;
-    const cameraAltitudeBand = Math.floor(view.cameraY / size);
-    return [
-      lod.key,
-      size,
-      landCellIndexForSize(view.cameraX, size),
-      landCellIndexForSize(view.cameraZ, size),
-      cameraAltitudeBand,
-      this.scope.getVersion(),
-    ].join('|');
+  private makeRenderKey(): string {
+    return `${this.frameGfx.tier}|${this.frameGfx.beamStyle}|${this.scope.getVersion()}`;
   }
 
   update(
     projectiles: readonly Entity[],
     graphicsConfig?: GraphicsConfig,
-    lod?: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
     contentVersion?: number,
     turretMountResolver?: TurretMountResolver,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0 && this.activeEndpointCount === 0) return;
     this.flowTimeUniform.value = performance.now() * 0.001;
     this.frameGfx = graphicsConfig ?? getGraphicsConfig();
-    this.lodActive = lod !== undefined;
-    this.frameLodGrid = sharedLodGrid ?? this.ownedLodGrid;
-    if (lod) {
-      if (!sharedLodGrid) this.frameLodGrid.beginFrame(lod.view, this.frameGfx);
-    }
     const snapToTurret = getBeamSnapToTurret() && !!turretMountResolver;
-    const renderKey = this.makeRenderKey(lod);
+    const renderKey = this.makeRenderKey();
     if (
       !snapToTurret &&
       contentVersion !== undefined &&
@@ -418,21 +356,15 @@ export class BeamRenderer3D {
       if (!points || points.length < 2) continue;
       const startPoint = points[0];
       const endPoint = points[points.length - 1];
-      // Scope gate before any LOD-grid work. Off-screen beam segments
-      // can be numerous in large fights, and resolving their camera
-      // sphere tier is wasted if both endpoints are outside the active
-      // render footprint.
+      // Scope gate before segment placement. Off-screen beam segments
+      // can be numerous in large fights.
       const startIn = this.scope.inScope(startPoint.x, startPoint.y, 200);
       const endIn = this.scope.inScope(endPoint.x, endPoint.y, 200);
       if (!startIn && !endIn) continue;
 
       // Vertical endpoints come from the 3D beam tracer; the polyline
       // points already carry their own z (per-vertex 3D position).
-      const objectTier = this.resolveBeamLod(
-        startPoint.x, startPoint.y, startPoint.z,
-        endPoint.x, endPoint.y, endPoint.z,
-      );
-      const graphicsTier = objectLodToGraphicsTier(objectTier, this.frameGfx.tier);
+      const graphicsTier = this.frameGfx.tier;
       const opacityMul = BEAM_OPACITY_BY_TIER[graphicsTier];
       const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
       const flowCfg = BEAM_FLOW_BY_TIER[graphicsTier];
@@ -440,9 +372,7 @@ export class BeamRenderer3D {
       const flowTypeMul = pt === 'laser' ? 1.12 : 1;
       const flowStrength = flowCfg.strength * flowStyleMul * flowTypeMul;
       const flowSpeed = flowCfg.speed * flowTypeMul;
-      const drawReflections = objectTier !== 'impostor'
-        && graphicsTier !== 'min'
-        && graphicsTier !== 'low';
+      const drawReflections = true;
 
       const profile = proj.config.shotProfile.visual;
       // lineRadius already equals shot.width / 2 for line shots, so using it
@@ -464,8 +394,6 @@ export class BeamRenderer3D {
       // endpoints are open-ended: simulation damage remains clipped at
       // the authored range, but the final rendered leg extends forward
       // so the beam does not visibly stop in empty air.
-      // At low render LODs we collapse the polyline to a single
-      // start→end segment (skip drawing reflections).
       const segAlpha = baseAlpha * opacityMul;
       const lastIdx = points.length - 1;
       const stride = drawReflections ? 1 : lastIdx;

@@ -196,8 +196,8 @@ export function applyClientProjectilePrediction(options: {
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
   const targetDt = predictionStep.targetDeltaMs / 1000;
-  // Projectiles follow the same per-channel movement EMAs as units —
-  // ignore / snap / fast / medium / slow. <0 = ignore.
+  // Projectiles follow the same per-channel movement EMAs as units.
+  // Movement position always corrects; movement velocity can still IGNORE.
   const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
   const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
   proj.timeAlive += entityDeltaMs;

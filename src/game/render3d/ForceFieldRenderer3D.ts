@@ -274,8 +274,8 @@ export class ForceFieldRenderer3D {
   }
 
   /** Process one unit. The fill is gameplay-relevant info (a force
-   *  field is a barrier the player needs to see), so we render at
-   *  every camera-sphere band — no LOD-driven blink-on/off. */
+   *  field is a barrier the player needs to see), so it no longer
+   *  has any camera-distance detail downgrade. */
   perUnit(unit: Entity): void {
     if (!unit.combat || !unit.unit) return;
     // Force-field bubbles can be large (up to ~barrier.outerRange

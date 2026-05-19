@@ -274,7 +274,7 @@
         <li>Share physical kernels for body motion, projectile stepping, recoil, hover, jump, turret pose, terrain sampling, and collision helpers.</li>
         <li>Keep authoritative-only systems on the host: command validation, economy, construction completion, targeting truth, damage, fog filtering, unit creation and death, and victory.</li>
         <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, force-field presentation, and local command intent.</li>
-        <li>Use snapshots as correction targets. The client stores the most recent server target per entity and decides per channel — movement position, movement velocity, rotation position, rotation velocity — whether to ignore it, snap to it, or EMA toward it. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
+        <li>Use snapshots as correction targets. The client stores the most recent server target per entity. Position channels — movement position and rotation position — always apply correction by snapping or EMA-blending toward it; velocity channels — movement velocity and rotation velocity — can additionally ignore the snapshot derivative when that is useful for prediction testing. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
       </ul>
 
       <h3>Prediction is velocity-based</h3>
@@ -305,12 +305,12 @@
       <p>
         Each prediction channel has its own EMA control: <code>movement
         position</code>, <code>movement velocity</code>, <code>rotation
-        position</code>, and <code>rotation velocity</code>. The four
-        controls share the same five modes — <code>ignore</code>,
-        <code>snap</code>, <code>fast</code>, <code>medium</code>,
-        <code>slow</code> — and the client always stores the most recent
-        snapshot value per channel so the chosen mode can be applied
-        afresh every client tick.
+        position</code>, and <code>rotation velocity</code>. Position
+        controls expose <code>snap</code>, <code>fast</code>,
+        <code>medium</code>, and <code>slow</code>; velocity controls
+        also expose <code>ignore</code>. The client always stores the
+        most recent snapshot value per channel so the chosen mode can be
+        applied afresh every client tick.
       </p>
       <ul class="rule-list">
         <li><code>ignore</code> &mdash; the stored snapshot value exists but the client never applies it to the rendered entity for that channel. Prediction (if any) continues from the last applied value forever.</li>
@@ -319,8 +319,8 @@
       </ul>
       <p>
         Splitting the EMA per channel means a player can keep movement
-        snappy while letting rotation drift gently, or freeze rotation
-        entirely while velocity catches up. The mode is a render-time
+        snappy while letting rotation drift gently, or freeze velocity
+        entirely while position catches up. The mode is a render-time
         decision, not a snapshot-decode decision: the target store
         always accepts the newest authoritative value, and the
         per-channel mode controls only how the rendered state walks
@@ -468,11 +468,10 @@
 
       <h3>LOD is allowed, but it must be honest</h3>
       <p>
-        There are two separate LOD systems: server simulation LOD and client render/prediction LOD.
-        Server LOD may stride, budget, and stagger expensive systems like targeting, beam tracing,
-        projectile collision checks, and capture accumulation, as long as the time-integral and
-        gameplay meaning remain coherent. Client LOD may reduce visual detail, prediction frequency,
-        labels, effects, and mesh richness. Client LOD must not become gameplay authority.
+        There are two separate concerns: server simulation authority and client visual detail.
+        Server simulation, snapshots, and client prediction run at their normal cadence without
+        camera-distance throttles. Client render LOD may reduce labels, effects, and mesh richness,
+        but it must not change gameplay authority or unit/turret pose update frequency.
       </p>
     </section>
 
@@ -857,7 +856,7 @@
         <li>Keep commands small, direct, validated, and host-owned.</li>
         <li>Keep snapshots sparse, recipient-aware, and low cadence by default.</li>
         <li>Keep client prediction physically compatible with the server, especially for motion and projectiles. Ship velocity, not acceleration: the server owns force inputs, the wire ships their integrated result, and the client extrapolates from velocity only.</li>
-        <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity) with the same five modes (ignore, snap, fast, medium, slow) so playtesters can tune each channel independently without rebuilds.</li>
+        <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity). Position channels use snap/fast/medium/slow; velocity channels additionally allow ignore so playtesters can tune each channel independently without rebuilds.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>

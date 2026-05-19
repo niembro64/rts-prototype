@@ -88,8 +88,8 @@ function applyBeamPathPrediction(
   // PREDICT mode gates whether we step the snapshot beam-path target
   // forward each frame. 'pos' freezes the target at its last snapshot
   // value (the per-channel movement-pos EMA below still pulls the
-  // rendered point toward it when not in IGNORE mode). 'vel' steps
-  // position from velocity. Acceleration is not on the wire, so the
+  // rendered point toward it). 'vel' steps position from velocity.
+  // Acceleration is not on the wire, so the
   // per-vertex `ax/ay/az` slots stay at 0 and the integrator never
   // reads them — there is no ACC mode.
   const predictionMode = getPredictionMode();
@@ -272,21 +272,13 @@ export class ClientPredictionStepper {
         dirtyUnitRenderIds.add(id);
       }
       if (entity.combat && entity.combat.turrets.length > 0) {
-        const predictionStride = predictionCadence.frameStride();
-        const predictionStep = predictionCadence.consumeDelta(
-          entity.id,
-          this.frameCounter,
-          deltaMs,
-          predictionStride,
-        );
-        if (predictionStep) {
-          applyClientCombatExpensivePrediction({
-            entity,
-            target,
-            predictionStep,
-            forceFieldsEnabled,
-          });
-        }
+        const predictionStep = predictionCadence.consumeDelta(deltaMs);
+        applyClientCombatExpensivePrediction({
+          entity,
+          target,
+          predictionStep,
+          forceFieldsEnabled,
+        });
       }
 
       if (clientUnitPredictionIsSettled(entity, target, forceFieldsEnabled)) {
@@ -304,14 +296,7 @@ export class ClientPredictionStepper {
 
       const target = serverTargets.get(id);
       noteTargetAge(targetAgeStats, target?.updatedAtMs, now);
-      const predictionStride = predictionCadence.frameStride();
-      const predictionStep = predictionCadence.consumeDelta(
-        entity.id,
-        this.frameCounter,
-        deltaMs,
-        predictionStride,
-      );
-      if (predictionStep === null) continue;
+      const predictionStep = predictionCadence.consumeDelta(deltaMs);
 
       const projectileResult = applyClientProjectilePrediction({
         entity,

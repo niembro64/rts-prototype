@@ -461,6 +461,78 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
   to.normalZ = from.normalZ;
 }
 
+export function copySentPrevState(
+  from: PrevEntityState,
+  to: PrevEntityState,
+  changedFields: number | undefined,
+): void {
+  if (changedFields === undefined) {
+    copyPrevState(from, to);
+    return;
+  }
+
+  if (changedFields & ENTITY_CHANGED_POS) {
+    to.x = from.x;
+    to.y = from.y;
+    to.z = from.z;
+  }
+  if (changedFields & ENTITY_CHANGED_ROT) {
+    to.rotation = from.rotation;
+  }
+  if (changedFields & ENTITY_CHANGED_VEL) {
+    to.velocityX = from.velocityX;
+    to.velocityY = from.velocityY;
+    to.velocityZ = from.velocityZ;
+    to.movementAccelX = from.movementAccelX;
+    to.movementAccelY = from.movementAccelY;
+    to.movementAccelZ = from.movementAccelZ;
+  }
+  if (changedFields & ENTITY_CHANGED_HP) {
+    to.hp = from.hp;
+  }
+  if (changedFields & ENTITY_CHANGED_ACTIONS) {
+    to.actionCount = from.actionCount;
+    to.actionHash = from.actionHash;
+  }
+  if (changedFields & ENTITY_CHANGED_TURRETS) {
+    to.isEngagedBits = from.isEngagedBits;
+    to.targetBits = from.targetBits;
+    to.weaponCount = from.weaponCount;
+    while (to.turretRots.length < from.weaponCount) {
+      to.turretRots.push(0);
+      to.turretAngVels.push(0);
+      to.turretPitches.push(0);
+      to.forceFieldRanges.push(0);
+    }
+    for (let i = 0; i < from.weaponCount; i++) {
+      to.turretRots[i] = from.turretRots[i];
+      to.turretAngVels[i] = from.turretAngVels[i];
+      to.turretPitches[i] = from.turretPitches[i];
+      to.forceFieldRanges[i] = from.forceFieldRanges[i];
+    }
+    if (to.turretRots.length > from.weaponCount) {
+      to.turretRots.length = from.weaponCount;
+      to.turretAngVels.length = from.weaponCount;
+      to.turretPitches.length = from.weaponCount;
+      to.forceFieldRanges.length = from.weaponCount;
+    }
+  }
+  if (changedFields & ENTITY_CHANGED_BUILDING) {
+    to.buildProgress = from.buildProgress;
+    to.solarOpen = from.solarOpen;
+  }
+  if (changedFields & ENTITY_CHANGED_FACTORY) {
+    to.factoryProgress = from.factoryProgress;
+    to.isProducing = from.isProducing;
+    to.buildQueueLen = from.buildQueueLen;
+  }
+  if (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL)) {
+    to.normalX = from.normalX;
+    to.normalY = from.normalY;
+    to.normalZ = from.normalZ;
+  }
+}
+
 export function getNextEntityState(entity: Entity): PrevEntityState {
   let next = capturedNextStates.get(entity.id);
   if (!next) {

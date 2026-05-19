@@ -28,11 +28,7 @@ import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
 import type { Waypoint3D } from '../../render3d/Waypoint3D';
 import { resolveEntityDisplayName } from '../../render3d/EntityName';
-import type { LodGridCells2D } from '../../render3d/LodGridCells2D';
-import type { LodShellGround3D } from '../../render3d/LodShellGround3D';
-import type { Lod3DState } from '../../render3d/Lod3D';
-import type { RenderLodGrid } from '../../render3d/RenderLodGrid';
-import { getRenderObjectLodShellDistances } from '../../render3d/RenderObjectLod';
+import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintQuad } from '../../ViewportFootprint';
 import type { ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
@@ -61,8 +57,6 @@ export type RtsScene3DRenderPhaseResources = {
   healthBar3D: HealthBar3D | null;
   nameLabel3D: NameLabel3D | null;
   waypoint3D: Waypoint3D | null;
-  lodShellGround3D: LodShellGround3D | null;
-  lodGridCells2D: LodGridCells2D | null;
 };
 
 export type RtsScene3DRenderPhaseResult = {
@@ -128,10 +122,9 @@ export class RtsScene3DRenderPhase {
     deltaMs: number;
     effectDtMs: number;
     graphicsConfig: GraphicsConfig;
-    renderLod: Lod3DState;
-    renderLodGrid: RenderLodGrid;
+    renderFrameState: RenderFrameState3D;
   }): RtsScene3DRenderPhaseResult {
-    const { deltaMs, effectDtMs, graphicsConfig, renderLod, renderLodGrid } = options;
+    const { deltaMs, effectDtMs, graphicsConfig, renderFrameState } = options;
     const renderStart = performance.now();
     const {
       entityRenderer,
@@ -155,30 +148,9 @@ export class RtsScene3DRenderPhase {
       healthBar3D,
       nameLabel3D,
       waypoint3D,
-      lodShellGround3D,
-      lodGridCells2D,
     } = this.resources;
 
-    const lodShells = getRenderObjectLodShellDistances(graphicsConfig);
-    lodShellGround3D?.update(
-      this.threeApp.camera,
-      [
-        { tier: 'rich', distance: lodShells.rich },
-        { tier: 'simple', distance: lodShells.simple },
-        { tier: 'mass', distance: lodShells.mass },
-        { tier: 'impostor', distance: lodShells.impostor },
-      ],
-      false,
-    );
-    lodGridCells2D?.update(
-      graphicsConfig.objectLodCellSize,
-      false,
-    );
-    metalDepositRenderer?.update(
-      graphicsConfig,
-      renderLod,
-      renderLodGrid,
-    );
+    metalDepositRenderer?.update(graphicsConfig);
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
@@ -190,11 +162,7 @@ export class RtsScene3DRenderPhase {
       cameraQuad,
       cameraFootprint.bounds,
     );
-    environmentPropRenderer?.update(
-      graphicsConfig,
-      renderLod,
-      renderLodGrid,
-    );
+    environmentPropRenderer?.update();
     this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
 
     const serverMeta = this.clientViewState.getServerMeta();
@@ -215,8 +183,7 @@ export class RtsScene3DRenderPhase {
       deltaMs,
     );
     entityRenderer.update(
-      renderLod,
-      renderLodGrid,
+      renderFrameState,
       { mirrorsEnabled: serverMeta?.mirrorsEnabled ?? true },
     );
     contactShadowRenderer?.update(
@@ -228,8 +195,7 @@ export class RtsScene3DRenderPhase {
     );
     terrainTileRenderer.update(
       graphicsConfig,
-      renderLod,
-      renderLodGrid,
+      renderFrameState,
     );
     this.snapshotIntake.markClientReadyAfterRender();
 
@@ -240,8 +206,6 @@ export class RtsScene3DRenderPhase {
     beamRenderer.update(
       lineProjectiles,
       graphicsConfig,
-      renderLod,
-      renderLodGrid,
       this.clientViewState.getLineProjectileRenderVersion(),
       entityRenderer,
     );
@@ -249,8 +213,7 @@ export class RtsScene3DRenderPhase {
     waterRenderer.update(
       effectDtMs / 1000,
       graphicsConfig,
-      renderLod,
-      renderLodGrid,
+      renderFrameState,
     );
     this.fireExplosionAccumMs += effectDtMs;
     this.debrisAccumMs += effectDtMs;

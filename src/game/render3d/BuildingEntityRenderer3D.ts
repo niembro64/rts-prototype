@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
-import { getGraphicsConfigFor } from '@/clientBarConfig';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getTurretHeadRadius } from '../math';
@@ -12,11 +12,7 @@ import {
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
-import type { Lod3DState } from './Lod3D';
-import {
-  objectLodToGraphicsTier,
-  type RenderObjectLodTier,
-} from './RenderObjectLod';
+import type { RenderFrameState3D } from './RenderFrameState3D';
 import { buildingDetailVisible } from './RenderTier3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -39,8 +35,7 @@ export type BuildingEntityMeshFactoryOptions = {
   width: number;
   depth: number;
   ownerId: PlayerId | undefined;
-  globalGraphicsTier: ConcreteGraphicsQuality;
-  lodKey: string;
+  geometryKey: string;
   world: THREE.Group;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
@@ -54,8 +49,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     width,
     depth,
     ownerId,
-    globalGraphicsTier,
-    lodKey,
+    geometryKey,
     world,
     turretHeadGeom,
     barrelGeom,
@@ -92,15 +86,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
   const buildingTurretMeshes: TurretMesh[] = [];
   const buildingTurrets = entity.combat?.turrets;
   if (buildingTurrets) {
-    // Use the GLOBAL gfx tier, not the per-entity distance tier, when
-    // building the turret. Distance-LOD can briefly drop a tower to
-    // marker/min while the camera is framing in, and the building mesh
-    // is cached forever after that.
-    const isDefenseTower =
-      shapeType === 'megaBeamTower' || shapeType === 'cannonTower';
-    const buildingTurretTier =
-      isDefenseTower && globalGraphicsTier === 'min' ? 'low' : globalGraphicsTier;
-    const buildingGfx = getGraphicsConfigFor(buildingTurretTier);
+    const buildingGfx = getGraphicsConfig();
     for (let ti = 0; ti < buildingTurrets.length; ti++) {
       const turret = buildingTurrets[ti];
       if (turret.config.constructionEmitter) {
@@ -132,7 +118,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     // BuildingShape3D path), so the field is unused here.
     bodyShapeKey: '',
     turrets: buildingTurretMeshes,
-    lodKey,
+    geometryKey,
     buildingDetails: shape.details,
     factoryRig: shape.factoryRig,
     windRig: shape.windRig,
@@ -149,12 +135,10 @@ export type BuildingEntityRenderer3DOptions = {
   clientViewState: ClientViewState;
   selectionOverlays: SelectionOverlayRenderer3D;
   constructionVisuals: ConstructionVisualController3D;
-  markerBoxGeom: THREE.BoxGeometry;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
-  resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   /** Current local player id, for ghost-building detection (FOW-02a).
    *  A foreign building stays on the client after exiting vision
@@ -175,12 +159,10 @@ export class BuildingEntityRenderer3D {
   private readonly clientViewState: ClientViewState;
   private readonly selectionOverlays: SelectionOverlayRenderer3D;
   private readonly constructionVisuals: ConstructionVisualController3D;
-  private readonly markerBoxGeom: THREE.BoxGeometry;
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
   private readonly barrelMat: THREE.Material;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
-  private readonly resolveObjectLod: (entity: Entity) => RenderObjectLodTier;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   private readonly getLocalPlayerId: () => PlayerId | undefined;
   private readonly animations: BuildingAnimationController3D;
@@ -203,12 +185,10 @@ export class BuildingEntityRenderer3D {
     this.clientViewState = options.clientViewState;
     this.selectionOverlays = options.selectionOverlays;
     this.constructionVisuals = options.constructionVisuals;
-    this.markerBoxGeom = options.markerBoxGeom;
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
     this.barrelMat = options.barrelMat;
     this.getPrimaryMat = options.getPrimaryMat;
-    this.resolveObjectLod = options.resolveObjectLod;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.getLocalPlayerId = options.getLocalPlayerId;
     this.ghostMat = new THREE.MeshLambertMaterial({
@@ -223,7 +203,7 @@ export class BuildingEntityRenderer3D {
     );
   }
 
-  update(lod: Lod3DState, spinDt: number, currentDtMs: number, timeMs: number): void {
+  update(frameState: RenderFrameState3D, spinDt: number, currentDtMs: number, timeMs: number): void {
     const buildings = this.clientViewState.getBuildings();
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const pruneBuildings = entitySetVersion !== this.lastEntitySetVersion;
@@ -238,7 +218,7 @@ export class BuildingEntityRenderer3D {
 
     for (const entity of buildings) {
       if (pruneBuildings) this.seenIds.add(entity.id);
-      this.updateBuilding(entity, lod);
+      this.updateBuilding(entity, frameState);
     }
 
     this.animations.update(this.meshes, spinDt, currentDtMs, timeMs);
@@ -315,15 +295,8 @@ export class BuildingEntityRenderer3D {
     return true;
   }
 
-  private updateBuilding(entity: Entity, lod: Lod3DState): void {
-    // Buildings are sparse and strategically important. Do not apply
-    // the 2D render-scope early-out here: it can disagree with the
-    // perspective/frustum view at steep camera angles and make a
-    // building vanish even though its 3D LOD cell should render a
-    // full shape or marker. Let Three frustum-cull the final meshes.
-    const objectTier = this.resolveObjectLod(entity);
-    const markerOnly = objectTier === 'marker';
-    const graphicsTier = markerOnly ? 'min' : objectLodToGraphicsTier(objectTier, lod.gfx.tier);
+  private updateBuilding(entity: Entity, frameState: RenderFrameState3D): void {
+    const graphicsTier = frameState.gfx.tier;
     const ownerId = entity.ownership?.playerId;
     const width = entity.building?.width ?? 100;
     const depth = entity.building?.height ?? 100;
@@ -335,8 +308,7 @@ export class BuildingEntityRenderer3D {
         width,
         depth,
         ownerId,
-        globalGraphicsTier: lod.gfx.tier,
-        lodKey: lod.key,
+        geometryKey: frameState.key,
         world: this.world,
         turretHeadGeom: this.turretHeadGeom,
         barrelGeom: this.barrelGeom,
@@ -354,10 +326,9 @@ export class BuildingEntityRenderer3D {
         : 1;
     const selected = entity.selectable?.selected === true;
     const buildingBaseY = entity.building ? entity.transform.z - entity.building.depth / 2 : 0;
-    const detailsReady = !markerOnly && progress >= 1;
+    const detailsReady = progress >= 1;
     const isGhost = this.isBuildingGhost(entity);
     const renderDirty =
-      mesh.buildingCachedTier !== objectTier ||
       mesh.buildingCachedGraphicsTier !== graphicsTier ||
       mesh.buildingCachedOwnerId !== ownerId ||
       mesh.buildingCachedProgress !== progress ||
@@ -374,7 +345,6 @@ export class BuildingEntityRenderer3D {
       this.updateBuildingMesh(
         entity,
         mesh,
-        objectTier,
         graphicsTier,
         ownerId,
         width,
@@ -396,7 +366,6 @@ export class BuildingEntityRenderer3D {
   private updateBuildingMesh(
     entity: Entity,
     mesh: EntityMesh,
-    objectTier: RenderObjectLodTier,
     graphicsTier: ConcreteGraphicsQuality,
     ownerId: PlayerId | undefined,
     width: number,
@@ -441,20 +410,7 @@ export class BuildingEntityRenderer3D {
     const primary = mesh.chassisMeshes[0];
     primary.position.set(0, renderHeight / 2, 0);
     primary.scale.set(width, renderHeight, depth);
-    primary.visible = objectTier !== 'marker';
-
-    if (!mesh.lodMarker) {
-      const marker = new THREE.Mesh(this.markerBoxGeom, ghostMat ?? this.getPrimaryMat(ownerId));
-      marker.userData.entityId = entity.id;
-      mesh.group.add(marker);
-      mesh.lodMarker = marker;
-    } else {
-      mesh.lodMarker.material = ghostMat ?? this.getPrimaryMat(ownerId);
-    }
-    const markerHeight = entity.building?.depth ?? (mesh.buildingHeight ?? BUILDING_HEIGHT);
-    mesh.lodMarker.visible = objectTier === 'marker';
-    mesh.lodMarker.position.set(0, markerHeight / 2, 0);
-    mesh.lodMarker.scale.set(width, markerHeight, depth);
+    primary.visible = true;
 
     if (mesh.buildingDetails) {
       for (const detail of mesh.buildingDetails) {
@@ -464,7 +420,6 @@ export class BuildingEntityRenderer3D {
 
     this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
 
-    mesh.buildingCachedTier = objectTier;
     mesh.buildingCachedGraphicsTier = graphicsTier;
     mesh.buildingCachedOwnerId = ownerId;
     mesh.buildingCachedProgress = progress;

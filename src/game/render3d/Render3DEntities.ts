@@ -25,24 +25,17 @@ import {
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
-  lodKey,
-  snapshotLod,
-  type Lod3DState,
-} from './Lod3D';
-import {
-  isRichObjectLod,
-  objectLodToGraphicsTier,
-  type RenderObjectLodTier,
-} from './RenderObjectLod';
-import { RenderLodGrid } from './RenderLodGrid';
+  graphicsKey,
+  snapshotRenderFrameState,
+  type RenderFrameState3D,
+} from './RenderFrameState3D';
 import { getBodyGeom, disposeBodyGeoms } from './BodyShape3D';
 import {
   disposeBuildingGeoms,
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
-import { getGraphicsConfigFor } from '@/clientBarConfig';
-import { shouldRunOnStride } from '../math';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -72,18 +65,6 @@ const BARREL_COLOR = 0xffffff;
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
 
-const RICH_UNIT_DETAIL_STRIDE: Record<RenderObjectLodTier, number> = {
-  hero: 1,
-  rich: 1,
-  simple: 2,
-  mass: 3,
-  impostor: 4,
-  marker: 8,
-};
-const UNIT_DETAIL_TRANSFORM_EPSILON = 0.05;
-const UNIT_DETAIL_ROTATION_EPSILON = 0.001;
-const UNIT_DETAIL_VELOCITY_EPSILON_SQ = 0.25;
-
 // Scratch globals reused by the per-unit surface-tilt path so the
 // per-frame loop allocates no quaternions/vectors. Tilt is applied
 // to every unit, every frame — keep this fast.
@@ -107,11 +88,10 @@ export class Render3DEntities {
   private clientViewState: ClientViewState;
   private camera: THREE.PerspectiveCamera;
   private getViewportHeight: () => number;
-  /** Visibility scope (RENDER: WIN/PAD/ALL). Each per-entity update
-   *  loop early-outs when the entity is outside this rect — skipping
-   *  transform writes, locomotion IK, turret placement, etc.
-   *  Three.js still handles GPU-side culling for the
-   *  meshes themselves; this guards the CPU-side setup. */
+  /** Visibility scope (RENDER: WIN/PAD/ALL). Unit pose, locomotion,
+   *  and turret updates intentionally ignore this so camera distance
+   *  cannot change their update cadence. Effect/projectile renderers
+   *  still use it for visual-only culling. */
   private scope: ViewportFootprint;
   /** Shared instanced cylinder pool for every leg in the scene.
    *  Flushed once per frame after every unit's locomotion has
@@ -139,15 +119,14 @@ export class Render3DEntities {
   private chassisInstancePose = new UnitChassisInstancePose3D();
   private turretPose = new UnitTurretPose3D();
 
-  // Per-entity leg-state snapshots stashed right before an LOD-driven
+  // Per-entity leg-state snapshots stashed right before a mesh teardown
   // mesh teardown and consumed immediately after rebuild, so feet keep
   // their world-space planted positions instead of snapping to rest.
   private legStateCache = new Map<EntityId, LegStateSnapshot>();
 
-  // LOD state — read once per frame in update(), then every builder/drawer
-  // consults these values instead of calling getGraphicsConfig() ad-hoc.
-  // When `lod.key` changes, any pre-built unit mesh is rebuilt.
-  private lod: Lod3DState = snapshotLod();
+  // Per-frame graphics state. No frontend camera-distance object tiers are
+  // resolved from this; it is only the single active graphics config.
+  private frameState: RenderFrameState3D = snapshotRenderFrameState();
 
   // Shared geometries & per-team materials (avoid per-entity allocation).
   // Unit chassis geometries are body-shape keyed and handled by BodyShape3D.
@@ -157,12 +136,6 @@ export class Render3DEntities {
   // barrels clipping through a flat cylinder top.
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
   private commanderVisualKit = new CommanderVisualKit3D();
-  /** Unit box used as the BUILDING marker mesh at the lowest LOD tier.
-   *  Scaled per-frame to the building's logical sim cuboid
-   *  (width × depth × height) so the building still reads as a building
-   *  on the ground at marker tier — same volume the host sim uses for
-   *  its static collider, same volume the high-LOD primary occupies. */
-  private buildingMarkerBoxGeom = new THREE.BoxGeometry(1, 1, 1);
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   // Mirror panel = flat unit square plane. Default orientation: face
@@ -191,10 +164,6 @@ export class Render3DEntities {
   // force-field shield treatment so they read as reflector surfaces
   // instead of chrome slabs.
   private mirrorShinyNeutralMat = createMirrorReflectorPanelMaterial();
-  private ownedObjectLodGrid = new RenderLodGrid();
-  private objectLodGrid = this.ownedObjectLodGrid;
-  private richUnitDetailFrame = 0;
-
   /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
    *  yaw-only quaternion. Module-local axis (`_INST_UP`) drives the yaw
    *  quaternion. */
@@ -256,12 +225,10 @@ export class Render3DEntities {
       clientViewState: this.clientViewState,
       selectionOverlays: this.selectionOverlays,
       constructionVisuals: this.constructionVisuals,
-      markerBoxGeom: this.buildingMarkerBoxGeom,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
       barrelMat: this.barrelMat,
       getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
-      resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       getLocalPlayerId: () => this.getLocalPlayerId(),
     });
@@ -270,7 +237,6 @@ export class Render3DEntities {
       clientViewState: this.clientViewState,
       scope: this.scope,
       radiusSphereGeom: this.radiusSphereGeom,
-      resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
     });
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat). The
@@ -280,9 +246,6 @@ export class Render3DEntities {
     this.unitMassInstances = new UnitMassInstanceRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
-      scope: this.scope,
-      resolveObjectLod: (entity) => this.resolveEntityObjectLod(entity),
-      hasSceneMesh: (entityId) => this.unitMeshes.has(entityId),
     });
     this.unitDetailInstances = new UnitDetailInstanceRenderer3D({
       world: this.world,
@@ -325,17 +288,12 @@ export class Render3DEntities {
   }
 
   update(
-    lodOverride?: Lod3DState,
-    sharedLodGrid?: RenderLodGrid,
+    frameStateOverride?: RenderFrameState3D,
     featureFlags?: { mirrorsEnabled?: boolean },
   ): void {
-    // Refresh the render-detail snapshot once per frame. Unit meshes compare
-    // their own effective object-tier key inside updateUnitMeshes(), so a
-    // camera sphere config change does not tear down every unit at once.
-    const newLod = lodOverride ?? snapshotLod(this.camera, this.getViewportHeight());
-    this.lod = newLod;
-    this.objectLodGrid = sharedLodGrid ?? this.ownedObjectLodGrid;
-    if (!sharedLodGrid) this.objectLodGrid.beginFrame(this.lod.view, this.lod.gfx);
+    // Refresh the single render-detail snapshot once per frame.
+    const newFrameState = frameStateOverride ?? snapshotRenderFrameState(this.camera, this.getViewportHeight());
+    this.frameState = newFrameState;
     this.mirrorsEnabled = featureFlags?.mirrorsEnabled ?? true;
 
     const frameSpin = this.barrelSpinState.beginFrame();
@@ -343,9 +301,9 @@ export class Render3DEntities {
     this._spinDt = frameSpin.spinDtSec;
     this.turretMountCache.reset(this._currentDtMs);
     this.updateUnits();
-    this.buildingRenderer.update(this.lod, this._spinDt, this._currentDtMs, frameSpin.timeMs);
+    this.buildingRenderer.update(this.frameState, this._spinDt, this._currentDtMs, frameSpin.timeMs);
     this.projectileRangeEnvelope.update();
-    this.projectileRenderer.update(this.lod);
+    this.projectileRenderer.update(this.frameState);
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
     // every unit wrote into the same shared pool above; the GPU
@@ -357,9 +315,7 @@ export class Render3DEntities {
 
   private _currentDtMs = 0;
 
-  /** Wipe every cached unit mesh so the next updateUnits() rebuilds them at
-   *  the current LOD. Explosions / projectiles / tile grid don't need a rebuild
-   *  — their per-frame loops already read the LOD snapshot directly. */
+  /** Wipe every cached unit mesh so the next updateUnits() rebuilds them. */
   private rebuildAllUnitsOnLodChange(): void {
     for (const [id, m] of this.unitMeshes) {
       // Stash leg state across the rebuild so feet keep their world
@@ -375,62 +331,6 @@ export class Render3DEntities {
     this.unitMeshes.clear();
     this.barrelSpinState.clear();
     this.unitDetailInstances.releaseAllSlots();
-  }
-
-  private shouldUpdateRichUnitDetails(
-    entity: Entity,
-    mesh: EntityMesh,
-    tier: RenderObjectLodTier,
-    meshWasBuilt: boolean,
-  ): boolean {
-    if (meshWasBuilt) return true;
-    if (isRichObjectLod(tier)) return true;
-    if (entity.selectable?.selected === true || mesh.ring !== undefined) return true;
-    if (mesh.radiusRingsVisible || mesh.rangeRingsVisible || mesh.buildRing !== undefined) return true;
-    const unit = entity.unit;
-    if (unit) {
-      const vx = unit.velocityX ?? 0;
-      const vy = unit.velocityY ?? 0;
-      const vz = unit.velocityZ ?? 0;
-      if (vx * vx + vy * vy + vz * vz > UNIT_DETAIL_VELOCITY_EPSILON_SQ) return true;
-      const suspension = unit.suspension;
-      if (suspension) {
-        const sx = suspension.offsetX;
-        const sy = suspension.offsetY;
-        const sz = suspension.offsetZ;
-        const svx = suspension.velocityX;
-        const svy = suspension.velocityY;
-        const svz = suspension.velocityZ;
-        if (
-          sx * sx + sy * sy + sz * sz > UNIT_DETAIL_TRANSFORM_EPSILON * UNIT_DETAIL_TRANSFORM_EPSILON ||
-          svx * svx + svy * svy + svz * svz > UNIT_DETAIL_VELOCITY_EPSILON_SQ
-        ) {
-          return true;
-        }
-      }
-    }
-    if (entity.combat?.hasActiveCombat) return true;
-    if (unit?.locomotion.type === 'hover') return true;
-    const cachedX = mesh.unitDetailCachedX;
-    if (
-      cachedX === undefined ||
-      Math.abs(entity.transform.x - cachedX) > UNIT_DETAIL_TRANSFORM_EPSILON ||
-      Math.abs(entity.transform.y - (mesh.unitDetailCachedY ?? entity.transform.y)) > UNIT_DETAIL_TRANSFORM_EPSILON ||
-      Math.abs(entity.transform.z - (mesh.unitDetailCachedZ ?? entity.transform.z)) > UNIT_DETAIL_TRANSFORM_EPSILON ||
-      Math.abs(entity.transform.rotation - (mesh.unitDetailCachedRotation ?? entity.transform.rotation)) >
-        UNIT_DETAIL_ROTATION_EPSILON
-    ) {
-      return true;
-    }
-    const stride = RICH_UNIT_DETAIL_STRIDE[tier] ?? 1;
-    return shouldRunOnStride(this.richUnitDetailFrame, stride, entity.id);
-  }
-
-  private markRichUnitDetailsUpdated(entity: Entity, mesh: EntityMesh): void {
-    mesh.unitDetailCachedX = entity.transform.x;
-    mesh.unitDetailCachedY = entity.transform.y;
-    mesh.unitDetailCachedZ = entity.transform.z;
-    mesh.unitDetailCachedRotation = entity.transform.rotation;
   }
 
   /** Remove every overlay mesh that lives in the world group (not the
@@ -452,14 +352,6 @@ export class Render3DEntities {
     this.unitMeshes.delete(id);
   }
 
-  private resolveEntityObjectLod(entity: Entity): RenderObjectLodTier {
-    return this.objectLodGrid.resolve(
-      entity.transform.x,
-      entity.transform.z,
-      entity.transform.y,
-    );
-  }
-
   /** Per-frame shell-state color sync for instanced render paths. This
    *  intentionally uses ordinary instanceColor only: no per-instance alpha
    *  attributes and no material shader patching. Per-Mesh fallbacks still use
@@ -471,19 +363,19 @@ export class Render3DEntities {
 
   private updateUnits(): void {
     this.hoverSmokeEmitters.length = 0;
-    const unitRenderMode = this.lod.gfx.unitRenderMode;
+    const unitRenderMode = this.frameState.gfx.unitRenderMode;
 
     if (unitRenderMode === 'mass') {
       this.unitMassInstances.clearRichUnits();
       if (this.unitMeshes.size > 0) {
         this.rebuildAllUnitsOnLodChange();
       }
-      this.unitMassInstances.update(this.lod);
+      this.unitMassInstances.update(this.frameState);
       return;
     }
 
     if (unitRenderMode === 'hybrid') {
-      const richUnits = this.unitMassInstances.update(this.lod, undefined, true);
+      const richUnits = this.unitMassInstances.update(this.frameState, undefined, true);
       this.updateUnitMeshes(richUnits);
       return;
     }
@@ -500,26 +392,20 @@ export class Render3DEntities {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
-    this.richUnitDetailFrame = (this.richUnitDetailFrame + 1) & 0x3fffffff;
 
     for (const e of units) {
       seen.add(e.id);
-      // Hoist transform reads — referenced by the scope gate AND the
-      // per-tick group / yaw write; reading the same prop slot off
-      // `e.transform` four+ times for thousands of units adds up.
+      // Hoist transform reads for the per-tick group / yaw write;
+      // reading the same prop slot off `e.transform` four+ times for
+      // thousands of units adds up.
       const transform = e.transform;
       const tx = transform.x;
       const ty = transform.y;
       const tRot = transform.rotation;
-      // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME, scope or no scope.
-      // The unit group carries the chassis AND its child turret /
-      // mirror groups (both parented to yawGroup). Skipping the
-      // group-level position/yaw update for off-scope units would
-      // leave the whole rigid body — turrets included — frozen at
-      // its last on-screen pose; if the camera then panned to it
-      // before the next in-scope tick, the user would see a unit
-      // floating somewhere it isn't. Cheap to set unconditionally.
-      const inScope = this.scope.inScope(tx, ty, 100);
+      // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
+      // carries the chassis AND its child turret / mirror groups
+      // (both parented to yawGroup), so all pose/detail work below
+      // runs at render cadence instead of being scope/camera gated.
       const existing = this.unitMeshes.get(e.id);
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
@@ -555,16 +441,6 @@ export class Render3DEntities {
         );
         this.updateShellInstanceColors(e, existing);
       }
-      // The expensive per-frame work below (terrain normal, slope tilt,
-      // locomotion, mirror tracking, range rings, turret-aim math) IS
-      // scope-gated. Off-scope units keep their last-known turret yaw /
-      // pitch and last-known leg positions; three.js frustum-culls them
-      // so the staleness isn't visible until they come back into scope,
-      // at which point the next in-scope tick refreshes them.
-      if (!inScope) continue;
-      // Barrel spin is visual-only, so advance it only for units that
-      // are in the active render scope. Off-scope units catch up to
-      // their current firing/idle state on the first visible frame.
       this.barrelSpinState.advance(e, spinDt);
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Body height is per-unit
@@ -575,20 +451,16 @@ export class Render3DEntities {
         ?? 15;
       const pid = e.ownership?.playerId;
       const turrets = e.combat?.turrets ?? [];
-      const objectTier = this.unitMassInstances.getRichObjectTier(e.id) ?? this.resolveEntityObjectLod(e);
-      const fullUnitDetail =
-        isRichObjectLod(objectTier) || objectTier === 'simple' || objectTier === 'impostor';
-      const unitGraphicsTier = objectTier === 'impostor'
-        ? 'min'
-        : objectLodToGraphicsTier(objectTier, this.lod.gfx.tier);
-      const unitGfx = getGraphicsConfigFor(unitGraphicsTier);
-      const unitLodKey = lodKey(unitGfx);
+      const fullUnitDetail = true;
+      const unitGraphicsTier = this.frameState.gfx.tier;
+      const unitGfx = getGraphicsConfig();
+      const unitGeometryKey = graphicsKey(unitGfx);
       const unitIsShell = isConstructionShell(e);
-      const unitRenderKey = `${unitLodKey}|shell:${unitIsShell ? 1 : 0}`;
+      const unitRenderKey = `${unitGeometryKey}|shell:${unitIsShell ? 1 : 0}`;
 
       let m = this.unitMeshes.get(e.id);
-      if (m && m.lodKey !== unitRenderKey) {
-        // Preserve leg state across the LOD-driven rebuild — feet keep
+      if (m && m.geometryKey !== unitRenderKey) {
+        // Preserve leg state across the rebuild — feet keep
         // their planted world positions through the teardown so the
         // newly built mesh resumes the gait instead of snapping back
         // to rest. Captured BEFORE destroyUnitMesh frees the legs.
@@ -597,7 +469,6 @@ export class Render3DEntities {
         this.destroyUnitMesh(e.id, m);
         m = undefined;
       }
-      const meshWasBuilt = !m;
       if (!m) {
         const legSnap = this.legStateCache.get(e.id);
         m = this.unitMeshBuilder.build({
@@ -640,10 +511,6 @@ export class Render3DEntities {
       }
       m.chassis.visible = fullUnitDetail && !m.hideChassis;
 
-      if (!this.shouldUpdateRichUnitDetails(e, m, objectTier, meshWasBuilt)) {
-        continue;
-      }
-
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
       // sim.z - bodyCenterHeight: for a ground-resting unit sim.z is
@@ -667,12 +534,12 @@ export class Render3DEntities {
       const yaw = -e.transform.rotation;
       let chassisTilted = false;
       // Read the unit's sim-side smoothed normal instead of querying
-      // the raw terrain mesh per frame. The sim's updateUnitTilt EMA
+      // the raw terrain mesh per frame. The sim's updateUnitGroundNormal
       // owns the canonical value (initialized at spawn, blended each
       // tick); for unit entities this is what we want.
       // For non-unit entities (buildings, projectiles) we fall back
       // to the raw terrain query since they don't run through the
-      // tilt EMA.
+      // unit ground normal EMA.
       const n = e.unit
         ? e.unit.surfaceNormal
         : getSurfaceNormal(
@@ -795,7 +662,6 @@ export class Render3DEntities {
           this.hoverSmokeEmitters,
         );
       }
-      this.markRichUnitDetailsUpdated(e, m);
 
       // Health bar handled by HealthBar3D (billboarded sprite in the
       // world group, depth-occluded by terrain).
@@ -831,9 +697,8 @@ export class Render3DEntities {
    *  Renderers that attach extra meshes to a unit's BODY (not its
    *  locomotion) — e.g. the force-field bubble — parent to this
    *  group at chassis-local positions; the scenegraph chain places
-   *  them in world. Returns undefined for units whose mesh hasn't
-   *  been built yet (off-scope at scene start) or has been torn
-   *  down (despawn / LOD-flip mid-frame). Buildings have no
+   *  them in world. Returns undefined for units whose mesh has been
+   *  torn down (despawn / renderer rebuild). Buildings have no
    *  liftGroup so this is unit-only. */
   getUnitYawGroup(eid: EntityId): THREE.Group | undefined {
     return this.unitMeshes.get(eid)?.liftGroup;
@@ -852,9 +717,9 @@ export class Render3DEntities {
   }
 
   /** Look up an entity's currently built locomotion mesh — undefined
-   *  if the unit has no rendered mesh yet (off-scope at scene start),
-   *  has been torn down, or its blueprint has no locomotion (statics,
-   *  buildings). Used by GroundPrint3D to read each unit's
+   *  if the unit has no rendered mesh yet, has been torn down, or
+   *  its blueprint has no locomotion (statics, buildings). Used by
+   *  GroundPrint3D to read each unit's
    *  per-contact world XZ once it has finished updating this frame. */
   getLocomotionMesh(eid: EntityId): import('./Locomotion3D').Locomotion3DMesh {
     return this.unitMeshes.get(eid)?.locomotion;
@@ -883,7 +748,6 @@ export class Render3DEntities {
     this.unitDetailInstances.destroy();
     disposeBodyGeoms();
     disposeBuildingGeoms();
-    this.buildingMarkerBoxGeom.dispose();
     this.turretHeadGeom.dispose();
     this.commanderVisualKit.dispose();
     this.barrelGeom.dispose();

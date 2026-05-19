@@ -56,13 +56,12 @@ export type ExtractorRig = {
   rateIndicator?: ProductionRateIndicatorRig;
 };
 
-/** Metal extractor LOD ladder.
+/** Metal extractor detail.
  *
  *  The complete readable extractor silhouette is the six-sided pyramid
  *  plus one rotating shiny hub/blade assembly. That simple version
- *  intentionally remains the ceiling for MEDIUM / HIGH / MAX, so the
- *  extractor does not swap into busier decorative variants as it moves
- *  through camera-sphere tiers.
+ *  intentionally remains the frontend shape so the extractor does not
+ *  swap into busier decorative variants with camera distance.
  */
 export function buildMetalExtractorMesh(
   width: number,

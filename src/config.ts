@@ -109,7 +109,7 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = 4096;
 // Higher resolution = more bytes on the wire, smoother visuals.
 export const SNAPSHOT_CONFIG: SnapshotConfig = {
   /** Master switch — false ⇒ every snap is a full keyframe (debug
-   *  only; bandwidth roughly 5–10× higher in active play). */
+   *  only; bandwidth roughly 5-10x higher in active play). */
   deltaEnabled: true,
 
   /** Entity x/y must move more than this many WORLD UNITS for the
@@ -192,10 +192,10 @@ export const SNAPSHOT_CONFIG: SnapshotConfig = {
    *  This preserves keyframe/delta correctness while cutting remote
    *  movement + turret churn from every recipient's delta stream. */
   observedEntityDelta: {
-    positionThresholdMultiplier: 4,
-    velocityThresholdMultiplier: 4,
-    rotationPositionThresholdMultiplier: 4,
-    rotationVelocityThresholdMultiplier: 4,
+    positionThresholdMultiplier: 1,
+    velocityThresholdMultiplier: 1,
+    rotationPositionThresholdMultiplier: 1,
+    rotationVelocityThresholdMultiplier: 1,
   },
 
 };

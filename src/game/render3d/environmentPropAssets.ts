@@ -1,5 +1,3 @@
-import type { RenderObjectLodTier } from '@/types/graphics';
-
 export type EnvironmentAssetFormat = 'obj' | 'fbx';
 export type EnvironmentAssetKind = 'tree' | 'grass';
 export type EnvironmentPalette =
@@ -15,7 +13,6 @@ export type EnvironmentAssetSpec = {
   materialPath?: string;
   defaultHeight: number;
   defaultRadius: number;
-  minTier: RenderObjectLodTier;
   palette: EnvironmentPalette;
 };
 
@@ -54,7 +51,6 @@ function tree(
     materialPath,
     defaultHeight,
     defaultRadius,
-    minTier: 'impostor',
     palette,
   };
 }
@@ -76,7 +72,6 @@ function grass(
     materialPath,
     defaultHeight,
     defaultRadius,
-    minTier: 'mass',
     palette,
   };
 }

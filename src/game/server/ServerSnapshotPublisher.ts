@@ -1,6 +1,6 @@
 import { SNAPSHOT_CONFIG } from '../../config';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
-import { getTiltEmaMode } from '../sim/unitTilt';
+import { getUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
@@ -145,7 +145,7 @@ export class ServerSnapshotPublisher {
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,
       wind,
-      tiltEmaMode: getTiltEmaMode(),
+      unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
     });
 
     const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);

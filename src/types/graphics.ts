@@ -21,43 +21,11 @@ export type UnitShape = 'circles' | 'full';
 export type LegStyle = 'none' | 'simple' | 'animated' | 'full';
 export type UnitRenderMode = 'mass' | 'hybrid' | 'rich';
 
-export type CameraSphereRadii = {
-  /** Innermost sphere: full rich object visuals. */
-  rich: number;
-  /** Second sphere: simplified rich meshes. */
-  simple: number;
-  /** Third sphere: mass-renderer/detail-reduced visuals. */
-  mass: number;
-  /** Outermost simplified-shape sphere. Outside this, objects render as cheap markers. */
-  impostor: number;
-};
-
-/** Per-entity render detail bands the renderer may select. Lives in
- *  this types module (not under render3d/) so that GraphicsConfig can
- *  reference it without a render-into-types layering inversion.
- *  RenderObjectLod.ts re-exports this name unchanged. */
-export type RenderObjectLodTier =
-  | 'marker'
-  | 'impostor'
-  | 'mass'
-  | 'simple'
-  | 'rich'
-  | 'hero';
-
 export type GraphicsConfig = {
-  /** The concrete tier this config was resolved to. Lets renderers
-   *  branch on the *level* (e.g. 3D draws units as plain spheres at
-   *  min/low) without having to reverse-engineer it from individual
-   *  field combinations. */
+  /** Single frontend graphics tier. The player client no longer
+   *  resolves per-object/camera-distance tiers. */
   tier: ConcreteGraphicsQuality;
   unitRenderMode: UnitRenderMode;
-  cameraSphereRadii: CameraSphereRadii;
-  /** Fixed object-detail override. When set, every entity / cell renders
-   *  at this single tier instead of consulting cameraSphereRadii distances.
-   *  The player client pins this to rich and leaves the shell radii at zero,
-   *  so distance, load, and persisted settings cannot reduce detail. */
-  forcedObjectTier?: RenderObjectLodTier;
-  objectLodCellSize: number;
   hudFrameStride: number;
   effectFrameStride: number;
   terrainTileFrameStride: number;

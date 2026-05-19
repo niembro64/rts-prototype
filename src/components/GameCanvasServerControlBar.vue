@@ -2,11 +2,10 @@
 import { GOOD_TPS } from '../telemetryConfig';
 import {
   SERVER_CONFIG,
-  snapshotRateHz,
   snapshotRateLabel,
   snapshotRateTitle,
 } from '../serverBarConfig';
-import type { TiltEmaMode } from '../shellConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -15,22 +14,29 @@ import BarLabel from './BarLabel.vue';
 import type { GameCanvasServerControlBarModel } from './gameCanvasControlBarModels';
 import { fmt4, msBarStyle, statBarStyle } from './uiUtils';
 
-const props = defineProps<{
+defineProps<{
   model: GameCanvasServerControlBarModel;
 }>();
 
-const TILT_EMA_LABEL: Record<TiltEmaMode, string> = {
+const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   snap: 'SNAP',
   fast: 'FAST',
   mid: 'MED',
   slow: 'SLOW',
 };
 
-function secPerFullsnap(ratio: number): string {
-  const sps = snapshotRateHz(props.model.displaySnapshotRate, props.model.displayTickRate);
-  const sec = 1 / (sps * ratio);
-  return `~1 fullsnap every ${+sec.toPrecision(2)}s`;
+function fullSnapTitle(opt: string | number): string {
+  if (opt === 'ALL') return 'Every snapshot is a full keyframe (1/1)';
+  if (opt === 'NONE') return 'Never send full keyframes (delta only)';
+  return `One full keyframe every ${Math.round(1 / Number(opt))} snapshots`;
 }
+
+function fullSnapLabel(opt: string | number): string {
+  if (opt === 'ALL') return '1/1';
+  if (opt === 'NONE') return 'NONE';
+  return `1/${Math.round(1 / Number(opt))}`;
+}
+
 </script>
 
 <template>
@@ -82,15 +88,15 @@ function secPerFullsnap(ratio: number): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Per-unit chassis-tilt EMA. SNAP = no smoothing (raw triangle-jump), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitTilt half-life.">TILT EMA:</BarLabel>
+        <BarLabel title="Per-unit ground normal EMA. SNAP = no smoothing (raw triangle-jump), FAST/MED/SLOW progressively heavier blending. Drives the sim's updateUnitGroundNormal half-life.">UNIT GROUND NORMAL EMA:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="mode in SERVER_CONFIG.tiltEma.options"
+            v-for="mode in SERVER_CONFIG.unitGroundNormalEma.options"
             :key="mode"
-            :active="model.serverTiltEmaMode === mode"
-            :title="`Set chassis-tilt EMA to ${TILT_EMA_LABEL[mode]}.`"
-            @click="model.setTiltEmaModeValue(mode)"
-          >{{ TILT_EMA_LABEL[mode] }}</BarButton>
+            :active="model.serverUnitGroundNormalEmaMode === mode"
+            :title="`Set unit ground normal EMA to ${UNIT_GROUND_NORMAL_EMA_LABEL[mode]}.`"
+            @click="model.setUnitGroundNormalEmaModeValue(mode)"
+          >{{ UNIT_GROUND_NORMAL_EMA_LABEL[mode] }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
@@ -161,7 +167,7 @@ function secPerFullsnap(ratio: number): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>TARGET SPS:</BarLabel>
+        <BarLabel title="Delta snapshots emitted per second by the host.">DIFFSNAP:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="rate in SERVER_CONFIG.snapshot.options"
@@ -180,21 +186,9 @@ function secPerFullsnap(ratio: number): string {
             v-for="opt in SERVER_CONFIG.keyframe.options"
             :key="String(opt)"
             :active="model.displayKeyframeRatio === opt"
-            :title="
-              opt === 'ALL'
-                ? 'Every snapshot is a full keyframe (1/1)'
-                : opt === 'NONE'
-                  ? 'Never send full keyframes (delta only)'
-                  : secPerFullsnap(opt as number)
-            "
+            :title="fullSnapTitle(opt)"
             @click="model.setKeyframeRatioValue(opt)"
-          >{{
-            opt === 'ALL'
-              ? '1/1'
-              : opt === 'NONE'
-                ? 'NONE'
-                : `1/${Math.round(1 / (opt as number))}`
-          }}</BarButton>
+          >{{ fullSnapLabel(opt) }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
     </div>

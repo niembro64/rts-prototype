@@ -58,8 +58,7 @@ import {
   makeLandGridMetrics,
   normalizeLandCellSize,
 } from '../landGrid';
-import type { Lod3DState } from './Lod3D';
-import type { RenderLodGrid } from './RenderLodGrid';
+import type { RenderFrameState3D } from './RenderFrameState3D';
 import { configureSpriteTexture } from './threeUtils';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getOccupiedBuildingCells } from '../sim/buildPlacementValidation';
@@ -1120,8 +1119,7 @@ export class TerrainTileRenderer3D {
 
   update(
     graphicsConfig: GraphicsConfig,
-    _lod?: Lod3DState,
-    _sharedLodGrid?: RenderLodGrid,
+    _frameState?: RenderFrameState3D,
   ): void {
     this.renderFrameIndex = (this.renderFrameIndex + 1) & 0x3fffffff;
 

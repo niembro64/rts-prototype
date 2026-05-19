@@ -2,14 +2,11 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import type { GraphicsConfig, RenderObjectLodTier } from '@/types/graphics';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
 import { getTreeLeafTexture } from './TreeLeafTexture';
 import { getTreeTrunkTexture } from './TreeTrunkTexture';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { ViewportFootprint } from '../ViewportFootprint';
-import type { Lod3DState } from './Lod3D';
-import { RenderLodGrid } from './RenderLodGrid';
 import {
   ACTIVE_ENVIRONMENT_ASSETS,
   type EnvironmentAssetSpec,
@@ -52,15 +49,6 @@ type ConsoleWithFbxWarningFilter = Console & {
 
 installKnownFbxMaterialWarningFilter();
 
-const OBJECT_TIER_RANK: Record<RenderObjectLodTier, number> = {
-  marker: 0,
-  impostor: 1,
-  mass: 2,
-  simple: 3,
-  rich: 4,
-  hero: 5,
-};
-
 export class EnvironmentPropRenderer3D {
   private readonly root = new THREE.Group();
   private readonly renderScope: ViewportFootprint;
@@ -75,7 +63,6 @@ export class EnvironmentPropRenderer3D {
   private destroyed = false;
   private loaded = false;
   private lastScopeVersion = -1;
-  private lastLodKey = '';
 
   constructor(
     parentWorld: THREE.Group,
@@ -95,19 +82,11 @@ export class EnvironmentPropRenderer3D {
     void this.loadAssets();
   }
 
-  update(
-    graphicsConfig: GraphicsConfig,
-    lod: Lod3DState,
-    lodGrid: RenderLodGrid,
-  ): void {
-    void graphicsConfig;
+  update(): void {
     if (!this.loaded || this.nodes.length === 0) return;
     const scopeVersion = this.renderScope.getVersion();
-    const lodKey = lod.key;
-    if (scopeVersion === this.lastScopeVersion && lodKey === this.lastLodKey)
-      return;
+    if (scopeVersion === this.lastScopeVersion) return;
     this.lastScopeVersion = scopeVersion;
-    this.lastLodKey = lodKey;
     for (const node of this.nodes) {
       const p = node.placement;
       if (!isRandomEnvironmentAssetUsable(p.assetId)) {
@@ -123,10 +102,7 @@ export class EnvironmentPropRenderer3D {
         node.root.visible = false;
         continue;
       }
-      const objectTier = lodGrid.resolve(p.x, p.y, p.z);
-      node.root.visible =
-        OBJECT_TIER_RANK[objectTier] >= OBJECT_TIER_RANK[p.minTier];
-      node.root.userData.objectLodTier = objectTier;
+      node.root.visible = true;
     }
   }
 
@@ -167,7 +143,6 @@ export class EnvironmentPropRenderer3D {
       this.buildNodes();
       this.loaded = true;
       this.lastScopeVersion = -1;
-      this.lastLodKey = '';
     } catch (error) {
       console.warn('Failed to load environment asset pack props', error);
     }
@@ -338,7 +313,6 @@ export class EnvironmentPropRenderer3D {
       root.scale.setScalar(scale);
       root.userData.environmentProp = true;
       root.userData.assetId = placement.assetId;
-      root.userData.objectLodTier = placement.minTier;
       this.root.add(root);
       this.nodes.push({ placement, root });
     }

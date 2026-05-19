@@ -1,15 +1,7 @@
-// Lod3D — graphics state tracking for the 3D renderer.
+// Per-frame graphics state for the 3D renderer.
 //
-// The 2D renderer reads getGraphicsConfig() on the fly for every draw call.
-// The 3D renderer builds meshes once and animates transforms per frame, so
-// it needs explicit state: which graphics shape did we build this unit at,
-// and does that match the current config? When they diverge, the entity's
-// mesh gets torn down and rebuilt at the new level.
-//
-// To avoid comparing every GraphicsConfig field, we compress the subset of
-// graphics axes that affect 3D geometry into a single string `lodKey`. Unit
-// meshes store their build-time key; Render3DEntities compares it to the
-// current key each frame.
+// This snapshots the single active graphics config plus camera view data
+// needed by renderers. It does not resolve camera-distance object tiers.
 
 import type * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -18,18 +10,10 @@ import type { GraphicsConfig } from '@/types/graphics';
 /** Stringified graphics key covering every GraphicsConfig axis that affects 3D
  *  geometry (not just runtime transforms). Two meshes share a key iff they
  *  were built against equivalent graphics settings. */
-export function lodKey(gfx: GraphicsConfig): string {
+export function graphicsKey(gfx: GraphicsConfig): string {
   return [
-    // Tier first — unit meshes are now rebuilt from the object ring's
-    // effective tier, while global tier still caps the richest design
-    // a ring may request. Tier flips MUST trigger a mesh rebuild even
-    // if the per-axis fields happen to coincide.
     gfx.tier,
     gfx.unitRenderMode,
-    gfx.cameraSphereRadii.rich,
-    gfx.cameraSphereRadii.simple,
-    gfx.cameraSphereRadii.mass,
-    gfx.cameraSphereRadii.impostor,
     gfx.unitShape,
     gfx.legs,
     gfx.treadsAnimated ? 'tw' : 'ts',
@@ -45,14 +29,14 @@ export function lodKey(gfx: GraphicsConfig): string {
   ].join('|');
 }
 
-/** Current graphics snapshot — read once per frame, not per draw. */
-export type Lod3DState = {
+/** Current graphics snapshot: read once per frame, not per draw. */
+export type RenderFrameState3D = {
   gfx: GraphicsConfig;
   key: string;
-  view: RenderViewLodState;
+  view: RenderViewState3D;
 };
 
-export type RenderViewLodState = {
+export type RenderViewState3D = {
   viewportHeightPx: number;
   cameraX: number;
   cameraY: number;
@@ -63,7 +47,7 @@ export type RenderViewLodState = {
   fovYRad: number;
 };
 
-const DEFAULT_RENDER_VIEW: RenderViewLodState = {
+const DEFAULT_RENDER_VIEW: RenderViewState3D = {
   viewportHeightPx: 1,
   cameraX: 0,
   cameraY: 0,
@@ -74,22 +58,10 @@ const DEFAULT_RENDER_VIEW: RenderViewLodState = {
   fovYRad: Math.PI / 4,
 };
 
-export function cameraDistanceToWorldPoint(
-  view: RenderViewLodState,
-  worldX: number,
-  worldY: number,
-  worldZ: number,
-): number {
-  const dx = worldX - view.cameraX;
-  const dy = worldY - view.cameraY;
-  const dz = worldZ - view.cameraZ;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-export function snapshotLod(
+export function snapshotRenderFrameState(
   camera?: THREE.PerspectiveCamera,
   viewportHeightPx: number = 1,
-): Lod3DState {
+): RenderFrameState3D {
   const gfx = getGraphicsConfig();
   let view = DEFAULT_RENDER_VIEW;
   if (camera) {
@@ -105,5 +77,5 @@ export function snapshotLod(
       fovYRad: (camera.fov * Math.PI) / 180,
     };
   }
-  return { gfx, key: lodKey(gfx), view };
+  return { gfx, key: graphicsKey(gfx), view };
 }

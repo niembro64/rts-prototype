@@ -31,7 +31,6 @@ import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveLineShotRangeCircleEndpoint, type LineShotRangeCircle } from './lineShotRange';
 import { spatialGrid } from '../SpatialGrid';
-import { getSimDetailConfig } from '../simQuality';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
 import { getSimWasm } from '../../sim-wasm/init';
@@ -918,10 +917,6 @@ export function updateProjectiles(
   _homingVelocityUpdates.length = 0;
   const projectilesToRemove = _orphanedIds;
   const despawnEvents = _despawnEvents;
-  const simDetail = getSimDetailConfig();
-  const beamTraceBudget = Math.max(1, simDetail.beamPathTraceBudget | 0);
-  let beamTracesThisTick = 0;
-
   // Position integration + homing for traveling projectiles. The
   // WASM-batched path was 2D-only and is disabled on this branch —
   // M12 deletes it entirely. The JS path below is the 3D authority.
@@ -1078,158 +1073,145 @@ export function updateProjectiles(
 
         // Find beam path (with possible reflections off mirror units).
         const collisionRadius = proj.config.shotProfile.runtime.collisionRadius;
-        const beamStride = Math.max(1, simDetail.beamPathStride | 0);
-        if (proj.obstructionTick === undefined || currentTick - proj.obstructionTick >= beamStride) {
-          if (beamTracesThisTick < beamTraceBudget) {
-            beamTracesThisTick++;
-            const beamPath = damageSystem.findBeamPath(
-              startPoint.x, startPoint.y, startPoint.z,
-              fullEndX, fullEndY, fullEndZ,
-              proj.sourceEntityId,
-              collisionRadius,
-              BEAM_MAX_SEGMENTS,
-              rangeCircle,
-            );
+        const beamPath = damageSystem.findBeamPath(
+          startPoint.x, startPoint.y, startPoint.z,
+          fullEndX, fullEndY, fullEndZ,
+          proj.sourceEntityId,
+          collisionRadius,
+          BEAM_MAX_SEGMENTS,
+          rangeCircle,
+        );
 
-            // Resize the polyline to [start, ...reflections, end] and
-            // reuse existing point objects in place where possible.
-            const refs = beamPath.reflections;
-            const newLen = 2 + refs.length;
-            while (points.length < newLen) {
-              points.push(createBeamPoint(0, 0, 0));
-            }
-            if (points.length > newLen) points.length = newLen;
+        // Resize the polyline to [start, ...reflections, end] and
+        // reuse existing point objects in place where possible.
+        const refs = beamPath.reflections;
+        const newLen = 2 + refs.length;
+        while (points.length < newLen) {
+          points.push(createBeamPoint(0, 0, 0));
+        }
+        if (points.length > newLen) points.length = newLen;
 
-            // Reflection points: finite-diff per-reflector against the
-            // previous trace so each reflection vertex carries its own
-            // instantaneous velocity (for client-side extrapolation
-            // between re-trace strides).
-            const prevRefs = proj.prevReflectionPoints;
-            for (let r = 0; r < refs.length; r++) {
-              const refl = refs[r];
-              const point = points[1 + r];
-              point.x = refl.x;
-              point.y = refl.y;
-              point.z = refl.z;
-              copyBeamReflectorMetadata(point, refl);
-              let vx = 0, vy = 0, vz = 0;
-              let ax = 0, ay = 0, az = 0;
-              if (prevRefs && dtSec > 0) {
-                for (let p = 0; p < prevRefs.length; p++) {
-                  const pr = prevRefs[p];
-                  if (pr.mirrorEntityId !== refl.mirrorEntityId) continue;
-                  const tickDelta = currentTick - pr.tick;
-                  if (tickDelta > 0) {
-                    const inv = 1 / (tickDelta * dtSec);
-                    vx = (refl.x - pr.x) * inv;
-                    vy = (refl.y - pr.y) * inv;
-                    vz = (refl.z - pr.z) * inv;
-                    ax = (vx - pr.vx) * inv;
-                    ay = (vy - pr.vy) * inv;
-                    az = (vz - pr.vz) * inv;
-                  }
-                  break;
-                }
-              }
-              point.vx = vx;
-              point.vy = vy;
-              point.vz = vz;
-              point.ax = ax;
-              point.ay = ay;
-              point.az = az;
-            }
-
-            // Cache this trace's reflections (by mirrorEntityId; legacy
-            // field name, now any reflector entity) for
-            // the next finite-diff. Reuse the array's slots in place
-            // to avoid GC churn on every re-trace.
-            const cache = proj.prevReflectionPoints ?? (proj.prevReflectionPoints = []);
-            while (cache.length < refs.length) {
-              cache.push({
-                mirrorEntityId: 0 as EntityId,
-                x: 0, y: 0, z: 0,
-                vx: 0, vy: 0, vz: 0,
-                tick: 0,
-              });
-            }
-            if (cache.length > refs.length) cache.length = refs.length;
-            for (let r = 0; r < refs.length; r++) {
-              const refl = refs[r];
-              const slot = cache[r];
-              slot.mirrorEntityId = refl.mirrorEntityId;
-              slot.x = refl.x;
-              slot.y = refl.y;
-              slot.z = refl.z;
-              slot.vx = points[1 + r].vx;
-              slot.vy = points[1 + r].vy;
-              slot.vz = points[1 + r].vz;
-              slot.tick = currentTick;
-            }
-
-            // End-point velocity = (current end − previous trace's end)
-            // / elapsed seconds since the previous trace. Stays stable
-            // across the trace stride so the client can extrapolate
-            // using a meaningful average over each stride window.
-            const endPoint = points[newLen - 1];
-            if (
-              proj.prevEndX !== undefined &&
-              proj.prevEndY !== undefined &&
-              proj.prevEndZ !== undefined &&
-              proj.prevEndTick !== undefined
-            ) {
-              const tickDelta = currentTick - proj.prevEndTick;
-              if (tickDelta > 0 && dtSec > 0) {
+        // Reflection points: finite-diff per-reflector against the
+        // previous trace so each reflection vertex carries its own
+        // instantaneous velocity for client-side extrapolation.
+        const prevRefs = proj.prevReflectionPoints;
+        for (let r = 0; r < refs.length; r++) {
+          const refl = refs[r];
+          const point = points[1 + r];
+          point.x = refl.x;
+          point.y = refl.y;
+          point.z = refl.z;
+          copyBeamReflectorMetadata(point, refl);
+          let vx = 0, vy = 0, vz = 0;
+          let ax = 0, ay = 0, az = 0;
+          if (prevRefs && dtSec > 0) {
+            for (let p = 0; p < prevRefs.length; p++) {
+              const pr = prevRefs[p];
+              if (pr.mirrorEntityId !== refl.mirrorEntityId) continue;
+              const tickDelta = currentTick - pr.tick;
+              if (tickDelta > 0) {
                 const inv = 1 / (tickDelta * dtSec);
-                const vx = (beamPath.endX - proj.prevEndX) * inv;
-                const vy = (beamPath.endY - proj.prevEndY) * inv;
-                const vz = (beamPath.endZ - proj.prevEndZ) * inv;
-                endPoint.vx = vx;
-                endPoint.vy = vy;
-                endPoint.vz = vz;
-                if (
-                  proj.prevEndVx !== undefined &&
-                  proj.prevEndVy !== undefined &&
-                  proj.prevEndVz !== undefined
-                ) {
-                  endPoint.ax = (vx - proj.prevEndVx) * inv;
-                  endPoint.ay = (vy - proj.prevEndVy) * inv;
-                  endPoint.az = (vz - proj.prevEndVz) * inv;
-                } else {
-                  endPoint.ax = 0;
-                  endPoint.ay = 0;
-                  endPoint.az = 0;
-                }
-              } else {
-                writeZeroBeamMotion(endPoint);
+                vx = (refl.x - pr.x) * inv;
+                vy = (refl.y - pr.y) * inv;
+                vz = (refl.z - pr.z) * inv;
+                ax = (vx - pr.vx) * inv;
+                ay = (vy - pr.vy) * inv;
+                az = (vz - pr.vz) * inv;
               }
-            } else {
-              writeZeroBeamMotion(endPoint);
+              break;
             }
-            endPoint.x = beamPath.endX;
-            endPoint.y = beamPath.endY;
-            endPoint.z = beamPath.endZ;
-            if (beamPath.terminalReflection) {
-              copyBeamReflectorMetadata(endPoint, beamPath.terminalReflection);
-            } else {
-              clearBeamReflectorMetadata(endPoint);
-            }
-            proj.prevEndX = beamPath.endX;
-            proj.prevEndY = beamPath.endY;
-            proj.prevEndZ = beamPath.endZ;
-            proj.prevEndVx = endPoint.vx;
-            proj.prevEndVy = endPoint.vy;
-            proj.prevEndVz = endPoint.vz;
-            proj.prevEndTick = currentTick;
-            proj.obstructionT = beamPath.obstructionT;
-            proj.obstructionTick = currentTick;
-            proj.endpointDamageable = beamPath.endpointDamageable;
-            proj.segmentLimitReached = beamPath.segmentLimitReached;
           }
-          // else: no trace budget this tick — keep the previous polyline.
-          // createBeam seeded a 2-point start→range line at spawn so the
-          // renderer always has something to draw.
+          point.vx = vx;
+          point.vy = vy;
+          point.vz = vz;
+          point.ax = ax;
+          point.ay = ay;
+          point.az = az;
         }
 
+        // Cache this trace's reflections (by mirrorEntityId; legacy
+        // field name, now any reflector entity) for
+        // the next finite-diff. Reuse the array's slots in place
+        // to avoid GC churn on every re-trace.
+        const cache = proj.prevReflectionPoints ?? (proj.prevReflectionPoints = []);
+        while (cache.length < refs.length) {
+          cache.push({
+            mirrorEntityId: 0 as EntityId,
+            x: 0, y: 0, z: 0,
+            vx: 0, vy: 0, vz: 0,
+            tick: 0,
+          });
+        }
+        if (cache.length > refs.length) cache.length = refs.length;
+        for (let r = 0; r < refs.length; r++) {
+          const refl = refs[r];
+          const slot = cache[r];
+          slot.mirrorEntityId = refl.mirrorEntityId;
+          slot.x = refl.x;
+          slot.y = refl.y;
+          slot.z = refl.z;
+          slot.vx = points[1 + r].vx;
+          slot.vy = points[1 + r].vy;
+          slot.vz = points[1 + r].vz;
+          slot.tick = currentTick;
+        }
+
+        // End-point velocity = (current end − previous trace's end)
+        // / elapsed seconds since the previous trace.
+        const endPoint = points[newLen - 1];
+        if (
+          proj.prevEndX !== undefined &&
+          proj.prevEndY !== undefined &&
+          proj.prevEndZ !== undefined &&
+          proj.prevEndTick !== undefined
+        ) {
+          const tickDelta = currentTick - proj.prevEndTick;
+          if (tickDelta > 0 && dtSec > 0) {
+            const inv = 1 / (tickDelta * dtSec);
+            const vx = (beamPath.endX - proj.prevEndX) * inv;
+            const vy = (beamPath.endY - proj.prevEndY) * inv;
+            const vz = (beamPath.endZ - proj.prevEndZ) * inv;
+            endPoint.vx = vx;
+            endPoint.vy = vy;
+            endPoint.vz = vz;
+            if (
+              proj.prevEndVx !== undefined &&
+              proj.prevEndVy !== undefined &&
+              proj.prevEndVz !== undefined
+            ) {
+              endPoint.ax = (vx - proj.prevEndVx) * inv;
+              endPoint.ay = (vy - proj.prevEndVy) * inv;
+              endPoint.az = (vz - proj.prevEndVz) * inv;
+            } else {
+              endPoint.ax = 0;
+              endPoint.ay = 0;
+              endPoint.az = 0;
+            }
+          } else {
+            writeZeroBeamMotion(endPoint);
+          }
+        } else {
+          writeZeroBeamMotion(endPoint);
+        }
+        endPoint.x = beamPath.endX;
+        endPoint.y = beamPath.endY;
+        endPoint.z = beamPath.endZ;
+        if (beamPath.terminalReflection) {
+          copyBeamReflectorMetadata(endPoint, beamPath.terminalReflection);
+        } else {
+          clearBeamReflectorMetadata(endPoint);
+        }
+        proj.prevEndX = beamPath.endX;
+        proj.prevEndY = beamPath.endY;
+        proj.prevEndZ = beamPath.endZ;
+        proj.prevEndVx = endPoint.vx;
+        proj.prevEndVy = endPoint.vy;
+        proj.prevEndVz = endPoint.vz;
+        proj.prevEndTick = currentTick;
+        proj.obstructionT = beamPath.obstructionT;
+        proj.obstructionTick = currentTick;
+        proj.endpointDamageable = beamPath.endpointDamageable;
+        proj.segmentLimitReached = beamPath.segmentLimitReached;
         // Update entity transform to match beam start (for visual reference).
         entity.transform.x = startPoint.x;
         entity.transform.y = startPoint.y;

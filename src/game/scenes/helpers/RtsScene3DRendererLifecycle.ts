@@ -15,8 +15,6 @@ export type RtsScene3DRendererResources = {
   healthBar3D?: Destroyable | null;
   nameLabel3D?: Destroyable | null;
   waypoint3D?: Destroyable | null;
-  lodShellGround3D?: Destroyable | null;
-  lodGridCells2D?: Destroyable | null;
   entityRenderer?: Destroyable | null;
   metalDepositRenderer?: Disposable | null;
   environmentPropRenderer?: Destroyable | null;
@@ -47,8 +45,6 @@ export function teardownRtsScene3DRenderers(
   resources.healthBar3D?.destroy();
   resources.nameLabel3D?.destroy();
   resources.waypoint3D?.destroy();
-  resources.lodShellGround3D?.destroy();
-  resources.lodGridCells2D?.destroy();
   resources.entityRenderer?.destroy();
   resources.metalDepositRenderer?.dispose();
   resources.environmentPropRenderer?.destroy();

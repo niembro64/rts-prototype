@@ -221,9 +221,10 @@ export function writeNetworkUnitVelocity(
   unit: Unit,
   qVel: Quantize,
 ): void {
-  dst.velocity.x = qVel(unit.velocityX ?? 0);
-  dst.velocity.y = qVel(unit.velocityY ?? 0);
-  dst.velocity.z = qVel(unit.velocityZ ?? 0);
+  const velocity = dst.velocity ?? (dst.velocity = { x: 0, y: 0, z: 0 });
+  velocity.x = qVel(unit.velocityX ?? 0);
+  velocity.y = qVel(unit.velocityY ?? 0);
+  velocity.z = qVel(unit.velocityZ ?? 0);
 }
 
 export function writeNetworkUnitSurfaceNormal(
@@ -389,8 +390,13 @@ export function copyNetworkUnitSnapshotInto(
   dst: NetworkUnitSnapshot,
 ): NetworkUnitSnapshot {
   dst.unitType = src.unitType;
-  dst.hp.curr = src.hp.curr;
-  dst.hp.max = src.hp.max;
+  if (src.hp) {
+    const hp = dst.hp ?? (dst.hp = { curr: 0, max: 0 });
+    hp.curr = src.hp.curr;
+    hp.max = src.hp.max;
+  } else {
+    dst.hp = undefined;
+  }
   if (src.radius) {
     const radius = dst.radius ?? (dst.radius = { body: 0, shot: 0, push: 0 });
     radius.body = src.radius.body;
@@ -401,9 +407,14 @@ export function copyNetworkUnitSnapshotInto(
   }
   dst.bodyCenterHeight = src.bodyCenterHeight;
   dst.mass = src.mass;
-  dst.velocity.x = src.velocity.x;
-  dst.velocity.y = src.velocity.y;
-  dst.velocity.z = src.velocity.z;
+  if (src.velocity) {
+    const velocity = dst.velocity ?? (dst.velocity = { x: 0, y: 0, z: 0 });
+    velocity.x = src.velocity.x;
+    velocity.y = src.velocity.y;
+    velocity.z = src.velocity.z;
+  } else {
+    dst.velocity = undefined;
+  }
   if (src.surfaceNormal) {
     const sn = dst.surfaceNormal ?? (dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 });
     sn.nx = src.surfaceNormal.nx;
@@ -482,7 +493,7 @@ export function applyNetworkUnitDriftFieldsToTarget(
   changedFields: number | null | undefined,
 ): void {
   const cf = changedFields ?? 0;
-  if (isFull || (cf & ENTITY_CHANGED_POS)) {
+  if ((isFull || (cf & ENTITY_CHANGED_POS)) && src.pos) {
     target.x = src.pos.x;
     target.y = src.pos.y;
     target.z = src.pos.z;
@@ -498,7 +509,7 @@ export function applyNetworkUnitDriftFieldsToTarget(
       target.surfaceNormalZ = sn.nz;
     }
   }
-  if (isFull || (cf & ENTITY_CHANGED_ROT)) {
+  if ((isFull || (cf & ENTITY_CHANGED_ROT)) && isFiniteNumber(src.rotation)) {
     target.rotation = src.rotation;
   }
   if (isFull || (cf & ENTITY_CHANGED_VEL)) {

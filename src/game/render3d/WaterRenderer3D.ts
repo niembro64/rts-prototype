@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
-import type { Lod3DState } from './Lod3D';
+import type { RenderFrameState3D } from './RenderFrameState3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
@@ -94,7 +94,7 @@ export class WaterRenderer3D {
   update(
     _dtSec: number,
     graphicsConfig: GraphicsConfig,
-    _lod?: Lod3DState,
+    _frameState?: RenderFrameState3D,
     _sharedLodGrid?: unknown,
   ): void {
     if (graphicsConfig.waterOpacity <= 0) {

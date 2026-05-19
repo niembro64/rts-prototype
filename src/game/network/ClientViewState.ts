@@ -322,8 +322,8 @@ export class ClientViewState {
         ENTITY_CHANGED_ROT |
         ENTITY_CHANGED_VEL |
         // Reactivate prediction when only the surface normal moved
-        // (host's tilt EMA is still settling on a stationary unit, or
-        // the host flipped tilt mode). Otherwise the new target.normal
+        // (host's unit ground normal EMA is still settling on a stationary unit, or
+        // the host flipped normal mode). Otherwise the new target.normal
         // would land but applyClientUnitVisualPrediction's EMA — which
         // owns the entity.unit.surfaceNormal lerp — wouldn't run.
         ENTITY_CHANGED_NORMAL |
@@ -464,12 +464,12 @@ export class ClientViewState {
         if (turretSnapshot) {
           const target = this.getOrCreateServerTarget(netEntity.id);
           this.clearTargetPredictionAccum(netEntity.id);
-          if (isFull || cf! & ENTITY_CHANGED_POS) {
+          if ((isFull || cf! & ENTITY_CHANGED_POS) && netEntity.pos) {
             target.x = netEntity.pos.x;
             target.y = netEntity.pos.y;
             target.z = netEntity.pos.z;
           }
-          if (isFull || cf! & ENTITY_CHANGED_ROT) {
+          if ((isFull || cf! & ENTITY_CHANGED_ROT) && netEntity.rotation !== undefined) {
             target.rotation = netEntity.rotation;
           }
           this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
@@ -491,7 +491,7 @@ export class ClientViewState {
         target.updatedAtMs = now;
       }
 
-      if (existing && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
+      if (existing && netEntity.pos && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
         const dx = existing.transform.x - netEntity.pos.x;
         const dy = existing.transform.y - netEntity.pos.y;
         const dz = existing.transform.z - netEntity.pos.z;

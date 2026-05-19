@@ -72,7 +72,7 @@ export function buildWheels(
   // Rut narrower than the tire — tires squash the soil under their
   // contact patch, not the full slick width.
   const printWidth = Math.max(0.5, tireWidth * 0.65);
-  return { type: 'wheels', group, wheels, wheelContacts, printWidth, lodKey: '' };
+  return { type: 'wheels', group, wheels, wheelContacts, printWidth, geometryKey: '' };
 }
 
 /** Per-frame: each tire rolls from the frame-to-frame motion of its

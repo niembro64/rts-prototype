@@ -15,7 +15,7 @@ import { getLocomotionSurfaceNormal } from './LocomotionTerrainSampler';
  *  key so the renderer can detect graphics-config changes and rebuild
  *  the rig in place. */
 export type LocomotionBase = {
-  lodKey: string;
+  geometryKey: string;
 };
 
 /** Per-wheel/tread contact state. Tracks the rolling contact point in
@@ -122,7 +122,7 @@ export function transformChassisToWorld(
   const yy = cy;
   const yz = sinR * cx + cosR * cz;
   // Tilt: build the same surface-normal quaternion the renderer uses.
-  // Read from the unit's sim-side smoothed normal (updateUnitTilt) so
+  // Read from the unit's sim-side smoothed normal (updateUnitGroundNormal) so
   // legs/wheels and chassis tilt all share one canonical value, falling
   // back to a raw-terrain read for non-unit entities.
   const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);

@@ -48,7 +48,7 @@ export class CommanderAbilitiesSystem {
             dtMs,
             unitGroundZ: getUnitGroundZ(commander),
             // Read the smoothed normal off the commander unit instead
-            // of the position cache; updateUnitTilt EMAs raw → smoothed
+            // of the position cache; updateUnitGroundNormal EMAs raw → smoothed
             // each tick so the construction emitter mount doesn't snap
             // on triangle crossings.
             surfaceN: commander.unit?.surfaceNormal,

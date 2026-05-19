@@ -12,7 +12,6 @@ import type {
   WindTurbineRig,
 } from './BuildingShape3D';
 import type { SolarRig } from './SolarCollectorMesh3D';
-import type { RenderObjectLodTier } from './RenderObjectLod';
 
 export type RadiusRingMeshes = {
   scale?: THREE.LineSegments;
@@ -90,10 +89,6 @@ export type EntityMesh = {
    *  reference. The mesh itself lives under `m.group` and is GC'd with
    *  the group on death. */
   ring?: THREE.Mesh;
-  /** Outer camera-sphere marker for buildings. Units use the packed
-   *  mass InstancedMesh for the same role; buildings need a tiny mesh
-   *  because their normal render path is type-specific scenegraph art. */
-  lodMarker?: THREE.Mesh;
   /** UNIT SPH wireframe spheres. All three channels are now 3D in
    *  the sim:
    *    - body  → unit.radius.body, the visible body footprint and
@@ -127,7 +122,6 @@ export type EntityMesh = {
    *  not be recolored to team primary on ownership updates. */
   buildingPrimaryMaterialLocked?: boolean;
   solarOpenAmount?: number;
-  buildingCachedTier?: RenderObjectLodTier;
   buildingCachedGraphicsTier?: ConcreteGraphicsQuality;
   buildingCachedOwnerId?: PlayerId;
   buildingCachedProgress?: number;
@@ -149,7 +143,7 @@ export type EntityMesh = {
   unitDetailCachedY?: number;
   unitDetailCachedZ?: number;
   unitDetailCachedRotation?: number;
-  /** The LOD key this unit's geometry was built at. Render3DEntities rebuilds
-   *  the mesh when the current frame's LOD key differs. */
-  lodKey: string;
+  /** Geometry key this unit was built at. Render3DEntities rebuilds
+   *  the mesh when graphics-shape settings differ. */
+  geometryKey: string;
 };

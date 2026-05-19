@@ -1,6 +1,6 @@
 import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
 import { persist, readPersisted, migrateKey } from './persistence';
-import { TILT_EMA_MODE_DEFAULT, type TiltEmaMode } from './shellConfig';
+import { UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT, type UnitGroundNormalEmaMode } from './shellConfig';
 
 export const HOST_SNAPSHOT_RATE_NORMAL_MIN = 5;
 export const HOST_SNAPSHOT_RATE_NORMAL_MAX = 10;
@@ -73,9 +73,9 @@ export const SERVER_CONFIG = {
     default: 32 as TickRate,
     options: [1, 4, 8, 16, 32, 64, 128, 256, 512] as readonly TickRate[],
   },
-  tiltEma: {
-    default: TILT_EMA_MODE_DEFAULT,
-    options: ['snap', 'fast', 'mid', 'slow'] as readonly TiltEmaMode[],
+  unitGroundNormalEma: {
+    default: UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT,
+    options: ['snap', 'fast', 'mid', 'slow'] as readonly UnitGroundNormalEmaMode[],
   },
   snapshot: {
     default: HOST_SNAPSHOT_RATE_DEFAULT,
@@ -85,7 +85,7 @@ export const SERVER_CONFIG = {
   },
   keyframe: {
     // Fraction of DIFFSNAPs that are actually FULLSNAPs.
-    // Each option is 4× rarer (skips one power of two): 1/1, 1/4, 1/16, 1/64.
+    // Each option is 4x rarer (skips one power of two): 1/1, 1/4, 1/16, 1/64.
     default: (1 / 16) as KeyframeRatio,
     options: [
       'ALL',
@@ -99,17 +99,18 @@ export const SERVER_CONFIG = {
 
 // ── localStorage keys (module-private) ──
 // Every key in this file is for the HOST SERVER bar — namespace
-// prefix `host-server-` makes that explicit in DevTools. Legacy
-// `rts-*` keys are migrated lazily by the load helpers below.
+// prefix `host-server-` makes that explicit in DevTools. Legacy and
+// renamed keys are migrated lazily by the load helpers below.
 const STORAGE_SNAPSHOT_RATE = 'host-server-snapshot-rate';
 const STORAGE_KEYFRAME_RATIO = 'host-server-keyframe-ratio';
 const STORAGE_TICK_RATE = 'host-server-tick-rate';
-const STORAGE_TILT_EMA_MODE = 'host-server-tilt-ema-mode';
+const STORAGE_UNIT_GROUND_NORMAL_EMA_MODE = 'host-server-unit-ground-normal-ema-mode';
 
 const HOST_SERVER_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-snapshot-rate', STORAGE_SNAPSHOT_RATE],
   ['rts-keyframe-ratio', STORAGE_KEYFRAME_RATIO],
   ['rts-tick-rate', STORAGE_TICK_RATE],
+  ['host-server-tilt-ema-mode', STORAGE_UNIT_GROUND_NORMAL_EMA_MODE],
 ];
 
 let _hostServerMigrationsRun = false;
@@ -137,7 +138,7 @@ export function loadStoredKeyframeRatio(): KeyframeRatio {
   if (stored === 'NONE') return 'NONE';
   if (stored) {
     const num = Number(stored);
-    if (!isNaN(num)) return num;
+    if (!isNaN(num) && SERVER_CONFIG.keyframe.options.includes(num)) return num;
   }
   return SERVER_CONFIG.keyframe.default;
 }
@@ -160,16 +161,15 @@ export function saveTickRate(rate: TickRate): void {
   persist(STORAGE_TICK_RATE, String(rate));
 }
 
-export function loadStoredTiltEmaMode(): TiltEmaMode {
+export function loadStoredUnitGroundNormalEmaMode(): UnitGroundNormalEmaMode {
   ensureHostServerMigrations();
-  const stored = readPersisted(STORAGE_TILT_EMA_MODE);
-  if (stored && (SERVER_CONFIG.tiltEma.options as readonly string[]).includes(stored)) {
-    return stored as TiltEmaMode;
+  const stored = readPersisted(STORAGE_UNIT_GROUND_NORMAL_EMA_MODE);
+  if (stored && (SERVER_CONFIG.unitGroundNormalEma.options as readonly string[]).includes(stored)) {
+    return stored as UnitGroundNormalEmaMode;
   }
-  return TILT_EMA_MODE_DEFAULT;
+  return UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT;
 }
 
-export function saveTiltEmaMode(mode: TiltEmaMode): void {
-  persist(STORAGE_TILT_EMA_MODE, mode);
+export function saveUnitGroundNormalEmaMode(mode: UnitGroundNormalEmaMode): void {
+  persist(STORAGE_UNIT_GROUND_NORMAL_EMA_MODE, mode);
 }
-

@@ -1,17 +1,9 @@
-import { LAND_CELL_SIZE, WATER_RENDER_CONFIG } from './config';
+import { WATER_RENDER_CONFIG } from './config';
 import type { GraphicsConfig } from './types/graphics';
 
 export const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG: GraphicsConfig = {
   tier: 'max',
-  unitRenderMode: 'hybrid',
-  cameraSphereRadii: {
-    rich: 0,
-    simple: 0,
-    mass: 0,
-    impostor: 0,
-  },
-  forcedObjectTier: 'rich',
-  objectLodCellSize: LAND_CELL_SIZE,
+  unitRenderMode: 'rich',
   hudFrameStride: 1,
   effectFrameStride: 1,
   terrainTileFrameStride: 1,

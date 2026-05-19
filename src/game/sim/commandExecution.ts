@@ -542,7 +542,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const { cos, sin } = getTransformCosSin(commander.transform);
 
   // Resolve the d-gun's turret mount center. Surface normal comes from
-  // the unit's smoothed-tilt EMA (updateUnitTilt) so the slope-tilted
+  // the unit ground normal EMA (updateUnitGroundNormal) so the slope-tilted
   // mount doesn't snap when the commander crosses a terrain triangle
   // edge.
   const mount = updateWeaponWorldKinematics(

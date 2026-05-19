@@ -11,7 +11,7 @@ import {
   getBuildGridDebug,
   getCameraFovDegrees,
   getCameraSmoothMode,
-  getClientTiltEmaMode,
+  getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
@@ -35,7 +35,7 @@ import {
   setBuildGridDebug,
   setCameraFovDegrees,
   setCameraSmoothMode,
-  setClientTiltEmaMode,
+  setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setMovementPosEmaMode,
   setMovementVelEmaMode,
@@ -62,6 +62,7 @@ import type {
   CameraFovDegrees,
   DriftChannelMode,
   DriftMode,
+  PositionDriftChannelMode,
   PredictionMode,
   ProjRangeType,
   RangeType,
@@ -86,12 +87,12 @@ export function useGameCanvasClientSettings({
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
-  const movementPosEma = ref<DriftChannelMode>(getMovementPosEmaMode());
+  const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
   const movementVelEma = ref<DriftChannelMode>(getMovementVelEmaMode());
-  const rotationPosEma = ref<DriftChannelMode>(getRotationPosEmaMode());
+  const rotationPosEma = ref<PositionDriftChannelMode>(getRotationPosEmaMode());
   const rotationVelEma = ref<DriftChannelMode>(getRotationVelEmaMode());
   const predictionMode = ref<PredictionMode>(getPredictionMode());
-  const clientTiltEmaMode = ref<DriftMode>(getClientTiltEmaMode());
+  const clientUnitGroundNormalEmaMode = ref<DriftMode>(getClientUnitGroundNormalEmaMode());
   const edgeScrollEnabled = ref(getEdgeScrollEnabled());
   const dragPanEnabled = ref(getDragPanEnabled());
   const waypointDetail = ref<WaypointDetail>(getWaypointDetail());
@@ -249,7 +250,7 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = newValue;
   }
 
-  function changeMovementPosEma(mode: DriftChannelMode): void {
+  function changeMovementPosEma(mode: PositionDriftChannelMode): void {
     setMovementPosEmaMode(mode);
     movementPosEma.value = mode;
   }
@@ -259,7 +260,7 @@ export function useGameCanvasClientSettings({
     movementVelEma.value = mode;
   }
 
-  function changeRotationPosEma(mode: DriftChannelMode): void {
+  function changeRotationPosEma(mode: PositionDriftChannelMode): void {
     setRotationPosEmaMode(mode);
     rotationPosEma.value = mode;
   }
@@ -274,9 +275,9 @@ export function useGameCanvasClientSettings({
     predictionMode.value = mode;
   }
 
-  function changeClientTiltEmaMode(mode: DriftMode): void {
-    setClientTiltEmaMode(mode);
-    clientTiltEmaMode.value = mode;
+  function changeClientUnitGroundNormalEmaMode(mode: DriftMode): void {
+    setClientUnitGroundNormalEmaMode(mode);
+    clientUnitGroundNormalEmaMode.value = mode;
   }
 
   function changeWaypointDetail(mode: WaypointDetail): void {
@@ -360,8 +361,8 @@ export function useGameCanvasClientSettings({
     rotationVelEma.value = cd.rotationVelEma.default;
     setPredictionMode(cd.predictionMode.default);
     predictionMode.value = cd.predictionMode.default;
-    setClientTiltEmaMode(cd.tiltEma.default);
-    clientTiltEmaMode.value = cd.tiltEma.default;
+    setClientUnitGroundNormalEmaMode(cd.unitGroundNormalEma.default);
+    clientUnitGroundNormalEmaMode.value = cd.unitGroundNormalEma.default;
     if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
     if (dragPanEnabled.value !== cd.dragPan.default) toggleDragPan();
     for (const rt of RANGE_TYPES) {
@@ -421,7 +422,7 @@ export function useGameCanvasClientSettings({
     rotationPosEma,
     rotationVelEma,
     predictionMode,
-    clientTiltEmaMode,
+    clientUnitGroundNormalEmaMode,
     edgeScrollEnabled,
     dragPanEnabled,
     waypointDetail,
@@ -463,7 +464,7 @@ export function useGameCanvasClientSettings({
     changeRotationPosEma,
     changeRotationVelEma,
     changePredictionMode,
-    changeClientTiltEmaMode,
+    changeClientUnitGroundNormalEmaMode,
     changeWaypointDetail,
     toggleEdgeScroll,
     toggleDragPan,
