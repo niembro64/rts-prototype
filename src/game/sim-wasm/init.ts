@@ -385,6 +385,9 @@ export interface SimWasm {
    *    15..18 target.acceleration
    *    18..21 projectile_acceleration
    *    21     projectile_speed
+   *  The public TypeScript targeting API derives projectile_acceleration
+   *  from the required gravity parameter as (0, 0, -gravity); callers do
+   *  not pass air resistance or entity ids into the calculation.
    *  `out` is a Float64Array of 7 elements:
    *    0      time
    *    1..4   aim_point

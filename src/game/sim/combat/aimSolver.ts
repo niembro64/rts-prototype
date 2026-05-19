@@ -6,15 +6,15 @@ import {
   clamp,
   getTransformCosSin,
   type KinematicState3,
-  type KinematicVec3,
   solveTurretShotAngles,
   type TurretShotAngleSolution,
   type TurretShotArcPreference,
 } from '../../math';
 import { GRAVITY } from '../../../config';
 import {
-  getEntityAcceleration3,
-  getEntityVelocity3,
+  getEntityAcceleration3d,
+  getEntityPosition3d,
+  getEntityVelocity3d,
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
@@ -32,7 +32,7 @@ type ResolveTargetAimPointOptions = {
 const _mirrorEnemyTurretMount = { x: 0, y: 0, z: 0 };
 const _bisectEnemyTurretPoint: Vec3 = { x: 0, y: 0, z: 0 };
 const _bisectEnemyBodyPoint: Vec3 = { x: 0, y: 0, z: 0 };
-const _projectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: 0 };
+const _targetAimPosition: Vec3 = { x: 0, y: 0, z: 0 };
 const _originState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -150,16 +150,17 @@ export function resolveTargetAimPoint(
     return out;
   }
 
+  const targetPos = getEntityPosition3d(target, _targetAimPosition);
   if (target.building) {
     const halfW = target.building.width / 2;
     const halfH = target.building.height / 2;
     const halfD = target.building.depth / 2;
-    const minX = target.transform.x - halfW;
-    const maxX = target.transform.x + halfW;
-    const minY = target.transform.y - halfH;
-    const maxY = target.transform.y + halfH;
-    const minZ = target.transform.z - halfD;
-    const maxZ = target.transform.z + halfD;
+    const minX = targetPos.x - halfW;
+    const maxX = targetPos.x + halfW;
+    const minY = targetPos.y - halfH;
+    const maxY = targetPos.y + halfH;
+    const minZ = targetPos.z - halfD;
+    const maxZ = targetPos.z + halfD;
 
     out.x = clamp(originX, minX, maxX);
     out.y = clamp(originY, minY, maxY);
@@ -169,19 +170,16 @@ export function resolveTargetAimPoint(
     // origin itself. Aim through the center instead of producing a
     // zero-length direction.
     if (out.x === originX && out.y === originY && out.z === originZ) {
-      out.x = target.transform.x;
-      out.y = target.transform.y;
-      out.z = target.transform.z;
+      out.x = targetPos.x;
+      out.y = targetPos.y;
+      out.z = targetPos.z;
     }
     return out;
   }
 
   // Units and projectiles use their transform as the center of their
   // 3D gameplay collider. For spheres this is the stable aim point.
-  out.x = target.transform.x;
-  out.y = target.transform.y;
-  out.z = target.transform.z;
-  return out;
+  return getEntityPosition3d(target, out);
 }
 
 function writeTurretAimOrigin(
@@ -232,7 +230,7 @@ function writeTurretMountVelocity(
     out.z = mountVelocity.z;
     return out;
   }
-  return getEntityVelocity3(source, out);
+  return getEntityVelocity3d(source, out);
 }
 
 function writeFallbackDirectionAimPoint(
@@ -475,16 +473,9 @@ function writeKinematicStateAt(
   state.acceleration.z = acceleration.z;
 }
 
-function getProjectileAcceleration(_shot: ProjectileShot, out: KinematicVec3): KinematicVec3 {
-  out.x = 0;
-  out.y = 0;
-  out.z = -GRAVITY;
-  return out;
-}
-
-function getProjectileMaxTimeSec(shot: ProjectileShot): number | undefined {
+function getProjectileMaxTimeSec(shot: ProjectileShot): number {
   const lifeMs = getShotMaxLifespan(shot);
-  return Number.isFinite(lifeMs) ? lifeMs / 1000 : undefined;
+  return Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
 }
 
 function getBallisticArcPreference(config: TurretConfig): TurretShotArcPreference {
@@ -514,10 +505,14 @@ function solveProjectileShotAngles(
   out: TurretShotAngleSolution,
 ): TurretShotAngleSolution | null {
   return solveTurretShotAngles({
-    origin: _originState,
-    target: _targetState,
+    myPosition: _originState.position,
+    myVelocity: _originState.velocity,
+    myAcceleration: _originState.acceleration,
+    targetPosition: _targetState.position,
+    targetVelocity: _targetState.velocity,
+    targetAcceleration: _targetState.acceleration,
     projectileSpeed: launchSpeed,
-    projectileAcceleration: getProjectileAcceleration(shot, _projectileAcceleration),
+    gravity: GRAVITY,
     arcPreference,
     maxTimeSec: getProjectileMaxTimeSec(shot),
   }, out);
@@ -525,11 +520,18 @@ function solveProjectileShotAngles(
 
 function copyShotAngleSolution(
   solution: TurretShotAngleSolution,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
   out: ProjectileTurretAim,
 ): void {
-  out.aim.x = solution.aimPoint.x;
-  out.aim.y = solution.aimPoint.y;
-  out.aim.z = solution.aimPoint.z;
+  const distanceToIntercept = Math.max(
+    1,
+    Math.hypot(solution.aimPoint.x - mountX, solution.aimPoint.y - mountY, solution.aimPoint.z - mountZ),
+  );
+  out.aim.x = mountX + solution.direction.x * distanceToIntercept;
+  out.aim.y = mountY + solution.direction.y * distanceToIntercept;
+  out.aim.z = mountZ + solution.direction.z * distanceToIntercept;
   out.yaw = solution.yaw;
   out.pitch = solution.pitch;
   out.hasBallisticSolution = true;
@@ -580,10 +582,10 @@ export function solveProjectileTurretAim(
     },
   );
 
-  const targetVelocity = getEntityVelocity3(target, out.targetVelocity);
+  const targetVelocity = getEntityVelocity3d(target, out.targetVelocity);
   const originVelocity = writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
-  const targetAcceleration = getEntityAcceleration3(target, out.targetAcceleration, groundHeightAt);
-  const originAcceleration = getEntityAcceleration3(source, out.originAcceleration, groundHeightAt);
+  const targetAcceleration = getEntityAcceleration3d(target, out.targetAcceleration);
+  const originAcceleration = getEntityAcceleration3d(source, out.originAcceleration);
 
   const groundAimFraction = weapon.config.groundAimFraction;
   if (groundAimFraction !== undefined && groundAimFraction > 0) {
@@ -609,7 +611,7 @@ export function solveProjectileTurretAim(
     _shotAngleSolution,
   );
   if (shotAngles) {
-    copyShotAngleSolution(shotAngles, out);
+    copyShotAngleSolution(shotAngles, mountX, mountY, mountZ, out);
   } else {
     writeNoBallisticSolutionAim(
       weapon,
@@ -641,7 +643,7 @@ export function solveProjectileTurretAimAtPoint(
   out.aim.z = aimPoint.z;
 
   const originVelocity = writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
-  const originAcceleration = getEntityAcceleration3(source, out.originAcceleration, groundHeightAt);
+  const originAcceleration = getEntityAcceleration3d(source, out.originAcceleration);
   writeZeroVec3(out.targetVelocity);
   writeZeroVec3(out.targetAcceleration);
 
@@ -663,7 +665,7 @@ export function solveProjectileTurretAimAtPoint(
     _shotAngleSolution,
   );
   if (shotAngles) {
-    copyShotAngleSolution(shotAngles, out);
+    copyShotAngleSolution(shotAngles, mountX, mountY, mountZ, out);
   } else {
     writeNoBallisticSolutionAim(
       weapon,

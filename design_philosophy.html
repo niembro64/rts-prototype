@@ -384,6 +384,13 @@
         can simplify distant visuals, but the authoritative sim should treat altitude and contact as
         real gameplay inputs.
       </p>
+      <p>
+        Kinematic calculations must read entity position, velocity, and acceleration through the
+        explicit accessors <code>getEntityPosition3d</code>, <code>getEntityVelocity3d</code>, and
+        <code>getEntityAcceleration3d</code>. Callers pass zero-valued components when an entity has
+        no velocity or acceleration, and targeting/ballistic solvers must receive raw kinematic
+        values plus the universal gravity constant instead of entity IDs or optional lookup inputs.
+      </p>
 
       <h3>Mass must matter</h3>
       <ul class="rule-list">

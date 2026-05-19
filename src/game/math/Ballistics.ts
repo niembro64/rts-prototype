@@ -1,10 +1,11 @@
-// Ballistic aim helpers. The core solver finds intercept time for
-// origin, target, and projectile states under constant acceleration;
-// solveTurretShotAngles is the single turret-facing API that turns
-// that intercept into yaw/pitch. Low arcs use the earliest root. High
-// arcs require a distinct later lofted root instead of silently using
-// the only/low root. This file is imported by both the authoritative
-// sim and client prediction. Zero state, pure functions.
+// Ballistic aim helpers. The core solver finds intercept time from raw
+// shooter ("my") and target kinematic vectors under constant acceleration;
+// projectile acceleration is gravity-only and ignores air resistance.
+// solveTurretShotAngles is the single turret-facing API that turns that
+// intercept into yaw/pitch. Low arcs use the earliest root. High arcs require
+// a distinct later lofted root instead of silently using the only/low root.
+// This file is imported by both the authoritative sim and client prediction.
+// Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
 
@@ -30,13 +31,18 @@ export type KinematicState3 = {
 };
 
 export type KinematicInterceptInput = {
-  origin: KinematicState3;
-  target: KinematicState3;
+  myPosition: KinematicVec3;
+  myVelocity: KinematicVec3;
+  myAcceleration: KinematicVec3;
+  targetPosition: KinematicVec3;
+  targetVelocity: KinematicVec3;
+  targetAcceleration: KinematicVec3;
   projectileSpeed: number;
-  /** Absolute projectile acceleration after launch, in world units/s^2. */
-  projectileAcceleration: KinematicVec3;
-  preferLateSolution?: boolean;
-  maxTimeSec?: number;
+  /** Universal gravity constant in world units/s^2. Projectile acceleration is (0, 0, -gravity). */
+  gravity: number;
+  preferLateSolution: boolean;
+  /** Positive values cap the search horizon; 0 asks the solver to choose one. */
+  maxTimeSec: number;
 };
 
 export type KinematicInterceptSolution = {
@@ -48,13 +54,18 @@ export type KinematicInterceptSolution = {
 export type TurretShotArcPreference = 'low' | 'high';
 
 export type TurretShotAngleInput = {
-  origin: KinematicState3;
-  target: KinematicState3;
+  myPosition: KinematicVec3;
+  myVelocity: KinematicVec3;
+  myAcceleration: KinematicVec3;
+  targetPosition: KinematicVec3;
+  targetVelocity: KinematicVec3;
+  targetAcceleration: KinematicVec3;
   projectileSpeed: number;
-  /** Absolute projectile acceleration after launch, in world units/s^2. */
-  projectileAcceleration: KinematicVec3;
+  /** Universal gravity constant in world units/s^2. Projectile acceleration is (0, 0, -gravity). */
+  gravity: number;
   arcPreference: TurretShotArcPreference;
-  maxTimeSec?: number;
+  /** Positive values cap the search horizon; 0 asks the solver to choose one. */
+  maxTimeSec: number;
 };
 
 export type TurretShotAngleSolution = KinematicInterceptSolution & {
@@ -92,60 +103,54 @@ function isFiniteVec3(v: KinematicVec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
-function isFiniteState3(s: KinematicState3): boolean {
-  return (
-    isFiniteVec3(s.position) &&
-    isFiniteVec3(s.velocity) &&
-    isFiniteVec3(s.acceleration)
-  );
-}
-
 function clampTime(value: number): number {
   return Math.max(INTERCEPT_MIN_TIME, Math.min(INTERCEPT_MAX_TIME, value));
 }
 
 function defaultInterceptMaxTime(input: KinematicInterceptInput): number {
-  const dx = input.target.position.x - input.origin.position.x;
-  const dy = input.target.position.y - input.origin.position.y;
-  const dz = input.target.position.z - input.origin.position.z;
+  const dx = input.targetPosition.x - input.myPosition.x;
+  const dy = input.targetPosition.y - input.myPosition.y;
+  const dz = input.targetPosition.z - input.myPosition.z;
   const dist = Math.hypot(dx, dy, dz);
   const speed = input.projectileSpeed;
   const baseTime = speed > 1e-6 ? dist / speed : 0;
-  const originAccel = input.origin.acceleration;
+  const myAccel = input.myAcceleration;
   const relAx =
-    (input.target.acceleration.x - originAccel.x) -
-    (input.projectileAcceleration.x - originAccel.x);
+    (input.targetAcceleration.x - myAccel.x) -
+    (0 - myAccel.x);
   const relAy =
-    (input.target.acceleration.y - originAccel.y) -
-    (input.projectileAcceleration.y - originAccel.y);
+    (input.targetAcceleration.y - myAccel.y) -
+    (0 - myAccel.y);
   const relAz =
-    (input.target.acceleration.z - originAccel.z) -
-    (input.projectileAcceleration.z - originAccel.z);
+    (input.targetAcceleration.z - myAccel.z) -
+    (-input.gravity - myAccel.z);
   const relAccel = Math.hypot(relAx, relAy, relAz);
   const accelTime = relAccel > 1e-6 ? (2 * speed) / relAccel : 0;
   return clampTime(Math.max(2, baseTime * 8 + 4, accelTime * 2 + 1));
 }
 
 function interceptFunction(input: KinematicInterceptInput, t: number): number {
-  const origin = input.origin;
-  const target = input.target;
-  const projectileAcc = input.projectileAcceleration;
-  const originAcc = origin.acceleration;
-  const relProjectileAx = projectileAcc.x - originAcc.x;
-  const relProjectileAy = projectileAcc.y - originAcc.y;
-  const relProjectileAz = projectileAcc.z - originAcc.z;
-  const relTargetAx = target.acceleration.x - originAcc.x;
-  const relTargetAy = target.acceleration.y - originAcc.y;
-  const relTargetAz = target.acceleration.z - originAcc.z;
+  const myPos = input.myPosition;
+  const myVel = input.myVelocity;
+  const myAcc = input.myAcceleration;
+  const targetPos = input.targetPosition;
+  const targetVel = input.targetVelocity;
+  const targetAcc = input.targetAcceleration;
+  const relProjectileAx = 0 - myAcc.x;
+  const relProjectileAy = 0 - myAcc.y;
+  const relProjectileAz = -input.gravity - myAcc.z;
+  const relTargetAx = targetAcc.x - myAcc.x;
+  const relTargetAy = targetAcc.y - myAcc.y;
+  const relTargetAz = targetAcc.z - myAcc.z;
 
-  const relX = target.position.x - origin.position.x +
-    (target.velocity.x - origin.velocity.x) * t +
+  const relX = targetPos.x - myPos.x +
+    (targetVel.x - myVel.x) * t +
     0.5 * (relTargetAx - relProjectileAx) * t * t;
-  const relY = target.position.y - origin.position.y +
-    (target.velocity.y - origin.velocity.y) * t +
+  const relY = targetPos.y - myPos.y +
+    (targetVel.y - myVel.y) * t +
     0.5 * (relTargetAy - relProjectileAy) * t * t;
-  const relZ = target.position.z - origin.position.z +
-    (target.velocity.z - origin.velocity.z) * t +
+  const relZ = targetPos.z - myPos.z +
+    (targetVel.z - myVel.z) * t +
     0.5 * (relTargetAz - relProjectileAz) * t * t;
 
   return Math.hypot(relX, relY, relZ) - input.projectileSpeed * t;
@@ -173,27 +178,24 @@ function bisectInterceptRoot(
   return (lo + hi) * 0.5;
 }
 
-function writeKinematicPosition(state: KinematicState3, t: number, out: KinematicVec3): void {
-  out.x = state.position.x + state.velocity.x * t + 0.5 * state.acceleration.x * t * t;
-  out.y = state.position.y + state.velocity.y * t + 0.5 * state.acceleration.y * t * t;
-  out.z = state.position.z + state.velocity.z * t + 0.5 * state.acceleration.z * t * t;
-}
-
 function writeInterceptSolution(
   input: KinematicInterceptInput,
   time: number,
   out: KinematicInterceptSolution,
 ): KinematicInterceptSolution {
-  const origin = input.origin;
-  const projectileAcc = input.projectileAcceleration;
-  writeKinematicPosition(input.target, time, out.aimPoint);
+  const myPos = input.myPosition;
+  const myVel = input.myVelocity;
+  const myAcc = input.myAcceleration;
+  out.aimPoint.x = input.targetPosition.x + input.targetVelocity.x * time + 0.5 * input.targetAcceleration.x * time * time;
+  out.aimPoint.y = input.targetPosition.y + input.targetVelocity.y * time + 0.5 * input.targetAcceleration.y * time * time;
+  out.aimPoint.z = input.targetPosition.z + input.targetVelocity.z * time + 0.5 * input.targetAcceleration.z * time * time;
 
-  const originX = origin.position.x + origin.velocity.x * time + 0.5 * origin.acceleration.x * time * time;
-  const originY = origin.position.y + origin.velocity.y * time + 0.5 * origin.acceleration.y * time * time;
-  const originZ = origin.position.z + origin.velocity.z * time + 0.5 * origin.acceleration.z * time * time;
-  const projectileRelAx = projectileAcc.x - origin.acceleration.x;
-  const projectileRelAy = projectileAcc.y - origin.acceleration.y;
-  const projectileRelAz = projectileAcc.z - origin.acceleration.z;
+  const originX = myPos.x + myVel.x * time + 0.5 * myAcc.x * time * time;
+  const originY = myPos.y + myVel.y * time + 0.5 * myAcc.y * time * time;
+  const originZ = myPos.z + myVel.z * time + 0.5 * myAcc.z * time * time;
+  const projectileRelAx = 0 - myAcc.x;
+  const projectileRelAy = 0 - myAcc.y;
+  const projectileRelAz = -input.gravity - myAcc.z;
   const invT = 1 / time;
   out.launchVelocity.x =
     (out.aimPoint.x - originX - 0.5 * projectileRelAx * time * time) * invT;
@@ -219,21 +221,28 @@ const _lowArcProbeSolution: KinematicInterceptSolution = {
 };
 
 /**
- * Constant-acceleration intercept solver. Both origin and target are
- * explicit 3D kinematic states; projectile acceleration is explicit so
- * callers can pass gravity, zero gravity, or any future force model
- * without this helper knowing game-specific constants.
+ * Constant-acceleration intercept solver. Callers pass only raw kinematic
+ * vectors for the shooter ("my") and target states, plus the universal
+ * gravity constant. The projectile model is gravity-only and deliberately
+ * ignores air resistance.
  */
 export function solveKinematicIntercept(
   input: KinematicInterceptInput,
   out: KinematicInterceptSolution,
 ): KinematicInterceptSolution | null {
   if (
-    !isFiniteState3(input.origin) ||
-    !isFiniteState3(input.target) ||
-    !isFiniteVec3(input.projectileAcceleration) ||
+    !isFiniteVec3(input.myPosition) ||
+    !isFiniteVec3(input.myVelocity) ||
+    !isFiniteVec3(input.myAcceleration) ||
+    !isFiniteVec3(input.targetPosition) ||
+    !isFiniteVec3(input.targetVelocity) ||
+    !isFiniteVec3(input.targetAcceleration) ||
     !Number.isFinite(input.projectileSpeed) ||
-    input.projectileSpeed <= 1e-6
+    input.projectileSpeed <= 1e-6 ||
+    !Number.isFinite(input.gravity) ||
+    input.gravity < 0 ||
+    !Number.isFinite(input.maxTimeSec) ||
+    input.maxTimeSec < 0
   ) {
     return null;
   }
@@ -246,21 +255,25 @@ export function solveKinematicIntercept(
 }
 
 /**
- * Canonical turret shot-angle solver. Callers provide the full kinematic
- * state of the firing mount and target plus the projectile acceleration;
- * this returns the yaw/pitch for the launch velocity that actually reaches
- * the target. `low` selects the earliest intercept root. `high` keeps the
- * later lofted root only when it is distinct from the earliest root.
+ * Canonical turret shot-angle solver. Callers provide raw kinematic vectors
+ * for the firing mount and target plus the universal gravity constant; this
+ * returns the yaw/pitch for the launch velocity that actually reaches the
+ * target. `low` selects the earliest intercept root. `high` keeps the later
+ * lofted root only when it is distinct from the earliest root.
  */
 export function solveTurretShotAngles(
   input: TurretShotAngleInput,
   out: TurretShotAngleSolution,
 ): TurretShotAngleSolution | null {
   const interceptInput: KinematicInterceptInput = {
-    origin: input.origin,
-    target: input.target,
+    myPosition: input.myPosition,
+    myVelocity: input.myVelocity,
+    myAcceleration: input.myAcceleration,
+    targetPosition: input.targetPosition,
+    targetVelocity: input.targetVelocity,
+    targetAcceleration: input.targetAcceleration,
     projectileSpeed: input.projectileSpeed,
-    projectileAcceleration: input.projectileAcceleration,
+    gravity: input.gravity,
     preferLateSolution: false,
     maxTimeSec: input.maxTimeSec,
   };
@@ -295,8 +308,8 @@ export function solveTurretShotAngles(
   out.yaw = horizontal > SHOT_DIRECTION_EPSILON
     ? Math.atan2(launch.y, launch.x)
     : Math.atan2(
-        out.aimPoint.y - input.origin.position.y,
-        out.aimPoint.x - input.origin.position.x,
+        out.aimPoint.y - input.myPosition.y,
+        out.aimPoint.x - input.myPosition.x,
       );
   out.pitch = Math.atan2(launch.z, horizontal);
   return out;
@@ -308,37 +321,34 @@ function solveKinematicInterceptWasm(
   out: KinematicInterceptSolution,
 ): KinematicInterceptSolution | null {
   const buf = _interceptInputScratch;
-  buf[0] = input.origin.position.x;
-  buf[1] = input.origin.position.y;
-  buf[2] = input.origin.position.z;
-  buf[3] = input.origin.velocity.x;
-  buf[4] = input.origin.velocity.y;
-  buf[5] = input.origin.velocity.z;
-  buf[6] = input.origin.acceleration.x;
-  buf[7] = input.origin.acceleration.y;
-  buf[8] = input.origin.acceleration.z;
-  buf[9] = input.target.position.x;
-  buf[10] = input.target.position.y;
-  buf[11] = input.target.position.z;
-  buf[12] = input.target.velocity.x;
-  buf[13] = input.target.velocity.y;
-  buf[14] = input.target.velocity.z;
-  buf[15] = input.target.acceleration.x;
-  buf[16] = input.target.acceleration.y;
-  buf[17] = input.target.acceleration.z;
-  buf[18] = input.projectileAcceleration.x;
-  buf[19] = input.projectileAcceleration.y;
-  buf[20] = input.projectileAcceleration.z;
+  buf[0] = input.myPosition.x;
+  buf[1] = input.myPosition.y;
+  buf[2] = input.myPosition.z;
+  buf[3] = input.myVelocity.x;
+  buf[4] = input.myVelocity.y;
+  buf[5] = input.myVelocity.z;
+  buf[6] = input.myAcceleration.x;
+  buf[7] = input.myAcceleration.y;
+  buf[8] = input.myAcceleration.z;
+  buf[9] = input.targetPosition.x;
+  buf[10] = input.targetPosition.y;
+  buf[11] = input.targetPosition.z;
+  buf[12] = input.targetVelocity.x;
+  buf[13] = input.targetVelocity.y;
+  buf[14] = input.targetVelocity.z;
+  buf[15] = input.targetAcceleration.x;
+  buf[16] = input.targetAcceleration.y;
+  buf[17] = input.targetAcceleration.z;
+  buf[18] = 0;
+  buf[19] = 0;
+  buf[20] = -input.gravity;
   buf[21] = input.projectileSpeed;
   const preferLate = input.preferLateSolution ? 1 : 0;
-  const maxTime = input.maxTimeSec !== undefined && Number.isFinite(input.maxTimeSec)
-    ? input.maxTimeSec
-    : 0;
   const found = sim.solveKinematicIntercept(
     buf,
     _interceptOutScratch,
     preferLate,
-    maxTime,
+    input.maxTimeSec,
   );
   if (found === 0) return null;
   out.time = _interceptOutScratch[0];
@@ -355,7 +365,7 @@ function solveKinematicInterceptTs(
   input: KinematicInterceptInput,
   out: KinematicInterceptSolution,
 ): KinematicInterceptSolution | null {
-  const maxTime = input.maxTimeSec !== undefined && Number.isFinite(input.maxTimeSec)
+  const maxTime = input.maxTimeSec > 0
     ? clampTime(input.maxTimeSec)
     : defaultInterceptMaxTime(input);
 

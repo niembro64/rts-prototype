@@ -6,7 +6,6 @@ import {
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
-  type KinematicVec3,
 } from '../math';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId, ProjectileShot, Turret } from '../sim/types';
@@ -14,7 +13,7 @@ import { getShotMaxLifespan, isProjectileShot, isRocketLikeShot } from '../sim/t
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getRuntimeTurretMount } from '../sim/turretMounts';
 import { getUnitGroundZ } from '../sim/unitGeometry';
-import { getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
+import { getEntityPosition3d, getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
 import {
   createClosedRibbonGeometry,
   writeClosedRibbonGeometry,
@@ -37,7 +36,7 @@ const _rangeTargetState: KinematicState3 = {
   velocity: { x: 0, y: 0, z: 0 },
   acceleration: { x: 0, y: 0, z: 0 },
 };
-const _rangeProjectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: -GRAVITY };
+const _rangeEntityPosition = { x: 0, y: 0, z: 0 };
 const _rangeIntercept: KinematicInterceptSolution = {
   time: 0,
   aimPoint: { x: 0, y: 0, z: 0 },
@@ -171,19 +170,20 @@ export class ProjectileRangeEnvelope3D {
     mapWidth: number,
     mapHeight: number,
   ): { x: number; y: number; z: number } {
+    const entityPosition = getEntityPosition3d(entity, _rangeEntityPosition);
     if (entity.unit && weapon.config.mountMode === 'unitBodyCenter') {
       return {
-        x: entity.transform.x,
-        y: entity.transform.y,
-        z: entity.transform.z,
+        x: entityPosition.x,
+        y: entityPosition.y,
+        z: entityPosition.z,
       };
     }
 
     const { cos, sin } = getTransformCosSin(entity.transform);
     const surfaceN = entity.unit
       ? entity.unit.surfaceNormal ?? getSurfaceNormal(
-          entity.transform.x,
-          entity.transform.y,
+          entityPosition.x,
+          entityPosition.y,
           mapWidth,
           mapHeight,
           LAND_CELL_SIZE,
@@ -191,8 +191,8 @@ export class ProjectileRangeEnvelope3D {
       : FLAT_SURFACE_NORMAL;
     const mount = getRuntimeTurretMount(weapon);
     return getTurretWorldMount(
-      entity.transform.x,
-      entity.transform.y,
+      entityPosition.x,
+      entityPosition.y,
       getUnitGroundZ(entity),
       cos,
       sin,
@@ -332,11 +332,16 @@ export class ProjectileRangeEnvelope3D {
     _rangeTargetState.acceleration.y = 0;
     _rangeTargetState.acceleration.z = 0;
     const intercept = solveKinematicIntercept({
-      origin: _rangeOriginState,
-      target: _rangeTargetState,
+      myPosition: _rangeOriginState.position,
+      myVelocity: _rangeOriginState.velocity,
+      myAcceleration: _rangeOriginState.acceleration,
+      targetPosition: _rangeTargetState.position,
+      targetVelocity: _rangeTargetState.velocity,
+      targetAcceleration: _rangeTargetState.acceleration,
       projectileSpeed: speed,
-      projectileAcceleration: _rangeProjectileAcceleration,
-      maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : undefined,
+      gravity: GRAVITY,
+      preferLateSolution: false,
+      maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : 0,
     }, _rangeIntercept);
     return intercept !== null;
   }

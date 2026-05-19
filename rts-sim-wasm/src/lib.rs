@@ -1492,6 +1492,10 @@ projectile_pool_ptr_export!(projectile_pool_has_gravity_ptr, has_gravity, u8);
 //    18..21 projectile_acceleration
 //    21     projectile_speed
 //
+//  The public TypeScript targeting API derives projectile_acceleration
+//  from its required gravity parameter as (0, 0, -gravity). It does not
+//  pass air resistance or entity ids into this calculation.
+//
 //  Output buffer (7 f64s):
 //    0      time
 //    1..4   aim_point

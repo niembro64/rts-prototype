@@ -3,7 +3,12 @@
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, HysteresisRange, PlayerId, Turret, TurretRanges } from '../types';
 import type { Vec3 } from '@/types/vec2';
-import { decrementCooldown, getTargetRadius, updateWeaponWorldKinematics } from './combatUtils';
+import {
+  decrementCooldown,
+  getEntityPosition3d,
+  getTargetRadius,
+  updateWeaponWorldKinematics,
+} from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { distanceSquared } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
@@ -28,6 +33,9 @@ import { getActiveForceFields, type ActiveForceFieldRef } from './forceFieldTurr
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
 const _ffTargetPoint = { x: 0, y: 0, z: 0 };
+const _targetingTargetPosition = { x: 0, y: 0, z: 0 };
+const _targetingEnemyPosition = { x: 0, y: 0, z: 0 };
+const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
 const _emptyForceFields: readonly ActiveForceFieldRef[] = [];
 // Per-unit reusable mask of "weapon system disabled" flags, filled in
 // the Pass 0 reset walk and consumed by every subsequent pass. Avoids
@@ -203,9 +211,10 @@ function currentFireTargetRankSq(
   if (!target || targetRadius <= 0 && !target.unit && !target.building) {
     return { rank: TARGET_RANK_NONE, distSq: Infinity };
   }
+  const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
   const distSq = distanceSquared(
     weapon.worldPos.x, weapon.worldPos.y,
-    target.transform.x, target.transform.y,
+    targetPosition.x, targetPosition.y,
   );
   return {
     rank: fireTargetPreferenceRankSq(weapon.ranges, edge, distSq, targetRadius),
@@ -448,9 +457,10 @@ function scoreAndFilterCandidate(
     if (mirrorScore <= 0) return false;
   }
   const enemyRadius = getTargetCandidateRadius(enemy);
+  const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
   const distSq = distanceSquared(
     weaponX, weaponY,
-    enemy.transform.x, enemy.transform.y,
+    enemyPosition.x, enemyPosition.y,
   );
   const rank = rankCandidate(weapon.ranges, 'acquire', distSq, enemyRadius);
   if (rank < minimumRank) return false;
@@ -923,9 +933,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             continue;
           }
 
+          const priorityPosition = getEntityPosition3d(priorityTarget, _targetingTargetPosition);
           const distSq = distanceSquared(
             wpx, wpy,
-            priorityTarget.transform.x, priorityTarget.transform.y,
+            priorityPosition.x, priorityPosition.y,
           );
           if (!hasWeaponBallisticSolution(world, unit, weapon, priorityTarget, wpx, wpy, wpz)) {
             setWeaponTarget(weapon, unit, wi, null);
@@ -984,9 +995,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         const wpx = weapon.worldPos!.x;
         const wpy = weapon.worldPos!.y;
         const wpz = weapon.worldPos!.z;
+        const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
         const distSq = distanceSquared(
           wpx, wpy,
-          target.transform.x, target.transform.y,
+          targetPosition.x, targetPosition.y,
         );
         if (!hasWeaponBallisticSolution(world, unit, weapon, target, wpx, wpy, wpz)) {
           setWeaponTarget(weapon, unit, wi, null);
@@ -1113,9 +1125,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // maxWeaponOffset` while its hull is well within firing range,
       // and the per-weapon distance gate would have accepted it.
       const batchRadius = maxAcquireRange + maxWeaponOffset + world.getMaxTargetableRadius();
-      const ux = unit.transform.x;
-      const uy = unit.transform.y;
-      const uz = unit.transform.z;
+      const unitPosition = getEntityPosition3d(unit, _targetingUnitPosition);
+      const ux = unitPosition.x;
+      const uy = unitPosition.y;
+      const uz = unitPosition.z;
       batchedEnemies = spatialGrid.queryEnemyEntitiesInCircle2D(
         ux, uy, batchRadius, playerId,
         uz - batchRadius, uz + batchRadius,

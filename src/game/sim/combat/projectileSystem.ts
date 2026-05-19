@@ -16,12 +16,12 @@ import {
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
-  type KinematicVec3,
 } from '../../math';
 import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, BEAM_MAX_SEGMENTS } from '../../../config';
 import {
-  getEntityAcceleration3,
-  getEntityVelocity3,
+  getEntityAcceleration3d,
+  getEntityPosition3d,
+  getEntityVelocity3d,
   getProjectileLaunchSpeed,
   turretMaskIncludes,
   updateProjectileSourceClearance,
@@ -44,6 +44,8 @@ import { getSimWasm } from '../../sim-wasm/init';
  *  time its original target gets destroyed by another rocket in the
  *  same salvo. */
 const ROCKET_REACQUIRE_RANGE = 800;
+const _rocketSeekerPosition = { x: 0, y: 0, z: 0 };
+const _rocketCandidatePosition = { x: 0, y: 0, z: 0 };
 
 /** Find the closest living enemy entity (unit or building) within
  *  ROCKET_REACQUIRE_RANGE of `proj`, belonging to a different player
@@ -54,8 +56,9 @@ function findNearestEnemyForRocket(
   proj: Entity,
   ownerId: number,
 ): Entity | null {
+  const projectilePosition = getEntityPosition3d(proj, _rocketSeekerPosition);
   const candidates = spatialGrid.queryEnemyEntitiesInRadius(
-    proj.transform.x, proj.transform.y, proj.transform.z, ROCKET_REACQUIRE_RANGE, ownerId,
+    projectilePosition.x, projectilePosition.y, projectilePosition.z, ROCKET_REACQUIRE_RANGE, ownerId,
   );
   let nearest: Entity | null = null;
   let nearestDistSq = Infinity;
@@ -68,9 +71,10 @@ function findNearestEnemyForRocket(
     } else {
       continue;
     }
-    const dx = c.transform.x - proj.transform.x;
-    const dy = c.transform.y - proj.transform.y;
-    const dz = c.transform.z - proj.transform.z;
+    const candidatePosition = getEntityPosition3d(c, _rocketCandidatePosition);
+    const dx = candidatePosition.x - projectilePosition.x;
+    const dy = candidatePosition.y - projectilePosition.y;
+    const dz = candidatePosition.z - projectilePosition.z;
     const distSq = dx * dx + dy * dy + dz * dz;
     if (distSq < nearestDistSq) {
       nearestDistSq = distSq;
@@ -148,10 +152,10 @@ const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
 const _lineShotRangeCircle: LineShotRangeCircle = { centerX: 0, centerY: 0, radius: 0 };
+const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
-const _homingProjectileAcceleration: KinematicVec3 = { x: 0, y: 0, z: 0 };
 const _homingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -169,6 +173,12 @@ const _homingIntercept: KinematicInterceptSolution = {
 };
 const FIRE_YAW_TOLERANCE = 0.16;
 const FIRE_PITCH_TOLERANCE = 0.16;
+const FIRE_BALLISTIC_PITCH_TOLERANCE = 0.025;
+
+function isBallisticArcWeapon(weapon: Turret): boolean {
+  const angleType = weapon.config.aimStyle.angleType;
+  return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
+}
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
   point.mirrorEntityId = undefined;
@@ -214,9 +224,12 @@ function copyBeamReflectorMetadata(
 function isWeaponAimedForFire(weapon: Turret): boolean {
   if (weapon.config.verticalLauncher) return true;
   if (weapon.aimErrorYaw === undefined || weapon.aimErrorPitch === undefined) return true;
+  const pitchTolerance = isBallisticArcWeapon(weapon)
+    ? FIRE_BALLISTIC_PITCH_TOLERANCE
+    : FIRE_PITCH_TOLERANCE;
   return (
     Math.abs(weapon.aimErrorYaw) <= FIRE_YAW_TOLERANCE &&
-    Math.abs(weapon.aimErrorPitch) <= FIRE_PITCH_TOLERANCE
+    Math.abs(weapon.aimErrorPitch) <= pitchTolerance
   );
 }
 
@@ -255,9 +268,10 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileSlots.set(entity.id, slot);
   _packedProjectileEntities[slot] = entity;
   _packedProjectileIds[slot] = entity.id;
-  _packedProjectileX[slot] = entity.transform.x;
-  _packedProjectileY[slot] = entity.transform.y;
-  _packedProjectileZ[slot] = entity.transform.z;
+  const position = getEntityPosition3d(entity, _projectilePositionScratch);
+  _packedProjectileX[slot] = position.x;
+  _packedProjectileY[slot] = position.y;
+  _packedProjectileZ[slot] = position.z;
   _packedProjectileVx[slot] = proj.velocityX;
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
@@ -660,9 +674,10 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     // Other systems may mutate velocity before the projectile
     // integration pass. Pull those object-side velocities back into
     // the WASM-side pool so packed shots stay authoritative.
-    _packedProjectileX[slot] = entity.transform.x;
-    _packedProjectileY[slot] = entity.transform.y;
-    _packedProjectileZ[slot] = entity.transform.z;
+    const position = getEntityPosition3d(entity, _projectilePositionScratch);
+    _packedProjectileX[slot] = position.x;
+    _packedProjectileY[slot] = position.y;
+    _packedProjectileZ[slot] = position.z;
     _packedProjectileVx[slot] = proj.velocityX;
     _packedProjectileVy[slot] = proj.velocityY;
     _packedProjectileVz[slot] = proj.velocityZ;
@@ -671,15 +686,15 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     _packedProjectileTimeAlive[slot] = proj.timeAlive;
 
     if (proj.collisionStartX === undefined) {
-      proj.collisionStartX = entity.transform.x;
-      proj.collisionStartY = entity.transform.y;
-      proj.collisionStartZ = entity.transform.z;
+      proj.collisionStartX = position.x;
+      proj.collisionStartY = position.y;
+      proj.collisionStartZ = position.z;
     }
 
     // Stash prev-state for swept 3D collision in ProjectileCollisionHandler.
-    proj.prevX = entity.transform.x;
-    proj.prevY = entity.transform.y;
-    proj.prevZ = entity.transform.z;
+    proj.prevX = position.x;
+    proj.prevY = position.y;
+    proj.prevZ = position.z;
 
     slot++;
   }
@@ -733,16 +748,17 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 
     proj.timeAlive += dtMs;
 
+    const position = getEntityPosition3d(entity, _projectilePositionScratch);
     if (proj.collisionStartX === undefined) {
-      proj.collisionStartX = entity.transform.x;
-      proj.collisionStartY = entity.transform.y;
-      proj.collisionStartZ = entity.transform.z;
+      proj.collisionStartX = position.x;
+      proj.collisionStartY = position.y;
+      proj.collisionStartZ = position.z;
     }
 
     // Stash prev-state for swept 3D collision in ProjectileCollisionHandler.
-    proj.prevX = entity.transform.x;
-    proj.prevY = entity.transform.y;
-    proj.prevZ = entity.transform.z;
+    proj.prevX = position.x;
+    proj.prevY = position.y;
+    proj.prevZ = position.z;
 
     // Gravity integration: every traveling projectile with mass follows
     // the same constant-acceleration equation the turret aim solver
@@ -750,10 +766,10 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // class: they move horizontally and snap to local terrain height
     // every tick.
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
-    const prevTerrainFollowZ = entity.transform.z;
+    const prevTerrainFollowZ = position.z;
     const nextZ = terrainFollow
       ? prevTerrainFollowZ
-      : integrateConstantAccelerationPosition(entity.transform.z, proj.velocityZ, -GRAVITY, dtSec);
+      : integrateConstantAccelerationPosition(position.z, proj.velocityZ, -GRAVITY, dtSec);
     if (!terrainFollow) {
       proj.velocityZ = integrateConstantAccelerationVelocity(proj.velocityZ, -GRAVITY, dtSec);
     }
@@ -761,7 +777,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     entity.transform.x += proj.velocityX * dtSec;
     entity.transform.y += proj.velocityY * dtSec;
     if (terrainFollow) {
-      const terrainZ = world.getGroundZ(entity.transform.x, entity.transform.y) +
+      const terrainPosition = getEntityPosition3d(entity, _projectilePositionScratch);
+      const terrainZ = world.getGroundZ(terrainPosition.x, terrainPosition.y) +
         (entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT);
       proj.velocityZ = dtSec > 0 ? (terrainZ - prevTerrainFollowZ) / dtSec : 0;
       entity.transform.z = terrainZ;
@@ -770,15 +787,16 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     }
 
     const wasSourceCleared = !!proj.hasLeftSource;
+    const updatedPosition = getEntityPosition3d(entity, _projectilePositionScratch);
     if (updateProjectileSourceClearance(
       world.getEntity(proj.sourceEntityId),
       proj,
-      entity.transform.x, entity.transform.y, entity.transform.z,
+      updatedPosition.x, updatedPosition.y, updatedPosition.z,
       proj.config.shotProfile.runtime.collisionRadius,
     ) && !wasSourceCleared) {
-      proj.collisionStartX = entity.transform.x;
-      proj.collisionStartY = entity.transform.y;
-      proj.collisionStartZ = entity.transform.z;
+      proj.collisionStartX = updatedPosition.x;
+      proj.collisionStartY = updatedPosition.y;
+      proj.collisionStartZ = updatedPosition.z;
     }
 
     // Homing rotates the full 3D velocity vector toward a live
@@ -813,19 +831,19 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         }
       }
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
+        const projectilePosition = getEntityPosition3d(entity, _homingOriginState.position);
         const aimPoint = resolveTargetAimPoint(
           homingTarget,
-          entity.transform.x, entity.transform.y, entity.transform.z,
+          projectilePosition.x, projectilePosition.y, projectilePosition.z,
           _homingAimPoint,
         );
         let steerX = aimPoint.x;
         let steerY = aimPoint.y;
         let steerZ = aimPoint.z;
-        const targetVelocity = getEntityVelocity3(homingTarget, _homingTargetVelocity);
-        const targetAcceleration = getEntityAcceleration3(
+        const targetVelocity = getEntityVelocity3d(homingTarget, _homingTargetVelocity);
+        const targetAcceleration = getEntityAcceleration3d(
           homingTarget,
           _homingTargetAcceleration,
-          (x, y) => world.getGroundZ(x, y),
         );
         const targetSpeedSq =
           targetVelocity.x * targetVelocity.x +
@@ -837,15 +855,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           targetAcceleration.z * targetAcceleration.z;
         const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
         if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
-          _homingOriginState.position.x = entity.transform.x;
-          _homingOriginState.position.y = entity.transform.y;
-          _homingOriginState.position.z = entity.transform.z;
-          _homingOriginState.velocity.x = 0;
-          _homingOriginState.velocity.y = 0;
-          _homingOriginState.velocity.z = 0;
-          _homingOriginState.acceleration.x = 0;
-          _homingOriginState.acceleration.y = 0;
-          _homingOriginState.acceleration.z = 0;
+          getEntityVelocity3d(entity, _homingOriginState.velocity);
+          getEntityAcceleration3d(entity, _homingOriginState.acceleration);
           _homingTargetState.position.x = steerX;
           _homingTargetState.position.y = steerY;
           _homingTargetState.position.z = steerZ;
@@ -855,17 +866,19 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           _homingTargetState.acceleration.x = targetAcceleration.x;
           _homingTargetState.acceleration.y = targetAcceleration.y;
           _homingTargetState.acceleration.z = targetAcceleration.z;
-          _homingProjectileAcceleration.x = 0;
-          _homingProjectileAcceleration.y = 0;
-          _homingProjectileAcceleration.z = -GRAVITY;
           const remainingSec = Number.isFinite(proj.maxLifespan)
             ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-            : undefined;
+            : 0;
           const intercept = solveKinematicIntercept({
-            origin: _homingOriginState,
-            target: _homingTargetState,
+            myPosition: _homingOriginState.position,
+            myVelocity: _homingOriginState.velocity,
+            myAcceleration: _homingOriginState.acceleration,
+            targetPosition: _homingTargetState.position,
+            targetVelocity: _homingTargetState.velocity,
+            targetAcceleration: _homingTargetState.acceleration,
             projectileSpeed,
-            projectileAcceleration: _homingProjectileAcceleration,
+            gravity: GRAVITY,
+            preferLateSolution: false,
             maxTimeSec: remainingSec,
           }, _homingIntercept);
           if (intercept) {
@@ -877,7 +890,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         const steered = applyHomingSteering(
           proj.velocityX, proj.velocityY, proj.velocityZ,
           steerX, steerY, steerZ,
-          entity.transform.x, entity.transform.y, entity.transform.z,
+          projectilePosition.x, projectilePosition.y, projectilePosition.z,
           proj.homingTurnRate ?? 0, dtSec,
         );
         proj.velocityX = steered.velocityX;
@@ -897,7 +910,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           proj.lastSentVelZ = proj.velocityZ;
           _homingVelocityUpdates.push({
             id: entity.id,
-            pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
+            pos: { x: projectilePosition.x, y: projectilePosition.y, z: projectilePosition.z },
             velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
           });
         }

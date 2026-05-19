@@ -66,6 +66,8 @@ export function decrementCooldown(cd: number, dtMs: number): number {
 
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const _rwmOut: Vec3 = { x: 0, y: 0, z: 0 };
+const _entityPositionScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 export type WeaponKinematicsOptions = {
   currentTick?: number;
@@ -88,12 +90,13 @@ function writeHostBodyCenterMount(
   options: { unitGroundZ?: number; surfaceN?: { nx: number; ny: number; nz: number } } | undefined,
   out: Vec3,
 ): Vec3 {
+  const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
   const suspension = unit.unit?.suspension;
   if (suspension) {
     const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
     const mount = getTurretWorldMount(
-      unit.transform.x,
-      unit.transform.y,
+      unitPosition.x,
+      unitPosition.y,
       unitGroundZ,
       cos,
       sin,
@@ -107,9 +110,9 @@ function writeHostBodyCenterMount(
     out.z = mount.z;
     return out;
   }
-  out.x = unit.transform.x;
-  out.y = unit.transform.y;
-  out.z = unit.transform.z;
+  out.x = unitPosition.x;
+  out.y = unitPosition.y;
+  out.z = unitPosition.z;
   return out;
 }
 
@@ -148,8 +151,9 @@ export function resolveWeaponWorldMount(
   const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
   const localMount = getRuntimeTurretMount(turret);
   const suspension = unit.unit?.suspension;
+  const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
   const mount = getTurretWorldMount(
-    unit.transform.x, unit.transform.y, unitGroundZ,
+    unitPosition.x, unitPosition.y, unitGroundZ,
     cos, sin,
     localMount.x + (suspension?.offsetX ?? 0),
     localMount.y + (suspension?.offsetY ?? 0),
@@ -197,8 +201,9 @@ export function updateWeaponWorldKinematics(
   } else {
     const localMount = getRuntimeTurretMount(turret);
     const suspension = unit.unit?.suspension;
+    const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
     mount = getTurretWorldMount(
-      unit.transform.x, unit.transform.y, unitGroundZ,
+      unitPosition.x, unitPosition.y, unitGroundZ,
       cos, sin,
       localMount.x + (suspension?.offsetX ?? 0),
       localMount.y + (suspension?.offsetY ?? 0),
@@ -218,9 +223,10 @@ export function updateWeaponWorldKinematics(
     worldVel.y = (mount.y - worldPos.y) * invElapsedSec;
     worldVel.z = (mount.z - worldPos.z) * invElapsedSec;
   } else if (unit.unit) {
-    worldVel.x = unit.unit.velocityX ?? 0;
-    worldVel.y = unit.unit.velocityY ?? 0;
-    worldVel.z = unit.unit.velocityZ ?? 0;
+    const unitVelocity = getEntityVelocity3d(unit, _entityVelocityScratch);
+    worldVel.x = unitVelocity.x;
+    worldVel.y = unitVelocity.y;
+    worldVel.z = unitVelocity.z;
   } else {
     worldVel.x = 0;
     worldVel.y = 0;
@@ -247,7 +253,14 @@ export function getTurretMountHeight(unit: Entity, turretIndex: number): number 
   return turret ? getRuntimeTurretMountHeight(turret) : (unit.unit?.bodyCenterHeight ?? 0);
 }
 
-export function getEntityVelocity3(entity: Entity, out: Vec3): Vec3 {
+export function getEntityPosition3d(entity: Entity, out: Vec3): Vec3 {
+  out.x = entity.transform.x;
+  out.y = entity.transform.y;
+  out.z = entity.transform.z;
+  return out;
+}
+
+export function getEntityVelocity3d(entity: Entity, out: Vec3): Vec3 {
   if (entity.unit) {
     out.x = entity.unit.velocityX ?? 0;
     out.y = entity.unit.velocityY ?? 0;
@@ -264,30 +277,17 @@ export function getEntityVelocity3(entity: Entity, out: Vec3): Vec3 {
   return out;
 }
 
-export type GroundHeightLookup = (x: number, y: number) => number;
-
-function isUnitAirborneForAcceleration(entity: Entity, groundHeightAt?: GroundHeightLookup): boolean {
-  const unit = entity.unit;
-  if (!unit) return false;
-  const verticalSpeed = Math.abs(unit.velocityZ ?? 0);
-  if (!groundHeightAt) return unit.jump?.active === true || verticalSpeed > 0.05;
-  const groundPointZ = entity.transform.z - unit.bodyCenterHeight;
-  return (
-    groundPointZ > groundHeightAt(entity.transform.x, entity.transform.y) + 0.25 ||
-    verticalSpeed > 0.05
-  );
-}
-
-export function getEntityAcceleration3(
+export function getEntityAcceleration3d(
   entity: Entity,
   out: Vec3,
-  groundHeightAt?: GroundHeightLookup,
 ): Vec3 {
   if (entity.unit) {
+    // Targeting consumes raw kinematic acceleration. Do not infer gravity
+    // from suspension/altitude here; supported units without authored
+    // vertical acceleration should contribute 0, not projectile-like freefall.
     out.x = entity.unit.movementAccelX ?? 0;
     out.y = entity.unit.movementAccelY ?? 0;
     out.z = entity.unit.movementAccelZ ?? 0;
-    if (isUnitAirborneForAcceleration(entity, groundHeightAt)) out.z -= GRAVITY;
   } else if (entity.projectile) {
     out.x = 0;
     out.y = 0;
@@ -314,9 +314,10 @@ export function updateProjectileSourceClearance(
     return true;
   }
 
-  const dx = pointX - source.transform.x;
-  const dy = pointY - source.transform.y;
-  const dz = pointZ - source.transform.z;
+  const sourcePosition = getEntityPosition3d(source, _entityPositionScratch);
+  const dx = pointX - sourcePosition.x;
+  const dy = pointY - sourcePosition.y;
+  const dz = pointZ - sourcePosition.z;
   const clearance = source.unit.radius.shot + Math.max(0, pointRadius) + 2;
   if (dx * dx + dy * dy + dz * dz > clearance * clearance) {
     projectile.hasLeftSource = true;
@@ -330,8 +331,9 @@ export function updateProjectileSourceClearance(
 export function getMovementAngle(unit: Entity): number {
   if (!unit.unit) return unit.transform.rotation;
 
-  const velX = unit.unit.velocityX ?? 0;
-  const velY = unit.unit.velocityY ?? 0;
+  const velocity = getEntityVelocity3d(unit, _entityVelocityScratch);
+  const velX = velocity.x;
+  const velY = velocity.y;
   const speed = magnitude(velX, velY);
 
   if (speed > 1) {
