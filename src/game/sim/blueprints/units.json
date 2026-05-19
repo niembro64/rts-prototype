@@ -289,15 +289,7 @@
     },
     "hideChassis": true,
     "legAttachHeightFrac": null,
-    "suspension": {
-      "stiffness": 260000,
-      "dampingRatio": 0.55,
-      "maxOffset": {
-        "x": 3,
-        "y": 3,
-        "z": 10
-      }
-    },
+    "suspension": null,
     "builder": null,
     "dgun": null,
     "cloak": {
