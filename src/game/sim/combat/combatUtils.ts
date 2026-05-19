@@ -119,8 +119,8 @@ function writeHostBodyCenterMount(
 export function resolveWeaponWorldMount(
   unit: Entity,
   turret: {
-    worldPos?: Vec3;
-    worldPosTick?: number;
+    worldPos: Vec3;
+    worldPosTick: number;
     mount: Vec3;
     config?: { mountMode?: 'authored' | 'unitBodyCenter' };
   },
@@ -138,8 +138,13 @@ export function resolveWeaponWorldMount(
     return writeHostBodyCenterMount(unit, cos, sin, options, out);
   }
 
+  // Cache is valid only after at least one updateWeaponWorldKinematics
+  // pass (worldPosTick >= 0). When a currentTick is supplied we also
+  // require it to match — otherwise the cache may be a tick stale.
+  // No currentTick means "trust whatever you have", but the cache
+  // must still have been populated at least once.
   if (
-    turret.worldPos &&
+    turret.worldPosTick >= 0 &&
     (options?.currentTick === undefined || turret.worldPosTick === options.currentTick)
   ) {
     out.x = turret.worldPos.x;
@@ -183,8 +188,8 @@ export function updateWeaponWorldKinematics(
   options: WeaponKinematicsOptions = {},
   out: Vec3 = _rwmOut,
 ): Vec3 {
-  const worldPos = turret.worldPos ?? (turret.worldPos = { x: 0, y: 0, z: 0 });
-  const worldVel = turret.worldVelocity ?? (turret.worldVelocity = { x: 0, y: 0, z: 0 });
+  const worldPos = turret.worldPos;
+  const worldVel = turret.worldVelocity;
   const currentTick = options.currentTick;
   const bodyCenterMount = usesHostBodyCenterMount(unit, turret);
   if (currentTick !== undefined && turret.worldPosTick === currentTick && !bodyCenterMount) {
@@ -213,7 +218,7 @@ export function updateWeaponWorldKinematics(
   }
 
   const prevTick = turret.worldPosTick;
-  const ticksElapsed = currentTick !== undefined && prevTick !== undefined
+  const ticksElapsed = currentTick !== undefined && prevTick >= 0
     ? currentTick - prevTick
     : 0;
 

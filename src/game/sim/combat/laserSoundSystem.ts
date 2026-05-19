@@ -101,7 +101,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
       // doing a second 2D distance check for every beam turret.
       const hasTargetInRange = (
         weapon.target !== null ||
-        unit.combat.priorityTargetPoint !== undefined
+        unit.combat.priorityTargetPoint !== null
       ) && weapon.state === 'engaged';
 
       if (hasTargetInRange) {

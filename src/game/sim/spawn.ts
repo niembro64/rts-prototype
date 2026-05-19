@@ -261,6 +261,9 @@ function placeCompleteBuilding(
   if (buildingTurrets.length > 0) {
     entity.combat = {
       turrets: buildingTurrets,
+      priorityTargetId: null,
+      priorityTargetPoint: null,
+      nextCombatProbeTick: -1,
       hasActiveCombat: false,
       activeTurretMask: 0,
       firingTurretMask: 0,

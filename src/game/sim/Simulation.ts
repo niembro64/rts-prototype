@@ -725,8 +725,8 @@ export class Simulation {
         // wire); reset it without flagging a delta.
         setUnitMovementAcceleration(unit, 0, 0, 0);
         if (entity.combat) {
-          entity.combat.priorityTargetId = undefined;
-          entity.combat.priorityTargetPoint = undefined;
+          entity.combat.priorityTargetId = null;
+          entity.combat.priorityTargetPoint = null;
         }
         continue;
       }
@@ -738,8 +738,8 @@ export class Simulation {
 
       // Clear priority target — re-set below by attack / attack-ground actions.
       if (entity.combat) {
-        entity.combat.priorityTargetId = undefined;
-        entity.combat.priorityTargetPoint = undefined;
+        entity.combat.priorityTargetId = null;
+        entity.combat.priorityTargetPoint = null;
       }
 
       // Sweep targeted intents whose target disappeared or no longer
@@ -1186,7 +1186,7 @@ export class Simulation {
       if (turret.config.visualOnly) continue;
       if (
         turret.state === 'engaged' &&
-        (turret.target !== null || combat.priorityTargetPoint !== undefined)
+        (turret.target !== null || combat.priorityTargetPoint !== null)
       ) return true;
     }
     return false;
@@ -1210,7 +1210,7 @@ export class Simulation {
       total++;
       if (
         turret.state === 'engaged' &&
-        (turret.target !== null || combat.priorityTargetPoint !== undefined)
+        (turret.target !== null || combat.priorityTargetPoint !== null)
       ) engaged++;
     }
     if (total === 0) return false;

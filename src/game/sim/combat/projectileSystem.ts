@@ -145,7 +145,6 @@ function refreshPackedProjectileViews(): void {
     _packedProjectileViewsBound = true;
   }
 }
-const _fireMountVelocity = { x: 0, y: 0, z: 0 };
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
@@ -221,10 +220,13 @@ function copyBeamReflectorMetadata(
 
 function isWeaponAimedForFire(weapon: Turret): boolean {
   if (weapon.config.verticalLauncher) return true;
-  if (weapon.aimErrorYaw === undefined || weapon.aimErrorPitch === undefined) return true;
   const pitchTolerance = isBallisticArcWeapon(weapon)
     ? FIRE_BALLISTIC_PITCH_TOLERANCE
     : FIRE_PITCH_TOLERANCE;
+  // aimErrorYaw/Pitch default to 0, which is trivially within
+  // tolerance — preserves the previous "no aim computed yet means
+  // trivially aimed" semantic that the optional-undefined check used
+  // to encode.
   return (
     Math.abs(weapon.aimErrorYaw) <= FIRE_YAW_TOLERANCE &&
     Math.abs(weapon.aimErrorPitch) <= pitchTolerance
@@ -362,7 +364,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
-      if (isProjectileShot(shot) && weapon.ballisticAimInRange === false) {
+      if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
         continue;
       }
 
@@ -447,7 +449,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const pellets = config.spread?.pelletCount ?? 1;
       const spreadAngle = config.spread?.angle ?? 0;
       const barrelCount = countBarrels(config);
-      const fireBaseIndex = weapon.barrelFireIndex ?? 0;
+      const fireBaseIndex = weapon.barrelFireIndex;
 
       for (let i = 0; i < pellets; i++) {
         // Keep the round-robin barrel index as visual/audio cadence
@@ -571,14 +573,14 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           let projVz = dirZ * speed;
           // Inherit the turret mount center's own 3D velocity. Barrel
           // yaw/pitch no longer contributes tangential endpoint
-          // velocity because the launch origin is the attachment point.
-          const inherited = weapon.worldVelocity;
-          _fireMountVelocity.x = inherited?.x ?? 0;
-          _fireMountVelocity.y = inherited?.y ?? 0;
-          _fireMountVelocity.z = inherited?.z ?? 0;
-          projVx += _fireMountVelocity.x;
-          projVy += _fireMountVelocity.y;
-          projVz += _fireMountVelocity.z;
+          // velocity because the launch origin is the attachment
+          // point. worldVelocity is always present; if it has never
+          // been populated (worldPosTick < 0) the cached zeros are
+          // correct — a turret that has never had its kinematics run
+          // has no measured motion to inherit.
+          projVx += weapon.worldVelocity.x;
+          projVy += weapon.worldVelocity.y;
+          projVz += weapon.worldVelocity.z;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const projectile = world.createProjectile(
             spawnX,

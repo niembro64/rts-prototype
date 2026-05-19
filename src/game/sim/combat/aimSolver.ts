@@ -237,11 +237,14 @@ function writeTurretMountVelocity(
 ): Vec3 {
   if (!inheritVelocity) return writeZeroVec3(out);
 
-  const mountVelocity = weapon.worldVelocity;
-  if (mountVelocity) {
-    out.x = mountVelocity.x;
-    out.y = mountVelocity.y;
-    out.z = mountVelocity.z;
+  // The cached mount velocity is only meaningful once
+  // updateWeaponWorldKinematics has populated it (`worldPosTick >= 0`).
+  // Before that, fall back to the carrier's velocity so the first
+  // pre-tick aim solve gets a reasonable lead instead of zeroes.
+  if (weapon.worldPosTick >= 0) {
+    out.x = weapon.worldVelocity.x;
+    out.y = weapon.worldVelocity.y;
+    out.z = weapon.worldVelocity.z;
     return out;
   }
   return getEntityVelocity3d(source, out);

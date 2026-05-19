@@ -57,7 +57,6 @@ import {
 } from './unitActionIntents';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
-const _dgunMountVelocity = { x: 0, y: 0, z: 0 };
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
   const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
   return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
@@ -285,9 +284,9 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
     entity.unit.thrustDirY = 0;
     if (entity.builder) entity.builder.currentBuildTarget = null;
     if (entity.combat) {
-      entity.combat.priorityTargetId = undefined;
-      entity.combat.priorityTargetPoint = undefined;
-      entity.combat.nextCombatProbeTick = undefined;
+      entity.combat.priorityTargetId = null;
+      entity.combat.priorityTargetPoint = null;
+      entity.combat.nextCombatProbeTick = -1;
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
@@ -567,11 +566,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     // Manual D-gun shots update the same turret kinematics cache used
     // by automated weapons above, so inherited velocity is the turret
     // mount center's own 3D motion.
-    const inherited = dgunTurret.worldVelocity;
-    _dgunMountVelocity.x = inherited?.x ?? 0;
-    _dgunMountVelocity.y = inherited?.y ?? 0;
-    velocityX += _dgunMountVelocity.x;
-    velocityY += _dgunMountVelocity.y;
+    velocityX += dgunTurret.worldVelocity.x;
+    velocityY += dgunTurret.worldVelocity.y;
   }
 
   // Create D-gun projectile
@@ -635,9 +631,9 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
     if (combat.fireEnabled === enabled) continue;
     combat.fireEnabled = enabled;
     if (!enabled) {
-      combat.priorityTargetId = undefined;
-      combat.priorityTargetPoint = undefined;
-      combat.nextCombatProbeTick = undefined;
+      combat.priorityTargetId = null;
+      combat.priorityTargetPoint = null;
+      combat.nextCombatProbeTick = -1;
       clearCombatActivityFlags(combat);
       for (let wi = 0; wi < combat.turrets.length; wi++) {
         const weapon = combat.turrets[wi];

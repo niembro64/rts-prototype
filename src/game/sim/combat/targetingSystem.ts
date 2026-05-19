@@ -202,7 +202,7 @@ function currentFireTargetRankSq(
   weapon: Turret,
   edge: 'acquire' | 'release',
 ): { rank: TargetPreferenceRank; distSq: number } {
-  if (weapon.target === null || !weapon.worldPos) {
+  if (weapon.target === null || weapon.worldPosTick < 0) {
     return { rank: TARGET_RANK_NONE, distSq: Infinity };
   }
   const target = world.getEntity(weapon.target);
@@ -605,9 +605,9 @@ function chooseBestTargetCandidate(
   seed: TargetCandidateChoice,
   activeForceFields: readonly ActiveForceFieldRef[],
 ): TargetCandidateChoice {
-  const weaponX = weapon.worldPos!.x;
-  const weaponY = weapon.worldPos!.y;
-  const weaponZ = weapon.worldPos!.z;
+  const weaponX = weapon.worldPos.x;
+  const weaponY = weapon.worldPos.y;
+  const weaponZ = weapon.worldPos.z;
   const needsLOS = weaponNeedsLineOfSight(weapon);
   const needsForceFieldClearance = activeForceFields.length > 0;
   const sourcePlayerId = source.ownership?.playerId;
@@ -828,9 +828,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     clearCombatActivityFlags(combat);
     if (combat.fireEnabled === false) {
-      combat.priorityTargetId = undefined;
-      combat.priorityTargetPoint = undefined;
-      combat.nextCombatProbeTick = undefined;
+      combat.priorityTargetId = null;
+      combat.priorityTargetPoint = null;
+      combat.nextCombatProbeTick = -1;
       const weapons = combat.turrets;
       for (let wi = 0; wi < weapons.length; wi++) {
         const weapon = weapons[wi];
@@ -842,10 +842,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const priorityId = combat.priorityTargetId;
     const priorityPoint = combat.priorityTargetPoint;
     const scheduledProbeTick = combat.nextCombatProbeTick;
+    // Sentinel -1 disables the gate (`-1 > tick` is false for tick >= 0).
     if (
-      priorityId === undefined &&
-      priorityPoint === undefined &&
-      scheduledProbeTick !== undefined &&
+      priorityId === null &&
+      priorityPoint === null &&
       scheduledProbeTick > tick
     ) {
       continue;
@@ -882,7 +882,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       continue;
     }
 
-    combat.nextCombatProbeTick = undefined;
+    combat.nextCombatProbeTick = -1;
 
     // Pass 0: Compute authoritative per-turret mount kinematics once.
     // Targeting, aiming, firing, force fields, and beam retracing all
@@ -907,7 +907,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     // Check for attack-ground priority target.
-    if (priorityPoint !== undefined) {
+    if (priorityPoint !== null) {
       for (let wi = 0; wi < weapons.length; wi++) {
         const weapon = weapons[wi];
         if (_weaponDisabled[wi]) continue;
@@ -919,9 +919,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           continue;
         }
 
-        const wpx = weapon.worldPos!.x;
-        const wpy = weapon.worldPos!.y;
-        const wpz = weapon.worldPos!.z;
+        const wpx = weapon.worldPos.x;
+        const wpy = weapon.worldPos.y;
+        const wpz = weapon.worldPos.z;
         const losClear = hasWeaponLineOfSightToPoint(
           world,
           unit,
@@ -965,7 +965,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     // Check for attack command priority target
-    if (priorityId !== undefined) {
+    if (priorityId !== null) {
       // Validate priority target is alive
       const pt = world.getEntity(priorityId);
       let priorityTarget: Entity | null = null;
@@ -1003,9 +1003,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             continue;
           }
 
-          const wpx = weapon.worldPos!.x;
-          const wpy = weapon.worldPos!.y;
-          const wpz = weapon.worldPos!.z;
+          const wpx = weapon.worldPos.x;
+          const wpy = weapon.worldPos.y;
+          const wpz = weapon.worldPos.z;
           const losClear = hasWeaponLineOfSight(
             world,
             unit,
@@ -1089,9 +1089,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.state = 'idle';
       } else {
         const r = weapon.ranges;
-        const wpx = weapon.worldPos!.x;
-        const wpy = weapon.worldPos!.y;
-        const wpz = weapon.worldPos!.z;
+        const wpx = weapon.worldPos.x;
+        const wpy = weapon.worldPos.y;
+        const wpz = weapon.worldPos.z;
         const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
         const distSq = distanceSquared3(
           wpx, wpy, wpz,
@@ -1132,7 +1132,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             activeForceFields,
           );
         weapon.losBlockedTicks = losBlocked
-          ? (weapon.losBlockedTicks ?? 0) + 1
+          ? weapon.losBlockedTicks + 1
           : 0;
         const losDrop = weapon.losBlockedTicks > LOS_DROP_GRACE_TICKS;
 
@@ -1345,7 +1345,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
-    else if (priorityId === undefined) {
+    else if (priorityId === null) {
       combat.nextCombatProbeTick = hasCooldownState
         ? tick + 1
         : nextTargetingReacquireTick(tick);

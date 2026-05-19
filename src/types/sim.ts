@@ -240,20 +240,27 @@ export type CombatComponent = {
    *  spawn from the host blueprint's `turrets[]` and persisted across
    *  the entity's lifetime. */
   turrets: Turret[];
-  /** Player-controlled fire permission. False is hold-fire: weapons keep
-   *  cooldown state but do not acquire, track, or fire at targets. */
+  /** Player-controlled fire permission. False is hold-fire: weapons
+   *  keep cooldown state but do not acquire, track, or fire at
+   *  targets. Stays optional because the wire format treats `=== false`
+   *  as the only meaningful state and `undefined` as the default `true`
+   *  — converting would require wire-format coupling we don't want
+   *  here. */
   fireEnabled?: boolean;
-  /** Player attack-command target. When set, every turret on this
-   *  entity is forced toward it and fires as soon as it enters fire
+  /** Player attack-command target. `null` is the canonical "no
+   *  priority target" value; setting an EntityId forces every turret
+   *  on this entity toward it and fires as soon as it enters fire
    *  range, ignoring the auto-acquisition picker. */
-  priorityTargetId?: EntityId;
-  /** Player attack-ground target. Sim-only; action snapshots carry the
-   *  visible queued order while targeting/firing reads this per tick. */
-  priorityTargetPoint?: Vec3;
-  /** Tick before which fully-idle armed entities can skip the targeting
-   *  pass. Attack commands clear this implicitly by setting
-   *  priorityTargetId; live/cooldown weapons process every tick. */
-  nextCombatProbeTick?: number;
+  priorityTargetId: EntityId | null;
+  /** Player attack-ground target. Sim-only; action snapshots carry
+   *  the visible queued order while targeting/firing reads this per
+   *  tick. `null` means no attack-ground point is queued. */
+  priorityTargetPoint: Vec3 | null;
+  /** Tick before which fully-idle armed entities can skip the
+   *  targeting pass. Sentinel `-1` means "always run this tick";
+   *  attack commands clear back to `-1` implicitly by setting
+   *  priorityTargetId, and live/cooldown weapons process every tick. */
+  nextCombatProbeTick: number;
   /** Cached render hot-path answer: true when any non-visual turret is
    *  tracking, engaged, or carrying a target lock. */
   hasActiveCombat: boolean;
@@ -412,43 +419,51 @@ export type Turret = {
    *  source of truth for sim targeting/firing and client rendering. */
   mount: Vec3;
   /** Cached authoritative world-space mount position, written only by
-   *  updateWeaponWorldKinematics. This is sim-only hot-path state;
-   *  snapshots still serialize mount x/y compatibility data plus
-   *  rotation/pitch, not this derived
-   *  value. */
-  worldPos?: Vec3;
+   *  updateWeaponWorldKinematics. Always-present (initialized to
+   *  zero at turret construction). The cache is valid iff
+   *  `worldPosTick >= 0`; consumers gate on that sentinel rather than
+   *  on object presence. Sim-only hot-path state — snapshots ship
+   *  rotation/pitch, not this derived value. */
+  worldPos: Vec3;
   /** Cached world-space mount velocity computed by
-   *  updateWeaponWorldKinematics from worldPos deltas when current, or
-   *  from the carrier's velocity as a stale/first-tick fallback. This is
-   *  the turret's own 3D motion, so moving/tilted/lateral mounts feed
-   *  projectile lead and inherited launch-origin velocity correctly. */
-  worldVelocity?: Vec3;
-  /** Simulation tick corresponding to worldPos/worldVelocity. */
-  worldPosTick?: number;
-  /** Last solver target and signed miss vector in radians. The firing
-   *  path uses this to avoid spending shots while a damped turret is
-   *  still visibly traversing toward a steep 3D target. */
-  aimTargetYaw?: number;
-  aimTargetPitch?: number;
-  aimErrorYaw?: number;
-  aimErrorPitch?: number;
+   *  updateWeaponWorldKinematics from worldPos deltas when current,
+   *  or zero when the cache has never been populated
+   *  (`worldPosTick < 0`). This is the turret's own 3D motion, so
+   *  moving/tilted/lateral mounts feed projectile lead and inherited
+   *  launch-origin velocity correctly. */
+  worldVelocity: Vec3;
+  /** Simulation tick the worldPos/worldVelocity cache was last
+   *  written. Sentinel `-1` = never computed; consumers check
+   *  `worldPosTick >= 0` to know the cache is valid and
+   *  `worldPosTick === currentTick` to know it's fresh this tick. */
+  worldPosTick: number;
+  /** Last solver target yaw and pitch (radians), and the signed
+   *  miss vector between them and `rotation` / `pitch`. Default 0
+   *  before the first aim solve — which passes the within-tolerance
+   *  fire gate, matching the previous "no aim computed yet means
+   *  trivially aimed" semantic. */
+  aimTargetYaw: number;
+  aimTargetPitch: number;
+  aimErrorYaw: number;
+  aimErrorPitch: number;
   /** False when the current ballistic projectile aim has no exact
-   *  gravity solution. The turret can keep tracking, but firing is held
-   *  so it does not spend shells on guaranteed-short fallback shots. */
-  ballisticAimInRange?: boolean;
+   *  gravity solution. The turret can keep tracking, but firing is
+   *  held so it does not spend shells on guaranteed-short fallback
+   *  shots. Default true. */
+  ballisticAimInRange: boolean;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
-  /** Consecutive ticks the line of sight to `target` has been blocked
-   *  by terrain, live unit push spheres, or building occluders. Direct-fire turrets
-   *  stop firing the first blocked tick (engaged → tracking) and drop
-   *  the lock entirely once this exceeds LOS_DROP_GRACE_TICKS. Cleared
-   *  whenever the target changes or the sightline reopens. */
-  losBlockedTicks?: number;
+  /** Consecutive ticks the line of sight to `target` has been
+   *  blocked. Direct-fire turrets stop firing the first blocked tick
+   *  (engaged → tracking) and drop the lock entirely once this
+   *  exceeds LOS_DROP_GRACE_TICKS. Reset to 0 whenever the target
+   *  changes or the sightline reopens. */
+  losBlockedTicks: number;
   /** Round-robin pointer across the physical barrels on this turret.
-   *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet) %
-   *  barrelCount, then the pointer advances by the pellet count.
+   *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
+   *  % barrelCount, then the pointer advances by the pellet count.
    *  Single-barrel turrets always see barrelIndex = 0. */
-  barrelFireIndex?: number;
+  barrelFireIndex: number;
 };
 
 // Projectile component. Fully 3D: velocity + prev/start/end points

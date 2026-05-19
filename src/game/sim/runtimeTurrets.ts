@@ -49,6 +49,14 @@ function makeRuntimeTurret(
     mount,
     worldPos: { x: 0, y: 0, z: 0 },
     worldVelocity: { x: 0, y: 0, z: 0 },
+    worldPosTick: -1,
+    aimTargetYaw: 0,
+    aimTargetPitch: 0,
+    aimErrorYaw: 0,
+    aimErrorPitch: 0,
+    ballisticAimInRange: true,
+    losBlockedTicks: 0,
+    barrelFireIndex: 0,
   };
 }
 

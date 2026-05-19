@@ -122,8 +122,8 @@ export class UnitForceSystem {
         // the sim-side value; no markSnapshotDirty needed.
         setUnitMovementAcceleration(entity.unit, 0, 0, 0);
         if (entity.combat) {
-          entity.combat.priorityTargetId = undefined;
-          entity.combat.priorityTargetPoint = undefined;
+          entity.combat.priorityTargetId = null;
+          entity.combat.priorityTargetPoint = null;
         }
         continue;
       }

@@ -94,7 +94,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       let hasActiveTarget = false;
       weapon.ballisticAimInRange = true;
 
-      if (unit.combat.priorityTargetPoint !== undefined) {
+      if (unit.combat.priorityTargetPoint !== null) {
         const targetPoint = unit.combat.priorityTargetPoint;
         const mount = resolveWeaponWorldMount(
           unit, weapon, weaponIndex,

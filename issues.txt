@@ -25,15 +25,3 @@ The current code has good local pooling and some WASM helpers, but the main targ
 Fix direction:
 Keep the TypeScript behavior as the reference while designing a data-oriented targeting batch: flat turret/entity inputs, candidate slots, visibility/LOS results, target output IDs/states, and parity checks during migration. Delete the old path when parity is proven.
 
-AIM-09 - Combat/targeting state still relies on optional fields in hot domain objects.
-
-Evidence:
-- design_philosophy.html:827-859 says simulation, prediction, networking, and entity-state modules should prefer explicit nulls or numeric sentinels over optional properties.
-- src/types/sim.ts:390-445 still has optional turret fields such as worldPos, worldVelocity, aimTargetYaw, aimErrorYaw, ballisticAimInRange, forceField, and losBlockedTicks.
-- Combat state also uses optional priorityTargetId, priorityTargetPoint, and nextCombatProbeTick.
-
-Why it matters:
-These fields sit directly in aiming, targeting, snapshot, and prediction paths. Optional shape changes and optional chaining make absence easy to miss and work against the intended SoA/WASM migration.
-
-Fix direction:
-When touching these files, migrate hot combat fields toward explicit nulls or numeric sentinels. For example, targetId can become -1 in packed/hot representations, cached world mount fields can always exist with worldPosTick = -1, and aim-error fields can be initialized to 0 with an explicit hasAimTarget flag if needed.

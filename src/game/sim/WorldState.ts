@@ -799,6 +799,9 @@ export class WorldState {
     // every unit gets a combat component at spawn.
     entity.combat = {
       turrets: createUnitRuntimeTurrets(unitId, bp.radius.body),
+      priorityTargetId: null,
+      priorityTargetPoint: null,
+      nextCombatProbeTick: -1,
       hasActiveCombat: false,
       activeTurretMask: 0,
       firingTurretMask: 0,
