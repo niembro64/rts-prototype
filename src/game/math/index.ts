@@ -31,7 +31,7 @@ export {
   isPointInSlice,
 } from './CollisionHelpers';
 
-export { applyHomingSteering } from './HomingSteering';
+export { computeHomingThrust, type HomingThrustResult } from './HomingSteering';
 
 export {
   type BarrelEndpoint,

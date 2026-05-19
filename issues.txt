@@ -13,19 +13,6 @@ DESIGN PHILOSOPHY GAP PLAN
 
 AIMING / TARGETING SYSTEM ISSUES
 
-AIM-05 - Homing guidance is kinematic velocity steering, not bounded force/thrust physics.
-
-Evidence:
-- design_philosophy.html:429-454 says guided projectiles should counter gravity with thrust inside the steering update, and that counter-gravity should be bounded by available thrust.
-- src/game/math/HomingSteering.ts:1-12 and 31-45 rotate the velocity vector toward the target and preserve speed.
-- src/game/sim/combat/projectileSystem.ts:784-890 applies gravity, computes an intercept, then rotates velocity with applyHomingSteering.
-
-Why it matters:
-The current homing path effectively lets steering erase gravity's directional effect by rotating post-gravity velocity back toward the target ray. Projectile mass and available thrust do not bound the correction. A weak rocket cannot sag naturally under insufficient lift, which conflicts with the physics model.
-
-Fix direction:
-Represent homing as an acceleration/thrust budget: lateral guidance plus counter-gravity in one bounded vector, integrated through the same projectile physics path. Keep the current Rodrigues function only as a temporary visual approximation if needed, with a removal target.
-
 AIM-06 - Ballistic lead uses partial acceleration as if it were physical acceleration.
 
 Evidence:

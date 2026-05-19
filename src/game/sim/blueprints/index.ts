@@ -320,6 +320,7 @@ function buildShotConfig(
     explosion: shotBlueprint.explosion ?? undefined,
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
     homingTurnRate: shotBlueprint.homingTurnRate ?? undefined,
+    homingThrust: shotBlueprint.homingThrust ?? undefined,
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
     shape: shotBlueprint.shape ?? undefined,

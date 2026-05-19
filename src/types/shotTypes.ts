@@ -110,6 +110,13 @@ export type ProjectileShotBlueprint = {
   submunitions: SubmunitionSpec | null;
   /** Maximum yaw rate (radians / sec) the projectile applies while homing. */
   homingTurnRate: number | null;
+  /** Maximum thrust force (world-unit-newtons) the projectile's engine
+   *  produces while homing. Combined with `mass`, this is the in-flight
+   *  acceleration budget (`a_max = homingThrust / mass`) that bounds the
+   *  steering vector — lateral guidance plus counter-gravity. A weak
+   *  rocket (a_max < g) sags because the bounded thrust can't fully
+   *  cancel gravity. Null for non-homing shots. */
+  homingThrust: number | null;
   /** Cosmetic smoke trail config. Sim-side: no effect. */
   smokeTrail: SmokeTrailSpec | null;
   /** @deprecated Ignored by the 3D projectile renderer. */
@@ -182,6 +189,10 @@ export type ProjectileShot = {
   /** When true, terminal impacts/timeouts run detonation logic. */
   detonateOnExpiry?: boolean;
   homingTurnRate?: number;
+  /** In-flight thrust budget in world-unit-newtons. Steering acceleration
+   *  (lateral guidance + counter-gravity) is bounded by
+   *  `homingThrust / mass`. Undefined for non-homing shots. */
+  homingThrust?: number;
   trailLength?: number;
   /** Cluster / flak-burst behavior. */
   submunitions?: SubmunitionSpec;

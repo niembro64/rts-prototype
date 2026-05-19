@@ -1,5 +1,5 @@
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import { isLineShotType } from '@/types/sim';
+import { isLineShotType, type ProjectileShot } from '@/types/sim';
 import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
 import { getSurfaceHeight } from '../sim/Terrain';
 import {
@@ -9,7 +9,7 @@ import {
 } from '../sim/combat/combatUtils';
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
-  applyHomingSteering,
+  computeHomingThrust,
   integrateConstantAccelerationPosition,
   integrateConstantAccelerationVelocity,
   lerp,
@@ -58,24 +58,22 @@ const _clientHomingIntercept: KinematicInterceptSolution = {
   aimPoint: { x: 0, y: 0, z: 0 },
   launchVelocity: { x: 0, y: 0, z: 0 },
 };
+const _clientThrustResult = { x: 0, y: 0, z: 0 };
 
-function applyClientProjectileHoming(options: {
+/** Resolve the homing thrust acceleration the client predicts this
+ *  tick. Returns null when no live target is locked (the caller falls
+ *  back to gravity-only integration — same shape as a spent missile). */
+function resolveClientHomingThrust(options: {
   entity: Entity;
   dt: number;
+  position: { x: number; y: number; z: number };
   getEntity: (id: EntityId) => Entity | undefined;
   findNearestEnemyForRocket: (projectile: Entity, ownerId: PlayerId) => Entity | null;
-}): void {
-  const {
-    entity,
-    dt,
-    getEntity,
-    findNearestEnemyForRocket,
-  } = options;
+}): { x: number; y: number; z: number } | null {
+  const { entity, dt, position, getEntity, findNearestEnemyForRocket } = options;
   const proj = entity.projectile;
-  if (!proj || proj.homingTargetId === undefined) return;
+  if (!proj || proj.homingTargetId === undefined) return null;
 
-  // Homing steering runs after local gravity/movement integration, matching
-  // the authoritative projectileSystem step order.
   let homingTarget = getEntity(proj.homingTargetId);
   let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
   if (!targetValid) {
@@ -92,79 +90,87 @@ function applyClientProjectileHoming(options: {
       proj.homingTargetId = undefined;
     }
   }
-  if (targetValid && homingTarget) {
-    // Homing intercept consumes raw target velocity/acceleration through
-    // the shared entity accessors. Client-side unit acceleration is usually
-    // zero because the server owns force inputs and the wire ships integrated
-    // velocity, not a stable per-tick force vector. POS would skip homing
-    // steering entirely, but
-    // projectiles get no per-tick snapshot updates (only spawn/despawn
-    // events), so without local steering they'd fly straight forever —
-    // treat POS as VEL here.
-    const projectilePosition = getEntityPosition3d(entity, _clientHomingOriginState.position);
-    const aimPoint = resolveTargetAimPoint(
-      homingTarget,
-      projectilePosition.x, projectilePosition.y, projectilePosition.z,
-      _clientHomingAimPoint,
-    );
-    let steerX = aimPoint.x;
-    let steerY = aimPoint.y;
-    let steerZ = aimPoint.z;
-    const targetVelocity = getEntityVelocity3d(homingTarget, _clientHomingTargetVelocity);
-    const targetAcceleration = getEntityAcceleration3d(homingTarget, _clientHomingTargetAcceleration);
-    const targetSpeedSq =
-      targetVelocity.x * targetVelocity.x +
-      targetVelocity.y * targetVelocity.y +
-      targetVelocity.z * targetVelocity.z;
-    const targetAccelSq =
-      targetAcceleration.x * targetAcceleration.x +
-      targetAcceleration.y * targetAcceleration.y +
-      targetAcceleration.z * targetAcceleration.z;
-    const projectileSpeed = magnitude3(proj.velocityX, proj.velocityY, proj.velocityZ);
-    if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
-      getEntityVelocity3d(entity, _clientHomingOriginState.velocity);
-      getEntityAcceleration3d(entity, _clientHomingOriginState.acceleration);
-      _clientHomingTargetState.position.x = steerX;
-      _clientHomingTargetState.position.y = steerY;
-      _clientHomingTargetState.position.z = steerZ;
-      _clientHomingTargetState.velocity.x = targetVelocity.x;
-      _clientHomingTargetState.velocity.y = targetVelocity.y;
-      _clientHomingTargetState.velocity.z = targetVelocity.z;
-      _clientHomingTargetState.acceleration.x = targetAcceleration.x;
-      _clientHomingTargetState.acceleration.y = targetAcceleration.y;
-      _clientHomingTargetState.acceleration.z = targetAcceleration.z;
-      const remainingSec = Number.isFinite(proj.maxLifespan)
-        ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-        : 0;
-      const intercept = solveKinematicIntercept({
-        myPosition: _clientHomingOriginState.position,
-        myVelocity: _clientHomingOriginState.velocity,
-        myAcceleration: _clientHomingOriginState.acceleration,
-        targetPosition: _clientHomingTargetState.position,
-        targetVelocity: _clientHomingTargetState.velocity,
-        targetAcceleration: _clientHomingTargetState.acceleration,
-        projectileSpeed,
-        gravity: GRAVITY,
-        preferLateSolution: false,
-        maxTimeSec: remainingSec,
-      }, _clientHomingIntercept);
-      if (intercept) {
-        steerX = intercept.aimPoint.x;
-        steerY = intercept.aimPoint.y;
-        steerZ = intercept.aimPoint.z;
-      }
+  if (!(targetValid && homingTarget)) return null;
+
+  // Lead intercept consumes raw target velocity/acceleration through
+  // the shared entity accessors. Client-side unit acceleration is
+  // usually zero (the server owns force inputs and the wire ships
+  // integrated velocity, not a per-tick force vector), so this falls
+  // back to a velocity-only intercept on most snapshots. Projectiles
+  // see no per-tick snapshot positions — only spawn/despawn events —
+  // so without this local steering they'd fly straight forever.
+  const aimPoint = resolveTargetAimPoint(
+    homingTarget,
+    position.x, position.y, position.z,
+    _clientHomingAimPoint,
+  );
+  let steerX = aimPoint.x;
+  let steerY = aimPoint.y;
+  let steerZ = aimPoint.z;
+  const targetVelocity = getEntityVelocity3d(homingTarget, _clientHomingTargetVelocity);
+  const targetAcceleration = getEntityAcceleration3d(homingTarget, _clientHomingTargetAcceleration);
+  const targetSpeedSq =
+    targetVelocity.x * targetVelocity.x +
+    targetVelocity.y * targetVelocity.y +
+    targetVelocity.z * targetVelocity.z;
+  const targetAccelSq =
+    targetAcceleration.x * targetAcceleration.x +
+    targetAcceleration.y * targetAcceleration.y +
+    targetAcceleration.z * targetAcceleration.z;
+  const projectileSpeed = magnitude3(proj.velocityX, proj.velocityY, proj.velocityZ);
+  if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
+    _clientHomingOriginState.position.x = position.x;
+    _clientHomingOriginState.position.y = position.y;
+    _clientHomingOriginState.position.z = position.z;
+    getEntityVelocity3d(entity, _clientHomingOriginState.velocity);
+    getEntityAcceleration3d(entity, _clientHomingOriginState.acceleration);
+    _clientHomingTargetState.position.x = steerX;
+    _clientHomingTargetState.position.y = steerY;
+    _clientHomingTargetState.position.z = steerZ;
+    _clientHomingTargetState.velocity.x = targetVelocity.x;
+    _clientHomingTargetState.velocity.y = targetVelocity.y;
+    _clientHomingTargetState.velocity.z = targetVelocity.z;
+    _clientHomingTargetState.acceleration.x = targetAcceleration.x;
+    _clientHomingTargetState.acceleration.y = targetAcceleration.y;
+    _clientHomingTargetState.acceleration.z = targetAcceleration.z;
+    const remainingSec = Number.isFinite(proj.maxLifespan)
+      ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+      : 0;
+    const intercept = solveKinematicIntercept({
+      myPosition: _clientHomingOriginState.position,
+      myVelocity: _clientHomingOriginState.velocity,
+      myAcceleration: _clientHomingOriginState.acceleration,
+      targetPosition: _clientHomingTargetState.position,
+      targetVelocity: _clientHomingTargetState.velocity,
+      targetAcceleration: _clientHomingTargetState.acceleration,
+      projectileSpeed,
+      gravity: GRAVITY,
+      preferLateSolution: false,
+      maxTimeSec: remainingSec,
+    }, _clientHomingIntercept);
+    if (intercept) {
+      steerX = intercept.aimPoint.x;
+      steerY = intercept.aimPoint.y;
+      steerZ = intercept.aimPoint.z;
     }
-    const steered = applyHomingSteering(
-      proj.velocityX, proj.velocityY, proj.velocityZ,
-      steerX, steerY, steerZ,
-      projectilePosition.x, projectilePosition.y, projectilePosition.z,
-      proj.homingTurnRate ?? 0, dt,
-    );
-    proj.velocityX = steered.velocityX;
-    proj.velocityY = steered.velocityY;
-    proj.velocityZ = steered.velocityZ;
-    entity.transform.rotation = steered.rotation;
   }
+
+  const shot = proj.config.shot as ProjectileShot;
+  const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
+  const maxThrustAccel = (shot.homingThrust ?? 0) / mass;
+  const thrust = computeHomingThrust(
+    proj.velocityX, proj.velocityY, proj.velocityZ,
+    steerX, steerY, steerZ,
+    position.x, position.y, position.z,
+    proj.homingTurnRate ?? 0,
+    maxThrustAccel,
+    GRAVITY,
+    dt,
+  );
+  _clientThrustResult.x = thrust.thrustX;
+  _clientThrustResult.y = thrust.thrustY;
+  _clientThrustResult.z = thrust.thrustZ;
+  return _clientThrustResult;
 }
 
 export function applyClientProjectilePrediction(options: {
@@ -240,34 +246,52 @@ export function applyClientProjectilePrediction(options: {
     entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
   }
 
-  // Traveling projectiles: dead-reckon using (possibly steered)
-  // velocity in full 3D. Gravity is universal; homing only changes
-  // how guided shots respond to it.
+  // Traveling projectiles: dead-reckon with one combined-acceleration
+  // step. Gravity is universal; for homing shots we add the engine's
+  // bounded thrust (lateral steering + counter-gravity in one budget)
+  // and integrate both together — matching the authoritative server
+  // step exactly so predicted and authoritative paths agree between
+  // snapshots.
   const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
-  const prevTerrainFollowZ = position.z;
-  const nextProjectileZ = terrainFollow
-    ? position.z
-    : integrateConstantAccelerationPosition(position.z, proj.velocityZ, -GRAVITY, dt);
+  let aNetX = 0;
+  let aNetY = 0;
+  let aNetZ = terrainFollow ? 0 : -GRAVITY;
+  let isHoming = false;
   if (!terrainFollow) {
-    proj.velocityZ = integrateConstantAccelerationVelocity(proj.velocityZ, -GRAVITY, dt);
-  }
-  entity.transform.x += proj.velocityX * dt;
-  entity.transform.y += proj.velocityY * dt;
-  if (terrainFollow) {
-    const terrainPosition = getEntityPosition3d(entity, _clientProjectilePositionScratch);
-    const nextZ = getSurfaceHeight(terrainPosition.x, terrainPosition.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-    proj.velocityZ = dt > 0 ? (nextZ - prevTerrainFollowZ) / dt : 0;
-    entity.transform.z = nextZ;
-  } else {
-    entity.transform.z = nextProjectileZ;
+    const thrust = resolveClientHomingThrust({
+      entity,
+      dt,
+      position,
+      getEntity,
+      findNearestEnemyForRocket,
+    });
+    if (thrust) {
+      aNetX += thrust.x;
+      aNetY += thrust.y;
+      aNetZ += thrust.z;
+      isHoming = true;
+    }
   }
 
-  applyClientProjectileHoming({
-    entity,
-    dt,
-    getEntity,
-    findNearestEnemyForRocket,
-  });
+  const halfDtSq = 0.5 * dt * dt;
+  if (terrainFollow) {
+    entity.transform.x = position.x + proj.velocityX * dt;
+    entity.transform.y = position.y + proj.velocityY * dt;
+    const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+    proj.velocityZ = dt > 0 ? (nextZ - position.z) / dt : 0;
+    entity.transform.z = nextZ;
+  } else {
+    entity.transform.x = position.x + proj.velocityX * dt + aNetX * halfDtSq;
+    entity.transform.y = position.y + proj.velocityY * dt + aNetY * halfDtSq;
+    entity.transform.z = position.z + proj.velocityZ * dt + aNetZ * halfDtSq;
+    proj.velocityX += aNetX * dt;
+    proj.velocityY += aNetY * dt;
+    proj.velocityZ += aNetZ * dt;
+  }
+
+  if (isHoming) {
+    entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+  }
 
   const groundPosition = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   const groundZ = getSurfaceHeight(groundPosition.x, groundPosition.y, mapWidth, mapHeight, LAND_CELL_SIZE);

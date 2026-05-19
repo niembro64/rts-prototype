@@ -17,6 +17,7 @@
     },
     "submunitions": null,
     "homingTurnRate": null,
+    "homingThrust": null,
     "smokeTrail": null,
     "shape": null,
     "cylinderShape": null
@@ -39,6 +40,7 @@
     },
     "submunitions": null,
     "homingTurnRate": null,
+    "homingThrust": null,
     "smokeTrail": null,
     "shape": null,
     "cylinderShape": null
@@ -61,6 +63,7 @@
     },
     "submunitions": null,
     "homingTurnRate": 0.7,
+    "homingThrust": 5000,
     "smokeTrail": {
       "emitFramesSkip": 0,
       "startRadius": 1,
@@ -89,6 +92,7 @@
     },
     "submunitions": null,
     "homingTurnRate": null,
+    "homingThrust": null,
     "smokeTrail": null,
     "shape": null,
     "cylinderShape": null
@@ -117,6 +121,7 @@
       "reflectedVelocityDamper": 0.4
     },
     "homingTurnRate": null,
+    "homingThrust": null,
     "smokeTrail": null,
     "shape": null,
     "cylinderShape": null
@@ -139,6 +144,7 @@
     },
     "submunitions": null,
     "homingTurnRate": null,
+    "homingThrust": null,
     "smokeTrail": null,
     "shape": null,
     "cylinderShape": null

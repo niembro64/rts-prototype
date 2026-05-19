@@ -1,176 +1,188 @@
-// Homing steering — rotate a projectile's 3D velocity vector toward a
-// target at a clamped angular rate.
+// Homing thrust — compute the bounded steering acceleration vector a
+// guided projectile applies this tick. Replaces the earlier velocity-
+// rotation primitive: instead of pretending the missile rotates its
+// velocity at constant speed, we treat the engine as a real force-
+// producer and let gravity act normally.
 //
-// Single primitive shared by the server (projectileSystem) and the
-// client (ClientViewState) so predicted and authoritative missile
-// paths agree frame-for-frame. Preserves speed (|v| unchanged), so the
-// missile "turns" instead of "accelerating" — exactly how a thrust-
-// guided missile behaves in real physics: the engine keeps it at its
-// cruise speed while fins deflect the velocity vector toward the
-// target. Gravity is integrated separately (in the per-tick physics
-// step); homing cancels its effect on the direction by steering the
-// post-gravity velocity back onto the target ray each frame.
+// The thrust vector combines two responsibilities in one bounded
+// magnitude, exactly as design_philosophy.html demands:
+//   1. Lateral guidance — push velocity toward the predicted intercept
+//      at the projectile's authored angular rate (centripetal accel
+//      `ω · |v|` perpendicular to v, in the v→d plane).
+//   2. Counter-gravity — add `+g` in z so the rocket's engine fights
+//      the world's pull instead of letting the rotation step pretend
+//      gravity never happened.
 //
-// This replaces an earlier 2D-only implementation that spun yaw on
-// the horizontal plane while vz fell under gravity. That was fine on
-// flat ground but produced an unnatural "drop + yaw-swerve" curve
-// when target and shooter were at different altitudes. The Rodrigues
-// rotation below keeps the full 3D velocity vector on a single great-
-// circle arc toward the target — what the user asked for: parametric,
-// physics-natural homing.
+// The whole vector is then clamped to the projectile's available
+// thrust acceleration (`homingThrust / mass`). A well-powered rocket
+// has spare budget after gravity cancel and steers cleanly; a weak
+// rocket saturates first against gravity and sags exactly the way an
+// under-powered missile drops in reality. The caller integrates the
+// returned thrust together with `(0, 0, -g)` so gravity is never
+// special-cased away — guidance and gravity-cancellation are one
+// acceleration vector, not two systems.
 
 import { magnitude3 } from './MathHelpers';
 import { getSimWasm } from '../sim-wasm/init';
 
+export type HomingThrustResult = {
+  thrustX: number;
+  thrustY: number;
+  thrustZ: number;
+};
+
 // Reusable output to avoid per-call allocations in a hot path.
-const _hsOut = { velocityX: 0, velocityY: 0, velocityZ: 0, rotation: 0 };
+const _htOut: HomingThrustResult = { thrustX: 0, thrustY: 0, thrustZ: 0 };
 // Module-scope scratch for the WASM dispatch — written by Rust into
-// (velX, velY, velZ, rotation) at indices 0..4.
-const _hsWasmScratch = new Float64Array(4);
+// (thrustX, thrustY, thrustZ) at indices 0..3.
+const _htWasmScratch = new Float64Array(3);
 
 /**
- * Rotate `(velX, velY, velZ)` toward the direction from the projectile's
- * current position to the target, by at most `homingTurnRate · dt`
- * radians this tick. Speed is preserved.
- *
- * The rotation is performed around the axis perpendicular to both the
- * current velocity and the target direction (Rodrigues' formula), so
- * the turn happens entirely in the plane containing the velocity and
- * the line-to-target — the most direct curve. If the velocity is
- * already aimed within the allowed turn this frame, the velocity snaps
- * exactly onto the target ray.
- *
- * `rotation` returns the horizontal yaw of the new velocity so the
- * renderer can orient the projectile sprite/mesh as before.
+ * Compute the thrust acceleration vector a guided projectile applies
+ * this tick. The result combines lateral steering toward the target
+ * with counter-gravity thrust, bounded by the projectile's max thrust
+ * acceleration. The caller is responsible for integrating
+ * `(thrust + (0, 0, -gravity))` into position and velocity — gravity is
+ * never opted out of, it is paid for by the engine when the budget
+ * allows and let to win when it does not.
  */
-export function applyHomingSteering(
+export function computeHomingThrust(
   velX: number, velY: number, velZ: number,
   targetX: number, targetY: number, targetZ: number,
   currentX: number, currentY: number, currentZ: number,
-  homingTurnRate: number, dtSec: number,
-): { velocityX: number; velocityY: number; velocityZ: number; rotation: number } {
+  homingTurnRate: number,
+  maxThrustAccel: number,
+  gravity: number,
+  dtSec: number,
+): HomingThrustResult {
   const sim = getSimWasm();
   if (sim !== undefined) {
-    sim.applyHomingSteering(
-      _hsWasmScratch,
+    sim.computeHomingThrust(
+      _htWasmScratch,
       velX, velY, velZ,
       targetX, targetY, targetZ,
       currentX, currentY, currentZ,
-      homingTurnRate, dtSec,
+      homingTurnRate, maxThrustAccel, gravity, dtSec,
     );
-    _hsOut.velocityX = _hsWasmScratch[0];
-    _hsOut.velocityY = _hsWasmScratch[1];
-    _hsOut.velocityZ = _hsWasmScratch[2];
-    _hsOut.rotation = _hsWasmScratch[3];
-    return _hsOut;
+    _htOut.thrustX = _htWasmScratch[0];
+    _htOut.thrustY = _htWasmScratch[1];
+    _htOut.thrustZ = _htWasmScratch[2];
+    return _htOut;
   }
-  // Bootstrap-window fallback — pure-TS impl below.
-  return applyHomingSteeringTs(
+  return computeHomingThrustTs(
     velX, velY, velZ,
     targetX, targetY, targetZ,
     currentX, currentY, currentZ,
-    homingTurnRate, dtSec,
+    homingTurnRate, maxThrustAccel, gravity, dtSec,
   );
 }
 
-function applyHomingSteeringTs(
+function computeHomingThrustTs(
   velX: number, velY: number, velZ: number,
   targetX: number, targetY: number, targetZ: number,
   currentX: number, currentY: number, currentZ: number,
-  homingTurnRate: number, dtSec: number,
-): { velocityX: number; velocityY: number; velocityZ: number; rotation: number } {
-  const speed = magnitude3(velX, velY, velZ);
-  _hsOut.velocityX = velX;
-  _hsOut.velocityY = velY;
-  _hsOut.velocityZ = velZ;
-  _hsOut.rotation = Math.atan2(velY, velX);
+  homingTurnRate: number,
+  maxThrustAccel: number,
+  gravity: number,
+  dtSec: number,
+): HomingThrustResult {
+  _htOut.thrustX = 0;
+  _htOut.thrustY = 0;
+  _htOut.thrustZ = 0;
 
-  // Degenerate: missile has no velocity — nothing to turn.
-  if (speed < 1e-6) return _hsOut;
+  // Spent / failed guidance: no thrust this tick. The caller will
+  // integrate gravity alone and the body becomes ballistic — exactly
+  // the "engine flamed out" behavior the philosophy asks for.
+  if (maxThrustAccel <= 0 || dtSec <= 0) return _htOut;
 
-  // Desired direction = unit vector from current position toward target.
   const dx = targetX - currentX;
   const dy = targetY - currentY;
   const dz = targetZ - currentZ;
   const dMag = magnitude3(dx, dy, dz);
-  // Degenerate: missile is sitting on top of the target — no direction
-  // to turn toward. Let the collision handler catch it next tick.
-  if (dMag < 1e-6) return _hsOut;
+  const speed = magnitude3(velX, velY, velZ);
 
-  // Unit velocity (v̂) and unit target direction (d̂).
-  const vxN = velX / speed;
-  const vyN = velY / speed;
-  const vzN = velZ / speed;
-  const dxN = dx / dMag;
-  const dyN = dy / dMag;
-  const dzN = dz / dMag;
+  // Lateral steering direction: unit vector perpendicular to v in the
+  // plane of v and d, pointing toward d (Gram-Schmidt). Magnitude is
+  // ω · |v| (centripetal acceleration for a turn at ω rad/s), bounded
+  // by θ / dt so we don't overshoot the angle this tick.
+  let perpX = 0;
+  let perpY = 0;
+  let perpZ = 0;
+  let theta = 0;
 
-  // Angle between current heading and target ray. clamp guards
-  // against tiny floating-point overshoots that would NaN the acos.
-  let cosAngle = vxN * dxN + vyN * dyN + vzN * dzN;
-  if (cosAngle > 1) cosAngle = 1;
-  else if (cosAngle < -1) cosAngle = -1;
-  const angle = Math.acos(cosAngle);
+  if (dMag > 1e-6) {
+    const invDMag = 1 / dMag;
+    const dxN = dx * invDMag;
+    const dyN = dy * invDMag;
+    const dzN = dz * invDMag;
 
-  const maxTurn = homingTurnRate * dtSec;
+    if (speed > 1e-6) {
+      const invSpeed = 1 / speed;
+      const vxN = velX * invSpeed;
+      const vyN = velY * invSpeed;
+      const vzN = velZ * invSpeed;
+      let cosA = vxN * dxN + vyN * dyN + vzN * dzN;
+      if (cosA > 1) cosA = 1;
+      else if (cosA < -1) cosA = -1;
+      theta = Math.acos(cosA);
 
-  // Already aiming within this frame's budget — snap to target ray,
-  // keeping speed. Also handles the "already aligned" case (angle ≈ 0).
-  if (angle <= maxTurn) {
-    _hsOut.velocityX = dxN * speed;
-    _hsOut.velocityY = dyN * speed;
-    _hsOut.velocityZ = dzN * speed;
-    _hsOut.rotation = Math.atan2(_hsOut.velocityY, _hsOut.velocityX);
-    return _hsOut;
-  }
-
-  // Rodrigues' rotation formula: rotate v̂ by `maxTurn` around the
-  // axis perpendicular to both v̂ and d̂.
-  //   v' = v·cosθ + (k × v)·sinθ + k·(k·v)·(1−cosθ)
-  let axisX = vyN * dzN - vzN * dyN;
-  let axisY = vzN * dxN - vxN * dzN;
-  let axisZ = vxN * dyN - vyN * dxN;
-  const axisMag = magnitude3(axisX, axisY, axisZ);
-
-  // v̂ and d̂ are (nearly) anti-parallel — the cross product is
-  // degenerate, so there's no unique rotation plane. Pick any
-  // perpendicular: prefer the horizontal plane (world up) if the
-  // velocity has any horizontal component, fall back to world +X
-  // otherwise. This guarantees a stable rotation even in the rare
-  // "missile heading directly away from target" case.
-  if (axisMag < 1e-6) {
-    if (Math.abs(vxN) < 0.99 && Math.abs(vyN) < 0.99) {
-      axisX = -vyN; axisY = vxN; axisZ = 0;
-    } else {
-      axisX = 0; axisY = 0; axisZ = 1;
+      // perp = d̂ − (d̂·v̂)·v̂, normalized
+      let pX = dxN - cosA * vxN;
+      let pY = dyN - cosA * vyN;
+      let pZ = dzN - cosA * vzN;
+      const pMag = magnitude3(pX, pY, pZ);
+      if (pMag > 1e-6) {
+        perpX = pX / pMag;
+        perpY = pY / pMag;
+        perpZ = pZ / pMag;
+      } else if (cosA < 0) {
+        // v̂ and d̂ are (nearly) anti-parallel — the Gram-Schmidt
+        // residual collapses. Pick a stable horizontal perpendicular
+        // (rotate v in the world xy-plane) so the rocket starts
+        // pivoting instead of sitting on the anti-parallel axis.
+        const xyMag = Math.hypot(vxN, vyN);
+        if (xyMag > 0.05) {
+          perpX = -vyN / xyMag;
+          perpY = vxN / xyMag;
+          perpZ = 0;
+        } else {
+          // Velocity is essentially vertical — fall back to world +x.
+          perpX = 1;
+          perpY = 0;
+          perpZ = 0;
+        }
+        theta = Math.PI;
+      }
+      // (cosA ≈ +1: already aligned, theta ≈ 0, no lateral thrust needed.)
     }
-    const fallbackMag = magnitude3(axisX, axisY, axisZ) || 1;
-    axisX /= fallbackMag;
-    axisY /= fallbackMag;
-    axisZ /= fallbackMag;
-  } else {
-    axisX /= axisMag;
-    axisY /= axisMag;
-    axisZ /= axisMag;
+    // Zero-velocity edge case: leave perp = 0 and let the gravity-
+    // cancel term define the thrust direction. The rocket can't steer
+    // without a heading to be perpendicular to, but it can still
+    // counter gravity within its budget.
   }
 
-  const cosT = Math.cos(maxTurn);
-  const sinT = Math.sin(maxTurn);
-  const oneMinusCos = 1 - cosT;
-  // k · v̂
-  const kDotV = axisX * vxN + axisY * vyN + axisZ * vzN;
-  // k × v̂
-  const kxvX = axisY * vzN - axisZ * vyN;
-  const kxvY = axisZ * vxN - axisX * vzN;
-  const kxvZ = axisX * vyN - axisY * vxN;
+  // Bounded effective turn rate: ω, capped at θ/dt so we exactly close
+  // small angles without overshooting them next tick.
+  const omegaEff = Math.min(homingTurnRate, theta / dtSec);
+  const aLateralMag = omegaEff * speed;
 
-  const rotXN = vxN * cosT + kxvX * sinT + axisX * kDotV * oneMinusCos;
-  const rotYN = vyN * cosT + kxvY * sinT + axisY * kDotV * oneMinusCos;
-  const rotZN = vzN * cosT + kxvZ * sinT + axisZ * kDotV * oneMinusCos;
+  // Desired thrust: lateral steering + vertical engine pushing back
+  // against gravity. The clamp below decides how much of that the
+  // projectile's engine can actually deliver.
+  let aX = perpX * aLateralMag;
+  let aY = perpY * aLateralMag;
+  let aZ = perpZ * aLateralMag + gravity;
 
-  _hsOut.velocityX = rotXN * speed;
-  _hsOut.velocityY = rotYN * speed;
-  _hsOut.velocityZ = rotZN * speed;
-  _hsOut.rotation = Math.atan2(rotYN, rotXN);
-  return _hsOut;
+  const aMag = magnitude3(aX, aY, aZ);
+  if (aMag > maxThrustAccel) {
+    const scale = maxThrustAccel / aMag;
+    aX *= scale;
+    aY *= scale;
+    aZ *= scale;
+  }
+
+  _htOut.thrustX = aX;
+  _htOut.thrustY = aY;
+  _htOut.thrustZ = aZ;
+  return _htOut;
 }

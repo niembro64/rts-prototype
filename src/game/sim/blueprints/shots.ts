@@ -17,6 +17,7 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'hitSound',
   'submunitions',
   'homingTurnRate',
+  'homingThrust',
   'smokeTrail',
   'shape',
   'cylinderShape',
@@ -46,6 +47,17 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       blueprint,
       PROJECTILE_EXPLICIT_FIELDS,
     );
+    // Homing is "rate + thrust" — both fields must be set together or
+    // neither. A turn rate without a thrust budget would be steering
+    // without an engine; a thrust budget without a turn rate would be
+    // an engine without guidance fins.
+    const hasRate = blueprint.homingTurnRate !== null;
+    const hasThrust = blueprint.homingThrust !== null;
+    if (hasRate !== hasThrust) {
+      throw new Error(
+        `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
+      );
+    }
   } else {
     assertExplicitFields(`shot blueprint ${id}`, blueprint, LINE_EXPLICIT_FIELDS);
   }

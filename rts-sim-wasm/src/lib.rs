@@ -1659,22 +1659,28 @@ pub fn solve_kinematic_intercept(
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Phase 5c — Homing steering (Rodrigues rotation toward target)
+//  AIM-05 — Homing thrust acceleration
 //
-//  Mirrors src/game/math/HomingSteering.ts applyHomingSteering.
-//  Rotates a 3D velocity vector toward the line-to-target by at
-//  most homingTurnRate · dt radians this tick, preserving speed.
-//  Output buffer (4 f64s): velX, velY, velZ, rotation (yaw).
+//  Mirrors src/game/math/HomingSteering.ts computeHomingThrust.
+//  Returns the bounded steering acceleration a guided projectile
+//  applies this tick: lateral guidance toward the predicted intercept
+//  plus counter-gravity in one vector, clamped to the projectile's
+//  available thrust acceleration. The caller integrates
+//  `thrust + (0, 0, -gravity)` into position and velocity, so gravity
+//  is never opted out of — only paid for by engine thrust within
+//  budget. A weak rocket saturates against gravity first and sags
+//  exactly the way an under-powered missile drops in reality.
 //
-//  Used per-homing-projectile per-tick by both the server
-//  projectile system and the client prediction stepper. Per-call
-//  WASM dispatch — call sites already loop over projectiles
-//  individually, batching would require a substantial caller
-//  refactor.
+//  Output buffer (3 f64s): thrustX, thrustY, thrustZ.
+//
+//  Used per-homing-projectile per-tick by both the server projectile
+//  system and the client prediction stepper. Per-call WASM dispatch —
+//  call sites already loop over projectiles individually; batching
+//  would require a substantial caller refactor.
 // ─────────────────────────────────────────────────────────────────
 
 #[wasm_bindgen]
-pub fn apply_homing_steering(
+pub fn compute_homing_thrust(
     out_buf: &mut [f64],
     vel_x: f64,
     vel_y: f64,
@@ -1686,100 +1692,116 @@ pub fn apply_homing_steering(
     current_y: f64,
     current_z: f64,
     homing_turn_rate: f64,
+    max_thrust_accel: f64,
+    gravity: f64,
     dt_sec: f64,
 ) {
-    debug_assert!(out_buf.len() >= 4);
-    let speed = (vel_x * vel_x + vel_y * vel_y + vel_z * vel_z).sqrt();
-    out_buf[0] = vel_x;
-    out_buf[1] = vel_y;
-    out_buf[2] = vel_z;
-    out_buf[3] = vel_y.atan2(vel_x);
+    debug_assert!(out_buf.len() >= 3);
+    out_buf[0] = 0.0;
+    out_buf[1] = 0.0;
+    out_buf[2] = 0.0;
 
-    if speed < 1e-6 {
+    // Spent / failed guidance: no thrust this tick. The caller will
+    // integrate gravity alone and the body becomes ballistic — exactly
+    // the "engine flamed out" behavior the philosophy asks for.
+    if max_thrust_accel <= 0.0 || dt_sec <= 0.0 {
         return;
     }
+
     let dx = target_x - current_x;
     let dy = target_y - current_y;
     let dz = target_z - current_z;
     let d_mag = (dx * dx + dy * dy + dz * dz).sqrt();
-    if d_mag < 1e-6 {
-        return;
-    }
+    let speed = (vel_x * vel_x + vel_y * vel_y + vel_z * vel_z).sqrt();
 
-    let inv_speed = 1.0 / speed;
-    let inv_d_mag = 1.0 / d_mag;
-    let vxn = vel_x * inv_speed;
-    let vyn = vel_y * inv_speed;
-    let vzn = vel_z * inv_speed;
-    let dxn = dx * inv_d_mag;
-    // `dyn` is reserved in Rust — use `dyn_` for the y-direction unit.
-    let dyn_ = dy * inv_d_mag;
-    let dzn = dz * inv_d_mag;
+    // Lateral steering direction (unit vector perpendicular to v in the
+    // plane of v and d, pointing toward d) and magnitude (ω · |v|,
+    // bounded by θ / dt so we don't overshoot the angle this tick).
+    let mut perp_x = 0.0;
+    let mut perp_y = 0.0;
+    let mut perp_z = 0.0;
+    let mut theta = 0.0;
 
-    let mut cos_angle = vxn * dxn + vyn * dyn_ + vzn * dzn;
-    if cos_angle > 1.0 {
-        cos_angle = 1.0;
-    } else if cos_angle < -1.0 {
-        cos_angle = -1.0;
-    }
-    let angle = cos_angle.acos();
-    let max_turn = homing_turn_rate * dt_sec;
+    if d_mag > 1e-6 {
+        let inv_d_mag = 1.0 / d_mag;
+        let dxn = dx * inv_d_mag;
+        // `dyn` is reserved in Rust — use `dyn_` for the y-direction unit.
+        let dyn_ = dy * inv_d_mag;
+        let dzn = dz * inv_d_mag;
 
-    if angle <= max_turn {
-        out_buf[0] = dxn * speed;
-        out_buf[1] = dyn_ * speed;
-        out_buf[2] = dzn * speed;
-        out_buf[3] = (dyn_ * speed).atan2(dxn * speed);
-        return;
-    }
+        if speed > 1e-6 {
+            let inv_speed = 1.0 / speed;
+            let vxn = vel_x * inv_speed;
+            let vyn = vel_y * inv_speed;
+            let vzn = vel_z * inv_speed;
+            let mut cos_a = vxn * dxn + vyn * dyn_ + vzn * dzn;
+            if cos_a > 1.0 {
+                cos_a = 1.0;
+            } else if cos_a < -1.0 {
+                cos_a = -1.0;
+            }
+            theta = cos_a.acos();
 
-    // Rodrigues rotation around axis = v̂ × d̂ (or fallback if anti-parallel).
-    let mut axis_x = vyn * dzn - vzn * dyn_;
-    let mut axis_y = vzn * dxn - vxn * dzn;
-    let mut axis_z = vxn * dyn_ - vyn * dxn;
-    let axis_mag = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-    if axis_mag < 1e-6 {
-        // v̂ and d̂ (anti-)parallel — pick a stable perpendicular.
-        if vxn.abs() < 0.99 && vyn.abs() < 0.99 {
-            axis_x = -vyn;
-            axis_y = vxn;
-            axis_z = 0.0;
-        } else {
-            axis_x = 0.0;
-            axis_y = 0.0;
-            axis_z = 1.0;
+            // perp = d̂ − (d̂·v̂)·v̂, normalized
+            let p_x = dxn - cos_a * vxn;
+            let p_y = dyn_ - cos_a * vyn;
+            let p_z = dzn - cos_a * vzn;
+            let p_mag = (p_x * p_x + p_y * p_y + p_z * p_z).sqrt();
+            if p_mag > 1e-6 {
+                let inv = 1.0 / p_mag;
+                perp_x = p_x * inv;
+                perp_y = p_y * inv;
+                perp_z = p_z * inv;
+            } else if cos_a < 0.0 {
+                // v̂ and d̂ are (nearly) anti-parallel — Gram-Schmidt
+                // residual collapses. Pick a stable horizontal
+                // perpendicular (rotate v in the xy-plane) so the
+                // rocket starts pivoting instead of sitting on the
+                // anti-parallel axis.
+                let xy_mag = (vxn * vxn + vyn * vyn).sqrt();
+                if xy_mag > 0.05 {
+                    perp_x = -vyn / xy_mag;
+                    perp_y = vxn / xy_mag;
+                    perp_z = 0.0;
+                } else {
+                    // Velocity is essentially vertical — fall back to world +x.
+                    perp_x = 1.0;
+                    perp_y = 0.0;
+                    perp_z = 0.0;
+                }
+                theta = core::f64::consts::PI;
+            }
+            // (cos_a ≈ +1: already aligned, theta ≈ 0, no lateral thrust needed.)
         }
-        let mut fallback_mag = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-        if fallback_mag == 0.0 {
-            fallback_mag = 1.0;
-        }
-        let inv = 1.0 / fallback_mag;
-        axis_x *= inv;
-        axis_y *= inv;
-        axis_z *= inv;
+        // Zero-velocity edge case: leave perp = 0 and let the
+        // gravity-cancel term define the thrust direction.
+    }
+
+    let omega_eff = if theta / dt_sec < homing_turn_rate {
+        theta / dt_sec
     } else {
-        let inv = 1.0 / axis_mag;
-        axis_x *= inv;
-        axis_y *= inv;
-        axis_z *= inv;
+        homing_turn_rate
+    };
+    let a_lateral_mag = omega_eff * speed;
+
+    // Desired thrust: lateral steering + vertical engine pushing back
+    // against gravity. The clamp below decides how much of that the
+    // projectile's engine can actually deliver.
+    let mut a_x = perp_x * a_lateral_mag;
+    let mut a_y = perp_y * a_lateral_mag;
+    let mut a_z = perp_z * a_lateral_mag + gravity;
+
+    let a_mag = (a_x * a_x + a_y * a_y + a_z * a_z).sqrt();
+    if a_mag > max_thrust_accel {
+        let scale = max_thrust_accel / a_mag;
+        a_x *= scale;
+        a_y *= scale;
+        a_z *= scale;
     }
 
-    let cos_t = max_turn.cos();
-    let sin_t = max_turn.sin();
-    let one_minus_cos = 1.0 - cos_t;
-    let k_dot_v = axis_x * vxn + axis_y * vyn + axis_z * vzn;
-    let kxv_x = axis_y * vzn - axis_z * vyn;
-    let kxv_y = axis_z * vxn - axis_x * vzn;
-    let kxv_z = axis_x * vyn - axis_y * vxn;
-
-    let rot_xn = vxn * cos_t + kxv_x * sin_t + axis_x * k_dot_v * one_minus_cos;
-    let rot_yn = vyn * cos_t + kxv_y * sin_t + axis_y * k_dot_v * one_minus_cos;
-    let rot_zn = vzn * cos_t + kxv_z * sin_t + axis_z * k_dot_v * one_minus_cos;
-
-    out_buf[0] = rot_xn * speed;
-    out_buf[1] = rot_yn * speed;
-    out_buf[2] = rot_zn * speed;
-    out_buf[3] = (rot_yn * speed).atan2(rot_xn * speed);
+    out_buf[0] = a_x;
+    out_buf[1] = a_y;
+    out_buf[2] = a_z;
 }
 
 /// Per-tick ballistic integrator. For slots 0..count, advances with the

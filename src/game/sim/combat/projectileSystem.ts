@@ -9,10 +9,8 @@ import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } 
 import { beamIndex } from '../BeamIndex';
 import {
   getTransformCosSin,
-  applyHomingSteering,
+  computeHomingThrust,
   countBarrels,
-  integrateConstantAccelerationPosition,
-  integrateConstantAccelerationVelocity,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
@@ -760,63 +758,34 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = position.y;
     proj.prevZ = position.z;
 
-    // Gravity integration: every traveling projectile with mass follows
-    // the same constant-acceleration equation the turret aim solver
-    // uses. D-gun waves are their own terrain-following projectile
-    // class: they move horizontally and snap to local terrain height
-    // every tick.
+    // D-gun waves are their own terrain-following projectile class:
+    // they move horizontally and snap to local terrain height every
+    // tick, never integrating gravity or thrust. Everyone else (homing
+    // or not) shares the same constant-acceleration step the ballistic
+    // aim solver uses.
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
-    const prevTerrainFollowZ = position.z;
-    const nextZ = terrainFollow
-      ? prevTerrainFollowZ
-      : integrateConstantAccelerationPosition(position.z, proj.velocityZ, -GRAVITY, dtSec);
-    if (!terrainFollow) {
-      proj.velocityZ = integrateConstantAccelerationVelocity(proj.velocityZ, -GRAVITY, dtSec);
-    }
 
-    entity.transform.x += proj.velocityX * dtSec;
-    entity.transform.y += proj.velocityY * dtSec;
-    if (terrainFollow) {
-      const terrainPosition = getEntityPosition3d(entity, _projectilePositionScratch);
-      const terrainZ = world.getGroundZ(terrainPosition.x, terrainPosition.y) +
-        (entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT);
-      proj.velocityZ = dtSec > 0 ? (terrainZ - prevTerrainFollowZ) / dtSec : 0;
-      entity.transform.z = terrainZ;
-    } else {
-      entity.transform.z = nextZ;
-    }
+    // Per-tick acceleration: gravity always pulls; if this projectile
+    // is homing toward a live target, the engine adds a bounded thrust
+    // vector that includes both lateral steering and counter-gravity
+    // in one budget. The thrust is integrated in the same step as
+    // gravity — guidance never opts out of the world's pull, it just
+    // pays for cancelling it within the projectile's available thrust.
+    let aNetX = 0;
+    let aNetY = 0;
+    let aNetZ = terrainFollow ? 0 : -GRAVITY;
+    let homingTargetForReporting: Entity | null = null;
 
-    const wasSourceCleared = !!proj.hasLeftSource;
-    const updatedPosition = getEntityPosition3d(entity, _projectilePositionScratch);
-    if (updateProjectileSourceClearance(
-      world.getEntity(proj.sourceEntityId),
-      proj,
-      updatedPosition.x, updatedPosition.y, updatedPosition.z,
-      proj.config.shotProfile.runtime.collisionRadius,
-    ) && !wasSourceCleared) {
-      proj.collisionStartX = updatedPosition.x;
-      proj.collisionStartY = updatedPosition.y;
-      proj.collisionStartZ = updatedPosition.z;
-    }
-
-    // Homing rotates the full 3D velocity vector toward a live
-    // intercept point (Rodrigues rotation around v×d, clamped to
-    // homingTurnRate·dt radians). The target's current 3D position
-    // and 3D velocity are read every tick, so rockets steer toward
-    // where the target is likely to be instead of chasing stale
-    // center points. Speed is preserved, so the missile still behaves
-    // like a thrust-guided weapon.
-    //
-    // Rocket-class shots take an additional
-    // seeker-behavior step: if the locked target dies or leaves the
-    // sim, the rocket scans for the nearest enemy via the spatial
-    // grid and re-locks. Ballistic shots (cannons, mortars) stay on
-    // the original target and fly dumb when it vanishes — the point
-    // of a shell is to land where the gun aimed it, not to chase.
-    if (proj.homingTargetId !== undefined) {
+    if (!terrainFollow && proj.homingTargetId !== undefined) {
       let homingTarget = world.getEntity(proj.homingTargetId);
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
+        // Rocket-class shots take an additional seeker step: if the
+        // locked target dies or leaves the sim, the rocket scans the
+        // spatial grid for the nearest enemy and re-locks. Ballistic
+        // shells stay on the original target and fly dumb when it
+        // vanishes — the point of a shell is to land where the gun
+        // aimed it, not to chase.
         const isRocket = proj.config.shotProfile.runtime.isRocketLike;
         if (isRocket) {
           const reacquired = findNearestEnemyForRocket(world, entity, proj.ownerId);
@@ -824,17 +793,18 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
             proj.homingTargetId = reacquired.id;
             homingTarget = reacquired;
           } else {
-            // No enemies reachable — let the rocket fly straight this
-            // tick; we'll try again next tick via the same path.
+            // No enemies reachable — engine sits idle this tick so
+            // gravity wins and the rocket sags. We'll try again next
+            // tick via the same path.
             proj.homingTargetId = undefined;
           }
         }
       }
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
-        const projectilePosition = getEntityPosition3d(entity, _homingOriginState.position);
+        homingTargetForReporting = homingTarget;
         const aimPoint = resolveTargetAimPoint(
           homingTarget,
-          projectilePosition.x, projectilePosition.y, projectilePosition.z,
+          position.x, position.y, position.z,
           _homingAimPoint,
         );
         let steerX = aimPoint.x;
@@ -855,6 +825,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           targetAcceleration.z * targetAcceleration.z;
         const projectileSpeed = Math.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
         if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
+          _homingOriginState.position.x = position.x;
+          _homingOriginState.position.y = position.y;
+          _homingOriginState.position.z = position.z;
           getEntityVelocity3d(entity, _homingOriginState.velocity);
           getEntityAcceleration3d(entity, _homingOriginState.acceleration);
           _homingTargetState.position.x = steerX;
@@ -887,35 +860,88 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
             steerZ = intercept.aimPoint.z;
           }
         }
-        const steered = applyHomingSteering(
+        const shot = proj.config.shot as ProjectileShot;
+        const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
+        const maxThrustAccel = (shot.homingThrust ?? 0) / mass;
+        const thrust = computeHomingThrust(
           proj.velocityX, proj.velocityY, proj.velocityZ,
           steerX, steerY, steerZ,
-          projectilePosition.x, projectilePosition.y, projectilePosition.z,
-          proj.homingTurnRate ?? 0, dtSec,
+          position.x, position.y, position.z,
+          proj.homingTurnRate ?? 0,
+          maxThrustAccel,
+          GRAVITY,
+          dtSec,
         );
-        proj.velocityX = steered.velocityX;
-        proj.velocityY = steered.velocityY;
-        proj.velocityZ = steered.velocityZ;
-        entity.transform.rotation = steered.rotation;
-
-        const velTh = SNAPSHOT_CONFIG.velocityThreshold;
-        const lastVx = proj.lastSentVelX ?? proj.velocityX;
-        const lastVy = proj.lastSentVelY ?? proj.velocityY;
-        const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
-        if (Math.abs(proj.velocityX - lastVx) > velTh ||
-            Math.abs(proj.velocityY - lastVy) > velTh ||
-            Math.abs(proj.velocityZ - lastVz) > velTh) {
-          proj.lastSentVelX = proj.velocityX;
-          proj.lastSentVelY = proj.velocityY;
-          proj.lastSentVelZ = proj.velocityZ;
-          _homingVelocityUpdates.push({
-            id: entity.id,
-            pos: { x: projectilePosition.x, y: projectilePosition.y, z: projectilePosition.z },
-            velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
-          });
-        }
+        // Thrust acts in addition to gravity, not instead of it. The
+        // thrust vector already includes the counter-gravity term it
+        // chose to spend within budget; we keep `-GRAVITY` in aNetZ so
+        // an under-powered rocket whose budget can't reach `+g` ends
+        // up with a net downward acceleration and visibly sags.
+        aNetX += thrust.thrustX;
+        aNetY += thrust.thrustY;
+        aNetZ += thrust.thrustZ;
       } else {
         proj.homingTargetId = undefined;
+      }
+    }
+
+    // Single combined-acceleration integration step. Position uses the
+    // full v·dt + ½·a·dt² formula so the gravity and thrust accelerations
+    // contribute through the same `pos + v*t + 0.5*a*t²` shape the
+    // ballistic aim solver targets.
+    const halfDtSq = 0.5 * dtSec * dtSec;
+    if (terrainFollow) {
+      entity.transform.x = position.x + proj.velocityX * dtSec;
+      entity.transform.y = position.y + proj.velocityY * dtSec;
+      const terrainPosition = getEntityPosition3d(entity, _projectilePositionScratch);
+      const terrainZ = world.getGroundZ(terrainPosition.x, terrainPosition.y) +
+        (entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT);
+      proj.velocityZ = dtSec > 0 ? (terrainZ - position.z) / dtSec : 0;
+      entity.transform.z = terrainZ;
+    } else {
+      entity.transform.x = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
+      entity.transform.y = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
+      entity.transform.z = position.z + proj.velocityZ * dtSec + aNetZ * halfDtSq;
+      proj.velocityX += aNetX * dtSec;
+      proj.velocityY += aNetY * dtSec;
+      proj.velocityZ += aNetZ * dtSec;
+    }
+
+    const wasSourceCleared = !!proj.hasLeftSource;
+    const updatedPosition = getEntityPosition3d(entity, _projectilePositionScratch);
+    if (updateProjectileSourceClearance(
+      world.getEntity(proj.sourceEntityId),
+      proj,
+      updatedPosition.x, updatedPosition.y, updatedPosition.z,
+      proj.config.shotProfile.runtime.collisionRadius,
+    ) && !wasSourceCleared) {
+      proj.collisionStartX = updatedPosition.x;
+      proj.collisionStartY = updatedPosition.y;
+      proj.collisionStartZ = updatedPosition.z;
+    }
+
+    // Visual rotation + sparse velocity-update events: only homing
+    // projectiles need either. Non-homing shots get their rotation
+    // baked into the spawn event; visible yaw drift over a ballistic
+    // arc is small enough that we don't pay the per-tick atan2 there.
+    if (homingTargetForReporting) {
+      entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+
+      const velTh = SNAPSHOT_CONFIG.velocityThreshold;
+      const lastVx = proj.lastSentVelX ?? proj.velocityX;
+      const lastVy = proj.lastSentVelY ?? proj.velocityY;
+      const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
+      if (Math.abs(proj.velocityX - lastVx) > velTh ||
+          Math.abs(proj.velocityY - lastVy) > velTh ||
+          Math.abs(proj.velocityZ - lastVz) > velTh) {
+        proj.lastSentVelX = proj.velocityX;
+        proj.lastSentVelY = proj.velocityY;
+        proj.lastSentVelZ = proj.velocityZ;
+        _homingVelocityUpdates.push({
+          id: entity.id,
+          pos: { x: updatedPosition.x, y: updatedPosition.y, z: updatedPosition.z },
+          velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
+        });
       }
     }
   }
