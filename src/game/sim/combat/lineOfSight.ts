@@ -6,7 +6,7 @@
 // gatlings) needs a clear sightline from its turret head to the target
 // aim point before it can lock on or keep firing.
 
-import { LAND_CELL_SIZE } from '../../../config';
+import { GRAVITY, LAND_CELL_SIZE } from '../../../config';
 import { lineSphereIntersectionT, rayBoxIntersectionT } from '../../math';
 import { getSimWasm } from '../../sim-wasm/init';
 import { spatialGrid } from '../SpatialGrid';
@@ -206,6 +206,12 @@ export type ForceFieldClearanceOptions = {
  *  boundary at any point strictly inside the segment. The only
  *  exemption is the unit's own field (see options.excludeOwnerEntityId).
  *
+ *  Use this for direct-fire weapons (beams, lasers, low-arc cannons
+ *  whose trajectory really is approximately the straight chord).
+ *  Ballistic-arc and vertical-launch shots should call
+ *  `hasArcForceFieldClearance` instead so the targeting test walks the
+ *  same parabolic envelope the projectile will actually fly.
+ *
  *  Performance: caller passes the per-tick cached field list (from
  *  getActiveForceFields()). With a typical handful of fields and the
  *  cheap AABB pre-check, this stays well under a microsecond per call. */
@@ -230,6 +236,76 @@ export function hasForceFieldClearance(
         f.radius,
       )
     ) {
+      crossings++;
+      if (crossings > maxCrossings) return false;
+    }
+  }
+  return true;
+}
+
+/** Number of straight-line segments used to approximate a parabolic
+ *  ballistic-arc trajectory for force-field clearance sampling. 16
+ *  segments is plenty for the arcs typical in this game (sub-1000 wu
+ *  range, sub-3s flight time) — small enough that even thin shields
+ *  can't squeeze between two samples, large enough that the per-call
+ *  cost is dominated by the field iteration, not the sampling. */
+const ARC_FF_CLEARANCE_SAMPLES = 16;
+
+/** True if the parabolic ballistic arc described by
+ *  (launch position, launch velocity, flight time, universal gravity)
+ *  does not enter any non-self force-field sphere between launch and
+ *  impact. The arc-aware counterpart of `hasForceFieldClearance`:
+ *  walks the same `pos = p₀ + v·t + ½·a·t²` envelope the projectile
+ *  integrator advances each tick, so lock-on rules and projectile-
+ *  collision rules agree on which shields stop a shot.
+ *
+ *  Implementation samples ARC_FF_CLEARANCE_SAMPLES interior points
+ *  along the arc and tests each per non-self field. Endpoint samples
+ *  (launch and impact) are intentionally skipped: shells that graze a
+ *  shield exactly at the muzzle or at the impact point don't count as
+ *  blocked, matching the FORCE_FIELD_GRAZE_EPS behaviour of the
+ *  straight-segment test. */
+export function hasArcForceFieldClearance(
+  launchX: number, launchY: number, launchZ: number,
+  launchVx: number, launchVy: number, launchVz: number,
+  flightTime: number,
+  fields: readonly ActiveForceFieldRef[],
+  options: ForceFieldClearanceOptions = {},
+): boolean {
+  if (fields.length === 0) return true;
+  if (!Number.isFinite(flightTime) || flightTime <= 0) return true;
+
+  const maxCrossings = options.maxCrossings ?? 0;
+  const excludeOwnerEntityId = options.excludeOwnerEntityId;
+  let crossings = 0;
+
+  // Sample the interior of the arc — i = 1..N-1 — so the same
+  // "endpoints don't count" rule applies as for the straight test.
+  // For each field, ask: does any interior sample lie strictly inside
+  // the sphere? If yes, the trajectory crosses that field's boundary
+  // somewhere in (0, flightTime) and the shot is blocked.
+  for (let f = 0; f < fields.length; f++) {
+    const field = fields[f];
+    if (field.entityId === excludeOwnerEntityId) continue;
+    const cx = field.centerX;
+    const cy = field.centerY;
+    const cz = field.centerZ;
+    const rSq = field.radius * field.radius;
+    let inside = false;
+    for (let i = 1; i < ARC_FF_CLEARANCE_SAMPLES; i++) {
+      const t = (i / ARC_FF_CLEARANCE_SAMPLES) * flightTime;
+      const x = launchX + launchVx * t;
+      const y = launchY + launchVy * t;
+      const z = launchZ + launchVz * t - 0.5 * GRAVITY * t * t;
+      const dx = x - cx;
+      const dy = y - cy;
+      const dz = z - cz;
+      if (dx * dx + dy * dy + dz * dz < rSq) {
+        inside = true;
+        break;
+      }
+    }
+    if (inside) {
       crossings++;
       if (crossings > maxCrossings) return false;
     }

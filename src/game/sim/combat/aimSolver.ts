@@ -66,6 +66,16 @@ export type ProjectileTurretAim = DirectTurretAim & {
   originVelocity: Vec3;
   originAcceleration: Vec3;
   hasBallisticSolution: boolean;
+  /** Flight time from mount to predicted intercept, seconds. Zero when
+   *  `hasBallisticSolution` is false. Consumers (force-field clearance,
+   *  trajectory sampling) read this to walk the actual parabolic path
+   *  the shell will fly instead of approximating with a straight chord. */
+  flightTime: number;
+  /** Initial 3D launch velocity from the mount. Zero vector when
+   *  `hasBallisticSolution` is false. Paired with `flightTime` to
+   *  reconstruct the projectile's parabolic envelope under universal
+   *  gravity. */
+  launchVelocity: Vec3;
 };
 
 export type TurretAimSolution = ProjectileTurretAim;
@@ -93,6 +103,8 @@ export function createProjectileTurretAimScratch(): ProjectileTurretAim {
     originVelocity: { x: 0, y: 0, z: 0 },
     originAcceleration: { x: 0, y: 0, z: 0 },
     hasBallisticSolution: true,
+    flightTime: 0,
+    launchVelocity: { x: 0, y: 0, z: 0 },
   };
 }
 
@@ -213,6 +225,8 @@ function writeDirectAimSolutionFields(out: TurretAimSolution): void {
   writeZeroVec3(out.targetAcceleration);
   writeZeroVec3(out.originVelocity);
   writeZeroVec3(out.originAcceleration);
+  out.flightTime = 0;
+  writeZeroVec3(out.launchVelocity);
 }
 
 function writeTurretMountVelocity(
@@ -535,6 +549,10 @@ function copyShotAngleSolution(
   out.yaw = solution.yaw;
   out.pitch = solution.pitch;
   out.hasBallisticSolution = true;
+  out.flightTime = solution.time;
+  out.launchVelocity.x = solution.launchVelocity.x;
+  out.launchVelocity.y = solution.launchVelocity.y;
+  out.launchVelocity.z = solution.launchVelocity.z;
 }
 
 function writeNoBallisticSolutionAim(
@@ -548,6 +566,8 @@ function writeNoBallisticSolutionAim(
   out.yaw = weapon.rotation;
   out.pitch = currentPitch;
   out.hasBallisticSolution = false;
+  out.flightTime = 0;
+  writeZeroVec3(out.launchVelocity);
   writeFallbackDirectionAimPoint(
     mountX, mountY, mountZ,
     out.yaw, out.pitch,

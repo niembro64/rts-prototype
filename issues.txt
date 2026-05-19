@@ -13,18 +13,6 @@ DESIGN PHILOSOPHY GAP PLAN
 
 AIMING / TARGETING SYSTEM ISSUES
 
-AIM-07 - Force-field targeting clearance for arcs uses a straight segment, not the shot trajectory.
-
-Evidence:
-- src/game/sim/combat/targetingSystem.ts:332-365 applies force-field clearance to all weapons, including high arcs.
-- src/game/sim/combat/lineOfSight.ts:202-237 checks only whether the straight source-to-target segment crosses a field boundary.
-
-Why it matters:
-High-arc ballistic shots and vertical launchers do not travel along the straight source-to-target chord. Targeting can reject an arc that would physically clear a shield, or allow an arc whose actual projectile path would hit the shield. Projectile collision later uses the moving projectile segment, so lock-on rules and impact rules can disagree.
-
-Fix direction:
-Use a trajectory-aware shield query for projectile weapons, conservative enough for performance but based on the same ballistic path envelope the projectile will actually follow. At minimum, document straight-segment clearance as an intentional conservative targeting rule.
-
 AIM-08 - Aiming/targeting hot paths remain TypeScript object loops instead of WASM/SoA batches.
 
 Evidence:

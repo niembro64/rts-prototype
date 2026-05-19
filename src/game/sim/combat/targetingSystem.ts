@@ -23,6 +23,7 @@ import {
 } from './aimSolver';
 import {
   LOS_DROP_GRACE_TICKS,
+  hasArcForceFieldClearance,
   hasCombatLineOfSight,
   hasForceFieldClearance,
   weaponNeedsLineOfSight,
@@ -405,6 +406,85 @@ function hasWeaponForceFieldClearanceToPoint(
   );
 }
 
+/** Arc-aware force-field clearance, routed by weapon kind:
+ *
+ *    Ballistic-arc weapons (low / high arc cannons + mortars): walk
+ *    the parabola the ballistic solver just produced in
+ *    `_targetingBallisticAim`. Caller MUST have invoked
+ *    `hasWeaponBallisticSolution` immediately before this call so the
+ *    scratch holds the launch velocity and flight time for *this*
+ *    target.
+ *
+ *    Vertical-launch rockets: defer to runtime projectile-collision
+ *    against the shield. Their trajectory starts straight up and is
+ *    bent by the homing engine — there is no static launch direction
+ *    a targeting test could honestly walk. False-rejecting locks
+ *    here would forbid VLS from firing past any enemy field even
+ *    when the rocket flies clean over it.
+ *
+ *    Direct-fire weapons: the straight chord from mount to target IS
+ *    the projectile path, so fall back to `hasWeaponForceFieldClearance`.
+ *
+ *  This routing is the lock-on counterpart of how the projectile
+ *  itself collides with shields, so a shot the targeting system
+ *  approves is one the simulator will actually let through. */
+function hasWeaponArcAwareForceFieldClearance(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  target: Entity,
+  weaponX: number, weaponY: number, weaponZ: number,
+  activeForceFields: readonly ActiveForceFieldRef[],
+): boolean {
+  if (activeForceFields.length === 0) return true;
+  if (weapon.config.verticalLauncher === true) return true;
+  if (weaponNeedsBallisticSolution(weapon)) {
+    return hasArcForceFieldClearance(
+      weaponX, weaponY, weaponZ,
+      _targetingBallisticAim.launchVelocity.x,
+      _targetingBallisticAim.launchVelocity.y,
+      _targetingBallisticAim.launchVelocity.z,
+      _targetingBallisticAim.flightTime,
+      activeForceFields,
+      { excludeOwnerEntityId: source.id },
+    );
+  }
+  return hasWeaponForceFieldClearance(
+    world, source, weapon, target,
+    weaponX, weaponY, weaponZ,
+    activeForceFields,
+  );
+}
+
+/** Arc-aware variant for attack-ground points; same routing logic as
+ *  `hasWeaponArcAwareForceFieldClearance` but the target is a Vec3 and
+ *  the direct-fire fallback hands off to
+ *  `hasWeaponForceFieldClearanceToPoint`. */
+function hasWeaponArcAwareForceFieldClearanceToPoint(
+  source: Entity,
+  weapon: Turret,
+  point: Vec3,
+  weaponX: number, weaponY: number, weaponZ: number,
+  activeForceFields: readonly ActiveForceFieldRef[],
+): boolean {
+  if (activeForceFields.length === 0) return true;
+  if (weapon.config.verticalLauncher === true) return true;
+  if (weaponNeedsBallisticSolution(weapon)) {
+    return hasArcForceFieldClearance(
+      weaponX, weaponY, weaponZ,
+      _targetingBallisticAim.launchVelocity.x,
+      _targetingBallisticAim.launchVelocity.y,
+      _targetingBallisticAim.launchVelocity.z,
+      _targetingBallisticAim.flightTime,
+      activeForceFields,
+      { excludeOwnerEntityId: source.id },
+    );
+  }
+  return hasWeaponForceFieldClearanceToPoint(
+    source.id, point, weaponX, weaponY, weaponZ, activeForceFields,
+  );
+}
+
 type CandidateRanker = (
   ranges: TurretRanges,
   edge: 'acquire' | 'release',
@@ -478,8 +558,12 @@ function scoreAndFilterCandidate(
 
 /** Combined LOS + force-field + ballistic gate for a single candidate.
  *  Returns true only when the weapon could actually fire on this
- *  target right now. The gates are evaluated in order of increasing
- *  cost; force-field check is skipped when no fields are active. */
+ *  target right now. The gates run in increasing cost order, with one
+ *  ordering invariant: the ballistic solve must precede the
+ *  force-field check, because the arc-aware FF test walks the parabola
+ *  the solver writes into `_targetingBallisticAim`. Direct-fire weapons
+ *  pay nothing for that ordering (their ballistic solve is a free
+ *  early-out) and benefit from a single launch-velocity-aware FF path. */
 function passesWeaponFireGates(
   world: WorldState,
   source: Entity,
@@ -495,17 +579,17 @@ function passesWeaponFireGates(
   if (needsLOS && !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
     return false;
   }
+  if (!hasWeaponBallisticSolution(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
+    return false;
+  }
   if (
     needsForceFieldClearance &&
-    !hasWeaponForceFieldClearance(
+    !hasWeaponArcAwareForceFieldClearance(
       world, source, weapon, enemy,
       weaponX, weaponY, weaponZ,
       activeForceFields,
     )
   ) {
-    return false;
-  }
-  if (!hasWeaponBallisticSolution(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
     return false;
   }
   return true;
@@ -845,11 +929,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           priorityPoint,
           wpx, wpy, wpz,
         );
-        const ffClear = hasWeaponForceFieldClearanceToPoint(
-          unit.id, priorityPoint, wpx, wpy, wpz, activeForceFields,
-        );
         setWeaponTarget(weapon, unit, wi, null);
-        if (!losClear || !ffClear) {
+        if (!losClear) {
           weapon.state = 'idle';
           continue;
         }
@@ -858,8 +939,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           wpx, wpy, wpz,
           priorityPoint.x, priorityPoint.y, priorityPoint.z,
         );
+        // Solve ballistic before the FF arc check — the solver writes
+        // the launch velocity / flight time the arc test walks.
         if (!hasWeaponBallisticSolutionToPoint(world, unit, weapon, priorityPoint, wpx, wpy, wpz)) {
           weapon.state = 'tracking';
+          continue;
+        }
+        const ffClear = hasWeaponArcAwareForceFieldClearanceToPoint(
+          unit, weapon, priorityPoint, wpx, wpy, wpz, activeForceFields,
+        );
+        if (!ffClear) {
+          weapon.state = 'idle';
           continue;
         }
         if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, 0)) {
@@ -923,15 +1013,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             priorityTarget,
             wpx, wpy, wpz,
           );
-          const ffClear = hasWeaponForceFieldClearance(
-            world,
-            unit,
-            weapon,
-            priorityTarget,
-            wpx, wpy, wpz,
-            activeForceFields,
-          );
-          if (!losClear || !ffClear) {
+          if (!losClear) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -942,7 +1024,18 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             wpx, wpy, wpz,
             priorityPosition.x, priorityPosition.y, priorityPosition.z,
           );
+          // Solve ballistic before the FF arc check (see passesWeaponFireGates).
           if (!hasWeaponBallisticSolution(world, unit, weapon, priorityTarget, wpx, wpy, wpz)) {
+            setWeaponTarget(weapon, unit, wi, null);
+            weapon.state = 'idle';
+            continue;
+          }
+          const ffClear = hasWeaponArcAwareForceFieldClearance(
+            world, unit, weapon, priorityTarget,
+            wpx, wpy, wpz,
+            activeForceFields,
+          );
+          if (!ffClear) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -1016,9 +1109,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         // blind. A small grace counter then runs before dropping the
         // lock entirely so a brief clip doesn't restart the
         // spatial-grid reacquisition cycle. Force-field blocking
-        // applies to ALL weapons (high-arc shells lob into the sphere
-        // surface, force-emitter turrets see their own shield as a
-        // barrier too — shields are physical, team-agnostic).
+        // applies to ALL weapons; arc weapons walk the parabola the
+        // ballistic solver just produced (above), direct-fire weapons
+        // use the straight chord, and vertical launchers defer to
+        // runtime projectile-collision against the shield (their
+        // homing trajectory can't be predicted statically).
         const losBlocked =
           (weaponNeedsLineOfSight(weapon) &&
             !hasWeaponLineOfSight(
@@ -1028,7 +1123,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
               target,
               wpx, wpy, wpz,
             )) ||
-          !hasWeaponForceFieldClearance(
+          !hasWeaponArcAwareForceFieldClearance(
             world,
             unit,
             weapon,
