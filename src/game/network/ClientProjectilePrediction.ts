@@ -60,9 +60,15 @@ const _clientHomingIntercept: KinematicInterceptSolution = {
 };
 const _clientThrustResult = { x: 0, y: 0, z: 0 };
 
+function getHomingMaxThrustAccel(shot: ProjectileShot): number {
+  const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
+  return (shot.homingThrust ?? 0) / mass;
+}
+
 /** Resolve the homing thrust acceleration the client predicts this
- *  tick. Returns null when no live target is locked (the caller falls
- *  back to gravity-only integration — same shape as a spent missile). */
+ *  tick. Rocket seekers keep their previous target id while searching
+ *  for a replacement, but rocket gravity is disabled in the integrator
+ *  instead of being countered by thrust. */
 function resolveClientHomingThrust(options: {
   entity: Entity;
   dt: number;
@@ -72,19 +78,35 @@ function resolveClientHomingThrust(options: {
 }): { x: number; y: number; z: number } | null {
   const { entity, dt, position, getEntity, findNearestEnemyForRocket } = options;
   const proj = entity.projectile;
-  if (!proj || proj.homingTargetId === undefined) return null;
+  if (!proj || proj.homingTurnRate === undefined) return null;
+  const isRocket = proj.config.shotProfile.runtime.isRocketLike;
+  const shot = proj.config.shot as ProjectileShot;
+  const maxThrustAccel = getHomingMaxThrustAccel(shot);
+  if (maxThrustAccel <= 0) return null;
+
+  if (proj.homingTargetId === undefined) {
+    if (isRocket && entity.ownership) {
+      const reacquired = findNearestEnemyForRocket(entity, entity.ownership.playerId);
+      if (reacquired) {
+        proj.homingTargetId = reacquired.id;
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
+  }
 
   let homingTarget = getEntity(proj.homingTargetId);
   let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
   if (!targetValid) {
-    const isRocket = proj.config.shotProfile.runtime.isRocketLike;
     if (isRocket && entity.ownership) {
       homingTarget = findNearestEnemyForRocket(entity, entity.ownership.playerId) ?? undefined;
       if (homingTarget) {
         proj.homingTargetId = homingTarget.id;
         targetValid = true;
       } else {
-        proj.homingTargetId = undefined;
+        return null;
       }
     } else {
       proj.homingTargetId = undefined;
@@ -144,7 +166,7 @@ function resolveClientHomingThrust(options: {
       targetVelocity: _clientHomingTargetState.velocity,
       targetAcceleration: _clientHomingTargetState.acceleration,
       projectileSpeed,
-      gravity: GRAVITY,
+      gravity: isRocket ? 0 : GRAVITY,
       preferLateSolution: false,
       maxTimeSec: remainingSec,
     }, _clientHomingIntercept);
@@ -155,16 +177,13 @@ function resolveClientHomingThrust(options: {
     }
   }
 
-  const shot = proj.config.shot as ProjectileShot;
-  const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
-  const maxThrustAccel = (shot.homingThrust ?? 0) / mass;
   const thrust = computeHomingThrust(
     proj.velocityX, proj.velocityY, proj.velocityZ,
     steerX, steerY, steerZ,
     position.x, position.y, position.z,
     proj.homingTurnRate ?? 0,
     maxThrustAccel,
-    GRAVITY,
+    isRocket ? 0 : GRAVITY,
     dt,
   );
   _clientThrustResult.x = thrust.thrustX;
@@ -206,21 +225,21 @@ export function applyClientProjectilePrediction(options: {
   const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
   proj.timeAlive += entityDeltaMs;
 
+  const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
+  const isRocket = proj.config.shotProfile.runtime.isRocketLike;
+  const projectileGravity = terrainFollow || isRocket ? 0 : GRAVITY;
   // PREDICT mode picks which authored derivatives feed extrapolation.
   // Projectiles have no per-tick snapshot positions to snap to (only
-  // spawn / despawn events), so position integration always runs. Gravity
-  // is universal for projectiles in every prediction mode.
-  // Drift projectile position + velocity toward server target
-  // (smooth correction). Server velocity updates are sparse, so gravity
-  // is also applied to the target path between corrections.
-  const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
+  // spawn / despawn events), so position integration always runs.
+  // Rocket-class projectiles ignore gravity; all other non-terrain-
+  // follow projectiles apply it while drifting sparse server targets.
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
   if (target) {
     const nextTargetZ = terrainFollow
       ? target.z
-      : integrateConstantAccelerationPosition(target.z, target.velocityZ, -GRAVITY, targetDt);
+      : integrateConstantAccelerationPosition(target.z, target.velocityZ, -projectileGravity, targetDt);
     if (!terrainFollow) {
-      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, -GRAVITY, targetDt);
+      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, -projectileGravity, targetDt);
     }
     const targetPrevZ = target.z;
     target.x += target.velocityX * targetDt;
@@ -247,15 +266,12 @@ export function applyClientProjectilePrediction(options: {
   }
 
   // Traveling projectiles: dead-reckon with one combined-acceleration
-  // step. Gravity is universal; for homing shots we add the engine's
-  // bounded thrust (lateral steering + counter-gravity in one budget)
-  // and integrate both together — matching the authoritative server
-  // step exactly so predicted and authoritative paths agree between
-  // snapshots.
+  // step. Rocket-class shots use zero gravity; homing thrust then only
+  // spends its budget on steering.
   const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   let aNetX = 0;
   let aNetY = 0;
-  let aNetZ = terrainFollow ? 0 : -GRAVITY;
+  let aNetZ = terrainFollow ? 0 : -projectileGravity;
   let isHoming = false;
   if (!terrainFollow) {
     const thrust = resolveClientHomingThrust({

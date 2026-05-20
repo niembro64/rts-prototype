@@ -274,9 +274,11 @@ export class ClientProjectileStore {
         groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
       };
     }
-    if (spawn.targetEntityId !== undefined && spawn.homingTurnRate) {
-      entity.projectile!.homingTargetId = spawn.targetEntityId;
+    if (spawn.homingTurnRate) {
       entity.projectile!.homingTurnRate = spawn.homingTurnRate;
+      if (spawn.targetEntityId !== undefined) {
+        entity.projectile!.homingTargetId = spawn.targetEntityId;
+      }
     }
     return entity;
   }

@@ -2,25 +2,18 @@
 // guided projectile applies this tick. Replaces the earlier velocity-
 // rotation primitive: instead of pretending the missile rotates its
 // velocity at constant speed, we treat the engine as a real force-
-// producer and let gravity act normally.
+// producer.
 //
-// The thrust vector combines two responsibilities in one bounded
-// magnitude, exactly as design_philosophy.html demands:
-//   1. Lateral guidance — push velocity toward the predicted intercept
-//      at the projectile's authored angular rate (centripetal accel
-//      `ω · |v|` perpendicular to v, in the v→d plane).
-//   2. Counter-gravity — add `+g` in z so the rocket's engine fights
-//      the world's pull instead of letting the rotation step pretend
-//      gravity never happened.
+// The thrust vector pushes velocity toward the predicted intercept at
+// the projectile's authored angular rate (centripetal accel `ω · |v|`
+// perpendicular to v, in the v→d plane). Callers pass the projectile's
+// effective gravity: rocket-class shots pass 0, while gravity-affected
+// homing shots can pass the world gravity if their engine should spend
+// thrust budget on counter-gravity.
 //
 // The whole vector is then clamped to the projectile's available
-// thrust acceleration (`homingThrust / mass`). A well-powered rocket
-// has spare budget after gravity cancel and steers cleanly; a weak
-// rocket saturates first against gravity and sags exactly the way an
-// under-powered missile drops in reality. The caller integrates the
-// returned thrust together with `(0, 0, -g)` so gravity is never
-// special-cased away — guidance and gravity-cancellation are one
-// acceleration vector, not two systems.
+// thrust acceleration (`homingThrust / mass`). The caller integrates
+// the returned thrust together with its own projectile gravity.
 
 import { magnitude3 } from './MathHelpers';
 import { getSimWasm } from '../sim-wasm/init';
@@ -40,11 +33,9 @@ const _htWasmScratch = new Float64Array(3);
 /**
  * Compute the thrust acceleration vector a guided projectile applies
  * this tick. The result combines lateral steering toward the target
- * with counter-gravity thrust, bounded by the projectile's max thrust
- * acceleration. The caller is responsible for integrating
- * `(thrust + (0, 0, -gravity))` into position and velocity — gravity is
- * never opted out of, it is paid for by the engine when the budget
- * allows and let to win when it does not.
+ * with the caller-provided gravity compensation term, bounded by the
+ * projectile's max thrust acceleration. Pass `gravity = 0` for
+ * gravity-free rockets.
  */
 export function computeHomingThrust(
   velX: number, velY: number, velZ: number,
@@ -90,9 +81,8 @@ function computeHomingThrustTs(
   _htOut.thrustY = 0;
   _htOut.thrustZ = 0;
 
-  // Spent / failed guidance: no thrust this tick. The caller will
-  // integrate gravity alone and the body becomes ballistic — exactly
-  // the "engine flamed out" behavior the philosophy asks for.
+  // Spent / failed guidance: no thrust this tick. The caller still
+  // integrates whatever projectile gravity applies to this shot.
   if (maxThrustAccel <= 0 || dtSec <= 0) return _htOut;
 
   const dx = targetX - currentX;
@@ -155,10 +145,8 @@ function computeHomingThrustTs(
       }
       // (cosA ≈ +1: already aligned, theta ≈ 0, no lateral thrust needed.)
     }
-    // Zero-velocity edge case: leave perp = 0 and let the gravity-
-    // cancel term define the thrust direction. The rocket can't steer
-    // without a heading to be perpendicular to, but it can still
-    // counter gravity within its budget.
+    // Zero-velocity edge case: leave perp = 0 and let any caller-
+    // provided gravity compensation define the thrust direction.
   }
 
   // Bounded effective turn rate: ω, capped at θ/dt so we exactly close
@@ -166,8 +154,8 @@ function computeHomingThrustTs(
   const omegaEff = Math.min(homingTurnRate, theta / dtSec);
   const aLateralMag = omegaEff * speed;
 
-  // Desired thrust: lateral steering + vertical engine pushing back
-  // against gravity. The clamp below decides how much of that the
+  // Desired thrust: lateral steering plus optional vertical gravity
+  // compensation. The clamp below decides how much of that the
   // projectile's engine can actually deliver.
   let aX = perpX * aLateralMag;
   let aY = perpY * aLateralMag;

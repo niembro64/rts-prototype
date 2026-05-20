@@ -1679,12 +1679,9 @@ pub fn solve_kinematic_intercept(
 //  Mirrors src/game/math/HomingSteering.ts computeHomingThrust.
 //  Returns the bounded steering acceleration a guided projectile
 //  applies this tick: lateral guidance toward the predicted intercept
-//  plus counter-gravity in one vector, clamped to the projectile's
-//  available thrust acceleration. The caller integrates
-//  `thrust + (0, 0, -gravity)` into position and velocity, so gravity
-//  is never opted out of — only paid for by engine thrust within
-//  budget. A weak rocket saturates against gravity first and sags
-//  exactly the way an under-powered missile drops in reality.
+//  plus optional gravity compensation, clamped to the projectile's
+//  available thrust acceleration. Rocket-class callers pass gravity 0
+//  so their engine budget goes to steering rather than holding altitude.
 //
 //  Output buffer (3 f64s): thrustX, thrustY, thrustZ.
 //
@@ -1716,9 +1713,8 @@ pub fn compute_homing_thrust(
     out_buf[1] = 0.0;
     out_buf[2] = 0.0;
 
-    // Spent / failed guidance: no thrust this tick. The caller will
-    // integrate gravity alone and the body becomes ballistic — exactly
-    // the "engine flamed out" behavior the philosophy asks for.
+    // Spent / failed guidance: no thrust this tick. The caller still
+    // integrates whatever projectile gravity applies to this shot.
     if max_thrust_accel <= 0.0 || dt_sec <= 0.0 {
         return;
     }
@@ -1788,8 +1784,8 @@ pub fn compute_homing_thrust(
             }
             // (cos_a ≈ +1: already aligned, theta ≈ 0, no lateral thrust needed.)
         }
-        // Zero-velocity edge case: leave perp = 0 and let the
-        // gravity-cancel term define the thrust direction.
+        // Zero-velocity edge case: leave perp = 0 and let any caller-
+        // provided gravity compensation define the thrust direction.
     }
 
     let omega_eff = if theta / dt_sec < homing_turn_rate {
@@ -1799,8 +1795,8 @@ pub fn compute_homing_thrust(
     };
     let a_lateral_mag = omega_eff * speed;
 
-    // Desired thrust: lateral steering + vertical engine pushing back
-    // against gravity. The clamp below decides how much of that the
+    // Desired thrust: lateral steering plus optional vertical gravity
+    // compensation. The clamp below decides how much of that the
     // projectile's engine can actually deliver.
     let mut a_x = perp_x * a_lateral_mag;
     let mut a_y = perp_y * a_lateral_mag;

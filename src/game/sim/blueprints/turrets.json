@@ -215,9 +215,9 @@
   "droppingMortarTurret": {
     "id": "droppingMortarTurret",
     "projectileId": "mortarShot",
-    "range": 1000,
+    "range": 570,
     "cooldown": 3500,
-    "launchForce": 9000,
+    "launchForce": 3500,
     "turretTurnAccel": 140,
     "turretDrag": 0.15,
     "barrel": {

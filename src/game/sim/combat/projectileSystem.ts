@@ -172,6 +172,11 @@ const FIRE_YAW_TOLERANCE = 0.16;
 const FIRE_PITCH_TOLERANCE = 0.16;
 const FIRE_BALLISTIC_PITCH_TOLERANCE = 0.025;
 
+function getHomingMaxThrustAccel(shot: ProjectileShot): number {
+  const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
+  return (shot.homingThrust ?? 0) / mass;
+}
+
 function isBallisticArcWeapon(weapon: Turret): boolean {
   const angleType = weapon.config.aimStyle.angleType;
   return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
@@ -276,7 +281,7 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
   _packedProjectileTimeAlive[slot] = proj.timeAlive;
-  _packedProjectileHasGravity[slot] = 1;
+  _packedProjectileHasGravity[slot] = proj.config.shotProfile.runtime.isRocketLike ? 0 : 1;
 }
 
 export function unregisterPackedProjectile(id: EntityId): void {
@@ -621,7 +626,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             turretIndex: weaponIndex,
             barrelIndex,
             targetEntityId: (projShot.homingTurnRate && weapon.target !== null) ? weapon.target : undefined,
-            homingTurnRate: projShot.homingTurnRate,
+            homingTurnRate: (projShot.homingTurnRate && weapon.target !== null)
+              ? projShot.homingTurnRate
+              : undefined,
           });
 
           // Apply recoil to firing unit (momentum-based: p = mv). Use
@@ -762,43 +769,44 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
 
     // D-gun waves are their own terrain-following projectile class:
     // they move horizontally and snap to local terrain height every
-    // tick, never integrating gravity or thrust. Everyone else (homing
-    // or not) shares the same constant-acceleration step the ballistic
-    // aim solver uses.
+    // tick, never integrating gravity or thrust. Rocket-class shots
+    // ignore gravity entirely; everyone else shares the same constant-
+    // acceleration step the ballistic aim solver uses.
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
+    const isRocket = proj.config.shotProfile.runtime.isRocketLike;
+    const projectileGravity = terrainFollow || isRocket ? 0 : GRAVITY;
 
-    // Per-tick acceleration: gravity always pulls; if this projectile
-    // is homing toward a live target, the engine adds a bounded thrust
-    // vector that includes both lateral steering and counter-gravity
-    // in one budget. The thrust is integrated in the same step as
-    // gravity — guidance never opts out of the world's pull, it just
-    // pays for cancelling it within the projectile's available thrust.
+    // Per-tick acceleration. Non-rocket projectile gravity is integrated
+    // in the same step as homing thrust. Rocket-class shots use zero
+    // gravity here, so their homing thrust only spends budget on steering.
     let aNetX = 0;
     let aNetY = 0;
-    let aNetZ = terrainFollow ? 0 : -GRAVITY;
+    let aNetZ = terrainFollow ? 0 : -projectileGravity;
     let homingTargetForReporting: Entity | null = null;
 
-    if (!terrainFollow && proj.homingTargetId !== undefined) {
-      let homingTarget = world.getEntity(proj.homingTargetId);
+    if (!terrainFollow && (proj.homingTargetId !== undefined || (isRocket && proj.homingTurnRate !== undefined))) {
+      let homingTarget = proj.homingTargetId !== undefined
+        ? world.getEntity(proj.homingTargetId)
+        : undefined;
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
         // Rocket-class shots take an additional seeker step: if the
         // locked target dies or leaves the sim, the rocket scans the
-        // spatial grid for the nearest enemy and re-locks. Ballistic
-        // shells stay on the original target and fly dumb when it
-        // vanishes — the point of a shell is to land where the gun
-        // aimed it, not to chase.
-        const isRocket = proj.config.shotProfile.runtime.isRocketLike;
+        // spatial grid for the nearest enemy and re-locks. If no
+        // replacement is available, keep the stale id so the seeker
+        // retries next tick. Rocket gravity is disabled in the
+        // integrator, so no counter-gravity thrust is needed while it
+        // waits.
+        // Ballistic shells stay on the original target and fly dumb
+        // when it vanishes — the point of a shell is to land where the
+        // gun aimed it, not to chase.
         if (isRocket) {
           const reacquired = findNearestEnemyForRocket(world, entity, proj.ownerId);
           if (reacquired) {
             proj.homingTargetId = reacquired.id;
             homingTarget = reacquired;
           } else {
-            // No enemies reachable — engine sits idle this tick so
-            // gravity wins and the rocket sags. We'll try again next
-            // tick via the same path.
-            proj.homingTargetId = undefined;
+            homingTarget = undefined;
           }
         }
       }
@@ -852,7 +860,7 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
             targetVelocity: _homingTargetState.velocity,
             targetAcceleration: _homingTargetState.acceleration,
             projectileSpeed,
-            gravity: GRAVITY,
+            gravity: projectileGravity,
             preferLateSolution: false,
             maxTimeSec: remainingSec,
           }, _homingIntercept);
@@ -863,26 +871,20 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
           }
         }
         const shot = proj.config.shot as ProjectileShot;
-        const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
-        const maxThrustAccel = (shot.homingThrust ?? 0) / mass;
+        const maxThrustAccel = getHomingMaxThrustAccel(shot);
         const thrust = computeHomingThrust(
           proj.velocityX, proj.velocityY, proj.velocityZ,
           steerX, steerY, steerZ,
           position.x, position.y, position.z,
           proj.homingTurnRate ?? 0,
           maxThrustAccel,
-          GRAVITY,
+          projectileGravity,
           dtSec,
         );
-        // Thrust acts in addition to gravity, not instead of it. The
-        // thrust vector already includes the counter-gravity term it
-        // chose to spend within budget; we keep `-GRAVITY` in aNetZ so
-        // an under-powered rocket whose budget can't reach `+g` ends
-        // up with a net downward acceleration and visibly sags.
         aNetX += thrust.thrustX;
         aNetY += thrust.thrustY;
         aNetZ += thrust.thrustZ;
-      } else {
+      } else if (!isRocket) {
         proj.homingTargetId = undefined;
       }
     }
