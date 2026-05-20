@@ -50,7 +50,7 @@
     "id": "lightRocket",
     "mass": 4,
     "collision": {
-      "radius": 0.4
+      "radius": 2
     },
     "explosion": {
       "radius": 30,
