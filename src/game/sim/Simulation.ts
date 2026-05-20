@@ -122,9 +122,9 @@ const MAX_REPLANS_PER_TICK = 5;
  *  a problem that won't improve from one tick to the next. */
 const REPLAN_FAILURE_COOLDOWN = -60;
 
-const ARRIVAL_RADIUS = 100;
-const ARRIVAL_FINAL_RADIUS = 10;
-const ARRIVAL_FINAL_STOP_SPEED = 100;
+const ARRIVAL_RADIUS = 30;
+const ARRIVAL_FINAL_RADIUS = 15;
+const ARRIVAL_FINAL_STOP_SPEED = 10;
 const ARRIVAL_CONTROL_RADIUS = 200;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;

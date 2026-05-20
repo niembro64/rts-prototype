@@ -212,6 +212,55 @@
       "lockOnType": "lockOnToBody"
     }
   },
+  "droppingMortarTurret": {
+    "id": "droppingMortarTurret",
+    "projectileId": "mortarShot",
+    "range": 1000,
+    "cooldown": 3500,
+    "launchForce": 9000,
+    "turretTurnAccel": 140,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 0.55
+    },
+    "isManualFire": false,
+    "passive": false,
+    "mountMode": "authored",
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.droppingMortarTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 1.5707963267948966,
+    "groundAimFraction": 1,
+    "radius": {
+      "body": 7
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  },
   "gatlingMortarTurret": {
     "id": "gatlingMortarTurret",
     "projectileId": "mortarShot",

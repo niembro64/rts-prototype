@@ -105,6 +105,7 @@ export const AUDIO = {
       },
       cannonTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 0.8 },
       mortarTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
+      droppingMortarTurret: { synth: 'cannon' as SynthId, volume: 0.18, playSpeed: 1.25 },
       ..._beamFire,
       forceTurret: {
         synth: 'force-field' as SynthId,
@@ -151,7 +152,8 @@ export const AUDIO = {
       commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       loris: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      hovercraft: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.35 },
+      mosquito: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.35 },
+      dragonfly: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
     } satisfies Record<UnitTypeId, SoundEntry>,
   },
 

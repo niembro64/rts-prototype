@@ -328,9 +328,9 @@ export const GRAVITY = sharedSimConstants.gravity;
 
 /** Free-flight unit velocity damping per 60 Hz frame.
  *  Applied equally to x/y/z while a unit is in free flight. This is
- *  intentionally far weaker than grounded contact drag: 0.002 keeps
- *  about 88.7% of velocity over one second. */
-export const UNIT_AIR_FRICTION_PER_60HZ_FRAME = 0.002;
+ *  intentionally far weaker than grounded contact drag: 0.004 keeps
+ *  about 78.6% of velocity over one second. */
+export const UNIT_AIR_FRICTION_PER_60HZ_FRAME = 0.02;
 
 /** Ground-contact tangent velocity damping per 60 Hz frame.
  *  Applied only while the unit's locomotion ground point is at or

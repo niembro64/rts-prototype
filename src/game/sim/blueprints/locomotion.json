@@ -341,17 +341,33 @@
   "hovercraft": {
     "type": "hover",
     "physics": {
-      "driveForce": 240,
+      "driveForce": 30,
       "traction": 1,
       "maxSlopeDeg": 89
     },
     "config": {
-      "hoverHeight": 120,
+      "hoverHeight": 80,
       "fanDistX": 0.58,
       "fanDistY": 0.62,
       "fanRadius": 0.32,
       "fanRingTubeRadius": 0.035,
       "fanOutwardAngleDeg": 14
+    }
+  },
+  "dragonflyHovercraft": {
+    "type": "hover",
+    "physics": {
+      "driveForce": 20,
+      "traction": 1,
+      "maxSlopeDeg": 89
+    },
+    "config": {
+      "hoverHeight": 500,
+      "fanDistX": 1.7,
+      "fanDistY": 1.7,
+      "fanRadius": 1.1,
+      "fanRingTubeRadius": 0.07,
+      "fanOutwardAngleDeg": 18
     }
   }
 }

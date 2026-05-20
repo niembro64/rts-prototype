@@ -696,10 +696,10 @@
     "fightStopEngagedRatio": 0.5,
     "locomotionId": "loris"
   },
-  "hovercraft": {
-    "id": "hovercraft",
-    "name": "Hovercraft",
-    "shortName": "HVR",
+  "mosquito": {
+    "id": "mosquito",
+    "name": "Mosquito",
+    "shortName": "MSQ",
     "hp": 70,
     "radius": {
       "body": 9,
@@ -718,7 +718,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 0.8
+          "z": 0.15
         }
       }
     ],
@@ -732,7 +732,7 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
+    "hideChassis": true,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -740,10 +740,58 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.hovercraft"
+      "$audio": "event.death.mosquito"
     },
     "fightStopEngagedRatio": 0.5,
     "locomotionId": "hovercraft"
+  },
+  "dragonfly": {
+    "id": "dragonfly",
+    "name": "Dragonfly",
+    "shortName": "DRF",
+    "hp": 240,
+    "radius": {
+      "body": 16,
+      "shot": 14,
+      "push": 19.2
+    },
+    "bodyCenterHeight": 3.2,
+    "mass": 90,
+    "cost": {
+      "energy": 360,
+      "metal": 360
+    },
+    "turrets": [
+      {
+        "turretId": "droppingMortarTurret",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0.2
+        }
+      }
+    ],
+    "bodyShape": {
+      "kind": "rect",
+      "lengthFrac": 1.35,
+      "widthFrac": 0.72,
+      "heightFrac": 0.4
+    },
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "hideChassis": true,
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "cloak": null,
+    "detector": null,
+    "deathSound": {
+      "$audio": "event.death.dragonfly"
+    },
+    "fightStopEngagedRatio": 0.5,
+    "locomotionId": "dragonflyHovercraft"
   },
   "commander": {
     "id": "commander",

@@ -1,7 +1,7 @@
 {
   "color": [1.0, 1.0, 1.0],
-  "waveLowAlpha": 0.02,
-  "waveHighAlpha": 0.9,
-  "waveSpacing": 125,
-  "waveSpeed": 6.6
+  "waveLowAlpha": 0.0,
+  "waveHighAlpha": 0.2,
+  "waveSpacing": 20,
+  "waveSpeed": 2
 }

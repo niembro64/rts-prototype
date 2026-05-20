@@ -23,6 +23,11 @@ function usesBallisticArc(config: TurretConfig): boolean {
 
 function effectiveBallisticBaseRange(config: TurretConfig): number {
   if (!usesBallisticArc(config)) return config.range;
+  // A drop mortar mounted far above its targets is limited by the
+  // ballistic solver, not by flat-ground reach. The flat-ground clamp
+  // would reject targets directly below a high-flying Dragonfly even
+  // though a low-force shell can simply fall onto them.
+  if (config.id === 'droppingMortarTurret') return config.range;
   const shot = config.shot;
   if (!shot || !isProjectileShot(shot) || shot.mass <= 1e-6) return config.range;
   const speed = shot.launchForce / shot.mass;

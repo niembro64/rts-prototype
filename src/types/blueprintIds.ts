@@ -4,7 +4,7 @@
 export const UNIT_TYPE_IDS = [
   'jackal', 'lynx', 'badger', 'mongoose', 'mammoth',
   'tick', 'tarantula', 'loris', 'daddy', 'widow',
-  'formik', 'hippo', 'commander', 'hovercraft',
+  'formik', 'hippo', 'commander', 'mosquito', 'dragonfly',
 ] as const;
 export type UnitTypeId = typeof UNIT_TYPE_IDS[number];
 
@@ -43,6 +43,7 @@ export const TURRET_IDS = [
   'towerBeamTurret',
   'miniBeam',
   'towerCannonTurret',
+  'droppingMortarTurret',
 ] as const;
 export type TurretId = typeof TURRET_IDS[number];
 
