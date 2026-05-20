@@ -120,13 +120,10 @@ function decodeSlabTurretState(encoded: number): TurretState {
   return 'idle';
 }
 
-// AIM-08.1 — populate the SoA snapshot by reading the combat-targeting
-// slab. AIM-08.2 split stamping into stampForceFieldPool (pre-FSM) and
-// stampCombatTargetingPool (post-FSM); this harness reads the latter,
-// so under the current phase the slab is always a post-FSM copy of the
-// JS turret state. AIM-08.3..5 land kernels that produce these fields
-// on their own; the diff with the TS path then validates each kernel
-// against the still-authoritative TS FSM.
+// AIM-08.1+ — populate the SoA snapshot by reading the combat-targeting
+// slab. AIM-08.5 stamps the slab before the FSM and mutates target /
+// state / LOS fields in Rust during targeting; this harness now checks
+// those Rust-written post-FSM fields against the JS Turret consumers.
 function captureSoaSnapshot(world: WorldState): void {
   releaseSnapshot(_soaSnapshot);
   const sim = getSimWasm();

@@ -9,11 +9,10 @@
 //     disabled the slab is rebuilt at count=0 so the kernels return
 //     "clear" without inspecting individual fields.
 //
-//   stampCombatTargetingPool — runs AFTER updateTargetingAndFiringState.
-//     Captures the post-FSM (target, state, aimError, losBlockedTicks)
-//     tuple for the AIM-08.0 parity harness. AIM-08.5 now also writes
-//     FSM transitions into this slab mid-pass and copies them back to
-//     JS Turret objects until snapshots/rendering read the slab directly.
+//   stampCombatTargetingPool — runs BEFORE updateTargetingAndFiringState.
+//     Rebuilds current entity/turret input rows. AIM-08.5 writes FSM
+//     transitions into this slab mid-pass and copies them back to JS
+//     Turret objects until snapshots/rendering read the slab directly.
 //
 // stampTargetingInputSlabs() is the convenience wrapper that runs
 // both passes — kept for callers that don't care about the split.
@@ -183,8 +182,8 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
 
 /** Stamp one armed entity into the combat-targeting slab. AIM-08.4
  *  calls this after Pass 0 mount kinematics so the ballistic solver
- *  can read current mount position/velocity before the full post-FSM
- *  parity stamp runs. */
+ *  can read current mount position/velocity after the pre-FSM full
+ *  pool rebuild. */
 export function stampCombatTargetingEntity(entity: Entity): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
@@ -229,9 +228,10 @@ export function writeBackCombatTargetingEntity(entity: Entity): void {
   }
 }
 
-/** Capture the post-FSM (target, state, aimError, losBlockedTicks)
- *  tuple for every armed entity's turrets so the AIM-08.0 parity
- *  harness can diff slab vs JS. Runs AFTER updateTargetingAndFiringState. */
+/** Rebuild every armed entity's combat-targeting slab row before the
+ *  FSM runs. The targeting pass then mutates target/state fields in
+ *  place through Rust kernels, so the slab remains the post-FSM parity
+ *  source without a second shadow stamp. */
 export function stampCombatTargetingPool(world: WorldState): void {
   const sim = getSimWasm();
   if (sim === undefined) return;

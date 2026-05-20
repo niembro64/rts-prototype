@@ -709,11 +709,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
       const weapons = combat.turrets;
+      const unitSlot = spatialGrid.getSlot(unit.id);
+      const targeting = getTargetingKernel();
       for (let wi = 0; wi < weapons.length; wi++) {
-        const weapon = weapons[wi];
-        setWeaponTarget(weapon, unit, wi, null);
-        weapon.state = 'idle';
+        targeting.clearTurretLock(unitSlot, wi);
       }
+      writeBackCombatTargetingEntity(unit);
       continue;
     }
     const priorityId = combat.priorityTargetId;
@@ -755,6 +756,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     _weaponDisabled.length = weapons.length;
     if (!hasEnabledWeapon) {
+      stampCombatTargetingEntity(unit);
       combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
       continue;
     }

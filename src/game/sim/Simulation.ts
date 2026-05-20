@@ -477,13 +477,12 @@ export class Simulation {
     // reason; this preserves the same one-tick-stale envelope (the
     // list is produced by the previous tick's updateForceFieldState).
     stampForceFieldPool(this.world);
+    // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
+    // pass mutates the slab through Rust transition kernels and writes
+    // those results back to JS turrets for the remaining consumers.
+    stampCombatTargetingPool(this.world);
     // Update weapon cooldowns, targeting, and firing state in one armed-unit pass.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
-    // AIM-08.1 — stamp the combat targeting slab from the just-
-    // updated JS turret state. Today the slab is a non-authoritative
-    // shadow used by the parity harness; AIM-08.5 will move this
-    // before the FSM and add a writeback pass.
-    stampCombatTargetingPool(this.world);
     // AIM-08.0 — debug-only parity check against the upcoming SoA path.
     checkTargetingParity(this.world);
 
