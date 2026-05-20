@@ -1,257 +1,95 @@
 /**
  * Audio Configuration
  *
- * Global audio types, synth IDs, and master volume tuning.
- * All per-weapon/projectile/unit sound entries are centralized here.
+ * Pure tuning data lives in audioConfig.json so both TypeScript and
+ * (eventually) Rust/WASM can read the same source of truth. This
+ * module re-exports the JSON under typed names that consumers expect.
+ *
+ * The handful of harmonic-series ratios the old TS file derived
+ * (h[8]/h[6] = 7/9, h[8]/h[1] = 2/9, base/h[8] = 288, base/h[0] = 32)
+ * are now inlined as literal decimals in the JSON. The local
+ * harmonicSeries / harmonicSeriesBaseMultipler exports those derivations
+ * relied on were never imported anywhere and have been removed under
+ * Delete The Old Path.
  */
 
-export const harmonicSeries = [
-  1 / 1,
-  1 / 2,
-  1 / 3,
-  1 / 4,
-  1 / 5,
-  1 / 6,
-  1 / 7,
-  1 / 8,
-  1 / 9,
-  1 / 10,
-  1 / 11,
-  1 / 12,
-  1 / 13,
-  1 / 14,
-];
-
-export const harmonicSeriesBaseMultipler = 32;
-
 export type { SynthId, SoundEntry } from './types/audio';
-import type { SynthId, SoundEntry } from './types/audio';
+import type { SoundEntry } from './types/audio';
 import type { ShotId, TurretId, UnitTypeId } from './types/blueprintIds';
+import rawConfig from './audioConfig.json';
 
-// Beam sound entries. Previously this generated one variant per
-// harmonic-series index so the widow's four beams played a chord;
-// the four-turret unit was reduced to a single beamTurret blueprint
-// so the per-index variation is no longer needed. Keeps a single
-// canonical entry plus mini / mega variants for the lighter Tick beam
-// and heavier megaBeamTurret.
-const _beamPlaySpeed = harmonicSeries[8] / harmonicSeries[6];
-const _beamFire = {
-  miniBeam: {
-    synth: 'laser-zap' as SynthId,
-    volume: 0.14,
-    playSpeed: harmonicSeries[8] / harmonicSeries[8],
-  },
-  beamTurret: {
-    synth: 'laser-zap' as SynthId,
-    volume: 0.2,
-    playSpeed: _beamPlaySpeed,
-  },
-  // Lower-pitched, slightly louder version for the heavier mount.
-  megaBeamTurret: {
-    synth: 'laser-zap' as SynthId,
-    volume: 0.35,
-    playSpeed: harmonicSeries[8] / harmonicSeries[1],
-  },
-} satisfies Partial<Record<TurretId, SoundEntry>>;
-const _beamHit = {
-  miniBeamShot: {
-    synth: 'sizzle' as SynthId,
-    volume: 0.7,
-    playSpeed: harmonicSeries[8] / harmonicSeries[8],
-  },
-  beamShot: {
-    synth: 'sizzle' as SynthId,
-    volume: 1.0,
-    playSpeed: _beamPlaySpeed,
-  },
-  megaBeamShot: {
-    synth: 'sizzle' as SynthId,
-    volume: 1.4,
-    playSpeed: harmonicSeries[8] / harmonicSeries[1],
-  },
-} satisfies Partial<Record<ShotId, SoundEntry>>;
-
-export const AUDIO = {
-  masterVolume: 0.99, // Global master gain (applied to AudioContext destination)
-  sfxVolume: 0.9, // SFX sub-mix multiplier (applied per gain node)
-  zoomVolumeExponent: 1.2, // How volume scales with zoom: volume = zoom^exponent (2 = inverse square, 1 = linear, 0 = no scaling)
-
-  // Per-category gain multipliers (match SoundCategory toggles)
-  fireGain: 1.0, // Weapon fire sounds
-  hitGain: 0.3, // Projectile hit sounds
-  deadGain: 0.1, // Unit death sounds
-  beamGain: 0.03, // Continuous beam sounds
-  fieldGain: 1.0, // Continuous force field sounds
-  musicGain: 0.5, // Procedural music volume
-
-  // ==================== EVENT SOUNDS ====================
+type AudioConfig = {
+  masterVolume: number;
+  sfxVolume: number;
+  zoomVolumeExponent: number;
+  fireGain: number;
+  hitGain: number;
+  deadGain: number;
+  beamGain: number;
+  fieldGain: number;
+  musicGain: number;
   event: {
-    // Per-turret fire sounds
-    fire: {
-      lightTurret: {
-        synth: 'burst-rifle' as SynthId,
-        volume: 0.2,
-        playSpeed: 0.5,
-      },
-      pulseTurret: {
-        synth: 'burst-rifle' as SynthId,
-        volume: 0.2,
-        playSpeed: 0.3,
-      },
-      salvoRocketTurret: {
-        synth: 'burst-rifle' as SynthId,
-        volume: 0.4,
-        playSpeed: 0.2,
-      },
-      fastRocketTurret: {
-        synth: 'burst-rifle' as SynthId,
-        volume: 0.35,
-        playSpeed: 0.25,
-      },
-      cannonTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 0.8 },
-      mortarTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
-      droppingMortarTurret: { synth: 'cannon' as SynthId, volume: 0.18, playSpeed: 1.25 },
-      ..._beamFire,
-      forceTurret: {
-        synth: 'force-field' as SynthId,
-        volume: 0.5,
-        playSpeed: 1.0,
-      },
-      dgunTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
-      hippoGatlingTurret: {
-        synth: 'burst-rifle' as SynthId,
-        volume: 0.3,
-        playSpeed: 0.4,
-      },
-      gatlingMortarTurret: {
-        synth: 'cannon' as SynthId,
-        volume: 0.3,
-        playSpeed: 0.7,
-      },
-    } satisfies Partial<Record<TurretId, SoundEntry>>,
-
-    // Per-projectile hit sounds
-    hit: {
-      lightShot: { synth: 'heavy' as SynthId, volume: 0.2, playSpeed: 0.5 },
-      lightRocket: { synth: 'heavy' as SynthId, volume: 0.3, playSpeed: 0.3 },
-      fastRocket: { synth: 'heavy' as SynthId, volume: 0.45, playSpeed: 0.24 },
-      mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
-      mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
-      heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
-      // hippoShot: { synth: 'heavy' as SynthId, volume: 0.7, playSpeed: 0.15 },
-      ..._beamHit,
-      disruptorShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 1.0 },
-    } satisfies Partial<Record<ShotId, SoundEntry>>,
-
-    // Per-unit death sounds
-    death: {
-      jackal: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      lynx: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      daddy: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      badger: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      mongoose: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      tick: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      mammoth: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      widow: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      formik: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
-      tarantula: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      commander: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      hippo: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      loris: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
-      mosquito: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.35 },
-      dragonfly: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
-      eagle: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
-    } satisfies Record<UnitTypeId, SoundEntry>,
-  },
-
-  // ==================== CONTINUOUS SOUNDS ====================
+    fire: Partial<Record<TurretId, SoundEntry>>;
+    hit: Partial<Record<ShotId, SoundEntry>>;
+    death: Record<UnitTypeId, SoundEntry>;
+  };
   continuous: {
-    // Beam sound settings (oscillator + LFO + filter + noise)
-    beam: {
-      wave: 'triangle' as OscillatorType, // oscillator waveform
-      freq: harmonicSeriesBaseMultipler / harmonicSeries[8], // base frequency in Hz
-      randomFrequencyRange: 2, // random ± Hz offset applied at start (each instance gets a unique tone)
-      lfoRate: 2, // frequency wobble rate in Hz
-      lfoDepth: 1, // frequency wobble depth in Hz (±)
-      filterFreq: 1200, // lowpass cutoff frequency
-      filterQ: 10, // lowpass filter resonance
-      highpassFreq: 80, // highpass cutoff frequency
-      highpassQ: 1, // highpass filter resonance
-      fadeIn: 0.1, // fade-in time in seconds
-      pitchSlideStart: 0.3, // start frequency multiplier (1.1 = 10% higher)
-      pitchSlideTime: 0.2, // time to slide to target frequency (seconds)
-      oscVolume: 0.2, // main oscillator volume multiplier
-      noiseVolume: 0.08, // noise layer volume multiplier
-      noiseBandFreq: 4000, // noise bandpass center frequency
-      noiseBandQ: 1, // noise bandpass Q
-    },
-
-    // Force field sound settings (oscillator + LFO + filter + noise)
-    force: {
-      wave: 'triangle' as OscillatorType, // oscillator waveform
-      freq: harmonicSeriesBaseMultipler / harmonicSeries[0], // base frequency in Hz
-      randomFrequencyRange: 1, // random ± Hz offset applied at start (each instance gets a unique tone)
-      lfoRate: 10, // frequency wobble rate in Hz
-      lfoDepth: 1, // frequency wobble depth in Hz (±)
-      filterFreq: 4000, // lowpass cutoff frequency
-      filterQ: 3, // lowpass filter resonance
-      highpassFreq: 150, // highpass cutoff frequency
-      highpassQ: 1, // highpass filter resonance
-      fadeIn: 0.2, // fade-in time in seconds
-      oscVolume: 0.12, // main oscillator volume multiplier
-      noiseVolume: 0.04, // noise layer volume multiplier
-      noiseBandFreq: 200, // noise bandpass center frequency
-      noiseBandQ: 2, // noise bandpass Q
-    },
-  },
-
-  // Music source: 'procedural' for generated music, 'midi' for MIDI file playback
-  musicSource: 'midi' as 'procedural' | 'midi',
-  midiFile: 'music.mid', // filename in public/
-
-  // MIDI playback settings
-  midi: {
-    wave: 'sawtooth' as OscillatorType, // oscillator waveform: 'sine' | 'triangle' | 'square' | 'sawtooth'
-    transpose: -7, // shift all notes by N semitones (+12 = up one octave, -12 = down one octave)
-    speed: 1.0, // playback speed multiplier (0.5 = half speed, 2.0 = double)
-    gain: 0.2, // base note gain before velocity scaling
-
-    // ADSR envelope
-    attack: 0.0, // time to reach peak gain (seconds)
-    decay: 0.1, // time from peak to sustain level (seconds)
-    sustain: 1.0, // sustain level as fraction of peak (0-1; 1 = no decay)
-    release: 0.1, // fade-out time after note-off (seconds; extends past MIDI duration)
-
-    // Vibrato (frequency LFO — pitch wobble)
-    vibrato: true, // enable vibrato
-    vibratoRate: 5, // LFO speed in Hz (typical: 4-7)
-    vibratoDepth: 20, // depth in cents (typical: 10-50; 100 cents = 1 semitone)
-
-    // Tremolo (gain LFO — volume wobble)
-    tremolo: false, // enable tremolo
-    tremoloRate: 4, // LFO speed in Hz (typical: 3-8)
-    tremoloDepth: 0.2, // modulation depth 0-1 (0 = none, 1 = full silence on troughs)
-
-    // Unison voices (multiple detuned oscillators per note for thickness/chorus)
-    voices: 1, // number of oscillators per note (1 = normal, 2-4 = unison)
-    voiceDetune: 30, // detune spread in cents (e.g. 12 = voices spread ±12 cents)
-
-    // Per-note lowpass filter (applied to each oscillator)
-    filter: true, // enable per-note lowpass filter
-    filterFreq: 1000, // lowpass cutoff frequency (Hz)
-    filterQ: 0.5, // filter resonance (0.1 = gentle, 10 = sharp peak)
-
-    // Master compressor (applied to combined MIDI output)
-    compressor: false, // enable dynamics compressor
-    compressorThreshold: -6, // dB level where compression begins
-    compressorKnee: 30, // dB range for soft knee
-    compressorRatio: 2, // compression ratio (4:1)
-    compressorAttack: 0.0, // compressor attack in seconds
-    compressorRelease: 0.25, // compressor release in seconds
-
-    // Reverb (synthetic impulse response, applied to combined MIDI output)
-    reverb: false, // enable reverb
-    reverbDecay: 1.0, // reverb tail length in seconds
-    reverbMix: 0.5, // wet/dry mix (0 = fully dry, 1 = fully wet)
-  },
+    beam: ContinuousSynthConfig;
+    force: ContinuousSynthConfig;
+  };
+  musicSource: 'procedural' | 'midi';
+  midiFile: string;
+  midi: MidiSynthConfig;
 };
+
+type ContinuousSynthConfig = {
+  wave: OscillatorType;
+  freq: number;
+  randomFrequencyRange: number;
+  lfoRate: number;
+  lfoDepth: number;
+  filterFreq: number;
+  filterQ: number;
+  highpassFreq: number;
+  highpassQ: number;
+  fadeIn: number;
+  pitchSlideStart?: number;
+  pitchSlideTime?: number;
+  oscVolume: number;
+  noiseVolume: number;
+  noiseBandFreq: number;
+  noiseBandQ: number;
+};
+
+type MidiSynthConfig = {
+  wave: OscillatorType;
+  transpose: number;
+  speed: number;
+  gain: number;
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
+  vibrato: boolean;
+  vibratoRate: number;
+  vibratoDepth: number;
+  tremolo: boolean;
+  tremoloRate: number;
+  tremoloDepth: number;
+  voices: number;
+  voiceDetune: number;
+  filter: boolean;
+  filterFreq: number;
+  filterQ: number;
+  compressor: boolean;
+  compressorThreshold: number;
+  compressorKnee: number;
+  compressorRatio: number;
+  compressorAttack: number;
+  compressorRelease: number;
+  reverb: boolean;
+  reverbDecay: number;
+  reverbMix: number;
+};
+
+export const AUDIO: AudioConfig = rawConfig as unknown as AudioConfig;

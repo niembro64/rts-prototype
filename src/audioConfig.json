@@ -1,0 +1,142 @@
+{
+  "masterVolume": 0.99,
+  "sfxVolume": 0.9,
+  "zoomVolumeExponent": 1.2,
+
+  "fireGain": 1.0,
+  "hitGain": 0.3,
+  "deadGain": 0.1,
+  "beamGain": 0.03,
+  "fieldGain": 1.0,
+  "musicGain": 0.5,
+
+  "event": {
+    "fire": {
+      "lightTurret": { "synth": "burst-rifle", "volume": 0.2, "playSpeed": 0.5 },
+      "pulseTurret": { "synth": "burst-rifle", "volume": 0.2, "playSpeed": 0.3 },
+      "salvoRocketTurret": { "synth": "burst-rifle", "volume": 0.4, "playSpeed": 0.2 },
+      "fastRocketTurret": { "synth": "burst-rifle", "volume": 0.35, "playSpeed": 0.25 },
+      "cannonTurret": { "synth": "cannon", "volume": 0.2, "playSpeed": 0.8 },
+      "mortarTurret": { "synth": "cannon", "volume": 0.2, "playSpeed": 1.0 },
+      "droppingMortarTurret": { "synth": "cannon", "volume": 0.18, "playSpeed": 1.25 },
+      "miniBeam": { "synth": "laser-zap", "volume": 0.14, "playSpeed": 1 },
+      "beamTurret": { "synth": "laser-zap", "volume": 0.2, "playSpeed": 0.7777777777777778 },
+      "megaBeamTurret": { "synth": "laser-zap", "volume": 0.35, "playSpeed": 0.2222222222222222 },
+      "forceTurret": { "synth": "force-field", "volume": 0.5, "playSpeed": 1.0 },
+      "dgunTurret": { "synth": "cannon", "volume": 0.2, "playSpeed": 1.0 },
+      "hippoGatlingTurret": { "synth": "burst-rifle", "volume": 0.3, "playSpeed": 0.4 },
+      "gatlingMortarTurret": { "synth": "cannon", "volume": 0.3, "playSpeed": 0.7 }
+    },
+
+    "hit": {
+      "lightShot": { "synth": "heavy", "volume": 0.2, "playSpeed": 0.5 },
+      "lightRocket": { "synth": "heavy", "volume": 0.3, "playSpeed": 0.3 },
+      "fastRocket": { "synth": "heavy", "volume": 0.45, "playSpeed": 0.24 },
+      "mediumShot": { "synth": "heavy", "volume": 0.5, "playSpeed": 0.2 },
+      "mortarShot": { "synth": "heavy", "volume": 1.0, "playSpeed": 0.1 },
+      "heavyShot": { "synth": "heavy", "volume": 1.0, "playSpeed": 0.05 },
+      "miniBeamShot": { "synth": "sizzle", "volume": 0.7, "playSpeed": 1 },
+      "beamShot": { "synth": "sizzle", "volume": 1.0, "playSpeed": 0.7777777777777778 },
+      "megaBeamShot": { "synth": "sizzle", "volume": 1.4, "playSpeed": 0.2222222222222222 },
+      "disruptorShot": { "synth": "heavy", "volume": 1.0, "playSpeed": 1.0 }
+    },
+
+    "death": {
+      "jackal": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "lynx": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "daddy": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "badger": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "mongoose": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "tick": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "mammoth": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "widow": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "formik": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.25 },
+      "tarantula": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "commander": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "hippo": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "loris": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
+      "mosquito": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.35 },
+      "dragonfly": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.25 },
+      "eagle": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.25 }
+    }
+  },
+
+  "continuous": {
+    "beam": {
+      "wave": "triangle",
+      "freq": 288,
+      "randomFrequencyRange": 2,
+      "lfoRate": 2,
+      "lfoDepth": 1,
+      "filterFreq": 1200,
+      "filterQ": 10,
+      "highpassFreq": 80,
+      "highpassQ": 1,
+      "fadeIn": 0.1,
+      "pitchSlideStart": 0.3,
+      "pitchSlideTime": 0.2,
+      "oscVolume": 0.2,
+      "noiseVolume": 0.08,
+      "noiseBandFreq": 4000,
+      "noiseBandQ": 1
+    },
+
+    "force": {
+      "wave": "triangle",
+      "freq": 32,
+      "randomFrequencyRange": 1,
+      "lfoRate": 10,
+      "lfoDepth": 1,
+      "filterFreq": 4000,
+      "filterQ": 3,
+      "highpassFreq": 150,
+      "highpassQ": 1,
+      "fadeIn": 0.2,
+      "oscVolume": 0.12,
+      "noiseVolume": 0.04,
+      "noiseBandFreq": 200,
+      "noiseBandQ": 2
+    }
+  },
+
+  "musicSource": "midi",
+  "midiFile": "music.mid",
+
+  "midi": {
+    "wave": "sawtooth",
+    "transpose": -7,
+    "speed": 1.0,
+    "gain": 0.2,
+
+    "attack": 0.0,
+    "decay": 0.1,
+    "sustain": 1.0,
+    "release": 0.1,
+
+    "vibrato": true,
+    "vibratoRate": 5,
+    "vibratoDepth": 20,
+
+    "tremolo": false,
+    "tremoloRate": 4,
+    "tremoloDepth": 0.2,
+
+    "voices": 1,
+    "voiceDetune": 30,
+
+    "filter": true,
+    "filterFreq": 1000,
+    "filterQ": 0.5,
+
+    "compressor": false,
+    "compressorThreshold": -6,
+    "compressorKnee": 30,
+    "compressorRatio": 2,
+    "compressorAttack": 0.0,
+    "compressorRelease": 0.25,
+
+    "reverb": false,
+    "reverbDecay": 1.0,
+    "reverbMix": 0.5
+  }
+}
