@@ -14,8 +14,8 @@ import {
 } from './threeUtils';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
-// 4 revolutions per second.
-const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2 * 4) / 1000;
+// 1 revolution per second.
+const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2) / 2000;
 const PROJECTILE_INSTANCED_CAP = 8192;
 const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
@@ -730,13 +730,41 @@ function createProjectileFinGeometry(): THREE.BufferGeometry {
   const FIN_FORWARD = -2;
   const FIN_REAR = 0;
   const FIN_OUT = 1;
+  // Half-thickness perpendicular to each blade's plane.
+  const FIN_THICK = 0.15;
+  // Each blade becomes a triangular prism: front face + back face + 3 side
+  // quads, all emitted as non-indexed triangles.
   const fin = (axis: 'x' | 'z', sign: 1 | -1): number[] => {
     const ox = axis === 'x' ? sign * FIN_OUT : 0;
     const oz = axis === 'z' ? sign * FIN_OUT : 0;
+    // Perpendicular to the blade plane: for an x-axis blade, perp = z; for
+    // a z-axis blade, perp = x.
+    const px = axis === 'x' ? 0 : FIN_THICK;
+    const pz = axis === 'x' ? FIN_THICK : 0;
+    // Six prism vertices: A/B/C with +perp, A'/B'/C' with -perp.
+    const A = [0, FIN_FORWARD, 0];
+    const B = [0, FIN_REAR, 0];
+    const C = [ox, FIN_REAR, oz];
+    const Ap = [A[0] + px, A[1], A[2] + pz];
+    const Bp = [B[0] + px, B[1], B[2] + pz];
+    const Cp = [C[0] + px, C[1], C[2] + pz];
+    const An = [A[0] - px, A[1], A[2] - pz];
+    const Bn = [B[0] - px, B[1], B[2] - pz];
+    const Cn = [C[0] - px, C[1], C[2] - pz];
     return [
-      0, FIN_FORWARD, 0,
-      0, FIN_REAR, 0,
-      ox, FIN_REAR, oz,
+      // Front face (perp side).
+      ...Ap, ...Bp, ...Cp,
+      // Back face (opposite winding).
+      ...An, ...Cn, ...Bn,
+      // Forward edge quad (apex A → rear-inner B), connecting Ap-Bp to An-Bn.
+      ...Ap, ...An, ...Bp,
+      ...Bp, ...An, ...Bn,
+      // Rear edge quad (B → C).
+      ...Bp, ...Bn, ...Cp,
+      ...Cp, ...Bn, ...Cn,
+      // Outer slanted edge (C → A).
+      ...Cp, ...Cn, ...Ap,
+      ...Ap, ...Cn, ...An,
     ];
   };
   const verts = new Float32Array([
