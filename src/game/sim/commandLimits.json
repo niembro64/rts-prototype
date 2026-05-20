@@ -1,0 +1,5 @@
+{
+  "repairAreaMaxRadius": 500,
+  "attackAreaMaxRadius": 700,
+  "maxFactoryWaypointsPerCommand": 64
+}
