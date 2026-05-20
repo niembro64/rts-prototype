@@ -1150,13 +1150,16 @@ export class Simulation {
   }
 
   private hasArrivedAtAction(entity: Entity, action: UnitAction, distance: number): boolean {
-    const arrivalRadius = action.isPathExpansion || action.type === 'patrol'
-      ? ARRIVAL_RADIUS
-      : ARRIVAL_FINAL_RADIUS;
-    if (distance >= arrivalRadius) return false;
-    if (action.isPathExpansion || action.type === 'patrol') return true;
-    const body = entity.body?.physicsBody;
+    // Speed brake only applies to the very last action in the queue, and
+    // never to patrols (which cycle). Path-expansion midpoints and any
+    // intermediate action in a chained command pass arrival the instant
+    // they're within ARRIVAL_RADIUS.
     const unit = entity.unit;
+    const isLastAction = !!unit && unit.actions.length <= 1 && action.type !== 'patrol';
+    const arrivalRadius = isLastAction ? ARRIVAL_FINAL_RADIUS : ARRIVAL_RADIUS;
+    if (distance >= arrivalRadius) return false;
+    if (!isLastAction) return true;
+    const body = entity.body?.physicsBody;
     const vx = body?.vx ?? unit?.velocityX ?? 0;
     const vy = body?.vy ?? unit?.velocityY ?? 0;
     return magnitude(vx, vy) <= ARRIVAL_FINAL_STOP_SPEED;
@@ -1166,7 +1169,9 @@ export class Simulation {
     unit: Unit,
     action: UnitAction,
   ): { x: number; y: number } {
-    const next = action.isPathExpansion ? unit.actions[1] : undefined;
+    // Smooth-through if any next action exists; the unit only brakes to
+    // a full stop at the very last action in the queue.
+    const next = unit.actions[1];
     if (!next) return { x: 0, y: 0 };
     const dx = next.x - action.x;
     const dy = next.y - action.y;
