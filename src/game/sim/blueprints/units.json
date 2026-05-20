@@ -288,7 +288,9 @@
     "cloak": {
       "enabled": true
     },
-    "detector": null,
+    "detector": {
+      "radius": 200
+    },
     "deathSound": {
       "$audio": "event.death.tick"
     },
