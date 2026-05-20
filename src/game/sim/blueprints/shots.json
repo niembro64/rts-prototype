@@ -200,9 +200,9 @@
     "hitSound": {
       "$audio": "event.hit.megaBeamShot"
     },
-    "dps": 3000,
-    "force": 2000,
-    "recoil": 2000,
+    "dps": 1000,
+    "force": 3000,
+    "recoil": 3000,
     "radius": 8,
     "width": 16,
     "damageSphere": {

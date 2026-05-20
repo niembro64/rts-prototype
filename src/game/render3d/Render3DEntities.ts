@@ -137,6 +137,8 @@ export class Render3DEntities {
   private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
   private commanderVisualKit = new CommanderVisualKit3D();
   private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  // Beam-turret barrels taper to a point at the muzzle (+Y = tip).
+  private coneBarrelGeom = new THREE.CylinderGeometry(0, 1, 1, 10);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
   // Mirror panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
@@ -251,6 +253,7 @@ export class Render3DEntities {
       world: this.world,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
+      coneBarrelGeom: this.coneBarrelGeom,
       barrelMat: this.barrelMat,
       mirrorGeom: this.mirrorGeom,
     });
@@ -261,6 +264,7 @@ export class Render3DEntities {
       legRenderer: this.legRenderer,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
+      coneBarrelGeom: this.coneBarrelGeom,
       barrelMat: this.barrelMat,
       mirrorGeom: this.mirrorGeom,
       mirrorArmGeom: this.mirrorArmGeom,

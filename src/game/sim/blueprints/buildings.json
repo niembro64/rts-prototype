@@ -167,8 +167,8 @@
   "cannonTower": {
     "id": "cannonTower",
     "name": "Cannon Tower",
-    "gridWidth": 34,
-    "gridHeight": 43,
+    "gridWidth": 4,
+    "gridHeight": 4,
     "gridDepth": 3,
     "hp": 8000,
     "cost": {
@@ -179,7 +179,7 @@
     "metalProduction": null,
     "constructionRate": null,
     "renderProfile": "cannonTower",
-    "visualHeight": 26,
+    "visualHeight": 30,
     "anchorProfile": "constantVisualTop",
     "hud": {
       "barsOffsetAboveTop": 12

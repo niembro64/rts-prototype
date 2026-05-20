@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
+import { isLineShot } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RangeRingMesh } from './EntityMesh3D';
 import {
@@ -63,6 +64,10 @@ export type TurretMesh = {
    *  barrels are routed through the InstancedMesh path (per-Mesh
    *  fallback). */
   barrelSlots?: number[];
+  /** True when these barrels were built with the tapered cone geometry
+   *  (beam/laser turrets). Tells the alloc + per-frame writer to route
+   *  through the cone instanced pool instead of the cylinder pool. */
+  barrelUsesCone?: boolean;
   /** Pitch pivot (rotation.z = pitch) — tilts firing direction up/down.
    *  Parent of spinGroup. */
   pitchGroup?: THREE.Group;
@@ -88,6 +93,9 @@ export type TurretMesh = {
 export type TurretMesh3DDeps = {
   headGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
+  /** Tapered barrel geometry used for beam/laser turrets so the barrel
+   *  narrows to a point at the muzzle. */
+  coneBarrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
@@ -210,6 +218,10 @@ export function buildTurretMesh3D(
   // When `deps.skipBarrels` is true the Mesh is built but NOT attached
   // to spinGroup — kept in `barrels[]` purely as a data carrier; the
   // shared `barrelInstanced` InstancedMesh does the rendering.
+  // Beam/laser turrets get a tapered barrel that narrows to a point at
+  // the muzzle, instead of the default uniform cylinder.
+  const barrelUsesCone = turret.config.shot ? isLineShot(turret.config.shot) : false;
+  const segmentGeom = barrelUsesCone ? deps.coneBarrelGeom : deps.barrelGeom;
   const pushSegment = (
     baseX: number, baseY: number, baseZ: number,
     tipX: number, tipY: number, tipZ: number,
@@ -219,7 +231,7 @@ export function buildTurretMesh3D(
     const dz = tipZ - baseZ;
     const length = Math.hypot(dx, dy, dz);
     if (length < 1e-4) return;
-    const m = new THREE.Mesh(deps.barrelGeom, deps.barrelMat);
+    const m = new THREE.Mesh(segmentGeom, deps.barrelMat);
     m.scale.set(cylRadius, length, cylRadius);
     m.position.set(
       (baseX + tipX) / 2,
@@ -280,5 +292,8 @@ export function buildTurretMesh3D(
   }
 
   parent.add(root);
-  return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };
+  return {
+    root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup,
+    barrelUsesCone,
+  };
 }
