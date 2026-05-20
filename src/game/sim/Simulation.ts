@@ -124,10 +124,9 @@ const REPLAN_FAILURE_COOLDOWN = -60;
 
 const ARRIVAL_RADIUS = 100;
 const ARRIVAL_FINAL_RADIUS = 10;
-const ARRIVAL_FINAL_STOP_SPEED = 1;
+const ARRIVAL_FINAL_STOP_SPEED = 100;
 const ARRIVAL_CONTROL_RADIUS = 200;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
-const ARRIVAL_THROUGH_SPEED = 120;
 const ARRIVAL_MIN_ACCEL = 0.001;
 
 export class Simulation {
@@ -1108,6 +1107,18 @@ export class Simulation {
       return false;
     }
 
+    // Intermediate waypoints (anything that isn't the final action in
+    // the queue) just steer full-power toward the waypoint and let the
+    // arrival radius catch the fly-through. The PD braking math below
+    // only fires when the unit needs to stop at a precise point — i.e.
+    // the very last action in the queue.
+    const isLastAction = unit.actions.length <= 1 && action.type !== 'patrol';
+    if (!isLastAction) {
+      unit.thrustDirX = dx / distance;
+      unit.thrustDirY = dy / distance;
+      return true;
+    }
+
     const maxAccel = this.getUnitHorizontalDriveAccel(unit);
     if (maxAccel <= ARRIVAL_MIN_ACCEL) {
       unit.thrustDirX = dx / distance;
@@ -1115,7 +1126,6 @@ export class Simulation {
       return true;
     }
 
-    const targetVelocity = this.getActionArrivalTargetVelocity(unit, action);
     const controlRadius = Math.max(ARRIVAL_CONTROL_RADIUS, unit.radius.push * 8);
     const positionGain = maxAccel / controlRadius;
     const velocityGain = 2 * Math.sqrt(positionGain);
@@ -1124,8 +1134,8 @@ export class Simulation {
       : 1 / ARRIVAL_RESPONSE_TIME_SEC;
     const dampingGain = Math.max(velocityGain, responseGain);
 
-    let accelX = dx * positionGain + (targetVelocity.x - body.vx) * dampingGain;
-    let accelY = dy * positionGain + (targetVelocity.y - body.vy) * dampingGain;
+    let accelX = dx * positionGain - body.vx * dampingGain;
+    let accelY = dy * positionGain - body.vy * dampingGain;
 
     if (!Number.isFinite(accelX) || !Number.isFinite(accelY)) {
       unit.thrustDirX = 0;
@@ -1163,26 +1173,6 @@ export class Simulation {
     const vx = body?.vx ?? unit?.velocityX ?? 0;
     const vy = body?.vy ?? unit?.velocityY ?? 0;
     return magnitude(vx, vy) <= ARRIVAL_FINAL_STOP_SPEED;
-  }
-
-  private getActionArrivalTargetVelocity(
-    unit: Unit,
-    action: UnitAction,
-  ): { x: number; y: number } {
-    // Smooth-through if any next action exists; the unit only brakes to
-    // a full stop at the very last action in the queue.
-    const next = unit.actions[1];
-    if (!next) return { x: 0, y: 0 };
-    const dx = next.x - action.x;
-    const dy = next.y - action.y;
-    const distance = magnitude(dx, dy);
-    if (distance <= 0.0001) return { x: 0, y: 0 };
-    const currentSpeed = magnitude(unit.velocityX ?? 0, unit.velocityY ?? 0);
-    const throughSpeed = Math.max(ARRIVAL_THROUGH_SPEED, currentSpeed);
-    return {
-      x: dx / distance * throughSpeed,
-      y: dy / distance * throughSpeed,
-    };
   }
 
   private getUnitHorizontalDriveAccel(unit: Unit): number {
