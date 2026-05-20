@@ -39,6 +39,7 @@ export type BuildingEntityMeshFactoryOptions = {
   world: THREE.Group;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
+  coneBarrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
 };
@@ -53,6 +54,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     world,
     turretHeadGeom,
     barrelGeom,
+    coneBarrelGeom,
     barrelMat,
     getPrimaryMat,
   } = options;
@@ -99,6 +101,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
       const turretMesh = buildTurretMesh3D(group, turret, buildingGfx, {
         headGeom: turretHeadGeom,
         barrelGeom,
+        coneBarrelGeom,
         barrelMat,
         primaryMat: getPrimaryMat(ownerId),
       });
@@ -137,6 +140,7 @@ export type BuildingEntityRenderer3DOptions = {
   constructionVisuals: ConstructionVisualController3D;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
+  coneBarrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
@@ -161,6 +165,7 @@ export class BuildingEntityRenderer3D {
   private readonly constructionVisuals: ConstructionVisualController3D;
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
+  private readonly coneBarrelGeom: THREE.CylinderGeometry;
   private readonly barrelMat: THREE.Material;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
@@ -187,6 +192,7 @@ export class BuildingEntityRenderer3D {
     this.constructionVisuals = options.constructionVisuals;
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
+    this.coneBarrelGeom = options.coneBarrelGeom;
     this.barrelMat = options.barrelMat;
     this.getPrimaryMat = options.getPrimaryMat;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
@@ -312,6 +318,7 @@ export class BuildingEntityRenderer3D {
         world: this.world,
         turretHeadGeom: this.turretHeadGeom,
         barrelGeom: this.barrelGeom,
+        coneBarrelGeom: this.coneBarrelGeom,
         barrelMat: this.barrelMat,
         getPrimaryMat: this.getPrimaryMat,
       });

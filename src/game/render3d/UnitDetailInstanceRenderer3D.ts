@@ -18,6 +18,7 @@ const SMOOTH_CHASSIS_CAP = 16384;
 const POLY_CHASSIS_CAP = 4096;
 const TURRET_HEAD_CAP = 16384;
 const BARREL_CAP = 32768;
+const CONE_BARREL_CAP = 4096;
 const MIRROR_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -34,6 +35,7 @@ type UnitDetailInstanceRendererOptions = {
   world: THREE.Group;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
+  coneBarrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   mirrorGeom: THREE.BoxGeometry;
 };
@@ -60,6 +62,14 @@ export class UnitDetailInstanceRenderer3D {
   private readonly barrelColorKey = new Map<number, number>();
   private readonly barrelFreeSlots: number[] = [];
   private barrelNextSlot = 0;
+
+  // Parallel pool for beam/laser turret barrels (cone geometry). The
+  // same slot index allocator + per-frame writer pattern as the
+  // cylinder pool above.
+  private readonly coneBarrelInstanced: THREE.InstancedMesh;
+  private readonly coneBarrelColorKey = new Map<number, number>();
+  private readonly coneBarrelFreeSlots: number[] = [];
+  private coneBarrelNextSlot = 0;
 
   private readonly mirrorPanelInstanced: THREE.InstancedMesh;
   private readonly mirrorPanelColorKey = new Map<number, number>();
@@ -90,6 +100,13 @@ export class UnitDetailInstanceRenderer3D {
       options.barrelGeom.clone(),
       options.barrelMat.clone(),
       BARREL_CAP,
+      0xffffff,
+    );
+
+    this.coneBarrelInstanced = this.createPool(
+      options.coneBarrelGeom.clone(),
+      options.barrelMat.clone(),
+      CONE_BARREL_CAP,
       0xffffff,
     );
 
@@ -148,12 +165,15 @@ export class UnitDetailInstanceRenderer3D {
     return this.turretHeadNextSlot++;
   }
 
-  allocBarrelSlots(count: number): number[] | null {
+  allocBarrelSlots(count: number, useCone: boolean = false): number[] | null {
     const slots: number[] = [];
     for (let i = 0; i < count; i++) {
-      const slot = this.allocBarrelSlot();
+      const slot = useCone ? this.allocConeBarrelSlot() : this.allocBarrelSlot();
       if (slot === null) {
-        for (const allocated of slots) this.freeBarrelSlot(allocated);
+        for (const allocated of slots) {
+          if (useCone) this.freeConeBarrelSlot(allocated);
+          else this.freeBarrelSlot(allocated);
+        }
         return null;
       }
       slots.push(slot);
@@ -182,7 +202,11 @@ export class UnitDetailInstanceRenderer3D {
     for (const turret of mesh.turrets) {
       if (turret.headSlot !== undefined) this.freeTurretHeadSlot(turret.headSlot);
       if (turret.barrelSlots) {
-        for (const slot of turret.barrelSlots) this.freeBarrelSlot(slot);
+        if (turret.barrelUsesCone) {
+          for (const slot of turret.barrelSlots) this.freeConeBarrelSlot(slot);
+        } else {
+          for (const slot of turret.barrelSlots) this.freeBarrelSlot(slot);
+        }
       }
     }
     if (mesh.mirrors?.panelSlots) {
@@ -195,6 +219,7 @@ export class UnitDetailInstanceRenderer3D {
     this.releaseAllPolyChassisSlots();
     this.releaseAllTurretHeadSlots();
     this.releaseAllBarrelSlots();
+    this.releaseAllConeBarrelSlots();
     this.releaseAllMirrorPanelSlots();
   }
 
@@ -232,12 +257,18 @@ export class UnitDetailInstanceRenderer3D {
       }
       if (turret.barrelSlots) {
         const barrelColorKey = isConstructionShell(entity) ? SHELL_PALE_HEX : 0xffffff;
+        const targetMesh = turret.barrelUsesCone
+          ? this.coneBarrelInstanced
+          : this.barrelInstanced;
+        const targetKeys = turret.barrelUsesCone
+          ? this.coneBarrelColorKey
+          : this.barrelColorKey;
         for (const slot of turret.barrelSlots) {
-          if (this.barrelColorKey.get(slot) === barrelColorKey) continue;
+          if (targetKeys.get(slot) === barrelColorKey) continue;
           this.scratchColor.set(barrelColorKey);
-          this.barrelInstanced.setColorAt(slot, this.scratchColor);
-          this.barrelColorKey.set(slot, barrelColorKey);
-          this.barrelInstanced.instanceColor!.needsUpdate = true;
+          targetMesh.setColorAt(slot, this.scratchColor);
+          targetKeys.set(slot, barrelColorKey);
+          targetMesh.instanceColor!.needsUpdate = true;
         }
       }
     }
@@ -313,8 +344,9 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
-  writeBarrelMatrix(slot: number, matrix: THREE.Matrix4): void {
-    this.barrelInstanced.setMatrixAt(slot, matrix);
+  writeBarrelMatrix(slot: number, matrix: THREE.Matrix4, useCone: boolean = false): void {
+    if (useCone) this.coneBarrelInstanced.setMatrixAt(slot, matrix);
+    else this.barrelInstanced.setMatrixAt(slot, matrix);
   }
 
   writeMirrorPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
@@ -341,6 +373,10 @@ export class UnitDetailInstanceRenderer3D {
       this.turretHeadNextSlot,
     );
     this.barrelNextSlot = this.trimFreeTail(this.barrelFreeSlots, this.barrelNextSlot);
+    this.coneBarrelNextSlot = this.trimFreeTail(
+      this.coneBarrelFreeSlots,
+      this.coneBarrelNextSlot,
+    );
     this.mirrorPanelNextSlot = this.trimFreeTail(
       this.mirrorPanelFreeSlots,
       this.mirrorPanelNextSlot,
@@ -377,6 +413,11 @@ export class UnitDetailInstanceRenderer3D {
     this.barrelInstanced.count = this.barrelNextSlot;
     if (this.barrelNextSlot > 0) this.barrelInstanced.instanceMatrix.needsUpdate = true;
 
+    this.coneBarrelInstanced.count = this.coneBarrelNextSlot;
+    if (this.coneBarrelNextSlot > 0) {
+      this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
+    }
+
     this.mirrorPanelInstanced.count = mirrorsEnabled ? this.mirrorPanelNextSlot : 0;
     if (this.mirrorPanelNextSlot > 0) {
       this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
@@ -399,6 +440,7 @@ export class UnitDetailInstanceRenderer3D {
     for (const mesh of [
       this.turretHeadInstanced,
       this.barrelInstanced,
+      this.coneBarrelInstanced,
       this.mirrorPanelInstanced,
     ]) {
       disposeMesh(mesh);
@@ -493,6 +535,19 @@ export class UnitDetailInstanceRenderer3D {
     this.barrelInstanced.instanceMatrix.needsUpdate = true;
   }
 
+  private allocConeBarrelSlot(): number | null {
+    if (this.coneBarrelFreeSlots.length > 0) return this.coneBarrelFreeSlots.pop()!;
+    if (this.coneBarrelNextSlot >= CONE_BARREL_CAP) return null;
+    return this.coneBarrelNextSlot++;
+  }
+
+  private freeConeBarrelSlot(slot: number): void {
+    this.coneBarrelInstanced.setMatrixAt(slot, ZERO_MATRIX);
+    this.coneBarrelFreeSlots.push(slot);
+    this.coneBarrelColorKey.delete(slot);
+    this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
+  }
+
   private allocMirrorPanelSlot(): number | null {
     if (this.mirrorPanelFreeSlots.length > 0) return this.mirrorPanelFreeSlots.pop()!;
     if (this.mirrorPanelNextSlot >= MIRROR_PANEL_CAP) return null;
@@ -557,6 +612,17 @@ export class UnitDetailInstanceRenderer3D {
     this.barrelNextSlot = 0;
     this.barrelInstanced.count = 0;
     this.barrelInstanced.instanceMatrix.needsUpdate = true;
+  }
+
+  private releaseAllConeBarrelSlots(): void {
+    for (let slot = 0; slot < this.coneBarrelNextSlot; slot++) {
+      this.coneBarrelInstanced.setMatrixAt(slot, ZERO_MATRIX);
+    }
+    this.coneBarrelColorKey.clear();
+    this.coneBarrelFreeSlots.length = 0;
+    this.coneBarrelNextSlot = 0;
+    this.coneBarrelInstanced.count = 0;
+    this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
   }
 
   private releaseAllMirrorPanelSlots(): void {

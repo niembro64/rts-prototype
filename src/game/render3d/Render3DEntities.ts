@@ -229,6 +229,7 @@ export class Render3DEntities {
       constructionVisuals: this.constructionVisuals,
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
+      coneBarrelGeom: this.coneBarrelGeom,
       barrelMat: this.barrelMat,
       getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
@@ -755,6 +756,7 @@ export class Render3DEntities {
     this.turretHeadGeom.dispose();
     this.commanderVisualKit.dispose();
     this.barrelGeom.dispose();
+    this.coneBarrelGeom.dispose();
     this.radiusSphereGeom.dispose();
     this.selectionOverlays.dispose();
     this.mirrorGeom.dispose();

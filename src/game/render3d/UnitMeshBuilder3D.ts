@@ -31,6 +31,7 @@ export type UnitMeshBuilder3DOptions = {
   legRenderer: LegInstancedRenderer;
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
+  coneBarrelGeom: THREE.CylinderGeometry;
   barrelMat: THREE.Material;
   mirrorGeom: THREE.BoxGeometry;
   mirrorArmGeom: THREE.BoxGeometry;
@@ -74,6 +75,7 @@ export class UnitMeshBuilder3D {
   private readonly legRenderer: LegInstancedRenderer;
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
+  private readonly coneBarrelGeom: THREE.CylinderGeometry;
   private readonly barrelMat: THREE.Material;
   private readonly mirrorGeom: THREE.BoxGeometry;
   private readonly mirrorArmGeom: THREE.BoxGeometry;
@@ -90,6 +92,7 @@ export class UnitMeshBuilder3D {
     this.legRenderer = options.legRenderer;
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
+    this.coneBarrelGeom = options.coneBarrelGeom;
     this.barrelMat = options.barrelMat;
     this.mirrorGeom = options.mirrorGeom;
     this.mirrorArmGeom = options.mirrorArmGeom;
@@ -260,6 +263,7 @@ export class UnitMeshBuilder3D {
       const turretMesh = buildTurretMesh3D(liftGroup, turret, unitGfx, {
         headGeom: this.turretHeadGeom,
         barrelGeom: this.barrelGeom,
+        coneBarrelGeom: this.coneBarrelGeom,
         barrelMat: this.barrelMat,
         primaryMat: this.getPrimaryMat(ownerId),
         skipHead: headSlot !== undefined,
@@ -277,7 +281,10 @@ export class UnitMeshBuilder3D {
       turretMesh.headSlot = headSlot;
 
       if (useDetailedUnitInstancing && turretMesh.barrels.length > 0) {
-        const barrelSlots = this.unitDetailInstances.allocBarrelSlots(turretMesh.barrels.length);
+        const barrelSlots = this.unitDetailInstances.allocBarrelSlots(
+          turretMesh.barrels.length,
+          turretMesh.barrelUsesCone === true,
+        );
         if (barrelSlots) {
           turretMesh.barrelSlots = barrelSlots;
           for (const barrel of turretMesh.barrels) barrel.parent?.remove(barrel);

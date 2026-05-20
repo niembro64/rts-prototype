@@ -219,7 +219,11 @@ export class UnitTurretPose3D {
         barrel.scale,
       );
       this.barrelWorldMat.multiplyMatrices(this.barrelParentMat, this.barrelStepMat);
-      unitDetailInstances.writeBarrelMatrix(slot, this.barrelWorldMat);
+      unitDetailInstances.writeBarrelMatrix(
+        slot,
+        this.barrelWorldMat,
+        turretMesh.barrelUsesCone === true,
+      );
     }
   }
 }
