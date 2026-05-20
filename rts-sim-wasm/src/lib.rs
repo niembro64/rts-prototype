@@ -7061,6 +7061,26 @@ pub fn combat_targeting_clear_turret_lock(entity_slot: u32, turret_idx: u32) {
     combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
 }
 
+/// Clear every live turret lock for one entity in one boundary call.
+/// Used by global fire-disable paths while JS still owns priority
+/// command fields and cooldown bookkeeping.
+#[wasm_bindgen]
+pub fn combat_targeting_clear_entity_locks(entity_slot: u32) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = pool.turret_count_per_entity[entity_idx] as u32;
+    for turret_idx in 0..count {
+        if turret_idx >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+            break;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+    }
+}
+
 /// AIM-08.5 — attack-ground priority transition. The expensive point
 /// gates are still supplied by JS; Rust owns the lock/state hysteresis
 /// write into the slab.

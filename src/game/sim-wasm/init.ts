@@ -178,6 +178,7 @@ import __wbg_init, {
   combat_targeting_rank_target,
   combat_targeting_choose_best_candidate,
   combat_targeting_clear_turret_lock,
+  combat_targeting_clear_entity_locks,
   combat_targeting_apply_priority_point_fsm,
   combat_targeting_apply_priority_target_fsm,
   combat_targeting_validate_existing_lock_fsm,
@@ -1059,6 +1060,7 @@ export interface CombatTargetingApi {
    *  supplies object-owned expensive gates during migration; these
    *  calls mutate the combat-targeting slab's target/state/LOS tuple. */
   readonly clearTurretLock: (entitySlot: number, turretIdx: number) => void;
+  readonly clearEntityLocks: (entitySlot: number) => void;
   readonly applyPriorityPointFsm: (
     entitySlot: number,
     turretIdx: number,
@@ -2112,6 +2114,7 @@ export function initSimWasm(): Promise<SimWasm> {
           rankTarget: combat_targeting_rank_target,
           chooseBestCandidate: combat_targeting_choose_best_candidate,
           clearTurretLock: combat_targeting_clear_turret_lock,
+          clearEntityLocks: combat_targeting_clear_entity_locks,
           applyPriorityPointFsm: combat_targeting_apply_priority_point_fsm,
           applyPriorityTargetFsm: combat_targeting_apply_priority_target_fsm,
           validateExistingLockFsm: combat_targeting_validate_existing_lock_fsm,

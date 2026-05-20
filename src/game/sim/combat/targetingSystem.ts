@@ -708,12 +708,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
-      const weapons = combat.turrets;
       const unitSlot = spatialGrid.getSlot(unit.id);
       const targeting = getTargetingKernel();
-      for (let wi = 0; wi < weapons.length; wi++) {
-        targeting.clearTurretLock(unitSlot, wi);
-      }
+      targeting.clearEntityLocks(unitSlot);
       writeBackCombatTargetingEntity(unit);
       continue;
     }
