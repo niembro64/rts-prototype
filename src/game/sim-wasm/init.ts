@@ -164,6 +164,8 @@ import __wbg_init, {
   combat_targeting_turret_aim_error_pitch_ptr,
   combat_targeting_turret_los_blocked_ticks_ptr,
   combat_targeting_turret_config_flags_ptr,
+  combat_targeting_rank_target,
+  combat_targeting_choose_best_candidate,
   force_field_pool_clear,
   force_field_pool_count,
   force_field_pool_set_count,
@@ -949,6 +951,55 @@ export interface CombatTargetingApi {
   readonly turretAimErrorPitchPtr: () => number;
   readonly turretLosBlockedTicksPtr: () => number;
   readonly turretConfigFlagsPtr: () => number;
+  /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
+   *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
+  readonly rankTarget: (
+    rankMode: number,
+    edge: number,
+    fireMaxAcquire: number,
+    fireMaxRelease: number,
+    hasFireMin: number,
+    fireMinAcquire: number,
+    fireMinRelease: number,
+    hasTracking: number,
+    trackingAcquire: number,
+    trackingRelease: number,
+    distSq: number,
+    targetRadius: number,
+  ) => number;
+  /** AIM-08.3 — Candidate score/ranking kernel. Candidate arrays are
+   *  parallel slices of length `candidateCount`; output is
+   *  outI32[0]=local candidate idx (-1 for seed/no candidate),
+   *  outI32[1]=rank, outF64[0]=distSq, outF64[1]=mirrorScore. */
+  readonly chooseBestCandidate: (
+    weaponX: number,
+    weaponY: number,
+    weaponZ: number,
+    fireMaxAcquire: number,
+    fireMaxRelease: number,
+    hasFireMin: number,
+    fireMinAcquire: number,
+    fireMinRelease: number,
+    hasTracking: number,
+    trackingAcquire: number,
+    trackingRelease: number,
+    rankMode: number,
+    minimumRank: number,
+    seedRank: number,
+    seedDistSq: number,
+    seedMirrorScore: number,
+    isPassive: number,
+    candidateCount: number,
+    candidateObservable: Uint8Array,
+    candidatePosX: Float64Array,
+    candidatePosY: Float64Array,
+    candidatePosZ: Float64Array,
+    candidateRadius: Float64Array,
+    candidateMirrorScore: Float64Array,
+    gateFn: (candidateIdx: number) => boolean,
+    outI32: Int32Array,
+    outF64: Float64Array,
+  ) => void;
 }
 
 /** AIM-08.1 — Force field input slab. Compact list of `count` active
@@ -1946,6 +1997,8 @@ export function initSimWasm(): Promise<SimWasm> {
           turretAimErrorPitchPtr: combat_targeting_turret_aim_error_pitch_ptr,
           turretLosBlockedTicksPtr: combat_targeting_turret_los_blocked_ticks_ptr,
           turretConfigFlagsPtr: combat_targeting_turret_config_flags_ptr,
+          rankTarget: combat_targeting_rank_target,
+          chooseBestCandidate: combat_targeting_choose_best_candidate,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,

@@ -17,6 +17,7 @@
 //   9  pathfinder              — A* over the walk grid
 //  10  snapshot serializer     — per-entity quantize + delta path
 
+use js_sys::Function;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -3820,9 +3821,15 @@ fn spatial_slot_is_los_excluded(
 
 #[inline]
 fn segment_intersects_sphere(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
-    cx: f64, cy: f64, cz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    cx: f64,
+    cy: f64,
+    cz: f64,
     radius: f64,
 ) -> bool {
     let dx = tx - sx;
@@ -3850,10 +3857,18 @@ fn segment_intersects_sphere(
 
 #[inline]
 fn segment_intersects_aabb(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
-    min_x: f64, min_y: f64, min_z: f64,
-    max_x: f64, max_y: f64, max_z: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
 ) -> bool {
     let dx = tx - sx;
     let dy = ty - sy;
@@ -3922,8 +3937,12 @@ fn segment_intersects_aabb(
 }
 
 fn spatial_has_entity_line_of_sight(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
     line_width: f64,
     source_entity_id: i32,
     target_entity_id: i32,
@@ -3952,9 +3971,15 @@ fn spatial_has_entity_line_of_sight(
                     continue;
                 }
                 if segment_intersects_sphere(
-                    sx, sy, sz,
-                    tx, ty, tz,
-                    state.slot_x[s], state.slot_y[s], state.slot_z[s],
+                    sx,
+                    sy,
+                    sz,
+                    tx,
+                    ty,
+                    tz,
+                    state.slot_x[s],
+                    state.slot_y[s],
+                    state.slot_z[s],
                     state.slot_radius_push[s],
                 ) {
                     state.nearby_cells = nearby;
@@ -3983,8 +4008,12 @@ fn spatial_has_entity_line_of_sight(
                 let hy = state.slot_aabb_hy[s];
                 let hz = state.slot_aabb_hz[s];
                 if segment_intersects_aabb(
-                    sx, sy, sz,
-                    tx, ty, tz,
+                    sx,
+                    sy,
+                    sz,
+                    tx,
+                    ty,
+                    tz,
                     state.slot_x[s] - hx,
                     state.slot_y[s] - hy,
                     state.slot_z[s] - hz,
@@ -4014,8 +4043,12 @@ fn spatial_has_entity_line_of_sight(
 /// kernel usable in low-level tests that only populate blockers.
 #[wasm_bindgen]
 pub fn combat_has_line_of_sight(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
     terrain_step_len: f64,
     entity_line_width: f64,
     source_entity_id: i32,
@@ -4025,8 +4058,12 @@ pub fn combat_has_line_of_sight(
         return 0;
     }
     if !spatial_has_entity_line_of_sight(
-        sx, sy, sz,
-        tx, ty, tz,
+        sx,
+        sy,
+        sz,
+        tx,
+        ty,
+        tz,
         entity_line_width,
         source_entity_id,
         target_entity_id,
@@ -6252,7 +6289,8 @@ impl CombatTargetingPool {
             self.turret_mount_vz.resize(turret_needed, 0.0);
             self.turret_rotation.resize(turret_needed, 0.0);
             self.turret_pitch.resize(turret_needed, 0.0);
-            self.turret_state.resize(turret_needed, CT_TURRET_STATE_IDLE);
+            self.turret_state
+                .resize(turret_needed, CT_TURRET_STATE_IDLE);
             self.turret_target_id.resize(turret_needed, -1);
             self.turret_fire_max_acquire_sq.resize(turret_needed, 0.0);
             self.turret_fire_max_release_sq.resize(turret_needed, 0.0);
@@ -6361,7 +6399,11 @@ pub fn combat_targeting_set_entity(
     pool.entity_hp[s] = hp;
     pool.entity_flags[s] = flags;
     let max = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as u8;
-    pool.turret_count_per_entity[s] = if turret_count > max { max } else { turret_count };
+    pool.turret_count_per_entity[s] = if turret_count > max {
+        max
+    } else {
+        turret_count
+    };
 }
 
 #[wasm_bindgen]
@@ -6403,8 +6445,7 @@ pub fn combat_targeting_set_turret(
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
     debug_assert!(turret_idx < COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY);
-    let global_idx = (entity_slot as usize)
-        * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+    let global_idx = (entity_slot as usize) * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         + (turret_idx as usize);
     pool.turret_mount_x[global_idx] = mount_x;
     pool.turret_mount_y[global_idx] = mount_y;
@@ -6549,6 +6590,604 @@ combat_targeting_ptr_export!(
 );
 
 // ─────────────────────────────────────────────────────────────────
+// AIM-08.3 — Target candidate scoring + ranking kernel.
+//
+// TypeScript still owns candidate stamping and the expensive fire
+// gates that have not migrated yet (LOS/force-field/ballistic), but
+// the cheap per-candidate score, target preference ranks, mirror
+// ordering, top-K bubble sort, and fallback budget now run in Rust.
+// The JS side calls this once per turret candidate slice and receives
+// the chosen local candidate index plus its rank/dist/mirror tuple.
+// ─────────────────────────────────────────────────────────────────
+
+const CT_TARGET_RANK_NONE: u8 = 0;
+const CT_TARGET_RANK_TRACKING_ONLY: u8 = 1;
+const CT_TARGET_RANK_FIRE_FALLBACK: u8 = 2;
+const CT_TARGET_RANK_FIRE_PREFERRED: u8 = 3;
+
+const CT_TARGET_RANK_MODE_ACQUISITION: u8 = 1;
+
+const CT_TARGET_EDGE_RELEASE: u8 = 1;
+
+const TARGETING_TOPK_LOS: usize = 4;
+const TARGETING_FALLBACK_LOS_BUDGET: u32 = 12;
+
+#[inline]
+fn targeting_edge_value(acquire: f64, release: f64, edge: u8) -> f64 {
+    if edge == CT_TARGET_EDGE_RELEASE {
+        release
+    } else {
+        acquire
+    }
+}
+
+#[inline]
+fn targeting_max_range_with_radius_sq(
+    acquire: f64,
+    release: f64,
+    edge: u8,
+    target_radius: f64,
+) -> f64 {
+    let range = targeting_edge_value(acquire, release, edge);
+    if target_radius <= 0.0 {
+        range * range
+    } else {
+        let r = range + target_radius;
+        r * r
+    }
+}
+
+#[inline]
+fn targeting_min_range_prefers_target_sq(
+    has_min: u8,
+    min_acquire: f64,
+    min_release: f64,
+    edge: u8,
+    target_radius: f64,
+    dist_sq: f64,
+) -> bool {
+    if has_min == 0 {
+        return true;
+    }
+    let min_range = targeting_edge_value(min_acquire, min_release, edge);
+    if min_range <= 0.0 {
+        return true;
+    }
+
+    let threshold = min_range - target_radius;
+    if threshold <= 0.0 {
+        return true;
+    }
+    let threshold_sq = if target_radius <= 0.0 {
+        min_range * min_range
+    } else {
+        threshold * threshold
+    };
+    dist_sq >= threshold_sq
+}
+
+#[inline]
+fn targeting_fire_rank_sq(
+    fire_max_acquire: f64,
+    fire_max_release: f64,
+    has_fire_min: u8,
+    fire_min_acquire: f64,
+    fire_min_release: f64,
+    edge: u8,
+    dist_sq: f64,
+    target_radius: f64,
+) -> u8 {
+    let max_sq =
+        targeting_max_range_with_radius_sq(fire_max_acquire, fire_max_release, edge, target_radius);
+    if !(dist_sq <= max_sq) {
+        return CT_TARGET_RANK_NONE;
+    }
+    if targeting_min_range_prefers_target_sq(
+        has_fire_min,
+        fire_min_acquire,
+        fire_min_release,
+        edge,
+        target_radius,
+        dist_sq,
+    ) {
+        CT_TARGET_RANK_FIRE_PREFERRED
+    } else {
+        CT_TARGET_RANK_FIRE_FALLBACK
+    }
+}
+
+#[inline]
+fn targeting_acquisition_rank_sq(
+    fire_max_acquire: f64,
+    fire_max_release: f64,
+    has_fire_min: u8,
+    fire_min_acquire: f64,
+    fire_min_release: f64,
+    has_tracking: u8,
+    tracking_acquire: f64,
+    tracking_release: f64,
+    edge: u8,
+    dist_sq: f64,
+    target_radius: f64,
+) -> u8 {
+    let fire_rank = targeting_fire_rank_sq(
+        fire_max_acquire,
+        fire_max_release,
+        has_fire_min,
+        fire_min_acquire,
+        fire_min_release,
+        edge,
+        dist_sq,
+        target_radius,
+    );
+    if fire_rank != CT_TARGET_RANK_NONE {
+        return fire_rank;
+    }
+    if has_tracking != 0 {
+        let tracking_sq = targeting_max_range_with_radius_sq(
+            tracking_acquire,
+            tracking_release,
+            edge,
+            target_radius,
+        );
+        if dist_sq <= tracking_sq {
+            return CT_TARGET_RANK_TRACKING_ONLY;
+        }
+    }
+    CT_TARGET_RANK_NONE
+}
+
+#[inline]
+fn targeting_rank_sq(
+    rank_mode: u8,
+    fire_max_acquire: f64,
+    fire_max_release: f64,
+    has_fire_min: u8,
+    fire_min_acquire: f64,
+    fire_min_release: f64,
+    has_tracking: u8,
+    tracking_acquire: f64,
+    tracking_release: f64,
+    edge: u8,
+    dist_sq: f64,
+    target_radius: f64,
+) -> u8 {
+    if rank_mode == CT_TARGET_RANK_MODE_ACQUISITION {
+        targeting_acquisition_rank_sq(
+            fire_max_acquire,
+            fire_max_release,
+            has_fire_min,
+            fire_min_acquire,
+            fire_min_release,
+            has_tracking,
+            tracking_acquire,
+            tracking_release,
+            edge,
+            dist_sq,
+            target_radius,
+        )
+    } else {
+        targeting_fire_rank_sq(
+            fire_max_acquire,
+            fire_max_release,
+            has_fire_min,
+            fire_min_acquire,
+            fire_min_release,
+            edge,
+            dist_sq,
+            target_radius,
+        )
+    }
+}
+
+#[inline]
+fn targeting_is_better_candidate(rank: u8, dist_sq: f64, best_rank: u8, best_dist_sq: f64) -> bool {
+    rank > best_rank || (rank == best_rank && dist_sq < best_dist_sq)
+}
+
+#[inline]
+fn targeting_is_better_mirror_candidate(
+    mirror_score: f64,
+    rank: u8,
+    dist_sq: f64,
+    best_mirror_score: f64,
+    best_rank: u8,
+    best_dist_sq: f64,
+) -> bool {
+    if mirror_score != best_mirror_score {
+        return mirror_score > best_mirror_score;
+    }
+    targeting_is_better_candidate(rank, dist_sq, best_rank, best_dist_sq)
+}
+
+#[inline]
+fn targeting_candidate_beats_seed(
+    is_passive: u8,
+    rank: u8,
+    dist_sq: f64,
+    mirror_score: f64,
+    seed_rank: u8,
+    seed_dist_sq: f64,
+    seed_mirror_score: f64,
+) -> bool {
+    if is_passive != 0 {
+        targeting_is_better_mirror_candidate(
+            mirror_score,
+            rank,
+            dist_sq,
+            seed_mirror_score,
+            seed_rank,
+            seed_dist_sq,
+        )
+    } else {
+        targeting_is_better_candidate(rank, dist_sq, seed_rank, seed_dist_sq)
+    }
+}
+
+#[inline]
+fn targeting_score_candidate(
+    candidate_idx: usize,
+    weapon_x: f64,
+    weapon_y: f64,
+    weapon_z: f64,
+    fire_max_acquire: f64,
+    fire_max_release: f64,
+    has_fire_min: u8,
+    fire_min_acquire: f64,
+    fire_min_release: f64,
+    has_tracking: u8,
+    tracking_acquire: f64,
+    tracking_release: f64,
+    rank_mode: u8,
+    minimum_rank: u8,
+    seed_rank: u8,
+    seed_dist_sq: f64,
+    seed_mirror_score: f64,
+    is_passive: u8,
+    candidate_observable: &[u8],
+    candidate_pos_x: &[f64],
+    candidate_pos_y: &[f64],
+    candidate_pos_z: &[f64],
+    candidate_radius: &[f64],
+    candidate_mirror_score: &[f64],
+) -> Option<(u8, f64, f64)> {
+    if candidate_observable[candidate_idx] == 0 {
+        return None;
+    }
+    let mut mirror_score = 0.0;
+    if is_passive != 0 {
+        mirror_score = candidate_mirror_score[candidate_idx];
+        if mirror_score <= 0.0 {
+            return None;
+        }
+    }
+    let dx = weapon_x - candidate_pos_x[candidate_idx];
+    let dy = weapon_y - candidate_pos_y[candidate_idx];
+    let dz = weapon_z - candidate_pos_z[candidate_idx];
+    let dist_sq = dx * dx + dy * dy + dz * dz;
+    let rank = targeting_rank_sq(
+        rank_mode,
+        fire_max_acquire,
+        fire_max_release,
+        has_fire_min,
+        fire_min_acquire,
+        fire_min_release,
+        has_tracking,
+        tracking_acquire,
+        tracking_release,
+        0,
+        dist_sq,
+        candidate_radius[candidate_idx],
+    );
+    if rank < minimum_rank {
+        return None;
+    }
+    if !targeting_candidate_beats_seed(
+        is_passive,
+        rank,
+        dist_sq,
+        mirror_score,
+        seed_rank,
+        seed_dist_sq,
+        seed_mirror_score,
+    ) {
+        return None;
+    }
+    Some((rank, dist_sq, mirror_score))
+}
+
+#[inline]
+fn targeting_pool_entry_is_better(
+    is_passive: u8,
+    rank: u8,
+    dist_sq: f64,
+    mirror_score: f64,
+    best_rank: u8,
+    best_dist_sq: f64,
+    best_mirror_score: f64,
+) -> bool {
+    if is_passive != 0 {
+        targeting_is_better_mirror_candidate(
+            mirror_score,
+            rank,
+            dist_sq,
+            best_mirror_score,
+            best_rank,
+            best_dist_sq,
+        )
+    } else {
+        targeting_is_better_candidate(rank, dist_sq, best_rank, best_dist_sq)
+    }
+}
+
+#[inline]
+fn targeting_gate_passes(gate_fn: &Function, candidate_idx: i32) -> bool {
+    let arg = JsValue::from_f64(candidate_idx as f64);
+    match gate_fn.call1(&JsValue::NULL, &arg) {
+        Ok(v) => v.as_bool().unwrap_or(false),
+        Err(e) => wasm_bindgen::throw_val(e),
+    }
+}
+
+#[inline]
+fn write_targeting_choice(
+    out_i32: &mut [i32],
+    out_f64: &mut [f64],
+    candidate_idx: i32,
+    rank: u8,
+    dist_sq: f64,
+    mirror_score: f64,
+) {
+    if out_i32.len() >= 2 {
+        out_i32[0] = candidate_idx;
+        out_i32[1] = rank as i32;
+    }
+    if out_f64.len() >= 2 {
+        out_f64[0] = dist_sq;
+        out_f64[1] = mirror_score;
+    }
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_rank_target(
+    rank_mode: u8,
+    edge: u8,
+    fire_max_acquire: f64,
+    fire_max_release: f64,
+    has_fire_min: u8,
+    fire_min_acquire: f64,
+    fire_min_release: f64,
+    has_tracking: u8,
+    tracking_acquire: f64,
+    tracking_release: f64,
+    dist_sq: f64,
+    target_radius: f64,
+) -> u8 {
+    targeting_rank_sq(
+        rank_mode,
+        fire_max_acquire,
+        fire_max_release,
+        has_fire_min,
+        fire_min_acquire,
+        fire_min_release,
+        has_tracking,
+        tracking_acquire,
+        tracking_release,
+        edge,
+        dist_sq,
+        target_radius,
+    )
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_choose_best_candidate(
+    weapon_x: f64,
+    weapon_y: f64,
+    weapon_z: f64,
+    fire_max_acquire: f64,
+    fire_max_release: f64,
+    has_fire_min: u8,
+    fire_min_acquire: f64,
+    fire_min_release: f64,
+    has_tracking: u8,
+    tracking_acquire: f64,
+    tracking_release: f64,
+    rank_mode: u8,
+    minimum_rank: u8,
+    seed_rank: u8,
+    seed_dist_sq: f64,
+    seed_mirror_score: f64,
+    is_passive: u8,
+    candidate_count: u32,
+    candidate_observable: &[u8],
+    candidate_pos_x: &[f64],
+    candidate_pos_y: &[f64],
+    candidate_pos_z: &[f64],
+    candidate_radius: &[f64],
+    candidate_mirror_score: &[f64],
+    gate_fn: &Function,
+    out_i32: &mut [i32],
+    out_f64: &mut [f64],
+) {
+    write_targeting_choice(
+        out_i32,
+        out_f64,
+        -1,
+        seed_rank,
+        seed_dist_sq,
+        seed_mirror_score,
+    );
+    let count = (candidate_count as usize)
+        .min(candidate_observable.len())
+        .min(candidate_pos_x.len())
+        .min(candidate_pos_y.len())
+        .min(candidate_pos_z.len())
+        .min(candidate_radius.len())
+        .min(candidate_mirror_score.len());
+    if count == 0 {
+        return;
+    }
+
+    let mut top_candidate_idx = [-1i32; TARGETING_TOPK_LOS];
+    let mut top_rank = [CT_TARGET_RANK_NONE; TARGETING_TOPK_LOS];
+    let mut top_dist_sq = [0.0f64; TARGETING_TOPK_LOS];
+    let mut top_mirror_score = [0.0f64; TARGETING_TOPK_LOS];
+    let mut top_count = 0usize;
+
+    for ci in 0..count {
+        let Some((rank, dist_sq, mirror_score)) = targeting_score_candidate(
+            ci,
+            weapon_x,
+            weapon_y,
+            weapon_z,
+            fire_max_acquire,
+            fire_max_release,
+            has_fire_min,
+            fire_min_acquire,
+            fire_min_release,
+            has_tracking,
+            tracking_acquire,
+            tracking_release,
+            rank_mode,
+            minimum_rank,
+            seed_rank,
+            seed_dist_sq,
+            seed_mirror_score,
+            is_passive,
+            candidate_observable,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            candidate_radius,
+            candidate_mirror_score,
+        ) else {
+            continue;
+        };
+
+        let insert_idx: usize;
+        if top_count < TARGETING_TOPK_LOS {
+            insert_idx = top_count;
+            top_count += 1;
+        } else {
+            let last = top_count - 1;
+            if !targeting_pool_entry_is_better(
+                is_passive,
+                rank,
+                dist_sq,
+                mirror_score,
+                top_rank[last],
+                top_dist_sq[last],
+                top_mirror_score[last],
+            ) {
+                continue;
+            }
+            insert_idx = last;
+        }
+
+        top_candidate_idx[insert_idx] = ci as i32;
+        top_rank[insert_idx] = rank;
+        top_dist_sq[insert_idx] = dist_sq;
+        top_mirror_score[insert_idx] = mirror_score;
+
+        let mut i = insert_idx;
+        while i > 0 {
+            let j = i - 1;
+            let better = targeting_pool_entry_is_better(
+                is_passive,
+                top_rank[i],
+                top_dist_sq[i],
+                top_mirror_score[i],
+                top_rank[j],
+                top_dist_sq[j],
+                top_mirror_score[j],
+            );
+            if !better {
+                break;
+            }
+            top_candidate_idx.swap(i, j);
+            top_rank.swap(i, j);
+            top_dist_sq.swap(i, j);
+            top_mirror_score.swap(i, j);
+            i = j;
+        }
+    }
+
+    for k in 0..top_count {
+        let candidate_idx = top_candidate_idx[k];
+        if candidate_idx < 0 {
+            continue;
+        }
+        if targeting_gate_passes(gate_fn, candidate_idx) {
+            write_targeting_choice(
+                out_i32,
+                out_f64,
+                candidate_idx,
+                top_rank[k],
+                top_dist_sq[k],
+                top_mirror_score[k],
+            );
+            return;
+        }
+    }
+
+    if top_count == 0 {
+        return;
+    }
+
+    let mut fallback_budget = TARGETING_FALLBACK_LOS_BUDGET;
+    for ci in 0..count {
+        if fallback_budget == 0 {
+            break;
+        }
+        let mut in_top_k = false;
+        for k in 0..top_count {
+            if top_candidate_idx[k] == ci as i32 {
+                in_top_k = true;
+                break;
+            }
+        }
+        if in_top_k {
+            continue;
+        }
+
+        let Some((rank, dist_sq, mirror_score)) = targeting_score_candidate(
+            ci,
+            weapon_x,
+            weapon_y,
+            weapon_z,
+            fire_max_acquire,
+            fire_max_release,
+            has_fire_min,
+            fire_min_acquire,
+            fire_min_release,
+            has_tracking,
+            tracking_acquire,
+            tracking_release,
+            rank_mode,
+            minimum_rank,
+            seed_rank,
+            seed_dist_sq,
+            seed_mirror_score,
+            is_passive,
+            candidate_observable,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            candidate_radius,
+            candidate_mirror_score,
+        ) else {
+            continue;
+        };
+
+        fallback_budget -= 1;
+        if targeting_gate_passes(gate_fn, ci as i32) {
+            write_targeting_choice(out_i32, out_f64, ci as i32, rank, dist_sq, mirror_score);
+            return;
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // AIM-08.1 — Force field input slab
 //
 // Compact list of `count` active force fields, rebuilt from scratch
@@ -6657,11 +7296,7 @@ macro_rules! force_field_pool_ptr_export {
 }
 
 force_field_pool_ptr_export!(force_field_pool_id_ptr, id, i32);
-force_field_pool_ptr_export!(
-    force_field_pool_owner_entity_id_ptr,
-    owner_entity_id,
-    i32
-);
+force_field_pool_ptr_export!(force_field_pool_owner_entity_id_ptr, owner_entity_id, i32);
 force_field_pool_ptr_export!(force_field_pool_center_x_ptr, center_x, f64);
 force_field_pool_ptr_export!(force_field_pool_center_y_ptr, center_y, f64);
 force_field_pool_ptr_export!(force_field_pool_center_z_ptr, center_z, f64);
@@ -6696,8 +7331,12 @@ const ARC_FF_CLEARANCE_SAMPLES: u32 = 16;
 /// in lineOfSight.ts.
 #[wasm_bindgen]
 pub fn force_field_clearance_segment(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
     exclude_owner_entity_id: i32,
     max_crossings: u32,
 ) -> u32 {
@@ -6768,8 +7407,12 @@ pub fn force_field_clearance_segment(
 /// or impact point isn't counted as blocked.
 #[wasm_bindgen]
 pub fn force_field_clearance_arc(
-    launch_x: f64, launch_y: f64, launch_z: f64,
-    launch_vx: f64, launch_vy: f64, launch_vz: f64,
+    launch_x: f64,
+    launch_y: f64,
+    launch_z: f64,
+    launch_vx: f64,
+    launch_vy: f64,
+    launch_vz: f64,
     flight_time: f64,
     exclude_owner_entity_id: i32,
     max_crossings: u32,

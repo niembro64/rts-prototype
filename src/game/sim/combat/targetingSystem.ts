@@ -15,6 +15,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getMirrorTargetScore } from './mirrorTargetPriority';
+import { getSimWasm } from '../../sim-wasm/init';
 import {
   createTurretAimScratch,
   resolveTargetAimPoint,
@@ -50,21 +51,16 @@ const _weaponDisabled: boolean[] = [];
 // {NONE, Infinity}; Pass 2 still gates those slots out before reading.
 const _cachedFireRanks: TargetPreferenceRank[] = [];
 const _cachedFireDistSqs: number[] = [];
-// Top-K pool used by chooseBestTargetCandidate to defer LOS / force-field
-// segment walks until after a cheap rank+distance ranking pass. Sized at
-// TARGETING_TOPK_LOS so the expensive segment-vs-terrain walk runs at
-// most K times per call, instead of once per LOS-eligible candidate.
-const TARGETING_TOPK_LOS = 4;
-// Adaptive fallback budget for Pass C. When all TARGETING_TOPK_LOS best
-// candidates are blocked by LOS / force-field / ballistic gates, Pass C
-// walks the remaining candidates (in input order) and LOS-tests them
-// until a valid one is found or the budget runs out. Together with the
-// top-K LOS pass this caps the per-call gate cost at K + budget walks.
-const TARGETING_FALLBACK_LOS_BUDGET = 12;
-const _candPoolEnemies: Entity[] = [];
-const _candPoolRanks: TargetPreferenceRank[] = [];
-const _candPoolDistSqs: number[] = [];
-const _candPoolMirrorScores: number[] = [];
+// AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
+// candidates into flat arrays; Rust owns score/rank/top-K/fallback.
+let _candidateObservable = new Uint8Array(0);
+let _candidatePosX = new Float64Array(0);
+let _candidatePosY = new Float64Array(0);
+let _candidatePosZ = new Float64Array(0);
+let _candidateRadius = new Float64Array(0);
+let _candidateMirrorScore = new Float64Array(0);
+const _targetingChoiceI32 = new Int32Array(2);
+const _targetingChoiceF64 = new Float64Array(2);
 const _targetingBallisticAim = createTurretAimScratch();
 
 function nextTargetingReacquireTick(tick: number): number {
@@ -88,28 +84,6 @@ function maxRangeWithTargetSq(range: HysteresisRange, edge: 'acquire' | 'release
   return r * r;
 }
 
-function minRangePrefersTargetSq(
-  range: HysteresisRange | null,
-  edge: 'acquire' | 'release',
-  targetRadius: number,
-  distSq: number,
-): boolean {
-  if (!range) return true;
-  const minRange = rangeEdgeValue(range, edge);
-  if (minRange <= 0) return true;
-
-  // Targeting ranges are 3D spheres around the weapon mount. For max
-  // range a target is valid if its near edge is reachable in 3D
-  // (dist <= max + radius). For min preference it is preferred if its
-  // far edge reaches outside the soft inner radius
-  // (dist >= min - radius). This keeps large targets from being ranked
-  // as "too close" just because their center is near.
-  const threshold = minRange - targetRadius;
-  if (threshold <= 0) return true;
-  const thresholdSq = targetRadius <= 0 ? rangeEdgeSq(range, edge) : threshold * threshold;
-  return distSq >= thresholdSq;
-}
-
 function withinFireMaxSq(
   ranges: TurretRanges,
   edge: 'acquire' | 'release',
@@ -129,64 +103,51 @@ type TargetPreferenceRank =
   | typeof TARGET_RANK_FIRE_FALLBACK
   | typeof TARGET_RANK_FIRE_PREFERRED;
 
-// Reused per-candidate score output. Filled by scoreAndFilterCandidate
-// and read by Pass A's bubble sort placement and Pass C's fallback walk.
-const _candScratchScore: {
-  rank: TargetPreferenceRank;
-  distSq: number;
-  mirrorScore: number;
-} = { rank: TARGET_RANK_NONE, distSq: 0, mirrorScore: 0 };
+const TARGETING_RANK_MODE_FIRE = 0;
+const TARGETING_RANK_MODE_ACQUISITION = 1;
+const TARGETING_EDGE_ACQUIRE = 0;
+const TARGETING_EDGE_RELEASE = 1;
 
-function fireTargetPreferenceRankSq(
-  ranges: TurretRanges,
+type TargetRankMode =
+  | typeof TARGETING_RANK_MODE_FIRE
+  | typeof TARGETING_RANK_MODE_ACQUISITION;
+
+function getTargetingKernel() {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('targetingSystem: sim-wasm is not initialized');
+  }
+  return sim.combatTargeting;
+}
+
+function encodeTargetingEdge(edge: 'acquire' | 'release'): number {
+  return edge === 'release' ? TARGETING_EDGE_RELEASE : TARGETING_EDGE_ACQUIRE;
+}
+
+function rankTargetPreferenceSq(
+  weapon: Turret,
+  rankMode: TargetRankMode,
   edge: 'acquire' | 'release',
   distSq: number,
   targetRadius: number,
 ): TargetPreferenceRank {
-  if (!withinFireMaxSq(ranges, edge, distSq, targetRadius)) {
-    return TARGET_RANK_NONE;
-  }
-  return minRangePrefersTargetSq(ranges.fire.min, edge, targetRadius, distSq)
-    ? TARGET_RANK_FIRE_PREFERRED
-    : TARGET_RANK_FIRE_FALLBACK;
-}
-
-function acquisitionTargetPreferenceRankSq(
-  ranges: TurretRanges,
-  edge: 'acquire' | 'release',
-  distSq: number,
-  targetRadius: number,
-): TargetPreferenceRank {
-  const fireRank = fireTargetPreferenceRankSq(ranges, edge, distSq, targetRadius);
-  if (fireRank !== TARGET_RANK_NONE) return fireRank;
-  if (
-    ranges.tracking &&
-    distSq <= maxRangeWithTargetSq(ranges.tracking, edge, targetRadius)
-  ) {
-    return TARGET_RANK_TRACKING_ONLY;
-  }
-  return TARGET_RANK_NONE;
-}
-
-function isBetterTargetCandidate(
-  rank: TargetPreferenceRank,
-  distSq: number,
-  bestRank: TargetPreferenceRank,
-  bestDistSq: number,
-): boolean {
-  return rank > bestRank || (rank === bestRank && distSq < bestDistSq);
-}
-
-function isBetterMirrorTargetCandidate(
-  mirrorScore: number,
-  rank: TargetPreferenceRank,
-  distSq: number,
-  bestMirrorScore: number,
-  bestRank: TargetPreferenceRank,
-  bestDistSq: number,
-): boolean {
-  if (mirrorScore !== bestMirrorScore) return mirrorScore > bestMirrorScore;
-  return isBetterTargetCandidate(rank, distSq, bestRank, bestDistSq);
+  const ranges = weapon.ranges;
+  const fireMin = ranges.fire.min;
+  const tracking = ranges.tracking;
+  return getTargetingKernel().rankTarget(
+    rankMode,
+    encodeTargetingEdge(edge),
+    ranges.fire.max.acquire,
+    ranges.fire.max.release,
+    fireMin ? 1 : 0,
+    fireMin?.acquire ?? 0,
+    fireMin?.release ?? 0,
+    tracking ? 1 : 0,
+    tracking?.acquire ?? 0,
+    tracking?.release ?? 0,
+    distSq,
+    targetRadius,
+  ) as TargetPreferenceRank;
 }
 
 function currentFireTargetRankSq(
@@ -210,7 +171,13 @@ function currentFireTargetRankSq(
     targetPosition.x, targetPosition.y, targetPosition.z,
   );
   return {
-    rank: fireTargetPreferenceRankSq(weapon.ranges, edge, distSq, targetRadius),
+    rank: rankTargetPreferenceSq(
+      weapon,
+      TARGETING_RANK_MODE_FIRE,
+      edge,
+      distSq,
+      targetRadius,
+    ),
     distSq,
   };
 }
@@ -477,13 +444,6 @@ function hasWeaponArcAwareForceFieldClearanceToPoint(
   );
 }
 
-type CandidateRanker = (
-  ranges: TurretRanges,
-  edge: 'acquire' | 'release',
-  distSq: number,
-  targetRadius: number,
-) => TargetPreferenceRank;
-
 type TargetCandidateChoice = {
   target: Entity | null;
   rank: TargetPreferenceRank;
@@ -491,61 +451,88 @@ type TargetCandidateChoice = {
   mirrorScore: number;
 };
 
+function ensureCandidateScratchCapacity(count: number): void {
+  if (count <= _candidateObservable.length) return;
+  let next = Math.max(16, _candidateObservable.length);
+  while (next < count) next *= 2;
+  _candidateObservable = new Uint8Array(next);
+  _candidatePosX = new Float64Array(next);
+  _candidatePosY = new Float64Array(next);
+  _candidatePosZ = new Float64Array(next);
+  _candidateRadius = new Float64Array(next);
+  _candidateMirrorScore = new Float64Array(next);
+}
+
 function getTargetCandidateRadius(enemy: Entity): number {
   return enemy.unit
     ? enemy.unit.radius.shot
     : (enemy.building ? getTargetRadius(enemy) : 0);
 }
 
-/** Cheap pre-LOS gate. Filters by cloak observability, passive-weapon
- *  mirror-priority, configured minimum rank, and the seed-beat
- *  contract. On accept, writes the candidate's {rank, distSq,
- *  mirrorScore} into the supplied scratch and returns true. The same
- *  helper drives Pass A (pool placement) and Pass C (fallback
- *  per-candidate test) so the gate definition lives in one place. */
-function scoreAndFilterCandidate(
+function fillTargetCandidateInputs(
   world: WorldState,
   source: Entity,
-  weapon: Turret,
-  enemy: Entity,
-  weaponX: number,
-  weaponY: number,
-  weaponZ: number,
-  rankCandidate: CandidateRanker,
-  minimumRank: TargetPreferenceRank,
-  seed: TargetCandidateChoice,
   isPassive: boolean,
   sourcePlayerId: PlayerId | undefined,
-  out: { rank: TargetPreferenceRank; distSq: number; mirrorScore: number },
-): boolean {
-  if (
-    sourcePlayerId === undefined ||
-    !canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId)
-  ) {
-    return false;
+  candidates: Entity[],
+): void {
+  ensureCandidateScratchCapacity(candidates.length);
+  if (sourcePlayerId === undefined) {
+    _candidateObservable.fill(0, 0, candidates.length);
+    return;
   }
-  let mirrorScore = 0;
-  if (isPassive) {
-    mirrorScore = getMirrorTargetScore(enemy, source.id);
-    if (mirrorScore <= 0) return false;
-  }
-  const enemyRadius = getTargetCandidateRadius(enemy);
-  const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
-  const distSq = distanceSquared3(
-    weaponX, weaponY, weaponZ,
-    enemyPosition.x, enemyPosition.y, enemyPosition.z,
-  );
-  const rank = rankCandidate(weapon.ranges, 'acquire', distSq, enemyRadius);
-  if (rank < minimumRank) return false;
 
-  const beatsSeed = isPassive
-    ? isBetterMirrorTargetCandidate(mirrorScore, rank, distSq, seed.mirrorScore, seed.rank, seed.distSq)
-    : isBetterTargetCandidate(rank, distSq, seed.rank, seed.distSq);
-  if (!beatsSeed) return false;
-  out.rank = rank;
-  out.distSq = distSq;
-  out.mirrorScore = mirrorScore;
-  return true;
+  for (let ci = 0; ci < candidates.length; ci++) {
+    const enemy = candidates[ci];
+    const observable = canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId);
+    _candidateObservable[ci] = observable ? 1 : 0;
+    _candidateMirrorScore[ci] = 0;
+    if (!observable) continue;
+    _candidateMirrorScore[ci] = isPassive ? getMirrorTargetScore(enemy, source.id) : 0;
+    _candidateRadius[ci] = getTargetCandidateRadius(enemy);
+    const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
+    _candidatePosX[ci] = enemyPosition.x;
+    _candidatePosY[ci] = enemyPosition.y;
+    _candidatePosZ[ci] = enemyPosition.z;
+  }
+}
+
+let _gateWorld: WorldState | null = null;
+let _gateSource: Entity | null = null;
+let _gateWeapon: Turret | null = null;
+let _gateCandidates: Entity[] | null = null;
+let _gateWeaponX = 0;
+let _gateWeaponY = 0;
+let _gateWeaponZ = 0;
+let _gateNeedsLOS = false;
+let _gateForceFieldsActive = false;
+
+function clearTargetGateContext(): void {
+  _gateWorld = null;
+  _gateSource = null;
+  _gateWeapon = null;
+  _gateCandidates = null;
+}
+
+function targetCandidatePassesFireGates(candidateIdx: number): boolean {
+  const world = _gateWorld;
+  const source = _gateSource;
+  const weapon = _gateWeapon;
+  const candidates = _gateCandidates;
+  if (!world || !source || !weapon || !candidates) return false;
+  const enemy = candidates[candidateIdx | 0];
+  if (!enemy) return false;
+  return passesWeaponFireGates(
+    world,
+    source,
+    weapon,
+    enemy,
+    _gateWeaponX,
+    _gateWeaponY,
+    _gateWeaponZ,
+    _gateNeedsLOS,
+    _gateForceFieldsActive,
+  );
 }
 
 /** Combined LOS + force-field + ballistic gate for a single candidate.
@@ -591,7 +578,7 @@ function chooseBestTargetCandidate(
   source: Entity,
   weapon: Turret,
   candidates: Entity[],
-  rankCandidate: CandidateRanker,
+  rankMode: TargetRankMode,
   minimumRank: TargetPreferenceRank,
   seed: TargetCandidateChoice,
   forceFieldsActive: boolean,
@@ -602,142 +589,63 @@ function chooseBestTargetCandidate(
   const needsLOS = weaponNeedsLineOfSight(weapon);
   const sourcePlayerId = source.ownership?.playerId;
   const isPassive = weapon.config.passive === true;
+  fillTargetCandidateInputs(world, source, isPassive, sourcePlayerId, candidates);
 
-  // Pass A: cheap rank+distance filter. Collect the top-K best
-  // pre-LOS candidates (sorted best-first) so the expensive
-  // segment-vs-terrain LOS walks and force-field intersect checks
-  // only run on at most K entries in Pass B. In dense crowds this
-  // turns hundreds of LOS walks per call into K.
-  _candPoolEnemies.length = 0;
-  _candPoolRanks.length = 0;
-  _candPoolDistSqs.length = 0;
-  _candPoolMirrorScores.length = 0;
-  let topCount = 0;
+  const ranges = weapon.ranges;
+  const fireMin = ranges.fire.min;
+  const tracking = ranges.tracking;
+  _gateWorld = world;
+  _gateSource = source;
+  _gateWeapon = weapon;
+  _gateCandidates = candidates;
+  _gateWeaponX = weaponX;
+  _gateWeaponY = weaponY;
+  _gateWeaponZ = weaponZ;
+  _gateNeedsLOS = needsLOS;
+  _gateForceFieldsActive = forceFieldsActive;
 
-  for (let ci = 0; ci < candidates.length; ci++) {
-    const enemy = candidates[ci];
-    if (!scoreAndFilterCandidate(
-      world, source, weapon, enemy,
-      weaponX, weaponY, weaponZ,
-      rankCandidate, minimumRank, seed,
-      isPassive, sourcePlayerId,
-      _candScratchScore,
-    )) continue;
-    const rank = _candScratchScore.rank;
-    const distSq = _candScratchScore.distSq;
-    const mirrorScore = _candScratchScore.mirrorScore;
-
-    if (topCount < TARGETING_TOPK_LOS) {
-      _candPoolEnemies[topCount] = enemy;
-      _candPoolRanks[topCount] = rank;
-      _candPoolDistSqs[topCount] = distSq;
-      _candPoolMirrorScores[topCount] = mirrorScore;
-      topCount++;
-    } else {
-      const last = topCount - 1;
-      const beatsWorst = isPassive
-        ? isBetterMirrorTargetCandidate(
-            mirrorScore, rank, distSq,
-            _candPoolMirrorScores[last], _candPoolRanks[last], _candPoolDistSqs[last])
-        : isBetterTargetCandidate(
-            rank, distSq,
-            _candPoolRanks[last], _candPoolDistSqs[last]);
-      if (!beatsWorst) continue;
-      _candPoolEnemies[last] = enemy;
-      _candPoolRanks[last] = rank;
-      _candPoolDistSqs[last] = distSq;
-      _candPoolMirrorScores[last] = mirrorScore;
-    }
-    // Bubble the freshly placed entry up to its sorted position.
-    for (let i = topCount - 1; i > 0; i--) {
-      const j = i - 1;
-      const better = isPassive
-        ? isBetterMirrorTargetCandidate(
-            _candPoolMirrorScores[i], _candPoolRanks[i], _candPoolDistSqs[i],
-            _candPoolMirrorScores[j], _candPoolRanks[j], _candPoolDistSqs[j])
-        : isBetterTargetCandidate(
-            _candPoolRanks[i], _candPoolDistSqs[i],
-            _candPoolRanks[j], _candPoolDistSqs[j]);
-      if (!better) break;
-      const tmpE = _candPoolEnemies[i]; _candPoolEnemies[i] = _candPoolEnemies[j]; _candPoolEnemies[j] = tmpE;
-      const tmpR = _candPoolRanks[i]; _candPoolRanks[i] = _candPoolRanks[j]; _candPoolRanks[j] = tmpR;
-      const tmpD = _candPoolDistSqs[i]; _candPoolDistSqs[i] = _candPoolDistSqs[j]; _candPoolDistSqs[j] = tmpD;
-      const tmpM = _candPoolMirrorScores[i]; _candPoolMirrorScores[i] = _candPoolMirrorScores[j]; _candPoolMirrorScores[j] = tmpM;
-    }
+  try {
+    getTargetingKernel().chooseBestCandidate(
+      weaponX,
+      weaponY,
+      weaponZ,
+      ranges.fire.max.acquire,
+      ranges.fire.max.release,
+      fireMin ? 1 : 0,
+      fireMin?.acquire ?? 0,
+      fireMin?.release ?? 0,
+      tracking ? 1 : 0,
+      tracking?.acquire ?? 0,
+      tracking?.release ?? 0,
+      rankMode,
+      minimumRank,
+      seed.rank,
+      seed.distSq,
+      seed.mirrorScore,
+      isPassive ? 1 : 0,
+      candidates.length,
+      _candidateObservable,
+      _candidatePosX,
+      _candidatePosY,
+      _candidatePosZ,
+      _candidateRadius,
+      _candidateMirrorScore,
+      targetCandidatePassesFireGates,
+      _targetingChoiceI32,
+      _targetingChoiceF64,
+    );
+  } finally {
+    clearTargetGateContext();
   }
 
-  // Pass B: LOS + force-field + ballistic gate, best-first over the
-  // top-K pool. The first top-K entry that passes wins.
-  for (let k = 0; k < topCount; k++) {
-    const enemy = _candPoolEnemies[k];
-    if (!passesWeaponFireGates(
-      world, source, weapon, enemy,
-      weaponX, weaponY, weaponZ,
-      needsLOS, forceFieldsActive,
-    )) continue;
-    return {
-      target: enemy,
-      rank: _candPoolRanks[k],
-      distSq: _candPoolDistSqs[k],
-      mirrorScore: _candPoolMirrorScores[k],
-    };
-  }
-
-  // Pass C: adaptive fallback. Every top-K candidate failed a gate,
-  // but the broadphase may still hold a valid target that was ranked
-  // lower than the top-K worst. Walk the remaining candidates in
-  // input order and gate them up to TARGETING_FALLBACK_LOS_BUDGET
-  // times — the first pass-through wins. This bounds the total LOS
-  // walks per call at TARGETING_TOPK_LOS + TARGETING_FALLBACK_LOS_BUDGET
-  // while ensuring weapons don't silently sit idle when valid visible
-  // targets exist beyond the cheap top-K window.
-  if (topCount === 0) {
-    return {
-      target: seed.target,
-      rank: seed.rank,
-      distSq: seed.distSq,
-      mirrorScore: seed.mirrorScore,
-    };
-  }
-  let fallbackBudget = TARGETING_FALLBACK_LOS_BUDGET;
-  for (let ci = 0; ci < candidates.length && fallbackBudget > 0; ci++) {
-    const enemy = candidates[ci];
-    // Skip candidates already evaluated in Pass B. topCount is small
-    // (TARGETING_TOPK_LOS), so this linear membership check is cheap.
-    let inTopK = false;
-    for (let k = 0; k < topCount; k++) {
-      if (_candPoolEnemies[k] === enemy) { inTopK = true; break; }
-    }
-    if (inTopK) continue;
-
-    if (!scoreAndFilterCandidate(
-      world, source, weapon, enemy,
-      weaponX, weaponY, weaponZ,
-      rankCandidate, minimumRank, seed,
-      isPassive, sourcePlayerId,
-      _candScratchScore,
-    )) continue;
-
-    fallbackBudget--;
-    if (!passesWeaponFireGates(
-      world, source, weapon, enemy,
-      weaponX, weaponY, weaponZ,
-      needsLOS, forceFieldsActive,
-    )) continue;
-
-    return {
-      target: enemy,
-      rank: _candScratchScore.rank,
-      distSq: _candScratchScore.distSq,
-      mirrorScore: _candScratchScore.mirrorScore,
-    };
-  }
-
+  const candidateIdx = _targetingChoiceI32[0];
   return {
-    target: seed.target,
-    rank: seed.rank,
-    distSq: seed.distSq,
-    mirrorScore: seed.mirrorScore,
+    target: candidateIdx >= 0 && candidateIdx < candidates.length
+      ? candidates[candidateIdx]
+      : seed.target,
+    rank: _targetingChoiceI32[1] as TargetPreferenceRank,
+    distSq: _targetingChoiceF64[0],
+    mirrorScore: _targetingChoiceF64[1],
   };
 }
 
@@ -1265,7 +1173,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         unit,
         weapon,
         batchedEnemies,
-        fireTargetPreferenceRankSq,
+        TARGETING_RANK_MODE_FIRE,
         TARGET_RANK_FIRE_FALLBACK,
         {
           target: null,
@@ -1298,7 +1206,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         unit,
         weapon,
         batchedEnemies,
-        acquisitionTargetPreferenceRankSq,
+        TARGETING_RANK_MODE_ACQUISITION,
         TARGET_RANK_TRACKING_ONLY,
         {
           target: null,
