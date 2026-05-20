@@ -256,8 +256,11 @@ export class BeamRenderer3D {
   }
 
   private flowRepeats(length: number, spacing: number): number {
+    // Period must stay = spacing world units regardless of beam length —
+    // no clamping. Short beams just show a slice of the pattern; long
+    // beams pack more cycles in. Both keep the same world-space period.
     if (spacing <= 0 || length <= 1e-3) return 1;
-    return Math.max(1, Math.min(80, length / spacing));
+    return length / spacing;
   }
 
   private isOpenEndedLinePath(proj: NonNullable<Entity['projectile']>): boolean {
