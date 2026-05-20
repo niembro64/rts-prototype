@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getProjRangeToggle } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
+import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderFrameState3D } from './RenderFrameState3D';
@@ -12,7 +13,9 @@ import {
   disposeMesh,
 } from './threeUtils';
 
-const PROJECTILE_MIN_RADIUS = 1.5;
+const PROJECTILE_MIN_RADIUS = 0.5;
+// 4 revolutions per second.
+const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2 * 4) / 1000;
 const PROJECTILE_INSTANCED_CAP = 8192;
 const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
@@ -124,6 +127,10 @@ export class ProjectileRenderer3D {
   private readonly curveRight = new THREE.Vector3();
   private readonly curveUp = new THREE.Vector3();
   private readonly curveReference = new THREE.Vector3();
+  private readonly finRollQuat = new THREE.Quaternion();
+  private readonly finQuat = new THREE.Quaternion();
+  private readonly finColor = new THREE.Color();
+  private finColorDirty = false;
 
   constructor(options: ProjectileRenderer3DOptions) {
     this.world = options.world;
@@ -235,8 +242,19 @@ export class ProjectileRenderer3D {
           );
         }
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
-          this.composeProjectileFinMatrix(tx, ty, tz, tailLength, r * finSizeMult);
-          this.finInstanced.setMatrixAt(finCount++, this.projMatrix);
+          const proj = e.projectile;
+          const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
+          const rollAngle = proj && isRocketLike
+            ? proj.timeAlive * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
+            : 0;
+          this.composeProjectileFinMatrix(tx, ty, tz, tailLength, r * finSizeMult, rollAngle);
+          this.finInstanced.setMatrixAt(finCount, this.projMatrix);
+          if (proj) {
+            this.finColor.set(getPlayerColors(proj.ownerId).primary);
+            this.finInstanced.setColorAt(finCount, this.finColor);
+            this.finColorDirty = true;
+          }
+          finCount++;
         }
       }
 
@@ -259,6 +277,10 @@ export class ProjectileRenderer3D {
     this.finInstanced.count = finCount;
     if (finCount > 0) {
       this.markInstanceMatrixRange(this.finInstanced, 0, finCount - 1);
+    }
+    if (this.finColorDirty && this.finInstanced.instanceColor) {
+      this.finInstanced.instanceColor.needsUpdate = true;
+      this.finColorDirty = false;
     }
 
     if (pruneProjectiles) {
@@ -511,6 +533,7 @@ export class ProjectileRenderer3D {
     x: number, y: number, z: number,
     rearOffset: number,
     finScale: number,
+    rollAngle: number,
   ): void {
     this.projPos.set(
       x + this.projDir.x * rearOffset,
@@ -518,7 +541,15 @@ export class ProjectileRenderer3D {
       y + this.projDir.z * rearOffset,
     );
     this.projScale.setScalar(finScale);
-    this.projMatrix.compose(this.projPos, this.projQuat, this.projScale);
+    if (rollAngle !== 0) {
+      // Fin geometry's local +Y is the rocket axis (projDir after projQuat),
+      // so rolling around local Y spins the blades around that axis.
+      this.finRollQuat.setFromAxisAngle(PROJ_CYL_AXIS, rollAngle);
+      this.finQuat.copy(this.projQuat).multiply(this.finRollQuat);
+      this.projMatrix.compose(this.projPos, this.finQuat, this.projScale);
+    } else {
+      this.projMatrix.compose(this.projPos, this.projQuat, this.projScale);
+    }
   }
 
   private composeProjectileTailMatrix(
