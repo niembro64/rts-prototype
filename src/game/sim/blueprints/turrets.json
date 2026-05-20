@@ -504,7 +504,8 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "simpleSingleBarrel",
-      "barrelLength": 0.6
+      "barrelLength": 3,
+      "barrelThickness": 9
     },
     "isManualFire": false,
     "passive": false,
@@ -532,7 +533,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 8
+      "body": 6
     },
     "constructionEmitter": null,
     "aimStyle": {
@@ -776,7 +777,7 @@
     "barrel": {
       "type": "simpleSingleBarrel",
       "barrelLength": 0.8,
-      "barrelThickness": 8
+      "barrelThickness": 30
     },
     "isManualFire": false,
     "passive": false,
@@ -804,7 +805,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 18
+      "body": 16
     },
     "constructionEmitter": null,
     "aimStyle": {
