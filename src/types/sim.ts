@@ -323,10 +323,6 @@ export type TurretConfig = {
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;
   passive?: boolean;
-  /** World mount policy. `authored` uses the blueprint mount resolved
-   *  through the host transform. `unitBodyCenter` makes the turret body
-   *  center exactly equal the owning unit's gameplay target center. */
-  mountMode?: 'authored' | 'unitBodyCenter';
   /** Undefined for visual-only construction emitters. Those turrets
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */

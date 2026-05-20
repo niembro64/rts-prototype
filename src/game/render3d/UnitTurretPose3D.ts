@@ -15,7 +15,6 @@ export type UnitTurretPose3DUpdate = {
   entity: Entity;
   mesh: EntityMesh;
   turrets: readonly Turret[];
-  bodyCenterLocal: THREE.Vector3;
   parentQuaternion: THREE.Quaternion;
   unitChainMat: THREE.Matrix4;
   chassisTiltInverse?: THREE.Quaternion;
@@ -45,7 +44,6 @@ export class UnitTurretPose3D {
       entity,
       mesh,
       turrets,
-      bodyCenterLocal,
       parentQuaternion,
       unitChainMat,
       chassisTiltInverse,
@@ -63,17 +61,9 @@ export class UnitTurretPose3D {
       const turret = turrets[turretIdx];
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
 
-      if (turret.config.passive && mesh.mirrors) {
-        turretMesh.root.position.set(
-          bodyCenterLocal.x,
-          bodyCenterLocal.y - headRadius,
-          bodyCenterLocal.z,
-        );
-      } else {
-        const turretHeadCenterY = getTurretMountHeight(entity, turretIdx);
-        const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
-        turretMesh.root.position.set(turret.mount.x, turretMountY, turret.mount.y);
-      }
+      const turretHeadCenterY = getTurretMountHeight(entity, turretIdx);
+      const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
+      turretMesh.root.position.set(turret.mount.x, turretMountY, turret.mount.y);
       this.writeMountCache(entity, turretIdx, mesh, turretMesh, headRadius, parentQuaternion, turretMountCache);
 
       if (turretMesh.constructionEmitter) {

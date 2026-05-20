@@ -285,7 +285,7 @@ export class UnitDetailInstanceRenderer3D {
     }
   }
 
-  hideChassisSlots(mesh: EntityMesh): void {
+  clearChassisSlots(mesh: EntityMesh): void {
     if (mesh.smoothChassisSlots) {
       for (const slot of mesh.smoothChassisSlots) {
         this.smoothChassis.setMatrixAt(slot, ZERO_MATRIX);

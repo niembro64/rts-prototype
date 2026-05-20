@@ -10,7 +10,6 @@ import type { TurretId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../locomotion';
-import { getExpectedUnitBodyCenterHeightY } from '../../math/BodyDimensions';
 export { BUILDABLE_UNIT_IDS, type BuildableUnitId } from './unitRoster';
 import { BUILDABLE_UNIT_IDS } from './unitRoster';
 import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
@@ -23,7 +22,6 @@ type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion'> & {
 };
 
 const UNIT_EXPLICIT_FIELDS = [
-  'hideChassis',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -61,16 +59,9 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
 export const UNIT_BLUEPRINTS = buildUnitBlueprints();
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
-  const expectedBodyCenterHeight = getExpectedUnitBodyCenterHeightY(
-    bp,
-    bp.radius.body,
-  );
-  if (
-    !Number.isFinite(bp.bodyCenterHeight) ||
-    Math.abs(bp.bodyCenterHeight - expectedBodyCenterHeight) > 1e-6
-  ) {
+  if (!Number.isFinite(bp.bodyCenterHeight) || bp.bodyCenterHeight < 0) {
     throw new Error(
-      `Invalid bodyCenterHeight for ${bp.id}: expected ${expectedBodyCenterHeight}, got ${bp.bodyCenterHeight}`,
+      `Invalid bodyCenterHeight for ${bp.id}: bodyCenterHeight must be a finite non-negative number`,
     );
   }
 

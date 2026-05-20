@@ -76,6 +76,15 @@ function getUnitSphere(): THREE.SphereGeometry {
   return _unitSphere;
 }
 
+let _unitCylinder: THREE.CylinderGeometry | null = null;
+function getUnitCylinder(): THREE.CylinderGeometry {
+  if (!_unitCylinder) {
+    _unitCylinder = new THREE.CylinderGeometry(1, 1, 1, 18, 1);
+    _unitCylinder.rotateZ(-Math.PI / 2);
+  }
+  return _unitCylinder;
+}
+
 /** Polygon extrusion height (unit-radius-1). Uses the inscribed-circle
  *  diameter (2·r·cos(π/N)) so tall-radius shapes like a pentagon rise
  *  higher than a squat triangle, while everything stays proportional
@@ -98,6 +107,15 @@ function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; offs
     geometry: getUnitSphere(),
     x: part.offsetForward ?? 0, y: part.yFrac, z: part.offsetLateral ?? 0,
     scaleX: part.xFrac, scaleY: part.yFrac, scaleZ: part.zFrac,
+  };
+}
+
+function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+  const y = part.centerYFrac ?? part.radiusFrac;
+  return {
+    geometry: getUnitCylinder(),
+    x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
+    scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
   };
 }
 
@@ -151,18 +169,23 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
     const part = buildOvalSpec(spec);
     return { parts: [part], topY, isSmooth: true };
   }
-  // composite: each segment is its own sphere/spheroid.
+  // composite: each segment is its own sphere/spheroid/cylinder.
   const parts: BodyMeshPart[] = [];
+  let isSmooth = true;
   for (const p of spec.parts) {
     if (p.kind === 'circle') {
       const part = buildCircleSpec(p);
       parts.push(part);
-    } else {
+    } else if (p.kind === 'oval') {
       const part = buildOvalSpec(p);
       parts.push(part);
+    } else {
+      const part = buildCylinderSpec(p);
+      parts.push(part);
+      isSmooth = false;
     }
   }
-  return { parts, topY, isSmooth: true };
+  return { parts, topY, isSmooth };
 }
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
@@ -323,7 +346,7 @@ export function getBodyEdgeTemplates(
       if (part.kind === 'circle') {
         const height = 2 * circleYFrac(part.radiusFrac, part.yFrac) * unitRadius;
         pushCircleEdges(out, offsetX, offsetZ, part.radiusFrac * unitRadius, unitRadius, height);
-      } else {
+      } else if (part.kind === 'oval') {
         const height = 2 * part.yFrac * unitRadius;
         pushOvalEdges(
           out,
@@ -334,6 +357,16 @@ export function getBodyEdgeTemplates(
           unitRadius,
           height,
         );
+      } else {
+        const radius = part.radiusFrac * unitRadius;
+        out.push({
+          x: offsetX,
+          z: offsetZ,
+          yaw: 0,
+          length: part.lengthFrac * unitRadius,
+          thickness: Math.max(2, radius * 2),
+          height: Math.max(1, radius * 2),
+        });
       }
     }
   }

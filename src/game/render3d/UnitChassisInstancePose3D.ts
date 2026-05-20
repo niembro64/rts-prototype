@@ -36,8 +36,8 @@ export class UnitChassisInstancePose3D {
       unitDetailInstances,
     } = options;
 
-    if (!fullUnitDetail || mesh.hideChassis) {
-      unitDetailInstances.hideChassisSlots(mesh);
+    if (!fullUnitDetail) {
+      unitDetailInstances.clearChassisSlots(mesh);
       return;
     }
 

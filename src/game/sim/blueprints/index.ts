@@ -231,6 +231,7 @@ function validateTurretAimStyle(
 ): void {
   switch (turretBlueprint.aimStyle.angleType) {
     case 'ballisticArcLow':
+    case 'ballisticArcLowOnlyUnder':
     case 'ballisticArcHigh':
       if (!shot || !isProjectileShot(shot)) {
         throw new Error(
@@ -457,7 +458,6 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   if (turretBlueprint.burst !== null) config.burst = { ...turretBlueprint.burst };
   config.isManualFire = turretBlueprint.isManualFire;
   config.passive = turretBlueprint.passive;
-  config.mountMode = turretBlueprint.mountMode;
 
   return config;
 }

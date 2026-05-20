@@ -35,7 +35,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -86,7 +85,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -109,7 +107,7 @@
       "shot": 9,
       "push": 15
     },
-    "bodyCenterHeight": 60,
+    "bodyCenterHeight": 58.5,
     "mass": 30,
     "cost": {
       "energy": 350,
@@ -121,7 +119,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 4.615384615384615
+          "z": 4
         }
       },
       {
@@ -129,19 +127,18 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 3.769230769230769
+          "z": 2.5
         }
       }
     ],
     "bodyShape": {
       "kind": "circle",
-      "radiusFrac": 0.55,
+      "radiusFrac": 0.12,
       "yFrac": 0.12
     },
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": true,
     "legAttachHeightFrac": 3.769230769230769,
     "suspension": null,
     "builder": null,
@@ -190,7 +187,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -239,7 +235,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -279,15 +274,13 @@
       }
     ],
     "bodyShape": {
-      "kind": "oval",
-      "xFrac": 0.5,
-      "yFrac": 0.425,
-      "zFrac": 0.35
+      "kind": "circle",
+      "radiusFrac": 0.12,
+      "yFrac": 0.12
     },
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": true,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -338,7 +331,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -405,7 +397,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -528,7 +519,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -576,7 +566,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -636,7 +625,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -677,13 +665,12 @@
     ],
     "bodyShape": {
       "kind": "circle",
-      "radiusFrac": 0.55,
-      "yFrac": 0.55
+      "radiusFrac": 0.12,
+      "yFrac": 0.12
     },
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": true,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -723,16 +710,13 @@
       }
     ],
     "bodyShape": {
-      "kind": "polygon",
-      "sides": 4,
-      "radiusFrac": 0.55,
-      "heightFrac": 0.3,
-      "rotation": 0.7853981633974483
+      "kind": "circle",
+      "radiusFrac": 0.12,
+      "yFrac": 0.12
     },
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": true,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -765,22 +749,33 @@
       {
         "turretId": "droppingMortarTurret",
         "mount": {
-          "x": 0,
+          "x": 1.0,
           "y": 0,
-          "z": 0.2
+          "z": -0.1
         }
       }
     ],
     "bodyShape": {
-      "kind": "rect",
-      "lengthFrac": 1.35,
-      "widthFrac": 0.72,
-      "heightFrac": 0.4
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "circle",
+          "offsetForward": 0,
+          "radiusFrac": 0.6,
+          "yFrac": 0.6
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -2.1,
+          "lengthFrac": 4.2,
+          "radiusFrac": 0.17,
+          "centerYFrac": 0.46
+        }
+      ]
     },
     "hud": {
       "barsOffsetAboveTop": 14
     },
-    "hideChassis": true,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": null,
@@ -864,7 +859,6 @@
     "hud": {
       "barsOffsetAboveTop": 12
     },
-    "hideChassis": false,
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": {

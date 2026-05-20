@@ -7464,10 +7464,8 @@ fn combat_targeting_apply_priority_point_fsm_idx(
     force_field_clear: u8,
 ) {
     let old_state = pool.turret_state[idx];
-    let next_state = if los_clear == 0 {
+    let next_state = if los_clear == 0 || ballistic_clear == 0 {
         CT_TURRET_STATE_IDLE
-    } else if ballistic_clear == 0 {
-        CT_TURRET_STATE_TRACKING
     } else if force_field_clear == 0 {
         CT_TURRET_STATE_IDLE
     } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, 0.0) {

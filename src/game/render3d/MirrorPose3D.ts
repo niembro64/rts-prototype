@@ -7,7 +7,7 @@ export type MirrorPose3DUpdate = {
   entity: Entity;
   mirrors: MirrorMesh;
   turrets: readonly Turret[];
-  bodyCenterLocal: THREE.Vector3;
+  pivotLocal: THREE.Vector3;
   unitChainMat: THREE.Matrix4;
   chassisTiltInverse?: THREE.Quaternion;
   mirrorsEnabled: boolean;
@@ -26,19 +26,20 @@ export class MirrorPose3D {
       entity,
       mirrors,
       turrets,
-      bodyCenterLocal,
+      pivotLocal,
       unitChainMat,
       chassisTiltInverse,
       mirrorsEnabled,
       unitDetailInstances,
     } = options;
 
-    mirrors.root.position.copy(bodyCenterLocal);
+    mirrors.root.position.copy(pivotLocal);
     mirrors.root.visible = mirrorsEnabled;
     if (!mirrorsEnabled) return;
 
-    const mirrorRot = turrets[0]?.rotation ?? entity.transform.rotation;
-    const mirrorPitch = turrets[0]?.pitch ?? 0;
+    const mirrorTurret = turrets.find((turret) => turret.config.passive);
+    const mirrorRot = mirrorTurret?.rotation ?? entity.transform.rotation;
+    const mirrorPitch = mirrorTurret?.pitch ?? 0;
     const cosMirrorRot = Math.cos(mirrorRot);
     const sinMirrorRot = Math.sin(mirrorRot);
     const cosMirrorPitch = Math.cos(mirrorPitch);

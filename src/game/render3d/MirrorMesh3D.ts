@@ -1,7 +1,6 @@
 // Mirror panel mesh builder (3D). The mirror is a SINGLE RIGID
 // assembly attached to the unit at one ball-joint — the turret's
-// attachment point, located at the host unit's body-center height
-// above the chassis lift. The joint is the `root` THREE.Group:
+// authored attachment point. The joint is the `root` THREE.Group:
 // `root.position` lifts to the attachment height, `root.quaternion`
 // is the only rotation in the entire mirror system (yaw + pitch
 // combined). The side arms, cylindrical grabbers, and panel mesh sit
@@ -56,10 +55,10 @@ export type MirrorPanelMount = {
 export function buildMirrorMesh3D(
   parent: THREE.Group,
   panels: readonly MirrorPanelMount[],
-  /** World-space (chassis-local) y of the panel center — the host
-   *  unit's body center. The cache uses bp.bodyCenterHeight; pass the
-   *  same value here so visual and sim panels share one center. */
-  panelCenterY: number,
+  /** Chassis-local mirror turret pivot in the parent liftGroup frame. */
+  pivotLocalX: number,
+  pivotLocalY: number,
+  pivotLocalZ: number,
   /** Half the square's edge length (= radius.body). Same value the sim
    *  cache stores in halfWidth/halfHeight. */
   panelHalfSide: number,
@@ -81,16 +80,13 @@ export function buildMirrorMesh3D(
    *  panels only. */
   skipPerMesh: boolean = false,
 ): MirrorMesh {
-  // The mirror is a ball-joint at the turret attachment point. This
-  // initial position is the flat-ground body center in liftGroup
-  // space; Render3DEntities overwrites it per frame on slopes so the
-  // joint lands exactly at entity.transform (the gameplay body center)
-  // rather than at the slope-tilted height offset. Arms and panels
-  // then live at Y = 0 in root's local frame; the only rotation in the
-  // entire mirror assembly is root's own quaternion, written each
-  // frame by the renderer to a single combined yaw + pitch.
+  // The mirror is a ball-joint at the authored turret attachment
+  // point. Arms and panels live at Y = 0 in root's local frame; the
+  // only rotation in the entire mirror assembly is root's own
+  // quaternion, written each frame by the renderer to a single
+  // combined yaw + pitch.
   const root = new THREE.Group();
-  root.position.set(0, panelCenterY, 0);
+  root.position.set(pivotLocalX, pivotLocalY, pivotLocalZ);
   parent.add(root);
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];

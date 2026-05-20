@@ -112,20 +112,6 @@ export function getDefaultUnitBodyCenterHeightY(
     + getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
 }
 
-/** Expected visible-body center for validation. Hidden-chassis units
- *  visually replace the body with their first turret, so the first
- *  turret mount becomes the visible center. Normal units use the
- *  locomotion + body-shape default. */
-export function getExpectedUnitBodyCenterHeightY(
-  blueprint: Pick<UnitBlueprint, 'hideChassis' | 'turrets' | 'locomotion' | 'bodyShape'>,
-  unitRadius: number,
-): number {
-  if (blueprint.hideChassis === true && blueprint.turrets.length > 0) {
-    return blueprint.turrets[0].mount.z * unitRadius;
-  }
-  return getDefaultUnitBodyCenterHeightY(blueprint, unitRadius);
-}
-
 /** World-space lift applied to the visible body/chassis above the unit's
  *  ground footprint. This is derived from bodyCenterHeight so the
  *  authored unit center is a hard contract shared by simulation,
@@ -157,9 +143,7 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
     topY = 2 * spec.yFrac;
   } else {
     for (const p of spec.parts) {
-      const segTop = p.kind === 'circle'
-        ? 2 * circleYFrac(p.radiusFrac, p.yFrac)
-        : 2 * p.yFrac;
+      const segTop = bodyPartTopFrac(p);
       if (segTop > topY) topY = segTop;
     }
   }
@@ -174,9 +158,9 @@ export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): numbe
 }
 
 function bodyPartTopFrac(part: UnitBodyShapePart): number {
-  return part.kind === 'circle'
-    ? 2 * circleYFrac(part.radiusFrac, part.yFrac)
-    : 2 * part.yFrac;
+  if (part.kind === 'circle') return 2 * circleYFrac(part.radiusFrac, part.yFrac);
+  if (part.kind === 'oval') return 2 * part.yFrac;
+  return (part.centerYFrac ?? part.radiusFrac) + part.radiusFrac;
 }
 
 function bodyPartNormalizedDistanceSq(
@@ -189,6 +173,11 @@ function bodyPartNormalizedDistanceSq(
   if (part.kind === 'circle') {
     const r = Math.max(part.radiusFrac, BODY_PART_CONTAIN_EPS);
     return (dx * dx + dy * dy) / (r * r);
+  }
+  if (part.kind === 'cylinder') {
+    const halfLength = Math.max(part.lengthFrac * 0.5, BODY_PART_CONTAIN_EPS);
+    const r = Math.max(part.radiusFrac, BODY_PART_CONTAIN_EPS);
+    return (dx * dx) / (halfLength * halfLength) + (dy * dy) / (r * r);
   }
   const rx = Math.max(part.xFrac, BODY_PART_CONTAIN_EPS);
   const ry = Math.max(part.zFrac, BODY_PART_CONTAIN_EPS);
@@ -296,5 +285,6 @@ export function getSegmentMidYAt(
     }
   }
   if (best.kind === 'circle') return circleYFrac(best.radiusFrac, best.yFrac) * unitRadius;
+  if (best.kind === 'cylinder') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
   return best.yFrac * unitRadius;
 }

@@ -80,7 +80,6 @@ export type EntityMesh = {
    *  matching instanced geometry pool. */
   bodyShapeKey: string;
   bodyShape?: UnitBodyShape;
-  hideChassis?: boolean;
   turrets: TurretMesh[];
   mirrors?: MirrorMesh;
   locomotion?: Locomotion3DMesh;

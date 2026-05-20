@@ -65,6 +65,7 @@ export type TurretAimAngleType =
   | 'rayDirect'
   | 'rayBisectTurretAndBody'
   | 'ballisticArcLow'
+  | 'ballisticArcLowOnlyUnder'
   | 'ballisticArcHigh';
 export type TurretAimLockOnType = 'lockOnToTurret' | 'lockOnToBody';
 export type TurretAimStyle = {
@@ -87,11 +88,6 @@ export type TurretBlueprint = {
   launchForce: number;
   isManualFire: boolean;
   passive: boolean;
-  /** How runtime resolves the turret's world-space body center. The
-   *  default authored mode uses the host blueprint mount. Unit-body-
-   *  center mode is for turrets whose gameplay body is exactly the
-   *  owning unit's target center, e.g. Loris mirrors. */
-  mountMode: 'authored' | 'unitBodyCenter';
   spread: { angle: number; pelletCount: number } | null;
   burst: { count: number; delay: number } | null;
   forceField: {
@@ -105,7 +101,9 @@ export type TurretBlueprint = {
   /** Explicit aiming solver mode:
    *  - angleType: rayDirect for straight-line aim,
    *    rayBisectTurretAndBody for mirror normals, ballisticArcLow for
-   *    lower gravity solutions, ballisticArcHigh for lofted gravity solutions
+   *    lower gravity solutions, ballisticArcLowOnlyUnder for low-arc
+   *    drops whose lock-on point must be below the turret mount,
+   *    ballisticArcHigh for lofted gravity solutions
    *  - lockOnType: lock onto the target's body/collider or a target turret mount */
   aimStyle: TurretAimStyle;
   /** Vertical launch system. When true, the turret ignores the normal
@@ -282,6 +280,18 @@ export type UnitBodyShapePart =
       yFrac: number;
       /** Lateral half-extent along the unit's side axis. */
       zFrac: number;
+    }
+  | {
+      kind: 'cylinder';
+      offsetForward: number;
+      offsetLateral?: number;
+      /** Full cylinder length along the unit's +X axis. */
+      lengthFrac: number;
+      /** Circular cross-section radius. */
+      radiusFrac: number;
+      /** Optional cylinder center height. Defaults to radiusFrac so the
+       *  part sits on the body baseline. */
+      centerYFrac?: number;
     };
 
 export type UnitBodyShape =
@@ -331,14 +341,10 @@ export type UnitBlueprint = {
   bodyShape: UnitBodyShape;
   /** Blueprint-authored 3D HUD placement for names and HP/build bars. */
   hud: EntityHudBlueprint;
-  /** Hide the rendered chassis while keeping bodyShape for logical
-   *  mount/leg/debris math. Used by units whose weapon turret is meant
-   *  to visually replace the whole body. */
-  hideChassis: boolean;
   /** Optional absolute leg hip/attach height in radius.body fractions,
    *  measured from terrain in the same coordinate system as turret
-   *  mount.z. Use only for units whose visible body is a turret or
-   *  custom rig rather than the logical bodyShape segment. */
+   *  mount.z. Use only when the default segment midpoint is not the
+   *  desired attachment height. */
   legAttachHeightFrac: number | null;
   locomotion: LocomotionBlueprint;
   /** Optional chassis-vs-locomotion spring. When omitted the unit

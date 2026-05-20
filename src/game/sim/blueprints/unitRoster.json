@@ -15,7 +15,5 @@
     "mosquito",
     "dragonfly"
   ],
-  "defaultDisabledDemoUnitIds": [
-    "daddy"
-  ]
+  "defaultDisabledDemoUnitIds": []
 }

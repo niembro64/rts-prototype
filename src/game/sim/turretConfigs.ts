@@ -18,7 +18,11 @@ function makeHysteresisRange(acquire: number, release: number): { acquire: numbe
 
 function usesBallisticArc(config: TurretConfig): boolean {
   const angleType = config.aimStyle.angleType;
-  return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
+  return (
+    angleType === 'ballisticArcLow' ||
+    angleType === 'ballisticArcLowOnlyUnder' ||
+    angleType === 'ballisticArcHigh'
+  );
 }
 
 function effectiveBallisticBaseRange(config: TurretConfig): number {

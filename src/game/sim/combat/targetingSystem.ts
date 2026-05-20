@@ -37,6 +37,7 @@ import {
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
 const _ffTargetPoint = { x: 0, y: 0, z: 0 };
+const _underOnlyTargetPoint = { x: 0, y: 0, z: 0 };
 const _targetingEnemyPosition = { x: 0, y: 0, z: 0 };
 const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
 // Per-unit reusable mask of "weapon system disabled" flags, filled in
@@ -92,6 +93,8 @@ type TargetPreferenceRank =
 
 const TARGETING_RANK_MODE_FIRE = 0;
 const TARGETING_RANK_MODE_ACQUISITION = 1;
+const UNDER_ONLY_LOCK_EPS = 1e-6;
+const UNDER_ONLY_MIN_BELOW_DISTANCE = 30;
 
 type TargetRankMode =
   | typeof TARGETING_RANK_MODE_FIRE
@@ -155,7 +158,47 @@ function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
 
 function weaponNeedsBallisticSolution(weapon: Turret): boolean {
   const angleType = weapon.config.aimStyle.angleType;
-  return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
+  return (
+    angleType === 'ballisticArcLow' ||
+    angleType === 'ballisticArcLowOnlyUnder' ||
+    angleType === 'ballisticArcHigh'
+  );
+}
+
+function weaponUsesUnderOnlyBallisticLock(weapon: Turret): boolean {
+  return weapon.config.aimStyle.angleType === 'ballisticArcLowOnlyUnder';
+}
+
+function targetLockOnPointIsBelowWeaponMount(
+  world: WorldState,
+  source: Entity,
+  weapon: Turret,
+  target: Entity,
+  weaponX: number,
+  weaponY: number,
+  weaponZ: number,
+): boolean {
+  if (!weaponUsesUnderOnlyBallisticLock(weapon)) return true;
+  const lockOnPoint = resolveTargetAimPoint(
+    target,
+    weaponX, weaponY, weaponZ,
+    _underOnlyTargetPoint,
+    {
+      lockOnType: weapon.config.aimStyle.lockOnType,
+      source,
+      currentTick: world.getTick(),
+    },
+  );
+  return lockOnPoint.z <= weaponZ - UNDER_ONLY_MIN_BELOW_DISTANCE + UNDER_ONLY_LOCK_EPS;
+}
+
+function pointLockOnPointIsBelowWeaponMount(
+  weapon: Turret,
+  point: Vec3,
+  weaponZ: number,
+): boolean {
+  if (!weaponUsesUnderOnlyBallisticLock(weapon)) return true;
+  return point.z <= weaponZ - UNDER_ONLY_MIN_BELOW_DISTANCE + UNDER_ONLY_LOCK_EPS;
 }
 
 function hasWeaponBallisticSolution(
@@ -168,6 +211,17 @@ function hasWeaponBallisticSolution(
   weaponY: number,
   weaponZ: number,
 ): boolean {
+  if (!targetLockOnPointIsBelowWeaponMount(
+    world,
+    source,
+    weapon,
+    target,
+    weaponX,
+    weaponY,
+    weaponZ,
+  )) {
+    return false;
+  }
   if (!weaponNeedsBallisticSolution(weapon)) return true;
   const solved = solveTurretAim(
     source,
@@ -193,6 +247,9 @@ function hasWeaponBallisticSolutionToPoint(
   weaponY: number,
   weaponZ: number,
 ): boolean {
+  if (!pointLockOnPointIsBelowWeaponMount(weapon, point, weaponZ)) {
+    return false;
+  }
   if (!weaponNeedsBallisticSolution(weapon)) return true;
   const solved = solveTurretAimAtGroundPoint(
     source,

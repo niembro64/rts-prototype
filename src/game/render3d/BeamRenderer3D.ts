@@ -5,9 +5,10 @@
 // cylinder per path segment using each segment's real altitude, so reflected
 // beam visuals match the server collision path without client-side tracing.
 //
-// Beam cylinders are drawn through one InstancedMesh. Each live path segment
-// writes a matrix + alpha into the shared instance buffers, so a beam-heavy
-// fight stays one draw call instead of one mesh/material draw per segment.
+// Beam cylinders are drawn through two visual InstancedMesh layers. Each live
+// path segment writes one outer matrix and one smaller inner matrix, so a
+// beam-heavy fight stays two segment draw calls instead of one mesh/material
+// draw per segment.
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
@@ -44,11 +45,44 @@ const glsl = (n: number): string => {
 const glslVec3 = (rgb: readonly number[]): string =>
   `vec3(${glsl(rgb[0])}, ${glsl(rgb[1])}, ${glsl(rgb[2])})`;
 
-const COLOR = beamConfig.color;
-const LOW_ALPHA = beamConfig.waveLowAlpha;
-const HIGH_ALPHA = beamConfig.waveHighAlpha;
-const WAVE_SPACING = beamConfig.waveSpacing;
-const WAVE_SPEED = beamConfig.waveSpeed;
+type BeamVisualConfig = {
+  color: readonly number[];
+  waveLowAlpha: number;
+  waveHighAlpha: number;
+  /** Length ratio of high-alpha run to low-alpha run within one repeat.
+   *  1 means equal lengths; 0.25 means high alpha is one quarter as long
+   *  as the low-alpha region. */
+  waveHighToLowAlphaLengthRatio?: number;
+  waveSpacing: number;
+  waveSpeed: number;
+};
+
+type BeamConfigFile = Partial<BeamVisualConfig> & {
+  outer?: BeamVisualConfig;
+  inner?: BeamVisualConfig;
+};
+
+const rawBeamConfig = beamConfig as BeamConfigFile;
+const OUTER_VISUAL_CONFIG = rawBeamConfig.outer ?? (rawBeamConfig as BeamVisualConfig);
+const INNER_VISUAL_CONFIG = rawBeamConfig.inner ?? {
+  ...OUTER_VISUAL_CONFIG,
+  waveSpeed: OUTER_VISUAL_CONFIG.waveSpeed * 1.8,
+};
+
+function highAlphaStart(config: BeamVisualConfig): number {
+  const ratio = config.waveHighToLowAlphaLengthRatio ?? 1;
+  const safeRatio = Number.isFinite(ratio) ? Math.max(0.001, ratio) : 1;
+  const highFrac = safeRatio / (1 + safeRatio);
+  return 1 - highFrac;
+}
+
+const BEAM_VISUAL_LAYERS: readonly {
+  config: BeamVisualConfig;
+  radiusMultiplier: number;
+}[] = [
+  { config: OUTER_VISUAL_CONFIG, radiusMultiplier: 1.0 },
+  { config: INNER_VISUAL_CONFIG, radiusMultiplier: 0.45 },
+];
 
 const BEAM_VERTEX_SHADER = `
 attribute float aAlpha;
@@ -64,20 +98,21 @@ void main() {
 }
 `;
 
-const BEAM_FRAGMENT_SHADER = `
+const createBeamFragmentShader = (config: BeamVisualConfig): string => `
 uniform float uTime;
 varying float vAlpha;
 varying float vAlong;
 varying vec4 vFlow;
 void main() {
   // vFlow = (unused, repeats, phase, speed). Beam alternates between
-  // LOW_ALPHA (off) and HIGH_ALPHA (on) sections as the pattern travels
-  // along the cylinder — each waveSpacing slice is half off, half on.
+  // LOW_ALPHA and HIGH_ALPHA sections as the pattern travels along the
+  // cylinder. waveHighToLowAlphaLengthRatio controls the high-vs-low
+  // run length inside each waveSpacing slice.
   float repeats = max(0.001, vFlow.y);
   float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
-  float pulse = step(0.5, p);
-  float alpha = mix(${glsl(LOW_ALPHA)}, ${glsl(HIGH_ALPHA)}, pulse) * vAlpha;
-  gl_FragColor = vec4(${glslVec3(COLOR)}, alpha);
+  float pulse = step(${glsl(highAlphaStart(config))}, p);
+  float alpha = mix(${glsl(config.waveLowAlpha)}, ${glsl(config.waveHighAlpha)}, pulse) * vAlpha;
+  gl_FragColor = vec4(${glslVec3(config.color)}, alpha);
 }
 `;
 
@@ -90,31 +125,109 @@ void main() {
 }
 `;
 
-const ENDPOINT_FRAGMENT_SHADER = `
+const createEndpointFragmentShader = (config: BeamVisualConfig): string => `
 varying float vAlpha;
 void main() {
-  gl_FragColor = vec4(${glslVec3(COLOR)}, ${glsl(HIGH_ALPHA)} * vAlpha);
+  gl_FragColor = vec4(${glslVec3(config.color)}, ${glsl(config.waveHighAlpha)} * vAlpha);
 }
 `;
 
+type BeamVisualLayer = {
+  readonly config: BeamVisualConfig;
+  readonly radiusMultiplier: number;
+  readonly segmentMesh: THREE.InstancedMesh;
+  readonly segmentAlpha: Float32Array;
+  readonly segmentAlphaAttr: THREE.InstancedBufferAttribute;
+  readonly segmentFlow: Float32Array;
+  readonly segmentFlowAttr: THREE.InstancedBufferAttribute;
+  readonly flowTimeUniform: { value: number };
+  activeSegmentCount: number;
+  readonly endpointMesh: THREE.InstancedMesh;
+  readonly endpointAlpha: Float32Array;
+  readonly endpointAlphaAttr: THREE.InstancedBufferAttribute;
+  activeEndpointCount: number;
+};
+
+function createBeamVisualLayer(
+  root: THREE.Group,
+  config: BeamVisualConfig,
+  radiusMultiplier: number,
+  renderOrder: number,
+): BeamVisualLayer {
+  const segmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
+  const segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
+  const segmentAlphaAttr = new THREE.InstancedBufferAttribute(segmentAlpha, 1);
+  segmentAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+  segmentGeom.setAttribute('aAlpha', segmentAlphaAttr);
+  const segmentFlow = new Float32Array(BEAM_SEGMENT_CAP * 4);
+  const segmentFlowAttr = new THREE.InstancedBufferAttribute(segmentFlow, 4);
+  segmentFlowAttr.setUsage(THREE.DynamicDrawUsage);
+  segmentGeom.setAttribute('aFlow', segmentFlowAttr);
+  const flowTimeUniform = { value: 0 };
+  const segmentMat = new THREE.ShaderMaterial({
+    vertexShader: BEAM_VERTEX_SHADER,
+    fragmentShader: createBeamFragmentShader(config),
+    uniforms: {
+      uTime: flowTimeUniform,
+    },
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+  });
+  const segmentMesh = new THREE.InstancedMesh(
+    segmentGeom,
+    segmentMat,
+    BEAM_SEGMENT_CAP,
+  );
+  segmentMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  segmentMesh.frustumCulled = false;
+  segmentMesh.renderOrder = renderOrder;
+  segmentMesh.count = 0;
+  root.add(segmentMesh);
+
+  const endpointGeom = new THREE.SphereGeometry(1, 12, 10);
+  const endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
+  const endpointAlphaAttr = new THREE.InstancedBufferAttribute(endpointAlpha, 1);
+  endpointAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+  endpointGeom.setAttribute('aAlpha', endpointAlphaAttr);
+  const endpointMat = new THREE.ShaderMaterial({
+    vertexShader: ENDPOINT_VERTEX_SHADER,
+    fragmentShader: createEndpointFragmentShader(config),
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+  });
+  const endpointMesh = new THREE.InstancedMesh(
+    endpointGeom,
+    endpointMat,
+    BEAM_ENDPOINT_CAP,
+  );
+  endpointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  endpointMesh.frustumCulled = false;
+  endpointMesh.renderOrder = renderOrder + 2;
+  endpointMesh.count = 0;
+  root.add(endpointMesh);
+
+  return {
+    config,
+    radiusMultiplier,
+    segmentMesh,
+    segmentAlpha,
+    segmentAlphaAttr,
+    segmentFlow,
+    segmentFlowAttr,
+    flowTimeUniform,
+    activeSegmentCount: 0,
+    endpointMesh,
+    endpointAlpha,
+    endpointAlphaAttr,
+    activeEndpointCount: 0,
+  };
+}
+
 export class BeamRenderer3D {
   private root: THREE.Group;
-  // Unit cylinder along +Y; rotated/positioned to span each segment
-  private segmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
-  private segmentMesh: THREE.InstancedMesh;
-  private segmentMat: THREE.ShaderMaterial;
-  private segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
-  private segmentAlphaAttr: THREE.InstancedBufferAttribute;
-  private segmentFlow = new Float32Array(BEAM_SEGMENT_CAP * 4);
-  private segmentFlowAttr: THREE.InstancedBufferAttribute;
-  private flowTimeUniform = { value: 0 };
-  private activeSegmentCount = 0;
-  private endpointGeom = new THREE.SphereGeometry(1, 12, 10);
-  private endpointMesh: THREE.InstancedMesh;
-  private endpointMat: THREE.ShaderMaterial;
-  private endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
-  private endpointAlphaAttr: THREE.InstancedBufferAttribute;
-  private activeEndpointCount = 0;
+  private readonly layers: BeamVisualLayer[];
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
@@ -136,57 +249,13 @@ export class BeamRenderer3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
     this.scope = scope;
-
-    this.segmentAlphaAttr = new THREE.InstancedBufferAttribute(this.segmentAlpha, 1);
-    this.segmentAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.segmentGeom.setAttribute('aAlpha', this.segmentAlphaAttr);
-    this.segmentFlowAttr = new THREE.InstancedBufferAttribute(this.segmentFlow, 4);
-    this.segmentFlowAttr.setUsage(THREE.DynamicDrawUsage);
-    this.segmentGeom.setAttribute('aFlow', this.segmentFlowAttr);
-    this.segmentMat = new THREE.ShaderMaterial({
-      vertexShader: BEAM_VERTEX_SHADER,
-      fragmentShader: BEAM_FRAGMENT_SHADER,
-      uniforms: {
-        uTime: this.flowTimeUniform,
-      },
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-    });
-    this.segmentMesh = new THREE.InstancedMesh(
-      this.segmentGeom,
-      this.segmentMat,
-      BEAM_SEGMENT_CAP,
+    this.layers = BEAM_VISUAL_LAYERS.map((layer, i) =>
+      createBeamVisualLayer(this.root, layer.config, layer.radiusMultiplier, 12 + i),
     );
-    this.segmentMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.segmentMesh.frustumCulled = false;
-    this.segmentMesh.renderOrder = 12;
-    this.segmentMesh.count = 0;
-    this.root.add(this.segmentMesh);
-
-    this.endpointAlphaAttr = new THREE.InstancedBufferAttribute(this.endpointAlpha, 1);
-    this.endpointAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.endpointGeom.setAttribute('aAlpha', this.endpointAlphaAttr);
-    this.endpointMat = new THREE.ShaderMaterial({
-      vertexShader: ENDPOINT_VERTEX_SHADER,
-      fragmentShader: ENDPOINT_FRAGMENT_SHADER,
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-    });
-    this.endpointMesh = new THREE.InstancedMesh(
-      this.endpointGeom,
-      this.endpointMat,
-      BEAM_ENDPOINT_CAP,
-    );
-    this.endpointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.endpointMesh.frustumCulled = false;
-    this.endpointMesh.renderOrder = 13;
-    this.endpointMesh.count = 0;
-    this.root.add(this.endpointMesh);
   }
 
   private placeSegment(
+    mesh: THREE.InstancedMesh,
     slot: number,
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
@@ -204,37 +273,36 @@ export class BeamRenderer3D {
     else this._dir.set(1, 0, 0); // avoid NaN on degenerate segments
     // Rotate cylinder's default +Y axis to align with the segment direction.
     this._quat.setFromUnitVectors(this._up, this._dir);
-    // CylinderGeometry has radius 1; scale.x/.z become the actual radius, so
-    // beam diameter = 2 · cylRadius = shot.width, matching the 2D renderer.
+    // CylinderGeometry has radius 1; scale.x/.z become this visual layer's
+    // actual beam radius. The outer layer keeps the shot-width footprint;
+    // the inner layer intentionally passes a smaller radius.
     this._scale.set(cylRadius, Math.max(length, 1e-3), cylRadius);
     this._matrix.compose(this._mid, this._quat, this._scale);
-    this.segmentMesh.setMatrixAt(slot, this._matrix);
+    mesh.setMatrixAt(slot, this._matrix);
   }
 
   private writeSegment(
+    layer: BeamVisualLayer,
     slot: number,
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
     cylRadius: number,
     alpha: number,
     length: number,
-    flowStrength: number,
-    flowRepeats: number,
     flowPhase: number,
-    flowSpeed: number,
-  ): boolean {
-    if (slot >= BEAM_SEGMENT_CAP || alpha <= 0.001) return false;
-    this.segmentAlpha[slot] = alpha;
+  ): void {
+    if (slot >= BEAM_SEGMENT_CAP || alpha <= 0.001) return;
+    layer.segmentAlpha[slot] = alpha;
     const flowBase = slot * 4;
-    this.segmentFlow[flowBase] = flowStrength;
-    this.segmentFlow[flowBase + 1] = flowRepeats;
-    this.segmentFlow[flowBase + 2] = flowPhase;
-    this.segmentFlow[flowBase + 3] = flowSpeed;
-    this.placeSegment(slot, ax, ay, az, bx, by, bz, cylRadius, length);
-    return true;
+    layer.segmentFlow[flowBase] = 1.0;
+    layer.segmentFlow[flowBase + 1] = this.flowRepeats(length, layer.config.waveSpacing);
+    layer.segmentFlow[flowBase + 2] = flowPhase;
+    layer.segmentFlow[flowBase + 3] = layer.config.waveSpeed;
+    this.placeSegment(layer.segmentMesh, slot, ax, ay, az, bx, by, bz, cylRadius, length);
   }
 
   private writeEndpoint(
+    layer: BeamVisualLayer,
     slot: number,
     simX: number,
     simY: number,
@@ -245,8 +313,8 @@ export class BeamRenderer3D {
     if (slot >= BEAM_ENDPOINT_CAP || alpha <= 0.001 || radius <= 0.001) return false;
     this._matrix.makeScale(radius, radius, radius);
     this._matrix.setPosition(simX, simZ, simY);
-    this.endpointMesh.setMatrixAt(slot, this._matrix);
-    this.endpointAlpha[slot] = alpha;
+    layer.endpointMesh.setMatrixAt(slot, this._matrix);
+    layer.endpointAlpha[slot] = alpha;
     return true;
   }
 
@@ -274,14 +342,27 @@ export class BeamRenderer3D {
     );
   }
 
+  private hasActiveVisuals(): boolean {
+    return this.layers.some(
+      (layer) => layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0,
+    );
+  }
+
+  private updateFlowTime(): void {
+    const now = performance.now() * 0.001;
+    for (const layer of this.layers) {
+      layer.flowTimeUniform.value = now;
+    }
+  }
+
   update(
     projectiles: readonly Entity[],
     _graphicsConfig?: GraphicsConfig,
     contentVersion?: number,
     turretMountResolver?: TurretMountResolver,
   ): void {
-    if (projectiles.length === 0 && this.activeSegmentCount === 0 && this.activeEndpointCount === 0) return;
-    this.flowTimeUniform.value = performance.now() * 0.001;
+    if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
+    this.updateFlowTime();
     const snapToTurret = getBeamSnapToTurret() && !!turretMountResolver;
     const scopeVersion = this.scope.getVersion();
     if (
@@ -384,65 +465,75 @@ export class BeamRenderer3D {
         const dy = by - ay;
         const dz = bz - az;
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (this.writeSegment(
-          segIdx,
-          ax, ay, az,
-          bx, by, bz,
-          cylRadius,
-          1.0,
-          segLen,
-          1.0,
-          this.flowRepeats(segLen, WAVE_SPACING),
-          this.flowPhase(e.id, segIdx),
-          WAVE_SPEED,
-        )) {
+        if (segIdx < BEAM_SEGMENT_CAP) {
+          const phase = this.flowPhase(e.id, segIdx);
+          for (const layer of this.layers) {
+            this.writeSegment(
+              layer,
+              segIdx,
+              ax, ay, az,
+              bx, by, bz,
+              cylRadius * layer.radiusMultiplier,
+              1.0,
+              segLen,
+              phase,
+            );
+          }
           segIdx++;
         }
       }
 
       if (proj.endpointDamageable !== false) {
-        if (this.writeEndpoint(
-          endpointIdx,
-          endPoint.x,
-          endPoint.y,
-          endPoint.z,
-          damageSphereRadius,
-          1.0,
-        )) {
+        if (endpointIdx < BEAM_ENDPOINT_CAP) {
+          for (const layer of this.layers) {
+            this.writeEndpoint(
+              layer,
+              endpointIdx,
+              endPoint.x,
+              endPoint.y,
+              endPoint.z,
+              damageSphereRadius * layer.radiusMultiplier,
+              1.0,
+            );
+          }
           endpointIdx++;
         }
       }
     }
 
-    this.segmentMesh.count = segIdx;
-    if (segIdx > 0) {
-      this.segmentMesh.instanceMatrix.clearUpdateRanges();
-      this.segmentMesh.instanceMatrix.addUpdateRange(0, segIdx * 16);
-      this.segmentMesh.instanceMatrix.needsUpdate = true;
-      this.segmentAlphaAttr.clearUpdateRanges();
-      this.segmentAlphaAttr.addUpdateRange(0, segIdx);
-      this.segmentAlphaAttr.needsUpdate = true;
-      this.segmentFlowAttr.clearUpdateRanges();
-      this.segmentFlowAttr.addUpdateRange(0, segIdx * 4);
-      this.segmentFlowAttr.needsUpdate = true;
-    }
-    this.activeSegmentCount = segIdx;
+    for (const layer of this.layers) {
+      layer.segmentMesh.count = segIdx;
+      if (segIdx > 0) {
+        layer.segmentMesh.instanceMatrix.clearUpdateRanges();
+        layer.segmentMesh.instanceMatrix.addUpdateRange(0, segIdx * 16);
+        layer.segmentMesh.instanceMatrix.needsUpdate = true;
+        layer.segmentAlphaAttr.clearUpdateRanges();
+        layer.segmentAlphaAttr.addUpdateRange(0, segIdx);
+        layer.segmentAlphaAttr.needsUpdate = true;
+        layer.segmentFlowAttr.clearUpdateRanges();
+        layer.segmentFlowAttr.addUpdateRange(0, segIdx * 4);
+        layer.segmentFlowAttr.needsUpdate = true;
+      }
+      layer.activeSegmentCount = segIdx;
 
-    this.endpointMesh.count = endpointIdx;
-    if (endpointIdx > 0) {
-      this.endpointMesh.instanceMatrix.clearUpdateRanges();
-      this.endpointMesh.instanceMatrix.addUpdateRange(0, endpointIdx * 16);
-      this.endpointMesh.instanceMatrix.needsUpdate = true;
-      this.endpointAlphaAttr.clearUpdateRanges();
-      this.endpointAlphaAttr.addUpdateRange(0, endpointIdx);
-      this.endpointAlphaAttr.needsUpdate = true;
+      layer.endpointMesh.count = endpointIdx;
+      if (endpointIdx > 0) {
+        layer.endpointMesh.instanceMatrix.clearUpdateRanges();
+        layer.endpointMesh.instanceMatrix.addUpdateRange(0, endpointIdx * 16);
+        layer.endpointMesh.instanceMatrix.needsUpdate = true;
+        layer.endpointAlphaAttr.clearUpdateRanges();
+        layer.endpointAlphaAttr.addUpdateRange(0, endpointIdx);
+        layer.endpointAlphaAttr.needsUpdate = true;
+      }
+      layer.activeEndpointCount = endpointIdx;
     }
-    this.activeEndpointCount = endpointIdx;
   }
 
   destroy(): void {
-    disposeMesh(this.segmentMesh);
-    disposeMesh(this.endpointMesh);
+    for (const layer of this.layers) {
+      disposeMesh(layer.segmentMesh);
+      disposeMesh(layer.endpointMesh);
+    }
     detachObject(this.root);
   }
 }

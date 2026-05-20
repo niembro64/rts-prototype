@@ -111,7 +111,11 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   let f = 0;
   if (weaponNeedsLineOfSight(turret)) f |= CT_TURRET_CFG_NEEDS_LOS;
   const angle = turret.config.aimStyle.angleType;
-  if (angle === 'ballisticArcLow' || angle === 'ballisticArcHigh') {
+  if (
+    angle === 'ballisticArcLow' ||
+    angle === 'ballisticArcLowOnlyUnder' ||
+    angle === 'ballisticArcHigh'
+  ) {
     f |= CT_TURRET_CFG_NEEDS_BALLISTIC;
   }
   if (turret.config.verticalLauncher === true) f |= CT_TURRET_CFG_VERTICAL_LAUNCHER;

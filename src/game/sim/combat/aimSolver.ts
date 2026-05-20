@@ -495,6 +495,7 @@ function getBallisticArcPreference(config: TurretConfig): number {
 function usesBallisticAim(config: TurretConfig): boolean {
   return (
     config.aimStyle.angleType === 'ballisticArcLow' ||
+    config.aimStyle.angleType === 'ballisticArcLowOnlyUnder' ||
     config.aimStyle.angleType === 'ballisticArcHigh'
   );
 }

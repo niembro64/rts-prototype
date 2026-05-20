@@ -121,7 +121,6 @@ export class UnitMeshBuilder3D {
     const bodyShape = blueprint?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
     const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
     const bodyEntry = getBodyGeom(bodyShape);
-    const hideChassis = blueprint?.hideChassis === true;
 
     const yawGroup = new THREE.Group();
     yawGroup.userData.entityId = entity.id;
@@ -141,16 +140,14 @@ export class UnitMeshBuilder3D {
 
     if (
       useDetailedUnitInstancing &&
-      !hideChassis &&
       bodyEntry.isSmooth &&
       bodyEntry.parts.length > 0
     ) {
       smoothChassisSlots = this.unitDetailInstances.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
     } else if (
       useDetailedUnitInstancing &&
-      !hideChassis &&
       !bodyEntry.isSmooth &&
-      bodyEntry.parts.length > 0
+      bodyEntry.parts.length === 1
     ) {
       const allocated = this.unitDetailInstances.allocPolyChassisSlot(
         bodyShapeKey,
@@ -160,7 +157,7 @@ export class UnitMeshBuilder3D {
       if (allocated !== null) polyChassisSlot = allocated;
     }
 
-    if (!hideChassis && !smoothChassisSlots && polyChassisSlot === undefined) {
+    if (!smoothChassisSlots && polyChassisSlot === undefined) {
       for (const part of bodyEntry.parts) {
         const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(ownerId));
         mesh.position.set(part.x, part.y, part.z);
@@ -199,7 +196,6 @@ export class UnitMeshBuilder3D {
       chassisMeshes,
       bodyShapeKey,
       bodyShape,
-      hideChassis,
       turrets: turretMeshes,
       geometryKey: unitRenderKey,
       smoothChassisSlots,
@@ -224,7 +220,7 @@ export class UnitMeshBuilder3D {
     );
     if (legState !== undefined) applyLegState(mesh.locomotion, legState);
 
-    this.buildMirrors(mesh, liftGroup, entity, ownerId, useDetailedUnitInstancing);
+    this.buildMirrors(mesh, liftGroup, entity, turrets, ownerId, useDetailedUnitInstancing);
     return mesh;
   }
 
@@ -299,6 +295,7 @@ export class UnitMeshBuilder3D {
     mesh: EntityMesh,
     liftGroup: THREE.Group,
     entity: Entity,
+    turrets: readonly Turret[],
     ownerId: PlayerId | undefined,
     useDetailedUnitInstancing: boolean,
   ): void {
@@ -307,7 +304,11 @@ export class UnitMeshBuilder3D {
 
     const panelHalfSide = mirrorPanels[0].halfWidth;
     const panelArmLength = mirrorPanels[0].offsetX;
-    const panelCenterY = getUnitBodyCenterHeight(entity.unit) - liftGroup.position.y;
+    const mirrorTurret = turrets.find((turret) => turret.config.passive);
+    const pivotLocalX = mirrorTurret?.mount.x ?? 0;
+    const pivotLocalY = (mirrorTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
+      - liftGroup.position.y;
+    const pivotLocalZ = mirrorTurret?.mount.y ?? 0;
     const panelCount = mirrorPanels.length;
     const allocedPanelSlots = useDetailedUnitInstancing && panelCount > 0
       ? this.unitDetailInstances.allocMirrorPanelSlots(panelCount)
@@ -316,7 +317,9 @@ export class UnitMeshBuilder3D {
     mesh.mirrors = buildMirrorMesh3D(
       liftGroup,
       mirrorPanels,
-      panelCenterY,
+      pivotLocalX,
+      pivotLocalY,
+      pivotLocalZ,
       panelHalfSide,
       panelArmLength,
       this.mirrorGeom,

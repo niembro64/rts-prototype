@@ -76,7 +76,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   movementVelEma: {
-    default: 'snap' as const,
+    default: 'fast' as const,
     options: [
       { value: 'ignore' as const, label: 'IGN' },
       { value: 'snap' as const, label: 'SNAP' },
@@ -95,7 +95,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   rotationVelEma: {
-    default: 'snap' as const,
+    default: 'medium' as const,
     options: [
       { value: 'ignore' as const, label: 'IGN' },
       { value: 'snap' as const, label: 'SNAP' },

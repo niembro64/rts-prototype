@@ -171,14 +171,6 @@ export class ProjectileRangeEnvelope3D {
     mapHeight: number,
   ): { x: number; y: number; z: number } {
     const entityPosition = getEntityPosition3d(entity, _rangeEntityPosition);
-    if (entity.unit && weapon.config.mountMode === 'unitBodyCenter') {
-      return {
-        x: entityPosition.x,
-        y: entityPosition.y,
-        z: entityPosition.z,
-      };
-    }
-
     const { cos, sin } = getTransformCosSin(entity.transform);
     const surfaceN = entity.unit
       ? entity.unit.surfaceNormal ?? getSurfaceNormal(

@@ -118,7 +118,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           if (bit !== 0 && combat.firingTurretMask >= 0) {
             combat.firingTurretMask &= ~bit;
           }
-          weapon.state = 'tracking';
+          weapon.state = 'idle';
         } else {
           targetAngle = solved.yaw;
           targetPitch = solved.pitch;

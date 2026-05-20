@@ -192,8 +192,7 @@ export class Render3DEntities {
    *  multiplies (which used to rebuild this chain from m.group every
    *  turret) collapse to a single `Matrix4.copy()`. */
   private _unitChainMat = new THREE.Matrix4();
-  private _unitParentInvQuat = new THREE.Quaternion();
-  private _unitBodyCenterLocal = new THREE.Vector3();
+  private _mirrorPivotLocal = new THREE.Vector3();
 
   private mirrorsEnabled = true;
 
@@ -514,7 +513,7 @@ export class Render3DEntities {
           }
         }
       }
-      m.chassis.visible = fullUnitDetail && !m.hideChassis;
+      m.chassis.visible = fullUnitDetail;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -604,12 +603,6 @@ export class Render3DEntities {
         this._smoothParentQuat,
         this._unitOneVec,
       );
-      this._unitParentInvQuat.copy(this._smoothParentQuat).invert();
-      this._unitBodyCenterLocal
-        .set(0, getUnitBodyCenterHeight(e.unit), 0)
-        .applyQuaternion(this._unitParentInvQuat);
-      this._unitBodyCenterLocal.y -= m.chassisLift ?? 0;
-
       this.chassisInstancePose.update({
         entity: e,
         mesh: m,
@@ -630,7 +623,6 @@ export class Render3DEntities {
         entity: e,
         mesh: m,
         turrets,
-        bodyCenterLocal: this._unitBodyCenterLocal,
         parentQuaternion: this._smoothParentQuat,
         unitChainMat: this._unitChainMat,
         chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
@@ -644,11 +636,17 @@ export class Render3DEntities {
       });
 
       if (m.mirrors) {
+        const mirrorTurret = turrets.find((turret) => turret.config.passive);
+        this._mirrorPivotLocal.set(
+          mirrorTurret?.mount.x ?? 0,
+          (mirrorTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),
+          mirrorTurret?.mount.y ?? 0,
+        );
         this.mirrorPose.update({
           entity: e,
           mirrors: m.mirrors,
           turrets,
-          bodyCenterLocal: this._unitBodyCenterLocal,
+          pivotLocal: this._mirrorPivotLocal,
           unitChainMat: this._unitChainMat,
           chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
           mirrorsEnabled: this.mirrorsEnabled,

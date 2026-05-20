@@ -179,7 +179,11 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
 
 function isBallisticArcWeapon(weapon: Turret): boolean {
   const angleType = weapon.config.aimStyle.angleType;
-  return angleType === 'ballisticArcLow' || angleType === 'ballisticArcHigh';
+  return (
+    angleType === 'ballisticArcLow' ||
+    angleType === 'ballisticArcLowOnlyUnder' ||
+    angleType === 'ballisticArcHigh'
+  );
 }
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
@@ -370,6 +374,10 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
       if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
+        if (weapon.target !== null) {
+          setWeaponTarget(weapon, unit, weaponIndex, null);
+        }
+        weapon.state = 'idle';
         continue;
       }
 
@@ -392,7 +400,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         weapon.state = 'idle';
         continue;
       }
-      if (weapon.target === null && groundTargetPoint === undefined) continue;
+      if (weapon.target === null && groundTargetPoint === null) continue;
       if (!isWeaponAimedForFire(weapon)) continue;
 
       // Use the canonical 3D turret mount cache. Targeting normally
