@@ -28,6 +28,12 @@ const TAIL_HISTORY_MAX_SAMPLES = 3;
 const TAIL_HISTORY_MIN_MOVE_SQ = 0.01;
 const TAIL_HISTORY_MIN_FIT_DISTANCE = 0.1;
 const TAIL_CURVE_EMA_HALF_LIFE_SEC = 0.08;
+// Dot product threshold between the projectile's current velocity and the
+// velocity at the most recent recorded sample. A sharp drop (reflection off
+// a mirror panel or force field flips the velocity) drops the dot below
+// this, triggering a history reset so the parabola fit doesn't span the
+// pre/post-reflection path. Set well below any homing turn-per-frame rate.
+const TAIL_HISTORY_REFLECT_DOT = 0.5;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 const IDENTITY_QUAT = new THREE.Quaternion();
 const CURVED_CONE_COS = Array.from(
@@ -57,6 +63,9 @@ type ProjectileTailHistory = {
   x0: number; y0: number; z0: number; t0: number;
   x1: number; y1: number; z1: number; t1: number;
   x2: number; y2: number; z2: number; t2: number;
+  // Velocity at the time history.x0/y0/z0 was recorded. Used to detect
+  // reflections by comparing against the projectile's current velocity.
+  vx0: number; vy0: number; vz0: number;
   curveReady: boolean;
   curveUpdatedAt: number;
   curveAz: number;
@@ -200,7 +209,12 @@ export class ProjectileRenderer3D {
       const tx = e.transform.x;
       const ty = e.transform.y;
       const tz = e.transform.z;
-      const tailHistory = this.recordProjectileTailHistory(e.id, tx, ty, tz, now);
+      const proj = e.projectile;
+      const tailHistory = this.recordProjectileTailHistory(
+        e.id, tx, ty, tz,
+        proj?.velocityX ?? 0, proj?.velocityY ?? 0, proj?.velocityZ ?? 0,
+        now,
+      );
 
       if (!this.scope.inScope(tx, ty, 50)) {
         this.hideProjRadiusMeshes(e.id);
@@ -235,7 +249,13 @@ export class ProjectileRenderer3D {
           if (cylinderCount < PROJECTILE_INSTANCED_CAP) {
             this.cylinderInstanced.setMatrixAt(cylinderCount++, this.projMatrix);
           }
-        } else if (tailShape === 'cone' && curvedConeCount < PROJECTILE_INSTANCED_CAP) {
+        } else if (
+          tailShape === 'cone' &&
+          curvedConeCount < PROJECTILE_INSTANCED_CAP &&
+          tailHistory.samples >= 2
+        ) {
+          // Hold the tail off for one frame after a spawn or reflection so
+          // we never extrapolate a curve from a single anchor point.
           this.writeProjectileCurvedConeTail(
             curvedConeCount++,
             e,
@@ -245,7 +265,6 @@ export class ProjectileRenderer3D {
           );
         }
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
-          const proj = e.projectile;
           const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
           const rollAngle = proj && isRocketLike
             ? proj.timeAlive * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
@@ -345,6 +364,9 @@ export class ProjectileRenderer3D {
     x: number,
     y: number,
     z: number,
+    vx: number,
+    vy: number,
+    vz: number,
     nowMs: number,
   ): ProjectileTailHistory {
     let history = this.projectileTailHistories.get(id);
@@ -354,6 +376,7 @@ export class ProjectileRenderer3D {
         x0: x, y0: y, z0: z, t0: nowMs,
         x1: x, y1: y, z1: z, t1: nowMs,
         x2: x, y2: y, z2: z, t2: nowMs,
+        vx0: vx, vy0: vy, vz0: vz,
         curveReady: false,
         curveUpdatedAt: nowMs,
         curveAz: 0,
@@ -361,6 +384,33 @@ export class ProjectileRenderer3D {
       };
       this.projectileTailHistories.set(id, history);
       return history;
+    }
+
+    // Reflection check — if the projectile's current velocity points in a
+    // substantially different direction than the velocity at the last
+    // sample, discard the stored points and restart from this frame. The
+    // parabola fit assumes all samples lie on one forward-traveling arc,
+    // which breaks across a mirror/force-field bounce.
+    const prevSpeedSq = history.vx0 * history.vx0 +
+      history.vy0 * history.vy0 +
+      history.vz0 * history.vz0;
+    const curSpeedSq = vx * vx + vy * vy + vz * vz;
+    if (prevSpeedSq > 1e-6 && curSpeedSq > 1e-6) {
+      const dotNorm =
+        (history.vx0 * vx + history.vy0 * vy + history.vz0 * vz) /
+        Math.sqrt(prevSpeedSq * curSpeedSq);
+      if (dotNorm < TAIL_HISTORY_REFLECT_DOT) {
+        history.samples = 1;
+        history.x0 = x; history.y0 = y; history.z0 = z; history.t0 = nowMs;
+        history.x1 = x; history.y1 = y; history.z1 = z; history.t1 = nowMs;
+        history.x2 = x; history.y2 = y; history.z2 = z; history.t2 = nowMs;
+        history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
+        history.curveReady = false;
+        history.curveUpdatedAt = nowMs;
+        history.curveAz = 0;
+        history.curveBx = 0; history.curveBy = 0; history.curveBz = 0;
+        return history;
+      }
     }
 
     const dx = x - history.x0;
@@ -371,6 +421,7 @@ export class ProjectileRenderer3D {
     history.x2 = history.x1; history.y2 = history.y1; history.z2 = history.z1; history.t2 = history.t1;
     history.x1 = history.x0; history.y1 = history.y0; history.z1 = history.z0; history.t1 = history.t0;
     history.x0 = x; history.y0 = y; history.z0 = z; history.t0 = nowMs;
+    history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
     history.samples = Math.min(TAIL_HISTORY_MAX_SAMPLES, history.samples + 1);
     return history;
   }
