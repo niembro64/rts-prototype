@@ -30,6 +30,7 @@ import {
   CT_TURRET_STATE_TRACKING,
   getSimWasm,
 } from '../../sim-wasm/init';
+import { getCombatTargetingStateViews } from './targetingInputStamping';
 
 type TurretParityRecord = {
   entityId: EntityId;
@@ -141,25 +142,19 @@ function captureSoaSnapshot(world: WorldState): void {
     if (slot < 0) continue;
     const count = ct.turretCount(slot);
     if (count === 0) continue;
-    const memory = sim.memory;
     const turretBase = slot * max;
-    const turretEnd = turretBase + count;
-    const stateView = new Uint8Array(memory.buffer, ct.turretStatePtr(), turretEnd);
-    const targetView = new Int32Array(memory.buffer, ct.turretTargetIdPtr(), turretEnd);
-    const yawErrView = new Float32Array(memory.buffer, ct.turretAimErrorYawPtr(), turretEnd);
-    const pitchErrView = new Float32Array(memory.buffer, ct.turretAimErrorPitchPtr(), turretEnd);
-    const losView = new Uint16Array(memory.buffer, ct.turretLosBlockedTicksPtr(), turretEnd);
+    const views = getCombatTargetingStateViews(sim);
     for (let i = 0; i < count; i++) {
       const idx = turretBase + i;
       const r = acquireRecord();
       r.entityId = entity.id;
       r.turretIndex = i;
-      const tid = targetView[idx];
+      const tid = views.targetId[idx];
       r.target = tid < 0 ? null : (tid as EntityId);
-      r.state = decodeSlabTurretState(stateView[idx]);
-      r.aimErrorYaw = yawErrView[idx];
-      r.aimErrorPitch = pitchErrView[idx];
-      r.losBlockedTicks = losView[idx];
+      r.state = decodeSlabTurretState(views.state[idx]);
+      r.aimErrorYaw = views.aimErrorYaw[idx];
+      r.aimErrorPitch = views.aimErrorPitch[idx];
+      r.losBlockedTicks = views.losBlockedTicks[idx];
       _soaSnapshot.push(r);
     }
   }

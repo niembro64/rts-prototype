@@ -41,11 +41,24 @@ import {
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
   type CombatTargetingApi,
+  type SimWasm,
 } from '../../sim-wasm/init';
 import type { Entity, HysteresisRange, Turret, TurretRanges, TurretState } from '../types';
 
 const _stampPos = { x: 0, y: 0, z: 0 };
 const _stampVel = { x: 0, y: 0, z: 0 };
+
+export type CombatTargetingStateViews = {
+  buffer: ArrayBuffer;
+  length: number;
+  state: Uint8Array;
+  targetId: Int32Array;
+  aimErrorYaw: Float32Array;
+  aimErrorPitch: Float32Array;
+  losBlockedTicks: Uint16Array;
+};
+
+let _stateViews: CombatTargetingStateViews | null = null;
 
 function encodeTurretState(state: TurretState): number {
   switch (state) {
@@ -59,6 +72,32 @@ function decodeTurretState(state: number): TurretState {
   if (state === CT_TURRET_STATE_ENGAGED) return 'engaged';
   if (state === CT_TURRET_STATE_TRACKING) return 'tracking';
   return 'idle';
+}
+
+export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
+  const targeting = sim.combatTargeting;
+  const length = targeting.entityCapacity() * targeting.maxTurretsPerEntity();
+  const buffer = sim.memory.buffer;
+  const cached = _stateViews;
+  if (
+    cached &&
+    cached.buffer === buffer &&
+    cached.length === length &&
+    cached.state.byteLength > 0
+  ) {
+    return cached;
+  }
+
+  _stateViews = {
+    buffer,
+    length,
+    state: new Uint8Array(buffer, targeting.turretStatePtr(), length),
+    targetId: new Int32Array(buffer, targeting.turretTargetIdPtr(), length),
+    aimErrorYaw: new Float32Array(buffer, targeting.turretAimErrorYawPtr(), length),
+    aimErrorPitch: new Float32Array(buffer, targeting.turretAimErrorPitchPtr(), length),
+    losBlockedTicks: new Uint16Array(buffer, targeting.turretLosBlockedTicksPtr(), length),
+  };
+  return _stateViews;
 }
 
 function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): number {
@@ -208,23 +247,17 @@ export function writeBackCombatTargetingEntity(entity: Entity): void {
 
   const maxTurrets = targeting.maxTurretsPerEntity();
   const turretBase = slot * maxTurrets;
-  const turretEnd = turretBase + turretCount;
-  const memory = sim.memory;
-  const stateView = new Uint8Array(memory.buffer, targeting.turretStatePtr(), turretEnd);
-  const targetView = new Int32Array(memory.buffer, targeting.turretTargetIdPtr(), turretEnd);
-  const yawErrView = new Float32Array(memory.buffer, targeting.turretAimErrorYawPtr(), turretEnd);
-  const pitchErrView = new Float32Array(memory.buffer, targeting.turretAimErrorPitchPtr(), turretEnd);
-  const losView = new Uint16Array(memory.buffer, targeting.turretLosBlockedTicksPtr(), turretEnd);
+  const views = getCombatTargetingStateViews(sim);
 
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
     const turret = combat.turrets[i];
-    const targetId = targetView[idx];
+    const targetId = views.targetId[idx];
     setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
-    turret.state = decodeTurretState(stateView[idx]);
-    turret.aimErrorYaw = yawErrView[idx];
-    turret.aimErrorPitch = pitchErrView[idx];
-    turret.losBlockedTicks = losView[idx];
+    turret.state = decodeTurretState(views.state[idx]);
+    turret.aimErrorYaw = views.aimErrorYaw[idx];
+    turret.aimErrorPitch = views.aimErrorPitch[idx];
+    turret.losBlockedTicks = views.losBlockedTicks[idx];
   }
 }
 
