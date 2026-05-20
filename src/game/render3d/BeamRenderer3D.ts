@@ -16,25 +16,23 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret, getGraphicsConfig } from '@/clientBarConfig';
 import { detachObject, disposeMesh } from './threeUtils';
+import beamConfig from './beamConfig.json';
 
-// Cylinder radius is the sim's `shot.radius` (= shot.width / 2), scaled
-// down and floored so a very-thin beam still renders as a visible line.
-// BEAM_RADIUS_SCALE drops the cylinder thickness vs. the sim's 2D line
-// width — the 3D cylinder reads as chunkier than the 2D pixel stroke,
-// so we under-sample radius to keep beams looking crisp.
-const BEAM_MIN_RADIUS = 0.35;
-const BEAM_RADIUS_SCALE = 0.55;
-// Beams are white lines at low alpha — team identity comes from the
-// turret / impact context, not the beam itself. Tuned by eye: lasers
-// slightly brighter than plain beams to keep the "laser = hotter" feel.
-const BEAM_OPACITY = 0.16;
-const LASER_OPACITY_MAX = 0.24;
+// Visual tuning (opacity, radius, color, flow animation, pulse shape) lives
+// in beamConfig.json — edit that file to retune how beams look. Allocation
+// caps below stay as code constants since they shape buffer sizes, not look.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_CAP = 4096;
-const ENDPOINT_OPACITY = 0.18;
-const LASER_ENDPOINT_OPACITY = 0.26;
-const ENDPOINT_MIN_RADIUS = 2.5;
-const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
+
+const BEAM_OPACITY = beamConfig.opacity.beamBase;
+const LASER_OPACITY_MAX = beamConfig.opacity.laserBase;
+const ENDPOINT_OPACITY = beamConfig.opacity.endpointBeamBase;
+const LASER_ENDPOINT_OPACITY = beamConfig.opacity.endpointLaserBase;
+const BEAM_MIN_RADIUS = beamConfig.radius.minBeam;
+const BEAM_RADIUS_SCALE = beamConfig.radius.scale;
+const ENDPOINT_MIN_RADIUS = beamConfig.radius.minEndpoint;
+const OPEN_ENDED_LINE_VISUAL_LENGTH = beamConfig.openEndedLineVisualLength;
+const LASER_TYPE_MULTIPLIER = beamConfig.flow.laserTypeMultiplier;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -43,40 +41,28 @@ export type TurretMountResolver = {
   ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
 };
 
-const BEAM_OPACITY_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
-  min: 0.28,
-  low: 0.42,
-  medium: 0.62,
-  high: 0.82,
-  max: 1,
-};
-
-const BEAM_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
-  min: 0.45,
-  low: 0.55,
-  medium: 0.7,
-  high: 0.88,
-  max: 1,
-};
-
-const BEAM_FLOW_BY_TIER: Record<ConcreteGraphicsQuality, {
+const BEAM_OPACITY_BY_TIER = beamConfig.opacity.tierMultiplier as Record<ConcreteGraphicsQuality, number>;
+const BEAM_RADIUS_BY_TIER = beamConfig.radius.tierMultiplier as Record<ConcreteGraphicsQuality, number>;
+const BEAM_FLOW_BY_TIER = beamConfig.flow.tier as Record<ConcreteGraphicsQuality, {
   strength: number;
   spacing: number;
   speed: number;
-}> = {
-  min: { strength: 0.18, spacing: 240, speed: 3.8 },
-  low: { strength: 0.26, spacing: 180, speed: 4.8 },
-  medium: { strength: 0.4, spacing: 125, speed: 6.6 },
-  high: { strength: 0.56, spacing: 90, speed: 8.8 },
-  max: { strength: 0.72, spacing: 65, speed: 11.5 },
-};
+}>;
+const BEAM_FLOW_STYLE_MULTIPLIER = beamConfig.flow.styleMultiplier as Record<BeamStyle, number>;
 
-const BEAM_FLOW_STYLE_MULTIPLIER: Record<BeamStyle, number> = {
-  simple: 0.55,
-  standard: 0.82,
-  detailed: 1,
-  complex: 1.15,
+// GLSL needs decimal-pointed float literals (`1.0`, not `1`). Numbers from
+// JSON might be `1` or `0.5` — toFixed pads them so the shader parses cleanly.
+const glsl = (n: number): string => {
+  const s = n.toString();
+  return s.includes('.') ? s : `${s}.0`;
 };
+const glslVec3 = (rgb: readonly number[]): string =>
+  `vec3(${glsl(rgb[0])}, ${glsl(rgb[1])}, ${glsl(rgb[2])})`;
+
+const PULSE = beamConfig.flow.pulseShape;
+const ENDPOINT_PULSE = beamConfig.endpointPulse;
+const BEAM_COLOR = beamConfig.color.beam;
+const ENDPOINT_COLOR = beamConfig.color.endpoint;
 
 const BEAM_VERTEX_SHADER = `
 attribute float aAlpha;
@@ -102,12 +88,12 @@ void main() {
   if (vFlow.x > 0.001) {
     float repeats = max(0.001, vFlow.y);
     float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
-    float pulseA = pow(max(0.0, 1.0 - abs(p - 0.18) / 0.18), 2.7);
-    float pulseB = pow(max(0.0, 1.0 - abs(p - 0.62) / 0.08), 3.0) * 0.32;
+    float pulseA = pow(max(0.0, 1.0 - abs(p - ${glsl(PULSE.primaryCenter)}) / ${glsl(PULSE.primaryWidth)}), ${glsl(PULSE.primaryPower)});
+    float pulseB = pow(max(0.0, 1.0 - abs(p - ${glsl(PULSE.secondaryCenter)}) / ${glsl(PULSE.secondaryWidth)}), ${glsl(PULSE.secondaryPower)}) * ${glsl(PULSE.secondaryWeight)};
     float pulse = min(1.0, pulseA + pulseB);
-    alpha = min(1.0, alpha * (1.0 + vFlow.x * 1.8) + pulse * vFlow.x * 0.22);
+    alpha = min(1.0, alpha * (1.0 + vFlow.x * ${glsl(PULSE.alphaBoost)}) + pulse * vFlow.x * ${glsl(PULSE.pulseBlend)});
   }
-  gl_FragColor = vec4(vec3(1.0), alpha);
+  gl_FragColor = vec4(${glslVec3(BEAM_COLOR)}, alpha);
 }
 `;
 
@@ -128,8 +114,8 @@ uniform float uTime;
 varying float vAlpha;
 varying float vPhase;
 void main() {
-  float pulse = 0.78 + 0.22 * sin(uTime * 10.0 + vPhase * 6.2831853);
-  gl_FragColor = vec4(vec3(1.0), vAlpha * pulse);
+  float pulse = ${glsl(ENDPOINT_PULSE.base)} + ${glsl(ENDPOINT_PULSE.amplitude)} * sin(uTime * ${glsl(ENDPOINT_PULSE.frequency)} + vPhase * 6.2831853);
+  gl_FragColor = vec4(${glslVec3(ENDPOINT_COLOR)}, vAlpha * pulse);
 }
 `;
 
@@ -369,7 +355,7 @@ export class BeamRenderer3D {
       const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
       const flowCfg = BEAM_FLOW_BY_TIER[graphicsTier];
       const flowStyleMul = BEAM_FLOW_STYLE_MULTIPLIER[this.frameGfx.beamStyle] ?? 1;
-      const flowTypeMul = pt === 'laser' ? 1.12 : 1;
+      const flowTypeMul = pt === 'laser' ? LASER_TYPE_MULTIPLIER : 1;
       const flowStrength = flowCfg.strength * flowStyleMul * flowTypeMul;
       const flowSpeed = flowCfg.speed * flowTypeMul;
       const drawReflections = true;
