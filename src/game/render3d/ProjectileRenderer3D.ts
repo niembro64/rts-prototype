@@ -27,7 +27,6 @@ const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RA
 const TAIL_HISTORY_MAX_SAMPLES = 3;
 const TAIL_HISTORY_MIN_MOVE_SQ = 0.01;
 const TAIL_HISTORY_MIN_FIT_DISTANCE = 0.1;
-const TAIL_CURVE_EMA_HALF_LIFE_SEC = 0.08;
 // Dot product threshold between the projectile's current velocity and the
 // velocity at the most recent recorded sample. A sharp drop (reflection off
 // a mirror panel or force field flips the velocity) drops the dot below
@@ -66,10 +65,6 @@ type ProjectileTailHistory = {
   // Velocity at the time history.x0/y0/z0 was recorded. Used to detect
   // reflections by comparing against the projectile's current velocity.
   vx0: number; vy0: number; vz0: number;
-  curveReady: boolean;
-  curveUpdatedAt: number;
-  curveAz: number;
-  curveBx: number; curveBy: number; curveBz: number;
 };
 
 type DynamicCurvedConeGeometry = {
@@ -377,10 +372,6 @@ export class ProjectileRenderer3D {
         x1: x, y1: y, z1: z, t1: nowMs,
         x2: x, y2: y, z2: z, t2: nowMs,
         vx0: vx, vy0: vy, vz0: vz,
-        curveReady: false,
-        curveUpdatedAt: nowMs,
-        curveAz: 0,
-        curveBx: 0, curveBy: 0, curveBz: 0,
       };
       this.projectileTailHistories.set(id, history);
       return history;
@@ -405,10 +396,6 @@ export class ProjectileRenderer3D {
         history.x1 = x; history.y1 = y; history.z1 = z; history.t1 = nowMs;
         history.x2 = x; history.y2 = y; history.z2 = z; history.t2 = nowMs;
         history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
-        history.curveReady = false;
-        history.curveUpdatedAt = nowMs;
-        history.curveAz = 0;
-        history.curveBx = 0; history.curveBy = 0; history.curveBz = 0;
         return history;
       }
     }
@@ -491,31 +478,25 @@ export class ProjectileRenderer3D {
       candidateBz = fallbackSlopeZ;
     }
 
-    const curveDt = Math.max(0, (history.t0 - history.curveUpdatedAt) / 1000);
-    const curveBlend = history.curveReady
-      ? 1 - Math.pow(0.5, curveDt / TAIL_CURVE_EMA_HALF_LIFE_SEC)
-      : 1;
-    history.curveAz += (candidateAz - history.curveAz) * curveBlend;
-    history.curveBx += (candidateBx - history.curveBx) * curveBlend;
-    history.curveBy += (candidateBy - history.curveBy) * curveBlend;
-    history.curveBz += (candidateBz - history.curveBz) * curveBlend;
-    history.curveReady = true;
-    history.curveUpdatedAt = history.t0;
+    let curveAz = candidateAz;
+    let curveBx = candidateBx;
+    let curveBy = candidateBy;
+    let curveBz = candidateBz;
 
-    let curveHorizontalLen = Math.hypot(history.curveBx, history.curveBy);
+    let curveHorizontalLen = Math.hypot(curveBx, curveBy);
     if (curveHorizontalLen <= 1e-6) {
-      history.curveBx = fallbackAxisX;
-      history.curveBy = fallbackAxisY;
-      history.curveBz = fallbackSlopeZ;
-      history.curveAz = 0;
+      curveBx = fallbackAxisX;
+      curveBy = fallbackAxisY;
+      curveBz = fallbackSlopeZ;
+      curveAz = 0;
       curveHorizontalLen = 1;
     }
     if (Math.abs(curveHorizontalLen - 1) > 1e-6) {
       const invCurveHorizontalLen = 1 / curveHorizontalLen;
-      history.curveBx *= invCurveHorizontalLen;
-      history.curveBy *= invCurveHorizontalLen;
-      history.curveBz *= invCurveHorizontalLen;
-      history.curveAz *= invCurveHorizontalLen * invCurveHorizontalLen;
+      curveBx *= invCurveHorizontalLen;
+      curveBy *= invCurveHorizontalLen;
+      curveBz *= invCurveHorizontalLen;
+      curveAz *= invCurveHorizontalLen * invCurveHorizontalLen;
     }
 
     const positions = this.curvedCone.positions;
@@ -526,16 +507,16 @@ export class ProjectileRenderer3D {
       const arcDistance = length * u;
       const curveDistance = solveVerticalParabolaArcDistance(
         arcDistance,
-        history.curveBz,
-        history.curveAz,
+        curveBz,
+        curveAz,
       );
-      const px = history.x0 + history.curveBx * curveDistance;
-      const py = history.y0 + history.curveBy * curveDistance;
-      const pz = history.z0 + history.curveBz * curveDistance +
-        history.curveAz * curveDistance * curveDistance;
-      const tx = history.curveBx;
-      const ty = history.curveBy;
-      const tz = history.curveBz + 2 * history.curveAz * curveDistance;
+      const px = history.x0 + curveBx * curveDistance;
+      const py = history.y0 + curveBy * curveDistance;
+      const pz = history.z0 + curveBz * curveDistance +
+        curveAz * curveDistance * curveDistance;
+      const tx = curveBx;
+      const ty = curveBy;
+      const tz = curveBz + 2 * curveAz * curveDistance;
       this.setCurveBasis(tx, ty, tz);
       const ringRadius = radius * (1 - u);
       for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
