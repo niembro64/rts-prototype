@@ -372,8 +372,8 @@
       "fanSpinRadPerSec": 42
     }
   },
-  "eagleHovercraft": {
-    "type": "hover",
+  "eagleFlying": {
+    "type": "flying",
     "physics": {
       "driveForce": 22,
       "traction": 1,
@@ -381,12 +381,17 @@
     },
     "config": {
       "hoverHeight": 400,
-      "fanDistX": 1.55,
-      "fanDistY": 1.85,
-      "fanRadius": 1,
-      "fanRingTubeRadius": 0.065,
-      "fanOutwardAngleDeg": 20,
-      "fanSpinRadPerSec": 42
+      "wingSpan": 5.0,
+      "wingChord": 1.1,
+      "wingOffsetX": -0.05,
+      "wingHeight": 0.1,
+      "wingThickness": 0.05,
+      "jetOffsetX": -0.95,
+      "jetOffsetY": 0.42,
+      "jetOffsetZ": 0.06,
+      "jetRadius": 0.14,
+      "jetLength": 0.38,
+      "jetSmokeSpeed": 80
     }
   }
 }

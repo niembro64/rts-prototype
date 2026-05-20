@@ -790,6 +790,52 @@
     "fightStopEngagedRatio": 0.5,
     "locomotionId": "dragonflyHovercraft"
   },
+  "eagle": {
+    "id": "eagle",
+    "name": "Eagle",
+    "shortName": "EGL",
+    "hp": 220,
+    "radius": {
+      "body": 18,
+      "shot": 15,
+      "push": 21.6
+    },
+    "bodyCenterHeight": 5.4,
+    "mass": 95,
+    "cost": {
+      "energy": 520,
+      "metal": 520
+    },
+    "turrets": [
+      {
+        "turretId": "fastRocketTurret",
+        "mount": {
+          "x": 1.0,
+          "y": 0,
+          "z": -0.1
+        }
+      }
+    ],
+    "bodyShape": {
+      "kind": "circle",
+      "radiusFrac": 0.6,
+      "yFrac": 0.6
+    },
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "cloak": null,
+    "detector": null,
+    "deathSound": {
+      "$audio": "event.death.eagle"
+    },
+    "fightStopEngagedRatio": 0.5,
+    "locomotionId": "eagleFlying"
+  },
   "commander": {
     "id": "commander",
     "name": "Commander",
