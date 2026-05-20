@@ -869,7 +869,7 @@ export const CT_ENTITY_FLAG_BUILDABLE_COMPLETE = 1 << 3;
 
 /** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
  *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */
-export const CT_TURRET_CFG_NEEDS_LOS = 1 << 0;
+export const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS = 1 << 0;
 export const CT_TURRET_CFG_NEEDS_BALLISTIC = 1 << 1;
 export const CT_TURRET_CFG_VERTICAL_LAUNCHER = 1 << 2;
 export const CT_TURRET_CFG_IS_MANUAL_FIRE = 1 << 3;
@@ -1471,8 +1471,8 @@ export interface SnapshotEncodeApi {
     mirrorsEnabled: number,
     hasForceFieldsEnabled: number,
     forceFieldsEnabled: number,
-    hasForceFieldsBlockTargeting: number,
-    forceFieldsBlockTargeting: number,
+    hasForceFieldsObstructSight: number,
+    forceFieldsObstructSight: number,
     hasForceFieldReflectionMode: number,
     forceFieldReflectionModeSlot: number,
     hasFogOfWarEnabled: number,

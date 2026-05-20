@@ -1,7 +1,7 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
 export type UnitLocomotion = {
-  type: 'wheels' | 'treads' | 'legs' | 'hover';
+  type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
   /** Authored propulsion scalar supplied by the locomotion blueprint. */
   driveForce: number;
   /** Ground traction coefficient. This is coupling to terrain, not drag.
@@ -18,7 +18,7 @@ export type UnitLocomotion = {
    *  unit, in world units. The hover physics integrator uses this to
    *  size the inverse-distance lift force so that the equilibrium
    *  height (where F_up = m·g) sits at hoverHeight. Undefined for
-   *  non-hover locomotion. */
+   *  ground locomotion. */
   hoverHeight?: number;
 };
 

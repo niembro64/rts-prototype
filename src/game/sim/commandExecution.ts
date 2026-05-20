@@ -67,6 +67,19 @@ function refreshPatrolStartIndex(unit: Unit): void {
   unit.patrolStartIndex = index >= 0 ? index : null;
 }
 
+function resetFlyingLoiterToCurrentPosition(entity: Entity, world: WorldState): void {
+  const unit = entity.unit;
+  if (!unit || unit.locomotion.type !== 'flying') return;
+  const x = Math.max(0, Math.min(world.mapWidth, entity.transform.x));
+  const y = Math.max(0, Math.min(world.mapHeight, entity.transform.y));
+  unit.flyingLoiterTargetX = x;
+  unit.flyingLoiterTargetY = y;
+  unit.flyingLoiterTargetZ = Number.isFinite(entity.transform.z)
+    ? entity.transform.z
+    : world.getGroundZ(x, y);
+  unit.flyingLoiterTurnSign = undefined;
+}
+
 function getCommanderDGunTurretId(commander: Entity): string | null {
   const unitType = commander.unit?.unitType;
   if (!unitType) return null;
@@ -280,6 +293,7 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
     setUnitActions(entity.unit, []);
     entity.unit.patrolStartIndex = null;
     entity.unit.stuckTicks = 0;
+    resetFlyingLoiterToCurrentPosition(entity, ctx.world);
     entity.unit.thrustDirX = 0;
     entity.unit.thrustDirY = 0;
     if (entity.builder) entity.builder.currentBuildTarget = null;

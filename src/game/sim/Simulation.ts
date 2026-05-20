@@ -128,6 +128,9 @@ const ARRIVAL_FINAL_STOP_SPEED = 10;
 const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
+const FLYING_LOITER_RADIUS_MULT = 8;
+const FLYING_LOITER_MIN_RADIUS = 80;
+const FLYING_LOITER_RADIAL_GAIN = 0.65;
 
 export class Simulation {
   private world: WorldState;
@@ -766,9 +769,12 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
-      // No actions - no thrust needed
+      // No actions - flying units keep circling their last destination.
       if (unit.actions.length === 0) {
         unit.stuckTicks = 0;
+        if (this.applyFlyingLoiterThrust(entity)) {
+          movingUnits.push(entity);
+        }
         continue;
       }
 
@@ -776,9 +782,13 @@ export class Simulation {
 
       // Get current action
       const currentAction = unit.actions[0];
+      this.rememberFlyingLoiterTarget(unit, currentAction);
 
       if (currentAction.type === 'wait') {
         unit.stuckTicks = 0;
+        if (this.applyFlyingLoiterThrust(entity)) {
+          movingUnits.push(entity);
+        }
         continue;
       }
 
@@ -941,6 +951,9 @@ export class Simulation {
       if (this.hasArrivedAtAction(entity, currentAction, distance)) {
         this.advanceAction(entity);
         unit.stuckTicks = 0;
+        if (unit.actions.length === 0 && this.applyFlyingLoiterThrust(entity)) {
+          movingUnits.push(entity);
+        }
         continue;
       }
 
@@ -1083,6 +1096,103 @@ export class Simulation {
     }
   }
 
+  /** Record the latest actionable point for flying units so they have
+   *  a bounded loiter center after their queue empties. */
+  private rememberFlyingLoiterTarget(unit: Unit, action: UnitAction): void {
+    if (unit.locomotion.type !== 'flying') return;
+    const x = this.clampMapX(action.x);
+    const y = this.clampMapY(action.y);
+    unit.flyingLoiterTargetX = x;
+    unit.flyingLoiterTargetY = y;
+    unit.flyingLoiterTargetZ = action.z ?? this.world.getGroundZ(x, y);
+  }
+
+  private applyFlyingLoiterThrust(entity: Entity): boolean {
+    const unit = entity.unit;
+    if (!unit || unit.locomotion.type !== 'flying') return false;
+
+    const { transform } = entity;
+    const storedCenterX = unit.flyingLoiterTargetX;
+    const storedCenterY = unit.flyingLoiterTargetY;
+    let centerX: number;
+    let centerY: number;
+    if (
+      typeof storedCenterX !== 'number' ||
+      typeof storedCenterY !== 'number' ||
+      !Number.isFinite(storedCenterX) ||
+      !Number.isFinite(storedCenterY)
+    ) {
+      centerX = this.clampMapX(transform.x);
+      centerY = this.clampMapY(transform.y);
+      unit.flyingLoiterTargetX = centerX;
+      unit.flyingLoiterTargetY = centerY;
+      unit.flyingLoiterTargetZ = Number.isFinite(transform.z)
+        ? transform.z
+        : this.world.getGroundZ(centerX, centerY);
+    } else {
+      centerX = this.clampMapX(storedCenterX);
+      centerY = this.clampMapY(storedCenterY);
+      unit.flyingLoiterTargetX = centerX;
+      unit.flyingLoiterTargetY = centerY;
+    }
+
+    const dx = centerX - transform.x;
+    const dy = centerY - transform.y;
+    const distance = magnitude(dx, dy);
+    if (distance <= 0.0001) {
+      unit.thrustDirX = Math.cos(transform.rotation);
+      unit.thrustDirY = Math.sin(transform.rotation);
+      return true;
+    }
+
+    let turnSign = unit.flyingLoiterTurnSign;
+    if (turnSign !== 1 && turnSign !== -1) {
+      const body = entity.body?.physicsBody;
+      const radialX = dx / distance;
+      const radialY = dy / distance;
+      const tangentX = -radialY;
+      const tangentY = radialX;
+      const forwardX = Math.cos(transform.rotation);
+      const forwardY = Math.sin(transform.rotation);
+      const velocityX = body?.vx ?? unit.velocityX ?? forwardX;
+      const velocityY = body?.vy ?? unit.velocityY ?? forwardY;
+      turnSign = velocityX * tangentX + velocityY * tangentY >= 0 ? 1 : -1;
+      unit.flyingLoiterTurnSign = turnSign;
+    }
+
+    const radius = Math.max(FLYING_LOITER_MIN_RADIUS, unit.radius.push * FLYING_LOITER_RADIUS_MULT);
+    const radialX = dx / distance;
+    const radialY = dy / distance;
+    const tangentX = -radialY * turnSign;
+    const tangentY = radialX * turnSign;
+    const radialCorrection = Math.max(
+      -1.25,
+      Math.min(1.25, ((distance - radius) / radius) * FLYING_LOITER_RADIAL_GAIN),
+    );
+    let steerX = tangentX + radialX * radialCorrection;
+    let steerY = tangentY + radialY * radialCorrection;
+    const steerMag = magnitude(steerX, steerY);
+    if (steerMag <= 0.0001) {
+      steerX = Math.cos(transform.rotation);
+      steerY = Math.sin(transform.rotation);
+    } else {
+      steerX /= steerMag;
+      steerY /= steerMag;
+    }
+
+    unit.thrustDirX = steerX;
+    unit.thrustDirY = steerY;
+    return true;
+  }
+
+  private clampMapX(x: number): number {
+    return Math.max(0, Math.min(this.world.mapWidth, x));
+  }
+
+  private clampMapY(y: number): number {
+    return Math.max(0, Math.min(this.world.mapHeight, y));
+  }
+
   /** Velocity-aware arrival controller. The action supplies a desired
    *  position; current physics velocity decides whether we should keep
    *  pulling toward it, bleed speed, or thrust directly against motion.
@@ -1105,6 +1215,12 @@ export class Simulation {
         unit.thrustDirY = 0;
       }
       return false;
+    }
+
+    if (unit.locomotion.type === 'flying') {
+      unit.thrustDirX = dx / distance;
+      unit.thrustDirY = dy / distance;
+      return true;
     }
 
     // Intermediate waypoints (anything that isn't the final action in
@@ -1168,6 +1284,7 @@ export class Simulation {
     const isLastAction = !!unit && unit.actions.length <= 1 && action.type !== 'patrol';
     const arrivalRadius = isLastAction ? ARRIVAL_FINAL_RADIUS : ARRIVAL_RADIUS;
     if (distance >= arrivalRadius) return false;
+    if (unit?.locomotion.type === 'flying') return true;
     if (!isLastAction) return true;
     const body = entity.body?.physicsBody;
     const vx = body?.vx ?? unit?.velocityX ?? 0;

@@ -1,18 +1,18 @@
 {
   "outer": {
     "color": [1.0, 1.0, 1.0],
-    "waveLowAlpha": 0.0,
-    "waveHighAlpha": 0.1,
-    "waveHighToLowAlphaLengthRatio": 0.25,
+    "waveLowAlpha": 0.1,
+    "waveHighAlpha": 0.3,
+    "waveHighToLowAlphaLengthRatio": 0.2,
     "waveSpacing": 70,
-    "waveSpeed": 500
+    "waveSpeed": 100
   },
   "inner": {
     "color": [1.0, 1.0, 1.0],
     "waveLowAlpha": 0.0,
-    "waveHighAlpha": 0.3,
-    "waveHighToLowAlphaLengthRatio": 0.2,
+    "waveHighAlpha": 0.4,
+    "waveHighToLowAlphaLengthRatio": 0.4,
     "waveSpacing": 100,
-    "waveSpeed": 900
+    "waveSpeed": 200
   }
 }

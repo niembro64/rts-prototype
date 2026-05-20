@@ -120,7 +120,7 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return typeof command.enabled === 'boolean'
         ? { ...command, tick, enabled: true }
         : null;
-    case 'setForceFieldsBlockTargeting':
+    case 'setForceFieldsObstructSight':
     case 'setFogOfWarEnabled':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setForceFieldReflectionMode':

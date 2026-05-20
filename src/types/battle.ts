@@ -12,7 +12,7 @@ export type BattleBarConfig = {
   readonly cap: OptionsConfig<number>;
   readonly mirrorsEnabled: BooleanSetting;
   readonly forceFieldsEnabled: BooleanSetting;
-  readonly forceFieldsBlockTargeting: BooleanSetting;
+  readonly forceFieldsObstructSight: BooleanSetting;
   readonly forceFieldReflectionMode: {
     readonly default: ForceFieldReflectionMode;
   };

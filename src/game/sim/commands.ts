@@ -35,7 +35,7 @@ export type {
   SetMaxTotalUnitsCommand,
   SetMirrorsEnabledCommand,
   SetForceFieldsEnabledCommand,
-  SetForceFieldsBlockTargetingCommand,
+  SetForceFieldsObstructSightCommand,
   SetForceFieldReflectionModeCommand,
   SetFogOfWarEnabledCommand,
   Command,

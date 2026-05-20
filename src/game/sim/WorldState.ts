@@ -9,7 +9,7 @@ import {
   MAX_TOTAL_UNITS,
   DEFAULT_MIRRORS_ENABLED,
   DEFAULT_FORCE_FIELDS_ENABLED,
-  DEFAULT_FORCE_FIELDS_BLOCK_TARGETING,
+  DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT,
   DEFAULT_FORCE_FIELD_REFLECTION_MODE,
   UNIT_HP_MULTIPLIER,
   UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
@@ -200,11 +200,11 @@ export class WorldState {
   public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
   public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
-  // Whether force material between a turret and its target blocks
-  // lock-on. Symmetric: active force-field sphere boundaries and force
+  // Whether force material between a turret and its target obstructs
+  // sight. Symmetric: active force-field sphere boundaries and force
   // mirror panels apply to every turret in either direction, regardless
   // of team.
-  public forceFieldsBlockTargeting: boolean = DEFAULT_FORCE_FIELDS_BLOCK_TARGETING;
+  public forceFieldsObstructSight: boolean = DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT;
   // Which force-field boundary crossings reflect shots/beams.
   public forceFieldReflectionMode: ForceFieldReflectionMode = DEFAULT_FORCE_FIELD_REFLECTION_MODE;
   // Whether player-specific snapshots and the client fog overlay use vision.
@@ -715,7 +715,9 @@ export class WorldState {
     // equilibrium hover height; dropping them at ground height makes
     // the inverse-distance lift kick violently on the first tick.
     const groundZ = this.getGroundZ(x, y);
-    const spawnCenterHeight = locomotion.type === 'hover' &&
+    const isAirborneLocomotion =
+      locomotion.type === 'hover' || locomotion.type === 'flying';
+    const spawnCenterHeight = isAirborneLocomotion &&
       locomotion.hoverHeight !== undefined &&
       Number.isFinite(locomotion.hoverHeight)
       ? locomotion.hoverHeight
@@ -750,19 +752,19 @@ export class WorldState {
         mirrorPanels: [],
         mirrorBoundRadius: 0,
         surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
-        // Hover units carry a full quaternion + ω-vector + α-vector
+        // Airborne units carry a full quaternion + ω-vector + α-vector
         // orientation triad so they can express roll (banking into a
         // turn). Ground units stay yaw-scalar-only (transform.rotation).
         // The identity quat matches transform.rotation = 0 with zero
-        // pitch/roll, so spawning a hover unit looks the same as
+        // pitch/roll, so spawning an airborne unit looks the same as
         // spawning a ground unit until forces start acting on it.
-        orientation: locomotion.type === 'hover'
+        orientation: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0, w: 1 }
           : undefined,
-        angularVelocity3: locomotion.type === 'hover'
+        angularVelocity3: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0 }
           : undefined,
-        angularAcceleration3: locomotion.type === 'hover'
+        angularAcceleration3: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0 }
           : undefined,
       },

@@ -5,6 +5,7 @@ export const UNIT_TYPE_IDS = [
   'jackal', 'lynx', 'badger', 'mongoose', 'mammoth',
   'tick', 'tarantula', 'loris', 'daddy', 'widow',
   'formik', 'hippo', 'commander', 'mosquito', 'dragonfly',
+  'eagle',
 ] as const;
 export type UnitTypeId = typeof UNIT_TYPE_IDS[number];
 
@@ -23,6 +24,7 @@ export const SHOT_IDS = [
   'megaBeamShot',
   'towerBeamShot',
   'miniBeamShot',
+  'fastRocket',
 ] as const;
 export type ShotId = typeof SHOT_IDS[number];
 
@@ -44,6 +46,7 @@ export const TURRET_IDS = [
   'miniBeam',
   'towerCannonTurret',
   'droppingMortarTurret',
+  'fastRocketTurret',
 ] as const;
 export type TurretId = typeof TURRET_IDS[number];
 

@@ -38,7 +38,7 @@ export type CommandType =
   | 'setMaxTotalUnits'
   | 'setMirrorsEnabled'
   | 'setForceFieldsEnabled'
-  | 'setForceFieldsBlockTargeting'
+  | 'setForceFieldsObstructSight'
   | 'setForceFieldReflectionMode'
   | 'setFogOfWarEnabled';
 
@@ -283,8 +283,8 @@ export type SetForceFieldsEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetForceFieldsBlockTargetingCommand = BaseCommand & {
-  type: 'setForceFieldsBlockTargeting';
+export type SetForceFieldsObstructSightCommand = BaseCommand & {
+  type: 'setForceFieldsObstructSight';
   enabled: boolean;
 };
 
@@ -331,6 +331,6 @@ export type Command =
   | SetMaxTotalUnitsCommand
   | SetMirrorsEnabledCommand
   | SetForceFieldsEnabledCommand
-  | SetForceFieldsBlockTargetingCommand
+  | SetForceFieldsObstructSightCommand
   | SetForceFieldReflectionModeCommand
   | SetFogOfWarEnabledCommand;

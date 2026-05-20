@@ -13,6 +13,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -69,6 +70,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -120,6 +122,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -171,6 +174,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -222,6 +226,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -278,6 +283,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -337,6 +343,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -385,18 +392,19 @@
     "barrel": {
       "type": "coneMultiBarrel",
       "barrelCount": 3,
-      "barrelLength": 0.7,
+      "barrelLength": 0.1,
       "baseOrbit": 0,
-      "tipOrbit": 2,
+      "tipOrbit": 1,
       "spin": {
         "idle": 2,
-        "max": 10,
+        "max": 30,
         "accel": 10,
         "decel": 5
       }
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -449,6 +457,7 @@
     },
     "isManualFire": true,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -494,6 +503,7 @@
     },
     "isManualFire": false,
     "passive": true,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -548,6 +558,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -594,6 +605,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -640,6 +652,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -695,6 +708,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -751,6 +765,7 @@
     },
     "isManualFire": true,
     "passive": false,
+    "requiresNonObstructedLineOfSight": false,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -816,6 +831,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -862,6 +878,7 @@
     },
     "isManualFire": false,
     "passive": false,
+    "requiresNonObstructedLineOfSight": true,
     "rangeMultiplierOverrides": {
       "engageRangeMax": {
         "acquire": 0.95,
@@ -896,6 +913,55 @@
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLow",
+      "lockOnType": "lockOnToBody"
+    }
+  },
+  "fastRocketTurret": {
+    "id": "fastRocketTurret",
+    "projectileId": "fastRocket",
+    "range": 300,
+    "cooldown": 100,
+    "launchForce": 1200,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 3
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.fastRocketTurret"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 4
+    },
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     }
   }

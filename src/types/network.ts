@@ -470,7 +470,7 @@ export type NetworkServerSnapshotMeta = {
   units: { allowed?: string[]; max?: number; count?: number };
   mirrorsEnabled?: boolean;
   forceFieldsEnabled?: boolean;
-  forceFieldsBlockTargeting?: boolean;
+  forceFieldsObstructSight?: boolean;
   forceFieldReflectionMode?: ForceFieldReflectionMode;
   fogOfWarEnabled?: boolean;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).

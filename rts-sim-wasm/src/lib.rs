@@ -6174,7 +6174,7 @@ pub const CT_ENTITY_FLAG_FIRE_ENABLED: u8 = 1 << 2;
 pub const CT_ENTITY_FLAG_BUILDABLE_COMPLETE: u8 = 1 << 3;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
-pub const CT_TURRET_CFG_NEEDS_LOS: u8 = 1 << 0;
+pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u8 = 1 << 0;
 pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u8 = 1 << 1;
 pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u8 = 1 << 2;
 pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u8 = 1 << 3;
@@ -8591,7 +8591,7 @@ force_field_pool_ptr_export!(force_field_pool_radius_ptr, radius, f64);
 // lineOfSight.ts; the JS wrappers are now thin dispatchers.
 //
 // `exclude_owner_entity_id` is a legacy per-call exemption hook. The
-// current BLOCK LOS path passes sentinel -1 so every active boundary is
+// current OBSTRUCT SIGHT path passes sentinel -1 so every active boundary is
 // considered, including a shooter's own field.
 //
 // Graze epsilon: crossings within FORCE_FIELD_GRAZE_EPS of the segment
@@ -11481,8 +11481,8 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     mirrors_enabled: u8,
     has_force_fields_enabled: u8,
     force_fields_enabled: u8,
-    has_force_fields_block_targeting: u8,
-    force_fields_block_targeting: u8,
+    has_force_fields_obstruct_sight: u8,
+    force_fields_obstruct_sight: u8,
     has_force_field_reflection_mode: u8,
     force_field_reflection_mode_slot: u32,
     has_fog_of_war_enabled: u8,
@@ -11504,7 +11504,7 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     if has_force_fields_enabled != 0 {
         field_count += 1;
     }
-    if has_force_fields_block_targeting != 0 {
+    if has_force_fields_obstruct_sight != 0 {
         field_count += 1;
     }
     if has_force_field_reflection_mode != 0 {
@@ -11588,9 +11588,9 @@ pub fn snapshot_encode_envelope_emit_server_meta(
         w.write_str("forceFieldsEnabled");
         w.write_bool(force_fields_enabled != 0);
     }
-    if has_force_fields_block_targeting != 0 {
-        w.write_str("forceFieldsBlockTargeting");
-        w.write_bool(force_fields_block_targeting != 0);
+    if has_force_fields_obstruct_sight != 0 {
+        w.write_str("forceFieldsObstructSight");
+        w.write_bool(force_fields_obstruct_sight != 0);
     }
     if has_force_field_reflection_mode != 0 {
         w.write_str("forceFieldReflectionMode");

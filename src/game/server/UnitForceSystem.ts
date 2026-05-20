@@ -143,12 +143,20 @@ export class UnitForceSystem {
       const hasThrustDir = dirLenSq > 0.0001;
       const thrustInputMag = hasThrustDir ? Math.sqrt(dirLenSq) : 0;
       const thrustScale = Math.min(1, thrustInputMag);
+      const locomotionType = entity.unit.locomotion.type;
+      const isFlying = locomotionType === 'flying';
+      const isAirborne = locomotionType === 'hover' || locomotionType === 'flying';
 
       // Sleeping units that aren't being asked to thrust or react to a
       // force short-circuit before the heavier per-body work. `hasForce`
       // is a single Map.has (no allocation) where `getFinalForce` would
       // build a scratch tuple.
-      if (body.sleeping && !hasThrustDir && !forceAccumulator.hasForce(entity.id)) {
+      if (
+        body.sleeping &&
+        !isFlying &&
+        !hasThrustDir &&
+        !forceAccumulator.hasForce(entity.id)
+      ) {
         continue;
       }
 
@@ -165,7 +173,7 @@ export class UnitForceSystem {
       // the quaternion spring in the hover branch below so yaw,
       // pitch, and roll all evolve together as a damped continuous
       // motion.
-      if (hasThrustDir && entity.unit.locomotion.type !== 'hover') {
+      if (hasThrustDir && !isAirborne) {
         const nextRotation = Math.atan2(dirY, dirX);
         if (nextRotation !== entity.transform.rotation) {
           entity.transform.rotation = nextRotation;
@@ -177,9 +185,10 @@ export class UnitForceSystem {
       let thrustForceY = 0;
       let thrustForceZ = 0;
 
-      // Hover locomotion (drones, gunships). No ground contact, no
-      // slope projection. Lift force is inversely proportional to the
-      // distance from the ground directly below the unit:
+      // Airborne locomotion (hovercraft and flying units). No ground
+      // contact, no slope projection. Lift force is inversely
+      // proportional to the distance from the ground directly below
+      // the unit:
       //
       //   F_up = K / altitude,  K = m · g · hoverHeight
       //
@@ -190,8 +199,23 @@ export class UnitForceSystem {
       // unit clips into terrain during a violent push.
       //
       // Horizontal thrust is applied directly (no slope tangent) —
-      // hovers fly over arbitrary terrain at constant altitude.
-      if (entity.unit.locomotion.type === 'hover') {
+      // airborne units fly over arbitrary terrain at constant altitude.
+      if (isAirborne) {
+        let airDriveDirX = 0;
+        let airDriveDirY = 0;
+        let airHasDriveDir = false;
+        const airThrustScale = isFlying ? 1 : thrustScale;
+        if (hasThrustDir) {
+          const invDirMag = 1 / thrustInputMag;
+          airDriveDirX = dirX * invDirMag;
+          airDriveDirY = dirY * invDirMag;
+          airHasDriveDir = true;
+        } else if (isFlying) {
+          airDriveDirX = Math.cos(entity.transform.rotation);
+          airDriveDirY = Math.sin(entity.transform.rotation);
+          airHasDriveDir = true;
+        }
+
         const groundZ = this.world.getGroundZ(body.x, body.y);
         const altitude = Math.max(body.z - groundZ, 0.5);
         const hoverHeight = entity.unit.locomotion.hoverHeight ?? altitude;
@@ -222,19 +246,16 @@ export class UnitForceSystem {
         const vzDampPerMass = 2 * Math.sqrt(GRAVITY / hoverHeight);
         thrustForceZ = (liftK / altitude - mass * vzDampPerMass * body.vz) / 1e6;
 
-        if (hasThrustDir) {
-          const invDirMag = 1 / thrustInputMag;
-          const useDirX = dirX * invDirMag;
-          const useDirY = dirY * invDirMag;
+        if (airHasDriveDir) {
           const locomotionForce = getLocomotionForceProfile(
             entity.unit.locomotion,
             entity.unit.mass,
             this.world.thrustMultiplier,
             LOCOMOTION_FORCE_SCALE,
           );
-          const thrustMagnitude = locomotionForce.tractionForceMagnitude * thrustScale;
-          thrustForceX = useDirX * thrustMagnitude;
-          thrustForceY = useDirY * thrustMagnitude;
+          const thrustMagnitude = locomotionForce.tractionForceMagnitude * airThrustScale;
+          thrustForceX = airDriveDirX * thrustMagnitude;
+          thrustForceY = airDriveDirY * thrustMagnitude;
         }
 
         // Quaternion orientation spring. Target yaw points along the
@@ -257,8 +278,8 @@ export class UnitForceSystem {
         const omega = entity.unit.angularVelocity3;
         if (orientation && omega) {
           const currentYaw = quatYaw(orientation);
-          const targetYaw = hasThrustDir
-            ? Math.atan2(dirY, dirX)
+          const targetYaw = airHasDriveDir
+            ? Math.atan2(airDriveDirY, airDriveDirX)
             : currentYaw;
           const cosY = Math.cos(currentYaw);
           const sinY = Math.sin(currentYaw);
@@ -538,6 +559,13 @@ export class UnitForceSystem {
     const movingUnits = this.simulation.getMovingUnits();
     for (let i = 0; i < movingUnits.length; i++) {
       pushId(movingUnits[i].id);
+    }
+
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      if (units[i].unit?.locomotion.type === 'flying') {
+        pushId(units[i].id);
+      }
     }
 
     const candidates = this.physicsCandidateUnitIdsBuf;

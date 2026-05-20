@@ -261,11 +261,30 @@ export type HoverConfig = {
   fanSpinRadPerSec?: number;
 };
 
+/** Flying locomotion uses hover-style altitude physics, but the unit
+ *  continuously drives forward and renders wings plus rear jet exhaust
+ *  instead of downward hover fans. Dimensions are in unit-radius fractions. */
+export type FlyingConfig = {
+  hoverHeight: number;
+  wingSpan: number;
+  wingChord: number;
+  wingOffsetX: number;
+  wingHeight: number;
+  wingThickness?: number;
+  jetOffsetX: number;
+  jetOffsetY: number;
+  jetOffsetZ: number;
+  jetRadius: number;
+  jetLength: number;
+  jetSmokeSpeed?: number;
+};
+
 export type LocomotionBlueprint =
   | { type: 'wheels'; physics: LocomotionPhysics; config: WheelConfig }
   | { type: 'treads'; physics: LocomotionPhysics; config: TreadConfig }
   | { type: 'legs'; physics: LocomotionPhysics; config: LegConfig }
-  | { type: 'hover'; physics: LocomotionPhysics; config: HoverConfig };
+  | { type: 'hover'; physics: LocomotionPhysics; config: HoverConfig }
+  | { type: 'flying'; physics: LocomotionPhysics; config: FlyingConfig };
 
 export type UnitBodyShapePart =
   | {

@@ -154,12 +154,12 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>REFLECTIONS:</BarLabel>
+        <BarLabel>FORCE FIELDS:</BarLabel>
         <BarButton
-          :active="model.currentForceFieldsBlockTargeting"
-          title="Force fields block turret lock-on through their boundary (applies to every turret, both directions)"
-          @click="model.setForceFieldsBlockTargeting(!model.currentForceFieldsBlockTargeting)"
-        >BLOCK LOS</BarButton>
+          :active="model.currentForceFieldsObstructSight"
+          title="Force fields obstruct turret sight through their boundary (applies to every turret, both directions)"
+          @click="model.setForceFieldsObstructSight(!model.currentForceFieldsObstructSight)"
+        >OBSTRUCT SIGHT</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

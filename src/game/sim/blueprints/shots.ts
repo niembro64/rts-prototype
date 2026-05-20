@@ -58,6 +58,24 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
         `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
       );
     }
+    if (blueprint.type === 'rocket') {
+      if (
+        !Number.isFinite(blueprint.maxLifespan) ||
+        blueprint.maxLifespan! <= 0
+      ) {
+        throw new Error(
+          `Shot blueprint ${id} must define positive maxLifespan for rocket expiry`,
+        );
+      }
+    } else if (
+      blueprint.maxLifespan !== undefined &&
+      blueprint.maxLifespan !== null &&
+      (!Number.isFinite(blueprint.maxLifespan) || blueprint.maxLifespan <= 0)
+    ) {
+      throw new Error(
+        `Shot blueprint ${id} has invalid maxLifespan: expected positive finite milliseconds`,
+      );
+    }
   } else {
     assertExplicitFields(`shot blueprint ${id}`, blueprint, LINE_EXPLICIT_FIELDS);
   }

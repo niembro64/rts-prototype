@@ -50,7 +50,7 @@
     "id": "lightRocket",
     "mass": 4,
     "collision": {
-      "radius": 2
+      "radius": 0.6
     },
     "explosion": {
       "radius": 30,
@@ -58,6 +58,7 @@
       "force": 800
     },
     "detonateOnExpiry": true,
+    "maxLifespan": 6000,
     "hitSound": {
       "$audio": "event.hit.lightRocket"
     },
@@ -68,6 +69,36 @@
       "emitFramesSkip": 0,
       "startRadius": 1,
       "endRadius": 8,
+      "startAlpha": 0.9,
+      "color": 13421772
+    },
+    "shape": null,
+    "cylinderShape": null
+  },
+  "fastRocket": {
+    "type": "rocket",
+    "id": "fastRocket",
+    "mass": 3,
+    "collision": {
+      "radius": 0.7
+    },
+    "explosion": {
+      "radius": 36,
+      "damage": 24,
+      "force": 800
+    },
+    "detonateOnExpiry": true,
+    "maxLifespan": 4500,
+    "hitSound": {
+      "$audio": "event.hit.fastRocket"
+    },
+    "submunitions": null,
+    "homingTurnRate": 10,
+    "homingThrust": 9000,
+    "smokeTrail": {
+      "emitFramesSkip": 0,
+      "startRadius": 1,
+      "endRadius": 7,
       "startAlpha": 0.9,
       "color": 13421772
     },

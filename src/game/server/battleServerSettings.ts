@@ -1,7 +1,7 @@
 import type { BattleMode } from '../../battleBarConfig';
 import {
   loadStoredForceFieldReflectionMode,
-  loadStoredForceFieldsBlockTargeting,
+  loadStoredForceFieldsObstructSight,
   loadStoredForceFieldsEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredGrid,
@@ -58,9 +58,9 @@ export function applyStoredBattleServerSettings(
     enabled: loadStoredForceFieldsEnabled(mode),
   }, authority);
   server.receiveCommand({
-    type: 'setForceFieldsBlockTargeting',
+    type: 'setForceFieldsObstructSight',
     tick: 0,
-    enabled: loadStoredForceFieldsBlockTargeting(mode),
+    enabled: loadStoredForceFieldsObstructSight(mode),
   }, authority);
   server.receiveCommand({
     type: 'setForceFieldReflectionMode',

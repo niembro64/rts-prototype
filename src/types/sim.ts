@@ -166,6 +166,14 @@ export type Unit = {
   actions: UnitAction[];
   actionHash: number;
   patrolStartIndex: number | null;
+  /** Flying-only loiter center. When a flying unit exhausts its action
+   *  queue, it keeps steering around this last destination instead of
+   *  dropping thrust and drifting off-map. */
+  flyingLoiterTargetX?: number;
+  flyingLoiterTargetY?: number;
+  flyingLoiterTargetZ?: number;
+  /** Flying-only orbit direction around the loiter center. */
+  flyingLoiterTurnSign?: number;
   velocityX?: number;
   velocityY?: number;
   velocityZ?: number;
@@ -323,6 +331,9 @@ export type TurretConfig = {
   burst?: { count?: number; delay?: number };
   isManualFire?: boolean;
   passive?: boolean;
+  /** Actual terrain/entity line-of-sight gate for this turret. Cross
+   *  force-field sight obstruction is a separate battle setting. */
+  requiresNonObstructedLineOfSight: boolean;
   /** Undefined for visual-only construction emitters. Those turrets
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */
@@ -449,10 +460,11 @@ export type Turret = {
   ballisticAimInRange: boolean;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
-  /** Consecutive ticks the line of sight to `target` has been
-   *  blocked. Direct-fire turrets stop firing the first blocked tick
-   *  (engaged → tracking) and drop the lock entirely once this
-   *  exceeds LOS_DROP_GRACE_TICKS. Reset to 0 whenever the target
+  /** Consecutive ticks the sight path to `target` has been blocked
+   *  by actual LOS occlusion or force-field sight obstruction.
+   *  Direct-fire turrets stop firing the first blocked tick
+   *  (engaged -> tracking) and drop the lock entirely once this
+   *  exceeds SIGHT_DROP_GRACE_TICKS. Reset to 0 whenever the target
    *  changes or the sightline reopens. */
   losBlockedTicks: number;
   /** Round-robin pointer across the physical barrels on this turret.

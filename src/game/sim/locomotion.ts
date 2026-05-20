@@ -8,6 +8,9 @@ export const LOCOMOTION_TRACTION = {
   // Hover units have no terrain contact patch; the "traction" here is
   // applied as a uniform horizontal-thrust scalar (1.0 = full authority).
   hover: 1.0,
+  // Flying units share hover-style lift and horizontal force authority,
+  // but the force system keeps applying forward thrust even with no order.
+  flying: 1.0,
 } as const;
 
 export const LOCOMOTION_FORCE_SCALE = 150000;
@@ -21,6 +24,8 @@ export const LOCOMOTION_MAX_SLOPE_DEG: Record<LocomotionType, number> = {
   // Hovers fly over arbitrary terrain — set near 90° so pathfinding
   // treats every land cell as traversable.
   hover: 89,
+  // Flying units use the same traversal rule as hovers.
+  flying: 89,
 };
 
 function assertPositiveFinite(label: string, value: number): void {
@@ -59,11 +64,11 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   assertPositiveFinite(`${type}.traction`, physics.traction);
   const maxSlopeDeg = physics.maxSlopeDeg ?? LOCOMOTION_MAX_SLOPE_DEG[type];
   assertSlopeDegrees(`${type}.maxSlopeDeg`, maxSlopeDeg);
-  const hoverHeight = type === 'hover'
+  const hoverHeight = type === 'hover' || type === 'flying'
     ? locomotion.config.hoverHeight
     : undefined;
-  if (type === 'hover') {
-    assertPositiveFinite('hover.hoverHeight', hoverHeight ?? NaN);
+  if (type === 'hover' || type === 'flying') {
+    assertPositiveFinite(`${type}.hoverHeight`, hoverHeight ?? NaN);
   }
   return {
     type,

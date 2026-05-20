@@ -18,6 +18,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'launchForce',
   'isManualFire',
   'passive',
+  'requiresNonObstructedLineOfSight',
   'spread',
   'burst',
   'forceField',

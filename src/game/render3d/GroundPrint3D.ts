@@ -357,7 +357,7 @@ export class GroundPrint3D {
       this.colDirty = true;
     }
 
-    this.refreshGroundedUnits(units, mapWidth, mapHeight);
+    this.refreshGroundedUnits(units, getMesh, mapWidth, mapHeight);
 
     // Below the floor, skip the emit pass — keep the smoothed
     // density alive so the next frame can pick up smoothly. Ground
@@ -437,6 +437,7 @@ export class GroundPrint3D {
 
   private refreshGroundedUnits(
     units: readonly Entity[],
+    getMesh: (e: Entity) => Locomotion3DMesh,
     mapWidth: number,
     mapHeight: number,
   ): void {
@@ -445,7 +446,11 @@ export class GroundPrint3D {
 
     for (const e of units) {
       this._activeUnitIds.add(e.id);
-      if (isLocomotionGrounded(e, mapWidth, mapHeight)) {
+      const loc = getMesh(e);
+      const grounded = loc?.type === 'legs'
+        ? loc.visualGrounded
+        : isLocomotionGrounded(e, mapWidth, mapHeight);
+      if (grounded) {
         this._groundedUnitIds.add(e.id);
       }
     }

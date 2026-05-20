@@ -1,10 +1,11 @@
-// Line-of-sight gating for direct-fire turrets.
+// Terrain/entity line-of-sight gating for direct-fire turrets.
 //
 // High-arc shells lob over hills, force-field emitters are area effects,
 // and mirror panels rotate toward unseen threats — none of those care
 // about world occlusion. Everything else (cannons, beams, lasers,
 // gatlings) needs a clear sightline from its turret head to the target
-// aim point before it can lock on or keep firing.
+// aim point before it can lock on or keep firing. Cross-force-field
+// sight obstruction is a separate targeting gate.
 
 import { LAND_CELL_SIZE } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
@@ -25,25 +26,19 @@ const COMBAT_LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE + 2 * Math.max(
 );
 const NO_EXCLUDED_ENTITY = -1;
 const FORCE_MATERIAL_GRAZE_EPS = 1e-6;
-const MIRROR_LOS_QUERY_PAD = 1;
-const _mirrorLosPivot = { x: 0, y: 0, z: 0 };
+const MIRROR_SIGHT_QUERY_PAD = 1;
+const _mirrorSightPivot = { x: 0, y: 0, z: 0 };
 
-/** Ticks of consecutive LOS occlusion before a tracked target is
+/** Ticks of consecutive sight obstruction before a tracked target is
  *  dropped entirely. Engagement (firing) is gated immediately on the
  *  first blocked tick; the grace only delays the full lock-loss so a
  *  unit briefly clipping a corner doesn't restart the spatial-grid
  *  reacquisition cycle. ~67 ms at 60 TPS. */
-export const LOS_DROP_GRACE_TICKS = 4;
+export const SIGHT_DROP_GRACE_TICKS = 4;
 
 /** Whether this turret's targeting must respect line-of-sight occlusion. */
-export function weaponNeedsLineOfSight(weapon: Turret): boolean {
-  const cfg = weapon.config;
-  if (cfg.id === 'droppingMortarTurret') return false;
-  if (cfg.aimStyle.angleType === 'ballisticArcHigh') return false;
-  if (cfg.verticalLauncher) return false;
-  if (cfg.shot?.type === 'force') return false;
-  if (cfg.passive) return false;
-  return true;
+export function weaponRequiresNonObstructedLineOfSight(weapon: Turret): boolean {
+  return weapon.config.requiresNonObstructedLineOfSight;
 }
 
 export type ForceFieldClearanceOptions = {
@@ -65,8 +60,8 @@ const NO_EXCLUDED_OWNER = -1;
  *  boundary at any point strictly inside the segment.
  *
  *  Use this for straight visibility checks against force-field spheres.
- *  `hasForceMaterialLineOfSightClearance` layers mirror-panel
- *  boundaries on top for BLOCK LOS targeting.
+ *  `hasForceMaterialSightClearance` layers mirror-panel
+ *  boundaries on top for OBSTRUCT SIGHT targeting.
  *
  *  Implementation: dispatches to the Rust `force_field_clearance_segment`
  *  kernel, which reads the FF pool slab stamped each tick by
@@ -101,7 +96,7 @@ export function hasForceFieldClearance(
  *  Implementation: dispatches to the Rust `force_field_clearance_arc`
  *  kernel, which chord-samples the parabola so the same "endpoints
  *  don't count" rule applies as for the straight test.
- *  Targeting uses `hasForceMaterialLineOfSightClearance`; keep this
+ *  Targeting uses `hasForceMaterialSightClearance`; keep this
  *  helper for callers that need projectile-path clearance. */
 export function hasArcForceFieldClearance(
   launchX: number, launchY: number, launchZ: number,
@@ -170,7 +165,7 @@ function hasForceMirrorPanelClearance(
     if (!unit.unit || unit.unit.hp <= 0) continue;
     const panels = unit.unit.mirrorPanels;
     if (!panels || panels.length === 0) continue;
-    const broadRadius = Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot) + MIRROR_LOS_QUERY_PAD;
+    const broadRadius = Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot) + MIRROR_SIGHT_QUERY_PAD;
     if (
       pointSegmentDistanceSq3(
         unit.transform.x, unit.transform.y, unit.transform.z,
@@ -199,7 +194,7 @@ function hasForceMirrorPanelClearance(
             unitGroundZ,
             surfaceN: unit.unit.surfaceNormal,
           },
-          _mirrorLosPivot,
+          _mirrorSightPivot,
         )
       : undefined;
     const hit = findClosestPanelHit(
@@ -226,7 +221,7 @@ function hasForceMirrorPanelClearance(
  *  This is intentionally a visibility test, not a projectile-flight
  *  prediction. If both endpoints are inside the same sphere, no
  *  boundary is crossed and the sightline remains clear. */
-export function hasForceMaterialLineOfSightClearance(
+export function hasForceMaterialSightClearance(
   world: WorldState,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,

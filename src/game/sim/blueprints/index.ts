@@ -320,6 +320,9 @@ function buildShotConfig(
     collision: shotBlueprint.collision,
     explosion: shotBlueprint.explosion ?? undefined,
     detonateOnExpiry: shotBlueprint.detonateOnExpiry || undefined,
+    maxLifespan: Number.isFinite(shotBlueprint.maxLifespan)
+      ? shotBlueprint.maxLifespan!
+      : undefined,
     homingTurnRate: shotBlueprint.homingTurnRate ?? undefined,
     homingThrust: shotBlueprint.homingThrust ?? undefined,
     submunitions: shotBlueprint.submunitions ?? undefined,
@@ -411,6 +414,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     rangeOverrides: turretBlueprint.rangeMultiplierOverrides,
     eventsSmooth: turretBlueprint.eventsSmooth,
     shot: shot ?? undefined,
+    requiresNonObstructedLineOfSight: turretBlueprint.requiresNonObstructedLineOfSight,
     aimStyle: { ...turretBlueprint.aimStyle },
     verticalLauncher: turretBlueprint.verticalLauncher,
     idlePitch: turretBlueprint.idlePitch,

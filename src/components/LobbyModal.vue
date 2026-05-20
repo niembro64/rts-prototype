@@ -31,7 +31,7 @@ const props = defineProps<{
   unitTypes: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
-  forceFieldsBlockTargeting: boolean;
+  forceFieldsObstructSight: boolean;
   fogOfWarEnabled: boolean;
   previewLoading: boolean;
 }>();
@@ -49,7 +49,7 @@ const emit = defineEmits<{
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
-  (e: 'setForceFieldsBlockTargeting', enabled: boolean): void;
+  (e: 'setForceFieldsObstructSight', enabled: boolean): void;
   (e: 'setFogOfWarEnabled', enabled: boolean): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
@@ -122,9 +122,9 @@ function pickUnitCap(cap: number): void {
   emit('setUnitCap', cap);
 }
 
-function pickForceFieldsBlockTargeting(enabled: boolean): void {
+function pickForceFieldsObstructSight(enabled: boolean): void {
   if (!props.isHost) return;
-  emit('setForceFieldsBlockTargeting', enabled);
+  emit('setForceFieldsObstructSight', enabled);
 }
 
 function pickFogOfWar(enabled: boolean): void {
@@ -582,14 +582,14 @@ const terrainSectionVars = computed(() =>
               </BarButtonGroup>
             </div>
             <div class="terrain-control-row">
-              <div class="terrain-control-label">REFLECTIONS:</div>
+              <div class="terrain-control-label">FORCE FIELDS:</div>
               <BarButtonGroup>
                 <BarButton
                   size="large"
-                  :active="forceFieldsBlockTargeting"
-                  :title="isHost ? 'Force fields block turret lock-on through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
-                  @click="pickForceFieldsBlockTargeting(!forceFieldsBlockTargeting)"
-                >BLOCK LOS</BarButton>
+                  :active="forceFieldsObstructSight"
+                  :title="isHost ? 'Force fields obstruct turret sight through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
+                  @click="pickForceFieldsObstructSight(!forceFieldsObstructSight)"
+                >OBSTRUCT SIGHT</BarButton>
               </BarButtonGroup>
             </div>
             <div class="terrain-control-row">

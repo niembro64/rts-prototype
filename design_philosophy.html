@@ -750,6 +750,25 @@
         its primitives are; uniformity is in the shape of the contract, not in the bits.
       </p>
 
+      <h3>Visual contact is sticky</h3>
+      <p>
+        The renderer must not reuse the physics ground-contact epsilon as the sole answer for
+        locomotion animation. The sim epsilon is intentionally tiny because it gates spring,
+        friction, sleep, thrust, and collision behavior. Visual rigs need a separate, frontend-only
+        contact band with hysteresis: acquire ground when the chassis is near the terrain, keep the
+        grounded pose while the body remains within a larger release band or while planted feet are
+        still reachable, and only transition to airborne posing once the visual contradiction is
+        unmistakable.
+      </p>
+      <p>
+        For legs, the stable unit of truth is the foot, not the chassis. A planted foot keeps its
+        world position until a deliberate step swing begins. Brief chassis bob, snapshot drift,
+        suspension state, or a one-frame miss in strict body contact must not reset the gait or
+        re-seat feet at their rest points. When a legged unit really leaves the ground, feet move
+        smoothly into an airborne pose; when it returns, each foot swings to a terrain plant instead
+        of being initialized in place.
+      </p>
+
       <h3>Floor clamping is a hard invariant, not a tunable</h3>
       <ul class="rule-list">
         <li>The clamp is non-optional. Every rig writes
@@ -774,7 +793,9 @@
         surface normal &mdash; the client already has. Computing this on the server and shipping
         it would burn bandwidth on per-frame visual state that only matters within the next
         render call. Compute it locally, render it, throw it away. Putting any of it on the wire
-        is what got us into the jump-state-on-the-wire mess in the first place.
+        is what got us into the jump-state-on-the-wire mess in the first place. Networked
+        suspension/contact fields may influence body presentation, but they must not be the
+        authoritative source for whether a foot remains visually planted.
       </p>
     </section>
 

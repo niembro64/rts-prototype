@@ -105,6 +105,10 @@ export type ProjectileShotBlueprint = {
   explosion: ShotExplosion | null;
   /** When true, terminal impacts/timeouts run detonation logic. */
   detonateOnExpiry: boolean;
+  /** Maximum active time in milliseconds. Required for rocket shots so
+   *  guidance missiles do not live forever if they never hit. Null or
+   *  omitted on non-rockets means no age-based expiry. */
+  maxLifespan?: number | null;
   hitSound: SoundEntry | null;
   /** Cluster behavior. */
   submunitions: SubmunitionSpec | null;
@@ -188,6 +192,8 @@ export type ProjectileShot = {
   explosion?: ShotExplosion;
   /** When true, terminal impacts/timeouts run detonation logic. */
   detonateOnExpiry?: boolean;
+  /** Maximum active time in milliseconds. Undefined means no age-based expiry. */
+  maxLifespan?: number;
   homingTurnRate?: number;
   /** In-flight thrust budget in world-unit-newtons. Steering acceleration
    *  is bounded by `homingThrust / mass`. Undefined for non-homing shots. */
@@ -333,10 +339,13 @@ export function isRocketLikeShot(shot: ShotConfig): boolean {
 }
 
 /** Static max active time for runtime shot entities. Traveling shots
- *  are physical bodies and do not carry authored time-to-live values. */
+ *  can opt into authored time-to-live values; otherwise they terminate
+ *  through collision/ground physics. */
 export function getShotMaxLifespan(shot: ShotConfig, fallbackLifespan: number = 2000): number {
   if (shot.type === 'beam') return Infinity;
   if (shot.type === 'laser') return shot.duration;
-  if (shot.type === 'plasma' || shot.type === 'rocket') return Infinity;
+  if (shot.type === 'plasma' || shot.type === 'rocket') {
+    return Number.isFinite(shot.maxLifespan) ? shot.maxLifespan! : Infinity;
+  }
   return fallbackLifespan;
 }

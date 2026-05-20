@@ -52,6 +52,30 @@ function applyEconomyInfo(dest: EconomyInfo, src: EconomyInfo): void {
   dest.buildings.extractor = src.buildings.extractor;
 }
 
+function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshotMeta {
+  // Full-snapshot buffering can reuse and mutate this object; publish a
+  // fresh graph so Vue invalidates bar computed values every snapshot.
+  return {
+    ticks: { ...meta.ticks },
+    snaps: { ...meta.snaps },
+    server: { ...meta.server },
+    grid: meta.grid,
+    units: {
+      allowed: meta.units.allowed ? [...meta.units.allowed] : undefined,
+      max: meta.units.max,
+      count: meta.units.count,
+    },
+    mirrorsEnabled: meta.mirrorsEnabled,
+    forceFieldsEnabled: meta.forceFieldsEnabled,
+    forceFieldsObstructSight: meta.forceFieldsObstructSight,
+    forceFieldReflectionMode: meta.forceFieldReflectionMode,
+    fogOfWarEnabled: meta.fogOfWarEnabled,
+    cpu: meta.cpu ? { ...meta.cpu } : undefined,
+    wind: meta.wind ? { ...meta.wind } : undefined,
+    unitGroundNormalEma: meta.unitGroundNormalEma,
+  };
+}
+
 export function useGameCanvasSceneUi({
   activePlayer,
   gameOverWinner,
@@ -122,7 +146,7 @@ export function useGameCanvasSceneUi({
         applyMinimapCameraQuad(minimapData, quad, cameraYaw);
       },
       onServerMetaUpdate: (meta) => {
-        serverMetaFromSnapshot.value = meta;
+        serverMetaFromSnapshot.value = cloneServerMeta(meta);
       },
       ...(includeGameLifecycle
         ? {

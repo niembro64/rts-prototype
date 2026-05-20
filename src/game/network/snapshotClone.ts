@@ -396,7 +396,7 @@ export class ReusableNetworkSnapshotCloner {
       dunits.count = sm.units.count;
       dsm.mirrorsEnabled = sm.mirrorsEnabled;
       dsm.forceFieldsEnabled = sm.forceFieldsEnabled;
-      dsm.forceFieldsBlockTargeting = sm.forceFieldsBlockTargeting;
+      dsm.forceFieldsObstructSight = sm.forceFieldsObstructSight;
       dsm.forceFieldReflectionMode = sm.forceFieldReflectionMode;
       dsm.fogOfWarEnabled = sm.fogOfWarEnabled;
       if (sm.cpu) {

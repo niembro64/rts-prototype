@@ -5,7 +5,7 @@
 //   stampForceFieldPool — runs BEFORE updateTargetingAndFiringState.
 //     The AIM-08.2 force-field clearance kernels read the FF slab
 //     during the FSM, so the slab must be current-tick data on entry.
-//     Respects world.forceFieldsBlockTargeting; when the feature is
+//     Respects world.forceFieldsObstructSight; when the feature is
 //     disabled the slab is rebuilt at count=0 so the kernels return
 //     "clear" without inspecting individual fields.
 //
@@ -20,7 +20,7 @@
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
 import { getActiveForceFields } from './forceFieldTurret';
-import { weaponNeedsLineOfSight } from './lineOfSight';
+import { weaponRequiresNonObstructedLineOfSight } from './lineOfSight';
 import { getEntityPosition3d, getEntityVelocity3d } from './combatUtils';
 import { setWeaponTarget } from './targetIndex';
 import {
@@ -28,7 +28,7 @@ import {
   CT_ENTITY_FLAG_HAS_COMBAT,
   CT_ENTITY_FLAG_FIRE_ENABLED,
   CT_ENTITY_FLAG_BUILDABLE_COMPLETE,
-  CT_TURRET_CFG_NEEDS_LOS,
+  CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS,
   CT_TURRET_CFG_NEEDS_BALLISTIC,
   CT_TURRET_CFG_VERTICAL_LAUNCHER,
   CT_TURRET_CFG_IS_MANUAL_FIRE,
@@ -109,7 +109,7 @@ function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): numbe
 
 function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   let f = 0;
-  if (weaponNeedsLineOfSight(turret)) f |= CT_TURRET_CFG_NEEDS_LOS;
+  if (weaponRequiresNonObstructedLineOfSight(turret)) f |= CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS;
   const angle = turret.config.aimStyle.angleType;
   if (
     angle === 'ballisticArcLow' ||
@@ -134,14 +134,14 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
  *  read current-tick force-field sphere data. Mirror-panel blockers
  *  are checked from live JS geometry in the targeting gate.
  *
- *  When world.forceFieldsBlockTargeting is false, the slab is rebuilt
+ *  When world.forceFieldsObstructSight is false, the slab is rebuilt
  *  at count=0 instead. The kernels short-circuit on empty pools and
  *  return "clear", matching the JS `_emptyForceFields` substitution. */
 export function stampForceFieldPool(world: WorldState): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   const fields = sim.forceFieldPool;
-  if (!world.forceFieldsBlockTargeting) {
+  if (!world.forceFieldsObstructSight) {
     fields.setCount(0);
     return;
   }

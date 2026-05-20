@@ -37,7 +37,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly terrainDividers: TerrainShape;
   readonly terrainMapShape: TerrainMapShape;
   readonly displayUnitCount: number;
-  readonly currentForceFieldsBlockTargeting: boolean;
+  readonly currentForceFieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
@@ -46,7 +46,7 @@ export type GameCanvasBattleControlBarModel = {
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyTerrainShape(kind: 'center' | 'dividers', shape: TerrainShape): void;
   applyTerrainMapShape(shape: TerrainMapShape): void;
-  setForceFieldsBlockTargeting(enabled: boolean): void;
+  setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
 };
 

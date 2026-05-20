@@ -35,7 +35,6 @@ import type { Entity } from '../sim/types';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
-  isLocomotionGrounded,
   getLocomotionSurfaceHeight,
   getLocomotionSurfaceNormal,
   sampleLocomotionFootSurface,
@@ -43,6 +42,7 @@ import {
 import {
   type LocomotionBase,
   easeOutCubic,
+  emaAlpha,
   kneeFromIK,
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
@@ -115,6 +115,19 @@ const AIRBORNE_MAX_REACH_FRACTION = 0.96;
 const AIRBORNE_BASE_EXTENSION = 0.65;
 const AIRBORNE_NEAR_GROUND_REACH_FRACTION = 1.2;
 const AIRBORNE_DESCENT_SPEED_FOR_FULL_EXTENSION = 45;
+const AIRBORNE_FOOT_POSE_TAU_SEC = 0.12;
+const MIN_LEG_SWING_DURATION_MS = 80;
+
+// Render-only contact band for leg gait. Physics contact uses a tiny
+// epsilon because it gates spring/friction/sleep; visual walkers need
+// hysteresis so one-frame chassis bob does not reset planted feet.
+const VISUAL_GROUND_ACQUIRE_BUFFER_FRAC = 0.08;
+const VISUAL_GROUND_RELEASE_BUFFER_FRAC = 0.16;
+const VISUAL_GROUND_ACQUIRE_BUFFER_MIN = 0.75;
+const VISUAL_GROUND_ACQUIRE_BUFFER_MAX = 4;
+const VISUAL_GROUND_RELEASE_BUFFER_MIN = 1.5;
+const VISUAL_GROUND_RELEASE_BUFFER_MAX = 8;
+const PLANTED_REACH_RELEASE_MARGIN = 1.04;
 
 // LEGS-radius debug viz: a wireframe SPHERE in world space at the
 // leg's rest center, scaled to stepRadius. A real 3D ball, not a
@@ -223,6 +236,14 @@ export type LegMesh = {
    *  Tick, but two legs of the same unit always agree on how far a
    *  foot can wander before snapping. */
   stepRadius: number;
+  /** Longest authored leg on the unit. Used by render-only contact
+   *  hysteresis so chassis bob is judged relative to what the feet
+   *  can plausibly absorb. */
+  maxLegLength: number;
+  /** Frontend-only gait contact state. This deliberately does not
+   *  reuse sim `legContact`: feet can remain visually planted while
+   *  the chassis is inside the visual release band. */
+  visualGrounded: boolean;
 } & LocomotionBase;
 
 /** Per-leg state worth surviving a mesh rebuild — every
@@ -415,6 +436,8 @@ export function buildLegs(
     config: cfg,
     legLod,
     stepRadius,
+    maxLegLength,
+    visualGrounded: true,
     geometryKey: '',
   };
 }
@@ -466,7 +489,16 @@ export function updateLegs(
   const bodyCenterHeight = getUnitBodyCenterHeight(entity.unit);
   const stepRadius = mesh.stepRadius;
   const showViz = getLegsRadiusToggle();
-  const grounded = isLocomotionGrounded(entity, mapWidth, mapHeight);
+  const wasVisualGrounded = mesh.visualGrounded;
+  const grounded = resolveVisualLegGrounded(
+    mesh,
+    entity,
+    bodyCenterHeight,
+    mapWidth,
+    mapHeight,
+  );
+  mesh.visualGrounded = grounded;
+  const touchingDown = !wasVisualGrounded && grounded;
   // Chassis-UP direction in three.js world coords — the surface
   // normal at the unit's footprint, mapped from sim (sim z up) to
   // three (sim z → three y). Sampled once per unit per frame and
@@ -490,6 +522,7 @@ export function updateLegs(
     updateAirborneLegPose(
       mesh,
       entity,
+      dtMs,
       bodyCenterHeight,
       mapWidth,
       mapHeight,
@@ -551,29 +584,28 @@ export function updateLegs(
       initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius);
     }
 
+    let startedTouchdownStep = false;
+    if (touchingDown) {
+      beginLegStepToRest(
+        leg,
+        restLocalX,
+        restLocalY,
+        restLocalZ,
+        vLocalForward,
+        vLocalLateral,
+        stepRadius,
+        entity,
+        bodyCenterHeight,
+        mapWidth,
+        mapHeight,
+      );
+      startedTouchdownStep = true;
+    }
+
     // Lerp the foot through 3D world space when mid-step. Otherwise
     // the foot is PLANTED — its world XYZ doesn't change at all.
     if (leg.isSliding) {
-      if (leg.lerpDuration <= 0) {
-        leg.worldX = leg.targetWorldX;
-        leg.worldY = leg.targetWorldY;
-        leg.worldZ = leg.targetWorldZ;
-        leg.isSliding = false;
-      } else {
-        leg.lerpProgress += dtMs / leg.lerpDuration;
-        if (leg.lerpProgress >= 1) {
-          leg.lerpProgress = 1;
-          leg.worldX = leg.targetWorldX;
-          leg.worldY = leg.targetWorldY;
-          leg.worldZ = leg.targetWorldZ;
-          leg.isSliding = false;
-        } else {
-          const t = easeOutCubic(leg.lerpProgress);
-          leg.worldX = leg.startWorldX + (leg.targetWorldX - leg.startWorldX) * t;
-          leg.worldY = leg.startWorldY + (leg.targetWorldY - leg.startWorldY) * t;
-          leg.worldZ = leg.startWorldZ + (leg.targetWorldZ - leg.startWorldZ) * t;
-        }
-      }
+      advanceLegSlide(leg, dtMs);
     }
 
     // REST-SPHERE TRIGGER. Test foot ↔ rest center in 3D world
@@ -595,12 +627,13 @@ export function updateLegs(
     // re-trigger to a fresh target.
     if (
       leg.isSliding
+      && !startedTouchdownStep
       && distSq > stepRSq * SLIDE_INTERRUPT_FRACTION * SLIDE_INTERRUPT_FRACTION
     ) {
       leg.isSliding = false;
     }
 
-    if (!leg.isSliding && distSq > stepRSq) {
+    if (!startedTouchdownStep && !leg.isSliding && distSq > stepRSq) {
       // Snap target = REST POSITION + velocity lookahead. The foot
       // lifts and lands near home, then drift restarts. The
       // lookahead in chassis-local frame shifts the target along
@@ -618,35 +651,19 @@ export function updateLegs(
       // the foot lands outside, and the trigger fires again
       // immediately on the next tick — visually reading as
       // "dragging" because each step is a no-op micro-snap.
-      const lookaheadT = leg.lerpDuration / 1000;
-      let offsetX = vLocalForward * lookaheadT;
-      let offsetZ = vLocalLateral * lookaheadT;
-      const offsetMag = Math.hypot(offsetX, offsetZ);
-      const offsetMax = stepRadius * SNAP_LOOKAHEAD_MAX_FRACTION;
-      if (offsetMag > offsetMax) {
-        const scale = offsetMax / offsetMag;
-        offsetX *= scale;
-        offsetZ *= scale;
-      }
-      const targetLocalX = restLocalX + offsetX;
-      const targetLocalY = restLocalY;
-      const targetLocalZ = restLocalZ + offsetZ;
-      transformChassisToWorld(
-        targetLocalX, targetLocalY, targetLocalZ,
-        entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      beginLegStepToRest(
+        leg,
+        restLocalX,
+        restLocalY,
+        restLocalZ,
+        vLocalForward,
+        vLocalLateral,
+        stepRadius,
+        entity,
+        bodyCenterHeight,
+        mapWidth,
+        mapHeight,
       );
-      const tWorldX = _worldOut.x;
-      const tWorldZ = _worldOut.z;
-      // Y comes from actual terrain at the chosen XZ — feet always
-      // land on real ground, not a plane through the rest center.
-      const groundY = getLocomotionSurfaceHeight(tWorldX, tWorldZ, mapWidth, mapHeight);
-
-      leg.startWorldX = leg.worldX; leg.startWorldY = leg.worldY; leg.startWorldZ = leg.worldZ;
-      leg.targetWorldX = tWorldX;
-      leg.targetWorldY = groundY;
-      leg.targetWorldZ = tWorldZ;
-      leg.isSliding = true;
-      leg.lerpProgress = 0;
     }
 
     // Clamp visual leg length to physical reach so a fast snap or
@@ -705,12 +722,167 @@ function clamp01(value: number): number {
   return value;
 }
 
+function clampRange(value: number, min: number, max: number): number {
+  if (value <= min) return min;
+  if (value >= max) return max;
+  return value;
+}
+
+function visualGroundBuffer(maxLegLength: number, currentlyGrounded: boolean): number {
+  if (currentlyGrounded) {
+    return clampRange(
+      maxLegLength * VISUAL_GROUND_RELEASE_BUFFER_FRAC,
+      VISUAL_GROUND_RELEASE_BUFFER_MIN,
+      VISUAL_GROUND_RELEASE_BUFFER_MAX,
+    );
+  }
+  return clampRange(
+    maxLegLength * VISUAL_GROUND_ACQUIRE_BUFFER_FRAC,
+    VISUAL_GROUND_ACQUIRE_BUFFER_MIN,
+    VISUAL_GROUND_ACQUIRE_BUFFER_MAX,
+  );
+}
+
+function legSwingDurationMs(leg: LegInstance): number {
+  const d = Number.isFinite(leg.lerpDuration) ? leg.lerpDuration : 0;
+  return Math.max(MIN_LEG_SWING_DURATION_MS, d);
+}
+
+function beginLegSlideTo(
+  leg: LegInstance,
+  targetX: number,
+  targetY: number,
+  targetZ: number,
+): void {
+  leg.startWorldX = leg.worldX;
+  leg.startWorldY = leg.worldY;
+  leg.startWorldZ = leg.worldZ;
+  leg.targetWorldX = targetX;
+  leg.targetWorldY = targetY;
+  leg.targetWorldZ = targetZ;
+  leg.isSliding = true;
+  leg.lerpProgress = 0;
+  leg.lerpDuration = legSwingDurationMs(leg);
+  leg.initialized = true;
+}
+
+function beginLegStepToRest(
+  leg: LegInstance,
+  restLocalX: number,
+  restLocalY: number,
+  restLocalZ: number,
+  vLocalForward: number,
+  vLocalLateral: number,
+  stepRadius: number,
+  entity: Entity,
+  bodyCenterHeight: number,
+  mapWidth: number,
+  mapHeight: number,
+): void {
+  const lookaheadT = legSwingDurationMs(leg) / 1000;
+  let offsetX = vLocalForward * lookaheadT;
+  let offsetZ = vLocalLateral * lookaheadT;
+  const offsetMag = Math.hypot(offsetX, offsetZ);
+  const offsetMax = stepRadius * SNAP_LOOKAHEAD_MAX_FRACTION;
+  if (offsetMag > offsetMax) {
+    const scale = offsetMax / offsetMag;
+    offsetX *= scale;
+    offsetZ *= scale;
+  }
+
+  transformChassisToWorld(
+    restLocalX + offsetX,
+    restLocalY,
+    restLocalZ + offsetZ,
+    entity,
+    bodyCenterHeight,
+    mapWidth,
+    mapHeight,
+    _worldOut,
+  );
+  const targetX = _worldOut.x;
+  const targetZ = _worldOut.z;
+  const targetY = getLocomotionSurfaceHeight(targetX, targetZ, mapWidth, mapHeight);
+  beginLegSlideTo(leg, targetX, targetY, targetZ);
+}
+
+function advanceLegSlide(leg: LegInstance, dtMs: number): void {
+  const duration = legSwingDurationMs(leg);
+  leg.lerpDuration = duration;
+  leg.lerpProgress += Math.max(0, dtMs) / duration;
+  if (leg.lerpProgress >= 1) {
+    leg.lerpProgress = 1;
+    leg.worldX = leg.targetWorldX;
+    leg.worldY = leg.targetWorldY;
+    leg.worldZ = leg.targetWorldZ;
+    leg.isSliding = false;
+    return;
+  }
+
+  const t = easeOutCubic(leg.lerpProgress);
+  leg.worldX = leg.startWorldX + (leg.targetWorldX - leg.startWorldX) * t;
+  leg.worldY = leg.startWorldY + (leg.targetWorldY - leg.startWorldY) * t;
+  leg.worldZ = leg.startWorldZ + (leg.targetWorldZ - leg.startWorldZ) * t;
+}
+
+function resolveVisualLegGrounded(
+  mesh: LegMesh,
+  entity: Entity,
+  bodyCenterHeight: number,
+  mapWidth: number,
+  mapHeight: number,
+): boolean {
+  const groundY = getLocomotionSurfaceHeight(
+    entity.transform.x,
+    entity.transform.y,
+    mapWidth,
+    mapHeight,
+  );
+  const bodyBaseY = entity.transform.z - bodyCenterHeight;
+  const clearance = bodyBaseY - groundY;
+  if (clearance <= visualGroundBuffer(mesh.maxLegLength, mesh.visualGrounded)) {
+    return true;
+  }
+
+  return mesh.visualGrounded && hasReachablePlantedFoot(
+    mesh,
+    entity,
+    bodyCenterHeight,
+    mapWidth,
+    mapHeight,
+  );
+}
+
+function hasReachablePlantedFoot(
+  mesh: LegMesh,
+  entity: Entity,
+  bodyCenterHeight: number,
+  mapWidth: number,
+  mapHeight: number,
+): boolean {
+  for (const leg of mesh.legs) {
+    if (!leg.initialized || leg.isSliding) continue;
+    const c = leg.config;
+    transformChassisToWorld(
+      c.attachOffsetX, leg.hipY, c.attachOffsetY,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+    );
+    const dx = leg.worldX - _worldOut.x;
+    const dy = leg.worldY - _worldOut.y;
+    const dz = leg.worldZ - _worldOut.z;
+    const reach = totalLegLength(c) * PLANTED_REACH_RELEASE_MARGIN;
+    if (dx * dx + dy * dy + dz * dz <= reach * reach) return true;
+  }
+  return false;
+}
+
 // Scratch output struct reused across the per-leg loop.
 const _worldOut = { x: 0, y: 0, z: 0 };
 
 function updateAirborneLegPose(
   mesh: LegMesh,
   entity: Entity,
+  dtMs: number,
   bodyCenterHeight: number,
   mapWidth: number,
   mapHeight: number,
@@ -728,6 +900,7 @@ function updateAirborneLegPose(
   );
   const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
   const descentSpeed = Math.max(0, -(entity.unit?.velocityZ ?? 0));
+  const poseAlpha = emaAlpha(Math.max(0, dtMs) / 1000, AIRBORNE_FOOT_POSE_TAU_SEC);
 
   for (const leg of mesh.legs) {
     if (leg.restSphere) leg.restSphere.visible = false;
@@ -789,38 +962,57 @@ function updateAirborneLegPose(
       touchdownLocalX, footLocalY, touchdownLocalZ,
       entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
     );
-    const footX = _worldOut.x;
-    const footZ = _worldOut.z;
-    const footSurface = sampleLocomotionFootSurface(
-      footX,
-      footZ,
+    const targetFootX = _worldOut.x;
+    const targetFootZ = _worldOut.z;
+    const targetFootSurface = sampleLocomotionFootSurface(
+      targetFootX,
+      targetFootZ,
       mapWidth,
       mapHeight,
       footCylinderRadius,
       leg.footPadHalfHeight,
       FOOT_PAD_GROUND_CLEARANCE,
     );
-    const footY = Math.max(_worldOut.y, footSurface.visualFootY);
+    const targetFootY = Math.max(_worldOut.y, targetFootSurface.visualFootY);
 
-    leg.worldX = footX;
-    leg.worldY = footY;
-    leg.worldZ = footZ;
-    leg.startWorldX = footX;
-    leg.startWorldY = footY;
-    leg.startWorldZ = footZ;
-    leg.targetWorldX = footX;
-    leg.targetWorldY = footY;
-    leg.targetWorldZ = footZ;
-    leg.isSliding = false;
+    if (!leg.initialized) {
+      leg.worldX = targetFootX;
+      leg.worldY = targetFootY;
+      leg.worldZ = targetFootZ;
+      leg.initialized = true;
+    } else {
+      leg.worldX += (targetFootX - leg.worldX) * poseAlpha;
+      leg.worldY += (targetFootY - leg.worldY) * poseAlpha;
+      leg.worldZ += (targetFootZ - leg.worldZ) * poseAlpha;
+    }
+
+    const footSurface = sampleLocomotionFootSurface(
+      leg.worldX,
+      leg.worldZ,
+      mapWidth,
+      mapHeight,
+      footCylinderRadius,
+      leg.footPadHalfHeight,
+      FOOT_PAD_GROUND_CLEARANCE,
+    );
+    if (leg.worldY < footSurface.groundY) leg.worldY = footSurface.groundY;
+    const footY = Math.max(leg.worldY, footSurface.visualFootY);
+
+    leg.startWorldX = leg.worldX;
+    leg.startWorldY = leg.worldY;
+    leg.startWorldZ = leg.worldZ;
+    leg.targetWorldX = targetFootX;
+    leg.targetWorldY = targetFootY;
+    leg.targetWorldZ = targetFootZ;
+    leg.isSliding = true;
     leg.lerpProgress = 0;
-    leg.initialized = false;
 
     writeLegRenderPose(
       mesh,
       leg,
       legRenderer,
       hipWorldX, hipWorldY, hipWorldZ,
-      footX, footY, footZ,
+      leg.worldX, footY, leg.worldZ,
       footSurface.nx, footSurface.nz, footSurface.ny,
       chassisUpX, chassisUpY, chassisUpZ,
     );

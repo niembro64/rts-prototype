@@ -917,7 +917,7 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isOptionalFiniteNumber(meta.units.count) ||
     !isOptionalBoolean(meta.mirrorsEnabled) ||
     !isOptionalBoolean(meta.forceFieldsEnabled) ||
-    !isOptionalBoolean(meta.forceFieldsBlockTargeting) ||
+    !isOptionalBoolean(meta.forceFieldsObstructSight) ||
     (
       meta.forceFieldReflectionMode !== undefined &&
       typeof meta.forceFieldReflectionMode !== 'string'
@@ -1000,8 +1000,8 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.mirrorsEnabled === true ? 1 : 0,
     meta.forceFieldsEnabled !== undefined ? 1 : 0,
     meta.forceFieldsEnabled === true ? 1 : 0,
-    meta.forceFieldsBlockTargeting !== undefined ? 1 : 0,
-    meta.forceFieldsBlockTargeting === true ? 1 : 0,
+    meta.forceFieldsObstructSight !== undefined ? 1 : 0,
+    meta.forceFieldsObstructSight === true ? 1 : 0,
     meta.forceFieldReflectionMode !== undefined ? 1 : 0,
     forceFieldReflectionModeSlot,
     meta.fogOfWarEnabled !== undefined ? 1 : 0,

@@ -53,7 +53,7 @@ export const BATTLE_CONFIG = {
   },
   mirrorsEnabled: { default: true },
   forceFieldsEnabled: { default: true },
-  forceFieldsBlockTargeting: { default: true },
+  forceFieldsObstructSight: { default: true },
   fogOfWarEnabled: { default: true },
   forceFieldReflectionMode: {
     default: 'both',
@@ -142,8 +142,8 @@ const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
 const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
 const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
 const STORAGE_REAL_FORCE_FIELDS_ENABLED = 'real-battle-force-fields-enabled';
-const STORAGE_DEMO_FORCE_FIELDS_BLOCK_TARGETING = 'demo-battle-force-fields-block-targeting';
-const STORAGE_REAL_FORCE_FIELDS_BLOCK_TARGETING = 'real-battle-force-fields-block-targeting';
+const STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT = 'demo-battle-force-fields-obstruct-sight';
+const STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT = 'real-battle-force-fields-obstruct-sight';
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = 'demo-battle-fog-of-war-enabled';
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = 'real-battle-fog-of-war-enabled';
 const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = 'demo-battle-force-field-reflection-mode';
@@ -176,6 +176,9 @@ const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
   ['rts-real-grid', STORAGE_REAL_GRID],
   ['rts-mirrors-enabled', STORAGE_DEMO_MIRRORS_ENABLED],
   ['rts-force-fields-enabled', STORAGE_DEMO_FORCE_FIELDS_ENABLED],
+  ['rts-force-fields-block-targeting', STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT],
+  ['demo-battle-force-fields-block-targeting', STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT],
+  ['real-battle-force-fields-block-targeting', STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT],
   ['rts-fog-of-war-enabled', STORAGE_DEMO_FOG_OF_WAR_ENABLED],
   ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
   ['rts-terrain-dividers', STORAGE_DEMO_TERRAIN_DIVIDERS],
@@ -376,20 +379,20 @@ export function saveForceFieldsEnabled(_enabled: boolean, mode: BattleMode): voi
   );
 }
 
-export function loadStoredForceFieldsBlockTargeting(mode: BattleMode): boolean {
+export function loadStoredForceFieldsObstructSight(mode: BattleMode): boolean {
   return loadModeBool(
     mode,
-    STORAGE_REAL_FORCE_FIELDS_BLOCK_TARGETING,
-    STORAGE_DEMO_FORCE_FIELDS_BLOCK_TARGETING,
-    BATTLE_CONFIG.forceFieldsBlockTargeting.default,
+    STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT,
+    STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT,
+    BATTLE_CONFIG.forceFieldsObstructSight.default,
   );
 }
 
-export function saveForceFieldsBlockTargeting(enabled: boolean, mode: BattleMode): void {
+export function saveForceFieldsObstructSight(enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_FORCE_FIELDS_BLOCK_TARGETING
-      : STORAGE_DEMO_FORCE_FIELDS_BLOCK_TARGETING,
+      ? STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT
+      : STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT,
     String(enabled),
   );
 }

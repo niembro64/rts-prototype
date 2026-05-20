@@ -6,7 +6,7 @@ import {
   getDefaultDemoUnits,
   loadStoredFogOfWarEnabled,
   saveDemoUnits,
-  saveForceFieldsBlockTargeting,
+  saveForceFieldsObstructSight,
   saveFogOfWarEnabled,
   saveStoredCap,
   type BattleMode,
@@ -21,12 +21,12 @@ export type GameCanvasBattleSettings = {
    *  .includes on every parent re-render. */
   currentAllowedUnitsSet: ComputedRef<ReadonlySet<string>>;
   allDemoUnitsActive: ComputedRef<boolean>;
-  currentForceFieldsBlockTargeting: ComputedRef<boolean>;
+  currentForceFieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   toggleDemoUnitType(unitType: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
-  setForceFieldsBlockTargeting(enabled: boolean): void;
+  setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   resetDemoDefaults(): void;
 };
@@ -65,10 +65,10 @@ export function useGameCanvasBattleSettings({
     }
     return true;
   });
-  const currentForceFieldsBlockTargeting = computed(
+  const currentForceFieldsObstructSight = computed(
     () =>
-      serverMetaFromSnapshot.value?.forceFieldsBlockTargeting ??
-      BATTLE_CONFIG.forceFieldsBlockTargeting.default,
+      serverMetaFromSnapshot.value?.forceFieldsObstructSight ??
+      BATTLE_CONFIG.forceFieldsObstructSight.default,
   );
   const currentFogOfWarEnabled = computed(
     () =>
@@ -114,9 +114,9 @@ export function useGameCanvasBattleSettings({
     saveStoredCap(currentBattleMode.value, value);
   }
 
-  function setForceFieldsBlockTargeting(enabled: boolean): void {
-    getActiveConnection()?.sendCommand({ type: 'setForceFieldsBlockTargeting', tick: 0, enabled });
-    saveForceFieldsBlockTargeting(enabled, currentBattleMode.value);
+  function setForceFieldsObstructSight(enabled: boolean): void {
+    getActiveConnection()?.sendCommand({ type: 'setForceFieldsObstructSight', tick: 0, enabled });
+    saveForceFieldsObstructSight(enabled, currentBattleMode.value);
   }
 
   function setFogOfWarEnabled(enabled: boolean): void {
@@ -138,7 +138,7 @@ export function useGameCanvasBattleSettings({
     }
     saveDemoUnits(defaultUnits);
     changeMaxTotalUnits(getDefaultCap(currentBattleMode.value));
-    setForceFieldsBlockTargeting(BATTLE_CONFIG.forceFieldsBlockTargeting.default);
+    setForceFieldsObstructSight(BATTLE_CONFIG.forceFieldsObstructSight.default);
     setFogOfWarEnabled(getDefaultFogOfWar(currentBattleMode.value));
     resetTerrainDefaults();
     resetGridInfoToDefault();
@@ -149,12 +149,12 @@ export function useGameCanvasBattleSettings({
     currentAllowedUnits,
     currentAllowedUnitsSet,
     allDemoUnitsActive,
-    currentForceFieldsBlockTargeting,
+    currentForceFieldsObstructSight,
     currentFogOfWarEnabled,
     toggleDemoUnitType,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
-    setForceFieldsBlockTargeting,
+    setForceFieldsObstructSight,
     setFogOfWarEnabled,
     resetDemoDefaults,
   };

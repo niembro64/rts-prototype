@@ -16,7 +16,7 @@ export type ServerSnapshotMetaInput = {
   unitCount?: number;
   mirrorsEnabled?: boolean;
   forceFieldsEnabled?: boolean;
-  forceFieldsBlockTargeting?: boolean;
+  forceFieldsObstructSight?: boolean;
   forceFieldReflectionMode?: ForceFieldReflectionMode;
   fogOfWarEnabled?: boolean;
   tickMsAvg: number;
@@ -67,7 +67,7 @@ export class ServerSnapshotMetaBuilder {
       },
       mirrorsEnabled: input.mirrorsEnabled,
       forceFieldsEnabled: input.forceFieldsEnabled,
-      forceFieldsBlockTargeting: input.forceFieldsBlockTargeting,
+      forceFieldsObstructSight: input.forceFieldsObstructSight,
       forceFieldReflectionMode: input.forceFieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,
       cpu: { avg: cpuAvg, hi: cpuHi },

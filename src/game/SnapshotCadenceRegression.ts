@@ -122,7 +122,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setMaxTotalUnits':
     case 'setMirrorsEnabled':
     case 'setForceFieldsEnabled':
-    case 'setForceFieldsBlockTargeting':
+    case 'setForceFieldsObstructSight':
     case 'setForceFieldReflectionMode':
     case 'setFogOfWarEnabled':
       return false;

@@ -52,6 +52,10 @@ export function getDefaultLocomotionBodyLiftY(
       // sits at chassis-local Y=0 and the inverse-distance lift
       // integrator owns the body's world-space altitude entirely.
       return 0;
+    case 'flying':
+      // Flying units use hover-style altitude physics with visual
+      // wings/jets instead of contact gear.
+      return 0;
   }
 }
 

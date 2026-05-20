@@ -22,10 +22,10 @@ import {
   solveTurretAimAtGroundPoint,
 } from './aimSolver';
 import {
-  LOS_DROP_GRACE_TICKS,
+  SIGHT_DROP_GRACE_TICKS,
   hasCombatLineOfSight,
-  hasForceMaterialLineOfSightClearance,
-  weaponNeedsLineOfSight,
+  hasForceMaterialSightClearance,
+  weaponRequiresNonObstructedLineOfSight,
 } from './lineOfSight';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 import { getActiveForceFields } from './forceFieldTurret';
@@ -61,7 +61,7 @@ let _fsmMirrorValid = new Uint8Array(0);
 let _fsmLosClear = new Uint8Array(0);
 let _fsmBallisticClear = new Uint8Array(0);
 let _fsmForceFieldClear = new Uint8Array(0);
-let _fsmLosBlocked = new Uint8Array(0);
+let _fsmSightBlocked = new Uint8Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
 // AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
 // candidates into flat arrays; Rust owns score/rank/top-K/fallback.
@@ -118,7 +118,7 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _fsmLosClear = new Uint8Array(next);
   _fsmBallisticClear = new Uint8Array(next);
   _fsmForceFieldClear = new Uint8Array(next);
-  _fsmLosBlocked = new Uint8Array(next);
+  _fsmSightBlocked = new Uint8Array(next);
   _candidateSeedRanks = new Uint8Array(next);
   _candidateSeedDistSqs = new Float64Array(next);
   _candidateSeedMirrorScores = new Float64Array(next);
@@ -133,7 +133,7 @@ function clearFsmGateScratch(count: number): void {
   _fsmLosClear.fill(0, 0, count);
   _fsmBallisticClear.fill(0, 0, count);
   _fsmForceFieldClear.fill(0, 0, count);
-  _fsmLosBlocked.fill(0, 0, count);
+  _fsmSightBlocked.fill(0, 0, count);
 }
 
 function getTargetingKernel() {
@@ -273,7 +273,7 @@ function hasWeaponLineOfSight(
   weaponY: number,
   weaponZ: number,
 ): boolean {
-  if (!weaponNeedsLineOfSight(weapon)) return true;
+  if (!weaponRequiresNonObstructedLineOfSight(weapon)) return true;
   const targetPoint = resolveTargetAimPoint(
     target,
     weaponX, weaponY, weaponZ,
@@ -304,7 +304,7 @@ function hasWeaponLineOfSightToPoint(
   weaponY: number,
   weaponZ: number,
 ): boolean {
-  if (!weaponNeedsLineOfSight(weapon)) return true;
+  if (!weaponRequiresNonObstructedLineOfSight(weapon)) return true;
   return hasCombatLineOfSight(
     world,
     weaponX, weaponY, weaponZ,
@@ -314,25 +314,26 @@ function hasWeaponLineOfSightToPoint(
   );
 }
 
-function weaponNeedsForceMaterialLineOfSight(weapon: Turret): boolean {
+function weaponRequiresForceMaterialSightClearance(weapon: Turret): boolean {
   if (weapon.config.shot?.type === 'force') return false;
   if (weapon.config.passive) return false;
   return true;
 }
 
-/** Force-material visibility clearance for a turret aiming at a target
- *  entity. Runs regardless of `weaponNeedsLineOfSight`: when BLOCK LOS
- *  is enabled, damaging turrets cannot lock across an active
- *  force-field sphere boundary or force mirror panel. Endpoints on the
- *  same side of a boundary, including two points inside the same
- *  sphere, remain clear. Force-field emitters and passive mirror
- *  turrets keep their utility locks so they can maintain/aim the
- *  force material.
+/** Force-material sight clearance for a turret aiming at a target
+ *  entity. Runs regardless of actual terrain/entity LOS: when force
+ *  fields obstruct sight, damaging turrets cannot lock across an
+ *  active force-field sphere boundary or force mirror panel. Endpoints
+ *  on the same side of a boundary, including two points inside the
+ *  same sphere, remain clear. Force-field emitters and passive mirror
+ *  turrets keep their utility locks so they can maintain/aim the force
+ *  material.
  *
- *  `forceMaterialBlockersActive` is the per-tick fast-path flag: false
- *  when the feature is disabled or no force-material blockers exist;
- *  lets the caller skip the aim-point resolve and blocker tests. */
-function hasWeaponForceMaterialClearance(
+ *  `forceMaterialSightObstructionActive` is the per-tick fast-path flag:
+ *  false when the feature is disabled or no force-material blockers
+ *  exist; lets the caller skip the aim-point resolve and blocker
+ *  tests. */
+function hasWeaponForceMaterialSightClearance(
   world: WorldState,
   source: Entity,
   weapon: Turret,
@@ -340,10 +341,10 @@ function hasWeaponForceMaterialClearance(
   weaponX: number,
   weaponY: number,
   weaponZ: number,
-  forceMaterialBlockersActive: boolean,
+  forceMaterialSightObstructionActive: boolean,
 ): boolean {
-  if (!weaponNeedsForceMaterialLineOfSight(weapon)) return true;
-  if (!forceMaterialBlockersActive) return true;
+  if (!weaponRequiresForceMaterialSightClearance(weapon)) return true;
+  if (!forceMaterialSightObstructionActive) return true;
   const targetPoint = resolveTargetAimPoint(
     target,
     weaponX, weaponY, weaponZ,
@@ -354,25 +355,25 @@ function hasWeaponForceMaterialClearance(
       currentTick: world.getTick(),
     },
   );
-  return hasForceMaterialLineOfSightClearance(
+  return hasForceMaterialSightClearance(
     world,
     weaponX, weaponY, weaponZ,
     targetPoint.x, targetPoint.y, targetPoint.z,
   );
 }
 
-function hasWeaponForceMaterialClearanceToPoint(
+function hasWeaponForceMaterialSightClearanceToPoint(
   world: WorldState,
   weapon: Turret,
   point: Vec3,
   weaponX: number,
   weaponY: number,
   weaponZ: number,
-  forceMaterialBlockersActive: boolean,
+  forceMaterialSightObstructionActive: boolean,
 ): boolean {
-  if (!weaponNeedsForceMaterialLineOfSight(weapon)) return true;
-  if (!forceMaterialBlockersActive) return true;
-  return hasForceMaterialLineOfSightClearance(
+  if (!weaponRequiresForceMaterialSightClearance(weapon)) return true;
+  if (!forceMaterialSightObstructionActive) return true;
+  return hasForceMaterialSightClearance(
     world,
     weaponX, weaponY, weaponZ,
     point.x, point.y, point.z,
@@ -432,7 +433,7 @@ let _gateWorld: WorldState | null = null;
 let _gateSource: Entity | null = null;
 let _gateWeapons: Turret[] | null = null;
 let _gateCandidates: Entity[] | null = null;
-let _gateForceMaterialBlockersActive = false;
+let _gateForceMaterialSightObstructionActive = false;
 
 function clearTargetGateContext(): void {
   _gateWorld = null;
@@ -464,12 +465,12 @@ function targetCandidatePassesFireGates(turretIdx: number, candidateIdx: number)
     weaponX,
     weaponY,
     weaponZ,
-    weaponNeedsLineOfSight(weapon),
-    _gateForceMaterialBlockersActive,
+    weaponRequiresNonObstructedLineOfSight(weapon),
+    _gateForceMaterialSightObstructionActive,
   );
 }
 
-/** Combined LOS + force-field + ballistic gate for a single candidate.
+/** Combined actual-LOS + force-field-sight + ballistic gate for one candidate.
  *  Returns true only when the weapon could actually fire on this
  *  target right now. The gates run in increasing cost order, with one
  *  ordering invariant retained from the old path: ballistic viability
@@ -484,21 +485,24 @@ function passesWeaponFireGates(
   weaponX: number,
   weaponY: number,
   weaponZ: number,
-  needsLOS: boolean,
-  forceMaterialBlockersActive: boolean,
+  requiresNonObstructedLineOfSight: boolean,
+  forceMaterialSightObstructionActive: boolean,
 ): boolean {
-  if (needsLOS && !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
+  if (
+    requiresNonObstructedLineOfSight &&
+    !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)
+  ) {
     return false;
   }
   if (!hasWeaponBallisticSolution(world, source, weapon, weaponIndex, enemy, weaponX, weaponY, weaponZ)) {
     return false;
   }
   if (
-    forceMaterialBlockersActive &&
-    !hasWeaponForceMaterialClearance(
+    forceMaterialSightObstructionActive &&
+    !hasWeaponForceMaterialSightClearance(
       world, source, weapon, enemy,
       weaponX, weaponY, weaponZ,
-      forceMaterialBlockersActive,
+      forceMaterialSightObstructionActive,
     )
   ) {
     return false;
@@ -515,7 +519,7 @@ function chooseBestTargetCandidatesBatch(
   rankMode: TargetRankMode,
   minimumRank: TargetPreferenceRank,
   includeMirrorScores: boolean,
-  forceMaterialBlockersActive: boolean,
+  forceMaterialSightObstructionActive: boolean,
 ): void {
   const sourcePlayerId = source.ownership?.playerId;
   fillTargetCandidateInputs(world, source, includeMirrorScores, sourcePlayerId, candidates);
@@ -523,7 +527,7 @@ function chooseBestTargetCandidatesBatch(
   _gateSource = source;
   _gateWeapons = weapons;
   _gateCandidates = candidates;
-  _gateForceMaterialBlockersActive = forceMaterialBlockersActive;
+  _gateForceMaterialSightObstructionActive = forceMaterialSightObstructionActive;
 
   try {
     getTargetingKernel().chooseBestCandidatesBatch(
@@ -593,9 +597,10 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 // Two modes per unit:
 //
 // 1) ATTACK MODE (priorityTargetId set by attack command):
-//    Weapons try the priority target exclusively. Direct-fire weapons
-//    only lock while LOS is clear. Uses the hard max fire envelope, not
-//    the broader tracking/search range.
+//    Weapons try the priority target exclusively. Weapons only lock
+//    while their actual LOS and force-field sight gates are clear.
+//    Uses the hard max fire envelope, not the broader tracking/search
+//    range.
 //    The unit is already moving toward the target via the attack action handler.
 //
 // 2) AUTO MODE (no priorityTargetId):
@@ -621,9 +626,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   // Force-material gate fast-path. Sphere boundaries are stamped into
   // the Rust FF slab before the FSM; mirror panels are checked from
   // live JS geometry. This flag lets common ticks skip aim-point
-  // resolve and blocker walks when BLOCK LOS is off or no force
+  // resolve and blocker walks when OBSTRUCT SIGHT is off or no force
   // material is active.
-  const forceMaterialBlockersActive = world.forceFieldsBlockTargeting
+  const forceMaterialSightObstructionActive = world.forceFieldsObstructSight
     && (
       getActiveForceFields().length > 0 ||
       (world.mirrorsEnabled && world.getMirrorUnits().length > 0)
@@ -757,8 +762,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           ? hasWeaponBallisticSolutionToPoint(world, unit, weapon, wi, priorityPoint, wpx, wpy, wpz)
           : false;
         const ffClear = ballisticClear
-          ? hasWeaponForceMaterialClearanceToPoint(
-              world, weapon, priorityPoint, wpx, wpy, wpz, forceMaterialBlockersActive,
+          ? hasWeaponForceMaterialSightClearanceToPoint(
+              world, weapon, priorityPoint, wpx, wpy, wpz, forceMaterialSightObstructionActive,
             )
           : false;
         _fsmApplyMask[wi] = 1;
@@ -826,10 +831,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             ? hasWeaponBallisticSolution(world, unit, weapon, wi, priorityTarget, wpx, wpy, wpz)
             : false;
           const ffClear = ballisticClear
-            ? hasWeaponForceMaterialClearance(
+            ? hasWeaponForceMaterialSightClearance(
                 world, unit, weapon, priorityTarget,
                 wpx, wpy, wpz,
-                forceMaterialBlockersActive,
+                forceMaterialSightObstructionActive,
               )
             : false;
           _fsmApplyMask[wi] = 1;
@@ -889,27 +894,27 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       _fsmMirrorValid[wi] = mirrorValid ? 1 : 0;
       if (!targetIsValid || !target || !mirrorValid) {
         _fsmBallisticClear[wi] = 0;
-        _fsmLosBlocked[wi] = 0;
+        _fsmSightBlocked[wi] = 0;
       } else {
         const wpx = weapon.worldPos.x;
         const wpy = weapon.worldPos.y;
         const wpz = weapon.worldPos.z;
         const ballisticClear = hasWeaponBallisticSolution(world, unit, weapon, wi, target, wpx, wpy, wpz);
 
-        // LOS gating: a blocked sightline (direct-fire terrain/entity
-        // occluders) or an intervening force-field sphere demotes
-        // engaged → tracking immediately so the turret stops firing
-        // blind. A small grace counter then runs before dropping the
-        // lock entirely so a brief clip doesn't restart the
-        // spatial-grid reacquisition cycle. Force-material blocking
-        // is a sightline rule: if the turret-to-target segment crosses
-        // a shield sphere boundary or mirror panel, the target is
-        // across the boundary and lock is blocked.
+        // Sight gating: actual terrain/entity LOS occlusion or
+        // force-field sight obstruction demotes engaged -> tracking
+        // immediately so the turret stops firing blind. A small grace
+        // counter then runs before dropping the lock entirely so a
+        // brief clip doesn't restart the spatial-grid reacquisition
+        // cycle. Force-material blocking is a sightline rule: if the
+        // turret-to-target segment crosses a shield sphere boundary or
+        // mirror panel, the target is across the boundary and lock is
+        // blocked.
         // Utility force emitters / passive mirrors are exempt inside
-        // hasWeaponForceMaterialClearance so they can keep the
+        // hasWeaponForceMaterialSightClearance so they can keep the
         // material alive and aimed.
-        const losBlocked = ballisticClear && (
-          (weaponNeedsLineOfSight(weapon) &&
+        const sightBlocked = ballisticClear && (
+          (weaponRequiresNonObstructedLineOfSight(weapon) &&
             !hasWeaponLineOfSight(
               world,
               unit,
@@ -917,17 +922,17 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
               target,
               wpx, wpy, wpz,
             )) ||
-          !hasWeaponForceMaterialClearance(
+          !hasWeaponForceMaterialSightClearance(
             world,
             unit,
             weapon,
             target,
             wpx, wpy, wpz,
-            forceMaterialBlockersActive,
+            forceMaterialSightObstructionActive,
           )
         );
         _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
-        _fsmLosBlocked[wi] = losBlocked ? 1 : 0;
+        _fsmSightBlocked[wi] = sightBlocked ? 1 : 0;
       }
     }
     targeting.validateExistingLockFsmBatch(
@@ -936,8 +941,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       _fsmObservable,
       _fsmMirrorValid,
       _fsmBallisticClear,
-      _fsmLosBlocked,
-      LOS_DROP_GRACE_TICKS,
+      _fsmSightBlocked,
+      SIGHT_DROP_GRACE_TICKS,
     );
     writeBackCombatTargetingEntity(unit);
 
@@ -1025,7 +1030,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           TARGETING_RANK_MODE_FIRE,
           TARGET_RANK_FIRE_FALLBACK,
           (firePrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0,
-          forceMaterialBlockersActive,
+          forceMaterialSightObstructionActive,
         );
       }
     }
@@ -1057,7 +1062,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           TARGETING_RANK_MODE_ACQUISITION,
           TARGET_RANK_TRACKING_ONLY,
           (acquisitionPrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0,
-          forceMaterialBlockersActive,
+          forceMaterialSightObstructionActive,
         );
       }
     }

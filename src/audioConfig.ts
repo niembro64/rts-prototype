@@ -103,6 +103,11 @@ export const AUDIO = {
         volume: 0.4,
         playSpeed: 0.2,
       },
+      fastRocketTurret: {
+        synth: 'burst-rifle' as SynthId,
+        volume: 0.35,
+        playSpeed: 0.25,
+      },
       cannonTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 0.8 },
       mortarTurret: { synth: 'cannon' as SynthId, volume: 0.2, playSpeed: 1.0 },
       droppingMortarTurret: { synth: 'cannon' as SynthId, volume: 0.18, playSpeed: 1.25 },
@@ -129,6 +134,7 @@ export const AUDIO = {
     hit: {
       lightShot: { synth: 'heavy' as SynthId, volume: 0.2, playSpeed: 0.5 },
       lightRocket: { synth: 'heavy' as SynthId, volume: 0.3, playSpeed: 0.3 },
+      fastRocket: { synth: 'heavy' as SynthId, volume: 0.45, playSpeed: 0.24 },
       mediumShot: { synth: 'heavy' as SynthId, volume: 0.5, playSpeed: 0.2 },
       mortarShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.1 },
       heavyShot: { synth: 'heavy' as SynthId, volume: 1.0, playSpeed: 0.05 },
@@ -154,6 +160,7 @@ export const AUDIO = {
       loris: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.3 },
       mosquito: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.35 },
       dragonfly: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
+      eagle: { synth: 'explosion' as SynthId, volume: 1.0, playSpeed: 0.25 },
     } satisfies Record<UnitTypeId, SoundEntry>,
   },
 

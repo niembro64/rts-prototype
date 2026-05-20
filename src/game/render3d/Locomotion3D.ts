@@ -44,9 +44,20 @@ import {
   buildHoverFans,
   updateHoverFans,
 } from './HoverRig3D';
+import {
+  type FlyingMesh,
+  buildFlyingRig,
+  updateFlyingRig,
+} from './FlyingRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
-export type Locomotion3DMesh = TreadMesh | WheelMesh | LegMesh | HoverMesh | undefined;
+export type Locomotion3DMesh =
+  | TreadMesh
+  | WheelMesh
+  | LegMesh
+  | HoverMesh
+  | FlyingMesh
+  | undefined;
 
 export type { LegStateSnapshot };
 export { TREAD_HEIGHT };
@@ -134,6 +145,11 @@ export function buildLocomotion(
       mesh.geometryKey = geometryKey;
       return mesh;
     }
+    case 'flying': {
+      const mesh = buildFlyingRig(unitGroup, unitRadius, loc.config, entity.id);
+      mesh.geometryKey = geometryKey;
+      return mesh;
+    }
   }
 }
 
@@ -161,6 +177,9 @@ export function updateLocomotion(
       return;
     case 'hover':
       updateHoverFans(mesh, entity, dtMs, mapWidth, mapHeight, hoverSmokeEmitters);
+      return;
+    case 'flying':
+      updateFlyingRig(mesh, entity, dtMs, hoverSmokeEmitters);
       return;
   }
 }

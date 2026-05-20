@@ -13,7 +13,8 @@
     "formik",
     "hippo",
     "mosquito",
-    "dragonfly"
+    "dragonfly",
+    "eagle"
   ],
   "defaultDisabledDemoUnitIds": []
 }
