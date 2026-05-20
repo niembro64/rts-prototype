@@ -164,6 +164,17 @@ import __wbg_init, {
   combat_targeting_turret_aim_error_pitch_ptr,
   combat_targeting_turret_los_blocked_ticks_ptr,
   combat_targeting_turret_config_flags_ptr,
+  combat_targeting_turret_ballistic_has_solution_ptr,
+  combat_targeting_turret_ballistic_flight_time_ptr,
+  combat_targeting_turret_ballistic_launch_vx_ptr,
+  combat_targeting_turret_ballistic_launch_vy_ptr,
+  combat_targeting_turret_ballistic_launch_vz_ptr,
+  combat_targeting_turret_ballistic_yaw_ptr,
+  combat_targeting_turret_ballistic_pitch_ptr,
+  combat_targeting_turret_ballistic_aim_x_ptr,
+  combat_targeting_turret_ballistic_aim_y_ptr,
+  combat_targeting_turret_ballistic_aim_z_ptr,
+  combat_targeting_solve_ballistic_aim,
   combat_targeting_rank_target,
   combat_targeting_choose_best_candidate,
   force_field_pool_clear,
@@ -951,6 +962,44 @@ export interface CombatTargetingApi {
   readonly turretAimErrorPitchPtr: () => number;
   readonly turretLosBlockedTicksPtr: () => number;
   readonly turretConfigFlagsPtr: () => number;
+  readonly turretBallisticHasSolutionPtr: () => number;
+  readonly turretBallisticFlightTimePtr: () => number;
+  readonly turretBallisticLaunchVxPtr: () => number;
+  readonly turretBallisticLaunchVyPtr: () => number;
+  readonly turretBallisticLaunchVzPtr: () => number;
+  readonly turretBallisticYawPtr: () => number;
+  readonly turretBallisticPitchPtr: () => number;
+  readonly turretBallisticAimXPtr: () => number;
+  readonly turretBallisticAimYPtr: () => number;
+  readonly turretBallisticAimZPtr: () => number;
+  /** AIM-08.4 — solve ballistic turret aim by reading the turret
+   *  mount kinematics from the combat-targeting slab at
+   *  (entitySlot, turretIdx), then writing reusable outputs back to
+   *  the same slab. `arcPreference`: 0 = low, 1 = high. Returns 1
+   *  when a real solution was written, 0 when the fallback pose was
+   *  written as a no-solution result. */
+  readonly solveBallisticAim: (
+    entitySlot: number,
+    turretIdx: number,
+    targetX: number,
+    targetY: number,
+    targetZ: number,
+    targetVx: number,
+    targetVy: number,
+    targetVz: number,
+    targetAx: number,
+    targetAy: number,
+    targetAz: number,
+    originAx: number,
+    originAy: number,
+    originAz: number,
+    projectileSpeed: number,
+    gravity: number,
+    arcPreference: number,
+    maxTimeSecOrZero: number,
+    fallbackYaw: number,
+    fallbackPitch: number,
+  ) => number;
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
    *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
   readonly rankTarget: (
@@ -1997,6 +2046,17 @@ export function initSimWasm(): Promise<SimWasm> {
           turretAimErrorPitchPtr: combat_targeting_turret_aim_error_pitch_ptr,
           turretLosBlockedTicksPtr: combat_targeting_turret_los_blocked_ticks_ptr,
           turretConfigFlagsPtr: combat_targeting_turret_config_flags_ptr,
+          turretBallisticHasSolutionPtr: combat_targeting_turret_ballistic_has_solution_ptr,
+          turretBallisticFlightTimePtr: combat_targeting_turret_ballistic_flight_time_ptr,
+          turretBallisticLaunchVxPtr: combat_targeting_turret_ballistic_launch_vx_ptr,
+          turretBallisticLaunchVyPtr: combat_targeting_turret_ballistic_launch_vy_ptr,
+          turretBallisticLaunchVzPtr: combat_targeting_turret_ballistic_launch_vz_ptr,
+          turretBallisticYawPtr: combat_targeting_turret_ballistic_yaw_ptr,
+          turretBallisticPitchPtr: combat_targeting_turret_ballistic_pitch_ptr,
+          turretBallisticAimXPtr: combat_targeting_turret_ballistic_aim_x_ptr,
+          turretBallisticAimYPtr: combat_targeting_turret_ballistic_aim_y_ptr,
+          turretBallisticAimZPtr: combat_targeting_turret_ballistic_aim_z_ptr,
+          solveBallisticAim: combat_targeting_solve_ballistic_aim,
           rankTarget: combat_targeting_rank_target,
           chooseBestCandidate: combat_targeting_choose_best_candidate,
         },

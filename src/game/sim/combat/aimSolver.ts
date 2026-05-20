@@ -2,15 +2,9 @@ import type { Vec3 } from '@/types/vec2';
 import type { TurretAimLockOnType } from '@/types/blueprints';
 import type { Entity, ProjectileShot, Turret, TurretConfig } from '../types';
 import { getShotMaxLifespan, isProjectileShot } from '../types';
-import {
-  clamp,
-  getTransformCosSin,
-  type KinematicState3,
-  solveTurretShotAngles,
-  type TurretShotAngleSolution,
-  type TurretShotArcPreference,
-} from '../../math';
+import { clamp, getTransformCosSin } from '../../math';
 import { GRAVITY } from '../../../config';
+import { getSimWasm, type SimWasm } from '../../sim-wasm/init';
 import {
   getEntityAcceleration3d,
   getEntityPosition3d,
@@ -19,6 +13,7 @@ import {
   resolveWeaponWorldMount,
 } from './combatUtils';
 import { pickTargetAimTurret } from './mirrorTargetPriority';
+import { spatialGrid } from '../SpatialGrid';
 import { getUnitGroundZ } from '../unitGeometry';
 
 type GroundHeightLookup = (x: number, y: number) => number;
@@ -33,25 +28,9 @@ const _mirrorEnemyTurretMount = { x: 0, y: 0, z: 0 };
 const _bisectEnemyTurretPoint: Vec3 = { x: 0, y: 0, z: 0 };
 const _bisectEnemyBodyPoint: Vec3 = { x: 0, y: 0, z: 0 };
 const _targetAimPosition: Vec3 = { x: 0, y: 0, z: 0 };
-const _originState: KinematicState3 = {
-  position: { x: 0, y: 0, z: 0 },
-  velocity: { x: 0, y: 0, z: 0 },
-  acceleration: { x: 0, y: 0, z: 0 },
-};
-const _targetState: KinematicState3 = {
-  position: { x: 0, y: 0, z: 0 },
-  velocity: { x: 0, y: 0, z: 0 },
-  acceleration: { x: 0, y: 0, z: 0 },
-};
-const _shotAngleSolution: TurretShotAngleSolution = {
-  time: 0,
-  aimPoint: { x: 0, y: 0, z: 0 },
-  launchVelocity: { x: 0, y: 0, z: 0 },
-  yaw: 0,
-  pitch: 0,
-  direction: { x: 1, y: 0, z: 0 },
-};
 const BISECT_EPSILON = 1e-6;
+const BALLISTIC_ARC_LOW = 0;
+const BALLISTIC_ARC_HIGH = 1;
 
 export type DirectTurretAim = {
   aim: Vec3;
@@ -110,6 +89,54 @@ export function createProjectileTurretAimScratch(): ProjectileTurretAim {
 
 export function createTurretAimScratch(): TurretAimSolution {
   return createProjectileTurretAimScratch();
+}
+
+type BallisticSlabViews = {
+  buffer: ArrayBuffer;
+  length: number;
+  hasSolution: Uint8Array;
+  flightTime: Float64Array;
+  launchVx: Float64Array;
+  launchVy: Float64Array;
+  launchVz: Float64Array;
+  yaw: Float32Array;
+  pitch: Float32Array;
+  aimX: Float64Array;
+  aimY: Float64Array;
+  aimZ: Float64Array;
+};
+
+let _ballisticSlabViews: BallisticSlabViews | null = null;
+
+function getBallisticSlabViews(sim: SimWasm): BallisticSlabViews {
+  const ct = sim.combatTargeting;
+  const length = ct.entityCapacity() * ct.maxTurretsPerEntity();
+  const buffer = sim.memory.buffer;
+  const cached = _ballisticSlabViews;
+  if (
+    cached &&
+    cached.buffer === buffer &&
+    cached.length === length &&
+    cached.hasSolution.byteLength > 0
+  ) {
+    return cached;
+  }
+
+  _ballisticSlabViews = {
+    buffer,
+    length,
+    hasSolution: new Uint8Array(buffer, ct.turretBallisticHasSolutionPtr(), length),
+    flightTime: new Float64Array(buffer, ct.turretBallisticFlightTimePtr(), length),
+    launchVx: new Float64Array(buffer, ct.turretBallisticLaunchVxPtr(), length),
+    launchVy: new Float64Array(buffer, ct.turretBallisticLaunchVyPtr(), length),
+    launchVz: new Float64Array(buffer, ct.turretBallisticLaunchVzPtr(), length),
+    yaw: new Float32Array(buffer, ct.turretBallisticYawPtr(), length),
+    pitch: new Float32Array(buffer, ct.turretBallisticPitchPtr(), length),
+    aimX: new Float64Array(buffer, ct.turretBallisticAimXPtr(), length),
+    aimY: new Float64Array(buffer, ct.turretBallisticAimYPtr(), length),
+    aimZ: new Float64Array(buffer, ct.turretBallisticAimZPtr(), length),
+  };
+  return _ballisticSlabViews;
 }
 
 function resolveTargetTurretAimPoint(
@@ -454,49 +481,15 @@ function solveRayTurretAim(
   );
 }
 
-function writeKinematicState(
-  state: KinematicState3,
-  position: Vec3,
-  velocity: Vec3,
-  acceleration: Vec3,
-): void {
-  state.position.x = position.x;
-  state.position.y = position.y;
-  state.position.z = position.z;
-  state.velocity.x = velocity.x;
-  state.velocity.y = velocity.y;
-  state.velocity.z = velocity.z;
-  state.acceleration.x = acceleration.x;
-  state.acceleration.y = acceleration.y;
-  state.acceleration.z = acceleration.z;
-}
-
-function writeKinematicStateAt(
-  state: KinematicState3,
-  x: number,
-  y: number,
-  z: number,
-  velocity: Vec3,
-  acceleration: Vec3,
-): void {
-  state.position.x = x;
-  state.position.y = y;
-  state.position.z = z;
-  state.velocity.x = velocity.x;
-  state.velocity.y = velocity.y;
-  state.velocity.z = velocity.z;
-  state.acceleration.x = acceleration.x;
-  state.acceleration.y = acceleration.y;
-  state.acceleration.z = acceleration.z;
-}
-
 function getProjectileMaxTimeSec(shot: ProjectileShot): number {
   const lifeMs = getShotMaxLifespan(shot);
   return Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
 }
 
-function getBallisticArcPreference(config: TurretConfig): TurretShotArcPreference {
-  return config.aimStyle.angleType === 'ballisticArcHigh' ? 'high' : 'low';
+function getBallisticArcPreference(config: TurretConfig): number {
+  return config.aimStyle.angleType === 'ballisticArcHigh'
+    ? BALLISTIC_ARC_HIGH
+    : BALLISTIC_ARC_LOW;
 }
 
 function usesBallisticAim(config: TurretConfig): boolean {
@@ -513,49 +506,6 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   if (config.isManualFire) return false;
   if (config.shot?.type === 'force') return false;
   return true;
-}
-
-function solveProjectileShotAngles(
-  shot: ProjectileShot,
-  launchSpeed: number,
-  arcPreference: TurretShotArcPreference,
-  out: TurretShotAngleSolution,
-): TurretShotAngleSolution | null {
-  return solveTurretShotAngles({
-    myPosition: _originState.position,
-    myVelocity: _originState.velocity,
-    myAcceleration: _originState.acceleration,
-    targetPosition: _targetState.position,
-    targetVelocity: _targetState.velocity,
-    targetAcceleration: _targetState.acceleration,
-    projectileSpeed: launchSpeed,
-    gravity: GRAVITY,
-    arcPreference,
-    maxTimeSec: getProjectileMaxTimeSec(shot),
-  }, out);
-}
-
-function copyShotAngleSolution(
-  solution: TurretShotAngleSolution,
-  mountX: number,
-  mountY: number,
-  mountZ: number,
-  out: ProjectileTurretAim,
-): void {
-  const distanceToIntercept = Math.max(
-    1,
-    Math.hypot(solution.aimPoint.x - mountX, solution.aimPoint.y - mountY, solution.aimPoint.z - mountZ),
-  );
-  out.aim.x = mountX + solution.direction.x * distanceToIntercept;
-  out.aim.y = mountY + solution.direction.y * distanceToIntercept;
-  out.aim.z = mountZ + solution.direction.z * distanceToIntercept;
-  out.yaw = solution.yaw;
-  out.pitch = solution.pitch;
-  out.hasBallisticSolution = true;
-  out.flightTime = solution.time;
-  out.launchVelocity.x = solution.launchVelocity.x;
-  out.launchVelocity.y = solution.launchVelocity.y;
-  out.launchVelocity.z = solution.launchVelocity.z;
 }
 
 function writeNoBallisticSolutionAim(
@@ -576,11 +526,88 @@ function writeNoBallisticSolutionAim(
     out.yaw, out.pitch,
     out.aim,
   );
+  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
+}
+
+function copyBallisticSlabSolution(
+  sim: SimWasm,
+  entitySlot: number,
+  turretIndex: number,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  out: ProjectileTurretAim,
+): void {
+  const maxTurrets = sim.combatTargeting.maxTurretsPerEntity();
+  const idx = entitySlot * maxTurrets + turretIndex;
+  const views = getBallisticSlabViews(sim);
+  out.hasBallisticSolution = views.hasSolution[idx] !== 0;
+  out.flightTime = views.flightTime[idx];
+  out.launchVelocity.x = views.launchVx[idx];
+  out.launchVelocity.y = views.launchVy[idx];
+  out.launchVelocity.z = views.launchVz[idx];
+  out.yaw = views.yaw[idx];
+  out.pitch = views.pitch[idx];
+  out.aim.x = views.aimX[idx];
+  out.aim.y = views.aimY[idx];
+  out.aim.z = views.aimZ[idx];
+  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
+}
+
+function solveProjectileBallisticAim(
+  source: Entity,
+  weapon: Turret,
+  turretIndex: number,
+  shot: ProjectileShot,
+  mountX: number,
+  mountY: number,
+  mountZ: number,
+  currentPitch: number,
+  out: ProjectileTurretAim,
+): ProjectileTurretAim {
+  const sim = getSimWasm();
+  const entitySlot = spatialGrid.getSlot(source.id);
+  if (sim === undefined || entitySlot < 0 || turretIndex < 0) {
+    writeNoBallisticSolutionAim(weapon, mountX, mountY, mountZ, currentPitch, out);
+    return out;
+  }
+
+  const targeting = sim.combatTargeting;
+  if (turretIndex >= targeting.turretCount(entitySlot)) {
+    writeNoBallisticSolutionAim(weapon, mountX, mountY, mountZ, currentPitch, out);
+    return out;
+  }
+
+  targeting.solveBallisticAim(
+    entitySlot,
+    turretIndex,
+    out.aim.x,
+    out.aim.y,
+    out.aim.z,
+    out.targetVelocity.x,
+    out.targetVelocity.y,
+    out.targetVelocity.z,
+    out.targetAcceleration.x,
+    out.targetAcceleration.y,
+    out.targetAcceleration.z,
+    out.originAcceleration.x,
+    out.originAcceleration.y,
+    out.originAcceleration.z,
+    getProjectileLaunchSpeed(shot),
+    GRAVITY,
+    getBallisticArcPreference(weapon.config),
+    getProjectileMaxTimeSec(shot),
+    weapon.rotation,
+    currentPitch,
+  );
+  copyBallisticSlabSolution(sim, entitySlot, turretIndex, mountX, mountY, mountZ, out);
+  return out;
 }
 
 export function solveProjectileTurretAim(
   source: Entity,
   weapon: Turret,
+  turretIndex: number,
   target: Entity,
   mountX: number,
   mountY: number,
@@ -592,7 +619,6 @@ export function solveProjectileTurretAim(
   currentTick?: number,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
-  const launchSpeed = getProjectileLaunchSpeed(shot);
 
   resolveTargetAimPoint(
     target,
@@ -606,9 +632,9 @@ export function solveProjectileTurretAim(
   );
 
   const targetVelocity = getEntityVelocity3d(target, out.targetVelocity);
-  const originVelocity = writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
+  writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
   const targetAcceleration = getEntityAcceleration3d(target, out.targetAcceleration);
-  const originAcceleration = getEntityAcceleration3d(source, out.originAcceleration);
+  getEntityAcceleration3d(source, out.originAcceleration);
 
   const groundAimFraction = weapon.config.groundAimFraction;
   if (groundAimFraction !== undefined && groundAimFraction > 0) {
@@ -624,32 +650,21 @@ export function solveProjectileTurretAim(
     targetAcceleration.z = 0;
   }
 
-  writeKinematicStateAt(_originState, mountX, mountY, mountZ, originVelocity, originAcceleration);
-  writeKinematicState(_targetState, out.aim, targetVelocity, targetAcceleration);
-
-  const shotAngles = solveProjectileShotAngles(
+  return solveProjectileBallisticAim(
+    source,
+    weapon,
+    turretIndex,
     shot,
-    launchSpeed,
-    getBallisticArcPreference(weapon.config),
-    _shotAngleSolution,
+    mountX, mountY, mountZ,
+    currentPitch,
+    out,
   );
-  if (shotAngles) {
-    copyShotAngleSolution(shotAngles, mountX, mountY, mountZ, out);
-  } else {
-    writeNoBallisticSolutionAim(
-      weapon,
-      mountX, mountY, mountZ,
-      currentPitch,
-      out,
-    );
-  }
-  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
-  return out;
 }
 
 export function solveProjectileTurretAimAtPoint(
   source: Entity,
   weapon: Turret,
+  turretIndex: number,
   aimPoint: Vec3,
   mountX: number,
   mountY: number,
@@ -660,13 +675,12 @@ export function solveProjectileTurretAimAtPoint(
   out: ProjectileTurretAim,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
-  const launchSpeed = getProjectileLaunchSpeed(shot);
   out.aim.x = aimPoint.x;
   out.aim.y = aimPoint.y;
   out.aim.z = aimPoint.z;
 
-  const originVelocity = writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
-  const originAcceleration = getEntityAcceleration3d(source, out.originAcceleration);
+  writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
+  getEntityAcceleration3d(source, out.originAcceleration);
   writeZeroVec3(out.targetVelocity);
   writeZeroVec3(out.targetAcceleration);
 
@@ -678,32 +692,21 @@ export function solveProjectileTurretAimAtPoint(
     out.aim.z = groundHeightAt(out.aim.x, out.aim.y);
   }
 
-  writeKinematicStateAt(_originState, mountX, mountY, mountZ, originVelocity, originAcceleration);
-  writeKinematicState(_targetState, out.aim, out.targetVelocity, out.targetAcceleration);
-
-  const shotAngles = solveProjectileShotAngles(
+  return solveProjectileBallisticAim(
+    source,
+    weapon,
+    turretIndex,
     shot,
-    launchSpeed,
-    getBallisticArcPreference(weapon.config),
-    _shotAngleSolution,
+    mountX, mountY, mountZ,
+    currentPitch,
+    out,
   );
-  if (shotAngles) {
-    copyShotAngleSolution(shotAngles, mountX, mountY, mountZ, out);
-  } else {
-    writeNoBallisticSolutionAim(
-      weapon,
-      mountX, mountY, mountZ,
-      currentPitch,
-      out,
-    );
-  }
-  writeTurretAimOrigin(out.origin, mountX, mountY, mountZ, out.yaw, out.pitch);
-  return out;
 }
 
 export function solveTurretAimAtGroundPoint(
   source: Entity,
   weapon: Turret,
+  turretIndex: number,
   aimPoint: Vec3,
   mountX: number,
   mountY: number,
@@ -731,6 +734,7 @@ export function solveTurretAimAtGroundPoint(
     return solveProjectileTurretAimAtPoint(
       source,
       weapon,
+      turretIndex,
       aimPoint,
       mountX, mountY, mountZ,
       currentPitch,
@@ -753,6 +757,7 @@ export function solveTurretAimAtGroundPoint(
 export function solveTurretAim(
   unit: Entity,
   weapon: Turret,
+  turretIndex: number,
   target: Entity,
   mountX: number,
   mountY: number,
@@ -783,6 +788,7 @@ export function solveTurretAim(
     return solveProjectileTurretAim(
       unit,
       weapon,
+      turretIndex,
       target,
       mountX, mountY, mountZ,
       currentPitch,

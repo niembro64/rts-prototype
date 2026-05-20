@@ -105,6 +105,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         const solved = solveTurretAimAtGroundPoint(
           unit,
           weapon,
+          weaponIndex,
           targetPoint,
           mount.x, mount.y, mount.z,
           weapon.pitch,
@@ -154,6 +155,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           const solved = solveTurretAim(
             unit,
             weapon,
+            weaponIndex,
             target,
             weaponX, weaponY, mountZ,
             weapon.pitch,

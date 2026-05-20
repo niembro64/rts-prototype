@@ -40,8 +40,9 @@ import {
   CT_TURRET_STATE_TRACKING,
   CT_TURRET_STATE_ENGAGED,
   getSimWasm,
+  type CombatTargetingApi,
 } from '../../sim-wasm/init';
-import type { HysteresisRange, Turret, TurretRanges, TurretState } from '../types';
+import type { Entity, HysteresisRange, Turret, TurretRanges, TurretState } from '../types';
 
 const _stampPos = { x: 0, y: 0, z: 0 };
 const _stampVel = { x: 0, y: 0, z: 0 };
@@ -110,6 +111,79 @@ export function stampForceFieldPool(world: WorldState): void {
   }
 }
 
+function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: Entity): void {
+  const combat = entity.combat;
+  if (!combat) return;
+  const slot = spatialGrid.getSlot(entity.id);
+  // Entities without a spatial slot can't be addressed by the slab;
+  // the eventual kernel walks the slab, not the JS list, so anything
+  // off-grid would be invisible to it anyway.
+  if (slot < 0) return;
+
+  const ownership = entity.ownership;
+  const playerId = ownership ? ownership.playerId : 0;
+  const pos = getEntityPosition3d(entity, _stampPos);
+  const vel = getEntityVelocity3d(entity, _stampVel);
+  const radiusShot = entity.unit
+    ? entity.unit.radius.shot
+    : (entity.building ? entity.building.targetRadius : 0);
+  const hp = entity.unit ? entity.unit.hp : (entity.building ? entity.building.hp : 0);
+
+  let entityFlags = CT_ENTITY_FLAG_HAS_COMBAT;
+  if (hp > 0) entityFlags |= CT_ENTITY_FLAG_ALIVE;
+  if (combat.fireEnabled !== false) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
+  if (!entity.buildable || entity.buildable.isComplete) {
+    entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
+  }
+
+  const turrets = combat.turrets;
+  targeting.setEntity(
+    slot, entity.id, playerId,
+    pos.x, pos.y, pos.z,
+    vel.x, vel.y, vel.z,
+    radiusShot, hp, entityFlags,
+    turrets.length,
+  );
+
+  for (let i = 0; i < turrets.length; i++) {
+    const t = turrets[i];
+    const ranges = t.ranges;
+    const fireMaxAcq = rangeEdgeSq(ranges.fire.max, 'acquire');
+    const fireMaxRel = rangeEdgeSq(ranges.fire.max, 'release');
+    const fireMinAcq = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'acquire') : 0;
+    const fireMinRel = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'release') : 0;
+    const trackingAcq = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'acquire') : 0;
+    const trackingRel = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'release') : 0;
+    const outermostAcq = ranges.tracking ? ranges.tracking.acquire : ranges.fire.max.acquire;
+
+    targeting.setTurret(
+      slot, i,
+      t.worldPos.x, t.worldPos.y, t.worldPos.z,
+      t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
+      t.rotation, t.pitch,
+      encodeTurretState(t.state),
+      t.target === null ? -1 : t.target,
+      fireMaxAcq, fireMaxRel,
+      fireMinAcq, fireMinRel,
+      trackingAcq, trackingRel,
+      outermostAcq,
+      t.aimErrorYaw, t.aimErrorPitch,
+      t.losBlockedTicks,
+      encodeTurretConfigFlags(t, ranges),
+    );
+  }
+}
+
+/** Stamp one armed entity into the combat-targeting slab. AIM-08.4
+ *  calls this after Pass 0 mount kinematics so the ballistic solver
+ *  can read current mount position/velocity before the full post-FSM
+ *  parity stamp runs. */
+export function stampCombatTargetingEntity(entity: Entity): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  stampCombatTargetingEntityInto(sim.combatTargeting, entity);
+}
+
 /** Capture the post-FSM (target, state, aimError, losBlockedTicks)
  *  tuple for every armed entity's turrets so the AIM-08.0 parity
  *  harness can diff slab vs JS. Runs AFTER updateTargetingAndFiringState. */
@@ -124,66 +198,7 @@ export function stampCombatTargetingPool(world: WorldState): void {
   targeting.clear();
 
   for (const entity of world.getArmedEntities()) {
-    const combat = entity.combat;
-    if (!combat) continue;
-    const slot = spatialGrid.getSlot(entity.id);
-    // Entities without a spatial slot can't be addressed by the slab;
-    // the eventual kernel walks the slab, not the JS list, so anything
-    // off-grid would be invisible to it anyway.
-    if (slot < 0) continue;
-
-    const ownership = entity.ownership;
-    const playerId = ownership ? ownership.playerId : 0;
-    const pos = getEntityPosition3d(entity, _stampPos);
-    const vel = getEntityVelocity3d(entity, _stampVel);
-    const radiusShot = entity.unit
-      ? entity.unit.radius.shot
-      : (entity.building ? entity.building.targetRadius : 0);
-    const hp = entity.unit ? entity.unit.hp : (entity.building ? entity.building.hp : 0);
-
-    let entityFlags = CT_ENTITY_FLAG_HAS_COMBAT;
-    if (hp > 0) entityFlags |= CT_ENTITY_FLAG_ALIVE;
-    if (combat.fireEnabled !== false) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
-    if (!entity.buildable || entity.buildable.isComplete) {
-      entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
-    }
-
-    const turrets = combat.turrets;
-    targeting.setEntity(
-      slot, entity.id, playerId,
-      pos.x, pos.y, pos.z,
-      vel.x, vel.y, vel.z,
-      radiusShot, hp, entityFlags,
-      turrets.length,
-    );
-
-    for (let i = 0; i < turrets.length; i++) {
-      const t = turrets[i];
-      const ranges = t.ranges;
-      const fireMaxAcq = rangeEdgeSq(ranges.fire.max, 'acquire');
-      const fireMaxRel = rangeEdgeSq(ranges.fire.max, 'release');
-      const fireMinAcq = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'acquire') : 0;
-      const fireMinRel = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'release') : 0;
-      const trackingAcq = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'acquire') : 0;
-      const trackingRel = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'release') : 0;
-      const outermostAcq = ranges.tracking ? ranges.tracking.acquire : ranges.fire.max.acquire;
-
-      targeting.setTurret(
-        slot, i,
-        t.worldPos.x, t.worldPos.y, t.worldPos.z,
-        t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
-        t.rotation, t.pitch,
-        encodeTurretState(t.state),
-        t.target === null ? -1 : t.target,
-        fireMaxAcq, fireMaxRel,
-        fireMinAcq, fireMinRel,
-        trackingAcq, trackingRel,
-        outermostAcq,
-        t.aimErrorYaw, t.aimErrorPitch,
-        t.losBlockedTicks,
-        encodeTurretConfigFlags(t, ranges),
-      );
-    }
+    stampCombatTargetingEntityInto(targeting, entity);
   }
 }
 

@@ -1584,18 +1584,15 @@ fn intercept_bisect_root(input: &[f64; 22], lo_t: f64, hi_t: f64) -> f64 {
     (lo + hi) * 0.5
 }
 
-#[wasm_bindgen]
-pub fn solve_kinematic_intercept(
-    input: &[f64],
+#[inline]
+fn solve_kinematic_intercept_inline(
+    inp: &[f64; 22],
     out_buf: &mut [f64],
     prefer_late_solution: u8,
     max_time_sec_or_zero: f64,
-) -> u32 {
-    debug_assert!(input.len() >= 22, "intercept input buffer too small");
-    debug_assert!(out_buf.len() >= 7, "intercept output buffer too small");
-    let inp: &[f64; 22] = (&input[0..22]).try_into().unwrap();
+) -> bool {
     if !intercept_input_finite(inp) {
-        return 0;
+        return false;
     }
     let max_time = if max_time_sec_or_zero > 0.0 && max_time_sec_or_zero.is_finite() {
         intercept_clamp_time(max_time_sec_or_zero)
@@ -1628,7 +1625,7 @@ pub fn solve_kinematic_intercept(
     }
 
     if selected_root <= INTERCEPT_MIN_TIME {
-        return 0;
+        return false;
     }
 
     // Write solution. Aim point = target's position at intercept time.
@@ -1656,7 +1653,24 @@ pub fn solve_kinematic_intercept(
     out_buf[4] = lv_x;
     out_buf[5] = lv_y;
     out_buf[6] = lv_z;
-    1
+    true
+}
+
+#[wasm_bindgen]
+pub fn solve_kinematic_intercept(
+    input: &[f64],
+    out_buf: &mut [f64],
+    prefer_late_solution: u8,
+    max_time_sec_or_zero: f64,
+) -> u32 {
+    debug_assert!(input.len() >= 22, "intercept input buffer too small");
+    debug_assert!(out_buf.len() >= 7, "intercept output buffer too small");
+    let inp: &[f64; 22] = (&input[0..22]).try_into().unwrap();
+    if solve_kinematic_intercept_inline(inp, out_buf, prefer_late_solution, max_time_sec_or_zero) {
+        1
+    } else {
+        0
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -6222,6 +6236,20 @@ struct CombatTargetingPool {
     turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
     turret_config_flags: Vec<u8>,
+    // AIM-08.4 ballistic solver outputs. Written by the Rust solver
+    // using turret mount data from the slab; JS reads these outputs
+    // for transitional targeting gates and turret pose until AIM-08.5
+    // consumes them directly inside the FSM kernel.
+    turret_ballistic_has_solution: Vec<u8>,
+    turret_ballistic_flight_time: Vec<f64>,
+    turret_ballistic_launch_vx: Vec<f64>,
+    turret_ballistic_launch_vy: Vec<f64>,
+    turret_ballistic_launch_vz: Vec<f64>,
+    turret_ballistic_yaw: Vec<f32>,
+    turret_ballistic_pitch: Vec<f32>,
+    turret_ballistic_aim_x: Vec<f64>,
+    turret_ballistic_aim_y: Vec<f64>,
+    turret_ballistic_aim_z: Vec<f64>,
 }
 
 impl CombatTargetingPool {
@@ -6260,6 +6288,16 @@ impl CombatTargetingPool {
             turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_config_flags: Vec::new(),
+            turret_ballistic_has_solution: Vec::new(),
+            turret_ballistic_flight_time: Vec::new(),
+            turret_ballistic_launch_vx: Vec::new(),
+            turret_ballistic_launch_vy: Vec::new(),
+            turret_ballistic_launch_vz: Vec::new(),
+            turret_ballistic_yaw: Vec::new(),
+            turret_ballistic_pitch: Vec::new(),
+            turret_ballistic_aim_x: Vec::new(),
+            turret_ballistic_aim_y: Vec::new(),
+            turret_ballistic_aim_z: Vec::new(),
         }
     }
 
@@ -6303,6 +6341,16 @@ impl CombatTargetingPool {
             self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
             self.turret_config_flags.resize(turret_needed, 0);
+            self.turret_ballistic_has_solution.resize(turret_needed, 0);
+            self.turret_ballistic_flight_time.resize(turret_needed, 0.0);
+            self.turret_ballistic_launch_vx.resize(turret_needed, 0.0);
+            self.turret_ballistic_launch_vy.resize(turret_needed, 0.0);
+            self.turret_ballistic_launch_vz.resize(turret_needed, 0.0);
+            self.turret_ballistic_yaw.resize(turret_needed, 0.0);
+            self.turret_ballistic_pitch.resize(turret_needed, 0.0);
+            self.turret_ballistic_aim_x.resize(turret_needed, 0.0);
+            self.turret_ballistic_aim_y.resize(turret_needed, 0.0);
+            self.turret_ballistic_aim_z.resize(turret_needed, 0.0);
         }
     }
 
@@ -6312,6 +6360,9 @@ impl CombatTargetingPool {
         }
         for c in self.turret_count_per_entity.iter_mut() {
             *c = 0;
+        }
+        for has_solution in self.turret_ballistic_has_solution.iter_mut() {
+            *has_solution = 0;
         }
     }
 
@@ -6323,6 +6374,45 @@ impl CombatTargetingPool {
         self.entity_flags[s] = 0;
         self.turret_count_per_entity[s] = 0;
     }
+}
+
+#[inline]
+fn combat_targeting_turret_global_idx(entity_slot: u32, turret_idx: u32) -> usize {
+    (entity_slot as usize) * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        + (turret_idx as usize)
+}
+
+#[inline]
+fn combat_targeting_write_no_ballistic_solution(
+    pool: &mut CombatTargetingPool,
+    idx: usize,
+    mount_x: f64,
+    mount_y: f64,
+    mount_z: f64,
+    fallback_yaw: f64,
+    fallback_pitch: f64,
+) {
+    let yaw = if fallback_yaw.is_finite() {
+        fallback_yaw
+    } else {
+        0.0
+    };
+    let pitch = if fallback_pitch.is_finite() {
+        fallback_pitch
+    } else {
+        0.0
+    };
+    let cos_pitch = pitch.cos();
+    pool.turret_ballistic_has_solution[idx] = 0;
+    pool.turret_ballistic_flight_time[idx] = 0.0;
+    pool.turret_ballistic_launch_vx[idx] = 0.0;
+    pool.turret_ballistic_launch_vy[idx] = 0.0;
+    pool.turret_ballistic_launch_vz[idx] = 0.0;
+    pool.turret_ballistic_yaw[idx] = yaw as f32;
+    pool.turret_ballistic_pitch[idx] = pitch as f32;
+    pool.turret_ballistic_aim_x[idx] = mount_x + yaw.cos() * cos_pitch;
+    pool.turret_ballistic_aim_y[idx] = mount_y + yaw.sin() * cos_pitch;
+    pool.turret_ballistic_aim_z[idx] = mount_z + pitch.sin();
 }
 
 struct CombatTargetingPoolHolder(UnsafeCell<Option<CombatTargetingPool>>);
@@ -6445,8 +6535,7 @@ pub fn combat_targeting_set_turret(
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
     debug_assert!(turret_idx < COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY);
-    let global_idx = (entity_slot as usize) * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
-        + (turret_idx as usize);
+    let global_idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
     pool.turret_mount_x[global_idx] = mount_x;
     pool.turret_mount_y[global_idx] = mount_y;
     pool.turret_mount_z[global_idx] = mount_z;
@@ -6468,6 +6557,15 @@ pub fn combat_targeting_set_turret(
     pool.turret_aim_error_pitch[global_idx] = aim_error_pitch;
     pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
     pool.turret_config_flags[global_idx] = config_flags;
+    combat_targeting_write_no_ballistic_solution(
+        pool,
+        global_idx,
+        mount_x,
+        mount_y,
+        mount_z,
+        rotation as f64,
+        pitch as f64,
+    );
 }
 
 #[wasm_bindgen]
@@ -6588,6 +6686,272 @@ combat_targeting_ptr_export!(
     turret_config_flags,
     u8
 );
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_has_solution_ptr,
+    turret_ballistic_has_solution,
+    u8
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_flight_time_ptr,
+    turret_ballistic_flight_time,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_launch_vx_ptr,
+    turret_ballistic_launch_vx,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_launch_vy_ptr,
+    turret_ballistic_launch_vy,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_launch_vz_ptr,
+    turret_ballistic_launch_vz,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_yaw_ptr,
+    turret_ballistic_yaw,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_pitch_ptr,
+    turret_ballistic_pitch,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_aim_x_ptr,
+    turret_ballistic_aim_x,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_aim_y_ptr,
+    turret_ballistic_aim_y,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_ballistic_aim_z_ptr,
+    turret_ballistic_aim_z,
+    f64
+);
+
+// ─────────────────────────────────────────────────────────────────
+// AIM-08.4 — Ballistic turret aim kernel.
+//
+// JS still resolves object-owned gameplay inputs (target aim point,
+// target velocity/acceleration, origin acceleration, shot config), but
+// the hot intercept and arc solve now reads the turret mount kinematic
+// slab and writes reusable ballistic outputs beside that turret slot.
+// The transitional JS bridge copies these outputs into its existing
+// TurretAimSolution scratch; AIM-08.5 can read the same fields directly
+// when the full targeting FSM moves into Rust.
+// ─────────────────────────────────────────────────────────────────
+
+const CT_BALLISTIC_ARC_HIGH: u8 = 1;
+const CT_HIGH_ARC_MIN_TIME_SEPARATION: f64 = 1.0 / 120.0;
+const CT_SHOT_DIRECTION_EPSILON: f64 = 1e-6;
+
+#[inline]
+fn combat_targeting_ballistic_params_finite(values: &[f64]) -> bool {
+    for v in values.iter() {
+        if !v.is_finite() {
+            return false;
+        }
+    }
+    true
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_solve_ballistic_aim(
+    entity_slot: u32,
+    turret_idx: u32,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    target_vx: f64,
+    target_vy: f64,
+    target_vz: f64,
+    target_ax: f64,
+    target_ay: f64,
+    target_az: f64,
+    origin_ax: f64,
+    origin_ay: f64,
+    origin_az: f64,
+    projectile_speed: f64,
+    gravity: f64,
+    arc_preference: u8,
+    max_time_sec_or_zero: f64,
+    fallback_yaw: f64,
+    fallback_pitch: f64,
+) -> u32 {
+    let pool = combat_targeting_pool();
+    if turret_idx >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+        return 0;
+    }
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.entity_id.len() {
+        return 0;
+    }
+
+    let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+    let mount_x = pool.turret_mount_x[idx];
+    let mount_y = pool.turret_mount_y[idx];
+    let mount_z = pool.turret_mount_z[idx];
+    let mount_vx = pool.turret_mount_vx[idx];
+    let mount_vy = pool.turret_mount_vy[idx];
+    let mount_vz = pool.turret_mount_vz[idx];
+    if turret_idx >= pool.turret_count_per_entity[entity_idx] as u32 {
+        combat_targeting_write_no_ballistic_solution(
+            pool,
+            idx,
+            mount_x,
+            mount_y,
+            mount_z,
+            fallback_yaw,
+            fallback_pitch,
+        );
+        return 0;
+    }
+
+    let finite_values = [
+        mount_x,
+        mount_y,
+        mount_z,
+        mount_vx,
+        mount_vy,
+        mount_vz,
+        target_x,
+        target_y,
+        target_z,
+        target_vx,
+        target_vy,
+        target_vz,
+        target_ax,
+        target_ay,
+        target_az,
+        origin_ax,
+        origin_ay,
+        origin_az,
+        projectile_speed,
+        gravity,
+        max_time_sec_or_zero,
+        fallback_yaw,
+        fallback_pitch,
+    ];
+    if !combat_targeting_ballistic_params_finite(&finite_values)
+        || projectile_speed <= 1e-6
+        || gravity < 0.0
+        || max_time_sec_or_zero < 0.0
+    {
+        combat_targeting_write_no_ballistic_solution(
+            pool,
+            idx,
+            mount_x,
+            mount_y,
+            mount_z,
+            fallback_yaw,
+            fallback_pitch,
+        );
+        return 0;
+    }
+
+    let input = [
+        mount_x,
+        mount_y,
+        mount_z,
+        mount_vx,
+        mount_vy,
+        mount_vz,
+        origin_ax,
+        origin_ay,
+        origin_az,
+        target_x,
+        target_y,
+        target_z,
+        target_vx,
+        target_vy,
+        target_vz,
+        target_ax,
+        target_ay,
+        target_az,
+        0.0,
+        0.0,
+        -gravity,
+        projectile_speed,
+    ];
+    let mut solution = [0.0_f64; 7];
+    let found = if arc_preference == CT_BALLISTIC_ARC_HIGH {
+        let mut low_solution = [0.0_f64; 7];
+        let low_found =
+            solve_kinematic_intercept_inline(&input, &mut low_solution, 0, max_time_sec_or_zero);
+        let high_found =
+            solve_kinematic_intercept_inline(&input, &mut solution, 1, max_time_sec_or_zero);
+        high_found && low_found && solution[0] > low_solution[0] + CT_HIGH_ARC_MIN_TIME_SEPARATION
+    } else {
+        solve_kinematic_intercept_inline(&input, &mut solution, 0, max_time_sec_or_zero)
+    };
+
+    if !found {
+        combat_targeting_write_no_ballistic_solution(
+            pool,
+            idx,
+            mount_x,
+            mount_y,
+            mount_z,
+            fallback_yaw,
+            fallback_pitch,
+        );
+        return 0;
+    }
+
+    let launch_vx = solution[4];
+    let launch_vy = solution[5];
+    let launch_vz = solution[6];
+    let horizontal = (launch_vx * launch_vx + launch_vy * launch_vy).sqrt();
+    let speed = (horizontal * horizontal + launch_vz * launch_vz).sqrt();
+    if !speed.is_finite() || speed <= CT_SHOT_DIRECTION_EPSILON {
+        combat_targeting_write_no_ballistic_solution(
+            pool,
+            idx,
+            mount_x,
+            mount_y,
+            mount_z,
+            fallback_yaw,
+            fallback_pitch,
+        );
+        return 0;
+    }
+
+    let yaw = if horizontal > CT_SHOT_DIRECTION_EPSILON {
+        launch_vy.atan2(launch_vx)
+    } else {
+        (solution[2] - mount_y).atan2(solution[1] - mount_x)
+    };
+    let pitch = launch_vz.atan2(horizontal);
+    let dir_x = launch_vx / speed;
+    let dir_y = launch_vy / speed;
+    let dir_z = launch_vz / speed;
+    let aim_dx = solution[1] - mount_x;
+    let aim_dy = solution[2] - mount_y;
+    let aim_dz = solution[3] - mount_z;
+    let distance_to_intercept = (aim_dx * aim_dx + aim_dy * aim_dy + aim_dz * aim_dz)
+        .sqrt()
+        .max(1.0);
+
+    pool.turret_ballistic_has_solution[idx] = 1;
+    pool.turret_ballistic_flight_time[idx] = solution[0];
+    pool.turret_ballistic_launch_vx[idx] = launch_vx;
+    pool.turret_ballistic_launch_vy[idx] = launch_vy;
+    pool.turret_ballistic_launch_vz[idx] = launch_vz;
+    pool.turret_ballistic_yaw[idx] = yaw as f32;
+    pool.turret_ballistic_pitch[idx] = pitch as f32;
+    pool.turret_ballistic_aim_x[idx] = mount_x + dir_x * distance_to_intercept;
+    pool.turret_ballistic_aim_y[idx] = mount_y + dir_y * distance_to_intercept;
+    pool.turret_ballistic_aim_z[idx] = mount_z + dir_z * distance_to_intercept;
+    1
+}
 
 // ─────────────────────────────────────────────────────────────────
 // AIM-08.3 — Target candidate scoring + ranking kernel.

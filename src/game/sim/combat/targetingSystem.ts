@@ -31,6 +31,7 @@ import {
 } from './lineOfSight';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 import { getActiveForceFields } from './forceFieldTurret';
+import { stampCombatTargetingEntity } from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
@@ -221,6 +222,7 @@ function hasWeaponBallisticSolution(
   world: WorldState,
   source: Entity,
   weapon: Turret,
+  weaponIndex: number,
   target: Entity,
   weaponX: number,
   weaponY: number,
@@ -230,6 +232,7 @@ function hasWeaponBallisticSolution(
   const solved = solveTurretAim(
     source,
     weapon,
+    weaponIndex,
     target,
     weaponX, weaponY, weaponZ,
     weapon.pitch,
@@ -244,6 +247,7 @@ function hasWeaponBallisticSolutionToPoint(
   world: WorldState,
   source: Entity,
   weapon: Turret,
+  weaponIndex: number,
   point: Vec3,
   weaponX: number,
   weaponY: number,
@@ -253,6 +257,7 @@ function hasWeaponBallisticSolutionToPoint(
   const solved = solveTurretAimAtGroundPoint(
     source,
     weapon,
+    weaponIndex,
     point,
     weaponX, weaponY, weaponZ,
     weapon.pitch,
@@ -501,6 +506,7 @@ let _gateWorld: WorldState | null = null;
 let _gateSource: Entity | null = null;
 let _gateWeapon: Turret | null = null;
 let _gateCandidates: Entity[] | null = null;
+let _gateWeaponIndex = -1;
 let _gateWeaponX = 0;
 let _gateWeaponY = 0;
 let _gateWeaponZ = 0;
@@ -512,6 +518,7 @@ function clearTargetGateContext(): void {
   _gateSource = null;
   _gateWeapon = null;
   _gateCandidates = null;
+  _gateWeaponIndex = -1;
 }
 
 function targetCandidatePassesFireGates(candidateIdx: number): boolean {
@@ -526,6 +533,7 @@ function targetCandidatePassesFireGates(candidateIdx: number): boolean {
     world,
     source,
     weapon,
+    _gateWeaponIndex,
     enemy,
     _gateWeaponX,
     _gateWeaponY,
@@ -547,6 +555,7 @@ function passesWeaponFireGates(
   world: WorldState,
   source: Entity,
   weapon: Turret,
+  weaponIndex: number,
   enemy: Entity,
   weaponX: number,
   weaponY: number,
@@ -557,7 +566,7 @@ function passesWeaponFireGates(
   if (needsLOS && !hasWeaponLineOfSight(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
     return false;
   }
-  if (!hasWeaponBallisticSolution(world, source, weapon, enemy, weaponX, weaponY, weaponZ)) {
+  if (!hasWeaponBallisticSolution(world, source, weapon, weaponIndex, enemy, weaponX, weaponY, weaponZ)) {
     return false;
   }
   if (
@@ -577,6 +586,7 @@ function chooseBestTargetCandidate(
   world: WorldState,
   source: Entity,
   weapon: Turret,
+  weaponIndex: number,
   candidates: Entity[],
   rankMode: TargetRankMode,
   minimumRank: TargetPreferenceRank,
@@ -598,6 +608,7 @@ function chooseBestTargetCandidate(
   _gateSource = source;
   _gateWeapon = weapon;
   _gateCandidates = candidates;
+  _gateWeaponIndex = weaponIndex;
   _gateWeaponX = weaponX;
   _gateWeaponY = weaponY;
   _gateWeaponZ = weaponZ;
@@ -806,6 +817,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         { currentTick: tick, dtMs, unitGroundZ, surfaceN },
       );
     }
+    // AIM-08.4: the ballistic solver reads turret mount kinematics
+    // from the combat-targeting slab, so refresh this unit's slab row
+    // immediately after Pass 0 writes current worldPos/worldVelocity.
+    stampCombatTargetingEntity(unit);
 
     // Check for attack-ground priority target.
     if (priorityPoint !== null) {
@@ -842,7 +857,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         );
         // Solve ballistic before the FF arc check — the solver writes
         // the launch velocity / flight time the arc test walks.
-        if (!hasWeaponBallisticSolutionToPoint(world, unit, weapon, priorityPoint, wpx, wpy, wpz)) {
+        if (!hasWeaponBallisticSolutionToPoint(world, unit, weapon, wi, priorityPoint, wpx, wpy, wpz)) {
           weapon.state = 'tracking';
           continue;
         }
@@ -926,7 +941,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             priorityPosition.x, priorityPosition.y, priorityPosition.z,
           );
           // Solve ballistic before the FF arc check (see passesWeaponFireGates).
-          if (!hasWeaponBallisticSolution(world, unit, weapon, priorityTarget, wpx, wpy, wpz)) {
+          if (!hasWeaponBallisticSolution(world, unit, weapon, wi, priorityTarget, wpx, wpy, wpz)) {
             setWeaponTarget(weapon, unit, wi, null);
             weapon.state = 'idle';
             continue;
@@ -998,7 +1013,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           wpx, wpy, wpz,
           targetPosition.x, targetPosition.y, targetPosition.z,
         );
-        if (!hasWeaponBallisticSolution(world, unit, weapon, target, wpx, wpy, wpz)) {
+        if (!hasWeaponBallisticSolution(world, unit, weapon, wi, target, wpx, wpy, wpz)) {
           setWeaponTarget(weapon, unit, wi, null);
           weapon.state = 'idle';
           continue;
@@ -1172,6 +1187,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         world,
         unit,
         weapon,
+        wi,
         batchedEnemies,
         TARGETING_RANK_MODE_FIRE,
         TARGET_RANK_FIRE_FALLBACK,
@@ -1205,6 +1221,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         world,
         unit,
         weapon,
+        wi,
         batchedEnemies,
         TARGETING_RANK_MODE_ACQUISITION,
         TARGET_RANK_TRACKING_ONLY,
