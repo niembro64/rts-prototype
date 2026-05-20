@@ -39,8 +39,10 @@ AIM-08.5 — Port the targeting FSM
   Current progress: per-transition slab writes are batched in Rust for
   priority-point, priority-target, existing-lock validation, fire-choice,
   and acquisition-choice. Rust now reads slab target radius/distance for
-  priority/existing-lock FSM batches. Remaining work is to move the
-  gate-prep loops, candidate traversal dispatch, and per-entity control
+  priority/existing-lock FSM batches. Candidate scoring/selection now
+  runs as a per-entity Rust batch that reads turret ranges from the slab
+  and writes target/rank arrays for the batched FSM apply calls.
+  Remaining work is to move the gate-prep loops and per-entity control
   flow into one top-level targeting tick.
 
   Done when: targetingSystem.ts only contains the slab-rebuild

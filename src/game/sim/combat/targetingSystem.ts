@@ -71,8 +71,10 @@ let _candidatePosY = new Float64Array(0);
 let _candidatePosZ = new Float64Array(0);
 let _candidateRadius = new Float64Array(0);
 let _candidateMirrorScore = new Float64Array(0);
-const _targetingChoiceI32 = new Int32Array(2);
-const _targetingChoiceF64 = new Float64Array(2);
+let _candidateIds = new Int32Array(0);
+let _candidateSeedRanks = new Uint8Array(0);
+let _candidateSeedDistSqs = new Float64Array(0);
+let _candidateSeedMirrorScores = new Float64Array(0);
 const _targetingBallisticAim = createTurretAimScratch();
 
 function nextTargetingReacquireTick(tick: number): number {
@@ -112,6 +114,9 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _fsmBallisticClear = new Uint8Array(next);
   _fsmForceFieldClear = new Uint8Array(next);
   _fsmLosBlocked = new Uint8Array(next);
+  _candidateSeedRanks = new Uint8Array(next);
+  _candidateSeedDistSqs = new Float64Array(next);
+  _candidateSeedMirrorScores = new Float64Array(next);
 }
 
 function clearFsmGateScratch(count: number): void {
@@ -382,13 +387,6 @@ function hasWeaponArcAwareForceFieldClearanceToPoint(
   );
 }
 
-type TargetCandidateChoice = {
-  target: Entity | null;
-  rank: TargetPreferenceRank;
-  distSq: number;
-  mirrorScore: number;
-};
-
 function ensureCandidateScratchCapacity(count: number): void {
   if (count <= _candidateObservable.length) return;
   let next = Math.max(16, _candidateObservable.length);
@@ -399,6 +397,7 @@ function ensureCandidateScratchCapacity(count: number): void {
   _candidatePosZ = new Float64Array(next);
   _candidateRadius = new Float64Array(next);
   _candidateMirrorScore = new Float64Array(next);
+  _candidateIds = new Int32Array(next);
 }
 
 function getTargetCandidateRadius(enemy: Entity): number {
@@ -410,23 +409,25 @@ function getTargetCandidateRadius(enemy: Entity): number {
 function fillTargetCandidateInputs(
   world: WorldState,
   source: Entity,
-  isPassive: boolean,
+  includeMirrorScores: boolean,
   sourcePlayerId: PlayerId | undefined,
   candidates: Entity[],
 ): void {
   ensureCandidateScratchCapacity(candidates.length);
   if (sourcePlayerId === undefined) {
     _candidateObservable.fill(0, 0, candidates.length);
+    _candidateIds.fill(-1, 0, candidates.length);
     return;
   }
 
   for (let ci = 0; ci < candidates.length; ci++) {
     const enemy = candidates[ci];
+    _candidateIds[ci] = enemy.id;
     const observable = canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId);
     _candidateObservable[ci] = observable ? 1 : 0;
     _candidateMirrorScore[ci] = 0;
     if (!observable) continue;
-    _candidateMirrorScore[ci] = isPassive ? getMirrorTargetScore(enemy, source.id) : 0;
+    _candidateMirrorScore[ci] = includeMirrorScores ? getMirrorTargetScore(enemy, source.id) : 0;
     _candidateRadius[ci] = getTargetCandidateRadius(enemy);
     const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
     _candidatePosX[ci] = enemyPosition.x;
@@ -437,41 +438,41 @@ function fillTargetCandidateInputs(
 
 let _gateWorld: WorldState | null = null;
 let _gateSource: Entity | null = null;
-let _gateWeapon: Turret | null = null;
+let _gateWeapons: Turret[] | null = null;
 let _gateCandidates: Entity[] | null = null;
-let _gateWeaponIndex = -1;
-let _gateWeaponX = 0;
-let _gateWeaponY = 0;
-let _gateWeaponZ = 0;
-let _gateNeedsLOS = false;
 let _gateForceFieldsActive = false;
 
 function clearTargetGateContext(): void {
   _gateWorld = null;
   _gateSource = null;
-  _gateWeapon = null;
+  _gateWeapons = null;
   _gateCandidates = null;
-  _gateWeaponIndex = -1;
 }
 
-function targetCandidatePassesFireGates(candidateIdx: number): boolean {
+function targetCandidatePassesFireGates(turretIdx: number, candidateIdx: number): boolean {
   const world = _gateWorld;
   const source = _gateSource;
-  const weapon = _gateWeapon;
+  const weapons = _gateWeapons;
   const candidates = _gateCandidates;
-  if (!world || !source || !weapon || !candidates) return false;
+  if (!world || !source || !weapons || !candidates) return false;
+  const weaponIndex = turretIdx | 0;
+  const weapon = weapons[weaponIndex];
+  if (!weapon) return false;
   const enemy = candidates[candidateIdx | 0];
   if (!enemy) return false;
+  const weaponX = weapon.worldPos.x;
+  const weaponY = weapon.worldPos.y;
+  const weaponZ = weapon.worldPos.z;
   return passesWeaponFireGates(
     world,
     source,
     weapon,
-    _gateWeaponIndex,
+    weaponIndex,
     enemy,
-    _gateWeaponX,
-    _gateWeaponY,
-    _gateWeaponZ,
-    _gateNeedsLOS,
+    weaponX,
+    weaponY,
+    weaponZ,
+    weaponNeedsLineOfSight(weapon),
     _gateForceFieldsActive,
   );
 }
@@ -515,59 +516,42 @@ function passesWeaponFireGates(
   return true;
 }
 
-function chooseBestTargetCandidate(
+function chooseBestTargetCandidatesBatch(
   world: WorldState,
   source: Entity,
-  weapon: Turret,
-  weaponIndex: number,
+  weapons: Turret[],
+  unitSlot: number,
   candidates: Entity[],
   rankMode: TargetRankMode,
   minimumRank: TargetPreferenceRank,
-  seed: TargetCandidateChoice,
   forceFieldsActive: boolean,
-): TargetCandidateChoice {
-  const weaponX = weapon.worldPos.x;
-  const weaponY = weapon.worldPos.y;
-  const weaponZ = weapon.worldPos.z;
-  const needsLOS = weaponNeedsLineOfSight(weapon);
+): void {
   const sourcePlayerId = source.ownership?.playerId;
-  const isPassive = weapon.config.passive === true;
-  fillTargetCandidateInputs(world, source, isPassive, sourcePlayerId, candidates);
-
-  const ranges = weapon.ranges;
-  const fireMin = ranges.fire.min;
-  const tracking = ranges.tracking;
+  let includeMirrorScores = false;
+  for (let wi = 0; wi < weapons.length; wi++) {
+    if (_fsmApplyMask[wi] !== 0 && weapons[wi].config.passive === true) {
+      includeMirrorScores = true;
+      break;
+    }
+  }
+  fillTargetCandidateInputs(world, source, includeMirrorScores, sourcePlayerId, candidates);
   _gateWorld = world;
   _gateSource = source;
-  _gateWeapon = weapon;
+  _gateWeapons = weapons;
   _gateCandidates = candidates;
-  _gateWeaponIndex = weaponIndex;
-  _gateWeaponX = weaponX;
-  _gateWeaponY = weaponY;
-  _gateWeaponZ = weaponZ;
-  _gateNeedsLOS = needsLOS;
   _gateForceFieldsActive = forceFieldsActive;
 
   try {
-    getTargetingKernel().chooseBestCandidate(
-      weaponX,
-      weaponY,
-      weaponZ,
-      ranges.fire.max.acquire,
-      ranges.fire.max.release,
-      fireMin ? 1 : 0,
-      fireMin?.acquire ?? 0,
-      fireMin?.release ?? 0,
-      tracking ? 1 : 0,
-      tracking?.acquire ?? 0,
-      tracking?.release ?? 0,
+    getTargetingKernel().chooseBestCandidatesBatch(
+      unitSlot,
       rankMode,
       minimumRank,
-      seed.rank,
-      seed.distSq,
-      seed.mirrorScore,
-      isPassive ? 1 : 0,
+      _fsmApplyMask,
+      _candidateSeedRanks,
+      _candidateSeedDistSqs,
+      _candidateSeedMirrorScores,
       candidates.length,
+      _candidateIds,
       _candidateObservable,
       _candidatePosX,
       _candidatePosY,
@@ -575,22 +559,12 @@ function chooseBestTargetCandidate(
       _candidateRadius,
       _candidateMirrorScore,
       targetCandidatePassesFireGates,
-      _targetingChoiceI32,
-      _targetingChoiceF64,
+      _fsmTargetIds,
+      _fsmRanks,
     );
   } finally {
     clearTargetGateContext();
   }
-
-  const candidateIdx = _targetingChoiceI32[0];
-  return {
-    target: candidateIdx >= 0 && candidateIdx < candidates.length
-      ? candidates[candidateIdx]
-      : seed.target,
-    rank: _targetingChoiceI32[1] as TargetPreferenceRank,
-    distSq: _targetingChoiceF64[0],
-    mirrorScore: _targetingChoiceF64[1],
-  };
 }
 
 function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
@@ -1026,58 +1000,49 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // valid fallbacks. This uses per-turret ranges so each weapon
     // evaluates independently.
     clearFsmGateScratch(weapons.length);
-    for (let wi = 0; wi < weapons.length; wi++) {
-      const weapon = weapons[wi];
-      if (_weaponDisabled[wi] !== 0) continue;
-      if (weapon.config.isManualFire) continue;
-      if (weapon.target === null) continue;
-      // Pre-scan already computed the rank+distSq for `engaged &&
-      // fire.min` weapons (the only ones whose rank can be
-      // FIRE_FALLBACK). For tracking weapons and engaged-but-no-fire.min
-      // weapons the cache holds the same defaults the old recompute
-      // would have produced once filtered by the gate below.
-      const cachedRank = _cachedFireRanks[wi] as TargetPreferenceRank;
-      const cachedDistSq = _cachedFireDistSqs[wi];
-      if (
-        weapon.state !== 'tracking' &&
-        cachedRank !== TARGET_RANK_FIRE_FALLBACK
-      ) {
-        continue;
-      }
-
-      if (!batchedEnemies) continue;
-
-      let seedMirrorScore = 0;
-      if (weapon.config.passive && weapon.target !== null) {
-        const currentTarget = world.getEntity(weapon.target);
-        if (currentTarget) {
-          seedMirrorScore = getMirrorTargetScore(currentTarget, unit.id);
+    if (batchedEnemies) {
+      for (let wi = 0; wi < weapons.length; wi++) {
+        const weapon = weapons[wi];
+        if (_weaponDisabled[wi] !== 0) continue;
+        if (weapon.config.isManualFire) continue;
+        if (weapon.target === null) continue;
+        // Pre-scan already computed the rank+distSq for `engaged &&
+        // fire.min` weapons (the only ones whose rank can be
+        // FIRE_FALLBACK). For tracking weapons and engaged-but-no-fire.min
+        // weapons the cache holds the same defaults the old recompute
+        // would have produced once filtered by the gate below.
+        const cachedRank = _cachedFireRanks[wi] as TargetPreferenceRank;
+        const cachedDistSq = _cachedFireDistSqs[wi];
+        if (
+          weapon.state !== 'tracking' &&
+          cachedRank !== TARGET_RANK_FIRE_FALLBACK
+        ) {
+          continue;
         }
-      }
 
-      const choice = chooseBestTargetCandidate(
+        let seedMirrorScore = 0;
+        if (weapon.config.passive && weapon.target !== null) {
+          const currentTarget = world.getEntity(weapon.target);
+          if (currentTarget) {
+            seedMirrorScore = getMirrorTargetScore(currentTarget, unit.id);
+          }
+        }
+
+        _fsmApplyMask[wi] = 1;
+        _candidateSeedRanks[wi] = cachedRank;
+        _candidateSeedDistSqs[wi] = cachedDistSq;
+        _candidateSeedMirrorScores[wi] = seedMirrorScore;
+      }
+      chooseBestTargetCandidatesBatch(
         world,
         unit,
-        weapon,
-        wi,
+        weapons,
+        unitSlot,
         batchedEnemies,
         TARGETING_RANK_MODE_FIRE,
         TARGET_RANK_FIRE_FALLBACK,
-        {
-          target: null,
-          distSq: cachedDistSq,
-          rank: cachedRank,
-          mirrorScore: seedMirrorScore,
-        },
         forceFieldsActive,
       );
-
-      if (choice.target) {
-        // Found a target we can actually fire at. Preferred-band
-        // targets outrank close fallbacks; within a rank, nearer wins.
-        _fsmApplyMask[wi] = 1;
-        _fsmTargetIds[wi] = choice.target.id;
-      }
     }
     targeting.applyFireChoiceFsmBatch(
       unitSlot,
@@ -1087,40 +1052,28 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // Pass 3: Acquire targets for weapons with no target (idle)
     clearFsmGateScratch(weapons.length);
-    for (let wi = 0; wi < weapons.length; wi++) {
-      const weapon = weapons[wi];
-      if (_weaponDisabled[wi] !== 0) continue;
-      if (weapon.config.isManualFire) continue;
-      if (weapon.target !== null) continue;
+    if (batchedEnemies) {
+      for (let wi = 0; wi < weapons.length; wi++) {
+        const weapon = weapons[wi];
+        if (_weaponDisabled[wi] !== 0) continue;
+        if (weapon.config.isManualFire) continue;
+        if (weapon.target !== null) continue;
 
-      if (!batchedEnemies) continue;
-
-      const choice = chooseBestTargetCandidate(
+        _fsmApplyMask[wi] = 1;
+        _candidateSeedRanks[wi] = TARGET_RANK_NONE;
+        _candidateSeedDistSqs[wi] = Infinity;
+        _candidateSeedMirrorScores[wi] = 0;
+      }
+      chooseBestTargetCandidatesBatch(
         world,
         unit,
-        weapon,
-        wi,
+        weapons,
+        unitSlot,
         batchedEnemies,
         TARGETING_RANK_MODE_ACQUISITION,
         TARGET_RANK_TRACKING_ONLY,
-        {
-          target: null,
-          distSq: Infinity,
-          rank: TARGET_RANK_NONE,
-          mirrorScore: 0,
-        },
         forceFieldsActive,
       );
-
-      if (choice.target) {
-        _fsmApplyMask[wi] = 1;
-        _fsmTargetIds[wi] = choice.target.id;
-        _fsmRanks[wi] = choice.rank;
-      } else {
-        _fsmApplyMask[wi] = 1;
-        _fsmTargetIds[wi] = -1;
-        _fsmRanks[wi] = TARGET_RANK_NONE;
-      }
     }
     targeting.applyAcquisitionChoiceFsmBatch(
       unitSlot,

@@ -177,7 +177,7 @@ import __wbg_init, {
   combat_targeting_solve_ballistic_aim,
   combat_targeting_prepare_auto_scan,
   combat_targeting_rank_target,
-  combat_targeting_choose_best_candidate,
+  combat_targeting_choose_best_candidates_batch,
   combat_targeting_clear_turret_lock,
   combat_targeting_clear_entity_locks,
   combat_targeting_apply_priority_point_fsm_batch,
@@ -1037,38 +1037,29 @@ export interface CombatTargetingApi {
     distSq: number,
     targetRadius: number,
   ) => number;
-  /** AIM-08.3 — Candidate score/ranking kernel. Candidate arrays are
-   *  parallel slices of length `candidateCount`; output is
-   *  outI32[0]=local candidate idx (-1 for seed/no candidate),
-   *  outI32[1]=rank, outF64[0]=distSq, outF64[1]=mirrorScore. */
-  readonly chooseBestCandidate: (
-    weaponX: number,
-    weaponY: number,
-    weaponZ: number,
-    fireMaxAcquire: number,
-    fireMaxRelease: number,
-    hasFireMin: number,
-    fireMinAcquire: number,
-    fireMinRelease: number,
-    hasTracking: number,
-    trackingAcquire: number,
-    trackingRelease: number,
+  /** AIM-08.5 — Batch target candidate score/ranking kernel for one
+   *  entity's turret rows. Candidate arrays are parallel slices of
+   *  length `candidateCount`; `gateFn(turretIdx, candidateIdx)` checks
+   *  the still-object-owned expensive gates during migration. */
+  readonly chooseBestCandidatesBatch: (
+    entitySlot: number,
     rankMode: number,
     minimumRank: number,
-    seedRank: number,
-    seedDistSq: number,
-    seedMirrorScore: number,
-    isPassive: number,
+    applyMask: Uint8Array,
+    seedRanks: Uint8Array,
+    seedDistSqs: Float64Array,
+    seedMirrorScores: Float64Array,
     candidateCount: number,
+    candidateIds: Int32Array,
     candidateObservable: Uint8Array,
     candidatePosX: Float64Array,
     candidatePosY: Float64Array,
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
     candidateMirrorScore: Float64Array,
-    gateFn: (candidateIdx: number) => boolean,
-    outI32: Int32Array,
-    outF64: Float64Array,
+    gateFn: (turretIdx: number, candidateIdx: number) => boolean,
+    outTargetIds: Int32Array,
+    outRanks: Uint8Array,
   ) => void;
   /** AIM-08.5 — Rust-owned targeting FSM transition writes. JS still
    *  supplies object-owned expensive gates during migration; these
@@ -2124,7 +2115,7 @@ export function initSimWasm(): Promise<SimWasm> {
           solveBallisticAim: combat_targeting_solve_ballistic_aim,
           prepareAutoScan: combat_targeting_prepare_auto_scan,
           rankTarget: combat_targeting_rank_target,
-          chooseBestCandidate: combat_targeting_choose_best_candidate,
+          chooseBestCandidatesBatch: combat_targeting_choose_best_candidates_batch,
           clearTurretLock: combat_targeting_clear_turret_lock,
           clearEntityLocks: combat_targeting_clear_entity_locks,
           applyPriorityPointFsmBatch: combat_targeting_apply_priority_point_fsm_batch,

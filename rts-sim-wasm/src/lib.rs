@@ -7960,30 +7960,25 @@ fn targeting_pool_entry_is_better(
 }
 
 #[inline]
-fn targeting_gate_passes(gate_fn: &Function, candidate_idx: i32) -> bool {
-    let arg = JsValue::from_f64(candidate_idx as f64);
-    match gate_fn.call1(&JsValue::NULL, &arg) {
+fn targeting_gate_passes(gate_fn: &Function, turret_idx: i32, candidate_idx: i32) -> bool {
+    let turret_arg = JsValue::from_f64(turret_idx as f64);
+    let candidate_arg = JsValue::from_f64(candidate_idx as f64);
+    match gate_fn.call2(&JsValue::NULL, &turret_arg, &candidate_arg) {
         Ok(v) => v.as_bool().unwrap_or(false),
         Err(e) => wasm_bindgen::throw_val(e),
     }
 }
 
-#[inline]
-fn write_targeting_choice(
-    out_i32: &mut [i32],
-    out_f64: &mut [f64],
+struct TargetingCandidateChoice {
     candidate_idx: i32,
     rank: u8,
-    dist_sq: f64,
-    mirror_score: f64,
-) {
-    if out_i32.len() >= 2 {
-        out_i32[0] = candidate_idx;
-        out_i32[1] = rank as i32;
-    }
-    if out_f64.len() >= 2 {
-        out_f64[0] = dist_sq;
-        out_f64[1] = mirror_score;
+}
+
+#[inline]
+fn targeting_seed_choice(seed_rank: u8) -> TargetingCandidateChoice {
+    TargetingCandidateChoice {
+        candidate_idx: -1,
+        rank: seed_rank,
     }
 }
 
@@ -8018,8 +8013,8 @@ pub fn combat_targeting_rank_target(
     )
 }
 
-#[wasm_bindgen]
-pub fn combat_targeting_choose_best_candidate(
+fn combat_targeting_choose_best_candidate_inner(
+    gate_turret_idx: i32,
     weapon_x: f64,
     weapon_y: f64,
     weapon_z: f64,
@@ -8045,17 +8040,8 @@ pub fn combat_targeting_choose_best_candidate(
     candidate_radius: &[f64],
     candidate_mirror_score: &[f64],
     gate_fn: &Function,
-    out_i32: &mut [i32],
-    out_f64: &mut [f64],
-) {
-    write_targeting_choice(
-        out_i32,
-        out_f64,
-        -1,
-        seed_rank,
-        seed_dist_sq,
-        seed_mirror_score,
-    );
+) -> TargetingCandidateChoice {
+    let seed = targeting_seed_choice(seed_rank);
     let count = (candidate_count as usize)
         .min(candidate_observable.len())
         .min(candidate_pos_x.len())
@@ -8064,7 +8050,7 @@ pub fn combat_targeting_choose_best_candidate(
         .min(candidate_radius.len())
         .min(candidate_mirror_score.len());
     if count == 0 {
-        return;
+        return seed;
     }
 
     let mut top_candidate_idx = [-1i32; TARGETING_TOPK_LOS];
@@ -8156,21 +8142,16 @@ pub fn combat_targeting_choose_best_candidate(
         if candidate_idx < 0 {
             continue;
         }
-        if targeting_gate_passes(gate_fn, candidate_idx) {
-            write_targeting_choice(
-                out_i32,
-                out_f64,
+        if targeting_gate_passes(gate_fn, gate_turret_idx, candidate_idx) {
+            return TargetingCandidateChoice {
                 candidate_idx,
-                top_rank[k],
-                top_dist_sq[k],
-                top_mirror_score[k],
-            );
-            return;
+                rank: top_rank[k],
+            };
         }
     }
 
     if top_count == 0 {
-        return;
+        return seed;
     }
 
     let mut fallback_budget = TARGETING_FALLBACK_LOS_BUDGET;
@@ -8189,7 +8170,7 @@ pub fn combat_targeting_choose_best_candidate(
             continue;
         }
 
-        let Some((rank, dist_sq, mirror_score)) = targeting_score_candidate(
+        let Some((rank, _dist_sq, _mirror_score)) = targeting_score_candidate(
             ci,
             weapon_x,
             weapon_y,
@@ -8219,9 +8200,122 @@ pub fn combat_targeting_choose_best_candidate(
         };
 
         fallback_budget -= 1;
-        if targeting_gate_passes(gate_fn, ci as i32) {
-            write_targeting_choice(out_i32, out_f64, ci as i32, rank, dist_sq, mirror_score);
-            return;
+        if targeting_gate_passes(gate_fn, gate_turret_idx, ci as i32) {
+            return TargetingCandidateChoice {
+                candidate_idx: ci as i32,
+                rank,
+            };
+        }
+    }
+
+    seed
+}
+
+/// AIM-08.5 — batch target candidate scoring/selection for one
+/// entity's turrets. JS still supplies object-owned expensive gates via
+/// `gate_fn(turretIdx, candidateIdx)`, but Rust now owns the per-turret
+/// candidate traversal, range/rank reads from the slab, top-K ordering,
+/// fallback budget, and output target/rank arrays in one boundary call.
+#[wasm_bindgen]
+pub fn combat_targeting_choose_best_candidates_batch(
+    entity_slot: u32,
+    rank_mode: u8,
+    minimum_rank: u8,
+    apply_mask: &[u8],
+    seed_ranks: &[u8],
+    seed_dist_sqs: &[f64],
+    seed_mirror_scores: &[f64],
+    candidate_count: u32,
+    candidate_ids: &[i32],
+    candidate_observable: &[u8],
+    candidate_pos_x: &[f64],
+    candidate_pos_y: &[f64],
+    candidate_pos_z: &[f64],
+    candidate_radius: &[f64],
+    candidate_mirror_score: &[f64],
+    gate_fn: &Function,
+    out_target_ids: &mut [i32],
+    out_ranks: &mut [u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let turret_count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(seed_ranks.len())
+        .min(seed_dist_sqs.len())
+        .min(seed_mirror_scores.len())
+        .min(out_target_ids.len())
+        .min(out_ranks.len());
+    let clamped_candidate_count = candidate_count.min(candidate_ids.len() as u32);
+    if turret_count == 0 || clamped_candidate_count == 0 {
+        return;
+    }
+
+    for turret_idx in 0..turret_count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+
+        out_target_ids[turret_idx] = -1;
+        out_ranks[turret_idx] = seed_ranks[turret_idx];
+
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let flags = pool.turret_config_flags[idx];
+        let has_fire_min = if pool.turret_fire_min_acquire_sq[idx] > 0.0 {
+            1
+        } else {
+            0
+        };
+        let has_tracking = if (flags & CT_TURRET_CFG_HAS_TRACKING_RANGE) != 0 {
+            1
+        } else {
+            0
+        };
+        let is_passive = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
+            1
+        } else {
+            0
+        };
+
+        let choice = combat_targeting_choose_best_candidate_inner(
+            turret_idx as i32,
+            pool.turret_mount_x[idx],
+            pool.turret_mount_y[idx],
+            pool.turret_mount_z[idx],
+            pool.turret_fire_max_acquire_sq[idx].sqrt(),
+            pool.turret_fire_max_release_sq[idx].sqrt(),
+            has_fire_min,
+            pool.turret_fire_min_acquire_sq[idx].sqrt(),
+            pool.turret_fire_min_release_sq[idx].sqrt(),
+            has_tracking,
+            pool.turret_tracking_acquire_sq[idx].sqrt(),
+            pool.turret_tracking_release_sq[idx].sqrt(),
+            rank_mode,
+            minimum_rank,
+            seed_ranks[turret_idx],
+            seed_dist_sqs[turret_idx],
+            seed_mirror_scores[turret_idx],
+            is_passive,
+            clamped_candidate_count,
+            candidate_observable,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            candidate_radius,
+            candidate_mirror_score,
+            gate_fn,
+        );
+        let candidate_idx = choice.candidate_idx;
+        if candidate_idx >= 0 {
+            let candidate_idx = candidate_idx as usize;
+            if candidate_idx < candidate_ids.len() {
+                out_target_ids[turret_idx] = candidate_ids[candidate_idx];
+                out_ranks[turret_idx] = choice.rank;
+            }
         }
     }
 }
