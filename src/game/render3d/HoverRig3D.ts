@@ -26,7 +26,7 @@ const FAN_RING_COLOR = 0x000000;
 const FAN_BLADE_COLOR = 0xffffff;
 const FAN_HUB_COLOR = 0xffffff;
 const HOVER_SMOKE_COLOR = 0xcccccc;
-const FAN_SPIN_RAD_PER_SEC = 42;
+const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
 const FAN_SMOKE_SPEED = 60;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
@@ -68,6 +68,7 @@ export type HoverMesh = {
    *  client systems (smoke length, dust kick-up, altitude shading)
    *  that key off the hover gap rather than absolute altitude. */
   clearance: number;
+  fanSpinRadPerSec: number;
 } & LocomotionBase;
 
 export function buildHoverFans(
@@ -164,7 +165,14 @@ export function buildHoverFans(
   }
 
   unitGroup.add(group);
-  return { type: 'hover', group, fans, clearance: 0, geometryKey: '' };
+  return {
+    type: 'hover',
+    group,
+    fans,
+    clearance: 0,
+    fanSpinRadPerSec: cfg.fanSpinRadPerSec ?? DEFAULT_FAN_SPIN_RAD_PER_SEC,
+    geometryKey: '',
+  };
 }
 
 export function updateHoverFans(
@@ -194,7 +202,7 @@ export function updateHoverFans(
 
   for (let i = 0; i < mesh.fans.length; i++) {
     const fan = mesh.fans[i];
-    fan.rotor.rotation.y -= FAN_SPIN_RAD_PER_SEC * dtSec;
+    fan.rotor.rotation.y -= mesh.fanSpinRadPerSec * dtSec;
     if (!smokeOut) continue;
 
     fan.emitter.getWorldPosition(_fanWorldPos);

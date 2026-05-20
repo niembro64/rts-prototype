@@ -88,6 +88,9 @@ export type TurretBlueprint = {
   launchForce: number;
   isManualFire: boolean;
   passive: boolean;
+  /** Actual terrain/entity line-of-sight gate. Force-field sight
+   *  obstruction is configured separately at the battle level. */
+  requiresNonObstructedLineOfSight: boolean;
   spread: { angle: number; pelletCount: number } | null;
   burst: { count: number; delay: number } | null;
   forceField: {
@@ -253,6 +256,9 @@ export type HoverConfig = {
   /** Degrees each duct tilts away from the unit center. The exhaust
    *  smoke uses the same local axis so the plume matches the fan. */
   fanOutwardAngleDeg?: number;
+  /** Rotor spin rate in radians per second. Positive value; direction
+   *  is fixed (counter-clockwise viewed from above). */
+  fanSpinRadPerSec?: number;
 };
 
 export type LocomotionBlueprint =
