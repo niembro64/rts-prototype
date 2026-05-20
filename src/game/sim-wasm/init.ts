@@ -943,6 +943,7 @@ export interface CombatTargetingApi {
     aimErrorPitch: number,
     losBlockedTicks: number,
     configFlags: number,
+    dps: number,
   ) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
@@ -1153,8 +1154,10 @@ export interface CombatTargetingApi {
   ) => void;
   /** AIM-08.5 — unified attack-entity priority gate compute + FSM
    *  apply. TS resolves per-turret aim points (so lockOnToBody AABB
-   *  clamps and lockOnToTurret stay in one place) and the passive
-   *  `isMirrorTarget` score; Rust does LOS / ballistic / FF / FSM. */
+   *  clamps and lockOnToTurret stay in one place); Rust does LOS /
+   *  ballistic / FF / FSM. Passive-mirror `mirror_valid` is computed
+   *  in Rust by walking the target's turrets via the slab — no JS
+   *  pre-pass needed. */
   readonly computeAndApplyPriorityTargetFsmBatch: (
     entitySlot: number,
     targetId: number,
@@ -1168,7 +1171,6 @@ export interface CombatTargetingApi {
     aimX: Float64Array,
     aimY: Float64Array,
     aimZ: Float64Array,
-    mirrorValid: Uint8Array,
     projectileSpeeds: Float64Array,
     arcPreferences: Uint8Array,
     maxTimeSecs: Float64Array,
@@ -1178,10 +1180,9 @@ export interface CombatTargetingApi {
   ) => void;
   /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
    *  turret's current target is read from the slab; TS supplies the
-   *  cloak observability check, mirror score for passives, aim point,
-   *  and mirror-panel clearance mask. Rust derives `sight_blocked`
-   *  from los/ff internally, so the JS-side sightBlocked helper is
-   *  gone. */
+   *  cloak observability check, the aim point, and the mirror-panel
+   *  clearance mask. Rust computes the passive mirror_valid bit from
+   *  the slab and derives sight_blocked from los/ff internally. */
   readonly computeAndApplyValidateExistingLockFsmBatch: (
     entitySlot: number,
     sourceEntityId: number,
@@ -1193,7 +1194,6 @@ export interface CombatTargetingApi {
     gravity: number,
     losDropGraceTicks: number,
     observable: Uint8Array,
-    mirrorValid: Uint8Array,
     aimX: Float64Array,
     aimY: Float64Array,
     aimZ: Float64Array,

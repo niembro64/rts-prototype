@@ -23,6 +23,7 @@ import { getActiveForceFields } from './forceFieldTurret';
 import { weaponRequiresNonObstructedLineOfSight } from './lineOfSight';
 import { getEntityPosition3d, getEntityVelocity3d } from './combatUtils';
 import { setWeaponTarget } from './targetIndex';
+import { turretDps } from './mirrorTargetPriority';
 import {
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
@@ -228,6 +229,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.aimErrorYaw, t.aimErrorPitch,
       t.losBlockedTicks,
       encodeTurretConfigFlags(t, ranges),
+      turretDps(t),
     );
   }
 }

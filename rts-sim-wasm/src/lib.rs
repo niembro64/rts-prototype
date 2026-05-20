@@ -6240,6 +6240,11 @@ struct CombatTargetingPool {
     // the auto-targeting pre-scan to widen one unit-centered
     // broadphase query enough to cover every turret-centered range.
     turret_mount_offset_2d: Vec<f64>,
+    // Per-turret sustained DPS. Static per shot blueprint
+    // (cooldown + shot damage / dps). Zero for visualOnly /
+    // force-shot / missing-shot turrets. Used by the Rust passive-
+    // mirror target check to walk a target's turrets and score them.
+    turret_dps: Vec<f32>,
     turret_aim_error_yaw: Vec<f32>,
     turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
@@ -6297,6 +6302,7 @@ impl CombatTargetingPool {
             turret_tracking_release_sq: Vec::new(),
             turret_outermost_acquire: Vec::new(),
             turret_mount_offset_2d: Vec::new(),
+            turret_dps: Vec::new(),
             turret_aim_error_yaw: Vec::new(),
             turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
@@ -6354,6 +6360,7 @@ impl CombatTargetingPool {
             self.turret_tracking_release_sq.resize(turret_needed, 0.0);
             self.turret_outermost_acquire.resize(turret_needed, 0.0);
             self.turret_mount_offset_2d.resize(turret_needed, 0.0);
+            self.turret_dps.resize(turret_needed, 0.0);
             self.turret_aim_error_yaw.resize(turret_needed, 0.0);
             self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
@@ -6570,6 +6577,7 @@ pub fn combat_targeting_set_turret(
     aim_error_pitch: f32,
     los_blocked_ticks: u16,
     config_flags: u8,
+    dps: f32,
 ) {
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
@@ -6597,6 +6605,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_aim_error_pitch[global_idx] = aim_error_pitch;
     pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
     pool.turret_config_flags[global_idx] = config_flags;
+    pool.turret_dps[global_idx] = dps;
     combat_targeting_write_no_ballistic_solution(
         pool,
         global_idx,
@@ -7115,6 +7124,46 @@ fn combat_targeting_set_target_state(
 fn combat_targeting_entity_alive(pool: &CombatTargetingPool, entity_slot: usize) -> bool {
     entity_slot < pool.entity_flags.len()
         && (pool.entity_flags[entity_slot] & CT_ENTITY_FLAG_ALIVE) != 0
+}
+
+/// AIM-08.5 — Rust port of `isMirrorTarget` / `scoreMirrorTargetTurret`
+/// from `mirrorTargetPriority.ts`. Walks the target entity's turrets in
+/// the slab looking for a non-passive, non-visual, non-manual turret
+/// that is currently locked onto `our_entity_id` and dealing damage
+/// (non-zero stamped DPS). Returns true if such a turret exists —
+/// matches the JS-side passive-mirror validation that decides whether
+/// a mirror weapon should bother locking onto this enemy.
+#[inline]
+fn combat_targeting_is_mirror_target_for_slot(
+    pool: &CombatTargetingPool,
+    target_entity_slot: usize,
+    our_entity_id: i32,
+) -> bool {
+    if target_entity_slot >= pool.turret_count_per_entity.len() {
+        return false;
+    }
+    let count = (pool.turret_count_per_entity[target_entity_slot] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    let exclude_flags = CT_TURRET_CFG_PASSIVE
+        | CT_TURRET_CFG_VISUAL_ONLY
+        | CT_TURRET_CFG_IS_MANUAL_FIRE;
+    for ti in 0..count {
+        let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
+        let flags = pool.turret_config_flags[idx];
+        if (flags & exclude_flags) != 0 {
+            continue;
+        }
+        if pool.turret_target_id[idx] != our_entity_id {
+            continue;
+        }
+        if pool.turret_state[idx] == CT_TURRET_STATE_IDLE {
+            continue;
+        }
+        if pool.turret_dps[idx] > 0.0 {
+            return true;
+        }
+    }
+    false
 }
 
 #[inline]
@@ -8100,7 +8149,6 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
     aim_x: &[f64],
     aim_y: &[f64],
     aim_z: &[f64],
-    mirror_valid: &[u8],
     projectile_speeds: &[f64],
     arc_preferences: &[u8],
     max_time_secs: &[f64],
@@ -8132,12 +8180,26 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
             (0u8, 0.0, 0.0, 0.0, 0.0)
         };
 
+    // Mirror-valid is identical for every passive turret on this unit
+    // (it depends only on target + source, not on the turret), so
+    // compute it once up front using the Rust mirror-target helper.
+    // Non-passive turrets get mirror_valid = 1 unconditionally.
+    let passive_mirror_valid: u8 = match target_slot {
+        Some(slot) => {
+            if combat_targeting_is_mirror_target_for_slot(pool, slot, source_entity_id) {
+                1
+            } else {
+                0
+            }
+        }
+        None => 0,
+    };
+
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(aim_x.len())
         .min(aim_y.len())
         .min(aim_z.len())
-        .min(mirror_valid.len())
         .min(projectile_speeds.len())
         .min(arc_preferences.len())
         .min(max_time_secs.len())
@@ -8161,6 +8223,12 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
             continue;
         }
 
+        let mirror_valid = if (flags & CT_TURRET_CFG_PASSIVE) == 0 {
+            1u8
+        } else {
+            passive_mirror_valid
+        };
+
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
@@ -8169,7 +8237,7 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         // failed — saves the LOS/ballistic/FF compute since the FSM
         // is going to idle anyway.
         let (los_clear, ballistic_clear, force_field_clear) =
-            if target_valid == 0 || mirror_valid[turret_idx] == 0 {
+            if target_valid == 0 || mirror_valid == 0 {
                 (0u8, 0u8, 0u8)
             } else {
                 compute_turret_gates_for_aim_point(
@@ -8206,7 +8274,7 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
             target_radius,
             dist_sq,
             target_valid,
-            mirror_valid[turret_idx],
+            mirror_valid,
             los_clear,
             ballistic_clear,
             force_field_clear,
@@ -8233,7 +8301,6 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     gravity: f64,
     los_drop_grace_ticks: u16,
     observable: &[u8],
-    mirror_valid: &[u8],
     aim_x: &[f64],
     aim_y: &[f64],
     aim_z: &[f64],
@@ -8253,7 +8320,6 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(observable.len())
-        .min(mirror_valid.len())
         .min(aim_x.len())
         .min(aim_y.len())
         .min(aim_z.len())
@@ -8308,6 +8374,25 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
                 (0u8, 0.0, 0.0, 0.0, 0.0)
             };
 
+        // For passive turrets, "valid" requires the target to still
+        // carry a damaging turret locked onto us. Non-passive turrets
+        // skip the mirror check.
+        let mirror_valid = if target_valid == 0 {
+            0u8
+        } else if (flags & CT_TURRET_CFG_PASSIVE) == 0 {
+            1u8
+        } else {
+            target_slot
+                .map(|slot| {
+                    if combat_targeting_is_mirror_target_for_slot(pool, slot, source_entity_id) {
+                        1u8
+                    } else {
+                        0u8
+                    }
+                })
+                .unwrap_or(0u8)
+        };
+
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
@@ -8315,7 +8400,7 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
         let (ballistic_clear, sight_blocked) =
-            if target_valid == 0 || mirror_valid[turret_idx] == 0 {
+            if target_valid == 0 || mirror_valid == 0 {
                 (0u8, 0u8)
             } else {
                 let (los_clear, bc, ff_clear) = compute_turret_gates_for_aim_point(
@@ -8360,7 +8445,7 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
             target_radius,
             dist_sq,
             target_valid,
-            mirror_valid[turret_idx],
+            mirror_valid,
             ballistic_clear,
             sight_blocked,
             los_drop_grace_ticks,

@@ -12,7 +12,7 @@ export type MirrorTargetTurretPick = {
  *  pulse for `duration` out of every `cooldown` window; plasma/rocket
  *  shots deliver `explosion.damage` per `cooldown` ms. Force shots
  *  and turrets without a damaging shot return 0 and are filtered out. */
-function turretDps(turret: Turret): number {
+export function turretDps(turret: Turret): number {
   const shot = turret.config.shot;
   if (!shot) return 0;
   if (shot.type === 'beam') return shot.dps;

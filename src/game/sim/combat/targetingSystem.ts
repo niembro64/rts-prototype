@@ -1,7 +1,7 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, PlayerId, ProjectileShot, Turret } from '../types';
+import type { Entity, PlayerId, ProjectileShot, Turret } from '../types';
 import { getShotMaxLifespan, isProjectileShot } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { GRAVITY } from '../../../config';
@@ -77,7 +77,6 @@ let _ppMirrorPanelClear = new Uint8Array(0);
 let _ppAimX = new Float64Array(0);
 let _ppAimY = new Float64Array(0);
 let _ppAimZ = new Float64Array(0);
-let _ppMirrorValid = new Uint8Array(0);
 let _ppObservable = new Uint8Array(0);
 const _gateAimPointScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
@@ -152,7 +151,6 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _ppAimX = new Float64Array(next);
   _ppAimY = new Float64Array(next);
   _ppAimZ = new Float64Array(next);
-  _ppMirrorValid = new Uint8Array(next);
   _ppObservable = new Uint8Array(next);
 }
 
@@ -220,10 +218,11 @@ function fillGateMirrorPanelClearForPoint(
   }
 }
 
-/** Resolve each turret's aim point against a known target entity,
- *  precompute the passive-mirror `mirror_valid` mask, and fill the
- *  per-turret mirror-panel clearance against that aim point. Used by
- *  the priority-target gate kernel. */
+/** Resolve each turret's aim point against a known target entity and
+ *  fill the per-turret mirror-panel clearance against that aim point.
+ *  Used by the priority-target gate kernel. The passive-mirror
+ *  validation is computed inside Rust via the slab's per-turret DPS,
+ *  so no JS-side mirror_valid array is needed any more. */
 function fillPriorityTargetGateInputs(
   weapons: Turret[],
   target: Entity,
@@ -234,11 +233,6 @@ function fillPriorityTargetGateInputs(
 ): void {
   for (let wi = 0; wi < weapons.length; wi++) {
     const weapon = weapons[wi];
-    // Passive turrets only lock onto enemies whose turrets actually
-    // deal damage. The shared mirror scorer handles threat priority:
-    // direct threat to this unit > engaged elsewhere > any active
-    // turret, with sustained DPS as the tiebreaker inside each tier.
-    _ppMirrorValid[wi] = !weapon.config.passive || isMirrorTarget(target, source.id) ? 1 : 0;
     resolveTargetAimPoint(
       target,
       weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
@@ -269,10 +263,11 @@ function fillPriorityTargetGateInputs(
 }
 
 /** Resolve per-turret existing-lock inputs: cloak observability,
- *  passive mirror validity, target aim point, and mirror-panel
- *  clearance. Weapons with no current target leave their arrays at
- *  safe defaults — the Rust kernel skips those turrets via the slab's
- *  `turret_target_id` field anyway. */
+ *  target aim point, and mirror-panel clearance. Weapons with no
+ *  current target leave their arrays at safe defaults — the Rust
+ *  kernel skips those turrets via the slab's `turret_target_id` field
+ *  anyway. The passive-mirror validation is computed inside Rust via
+ *  the slab's per-turret DPS. */
 function fillExistingLockGateInputs(
   weapons: Turret[],
   world: WorldState,
@@ -285,7 +280,6 @@ function fillExistingLockGateInputs(
     const weapon = weapons[wi];
     if (weapon.target === null) {
       _ppObservable[wi] = 0;
-      _ppMirrorValid[wi] = 0;
       _ppAimX[wi] = 0;
       _ppAimY[wi] = 0;
       _ppAimZ[wi] = 0;
@@ -309,7 +303,6 @@ function fillExistingLockGateInputs(
     }
     if (!targetIsValid || target === undefined) {
       _ppObservable[wi] = 0;
-      _ppMirrorValid[wi] = 0;
       _ppAimX[wi] = 0;
       _ppAimY[wi] = 0;
       _ppAimZ[wi] = 0;
@@ -317,7 +310,6 @@ function fillExistingLockGateInputs(
       continue;
     }
     _ppObservable[wi] = 1;
-    _ppMirrorValid[wi] = !weapon.config.passive || isMirrorTarget(target, unit.id) ? 1 : 0;
     resolveTargetAimPoint(
       target,
       weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
@@ -365,10 +357,6 @@ function getTargetingKernel() {
     throw new Error('targetingSystem: sim-wasm is not initialized');
   }
   return sim.combatTargeting;
-}
-
-function isMirrorTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
-  return getMirrorTargetScore(enemy, mirrorUnitId) > 0;
 }
 
 function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
@@ -827,9 +815,9 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
       if (priorityTarget) {
         // ATTACK MODE: try the priority target, firing only inside
-        // hard max range. Rust runs LOS / ballistic / FF / FSM in one
-        // call; TS only resolves per-turret aim points and the
-        // passive-mirror score.
+        // hard max range. Rust runs LOS / ballistic / FF / FSM and
+        // the passive-mirror DPS walk in one call; TS only resolves
+        // per-turret aim points and the mirror-panel clearance.
         fillGateBallisticConfig(weapons);
         fillPriorityTargetGateInputs(
           weapons,
@@ -850,7 +838,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           COMBAT_LOS_ENTITY_QUERY_WIDTH,
           GRAVITY,
           _ppAimX, _ppAimY, _ppAimZ,
-          _ppMirrorValid,
           _ppProjectileSpeeds,
           _ppArcPreferences,
           _ppMaxTimeSecs,
@@ -868,10 +855,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // AUTO MODE: standard hysteresis FSM
 
     // Pass 1: Validate existing targets with hysteresis. Rust runs the
-    // LOS / ballistic / FF gates and derives sight_blocked from them;
-    // TS pre-computes cloak observability, the passive `isMirrorTarget`
-    // score, per-turret aim points, and the mirror-panel clearance
-    // mask. Per-turret state transitions write straight to the slab.
+    // LOS / ballistic / FF gates, derives sight_blocked from them, and
+    // computes the passive-mirror validity from the slab's per-turret
+    // DPS; TS pre-computes only cloak observability, per-turret aim
+    // points, and the mirror-panel clearance mask. Per-turret state
+    // transitions write straight to the slab.
     fillGateBallisticConfig(weapons);
     fillExistingLockGateInputs(
       weapons,
@@ -892,7 +880,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       GRAVITY,
       SIGHT_DROP_GRACE_TICKS,
       _ppObservable,
-      _ppMirrorValid,
       _ppAimX, _ppAimY, _ppAimZ,
       _ppProjectileSpeeds,
       _ppArcPreferences,
