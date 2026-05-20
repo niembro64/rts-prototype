@@ -68,18 +68,25 @@ let _fsmBallisticClear = new Uint8Array(0);
 let _fsmForceFieldClear = new Uint8Array(0);
 let _fsmSightBlocked = new Uint8Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
-// AIM-08.5 unified priority-point gate inputs. The Rust kernel reads
+// AIM-08.5 unified gate inputs shared across the priority-point,
+// priority-target, and existing-lock kernels. The Rust kernels read
 // per-turret ballistic config and a JS-precomputed mirror-panel mask
 // (the panel walk is the one gate piece that has no Rust equivalent
-// yet). Most ticks won't have an attack-ground order active, so these
-// arrays sit at zero capacity until the first priority-point branch
-// fires.
+// yet). Aim points are TS-resolved so lockOnToBody/lockOnToTurret
+// stay in one place. Per-branch arrays (observable, mirror_valid)
+// extend the shared set where applicable.
 let _ppProjectileSpeeds = new Float64Array(0);
 let _ppArcPreferences = new Uint8Array(0);
 let _ppMaxTimeSecs = new Float64Array(0);
 let _ppGroundAimFractions = new Float64Array(0);
 let _ppUnderOnlyMask = new Uint8Array(0);
 let _ppMirrorPanelClear = new Uint8Array(0);
+let _ppAimX = new Float64Array(0);
+let _ppAimY = new Float64Array(0);
+let _ppAimZ = new Float64Array(0);
+let _ppMirrorValid = new Uint8Array(0);
+let _ppObservable = new Uint8Array(0);
+const _gateAimPointScratch: Vec3 = { x: 0, y: 0, z: 0 };
 // AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
 // candidates into flat arrays; Rust owns score/rank/top-K/fallback.
 let _candidateObservable = new Uint8Array(0);
@@ -145,6 +152,11 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _ppGroundAimFractions = new Float64Array(next);
   _ppUnderOnlyMask = new Uint8Array(next);
   _ppMirrorPanelClear = new Uint8Array(next);
+  _ppAimX = new Float64Array(next);
+  _ppAimY = new Float64Array(next);
+  _ppAimZ = new Float64Array(next);
+  _ppMirrorValid = new Uint8Array(next);
+  _ppObservable = new Uint8Array(next);
 }
 
 const BALLISTIC_ARC_LOW = 0;
@@ -155,12 +167,11 @@ const BALLISTIC_ARC_HIGH = 1;
  *  could later be stamped on the slab; running this once per attack-
  *  ground entity is much cheaper than the per-weapon Rust calls it
  *  replaces. */
-function fillPriorityPointBallisticInputs(
-  weapons: Turret[],
-  point: Vec3,
-  forceMaterialSightObstructionActive: boolean,
-  world: WorldState,
-): void {
+/** Per-turret ballistic config arrays (projectile speed, arc
+ *  preference, max time, ground-aim fraction, under-only mask) are
+ *  static per-blueprint and identical across the three gate kernels.
+ *  Filled once and reused. */
+function fillGateBallisticConfig(weapons: Turret[]): void {
   for (let wi = 0; wi < weapons.length; wi++) {
     const weapon = weapons[wi];
     const shot = weapon.config.shot;
@@ -180,20 +191,158 @@ function fillPriorityPointBallisticInputs(
     }
     _ppGroundAimFractions[wi] = weapon.config.groundAimFraction ?? 0;
     _ppUnderOnlyMask[wi] = angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0;
+  }
+}
 
-    // The mirror-panel walk is the only force-material gate piece that
-    // doesn't have a Rust equivalent yet, so compute it here when it
-    // can actually matter. Force shots and passive mirrors exit before
-    // the gate inside the kernel, so their mask value is unused.
+/** Per-turret mirror-panel clearance against a fixed world point. The
+ *  panel walk is JS-only (no Rust kernel yet); the result feeds the
+ *  Rust gate kernel as the `mirror_panel_clear` mask. Force shots and
+ *  passive mirrors skip the FF gate entirely inside the kernel, so
+ *  their mask is left at the safe-default 1. */
+function fillGateMirrorPanelClearForPoint(
+  weapons: Turret[],
+  point: Vec3,
+  forceMaterialSightObstructionActive: boolean,
+  world: WorldState,
+): void {
+  for (let wi = 0; wi < weapons.length; wi++) {
+    const weapon = weapons[wi];
     if (
       forceMaterialSightObstructionActive &&
-      shot?.type !== 'force' &&
+      weapon.config.shot?.type !== 'force' &&
       weapon.config.passive !== true
     ) {
       _ppMirrorPanelClear[wi] = hasForceMirrorPanelClearance(
         world,
         weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
         point.x, point.y, point.z,
+      ) ? 1 : 0;
+    } else {
+      _ppMirrorPanelClear[wi] = 1;
+    }
+  }
+}
+
+/** Resolve each turret's aim point against a known target entity,
+ *  precompute the passive-mirror `mirror_valid` mask, and fill the
+ *  per-turret mirror-panel clearance against that aim point. Used by
+ *  the priority-target gate kernel. */
+function fillPriorityTargetGateInputs(
+  weapons: Turret[],
+  target: Entity,
+  source: Entity,
+  currentTick: number,
+  forceMaterialSightObstructionActive: boolean,
+  world: WorldState,
+): void {
+  for (let wi = 0; wi < weapons.length; wi++) {
+    const weapon = weapons[wi];
+    // Passive turrets only lock onto enemies whose turrets actually
+    // deal damage. The shared mirror scorer handles threat priority:
+    // direct threat to this unit > engaged elsewhere > any active
+    // turret, with sustained DPS as the tiebreaker inside each tier.
+    _ppMirrorValid[wi] = !weapon.config.passive || isMirrorTarget(target, source.id) ? 1 : 0;
+    resolveTargetAimPoint(
+      target,
+      weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+      _gateAimPointScratch,
+      {
+        lockOnType: weapon.config.aimStyle.lockOnType,
+        source,
+        currentTick,
+      },
+    );
+    _ppAimX[wi] = _gateAimPointScratch.x;
+    _ppAimY[wi] = _gateAimPointScratch.y;
+    _ppAimZ[wi] = _gateAimPointScratch.z;
+    if (
+      forceMaterialSightObstructionActive &&
+      weapon.config.shot?.type !== 'force' &&
+      weapon.config.passive !== true
+    ) {
+      _ppMirrorPanelClear[wi] = hasForceMirrorPanelClearance(
+        world,
+        weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+        _gateAimPointScratch.x, _gateAimPointScratch.y, _gateAimPointScratch.z,
+      ) ? 1 : 0;
+    } else {
+      _ppMirrorPanelClear[wi] = 1;
+    }
+  }
+}
+
+/** Resolve per-turret existing-lock inputs: cloak observability,
+ *  passive mirror validity, target aim point, and mirror-panel
+ *  clearance. Weapons with no current target leave their arrays at
+ *  safe defaults — the Rust kernel skips those turrets via the slab's
+ *  `turret_target_id` field anyway. */
+function fillExistingLockGateInputs(
+  weapons: Turret[],
+  world: WorldState,
+  unit: Entity,
+  playerId: PlayerId,
+  currentTick: number,
+  forceMaterialSightObstructionActive: boolean,
+): void {
+  for (let wi = 0; wi < weapons.length; wi++) {
+    const weapon = weapons[wi];
+    if (weapon.target === null) {
+      _ppObservable[wi] = 0;
+      _ppMirrorValid[wi] = 0;
+      _ppAimX[wi] = 0;
+      _ppAimY[wi] = 0;
+      _ppAimZ[wi] = 0;
+      _ppMirrorPanelClear[wi] = 1;
+      continue;
+    }
+    const target = world.getEntity(weapon.target);
+    let targetIsValid = false;
+    if (
+      target?.unit &&
+      target.unit.hp > 0 &&
+      canPlayerObserveCloakedEntity(world, target, playerId)
+    ) {
+      targetIsValid = true;
+    } else if (
+      target?.building &&
+      target.building.hp > 0 &&
+      canPlayerObserveCloakedEntity(world, target, playerId)
+    ) {
+      targetIsValid = true;
+    }
+    if (!targetIsValid || target === undefined) {
+      _ppObservable[wi] = 0;
+      _ppMirrorValid[wi] = 0;
+      _ppAimX[wi] = 0;
+      _ppAimY[wi] = 0;
+      _ppAimZ[wi] = 0;
+      _ppMirrorPanelClear[wi] = 1;
+      continue;
+    }
+    _ppObservable[wi] = 1;
+    _ppMirrorValid[wi] = !weapon.config.passive || isMirrorTarget(target, unit.id) ? 1 : 0;
+    resolveTargetAimPoint(
+      target,
+      weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+      _gateAimPointScratch,
+      {
+        lockOnType: weapon.config.aimStyle.lockOnType,
+        source: unit,
+        currentTick,
+      },
+    );
+    _ppAimX[wi] = _gateAimPointScratch.x;
+    _ppAimY[wi] = _gateAimPointScratch.y;
+    _ppAimZ[wi] = _gateAimPointScratch.z;
+    if (
+      forceMaterialSightObstructionActive &&
+      weapon.config.shot?.type !== 'force' &&
+      weapon.config.passive !== true
+    ) {
+      _ppMirrorPanelClear[wi] = hasForceMirrorPanelClearance(
+        world,
+        weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+        _gateAimPointScratch.x, _gateAimPointScratch.y, _gateAimPointScratch.z,
       ) ? 1 : 0;
     } else {
       _ppMirrorPanelClear[wi] = 1;
@@ -745,7 +894,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // LOS / ballistic / FF segment gates and applies the FSM
       // transition in the same call — saves ~3 boundary crossings per
       // armed weapon vs the legacy per-turret path.
-      fillPriorityPointBallisticInputs(
+      fillGateBallisticConfig(weapons);
+      fillGateMirrorPanelClearForPoint(
         weapons,
         priorityPoint,
         forceMaterialSightObstructionActive,
@@ -793,53 +943,37 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
 
       if (priorityTarget) {
-        // ATTACK MODE: try the priority target, firing only inside hard max range.
-        clearFsmGateScratch(weapons.length);
-        for (let wi = 0; wi < weapons.length; wi++) {
-          const weapon = weapons[wi];
-          if (_weaponDisabled[wi] !== 0) continue;
-          if (weapon.config.isManualFire) continue;
-          // Passive turrets (mirrors) only lock onto enemies whose
-          // turrets actually deal damage. The shared mirror scorer
-          // handles threat priority: direct threat to this unit >
-          // engaged elsewhere > any active turret, with sustained
-          // DPS as the tiebreaker inside each tier.
-          const mirrorValid = !weapon.config.passive || isMirrorTarget(priorityTarget, unit.id);
-
-          const wpx = weapon.worldPos.x;
-          const wpy = weapon.worldPos.y;
-          const wpz = weapon.worldPos.z;
-          const losClear = mirrorValid && hasWeaponLineOfSight(
-            world,
-            unit,
-            weapon,
-            priorityTarget,
-            wpx, wpy, wpz,
-          );
-          const ballisticClear = mirrorValid && losClear
-            ? hasWeaponBallisticSolution(world, unit, weapon, wi, priorityTarget, wpx, wpy, wpz)
-            : false;
-          const ffClear = ballisticClear
-            ? hasWeaponForceMaterialSightClearance(
-                world, unit, weapon, priorityTarget,
-                wpx, wpy, wpz,
-                forceMaterialSightObstructionActive,
-              )
-            : false;
-          _fsmApplyMask[wi] = 1;
-          _fsmMirrorValid[wi] = mirrorValid ? 1 : 0;
-          _fsmLosClear[wi] = losClear ? 1 : 0;
-          _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
-          _fsmForceFieldClear[wi] = ffClear ? 1 : 0;
-        }
-        targeting.applyPriorityTargetFsmBatch(
+        // ATTACK MODE: try the priority target, firing only inside
+        // hard max range. Rust runs LOS / ballistic / FF / FSM in one
+        // call; TS only resolves per-turret aim points and the
+        // passive-mirror score.
+        fillGateBallisticConfig(weapons);
+        fillPriorityTargetGateInputs(
+          weapons,
+          priorityTarget,
+          unit,
+          tick,
+          forceMaterialSightObstructionActive,
+          world,
+        );
+        targeting.computeAndApplyPriorityTargetFsmBatch(
           unitSlot,
           priorityId,
-          _fsmApplyMask,
-          _fsmMirrorValid,
-          _fsmLosClear,
-          _fsmBallisticClear,
-          _fsmForceFieldClear,
+          unit.id,
+          world.mirrorsEnabled ? 1 : 0,
+          world.forceFieldsEnabled ? 1 : 0,
+          forceMaterialSightObstructionActive ? 1 : 0,
+          COMBAT_LOS_TERRAIN_STEP_LEN,
+          COMBAT_LOS_ENTITY_QUERY_WIDTH,
+          GRAVITY,
+          _ppAimX, _ppAimY, _ppAimZ,
+          _ppMirrorValid,
+          _ppProjectileSpeeds,
+          _ppArcPreferences,
+          _ppMaxTimeSecs,
+          _ppGroundAimFractions,
+          _ppUnderOnlyMask,
+          _ppMirrorPanelClear,
         );
         writeBackCombatTargetingEntity(unit);
         if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
@@ -850,88 +984,39 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // AUTO MODE: standard hysteresis FSM
 
-    // Pass 1: Validate existing targets with hysteresis
-    clearFsmGateScratch(weapons.length);
-    for (let wi = 0; wi < weapons.length; wi++) {
-      const weapon = weapons[wi];
-      if (_weaponDisabled[wi] !== 0) continue;
-      if (weapon.config.isManualFire) continue;
-      if (weapon.target === null) continue;
-
-      const target = world.getEntity(weapon.target);
-      let targetIsValid = false;
-      if (
-        target?.unit &&
-        target.unit.hp > 0 &&
-        canPlayerObserveCloakedEntity(world, target, playerId)
-      ) { targetIsValid = true; }
-      else if (
-        target?.building &&
-        target.building.hp > 0 &&
-        canPlayerObserveCloakedEntity(world, target, playerId)
-      ) { targetIsValid = true; }
-
-      // Per-tick re-validation of an existing lock. For passive
-      // (mirror) weapons we only require that the enemy still has a
-      // damaging turret; reacquisition below can switch to a
-      // higher-priority direct threat or higher-DPS weapon.
-      const mirrorValid = targetIsValid && target !== undefined
-        ? (!weapon.config.passive || isMirrorTarget(target, unit.id))
-        : false;
-      _fsmApplyMask[wi] = 1;
-      _fsmObservable[wi] = targetIsValid && target !== undefined ? 1 : 0;
-      _fsmMirrorValid[wi] = mirrorValid ? 1 : 0;
-      if (!targetIsValid || !target || !mirrorValid) {
-        _fsmBallisticClear[wi] = 0;
-        _fsmSightBlocked[wi] = 0;
-      } else {
-        const wpx = weapon.worldPos.x;
-        const wpy = weapon.worldPos.y;
-        const wpz = weapon.worldPos.z;
-        const ballisticClear = hasWeaponBallisticSolution(world, unit, weapon, wi, target, wpx, wpy, wpz);
-
-        // Sight gating: actual terrain/entity LOS occlusion or
-        // force-field sight obstruction demotes engaged -> tracking
-        // immediately so the turret stops firing blind. A small grace
-        // counter then runs before dropping the lock entirely so a
-        // brief clip doesn't restart the spatial-grid reacquisition
-        // cycle. Force-material blocking is a sightline rule: if the
-        // turret-to-target segment crosses a shield sphere boundary or
-        // mirror panel, the target is across the boundary and lock is
-        // blocked.
-        // Utility force emitters / passive mirrors are exempt inside
-        // hasWeaponForceMaterialSightClearance so they can keep the
-        // material alive and aimed.
-        const sightBlocked = ballisticClear && (
-          (weaponRequiresNonObstructedLineOfSight(weapon) &&
-            !hasWeaponLineOfSight(
-              world,
-              unit,
-              weapon,
-              target,
-              wpx, wpy, wpz,
-            )) ||
-          !hasWeaponForceMaterialSightClearance(
-            world,
-            unit,
-            weapon,
-            target,
-            wpx, wpy, wpz,
-            forceMaterialSightObstructionActive,
-          )
-        );
-        _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
-        _fsmSightBlocked[wi] = sightBlocked ? 1 : 0;
-      }
-    }
-    targeting.validateExistingLockFsmBatch(
+    // Pass 1: Validate existing targets with hysteresis. Rust runs the
+    // LOS / ballistic / FF gates and derives sight_blocked from them;
+    // TS pre-computes cloak observability, the passive `isMirrorTarget`
+    // score, per-turret aim points, and the mirror-panel clearance
+    // mask. Per-turret state transitions write straight to the slab.
+    fillGateBallisticConfig(weapons);
+    fillExistingLockGateInputs(
+      weapons,
+      world,
+      unit,
+      playerId,
+      tick,
+      forceMaterialSightObstructionActive,
+    );
+    targeting.computeAndApplyValidateExistingLockFsmBatch(
       unitSlot,
-      _fsmApplyMask,
-      _fsmObservable,
-      _fsmMirrorValid,
-      _fsmBallisticClear,
-      _fsmSightBlocked,
+      unit.id,
+      world.mirrorsEnabled ? 1 : 0,
+      world.forceFieldsEnabled ? 1 : 0,
+      forceMaterialSightObstructionActive ? 1 : 0,
+      COMBAT_LOS_TERRAIN_STEP_LEN,
+      COMBAT_LOS_ENTITY_QUERY_WIDTH,
+      GRAVITY,
       SIGHT_DROP_GRACE_TICKS,
+      _ppObservable,
+      _ppMirrorValid,
+      _ppAimX, _ppAimY, _ppAimZ,
+      _ppProjectileSpeeds,
+      _ppArcPreferences,
+      _ppMaxTimeSecs,
+      _ppGroundAimFractions,
+      _ppUnderOnlyMask,
+      _ppMirrorPanelClear,
     );
     writeBackCombatTargetingEntity(unit);
 

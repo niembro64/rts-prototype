@@ -7578,6 +7578,129 @@ pub fn combat_targeting_apply_priority_point_fsm_batch(
 const CT_UNDER_ONLY_MIN_BELOW_DISTANCE: f64 = 30.0;
 const CT_UNDER_ONLY_LOCK_EPS: f64 = 1e-6;
 
+/// AIM-08.5 — Shared gate-compute helper for the three unified priority
+/// / existing-lock kernels. Returns the three per-turret clearance
+/// flags the FSM transition functions consume:
+///   - `los_clear`: terrain + entity LOS from mount to the raw aim
+///     point (or `1` for high-arc / line-of-sight-exempt weapons).
+///   - `ballistic_clear`: weapon can produce a flight solution given
+///     the under-only floor, ground-aim adjustment, and target
+///     kinematics. Direct-fire and vertical-launcher weapons auto-pass,
+///     mirroring the TS `weaponUsesNormalAim`/`weaponNeedsBallisticSolution`
+///     short-circuit.
+///   - `force_field_clear`: segment-checks the FF pool from mount to
+///     raw aim point and ANDs with the JS-precomputed mirror-panel
+///     mask. Skipped (returns `1`) when the feature is off or for
+///     force-shot weapons that maintain the material themselves.
+///
+/// The helper short-circuits in cost-increasing order to match the TS
+/// gate evaluation: LOS → ballistic → FF. Ground-aim fraction applies
+/// only to the ballistic solve's aim point — LOS and FF use the raw
+/// aim point, the same way the TS path does.
+fn compute_turret_gates_for_aim_point(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+    turret_idx: u32,
+    idx: usize,
+    flags: u8,
+    mount_x: f64, mount_y: f64, mount_z: f64,
+    raw_aim_x: f64, raw_aim_y: f64, raw_aim_z: f64,
+    target_vx: f64, target_vy: f64, target_vz: f64,
+    target_entity_id: i32,
+    source_entity_id: i32,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    force_field_obstruction_active: u8,
+    projectile_speed: f64,
+    arc_preference: u8,
+    max_time_sec: f64,
+    ground_aim_fraction: f64,
+    under_only: bool,
+    mirror_panel_clear: u8,
+    gravity: f64,
+) -> (u8, u8, u8) {
+    let los_clear: u8 = if (flags & CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS) != 0 {
+        combat_has_line_of_sight(
+            mount_x, mount_y, mount_z,
+            raw_aim_x, raw_aim_y, raw_aim_z,
+            terrain_step_len,
+            entity_line_width,
+            source_entity_id,
+            target_entity_id,
+        ) as u8
+    } else {
+        1
+    };
+
+    let mut ballistic_clear: u8 = 0;
+    if los_clear != 0 {
+        let under_only_ok = if under_only {
+            raw_aim_z <= mount_z - CT_UNDER_ONLY_MIN_BELOW_DISTANCE + CT_UNDER_ONLY_LOCK_EPS
+        } else {
+            true
+        };
+        if under_only_ok {
+            if (flags & CT_TURRET_CFG_NEEDS_BALLISTIC) == 0
+                || (flags & CT_TURRET_CFG_VERTICAL_LAUNCHER) != 0
+            {
+                // Direct-fire / vertical-launcher: skip the solve. Same
+                // outcome the TS `weaponUsesNormalAim()==false` branch
+                // produces via `solveTurretAimAtPoint`.
+                ballistic_clear = 1;
+            } else {
+                // Ground-aim fraction blends the aim point toward the
+                // mount and onto terrain (and scales target velocity
+                // accordingly). `f == 0` means "use the raw aim point."
+                let f = ground_aim_fraction;
+                let (ball_aim_x, ball_aim_y, ball_aim_z, ball_tvx, ball_tvy, ball_tvz) =
+                    if f > 0.0 {
+                        let ax = mount_x + f * (raw_aim_x - mount_x);
+                        let ay = mount_y + f * (raw_aim_y - mount_y);
+                        let az = terrain_get_surface_height(ax, ay);
+                        (ax, ay, az, target_vx * f, target_vy * f, 0.0)
+                    } else {
+                        (raw_aim_x, raw_aim_y, raw_aim_z, target_vx, target_vy, target_vz)
+                    };
+                let fallback_yaw = pool.turret_rotation[idx] as f64;
+                let fallback_pitch = pool.turret_pitch[idx] as f64;
+                ballistic_clear = combat_targeting_solve_ballistic_aim_inner(
+                    pool,
+                    entity_slot,
+                    turret_idx,
+                    ball_aim_x, ball_aim_y, ball_aim_z,
+                    ball_tvx, ball_tvy, ball_tvz,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0,
+                    projectile_speed,
+                    gravity,
+                    arc_preference,
+                    max_time_sec,
+                    fallback_yaw,
+                    fallback_pitch,
+                ) as u8;
+            }
+        }
+    }
+
+    let mut force_field_clear: u8 = 1;
+    if ballistic_clear != 0
+        && force_field_obstruction_active != 0
+        && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
+    {
+        let ff_seg = force_field_clearance_segment(
+            mount_x, mount_y, mount_z,
+            raw_aim_x, raw_aim_y, raw_aim_z,
+            -1,
+            0,
+        );
+        if ff_seg == 0 || mirror_panel_clear == 0 {
+            force_field_clear = 0;
+        }
+    }
+
+    (los_clear, ballistic_clear, force_field_clear)
+}
+
 /// AIM-08.5 — unified priority-point gate compute + FSM apply for one
 /// entity. Replaces the per-weapon TypeScript loop that called the LOS,
 /// ballistic, and force-field kernels separately and then applied the
@@ -7671,100 +7794,29 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
 
-        // Gate 1 — line of sight. High-arc / non-LOS weapons auto-pass.
-        let los_clear: u8 =
-            if (flags & CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS) != 0 {
-                combat_has_line_of_sight(
-                    mount_x, mount_y, mount_z,
-                    point_x, point_y, point_z,
-                    terrain_step_len,
-                    entity_line_width,
-                    source_entity_id,
-                    -1,
-                ) as u8
-            } else {
-                1
-            };
-
-        // Gate 2 — ballistic solution. Short-circuit if LOS already
-        // failed; matches the TS evaluation order.
-        let mut ballistic_clear: u8 = 0;
-        if los_clear != 0 {
-            // Under-only ballistic lock: target z must sit a minimum
-            // distance below the mount. Cheap z compare, no aim solve.
-            let under_only_ok = if under_only_mask[turret_idx] != 0 {
-                point_z <= mount_z - CT_UNDER_ONLY_MIN_BELOW_DISTANCE + CT_UNDER_ONLY_LOCK_EPS
-            } else {
-                true
-            };
-            if under_only_ok {
-                if (flags & CT_TURRET_CFG_NEEDS_BALLISTIC) == 0
-                    || (flags & CT_TURRET_CFG_VERTICAL_LAUNCHER) != 0
-                {
-                    // Direct-fire and vertical-launcher weapons skip
-                    // the ballistic solve — same as the TS path, where
-                    // `weaponUsesNormalAim()` returns false for vertical
-                    // launchers and the `solveTurretAimAtPoint` fallback
-                    // unconditionally reports a ballistic solution.
-                    ballistic_clear = 1;
-                } else {
-                    // Apply ground-aim fraction (per-shot config that
-                    // pulls the effective aim point toward the mount
-                    // and onto the terrain). f == 0 means "use the raw
-                    // priority point."
-                    let f = ground_aim_fractions[turret_idx];
-                    let (aim_x, aim_y, aim_z) = if f > 0.0 {
-                        let ax = mount_x + f * (point_x - mount_x);
-                        let ay = mount_y + f * (point_y - mount_y);
-                        let az = terrain_get_surface_height(ax, ay);
-                        (ax, ay, az)
-                    } else {
-                        (point_x, point_y, point_z)
-                    };
-                    let fallback_yaw = pool.turret_rotation[idx] as f64;
-                    let fallback_pitch = pool.turret_pitch[idx] as f64;
-                    ballistic_clear = combat_targeting_solve_ballistic_aim_inner(
-                        pool,
-                        entity_slot,
-                        turret_idx as u32,
-                        aim_x, aim_y, aim_z,
-                        0.0, 0.0, 0.0,
-                        0.0, 0.0, 0.0,
-                        0.0, 0.0, 0.0,
-                        projectile_speeds[turret_idx],
-                        gravity,
-                        arc_preferences[turret_idx],
-                        max_time_secs[turret_idx],
-                        fallback_yaw,
-                        fallback_pitch,
-                    ) as u8;
-                }
-            }
-        }
-
-        // Gate 3 — force-material sight clearance. Skipped entirely
-        // when the world doesn't have any active blockers (TS sets the
-        // flag accordingly), and for force-shot weapons / passive
-        // mirror turrets that maintain the material themselves. When
-        // active, segment-checks the force field pool and ANDs with
-        // the JS-precomputed mirror-panel clearance mask. Passive
-        // turrets exit earlier with a cleared lock, so only the
-        // force-shot exemption needs an explicit check here.
-        let mut force_field_clear: u8 = 1;
-        if ballistic_clear != 0
-            && force_field_obstruction_active != 0
-            && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
-        {
-            let ff_seg = force_field_clearance_segment(
+        let (los_clear, ballistic_clear, force_field_clear) =
+            compute_turret_gates_for_aim_point(
+                pool,
+                entity_slot,
+                turret_idx as u32,
+                idx,
+                flags,
                 mount_x, mount_y, mount_z,
                 point_x, point_y, point_z,
+                0.0, 0.0, 0.0,
                 -1,
-                0,
+                source_entity_id,
+                terrain_step_len,
+                entity_line_width,
+                force_field_obstruction_active,
+                projectile_speeds[turret_idx],
+                arc_preferences[turret_idx],
+                max_time_secs[turret_idx],
+                ground_aim_fractions[turret_idx],
+                under_only_mask[turret_idx] != 0,
+                mirror_panel_clear[turret_idx],
+                gravity,
             );
-            if ff_seg == 0 || mirror_panel_clear[turret_idx] == 0 {
-                force_field_clear = 0;
-            }
-        }
 
         let dx = mount_x - point_x;
         let dy = mount_y - point_y;
@@ -7982,6 +8034,301 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
             mirror_valid[turret_idx],
             ballistic_clear[turret_idx],
             los_blocked[turret_idx],
+            los_drop_grace_ticks,
+        );
+    }
+}
+
+/// AIM-08.5 — unified attack-entity priority gate compute + FSM apply.
+/// Combines the JS-side per-weapon LOS / ballistic / FF / mirror-valid
+/// gate prep with the existing `apply_priority_target_fsm_idx`
+/// transitions inside one boundary call. The mirror-panel sightline
+/// walk and the passive-turret `isMirrorTarget` score live in TS
+/// (`mirror_valid` and `mirror_panel_clear` masks). Per-turret aim
+/// points are also TS-resolved so `lockOnToBody` AABB clamps and
+/// `lockOnToTurret` resolution stay in one place; the kernel just
+/// consumes them.
+///
+/// Same disabled / manual-fire skip semantics as the priority-point
+/// kernel. Passive turrets continue to participate (mirror_valid then
+/// reflects whether the target has a damaging turret in range).
+#[wasm_bindgen]
+pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
+    entity_slot: u32,
+    target_id: i32,
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    aim_x: &[f64],
+    aim_y: &[f64],
+    aim_z: &[f64],
+    mirror_valid: &[u8],
+    projectile_speeds: &[f64],
+    arc_preferences: &[u8],
+    max_time_secs: &[f64],
+    ground_aim_fractions: &[f64],
+    under_only_mask: &[u8],
+    mirror_panel_clear: &[u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+
+    let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
+    let (target_valid, target_radius, target_vx, target_vy, target_vz) =
+        if let Some(slot) = target_slot {
+            if combat_targeting_entity_alive(pool, slot) {
+                (
+                    1u8,
+                    pool.entity_radius_shot[slot],
+                    pool.entity_vel_x[slot],
+                    pool.entity_vel_y[slot],
+                    pool.entity_vel_z[slot],
+                )
+            } else {
+                (0u8, 0.0, 0.0, 0.0, 0.0)
+            }
+        } else {
+            (0u8, 0.0, 0.0, 0.0, 0.0)
+        };
+
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(aim_x.len())
+        .min(aim_y.len())
+        .min(aim_z.len())
+        .min(mirror_valid.len())
+        .min(projectile_speeds.len())
+        .min(arc_preferences.len())
+        .min(max_time_secs.len())
+        .min(ground_aim_fractions.len())
+        .min(under_only_mask.len())
+        .min(mirror_panel_clear.len());
+
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let flags = pool.turret_config_flags[idx];
+
+        if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            mirrors_enabled,
+            force_fields_enabled,
+        ) {
+            continue;
+        }
+
+        let mount_x = pool.turret_mount_x[idx];
+        let mount_y = pool.turret_mount_y[idx];
+        let mount_z = pool.turret_mount_z[idx];
+
+        // Short-circuit when the target or mirror gate has already
+        // failed — saves the LOS/ballistic/FF compute since the FSM
+        // is going to idle anyway.
+        let (los_clear, ballistic_clear, force_field_clear) =
+            if target_valid == 0 || mirror_valid[turret_idx] == 0 {
+                (0u8, 0u8, 0u8)
+            } else {
+                compute_turret_gates_for_aim_point(
+                    pool,
+                    entity_slot,
+                    turret_idx as u32,
+                    idx,
+                    flags,
+                    mount_x, mount_y, mount_z,
+                    aim_x[turret_idx], aim_y[turret_idx], aim_z[turret_idx],
+                    target_vx, target_vy, target_vz,
+                    target_id,
+                    source_entity_id,
+                    terrain_step_len,
+                    entity_line_width,
+                    force_field_obstruction_active,
+                    projectile_speeds[turret_idx],
+                    arc_preferences[turret_idx],
+                    max_time_secs[turret_idx],
+                    ground_aim_fractions[turret_idx],
+                    under_only_mask[turret_idx] != 0,
+                    mirror_panel_clear[turret_idx],
+                    gravity,
+                )
+            };
+
+        let dist_sq = target_slot
+            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
+            .unwrap_or(f64::INFINITY);
+        combat_targeting_apply_priority_target_fsm_idx(
+            pool,
+            idx,
+            target_id,
+            target_radius,
+            dist_sq,
+            target_valid,
+            mirror_valid[turret_idx],
+            los_clear,
+            ballistic_clear,
+            force_field_clear,
+        );
+    }
+}
+
+/// AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
+/// turret resolves its own target via `pool.turret_target_id[idx]`, so
+/// the kernel walks the slab and looks up per-turret target metadata
+/// itself. The `sight_blocked` predicate (TS `ballistic && (!los ||
+/// !ff)`) is derived from the helper's three gates in-place. JS still
+/// owns the cloak observability check, the passive-mirror score, the
+/// per-turret aim point resolution, and the mirror-panel walk.
+#[wasm_bindgen]
+pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
+    entity_slot: u32,
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    los_drop_grace_ticks: u16,
+    observable: &[u8],
+    mirror_valid: &[u8],
+    aim_x: &[f64],
+    aim_y: &[f64],
+    aim_z: &[f64],
+    projectile_speeds: &[f64],
+    arc_preferences: &[u8],
+    max_time_secs: &[f64],
+    ground_aim_fractions: &[f64],
+    under_only_mask: &[u8],
+    mirror_panel_clear: &[u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(observable.len())
+        .min(mirror_valid.len())
+        .min(aim_x.len())
+        .min(aim_y.len())
+        .min(aim_z.len())
+        .min(projectile_speeds.len())
+        .min(arc_preferences.len())
+        .min(max_time_secs.len())
+        .min(ground_aim_fractions.len())
+        .min(under_only_mask.len())
+        .min(mirror_panel_clear.len());
+
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let flags = pool.turret_config_flags[idx];
+
+        if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            mirrors_enabled,
+            force_fields_enabled,
+        ) {
+            continue;
+        }
+        // No existing target → nothing to validate; matches the TS
+        // `weapon.target === null` skip.
+        let target_id = pool.turret_target_id[idx];
+        if target_id < 0 {
+            continue;
+        }
+
+        let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
+        let (target_valid, target_radius, target_vx, target_vy, target_vz) =
+            if observable[turret_idx] != 0 {
+                if let Some(slot) = target_slot {
+                    if combat_targeting_entity_alive(pool, slot) {
+                        (
+                            1u8,
+                            pool.entity_radius_shot[slot],
+                            pool.entity_vel_x[slot],
+                            pool.entity_vel_y[slot],
+                            pool.entity_vel_z[slot],
+                        )
+                    } else {
+                        (0u8, 0.0, 0.0, 0.0, 0.0)
+                    }
+                } else {
+                    (0u8, 0.0, 0.0, 0.0, 0.0)
+                }
+            } else {
+                (0u8, 0.0, 0.0, 0.0, 0.0)
+            };
+
+        let mount_x = pool.turret_mount_x[idx];
+        let mount_y = pool.turret_mount_y[idx];
+        let mount_z = pool.turret_mount_z[idx];
+
+        // Short-circuit when target invalid or mirror invalid — the
+        // FSM will set state idle without consulting gates anyway.
+        let (ballistic_clear, sight_blocked) =
+            if target_valid == 0 || mirror_valid[turret_idx] == 0 {
+                (0u8, 0u8)
+            } else {
+                let (los_clear, bc, ff_clear) = compute_turret_gates_for_aim_point(
+                    pool,
+                    entity_slot,
+                    turret_idx as u32,
+                    idx,
+                    flags,
+                    mount_x, mount_y, mount_z,
+                    aim_x[turret_idx], aim_y[turret_idx], aim_z[turret_idx],
+                    target_vx, target_vy, target_vz,
+                    target_id,
+                    source_entity_id,
+                    terrain_step_len,
+                    entity_line_width,
+                    force_field_obstruction_active,
+                    projectile_speeds[turret_idx],
+                    arc_preferences[turret_idx],
+                    max_time_secs[turret_idx],
+                    ground_aim_fractions[turret_idx],
+                    under_only_mask[turret_idx] != 0,
+                    mirror_panel_clear[turret_idx],
+                    gravity,
+                );
+                // sight_blocked = the weapon could otherwise fire
+                // (ballistic OK) but a visibility gate failed. Matches
+                // the TS predicate `ballisticClear && (!los || !ff)`.
+                let blocked = if bc != 0 && (los_clear == 0 || ff_clear == 0) {
+                    1u8
+                } else {
+                    0u8
+                };
+                (bc, blocked)
+            };
+
+        let dist_sq = target_slot
+            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
+            .unwrap_or(f64::INFINITY);
+        combat_targeting_validate_existing_lock_fsm_idx(
+            pool,
+            idx,
+            target_radius,
+            dist_sq,
+            target_valid,
+            mirror_valid[turret_idx],
+            ballistic_clear,
+            sight_blocked,
             los_drop_grace_ticks,
         );
     }

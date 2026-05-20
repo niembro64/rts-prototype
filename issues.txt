@@ -44,17 +44,30 @@ AIM-08.5 — Port the targeting FSM
   and writes target/rank arrays for the batched FSM apply calls.
   Fire-choice and acquisition candidate-prep masks/seeds now also batch
   through Rust; passive mirror seed scores remain object-owned in TS.
-  The priority-point branch is now a unified Rust kernel
-  (combat_targeting_compute_and_apply_priority_point_fsm_batch): LOS,
-  ballistic solve, force-field segment, and the FSM transition all run
-  inside one boundary call per attack-ground entity. The TS-side
-  hasWeapon*ToPoint helpers and pointLockOnPointIsBelowWeaponMount have
-  been deleted. The mirror-panel sightline walk is still JS but is
-  precomputed once per turret into a clearance mask passed to the
-  kernel; it's the lone gate piece without a Rust equivalent.
-  Remaining work is to extend the same pattern to the priority-target
-  and existing-lock gate-prep loops, then collapse the per-armed-entity
-  control flow into one top-level targeting tick.
+  All three priority/existing-lock branches are now unified Rust
+  kernels — LOS + ballistic + FF + FSM all run inside one boundary
+  call per entity per pass:
+    - combat_targeting_compute_and_apply_priority_point_fsm_batch
+    - combat_targeting_compute_and_apply_priority_target_fsm_batch
+    - combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch
+  A shared compute_turret_gates_for_aim_point Rust helper centralizes
+  the LOS/ballistic/FF logic with ground-aim-fraction + under-only
+  handling. The TS-side hasWeapon*ToPoint helpers and
+  pointLockOnPointIsBelowWeaponMount have been deleted. Per-turret aim
+  points are TS-resolved (so lockOnToBody AABB clamps and
+  lockOnToTurret stay in one place) and the mirror-panel sightline
+  walk is the only gate piece still in JS — both are passed to Rust as
+  per-turret arrays. Cloak observability and passive `isMirrorTarget`
+  scores stay in TS for now (require object data not yet on the slab).
+  Remaining work for AIM-08.5:
+    - Port the Pass 2 / Pass 3 candidate fire-gate callback
+      (passesWeaponFireGates) into a Rust-resident gate. This unlocks
+      deleting hasWeaponLineOfSight, hasWeaponBallisticSolution, and
+      hasWeaponForceMaterialSightClearance from TS.
+    - Stamp cloak observability + mirror-panel clearance kernels onto
+      the slab so TS no longer has to precompute either.
+    - Collapse the per-armed-entity outer loop into a single
+      rustTargetingTick(...) call.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

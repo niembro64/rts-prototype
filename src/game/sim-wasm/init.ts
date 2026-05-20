@@ -185,7 +185,9 @@ import __wbg_init, {
   combat_targeting_apply_priority_point_fsm_batch,
   combat_targeting_compute_and_apply_priority_point_fsm_batch,
   combat_targeting_apply_priority_target_fsm_batch,
+  combat_targeting_compute_and_apply_priority_target_fsm_batch,
   combat_targeting_validate_existing_lock_fsm_batch,
+  combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch,
   combat_targeting_apply_fire_choice_fsm_batch,
   combat_targeting_apply_acquisition_choice_fsm_batch,
   force_field_pool_clear,
@@ -1123,6 +1125,59 @@ export interface CombatTargetingApi {
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
+    mirrorPanelClear: Uint8Array,
+  ) => void;
+  /** AIM-08.5 — unified attack-entity priority gate compute + FSM
+   *  apply. TS resolves per-turret aim points (so lockOnToBody AABB
+   *  clamps and lockOnToTurret stay in one place) and the passive
+   *  `isMirrorTarget` score; Rust does LOS / ballistic / FF / FSM. */
+  readonly computeAndApplyPriorityTargetFsmBatch: (
+    entitySlot: number,
+    targetId: number,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    aimX: Float64Array,
+    aimY: Float64Array,
+    aimZ: Float64Array,
+    mirrorValid: Uint8Array,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
+    mirrorPanelClear: Uint8Array,
+  ) => void;
+  /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
+   *  turret's current target is read from the slab; TS supplies the
+   *  cloak observability check, mirror score for passives, aim point,
+   *  and mirror-panel clearance mask. Rust derives `sight_blocked`
+   *  from los/ff internally, so the JS-side sightBlocked helper is
+   *  gone. */
+  readonly computeAndApplyValidateExistingLockFsmBatch: (
+    entitySlot: number,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    losDropGraceTicks: number,
+    observable: Uint8Array,
+    mirrorValid: Uint8Array,
+    aimX: Float64Array,
+    aimY: Float64Array,
+    aimZ: Float64Array,
     projectileSpeeds: Float64Array,
     arcPreferences: Uint8Array,
     maxTimeSecs: Float64Array,
@@ -2176,7 +2231,9 @@ export function initSimWasm(): Promise<SimWasm> {
           applyPriorityPointFsmBatch: combat_targeting_apply_priority_point_fsm_batch,
           computeAndApplyPriorityPointFsmBatch: combat_targeting_compute_and_apply_priority_point_fsm_batch,
           applyPriorityTargetFsmBatch: combat_targeting_apply_priority_target_fsm_batch,
+          computeAndApplyPriorityTargetFsmBatch: combat_targeting_compute_and_apply_priority_target_fsm_batch,
           validateExistingLockFsmBatch: combat_targeting_validate_existing_lock_fsm_batch,
+          computeAndApplyValidateExistingLockFsmBatch: combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch,
           applyFireChoiceFsmBatch: combat_targeting_apply_fire_choice_fsm_batch,
           applyAcquisitionChoiceFsmBatch: combat_targeting_apply_acquisition_choice_fsm_batch,
         },
