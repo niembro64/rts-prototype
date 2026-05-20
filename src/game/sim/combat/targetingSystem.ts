@@ -1,7 +1,7 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, HysteresisRange, PlayerId, Turret, TurretRanges } from '../types';
+import type { Entity, EntityId, PlayerId, Turret, TurretRanges } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import {
   decrementCooldown,
@@ -31,7 +31,10 @@ import {
 } from './lineOfSight';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 import { getActiveForceFields } from './forceFieldTurret';
-import { stampCombatTargetingEntity } from './targetingInputStamping';
+import {
+  stampCombatTargetingEntity,
+  writeBackCombatTargetingEntity,
+} from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
@@ -66,32 +69,6 @@ const _targetingBallisticAim = createTurretAimScratch();
 
 function nextTargetingReacquireTick(tick: number): number {
   return tick + 1;
-}
-
-function rangeEdgeValue(range: HysteresisRange, edge: 'acquire' | 'release'): number {
-  return edge === 'acquire' ? range.acquire : range.release;
-}
-
-function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): number {
-  const cached = edge === 'acquire' ? range.acquireSq : range.releaseSq;
-  if (cached !== undefined) return cached;
-  const value = rangeEdgeValue(range, edge);
-  return value * value;
-}
-
-function maxRangeWithTargetSq(range: HysteresisRange, edge: 'acquire' | 'release', targetRadius: number): number {
-  if (targetRadius <= 0) return rangeEdgeSq(range, edge);
-  const r = rangeEdgeValue(range, edge) + targetRadius;
-  return r * r;
-}
-
-function withinFireMaxSq(
-  ranges: TurretRanges,
-  edge: 'acquire' | 'release',
-  distSq: number,
-  targetRadius: number,
-): boolean {
-  return distSq <= maxRangeWithTargetSq(ranges.fire.max, edge, targetRadius);
 }
 
 const TARGET_RANK_NONE = 0;
@@ -183,22 +160,10 @@ function currentFireTargetRankSq(
   };
 }
 
-/** Outermost release boundary for the targeting FSM. When the turret
- *  has a tracking shell, that's the lock-loss radius; otherwise the
- *  fire envelope IS the only shell and its `max` release boundary
- *  doubles as the target-drop radius. */
-function outermostReleaseRange(ranges: TurretRanges): HysteresisRange {
-  return ranges.tracking ?? ranges.fire.max;
-}
-
 /** Outermost acquire boundary used for the spatial-grid acquisition
  *  query. Returns the `acquire` numeric value of the outermost shell. */
 function outermostAcquireDistance(ranges: TurretRanges): number {
   return (ranges.tracking ?? ranges.fire.max).acquire;
-}
-
-function outsideTrackingReleaseSq(ranges: TurretRanges, distSq: number, targetRadius: number): boolean {
-  return distSq > maxRangeWithTargetSq(outermostReleaseRange(ranges), 'release', targetRadius);
 }
 
 function isMirrorTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
@@ -821,6 +786,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // from the combat-targeting slab, so refresh this unit's slab row
     // immediately after Pass 0 writes current worldPos/worldVelocity.
     stampCombatTargetingEntity(unit);
+    const unitSlot = spatialGrid.getSlot(unit.id);
+    const targeting = getTargetingKernel();
 
     // Check for attack-ground priority target.
     if (priorityPoint !== null) {
@@ -830,8 +797,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         if (weapon.config.isManualFire) continue;
 
         if (weapon.config.passive) {
-          setWeaponTarget(weapon, unit, wi, null);
-          weapon.state = 'idle';
+          targeting.clearTurretLock(unitSlot, wi);
           continue;
         }
 
@@ -845,37 +811,30 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           priorityPoint,
           wpx, wpy, wpz,
         );
-        setWeaponTarget(weapon, unit, wi, null);
-        if (!losClear) {
-          weapon.state = 'idle';
-          continue;
-        }
-
-        const distSq = distanceSquared3(
-          wpx, wpy, wpz,
-          priorityPoint.x, priorityPoint.y, priorityPoint.z,
-        );
+        const distSq = losClear
+          ? distanceSquared3(
+              wpx, wpy, wpz,
+              priorityPoint.x, priorityPoint.y, priorityPoint.z,
+            )
+          : Infinity;
         // Solve ballistic before the FF arc check — the solver writes
         // the launch velocity / flight time the arc test walks.
-        if (!hasWeaponBallisticSolutionToPoint(world, unit, weapon, wi, priorityPoint, wpx, wpy, wpz)) {
-          weapon.state = 'tracking';
-          continue;
-        }
-        const ffClear = hasWeaponArcAwareForceFieldClearanceToPoint(
-          unit, weapon, priorityPoint, wpx, wpy, wpz, forceFieldsActive,
+        const ballisticClear = losClear
+          ? hasWeaponBallisticSolutionToPoint(world, unit, weapon, wi, priorityPoint, wpx, wpy, wpz)
+          : false;
+        const ffClear = ballisticClear
+          ? hasWeaponArcAwareForceFieldClearanceToPoint(
+              unit, weapon, priorityPoint, wpx, wpy, wpz, forceFieldsActive,
+            )
+          : false;
+        targeting.applyPriorityPointFsm(
+          unitSlot, wi, distSq,
+          losClear ? 1 : 0,
+          ballisticClear ? 1 : 0,
+          ffClear ? 1 : 0,
         );
-        if (!ffClear) {
-          weapon.state = 'idle';
-          continue;
-        }
-        if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, 0)) {
-          weapon.state = 'engaged';
-        } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, 0)) {
-          weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
-        } else {
-          weapon.state = 'tracking';
-        }
       }
+      writeBackCombatTargetingEntity(unit);
       if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
       continue;
     }
@@ -913,60 +872,44 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           // handles threat priority: direct threat to this unit >
           // engaged elsewhere > any active turret, with sustained
           // DPS as the tiebreaker inside each tier.
-          if (weapon.config.passive && !isMirrorTarget(priorityTarget, unit.id)) {
-            setWeaponTarget(weapon, unit, wi, null);
-            weapon.state = 'idle';
-            continue;
-          }
+          const mirrorValid = !weapon.config.passive || isMirrorTarget(priorityTarget, unit.id);
 
           const wpx = weapon.worldPos.x;
           const wpy = weapon.worldPos.y;
           const wpz = weapon.worldPos.z;
-          const losClear = hasWeaponLineOfSight(
+          const losClear = mirrorValid && hasWeaponLineOfSight(
             world,
             unit,
             weapon,
             priorityTarget,
             wpx, wpy, wpz,
           );
-          if (!losClear) {
-            setWeaponTarget(weapon, unit, wi, null);
-            weapon.state = 'idle';
-            continue;
-          }
-
           const priorityPosition = getEntityPosition3d(priorityTarget, _targetingTargetPosition);
           const distSq = distanceSquared3(
             wpx, wpy, wpz,
             priorityPosition.x, priorityPosition.y, priorityPosition.z,
           );
           // Solve ballistic before the FF arc check (see passesWeaponFireGates).
-          if (!hasWeaponBallisticSolution(world, unit, weapon, wi, priorityTarget, wpx, wpy, wpz)) {
-            setWeaponTarget(weapon, unit, wi, null);
-            weapon.state = 'idle';
-            continue;
-          }
-          const ffClear = hasWeaponArcAwareForceFieldClearance(
-            world, unit, weapon, priorityTarget,
-            wpx, wpy, wpz,
-            forceFieldsActive,
+          const ballisticClear = mirrorValid && losClear
+            ? hasWeaponBallisticSolution(world, unit, weapon, wi, priorityTarget, wpx, wpy, wpz)
+            : false;
+          const ffClear = ballisticClear
+            ? hasWeaponArcAwareForceFieldClearance(
+                world, unit, weapon, priorityTarget,
+                wpx, wpy, wpz,
+                forceFieldsActive,
+              )
+            : false;
+          targeting.applyPriorityTargetFsm(
+            unitSlot, wi, priorityId, priorityRadius, distSq,
+            1,
+            mirrorValid ? 1 : 0,
+            losClear ? 1 : 0,
+            ballisticClear ? 1 : 0,
+            ffClear ? 1 : 0,
           );
-          if (!ffClear) {
-            setWeaponTarget(weapon, unit, wi, null);
-            weapon.state = 'idle';
-            continue;
-          }
-
-          setWeaponTarget(weapon, unit, wi, priorityId);
-          if (withinFireMaxSq(weapon.ranges, 'acquire', distSq, priorityRadius)) {
-            weapon.state = 'engaged';
-          } else if (withinFireMaxSq(weapon.ranges, 'release', distSq, priorityRadius)) {
-            // Between acquire and release — maintain engaged if already engaged, otherwise tracking
-            weapon.state = weapon.state === 'engaged' ? 'engaged' : 'tracking';
-          } else {
-            weapon.state = 'tracking';
-          }
         }
+        writeBackCombatTargetingEntity(unit);
         if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
       }
@@ -1000,11 +943,19 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // (mirror) weapons we only require that the enemy still has a
       // damaging turret; reacquisition below can switch to a
       // higher-priority direct threat or higher-DPS weapon.
-      if (!targetIsValid || !target || (weapon.config.passive && !isMirrorTarget(target, unit.id))) {
-        setWeaponTarget(weapon, unit, wi, null);
-        weapon.state = 'idle';
+      const mirrorValid = targetIsValid && target !== undefined
+        ? (!weapon.config.passive || isMirrorTarget(target, unit.id))
+        : false;
+      if (!targetIsValid || !target || !mirrorValid) {
+        targeting.validateExistingLockFsm(
+          unitSlot, wi, targetRadius, Infinity,
+          targetIsValid && target !== undefined ? 1 : 0,
+          mirrorValid ? 1 : 0,
+          0,
+          0,
+          LOS_DROP_GRACE_TICKS,
+        );
       } else {
-        const r = weapon.ranges;
         const wpx = weapon.worldPos.x;
         const wpy = weapon.worldPos.y;
         const wpz = weapon.worldPos.z;
@@ -1013,11 +964,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           wpx, wpy, wpz,
           targetPosition.x, targetPosition.y, targetPosition.z,
         );
-        if (!hasWeaponBallisticSolution(world, unit, weapon, wi, target, wpx, wpy, wpz)) {
-          setWeaponTarget(weapon, unit, wi, null);
-          weapon.state = 'idle';
-          continue;
-        }
+        const ballisticClear = hasWeaponBallisticSolution(world, unit, weapon, wi, target, wpx, wpy, wpz);
 
         // LOS gating: a blocked sightline (direct-fire terrain/entity
         // occluders) or an intervening force-field sphere demotes
@@ -1030,7 +977,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         // use the straight chord, and vertical launchers defer to
         // runtime projectile-collision against the shield (their
         // homing trajectory can't be predicted statically).
-        const losBlocked =
+        const losBlocked = ballisticClear && (
           (weaponNeedsLineOfSight(weapon) &&
             !hasWeaponLineOfSight(
               world,
@@ -1046,38 +993,19 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             target,
             wpx, wpy, wpz,
             forceFieldsActive,
-          );
-        weapon.losBlockedTicks = losBlocked
-          ? weapon.losBlockedTicks + 1
-          : 0;
-        const losDrop = weapon.losBlockedTicks > LOS_DROP_GRACE_TICKS;
-
-        if (outsideTrackingReleaseSq(r, distSq, targetRadius) || losDrop) {
-          setWeaponTarget(weapon, unit, wi, null);
-          weapon.state = 'idle';
-        } else {
-          switch (weapon.state) {
-            case 'idle':
-              // Shouldn't have a target while idle — treat as new acquisition
-              break;
-            case 'tracking':
-              if (!losBlocked && withinFireMaxSq(r, 'acquire', distSq, targetRadius)) {
-                weapon.state = 'engaged';
-              }
-              // else: still tracking but can't fire — Pass 2 will check
-              // if there's a preferred or fallback fire target to switch to.
-              break;
-            case 'engaged':
-              if (losBlocked || !withinFireMaxSq(r, 'release', distSq, targetRadius)) {
-                weapon.state = 'tracking';
-              }
-              break;
-            default:
-              throw new Error(`Unknown turret state: ${weapon.state}`);
-          }
-        }
+          )
+        );
+        targeting.validateExistingLockFsm(
+          unitSlot, wi, targetRadius, distSq,
+          1,
+          1,
+          ballisticClear ? 1 : 0,
+          losBlocked ? 1 : 0,
+          LOS_DROP_GRACE_TICKS,
+        );
       }
     }
+    writeBackCombatTargetingEntity(unit);
 
     // Pre-scan: find whether any weapon needs a candidate scan, plus
     // the max acquire range + max weapon offset across every enabled
@@ -1203,8 +1131,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (choice.target) {
         // Found a target we can actually fire at. Preferred-band
         // targets outrank close fallbacks; within a rank, nearer wins.
-        setWeaponTarget(weapon, unit, wi, choice.target.id);
-        weapon.state = 'engaged';
+        targeting.applyFireChoiceFsm(unitSlot, wi, choice.target.id);
       }
     }
 
@@ -1235,13 +1162,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       );
 
       if (choice.target) {
-        setWeaponTarget(weapon, unit, wi, choice.target.id);
-        weapon.state = choice.rank >= TARGET_RANK_FIRE_FALLBACK ? 'engaged' : 'tracking';
+        targeting.applyAcquisitionChoiceFsm(unitSlot, wi, choice.target.id, choice.rank);
       } else {
-        setWeaponTarget(weapon, unit, wi, null);
-        weapon.state = 'idle';
+        targeting.applyAcquisitionChoiceFsm(unitSlot, wi, -1, TARGET_RANK_NONE);
       }
     }
+    writeBackCombatTargetingEntity(unit);
 
     if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
     else if (priorityId === null) {

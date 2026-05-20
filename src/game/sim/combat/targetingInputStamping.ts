@@ -11,9 +11,9 @@
 //
 //   stampCombatTargetingPool — runs AFTER updateTargetingAndFiringState.
 //     Captures the post-FSM (target, state, aimError, losBlockedTicks)
-//     tuple for the AIM-08.0 parity harness. AIM-08.5 will move this
-//     before the FSM and add a writeback pass; for now the JS FSM
-//     remains authoritative and the slab is its shadow.
+//     tuple for the AIM-08.0 parity harness. AIM-08.5 now also writes
+//     FSM transitions into this slab mid-pass and copies them back to
+//     JS Turret objects until snapshots/rendering read the slab directly.
 //
 // stampTargetingInputSlabs() is the convenience wrapper that runs
 // both passes — kept for callers that don't care about the split.
@@ -23,6 +23,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { getActiveForceFields } from './forceFieldTurret';
 import { weaponNeedsLineOfSight } from './lineOfSight';
 import { getEntityPosition3d, getEntityVelocity3d } from './combatUtils';
+import { setWeaponTarget } from './targetIndex';
 import {
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
@@ -53,6 +54,12 @@ function encodeTurretState(state: TurretState): number {
     case 'tracking': return CT_TURRET_STATE_TRACKING;
     case 'idle': return CT_TURRET_STATE_IDLE;
   }
+}
+
+function decodeTurretState(state: number): TurretState {
+  if (state === CT_TURRET_STATE_ENGAGED) return 'engaged';
+  if (state === CT_TURRET_STATE_TRACKING) return 'tracking';
+  return 'idle';
 }
 
 function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): number {
@@ -182,6 +189,44 @@ export function stampCombatTargetingEntity(entity: Entity): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   stampCombatTargetingEntityInto(sim.combatTargeting, entity);
+}
+
+/** Copy the Rust combat-targeting slab's authoritative FSM tuple back
+ *  onto the JS Turret objects that rendering, firing, and snapshot
+ *  encode still consume during AIM-08.5/.6 migration. Target writes go
+ *  through setWeaponTarget so the beam inverse index remains coherent. */
+export function writeBackCombatTargetingEntity(entity: Entity): void {
+  const combat = entity.combat;
+  if (!combat) return;
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  const slot = spatialGrid.getSlot(entity.id);
+  if (slot < 0) return;
+
+  const targeting = sim.combatTargeting;
+  const turretCount = Math.min(targeting.turretCount(slot), combat.turrets.length);
+  if (turretCount <= 0) return;
+
+  const maxTurrets = targeting.maxTurretsPerEntity();
+  const turretBase = slot * maxTurrets;
+  const turretEnd = turretBase + turretCount;
+  const memory = sim.memory;
+  const stateView = new Uint8Array(memory.buffer, targeting.turretStatePtr(), turretEnd);
+  const targetView = new Int32Array(memory.buffer, targeting.turretTargetIdPtr(), turretEnd);
+  const yawErrView = new Float32Array(memory.buffer, targeting.turretAimErrorYawPtr(), turretEnd);
+  const pitchErrView = new Float32Array(memory.buffer, targeting.turretAimErrorPitchPtr(), turretEnd);
+  const losView = new Uint16Array(memory.buffer, targeting.turretLosBlockedTicksPtr(), turretEnd);
+
+  for (let i = 0; i < turretCount; i++) {
+    const idx = turretBase + i;
+    const turret = combat.turrets[i];
+    const targetId = targetView[idx];
+    setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
+    turret.state = decodeTurretState(stateView[idx]);
+    turret.aimErrorYaw = yawErrView[idx];
+    turret.aimErrorPitch = pitchErrView[idx];
+    turret.losBlockedTicks = losView[idx];
+  }
 }
 
 /** Capture the post-FSM (target, state, aimError, losBlockedTicks)

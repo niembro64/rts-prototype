@@ -177,6 +177,12 @@ import __wbg_init, {
   combat_targeting_solve_ballistic_aim,
   combat_targeting_rank_target,
   combat_targeting_choose_best_candidate,
+  combat_targeting_clear_turret_lock,
+  combat_targeting_apply_priority_point_fsm,
+  combat_targeting_apply_priority_target_fsm,
+  combat_targeting_validate_existing_lock_fsm,
+  combat_targeting_apply_fire_choice_fsm,
+  combat_targeting_apply_acquisition_choice_fsm,
   force_field_pool_clear,
   force_field_pool_count,
   force_field_pool_set_count,
@@ -1048,6 +1054,52 @@ export interface CombatTargetingApi {
     gateFn: (candidateIdx: number) => boolean,
     outI32: Int32Array,
     outF64: Float64Array,
+  ) => void;
+  /** AIM-08.5 — Rust-owned targeting FSM transition writes. JS still
+   *  supplies object-owned expensive gates during migration; these
+   *  calls mutate the combat-targeting slab's target/state/LOS tuple. */
+  readonly clearTurretLock: (entitySlot: number, turretIdx: number) => void;
+  readonly applyPriorityPointFsm: (
+    entitySlot: number,
+    turretIdx: number,
+    distSq: number,
+    losClear: number,
+    ballisticClear: number,
+    forceFieldClear: number,
+  ) => void;
+  readonly applyPriorityTargetFsm: (
+    entitySlot: number,
+    turretIdx: number,
+    targetId: number,
+    targetRadius: number,
+    distSq: number,
+    targetValid: number,
+    mirrorValid: number,
+    losClear: number,
+    ballisticClear: number,
+    forceFieldClear: number,
+  ) => void;
+  readonly validateExistingLockFsm: (
+    entitySlot: number,
+    turretIdx: number,
+    targetRadius: number,
+    distSq: number,
+    targetValid: number,
+    mirrorValid: number,
+    ballisticClear: number,
+    losBlocked: number,
+    losDropGraceTicks: number,
+  ) => void;
+  readonly applyFireChoiceFsm: (
+    entitySlot: number,
+    turretIdx: number,
+    targetId: number,
+  ) => void;
+  readonly applyAcquisitionChoiceFsm: (
+    entitySlot: number,
+    turretIdx: number,
+    targetId: number,
+    rank: number,
   ) => void;
 }
 
@@ -2059,6 +2111,12 @@ export function initSimWasm(): Promise<SimWasm> {
           solveBallisticAim: combat_targeting_solve_ballistic_aim,
           rankTarget: combat_targeting_rank_target,
           chooseBestCandidate: combat_targeting_choose_best_candidate,
+          clearTurretLock: combat_targeting_clear_turret_lock,
+          applyPriorityPointFsm: combat_targeting_apply_priority_point_fsm,
+          applyPriorityTargetFsm: combat_targeting_apply_priority_target_fsm,
+          validateExistingLockFsm: combat_targeting_validate_existing_lock_fsm,
+          applyFireChoiceFsm: combat_targeting_apply_fire_choice_fsm,
+          applyAcquisitionChoiceFsm: combat_targeting_apply_acquisition_choice_fsm,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,

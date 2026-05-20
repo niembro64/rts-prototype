@@ -6977,6 +6977,275 @@ const TARGETING_TOPK_LOS: usize = 4;
 const TARGETING_FALLBACK_LOS_BUDGET: u32 = 12;
 
 #[inline]
+fn combat_targeting_live_turret_idx(
+    pool: &CombatTargetingPool,
+    entity_slot: u32,
+    turret_idx: u32,
+) -> Option<usize> {
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return None;
+    }
+    if turret_idx >= pool.turret_count_per_entity[entity_idx] as u32 {
+        return None;
+    }
+    if turret_idx >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+        return None;
+    }
+    Some(combat_targeting_turret_global_idx(entity_slot, turret_idx))
+}
+
+#[inline]
+fn combat_targeting_set_target_state(
+    pool: &mut CombatTargetingPool,
+    idx: usize,
+    target_id: i32,
+    state: u8,
+) {
+    if pool.turret_target_id[idx] != target_id {
+        pool.turret_los_blocked_ticks[idx] = 0;
+    }
+    pool.turret_target_id[idx] = target_id;
+    pool.turret_state[idx] = state;
+}
+
+#[inline]
+fn combat_targeting_range_with_radius_sq(range_sq: f64, target_radius: f64) -> f64 {
+    if target_radius <= 0.0 {
+        return range_sq;
+    }
+    let range = range_sq.max(0.0).sqrt();
+    let r = range + target_radius;
+    r * r
+}
+
+#[inline]
+fn combat_targeting_fire_max_with_radius_sq(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    release_edge: bool,
+    target_radius: f64,
+) -> f64 {
+    let range_sq = if release_edge {
+        pool.turret_fire_max_release_sq[idx]
+    } else {
+        pool.turret_fire_max_acquire_sq[idx]
+    };
+    combat_targeting_range_with_radius_sq(range_sq, target_radius)
+}
+
+#[inline]
+fn combat_targeting_outermost_release_with_radius_sq(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    target_radius: f64,
+) -> f64 {
+    let has_tracking = (pool.turret_config_flags[idx] & CT_TURRET_CFG_HAS_TRACKING_RANGE) != 0;
+    let range_sq = if has_tracking {
+        pool.turret_tracking_release_sq[idx]
+    } else {
+        pool.turret_fire_max_release_sq[idx]
+    };
+    combat_targeting_range_with_radius_sq(range_sq, target_radius)
+}
+
+/// Clear one turret's lock in the combat-targeting slab. JS uses this
+/// for object-owned gates (manual/passive/disabled branches) while the
+/// rest of the FSM transition writes live here.
+#[wasm_bindgen]
+pub fn combat_targeting_clear_turret_lock(entity_slot: u32, turret_idx: u32) {
+    let pool = combat_targeting_pool();
+    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
+        return;
+    };
+    combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+}
+
+/// AIM-08.5 — attack-ground priority transition. The expensive point
+/// gates are still supplied by JS; Rust owns the lock/state hysteresis
+/// write into the slab.
+#[wasm_bindgen]
+pub fn combat_targeting_apply_priority_point_fsm(
+    entity_slot: u32,
+    turret_idx: u32,
+    dist_sq: f64,
+    los_clear: u8,
+    ballistic_clear: u8,
+    force_field_clear: u8,
+) {
+    let pool = combat_targeting_pool();
+    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
+        return;
+    };
+    let old_state = pool.turret_state[idx];
+    let next_state = if los_clear == 0 {
+        CT_TURRET_STATE_IDLE
+    } else if ballistic_clear == 0 {
+        CT_TURRET_STATE_TRACKING
+    } else if force_field_clear == 0 {
+        CT_TURRET_STATE_IDLE
+    } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, 0.0) {
+        CT_TURRET_STATE_ENGAGED
+    } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, true, 0.0) {
+        if old_state == CT_TURRET_STATE_ENGAGED {
+            CT_TURRET_STATE_ENGAGED
+        } else {
+            CT_TURRET_STATE_TRACKING
+        }
+    } else {
+        CT_TURRET_STATE_TRACKING
+    };
+    combat_targeting_set_target_state(pool, idx, -1, next_state);
+}
+
+/// AIM-08.5 — attack-entity priority transition. JS supplies target
+/// validity and the still-object-owned gates; Rust applies the same
+/// target/range hysteresis as the old TypeScript FSM.
+#[wasm_bindgen]
+pub fn combat_targeting_apply_priority_target_fsm(
+    entity_slot: u32,
+    turret_idx: u32,
+    target_id: i32,
+    target_radius: f64,
+    dist_sq: f64,
+    target_valid: u8,
+    mirror_valid: u8,
+    los_clear: u8,
+    ballistic_clear: u8,
+    force_field_clear: u8,
+) {
+    let pool = combat_targeting_pool();
+    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
+        return;
+    };
+    if target_id < 0
+        || target_valid == 0
+        || mirror_valid == 0
+        || los_clear == 0
+        || ballistic_clear == 0
+        || force_field_clear == 0
+    {
+        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+        return;
+    }
+
+    let old_state = pool.turret_state[idx];
+    let next_state = if dist_sq
+        <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, target_radius)
+    {
+        CT_TURRET_STATE_ENGAGED
+    } else if dist_sq
+        <= combat_targeting_fire_max_with_radius_sq(pool, idx, true, target_radius)
+    {
+        if old_state == CT_TURRET_STATE_ENGAGED {
+            CT_TURRET_STATE_ENGAGED
+        } else {
+            CT_TURRET_STATE_TRACKING
+        }
+    } else {
+        CT_TURRET_STATE_TRACKING
+    };
+    combat_targeting_set_target_state(pool, idx, target_id, next_state);
+}
+
+/// AIM-08.5 — existing-lock validation transition. JS supplies target
+/// liveness/visibility and expensive fire gates; Rust owns LOS grace,
+/// release hysteresis, demotion, promotion, and target clearing.
+#[wasm_bindgen]
+pub fn combat_targeting_validate_existing_lock_fsm(
+    entity_slot: u32,
+    turret_idx: u32,
+    target_radius: f64,
+    dist_sq: f64,
+    target_valid: u8,
+    mirror_valid: u8,
+    ballistic_clear: u8,
+    los_blocked: u8,
+    los_drop_grace_ticks: u16,
+) {
+    let pool = combat_targeting_pool();
+    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
+        return;
+    };
+    if target_valid == 0 || mirror_valid == 0 || ballistic_clear == 0 {
+        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+        return;
+    }
+
+    let blocked = los_blocked != 0;
+    pool.turret_los_blocked_ticks[idx] = if blocked {
+        pool.turret_los_blocked_ticks[idx].saturating_add(1)
+    } else {
+        0
+    };
+    let los_drop = pool.turret_los_blocked_ticks[idx] > los_drop_grace_ticks;
+    if dist_sq > combat_targeting_outermost_release_with_radius_sq(pool, idx, target_radius)
+        || los_drop
+    {
+        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+        return;
+    }
+
+    let state = pool.turret_state[idx];
+    if state == CT_TURRET_STATE_TRACKING {
+        if !blocked
+            && dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, target_radius)
+        {
+            pool.turret_state[idx] = CT_TURRET_STATE_ENGAGED;
+        }
+    } else if state == CT_TURRET_STATE_ENGAGED
+        && (blocked
+            || dist_sq > combat_targeting_fire_max_with_radius_sq(pool, idx, true, target_radius))
+    {
+        pool.turret_state[idx] = CT_TURRET_STATE_TRACKING;
+    }
+}
+
+/// AIM-08.5 — apply a fire-band candidate switch found by the Rust
+/// candidate scoring kernel plus JS-owned gates.
+#[wasm_bindgen]
+pub fn combat_targeting_apply_fire_choice_fsm(
+    entity_slot: u32,
+    turret_idx: u32,
+    target_id: i32,
+) {
+    if target_id < 0 {
+        return;
+    }
+    let pool = combat_targeting_pool();
+    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
+        return;
+    };
+    combat_targeting_set_target_state(pool, idx, target_id, CT_TURRET_STATE_ENGAGED);
+}
+
+/// AIM-08.5 — apply an acquisition candidate result. A missing result
+/// leaves the turret idle with no lock; fire-band candidates promote
+/// directly to engaged, tracking-only candidates hold a tracking lock.
+#[wasm_bindgen]
+pub fn combat_targeting_apply_acquisition_choice_fsm(
+    entity_slot: u32,
+    turret_idx: u32,
+    target_id: i32,
+    rank: u8,
+) {
+    let pool = combat_targeting_pool();
+    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
+        return;
+    };
+    if target_id < 0 {
+        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+        return;
+    }
+    let state = if rank >= CT_TARGET_RANK_FIRE_FALLBACK {
+        CT_TURRET_STATE_ENGAGED
+    } else {
+        CT_TURRET_STATE_TRACKING
+    };
+    combat_targeting_set_target_state(pool, idx, target_id, state);
+}
+
+#[inline]
 fn targeting_edge_value(acquire: f64, release: f64, edge: u8) -> f64 {
     if edge == CT_TARGET_EDGE_RELEASE {
         release
