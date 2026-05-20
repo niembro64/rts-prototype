@@ -122,9 +122,9 @@ const MAX_REPLANS_PER_TICK = 5;
  *  a problem that won't improve from one tick to the next. */
 const REPLAN_FAILURE_COOLDOWN = -60;
 
-const ARRIVAL_RADIUS = 15;
-const ARRIVAL_FINAL_RADIUS = 5;
-const ARRIVAL_STOP_SPEED = 0.5;
+const ARRIVAL_RADIUS = 400;
+const ARRIVAL_FINAL_RADIUS = 100;
+const ARRIVAL_FINAL_STOP_SPEED = 50;
 const ARRIVAL_CONTROL_RADIUS = 220;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_THROUGH_SPEED = 120;
@@ -1159,7 +1159,7 @@ export class Simulation {
     const unit = entity.unit;
     const vx = body?.vx ?? unit?.velocityX ?? 0;
     const vy = body?.vy ?? unit?.velocityY ?? 0;
-    return magnitude(vx, vy) <= ARRIVAL_STOP_SPEED;
+    return magnitude(vx, vy) <= ARRIVAL_FINAL_STOP_SPEED;
   }
 
   private getActionArrivalTargetVelocity(
