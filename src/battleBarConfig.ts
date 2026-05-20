@@ -8,10 +8,15 @@ import {
   isBuildableUnitId,
   isDemoUnitEnabledByDefault,
 } from './game/sim/blueprints/unitRoster';
+import battleBarConfig from './battleBarConfig.json';
 
-const clean = (x: number) => {
-  return Math.floor(Math.pow(3, x));
-};
+// ── Authored data lives in battleBarConfig.json ──
+// The TS shim composes BATTLE_CONFIG by reading the JSON and layering
+// in the two fields that need cross-config references:
+//   - `units`: built dynamically from BUILDABLE_UNIT_IDS (unitRoster.json)
+//   - `mapSize`: pulled from MAP_DIMENSION_CONFIG (mapSizeConfig.json)
+// Everything else — caps, toggles, terrain options, mode defaults,
+// storage keys, migration table — is pure JSON.
 
 function buildUnitToggleConfig(): Record<string, { default: boolean }> {
   return Object.fromEntries(
@@ -39,152 +44,89 @@ function sanitizeDemoUnitIds(value: unknown): string[] | null {
 export const BATTLE_CONFIG = {
   units: buildUnitToggleConfig(),
   cap: {
-    default: clean(5),
-    options: [
-      // clean(1),
-      clean(2),
-      // clean(3),
-      clean(4),
-      clean(5),
-      clean(6),
-      clean(6.5),
-      clean(7),
-    ] as readonly number[],
+    default: battleBarConfig.cap.default,
+    options: battleBarConfig.cap.options as readonly number[],
   },
-  mirrorsEnabled: { default: true },
-  forceFieldsEnabled: { default: true },
-  forceFieldsObstructSight: { default: true },
-  fogOfWarEnabled: { default: true },
+  mirrorsEnabled: battleBarConfig.mirrorsEnabled,
+  forceFieldsEnabled: battleBarConfig.forceFieldsEnabled,
+  forceFieldsObstructSight: battleBarConfig.forceFieldsObstructSight,
+  fogOfWarEnabled: battleBarConfig.fogOfWarEnabled,
   forceFieldReflectionMode: {
-    default: 'both',
+    default: battleBarConfig.forceFieldReflectionMode.default as ForceFieldReflectionMode,
   },
   // Terrain shape — applied at game-construction time via
   // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
   center: {
-    default: 'flat',
-    options: [
-      { value: 'valley', label: 'VALLEY' },
-      { value: 'mountain', label: 'MOUNTAIN' },
-      { value: 'flat', label: 'FLAT' },
-    ],
+    default: battleBarConfig.center.default as TerrainShape,
+    options: battleBarConfig.center.options as ReadonlyArray<{ value: TerrainShape; label: string }>,
   },
   dividers: {
-    default: 'mountain',
-    options: [
-      { value: 'valley', label: 'VALLEYS' },
-      { value: 'mountain', label: 'MOUNTAINS' },
-      { value: 'flat', label: 'FLAT' },
-    ],
+    default: battleBarConfig.dividers.default as TerrainShape,
+    options: battleBarConfig.dividers.options as ReadonlyArray<{ value: TerrainShape; label: string }>,
   },
   mapShape: {
-    default: 'circle',
-    options: [
-      { value: 'square', label: 'SQUARE' },
-      { value: 'circle', label: 'CIRCLE' },
-    ],
+    default: battleBarConfig.mapShape.default as TerrainMapShape,
+    options: battleBarConfig.mapShape.options as ReadonlyArray<{ value: TerrainMapShape; label: string }>,
   },
   mapSize: {
     width: MAP_DIMENSION_CONFIG.width,
     length: MAP_DIMENSION_CONFIG.length,
   },
-} as const satisfies BattleBarConfig;
+} satisfies BattleBarConfig;
 
 // Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
 export const DEMO_CAP_DEFAULT = BATTLE_CONFIG.cap.default;
 export const REAL_CAP_DEFAULT = BATTLE_CONFIG.cap.default;
 
-export const BATTLE_MODE_DEFAULTS = {
-  demo: {
-    cap: DEMO_CAP_DEFAULT,
-    grid: true,
-    fogOfWar: false,
-    barsCollapsed: false,
-  },
-  real: {
-    cap: REAL_CAP_DEFAULT,
-    grid: false,
-    fogOfWar: true,
-    barsCollapsed: false,
-  },
-} as const;
+export const BATTLE_MODE_DEFAULTS = battleBarConfig.modeDefaults;
 
 // ── localStorage keys (module-private) ──
 // `demo-battle-*` and `real-battle-*` namespace each setting to the
 // bar/mode it belongs to. EVERY setting that's tunable in BOTH
 // modes (ff accel, system toggles, terrain shapes) gets paired
-// demo + real keys so
-// the two modes don't bleed:
+// demo + real keys so the two modes don't bleed.
 //
-//   demo battle = the visual demo running on initial page load
-//                 (the BUDGET ANNIHILATION backdrop) and any time
-//                 the user is back at that screen.
-//   real battle = the GAME LOBBY preview AND the REAL BATTLE
-//                 itself. Lobby mutations write to the real keys;
-//                 the lobby preview reads from them so the
-//                 preview shows what the upcoming real game will
-//                 look like, not whatever the user had set on
-//                 their last solo demo.
+// First-read fallback: when a `real-battle-*` key has no value yet,
+// the loader falls back to the matching `demo-battle-*` value — so
+// existing customizations carry over to real battle the first time
+// a user enters the lobby, and only diverge when the user explicitly
+// changes them in the lobby.
 //
-// First-read fallback: when a `real-battle-*` key has no value
-// yet, the loader falls back to the matching `demo-battle-*`
-// value — so existing customizations carry over to real battle
-// the first time a user enters the lobby, and only diverge when
-// the user explicitly changes them in the lobby.
-//
-// Legacy `rts-*` keys are migrated lazily into `demo-battle-*`
-// (the original "battle" namespace) by the load helpers below.
-const STORAGE_DEMO_UNITS = 'demo-battle-units';
-const STORAGE_DEMO_CAP = 'demo-battle-cap';
-const STORAGE_REAL_CAP = 'real-battle-cap';
-const STORAGE_DEMO_GRID = 'demo-battle-grid';
-const STORAGE_REAL_GRID = 'real-battle-grid';
-const STORAGE_DEMO_MIRRORS_ENABLED = 'demo-battle-mirrors-enabled';
-const STORAGE_REAL_MIRRORS_ENABLED = 'real-battle-mirrors-enabled';
-const STORAGE_DEMO_FORCE_FIELDS_ENABLED = 'demo-battle-force-fields-enabled';
-const STORAGE_REAL_FORCE_FIELDS_ENABLED = 'real-battle-force-fields-enabled';
-const STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT = 'demo-battle-force-fields-obstruct-sight';
-const STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT = 'real-battle-force-fields-obstruct-sight';
-const STORAGE_DEMO_FOG_OF_WAR_ENABLED = 'demo-battle-fog-of-war-enabled';
-const STORAGE_REAL_FOG_OF_WAR_ENABLED = 'real-battle-fog-of-war-enabled';
-const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = 'demo-battle-force-field-reflection-mode';
-const STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE = 'real-battle-force-field-reflection-mode';
-const STORAGE_DEMO_TERRAIN_CENTER = 'demo-battle-terrain-center';
-const STORAGE_REAL_TERRAIN_CENTER = 'real-battle-terrain-center';
-const STORAGE_DEMO_TERRAIN_DIVIDERS = 'demo-battle-terrain-dividers';
-const STORAGE_REAL_TERRAIN_DIVIDERS = 'real-battle-terrain-dividers';
-const STORAGE_DEMO_TERRAIN_MAP_SHAPE = 'demo-battle-terrain-map-shape';
-const STORAGE_REAL_TERRAIN_MAP_SHAPE = 'real-battle-terrain-map-shape';
-const STORAGE_DEMO_MAP_LAND_CELLS = 'demo-battle-map-land-cells';
-const STORAGE_REAL_MAP_LAND_CELLS = 'real-battle-map-land-cells';
-const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = 'demo-battle-map-width-land-cells';
-const STORAGE_REAL_MAP_WIDTH_LAND_CELLS = 'real-battle-map-width-land-cells';
-const STORAGE_DEMO_MAP_LENGTH_LAND_CELLS = 'demo-battle-map-length-land-cells';
-const STORAGE_REAL_MAP_LENGTH_LAND_CELLS = 'real-battle-map-length-land-cells';
-// Bottom-bars collapsed state. Persisted PER MODE so the user can
-// keep the bars expanded in demo (where they tune sim/visual
-// settings) and collapsed in real-battle (where map real estate
-// matters more) — or any other mix — and have those preferences
-// survive a page refresh independently.
-const STORAGE_DEMO_BARS_COLLAPSED = 'demo-battle-bottom-bars-collapsed';
-const STORAGE_REAL_BARS_COLLAPSED = 'real-battle-bottom-bars-collapsed';
+// Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
+// original "battle" namespace) by the load helpers below.
+const sk = battleBarConfig.storageKeys;
+const STORAGE_DEMO_UNITS = sk.demoUnits;
+const STORAGE_DEMO_CAP = sk.demoCap;
+const STORAGE_REAL_CAP = sk.realCap;
+const STORAGE_DEMO_GRID = sk.demoGrid;
+const STORAGE_REAL_GRID = sk.realGrid;
+const STORAGE_DEMO_MIRRORS_ENABLED = sk.demoMirrorsEnabled;
+const STORAGE_REAL_MIRRORS_ENABLED = sk.realMirrorsEnabled;
+const STORAGE_DEMO_FORCE_FIELDS_ENABLED = sk.demoForceFieldsEnabled;
+const STORAGE_REAL_FORCE_FIELDS_ENABLED = sk.realForceFieldsEnabled;
+const STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT = sk.demoForceFieldsObstructSight;
+const STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT = sk.realForceFieldsObstructSight;
+const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
+const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
+const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = sk.demoForceFieldReflectionMode;
+const STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE = sk.realForceFieldReflectionMode;
+const STORAGE_DEMO_TERRAIN_CENTER = sk.demoTerrainCenter;
+const STORAGE_REAL_TERRAIN_CENTER = sk.realTerrainCenter;
+const STORAGE_DEMO_TERRAIN_DIVIDERS = sk.demoTerrainDividers;
+const STORAGE_REAL_TERRAIN_DIVIDERS = sk.realTerrainDividers;
+const STORAGE_DEMO_TERRAIN_MAP_SHAPE = sk.demoTerrainMapShape;
+const STORAGE_REAL_TERRAIN_MAP_SHAPE = sk.realTerrainMapShape;
+const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
+const STORAGE_REAL_MAP_LAND_CELLS = sk.realMapLandCells;
+const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = sk.demoMapWidthLandCells;
+const STORAGE_REAL_MAP_WIDTH_LAND_CELLS = sk.realMapWidthLandCells;
+const STORAGE_DEMO_MAP_LENGTH_LAND_CELLS = sk.demoMapLengthLandCells;
+const STORAGE_REAL_MAP_LENGTH_LAND_CELLS = sk.realMapLengthLandCells;
+const STORAGE_DEMO_BARS_COLLAPSED = sk.demoBarsCollapsed;
+const STORAGE_REAL_BARS_COLLAPSED = sk.realBarsCollapsed;
 
-const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
-  ['rts-demo-units', STORAGE_DEMO_UNITS],
-  ['rts-demo-cap', STORAGE_DEMO_CAP],
-  ['rts-real-cap', STORAGE_REAL_CAP],
-  ['rts-demo-grid', STORAGE_DEMO_GRID],
-  ['rts-real-grid', STORAGE_REAL_GRID],
-  ['rts-mirrors-enabled', STORAGE_DEMO_MIRRORS_ENABLED],
-  ['rts-force-fields-enabled', STORAGE_DEMO_FORCE_FIELDS_ENABLED],
-  ['rts-force-fields-block-targeting', STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT],
-  ['demo-battle-force-fields-block-targeting', STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT],
-  ['real-battle-force-fields-block-targeting', STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT],
-  ['rts-fog-of-war-enabled', STORAGE_DEMO_FOG_OF_WAR_ENABLED],
-  ['rts-terrain-center', STORAGE_DEMO_TERRAIN_CENTER],
-  ['rts-terrain-dividers', STORAGE_DEMO_TERRAIN_DIVIDERS],
-  ['rts-terrain-map-shape', STORAGE_DEMO_TERRAIN_MAP_SHAPE],
-  ['rts-map-land-cells', STORAGE_DEMO_MAP_WIDTH_LAND_CELLS],
-];
+const BATTLE_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> =
+  battleBarConfig.storageMigrations as unknown as ReadonlyArray<readonly [string, string]>;
 
 let _battleMigrationsRun = false;
 /** Run the legacy → prefixed key rename once per process. Each

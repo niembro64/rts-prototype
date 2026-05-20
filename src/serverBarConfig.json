@@ -1,0 +1,33 @@
+{
+  "hostSnapshotRate": {
+    "normalMin": 5,
+    "normalMax": 10,
+    "diagnosticMin": 16,
+    "default": 16,
+    "options": [1, 4, 5, 8, 10, 16, 32, 64, 128],
+    "legacyUncappedFallback": 60
+  },
+  "tickRate": {
+    "default": 32,
+    "options": [1, 4, 8, 16, 32, 64, 128, 256, 512]
+  },
+  "unitGroundNormalEma": {
+    "options": ["snap", "fast", "mid", "slow"]
+  },
+  "keyframe": {
+    "default": 0.0625,
+    "options": ["ALL", 0.25, 0.0625, 0.015625, "NONE"]
+  },
+  "storageKeys": {
+    "snapshotRate": "host-server-snapshot-rate",
+    "keyframeRatio": "host-server-keyframe-ratio",
+    "tickRate": "host-server-tick-rate",
+    "unitGroundNormalEmaMode": "host-server-unit-ground-normal-ema-mode"
+  },
+  "storageMigrations": [
+    ["rts-snapshot-rate", "host-server-snapshot-rate"],
+    ["rts-keyframe-ratio", "host-server-keyframe-ratio"],
+    ["rts-tick-rate", "host-server-tick-rate"],
+    ["host-server-tilt-ema-mode", "host-server-unit-ground-normal-ema-mode"]
+  ]
+}

@@ -1,0 +1,179 @@
+{
+  "render": {
+    "default": "padded",
+    "options": [
+      { "value": "window", "label": "WIN" },
+      { "value": "padded", "label": "PAD" },
+      { "value": "all", "label": "ALL" }
+    ]
+  },
+  "audio": {
+    "default": "padded",
+    "options": [
+      { "value": "window", "label": "WIN" },
+      { "value": "padded", "label": "PAD" },
+      { "value": "all", "label": "ALL" }
+    ]
+  },
+  "audioSmoothing": { "default": true },
+  "burnMarks": { "default": false },
+  "locomotionMarks": { "default": true },
+  "beamSnapToTurret": { "default": true },
+  "triangleDebug": { "default": false },
+  "buildGridDebug": { "default": false },
+  "predictionMode": {
+    "default": "vel",
+    "options": [
+      { "value": "pos", "label": "POS" },
+      { "value": "vel", "label": "VEL" }
+    ]
+  },
+  "movementPosEma": {
+    "default": "medium",
+    "options": [
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "medium", "label": "MED" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
+  "movementVelEma": {
+    "default": "fast",
+    "options": [
+      { "value": "ignore", "label": "IGN" },
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "medium", "label": "MED" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
+  "rotationPosEma": {
+    "default": "fast",
+    "options": [
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "medium", "label": "MED" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
+  "rotationVelEma": {
+    "default": "medium",
+    "options": [
+      { "value": "ignore", "label": "IGN" },
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "medium", "label": "MED" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
+  "unitGroundNormalEma": {
+    "default": "fast",
+    "options": [
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "mid", "label": "MED" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
+  "legsRadius": { "default": false },
+  "cameraSmooth": {
+    "default": "mid",
+    "options": [
+      { "value": "snap", "label": "SNAP" },
+      { "value": "fast", "label": "FAST" },
+      { "value": "mid", "label": "MID" },
+      { "value": "slow", "label": "SLOW" }
+    ]
+  },
+  "cameraFov": {
+    "options": [
+      { "value": 10, "label": "10" },
+      { "value": 20, "label": "20" },
+      { "value": 30, "label": "30" },
+      { "value": 60, "label": "60" },
+      { "value": 120, "label": "120" }
+    ]
+  },
+  "edgeScroll": { "default": false },
+  "dragPan": { "default": true },
+  "sounds": {
+    "default": {
+      "fire": false,
+      "hit": false,
+      "dead": false,
+      "beam": false,
+      "field": false,
+      "music": false
+    }
+  },
+  "rangeToggles": { "default": false },
+  "projRangeToggles": { "default": false },
+  "unitRadiusToggles": { "default": false },
+  "lobbyVisible": { "default": { "mobile": true, "desktop": true } },
+  "waypointDetail": {
+    "default": "simple",
+    "options": [
+      { "value": "simple", "label": "SIMPLE" },
+      { "value": "detailed", "label": "DETAILED" }
+    ]
+  },
+
+  "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],
+  "rangeTypes": [
+    "trackAcquire", "trackRelease",
+    "engageAcquire", "engageRelease",
+    "engageMinAcquire", "engageMinRelease",
+    "build"
+  ],
+  "projRangeTypes": ["collision", "explosion"],
+  "unitRadiusTypes": ["visual", "shot", "push"],
+
+  "storageKeys": {
+    "renderMode": "player-client-render-mode",
+    "audioScope": "player-client-audio-scope",
+    "audioSmoothing": "player-client-audio-smoothing",
+    "burnMarks": "player-client-burn-marks-v2",
+    "locomotionMarks": "player-client-locomotion-marks",
+    "beamSnapToTurret": "player-client-beam-snap-to-turret",
+    "triangleDebug": "player-client-triangle-debug",
+    "buildGridDebug": "player-client-build-grid-debug",
+    "movementPosEma": "player-client-movement-pos-ema",
+    "movementVelEma": "player-client-movement-vel-ema",
+    "rotationPosEma": "player-client-rotation-pos-ema",
+    "rotationVelEma": "player-client-rotation-vel-ema",
+    "predictionMode": "player-client-prediction-mode",
+    "unitGroundNormalEmaMode": "player-client-unit-ground-normal-ema-mode",
+    "soundToggles": "player-client-sound-toggles",
+    "rangeToggles": "player-client-range-toggles",
+    "projRangeToggles": "player-client-proj-range-toggles",
+    "unitRadiusToggles": "player-client-unit-radius-toggles",
+    "legsRadius": "player-client-legs-radius",
+    "cameraSmooth": "player-client-camera-smooth",
+    "cameraFov": "player-client-camera-fov-degrees",
+    "edgeScroll": "player-client-edge-scroll",
+    "dragPan": "player-client-drag-pan",
+    "lobbyVisible": "demo-battle-lobby-visible",
+    "waypointDetail": "player-client-waypoint-detail"
+  },
+
+  "storageMigrations": [
+    ["rts-render-mode", "player-client-render-mode"],
+    ["rts-audio-scope", "player-client-audio-scope"],
+    ["rts-audio-smoothing", "player-client-audio-smoothing"],
+    ["rts-triangle-debug", "player-client-triangle-debug"],
+    ["rts-build-grid-debug", "player-client-build-grid-debug"],
+    ["rts-sound-toggles", "player-client-sound-toggles"],
+    ["rts-range-toggles", "player-client-range-toggles"],
+    ["rts-proj-range-toggles", "player-client-proj-range-toggles"],
+    ["rts-unit-radius-toggles", "player-client-unit-radius-toggles"],
+    ["rts-legs-radius", "player-client-legs-radius"],
+    ["rts-camera-smooth", "player-client-camera-smooth"],
+    ["rts-camera-fov-degrees", "player-client-camera-fov-degrees"],
+    ["rts-edge-scroll", "player-client-edge-scroll"],
+    ["rts-drag-pan", "player-client-drag-pan"],
+    ["rts-lobby-visible", "demo-battle-lobby-visible"],
+    ["player-client-lobby-visible", "demo-battle-lobby-visible"],
+    ["rts-waypoint-detail", "player-client-waypoint-detail"],
+    ["player-client-tilt-ema-mode", "player-client-unit-ground-normal-ema-mode"]
+  ]
+}

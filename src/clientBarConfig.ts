@@ -20,177 +20,104 @@ import type {
 import { CAMERA_FOV_DEGREES } from './config';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { PLAYER_CLIENT_MAX_GRAPHICS_CONFIG } from './playerClientGraphicsConfig';
+import clientBarConfig from './clientBarConfig.json';
 
 export type { CameraSmoothMode } from './types/client';
 
+// ── Authored data lives in clientBarConfig.json ──
+// The TS shim re-exports CLIENT_CONFIG as a typed view over the JSON.
+// One field needs a cross-config reference: `cameraFov.default` reads
+// from CAMERA_FOV_DEGREES in config.ts so the canonical FOV stays in
+// one place and the bar inherits it.
+
+type OptionList<T> = ReadonlyArray<{ value: T; label: string }>;
+
 export const CLIENT_CONFIG = {
   render: {
-    default: 'padded' as const,
-    options: [
-      { value: 'window' as const, label: 'WIN' },
-      { value: 'padded' as const, label: 'PAD' },
-      { value: 'all' as const, label: 'ALL' },
-    ],
+    default: clientBarConfig.render.default as RenderMode,
+    options: clientBarConfig.render.options as OptionList<RenderMode>,
   },
   audio: {
-    default: 'padded' as const,
-    options: [
-      { value: 'window' as const, label: 'WIN' },
-      { value: 'padded' as const, label: 'PAD' },
-      { value: 'all' as const, label: 'ALL' },
-    ],
+    default: clientBarConfig.audio.default as Exclude<AudioScope, 'off'>,
+    options: clientBarConfig.audio.options as OptionList<Exclude<AudioScope, 'off'>>,
   },
-  audioSmoothing: { default: true },
-  burnMarks: { default: false },
-  locomotionMarks: { default: true },
-  beamSnapToTurret: { default: true },
-  triangleDebug: { default: false },
-  buildGridDebug: { default: false },
+  audioSmoothing: clientBarConfig.audioSmoothing,
+  burnMarks: clientBarConfig.burnMarks,
+  locomotionMarks: clientBarConfig.locomotionMarks,
+  beamSnapToTurret: clientBarConfig.beamSnapToTurret,
+  triangleDebug: clientBarConfig.triangleDebug,
+  buildGridDebug: clientBarConfig.buildGridDebug,
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
    *  position from the last-seen velocity each frame); 'pos' skips
    *  integration entirely and snaps straight to snapshot position.
    *  There is no ACC mode — acceleration is not shipped on the wire,
    *  so the client cannot integrate it. */
   predictionMode: {
-    default: 'vel' as const,
-    options: [
-      { value: 'pos' as const, label: 'POS' },
-      { value: 'vel' as const, label: 'VEL' },
-    ],
+    default: clientBarConfig.predictionMode.default as PredictionMode,
+    options: clientBarConfig.predictionMode.options as OptionList<PredictionMode>,
   },
   /** Per-channel snapshot drift EMAs. Position channels always apply
    *  correction and choose from SNAP / FAST / MED / SLOW. Velocity
    *  channels also expose IGNORE because keeping the predicted
-   *  derivative can be meaningful there.
-   *  The most recent snapshot value is always stored per channel; the
-   *  mode controls only what the per-tick predict step does with it.
-   *  Defaults: movement position MED, movement velocity SNAP, rotation
-   *  position FAST, and rotation velocity SNAP. */
+   *  derivative can be meaningful there. */
   movementPosEma: {
-    default: 'medium' as const,
-    options: [
-      { value: 'snap' as const, label: 'SNAP' },
-      { value: 'fast' as const, label: 'FAST' },
-      { value: 'medium' as const, label: 'MED' },
-      { value: 'slow' as const, label: 'SLOW' },
-    ],
+    default: clientBarConfig.movementPosEma.default as PositionDriftChannelMode,
+    options: clientBarConfig.movementPosEma.options as OptionList<PositionDriftChannelMode>,
   },
   movementVelEma: {
-    default: 'fast' as const,
-    options: [
-      { value: 'ignore' as const, label: 'IGN' },
-      { value: 'snap' as const, label: 'SNAP' },
-      { value: 'fast' as const, label: 'FAST' },
-      { value: 'medium' as const, label: 'MED' },
-      { value: 'slow' as const, label: 'SLOW' },
-    ],
+    default: clientBarConfig.movementVelEma.default as DriftChannelMode,
+    options: clientBarConfig.movementVelEma.options as OptionList<DriftChannelMode>,
   },
   rotationPosEma: {
-    default: 'fast' as const,
-    options: [
-      { value: 'snap' as const, label: 'SNAP' },
-      { value: 'fast' as const, label: 'FAST' },
-      { value: 'medium' as const, label: 'MED' },
-      { value: 'slow' as const, label: 'SLOW' },
-    ],
+    default: clientBarConfig.rotationPosEma.default as PositionDriftChannelMode,
+    options: clientBarConfig.rotationPosEma.options as OptionList<PositionDriftChannelMode>,
   },
   rotationVelEma: {
-    default: 'medium' as const,
-    options: [
-      { value: 'ignore' as const, label: 'IGN' },
-      { value: 'snap' as const, label: 'SNAP' },
-      { value: 'fast' as const, label: 'FAST' },
-      { value: 'medium' as const, label: 'MED' },
-      { value: 'slow' as const, label: 'SLOW' },
-    ],
+    default: clientBarConfig.rotationVelEma.default as DriftChannelMode,
+    options: clientBarConfig.rotationVelEma.options as OptionList<DriftChannelMode>,
   },
-  /** Client-side unit ground normal EMA. Layered ON TOP of the host's
-   *  HOST SERVER UNIT GROUND NORMAL EMA — sim-side smoothing reduces
-   *  triangle-edge normal discontinuities before serialization, then
-   *  this knob smooths further on the receiving client (per render
-   *  frame, gliding toward each snapshot's value the same way position
-   *  drift glides toward target.x). SNAP = no client smoothing,
-   *  identical to the pre-feature behavior. */
+  /** Client-side unit ground normal EMA layered ON TOP of the host's
+   *  ground-normal EMA. SNAP = no client smoothing. */
   unitGroundNormalEma: {
-    default: 'fast' as const,
-    options: [
-      { value: 'snap' as const, label: 'SNAP' },
-      { value: 'fast' as const, label: 'FAST' },
-      { value: 'mid' as const, label: 'MED' },
-      { value: 'slow' as const, label: 'SLOW' },
-    ],
+    default: clientBarConfig.unitGroundNormalEma.default as DriftMode,
+    options: clientBarConfig.unitGroundNormalEma.options as OptionList<DriftMode>,
   },
-  legsRadius: { default: false },
+  legsRadius: clientBarConfig.legsRadius,
   cameraSmooth: {
-    default: 'mid' as const,
-    options: [
-      { value: 'snap' as const, label: 'SNAP' },
-      { value: 'fast' as const, label: 'FAST' },
-      { value: 'mid' as const, label: 'MID' },
-      { value: 'slow' as const, label: 'SLOW' },
-    ],
+    default: clientBarConfig.cameraSmooth.default as CameraSmoothMode,
+    options: clientBarConfig.cameraSmooth.options as OptionList<CameraSmoothMode>,
   },
   cameraFov: {
+    // FOV default lives in config.ts as CAMERA_FOV_DEGREES — keep one
+    // canonical source. Options list is JSON-authored.
     default: CAMERA_FOV_DEGREES,
-    options: [
-      { value: 10 as const, label: '10' },
-      { value: 20 as const, label: '20' },
-      { value: 30 as const, label: '30' },
-      { value: 60 as const, label: '60' },
-      { value: 120 as const, label: '120' },
-    ],
+    options: clientBarConfig.cameraFov.options as OptionList<CameraFovDegrees>,
   },
-  edgeScroll: { default: false },
-  dragPan: { default: true },
-  sounds: {
-    default: {
-      fire: false,
-      hit: false,
-      dead: false,
-      beam: false,
-      field: false,
-      music: false,
-    },
-  },
-  rangeToggles: { default: false },
-  projRangeToggles: { default: false },
-  unitRadiusToggles: { default: false },
-  lobbyVisible: { default: { mobile: true, desktop: true } },
+  edgeScroll: clientBarConfig.edgeScroll,
+  dragPan: clientBarConfig.dragPan,
+  sounds: clientBarConfig.sounds as { default: Record<SoundCategory, boolean> },
+  rangeToggles: clientBarConfig.rangeToggles,
+  projRangeToggles: clientBarConfig.projRangeToggles,
+  unitRadiusToggles: clientBarConfig.unitRadiusToggles,
+  lobbyVisible: clientBarConfig.lobbyVisible,
   waypointDetail: {
-    default: 'simple' as const,
-    options: [
-      { value: 'simple' as const, label: 'SIMPLE' },
-      { value: 'detailed' as const, label: 'DETAILED' },
-    ],
+    default: clientBarConfig.waypointDetail.default as WaypointDetail,
+    options: clientBarConfig.waypointDetail.options as OptionList<WaypointDetail>,
   },
-} as const satisfies ClientBarConfig;
+} satisfies ClientBarConfig;
 
 // ── Constant arrays ──
-export const SOUND_CATEGORIES: SoundCategory[] = [
-  'fire',
-  'hit',
-  'dead',
-  'beam',
-  'field',
-  'music',
-];
+export const SOUND_CATEGORIES: SoundCategory[] =
+  clientBarConfig.soundCategories as SoundCategory[];
 
-export const RANGE_TYPES: RangeType[] = [
-  'trackAcquire',
-  'trackRelease',
-  'engageAcquire',
-  'engageRelease',
-  'engageMinAcquire',
-  'engageMinRelease',
-  'build',
-];
+export const RANGE_TYPES: RangeType[] =
+  clientBarConfig.rangeTypes as RangeType[];
 
-export const PROJ_RANGE_TYPES: ProjRangeType[] = [
-  'collision',
-  'explosion',
-];
+export const PROJ_RANGE_TYPES: ProjRangeType[] =
+  clientBarConfig.projRangeTypes as ProjRangeType[];
 
-export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
+export const UNIT_RADIUS_TYPES: UnitRadiusType[] =
+  clientBarConfig.unitRadiusTypes as UnitRadiusType[];
 
 // ── localStorage keys (module-private) ──
 // Every key in this file is for the PLAYER CLIENT bar — namespace
@@ -199,74 +126,40 @@ export const UNIT_RADIUS_TYPES: UnitRadiusType[] = ['visual', 'shot', 'push'];
 // player-client) be wiped/inspected independently. The previous
 // `rts-*` keys are migrated on first load via `migrateKey()` so
 // existing users don't lose their preferences across this rename.
-const RENDER_MODE_STORAGE_KEY = 'player-client-render-mode';
-const AUDIO_SCOPE_STORAGE_KEY = 'player-client-audio-scope';
-const AUDIO_SMOOTHING_STORAGE_KEY = 'player-client-audio-smoothing';
-const BURN_MARKS_STORAGE_KEY = 'player-client-burn-marks-v2';
-const LOCOMOTION_MARKS_STORAGE_KEY = 'player-client-locomotion-marks';
-const BEAM_SNAP_TO_TURRET_STORAGE_KEY = 'player-client-beam-snap-to-turret';
-const TRIANGLE_DEBUG_STORAGE_KEY = 'player-client-triangle-debug';
-const BUILD_GRID_DEBUG_STORAGE_KEY = 'player-client-build-grid-debug';
-const MOVEMENT_POS_EMA_STORAGE_KEY = 'player-client-movement-pos-ema';
-const MOVEMENT_VEL_EMA_STORAGE_KEY = 'player-client-movement-vel-ema';
-const ROTATION_POS_EMA_STORAGE_KEY = 'player-client-rotation-pos-ema';
-const ROTATION_VEL_EMA_STORAGE_KEY = 'player-client-rotation-vel-ema';
-const PREDICTION_MODE_STORAGE_KEY = 'player-client-prediction-mode';
-const UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY = 'player-client-unit-ground-normal-ema-mode';
-const SOUND_TOGGLES_STORAGE_KEY = 'player-client-sound-toggles';
-const RANGE_TOGGLES_STORAGE_KEY = 'player-client-range-toggles';
-const PROJ_RANGE_TOGGLES_STORAGE_KEY = 'player-client-proj-range-toggles';
-const UNIT_RADIUS_TOGGLES_STORAGE_KEY = 'player-client-unit-radius-toggles';
-const LEGS_RADIUS_STORAGE_KEY = 'player-client-legs-radius';
-const CAMERA_SMOOTH_STORAGE_KEY = 'player-client-camera-smooth';
-const CAMERA_FOV_STORAGE_KEY = 'player-client-camera-fov-degrees';
-const EDGE_SCROLL_STORAGE_KEY = 'player-client-edge-scroll';
-const DRAG_PAN_STORAGE_KEY = 'player-client-drag-pan';
+const sk = clientBarConfig.storageKeys;
+const RENDER_MODE_STORAGE_KEY = sk.renderMode;
+const AUDIO_SCOPE_STORAGE_KEY = sk.audioScope;
+const AUDIO_SMOOTHING_STORAGE_KEY = sk.audioSmoothing;
+const BURN_MARKS_STORAGE_KEY = sk.burnMarks;
+const LOCOMOTION_MARKS_STORAGE_KEY = sk.locomotionMarks;
+const BEAM_SNAP_TO_TURRET_STORAGE_KEY = sk.beamSnapToTurret;
+const TRIANGLE_DEBUG_STORAGE_KEY = sk.triangleDebug;
+const BUILD_GRID_DEBUG_STORAGE_KEY = sk.buildGridDebug;
+const MOVEMENT_POS_EMA_STORAGE_KEY = sk.movementPosEma;
+const MOVEMENT_VEL_EMA_STORAGE_KEY = sk.movementVelEma;
+const ROTATION_POS_EMA_STORAGE_KEY = sk.rotationPosEma;
+const ROTATION_VEL_EMA_STORAGE_KEY = sk.rotationVelEma;
+const PREDICTION_MODE_STORAGE_KEY = sk.predictionMode;
+const UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY = sk.unitGroundNormalEmaMode;
+const SOUND_TOGGLES_STORAGE_KEY = sk.soundToggles;
+const RANGE_TOGGLES_STORAGE_KEY = sk.rangeToggles;
+const PROJ_RANGE_TOGGLES_STORAGE_KEY = sk.projRangeToggles;
+const UNIT_RADIUS_TOGGLES_STORAGE_KEY = sk.unitRadiusToggles;
+const LEGS_RADIUS_STORAGE_KEY = sk.legsRadius;
+const CAMERA_SMOOTH_STORAGE_KEY = sk.cameraSmooth;
+const CAMERA_FOV_STORAGE_KEY = sk.cameraFov;
+const EDGE_SCROLL_STORAGE_KEY = sk.edgeScroll;
+const DRAG_PAN_STORAGE_KEY = sk.dragPan;
 // The "BUDGET ANNIHILATION" lobby modal IS the demo-battle pre-game
 // view — its visibility belongs to the demo-battle namespace.
-// Migration table below covers both prior locations (`rts-lobby-visible`
-// from the original prefix and `player-client-lobby-visible` from the
-// brief stop during the namespace rename).
-const LOBBY_VISIBLE_STORAGE_KEY = 'demo-battle-lobby-visible';
-const WAYPOINT_DETAIL_STORAGE_KEY = 'player-client-waypoint-detail';
+const LOBBY_VISIBLE_STORAGE_KEY = sk.lobbyVisible;
+const WAYPOINT_DETAIL_STORAGE_KEY = sk.waypointDetail;
 
 // Migration table — old `rts-*` keys and renamed player-client keys
 // → current storage keys. Run once at module init (inside
 // `loadFromStorage` below) so renames are invisible to existing users.
-const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
-  ['rts-render-mode', RENDER_MODE_STORAGE_KEY],
-  ['rts-audio-scope', AUDIO_SCOPE_STORAGE_KEY],
-  ['rts-audio-smoothing', AUDIO_SMOOTHING_STORAGE_KEY],
-  // The unified "ground marks" toggle was split into separate burn /
-  // locomotion controls (with their own defaults), so the prior
-  // single-key value is intentionally NOT migrated — each new toggle
-  // starts from its own default. The legacy keys
-  // `rts-burn-marks`, `player-client-burn-marks`, and
-  // `player-client-ground-marks` are left as dead localStorage data;
-  // they will eventually fall out as users press RESET CLIENT.
-  ['rts-triangle-debug', TRIANGLE_DEBUG_STORAGE_KEY],
-  ['rts-build-grid-debug', BUILD_GRID_DEBUG_STORAGE_KEY],
-  // The unified `player-client-drift-mode` key was split into four
-  // per-channel EMAs (movement-pos, movement-vel, rotation-pos,
-  // rotation-vel). The legacy key intentionally does NOT migrate to any
-  // of them — each new channel starts at its own default. The legacy
-  // value is left as dead localStorage; RESET CLIENT eventually wipes it.
-  ['rts-sound-toggles', SOUND_TOGGLES_STORAGE_KEY],
-  ['rts-range-toggles', RANGE_TOGGLES_STORAGE_KEY],
-  ['rts-proj-range-toggles', PROJ_RANGE_TOGGLES_STORAGE_KEY],
-  ['rts-unit-radius-toggles', UNIT_RADIUS_TOGGLES_STORAGE_KEY],
-  ['rts-legs-radius', LEGS_RADIUS_STORAGE_KEY],
-  ['rts-camera-smooth', CAMERA_SMOOTH_STORAGE_KEY],
-  ['rts-camera-fov-degrees', CAMERA_FOV_STORAGE_KEY],
-  ['rts-edge-scroll', EDGE_SCROLL_STORAGE_KEY],
-  ['rts-drag-pan', DRAG_PAN_STORAGE_KEY],
-  // Lobby visibility migrated from BOTH historical homes — the
-  // original `rts-` prefix AND the brief stop in `player-client-`.
-  ['rts-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
-  ['player-client-lobby-visible', LOBBY_VISIBLE_STORAGE_KEY],
-  ['rts-waypoint-detail', WAYPOINT_DETAIL_STORAGE_KEY],
-  ['player-client-tilt-ema-mode', UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY],
-];
+const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> =
+  clientBarConfig.storageMigrations as unknown as ReadonlyArray<readonly [string, string]>;
 
 // ── Runtime state ──
 const _cd = CLIENT_CONFIG;
@@ -289,18 +182,7 @@ const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
   shot: _cd.unitRadiusToggles.default,
   push: _cd.unitRadiusToggles.default,
 };
-// Whether to render the per-leg "rest circle" (the chassis-local
-// circle each foot wanders inside before snapping to the opposite
-// edge).
 let currentLegsRadius: boolean = _cd.legsRadius.default;
-// 3D orbit camera EMA mode for zoom AND pan:
-//   'snap' = inputs apply immediately, no animation.
-//   'fast' = small EMA tau (~50 ms) — quick settle, still eased.
-//   'mid'  = medium EMA tau (~120 ms) — default-feeling smoothness.
-//   'slow' = large EMA tau (~400 ms) — deliberate, weighty feel.
-//
-// Both wheel zoom and pan-drag feed the same EMA, so they animate
-// simultaneously without fighting each other.
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
@@ -361,16 +243,8 @@ function readPositionDriftChannelMode(
 
 // ── Load from localStorage on module init ──
 // Each read is independent — a bad JSON value or throw from ONE key
-// must not prevent every later key from loading. (Previous revision
-// wrapped every read in one try/catch and the renderer-mode load was
-// dead last, so corrupted sound-toggles JSON silently disabled the
-// 2D/3D persistence.) readPersisted swallows getItem exceptions; the
-// JSON.parse blocks get their own per-key try so a malformed entry is
-// just ignored instead of poisoning the loader.
+// must not prevent every later key from loading.
 function loadFromStorage(): void {
-  // Run the legacy `rts-*` → `player-client-*` migration once before
-  // we read anything. Idempotent: if the new key already exists the
-  // old one is just deleted; if neither exists nothing happens.
   for (const [oldK, newK] of LEGACY_KEY_MIGRATIONS) migrateKey(oldK, newK);
   const storedRenderMode = readPersisted(RENDER_MODE_STORAGE_KEY);
   if (
@@ -428,8 +302,6 @@ function loadFromStorage(): void {
   ) {
     currentCameraSmoothMode = storedCameraSmooth;
   } else if (storedCameraSmooth === 'true') {
-    // Backward-compat: the old boolean toggle wrote 'true' / 'false';
-    // map 'true' (smooth-on) to the configured smooth default.
     currentCameraSmoothMode = _cd.cameraSmooth.default;
   } else if (storedCameraSmooth === 'false') {
     currentCameraSmoothMode = 'snap';
@@ -735,11 +607,7 @@ export function setPredictionMode(mode: PredictionMode): void {
   persist(PREDICTION_MODE_STORAGE_KEY, mode);
 }
 
-/** Active client-side unit ground normal EMA mode. Returns the user's bar
- *  selection on the PLAYER CLIENT bar; reads as 'snap' (no smoothing)
- *  by default. Reused for the per-frame predict-side EMA in
- *  ClientViewState that glides each unit's surface normal toward the snapshot's
- *  target.surfaceNormal. */
+/** Active client-side unit ground normal EMA mode. */
 export function getClientUnitGroundNormalEmaMode(): DriftMode {
   return currentClientUnitGroundNormalEmaMode;
 }

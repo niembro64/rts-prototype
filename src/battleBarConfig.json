@@ -1,0 +1,89 @@
+{
+  "cap": {
+    "default": 243,
+    "options": [9, 81, 243, 729, 1262, 2187]
+  },
+  "mirrorsEnabled": { "default": true },
+  "forceFieldsEnabled": { "default": true },
+  "forceFieldsObstructSight": { "default": true },
+  "fogOfWarEnabled": { "default": true },
+  "forceFieldReflectionMode": { "default": "both" },
+  "center": {
+    "default": "flat",
+    "options": [
+      { "value": "valley", "label": "VALLEY" },
+      { "value": "mountain", "label": "MOUNTAIN" },
+      { "value": "flat", "label": "FLAT" }
+    ]
+  },
+  "dividers": {
+    "default": "mountain",
+    "options": [
+      { "value": "valley", "label": "VALLEYS" },
+      { "value": "mountain", "label": "MOUNTAINS" },
+      { "value": "flat", "label": "FLAT" }
+    ]
+  },
+  "mapShape": {
+    "default": "circle",
+    "options": [
+      { "value": "square", "label": "SQUARE" },
+      { "value": "circle", "label": "CIRCLE" }
+    ]
+  },
+
+  "modeDefaults": {
+    "demo": { "cap": 243, "grid": true, "fogOfWar": false, "barsCollapsed": false },
+    "real": { "cap": 243, "grid": false, "fogOfWar": true, "barsCollapsed": false }
+  },
+
+  "storageKeys": {
+    "demoUnits": "demo-battle-units",
+    "demoCap": "demo-battle-cap",
+    "realCap": "real-battle-cap",
+    "demoGrid": "demo-battle-grid",
+    "realGrid": "real-battle-grid",
+    "demoMirrorsEnabled": "demo-battle-mirrors-enabled",
+    "realMirrorsEnabled": "real-battle-mirrors-enabled",
+    "demoForceFieldsEnabled": "demo-battle-force-fields-enabled",
+    "realForceFieldsEnabled": "real-battle-force-fields-enabled",
+    "demoForceFieldsObstructSight": "demo-battle-force-fields-obstruct-sight",
+    "realForceFieldsObstructSight": "real-battle-force-fields-obstruct-sight",
+    "demoFogOfWarEnabled": "demo-battle-fog-of-war-enabled",
+    "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
+    "demoForceFieldReflectionMode": "demo-battle-force-field-reflection-mode",
+    "realForceFieldReflectionMode": "real-battle-force-field-reflection-mode",
+    "demoTerrainCenter": "demo-battle-terrain-center",
+    "realTerrainCenter": "real-battle-terrain-center",
+    "demoTerrainDividers": "demo-battle-terrain-dividers",
+    "realTerrainDividers": "real-battle-terrain-dividers",
+    "demoTerrainMapShape": "demo-battle-terrain-map-shape",
+    "realTerrainMapShape": "real-battle-terrain-map-shape",
+    "demoMapLandCells": "demo-battle-map-land-cells",
+    "realMapLandCells": "real-battle-map-land-cells",
+    "demoMapWidthLandCells": "demo-battle-map-width-land-cells",
+    "realMapWidthLandCells": "real-battle-map-width-land-cells",
+    "demoMapLengthLandCells": "demo-battle-map-length-land-cells",
+    "realMapLengthLandCells": "real-battle-map-length-land-cells",
+    "demoBarsCollapsed": "demo-battle-bottom-bars-collapsed",
+    "realBarsCollapsed": "real-battle-bottom-bars-collapsed"
+  },
+
+  "storageMigrations": [
+    ["rts-demo-units", "demo-battle-units"],
+    ["rts-demo-cap", "demo-battle-cap"],
+    ["rts-real-cap", "real-battle-cap"],
+    ["rts-demo-grid", "demo-battle-grid"],
+    ["rts-real-grid", "real-battle-grid"],
+    ["rts-mirrors-enabled", "demo-battle-mirrors-enabled"],
+    ["rts-force-fields-enabled", "demo-battle-force-fields-enabled"],
+    ["rts-force-fields-block-targeting", "demo-battle-force-fields-obstruct-sight"],
+    ["demo-battle-force-fields-block-targeting", "demo-battle-force-fields-obstruct-sight"],
+    ["real-battle-force-fields-block-targeting", "real-battle-force-fields-obstruct-sight"],
+    ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
+    ["rts-terrain-center", "demo-battle-terrain-center"],
+    ["rts-terrain-dividers", "demo-battle-terrain-dividers"],
+    ["rts-terrain-map-shape", "demo-battle-terrain-map-shape"],
+    ["rts-map-land-cells", "demo-battle-map-width-land-cells"]
+  ]
+}

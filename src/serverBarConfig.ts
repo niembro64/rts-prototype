@@ -1,15 +1,24 @@
 import type { SnapshotRate, KeyframeRatio, TickRate, ServerBarConfig } from './types/server';
 import { persist, readPersisted, migrateKey } from './persistence';
 import { UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT, type UnitGroundNormalEmaMode } from './shellConfig';
+import serverBarConfig from './serverBarConfig.json';
 
-export const HOST_SNAPSHOT_RATE_NORMAL_MIN = 5;
-export const HOST_SNAPSHOT_RATE_NORMAL_MAX = 10;
-export const HOST_SNAPSHOT_RATE_DIAGNOSTIC_MIN = 16;
-export const HOST_SNAPSHOT_RATE_DEFAULT: SnapshotRate = 16;
-export const HOST_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
-  1, 4, 5, 8, 10, 16, 32, 64, 128,
-];
-export const LEGACY_UNCAPPED_SNAPSHOT_RATE_FALLBACK = 60;
+// ── Static tuning data (sourced from serverBarConfig.json) ──
+// JSON owns the values so both TS and Rust/WASM can load the same
+// source of truth. Functions + persistence stay in this module.
+
+export const HOST_SNAPSHOT_RATE_NORMAL_MIN =
+  serverBarConfig.hostSnapshotRate.normalMin;
+export const HOST_SNAPSHOT_RATE_NORMAL_MAX =
+  serverBarConfig.hostSnapshotRate.normalMax;
+export const HOST_SNAPSHOT_RATE_DIAGNOSTIC_MIN =
+  serverBarConfig.hostSnapshotRate.diagnosticMin;
+export const HOST_SNAPSHOT_RATE_DEFAULT: SnapshotRate =
+  serverBarConfig.hostSnapshotRate.default as SnapshotRate;
+export const HOST_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] =
+  serverBarConfig.hostSnapshotRate.options as readonly SnapshotRate[];
+export const LEGACY_UNCAPPED_SNAPSHOT_RATE_FALLBACK =
+  serverBarConfig.hostSnapshotRate.legacyUncappedFallback;
 
 export function isNormalSnapshotRate(rate: SnapshotRate): boolean {
   return (
@@ -70,12 +79,14 @@ export function snapshotRateTitle(rate: SnapshotRate): string {
 
 export const SERVER_CONFIG = {
   tickRate: {
-    default: 32 as TickRate,
-    options: [1, 4, 8, 16, 32, 64, 128, 256, 512] as readonly TickRate[],
+    default: serverBarConfig.tickRate.default as TickRate,
+    options: serverBarConfig.tickRate.options as readonly TickRate[],
   },
   unitGroundNormalEma: {
+    // Default comes from shellConfig (the canonical EMA-mode source).
+    // Options list lives in serverBarConfig.json.
     default: UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT,
-    options: ['snap', 'fast', 'mid', 'slow'] as readonly UnitGroundNormalEmaMode[],
+    options: serverBarConfig.unitGroundNormalEma.options as readonly UnitGroundNormalEmaMode[],
   },
   snapshot: {
     default: HOST_SNAPSHOT_RATE_DEFAULT,
@@ -86,14 +97,8 @@ export const SERVER_CONFIG = {
   keyframe: {
     // Fraction of DIFFSNAPs that are actually FULLSNAPs.
     // Each option is 4x rarer (skips one power of two): 1/1, 1/4, 1/16, 1/64.
-    default: (1 / 16) as KeyframeRatio,
-    options: [
-      'ALL',
-      1 / 4,
-      1 / 16,
-      1 / 64,
-      'NONE',
-    ] as readonly KeyframeRatio[],
+    default: serverBarConfig.keyframe.default as KeyframeRatio,
+    options: serverBarConfig.keyframe.options as readonly KeyframeRatio[],
   },
 } as const satisfies ServerBarConfig;
 
@@ -101,17 +106,14 @@ export const SERVER_CONFIG = {
 // Every key in this file is for the HOST SERVER bar — namespace
 // prefix `host-server-` makes that explicit in DevTools. Legacy and
 // renamed keys are migrated lazily by the load helpers below.
-const STORAGE_SNAPSHOT_RATE = 'host-server-snapshot-rate';
-const STORAGE_KEYFRAME_RATIO = 'host-server-keyframe-ratio';
-const STORAGE_TICK_RATE = 'host-server-tick-rate';
-const STORAGE_UNIT_GROUND_NORMAL_EMA_MODE = 'host-server-unit-ground-normal-ema-mode';
+const STORAGE_SNAPSHOT_RATE = serverBarConfig.storageKeys.snapshotRate;
+const STORAGE_KEYFRAME_RATIO = serverBarConfig.storageKeys.keyframeRatio;
+const STORAGE_TICK_RATE = serverBarConfig.storageKeys.tickRate;
+const STORAGE_UNIT_GROUND_NORMAL_EMA_MODE =
+  serverBarConfig.storageKeys.unitGroundNormalEmaMode;
 
-const HOST_SERVER_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> = [
-  ['rts-snapshot-rate', STORAGE_SNAPSHOT_RATE],
-  ['rts-keyframe-ratio', STORAGE_KEYFRAME_RATIO],
-  ['rts-tick-rate', STORAGE_TICK_RATE],
-  ['host-server-tilt-ema-mode', STORAGE_UNIT_GROUND_NORMAL_EMA_MODE],
-];
+const HOST_SERVER_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> =
+  serverBarConfig.storageMigrations as unknown as ReadonlyArray<readonly [string, string]>;
 
 let _hostServerMigrationsRun = false;
 /** Run the legacy → prefixed key rename once per process. Each
