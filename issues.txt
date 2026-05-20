@@ -42,6 +42,8 @@ AIM-08.5 — Port the targeting FSM
   priority/existing-lock FSM batches. Candidate scoring/selection now
   runs as a per-entity Rust batch that reads turret ranges from the slab
   and writes target/rank arrays for the batched FSM apply calls.
+  Fire-choice and acquisition candidate-prep masks/seeds now also batch
+  through Rust; passive mirror seed scores remain object-owned in TS.
   Remaining work is to move the gate-prep loops and per-entity control
   flow into one top-level targeting tick.
 

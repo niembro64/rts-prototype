@@ -7000,6 +7000,8 @@ const CT_TARGET_EDGE_RELEASE: u8 = 1;
 
 const TARGETING_TOPK_LOS: usize = 4;
 const TARGETING_FALLBACK_LOS_BUDGET: u32 = 12;
+const CT_TARGETING_PREP_HAS_APPLY: u8 = 1;
+const CT_TARGETING_PREP_HAS_PASSIVE_APPLY: u8 = 1 << 1;
 
 #[inline]
 fn combat_targeting_live_turret_idx(
@@ -7269,6 +7271,159 @@ pub fn combat_targeting_prepare_auto_scan(
     } else {
         0
     }
+}
+
+#[inline]
+fn combat_targeting_clear_choice_prep_outputs(
+    count: usize,
+    apply_mask: &mut [u8],
+    seed_ranks: &mut [u8],
+    seed_dist_sqs: &mut [f64],
+    seed_mirror_scores: &mut [f64],
+) {
+    for i in 0..count {
+        apply_mask[i] = 0;
+        seed_ranks[i] = CT_TARGET_RANK_NONE;
+        seed_dist_sqs[i] = f64::INFINITY;
+        seed_mirror_scores[i] = 0.0;
+    }
+}
+
+#[inline]
+fn combat_targeting_choice_prep_result(current: u8, flags: u8) -> u8 {
+    if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
+        current | CT_TARGETING_PREP_HAS_APPLY | CT_TARGETING_PREP_HAS_PASSIVE_APPLY
+    } else {
+        current | CT_TARGETING_PREP_HAS_APPLY
+    }
+}
+
+/// AIM-08.5 — Rust-owned fire-choice gate preparation for one entity.
+/// Replaces the TS per-weapon loop that decided which existing locks
+/// should scan the shared candidate list and seeded each turret's
+/// current fire-band rank/distance. Passive mirror seed scores remain
+/// object-owned on the JS side because their priority function still
+/// reads target turret activity.
+#[wasm_bindgen]
+pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
+    entity_slot: u32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    cached_fire_ranks: &[u8],
+    cached_fire_dist_sqs: &[f64],
+    apply_mask: &mut [u8],
+    seed_ranks: &mut [u8],
+    seed_dist_sqs: &mut [f64],
+    seed_mirror_scores: &mut [f64],
+) -> u8 {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return 0;
+    }
+
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(cached_fire_ranks.len())
+        .min(cached_fire_dist_sqs.len())
+        .min(apply_mask.len())
+        .min(seed_ranks.len())
+        .min(seed_dist_sqs.len())
+        .min(seed_mirror_scores.len());
+    combat_targeting_clear_choice_prep_outputs(
+        count,
+        apply_mask,
+        seed_ranks,
+        seed_dist_sqs,
+        seed_mirror_scores,
+    );
+
+    let mut result = 0u8;
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
+            continue;
+        }
+
+        let flags = pool.turret_config_flags[idx];
+        if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if pool.turret_target_id[idx] < 0 {
+            continue;
+        }
+
+        let cached_rank = cached_fire_ranks[turret_idx];
+        if pool.turret_state[idx] != CT_TURRET_STATE_TRACKING
+            && cached_rank != CT_TARGET_RANK_FIRE_FALLBACK
+        {
+            continue;
+        }
+
+        apply_mask[turret_idx] = 1;
+        seed_ranks[turret_idx] = cached_rank;
+        seed_dist_sqs[turret_idx] = cached_fire_dist_sqs[turret_idx];
+        result = combat_targeting_choice_prep_result(result, flags);
+    }
+
+    result
+}
+
+/// AIM-08.5 — Rust-owned acquisition gate preparation for one entity.
+/// Replaces the TS per-weapon loop that selected idle turrets for the
+/// acquisition candidate scan and seeded them with the empty target.
+#[wasm_bindgen]
+pub fn combat_targeting_prepare_acquisition_choice_fsm_inputs(
+    entity_slot: u32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    apply_mask: &mut [u8],
+    seed_ranks: &mut [u8],
+    seed_dist_sqs: &mut [f64],
+    seed_mirror_scores: &mut [f64],
+) -> u8 {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return 0;
+    }
+
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(seed_ranks.len())
+        .min(seed_dist_sqs.len())
+        .min(seed_mirror_scores.len());
+    combat_targeting_clear_choice_prep_outputs(
+        count,
+        apply_mask,
+        seed_ranks,
+        seed_dist_sqs,
+        seed_mirror_scores,
+    );
+
+    let mut result = 0u8;
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
+            continue;
+        }
+
+        let flags = pool.turret_config_flags[idx];
+        if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if pool.turret_target_id[idx] >= 0 {
+            continue;
+        }
+
+        apply_mask[turret_idx] = 1;
+        result = combat_targeting_choice_prep_result(result, flags);
+    }
+
+    result
 }
 
 /// Clear one turret's lock in the combat-targeting slab. JS uses this
@@ -8607,10 +8762,7 @@ pub fn force_field_clearance_arc(
                 1.0 + FORCE_FIELD_GRAZE_EPS
             };
             if force_field_segment_crosses_sphere(
-                prev_x, prev_y, prev_z,
-                x, y, z,
-                cx, cy, cz, r,
-                lo, hi,
+                prev_x, prev_y, prev_z, x, y, z, cx, cy, cz, r, lo, hi,
             ) {
                 crossed = true;
                 break;

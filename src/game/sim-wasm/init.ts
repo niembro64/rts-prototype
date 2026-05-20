@@ -176,6 +176,8 @@ import __wbg_init, {
   combat_targeting_turret_ballistic_aim_z_ptr,
   combat_targeting_solve_ballistic_aim,
   combat_targeting_prepare_auto_scan,
+  combat_targeting_prepare_fire_choice_fsm_inputs,
+  combat_targeting_prepare_acquisition_choice_fsm_inputs,
   combat_targeting_rank_target,
   combat_targeting_choose_best_candidates_batch,
   combat_targeting_clear_turret_lock,
@@ -1020,6 +1022,29 @@ export interface CombatTargetingApi {
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     outF64: Float64Array,
+  ) => number;
+  /** AIM-08.5 — Rust-owned candidate-pass gate prep. Return flags:
+   *  bit 0 = at least one turret should scan candidates, bit 1 = at
+   *  least one passive turret needs mirror candidate scores. */
+  readonly prepareFireChoiceFsmInputs: (
+    entitySlot: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    applyMask: Uint8Array,
+    seedRanks: Uint8Array,
+    seedDistSqs: Float64Array,
+    seedMirrorScores: Float64Array,
+  ) => number;
+  readonly prepareAcquisitionChoiceFsmInputs: (
+    entitySlot: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    applyMask: Uint8Array,
+    seedRanks: Uint8Array,
+    seedDistSqs: Float64Array,
+    seedMirrorScores: Float64Array,
   ) => number;
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
    *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
@@ -2113,6 +2138,8 @@ export function initSimWasm(): Promise<SimWasm> {
           turretBallisticAimZPtr: combat_targeting_turret_ballistic_aim_z_ptr,
           solveBallisticAim: combat_targeting_solve_ballistic_aim,
           prepareAutoScan: combat_targeting_prepare_auto_scan,
+          prepareFireChoiceFsmInputs: combat_targeting_prepare_fire_choice_fsm_inputs,
+          prepareAcquisitionChoiceFsmInputs: combat_targeting_prepare_acquisition_choice_fsm_inputs,
           rankTarget: combat_targeting_rank_target,
           chooseBestCandidatesBatch: combat_targeting_choose_best_candidates_batch,
           clearTurretLock: combat_targeting_clear_turret_lock,

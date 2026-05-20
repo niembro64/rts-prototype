@@ -97,6 +97,9 @@ type TargetRankMode =
   | typeof TARGETING_RANK_MODE_FIRE
   | typeof TARGETING_RANK_MODE_ACQUISITION;
 
+const TARGETING_PREP_HAS_APPLY = 1;
+const TARGETING_PREP_HAS_PASSIVE_APPLY = 1 << 1;
+
 function ensurePerWeaponScratchCapacity(count: number): void {
   if (count <= _weaponDisabled.length) return;
   let next = Math.max(8, _weaponDisabled.length);
@@ -454,16 +457,10 @@ function chooseBestTargetCandidatesBatch(
   candidates: Entity[],
   rankMode: TargetRankMode,
   minimumRank: TargetPreferenceRank,
+  includeMirrorScores: boolean,
   forceMaterialBlockersActive: boolean,
 ): void {
   const sourcePlayerId = source.ownership?.playerId;
-  let includeMirrorScores = false;
-  for (let wi = 0; wi < weapons.length; wi++) {
-    if (_fsmApplyMask[wi] !== 0 && weapons[wi].config.passive === true) {
-      includeMirrorScores = true;
-      break;
-    }
-  }
   fillTargetCandidateInputs(world, source, includeMirrorScores, sourcePlayerId, candidates);
   _gateWorld = world;
   _gateSource = source;
@@ -494,6 +491,22 @@ function chooseBestTargetCandidatesBatch(
     );
   } finally {
     clearTargetGateContext();
+  }
+}
+
+function fillPassiveFireSeedMirrorScores(
+  world: WorldState,
+  source: Entity,
+  weapons: Turret[],
+): void {
+  for (let wi = 0; wi < weapons.length; wi++) {
+    if (_fsmApplyMask[wi] === 0) continue;
+    const weapon = weapons[wi];
+    if (!weapon.config.passive || weapon.target === null) continue;
+    const currentTarget = world.getEntity(weapon.target);
+    _candidateSeedMirrorScores[wi] = currentTarget
+      ? getMirrorTargetScore(currentTarget, source.id)
+      : 0;
   }
 }
 
@@ -877,10 +890,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // wide enough to cover each weapon-centered acquisition circle;
     // the per-weapon distance/rank checks below still enforce exact
     // ranges.
+    const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
+    const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
     const needsAnyQuery = targeting.prepareAutoScan(
       unitSlot,
-      world.mirrorsEnabled ? 1 : 0,
-      world.forceFieldsEnabled ? 1 : 0,
+      mirrorsEnabledFlag,
+      forceFieldsEnabledFlag,
       _cachedFireRanks,
       _cachedFireDistSqs,
       _targetingAutoScanF64,
@@ -929,48 +944,33 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // evaluates independently.
     clearFsmGateScratch(weapons.length);
     if (batchedEnemies) {
-      for (let wi = 0; wi < weapons.length; wi++) {
-        const weapon = weapons[wi];
-        if (_weaponDisabled[wi] !== 0) continue;
-        if (weapon.config.isManualFire) continue;
-        if (weapon.target === null) continue;
-        // Pre-scan already computed the rank+distSq for `engaged &&
-        // fire.min` weapons (the only ones whose rank can be
-        // FIRE_FALLBACK). For tracking weapons and engaged-but-no-fire.min
-        // weapons the cache holds the same defaults the old recompute
-        // would have produced once filtered by the gate below.
-        const cachedRank = _cachedFireRanks[wi] as TargetPreferenceRank;
-        const cachedDistSq = _cachedFireDistSqs[wi];
-        if (
-          weapon.state !== 'tracking' &&
-          cachedRank !== TARGET_RANK_FIRE_FALLBACK
-        ) {
-          continue;
-        }
-
-        let seedMirrorScore = 0;
-        if (weapon.config.passive && weapon.target !== null) {
-          const currentTarget = world.getEntity(weapon.target);
-          if (currentTarget) {
-            seedMirrorScore = getMirrorTargetScore(currentTarget, unit.id);
-          }
-        }
-
-        _fsmApplyMask[wi] = 1;
-        _candidateSeedRanks[wi] = cachedRank;
-        _candidateSeedDistSqs[wi] = cachedDistSq;
-        _candidateSeedMirrorScores[wi] = seedMirrorScore;
-      }
-      chooseBestTargetCandidatesBatch(
-        world,
-        unit,
-        weapons,
+      const firePrepFlags = targeting.prepareFireChoiceFsmInputs(
         unitSlot,
-        batchedEnemies,
-        TARGETING_RANK_MODE_FIRE,
-        TARGET_RANK_FIRE_FALLBACK,
-        forceMaterialBlockersActive,
+        mirrorsEnabledFlag,
+        forceFieldsEnabledFlag,
+        _cachedFireRanks,
+        _cachedFireDistSqs,
+        _fsmApplyMask,
+        _candidateSeedRanks,
+        _candidateSeedDistSqs,
+        _candidateSeedMirrorScores,
       );
+      if ((firePrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0) {
+        fillPassiveFireSeedMirrorScores(world, unit, weapons);
+      }
+      if ((firePrepFlags & TARGETING_PREP_HAS_APPLY) !== 0) {
+        chooseBestTargetCandidatesBatch(
+          world,
+          unit,
+          weapons,
+          unitSlot,
+          batchedEnemies,
+          TARGETING_RANK_MODE_FIRE,
+          TARGET_RANK_FIRE_FALLBACK,
+          (firePrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0,
+          forceMaterialBlockersActive,
+        );
+      }
     }
     targeting.applyFireChoiceFsmBatch(
       unitSlot,
@@ -981,27 +981,28 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 3: Acquire targets for weapons with no target (idle)
     clearFsmGateScratch(weapons.length);
     if (batchedEnemies) {
-      for (let wi = 0; wi < weapons.length; wi++) {
-        const weapon = weapons[wi];
-        if (_weaponDisabled[wi] !== 0) continue;
-        if (weapon.config.isManualFire) continue;
-        if (weapon.target !== null) continue;
-
-        _fsmApplyMask[wi] = 1;
-        _candidateSeedRanks[wi] = TARGET_RANK_NONE;
-        _candidateSeedDistSqs[wi] = Infinity;
-        _candidateSeedMirrorScores[wi] = 0;
-      }
-      chooseBestTargetCandidatesBatch(
-        world,
-        unit,
-        weapons,
+      const acquisitionPrepFlags = targeting.prepareAcquisitionChoiceFsmInputs(
         unitSlot,
-        batchedEnemies,
-        TARGETING_RANK_MODE_ACQUISITION,
-        TARGET_RANK_TRACKING_ONLY,
-        forceMaterialBlockersActive,
+        mirrorsEnabledFlag,
+        forceFieldsEnabledFlag,
+        _fsmApplyMask,
+        _candidateSeedRanks,
+        _candidateSeedDistSqs,
+        _candidateSeedMirrorScores,
       );
+      if ((acquisitionPrepFlags & TARGETING_PREP_HAS_APPLY) !== 0) {
+        chooseBestTargetCandidatesBatch(
+          world,
+          unit,
+          weapons,
+          unitSlot,
+          batchedEnemies,
+          TARGETING_RANK_MODE_ACQUISITION,
+          TARGET_RANK_TRACKING_ONLY,
+          (acquisitionPrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0,
+          forceMaterialBlockersActive,
+        );
+      }
     }
     targeting.applyAcquisitionChoiceFsmBatch(
       unitSlot,
