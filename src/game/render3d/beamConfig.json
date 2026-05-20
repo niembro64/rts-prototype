@@ -1,70 +1,7 @@
 {
-  "color": {
-    "beam": [1.0, 1.0, 1.0],
-    "laser": [1.0, 1.0, 1.0],
-    "endpoint": [1.0, 1.0, 1.0]
-  },
-
-  "opacity": {
-    "beamBase": 0.16,
-    "laserBase": 0.24,
-    "endpointBeamBase": 0.18,
-    "endpointLaserBase": 0.26,
-    "tierMultiplier": {
-      "min": 0.28,
-      "low": 0.42,
-      "medium": 0.62,
-      "high": 0.82,
-      "max": 1.0
-    }
-  },
-
-  "radius": {
-    "scale": 0.55,
-    "minBeam": 0.35,
-    "minEndpoint": 2.5,
-    "tierMultiplier": {
-      "min": 0.45,
-      "low": 0.55,
-      "medium": 0.7,
-      "high": 0.88,
-      "max": 1.0
-    }
-  },
-
-  "flow": {
-    "tier": {
-      "min":    { "strength": 0.18, "spacing": 240, "speed": 3.8 },
-      "low":    { "strength": 0.26, "spacing": 180, "speed": 4.8 },
-      "medium": { "strength": 0.4,  "spacing": 125, "speed": 6.6 },
-      "high":   { "strength": 0.56, "spacing": 90,  "speed": 8.8 },
-      "max":    { "strength": 0.72, "spacing": 65,  "speed": 11.5 }
-    },
-    "styleMultiplier": {
-      "simple": 0.55,
-      "standard": 0.82,
-      "detailed": 1.0,
-      "complex": 1.15
-    },
-    "laserTypeMultiplier": 1.12,
-    "pulseShape": {
-      "primaryCenter": 0.18,
-      "primaryWidth": 0.18,
-      "primaryPower": 2.7,
-      "secondaryCenter": 0.62,
-      "secondaryWidth": 0.08,
-      "secondaryPower": 3.0,
-      "secondaryWeight": 0.32,
-      "alphaBoost": 1.8,
-      "pulseBlend": 0.22
-    }
-  },
-
-  "endpointPulse": {
-    "base": 0.78,
-    "amplitude": 0.22,
-    "frequency": 10.0
-  },
-
-  "openEndedLineVisualLength": 12000
+  "color": [1.0, 1.0, 1.0],
+  "waveLowAlpha": 0.02,
+  "waveHighAlpha": 0.9,
+  "waveSpacing": 125,
+  "waveSpeed": 6.6
 }

@@ -13,26 +13,20 @@ import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import type { BeamStyle, ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
-import { getBeamSnapToTurret, getGraphicsConfig } from '@/clientBarConfig';
+import type { GraphicsConfig } from '@/types/graphics';
+import { getBeamSnapToTurret } from '@/clientBarConfig';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from './beamConfig.json';
 
-// Visual tuning (opacity, radius, color, flow animation, pulse shape) lives
-// in beamConfig.json — edit that file to retune how beams look. Allocation
-// caps below stay as code constants since they shape buffer sizes, not look.
+// Visual tuning (color, wave alpha range, wave spacing/speed) lives in
+// beamConfig.json — edit that file to retune how beams look. The remaining
+// constants below shape buffer sizes and cylinder geometry, not look.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_CAP = 4096;
-
-const BEAM_OPACITY = beamConfig.opacity.beamBase;
-const LASER_OPACITY_MAX = beamConfig.opacity.laserBase;
-const ENDPOINT_OPACITY = beamConfig.opacity.endpointBeamBase;
-const LASER_ENDPOINT_OPACITY = beamConfig.opacity.endpointLaserBase;
-const BEAM_MIN_RADIUS = beamConfig.radius.minBeam;
-const BEAM_RADIUS_SCALE = beamConfig.radius.scale;
-const ENDPOINT_MIN_RADIUS = beamConfig.radius.minEndpoint;
-const OPEN_ENDED_LINE_VISUAL_LENGTH = beamConfig.openEndedLineVisualLength;
-const LASER_TYPE_MULTIPLIER = beamConfig.flow.laserTypeMultiplier;
+const BEAM_MIN_RADIUS = 0.35;
+const BEAM_RADIUS_SCALE = 0.55;
+const ENDPOINT_MIN_RADIUS = 2.5;
+const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -41,17 +35,8 @@ export type TurretMountResolver = {
   ): { x: number; y: number; z: number; vx: number; vy: number; vz: number; ax: number; ay: number; az: number } | null;
 };
 
-const BEAM_OPACITY_BY_TIER = beamConfig.opacity.tierMultiplier as Record<ConcreteGraphicsQuality, number>;
-const BEAM_RADIUS_BY_TIER = beamConfig.radius.tierMultiplier as Record<ConcreteGraphicsQuality, number>;
-const BEAM_FLOW_BY_TIER = beamConfig.flow.tier as Record<ConcreteGraphicsQuality, {
-  strength: number;
-  spacing: number;
-  speed: number;
-}>;
-const BEAM_FLOW_STYLE_MULTIPLIER = beamConfig.flow.styleMultiplier as Record<BeamStyle, number>;
-
-// GLSL needs decimal-pointed float literals (`1.0`, not `1`). Numbers from
-// JSON might be `1` or `0.5` — toFixed pads them so the shader parses cleanly.
+// GLSL needs decimal-pointed float literals (`1.0`, not `1`); JSON values
+// might be `1` or `0.5`, so format them with a decimal so shader parses.
 const glsl = (n: number): string => {
   const s = n.toString();
   return s.includes('.') ? s : `${s}.0`;
@@ -59,10 +44,11 @@ const glsl = (n: number): string => {
 const glslVec3 = (rgb: readonly number[]): string =>
   `vec3(${glsl(rgb[0])}, ${glsl(rgb[1])}, ${glsl(rgb[2])})`;
 
-const PULSE = beamConfig.flow.pulseShape;
-const ENDPOINT_PULSE = beamConfig.endpointPulse;
-const BEAM_COLOR = beamConfig.color.beam;
-const ENDPOINT_COLOR = beamConfig.color.endpoint;
+const COLOR = beamConfig.color;
+const LOW_ALPHA = beamConfig.waveLowAlpha;
+const HIGH_ALPHA = beamConfig.waveHighAlpha;
+const WAVE_SPACING = beamConfig.waveSpacing;
+const WAVE_SPEED = beamConfig.waveSpeed;
 
 const BEAM_VERTEX_SHADER = `
 attribute float aAlpha;
@@ -84,38 +70,29 @@ varying float vAlpha;
 varying float vAlong;
 varying vec4 vFlow;
 void main() {
-  float alpha = vAlpha;
-  if (vFlow.x > 0.001) {
-    float repeats = max(0.001, vFlow.y);
-    float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
-    float pulseA = pow(max(0.0, 1.0 - abs(p - ${glsl(PULSE.primaryCenter)}) / ${glsl(PULSE.primaryWidth)}), ${glsl(PULSE.primaryPower)});
-    float pulseB = pow(max(0.0, 1.0 - abs(p - ${glsl(PULSE.secondaryCenter)}) / ${glsl(PULSE.secondaryWidth)}), ${glsl(PULSE.secondaryPower)}) * ${glsl(PULSE.secondaryWeight)};
-    float pulse = min(1.0, pulseA + pulseB);
-    alpha = min(1.0, alpha * (1.0 + vFlow.x * ${glsl(PULSE.alphaBoost)}) + pulse * vFlow.x * ${glsl(PULSE.pulseBlend)});
-  }
-  gl_FragColor = vec4(${glslVec3(BEAM_COLOR)}, alpha);
+  // vFlow = (unused, repeats, phase, speed). Wave oscillates the beam's
+  // alpha between LOW_ALPHA and HIGH_ALPHA as it travels along the cylinder.
+  float repeats = max(0.001, vFlow.y);
+  float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
+  float pulse = 0.5 - 0.5 * cos(p * 6.2831853);
+  float alpha = mix(${glsl(LOW_ALPHA)}, ${glsl(HIGH_ALPHA)}, pulse) * vAlpha;
+  gl_FragColor = vec4(${glslVec3(COLOR)}, alpha);
 }
 `;
 
 const ENDPOINT_VERTEX_SHADER = `
 attribute float aAlpha;
-attribute float aPhase;
 varying float vAlpha;
-varying float vPhase;
 void main() {
   vAlpha = aAlpha;
-  vPhase = aPhase;
   gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
 }
 `;
 
 const ENDPOINT_FRAGMENT_SHADER = `
-uniform float uTime;
 varying float vAlpha;
-varying float vPhase;
 void main() {
-  float pulse = ${glsl(ENDPOINT_PULSE.base)} + ${glsl(ENDPOINT_PULSE.amplitude)} * sin(uTime * ${glsl(ENDPOINT_PULSE.frequency)} + vPhase * 6.2831853);
-  gl_FragColor = vec4(${glslVec3(ENDPOINT_COLOR)}, vAlpha * pulse);
+  gl_FragColor = vec4(${glslVec3(COLOR)}, ${glsl(HIGH_ALPHA)} * vAlpha);
 }
 `;
 
@@ -135,17 +112,14 @@ export class BeamRenderer3D {
   private endpointMesh: THREE.InstancedMesh;
   private endpointMat: THREE.ShaderMaterial;
   private endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
-  private endpointPhase = new Float32Array(BEAM_ENDPOINT_CAP);
   private endpointAlphaAttr: THREE.InstancedBufferAttribute;
-  private endpointPhaseAttr: THREE.InstancedBufferAttribute;
   private activeEndpointCount = 0;
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
   private scope: ViewportFootprint;
-  private frameGfx: GraphicsConfig = getGraphicsConfig();
   private lastContentVersion = -1;
-  private lastRenderKey = '';
+  private lastScopeVersion = -1;
 
   // Scratch vectors reused per frame (no per-segment allocations).
   private _a = new THREE.Vector3();
@@ -191,16 +165,10 @@ export class BeamRenderer3D {
 
     this.endpointAlphaAttr = new THREE.InstancedBufferAttribute(this.endpointAlpha, 1);
     this.endpointAlphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.endpointPhaseAttr = new THREE.InstancedBufferAttribute(this.endpointPhase, 1);
-    this.endpointPhaseAttr.setUsage(THREE.DynamicDrawUsage);
     this.endpointGeom.setAttribute('aAlpha', this.endpointAlphaAttr);
-    this.endpointGeom.setAttribute('aPhase', this.endpointPhaseAttr);
     this.endpointMat = new THREE.ShaderMaterial({
       vertexShader: ENDPOINT_VERTEX_SHADER,
       fragmentShader: ENDPOINT_FRAGMENT_SHADER,
-      uniforms: {
-        uTime: this.flowTimeUniform,
-      },
       transparent: true,
       depthWrite: false,
       depthTest: true,
@@ -272,14 +240,12 @@ export class BeamRenderer3D {
     simZ: number,
     radius: number,
     alpha: number,
-    phase: number,
   ): boolean {
     if (slot >= BEAM_ENDPOINT_CAP || alpha <= 0.001 || radius <= 0.001) return false;
     this._matrix.makeScale(radius, radius, radius);
     this._matrix.setPosition(simX, simZ, simY);
     this.endpointMesh.setMatrixAt(slot, this._matrix);
     this.endpointAlpha[slot] = alpha;
-    this.endpointPhase[slot] = phase;
     return true;
   }
 
@@ -304,31 +270,26 @@ export class BeamRenderer3D {
     );
   }
 
-  private makeRenderKey(): string {
-    return `${this.frameGfx.tier}|${this.frameGfx.beamStyle}|${this.scope.getVersion()}`;
-  }
-
   update(
     projectiles: readonly Entity[],
-    graphicsConfig?: GraphicsConfig,
+    _graphicsConfig?: GraphicsConfig,
     contentVersion?: number,
     turretMountResolver?: TurretMountResolver,
   ): void {
     if (projectiles.length === 0 && this.activeSegmentCount === 0 && this.activeEndpointCount === 0) return;
     this.flowTimeUniform.value = performance.now() * 0.001;
-    this.frameGfx = graphicsConfig ?? getGraphicsConfig();
     const snapToTurret = getBeamSnapToTurret() && !!turretMountResolver;
-    const renderKey = this.makeRenderKey();
+    const scopeVersion = this.scope.getVersion();
     if (
       !snapToTurret &&
       contentVersion !== undefined &&
       contentVersion === this.lastContentVersion &&
-      renderKey === this.lastRenderKey
+      scopeVersion === this.lastScopeVersion
     ) {
       return;
     }
     if (contentVersion !== undefined) this.lastContentVersion = contentVersion;
-    this.lastRenderKey = renderKey;
+    this.lastScopeVersion = scopeVersion;
 
     let segIdx = 0;
     let endpointIdx = 0;
@@ -348,16 +309,6 @@ export class BeamRenderer3D {
       const endIn = this.scope.inScope(endPoint.x, endPoint.y, 200);
       if (!startIn && !endIn) continue;
 
-      // Vertical endpoints come from the 3D beam tracer; the polyline
-      // points already carry their own z (per-vertex 3D position).
-      const graphicsTier = this.frameGfx.tier;
-      const opacityMul = BEAM_OPACITY_BY_TIER[graphicsTier];
-      const radiusMul = BEAM_RADIUS_BY_TIER[graphicsTier];
-      const flowCfg = BEAM_FLOW_BY_TIER[graphicsTier];
-      const flowStyleMul = BEAM_FLOW_STYLE_MULTIPLIER[this.frameGfx.beamStyle] ?? 1;
-      const flowTypeMul = pt === 'laser' ? LASER_TYPE_MULTIPLIER : 1;
-      const flowStrength = flowCfg.strength * flowStyleMul * flowTypeMul;
-      const flowSpeed = flowCfg.speed * flowTypeMul;
       const drawReflections = true;
 
       const profile = proj.config.shotProfile.visual;
@@ -365,22 +316,18 @@ export class BeamRenderer3D {
       // directly as the cylinder scale makes the diameter = shot.width.
       const cylRadius = Math.max(
         BEAM_MIN_RADIUS,
-        profile.lineRadius * BEAM_RADIUS_SCALE * radiusMul,
+        profile.lineRadius * BEAM_RADIUS_SCALE,
       );
       const damageSphereRadius = Math.max(
         ENDPOINT_MIN_RADIUS,
         profile.lineDamageSphereRadius,
       );
-      const baseAlpha = pt === 'laser' ? LASER_OPACITY_MAX : BEAM_OPACITY;
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
       // beams bouncing off vertical mirrors trace the correct 3D path.
-      // Every segment renders at the same uniform alpha. No-hit range
-      // endpoints are open-ended: simulation damage remains clipped at
-      // the authored range, but the final rendered leg extends forward
-      // so the beam does not visibly stop in empty air.
-      const segAlpha = baseAlpha * opacityMul;
+      // Per-segment alpha is held at 1.0 — the wave shader handles all
+      // brightness modulation via mix(LOW_ALPHA, HIGH_ALPHA, pulse).
       const lastIdx = points.length - 1;
       const stride = drawReflections ? 1 : lastIdx;
       const openEndedLine = this.isOpenEndedLinePath(proj);
@@ -438,27 +385,25 @@ export class BeamRenderer3D {
           ax, ay, az,
           bx, by, bz,
           cylRadius,
-          segAlpha,
+          1.0,
           segLen,
-          flowStrength,
-          this.flowRepeats(segLen, flowCfg.spacing),
+          1.0,
+          this.flowRepeats(segLen, WAVE_SPACING),
           this.flowPhase(e.id, segIdx),
-          flowSpeed,
+          WAVE_SPEED,
         )) {
           segIdx++;
         }
       }
 
       if (proj.endpointDamageable !== false) {
-        const endpointAlpha = (pt === 'laser' ? LASER_ENDPOINT_OPACITY : ENDPOINT_OPACITY) * opacityMul;
         if (this.writeEndpoint(
           endpointIdx,
           endPoint.x,
           endPoint.y,
           endPoint.z,
           damageSphereRadius,
-          endpointAlpha,
-          this.flowPhase(e.id, 997),
+          1.0,
         )) {
           endpointIdx++;
         }
@@ -487,9 +432,6 @@ export class BeamRenderer3D {
       this.endpointAlphaAttr.clearUpdateRanges();
       this.endpointAlphaAttr.addUpdateRange(0, endpointIdx);
       this.endpointAlphaAttr.needsUpdate = true;
-      this.endpointPhaseAttr.clearUpdateRanges();
-      this.endpointPhaseAttr.addUpdateRange(0, endpointIdx);
-      this.endpointPhaseAttr.needsUpdate = true;
     }
     this.activeEndpointCount = endpointIdx;
   }
