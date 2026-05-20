@@ -8,13 +8,25 @@ import {
   createHexFrustumGeometry,
   cylinderGeom,
   detail,
-  extractorBladeMat,
   hexCylinderGeom,
   makeCylinder,
 } from './BuildingMeshPrimitives3D';
+import { BUILDING_PALETTE } from './BuildingVisualPalette';
 
-const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.36);
-const cannonTowerBodyGeom = createHexFrustumGeometry(0.46, 0.58);
+const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.18, 0.3);
+const cannonTowerBodyGeom = createHexFrustumGeometry(0.44, 0.54);
+const beamTowerTrimMat = new THREE.MeshStandardMaterial({
+  color: BUILDING_PALETTE.cyanGlass,
+  emissive: BUILDING_PALETTE.cyanGlow,
+  emissiveIntensity: 0.28,
+  metalness: 0.56,
+  roughness: 0.18,
+});
+const cannonTowerTrimMat = new THREE.MeshStandardMaterial({
+  color: BUILDING_PALETTE.structureDark,
+  metalness: 0.72,
+  roughness: 0.24,
+});
 
 type DefenseTowerMeshProfile = {
   height: number;
@@ -34,50 +46,53 @@ type DefenseTowerMeshProfile = {
   socketRadiusFactor: number;
   socketHeight: number;
   socketY: number;
+  trimMaterial: THREE.Material;
 };
 
 const beamTowerProfile: DefenseTowerMeshProfile = {
   height: MEGA_BEAM_TOWER_VISUAL_HEIGHT,
-  foot: 40,
-  baseHeight: 14,
-  baseRadiusFactor: 0.68,
-  lowerBandRadiusFactor: 0.57,
-  strutCount: 6,
-  strutAngleOffset: Math.PI / 6,
+  foot: 26,
+  baseHeight: 10,
+  baseRadiusFactor: 0.7,
+  lowerBandRadiusFactor: 0.46,
+  strutCount: 3,
+  strutAngleOffset: Math.PI / 2,
   strutBottomRadiusFactor: 0.42,
-  strutTopRadiusFactor: 0.29,
-  strutBottomY: 17,
-  strutTopY: MEGA_BEAM_TOWER_VISUAL_HEIGHT - 8,
-  strutRadius: 1.7,
-  neckRadiusFactor: 0.41,
-  neckHeight: 7,
-  socketRadiusFactor: 0.44,
-  socketHeight: 4,
+  strutTopRadiusFactor: 0.16,
+  strutBottomY: 14,
+  strutTopY: MEGA_BEAM_TOWER_VISUAL_HEIGHT - 7,
+  strutRadius: 1.0,
+  neckRadiusFactor: 0.24,
+  neckHeight: 10,
+  socketRadiusFactor: 0.34,
+  socketHeight: 3.5,
   socketY: MEGA_BEAM_TOWER_VISUAL_HEIGHT + 2,
+  trimMaterial: beamTowerTrimMat,
 };
 
 const cannonTowerProfile: DefenseTowerMeshProfile = {
   height: CANNON_TOWER_VISUAL_HEIGHT,
-  foot: 40,
-  baseHeight: 16,
-  baseRadiusFactor: 0.74,
-  lowerBandRadiusFactor: 0.62,
-  strutCount: 4,
-  strutAngleOffset: Math.PI / 4,
-  strutBottomRadiusFactor: 0.46,
-  strutTopRadiusFactor: 0.33,
-  strutBottomY: 20,
-  strutTopY: CANNON_TOWER_VISUAL_HEIGHT - 10,
-  strutRadius: 2.2,
-  neckRadiusFactor: 0.45,
-  neckHeight: 8,
-  socketRadiusFactor: 0.5,
-  socketHeight: 5,
-  socketY: CANNON_TOWER_VISUAL_HEIGHT + 2.5,
+  foot: 82,
+  baseHeight: 12,
+  baseRadiusFactor: 0.58,
+  lowerBandRadiusFactor: 0.48,
+  strutCount: 6,
+  strutAngleOffset: Math.PI / 6,
+  strutBottomRadiusFactor: 0.48,
+  strutTopRadiusFactor: 0.34,
+  strutBottomY: 13,
+  strutTopY: CANNON_TOWER_VISUAL_HEIGHT - 7,
+  strutRadius: 3.1,
+  neckRadiusFactor: 0.34,
+  neckHeight: 6,
+  socketRadiusFactor: 0.43,
+  socketHeight: 6,
+  socketY: CANNON_TOWER_VISUAL_HEIGHT + 3,
+  trimMaterial: cannonTowerTrimMat,
 };
 
-/** Static beam tower — wider stepped base, hex-prism shaft, and a
- *  collar platform under the turret. The primary slab gets scaled to
+/** Static beam tower — thin cyan-trimmed spine, narrow base, and a
+ *  compact collar platform under the turret. The primary slab gets scaled to
  *  the building's full cuboid by the per-frame writer (so the
  *  silhouette inside the build grid stays correct); detail meshes
  *  carry the visible character — base flange, sloped spars, and
@@ -93,9 +108,8 @@ export function buildMegaBeamTowerMesh(primaryMat: THREE.Material): BuildingShap
   return buildDefenseTowerMesh(primaryMat, megaBeamTowerBodyGeom, beamTowerProfile);
 }
 
-/** Static cannon tower — same shared armed-tower body language as the
- *  beam tower, with a slightly squatter four-spar shaft and larger top
- *  socket for the heavier cannon turret. */
+/** Static cannon tower — a low, broad bunker-like platform with heavy
+ *  dark braces and a larger top socket for the cannon turret. */
 export function buildCannonTowerMesh(primaryMat: THREE.Material): BuildingShape {
   return buildDefenseTowerMesh(primaryMat, cannonTowerBodyGeom, cannonTowerProfile);
 }
@@ -129,7 +143,7 @@ function buildDefenseTowerMesh(
   details.push(detail(base, 'min', undefined, 'static'));
 
   const lowerBand = makeCylinder(
-    extractorBladeMat,
+    profile.trimMaterial,
     foot * profile.lowerBandRadiusFactor,
     3,
     0,
@@ -161,7 +175,7 @@ function buildDefenseTowerMesh(
     );
     const delta = top.clone().sub(bottom);
     const length = delta.length();
-    const strut = new THREE.Mesh(cylinderGeom, extractorBladeMat);
+    const strut = new THREE.Mesh(cylinderGeom, profile.trimMaterial);
     strut.scale.set(strutRadius * 2, length, strutRadius * 2);
     strut.position.copy(bottom).addScaledVector(delta, 0.5);
     strut.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
@@ -183,7 +197,7 @@ function buildDefenseTowerMesh(
   details.push(detail(neck, 'min', undefined, 'static'));
 
   const socket = makeCylinder(
-    extractorBladeMat,
+    profile.trimMaterial,
     foot * profile.socketRadiusFactor,
     profile.socketHeight,
     0,
@@ -199,4 +213,6 @@ function buildDefenseTowerMesh(
 export function disposeMegaBeamTowerMeshGeoms(): void {
   megaBeamTowerBodyGeom.dispose();
   cannonTowerBodyGeom.dispose();
+  beamTowerTrimMat.dispose();
+  cannonTowerTrimMat.dispose();
 }

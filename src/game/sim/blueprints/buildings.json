@@ -134,9 +134,9 @@
   "megaBeamTower": {
     "id": "megaBeamTower",
     "name": "Beam Tower",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "gridDepth": 4,
+    "gridWidth": 1,
+    "gridHeight": 1,
+    "gridDepth": 5,
     "hp": 8000,
     "cost": {
       "energy": 1500,
@@ -146,7 +146,7 @@
     "metalProduction": null,
     "constructionRate": null,
     "renderProfile": "megaBeamTower",
-    "visualHeight": 80,
+    "visualHeight": 96,
     "anchorProfile": "constantVisualTop",
     "hud": {
       "barsOffsetAboveTop": 12
@@ -158,7 +158,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 98
+          "z": 114
         }
       }
     ],
@@ -167,9 +167,9 @@
   "cannonTower": {
     "id": "cannonTower",
     "name": "Cannon Tower",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "gridDepth": 4,
+    "gridWidth": 34,
+    "gridHeight": 43,
+    "gridDepth": 3,
     "hp": 8000,
     "cost": {
       "energy": 1500,
@@ -179,7 +179,7 @@
     "metalProduction": null,
     "constructionRate": null,
     "renderProfile": "cannonTower",
-    "visualHeight": 72,
+    "visualHeight": 26,
     "anchorProfile": "constantVisualTop",
     "hud": {
       "barsOffsetAboveTop": 12
@@ -191,7 +191,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 88
+          "z": 60
         }
       }
     ],
