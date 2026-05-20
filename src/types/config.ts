@@ -113,7 +113,12 @@ export type SpinConfig = {
 // `coneMultiBarrel`  — splayed cluster: base and tip sit on different
 // orbits, so the cluster fans inward (base wider) or outward (tip
 // wider). Used by mortars, salvo-rocket pods, etc.
-// `simpleSingleBarrel` — one cylinder on the firing axis (no orbit).
+// `singleCylinderBarrel` — one uniform-radius cylinder on the firing
+// axis (no orbit). The default single-barrel shape.
+// `singleConeBarrel` — one tapered barrel on the firing axis: full
+// `barrelThickness` at the base near the head, narrowing to a point at
+// the muzzle. Used by beam/laser turrets so the emitter reads as a
+// focusing cone instead of a tube.
 // `complexSingleEmitter` — non-cylindrical force-field emitter.
 export type BarrelShape =
   | {
@@ -163,11 +168,20 @@ export type BarrelShape =
       spin: SpinConfig;
     }
   | {
-      type: 'simpleSingleBarrel';
+      type: 'singleCylinderBarrel';
       /** Forward extension of the single cylinder past the head's
        *  leading edge, as a fraction of head radius. */
       barrelLength: number;
       /** Cylinder diameter in absolute world units. */
+      barrelThickness?: number;
+    }
+  | {
+      type: 'singleConeBarrel';
+      /** Forward extension of the single cone past the head's leading
+       *  edge, as a fraction of head radius. */
+      barrelLength: number;
+      /** Base (head-end) diameter in absolute world units. The cone
+       *  tapers from this radius down to a point at the muzzle. */
       barrelThickness?: number;
     }
   | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig };

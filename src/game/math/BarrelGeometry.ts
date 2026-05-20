@@ -108,7 +108,8 @@ export type BarrelEndpoint = {
 export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   const b = config.barrel;
   if (!b) return 1;
-  if (b.type === 'simpleSingleBarrel') return 1;
+  if (b.type === 'singleCylinderBarrel') return 1;
+  if (b.type === 'singleConeBarrel') return 1;
   if (b.type === 'complexSingleEmitter') return 1;
   return b.barrelCount;
 }
@@ -183,9 +184,11 @@ export function getTurretBarrelDiameter(
   const projectileShotWidth = shot && isProjectileShot(shot)
     ? shot.collision.radius * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
     : undefined;
+  const isSingleBarrel =
+    barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel';
   const diameter =
     barrel.barrelThickness ??
-    (barrel.type === 'simpleSingleBarrel' ? lineShotWidth : undefined) ??
+    (isSingleBarrel ? lineShotWidth : undefined) ??
     (barrel.type === 'coneMultiBarrel' ? lineShotWidth : undefined) ??
     projectileShotWidth ??
     TURRET_BARREL_MIN_DIAMETER;
@@ -252,7 +255,7 @@ export function getBarrelTip(
   // the returned endpoint stays at the visible barrel tip.
   const barrelLen = getTurretBarrelCenterToTipLength(config);
 
-  if (b.type === 'simpleSingleBarrel') {
+  if (b.type === 'singleCylinderBarrel' || b.type === 'singleConeBarrel') {
     return {
       x: mountX + fwdX * barrelLen,
       y: mountY + fwdY * barrelLen,

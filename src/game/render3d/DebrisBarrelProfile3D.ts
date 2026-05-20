@@ -11,7 +11,12 @@ import {
 
 export type DebrisBarrelProfile =
   | {
-      type: 'simpleSingleBarrel';
+      type: 'singleCylinderBarrel';
+      length: number;
+      thickness: number;
+    }
+  | {
+      type: 'singleConeBarrel';
       length: number;
       thickness: number;
     }
@@ -39,12 +44,12 @@ export function getDebrisBarrelProfile(
   const length = getTurretBarrelCenterToTipLength(turret);
   if (length < 1) return null;
 
-  if (barrel.type === 'simpleSingleBarrel') {
+  if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {
     const diameter = getLineShotWidth(turret) ??
       barrel.barrelThickness ??
       TURRET_BARREL_MIN_DIAMETER;
     return {
-      type: 'simpleSingleBarrel',
+      type: barrel.type,
       length,
       thickness: Math.max(diameter, TURRET_BARREL_MIN_DIAMETER) / 2,
     };

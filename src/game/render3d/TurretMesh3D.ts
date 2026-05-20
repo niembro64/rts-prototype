@@ -13,7 +13,6 @@
 
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
-import { isLineShot } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RangeRingMesh } from './EntityMesh3D';
 import {
@@ -218,9 +217,11 @@ export function buildTurretMesh3D(
   // When `deps.skipBarrels` is true the Mesh is built but NOT attached
   // to spinGroup — kept in `barrels[]` purely as a data carrier; the
   // shared `barrelInstanced` InstancedMesh does the rendering.
-  // Beam/laser turrets get a tapered barrel that narrows to a point at
-  // the muzzle, instead of the default uniform cylinder.
-  const barrelUsesCone = turret.config.shot ? isLineShot(turret.config.shot) : false;
+  // Cone barrels narrow to a point at the muzzle. Authored explicitly
+  // per turret via `barrel.type === 'singleConeBarrel'`; everything
+  // else (including the multi-barrel clusters) uses the uniform cylinder
+  // geometry.
+  const barrelUsesCone = barrel.type === 'singleConeBarrel';
   const segmentGeom = barrelUsesCone ? deps.coneBarrelGeom : deps.barrelGeom;
   const pushSegment = (
     baseX: number, baseY: number, baseZ: number,
@@ -258,7 +259,7 @@ export function buildTurretMesh3D(
     return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };
   }
 
-  if (barrel.type === 'simpleSingleBarrel') {
+  if (barrel.type === 'singleCylinderBarrel' || barrel.type === 'singleConeBarrel') {
     pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
   } else if (barrel.type === 'simpleMultiBarrel') {
     // Parallel barrels arranged in a YZ circle around the firing axis.

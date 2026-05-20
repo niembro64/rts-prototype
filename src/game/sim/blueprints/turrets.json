@@ -8,7 +8,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleCylinderBarrel",
       "barrelLength": 2
     },
     "isManualFire": false,
@@ -117,7 +117,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleCylinderBarrel",
       "barrelLength": 1.4
     },
     "isManualFire": false,
@@ -169,7 +169,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleCylinderBarrel",
       "barrelLength": 0.75
     },
     "isManualFire": false,
@@ -402,7 +402,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleCylinderBarrel",
       "barrelLength": 1,
       "barrelThickness": 8
     },
@@ -449,7 +449,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleConeBarrel",
       "barrelLength": 0
     },
     "isManualFire": false,
@@ -503,7 +503,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleConeBarrel",
       "barrelLength": 3,
       "barrelThickness": 9
     },
@@ -550,7 +550,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleConeBarrel",
       "barrelLength": 0.5
     },
     "isManualFire": false,
@@ -596,7 +596,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleConeBarrel",
       "barrelLength": 0.6,
       "barrelThickness": 8
     },
@@ -710,7 +710,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleCylinderBarrel",
       "barrelLength": 0
     },
     "isManualFire": true,
@@ -775,7 +775,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleConeBarrel",
       "barrelLength": 0.8,
       "barrelThickness": 30
     },
@@ -822,7 +822,7 @@
     "turretTurnAccel": 180,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "simpleSingleBarrel",
+      "type": "singleCylinderBarrel",
       "barrelLength": 2,
       "barrelThickness": 9
     },

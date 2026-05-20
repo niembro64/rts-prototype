@@ -645,7 +645,7 @@ export class Debris3D {
           });
         };
 
-        if (bp.type === 'simpleSingleBarrel') {
+        if (bp.type === 'singleCylinderBarrel' || bp.type === 'singleConeBarrel') {
           emitBarrel(0, 0, 0, bp.length, 0, 0, bp.thickness);
         } else if (bp.type === 'simpleMultiBarrel') {
           // Parallel cluster of cylinders — base orbit = tip orbit.
