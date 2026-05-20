@@ -127,9 +127,8 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 
 /** Rebuild the FF pool slab from getActiveForceFields(). Runs BEFORE
  *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels
- *  read current-tick data — the JS targeting gate path used the same
- *  list, so this preserves byte-for-byte parity with the previous
- *  implementation.
+ *  read current-tick force-field sphere data. Mirror-panel blockers
+ *  are checked from live JS geometry in the targeting gate.
  *
  *  When world.forceFieldsBlockTargeting is false, the slab is rebuilt
  *  at count=0 instead. The kernels short-circuit on empty pools and

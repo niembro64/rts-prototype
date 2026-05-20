@@ -472,10 +472,10 @@ export class Simulation {
   // Update combat systems
   private updateCombat(dtMs: number): void {
     // AIM-08.2 — stamp the FF pool BEFORE the FSM so the force-field
-    // clearance kernels read current-tick data. The JS path used to
-    // call getActiveForceFields() at the top of the FSM for the same
-    // reason; this preserves the same one-tick-stale envelope (the
-    // list is produced by the previous tick's updateForceFieldState).
+    // clearance kernels read the latest sphere list. The list is
+    // produced by the previous tick's updateForceFieldState, so shield
+    // sphere targeting has the same one-tick-stale envelope as
+    // projectile collision.
     stampForceFieldPool(this.world);
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes

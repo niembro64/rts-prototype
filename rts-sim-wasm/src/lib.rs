@@ -8325,9 +8325,7 @@ pub fn combat_targeting_choose_best_candidates_batch(
 //
 // Compact list of `count` active force fields, rebuilt from scratch
 // each tick from the JS-side getActiveForceFields(). Owner entity id
-// is the entity that emits the field (sentinel -1 if not tied to one);
-// kernels use it to skip self-shielding when an emitter targets enemies
-// outside its own bubble.
+// is the entity that emits the field (sentinel -1 if not tied to one).
 // ─────────────────────────────────────────────────────────────────
 
 struct ForceFieldPool {
@@ -8443,10 +8441,9 @@ force_field_pool_ptr_export!(force_field_pool_radius_ptr, radius, f64);
 // hasForceFieldClearance / hasArcForceFieldClearance in
 // lineOfSight.ts; the JS wrappers are now thin dispatchers.
 //
-// `exclude_owner_entity_id` is the firing unit's entity id; fields
-// whose owner matches are skipped so a unit can fight from inside its
-// own shield. Pass the sentinel -1 to disable the exclude (no field is
-// owned by entity id -1).
+// `exclude_owner_entity_id` is a legacy per-call exemption hook. The
+// current BLOCK LOS path passes sentinel -1 so every active boundary is
+// considered, including a shooter's own field.
 //
 // Graze epsilon: crossings within FORCE_FIELD_GRAZE_EPS of the segment
 // endpoints don't count, matching the JS path's behaviour so a turret
@@ -8457,11 +8454,57 @@ force_field_pool_ptr_export!(force_field_pool_radius_ptr, radius, f64);
 const FORCE_FIELD_GRAZE_EPS: f64 = 1e-6;
 const ARC_FF_CLEARANCE_SAMPLES: u32 = 16;
 
+#[inline]
+fn force_field_segment_crosses_sphere(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    cx: f64,
+    cy: f64,
+    cz: f64,
+    r: f64,
+    lo: f64,
+    hi: f64,
+) -> bool {
+    if sx.max(tx) < cx - r || sx.min(tx) > cx + r {
+        return false;
+    }
+    if sy.max(ty) < cy - r || sy.min(ty) > cy + r {
+        return false;
+    }
+    if sz.max(tz) < cz - r || sz.min(tz) > cz + r {
+        return false;
+    }
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let a = dx * dx + dy * dy + dz * dz;
+    if a < 1e-9 {
+        return false;
+    }
+    let fx = sx - cx;
+    let fy = sy - cy;
+    let fz = sz - cz;
+    let b = 2.0 * (fx * dx + fy * dy + fz * dz);
+    let c = fx * fx + fy * fy + fz * fz - r * r;
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return false;
+    }
+    let sqrt_disc = disc.sqrt();
+    let inv_denom = 1.0 / (2.0 * a);
+    let t1 = (-b - sqrt_disc) * inv_denom;
+    let t2 = (-b + sqrt_disc) * inv_denom;
+    (t1 > lo && t1 < hi) || (t2 > lo && t2 < hi)
+}
+
 /// Direct-segment force-field clearance. Returns 1 if the segment
-/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` non-
-/// self field spheres, 0 otherwise. Endpoint grazes (within
-/// FORCE_FIELD_GRAZE_EPS) don't count. Mirrors hasForceFieldClearance
-/// in lineOfSight.ts.
+/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` field
+/// sphere boundaries, 0 otherwise. Endpoint grazes (within
+/// FORCE_FIELD_GRAZE_EPS) don't count.
 #[wasm_bindgen]
 pub fn force_field_clearance_segment(
     sx: f64,
@@ -8478,13 +8521,6 @@ pub fn force_field_clearance_segment(
     if count == 0 {
         return 1;
     }
-    let dx = tx - sx;
-    let dy = ty - sy;
-    let dz = tz - sz;
-    let a = dx * dx + dy * dy + dz * dz;
-    if a < 1e-9 {
-        return 1;
-    }
     let lo = FORCE_FIELD_GRAZE_EPS;
     let hi = 1.0 - FORCE_FIELD_GRAZE_EPS;
     let mut crossings: u32 = 0;
@@ -8492,36 +8528,20 @@ pub fn force_field_clearance_segment(
         if pool.owner_entity_id[i] == exclude_owner_entity_id {
             continue;
         }
-        let cx = pool.center_x[i];
-        let cy = pool.center_y[i];
-        let cz = pool.center_z[i];
-        let r = pool.radius[i];
-        // AABB pre-check. A shield off to one side of the segment's
-        // bounding box can't possibly contribute a crossing; skip the
-        // quadratic when the box test rules it out.
-        if sx.max(tx) < cx - r || sx.min(tx) > cx + r {
-            continue;
-        }
-        if sy.max(ty) < cy - r || sy.min(ty) > cy + r {
-            continue;
-        }
-        if sz.max(tz) < cz - r || sz.min(tz) > cz + r {
-            continue;
-        }
-        let fx = sx - cx;
-        let fy = sy - cy;
-        let fz = sz - cz;
-        let b = 2.0 * (fx * dx + fy * dy + fz * dz);
-        let c = fx * fx + fy * fy + fz * fz - r * r;
-        let disc = b * b - 4.0 * a * c;
-        if disc < 0.0 {
-            continue;
-        }
-        let sqrt_disc = disc.sqrt();
-        let inv_denom = 1.0 / (2.0 * a);
-        let t1 = (-b - sqrt_disc) * inv_denom;
-        let t2 = (-b + sqrt_disc) * inv_denom;
-        if (t1 > lo && t1 < hi) || (t2 > lo && t2 < hi) {
+        if force_field_segment_crosses_sphere(
+            sx,
+            sy,
+            sz,
+            tx,
+            ty,
+            tz,
+            pool.center_x[i],
+            pool.center_y[i],
+            pool.center_z[i],
+            pool.radius[i],
+            lo,
+            hi,
+        ) {
             crossings += 1;
             if crossings > max_crossings {
                 return 0;
@@ -8531,13 +8551,11 @@ pub fn force_field_clearance_segment(
     1
 }
 
-/// Ballistic-arc force-field clearance. Samples
-/// ARC_FF_CLEARANCE_SAMPLES interior points along the parabola
-/// `pos = launch + v·t − 0.5·GRAVITY·ẑ·t²` from t=0..flight_time and
-/// reports the same crossing budget as the segment kernel. Interior
-/// sampling (i=1..N-1) keeps the endpoint-graze rule identical to the
-/// segment kernel: a shell that grazes a shield exactly at the muzzle
-/// or impact point isn't counted as blocked.
+/// Ballistic-arc force-field clearance. Approximates the parabola
+/// `pos = launch + v·t − 0.5·GRAVITY·ẑ·t²` with
+/// ARC_FF_CLEARANCE_SAMPLES chords and reports the same boundary-
+/// crossing budget as the segment kernel. Staying inside one field for
+/// the whole arc is clear; only crossing a boundary is blocked.
 #[wasm_bindgen]
 pub fn force_field_clearance_arc(
     launch_x: f64,
@@ -8568,22 +8586,40 @@ pub fn force_field_clearance_arc(
         let cy = pool.center_y[f];
         let cz = pool.center_z[f];
         let r = pool.radius[f];
-        let r_sq = r * r;
-        let mut inside = false;
-        for i in 1..ARC_FF_CLEARANCE_SAMPLES {
-            let t = (i as f64 * inv_n) * flight_time;
+        let mut crossed = false;
+        let mut prev_x = launch_x;
+        let mut prev_y = launch_y;
+        let mut prev_z = launch_z;
+        for i in 1..=ARC_FF_CLEARANCE_SAMPLES {
+            let t_norm = i as f64 * inv_n;
+            let t = t_norm * flight_time;
             let x = launch_x + launch_vx * t;
             let y = launch_y + launch_vy * t;
             let z = launch_z + launch_vz * t - 0.5 * GRAVITY * t * t;
-            let dx = x - cx;
-            let dy = y - cy;
-            let dz = z - cz;
-            if dx * dx + dy * dy + dz * dz < r_sq {
-                inside = true;
+            let lo = if i == 1 {
+                FORCE_FIELD_GRAZE_EPS
+            } else {
+                -FORCE_FIELD_GRAZE_EPS
+            };
+            let hi = if i == ARC_FF_CLEARANCE_SAMPLES {
+                1.0 - FORCE_FIELD_GRAZE_EPS
+            } else {
+                1.0 + FORCE_FIELD_GRAZE_EPS
+            };
+            if force_field_segment_crosses_sphere(
+                prev_x, prev_y, prev_z,
+                x, y, z,
+                cx, cy, cz, r,
+                lo, hi,
+            ) {
+                crossed = true;
                 break;
             }
+            prev_x = x;
+            prev_y = y;
+            prev_z = z;
         }
-        if inside {
+        if crossed {
             crossings += 1;
             if crossings > max_crossings {
                 return 0;

@@ -200,11 +200,10 @@ export class WorldState {
   public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
   public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
-  // Whether an active force field between a turret and its target blocks
-  // lock-on. Symmetric: the field is a physical barrier and applies to
-  // every turret in either direction, regardless of team. Future
-  // "targeting brain" building upgrades will relax this on a per-player
-  // basis (see hasForceFieldClearance options).
+  // Whether force material between a turret and its target blocks
+  // lock-on. Symmetric: active force-field sphere boundaries and force
+  // mirror panels apply to every turret in either direction, regardless
+  // of team.
   public forceFieldsBlockTargeting: boolean = DEFAULT_FORCE_FIELDS_BLOCK_TARGETING;
   // Which force-field boundary crossings reflect shots/beams.
   public forceFieldReflectionMode: ForceFieldReflectionMode = DEFAULT_FORCE_FIELD_REFLECTION_MODE;

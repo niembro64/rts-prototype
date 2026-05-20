@@ -1110,8 +1110,7 @@ export interface CombatTargetingApi {
 /** AIM-08.1 — Force field input slab. Compact list of `count` active
  *  fields, rebuilt from scratch each tick from the JS-side
  *  getActiveForceFields(). Owner entity id sentinels: -1 means the
- *  field is not tied to a stamped entity (kernels skip self-shielding
- *  by comparing owner id against the firing entity id). */
+ *  field is not tied to a stamped entity. */
 export interface ForceFieldPoolApi {
   clear: () => void;
   count: () => number;
@@ -1133,20 +1132,20 @@ export interface ForceFieldPoolApi {
   readonly radiusPtr: () => number;
   /** AIM-08.2 — direct-segment force-field clearance. Returns 1 if
    *  the segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings`
-   *  non-self field spheres, 0 otherwise. Pass -1 as
-   *  `excludeOwnerEntityId` to disable the self-exclude. Endpoint
-   *  grazes within FORCE_FIELD_GRAZE_EPS don't count. Reads the FF
-   *  slab rebuilt each tick by stampForceFieldPool. */
+   *  field sphere boundaries, 0 otherwise. Pass -1 as
+   *  `excludeOwnerEntityId` to consider every field. Endpoint grazes
+   *  within FORCE_FIELD_GRAZE_EPS don't count. Reads the FF slab
+   *  rebuilt each tick by stampForceFieldPool. */
   readonly clearanceSegment: (
     sx: number, sy: number, sz: number,
     tx: number, ty: number, tz: number,
     excludeOwnerEntityId: number,
     maxCrossings: number,
   ) => number;
-  /** AIM-08.2 — ballistic-arc force-field clearance. Walks the
+  /** AIM-08.2 — ballistic-arc force-field clearance. Approximates the
    *  parabola `pos = launch + v·t − 0.5·g·ẑ·t²` from 0..flightTime,
-   *  same interior-sampling rule as the segment kernel. Returns 1 if
-   *  total crossings ≤ `maxCrossings`, 0 otherwise. */
+   *  with the same boundary-crossing rule as the segment kernel.
+   *  Returns 1 if total crossings ≤ `maxCrossings`, 0 otherwise. */
   readonly clearanceArc: (
     launchX: number, launchY: number, launchZ: number,
     launchVx: number, launchVy: number, launchVz: number,
