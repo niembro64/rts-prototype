@@ -16,6 +16,9 @@ import {
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
 const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2) / 2000;
+// Multiples of the rocket body radius — how far the fin rear edge sits
+// past the cylinder tail end. Avoids color z-fight at the tail cap.
+const FIN_REAR_OVERHANG_MULT = 0.75;
 const PROJECTILE_INSTANCED_CAP = 8192;
 const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
@@ -247,7 +250,10 @@ export class ProjectileRenderer3D {
           const rollAngle = proj && isRocketLike
             ? proj.timeAlive * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
             : 0;
-          this.composeProjectileFinMatrix(tx, ty, tz, tailLength, r * finSizeMult, rollAngle);
+          // Push the fin's rear edge past the cylinder tail end so the
+          // white fin tips don't z-fight with the rocket body cap.
+          const finRearOffset = tailLength + r * FIN_REAR_OVERHANG_MULT;
+          this.composeProjectileFinMatrix(tx, ty, tz, finRearOffset, r * finSizeMult, rollAngle);
           this.finInstanced.setMatrixAt(finCount, this.projMatrix);
           if (proj) {
             this.finColor.set(getPlayerColors(proj.ownerId).primary);
