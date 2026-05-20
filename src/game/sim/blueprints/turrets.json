@@ -4,7 +4,7 @@
     "projectileId": "lightShot",
     "range": 200,
     "cooldown": 450,
-    "launchForce": 30000,
+    "launchForce": 2000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
@@ -44,16 +44,16 @@
     },
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcHigh",
+      "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     }
   },
   "pulseTurret": {
     "id": "pulseTurret",
     "projectileId": "mediumShot",
-    "range": 160,
+    "range": 230,
     "cooldown": 3000,
-    "launchForce": 30000,
+    "launchForce": 5000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
@@ -104,7 +104,7 @@
     },
     "constructionEmitter": null,
     "aimStyle": {
-      "angleType": "ballisticArcHigh",
+      "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     }
   },
