@@ -50,16 +50,6 @@ export { LAND_CELL_SIZE } from './mapSizeConfig';
 export const MAP_LAND_CELLS_WIDTH = MAP_DIMENSION_CONFIG.width.default;
 export const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 
-// Logical metal resource footprint, in fine build-grid cells per side.
-// This drives the metal-producing square, extractor gridWidth/gridHeight,
-// and the visual footprint of both the deposit marker and extractor.
-export const METAL_DEPOSIT_RESOURCE_CELLS = 5;
-
-// Circular terrain pad diameter around each metal deposit, in fine
-// build-grid cells. This is intentionally separate from the logical
-// resource square: it only controls how much nearby terrain is forced flat.
-export const METAL_DEPOSIT_FLAT_PAD_CELLS = 20;
-
 // Render-only vertical lift for the terrain mesh above sampled terrain. Keep
 // this at 0 for normal play: the terrain renderer, host sim, and client
 // prediction all share the same authoritative triangle surface. Use waypoint

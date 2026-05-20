@@ -35,10 +35,7 @@ import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
 import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
 import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
 import { terrainShapeSign, type TerrainShape } from './types/terrain';
-import {
-  METAL_DEPOSIT_FLAT_PAD_CELLS,
-  METAL_DEPOSIT_RESOURCE_CELLS,
-} from './config';
+import rawConfig from './metalDepositConfig.json';
 
 export type DepositRing = {
   /** Distance from map center as a fraction of the oval-space
@@ -64,78 +61,33 @@ export type DepositRing = {
   blendRadius?: number;
 };
 
+/** Authored layout config for the metal deposit ring placer. Pure data
+ *  lives in metalDepositConfig.json so both TypeScript and Rust/WASM
+ *  can load the same source of truth. Field meanings:
+ *    - `edgeMarginPx`: oval-space world units between the spawn oval
+ *      and the outermost deposit ring (keeps deposits from clipping
+ *      into commander spawns).
+ *    - `coinHeight`: full visual coin thickness in world units; the
+ *      renderer draws the upper half above the terrain and treats the
+ *      equator as the ground contact edge. Purely cosmetic.
+ *    - `resourceCells`: square logical metal-producing footprint in
+ *      fine building cells. The extractor building footprint and
+ *      visual deposit size use this.
+ *    - `flatPadCells`: circular terrain-flattening diameter in fine
+ *      building cells; can be larger than `resourceCells` to give the
+ *      extractor a clean buildable pad without increasing production
+ *      area.
+ *    - `terrainBlendRadius`: world-unit width outside each deposit's
+ *      flat pad where terrain eases back to the natural heightmap.
+ *    - `rings`: concentric deposit rings; order doesn't matter — the
+ *      renderer and placement validator iterate over all of them. */
 export const METAL_DEPOSIT_CONFIG = {
-  /** Margin (oval-space world units) between the spawn oval and the outermost
-   *  deposit ring. Keeps deposits from clipping into commander spawns. */
-  edgeMarginPx: 200,
-
-  /** Full visual coin thickness in world units. The renderer draws the
-   *  upper half above the terrain and treats the equator as the ground
-   *  contact edge, so no underside leaks through at grazing angles.
-   *  Purely cosmetic — collision and pad height are unaffected. */
-  coinHeight: 10,
-
-  /** Square logical metal-producing footprint, in fine building cells.
-   *  The extractor building footprint and visual deposit size use this. */
-  resourceCells: METAL_DEPOSIT_RESOURCE_CELLS,
-
-  /** Circular terrain-flattening diameter, in fine building cells. This
-   *  can be larger than `resourceCells` to give the extractor a clean
-   *  buildable pad without increasing production area. */
-  flatPadCells: METAL_DEPOSIT_FLAT_PAD_CELLS,
-
-  /** World-unit width outside each deposit's flat pad where terrain
-   *  eases back to the natural heightmap. Keep this larger than a grid
-   *  cell when deposits sit far above/below the surrounding land. */
-  terrainBlendRadius: 600,
-
-  /** Concentric rings of deposits. Order doesn't matter — the renderer
-   *  and placement validator iterate over all of them. */
-
-  rings: [
-    {
-      radiusFraction: 0.3,
-      countPerPlayer: 1,
-      sliceOffset: 0,
-      dTerrainLevels: 0,
-    },
-    // {
-    //   radiusFraction: 0.3,
-    //   countPerPlayer: 2,
-    //   sliceOffset: 0.1,
-    //   dTerrainLevels: 0,
-    // },
-    // {
-    //   radiusFraction: 0.4,
-    //   countPerPlayer: 2,
-    //   sliceOffset: 0.2,
-    //   dTerrainLevels: 0,
-    // },
-    // {
-    //   radiusFraction: 0.5,
-    //   countPerPlayer: 2,
-    //   sliceOffset: 0.3,
-    //   dTerrainLevels: 0,
-    // },
-    {
-      radiusFraction: 0.6,
-      countPerPlayer: 2,
-      sliceOffset: 0.4,
-      dTerrainLevels: 0,
-    },
-    // {
-    //   radiusFraction: 0.7,
-    //   countPerPlayer: 2,
-    //   sliceOffset: 0.5,
-    //   dTerrainLevels: 0,
-    // },
-    {
-      radiusFraction: 0.8,
-      countPerPlayer: 2,
-      sliceOffset: 0.6,
-      dTerrainLevels: 0,
-    },
-  ] as DepositRing[],
+  edgeMarginPx: rawConfig.edgeMarginPx,
+  coinHeight: rawConfig.coinHeight,
+  resourceCells: rawConfig.resourceCells,
+  flatPadCells: rawConfig.flatPadCells,
+  terrainBlendRadius: rawConfig.terrainBlendRadius,
+  rings: rawConfig.rings as DepositRing[],
 };
 
 export type MetalDeposit = {

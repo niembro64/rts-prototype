@@ -1,0 +1,27 @@
+{
+  "edgeMarginPx": 200,
+  "coinHeight": 10,
+  "resourceCells": 5,
+  "flatPadCells": 20,
+  "terrainBlendRadius": 600,
+  "rings": [
+    {
+      "radiusFraction": 0.3,
+      "countPerPlayer": 1,
+      "sliceOffset": 0,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.6,
+      "countPerPlayer": 2,
+      "sliceOffset": 0.4,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.8,
+      "countPerPlayer": 2,
+      "sliceOffset": 0.6,
+      "dTerrainLevels": 0
+    }
+  ]
+}
