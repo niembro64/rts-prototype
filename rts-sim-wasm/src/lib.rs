@@ -6205,6 +6205,7 @@ struct CombatTargetingPool {
     entity_radius_shot: Vec<f64>,
     entity_hp: Vec<f32>,
     entity_flags: Vec<u8>,
+    entity_slot_by_id: HashMap<i32, u32>,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
     turret_count_per_entity: Vec<u8>,
@@ -6232,6 +6233,10 @@ struct CombatTargetingPool {
     // present, fire.max otherwise) — used by the broadphase spatial
     // query, which wants the un-squared radius.
     turret_outermost_acquire: Vec<f64>,
+    // Raw 2D local-mount distance from the host entity origin. Used by
+    // the auto-targeting pre-scan to widen one unit-centered
+    // broadphase query enough to cover every turret-centered range.
+    turret_mount_offset_2d: Vec<f64>,
     turret_aim_error_yaw: Vec<f32>,
     turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
@@ -6266,6 +6271,7 @@ impl CombatTargetingPool {
             entity_radius_shot: Vec::new(),
             entity_hp: Vec::new(),
             entity_flags: Vec::new(),
+            entity_slot_by_id: HashMap::new(),
             turret_count_per_entity: Vec::new(),
             turret_mount_x: Vec::new(),
             turret_mount_y: Vec::new(),
@@ -6284,6 +6290,7 @@ impl CombatTargetingPool {
             turret_tracking_acquire_sq: Vec::new(),
             turret_tracking_release_sq: Vec::new(),
             turret_outermost_acquire: Vec::new(),
+            turret_mount_offset_2d: Vec::new(),
             turret_aim_error_yaw: Vec::new(),
             turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
@@ -6337,6 +6344,7 @@ impl CombatTargetingPool {
             self.turret_tracking_acquire_sq.resize(turret_needed, 0.0);
             self.turret_tracking_release_sq.resize(turret_needed, 0.0);
             self.turret_outermost_acquire.resize(turret_needed, 0.0);
+            self.turret_mount_offset_2d.resize(turret_needed, 0.0);
             self.turret_aim_error_yaw.resize(turret_needed, 0.0);
             self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
@@ -6361,6 +6369,7 @@ impl CombatTargetingPool {
         for c in self.turret_count_per_entity.iter_mut() {
             *c = 0;
         }
+        self.entity_slot_by_id.clear();
         for has_solution in self.turret_ballistic_has_solution.iter_mut() {
             *has_solution = 0;
         }
@@ -6370,6 +6379,10 @@ impl CombatTargetingPool {
         let s = entity_slot as usize;
         if s >= self.entity_flags.len() {
             return;
+        }
+        let old_entity_id = self.entity_id[s];
+        if old_entity_id >= 0 {
+            self.entity_slot_by_id.remove(&old_entity_id);
         }
         self.entity_flags[s] = 0;
         self.turret_count_per_entity[s] = 0;
@@ -6477,7 +6490,14 @@ pub fn combat_targeting_set_entity(
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
     let s = entity_slot as usize;
+    let old_entity_id = pool.entity_id[s];
+    if old_entity_id >= 0 && old_entity_id != entity_id {
+        pool.entity_slot_by_id.remove(&old_entity_id);
+    }
     pool.entity_id[s] = entity_id;
+    if entity_id >= 0 {
+        pool.entity_slot_by_id.insert(entity_id, entity_slot);
+    }
     pool.entity_owner_player_id[s] = owner_player_id;
     pool.entity_pos_x[s] = pos_x;
     pool.entity_pos_y[s] = pos_y;
@@ -6506,6 +6526,9 @@ pub fn combat_targeting_unset_entity(entity_slot: u32) {
 /// `outermost_acquire` is the raw (un-squared) outermost-shell acquire
 /// distance — the broadphase spatial query wants a radius, not a
 /// squared radius, so storing it lets the kernel avoid sqrt.
+/// `mount_offset_2d` is the raw local XY distance from host origin to
+/// turret mount, matching the TypeScript pre-scan's `hypot(mount.x,
+/// mount.y)` broadphase padding.
 #[wasm_bindgen]
 pub fn combat_targeting_set_turret(
     entity_slot: u32,
@@ -6527,6 +6550,7 @@ pub fn combat_targeting_set_turret(
     tracking_acquire_sq: f64,
     tracking_release_sq: f64,
     outermost_acquire: f64,
+    mount_offset_2d: f64,
     aim_error_yaw: f32,
     aim_error_pitch: f32,
     los_blocked_ticks: u16,
@@ -6553,6 +6577,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_tracking_acquire_sq[global_idx] = tracking_acquire_sq;
     pool.turret_tracking_release_sq[global_idx] = tracking_release_sq;
     pool.turret_outermost_acquire[global_idx] = outermost_acquire;
+    pool.turret_mount_offset_2d[global_idx] = mount_offset_2d;
     pool.turret_aim_error_yaw[global_idx] = aim_error_yaw;
     pool.turret_aim_error_pitch[global_idx] = aim_error_pitch;
     pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
@@ -7049,6 +7074,188 @@ fn combat_targeting_outermost_release_with_radius_sq(
     combat_targeting_range_with_radius_sq(range_sq, target_radius)
 }
 
+#[inline]
+fn combat_targeting_fire_rank_from_pool_sq(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    release_edge: bool,
+    dist_sq: f64,
+    target_radius: f64,
+) -> u8 {
+    if dist_sq > combat_targeting_fire_max_with_radius_sq(pool, idx, release_edge, target_radius) {
+        return CT_TARGET_RANK_NONE;
+    }
+
+    let min_sq = if release_edge {
+        pool.turret_fire_min_release_sq[idx]
+    } else {
+        pool.turret_fire_min_acquire_sq[idx]
+    };
+    if min_sq <= 0.0 {
+        return CT_TARGET_RANK_FIRE_PREFERRED;
+    }
+
+    let min_range = min_sq.sqrt();
+    let threshold = min_range - target_radius;
+    if threshold <= 0.0 {
+        return CT_TARGET_RANK_FIRE_PREFERRED;
+    }
+    let threshold_sq = if target_radius <= 0.0 {
+        min_sq
+    } else {
+        threshold * threshold
+    };
+    if dist_sq >= threshold_sq {
+        CT_TARGET_RANK_FIRE_PREFERRED
+    } else {
+        CT_TARGET_RANK_FIRE_FALLBACK
+    }
+}
+
+#[inline]
+fn combat_targeting_entity_slot_for_id(
+    pool: &CombatTargetingPool,
+    entity_id: i32,
+) -> Option<usize> {
+    if entity_id < 0 {
+        return None;
+    }
+    let slot = *pool.entity_slot_by_id.get(&entity_id)? as usize;
+    if slot >= pool.entity_id.len() || pool.entity_id[slot] != entity_id {
+        return None;
+    }
+    Some(slot)
+}
+
+#[inline]
+fn combat_targeting_current_fire_target_rank_sq(
+    pool: &CombatTargetingPool,
+    turret_idx: usize,
+) -> (u8, f64) {
+    let target_id = pool.turret_target_id[turret_idx];
+    let Some(target_slot) = combat_targeting_entity_slot_for_id(pool, target_id) else {
+        return (CT_TARGET_RANK_NONE, f64::INFINITY);
+    };
+    let dx = pool.turret_mount_x[turret_idx] - pool.entity_pos_x[target_slot];
+    let dy = pool.turret_mount_y[turret_idx] - pool.entity_pos_y[target_slot];
+    let dz = pool.turret_mount_z[turret_idx] - pool.entity_pos_z[target_slot];
+    let dist_sq = dx * dx + dy * dy + dz * dz;
+    let rank = combat_targeting_fire_rank_from_pool_sq(
+        pool,
+        turret_idx,
+        true,
+        dist_sq,
+        pool.entity_radius_shot[target_slot],
+    );
+    (rank, dist_sq)
+}
+
+#[inline]
+fn combat_targeting_weapon_system_disabled(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) -> bool {
+    let flags = pool.turret_config_flags[idx];
+    (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
+        || ((flags & CT_TURRET_CFG_PASSIVE) != 0 && mirrors_enabled == 0)
+        || ((flags & CT_TURRET_CFG_SHOT_IS_FORCE) != 0 && force_fields_enabled == 0)
+}
+
+/// AIM-08.5 — Rust auto-targeting pre-scan over the combat-targeting
+/// slab. This replaces the TypeScript loop that derived:
+///   - whether any turret needs a batched enemy query,
+///   - the maximum outer acquire range,
+///   - the maximum mount offset used to widen that query,
+///   - and the per-turret current-fire rank cache for min-range
+///     fallback promotion.
+#[wasm_bindgen]
+pub fn combat_targeting_prepare_auto_scan(
+    entity_slot: u32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    out_f64: &mut [f64],
+) -> u8 {
+    if out_f64.len() >= 2 {
+        out_f64[0] = 0.0;
+        out_f64[1] = 0.0;
+    }
+
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return 0;
+    }
+
+    let turret_count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(cached_fire_ranks.len())
+        .min(cached_fire_dist_sqs.len());
+    if turret_count == 0 {
+        return 0;
+    }
+
+    let mut needs_any_query = false;
+    let mut max_acquire_range = 0.0;
+    let mut max_weapon_offset = 0.0;
+
+    for turret_idx in 0..turret_count {
+        cached_fire_ranks[turret_idx] = CT_TARGET_RANK_NONE;
+        cached_fire_dist_sqs[turret_idx] = f64::INFINITY;
+
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
+            continue;
+        }
+
+        let flags = pool.turret_config_flags[idx];
+        if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+
+        let acquire = pool.turret_outermost_acquire[idx];
+        if acquire > max_acquire_range {
+            max_acquire_range = acquire;
+        }
+        let offset = pool.turret_mount_offset_2d[idx];
+        if offset > max_weapon_offset {
+            max_weapon_offset = offset;
+        }
+
+        let mut cached_rank = CT_TARGET_RANK_NONE;
+        if pool.turret_state[idx] == CT_TURRET_STATE_ENGAGED
+            && pool.turret_fire_min_release_sq[idx] > 0.0
+        {
+            let (rank, dist_sq) = combat_targeting_current_fire_target_rank_sq(pool, idx);
+            cached_rank = rank;
+            cached_fire_ranks[turret_idx] = rank;
+            cached_fire_dist_sqs[turret_idx] = dist_sq;
+        }
+
+        if pool.turret_target_id[idx] < 0
+            || pool.turret_state[idx] == CT_TURRET_STATE_TRACKING
+            || cached_rank == CT_TARGET_RANK_FIRE_FALLBACK
+        {
+            needs_any_query = true;
+        }
+    }
+
+    if out_f64.len() >= 2 {
+        out_f64[0] = max_acquire_range;
+        out_f64[1] = max_weapon_offset;
+    }
+
+    if needs_any_query {
+        1
+    } else {
+        0
+    }
+}
+
 /// Clear one turret's lock in the combat-targeting slab. JS uses this
 /// for object-owned gates (manual/passive/disabled branches) while the
 /// rest of the FSM transition writes live here.
@@ -7154,9 +7361,7 @@ pub fn combat_targeting_apply_priority_target_fsm(
         <= combat_targeting_fire_max_with_radius_sq(pool, idx, false, target_radius)
     {
         CT_TURRET_STATE_ENGAGED
-    } else if dist_sq
-        <= combat_targeting_fire_max_with_radius_sq(pool, idx, true, target_radius)
-    {
+    } else if dist_sq <= combat_targeting_fire_max_with_radius_sq(pool, idx, true, target_radius) {
         if old_state == CT_TURRET_STATE_ENGAGED {
             CT_TURRET_STATE_ENGAGED
         } else {
@@ -7224,11 +7429,7 @@ pub fn combat_targeting_validate_existing_lock_fsm(
 /// AIM-08.5 — apply a fire-band candidate switch found by the Rust
 /// candidate scoring kernel plus JS-owned gates.
 #[wasm_bindgen]
-pub fn combat_targeting_apply_fire_choice_fsm(
-    entity_slot: u32,
-    turret_idx: u32,
-    target_id: i32,
-) {
+pub fn combat_targeting_apply_fire_choice_fsm(entity_slot: u32, turret_idx: u32, target_id: i32) {
     if target_id < 0 {
         return;
     }

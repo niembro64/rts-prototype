@@ -158,7 +158,6 @@ export function stampForceFieldPool(world: WorldState): void {
 
 function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: Entity): void {
   const combat = entity.combat;
-  if (!combat) return;
   const slot = spatialGrid.getSlot(entity.id);
   // Entities without a spatial slot can't be addressed by the slab;
   // the eventual kernel walks the slab, not the JS list, so anything
@@ -174,22 +173,24 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
     : (entity.building ? entity.building.targetRadius : 0);
   const hp = entity.unit ? entity.unit.hp : (entity.building ? entity.building.hp : 0);
 
-  let entityFlags = CT_ENTITY_FLAG_HAS_COMBAT;
+  let entityFlags = 0;
+  if (combat) entityFlags |= CT_ENTITY_FLAG_HAS_COMBAT;
   if (hp > 0) entityFlags |= CT_ENTITY_FLAG_ALIVE;
-  if (combat.fireEnabled !== false) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
+  if (combat && combat.fireEnabled !== false) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
   if (!entity.buildable || entity.buildable.isComplete) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   }
 
-  const turrets = combat.turrets;
+  const turrets = combat?.turrets;
   targeting.setEntity(
     slot, entity.id, playerId,
     pos.x, pos.y, pos.z,
     vel.x, vel.y, vel.z,
     radiusShot, hp, entityFlags,
-    turrets.length,
+    turrets?.length ?? 0,
   );
 
+  if (!turrets) return;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const ranges = t.ranges;
@@ -212,6 +213,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
       outermostAcq,
+      Math.hypot(t.mount.x, t.mount.y),
       t.aimErrorYaw, t.aimErrorPitch,
       t.losBlockedTicks,
       encodeTurretConfigFlags(t, ranges),
@@ -261,10 +263,12 @@ export function writeBackCombatTargetingEntity(entity: Entity): void {
   }
 }
 
-/** Rebuild every armed entity's combat-targeting slab row before the
- *  FSM runs. The targeting pass then mutates target/state fields in
- *  place through Rust kernels, so the slab remains the post-FSM parity
- *  source without a second shadow stamp. */
+/** Rebuild every targetable unit/building row before the FSM runs.
+ *  Turret rows are only written for armed entities, but target lookup
+ *  needs unarmed buildings too (solar/wind/extractors can be locked
+ *  and fired on). The targeting pass then mutates target/state fields
+ *  in place through Rust kernels, so the slab remains the post-FSM
+ *  parity source without a second shadow stamp. */
 export function stampCombatTargetingPool(world: WorldState): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
@@ -275,7 +279,10 @@ export function stampCombatTargetingPool(world: WorldState): void {
   // two and treat unmarked slots as empty.
   targeting.clear();
 
-  for (const entity of world.getArmedEntities()) {
+  for (const entity of world.getUnits()) {
+    stampCombatTargetingEntityInto(targeting, entity);
+  }
+  for (const entity of world.getBuildings()) {
     stampCombatTargetingEntityInto(targeting, entity);
   }
 }

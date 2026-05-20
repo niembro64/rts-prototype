@@ -175,6 +175,7 @@ import __wbg_init, {
   combat_targeting_turret_ballistic_aim_y_ptr,
   combat_targeting_turret_ballistic_aim_z_ptr,
   combat_targeting_solve_ballistic_aim,
+  combat_targeting_prepare_auto_scan,
   combat_targeting_rank_target,
   combat_targeting_choose_best_candidate,
   combat_targeting_clear_turret_lock,
@@ -929,6 +930,7 @@ export interface CombatTargetingApi {
     trackingAcquireSq: number,
     trackingReleaseSq: number,
     outermostAcquire: number,
+    mountOffset2d: number,
     aimErrorYaw: number,
     aimErrorPitch: number,
     losBlockedTicks: number,
@@ -1006,6 +1008,18 @@ export interface CombatTargetingApi {
     maxTimeSecOrZero: number,
     fallbackYaw: number,
     fallbackPitch: number,
+  ) => number;
+  /** AIM-08.5 — Rust auto-targeting pre-scan. Writes
+   *  cachedFireRanks[i], cachedFireDistSqs[i], and outF64[0..2] =
+   *  [maxAcquireRange, maxWeaponOffset]. Returns 1 when any turret
+   *  needs a batched enemy query. */
+  readonly prepareAutoScan: (
+    entitySlot: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    outF64: Float64Array,
   ) => number;
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
    *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
@@ -2111,6 +2125,7 @@ export function initSimWasm(): Promise<SimWasm> {
           turretBallisticAimYPtr: combat_targeting_turret_ballistic_aim_y_ptr,
           turretBallisticAimZPtr: combat_targeting_turret_ballistic_aim_z_ptr,
           solveBallisticAim: combat_targeting_solve_ballistic_aim,
+          prepareAutoScan: combat_targeting_prepare_auto_scan,
           rankTarget: combat_targeting_rank_target,
           chooseBestCandidate: combat_targeting_choose_best_candidate,
           clearTurretLock: combat_targeting_clear_turret_lock,

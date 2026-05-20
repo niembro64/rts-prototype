@@ -1,7 +1,7 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, PlayerId, Turret, TurretRanges } from '../types';
+import type { Entity, EntityId, PlayerId, Turret } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import {
   decrementCooldown,
@@ -46,15 +46,13 @@ const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
 // the Pass 0 reset walk and consumed by every subsequent pass. Avoids
 // calling weaponSystemDisabled 8+ times per weapon per tick (~9× the
 // property reads across passes for the same unchanging condition).
-const _weaponDisabled: boolean[] = [];
-// Per-unit reusable cache of pre-scan's currentFireTargetRankSq result.
-// Pre-scan populates for `engaged && ranges.fire.min` weapons (the only
-// case where the rank distinction matters); Pass 2 reads back the same
-// {rank, distSq} pair instead of recomputing. Slots for skipped weapons
-// (disabled / manual-fire / non-engaged / no fire.min) hold the default
-// {NONE, Infinity}; Pass 2 still gates those slots out before reading.
-const _cachedFireRanks: TargetPreferenceRank[] = [];
-const _cachedFireDistSqs: number[] = [];
+let _weaponDisabled = new Uint8Array(0);
+// Per-unit reusable cache written by the Rust auto-target pre-scan.
+// It holds the current-fire rank for `engaged && ranges.fire.min`
+// weapons so Pass 2 can promote close fallbacks without recomputing.
+let _cachedFireRanks = new Uint8Array(0);
+let _cachedFireDistSqs = new Float64Array(0);
+const _targetingAutoScanF64 = new Float64Array(2);
 // AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
 // candidates into flat arrays; Rust owns score/rank/top-K/fallback.
 let _candidateObservable = new Uint8Array(0);
@@ -83,12 +81,19 @@ type TargetPreferenceRank =
 
 const TARGETING_RANK_MODE_FIRE = 0;
 const TARGETING_RANK_MODE_ACQUISITION = 1;
-const TARGETING_EDGE_ACQUIRE = 0;
-const TARGETING_EDGE_RELEASE = 1;
 
 type TargetRankMode =
   | typeof TARGETING_RANK_MODE_FIRE
   | typeof TARGETING_RANK_MODE_ACQUISITION;
+
+function ensurePerWeaponScratchCapacity(count: number): void {
+  if (count <= _weaponDisabled.length) return;
+  let next = Math.max(8, _weaponDisabled.length);
+  while (next < count) next *= 2;
+  _weaponDisabled = new Uint8Array(next);
+  _cachedFireRanks = new Uint8Array(next);
+  _cachedFireDistSqs = new Float64Array(next);
+}
 
 function getTargetingKernel() {
   const sim = getSimWasm();
@@ -96,74 +101,6 @@ function getTargetingKernel() {
     throw new Error('targetingSystem: sim-wasm is not initialized');
   }
   return sim.combatTargeting;
-}
-
-function encodeTargetingEdge(edge: 'acquire' | 'release'): number {
-  return edge === 'release' ? TARGETING_EDGE_RELEASE : TARGETING_EDGE_ACQUIRE;
-}
-
-function rankTargetPreferenceSq(
-  weapon: Turret,
-  rankMode: TargetRankMode,
-  edge: 'acquire' | 'release',
-  distSq: number,
-  targetRadius: number,
-): TargetPreferenceRank {
-  const ranges = weapon.ranges;
-  const fireMin = ranges.fire.min;
-  const tracking = ranges.tracking;
-  return getTargetingKernel().rankTarget(
-    rankMode,
-    encodeTargetingEdge(edge),
-    ranges.fire.max.acquire,
-    ranges.fire.max.release,
-    fireMin ? 1 : 0,
-    fireMin?.acquire ?? 0,
-    fireMin?.release ?? 0,
-    tracking ? 1 : 0,
-    tracking?.acquire ?? 0,
-    tracking?.release ?? 0,
-    distSq,
-    targetRadius,
-  ) as TargetPreferenceRank;
-}
-
-function currentFireTargetRankSq(
-  world: WorldState,
-  weapon: Turret,
-  edge: 'acquire' | 'release',
-): { rank: TargetPreferenceRank; distSq: number } {
-  if (weapon.target === null || weapon.worldPosTick < 0) {
-    return { rank: TARGET_RANK_NONE, distSq: Infinity };
-  }
-  const target = world.getEntity(weapon.target);
-  const targetRadius = target?.unit
-    ? target.unit.radius.shot
-    : (target?.building ? getTargetRadius(target) : 0);
-  if (!target || targetRadius <= 0 && !target.unit && !target.building) {
-    return { rank: TARGET_RANK_NONE, distSq: Infinity };
-  }
-  const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
-  const distSq = distanceSquared3(
-    weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
-    targetPosition.x, targetPosition.y, targetPosition.z,
-  );
-  return {
-    rank: rankTargetPreferenceSq(
-      weapon,
-      TARGETING_RANK_MODE_FIRE,
-      edge,
-      distSq,
-      targetRadius,
-    ),
-    distSq,
-  };
-}
-
-/** Outermost acquire boundary used for the spatial-grid acquisition
- *  query. Returns the `acquire` numeric value of the outermost shell. */
-function outermostAcquireDistance(ranges: TurretRanges): number {
-  return (ranges.tracking ?? ranges.fire.max).acquire;
 }
 
 function isMirrorTarget(enemy: Entity, mirrorUnitId: EntityId): boolean {
@@ -732,13 +669,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     unit.transform.rotCos = cos;
     unit.transform.rotSin = sin;
     const weapons = combat.turrets;
+    ensurePerWeaponScratchCapacity(weapons.length);
 
     let hasCooldownState = false;
     let hasEnabledWeapon = false;
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       const disabled = resetDisabledWeapon(world, unit, weapon, wi);
-      _weaponDisabled[wi] = disabled;
+      _weaponDisabled[wi] = disabled ? 1 : 0;
       if (disabled) continue;
       hasEnabledWeapon = true;
       if (weapon.cooldown > 0) {
@@ -751,7 +689,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         weapon.burst.cooldown = decrementCooldown(weapon.burst.cooldown, dtMs);
       }
     }
-    _weaponDisabled.length = weapons.length;
     if (!hasEnabledWeapon) {
       stampCombatTargetingEntity(unit);
       combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
@@ -770,7 +707,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const surfaceN = unit.unit?.surfaceNormal;
     for (let i = 0; i < weapons.length; i++) {
       const weapon = weapons[i];
-      if (_weaponDisabled[i]) continue;
+      if (_weaponDisabled[i] !== 0) continue;
       if (weapon.config.isManualFire) {
         weapon.state = 'idle';
         continue;
@@ -792,7 +729,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     if (priorityPoint !== null) {
       for (let wi = 0; wi < weapons.length; wi++) {
         const weapon = weapons[wi];
-        if (_weaponDisabled[wi]) continue;
+        if (_weaponDisabled[wi] !== 0) continue;
         if (weapon.config.isManualFire) continue;
 
         if (weapon.config.passive) {
@@ -864,7 +801,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         // ATTACK MODE: try the priority target, firing only inside hard max range.
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
-          if (_weaponDisabled[wi]) continue;
+          if (_weaponDisabled[wi] !== 0) continue;
           if (weapon.config.isManualFire) continue;
           // Passive turrets (mirrors) only lock onto enemies whose
           // turrets actually deal damage. The shared mirror scorer
@@ -920,7 +857,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 1: Validate existing targets with hysteresis
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (_weaponDisabled[wi]) continue;
+      if (_weaponDisabled[wi] !== 0) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
 
@@ -1006,41 +943,22 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     writeBackCombatTargetingEntity(unit);
 
-    // Pre-scan: find whether any weapon needs a candidate scan, plus
-    // the max acquire range + max weapon offset across every enabled
-    // weapon. The radius is intentionally unit-centered and wide
-    // enough to cover each weapon-centered acquisition circle; the
-    // per-weapon distance/rank checks below still enforce exact ranges.
-    let needsAnyQuery = false;
-    let maxAcquireRange = 0;
-    let maxWeaponOffset = 0;
-    for (let wi = 0; wi < weapons.length; wi++) {
-      _cachedFireRanks[wi] = TARGET_RANK_NONE;
-      _cachedFireDistSqs[wi] = Infinity;
-      if (_weaponDisabled[wi]) continue;
-      const weapon = weapons[wi];
-      if (weapon.config.isManualFire) continue;
-      const acquireRange = outermostAcquireDistance(weapon.ranges);
-      if (acquireRange > maxAcquireRange) maxAcquireRange = acquireRange;
-      const offset = Math.hypot(weapon.mount.x, weapon.mount.y);
-      if (offset > maxWeaponOffset) maxWeaponOffset = offset;
-      if (weapon.state === 'engaged' && weapon.ranges.fire.min) {
-        const result = currentFireTargetRankSq(world, weapon, 'release');
-        _cachedFireRanks[wi] = result.rank;
-        _cachedFireDistSqs[wi] = result.distSq;
-      }
-      // Needs query if: no target (idle), tracking but not engaged, or
-      // engaged on a close fallback while the turret has a min preference.
-      if (
-        weapon.target === null ||
-        weapon.state === 'tracking' ||
-        _cachedFireRanks[wi] === TARGET_RANK_FIRE_FALLBACK
-      ) {
-        needsAnyQuery = true;
-      }
-    }
-    _cachedFireRanks.length = weapons.length;
-    _cachedFireDistSqs.length = weapons.length;
+    // Rust pre-scan: find whether any weapon needs a candidate scan,
+    // plus the max acquire range + max weapon offset across every
+    // enabled weapon. The radius is intentionally unit-centered and
+    // wide enough to cover each weapon-centered acquisition circle;
+    // the per-weapon distance/rank checks below still enforce exact
+    // ranges.
+    const needsAnyQuery = targeting.prepareAutoScan(
+      unitSlot,
+      world.mirrorsEnabled ? 1 : 0,
+      world.forceFieldsEnabled ? 1 : 0,
+      _cachedFireRanks,
+      _cachedFireDistSqs,
+      _targetingAutoScanF64,
+    ) !== 0;
+    const maxAcquireRange = _targetingAutoScanF64[0];
+    const maxWeaponOffset = _targetingAutoScanF64[1];
 
     // Always batch when ANY weapon needs candidates. The spatial grid
     // returns a reused array, so consume it directly before any other
@@ -1083,7 +1001,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // evaluates independently.
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (_weaponDisabled[wi]) continue;
+      if (_weaponDisabled[wi] !== 0) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target === null) continue;
       // Pre-scan already computed the rank+distSq for `engaged &&
@@ -1091,7 +1009,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // FIRE_FALLBACK). For tracking weapons and engaged-but-no-fire.min
       // weapons the cache holds the same defaults the old recompute
       // would have produced once filtered by the gate below.
-      const cachedRank = _cachedFireRanks[wi];
+      const cachedRank = _cachedFireRanks[wi] as TargetPreferenceRank;
       const cachedDistSq = _cachedFireDistSqs[wi];
       if (
         weapon.state !== 'tracking' &&
@@ -1137,7 +1055,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // Pass 3: Acquire targets for weapons with no target (idle)
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
-      if (_weaponDisabled[wi]) continue;
+      if (_weaponDisabled[wi] !== 0) continue;
       if (weapon.config.isManualFire) continue;
       if (weapon.target !== null) continue;
 
