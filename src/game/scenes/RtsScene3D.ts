@@ -50,7 +50,6 @@ import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
-import { PingRenderer3D } from '../render3d/PingRenderer3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
 import { RtsScene3DAudioSystem } from './helpers/RtsScene3DAudioSystem';
@@ -159,7 +158,6 @@ export class RtsScene3D {
   private burnMarkRenderer!: BurnMark3D;
   private groundPrintRenderer!: GroundPrint3D;
   private lineDragRenderer!: LineDrag3D;
-  private pingRenderer!: PingRenderer3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
@@ -506,7 +504,6 @@ export class RtsScene3D {
     );
     this.groundPrintRenderer = new GroundPrint3D(this.threeApp.world, this.renderScope);
     this.lineDragRenderer = new LineDrag3D(this.threeApp.world);
-    this.pingRenderer = new PingRenderer3D(this.threeApp.world);
     this.buildGhostRenderer = new BuildGhost3D(
       this.threeApp.world,
       (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
@@ -617,7 +614,6 @@ export class RtsScene3D {
         burnMarkRenderer: this.burnMarkRenderer,
         groundPrintRenderer: this.groundPrintRenderer,
         lineDragRenderer: this.lineDragRenderer,
-        pingRenderer: this.pingRenderer,
         sprayRenderer: this.sprayRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
         fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
@@ -867,39 +863,11 @@ export class RtsScene3D {
     // every visual branch so the explosion sprite / debris / ping
     // marker don't leak the still-shrouded source's position.
     if (event.audioOnly) return;
-    if (event.type === 'ping') {
-      const effectGfx = this.graphicsConfigForEffectCell(
-        event.pos.x,
-        event.pos.y,
-        event.pos.y,
-      );
-      if (!effectGfx) return;
-      this.pingRenderer.spawn(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-        getPlayerPrimaryColor(event.playerId),
-      );
-      return;
-    }
-    if (event.type === 'attackAlert') {
-      // FOW-08-followup remainder: a marker at the attacker's
-      // position, drawn for the victim's recipient even when the
-      // attacker is in their fog. Red instead of player-colored so
-      // the visual reads as "incoming fire" and stays distinct from
-      // a deliberate teammate ping.
-      const effectGfx = this.graphicsConfigForEffectCell(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-      );
-      if (!effectGfx) return;
-      this.pingRenderer.spawn(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-        0xff3030,
-      );
+    if (event.type === 'ping' || event.type === 'attackAlert') {
+      // Visual rings removed; sim events still flow (manual ping
+      // command, scan pulse emission, cloaked-attacker alert) so
+      // the plumbing can wire a new visual without re-deriving the
+      // events. Audio handled above by playSimEventAudio.
       return;
     }
 
@@ -1408,7 +1376,6 @@ export class RtsScene3D {
       burnMarkRenderer: this.burnMarkRenderer,
       groundPrintRenderer: this.groundPrintRenderer,
       lineDragRenderer: this.lineDragRenderer,
-      pingRenderer: this.pingRenderer,
       buildGhostRenderer: this.buildGhostRenderer,
       sprayRenderer: this.sprayRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,
