@@ -118,6 +118,7 @@ function getProjectileHitCount(proj: { hitEntities?: Set<EntityId> }): number {
 function pushReflectorImpactEvent(
   audioEvents: SimEvent[],
   hitForceField: boolean,
+  projectileEntityId: EntityId,
   x: number,
   y: number,
   z: number,
@@ -132,6 +133,7 @@ function pushReflectorImpactEvent(
     sourceType: 'turret',
     sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
     pos: { x, y, z },
+    entityId: projectileEntityId,
     forceFieldImpact: {
       normal: { x: normalX, y: normalY, z: normalZ },
       playerId: playerId ?? 0,
@@ -578,6 +580,7 @@ export function checkProjectileCollisions(
             pushReflectorImpactEvent(
               audioEvents,
               hitForceField,
+              projEntity.id,
               reflectorHitX, reflectorHitY, reflectorHitZ,
               reflectorNormalX!, reflectorNormalY!, reflectorNormalZ!,
               reflectorPlayerId,
@@ -628,6 +631,7 @@ export function checkProjectileCollisions(
         pushReflectorImpactEvent(
           audioEvents,
           hitForceField,
+          projEntity.id,
           projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
           reflectorNormalX, reflectorNormalY, reflectorNormalZ,
           reflectorPlayerId,

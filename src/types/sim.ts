@@ -447,8 +447,8 @@ export type Turret = {
   aimErrorYaw: number;
   aimErrorPitch: number;
   /** False when the current ballistic projectile aim has no exact
-   *  gravity solution. The turret can keep tracking, but firing is
-   *  held so it does not spend shells on guaranteed-short fallback
+   *  gravity solution. Firing is held and entity locks are dropped so
+   *  the turret does not spend shells on guaranteed-short fallback
    *  shots. Default true. */
   ballisticAimInRange: boolean;
   burst?: { remaining: number; cooldown: number };
@@ -560,6 +560,13 @@ export type Projectile = {
   lastSentVelX?: number;
   lastSentVelY?: number;
   lastSentVelZ?: number;
+  /** Client-only one-shot: the actual collision point on a force field
+   *  sphere or mirror panel from the most recent reflection. Consumed
+   *  by the tail renderer as the trailing anchor for the curved cone
+   *  so the tail visibly emerges from where the projectile bounced. */
+  pendingReflectionX?: number;
+  pendingReflectionY?: number;
+  pendingReflectionZ?: number;
 };
 
 // Economy state per player. Each pool (energy / metal) has its
