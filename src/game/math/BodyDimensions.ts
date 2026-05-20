@@ -139,7 +139,7 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
   let topY = 0;
   if (spec.kind === 'polygon') {
     topY = spec.heightFrac;
-  } else if (spec.kind === 'rect') {
+  } else if (spec.kind === 'rect' || spec.kind === 'rhombus') {
     topY = spec.heightFrac;
   } else if (spec.kind === 'circle') {
     topY = 2 * circleYFrac(spec.radiusFrac, spec.yFrac);
@@ -266,7 +266,7 @@ export function getSegmentMidYAt(
   if (spec.kind === 'polygon') {
     return spec.heightFrac * unitRadius / 2;
   }
-  if (spec.kind === 'rect') {
+  if (spec.kind === 'rect' || spec.kind === 'rhombus') {
     return spec.heightFrac * unitRadius / 2;
   }
   if (spec.kind === 'circle') {

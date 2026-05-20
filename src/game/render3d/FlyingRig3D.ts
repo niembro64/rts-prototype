@@ -12,22 +12,21 @@ const JET_SMOKE_COLOR = 0xcccccc;
 const DEFAULT_JET_SMOKE_SPEED = 70;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
 
-// Wing geometry: tapered, swept-back planform extending across both sides.
-// Built unit-sized (root chord 1, total span 1, thickness 1) so callers can
-// scale by (chord, thickness, span) like the previous box geometry.
-function buildWingGeom(): THREE.BufferGeometry {
+// Wing panel geometry: tapered, swept-back planform for one side only.
+// Built unit-sized (root chord 1, side span 1, thickness 1) so callers can
+// scale by (chord, thickness, sideSpan). The root edge sits on local Z=0,
+// letting each side rotate around the fuselage for dihedral/anhedral.
+function buildWingPanelGeom(lateralSign: -1 | 1): THREE.BufferGeometry {
   const rootHalfChord = 0.5;
   const tipHalfChord = 0.12;
   const sweep = 0.35;
-  const halfSpan = 0.5;
+  const tipZ = lateralSign;
 
   const shape = new THREE.Shape();
   shape.moveTo(rootHalfChord, 0);
-  shape.lineTo(-sweep + tipHalfChord, halfSpan);
-  shape.lineTo(-sweep - tipHalfChord, halfSpan);
+  shape.lineTo(-sweep + tipHalfChord, tipZ);
+  shape.lineTo(-sweep - tipHalfChord, tipZ);
   shape.lineTo(-rootHalfChord, 0);
-  shape.lineTo(-sweep - tipHalfChord, -halfSpan);
-  shape.lineTo(-sweep + tipHalfChord, -halfSpan);
   shape.lineTo(rootHalfChord, 0);
 
   const geom = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
@@ -36,10 +35,11 @@ function buildWingGeom(): THREE.BufferGeometry {
   return geom;
 }
 
-const wingGeom = buildWingGeom();
+const leftWingGeom = buildWingPanelGeom(-1);
+const rightWingGeom = buildWingPanelGeom(1);
 const jetGeom = new THREE.CylinderGeometry(1, 1, 1, 18, 1, true);
 jetGeom.rotateZ(Math.PI / 2);
-const wingMat = new THREE.MeshBasicMaterial({ color: WING_COLOR });
+const wingMat = new THREE.MeshBasicMaterial({ color: WING_COLOR, side: THREE.DoubleSide });
 const jetMat = new THREE.MeshBasicMaterial({ color: JET_COLOR });
 const _jetWorldPos = new THREE.Vector3();
 const _jetWorldQuat = new THREE.Quaternion();
@@ -66,28 +66,42 @@ export function buildFlyingRig(
 ): FlyingMesh {
   const group = new THREE.Group();
 
-  const wingSpan = Math.max(1, unitRadius * cfg.wingSpan);
-  const wingChord = Math.max(1, unitRadius * cfg.wingChord);
-  const wingThickness = Math.max(0.25, unitRadius * (cfg.wingThickness ?? 0.04));
-  const wing = new THREE.Mesh(wingGeom, wingMat);
-  wing.position.set(
-    unitRadius * cfg.wingOffsetX,
-    unitRadius * cfg.wingHeight,
-    0,
-  );
-  wing.scale.set(wingChord, wingThickness, wingSpan);
-  group.add(wing);
+  addWingPanels(group, unitRadius, {
+    spanFrac: cfg.wingSpan,
+    chordFrac: cfg.wingChord,
+    offsetXFrac: cfg.wingOffsetX,
+    heightFrac: cfg.wingHeight,
+    thicknessFrac: cfg.wingThickness ?? 0.04,
+    dihedralDeg: cfg.wingDihedralDeg ?? 0,
+  });
+
+  if (
+    cfg.tailWingSpan !== undefined &&
+    cfg.tailWingChord !== undefined &&
+    cfg.tailWingOffsetX !== undefined &&
+    cfg.tailWingHeight !== undefined
+  ) {
+    addWingPanels(group, unitRadius, {
+      spanFrac: cfg.tailWingSpan,
+      chordFrac: cfg.tailWingChord,
+      offsetXFrac: cfg.tailWingOffsetX,
+      heightFrac: cfg.tailWingHeight,
+      thicknessFrac: cfg.tailWingThickness ?? cfg.wingThickness ?? 0.04,
+      dihedralDeg: cfg.tailWingDihedralDeg ?? 0,
+    });
+  }
 
   const jetRadius = Math.max(0.4, unitRadius * cfg.jetRadius);
   const jetLength = Math.max(1, unitRadius * cfg.jetLength);
   const jetX = unitRadius * cfg.jetOffsetX;
   const jetY = unitRadius * cfg.jetOffsetZ;
   const jetZ = unitRadius * cfg.jetOffsetY;
+  const jetLateralOffsets = cfg.jetCount === 1 ? [0] : [-jetZ, jetZ];
   const jets: FlyingJet[] = [];
 
-  for (const side of [-1, 1]) {
+  for (const lateralOffset of jetLateralOffsets) {
     const jetGroup = new THREE.Group();
-    jetGroup.position.set(jetX, jetY, side * jetZ);
+    jetGroup.position.set(jetX, jetY, lateralOffset);
 
     const nozzle = new THREE.Mesh(jetGeom, jetMat);
     nozzle.scale.set(jetLength, jetRadius, jetRadius);
@@ -128,6 +142,37 @@ export function buildFlyingRig(
     jetSmokeSpeed: cfg.jetSmokeSpeed ?? DEFAULT_JET_SMOKE_SPEED,
     geometryKey: '',
   };
+}
+
+function addWingPanels(
+  group: THREE.Group,
+  unitRadius: number,
+  spec: {
+    spanFrac: number;
+    chordFrac: number;
+    offsetXFrac: number;
+    heightFrac: number;
+    thicknessFrac: number;
+    dihedralDeg: number;
+  },
+): void {
+  const sideSpan = Math.max(0.5, unitRadius * spec.spanFrac * 0.5);
+  const chord = Math.max(0.5, unitRadius * spec.chordFrac);
+  const thickness = Math.max(0.2, unitRadius * spec.thicknessFrac);
+  const offsetX = unitRadius * spec.offsetXFrac;
+  const height = unitRadius * spec.heightFrac;
+  const dihedralRad = spec.dihedralDeg * Math.PI / 180;
+
+  for (const side of [-1, 1] as const) {
+    const panelGroup = new THREE.Group();
+    panelGroup.position.set(offsetX, height, 0);
+    panelGroup.rotation.x = -side * dihedralRad;
+
+    const panel = new THREE.Mesh(side < 0 ? leftWingGeom : rightWingGeom, wingMat);
+    panel.scale.set(chord, thickness, sideSpan);
+    panelGroup.add(panel);
+    group.add(panelGroup);
+  }
 }
 
 export function updateFlyingRig(

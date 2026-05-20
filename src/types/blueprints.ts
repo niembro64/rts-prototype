@@ -271,11 +271,19 @@ export type FlyingConfig = {
   wingOffsetX: number;
   wingHeight: number;
   wingThickness?: number;
+  wingDihedralDeg?: number;
+  tailWingSpan?: number;
+  tailWingChord?: number;
+  tailWingOffsetX?: number;
+  tailWingHeight?: number;
+  tailWingThickness?: number;
+  tailWingDihedralDeg?: number;
   jetOffsetX: number;
   jetOffsetY: number;
   jetOffsetZ: number;
   jetRadius: number;
   jetLength: number;
+  jetCount?: 1 | 2;
   jetSmokeSpeed?: number;
 };
 
@@ -322,6 +330,7 @@ export type UnitBodyShapePart =
 export type UnitBodyShape =
   | { kind: 'polygon'; sides: number; radiusFrac: number; heightFrac: number; rotation: number }
   | { kind: 'rect'; lengthFrac: number; widthFrac: number; heightFrac: number }
+  | { kind: 'rhombus'; lengthFrac: number; widthFrac: number; heightFrac: number }
   | { kind: 'circle'; radiusFrac: number; yFrac?: number }
   | { kind: 'oval'; xFrac: number; yFrac: number; zFrac: number }
   | { kind: 'composite'; parts: UnitBodyShapePart[] };

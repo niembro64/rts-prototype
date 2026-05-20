@@ -161,6 +161,25 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
       isSmooth: false,
     };
   }
+  if (spec.kind === 'rhombus') {
+    const h = spec.heightFrac;
+    const shape = buildRhombusShape(1, 1);
+    const geom = new THREE.ExtrudeGeometry(shape, {
+      depth: h,
+      bevelEnabled: false,
+      steps: 1,
+    });
+    geom.rotateX(-Math.PI / 2);
+    return {
+      parts: [{
+        geometry: geom,
+        x: 0, y: 0, z: 0,
+        scaleX: spec.lengthFrac, scaleY: 1, scaleZ: spec.widthFrac,
+      }],
+      topY,
+      isSmooth: false,
+    };
+  }
   if (spec.kind === 'circle') {
     const part = buildCircleSpec(spec);
     return { parts: [part], topY, isSmooth: true };
@@ -268,6 +287,17 @@ function buildRectShape(width: number, length: number): THREE.Shape {
   ]);
 }
 
+function buildRhombusShape(width: number, length: number): THREE.Shape {
+  const hw = width / 2;
+  const hl = length / 2;
+  return new THREE.Shape([
+    new THREE.Vector2( hl, 0),
+    new THREE.Vector2(0,  hw),
+    new THREE.Vector2(-hl, 0),
+    new THREE.Vector2(0, -hw),
+  ]);
+}
+
 /** One 3D edge slab that represents a side of the unit's extruded body.
  *  Centered at (x, z) in unit-local coords, `length` along the edge
  *  direction, `thickness` along the normal, standing full body height.
@@ -325,6 +355,31 @@ export function getBodyEdgeTemplates(
     out.push({ x: -length / 2, z: 0, yaw: Math.PI / 2, length: width,  thickness, height });
     out.push({ x: 0, z:  width / 2, yaw: 0,            length: length, thickness, height });
     out.push({ x: 0, z: -width / 2, yaw: 0,            length: length, thickness, height });
+  } else if (spec.kind === 'rhombus') {
+    const length = unitRadius * spec.lengthFrac;
+    const width = unitRadius * spec.widthFrac;
+    const height = spec.heightFrac * unitRadius;
+    const thickness = Math.max(2, unitRadius * 0.08);
+    const verts = [
+      { x:  length / 2, z: 0 },
+      { x: 0, z: -width / 2 },
+      { x: -length / 2, z: 0 },
+      { x: 0, z:  width / 2 },
+    ];
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % verts.length];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      out.push({
+        x: (a.x + b.x) / 2,
+        z: (a.z + b.z) / 2,
+        yaw: Math.atan2(dz, dx),
+        length: Math.hypot(dx, dz),
+        thickness,
+        height,
+      });
+    }
   } else if (spec.kind === 'circle') {
     const height = 2 * circleYFrac(spec.radiusFrac, spec.yFrac) * unitRadius;
     pushCircleEdges(out, 0, 0, unitRadius * spec.radiusFrac, unitRadius, height);

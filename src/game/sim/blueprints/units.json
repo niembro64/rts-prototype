@@ -812,14 +812,15 @@
         "mount": {
           "x": 1.0,
           "y": 0,
-          "z": 0.1
+          "z": 0.36
         }
       }
     ],
     "bodyShape": {
-      "kind": "circle",
-      "radiusFrac": 0.6,
-      "yFrac": 0.6
+      "kind": "rhombus",
+      "lengthFrac": 2.15,
+      "widthFrac": 0.36,
+      "heightFrac": 0.3
     },
     "hud": {
       "barsOffsetAboveTop": 14
