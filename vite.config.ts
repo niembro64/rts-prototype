@@ -30,6 +30,7 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'shellConfig.ts' ||
     srcPath === 'uiLabels.ts' ||
     srcPath === 'game/sim/blueprints/unitRoster.ts' ||
+    srcPath === 'game/sim/blueprints/unitRoster.json' ||
     srcPath.startsWith('types/')
   );
 }
