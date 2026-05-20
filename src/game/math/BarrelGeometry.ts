@@ -14,7 +14,7 @@
 
 import type { BarrelShape } from '@/types/blueprints';
 import type { ActiveProjectileShot, ShotConfig, TurretConfig } from '../sim/types';
-import { isLineShot, isProjectileShot } from '../sim/types';
+import { isLineShot, isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { magnitude3 } from './MathHelpers';
 
 export const TURRET_BARREL_MIN_DIAMETER = 2;
@@ -180,8 +180,9 @@ export function getTurretBarrelDiameter(
 
   const shot = config.shot;
   const lineShotWidth = shot && isLineShot(shot) ? shot.width : undefined;
-  const projectileShotWidth =
-    shot && isProjectileShot(shot) ? shot.collision.radius * 2 : undefined;
+  const projectileShotWidth = shot && isProjectileShot(shot)
+    ? shot.collision.radius * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
+    : undefined;
   const diameter =
     barrel.barrelThickness
     ?? (barrel.type === 'simpleSingleBarrel' ? lineShotWidth : undefined)
