@@ -17,7 +17,6 @@ import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatAct
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
-import { getMirrorTargetScore } from './mirrorTargetPriority';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   resolveTargetAimPoint,
@@ -121,7 +120,6 @@ type TargetRankMode =
   | typeof TARGETING_RANK_MODE_ACQUISITION;
 
 const TARGETING_PREP_HAS_APPLY = 1;
-const TARGETING_PREP_HAS_PASSIVE_APPLY = 1 << 1;
 
 function ensurePerWeaponScratchCapacity(count: number): void {
   if (count <= _weaponDisabled.length) return;
@@ -388,8 +386,6 @@ function getTargetCandidateRadius(enemy: Entity): number {
 
 function fillTargetCandidateInputs(
   world: WorldState,
-  source: Entity,
-  includeMirrorScores: boolean,
   sourcePlayerId: PlayerId | undefined,
   candidates: Entity[],
 ): void {
@@ -405,9 +401,9 @@ function fillTargetCandidateInputs(
     _candidateIds[ci] = enemy.id;
     const observable = canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId);
     _candidateObservable[ci] = observable ? 1 : 0;
-    _candidateMirrorScore[ci] = 0;
     if (!observable) continue;
-    _candidateMirrorScore[ci] = includeMirrorScores ? getMirrorTargetScore(enemy, source.id) : 0;
+    // _candidateMirrorScore is filled inside the Rust candidate kernel
+    // from the slab's per-turret DPS; no TS-side fill needed.
     _candidateRadius[ci] = getTargetCandidateRadius(enemy);
     const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
     _candidatePosX[ci] = enemyPosition.x;
@@ -528,11 +524,10 @@ function chooseBestTargetCandidatesBatch(
   candidates: Entity[],
   rankMode: TargetRankMode,
   minimumRank: TargetPreferenceRank,
-  includeMirrorScores: boolean,
   forceMaterialSightObstructionActive: boolean,
 ): void {
   const sourcePlayerId = source.ownership?.playerId;
-  fillTargetCandidateInputs(world, source, includeMirrorScores, sourcePlayerId, candidates);
+  fillTargetCandidateInputs(world, sourcePlayerId, candidates);
   // Ballistic config + mirror-panel mask the Rust gate consumes. The
   // ballistic config arrays are static per turret; the mirror-panel
   // mask is the only piece that requires real geometry walks each
@@ -577,22 +572,6 @@ function chooseBestTargetCandidatesBatch(
     _fsmTargetIds,
     _fsmRanks,
   );
-}
-
-function fillPassiveFireSeedMirrorScores(
-  world: WorldState,
-  source: Entity,
-  weapons: Turret[],
-): void {
-  for (let wi = 0; wi < weapons.length; wi++) {
-    if (_fsmApplyMask[wi] === 0) continue;
-    const weapon = weapons[wi];
-    if (!weapon.config.passive || weapon.target === null) continue;
-    const currentTarget = world.getEntity(weapon.target);
-    _candidateSeedMirrorScores[wi] = currentTarget
-      ? getMirrorTargetScore(currentTarget, source.id)
-      : 0;
-  }
 }
 
 function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
@@ -952,6 +931,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     if (batchedEnemies) {
       const firePrepFlags = targeting.prepareFireChoiceFsmInputs(
         unitSlot,
+        unit.id,
         mirrorsEnabledFlag,
         forceFieldsEnabledFlag,
         _cachedFireRanks,
@@ -961,9 +941,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         _candidateSeedDistSqs,
         _candidateSeedMirrorScores,
       );
-      if ((firePrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0) {
-        fillPassiveFireSeedMirrorScores(world, unit, weapons);
-      }
       if ((firePrepFlags & TARGETING_PREP_HAS_APPLY) !== 0) {
         chooseBestTargetCandidatesBatch(
           world,
@@ -973,7 +950,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           batchedEnemies,
           TARGETING_RANK_MODE_FIRE,
           TARGET_RANK_FIRE_FALLBACK,
-          (firePrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0,
           forceMaterialSightObstructionActive,
         );
       }
@@ -1005,7 +981,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           batchedEnemies,
           TARGETING_RANK_MODE_ACQUISITION,
           TARGET_RANK_TRACKING_ONLY,
-          (acquisitionPrepFlags & TARGETING_PREP_HAS_PASSIVE_APPLY) !== 0,
           forceMaterialSightObstructionActive,
         );
       }

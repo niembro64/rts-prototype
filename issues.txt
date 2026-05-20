@@ -65,24 +65,24 @@ AIM-08.5 — Port the targeting FSM
    weaponRequiresForceMaterialSightClearance /
    _targetingBallisticAim / UNDER_ONLY_*) have been deleted under
   Delete The Old Path. Per-turret DPS is now stamped on the slab and
-  the priority-target / existing-lock kernels compute the passive
-  `isMirrorTarget` gate internally via a new
-  `combat_targeting_is_mirror_target_for_slot` helper; the
-  mirror_valid array no longer crosses the JS/Rust boundary for those
-  two passes, and the local TS `isMirrorTarget` helper has been
-  deleted. The candidate-batch kernel still receives the per-candidate
-  mirror_score from TS (its scoring math needs the actual DPS, not a
-  bool); same for the passive fire-choice seed. The mirror-panel
-  sightline walk is the only physics gate still in JS — TS precomputes
-  per-(turret, candidate) clearance as a flat row-major mask. Cloak
-  observability stays in TS for now (requires detector slab data not
-  yet on the targeting pool).
+  every passive-mirror computation runs through Rust helpers
+  (combat_targeting_is_mirror_target_for_slot for the boolean check;
+  combat_targeting_mirror_target_score_for_slot for the DPS-ranked
+  score). The priority-target / existing-lock kernels compute their
+  mirror_valid gate internally; combat_targeting_prepare_fire_choice_
+  fsm_inputs seeds passive fire-choice ranks with the target's mirror
+  DPS; and the candidate-batch kernel fills its per-candidate
+  mirror_score from the slab on entry. Every TS-side
+  getMirrorTargetScore / isMirrorTarget caller in targetingSystem.ts
+  is gone (the JS getMirrorTargetScore export survives only for the
+  damage path). The mirror-panel sightline walk is the only physics
+  gate still in JS — TS precomputes per-(turret, candidate)
+  clearance as a flat row-major mask. Cloak observability stays in
+  TS for now (requires detector slab data not yet on the targeting
+  pool).
   Remaining work for AIM-08.5:
     - Stamp cloak observability + mirror-panel clearance kernels onto
       the slab so TS no longer has to precompute either.
-    - Move the candidate-batch / passive-fire-choice mirror_score
-      computation into Rust so getMirrorTargetScore drops from
-      targetingSystem.ts entirely.
     - Collapse the per-armed-entity outer loop into a single
       rustTargetingTick(...) call.
 

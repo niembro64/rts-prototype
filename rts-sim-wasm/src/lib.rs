@@ -7126,27 +7126,28 @@ fn combat_targeting_entity_alive(pool: &CombatTargetingPool, entity_slot: usize)
         && (pool.entity_flags[entity_slot] & CT_ENTITY_FLAG_ALIVE) != 0
 }
 
-/// AIM-08.5 — Rust port of `isMirrorTarget` / `scoreMirrorTargetTurret`
-/// from `mirrorTargetPriority.ts`. Walks the target entity's turrets in
-/// the slab looking for a non-passive, non-visual, non-manual turret
-/// that is currently locked onto `our_entity_id` and dealing damage
-/// (non-zero stamped DPS). Returns true if such a turret exists —
-/// matches the JS-side passive-mirror validation that decides whether
-/// a mirror weapon should bother locking onto this enemy.
+/// AIM-08.5 — Rust port of `pickMirrorTargetTurret` /
+/// `scoreMirrorTargetTurret` from `mirrorTargetPriority.ts`. Walks the
+/// target entity's turrets in the slab and returns the maximum
+/// sustained DPS of any non-passive, non-visual, non-manual turret
+/// currently locked onto `our_entity_id` in a non-idle state. Returns
+/// 0 when no qualifying turret exists — matches the JS scorer's "any
+/// qualifying mirror target scores at its DPS; otherwise 0" rule.
 #[inline]
-fn combat_targeting_is_mirror_target_for_slot(
+fn combat_targeting_mirror_target_score_for_slot(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
     our_entity_id: i32,
-) -> bool {
+) -> f64 {
     if target_entity_slot >= pool.turret_count_per_entity.len() {
-        return false;
+        return 0.0;
     }
     let count = (pool.turret_count_per_entity[target_entity_slot] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
     let exclude_flags = CT_TURRET_CFG_PASSIVE
         | CT_TURRET_CFG_VISUAL_ONLY
         | CT_TURRET_CFG_IS_MANUAL_FIRE;
+    let mut best: f32 = 0.0;
     for ti in 0..count {
         let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
         let flags = pool.turret_config_flags[idx];
@@ -7159,11 +7160,24 @@ fn combat_targeting_is_mirror_target_for_slot(
         if pool.turret_state[idx] == CT_TURRET_STATE_IDLE {
             continue;
         }
-        if pool.turret_dps[idx] > 0.0 {
-            return true;
+        let dps = pool.turret_dps[idx];
+        if dps > best {
+            best = dps;
         }
     }
-    false
+    best as f64
+}
+
+/// AIM-08.5 — boolean wrapper over `mirror_target_score_for_slot`.
+/// Matches `isMirrorTarget` in `mirrorTargetPriority.ts`: true iff the
+/// target carries a damaging turret currently locked onto us.
+#[inline]
+fn combat_targeting_is_mirror_target_for_slot(
+    pool: &CombatTargetingPool,
+    target_entity_slot: usize,
+    our_entity_id: i32,
+) -> bool {
+    combat_targeting_mirror_target_score_for_slot(pool, target_entity_slot, our_entity_id) > 0.0
 }
 
 #[inline]
@@ -7431,6 +7445,7 @@ fn combat_targeting_choice_prep_result(current: u8, flags: u8) -> u8 {
 #[wasm_bindgen]
 pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
     entity_slot: u32,
+    source_entity_id: i32,
     mirrors_enabled: u8,
     force_fields_enabled: u8,
     cached_fire_ranks: &[u8],
@@ -7474,7 +7489,8 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
-        if pool.turret_target_id[idx] < 0 {
+        let target_id = pool.turret_target_id[idx];
+        if target_id < 0 {
             continue;
         }
 
@@ -7488,6 +7504,19 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         apply_mask[turret_idx] = 1;
         seed_ranks[turret_idx] = cached_rank;
         seed_dist_sqs[turret_idx] = cached_fire_dist_sqs[turret_idx];
+        // Passive turrets seed their fire-choice rank against the
+        // mirror DPS of their current target so candidate scoring can
+        // prefer higher-DPS lock-on opportunities. Non-passive turrets
+        // leave the score at the 0 cleared above.
+        if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
+            if let Some(&target_slot) = pool.entity_slot_by_id.get(&target_id) {
+                seed_mirror_scores[turret_idx] = combat_targeting_mirror_target_score_for_slot(
+                    pool,
+                    target_slot as usize,
+                    source_entity_id,
+                );
+            }
+        }
         result = combat_targeting_choice_prep_result(result, flags);
     }
 
@@ -9048,7 +9077,12 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
-    candidate_mirror_score: &[f64],
+    // Output: per-candidate mirror-target DPS, filled by the kernel
+    // from the slab using candidate_ids + source_entity_id. JS no
+    // longer needs to populate this — it passes the scratch buffer
+    // and reads nothing back. Tuned per-source not per-turret, so
+    // one walk per candidate covers every turret on this entity.
+    candidate_mirror_score: &mut [f64],
     source_entity_id: i32,
     mirrors_enabled: u8,
     force_fields_enabled: u8,
@@ -9108,6 +9142,43 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     // check inside the gate helper keeps disabled/manual-fire
     // turrets from running the LOS+ballistic+FF kernels for free.
     let _ = (mirrors_enabled, force_fields_enabled);
+
+    // Fill per-candidate mirror-target DPS from the slab. Only walks
+    // when at least one turret on this entity is passive — non-passive
+    // turrets ignore the score (zeroed via `clear` below). Avoids the
+    // walk entirely on units with no mirror turrets.
+    let mut any_passive = false;
+    for turret_idx in 0..turret_count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if (pool.turret_config_flags[idx] & CT_TURRET_CFG_PASSIVE) != 0 {
+            any_passive = true;
+            break;
+        }
+    }
+    if any_passive {
+        for ci in 0..clamped_candidate_count {
+            if candidate_observable[ci] == 0 {
+                candidate_mirror_score[ci] = 0.0;
+                continue;
+            }
+            let target_id = candidate_ids[ci];
+            candidate_mirror_score[ci] = match pool.entity_slot_by_id.get(&target_id) {
+                Some(&slot) => combat_targeting_mirror_target_score_for_slot(
+                    pool,
+                    slot as usize,
+                    source_entity_id,
+                ),
+                None => 0.0,
+            };
+        }
+    } else {
+        for ci in 0..clamped_candidate_count {
+            candidate_mirror_score[ci] = 0.0;
+        }
+    }
 
     for turret_idx in 0..turret_count {
         if apply_mask[turret_idx] == 0 {

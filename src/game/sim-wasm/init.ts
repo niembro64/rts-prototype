@@ -1035,6 +1035,7 @@ export interface CombatTargetingApi {
    *  least one passive turret needs mirror candidate scores. */
   readonly prepareFireChoiceFsmInputs: (
     entitySlot: number,
+    sourceEntityId: number,
     mirrorsEnabled: number,
     forceFieldsEnabled: number,
     cachedFireRanks: Uint8Array,
