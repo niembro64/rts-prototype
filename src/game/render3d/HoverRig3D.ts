@@ -23,16 +23,17 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
 const HOVER_FLOOR_MARGIN = 1;
 
 const FAN_RING_COLOR = 0x000000;
-const FAN_BLADE_COLOR = 0x9fb0b8;
+const FAN_BLADE_COLOR = 0xffffff;
 const FAN_HUB_COLOR = 0xffffff;
 const HOVER_SMOKE_COLOR = 0xcccccc;
 const FAN_SPIN_RAD_PER_SEC = 42;
 const FAN_SMOKE_SPEED = 60;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
+const FAN_BLADE_PITCH_DEG = 24;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
-const bladeGeom = new THREE.CylinderGeometry(1, 1, 1, 14);
+const bladeGeom = new THREE.BoxGeometry(1, 1, 1);
 const ringMat = new THREE.MeshBasicMaterial({ color: FAN_RING_COLOR });
 const bladeMat = new THREE.MeshBasicMaterial({ color: FAN_BLADE_COLOR });
 const hubMat = new THREE.MeshBasicMaterial({ color: FAN_HUB_COLOR });
@@ -114,12 +115,14 @@ export function buildHoverFans(
       const bladeRootRadius = hubRadius * 0.9;
       const bladeTipRadius = fanRadius * 0.82;
       const bladeLength = Math.max(0.2, bladeTipRadius - bladeRootRadius);
-      const bladeRadius = Math.max(0.12, ringTubeRadius * 0.42);
+      const bladeChord = Math.max(0.55, bladeLength * 0.42);
+      const bladeThickness = Math.max(0.14, ringTubeRadius * 0.32);
+      const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG);
       for (let i = 0; i < 4; i++) {
         const blade = new THREE.Mesh(bladeGeom, bladeMat);
+        blade.scale.set(bladeLength, bladeThickness, bladeChord);
         blade.position.x = bladeRootRadius + bladeLength * 0.5;
-        blade.rotation.z = Math.PI / 2;
-        blade.scale.set(bladeRadius, bladeLength, bladeRadius);
+        blade.rotation.x = bladePitchRad;
         const bladePivot = new THREE.Group();
         bladePivot.rotation.y = (i * Math.PI) / 2;
         bladePivot.add(blade);
