@@ -70,11 +70,12 @@ varying float vAlpha;
 varying float vAlong;
 varying vec4 vFlow;
 void main() {
-  // vFlow = (unused, repeats, phase, speed). Wave oscillates the beam's
-  // alpha between LOW_ALPHA and HIGH_ALPHA as it travels along the cylinder.
+  // vFlow = (unused, repeats, phase, speed). Beam alternates between
+  // LOW_ALPHA (off) and HIGH_ALPHA (on) sections as the pattern travels
+  // along the cylinder — each waveSpacing slice is half off, half on.
   float repeats = max(0.001, vFlow.y);
   float p = fract(vAlong * repeats - uTime * vFlow.w + vFlow.z);
-  float pulse = 0.5 - 0.5 * cos(p * 6.2831853);
+  float pulse = step(0.5, p);
   float alpha = mix(${glsl(LOW_ALPHA)}, ${glsl(HIGH_ALPHA)}, pulse) * vAlpha;
   gl_FragColor = vec4(${glslVec3(COLOR)}, alpha);
 }
