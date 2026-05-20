@@ -343,9 +343,9 @@
     "barrel": {
       "type": "coneMultiBarrel",
       "barrelCount": 3,
-      "barrelLength": 0.01,
+      "barrelLength": 0.7,
       "baseOrbit": 0,
-      "tipOrbit": 0.9,
+      "tipOrbit": 2,
       "spin": {
         "idle": 2,
         "max": 10,
@@ -822,7 +822,7 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "simpleSingleBarrel",
-      "barrelLength": 3,
+      "barrelLength": 2,
       "barrelThickness": 9
     },
     "isManualFire": false,

@@ -184,10 +184,11 @@ export function getTurretBarrelDiameter(
     ? shot.collision.radius * 2 * (isRocketLikeShot(shot) ? 1.5 : 1)
     : undefined;
   const diameter =
-    barrel.barrelThickness
-    ?? (barrel.type === 'simpleSingleBarrel' ? lineShotWidth : undefined)
-    ?? projectileShotWidth
-    ?? TURRET_BARREL_MIN_DIAMETER;
+    barrel.barrelThickness ??
+    (barrel.type === 'simpleSingleBarrel' ? lineShotWidth : undefined) ??
+    (barrel.type === 'coneMultiBarrel' ? lineShotWidth : undefined) ??
+    projectileShotWidth ??
+    TURRET_BARREL_MIN_DIAMETER;
   return Math.max(diameter, TURRET_BARREL_MIN_DIAMETER);
 }
 
