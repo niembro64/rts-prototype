@@ -4,7 +4,7 @@ import type {
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotShroud,
 } from '../../types/network';
-import { hasTerrainLineOfSight } from '../sim/combat/lineOfSight';
+import { hasTerrainLineOfSight } from '../sim/terrain/terrainLineOfSight';
 import { SHROUD_CELL_SIZE } from '../sim/WorldState';
 import { buildRecipientShroudView } from '../sim/shroudBitmap';
 import {

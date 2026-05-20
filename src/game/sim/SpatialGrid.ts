@@ -104,10 +104,14 @@ export class SpatialGrid {
       }
       this.entityBySlot[slot] = entity;
       this.ensureKindCapacity(slot);
+      this.api().setEntityId(slot, entity.id);
     } else {
       // Re-bind in case the Entity object identity changed across a
       // snapshot apply (defensive — should be stable today).
-      this.entityBySlot[slot] = entity;
+      if (this.entityBySlot[slot] !== entity) {
+        this.entityBySlot[slot] = entity;
+        this.api().setEntityId(slot, entity.id);
+      }
     }
     return slot;
   }

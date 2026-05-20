@@ -48,10 +48,12 @@ import __wbg_init, {
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_has_line_of_sight,
+  combat_has_line_of_sight,
   spatial_init,
   spatial_clear,
   spatial_alloc_slot,
   spatial_free_slot,
+  spatial_set_entity_id,
   spatial_set_unit,
   spatial_set_projectile,
   spatial_set_building,
@@ -528,12 +530,24 @@ export interface SimWasm {
    *    1 = segment clears terrain end to end
    *    2 = no mesh installed → caller falls back to TS path
    *  Same step-walk algorithm as hasTerrainLineOfSight in
-   *  lineOfSight.ts. Replaces N JS↔WASM groundZ samples with a
+   *  terrainLineOfSight.ts. Replaces N JS↔WASM groundZ samples with a
    *  single WASM call (saves boundary cost on long LOS rays). */
   readonly terrainHasLineOfSight: (
     sx: number, sy: number, sz: number,
     tx: number, ty: number, tz: number,
     stepLen: number,
+  ) => number;
+  /** AIM-08.LOS — one-kernel combat sightline gate. Returns 1 when
+   *  terrain plus live unit/building blockers all clear, 0 when any
+   *  blocker intersects. Source/target entity ids are excluded so
+   *  the ray may start/end inside their colliders. */
+  readonly combatHasLineOfSight: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    sourceEntityId: number,
+    targetEntityId: number,
   ) => number;
   /** Phase 7 — SpatialGrid 3D voxel hash in WASM linear memory.
    *  Big-bang replacement for SpatialGrid.ts. Same public API on
@@ -602,6 +616,9 @@ export interface SpatialApi {
   allocSlot: () => number;
   /** Return a slot to the free list. Unsets bucket membership. */
   freeSlot: (slot: number) => void;
+  /** Store the stable JS entity id for source/target exclusion in
+   *  Rust-side blocker kernels that only see spatial slots. */
+  setEntityId: (slot: number, entityId: number) => void;
   /** Insert or update a unit at slot. owner_player=0 means "no owner".
    *  hp_alive=0 unsets the slot from the grid (matches updateUnit's
    *  dead-unit fast path). radius_push is currently unused by queries
@@ -1831,6 +1848,7 @@ export function initSimWasm(): Promise<SimWasm> {
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainHasLineOfSight: terrain_has_line_of_sight,
+        combatHasLineOfSight: combat_has_line_of_sight,
         memory,
         pathfinder: {
           init: pathfinder_init,
@@ -2041,6 +2059,7 @@ export function initSimWasm(): Promise<SimWasm> {
           clear: spatial_clear,
           allocSlot: spatial_alloc_slot,
           freeSlot: spatial_free_slot,
+          setEntityId: spatial_set_entity_id,
           setUnit: spatial_set_unit,
           setProjectile: spatial_set_projectile,
           setBuilding: spatial_set_building,

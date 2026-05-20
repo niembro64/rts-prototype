@@ -2332,7 +2332,7 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
 ///   0 = ground blocks the ray (one sample's height > ray height)
 ///   1 = segment clears terrain end to end
 ///   2 = no mesh installed → caller should fall back to TS path
-/// Mirrors hasTerrainLineOfSight in lineOfSight.ts. Caller passes
+/// Mirrors hasTerrainLineOfSight in terrainLineOfSight.ts. Caller passes
 /// the JS-side step_len (LAND_CELL_SIZE * 0.5 today — kept JS-side
 /// so we don't duplicate the LAND_CELL_SIZE constant across the
 /// boundary).
@@ -2497,6 +2497,7 @@ struct SpatialGridState {
 
     // Per-slot SoA. slot_kind == SPATIAL_KIND_UNSET means free.
     slot_kind: Vec<u8>,
+    slot_entity_id: Vec<i32>,
     slot_owner_player: Vec<u8>,
     slot_x: Vec<f64>,
     slot_y: Vec<f64>,
@@ -2534,6 +2535,7 @@ impl SpatialGridState {
             cells: HashMap::new(),
             cell_pool: Vec::new(),
             slot_kind: Vec::new(),
+            slot_entity_id: Vec::new(),
             slot_owner_player: Vec::new(),
             slot_x: Vec::new(),
             slot_y: Vec::new(),
@@ -2759,6 +2761,8 @@ pub fn spatial_init(cell_size: f64, initial_slot_capacity: u32) {
     let cap = initial_slot_capacity as usize;
     state.slot_kind.clear();
     state.slot_kind.resize(cap, SPATIAL_KIND_UNSET);
+    state.slot_entity_id.clear();
+    state.slot_entity_id.resize(cap, -1);
     state.slot_owner_player.clear();
     state.slot_owner_player.resize(cap, 0);
     state.slot_x.clear();
@@ -2798,6 +2802,9 @@ pub fn spatial_clear() {
     for k in state.slot_kind.iter_mut() {
         *k = SPATIAL_KIND_UNSET;
     }
+    for id in state.slot_entity_id.iter_mut() {
+        *id = -1;
+    }
     for c in state.building_cells.iter_mut() {
         c.clear();
     }
@@ -2814,6 +2821,7 @@ fn spatial_ensure_slot_capacity(state: &mut SpatialGridState, slot: u32) {
         return;
     }
     state.slot_kind.resize(needed, SPATIAL_KIND_UNSET);
+    state.slot_entity_id.resize(needed, -1);
     state.slot_owner_player.resize(needed, 0);
     state.slot_x.resize(needed, 0.0);
     state.slot_y.resize(needed, 0.0);
@@ -2842,6 +2850,14 @@ pub fn spatial_alloc_slot() -> u32 {
     state.next_slot = state.next_slot.wrapping_add(1);
     spatial_ensure_slot_capacity(state, slot);
     slot
+}
+
+#[wasm_bindgen]
+pub fn spatial_set_entity_id(slot: u32, entity_id: i32) {
+    let state = spatial_grid();
+    let s = slot as usize;
+    spatial_ensure_slot_capacity(state, slot);
+    state.slot_entity_id[s] = entity_id;
 }
 
 #[wasm_bindgen]
@@ -3020,6 +3036,7 @@ pub fn spatial_unset_slot(slot: u32) {
         _ => {}
     }
     state.slot_kind[s] = SPATIAL_KIND_UNSET;
+    state.slot_entity_id[s] = -1;
     state.slot_hp_alive[s] = 0;
     state.slot_entity_active[s] = 0;
     state.slot_cube_key[s] = 0;
@@ -3784,6 +3801,239 @@ pub fn spatial_query_entities_along_line(
     state.nearby_cells = nearby;
     state.dedup = dedup;
     (2 + n_units + n_buildings) as u32
+}
+
+#[inline]
+fn spatial_slot_is_los_excluded(
+    state: &SpatialGridState,
+    slot: u32,
+    source_entity_id: i32,
+    target_entity_id: i32,
+) -> bool {
+    let s = slot as usize;
+    if s >= state.slot_entity_id.len() {
+        return false;
+    }
+    let entity_id = state.slot_entity_id[s];
+    entity_id >= 0 && (entity_id == source_entity_id || entity_id == target_entity_id)
+}
+
+#[inline]
+fn segment_intersects_sphere(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+    cx: f64, cy: f64, cz: f64,
+    radius: f64,
+) -> bool {
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let fx = sx - cx;
+    let fy = sy - cy;
+    let fz = sz - cz;
+    let a = dx * dx + dy * dy + dz * dz;
+    if a == 0.0 {
+        return false;
+    }
+    let b = 2.0 * (fx * dx + fy * dy + fz * dz);
+    let c = fx * fx + fy * fy + fz * fz - radius * radius;
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return false;
+    }
+    let sqrt_disc = disc.sqrt();
+    let inv_denom = 1.0 / (2.0 * a);
+    let t1 = (-b - sqrt_disc) * inv_denom;
+    let t2 = (-b + sqrt_disc) * inv_denom;
+    (t1 >= 0.0 && t1 <= 1.0) || (t2 >= 0.0 && t2 <= 1.0)
+}
+
+#[inline]
+fn segment_intersects_aabb(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+    min_x: f64, min_y: f64, min_z: f64,
+    max_x: f64, max_y: f64, max_z: f64,
+) -> bool {
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let mut tmin = 0.0;
+    let mut tmax = 1.0;
+
+    if dx.abs() > 1e-9 {
+        let mut t1 = (min_x - sx) / dx;
+        let mut t2 = (max_x - sx) / dx;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sx < min_x || sx > max_x {
+        return false;
+    }
+    if tmin > tmax {
+        return false;
+    }
+
+    if dy.abs() > 1e-9 {
+        let mut t1 = (min_y - sy) / dy;
+        let mut t2 = (max_y - sy) / dy;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sy < min_y || sy > max_y {
+        return false;
+    }
+    if tmin > tmax {
+        return false;
+    }
+
+    if dz.abs() > 1e-9 {
+        let mut t1 = (min_z - sz) / dz;
+        let mut t2 = (max_z - sz) / dz;
+        if t1 > t2 {
+            std::mem::swap(&mut t1, &mut t2);
+        }
+        if t1 > tmin {
+            tmin = t1;
+        }
+        if t2 < tmax {
+            tmax = t2;
+        }
+    } else if sz < min_z || sz > max_z {
+        return false;
+    }
+    if tmin > tmax {
+        return false;
+    }
+
+    tmax >= 0.0
+}
+
+fn spatial_has_entity_line_of_sight(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+    line_width: f64,
+    source_entity_id: i32,
+    target_entity_id: i32,
+) -> bool {
+    let state = spatial_grid();
+    if !spatial_collect_cells_along_line(state, sx, sy, sz, tx, ty, tz, line_width) {
+        return true;
+    }
+
+    state.dedup.clear();
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut dedup = std::mem::take(&mut state.dedup);
+
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.units {
+                let s = slot as usize;
+                if !dedup.insert(slot) {
+                    continue;
+                }
+                if s >= state.slot_kind.len()
+                    || state.slot_kind[s] != SPATIAL_KIND_UNIT
+                    || state.slot_hp_alive[s] == 0
+                    || spatial_slot_is_los_excluded(state, slot, source_entity_id, target_entity_id)
+                {
+                    continue;
+                }
+                if segment_intersects_sphere(
+                    sx, sy, sz,
+                    tx, ty, tz,
+                    state.slot_x[s], state.slot_y[s], state.slot_z[s],
+                    state.slot_radius_push[s],
+                ) {
+                    state.nearby_cells = nearby;
+                    state.dedup = dedup;
+                    return false;
+                }
+            }
+        }
+    }
+
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.buildings {
+                let s = slot as usize;
+                if !dedup.insert(slot) {
+                    continue;
+                }
+                if s >= state.slot_kind.len()
+                    || state.slot_kind[s] != SPATIAL_KIND_BUILDING
+                    || state.slot_hp_alive[s] == 0
+                    || spatial_slot_is_los_excluded(state, slot, source_entity_id, target_entity_id)
+                {
+                    continue;
+                }
+                let hx = state.slot_aabb_hx[s];
+                let hy = state.slot_aabb_hy[s];
+                let hz = state.slot_aabb_hz[s];
+                if segment_intersects_aabb(
+                    sx, sy, sz,
+                    tx, ty, tz,
+                    state.slot_x[s] - hx,
+                    state.slot_y[s] - hy,
+                    state.slot_z[s] - hz,
+                    state.slot_x[s] + hx,
+                    state.slot_y[s] + hy,
+                    state.slot_z[s] + hz,
+                ) {
+                    state.nearby_cells = nearby;
+                    state.dedup = dedup;
+                    return false;
+                }
+            }
+        }
+    }
+
+    state.nearby_cells = nearby;
+    state.dedup = dedup;
+    true
+}
+
+/// AIM-08.LOS — full combat line-of-sight gate. One WASM dispatch
+/// checks terrain first, then live unit/building blockers from the
+/// spatial slab. Returns 1 when clear and 0 when any terrain sample,
+/// unit push sphere, or building AABB blocks the segment. A missing
+/// terrain mesh is treated as terrain-clear; normal server/client
+/// boot installs the mesh before combat ticks, and this keeps the
+/// kernel usable in low-level tests that only populate blockers.
+#[wasm_bindgen]
+pub fn combat_has_line_of_sight(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    source_entity_id: i32,
+    target_entity_id: i32,
+) -> u32 {
+    if terrain_has_line_of_sight(sx, sy, sz, tx, ty, tz, terrain_step_len) == 0 {
+        return 0;
+    }
+    if !spatial_has_entity_line_of_sight(
+        sx, sy, sz,
+        tx, ty, tz,
+        entity_line_width,
+        source_entity_id,
+        target_entity_id,
+    ) {
+        return 0;
+    }
+    1
 }
 
 #[wasm_bindgen]
