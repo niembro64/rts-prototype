@@ -636,7 +636,7 @@ export class Render3DEntities {
         chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
         graphicsTier: unitGraphicsTier,
         barrelSpinEnabled: unitGfx.barrelSpin,
-        spinAngle: this.barrelSpinState.angleFor(e.id),
+        spinAngleFor: (turretIdx) => this.barrelSpinState.angleFor(e.id, turretIdx),
         currentDtMs: this._currentDtMs,
         unitDetailInstances: this.unitDetailInstances,
         turretMountCache: this.turretMountCache,

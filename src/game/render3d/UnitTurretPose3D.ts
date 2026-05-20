@@ -21,7 +21,10 @@ export type UnitTurretPose3DUpdate = {
   chassisTiltInverse?: THREE.Quaternion;
   graphicsTier: ConcreteGraphicsQuality;
   barrelSpinEnabled: boolean;
-  spinAngle?: number;
+  /** Per-turret spin angle lookup — multi-barrel turrets on the same
+   *  unit each track their own spin, so this is keyed by the per-unit
+   *  turretIndex. Returns undefined for non-spinning turrets. */
+  spinAngleFor: (turretIdx: number) => number | undefined;
   currentDtMs: number;
   unitDetailInstances: UnitDetailInstanceRenderer3D;
   turretMountCache: TurretMountCache3D;
@@ -48,7 +51,7 @@ export class UnitTurretPose3D {
       chassisTiltInverse,
       graphicsTier,
       barrelSpinEnabled,
-      spinAngle,
+      spinAngleFor,
       currentDtMs,
       unitDetailInstances,
       turretMountCache,
@@ -99,7 +102,7 @@ export class UnitTurretPose3D {
       );
       if (turretMesh.spinGroup) {
         turretMesh.spinGroup.rotation.x = barrelSpinEnabled
-          ? spinAngle ?? 0
+          ? spinAngleFor(turretIdx) ?? 0
           : 0;
       }
 

@@ -1,4 +1,3 @@
-import type { SpinConfig } from '../../config';
 import type { Entity, EntityId } from '../sim/types';
 
 type BarrelSpinState = {
@@ -13,7 +12,10 @@ export type BarrelSpinFrameState = {
 };
 
 export class UnitBarrelSpinState3D {
-  private readonly spins = new Map<EntityId, BarrelSpinState>();
+  // Per-turret spin state: each multi-barrel turret on a unit keeps
+  // its own angle + speed so one engaged turret doesn't spin up its
+  // neighbors. Outer key = entity id, inner key = turretIndex.
+  private readonly spins = new Map<EntityId, Map<number, BarrelSpinState>>();
   private lastSpinMs = performance.now();
 
   beginFrame(): BarrelSpinFrameState {
@@ -30,37 +32,42 @@ export class UnitBarrelSpinState3D {
   advance(entity: Entity, dtSec: number): void {
     const turrets = entity.combat?.turrets;
     if (!turrets) return;
-    let spinConfig: SpinConfig | undefined;
-    for (const turret of turrets) {
+
+    for (let turretIdx = 0; turretIdx < turrets.length; turretIdx++) {
+      const turret = turrets[turretIdx];
       if (turret.config.visualOnly) continue;
       const barrel = turret.config.barrel;
       if (
-        barrel &&
-        (barrel.type === 'simpleMultiBarrel' || barrel.type === 'coneMultiBarrel')
+        !barrel ||
+        (barrel.type !== 'simpleMultiBarrel' && barrel.type !== 'coneMultiBarrel')
       ) {
-        spinConfig = barrel.spin;
-        break;
+        continue;
       }
-    }
-    if (!spinConfig) return;
+      const spinConfig = barrel.spin;
 
-    let state = this.spins.get(entity.id);
-    if (!state) {
-      state = { angle: 0, speed: spinConfig.idle };
-      this.spins.set(entity.id, state);
-    }
+      let perEntity = this.spins.get(entity.id);
+      if (!perEntity) {
+        perEntity = new Map();
+        this.spins.set(entity.id, perEntity);
+      }
+      let state = perEntity.get(turretIdx);
+      if (!state) {
+        state = { angle: 0, speed: spinConfig.idle };
+        perEntity.set(turretIdx, state);
+      }
 
-    const firing = turrets.some((turret) => !turret.config.visualOnly && turret.state === 'engaged');
-    if (firing) {
-      state.speed = Math.min(state.speed + spinConfig.accel * dtSec, spinConfig.max);
-    } else {
-      state.speed = Math.max(state.speed - spinConfig.decel * dtSec, spinConfig.idle);
+      const firing = turret.state === 'engaged';
+      if (firing) {
+        state.speed = Math.min(state.speed + spinConfig.accel * dtSec, spinConfig.max);
+      } else {
+        state.speed = Math.max(state.speed - spinConfig.decel * dtSec, spinConfig.idle);
+      }
+      state.angle = (state.angle + state.speed * dtSec) % (Math.PI * 2);
     }
-    state.angle = (state.angle + state.speed * dtSec) % (Math.PI * 2);
   }
 
-  angleFor(entityId: EntityId): number | undefined {
-    return this.spins.get(entityId)?.angle;
+  angleFor(entityId: EntityId, turretIdx: number): number | undefined {
+    return this.spins.get(entityId)?.get(turretIdx)?.angle;
   }
 
   delete(entityId: EntityId): void {
