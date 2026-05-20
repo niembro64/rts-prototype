@@ -180,11 +180,11 @@ import __wbg_init, {
   combat_targeting_choose_best_candidate,
   combat_targeting_clear_turret_lock,
   combat_targeting_clear_entity_locks,
-  combat_targeting_apply_priority_point_fsm,
-  combat_targeting_apply_priority_target_fsm,
-  combat_targeting_validate_existing_lock_fsm,
-  combat_targeting_apply_fire_choice_fsm,
-  combat_targeting_apply_acquisition_choice_fsm,
+  combat_targeting_apply_priority_point_fsm_batch,
+  combat_targeting_apply_priority_target_fsm_batch,
+  combat_targeting_validate_existing_lock_fsm_batch,
+  combat_targeting_apply_fire_choice_fsm_batch,
+  combat_targeting_apply_acquisition_choice_fsm_batch,
   force_field_pool_clear,
   force_field_pool_count,
   force_field_pool_set_count,
@@ -1075,47 +1075,44 @@ export interface CombatTargetingApi {
    *  calls mutate the combat-targeting slab's target/state/LOS tuple. */
   readonly clearTurretLock: (entitySlot: number, turretIdx: number) => void;
   readonly clearEntityLocks: (entitySlot: number) => void;
-  readonly applyPriorityPointFsm: (
+  readonly applyPriorityPointFsmBatch: (
     entitySlot: number,
-    turretIdx: number,
-    distSq: number,
-    losClear: number,
-    ballisticClear: number,
-    forceFieldClear: number,
+    targetX: number,
+    targetY: number,
+    targetZ: number,
+    applyMask: Uint8Array,
+    losClear: Uint8Array,
+    ballisticClear: Uint8Array,
+    forceFieldClear: Uint8Array,
   ) => void;
-  readonly applyPriorityTargetFsm: (
+  readonly applyPriorityTargetFsmBatch: (
     entitySlot: number,
-    turretIdx: number,
     targetId: number,
-    targetRadius: number,
-    distSq: number,
-    targetValid: number,
-    mirrorValid: number,
-    losClear: number,
-    ballisticClear: number,
-    forceFieldClear: number,
+    applyMask: Uint8Array,
+    mirrorValid: Uint8Array,
+    losClear: Uint8Array,
+    ballisticClear: Uint8Array,
+    forceFieldClear: Uint8Array,
   ) => void;
-  readonly validateExistingLockFsm: (
+  readonly validateExistingLockFsmBatch: (
     entitySlot: number,
-    turretIdx: number,
-    targetRadius: number,
-    distSq: number,
-    targetValid: number,
-    mirrorValid: number,
-    ballisticClear: number,
-    losBlocked: number,
+    applyMask: Uint8Array,
+    targetObservable: Uint8Array,
+    mirrorValid: Uint8Array,
+    ballisticClear: Uint8Array,
+    losBlocked: Uint8Array,
     losDropGraceTicks: number,
   ) => void;
-  readonly applyFireChoiceFsm: (
+  readonly applyFireChoiceFsmBatch: (
     entitySlot: number,
-    turretIdx: number,
-    targetId: number,
+    applyMask: Uint8Array,
+    targetIds: Int32Array,
   ) => void;
-  readonly applyAcquisitionChoiceFsm: (
+  readonly applyAcquisitionChoiceFsmBatch: (
     entitySlot: number,
-    turretIdx: number,
-    targetId: number,
-    rank: number,
+    applyMask: Uint8Array,
+    targetIds: Int32Array,
+    ranks: Uint8Array,
   ) => void;
 }
 
@@ -2130,11 +2127,11 @@ export function initSimWasm(): Promise<SimWasm> {
           chooseBestCandidate: combat_targeting_choose_best_candidate,
           clearTurretLock: combat_targeting_clear_turret_lock,
           clearEntityLocks: combat_targeting_clear_entity_locks,
-          applyPriorityPointFsm: combat_targeting_apply_priority_point_fsm,
-          applyPriorityTargetFsm: combat_targeting_apply_priority_target_fsm,
-          validateExistingLockFsm: combat_targeting_validate_existing_lock_fsm,
-          applyFireChoiceFsm: combat_targeting_apply_fire_choice_fsm,
-          applyAcquisitionChoiceFsm: combat_targeting_apply_acquisition_choice_fsm,
+          applyPriorityPointFsmBatch: combat_targeting_apply_priority_point_fsm_batch,
+          applyPriorityTargetFsmBatch: combat_targeting_apply_priority_target_fsm_batch,
+          validateExistingLockFsmBatch: combat_targeting_validate_existing_lock_fsm_batch,
+          applyFireChoiceFsmBatch: combat_targeting_apply_fire_choice_fsm_batch,
+          applyAcquisitionChoiceFsmBatch: combat_targeting_apply_acquisition_choice_fsm_batch,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,

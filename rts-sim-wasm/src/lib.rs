@@ -7035,6 +7035,12 @@ fn combat_targeting_set_target_state(
 }
 
 #[inline]
+fn combat_targeting_entity_alive(pool: &CombatTargetingPool, entity_slot: usize) -> bool {
+    entity_slot < pool.entity_flags.len()
+        && (pool.entity_flags[entity_slot] & CT_ENTITY_FLAG_ALIVE) != 0
+}
+
+#[inline]
 fn combat_targeting_range_with_radius_sq(range_sq: f64, target_radius: f64) -> f64 {
     if target_radius <= 0.0 {
         return range_sq;
@@ -7128,6 +7134,18 @@ fn combat_targeting_entity_slot_for_id(
 }
 
 #[inline]
+fn combat_targeting_dist_sq_to_entity_slot(
+    pool: &CombatTargetingPool,
+    turret_idx: usize,
+    entity_slot: usize,
+) -> f64 {
+    let dx = pool.turret_mount_x[turret_idx] - pool.entity_pos_x[entity_slot];
+    let dy = pool.turret_mount_y[turret_idx] - pool.entity_pos_y[entity_slot];
+    let dz = pool.turret_mount_z[turret_idx] - pool.entity_pos_z[entity_slot];
+    dx * dx + dy * dy + dz * dz
+}
+
+#[inline]
 fn combat_targeting_current_fire_target_rank_sq(
     pool: &CombatTargetingPool,
     turret_idx: usize,
@@ -7136,10 +7154,7 @@ fn combat_targeting_current_fire_target_rank_sq(
     let Some(target_slot) = combat_targeting_entity_slot_for_id(pool, target_id) else {
         return (CT_TARGET_RANK_NONE, f64::INFINITY);
     };
-    let dx = pool.turret_mount_x[turret_idx] - pool.entity_pos_x[target_slot];
-    let dy = pool.turret_mount_y[turret_idx] - pool.entity_pos_y[target_slot];
-    let dz = pool.turret_mount_z[turret_idx] - pool.entity_pos_z[target_slot];
-    let dist_sq = dx * dx + dy * dy + dz * dz;
+    let dist_sq = combat_targeting_dist_sq_to_entity_slot(pool, turret_idx, target_slot);
     let rank = combat_targeting_fire_rank_from_pool_sq(
         pool,
         turret_idx,
@@ -7288,22 +7303,15 @@ pub fn combat_targeting_clear_entity_locks(entity_slot: u32) {
     }
 }
 
-/// AIM-08.5 — attack-ground priority transition. The expensive point
-/// gates are still supplied by JS; Rust owns the lock/state hysteresis
-/// write into the slab.
-#[wasm_bindgen]
-pub fn combat_targeting_apply_priority_point_fsm(
-    entity_slot: u32,
-    turret_idx: u32,
+#[inline]
+fn combat_targeting_apply_priority_point_fsm_idx(
+    pool: &mut CombatTargetingPool,
+    idx: usize,
     dist_sq: f64,
     los_clear: u8,
     ballistic_clear: u8,
     force_field_clear: u8,
 ) {
-    let pool = combat_targeting_pool();
-    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
-        return;
-    };
     let old_state = pool.turret_state[idx];
     let next_state = if los_clear == 0 {
         CT_TURRET_STATE_IDLE
@@ -7325,13 +7333,55 @@ pub fn combat_targeting_apply_priority_point_fsm(
     combat_targeting_set_target_state(pool, idx, -1, next_state);
 }
 
-/// AIM-08.5 — attack-entity priority transition. JS supplies target
-/// validity and the still-object-owned gates; Rust applies the same
-/// target/range hysteresis as the old TypeScript FSM.
+/// AIM-08.5 — batch attack-ground priority transitions for one entity.
+/// JS supplies the still-object-owned gates as parallel per-turret
+/// masks; Rust reads the current mount positions from the slab and
+/// applies all target/state transitions in one boundary call.
 #[wasm_bindgen]
-pub fn combat_targeting_apply_priority_target_fsm(
+pub fn combat_targeting_apply_priority_point_fsm_batch(
     entity_slot: u32,
-    turret_idx: u32,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    apply_mask: &[u8],
+    los_clear: &[u8],
+    ballistic_clear: &[u8],
+    force_field_clear: &[u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(los_clear.len())
+        .min(ballistic_clear.len())
+        .min(force_field_clear.len());
+    for turret_idx in 0..count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let dx = pool.turret_mount_x[idx] - target_x;
+        let dy = pool.turret_mount_y[idx] - target_y;
+        let dz = pool.turret_mount_z[idx] - target_z;
+        combat_targeting_apply_priority_point_fsm_idx(
+            pool,
+            idx,
+            dx * dx + dy * dy + dz * dz,
+            los_clear[turret_idx],
+            ballistic_clear[turret_idx],
+            force_field_clear[turret_idx],
+        );
+    }
+}
+
+#[inline]
+fn combat_targeting_apply_priority_target_fsm_idx(
+    pool: &mut CombatTargetingPool,
+    idx: usize,
     target_id: i32,
     target_radius: f64,
     dist_sq: f64,
@@ -7341,10 +7391,6 @@ pub fn combat_targeting_apply_priority_target_fsm(
     ballistic_clear: u8,
     force_field_clear: u8,
 ) {
-    let pool = combat_targeting_pool();
-    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
-        return;
-    };
     if target_id < 0
         || target_valid == 0
         || mirror_valid == 0
@@ -7373,13 +7419,71 @@ pub fn combat_targeting_apply_priority_target_fsm(
     combat_targeting_set_target_state(pool, idx, target_id, next_state);
 }
 
-/// AIM-08.5 — existing-lock validation transition. JS supplies target
-/// liveness/visibility and expensive fire gates; Rust owns LOS grace,
-/// release hysteresis, demotion, promotion, and target clearing.
+/// AIM-08.5 — batch attack-entity priority transitions for one entity.
+/// Rust resolves the target slot/radius and per-turret distances from
+/// the slab; JS supplies visibility/mirror/LOS/ballistic/field gates.
 #[wasm_bindgen]
-pub fn combat_targeting_validate_existing_lock_fsm(
+pub fn combat_targeting_apply_priority_target_fsm_batch(
     entity_slot: u32,
-    turret_idx: u32,
+    target_id: i32,
+    apply_mask: &[u8],
+    mirror_valid: &[u8],
+    los_clear: &[u8],
+    ballistic_clear: &[u8],
+    force_field_clear: &[u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
+    let target_valid = if let Some(slot) = target_slot {
+        if combat_targeting_entity_alive(pool, slot) {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+    let target_radius = target_slot
+        .map(|slot| pool.entity_radius_shot[slot])
+        .unwrap_or(0.0);
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(mirror_valid.len())
+        .min(los_clear.len())
+        .min(ballistic_clear.len())
+        .min(force_field_clear.len());
+    for turret_idx in 0..count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let dist_sq = target_slot
+            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
+            .unwrap_or(f64::INFINITY);
+        combat_targeting_apply_priority_target_fsm_idx(
+            pool,
+            idx,
+            target_id,
+            target_radius,
+            dist_sq,
+            target_valid,
+            mirror_valid[turret_idx],
+            los_clear[turret_idx],
+            ballistic_clear[turret_idx],
+            force_field_clear[turret_idx],
+        );
+    }
+}
+
+#[inline]
+fn combat_targeting_validate_existing_lock_fsm_idx(
+    pool: &mut CombatTargetingPool,
+    idx: usize,
     target_radius: f64,
     dist_sq: f64,
     target_valid: u8,
@@ -7388,10 +7492,6 @@ pub fn combat_targeting_validate_existing_lock_fsm(
     los_blocked: u8,
     los_drop_grace_ticks: u16,
 ) {
-    let pool = combat_targeting_pool();
-    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
-        return;
-    };
     if target_valid == 0 || mirror_valid == 0 || ballistic_clear == 0 {
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         return;
@@ -7426,44 +7526,129 @@ pub fn combat_targeting_validate_existing_lock_fsm(
     }
 }
 
-/// AIM-08.5 — apply a fire-band candidate switch found by the Rust
-/// candidate scoring kernel plus JS-owned gates.
+/// AIM-08.5 — batch existing-lock validation for one entity. Rust
+/// reads target ids, target liveness, target radii, and per-turret
+/// distance from the slab; JS only supplies gates that still depend on
+/// object-owned systems during migration.
 #[wasm_bindgen]
-pub fn combat_targeting_apply_fire_choice_fsm(entity_slot: u32, turret_idx: u32, target_id: i32) {
-    if target_id < 0 {
-        return;
-    }
-    let pool = combat_targeting_pool();
-    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
-        return;
-    };
-    combat_targeting_set_target_state(pool, idx, target_id, CT_TURRET_STATE_ENGAGED);
-}
-
-/// AIM-08.5 — apply an acquisition candidate result. A missing result
-/// leaves the turret idle with no lock; fire-band candidates promote
-/// directly to engaged, tracking-only candidates hold a tracking lock.
-#[wasm_bindgen]
-pub fn combat_targeting_apply_acquisition_choice_fsm(
+pub fn combat_targeting_validate_existing_lock_fsm_batch(
     entity_slot: u32,
-    turret_idx: u32,
-    target_id: i32,
-    rank: u8,
+    apply_mask: &[u8],
+    target_observable: &[u8],
+    mirror_valid: &[u8],
+    ballistic_clear: &[u8],
+    los_blocked: &[u8],
+    los_drop_grace_ticks: u16,
 ) {
     let pool = combat_targeting_pool();
-    let Some(idx) = combat_targeting_live_turret_idx(pool, entity_slot, turret_idx) else {
-        return;
-    };
-    if target_id < 0 {
-        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
         return;
     }
-    let state = if rank >= CT_TARGET_RANK_FIRE_FALLBACK {
-        CT_TURRET_STATE_ENGAGED
-    } else {
-        CT_TURRET_STATE_TRACKING
-    };
-    combat_targeting_set_target_state(pool, idx, target_id, state);
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(target_observable.len())
+        .min(mirror_valid.len())
+        .min(ballistic_clear.len())
+        .min(los_blocked.len());
+    for turret_idx in 0..count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let target_slot = combat_targeting_entity_slot_for_id(pool, pool.turret_target_id[idx]);
+        let target_valid = if target_observable[turret_idx] != 0 {
+            target_slot
+                .map(|slot| combat_targeting_entity_alive(pool, slot) as u8)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        let target_radius = target_slot
+            .map(|slot| pool.entity_radius_shot[slot])
+            .unwrap_or(0.0);
+        let dist_sq = target_slot
+            .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
+            .unwrap_or(f64::INFINITY);
+        combat_targeting_validate_existing_lock_fsm_idx(
+            pool,
+            idx,
+            target_radius,
+            dist_sq,
+            target_valid,
+            mirror_valid[turret_idx],
+            ballistic_clear[turret_idx],
+            los_blocked[turret_idx],
+            los_drop_grace_ticks,
+        );
+    }
+}
+
+/// AIM-08.5 — batch fire-band candidate switches for one entity.
+#[wasm_bindgen]
+pub fn combat_targeting_apply_fire_choice_fsm_batch(
+    entity_slot: u32,
+    apply_mask: &[u8],
+    target_ids: &[i32],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(target_ids.len());
+    for turret_idx in 0..count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+        let target_id = target_ids[turret_idx];
+        if target_id < 0 {
+            continue;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        combat_targeting_set_target_state(pool, idx, target_id, CT_TURRET_STATE_ENGAGED);
+    }
+}
+
+/// AIM-08.5 — batch acquisition candidate results for one entity.
+#[wasm_bindgen]
+pub fn combat_targeting_apply_acquisition_choice_fsm_batch(
+    entity_slot: u32,
+    apply_mask: &[u8],
+    target_ids: &[i32],
+    ranks: &[u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(target_ids.len())
+        .min(ranks.len());
+    for turret_idx in 0..count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let target_id = target_ids[turret_idx];
+        if target_id < 0 {
+            combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+            continue;
+        }
+        let state = if ranks[turret_idx] >= CT_TARGET_RANK_FIRE_FALLBACK {
+            CT_TURRET_STATE_ENGAGED
+        } else {
+            CT_TURRET_STATE_TRACKING
+        };
+        combat_targeting_set_target_state(pool, idx, target_id, state);
+    }
 }
 
 #[inline]

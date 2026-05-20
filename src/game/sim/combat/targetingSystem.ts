@@ -10,7 +10,6 @@ import {
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
-import { distanceSquared3 } from '../../math';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -39,7 +38,6 @@ import {
 const _activeCombatUnits: Entity[] = [];
 const _losTargetPoint = { x: 0, y: 0, z: 0 };
 const _ffTargetPoint = { x: 0, y: 0, z: 0 };
-const _targetingTargetPosition = { x: 0, y: 0, z: 0 };
 const _targetingEnemyPosition = { x: 0, y: 0, z: 0 };
 const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
 // Per-unit reusable mask of "weapon system disabled" flags, filled in
@@ -52,6 +50,18 @@ let _weaponDisabled = new Uint8Array(0);
 // weapons so Pass 2 can promote close fallbacks without recomputing.
 let _cachedFireRanks = new Uint8Array(0);
 let _cachedFireDistSqs = new Float64Array(0);
+// AIM-08.5 batched FSM inputs. TypeScript still computes gates that
+// need object-owned systems; Rust consumes these arrays once per pass
+// and mutates the targeting slab's target/state tuple in a single call.
+let _fsmApplyMask = new Uint8Array(0);
+let _fsmTargetIds = new Int32Array(0);
+let _fsmRanks = new Uint8Array(0);
+let _fsmObservable = new Uint8Array(0);
+let _fsmMirrorValid = new Uint8Array(0);
+let _fsmLosClear = new Uint8Array(0);
+let _fsmBallisticClear = new Uint8Array(0);
+let _fsmForceFieldClear = new Uint8Array(0);
+let _fsmLosBlocked = new Uint8Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
 // AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
 // candidates into flat arrays; Rust owns score/rank/top-K/fallback.
@@ -93,6 +103,27 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _weaponDisabled = new Uint8Array(next);
   _cachedFireRanks = new Uint8Array(next);
   _cachedFireDistSqs = new Float64Array(next);
+  _fsmApplyMask = new Uint8Array(next);
+  _fsmTargetIds = new Int32Array(next);
+  _fsmRanks = new Uint8Array(next);
+  _fsmObservable = new Uint8Array(next);
+  _fsmMirrorValid = new Uint8Array(next);
+  _fsmLosClear = new Uint8Array(next);
+  _fsmBallisticClear = new Uint8Array(next);
+  _fsmForceFieldClear = new Uint8Array(next);
+  _fsmLosBlocked = new Uint8Array(next);
+}
+
+function clearFsmGateScratch(count: number): void {
+  _fsmApplyMask.fill(0, 0, count);
+  _fsmTargetIds.fill(-1, 0, count);
+  _fsmRanks.fill(0, 0, count);
+  _fsmObservable.fill(0, 0, count);
+  _fsmMirrorValid.fill(0, 0, count);
+  _fsmLosClear.fill(0, 0, count);
+  _fsmBallisticClear.fill(0, 0, count);
+  _fsmForceFieldClear.fill(0, 0, count);
+  _fsmLosBlocked.fill(0, 0, count);
 }
 
 function getTargetingKernel() {
@@ -727,6 +758,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // Check for attack-ground priority target.
     if (priorityPoint !== null) {
+      clearFsmGateScratch(weapons.length);
       for (let wi = 0; wi < weapons.length; wi++) {
         const weapon = weapons[wi];
         if (_weaponDisabled[wi] !== 0) continue;
@@ -747,12 +779,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           priorityPoint,
           wpx, wpy, wpz,
         );
-        const distSq = losClear
-          ? distanceSquared3(
-              wpx, wpy, wpz,
-              priorityPoint.x, priorityPoint.y, priorityPoint.z,
-            )
-          : Infinity;
         // Solve ballistic before the FF arc check — the solver writes
         // the launch velocity / flight time the arc test walks.
         const ballisticClear = losClear
@@ -763,13 +789,19 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
               unit, weapon, priorityPoint, wpx, wpy, wpz, forceFieldsActive,
             )
           : false;
-        targeting.applyPriorityPointFsm(
-          unitSlot, wi, distSq,
-          losClear ? 1 : 0,
-          ballisticClear ? 1 : 0,
-          ffClear ? 1 : 0,
-        );
+        _fsmApplyMask[wi] = 1;
+        _fsmLosClear[wi] = losClear ? 1 : 0;
+        _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
+        _fsmForceFieldClear[wi] = ffClear ? 1 : 0;
       }
+      targeting.applyPriorityPointFsmBatch(
+        unitSlot,
+        priorityPoint.x, priorityPoint.y, priorityPoint.z,
+        _fsmApplyMask,
+        _fsmLosClear,
+        _fsmBallisticClear,
+        _fsmForceFieldClear,
+      );
       writeBackCombatTargetingEntity(unit);
       if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
       continue;
@@ -780,25 +812,23 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // Validate priority target is alive
       const pt = world.getEntity(priorityId);
       let priorityTarget: Entity | null = null;
-      let priorityRadius = 0;
       if (
         pt?.unit &&
         pt.unit.hp > 0 &&
         canPlayerObserveCloakedEntity(world, pt, playerId)
       ) {
         priorityTarget = pt;
-        priorityRadius = pt.unit.radius.shot;
       } else if (
         pt?.building &&
         pt.building.hp > 0 &&
         canPlayerObserveCloakedEntity(world, pt, playerId)
       ) {
         priorityTarget = pt;
-        priorityRadius = getTargetRadius(pt);
       }
 
       if (priorityTarget) {
         // ATTACK MODE: try the priority target, firing only inside hard max range.
+        clearFsmGateScratch(weapons.length);
         for (let wi = 0; wi < weapons.length; wi++) {
           const weapon = weapons[wi];
           if (_weaponDisabled[wi] !== 0) continue;
@@ -820,11 +850,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             priorityTarget,
             wpx, wpy, wpz,
           );
-          const priorityPosition = getEntityPosition3d(priorityTarget, _targetingTargetPosition);
-          const distSq = distanceSquared3(
-            wpx, wpy, wpz,
-            priorityPosition.x, priorityPosition.y, priorityPosition.z,
-          );
           // Solve ballistic before the FF arc check (see passesWeaponFireGates).
           const ballisticClear = mirrorValid && losClear
             ? hasWeaponBallisticSolution(world, unit, weapon, wi, priorityTarget, wpx, wpy, wpz)
@@ -836,15 +861,21 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
                 forceFieldsActive,
               )
             : false;
-          targeting.applyPriorityTargetFsm(
-            unitSlot, wi, priorityId, priorityRadius, distSq,
-            1,
-            mirrorValid ? 1 : 0,
-            losClear ? 1 : 0,
-            ballisticClear ? 1 : 0,
-            ffClear ? 1 : 0,
-          );
+          _fsmApplyMask[wi] = 1;
+          _fsmMirrorValid[wi] = mirrorValid ? 1 : 0;
+          _fsmLosClear[wi] = losClear ? 1 : 0;
+          _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
+          _fsmForceFieldClear[wi] = ffClear ? 1 : 0;
         }
+        targeting.applyPriorityTargetFsmBatch(
+          unitSlot,
+          priorityId,
+          _fsmApplyMask,
+          _fsmMirrorValid,
+          _fsmLosClear,
+          _fsmBallisticClear,
+          _fsmForceFieldClear,
+        );
         writeBackCombatTargetingEntity(unit);
         if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
@@ -855,6 +886,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // AUTO MODE: standard hysteresis FSM
 
     // Pass 1: Validate existing targets with hysteresis
+    clearFsmGateScratch(weapons.length);
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       if (_weaponDisabled[wi] !== 0) continue;
@@ -863,17 +895,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
       const target = world.getEntity(weapon.target);
       let targetIsValid = false;
-      let targetRadius = 0;
       if (
         target?.unit &&
         target.unit.hp > 0 &&
         canPlayerObserveCloakedEntity(world, target, playerId)
-      ) { targetIsValid = true; targetRadius = target.unit.radius.shot; }
+      ) { targetIsValid = true; }
       else if (
         target?.building &&
         target.building.hp > 0 &&
         canPlayerObserveCloakedEntity(world, target, playerId)
-      ) { targetIsValid = true; targetRadius = getTargetRadius(target); }
+      ) { targetIsValid = true; }
 
       // Per-tick re-validation of an existing lock. For passive
       // (mirror) weapons we only require that the enemy still has a
@@ -882,24 +913,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const mirrorValid = targetIsValid && target !== undefined
         ? (!weapon.config.passive || isMirrorTarget(target, unit.id))
         : false;
+      _fsmApplyMask[wi] = 1;
+      _fsmObservable[wi] = targetIsValid && target !== undefined ? 1 : 0;
+      _fsmMirrorValid[wi] = mirrorValid ? 1 : 0;
       if (!targetIsValid || !target || !mirrorValid) {
-        targeting.validateExistingLockFsm(
-          unitSlot, wi, targetRadius, Infinity,
-          targetIsValid && target !== undefined ? 1 : 0,
-          mirrorValid ? 1 : 0,
-          0,
-          0,
-          LOS_DROP_GRACE_TICKS,
-        );
+        _fsmBallisticClear[wi] = 0;
+        _fsmLosBlocked[wi] = 0;
       } else {
         const wpx = weapon.worldPos.x;
         const wpy = weapon.worldPos.y;
         const wpz = weapon.worldPos.z;
-        const targetPosition = getEntityPosition3d(target, _targetingTargetPosition);
-        const distSq = distanceSquared3(
-          wpx, wpy, wpz,
-          targetPosition.x, targetPosition.y, targetPosition.z,
-        );
         const ballisticClear = hasWeaponBallisticSolution(world, unit, weapon, wi, target, wpx, wpy, wpz);
 
         // LOS gating: a blocked sightline (direct-fire terrain/entity
@@ -931,16 +954,19 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
             forceFieldsActive,
           )
         );
-        targeting.validateExistingLockFsm(
-          unitSlot, wi, targetRadius, distSq,
-          1,
-          1,
-          ballisticClear ? 1 : 0,
-          losBlocked ? 1 : 0,
-          LOS_DROP_GRACE_TICKS,
-        );
+        _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
+        _fsmLosBlocked[wi] = losBlocked ? 1 : 0;
       }
     }
+    targeting.validateExistingLockFsmBatch(
+      unitSlot,
+      _fsmApplyMask,
+      _fsmObservable,
+      _fsmMirrorValid,
+      _fsmBallisticClear,
+      _fsmLosBlocked,
+      LOS_DROP_GRACE_TICKS,
+    );
     writeBackCombatTargetingEntity(unit);
 
     // Rust pre-scan: find whether any weapon needs a candidate scan,
@@ -999,6 +1025,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // preferred target exists, close targets inside max range remain
     // valid fallbacks. This uses per-turret ranges so each weapon
     // evaluates independently.
+    clearFsmGateScratch(weapons.length);
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       if (_weaponDisabled[wi] !== 0) continue;
@@ -1048,11 +1075,18 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       if (choice.target) {
         // Found a target we can actually fire at. Preferred-band
         // targets outrank close fallbacks; within a rank, nearer wins.
-        targeting.applyFireChoiceFsm(unitSlot, wi, choice.target.id);
+        _fsmApplyMask[wi] = 1;
+        _fsmTargetIds[wi] = choice.target.id;
       }
     }
+    targeting.applyFireChoiceFsmBatch(
+      unitSlot,
+      _fsmApplyMask,
+      _fsmTargetIds,
+    );
 
     // Pass 3: Acquire targets for weapons with no target (idle)
+    clearFsmGateScratch(weapons.length);
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       if (_weaponDisabled[wi] !== 0) continue;
@@ -1079,11 +1113,21 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       );
 
       if (choice.target) {
-        targeting.applyAcquisitionChoiceFsm(unitSlot, wi, choice.target.id, choice.rank);
+        _fsmApplyMask[wi] = 1;
+        _fsmTargetIds[wi] = choice.target.id;
+        _fsmRanks[wi] = choice.rank;
       } else {
-        targeting.applyAcquisitionChoiceFsm(unitSlot, wi, -1, TARGET_RANK_NONE);
+        _fsmApplyMask[wi] = 1;
+        _fsmTargetIds[wi] = -1;
+        _fsmRanks[wi] = TARGET_RANK_NONE;
       }
     }
+    targeting.applyAcquisitionChoiceFsmBatch(
+      unitSlot,
+      _fsmApplyMask,
+      _fsmTargetIds,
+      _fsmRanks,
+    );
     writeBackCombatTargetingEntity(unit);
 
     if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
