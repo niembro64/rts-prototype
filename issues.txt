@@ -44,26 +44,32 @@ AIM-08.5 — Port the targeting FSM
   and writes target/rank arrays for the batched FSM apply calls.
   Fire-choice and acquisition candidate-prep masks/seeds now also batch
   through Rust; passive mirror seed scores remain object-owned in TS.
-  All three priority/existing-lock branches are now unified Rust
-  kernels — LOS + ballistic + FF + FSM all run inside one boundary
-  call per entity per pass:
+  All four targeting passes now use Rust-internal LOS + ballistic +
+  FF gates and apply the FSM transitions inside one boundary call:
     - combat_targeting_compute_and_apply_priority_point_fsm_batch
     - combat_targeting_compute_and_apply_priority_target_fsm_batch
     - combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch
+    - combat_targeting_compute_and_choose_best_candidates_batch
   A shared compute_turret_gates_for_aim_point Rust helper centralizes
-  the LOS/ballistic/FF logic with ground-aim-fraction + under-only
-  handling. The TS-side hasWeapon*ToPoint helpers and
-  pointLockOnPointIsBelowWeaponMount have been deleted. Per-turret aim
-  points are TS-resolved (so lockOnToBody AABB clamps and
-  lockOnToTurret stay in one place) and the mirror-panel sightline
-  walk is the only gate piece still in JS — both are passed to Rust as
-  per-turret arrays. Cloak observability and passive `isMirrorTarget`
-  scores stay in TS for now (require object data not yet on the slab).
+  the LOS / ballistic / FF logic with ground-aim-fraction + under-only
+  handling. Building AABB half-extents are stamped on the slab so
+  aim-point resolution lives in Rust (sphere targets use entity
+  center; AABB targets clamp into the box). The JS gate callback
+  (passesWeaponFireGates / targetCandidatePassesFireGates) and every
+  TS gate helper it relied on
+  (hasWeaponLineOfSight / hasWeaponBallisticSolution /
+   hasWeaponForceMaterialSightClearance /
+   targetLockOnPointIsBelowWeaponMount /
+   weaponNeedsBallisticSolution /
+   weaponUsesUnderOnlyBallisticLock /
+   weaponRequiresForceMaterialSightClearance /
+   _targetingBallisticAim / UNDER_ONLY_*) have been deleted under
+  Delete The Old Path. The mirror-panel sightline walk is the only
+  gate piece still in JS — TS precomputes per-(turret, candidate)
+  clearance as a flat row-major mask the Rust kernel consumes. Cloak
+  observability and passive `isMirrorTarget` scores stay in TS for
+  now (require object data not yet on the slab).
   Remaining work for AIM-08.5:
-    - Port the Pass 2 / Pass 3 candidate fire-gate callback
-      (passesWeaponFireGates) into a Rust-resident gate. This unlocks
-      deleting hasWeaponLineOfSight, hasWeaponBallisticSolution, and
-      hasWeaponForceMaterialSightClearance from TS.
     - Stamp cloak observability + mirror-panel clearance kernels onto
       the slab so TS no longer has to precompute either.
     - Collapse the per-armed-entity outer loop into a single

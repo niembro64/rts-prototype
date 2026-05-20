@@ -17,7 +17,6 @@
 //   9  pathfinder              — A* over the walk grid
 //  10  snapshot serializer     — per-entity quantize + delta path
 
-use js_sys::Function;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -6199,6 +6198,14 @@ struct CombatTargetingPool {
     entity_vel_y: Vec<f64>,
     entity_vel_z: Vec<f64>,
     entity_radius_shot: Vec<f64>,
+    // AABB half-extents for AABB-shaped targets (buildings). Zero on
+    // sphere-shaped targets (units / projectiles) so aim-point
+    // resolution can clamp uniformly without branching on entity
+    // shape: a zero half-extent collapses the clamp to the entity
+    // center, matching the sphere behaviour.
+    entity_aabb_half_x: Vec<f64>,
+    entity_aabb_half_y: Vec<f64>,
+    entity_aabb_half_z: Vec<f64>,
     entity_hp: Vec<f32>,
     entity_flags: Vec<u8>,
     entity_slot_by_id: HashMap<i32, u32>,
@@ -6265,6 +6272,9 @@ impl CombatTargetingPool {
             entity_vel_y: Vec::new(),
             entity_vel_z: Vec::new(),
             entity_radius_shot: Vec::new(),
+            entity_aabb_half_x: Vec::new(),
+            entity_aabb_half_y: Vec::new(),
+            entity_aabb_half_z: Vec::new(),
             entity_hp: Vec::new(),
             entity_flags: Vec::new(),
             entity_slot_by_id: HashMap::new(),
@@ -6316,6 +6326,9 @@ impl CombatTargetingPool {
             self.entity_vel_y.resize(entity_needed, 0.0);
             self.entity_vel_z.resize(entity_needed, 0.0);
             self.entity_radius_shot.resize(entity_needed, 0.0);
+            self.entity_aabb_half_x.resize(entity_needed, 0.0);
+            self.entity_aabb_half_y.resize(entity_needed, 0.0);
+            self.entity_aabb_half_z.resize(entity_needed, 0.0);
             self.entity_hp.resize(entity_needed, 0.0);
             self.entity_flags.resize(entity_needed, 0);
             self.turret_count_per_entity.resize(entity_needed, 0);
@@ -6479,6 +6492,9 @@ pub fn combat_targeting_set_entity(
     vel_y: f64,
     vel_z: f64,
     radius_shot: f64,
+    aabb_half_x: f64,
+    aabb_half_y: f64,
+    aabb_half_z: f64,
     hp: f32,
     flags: u8,
     turret_count: u8,
@@ -6502,6 +6518,9 @@ pub fn combat_targeting_set_entity(
     pool.entity_vel_y[s] = vel_y;
     pool.entity_vel_z[s] = vel_z;
     pool.entity_radius_shot[s] = radius_shot;
+    pool.entity_aabb_half_x[s] = aabb_half_x;
+    pool.entity_aabb_half_y[s] = aabb_half_y;
+    pool.entity_aabb_half_z[s] = aabb_half_z;
     pool.entity_hp[s] = hp;
     pool.entity_flags[s] = flags;
     let max = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as u8;
@@ -6633,6 +6652,21 @@ combat_targeting_ptr_export!(combat_targeting_entity_vel_z_ptr, entity_vel_z, f6
 combat_targeting_ptr_export!(
     combat_targeting_entity_radius_shot_ptr,
     entity_radius_shot,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_aabb_half_x_ptr,
+    entity_aabb_half_x,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_aabb_half_y_ptr,
+    entity_aabb_half_y,
+    f64
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_aabb_half_z_ptr,
+    entity_aabb_half_z,
     f64
 );
 combat_targeting_ptr_export!(combat_targeting_entity_hp_ptr, entity_hp, f32);
@@ -8708,16 +8742,6 @@ fn targeting_pool_entry_is_better(
     }
 }
 
-#[inline]
-fn targeting_gate_passes(gate_fn: &Function, turret_idx: i32, candidate_idx: i32) -> bool {
-    let turret_arg = JsValue::from_f64(turret_idx as f64);
-    let candidate_arg = JsValue::from_f64(candidate_idx as f64);
-    match gate_fn.call2(&JsValue::NULL, &turret_arg, &candidate_arg) {
-        Ok(v) => v.as_bool().unwrap_or(false),
-        Err(e) => wasm_bindgen::throw_val(e),
-    }
-}
-
 struct TargetingCandidateChoice {
     candidate_idx: i32,
     rank: u8,
@@ -8762,8 +8786,339 @@ pub fn combat_targeting_rank_target(
     )
 }
 
-fn combat_targeting_choose_best_candidate_inner(
-    gate_turret_idx: i32,
+/// AIM-08.5 — resolve a candidate's aim point against a turret mount.
+/// Sphere targets (zero AABB half-extents) use entity center; AABB
+/// targets (buildings) clamp the mount to the box. If the mount sits
+/// inside the box (a turret embedded in an enemy building), aim at the
+/// entity center to avoid a zero-length direction. Matches the TS
+/// `resolveTargetAimPoint` body-lock path; lockOnToTurret resolution
+/// is not handled here (no Rust mirror-pivot resolver yet — the
+/// candidate-selection path doesn't use lockOnToTurret today).
+#[inline]
+fn resolve_candidate_aim_point_from_slab(
+    pool: &CombatTargetingPool,
+    candidate_id: i32,
+    candidate_pos_x: f64,
+    candidate_pos_y: f64,
+    candidate_pos_z: f64,
+    mount_x: f64,
+    mount_y: f64,
+    mount_z: f64,
+) -> (f64, f64, f64) {
+    let (hx, hy, hz) = match pool.entity_slot_by_id.get(&candidate_id) {
+        Some(&slot) => {
+            let i = slot as usize;
+            if i < pool.entity_aabb_half_x.len() {
+                (
+                    pool.entity_aabb_half_x[i],
+                    pool.entity_aabb_half_y[i],
+                    pool.entity_aabb_half_z[i],
+                )
+            } else {
+                (0.0, 0.0, 0.0)
+            }
+        }
+        None => (0.0, 0.0, 0.0),
+    };
+    if hx > 0.0 || hy > 0.0 || hz > 0.0 {
+        let min_x = candidate_pos_x - hx;
+        let max_x = candidate_pos_x + hx;
+        let min_y = candidate_pos_y - hy;
+        let max_y = candidate_pos_y + hy;
+        let min_z = candidate_pos_z - hz;
+        let max_z = candidate_pos_z + hz;
+        let ax = mount_x.max(min_x).min(max_x);
+        let ay = mount_y.max(min_y).min(max_y);
+        let az = mount_z.max(min_z).min(max_z);
+        if ax == mount_x && ay == mount_y && az == mount_z {
+            (candidate_pos_x, candidate_pos_y, candidate_pos_z)
+        } else {
+            (ax, ay, az)
+        }
+    } else {
+        (candidate_pos_x, candidate_pos_y, candidate_pos_z)
+    }
+}
+
+/// AIM-08.5 — Rust-internal candidate fire-gate. Replaces the
+/// JS `passesWeaponFireGates` callback. Resolves the candidate aim
+/// point from the slab AABB, then dispatches to the shared
+/// `compute_turret_gates_for_aim_point` helper. Returns 1 if all
+/// three gates (LOS, ballistic, FF) pass.
+#[inline]
+fn combat_targeting_candidate_gate_passes(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+    turret_idx: u32,
+    candidate_idx: usize,
+    candidate_ids: &[i32],
+    candidate_pos_x: &[f64],
+    candidate_pos_y: &[f64],
+    candidate_pos_z: &[f64],
+    candidate_count: usize,
+    source_entity_id: i32,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    force_field_obstruction_active: u8,
+    gravity: f64,
+    projectile_speed: f64,
+    arc_preference: u8,
+    max_time_sec: f64,
+    ground_aim_fraction: f64,
+    under_only: bool,
+    mirror_panel_clear: u8,
+) -> bool {
+    if candidate_idx >= candidate_count {
+        return false;
+    }
+    let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+    let flags = pool.turret_config_flags[idx];
+    let mount_x = pool.turret_mount_x[idx];
+    let mount_y = pool.turret_mount_y[idx];
+    let mount_z = pool.turret_mount_z[idx];
+
+    let candidate_id = candidate_ids[candidate_idx];
+    let (aim_x, aim_y, aim_z) = resolve_candidate_aim_point_from_slab(
+        pool,
+        candidate_id,
+        candidate_pos_x[candidate_idx],
+        candidate_pos_y[candidate_idx],
+        candidate_pos_z[candidate_idx],
+        mount_x,
+        mount_y,
+        mount_z,
+    );
+
+    let target_vx = pool
+        .entity_slot_by_id
+        .get(&candidate_id)
+        .and_then(|&s| pool.entity_vel_x.get(s as usize).copied())
+        .unwrap_or(0.0);
+    let target_vy = pool
+        .entity_slot_by_id
+        .get(&candidate_id)
+        .and_then(|&s| pool.entity_vel_y.get(s as usize).copied())
+        .unwrap_or(0.0);
+    let target_vz = pool
+        .entity_slot_by_id
+        .get(&candidate_id)
+        .and_then(|&s| pool.entity_vel_z.get(s as usize).copied())
+        .unwrap_or(0.0);
+
+    let (los_clear, ballistic_clear, force_field_clear) =
+        compute_turret_gates_for_aim_point(
+            pool,
+            entity_slot,
+            turret_idx,
+            idx,
+            flags,
+            mount_x, mount_y, mount_z,
+            aim_x, aim_y, aim_z,
+            target_vx, target_vy, target_vz,
+            candidate_id,
+            source_entity_id,
+            terrain_step_len,
+            entity_line_width,
+            force_field_obstruction_active,
+            projectile_speed,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+            mirror_panel_clear,
+            gravity,
+        );
+
+    los_clear != 0 && ballistic_clear != 0 && force_field_clear != 0
+}
+
+/// AIM-08.5 — batch target candidate scoring/selection + internal
+/// fire-gate evaluation for one entity's turrets. Replaces the
+/// legacy `combat_targeting_choose_best_candidates_batch` which
+/// relied on a JS `gate_fn` callback for the per-(turret, candidate)
+/// LOS / ballistic / force-field check. The kernel now resolves
+/// candidate aim points from the slab AABB and dispatches to
+/// `compute_turret_gates_for_aim_point` inline — same physics as the
+/// priority kernels, no per-pair boundary crossing.
+///
+/// `mirror_panel_clear` is a flat `(turret_count * candidate_count)`
+/// mask laid out row-major by turret index: the JS side fills it
+/// once per candidate batch (the mirror-panel walk has no Rust
+/// equivalent yet) and the kernel reads `mp[turret_idx *
+/// candidate_count + candidate_idx]`. When the obstruction feature
+/// is off or no mirror units exist, JS should set the mask to all-1s.
+#[wasm_bindgen]
+pub fn combat_targeting_compute_and_choose_best_candidates_batch(
+    entity_slot: u32,
+    rank_mode: u8,
+    minimum_rank: u8,
+    apply_mask: &[u8],
+    seed_ranks: &[u8],
+    seed_dist_sqs: &[f64],
+    seed_mirror_scores: &[f64],
+    candidate_count: u32,
+    candidate_ids: &[i32],
+    candidate_observable: &[u8],
+    candidate_pos_x: &[f64],
+    candidate_pos_y: &[f64],
+    candidate_pos_z: &[f64],
+    candidate_radius: &[f64],
+    candidate_mirror_score: &[f64],
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    projectile_speeds: &[f64],
+    arc_preferences: &[u8],
+    max_time_secs: &[f64],
+    ground_aim_fractions: &[f64],
+    under_only_mask: &[u8],
+    mirror_panel_clear: &[u8],
+    out_target_ids: &mut [i32],
+    out_ranks: &mut [u8],
+) {
+    let pool = combat_targeting_pool();
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let turret_count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
+        .min(apply_mask.len())
+        .min(seed_ranks.len())
+        .min(seed_dist_sqs.len())
+        .min(seed_mirror_scores.len())
+        .min(out_target_ids.len())
+        .min(out_ranks.len())
+        .min(projectile_speeds.len())
+        .min(arc_preferences.len())
+        .min(max_time_secs.len())
+        .min(ground_aim_fractions.len())
+        .min(under_only_mask.len());
+    let clamped_candidate_count = (candidate_count as usize)
+        .min(candidate_ids.len())
+        .min(candidate_observable.len())
+        .min(candidate_pos_x.len())
+        .min(candidate_pos_y.len())
+        .min(candidate_pos_z.len())
+        .min(candidate_radius.len())
+        .min(candidate_mirror_score.len());
+    if turret_count == 0 || clamped_candidate_count == 0 {
+        return;
+    }
+    // mirror_panel_clear is row-major (turret_idx, candidate_idx).
+    // Skip the entire pass if the mask is too small — every candidate
+    // gate would then read out of bounds.
+    let mp_required = turret_count * clamped_candidate_count;
+    if mirror_panel_clear.len() < mp_required {
+        return;
+    }
+    // We use the existing apply_mask=0 turrets are NOT system-disabled
+    // checks in the choose-best path; mirror that here. The JS side
+    // already gates apply_mask via `prepareFireChoiceFsmInputs` /
+    // `prepareAcquisitionChoiceFsmInputs`, but a belt-and-braces
+    // check inside the gate helper keeps disabled/manual-fire
+    // turrets from running the LOS+ballistic+FF kernels for free.
+    let _ = (mirrors_enabled, force_fields_enabled);
+
+    for turret_idx in 0..turret_count {
+        if apply_mask[turret_idx] == 0 {
+            continue;
+        }
+
+        out_target_ids[turret_idx] = -1;
+        out_ranks[turret_idx] = seed_ranks[turret_idx];
+
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let flags = pool.turret_config_flags[idx];
+        let has_fire_min = if pool.turret_fire_min_acquire_sq[idx] > 0.0 {
+            1
+        } else {
+            0
+        };
+        let has_tracking = if (flags & CT_TURRET_CFG_HAS_TRACKING_RANGE) != 0 {
+            1
+        } else {
+            0
+        };
+        let is_passive = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
+            1
+        } else {
+            0
+        };
+
+        let projectile_speed = projectile_speeds[turret_idx];
+        let arc_preference = arc_preferences[turret_idx];
+        let max_time_sec = max_time_secs[turret_idx];
+        let ground_aim_fraction = ground_aim_fractions[turret_idx];
+        let under_only = under_only_mask[turret_idx] != 0;
+        let mp_row_start = turret_idx * clamped_candidate_count;
+
+        let choice = combat_targeting_choose_best_candidate_inner_with_internal_gate(
+            pool,
+            entity_slot,
+            turret_idx as u32,
+            pool.turret_mount_x[idx],
+            pool.turret_mount_y[idx],
+            pool.turret_mount_z[idx],
+            pool.turret_fire_max_acquire_sq[idx].sqrt(),
+            pool.turret_fire_max_release_sq[idx].sqrt(),
+            has_fire_min,
+            pool.turret_fire_min_acquire_sq[idx].sqrt(),
+            pool.turret_fire_min_release_sq[idx].sqrt(),
+            has_tracking,
+            pool.turret_tracking_acquire_sq[idx].sqrt(),
+            pool.turret_tracking_release_sq[idx].sqrt(),
+            rank_mode,
+            minimum_rank,
+            seed_ranks[turret_idx],
+            seed_dist_sqs[turret_idx],
+            seed_mirror_scores[turret_idx],
+            is_passive,
+            clamped_candidate_count as u32,
+            candidate_ids,
+            candidate_observable,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            candidate_radius,
+            candidate_mirror_score,
+            source_entity_id,
+            terrain_step_len,
+            entity_line_width,
+            force_field_obstruction_active,
+            gravity,
+            projectile_speed,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+            &mirror_panel_clear[mp_row_start..mp_row_start + clamped_candidate_count],
+        );
+        let candidate_idx = choice.candidate_idx;
+        if candidate_idx >= 0 {
+            let candidate_idx = candidate_idx as usize;
+            if candidate_idx < candidate_ids.len() {
+                out_target_ids[turret_idx] = candidate_ids[candidate_idx];
+                out_ranks[turret_idx] = choice.rank;
+            }
+        }
+    }
+}
+
+/// Same shape as `combat_targeting_choose_best_candidate_inner` but
+/// resolves the fire-gate inline by calling
+/// `combat_targeting_candidate_gate_passes` instead of crossing the
+/// JS boundary. Takes the pool by `&mut` so the inline ballistic solver
+/// can write its scratch slot back to the slab; the choose-best logic
+/// is otherwise identical to the legacy path.
+fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+    turret_idx: u32,
     weapon_x: f64,
     weapon_y: f64,
     weapon_z: f64,
@@ -8782,13 +9137,24 @@ fn combat_targeting_choose_best_candidate_inner(
     seed_mirror_score: f64,
     is_passive: u8,
     candidate_count: u32,
+    candidate_ids: &[i32],
     candidate_observable: &[u8],
     candidate_pos_x: &[f64],
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
     candidate_mirror_score: &[f64],
-    gate_fn: &Function,
+    source_entity_id: i32,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    force_field_obstruction_active: u8,
+    gravity: f64,
+    projectile_speed: f64,
+    arc_preference: u8,
+    max_time_sec: f64,
+    ground_aim_fraction: f64,
+    under_only: bool,
+    mirror_panel_clear_row: &[u8],
 ) -> TargetingCandidateChoice {
     let seed = targeting_seed_choice(seed_rank);
     let count = (candidate_count as usize)
@@ -8797,7 +9163,9 @@ fn combat_targeting_choose_best_candidate_inner(
         .min(candidate_pos_y.len())
         .min(candidate_pos_z.len())
         .min(candidate_radius.len())
-        .min(candidate_mirror_score.len());
+        .min(candidate_mirror_score.len())
+        .min(candidate_ids.len())
+        .min(mirror_panel_clear_row.len());
     if count == 0 {
         return seed;
     }
@@ -8891,7 +9259,29 @@ fn combat_targeting_choose_best_candidate_inner(
         if candidate_idx < 0 {
             continue;
         }
-        if targeting_gate_passes(gate_fn, gate_turret_idx, candidate_idx) {
+        let ci = candidate_idx as usize;
+        if combat_targeting_candidate_gate_passes(
+            pool,
+            entity_slot,
+            turret_idx,
+            ci,
+            candidate_ids,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            count,
+            source_entity_id,
+            terrain_step_len,
+            entity_line_width,
+            force_field_obstruction_active,
+            gravity,
+            projectile_speed,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+            mirror_panel_clear_row[ci],
+        ) {
             return TargetingCandidateChoice {
                 candidate_idx,
                 rank: top_rank[k],
@@ -8949,7 +9339,28 @@ fn combat_targeting_choose_best_candidate_inner(
         };
 
         fallback_budget -= 1;
-        if targeting_gate_passes(gate_fn, gate_turret_idx, ci as i32) {
+        if combat_targeting_candidate_gate_passes(
+            pool,
+            entity_slot,
+            turret_idx,
+            ci,
+            candidate_ids,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            count,
+            source_entity_id,
+            terrain_step_len,
+            entity_line_width,
+            force_field_obstruction_active,
+            gravity,
+            projectile_speed,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
+            mirror_panel_clear_row[ci],
+        ) {
             return TargetingCandidateChoice {
                 candidate_idx: ci as i32,
                 rank,
@@ -8958,115 +9369,6 @@ fn combat_targeting_choose_best_candidate_inner(
     }
 
     seed
-}
-
-/// AIM-08.5 — batch target candidate scoring/selection for one
-/// entity's turrets. JS still supplies object-owned expensive gates via
-/// `gate_fn(turretIdx, candidateIdx)`, but Rust now owns the per-turret
-/// candidate traversal, range/rank reads from the slab, top-K ordering,
-/// fallback budget, and output target/rank arrays in one boundary call.
-#[wasm_bindgen]
-pub fn combat_targeting_choose_best_candidates_batch(
-    entity_slot: u32,
-    rank_mode: u8,
-    minimum_rank: u8,
-    apply_mask: &[u8],
-    seed_ranks: &[u8],
-    seed_dist_sqs: &[f64],
-    seed_mirror_scores: &[f64],
-    candidate_count: u32,
-    candidate_ids: &[i32],
-    candidate_observable: &[u8],
-    candidate_pos_x: &[f64],
-    candidate_pos_y: &[f64],
-    candidate_pos_z: &[f64],
-    candidate_radius: &[f64],
-    candidate_mirror_score: &[f64],
-    gate_fn: &Function,
-    out_target_ids: &mut [i32],
-    out_ranks: &mut [u8],
-) {
-    let pool = combat_targeting_pool();
-    let entity_idx = entity_slot as usize;
-    if entity_idx >= pool.turret_count_per_entity.len() {
-        return;
-    }
-    let turret_count = (pool.turret_count_per_entity[entity_idx] as usize)
-        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
-        .min(apply_mask.len())
-        .min(seed_ranks.len())
-        .min(seed_dist_sqs.len())
-        .min(seed_mirror_scores.len())
-        .min(out_target_ids.len())
-        .min(out_ranks.len());
-    let clamped_candidate_count = candidate_count.min(candidate_ids.len() as u32);
-    if turret_count == 0 || clamped_candidate_count == 0 {
-        return;
-    }
-
-    for turret_idx in 0..turret_count {
-        if apply_mask[turret_idx] == 0 {
-            continue;
-        }
-
-        out_target_ids[turret_idx] = -1;
-        out_ranks[turret_idx] = seed_ranks[turret_idx];
-
-        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
-        let flags = pool.turret_config_flags[idx];
-        let has_fire_min = if pool.turret_fire_min_acquire_sq[idx] > 0.0 {
-            1
-        } else {
-            0
-        };
-        let has_tracking = if (flags & CT_TURRET_CFG_HAS_TRACKING_RANGE) != 0 {
-            1
-        } else {
-            0
-        };
-        let is_passive = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
-            1
-        } else {
-            0
-        };
-
-        let choice = combat_targeting_choose_best_candidate_inner(
-            turret_idx as i32,
-            pool.turret_mount_x[idx],
-            pool.turret_mount_y[idx],
-            pool.turret_mount_z[idx],
-            pool.turret_fire_max_acquire_sq[idx].sqrt(),
-            pool.turret_fire_max_release_sq[idx].sqrt(),
-            has_fire_min,
-            pool.turret_fire_min_acquire_sq[idx].sqrt(),
-            pool.turret_fire_min_release_sq[idx].sqrt(),
-            has_tracking,
-            pool.turret_tracking_acquire_sq[idx].sqrt(),
-            pool.turret_tracking_release_sq[idx].sqrt(),
-            rank_mode,
-            minimum_rank,
-            seed_ranks[turret_idx],
-            seed_dist_sqs[turret_idx],
-            seed_mirror_scores[turret_idx],
-            is_passive,
-            clamped_candidate_count,
-            candidate_observable,
-            candidate_pos_x,
-            candidate_pos_y,
-            candidate_pos_z,
-            candidate_radius,
-            candidate_mirror_score,
-            gate_fn,
-        );
-        let candidate_idx = choice.candidate_idx;
-        if candidate_idx >= 0 {
-            let candidate_idx = candidate_idx as usize;
-            if candidate_idx < candidate_ids.len() {
-                out_target_ids[turret_idx] = candidate_ids[candidate_idx];
-                out_ranks[turret_idx] = choice.rank;
-            }
-        }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────

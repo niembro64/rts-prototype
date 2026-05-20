@@ -179,7 +179,7 @@ import __wbg_init, {
   combat_targeting_prepare_fire_choice_fsm_inputs,
   combat_targeting_prepare_acquisition_choice_fsm_inputs,
   combat_targeting_rank_target,
-  combat_targeting_choose_best_candidates_batch,
+  combat_targeting_compute_and_choose_best_candidates_batch,
   combat_targeting_clear_turret_lock,
   combat_targeting_clear_entity_locks,
   combat_targeting_apply_priority_point_fsm_batch,
@@ -910,6 +910,9 @@ export interface CombatTargetingApi {
     velY: number,
     velZ: number,
     radiusShot: number,
+    aabbHalfX: number,
+    aabbHalfY: number,
+    aabbHalfZ: number,
     hp: number,
     flags: number,
     turretCount: number,
@@ -1065,11 +1068,15 @@ export interface CombatTargetingApi {
     distSq: number,
     targetRadius: number,
   ) => number;
-  /** AIM-08.5 — Batch target candidate score/ranking kernel for one
-   *  entity's turret rows. Candidate arrays are parallel slices of
-   *  length `candidateCount`; `gateFn(turretIdx, candidateIdx)` checks
-   *  the still-object-owned expensive gates during migration. */
-  readonly chooseBestCandidatesBatch: (
+  /** AIM-08.5 — Batch target candidate score/ranking kernel with
+   *  internal fire-gate evaluation. Replaces the legacy callback-
+   *  based version. Candidate aim points are resolved from the slab
+   *  AABB; LOS / ballistic / FF gates are run in Rust via the shared
+   *  `compute_turret_gates_for_aim_point` helper. `mirrorPanelClear`
+   *  is a flat (turretCount * candidateCount) row-major mask the JS
+   *  side fills with `hasForceMirrorPanelClearance` results; the
+   *  panel walk is the last gate piece without a Rust equivalent. */
+  readonly computeAndChooseBestCandidatesBatch: (
     entitySlot: number,
     rankMode: number,
     minimumRank: number,
@@ -1085,7 +1092,19 @@ export interface CombatTargetingApi {
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
     candidateMirrorScore: Float64Array,
-    gateFn: (turretIdx: number, candidateIdx: number) => boolean,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
+    mirrorPanelClear: Uint8Array,
     outTargetIds: Int32Array,
     outRanks: Uint8Array,
   ) => void;
@@ -2225,7 +2244,7 @@ export function initSimWasm(): Promise<SimWasm> {
           prepareFireChoiceFsmInputs: combat_targeting_prepare_fire_choice_fsm_inputs,
           prepareAcquisitionChoiceFsmInputs: combat_targeting_prepare_acquisition_choice_fsm_inputs,
           rankTarget: combat_targeting_rank_target,
-          chooseBestCandidatesBatch: combat_targeting_choose_best_candidates_batch,
+          computeAndChooseBestCandidatesBatch: combat_targeting_compute_and_choose_best_candidates_batch,
           clearTurretLock: combat_targeting_clear_turret_lock,
           clearEntityLocks: combat_targeting_clear_entity_locks,
           applyPriorityPointFsmBatch: combat_targeting_apply_priority_point_fsm_batch,

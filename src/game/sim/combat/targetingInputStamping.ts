@@ -174,6 +174,12 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   const radiusShot = entity.unit
     ? entity.unit.radius.shot
     : (entity.building ? entity.building.targetRadius : 0);
+  // AABB half-extents for AABB-shaped targets (buildings). Sphere
+  // targets (units/projectiles) stamp zeros so the Rust aim-point
+  // resolver collapses to entity-center without branching on shape.
+  const aabbHalfX = entity.building ? entity.building.width * 0.5 : 0;
+  const aabbHalfY = entity.building ? entity.building.height * 0.5 : 0;
+  const aabbHalfZ = entity.building ? entity.building.depth * 0.5 : 0;
   const hp = entity.unit ? entity.unit.hp : (entity.building ? entity.building.hp : 0);
 
   let entityFlags = 0;
@@ -189,7 +195,9 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
     slot, entity.id, playerId,
     pos.x, pos.y, pos.z,
     vel.x, vel.y, vel.z,
-    radiusShot, hp, entityFlags,
+    radiusShot,
+    aabbHalfX, aabbHalfY, aabbHalfZ,
+    hp, entityFlags,
     turrets?.length ?? 0,
   );
 
