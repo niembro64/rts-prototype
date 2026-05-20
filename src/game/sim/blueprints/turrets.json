@@ -277,7 +277,7 @@
     "projectileId": "mediumShot",
     "range": 300,
     "cooldown": 130,
-    "launchForce": 30000,
+    "launchForce": 8000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
@@ -504,8 +504,8 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 3,
-      "barrelThickness": 9
+      "barrelLength": 1.2,
+      "barrelThickness": 10
     },
     "isManualFire": false,
     "passive": false,
@@ -551,7 +551,8 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 0.5
+      "barrelLength": 1.5,
+      "barrelThickness": 5.5
     },
     "isManualFire": false,
     "passive": false,
@@ -597,8 +598,8 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleConeBarrel",
-      "barrelLength": 0.6,
-      "barrelThickness": 8
+      "barrelLength": 1.1,
+      "barrelThickness": 29
     },
     "isManualFire": false,
     "passive": false,
@@ -626,7 +627,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 14
+      "body": 15
     },
     "constructionEmitter": null,
     "aimStyle": {

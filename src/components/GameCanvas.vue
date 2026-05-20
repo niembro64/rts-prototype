@@ -498,18 +498,12 @@ const {
   currentAllowedUnits,
   currentAllowedUnitsSet,
   allDemoUnitsActive,
-  currentMirrorsEnabled,
-  currentForceFieldsEnabled,
   currentForceFieldsBlockTargeting,
-  currentForceFieldReflectionMode,
   currentFogOfWarEnabled,
   toggleDemoUnitType,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
-  setMirrorsEnabled,
-  setForceFieldsEnabled,
   setForceFieldsBlockTargeting,
-  setForceFieldReflectionMode,
   setFogOfWarEnabled,
   resetDemoDefaults,
 } = useGameCanvasBattleSettings({
@@ -643,10 +637,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   terrainDividers: terrainDividers.value,
   terrainMapShape: terrainMapShape.value,
   displayUnitCount: displayUnitCount.value,
-  currentMirrorsEnabled: currentMirrorsEnabled.value,
-  currentForceFieldsEnabled: currentForceFieldsEnabled.value,
   currentForceFieldsBlockTargeting: currentForceFieldsBlockTargeting.value,
-  currentForceFieldReflectionMode: currentForceFieldReflectionMode.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   resetDemoDefaults,
   toggleAllDemoUnits,
@@ -655,10 +646,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyMapLandDimensions,
   applyTerrainShape,
   applyTerrainMapShape,
-  setMirrorsEnabled,
-  setForceFieldsEnabled,
   setForceFieldsBlockTargeting,
-  setForceFieldReflectionMode,
   setFogOfWarEnabled,
 });
 watchEffect(() => {
@@ -680,10 +668,7 @@ watchEffect(() => {
   m.terrainDividers = terrainDividers.value;
   m.terrainMapShape = terrainMapShape.value;
   m.displayUnitCount = displayUnitCount.value;
-  m.currentMirrorsEnabled = currentMirrorsEnabled.value;
-  m.currentForceFieldsEnabled = currentForceFieldsEnabled.value;
   m.currentForceFieldsBlockTargeting = currentForceFieldsBlockTargeting.value;
-  m.currentForceFieldReflectionMode = currentForceFieldReflectionMode.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
 });
 
@@ -1027,10 +1012,7 @@ watchEffect(() => {
       :unit-types="demoUnitTypes"
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
-      :mirrors-enabled="currentMirrorsEnabled"
-      :force-fields-enabled="currentForceFieldsEnabled"
       :force-fields-block-targeting="currentForceFieldsBlockTargeting"
-      :force-field-reflection-mode="currentForceFieldReflectionMode"
       :fog-of-war-enabled="currentFogOfWarEnabled"
       :preview-loading="loadingInLobbyPreview"
       @host="handleHost"
@@ -1046,10 +1028,7 @@ watchEffect(() => {
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
-      @set-mirrors-enabled="(e) => setMirrorsEnabled(e)"
-      @set-force-fields-enabled="(e) => setForceFieldsEnabled(e)"
       @set-force-fields-block-targeting="(e) => setForceFieldsBlockTargeting(e)"
-      @set-force-field-reflection-mode="(m) => setForceFieldReflectionMode(m)"
       @set-fog-of-war-enabled="(e) => setFogOfWarEnabled(e)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"

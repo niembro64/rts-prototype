@@ -156,29 +156,10 @@ defineProps<{
         <BarDivider />
         <BarLabel>REFLECTIONS:</BarLabel>
         <BarButton
-          :active="model.currentMirrorsEnabled"
-          title="Enable mirror turrets and laser/beam reflections"
-          @click="model.setMirrorsEnabled(!model.currentMirrorsEnabled)"
-        >MIRROR</BarButton>
-        <BarButton
-          :active="model.currentForceFieldsEnabled"
-          title="Enable force-field turrets, force-field simulation, and force-field rendering"
-          @click="model.setForceFieldsEnabled(!model.currentForceFieldsEnabled)"
-        >FIELD</BarButton>
-        <BarButton
           :active="model.currentForceFieldsBlockTargeting"
           title="Force fields block turret lock-on through their boundary (applies to every turret, both directions)"
           @click="model.setForceFieldsBlockTargeting(!model.currentForceFieldsBlockTargeting)"
         >BLOCK LOS</BarButton>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in BATTLE_CONFIG.forceFieldReflectionMode.options"
-            :key="opt.value"
-            :active="model.currentForceFieldReflectionMode === opt.value"
-            :title="`Force fields reflect ${opt.label === 'IN' ? 'outside-to-inside crossings' : opt.label === 'OUT' ? 'inside-to-outside crossings' : 'crossings in both directions'}`"
-            @click="model.setForceFieldReflectionMode(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

@@ -10,7 +10,6 @@ import LoadingEmblem from './LoadingEmblem.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { ForceFieldReflectionMode } from '@/types/shotTypes';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
 export type { LobbyPlayer } from '@/types/ui';
@@ -32,10 +31,7 @@ const props = defineProps<{
   unitTypes: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
-  mirrorsEnabled: boolean;
-  forceFieldsEnabled: boolean;
   forceFieldsBlockTargeting: boolean;
-  forceFieldReflectionMode: ForceFieldReflectionMode;
   fogOfWarEnabled: boolean;
   previewLoading: boolean;
 }>();
@@ -53,10 +49,7 @@ const emit = defineEmits<{
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
-  (e: 'setMirrorsEnabled', enabled: boolean): void;
-  (e: 'setForceFieldsEnabled', enabled: boolean): void;
   (e: 'setForceFieldsBlockTargeting', enabled: boolean): void;
-  (e: 'setForceFieldReflectionMode', mode: ForceFieldReflectionMode): void;
   (e: 'setFogOfWarEnabled', enabled: boolean): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
@@ -71,7 +64,6 @@ const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
-const forceFieldReflectionOptions = BATTLE_CONFIG.forceFieldReflectionMode.options;
 
 // Set view of allowedUnits so per-button lookups in the v-for below
 // are O(1) instead of O(allowedUnits.length) on every parent re-render.
@@ -130,24 +122,9 @@ function pickUnitCap(cap: number): void {
   emit('setUnitCap', cap);
 }
 
-function pickMirrors(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setMirrorsEnabled', enabled);
-}
-
-function pickForceFields(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setForceFieldsEnabled', enabled);
-}
-
 function pickForceFieldsBlockTargeting(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setForceFieldsBlockTargeting', enabled);
-}
-
-function pickForceFieldReflectionMode(mode: ForceFieldReflectionMode): void {
-  if (!props.isHost) return;
-  emit('setForceFieldReflectionMode', mode);
 }
 
 function pickFogOfWar(enabled: boolean): void {
@@ -609,30 +586,10 @@ const terrainSectionVars = computed(() =>
               <BarButtonGroup>
                 <BarButton
                   size="large"
-                  :active="mirrorsEnabled"
-                  :title="isHost ? 'Enable mirror turrets and laser/beam reflections' : 'Only the host can change battle settings'"
-                  @click="pickMirrors(!mirrorsEnabled)"
-                >MIRROR</BarButton>
-                <BarButton
-                  size="large"
-                  :active="forceFieldsEnabled"
-                  :title="isHost ? 'Enable force-field turrets, force-field simulation, and force-field rendering' : 'Only the host can change battle settings'"
-                  @click="pickForceFields(!forceFieldsEnabled)"
-                >FIELD</BarButton>
-                <BarButton
-                  size="large"
                   :active="forceFieldsBlockTargeting"
                   :title="isHost ? 'Force fields block turret lock-on through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
                   @click="pickForceFieldsBlockTargeting(!forceFieldsBlockTargeting)"
                 >BLOCK LOS</BarButton>
-                <BarButton
-                  v-for="opt in forceFieldReflectionOptions"
-                  :key="opt.value"
-                  size="large"
-                  :active="forceFieldReflectionMode === opt.value"
-                  :title="isHost ? `Force fields reflect ${opt.label === 'IN' ? 'outside-to-inside crossings' : opt.label === 'OUT' ? 'inside-to-outside crossings' : 'crossings in both directions'}` : 'Only the host can change battle settings'"
-                  @click="pickForceFieldReflectionMode(opt.value)"
-                >{{ opt.label }}</BarButton>
               </BarButtonGroup>
             </div>
             <div class="terrain-control-row">

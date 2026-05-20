@@ -117,11 +117,16 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeMaxTotalUnitsCommand(command, tick);
     case 'setMirrorsEnabled':
     case 'setForceFieldsEnabled':
+      return typeof command.enabled === 'boolean'
+        ? { ...command, tick, enabled: true }
+        : null;
     case 'setForceFieldsBlockTargeting':
     case 'setFogOfWarEnabled':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setForceFieldReflectionMode':
-      return isForceFieldReflectionMode(command.mode) ? { ...command, tick } : null;
+      return isForceFieldReflectionMode(command.mode)
+        ? { ...command, tick, mode: BATTLE_CONFIG.forceFieldReflectionMode.default }
+        : null;
   }
 }
 

@@ -64,9 +64,8 @@ export const CLIENT_CONFIG = {
    *  derivative can be meaningful there.
    *  The most recent snapshot value is always stored per channel; the
    *  mode controls only what the per-tick predict step does with it.
-   *  Defaults: position channels MED (visible smoothing), velocity
-   *  channels FAST (closes velocity drift faster than position drift —
-   *  matches the old preset table's pos/vel ratio). */
+   *  Defaults: movement position MED, movement velocity SNAP, rotation
+   *  position FAST, and rotation velocity SNAP. */
   movementPosEma: {
     default: 'medium' as const,
     options: [
@@ -77,7 +76,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   movementVelEma: {
-    default: 'fast' as const,
+    default: 'snap' as const,
     options: [
       { value: 'ignore' as const, label: 'IGN' },
       { value: 'snap' as const, label: 'SNAP' },
@@ -87,7 +86,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   rotationPosEma: {
-    default: 'medium' as const,
+    default: 'fast' as const,
     options: [
       { value: 'snap' as const, label: 'SNAP' },
       { value: 'fast' as const, label: 'FAST' },
@@ -96,7 +95,7 @@ export const CLIENT_CONFIG = {
     ],
   },
   rotationVelEma: {
-    default: 'fast' as const,
+    default: 'snap' as const,
     options: [
       { value: 'ignore' as const, label: 'IGN' },
       { value: 'snap' as const, label: 'SNAP' },

@@ -436,7 +436,7 @@
     },
     "turrets": [
       {
-        "turretId": "pulseTurret",
+        "turretId": "miniBeam",
         "mount": {
           "x": -0.2868272016354705,
           "y": 0.8131727983645295,
@@ -448,7 +448,7 @@
         }
       },
       {
-        "turretId": "pulseTurret",
+        "turretId": "miniBeam",
         "mount": {
           "x": -1.9131727983645295,
           "y": 0.8131727983645296,
@@ -460,7 +460,7 @@
         }
       },
       {
-        "turretId": "pulseTurret",
+        "turretId": "miniBeam",
         "mount": {
           "x": -1.91317279836453,
           "y": -0.8131727983645295,
@@ -472,7 +472,7 @@
         }
       },
       {
-        "turretId": "pulseTurret",
+        "turretId": "miniBeam",
         "mount": {
           "x": -0.2868272016354707,
           "y": -0.8131727983645298,
