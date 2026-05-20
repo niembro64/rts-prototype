@@ -44,8 +44,17 @@ AIM-08.5 — Port the targeting FSM
   and writes target/rank arrays for the batched FSM apply calls.
   Fire-choice and acquisition candidate-prep masks/seeds now also batch
   through Rust; passive mirror seed scores remain object-owned in TS.
-  Remaining work is to move the gate-prep loops and per-entity control
-  flow into one top-level targeting tick.
+  The priority-point branch is now a unified Rust kernel
+  (combat_targeting_compute_and_apply_priority_point_fsm_batch): LOS,
+  ballistic solve, force-field segment, and the FSM transition all run
+  inside one boundary call per attack-ground entity. The TS-side
+  hasWeapon*ToPoint helpers and pointLockOnPointIsBelowWeaponMount have
+  been deleted. The mirror-panel sightline walk is still JS but is
+  precomputed once per turret into a clearance mask passed to the
+  kernel; it's the lone gate piece without a Rust equivalent.
+  Remaining work is to extend the same pattern to the priority-target
+  and existing-lock gate-prep loops, then collapse the per-armed-entity
+  control flow into one top-level targeting tick.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

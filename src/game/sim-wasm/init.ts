@@ -183,6 +183,7 @@ import __wbg_init, {
   combat_targeting_clear_turret_lock,
   combat_targeting_clear_entity_locks,
   combat_targeting_apply_priority_point_fsm_batch,
+  combat_targeting_compute_and_apply_priority_point_fsm_batch,
   combat_targeting_apply_priority_target_fsm_batch,
   combat_targeting_validate_existing_lock_fsm_batch,
   combat_targeting_apply_fire_choice_fsm_batch,
@@ -1100,6 +1101,34 @@ export interface CombatTargetingApi {
     losClear: Uint8Array,
     ballisticClear: Uint8Array,
     forceFieldClear: Uint8Array,
+  ) => void;
+  /** AIM-08.5 — unified priority-point gate compute + FSM apply for one
+   *  entity. Rust iterates the slab turrets, computes LOS / ballistic /
+   *  force-field gates (calling the existing kernels in-process), and
+   *  applies the priority-point FSM transition in the same pass. Saves
+   *  ~3 cross-boundary calls per weapon vs the legacy per-turret path.
+   *
+   *  JS still owns the mirror-panel sightline walk (no Rust equivalent
+   *  yet) and the per-shot ballistic/aim config arrays; those derive
+   *  from blueprint data and can move onto the slab in a follow-up. */
+  readonly computeAndApplyPriorityPointFsmBatch: (
+    entitySlot: number,
+    pointX: number,
+    pointY: number,
+    pointZ: number,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
+    mirrorPanelClear: Uint8Array,
   ) => void;
   readonly applyPriorityTargetFsmBatch: (
     entitySlot: number,
@@ -2145,6 +2174,7 @@ export function initSimWasm(): Promise<SimWasm> {
           clearTurretLock: combat_targeting_clear_turret_lock,
           clearEntityLocks: combat_targeting_clear_entity_locks,
           applyPriorityPointFsmBatch: combat_targeting_apply_priority_point_fsm_batch,
+          computeAndApplyPriorityPointFsmBatch: combat_targeting_compute_and_apply_priority_point_fsm_batch,
           applyPriorityTargetFsmBatch: combat_targeting_apply_priority_target_fsm_batch,
           validateExistingLockFsmBatch: combat_targeting_validate_existing_lock_fsm_batch,
           applyFireChoiceFsmBatch: combat_targeting_apply_fire_choice_fsm_batch,

@@ -1,11 +1,14 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, PlayerId, Turret } from '../types';
+import type { Entity, EntityId, PlayerId, ProjectileShot, Turret } from '../types';
+import { getShotMaxLifespan, isProjectileShot } from '../types';
 import type { Vec3 } from '@/types/vec2';
+import { GRAVITY } from '../../../config';
 import {
   decrementCooldown,
   getEntityPosition3d,
+  getProjectileLaunchSpeed,
   getTargetRadius,
   updateWeaponWorldKinematics,
 } from './combatUtils';
@@ -19,12 +22,14 @@ import {
   createTurretAimScratch,
   resolveTargetAimPoint,
   solveTurretAim,
-  solveTurretAimAtGroundPoint,
 } from './aimSolver';
 import {
+  COMBAT_LOS_ENTITY_QUERY_WIDTH,
+  COMBAT_LOS_TERRAIN_STEP_LEN,
   SIGHT_DROP_GRACE_TICKS,
   hasCombatLineOfSight,
   hasForceMaterialSightClearance,
+  hasForceMirrorPanelClearance,
   weaponRequiresNonObstructedLineOfSight,
 } from './lineOfSight';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
@@ -63,6 +68,18 @@ let _fsmBallisticClear = new Uint8Array(0);
 let _fsmForceFieldClear = new Uint8Array(0);
 let _fsmSightBlocked = new Uint8Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
+// AIM-08.5 unified priority-point gate inputs. The Rust kernel reads
+// per-turret ballistic config and a JS-precomputed mirror-panel mask
+// (the panel walk is the one gate piece that has no Rust equivalent
+// yet). Most ticks won't have an attack-ground order active, so these
+// arrays sit at zero capacity until the first priority-point branch
+// fires.
+let _ppProjectileSpeeds = new Float64Array(0);
+let _ppArcPreferences = new Uint8Array(0);
+let _ppMaxTimeSecs = new Float64Array(0);
+let _ppGroundAimFractions = new Float64Array(0);
+let _ppUnderOnlyMask = new Uint8Array(0);
+let _ppMirrorPanelClear = new Uint8Array(0);
 // AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
 // candidates into flat arrays; Rust owns score/rank/top-K/fallback.
 let _candidateObservable = new Uint8Array(0);
@@ -122,6 +139,66 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _candidateSeedRanks = new Uint8Array(next);
   _candidateSeedDistSqs = new Float64Array(next);
   _candidateSeedMirrorScores = new Float64Array(next);
+  _ppProjectileSpeeds = new Float64Array(next);
+  _ppArcPreferences = new Uint8Array(next);
+  _ppMaxTimeSecs = new Float64Array(next);
+  _ppGroundAimFractions = new Float64Array(next);
+  _ppUnderOnlyMask = new Uint8Array(next);
+  _ppMirrorPanelClear = new Uint8Array(next);
+}
+
+const BALLISTIC_ARC_LOW = 0;
+const BALLISTIC_ARC_HIGH = 1;
+
+/** Fill the per-turret arrays the unified priority-point gate kernel
+ *  consumes. Most fields are derived from static blueprint data and
+ *  could later be stamped on the slab; running this once per attack-
+ *  ground entity is much cheaper than the per-weapon Rust calls it
+ *  replaces. */
+function fillPriorityPointBallisticInputs(
+  weapons: Turret[],
+  point: Vec3,
+  forceMaterialSightObstructionActive: boolean,
+  world: WorldState,
+): void {
+  for (let wi = 0; wi < weapons.length; wi++) {
+    const weapon = weapons[wi];
+    const shot = weapon.config.shot;
+    const projShot: ProjectileShot | undefined = shot !== undefined && isProjectileShot(shot)
+      ? shot
+      : undefined;
+    _ppProjectileSpeeds[wi] = projShot ? getProjectileLaunchSpeed(projShot) : 0;
+    const angleType = weapon.config.aimStyle.angleType;
+    _ppArcPreferences[wi] = angleType === 'ballisticArcHigh'
+      ? BALLISTIC_ARC_HIGH
+      : BALLISTIC_ARC_LOW;
+    if (projShot) {
+      const lifeMs = getShotMaxLifespan(projShot);
+      _ppMaxTimeSecs[wi] = Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
+    } else {
+      _ppMaxTimeSecs[wi] = 0;
+    }
+    _ppGroundAimFractions[wi] = weapon.config.groundAimFraction ?? 0;
+    _ppUnderOnlyMask[wi] = angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0;
+
+    // The mirror-panel walk is the only force-material gate piece that
+    // doesn't have a Rust equivalent yet, so compute it here when it
+    // can actually matter. Force shots and passive mirrors exit before
+    // the gate inside the kernel, so their mask value is unused.
+    if (
+      forceMaterialSightObstructionActive &&
+      shot?.type !== 'force' &&
+      weapon.config.passive !== true
+    ) {
+      _ppMirrorPanelClear[wi] = hasForceMirrorPanelClearance(
+        world,
+        weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
+        point.x, point.y, point.z,
+      ) ? 1 : 0;
+    } else {
+      _ppMirrorPanelClear[wi] = 1;
+    }
+  }
 }
 
 function clearFsmGateScratch(count: number): void {
@@ -192,15 +269,6 @@ function targetLockOnPointIsBelowWeaponMount(
   return lockOnPoint.z <= weaponZ - UNDER_ONLY_MIN_BELOW_DISTANCE + UNDER_ONLY_LOCK_EPS;
 }
 
-function pointLockOnPointIsBelowWeaponMount(
-  weapon: Turret,
-  point: Vec3,
-  weaponZ: number,
-): boolean {
-  if (!weaponUsesUnderOnlyBallisticLock(weapon)) return true;
-  return point.z <= weaponZ - UNDER_ONLY_MIN_BELOW_DISTANCE + UNDER_ONLY_LOCK_EPS;
-}
-
 function hasWeaponBallisticSolution(
   world: WorldState,
   source: Entity,
@@ -237,33 +305,6 @@ function hasWeaponBallisticSolution(
   return solved?.hasBallisticSolution === true;
 }
 
-function hasWeaponBallisticSolutionToPoint(
-  world: WorldState,
-  source: Entity,
-  weapon: Turret,
-  weaponIndex: number,
-  point: Vec3,
-  weaponX: number,
-  weaponY: number,
-  weaponZ: number,
-): boolean {
-  if (!pointLockOnPointIsBelowWeaponMount(weapon, point, weaponZ)) {
-    return false;
-  }
-  if (!weaponNeedsBallisticSolution(weapon)) return true;
-  const solved = solveTurretAimAtGroundPoint(
-    source,
-    weapon,
-    weaponIndex,
-    point,
-    weaponX, weaponY, weaponZ,
-    weapon.pitch,
-    (x, y) => world.getGroundZ(x, y),
-    _targetingBallisticAim,
-  );
-  return solved.hasBallisticSolution === true;
-}
-
 function hasWeaponLineOfSight(
   world: WorldState,
   source: Entity,
@@ -292,25 +333,6 @@ function hasWeaponLineOfSight(
       source.id,
       target.id,
     )
-  );
-}
-
-function hasWeaponLineOfSightToPoint(
-  world: WorldState,
-  source: Entity,
-  weapon: Turret,
-  point: Vec3,
-  weaponX: number,
-  weaponY: number,
-  weaponZ: number,
-): boolean {
-  if (!weaponRequiresNonObstructedLineOfSight(weapon)) return true;
-  return hasCombatLineOfSight(
-    world,
-    weaponX, weaponY, weaponZ,
-    point.x, point.y, point.z,
-    source.id,
-    undefined,
   );
 }
 
@@ -359,24 +381,6 @@ function hasWeaponForceMaterialSightClearance(
     world,
     weaponX, weaponY, weaponZ,
     targetPoint.x, targetPoint.y, targetPoint.z,
-  );
-}
-
-function hasWeaponForceMaterialSightClearanceToPoint(
-  world: WorldState,
-  weapon: Turret,
-  point: Vec3,
-  weaponX: number,
-  weaponY: number,
-  weaponZ: number,
-  forceMaterialSightObstructionActive: boolean,
-): boolean {
-  if (!weaponRequiresForceMaterialSightClearance(weapon)) return true;
-  if (!forceMaterialSightObstructionActive) return true;
-  return hasForceMaterialSightClearance(
-    world,
-    weaponX, weaponY, weaponZ,
-    point.x, point.y, point.z,
   );
 }
 
@@ -737,47 +741,32 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // Check for attack-ground priority target.
     if (priorityPoint !== null) {
-      clearFsmGateScratch(weapons.length);
-      for (let wi = 0; wi < weapons.length; wi++) {
-        const weapon = weapons[wi];
-        if (_weaponDisabled[wi] !== 0) continue;
-        if (weapon.config.isManualFire) continue;
-
-        if (weapon.config.passive) {
-          targeting.clearTurretLock(unitSlot, wi);
-          continue;
-        }
-
-        const wpx = weapon.worldPos.x;
-        const wpy = weapon.worldPos.y;
-        const wpz = weapon.worldPos.z;
-        const losClear = hasWeaponLineOfSightToPoint(
-          world,
-          unit,
-          weapon,
-          priorityPoint,
-          wpx, wpy, wpz,
-        );
-        const ballisticClear = losClear
-          ? hasWeaponBallisticSolutionToPoint(world, unit, weapon, wi, priorityPoint, wpx, wpy, wpz)
-          : false;
-        const ffClear = ballisticClear
-          ? hasWeaponForceMaterialSightClearanceToPoint(
-              world, weapon, priorityPoint, wpx, wpy, wpz, forceMaterialSightObstructionActive,
-            )
-          : false;
-        _fsmApplyMask[wi] = 1;
-        _fsmLosClear[wi] = losClear ? 1 : 0;
-        _fsmBallisticClear[wi] = ballisticClear ? 1 : 0;
-        _fsmForceFieldClear[wi] = ffClear ? 1 : 0;
-      }
-      targeting.applyPriorityPointFsmBatch(
+      // Per-turret blueprint config + mirror-panel mask. Rust owns the
+      // LOS / ballistic / FF segment gates and applies the FSM
+      // transition in the same call — saves ~3 boundary crossings per
+      // armed weapon vs the legacy per-turret path.
+      fillPriorityPointBallisticInputs(
+        weapons,
+        priorityPoint,
+        forceMaterialSightObstructionActive,
+        world,
+      );
+      targeting.computeAndApplyPriorityPointFsmBatch(
         unitSlot,
         priorityPoint.x, priorityPoint.y, priorityPoint.z,
-        _fsmApplyMask,
-        _fsmLosClear,
-        _fsmBallisticClear,
-        _fsmForceFieldClear,
+        unit.id,
+        world.mirrorsEnabled ? 1 : 0,
+        world.forceFieldsEnabled ? 1 : 0,
+        forceMaterialSightObstructionActive ? 1 : 0,
+        COMBAT_LOS_TERRAIN_STEP_LEN,
+        COMBAT_LOS_ENTITY_QUERY_WIDTH,
+        GRAVITY,
+        _ppProjectileSpeeds,
+        _ppArcPreferences,
+        _ppMaxTimeSecs,
+        _ppGroundAimFractions,
+        _ppUnderOnlyMask,
+        _ppMirrorPanelClear,
       );
       writeBackCombatTargetingEntity(unit);
       if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);

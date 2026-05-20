@@ -20,7 +20,12 @@ import { findClosestPanelHit } from './MirrorPanelHit';
 /** Terrain samples still use the half-cell cadence; the walk now runs
  *  inside the AIM-08.LOS Rust combat LOS kernel. */
 const LOS_STEP_FRAC = 0.5;
-const COMBAT_LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE + 2 * Math.max(
+/** Effective per-call params for the Rust LOS kernel. Exported so the
+ *  unified gate kernels (which call combat_has_line_of_sight directly
+ *  from inside another Rust function) can be invoked from JS with the
+ *  same values the old per-turret path used. */
+export const COMBAT_LOS_TERRAIN_STEP_LEN = LAND_CELL_SIZE * LOS_STEP_FRAC;
+export const COMBAT_LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE + 2 * Math.max(
   0,
   ...Object.values(UNIT_BLUEPRINTS).map((bp) => bp.radius.push),
 );
@@ -152,7 +157,14 @@ function pointSegmentDistanceSq3(
   return dx * dx + dy * dy + dz * dz;
 }
 
-function hasForceMirrorPanelClearance(
+/** Does the straight sightline from (sx,sy,sz) to (tx,ty,tz) avoid
+ *  every active force-mirror panel? The mirror-panel walk has no Rust
+ *  equivalent yet — exported so the AIM-08.5 unified gate kernels can
+ *  precompute it per turret and pass it in as a clearance mask while
+ *  the FF-sphere portion stays inside Rust. Hits within
+ *  FORCE_MATERIAL_GRAZE_EPS of either endpoint don't count, matching
+ *  hasForceMaterialSightClearance. */
+export function hasForceMirrorPanelClearance(
   world: WorldState,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
@@ -249,7 +261,7 @@ export function hasCombatLineOfSight(
   return sim.combatHasLineOfSight(
     sx, sy, sz,
     tx, ty, tz,
-    LAND_CELL_SIZE * LOS_STEP_FRAC,
+    COMBAT_LOS_TERRAIN_STEP_LEN,
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
     sourceEntityId ?? NO_EXCLUDED_ENTITY,
     targetEntityId ?? NO_EXCLUDED_ENTITY,
