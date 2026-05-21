@@ -75,14 +75,17 @@ AIM-08.5 — Port the targeting FSM
   mirror_score from the slab on entry. Every TS-side
   getMirrorTargetScore / isMirrorTarget caller in targetingSystem.ts
   is gone (the JS getMirrorTargetScore export survives only for the
-  damage path). The mirror-panel sightline walk is the only physics
-  gate still in JS — TS precomputes per-(turret, candidate)
-  clearance as a flat row-major mask. Cloak observability stays in
-  TS for now (requires detector slab data not yet on the targeting
-  pool).
+  damage path). Cloak observability now lives in Rust: each entity
+  row carries CT_ENTITY_FLAG_CLOAKED + detector_radius +
+  detection_padding, and the kernels (existing-lock, candidates,
+  priority-target via combat_targeting_can_player_observe_entity)
+  walk the slab for detectors instead of consuming JS-precomputed
+  observable masks. The mirror-panel sightline walk is the only
+  physics gate still in JS — TS precomputes per-(turret, candidate)
+  clearance as a flat row-major mask.
   Remaining work for AIM-08.5:
-    - Stamp cloak observability + mirror-panel clearance kernels onto
-      the slab so TS no longer has to precompute either.
+    - Move the mirror-panel sightline walk into Rust so TS no longer
+      needs to precompute the per-(turret, candidate) clearance mask.
     - Collapse the per-armed-entity outer loop into a single
       rustTargetingTick(...) call.
 
