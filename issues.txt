@@ -80,12 +80,16 @@ AIM-08.5 — Port the targeting FSM
   detection_padding, and the kernels (existing-lock, candidates,
   priority-target via combat_targeting_can_player_observe_entity)
   walk the slab for detectors instead of consuming JS-precomputed
-  observable masks. The mirror-panel sightline walk is the only
-  physics gate still in JS — TS precomputes per-(turret, candidate)
-  clearance as a flat row-major mask.
+  observable masks. Mirror-panel sightline clearance also lives in
+  Rust: a per-tick MirrorPanelPool slab (unit pose + slope-aware
+  pivot + panel range; per-panel arm length / offsets / base+top Y /
+  half-width) feeds a Rust port of pointSegmentDistanceSq3 +
+  rayTiltedRectIntersectionT + findClosestPanelHit that
+  compute_turret_gates_for_aim_point consults inline. JS no longer
+  fills the per-(turret, candidate) mirror_panel_clear mask, and the
+  legacy hasForceMirrorPanelClearance / hasForceMaterialSightClearance
+  helpers have been deleted.
   Remaining work for AIM-08.5:
-    - Move the mirror-panel sightline walk into Rust so TS no longer
-      needs to precompute the per-(turret, candidate) clearance mask.
     - Collapse the per-armed-entity outer loop into a single
       rustTargetingTick(...) call.
 
