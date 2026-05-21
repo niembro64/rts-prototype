@@ -195,3 +195,149 @@ AIM-08.5 — Port the targeting FSM
   Turret.target/state every tick.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
+
+==============================================================================
+
+AUDIT 2026-05-21 - DESIGN PHILOSOPHY GAPS BEYOND AIM-08
+
+==============================================================================
+
+CONFIG-DATA-01 - Core tuning constants and snapshot/EMA tables hardcoded in src/config.ts instead of JSON.
+
+Evidence:
+- design_philosophy.html section "Config Is Data, Not Code": "Tuning tables: damage curves, hover constants, friction values, mass tables, range tables, cost tables, build-time tables, recoil profiles" belong in JSON; data trapped in .ts is "a wall between the current code and the end-state engine."
+- src/config.ts is 1101 lines of TypeScript. Many fields correctly re-export shared JSON (GRAVITY at line 317 pulls from sharedSimConstants.json), but many tuning constants are still hardcoded TS literals:
+  - SNAPSHOT_CONFIG (line 100): position/velocity/rotation delta thresholds for the wire encoder.
+  - EMA_CONFIG / FRAME_TIMING_EMA / EMA_INITIAL_VALUES (lines 219, 235, 261): smoothing-tier coefficients consumed by both server and client.
+  - MAX_TICK_DT_MS (280), BEAM_MAX_SEGMENTS (288), ROCKET_REFLECTOR_COLLISION_MODE (295): physics/combat tunables.
+  - UNIT_AIR_FRICTION_PER_60HZ_FRAME (323), UNIT_GROUND_FRICTION_PER_60HZ_FRAME (329), UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT (334+): physical tuning numbers.
+  - WATER_RENDER_CONFIG / SKY_RENDER_CONFIG / TERRAIN_SHADOW_RENDER_CONFIG / FORCE_FIELD_VISUAL / FORCE_FIELD_IMPACT_VISUAL / KNOCKBACK (350+): visual/physical tuning objects.
+
+Why it matters:
+The blueprints under src/game/sim/blueprints/ correctly pair *.json with thin *.ts loaders (units.ts, turrets.ts, shots.ts, locomotion.ts, buildings.ts read from their .json siblings). config.ts is the largest remaining wall: every friction/EMA/threshold value the Rust/WASM kernels would want has to be re-authored on the Rust side or boundary-marshalled, and the values drift the moment one side is tuned without the other.
+
+Fix direction:
+Move each TS data literal in config.ts into a co-located .json file that both TS and Rust load. Reserve config.ts for the schema/validator/loader that returns the typed shape (the same pattern blueprints already use). Hardest-to-move pieces are the BAR_THEMES re-export and pure computed expressions like MAX_TICK_DT_MS = 4 * (1000 / 60); express these as plain JSON values too.
+
+------------------------------------------------------------------------------
+
+EXPL-ABS-01 - Authoritative simulation state on the Unit type is declared with optional properties.
+
+Evidence:
+- design_philosophy.html section "Explicit Absence": "Inside our own simulation, server, prediction, networking, and entity-state modules: no `?:` on properties, no `?.` on access. Use `T | null` with explicit guards." Also: "Pooled objects... carry zombie fields between users when those fields are T? rather than T | null with an explicit reset on release."
+- src/types/sim.ts:177-179 declares velocityX?: number, velocityY?: number, velocityZ?: number on Unit. The block comment immediately above (line 143) says velocityX/Y/Z is "the AUTHORITATIVE physics velocity, written only" - i.e., it always exists for any live unit, yet it is marked optional.
+- src/types/sim.ts:184-186 declares movementAccelX?: number, movementAccelY?: number, movementAccelZ? as optional on the same authoritative type.
+- src/types/sim.ts:211-228 declares orientation?, angularVelocity3?, angularAcceleration3? as optional. The comment frames this as "used by entities that need roll or arbitrary orientation" - the design rule says that case is a discriminated union, not an optional.
+- src/types/sim.ts:237 declares stuckTicks?: number on Unit.
+
+Why it matters:
+Pooled entity rows are reused across spawns. An optional velocity/orientation that is silently undefined on a reused slot integrates as NaN downstream or short-circuits past code that should have run. The hidden-class shape variance also costs V8 in the 5000-unit tick loop (called out in the design doc). Aligning the in-memory shape with what the snapshot serializer already encodes (presence flags + explicit nulls) removes a "I sent it but the receiver never had the property" failure mode.
+
+Fix direction:
+Take Unit (and TurretConfig, Building.activeState, similar entity types) one file at a time. Convert each `field?: T` that is always semantically present to `field: T`. For genuinely conditional fields, replace with `T | null` and reset on pool release. For "this kind of entity has this field, that kind doesn't" promote to a discriminated union on a `kind` discriminator instead of optional. Apply the file-by-file migration the doc prescribes - "every file we touch should leave with fewer optional properties."
+
+------------------------------------------------------------------------------
+
+EXPL-ABS-02 - Optional chaining on entity components in sim hot paths.
+
+Evidence:
+- design_philosophy.html section "Explicit Absence": "no `?.` on access" in our own simulation/server/prediction/entity-state code.
+- src/game/sim/buildingAnchors.ts uses entity.building?.width, .height, .depth on the authoritative entity component.
+- src/game/sim/guard.ts uses entity.unit?.radius.body, target.unit?.radius.body, target.building?.targetRadius.
+- src/game/sim/shotProfiles.ts uses shot.explosion?.radius in multiple places.
+- src/game/sim/EntityCacheManager.ts uses entity.ownership?.playerId, entity.unit?.mirrorPanels, turrets[i].config.shot?.type.
+
+Why it matters:
+Optional chaining on domain objects converts three distinct failure modes (not yet initialized, semantically inapplicable, previously torn down) into the same silent no-op. The doc calls out turret? specifically: "An `entity.turret?.fire()` chain swallows all three. The unit just does not shoot, no stack trace, no symptom anyone can grep for."
+
+Fix direction:
+Replace each `entity.X?.field` with an explicit `if (entity.X === null) <handle>` (or a kind discriminator check if X is type-narrowing). The right narrowing usually already exists upstream - e.g. an entity is filtered into a "buildings" iterator before its `building` is read. When that is true, the field on the narrowed view should be non-optional.
+
+------------------------------------------------------------------------------
+
+SSOT-01 - clamp01 is reimplemented in seven places (two exports, five private copies).
+
+Evidence:
+- design_philosophy.html section "Single Source Of Truth": "If two systems need the same atomic action, that action belongs in one small module with one clear owner and every caller imports it."
+- src/game/math/MathHelpers.ts:82 exports clamp01.
+- src/game/sim/terrain/terrainMath.ts:5 exports clamp01 (second canonical home for the same identifier).
+- Private copies in src/game/render3d/TerrainTileRenderer3D.ts:87, BurnMark3D.ts:98, GroundPrint3D.ts:125, ContactShadowRenderer3D.ts:27, LegRig3D.ts:719.
+
+Why it matters:
+One trivial helper, seven definitions. Each copy is a place where a future tweak (e.g. NaN-safe clamp) has to be applied seven times or it drifts. The two exported homes are worse than the inline copies because they pretend to be canonical.
+
+Fix direction:
+Keep clamp01 in src/game/math/MathHelpers.ts only. Delete the terrainMath.ts export and the five private definitions; every caller imports from MathHelpers. Same pass should also unify clamp/clampRange (LegRig3D.ts:725) and any other one-line math helpers that have grown private duplicates.
+
+------------------------------------------------------------------------------
+
+SSOT-02 - angleDeltaAbs is defined three times across prediction and spawn code.
+
+Evidence:
+- src/game/network/ClientUnitPrediction.ts:44 defines function angleDeltaAbs(a, b) used at lines 489, 504, 505.
+- src/game/network/ClientPredictionStepper.ts:45 defines the same function used at line 162.
+- src/game/sim/spawn.ts:534 defines the same function used at line 546.
+- All three bodies are the wrap-to-[-pi,pi]-then-abs normalization. The design doc calls out command/validation/serializer duplication as drift; this is the same shape applied to a physics helper.
+
+Why it matters:
+Prediction tick correctness depends on the same angle normalization the server uses. Three independent copies means one can be subtly different (e.g. half-open vs closed interval at ±π) and the bug only manifests at the edge. The bridge between client prediction (network/) and server target-derivation (spawn.ts) is exactly where divergence hurts.
+
+Fix direction:
+Move angleDeltaAbs into src/game/math/MathHelpers.ts (or a sibling angleMath module if the helper deserves company). Delete the three private definitions; every caller imports the shared helper.
+
+------------------------------------------------------------------------------
+
+DEL-OLD-01 - Deprecated projectile visual fields still in shotTypes.ts.
+
+Evidence:
+- design_philosophy.html section "Delete The Old Path": "Removed means the code is not in the working tree, not behind a flag, not in a `legacy/` folder, not in a sibling file with a `.old` suffix, and not in commented-out blocks."
+- src/types/shotTypes.ts:72 marks CylinderShapeSpec @deprecated ("Projectile visuals are now type-derived: plasma uses a..."). The type and its fields remain in the file.
+- src/types/shotTypes.ts:126, :128, :206, :208 mark four further fields @deprecated ("Ignored by the 3D projectile renderer.").
+
+Why it matters:
+@deprecated is the doc-comment shape of "we'll get to it later." The design rule is the opposite: the change that landed the type-derived renderer is the change that should have deleted these. Every grep for the symbol still finds it; the next author touching shot types has to decide whether to wire something through the deprecated field "just to be safe."
+
+Fix direction:
+Confirm the projectile renderer no longer consults these fields, then delete CylinderShapeSpec and the four "Ignored by the 3D projectile renderer." fields, the type aliases that reference them, any blueprint authoring that still populates them, and any JSON entries that still carry them. Git is the just-in-case copy.
+
+------------------------------------------------------------------------------
+
+DEL-OLD-02 - Deprecated createCommander() still on WorldState.
+
+Evidence:
+- src/game/sim/WorldState.ts:839 has // @deprecated Use createUnitFromBlueprint('commander') instead, followed by the createCommander method body.
+
+Why it matters:
+The new path is in the same class. The doc explicitly bans this pattern ("the change that introduces the replacement is the change that deletes the predecessor. Not the next change.").
+
+Fix direction:
+Search for any remaining createCommander caller (tests, dev tools, save loader). Repoint them at createUnitFromBlueprint('commander'). Delete the method in the same change.
+
+------------------------------------------------------------------------------
+
+WASM-PROJ-01 - Mirror-panel collision detection runs in TypeScript per projectile per tick.
+
+Evidence:
+- design_philosophy.html section "TypeScript Coordinates, WASM Computes / What TypeScript must never own in hot paths": "Projectile simulation and spatial partitioning... Each item below is a per-unit, per-projectile, or per-frame loop that compounds at scale."
+- src/game/sim/combat/ProjectileCollisionHandler.ts:434-493 loops over world.getMirrorUnits() for each in-flight projectile, calls pointSegmentDistanceSq3 broadphase reject, resolves the weapon mount via TS resolveWeaponWorldMount, and calls findClosestPanelHit (src/game/sim/combat/MirrorPanelHit.ts:70) - all in JS objects.
+- No corresponding kernel exists in rts-sim-wasm/src/ for the mirror-panel raycast.
+
+Why it matters:
+Targeting already migrated to a slab/kernel boundary (AIM-08). Projectile collision is the symmetric hot path - it scales with projectiles_in_flight * mirror_units and runs every tick. The mirror-panel slab (MirrorPanelPool) is already stamped for targeting LOS in Rust; the collision-side ray test reads identical inputs but stays JS.
+
+Fix direction:
+Port findClosestPanelHit + pointSegmentDistanceSq3 broadphase + mirror-pivot resolution into Rust (the targeting side already ported these). The TS per-projectile loop becomes one boundary call that returns `{ projectileId, t, hitX, hitY, hitZ, normal }` arrays. Delete the JS findClosestPanelHit and pointSegmentDistanceSq3 once the kernel is the only caller.
+
+------------------------------------------------------------------------------
+
+WASM-PROJ-02 - Force-field sphere intersection runs in TypeScript per projectile per tick.
+
+Evidence:
+- src/game/sim/combat/ProjectileCollisionHandler.ts:501-520 calls findForceFieldProjectileIntersection(world, prevX/Y/Z, curX/Y/Z) for each in-flight projectile.
+- src/game/sim/combat/forceFieldTurret.ts:133 owns findForceFieldProjectileIntersection - a pure JS sweep that walks every force-field generator's sphere and returns the nearest segment intersection.
+
+Why it matters:
+Same shape as WASM-PROJ-01: per-projectile scan against every reflector, every tick. The doc's "Materials Are Independent Of Shape" rule says force-field spheres and mirror panels are the same material, so they should ideally share one Rust kernel that takes a list of reflector primitives (shape + transform) and returns the nearest hit per projectile.
+
+Fix direction:
+Land WASM-PROJ-01 first (the panel raycast is the smaller surface). Then port findForceFieldProjectileIntersection alongside it as a sibling kernel that consumes the same reflector slab. Combined output is a single nearest-reflector-hit per projectile, with the material owning the post-hit behavior. Delete the JS implementations.
