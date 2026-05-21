@@ -328,23 +328,23 @@
     "locomotion": {
       "tread": {
         "slab": {
-          "colorHex": "#1a1d22"
+          "colorHex": "#111111"
         },
         "wheel": {
-          "colorHex": "#2a2f36"
+          "colorHex": "#222222"
         },
         "cleat": {
-          "colorHex": "#3a4046"
+          "colorHex": "#444444"
         }
       },
       "wheel": {
         "tire": {
-          "colorHex": "#2a2f36"
+          "colorHex": "#111111"
         }
       },
       "leg": {
         "segment": {
-          "colorHex": "#2a2f36"
+          "colorHex": "#111111"
         },
         "debugRestSphere": {
           "colorHex": "#44ffcc",
@@ -353,13 +353,13 @@
       },
       "hover": {
         "fanRing": {
-          "colorHex": "#000000"
+          "colorHex": "#444444"
         },
         "fanBlade": {
-          "colorHex": "#ffffff"
+          "colorHex": "#444444"
         },
         "fanHub": {
-          "colorHex": "#ffffff"
+          "colorHex": "#cccccc"
         },
         "smoke": {
           "colorHex": "#cccccc",
@@ -368,10 +368,10 @@
       },
       "flying": {
         "wing": {
-          "colorHex": "#000000"
+          "colorHex": "#444444"
         },
         "jet": {
-          "colorHex": "#111111"
+          "colorHex": "#444444"
         },
         "smoke": {
           "colorHex": "#cccccc",
