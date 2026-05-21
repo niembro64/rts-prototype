@@ -12,7 +12,6 @@ import {
   clientUnitPredictionIsSettled,
 } from './ClientUnitPrediction';
 import { applyClientProjectilePrediction } from './ClientProjectilePrediction';
-import type { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
 import type { ProjectileSpawnQueue } from './ProjectileSpawnQueue';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
@@ -30,7 +29,6 @@ type ClientPredictionStepperOptions = {
   beamPathTargets: Map<EntityId, BeamPathTarget>;
   projectileSpawns: ProjectileSpawnQueue;
   predictionCadence: ClientPredictionCadence;
-  rocketTargetFinder: ClientRocketTargetFinder;
   activeEntityPredictionIds: Set<EntityId>;
   activeProjectilePredictionIds: Set<EntityId>;
   activeBeamPathIds: Set<EntityId>;
@@ -192,7 +190,6 @@ export class ClientPredictionStepper {
       beamPathTargets,
       projectileSpawns,
       predictionCadence,
-      rocketTargetFinder,
       activeEntityPredictionIds,
       activeProjectilePredictionIds,
       activeBeamPathIds,
@@ -305,8 +302,6 @@ export class ClientPredictionStepper {
         mapWidth: getMapWidth(),
         mapHeight: getMapHeight(),
         getEntity: (entityId) => entities.get(entityId),
-        findNearestEnemyForRocket: (projectile, ownerId) =>
-          rocketTargetFinder.findNearestEnemyForRocket(projectile, ownerId),
       });
       if (projectileResult.becameLineProjectile) {
         activeBeamPathIds.add(id);

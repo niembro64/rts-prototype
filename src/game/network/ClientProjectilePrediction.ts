@@ -1,4 +1,4 @@
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { Entity, EntityId } from '../sim/types';
 import { isLineShotType, type ProjectileShot } from '@/types/sim';
 import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
 import { getSurfaceHeight } from '../sim/Terrain';
@@ -66,17 +66,15 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
 }
 
 /** Resolve the homing thrust acceleration the client predicts this
- *  tick. Rocket seekers keep their previous target id while searching
- *  for a replacement, but rocket gravity is disabled in the integrator
- *  instead of being countered by thrust. */
+ *  tick. Homing projectiles only steer toward their inherited target;
+ *  if that target is missing or dead, guidance stops. */
 function resolveClientHomingThrust(options: {
   entity: Entity;
   dt: number;
   position: { x: number; y: number; z: number };
   getEntity: (id: EntityId) => Entity | undefined;
-  findNearestEnemyForRocket: (projectile: Entity, ownerId: PlayerId) => Entity | null;
 }): { x: number; y: number; z: number } | null {
-  const { entity, dt, position, getEntity, findNearestEnemyForRocket } = options;
+  const { entity, dt, position, getEntity } = options;
   const proj = entity.projectile;
   if (!proj || proj.homingTurnRate === undefined) return null;
   const isRocket = proj.config.shotProfile.runtime.isRocketLike;
@@ -85,32 +83,13 @@ function resolveClientHomingThrust(options: {
   if (maxThrustAccel <= 0) return null;
 
   if (proj.homingTargetId === undefined) {
-    if (isRocket && entity.ownership) {
-      const reacquired = findNearestEnemyForRocket(entity, entity.ownership.playerId);
-      if (reacquired) {
-        proj.homingTargetId = reacquired.id;
-      } else {
-        return null;
-      }
-    } else {
-      return null;
-    }
+    return null;
   }
 
-  let homingTarget = getEntity(proj.homingTargetId);
-  let targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
+  const homingTarget = getEntity(proj.homingTargetId);
+  const targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
   if (!targetValid) {
-    if (isRocket && entity.ownership) {
-      homingTarget = findNearestEnemyForRocket(entity, entity.ownership.playerId) ?? undefined;
-      if (homingTarget) {
-        proj.homingTargetId = homingTarget.id;
-        targetValid = true;
-      } else {
-        return null;
-      }
-    } else {
-      proj.homingTargetId = undefined;
-    }
+    proj.homingTargetId = undefined;
   }
   if (!(targetValid && homingTarget)) return null;
 
@@ -199,7 +178,6 @@ export function applyClientProjectilePrediction(options: {
   mapWidth: number;
   mapHeight: number;
   getEntity: (id: EntityId) => Entity | undefined;
-  findNearestEnemyForRocket: (projectile: Entity, ownerId: PlayerId) => Entity | null;
 }): ClientProjectilePredictionResult {
   const {
     entity,
@@ -208,7 +186,6 @@ export function applyClientProjectilePrediction(options: {
     mapWidth,
     mapHeight,
     getEntity,
-    findNearestEnemyForRocket,
   } = options;
   const proj = entity.projectile;
   if (!proj) return { becameLineProjectile: false, shouldDelete: true };
@@ -279,7 +256,6 @@ export function applyClientProjectilePrediction(options: {
       dt,
       position,
       getEntity,
-      findNearestEnemyForRocket,
     });
     if (thrust) {
       aNetX += thrust.x;

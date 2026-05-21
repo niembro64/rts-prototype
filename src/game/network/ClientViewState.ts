@@ -41,7 +41,6 @@ import { snapClientNonVisualState } from './ClientSnapshotApplier';
 import { ClientSelectionState } from './ClientSelectionState';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
 import { clientUnitPredictionIsSettled } from './ClientUnitPrediction';
-import { ClientRocketTargetFinder } from './ClientRocketTargetFinder';
 import { ClientPredictionStepper } from './ClientPredictionStepper';
 import type {
   ClientPredictionCorrectionStats,
@@ -121,7 +120,6 @@ export class ClientViewState {
     this.dirtyUnitRenderIds,
     (entity) => this.markEntityPredictionActive(entity),
   );
-  private rocketTargetFinder!: ClientRocketTargetFinder;
   private predictionStepper!: ClientPredictionStepper;
 
   // Map dimensions — needed to evaluate the installed server-authored
@@ -132,11 +130,6 @@ export class ClientViewState {
   private mapHeight: number = 2000;
 
   constructor() {
-    this.rocketTargetFinder = new ClientRocketTargetFinder({
-      getUnits: () => this.getUnits(),
-      getBuildings: () => this.getBuildings(),
-      getFrameCounter: () => this.predictionStepper.getFrameCounter(),
-    });
     this.projectileStore = new ClientProjectileStore({
       entities: this.entities,
       clearPredictionAccum: (id) => this.clearPredictionAccum(id),
@@ -148,7 +141,6 @@ export class ClientViewState {
       beamPathTargets: this.projectileStore.beamPathTargets,
       projectileSpawns: this.projectileStore.projectileSpawns,
       predictionCadence: this.predictionCadence,
-      rocketTargetFinder: this.rocketTargetFinder,
       activeEntityPredictionIds: this.activeEntityPredictionIds,
       activeProjectilePredictionIds: this.projectileStore.activeProjectilePredictionIds,
       activeBeamPathIds: this.projectileStore.activeBeamPathIds,
@@ -977,7 +969,6 @@ export class ClientViewState {
     this.serverMeta = null;
     this.predictionStepper.reset();
     this.predictionCadence.clearAll();
-    this.rocketTargetFinder.clear();
     this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();
     this.entitySetVersion++;

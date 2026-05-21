@@ -30,61 +30,9 @@ import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveLineShotRangeSphereEndpoint, type LineShotRangeSphere } from './lineShotRange';
-import { spatialGrid } from '../SpatialGrid';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
 import { getSimWasm } from '../../sim-wasm/init';
-
-/** Rocket seeker re-acquisition radius. When a rocket's homing target
- *  dies, it scans this radius around its current position for the
- *  nearest enemy. Generous (bigger than the turret's firing range)
- *  because the rocket may already be deep in enemy territory by the
- *  time its original target gets destroyed by another rocket in the
- *  same salvo. */
-const ROCKET_REACQUIRE_RANGE = 800;
-const _rocketSeekerPosition = { x: 0, y: 0, z: 0 };
-const _rocketCandidatePosition = { x: 0, y: 0, z: 0 };
-
-/** Find the closest living enemy entity (unit or building) within
- *  ROCKET_REACQUIRE_RANGE of `proj`, belonging to a different player
- *  than `ownerId`. Used by the rocket seeker path when its original
- *  target has despawned. Returns null if nothing is in range. */
-function findNearestEnemyForRocket(
-  _world: WorldState,
-  proj: Entity,
-  ownerId: number,
-): Entity | null {
-  const projectilePosition = getEntityPosition3d(proj, _rocketSeekerPosition);
-  const candidates = spatialGrid.queryEnemyEntitiesInRadius(
-    projectilePosition.x, projectilePosition.y, projectilePosition.z, ROCKET_REACQUIRE_RANGE, ownerId,
-  );
-  let nearest: Entity | null = null;
-  let nearestDistSq = Infinity;
-  for (const c of candidates) {
-    // Only live targets — excludes corpses and destroyed buildings.
-    if (c.unit) {
-      if (c.unit.hp <= 0) continue;
-    } else if (c.building) {
-      if (c.building.hp <= 0) continue;
-    } else {
-      continue;
-    }
-    const candidatePosition = getEntityPosition3d(c, _rocketCandidatePosition);
-    const dx = candidatePosition.x - projectilePosition.x;
-    const dy = candidatePosition.y - projectilePosition.y;
-    const dz = candidatePosition.z - projectilePosition.z;
-    const distSq = dx * dx + dy * dy + dz * dz;
-    if (distSq < nearestDistSq) {
-      nearestDistSq = distSq;
-      nearest = c;
-    }
-  }
-  // Also handle the case where the WorldState's projectile doesn't
-  // carry an ownerId — shouldn't happen for fired rockets, but if it
-  // did we'd skip re-acquire entirely (no way to tell friend from foe).
-  void ownerId;
-  return nearest;
-}
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -792,31 +740,15 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     let aNetZ = terrainFollow ? 0 : -projectileGravity;
     let homingTargetForReporting: Entity | null = null;
 
-    if (!terrainFollow && (proj.homingTargetId !== undefined || (isRocket && proj.homingTurnRate !== undefined))) {
-      let homingTarget = proj.homingTargetId !== undefined
-        ? world.getEntity(proj.homingTargetId)
-        : undefined;
+    if (!terrainFollow && proj.homingTargetId !== undefined) {
+      let homingTarget = world.getEntity(proj.homingTargetId);
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
-        // Rocket-class shots take an additional seeker step: if the
-        // locked target dies or leaves the sim, the rocket scans the
-        // spatial grid for the nearest enemy and re-locks. If no
-        // replacement is available, keep the stale id so the seeker
-        // retries next tick. Rocket gravity is disabled in the
-        // integrator, so no counter-gravity thrust is needed while it
-        // waits.
-        // Ballistic shells stay on the original target and fly dumb
-        // when it vanishes — the point of a shell is to land where the
-        // gun aimed it, not to chase.
-        if (isRocket) {
-          const reacquired = findNearestEnemyForRocket(world, entity, proj.ownerId);
-          if (reacquired) {
-            proj.homingTargetId = reacquired.id;
-            homingTarget = reacquired;
-          } else {
-            homingTarget = undefined;
-          }
-        }
+        // Projectiles inherit a lock from the firing turret. They do
+        // not acquire replacement targets after launch; missing or
+        // dead targets simply end guidance.
+        proj.homingTargetId = undefined;
+        homingTarget = undefined;
       }
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {
         homingTargetForReporting = homingTarget;
@@ -892,8 +824,6 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
         aNetX += thrust.thrustX;
         aNetY += thrust.thrustY;
         aNetZ += thrust.thrustZ;
-      } else if (!isRocket) {
-        proj.homingTargetId = undefined;
       }
     }
 
