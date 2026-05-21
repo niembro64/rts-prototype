@@ -91,10 +91,13 @@ import {
 
 const _stampPos = { x: 0, y: 0, z: 0 };
 const _stampVel = { x: 0, y: 0, z: 0 };
+let _stampPrevFsmState = new Uint8Array(0);
+let _stampPrevFsmTarget = new Int32Array(0);
 
 export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
   length: number;
+  entityId: Int32Array;
   state: Uint8Array;
   targetId: Int32Array;
   mountX: Float64Array;
@@ -131,6 +134,14 @@ let _stateViews: CombatTargetingStateViews | null = null;
 const _combatTargetingSourceEntities: Entity[] = [];
 let _combatTargetingSourceIds = new Int32Array(0);
 let _combatTargetingSourceCount = 0;
+
+function ensureStampPrevFsmCapacity(count: number): void {
+  if (count <= _stampPrevFsmState.length) return;
+  let next = Math.max(8, _stampPrevFsmState.length);
+  while (next < count) next *= 2;
+  _stampPrevFsmState = new Uint8Array(next);
+  _stampPrevFsmTarget = new Int32Array(next);
+}
 
 function resetCombatTargetingSources(): void {
   _combatTargetingSourceEntities.length = 0;
@@ -199,6 +210,7 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
   _stateViews = {
     buffer,
     length,
+    entityId: new Int32Array(buffer, targeting.entityIdPtr(), targeting.entityCapacity()),
     state: new Uint8Array(buffer, targeting.turretStatePtr(), length),
     targetId: new Int32Array(buffer, targeting.turretTargetIdPtr(), length),
     mountX: new Float64Array(buffer, targeting.turretMountXPtr(), length),
@@ -343,7 +355,11 @@ export function stampForceFieldPool(world: WorldState): void {
   }
 }
 
-function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: Entity): boolean {
+function stampCombatTargetingEntityInto(
+  sim: SimWasm,
+  targeting: CombatTargetingApi,
+  entity: Entity,
+): boolean {
   const combat = entity.combat;
   const slot = spatialGrid.getSlot(entity.id);
   // Entities without a spatial slot can't be addressed by the slab;
@@ -426,6 +442,21 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   const scheduledProbeTick = combat?.nextCombatProbeTick ?? -1;
 
   const turrets = combat?.turrets;
+  const views = getCombatTargetingStateViews(sim);
+  const maxTurrets = targeting.maxTurretsPerEntity();
+  // Keep the Rust-owned FSM tuple authoritative across input stamping.
+  // clear() drops liveness/counts but intentionally leaves turret rows
+  // intact, so same-entity slots can seed target/state from the slab.
+  const preservePreviousFsm = views.entityId[slot] === entity.id;
+  if (turrets && preservePreviousFsm) {
+    ensureStampPrevFsmCapacity(turrets.length);
+    const base = slot * maxTurrets;
+    for (let i = 0; i < turrets.length; i++) {
+      const idx = base + i;
+      _stampPrevFsmState[i] = views.state[idx];
+      _stampPrevFsmTarget[i] = views.targetId[idx];
+    }
+  }
   targeting.setEntity(
     slot, entity.id, playerId,
     pos.x, pos.y, pos.z,
@@ -449,6 +480,12 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   if (!turrets) return true;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
+    const stateCode = preservePreviousFsm
+      ? _stampPrevFsmState[i]
+      : encodeCombatTargetingTurretState(t.state);
+    const targetId = preservePreviousFsm
+      ? _stampPrevFsmTarget[i]
+      : (t.target === null ? -1 : t.target);
     const ranges = t.ranges;
     const shot = t.config.shot;
     const projectileShot: ProjectileShot | undefined =
@@ -473,8 +510,8 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.worldPos.x, t.worldPos.y, t.worldPos.z,
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
-      encodeCombatTargetingTurretState(t.state),
-      t.target === null ? -1 : t.target,
+      stateCode,
+      targetId,
       t.cooldown,
       t.burst?.cooldown ?? 0,
       fireMaxAcq, fireMaxRel,
@@ -640,12 +677,12 @@ export function stampCombatTargetingPool(world: WorldState): void {
   targeting.clear();
 
   for (const entity of world.getUnits()) {
-    if (stampCombatTargetingEntityInto(targeting, entity)) {
+    if (stampCombatTargetingEntityInto(sim, targeting, entity)) {
       queueCombatTargetingSource(entity);
     }
   }
   for (const entity of world.getBuildings()) {
-    if (stampCombatTargetingEntityInto(targeting, entity)) {
+    if (stampCombatTargetingEntityInto(sim, targeting, entity)) {
       queueCombatTargetingSource(entity);
     }
   }
