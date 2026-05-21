@@ -1,22 +1,28 @@
 {
   "resources": {
     "energy": {
-      "colorHex": 16110658,
+      "colorHex": "#f5d442",
       "cssColor": "#f5d442"
     },
     "metal": {
-      "colorHex": 13668448,
+      "colorHex": "#d09060",
       "cssColor": "#d09060"
     }
   },
   "world": {
     "map": {
-      "inBounds": { "colorHex": 4477240 },
-      "outOfBounds": { "colorHex": 1185824 },
-      "cameraClear": { "colorHex": 9417161 }
+      "inBounds": {
+        "colorHex": "#445138"
+      },
+      "outOfBounds": {
+        "colorHex": "#121820"
+      },
+      "cameraClear": {
+        "colorHex": "#8fb1c9"
+      }
     },
     "water": {
-      "colorHex": 2060172,
+      "colorHex": "#1f6f8c",
       "opacity": 0.82
     },
     "sky": {
@@ -26,110 +32,118 @@
       "midStop": 0.64
     },
     "sun": {
-      "colorHex": 16773327,
+      "colorHex": "#fff0cf",
       "visibleSkyDisk": {
         "coreColor": "#fff8dc",
         "haloColor": "#f0b860",
         "haloFadeColor": "rgba(246,198,111,0)",
-        "spriteColorHex": 16777215,
+        "spriteColorHex": "#ffffff",
         "opacity": 0.86
       }
     },
     "terrain": {
       "horizonBlend": {
-        "colorHex": 1457996,
+        "colorHex": "#163f4c",
         "shade": 1
       },
       "ground": {
-        "baseColorHex": 4280117,
+        "baseColorHex": "#414f35",
         "detailContrast": 0.3
       },
       "rock": {
-        "baseColorHex": 7301723,
+        "baseColorHex": "#6f6a5b",
         "detailContrast": 0.1,
         "shadePaletteRgb": [
-          [54, 50, 43],
-          [78, 72, 62],
-          [104, 96, 82],
-          [128, 120, 104],
-          [156, 146, 128],
-          [186, 174, 154],
-          [212, 196, 172],
-          [92, 76, 60],
-          [148, 124, 96],
-          [70, 64, 58]
+          "#36322b",
+          "#4e483e",
+          "#686052",
+          "#807868",
+          "#9c9280",
+          "#baae9a",
+          "#d4c4ac",
+          "#5c4c3c",
+          "#947c60",
+          "#46403a"
         ]
       },
       "buildGrid": {
-        "okRgba": [0, 102, 0, 160],
-        "blockedRgba": [119, 0, 0, 170],
-        "metalRgba": [0, 58, 153, 185]
+        "okRgba": "#006600a0",
+        "blockedRgba": "#770000aa",
+        "metalRgba": "#003a99b9"
       },
       "bumpOverlay": {
-        "baseColorRgb01": [0.025, 0.045, 0.052]
+        "baseColorRgb01": "#060b0d"
       }
     },
     "contactShadow": {
-      "colorHex": 0,
+      "colorHex": "#000000",
       "opacity": 0.16
     },
     "groundPrint": {
-      "colorHex": 1708808,
+      "colorHex": "#1a1308",
       "initialAlpha": 0.2
     },
     "burnMark": {
-      "hotColorHex": 8913408,
-      "coolResidueColorHex": 2232576
+      "hotColorHex": "#880200",
+      "coolResidueColorHex": "#221100"
     },
     "fogOfWar": {
-      "colorHex": 0,
+      "colorHex": "#000000",
       "gradientStart": "rgb(0, 0, 0)",
       "gradientEnd": "rgba(0, 0, 0, 0)"
     }
   },
   "environment": {
     "forestSpruce2": {
-      "wood": { "colorHex": 5980720 },
-      "leaf": { "colorHex": 4280117 },
+      "wood": {
+        "colorHex": "#5b4230"
+      },
+      "leaf": {
+        "colorHex": "#414f35"
+      },
       "leafShadePaletteRgb": [
-        [38, 58, 32],
-        [55, 78, 42],
-        [72, 100, 52],
-        [94, 130, 65],
-        [120, 156, 80],
-        [156, 184, 95],
-        [196, 210, 115],
-        [70, 86, 42],
-        [110, 124, 56],
-        [60, 50, 35]
+        "#263a20",
+        "#374e2a",
+        "#486434",
+        "#5e8241",
+        "#789c50",
+        "#9cb85f",
+        "#c4d273",
+        "#46562a",
+        "#6e7c38",
+        "#3c3223"
       ],
       "trunkShadePaletteRgb": [
-        [28, 20, 14],
-        [48, 36, 26],
-        [70, 54, 40],
-        [96, 76, 56],
-        [124, 100, 76],
-        [156, 130, 100],
-        [188, 160, 124],
-        [82, 50, 32],
-        [128, 86, 56],
-        [88, 78, 68]
+        "#1c140e",
+        "#30241a",
+        "#463628",
+        "#604c38",
+        "#7c644c",
+        "#9c8264",
+        "#bca07c",
+        "#523220",
+        "#805638",
+        "#584e44"
       ]
     },
     "lowTree": {
-      "trunk": { "colorHex": 6245172 },
-      "leaves": { "colorHex": 4812593 }
+      "trunk": {
+        "colorHex": "#5f4b34"
+      },
+      "leaves": {
+        "colorHex": "#496f31"
+      }
     },
     "metalDeposit": {
-      "baseColorHex": 2566958,
-      "darkColorHex": 1119254,
-      "lightColorHex": 7304824,
+      "baseColorHex": "#272b2e",
+      "darkColorHex": "#111416",
+      "lightColorHex": "#6f7678",
       "lambertMaterial": {
-        "colorHex": 16777215,
+        "colorHex": "#ffffff",
         "flatShading": true
       },
       "standardMaterial": {
-        "colorHex": 16777215,
+        "colorHex": "#ffffff",
         "metalness": 0.42,
         "roughness": 0.58,
         "flatShading": true
@@ -138,81 +152,99 @@
   },
   "buildings": {
     "palette": {
-      "structureDark": { "colorHex": 1516337 },
-      "structureMid": { "colorHex": 3424589 },
-      "structureLight": { "colorHex": 13161693 },
-      "photovoltaic": { "colorHex": 1194584 },
-      "photovoltaicBack": { "colorHex": 2502970 },
-      "cyanGlow": { "colorHex": 7593451 },
-      "cyanGlass": { "colorHex": 8576233 },
-      "constructionAmber": { "colorHex": 15256946 },
-      "constructionSpark": { "colorHex": 14412270 }
+      "structureDark": {
+        "colorHex": "#172331"
+      },
+      "structureMid": {
+        "colorHex": "#34414d"
+      },
+      "structureLight": {
+        "colorHex": "#c8d4dd"
+      },
+      "photovoltaic": {
+        "colorHex": "#123a58"
+      },
+      "photovoltaicBack": {
+        "colorHex": "#26313a"
+      },
+      "cyanGlow": {
+        "colorHex": "#73ddeb"
+      },
+      "cyanGlass": {
+        "colorHex": "#82dce9"
+      },
+      "constructionAmber": {
+        "colorHex": "#e8cd72"
+      },
+      "constructionSpark": {
+        "colorHex": "#dbe9ee"
+      }
     },
     "materials": {
       "shinyGrayMetal": {
-        "colorHex": 13161693,
+        "colorHex": "#c8d4dd",
         "metalness": 0.78,
         "roughness": 0.18,
-        "envMapIntensity": 1.0
+        "envMapIntensity": 1
       },
       "mirrorChrome": {
-        "colorHex": 13161693,
-        "metalness": 1.0,
+        "colorHex": "#c8d4dd",
+        "metalness": 1,
         "roughness": 0.025,
         "envMapIntensity": 1.45
       },
       "windNacelle": {
-        "colorHex": 13161693,
+        "colorHex": "#c8d4dd",
         "metalness": 0.48,
         "roughness": 0.16
       },
       "windBlade": {
-        "colorHex": 14016487,
+        "colorHex": "#d5dfe7",
         "metalness": 0.38,
         "roughness": 0.14
       },
       "windGlass": {
-        "colorHex": 1194584,
-        "metalness": 1.0,
+        "colorHex": "#123a58",
+        "metalness": 1,
         "roughness": 0.04
       },
       "extractorBlade": {
-        "colorHex": 13668448,
+        "colorHex": "#d09060",
         "metalness": 0.78,
         "roughness": 0.18,
-        "envMapIntensity": 1.0
+        "envMapIntensity": 1
       },
       "radarDish": {
-        "colorHex": 13161693,
+        "colorHex": "#c8d4dd",
         "metalness": 0.72,
         "roughness": 0.2
       },
       "megaBeamTowerTrim": {
-        "colorHex": 8576233,
-        "emissiveHex": 7593451,
+        "colorHex": "#82dce9",
+        "emissiveHex": "#73ddeb",
         "emissiveIntensity": 0.28,
         "metalness": 0.56,
         "roughness": 0.18
       },
       "cannonTowerTrim": {
-        "colorHex": 1516337,
+        "colorHex": "#172331",
         "metalness": 0.72,
         "roughness": 0.24
       },
       "solarCell": {
-        "colorHex": 1194584,
-        "metalness": 1.0,
+        "colorHex": "#123a58",
+        "metalness": 1,
         "roughness": 0.02
       },
       "solarPetalBack": {
-        "colorHex": 2502970
+        "colorHex": "#26313a"
       },
       "buildingGhost": {
-        "colorHex": 6975352,
+        "colorHex": "#6a6f78",
         "opacity": 0.55
       },
       "invisible": {
-        "colorHex": 0,
+        "colorHex": "#000000",
         "opacity": 0
       }
     }
@@ -220,26 +252,26 @@
   "construction": {
     "shell": {
       "pale": {
-        "colorHex": 14737632,
-        "rgb01": [0.88, 0.88, 0.88],
+        "colorHex": "#e0e0e0",
+        "rgb01": "#e0e0e0",
         "opacity": 0.5
       }
     },
     "buildBubble": {
       "ghost": {
-        "colorHex": 14211288,
+        "colorHex": "#d8d8d8",
         "opacity": 0.45
       },
       "core": {
-        "colorHex": 16053492,
+        "colorHex": "#f4f4f4",
         "opacity": 0.85
       },
       "pulse": {
-        "colorHex": 13158600,
+        "colorHex": "#c8c8c8",
         "opacity": 0.7
       },
       "spark": {
-        "colorHex": 16777215,
+        "colorHex": "#ffffff",
         "opacity": 0.9
       }
     },
@@ -251,214 +283,282 @@
       "foregroundAlpha": 0.9
     },
     "hpBar": {
-      "high": { "cssColor": "#44dd44" },
-      "low": { "cssColor": "#ff4444" },
-      "build": { "cssColor": "#4488ff" }
+      "high": {
+        "cssColor": "#44dd44"
+      },
+      "low": {
+        "cssColor": "#ff4444"
+      },
+      "build": {
+        "cssColor": "#4488ff"
+      }
     },
     "hazardStripe": {
       "yellow": {
-        "colorHex": 14921774,
-        "rgb01": [0.89, 0.69, 0.18]
+        "colorHex": "#e3b02e",
+        "rgb01": "#e3b02e"
       },
       "black": {
-        "colorHex": 1252129,
-        "rgb01": [0.075, 0.105, 0.13]
+        "colorHex": "#131b21",
+        "rgb01": "#131b21"
       }
     }
   },
   "units": {
-    "neutral": { "colorHex": 8947848 },
+    "neutral": {
+      "colorHex": "#888888"
+    },
     "turret": {
-      "barrel": { "colorHex": 16777215 }
+      "barrel": {
+        "colorHex": "#ffffff"
+      }
     },
     "commander": {
-      "armor": { "colorHex": 2304048 },
-      "trim": { "colorHex": 13160666 },
+      "armor": {
+        "colorHex": "#232830"
+      },
+      "trim": {
+        "colorHex": "#c8d0da"
+      },
       "lens": {
-        "colorHex": 7596543,
+        "colorHex": "#73e9ff",
         "opacity": 0.9
       }
     },
     "locomotion": {
       "tread": {
-        "slab": { "colorHex": 1711394 },
-        "wheel": { "colorHex": 2764598 },
-        "cleat": { "colorHex": 3817542 }
+        "slab": {
+          "colorHex": "#1a1d22"
+        },
+        "wheel": {
+          "colorHex": "#2a2f36"
+        },
+        "cleat": {
+          "colorHex": "#3a4046"
+        }
       },
       "wheel": {
-        "tire": { "colorHex": 2764598 }
+        "tire": {
+          "colorHex": "#2a2f36"
+        }
       },
       "leg": {
-        "segment": { "colorHex": 2764598 },
+        "segment": {
+          "colorHex": "#2a2f36"
+        },
         "debugRestSphere": {
-          "colorHex": 4521932,
+          "colorHex": "#44ffcc",
           "opacity": 0.4
         }
       },
       "hover": {
-        "fanRing": { "colorHex": 0 },
-        "fanBlade": { "colorHex": 16777215 },
-        "fanHub": { "colorHex": 16777215 },
+        "fanRing": {
+          "colorHex": "#000000"
+        },
+        "fanBlade": {
+          "colorHex": "#ffffff"
+        },
+        "fanHub": {
+          "colorHex": "#ffffff"
+        },
         "smoke": {
-          "colorHex": 13421772,
+          "colorHex": "#cccccc",
           "startAlpha": 0.9
         }
       },
       "flying": {
-        "wing": { "colorHex": 0 },
-        "jet": { "colorHex": 1118481 },
+        "wing": {
+          "colorHex": "#000000"
+        },
+        "jet": {
+          "colorHex": "#111111"
+        },
         "smoke": {
-          "colorHex": 13421772,
+          "colorHex": "#cccccc",
           "startAlpha": 0.85
         }
       }
     },
     "debris": {
-      "tread": { "colorHex": 1711394 },
-      "wheel": { "colorHex": 2764598 },
-      "leg": { "colorHex": 2764598 },
-      "barrel": { "colorHex": 16777215 }
+      "tread": {
+        "colorHex": "#1a1d22"
+      },
+      "wheel": {
+        "colorHex": "#2a2f36"
+      },
+      "leg": {
+        "colorHex": "#2a2f36"
+      },
+      "barrel": {
+        "colorHex": "#ffffff"
+      }
     }
   },
   "effects": {
     "forceField": {
       "barrier": {
-        "colorHex": 16777215,
+        "colorHex": "#ffffff",
         "alpha": 0.05,
         "particleAlpha": 0.2
       },
       "shield": {
-        "fallbackColorHex": 16777215,
-        "emitterIdleColorHex": 16777215
+        "fallbackColorHex": "#ffffff",
+        "emitterIdleColorHex": "#ffffff"
       },
       "impact": {
-        "fallbackColorHex": 16777215,
+        "fallbackColorHex": "#ffffff",
         "ringOpacity": 0.1,
         "coreOpacity": 0.22
       }
     },
     "beam": {
       "outer": {
-        "colorRgb01": [1.0, 1.0, 1.0],
+        "colorRgb01": "#ffffff",
         "waveLowAlpha": 0.1,
         "waveHighAlpha": 0.2
       },
       "inner": {
-        "colorRgb01": [1.0, 1.0, 1.0],
+        "colorRgb01": "#ffffff",
         "waveLowAlpha": 0.1,
         "waveHighAlpha": 0.2
       }
     },
     "projectile": {
-      "body": { "colorHex": 16777215 },
-      "curvedCone": { "colorHex": 16777215 },
-      "fin": { "colorHex": 16777215 },
+      "body": {
+        "colorHex": "#ffffff"
+      },
+      "curvedCone": {
+        "colorHex": "#ffffff"
+      },
+      "fin": {
+        "colorHex": "#ffffff"
+      },
       "collisionRadius": {
-        "colorHex": 16711680,
+        "colorHex": "#ff0000",
         "opacity": 0.55
       },
       "explosionRadius": {
-        "colorHex": 16746564,
+        "colorHex": "#ff8844",
         "opacity": 0.35
       },
       "rangeEnvelope": {
-        "colorHex": 16724787,
+        "colorHex": "#ff3333",
         "opacity": 0.9
       }
     },
     "explosion": {
-      "core": { "colorHex": 16777215 }
+      "core": {
+        "colorHex": "#ffffff"
+      }
     },
     "spray": {
-      "healRgb01": [1, 1, 1],
+      "healRgb01": "#ffffff",
       "particleAlpha": 0.85
     },
     "smokeTrail": {
       "default": {
-        "colorHex": 13421772,
+        "colorHex": "#cccccc",
         "startAlpha": 0.75
       }
     },
     "lineDrag": {
       "ring": {
-        "colorHex": 16777215,
+        "colorHex": "#ffffff",
         "opacity": 0.8
       },
       "fillOpacity": 0.85
     },
     "waypoint": {
-      "flagPole": { "cssColor": "#ffffff" }
+      "flagPole": {
+        "cssColor": "#ffffff"
+      }
     },
     "selectionOverlay": {
       "radiusScale": {
-        "colorHex": 4521983,
+        "colorHex": "#44ffff",
         "opacity": 0.7
       },
       "radiusShot": {
-        "colorHex": 16729343,
+        "colorHex": "#ff44ff",
         "opacity": 0.7
       },
       "radiusPush": {
-        "colorHex": 4521796,
+        "colorHex": "#44ff44",
         "opacity": 0.7
       },
       "trackAcquire": {
-        "colorHex": 16777096,
+        "colorHex": "#ffff88",
         "opacity": 0.55
       },
       "trackRelease": {
-        "colorHex": 16777096,
+        "colorHex": "#ffff88",
         "opacity": 0.35
       },
       "engageAcquire": {
-        "colorHex": 16729156,
+        "colorHex": "#ff4444",
         "opacity": 0.65
       },
       "engageRelease": {
-        "colorHex": 4500223,
+        "colorHex": "#44aaff",
         "opacity": 0.55
       },
       "engageMinAcquire": {
-        "colorHex": 16746496,
+        "colorHex": "#ff8800",
         "opacity": 0.65
       },
       "engageMinRelease": {
-        "colorHex": 11158783,
+        "colorHex": "#aa44ff",
         "opacity": 0.55
       },
       "build": {
-        "colorHex": 4521796,
+        "colorHex": "#44ff44",
         "opacity": 0.65
       },
       "selectionRing": {
-        "colorHex": 16777215,
-        "emissiveHex": 3355443,
+        "colorHex": "#ffffff",
+        "emissiveHex": "#333333",
         "opacity": 0.9
       }
     },
     "buildGhost": {
       "footprintOk": {
-        "colorHex": 8978312,
+        "colorHex": "#88ff88",
         "opacity": 0.35
       },
       "footprintBad": {
-        "colorHex": 16729156,
+        "colorHex": "#ff4444",
         "opacity": 0.35
       },
-      "cellOk": { "colorHex": 26112 },
-      "cellMetal": { "colorHex": 15001 },
-      "cellMetalDeposit": { "colorHex": 21862 },
-      "cellBad": { "colorHex": 7798784 },
-      "cellBorderOk": { "colorHex": 65280 },
-      "cellBorderMetal": { "colorHex": 38655 },
-      "cellBorderMetalDeposit": { "colorHex": 55551 },
-      "cellBorderBad": { "colorHex": 16711680 },
+      "cellOk": {
+        "colorHex": "#006600"
+      },
+      "cellMetal": {
+        "colorHex": "#003a99"
+      },
+      "cellMetalDeposit": {
+        "colorHex": "#005566"
+      },
+      "cellBad": {
+        "colorHex": "#770000"
+      },
+      "cellBorderOk": {
+        "colorHex": "#00ff00"
+      },
+      "cellBorderMetal": {
+        "colorHex": "#0096ff"
+      },
+      "cellBorderMetalDeposit": {
+        "colorHex": "#00d8ff"
+      },
+      "cellBorderBad": {
+        "colorHex": "#ff0000"
+      },
       "rangeRing": {
-        "colorHex": 65280,
+        "colorHex": "#00ff00",
         "opacity": 0.35
       },
       "outOfRangeLine": {
-        "colorHex": 16729156,
+        "colorHex": "#ff4444",
         "opacity": 0.6
       }
     },
@@ -473,8 +573,10 @@
       "strokeColor": "#000000"
     },
     "minimap": {
-      "radarBlip": { "cssColor": "#9aa3ad" },
-      "waterRgb": [42, 85, 154],
+      "radarBlip": {
+        "cssColor": "#9aa3ad"
+      },
+      "waterRgb": "#2a559a",
       "selectionStroke": "#ffffff",
       "cameraStroke": "rgba(255, 255, 255, 0.8)",
       "frameStroke": "rgba(255, 255, 255, 0.3)",
@@ -583,40 +685,52 @@
     },
     "worldDirectionHud": {
       "lights": {
-        "ambient": { "colorHex": 16777215, "intensity": 1.15 },
-        "key": { "colorHex": 16777215, "intensity": 2.2 },
-        "fill": { "colorHex": 9420031, "intensity": 0.65 }
+        "ambient": {
+          "colorHex": "#ffffff",
+          "intensity": 1.15
+        },
+        "key": {
+          "colorHex": "#ffffff",
+          "intensity": 2.2
+        },
+        "fill": {
+          "colorHex": "#8fbcff",
+          "intensity": 0.65
+        }
       },
-      "clear": { "colorHex": 0, "alpha": 0 },
+      "clear": {
+        "colorHex": "#000000",
+        "alpha": 0
+      },
       "materials": {
         "compass": {
-          "colorHex": 15331576,
-          "specularHex": 16777215,
+          "colorHex": "#e9f0f8",
+          "specularHex": "#ffffff",
           "shininess": 62
         },
         "compassAccent": {
-          "colorHex": 8021910,
-          "specularHex": 15003126,
+          "colorHex": "#7a6796",
+          "specularHex": "#e4edf6",
           "shininess": 42
         },
         "north": {
-          "colorHex": 16731197,
-          "specularHex": 16777215,
+          "colorHex": "#ff4c3d",
+          "specularHex": "#ffffff",
           "shininess": 74
         },
         "northAccent": {
-          "colorHex": 16767186,
-          "specularHex": 16777215,
+          "colorHex": "#ffd8d2",
+          "specularHex": "#ffffff",
           "shininess": 58
         },
         "wind": {
-          "colorHex": 10217727,
-          "specularHex": 16777215,
+          "colorHex": "#9be8ff",
+          "specularHex": "#ffffff",
           "shininess": 70
         },
         "windAccent": {
-          "colorHex": 2386822,
-          "specularHex": 12316671,
+          "colorHex": "#246b86",
+          "specularHex": "#bbefff",
           "shininess": 50
         }
       },
@@ -628,8 +742,14 @@
       }
     },
     "commanderAvatar": {
-      "ambient": { "colorHex": 16777215, "intensity": 0.55 },
-      "sun": { "colorHex": 16777215, "intensity": 0.85 }
+      "ambient": {
+        "colorHex": "#ffffff",
+        "intensity": 0.55
+      },
+      "sun": {
+        "colorHex": "#ffffff",
+        "intensity": 0.85
+      }
     },
     "numericDelta": {
       "neutral": "#888888",
@@ -637,65 +757,75 @@
       "negative": "#ff4444"
     },
     "statBars": {
-      "gray": { "rgb": [176, 176, 176] },
-      "low": { "rgb": [204, 34, 34] },
-      "mid": { "rgb": [204, 204, 0] },
-      "target": { "rgb": [68, 204, 68] },
-      "over": { "rgb": [68, 136, 255] }
+      "gray": {
+        "rgb": "#b0b0b0"
+      },
+      "low": {
+        "rgb": "#cc2222"
+      },
+      "mid": {
+        "rgb": "#cccc00"
+      },
+      "target": {
+        "rgb": "#44cc44"
+      },
+      "over": {
+        "rgb": "#4488ff"
+      }
     },
     "waypointColors": {
       "move": {
-        "colorHex": 65280,
+        "colorHex": "#00ff00",
         "cssColor": "#00ff00"
       },
       "patrol": {
-        "colorHex": 35071,
+        "colorHex": "#0088ff",
         "cssColor": "#0088ff"
       },
       "fight": {
-        "colorHex": 16729156,
+        "colorHex": "#ff4444",
         "cssColor": "#ff4444"
       }
     },
     "actionColors": {
       "move": {
-        "colorHex": 65280,
+        "colorHex": "#00ff00",
         "cssColor": "#00ff00"
       },
       "patrol": {
-        "colorHex": 35071,
+        "colorHex": "#0088ff",
         "cssColor": "#0088ff"
       },
       "fight": {
-        "colorHex": 16729156,
+        "colorHex": "#ff4444",
         "cssColor": "#ff4444"
       },
       "build": {
-        "colorHex": 16763904,
+        "colorHex": "#ffcc00",
         "cssColor": "#ffcc00"
       },
       "repair": {
-        "colorHex": 4521796,
+        "colorHex": "#44ff44",
         "cssColor": "#44ff44"
       },
       "reclaim": {
-        "colorHex": 14070879,
+        "colorHex": "#d6b45f",
         "cssColor": "#d6b45f"
       },
       "wait": {
-        "colorHex": 15263976,
+        "colorHex": "#e8e8e8",
         "cssColor": "#e8e8e8"
       },
       "attack": {
-        "colorHex": 16711680,
+        "colorHex": "#ff0000",
         "cssColor": "#ff0000"
       },
       "attackGround": {
-        "colorHex": 16742936,
+        "colorHex": "#ff7a18",
         "cssColor": "#ff7a18"
       },
       "guard": {
-        "colorHex": 10416781,
+        "colorHex": "#9ef28d",
         "cssColor": "#9ef28d"
       }
     },
