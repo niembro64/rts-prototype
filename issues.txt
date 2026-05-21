@@ -219,6 +219,24 @@ AIM-08.5 — Port the targeting FSM
   reset stopped touching them, and the two Vec storages + pointer
   exports were dropped. JS Turret.aimErrorYaw/Pitch lives on as a
   local-only field between updateTurretRotation and the firing pass.
+  The mount-kinematics writeback (worldPos / worldVelocity /
+  worldPosTick) has been deleted from writeBackCombatTargetingEntity:
+  live consumers read the slab directly. A new
+  readCombatTargetingTurretMountKinematicsInto helper exposes both
+  the slab's current-tick mount position and mount velocity; the
+  combatUtils helpers (resolveWeaponWorldMount,
+  updateWeaponWorldKinematics) check the slab first before falling
+  back to the JS Turret cache or recomputing from chassis pose, and
+  updateWeaponWorldKinematics mirrors slab pos+vel into the JS
+  Turret cache so direct readers of weapon.worldVelocity (projectile
+  launch inheritance in projectileSystem, commander dgun launch in
+  commandExecution) see the slab's value without a code change. The
+  aim solver's writeTurretMountVelocity also queries the slab first
+  via the same reader so turret aim solves consume the current-tick
+  mount velocity instead of a one-tick-stale JS Turret cache. The
+  writeBackCombatTargetingEntity signature lost its kinematicsTick
+  parameter and the SKIP-mode call site in targetingSchedulerBridge
+  dropped the corresponding `null` argument.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
 

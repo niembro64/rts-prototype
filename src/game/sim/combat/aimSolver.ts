@@ -13,7 +13,10 @@ import {
   resolveWeaponWorldMount,
 } from './combatUtils';
 import { pickTargetAimTurret } from './mirrorTargetPriority';
-import { readCombatTargetingTurretMountInto } from './targetingInputStamping';
+import {
+  readCombatTargetingTurretMountInto,
+  readCombatTargetingTurretMountKinematicsInto,
+} from './targetingInputStamping';
 import { spatialGrid } from '../SpatialGrid';
 import { getUnitGroundZ } from '../unitGeometry';
 
@@ -263,18 +266,35 @@ function writeDirectAimSolutionFields(out: TurretAimSolution): void {
   writeZeroVec3(out.launchVelocity);
 }
 
+const _mountVelocityPosScratch: Vec3 = { x: 0, y: 0, z: 0 };
+
 function writeTurretMountVelocity(
   weapon: Turret,
   source: Entity,
+  turretIndex: number,
+  currentTick: number | undefined,
   inheritVelocity: boolean,
   out: Vec3,
 ): Vec3 {
   if (!inheritVelocity) return writeZeroVec3(out);
 
-  // The cached mount velocity is only meaningful once
-  // updateWeaponWorldKinematics has populated it (`worldPosTick >= 0`).
-  // Before that, fall back to the carrier's velocity so the first
-  // pre-tick aim solve gets a reasonable lead instead of zeroes.
+  // Slab-first: when the scheduler updated mount kinematics for this
+  // turret this tick, the slab velocity is the source of truth (and
+  // is one tick fresher than the JS Turret cache, which previously
+  // got mirrored here by the targeting writeback).
+  if (
+    currentTick !== undefined &&
+    readCombatTargetingTurretMountKinematicsInto(
+      source, turretIndex, currentTick, _mountVelocityPosScratch, out,
+    )
+  ) {
+    return out;
+  }
+
+  // JS Turret cache: meaningful once updateWeaponWorldKinematics has
+  // populated it (`worldPosTick >= 0`). Before that, fall back to the
+  // carrier's velocity so the first pre-tick aim solve gets a
+  // reasonable lead instead of zeroes.
   if (weapon.worldPosTick >= 0) {
     out.x = weapon.worldVelocity.x;
     out.y = weapon.worldVelocity.y;
@@ -640,7 +660,10 @@ export function solveProjectileTurretAim(
   );
 
   const targetVelocity = getEntityVelocity3d(target, out.targetVelocity);
-  writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
+  writeTurretMountVelocity(
+    weapon, source, turretIndex, currentTick,
+    inheritOriginVelocity, out.originVelocity,
+  );
   const targetAcceleration = getEntityAcceleration3d(target, out.targetAcceleration);
   getEntityAcceleration3d(source, out.originAcceleration);
 
@@ -681,13 +704,17 @@ export function solveProjectileTurretAimAtPoint(
   inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
+  currentTick?: number,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
   out.aim.x = aimPoint.x;
   out.aim.y = aimPoint.y;
   out.aim.z = aimPoint.z;
 
-  writeTurretMountVelocity(weapon, source, inheritOriginVelocity, out.originVelocity);
+  writeTurretMountVelocity(
+    weapon, source, turretIndex, currentTick,
+    inheritOriginVelocity, out.originVelocity,
+  );
   getEntityAcceleration3d(source, out.originAcceleration);
   writeZeroVec3(out.targetVelocity);
   writeZeroVec3(out.targetAcceleration);
@@ -722,6 +749,7 @@ export function solveTurretAimAtGroundPoint(
   currentPitch: number,
   groundHeightAt: GroundHeightLookup,
   out: TurretAimSolution,
+  currentTick?: number,
 ): TurretAimSolution {
   if (!weaponUsesNormalAim(weapon)) {
     return solveTurretAimAtPoint(
@@ -749,6 +777,7 @@ export function solveTurretAimAtGroundPoint(
       true,
       groundHeightAt,
       out,
+      currentTick,
     );
   }
 

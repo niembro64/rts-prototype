@@ -7,6 +7,7 @@ import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
 import { GRAVITY } from '../../../config';
+import { readCombatTargetingTurretMountKinematicsInto } from './targetingInputStamping';
 
 // Re-export common math functions for backward compatibility
 export { distance, normalizeAngle };
@@ -68,6 +69,7 @@ const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const _rwmOut: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityPositionScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
+const _mountKinematicsVelScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 export type WeaponKinematicsOptions = {
   currentTick?: number;
@@ -83,7 +85,7 @@ export function resolveWeaponWorldMount(
     worldPosTick: number;
     mount: Vec3;
   },
-  _turretIndex: number,
+  turretIndex: number,
   cos: number,
   sin: number,
   options?: {
@@ -93,11 +95,22 @@ export function resolveWeaponWorldMount(
   },
   out: Vec3 = _rwmOut,
 ): Vec3 {
-  // Cache is valid only after at least one updateWeaponWorldKinematics
-  // pass (worldPosTick >= 0). When a currentTick is supplied we also
-  // require it to match — otherwise the cache may be a tick stale.
-  // No currentTick means "trust whatever you have", but the cache
-  // must still have been populated at least once.
+  // Prefer the Rust combat-targeting slab when the scheduler updated
+  // mount kinematics for this entity this tick — the slab is the
+  // source of truth and saves a chassis-tilt recompute.
+  if (
+    options?.currentTick !== undefined &&
+    readCombatTargetingTurretMountKinematicsInto(
+      unit, turretIndex, options.currentTick, out, _mountKinematicsVelScratch,
+    )
+  ) {
+    return out;
+  }
+
+  // JS Turret cache: valid only after at least one
+  // updateWeaponWorldKinematics pass (worldPosTick >= 0). When a
+  // currentTick is supplied we also require it to match — otherwise
+  // the cache may be a tick stale.
   if (
     turret.worldPosTick >= 0 &&
     (options?.currentTick === undefined || turret.worldPosTick === options.currentTick)
@@ -128,16 +141,18 @@ export function resolveWeaponWorldMount(
 
 /** Authoritative per-turret mount kinematics.
  *
- *  This is the single place that writes `turret.worldPos`,
- *  `turret.worldVelocity`, and `turret.worldPosTick`. Callers that need
- *  a current turret position should use this before aim/fire/field
- *  math; callers that only need to read an already-current value can use
- *  resolveWeaponWorldMount.
+ *  Prefers the Rust combat-targeting slab when it has fresh mount
+ *  kinematics for this tick (the scheduler's Pass 0 already wrote
+ *  them). Otherwise computes from the chassis pose and caches the
+ *  result on the JS Turret so subsequent same-tick reads of
+ *  `turret.worldPos` / `worldVelocity` see a current value when the
+ *  slab path was unavailable (probe-skipped entities, visual-only
+ *  turrets, non-sim client paths).
  */
 export function updateWeaponWorldKinematics(
   unit: Entity,
   turret: Turret,
-  _turretIndex: number,
+  turretIndex: number,
   cos: number,
   sin: number,
   options: WeaponKinematicsOptions = {},
@@ -146,6 +161,28 @@ export function updateWeaponWorldKinematics(
   const worldPos = turret.worldPos;
   const worldVel = turret.worldVelocity;
   const currentTick = options.currentTick;
+
+  // Slab-first: when the scheduler updated this turret's mount for
+  // the current tick, that value is the source of truth. Mirror it
+  // into the JS Turret cache so callers that read `worldPos` /
+  // `worldVelocity` directly (e.g., dgun launch, projectile launch
+  // velocity inheritance) see the same numbers.
+  if (
+    currentTick !== undefined &&
+    readCombatTargetingTurretMountKinematicsInto(
+      unit, turretIndex, currentTick, out, _mountKinematicsVelScratch,
+    )
+  ) {
+    worldPos.x = out.x;
+    worldPos.y = out.y;
+    worldPos.z = out.z;
+    worldVel.x = _mountKinematicsVelScratch.x;
+    worldVel.y = _mountKinematicsVelScratch.y;
+    worldVel.z = _mountKinematicsVelScratch.z;
+    turret.worldPosTick = currentTick;
+    return out;
+  }
+
   if (currentTick !== undefined && turret.worldPosTick === currentTick) {
     out.x = worldPos.x;
     out.y = worldPos.y;

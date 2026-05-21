@@ -129,6 +129,11 @@ export type CombatTargetingTurretMountOut = {
   z: number;
 };
 
+export type CombatTargetingTurretKinematicsOut = {
+  pos: { x: number; y: number; z: number };
+  vel: { x: number; y: number; z: number };
+};
+
 let _stateViews: CombatTargetingStateViews | null = null;
 const _combatTargetingSourceEntities: Entity[] = [];
 let _combatTargetingSourceIds = new Int32Array(0);
@@ -288,6 +293,34 @@ export function readCombatTargetingTurretMountInto(
   out.x = views.mountX[idx];
   out.y = views.mountY[idx];
   out.z = views.mountZ[idx];
+  return true;
+}
+
+/** Read the Rust-updated turret mount position AND world velocity for
+ *  this tick. Returns false when the slab row is missing or the
+ *  scheduler skipped mount kinematics for that entity. Callers that
+ *  need just one of the two should still use this — the read is the
+ *  same cost as reading position alone and avoids a divergence between
+ *  "I got fresh position" and "I got fresh velocity". */
+export function readCombatTargetingTurretMountKinematicsInto(
+  entity: Entity,
+  turretIndex: number,
+  currentTick: number,
+  outPos: { x: number; y: number; z: number },
+  outVel: { x: number; y: number; z: number },
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return false;
+  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
+  if (idx < 0) return false;
+  const views = getCombatTargetingStateViews(sim);
+  if (views.worldPosTick[idx] !== currentTick) return false;
+  outPos.x = views.mountX[idx];
+  outPos.y = views.mountY[idx];
+  outPos.z = views.mountZ[idx];
+  outVel.x = views.mountVx[idx];
+  outVel.y = views.mountVy[idx];
+  outVel.z = views.mountVz[idx];
   return true;
 }
 
@@ -583,21 +616,25 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
   }
 }
 
-/** Copy the Rust combat-targeting slab's authoritative FSM tuple and
- *  optional mount-kinematics tuple back onto the JS Turret objects
- *  that rendering, firing, and snapshot encode still consume during
- *  the slab migration. The same turret walk refreshes combat activity
- *  masks, avoiding a second post-writeback JS turret loop. The beam
- *  inverse target index syncs directly from the slab tuple so it is no
- *  longer coupled to JS Turret.target writes. Disabled turrets also
- *  have their JS-only fields cleared here — the slab side was zeroed
- *  by the scheduler's
+/** Copy the Rust combat-targeting slab's authoritative FSM tuple back
+ *  onto the JS Turret objects that rendering, firing, and snapshot
+ *  encode still consume during the slab migration. The same turret
+ *  walk refreshes combat activity masks, avoiding a second
+ *  post-writeback JS turret loop. The beam inverse target index syncs
+ *  directly from the slab tuple so it is no longer coupled to JS
+ *  Turret.target writes. Disabled turrets also have their JS-only
+ *  fields cleared here — the slab side was zeroed by the scheduler's
  *  reset_disabled_weapons pass, this finishes the job for fields that
  *  never crossed the boundary. Returns true when any turret still
- *  needs rotation/fire integration after writeback. */
+ *  needs rotation/fire integration after writeback.
+ *
+ *  Mount kinematics (worldPos / worldVelocity / worldPosTick) are no
+ *  longer written back here: live consumers
+ *  (resolveWeaponWorldMount, updateWeaponWorldKinematics, aim solver,
+ *  projectile launch, dgun launch) read the slab via
+ *  readCombatTargetingTurretMountKinematicsInto. */
 export function writeBackCombatTargetingEntity(
   entity: Entity,
-  kinematicsTick: number | null,
   world: WorldState,
 ): boolean {
   const combat = entity.combat;
@@ -638,15 +675,6 @@ export function writeBackCombatTargetingEntity(
     syncBeamWeaponTargetIndex(turret, entity, i, target);
     turret.target = target;
     turret.state = decodeCombatTargetingTurretState(views.state[idx]);
-    if (kinematicsTick !== null && views.worldPosTick[idx] === kinematicsTick) {
-      turret.worldPos.x = views.mountX[idx];
-      turret.worldPos.y = views.mountY[idx];
-      turret.worldPos.z = views.mountZ[idx];
-      turret.worldVelocity.x = views.mountVx[idx];
-      turret.worldVelocity.y = views.mountVy[idx];
-      turret.worldVelocity.z = views.mountVz[idx];
-      turret.worldPosTick = views.worldPosTick[idx];
-    }
     if (weaponSystemDisabled(world, turret)) {
       resetDisabledTurretJsOnlyFields(turret);
     }

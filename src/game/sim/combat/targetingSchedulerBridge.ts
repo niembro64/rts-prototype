@@ -123,13 +123,13 @@ function flushTargetingBatch(
       // turret work, no firing, no rotation — clear them here since
       // the per-entity prep loop no longer does it up front.
       if (_targetingBatchHasCooldown[i] !== 0) {
-        writeBackCombatTargetingEntity(unit, null, world);
+        writeBackCombatTargetingEntity(unit, world);
       }
       clearCombatActivityFlags(unit.combat!);
       continue;
     }
     const combat = unit.combat!;
-    const hasActiveTurretWork = writeBackCombatTargetingEntity(unit, tick, world);
+    const hasActiveTurretWork = writeBackCombatTargetingEntity(unit, world);
     if (mode === CT_TARGETING_TICK_MODE_CLEAR_LOCKS) {
       // Fire-disabled entities had their locks zeroed inside the
       // scheduler. Downstream JS systems (turretSystem,

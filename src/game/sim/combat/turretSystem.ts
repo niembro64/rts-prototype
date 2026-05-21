@@ -126,6 +126,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           weapon.pitch,
           (x, y) => world.getGroundZ(x, y),
           _turretAim,
+          currentTick,
         );
         weapon.ballisticAimInRange = solved.hasBallisticSolution;
         if (!solved.hasBallisticSolution) {
