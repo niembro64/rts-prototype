@@ -44,12 +44,6 @@ let _weaponDisabled = new Uint8Array(0);
 // weapons so Pass 2 can promote close fallbacks without recomputing.
 let _cachedFireRanks = new Uint8Array(0);
 let _cachedFireDistSqs = new Float64Array(0);
-// AIM-08.5 batched FSM inputs. TypeScript still computes gates that
-// need object-owned systems; Rust consumes these arrays once per pass
-// and mutates the targeting slab's target/state tuple in a single call.
-let _fsmApplyMask = new Uint8Array(0);
-let _fsmTargetIds = new Int32Array(0);
-let _fsmRanks = new Uint8Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
 // AIM-08.5 unified gate inputs shared across the priority-point,
 // priority-target, and existing-lock kernels. The Rust kernels read
@@ -76,32 +70,10 @@ let _candidatePosZ = new Float64Array(0);
 let _candidateRadius = new Float64Array(0);
 let _candidateMirrorScore = new Float64Array(0);
 let _candidateIds = new Int32Array(0);
-let _candidateSeedRanks = new Uint8Array(0);
-let _candidateSeedDistSqs = new Float64Array(0);
-let _candidateSeedMirrorScores = new Float64Array(0);
 
 function nextTargetingReacquireTick(tick: number): number {
   return tick + 1;
 }
-
-const TARGET_RANK_NONE = 0;
-const TARGET_RANK_TRACKING_ONLY = 1;
-const TARGET_RANK_FIRE_FALLBACK = 2;
-const TARGET_RANK_FIRE_PREFERRED = 3;
-type TargetPreferenceRank =
-  | typeof TARGET_RANK_NONE
-  | typeof TARGET_RANK_TRACKING_ONLY
-  | typeof TARGET_RANK_FIRE_FALLBACK
-  | typeof TARGET_RANK_FIRE_PREFERRED;
-
-const TARGETING_RANK_MODE_FIRE = 0;
-const TARGETING_RANK_MODE_ACQUISITION = 1;
-
-type TargetRankMode =
-  | typeof TARGETING_RANK_MODE_FIRE
-  | typeof TARGETING_RANK_MODE_ACQUISITION;
-
-const TARGETING_PREP_HAS_APPLY = 1;
 
 function ensurePerWeaponScratchCapacity(count: number): void {
   if (count <= _weaponDisabled.length) return;
@@ -110,12 +82,6 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _weaponDisabled = new Uint8Array(next);
   _cachedFireRanks = new Uint8Array(next);
   _cachedFireDistSqs = new Float64Array(next);
-  _fsmApplyMask = new Uint8Array(next);
-  _fsmTargetIds = new Int32Array(next);
-  _fsmRanks = new Uint8Array(next);
-  _candidateSeedRanks = new Uint8Array(next);
-  _candidateSeedDistSqs = new Float64Array(next);
-  _candidateSeedMirrorScores = new Float64Array(next);
   _ppProjectileSpeeds = new Float64Array(next);
   _ppArcPreferences = new Uint8Array(next);
   _ppMaxTimeSecs = new Float64Array(next);
@@ -233,12 +199,6 @@ function fillExistingLockGateInputs(
   }
 }
 
-function clearFsmGateScratch(count: number): void {
-  _fsmApplyMask.fill(0, 0, count);
-  _fsmTargetIds.fill(-1, 0, count);
-  _fsmRanks.fill(0, 0, count);
-}
-
 function getTargetingKernel() {
   const sim = getSimWasm();
   if (sim === undefined) {
@@ -294,54 +254,6 @@ function fillTargetCandidateInputs(
     _candidatePosY[ci] = enemyPosition.y;
     _candidatePosZ[ci] = enemyPosition.z;
   }
-}
-
-function chooseBestTargetCandidatesBatch(
-  world: WorldState,
-  source: Entity,
-  weapons: Turret[],
-  unitSlot: number,
-  candidates: Entity[],
-  rankMode: TargetRankMode,
-  minimumRank: TargetPreferenceRank,
-  forceMaterialSightObstructionActive: boolean,
-): void {
-  const sourcePlayerId = source.ownership?.playerId;
-  fillTargetCandidateInputs(sourcePlayerId, candidates);
-  // Ballistic config the Rust gate consumes (static per turret).
-  // Mirror-panel clearance now lives in Rust via the mirror-panel
-  // slab — no per-(turret, candidate) mask precompute needed.
-  fillGateBallisticConfig(weapons);
-  getTargetingKernel().computeAndChooseBestCandidatesBatch(
-    unitSlot,
-    rankMode,
-    minimumRank,
-    _fsmApplyMask,
-    _candidateSeedRanks,
-    _candidateSeedDistSqs,
-    _candidateSeedMirrorScores,
-    candidates.length,
-    _candidateIds,
-    _candidatePosX,
-    _candidatePosY,
-    _candidatePosZ,
-    _candidateRadius,
-    _candidateMirrorScore,
-    source.id,
-    world.mirrorsEnabled ? 1 : 0,
-    world.forceFieldsEnabled ? 1 : 0,
-    forceMaterialSightObstructionActive ? 1 : 0,
-    COMBAT_LOS_TERRAIN_STEP_LEN,
-    COMBAT_LOS_ENTITY_QUERY_WIDTH,
-    GRAVITY,
-    _ppProjectileSpeeds,
-    _ppArcPreferences,
-    _ppMaxTimeSecs,
-    _ppGroundAimFractions,
-    _ppUnderOnlyMask,
-    _fsmTargetIds,
-    _fsmRanks,
-  );
 }
 
 function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
@@ -660,74 +572,40 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       );
     }
 
-    // Pass 2: Re-evaluate tracking weapons and close-range fallback
-    // locks. If a preferred-band target exists, switch to it; if no
-    // preferred target exists, close targets inside max range remain
-    // valid fallbacks. This uses per-turret ranges so each weapon
-    // evaluates independently.
-    clearFsmGateScratch(weapons.length);
+    // Passes 2+3: Re-evaluate tracking weapons and acquire idle
+    // weapons inside one Rust tick. The kernel internally runs
+    // prep + choose-best + apply twice (fire-choice then
+    // acquisition), feeding the same candidate batch into both, so
+    // the per-entity boundary cost is one call instead of six.
+    // Zero-candidate batches still need to dispatch so acquisition's
+    // idle-pass can drop any zombie locks.
     if (batchedEnemies) {
-      const firePrepFlags = targeting.prepareFireChoiceFsmInputs(
-        unitSlot,
-        unit.id,
-        mirrorsEnabledFlag,
-        forceFieldsEnabledFlag,
-        _cachedFireRanks,
-        _cachedFireDistSqs,
-        _fsmApplyMask,
-        _candidateSeedRanks,
-        _candidateSeedDistSqs,
-        _candidateSeedMirrorScores,
-      );
-      if ((firePrepFlags & TARGETING_PREP_HAS_APPLY) !== 0) {
-        chooseBestTargetCandidatesBatch(
-          world,
-          unit,
-          weapons,
-          unitSlot,
-          batchedEnemies,
-          TARGETING_RANK_MODE_FIRE,
-          TARGET_RANK_FIRE_FALLBACK,
-          forceMaterialSightObstructionActive,
-        );
-      }
+      fillTargetCandidateInputs(playerId, batchedEnemies);
     }
-    targeting.applyFireChoiceFsmBatch(
+    fillGateBallisticConfig(weapons);
+    targeting.autoModeCandidateTick(
       unitSlot,
-      _fsmApplyMask,
-      _fsmTargetIds,
-    );
-
-    // Pass 3: Acquire targets for weapons with no target (idle)
-    clearFsmGateScratch(weapons.length);
-    if (batchedEnemies) {
-      const acquisitionPrepFlags = targeting.prepareAcquisitionChoiceFsmInputs(
-        unitSlot,
-        mirrorsEnabledFlag,
-        forceFieldsEnabledFlag,
-        _fsmApplyMask,
-        _candidateSeedRanks,
-        _candidateSeedDistSqs,
-        _candidateSeedMirrorScores,
-      );
-      if ((acquisitionPrepFlags & TARGETING_PREP_HAS_APPLY) !== 0) {
-        chooseBestTargetCandidatesBatch(
-          world,
-          unit,
-          weapons,
-          unitSlot,
-          batchedEnemies,
-          TARGETING_RANK_MODE_ACQUISITION,
-          TARGET_RANK_TRACKING_ONLY,
-          forceMaterialSightObstructionActive,
-        );
-      }
-    }
-    targeting.applyAcquisitionChoiceFsmBatch(
-      unitSlot,
-      _fsmApplyMask,
-      _fsmTargetIds,
-      _fsmRanks,
+      unit.id,
+      mirrorsEnabledFlag,
+      forceFieldsEnabledFlag,
+      forceMaterialSightObstructionActive ? 1 : 0,
+      COMBAT_LOS_TERRAIN_STEP_LEN,
+      COMBAT_LOS_ENTITY_QUERY_WIDTH,
+      GRAVITY,
+      _cachedFireRanks,
+      _cachedFireDistSqs,
+      batchedEnemies ? batchedEnemies.length : 0,
+      _candidateIds,
+      _candidatePosX,
+      _candidatePosY,
+      _candidatePosZ,
+      _candidateRadius,
+      _candidateMirrorScore,
+      _ppProjectileSpeeds,
+      _ppArcPreferences,
+      _ppMaxTimeSecs,
+      _ppGroundAimFractions,
+      _ppUnderOnlyMask,
     );
     writeBackCombatTargetingEntity(unit);
 

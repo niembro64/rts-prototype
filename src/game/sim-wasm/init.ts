@@ -191,6 +191,7 @@ import __wbg_init, {
   combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch,
   combat_targeting_apply_fire_choice_fsm_batch,
   combat_targeting_apply_acquisition_choice_fsm_batch,
+  combat_targeting_auto_mode_candidate_tick,
   force_field_pool_clear,
   force_field_pool_count,
   force_field_pool_set_count,
@@ -1247,6 +1248,35 @@ export interface CombatTargetingApi {
     applyMask: Uint8Array,
     targetIds: Int32Array,
     ranks: Uint8Array,
+  ) => void;
+  /** AIM-08.5 — collapses the fire-choice + acquisition pair (six
+   *  per-entity boundary calls in the legacy flow) into a single Rust
+   *  tick. Scratch buffers for apply mask / seed ranks / choose-best
+   *  outputs live on the kernel's stack; JS only owns the shared
+   *  candidate batch + projectile config arrays. */
+  readonly autoModeCandidateTick: (
+    entitySlot: number,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    candidateCount: number,
+    candidateIds: Int32Array,
+    candidatePosX: Float64Array,
+    candidatePosY: Float64Array,
+    candidatePosZ: Float64Array,
+    candidateRadius: Float64Array,
+    candidateMirrorScore: Float64Array,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
   ) => void;
 }
 
@@ -2314,6 +2344,7 @@ export function initSimWasm(): Promise<SimWasm> {
           computeAndApplyValidateExistingLockFsmBatch: combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch,
           applyFireChoiceFsmBatch: combat_targeting_apply_fire_choice_fsm_batch,
           applyAcquisitionChoiceFsmBatch: combat_targeting_apply_acquisition_choice_fsm_batch,
+          autoModeCandidateTick: combat_targeting_auto_mode_candidate_tick,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,

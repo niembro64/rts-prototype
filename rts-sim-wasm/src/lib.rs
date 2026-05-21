@@ -7131,6 +7131,7 @@ const CT_TARGET_RANK_TRACKING_ONLY: u8 = 1;
 const CT_TARGET_RANK_FIRE_FALLBACK: u8 = 2;
 const CT_TARGET_RANK_FIRE_PREFERRED: u8 = 3;
 
+const CT_TARGET_RANK_MODE_FIRE: u8 = 0;
 const CT_TARGET_RANK_MODE_ACQUISITION: u8 = 1;
 
 const CT_TARGET_EDGE_RELEASE: u8 = 1;
@@ -8671,6 +8672,185 @@ pub fn combat_targeting_apply_acquisition_choice_fsm_batch(
         };
         combat_targeting_set_target_state(pool, idx, target_id, state);
     }
+}
+
+/// AIM-08.5 — auto-mode candidate tick. Runs the fire-choice +
+/// acquisition pair (prep → choose-best → apply, ×2) for one entity
+/// inside a single Rust call. Replaces the 6-kernel JS sequence
+/// (`prepareFireChoiceFsmInputs` → `computeAndChooseBestCandidatesBatch`
+/// → `applyFireChoiceFsmBatch` → `prepareAcquisitionChoiceFsmInputs`
+/// → `computeAndChooseBestCandidatesBatch` → `applyAcquisitionChoiceFsmBatch`)
+/// with one boundary crossing.
+///
+/// The scratch arrays the pair used to share with JS (apply mask,
+/// seed ranks/dist/mirror scores, candidate-batch output ids/ranks)
+/// live on the stack here — they never escape the kernel, so JS no
+/// longer has to size or zero them.
+#[wasm_bindgen]
+pub fn combat_targeting_auto_mode_candidate_tick(
+    entity_slot: u32,
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    cached_fire_ranks: &[u8],
+    cached_fire_dist_sqs: &[f64],
+    candidate_count: u32,
+    candidate_ids: &[i32],
+    candidate_pos_x: &[f64],
+    candidate_pos_y: &[f64],
+    candidate_pos_z: &[f64],
+    candidate_radius: &[f64],
+    candidate_mirror_score: &mut [f64],
+    projectile_speeds: &[f64],
+    arc_preferences: &[u8],
+    max_time_secs: &[f64],
+    ground_aim_fractions: &[f64],
+    under_only_mask: &[u8],
+) {
+    const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
+    let turret_count = {
+        let pool = combat_targeting_pool();
+        let entity_idx = entity_slot as usize;
+        if entity_idx >= pool.turret_count_per_entity.len() {
+            return;
+        }
+        (pool.turret_count_per_entity[entity_idx] as usize)
+            .min(MAX)
+            .min(cached_fire_ranks.len())
+            .min(cached_fire_dist_sqs.len())
+            .min(projectile_speeds.len())
+            .min(arc_preferences.len())
+            .min(max_time_secs.len())
+            .min(ground_aim_fractions.len())
+            .min(under_only_mask.len())
+    };
+    if turret_count == 0 {
+        return;
+    }
+
+    let mut apply_mask = [0u8; MAX];
+    let mut seed_ranks = [CT_TARGET_RANK_NONE; MAX];
+    let mut seed_dist_sqs = [f64::INFINITY; MAX];
+    let mut seed_mirror_scores = [0.0f64; MAX];
+    let mut out_target_ids = [-1i32; MAX];
+    let mut out_ranks = [CT_TARGET_RANK_NONE; MAX];
+
+    // === Fire-choice pass ===
+    let fire_prep = combat_targeting_prepare_fire_choice_fsm_inputs(
+        entity_slot,
+        source_entity_id,
+        mirrors_enabled,
+        force_fields_enabled,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        &mut apply_mask[..turret_count],
+        &mut seed_ranks[..turret_count],
+        &mut seed_dist_sqs[..turret_count],
+        &mut seed_mirror_scores[..turret_count],
+    );
+
+    if (fire_prep & CT_TARGETING_PREP_HAS_APPLY) != 0 {
+        combat_targeting_compute_and_choose_best_candidates_batch(
+            entity_slot,
+            CT_TARGET_RANK_MODE_FIRE,
+            CT_TARGET_RANK_FIRE_FALLBACK,
+            &apply_mask[..turret_count],
+            &seed_ranks[..turret_count],
+            &seed_dist_sqs[..turret_count],
+            &seed_mirror_scores[..turret_count],
+            candidate_count,
+            candidate_ids,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            candidate_radius,
+            candidate_mirror_score,
+            source_entity_id,
+            mirrors_enabled,
+            force_fields_enabled,
+            force_field_obstruction_active,
+            terrain_step_len,
+            entity_line_width,
+            gravity,
+            projectile_speeds,
+            arc_preferences,
+            max_time_secs,
+            ground_aim_fractions,
+            under_only_mask,
+            &mut out_target_ids[..turret_count],
+            &mut out_ranks[..turret_count],
+        );
+    }
+
+    combat_targeting_apply_fire_choice_fsm_batch(
+        entity_slot,
+        &apply_mask[..turret_count],
+        &out_target_ids[..turret_count],
+    );
+
+    // Reset scratch for the acquisition pass. apply_mask + seeds get
+    // overwritten by prepare_acquisition; out_target_ids + out_ranks
+    // must start as "no choice" so a no-candidate acquisition apply
+    // still drops the lock cleanly via the target_id < 0 branch.
+    for i in 0..turret_count {
+        out_target_ids[i] = -1;
+        out_ranks[i] = CT_TARGET_RANK_NONE;
+    }
+
+    // === Acquisition pass ===
+    let acq_prep = combat_targeting_prepare_acquisition_choice_fsm_inputs(
+        entity_slot,
+        mirrors_enabled,
+        force_fields_enabled,
+        &mut apply_mask[..turret_count],
+        &mut seed_ranks[..turret_count],
+        &mut seed_dist_sqs[..turret_count],
+        &mut seed_mirror_scores[..turret_count],
+    );
+
+    if (acq_prep & CT_TARGETING_PREP_HAS_APPLY) != 0 {
+        combat_targeting_compute_and_choose_best_candidates_batch(
+            entity_slot,
+            CT_TARGET_RANK_MODE_ACQUISITION,
+            CT_TARGET_RANK_TRACKING_ONLY,
+            &apply_mask[..turret_count],
+            &seed_ranks[..turret_count],
+            &seed_dist_sqs[..turret_count],
+            &seed_mirror_scores[..turret_count],
+            candidate_count,
+            candidate_ids,
+            candidate_pos_x,
+            candidate_pos_y,
+            candidate_pos_z,
+            candidate_radius,
+            candidate_mirror_score,
+            source_entity_id,
+            mirrors_enabled,
+            force_fields_enabled,
+            force_field_obstruction_active,
+            terrain_step_len,
+            entity_line_width,
+            gravity,
+            projectile_speeds,
+            arc_preferences,
+            max_time_secs,
+            ground_aim_fractions,
+            under_only_mask,
+            &mut out_target_ids[..turret_count],
+            &mut out_ranks[..turret_count],
+        );
+    }
+
+    combat_targeting_apply_acquisition_choice_fsm_batch(
+        entity_slot,
+        &apply_mask[..turret_count],
+        &out_target_ids[..turret_count],
+        &out_ranks[..turret_count],
+    );
 }
 
 #[inline]
