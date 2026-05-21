@@ -6273,6 +6273,17 @@ struct CombatTargetingPool {
     entity_priority_point_y: Vec<f64>,
     entity_priority_point_z: Vec<f64>,
     entity_scheduled_probe_tick: Vec<i32>,
+    // AIM-08.5 — per-entity activity masks computed by the Rust mask
+    // refresh kernel. Bit i set means turret i is active (FSM in
+    // tracking/engaged, or angular/pitch velocity above the rotation-
+    // work epsilon). The firing mask additionally requires turret i to
+    // be ENGAGED and not passive / force-shot. JS readers (turretSystem,
+    // projectileSystem) consume these directly via the slab views; the
+    // JS-side `combat.activeTurretMask`/`firingTurretMask` are
+    // mirrored from this slot during writeback for the remaining JS-
+    // owned bookkeeping paths.
+    entity_active_turret_mask: Vec<u32>,
+    entity_firing_turret_mask: Vec<u32>,
     entity_slot_by_id: HashMap<i32, u32>,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
@@ -6289,6 +6300,12 @@ struct CombatTargetingPool {
     turret_world_pos_tick: Vec<i32>,
     turret_rotation: Vec<f32>,
     turret_pitch: Vec<f32>,
+    // AIM-08.5 — per-turret angular/pitch velocity. Stamped from JS
+    // Turret at the start of each tick and re-synced after the JS
+    // turretSystem rotation pass; the activity-mask kernel reads these
+    // to compute hasTurretRotationWork without crossing back into JS.
+    turret_angular_velocity: Vec<f32>,
+    turret_pitch_velocity: Vec<f32>,
     turret_state: Vec<u8>,
     turret_target_id: Vec<i32>,
     // Transitional AIM-08.5 runtime timers. Firing still writes these
@@ -6397,6 +6414,8 @@ impl CombatTargetingPool {
             entity_priority_point_y: Vec::new(),
             entity_priority_point_z: Vec::new(),
             entity_scheduled_probe_tick: Vec::new(),
+            entity_active_turret_mask: Vec::new(),
+            entity_firing_turret_mask: Vec::new(),
             entity_slot_by_id: HashMap::new(),
             turret_count_per_entity: Vec::new(),
             turret_mount_x: Vec::new(),
@@ -6411,6 +6430,8 @@ impl CombatTargetingPool {
             turret_world_pos_tick: Vec::new(),
             turret_rotation: Vec::new(),
             turret_pitch: Vec::new(),
+            turret_angular_velocity: Vec::new(),
+            turret_pitch_velocity: Vec::new(),
             turret_state: Vec::new(),
             turret_target_id: Vec::new(),
             turret_cooldown: Vec::new(),
@@ -6489,6 +6510,8 @@ impl CombatTargetingPool {
             self.entity_priority_point_y.resize(entity_needed, 0.0);
             self.entity_priority_point_z.resize(entity_needed, 0.0);
             self.entity_scheduled_probe_tick.resize(entity_needed, -1);
+            self.entity_active_turret_mask.resize(entity_needed, 0);
+            self.entity_firing_turret_mask.resize(entity_needed, 0);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
         let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -6505,6 +6528,8 @@ impl CombatTargetingPool {
             self.turret_world_pos_tick.resize(turret_needed, -1);
             self.turret_rotation.resize(turret_needed, 0.0);
             self.turret_pitch.resize(turret_needed, 0.0);
+            self.turret_angular_velocity.resize(turret_needed, 0.0);
+            self.turret_pitch_velocity.resize(turret_needed, 0.0);
             self.turret_state
                 .resize(turret_needed, CT_TURRET_STATE_IDLE);
             self.turret_target_id.resize(turret_needed, -1);
@@ -6839,6 +6864,8 @@ pub fn combat_targeting_set_turret(
     mount_vz: f64,
     rotation: f32,
     pitch: f32,
+    angular_velocity: f32,
+    pitch_velocity: f32,
     state: u8,
     target_id: i32,
     cooldown: f64,
@@ -6883,6 +6910,8 @@ pub fn combat_targeting_set_turret(
     pool.turret_mount_vz[global_idx] = mount_vz;
     pool.turret_rotation[global_idx] = rotation;
     pool.turret_pitch[global_idx] = pitch;
+    pool.turret_angular_velocity[global_idx] = angular_velocity;
+    pool.turret_pitch_velocity[global_idx] = pitch_velocity;
     pool.turret_state[global_idx] = state;
     pool.turret_target_id[global_idx] = target_id;
     pool.turret_cooldown[global_idx] = if cooldown > 0.0 { cooldown } else { 0.0 };
@@ -7180,6 +7209,16 @@ combat_targeting_ptr_export!(
 combat_targeting_ptr_export!(combat_targeting_entity_hp_ptr, entity_hp, f32);
 combat_targeting_ptr_export!(combat_targeting_entity_flags_ptr, entity_flags, u8);
 combat_targeting_ptr_export!(
+    combat_targeting_entity_active_turret_mask_ptr,
+    entity_active_turret_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_firing_turret_mask_ptr,
+    entity_firing_turret_mask,
+    u32
+);
+combat_targeting_ptr_export!(
     combat_targeting_turret_count_per_entity_ptr,
     turret_count_per_entity,
     u8
@@ -7197,6 +7236,16 @@ combat_targeting_ptr_export!(
 );
 combat_targeting_ptr_export!(combat_targeting_turret_rotation_ptr, turret_rotation, f32);
 combat_targeting_ptr_export!(combat_targeting_turret_pitch_ptr, turret_pitch, f32);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_angular_velocity_ptr,
+    turret_angular_velocity,
+    f32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_pitch_velocity_ptr,
+    turret_pitch_velocity,
+    f32
+);
 combat_targeting_ptr_export!(combat_targeting_turret_state_ptr, turret_state, u8);
 combat_targeting_ptr_export!(combat_targeting_turret_target_id_ptr, turret_target_id, i32);
 combat_targeting_ptr_export!(combat_targeting_turret_cooldown_ptr, turret_cooldown, f64);
@@ -8260,6 +8309,95 @@ fn combat_targeting_decrement_cooldown(value: f64, dt_ms: f64) -> f64 {
             0.0
         }
     }
+}
+
+// AIM-08.5 — slab-side per-turret rotation work threshold. Mirrors the
+// JS `ACTIVE_ROTATION_EPSILON` in combatActivity.ts; kept in lockstep
+// so the slab kernel and the (legacy) JS fallback agree on which
+// turrets count as "still spinning down."
+const CT_ROTATION_WORK_EPSILON: f32 = 0.0001;
+
+/// AIM-08.5 — Activity mask refresh kernel. Walks every turret on
+/// `entity_slot`, reads slab FSM target/state + angular/pitch velocity
+/// + config flags, and writes the entity-level active/firing masks.
+/// `visualOnly` turrets are skipped exactly like the JS path.
+#[inline]
+fn combat_targeting_refresh_activity_masks_for_entity_inner(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+) {
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    let mut active_mask: u32 = 0;
+    let mut firing_mask: u32 = 0;
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let flags = pool.turret_config_flags[idx];
+        if (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0 {
+            continue;
+        }
+        let state = pool.turret_state[idx];
+        let has_fsm_work = pool.turret_target_id[idx] >= 0 || state != CT_TURRET_STATE_IDLE;
+        let has_rotation_work = pool.turret_angular_velocity[idx].abs()
+            > CT_ROTATION_WORK_EPSILON
+            || pool.turret_pitch_velocity[idx].abs() > CT_ROTATION_WORK_EPSILON;
+        if !has_fsm_work && !has_rotation_work {
+            continue;
+        }
+        active_mask |= 1u32 << (turret_idx as u32);
+        if state == CT_TURRET_STATE_ENGAGED
+            && (flags & CT_TURRET_CFG_PASSIVE) == 0
+            && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
+        {
+            firing_mask |= 1u32 << (turret_idx as u32);
+        }
+    }
+    pool.entity_active_turret_mask[entity_idx] = active_mask;
+    pool.entity_firing_turret_mask[entity_idx] = firing_mask;
+}
+
+/// AIM-08.5 — single-entity activity mask refresh entry point. JS
+/// writeback / turretSystem / projectileSystem call this after writing
+/// slab FSM + velocity data so downstream readers (turretSystem,
+/// projectileSystem) can read the masks directly from the slab.
+#[wasm_bindgen]
+pub fn combat_targeting_refresh_activity_masks_for_entity(entity_slot: u32) {
+    let pool = combat_targeting_pool();
+    combat_targeting_refresh_activity_masks_for_entity_inner(pool, entity_slot);
+}
+
+/// AIM-08.5 — batched activity mask refresh. Slot list lives in JS, but
+/// the per-entity walk stays inside Rust so a many-entity refresh costs
+/// one boundary call.
+#[wasm_bindgen]
+pub fn combat_targeting_refresh_activity_masks_batch(entity_slots: &[u32]) {
+    let pool = combat_targeting_pool();
+    for &slot in entity_slots.iter() {
+        combat_targeting_refresh_activity_masks_for_entity_inner(pool, slot);
+    }
+}
+
+/// AIM-08.5 — slab-side mid-tick turret state clear, used by JS when
+/// the rotation pass discovers a ballistic-fail or other reason to
+/// drop a turret's lock outright. Mirrors `weapon.state = 'idle'`
+/// plus `setWeaponTarget(..., null)` for the slab, so downstream
+/// readers see the cleared lock once the activity-mask refresh runs.
+#[wasm_bindgen]
+pub fn combat_targeting_clear_turret_fsm(entity_slot: u32, turret_idx: u32) {
+    let pool = combat_targeting_pool();
+    if turret_idx >= COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY {
+        return;
+    }
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+    combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
 }
 
 /// AIM-08.5 — Rust port of `resetDisabledWeapon`'s slab side. For every

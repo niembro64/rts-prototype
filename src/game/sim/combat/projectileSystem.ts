@@ -25,7 +25,11 @@ import {
   updateProjectileSourceClearance,
   updateWeaponWorldKinematics,
 } from './combatUtils';
-import { updateCombatActivityFlags } from './combatActivity';
+import {
+  clearTurretFsmOnSlab,
+  readFiringTurretMaskForUnit,
+  refreshSlabActivityMasksForUnit,
+} from './combatActivitySlab';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
@@ -313,7 +317,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
     const combat = unit.combat;
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-    const firingMask = combat.firingTurretMask;
+    const firingMask = readFiringTurretMaskForUnit(unit, combat);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 
@@ -336,6 +340,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           setWeaponTarget(weapon, unit, weaponIndex, null);
         }
         weapon.state = 'idle';
+        // Sync the slab so the end-of-pass activity-mask refresh sees
+        // the cleared FSM state.
+        clearTurretFsmOnSlab(unit, weaponIndex);
         continue;
       }
 
@@ -360,6 +367,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (targetingTargetId !== null && !world.getEntity(targetingTargetId)) {
         setWeaponTarget(weapon, unit, weaponIndex, null);
         weapon.state = 'idle';
+        clearTurretFsmOnSlab(unit, weaponIndex);
         continue;
       }
       if (targetingTargetId === null && groundTargetPoint === null) continue;
@@ -615,7 +623,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // cycle through the barrel set (index % N, wraps automatically).
       weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
     }
-    updateCombatActivityFlags(combat);
+    refreshSlabActivityMasksForUnit(unit, combat);
   }
 
   return { projectiles: newProjectiles, events: audioEvents, spawnEvents };

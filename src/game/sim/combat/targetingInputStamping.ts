@@ -31,12 +31,8 @@ import {
   getEntityVelocity3d,
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
-  turretBit,
 } from './combatUtils';
-import {
-  clearCombatActivityFlags,
-  hasTurretRotationWork,
-} from './combatActivity';
+import { clearCombatActivityFlags } from './combatActivity';
 import { syncBeamWeaponTargetIndex } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -96,6 +92,7 @@ let _stampPrevLosBlockedTicks = new Uint16Array(0);
 export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
   length: number;
+  entityCapacity: number;
   entityId: Int32Array;
   state: Uint8Array;
   targetId: Int32Array;
@@ -109,6 +106,10 @@ export type CombatTargetingStateViews = {
   losBlockedTicks: Uint16Array;
   cooldown: Float64Array;
   burstCooldown: Float64Array;
+  angularVelocity: Float32Array;
+  pitchVelocity: Float32Array;
+  activeTurretMask: Uint32Array;
+  firingTurretMask: Uint32Array;
 };
 
 export type CombatTargetingTurretStateCode =
@@ -198,13 +199,15 @@ export function decodeCombatTargetingTurretState(state: number): TurretState {
 
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
   const targeting = sim.combatTargeting;
-  const length = targeting.entityCapacity() * targeting.maxTurretsPerEntity();
+  const entityCapacity = targeting.entityCapacity();
+  const length = entityCapacity * targeting.maxTurretsPerEntity();
   const buffer = sim.memory.buffer;
   const cached = _stateViews;
   if (
     cached &&
     cached.buffer === buffer &&
     cached.length === length &&
+    cached.entityCapacity === entityCapacity &&
     cached.state.byteLength > 0
   ) {
     return cached;
@@ -213,7 +216,8 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
   _stateViews = {
     buffer,
     length,
-    entityId: new Int32Array(buffer, targeting.entityIdPtr(), targeting.entityCapacity()),
+    entityCapacity,
+    entityId: new Int32Array(buffer, targeting.entityIdPtr(), entityCapacity),
     state: new Uint8Array(buffer, targeting.turretStatePtr(), length),
     targetId: new Int32Array(buffer, targeting.turretTargetIdPtr(), length),
     mountX: new Float64Array(buffer, targeting.turretMountXPtr(), length),
@@ -226,6 +230,18 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     losBlockedTicks: new Uint16Array(buffer, targeting.turretLosBlockedTicksPtr(), length),
     cooldown: new Float64Array(buffer, targeting.turretCooldownPtr(), length),
     burstCooldown: new Float64Array(buffer, targeting.turretBurstCooldownPtr(), length),
+    angularVelocity: new Float32Array(buffer, targeting.turretAngularVelocityPtr(), length),
+    pitchVelocity: new Float32Array(buffer, targeting.turretPitchVelocityPtr(), length),
+    activeTurretMask: new Uint32Array(
+      buffer,
+      targeting.entityActiveTurretMaskPtr(),
+      entityCapacity,
+    ),
+    firingTurretMask: new Uint32Array(
+      buffer,
+      targeting.entityFiringTurretMaskPtr(),
+      entityCapacity,
+    ),
   };
   return _stateViews;
 }
@@ -554,6 +570,7 @@ function stampCombatTargetingEntityInto(
       t.worldPos.x, t.worldPos.y, t.worldPos.z,
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
+      t.angularVelocity, t.pitchVelocity,
       stateCode,
       targetId,
       t.cooldown,
@@ -616,18 +633,19 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
 
 /** Copy the Rust combat-targeting slab's authoritative FSM tuple back
  *  onto the JS Turret objects that rendering, firing, and snapshot
- *  encode still consume during the slab migration. The same turret
- *  walk refreshes combat activity masks, avoiding a second
- *  post-writeback JS turret loop. Mask derivation reads target/state
- *  directly from the slab view (not the JS Turret it just wrote) so
- *  the JS Turret.target / Turret.state writes above can eventually be
- *  dropped without breaking activity bookkeeping. The beam inverse
- *  target index syncs directly from the slab tuple so it is no longer
- *  coupled to JS Turret.target writes. Disabled turrets also have
- *  their JS-only fields cleared here — the slab side was zeroed by
- *  the scheduler's reset_disabled_weapons pass, this finishes the job
- *  for fields that never crossed the boundary. Returns true when any
- *  turret still needs rotation/fire integration after writeback.
+ *  encode still consume during the slab migration. The activity-mask
+ *  refresh runs entirely in Rust now: the slab's angular/pitch
+ *  velocity (stamped during input stamping) plus the kernel-updated
+ *  target/state tuple drive `combat_targeting_refresh_activity_masks_
+ *  for_entity`, and JS only mirrors the slab masks back to
+ *  combat.activeTurretMask / combat.firingTurretMask for the
+ *  transitional readers that still touch the JS fields. The beam
+ *  inverse target index syncs directly from the slab tuple. Disabled
+ *  turrets also have their JS-only fields cleared here — the slab
+ *  side was zeroed by the scheduler's reset_disabled_weapons pass,
+ *  this finishes the job for fields that never crossed the boundary.
+ *  Returns true when any turret still needs rotation/fire integration
+ *  after writeback.
  *
  *  Mount kinematics (worldPos / worldVelocity / worldPosTick) are no
  *  longer written back here: live consumers
@@ -658,10 +676,6 @@ export function writeBackCombatTargetingEntity(
   const maxTurrets = targeting.maxTurretsPerEntity();
   const turretBase = slot * maxTurrets;
   const views = getCombatTargetingStateViews(sim);
-  let activeMask = 0;
-  let firingMask = 0;
-  let overflowActive = false;
-  let overflowFiring = false;
 
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
@@ -679,31 +693,14 @@ export function writeBackCombatTargetingEntity(
     if (weaponSystemDisabled(world, turret)) {
       resetDisabledTurretJsOnlyFields(turret);
     }
-    if (turret.config.visualOnly) continue;
-    // Activity-mask derivation reads FSM target/state from the slab so
-    // it stays correct once the turret.target / turret.state writes a
-    // few lines above are dropped. Rotation work still comes from the
-    // JS Turret because angular/pitch velocity are JS-only fields the
-    // Rust kernel never sees.
-    const isFsmActive = target !== null || slabStateCode !== CT_TURRET_STATE_IDLE;
-    if (!isFsmActive && !hasTurretRotationWork(turret)) continue;
-    const bit = turretBit(i);
-    if (bit !== 0) activeMask |= bit;
-    else overflowActive = true;
-
-    if (
-      slabStateCode === CT_TURRET_STATE_ENGAGED &&
-      turret.config.passive !== true &&
-      turret.config.shot?.type !== 'force'
-    ) {
-      if (bit !== 0) firingMask |= bit;
-      else overflowFiring = true;
-    }
   }
 
-  combat.activeTurretMask = overflowActive ? -1 : activeMask;
-  combat.firingTurretMask = overflowFiring ? -1 : firingMask;
-  return activeMask !== 0 || overflowActive;
+  targeting.refreshActivityMasksForEntity(slot);
+  const activeMask = views.activeTurretMask[slot];
+  const firingMask = views.firingTurretMask[slot];
+  combat.activeTurretMask = activeMask;
+  combat.firingTurretMask = firingMask;
+  return activeMask !== 0;
 }
 
 /** Rebuild every targetable unit/building row before the FSM runs.

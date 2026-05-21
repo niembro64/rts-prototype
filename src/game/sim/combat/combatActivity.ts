@@ -31,6 +31,19 @@ export function clearCombatActivityFlags(combat: CombatComponent): void {
   combat.firingTurretMask = 0;
 }
 
+/** JS-only activity-mask recomputation. Used by non-sim paths (entity
+ *  construction in NetworkEntityFactory, host-driven mirror /
+ *  force-field toggles in GameServer, fire-enabled commands in
+ *  commandExecution) where the combat-targeting slab is either not
+ *  initialized yet or about to be rebuilt by the next tick's input
+ *  stamping pass. Sim hot paths (turretSystem, projectileSystem,
+ *  targeting bridge writeback) use refreshSlabActivityMasksForUnit
+ *  from combatActivitySlab.ts so the Rust mask kernel stays the
+ *  single source of truth.
+ *
+ *  Note: with COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY = 8 the overflow
+ *  branches below are unreachable; they survive only as a safety net
+ *  for future capacity changes. */
 export function updateCombatActivityFlags(combat: CombatComponent): boolean {
   const weapons = combat.turrets;
   let activeMask = 0;
@@ -53,8 +66,6 @@ export function updateCombatActivityFlags(combat: CombatComponent): boolean {
     }
   }
 
-  // Overflow entities are extremely unusual, but treating them as
-  // all-turret-active is safer than dropping turret 31+ from combat.
   combat.activeTurretMask = overflowActive ? -1 : activeMask;
   combat.firingTurretMask = overflowFiring ? -1 : firingMask;
   return activeMask !== 0 || overflowActive;

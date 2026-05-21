@@ -22,8 +22,13 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
-import { resolveWeaponWorldMount, turretBit, turretMaskIncludes } from './combatUtils';
-import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
+import { resolveWeaponWorldMount, turretMaskIncludes } from './combatUtils';
+import { clearCombatActivityFlags } from './combatActivity';
+import {
+  clearTurretFsmOnSlab,
+  readActiveTurretMaskForUnit,
+  refreshSlabActivityMasksForUnit,
+} from './combatActivitySlab';
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -64,7 +69,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     }
 
     const { cos, sin } = getTransformCosSin(unit.transform);
-    const activeMask = combat.activeTurretMask;
+    const activeMask = readActiveTurretMaskForUnit(unit, combat);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 
@@ -130,11 +135,13 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         );
         weapon.ballisticAimInRange = solved.hasBallisticSolution;
         if (!solved.hasBallisticSolution) {
-          const bit = turretBit(weaponIndex);
-          if (bit !== 0 && combat.firingTurretMask >= 0) {
-            combat.firingTurretMask &= ~bit;
-          }
           weapon.state = 'idle';
+          // Sync the slab so the end-of-pass activity-mask refresh
+          // (and any same-tick downstream slab readers) see the cleared
+          // FSM state. The local activeMask bit stays set so we still
+          // run the damped-spring integrator below; the firing bit
+          // drops on its own when the refresh re-derives masks.
+          clearTurretFsmOnSlab(unit, weaponIndex);
         } else {
           targetAngle = solved.yaw;
           targetPitch = solved.pitch;
@@ -187,14 +194,11 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               // gravity-bounded reach. Drop the lock outright so the
               // turret is free to find a reachable target instead of
               // silently tracking a fallback "best-guess" pitch
-              // forever. Clear the firing bit too so we don't ghost-
-              // fire on the way to idle.
-              const bit = turretBit(weaponIndex);
-              if (bit !== 0 && combat.firingTurretMask >= 0) {
-                combat.firingTurretMask &= ~bit;
-              }
+              // forever. Sync the slab so the end-of-pass mask refresh
+              // sees the cleared FSM state.
               setWeaponTarget(weapon, unit, weaponIndex, null);
               weapon.state = 'idle';
+              clearTurretFsmOnSlab(unit, weaponIndex);
             } else {
               targetAngle = solved.yaw;
               targetPitch = solved.pitch;
@@ -252,6 +256,6 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       weapon.aimErrorYaw = normalizeAngle(aimTargetYaw - weapon.rotation);
       weapon.aimErrorPitch = aimTargetPitch - weapon.pitch;
     }
-    updateCombatActivityFlags(combat);
+    refreshSlabActivityMasksForUnit(unit, combat);
   }
 }

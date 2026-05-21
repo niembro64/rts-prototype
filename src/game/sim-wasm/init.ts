@@ -145,6 +145,8 @@ import __wbg_init, {
   combat_targeting_entity_radius_shot_ptr,
   combat_targeting_entity_hp_ptr,
   combat_targeting_entity_flags_ptr,
+  combat_targeting_entity_active_turret_mask_ptr,
+  combat_targeting_entity_firing_turret_mask_ptr,
   combat_targeting_turret_count_per_entity_ptr,
   combat_targeting_turret_mount_x_ptr,
   combat_targeting_turret_mount_y_ptr,
@@ -155,7 +157,12 @@ import __wbg_init, {
   combat_targeting_turret_world_pos_tick_ptr,
   combat_targeting_turret_rotation_ptr,
   combat_targeting_turret_pitch_ptr,
+  combat_targeting_turret_angular_velocity_ptr,
+  combat_targeting_turret_pitch_velocity_ptr,
   combat_targeting_turret_state_ptr,
+  combat_targeting_refresh_activity_masks_for_entity,
+  combat_targeting_refresh_activity_masks_batch,
+  combat_targeting_clear_turret_fsm,
   combat_targeting_turret_target_id_ptr,
   combat_targeting_turret_cooldown_ptr,
   combat_targeting_turret_burst_cooldown_ptr,
@@ -1035,6 +1042,8 @@ export interface CombatTargetingApi {
     mountVz: number,
     rotation: number,
     pitch: number,
+    angularVelocity: number,
+    pitchVelocity: number,
     state: number,
     targetId: number,
     cooldown: number,
@@ -1067,6 +1076,22 @@ export interface CombatTargetingApi {
     lockonUnitMask: number,
     lockonTurretMask: number,
   ) => void;
+  /** AIM-08.5 — Refresh the slab's per-entity active/firing turret
+   *  masks for `entitySlot`. Reads slab FSM target/state + angular/
+   *  pitch velocity + config flags inline; downstream readers
+   *  (turretSystem, projectileSystem) consume the result via the
+   *  entityActiveTurretMask / entityFiringTurretMask views. */
+  refreshActivityMasksForEntity: (entitySlot: number) => void;
+  /** AIM-08.5 — Batch activity-mask refresh. Same per-entity logic as
+   *  refreshActivityMasksForEntity, walked over a Uint32Array of slot
+   *  indices in one boundary call. */
+  refreshActivityMasksBatch: (entitySlots: Uint32Array) => void;
+  /** AIM-08.5 — Slab-side mid-tick turret state clear. JS calls this
+   *  when the rotation pass discovers a ballistic-fail or other reason
+   *  to drop a turret's lock, so the next activity-mask refresh sees
+   *  the cleared state. Mirrors `weapon.state = 'idle'` plus
+   *  `setWeaponTarget(..., null)` for the slab. */
+  clearTurretFsm: (entitySlot: number, turretIdx: number) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
   /** AIM-08.5 — Rust Pass 0 mount kinematics. Updates the slab's
@@ -1107,6 +1132,8 @@ export interface CombatTargetingApi {
   readonly entityRadiusShotPtr: () => number;
   readonly entityHpPtr: () => number;
   readonly entityFlagsPtr: () => number;
+  readonly entityActiveTurretMaskPtr: () => number;
+  readonly entityFiringTurretMaskPtr: () => number;
   readonly turretCountPerEntityPtr: () => number;
   readonly turretMountXPtr: () => number;
   readonly turretMountYPtr: () => number;
@@ -1117,6 +1144,8 @@ export interface CombatTargetingApi {
   readonly turretWorldPosTickPtr: () => number;
   readonly turretRotationPtr: () => number;
   readonly turretPitchPtr: () => number;
+  readonly turretAngularVelocityPtr: () => number;
+  readonly turretPitchVelocityPtr: () => number;
   readonly turretStatePtr: () => number;
   readonly turretTargetIdPtr: () => number;
   readonly turretCooldownPtr: () => number;
@@ -2510,6 +2539,8 @@ export function initSimWasm(): Promise<SimWasm> {
           entityRadiusShotPtr: combat_targeting_entity_radius_shot_ptr,
           entityHpPtr: combat_targeting_entity_hp_ptr,
           entityFlagsPtr: combat_targeting_entity_flags_ptr,
+          entityActiveTurretMaskPtr: combat_targeting_entity_active_turret_mask_ptr,
+          entityFiringTurretMaskPtr: combat_targeting_entity_firing_turret_mask_ptr,
           turretCountPerEntityPtr: combat_targeting_turret_count_per_entity_ptr,
           turretMountXPtr: combat_targeting_turret_mount_x_ptr,
           turretMountYPtr: combat_targeting_turret_mount_y_ptr,
@@ -2520,7 +2551,12 @@ export function initSimWasm(): Promise<SimWasm> {
           turretWorldPosTickPtr: combat_targeting_turret_world_pos_tick_ptr,
           turretRotationPtr: combat_targeting_turret_rotation_ptr,
           turretPitchPtr: combat_targeting_turret_pitch_ptr,
+          turretAngularVelocityPtr: combat_targeting_turret_angular_velocity_ptr,
+          turretPitchVelocityPtr: combat_targeting_turret_pitch_velocity_ptr,
           turretStatePtr: combat_targeting_turret_state_ptr,
+          refreshActivityMasksForEntity: combat_targeting_refresh_activity_masks_for_entity,
+          refreshActivityMasksBatch: combat_targeting_refresh_activity_masks_batch,
+          clearTurretFsm: combat_targeting_clear_turret_fsm,
           turretTargetIdPtr: combat_targeting_turret_target_id_ptr,
           turretCooldownPtr: combat_targeting_turret_cooldown_ptr,
           turretBurstCooldownPtr: combat_targeting_turret_burst_cooldown_ptr,

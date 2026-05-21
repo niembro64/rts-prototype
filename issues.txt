@@ -266,20 +266,36 @@ AIM-08.5 — Port the targeting FSM
       mid-tick JS writes in projectileSystem / turretSystem /
       commandExecution that set weapon.state = 'idle' or call
       setWeaponTarget(..., null))
-    - activeTurretMask / firingTurretMask (read by turretSystem and
-      projectileSystem — built per-tick by writeBackCombatTargetingEntity
-      from the slab now, but still JS-resident on combat.* and mutated
-      mid-tick by turretSystem when a ballistic solution fails)
     - syncBeamWeaponTargetIndex per-turret call
     - resetDisabledTurretJsOnlyFields (JS-only fields the Rust kernel
       never sees)
-  Likely next moves: stamp activeTurretMask / firingTurretMask into
-  the slab from Rust so turretSystem / projectileSystem read masks
-  directly (requires stamping per-turret angular/pitch velocity so
-  Rust can compute hasTurretRotationWork inline); then migrate
-  cooldown to slab-owned (stamping preserves slab cooldown,
-  projectileSystem reads + writes through the slab); then route every
-  mid-tick weapon.state = 'idle' / setWeaponTarget(..., null) write
-  through a slab-writing helper so the JS Turret.target / Turret.state
-  writeback can be deleted outright.
+  Per-turret angular/pitch velocity now lives on the combat-targeting
+  slab. Input stamping copies them through the extended
+  combat_targeting_set_turret signature; the JS turretSystem rotation
+  pass writes the updated values back via the Float32Array views before
+  it calls the slab-side activity-mask refresh.
+  Per-entity activeTurretMask / firingTurretMask are now Rust-owned:
+  combat_targeting_refresh_activity_masks_for_entity walks the slab's
+  FSM target/state + angular/pitch velocity + config flags, then writes
+  the masks into entity_active_turret_mask / entity_firing_turret_mask
+  on the slab. JS readers consume the masks through
+  readActiveTurretMaskForUnit / readFiringTurretMaskForUnit (slab-first
+  with a JS combat.* fallback for non-sim paths). The writeback path,
+  turretSystem rotation pass, and projectileSystem fire pass all route
+  through refreshSlabActivityMasksForUnit instead of the legacy JS
+  updateCombatActivityFlags scan; mid-tick lock drops in turretSystem /
+  projectileSystem call combatTargeting.clearTurretFsm to sync the slab
+  state ahead of the refresh. The mid-tick
+  `combat.firingTurretMask &= ~bit` writes in turretSystem are gone —
+  the post-pass refresh re-derives the mask from the cleared slab
+  state. The slab-aware helpers live in combatActivitySlab.ts so
+  combatActivity.ts can stay JS-only (NetworkEntityFactory entity
+  construction, GameServer mirror / force-field toggles, and
+  commandExecution's clearCombatActivityFlags still call into it).
+  Likely next moves: migrate cooldown to slab-owned (stamping
+  preserves slab cooldown, projectileSystem reads + writes through the
+  slab); then route every remaining mid-tick weapon.state = 'idle' /
+  setWeaponTarget(..., null) write through a slab-writing helper so
+  the JS Turret.target / Turret.state writeback can be deleted
+  outright.
 
