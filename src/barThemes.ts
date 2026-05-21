@@ -1,5 +1,5 @@
 import type { BarColorTheme, BarThemes } from './types/bars';
-import barThemesJson from './barThemes.json';
+import { COLORS } from './colorsConfig';
 
 /** Build the inline `style` binding that every bar / control-group
  *  uses to override the shared bar-control CSS custom properties.
@@ -20,4 +20,4 @@ export function barVars(theme: BarColorTheme): Record<string, string> {
   };
 }
 
-export const BAR_THEMES: BarThemes = barThemesJson;
+export const BAR_THEMES: BarThemes = COLORS.ui.barThemes;

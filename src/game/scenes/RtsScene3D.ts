@@ -10,6 +10,7 @@ import { audioManager } from '../audio/AudioManager';
 import type { SceneCameraState } from '@/types/game';
 import { isShotId, isTurretId, isUnitTypeId } from '@/types/blueprintIds';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
+import { COLORS } from '@/colorsConfig';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
@@ -36,10 +37,6 @@ import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConf
 import { WaterRenderer3D } from '../render3d/WaterRenderer3D';
 import { CursorGround } from '../render3d/CursorGround';
 import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
-
-/** Same color the per-mesh leg path used. Single uniform value
- *  across the whole shared pool — legs aren't team-tinted. */
-const LEG_COLOR = 0x2a2f36;
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
@@ -93,6 +90,10 @@ import {
   WORLD_PADDING_PERCENT,
   LAND_CELL_SIZE,
 } from '../../config';
+
+/** Same color the per-mesh leg path used. Single uniform value
+ *  across the whole shared pool — legs aren't team-tinted. */
+const LEG_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
@@ -1028,7 +1029,7 @@ export class RtsScene3D {
           visualRadius: 15,
           pushRadius: 15,
           baseZ: event.pos.z - 15,
-          color: 0xcccccc,
+          color: COLORS.units.locomotion.hover.smoke.colorHex,
         };
       }
 

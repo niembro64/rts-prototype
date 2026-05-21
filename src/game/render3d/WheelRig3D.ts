@@ -10,6 +10,7 @@
 // section of design_philosophy.html.
 
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { Entity } from '../sim/types';
 import type { WheelConfig } from '@/types/blueprints';
 import {
@@ -37,7 +38,7 @@ const WHEEL_LIFT_TAU_SEC = 0.12;
 // as an instantaneous spin rate change.
 const WHEEL_OMEGA_TAU_SEC = 0.04;
 
-const WHEEL_COLOR = 0x2a2f36;
+const WHEEL_COLOR = COLORS.units.locomotion.wheel.tire.colorHex;
 
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });

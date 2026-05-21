@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
+import { COLORS, readRgbaTuple } from '@/colorsConfig';
 import {
   getBuildGridDebug,
   getTriangleDebug,
@@ -76,9 +77,18 @@ const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
 const SIDE_WALL_TERRAIN_SHADE = 0.68;
-const BUILD_GRID_COLOR_OK = [0, 102, 0, 160] as const;
-const BUILD_GRID_COLOR_BLOCKED = [119, 0, 0, 170] as const;
-const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
+const BUILD_GRID_COLOR_OK = readRgbaTuple(
+  COLORS.world.terrain.buildGrid.okRgba,
+  'colorsConfig.world.terrain.buildGrid.okRgba',
+);
+const BUILD_GRID_COLOR_BLOCKED = readRgbaTuple(
+  COLORS.world.terrain.buildGrid.blockedRgba,
+  'colorsConfig.world.terrain.buildGrid.blockedRgba',
+);
+const BUILD_GRID_COLOR_METAL = readRgbaTuple(
+  COLORS.world.terrain.buildGrid.metalRgba,
+  'colorsConfig.world.terrain.buildGrid.metalRgba',
+);
 
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);

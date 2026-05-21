@@ -1,14 +1,4 @@
 {
-  "water": {
-    "color": 2060172,
-    "opacity": 0.82
-  },
-  "sky": {
-    "topColor": "#6d9dcc",
-    "midColor": "#b7cddd",
-    "horizonColor": "#e1d5bd",
-    "midStop": 0.64
-  },
   "terrainShadow": {
     "enabled": true,
     "ambient": 0.34,

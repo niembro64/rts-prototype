@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { MinimapData } from '@/types/ui';
 
 const props = withDefaults(defineProps<{
@@ -13,6 +14,13 @@ const props = withDefaults(defineProps<{
 const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windSpeedLabel = computed(() => `${(props.data.wind?.speed ?? 0).toFixed(2)}x`);
+const HUD_COLORS = COLORS.ui.worldDirectionHud;
+const hudStyle = {
+  '--world-direction-text': HUD_COLORS.label.text,
+  '--world-direction-strong': HUD_COLORS.label.strong,
+  '--world-direction-shadow': HUD_COLORS.label.shadow,
+  '--world-direction-strong-shadow': HUD_COLORS.label.strongShadow,
+} as const;
 
 type HudView = {
   canvas: HTMLCanvasElement;
@@ -149,12 +157,21 @@ function makeCompass(
 }
 
 function addHudLights(scene: THREE.Scene): void {
-  const ambient = new THREE.AmbientLight(0xffffff, 1.15);
+  const ambient = new THREE.AmbientLight(
+    HUD_COLORS.lights.ambient.colorHex,
+    HUD_COLORS.lights.ambient.intensity,
+  );
   scene.add(ambient);
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+  const key = new THREE.DirectionalLight(
+    HUD_COLORS.lights.key.colorHex,
+    HUD_COLORS.lights.key.intensity,
+  );
   key.position.set(1.8, 4.5, 3.2);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0x8fdcff, 0.65);
+  const fill = new THREE.DirectionalLight(
+    HUD_COLORS.lights.fill.colorHex,
+    HUD_COLORS.lights.fill.intensity,
+  );
   fill.position.set(-2.5, 2.5, -2);
   scene.add(fill);
 }
@@ -176,7 +193,7 @@ function createHudView(canvas: HTMLCanvasElement, root: THREE.Group): HudView {
     antialias: true,
     alpha: true,
   });
-  renderer.setClearColor(0x000000, 0);
+  renderer.setClearColor(HUD_COLORS.clear.colorHex, HUD_COLORS.clear.alpha);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, props.compact ? 1.5 : 2));
 
   const scene = new THREE.Scene();
@@ -207,36 +224,12 @@ function buildScene(): void {
   const windCanvas = windCanvasRef.value;
   if (!compassCanvas || !windCanvas) return;
 
-  const compassMat = new THREE.MeshPhongMaterial({
-    color: 0xe9f0f8,
-    specular: 0xffffff,
-    shininess: 62,
-  });
-  const compassAccent = new THREE.MeshPhongMaterial({
-    color: 0x7a8796,
-    specular: 0xe5edf6,
-    shininess: 42,
-  });
-  const northMat = new THREE.MeshPhongMaterial({
-    color: 0xff4c3d,
-    specular: 0xffffff,
-    shininess: 74,
-  });
-  const northAccent = new THREE.MeshPhongMaterial({
-    color: 0xffd8d2,
-    specular: 0xffffff,
-    shininess: 58,
-  });
-  const windMat = new THREE.MeshPhongMaterial({
-    color: 0x9be8ff,
-    specular: 0xffffff,
-    shininess: 70,
-  });
-  const windAccent = new THREE.MeshPhongMaterial({
-    color: 0x246b86,
-    specular: 0xbbefff,
-    shininess: 50,
-  });
+  const compassMat = makeHudMaterial(HUD_COLORS.materials.compass);
+  const compassAccent = makeHudMaterial(HUD_COLORS.materials.compassAccent);
+  const northMat = makeHudMaterial(HUD_COLORS.materials.north);
+  const northAccent = makeHudMaterial(HUD_COLORS.materials.northAccent);
+  const windMat = makeHudMaterial(HUD_COLORS.materials.wind);
+  const windAccent = makeHudMaterial(HUD_COLORS.materials.windAccent);
 
   compassRig = makeCompass(compassMat, compassAccent, northMat, northAccent);
   windArrow = makeArrow(windMat, windAccent);
@@ -249,6 +242,14 @@ function buildScene(): void {
   resizeObserver.observe(compassCanvas);
   resizeObserver.observe(windCanvas);
   resize();
+}
+
+function makeHudMaterial(config: typeof HUD_COLORS.materials.compass): THREE.MeshPhongMaterial {
+  return new THREE.MeshPhongMaterial({
+    color: config.colorHex,
+    specular: config.specularHex,
+    shininess: config.shininess,
+  });
 }
 
 function resizeHudView(view: HudView): boolean {
@@ -413,6 +414,7 @@ watch(
   <div
     class="world-direction-hud"
     :class="{ compact }"
+    :style="hudStyle"
     aria-label="Compass and wind direction"
   >
     <div class="direction-item">
@@ -443,7 +445,7 @@ watch(
   padding: 0;
   background: transparent;
   border: 0;
-  color: white;
+  color: var(--world-direction-strong);
   font-family: monospace;
   pointer-events: none;
 }
@@ -486,9 +488,9 @@ watch(
 
 .direction-label span {
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.58);
+  color: var(--world-direction-text);
   font-size: 9px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+  text-shadow: 0 1px 4px var(--world-direction-shadow);
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
@@ -500,10 +502,10 @@ watch(
 
 .direction-label strong {
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--world-direction-strong);
   font-size: 12px;
   font-weight: 700;
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 1px 5px var(--world-direction-strong-shadow);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

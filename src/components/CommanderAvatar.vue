@@ -9,9 +9,10 @@
 
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 
 const props = defineProps<{
-  /** Hex color string (e.g. '#ff4444') for the icosahedron's
+  /** Hex color string for the icosahedron's
    *  Lambert material. */
   color: string;
   /** Width / height of the canvas in CSS pixels. The component
@@ -27,8 +28,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 // teardown isn't strictly needed for module-level state but
 // dropping the reference would let it be GC'd on hot-reload.
 const SHARED_GEOM = new THREE.IcosahedronGeometry(1, 0);
-const AMBIENT_COLOR = 0xffffff;
-const SUN_COLOR = 0xffffff;
+const AVATAR_COLORS = COLORS.ui.commanderAvatar;
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -63,8 +63,14 @@ function start(): void {
   mesh.rotation.x = 0.45;
   scene.add(mesh);
 
-  scene.add(new THREE.AmbientLight(AMBIENT_COLOR, 0.55));
-  const sun = new THREE.DirectionalLight(SUN_COLOR, 0.85);
+  scene.add(new THREE.AmbientLight(
+    AVATAR_COLORS.ambient.colorHex,
+    AVATAR_COLORS.ambient.intensity,
+  ));
+  const sun = new THREE.DirectionalLight(
+    AVATAR_COLORS.sun.colorHex,
+    AVATAR_COLORS.sun.intensity,
+  );
   sun.position.set(2, 3, 2);
   scene.add(sun);
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, EntityId } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
@@ -84,30 +85,30 @@ export class UnitDetailInstanceRenderer3D {
 
     this.smoothChassis = this.createPool(
       this.smoothChassisGeom,
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
+      new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
       SMOOTH_CHASSIS_CAP,
-      0xffffff,
+      COLORS.units.turret.barrel.colorHex,
     );
 
     this.turretHeadInstanced = this.createPool(
       options.turretHeadGeom.clone(),
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
+      new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
       TURRET_HEAD_CAP,
-      0xffffff,
+      COLORS.units.turret.barrel.colorHex,
     );
 
     this.barrelInstanced = this.createPool(
       options.barrelGeom.clone(),
       options.barrelMat.clone(),
       BARREL_CAP,
-      0xffffff,
+      COLORS.units.turret.barrel.colorHex,
     );
 
     this.coneBarrelInstanced = this.createPool(
       options.coneBarrelGeom.clone(),
       options.barrelMat.clone(),
       CONE_BARREL_CAP,
-      0xffffff,
+      COLORS.units.turret.barrel.colorHex,
     );
 
     this.mirrorPanelInstanced = this.createPool(
@@ -256,7 +257,9 @@ export class UnitDetailInstanceRenderer3D {
         this.turretHeadInstanced.instanceColor!.needsUpdate = true;
       }
       if (turret.barrelSlots) {
-        const barrelColorKey = isConstructionShell(entity) ? SHELL_PALE_HEX : 0xffffff;
+        const barrelColorKey = isConstructionShell(entity)
+          ? SHELL_PALE_HEX
+          : COLORS.units.turret.barrel.colorHex;
         const targetMesh = turret.barrelUsesCone
           ? this.coneBarrelInstanced
           : this.barrelInstanced;
@@ -475,9 +478,9 @@ export class UnitDetailInstanceRenderer3D {
     if (pool) return pool;
     const mesh = this.createPool(
       geom.clone(),
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
+      new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
       POLY_CHASSIS_CAP,
-      0xffffff,
+      COLORS.units.turret.barrel.colorHex,
     );
     pool = {
       mesh,

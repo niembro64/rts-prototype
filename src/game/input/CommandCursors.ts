@@ -2,6 +2,8 @@
 // of truth for pointer states. Keep them simple: shape conveys action,
 // color conveys intent.
 
+import { COLORS } from '@/colorsConfig';
+
 export type CommandCursorKind =
   | 'default'
   | 'game'
@@ -26,21 +28,7 @@ type CursorSpec = {
   fallback: string;
 };
 
-const S = {
-  outline: '#02040a',
-  white: '#f7fbff',
-  move: '#35e86f',
-  fight: '#ffb340',
-  patrol: '#45bcff',
-  attack: '#ff4054',
-  guard: '#9ef28d',
-  repair: '#63e7ff',
-  reclaim: '#d6b45f',
-  build: '#ffd33f',
-  dgun: '#ff8d24',
-  ping: '#f7fbff',
-  game: '#9bd8ff',
-} as const;
+const S = COLORS.ui.commandCursor;
 
 function svg(inner: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">${inner}</svg>`;

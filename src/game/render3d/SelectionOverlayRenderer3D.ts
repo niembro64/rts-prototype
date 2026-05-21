@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getRangeToggle, getUnitRadiusToggle } from '@/clientBarConfig';
+import { COLORS } from '@/colorsConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import type { Entity } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -50,26 +51,56 @@ export class SelectionOverlayRenderer3D {
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
   private readonly radiusMatScale = new THREE.LineBasicMaterial({
-    color: 0x44ffff, transparent: true, opacity: 0.7, depthWrite: false,
+    color: COLORS.effects.selectionOverlay.radiusScale.colorHex,
+    transparent: true,
+    opacity: COLORS.effects.selectionOverlay.radiusScale.opacity,
+    depthWrite: false,
   });
   private readonly radiusMatShot = new THREE.LineBasicMaterial({
-    color: 0xff44ff, transparent: true, opacity: 0.7, depthWrite: false,
+    color: COLORS.effects.selectionOverlay.radiusShot.colorHex,
+    transparent: true,
+    opacity: COLORS.effects.selectionOverlay.radiusShot.opacity,
+    depthWrite: false,
   });
   private readonly radiusMatPush = new THREE.LineBasicMaterial({
-    color: 0x44ff44, transparent: true, opacity: 0.7, depthWrite: false,
-  });
-  private readonly ringMatTrackAcquire = makeRangeCircleMaterial(0xffff88, 0.55);
-  private readonly ringMatTrackRelease = makeRangeCircleMaterial(0xffff88, 0.35);
-  private readonly ringMatEngageAcquire = makeRangeCircleMaterial(0xff4444, 0.65);
-  private readonly ringMatEngageRelease = makeRangeCircleMaterial(0x44aaff, 0.55);
-  private readonly ringMatEngageMinAcquire = makeRangeCircleMaterial(0xff8800, 0.65);
-  private readonly ringMatEngageMinRelease = makeRangeCircleMaterial(0xaa44ff, 0.55);
-  private readonly ringMatBuild = makeRangeCircleMaterial(0x44ff44, 0.65);
-  private readonly selectionRingMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
-    emissive: 0x333333,
+    color: COLORS.effects.selectionOverlay.radiusPush.colorHex,
     transparent: true,
-    opacity: 0.9,
+    opacity: COLORS.effects.selectionOverlay.radiusPush.opacity,
+    depthWrite: false,
+  });
+  private readonly ringMatTrackAcquire = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.trackAcquire.colorHex,
+    COLORS.effects.selectionOverlay.trackAcquire.opacity,
+  );
+  private readonly ringMatTrackRelease = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.trackRelease.colorHex,
+    COLORS.effects.selectionOverlay.trackRelease.opacity,
+  );
+  private readonly ringMatEngageAcquire = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.engageAcquire.colorHex,
+    COLORS.effects.selectionOverlay.engageAcquire.opacity,
+  );
+  private readonly ringMatEngageRelease = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.engageRelease.colorHex,
+    COLORS.effects.selectionOverlay.engageRelease.opacity,
+  );
+  private readonly ringMatEngageMinAcquire = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.engageMinAcquire.colorHex,
+    COLORS.effects.selectionOverlay.engageMinAcquire.opacity,
+  );
+  private readonly ringMatEngageMinRelease = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.engageMinRelease.colorHex,
+    COLORS.effects.selectionOverlay.engageMinRelease.opacity,
+  );
+  private readonly ringMatBuild = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.build.colorHex,
+    COLORS.effects.selectionOverlay.build.opacity,
+  );
+  private readonly selectionRingMat = new THREE.MeshLambertMaterial({
+    color: COLORS.effects.selectionOverlay.selectionRing.colorHex,
+    emissive: COLORS.effects.selectionOverlay.selectionRing.emissiveHex,
+    transparent: true,
+    opacity: COLORS.effects.selectionOverlay.selectionRing.opacity,
     depthWrite: false,
   });
 

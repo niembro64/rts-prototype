@@ -2,12 +2,10 @@
 // playerClientGraphicsConfig.json so both TypeScript and (eventually)
 // Rust/WASM can load the same source of truth.
 //
-// `waterOpacity` in the JSON is intentionally a literal of
-// WATER_RENDER_CONFIG.opacity (currently 0.82). It's duplicated rather
-// than imported because cross-config TS imports do not survive the
-// move to a language-neutral JSON file. Keep the two in sync; a future
-// step can hoist WATER_RENDER_CONFIG to JSON and have both configs
-// reference the same source.
+// `waterOpacity` in the JSON intentionally mirrors
+// colors_config.json.world.water.opacity. It remains here because this
+// graphics preset is pure data consumed independently from render
+// material construction.
 
 import type { GraphicsConfig } from './types/graphics';
 import rawConfig from './playerClientGraphicsConfig.json';

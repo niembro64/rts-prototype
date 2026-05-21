@@ -11,6 +11,7 @@
 // [0, 1] interval and the model decides how the wrap looks on the mesh.
 
 import * as THREE from 'three';
+import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_LEAF_COLOR,
   TREE_LEAF_DETAIL_CONTRAST,
@@ -35,18 +36,8 @@ type Item = {
 
 // Leaf-tone palette: cool deep shadow, mid foliage greens, sun-bleached
 // yellow-greens, and a couple of brown-tinted shadows for variety.
-const LEAF_SHADE_PALETTE: readonly (readonly [number, number, number])[] = [
-  [38, 58, 32],   // deep shadow
-  [55, 78, 42],   // shadow
-  [72, 100, 52],  // mid-dark
-  [94, 130, 65],  // mid
-  [120, 156, 80], // mid-bright
-  [156, 184, 95], // bright leaf
-  [196, 210, 115],// sun-bleached / yellow-green
-  [70, 86, 42],   // olive shadow
-  [110, 124, 56], // olive
-  [60, 50, 35],   // brown leaf-litter shadow
-];
+const LEAF_SHADE_PALETTE =
+  readRgbTupleArray(COLORS.environment.forestSpruce2.leafShadePaletteRgb, 'environment.forestSpruce2.leafShadePaletteRgb');
 
 let cachedTexture: THREE.CanvasTexture | null = null;
 let cachedCanvas: HTMLCanvasElement | null = null;

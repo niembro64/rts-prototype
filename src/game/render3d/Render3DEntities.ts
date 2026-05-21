@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { SprayTarget } from '@/types/ui';
+import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
 import { applyShellOverride } from './ShellMaterial';
 import { LAND_CELL_SIZE } from '../../config';
@@ -60,7 +61,7 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
 // The sim's projectile-spawn point is the turret world mount center;
 // barrel endpoint geometry is visual-only.
 
-const BARREL_COLOR = 0xffffff;
+const BARREL_COLOR = COLORS.units.turret.barrel.colorHex;
 
 // Visual-only bank for hover/flying chassis. The sim writes yaw-only
 // into the orientation quat (see UnitForceSystem hover branch); the
@@ -177,7 +178,7 @@ export class Render3DEntities {
   );
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
-  private neutralMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+  private neutralMat = new THREE.MeshLambertMaterial({ color: COLORS.units.neutral.colorHex });
   // Mirror panels keep their existing shape and mount, but use the
   // force-field shield treatment so they read as reflector surfaces
   // instead of chrome slabs.

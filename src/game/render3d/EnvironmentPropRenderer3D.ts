@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { COLORS } from '@/colorsConfig';
 import { FOREST_SPRUCE2_LEAF_COLOR, FOREST_SPRUCE2_WOOD_COLOR } from '../../config';
 import { getTreeLeafTexture } from './TreeLeafTexture';
 import { getTreeTrunkTexture } from './TreeTrunkTexture';
@@ -238,13 +239,13 @@ export class EnvironmentPropRenderer3D {
     }
     if (spec.palette === 'lowTree') {
       return sourceName.includes('mat_01')
-        ? this.sharedMaterial('lowTree.trunk', 0x5f4b34)
-        : this.sharedMaterial('lowTree.leaves', 0x496f31);
+        ? this.sharedMaterial('lowTree.trunk', COLORS.environment.lowTree.trunk.colorHex)
+        : this.sharedMaterial('lowTree.leaves', COLORS.environment.lowTree.leaves.colorHex);
     }
     if (spec.palette === 'forestTree') {
       return sourceName.includes('leaf')
-        ? this.sharedMaterial('forestTree.leaves', 0x416f35)
-        : this.sharedMaterial('forestTree.trunk', 0x5b4230);
+        ? this.sharedMaterial('forestTree.leaves', FOREST_SPRUCE2_LEAF_COLOR)
+        : this.sharedMaterial('forestTree.trunk', FOREST_SPRUCE2_WOOD_COLOR);
     }
     return source;
   }
@@ -290,7 +291,7 @@ export class EnvironmentPropRenderer3D {
       // exact same hex color, so the map carries the prop's overall hue and
       // the material's color stays white to avoid double-multiplying.
       material = new THREE.MeshLambertMaterial({
-        color: map ? 0xffffff : color,
+        color: map ? COLORS.units.turret.barrel.colorHex : color,
         map: map ?? null,
         flatShading: true,
       });

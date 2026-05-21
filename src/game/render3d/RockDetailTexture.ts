@@ -17,6 +17,7 @@
 // from the smeared-stripe artifact a flat XZ projection would produce.
 
 import * as THREE from 'three';
+import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import { TERRAIN_ROCK_BASE_COLOR } from '../../config';
 
 export const ROCK_DETAIL_TEXTURE_PIXELS = 4096;
@@ -46,18 +47,8 @@ type Item = {
 // Hand-picked rock palette. Mixed grays with brown and sun-bleach extremes to
 // give the texture some warmth without straying into "grass" or "wood" hues
 // that would clash with the prop materials.
-const ROCK_SHADE_PALETTE: readonly (readonly [number, number, number])[] = [
-  [54, 50, 43],    // deep crevice
-  [78, 72, 62],    // shadow
-  [104, 96, 82],   // medium-dark
-  [128, 120, 104], // medium
-  [156, 146, 128], // medium-light
-  [186, 174, 154], // sun-bleached
-  [212, 196, 172], // bright highlight
-  [92, 76, 60],    // earth-tinted shadow
-  [148, 124, 96],  // tan
-  [70, 64, 58],    // cool gray
-];
+const ROCK_SHADE_PALETTE =
+  readRgbTupleArray(COLORS.world.terrain.rock.shadePaletteRgb, 'world.terrain.rock.shadePaletteRgb');
 
 let cachedTexture: THREE.CanvasTexture | null = null;
 let cachedCanvas: HTMLCanvasElement | null = null;

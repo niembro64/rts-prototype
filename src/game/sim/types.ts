@@ -67,6 +67,7 @@ export type {
 export { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot, getShotMaxLifespan } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';
+import { COLORS } from '@/colorsConfig';
 
 export type PlayerColors = { primary: number; secondary: number; name: string };
 
@@ -231,7 +232,7 @@ export const PLAYER_COLORS: Record<PlayerId, PlayerColors> = new Proxy(
 
 /** Neutral fallback color for "no player" / unknown-playerId display.
  *  Soft gray so it reads as "ownerless" regardless of background. */
-export const NEUTRAL_PLAYER_COLOR = 0x888888;
+export const NEUTRAL_PLAYER_COLOR = COLORS.units.neutral.colorHex;
 
 /** Resolve a player's primary display color. Returns NEUTRAL_PLAYER_COLOR
  *  for undefined player IDs — the single canonical source of truth for

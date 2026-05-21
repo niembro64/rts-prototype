@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 
@@ -31,9 +32,9 @@ const DEPOSIT_MESH_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, {
 
 const DEPOSIT_MAX_RADIAL_SEGMENTS = 64;
 
-const DEPOSIT_BASE = new THREE.Color(0x272b2e);
-const DEPOSIT_DARK = new THREE.Color(0x111416);
-const DEPOSIT_LIGHT = new THREE.Color(0x6f7678);
+const DEPOSIT_BASE = new THREE.Color(COLORS.environment.metalDeposit.baseColorHex);
+const DEPOSIT_DARK = new THREE.Color(COLORS.environment.metalDeposit.darkColorHex);
+const DEPOSIT_LIGHT = new THREE.Color(COLORS.environment.metalDeposit.lightColorHex);
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
   private deposits: ReadonlyArray<MetalDeposit>;
@@ -143,17 +144,17 @@ function seededNoise(seed: number): number {
 function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
   if (kind === 'standard') {
     return new THREE.MeshStandardMaterial({
-      color: 0xffffff,
+      color: COLORS.environment.metalDeposit.standardMaterial.colorHex,
       vertexColors: true,
-      flatShading: true,
-      metalness: 0.42,
-      roughness: 0.58,
+      flatShading: COLORS.environment.metalDeposit.standardMaterial.flatShading,
+      metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
+      roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
     });
   }
   return new THREE.MeshLambertMaterial({
-    color: 0xffffff,
+    color: COLORS.environment.metalDeposit.lambertMaterial.colorHex,
     vertexColors: true,
-    flatShading: true,
+    flatShading: COLORS.environment.metalDeposit.lambertMaterial.flatShading,
   });
 }
 

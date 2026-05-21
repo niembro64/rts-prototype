@@ -17,6 +17,7 @@
 // consistent). Palette is warm browns through deep shadow.
 
 import * as THREE from 'three';
+import { COLORS, readRgbTupleArray } from '@/colorsConfig';
 import {
   FOREST_SPRUCE2_WOOD_COLOR,
   TREE_TRUNK_DETAIL_CONTRAST,
@@ -51,18 +52,8 @@ type Item = {
 // Bark-tone palette: very dark crack shadows through medium browns up to
 // sun-bleached / tan highlights, with a couple of reddish-tinted variants
 // to match real conifer bark hue range.
-const BARK_SHADE_PALETTE: readonly (readonly [number, number, number])[] = [
-  [28, 20, 14],   // crack shadow
-  [48, 36, 26],   // deep shadow
-  [70, 54, 40],   // dark bark
-  [96, 76, 56],   // medium
-  [124, 100, 76], // medium-light
-  [156, 130, 100],// light plate
-  [188, 160, 124],// sun-bleached
-  [82, 50, 32],   // reddish dark
-  [128, 86, 56],  // reddish medium
-  [88, 78, 68],   // gray-brown
-];
+const BARK_SHADE_PALETTE =
+  readRgbTupleArray(COLORS.environment.forestSpruce2.trunkShadePaletteRgb, 'environment.forestSpruce2.trunkShadePaletteRgb');
 
 let cachedTexture: THREE.CanvasTexture | null = null;
 let cachedCanvas: HTMLCanvasElement | null = null;

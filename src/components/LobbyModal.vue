@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
-import { PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
+import { NEUTRAL_PLAYER_COLOR, PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
@@ -235,7 +235,7 @@ watch(
 );
 
 function getPlayerColor(playerId: PlayerId): string {
-  const color = PLAYER_COLORS[playerId]?.primary ?? 0x888888;
+  const color = PLAYER_COLORS[playerId]?.primary ?? NEUTRAL_PLAYER_COLOR;
   return '#' + color.toString(16).padStart(6, '0');
 }
 

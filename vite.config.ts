@@ -20,6 +20,8 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'battleBarConfig.ts' ||
     srcPath === 'barThemes.ts' ||
     srcPath === 'clientBarConfig.ts' ||
+    srcPath === 'colorsConfig.ts' ||
+    srcPath === 'colors_config.json' ||
     srcPath === 'demoConfig.ts' ||
     srcPath === 'gamePhase.ts' ||
     srcPath === 'lodConfig.ts' ||

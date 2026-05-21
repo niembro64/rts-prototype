@@ -16,6 +16,7 @@ import { isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
+import { COLORS } from '@/colorsConfig';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from './beamConfig.json';
 
@@ -63,10 +64,21 @@ type BeamConfigFile = Partial<BeamVisualConfig> & {
 };
 
 const rawBeamConfig = beamConfig as BeamConfigFile;
-const OUTER_VISUAL_CONFIG = rawBeamConfig.outer ?? (rawBeamConfig as BeamVisualConfig);
-const INNER_VISUAL_CONFIG = rawBeamConfig.inner ?? {
+const rawOuterVisualConfig = rawBeamConfig.outer ?? (rawBeamConfig as BeamVisualConfig);
+const OUTER_VISUAL_CONFIG: BeamVisualConfig = {
+  ...rawOuterVisualConfig,
+  color: COLORS.effects.beam.outer.colorRgb01,
+  waveLowAlpha: COLORS.effects.beam.outer.waveLowAlpha,
+  waveHighAlpha: COLORS.effects.beam.outer.waveHighAlpha,
+};
+const INNER_VISUAL_CONFIG: BeamVisualConfig = {
   ...OUTER_VISUAL_CONFIG,
-  waveSpeed: OUTER_VISUAL_CONFIG.waveSpeed * 1.8,
+  ...(rawBeamConfig.inner ?? {
+    waveSpeed: OUTER_VISUAL_CONFIG.waveSpeed * 1.8,
+  }),
+  color: COLORS.effects.beam.inner.colorRgb01,
+  waveLowAlpha: COLORS.effects.beam.inner.waveLowAlpha,
+  waveHighAlpha: COLORS.effects.beam.inner.waveHighAlpha,
 };
 
 function highAlphaStart(config: BeamVisualConfig): number {

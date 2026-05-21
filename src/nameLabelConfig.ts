@@ -4,6 +4,7 @@
 // style file.
 
 import nameLabelConfig from './nameLabelConfig.json';
+import { COLORS } from './colorsConfig';
 
 /** World-space height of the label sprite. The renderer measures each
  *  text's pixel width on a per-paint basis, sizes the canvas to fit
@@ -17,8 +18,8 @@ export const NAME_LABEL_WORLD_HEIGHT = nameLabelConfig.worldHeight;
 export const NAME_LABEL_FONT_PX = nameLabelConfig.fontPx;
 export const NAME_LABEL_FONT_FAMILY = nameLabelConfig.fontFamily;
 
-export const NAME_LABEL_FILL_COLOR = nameLabelConfig.fillColor;
-export const NAME_LABEL_STROKE_COLOR = nameLabelConfig.strokeColor;
+export const NAME_LABEL_FILL_COLOR = COLORS.ui.nameLabel.fillColor;
+export const NAME_LABEL_STROKE_COLOR = COLORS.ui.nameLabel.strokeColor;
 export const NAME_LABEL_STROKE_WIDTH_PX = nameLabelConfig.strokeWidthPx;
 
 /** Per-paint canvas padding around the rendered text, in canvas

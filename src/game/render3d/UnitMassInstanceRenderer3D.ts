@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId } from '../sim/types';
 import type { RenderFrameState3D } from './RenderFrameState3D';
@@ -55,10 +56,10 @@ export class UnitMassInstanceRenderer3D {
     this.world = options.world;
     this.clientViewState = options.clientViewState;
 
-    const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const material = new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex });
     this.mesh = new THREE.InstancedMesh(this.geometry, material, LOW_INSTANCED_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.setColorAt(0, this.color.set(0xffffff));
+    this.mesh.setColorAt(0, this.color.set(COLORS.units.turret.barrel.colorHex));
     this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     for (let i = 0; i < LOW_INSTANCED_CAP; i++) {

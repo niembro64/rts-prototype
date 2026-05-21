@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotShroud } from '../network/NetworkTypes';
@@ -117,7 +118,7 @@ export class FogOfWarShroudRenderer3D {
     this.texture.flipY = false;
 
     this.material = new THREE.MeshBasicMaterial({
-      color: 0x000000,
+      color: COLORS.world.fogOfWar.colorHex,
       transparent: true,
       alphaMap: this.texture,
       depthWrite: false,
@@ -348,8 +349,8 @@ export class FogOfWarShroudRenderer3D {
       const cy = (1 - source.y / this.mapHeight) * this.canvas.height;
       const r = (source.radius / this.mapWidth) * this.canvas.width;
       const gradient = this.ctx.createRadialGradient(cx, cy, r * 0.78, cx, cy, r);
-      gradient.addColorStop(0, 'rgb(0, 0, 0)');
-      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      gradient.addColorStop(0, COLORS.world.fogOfWar.gradientStart);
+      gradient.addColorStop(1, COLORS.world.fogOfWar.gradientEnd);
       this.ctx.fillStyle = gradient;
       this.ctx.beginPath();
       this.ctx.arc(cx, cy, r, 0, Math.PI * 2);

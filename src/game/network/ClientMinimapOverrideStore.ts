@@ -1,4 +1,5 @@
 import type { MinimapEntity } from '@/types/ui';
+import { COLORS } from '@/colorsConfig';
 import type { EntityId } from '../sim/types';
 import { getPlayerPrimaryColor } from '../sim/types';
 import type { NetworkServerSnapshotMinimapEntity } from './NetworkTypes';
@@ -59,7 +60,7 @@ export class ClientMinimapOverrideStore {
   }
 }
 
-const RADAR_BLIP_COLOR = '#9aa3ad';
+const RADAR_BLIP_COLOR = COLORS.ui.minimap.radarBlip.cssColor;
 
 function minimapColor(color: number): string {
   let cached = minimapColorCache.get(color);

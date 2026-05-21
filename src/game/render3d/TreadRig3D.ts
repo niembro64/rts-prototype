@@ -20,6 +20,7 @@
 // section of design_philosophy.html.
 
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { Entity } from '../sim/types';
 import type { TreadConfig } from '@/types/blueprints';
 import { TREAD_CHASSIS_LIFT_Y } from '../math/BodyDimensions';
@@ -38,8 +39,8 @@ import {
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 
-const TREAD_COLOR = 0x1a1d22;
-const WHEEL_COLOR = 0x2a2f36;
+const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
+const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
 export const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
 const TREAD_CLEAT_HEIGHT = 1.1;
@@ -63,7 +64,7 @@ const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const treadMat = new THREE.MeshBasicMaterial({ color: TREAD_COLOR });
 const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
-const cleatMat = new THREE.MeshBasicMaterial({ color: 0x3a4046 });
+const cleatMat = new THREE.MeshBasicMaterial({ color: COLORS.units.locomotion.tread.cleat.colorHex });
 
 /** Per-side state owned by the rig. The `group` holds the side's
  *  slab, end caps, internal wheels, and animated cleats — all in a

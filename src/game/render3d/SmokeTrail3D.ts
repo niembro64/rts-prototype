@@ -34,6 +34,7 @@
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { hexToRgb01 } from './colorUtils';
@@ -57,8 +58,8 @@ const DEFAULT_EMIT_FRAMES_SKIP = 0;  // sample every render frame at max LOD
 const DEFAULT_LIFESPAN_MS = 1400;
 const DEFAULT_START_RADIUS = 2.5;
 const DEFAULT_END_RADIUS = 8.0;
-const DEFAULT_START_ALPHA = 0.75;
-const DEFAULT_COLOR = 0xcccccc;
+const DEFAULT_START_ALPHA = COLORS.effects.smokeTrail.default.startAlpha;
+const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
 // Pool ceilings — bounded so heavy salvo spam can't unbounded-allocate.
 // At max LOD, steady state per rocket is roughly one puff per render
 // frame for lifespanMs, so 4000 covers heavy salvos before we start

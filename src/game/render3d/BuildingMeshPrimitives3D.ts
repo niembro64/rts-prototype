@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import type { BuildingDetailMesh, BuildingDetailRole } from './BuildingShape3D';
 
@@ -13,19 +14,19 @@ const windBladeGeom = createWindBladeGeometry();
 export const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 export const windTrimMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 export const windNacelleMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.structureLight,
-  metalness: 0.48,
-  roughness: 0.16,
+  color: COLORS.buildings.materials.windNacelle.colorHex,
+  metalness: COLORS.buildings.materials.windNacelle.metalness,
+  roughness: COLORS.buildings.materials.windNacelle.roughness,
 });
 export const windBladeMat = new THREE.MeshStandardMaterial({
-  color: 0xd5dfe7,
-  metalness: 0.38,
-  roughness: 0.14,
+  color: COLORS.buildings.materials.windBlade.colorHex,
+  metalness: COLORS.buildings.materials.windBlade.metalness,
+  roughness: COLORS.buildings.materials.windBlade.roughness,
 });
 export const windGlassMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.photovoltaic,
-  metalness: 1.0,
-  roughness: 0.04,
+  color: COLORS.buildings.materials.windGlass.colorHex,
+  metalness: COLORS.buildings.materials.windGlass.metalness,
+  roughness: COLORS.buildings.materials.windGlass.roughness,
 });
 /** Spinning blades on the metal extractor. Tinted with the metal-resource
  *  color so the building reads as "metal" at a glance — it used to share
@@ -33,12 +34,12 @@ export const windGlassMat = new THREE.MeshStandardMaterial({
  *  visually indistinguishable from the wind turbine's nacelle. */
 export const extractorBladeMat = new THREE.MeshStandardMaterial({
   ...SHINY_GRAY_METAL_MATERIAL,
-  color: BUILDING_PALETTE.metalResource,
+  color: COLORS.buildings.materials.extractorBlade.colorHex,
 });
 export const invisibleMat = new THREE.MeshBasicMaterial({
-  color: 0x000000,
+  color: COLORS.buildings.materials.invisible.colorHex,
   transparent: true,
-  opacity: 0,
+  opacity: COLORS.buildings.materials.invisible.opacity,
   depthWrite: false,
 });
 export const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -198,9 +199,9 @@ export class BuildingEntityRenderer3D {
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.getLocalPlayerId = options.getLocalPlayerId;
     this.ghostMat = new THREE.MeshLambertMaterial({
-      color: 0x6a6f78,
+      color: COLORS.buildings.materials.buildingGhost.colorHex,
       transparent: true,
-      opacity: 0.55,
+      opacity: COLORS.buildings.materials.buildingGhost.opacity,
       depthWrite: false,
     });
     this.animations = new BuildingAnimationController3D(

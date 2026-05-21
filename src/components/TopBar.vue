@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { COLORS, RESOURCE_COLOR_CSS } from '@/colorsConfig';
 import WorldDirectionHud from './WorldDirectionHud.vue';
 
 export type { EconomyInfo } from '@/types/ui';
@@ -26,6 +27,8 @@ const emit = defineEmits<{
   togglePlayer: [];
 }>();
 
+const TOP_BAR = COLORS.ui.topBar;
+
 // Unsigned magnitude format. Used for the produce/consume columns.
 function fmtMag(n: number): string {
   const abs = Math.abs(n);
@@ -50,9 +53,9 @@ const metalPct = computed(() =>
 
 const unitCapColor = computed(() => {
   const pct = (props.economy.units.count / props.economy.units.cap) * 100;
-  if (pct >= 100) return '#ff4444';
-  if (pct >= 80) return '#ffcc00';
-  return 'rgba(255,255,255,0.7)';
+  if (pct >= 100) return TOP_BAR.unitCap.full;
+  if (pct >= 80) return TOP_BAR.unitCap.warning;
+  return TOP_BAR.unitCap.ok;
 });
 
 const isAtUnitCap = computed(() => props.economy.units.count >= props.economy.units.cap);
@@ -66,6 +69,41 @@ const playerDotStyle = computed(() => ({ backgroundColor: props.playerColor }));
 const unitCapStyle = computed(() => ({ color: unitCapColor.value }));
 const energyBarStyle = computed(() => ({ width: energyPct.value + '%' }));
 const metalBarStyle = computed(() => ({ width: metalPct.value + '%' }));
+const topBarStyle = computed(() => ({
+  '--topbar-bg': TOP_BAR.surface.background,
+  '--topbar-border': TOP_BAR.surface.border,
+  '--topbar-text': TOP_BAR.surface.text,
+  '--topbar-divider': TOP_BAR.surface.divider,
+  '--topbar-muted-text': TOP_BAR.surface.mutedText,
+  '--topbar-subtle-text': TOP_BAR.surface.subtleText,
+  '--topbar-exit-border': TOP_BAR.exitButton.border,
+  '--topbar-exit-bg': TOP_BAR.exitButton.background,
+  '--topbar-exit-text': TOP_BAR.exitButton.text,
+  '--topbar-exit-hover-bg': TOP_BAR.exitButton.hoverBackground,
+  '--topbar-exit-hover-text': TOP_BAR.exitButton.hoverText,
+  '--topbar-exit-hover-border': TOP_BAR.exitButton.hoverBorder,
+  '--topbar-exit-active-bg': TOP_BAR.exitButton.activeBackground,
+  '--topbar-player-dot-border': TOP_BAR.playerDot.border,
+  '--topbar-player-dot-hover-border': TOP_BAR.playerDot.hoverBorder,
+  '--topbar-player-hover-bg': TOP_BAR.playerDot.hoverBackground,
+  '--topbar-network-label': TOP_BAR.network.label,
+  '--topbar-network-value': TOP_BAR.network.value,
+  '--topbar-network-warning': TOP_BAR.network.warning,
+  '--resource-energy-accent': RESOURCE_COLOR_CSS.energy,
+  '--resource-metal-accent': RESOURCE_COLOR_CSS.metal,
+  '--resource-bar-bg': TOP_BAR.resource.barBackground,
+  '--resource-flow-text': TOP_BAR.resource.flowText,
+  '--resource-flow-label': TOP_BAR.resource.flowLabel,
+  '--resource-flow-value': TOP_BAR.resource.flowValue,
+  '--resource-empty-flash': TOP_BAR.resource.emptyFlash,
+  '--resource-empty-shell-bg': TOP_BAR.resource.emptyShellBackground,
+  '--resource-empty-shell-border': TOP_BAR.resource.emptyShellBorder,
+  '--resource-empty-shell-shadow': TOP_BAR.resource.emptyShellShadow,
+  '--building-solar-color': TOP_BAR.buildings.solar,
+  '--building-wind-color': TOP_BAR.buildings.wind,
+  '--building-factory-color': TOP_BAR.buildings.factory,
+  '--unit-cap-full': TOP_BAR.unitCap.full,
+}));
 
 const energyStockDisplay = computed(() => fmtStock(props.economy.stockpile.curr));
 const energyProduceDisplay = computed(() => fmtMag(props.economy.income.total));
@@ -76,7 +114,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 </script>
 
 <template>
-  <div class="top-bar">
+  <div class="top-bar" :style="topBarStyle">
     <!-- Exit (desktop app only) -->
     <button
       v-if="isTauri"
@@ -212,14 +250,14 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   width: 100%;
   box-sizing: border-box;
   height: 58px;
-  background: rgba(15, 15, 15, 0.7);
-  border-bottom: 1px solid #444;
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--topbar-border);
   display: flex;
   align-items: center;
   padding: 0 12px;
   gap: 12px;
   font-family: monospace;
-  color: white;
+  color: var(--topbar-text);
   pointer-events: auto;
 }
 
@@ -241,10 +279,10 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   justify-content: center;
   padding: 0 10px;
   height: 32px;
-  border: 1px solid rgba(255, 80, 80, 0.4);
+  border: 1px solid var(--topbar-exit-border);
   border-radius: 4px;
-  background: rgba(255, 40, 40, 0.15);
-  color: #ff6666;
+  background: var(--topbar-exit-bg);
+  color: var(--topbar-exit-text);
   font-family: monospace;
   font-size: 14px;
   font-weight: bold;
@@ -253,13 +291,13 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 }
 
 .exit-btn:hover {
-  background: rgba(255, 40, 40, 0.4);
-  color: #ff9999;
-  border-color: rgba(255, 80, 80, 0.7);
+  background: var(--topbar-exit-hover-bg);
+  color: var(--topbar-exit-hover-text);
+  border-color: var(--topbar-exit-hover-border);
 }
 
 .exit-btn:active {
-  background: rgba(255, 40, 40, 0.6);
+  background: var(--topbar-exit-active-bg);
 }
 
 .player-section {
@@ -268,9 +306,9 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   gap: 6px;
   padding: 4px 12px 4px 8px;
   border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: 1px solid var(--topbar-divider);
   background: none;
-  color: white;
+  color: var(--topbar-text);
   font-family: monospace;
   min-width: 80px;
   cursor: default;
@@ -282,14 +320,14 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 }
 
 .player-section.clickable:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--topbar-player-hover-bg);
 }
 
 .player-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  border: 2px solid var(--topbar-player-dot-border);
   flex-shrink: 0;
 }
 
@@ -318,7 +356,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   cursor: pointer;
 }
 .player-dot-btn.clickable:hover .player-dot {
-  border-color: white;
+  border-color: var(--topbar-player-dot-hover-border);
 }
 
 .network-section {
@@ -328,20 +366,20 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   min-width: 92px;
   max-width: 170px;
   padding-right: 12px;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
+  border-right: 1px solid var(--topbar-divider);
   overflow: hidden;
 }
 
 .network-label {
   font-size: 9px;
   font-weight: bold;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--topbar-network-label);
 }
 
 .network-value {
   font-size: 11px;
   font-weight: bold;
-  color: rgba(220, 245, 255, 0.9);
+  color: var(--topbar-network-value);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -349,12 +387,12 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 .network-section.warning .network-label,
 .network-section.warning .network-value {
-  color: #ff7777;
+  color: var(--topbar-network-warning);
 }
 
 /* Resource blocks */
 .resource-block {
-  --resource-accent: #ddd;
+  --resource-accent: var(--topbar-text);
   display: flex;
   flex-direction: column;
   min-width: 160px;
@@ -384,8 +422,8 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   letter-spacing: 0.5px;
 }
 
-.energy-block { --resource-accent: #ffcc00; }
-.metal-block { --resource-accent: #d8a878; }
+.energy-block { --resource-accent: var(--resource-energy-accent); }
+.metal-block { --resource-accent: var(--resource-metal-accent); }
 
 .resource-icon {
   font-size: 11px;
@@ -404,13 +442,13 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 }
 
 .resource-sep {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--topbar-subtle-text);
   font-size: 11px;
   margin: 0 2px;
 }
 
 .resource-max {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--topbar-subtle-text);
   font-size: 11px;
   font-weight: normal;
 }
@@ -418,7 +456,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 .resource-bar {
   width: 100%;
   height: 3px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--resource-bar-bg);
   border-radius: 1px;
   overflow: hidden;
 }
@@ -438,7 +476,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   font-size: 11px;
   white-space: pre;
   font-weight: bold;
-  color: rgba(190, 190, 200, 0.78);
+  color: var(--resource-flow-text);
 }
 
 .resource-flow {
@@ -448,14 +486,14 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 }
 
 .flow-label {
-  color: rgba(160, 160, 170, 0.72);
+  color: var(--resource-flow-label);
   font-size: 9px;
   font-weight: bold;
   text-transform: uppercase;
 }
 
 .flow-value {
-  color: rgba(205, 205, 215, 0.82);
+  color: var(--resource-flow-value);
 }
 
 .resource-empty {
@@ -486,9 +524,9 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 @keyframes resource-empty-shell {
   0%, 49% {
-    background: rgba(255, 45, 45, 0.18);
-    border-color: rgba(255, 80, 80, 0.65);
-    box-shadow: 0 0 10px rgba(255, 45, 45, 0.38);
+    background: var(--resource-empty-shell-bg);
+    border-color: var(--resource-empty-shell-border);
+    box-shadow: 0 0 10px var(--resource-empty-shell-shadow);
   }
   50%, 100% {
     background: transparent;
@@ -499,7 +537,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 @keyframes resource-empty-accent-text {
   0%, 49% {
-    color: #ff5555;
+    color: var(--resource-empty-flash);
   }
   50%, 100% {
     color: var(--resource-accent);
@@ -508,34 +546,34 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 @keyframes resource-empty-subtle-text {
   0%, 49% {
-    color: #ff5555;
+    color: var(--resource-empty-flash);
   }
   50%, 100% {
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--topbar-subtle-text);
   }
 }
 
 @keyframes resource-empty-flow-label {
   0%, 49% {
-    color: #ff5555;
+    color: var(--resource-empty-flash);
   }
   50%, 100% {
-    color: rgba(160, 160, 170, 0.72);
+    color: var(--resource-flow-label);
   }
 }
 
 @keyframes resource-empty-flow-value {
   0%, 49% {
-    color: #ff5555;
+    color: var(--resource-empty-flash);
   }
   50%, 100% {
-    color: rgba(205, 205, 215, 0.82);
+    color: var(--resource-flow-value);
   }
 }
 
 @keyframes resource-empty-fill {
   0%, 49% {
-    background: #ff5555;
+    background: var(--resource-empty-flash);
   }
   50%, 100% {
     background: var(--resource-accent);
@@ -558,7 +596,7 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 .count-label {
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--topbar-muted-text);
   text-transform: uppercase;
   width: 32px;
 }
@@ -571,15 +609,15 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
   gap: 6px;
 }
 
-.building-solar { color: #ffcc00; }
-.building-wind { color: #bde7ff; }
-.building-factory { color: #88ccff; }
+.building-solar { color: var(--building-solar-color); }
+.building-wind { color: var(--building-wind-color); }
+.building-factory { color: var(--building-factory-color); }
 
 .cap-warning {
   display: inline-block;
   flex: 0 0 3ch;
   font-size: 9px;
-  color: #ff4444;
+  color: var(--unit-cap-full);
   text-align: left;
   visibility: hidden;
 }

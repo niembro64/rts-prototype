@@ -20,6 +20,7 @@
 
 import * as THREE from 'three';
 import type { Entity, UnitAction } from '../sim/types';
+import { COLORS } from '@/colorsConfig';
 import { ACTION_COLORS, WAYPOINT_COLORS } from '../uiLabels';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { LAND_CELL_SIZE, WAYPOINT_GROUND_LIFT } from '../../config';
@@ -73,7 +74,7 @@ function repaintFlag(slot: FlagSlot, color: number): boolean {
   const ctx = slot.ctx;
   ctx.clearRect(0, 0, 32, 32);
   // Vertical pole on the left, triangle flag pointing right.
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = COLORS.effects.waypoint.flagPole.cssColor;
   ctx.fillRect(7, 4, 2, 24);
   ctx.fillStyle = css;
   ctx.beginPath();
@@ -352,7 +353,7 @@ export class Waypoint3D {
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
         const p = this.actionDisplayPoint(a);
-        const color = ACTION_COLORS[a.type] ?? 0xffffff;
+        const color = ACTION_COLORS[a.type] ?? COLORS.units.turret.barrel.colorHex;
         // Always draw the connecting line — this traces the unit's
         // physical route, regardless of mode.
         this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
@@ -400,7 +401,7 @@ export class Waypoint3D {
       let prevZ: number | undefined = b.transform.z;
       for (let i = 0; i < wps.length; i++) {
         const w = wps[i];
-        const color = WAYPOINT_COLORS[w.type] ?? 0xffffff;
+        const color = WAYPOINT_COLORS[w.type] ?? COLORS.units.turret.barrel.colorHex;
         this.pushTerrainLine(prevX, prevY, w.x, w.y, color, STYLE.lineAlpha, prevZ, w.z);
         this.pushDot(state, w.x, w.y, color, w.z);
         if (i === wps.length - 1) {

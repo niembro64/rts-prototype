@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import {
   CANNON_TOWER_VISUAL_HEIGHT,
   MEGA_BEAM_TOWER_VISUAL_HEIGHT,
@@ -11,21 +12,20 @@ import {
   hexCylinderGeom,
   makeCylinder,
 } from './BuildingMeshPrimitives3D';
-import { BUILDING_PALETTE } from './BuildingVisualPalette';
 
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.18, 0.3);
 const cannonTowerBodyGeom = createHexFrustumGeometry(0.44, 0.54);
 const beamTowerTrimMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.cyanGlass,
-  emissive: BUILDING_PALETTE.cyanGlow,
-  emissiveIntensity: 0.28,
-  metalness: 0.56,
-  roughness: 0.18,
+  color: COLORS.buildings.materials.megaBeamTowerTrim.colorHex,
+  emissive: COLORS.buildings.materials.megaBeamTowerTrim.emissiveHex,
+  emissiveIntensity: COLORS.buildings.materials.megaBeamTowerTrim.emissiveIntensity,
+  metalness: COLORS.buildings.materials.megaBeamTowerTrim.metalness,
+  roughness: COLORS.buildings.materials.megaBeamTowerTrim.roughness,
 });
 const cannonTowerTrimMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.structureDark,
-  metalness: 0.72,
-  roughness: 0.24,
+  color: COLORS.buildings.materials.cannonTowerTrim.colorHex,
+  metalness: COLORS.buildings.materials.cannonTowerTrim.metalness,
+  roughness: COLORS.buildings.materials.cannonTowerTrim.roughness,
 });
 
 type DefenseTowerMeshProfile = {

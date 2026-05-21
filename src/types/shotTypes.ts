@@ -83,7 +83,7 @@ export type SmokeTrailSpec = {
   endRadius?: number;
   /** Puff opacity at birth (it fades to 0 over its lifespan). Default: 0.75. */
   startAlpha?: number;
-  /** Puff color as a 0xRRGGBB hex int. Default: 0xcccccc (light grey). */
+  /** Puff color as a 0xRRGGBB hex int. Default lives in colors_config.json. */
   color?: number;
 };
 

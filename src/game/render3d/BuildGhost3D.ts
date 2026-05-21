@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import type { Entity, BuildingType } from '../sim/types';
+import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import {
@@ -76,67 +77,67 @@ export class BuildGhost3D {
     this.getGroundHeight = getGroundHeight;
 
     this.footMatOk = new THREE.MeshBasicMaterial({
-      color: 0x88ff88,
+      color: COLORS.effects.buildGhost.footprintOk.colorHex,
       transparent: true,
-      opacity: 0.35,
+      opacity: COLORS.effects.buildGhost.footprintOk.opacity,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
     this.footMatBad = new THREE.MeshBasicMaterial({
-      color: 0xff4444,
+      color: COLORS.effects.buildGhost.footprintBad.colorHex,
       transparent: true,
-      opacity: 0.35,
+      opacity: COLORS.effects.buildGhost.footprintBad.opacity,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
     this.cellMatOk = new THREE.MeshBasicMaterial({
-      color: 0x006600,
+      color: COLORS.effects.buildGhost.cellOk.colorHex,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellMatMetal = new THREE.MeshBasicMaterial({
-      color: 0x003a99,
+      color: COLORS.effects.buildGhost.cellMetal.colorHex,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellMatMetalDeposit = new THREE.MeshBasicMaterial({
-      color: 0x005566,
+      color: COLORS.effects.buildGhost.cellMetalDeposit.colorHex,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellMatBad = new THREE.MeshBasicMaterial({
-      color: 0x770000,
+      color: COLORS.effects.buildGhost.cellBad.colorHex,
       transparent: false,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
     });
     this.cellBorderMatOk = new THREE.LineBasicMaterial({
-      color: 0x00ff00,
+      color: COLORS.effects.buildGhost.cellBorderOk.colorHex,
       transparent: false,
       depthWrite: false,
       toneMapped: false,
     });
     this.cellBorderMatMetal = new THREE.LineBasicMaterial({
-      color: 0x0096ff,
+      color: COLORS.effects.buildGhost.cellBorderMetal.colorHex,
       transparent: false,
       depthWrite: false,
       toneMapped: false,
     });
     this.cellBorderMatMetalDeposit = new THREE.LineBasicMaterial({
-      color: 0x00d8ff,
+      color: COLORS.effects.buildGhost.cellBorderMetalDeposit.colorHex,
       transparent: false,
       depthWrite: false,
       toneMapped: false,
     });
     this.cellBorderMatBad = new THREE.LineBasicMaterial({
-      color: 0xff0000,
+      color: COLORS.effects.buildGhost.cellBorderBad.colorHex,
       transparent: false,
       depthWrite: false,
       toneMapped: false,
@@ -154,9 +155,9 @@ export class BuildGhost3D {
     // just under outer so it reads as a stroke rather than a filled
     // disc.
     this.ringMat = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
+      color: COLORS.effects.buildGhost.rangeRing.colorHex,
       transparent: true,
-      opacity: 0.35,
+      opacity: COLORS.effects.buildGhost.rangeRing.opacity,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -168,9 +169,9 @@ export class BuildGhost3D {
 
     // Out-of-range warning line.
     this.lineMat = new THREE.LineBasicMaterial({
-      color: 0xff4444,
+      color: COLORS.effects.buildGhost.outOfRangeLine.colorHex,
       transparent: true,
-      opacity: 0.6,
+      opacity: COLORS.effects.buildGhost.outOfRangeLine.opacity,
     });
     this.rangeLineGeom = new THREE.BufferGeometry();
     this.rangeLineGeom.setAttribute(

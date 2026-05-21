@@ -7,10 +7,11 @@
 
 import * as THREE from 'three';
 import type { FireExplosionStyle } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 
-const CORE_COLOR = 0xffffff;
+const CORE_COLOR = COLORS.effects.explosion.core.colorHex;
 const CORE_LIFETIME_MS = 180;
 const DURATION_BASE_RADIUS = 10;
 const CORE_EXPAND_START = 0.6;

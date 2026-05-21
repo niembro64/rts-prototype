@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
 import type { WaypointType } from '../game/sim/types';
 import {
   buildingRosterDisplay,
@@ -29,6 +30,35 @@ const canStoreControlGroup = computed(() =>
 const showPanel = computed(() =>
   props.selection.unitCount > 0 || props.selection.hasFactory || hasStoredControlGroups.value,
 );
+const SELECTION_PANEL = COLORS.ui.selectionPanel;
+const BUTTON_COLORS = SELECTION_PANEL.buttons;
+const selectionPanelStyle = {
+  '--selection-panel-bg': SELECTION_PANEL.surface.background,
+  '--selection-panel-border': SELECTION_PANEL.surface.border,
+  '--selection-panel-text': SELECTION_PANEL.surface.text,
+  '--selection-panel-header-border': SELECTION_PANEL.surface.headerBorder,
+  '--selection-panel-label': SELECTION_PANEL.surface.label,
+  '--selection-panel-hint': SELECTION_PANEL.surface.hint,
+  '--selection-panel-key': SELECTION_PANEL.surface.key,
+  '--selection-panel-commander': SELECTION_PANEL.unitType.commander,
+  '--selection-panel-factory': SELECTION_PANEL.unitType.factory,
+  '--selection-panel-button-bg': BUTTON_COLORS.background,
+  '--selection-panel-button-border': BUTTON_COLORS.border,
+  '--selection-panel-button-hover-bg': BUTTON_COLORS.hoverBackground,
+  '--selection-panel-button-active-bg': BUTTON_COLORS.activeBackground,
+  '--selection-panel-button-default': BUTTON_COLORS.default,
+  '--selection-panel-button-group-accent': BUTTON_COLORS.groupAccent,
+  '--selection-panel-group-active-bg': BUTTON_COLORS.groupActiveBackground,
+  '--selection-panel-group-active-shadow': BUTTON_COLORS.groupActiveShadow,
+  '--selection-panel-button-disabled-opacity': String(BUTTON_COLORS.disabledOpacity),
+  '--selection-panel-action-disabled-opacity': String(BUTTON_COLORS.actionDisabledOpacity),
+  '--selection-panel-cost-energy': SELECTION_PANEL.cost.energy,
+  '--selection-panel-cost-resource': SELECTION_PANEL.cost.resource,
+  '--selection-panel-build': BUTTON_COLORS.build,
+  '--selection-panel-dgun': BUTTON_COLORS.dgun,
+  '--selection-panel-vehicle-produce': BUTTON_COLORS.vehicleProduce,
+  '--selection-panel-bot-produce': BUTTON_COLORS.botProduce,
+} as const;
 
 // Repeat-build: queue holds 0-or-1 entries; queue[0] is the unit type
 // currently being looped. Used to light up the matching button.
@@ -37,9 +67,9 @@ const selectedBuildUnitId = computed(() =>
 );
 
 const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [
-  { mode: 'move', label: 'Move', key: 'M', color: '#00ff00' },
-  { mode: 'fight', label: 'Fight', key: 'F', color: '#ff4444' },
-  { mode: 'patrol', label: 'Patrol', key: 'H', color: '#0088ff' },
+  { mode: 'move', label: 'Move', key: 'M', color: WAYPOINT_COLOR_CSS.move },
+  { mode: 'fight', label: 'Fight', key: 'F', color: WAYPOINT_COLOR_CSS.fight },
+  { mode: 'patrol', label: 'Patrol', key: 'H', color: WAYPOINT_COLOR_CSS.patrol },
 ];
 
 const buildingOptions = buildingRosterDisplay;
@@ -52,7 +82,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
 <template>
   <!-- OPTIONS PANEL (left side) -->
-  <div v-if="showPanel" class="options-panel">
+  <div v-if="showPanel" class="options-panel" :style="selectionPanelStyle">
     <!-- Unit count display -->
     <div class="panel-header">
       <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
@@ -78,7 +108,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :class="{ active: selection.isAttackAreaMode }"
-          :style="{ '--btn-color': '#ff5a5a' }"
+          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
           title="Toggle area attack targeting for selected units"
           @click="actions.toggleAttackArea()"
         >
@@ -88,7 +118,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :class="{ active: selection.isAttackGroundMode }"
-          :style="{ '--btn-color': '#ff7a18' }"
+          :style="{ '--btn-color': BUTTON_COLORS.attackGround }"
           title="Toggle attack-ground targeting for selected units"
           @click="actions.toggleAttackGround()"
         >
@@ -98,7 +128,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :class="{ active: selection.isPingMode }"
-          :style="{ '--btn-color': '#f7fbff' }"
+          :style="{ '--btn-color': BUTTON_COLORS.ping }"
           title="Toggle map ping targeting"
           @click="actions.togglePing()"
         >
@@ -108,7 +138,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :class="{ active: selection.isGuardMode }"
-          :style="{ '--btn-color': '#9ef28d' }"
+          :style="{ '--btn-color': BUTTON_COLORS.guard }"
           title="Toggle guard targeting for selected units"
           @click="actions.toggleGuard()"
         >
@@ -117,7 +147,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         </button>
         <button
           class="action-btn"
-          :style="{ '--btn-color': '#d6d6d6' }"
+          :style="{ '--btn-color': BUTTON_COLORS.stop }"
           @click="actions.stopSelectedUnits()"
         >
           <span class="btn-label">Stop</span>
@@ -126,7 +156,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :class="{ active: selection.isWaiting }"
-          :style="{ '--btn-color': '#e8e8e8' }"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
           title="Toggle wait for selected units"
           @click="actions.toggleSelectedWait()"
         >
@@ -136,7 +166,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
-          :style="{ '--btn-color': '#b9f1ff' }"
+          :style="{ '--btn-color': BUTTON_COLORS.undoQueue }"
           title="Remove the last queued order"
           @click="actions.removeLastQueuedOrder()"
         >
@@ -146,7 +176,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         <button
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
-          :style="{ '--btn-color': '#c7d0ff' }"
+          :style="{ '--btn-color': BUTTON_COLORS.clearQueue }"
           title="Clear queued orders after the active order"
           @click="actions.clearQueuedOrders()"
         >
@@ -157,7 +187,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           v-if="selection.hasFireControl"
           class="action-btn"
           :class="{ active: selection.fireEnabled }"
-          :style="{ '--btn-color': '#ff9f5a' }"
+          :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
           title="Toggle whether selected units are allowed to fire automatically"
           @click="actions.toggleSelectedFire()"
         >
@@ -242,7 +272,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           v-if="selection.hasCommander"
           class="action-btn"
           :class="{ active: selection.isRepairAreaMode }"
-          :style="{ '--btn-color': '#63e7ff' }"
+          :style="{ '--btn-color': BUTTON_COLORS.repair }"
           title="Toggle area repair targeting for the selected commander"
           @click="actions.toggleRepairArea()"
         >
@@ -253,7 +283,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           v-if="selection.hasCommander"
           class="action-btn"
           :class="{ active: selection.isReclaimMode }"
-          :style="{ '--btn-color': '#d6b45f' }"
+          :style="{ '--btn-color': BUTTON_COLORS.reclaim }"
           title="Toggle reclaim targeting for the selected commander"
           @click="actions.toggleReclaim()"
         >
@@ -315,13 +345,13 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   position: absolute;
   bottom: 20px;
   left: 20px;
-  background: rgba(15, 18, 24, 0.92);
-  border: 1px solid #444;
+  background: var(--selection-panel-bg);
+  border: 1px solid var(--selection-panel-border);
   border-radius: 8px;
   padding: 12px;
   min-width: 200px;
   font-family: monospace;
-  color: white;
+  color: var(--selection-panel-text);
   pointer-events: auto;
   z-index: 1000;
 }
@@ -331,15 +361,15 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   font-weight: bold;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid var(--selection-panel-header-border);
 }
 
 .unit-type.commander {
-  color: #ffd700;
+  color: var(--selection-panel-commander);
 }
 
 .unit-type.factory {
-  color: #88ff88;
+  color: var(--selection-panel-factory);
 }
 
 .button-group {
@@ -348,14 +378,14 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
 .group-label {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--selection-panel-label);
   margin-bottom: 4px;
   text-transform: uppercase;
 }
 
 .modifier-hint {
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--selection-panel-hint);
   text-transform: none;
 }
 
@@ -382,10 +412,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 .group-recall-btn,
 .group-add-btn {
   height: 36px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--selection-panel-button-bg);
+  border: 1px solid var(--selection-panel-button-border);
   border-radius: 4px;
-  color: white;
+  color: var(--selection-panel-text);
   font-family: monospace;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -402,7 +432,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   align-items: center;
   justify-content: center;
   padding: 0;
-  --btn-color: #8fd2ff;
+  --btn-color: var(--selection-panel-button-group-accent);
 }
 
 .group-add-btn {
@@ -414,20 +444,20 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 .group-store-btn:hover:not(:disabled),
 .group-recall-btn:hover:not(:disabled),
 .group-add-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: #8fd2ff;
+  background: var(--selection-panel-button-hover-bg);
+  border-color: var(--selection-panel-button-group-accent);
 }
 
 .group-recall-btn.active {
-  background: rgba(143, 210, 255, 0.24);
-  border-color: #8fd2ff;
-  box-shadow: 0 0 8px rgba(143, 210, 255, 0.7);
+  background: var(--selection-panel-group-active-bg);
+  border-color: var(--selection-panel-button-group-accent);
+  box-shadow: 0 0 8px var(--selection-panel-group-active-shadow);
 }
 
 .group-store-btn:disabled,
 .group-recall-btn:disabled,
 .group-add-btn:disabled {
-  opacity: 0.38;
+  opacity: var(--selection-panel-button-disabled-opacity);
   cursor: default;
 }
 
@@ -439,7 +469,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 .group-count {
   margin-top: 1px;
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--selection-panel-label);
 }
 
 .action-btn {
@@ -447,35 +477,35 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
   flex-direction: column;
   align-items: center;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: var(--selection-panel-button-bg);
+  border: 1px solid var(--selection-panel-button-border);
   border-radius: 4px;
-  color: white;
+  color: var(--selection-panel-text);
   font-family: monospace;
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
   min-width: 60px;
-  --btn-color: #888888;
+  --btn-color: var(--selection-panel-button-default);
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--selection-panel-button-hover-bg);
   border-color: var(--btn-color);
 }
 
 .action-btn:disabled {
-  opacity: 0.45;
+  opacity: var(--selection-panel-action-disabled-opacity);
   cursor: default;
 }
 
 .action-btn:disabled:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--selection-panel-button-bg);
+  border-color: var(--selection-panel-button-border);
 }
 
 .action-btn.active {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--selection-panel-button-active-bg);
   border-color: var(--btn-color);
   box-shadow: 0 0 8px var(--btn-color);
 }
@@ -490,39 +520,39 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 }
 
 .cost-energy {
-  color: #ffcc00;
+  color: var(--selection-panel-cost-energy);
 }
 
 /* Unified construction cost across energy and metal. */
 .cost-resource {
-  color: #c8c8d8;
+  color: var(--selection-panel-cost-resource);
 }
 
 .btn-key {
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--selection-panel-key);
   margin-top: 2px;
 }
 
 .build-btn {
-  --btn-color: #00cc00;
+  --btn-color: var(--selection-panel-build);
 }
 
 .dgun-btn {
-  --btn-color: #ff6600;
+  --btn-color: var(--selection-panel-dgun);
 }
 
 .produce-btn.vehicle-btn {
-  --btn-color: #0088ff;
+  --btn-color: var(--selection-panel-vehicle-produce);
 }
 
 .produce-btn.bot-btn {
-  --btn-color: #88ff00;
+  --btn-color: var(--selection-panel-bot-produce);
 }
 
 .message-area {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--selection-panel-key);
   margin-top: 8px;
   text-align: center;
   min-height: 14px;

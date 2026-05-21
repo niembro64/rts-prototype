@@ -1,12 +1,13 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getConstructionHazardMaterial } from './BuildingShape3D';
 import type { TurretMesh } from './TurretMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 
-const COMMANDER_ARMOR_COLOR = 0x232830;
-const COMMANDER_TRIM_COLOR = 0xc8d0da;
-const COMMANDER_LENS_COLOR = 0x73e9ff;
+const COMMANDER_ARMOR_COLOR = COLORS.units.commander.armor.colorHex;
+const COMMANDER_TRIM_COLOR = COLORS.units.commander.trim.colorHex;
+const COMMANDER_LENS_COLOR = COLORS.units.commander.lens.colorHex;
 
 export class CommanderVisualKit3D {
   private readonly boxGeom = new THREE.BoxGeometry(1, 1, 1);
@@ -17,7 +18,7 @@ export class CommanderVisualKit3D {
   private readonly lensMat = new THREE.MeshBasicMaterial({
     color: COMMANDER_LENS_COLOR,
     transparent: true,
-    opacity: 0.9,
+    opacity: COLORS.units.commander.lens.opacity,
     depthWrite: false,
   });
 

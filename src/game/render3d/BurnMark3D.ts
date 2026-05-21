@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
+import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig, getBurnMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import {
@@ -49,9 +50,9 @@ const MARK_Y = 2.5;
 // ColorManagement.enabled = true (Three r152+): the renderer re-encodes
 // linear → sRGB on output, and raw-sRGB-as-linear comes out visibly
 // darker than the 2D counterpart that fillStyle()'s the same hex.
-const COOL_COLOR = 0x221100;                      // dark brown residue
-const HOT_LIN = new THREE.Color(BURN_COLOR_HOT);  // linear-RGB of 0x882200
-const COOL_LIN = new THREE.Color(COOL_COLOR);     // linear-RGB of 0x221100
+const COOL_COLOR = COLORS.world.burnMark.coolResidueColorHex; // dark brown residue
+const HOT_LIN = new THREE.Color(BURN_COLOR_HOT);
+const COOL_LIN = new THREE.Color(COOL_COLOR);
 
 // Hard buffer size — never need to reallocate. Memory: ~280 KB for
 // positions + colors, trivial. The active-count cap below sits inside

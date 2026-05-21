@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ConstructionEmitterSize } from '@/types/blueprints';
 import type { TurretConfig } from '../sim/types';
+import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 
@@ -94,8 +95,8 @@ void main() {
 });
 
 const CONSTRUCTION_RESOURCE_COLORS = {
-  energy: 0xf5d442,
-  metal: BUILDING_PALETTE.metalResource,
+  energy: RESOURCE_COLOR_HEX.energy,
+  metal: RESOURCE_COLOR_HEX.metal,
 } as const;
 
 function makeShowerMat(hex: number): THREE.MeshBasicMaterial {

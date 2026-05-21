@@ -39,6 +39,7 @@
 
 import * as THREE from 'three';
 import type { SprayTarget } from '../sim/commanderAbilities';
+import { COLORS } from '@/colorsConfig';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { hexToRgb01 } from './colorUtils';
@@ -79,14 +80,12 @@ const MAX_PARTICLES = 1536;
 
 /** Heal-spray color — matches the 2D convention where heal sprays
  *  don't take the caster's team color. Constant white. */
-const HEAL_R = 1;
-const HEAL_G = 1;
-const HEAL_B = 1;
+const [HEAL_R, HEAL_G, HEAL_B] = COLORS.effects.spray.healRgb01;
 
 /** Build-spray color alpha (matches the previous per-team
  *  MeshBasicMaterial.opacity = 0.85). Heal trails were 0.8 — we use
  *  one global alpha here since the visual difference is tiny. */
-const PARTICLE_ALPHA = 0.85;
+const PARTICLE_ALPHA = COLORS.effects.spray.particleAlpha;
 
 const PARTICLE_VERTEX_SHADER = `
 attribute float aAlpha;

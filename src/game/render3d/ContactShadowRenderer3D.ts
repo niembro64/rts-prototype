@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import {
   CONTACT_SHADOW_RENDER_CONFIG,
   GROUND_RENDER_ORDER,
@@ -26,9 +27,9 @@ const UNIT_AIR_SHADOW_SUN_SCALE_BOOST = 0.7;
 
 function makeContactShadowMaterial(): THREE.MeshBasicMaterial {
   const material = new THREE.MeshBasicMaterial({
-    color: 0x000000,
+    color: COLORS.world.contactShadow.colorHex,
     transparent: true,
-    opacity: 0.16,
+    opacity: COLORS.world.contactShadow.opacity,
     blending: THREE.CustomBlending,
     blendEquation: THREE.AddEquation,
     blendSrc: THREE.SrcAlphaFactor,

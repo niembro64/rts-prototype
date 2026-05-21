@@ -21,6 +21,7 @@
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
 } from '../sim/blueprints';
@@ -111,9 +112,9 @@ const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 
 const radarFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 const radarDishMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.structureLight,
-  metalness: 0.72,
-  roughness: 0.2,
+  color: COLORS.buildings.materials.radarDish.colorHex,
+  metalness: COLORS.buildings.materials.radarDish.metalness,
+  roughness: COLORS.buildings.materials.radarDish.roughness,
 });
 const radarGlowMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
 

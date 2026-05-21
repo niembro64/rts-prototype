@@ -1,6 +1,15 @@
 // Shared UI utility functions for control bars and display components.
 
+import { COLORS, readRgbTuple } from '@/colorsConfig';
 import { getPlayerPrimaryColor, type PlayerId } from '../game/sim/types';
+
+const STAT_BAR_RGB = {
+  gray: readRgbTuple(COLORS.ui.statBars.gray.rgb, 'ui.statBars.gray.rgb'),
+  low: readRgbTuple(COLORS.ui.statBars.low.rgb, 'ui.statBars.low.rgb'),
+  mid: readRgbTuple(COLORS.ui.statBars.mid.rgb, 'ui.statBars.mid.rgb'),
+  target: readRgbTuple(COLORS.ui.statBars.target.rgb, 'ui.statBars.target.rgb'),
+  over: readRgbTuple(COLORS.ui.statBars.over.rgb, 'ui.statBars.over.rgb'),
+};
 
 /** Format milliseconds as HH:MM:SS */
 export function formatDuration(ms: number): string {
@@ -26,9 +35,21 @@ export function fmtSigned(n: number): string {
 
 /** Color for a signed value: gray when near-zero (|n| < 1), green when positive, red when negative. */
 export function signedColor(n: number): string {
-  if (Math.abs(n) < 1) return '#888888';
-  if (n > 0) return '#00ff88';
-  return '#ff4444';
+  if (Math.abs(n) < 1) return COLORS.ui.numericDelta.neutral;
+  if (n > 0) return COLORS.ui.numericDelta.positive;
+  return COLORS.ui.numericDelta.negative;
+}
+
+function mixRgb(from: readonly [number, number, number], to: readonly [number, number, number], t: number): [number, number, number] {
+  return [
+    Math.round(from[0] + (to[0] - from[0]) * t),
+    Math.round(from[1] + (to[1] - from[1]) * t),
+    Math.round(from[2] + (to[2] - from[2]) * t),
+  ];
+}
+
+function rgbCss(rgb: readonly [number, number, number]): string {
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
 }
 
 /**
@@ -42,27 +63,20 @@ export function statBarStyle(
 ): { width: string; backgroundColor: string } {
   const ratio = value / target;
   const fillRatio = Math.min(Math.max(ratio, 0), 1);
-  if (gray) return { width: `${fillRatio * 100}%`, backgroundColor: '#b0b0b0' };
+  if (gray) return { width: `${fillRatio * 100}%`, backgroundColor: rgbCss(STAT_BAR_RGB.gray) };
 
-  let r: number, g: number, b: number;
+  let rgb: readonly [number, number, number];
   if (ratio >= 1) {
     const t = Math.min(ratio - 1, 1);
-    r = Math.round(0x44 + (0x44 - 0x44) * t);
-    g = Math.round(0xcc + (0x88 - 0xcc) * t);
-    b = Math.round(0x44 + (0xff - 0x44) * t);
+    rgb = mixRgb(STAT_BAR_RGB.target, STAT_BAR_RGB.over, t);
   } else if (ratio >= 0.5) {
     const t = (ratio - 0.5) / 0.5;
-    r = Math.round(0xcc + (0x44 - 0xcc) * t);
-    g = Math.round(0xcc + (0xcc - 0xcc) * t);
-    b = Math.round(0x00 + (0x44 - 0x00) * t);
+    rgb = mixRgb(STAT_BAR_RGB.mid, STAT_BAR_RGB.target, t);
   } else {
     const t = ratio / 0.5;
-    r = Math.round(0xcc + (0xcc - 0xcc) * t);
-    g = Math.round(0x22 + (0xcc - 0x22) * t);
-    b = Math.round(0x22 + (0x00 - 0x22) * t);
+    rgb = mixRgb(STAT_BAR_RGB.low, STAT_BAR_RGB.mid, t);
   }
-  const color = `rgb(${r},${g},${b})`;
-  return { width: `${fillRatio * 100}%`, backgroundColor: color };
+  return { width: `${fillRatio * 100}%`, backgroundColor: rgbCss(rgb) };
 }
 
 /**
@@ -74,20 +88,15 @@ export function msBarStyle(
   budget = 1000 / 60,
 ): { width: string; backgroundColor: string } {
   const ratio = Math.min(Math.max(value / budget, 0), 1);
-  let r: number, g: number, b: number;
+  let rgb: readonly [number, number, number];
   if (ratio <= 0.5) {
     const t = ratio / 0.5;
-    r = Math.round(0x44 + (0xcc - 0x44) * t);
-    g = Math.round(0xcc + (0xcc - 0xcc) * t);
-    b = Math.round(0x44 + (0x00 - 0x44) * t);
+    rgb = mixRgb(STAT_BAR_RGB.target, STAT_BAR_RGB.mid, t);
   } else {
     const t = (ratio - 0.5) / 0.5;
-    r = Math.round(0xcc + (0xcc - 0xcc) * t);
-    g = Math.round(0xcc + (0x22 - 0xcc) * t);
-    b = Math.round(0x00 + (0x22 - 0x00) * t);
+    rgb = mixRgb(STAT_BAR_RGB.mid, STAT_BAR_RGB.low, t);
   }
-  const color = `rgb(${r},${g},${b})`;
-  return { width: `${ratio * 100}%`, backgroundColor: color };
+  return { width: `${ratio * 100}%`, backgroundColor: rgbCss(rgb) };
 }
 
 export function getPlayerColor(playerId: PlayerId): string {

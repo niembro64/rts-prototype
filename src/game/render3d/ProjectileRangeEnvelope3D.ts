@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import { GRAVITY, LAND_CELL_SIZE } from '../../config';
 import {
   getTransformCosSin,
@@ -54,9 +55,9 @@ export class ProjectileRangeEnvelope3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly material = new THREE.MeshBasicMaterial({
-    color: 0xff3333,
+    color: COLORS.effects.projectile.rangeEnvelope.colorHex,
     transparent: true,
-    opacity: 0.9,
+    opacity: COLORS.effects.projectile.rangeEnvelope.opacity,
     depthWrite: false,
     depthTest: false,
     side: THREE.DoubleSide,

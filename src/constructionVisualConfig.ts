@@ -7,30 +7,22 @@
  * construction pieces.
  */
 import constructionVisualConfig from './constructionVisualConfig.json';
-
-type RgbTuple = readonly [number, number, number];
-
-function readRgbTuple(value: number[], fieldName: string): RgbTuple {
-  if (value.length !== 3 || value.some((component) => !Number.isFinite(component))) {
-    throw new Error(`${fieldName} must be a 3-component RGB tuple`);
-  }
-  return value as unknown as RgbTuple;
-}
+import { COLORS, readRgbTuple } from './colorsConfig';
 
 /** Standard construction hazard stripe palette. These are the same
  * yellow/black colors originally used by the commander's construction
  * turret material. Keep RGB and hex forms together so shader materials
  * and regular Three materials read from one documented source. */
 export const CONSTRUCTION_HAZARD_COLORS = {
-  yellowHex: constructionVisualConfig.hazardColors.yellowHex,
-  blackHex: constructionVisualConfig.hazardColors.blackHex,
+  yellowHex: COLORS.construction.hazardStripe.yellow.colorHex,
+  blackHex: COLORS.construction.hazardStripe.black.colorHex,
   yellowRgb: readRgbTuple(
-    constructionVisualConfig.hazardColors.yellowRgb,
-    'constructionVisualConfig.hazardColors.yellowRgb',
+    COLORS.construction.hazardStripe.yellow.rgb01,
+    'colorsConfig.construction.hazardStripe.yellow.rgb01',
   ),
   blackRgb: readRgbTuple(
-    constructionVisualConfig.hazardColors.blackRgb,
-    'constructionVisualConfig.hazardColors.blackRgb',
+    COLORS.construction.hazardStripe.black.rgb01,
+    'colorsConfig.construction.hazardStripe.black.rgb01',
   ),
 } as const;
 

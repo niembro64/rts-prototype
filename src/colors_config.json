@@ -1,0 +1,770 @@
+{
+  "resources": {
+    "energy": {
+      "colorHex": 16110658,
+      "cssColor": "#f5d442"
+    },
+    "metal": {
+      "colorHex": 13668448,
+      "cssColor": "#d09060"
+    }
+  },
+  "world": {
+    "map": {
+      "inBounds": { "colorHex": 4477240 },
+      "outOfBounds": { "colorHex": 1185824 },
+      "cameraClear": { "colorHex": 9417161 }
+    },
+    "water": {
+      "colorHex": 2060172,
+      "opacity": 0.82
+    },
+    "sky": {
+      "topColor": "#6d9dcc",
+      "midColor": "#b7cddd",
+      "horizonColor": "#e1d5bd",
+      "midStop": 0.64
+    },
+    "sun": {
+      "colorHex": 16773327,
+      "visibleSkyDisk": {
+        "coreColor": "#fff8dc",
+        "haloColor": "#f0b860",
+        "haloFadeColor": "rgba(246,198,111,0)",
+        "spriteColorHex": 16777215,
+        "opacity": 0.86
+      }
+    },
+    "terrain": {
+      "horizonBlend": {
+        "colorHex": 1457996,
+        "shade": 1
+      },
+      "ground": {
+        "baseColorHex": 4280117,
+        "detailContrast": 0.3
+      },
+      "rock": {
+        "baseColorHex": 7301723,
+        "detailContrast": 0.1,
+        "shadePaletteRgb": [
+          [54, 50, 43],
+          [78, 72, 62],
+          [104, 96, 82],
+          [128, 120, 104],
+          [156, 146, 128],
+          [186, 174, 154],
+          [212, 196, 172],
+          [92, 76, 60],
+          [148, 124, 96],
+          [70, 64, 58]
+        ]
+      },
+      "buildGrid": {
+        "okRgba": [0, 102, 0, 160],
+        "blockedRgba": [119, 0, 0, 170],
+        "metalRgba": [0, 58, 153, 185]
+      },
+      "bumpOverlay": {
+        "baseColorRgb01": [0.025, 0.045, 0.052]
+      }
+    },
+    "contactShadow": {
+      "colorHex": 0,
+      "opacity": 0.16
+    },
+    "groundPrint": {
+      "colorHex": 1708808,
+      "initialAlpha": 0.2
+    },
+    "burnMark": {
+      "hotColorHex": 8913408,
+      "coolResidueColorHex": 2232576
+    },
+    "fogOfWar": {
+      "colorHex": 0,
+      "gradientStart": "rgb(0, 0, 0)",
+      "gradientEnd": "rgba(0, 0, 0, 0)"
+    }
+  },
+  "environment": {
+    "forestSpruce2": {
+      "wood": { "colorHex": 5980720 },
+      "leaf": { "colorHex": 4280117 },
+      "leafShadePaletteRgb": [
+        [38, 58, 32],
+        [55, 78, 42],
+        [72, 100, 52],
+        [94, 130, 65],
+        [120, 156, 80],
+        [156, 184, 95],
+        [196, 210, 115],
+        [70, 86, 42],
+        [110, 124, 56],
+        [60, 50, 35]
+      ],
+      "trunkShadePaletteRgb": [
+        [28, 20, 14],
+        [48, 36, 26],
+        [70, 54, 40],
+        [96, 76, 56],
+        [124, 100, 76],
+        [156, 130, 100],
+        [188, 160, 124],
+        [82, 50, 32],
+        [128, 86, 56],
+        [88, 78, 68]
+      ]
+    },
+    "lowTree": {
+      "trunk": { "colorHex": 6245172 },
+      "leaves": { "colorHex": 4812593 }
+    },
+    "metalDeposit": {
+      "baseColorHex": 2566958,
+      "darkColorHex": 1119254,
+      "lightColorHex": 7304824,
+      "lambertMaterial": {
+        "colorHex": 16777215,
+        "flatShading": true
+      },
+      "standardMaterial": {
+        "colorHex": 16777215,
+        "metalness": 0.42,
+        "roughness": 0.58,
+        "flatShading": true
+      }
+    }
+  },
+  "buildings": {
+    "palette": {
+      "structureDark": { "colorHex": 1516337 },
+      "structureMid": { "colorHex": 3424589 },
+      "structureLight": { "colorHex": 13161693 },
+      "photovoltaic": { "colorHex": 1194584 },
+      "photovoltaicBack": { "colorHex": 2502970 },
+      "cyanGlow": { "colorHex": 7593451 },
+      "cyanGlass": { "colorHex": 8576233 },
+      "constructionAmber": { "colorHex": 15256946 },
+      "constructionSpark": { "colorHex": 14412270 }
+    },
+    "materials": {
+      "shinyGrayMetal": {
+        "colorHex": 13161693,
+        "metalness": 0.78,
+        "roughness": 0.18,
+        "envMapIntensity": 1.0
+      },
+      "mirrorChrome": {
+        "colorHex": 13161693,
+        "metalness": 1.0,
+        "roughness": 0.025,
+        "envMapIntensity": 1.45
+      },
+      "windNacelle": {
+        "colorHex": 13161693,
+        "metalness": 0.48,
+        "roughness": 0.16
+      },
+      "windBlade": {
+        "colorHex": 14016487,
+        "metalness": 0.38,
+        "roughness": 0.14
+      },
+      "windGlass": {
+        "colorHex": 1194584,
+        "metalness": 1.0,
+        "roughness": 0.04
+      },
+      "extractorBlade": {
+        "colorHex": 13668448,
+        "metalness": 0.78,
+        "roughness": 0.18,
+        "envMapIntensity": 1.0
+      },
+      "radarDish": {
+        "colorHex": 13161693,
+        "metalness": 0.72,
+        "roughness": 0.2
+      },
+      "megaBeamTowerTrim": {
+        "colorHex": 8576233,
+        "emissiveHex": 7593451,
+        "emissiveIntensity": 0.28,
+        "metalness": 0.56,
+        "roughness": 0.18
+      },
+      "cannonTowerTrim": {
+        "colorHex": 1516337,
+        "metalness": 0.72,
+        "roughness": 0.24
+      },
+      "solarCell": {
+        "colorHex": 1194584,
+        "metalness": 1.0,
+        "roughness": 0.02
+      },
+      "solarPetalBack": {
+        "colorHex": 2502970
+      },
+      "buildingGhost": {
+        "colorHex": 6975352,
+        "opacity": 0.55
+      },
+      "invisible": {
+        "colorHex": 0,
+        "opacity": 0
+      }
+    }
+  },
+  "construction": {
+    "shell": {
+      "pale": {
+        "colorHex": 14737632,
+        "rgb01": [0.88, 0.88, 0.88],
+        "opacity": 0.5
+      }
+    },
+    "buildBubble": {
+      "ghost": {
+        "colorHex": 14211288,
+        "opacity": 0.45
+      },
+      "core": {
+        "colorHex": 16053492,
+        "opacity": 0.85
+      },
+      "pulse": {
+        "colorHex": 13158600,
+        "opacity": 0.7
+      },
+      "spark": {
+        "colorHex": 16777215,
+        "opacity": 0.9
+      }
+    },
+    "shellBar": {
+      "background": {
+        "cssColor": "#333333",
+        "alpha": 0.8
+      },
+      "foregroundAlpha": 0.9
+    },
+    "hpBar": {
+      "high": { "cssColor": "#44dd44" },
+      "low": { "cssColor": "#ff4444" },
+      "build": { "cssColor": "#4488ff" }
+    },
+    "hazardStripe": {
+      "yellow": {
+        "colorHex": 14921774,
+        "rgb01": [0.89, 0.69, 0.18]
+      },
+      "black": {
+        "colorHex": 1252129,
+        "rgb01": [0.075, 0.105, 0.13]
+      }
+    }
+  },
+  "units": {
+    "neutral": { "colorHex": 8947848 },
+    "turret": {
+      "barrel": { "colorHex": 16777215 }
+    },
+    "commander": {
+      "armor": { "colorHex": 2304048 },
+      "trim": { "colorHex": 13160666 },
+      "lens": {
+        "colorHex": 7596543,
+        "opacity": 0.9
+      }
+    },
+    "locomotion": {
+      "tread": {
+        "slab": { "colorHex": 1711394 },
+        "wheel": { "colorHex": 2764598 },
+        "cleat": { "colorHex": 3817542 }
+      },
+      "wheel": {
+        "tire": { "colorHex": 2764598 }
+      },
+      "leg": {
+        "segment": { "colorHex": 2764598 },
+        "debugRestSphere": {
+          "colorHex": 4521932,
+          "opacity": 0.4
+        }
+      },
+      "hover": {
+        "fanRing": { "colorHex": 0 },
+        "fanBlade": { "colorHex": 16777215 },
+        "fanHub": { "colorHex": 16777215 },
+        "smoke": {
+          "colorHex": 13421772,
+          "startAlpha": 0.9
+        }
+      },
+      "flying": {
+        "wing": { "colorHex": 0 },
+        "jet": { "colorHex": 1118481 },
+        "smoke": {
+          "colorHex": 13421772,
+          "startAlpha": 0.85
+        }
+      }
+    },
+    "debris": {
+      "tread": { "colorHex": 1711394 },
+      "wheel": { "colorHex": 2764598 },
+      "leg": { "colorHex": 2764598 },
+      "barrel": { "colorHex": 16777215 }
+    }
+  },
+  "effects": {
+    "forceField": {
+      "barrier": {
+        "colorHex": 16777215,
+        "alpha": 0.05,
+        "particleAlpha": 0.2
+      },
+      "shield": {
+        "fallbackColorHex": 16777215,
+        "emitterIdleColorHex": 16777215
+      },
+      "impact": {
+        "fallbackColorHex": 16777215,
+        "ringOpacity": 0.1,
+        "coreOpacity": 0.22
+      }
+    },
+    "beam": {
+      "outer": {
+        "colorRgb01": [1.0, 1.0, 1.0],
+        "waveLowAlpha": 0.1,
+        "waveHighAlpha": 0.2
+      },
+      "inner": {
+        "colorRgb01": [1.0, 1.0, 1.0],
+        "waveLowAlpha": 0.1,
+        "waveHighAlpha": 0.2
+      }
+    },
+    "projectile": {
+      "body": { "colorHex": 16777215 },
+      "curvedCone": { "colorHex": 16777215 },
+      "fin": { "colorHex": 16777215 },
+      "collisionRadius": {
+        "colorHex": 16711680,
+        "opacity": 0.55
+      },
+      "explosionRadius": {
+        "colorHex": 16746564,
+        "opacity": 0.35
+      },
+      "rangeEnvelope": {
+        "colorHex": 16724787,
+        "opacity": 0.9
+      }
+    },
+    "explosion": {
+      "core": { "colorHex": 16777215 }
+    },
+    "spray": {
+      "healRgb01": [1, 1, 1],
+      "particleAlpha": 0.85
+    },
+    "smokeTrail": {
+      "default": {
+        "colorHex": 13421772,
+        "startAlpha": 0.75
+      }
+    },
+    "lineDrag": {
+      "ring": {
+        "colorHex": 16777215,
+        "opacity": 0.8
+      },
+      "fillOpacity": 0.85
+    },
+    "waypoint": {
+      "flagPole": { "cssColor": "#ffffff" }
+    },
+    "selectionOverlay": {
+      "radiusScale": {
+        "colorHex": 4521983,
+        "opacity": 0.7
+      },
+      "radiusShot": {
+        "colorHex": 16729343,
+        "opacity": 0.7
+      },
+      "radiusPush": {
+        "colorHex": 4521796,
+        "opacity": 0.7
+      },
+      "trackAcquire": {
+        "colorHex": 16777096,
+        "opacity": 0.55
+      },
+      "trackRelease": {
+        "colorHex": 16777096,
+        "opacity": 0.35
+      },
+      "engageAcquire": {
+        "colorHex": 16729156,
+        "opacity": 0.65
+      },
+      "engageRelease": {
+        "colorHex": 4500223,
+        "opacity": 0.55
+      },
+      "engageMinAcquire": {
+        "colorHex": 16746496,
+        "opacity": 0.65
+      },
+      "engageMinRelease": {
+        "colorHex": 11158783,
+        "opacity": 0.55
+      },
+      "build": {
+        "colorHex": 4521796,
+        "opacity": 0.65
+      },
+      "selectionRing": {
+        "colorHex": 16777215,
+        "emissiveHex": 3355443,
+        "opacity": 0.9
+      }
+    },
+    "buildGhost": {
+      "footprintOk": {
+        "colorHex": 8978312,
+        "opacity": 0.35
+      },
+      "footprintBad": {
+        "colorHex": 16729156,
+        "opacity": 0.35
+      },
+      "cellOk": { "colorHex": 26112 },
+      "cellMetal": { "colorHex": 15001 },
+      "cellMetalDeposit": { "colorHex": 21862 },
+      "cellBad": { "colorHex": 7798784 },
+      "cellBorderOk": { "colorHex": 65280 },
+      "cellBorderMetal": { "colorHex": 38655 },
+      "cellBorderMetalDeposit": { "colorHex": 55551 },
+      "cellBorderBad": { "colorHex": 16711680 },
+      "rangeRing": {
+        "colorHex": 65280,
+        "opacity": 0.35
+      },
+      "outOfRangeLine": {
+        "colorHex": 16729156,
+        "opacity": 0.6
+      }
+    },
+    "inputSelectionMarquee": {
+      "border": "1px solid #9fc8ff",
+      "background": "rgba(120, 170, 255, 0.15)"
+    }
+  },
+  "ui": {
+    "nameLabel": {
+      "fillColor": "#ffffff",
+      "strokeColor": "#000000"
+    },
+    "minimap": {
+      "radarBlip": { "cssColor": "#9aa3ad" },
+      "waterRgb": [42, 85, 154],
+      "selectionStroke": "#ffffff",
+      "cameraStroke": "rgba(255, 255, 255, 0.8)",
+      "frameStroke": "rgba(255, 255, 255, 0.3)",
+      "panel": {
+        "background": "rgba(15, 18, 24, 0.92)",
+        "border": "#444444",
+        "text": "#ffffff",
+        "label": "rgba(255, 255, 255, 0.6)",
+        "hoverShadow": "rgba(255, 255, 255, 0.3)"
+      }
+    },
+    "topBar": {
+      "surface": {
+        "background": "rgba(15, 15, 15, 0.7)",
+        "border": "#444444",
+        "text": "#ffffff",
+        "divider": "rgba(255, 255, 255, 0.18)",
+        "mutedText": "rgba(255, 255, 255, 0.5)",
+        "subtleText": "rgba(255, 255, 255, 0.3)"
+      },
+      "exitButton": {
+        "border": "rgba(255, 80, 80, 0.4)",
+        "background": "rgba(255, 40, 40, 0.15)",
+        "text": "#ff6666",
+        "hoverBackground": "rgba(255, 40, 40, 0.4)",
+        "hoverText": "#ff9999",
+        "hoverBorder": "rgba(255, 80, 80, 0.7)",
+        "activeBackground": "rgba(255, 40, 40, 0.6)"
+      },
+      "playerDot": {
+        "border": "rgba(255, 255, 255, 0.5)",
+        "hoverBorder": "#ffffff",
+        "hoverBackground": "rgba(255, 255, 255, 0.1)"
+      },
+      "network": {
+        "label": "rgba(255, 255, 255, 0.45)",
+        "value": "rgba(220, 245, 255, 0.9)",
+        "warning": "#ff7777"
+      },
+      "unitCap": {
+        "ok": "rgba(255,255,255,0.7)",
+        "warning": "#ffcc00",
+        "full": "#ff4444"
+      },
+      "resource": {
+        "barBackground": "rgba(255, 255, 255, 0.15)",
+        "flowText": "rgba(190, 190, 200, 0.78)",
+        "flowLabel": "rgba(160, 160, 170, 0.72)",
+        "flowValue": "rgba(205, 205, 215, 0.82)",
+        "emptyFlash": "#ff5555",
+        "emptyShellBackground": "rgba(255, 45, 45, 0.18)",
+        "emptyShellBorder": "rgba(255, 80, 80, 0.65)",
+        "emptyShellShadow": "rgba(255, 45, 45, 0.38)"
+      },
+      "buildings": {
+        "solar": "#ffcc00",
+        "wind": "#bde7ff",
+        "factory": "#88ccff"
+      }
+    },
+    "selectionPanel": {
+      "surface": {
+        "background": "rgba(15, 18, 24, 0.92)",
+        "border": "#444444",
+        "text": "#ffffff",
+        "headerBorder": "rgba(255, 255, 255, 0.2)",
+        "label": "rgba(255, 255, 255, 0.6)",
+        "hint": "rgba(255, 255, 255, 0.4)",
+        "key": "rgba(255, 255, 255, 0.5)"
+      },
+      "unitType": {
+        "commander": "#ffd700",
+        "factory": "#88ff88"
+      },
+      "buttons": {
+        "default": "#888888",
+        "attackArea": "#ff5a5a",
+        "attackGround": "#ff7a18",
+        "ping": "#f7fbff",
+        "guard": "#9ef28d",
+        "stop": "#d6d6d6",
+        "wait": "#e8e8e8",
+        "undoQueue": "#b9f1ff",
+        "clearQueue": "#c7d0ff",
+        "fireControl": "#ff9f5a",
+        "repair": "#63e7ff",
+        "reclaim": "#d6b45f",
+        "build": "#00cc00",
+        "dgun": "#ff6600",
+        "vehicleProduce": "#0088ff",
+        "botProduce": "#88ff00",
+        "groupAccent": "#8fd2ff",
+        "background": "rgba(255, 255, 255, 0.1)",
+        "border": "rgba(255, 255, 255, 0.3)",
+        "hoverBackground": "rgba(255, 255, 255, 0.2)",
+        "activeBackground": "rgba(255, 255, 255, 0.25)",
+        "groupActiveBackground": "rgba(143, 210, 255, 0.24)",
+        "groupActiveShadow": "rgba(143, 210, 255, 0.7)",
+        "disabledOpacity": 0.38,
+        "actionDisabledOpacity": 0.45
+      },
+      "cost": {
+        "energy": "#ffcc00",
+        "resource": "#c8c8d8"
+      }
+    },
+    "worldDirectionHud": {
+      "lights": {
+        "ambient": { "colorHex": 16777215, "intensity": 1.15 },
+        "key": { "colorHex": 16777215, "intensity": 2.2 },
+        "fill": { "colorHex": 9420031, "intensity": 0.65 }
+      },
+      "clear": { "colorHex": 0, "alpha": 0 },
+      "materials": {
+        "compass": {
+          "colorHex": 15331576,
+          "specularHex": 16777215,
+          "shininess": 62
+        },
+        "compassAccent": {
+          "colorHex": 8021910,
+          "specularHex": 15003126,
+          "shininess": 42
+        },
+        "north": {
+          "colorHex": 16731197,
+          "specularHex": 16777215,
+          "shininess": 74
+        },
+        "northAccent": {
+          "colorHex": 16767186,
+          "specularHex": 16777215,
+          "shininess": 58
+        },
+        "wind": {
+          "colorHex": 10217727,
+          "specularHex": 16777215,
+          "shininess": 70
+        },
+        "windAccent": {
+          "colorHex": 2386822,
+          "specularHex": 12316671,
+          "shininess": 50
+        }
+      },
+      "label": {
+        "text": "rgba(255, 255, 255, 0.58)",
+        "strong": "rgba(255, 255, 255, 0.9)",
+        "shadow": "rgba(0, 0, 0, 0.75)",
+        "strongShadow": "rgba(0, 0, 0, 0.85)"
+      }
+    },
+    "commanderAvatar": {
+      "ambient": { "colorHex": 16777215, "intensity": 0.55 },
+      "sun": { "colorHex": 16777215, "intensity": 0.85 }
+    },
+    "numericDelta": {
+      "neutral": "#888888",
+      "positive": "#00ff88",
+      "negative": "#ff4444"
+    },
+    "statBars": {
+      "gray": { "rgb": [176, 176, 176] },
+      "low": { "rgb": [204, 34, 34] },
+      "mid": { "rgb": [204, 204, 0] },
+      "target": { "rgb": [68, 204, 68] },
+      "over": { "rgb": [68, 136, 255] }
+    },
+    "waypointColors": {
+      "move": {
+        "colorHex": 65280,
+        "cssColor": "#00ff00"
+      },
+      "patrol": {
+        "colorHex": 35071,
+        "cssColor": "#0088ff"
+      },
+      "fight": {
+        "colorHex": 16729156,
+        "cssColor": "#ff4444"
+      }
+    },
+    "actionColors": {
+      "move": {
+        "colorHex": 65280,
+        "cssColor": "#00ff00"
+      },
+      "patrol": {
+        "colorHex": 35071,
+        "cssColor": "#0088ff"
+      },
+      "fight": {
+        "colorHex": 16729156,
+        "cssColor": "#ff4444"
+      },
+      "build": {
+        "colorHex": 16763904,
+        "cssColor": "#ffcc00"
+      },
+      "repair": {
+        "colorHex": 4521796,
+        "cssColor": "#44ff44"
+      },
+      "reclaim": {
+        "colorHex": 14070879,
+        "cssColor": "#d6b45f"
+      },
+      "wait": {
+        "colorHex": 15263976,
+        "cssColor": "#e8e8e8"
+      },
+      "attack": {
+        "colorHex": 16711680,
+        "cssColor": "#ff0000"
+      },
+      "attackGround": {
+        "colorHex": 16742936,
+        "cssColor": "#ff7a18"
+      },
+      "guard": {
+        "colorHex": 10416781,
+        "cssColor": "#9ef28d"
+      }
+    },
+    "commandCursor": {
+      "outline": "#02040a",
+      "white": "#f7fbff",
+      "move": "#35e86f",
+      "fight": "#ffb340",
+      "patrol": "#45bcff",
+      "attack": "#ff4054",
+      "guard": "#9ef28d",
+      "repair": "#63e7ff",
+      "reclaim": "#d6b45f",
+      "build": "#ffd33f",
+      "dgun": "#ff8d24",
+      "ping": "#f7fbff",
+      "game": "#9bd8ff"
+    },
+    "barThemes": {
+      "battle": {
+        "barBg": "rgba(25, 18, 6, 0.7)",
+        "time": "#cc9944",
+        "activeBg": "rgba(170, 120, 40, 0.9)",
+        "activeBorder": "#cc9944",
+        "activeHoverBg": "rgba(190, 138, 50, 0.95)",
+        "activeHoverBorder": "#ddaa55",
+        "activePressedBg": "rgba(145, 100, 32, 0.95)",
+        "activePressedBorder": "#aa8833"
+      },
+      "server": {
+        "barBg": "rgba(8, 8, 25, 0.7)",
+        "time": "#8888cc",
+        "activeBg": "rgba(68, 68, 170, 0.9)",
+        "activeBorder": "#6666cc",
+        "activeHoverBg": "rgba(80, 80, 195, 0.95)",
+        "activeHoverBorder": "#7777dd",
+        "activePressedBg": "rgba(55, 55, 145, 0.95)",
+        "activePressedBorder": "#5555aa"
+      },
+      "client": {
+        "barBg": "rgba(8, 20, 8, 0.7)",
+        "time": "#6a6",
+        "activeBg": "rgba(68, 136, 68, 0.9)",
+        "activeBorder": "#6a6",
+        "activeHoverBg": "rgba(80, 155, 80, 0.95)",
+        "activeHoverBorder": "#7b7",
+        "activePressedBg": "rgba(55, 115, 55, 0.95)",
+        "activePressedBorder": "#595"
+      },
+      "realBattle": {
+        "barBg": "rgba(18, 8, 25, 0.7)",
+        "time": "#aa66cc",
+        "activeBg": "rgba(120, 50, 170, 0.9)",
+        "activeBorder": "#9944cc",
+        "activeHoverBg": "rgba(140, 65, 195, 0.95)",
+        "activeHoverBorder": "#aa55dd",
+        "activePressedBg": "rgba(100, 40, 145, 0.95)",
+        "activePressedBorder": "#8833aa"
+      },
+      "disabled": {
+        "barBg": "rgba(15, 15, 15, 0.7)",
+        "time": "#888",
+        "activeBg": "rgba(80, 80, 80, 0.9)",
+        "activeBorder": "#888",
+        "activeHoverBg": "rgba(80, 80, 80, 0.9)",
+        "activeHoverBorder": "#888",
+        "activePressedBg": "rgba(80, 80, 80, 0.9)",
+        "activePressedBorder": "#888"
+      }
+    }
+  }
+}

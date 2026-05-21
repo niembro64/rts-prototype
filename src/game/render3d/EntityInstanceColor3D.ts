@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
@@ -15,7 +16,7 @@ export function entityInstanceColorKey(entity: Entity): number {
 export function entityInstanceColorHex(entity: Entity): number {
   if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   const pid = entity.ownership?.playerId;
-  return pid !== undefined ? getPlayerColors(pid).primary : 0x888888;
+  return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
 }
 
 export function setEntityInstanceColor(

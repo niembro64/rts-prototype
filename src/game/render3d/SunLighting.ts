@@ -44,7 +44,7 @@ function getSunDiskTexture(): THREE.CanvasTexture {
   gradient.addColorStop(0, cfg.coreColor);
   gradient.addColorStop(Math.max(0.01, Math.min(1, cfg.coreRadius)), cfg.coreColor);
   gradient.addColorStop(Math.max(0.01, Math.min(1, cfg.haloRadius)), cfg.haloColor);
-  gradient.addColorStop(1, 'rgba(246,198,111,0)');
+  gradient.addColorStop(1, cfg.haloFadeColor);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
 
@@ -104,7 +104,7 @@ export function installSunLighting(
   if (diskCfg.enabled) {
     const material = new THREE.SpriteMaterial({
       map: getSunDiskTexture(),
-      color: 0xffffff,
+      color: SUN_RENDER_CONFIG.visibleSkyDisk.spriteColor,
       transparent: true,
       opacity: diskCfg.opacity,
       depthWrite: false,

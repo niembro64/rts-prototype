@@ -42,6 +42,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
+import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig, getLocomotionMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { Locomotion3DMesh } from './Locomotion3D';
@@ -67,7 +68,7 @@ const MARK_Y = 2.4;
 // ── Color ──
 // Dark soil compaction. Routed through THREE.Color so the hex (sRGB)
 // converts to linear-RGB for vertex-color writes.
-const PRINT_HEX = 0x1a1308;
+const PRINT_HEX = COLORS.world.groundPrint.colorHex;
 const PRINT_LIN = new THREE.Color(PRINT_HEX);
 
 // ── Lifetime ──
@@ -76,7 +77,7 @@ const PRINT_LIN = new THREE.Color(PRINT_HEX);
 // base to change how long marks linger at MAX LOD; the multiplier
 // shortens it at lower tiers.
 const PRINT_BASE_LIFETIME_MS = 1000;
-const PRINT_INITIAL_ALPHA = 0.2;
+const PRINT_INITIAL_ALPHA = COLORS.world.groundPrint.initialAlpha;
 
 const STAMP_CIRCLE_RADIUS_MULT = 1.35;
 

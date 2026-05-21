@@ -18,6 +18,7 @@
 
 import * as THREE from 'three';
 import type { WaypointType } from '../sim/types';
+import { COLORS } from '@/colorsConfig';
 import { WAYPOINT_COLORS } from '../uiLabels';
 import { WAYPOINT_GROUND_LIFT } from '../../config';
 
@@ -87,9 +88,9 @@ export class LineDrag3D {
     parentWorld.add(this.root);
 
     this.ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: COLORS.effects.lineDrag.ring.colorHex,
       transparent: true,
-      opacity: 0.8,
+      opacity: COLORS.effects.lineDrag.ring.opacity,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -210,7 +211,7 @@ export class LineDrag3D {
       // Path ribbon opacity 0.6 and dot opacity 0.9 combined — since the same
       // material serves both, pick the higher value; ring material already
       // provides the outline separation that sells the "dot" shape.
-      opacity: 0.85,
+      opacity: COLORS.effects.lineDrag.fillOpacity,
       depthWrite: false,
     });
     this.fillMats.set(mode, mat);

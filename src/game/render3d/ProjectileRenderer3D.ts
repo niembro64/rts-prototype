@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getProjRangeToggle } from '@/clientBarConfig';
+import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -91,25 +92,27 @@ export class ProjectileRenderer3D {
   private readonly projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private readonly projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
   private readonly projectileFinGeom = createProjectileFinGeometry();
-  private readonly projectileMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  private readonly projectileMat = new THREE.MeshLambertMaterial({
+    color: COLORS.effects.projectile.body.colorHex,
+  });
   private readonly projectileCurvedConeMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
+    color: COLORS.effects.projectile.curvedCone.colorHex,
     side: THREE.DoubleSide,
   });
   private readonly projectileFinMat = new THREE.MeshLambertMaterial({
-    color: 0xffffff,
+    color: COLORS.effects.projectile.fin.colorHex,
     side: THREE.DoubleSide,
   });
   private readonly projMatCollision = new THREE.LineBasicMaterial({
-    color: 0xff0000,
+    color: COLORS.effects.projectile.collisionRadius.colorHex,
     transparent: true,
-    opacity: 0.55,
+    opacity: COLORS.effects.projectile.collisionRadius.opacity,
     depthWrite: false,
   });
   private readonly projMatExplosion = new THREE.LineBasicMaterial({
-    color: 0xff8844,
+    color: COLORS.effects.projectile.explosionRadius.colorHex,
     transparent: true,
-    opacity: 0.35,
+    opacity: COLORS.effects.projectile.explosionRadius.opacity,
     depthWrite: false,
   });
 

@@ -6,6 +6,7 @@ import {
   WATER_LEVEL,
 } from '@/game/sim/Terrain';
 import { MAP_BG_COLOR } from '@/config';
+import { COLORS, readRgbTuple } from '@/colorsConfig';
 import { minimapPointerToWorld } from './minimapHelpers';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
@@ -16,6 +17,11 @@ import type { MinimapData } from '@/types/ui';
 const NEUTRAL_R = (MAP_BG_COLOR >> 16) & 0xff;
 const NEUTRAL_G = (MAP_BG_COLOR >> 8) & 0xff;
 const NEUTRAL_B = MAP_BG_COLOR & 0xff;
+const MINIMAP_WATER_RGB = readRgbTuple(COLORS.ui.minimap.waterRgb, 'ui.minimap.waterRgb');
+const MINIMAP_SELECTION_STROKE = COLORS.ui.minimap.selectionStroke;
+const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
+const MINIMAP_FRAME_STROKE = COLORS.ui.minimap.frameStroke;
+const MINIMAP_PANEL = COLORS.ui.minimap.panel;
 
 const props = defineProps<{
   data: MinimapData;
@@ -50,6 +56,14 @@ const size = computed(() => {
 const scale = computed(() => ({
   x: size.value.w / props.data.mapWidth,
   y: size.value.h / props.data.mapHeight,
+}));
+
+const minimapStyle = computed(() => ({
+  '--minimap-bg': MINIMAP_PANEL.background,
+  '--minimap-border': MINIMAP_PANEL.border,
+  '--minimap-text': MINIMAP_PANEL.text,
+  '--minimap-label': MINIMAP_PANEL.label,
+  '--minimap-hover-shadow': MINIMAP_PANEL.hoverShadow,
 }));
 
 // Offscreen canvas holding the "slow layer" — terrain background and
@@ -162,8 +176,8 @@ function drawBackgroundLayer(): void {
   const waterImg = ctx.createImageData(w, h);
   const waterPixels = waterImg.data;
   // Water color same family as the 3D water plane; background mirrors
-  // the previous fillStyle = '#1a1a2e' (= NEUTRAL_*).
-  const waterR = 0x2a, waterG = 0x55, waterB = 0x9a;
+  // the neutral map floor color.
+  const [waterR, waterG, waterB] = MINIMAP_WATER_RGB;
   let pi = 0;
   if (!showTerrain) {
     // Terrain hidden: stamp the dark map bg under every pixel and let
@@ -242,7 +256,7 @@ function drawEntityLayer(): void {
       setFill(entity.color);
       ctx.fillRect(x - size / 2, y - size / 2, size, size);
       if (entity.isSelected) {
-        setStroke('#ffffff');
+        setStroke(MINIMAP_SELECTION_STROKE);
         ctx.lineWidth = 1;
         ctx.strokeRect(x - size / 2 - 1, y - size / 2 - 1, size + 2, size + 2);
       }
@@ -265,7 +279,7 @@ function drawEntityLayer(): void {
       setFill(entity.color);
       ctx.fill();
       if (entity.isSelected) {
-        setStroke('#ffffff');
+        setStroke(MINIMAP_SELECTION_STROKE);
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -298,7 +312,7 @@ function compose(): void {
   ctx.beginPath();
   ctx.rect(0, 0, w, h);
   ctx.clip();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.strokeStyle = MINIMAP_CAMERA_STROKE;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(cameraQuad[0].x * scaleX, cameraQuad[0].y * scaleY);
@@ -309,7 +323,7 @@ function compose(): void {
   ctx.stroke();
   ctx.restore();
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.strokeStyle = MINIMAP_FRAME_STROKE;
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, w, h);
 }
@@ -383,7 +397,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="minimap-container">
+  <div class="minimap-container" :style="minimapStyle">
     <div class="minimap-label">Map</div>
     <canvas
       ref="canvasRef"
@@ -405,19 +419,19 @@ onMounted(() => {
   /* Aligned with the bottom-bar aesthetic: dark semi-transparent
    * base + muted gray border. Rounded corners stay. */
   position: relative;
-  background: rgba(15, 18, 24, 0.92);
-  border: 1px solid #444;
+  background: var(--minimap-bg);
+  border: 1px solid var(--minimap-border);
   border-radius: 8px;
   padding: 8px;
   font-family: monospace;
-  color: white;
+  color: var(--minimap-text);
   pointer-events: auto;
   z-index: 1000;
 }
 
 .minimap-label {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--minimap-label);
   text-transform: uppercase;
   margin-bottom: 4px;
 }
@@ -431,7 +445,7 @@ onMounted(() => {
 }
 
 .minimap-canvas:hover {
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 8px var(--minimap-hover-shadow);
 }
 
 .minimap-canvas.dragging {

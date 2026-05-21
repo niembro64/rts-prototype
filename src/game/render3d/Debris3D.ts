@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SimDeathContext } from '@/types/combat';
+import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { MAP_BG_COLOR, GRAVITY } from '../../config';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
@@ -112,10 +113,10 @@ const { r: BG_R, g: BG_G, b: BG_B } = hexToRgb01(MAP_BG_COLOR);
 
 // Non-team colors for generic parts (tread gray, wheel gray, barrel white,
 // leg gray). Close to the values used by Locomotion3D's shared materials.
-const TREAD_COLOR = 0x1a1d22;
-const WHEEL_COLOR = 0x2a2f36;
-const LEG_COLOR = 0x2a2f36;
-const BARREL_COLOR = 0xffffff;
+const TREAD_COLOR = COLORS.units.debris.tread.colorHex;
+const WHEEL_COLOR = COLORS.units.debris.wheel.colorHex;
+const LEG_COLOR = COLORS.units.debris.leg.colorHex;
+const BARREL_COLOR = COLORS.units.debris.barrel.colorHex;
 const MIRROR_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
 
 // ── Lambert + per-instance alpha/color shader patch ─────────────
@@ -129,7 +130,7 @@ const MIRROR_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
 // through the Lambert lighting stack instead of a flat shader.
 function makeInstancedLambertMaterial(): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({
-    color: 0xffffff, // ignored — `vColor` overrides via the patch below
+    color: COLORS.units.debris.barrel.colorHex, // ignored — `vColor` overrides via the patch below
     transparent: true,
     opacity: 1,
     depthWrite: false,
@@ -435,7 +436,7 @@ export class Debris3D {
     if (pieceBudget <= 0) return;
 
     const r = Math.max(ctx.visualRadius ?? ctx.radius ?? 10, 6);
-    const primary = ctx.color ?? 0xcccccc;
+    const primary = ctx.color ?? COLORS.units.locomotion.hover.smoke.colorHex;
     const rotation = ctx.rotation ?? 0;
     // Vertical lift of the piece's local-y. Prefer the exact rendered
     // base altitude from the death context; fall back to push radius,

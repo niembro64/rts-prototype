@@ -19,6 +19,7 @@
 // all input flows.
 
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { ThreeApp } from './ThreeApp';
 import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
@@ -224,8 +225,8 @@ export class Input3DManager {
     this.marquee = document.createElement('div');
     Object.assign(this.marquee.style, {
       position: 'absolute',
-      border: '1px solid #9fc8ff',
-      background: 'rgba(120, 170, 255, 0.15)',
+      border: COLORS.effects.inputSelectionMarquee.border,
+      background: COLORS.effects.inputSelectionMarquee.background,
       pointerEvents: 'none',
       display: 'none',
       zIndex: '5',

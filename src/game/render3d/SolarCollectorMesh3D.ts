@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
+import { COLORS } from '@/colorsConfig';
 import { SOLAR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
-import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import {
   buildProductionRateIndicator,
   type ProductionRateIndicatorRig,
@@ -63,16 +63,16 @@ const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
 
 const solarCellMat = new THREE.MeshStandardMaterial({
-  color: BUILDING_PALETTE.photovoltaic,
-  metalness: 1.0,
-  roughness: 0.02,
+  color: COLORS.buildings.materials.solarCell.colorHex,
+  metalness: COLORS.buildings.materials.solarCell.metalness,
+  roughness: COLORS.buildings.materials.solarCell.roughness,
   side: THREE.DoubleSide,
   polygonOffset: true,
   polygonOffsetFactor: -1,
   polygonOffsetUnits: -4,
 });
 const solarPetalBackMat = new THREE.MeshLambertMaterial({
-  color: BUILDING_PALETTE.photovoltaicBack,
+  color: COLORS.buildings.materials.solarPetalBack.colorHex,
   side: THREE.DoubleSide,
 });
 

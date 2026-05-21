@@ -46,6 +46,7 @@ import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
 import forceFieldVisualConfigJson from './forceFieldVisualConfig.json';
+import { COLORS } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // Default square map span in canonical land cells. Demo Battle and Real Battle
@@ -390,9 +391,9 @@ export function hexToRgb(c: number): { r: number; g: number; b: number } {
 }
 
 // Map colors
-export const MAP_BG_COLOR = 0x445138; // in-bounds background
-export const MAP_OOB_COLOR = 0x121820; // out-of-bounds background
-export const MAP_CAMERA_BG = 0x8fb1c9; // camera clear color
+export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds background
+export const MAP_OOB_COLOR = COLORS.world.map.outOfBounds.colorHex; // out-of-bounds background
+export const MAP_CAMERA_BG = COLORS.world.map.cameraClear.colorHex; // camera clear color
 export const MAP_GRID_COLOR = MAP_BG_COLOR;
 
 // Render-only fake horizon extent for the transparent water plane and
@@ -403,16 +404,19 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 export const HORIZON_RENDER_EXTEND = 180000;
 
 // Render-only water surface tuning. `color` is the tint of the flat
-// horizon water plane (Three.js hex number, 0x1f6f8c = 2060172);
-// `opacity` is material alpha. Lower opacity = more transparent.
-export const WATER_RENDER_CONFIG = worldRenderConfigJson.water;
+// horizon water plane; `opacity` is material alpha. Lower opacity =
+// more transparent.
+export const WATER_RENDER_CONFIG = {
+  color: COLORS.world.water.colorHex,
+  opacity: COLORS.world.water.opacity,
+} as const;
 
 // Static sky background gradient. Generated once as a tiny canvas
 // texture by ThreeApp, then reused as the scene background.
-export const SKY_RENDER_CONFIG = worldRenderConfigJson.sky;
+export const SKY_RENDER_CONFIG = COLORS.world.sky;
 
-export const FOREST_SPRUCE2_WOOD_COLOR = 0x5b4230;
-export const FOREST_SPRUCE2_LEAF_COLOR = 0x416f35;
+export const FOREST_SPRUCE2_WOOD_COLOR = COLORS.environment.forestSpruce2.wood.colorHex;
+export const FOREST_SPRUCE2_LEAF_COLOR = COLORS.environment.forestSpruce2.leaf.colorHex;
 
 // One shared sun definition for scene lights, terrain shading, and
 // cheap contact-shadow offsets. Azimuth is in sim/map space:
@@ -421,7 +425,7 @@ export const FOREST_SPRUCE2_LEAF_COLOR = 0x416f35;
 export const SUN_RENDER_CONFIG = {
   azimuthRad: -Math.PI * 0.25,
   elevationRad: Math.PI * 0.12,
-  color: 0xfff0cf,
+  color: COLORS.world.sun.colorHex,
   ambientIntensity: 0.24,
   directionalIntensity: 1.45,
   distance: 6000,
@@ -430,11 +434,13 @@ export const SUN_RENDER_CONFIG = {
     distance: 60000,
     size: 1900,
     texturePixels: 128,
-    coreColor: '#fff8dc',
-    haloColor: '#f0b860',
+    coreColor: COLORS.world.sun.visibleSkyDisk.coreColor,
+    haloColor: COLORS.world.sun.visibleSkyDisk.haloColor,
+    haloFadeColor: COLORS.world.sun.visibleSkyDisk.haloFadeColor,
+    spriteColor: COLORS.world.sun.visibleSkyDisk.spriteColorHex,
     coreRadius: 0.18,
     haloRadius: 0.66,
-    opacity: 0.86,
+    opacity: COLORS.world.sun.visibleSkyDisk.opacity,
   },
 } as const;
 
@@ -465,8 +471,8 @@ export const TERRAIN_HORIZON_BLEND_CONFIG = {
   boundaryFadeEnd: 1,
   rectangularEdgeStartDistance: LAND_CELL_SIZE * 2.5,
   rectangularEdgeEndDistance: 0,
-  color: 0x163f4c,
-  shade: 1,
+  color: COLORS.world.terrain.horizonBlend.colorHex,
+  shade: COLORS.world.terrain.horizonBlend.shade,
 } as const;
 
 /** Master switch for the procedural shader-drawn ground detail in the
@@ -480,12 +486,12 @@ export const TERRAIN_GROUND_DETAIL_ENABLED = true;
  *  texture is applied. Defaults to the spruce leaf color so that grass clumps
  *  and tree foliage sit on a matching-color ground patch instead of standing
  *  out against a different-shade base. */
-export const TERRAIN_GROUND_BASE_COLOR = FOREST_SPRUCE2_LEAF_COLOR;
+export const TERRAIN_GROUND_BASE_COLOR = COLORS.world.terrain.ground.baseColorHex;
 
 /** How strongly the generated detail PNG overrides the base ground color in
  *  flat green areas, in [0, 1]. 0 = pure base color (clean, props rooted in
  *  a single color), 1 = full texture influence (noisy / busy). */
-export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.3;
+export const TERRAIN_GROUND_DETAIL_CONTRAST = COLORS.world.terrain.ground.detailContrast;
 
 /** World-Y distance from the 0-height plane where the ground detail (the
  *  green base-color pull *and* the sticks-and-grass texture, both gated by
@@ -520,8 +526,8 @@ export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF = 1.35;
  *  plateaus. Sampled triplanar in the shader so vertical surfaces render
  *  correctly. Toggle, base color, and contrast knob mirror the ground set. */
 export const TERRAIN_ROCK_DETAIL_ENABLED = true;
-export const TERRAIN_ROCK_BASE_COLOR = 0x6f6a5b;
-export const TERRAIN_ROCK_DETAIL_CONTRAST = 0.1;
+export const TERRAIN_ROCK_BASE_COLOR = COLORS.world.terrain.rock.baseColorHex;
+export const TERRAIN_ROCK_DETAIL_CONTRAST = COLORS.world.terrain.rock.detailContrast;
 
 /** How strongly the procedural tree-leaf / tree-trunk textures override the
  *  prop's solid base color, in [0, 1]. 0 = pure base color (the original
@@ -653,7 +659,11 @@ export const LAND_TILE_TEXTURE = {
     brightness: 0.52,
     xWaveAmplitude: 0.07,
     zWaveAmplitude: 0.06,
-    color: { r: 0.025, g: 0.045, b: 0.052 },
+    color: {
+      r: COLORS.world.terrain.bumpOverlay.baseColorRgb01[0],
+      g: COLORS.world.terrain.bumpOverlay.baseColorRgb01[1],
+      b: COLORS.world.terrain.bumpOverlay.baseColorRgb01[2],
+    },
   },
   tone: {
     // Signed grayscale texture layer. The combined procedural wave
@@ -675,7 +685,7 @@ export const LAND_TILE_TEXTURE_CACHE_KEY = JSON.stringify({
 });
 
 // Scorched earth burn mark colors and decay
-export const BURN_COLOR_HOT = 0x882200; // bright red start
+export const BURN_COLOR_HOT = COLORS.world.burnMark.hotColorHex; // bright red start
 export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
 export const BURN_COLOR_TAU = 200; // color decay: red → black (ms), fast
 export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slow
@@ -686,16 +696,20 @@ export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFie
     // Sphere origin sits below the turret origin by this fraction of
     // the computed outer radius. 0.5 means "half a field radius down".
     originOffsetRadiusRatio: 0.3,
-    color: 0xffffff,
-    alpha: 0.05,
-    particleAlpha: 0.2,
+    color: COLORS.effects.forceField.barrier.colorHex,
+    alpha: COLORS.effects.forceField.barrier.alpha,
+    particleAlpha: COLORS.effects.forceField.barrier.particleAlpha,
   };
 
 /** Force-field shield visual configuration. The bubble + emitter
  *  render at every tier; the MAX-tier orbital rings are tuned via
  *  RING_* constants inside ForceFieldRenderer3D rather than here. */
 export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
-  forceFieldVisualConfigJson.shield as ForceFieldVisualConfig;
+  {
+    ...forceFieldVisualConfigJson.shield,
+    fallbackColor: COLORS.effects.forceField.shield.fallbackColorHex,
+    emitterIdleColor: COLORS.effects.forceField.shield.emitterIdleColorHex,
+  } as ForceFieldVisualConfig;
 
 /** Force-field projectile interception visual.
  *  The burst is a flat tangent-plane pulse at the sphere intersection:
@@ -704,7 +718,12 @@ export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
  *  force-field / mirror panel transparency:
  *  FORCE_FIELD_BARRIER.alpha (0.05) * FORCE_FIELD_OPACITY_BOOST (2.0) = 0.1. */
 export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
-  forceFieldVisualConfigJson.impact as ForceFieldImpactVisualConfig;
+  {
+    ...forceFieldVisualConfigJson.impact,
+    fallbackColor: COLORS.effects.forceField.impact.fallbackColorHex,
+    ringOpacity: COLORS.effects.forceField.impact.ringOpacity,
+    coreOpacity: COLORS.effects.forceField.impact.coreOpacity,
+  } as ForceFieldImpactVisualConfig;
 
 /**
  * Force field turret (grate) configuration per unit type.

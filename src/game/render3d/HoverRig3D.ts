@@ -8,6 +8,7 @@
 // fans inside the dirt.
 
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
@@ -22,10 +23,11 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
  *  the surface in that case. */
 const HOVER_FLOOR_MARGIN = 1;
 
-const FAN_RING_COLOR = 0x000000;
-const FAN_BLADE_COLOR = 0xffffff;
-const FAN_HUB_COLOR = 0xffffff;
-const HOVER_SMOKE_COLOR = 0xcccccc;
+const FAN_RING_COLOR = COLORS.units.locomotion.hover.fanRing.colorHex;
+const FAN_BLADE_COLOR = COLORS.units.locomotion.hover.fanBlade.colorHex;
+const FAN_HUB_COLOR = COLORS.units.locomotion.hover.fanHub.colorHex;
+const HOVER_SMOKE_COLOR = COLORS.units.locomotion.hover.smoke.colorHex;
+const HOVER_SMOKE_START_ALPHA = COLORS.units.locomotion.hover.smoke.startAlpha;
 const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
@@ -185,7 +187,7 @@ function buildFan(
       lifespanMs: smokeProfile.lifespanMs,
       startRadius: smokeProfile.startRadius,
       endRadius: smokeProfile.endRadius,
-      startAlpha: 0.9,
+      startAlpha: HOVER_SMOKE_START_ALPHA,
       color: HOVER_SMOKE_COLOR,
       phase: entityId * 4 + fanIndex,
       scopePadding: smokeProfile.scopePadding,

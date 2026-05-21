@@ -1,14 +1,16 @@
 // FlyingRig3D — fixed wings plus rear jet smoke for flying locomotion.
 
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import type { FlyingConfig } from '@/types/blueprints';
 import type { Entity } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
-const WING_COLOR = 0x000000;
-const JET_COLOR = 0x111111;
-const JET_SMOKE_COLOR = 0xcccccc;
+const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
+const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
+const JET_SMOKE_COLOR = COLORS.units.locomotion.flying.smoke.colorHex;
+const JET_SMOKE_START_ALPHA = COLORS.units.locomotion.flying.smoke.startAlpha;
 const DEFAULT_JET_SMOKE_SPEED = 70;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
 
@@ -136,7 +138,7 @@ export function buildFlyingRig(
         lifespanMs: JET_PUFF_LIFESPAN_MS,
         startRadius: JET_PUFF_START_RADIUS,
         endRadius: JET_PUFF_END_RADIUS,
-        startAlpha: 0.85,
+        startAlpha: JET_SMOKE_START_ALPHA,
         color: JET_SMOKE_COLOR,
         phase: entityId * 2 + jets.length,
         scopePadding: JET_PUFF_SCOPE_PADDING,

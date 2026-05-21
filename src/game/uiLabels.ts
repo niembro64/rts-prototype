@@ -2,24 +2,10 @@
 // Lifted out of render/types.ts so the HUD doesn't depend on the 2D module.
 
 import type { WaypointType, ActionType } from './sim/types';
+import { ACTION_COLOR_HEX, WAYPOINT_COLOR_HEX } from '@/colorsConfig';
 
 /** Waypoint marker colors by type — legacy factory rally points. */
-export const WAYPOINT_COLORS: Record<WaypointType, number> = {
-  move: 0x00ff00,    // Green
-  patrol: 0x0088ff,  // Blue
-  fight: 0xff4444,   // Red
-};
+export const WAYPOINT_COLORS: Record<WaypointType, number> = WAYPOINT_COLOR_HEX;
 
 /** Unit action queue colors. */
-export const ACTION_COLORS: Record<ActionType, number> = {
-  move: 0x00ff00,    // Green
-  patrol: 0x0088ff,  // Blue
-  fight: 0xff4444,   // Red
-  build: 0xffcc00,   // Yellow for building
-  repair: 0x44ff44,  // Light green for repair
-  reclaim: 0xd6b45f, // Brass for reclaim
-  wait: 0xe8e8e8,    // Pale gray for wait
-  attack: 0xff0000,  // Red for attack
-  attackGround: 0xff7a18, // Orange for attack-ground
-  guard: 0x9ef28d,   // Soft green for guard
-};
+export const ACTION_COLORS: Record<ActionType, number> = ACTION_COLOR_HEX;

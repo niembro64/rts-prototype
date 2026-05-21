@@ -12,27 +12,19 @@
 // Every tunable knob for that look-and-feel lives here. Renderers and
 // the per-tick HP-sync pass import from this single source.
 import shellConfig from './shellConfig.json';
-
-type RgbTuple = readonly [number, number, number];
-
-function readRgbTuple(value: number[], fieldName: string): RgbTuple {
-  if (value.length !== 3 || value.some((component) => !Number.isFinite(component))) {
-    throw new Error(`${fieldName} must be a 3-component RGB tuple`);
-  }
-  return value as unknown as RgbTuple;
-}
+import { COLORS, RESOURCE_COLOR_CSS, readRgbTuple } from './colorsConfig';
 
 /** The flat unlit color every shell mesh and every shell-flagged
  *  instance is painted in. Picked to read as "placeholder, not real
  *  yet" — pale gray, no reflections, no shading, no team tint. RGB ∈
  *  [0..1] in linear color space. */
 export const SHELL_PALE_RGB: readonly [number, number, number] =
-  readRgbTuple(shellConfig.shellPaleRgb, 'shellConfig.shellPaleRgb');
+  readRgbTuple(COLORS.construction.shell.pale.rgb01, 'colorsConfig.construction.shell.pale.rgb01');
 
 /** Same color as a 0xRRGGBB hex literal — keeps Three's Color
  *  constructors that expect a number happy. Must agree with
  *  SHELL_PALE_RGB rounded to 8-bit per channel. */
-export const SHELL_PALE_HEX = shellConfig.shellPaleHex;
+export const SHELL_PALE_HEX = COLORS.construction.shell.pale.colorHex;
 
 // ── Build-bubble visuals ─────────────────────────────────────────
 // The "build bubble" is the cluster of orbs the factory's
@@ -46,24 +38,24 @@ export const SHELL_PALE_HEX = shellConfig.shellPaleHex;
 /** Outer ghost shell — the big translucent bubble centered on the
  *  build spot. */
 export const BUILD_BUBBLE_GHOST_COLOR_HEX =
-  shellConfig.buildBubble.ghostColorHex;
-export const BUILD_BUBBLE_GHOST_OPACITY = shellConfig.buildBubble.ghostOpacity;
+  COLORS.construction.buildBubble.ghost.colorHex;
+export const BUILD_BUBBLE_GHOST_OPACITY = COLORS.construction.buildBubble.ghost.opacity;
 
 /** Small inner core orb — the bright center inside the ghost. */
-export const BUILD_BUBBLE_CORE_COLOR_HEX = shellConfig.buildBubble.coreColorHex;
-export const BUILD_BUBBLE_CORE_OPACITY = shellConfig.buildBubble.coreOpacity;
+export const BUILD_BUBBLE_CORE_COLOR_HEX = COLORS.construction.buildBubble.core.colorHex;
+export const BUILD_BUBBLE_CORE_OPACITY = COLORS.construction.buildBubble.core.opacity;
 
 /** Travelling pulses that arc from the factory nozzle to the build
  *  spot. Slightly cooler / more saturated than core so they read as
  *  "energy being delivered". Still strictly grayscale. */
 export const BUILD_BUBBLE_PULSE_COLOR_HEX =
-  shellConfig.buildBubble.pulseColorHex;
-export const BUILD_BUBBLE_PULSE_OPACITY = shellConfig.buildBubble.pulseOpacity;
+  COLORS.construction.buildBubble.pulse.colorHex;
+export const BUILD_BUBBLE_PULSE_OPACITY = COLORS.construction.buildBubble.pulse.opacity;
 
 /** Tiny sparks orbiting the bubble at MAX tier. */
 export const BUILD_BUBBLE_SPARK_COLOR_HEX =
-  shellConfig.buildBubble.sparkColorHex;
-export const BUILD_BUBBLE_SPARK_OPACITY = shellConfig.buildBubble.sparkOpacity;
+  COLORS.construction.buildBubble.spark.colorHex;
+export const BUILD_BUBBLE_SPARK_OPACITY = COLORS.construction.buildBubble.spark.opacity;
 
 /** Outer-ghost-shell radius as a multiplier of the queued unit's
  *  PUSH collider radius. The bubble grows toward this size with build
@@ -74,11 +66,11 @@ export const BUILD_BUBBLE_RADIUS_PUSH_MULT =
 /** Bar palette + layout. Both the HP bar (with its build-mode overlay)
  *  and the construction-resource bars (energy / metal)
  *  read these knobs so all bar tunables live in one place. */
-export const SHELL_BAR_COLORS = shellConfig.shellBar.colors;
+export const SHELL_BAR_COLORS = RESOURCE_COLOR_CSS;
 
-export const SHELL_BAR_BG_COLOR = shellConfig.shellBar.bgColor;
-export const SHELL_BAR_BG_ALPHA = shellConfig.shellBar.bgAlpha;
-export const SHELL_BAR_FG_ALPHA = shellConfig.shellBar.fgAlpha;
+export const SHELL_BAR_BG_COLOR = COLORS.construction.shellBar.background.cssColor;
+export const SHELL_BAR_BG_ALPHA = COLORS.construction.shellBar.background.alpha;
+export const SHELL_BAR_FG_ALPHA = COLORS.construction.shellBar.foregroundAlpha;
 
 /** Bar height in world units. Bar width is keyed to the entity's
  *  rendering radius so a bigger unit gets a wider bar — same convention
@@ -99,9 +91,9 @@ export const SHELL_BAR_HIDE_AT_FULL = shellConfig.shellBar.hideAtFull;
 /** HP-bar foreground colors. The bar switches from "high" to "low" at
  *  HP_BAR_LOW_THRESHOLD; while a unit is shell-state, every bar in the
  *  group renders in BUILD instead. */
-export const HP_BAR_COLOR_HIGH = shellConfig.hpBar.colorHigh;
-export const HP_BAR_COLOR_LOW = shellConfig.hpBar.colorLow;
-export const HP_BAR_COLOR_BUILD = shellConfig.hpBar.colorBuild;
+export const HP_BAR_COLOR_HIGH = COLORS.construction.hpBar.high.cssColor;
+export const HP_BAR_COLOR_LOW = COLORS.construction.hpBar.low.cssColor;
+export const HP_BAR_COLOR_BUILD = COLORS.construction.hpBar.build.cssColor;
 
 /** HP fraction below which the HP bar switches to HP_BAR_COLOR_LOW. */
 export const HP_BAR_LOW_THRESHOLD = shellConfig.hpBar.lowThreshold;

@@ -1,16 +1,10 @@
 {
   "outer": {
-    "color": [1.0, 1.0, 1.0],
-    "waveLowAlpha": 0.1,
-    "waveHighAlpha": 0.2,
     "waveHighToLowAlphaLengthRatio": 0.5,
     "waveSpacing": 300,
     "waveSpeed": 30
   },
   "inner": {
-    "color": [1.0, 1.0, 1.0],
-    "waveLowAlpha": 0.1,
-    "waveHighAlpha": 0.2,
     "waveHighToLowAlphaLengthRatio": 0.5,
     "waveSpacing": 500,
     "waveSpeed": 50

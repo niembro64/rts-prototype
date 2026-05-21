@@ -22,6 +22,7 @@
 // LegInstance and re-issued by buildLegs).
 
 import * as THREE from 'three';
+import { COLORS } from '@/colorsConfig';
 import { getLegsRadiusToggle } from '@/clientBarConfig';
 import type {
   LegConfig as BlueprintLegConfig,
@@ -136,9 +137,9 @@ const PLANTED_REACH_RELEASE_MARGIN = 1.04;
 // a valid ground spot inside it.
 const restSphereGeom = new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 16, 12));
 const restSphereMat = new THREE.LineBasicMaterial({
-  color: 0x44ffcc,
+  color: COLORS.units.locomotion.leg.debugRestSphere.colorHex,
   transparent: true,
-  opacity: 0.4,
+  opacity: COLORS.units.locomotion.leg.debugRestSphere.opacity,
   depthWrite: false,
 });
 
