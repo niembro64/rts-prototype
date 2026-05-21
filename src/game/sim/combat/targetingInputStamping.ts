@@ -39,7 +39,7 @@ import {
   hasTurretSimulationActiveCombat,
   isFiringCombatTurret,
 } from './combatActivity';
-import { setWeaponTarget } from './targetIndex';
+import { syncBeamWeaponTargetIndex } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 import {
@@ -575,10 +575,11 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
  *  optional mount-kinematics tuple back onto the JS Turret objects
  *  that rendering, firing, and snapshot encode still consume during
  *  the slab migration. The same turret walk refreshes combat activity
- *  masks, avoiding a second post-writeback JS turret loop. Target
- *  writes go through setWeaponTarget so the beam inverse index remains
- *  coherent. Disabled turrets also have their JS-only fields cleared
- *  here — the slab side was zeroed by the scheduler's
+ *  masks, avoiding a second post-writeback JS turret loop. The beam
+ *  inverse target index syncs directly from the slab tuple so it is no
+ *  longer coupled to JS Turret.target writes. Disabled turrets also
+ *  have their JS-only fields cleared here — the slab side was zeroed
+ *  by the scheduler's
  *  reset_disabled_weapons pass, this finishes the job for fields that
  *  never crossed the boundary. Returns true when any turret still
  *  needs rotation/fire integration after writeback. */
@@ -621,7 +622,9 @@ export function writeBackCombatTargetingEntity(
       turret.burst.cooldown = views.burstCooldown[idx];
     }
     const targetId = views.targetId[idx];
-    setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
+    const target = targetId < 0 ? null : targetId;
+    syncBeamWeaponTargetIndex(turret, entity, i, target);
+    turret.target = target;
     turret.state = decodeCombatTargetingTurretState(views.state[idx]);
     turret.aimErrorYaw = views.aimErrorYaw[idx];
     turret.aimErrorPitch = views.aimErrorPitch[idx];

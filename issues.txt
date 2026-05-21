@@ -193,6 +193,10 @@ AIM-08.5 — Port the targeting FSM
   target/state tuple when a spatial slot still belongs to the same
   entity, so the scheduler no longer has to be re-seeded from JS
   Turret.target/state every tick.
+  The beam inverse target index now has an explicit slab-facing sync
+  path and tracks its own per-weapon target mirror, so writeback no
+  longer depends on setWeaponTarget / JS Turret.target as the index's
+  source of truth.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
 
