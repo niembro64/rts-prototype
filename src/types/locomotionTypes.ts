@@ -25,6 +25,12 @@ export type UnitLocomotion = {
    *  hoverHeight * (1 + U(-amount, +amount)). Undefined or 0 means no
    *  randomization. */
   hoverHeightRandomizationAmount?: number;
+  /** Hover/flying-only: EMA smoothing weight on the per-tick (jittered)
+   *  hoverHeight. In [0, 1):
+   *    smoothed = α · smoothed_prev + (1 − α) · raw
+   *  0 (or undefined) disables smoothing. Pairs with the per-unit
+   *  `Unit.hoverHeightSmoothed` accumulator. */
+  hoverHeightEMA?: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

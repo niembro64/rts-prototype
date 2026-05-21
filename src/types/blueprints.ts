@@ -254,6 +254,13 @@ export type HoverConfig = {
    *  [hoverHeight * 0.9, hoverHeight * 1.1] for the lift force. Omit
    *  or 0 for a perfectly steady hover. */
   hoverHeightRandomizationAmount?: number;
+  /** EMA smoothing weight applied to the per-tick (jittered) hoverHeight
+   *  before it feeds the lift force. In [0, 1):
+   *    smoothed = α · smoothed_prev + (1 − α) · raw
+   *  0 (or omitted) = use the raw jittered sample directly; values close
+   *  to 1 produce a slow drift that hides high-frequency noise from
+   *  `hoverHeightRandomizationAmount`. */
+  hoverHeightEMA?: number;
   fanDistX: number;
   fanDistY: number;
   fanRadius: number;
@@ -286,6 +293,8 @@ export type FlyingConfig = {
   hoverHeight: number;
   /** Same semantics as `HoverConfig.hoverHeightRandomizationAmount`. */
   hoverHeightRandomizationAmount?: number;
+  /** Same semantics as `HoverConfig.hoverHeightEMA`. */
+  hoverHeightEMA?: number;
   wingSpan: number;
   wingChord: number;
   wingOffsetX: number;

@@ -203,6 +203,11 @@ export type Unit = {
    *  the raw normal at the spawn position; written by the unit ground
    *  normal system. */
   surfaceNormal: { nx: number; ny: number; nz: number };
+  /** Per-unit EMA accumulator for the jittered hoverHeight (airborne
+   *  locomotion only). Updated each tick by UnitForceSystem when
+   *  `locomotion.hoverHeightEMA > 0`; undefined until the first tick
+   *  seeds it from the raw sample. Tick-only state, never serialised. */
+  hoverHeightSmoothed?: number;
   /** Optional full 3-DOF orientation, used by entities that need
    *  roll or arbitrary orientation (hover drones banking into turns,
    *  free-flying projectiles with spin, future ragdoll debris).

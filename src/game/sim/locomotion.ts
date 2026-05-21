@@ -67,6 +67,7 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   const isAirborne = type === 'hover' || type === 'flying';
   const hoverHeight = isAirborne ? locomotion.config.hoverHeight : undefined;
   let hoverHeightRandomizationAmount: number | undefined;
+  let hoverHeightEMA: number | undefined;
   if (isAirborne) {
     assertPositiveFinite(`${type}.hoverHeight`, hoverHeight ?? NaN);
     const raw = locomotion.config.hoverHeightRandomizationAmount;
@@ -78,6 +79,15 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
       }
       hoverHeightRandomizationAmount = raw > 0 ? raw : undefined;
     }
+    const rawEMA = locomotion.config.hoverHeightEMA;
+    if (rawEMA !== undefined) {
+      if (!Number.isFinite(rawEMA) || rawEMA < 0 || rawEMA >= 1) {
+        throw new Error(
+          `Invalid locomotion ${type}.hoverHeightEMA: expected finite [0,1), got ${rawEMA}`,
+        );
+      }
+      hoverHeightEMA = rawEMA > 0 ? rawEMA : undefined;
+    }
   }
   return {
     type,
@@ -87,6 +97,7 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     minSurfaceNormalZ: maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg),
     hoverHeight,
     hoverHeightRandomizationAmount,
+    hoverHeightEMA,
   };
 }
 
@@ -99,6 +110,7 @@ export function cloneUnitLocomotion(locomotion: UnitLocomotion): UnitLocomotion 
     minSurfaceNormalZ: locomotion.minSurfaceNormalZ,
     hoverHeight: locomotion.hoverHeight,
     hoverHeightRandomizationAmount: locomotion.hoverHeightRandomizationAmount,
+    hoverHeightEMA: locomotion.hoverHeightEMA,
   };
 }
 

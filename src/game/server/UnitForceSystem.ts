@@ -225,9 +225,27 @@ export class UnitForceSystem {
         // stay reproducible. With amount=a the multiplier is in
         // [1-a, 1+a]; amount must be < 1 to keep hoverHeight positive.
         const randAmount = entity.unit.locomotion.hoverHeightRandomizationAmount ?? 0;
-        const hoverHeight = randAmount > 0
+        const rawHoverHeight = randAmount > 0
           ? baseHoverHeight * (1 + (this.world.rng.next() * 2 - 1) * randAmount)
           : baseHoverHeight;
+        // EMA-smooth the per-tick (jittered) hoverHeight so the lift
+        // target drifts instead of teleporting each tick. With weight α
+        // ∈ [0,1):  smoothed = α·prev + (1−α)·raw.  α = 0 (or undefined)
+        // skips smoothing and uses the raw sample directly. The first
+        // tick seeds the accumulator from the raw sample so there's no
+        // settling transient on spawn.
+        const emaWeight = entity.unit.locomotion.hoverHeightEMA ?? 0;
+        let hoverHeight: number;
+        if (emaWeight > 0) {
+          const prev = entity.unit.hoverHeightSmoothed;
+          hoverHeight = prev === undefined
+            ? rawHoverHeight
+            : emaWeight * prev + (1 - emaWeight) * rawHoverHeight;
+          entity.unit.hoverHeightSmoothed = hoverHeight;
+        } else {
+          hoverHeight = rawHoverHeight;
+          entity.unit.hoverHeightSmoothed = undefined;
+        }
         // F_up = K / altitude  −  c · vz
         // K   = m · g · hoverHeight   (raw force)
         // c   = 2 · m · √(g / hoverHeight)  ≈ critical damping for the
