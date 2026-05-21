@@ -7831,6 +7831,7 @@ fn combat_targeting_turret_may_lock_entity_slot(
     if source_entity_slot >= pool.entity_id.len()
         || target_entity_slot >= pool.entity_id.len()
         || source_turret_idx >= pool.turret_target_id.len()
+        || source_entity_slot == target_entity_slot
         || pool.entity_id[source_entity_slot] < 0
         || pool.entity_id[target_entity_slot] < 0
         || !combat_targeting_entity_alive(pool, target_entity_slot)
@@ -16360,4 +16361,662 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
         w.write_uint(expires_at_tick as u64);
     }
     w.buf.len() as u32
+}
+
+#[cfg(test)]
+mod lock_on_exclusion_tests {
+    use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
+    const SOURCE_SLOT: u32 = 0;
+    const SOURCE_ID: i32 = 100;
+    const PLAYER_1: u8 = 1;
+    const PLAYER_2: u8 = 2;
+    const SOURCE_UNIT_CODE: u8 = 1;
+    const BODY_UNIT_CODE_A: u8 = 3;
+    const BODY_UNIT_CODE_B: u8 = 4;
+    const BODY_BUILDING_CODE_A: u8 = 5;
+    const BODY_BUILDING_CODE_B: u8 = 6;
+    const TURRET_CODE_A: u8 = 7;
+    const TURRET_CODE_B: u8 = 8;
+
+    #[derive(Clone, Copy)]
+    struct TurretSpec {
+        state: u8,
+        target_id: i32,
+        flags: u8,
+        dps: f32,
+        lock_on_turret: u8,
+        blueprint_code: u8,
+        relationship_mask: u8,
+        family_mask: u8,
+        building_mask: u32,
+        unit_mask: u32,
+        turret_mask: u32,
+    }
+
+    impl Default for TurretSpec {
+        fn default() -> Self {
+            Self {
+                state: CT_TURRET_STATE_IDLE,
+                target_id: -1,
+                flags: 0,
+                dps: 10.0,
+                lock_on_turret: 0,
+                blueprint_code: TURRET_CODE_A,
+                relationship_mask: 0,
+                family_mask: 0,
+                building_mask: 0,
+                unit_mask: 0,
+                turret_mask: 0,
+            }
+        }
+    }
+
+    fn lock_tests() -> MutexGuard<'static, ()> {
+        match TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn reset_pools() {
+        spatial_init(200.0, 64);
+        combat_targeting_init(64);
+        force_field_pool_clear();
+        mirror_panel_pool_clear();
+        terrain_clear();
+    }
+
+    fn entity_flags(has_combat: bool) -> u8 {
+        let mut flags = CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
+        if has_combat {
+            flags |= CT_ENTITY_FLAG_HAS_COMBAT | CT_ENTITY_FLAG_FIRE_ENABLED;
+        }
+        flags
+    }
+
+    fn stamp_entity(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        family: u8,
+        blueprint_code: u8,
+        turret_count: u8,
+        priority_target_id: i32,
+    ) {
+        let radius = 2.0;
+        let (hx, hy, hz) = if family == CT_ENTITY_FAMILY_BUILDING {
+            (2.0, 2.0, 2.0)
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+        combat_targeting_set_entity(
+            slot,
+            entity_id,
+            owner,
+            x,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            radius,
+            hx,
+            hy,
+            hz,
+            100.0,
+            entity_flags(turret_count > 0),
+            family,
+            blueprint_code,
+            0.0,
+            0.0,
+            priority_target_id,
+            0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            turret_count,
+        );
+
+        spatial_set_entity_id(slot, entity_id);
+        if family == CT_ENTITY_FAMILY_BUILDING {
+            spatial_set_building(slot, x, 0.0, 0.0, hx, hy, hz, owner, 1, 1);
+        } else {
+            spatial_set_unit(slot, x, 0.0, 0.0, 1.0, radius, owner, 1);
+        }
+    }
+
+    fn stamp_source(priority_target_id: i32) {
+        stamp_entity(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            priority_target_id,
+        );
+    }
+
+    fn stamp_turret(entity_slot: u32, turret_idx: u32, spec: TurretSpec) {
+        let range = 120.0;
+        combat_targeting_set_turret(
+            entity_slot,
+            turret_idx,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            spec.state,
+            spec.target_id,
+            0.0,
+            0.0,
+            range * range,
+            range * range,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            range,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            0.0,
+            0.0,
+            0,
+            spec.flags,
+            spec.dps,
+            0.0,
+            0,
+            0.0,
+            0.0,
+            0,
+            spec.lock_on_turret,
+            spec.blueprint_code,
+            spec.relationship_mask,
+            spec.family_mask,
+            spec.building_mask,
+            spec.unit_mask,
+            spec.turret_mask,
+        );
+    }
+
+    fn run_schedule_tick(mirrors_enabled: u8) -> (i32, u8, u8) {
+        let source_ids = [SOURCE_ID];
+        let mut cached_fire_ranks = [0u8; MAX];
+        let mut cached_fire_dist_sqs = [0.0f64; MAX];
+        let mut out_had_cooldown = [0u8; 1];
+        let mut out_modes = [CT_TARGETING_TICK_MODE_SKIP; 1];
+        combat_targeting_schedule_and_tick_batch(
+            &source_ids,
+            10,
+            16.0,
+            mirrors_enabled,
+            1,
+            0,
+            10.0,
+            0.0,
+            9.81,
+            2,
+            &mut cached_fire_ranks,
+            &mut cached_fire_dist_sqs,
+            4.0,
+            &mut out_had_cooldown,
+            &mut out_modes,
+        );
+
+        let pool = combat_targeting_pool();
+        let idx = combat_targeting_turret_global_idx(SOURCE_SLOT, 0);
+        (
+            pool.turret_target_id[idx],
+            pool.turret_state[idx],
+            out_modes[0],
+        )
+    }
+
+    fn stamp_body_target(slot: u32, entity_id: i32, owner: u8, x: f64, family: u8, code: u8) {
+        stamp_entity(slot, entity_id, owner, x, family, code, 0, -1);
+    }
+
+    fn stamp_turret_target(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        turret_codes: &[u8],
+        target_source: bool,
+    ) {
+        stamp_entity(
+            slot,
+            entity_id,
+            owner,
+            x,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+            turret_codes.len() as u8,
+            -1,
+        );
+        for (i, code) in turret_codes.iter().enumerate() {
+            stamp_turret(
+                slot,
+                i as u32,
+                TurretSpec {
+                    state: if target_source {
+                        CT_TURRET_STATE_ENGAGED
+                    } else {
+                        CT_TURRET_STATE_IDLE
+                    },
+                    target_id: if target_source { SOURCE_ID } else { -1 },
+                    blueprint_code: *code,
+                    ..TurretSpec::default()
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn auto_no_exclusions_can_lock_friendly_enemy_bodies_and_turrets() {
+        let _guard = lock_tests();
+        let cases = [
+            (
+                "friendly unit",
+                PLAYER_1,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+                false,
+            ),
+            (
+                "enemy unit",
+                PLAYER_2,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+                false,
+            ),
+            (
+                "friendly building",
+                PLAYER_1,
+                CT_ENTITY_FAMILY_BUILDING,
+                BODY_BUILDING_CODE_A,
+                false,
+            ),
+            (
+                "enemy building",
+                PLAYER_2,
+                CT_ENTITY_FAMILY_BUILDING,
+                BODY_BUILDING_CODE_A,
+                false,
+            ),
+            (
+                "friendly turret",
+                PLAYER_1,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+                true,
+            ),
+            (
+                "enemy turret",
+                PLAYER_2,
+                CT_ENTITY_FAMILY_UNIT,
+                BODY_UNIT_CODE_A,
+                true,
+            ),
+        ];
+
+        for (label, owner, family, blueprint_code, lock_on_turret) in cases {
+            reset_pools();
+            stamp_source(-1);
+            stamp_turret(
+                SOURCE_SLOT,
+                0,
+                TurretSpec {
+                    lock_on_turret: lock_on_turret as u8,
+                    ..TurretSpec::default()
+                },
+            );
+            if lock_on_turret {
+                stamp_turret_target(1, 201, owner, 20.0, &[TURRET_CODE_A], false);
+            } else {
+                stamp_body_target(1, 201, owner, 20.0, family, blueprint_code);
+            }
+
+            let (target_id, state, _) = run_schedule_tick(1);
+            assert_eq!(target_id, 201, "{label}");
+            assert_ne!(state, CT_TURRET_STATE_IDLE, "{label}");
+        }
+    }
+
+    #[test]
+    fn relationship_exclusions_drive_auto_candidate_collection() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_1,
+            10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            202,
+            PLAYER_2,
+            30.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 202,
+            "combat turret must skip closer friendly target"
+        );
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_ENEMY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            203,
+            PLAYER_2,
+            10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            204,
+            PLAYER_1,
+            30.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 204,
+            "construction-style turret must gather friendly candidates"
+        );
+    }
+
+    #[test]
+    fn mirror_policy_locks_enemy_turrets_without_locking_hosts_as_bodies() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                flags: CT_TURRET_CFG_PASSIVE,
+                lock_on_turret: 1,
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                family_mask: CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS | CT_LOCK_ON_FAM_EXCLUDE_UNITS,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target(1, 201, PLAYER_1, 10.0, &[TURRET_CODE_A], true);
+        stamp_body_target(
+            2,
+            202,
+            PLAYER_2,
+            15.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            3,
+            203,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            BODY_BUILDING_CODE_A,
+        );
+        stamp_turret_target(4, 204, PLAYER_2, 30.0, &[TURRET_CODE_A], true);
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, 204);
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn level1_body_exclusions_reject_only_matching_blueprints() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                unit_mask: 1u32 << BODY_UNIT_CODE_A,
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            10.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            202,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 202,
+            "unit named exclusion should reject only code A"
+        );
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                building_mask: 1u32 << BODY_BUILDING_CODE_A,
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            203,
+            PLAYER_2,
+            10.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            BODY_BUILDING_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            204,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            BODY_BUILDING_CODE_B,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, 204,
+            "building named exclusion should reject only code A"
+        );
+    }
+
+    #[test]
+    fn level1_turret_exclusions_filter_individual_mounted_turrets() {
+        let _guard = lock_tests();
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                lock_on_turret: 1,
+                turret_mask: 1u32 << TURRET_CODE_A,
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret_target(1, 201, PLAYER_2, 10.0, &[TURRET_CODE_A], false);
+        stamp_turret_target(
+            2,
+            202,
+            PLAYER_2,
+            20.0,
+            &[TURRET_CODE_A, TURRET_CODE_B],
+            false,
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, 202);
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn priority_and_existing_locks_respect_relationship_exclusions() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_source(201);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_1,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, _, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_AUTO);
+        assert_eq!(
+            target_id, -1,
+            "priority target cannot override relationship policy"
+        );
+
+        reset_pools();
+        stamp_source(202);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            202,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, state, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_PRIORITY_TARGET);
+        assert_eq!(target_id, 202);
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 203,
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            203,
+            PLAYER_1,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, _, _) = run_schedule_tick(1);
+        assert_eq!(
+            target_id, -1,
+            "existing lock must be dropped when policy excludes the target"
+        );
+
+        reset_pools();
+        stamp_source(-1);
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 204,
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target(
+            1,
+            204,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, 204);
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
 }

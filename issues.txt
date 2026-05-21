@@ -171,31 +171,6 @@ AIM-08.5 — Port the targeting FSM
   stamping pass (or has moved to its own file); parity shim runs
   end-to-end clean across the supported scenarios.
 
-LOCK-ON-07 — Add parity/scenario coverage for lock-on exclusions.
-
-Evidence:
-- The exclusion rules are compositional and easy to regress: relationship
-  filters, entity-family filters, named filters, priority targets, stale
-  locks, and mirror-only behavior all interact.
-
-Why it matters:
-These rules live in the hot targeting path and will be hard to validate
-by visual playtesting alone. Regressions could look like turrets not
-firing, construction beams grabbing enemies, mirrors reflecting the wrong
-weapon, or commands overriding blueprint policy.
-
-Fix direction:
-Add focused tests or deterministic harness scenarios for:
-  - no exclusions can lock friendly/enemy buildings, units, and turrets;
-  - combat turret excludes friendly_entities;
-  - construction turret excludes enemy_entities;
-  - mirror turret excludes friendly_entities, buildings, and units;
-  - level-1 building/unit/turret named exclusions reject only those names;
-  - priority target and existing-lock validation respect the same rules.
-
-Done when: the scenarios pass through the same targeting path used in a
-real battle, and failures identify which exclusion axis regressed.
-
 AIM-08.6 — Port the writeback + tear down the parity harness
   After .5, snapshot serialization and rendering still read JS
   Entity.combat.turrets[]. Drop a thin writeback pass that copies
