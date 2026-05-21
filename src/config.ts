@@ -418,23 +418,14 @@ export const FOREST_SPRUCE2_LEAF_COLOR = COLORS.environment.forestSpruce2.leaf.c
 // x=+east, y=+south. A diagonal, lower sun angle makes baked terrain
 // shadows readable without paying for real-time shadow maps.
 export const SUN_RENDER_CONFIG = {
-  azimuthRad: -Math.PI * 0.25,
-  elevationRad: Math.PI * 0.12,
+  ...worldRenderConfigJson.sun,
   color: COLORS.world.sun.colorHex,
-  ambientIntensity: 0.24,
-  directionalIntensity: 1.45,
-  distance: 6000,
   visibleSkyDisk: {
-    enabled: true,
-    distance: 60000,
-    size: 1900,
-    texturePixels: 128,
+    ...worldRenderConfigJson.sun.visibleSkyDisk,
     coreColor: COLORS.world.sun.visibleSkyDisk.coreColor,
     haloColor: COLORS.world.sun.visibleSkyDisk.haloColor,
     haloFadeColor: COLORS.world.sun.visibleSkyDisk.haloFadeColor,
     spriteColor: COLORS.world.sun.visibleSkyDisk.spriteColorHex,
-    coreRadius: 0.18,
-    haloRadius: 0.66,
     opacity: COLORS.world.sun.visibleSkyDisk.opacity,
   },
 } as const;
@@ -461,11 +452,12 @@ export const TERRAIN_SHADOW_RENDER_CONFIG = {
 // map-boundary fade space: 0 = full gameplay terrain, 1 = shelf/water.
 // Square maps also get a small rectangular edge band in world units.
 export const TERRAIN_HORIZON_BLEND_CONFIG = {
-  enabled: true,
-  boundaryFadeStart: 0.58,
-  boundaryFadeEnd: 1,
-  rectangularEdgeStartDistance: LAND_CELL_SIZE * 2.5,
-  rectangularEdgeEndDistance: 0,
+  enabled: worldRenderConfigJson.terrainHorizonBlend.enabled,
+  boundaryFadeStart: worldRenderConfigJson.terrainHorizonBlend.boundaryFadeStart,
+  boundaryFadeEnd: worldRenderConfigJson.terrainHorizonBlend.boundaryFadeEnd,
+  rectangularEdgeStartDistance:
+    LAND_CELL_SIZE * worldRenderConfigJson.terrainHorizonBlend.rectangularEdgeStartLandCellMultiplier,
+  rectangularEdgeEndDistance: worldRenderConfigJson.terrainHorizonBlend.rectangularEdgeEndDistance,
   color: COLORS.world.terrain.horizonBlend.colorHex,
   shade: COLORS.world.terrain.horizonBlend.shade,
 } as const;
@@ -475,7 +467,8 @@ export const TERRAIN_HORIZON_BLEND_CONFIG = {
  *  rectangles that hash-place themselves across flat green ground. When
  *  false, the terrain keeps just the underlying biome colors (low/dry
  *  grass, rock, shoreline soil) without any of the four box-mark layers. */
-export const TERRAIN_GROUND_DETAIL_ENABLED = true;
+export const TERRAIN_GROUND_DETAIL_ENABLED =
+  worldRenderConfigJson.terrainGroundDetail.enabled;
 
 /** The base color flat green ground gets pulled toward before the detail
  *  texture is applied. Defaults to the spruce leaf color so that grass clumps
@@ -495,8 +488,10 @@ export const TERRAIN_GROUND_DETAIL_CONTRAST = COLORS.world.terrain.ground.detail
  *  Restricts the detail to the map's base 0-height flat zone: raised
  *  plateaus, lower shelves, uplands, and cliff sides all get the regular
  *  slope/height terrain colors with no green carpet or texture. */
-export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN = 12;
-export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 90;
+export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN =
+  worldRenderConfigJson.terrainGroundDetail.heightMin;
+export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX =
+  worldRenderConfigJson.terrainGroundDetail.heightMax;
 
 /** World-space radius over which nearby angled terrain attenuates the green
  *  grass mask. Even a completely flat triangle that falls within this radius
@@ -505,7 +500,8 @@ export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 90;
  *  flat region rather than snapping to full green right at the cliff base.
  *  Beyond this radius the fade decays to zero, so the deep interior of a
  *  flat region reaches full grass. Larger = wider fade band; 0 disables it. */
-export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 900;
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS =
+  worldRenderConfigJson.terrainGroundDetail.neighborhoodFadeRadius;
 
 /** Exponent applied to the linear distance term when computing each ring
  *  sample's weight: weight = (1 - distance / radius) ^ FALLOFF. Higher
@@ -514,13 +510,15 @@ export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 900;
  *  (broad fade reaching nearly the full radius), 2 = quadratic (most of
  *  the fade happens in the first half of the radius — recommended), 3+ =
  *  even faster recovery into full grass. */
-export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF = 1.35;
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF =
+  worldRenderConfigJson.terrainGroundDetail.neighborhoodFadeFalloff;
 
 /** Same idea as the ground detail texture, but applied to every surface that
  *  is NOT part of the base 0-height flat zone — cliffs, mountain faces,
  *  plateaus. Sampled triplanar in the shader so vertical surfaces render
  *  correctly. Toggle, base color, and contrast knob mirror the ground set. */
-export const TERRAIN_ROCK_DETAIL_ENABLED = true;
+export const TERRAIN_ROCK_DETAIL_ENABLED =
+  worldRenderConfigJson.terrainRockDetail.enabled;
 export const TERRAIN_ROCK_BASE_COLOR = COLORS.world.terrain.rock.baseColorHex;
 export const TERRAIN_ROCK_DETAIL_CONTRAST = COLORS.world.terrain.rock.detailContrast;
 
@@ -558,97 +556,6 @@ export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 // shadow maps: all units/buildings write into one transparent instanced
 // contact-shadow mesh and update at LOD-dependent strides.
 export const CONTACT_SHADOW_RENDER_CONFIG = worldRenderConfigJson.contactShadow;
-
-// Seam-safe land tile terrain texture. These waves are evaluated from
-// world-space X/Z only, so adjacent land tiles share exact vertex colors
-// on shared edges and corners.
-/** Global period multiplier for every sine wave in LAND_TILE_TEXTURE.
- *
- *  1.0 = the configured tile-width periods below.
- *  2.0 = all waves are twice as wide / slower-changing.
- *  0.5 = all waves are half as wide / more frequent.
- *
- *  This replaces the old local `mmult` scale multiplier. The current
- *  value preserves the previous `mmult = 0.02` broad-stroke period.
- */
-export const LAND_TILE_TEXTURE_PERIOD_MULTIPLIER = 0.2;
-/** Static baked land-surface texture resolution. Higher values preserve
- *  more procedural texture detail without requiring more terrain
- *  triangles; cost is one small GPU texture per map. */
-export const LAND_TILE_TEXTURE_PIXELS_PER_TILE = 32;
-/** Master switch for the procedural sine-wave swirls in the land/ground texture.
- *  When false, the terrain keeps a flat base color and still receives baked
- *  lighting/shadows from TERRAIN_SHADOW_RENDER_CONFIG. */
-export const LAND_TILE_TEXTURE_SWIRLS_ENABLED = true;
-
-const landTileWaveScale = (tileWidths: number): number =>
-  (Math.PI * 2) /
-  (LAND_CELL_SIZE * tileWidths * LAND_TILE_TEXTURE_PERIOD_MULTIPLIER);
-
-export const LAND_TILE_TEXTURE = {
-  xWaves: [
-    { scale: landTileWaveScale(20.4), phase: 1.31, amplitude: 0.14 },
-    { scale: landTileWaveScale(17.8), phase: 4.76, amplitude: 0.16 },
-  ],
-  zWaves: [
-    { scale: landTileWaveScale(32.7), phase: 2.38, amplitude: 0.11 },
-    { scale: landTileWaveScale(23.6), phase: 5.11, amplitude: 0.14 },
-  ],
-  cross: {
-    // Keep this at 0 by default: a strong `(x + z)` term reads as a
-    // regular 45-degree pattern across the land grid.
-    scale: landTileWaveScale(61.5),
-    phase: 1.9,
-    amplitude: 0,
-    xInfluence: 0.31,
-    zInfluence: -0.73,
-  },
-  fleck: {
-    xScale: landTileWaveScale(35.2),
-    zScaleMultiplier: 0.61,
-    xPhase: 3.37,
-    zPhase: 0.94,
-    amplitude: 0.025,
-    power: 1.6,
-  },
-  vein: {
-    xScale: landTileWaveScale(38.5),
-    zScale: landTileWaveScale(53.7),
-    xWarpScale: landTileWaveScale(34.3),
-    zWarpScale: landTileWaveScale(61.9),
-    xWarpAmplitude: 3.2,
-    zWarpAmplitude: 2.6,
-    amplitude: 0.18,
-    power: 1.8,
-  },
-  base: {
-    brightness: 0.52,
-    xWaveAmplitude: 0.07,
-    zWaveAmplitude: 0.06,
-    color: {
-      r: COLORS.world.terrain.bumpOverlay.baseColorRgb01[0],
-      g: COLORS.world.terrain.bumpOverlay.baseColorRgb01[1],
-      b: COLORS.world.terrain.bumpOverlay.baseColorRgb01[2],
-    },
-  },
-  tone: {
-    // Signed grayscale texture layer. The combined procedural wave
-    // signal maps negative -> black, zero -> gray, positive -> white,
-    // then blends back into the land-tile base color.
-    neutral: 0.28,
-    contrast: 0.88,
-    mix: 0.36,
-  },
-  overlayOpacity: {
-    min: 0.46,
-    max: 0.76,
-  },
-} as const;
-
-export const LAND_TILE_TEXTURE_CACHE_KEY = JSON.stringify({
-  swirlsEnabled: LAND_TILE_TEXTURE_SWIRLS_ENABLED,
-  texture: LAND_TILE_TEXTURE,
-});
 
 // Scorched earth burn mark colors and decay
 export const BURN_COLOR_HOT = COLORS.world.burnMark.hotColorHex; // bright red start

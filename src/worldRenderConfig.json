@@ -2,6 +2,21 @@
   "landTileGroundLift": 0,
   "waypointGroundLift": 12,
   "horizonRenderExtend": 180000,
+  "sun": {
+    "azimuthRad": -0.7853981633974483,
+    "elevationRad": 0.3769911184307752,
+    "ambientIntensity": 0.24,
+    "directionalIntensity": 1.45,
+    "distance": 6000,
+    "visibleSkyDisk": {
+      "enabled": true,
+      "distance": 60000,
+      "size": 1900,
+      "texturePixels": 128,
+      "coreRadius": 0.18,
+      "haloRadius": 0.66
+    }
+  },
   "terrainShadow": {
     "enabled": true,
     "ambient": 0.34,
@@ -16,6 +31,23 @@
       "softness": 82,
       "strength": 0.58
     }
+  },
+  "terrainHorizonBlend": {
+    "enabled": true,
+    "boundaryFadeStart": 0.58,
+    "boundaryFadeEnd": 1,
+    "rectangularEdgeStartLandCellMultiplier": 2.5,
+    "rectangularEdgeEndDistance": 0
+  },
+  "terrainGroundDetail": {
+    "enabled": true,
+    "heightMin": 12,
+    "heightMax": 90,
+    "neighborhoodFadeRadius": 900,
+    "neighborhoodFadeFalloff": 1.35
+  },
+  "terrainRockDetail": {
+    "enabled": true
   },
   "burnMark": {
     "colorTauMs": 200,

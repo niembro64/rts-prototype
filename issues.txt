@@ -251,12 +251,16 @@ Done in earlier passes (data now lives in JSON, src/config.ts only orchestrates)
 - Force-field barrier + turret grate (FORCE_FIELD_BARRIER outer/origin
   ratios + FORCE_FIELD_TURRET grate definitions) appended to
   src/forceFieldVisualConfig.json.
+- SUN_RENDER_CONFIG (non-color knobs: azimuth/elevation pre-baked from
+  Math.PI multipliers, ambient/directional intensities, distance, sky-disk
+  geometry), TERRAIN_HORIZON_BLEND_CONFIG (non-color), TERRAIN_GROUND_DETAIL_*
+  (non-color), TERRAIN_ROCK_DETAIL_ENABLED appended to
+  src/worldRenderConfig.json. LAND_TILE_TEXTURE + its three companion
+  exports (PERIOD_MULTIPLIER, PIXELS_PER_TILE, SWIRLS_ENABLED,
+  CACHE_KEY) had no callers anywhere in the tree and were deleted under
+  Delete The Old Path rather than migrated.
 
-Still in src/config.ts as TS literals:
-- Sun / terrain render configs: SUN_RENDER_CONFIG (non-color knobs),
-  TERRAIN_HORIZON_BLEND_CONFIG (non-color knobs),
-  TERRAIN_GROUND_DETAIL_* (non-color fields), TERRAIN_ROCK_* (non-color fields),
-  LAND_TILE_TEXTURE (large sine-wave config).
+All previously listed TS literals in config.ts now load from co-located JSON.
 
 Why it matters:
 The blueprints under src/game/sim/blueprints/ correctly pair *.json with thin *.ts
