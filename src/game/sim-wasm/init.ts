@@ -129,6 +129,7 @@ import __wbg_init, {
   combat_targeting_set_entity,
   combat_targeting_unset_entity,
   combat_targeting_set_turret,
+  combat_targeting_update_mount_kinematics,
   combat_targeting_entity_flags,
   combat_targeting_turret_count,
   combat_targeting_can_player_observe_entity,
@@ -150,6 +151,7 @@ import __wbg_init, {
   combat_targeting_turret_mount_vx_ptr,
   combat_targeting_turret_mount_vy_ptr,
   combat_targeting_turret_mount_vz_ptr,
+  combat_targeting_turret_world_pos_tick_ptr,
   combat_targeting_turret_rotation_ptr,
   combat_targeting_turret_pitch_ptr,
   combat_targeting_turret_state_ptr,
@@ -923,6 +925,15 @@ export interface CombatTargetingApi {
     velX: number,
     velY: number,
     velZ: number,
+    groundZ: number,
+    rotCos: number,
+    rotSin: number,
+    surfaceNx: number,
+    surfaceNy: number,
+    surfaceNz: number,
+    suspensionOffsetX: number,
+    suspensionOffsetY: number,
+    suspensionOffsetZ: number,
     radiusShot: number,
     aabbHalfX: number,
     aabbHalfY: number,
@@ -955,6 +966,10 @@ export interface CombatTargetingApi {
     trackingReleaseSq: number,
     outermostAcquire: number,
     mountOffset2d: number,
+    localMountX: number,
+    localMountY: number,
+    localMountZ: number,
+    worldPosTick: number,
     aimErrorYaw: number,
     aimErrorPitch: number,
     losBlockedTicks: number,
@@ -963,6 +978,15 @@ export interface CombatTargetingApi {
   ) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
+  /** AIM-08.5 — Rust Pass 0 mount kinematics. Updates the slab's
+   *  turret world mount position/velocity for one stamped entity. */
+  updateMountKinematics: (
+    entitySlot: number,
+    currentTick: number,
+    dtMs: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+  ) => void;
   /** AIM-08.5 — slab-backed cloak-observability check. Returns 1 if
    *  `viewerPlayerId` can observe the entity addressed by `targetId`
    *  (alive + (uncloaked OR own-team OR reached by a viewer-owned
@@ -989,6 +1013,7 @@ export interface CombatTargetingApi {
   readonly turretMountVxPtr: () => number;
   readonly turretMountVyPtr: () => number;
   readonly turretMountVzPtr: () => number;
+  readonly turretWorldPosTickPtr: () => number;
   readonly turretRotationPtr: () => number;
   readonly turretPitchPtr: () => number;
   readonly turretStatePtr: () => number;
@@ -2312,6 +2337,7 @@ export function initSimWasm(): Promise<SimWasm> {
           setEntity: combat_targeting_set_entity,
           unsetEntity: combat_targeting_unset_entity,
           setTurret: combat_targeting_set_turret,
+          updateMountKinematics: combat_targeting_update_mount_kinematics,
           entityFlags: combat_targeting_entity_flags,
           turretCount: combat_targeting_turret_count,
           canPlayerObserveEntity: combat_targeting_can_player_observe_entity,
@@ -2333,6 +2359,7 @@ export function initSimWasm(): Promise<SimWasm> {
           turretMountVxPtr: combat_targeting_turret_mount_vx_ptr,
           turretMountVyPtr: combat_targeting_turret_mount_vy_ptr,
           turretMountVzPtr: combat_targeting_turret_mount_vz_ptr,
+          turretWorldPosTickPtr: combat_targeting_turret_world_pos_tick_ptr,
           turretRotationPtr: combat_targeting_turret_rotation_ptr,
           turretPitchPtr: combat_targeting_turret_pitch_ptr,
           turretStatePtr: combat_targeting_turret_state_ptr,

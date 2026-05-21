@@ -10,12 +10,10 @@ import {
   getEntityPosition3d,
   getProjectileLaunchSpeed,
   getTargetRadius,
-  updateWeaponWorldKinematics,
 } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
-import { getUnitGroundZ } from '../unitGeometry';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   resolveTargetAimPoint,
@@ -28,17 +26,13 @@ import {
 import { getActiveForceFields } from './forceFieldTurret';
 import {
   stampCombatTargetingEntity,
+  writeBackCombatTargetingEntityKinematics,
   writeBackCombatTargetingEntity,
 } from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
 const _targetingEnemyPosition = { x: 0, y: 0, z: 0 };
 const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
-// Per-unit reusable mask of "weapon system disabled" flags, filled in
-// the Pass 0 reset walk and consumed by every subsequent pass. Avoids
-// calling weaponSystemDisabled 8+ times per weapon per tick (~9× the
-// property reads across passes for the same unchanging condition).
-let _weaponDisabled = new Uint8Array(0);
 // Per-unit reusable cache written by the Rust auto-target pre-scan.
 // It holds the current-fire rank for `engaged && ranges.fire.min`
 // weapons so Pass 2 can promote close fallbacks without recomputing.
@@ -47,11 +41,9 @@ let _cachedFireDistSqs = new Float64Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
 // AIM-08.5 unified gate inputs shared across the priority-point,
 // priority-target, and existing-lock kernels. The Rust kernels read
-// per-turret ballistic config and a JS-precomputed mirror-panel mask
-// (the panel walk is the one gate piece that has no Rust equivalent
-// yet). Aim points are TS-resolved so lockOnToBody/lockOnToTurret
-// stay in one place. Per-branch arrays (observable, mirror_valid)
-// extend the shared set where applicable.
+// per-turret ballistic config; mirror-panel, force-field, cloak, LOS,
+// and ballistic gates run inside Rust. Aim points are TS-resolved so
+// lockOnToBody/lockOnToTurret stay in one place.
 let _ppProjectileSpeeds = new Float64Array(0);
 let _ppArcPreferences = new Uint8Array(0);
 let _ppMaxTimeSecs = new Float64Array(0);
@@ -76,10 +68,9 @@ function nextTargetingReacquireTick(tick: number): number {
 }
 
 function ensurePerWeaponScratchCapacity(count: number): void {
-  if (count <= _weaponDisabled.length) return;
-  let next = Math.max(8, _weaponDisabled.length);
+  if (count <= _cachedFireRanks.length) return;
+  let next = Math.max(8, _cachedFireRanks.length);
   while (next < count) next *= 2;
-  _weaponDisabled = new Uint8Array(next);
   _cachedFireRanks = new Uint8Array(next);
   _cachedFireDistSqs = new Float64Array(next);
   _ppProjectileSpeeds = new Float64Array(next);
@@ -343,7 +334,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       const unitSlot = spatialGrid.getSlot(unit.id);
       const targeting = getTargetingKernel();
       targeting.clearEntityLocks(unitSlot);
-      writeBackCombatTargetingEntity(unit);
+      writeBackCombatTargetingEntity(unit, null);
       continue;
     }
     const priorityId = combat.priorityTargetId;
@@ -359,10 +350,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
 
     const playerId = unit.ownership.playerId;
-    const cos = Math.cos(unit.transform.rotation);
-    const sin = Math.sin(unit.transform.rotation);
-    unit.transform.rotCos = cos;
-    unit.transform.rotSin = sin;
     const weapons = combat.turrets;
     ensurePerWeaponScratchCapacity(weapons.length);
 
@@ -371,7 +358,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       const disabled = resetDisabledWeapon(world, unit, weapon, wi);
-      _weaponDisabled[wi] = disabled ? 1 : 0;
       if (disabled) continue;
       hasEnabledWeapon = true;
       if (weapon.cooldown > 0) {
@@ -392,33 +378,23 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     combat.nextCombatProbeTick = -1;
 
-    // Pass 0: Compute authoritative per-turret mount kinematics once.
-    // Targeting, aiming, firing, force fields, and beam retracing all
-    // read the same cached 3D mount pose/velocity through combatUtils.
-    const unitGroundZ = getUnitGroundZ(unit);
-    // Surface normal comes from the unit ground normal EMA so all
-    // turret kinematics for this unit on this tick read one canonical
-    // value (matches the per-unit slope basis updateUnitGroundNormal produced).
-    const surfaceN = unit.unit?.surfaceNormal;
-    for (let i = 0; i < weapons.length; i++) {
-      const weapon = weapons[i];
-      if (_weaponDisabled[i] !== 0) continue;
-      if (weapon.config.isManualFire) {
-        weapon.state = 'idle';
-        continue;
-      }
-      updateWeaponWorldKinematics(
-        unit, weapon, i,
-        cos, sin,
-        { currentTick: tick, dtMs, unitGroundZ, surfaceN },
-      );
-    }
-    // AIM-08.4: the ballistic solver reads turret mount kinematics
-    // from the combat-targeting slab, so refresh this unit's slab row
-    // immediately after Pass 0 writes current worldPos/worldVelocity.
+    // Pass 0: refresh JS-mutated reset state, then let Rust compute
+    // authoritative per-turret mount kinematics in the slab. The
+    // writeback keeps remaining JS consumers on the same cache until
+    // AIM-08.6 makes the slab the direct source of truth.
     stampCombatTargetingEntity(unit);
     const unitSlot = spatialGrid.getSlot(unit.id);
     const targeting = getTargetingKernel();
+    const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
+    const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
+    targeting.updateMountKinematics(
+      unitSlot,
+      tick,
+      dtMs,
+      mirrorsEnabledFlag,
+      forceFieldsEnabledFlag,
+    );
+    writeBackCombatTargetingEntityKinematics(unit, tick);
 
     // Check for attack-ground priority target.
     if (priorityPoint !== null) {
@@ -431,8 +407,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         unitSlot,
         priorityPoint.x, priorityPoint.y, priorityPoint.z,
         unit.id,
-        world.mirrorsEnabled ? 1 : 0,
-        world.forceFieldsEnabled ? 1 : 0,
+        mirrorsEnabledFlag,
+        forceFieldsEnabledFlag,
         forceMaterialSightObstructionActive ? 1 : 0,
         COMBAT_LOS_TERRAIN_STEP_LEN,
         COMBAT_LOS_ENTITY_QUERY_WIDTH,
@@ -443,7 +419,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         _ppGroundAimFractions,
         _ppUnderOnlyMask,
       );
-      writeBackCombatTargetingEntity(unit);
+      writeBackCombatTargetingEntity(unit, tick);
       if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
       continue;
     }
@@ -470,8 +446,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           unitSlot,
           priorityId,
           unit.id,
-          world.mirrorsEnabled ? 1 : 0,
-          world.forceFieldsEnabled ? 1 : 0,
+          mirrorsEnabledFlag,
+          forceFieldsEnabledFlag,
           forceMaterialSightObstructionActive ? 1 : 0,
           COMBAT_LOS_TERRAIN_STEP_LEN,
           COMBAT_LOS_ENTITY_QUERY_WIDTH,
@@ -483,7 +459,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           _ppGroundAimFractions,
           _ppUnderOnlyMask,
         );
-        writeBackCombatTargetingEntity(unit);
+        writeBackCombatTargetingEntity(unit, tick);
         if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
       }
@@ -501,8 +477,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // maxWeaponOffset) for the candidate broadphase. TS owes only
     // the per-turret aim points and ballistic config; the merged
     // kernel turns two boundary calls into one.
-    const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
-    const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
     fillGateBallisticConfig(weapons);
     fillExistingLockGateInputs(weapons, world, unit, tick);
     const needsAnyQuery = targeting.existingLockAndAutoScanTick(
@@ -597,7 +571,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       _ppGroundAimFractions,
       _ppUnderOnlyMask,
     );
-    writeBackCombatTargetingEntity(unit);
+    writeBackCombatTargetingEntity(unit, tick);
 
     if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
     else if (priorityId === null) {

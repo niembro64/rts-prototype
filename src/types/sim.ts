@@ -425,16 +425,16 @@ export type Turret = {
    *  the owning unit blueprint's `turrets[i].mount` and used as the
    *  source of truth for sim targeting/firing and client rendering. */
   mount: Vec3;
-  /** Cached authoritative world-space mount position, written only by
-   *  updateWeaponWorldKinematics. Always-present (initialized to
-   *  zero at turret construction). The cache is valid iff
-   *  `worldPosTick >= 0`; consumers gate on that sentinel rather than
-   *  on object presence. Sim-only hot-path state — snapshots ship
-   *  rotation/pitch, not this derived value. */
+  /** Cached authoritative world-space mount position, written by the
+   *  targeting slab's Rust Pass 0 or by updateWeaponWorldKinematics
+   *  fallback callers. Always-present (initialized to zero at turret
+   *  construction). The cache is valid iff `worldPosTick >= 0`;
+   *  consumers gate on that sentinel rather than on object presence.
+   *  Sim-only hot-path state — snapshots ship rotation/pitch, not
+   *  this derived value. */
   worldPos: Vec3;
-  /** Cached world-space mount velocity computed by
-   *  updateWeaponWorldKinematics from worldPos deltas when current,
-   *  or zero when the cache has never been populated
+  /** Cached world-space mount velocity computed from worldPos deltas
+   *  when current, or zero when the cache has never been populated
    *  (`worldPosTick < 0`). This is the turret's own 3D motion, so
    *  moving/tilted/lateral mounts feed projectile lead and inherited
    *  launch-origin velocity correctly. */

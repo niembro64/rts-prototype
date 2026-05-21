@@ -32,7 +32,6 @@ import {
 import { setWeaponTarget } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
-import { getTransformCosSin } from '../../math';
 import {
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
@@ -69,6 +68,13 @@ export type CombatTargetingStateViews = {
   length: number;
   state: Uint8Array;
   targetId: Int32Array;
+  mountX: Float64Array;
+  mountY: Float64Array;
+  mountZ: Float64Array;
+  mountVx: Float64Array;
+  mountVy: Float64Array;
+  mountVz: Float64Array;
+  worldPosTick: Int32Array;
   aimErrorYaw: Float32Array;
   aimErrorPitch: Float32Array;
   losBlockedTicks: Uint16Array;
@@ -109,6 +115,13 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     length,
     state: new Uint8Array(buffer, targeting.turretStatePtr(), length),
     targetId: new Int32Array(buffer, targeting.turretTargetIdPtr(), length),
+    mountX: new Float64Array(buffer, targeting.turretMountXPtr(), length),
+    mountY: new Float64Array(buffer, targeting.turretMountYPtr(), length),
+    mountZ: new Float64Array(buffer, targeting.turretMountZPtr(), length),
+    mountVx: new Float64Array(buffer, targeting.turretMountVxPtr(), length),
+    mountVy: new Float64Array(buffer, targeting.turretMountVyPtr(), length),
+    mountVz: new Float64Array(buffer, targeting.turretMountVzPtr(), length),
+    worldPosTick: new Int32Array(buffer, targeting.turretWorldPosTickPtr(), length),
     aimErrorYaw: new Float32Array(buffer, targeting.turretAimErrorYawPtr(), length),
     aimErrorPitch: new Float32Array(buffer, targeting.turretAimErrorPitchPtr(), length),
     losBlockedTicks: new Uint16Array(buffer, targeting.turretLosBlockedTicksPtr(), length),
@@ -187,6 +200,19 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   const playerId = ownership ? ownership.playerId : 0;
   const pos = getEntityPosition3d(entity, _stampPos);
   const vel = getEntityVelocity3d(entity, _stampVel);
+  const groundZ = getUnitGroundZ(entity);
+  const rotCos = Math.cos(entity.transform.rotation);
+  const rotSin = Math.sin(entity.transform.rotation);
+  entity.transform.rotCos = rotCos;
+  entity.transform.rotSin = rotSin;
+  const surfaceN = entity.unit ? entity.unit.surfaceNormal : undefined;
+  const surfaceNx = surfaceN ? surfaceN.nx : 0;
+  const surfaceNy = surfaceN ? surfaceN.ny : 0;
+  const surfaceNz = surfaceN ? surfaceN.nz : 1;
+  const suspension = entity.unit ? entity.unit.suspension : undefined;
+  const suspensionOffsetX = suspension ? suspension.offsetX : 0;
+  const suspensionOffsetY = suspension ? suspension.offsetY : 0;
+  const suspensionOffsetZ = suspension ? suspension.offsetZ : 0;
   const radiusShot = entity.unit
     ? entity.unit.radius.shot
     : (entity.building ? entity.building.targetRadius : 0);
@@ -219,6 +245,10 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
     slot, entity.id, playerId,
     pos.x, pos.y, pos.z,
     vel.x, vel.y, vel.z,
+    groundZ,
+    rotCos, rotSin,
+    surfaceNx, surfaceNy, surfaceNz,
+    suspensionOffsetX, suspensionOffsetY, suspensionOffsetZ,
     radiusShot,
     aabbHalfX, aabbHalfY, aabbHalfZ,
     hp, entityFlags,
@@ -250,6 +280,8 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       trackingAcq, trackingRel,
       outermostAcq,
       Math.hypot(t.mount.x, t.mount.y),
+      t.mount.x, t.mount.y, t.mount.z,
+      t.worldPosTick,
       t.aimErrorYaw, t.aimErrorPitch,
       t.losBlockedTicks,
       encodeTurretConfigFlags(t, ranges),
@@ -258,21 +290,25 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   }
 }
 
-/** Stamp one armed entity into the combat-targeting slab. AIM-08.4
- *  calls this after Pass 0 mount kinematics so the ballistic solver
- *  can read current mount position/velocity after the pre-FSM full
- *  pool rebuild. */
+/** Stamp one armed entity into the combat-targeting slab. During
+ *  AIM-08.5 the targeting pass calls this after JS reset/cooldown
+ *  mutations, then Rust Pass 0 updates mount kinematics in-place. */
 export function stampCombatTargetingEntity(entity: Entity): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   stampCombatTargetingEntityInto(sim.combatTargeting, entity);
 }
 
-/** Copy the Rust combat-targeting slab's authoritative FSM tuple back
- *  onto the JS Turret objects that rendering, firing, and snapshot
- *  encode still consume during AIM-08.5/.6 migration. Target writes go
- *  through setWeaponTarget so the beam inverse index remains coherent. */
-export function writeBackCombatTargetingEntity(entity: Entity): void {
+/** Copy the Rust combat-targeting slab's authoritative FSM tuple and
+ *  optional mount-kinematics tuple back onto the JS Turret objects
+ *  that rendering, firing, and snapshot encode still consume during
+ *  AIM-08.5/.6 migration. Target writes go through setWeaponTarget so
+ *  the beam inverse index remains coherent. */
+function writeBackCombatTargetingEntityFromSlab(
+  entity: Entity,
+  kinematicsTick: number | null,
+  includeState: boolean,
+): void {
   const combat = entity.combat;
   if (!combat) return;
   const sim = getSimWasm();
@@ -291,13 +327,32 @@ export function writeBackCombatTargetingEntity(entity: Entity): void {
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
     const turret = combat.turrets[i];
-    const targetId = views.targetId[idx];
-    setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
-    turret.state = decodeTurretState(views.state[idx]);
-    turret.aimErrorYaw = views.aimErrorYaw[idx];
-    turret.aimErrorPitch = views.aimErrorPitch[idx];
-    turret.losBlockedTicks = views.losBlockedTicks[idx];
+    if (includeState) {
+      const targetId = views.targetId[idx];
+      setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
+      turret.state = decodeTurretState(views.state[idx]);
+      turret.aimErrorYaw = views.aimErrorYaw[idx];
+      turret.aimErrorPitch = views.aimErrorPitch[idx];
+      turret.losBlockedTicks = views.losBlockedTicks[idx];
+    }
+    if (kinematicsTick !== null && views.worldPosTick[idx] === kinematicsTick) {
+      turret.worldPos.x = views.mountX[idx];
+      turret.worldPos.y = views.mountY[idx];
+      turret.worldPos.z = views.mountZ[idx];
+      turret.worldVelocity.x = views.mountVx[idx];
+      turret.worldVelocity.y = views.mountVy[idx];
+      turret.worldVelocity.z = views.mountVz[idx];
+      turret.worldPosTick = views.worldPosTick[idx];
+    }
   }
+}
+
+export function writeBackCombatTargetingEntityKinematics(entity: Entity, kinematicsTick: number): void {
+  writeBackCombatTargetingEntityFromSlab(entity, kinematicsTick, false);
+}
+
+export function writeBackCombatTargetingEntity(entity: Entity, kinematicsTick: number | null): void {
+  writeBackCombatTargetingEntityFromSlab(entity, kinematicsTick, true);
 }
 
 /** Rebuild every targetable unit/building row before the FSM runs.
@@ -369,7 +424,12 @@ export function stampMirrorPanelPool(world: WorldState): void {
     const mirrorRot = mirrorTurret.rotation;
     const mirrorPitch = mirrorTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
-    const unitCS = getTransformCosSin(unit.transform);
+    const unitCS = {
+      cos: Math.cos(unit.transform.rotation),
+      sin: Math.sin(unit.transform.rotation),
+    };
+    unit.transform.rotCos = unitCS.cos;
+    unit.transform.rotSin = unitCS.sin;
     resolveWeaponWorldMount(
       unit, mirrorTurret, 0,
       unitCS.cos, unitCS.sin,

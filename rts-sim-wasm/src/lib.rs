@@ -6198,6 +6198,18 @@ struct CombatTargetingPool {
     entity_vel_x: Vec<f64>,
     entity_vel_y: Vec<f64>,
     entity_vel_z: Vec<f64>,
+    // Per-entity pose inputs used by the Rust Pass 0 mount-kinematics
+    // update. Stamped from JS because terrain/base-height and
+    // suspension still live on Entity objects during AIM-08.5.
+    entity_ground_z: Vec<f64>,
+    entity_rot_cos: Vec<f64>,
+    entity_rot_sin: Vec<f64>,
+    entity_surface_nx: Vec<f64>,
+    entity_surface_ny: Vec<f64>,
+    entity_surface_nz: Vec<f64>,
+    entity_suspension_offset_x: Vec<f64>,
+    entity_suspension_offset_y: Vec<f64>,
+    entity_suspension_offset_z: Vec<f64>,
     entity_radius_shot: Vec<f64>,
     // AABB half-extents for AABB-shaped targets (buildings). Zero on
     // sphere-shaped targets (units / projectiles) so aim-point
@@ -6229,6 +6241,10 @@ struct CombatTargetingPool {
     turret_mount_vx: Vec<f64>,
     turret_mount_vy: Vec<f64>,
     turret_mount_vz: Vec<f64>,
+    turret_local_mount_x: Vec<f64>,
+    turret_local_mount_y: Vec<f64>,
+    turret_local_mount_z: Vec<f64>,
+    turret_world_pos_tick: Vec<i32>,
     turret_rotation: Vec<f32>,
     turret_pitch: Vec<f32>,
     turret_state: Vec<u8>,
@@ -6287,6 +6303,15 @@ impl CombatTargetingPool {
             entity_vel_x: Vec::new(),
             entity_vel_y: Vec::new(),
             entity_vel_z: Vec::new(),
+            entity_ground_z: Vec::new(),
+            entity_rot_cos: Vec::new(),
+            entity_rot_sin: Vec::new(),
+            entity_surface_nx: Vec::new(),
+            entity_surface_ny: Vec::new(),
+            entity_surface_nz: Vec::new(),
+            entity_suspension_offset_x: Vec::new(),
+            entity_suspension_offset_y: Vec::new(),
+            entity_suspension_offset_z: Vec::new(),
             entity_radius_shot: Vec::new(),
             entity_aabb_half_x: Vec::new(),
             entity_aabb_half_y: Vec::new(),
@@ -6303,6 +6328,10 @@ impl CombatTargetingPool {
             turret_mount_vx: Vec::new(),
             turret_mount_vy: Vec::new(),
             turret_mount_vz: Vec::new(),
+            turret_local_mount_x: Vec::new(),
+            turret_local_mount_y: Vec::new(),
+            turret_local_mount_z: Vec::new(),
+            turret_world_pos_tick: Vec::new(),
             turret_rotation: Vec::new(),
             turret_pitch: Vec::new(),
             turret_state: Vec::new(),
@@ -6344,6 +6373,15 @@ impl CombatTargetingPool {
             self.entity_vel_x.resize(entity_needed, 0.0);
             self.entity_vel_y.resize(entity_needed, 0.0);
             self.entity_vel_z.resize(entity_needed, 0.0);
+            self.entity_ground_z.resize(entity_needed, 0.0);
+            self.entity_rot_cos.resize(entity_needed, 1.0);
+            self.entity_rot_sin.resize(entity_needed, 0.0);
+            self.entity_surface_nx.resize(entity_needed, 0.0);
+            self.entity_surface_ny.resize(entity_needed, 0.0);
+            self.entity_surface_nz.resize(entity_needed, 1.0);
+            self.entity_suspension_offset_x.resize(entity_needed, 0.0);
+            self.entity_suspension_offset_y.resize(entity_needed, 0.0);
+            self.entity_suspension_offset_z.resize(entity_needed, 0.0);
             self.entity_radius_shot.resize(entity_needed, 0.0);
             self.entity_aabb_half_x.resize(entity_needed, 0.0);
             self.entity_aabb_half_y.resize(entity_needed, 0.0);
@@ -6362,6 +6400,10 @@ impl CombatTargetingPool {
             self.turret_mount_vx.resize(turret_needed, 0.0);
             self.turret_mount_vy.resize(turret_needed, 0.0);
             self.turret_mount_vz.resize(turret_needed, 0.0);
+            self.turret_local_mount_x.resize(turret_needed, 0.0);
+            self.turret_local_mount_y.resize(turret_needed, 0.0);
+            self.turret_local_mount_z.resize(turret_needed, 0.0);
+            self.turret_world_pos_tick.resize(turret_needed, -1);
             self.turret_rotation.resize(turret_needed, 0.0);
             self.turret_pitch.resize(turret_needed, 0.0);
             self.turret_state
@@ -6528,6 +6570,15 @@ pub fn combat_targeting_set_entity(
     vel_x: f64,
     vel_y: f64,
     vel_z: f64,
+    ground_z: f64,
+    rot_cos: f64,
+    rot_sin: f64,
+    surface_nx: f64,
+    surface_ny: f64,
+    surface_nz: f64,
+    suspension_offset_x: f64,
+    suspension_offset_y: f64,
+    suspension_offset_z: f64,
     radius_shot: f64,
     aabb_half_x: f64,
     aabb_half_y: f64,
@@ -6556,6 +6607,15 @@ pub fn combat_targeting_set_entity(
     pool.entity_vel_x[s] = vel_x;
     pool.entity_vel_y[s] = vel_y;
     pool.entity_vel_z[s] = vel_z;
+    pool.entity_ground_z[s] = ground_z;
+    pool.entity_rot_cos[s] = rot_cos;
+    pool.entity_rot_sin[s] = rot_sin;
+    pool.entity_surface_nx[s] = surface_nx;
+    pool.entity_surface_ny[s] = surface_ny;
+    pool.entity_surface_nz[s] = surface_nz;
+    pool.entity_suspension_offset_x[s] = suspension_offset_x;
+    pool.entity_suspension_offset_y[s] = suspension_offset_y;
+    pool.entity_suspension_offset_z[s] = suspension_offset_z;
     pool.entity_radius_shot[s] = radius_shot;
     pool.entity_aabb_half_x[s] = aabb_half_x;
     pool.entity_aabb_half_y[s] = aabb_half_y;
@@ -6607,6 +6667,10 @@ pub fn combat_targeting_set_turret(
     tracking_release_sq: f64,
     outermost_acquire: f64,
     mount_offset_2d: f64,
+    local_mount_x: f64,
+    local_mount_y: f64,
+    local_mount_z: f64,
+    world_pos_tick: i32,
     aim_error_yaw: f32,
     aim_error_pitch: f32,
     los_blocked_ticks: u16,
@@ -6635,6 +6699,10 @@ pub fn combat_targeting_set_turret(
     pool.turret_tracking_release_sq[global_idx] = tracking_release_sq;
     pool.turret_outermost_acquire[global_idx] = outermost_acquire;
     pool.turret_mount_offset_2d[global_idx] = mount_offset_2d;
+    pool.turret_local_mount_x[global_idx] = local_mount_x;
+    pool.turret_local_mount_y[global_idx] = local_mount_y;
+    pool.turret_local_mount_z[global_idx] = local_mount_z;
+    pool.turret_world_pos_tick[global_idx] = world_pos_tick;
     pool.turret_aim_error_yaw[global_idx] = aim_error_yaw;
     pool.turret_aim_error_pitch[global_idx] = aim_error_pitch;
     pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
@@ -6649,6 +6717,154 @@ pub fn combat_targeting_set_turret(
         rotation as f64,
         pitch as f64,
     );
+}
+
+#[inline]
+fn combat_targeting_apply_surface_tilt(
+    vx: f64,
+    vy: f64,
+    vz: f64,
+    nx: f64,
+    ny: f64,
+    nz: f64,
+) -> (f64, f64, f64) {
+    let sin_t2 = nx * nx + ny * ny;
+    if sin_t2 < 1e-12 {
+        return (vx, vy, vz);
+    }
+    let sin_t = sin_t2.sqrt();
+    let cos_t = nz;
+    let kx = -ny / sin_t;
+    let ky = nx / sin_t;
+    let kdotv = kx * vx + ky * vy;
+    let cross_x = ky * vz;
+    let cross_y = -kx * vz;
+    let cross_z = kx * vy - ky * vx;
+    let one_minus_cos = 1.0 - cos_t;
+    (
+        vx * cos_t + cross_x * sin_t + kx * kdotv * one_minus_cos,
+        vy * cos_t + cross_y * sin_t + ky * kdotv * one_minus_cos,
+        vz * cos_t + cross_z * sin_t,
+    )
+}
+
+#[inline]
+fn combat_targeting_world_mount(
+    unit_x: f64,
+    unit_y: f64,
+    unit_ground_z: f64,
+    cos: f64,
+    sin: f64,
+    offset_x: f64,
+    offset_y: f64,
+    mount_height: f64,
+    surface_nx: f64,
+    surface_ny: f64,
+    surface_nz: f64,
+) -> (f64, f64, f64) {
+    let yawed_x = cos * offset_x - sin * offset_y;
+    let yawed_y = sin * offset_x + cos * offset_y;
+    let (tilted_x, tilted_y, tilted_z) = combat_targeting_apply_surface_tilt(
+        yawed_x,
+        yawed_y,
+        mount_height,
+        surface_nx,
+        surface_ny,
+        surface_nz,
+    );
+    (
+        unit_x + tilted_x,
+        unit_y + tilted_y,
+        unit_ground_z + tilted_z,
+    )
+}
+
+/// AIM-08.5 Pass 0 — compute current per-turret world mount
+/// kinematics inside the combat-targeting slab. This ports the
+/// targetingSystem.ts updateWeaponWorldKinematics loop to Rust while
+/// JS still owns the outer armed-entity traversal and writes the slab
+/// result back to Turret objects for turret rotation / firing.
+#[wasm_bindgen]
+pub fn combat_targeting_update_mount_kinematics(
+    entity_slot: u32,
+    current_tick: i32,
+    dt_ms: f64,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) {
+    let pool = combat_targeting_pool();
+    let s = entity_slot as usize;
+    if s >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let turret_count = pool.turret_count_per_entity[s] as usize;
+    if turret_count == 0 {
+        return;
+    }
+
+    let unit_x = pool.entity_pos_x[s];
+    let unit_y = pool.entity_pos_y[s];
+    let unit_ground_z = pool.entity_ground_z[s];
+    let cos = pool.entity_rot_cos[s];
+    let sin = pool.entity_rot_sin[s];
+    let surface_nx = pool.entity_surface_nx[s];
+    let surface_ny = pool.entity_surface_ny[s];
+    let surface_nz = pool.entity_surface_nz[s];
+    let suspension_x = pool.entity_suspension_offset_x[s];
+    let suspension_y = pool.entity_suspension_offset_y[s];
+    let suspension_z = pool.entity_suspension_offset_z[s];
+    let inv_elapsed_sec = if dt_ms > 0.0 { 1000.0 / dt_ms } else { 0.0 };
+
+    for turret_idx in 0..turret_count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let flags = pool.turret_config_flags[idx];
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
+            continue;
+        }
+        if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            pool.turret_state[idx] = CT_TURRET_STATE_IDLE;
+            continue;
+        }
+        if pool.turret_world_pos_tick[idx] == current_tick {
+            continue;
+        }
+
+        let prev_x = pool.turret_mount_x[idx];
+        let prev_y = pool.turret_mount_y[idx];
+        let prev_z = pool.turret_mount_z[idx];
+        let prev_tick = pool.turret_world_pos_tick[idx];
+        let local_x = pool.turret_local_mount_x[idx] + suspension_x;
+        let local_y = pool.turret_local_mount_y[idx] + suspension_y;
+        let local_z = pool.turret_local_mount_z[idx] + suspension_z;
+        let (mount_x, mount_y, mount_z) = combat_targeting_world_mount(
+            unit_x,
+            unit_y,
+            unit_ground_z,
+            cos,
+            sin,
+            local_x,
+            local_y,
+            local_z,
+            surface_nx,
+            surface_ny,
+            surface_nz,
+        );
+
+        if prev_tick >= 0 && current_tick - prev_tick == 1 && inv_elapsed_sec > 0.0 {
+            pool.turret_mount_vx[idx] = (mount_x - prev_x) * inv_elapsed_sec;
+            pool.turret_mount_vy[idx] = (mount_y - prev_y) * inv_elapsed_sec;
+            pool.turret_mount_vz[idx] = (mount_z - prev_z) * inv_elapsed_sec;
+        } else {
+            pool.turret_mount_vx[idx] = pool.entity_vel_x[s];
+            pool.turret_mount_vy[idx] = pool.entity_vel_y[s];
+            pool.turret_mount_vz[idx] = pool.entity_vel_z[s];
+        }
+        pool.turret_mount_x[idx] = mount_x;
+        pool.turret_mount_y[idx] = mount_y;
+        pool.turret_mount_z[idx] = mount_z;
+        pool.turret_world_pos_tick[idx] = current_tick;
+    }
 }
 
 #[wasm_bindgen]
@@ -6678,10 +6894,7 @@ pub fn combat_targeting_turret_count(entity_slot: u32) -> u8 {
 /// priority-target path to fall through to auto-targeting when the
 /// command target is dead, lost, or stealthed beyond detection.
 #[wasm_bindgen]
-pub fn combat_targeting_can_player_observe_entity(
-    target_id: i32,
-    viewer_player_id: u8,
-) -> u8 {
+pub fn combat_targeting_can_player_observe_entity(target_id: i32, viewer_player_id: u8) -> u8 {
     let pool = combat_targeting_pool();
     if combat_targeting_player_observes_entity_id(pool, target_id, viewer_player_id) {
         1
@@ -6744,6 +6957,11 @@ combat_targeting_ptr_export!(combat_targeting_turret_mount_z_ptr, turret_mount_z
 combat_targeting_ptr_export!(combat_targeting_turret_mount_vx_ptr, turret_mount_vx, f64);
 combat_targeting_ptr_export!(combat_targeting_turret_mount_vy_ptr, turret_mount_vy, f64);
 combat_targeting_ptr_export!(combat_targeting_turret_mount_vz_ptr, turret_mount_vz, f64);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_world_pos_tick_ptr,
+    turret_world_pos_tick,
+    i32
+);
 combat_targeting_ptr_export!(combat_targeting_turret_rotation_ptr, turret_rotation, f32);
 combat_targeting_ptr_export!(combat_targeting_turret_pitch_ptr, turret_pitch, f32);
 combat_targeting_ptr_export!(combat_targeting_turret_state_ptr, turret_state, u8);
@@ -6908,10 +7126,18 @@ pub fn combat_targeting_solve_ballistic_aim(
         pool,
         entity_slot,
         turret_idx,
-        target_x, target_y, target_z,
-        target_vx, target_vy, target_vz,
-        target_ax, target_ay, target_az,
-        origin_ax, origin_ay, origin_az,
+        target_x,
+        target_y,
+        target_z,
+        target_vx,
+        target_vy,
+        target_vz,
+        target_ax,
+        target_ay,
+        target_az,
+        origin_ax,
+        origin_ay,
+        origin_az,
         projectile_speed,
         gravity,
         arc_preference,
@@ -7271,9 +7497,8 @@ fn combat_targeting_mirror_target_score_for_slot(
     }
     let count = (pool.turret_count_per_entity[target_entity_slot] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
-    let exclude_flags = CT_TURRET_CFG_PASSIVE
-        | CT_TURRET_CFG_VISUAL_ONLY
-        | CT_TURRET_CFG_IS_MANUAL_FIRE;
+    let exclude_flags =
+        CT_TURRET_CFG_PASSIVE | CT_TURRET_CFG_VISUAL_ONLY | CT_TURRET_CFG_IS_MANUAL_FIRE;
     let mut best: f32 = 0.0;
     for ti in 0..count {
         let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
@@ -7842,9 +8067,15 @@ fn compute_turret_gates_for_aim_point(
     turret_idx: u32,
     idx: usize,
     flags: u8,
-    mount_x: f64, mount_y: f64, mount_z: f64,
-    raw_aim_x: f64, raw_aim_y: f64, raw_aim_z: f64,
-    target_vx: f64, target_vy: f64, target_vz: f64,
+    mount_x: f64,
+    mount_y: f64,
+    mount_z: f64,
+    raw_aim_x: f64,
+    raw_aim_y: f64,
+    raw_aim_z: f64,
+    target_vx: f64,
+    target_vy: f64,
+    target_vz: f64,
     target_entity_id: i32,
     source_entity_id: i32,
     terrain_step_len: f64,
@@ -7859,8 +8090,12 @@ fn compute_turret_gates_for_aim_point(
 ) -> (u8, u8, u8) {
     let los_clear: u8 = if (flags & CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS) != 0 {
         combat_has_line_of_sight(
-            mount_x, mount_y, mount_z,
-            raw_aim_x, raw_aim_y, raw_aim_z,
+            mount_x,
+            mount_y,
+            mount_z,
+            raw_aim_x,
+            raw_aim_y,
+            raw_aim_z,
             terrain_step_len,
             entity_line_width,
             source_entity_id,
@@ -7890,25 +8125,35 @@ fn compute_turret_gates_for_aim_point(
                 // mount and onto terrain (and scales target velocity
                 // accordingly). `f == 0` means "use the raw aim point."
                 let f = ground_aim_fraction;
-                let (ball_aim_x, ball_aim_y, ball_aim_z, ball_tvx, ball_tvy, ball_tvz) =
-                    if f > 0.0 {
-                        let ax = mount_x + f * (raw_aim_x - mount_x);
-                        let ay = mount_y + f * (raw_aim_y - mount_y);
-                        let az = terrain_get_surface_height(ax, ay);
-                        (ax, ay, az, target_vx * f, target_vy * f, 0.0)
-                    } else {
-                        (raw_aim_x, raw_aim_y, raw_aim_z, target_vx, target_vy, target_vz)
-                    };
+                let (ball_aim_x, ball_aim_y, ball_aim_z, ball_tvx, ball_tvy, ball_tvz) = if f > 0.0
+                {
+                    let ax = mount_x + f * (raw_aim_x - mount_x);
+                    let ay = mount_y + f * (raw_aim_y - mount_y);
+                    let az = terrain_get_surface_height(ax, ay);
+                    (ax, ay, az, target_vx * f, target_vy * f, 0.0)
+                } else {
+                    (
+                        raw_aim_x, raw_aim_y, raw_aim_z, target_vx, target_vy, target_vz,
+                    )
+                };
                 let fallback_yaw = pool.turret_rotation[idx] as f64;
                 let fallback_pitch = pool.turret_pitch[idx] as f64;
                 ballistic_clear = combat_targeting_solve_ballistic_aim_inner(
                     pool,
                     entity_slot,
                     turret_idx,
-                    ball_aim_x, ball_aim_y, ball_aim_z,
-                    ball_tvx, ball_tvy, ball_tvz,
-                    0.0, 0.0, 0.0,
-                    0.0, 0.0, 0.0,
+                    ball_aim_x,
+                    ball_aim_y,
+                    ball_aim_z,
+                    ball_tvx,
+                    ball_tvy,
+                    ball_tvz,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
                     projectile_speed,
                     gravity,
                     arc_preference,
@@ -7926,10 +8171,7 @@ fn compute_turret_gates_for_aim_point(
         && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
     {
         let ff_seg = force_field_clearance_segment(
-            mount_x, mount_y, mount_z,
-            raw_aim_x, raw_aim_y, raw_aim_z,
-            -1,
-            0,
+            mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z, -1, 0,
         );
         // Passive (mirror) weapons skip the mirror-panel walk by
         // contract: a mirror turret cannot block its own sightline
@@ -7939,8 +8181,7 @@ fn compute_turret_gates_for_aim_point(
             1
         } else {
             mirror_panel_clearance_segment(
-                mount_x, mount_y, mount_z,
-                raw_aim_x, raw_aim_y, raw_aim_z,
+                mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z,
             )
         };
         if ff_seg == 0 || mirror_clear == 0 {
@@ -8018,12 +8259,8 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         }
         // System-disabled weapons have already been reset by the TS
         // resetDisabledWeapon pre-pass; mirror this kernel's skip there.
-        if combat_targeting_weapon_system_disabled(
-            pool,
-            idx,
-            mirrors_enabled,
-            force_fields_enabled,
-        ) {
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
             continue;
         }
         // Passive (mirror) weapons never lock onto an attack-ground
@@ -8038,28 +8275,33 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
 
-        let (los_clear, ballistic_clear, force_field_clear) =
-            compute_turret_gates_for_aim_point(
-                pool,
-                entity_slot,
-                turret_idx as u32,
-                idx,
-                flags,
-                mount_x, mount_y, mount_z,
-                point_x, point_y, point_z,
-                0.0, 0.0, 0.0,
-                -1,
-                source_entity_id,
-                terrain_step_len,
-                entity_line_width,
-                force_field_obstruction_active,
-                projectile_speeds[turret_idx],
-                arc_preferences[turret_idx],
-                max_time_secs[turret_idx],
-                ground_aim_fractions[turret_idx],
-                under_only_mask[turret_idx] != 0,
-                gravity,
-            );
+        let (los_clear, ballistic_clear, force_field_clear) = compute_turret_gates_for_aim_point(
+            pool,
+            entity_slot,
+            turret_idx as u32,
+            idx,
+            flags,
+            mount_x,
+            mount_y,
+            mount_z,
+            point_x,
+            point_y,
+            point_z,
+            0.0,
+            0.0,
+            0.0,
+            -1,
+            source_entity_id,
+            terrain_step_len,
+            entity_line_width,
+            force_field_obstruction_active,
+            projectile_speeds[turret_idx],
+            arc_preferences[turret_idx],
+            max_time_secs[turret_idx],
+            ground_aim_fractions[turret_idx],
+            under_only_mask[turret_idx] != 0,
+            gravity,
+        );
 
         let dx = mount_x - point_x;
         let dy = mount_y - point_y;
@@ -8371,12 +8613,8 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
-        if combat_targeting_weapon_system_disabled(
-            pool,
-            idx,
-            mirrors_enabled,
-            force_fields_enabled,
-        ) {
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
             continue;
         }
 
@@ -8403,9 +8641,15 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
                     turret_idx as u32,
                     idx,
                     flags,
-                    mount_x, mount_y, mount_z,
-                    aim_x[turret_idx], aim_y[turret_idx], aim_z[turret_idx],
-                    target_vx, target_vy, target_vz,
+                    mount_x,
+                    mount_y,
+                    mount_z,
+                    aim_x[turret_idx],
+                    aim_y[turret_idx],
+                    aim_z[turret_idx],
+                    target_vx,
+                    target_vy,
+                    target_vz,
                     target_id,
                     source_entity_id,
                     terrain_step_len,
@@ -8490,12 +8734,8 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
-        if combat_targeting_weapon_system_disabled(
-            pool,
-            idx,
-            mirrors_enabled,
-            force_fields_enabled,
-        ) {
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
             continue;
         }
         // No existing target → nothing to validate; matches the TS
@@ -8555,41 +8795,46 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
 
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
-        let (ballistic_clear, sight_blocked) =
-            if target_valid == 0 || mirror_valid == 0 {
-                (0u8, 0u8)
+        let (ballistic_clear, sight_blocked) = if target_valid == 0 || mirror_valid == 0 {
+            (0u8, 0u8)
+        } else {
+            let (los_clear, bc, ff_clear) = compute_turret_gates_for_aim_point(
+                pool,
+                entity_slot,
+                turret_idx as u32,
+                idx,
+                flags,
+                mount_x,
+                mount_y,
+                mount_z,
+                aim_x[turret_idx],
+                aim_y[turret_idx],
+                aim_z[turret_idx],
+                target_vx,
+                target_vy,
+                target_vz,
+                target_id,
+                source_entity_id,
+                terrain_step_len,
+                entity_line_width,
+                force_field_obstruction_active,
+                projectile_speeds[turret_idx],
+                arc_preferences[turret_idx],
+                max_time_secs[turret_idx],
+                ground_aim_fractions[turret_idx],
+                under_only_mask[turret_idx] != 0,
+                gravity,
+            );
+            // sight_blocked = the weapon could otherwise fire
+            // (ballistic OK) but a visibility gate failed. Matches
+            // the TS predicate `ballisticClear && (!los || !ff)`.
+            let blocked = if bc != 0 && (los_clear == 0 || ff_clear == 0) {
+                1u8
             } else {
-                let (los_clear, bc, ff_clear) = compute_turret_gates_for_aim_point(
-                    pool,
-                    entity_slot,
-                    turret_idx as u32,
-                    idx,
-                    flags,
-                    mount_x, mount_y, mount_z,
-                    aim_x[turret_idx], aim_y[turret_idx], aim_z[turret_idx],
-                    target_vx, target_vy, target_vz,
-                    target_id,
-                    source_entity_id,
-                    terrain_step_len,
-                    entity_line_width,
-                    force_field_obstruction_active,
-                    projectile_speeds[turret_idx],
-                    arc_preferences[turret_idx],
-                    max_time_secs[turret_idx],
-                    ground_aim_fractions[turret_idx],
-                    under_only_mask[turret_idx] != 0,
-                    gravity,
-                );
-                // sight_blocked = the weapon could otherwise fire
-                // (ballistic OK) but a visibility gate failed. Matches
-                // the TS predicate `ballisticClear && (!los || !ff)`.
-                let blocked = if bc != 0 && (los_clear == 0 || ff_clear == 0) {
-                    1u8
-                } else {
-                    0u8
-                };
-                (bc, blocked)
+                0u8
             };
+            (bc, blocked)
+        };
 
         let dist_sq = target_slot
             .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
@@ -9384,28 +9629,33 @@ fn combat_targeting_candidate_gate_passes(
         .and_then(|&s| pool.entity_vel_z.get(s as usize).copied())
         .unwrap_or(0.0);
 
-    let (los_clear, ballistic_clear, force_field_clear) =
-        compute_turret_gates_for_aim_point(
-            pool,
-            entity_slot,
-            turret_idx,
-            idx,
-            flags,
-            mount_x, mount_y, mount_z,
-            aim_x, aim_y, aim_z,
-            target_vx, target_vy, target_vz,
-            candidate_id,
-            source_entity_id,
-            terrain_step_len,
-            entity_line_width,
-            force_field_obstruction_active,
-            projectile_speed,
-            arc_preference,
-            max_time_sec,
-            ground_aim_fraction,
-            under_only,
-            gravity,
-        );
+    let (los_clear, ballistic_clear, force_field_clear) = compute_turret_gates_for_aim_point(
+        pool,
+        entity_slot,
+        turret_idx,
+        idx,
+        flags,
+        mount_x,
+        mount_y,
+        mount_z,
+        aim_x,
+        aim_y,
+        aim_z,
+        target_vx,
+        target_vy,
+        target_vz,
+        candidate_id,
+        source_entity_id,
+        terrain_step_len,
+        entity_line_width,
+        force_field_obstruction_active,
+        projectile_speed,
+        arc_preference,
+        max_time_sec,
+        ground_aim_fraction,
+        under_only,
+        gravity,
+    );
 
     los_clear != 0 && ballistic_clear != 0 && force_field_clear != 0
 }
@@ -10408,9 +10658,15 @@ pub fn mirror_panel_pool_set_panel(
 /// lineOfSight.ts byte-for-byte.
 #[inline]
 fn point_segment_dist_sq3(
-    px: f64, py: f64, pz: f64,
-    ax: f64, ay: f64, az: f64,
-    bx: f64, by: f64, bz: f64,
+    px: f64,
+    py: f64,
+    pz: f64,
+    ax: f64,
+    ay: f64,
+    az: f64,
+    bx: f64,
+    by: f64,
+    bz: f64,
 ) -> f64 {
     let abx = bx - ax;
     let aby = by - ay;
@@ -10438,11 +10694,21 @@ fn point_segment_dist_sq3(
 /// Returns `Some(t)` in [0, 1] for the first hit, or `None`.
 #[inline]
 fn ray_tilted_rect_intersection_t(
-    sx: f64, sy: f64, sz: f64,
-    ex: f64, ey: f64, ez: f64,
-    pcx: f64, pcy: f64, pcz: f64,
-    nx: f64, ny: f64, nz: f64,
-    edx: f64, edy: f64, edz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    ex: f64,
+    ey: f64,
+    ez: f64,
+    pcx: f64,
+    pcy: f64,
+    pcz: f64,
+    nx: f64,
+    ny: f64,
+    nz: f64,
+    edx: f64,
+    edy: f64,
+    edz: f64,
     half_w: f64,
     half_h: f64,
 ) -> Option<f64> {
@@ -10483,10 +10749,7 @@ fn ray_tilted_rect_intersection_t(
 /// does not cross any active force-mirror panel; 0 when at least one
 /// panel blocks the segment. Hits within FORCE_MATERIAL_GRAZE_EPS of
 /// either endpoint don't count (matching the JS path).
-fn mirror_panel_clearance_segment(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
-) -> u8 {
+fn mirror_panel_clearance_segment(sx: f64, sy: f64, sz: f64, tx: f64, ty: f64, tz: f64) -> u8 {
     let pool = mirror_panel_pool();
     let unit_count = pool.unit_count as usize;
     if unit_count == 0 {
@@ -10560,11 +10823,7 @@ fn mirror_panel_clearance_segment(
             let half_h = (top_y - base_y) * 0.5;
 
             let hit_t = ray_tilted_rect_intersection_t(
-                sx, sy, sz, tx, ty, tz,
-                pcx, pcy, pcz,
-                nx, ny, nz,
-                edx, edy, edz,
-                half_w, half_h,
+                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
             );
             if let Some(t) = hit_t {
                 if t > FORCE_MATERIAL_GRAZE_EPS && t < 1.0 - FORCE_MATERIAL_GRAZE_EPS {
@@ -10581,8 +10840,12 @@ fn mirror_panel_clearance_segment(
 /// answer without going through the unified gate kernel.
 #[wasm_bindgen]
 pub fn mirror_panel_clearance_segment_export(
-    sx: f64, sy: f64, sz: f64,
-    tx: f64, ty: f64, tz: f64,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
 ) -> u8 {
     mirror_panel_clearance_segment(sx, sy, sz, tx, ty, tz)
 }

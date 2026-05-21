@@ -96,16 +96,20 @@ AIM-08.5 — Port the targeting FSM
   best + apply for fire-choice and acquisition into a single
   boundary call, with scratch buffers living on the kernel's stack).
   Priority-point / priority-target paths already ship as one call
-  each.
+  each. Pass 0 mount kinematics now runs in Rust through
+  combat_targeting_update_mount_kinematics: the slab carries
+  per-entity ground Z / rotation / surface normal / suspension offsets
+  plus per-turret local mount and previous world-pos tick, then the
+  Rust pass writes current world mount position/velocity back into the
+  slab. TS only writes that slab result back to Turret.worldPos /
+  worldVelocity while rendering, firing, and snapshot encode still read
+  JS Turret objects.
   Remaining work for AIM-08.5:
-    - Push Pass 0 mount kinematics (suspension, surface normal,
-      blueprint mount) onto the slab and move the outer
-      world.getArmedEntities() loop into Rust so the per-tick entry
-      point is a single combat_targeting_tick(...) call. Spatial
-      grid still owns enemy queries in TS today; collapsing the
-      outer loop will need either a Rust spatial index or a
-      candidate-batch pre-pass that hands all entity batches to one
-      Rust call.
+    - Move the outer world.getArmedEntities() loop into Rust so the
+      per-tick entry point is a single combat_targeting_tick(...) call.
+      Spatial grid still owns enemy queries in TS today; collapsing the
+      outer loop will need either a Rust spatial index or a candidate-
+      batch pre-pass that hands all entity batches to one Rust call.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs
