@@ -429,60 +429,11 @@ export class Render3DEntities {
       const existing = this.unitMeshes.get(e.id);
       if (existing) {
         existing.group.position.set(tx, getUnitGroundZ(e), ty);
-        if (existing.yawGroup) {
-          const orient = e.unit?.orientation;
-          if (orient) {
-            // 3-DOF chassis orientation for hover/flying units. The
-            // sim writes a yaw-only quat (pitch=roll=0 by design —
-            // see "Airborne Banking Is Visual" in
-            // design_philosophy.html); we read it and then compose a
-            // visual roll on the body-forward axis from body-lateral
-            // velocity. Mounts on these units are y=z=0, so the
-            // visual roll leaves the sim's turret-world-mount math
-            // unchanged.
-            //
-            // World→Three.js quat mapping:
-            //   q_three = (-q_world.x, -q_world.z, q_world.y, q_world.w)
-            // (yaw about world Z → -yaw about three Y; pitch about
-            // world Y → +pitch about three Z; roll about world X →
-            // -roll about three X.)
-            existing.yawGroup.quaternion.set(
-              -orient.x,
-              -orient.z,
-              orient.y,
-              orient.w,
-            );
-            const loco = e.unit?.locomotion.type;
-            if (loco === 'hover' || loco === 'flying') {
-              // Body-lateral velocity in the sim frame:
-              //   vLateral = -vx · sin(yaw) + vy · cos(yaw)
-              const vx = e.unit?.velocityX ?? 0;
-              const vy = e.unit?.velocityY ?? 0;
-              const cosY = Math.cos(tRot);
-              const sinY = Math.sin(tRot);
-              const vLateral = -vx * sinY + vy * cosY;
-              let target = AIRBORNE_BANK_PER_LATERAL_V * vLateral;
-              if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
-              else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
-              const prev = existing.visualBankRoll ?? 0;
-              // Frame-rate independent EMA: smoothed = α·prev + (1−α)·target
-              // where α = exp(−dt/τ).
-              const alpha = spinDt > 0
-                ? Math.exp(-spinDt / AIRBORNE_BANK_TAU_SEC)
-                : 1;
-              const smoothed = alpha * prev + (1 - alpha) * target;
-              existing.visualBankRoll = smoothed;
-              // Roll about the sim's body-forward axis (sim +X) maps
-              // to a negative rotation about three.js local +X under
-              // the quat mapping above. rotateX uses the LOCAL axis,
-              // which after the yaw quat above is the chassis's
-              // forward axis.
-              existing.yawGroup.rotateX(-smoothed);
-            }
-          } else {
-            existing.yawGroup.rotation.set(0, -tRot, 0);
-          }
-        }
+        // Note: the canonical yawGroup orientation write happens later
+        // in this iteration after the surface-tilt block (see
+        // `m.yawGroup.rotation.set(0, yaw, 0)` and the airborne bank
+        // composition that follows it). Setting yawGroup here would
+        // be overwritten anyway.
         applyUnitLiftGroupPose3D(existing, e);
         // Shell-state visual — two paths must agree:
         //   - applyShellOverride handles per-Mesh chassis fallbacks
@@ -618,6 +569,40 @@ export class Render3DEntities {
         chassisTilted = true;
       }
       if (m.yawGroup) m.yawGroup.rotation.set(0, yaw, 0);
+
+      // Airborne visual bank — composed on top of the canonical yaw
+      // write above so the chassis rolls into turns from body-lateral
+      // velocity. Sim has no pitch/roll for hover/flying (see
+      // "Airborne Banking Is Visual" in design_philosophy.html); the
+      // y=z=0 mount invariant on airborne turrets keeps the rolled
+      // chassis agreeing with the sim's yaw-only mount math.
+      if (airborne && m.yawGroup) {
+        // Body-lateral velocity in the sim frame:
+        //   vLateral = -vx · sin(yaw_sim) + vy · cos(yaw_sim)
+        // (tRot is the sim yaw; the local `yaw` above is the three.js
+        // mapping `-tRot`.)
+        const vx = e.unit?.velocityX ?? 0;
+        const vy = e.unit?.velocityY ?? 0;
+        const cosY = Math.cos(tRot);
+        const sinY = Math.sin(tRot);
+        const vLateral = -vx * sinY + vy * cosY;
+        let target = AIRBORNE_BANK_PER_LATERAL_V * vLateral;
+        if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
+        else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
+        const prev = m.visualBankRoll ?? 0;
+        // Frame-rate independent EMA: smoothed = α·prev + (1−α)·target
+        // where α = exp(−dt/τ).
+        const alpha = spinDt > 0
+          ? Math.exp(-spinDt / AIRBORNE_BANK_TAU_SEC)
+          : 1;
+        const smoothed = alpha * prev + (1 - alpha) * target;
+        m.visualBankRoll = smoothed;
+        // Roll about the sim's body-forward axis (sim +X) maps to a
+        // negative rotation about three.js local +X under the world→
+        // three.js quat mapping. rotateX uses the LOCAL axis, which
+        // after the yaw Euler above is the chassis's forward axis.
+        m.yawGroup.rotateX(-smoothed);
+      }
 
       // Chassis body lives entirely in unit-radius-1 space (see
       // BodyShape3D). Uniformly scaling the chassis group by the unit's
