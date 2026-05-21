@@ -191,6 +191,11 @@ export class SmokeTrail3D {
     // from the source geometry — not the per-instance matrices — so a
     // puff far from the origin would be incorrectly culled. Disable.
     this.mesh.frustumCulled = false;
+    // Draw after water (renderOrder=3). Smoke/water both use
+    // transparent+depthWrite:false, so without an explicit ordering the
+    // higher-renderOrder water plane blends over puffs that are
+    // geometrically above it.
+    this.mesh.renderOrder = 5;
     this.root.add(this.mesh);
   }
 

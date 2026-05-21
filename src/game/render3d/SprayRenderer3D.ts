@@ -184,6 +184,9 @@ export class SprayRenderer3D {
     // anywhere on the map — disable cull (same caveat the chassis +
     // particle pools share).
     this.mesh.frustumCulled = false;
+    // Draw after water (renderOrder=3) so transparent sorting doesn't
+    // let the water plane blend over particles geometrically above it.
+    this.mesh.renderOrder = 5;
     this.root.add(this.mesh);
   }
 
