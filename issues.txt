@@ -89,12 +89,14 @@ AIM-08.5 — Port the targeting FSM
   fills the per-(turret, candidate) mirror_panel_clear mask, and the
   legacy hasForceMirrorPanelClearance / hasForceMaterialSightClearance
   helpers have been deleted. The per-entity boundary-crossing count
-  for auto-mode is now down to 2 Rust calls + the spatial-grid query
+  for auto-mode is now down to 2 Rust calls
   (combat_targeting_existing_lock_and_auto_scan_tick merges the Pass
   1 validation with the auto-scan radius computation;
-  combat_targeting_auto_mode_candidate_tick collapses prep + choose-
-  best + apply for fire-choice and acquisition into a single
-  boundary call, with scratch buffers living on the kernel's stack).
+  combat_targeting_auto_mode_spatial_candidate_tick keeps the
+  spatial-grid enemy query and candidate SoA stamping inside Rust,
+  then collapses prep + choose-best + apply for fire-choice and
+  acquisition into a single boundary call, with scratch buffers living
+  in Rust).
   Priority-point / priority-target paths already ship as one call
   each. Pass 0 mount kinematics now runs in Rust through
   combat_targeting_update_mount_kinematics: the slab carries
@@ -107,9 +109,11 @@ AIM-08.5 — Port the targeting FSM
   Remaining work for AIM-08.5:
     - Move the outer world.getArmedEntities() loop into Rust so the
       per-tick entry point is a single combat_targeting_tick(...) call.
-      Spatial grid still owns enemy queries in TS today; collapsing the
-      outer loop will need either a Rust spatial index or a candidate-
-      batch pre-pass that hands all entity batches to one Rust call.
+      Auto-mode enemy queries now use the Rust spatial index directly
+      for one entity at a time; the remaining collapse needs one
+      Rust-owned multi-entity candidate pre-pass or a full Rust
+      spatial targeting tick that can service all armed entity slots
+      without returning to TypeScript between units.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

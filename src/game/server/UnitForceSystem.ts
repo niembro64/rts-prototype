@@ -218,7 +218,16 @@ export class UnitForceSystem {
 
         const groundZ = this.world.getGroundZ(body.x, body.y);
         const altitude = Math.max(body.z - groundZ, 0.5);
-        const hoverHeight = entity.unit.locomotion.hoverHeight ?? altitude;
+        const baseHoverHeight = entity.unit.locomotion.hoverHeight ?? altitude;
+        // Per-tick uniform jitter on the lift target so hover/flying
+        // units bob slightly instead of holding a perfectly fixed
+        // altitude. Sampled from the deterministic sim RNG so replays
+        // stay reproducible. With amount=a the multiplier is in
+        // [1-a, 1+a]; amount must be < 1 to keep hoverHeight positive.
+        const randAmount = entity.unit.locomotion.hoverHeightRandomizationAmount ?? 0;
+        const hoverHeight = randAmount > 0
+          ? baseHoverHeight * (1 + (this.world.rng.next() * 2 - 1) * randAmount)
+          : baseHoverHeight;
         // F_up = K / altitude  −  c · vz
         // K   = m · g · hoverHeight   (raw force)
         // c   = 2 · m · √(g / hoverHeight)  ≈ critical damping for the

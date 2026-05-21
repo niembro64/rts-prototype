@@ -6532,6 +6532,56 @@ fn combat_targeting_candidate_observable_scratch() -> &'static mut Vec<u8> {
     unsafe { &mut *COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH.0.get() }
 }
 
+// AIM-08.5 — reusable candidate SoA populated directly from the WASM
+// spatial grid for auto-mode targeting. This removes the transitional
+// TS path that resolved spatial query slots back into Entity objects
+// and then re-stamped them into parallel candidate arrays.
+#[derive(Default)]
+struct CombatTargetingSpatialCandidateScratch {
+    slots: Vec<u32>,
+    ids: Vec<i32>,
+    pos_x: Vec<f64>,
+    pos_y: Vec<f64>,
+    pos_z: Vec<f64>,
+    radius: Vec<f64>,
+    mirror_score: Vec<f64>,
+}
+
+impl CombatTargetingSpatialCandidateScratch {
+    fn clear(&mut self) {
+        self.slots.clear();
+        self.ids.clear();
+        self.pos_x.clear();
+        self.pos_y.clear();
+        self.pos_z.clear();
+        self.radius.clear();
+        self.mirror_score.clear();
+    }
+}
+
+struct CombatTargetingSpatialCandidateScratchHolder(
+    UnsafeCell<CombatTargetingSpatialCandidateScratch>,
+);
+unsafe impl Sync for CombatTargetingSpatialCandidateScratchHolder {}
+static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH: CombatTargetingSpatialCandidateScratchHolder =
+    CombatTargetingSpatialCandidateScratchHolder(UnsafeCell::new(
+        CombatTargetingSpatialCandidateScratch {
+            slots: Vec::new(),
+            ids: Vec::new(),
+            pos_x: Vec::new(),
+            pos_y: Vec::new(),
+            pos_z: Vec::new(),
+            radius: Vec::new(),
+            mirror_score: Vec::new(),
+        },
+    ));
+
+#[inline]
+fn combat_targeting_spatial_candidate_scratch(
+) -> &'static mut CombatTargetingSpatialCandidateScratch {
+    unsafe { &mut *COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH.0.get() }
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_init(initial_entity_capacity: u32) {
     let pool = combat_targeting_pool();
@@ -9156,6 +9206,159 @@ pub fn combat_targeting_auto_mode_candidate_tick(
         &apply_mask[..turret_count],
         &out_target_ids[..turret_count],
         &out_ranks[..turret_count],
+    );
+}
+
+fn combat_targeting_fill_spatial_candidate_scratch(
+    entity_slot: u32,
+    max_acquire_range: f64,
+    max_weapon_offset: f64,
+    max_targetable_radius: f64,
+    scratch: &mut CombatTargetingSpatialCandidateScratch,
+) -> u32 {
+    scratch.clear();
+    if !max_acquire_range.is_finite()
+        || !max_weapon_offset.is_finite()
+        || !max_targetable_radius.is_finite()
+    {
+        return 0;
+    }
+
+    let batch_radius = max_acquire_range + max_weapon_offset + max_targetable_radius;
+    if !batch_radius.is_finite() || batch_radius <= 0.0 {
+        return 0;
+    }
+
+    let (source_x, source_y, source_z, source_player) = {
+        let pool = combat_targeting_pool();
+        let source_slot = entity_slot as usize;
+        if source_slot >= pool.entity_id.len()
+            || pool.entity_id[source_slot] < 0
+            || !combat_targeting_entity_alive(pool, source_slot)
+        {
+            return 0;
+        }
+        (
+            pool.entity_pos_x[source_slot],
+            pool.entity_pos_y[source_slot],
+            pool.entity_pos_z[source_slot],
+            pool.entity_owner_player_id[source_slot],
+        )
+    };
+
+    let total = spatial_query_enemy_entities_in_circle_2d(
+        source_x,
+        source_y,
+        batch_radius,
+        source_player,
+        source_z - batch_radius,
+        source_z + batch_radius,
+    ) as usize;
+
+    {
+        let spatial = spatial_grid();
+        let end = total.min(spatial.scratch_u32.len());
+        if end <= 2 {
+            return 0;
+        }
+        scratch.slots.reserve(end - 2);
+        for i in 2..end {
+            scratch.slots.push(spatial.scratch_u32[i]);
+        }
+    }
+
+    let pool = combat_targeting_pool();
+    scratch.ids.reserve(scratch.slots.len());
+    scratch.pos_x.reserve(scratch.slots.len());
+    scratch.pos_y.reserve(scratch.slots.len());
+    scratch.pos_z.reserve(scratch.slots.len());
+    scratch.radius.reserve(scratch.slots.len());
+    scratch.mirror_score.reserve(scratch.slots.len());
+    for &slot_u32 in &scratch.slots {
+        let slot = slot_u32 as usize;
+        if slot >= pool.entity_id.len()
+            || pool.entity_id[slot] < 0
+            || !combat_targeting_entity_alive(pool, slot)
+        {
+            continue;
+        }
+        scratch.ids.push(pool.entity_id[slot]);
+        scratch.pos_x.push(pool.entity_pos_x[slot]);
+        scratch.pos_y.push(pool.entity_pos_y[slot]);
+        scratch.pos_z.push(pool.entity_pos_z[slot]);
+        scratch.radius.push(pool.entity_radius_shot[slot]);
+        scratch.mirror_score.push(0.0);
+    }
+
+    scratch.ids.len() as u32
+}
+
+/// AIM-08.5 — auto-mode candidate tick with Rust-owned broadphase
+/// pre-pass. JS still decides whether a spatial query is needed from
+/// the merged existing-lock + auto-scan tick, but when candidates are
+/// needed the query now stays inside Rust: the spatial grid returns
+/// slots, those slots are stamped into SoA candidate arrays from the
+/// combat-targeting slab, and the existing candidate FSM kernel runs
+/// without TS resolving Entity objects or filling candidate buffers.
+#[wasm_bindgen]
+pub fn combat_targeting_auto_mode_spatial_candidate_tick(
+    entity_slot: u32,
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    cached_fire_ranks: &[u8],
+    cached_fire_dist_sqs: &[f64],
+    needs_spatial_query: u8,
+    max_acquire_range: f64,
+    max_weapon_offset: f64,
+    max_targetable_radius: f64,
+    projectile_speeds: &[f64],
+    arc_preferences: &[u8],
+    max_time_secs: &[f64],
+    ground_aim_fractions: &[f64],
+    under_only_mask: &[u8],
+) {
+    let scratch = combat_targeting_spatial_candidate_scratch();
+    let candidate_count = if needs_spatial_query != 0 {
+        combat_targeting_fill_spatial_candidate_scratch(
+            entity_slot,
+            max_acquire_range,
+            max_weapon_offset,
+            max_targetable_radius,
+            scratch,
+        )
+    } else {
+        scratch.clear();
+        0
+    };
+
+    combat_targeting_auto_mode_candidate_tick(
+        entity_slot,
+        source_entity_id,
+        mirrors_enabled,
+        force_fields_enabled,
+        force_field_obstruction_active,
+        terrain_step_len,
+        entity_line_width,
+        gravity,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        candidate_count,
+        &scratch.ids,
+        &scratch.pos_x,
+        &scratch.pos_y,
+        &scratch.pos_z,
+        &scratch.radius,
+        &mut scratch.mirror_score,
+        projectile_speeds,
+        arc_preferences,
+        max_time_secs,
+        ground_aim_fractions,
+        under_only_mask,
     );
 }
 

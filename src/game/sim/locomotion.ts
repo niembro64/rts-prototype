@@ -64,11 +64,20 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   assertPositiveFinite(`${type}.traction`, physics.traction);
   const maxSlopeDeg = physics.maxSlopeDeg ?? LOCOMOTION_MAX_SLOPE_DEG[type];
   assertSlopeDegrees(`${type}.maxSlopeDeg`, maxSlopeDeg);
-  const hoverHeight = type === 'hover' || type === 'flying'
-    ? locomotion.config.hoverHeight
-    : undefined;
-  if (type === 'hover' || type === 'flying') {
+  const isAirborne = type === 'hover' || type === 'flying';
+  const hoverHeight = isAirborne ? locomotion.config.hoverHeight : undefined;
+  let hoverHeightRandomizationAmount: number | undefined;
+  if (isAirborne) {
     assertPositiveFinite(`${type}.hoverHeight`, hoverHeight ?? NaN);
+    const raw = locomotion.config.hoverHeightRandomizationAmount;
+    if (raw !== undefined) {
+      if (!Number.isFinite(raw) || raw < 0 || raw >= 1) {
+        throw new Error(
+          `Invalid locomotion ${type}.hoverHeightRandomizationAmount: expected finite [0,1), got ${raw}`,
+        );
+      }
+      hoverHeightRandomizationAmount = raw > 0 ? raw : undefined;
+    }
   }
   return {
     type,
@@ -77,6 +86,7 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     maxSlopeDeg,
     minSurfaceNormalZ: maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg),
     hoverHeight,
+    hoverHeightRandomizationAmount,
   };
 }
 
@@ -88,6 +98,7 @@ export function cloneUnitLocomotion(locomotion: UnitLocomotion): UnitLocomotion 
     maxSlopeDeg: locomotion.maxSlopeDeg,
     minSurfaceNormalZ: locomotion.minSurfaceNormalZ,
     hoverHeight: locomotion.hoverHeight,
+    hoverHeightRandomizationAmount: locomotion.hoverHeightRandomizationAmount,
   };
 }
 

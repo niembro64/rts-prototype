@@ -1,15 +1,13 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, PlayerId, ProjectileShot, Turret } from '../types';
+import type { Entity, ProjectileShot, Turret } from '../types';
 import { getShotMaxLifespan, isProjectileShot } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { GRAVITY } from '../../../config';
 import {
   decrementCooldown,
-  getEntityPosition3d,
   getProjectileLaunchSpeed,
-  getTargetRadius,
 } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { spatialGrid } from '../SpatialGrid';
@@ -31,8 +29,6 @@ import {
 } from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
-const _targetingEnemyPosition = { x: 0, y: 0, z: 0 };
-const _targetingUnitPosition = { x: 0, y: 0, z: 0 };
 // Per-unit reusable cache written by the Rust auto-target pre-scan.
 // It holds the current-fire rank for `engaged && ranges.fire.min`
 // weapons so Pass 2 can promote close fallbacks without recomputing.
@@ -53,15 +49,6 @@ let _ppAimX = new Float64Array(0);
 let _ppAimY = new Float64Array(0);
 let _ppAimZ = new Float64Array(0);
 const _gateAimPointScratch: Vec3 = { x: 0, y: 0, z: 0 };
-
-// AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
-// candidates into flat arrays; Rust owns score/rank/top-K/fallback.
-let _candidatePosX = new Float64Array(0);
-let _candidatePosY = new Float64Array(0);
-let _candidatePosZ = new Float64Array(0);
-let _candidateRadius = new Float64Array(0);
-let _candidateMirrorScore = new Float64Array(0);
-let _candidateIds = new Int32Array(0);
 
 function nextTargetingReacquireTick(tick: number): number {
   return tick + 1;
@@ -204,47 +191,6 @@ function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
     (weapon.config.passive && !world.mirrorsEnabled) ||
     (weapon.config.shot?.type === 'force' && !world.forceFieldsEnabled)
   );
-}
-
-function ensureCandidateScratchCapacity(count: number): void {
-  if (count <= _candidatePosX.length) return;
-  let next = Math.max(16, _candidatePosX.length);
-  while (next < count) next *= 2;
-  _candidatePosX = new Float64Array(next);
-  _candidatePosY = new Float64Array(next);
-  _candidatePosZ = new Float64Array(next);
-  _candidateRadius = new Float64Array(next);
-  _candidateMirrorScore = new Float64Array(next);
-  _candidateIds = new Int32Array(next);
-}
-
-function getTargetCandidateRadius(enemy: Entity): number {
-  return enemy.unit
-    ? enemy.unit.radius.shot
-    : (enemy.building ? getTargetRadius(enemy) : 0);
-}
-
-function fillTargetCandidateInputs(
-  sourcePlayerId: PlayerId | undefined,
-  candidates: Entity[],
-): void {
-  ensureCandidateScratchCapacity(candidates.length);
-  if (sourcePlayerId === undefined) {
-    _candidateIds.fill(-1, 0, candidates.length);
-    return;
-  }
-
-  for (let ci = 0; ci < candidates.length; ci++) {
-    const enemy = candidates[ci];
-    _candidateIds[ci] = enemy.id;
-    // _candidateMirrorScore and observability are filled inside the
-    // Rust candidate kernel from the slab; no TS-side fill needed.
-    _candidateRadius[ci] = getTargetCandidateRadius(enemy);
-    const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
-    _candidatePosX[ci] = enemyPosition.x;
-    _candidatePosY[ci] = enemyPosition.y;
-    _candidatePosZ[ci] = enemyPosition.z;
-  }
 }
 
 function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
@@ -502,52 +448,16 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const maxAcquireRange = _targetingAutoScanF64[0];
     const maxWeaponOffset = _targetingAutoScanF64[1];
 
-    // Always batch when ANY weapon needs candidates. The spatial grid
-    // returns a reused array, so consume it directly before any other
-    // spatial query can overwrite the result.
-    //
-    // Z-band optimization: the 2D circle filter ignores Z in the
-    // exact distance check, so we only need to visit cells that might
-    // contain a unit our weapons could care about. Anything outside a
-    // 3D sphere of `batchRadius` around this unit is unreachable by
-    // any weapon mounted on this chassis — the per-weapon range tests
-    // downstream would reject it anyway. The clamp to the unit's
-    // altitude ± batchRadius typically narrows the cell sweep from
-    // ~18 cells deep (full terrain span) to 3-6 cells in ground
-    // engagements.
-    let batchedEnemies: Entity[] | null = null;
-    if (needsAnyQuery) {
-      // The spatial grid query is center-based: a candidate enters the
-      // result only if its center sits inside the circle. The targeting
-      // range contract treats a target as in range when its near edge
-      // is reachable (dist <= range + targetRadius), so the broadphase
-      // must add the maximum possible target radius — otherwise a
-      // large building's center can sit outside `maxAcquireRange +
-      // maxWeaponOffset` while its hull is well within firing range,
-      // and the per-weapon distance gate would have accepted it.
-      const batchRadius = maxAcquireRange + maxWeaponOffset + world.getMaxTargetableRadius();
-      const unitPosition = getEntityPosition3d(unit, _targetingUnitPosition);
-      const ux = unitPosition.x;
-      const uy = unitPosition.y;
-      const uz = unitPosition.z;
-      batchedEnemies = spatialGrid.queryEnemyEntitiesInCircle2D(
-        ux, uy, batchRadius, playerId,
-        uz - batchRadius, uz + batchRadius,
-      );
-    }
-
     // Passes 2+3: Re-evaluate tracking weapons and acquire idle
     // weapons inside one Rust tick. The kernel internally runs
     // prep + choose-best + apply twice (fire-choice then
-    // acquisition), feeding the same candidate batch into both, so
-    // the per-entity boundary cost is one call instead of six.
-    // Zero-candidate batches still need to dispatch so acquisition's
-    // idle-pass can drop any zombie locks.
-    if (batchedEnemies) {
-      fillTargetCandidateInputs(playerId, batchedEnemies);
-    }
+    // acquisition), and now also owns the spatial-grid query +
+    // candidate SoA stamping. The query uses the same center-based
+    // radius plus max targetable radius expansion and Z-band clamp
+    // previously computed in TS. Zero-candidate batches still dispatch
+    // so acquisition's idle-pass can drop any zombie locks.
     fillGateBallisticConfig(weapons);
-    targeting.autoModeCandidateTick(
+    targeting.autoModeSpatialCandidateTick(
       unitSlot,
       unit.id,
       mirrorsEnabledFlag,
@@ -558,13 +468,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       GRAVITY,
       _cachedFireRanks,
       _cachedFireDistSqs,
-      batchedEnemies ? batchedEnemies.length : 0,
-      _candidateIds,
-      _candidatePosX,
-      _candidatePosY,
-      _candidatePosZ,
-      _candidateRadius,
-      _candidateMirrorScore,
+      needsAnyQuery ? 1 : 0,
+      maxAcquireRange,
+      maxWeaponOffset,
+      world.getMaxTargetableRadius(),
       _ppProjectileSpeeds,
       _ppArcPreferences,
       _ppMaxTimeSecs,

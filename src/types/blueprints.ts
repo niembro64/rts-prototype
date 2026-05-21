@@ -249,6 +249,11 @@ export type LocomotionPhysics = {
  *  rotors that push smoke downward and slightly outward. */
 export type HoverConfig = {
   hoverHeight: number;
+  /** Per-tick randomization of `hoverHeight` as a fraction of itself.
+   *  e.g. 0.1 → each tick samples a hover target in
+   *  [hoverHeight * 0.9, hoverHeight * 1.1] for the lift force. Omit
+   *  or 0 for a perfectly steady hover. */
+  hoverHeightRandomizationAmount?: number;
   fanDistX: number;
   fanDistY: number;
   fanRadius: number;
@@ -266,6 +271,8 @@ export type HoverConfig = {
  *  instead of downward hover fans. Dimensions are in unit-radius fractions. */
 export type FlyingConfig = {
   hoverHeight: number;
+  /** Same semantics as `HoverConfig.hoverHeightRandomizationAmount`. */
+  hoverHeightRandomizationAmount?: number;
   wingSpan: number;
   wingChord: number;
   wingOffsetX: number;

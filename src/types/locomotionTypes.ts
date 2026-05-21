@@ -20,6 +20,11 @@ export type UnitLocomotion = {
    *  height (where F_up = m·g) sits at hoverHeight. Undefined for
    *  ground locomotion. */
   hoverHeight?: number;
+  /** Hover/flying-only: per-tick uniform randomization of `hoverHeight`
+   *  expressed as a fraction. Each tick the lift force uses
+   *  hoverHeight * (1 + U(-amount, +amount)). Undefined or 0 means no
+   *  randomization. */
+  hoverHeightRandomizationAmount?: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

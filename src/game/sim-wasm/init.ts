@@ -194,6 +194,7 @@ import __wbg_init, {
   combat_targeting_apply_fire_choice_fsm_batch,
   combat_targeting_apply_acquisition_choice_fsm_batch,
   combat_targeting_auto_mode_candidate_tick,
+  combat_targeting_auto_mode_spatial_candidate_tick,
   combat_targeting_existing_lock_and_auto_scan_tick,
   force_field_pool_clear,
   force_field_pool_count,
@@ -1333,6 +1334,31 @@ export interface CombatTargetingApi {
     groundAimFractions: Float64Array,
     underOnlyMask: Uint8Array,
   ) => void;
+  /** AIM-08.5 — auto-mode candidate tick with Rust-owned spatial
+   *  broadphase. JS passes the auto-scan radius result and the kernel
+   *  queries the WASM spatial grid, stamps candidate SoA from the
+   *  combat slab, then runs autoModeCandidateTick internally. */
+  readonly autoModeSpatialCandidateTick: (
+    entitySlot: number,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    needsSpatialQuery: number,
+    maxAcquireRange: number,
+    maxWeaponOffset: number,
+    maxTargetableRadius: number,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
+  ) => void;
 }
 
 /** AIM-08.1 — Force field input slab. Compact list of `count` active
@@ -2403,6 +2429,7 @@ export function initSimWasm(): Promise<SimWasm> {
           applyAcquisitionChoiceFsmBatch: combat_targeting_apply_acquisition_choice_fsm_batch,
           existingLockAndAutoScanTick: combat_targeting_existing_lock_and_auto_scan_tick,
           autoModeCandidateTick: combat_targeting_auto_mode_candidate_tick,
+          autoModeSpatialCandidateTick: combat_targeting_auto_mode_spatial_candidate_tick,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,
