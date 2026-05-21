@@ -1,0 +1,15 @@
+{
+  "energy": {
+    "startingStockpile": 500,
+    "maxStockpile": 1000,
+    "baseIncomePerSecond": 10,
+    "solarEnergyPerSecond": 50
+  },
+  "metal": {
+    "startingStockpile": 200,
+    "maxStockpile": 1000,
+    "baseIncomePerSecond": 2,
+    "extractorPerSecond": 50
+  },
+  "costMultiplier": 1.0
+}

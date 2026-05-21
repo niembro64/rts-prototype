@@ -46,6 +46,8 @@ import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
 import forceFieldVisualConfigJson from './forceFieldVisualConfig.json';
+import economyConfigJson from './economyConfig.json';
+import windConfigJson from './windConfig.json';
 import { COLORS } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
@@ -285,60 +287,53 @@ export const DGUN_TERRAIN_FOLLOW_HEIGHT = 4;
 // =============================================================================
 
 /** Starting energy stockpile for each player */
-export const STARTING_STOCKPILE = 500;
+export const STARTING_STOCKPILE = economyConfigJson.energy.startingStockpile;
 
 /** Maximum energy stockpile capacity */
-export const MAX_STOCKPILE = 1000;
+export const MAX_STOCKPILE = economyConfigJson.energy.maxStockpile;
 
 /** Base energy income per second (before solar panels) */
-export const BASE_INCOME_PER_SECOND = 10;
+export const BASE_INCOME_PER_SECOND = economyConfigJson.energy.baseIncomePerSecond;
 
 /** Starting metal stockpile for each player */
-export const STARTING_METAL = 200;
+export const STARTING_METAL = economyConfigJson.metal.startingStockpile;
 
 /** Maximum metal stockpile capacity */
-export const MAX_METAL = 1000;
+export const MAX_METAL = economyConfigJson.metal.maxStockpile;
 
 /** Base metal income per second (before extractors). Kept low — players
  *  are meant to claim deposits and run extractors on them for serious
  *  metal income, not coast on the passive drip. */
-export const BASE_METAL_PER_SECOND = 2;
+export const BASE_METAL_PER_SECOND = economyConfigJson.metal.baseIncomePerSecond;
 
 /** Metal produced per second by each completed extractor sitting on a
  *  metal deposit. Tuned so 1 extractor ≈ 1 solar in income scale. */
-export const EXTRACTOR_METAL_PER_SECOND = 50;
+export const EXTRACTOR_METAL_PER_SECOND = economyConfigJson.metal.extractorPerSecond;
 
 // =============================================================================
 // UNIT CAP
 // =============================================================================
 
 /** Energy produced per second by each completed solar panel */
-export const SOLAR_ENERGY_PER_SECOND = 50;
-export const WIND_ENERGY_PER_SECOND = 50;
-export const WIND_SPEED_MIN = 0.25;
-export const WIND_SPEED_MAX = 1.55;
+export const SOLAR_ENERGY_PER_SECOND = economyConfigJson.energy.solarEnergyPerSecond;
+export const WIND_ENERGY_PER_SECOND = windConfigJson.energyPerSecond;
+export const WIND_SPEED_MIN = windConfigJson.speed.min;
+export const WIND_SPEED_MAX = windConfigJson.speed.max;
 
 /** Wind direction oscillation wave periods in seconds. These are true
  *  sine/cosine periods, not angular divisors. Longer = slower turning. */
-const wmult = 0.5;
-
-export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS = {
-  primary: 96 * wmult,
-  secondary: 173 * wmult,
-  tertiary: 317 * wmult,
-} as const;
+export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS =
+  windConfigJson.directionOscillationPeriodsSeconds;
 
 /** Wind magnitude/speed oscillation wave periods in seconds. Longer =
  *  slower production-multiplier drift for Wind buildings. */
-export const WIND_SPEED_OSCILLATION_PERIODS_SECONDS = {
-  primary: 42 * wmult,
-  secondary: 89 * wmult,
-  tertiary: 157 * wmult,
-} as const;
+export const WIND_SPEED_OSCILLATION_PERIODS_SECONDS =
+  windConfigJson.speedOscillationPeriodsSeconds;
 
 /** Visual wind turbine rotor speed, in radians per second at wind speed 1.0.
  *  Actual blade rotation is `wind.speed * WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED`. */
-export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED = 2;
+export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED =
+  windConfigJson.turbine.rotorRadPerSecPerWindSpeed;
 
 /** Wind turbine visual EMA half-life multipliers layered on top of the
  *  selected PLAYER CLIENT DRIFT preset.
@@ -348,10 +343,8 @@ export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED = 2;
  *  >1.0 = smoother/slower turbine response.
  *  0.0 = snap for that channel.
  */
-export const WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS = {
-  fanYaw: 4,
-  bladeSpeed: 1.0,
-} as const;
+export const WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS =
+  windConfigJson.turbine.driftEmaHalfLifeMultipliers;
 
 // =============================================================================
 // COST MULTIPLIER
@@ -361,7 +354,7 @@ export const WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS = {
  * Multiplier applied to all unit and building energy costs.
  * 1.0 = normal costs, 2.0 = double costs, 3.0 = triple costs
  */
-export const COST_MULTIPLIER = 1.0;
+export const COST_MULTIPLIER = economyConfigJson.costMultiplier;
 
 // =============================================================================
 // COMBAT PHYSICS

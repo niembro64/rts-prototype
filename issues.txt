@@ -208,32 +208,38 @@ AUDIT 2026-05-21 - DESIGN PHILOSOPHY GAPS BEYOND AIM-08
 
 CONFIG-DATA-01 - Remaining config.ts TS literals (post-2026-05-21).
 
-Done in the first pass (data now lives in JSON, src/config.ts only orchestrates):
+Done in earlier passes (data now lives in JSON, src/config.ts only orchestrates):
 - SNAPSHOT_CONFIG -> src/snapshotConfig.json
 - EMA_CONFIG / FRAME_TIMING_EMA / EMA_INITIAL_VALUES -> src/emaConfig.json
 - MAX_TICK_DT_MS, UNIT_AIR_FRICTION_PER_60HZ_FRAME, UNIT_GROUND_FRICTION_PER_60HZ_FRAME -> appended to src/sharedSimConstants.json
 - BEAM_MAX_SEGMENTS, ROCKET_REFLECTOR_COLLISION_MODE, KNOCKBACK -> src/combatConfig.json
 - WATER_RENDER_CONFIG, SKY_RENDER_CONFIG, TERRAIN_SHADOW_RENDER_CONFIG -> src/worldRenderConfig.json
 - FORCE_FIELD_VISUAL, FORCE_FIELD_IMPACT_VISUAL -> src/forceFieldVisualConfig.json
-- BAR_THEMES -> src/barThemes.json (loader stays in barThemes.ts)
+- BAR_THEMES + every shared palette color in config.ts and the
+  world/shell/forceField/construction/nameLabel JSONs -> src/colors_config.json
+  (loader src/colorsConfig.ts; barThemes.ts now reads COLORS.ui.barThemes)
+- Economy (STARTING_STOCKPILE, MAX_STOCKPILE, BASE_INCOME_PER_SECOND,
+  STARTING_METAL, MAX_METAL, BASE_METAL_PER_SECOND, EXTRACTOR_METAL_PER_SECOND,
+  SOLAR_ENERGY_PER_SECOND, COST_MULTIPLIER) -> src/economyConfig.json
+- Wind (WIND_ENERGY_PER_SECOND, WIND_SPEED_MIN/MAX,
+  WIND_DIRECTION/SPEED_OSCILLATION_PERIODS_SECONDS,
+  WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
+  WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS) -> src/windConfig.json
+  (oscillation periods are baked: the prior 0.5x multiplier was authoring
+  scaffolding, not a tuning knob, so it does not survive the JSON migration)
 
-Still in src/config.ts as TS literals (~100 exports remaining):
-- Economy: STARTING_STOCKPILE, MAX_STOCKPILE, BASE_INCOME_PER_SECOND, STARTING_METAL,
-  MAX_METAL, BASE_METAL_PER_SECOND, EXTRACTOR_METAL_PER_SECOND, COST_MULTIPLIER,
-  SOLAR_ENERGY_PER_SECOND.
-- Wind: WIND_ENERGY_PER_SECOND, WIND_SPEED_MIN/MAX,
-  WIND_DIRECTION/SPEED_OSCILLATION_PERIODS_SECONDS, WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
-  WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.
+Still in src/config.ts as TS literals (~80 exports remaining):
 - Physics multipliers: UNIT_MASS_MULTIPLIER, PROJECTILE_MASS_MULTIPLIER,
   UNIT_THRUST_MULTIPLIER_GAME, UNIT_HP_MULTIPLIER, UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   DGUN_TERRAIN_FOLLOW_HEIGHT.
 - Server debug snapshot caps: SERVER_GRID_DEBUG_INTERVAL_MS / MAX_OCCUPIED_CELLS / MAX_SEARCH_CELLS.
 - Map / waypoint visuals: LAND_TILE_GROUND_LIFT, WAYPOINT_GROUND_LIFT,
-  REAL_BATTLE_FACTORY_WAYPOINT_TYPE/DISTANCE, HORIZON_RENDER_EXTEND, MAP_BG_COLOR,
-  MAP_OOB_COLOR, MAP_CAMERA_BG.
-- Sun / terrain render configs: SUN_RENDER_CONFIG, TERRAIN_HORIZON_BLEND_CONFIG,
-  TERRAIN_GROUND_DETAIL_* (5 fields), TERRAIN_ROCK_*, TREE_*, GROUND_RENDER_ORDER,
-  CONTACT_SHADOW_RENDER_CONFIG, LAND_TILE_TEXTURE (large sine-wave config), BURN_*.
+  REAL_BATTLE_FACTORY_WAYPOINT_TYPE/DISTANCE, HORIZON_RENDER_EXTEND.
+- Sun / terrain render configs: SUN_RENDER_CONFIG (non-color knobs),
+  TERRAIN_HORIZON_BLEND_CONFIG (non-color knobs),
+  TERRAIN_GROUND_DETAIL_* (non-color fields), TERRAIN_ROCK_* (non-color fields),
+  TREE_*, GROUND_RENDER_ORDER, CONTACT_SHADOW_RENDER_CONFIG (non-color knobs),
+  LAND_TILE_TEXTURE (large sine-wave config), BURN_* (decay taus).
 - Force-field barrier + turret grate: FORCE_FIELD_BARRIER, FORCE_FIELD_TURRET.
 - Camera / zoom: CAMERA_FOV_DEGREES, ZOOM_*, LOBBY_PREVIEW_SPIN_RATE,
   CAMERA_PAN_MULTIPLIER, CAMERA_*_ANCHOR, CAMERA_MIN_TERRAIN_CLEARANCE,
@@ -249,7 +255,8 @@ tuned without the other.
 
 Fix direction:
 Move each remaining TS data literal into a co-located .json file (group by
-domain — economy, wind, camera, sun/terrain visuals, etc.) and keep config.ts
-as the loader that returns the typed shape. The pattern is established now in
-snapshotConfig / emaConfig / combatConfig / worldRenderConfig /
-forceFieldVisualConfig / barThemes.
+domain — physics multipliers, camera, sun/terrain visuals, etc.) and keep
+config.ts as the loader that returns the typed shape. The pattern is
+established now in snapshotConfig / emaConfig / combatConfig /
+worldRenderConfig / forceFieldVisualConfig / colors_config / economyConfig /
+windConfig.
