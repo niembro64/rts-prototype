@@ -531,8 +531,8 @@ export const TERRAIN_ROCK_DETAIL_CONTRAST = COLORS.world.terrain.rock.detailCont
  *  texture-generation time (trees use stock MeshLambertMaterial so there's
  *  nowhere to mix at shader time). Changing this value requires a reload —
  *  the textures are generated once and cached. */
-export const TREE_LEAF_DETAIL_CONTRAST = 0.3;
-export const TREE_TRUNK_DETAIL_CONTRAST = 0.3;
+export const TREE_LEAF_DETAIL_CONTRAST = worldRenderConfigJson.tree.leaf.detailContrast;
+export const TREE_TRUNK_DETAIL_CONTRAST = worldRenderConfigJson.tree.trunk.detailContrast;
 
 /** How many times the tree-leaf / tree-trunk texture tiles per UV unit on
  *  the model. Trees come in at a small global scale, so a face that covers
@@ -543,8 +543,8 @@ export const TREE_TRUNK_DETAIL_CONTRAST = 0.3;
  *  from a higher repeat because the look depends on seeing many vertical
  *  cracks per trunk height. Trade-off: too high and the pattern reads as
  *  obvious tiling instead of organic surface. */
-export const TREE_LEAF_TEXTURE_REPEAT = 4;
-export const TREE_TRUNK_TEXTURE_REPEAT = 6;
+export const TREE_LEAF_TEXTURE_REPEAT = worldRenderConfigJson.tree.leaf.textureRepeat;
+export const TREE_TRUNK_TEXTURE_REPEAT = worldRenderConfigJson.tree.trunk.textureRepeat;
 
 // Stable render layering for ground-adjacent systems. Contact shadows
 // render after terrain (so terrain depth is in the buffer for occlusion
@@ -552,41 +552,12 @@ export const TREE_TRUNK_TEXTURE_REPEAT = 6;
 // naturally). Shadows depth-test against terrain so mountains occlude
 // them; polygonOffset on the shadow material keeps them from z-fighting
 // with the ground they sit on.
-export const GROUND_RENDER_ORDER = {
-  terrain: -20,
-  contactShadows: -10,
-} as const;
+export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 
 // Cheap object grounding shadows. This intentionally avoids Three.js
 // shadow maps: all units/buildings write into one transparent instanced
 // contact-shadow mesh and update at LOD-dependent strides.
-export const CONTACT_SHADOW_RENDER_CONFIG = {
-  enabled: true,
-  maxInstances: 16000,
-  lift: 1.35,
-  opacity: {
-    min: 0.11,
-    low: 0.13,
-    medium: 0.16,
-    high: 0.18,
-    max: 0.2,
-  },
-  frameStride: {
-    min: 4,
-    low: 3,
-    medium: 2,
-    high: 1,
-    max: 1,
-  },
-  unitShotRadiusMultiplier: 1.25,
-  buildingRadiusMultiplier: 0.72,
-  minBuildingRadius: 22,
-  sunStretch: 1.35,
-  crossSunSquash: 0.78,
-  unitSunOffsetPerHeight: 0.18,
-  buildingSunOffsetPerHeight: 0.22,
-  maxSunOffset: 70,
-} as const;
+export const CONTACT_SHADOW_RENDER_CONFIG = worldRenderConfigJson.contactShadow;
 
 // Seam-safe land tile terrain texture. These waves are evaluated from
 // world-space X/Z only, so adjacent land tiles share exact vertex colors
@@ -681,16 +652,12 @@ export const LAND_TILE_TEXTURE_CACHE_KEY = JSON.stringify({
 
 // Scorched earth burn mark colors and decay
 export const BURN_COLOR_HOT = COLORS.world.burnMark.hotColorHex; // bright red start
-export const BURN_COLOR_COOL = MAP_BG_COLOR; // fades to background
-export const BURN_COLOR_TAU = 200; // color decay: red → black (ms), fast
-export const BURN_COOL_TAU = 500; // color decay: black → background (ms), slow
+export const BURN_COLOR_TAU = worldRenderConfigJson.burnMark.colorTauMs; // color decay: red → black (ms), fast
+export const BURN_COOL_TAU = worldRenderConfigJson.burnMark.coolTauMs; // color decay: black → background (ms), slow
 
 export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFieldBarrierRatioConfig =
   {
-    outerRatio: 0.8,
-    // Sphere origin sits below the turret origin by this fraction of
-    // the computed outer radius. 0.5 means "half a field radius down".
-    originOffsetRadiusRatio: 0.3,
+    ...forceFieldVisualConfigJson.barrier,
     color: COLORS.effects.forceField.barrier.colorHex,
     alpha: COLORS.effects.forceField.barrier.alpha,
     particleAlpha: COLORS.effects.forceField.barrier.particleAlpha,
@@ -724,19 +691,8 @@ export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
  * Force field turret (grate) configuration per unit type.
  * All length/width values are multipliers of the unit's collision radius.
  */
-export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
-  forceField: {
-    shape: 'circle',
-    count: 5,
-    length: 0.0,
-    width: 0.45,
-    taper: 0.5,
-    baseOffset: 0.0,
-    originOffset: 0,
-    thickness: 1.5,
-    reversePhase: true,
-  },
-};
+export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> =
+  forceFieldVisualConfigJson.turret as Record<string, ForceFieldTurretConfig>;
 
 // =============================================================================
 // CHASSIS MOUNT POINTS

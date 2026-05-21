@@ -244,14 +244,19 @@ Done in earlier passes (data now lives in JSON, src/config.ts only orchestrates)
 - Background battle: BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING ->
   src/backgroundBattleConfig.json. TURRET_RETURN_TO_FORWARD was an unused
   export and was deleted under Delete The Old Path.
+- TREE_* (detail contrasts + texture repeats), GROUND_RENDER_ORDER,
+  CONTACT_SHADOW_RENDER_CONFIG (non-color knobs), BURN_* decay taus appended
+  to src/worldRenderConfig.json. BURN_COLOR_COOL was an unused export and
+  was deleted under Delete The Old Path.
+- Force-field barrier + turret grate (FORCE_FIELD_BARRIER outer/origin
+  ratios + FORCE_FIELD_TURRET grate definitions) appended to
+  src/forceFieldVisualConfig.json.
 
 Still in src/config.ts as TS literals:
 - Sun / terrain render configs: SUN_RENDER_CONFIG (non-color knobs),
   TERRAIN_HORIZON_BLEND_CONFIG (non-color knobs),
   TERRAIN_GROUND_DETAIL_* (non-color fields), TERRAIN_ROCK_* (non-color fields),
-  TREE_*, GROUND_RENDER_ORDER, CONTACT_SHADOW_RENDER_CONFIG (non-color knobs),
-  LAND_TILE_TEXTURE (large sine-wave config), BURN_* (decay taus).
-- Force-field barrier + turret grate: FORCE_FIELD_BARRIER, FORCE_FIELD_TURRET.
+  LAND_TILE_TEXTURE (large sine-wave config).
 
 Why it matters:
 The blueprints under src/game/sim/blueprints/ correctly pair *.json with thin *.ts

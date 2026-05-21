@@ -16,5 +16,50 @@
       "softness": 82,
       "strength": 0.58
     }
+  },
+  "burnMark": {
+    "colorTauMs": 200,
+    "coolTauMs": 500
+  },
+  "tree": {
+    "leaf": {
+      "detailContrast": 0.3,
+      "textureRepeat": 4
+    },
+    "trunk": {
+      "detailContrast": 0.3,
+      "textureRepeat": 6
+    }
+  },
+  "groundRenderOrder": {
+    "terrain": -20,
+    "contactShadows": -10
+  },
+  "contactShadow": {
+    "enabled": true,
+    "maxInstances": 16000,
+    "lift": 1.35,
+    "opacity": {
+      "min": 0.11,
+      "low": 0.13,
+      "medium": 0.16,
+      "high": 0.18,
+      "max": 0.2
+    },
+    "frameStride": {
+      "min": 4,
+      "low": 3,
+      "medium": 2,
+      "high": 1,
+      "max": 1
+    },
+    "unitShotRadiusMultiplier": 1.25,
+    "buildingRadiusMultiplier": 0.72,
+    "minBuildingRadius": 22,
+    "sunStretch": 1.35,
+    "crossSunSquash": 0.78,
+    "unitSunOffsetPerHeight": 0.18,
+    "buildingSunOffsetPerHeight": 0.22,
+    "maxSunOffset": 70
   }
 }

@@ -1,4 +1,8 @@
 {
+  "barrier": {
+    "outerRatio": 0.8,
+    "originOffsetRadiusRatio": 0.3
+  },
   "shield": {
     "colorMode": "config"
   },
@@ -17,5 +21,18 @@
     "coreRadiusFrac": 0.42,
     "coreDurationFrac": 0.45,
     "surfaceOffset": 1.2
+  },
+  "turret": {
+    "forceField": {
+      "shape": "circle",
+      "count": 5,
+      "length": 0.0,
+      "width": 0.45,
+      "taper": 0.5,
+      "baseOffset": 0.0,
+      "originOffset": 0,
+      "thickness": 1.5,
+      "reversePhase": true
+    }
   }
 }
