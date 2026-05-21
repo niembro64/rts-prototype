@@ -767,10 +767,10 @@
           "yFrac": 0.6
         },
         {
-          "kind": "cone",
+          "kind": "cylinder",
           "offsetForward": -2.1,
           "lengthFrac": 4.2,
-          "radiusFrac": 0.34,
+          "radiusFrac": 0.2,
           "centerYFrac": 0.6
         }
       ]

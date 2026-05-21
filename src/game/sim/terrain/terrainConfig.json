@@ -9,7 +9,7 @@
   "terrainTrianglePreserveWaterline": true,
   "terrainTriangleVertexKeyScale": 1000,
   "terrainShapeMagnitude": 800,
-  "terrainDTerrain": 500,
+  "terrainDTerrain": 200,
   "terrainCirclePerimeterEdgeFraction": 0.49,
   "terrainCirclePerimeterTransitionWidthFraction": 0.1,
   "terrainGenerationEdgeTransitionWidthFraction": 0.04,
@@ -26,7 +26,7 @@
     "radiusFraction": 0.4,
     "phase": 1.7,
     "components": [
-      { "wavelength": 200, "magnitude": 0.9 },
+      { "wavelength": 600, "magnitude": 0.9 },
       { "wavelength": 600, "magnitude": 0 },
       { "wavelength": 600, "magnitude": 0 }
     ]

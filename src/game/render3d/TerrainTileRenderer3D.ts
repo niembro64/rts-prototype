@@ -170,14 +170,15 @@ function sampleTerrainSlope(
   if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
     const ok = sim.terrainGetSurfaceNormal(x, z, _neighborhoodWasmScratch);
     if (ok !== 0) {
-      const ny = _neighborhoodWasmScratch[1];
-      return 1 - Math.min(1, Math.abs(ny));
+      // Terrain sampler normals are in sim coordinates: x/y horizontal, z up.
+      const up = _neighborhoodWasmScratch[2];
+      return 1 - Math.min(1, Math.abs(up));
     }
   }
   const normal = terrainMeshNormalFromSample(
     getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize),
   );
-  return 1 - Math.min(1, Math.abs(normal.ny));
+  return 1 - Math.min(1, Math.abs(normal.nz));
 }
 
 // Distance-weighted max slope over the kernel above. Captures the
@@ -464,9 +465,13 @@ export class TerrainTileRenderer3D {
             '  float bufferSlope = clamp(max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope), 0.0, 1.0);',
             '  float maskSlope = max(geomSlope, bufferSlope);',
             '  float flatDetail = (1.0 - smoothstep(0.05, 0.50, maskSlope)) * (1.0 - shoreline);',
-            '  // Restrict the grass texture to the base 0-height flat zone only.',
-            '  float baseZoneMask = 1.0 - smoothstep(uGroundDetailHeightMin, uGroundDetailHeightMax, vTerrainWorldPos.y);',
-            '  float flatGreenDetail = flatDetail * baseZoneMask;',
+            '  // Restrict the grass texture to flat triangles on the world-0 plane.',
+            '  // Height fades by distance from zero so lower shelves and raised',
+            '  // plateaus are not treated as base grass, while the transition into',
+            '  // adjacent height/slope colors remains smooth.',
+            '  float zeroHeightDistance = abs(vTerrainWorldPos.y);',
+            '  float zeroHeightMask = 1.0 - smoothstep(uGroundDetailHeightMin, uGroundDetailHeightMax, zeroHeightDistance);',
+            '  float flatGreenDetail = flatDetail * zeroHeightMask;',
             '  // The rock zone is the exact complement: everywhere on land that the',
             '  // grass zone does not cover. They sum to (1 - shoreline) — they never',
             '  // overlap, and they never leave a gap. Shoreline itself stays as the',
@@ -549,7 +554,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v27';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v28';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -889,7 +894,7 @@ export class TerrainTileRenderer3D {
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
-        const vertexSlope = 1 - Math.min(1, Math.abs(normal.ny));
+        const vertexSlope = 1 - Math.min(1, Math.abs(normal.nz));
         terrainNeighborhoodSlopes.push(
           computeNeighborhoodSlope(
             wx,
