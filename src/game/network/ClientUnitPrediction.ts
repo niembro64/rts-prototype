@@ -8,7 +8,7 @@ import {
 } from '@/clientBarConfig';
 import { LAND_CELL_SIZE } from '../../config';
 import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
-import type { Entity } from '../sim/types';
+import type { Entity, TurretState } from '../sim/types';
 import {
   angleDeltaAbs,
   clamp,
@@ -30,6 +30,11 @@ import {
   getUnitGroundFrictionDamp,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
+import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from '../sim/combat/targetingInputStamping';
 import type { ServerTarget } from './ClientPredictionTargets';
 
 const PREDICTION_POS_EPSILON_SQ = 0.01 * 0.01;
@@ -41,6 +46,24 @@ const TURRET_PITCH_MIN = -Math.PI / 2;
 const TURRET_PITCH_MAX = Math.PI / 2;
 
 type UnitPredictionTarget = ServerTarget;
+
+// Slab-first read of the per-turret engaged state. On the host the
+// targeting Rust kernel is the authoritative source; on a remote
+// client the slab is unstamped and we fall back to the snapshot-
+// hydrated JS Turret.state.
+const _predictFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_ENGAGED,
+  targetId: null,
+};
+function isTurretEngaged(
+  entity: Entity,
+  weaponIndex: number,
+  jsState: TurretState,
+): boolean {
+  return readCombatTargetingTurretFsmInto(entity, weaponIndex, _predictFsm)
+    ? _predictFsm.stateCode === CT_TURRET_STATE_ENGAGED
+    : jsState === 'engaged';
+}
 
 function advanceTurretYaw(angle: number, angularVelocity: number, dt: number): number {
   const safeAngle = Number.isFinite(angle) ? angle : 0;
@@ -437,7 +460,7 @@ export function applyClientCombatExpensivePrediction(options: {
     }
     const fieldShot = shot;
     const cur = weapon.forceField?.range ?? 0;
-    const targetProgress = weapon.state === 'engaged' ? 1 : 0;
+    const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
     if (cur < targetProgress) {
@@ -509,7 +532,7 @@ export function clientUnitPredictionIsSettled(
 
     if (forceFieldsEnabled && weapon.config.shot?.type === 'force') {
       if ((weapon.forceField?.range ?? 0) > PREDICTION_TURRET_EPSILON) return false;
-      if (weapon.state === 'engaged') return false;
+      if (isTurretEngaged(entity, i, weapon.state)) return false;
     }
   }
 
