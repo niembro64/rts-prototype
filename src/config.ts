@@ -48,6 +48,10 @@ import worldRenderConfigJson from './worldRenderConfig.json';
 import forceFieldVisualConfigJson from './forceFieldVisualConfig.json';
 import economyConfigJson from './economyConfig.json';
 import windConfigJson from './windConfig.json';
+import physicsTuningConfigJson from './physicsTuningConfig.json';
+import serverDebugGridConfigJson from './serverDebugGridConfig.json';
+import cameraConfigJson from './cameraConfig.json';
+import type { CameraFovDegrees } from './types/client';
 import { COLORS } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
@@ -74,9 +78,9 @@ export const WAYPOINT_GROUND_LIFT = 12;
 // separately from normal gameplay snapshots. These overlays are diagnostic
 // data, not simulation state, and recomputing/sending them every snapshot can
 // create visible hitches at high unit counts.
-export const SERVER_GRID_DEBUG_INTERVAL_MS = 250;
-export const SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS = 4096;
-export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = 4096;
+export const SERVER_GRID_DEBUG_INTERVAL_MS = serverDebugGridConfigJson.snapshotIntervalMs;
+export const SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS = serverDebugGridConfigJson.maxOccupiedCells;
+export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxSearchCells;
 
 // F=============================================================================
 // SNAPSHOT / NETWORKING
@@ -280,7 +284,7 @@ export const BODY_SLEEP_TICKS = sharedSimConstants.bodySleepTicks;
 /** D-gun wave altitude above local terrain. The D-gun is no longer a
  *  ballistic shell; it rides the terrain at this offset until its
  *  range-derived runtime timeout expires. */
-export const DGUN_TERRAIN_FOLLOW_HEIGHT = 4;
+export const DGUN_TERRAIN_FOLLOW_HEIGHT = physicsTuningConfigJson.dgun.terrainFollowHeight;
 
 // =============================================================================
 // ECONOMY & RESOURCES
@@ -763,7 +767,7 @@ export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> = {
  * 1.0 = use raw mass values from UNIT_STATS
  * 5.0 = units feel 5x heavier (similar to old demo feel)
  */
-export const UNIT_MASS_MULTIPLIER = 10.0;
+export const UNIT_MASS_MULTIPLIER = physicsTuningConfigJson.unit.massMultiplier;
 
 /**
  * Global mass multiplier for all projectiles.
@@ -771,7 +775,7 @@ export const UNIT_MASS_MULTIPLIER = 10.0;
  * 1.0 = use raw mass values from PROJECTILE_STATS
  * Higher = more recoil/knockback, lower = less
  */
-export const PROJECTILE_MASS_MULTIPLIER = 1.0;
+export const PROJECTILE_MASS_MULTIPLIER = physicsTuningConfigJson.projectile.massMultiplier;
 
 /**
  * Global thrust multiplier for all unit movement.
@@ -779,7 +783,7 @@ export const PROJECTILE_MASS_MULTIPLIER = 1.0;
  * Higher values = faster acceleration, higher top speed.
  * 1.0 = default, 0.5 = sluggish, 2.0 = snappy
  */
-export const UNIT_THRUST_MULTIPLIER_GAME = 20.0;
+export const UNIT_THRUST_MULTIPLIER_GAME = physicsTuningConfigJson.unit.thrustMultiplier;
 
 /**
  * Global HP multiplier applied to every unit at creation time. The
@@ -787,7 +791,7 @@ export const UNIT_THRUST_MULTIPLIER_GAME = 20.0;
  * spawn is base × this. 1.0 = blueprint values; 2.0 = double defense
  * (units take twice as many hits to kill at the same incoming DPS).
  */
-export const UNIT_HP_MULTIPLIER = 2.0;
+export const UNIT_HP_MULTIPLIER = physicsTuningConfigJson.unit.hpMultiplier;
 
 /**
  * Vertical distance between terrain and a unit's locomotion ground
@@ -798,7 +802,7 @@ export const UNIT_HP_MULTIPLIER = 2.0;
  * so newly-created units begin in freefall and settle through the same
  * gravity / terrain-spring path as every other airborne unit.
  */
-export const UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND = 3;
+export const UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND = physicsTuningConfigJson.unit.initialSpawnHeightAboveGround;
 
 // UNIT_STATS removed — now in blueprints
 
@@ -874,13 +878,13 @@ export type { SynthId, SoundEntry } from './audioConfig';
  *  Lower values feel like a narrower/telephoto lens; higher values
  *  feel like a wider-angle lens. This is lens FOV, not the orbit
  *  camera's pitch angle against the terrain. */
-export const CAMERA_FOV_DEGREES = 30;
+export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegrees;
 
 /** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = 0.2;
+export const ZOOM_MIN = cameraConfigJson.zoom.min;
 
 /** Maximum zoom level (zoomed in) */
-export const ZOOM_MAX = 40.0;
+export const ZOOM_MAX = cameraConfigJson.zoom.max;
 
 /**
  * Per-wheel-tick zoom fraction. Each scroll-IN moves the camera
@@ -896,10 +900,10 @@ export const ZOOM_MAX = 40.0;
  * 0.125 keeps roughly the historical 1.125-multiplier "feel" but
  * the cursor's world point stays pinned through the move.
  */
-export const ZOOM_STEP_FRACTION = 0.2;
+export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 
 /** Initial zoom level for the demo game (zoomed out overview) */
-export const ZOOM_INITIAL_DEMO = 3.5;
+export const ZOOM_INITIAL_DEMO = cameraConfigJson.zoom.initialDemo;
 
 /** Initial zoom level when a real game starts. Higher = closer.
  *  3.0 frames the local commander as a clearly visible sphere
@@ -909,7 +913,7 @@ export const ZOOM_INITIAL_DEMO = 3.5;
  *  2D era put the camera ~2× baseDistance away — fine when the
  *  map is full of units, useless when a real game opens with just
  *  two commanders. The user can wheel out to see the opponent. */
-export const ZOOM_INITIAL_GAME = 3.0;
+export const ZOOM_INITIAL_GAME = cameraConfigJson.zoom.initialGame;
 
 /** GAME LOBBY preview pane — pulled WAY back so the whole map
  *  fits in the small box and players can read the terrain layout
@@ -917,15 +921,15 @@ export const ZOOM_INITIAL_GAME = 3.0;
  *  only (no units, no buildings) and slowly orbits around the map
  *  center, so a wide framing makes the relative spawn positions
  *  legible during the spin. */
-export const ZOOM_INITIAL_LOBBY_PREVIEW = 0.6;
+export const ZOOM_INITIAL_LOBBY_PREVIEW = cameraConfigJson.zoom.initialLobbyPreview;
 
 /** Continuous-orbit rate (radians per second) for the GAME LOBBY
  *  preview camera. ~5.3 °/s = a full rotation every ~68 s — slow
  *  enough that it reads as "alive" rather than "frantic". */
-export const LOBBY_PREVIEW_SPIN_RATE = 0.0925;
+export const LOBBY_PREVIEW_SPIN_RATE = cameraConfigJson.lobbyPreview.spinRate;
 
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
-export const CAMERA_PAN_MULTIPLIER = 6.0;
+export const CAMERA_PAN_MULTIPLIER = cameraConfigJson.panMultiplier;
 
 /**
  * Where the wheel-zoom and alt+middle-click rotate operations
@@ -948,7 +952,7 @@ export type CameraAnchorMode = 'cursor' | 'screen-center';
  *  player is pointing at — the existing "zoom toward what I'm
  *  looking at" feel. Set to `'screen-center'` to dolly in along
  *  the view axis instead. */
-export const CAMERA_ZOOM_IN_ANCHOR: CameraAnchorMode = 'cursor';
+export const CAMERA_ZOOM_IN_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.zoomIn as CameraAnchorMode;
 
 /** Anchor for SCROLL-OUT (wheel deltaY > 0). Defaults to
  *  `'screen-center'` so zooming out reads as a normal pull-back
@@ -956,7 +960,7 @@ export const CAMERA_ZOOM_IN_ANCHOR: CameraAnchorMode = 'cursor';
  *  anchored zoom-in (which would yank whatever was under the
  *  cursor toward the screen center as the camera receded). The two
  *  defaults intentionally diverge: in to cursor, out from center. */
-export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = 'screen-center';
+export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.zoomOut as CameraAnchorMode;
 
 /** Anchor for ALT + middle-click ORBIT (camera rotation). Defaults
  *  to `'screen-center'` so the framed view rotates around itself
@@ -964,7 +968,7 @@ export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = 'screen-center';
  *  hovering — easier to keep the scene composed while tumbling.
  *  Set to `'cursor'` to pivot around whatever the player is
  *  pointing at (the previous cursor-anchored behavior). */
-export const CAMERA_ROTATE_ANCHOR: CameraAnchorMode = 'screen-center';
+export const CAMERA_ROTATE_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.rotate as CameraAnchorMode;
 
 /** Minimum world-Y gap (sim units) between the camera and the
  *  terrain directly beneath it. Acts as the TRUE "minimum zoom"
@@ -977,7 +981,7 @@ export const CAMERA_ROTATE_ANCHOR: CameraAnchorMode = 'screen-center';
  *  down if you want the camera able to nuzzle the surface. 80 is
  *  visually safe across the current heightmap (mountains ~750 wu,
  *  TILE_FLOOR_Y = -1200) and well above z-fighting range. */
-export const CAMERA_MIN_TERRAIN_CLEARANCE = 80;
+export const CAMERA_MIN_TERRAIN_CLEARANCE = cameraConfigJson.minTerrainClearance;
 
 /** Half-width (sim units) of the band the orbit-camera target's Y
  *  coordinate is clamped to, measured from the terrain height at
@@ -993,11 +997,11 @@ export const CAMERA_MIN_TERRAIN_CLEARANCE = 80;
  *  to the actual terrain elevation it's flying over, killing the
  *  drift while still letting cursor-pin work for normal slopes
  *  within ±BAND wu. */
-export const CAMERA_TARGET_TERRAIN_BAND = 200;
+export const CAMERA_TARGET_TERRAIN_BAND = cameraConfigJson.targetTerrainBand;
 
 /**
  * World padding as a percentage of map dimensions.
  * 0.5 = 50% padding on each side (left, right, top, bottom).
  * For a 2000x2000 map with 0.5, padding is 1000px on each side.
  */
-export const WORLD_PADDING_PERCENT = 20.0;
+export const WORLD_PADDING_PERCENT = cameraConfigJson.worldPaddingPercent;

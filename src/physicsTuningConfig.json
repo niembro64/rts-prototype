@@ -1,0 +1,14 @@
+{
+  "unit": {
+    "massMultiplier": 10.0,
+    "thrustMultiplier": 20.0,
+    "hpMultiplier": 2.0,
+    "initialSpawnHeightAboveGround": 3
+  },
+  "projectile": {
+    "massMultiplier": 1.0
+  },
+  "dgun": {
+    "terrainFollowHeight": 4
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "fovDegrees": 30,
+  "panMultiplier": 6.0,
+  "minTerrainClearance": 80,
+  "targetTerrainBand": 200,
+  "worldPaddingPercent": 20.0,
+  "zoom": {
+    "min": 0.2,
+    "max": 40.0,
+    "stepFraction": 0.2,
+    "initialDemo": 3.5,
+    "initialGame": 3.0,
+    "initialLobbyPreview": 0.6
+  },
+  "lobbyPreview": {
+    "spinRate": 0.0925
+  },
+  "anchor": {
+    "zoomIn": "cursor",
+    "zoomOut": "screen-center",
+    "rotate": "screen-center"
+  }
+}

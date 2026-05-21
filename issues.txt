@@ -227,12 +227,19 @@ Done in earlier passes (data now lives in JSON, src/config.ts only orchestrates)
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS) -> src/windConfig.json
   (oscillation periods are baked: the prior 0.5x multiplier was authoring
   scaffolding, not a tuning knob, so it does not survive the JSON migration)
+- Physics multipliers (UNIT_MASS_MULTIPLIER, PROJECTILE_MASS_MULTIPLIER,
+  UNIT_THRUST_MULTIPLIER_GAME, UNIT_HP_MULTIPLIER,
+  UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND, DGUN_TERRAIN_FOLLOW_HEIGHT)
+  -> src/physicsTuningConfig.json
+- Server debug snapshot caps (SERVER_GRID_DEBUG_INTERVAL_MS /
+  SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS / SERVER_GRID_DEBUG_MAX_SEARCH_CELLS)
+  -> src/serverDebugGridConfig.json
+- Camera / zoom (CAMERA_FOV_DEGREES, ZOOM_*, LOBBY_PREVIEW_SPIN_RATE,
+  CAMERA_PAN_MULTIPLIER, CAMERA_*_ANCHOR, CAMERA_MIN_TERRAIN_CLEARANCE,
+  CAMERA_TARGET_TERRAIN_BAND, WORLD_PADDING_PERCENT)
+  -> src/cameraConfig.json
 
-Still in src/config.ts as TS literals (~80 exports remaining):
-- Physics multipliers: UNIT_MASS_MULTIPLIER, PROJECTILE_MASS_MULTIPLIER,
-  UNIT_THRUST_MULTIPLIER_GAME, UNIT_HP_MULTIPLIER, UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
-  DGUN_TERRAIN_FOLLOW_HEIGHT.
-- Server debug snapshot caps: SERVER_GRID_DEBUG_INTERVAL_MS / MAX_OCCUPIED_CELLS / MAX_SEARCH_CELLS.
+Still in src/config.ts as TS literals:
 - Map / waypoint visuals: LAND_TILE_GROUND_LIFT, WAYPOINT_GROUND_LIFT,
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE/DISTANCE, HORIZON_RENDER_EXTEND.
 - Sun / terrain render configs: SUN_RENDER_CONFIG (non-color knobs),
@@ -241,9 +248,6 @@ Still in src/config.ts as TS literals (~80 exports remaining):
   TREE_*, GROUND_RENDER_ORDER, CONTACT_SHADOW_RENDER_CONFIG (non-color knobs),
   LAND_TILE_TEXTURE (large sine-wave config), BURN_* (decay taus).
 - Force-field barrier + turret grate: FORCE_FIELD_BARRIER, FORCE_FIELD_TURRET.
-- Camera / zoom: CAMERA_FOV_DEGREES, ZOOM_*, LOBBY_PREVIEW_SPIN_RATE,
-  CAMERA_PAN_MULTIPLIER, CAMERA_*_ANCHOR, CAMERA_MIN_TERRAIN_CLEARANCE,
-  CAMERA_TARGET_TERRAIN_BAND, WORLD_PADDING_PERCENT.
 - Background battle: BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING, TURRET_RETURN_TO_FORWARD.
 
 Why it matters:
