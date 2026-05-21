@@ -9,6 +9,7 @@ import type {
   BuildingDetailMesh,
   ExtractorRig,
   FactoryConstructionRig,
+  RadarRig,
   WindTurbineRig,
 } from './BuildingShape3D';
 import type { SolarRig } from './SolarCollectorMesh3D';
@@ -115,6 +116,7 @@ export type EntityMesh = {
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;
+  radarRig?: RadarRig;
   /** Per-building render height (solar is shorter than the default). */
   buildingHeight?: number;
   /** True when the building primary mesh owns its material and should

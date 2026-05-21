@@ -24,6 +24,7 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
+  RADAR_BUILDING_VISUAL_HEIGHT,
 } from '../sim/blueprints';
 import type { BuildingRenderProfile } from '../sim/types';
 import {
@@ -40,9 +41,12 @@ import {
 } from './MetalExtractorMesh3D';
 import {
   boxGeom,
+  createHexFrustumGeometry,
   disposeBuildingMeshPrimitives,
   detail,
   hexCylinderGeom,
+  invisibleMat,
+  makeBox,
   makeCylinder,
   makeSphere,
 } from './BuildingMeshPrimitives3D';
@@ -73,6 +77,7 @@ export type BuildingDetailRole =
   | 'solarTeamAccent'
   | 'windRig'
   | 'extractorRotor'
+  | 'radarRig'
   | 'factoryUnitGhost'
   | 'factoryUnitCore'
   | 'factorySpark'
@@ -104,19 +109,36 @@ export type BuildingShape = {
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;
+  radarRig?: RadarRig;
+};
+
+export type RadarRig = {
+  head: THREE.Mesh;
+  sweep: THREE.Mesh;
 };
 
 // ── Standard dimensions ────────────────────────────────────────────────
 /** Default fallback block height for unknown buildings. */
 const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 
+const radarTowerGeom = createHexFrustumGeometry(0.055, 0.16);
+const radarDishGeom = createRadarDishGeometry();
+const radarRingGeom = new THREE.TorusGeometry(1, 0.055, 8, 36);
 const radarFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
+const radarDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const radarDishMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.radarDish.colorHex,
   metalness: COLORS.buildings.materials.radarDish.metalness,
   roughness: COLORS.buildings.materials.radarDish.roughness,
+  side: THREE.DoubleSide,
 });
 const radarGlowMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
+const radarSweepMat = new THREE.MeshBasicMaterial({
+  color: BUILDING_PALETTE.cyanGlow,
+  transparent: true,
+  opacity: 0.72,
+  depthWrite: false,
+});
 
 function shaderRgb(rgb: readonly [number, number, number]): string {
   return `vec3(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
@@ -168,7 +190,7 @@ export function buildBuildingShape(
     case 'extractor':
       return buildMetalExtractorMesh(width, depth, primaryMat);
     case 'radar':
-      return buildRadarMesh(primaryMat);
+      return buildRadarMesh(width, depth, primaryMat);
     case 'megaBeamTower':
       return buildMegaBeamTowerMesh(primaryMat);
     case 'cannonTower':
@@ -186,27 +208,112 @@ function buildUnknown(primaryMat: THREE.Material): BuildingShape {
   return { primary, details: [], height: DEFAULT_HEIGHT };
 }
 
-function buildRadarMesh(primaryMat: THREE.Material): BuildingShape {
-  const primary = new THREE.Mesh(boxGeom, primaryMat);
-  const mast = makeCylinder(radarFrameMat, 8, 110, 0, 76, 0, hexCylinderGeom);
-  const hub = makeSphere(radarGlowMat, 12, 0, 120, 0);
-  const dish = makeCylinder(radarDishMat, 0.5, 1, 0, 126, -10, hexCylinderGeom);
-  dish.scale.set(58, 6, 46);
-  dish.rotation.x = Math.PI / 2.35;
-  const rim = makeCylinder(radarFrameMat, 0.5, 1, 0, 126, -11, hexCylinderGeom);
-  rim.scale.set(64, 4, 52);
-  rim.rotation.x = dish.rotation.x;
+function buildRadarMesh(
+  width: number,
+  depth: number,
+  primaryMat: THREE.Material,
+): BuildingShape {
+  const height = RADAR_BUILDING_VISUAL_HEIGHT;
+  const minDim = Math.min(width, depth);
+  const primary = new THREE.Mesh(radarTowerGeom, primaryMat);
+  const details: BuildingShape['details'] = [];
 
+  const baseRadius = Math.max(30, minDim * 0.16);
+  const baseH = Math.max(8, minDim * 0.08);
+  details.push(detail(
+    makeCylinder(radarDarkMat, baseRadius, baseH, 0, baseH / 2, 0, hexCylinderGeom),
+    'min',
+  ));
+  details.push(detail(
+    makeCylinder(radarFrameMat, baseRadius * 0.72, 4, 0, height * 0.38, 0, hexCylinderGeom),
+    'low',
+  ));
+  details.push(detail(
+    makeCylinder(radarFrameMat, baseRadius * 0.42, 5, 0, height * 0.78, 0, hexCylinderGeom),
+    'low',
+  ));
+
+  const sweep = new THREE.Mesh(boxGeom, invisibleMat);
+  sweep.position.set(0, height * 0.56, 0);
+  const sweepRadius = Math.max(30, minDim * 0.1);
+  const sweepRing = new THREE.Mesh(radarRingGeom, radarSweepMat);
+  sweepRing.rotation.x = Math.PI / 2;
+  sweepRing.scale.set(sweepRadius, sweepRadius, 4);
+  sweep.add(sweepRing);
+  sweep.add(makeBox(radarSweepMat, sweepRadius * 1.65, 1.4, 2.2, 0, 0, 0));
+  sweep.add(makeBox(radarFrameMat, 2.2, 2.8, sweepRadius * 1.05, 0, 0, 0));
+  sweep.add(makeSphere(radarGlowMat, 3.8, sweepRadius * 0.82, 0, 0));
+  sweep.add(makeSphere(radarGlowMat, 3.8, -sweepRadius * 0.82, 0, 0));
+
+  const head = new THREE.Mesh(boxGeom, invisibleMat);
+  head.position.set(0, height * 0.9, 0);
+  head.add(makeSphere(radarGlowMat, Math.max(5.5, minDim * 0.025), 0, 0, 0));
+  head.add(makeCylinder(radarFrameMat, Math.max(5, minDim * 0.022), 8, 0, -6, 0, hexCylinderGeom));
+
+  const dishPivot = new THREE.Mesh(boxGeom, invisibleMat);
+  dishPivot.rotation.x = -0.58;
+  dishPivot.position.set(0, 1, 0);
+  const dishRadiusX = Math.max(36, minDim * 0.14);
+  const dishRadiusY = dishRadiusX * 0.66;
+  const dishDepth = Math.max(8, minDim * 0.04);
+  const dish = new THREE.Mesh(radarDishGeom, radarDishMat);
+  dish.scale.set(dishRadiusX, dishRadiusY, dishDepth);
+  dishPivot.add(dish);
+
+  const rim = new THREE.Mesh(radarRingGeom, radarFrameMat);
+  rim.scale.set(dishRadiusX, dishRadiusY, 4);
+  dishPivot.add(rim);
+
+  const feedZ = Math.max(16, dishRadiusX * 0.36);
+  dishPivot.add(makeSphere(radarGlowMat, Math.max(3.6, minDim * 0.045), 0, 0, feedZ));
+  head.add(dishPivot);
+
+  details.push(detail(sweep, 'low', undefined, 'radarRig'));
+  details.push(detail(head, 'low', undefined, 'radarRig'));
   return {
     primary,
-    height: 150,
-    details: [
-      detail(mast, 'low'),
-      detail(hub, 'low'),
-      detail(rim, 'medium'),
-      detail(dish, 'medium'),
-    ],
+    height,
+    details,
+    radarRig: { head, sweep },
   };
+}
+
+function createRadarDishGeometry(
+  radialSegments: number = 5,
+  angularSegments: number = 28,
+): THREE.BufferGeometry {
+  const positions: number[] = [0, 0, -1];
+  for (let r = 1; r <= radialSegments; r++) {
+    const radius = r / radialSegments;
+    const z = -1 + radius * radius;
+    for (let a = 0; a < angularSegments; a++) {
+      const angle = (a / angularSegments) * Math.PI * 2;
+      positions.push(Math.cos(angle) * radius, Math.sin(angle) * radius, z);
+    }
+  }
+
+  const indices: number[] = [];
+  const ringIndex = (ring: number, angle: number): number => (
+    1 + (ring - 1) * angularSegments + (angle % angularSegments)
+  );
+  for (let a = 0; a < angularSegments; a++) {
+    indices.push(0, ringIndex(1, a), ringIndex(1, a + 1));
+  }
+  for (let r = 2; r <= radialSegments; r++) {
+    for (let a = 0; a < angularSegments; a++) {
+      const a0 = ringIndex(r - 1, a);
+      const a1 = ringIndex(r - 1, a + 1);
+      const b0 = ringIndex(r, a);
+      const b1 = ringIndex(r, a + 1);
+      indices.push(a0, b0, b1, a0, b1, a1);
+    }
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  return geom;
 }
 
 /** Tear down shared geometries + materials on renderer destroy. Callers
@@ -217,8 +324,13 @@ export function disposeBuildingGeoms(): void {
   disposeMetalExtractorMeshGeoms();
   disposeFactoryMeshGeoms();
   disposeSolarCollectorGeoms();
+  radarTowerGeom.dispose();
+  radarDishGeom.dispose();
+  radarRingGeom.dispose();
   radarFrameMat.dispose();
+  radarDarkMat.dispose();
   radarDishMat.dispose();
   radarGlowMat.dispose();
+  radarSweepMat.dispose();
   hazardStripeMat.dispose();
 }

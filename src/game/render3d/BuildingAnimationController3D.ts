@@ -38,6 +38,8 @@ import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
+const RADAR_HEAD_RAD_PER_SEC = 0.55;
+const RADAR_SWEEP_RAD_PER_SEC = 1.8;
 /** Per-frame blend toward the building's target open/closed pose
  *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
  *  solar petal animator's feel — smooth but not laggy. */
@@ -68,6 +70,8 @@ export class BuildingAnimationController3D {
   private extractorBuildingIdSet = new Set<EntityId>();
   private factoryBuildingIds: EntityId[] = [];
   private factoryBuildingIdSet = new Set<EntityId>();
+  private radarBuildingIds: EntityId[] = [];
+  private radarBuildingIdSet = new Set<EntityId>();
   private windFanYaw: number | null = null;
   private windVisualSpeed: number | null = null;
   private windRotorPhase = 0;
@@ -113,6 +117,9 @@ export class BuildingAnimationController3D {
     if (mesh.factoryRig) {
       this.addAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
     }
+    if (mesh.radarRig) {
+      this.addAnimatedBuilding(this.radarBuildingIds, this.radarBuildingIdSet, id);
+    }
   }
 
   unregister(id: EntityId): void {
@@ -124,6 +131,7 @@ export class BuildingAnimationController3D {
     this.extractorRotorYaws.delete(id);
     this.windCloseAmounts.delete(id);
     this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.radarBuildingIds, this.radarBuildingIdSet, id);
   }
 
   update(
@@ -237,7 +245,6 @@ export class BuildingAnimationController3D {
           const previousYaw = rotorYaws.get(id);
           if (previousYaw !== undefined && yaw > previousYaw) yaw = previousYaw;
           rotorYaws.set(id, yaw);
-          phases.set(id, phase);
           const rotors = rig.rotors;
           for (let r = 0; r < rotors.length; r++) {
             const rotor = rotors[r];
@@ -259,6 +266,7 @@ export class BuildingAnimationController3D {
             }
           }
         }
+        phases.set(id, phase);
         this.applyProductionRateIndicator(
           rig?.rateIndicator,
           normalizedRate,
@@ -285,6 +293,18 @@ export class BuildingAnimationController3D {
         timeMs,
       );
     }
+
+    if (this.radarBuildingIds.length > 0) {
+      const t = timeMs / 1000;
+      for (const id of this.radarBuildingIds) {
+        const mesh = buildingMeshes.get(id);
+        const rig = mesh?.radarRig;
+        if (!mesh || !rig || mesh.buildingCachedDetailsReady !== true) continue;
+        const seed = id * 0.137;
+        rig.head.rotation.y = t * RADAR_HEAD_RAD_PER_SEC + seed;
+        rig.sweep.rotation.y = -t * RADAR_SWEEP_RAD_PER_SEC + seed * 2.7;
+      }
+    }
   }
 
   destroy(): void {
@@ -296,6 +316,8 @@ export class BuildingAnimationController3D {
     this.extractorBuildingIdSet.clear();
     this.factoryBuildingIds.length = 0;
     this.factoryBuildingIdSet.clear();
+    this.radarBuildingIds.length = 0;
+    this.radarBuildingIdSet.clear();
     this.extractorRotorPhases.clear();
     this.extractorCloseAmounts.clear();
     this.extractorRotorYaws.clear();
