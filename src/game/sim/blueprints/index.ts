@@ -510,3 +510,48 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
     }
   }
 }
+
+// Cross-blueprint lock-on exclusion validation. Each level-1 named
+// exclusion list must reference real blueprint ids; unknown names are
+// authoring mistakes, not silent drops.
+function assertLevel1IdsInSet(
+  turretId: string,
+  field: string,
+  ids: readonly string[],
+  validSet: ReadonlySet<string>,
+  kindLabel: string,
+): void {
+  for (let i = 0; i < ids.length; i++) {
+    if (!validSet.has(ids[i])) {
+      throw new Error(
+        `Invalid turret blueprint ${turretId}: ${field}[${i}] = "${ids[i]}" is not a known ${kindLabel} id`,
+      );
+    }
+  }
+}
+const KNOWN_BUILDING_IDS: ReadonlySet<string> = new Set(Object.keys(BUILDING_BLUEPRINTS));
+const KNOWN_UNIT_IDS: ReadonlySet<string> = new Set(Object.keys(UNIT_BLUEPRINTS));
+const KNOWN_TURRET_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
+for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
+  assertLevel1IdsInSet(
+    id,
+    'excludeLockOnLevel1Buildings',
+    bp.excludeLockOnLevel1Buildings,
+    KNOWN_BUILDING_IDS,
+    'building',
+  );
+  assertLevel1IdsInSet(
+    id,
+    'excludeLockOnLevel1Units',
+    bp.excludeLockOnLevel1Units,
+    KNOWN_UNIT_IDS,
+    'unit',
+  );
+  assertLevel1IdsInSet(
+    id,
+    'excludeLockOnLevel1Turrets',
+    bp.excludeLockOnLevel1Turrets,
+    KNOWN_TURRET_IDS,
+    'turret',
+  );
+}

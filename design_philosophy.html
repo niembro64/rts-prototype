@@ -887,6 +887,29 @@
         inherited target no longer exists, the rocket loses guidance and continues on its current
         flight path under normal projectile physics until it hits something or expires.
       </p>
+      <h3>Host intent is not turret lock-on</h3>
+      <p>
+        Units and buildings can carry a host-level target chosen by the player, AI, or command
+        system. That target expresses intent: attack this enemy, guard this ally, repair this unit,
+        assist this building, or otherwise keep the host&rsquo;s current order anchored to an entity.
+        It is not the same thing as a turret&rsquo;s current lock-on target. A host target is an input
+        each mounted turret may consult; it must not blindly overwrite every turret target on the
+        host.
+      </p>
+      <p>
+        Each turret decides whether the host target is meaningful for that turret. The turret first
+        checks its own lock-on exclusion policy, then the normal validity gates such as aliveness,
+        visibility, range, line of sight, and shot compatibility. If the host target passes, the
+        turret may inherit it as a priority lock. If the host target fails, that turret rejects the
+        inheritance and runs its own targeting flow. The host target remains intact either way.
+      </p>
+      <p>
+        This separation is what lets mixed-role hosts work. A unit guarding a friendly entity can
+        keep that friendly entity as its host target; a repair or construction turret may inherit
+        it, while a fighting turret that excludes <code>friendly_entities</code> ignores it and
+        searches for enemies normally. A mirror turret can reject the same host target unless it is
+        an allowed enemy turret. Commands belong to the host; lock-on belongs to the turret.
+      </p>
       <p>
         Turret lock-on eligibility is authored as exclusion data on the turret blueprint. Exclusions
         are subtractive: by default, a turret with no lock-on exclusions is eligible to lock onto
@@ -1149,6 +1172,7 @@
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
+        <li>Keep host command targets separate from turret lock-on targets. A unit or building may carry player intent such as attack, guard, repair, or assist; each mounted turret may inherit that target only if its own exclusion policy and targeting gates accept it.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>

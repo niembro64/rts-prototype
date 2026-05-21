@@ -34,6 +34,8 @@ export type {
   TurretAimAngleType,
   TurretAimLockOnType,
   TurretAimStyle,
+  TurretLockOnRelationshipExclusion,
+  TurretLockOnEntityFamilyExclusion,
   TurretRadiusConfig,
   TurretBlueprint,
   MountOffset,

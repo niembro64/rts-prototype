@@ -171,67 +171,6 @@ AIM-08.5 — Port the targeting FSM
   stamping pass (or has moved to its own file); parity shim runs
   end-to-end clean across the supported scenarios.
 
-LOCK-ON-01 — Add authored turret lock-on exclusion fields.
-
-Evidence:
-- design_philosophy.html now defines turret lock-on as broad by default:
-  a turret with no exclusions can lock onto any targetable friendly or
-  enemy building, unit, or turret.
-- design_philosophy.html also defines these exclusion sets:
-  exclude_lock_on_level_0_friends_and_enemies,
-  exclude_lock_on_level_0_entities,
-  exclude_lock_on_level_1_buildings,
-  exclude_lock_on_level_1_units,
-  exclude_lock_on_level_1_turrets.
-
-Why it matters:
-The targeting kernel currently treats target eligibility as code-owned
-policy. Designers need a data-owned way to express "construction turrets
-only lock friendly entities", "combat turrets only lock enemies", "mirror
-turrets only lock enemy turrets", and future named exclusions without
-forking targeting code paths.
-
-Fix direction:
-Add the exclusion fields to turret blueprint types, JSON validation, and
-compiled turret config defaults. Empty arrays mean no exclusions. Valid
-level-0 relationship entries are friendly_entities and enemy_entities.
-Valid level-0 entity-family entries are buildings, units, and turrets.
-Level-1 entries reference concrete building, unit, and turret blueprint
-ids/names. Reject unknown strings at startup; do not silently ignore bad
-authoring.
-
-Done when: turret blueprints can author all five exclusion sets, omitted
-sets compile to empty arrays, invalid entries fail validation with a clear
-error, and existing turrets keep their current behavior through explicit
-or migration-authored exclusions.
-
-LOCK-ON-02 — Migrate existing turret blueprints to explicit lock-on policy.
-
-Evidence:
-- The design default is intentionally broad. Without explicit migration,
-  existing combat turrets would become eligible to lock friendly entities
-  once the filtering kernel honors the new default.
-
-Why it matters:
-The new default is useful for composition, but current gameplay expects
-most weapon turrets to attack enemies only. Construction/repair-style
-turrets are the opposite: they should lock friendly targets and ignore
-enemy targets unless a future blueprint says otherwise.
-
-Fix direction:
-Audit every turret in src/game/sim/blueprints/turrets.json and assign
-the smallest exclusion set that preserves intended behavior. Combat
-weapons should usually exclude friendly_entities. Construction/repair
-turrets should usually exclude enemy_entities. Mirror turrets should
-exclude friendly_entities, buildings, and units so they only consider
-enemy turret targets. Visual-only turrets should either remain excluded
-from targeting by visualOnly or receive explicit exclusions if that is
-clearer in data.
-
-Done when: current gameplay behavior is preserved under the new broad
-default, and each exceptional turret has an intentional authored policy
-instead of relying on hidden targeting assumptions.
-
 LOCK-ON-03 — Stamp lock-on exclusion data into the combat-targeting slab.
 
 Evidence:

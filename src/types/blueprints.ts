@@ -73,6 +73,22 @@ export type TurretAimStyle = {
   lockOnType: TurretAimLockOnType;
 };
 
+/** Turret lock-on policy is broad by default: with no exclusions, a
+ *  turret may lock onto any living, observable building, unit, or
+ *  turret regardless of ownership. The exclusion sets below subtract
+ *  candidates from that broad default. They are evaluated in order
+ *  (relationship → entity family → level-1 named exclusions) before
+ *  range / LOS / scoring run. */
+export type TurretLockOnRelationshipExclusion =
+  | 'friendly_entities'
+  | 'enemy_entities';
+export const TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS: readonly TurretLockOnRelationshipExclusion[] =
+  ['friendly_entities', 'enemy_entities'];
+
+export type TurretLockOnEntityFamilyExclusion = 'buildings' | 'units' | 'turrets';
+export const TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS: readonly TurretLockOnEntityFamilyExclusion[] =
+  ['buildings', 'units', 'turrets'];
+
 export type TurretBlueprint = {
   id: TurretId;
   projectileId: ShotId | null;
@@ -144,6 +160,19 @@ export type TurretBlueprint = {
    *  ignore them and the renderer builds the shared construction
    *  emitter instead of weapon barrels. */
   constructionEmitter: ConstructionEmitterVisualSpec | null;
+  /** Lock-on policy: by default a turret can lock onto any friendly or
+   *  enemy building, unit, or turret. These five exclusion sets
+   *  subtract candidates from that broad default. Empty arrays mean no
+   *  exclusion. Evaluated in order: relationship → entity family →
+   *  level-1 named exclusions, all before range / LOS / scoring. */
+  excludeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipExclusion[];
+  excludeLockOnLevel0Entities: TurretLockOnEntityFamilyExclusion[];
+  /** Level-1 exclusions reference concrete blueprint ids. Each array is
+   *  validated against the corresponding blueprint id set at startup;
+   *  unknown ids fail validation rather than silently dropping. */
+  excludeLockOnLevel1Buildings: string[];
+  excludeLockOnLevel1Units: string[];
+  excludeLockOnLevel1Turrets: string[];
 };
 
 /** Chassis-local 3D mount offset, authored in body-radius fractions.
