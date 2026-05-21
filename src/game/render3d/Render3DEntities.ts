@@ -537,6 +537,11 @@ export class Render3DEntities {
       // to identity — same fast path as before.
       const yaw = -e.transform.rotation;
       let chassisTilted = false;
+      // Hover and flying chassis never contact terrain, so the ground
+      // normal is not their "up." Leaving the group quaternion at
+      // identity keeps the body level regardless of the slope below.
+      const locoType = m.locomotion?.type;
+      const airborne = locoType === 'hover' || locoType === 'flying';
       // Read the unit's sim-side smoothed normal instead of querying
       // the raw terrain mesh per frame. The sim's updateUnitGroundNormal
       // owns the canonical value (initialized at spawn, blended each
@@ -551,7 +556,7 @@ export class Render3DEntities {
             this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
             LAND_CELL_SIZE,
           );
-      if (n.nx === 0 && n.ny === 0) {
+      if (airborne || (n.nx === 0 && n.ny === 0)) {
         m.group.quaternion.identity();
       } else {
         // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny).
