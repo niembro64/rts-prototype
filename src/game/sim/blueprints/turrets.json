@@ -926,7 +926,7 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleCylinderBarrel",
-      "barrelLength": 1
+      "barrelLength": 0.5
     },
     "isManualFire": false,
     "passive": false,
