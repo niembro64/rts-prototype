@@ -1,0 +1,27 @@
+{
+  "water": {
+    "color": 2060172,
+    "opacity": 0.82
+  },
+  "sky": {
+    "topColor": "#6d9dcc",
+    "midColor": "#b7cddd",
+    "horizonColor": "#e1d5bd",
+    "midStop": 0.64
+  },
+  "terrainShadow": {
+    "enabled": true,
+    "ambient": 0.34,
+    "directStrength": 1.08,
+    "minShade": 0.26,
+    "maxShade": 1.18,
+    "precomputed": {
+      "enabled": true,
+      "samples": 7,
+      "sampleDistanceLandCellMultiplier": 0.26,
+      "bias": 16,
+      "softness": 82,
+      "strength": 0.58
+    }
+  }
+}

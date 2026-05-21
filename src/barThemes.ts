@@ -1,4 +1,5 @@
 import type { BarColorTheme, BarThemes } from './types/bars';
+import barThemesJson from './barThemes.json';
 
 /** Build the inline `style` binding that every bar / control-group
  *  uses to override the shared bar-control CSS custom properties.
@@ -19,55 +20,4 @@ export function barVars(theme: BarColorTheme): Record<string, string> {
   };
 }
 
-export const BAR_THEMES = {
-  battle: {
-    barBg: 'rgba(25, 18, 6, 0.7)',
-    time: '#cc9944',
-    activeBg: 'rgba(170, 120, 40, 0.9)',
-    activeBorder: '#cc9944',
-    activeHoverBg: 'rgba(190, 138, 50, 0.95)',
-    activeHoverBorder: '#ddaa55',
-    activePressedBg: 'rgba(145, 100, 32, 0.95)',
-    activePressedBorder: '#aa8833',
-  },
-  server: {
-    barBg: 'rgba(8, 8, 25, 0.7)',
-    time: '#8888cc',
-    activeBg: 'rgba(68, 68, 170, 0.9)',
-    activeBorder: '#6666cc',
-    activeHoverBg: 'rgba(80, 80, 195, 0.95)',
-    activeHoverBorder: '#7777dd',
-    activePressedBg: 'rgba(55, 55, 145, 0.95)',
-    activePressedBorder: '#5555aa',
-  },
-  client: {
-    barBg: 'rgba(8, 20, 8, 0.7)',
-    time: '#6a6',
-    activeBg: 'rgba(68, 136, 68, 0.9)',
-    activeBorder: '#6a6',
-    activeHoverBg: 'rgba(80, 155, 80, 0.95)',
-    activeHoverBorder: '#7b7',
-    activePressedBg: 'rgba(55, 115, 55, 0.95)',
-    activePressedBorder: '#595',
-  },
-  realBattle: {
-    barBg: 'rgba(18, 8, 25, 0.7)',
-    time: '#aa66cc',
-    activeBg: 'rgba(120, 50, 170, 0.9)',
-    activeBorder: '#9944cc',
-    activeHoverBg: 'rgba(140, 65, 195, 0.95)',
-    activeHoverBorder: '#aa55dd',
-    activePressedBg: 'rgba(100, 40, 145, 0.95)',
-    activePressedBorder: '#8833aa',
-  },
-  disabled: {
-    barBg: 'rgba(15, 15, 15, 0.7)',
-    time: '#888',
-    activeBg: 'rgba(80, 80, 80, 0.9)',
-    activeBorder: '#888',
-    activeHoverBg: 'rgba(80, 80, 80, 0.9)',
-    activeHoverBorder: '#888',
-    activePressedBg: 'rgba(80, 80, 80, 0.9)',
-    activePressedBorder: '#888',
-  },
-} as const satisfies BarThemes;
+export const BAR_THEMES: BarThemes = barThemesJson;

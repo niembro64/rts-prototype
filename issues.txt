@@ -206,19 +206,50 @@ AUDIT 2026-05-21 - DESIGN PHILOSOPHY GAPS BEYOND AIM-08
 
 ==============================================================================
 
-CONFIG-DATA-01 - Core tuning constants and snapshot/EMA tables hardcoded in src/config.ts instead of JSON.
+CONFIG-DATA-01 - Remaining config.ts TS literals (post-2026-05-21).
 
-Evidence:
-- design_philosophy.html section "Config Is Data, Not Code": "Tuning tables: damage curves, hover constants, friction values, mass tables, range tables, cost tables, build-time tables, recoil profiles" belong in JSON; data trapped in .ts is "a wall between the current code and the end-state engine."
-- src/config.ts is 1101 lines of TypeScript. Many fields correctly re-export shared JSON (GRAVITY at line 317 pulls from sharedSimConstants.json), but many tuning constants are still hardcoded TS literals:
-  - SNAPSHOT_CONFIG (line 100): position/velocity/rotation delta thresholds for the wire encoder.
-  - EMA_CONFIG / FRAME_TIMING_EMA / EMA_INITIAL_VALUES (lines 219, 235, 261): smoothing-tier coefficients consumed by both server and client.
-  - MAX_TICK_DT_MS (280), BEAM_MAX_SEGMENTS (288), ROCKET_REFLECTOR_COLLISION_MODE (295): physics/combat tunables.
-  - UNIT_AIR_FRICTION_PER_60HZ_FRAME (323), UNIT_GROUND_FRICTION_PER_60HZ_FRAME (329), UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT (334+): physical tuning numbers.
-  - WATER_RENDER_CONFIG / SKY_RENDER_CONFIG / TERRAIN_SHADOW_RENDER_CONFIG / FORCE_FIELD_VISUAL / FORCE_FIELD_IMPACT_VISUAL / KNOCKBACK (350+): visual/physical tuning objects.
+Done in the first pass (data now lives in JSON, src/config.ts only orchestrates):
+- SNAPSHOT_CONFIG -> src/snapshotConfig.json
+- EMA_CONFIG / FRAME_TIMING_EMA / EMA_INITIAL_VALUES -> src/emaConfig.json
+- MAX_TICK_DT_MS, UNIT_AIR_FRICTION_PER_60HZ_FRAME, UNIT_GROUND_FRICTION_PER_60HZ_FRAME -> appended to src/sharedSimConstants.json
+- BEAM_MAX_SEGMENTS, ROCKET_REFLECTOR_COLLISION_MODE, KNOCKBACK -> src/combatConfig.json
+- WATER_RENDER_CONFIG, SKY_RENDER_CONFIG, TERRAIN_SHADOW_RENDER_CONFIG -> src/worldRenderConfig.json
+- FORCE_FIELD_VISUAL, FORCE_FIELD_IMPACT_VISUAL -> src/forceFieldVisualConfig.json
+- BAR_THEMES -> src/barThemes.json (loader stays in barThemes.ts)
+
+Still in src/config.ts as TS literals (~100 exports remaining):
+- Economy: STARTING_STOCKPILE, MAX_STOCKPILE, BASE_INCOME_PER_SECOND, STARTING_METAL,
+  MAX_METAL, BASE_METAL_PER_SECOND, EXTRACTOR_METAL_PER_SECOND, COST_MULTIPLIER,
+  SOLAR_ENERGY_PER_SECOND.
+- Wind: WIND_ENERGY_PER_SECOND, WIND_SPEED_MIN/MAX,
+  WIND_DIRECTION/SPEED_OSCILLATION_PERIODS_SECONDS, WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
+  WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.
+- Physics multipliers: UNIT_MASS_MULTIPLIER, PROJECTILE_MASS_MULTIPLIER,
+  UNIT_THRUST_MULTIPLIER_GAME, UNIT_HP_MULTIPLIER, UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
+  DGUN_TERRAIN_FOLLOW_HEIGHT.
+- Server debug snapshot caps: SERVER_GRID_DEBUG_INTERVAL_MS / MAX_OCCUPIED_CELLS / MAX_SEARCH_CELLS.
+- Map / waypoint visuals: LAND_TILE_GROUND_LIFT, WAYPOINT_GROUND_LIFT,
+  REAL_BATTLE_FACTORY_WAYPOINT_TYPE/DISTANCE, HORIZON_RENDER_EXTEND, MAP_BG_COLOR,
+  MAP_OOB_COLOR, MAP_CAMERA_BG.
+- Sun / terrain render configs: SUN_RENDER_CONFIG, TERRAIN_HORIZON_BLEND_CONFIG,
+  TERRAIN_GROUND_DETAIL_* (5 fields), TERRAIN_ROCK_*, TREE_*, GROUND_RENDER_ORDER,
+  CONTACT_SHADOW_RENDER_CONFIG, LAND_TILE_TEXTURE (large sine-wave config), BURN_*.
+- Force-field barrier + turret grate: FORCE_FIELD_BARRIER, FORCE_FIELD_TURRET.
+- Camera / zoom: CAMERA_FOV_DEGREES, ZOOM_*, LOBBY_PREVIEW_SPIN_RATE,
+  CAMERA_PAN_MULTIPLIER, CAMERA_*_ANCHOR, CAMERA_MIN_TERRAIN_CLEARANCE,
+  CAMERA_TARGET_TERRAIN_BAND, WORLD_PADDING_PERCENT.
+- Background battle: BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING, TURRET_RETURN_TO_FORWARD.
 
 Why it matters:
-The blueprints under src/game/sim/blueprints/ correctly pair *.json with thin *.ts loaders (units.ts, turrets.ts, shots.ts, locomotion.ts, buildings.ts read from their .json siblings). config.ts is the largest remaining wall: every friction/EMA/threshold value the Rust/WASM kernels would want has to be re-authored on the Rust side or boundary-marshalled, and the values drift the moment one side is tuned without the other.
+The blueprints under src/game/sim/blueprints/ correctly pair *.json with thin *.ts
+loaders. config.ts is still the largest remaining wall: every friction / EMA /
+threshold value the Rust/WASM kernels would want has to be re-authored on the
+Rust side or boundary-marshalled, and the values drift the moment one side is
+tuned without the other.
 
 Fix direction:
-Move each TS data literal in config.ts into a co-located .json file that both TS and Rust load. Reserve config.ts for the schema/validator/loader that returns the typed shape (the same pattern blueprints already use). Hardest-to-move pieces are the BAR_THEMES re-export and pure computed expressions like MAX_TICK_DT_MS = 4 * (1000 / 60); express these as plain JSON values too.
+Move each remaining TS data literal into a co-located .json file (group by
+domain — economy, wind, camera, sun/terrain visuals, etc.) and keep config.ts
+as the loader that returns the typed shape. The pattern is established now in
+snapshotConfig / emaConfig / combatConfig / worldRenderConfig /
+forceFieldVisualConfig / barThemes.

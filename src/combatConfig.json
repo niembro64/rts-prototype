@@ -1,0 +1,7 @@
+{
+  "beamMaxSegments": 4,
+  "rocketReflectorCollisionMode": "reflect",
+  "knockback": {
+    "SPLASH": 250
+  }
+}

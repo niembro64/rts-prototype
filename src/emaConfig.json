@@ -1,0 +1,24 @@
+{
+  "tiers": {
+    "tps": {
+      "avg": 0.01,
+      "low": { "drop": 0.01, "recovery": 0.001 }
+    },
+    "snaps": {
+      "avg": 0.01,
+      "low": { "drop": 0.01, "recovery": 0.001 }
+    }
+  },
+  "frameMs": {
+    "avg": 0.01,
+    "hi": { "spike": 0.01, "recovery": 0.001 }
+  },
+  "initialValues": {
+    "tps": 0,
+    "snaps": 0,
+    "frameMs": 0,
+    "renderMs": 0,
+    "logicMs": 0,
+    "predMs": 0
+  }
+}

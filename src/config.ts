@@ -41,6 +41,11 @@ import {
   nearestOddLandCellCount,
 } from './mapSizeConfig';
 import sharedSimConstants from './sharedSimConstants.json';
+import snapshotConfigJson from './snapshotConfig.json';
+import emaConfigJson from './emaConfig.json';
+import combatConfigJson from './combatConfig.json';
+import worldRenderConfigJson from './worldRenderConfig.json';
+import forceFieldVisualConfigJson from './forceFieldVisualConfig.json';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
 // Default square map span in canonical land cells. Demo Battle and Real Battle
@@ -97,98 +102,35 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = 4096;
 // THE TIERS BELOW are reference points only — pick the resolution
 // that matches your bandwidth budget vs visual smoothness target.
 // Higher resolution = more bytes on the wire, smoother visuals.
-export const SNAPSHOT_CONFIG: SnapshotConfig = {
-  /** Master switch — false ⇒ every snap is a full keyframe (debug
-   *  only; bandwidth roughly 5-10x higher in active play). */
-  deltaEnabled: true,
-
-  /** Entity x/y must move more than this many WORLD UNITS for the
-   *  serializer to ship a new position. (Vertical z piggybacks on
-   *  the same flag.) The right value depends on how visibly choppy
-   *  client-side smoothing tolerates between snaps.
-   *
-   *    LOW resolution  — 2.0 wu
-   *      Slow movers drop a position update every few snaps; visible
-   *      stepping at moderate zoom. Half the position bytes vs MID.
-   *      Use only if bandwidth is the absolute bottleneck.
-   *    MID resolution  — 0.5 wu
-   *      Sub-pixel under typical zoom; client interpolation hides
-   *      the steps. Idle units stay quiet (physics jitter is sub-
-   *      0.5 wu). Good general-purpose value.
-   *    HIGH resolution — 0.1 wu
-   *      Every drift gets sent. Approaches keyframe bandwidth on
-   *      lots of mobile units. Reserve for low-unit-count scenes
-   *      where you want pixel-perfect motion. */
-  positionThreshold: 0.5,
-
-  /** velocityX/Y (in WORLD UNITS / SECOND) must change by more than
-   *  this for a fresh velocity field on the wire. Used by the
-   *  snapshot serializer AND the projectile / force-field paths that
-   *  emit standalone velocity events between snaps. Larger values
-   *  hide small accelerations from the client (it extrapolates with
-   *  whatever velocity it last saw).
-   *
-   *    LOW resolution  — 2.0 wu/s
-   *      Only large velocity events ship (collisions, big AoE
-   *      knockback). Smooth curves coarsen visibly.
-   *    MID resolution  — 0.5 wu/s
-   *      Catches accel/decel and knockback hits; ignores per-tick
-   *      integration jitter.
-   *    HIGH resolution — 0.1 wu/s
-   *      Every micro-acceleration shipped. Best for slow-motion
-   *      replay or low-count debug. */
-  velocityThreshold: 0.5,
-
-  /** Body rotation + turret rotations must change by more than this
-   *  many RADIANS to re-send. Use Math.PI fractions for clarity —
-   *  Math.PI/32 ≈ 0.0982 rad ≈ 5.6°.
-   *
-   *    LOW resolution  — Math.PI / 8   (≈ 22.5°)
-   *      Visibly stuttery on slow turret tracking. Half the
-   *      rotation bytes vs MID. Shouldn't be used for combat.
-   *    MID resolution  — Math.PI / 32  (≈ 5.6°)
-   *      Smooth aim with client-side damped-spring interpolation.
-   *      Idle bodies stay quiet.
-   *    HIGH resolution — Math.PI / 64  (≈ 2.8°)
-   *      Crisp turret motion even on slow trackers; every small
-   *      rotation ships. Reserve for cinematic scenes / replays. */
-  rotationPositionThreshold: Math.PI / 32,
-
-  /** Turret angular velocity (in RADIANS / SECOND) must change by
-   *  more than this for a fresh angular-velocity field on the wire.
-   *  Reference scale: Math.PI rad/s ≈ 180°/s; 6 rad/s ≈ 344°/s.
-   *
-   *    LOW resolution  — 0.5 rad/s
-   *      Only major events (target switch, unit death, snap-home).
-   *      Client extrapolation coarsens noticeably.
-   *    MID resolution  — 0.1 rad/s
-   *      Catches target-switches and big rotation accelerations;
-   *      ignores spring-damper jitter near steady aim.
-   *    HIGH resolution — 0.01 rad/s
-   *      Every micro-correction; turret feels glued to the target. */
-  rotationVelocityThreshold: 0.1,
-
-  /** Recipient-owned entities keep the baseline diff precision so the
-   *  player sees their own orders, collision correction, and turret aim
-   *  at full fidelity. */
-  ownedEntityDelta: {
-    positionThresholdMultiplier: 1,
-    velocityThresholdMultiplier: 1,
-    rotationPositionThresholdMultiplier: 1,
-    rotationVelocityThresholdMultiplier: 1,
-  },
-
-  /** Entities owned by other players can use coarser diff precision.
-   *  This preserves keyframe/delta correctness while cutting remote
-   *  movement + turret churn from every recipient's delta stream. */
-  observedEntityDelta: {
-    positionThresholdMultiplier: 1,
-    velocityThresholdMultiplier: 1,
-    rotationPositionThresholdMultiplier: 1,
-    rotationVelocityThresholdMultiplier: 1,
-  },
-
-};
+//
+// Authored values live in src/snapshotConfig.json:
+//   deltaEnabled            — master switch; false ⇒ every snap is a
+//                             full keyframe (debug only; ~5-10×
+//                             bandwidth in active play).
+//   positionThreshold       — entity x/y must move more than this
+//                             many WORLD UNITS to re-send. LOW 2.0,
+//                             MID 0.5, HIGH 0.1.
+//   velocityThreshold       — velocityX/Y must change by more than
+//                             this (WORLD UNITS / SECOND) to re-send.
+//                             LOW 2.0, MID 0.5, HIGH 0.1.
+//   rotationPositionThreshold — body + turret rotations must change
+//                               by more than this many RADIANS to
+//                               re-send. LOW π/8 ≈ 0.3927 (22.5°),
+//                               MID π/32 ≈ 0.0982 (5.6°), HIGH π/64
+//                               ≈ 0.0491 (2.8°). The JSON value
+//                               below is π/32 evaluated to a
+//                               literal.
+//   rotationVelocityThreshold — turret angular velocity (RAD / SEC)
+//                               re-send threshold. LOW 0.5, MID
+//                               0.1, HIGH 0.01.
+//   ownedEntityDelta        — multipliers applied to the four
+//                             thresholds above for recipient-owned
+//                             entities. 1 keeps full fidelity on
+//                             your own units' orders / aim.
+//   observedEntityDelta     — same multipliers for entities owned by
+//                             other players. Set >1 to coarsen
+//                             remote movement / turret churn.
+export const SNAPSHOT_CONFIG: SnapshotConfig = snapshotConfigJson;
 
 // Re-export bar config values used by sim/server code
 export { BATTLE_CONFIG } from './battleBarConfig';
@@ -216,68 +158,47 @@ export const BAR_COLORS = BAR_THEMES;
 // EMA (Exponential Moving Average) STATS TRACKING
 // =============================================================================
 
-export const EMA_CONFIG: Record<string, EmaTierConfig> = {
-  tps: {
-    avg: 0.01,
-    low: { drop: 0.01, recovery: 0.001 },
-  },
-  snaps: {
-    avg: 0.01,
-    low: { drop: 0.01, recovery: 0.001 },
-  },
-};
+// Authored values live in src/emaConfig.json.
+//   tiers.<name>   — rate trackers (TPS, SPS). avg is the per-sample
+//                    α; low.drop and low.recovery drive the
+//                    asymmetric "dip fast, climb slow" tier so the
+//                    bottom bar reads a sustained dip even after the
+//                    average recovers.
+//   frameMs        — the shared shape every per-frame ms tracker
+//                    (frameMs / renderMs / logicMs / predMs) uses;
+//                    "hi" is the dual of "low" so the spike side
+//                    drops fast and the recovery side bleeds back
+//                    slowly. predMs isolates the
+//                    ClientViewState.applyPrediction wall-clock so
+//                    LOGIC stays input/HUD/scaffolding-only.
+//   initialValues  — seed values for every EMA. Rate trackers get
+//                    "good = high", ms trackers get "good = low";
+//                    seeding everything at 0 means the bottom bars
+//                    start from an honest empty baseline and auto-
+//                    LOD begins pessimistically for TPS-driven
+//                    signals instead of assuming a healthy mid-tier.
+//                    TPS/CPU host seeds live in GameServer because
+//                    they depend on the configured tickRateHz.
+export const EMA_CONFIG: Record<string, EmaTierConfig> = emaConfigJson.tiers;
 
-// Frame timing EMA config (tracks durations in ms — uses "hi" instead of "low")
-const FRAME_MS_EMA: EmaMsConfig = {
-  avg: 0.01,
-  hi: { spike: 0.01, recovery: 0.001 },
-};
+const FRAME_MS_EMA: EmaMsConfig = emaConfigJson.frameMs;
 export const FRAME_TIMING_EMA = {
   frameMs: FRAME_MS_EMA,
   renderMs: FRAME_MS_EMA,
   logicMs: FRAME_MS_EMA,
-  /** Pure ClientViewState.applyPrediction wall-clock per frame.
-   *  Pulled OUT of logicMs so the LOGIC bar isolates non-prediction
-   *  cost (input, HUD, scene scaffolding) and the PRED bar isolates
-   *  the dead-reckon + drift + per-frame turret/shot prediction pass. */
   predMs: FRAME_MS_EMA,
 };
 
-/**
- * Initial values for EMA trackers — controls whether each metric starts
- * "high" (optimistic) or "low" (pessimistic) before real samples arrive.
- *
- * Starting HIGH means LOD begins at max quality and degrades if needed.
- * Starting LOW means LOD begins at min quality and climbs if performance allows.
- *
- * Rate trackers (TPS/SPS): high number = good performance.
- * Ms trackers (frame/render/logic): low number = good performance.
- *
- * We seed visible EMA stats at 0.0 so the bottom bars start from an
- * honest empty baseline and climb as real samples arrive. This also
- * means auto-LOD begins pessimistically for TPS-driven signals
- * instead of assuming a healthy mid-tier before measurement.
- */
-export const EMA_INITIAL_VALUES = {
-  // TPS/CPU host seeds live in GameServer because they depend on the
-  // configured tickRateHz.
-  tps: 0,
-  snaps: 0,
-
-  // Ms trackers drive CPU/GPU/FRAME bars. 0 ms means no measured work yet.
-  frameMs: 0,
-  renderMs: 0,
-  logicMs: 0,
-  predMs: 0,
-};
+export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
 
 // =============================================================================
 // SERVER TICK
 // =============================================================================
 
 /** Maximum dt (ms) the server will simulate in a single tick.
- *  Prevents spiral-of-death when a tick takes longer than the interval. */
-export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
+ *  Prevents spiral-of-death when a tick takes longer than the interval.
+ *  JSON value is 4 frames at 60Hz (~66.7ms). */
+export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
 
 /** Maximum authoritative beam/laser path segments traced per re-path.
  *  Segment 1 is launch origin -> first hit/range, segment 2 is after the
@@ -285,14 +206,15 @@ export const MAX_TICK_DT_MS = 4 * (1000 / 60); // ~66.7ms (4 frames at 60Hz)
  *  reflector, the beam terminates there and does not get endpoint
  *  damage. This prevents mirror/force-field loops from producing
  *  unbounded traces or arbitrary damage spheres. */
-export const BEAM_MAX_SEGMENTS = 4;
+export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 
 export type RocketReflectorCollisionMode = 'explode' | 'reflect';
 
 /** Rocket behavior when hitting mirror panels or force-field barriers.
  *  "explode" detonates at the reflector contact point. "reflect" uses the
  *  same velocity-preserving reflection path as normal projectiles. */
-export const ROCKET_REFLECTOR_COLLISION_MODE: RocketReflectorCollisionMode = 'reflect';
+export const ROCKET_REFLECTOR_COLLISION_MODE: RocketReflectorCollisionMode =
+  combatConfigJson.rocketReflectorCollisionMode as RocketReflectorCollisionMode;
 
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
@@ -318,15 +240,17 @@ export const GRAVITY = sharedSimConstants.gravity;
 
 /** Free-flight unit velocity damping per 60 Hz frame.
  *  Applied equally to x/y/z while a unit is in free flight. This is
- *  intentionally far weaker than grounded contact drag: 0.004 keeps
- *  about 78.6% of velocity over one second. */
-export const UNIT_AIR_FRICTION_PER_60HZ_FRAME = 0.02;
+ *  intentionally far weaker than grounded contact drag: 0.02 keeps
+ *  about 30% of velocity over one second. */
+export const UNIT_AIR_FRICTION_PER_60HZ_FRAME =
+  sharedSimConstants.unitAirFrictionPer60HzFrame;
 
 /** Ground-contact tangent velocity damping per 60 Hz frame.
  *  Applied only while the unit's locomotion ground point is at or
  *  below terrain height, and only to motion tangent to the terrain
  *  plane. */
-export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME = 0.15;
+export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME =
+  sharedSimConstants.unitGroundFrictionPer60HzFrame;
 
 /** Terrain spring acceleration per world-unit of ground-point
  *  penetration. Force is mass * acceleration, so all unit masses
@@ -448,9 +372,7 @@ export const COST_MULTIPLIER = 1.0;
  *
  * Beam/railgun knockback uses momentum-based force (mass × velocity × PROJECTILE_MASS_MULTIPLIER).
  */
-export const KNOCKBACK: KnockbackConfig = {
-  SPLASH: 250, // Knockback multiplier for area/splash explosions (mortar/disruptor)
-};
+export const KNOCKBACK: KnockbackConfig = combatConfigJson.knockback;
 
 /**
  * Whether turrets return to forward-facing (movement direction) when they have no target.
@@ -481,21 +403,13 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 export const HORIZON_RENDER_EXTEND = 180000;
 
 // Render-only water surface tuning. `color` is the tint of the flat
-// horizon water plane; `opacity` is material alpha. Lower opacity =
-// more transparent.
-export const WATER_RENDER_CONFIG = {
-  color: 0x1f6f8c,
-  opacity: 0.82,
-} as const;
+// horizon water plane (Three.js hex number, 0x1f6f8c = 2060172);
+// `opacity` is material alpha. Lower opacity = more transparent.
+export const WATER_RENDER_CONFIG = worldRenderConfigJson.water;
 
 // Static sky background gradient. Generated once as a tiny canvas
 // texture by ThreeApp, then reused as the scene background.
-export const SKY_RENDER_CONFIG = {
-  topColor: '#6d9dcc',
-  midColor: '#b7cddd',
-  horizonColor: '#e1d5bd',
-  midStop: 0.64,
-} as const;
+export const SKY_RENDER_CONFIG = worldRenderConfigJson.sky;
 
 export const FOREST_SPRUCE2_WOOD_COLOR = 0x5b4230;
 export const FOREST_SPRUCE2_LEAF_COLOR = 0x416f35;
@@ -527,20 +441,16 @@ export const SUN_RENDER_CONFIG = {
 // Static terrain shading is baked into terrain vertices when the mesh
 // is rebuilt. It is not a real-time shadow map; it is a cheap, stable
 // directional shade plus short terrain self-shadow probes along the
-// sun ray.
+// sun ray. JSON stores `sampleDistance` as a LAND_CELL_SIZE
+// multiplier so the absolute value is recomputed if the map's cell
+// size ever changes.
 export const TERRAIN_SHADOW_RENDER_CONFIG = {
-  enabled: true,
-  ambient: 0.34,
-  directStrength: 1.08,
-  minShade: 0.26,
-  maxShade: 1.18,
+  ...worldRenderConfigJson.terrainShadow,
   precomputed: {
-    enabled: true,
-    samples: 7,
-    sampleDistance: LAND_CELL_SIZE * 0.26,
-    bias: 16,
-    softness: 82,
-    strength: 0.58,
+    ...worldRenderConfigJson.terrainShadow.precomputed,
+    sampleDistance:
+      LAND_CELL_SIZE *
+      worldRenderConfigJson.terrainShadow.precomputed.sampleDistanceLandCellMultiplier,
   },
 } as const;
 
@@ -784,37 +694,17 @@ export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFie
 /** Force-field shield visual configuration. The bubble + emitter
  *  render at every tier; the MAX-tier orbital rings are tuned via
  *  RING_* constants inside ForceFieldRenderer3D rather than here. */
-export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig = {
-  colorMode: 'config',
-  fallbackColor: 0xffffff,
-  emitterIdleColor: 0xffffff,
-};
+export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
+  forceFieldVisualConfigJson.shield as ForceFieldVisualConfig;
 
 /** Force-field projectile interception visual.
  *  The burst is a flat tangent-plane pulse at the sphere intersection:
  *  its plane normal is the shield surface normal, so the expanding ring
- *  lies 90 degrees from the impact normal. */
-export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig = {
-  style: 'tangentRingPulse',
-  colorMode: 'config',
-  fallbackColor: 0xffffff,
-  maxImpacts: 192,
-  durationMs: 1000,
-  ringCount: 1,
-  ringSegments: 24,
-  ringDelayMs: 0,
-  startRadius: 0,
-  endRadius: 38,
-  ringTubeRadiusFrac: 0.11,
-  ringTubeSegments: 6,
-  // Match the force-field/mirror panel transparency:
-  // FORCE_FIELD_BARRIER.alpha (0.05) * FORCE_FIELD_OPACITY_BOOST (2.0) = 0.1.
-  ringOpacity: 0.1,
-  coreRadiusFrac: 0.42,
-  coreOpacity: 0.22,
-  coreDurationFrac: 0.45,
-  surfaceOffset: 1.2,
-};
+ *  lies 90 degrees from the impact normal. Ring opacity matches the
+ *  force-field / mirror panel transparency:
+ *  FORCE_FIELD_BARRIER.alpha (0.05) * FORCE_FIELD_OPACITY_BOOST (2.0) = 0.1. */
+export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
+  forceFieldVisualConfigJson.impact as ForceFieldImpactVisualConfig;
 
 /**
  * Force field turret (grate) configuration per unit type.
