@@ -238,17 +238,20 @@ Done in earlier passes (data now lives in JSON, src/config.ts only orchestrates)
   CAMERA_PAN_MULTIPLIER, CAMERA_*_ANCHOR, CAMERA_MIN_TERRAIN_CLEARANCE,
   CAMERA_TARGET_TERRAIN_BAND, WORLD_PADDING_PERCENT)
   -> src/cameraConfig.json
+- Map / waypoint visuals: LAND_TILE_GROUND_LIFT / WAYPOINT_GROUND_LIFT /
+  HORIZON_RENDER_EXTEND appended to src/worldRenderConfig.json;
+  REAL_BATTLE_FACTORY_WAYPOINT_TYPE/DISTANCE -> src/realBattleConfig.json.
+- Background battle: BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING ->
+  src/backgroundBattleConfig.json. TURRET_RETURN_TO_FORWARD was an unused
+  export and was deleted under Delete The Old Path.
 
 Still in src/config.ts as TS literals:
-- Map / waypoint visuals: LAND_TILE_GROUND_LIFT, WAYPOINT_GROUND_LIFT,
-  REAL_BATTLE_FACTORY_WAYPOINT_TYPE/DISTANCE, HORIZON_RENDER_EXTEND.
 - Sun / terrain render configs: SUN_RENDER_CONFIG (non-color knobs),
   TERRAIN_HORIZON_BLEND_CONFIG (non-color knobs),
   TERRAIN_GROUND_DETAIL_* (non-color fields), TERRAIN_ROCK_* (non-color fields),
   TREE_*, GROUND_RENDER_ORDER, CONTACT_SHADOW_RENDER_CONFIG (non-color knobs),
   LAND_TILE_TEXTURE (large sine-wave config), BURN_* (decay taus).
 - Force-field barrier + turret grate: FORCE_FIELD_BARRIER, FORCE_FIELD_TURRET.
-- Background battle: BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING, TURRET_RETURN_TO_FORWARD.
 
 Why it matters:
 The blueprints under src/game/sim/blueprints/ correctly pair *.json with thin *.ts

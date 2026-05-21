@@ -51,7 +51,10 @@ import windConfigJson from './windConfig.json';
 import physicsTuningConfigJson from './physicsTuningConfig.json';
 import serverDebugGridConfigJson from './serverDebugGridConfig.json';
 import cameraConfigJson from './cameraConfig.json';
+import realBattleConfigJson from './realBattleConfig.json';
+import backgroundBattleConfigJson from './backgroundBattleConfig.json';
 import type { CameraFovDegrees } from './types/client';
+import type { DemoBattleWaypointType } from './demoConfig';
 import { COLORS } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
 
@@ -66,13 +69,13 @@ export const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 // this at 0 for normal play: the terrain renderer, host sim, and client
 // prediction all share the same authoritative triangle surface. Use waypoint
 // and floating-cell overlay lifts for readability instead of moving terrain.
-export const LAND_TILE_GROUND_LIFT = 0;
+export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up
 // so terrain LOD and overlay layers do not hide them.
-export const WAYPOINT_GROUND_LIFT = 12;
+export const WAYPOINT_GROUND_LIFT = worldRenderConfigJson.waypointGroundLift;
 
 // Host-server spatial-grid debug snapshots are intentionally throttled
 // separately from normal gameplay snapshots. These overlays are diagnostic
@@ -230,8 +233,10 @@ export const ROCKET_REFLECTOR_COLLISION_MODE: RocketReflectorCollisionMode =
 /** REAL BATTLE default order type assigned to units produced by
  *  player-built factories/fabricators. Demo-battle factories use
  *  DEMO_CONFIG.factoryWaypointType instead. */
-export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE = 'fight' as const;
-export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE = 0.5;
+export const REAL_BATTLE_FACTORY_WAYPOINT_TYPE =
+  realBattleConfigJson.factoryWaypointType as DemoBattleWaypointType;
+export const REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE =
+  realBattleConfigJson.factoryWaypointDistance;
 
 // =============================================================================
 // VISUAL DIMENSIONS (shared sim + render)
@@ -372,13 +377,6 @@ export const COST_MULTIPLIER = economyConfigJson.costMultiplier;
  */
 export const KNOCKBACK: KnockbackConfig = combatConfigJson.knockback;
 
-/**
- * Whether turrets return to forward-facing (movement direction) when they have no target.
- * true = turrets snap back to face forward when idle.
- * false = turrets hold their last rotation when idle.
- */
-export const TURRET_RETURN_TO_FORWARD = false;
-
 // Color conversion utilities
 export function hexToStr(c: number): string {
   return '#' + c.toString(16).padStart(6, '0');
@@ -398,7 +396,7 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 // Kept shared so water and terrain always terminate at the same practical
 // distance. This is only a few giant quads, so raising it is cheap; the
 // camera far plane still controls what actually draws.
-export const HORIZON_RENDER_EXTEND = 180000;
+export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
 // Render-only water surface tuning. `color` is the tint of the flat
 // horizon water plane; `opacity` is material alpha. Lower opacity =
@@ -860,7 +858,8 @@ export function getMapSize(
  * - true: Inverse cost weighting (cheaper units spawn more frequently)
  * - false: Flat distribution (all units equally likely)
  */
-export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING = true;
+export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING =
+  backgroundBattleConfigJson.spawnInverseCostWeighting;
 
 // Re-export audio config
 export { AUDIO } from './audioConfig';

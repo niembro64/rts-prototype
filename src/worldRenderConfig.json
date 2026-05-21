@@ -1,4 +1,7 @@
 {
+  "landTileGroundLift": 0,
+  "waypointGroundLift": 12,
+  "horizonRenderExtend": 180000,
   "terrainShadow": {
     "enabled": true,
     "ambient": 0.34,
