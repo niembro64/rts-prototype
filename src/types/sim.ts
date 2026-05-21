@@ -478,13 +478,6 @@ export type Turret = {
   ballisticAimInRange: boolean;
   burst?: { remaining: number; cooldown: number };
   forceField?: { transition: number; range: number };
-  /** Consecutive ticks the sight path to `target` has been blocked
-   *  by actual LOS occlusion or force-field sight obstruction.
-   *  Direct-fire turrets stop firing the first blocked tick
-   *  (engaged -> tracking) and drop the lock entirely once this
-   *  exceeds SIGHT_DROP_GRACE_TICKS. Reset to 0 whenever the target
-   *  changes or the sightline reopens. */
-  losBlockedTicks: number;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.

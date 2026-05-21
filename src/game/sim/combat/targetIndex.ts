@@ -121,7 +121,6 @@ export function setWeaponTarget(
   }
   syncBeamWeaponTargetIndex(weapon, parentUnit, weaponIndex, newTarget);
   weapon.target = newTarget;
-  weapon.losBlockedTicks = 0;
 }
 
 /** Iterate every beam weapon (in any unit) currently targeting

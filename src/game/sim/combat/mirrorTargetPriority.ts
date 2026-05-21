@@ -42,16 +42,9 @@ export function turretDps(turret: Turret): number {
 /** A mirror turret only locks onto an enemy turret that is itself
  *  actively locked onto our own unit (target === ourUnitId, non-idle).
  *  Score equals sustained DPS so the most dangerous incoming turret
- *  wins when several enemy turrets target the same unit. */
-export function scoreMirrorTargetTurret(turret: Turret, ourUnitId: number): number {
-  if (turret.config.passive) return 0;
-  if (turret.config.visualOnly) return 0;
-  if (turret.config.isManualFire) return 0;
-  if (turret.target !== ourUnitId) return 0;
-  if (turret.state === 'idle') return 0;
-  return turretDps(turret);
-}
-
+ *  wins when several enemy turrets target the same unit. Reads the
+ *  Rust combat-targeting slab tuple when stamped, falling back to JS
+ *  Turret state on non-sim client paths. */
 function scoreMirrorTargetTurretFromTarget(
   target: Entity,
   turretIndex: number,

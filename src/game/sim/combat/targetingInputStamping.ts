@@ -93,6 +93,7 @@ const _stampPos = { x: 0, y: 0, z: 0 };
 const _stampVel = { x: 0, y: 0, z: 0 };
 let _stampPrevFsmState = new Uint8Array(0);
 let _stampPrevFsmTarget = new Int32Array(0);
+let _stampPrevLosBlockedTicks = new Uint16Array(0);
 
 export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
@@ -141,6 +142,7 @@ function ensureStampPrevFsmCapacity(count: number): void {
   while (next < count) next *= 2;
   _stampPrevFsmState = new Uint8Array(next);
   _stampPrevFsmTarget = new Int32Array(next);
+  _stampPrevLosBlockedTicks = new Uint16Array(next);
 }
 
 function resetCombatTargetingSources(): void {
@@ -457,6 +459,10 @@ function stampCombatTargetingEntityInto(
   // Keep the Rust-owned FSM tuple authoritative across input stamping.
   // clear() drops liveness/counts but intentionally leaves turret rows
   // intact, so same-entity slots can seed target/state from the slab.
+  // losBlockedTicks is also slab-owned now (the Rust kernel resets it
+  // on target change inside combat_targeting_set_target_state and
+  // increments it during LOS grace counting), so we preserve the slab
+  // value for same-entity slots and pass 0 for slot reuse.
   const preservePreviousFsm = views.entityId[slot] === entity.id;
   if (turrets && preservePreviousFsm) {
     ensureStampPrevFsmCapacity(turrets.length);
@@ -465,6 +471,7 @@ function stampCombatTargetingEntityInto(
       const idx = base + i;
       _stampPrevFsmState[i] = views.state[idx];
       _stampPrevFsmTarget[i] = views.targetId[idx];
+      _stampPrevLosBlockedTicks[i] = views.losBlockedTicks[idx];
     }
   }
   targeting.setEntity(
@@ -532,7 +539,7 @@ function stampCombatTargetingEntityInto(
       t.mount.x, t.mount.y, t.mount.z,
       t.worldPosTick,
       t.aimErrorYaw, t.aimErrorPitch,
-      t.losBlockedTicks,
+      preservePreviousFsm ? _stampPrevLosBlockedTicks[i] : 0,
       encodeTurretConfigFlags(t, ranges),
       turretDps(t),
       projectileSpeed,
@@ -638,7 +645,6 @@ export function writeBackCombatTargetingEntity(
     turret.state = decodeCombatTargetingTurretState(views.state[idx]);
     turret.aimErrorYaw = views.aimErrorYaw[idx];
     turret.aimErrorPitch = views.aimErrorPitch[idx];
-    turret.losBlockedTicks = views.losBlockedTicks[idx];
     if (kinematicsTick !== null && views.worldPosTick[idx] === kinematicsTick) {
       turret.worldPos.x = views.mountX[idx];
       turret.worldPos.y = views.mountY[idx];

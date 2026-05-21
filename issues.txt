@@ -197,6 +197,18 @@ AIM-08.5 — Port the targeting FSM
   path and tracks its own per-weapon target mirror, so writeback no
   longer depends on setWeaponTarget / JS Turret.target as the index's
   source of truth.
+  Turret.losBlockedTicks has been deleted from the JS Turret type:
+  the Rust combat-targeting kernel is now the sole owner of the LOS
+  grace counter (it resets in combat_targeting_set_target_state on
+  target change, increments during LOS grace counting, and zeroes on
+  disabled-weapon reset). Input stamping passes the slab's previous
+  value back via the preservePreviousFsm path (or 0 on slot reuse),
+  so the kernel-managed counter survives across ticks without a JS
+  round-trip. setWeaponTarget no longer resets losBlockedTicks (the
+  kernel does it). The unused scoreMirrorTargetTurret JS-only helper
+  (no callers; only the slab-aware
+  scoreMirrorTargetTurretFromTarget is consumed by pickMirrorTarget-
+  Turret) has been deleted under Delete The Old Path.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
 
