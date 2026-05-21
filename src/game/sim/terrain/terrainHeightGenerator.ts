@@ -9,7 +9,8 @@ import {
   TERRAIN_RIPPLE_CONFIG,
   TILE_FLOOR_Y,
 } from './terrainConfig';
-import { clamp01, smootherstep } from './terrainMath';
+import { smootherstep } from './terrainMath';
+import { clamp01 } from '../../math';
 import { depositOverride } from './terrainFlatZones';
 import {
   getMountainRippleAmplitude,

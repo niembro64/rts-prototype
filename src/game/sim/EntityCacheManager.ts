@@ -105,12 +105,13 @@ export class EntityCacheManager {
 
     for (const entity of entities.values()) {
       this.cachedAll.push(entity);
+      const ownership = entity.ownership;
       if (
         entity.detector !== undefined &&
-        entity.ownership?.playerId !== undefined &&
+        ownership !== undefined &&
         (entity.type === 'unit' || entity.type === 'building')
       ) {
-        this.getOrCreateDetectorsByPlayer(entity.ownership.playerId).push(entity);
+        this.getOrCreateDetectorsByPlayer(ownership.playerId).push(entity);
       }
       // Combat capability is host-agnostic: any entity with a
       // CombatComponent that owns a non-visualOnly turret enters the
@@ -123,8 +124,9 @@ export class EntityCacheManager {
         for (let i = 0; i < turrets.length; i++) {
           if (turrets[i].config.visualOnly) continue;
           hasCombatTurret = true;
-          const t = turrets[i].config.shot?.type;
-          if (!t) continue;
+          const shot = turrets[i].config.shot;
+          if (shot === undefined) continue;
+          const t = shot.type;
           if (t === 'force') hasForceField = true;
           else if (t === 'beam') hasBeam = true;
           if (hasForceField && hasBeam) break;
@@ -137,8 +139,8 @@ export class EntityCacheManager {
         case 'unit':
           this.cachedUnits.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
-          if (entity.ownership?.playerId !== undefined) {
-            this.getOrCreateUnitsByPlayer(entity.ownership.playerId).push(entity);
+          if (ownership !== undefined) {
+            this.getOrCreateUnitsByPlayer(ownership.playerId).push(entity);
           }
           // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
           // shell (incomplete buildable) belongs here too even though
@@ -153,7 +155,7 @@ export class EntityCacheManager {
           ) {
             this.cachedDamagedUnits.push(entity);
           }
-          if (entity.unit?.mirrorPanels && entity.unit.mirrorPanels.length > 0) {
+          if (entity.unit !== undefined && entity.unit.mirrorPanels.length > 0) {
             this.cachedMirrorUnits.push(entity);
           }
           if (entity.commander) this.cachedCommanderUnits.push(entity);
@@ -162,8 +164,8 @@ export class EntityCacheManager {
         case 'building':
           this.cachedBuildings.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
-          if (entity.ownership?.playerId !== undefined) {
-            this.getOrCreateBuildingsByPlayer(entity.ownership.playerId).push(entity);
+          if (ownership !== undefined) {
+            this.getOrCreateBuildingsByPlayer(ownership.playerId).push(entity);
           }
           // Same logic as cachedDamagedUnits: include any construction
           // shell, plus damaged complete buildings, so the shared
@@ -191,7 +193,7 @@ export class EntityCacheManager {
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
-          if (entity.projectile?.projectileType === 'projectile') {
+          if (entity.projectile !== undefined && entity.projectile.projectileType === 'projectile') {
             this.cachedTravelingProjectiles.push(entity);
             if (entity.projectile.config.shotProfile.visual.smokeTrail) {
               this.cachedSmokeTrailProjectiles.push(entity);

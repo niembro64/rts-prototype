@@ -617,9 +617,9 @@ export function serializeEntitySnapshot(
       ENTITY_CHANGED_SUSPENSION;
     const hasSurfaceNormalFields = isFull ||
       (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL));
-    const hasOrientationFields = entity.unit.orientation !== undefined &&
+    const hasOrientationFields = entity.unit.orientation !== null &&
       (isFull || (changedFields! & ENTITY_CHANGED_ROT));
-    const hasAngularVelocityFields = entity.unit.orientation !== undefined &&
+    const hasAngularVelocityFields = entity.unit.orientation !== null &&
       (isFull || (changedFields! & ENTITY_CHANGED_VEL));
     const hasUnitFields = isFull ||
       (changedFields! & unitFieldMask) ||

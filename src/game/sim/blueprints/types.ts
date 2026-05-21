@@ -17,7 +17,6 @@ export type {
 // Re-export all blueprint types
 export type {
   ForceFieldBarrierRatioConfig,
-  CylinderShapeSpec,
   ShotCollision,
   ShotExplosion,
   ProjectileShotKind,

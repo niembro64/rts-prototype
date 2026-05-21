@@ -212,12 +212,20 @@ function createUnitFromNetwork(
       actions,
       actionHash: computeUnitActionHash(actions),
       patrolStartIndex: null,
+      flyingLoiterTargetX: null,
+      flyingLoiterTargetY: null,
+      flyingLoiterTargetZ: null,
+      flyingLoiterTurnSign: null,
       velocityX: velocity.x,
       velocityY: velocity.y,
       velocityZ: velocity.z,
-      // movementAccelX/Y/Z stay undefined on the client — server-side
-      // sim writes them for force integration, but the client never
-      // receives them and integrates position from velocity only.
+      // movementAccelX/Y/Z are server-side force inputs. The client
+      // does not receive them and integrates position from velocity.
+      movementAccelX: 0,
+      movementAccelY: 0,
+      movementAccelZ: 0,
+      thrustDirX: 0,
+      thrustDirY: 0,
       mirrorPanels: [],
       mirrorBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
@@ -227,18 +235,19 @@ function createUnitFromNetwork(
       // for downstream consumers.
       surfaceNormal,
       suspension: createUnitSuspension(unitBlueprint?.suspension),
-      // Optional 3-DOF orientation triad — hydrated from the wire
-      // for hover-style units that need roll. Ground units have no
-      // orientation field on the wire, so these stay undefined.
+      // 3-DOF orientation triad — hydrated from the wire for hover-style
+      // units that need roll. Ground units have no orientation field on
+      // the wire, so these stay null.
       orientation: u?.orientation
         ? { x: u.orientation.x, y: u.orientation.y, z: u.orientation.z, w: u.orientation.w }
-        : undefined,
+        : null,
       angularVelocity3: u?.angularVelocity3
         ? { x: u.angularVelocity3.x, y: u.angularVelocity3.y, z: u.angularVelocity3.z }
-        : (u?.orientation ? { x: 0, y: 0, z: 0 } : undefined),
-      // angularAcceleration3 stays undefined on the client (sim-only —
-      // not on the wire).
-      angularAcceleration3: u?.orientation ? { x: 0, y: 0, z: 0 } : undefined,
+        : (u?.orientation ? { x: 0, y: 0, z: 0 } : null),
+      // angularAcceleration3 is sim-only and not on the wire.
+      angularAcceleration3: u?.orientation ? { x: 0, y: 0, z: 0 } : null,
+      hoverHeightSmoothed: null,
+      stuckTicks: 0,
     },
   };
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);

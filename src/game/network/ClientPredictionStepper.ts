@@ -3,7 +3,7 @@ import {
   getPredictionMode,
 } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
-import { lerp } from '../math';
+import { angleDeltaAbs, lerp } from '../math';
 import { getChannelBlend } from './driftEma';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
 import {
@@ -41,10 +41,6 @@ type ClientPredictionStepperOptions = {
   deleteEntityLocalState: (id: EntityId) => void;
   markLineProjectilesChanged: () => void;
 };
-
-function angleDeltaAbs(a: number, b: number): number {
-  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-}
 
 function noteTargetAge(
   stats: ClientPredictionTargetAgeStats,

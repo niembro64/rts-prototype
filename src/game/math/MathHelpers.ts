@@ -84,6 +84,13 @@ export function clamp01(value: number): number {
 }
 
 /**
+ * Absolute wrapped difference between two angles in radians.
+ */
+export function angleDeltaAbs(a: number, b: number): number {
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+}
+
+/**
  * Linear interpolation between two values
  */
 export function lerp(a: number, b: number, t: number): number {

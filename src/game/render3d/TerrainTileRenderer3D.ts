@@ -69,6 +69,7 @@ import {
   terrainSunShade,
 } from './SunLighting';
 import { getSimWasm } from '../sim-wasm/init';
+import { clamp01 } from '../math';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
@@ -83,10 +84,6 @@ const BUILD_GRID_COLOR_METAL = [0, 58, 153, 185] as const;
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
-
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
-}
 
 function smoothstep01(t: number): number {
   const clamped = clamp01(t);

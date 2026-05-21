@@ -77,7 +77,7 @@ function resetFlyingLoiterToCurrentPosition(entity: Entity, world: WorldState): 
   unit.flyingLoiterTargetZ = Number.isFinite(entity.transform.z)
     ? entity.transform.z
     : world.getGroundZ(x, y);
-  unit.flyingLoiterTurnSign = undefined;
+  unit.flyingLoiterTurnSign = null;
 }
 
 function getCommanderDGunTurretId(commander: Entity): string | null {

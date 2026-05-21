@@ -69,15 +69,6 @@ export type SubmunitionSpec = {
   reflectedVelocityDamper?: number;
 };
 
-/** @deprecated Projectile visuals are now type-derived: plasma uses a
- *  12x-radius cone tail, rocket uses an 8x-radius cylinder tail. */
-export type CylinderShapeSpec = {
-  /** World-space length of the rendered pill = collision.radius times this. */
-  lengthMult?: number;
-  /** World-space diameter of the rendered pill = collision.radius times this. */
-  diameterMult?: number;
-};
-
 /** Per-shot smoke-trail tunables. Every field is optional; the
  *  3D renderer fills in engine-wide defaults for anything omitted. */
 export type SmokeTrailSpec = {
@@ -123,10 +114,6 @@ export type ProjectileShotBlueprint = {
   homingThrust: number | null;
   /** Cosmetic smoke trail config. Sim-side: no effect. */
   smokeTrail: SmokeTrailSpec | null;
-  /** @deprecated Ignored by the 3D projectile renderer. */
-  shape: 'sphere' | 'cylinder' | null;
-  /** @deprecated Ignored by the 3D projectile renderer. */
-  cylinderShape: CylinderShapeSpec | null;
 };
 
 export type BeamShotBlueprint = {
@@ -203,10 +190,6 @@ export type ProjectileShot = {
   submunitions?: SubmunitionSpec;
   /** Cosmetic smoke-trail config. */
   smokeTrail?: SmokeTrailSpec;
-  /** @deprecated Ignored by the 3D projectile renderer. */
-  shape?: 'sphere' | 'cylinder';
-  /** @deprecated Ignored by the 3D projectile renderer. */
-  cylinderShape?: CylinderShapeSpec;
 };
 
 // Beam shot: continuous line from turret, per-tick damage.

@@ -10,6 +10,7 @@ import { LAND_CELL_SIZE } from '../../config';
 import { UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC } from '@/shellConfig';
 import type { Entity } from '../sim/types';
 import {
+  angleDeltaAbs,
   clamp,
   lerp,
   lerpAngle,
@@ -40,10 +41,6 @@ const TURRET_PITCH_MIN = -Math.PI / 2;
 const TURRET_PITCH_MAX = Math.PI / 2;
 
 type UnitPredictionTarget = ServerTarget;
-
-function angleDeltaAbs(a: number, b: number): number {
-  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-}
 
 function advanceTurretYaw(angle: number, angularVelocity: number, dt: number): number {
   const safeAngle = Number.isFinite(angle) ? angle : 0;

@@ -57,6 +57,7 @@ import {
   writeQuadRgba,
   type RibbonQuadCorners,
 } from './RibbonTrailBuffer3D';
+import { clamp01 } from '../math';
 
 // ── World Y layout ──
 // Sit slightly above the tile floor; under burn marks (Y=2.5) so a
@@ -121,10 +122,6 @@ const DENSITY_EMA_TAU_MS = 300;
 // the buffer drains. Without this floor, density = 0 (MIN tier)
 // would still emit at SPACING_AT_MIN intervals.
 const EMIT_DENSITY_FLOOR = 0.02;
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
 
 function makeGroundPrintMaterial(): THREE.MeshBasicMaterial {
   const mat = new THREE.MeshBasicMaterial({

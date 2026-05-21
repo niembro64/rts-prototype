@@ -425,8 +425,6 @@ function buildShotConfig(
     homingThrust: shotBlueprint.homingThrust ?? undefined,
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
-    shape: shotBlueprint.shape ?? undefined,
-    cylinderShape: shotBlueprint.cylinderShape ?? undefined,
   };
   return shot;
 }

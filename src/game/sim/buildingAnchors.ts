@@ -10,15 +10,17 @@ function factoryVisualTopAboveGround(width: number, depth: number): number {
 }
 
 export function getBuildingBaseZ(entity: Entity): number {
-  if (!entity.building) return entity.transform.z;
-  return entity.transform.z - entity.building.depth / 2;
+  const building = entity.building;
+  if (building === undefined) return entity.transform.z;
+  return entity.transform.z - building.depth / 2;
 }
 
 export function getBuildingVisualTopAboveGround(entity: Entity): number {
-  const width = entity.building?.width ?? 100;
-  const depth = entity.building?.height ?? 100;
+  const building = entity.building;
+  const width = building === undefined ? 100 : building.width;
+  const depth = building === undefined ? 100 : building.height;
   if (!entity.buildingType) {
-    return entity.building?.depth ?? DEFAULT_BUILDING_VISUAL_HEIGHT;
+    return building === undefined ? DEFAULT_BUILDING_VISUAL_HEIGHT : building.depth;
   }
   const blueprint = getBuildingBlueprint(entity.buildingType);
   switch (blueprint.anchorProfile) {
@@ -27,7 +29,7 @@ export function getBuildingVisualTopAboveGround(entity: Entity): number {
     case 'factoryTower':
       return factoryVisualTopAboveGround(width, depth);
     case 'collisionDepth':
-      return entity.building?.depth ?? blueprint.visualHeight;
+      return building === undefined ? blueprint.visualHeight : building.depth;
     default:
       return blueprint.visualHeight;
   }

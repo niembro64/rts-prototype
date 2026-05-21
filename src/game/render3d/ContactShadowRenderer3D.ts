@@ -10,7 +10,7 @@ import {
   getTerrainMeshHeight,
   getTerrainMeshNormal,
 } from '../sim/Terrain';
-import { shouldRunOnStride } from '../math';
+import { clamp01, shouldRunOnStride } from '../math';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { SUN_DIRECTION_SIM, writeSunDirectionThree } from './SunLighting';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
@@ -23,10 +23,6 @@ const UNIT_AIR_SHADOW_FADE_MIN_HEIGHT = 80;
 const UNIT_AIR_SHADOW_MIN_ALPHA = 0.18;
 const UNIT_AIR_SHADOW_CROSS_SCALE_BOOST = 0.45;
 const UNIT_AIR_SHADOW_SUN_SCALE_BOOST = 0.7;
-
-function clamp01(value: number): number {
-  return value < 0 ? 0 : value > 1 ? 1 : value;
-}
 
 function makeContactShadowMaterial(): THREE.MeshBasicMaterial {
   const material = new THREE.MeshBasicMaterial({

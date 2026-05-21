@@ -33,6 +33,7 @@ import {
   mapOvalPointAt,
   type MapOvalMetrics,
 } from './mapOval';
+import { angleDeltaAbs } from '../math';
 
 export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
 
@@ -529,13 +530,6 @@ export function spawnInitialBases(
   }
 
   return entities;
-}
-
-function angleDeltaAbs(a: number, b: number): number {
-  let d = a - b;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return Math.abs(d);
 }
 
 function ownerForDeposit(world: WorldState, playerIds: PlayerId[], x: number, y: number): PlayerId {

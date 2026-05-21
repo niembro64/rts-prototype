@@ -19,8 +19,6 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'homingTurnRate',
   'homingThrust',
   'smokeTrail',
-  'shape',
-  'cylinderShape',
 ] as const;
 
 const LINE_EXPLICIT_FIELDS = ['hitSound'] as const;

@@ -10,6 +10,7 @@ export {
   normalizeAngle,
   clamp,
   clamp01,
+  angleDeltaAbs,
   lerp,
   angleDiff,
   lerpAngle,

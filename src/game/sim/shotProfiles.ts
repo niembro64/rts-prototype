@@ -22,7 +22,8 @@ const _profileCache = new WeakMap<ActiveProjectileShot, ShotProfile>();
 
 function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile {
   const collisionRadius = shot.collision.radius;
-  const explosionRadius = shot.explosion?.radius ?? 0;
+  const explosion = shot.explosion;
+  const explosionRadius = explosion === undefined ? 0 : explosion.radius;
   return {
     id: shot.id,
     type: shot.type,
@@ -43,6 +44,7 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
 
 function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
   const collisionRadius = shot.collision.radius;
+  const explosion = shot.explosion;
   return {
     projectileBodyRadius: collisionRadius,
     projectileTailShape: shot.type === 'rocket' ? 'cylinder' : 'cone',
@@ -51,7 +53,7 @@ function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
     projectileTailRadiusMult: PROJECTILE_TAIL_RADIUS_MULT,
     projectileFinSizeMult: shot.type === 'rocket' ? ROCKET_FIN_SIZE_MULT : 0,
     debugCollisionRadius: collisionRadius,
-    debugExplosionRadius: shot.explosion?.radius ?? 0,
+    debugExplosionRadius: explosion === undefined ? 0 : explosion.radius,
     smokeTrail: shot.smokeTrail,
     burnMarkWidth: collisionRadius * 1.5,
     lineRadius: 0,

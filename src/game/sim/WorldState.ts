@@ -749,6 +749,19 @@ export class WorldState {
         actions: [],
         actionHash: 0,
         patrolStartIndex: null,
+        flyingLoiterTargetX: null,
+        flyingLoiterTargetY: null,
+        flyingLoiterTargetZ: null,
+        flyingLoiterTurnSign: null,
+        velocityX: 0,
+        velocityY: 0,
+        velocityZ: 0,
+        movementAccelX: 0,
+        movementAccelY: 0,
+        movementAccelZ: 0,
+        thrustDirX: 0,
+        thrustDirY: 0,
+        suspension: null,
         mirrorPanels: [],
         mirrorBoundRadius: 0,
         surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
@@ -760,13 +773,15 @@ export class WorldState {
         // spawning a ground unit until forces start acting on it.
         orientation: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0, w: 1 }
-          : undefined,
+          : null,
         angularVelocity3: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0 }
-          : undefined,
+          : null,
         angularAcceleration3: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0 }
-          : undefined,
+          : null,
+        hoverHeightSmoothed: null,
+        stuckTicks: 0,
       },
       // combat is attached by the caller (createUnitFromBlueprint) once
       // it knows the runtime turret list. The base entity has no combat
@@ -833,17 +848,6 @@ export class WorldState {
     }
 
     return entity;
-  }
-
-  // Legacy: Create a commander unit
-  // @deprecated Use createUnitFromBlueprint('commander') instead
-  createCommander(
-    x: number,
-    y: number,
-    playerId: PlayerId,
-    _config?: unknown
-  ): Entity {
-    return this.createUnitFromBlueprint(x, y, playerId, 'commander');
   }
 
   // Create a D-gun projectile

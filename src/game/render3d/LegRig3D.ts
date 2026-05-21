@@ -46,6 +46,7 @@ import {
   kneeFromIK,
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
+import { clamp, clamp01 } from '../math';
 
 /** Per-unit step-circle radius as a fraction of the unit's LONGEST
  *  leg (upperLegLength + lowerLegLength). One value shared by every
@@ -716,27 +717,15 @@ function totalLegLength(c: ArachnidLegConfig): number {
   return c.upperLegLength + c.lowerLegLength;
 }
 
-function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
-}
-
-function clampRange(value: number, min: number, max: number): number {
-  if (value <= min) return min;
-  if (value >= max) return max;
-  return value;
-}
-
 function visualGroundBuffer(maxLegLength: number, currentlyGrounded: boolean): number {
   if (currentlyGrounded) {
-    return clampRange(
+    return clamp(
       maxLegLength * VISUAL_GROUND_RELEASE_BUFFER_FRAC,
       VISUAL_GROUND_RELEASE_BUFFER_MIN,
       VISUAL_GROUND_RELEASE_BUFFER_MAX,
     );
   }
-  return clampRange(
+  return clamp(
     maxLegLength * VISUAL_GROUND_ACQUIRE_BUFFER_FRAC,
     VISUAL_GROUND_ACQUIRE_BUFFER_MIN,
     VISUAL_GROUND_ACQUIRE_BUFFER_MAX,

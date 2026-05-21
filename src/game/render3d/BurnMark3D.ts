@@ -33,6 +33,7 @@ import {
   writeFlatQuadXZ,
   writeQuadRgba,
 } from './RibbonTrailBuffer3D';
+import { clamp01 } from '../math';
 
 // ── World Y layout ──
 // Burn marks sit a couple units above the tile layer (y=0). The tile floor
@@ -94,10 +95,6 @@ const MIN_SEGMENT_DIST_SQ = 4;
 // and floating-point slop on a sim-authoritative ground hit (which sets
 // endpoint.z = getGroundZ(x, y) exactly).
 const GROUND_HIT_Z_TOLERANCE = 4;
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
 
 type BeamState = {
   lastEndX: number;

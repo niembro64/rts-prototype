@@ -169,29 +169,29 @@ export type Unit = {
   /** Flying-only loiter center. When a flying unit exhausts its action
    *  queue, it keeps steering around this last destination instead of
    *  dropping thrust and drifting off-map. */
-  flyingLoiterTargetX?: number;
-  flyingLoiterTargetY?: number;
-  flyingLoiterTargetZ?: number;
+  flyingLoiterTargetX: number | null;
+  flyingLoiterTargetY: number | null;
+  flyingLoiterTargetZ: number | null;
   /** Flying-only orbit direction around the loiter center. */
-  flyingLoiterTurnSign?: number;
-  velocityX?: number;
-  velocityY?: number;
-  velocityZ?: number;
+  flyingLoiterTurnSign: number | null;
+  velocityX: number;
+  velocityY: number;
+  velocityZ: number;
   /** Authoritative movement/traction acceleration applied this tick,
    *  excluding gravity, terrain spring, air/ground damping, and
    *  transient external forces. Clients use this as the powered-movement
    *  input for force-based visual prediction. */
-  movementAccelX?: number;
-  movementAccelY?: number;
-  movementAccelZ?: number;
+  movementAccelX: number;
+  movementAccelY: number;
+  movementAccelZ: number;
   /** Desired thrust vector for this tick. Magnitude is a force fraction
    *  (0..1 after clamping); the action system encodes "stationary" as
    *  (0, 0). */
-  thrustDirX?: number;
-  thrustDirY?: number;
-  /** Optional runtime spring state for the visible chassis relative
-   *  to the locomotion anchor. Omitted means rigid legacy attachment. */
-  suspension?: UnitSuspensionState;
+  thrustDirX: number;
+  thrustDirY: number;
+  /** Runtime spring state for the visible chassis relative to the
+   *  locomotion anchor. Null means rigid legacy attachment. */
+  suspension: UnitSuspensionState | null;
   mirrorPanels: CachedMirrorPanel[];
   mirrorBoundRadius: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The
@@ -205,14 +205,13 @@ export type Unit = {
   surfaceNormal: { nx: number; ny: number; nz: number };
   /** Per-unit EMA accumulator for the jittered hoverHeight (airborne
    *  locomotion only). Updated each tick by UnitForceSystem when
-   *  `locomotion.hoverHeightEMA > 0`; undefined until the first tick
-   *  seeds it from the raw sample. Tick-only state, never serialised. */
-  hoverHeightSmoothed?: number;
-  /** Optional full 3-DOF orientation, used by entities that need
-   *  roll or arbitrary orientation (hover drones banking into turns,
-   *  free-flying projectiles with spin, future ragdoll debris).
-   *  Undefined for ground units that only need a yaw scalar — those
-   *  continue to read transform.rotation as before.
+   *  `locomotion.hoverHeightEMA > 0`; null until the first tick seeds
+   *  it from the raw sample. Tick-only state, never serialised. */
+  hoverHeightSmoothed: number | null;
+  /** Full 3-DOF orientation, used by entities that need roll or
+   *  arbitrary orientation (hover drones banking into turns, future
+   *  ragdoll debris). Null for ground units that only need a yaw scalar
+   *  — those continue to read transform.rotation as before.
    *
    *  Convention: unit quaternion using ZYX intrinsic Euler order
    *  (yaw about world Z, pitch about body Y after yaw, roll about
@@ -220,13 +219,13 @@ export type Unit = {
    *  transform.rotation = 0 with zero pitch/roll. Renderer/turret
    *  worldPos math can read transform.rotation (kept in sync to the
    *  quat's yaw component) when only heading matters. */
-  orientation?: { x: number; y: number; z: number; w: number };
+  orientation: { x: number; y: number; z: number; w: number } | null;
   /** Angular velocity 3-vector in world frame (rad/s). Paired with
-   *  `orientation`; undefined when orientation is undefined. */
-  angularVelocity3?: { x: number; y: number; z: number };
+   *  `orientation`; null when orientation is null. */
+  angularVelocity3: { x: number; y: number; z: number } | null;
   /** Angular acceleration 3-vector in world frame (rad/s²). Paired
-   *  with `orientation`; undefined when orientation is undefined. */
-  angularAcceleration3?: { x: number; y: number; z: number };
+   *  with `orientation`; null when orientation is null. */
+  angularAcceleration3: { x: number; y: number; z: number } | null;
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or
    *  ticks where physics velocity exceeds the stuck threshold. When
@@ -234,7 +233,7 @@ export type Unit = {
    *  re-run from the unit's current position to the trip's final
    *  destination, replacing the stale path. Tick-only state, never
    *  serialised. */
-  stuckTicks?: number;
+  stuckTicks: number;
 };
 
 // Combat capability — separates "this entity has armed turrets"

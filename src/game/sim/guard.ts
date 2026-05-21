@@ -19,9 +19,16 @@ export function isFriendlyGuardTarget(
 }
 
 export function getGuardFollowRadius(entity: Entity, target: Entity): number {
-  const unitRadius = entity.unit?.radius.body ?? 0;
-  const targetRadius = target.unit?.radius.body ??
-    target.building?.targetRadius ??
-    (target.building ? Math.max(target.building.width, target.building.height) / 2 : 0);
+  const unit = entity.unit;
+  const targetUnit = target.unit;
+  const targetBuilding = target.building;
+  const unitRadius = unit === undefined ? 0 : unit.radius.body;
+  let targetRadius = 0;
+  if (targetUnit !== undefined) {
+    targetRadius = targetUnit.radius.body;
+  } else if (targetBuilding !== undefined) {
+    targetRadius = targetBuilding.targetRadius ??
+      Math.max(targetBuilding.width, targetBuilding.height) / 2;
+  }
   return unitRadius + targetRadius + GUARD_FOLLOW_PADDING;
 }

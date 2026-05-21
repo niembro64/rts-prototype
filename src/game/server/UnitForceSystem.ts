@@ -231,13 +231,13 @@ export class UnitForceSystem {
         let hoverHeight: number;
         if (emaWeight > 0) {
           const prev = entity.unit.hoverHeightSmoothed;
-          hoverHeight = prev === undefined
+          hoverHeight = prev === null
             ? rawHoverHeight
             : emaWeight * prev + (1 - emaWeight) * rawHoverHeight;
           entity.unit.hoverHeightSmoothed = hoverHeight;
         } else {
           hoverHeight = rawHoverHeight;
-          entity.unit.hoverHeightSmoothed = undefined;
+          entity.unit.hoverHeightSmoothed = null;
         }
         // F_up = K / altitude  −  c · vz
         // K   = m · g · hoverHeight   (raw force)

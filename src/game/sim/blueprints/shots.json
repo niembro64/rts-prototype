@@ -18,9 +18,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
-    "smokeTrail": null,
-    "shape": null,
-    "cylinderShape": null
+    "smokeTrail": null
   },
   "mediumShot": {
     "type": "plasma",
@@ -41,9 +39,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
-    "smokeTrail": null,
-    "shape": null,
-    "cylinderShape": null
+    "smokeTrail": null
   },
   "lightRocket": {
     "type": "rocket",
@@ -71,9 +67,7 @@
       "endRadius": 8,
       "startAlpha": 0.9,
       "color": 13421772
-    },
-    "shape": null,
-    "cylinderShape": null
+    }
   },
   "fastRocket": {
     "type": "rocket",
@@ -101,9 +95,7 @@
       "endRadius": 7,
       "startAlpha": 0.9,
       "color": 13421772
-    },
-    "shape": null,
-    "cylinderShape": null
+    }
   },
   "heavyShot": {
     "type": "plasma",
@@ -124,9 +116,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
-    "smokeTrail": null,
-    "shape": null,
-    "cylinderShape": null
+    "smokeTrail": null
   },
   "mortarShot": {
     "type": "plasma",
@@ -153,9 +143,7 @@
     },
     "homingTurnRate": null,
     "homingThrust": null,
-    "smokeTrail": null,
-    "shape": null,
-    "cylinderShape": null
+    "smokeTrail": null
   },
   "disruptorShot": {
     "type": "plasma",
@@ -176,9 +164,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
-    "smokeTrail": null,
-    "shape": null,
-    "cylinderShape": null
+    "smokeTrail": null
   },
   "miniBeamShot": {
     "type": "beam",
