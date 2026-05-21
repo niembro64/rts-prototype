@@ -976,6 +976,11 @@ export interface CombatTargetingApi {
     losBlockedTicks: number,
     configFlags: number,
     dps: number,
+    projectileSpeed: number,
+    arcPreference: number,
+    maxTimeSec: number,
+    groundAimFraction: number,
+    underOnly: number,
   ) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
@@ -1147,11 +1152,6 @@ export interface CombatTargetingApi {
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
     outTargetIds: Int32Array,
     outRanks: Uint8Array,
   ) => void;
@@ -1177,9 +1177,7 @@ export interface CombatTargetingApi {
    *  same pass. Saves ~3 cross-boundary calls per weapon vs the legacy
    *  per-turret path.
    *
-   *  JS still owns the per-shot ballistic/aim config arrays; those
-   *  derive from blueprint data and can move onto the slab in a
-   *  follow-up. */
+   *  Per-turret ballistic gate config is read from the targeting slab. */
   readonly computeAndApplyPriorityPointFsmBatch: (
     entitySlot: number,
     pointX: number,
@@ -1192,11 +1190,6 @@ export interface CombatTargetingApi {
     terrainStepLen: number,
     entityLineWidth: number,
     gravity: number,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
   ) => void;
   /** AIM-08.5 — unified attack-entity priority gate compute + FSM
    *  apply. TS resolves per-turret aim points (so lockOnToBody AABB
@@ -1217,11 +1210,6 @@ export interface CombatTargetingApi {
     aimX: Float64Array,
     aimY: Float64Array,
     aimZ: Float64Array,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
   ) => void;
   /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
    *  turret's current target is read from the slab; TS supplies only
@@ -1241,11 +1229,6 @@ export interface CombatTargetingApi {
     aimX: Float64Array,
     aimY: Float64Array,
     aimZ: Float64Array,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
   ) => void;
   readonly applyPriorityTargetFsmBatch: (
     entitySlot: number,
@@ -1296,11 +1279,6 @@ export interface CombatTargetingApi {
     aimX: Float64Array,
     aimY: Float64Array,
     aimZ: Float64Array,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     outF64: Float64Array,
@@ -1308,8 +1286,8 @@ export interface CombatTargetingApi {
   /** AIM-08.5 — collapses the fire-choice + acquisition pair (six
    *  per-entity boundary calls in the legacy flow) into a single Rust
    *  tick. Scratch buffers for apply mask / seed ranks / choose-best
-   *  outputs live on the kernel's stack; JS only owns the shared
-   *  candidate batch + projectile config arrays. */
+   *  outputs live on the kernel's stack; per-turret ballistic config
+   *  is read from the targeting slab. */
   readonly autoModeCandidateTick: (
     entitySlot: number,
     sourceEntityId: number,
@@ -1328,11 +1306,6 @@ export interface CombatTargetingApi {
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
     candidateMirrorScore: Float64Array,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
   ) => void;
   /** AIM-08.5 — auto-mode candidate tick with Rust-owned spatial
    *  broadphase. JS passes the auto-scan radius result and the kernel
@@ -1353,11 +1326,6 @@ export interface CombatTargetingApi {
     maxAcquireRange: number,
     maxWeaponOffset: number,
     maxTargetableRadius: number,
-    projectileSpeeds: Float64Array,
-    arcPreferences: Uint8Array,
-    maxTimeSecs: Float64Array,
-    groundAimFractions: Float64Array,
-    underOnlyMask: Uint8Array,
   ) => void;
 }
 

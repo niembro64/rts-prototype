@@ -1,21 +1,15 @@
 // Auto-targeting system - each weapon independently finds targets
 
 import type { WorldState } from '../WorldState';
-import type { Entity, ProjectileShot, Turret } from '../types';
-import { getShotMaxLifespan, isProjectileShot } from '../types';
+import type { Entity, Turret } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { GRAVITY } from '../../../config';
-import {
-  decrementCooldown,
-  getProjectileLaunchSpeed,
-} from './combatUtils';
+import { decrementCooldown } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimWasm } from '../../sim-wasm/init';
-import {
-  resolveTargetAimPoint,
-} from './aimSolver';
+import { resolveTargetAimPoint } from './aimSolver';
 import {
   COMBAT_LOS_ENTITY_QUERY_WIDTH,
   COMBAT_LOS_TERRAIN_STEP_LEN,
@@ -35,16 +29,11 @@ const _activeCombatUnits: Entity[] = [];
 let _cachedFireRanks = new Uint8Array(0);
 let _cachedFireDistSqs = new Float64Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
-// AIM-08.5 unified gate inputs shared across the priority-point,
-// priority-target, and existing-lock kernels. The Rust kernels read
-// per-turret ballistic config; mirror-panel, force-field, cloak, LOS,
-// and ballistic gates run inside Rust. Aim points are TS-resolved so
+// AIM-08.5 unified gate inputs shared across priority-target and
+// existing-lock kernels. The Rust kernels read per-turret ballistic
+// config, mirror-panel, force-field, cloak, LOS, and ballistic gates
+// from the slab. Aim points are TS-resolved so
 // lockOnToBody/lockOnToTurret stay in one place.
-let _ppProjectileSpeeds = new Float64Array(0);
-let _ppArcPreferences = new Uint8Array(0);
-let _ppMaxTimeSecs = new Float64Array(0);
-let _ppGroundAimFractions = new Float64Array(0);
-let _ppUnderOnlyMask = new Uint8Array(0);
 let _ppAimX = new Float64Array(0);
 let _ppAimY = new Float64Array(0);
 let _ppAimZ = new Float64Array(0);
@@ -60,49 +49,9 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   while (next < count) next *= 2;
   _cachedFireRanks = new Uint8Array(next);
   _cachedFireDistSqs = new Float64Array(next);
-  _ppProjectileSpeeds = new Float64Array(next);
-  _ppArcPreferences = new Uint8Array(next);
-  _ppMaxTimeSecs = new Float64Array(next);
-  _ppGroundAimFractions = new Float64Array(next);
-  _ppUnderOnlyMask = new Uint8Array(next);
   _ppAimX = new Float64Array(next);
   _ppAimY = new Float64Array(next);
   _ppAimZ = new Float64Array(next);
-}
-
-const BALLISTIC_ARC_LOW = 0;
-const BALLISTIC_ARC_HIGH = 1;
-
-/** Fill the per-turret arrays the unified priority-point gate kernel
- *  consumes. Most fields are derived from static blueprint data and
- *  could later be stamped on the slab; running this once per attack-
- *  ground entity is much cheaper than the per-weapon Rust calls it
- *  replaces. */
-/** Per-turret ballistic config arrays (projectile speed, arc
- *  preference, max time, ground-aim fraction, under-only mask) are
- *  static per-blueprint and identical across the three gate kernels.
- *  Filled once and reused. */
-function fillGateBallisticConfig(weapons: Turret[]): void {
-  for (let wi = 0; wi < weapons.length; wi++) {
-    const weapon = weapons[wi];
-    const shot = weapon.config.shot;
-    const projShot: ProjectileShot | undefined = shot !== undefined && isProjectileShot(shot)
-      ? shot
-      : undefined;
-    _ppProjectileSpeeds[wi] = projShot ? getProjectileLaunchSpeed(projShot) : 0;
-    const angleType = weapon.config.aimStyle.angleType;
-    _ppArcPreferences[wi] = angleType === 'ballisticArcHigh'
-      ? BALLISTIC_ARC_HIGH
-      : BALLISTIC_ARC_LOW;
-    if (projShot) {
-      const lifeMs = getShotMaxLifespan(projShot);
-      _ppMaxTimeSecs[wi] = Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
-    } else {
-      _ppMaxTimeSecs[wi] = 0;
-    }
-    _ppGroundAimFractions[wi] = weapon.config.groundAimFraction ?? 0;
-    _ppUnderOnlyMask[wi] = angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0;
-  }
 }
 
 /** Resolve each turret's aim point against a known target entity for
@@ -348,7 +297,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       // applies the FSM transition in the same call — saves ~3
       // boundary crossings per armed weapon vs the legacy per-turret
       // path.
-      fillGateBallisticConfig(weapons);
       targeting.computeAndApplyPriorityPointFsmBatch(
         unitSlot,
         priorityPoint.x, priorityPoint.y, priorityPoint.z,
@@ -359,11 +307,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         COMBAT_LOS_TERRAIN_STEP_LEN,
         COMBAT_LOS_ENTITY_QUERY_WIDTH,
         GRAVITY,
-        _ppProjectileSpeeds,
-        _ppArcPreferences,
-        _ppMaxTimeSecs,
-        _ppGroundAimFractions,
-        _ppUnderOnlyMask,
       );
       writeBackCombatTargetingEntity(unit, tick);
       if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
@@ -386,7 +329,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         // hard max range. Rust runs LOS / ballistic / FF /
         // mirror-panel / FSM and the passive-mirror DPS walk in one
         // call; TS only resolves per-turret aim points.
-        fillGateBallisticConfig(weapons);
         fillPriorityTargetGateInputs(weapons, priorityTarget, unit, tick);
         targeting.computeAndApplyPriorityTargetFsmBatch(
           unitSlot,
@@ -399,11 +341,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
           COMBAT_LOS_ENTITY_QUERY_WIDTH,
           GRAVITY,
           _ppAimX, _ppAimY, _ppAimZ,
-          _ppProjectileSpeeds,
-          _ppArcPreferences,
-          _ppMaxTimeSecs,
-          _ppGroundAimFractions,
-          _ppUnderOnlyMask,
         );
         writeBackCombatTargetingEntity(unit, tick);
         if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
@@ -421,9 +358,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // passive-mirror validity from the slab, and fills
     // cachedFireRanks / cachedFireDistSqs + (maxAcquireRange,
     // maxWeaponOffset) for the candidate broadphase. TS owes only
-    // the per-turret aim points and ballistic config; the merged
+    // the per-turret aim points; the merged
     // kernel turns two boundary calls into one.
-    fillGateBallisticConfig(weapons);
     fillExistingLockGateInputs(weapons, world, unit, tick);
     const needsAnyQuery = targeting.existingLockAndAutoScanTick(
       unitSlot,
@@ -436,11 +372,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       GRAVITY,
       SIGHT_DROP_GRACE_TICKS,
       _ppAimX, _ppAimY, _ppAimZ,
-      _ppProjectileSpeeds,
-      _ppArcPreferences,
-      _ppMaxTimeSecs,
-      _ppGroundAimFractions,
-      _ppUnderOnlyMask,
       _cachedFireRanks,
       _cachedFireDistSqs,
       _targetingAutoScanF64,
@@ -456,7 +387,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     // radius plus max targetable radius expansion and Z-band clamp
     // previously computed in TS. Zero-candidate batches still dispatch
     // so acquisition's idle-pass can drop any zombie locks.
-    fillGateBallisticConfig(weapons);
     targeting.autoModeSpatialCandidateTick(
       unitSlot,
       unit.id,
@@ -472,11 +402,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       maxAcquireRange,
       maxWeaponOffset,
       world.getMaxTargetableRadius(),
-      _ppProjectileSpeeds,
-      _ppArcPreferences,
-      _ppMaxTimeSecs,
-      _ppGroundAimFractions,
-      _ppUnderOnlyMask,
     );
     writeBackCombatTargetingEntity(unit, tick);
 

@@ -105,7 +105,12 @@ AIM-08.5 — Port the targeting FSM
   Rust pass writes current world mount position/velocity back into the
   slab. TS only writes that slab result back to Turret.worldPos /
   worldVelocity while rendering, firing, and snapshot encode still read
-  JS Turret objects.
+  JS Turret objects. Per-turret ballistic gate config (projectile
+  speed, arc preference, max flight time, ground-aim fraction, and
+  under-only lock state) is now stamped on the combat-targeting slab,
+  so targetingSystem.ts no longer rebuilds or passes per-entity
+  projectile config arrays into the priority, existing-lock, or
+  auto-mode Rust kernels.
   Remaining work for AIM-08.5:
     - Move the outer world.getArmedEntities() loop into Rust so the
       per-tick entry point is a single combat_targeting_tick(...) call.

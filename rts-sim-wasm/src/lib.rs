@@ -6272,6 +6272,14 @@ struct CombatTargetingPool {
     // force-shot / missing-shot turrets. Used by the Rust passive-
     // mirror target check to walk a target's turrets and score them.
     turret_dps: Vec<f32>,
+    // Static per-turret ballistic gate config, stamped once alongside
+    // the turret blueprint data. AIM-08.5 kernels read these from the
+    // slab instead of accepting per-entity JS scratch arrays.
+    turret_projectile_speed: Vec<f64>,
+    turret_arc_preference: Vec<u8>,
+    turret_max_time_sec: Vec<f64>,
+    turret_ground_aim_fraction: Vec<f64>,
+    turret_under_only: Vec<u8>,
     turret_aim_error_yaw: Vec<f32>,
     turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
@@ -6345,6 +6353,11 @@ impl CombatTargetingPool {
             turret_outermost_acquire: Vec::new(),
             turret_mount_offset_2d: Vec::new(),
             turret_dps: Vec::new(),
+            turret_projectile_speed: Vec::new(),
+            turret_arc_preference: Vec::new(),
+            turret_max_time_sec: Vec::new(),
+            turret_ground_aim_fraction: Vec::new(),
+            turret_under_only: Vec::new(),
             turret_aim_error_yaw: Vec::new(),
             turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
@@ -6418,6 +6431,11 @@ impl CombatTargetingPool {
             self.turret_outermost_acquire.resize(turret_needed, 0.0);
             self.turret_mount_offset_2d.resize(turret_needed, 0.0);
             self.turret_dps.resize(turret_needed, 0.0);
+            self.turret_projectile_speed.resize(turret_needed, 0.0);
+            self.turret_arc_preference.resize(turret_needed, 0);
+            self.turret_max_time_sec.resize(turret_needed, 0.0);
+            self.turret_ground_aim_fraction.resize(turret_needed, 0.0);
+            self.turret_under_only.resize(turret_needed, 0);
             self.turret_aim_error_yaw.resize(turret_needed, 0.0);
             self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
@@ -6695,6 +6713,8 @@ pub fn combat_targeting_unset_entity(entity_slot: u32) {
 /// `mount_offset_2d` is the raw local XY distance from host origin to
 /// turret mount, matching the TypeScript pre-scan's `hypot(mount.x,
 /// mount.y)` broadphase padding.
+/// Ballistic gate config is static per turret blueprint and is stamped
+/// here so targeting kernels do not need per-entity JS config arrays.
 #[wasm_bindgen]
 pub fn combat_targeting_set_turret(
     entity_slot: u32,
@@ -6726,6 +6746,11 @@ pub fn combat_targeting_set_turret(
     los_blocked_ticks: u16,
     config_flags: u8,
     dps: f32,
+    projectile_speed: f64,
+    arc_preference: u8,
+    max_time_sec: f64,
+    ground_aim_fraction: f64,
+    under_only: u8,
 ) {
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
@@ -6758,6 +6783,11 @@ pub fn combat_targeting_set_turret(
     pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
     pool.turret_config_flags[global_idx] = config_flags;
     pool.turret_dps[global_idx] = dps;
+    pool.turret_projectile_speed[global_idx] = projectile_speed;
+    pool.turret_arc_preference[global_idx] = arc_preference;
+    pool.turret_max_time_sec[global_idx] = max_time_sec;
+    pool.turret_ground_aim_fraction[global_idx] = ground_aim_fraction;
+    pool.turret_under_only[global_idx] = under_only;
     combat_targeting_write_no_ballistic_solution(
         pool,
         global_idx,
@@ -8092,6 +8122,20 @@ pub fn combat_targeting_apply_priority_point_fsm_batch(
 const CT_UNDER_ONLY_MIN_BELOW_DISTANCE: f64 = 30.0;
 const CT_UNDER_ONLY_LOCK_EPS: f64 = 1e-6;
 
+#[inline]
+fn combat_targeting_slab_gate_config(
+    pool: &CombatTargetingPool,
+    idx: usize,
+) -> (f64, u8, f64, f64, bool) {
+    (
+        pool.turret_projectile_speed[idx],
+        pool.turret_arc_preference[idx],
+        pool.turret_max_time_sec[idx],
+        pool.turret_ground_aim_fraction[idx],
+        pool.turret_under_only[idx] != 0,
+    )
+}
+
 /// AIM-08.5 — Shared gate-compute helper for the three unified priority
 /// / existing-lock kernels. Returns the three per-turret clearance
 /// flags the FSM transition functions consume:
@@ -8250,14 +8294,6 @@ fn compute_turret_gates_for_aim_point(
 /// internally, so a 5-turret entity makes one boundary call instead of
 /// ~16 (3 gates × 5 turrets + 1 batch apply).
 ///
-/// JS still owns:
-///   - the per-shot ballistic config (`projectile_speed`, `arc_preference`,
-///     `max_time_sec`) and `ground_aim_fraction`, supplied as parallel
-///     per-turret arrays. These derive from blueprint data and don't
-///     change per tick; a follow-up can stamp them on the slab.
-///   - the under-only ballistic mask: 1 for `ballisticArcLowOnlyUnder`
-///     weapons, 0 otherwise.
-///
 /// The kernel handles disabled/manual-fire/passive turrets the same way
 /// the TS path does:
 ///   - manual fire → no FSM update
@@ -8278,11 +8314,6 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -8290,12 +8321,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         return;
     }
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
-        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
-        .min(projectile_speeds.len())
-        .min(arc_preferences.len())
-        .min(max_time_secs.len())
-        .min(ground_aim_fractions.len())
-        .min(under_only_mask.len());
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
 
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
@@ -8324,6 +8350,8 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
+        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
+            combat_targeting_slab_gate_config(pool, idx);
 
         let (los_clear, ballistic_clear, force_field_clear) = compute_turret_gates_for_aim_point(
             pool,
@@ -8345,11 +8373,11 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
             terrain_step_len,
             entity_line_width,
             force_field_obstruction_active,
-            projectile_speeds[turret_idx],
-            arc_preferences[turret_idx],
-            max_time_secs[turret_idx],
-            ground_aim_fractions[turret_idx],
-            under_only_mask[turret_idx] != 0,
+            projectile_speed,
+            arc_preference,
+            max_time_sec,
+            ground_aim_fraction,
+            under_only,
             gravity,
         );
 
@@ -8600,11 +8628,6 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
     aim_x: &[f64],
     aim_y: &[f64],
     aim_z: &[f64],
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -8649,12 +8672,7 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(aim_x.len())
         .min(aim_y.len())
-        .min(aim_z.len())
-        .min(projectile_speeds.len())
-        .min(arc_preferences.len())
-        .min(max_time_secs.len())
-        .min(ground_aim_fractions.len())
-        .min(under_only_mask.len());
+        .min(aim_z.len());
 
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
@@ -8677,6 +8695,8 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
+        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
+            combat_targeting_slab_gate_config(pool, idx);
 
         // Short-circuit when the target or mirror gate has already
         // failed — saves the LOS/ballistic/FF compute since the FSM
@@ -8705,11 +8725,11 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
                     terrain_step_len,
                     entity_line_width,
                     force_field_obstruction_active,
-                    projectile_speeds[turret_idx],
-                    arc_preferences[turret_idx],
-                    max_time_secs[turret_idx],
-                    ground_aim_fractions[turret_idx],
-                    under_only_mask[turret_idx] != 0,
+                    projectile_speed,
+                    arc_preference,
+                    max_time_sec,
+                    ground_aim_fraction,
+                    under_only,
                     gravity,
                 )
             };
@@ -8753,11 +8773,6 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     aim_x: &[f64],
     aim_y: &[f64],
     aim_z: &[f64],
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -8770,12 +8785,7 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(aim_x.len())
         .min(aim_y.len())
-        .min(aim_z.len())
-        .min(projectile_speeds.len())
-        .min(arc_preferences.len())
-        .min(max_time_secs.len())
-        .min(ground_aim_fractions.len())
-        .min(under_only_mask.len());
+        .min(aim_z.len());
 
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
@@ -8842,6 +8852,8 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         let mount_x = pool.turret_mount_x[idx];
         let mount_y = pool.turret_mount_y[idx];
         let mount_z = pool.turret_mount_z[idx];
+        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
+            combat_targeting_slab_gate_config(pool, idx);
 
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
@@ -8868,11 +8880,11 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
                 terrain_step_len,
                 entity_line_width,
                 force_field_obstruction_active,
-                projectile_speeds[turret_idx],
-                arc_preferences[turret_idx],
-                max_time_secs[turret_idx],
-                ground_aim_fractions[turret_idx],
-                under_only_mask[turret_idx] != 0,
+                projectile_speed,
+                arc_preference,
+                max_time_sec,
+                ground_aim_fraction,
+                under_only,
                 gravity,
             );
             // sight_blocked = the weapon could otherwise fire
@@ -8926,11 +8938,6 @@ pub fn combat_targeting_existing_lock_and_auto_scan_tick(
     aim_x: &[f64],
     aim_y: &[f64],
     aim_z: &[f64],
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     out_f64: &mut [f64],
@@ -8948,11 +8955,6 @@ pub fn combat_targeting_existing_lock_and_auto_scan_tick(
         aim_x,
         aim_y,
         aim_z,
-        projectile_speeds,
-        arc_preferences,
-        max_time_secs,
-        ground_aim_fractions,
-        under_only_mask,
     );
     combat_targeting_prepare_auto_scan(
         entity_slot,
@@ -9061,11 +9063,6 @@ pub fn combat_targeting_auto_mode_candidate_tick(
     candidate_pos_z: &[f64],
     candidate_radius: &[f64],
     candidate_mirror_score: &mut [f64],
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
     let turret_count = {
@@ -9078,11 +9075,6 @@ pub fn combat_targeting_auto_mode_candidate_tick(
             .min(MAX)
             .min(cached_fire_ranks.len())
             .min(cached_fire_dist_sqs.len())
-            .min(projectile_speeds.len())
-            .min(arc_preferences.len())
-            .min(max_time_secs.len())
-            .min(ground_aim_fractions.len())
-            .min(under_only_mask.len())
     };
     if turret_count == 0 {
         return;
@@ -9132,11 +9124,6 @@ pub fn combat_targeting_auto_mode_candidate_tick(
             terrain_step_len,
             entity_line_width,
             gravity,
-            projectile_speeds,
-            arc_preferences,
-            max_time_secs,
-            ground_aim_fractions,
-            under_only_mask,
             &mut out_target_ids[..turret_count],
             &mut out_ranks[..turret_count],
         );
@@ -9191,11 +9178,6 @@ pub fn combat_targeting_auto_mode_candidate_tick(
             terrain_step_len,
             entity_line_width,
             gravity,
-            projectile_speeds,
-            arc_preferences,
-            max_time_secs,
-            ground_aim_fractions,
-            under_only_mask,
             &mut out_target_ids[..turret_count],
             &mut out_ranks[..turret_count],
         );
@@ -9316,11 +9298,6 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
     max_acquire_range: f64,
     max_weapon_offset: f64,
     max_targetable_radius: f64,
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
 ) {
     let scratch = combat_targeting_spatial_candidate_scratch();
     let candidate_count = if needs_spatial_query != 0 {
@@ -9354,11 +9331,6 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
         &scratch.pos_z,
         &scratch.radius,
         &mut scratch.mirror_score,
-        projectile_speeds,
-        arc_preferences,
-        max_time_secs,
-        ground_aim_fractions,
-        under_only_mask,
     );
 }
 
@@ -9909,11 +9881,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     terrain_step_len: f64,
     entity_line_width: f64,
     gravity: f64,
-    projectile_speeds: &[f64],
-    arc_preferences: &[u8],
-    max_time_secs: &[f64],
-    ground_aim_fractions: &[f64],
-    under_only_mask: &[u8],
     out_target_ids: &mut [i32],
     out_ranks: &mut [u8],
 ) {
@@ -9930,12 +9897,7 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
         .min(seed_dist_sqs.len())
         .min(seed_mirror_scores.len())
         .min(out_target_ids.len())
-        .min(out_ranks.len())
-        .min(projectile_speeds.len())
-        .min(arc_preferences.len())
-        .min(max_time_secs.len())
-        .min(ground_aim_fractions.len())
-        .min(under_only_mask.len());
+        .min(out_ranks.len());
     let clamped_candidate_count = (candidate_count as usize)
         .min(candidate_ids.len())
         .min(candidate_pos_x.len())
@@ -10033,11 +9995,8 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
             0
         };
 
-        let projectile_speed = projectile_speeds[turret_idx];
-        let arc_preference = arc_preferences[turret_idx];
-        let max_time_sec = max_time_secs[turret_idx];
-        let ground_aim_fraction = ground_aim_fractions[turret_idx];
-        let under_only = under_only_mask[turret_idx] != 0;
+        let (projectile_speed, arc_preference, max_time_sec, ground_aim_fraction, under_only) =
+            combat_targeting_slab_gate_config(pool, idx);
 
         let choice = combat_targeting_choose_best_candidate_inner_with_internal_gate(
             pool,

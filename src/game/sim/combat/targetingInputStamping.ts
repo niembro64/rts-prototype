@@ -27,6 +27,7 @@ import {
 import {
   getEntityPosition3d,
   getEntityVelocity3d,
+  getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
 import { setWeaponTarget } from './targetIndex';
@@ -58,7 +59,16 @@ import {
   getEntityDetectorRadius,
   isEntityCloaked,
 } from '../cloakDetection';
-import type { Entity, HysteresisRange, Turret, TurretRanges, TurretState } from '../types';
+import {
+  getShotMaxLifespan,
+  isProjectileShot,
+  type Entity,
+  type HysteresisRange,
+  type ProjectileShot,
+  type Turret,
+  type TurretRanges,
+  type TurretState,
+} from '../types';
 
 const _stampPos = { x: 0, y: 0, z: 0 };
 const _stampVel = { x: 0, y: 0, z: 0 };
@@ -157,6 +167,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
   return f;
 }
+
+const BALLISTIC_ARC_LOW = 0;
+const BALLISTIC_ARC_HIGH = 1;
 
 /** Rebuild the FF pool slab from getActiveForceFields(). Runs BEFORE
  *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels
@@ -260,6 +273,16 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const ranges = t.ranges;
+    const shot = t.config.shot;
+    const projectileShot: ProjectileShot | undefined =
+      shot !== undefined && isProjectileShot(shot) ? shot : undefined;
+    const angleType = t.config.aimStyle.angleType;
+    const projectileSpeed = projectileShot ? getProjectileLaunchSpeed(projectileShot) : 0;
+    let maxTimeSec = 0;
+    if (projectileShot) {
+      const lifeMs = getShotMaxLifespan(projectileShot);
+      maxTimeSec = Number.isFinite(lifeMs) ? lifeMs / 1000 : 0;
+    }
     const fireMaxAcq = rangeEdgeSq(ranges.fire.max, 'acquire');
     const fireMaxRel = rangeEdgeSq(ranges.fire.max, 'release');
     const fireMinAcq = ranges.fire.min ? rangeEdgeSq(ranges.fire.min, 'acquire') : 0;
@@ -286,6 +309,11 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.losBlockedTicks,
       encodeTurretConfigFlags(t, ranges),
       turretDps(t),
+      projectileSpeed,
+      angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW,
+      maxTimeSec,
+      t.config.groundAimFraction ?? 0,
+      angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
     );
   }
 }
