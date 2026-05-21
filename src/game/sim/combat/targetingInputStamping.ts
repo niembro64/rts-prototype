@@ -35,8 +35,7 @@ import {
 } from './combatUtils';
 import {
   clearCombatActivityFlags,
-  hasTurretSimulationActiveCombat,
-  isFiringCombatTurret,
+  hasTurretRotationWork,
 } from './combatActivity';
 import { syncBeamWeaponTargetIndex } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
@@ -619,13 +618,16 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
  *  onto the JS Turret objects that rendering, firing, and snapshot
  *  encode still consume during the slab migration. The same turret
  *  walk refreshes combat activity masks, avoiding a second
- *  post-writeback JS turret loop. The beam inverse target index syncs
- *  directly from the slab tuple so it is no longer coupled to JS
- *  Turret.target writes. Disabled turrets also have their JS-only
- *  fields cleared here — the slab side was zeroed by the scheduler's
- *  reset_disabled_weapons pass, this finishes the job for fields that
- *  never crossed the boundary. Returns true when any turret still
- *  needs rotation/fire integration after writeback.
+ *  post-writeback JS turret loop. Mask derivation reads target/state
+ *  directly from the slab view (not the JS Turret it just wrote) so
+ *  the JS Turret.target / Turret.state writes above can eventually be
+ *  dropped without breaking activity bookkeeping. The beam inverse
+ *  target index syncs directly from the slab tuple so it is no longer
+ *  coupled to JS Turret.target writes. Disabled turrets also have
+ *  their JS-only fields cleared here — the slab side was zeroed by
+ *  the scheduler's reset_disabled_weapons pass, this finishes the job
+ *  for fields that never crossed the boundary. Returns true when any
+ *  turret still needs rotation/fire integration after writeback.
  *
  *  Mount kinematics (worldPos / worldVelocity / worldPosTick) are no
  *  longer written back here: live consumers
@@ -668,21 +670,32 @@ export function writeBackCombatTargetingEntity(
     if (turret.burst) {
       turret.burst.cooldown = views.burstCooldown[idx];
     }
+    const slabStateCode = views.state[idx];
     const targetId = views.targetId[idx];
     const target = targetId < 0 ? null : targetId;
     syncBeamWeaponTargetIndex(turret, entity, i, target);
     turret.target = target;
-    turret.state = decodeCombatTargetingTurretState(views.state[idx]);
+    turret.state = decodeCombatTargetingTurretState(slabStateCode);
     if (weaponSystemDisabled(world, turret)) {
       resetDisabledTurretJsOnlyFields(turret);
     }
     if (turret.config.visualOnly) continue;
-    if (!hasTurretSimulationActiveCombat(turret)) continue;
+    // Activity-mask derivation reads FSM target/state from the slab so
+    // it stays correct once the turret.target / turret.state writes a
+    // few lines above are dropped. Rotation work still comes from the
+    // JS Turret because angular/pitch velocity are JS-only fields the
+    // Rust kernel never sees.
+    const isFsmActive = target !== null || slabStateCode !== CT_TURRET_STATE_IDLE;
+    if (!isFsmActive && !hasTurretRotationWork(turret)) continue;
     const bit = turretBit(i);
     if (bit !== 0) activeMask |= bit;
     else overflowActive = true;
 
-    if (isFiringCombatTurret(turret)) {
+    if (
+      slabStateCode === CT_TURRET_STATE_ENGAGED &&
+      turret.config.passive !== true &&
+      turret.config.shot?.type !== 'force'
+    ) {
       if (bit !== 0) firingMask |= bit;
       else overflowFiring = true;
     }
