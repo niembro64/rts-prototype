@@ -8608,6 +8608,67 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     }
 }
 
+/// AIM-08.5 — combined existing-lock validation + auto-scan tick for
+/// one entity. Replaces the JS sequence
+/// `computeAndApplyValidateExistingLockFsmBatch` →
+/// `prepareAutoScan` with one boundary crossing: the kernel runs the
+/// existing-lock FSM first (so the slab reflects post-validation
+/// state), then walks the same slab to fill `cached_fire_ranks`,
+/// `cached_fire_dist_sqs`, and `out_f64 = [maxAcquireRange,
+/// maxWeaponOffset]`. Returns 1 when at least one turret still wants
+/// the candidate scan, 0 otherwise.
+#[wasm_bindgen]
+pub fn combat_targeting_existing_lock_and_auto_scan_tick(
+    entity_slot: u32,
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    los_drop_grace_ticks: u16,
+    aim_x: &[f64],
+    aim_y: &[f64],
+    aim_z: &[f64],
+    projectile_speeds: &[f64],
+    arc_preferences: &[u8],
+    max_time_secs: &[f64],
+    ground_aim_fractions: &[f64],
+    under_only_mask: &[u8],
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    out_f64: &mut [f64],
+) -> u8 {
+    combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
+        entity_slot,
+        source_entity_id,
+        mirrors_enabled,
+        force_fields_enabled,
+        force_field_obstruction_active,
+        terrain_step_len,
+        entity_line_width,
+        gravity,
+        los_drop_grace_ticks,
+        aim_x,
+        aim_y,
+        aim_z,
+        projectile_speeds,
+        arc_preferences,
+        max_time_secs,
+        ground_aim_fractions,
+        under_only_mask,
+    );
+    combat_targeting_prepare_auto_scan(
+        entity_slot,
+        mirrors_enabled,
+        force_fields_enabled,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        out_f64,
+    )
+}
+
 /// AIM-08.5 — batch fire-band candidate switches for one entity.
 #[wasm_bindgen]
 pub fn combat_targeting_apply_fire_choice_fsm_batch(

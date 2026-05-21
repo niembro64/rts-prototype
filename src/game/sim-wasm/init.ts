@@ -192,6 +192,7 @@ import __wbg_init, {
   combat_targeting_apply_fire_choice_fsm_batch,
   combat_targeting_apply_acquisition_choice_fsm_batch,
   combat_targeting_auto_mode_candidate_tick,
+  combat_targeting_existing_lock_and_auto_scan_tick,
   force_field_pool_clear,
   force_field_pool_count,
   force_field_pool_set_count,
@@ -1249,6 +1250,35 @@ export interface CombatTargetingApi {
     targetIds: Int32Array,
     ranks: Uint8Array,
   ) => void;
+  /** AIM-08.5 — combined existing-lock validation + auto-scan tick.
+   *  Replaces `computeAndApplyValidateExistingLockFsmBatch` →
+   *  `prepareAutoScan` with one boundary call. Returns 1 when at
+   *  least one turret still wants the spatial candidate scan, 0
+   *  otherwise; `outF64[0..2]` receives `[maxAcquireRange,
+   *  maxWeaponOffset]` and `cachedFireRanks` / `cachedFireDistSqs`
+   *  are filled for the auto-mode candidate tick. */
+  readonly existingLockAndAutoScanTick: (
+    entitySlot: number,
+    sourceEntityId: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    losDropGraceTicks: number,
+    aimX: Float64Array,
+    aimY: Float64Array,
+    aimZ: Float64Array,
+    projectileSpeeds: Float64Array,
+    arcPreferences: Uint8Array,
+    maxTimeSecs: Float64Array,
+    groundAimFractions: Float64Array,
+    underOnlyMask: Uint8Array,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    outF64: Float64Array,
+  ) => number;
   /** AIM-08.5 — collapses the fire-choice + acquisition pair (six
    *  per-entity boundary calls in the legacy flow) into a single Rust
    *  tick. Scratch buffers for apply mask / seed ranks / choose-best
@@ -2344,6 +2374,7 @@ export function initSimWasm(): Promise<SimWasm> {
           computeAndApplyValidateExistingLockFsmBatch: combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch,
           applyFireChoiceFsmBatch: combat_targeting_apply_fire_choice_fsm_batch,
           applyAcquisitionChoiceFsmBatch: combat_targeting_apply_acquisition_choice_fsm_batch,
+          existingLockAndAutoScanTick: combat_targeting_existing_lock_and_auto_scan_tick,
           autoModeCandidateTick: combat_targeting_auto_mode_candidate_tick,
         },
         forceFieldPool: {

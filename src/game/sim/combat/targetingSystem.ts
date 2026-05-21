@@ -492,19 +492,24 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // AUTO MODE: standard hysteresis FSM
 
-    // Pass 1: Validate existing targets with hysteresis. Rust runs
-    // every physics gate (LOS / ballistic / FF / mirror-panel),
-    // derives sight_blocked from them, and computes cloak
-    // observability + passive-mirror validity from the slab; TS only
-    // pre-computes per-turret aim points. Per-turret state
-    // transitions write straight to the slab.
+    // Pass 1 + auto-scan: Validate existing locks then walk the slab
+    // to pick the candidate-query radius. The Rust tick runs the
+    // full physics gate (LOS / ballistic / FF / mirror-panel) for
+    // the existing-lock FSM, computes cloak observability and
+    // passive-mirror validity from the slab, and fills
+    // cachedFireRanks / cachedFireDistSqs + (maxAcquireRange,
+    // maxWeaponOffset) for the candidate broadphase. TS owes only
+    // the per-turret aim points and ballistic config; the merged
+    // kernel turns two boundary calls into one.
+    const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
+    const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
     fillGateBallisticConfig(weapons);
     fillExistingLockGateInputs(weapons, world, unit, tick);
-    targeting.computeAndApplyValidateExistingLockFsmBatch(
+    const needsAnyQuery = targeting.existingLockAndAutoScanTick(
       unitSlot,
       unit.id,
-      world.mirrorsEnabled ? 1 : 0,
-      world.forceFieldsEnabled ? 1 : 0,
+      mirrorsEnabledFlag,
+      forceFieldsEnabledFlag,
       forceMaterialSightObstructionActive ? 1 : 0,
       COMBAT_LOS_TERRAIN_STEP_LEN,
       COMBAT_LOS_ENTITY_QUERY_WIDTH,
@@ -516,21 +521,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       _ppMaxTimeSecs,
       _ppGroundAimFractions,
       _ppUnderOnlyMask,
-    );
-    writeBackCombatTargetingEntity(unit);
-
-    // Rust pre-scan: find whether any weapon needs a candidate scan,
-    // plus the max acquire range + max weapon offset across every
-    // enabled weapon. The radius is intentionally unit-centered and
-    // wide enough to cover each weapon-centered acquisition circle;
-    // the per-weapon distance/rank checks below still enforce exact
-    // ranges.
-    const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
-    const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
-    const needsAnyQuery = targeting.prepareAutoScan(
-      unitSlot,
-      mirrorsEnabledFlag,
-      forceFieldsEnabledFlag,
       _cachedFireRanks,
       _cachedFireDistSqs,
       _targetingAutoScanF64,
