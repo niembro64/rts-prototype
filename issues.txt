@@ -181,5 +181,9 @@ AIM-08.5 — Port the targeting FSM
   Mirror target priority now uses the same slab target/state reader
   when choosing direct-threat turrets for the JS aim solver, again
   falling back to JS Turret fields outside the stamped sim path.
+  The JS aim solver also reads current-tick lockOnToTurret mount
+  positions from the combat-targeting slab when Rust updated that
+  target row, falling back to the live JS resolver for probe-skipped
+  or unstamped rows.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.

@@ -116,6 +116,12 @@ export type CombatTargetingTurretFsmOut = {
   targetId: EntityId | null;
 };
 
+export type CombatTargetingTurretMountOut = {
+  x: number;
+  y: number;
+  z: number;
+};
+
 let _stateViews: CombatTargetingStateViews | null = null;
 const _combatTargetingSourceEntities: Entity[] = [];
 let _combatTargetingSourceIds = new Int32Array(0);
@@ -236,6 +242,28 @@ export function readCombatTargetingTurretFsmInto(
   out.stateCode = views.state[idx];
   const targetId = views.targetId[idx];
   out.targetId = targetId < 0 ? null : targetId;
+  return true;
+}
+
+/** Read the Rust-updated turret mount for this tick. Returns false
+ *  when the row is missing or when the scheduler skipped mount
+ *  kinematics for that entity this tick; callers should then use the
+ *  JS resolver, which can compute a fresh pose from live entity state. */
+export function readCombatTargetingTurretMountInto(
+  entity: Entity,
+  turretIndex: number,
+  currentTick: number,
+  out: CombatTargetingTurretMountOut,
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return false;
+  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
+  if (idx < 0) return false;
+  const views = getCombatTargetingStateViews(sim);
+  if (views.worldPosTick[idx] !== currentTick) return false;
+  out.x = views.mountX[idx];
+  out.y = views.mountY[idx];
+  out.z = views.mountZ[idx];
   return true;
 }
 

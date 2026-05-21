@@ -13,6 +13,7 @@ import {
   resolveWeaponWorldMount,
 } from './combatUtils';
 import { pickTargetAimTurret } from './mirrorTargetPriority';
+import { readCombatTargetingTurretMountInto } from './targetingInputStamping';
 import { spatialGrid } from '../SpatialGrid';
 import { getUnitGroundZ } from '../unitGeometry';
 
@@ -149,6 +150,12 @@ function resolveTargetTurretAimPoint(
   const surfaceN = target.unit === undefined ? undefined : target.unit.surfaceNormal;
   const picked = pickTargetAimTurret(target, sourceEntityId);
   if (!picked) return false;
+  if (
+    currentTick !== undefined &&
+    readCombatTargetingTurretMountInto(target, picked.index, currentTick, out)
+  ) {
+    return true;
+  }
   const tCS = getTransformCosSin(target.transform);
   const targetMount = resolveWeaponWorldMount(
     target, picked.turret, picked.index,
