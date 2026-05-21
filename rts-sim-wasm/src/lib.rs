@@ -6671,6 +6671,25 @@ pub fn combat_targeting_turret_count(entity_slot: u32) -> u8 {
     pool.turret_count_per_entity[s]
 }
 
+/// AIM-08.5 — JS-callable wrapper around the internal observability
+/// helper. Returns 1 when `viewer_player_id` can observe the entity
+/// addressed by `target_id` (alive + (uncloaked OR own-team OR
+/// reached by a viewer-owned detector)), 0 otherwise. Used by the
+/// priority-target path to fall through to auto-targeting when the
+/// command target is dead, lost, or stealthed beyond detection.
+#[wasm_bindgen]
+pub fn combat_targeting_can_player_observe_entity(
+    target_id: i32,
+    viewer_player_id: u8,
+) -> u8 {
+    let pool = combat_targeting_pool();
+    if combat_targeting_player_observes_entity_id(pool, target_id, viewer_player_id) {
+        1
+    } else {
+        0
+    }
+}
+
 macro_rules! combat_targeting_ptr_export {
     ($name:ident, $field:ident, $ty:ty) => {
         #[wasm_bindgen]

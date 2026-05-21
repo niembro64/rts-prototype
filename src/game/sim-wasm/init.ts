@@ -131,6 +131,7 @@ import __wbg_init, {
   combat_targeting_set_turret,
   combat_targeting_entity_flags,
   combat_targeting_turret_count,
+  combat_targeting_can_player_observe_entity,
   combat_targeting_entity_id_ptr,
   combat_targeting_entity_owner_player_id_ptr,
   combat_targeting_entity_pos_x_ptr,
@@ -950,6 +951,14 @@ export interface CombatTargetingApi {
   ) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
+  /** AIM-08.5 — slab-backed cloak-observability check. Returns 1 if
+   *  `viewerPlayerId` can observe the entity addressed by `targetId`
+   *  (alive + (uncloaked OR own-team OR reached by a viewer-owned
+   *  detector)), 0 otherwise. */
+  canPlayerObserveEntity: (
+    targetId: number,
+    viewerPlayerId: number,
+  ) => number;
   readonly entityIdPtr: () => number;
   readonly entityOwnerPlayerIdPtr: () => number;
   readonly entityPosXPtr: () => number;
@@ -2198,6 +2207,7 @@ export function initSimWasm(): Promise<SimWasm> {
           setTurret: combat_targeting_set_turret,
           entityFlags: combat_targeting_entity_flags,
           turretCount: combat_targeting_turret_count,
+          canPlayerObserveEntity: combat_targeting_can_player_observe_entity,
           entityIdPtr: combat_targeting_entity_id_ptr,
           entityOwnerPlayerIdPtr: combat_targeting_entity_owner_player_id_ptr,
           entityPosXPtr: combat_targeting_entity_pos_x_ptr,

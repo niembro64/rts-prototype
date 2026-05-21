@@ -27,7 +27,6 @@ import {
   SIGHT_DROP_GRACE_TICKS,
   hasForceMirrorPanelClearance,
 } from './lineOfSight';
-import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 import { getActiveForceFields } from './forceFieldTurret';
 import {
   stampCombatTargetingEntity,
@@ -723,22 +722,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // Check for attack command priority target
     if (priorityId !== null) {
-      // Validate priority target is alive
-      const pt = world.getEntity(priorityId);
-      let priorityTarget: Entity | null = null;
-      if (
-        pt?.unit &&
-        pt.unit.hp > 0 &&
-        canPlayerObserveCloakedEntity(world, pt, playerId)
-      ) {
-        priorityTarget = pt;
-      } else if (
-        pt?.building &&
-        pt.building.hp > 0 &&
-        canPlayerObserveCloakedEntity(world, pt, playerId)
-      ) {
-        priorityTarget = pt;
-      }
+      // Validate via Rust: alive + observable (uncloaked or detected).
+      // Returns the slab-backed view, matching the gate the damage
+      // routing and rest of the FSM use.
+      const priorityObservable =
+        targeting.canPlayerObserveEntity(priorityId, playerId) === 1;
+      const priorityTarget: Entity | null = priorityObservable
+        ? (world.getEntity(priorityId) ?? null)
+        : null;
 
       if (priorityTarget) {
         // ATTACK MODE: try the priority target, firing only inside
