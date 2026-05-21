@@ -919,7 +919,7 @@
   "fastRocketTurret": {
     "id": "fastRocketTurret",
     "projectileId": "fastRocket",
-    "range": 300,
+    "range": 430,
     "cooldown": 100,
     "launchForce": 1200,
     "turretTurnAccel": 200,
