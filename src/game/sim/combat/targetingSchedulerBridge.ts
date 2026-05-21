@@ -1,4 +1,4 @@
-// Auto-targeting scheduler bridge — every armed entity flows through Rust.
+// Auto-targeting scheduler bridge — every targeting source flows through Rust.
 //
 // The slab is the source of truth for per-entity FSM inputs:
 // stampCombatTargetingEntityInto pushes priorityTargetId,
@@ -6,7 +6,7 @@
 // targeting slab during input stamping, so the scheduled Rust kernel
 // reads them by slot instead of accepting JS scratch arrays at the
 // boundary. This bridge's TypeScript work is now just:
-//   - walk armed entities and push them into a single sourceId queue,
+//   - consume the sourceId queue built during targeting slab stamping,
 //   - call combat_targeting_schedule_and_tick_batch once,
 //   - dispatch JS-only writeback (Turret pose, activity flags,
 //     fire-disabled priority command cleanup) per-row based on the
@@ -30,12 +30,15 @@ import {
   SIGHT_DROP_GRACE_TICKS,
 } from './lineOfSight';
 import { getActiveForceFields } from './forceFieldTurret';
-import { writeBackCombatTargetingEntity } from './targetingInputStamping';
+import {
+  getCombatTargetingSourceCount,
+  getCombatTargetingSourceEntities,
+  getCombatTargetingSourceIds,
+  writeBackCombatTargetingEntity,
+} from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
 
-const _targetingBatchUnits: Entity[] = [];
-let _targetingBatchSourceIds = new Int32Array(0);
 let _targetingBatchModes = new Uint8Array(0);
 let _targetingBatchHasCooldown = new Uint8Array(0);
 let _targetingBatchCachedFireRanks = new Uint8Array(0);
@@ -48,17 +51,15 @@ function nextTargetingReacquireTick(tick: number): number {
 
 function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): void {
   if (maxTurrets !== _targetingBatchMaxTurrets) {
-    _targetingBatchSourceIds = new Int32Array(0);
     _targetingBatchModes = new Uint8Array(0);
     _targetingBatchHasCooldown = new Uint8Array(0);
     _targetingBatchCachedFireRanks = new Uint8Array(0);
     _targetingBatchCachedFireDistSqs = new Float64Array(0);
     _targetingBatchMaxTurrets = maxTurrets;
   }
-  if (entityCount <= _targetingBatchSourceIds.length) return;
-  let next = Math.max(8, _targetingBatchSourceIds.length);
+  if (entityCount <= _targetingBatchModes.length) return;
+  let next = Math.max(8, _targetingBatchModes.length);
   while (next < entityCount) next *= 2;
-  _targetingBatchSourceIds = new Int32Array(next);
   _targetingBatchModes = new Uint8Array(next);
   _targetingBatchHasCooldown = new Uint8Array(next);
   const turretCapacity = next * maxTurrets;
@@ -76,18 +77,12 @@ function getTargetingKernel() {
 
 type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 
-function queueTargetingUnit(unit: Entity, maxTurrets: number): void {
-  const batchIdx = _targetingBatchUnits.length;
-  ensureTargetingBatchCapacity(batchIdx + 1, maxTurrets);
-  _targetingBatchUnits.push(unit);
-  _targetingBatchSourceIds[batchIdx] = unit.id;
-  _targetingBatchModes[batchIdx] = CT_TARGETING_TICK_MODE_SKIP;
-  _targetingBatchHasCooldown[batchIdx] = 0;
-}
-
 function flushTargetingBatch(
   world: WorldState,
   targeting: TargetingKernel,
+  sourceEntities: readonly Entity[],
+  sourceIds: Int32Array,
+  count: number,
   tick: number,
   dtMs: number,
   maxTurrets: number,
@@ -95,12 +90,12 @@ function flushTargetingBatch(
   forceFieldsEnabledFlag: number,
   forceMaterialSightObstructionActiveFlag: number,
 ): void {
-  const count = _targetingBatchUnits.length;
   if (count === 0) return;
+  ensureTargetingBatchCapacity(count, maxTurrets);
 
   const turretValueCount = count * maxTurrets;
   targeting.scheduleAndTickBatch(
-    _targetingBatchSourceIds.subarray(0, count),
+    sourceIds,
     tick,
     dtMs,
     mirrorsEnabledFlag,
@@ -119,7 +114,7 @@ function flushTargetingBatch(
 
   for (let i = 0; i < count; i++) {
     const mode = _targetingBatchModes[i];
-    const unit = _targetingBatchUnits[i];
+    const unit = sourceEntities[i];
     if (mode === CT_TARGETING_TICK_MODE_SKIP) {
       // Probe-skipped: no FSM transitions ran, but cooldowns may have
       // ticked down on the slab. Mirror those back to JS Turret so
@@ -154,14 +149,12 @@ function flushTargetingBatch(
       combat.nextCombatProbeTick = -1;
     }
   }
-
-  _targetingBatchUnits.length = 0;
 }
 
-// Update auto-targeting and firing state for all armed entities.
+// Update auto-targeting and firing state for all stamped targeting sources.
 //
-// TypeScript here just walks armed entities once to queue them into
-// a single sourceId batch, calls the Rust scheduler, then walks the
+// TypeScript here consumes the source queue that the slab stamping
+// pass already built, calls the Rust scheduler, then walks the
 // result back into JS Turret objects + combat-activity flags. Every
 // FSM decision (priority point / priority target / auto / clear locks
 // for fire-disabled, probe-skip) lives inside
@@ -169,13 +162,14 @@ function flushTargetingBatch(
 // priority + probe state from the slab that was stamped before the
 // kernel ran.
 //
-// PERFORMANCE: One Rust call per tick handles every armed entity.
+// PERFORMANCE: One Rust call per tick handles every targeting source.
 export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
-  _targetingBatchUnits.length = 0;
   const tick = world.getTick();
-  const armedEntities = world.getArmedEntities();
-  if (armedEntities.length === 0) return _activeCombatUnits;
+  const sourceCount = getCombatTargetingSourceCount();
+  if (sourceCount === 0) return _activeCombatUnits;
+  const sourceIds = getCombatTargetingSourceIds();
+  const sourceEntities = getCombatTargetingSourceEntities();
   const targeting = getTargetingKernel();
   const maxTurrets = targeting.maxTurretsPerEntity();
   const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
@@ -192,15 +186,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const forceMaterialSightObstructionActiveFlag =
     forceMaterialSightObstructionActive ? 1 : 0;
 
-  for (const unit of armedEntities) {
-    if (!unit.ownership) continue;
-    if (!unit.combat) continue;
-    queueTargetingUnit(unit, maxTurrets);
-  }
-
   flushTargetingBatch(
     world,
     targeting,
+    sourceEntities,
+    sourceIds,
+    sourceCount,
     tick,
     dtMs,
     maxTurrets,

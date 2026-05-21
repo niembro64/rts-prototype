@@ -13,6 +13,8 @@
 //     Rebuilds current entity/turret input rows. AIM-08.5 writes FSM
 //     transitions into this slab mid-pass and copies them back to JS
 //     Turret objects until snapshots/rendering read the slab directly.
+//     Also compacts the per-tick targeting source list while the
+//     entities are already hot in this stamping pass.
 //
 // stampTargetingInputSlabs() is the convenience wrapper that runs
 // both passes — kept for callers that don't care about the split.
@@ -109,6 +111,45 @@ export type CombatTargetingStateViews = {
 };
 
 let _stateViews: CombatTargetingStateViews | null = null;
+const _combatTargetingSourceEntities: Entity[] = [];
+let _combatTargetingSourceIds = new Int32Array(0);
+let _combatTargetingSourceCount = 0;
+
+function resetCombatTargetingSources(): void {
+  _combatTargetingSourceEntities.length = 0;
+  _combatTargetingSourceCount = 0;
+}
+
+function ensureCombatTargetingSourceCapacity(count: number): void {
+  if (count <= _combatTargetingSourceIds.length) return;
+  let next = Math.max(8, _combatTargetingSourceIds.length);
+  while (next < count) next *= 2;
+  const ids = new Int32Array(next);
+  ids.set(_combatTargetingSourceIds.subarray(0, _combatTargetingSourceCount));
+  _combatTargetingSourceIds = ids;
+}
+
+function queueCombatTargetingSource(entity: Entity): void {
+  const combat = entity.combat;
+  if (!entity.ownership || !combat || combat.turrets.length === 0) return;
+  const idx = _combatTargetingSourceCount;
+  ensureCombatTargetingSourceCapacity(idx + 1);
+  _combatTargetingSourceEntities.push(entity);
+  _combatTargetingSourceIds[idx] = entity.id;
+  _combatTargetingSourceCount++;
+}
+
+export function getCombatTargetingSourceEntities(): readonly Entity[] {
+  return _combatTargetingSourceEntities;
+}
+
+export function getCombatTargetingSourceIds(): Int32Array {
+  return _combatTargetingSourceIds.subarray(0, _combatTargetingSourceCount);
+}
+
+export function getCombatTargetingSourceCount(): number {
+  return _combatTargetingSourceCount;
+}
 
 function encodeTurretState(state: TurretState): number {
   switch (state) {
@@ -221,13 +262,13 @@ export function stampForceFieldPool(world: WorldState): void {
   }
 }
 
-function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: Entity): void {
+function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: Entity): boolean {
   const combat = entity.combat;
   const slot = spatialGrid.getSlot(entity.id);
   // Entities without a spatial slot can't be addressed by the slab;
   // the eventual kernel walks the slab, not the JS list, so anything
   // off-grid would be invisible to it anyway.
-  if (slot < 0) return;
+  if (slot < 0) return false;
 
   const ownership = entity.ownership;
   const playerId = ownership ? ownership.playerId : 0;
@@ -324,7 +365,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
     turrets?.length ?? 0,
   );
 
-  if (!turrets) return;
+  if (!turrets) return true;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const ranges = t.ranges;
@@ -380,6 +421,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.config.lockOnTurretExcludeMask,
     );
   }
+  return true;
 }
 
 /** True for turrets the live world flags treat as disabled
@@ -500,12 +542,13 @@ export function writeBackCombatTargetingEntity(
 }
 
 /** Rebuild every targetable unit/building row before the FSM runs.
- *  Turret rows are only written for armed entities, but target lookup
+ *  Turret rows are written for combat entities, but target lookup
  *  needs unarmed buildings too (solar/wind/extractors can be locked
- *  and fired on). The targeting pass then mutates target/state fields
- *  in place through Rust kernels, so the slab remains the post-FSM
- *  parity source without a second shadow stamp. */
+ *  and fired on). The same walk compacts the source-id queue consumed
+ *  by the scheduled Rust targeting batch, so the scheduler bridge
+ *  does not need its own armed-entity traversal. */
 export function stampCombatTargetingPool(world: WorldState): void {
+  resetCombatTargetingSources();
   const sim = getSimWasm();
   if (sim === undefined) return;
   const targeting = sim.combatTargeting;
@@ -516,10 +559,14 @@ export function stampCombatTargetingPool(world: WorldState): void {
   targeting.clear();
 
   for (const entity of world.getUnits()) {
-    stampCombatTargetingEntityInto(targeting, entity);
+    if (stampCombatTargetingEntityInto(targeting, entity)) {
+      queueCombatTargetingSource(entity);
+    }
   }
   for (const entity of world.getBuildings()) {
-    stampCombatTargetingEntityInto(targeting, entity);
+    if (stampCombatTargetingEntityInto(targeting, entity)) {
+      queueCombatTargetingSource(entity);
+    }
   }
 }
 

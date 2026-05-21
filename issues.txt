@@ -17,7 +17,7 @@ AIM-08 - Aiming/targeting hot paths remain TypeScript object loops instead of WA
 
 Evidence:
 - design_philosophy.html:520-570 and 614-619 call out targeting batches, per-unit loops, projectile stepping, and spatial queries as migration targets for Rust/WASM over typed memory.
-- src/game/sim/combat/targetingSchedulerBridge.ts still walks armed Entity objects to build the source-id queue and mirrors slab state back to JS Turret objects for rendering/firing/snapshot consumers. Candidate scoring/ranking dispatches to the AIM-08.3 Rust kernel, ballistic arc solving dispatches to the AIM-08.4 Rust slab kernel, and AIM-08.5 now batches gate resolution, cooldown decrement, mode scheduling, disabled-weapon slab reset, and FSM transition writes in Rust, but the outer bridge is still transitional.
+- src/game/sim/combat/targetingSchedulerBridge.ts still mirrors slab state back to JS Turret objects for rendering/firing/snapshot consumers. The source-id queue is now compacted during the slab stamping pass in targetingInputStamping.ts. Candidate scoring/ranking dispatches to the AIM-08.3 Rust kernel, ballistic arc solving dispatches to the AIM-08.4 Rust slab kernel, and AIM-08.5 now batches gate resolution, cooldown decrement, mode scheduling, disabled-weapon slab reset, and FSM transition writes in Rust, but the slab->JS Turret writeback bridge is still transitional.
 
 Why it matters:
 The current code has good local pooling and some WASM helpers, but the main targeting loop still scales as JS object orchestration over armed entities and candidate arrays. That is acceptable for prototype correctness, but it is not aligned with the stated 5,000-unit architecture.
@@ -173,8 +173,11 @@ AIM-08.5 — Port the targeting FSM
   writeback also refreshes combat activity masks during the same
   turret walk, replacing the separate post-writeback
   updateCombatActivityFlags loop on the targeting hot path.
+  The source-id queue has also moved into the targeting slab stamping
+  pass: stampCombatTargetingPool compacts the per-tick source ids
+  while it is already walking unit/building entities, and
+  targetingSchedulerBridge.ts consumes that stamped list instead of
+  running its own armed-entity traversal.
 
-  Done when: targetingSchedulerBridge.ts no longer walks Entity/Turret
-  objects: the armed-entity source queue is slab/Rust-owned, and
-  rendering/firing/snapshot consumers read targeting state from the
-  slab so the JS Turret writeback can be deleted.
+  Done when: rendering/firing/snapshot consumers read targeting state
+  from the slab so the remaining JS Turret writeback can be deleted.
