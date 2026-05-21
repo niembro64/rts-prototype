@@ -407,15 +407,15 @@
       },
       "impact": {
         "fallbackColorHex": "#ffffff",
-        "ringOpacity": 0.1,
+        "ringOpacity": 0.3,
         "coreOpacity": 0.22
       }
     },
     "beam": {
       "outer": {
         "colorRgb01": "#ffffff",
-        "waveLowAlpha": 0.1,
-        "waveHighAlpha": 0.2
+        "waveLowAlpha": 0.02,
+        "waveHighAlpha": 0.07
       },
       "inner": {
         "colorRgb01": "#ffffff",
