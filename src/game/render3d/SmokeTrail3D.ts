@@ -9,12 +9,21 @@
 // it stays put in world space as the rocket flies away, grows slightly,
 // and fades to transparent over its lifespan.
 //
-// One material + one geometry are shared across every puff. Per-puff
-// scale, alpha, and color ride on the InstancedMesh's instance
-// matrix + custom InstancedBufferAttributes (aAlpha, aColor). The
-// fragment shader is `gl_FragColor = vec4(vColor, vAlpha);` — no
-// fancy per-tier visual variants. Higher detail just means more puffs;
-// the puffs themselves look identical at every tier.
+// One material is shared across every puff. Per-puff scale, alpha, and
+// color ride on each pool's InstancedMesh instance matrix + custom
+// InstancedBufferAttributes (aAlpha, aColor). The fragment shader is
+// `gl_FragColor = vec4(vColor, vAlpha);` — no fancy per-tier visual
+// variants. Higher detail just means more puffs; the puffs themselves
+// look identical at every tier.
+//
+// Two parallel pools coexist inside the renderer:
+//   • "small" — low-poly sphere (6, 4). Used by projectile trails and
+//     by any SmokePuffEmitter without `largePuff`. Default since it
+//     covers small fan exhaust + missile trails cheaply.
+//   • "large" — higher-poly sphere (16, 10) so puffs scaled up to many
+//     world units (e.g. the dragonfly's wing-fan downwash) still read
+//     as round volumes instead of faceted chunks. Opted in per-emitter
+//     via `largePuff: true`.
 //
 // Detail: density scales with `smokeTrailFramesSkip`, while the existing
 // fireExplosionStyle tier still caps the total particle budget. Higher
@@ -50,11 +59,16 @@ const DEFAULT_START_RADIUS = 2.5;
 const DEFAULT_END_RADIUS = 8.0;
 const DEFAULT_START_ALPHA = 0.75;
 const DEFAULT_COLOR = 0xcccccc;
-// Pool ceiling — bounded so heavy salvo spam can't unbounded-allocate.
+// Pool ceilings — bounded so heavy salvo spam can't unbounded-allocate.
 // At max LOD, steady state per rocket is roughly one puff per render
 // frame for lifespanMs, so 4000 covers heavy salvos before we start
-// dropping emissions. Lower LODs use far fewer.
-const MAX_PARTICLES = 4000;
+// dropping emissions. Large pool is held to a smaller ceiling because
+// each large puff is much heavier on overdraw (bigger footprint) and
+// on geometry (more verts per instance) — only big-fan downwash uses
+// it, and a single dragonfly's two wing fans steady-state at ~120 puffs
+// at default cadence.
+const SMALL_MAX_PARTICLES = 4000;
+const LARGE_MAX_PARTICLES = 1500;
 const SMOKE_EVICTION_SCAN = 16;
 
 const PARTICLE_CAP_BY_EXPLOSION_STYLE: Record<FireExplosionStyle, number> = {
@@ -62,7 +76,7 @@ const PARTICLE_CAP_BY_EXPLOSION_STYLE: Record<FireExplosionStyle, number> = {
   spark: 1200,
   burst: 2200,
   blaze: 3200,
-  inferno: MAX_PARTICLES,
+  inferno: SMALL_MAX_PARTICLES,
 };
 
 const LIFESPAN_MULT_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, number> = {
@@ -116,6 +130,13 @@ export type SmokePuffEmitter = {
   color?: number;
   phase?: number;
   scopePadding?: number;
+  /** Route this emitter's puffs through the higher-poly large pool
+   *  instead of the default low-poly small pool. Use for emitters
+   *  whose puffs scale up to many world units (e.g. dragonfly wing
+   *  fan downwash) — at that size the low-poly sphere reads as a
+   *  faceted blob. Defaults to false; small pool covers everything
+   *  else cheaply. */
+  largePuff?: boolean;
 };
 
 const SMOKE_VERTEX_SHADER = `
@@ -138,44 +159,43 @@ void main() {
 }
 `;
 
+/** All per-pool state. One pool = one InstancedMesh of one geometry
+ *  resolution. SmokeTrail3D owns two of these (small + large) and runs
+ *  the per-frame advance/emit/flush loops over both. */
+type PuffPool = {
+  maxParticles: number;
+  geom: THREE.SphereGeometry;
+  mesh: THREE.InstancedMesh;
+  alphaArr: Float32Array;
+  colorArr: Float32Array;
+  alphaAttr: THREE.InstancedBufferAttribute;
+  colorAttr: THREE.InstancedBufferAttribute;
+  active: Puff[];
+  evictionCursor: number;
+  emitterCursor: number;
+  colorUpdateMin: number;
+  colorUpdateMax: number;
+};
+
 export class SmokeTrail3D {
   private root: THREE.Group;
-  // Reduced from (8, 6) ≈ 80 tris to (6, 4) ≈ 36 tris per puff. The
-  // puffs are small, fade fast, and blend with neighbors — the extra
-  // segments weren't visible. Same geometry at every LOD tier; only
-  // the count of live instances varies.
-  private geom = new THREE.SphereGeometry(1, 6, 4);
   private mat: THREE.ShaderMaterial;
-  private mesh: THREE.InstancedMesh;
-  // Per-instance attribute buffers. Index i in alphaArr / colorArr
-  // / instanceMatrix corresponds to active[i] — the live puff list
-  // is kept dense at the front of these buffers via swap-pop, so
-  // `mesh.count = active.length` exactly bounds what's drawn.
-  private alphaArr = new Float32Array(MAX_PARTICLES);
-  private colorArr = new Float32Array(MAX_PARTICLES * 3);
-  private alphaAttr: THREE.InstancedBufferAttribute;
-  private colorAttr: THREE.InstancedBufferAttribute;
-  private active: Puff[] = [];
+  // Two pools share the material but each owns its own geometry
+  // (different sphere segment counts), InstancedMesh, attribute
+  // buffers, active list, and cursors. Projectile trails always
+  // emit through `small`; emitter-based smoke routes per-puff via
+  // `emitter.largePuff`.
+  private small: PuffPool;
+  private large: PuffPool;
   // Scratch buffers reused across frames to avoid per-frame allocs.
   private _eligible: Entity[] = [];
   private readonly _emitPoint = { x: 0, y: 0, z: 0 };
   private _scratchMat = new THREE.Matrix4();
   private emissionCursor = 0;
-  private emitterCursor = 0;
-  private evictionCursor = 0;
-  private colorUpdateMin = Number.POSITIVE_INFINITY;
-  private colorUpdateMax = -1;
 
   constructor(worldGroup: THREE.Group) {
     this.root = new THREE.Group();
     worldGroup.add(this.root);
-
-    this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
-    this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
-    this.colorAttr = new THREE.InstancedBufferAttribute(this.colorArr, 3);
-    this.colorAttr.setUsage(THREE.DynamicDrawUsage);
-    this.geom.setAttribute('aAlpha', this.alphaAttr);
-    this.geom.setAttribute('aColor', this.colorAttr);
 
     this.mat = new THREE.ShaderMaterial({
       vertexShader: SMOKE_VERTEX_SHADER,
@@ -184,19 +204,66 @@ export class SmokeTrail3D {
       depthWrite: false,
     });
 
-    this.mesh = new THREE.InstancedMesh(this.geom, this.mat, MAX_PARTICLES);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
+    // Small pool: low-poly sphere (6, 4) ≈ 36 tris per puff. Reduced
+    // from (8, 6) ≈ 80 tris in an earlier pass — at the sizes these
+    // puffs render, the extra segments weren't visible.
+    this.small = this.createPool(6, 4, SMALL_MAX_PARTICLES);
+    // Large pool: higher-poly sphere (16, 10) ≈ 280 tris per puff.
+    // The extra resolution matters because large-pool puffs commonly
+    // render at 5–40+ world units, where (6, 4) reads as a faceted
+    // chunk instead of a soft cloud. Pool is hard-capped much smaller
+    // than `small` (LARGE_MAX_PARTICLES) since each instance is
+    // proportionally heavier in overdraw + vert work.
+    this.large = this.createPool(16, 10, LARGE_MAX_PARTICLES);
+  }
+
+  private createPool(
+    widthSegments: number,
+    heightSegments: number,
+    maxParticles: number,
+  ): PuffPool {
+    const geom = new THREE.SphereGeometry(1, widthSegments, heightSegments);
+    const alphaArr = new Float32Array(maxParticles);
+    const colorArr = new Float32Array(maxParticles * 3);
+    // Per-instance attribute buffers. Index i in alphaArr / colorArr
+    // / instanceMatrix corresponds to active[i] — the live puff list
+    // is kept dense at the front of these buffers via swap-pop, so
+    // `mesh.count = active.length` exactly bounds what's drawn.
+    const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
+    alphaAttr.setUsage(THREE.DynamicDrawUsage);
+    const colorAttr = new THREE.InstancedBufferAttribute(colorArr, 3);
+    colorAttr.setUsage(THREE.DynamicDrawUsage);
+    geom.setAttribute('aAlpha', alphaAttr);
+    geom.setAttribute('aColor', colorAttr);
+
+    const mesh = new THREE.InstancedMesh(geom, this.mat, maxParticles);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
     // Frustum culling on InstancedMesh uses a bounding sphere derived
     // from the source geometry — not the per-instance matrices — so a
     // puff far from the origin would be incorrectly culled. Disable.
-    this.mesh.frustumCulled = false;
+    mesh.frustumCulled = false;
     // Draw after water (renderOrder=3). Smoke/water both use
     // transparent+depthWrite:false, so without an explicit ordering the
     // higher-renderOrder water plane blends over puffs that are
     // geometrically above it.
-    this.mesh.renderOrder = 5;
-    this.root.add(this.mesh);
+    mesh.renderOrder = 5;
+    this.root.add(mesh);
+
+    return {
+      maxParticles,
+      geom,
+      mesh,
+      alphaArr,
+      colorArr,
+      alphaAttr,
+      colorAttr,
+      active: [],
+      evictionCursor: 0,
+      emitterCursor: 0,
+      colorUpdateMin: Number.POSITIVE_INFINITY,
+      colorUpdateMax: -1,
+    };
   }
 
   /** Per-frame tick: advance existing puffs, emit new ones behind
@@ -217,7 +284,12 @@ export class SmokeTrail3D {
     scope?: ViewportFootprint,
     emitters?: readonly SmokePuffEmitter[],
   ): void {
-    if (projectiles.length === 0 && this.active.length === 0 && (!emitters || emitters.length === 0)) return;
+    if (
+      projectiles.length === 0 &&
+      this.small.active.length === 0 &&
+      this.large.active.length === 0 &&
+      (!emitters || emitters.length === 0)
+    ) return;
 
     const dtSec = dtMs / 1000;
 
@@ -228,55 +300,28 @@ export class SmokeTrail3D {
     const style = (gfx.fireExplosionStyle as FireExplosionStyle) ?? 'burst';
     const frameSkip = Math.max(0, gfx.smokeTrailFramesSkip | 0);
     const lifeMult = LIFESPAN_MULT_BY_GRAPHICS_TIER[gfx.tier] ?? 0.8;
-    const particleCap = Math.min(MAX_PARTICLES, PARTICLE_CAP_BY_EXPLOSION_STYLE[style] ?? 2200);
+    const styleCap = PARTICLE_CAP_BY_EXPLOSION_STYLE[style] ?? 2200;
+    const smallCap = Math.min(this.small.maxParticles, styleCap);
+    const largeCap = Math.min(this.large.maxParticles, styleCap);
     const defaultLifespanSec = Math.max(0.001, (DEFAULT_LIFESPAN_MS * lifeMult) / 1000);
 
-    // 1) Advance + fade existing puffs in place. Dead ones are
-    //    swap-popped: the last live puff takes the dead slot's index,
-    //    and we re-process that index without advancing — so a long
-    //    chain of die-this-frame puffs collapses correctly in one
+    // 1) Advance + fade existing puffs in place on both pools. Dead
+    //    ones are swap-popped: the last live puff takes the dead slot's
+    //    index, and we re-process that index without advancing — so a
+    //    long chain of die-this-frame puffs collapses correctly in one
     //    pass. Each surviving puff writes matrix + alpha every frame;
     //    color is static after spawn and only moves when swap-pop
     //    compaction changes a puff's slot.
-    let i = 0;
-    while (i < this.active.length) {
-      const p = this.active[i];
-      p.timeLeft -= dtSec;
-      if (p.timeLeft <= 0) {
-        const last = this.active.length - 1;
-        if (i !== last) {
-          this.active[i] = this.active[last];
-          this.writePuffColor(i, this.active[i]);
-        }
-        this.active.pop();
-        continue;
-      }
-      const t = 1 - p.timeLeft / p.lifespan; // 0 → 1 over life
-      const r = p.startRadius + t * (p.endRadius - p.startRadius);
-      // Quadratic fade-out so puffs linger bright then taper — looks
-      // more like smoke dissipating than linear alpha crossfading.
-      const k = 1 - t;
-      const alpha = p.startAlpha * k * k;
-
-      p.threeX += p.threeVX * dtSec;
-      p.threeY += p.threeVY * dtSec;
-      p.threeZ += p.threeVZ * dtSec;
-
-      this._scratchMat.makeScale(r, r, r);
-      this._scratchMat.setPosition(p.threeX, p.threeY, p.threeZ);
-      this.mesh.setMatrixAt(i, this._scratchMat);
-      this.alphaArr[i] = alpha;
-      i++;
-    }
-    if (this.active.length > particleCap) {
-      this.active.length = particleCap;
-      if (this.evictionCursor >= particleCap) this.evictionCursor = 0;
-    }
+    this.advancePool(this.small, dtSec, smallCap);
+    this.advancePool(this.large, dtSec, largeCap);
 
     // 2) For each projectile that leaves a trail, sample at its
     //    frame-skip cadence. Then apply a steady-state global emission
     //    budget so a large salvo does not fill the entire pool in one
-    //    burst and then go silent until old puffs expire.
+    //    burst and then go silent until old puffs expire. Projectile
+    //    smoke always goes to the small pool — shot specs don't carry
+    //    a pool flag and projectile trails are short-lived/dense, the
+    //    cheaper pool's bias.
     const eligible = this._eligible;
     eligible.length = 0;
     for (const e of projectiles) {
@@ -297,8 +342,8 @@ export class SmokeTrail3D {
       eligible.push(e);
     }
 
-    if (eligible.length > 0 && particleCap > 0) {
-      const steadyBudget = Math.max(1, Math.ceil((particleCap * dtSec) / defaultLifespanSec));
+    if (eligible.length > 0 && smallCap > 0) {
+      const steadyBudget = Math.max(1, Math.ceil((smallCap * dtSec) / defaultLifespanSec));
       const emissions = Math.min(eligible.length, steadyBudget);
       let start = 0;
       if (eligible.length > emissions) {
@@ -315,6 +360,7 @@ export class SmokeTrail3D {
         const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
         const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000;
         this.spawnPuff(
+          this.small,
           emit.x, emit.y, emit.z,
           0, 0, 0,
           lifespanSec,
@@ -322,68 +368,156 @@ export class SmokeTrail3D {
           spec.endRadius ?? DEFAULT_END_RADIUS,
           spec.startAlpha ?? DEFAULT_START_ALPHA,
           spec.color ?? DEFAULT_COLOR,
-          particleCap,
+          smallCap,
         );
       }
     }
 
-    if (emitters && emitters.length > 0 && particleCap > 0) {
-      const steadyBudget = Math.max(1, Math.ceil((particleCap * dtSec) / defaultLifespanSec));
-      const len = emitters.length;
-      const start = this.emitterCursor % len;
-      let emitted = 0;
-      for (let n = 0; n < len && emitted < steadyBudget; n++) {
-        const emitter = emitters[(start + n) % len];
-        const padding = emitter.scopePadding ?? SMOKE_SCOPE_PADDING;
-        if (scope && !scope.inScope(emitter.x, emitter.y, padding)) continue;
-        const framesSkip = Math.max(0, emitter.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
-        const stride = Math.max(1, Math.max(frameSkip, framesSkip) + 1);
-        const phase = emitter.phase ?? 0;
-        if ((renderFrameIndex + phase) % stride !== 0) continue;
-
-        const lifespanSec = Math.max(
-          0.001,
-          ((emitter.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000,
-        );
-        this.spawnPuff(
-          emitter.x, emitter.y, emitter.z,
-          emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
-          lifespanSec,
-          emitter.startRadius ?? DEFAULT_START_RADIUS,
-          emitter.endRadius ?? DEFAULT_END_RADIUS,
-          emitter.startAlpha ?? DEFAULT_START_ALPHA,
-          emitter.color ?? DEFAULT_COLOR,
-          particleCap,
-        );
-        emitted++;
-      }
-      this.emitterCursor = (start + Math.max(1, steadyBudget)) % len;
+    if (emitters && emitters.length > 0) {
+      this.emitFromEmitters(
+        emitters, frameSkip, lifeMult, scope, dtSec, defaultLifespanSec,
+        smallCap, largeCap, renderFrameIndex,
+      );
     }
 
     // 3) Push attribute updates to GPU and bound the draw to the
-    //    live-puff prefix.
-    this.mesh.count = this.active.length;
-    if (this.active.length > 0) {
-      const count = this.active.length;
-      this.mesh.instanceMatrix.clearUpdateRanges();
-      this.mesh.instanceMatrix.addUpdateRange(0, count * 16);
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.alphaAttr.clearUpdateRanges();
-      this.alphaAttr.addUpdateRange(0, count);
-      this.alphaAttr.needsUpdate = true;
-      if (this.colorUpdateMax >= this.colorUpdateMin) {
-        this.colorAttr.clearUpdateRanges();
-        this.colorAttr.addUpdateRange(
-          this.colorUpdateMin * 3,
-          (this.colorUpdateMax - this.colorUpdateMin + 1) * 3,
+    //    live-puff prefix on each pool.
+    this.flushPool(this.small);
+    this.flushPool(this.large);
+  }
+
+  private advancePool(pool: PuffPool, dtSec: number, particleCap: number): void {
+    let i = 0;
+    while (i < pool.active.length) {
+      const p = pool.active[i];
+      p.timeLeft -= dtSec;
+      if (p.timeLeft <= 0) {
+        const last = pool.active.length - 1;
+        if (i !== last) {
+          pool.active[i] = pool.active[last];
+          this.writePuffColor(pool, i, pool.active[i]);
+        }
+        pool.active.pop();
+        continue;
+      }
+      const t = 1 - p.timeLeft / p.lifespan; // 0 → 1 over life
+      const r = p.startRadius + t * (p.endRadius - p.startRadius);
+      // Quadratic fade-out so puffs linger bright then taper — looks
+      // more like smoke dissipating than linear alpha crossfading.
+      const k = 1 - t;
+      const alpha = p.startAlpha * k * k;
+
+      p.threeX += p.threeVX * dtSec;
+      p.threeY += p.threeVY * dtSec;
+      p.threeZ += p.threeVZ * dtSec;
+
+      this._scratchMat.makeScale(r, r, r);
+      this._scratchMat.setPosition(p.threeX, p.threeY, p.threeZ);
+      pool.mesh.setMatrixAt(i, this._scratchMat);
+      pool.alphaArr[i] = alpha;
+      i++;
+    }
+    if (pool.active.length > particleCap) {
+      pool.active.length = particleCap;
+      if (pool.evictionCursor >= particleCap) pool.evictionCursor = 0;
+    }
+  }
+
+  private emitFromEmitters(
+    emitters: readonly SmokePuffEmitter[],
+    frameSkip: number,
+    lifeMult: number,
+    scope: ViewportFootprint | undefined,
+    dtSec: number,
+    defaultLifespanSec: number,
+    smallCap: number,
+    largeCap: number,
+    renderFrameIndex: number,
+  ): void {
+    // Two independent passes (one per pool, each filtering on
+    // `largePuff`) so cap exhaustion on one pool can't starve the
+    // other in the same frame, and each pool's round-robin cursor
+    // only advances past emitters that actually matched.
+    this.emitFromEmittersForPool(
+      this.small, false, emitters, frameSkip, lifeMult, scope,
+      dtSec, defaultLifespanSec, smallCap, renderFrameIndex,
+    );
+    this.emitFromEmittersForPool(
+      this.large, true, emitters, frameSkip, lifeMult, scope,
+      dtSec, defaultLifespanSec, largeCap, renderFrameIndex,
+    );
+  }
+
+  private emitFromEmittersForPool(
+    pool: PuffPool,
+    poolWantsLarge: boolean,
+    emitters: readonly SmokePuffEmitter[],
+    frameSkip: number,
+    lifeMult: number,
+    scope: ViewportFootprint | undefined,
+    dtSec: number,
+    defaultLifespanSec: number,
+    particleCap: number,
+    renderFrameIndex: number,
+  ): void {
+    if (particleCap <= 0) return;
+    const steadyBudget = Math.max(1, Math.ceil((particleCap * dtSec) / defaultLifespanSec));
+    const len = emitters.length;
+    const start = pool.emitterCursor % len;
+    let emitted = 0;
+    for (let n = 0; n < len && emitted < steadyBudget; n++) {
+      const emitter = emitters[(start + n) % len];
+      if ((emitter.largePuff === true) !== poolWantsLarge) continue;
+      const padding = emitter.scopePadding ?? SMOKE_SCOPE_PADDING;
+      if (scope && !scope.inScope(emitter.x, emitter.y, padding)) continue;
+      const framesSkip = Math.max(0, emitter.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
+      const stride = Math.max(1, Math.max(frameSkip, framesSkip) + 1);
+      const phase = emitter.phase ?? 0;
+      if ((renderFrameIndex + phase) % stride !== 0) continue;
+
+      const lifespanSec = Math.max(
+        0.001,
+        ((emitter.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000,
+      );
+      this.spawnPuff(
+        pool,
+        emitter.x, emitter.y, emitter.z,
+        emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
+        lifespanSec,
+        emitter.startRadius ?? DEFAULT_START_RADIUS,
+        emitter.endRadius ?? DEFAULT_END_RADIUS,
+        emitter.startAlpha ?? DEFAULT_START_ALPHA,
+        emitter.color ?? DEFAULT_COLOR,
+        particleCap,
+      );
+      emitted++;
+    }
+    pool.emitterCursor = (start + Math.max(1, steadyBudget)) % len;
+  }
+
+  private flushPool(pool: PuffPool): void {
+    pool.mesh.count = pool.active.length;
+    if (pool.active.length > 0) {
+      const count = pool.active.length;
+      pool.mesh.instanceMatrix.clearUpdateRanges();
+      pool.mesh.instanceMatrix.addUpdateRange(0, count * 16);
+      pool.mesh.instanceMatrix.needsUpdate = true;
+      pool.alphaAttr.clearUpdateRanges();
+      pool.alphaAttr.addUpdateRange(0, count);
+      pool.alphaAttr.needsUpdate = true;
+      if (pool.colorUpdateMax >= pool.colorUpdateMin) {
+        pool.colorAttr.clearUpdateRanges();
+        pool.colorAttr.addUpdateRange(
+          pool.colorUpdateMin * 3,
+          (pool.colorUpdateMax - pool.colorUpdateMin + 1) * 3,
         );
-        this.colorAttr.needsUpdate = true;
-        this.colorUpdateMin = Number.POSITIVE_INFINITY;
-        this.colorUpdateMax = -1;
+        pool.colorAttr.needsUpdate = true;
+        pool.colorUpdateMin = Number.POSITIVE_INFINITY;
+        pool.colorUpdateMax = -1;
       }
     } else {
-      this.colorUpdateMin = Number.POSITIVE_INFINITY;
-      this.colorUpdateMax = -1;
+      pool.colorUpdateMin = Number.POSITIVE_INFINITY;
+      pool.colorUpdateMax = -1;
     }
   }
 
@@ -420,15 +554,16 @@ export class SmokeTrail3D {
     return out;
   }
 
-  private writePuffColor(index: number, puff: Puff): void {
-    this.colorArr[index * 3] = puff.r;
-    this.colorArr[index * 3 + 1] = puff.g;
-    this.colorArr[index * 3 + 2] = puff.b;
-    if (index < this.colorUpdateMin) this.colorUpdateMin = index;
-    if (index > this.colorUpdateMax) this.colorUpdateMax = index;
+  private writePuffColor(pool: PuffPool, index: number, puff: Puff): void {
+    pool.colorArr[index * 3] = puff.r;
+    pool.colorArr[index * 3 + 1] = puff.g;
+    pool.colorArr[index * 3 + 2] = puff.b;
+    if (index < pool.colorUpdateMin) pool.colorUpdateMin = index;
+    if (index > pool.colorUpdateMax) pool.colorUpdateMax = index;
   }
 
   private spawnPuff(
+    pool: PuffPool,
     simX: number, simY: number, simZ: number,
     simVX: number, simVY: number, simVZ: number,
     lifespanSec: number,
@@ -438,7 +573,7 @@ export class SmokeTrail3D {
     color: number,
     particleCap: number,
   ): void {
-    const cap = Math.min(MAX_PARTICLES, Math.max(0, particleCap | 0));
+    const cap = Math.min(pool.maxParticles, Math.max(0, particleCap | 0));
     if (cap <= 0) return;
 
     const { r, g, b } = hexToRgb01(color);
@@ -462,34 +597,34 @@ export class SmokeTrail3D {
     };
 
     let i: number;
-    if (this.active.length < cap) {
-      i = this.active.length;
-      this.active.push(puff);
+    if (pool.active.length < cap) {
+      i = pool.active.length;
+      pool.active.push(puff);
     } else {
-      i = this.pickEvictionSlot(cap);
-      this.active[i] = puff;
+      i = this.pickEvictionSlot(pool, cap);
+      pool.active[i] = puff;
     }
 
     this._scratchMat.makeScale(startRadius, startRadius, startRadius);
     this._scratchMat.setPosition(puff.threeX, puff.threeY, puff.threeZ);
-    this.mesh.setMatrixAt(i, this._scratchMat);
-    this.alphaArr[i] = startAlpha;
-    this.writePuffColor(i, puff);
+    pool.mesh.setMatrixAt(i, this._scratchMat);
+    pool.alphaArr[i] = startAlpha;
+    this.writePuffColor(pool, i, puff);
   }
 
-  private pickEvictionSlot(cap: number): number {
+  private pickEvictionSlot(pool: PuffPool, cap: number): number {
     if (cap <= 1) {
-      this.evictionCursor = 0;
+      pool.evictionCursor = 0;
       return 0;
     }
     const scan = Math.min(SMOKE_EVICTION_SCAN, cap);
-    let best = this.evictionCursor % cap;
-    let bestLifeFrac = this.active[best]
-      ? this.active[best].timeLeft / this.active[best].lifespan
+    let best = pool.evictionCursor % cap;
+    let bestLifeFrac = pool.active[best]
+      ? pool.active[best].timeLeft / pool.active[best].lifespan
       : -1;
     for (let n = 1; n < scan; n++) {
-      const idx = (this.evictionCursor + n) % cap;
-      const p = this.active[idx];
+      const idx = (pool.evictionCursor + n) % cap;
+      const p = pool.active[idx];
       if (!p) {
         best = idx;
         bestLifeFrac = -1;
@@ -501,13 +636,15 @@ export class SmokeTrail3D {
         bestLifeFrac = lifeFrac;
       }
     }
-    this.evictionCursor = (best + 1) % cap;
+    pool.evictionCursor = (best + 1) % cap;
     return best;
   }
 
   destroy(): void {
-    disposeMesh(this.mesh);
-    this.active.length = 0;
+    disposeMesh(this.small.mesh);
+    disposeMesh(this.large.mesh);
+    this.small.active.length = 0;
+    this.large.active.length = 0;
     this.root.parent?.remove(this.root);
   }
 }

@@ -27,7 +27,6 @@ const FAN_BLADE_COLOR = 0xffffff;
 const FAN_HUB_COLOR = 0xffffff;
 const HOVER_SMOKE_COLOR = 0xcccccc;
 const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
-const FAN_SMOKE_SPEED = 60;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
 
@@ -57,6 +56,39 @@ type HoverFan = {
   rotor: THREE.Group;
   emitter: THREE.Object3D;
   smoke: SmokePuffEmitter;
+  exhaustSpeed: number;
+};
+
+type FanSmokeProfile = {
+  startRadius: number;
+  endRadius: number;
+  lifespanMs: number;
+  exhaustSpeed: number;
+  scopePadding: number;
+  largePuff: boolean;
+};
+
+const SMALL_FAN_SMOKE: FanSmokeProfile = {
+  startRadius: 1,
+  endRadius: 8,
+  lifespanMs: 900,
+  exhaustSpeed: 60,
+  scopePadding: 160,
+  largePuff: false,
+};
+
+// Dragonfly wing-fan exhaust. Routed to SmokeTrail3D's large-puff
+// pool so the higher-poly sphere reads as a soft cloud at this size
+// instead of a 36-tri faceted blob, and tuned with a longer lifespan
+// + stronger downwash so the visual matches the fan's much greater
+// thrust footprint.
+const LARGE_FAN_SMOKE: FanSmokeProfile = {
+  startRadius: 4,
+  endRadius: 26,
+  lifespanMs: 1300,
+  exhaustSpeed: 90,
+  scopePadding: 260,
+  largePuff: true,
 };
 
 export type HoverMesh = {
@@ -77,6 +109,7 @@ type FanSpec = {
   fanRadius: number;
   ringTubeRadius: number;
   outwardAngleRad: number;
+  smokeProfile: FanSmokeProfile;
 };
 
 function buildFan(
@@ -85,7 +118,7 @@ function buildFan(
   entityId: number,
   fanIndex: number,
 ): HoverFan {
-  const { localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad } = spec;
+  const { localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad, smokeProfile } = spec;
   const ringTubeRatio = ringTubeRadius / fanRadius;
   const fanY = -Math.max(0.4, ringTubeRadius * 0.9);
 
@@ -140,21 +173,23 @@ function buildFan(
     group: fanGroup,
     rotor,
     emitter,
+    exhaustSpeed: smokeProfile.exhaustSpeed,
     smoke: {
       x: 0,
       y: 0,
       z: 0,
       vx: 0,
       vy: 0,
-      vz: -FAN_SMOKE_SPEED,
+      vz: -smokeProfile.exhaustSpeed,
       emitFramesSkip: 0,
-      lifespanMs: 900,
-      startRadius: 1,
-      endRadius: 8,
+      lifespanMs: smokeProfile.lifespanMs,
+      startRadius: smokeProfile.startRadius,
+      endRadius: smokeProfile.endRadius,
       startAlpha: 0.9,
       color: HOVER_SMOKE_COLOR,
       phase: entityId * 4 + fanIndex,
-      scopePadding: 160,
+      scopePadding: smokeProfile.scopePadding,
+      largePuff: smokeProfile.largePuff,
     },
   };
 }
@@ -180,7 +215,9 @@ export function buildHoverFans(
     // Dragonfly layout: two large "wing" fans at body center forward,
     // spread laterally; one small fan at the tail tip. The wing fans
     // sit on the lateral axis (localX = 0) so they read as wings, not
-    // corner thrusters.
+    // corner thrusters. Wing-fan downwash uses the large-puff pool so
+    // the chunky scale reads as soft cloud; the tail fan keeps the
+    // small-puff profile since it's the same scale as standard hovers.
     const lateral = unitRadius * cfg.fanDistY;
     for (const sz of [-1, 1]) {
       fans.push(buildFan(
@@ -191,6 +228,7 @@ export function buildHoverFans(
           fanRadius: mainFanRadius,
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
+          smokeProfile: LARGE_FAN_SMOKE,
         },
         entityId,
         fans.length,
@@ -217,6 +255,7 @@ export function buildHoverFans(
         fanRadius: tailFanRadius,
         ringTubeRadius: tailRingTubeRadius,
         outwardAngleRad: tailBackAngleRad,
+        smokeProfile: SMALL_FAN_SMOKE,
       },
       entityId,
       fans.length,
@@ -234,6 +273,7 @@ export function buildHoverFans(
             fanRadius: mainFanRadius,
             ringTubeRadius: mainRingTubeRadius,
             outwardAngleRad,
+            smokeProfile: SMALL_FAN_SMOKE,
           },
           entityId,
           fans.length,
@@ -290,9 +330,9 @@ export function updateHoverFans(
     fan.smoke.x = _fanWorldPos.x;
     fan.smoke.y = _fanWorldPos.z;
     fan.smoke.z = _fanWorldPos.y;
-    fan.smoke.vx = _fanWorldDir.x * FAN_SMOKE_SPEED;
-    fan.smoke.vy = _fanWorldDir.z * FAN_SMOKE_SPEED;
-    fan.smoke.vz = _fanWorldDir.y * FAN_SMOKE_SPEED;
+    fan.smoke.vx = _fanWorldDir.x * fan.exhaustSpeed;
+    fan.smoke.vy = _fanWorldDir.z * fan.exhaustSpeed;
+    fan.smoke.vz = _fanWorldDir.y * fan.exhaustSpeed;
     smokeOut.push(fan.smoke);
   }
 }
