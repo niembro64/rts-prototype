@@ -198,6 +198,7 @@ import __wbg_init, {
   combat_targeting_auto_mode_spatial_candidate_tick,
   combat_targeting_auto_mode_spatial_candidate_tick_batch,
   combat_targeting_tick_batch,
+  combat_targeting_schedule_and_tick_batch,
   combat_targeting_existing_lock_and_auto_scan_tick,
   force_field_pool_clear,
   force_field_pool_count,
@@ -1384,6 +1385,34 @@ export interface CombatTargetingApi {
     cachedFireDistSqs: Float64Array,
     maxTargetableRadius: number,
   ) => void;
+  /** AIM-08.5 — scheduled mixed-mode world-order targeting batch.
+   *  Rust chooses skip / hold-fire clear / priority-point /
+   *  priority-target / auto from slab-backed state, updates mount
+   *  kinematics for processed rows, and writes the mode it actually
+   *  ran into `outModes` for the JS writeback pass. */
+  readonly scheduleAndTickBatch: (
+    entitySlots: Uint32Array,
+    sourceEntityIds: Int32Array,
+    priorityTargetIds: Int32Array,
+    priorityPointPresent: Uint8Array,
+    priorityPointX: Float64Array,
+    priorityPointY: Float64Array,
+    priorityPointZ: Float64Array,
+    scheduledProbeTicks: Int32Array,
+    currentTick: number,
+    dtMs: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    losDropGraceTicks: number,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    maxTargetableRadius: number,
+    outModes: Uint8Array,
+  ) => void;
 }
 
 /** AIM-08.1 — Force field input slab. Compact list of `count` active
@@ -2458,6 +2487,7 @@ export function initSimWasm(): Promise<SimWasm> {
           autoModeSpatialCandidateTick: combat_targeting_auto_mode_spatial_candidate_tick,
           autoModeSpatialCandidateTickBatch: combat_targeting_auto_mode_spatial_candidate_tick_batch,
           tickBatch: combat_targeting_tick_batch,
+          scheduleAndTickBatch: combat_targeting_schedule_and_tick_batch,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,

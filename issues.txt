@@ -125,14 +125,20 @@ AIM-08.5 — Port the targeting FSM
   Rust too: the slab carries a lockOnToTurret flag, Rust ports
   pickTargetAimTurret / body-AABB clamping / turret-mount resolution,
   and combat_targeting_tick_batch no longer accepts TS-built aim
-  arrays for priority-target or existing-lock gates.
+  arrays for priority-target or existing-lock gates. The mixed
+  scheduler itself now lives in Rust through
+  combat_targeting_schedule_and_tick_batch: the kernel reads stamped
+  entity flags, hold-fire state, priority point/target commands,
+  priority-target observability, enabled-weapon state, and probe gates,
+  updates mount kinematics for processed rows, and writes the actual
+  processed mode back for the transitional JS writeback pass.
   Remaining work for AIM-08.5:
-    - Move the outer world.getArmedEntities() loop into Rust so the
-      per-tick entry point is a single combat_targeting_tick(...) call.
-      Auto-mode runs no longer return to TypeScript between units, but
-      TypeScript still owns cooldown/reset bookkeeping, hold-fire and
-      priority-command branching, probe scheduling, and JS Turret
-      writeback.
+    - Collapse the remaining TypeScript armed-entity traversal to a
+      pure slab-stamping / JS-only mutation pass. Auto-mode runs no
+      longer return to TypeScript between units, and hold-fire /
+      priority-command / probe dispatch now happens in Rust, but
+      TypeScript still owns cooldown decrement, disabled-weapon reset
+      bookkeeping, spatial-slot lookup, and JS Turret writeback.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

@@ -7478,6 +7478,7 @@ const CT_TARGETING_TICK_MODE_AUTO: u8 = 0;
 const CT_TARGETING_TICK_MODE_PRIORITY_POINT: u8 = 1;
 const CT_TARGETING_TICK_MODE_PRIORITY_TARGET: u8 = 2;
 const CT_TARGETING_TICK_MODE_CLEAR_LOCKS: u8 = 3;
+const CT_TARGETING_TICK_MODE_SKIP: u8 = 255;
 
 #[inline]
 fn combat_targeting_live_turret_idx(
@@ -7913,6 +7914,33 @@ fn combat_targeting_weapon_system_disabled(
     (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
         || ((flags & CT_TURRET_CFG_PASSIVE) != 0 && mirrors_enabled == 0)
         || ((flags & CT_TURRET_CFG_SHOT_IS_FORCE) != 0 && force_fields_enabled == 0)
+}
+
+#[inline]
+fn combat_targeting_entity_has_enabled_weapon(
+    pool: &CombatTargetingPool,
+    entity_slot: u32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) -> bool {
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return false;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if !combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            mirrors_enabled,
+            force_fields_enabled,
+        ) {
+            return true;
+        }
+    }
+    false
 }
 
 /// AIM-08.5 — Rust auto-targeting pre-scan over the combat-targeting
@@ -9669,6 +9697,63 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
     }
 }
 
+fn combat_targeting_auto_mode_tick_from_slab(
+    entity_slot: u32,
+    source_entity_id: i32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    los_drop_grace_ticks: u16,
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    max_targetable_radius: f64,
+) {
+    let mut out_f64 = [0.0f64; 2];
+    combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
+        entity_slot,
+        source_entity_id,
+        mirrors_enabled,
+        force_fields_enabled,
+        force_field_obstruction_active,
+        terrain_step_len,
+        entity_line_width,
+        gravity,
+        los_drop_grace_ticks,
+        &[],
+        &[],
+        &[],
+        true,
+    );
+    let needs_spatial_query = combat_targeting_prepare_auto_scan(
+        entity_slot,
+        mirrors_enabled,
+        force_fields_enabled,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        &mut out_f64,
+    );
+
+    combat_targeting_auto_mode_spatial_candidate_tick(
+        entity_slot,
+        source_entity_id,
+        mirrors_enabled,
+        force_fields_enabled,
+        force_field_obstruction_active,
+        terrain_step_len,
+        entity_line_width,
+        gravity,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        needs_spatial_query,
+        out_f64[0],
+        out_f64[1],
+        max_targetable_radius,
+    );
+}
+
 /// AIM-08.5 — mixed-mode per-tick targeting batch. TypeScript still
 /// owns object-side command bookkeeping during the migration, but the
 /// FSM dispatch and per-turret aim-point resolution for auto-mode,
@@ -9762,8 +9847,7 @@ pub fn combat_targeting_tick_batch(
                 combat_targeting_clear_entity_locks(entity_slot);
             }
             CT_TARGETING_TICK_MODE_AUTO | _ => {
-                let mut out_f64 = [0.0f64; 2];
-                combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
+                combat_targeting_auto_mode_tick_from_slab(
                     entity_slot,
                     source_entity_id,
                     mirrors_enabled,
@@ -9773,38 +9857,207 @@ pub fn combat_targeting_tick_batch(
                     entity_line_width,
                     gravity,
                     los_drop_grace_ticks,
-                    &[],
-                    &[],
-                    &[],
-                    true,
-                );
-                let needs_spatial_query = combat_targeting_prepare_auto_scan(
-                    entity_slot,
-                    mirrors_enabled,
-                    force_fields_enabled,
                     &mut cached_fire_ranks[start..end],
                     &mut cached_fire_dist_sqs[start..end],
-                    &mut out_f64,
-                );
-
-                combat_targeting_auto_mode_spatial_candidate_tick(
-                    entity_slot,
-                    source_entity_id,
-                    mirrors_enabled,
-                    force_fields_enabled,
-                    force_field_obstruction_active,
-                    terrain_step_len,
-                    entity_line_width,
-                    gravity,
-                    &cached_fire_ranks[start..end],
-                    &cached_fire_dist_sqs[start..end],
-                    needs_spatial_query,
-                    out_f64[0],
-                    out_f64[1],
                     max_targetable_radius,
                 );
             }
         }
+    }
+}
+
+/// AIM-08.5 — scheduled mixed-mode targeting tick. This moves the
+/// remaining TypeScript mode scheduler into Rust: the kernel reads the
+/// stamped entity flags, priority commands, visibility, hold-fire flag,
+/// and probe gate, then dispatches the existing mixed-mode FSM work.
+/// JS still performs object-owned cooldown/reset mutations before this
+/// call and copies slab state back to JS turrets afterward.
+#[wasm_bindgen]
+pub fn combat_targeting_schedule_and_tick_batch(
+    entity_slots: &[u32],
+    source_entity_ids: &[i32],
+    priority_target_ids: &[i32],
+    priority_point_present: &[u8],
+    priority_point_x: &[f64],
+    priority_point_y: &[f64],
+    priority_point_z: &[f64],
+    scheduled_probe_ticks: &[i32],
+    current_tick: i32,
+    dt_ms: f64,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    los_drop_grace_ticks: u16,
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    max_targetable_radius: f64,
+    out_modes: &mut [u8],
+) {
+    const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
+    let count = entity_slots
+        .len()
+        .min(source_entity_ids.len())
+        .min(priority_target_ids.len())
+        .min(priority_point_present.len())
+        .min(priority_point_x.len())
+        .min(priority_point_y.len())
+        .min(priority_point_z.len())
+        .min(scheduled_probe_ticks.len())
+        .min(out_modes.len());
+
+    for entity_i in 0..count {
+        out_modes[entity_i] = CT_TARGETING_TICK_MODE_SKIP;
+
+        let start = entity_i * MAX;
+        let end = start + MAX;
+        if end > cached_fire_ranks.len() || end > cached_fire_dist_sqs.len() {
+            break;
+        }
+
+        let entity_slot = entity_slots[entity_i];
+        let source_entity_id = source_entity_ids[entity_i];
+        let (entity_ready, fire_enabled, owner_player_id, has_enabled_weapon) = {
+            let pool = combat_targeting_pool();
+            let entity_idx = entity_slot as usize;
+            if entity_idx >= pool.entity_flags.len()
+                || pool.entity_id[entity_idx] != source_entity_id
+            {
+                (false, false, 0u8, false)
+            } else {
+                let flags = pool.entity_flags[entity_idx];
+                let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
+                    && (flags & CT_ENTITY_FLAG_ALIVE) != 0
+                    && (flags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) != 0;
+                let enabled = (flags & CT_ENTITY_FLAG_FIRE_ENABLED) != 0;
+                let has_weapon = combat_targeting_entity_has_enabled_weapon(
+                    pool,
+                    entity_slot,
+                    mirrors_enabled,
+                    force_fields_enabled,
+                );
+                (
+                    ready,
+                    enabled,
+                    pool.entity_owner_player_id[entity_idx],
+                    has_weapon,
+                )
+            }
+        };
+
+        if !entity_ready {
+            continue;
+        }
+
+        if !fire_enabled {
+            combat_targeting_update_mount_kinematics(
+                entity_slot,
+                current_tick,
+                dt_ms,
+                mirrors_enabled,
+                force_fields_enabled,
+            );
+            combat_targeting_clear_entity_locks(entity_slot);
+            out_modes[entity_i] = CT_TARGETING_TICK_MODE_CLEAR_LOCKS;
+            continue;
+        }
+
+        let priority_target_id = priority_target_ids[entity_i];
+        let has_priority_point = priority_point_present[entity_i] != 0;
+        if priority_target_id < 0
+            && !has_priority_point
+            && scheduled_probe_ticks[entity_i] > current_tick
+        {
+            continue;
+        }
+
+        combat_targeting_update_mount_kinematics(
+            entity_slot,
+            current_tick,
+            dt_ms,
+            mirrors_enabled,
+            force_fields_enabled,
+        );
+
+        if !has_enabled_weapon {
+            combat_targeting_auto_mode_tick_from_slab(
+                entity_slot,
+                source_entity_id,
+                mirrors_enabled,
+                force_fields_enabled,
+                force_field_obstruction_active,
+                terrain_step_len,
+                entity_line_width,
+                gravity,
+                los_drop_grace_ticks,
+                &mut cached_fire_ranks[start..end],
+                &mut cached_fire_dist_sqs[start..end],
+                max_targetable_radius,
+            );
+            out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
+            continue;
+        }
+
+        if has_priority_point {
+            combat_targeting_compute_and_apply_priority_point_fsm_batch(
+                entity_slot,
+                priority_point_x[entity_i],
+                priority_point_y[entity_i],
+                priority_point_z[entity_i],
+                source_entity_id,
+                mirrors_enabled,
+                force_fields_enabled,
+                force_field_obstruction_active,
+                terrain_step_len,
+                entity_line_width,
+                gravity,
+            );
+            out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_POINT;
+            continue;
+        }
+
+        let priority_observable = priority_target_id >= 0 && {
+            let pool = combat_targeting_pool();
+            combat_targeting_player_observes_entity_id(pool, priority_target_id, owner_player_id)
+        };
+
+        if priority_observable {
+            combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
+                entity_slot,
+                priority_target_id,
+                source_entity_id,
+                mirrors_enabled,
+                force_fields_enabled,
+                force_field_obstruction_active,
+                terrain_step_len,
+                entity_line_width,
+                gravity,
+                &[],
+                &[],
+                &[],
+                true,
+            );
+            out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_TARGET;
+            continue;
+        }
+
+        combat_targeting_auto_mode_tick_from_slab(
+            entity_slot,
+            source_entity_id,
+            mirrors_enabled,
+            force_fields_enabled,
+            force_field_obstruction_active,
+            terrain_step_len,
+            entity_line_width,
+            gravity,
+            los_drop_grace_ticks,
+            &mut cached_fire_ranks[start..end],
+            &mut cached_fire_dist_sqs[start..end],
+            max_targetable_radius,
+        );
+        out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
     }
 }
 

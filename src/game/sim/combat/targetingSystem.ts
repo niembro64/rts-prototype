@@ -22,19 +22,19 @@ import {
 
 const _activeCombatUnits: Entity[] = [];
 const TARGETING_BATCH_MODE_AUTO = 0;
-const TARGETING_BATCH_MODE_PRIORITY_POINT = 1;
-const TARGETING_BATCH_MODE_PRIORITY_TARGET = 2;
-const TARGETING_BATCH_MODE_CLEAR_LOCKS = 3;
+const TARGETING_BATCH_MODE_SKIP = 255;
 
 const _targetingBatchUnits: Entity[] = [];
 let _targetingBatchSlots = new Uint32Array(0);
 let _targetingBatchSourceIds = new Int32Array(0);
 let _targetingBatchModes = new Uint8Array(0);
 let _targetingBatchPriorityTargetIds = new Int32Array(0);
+let _targetingBatchPriorityPointPresent = new Uint8Array(0);
 let _targetingBatchPriorityPointX = new Float64Array(0);
 let _targetingBatchPriorityPointY = new Float64Array(0);
 let _targetingBatchPriorityPointZ = new Float64Array(0);
 let _targetingBatchHasCooldown = new Uint8Array(0);
+let _targetingBatchScheduledProbeTicks = new Int32Array(0);
 let _targetingBatchCachedFireRanks = new Uint8Array(0);
 let _targetingBatchCachedFireDistSqs = new Float64Array(0);
 let _targetingBatchMaxTurrets = 0;
@@ -49,10 +49,12 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
     _targetingBatchSourceIds = new Int32Array(0);
     _targetingBatchModes = new Uint8Array(0);
     _targetingBatchPriorityTargetIds = new Int32Array(0);
+    _targetingBatchPriorityPointPresent = new Uint8Array(0);
     _targetingBatchPriorityPointX = new Float64Array(0);
     _targetingBatchPriorityPointY = new Float64Array(0);
     _targetingBatchPriorityPointZ = new Float64Array(0);
     _targetingBatchHasCooldown = new Uint8Array(0);
+    _targetingBatchScheduledProbeTicks = new Int32Array(0);
     _targetingBatchCachedFireRanks = new Uint8Array(0);
     _targetingBatchCachedFireDistSqs = new Float64Array(0);
     _targetingBatchMaxTurrets = maxTurrets;
@@ -64,10 +66,12 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
   _targetingBatchSourceIds = new Int32Array(next);
   _targetingBatchModes = new Uint8Array(next);
   _targetingBatchPriorityTargetIds = new Int32Array(next);
+  _targetingBatchPriorityPointPresent = new Uint8Array(next);
   _targetingBatchPriorityPointX = new Float64Array(next);
   _targetingBatchPriorityPointY = new Float64Array(next);
   _targetingBatchPriorityPointZ = new Float64Array(next);
   _targetingBatchHasCooldown = new Uint8Array(next);
+  _targetingBatchScheduledProbeTicks = new Int32Array(next);
   const turretCapacity = next * maxTurrets;
   _targetingBatchCachedFireRanks = new Uint8Array(turretCapacity);
   _targetingBatchCachedFireDistSqs = new Float64Array(turretCapacity);
@@ -114,23 +118,25 @@ type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 function queueTargetingUnit(
   unit: Entity,
   unitSlot: number,
-  mode: number,
   hasCooldownState: boolean,
   maxTurrets: number,
-  priorityTargetId: number = -1,
+  priorityTargetId: number | null = null,
   priorityPoint: Vec3 | null = null,
+  scheduledProbeTick: number = -1,
 ): void {
   const batchIdx = _targetingBatchUnits.length;
   ensureTargetingBatchCapacity(batchIdx + 1, maxTurrets);
   _targetingBatchUnits.push(unit);
   _targetingBatchSlots[batchIdx] = unitSlot;
   _targetingBatchSourceIds[batchIdx] = unit.id;
-  _targetingBatchModes[batchIdx] = mode;
-  _targetingBatchPriorityTargetIds[batchIdx] = priorityTargetId;
+  _targetingBatchModes[batchIdx] = TARGETING_BATCH_MODE_SKIP;
+  _targetingBatchPriorityTargetIds[batchIdx] = priorityTargetId ?? -1;
+  _targetingBatchPriorityPointPresent[batchIdx] = priorityPoint === null ? 0 : 1;
   _targetingBatchPriorityPointX[batchIdx] = priorityPoint?.x ?? 0;
   _targetingBatchPriorityPointY[batchIdx] = priorityPoint?.y ?? 0;
   _targetingBatchPriorityPointZ[batchIdx] = priorityPoint?.z ?? 0;
   _targetingBatchHasCooldown[batchIdx] = hasCooldownState ? 1 : 0;
+  _targetingBatchScheduledProbeTicks[batchIdx] = scheduledProbeTick;
 }
 
 function flushTargetingBatch(
@@ -147,23 +153,18 @@ function flushTargetingBatch(
   if (count === 0) return;
 
   const entitySlots = _targetingBatchSlots.subarray(0, count);
-  targeting.updateMountKinematicsBatch(
-    entitySlots,
-    tick,
-    dtMs,
-    mirrorsEnabledFlag,
-    forceFieldsEnabledFlag,
-  );
-
   const turretValueCount = count * maxTurrets;
-  targeting.tickBatch(
+  targeting.scheduleAndTickBatch(
     entitySlots,
     _targetingBatchSourceIds.subarray(0, count),
-    _targetingBatchModes.subarray(0, count),
     _targetingBatchPriorityTargetIds.subarray(0, count),
+    _targetingBatchPriorityPointPresent.subarray(0, count),
     _targetingBatchPriorityPointX.subarray(0, count),
     _targetingBatchPriorityPointY.subarray(0, count),
     _targetingBatchPriorityPointZ.subarray(0, count),
+    _targetingBatchScheduledProbeTicks.subarray(0, count),
+    tick,
+    dtMs,
     mirrorsEnabledFlag,
     forceFieldsEnabledFlag,
     forceMaterialSightObstructionActiveFlag,
@@ -174,17 +175,24 @@ function flushTargetingBatch(
     _targetingBatchCachedFireRanks.subarray(0, turretValueCount),
     _targetingBatchCachedFireDistSqs.subarray(0, turretValueCount),
     world.getMaxTargetableRadius(),
+    _targetingBatchModes.subarray(0, count),
   );
 
   for (let i = 0; i < count; i++) {
+    const mode = _targetingBatchModes[i];
+    if (mode === TARGETING_BATCH_MODE_SKIP) continue;
     const unit = _targetingBatchUnits[i];
     const combat = unit.combat!;
     writeBackCombatTargetingEntity(unit, tick);
-    if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
-    else if (_targetingBatchModes[i] === TARGETING_BATCH_MODE_AUTO) {
+    if (updateCombatActivityFlags(combat)) {
+      combat.nextCombatProbeTick = -1;
+      _activeCombatUnits.push(unit);
+    } else if (mode === TARGETING_BATCH_MODE_AUTO) {
       combat.nextCombatProbeTick = _targetingBatchHasCooldown[i] !== 0
         ? tick + 1
         : nextTargetingReacquireTick(tick);
+    } else {
+      combat.nextCombatProbeTick = -1;
     }
   }
 
@@ -257,20 +265,18 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   for (const unit of armedEntities) {
     if (!unit.ownership || !unit.combat) continue;
     const combat = unit.combat;
+    clearCombatActivityFlags(combat);
     // Host-aliveness check — units track hp on entity.unit, buildings on
     // entity.building. Combat is host-agnostic; the host components own
     // their own hp.
     const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
     if (hostHp <= 0) {
-      clearCombatActivityFlags(combat);
       continue;
     }
     // Inert shells skip targeting until construction completes.
     if (unit.buildable && !unit.buildable.isComplete) {
-      clearCombatActivityFlags(combat);
       continue;
     }
-    clearCombatActivityFlags(combat);
     if (combat.fireEnabled === false) {
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
@@ -281,9 +287,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         queueTargetingUnit(
           unit,
           unitSlot,
-          TARGETING_BATCH_MODE_CLEAR_LOCKS,
           false,
           maxTurrets,
+          null,
+          null,
+          -1,
         );
       }
       continue;
@@ -291,16 +299,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     const priorityId = combat.priorityTargetId;
     const priorityPoint = combat.priorityTargetPoint;
     const scheduledProbeTick = combat.nextCombatProbeTick;
-    // Sentinel -1 disables the gate (`-1 > tick` is false for tick >= 0).
-    if (
-      priorityId === null &&
-      priorityPoint === null &&
-      scheduledProbeTick > tick
-    ) {
-      continue;
-    }
 
-    const playerId = unit.ownership.playerId;
     const weapons = combat.turrets;
 
     let hasCooldownState = false;
@@ -327,9 +326,11 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         queueTargetingUnit(
           unit,
           unitSlot,
-          TARGETING_BATCH_MODE_AUTO,
           hasCooldownState,
           maxTurrets,
+          priorityId,
+          priorityPoint,
+          scheduledProbeTick,
         );
       } else {
         combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
@@ -337,61 +338,21 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       continue;
     }
 
-    combat.nextCombatProbeTick = -1;
     const unitSlot = spatialGrid.getSlot(unit.id);
     if (unitSlot < 0) continue;
 
-    // Check for attack-ground priority target.
-    if (priorityPoint !== null) {
-      stampCombatTargetingEntity(unit);
-      queueTargetingUnit(
-        unit,
-        unitSlot,
-        TARGETING_BATCH_MODE_PRIORITY_POINT,
-        hasCooldownState,
-        maxTurrets,
-        -1,
-        priorityPoint,
-      );
-      continue;
-    }
-
-    // Check for attack command priority target
-    if (priorityId !== null) {
-      // Validate via Rust: alive + observable (uncloaked or detected).
-      // Returns the slab-backed view, matching the gate the damage
-      // routing and rest of the FSM use.
-      const priorityObservable =
-        targeting.canPlayerObserveEntity(priorityId, playerId) === 1;
-      const priorityTarget: Entity | null = priorityObservable
-        ? (world.getEntity(priorityId) ?? null)
-        : null;
-
-      if (priorityTarget) {
-        stampCombatTargetingEntity(unit);
-        queueTargetingUnit(
-          unit,
-          unitSlot,
-          TARGETING_BATCH_MODE_PRIORITY_TARGET,
-          hasCooldownState,
-          maxTurrets,
-          priorityId,
-        );
-        continue; // Skip auto-targeting entirely for this unit
-      }
-      // Priority target dead/gone — fall through to auto-targeting
-    }
-
-    // AUTO MODE: standard hysteresis FSM. The mixed Rust batch runs
-    // existing-lock validation, auto-scan, spatial candidate query,
-    // and fire/acquisition FSM apply for this queued row.
+    // The Rust scheduled batch chooses priority-point, priority-target,
+    // hold-fire clear, skip, or auto mode from slab-backed state so TS
+    // no longer resolves command targets inside this traversal.
     stampCombatTargetingEntity(unit);
     queueTargetingUnit(
       unit,
       unitSlot,
-      TARGETING_BATCH_MODE_AUTO,
       hasCooldownState,
       maxTurrets,
+      priorityId,
+      priorityPoint,
+      scheduledProbeTick,
     );
   }
 
