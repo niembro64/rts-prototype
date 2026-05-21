@@ -926,7 +926,7 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleCylinderBarrel",
-      "barrelLength": 3
+      "barrelLength": 1
     },
     "isManualFire": false,
     "passive": false,
@@ -957,7 +957,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 2.4
+      "body": 4
     },
     "constructionEmitter": null,
     "aimStyle": {
