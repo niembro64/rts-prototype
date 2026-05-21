@@ -178,7 +178,7 @@ function bodyPartNormalizedDistanceSq(
     const r = Math.max(part.radiusFrac, BODY_PART_CONTAIN_EPS);
     return (dx * dx + dy * dy) / (r * r);
   }
-  if (part.kind === 'cylinder') {
+  if (part.kind === 'cylinder' || part.kind === 'cone') {
     const halfLength = Math.max(part.lengthFrac * 0.5, BODY_PART_CONTAIN_EPS);
     const r = Math.max(part.radiusFrac, BODY_PART_CONTAIN_EPS);
     return (dx * dx) / (halfLength * halfLength) + (dy * dy) / (r * r);
@@ -289,6 +289,6 @@ export function getSegmentMidYAt(
     }
   }
   if (best.kind === 'circle') return circleYFrac(best.radiusFrac, best.yFrac) * unitRadius;
-  if (best.kind === 'cylinder') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
+  if (best.kind === 'cylinder' || best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
   return best.yFrac * unitRadius;
 }

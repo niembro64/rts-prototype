@@ -85,6 +85,20 @@ function getUnitCylinder(): THREE.CylinderGeometry {
   return _unitCylinder;
 }
 
+// Unit cone — radiusTop=1, radiusBottom=0 so the tip is at −Y. Same
+// rotateZ(−π/2) as the cylinder lays the long axis along +X, which
+// puts the tip at −X (the rearward end of any body part using this
+// geometry) and the radius-1 base at +X. Composite parts scale by
+// (lengthFrac, radiusFrac, radiusFrac) just like cylinders.
+let _unitCone: THREE.CylinderGeometry | null = null;
+function getUnitCone(): THREE.CylinderGeometry {
+  if (!_unitCone) {
+    _unitCone = new THREE.CylinderGeometry(1, 0, 1, 18, 1);
+    _unitCone.rotateZ(-Math.PI / 2);
+  }
+  return _unitCone;
+}
+
 /** Polygon extrusion height (unit-radius-1). Uses the inscribed-circle
  *  diameter (2·r·cos(π/N)) so tall-radius shapes like a pentagon rise
  *  higher than a squat triangle, while everything stays proportional
@@ -114,6 +128,15 @@ function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; cente
   const y = part.centerYFrac ?? part.radiusFrac;
   return {
     geometry: getUnitCylinder(),
+    x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
+    scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
+  };
+}
+
+function buildConeSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+  const y = part.centerYFrac ?? part.radiusFrac;
+  return {
+    geometry: getUnitCone(),
     x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
     scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
   };
@@ -198,6 +221,10 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
     } else if (p.kind === 'oval') {
       const part = buildOvalSpec(p);
       parts.push(part);
+    } else if (p.kind === 'cone') {
+      const part = buildConeSpec(p);
+      parts.push(part);
+      isSmooth = false;
     } else {
       const part = buildCylinderSpec(p);
       parts.push(part);
@@ -413,6 +440,8 @@ export function getBodyEdgeTemplates(
           height,
         );
       } else {
+        // cylinder + cone — same edge template footprint (debris uses
+        // the bounding rod; the cone's tip taper is a visual detail).
         const radius = part.radiusFrac * unitRadius;
         out.push({
           x: offsetX,

@@ -345,6 +345,19 @@ export type UnitBodyShapePart =
       /** Optional cylinder center height. Defaults to radiusFrac so the
        *  part sits on the body baseline. */
       centerYFrac?: number;
+    }
+  | {
+      /** Like cylinder, but the rearward (−X) end is a point and the
+       *  forward (+X) end is the wider base. Used for tail tapers. */
+      kind: 'cone';
+      offsetForward: number;
+      offsetLateral?: number;
+      /** Full cone length along the unit's +X axis. */
+      lengthFrac: number;
+      /** Base radius (the wider, non-pointy end at +X). */
+      radiusFrac: number;
+      /** Optional center height; defaults to radiusFrac. */
+      centerYFrac?: number;
     };
 
 export type UnitBodyShape =
