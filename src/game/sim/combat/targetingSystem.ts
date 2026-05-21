@@ -9,7 +9,6 @@ import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatAct
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimWasm } from '../../sim-wasm/init';
-import { resolveTargetAimPoint } from './aimSolver';
 import {
   COMBAT_LOS_ENTITY_QUERY_WIDTH,
   COMBAT_LOS_TERRAIN_STEP_LEN,
@@ -18,7 +17,6 @@ import {
 import { getActiveForceFields } from './forceFieldTurret';
 import {
   stampCombatTargetingEntity,
-  writeBackCombatTargetingEntityKinematics,
   writeBackCombatTargetingEntity,
 } from './targetingInputStamping';
 
@@ -28,7 +26,6 @@ const TARGETING_BATCH_MODE_PRIORITY_POINT = 1;
 const TARGETING_BATCH_MODE_PRIORITY_TARGET = 2;
 const TARGETING_BATCH_MODE_CLEAR_LOCKS = 3;
 
-const _gateAimPointScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _targetingBatchUnits: Entity[] = [];
 let _targetingBatchSlots = new Uint32Array(0);
 let _targetingBatchSourceIds = new Int32Array(0);
@@ -38,9 +35,6 @@ let _targetingBatchPriorityPointX = new Float64Array(0);
 let _targetingBatchPriorityPointY = new Float64Array(0);
 let _targetingBatchPriorityPointZ = new Float64Array(0);
 let _targetingBatchHasCooldown = new Uint8Array(0);
-let _targetingBatchAimX = new Float64Array(0);
-let _targetingBatchAimY = new Float64Array(0);
-let _targetingBatchAimZ = new Float64Array(0);
 let _targetingBatchCachedFireRanks = new Uint8Array(0);
 let _targetingBatchCachedFireDistSqs = new Float64Array(0);
 let _targetingBatchMaxTurrets = 0;
@@ -59,9 +53,6 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
     _targetingBatchPriorityPointY = new Float64Array(0);
     _targetingBatchPriorityPointZ = new Float64Array(0);
     _targetingBatchHasCooldown = new Uint8Array(0);
-    _targetingBatchAimX = new Float64Array(0);
-    _targetingBatchAimY = new Float64Array(0);
-    _targetingBatchAimZ = new Float64Array(0);
     _targetingBatchCachedFireRanks = new Uint8Array(0);
     _targetingBatchCachedFireDistSqs = new Float64Array(0);
     _targetingBatchMaxTurrets = maxTurrets;
@@ -78,93 +69,8 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
   _targetingBatchPriorityPointZ = new Float64Array(next);
   _targetingBatchHasCooldown = new Uint8Array(next);
   const turretCapacity = next * maxTurrets;
-  _targetingBatchAimX = new Float64Array(turretCapacity);
-  _targetingBatchAimY = new Float64Array(turretCapacity);
-  _targetingBatchAimZ = new Float64Array(turretCapacity);
   _targetingBatchCachedFireRanks = new Uint8Array(turretCapacity);
   _targetingBatchCachedFireDistSqs = new Float64Array(turretCapacity);
-}
-
-/** Resolve each turret's aim point against a known target entity for
- *  the priority-target gate kernel. The kernel itself reads the
- *  mirror-panel slab + force-field slab + cloak/detector data, so
- *  TS only owes per-turret aim points (lockOnToBody / lockOnToTurret
- *  resolution stays in one place here). */
-function fillPriorityTargetGateInputsInto(
-  weapons: Turret[],
-  target: Entity,
-  source: Entity,
-  currentTick: number,
-  outX: Float64Array,
-  outY: Float64Array,
-  outZ: Float64Array,
-  offset: number,
-): void {
-  for (let wi = 0; wi < weapons.length; wi++) {
-    const weapon = weapons[wi];
-    const outIdx = offset + wi;
-    resolveTargetAimPoint(
-      target,
-      weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
-      _gateAimPointScratch,
-      {
-        lockOnType: weapon.config.aimStyle.lockOnType,
-        source,
-        currentTick,
-      },
-    );
-    outX[outIdx] = _gateAimPointScratch.x;
-    outY[outIdx] = _gateAimPointScratch.y;
-    outZ[outIdx] = _gateAimPointScratch.z;
-  }
-}
-
-/** Resolve per-turret existing-lock inputs: aim point only. Weapons
- *  with no current target leave their aim arrays at safe defaults —
- *  the Rust kernel skips those turrets via the slab's
- *  `turret_target_id` field anyway. Cloak observability,
- *  passive-mirror validity, and mirror-panel clearance are computed
- *  inside Rust from slab data. */
-function fillExistingLockGateInputsInto(
-  weapons: Turret[],
-  world: WorldState,
-  unit: Entity,
-  currentTick: number,
-  outX: Float64Array,
-  outY: Float64Array,
-  outZ: Float64Array,
-  offset: number,
-): void {
-  for (let wi = 0; wi < weapons.length; wi++) {
-    const weapon = weapons[wi];
-    const outIdx = offset + wi;
-    if (weapon.target === null) {
-      outX[outIdx] = 0;
-      outY[outIdx] = 0;
-      outZ[outIdx] = 0;
-      continue;
-    }
-    const target = world.getEntity(weapon.target);
-    if (target === undefined) {
-      outX[outIdx] = 0;
-      outY[outIdx] = 0;
-      outZ[outIdx] = 0;
-      continue;
-    }
-    resolveTargetAimPoint(
-      target,
-      weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
-      _gateAimPointScratch,
-      {
-        lockOnType: weapon.config.aimStyle.lockOnType,
-        source: unit,
-        currentTick,
-      },
-    );
-    outX[outIdx] = _gateAimPointScratch.x;
-    outY[outIdx] = _gateAimPointScratch.y;
-    outZ[outIdx] = _gateAimPointScratch.z;
-  }
 }
 
 function getTargetingKernel() {
@@ -250,40 +156,6 @@ function flushTargetingBatch(
   );
 
   const turretValueCount = count * maxTurrets;
-  for (let i = 0; i < count; i++) {
-    const unit = _targetingBatchUnits[i];
-    const weapons = unit.combat!.turrets;
-    const offset = i * maxTurrets;
-    writeBackCombatTargetingEntityKinematics(unit, tick);
-    const mode = _targetingBatchModes[i];
-    if (mode === TARGETING_BATCH_MODE_PRIORITY_TARGET) {
-      const target = world.getEntity(_targetingBatchPriorityTargetIds[i]);
-      if (target !== undefined) {
-        fillPriorityTargetGateInputsInto(
-          weapons,
-          target,
-          unit,
-          tick,
-          _targetingBatchAimX,
-          _targetingBatchAimY,
-          _targetingBatchAimZ,
-          offset,
-        );
-      }
-    } else if (mode === TARGETING_BATCH_MODE_AUTO) {
-      fillExistingLockGateInputsInto(
-        weapons,
-        world,
-        unit,
-        tick,
-        _targetingBatchAimX,
-        _targetingBatchAimY,
-        _targetingBatchAimZ,
-        offset,
-      );
-    }
-  }
-
   targeting.tickBatch(
     entitySlots,
     _targetingBatchSourceIds.subarray(0, count),
@@ -299,9 +171,6 @@ function flushTargetingBatch(
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
     GRAVITY,
     SIGHT_DROP_GRACE_TICKS,
-    _targetingBatchAimX.subarray(0, turretValueCount),
-    _targetingBatchAimY.subarray(0, turretValueCount),
-    _targetingBatchAimZ.subarray(0, turretValueCount),
     _targetingBatchCachedFireRanks.subarray(0, turretValueCount),
     _targetingBatchCachedFireDistSqs.subarray(0, turretValueCount),
     world.getMaxTargetableRadius(),
@@ -361,11 +230,10 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const maxTurrets = targeting.maxTurretsPerEntity();
   const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
   const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
-  // Force-material gate fast-path. Sphere boundaries are stamped into
-  // the Rust FF slab before the FSM; mirror panels are checked from
-  // live JS geometry. This flag lets common ticks skip aim-point
-  // resolve and blocker walks when OBSTRUCT SIGHT is off or no force
-  // material is active.
+  // Force-material gate fast-path. Sphere boundaries and mirror-panel
+  // blockers are stamped into Rust slabs before the FSM. This flag
+  // lets common ticks skip blocker walks when OBSTRUCT SIGHT is off or
+  // no force material is active.
   const forceMaterialSightObstructionActive = world.forceFieldsObstructSight
     && (
       getActiveForceFields().length > 0 ||

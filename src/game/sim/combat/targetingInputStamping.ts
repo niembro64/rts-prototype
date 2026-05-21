@@ -314,6 +314,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       maxTimeSec,
       t.config.groundAimFraction ?? 0,
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
+      t.config.aimStyle.lockOnType === 'lockOnToTurret' ? 1 : 0,
     );
   }
 }

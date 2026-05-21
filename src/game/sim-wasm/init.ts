@@ -984,6 +984,7 @@ export interface CombatTargetingApi {
     maxTimeSec: number,
     groundAimFraction: number,
     underOnly: number,
+    lockOnTurret: number,
   ) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
@@ -1361,8 +1362,8 @@ export interface CombatTargetingApi {
     maxTargetableRadius: number,
   ) => void;
   /** AIM-08.5 — mixed-mode world-order FSM batch. TS still prepares
-   *  object-owned command/cooldown state and per-turret aim points,
-   *  then this one Rust call dispatches auto-mode, priority-point, and
+   *  object-owned command/cooldown state; Rust resolves per-turret
+   *  aim points and dispatches auto-mode, priority-point, and
    *  priority-target targeting work across the queued entities. */
   readonly tickBatch: (
     entitySlots: Uint32Array,
@@ -1379,9 +1380,6 @@ export interface CombatTargetingApi {
     entityLineWidth: number,
     gravity: number,
     losDropGraceTicks: number,
-    aimX: Float64Array,
-    aimY: Float64Array,
-    aimZ: Float64Array,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     maxTargetableRadius: number,
