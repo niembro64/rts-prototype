@@ -174,5 +174,9 @@ AIM-08.5 — Port the targeting FSM
   writeback also refreshes combat activity masks during the same
   turret walk, replacing the separate post-writeback
   updateCombatActivityFlags loop on the targeting hot path.
+  Beam audio is the first migrated downstream reader:
+  laserSoundSystem now reads turret target/state from the
+  combat-targeting slab via readCombatTargetingTurretFsmInto, with a
+  JS Turret fallback for non-sim paths.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.

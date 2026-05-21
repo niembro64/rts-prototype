@@ -81,6 +81,7 @@ import {
   getShotMaxLifespan,
   isProjectileShot,
   type Entity,
+  type EntityId,
   type HysteresisRange,
   type ProjectileShot,
   type Turret,
@@ -108,6 +109,11 @@ export type CombatTargetingStateViews = {
   losBlockedTicks: Uint16Array;
   cooldown: Float64Array;
   burstCooldown: Float64Array;
+};
+
+export type CombatTargetingTurretFsmOut = {
+  stateCode: number;
+  targetId: EntityId | null;
 };
 
 let _stateViews: CombatTargetingStateViews | null = null;
@@ -198,6 +204,39 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     burstCooldown: new Float64Array(buffer, targeting.turretBurstCooldownPtr(), length),
   };
   return _stateViews;
+}
+
+function getCombatTargetingTurretStateIndex(
+  sim: SimWasm,
+  entity: Entity,
+  turretIndex: number,
+): number {
+  if (turretIndex < 0) return -1;
+  const slot = spatialGrid.getSlot(entity.id);
+  if (slot < 0) return -1;
+  const targeting = sim.combatTargeting;
+  if (turretIndex >= targeting.turretCount(slot)) return -1;
+  return slot * targeting.maxTurretsPerEntity() + turretIndex;
+}
+
+/** Read the Rust-owned target/state tuple for one turret into `out`.
+ *  Returns false when the entity has no stamped targeting slab row
+ *  (for example on a non-sim client path), so callers can fall back
+ *  to the transitional JS Turret object. */
+export function readCombatTargetingTurretFsmInto(
+  entity: Entity,
+  turretIndex: number,
+  out: CombatTargetingTurretFsmOut,
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return false;
+  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
+  if (idx < 0) return false;
+  const views = getCombatTargetingStateViews(sim);
+  out.stateCode = views.state[idx];
+  const targetId = views.targetId[idx];
+  out.targetId = targetId < 0 ? null : targetId;
+  return true;
 }
 
 function rangeEdgeSq(range: HysteresisRange, edge: 'acquire' | 'release'): number {
