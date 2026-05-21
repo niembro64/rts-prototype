@@ -23,9 +23,11 @@ import {
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
 import {
+  readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
   stampForceFieldPool,
   stampMirrorPanelPool,
+  type CombatTargetingTurretFsmOut,
 } from './combat/targetingInputStamping';
 import {
   updateProjectiles,
@@ -63,6 +65,7 @@ import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
+import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
   setUnitActions,
@@ -76,6 +79,10 @@ import {
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
+const _combatStopFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_ENGAGED,
+  targetId: null,
+};
 
 function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
   return Array.isArray(value) ? value as ProjectileVelocityUpdateEvent[] : EMPTY_VEL_UPDATES;
@@ -1315,11 +1322,17 @@ export class Simulation {
   private shouldStopForEngagedCombat(entity: Entity): boolean {
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;
-    for (const turret of combat.turrets) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
       if (turret.config.visualOnly) continue;
+      const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _combatStopFsm);
+      const stateCode = hasTargetingFsm
+        ? _combatStopFsm.stateCode
+        : (turret.state === 'engaged' ? CT_TURRET_STATE_ENGAGED : 0);
+      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : turret.target;
       if (
-        turret.state === 'engaged' &&
-        (turret.target !== null || combat.priorityTargetPoint !== null)
+        stateCode === CT_TURRET_STATE_ENGAGED &&
+        (targetId !== null || combat.priorityTargetPoint !== null)
       ) return true;
     }
     return false;
@@ -1338,12 +1351,18 @@ export class Simulation {
     if (!combat || combat.turrets.length === 0) return false;
     let total = 0;
     let engaged = 0;
-    for (const turret of combat.turrets) {
+    for (let i = 0; i < combat.turrets.length; i++) {
+      const turret = combat.turrets[i];
       if (turret.config.visualOnly) continue;
       total++;
+      const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _combatStopFsm);
+      const stateCode = hasTargetingFsm
+        ? _combatStopFsm.stateCode
+        : (turret.state === 'engaged' ? CT_TURRET_STATE_ENGAGED : 0);
+      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : turret.target;
       if (
-        turret.state === 'engaged' &&
-        (turret.target !== null || combat.priorityTargetPoint !== null)
+        stateCode === CT_TURRET_STATE_ENGAGED &&
+        (targetId !== null || combat.priorityTargetPoint !== null)
       ) engaged++;
     }
     if (total === 0) return false;

@@ -111,8 +111,13 @@ export type CombatTargetingStateViews = {
   burstCooldown: Float64Array;
 };
 
+export type CombatTargetingTurretStateCode =
+  | typeof CT_TURRET_STATE_IDLE
+  | typeof CT_TURRET_STATE_TRACKING
+  | typeof CT_TURRET_STATE_ENGAGED;
+
 export type CombatTargetingTurretFsmOut = {
-  stateCode: number;
+  stateCode: CombatTargetingTurretStateCode;
   targetId: EntityId | null;
 };
 
@@ -163,7 +168,7 @@ export function getCombatTargetingSourceCount(): number {
   return _combatTargetingSourceCount;
 }
 
-function encodeTurretState(state: TurretState): number {
+export function encodeCombatTargetingTurretState(state: TurretState): CombatTargetingTurretStateCode {
   switch (state) {
     case 'engaged': return CT_TURRET_STATE_ENGAGED;
     case 'tracking': return CT_TURRET_STATE_TRACKING;
@@ -171,7 +176,7 @@ function encodeTurretState(state: TurretState): number {
   }
 }
 
-function decodeTurretState(state: number): TurretState {
+export function decodeCombatTargetingTurretState(state: number): TurretState {
   if (state === CT_TURRET_STATE_ENGAGED) return 'engaged';
   if (state === CT_TURRET_STATE_TRACKING) return 'tracking';
   return 'idle';
@@ -236,10 +241,19 @@ export function readCombatTargetingTurretFsmInto(
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return false;
+  return readCombatTargetingTurretFsmFromSimInto(sim, entity, turretIndex, out);
+}
+
+export function readCombatTargetingTurretFsmFromSimInto(
+  sim: SimWasm,
+  entity: Entity,
+  turretIndex: number,
+  out: CombatTargetingTurretFsmOut,
+): boolean {
   const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
   if (idx < 0) return false;
   const views = getCombatTargetingStateViews(sim);
-  out.stateCode = views.state[idx];
+  out.stateCode = views.state[idx] as CombatTargetingTurretStateCode;
   const targetId = views.targetId[idx];
   out.targetId = targetId < 0 ? null : targetId;
   return true;
@@ -459,7 +473,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.worldPos.x, t.worldPos.y, t.worldPos.z,
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,
-      encodeTurretState(t.state),
+      encodeCombatTargetingTurretState(t.state),
       t.target === null ? -1 : t.target,
       t.cooldown,
       t.burst?.cooldown ?? 0,
@@ -571,7 +585,7 @@ export function writeBackCombatTargetingEntity(
     }
     const targetId = views.targetId[idx];
     setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
-    turret.state = decodeTurretState(views.state[idx]);
+    turret.state = decodeCombatTargetingTurretState(views.state[idx]);
     turret.aimErrorYaw = views.aimErrorYaw[idx];
     turret.aimErrorPitch = views.aimErrorPitch[idx];
     turret.losBlockedTicks = views.losBlockedTicks[idx];

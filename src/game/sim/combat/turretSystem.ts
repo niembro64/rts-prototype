@@ -27,6 +27,10 @@ import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatAct
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
 
 /** Pitch is clamped to straight-down → straight-up. Matches the
@@ -36,6 +40,10 @@ const PITCH_MIN = -Math.PI / 2;
 const PITCH_MAX = Math.PI / 2;
 const _turretAim = createTurretAimScratch();
 const _turretMount = { x: 0, y: 0, z: 0 };
+const _turretRotationFsm: CombatTargetingTurretFsmOut = {
+  stateCode: 0,
+  targetId: null,
+};
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
   const dtSec = dtMs / 1000;
@@ -93,6 +101,13 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       let targetPitch = 0;
       let hasActiveTarget = false;
       weapon.ballisticAimInRange = true;
+      const targetingTargetId = readCombatTargetingTurretFsmInto(
+        unit,
+        weaponIndex,
+        _turretRotationFsm,
+      )
+        ? _turretRotationFsm.targetId
+        : weapon.target;
 
       if (unit.combat.priorityTargetPoint !== null) {
         const targetPoint = unit.combat.priorityTargetPoint;
@@ -124,8 +139,8 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           targetPitch = solved.pitch;
           hasActiveTarget = true;
         }
-      } else if (weapon.target !== null) {
-        const target = world.getEntity(weapon.target);
+      } else if (targetingTargetId !== null) {
+        const target = world.getEntity(targetingTargetId);
         if (target) {
           // Origin (weapon mount) in true 3D world coords. The
           // targeting system runs earlier in the same tick and

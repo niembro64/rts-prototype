@@ -7,11 +7,18 @@ import { SNAPSHOT_CONFIG } from '../../config';
 import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
+  CT_TURRET_STATE_ENGAGED,
   getSimWasm,
   type SimWasm,
   SNAPSHOT_DIFF_KIND_UNIT,
   SNAPSHOT_DIFF_KIND_BUILDING,
 } from '../sim-wasm/init';
+import {
+  encodeCombatTargetingTurretState,
+  readCombatTargetingTurretFsmFromSimInto,
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from '../sim/combat/targetingInputStamping';
 
 /** Phase 10 D.3g — compare the Rust-side snapshot_baseline_diff_slot
  *  result against the JS-side getEntityDeltaChangedFields output
@@ -45,6 +52,10 @@ import {
 const MAX_WEAPONS_PER_ENTITY = 8;
 const DEFAULT_TRACKING_KEY = 'default';
 const NORMAL_THRESHOLD = 0.001;
+const _deltaTurretFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_ENGAGED,
+  targetId: null,
+};
 
 export type PrevEntityState = {
   x: number;
@@ -349,13 +360,18 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
     }
     for (let i = 0; i < combatTurrets.length; i++) {
       const w = combatTurrets[i];
-      if (w.state === 'engaged') prev.isEngagedBits |= (1 << i);
-      if (w.target) prev.targetBits |= (1 << i);
+      const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _deltaTurretFsm);
+      const stateCode = hasTargetingFsm
+        ? _deltaTurretFsm.stateCode
+        : encodeCombatTargetingTurretState(w.state);
+      const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
+      if (stateCode === CT_TURRET_STATE_ENGAGED) prev.isEngagedBits |= (1 << i);
+      if (targetId !== null) prev.targetBits |= (1 << i);
       prev.turretRots[i] = w.rotation;
       prev.turretAngVels[i] = w.angularVelocity;
       prev.turretPitches[i] = w.pitch;
       prev.turretPitchVels[i] = w.pitchVelocity;
-      prev.turretTargetIds[i] = w.target ?? -1;
+      prev.turretTargetIds[i] = targetId ?? -1;
       prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
   }
@@ -628,12 +644,14 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
   sim.turretPool.setCount(slot, turretCount);
   for (let t = 0; t < turretCount; t++) {
     const w = turrets![t];
+    const hasTargetingFsm = readCombatTargetingTurretFsmFromSimInto(sim, e, t, _deltaTurretFsm);
+    const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
     sim.turretPool.setTurret(
       slot, t,
       w.rotation, w.angularVelocity, w.angularAcceleration,
       w.pitch, w.pitchVelocity, w.pitchAcceleration,
       w.forceField?.range ?? 0,
-      w.target ?? -1,
+      targetId ?? -1,
     );
   }
 }

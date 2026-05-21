@@ -185,5 +185,9 @@ AIM-08.5 — Port the targeting FSM
   positions from the combat-targeting slab when Rust updated that
   target row, falling back to the live JS resolver for probe-skipped
   or unstamped rows.
+  Firing, force-field engagement, movement halt checks, barrel-spin
+  rendering, snapshot DTO encoding, JS delta capture, and the Rust
+  snapshot turret-pool sync now read the slab target/state tuple first
+  and fall back to JS Turret fields only for unstamped/non-sim paths.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.

@@ -1,8 +1,18 @@
 import type { Entity, EntityId } from '../sim/types';
+import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from '../sim/combat/targetingInputStamping';
 
 type BarrelSpinState = {
   angle: number;
   speed: number;
+};
+
+const _barrelSpinFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_ENGAGED,
+  targetId: null,
 };
 
 export type BarrelSpinFrameState = {
@@ -56,7 +66,9 @@ export class UnitBarrelSpinState3D {
         perEntity.set(turretIdx, state);
       }
 
-      const firing = turret.state === 'engaged';
+      const firing = readCombatTargetingTurretFsmInto(entity, turretIdx, _barrelSpinFsm)
+        ? _barrelSpinFsm.stateCode === CT_TURRET_STATE_ENGAGED
+        : turret.state === 'engaged';
       if (firing) {
         state.speed = Math.min(state.speed + spinConfig.accel * dtSec, spinConfig.max);
       } else {

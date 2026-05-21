@@ -32,7 +32,11 @@ import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveLineShotRangeSphereEndpoint, type LineShotRangeSphere } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
-import { getSimWasm } from '../../sim-wasm/init';
+import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from './targetingInputStamping';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -97,6 +101,10 @@ const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
 const _lineShotRangeSphere: LineShotRangeSphere = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
+const _fireFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_ENGAGED,
+  targetId: null,
+};
 const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
@@ -321,8 +329,10 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'force') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
+      const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
+      const targetingTargetId = hasTargetingFsm ? _fireFsm.targetId : weapon.target;
       if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
-        if (weapon.target !== null) {
+        if (targetingTargetId !== null) {
           setWeaponTarget(weapon, unit, weaponIndex, null);
         }
         weapon.state = 'idle';
@@ -330,7 +340,11 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       }
 
       // Skip if weapon is not engaged (target not in range or no target)
-      if (weapon.state !== 'engaged') continue;
+      if (hasTargetingFsm) {
+        if (_fireFsm.stateCode !== CT_TURRET_STATE_ENGAGED) continue;
+      } else if (weapon.state !== 'engaged') {
+        continue;
+      }
 
       // Apply beam recoil only while the beam is actually active
       if (isBeamWeapon && forceAccumulator && (shot as BeamShot | LaserShot).recoil && hasActiveWeaponBeam(world, unit.id, weaponIndex)) {
@@ -343,12 +357,12 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       }
 
       const groundTargetPoint = combat.priorityTargetPoint;
-      if (weapon.target !== null && !world.getEntity(weapon.target)) {
+      if (targetingTargetId !== null && !world.getEntity(targetingTargetId)) {
         setWeaponTarget(weapon, unit, weaponIndex, null);
         weapon.state = 'idle';
         continue;
       }
-      if (weapon.target === null && groundTargetPoint === null) continue;
+      if (targetingTargetId === null && groundTargetPoint === null) continue;
       if (!isWeaponAimedForFire(weapon)) continue;
 
       // Use the canonical 3D turret mount cache. Targeting normally
@@ -559,8 +573,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             projectile.projectile.lastSentVelZ = projVz;
           }
           // Set homing properties if weapon has homingTurnRate and weapon has a locked target
-          if (projShot.homingTurnRate && weapon.target !== null) {
-            projectile.projectile!.homingTargetId = weapon.target;
+          if (projShot.homingTurnRate && targetingTargetId !== null) {
+            projectile.projectile!.homingTargetId = targetingTargetId;
             projectile.projectile!.homingTurnRate = projShot.homingTurnRate;
           }
           const maxLifespan = projectile.projectile?.maxLifespan;
@@ -581,8 +595,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
             barrelIndex,
-            targetEntityId: (projShot.homingTurnRate && weapon.target !== null) ? weapon.target : undefined,
-            homingTurnRate: (projShot.homingTurnRate && weapon.target !== null)
+            targetEntityId: (projShot.homingTurnRate && targetingTargetId !== null) ? targetingTargetId : undefined,
+            homingTurnRate: (projShot.homingTurnRate && targetingTargetId !== null)
               ? projShot.homingTurnRate
               : undefined,
           });
@@ -958,7 +972,10 @@ export function updateProjectiles(
         const isContinuous = shotType === 'beam';
         const isLaser = shotType === 'laser';
         if (isContinuous || isLaser) {
-          if (weapon.state !== 'engaged') {
+          const engaged = readCombatTargetingTurretFsmInto(source, weaponIndex, _fireFsm)
+            ? _fireFsm.stateCode === CT_TURRET_STATE_ENGAGED
+            : weapon.state === 'engaged';
+          if (!engaged) {
             beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
             projectilesToRemove.push(entity.id);
             despawnEvents.push({ id: entity.id });

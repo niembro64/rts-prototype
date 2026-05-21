@@ -2,6 +2,10 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from '../sim/combat/targetingInputStamping';
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
@@ -58,6 +62,10 @@ const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
 const MAX_ACTIONS_PER_ENTITY = 16;
 const MAX_WAYPOINTS_PER_ENTITY = 16;
+const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
+  stateCode: 0,
+  targetId: null,
+};
 
 export const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BASIC = 1;
@@ -160,6 +168,7 @@ function qSuspension(n: number): number {
 
 function writeTurretsToPool(
   pool: PooledEntry,
+  entity: Entity,
   weapons: NonNullable<Entity['combat']>['turrets'],
   canReferenceEntityId: ((id: number | undefined) => boolean) | undefined,
 ): NetworkServerSnapshotTurret[] {
@@ -180,10 +189,12 @@ function writeTurretsToPool(
     // motion from velocity alone.
     t.angular.pitch = qRot(src.pitch);
     t.angular.pitchVel = qRot(src.pitchVelocity);
-    dst.targetId = canReferenceEntityId?.(src.target ?? undefined) === false
+    const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _snapshotTurretFsm);
+    const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : src.target;
+    dst.targetId = canReferenceEntityId?.(targetId ?? undefined) === false
       ? undefined
-      : src.target ?? undefined;
-    dst.state = turretStateToCode(src.state);
+      : targetId ?? undefined;
+    dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
     dst.currentForceFieldRange = src.forceField?.range;
   }
   return pool.turrets;
@@ -714,6 +725,7 @@ export function serializeEntitySnapshot(
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
         u.turrets = writeTurretsToPool(
           poolEntry,
+          entity,
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
         );
@@ -794,6 +806,7 @@ export function serializeEntitySnapshot(
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
         b.turrets = writeTurretsToPool(
           poolEntry,
+          entity,
           weapons0,
           canSeePrivateDetails ? canReferenceEntityId : () => false,
         );

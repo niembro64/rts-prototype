@@ -4,11 +4,20 @@ import type { WorldState } from '../WorldState';
 import type { ForceShot } from '../types';
 import type { ForceFieldReflectionMode } from '../../../types/shotTypes';
 import { getTransformCosSin } from '../../math';
+import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
 import { updateWeaponWorldKinematics } from './combatUtils';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
 
 const _forceFieldMount = { x: 0, y: 0, z: 0 };
 const _forceFieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
+const _forceFieldFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_ENGAGED,
+  targetId: null,
+};
 
 // Compact list of force field weapons with progress > 0, built by
 // updateForceFieldState() and consumed by projectile collision and the
@@ -60,7 +69,10 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       }
 
       // Move progress toward target based on engaged state
-      const targetProgress = weapon.state === 'engaged' ? 1 : 0;
+      const engaged = readCombatTargetingTurretFsmInto(unit, weaponIndex, _forceFieldFsm)
+        ? _forceFieldFsm.stateCode === CT_TURRET_STATE_ENGAGED
+        : weapon.state === 'engaged';
+      const targetProgress = engaged ? 1 : 0;
       const progressDelta = dtMs / transitionTime;
 
       if (weapon.forceField.transition < targetProgress) {
