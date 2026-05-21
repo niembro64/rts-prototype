@@ -6159,7 +6159,7 @@ pub fn turret_pool_entity_capacity() -> u32 {
 //   - Turret slab (keyed by entity_slot * MAX_PER_ENTITY + turret_idx):
 //     world mount kinematics, rotation/pitch, FSM state, target,
 //     pre-squared range envelopes (fire max + min + tracking),
-//     aim error, losBlockedTicks, packed config flags.
+//     losBlockedTicks, packed config flags.
 //   - Field slab (compact list of `count` active force fields): id,
 //     owner entity id, center, radius. Rebuilt from scratch each tick.
 // ─────────────────────────────────────────────────────────────────
@@ -6330,8 +6330,6 @@ struct CombatTargetingPool {
     turret_under_only: Vec<u8>,
     turret_lock_on_turret: Vec<u8>,
     turret_blueprint_code: Vec<u8>,
-    turret_aim_error_yaw: Vec<f32>,
-    turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
     turret_config_flags: Vec<u8>,
     // LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from
@@ -6433,8 +6431,6 @@ impl CombatTargetingPool {
             turret_under_only: Vec::new(),
             turret_lock_on_turret: Vec::new(),
             turret_blueprint_code: Vec::new(),
-            turret_aim_error_yaw: Vec::new(),
-            turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_config_flags: Vec::new(),
             turret_lockon_relationship_mask: Vec::new(),
@@ -6531,8 +6527,6 @@ impl CombatTargetingPool {
             self.turret_lock_on_turret.resize(turret_needed, 0);
             self.turret_blueprint_code
                 .resize(turret_needed, CT_BLUEPRINT_CODE_NONE);
-            self.turret_aim_error_yaw.resize(turret_needed, 0.0);
-            self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
             self.turret_config_flags.resize(turret_needed, 0);
             self.turret_lockon_relationship_mask
@@ -6861,8 +6855,6 @@ pub fn combat_targeting_set_turret(
     local_mount_y: f64,
     local_mount_z: f64,
     world_pos_tick: i32,
-    aim_error_yaw: f32,
-    aim_error_pitch: f32,
     los_blocked_ticks: u16,
     config_flags: u8,
     dps: f32,
@@ -6911,8 +6903,6 @@ pub fn combat_targeting_set_turret(
     pool.turret_local_mount_y[global_idx] = local_mount_y;
     pool.turret_local_mount_z[global_idx] = local_mount_z;
     pool.turret_world_pos_tick[global_idx] = world_pos_tick;
-    pool.turret_aim_error_yaw[global_idx] = aim_error_yaw;
-    pool.turret_aim_error_pitch[global_idx] = aim_error_pitch;
     pool.turret_los_blocked_ticks[global_idx] = los_blocked_ticks;
     pool.turret_config_flags[global_idx] = config_flags;
     pool.turret_dps[global_idx] = dps;
@@ -7249,16 +7239,6 @@ combat_targeting_ptr_export!(
     combat_targeting_turret_outermost_acquire_ptr,
     turret_outermost_acquire,
     f64
-);
-combat_targeting_ptr_export!(
-    combat_targeting_turret_aim_error_yaw_ptr,
-    turret_aim_error_yaw,
-    f32
-);
-combat_targeting_ptr_export!(
-    combat_targeting_turret_aim_error_pitch_ptr,
-    turret_aim_error_pitch,
-    f32
 );
 combat_targeting_ptr_export!(
     combat_targeting_turret_los_blocked_ticks_ptr,
@@ -8316,8 +8296,6 @@ fn combat_targeting_reset_disabled_weapons_for_entity(
         combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
         pool.turret_cooldown[idx] = 0.0;
         pool.turret_burst_cooldown[idx] = 0.0;
-        pool.turret_aim_error_yaw[idx] = 0.0;
-        pool.turret_aim_error_pitch[idx] = 0.0;
         pool.turret_los_blocked_ticks[idx] = 0;
     }
 }

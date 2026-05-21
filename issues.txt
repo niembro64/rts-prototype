@@ -209,6 +209,16 @@ AIM-08.5 — Port the targeting FSM
   (no callers; only the slab-aware
   scoreMirrorTargetTurretFromTarget is consumed by pickMirrorTarget-
   Turret) has been deleted under Delete The Old Path.
+  The aim_error_yaw/pitch fields on the Rust combat-targeting slab
+  have also been deleted: the kernel only ever wrote them (and zeroed
+  them on disable) but never read them; JS Turret.aimErrorYaw/Pitch
+  is computed by updateTurretRotation each tick and read by
+  isWeaponAimedForFire in the same tick, so the slab round-trip
+  through stamping + writeback was dead bandwidth. combat_targeting_
+  set_turret's signature lost two f32 params, the disabled-weapon
+  reset stopped touching them, and the two Vec storages + pointer
+  exports were dropped. JS Turret.aimErrorYaw/Pitch lives on as a
+  local-only field between updateTurretRotation and the firing pass.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
 

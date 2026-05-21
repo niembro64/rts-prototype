@@ -166,8 +166,6 @@ import __wbg_init, {
   combat_targeting_turret_tracking_acquire_sq_ptr,
   combat_targeting_turret_tracking_release_sq_ptr,
   combat_targeting_turret_outermost_acquire_ptr,
-  combat_targeting_turret_aim_error_yaw_ptr,
-  combat_targeting_turret_aim_error_pitch_ptr,
   combat_targeting_turret_los_blocked_ticks_ptr,
   combat_targeting_turret_config_flags_ptr,
   combat_targeting_turret_ballistic_has_solution_ptr,
@@ -1053,8 +1051,6 @@ export interface CombatTargetingApi {
     localMountY: number,
     localMountZ: number,
     worldPosTick: number,
-    aimErrorYaw: number,
-    aimErrorPitch: number,
     losBlockedTicks: number,
     configFlags: number,
     dps: number,
@@ -1132,8 +1128,6 @@ export interface CombatTargetingApi {
   readonly turretTrackingAcquireSqPtr: () => number;
   readonly turretTrackingReleaseSqPtr: () => number;
   readonly turretOutermostAcquirePtr: () => number;
-  readonly turretAimErrorYawPtr: () => number;
-  readonly turretAimErrorPitchPtr: () => number;
   readonly turretLosBlockedTicksPtr: () => number;
   readonly turretConfigFlagsPtr: () => number;
   readonly turretBallisticHasSolutionPtr: () => number;
@@ -2537,8 +2531,6 @@ export function initSimWasm(): Promise<SimWasm> {
           turretTrackingAcquireSqPtr: combat_targeting_turret_tracking_acquire_sq_ptr,
           turretTrackingReleaseSqPtr: combat_targeting_turret_tracking_release_sq_ptr,
           turretOutermostAcquirePtr: combat_targeting_turret_outermost_acquire_ptr,
-          turretAimErrorYawPtr: combat_targeting_turret_aim_error_yaw_ptr,
-          turretAimErrorPitchPtr: combat_targeting_turret_aim_error_pitch_ptr,
           turretLosBlockedTicksPtr: combat_targeting_turret_los_blocked_ticks_ptr,
           turretConfigFlagsPtr: combat_targeting_turret_config_flags_ptr,
           turretBallisticHasSolutionPtr: combat_targeting_turret_ballistic_has_solution_ptr,

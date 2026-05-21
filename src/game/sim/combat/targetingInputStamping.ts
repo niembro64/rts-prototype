@@ -108,8 +108,6 @@ export type CombatTargetingStateViews = {
   mountVy: Float64Array;
   mountVz: Float64Array;
   worldPosTick: Int32Array;
-  aimErrorYaw: Float32Array;
-  aimErrorPitch: Float32Array;
   losBlockedTicks: Uint16Array;
   cooldown: Float64Array;
   burstCooldown: Float64Array;
@@ -222,8 +220,6 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     mountVy: new Float64Array(buffer, targeting.turretMountVyPtr(), length),
     mountVz: new Float64Array(buffer, targeting.turretMountVzPtr(), length),
     worldPosTick: new Int32Array(buffer, targeting.turretWorldPosTickPtr(), length),
-    aimErrorYaw: new Float32Array(buffer, targeting.turretAimErrorYawPtr(), length),
-    aimErrorPitch: new Float32Array(buffer, targeting.turretAimErrorPitchPtr(), length),
     losBlockedTicks: new Uint16Array(buffer, targeting.turretLosBlockedTicksPtr(), length),
     cooldown: new Float64Array(buffer, targeting.turretCooldownPtr(), length),
     burstCooldown: new Float64Array(buffer, targeting.turretBurstCooldownPtr(), length),
@@ -538,7 +534,6 @@ function stampCombatTargetingEntityInto(
       Math.hypot(t.mount.x, t.mount.y),
       t.mount.x, t.mount.y, t.mount.z,
       t.worldPosTick,
-      t.aimErrorYaw, t.aimErrorPitch,
       preservePreviousFsm ? _stampPrevLosBlockedTicks[i] : 0,
       encodeTurretConfigFlags(t, ranges),
       turretDps(t),
@@ -643,8 +638,6 @@ export function writeBackCombatTargetingEntity(
     syncBeamWeaponTargetIndex(turret, entity, i, target);
     turret.target = target;
     turret.state = decodeCombatTargetingTurretState(views.state[idx]);
-    turret.aimErrorYaw = views.aimErrorYaw[idx];
-    turret.aimErrorPitch = views.aimErrorPitch[idx];
     if (kinematicsTick !== null && views.worldPosTick[idx] === kinematicsTick) {
       turret.worldPos.x = views.mountX[idx];
       turret.worldPos.y = views.mountY[idx];
