@@ -178,5 +178,8 @@ AIM-08.5 — Port the targeting FSM
   laserSoundSystem now reads turret target/state from the
   combat-targeting slab via readCombatTargetingTurretFsmInto, with a
   JS Turret fallback for non-sim paths.
+  Mirror target priority now uses the same slab target/state reader
+  when choosing direct-threat turrets for the JS aim solver, again
+  falling back to JS Turret fields outside the stamped sim path.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.

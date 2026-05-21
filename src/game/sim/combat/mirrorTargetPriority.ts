@@ -1,10 +1,20 @@
 import type { Entity, Turret } from '../types';
 import { isProjectileShot } from '../types';
+import { CT_TURRET_STATE_IDLE } from '../../sim-wasm/init';
+import {
+  readCombatTargetingTurretFsmInto,
+  type CombatTargetingTurretFsmOut,
+} from './targetingInputStamping';
 
 export type MirrorTargetTurretPick = {
   turret: Turret;
   index: number;
   score: number;
+};
+
+const _mirrorTargetFsm: CombatTargetingTurretFsmOut = {
+  stateCode: CT_TURRET_STATE_IDLE,
+  targetId: null,
 };
 
 /** Sustained DPS for a turret based on its compiled shot config and
@@ -42,6 +52,25 @@ export function scoreMirrorTargetTurret(turret: Turret, ourUnitId: number): numb
   return turretDps(turret);
 }
 
+function scoreMirrorTargetTurretFromTarget(
+  target: Entity,
+  turretIndex: number,
+  turret: Turret,
+  ourUnitId: number,
+): number {
+  if (turret.config.passive) return 0;
+  if (turret.config.visualOnly) return 0;
+  if (turret.config.isManualFire) return 0;
+  if (readCombatTargetingTurretFsmInto(target, turretIndex, _mirrorTargetFsm)) {
+    if (_mirrorTargetFsm.targetId !== ourUnitId) return 0;
+    if (_mirrorTargetFsm.stateCode === CT_TURRET_STATE_IDLE) return 0;
+    return turretDps(turret);
+  }
+  if (turret.target !== ourUnitId) return 0;
+  if (turret.state === 'idle') return 0;
+  return turretDps(turret);
+}
+
 export function pickMirrorTargetTurret(
   target: Entity,
   ourUnitId: number,
@@ -51,7 +80,7 @@ export function pickMirrorTargetTurret(
   let best: MirrorTargetTurretPick | null = null;
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];
-    const score = scoreMirrorTargetTurret(turret, ourUnitId);
+    const score = scoreMirrorTargetTurretFromTarget(target, ti, turret, ourUnitId);
     if (score <= 0) continue;
     if (best === null || score > best.score) {
       best = { turret, index: ti, score };
