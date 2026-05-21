@@ -34,6 +34,10 @@ import { setWeaponTarget } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 import {
+  CT_BLUEPRINT_CODE_NONE,
+  CT_ENTITY_FAMILY_BUILDING,
+  CT_ENTITY_FAMILY_NONE,
+  CT_ENTITY_FAMILY_UNIT,
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
   CT_ENTITY_FLAG_FIRE_ENABLED,
@@ -54,6 +58,10 @@ import {
   type CombatTargetingApi,
   type SimWasm,
 } from '../../sim-wasm/init';
+import {
+  buildingTypeToCode,
+  unitTypeToCode,
+} from '../../../types/network';
 import {
   getEntityDetectionPadding,
   getEntityDetectorRadius,
@@ -250,6 +258,24 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   }
   if (isEntityCloaked(entity)) entityFlags |= CT_ENTITY_FLAG_CLOAKED;
 
+  // LOCK-ON-03 — Stamp the entity's family + blueprint id so the Rust
+  // exclusion gate can reject candidates by family/name without
+  // crossing back into JS. Projectile-style entities with neither
+  // unit nor building data stamp NONE/sentinel; the kernel reads
+  // these as "no family to match" and ignores level-0 family /
+  // level-1 named exclusions for that row.
+  let entityFamily: number = CT_ENTITY_FAMILY_NONE;
+  let entityBlueprintCode: number = CT_BLUEPRINT_CODE_NONE;
+  if (entity.unit) {
+    entityFamily = CT_ENTITY_FAMILY_UNIT;
+    entityBlueprintCode = unitTypeToCode(entity.unit.unitType);
+  } else if (entity.building) {
+    entityFamily = CT_ENTITY_FAMILY_BUILDING;
+    const buildingType = entity.buildingType;
+    entityBlueprintCode =
+      buildingType !== undefined ? buildingTypeToCode(buildingType) : CT_BLUEPRINT_CODE_NONE;
+  }
+
   // Detector + padding stamped per-entity so the Rust observability
   // helper can walk the slab itself (replaces the per-player
   // detector list TS used to maintain). Padding is what the cloak
@@ -281,6 +307,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
     radiusShot,
     aabbHalfX, aabbHalfY, aabbHalfZ,
     hp, entityFlags,
+    entityFamily, entityBlueprintCode,
     detectorRadius, detectionPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
@@ -337,6 +364,11 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.config.groundAimFraction ?? 0,
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
       t.config.aimStyle.lockOnType === 'lockOnToTurret' ? 1 : 0,
+      t.config.lockOnRelationshipExcludeMask,
+      t.config.lockOnEntityFamilyExcludeMask,
+      t.config.lockOnBuildingExcludeMask,
+      t.config.lockOnUnitExcludeMask,
+      t.config.lockOnTurretExcludeMask,
     );
   }
 }

@@ -6188,6 +6188,29 @@ pub const CT_TURRET_STATE_IDLE: u8 = 0;
 pub const CT_TURRET_STATE_TRACKING: u8 = 1;
 pub const CT_TURRET_STATE_ENGAGED: u8 = 2;
 
+// LOCK-ON-03 — Per-turret lock-on exclusion masks. Authored on each
+// turret blueprint; JS compiles the exclusion sets into bitmasks and
+// stamps them onto the slab. Empty mask (= 0) means no exclusion;
+// kernels read these alongside per-entity family/blueprint metadata to
+// reject candidates without crossing back into JS.
+pub const CT_LOCK_ON_REL_EXCLUDE_FRIENDLY: u8 = 1 << 0;
+pub const CT_LOCK_ON_REL_EXCLUDE_ENEMY: u8 = 1 << 1;
+pub const CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS: u8 = 1 << 0;
+pub const CT_LOCK_ON_FAM_EXCLUDE_UNITS: u8 = 1 << 1;
+pub const CT_LOCK_ON_FAM_EXCLUDE_TURRETS: u8 = 1 << 2;
+
+// LOCK-ON-03 — Per-entity family encoding stamped on entity slab rows.
+// Zero is the cleared/unstamped sentinel so a stale row from
+// `clear_all` cannot match a real family in the exclusion check.
+pub const CT_ENTITY_FAMILY_NONE: u8 = 0;
+pub const CT_ENTITY_FAMILY_BUILDING: u8 = 1;
+pub const CT_ENTITY_FAMILY_UNIT: u8 = 2;
+
+// LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the entity has
+// no stamped blueprint id (unstamped row, or family == NONE). Kernels
+// short-circuit on this before applying the level-1 mask check.
+pub const CT_BLUEPRINT_CODE_NONE: u8 = 0xff;
+
 struct CombatTargetingPool {
     // Per-entity, indexed by spatial-grid slot.
     entity_id: Vec<i32>,
@@ -6221,6 +6244,15 @@ struct CombatTargetingPool {
     entity_aabb_half_z: Vec<f64>,
     entity_hp: Vec<f32>,
     entity_flags: Vec<u8>,
+    // LOCK-ON-03 — Per-entity family + blueprint id stamped on entity
+    // rows so kernels can apply level-0 entity-family and level-1 named
+    // exclusions without crossing the boundary. Family is one of
+    // CT_ENTITY_FAMILY_*; blueprint code is the network wire code for
+    // the unit/building blueprint, or CT_BLUEPRINT_CODE_NONE when the
+    // family is NONE. The wire codes for units and buildings fit in
+    // u8 today (UNIT_TYPE_UNKNOWN = BUILDING_TYPE_UNKNOWN = 0xff).
+    entity_family: Vec<u8>,
+    entity_blueprint_code: Vec<u8>,
     // Per-entity detector radius. 0 = entity is not a detector. The
     // observability helper walks this array to find detector entities
     // owned by the viewer; storing the radius inline avoids a
@@ -6301,6 +6333,19 @@ struct CombatTargetingPool {
     turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
     turret_config_flags: Vec<u8>,
+    // LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from
+    // each turret blueprint's authored exclusion arrays.
+    //   relationship_mask:   CT_LOCK_ON_REL_EXCLUDE_*  (friendly / enemy)
+    //   entity_family_mask:  CT_LOCK_ON_FAM_EXCLUDE_*  (buildings / units / turrets)
+    //   building / unit / turret named masks: bit (1 << wire_code) set
+    //     means "exclude the blueprint with this wire code". With u32
+    //     bitmasks the per-family blueprint table is capped at 32 ids;
+    //     the JS loader rejects new ids past that limit at startup.
+    turret_lockon_relationship_mask: Vec<u8>,
+    turret_lockon_entity_family_mask: Vec<u8>,
+    turret_lockon_building_mask: Vec<u32>,
+    turret_lockon_unit_mask: Vec<u32>,
+    turret_lockon_turret_mask: Vec<u32>,
     // AIM-08.4 ballistic solver outputs. Written by the Rust solver
     // using turret mount data from the slab; JS reads these outputs
     // for transitional targeting gates and turret pose until AIM-08.5
@@ -6343,6 +6388,8 @@ impl CombatTargetingPool {
             entity_aabb_half_z: Vec::new(),
             entity_hp: Vec::new(),
             entity_flags: Vec::new(),
+            entity_family: Vec::new(),
+            entity_blueprint_code: Vec::new(),
             entity_detector_radius: Vec::new(),
             entity_detection_padding: Vec::new(),
             entity_priority_target_id: Vec::new(),
@@ -6388,6 +6435,11 @@ impl CombatTargetingPool {
             turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
             turret_config_flags: Vec::new(),
+            turret_lockon_relationship_mask: Vec::new(),
+            turret_lockon_entity_family_mask: Vec::new(),
+            turret_lockon_building_mask: Vec::new(),
+            turret_lockon_unit_mask: Vec::new(),
+            turret_lockon_turret_mask: Vec::new(),
             turret_ballistic_has_solution: Vec::new(),
             turret_ballistic_flight_time: Vec::new(),
             turret_ballistic_launch_vx: Vec::new(),
@@ -6427,6 +6479,9 @@ impl CombatTargetingPool {
             self.entity_aabb_half_z.resize(entity_needed, 0.0);
             self.entity_hp.resize(entity_needed, 0.0);
             self.entity_flags.resize(entity_needed, 0);
+            self.entity_family.resize(entity_needed, CT_ENTITY_FAMILY_NONE);
+            self.entity_blueprint_code
+                .resize(entity_needed, CT_BLUEPRINT_CODE_NONE);
             self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_detection_padding.resize(entity_needed, 0.0);
             self.entity_priority_target_id.resize(entity_needed, -1);
@@ -6475,6 +6530,13 @@ impl CombatTargetingPool {
             self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
             self.turret_config_flags.resize(turret_needed, 0);
+            self.turret_lockon_relationship_mask
+                .resize(turret_needed, 0);
+            self.turret_lockon_entity_family_mask
+                .resize(turret_needed, 0);
+            self.turret_lockon_building_mask.resize(turret_needed, 0);
+            self.turret_lockon_unit_mask.resize(turret_needed, 0);
+            self.turret_lockon_turret_mask.resize(turret_needed, 0);
             self.turret_ballistic_has_solution.resize(turret_needed, 0);
             self.turret_ballistic_flight_time.resize(turret_needed, 0.0);
             self.turret_ballistic_launch_vx.resize(turret_needed, 0.0);
@@ -6688,6 +6750,8 @@ pub fn combat_targeting_set_entity(
     aabb_half_z: f64,
     hp: f32,
     flags: u8,
+    family: u8,
+    blueprint_code: u8,
     detector_radius: f32,
     detection_padding: f32,
     priority_target_id: i32,
@@ -6731,6 +6795,8 @@ pub fn combat_targeting_set_entity(
     pool.entity_aabb_half_z[s] = aabb_half_z;
     pool.entity_hp[s] = hp;
     pool.entity_flags[s] = flags;
+    pool.entity_family[s] = family;
+    pool.entity_blueprint_code[s] = blueprint_code;
     pool.entity_detector_radius[s] = detector_radius;
     pool.entity_detection_padding[s] = detection_padding;
     pool.entity_priority_target_id[s] = priority_target_id;
@@ -6801,6 +6867,11 @@ pub fn combat_targeting_set_turret(
     ground_aim_fraction: f64,
     under_only: u8,
     lock_on_turret: u8,
+    lockon_relationship_mask: u8,
+    lockon_entity_family_mask: u8,
+    lockon_building_mask: u32,
+    lockon_unit_mask: u32,
+    lockon_turret_mask: u32,
 ) {
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
@@ -6845,6 +6916,11 @@ pub fn combat_targeting_set_turret(
     pool.turret_ground_aim_fraction[global_idx] = ground_aim_fraction;
     pool.turret_under_only[global_idx] = under_only;
     pool.turret_lock_on_turret[global_idx] = lock_on_turret;
+    pool.turret_lockon_relationship_mask[global_idx] = lockon_relationship_mask;
+    pool.turret_lockon_entity_family_mask[global_idx] = lockon_entity_family_mask;
+    pool.turret_lockon_building_mask[global_idx] = lockon_building_mask;
+    pool.turret_lockon_unit_mask[global_idx] = lockon_unit_mask;
+    pool.turret_lockon_turret_mask[global_idx] = lockon_turret_mask;
     combat_targeting_write_no_ballistic_solution(
         pool,
         global_idx,

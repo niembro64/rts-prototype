@@ -52,6 +52,104 @@ import {
   UNIT_TYPE_UNKNOWN,
 } from '../../../types/network';
 
+// LOCK-ON-03 — Compile per-turret lock-on exclusion bitmasks. Reads
+// the authored exclusion strings on the blueprint, resolves level-1
+// blueprint names through the network wire-code helpers, and packs
+// everything into the numeric fields the targeting slab consumes.
+import {
+  CT_LOCK_ON_REL_EXCLUDE_ENEMY,
+  CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+  CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS,
+  CT_LOCK_ON_FAM_EXCLUDE_UNITS,
+  CT_LOCK_ON_FAM_EXCLUDE_TURRETS,
+  CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
+} from '../../sim-wasm/init';
+
+type LockOnMasks = {
+  relationship: number;
+  entityFamily: number;
+  building: number;
+  unit: number;
+  turret: number;
+};
+
+function lockOnLevel1Mask(
+  turretId: string,
+  field: string,
+  names: readonly string[],
+  toCode: (s: string) => number,
+  unknownCode: number,
+  kindLabel: string,
+): number {
+  let mask = 0;
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    const code = toCode(name);
+    if (code === unknownCode) {
+      throw new Error(
+        `Invalid turret blueprint ${turretId}: ${field}[${i}] = "${name}" has no network ${kindLabel} code`,
+      );
+    }
+    if (code >= CT_LOCK_ON_LEVEL1_MASK_CAPACITY) {
+      throw new Error(
+        `Invalid turret blueprint ${turretId}: ${field}[${i}] = "${name}" has ${kindLabel} wire code ${code} >= bitmask capacity ${CT_LOCK_ON_LEVEL1_MASK_CAPACITY}; widen the lockon level-1 masks before adding more ${kindLabel} blueprints`,
+      );
+    }
+    mask |= 1 << code;
+  }
+  return mask >>> 0;
+}
+
+function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
+  const id = turretBlueprint.id;
+  let relationship = 0;
+  for (const r of turretBlueprint.excludeLockOnLevel0FriendsAndEnemies) {
+    if (r === 'friendly_entities') relationship |= CT_LOCK_ON_REL_EXCLUDE_FRIENDLY;
+    else if (r === 'enemy_entities') relationship |= CT_LOCK_ON_REL_EXCLUDE_ENEMY;
+    else {
+      throw new Error(
+        `Invalid turret blueprint ${id}: excludeLockOnLevel0FriendsAndEnemies entry "${r}" is not a known relationship — turrets.ts validation should have rejected this`,
+      );
+    }
+  }
+  let entityFamily = 0;
+  for (const f of turretBlueprint.excludeLockOnLevel0Entities) {
+    if (f === 'buildings') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS;
+    else if (f === 'units') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_UNITS;
+    else if (f === 'turrets') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TURRETS;
+    else {
+      throw new Error(
+        `Invalid turret blueprint ${id}: excludeLockOnLevel0Entities entry "${f}" is not a known family — turrets.ts validation should have rejected this`,
+      );
+    }
+  }
+  const building = lockOnLevel1Mask(
+    id,
+    'excludeLockOnLevel1Buildings',
+    turretBlueprint.excludeLockOnLevel1Buildings,
+    buildingTypeToCode,
+    BUILDING_TYPE_UNKNOWN,
+    'building',
+  );
+  const unit = lockOnLevel1Mask(
+    id,
+    'excludeLockOnLevel1Units',
+    turretBlueprint.excludeLockOnLevel1Units,
+    unitTypeToCode,
+    UNIT_TYPE_UNKNOWN,
+    'unit',
+  );
+  const turret = lockOnLevel1Mask(
+    id,
+    'excludeLockOnLevel1Turrets',
+    turretBlueprint.excludeLockOnLevel1Turrets,
+    turretIdToCode,
+    TURRET_ID_UNKNOWN,
+    'turret',
+  );
+  return { relationship, entityFamily, building, unit, turret };
+}
+
 function validateStableWireIds(
   label: string,
   blueprintIds: readonly string[],
@@ -401,6 +499,8 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   }
   validateTurretAimStyle(turretId, turretBlueprint, shot);
 
+  const lockOn = compileTurretLockOnMasks(turretBlueprint);
+
   const config: TurretConfig = {
     id: turretBlueprint.id,
     range: turretBlueprint.range,
@@ -432,6 +532,11 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
           },
         }
       : undefined,
+    lockOnRelationshipExcludeMask: lockOn.relationship,
+    lockOnEntityFamilyExcludeMask: lockOn.entityFamily,
+    lockOnBuildingExcludeMask: lockOn.building,
+    lockOnUnitExcludeMask: lockOn.unit,
+    lockOnTurretExcludeMask: lockOn.turret,
   };
 
   // Derive barrelThickness from shot size, scaled by global multiplier

@@ -171,31 +171,6 @@ AIM-08.5 — Port the targeting FSM
   stamping pass (or has moved to its own file); parity shim runs
   end-to-end clean across the supported scenarios.
 
-LOCK-ON-03 — Stamp lock-on exclusion data into the combat-targeting slab.
-
-Evidence:
-- AIM-08.5 has moved targeting decisions into Rust/SoA slabs. Any policy
-  that remains only on JS Turret objects cannot participate in the
-  scheduled Rust targeting batch without per-candidate JS callbacks.
-
-Why it matters:
-The lock-on policy must be enforced in the hot targeting path, including
-priority targets, existing-lock validation, auto acquisition, fire-choice,
-and mirror scoring. Reintroducing JS-side filters would undo the current
-targeting migration.
-
-Fix direction:
-Encode level-0 relationship and entity-family exclusions as compact
-per-turret bitmasks in the combat-targeting slab. Encode level-1 named
-exclusions through stable integer blueprint ids or precompiled lookup
-sets that Rust can query without string comparisons. Stamp target entity
-family and blueprint id on entity rows, and stamp target turret blueprint
-id on turret-target rows or equivalent candidate metadata.
-
-Done when: Rust targeting kernels can evaluate all exclusion sets from
-slab/typed-memory data only, with no JS callback and no string matching
-inside per-candidate loops.
-
 LOCK-ON-04 — Apply exclusion filters consistently across targeting modes.
 
 Evidence:

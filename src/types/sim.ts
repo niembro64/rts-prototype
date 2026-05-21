@@ -366,6 +366,19 @@ export type TurretConfig = {
   visualOnly?: boolean;
   constructionEmitter?: ConstructionEmitterVisualSpec;
   visualVariant?: ConstructionEmitterSize;
+  /** LOCK-ON-03 — Compiled per-turret lock-on exclusion bitmasks. JS
+   *  walks each turret blueprint once at config build and packs the
+   *  authored exclusion arrays into these bitmasks so the per-tick
+   *  stamping pass can copy raw integers onto the combat-targeting
+   *  slab without re-walking blueprint strings. Mirror
+   *  `CT_LOCK_ON_REL_EXCLUDE_*` / `CT_LOCK_ON_FAM_EXCLUDE_*` for the
+   *  level-0 fields; level-1 fields set bit `1 << wire_code` for each
+   *  excluded blueprint id (current capacity = 32 ids per family). */
+  lockOnRelationshipExcludeMask: number;
+  lockOnEntityFamilyExcludeMask: number;
+  lockOnBuildingExcludeMask: number;
+  lockOnUnitExcludeMask: number;
+  lockOnTurretExcludeMask: number;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than

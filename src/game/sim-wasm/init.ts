@@ -909,6 +909,32 @@ export const CT_TURRET_STATE_IDLE = 0;
 export const CT_TURRET_STATE_TRACKING = 1;
 export const CT_TURRET_STATE_ENGAGED = 2;
 
+/** LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from each
+ *  turret blueprint's authored exclusion arrays. Mirrors
+ *  `CT_LOCK_ON_REL_EXCLUDE_*` and `CT_LOCK_ON_FAM_EXCLUDE_*` in Rust. */
+export const CT_LOCK_ON_REL_EXCLUDE_FRIENDLY = 1 << 0;
+export const CT_LOCK_ON_REL_EXCLUDE_ENEMY = 1 << 1;
+export const CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS = 1 << 0;
+export const CT_LOCK_ON_FAM_EXCLUDE_UNITS = 1 << 1;
+export const CT_LOCK_ON_FAM_EXCLUDE_TURRETS = 1 << 2;
+
+/** LOCK-ON-03 — Per-entity family encoding. Mirrors
+ *  `CT_ENTITY_FAMILY_*` in Rust. NONE is the cleared/unstamped sentinel
+ *  used after `clear()` so a stale row never matches a real family. */
+export const CT_ENTITY_FAMILY_NONE = 0;
+export const CT_ENTITY_FAMILY_BUILDING = 1;
+export const CT_ENTITY_FAMILY_UNIT = 2;
+
+/** LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the family is
+ *  NONE. Mirrors `CT_BLUEPRINT_CODE_NONE` in Rust. */
+export const CT_BLUEPRINT_CODE_NONE = 0xff;
+
+/** LOCK-ON-03 — Maximum blueprint count that can be addressed by the
+ *  per-turret level-1 bitmask (one bit per blueprint code). Widening
+ *  this requires upgrading the masks to u64 / multi-word arrays on
+ *  both sides. */
+export const CT_LOCK_ON_LEVEL1_MASK_CAPACITY = 32;
+
 /** AIM-08.5 — `out_modes` byte the scheduler writes per queued entity.
  *  Mirrors `CT_TARGETING_TICK_MODE_*` in Rust. The writeback path uses
  *  these to dispatch JS-only bookkeeping (activity flags, priority
@@ -957,6 +983,8 @@ export interface CombatTargetingApi {
     aabbHalfZ: number,
     hp: number,
     flags: number,
+    family: number,
+    blueprintCode: number,
     detectorRadius: number,
     detectionPadding: number,
     priorityTargetId: number,
@@ -1006,6 +1034,11 @@ export interface CombatTargetingApi {
     groundAimFraction: number,
     underOnly: number,
     lockOnTurret: number,
+    lockonRelationshipMask: number,
+    lockonEntityFamilyMask: number,
+    lockonBuildingMask: number,
+    lockonUnitMask: number,
+    lockonTurretMask: number,
   ) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;
