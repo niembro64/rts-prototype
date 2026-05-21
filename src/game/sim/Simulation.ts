@@ -26,6 +26,7 @@ import { checkTargetingParity } from './combat/targetingParityHarness';
 import {
   stampCombatTargetingPool,
   stampForceFieldPool,
+  stampMirrorPanelPool,
 } from './combat/targetingInputStamping';
 import {
   updateProjectiles,
@@ -479,6 +480,10 @@ export class Simulation {
     // sphere targeting has the same one-tick-stale envelope as
     // projectile collision.
     stampForceFieldPool(this.world);
+    // AIM-08.5 — rebuild mirror-panel slab before the FSM. The Rust
+    // gate consults this when evaluating mirror sightline clearance,
+    // so it must hold current-tick pose data on entry.
+    stampMirrorPanelPool(this.world);
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.

@@ -203,6 +203,12 @@ import __wbg_init, {
   force_field_pool_radius_ptr,
   force_field_clearance_segment,
   force_field_clearance_arc,
+  mirror_panel_pool_clear,
+  mirror_panel_pool_set_unit_count,
+  mirror_panel_pool_set_panel_count,
+  mirror_panel_pool_set_unit,
+  mirror_panel_pool_set_panel,
+  mirror_panel_clearance_segment_export,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
   snapshot_baseline_clear,
@@ -600,6 +606,10 @@ export interface SimWasm {
   /** AIM-08.1 — Compact list of active force fields rebuilt each
    *  tick from getActiveForceFields(). */
   readonly forceFieldPool: ForceFieldPoolApi;
+  /** AIM-08.5 — Mirror-panel input slab. Two parallel pools (per-unit
+   *  pose + per-panel geometry) rebuilt each tick so the targeting
+   *  gate can compute mirror-panel sightline clearance in Rust. */
+  readonly mirrorPanelPool: MirrorPanelPoolApi;
   /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
    *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
    *  no consumer reads from it yet. */
@@ -1085,11 +1095,8 @@ export interface CombatTargetingApi {
   /** AIM-08.5 — Batch target candidate score/ranking kernel with
    *  internal fire-gate evaluation. Replaces the legacy callback-
    *  based version. Candidate aim points are resolved from the slab
-   *  AABB; LOS / ballistic / FF gates are run in Rust via the shared
-   *  `compute_turret_gates_for_aim_point` helper. `mirrorPanelClear`
-   *  is a flat (turretCount * candidateCount) row-major mask the JS
-   *  side fills with `hasForceMirrorPanelClearance` results; the
-   *  panel walk is the last gate piece without a Rust equivalent. */
+   *  AABB; LOS / ballistic / FF / mirror-panel gates all run in Rust
+   *  via the shared `compute_turret_gates_for_aim_point` helper. */
   readonly computeAndChooseBestCandidatesBatch: (
     entitySlot: number,
     rankMode: number,
@@ -1117,7 +1124,6 @@ export interface CombatTargetingApi {
     maxTimeSecs: Float64Array,
     groundAimFractions: Float64Array,
     underOnlyMask: Uint8Array,
-    mirrorPanelClear: Uint8Array,
     outTargetIds: Int32Array,
     outRanks: Uint8Array,
   ) => void;
@@ -1138,13 +1144,14 @@ export interface CombatTargetingApi {
   ) => void;
   /** AIM-08.5 — unified priority-point gate compute + FSM apply for one
    *  entity. Rust iterates the slab turrets, computes LOS / ballistic /
-   *  force-field gates (calling the existing kernels in-process), and
-   *  applies the priority-point FSM transition in the same pass. Saves
-   *  ~3 cross-boundary calls per weapon vs the legacy per-turret path.
+   *  force-field / mirror-panel gates (calling the existing kernels in-
+   *  process), and applies the priority-point FSM transition in the
+   *  same pass. Saves ~3 cross-boundary calls per weapon vs the legacy
+   *  per-turret path.
    *
-   *  JS still owns the mirror-panel sightline walk (no Rust equivalent
-   *  yet) and the per-shot ballistic/aim config arrays; those derive
-   *  from blueprint data and can move onto the slab in a follow-up. */
+   *  JS still owns the per-shot ballistic/aim config arrays; those
+   *  derive from blueprint data and can move onto the slab in a
+   *  follow-up. */
   readonly computeAndApplyPriorityPointFsmBatch: (
     entitySlot: number,
     pointX: number,
@@ -1162,14 +1169,13 @@ export interface CombatTargetingApi {
     maxTimeSecs: Float64Array,
     groundAimFractions: Float64Array,
     underOnlyMask: Uint8Array,
-    mirrorPanelClear: Uint8Array,
   ) => void;
   /** AIM-08.5 — unified attack-entity priority gate compute + FSM
    *  apply. TS resolves per-turret aim points (so lockOnToBody AABB
    *  clamps and lockOnToTurret stay in one place); Rust does LOS /
-   *  ballistic / FF / FSM. Passive-mirror `mirror_valid` is computed
-   *  in Rust by walking the target's turrets via the slab — no JS
-   *  pre-pass needed. */
+   *  ballistic / FF / mirror-panel / FSM. Passive-mirror `mirror_valid`
+   *  is computed in Rust by walking the target's turrets via the slab —
+   *  no JS pre-pass needed. */
   readonly computeAndApplyPriorityTargetFsmBatch: (
     entitySlot: number,
     targetId: number,
@@ -1188,13 +1194,12 @@ export interface CombatTargetingApi {
     maxTimeSecs: Float64Array,
     groundAimFractions: Float64Array,
     underOnlyMask: Uint8Array,
-    mirrorPanelClear: Uint8Array,
   ) => void;
   /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
-   *  turret's current target is read from the slab; TS supplies the
-   *  aim point and the mirror-panel clearance mask. Rust computes
-   *  cloak observability + passive mirror_valid from the slab and
-   *  derives sight_blocked from los/ff internally. */
+   *  turret's current target is read from the slab; TS supplies only
+   *  the per-turret aim point. Rust computes cloak observability +
+   *  passive mirror_valid + mirror-panel clearance + LOS / FF /
+   *  ballistic from slab data and derives sight_blocked internally. */
   readonly computeAndApplyValidateExistingLockFsmBatch: (
     entitySlot: number,
     sourceEntityId: number,
@@ -1213,7 +1218,6 @@ export interface CombatTargetingApi {
     maxTimeSecs: Float64Array,
     groundAimFractions: Float64Array,
     underOnlyMask: Uint8Array,
-    mirrorPanelClear: Uint8Array,
   ) => void;
   readonly applyPriorityTargetFsmBatch: (
     entitySlot: number,
@@ -1291,6 +1295,49 @@ export interface ForceFieldPoolApi {
     flightTime: number,
     excludeOwnerEntityId: number,
     maxCrossings: number,
+  ) => number;
+}
+
+/** AIM-08.5 — Mirror-panel input slab. Two parallel pools rebuilt
+ *  each tick: per-mirror-unit pose + broad radius + slope-aware
+ *  pivot + [panel_start, panel_count) range; per-panel arm-length,
+ *  lateral offset, panel yaw offset, base/top Y in chassis-local
+ *  space, and half-width. The Rust gate kernel walks the pools so
+ *  TS no longer has to precompute a per-(turret, candidate) mask. */
+export interface MirrorPanelPoolApi {
+  clear: () => void;
+  setUnitCount: (count: number) => void;
+  setPanelCount: (count: number) => void;
+  setUnit: (
+    idx: number,
+    unitId: number,
+    unitX: number,
+    unitY: number,
+    unitZ: number,
+    unitGroundZ: number,
+    unitBroadRadius: number,
+    mirrorYaw: number,
+    mirrorPitch: number,
+    pivotX: number,
+    pivotY: number,
+    pivotZ: number,
+    panelStart: number,
+    panelCount: number,
+  ) => void;
+  setPanel: (
+    idx: number,
+    armLength: number,
+    offsetY: number,
+    panelAngle: number,
+    baseY: number,
+    topY: number,
+    halfWidth: number,
+  ) => void;
+  /** JS-callable mirror-panel sightline clearance probe. Returns 1
+   *  when the segment is clear, 0 when at least one panel blocks. */
+  readonly clearanceSegment: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
   ) => number;
 }
 
@@ -2281,6 +2328,14 @@ export function initSimWasm(): Promise<SimWasm> {
           radiusPtr: force_field_pool_radius_ptr,
           clearanceSegment: force_field_clearance_segment,
           clearanceArc: force_field_clearance_arc,
+        },
+        mirrorPanelPool: {
+          clear: mirror_panel_pool_clear,
+          setUnitCount: mirror_panel_pool_set_unit_count,
+          setPanelCount: mirror_panel_pool_set_panel_count,
+          setUnit: mirror_panel_pool_set_unit,
+          setPanel: mirror_panel_pool_set_panel,
+          clearanceSegment: mirror_panel_clearance_segment_export,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

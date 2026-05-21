@@ -12,10 +12,6 @@ import { getSimWasm } from '../../sim-wasm/init';
 import type { WorldState } from '../WorldState';
 import type { EntityId, Turret } from '../../../types/sim';
 import { UNIT_BLUEPRINTS } from '../blueprints/units';
-import { getTransformCosSin } from '../../math';
-import { getUnitGroundZ } from '../unitGeometry';
-import { resolveWeaponWorldMount } from './combatUtils';
-import { findClosestPanelHit } from './MirrorPanelHit';
 
 /** Terrain samples still use the half-cell cadence; the walk now runs
  *  inside the AIM-08.LOS Rust combat LOS kernel. */
@@ -30,9 +26,15 @@ export const COMBAT_LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE + 2 * Math.max(
   ...Object.values(UNIT_BLUEPRINTS).map((bp) => bp.radius.push),
 );
 const NO_EXCLUDED_ENTITY = -1;
-const FORCE_MATERIAL_GRAZE_EPS = 1e-6;
-const MIRROR_SIGHT_QUERY_PAD = 1;
-const _mirrorSightPivot = { x: 0, y: 0, z: 0 };
+/** Sightline-graze epsilon. Hits within FORCE_MATERIAL_GRAZE_EPS of
+ *  either endpoint don't count — keeps targeting and projectile
+ *  collision in agreement when a turret or target sits on a panel
+ *  edge. Mirror-panel and force-field clearance both use this. */
+export const FORCE_MATERIAL_GRAZE_EPS = 1e-6;
+/** Mirror-panel broadphase pad. Stamping adds this to the mirror's
+ *  bound radius so the Rust mirror-panel kernel only narrowphase-walks
+ *  units whose silhouettes can touch the segment. */
+export const MIRROR_SIGHT_QUERY_PAD = 1;
 
 /** Ticks of consecutive sight obstruction before a tracked target is
  *  dropped entirely. Engagement (firing) is gated immediately on the
@@ -65,8 +67,8 @@ const NO_EXCLUDED_OWNER = -1;
  *  boundary at any point strictly inside the segment.
  *
  *  Use this for straight visibility checks against force-field spheres.
- *  `hasForceMaterialSightClearance` layers mirror-panel
- *  boundaries on top for OBSTRUCT SIGHT targeting.
+ *  The targeting gate kernels in Rust layer mirror-panel clearance
+ *  on top via the mirror-panel slab for OBSTRUCT SIGHT targeting.
  *
  *  Implementation: dispatches to the Rust `force_field_clearance_segment`
  *  kernel, which reads the FF pool slab stamped each tick by
@@ -100,9 +102,9 @@ export function hasForceFieldClearance(
  *
  *  Implementation: dispatches to the Rust `force_field_clearance_arc`
  *  kernel, which chord-samples the parabola so the same "endpoints
- *  don't count" rule applies as for the straight test.
- *  Targeting uses `hasForceMaterialSightClearance`; keep this
- *  helper for callers that need projectile-path clearance. */
+ *  don't count" rule applies as for the straight test. Keep this
+ *  helper for callers that need projectile-path clearance — the
+ *  targeting gate uses the segment + slab walks in Rust directly. */
 export function hasArcForceFieldClearance(
   launchX: number, launchY: number, launchZ: number,
   launchVx: number, launchVy: number, launchVz: number,
@@ -120,128 +122,6 @@ export function hasArcForceFieldClearance(
       NO_EXCLUDED_OWNER,
       maxCrossings,
     ) === 1
-  );
-}
-
-function pointSegmentDistanceSq3(
-  px: number,
-  py: number,
-  pz: number,
-  ax: number,
-  ay: number,
-  az: number,
-  bx: number,
-  by: number,
-  bz: number,
-): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const abz = bz - az;
-  const lenSq = abx * abx + aby * aby + abz * abz;
-  if (lenSq <= 1e-9) {
-    const dx = px - ax;
-    const dy = py - ay;
-    const dz = pz - az;
-    return dx * dx + dy * dy + dz * dz;
-  }
-  const t = Math.max(
-    0,
-    Math.min(1, ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / lenSq),
-  );
-  const cx = ax + abx * t;
-  const cy = ay + aby * t;
-  const cz = az + abz * t;
-  const dx = px - cx;
-  const dy = py - cy;
-  const dz = pz - cz;
-  return dx * dx + dy * dy + dz * dz;
-}
-
-/** Does the straight sightline from (sx,sy,sz) to (tx,ty,tz) avoid
- *  every active force-mirror panel? The mirror-panel walk has no Rust
- *  equivalent yet — exported so the AIM-08.5 unified gate kernels can
- *  precompute it per turret and pass it in as a clearance mask while
- *  the FF-sphere portion stays inside Rust. Hits within
- *  FORCE_MATERIAL_GRAZE_EPS of either endpoint don't count, matching
- *  hasForceMaterialSightClearance. */
-export function hasForceMirrorPanelClearance(
-  world: WorldState,
-  sx: number, sy: number, sz: number,
-  tx: number, ty: number, tz: number,
-): boolean {
-  if (!world.mirrorsEnabled) return true;
-  const mirrorUnits = world.getMirrorUnits();
-  if (mirrorUnits.length === 0) return true;
-
-  for (const unit of mirrorUnits) {
-    if (!unit.unit || unit.unit.hp <= 0) continue;
-    const panels = unit.unit.mirrorPanels;
-    if (!panels || panels.length === 0) continue;
-    const broadRadius = Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot) + MIRROR_SIGHT_QUERY_PAD;
-    if (
-      pointSegmentDistanceSq3(
-        unit.transform.x, unit.transform.y, unit.transform.z,
-        sx, sy, sz,
-        tx, ty, tz,
-      ) > broadRadius * broadRadius
-    ) {
-      continue;
-    }
-
-    const unitTurrets = unit.combat?.turrets;
-    const mirrorRot = unitTurrets && unitTurrets.length > 0
-      ? unitTurrets[0].rotation
-      : unit.transform.rotation;
-    const mirrorPitch = unitTurrets && unitTurrets.length > 0
-      ? unitTurrets[0].pitch
-      : 0;
-    const unitGroundZ = getUnitGroundZ(unit);
-    const unitCS = getTransformCosSin(unit.transform);
-    const mirrorPivot = unitTurrets && unitTurrets.length > 0
-      ? resolveWeaponWorldMount(
-          unit, unitTurrets[0], 0,
-          unitCS.cos, unitCS.sin,
-          {
-            currentTick: world.getTick(),
-            unitGroundZ,
-            surfaceN: unit.unit.surfaceNormal,
-          },
-          _mirrorSightPivot,
-        )
-      : undefined;
-    const hit = findClosestPanelHit(
-      panels, mirrorRot, mirrorPitch,
-      unit.transform.x, unit.transform.y, unitGroundZ,
-      sx, sy, sz, tx, ty, tz,
-      -1,
-      mirrorPivot,
-    );
-    if (
-      hit !== null &&
-      hit.t > FORCE_MATERIAL_GRAZE_EPS &&
-      hit.t < 1 - FORCE_MATERIAL_GRAZE_EPS
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/** True when the straight sightline does not cross any force material
- *  boundary: active force-field spheres or active force mirror panels.
- *  This is intentionally a visibility test, not a projectile-flight
- *  prediction. If both endpoints are inside the same sphere, no
- *  boundary is crossed and the sightline remains clear. */
-export function hasForceMaterialSightClearance(
-  world: WorldState,
-  sx: number, sy: number, sz: number,
-  tx: number, ty: number, tz: number,
-  options: ForceFieldClearanceOptions = {},
-): boolean {
-  return (
-    hasForceFieldClearance(sx, sy, sz, tx, ty, tz, options) &&
-    hasForceMirrorPanelClearance(world, sx, sy, sz, tx, ty, tz)
   );
 }
 

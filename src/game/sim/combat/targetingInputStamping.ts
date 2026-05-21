@@ -20,10 +20,19 @@
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
 import { getActiveForceFields } from './forceFieldTurret';
-import { weaponRequiresNonObstructedLineOfSight } from './lineOfSight';
-import { getEntityPosition3d, getEntityVelocity3d } from './combatUtils';
+import {
+  MIRROR_SIGHT_QUERY_PAD,
+  weaponRequiresNonObstructedLineOfSight,
+} from './lineOfSight';
+import {
+  getEntityPosition3d,
+  getEntityVelocity3d,
+  resolveWeaponWorldMount,
+} from './combatUtils';
 import { setWeaponTarget } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
+import { getUnitGroundZ } from '../unitGeometry';
+import { getTransformCosSin } from '../../math';
 import {
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
@@ -315,9 +324,101 @@ export function stampCombatTargetingPool(world: WorldState): void {
   }
 }
 
-/** Convenience wrapper that runs both passes back-to-back. Used by
- *  callers that don't need to interleave the FSM between them. */
+const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
+
+/** Rebuild the mirror panel pool from `world.getMirrorUnits()`. The
+ *  Rust mirror-panel sightline kernel reads this slab during the
+ *  targeting FSM, so it must hold the current tick's pose data on
+ *  entry. Inactive / dead mirror units are skipped; the slab counts
+ *  only the active set, with panel rows packed contiguously by unit.
+ *
+ *  Runs BEFORE updateTargetingAndFiringState so the gate kernel sees
+ *  current data when it walks the slab. The slope-aware turret pivot
+ *  is resolved fresh via resolveWeaponWorldMount — same input the
+ *  beam tracer / live aim solver uses — so the gate and the
+ *  authoritative bounce path agree on where each panel sits. */
+export function stampMirrorPanelPool(world: WorldState): void {
+  const sim = getSimWasm();
+  if (sim === undefined) return;
+  const pool = sim.mirrorPanelPool;
+  if (!world.mirrorsEnabled) {
+    pool.setUnitCount(0);
+    pool.setPanelCount(0);
+    return;
+  }
+  const mirrorUnits = world.getMirrorUnits();
+  if (mirrorUnits.length === 0) {
+    pool.setUnitCount(0);
+    pool.setPanelCount(0);
+    return;
+  }
+
+  const currentTick = world.getTick();
+  let unitIdx = 0;
+  let panelIdx = 0;
+  for (const unit of mirrorUnits) {
+    if (!unit.unit || unit.unit.hp <= 0) continue;
+    const panels = unit.unit.mirrorPanels;
+    if (!panels || panels.length === 0) continue;
+    const unitTurrets = unit.combat?.turrets;
+    if (!unitTurrets || unitTurrets.length === 0) continue;
+
+    const broadRadius = Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot)
+      + MIRROR_SIGHT_QUERY_PAD;
+    const mirrorTurret = unitTurrets[0];
+    const mirrorRot = mirrorTurret.rotation;
+    const mirrorPitch = mirrorTurret.pitch;
+    const unitGroundZ = getUnitGroundZ(unit);
+    const unitCS = getTransformCosSin(unit.transform);
+    resolveWeaponWorldMount(
+      unit, mirrorTurret, 0,
+      unitCS.cos, unitCS.sin,
+      {
+        currentTick,
+        unitGroundZ,
+        surfaceN: unit.unit.surfaceNormal,
+      },
+      _mirrorStampPivot,
+    );
+
+    const panelStart = panelIdx;
+    for (let pi = 0; pi < panels.length; pi++) {
+      const panel = panels[pi];
+      pool.setPanel(
+        panelIdx,
+        panel.offsetX,
+        panel.offsetY,
+        panel.angle,
+        panel.baseY,
+        panel.topY,
+        panel.halfWidth,
+      );
+      panelIdx++;
+    }
+
+    pool.setUnit(
+      unitIdx,
+      unit.id,
+      unit.transform.x, unit.transform.y, unit.transform.z,
+      unitGroundZ,
+      broadRadius,
+      mirrorRot, mirrorPitch,
+      _mirrorStampPivot.x, _mirrorStampPivot.y, _mirrorStampPivot.z,
+      panelStart,
+      panels.length,
+    );
+    unitIdx++;
+  }
+
+  pool.setUnitCount(unitIdx);
+  pool.setPanelCount(panelIdx);
+}
+
+/** Convenience wrapper that runs all input-slab stamping passes
+ *  back-to-back. Used by callers that don't need to interleave the
+ *  FSM between them. */
 export function stampTargetingInputSlabs(world: WorldState): void {
   stampForceFieldPool(world);
+  stampMirrorPanelPool(world);
   stampCombatTargetingPool(world);
 }

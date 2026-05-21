@@ -7854,7 +7854,6 @@ fn compute_turret_gates_for_aim_point(
     max_time_sec: f64,
     ground_aim_fraction: f64,
     under_only: bool,
-    mirror_panel_clear: u8,
     gravity: f64,
 ) -> (u8, u8, u8) {
     let los_clear: u8 = if (flags & CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS) != 0 {
@@ -7931,7 +7930,19 @@ fn compute_turret_gates_for_aim_point(
             -1,
             0,
         );
-        if ff_seg == 0 || mirror_panel_clear == 0 {
+        // Passive (mirror) weapons skip the mirror-panel walk by
+        // contract: a mirror turret cannot block its own sightline
+        // class. Matches the JS-side `weapon.config.passive !== true`
+        // gate in fillCandidateMirrorPanelMask / fillExistingLockGateInputs.
+        let mirror_clear: u8 = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
+            1
+        } else {
+            mirror_panel_clearance_segment(
+                mount_x, mount_y, mount_z,
+                raw_aim_x, raw_aim_y, raw_aim_z,
+            )
+        };
+        if ff_seg == 0 || mirror_clear == 0 {
             force_field_clear = 0;
         }
     }
@@ -7948,10 +7959,6 @@ fn compute_turret_gates_for_aim_point(
 /// ~16 (3 gates × 5 turrets + 1 batch apply).
 ///
 /// JS still owns:
-///   - the mirror-panel sightline walk (no Rust equivalent yet), passed
-///     in as the per-turret `mirror_panel_clear` mask; safe defaults to
-///     all-1s when the obstruction feature is off or there are no
-///     mirror units.
 ///   - the per-shot ballistic config (`projectile_speed`, `arc_preference`,
 ///     `max_time_sec`) and `ground_aim_fraction`, supplied as parallel
 ///     per-turret arrays. These derive from blueprint data and don't
@@ -7984,7 +7991,6 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
     max_time_secs: &[f64],
     ground_aim_fractions: &[f64],
     under_only_mask: &[u8],
-    mirror_panel_clear: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -7997,8 +8003,7 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         .min(arc_preferences.len())
         .min(max_time_secs.len())
         .min(ground_aim_fractions.len())
-        .min(under_only_mask.len())
-        .min(mirror_panel_clear.len());
+        .min(under_only_mask.len());
 
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
@@ -8052,7 +8057,6 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
                 max_time_secs[turret_idx],
                 ground_aim_fractions[turret_idx],
                 under_only_mask[turret_idx] != 0,
-                mirror_panel_clear[turret_idx],
                 gravity,
             );
 
@@ -8281,11 +8285,10 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
 /// Combines the JS-side per-weapon LOS / ballistic / FF / mirror-valid
 /// gate prep with the existing `apply_priority_target_fsm_idx`
 /// transitions inside one boundary call. The mirror-panel sightline
-/// walk and the passive-turret `isMirrorTarget` score live in TS
-/// (`mirror_valid` and `mirror_panel_clear` masks). Per-turret aim
-/// points are also TS-resolved so `lockOnToBody` AABB clamps and
-/// `lockOnToTurret` resolution stay in one place; the kernel just
-/// consumes them.
+/// walk now lives in Rust (slab-backed) along with the passive-turret
+/// `isMirrorTarget` score. Per-turret aim points are TS-resolved so
+/// `lockOnToBody` AABB clamps and `lockOnToTurret` resolution stay in
+/// one place; the kernel consumes them.
 ///
 /// Same disabled / manual-fire skip semantics as the priority-point
 /// kernel. Passive turrets continue to participate (mirror_valid then
@@ -8309,7 +8312,6 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
     max_time_secs: &[f64],
     ground_aim_fractions: &[f64],
     under_only_mask: &[u8],
-    mirror_panel_clear: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -8359,8 +8361,7 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
         .min(arc_preferences.len())
         .min(max_time_secs.len())
         .min(ground_aim_fractions.len())
-        .min(under_only_mask.len())
-        .min(mirror_panel_clear.len());
+        .min(under_only_mask.len());
 
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
@@ -8414,7 +8415,6 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
                     max_time_secs[turret_idx],
                     ground_aim_fractions[turret_idx],
                     under_only_mask[turret_idx] != 0,
-                    mirror_panel_clear[turret_idx],
                     gravity,
                 )
             };
@@ -8463,7 +8463,6 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     max_time_secs: &[f64],
     ground_aim_fractions: &[f64],
     under_only_mask: &[u8],
-    mirror_panel_clear: &[u8],
 ) {
     let pool = combat_targeting_pool();
     let entity_idx = entity_slot as usize;
@@ -8481,8 +8480,7 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         .min(arc_preferences.len())
         .min(max_time_secs.len())
         .min(ground_aim_fractions.len())
-        .min(under_only_mask.len())
-        .min(mirror_panel_clear.len());
+        .min(under_only_mask.len());
 
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
@@ -8579,7 +8577,6 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
                     max_time_secs[turret_idx],
                     ground_aim_fractions[turret_idx],
                     under_only_mask[turret_idx] != 0,
-                    mirror_panel_clear[turret_idx],
                     gravity,
                 );
                 // sight_blocked = the weapon could otherwise fire
@@ -9108,7 +9105,6 @@ fn combat_targeting_candidate_gate_passes(
     max_time_sec: f64,
     ground_aim_fraction: f64,
     under_only: bool,
-    mirror_panel_clear: u8,
 ) -> bool {
     if candidate_idx >= candidate_count {
         return false;
@@ -9167,7 +9163,6 @@ fn combat_targeting_candidate_gate_passes(
             max_time_sec,
             ground_aim_fraction,
             under_only,
-            mirror_panel_clear,
             gravity,
         );
 
@@ -9183,18 +9178,15 @@ fn combat_targeting_candidate_gate_passes(
 /// `compute_turret_gates_for_aim_point` inline — same physics as the
 /// priority kernels, no per-pair boundary crossing.
 ///
-/// `mirror_panel_clear` is a flat `(turret_count * candidate_count)`
-/// mask laid out row-major by turret index: the JS side fills it
-/// once per candidate batch (the mirror-panel walk has no Rust
-/// equivalent yet) and the kernel reads `mp[turret_idx *
-/// candidate_count + candidate_idx]`. When the obstruction feature
-/// is off or no mirror units exist, JS should set the mask to all-1s.
+/// Mirror-panel clearance is consulted via the slab inside
+/// `compute_turret_gates_for_aim_point`; JS no longer needs to fill
+/// a per-(turret, candidate) clearance mask.
 ///
 /// Per-candidate observability (cloak/detector) is computed
-/// internally from slab data — `candidate_observable_scratch` on
-/// the pool is filled before the per-turret loop and reused across
-/// turrets, since the observer player is the same for every turret
-/// on this entity.
+/// internally from slab data — the dedicated scratch global is
+/// filled before the per-turret loop and reused across turrets,
+/// since the observer player is the same for every turret on this
+/// entity.
 #[wasm_bindgen]
 pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     entity_slot: u32,
@@ -9228,7 +9220,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     max_time_secs: &[f64],
     ground_aim_fractions: &[f64],
     under_only_mask: &[u8],
-    mirror_panel_clear: &[u8],
     out_target_ids: &mut [i32],
     out_ranks: &mut [u8],
 ) {
@@ -9259,13 +9250,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
         .min(candidate_radius.len())
         .min(candidate_mirror_score.len());
     if turret_count == 0 || clamped_candidate_count == 0 {
-        return;
-    }
-    // mirror_panel_clear is row-major (turret_idx, candidate_idx).
-    // Skip the entire pass if the mask is too small — every candidate
-    // gate would then read out of bounds.
-    let mp_required = turret_count * clamped_candidate_count;
-    if mirror_panel_clear.len() < mp_required {
         return;
     }
     // We use the existing apply_mask=0 turrets are NOT system-disabled
@@ -9360,7 +9344,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
         let max_time_sec = max_time_secs[turret_idx];
         let ground_aim_fraction = ground_aim_fractions[turret_idx];
         let under_only = under_only_mask[turret_idx] != 0;
-        let mp_row_start = turret_idx * clamped_candidate_count;
 
         let choice = combat_targeting_choose_best_candidate_inner_with_internal_gate(
             pool,
@@ -9401,7 +9384,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
             max_time_sec,
             ground_aim_fraction,
             under_only,
-            &mirror_panel_clear[mp_row_start..mp_row_start + clamped_candidate_count],
         );
         let candidate_idx = choice.candidate_idx;
         if candidate_idx >= 0 {
@@ -9459,7 +9441,6 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     max_time_sec: f64,
     ground_aim_fraction: f64,
     under_only: bool,
-    mirror_panel_clear_row: &[u8],
 ) -> TargetingCandidateChoice {
     let seed = targeting_seed_choice(seed_rank);
     let count = (candidate_count as usize)
@@ -9469,8 +9450,7 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
         .min(candidate_pos_z.len())
         .min(candidate_radius.len())
         .min(candidate_mirror_score.len())
-        .min(candidate_ids.len())
-        .min(mirror_panel_clear_row.len());
+        .min(candidate_ids.len());
     if count == 0 {
         return seed;
     }
@@ -9585,7 +9565,6 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             max_time_sec,
             ground_aim_fraction,
             under_only,
-            mirror_panel_clear_row[ci],
         ) {
             return TargetingCandidateChoice {
                 candidate_idx,
@@ -9664,7 +9643,6 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             max_time_sec,
             ground_aim_fraction,
             under_only,
-            mirror_panel_clear_row[ci],
         ) {
             return TargetingCandidateChoice {
                 candidate_idx: ci as i32,
@@ -9980,6 +9958,392 @@ pub fn force_field_clearance_arc(
         }
     }
     1
+}
+
+// ─────────────────────────────────────────────────────────────────
+// AIM-08.5 — Mirror panel input slab
+//
+// Two parallel pools rebuilt each tick (analogous to ForceFieldPool):
+//
+//   Per-mirror-unit data: world pose, broadphase radius, slope-aware
+//   mirror turret pivot, and a [panel_start, panel_count) range into
+//   the per-panel data.
+//
+//   Per-panel data: panel geometry (arm length, lateral offset, panel
+//   yaw offset, base/top Y in chassis-local space, half-width).
+//
+// The kernel walks every unit's broadphase first, then dispatches to
+// the per-panel ray-tilted-rect test for each panel. Crossings within
+// FORCE_MATERIAL_GRAZE_EPS of either segment endpoint don't count,
+// matching the JS-side `hasForceMirrorPanelClearance` behaviour so
+// turret pose and lock-on point flicker the same way regardless of
+// which path computed the gate.
+// ─────────────────────────────────────────────────────────────────
+
+const FORCE_MATERIAL_GRAZE_EPS: f64 = 1e-6;
+
+struct MirrorPanelPool {
+    // Per-mirror-unit fields. Counts are tracked separately so the
+    // backing Vecs can be reused across ticks; the kernel reads only
+    // `unit_count` rows.
+    unit_count: u32,
+    unit_id: Vec<i32>,
+    unit_x: Vec<f64>,
+    unit_y: Vec<f64>,
+    unit_z: Vec<f64>,
+    unit_ground_z: Vec<f64>,
+    unit_broad_radius: Vec<f32>,
+    mirror_yaw: Vec<f32>,
+    mirror_pitch: Vec<f32>,
+    pivot_x: Vec<f64>,
+    pivot_y: Vec<f64>,
+    pivot_z: Vec<f64>,
+    panel_start: Vec<u32>,
+    panel_count: Vec<u8>,
+
+    // Per-panel fields.
+    total_panels: u32,
+    panel_arm_length: Vec<f32>,
+    panel_offset_y: Vec<f32>,
+    panel_angle: Vec<f32>,
+    panel_base_y: Vec<f32>,
+    panel_top_y: Vec<f32>,
+    panel_half_width: Vec<f32>,
+}
+
+impl MirrorPanelPool {
+    fn empty() -> Self {
+        Self {
+            unit_count: 0,
+            unit_id: Vec::new(),
+            unit_x: Vec::new(),
+            unit_y: Vec::new(),
+            unit_z: Vec::new(),
+            unit_ground_z: Vec::new(),
+            unit_broad_radius: Vec::new(),
+            mirror_yaw: Vec::new(),
+            mirror_pitch: Vec::new(),
+            pivot_x: Vec::new(),
+            pivot_y: Vec::new(),
+            pivot_z: Vec::new(),
+            panel_start: Vec::new(),
+            panel_count: Vec::new(),
+            total_panels: 0,
+            panel_arm_length: Vec::new(),
+            panel_offset_y: Vec::new(),
+            panel_angle: Vec::new(),
+            panel_base_y: Vec::new(),
+            panel_top_y: Vec::new(),
+            panel_half_width: Vec::new(),
+        }
+    }
+
+    fn ensure_unit_capacity(&mut self, count: u32) {
+        let needed = count as usize;
+        if self.unit_id.len() < needed {
+            self.unit_id.resize(needed, -1);
+            self.unit_x.resize(needed, 0.0);
+            self.unit_y.resize(needed, 0.0);
+            self.unit_z.resize(needed, 0.0);
+            self.unit_ground_z.resize(needed, 0.0);
+            self.unit_broad_radius.resize(needed, 0.0);
+            self.mirror_yaw.resize(needed, 0.0);
+            self.mirror_pitch.resize(needed, 0.0);
+            self.pivot_x.resize(needed, 0.0);
+            self.pivot_y.resize(needed, 0.0);
+            self.pivot_z.resize(needed, 0.0);
+            self.panel_start.resize(needed, 0);
+            self.panel_count.resize(needed, 0);
+        }
+    }
+
+    fn ensure_panel_capacity(&mut self, count: u32) {
+        let needed = count as usize;
+        if self.panel_arm_length.len() < needed {
+            self.panel_arm_length.resize(needed, 0.0);
+            self.panel_offset_y.resize(needed, 0.0);
+            self.panel_angle.resize(needed, 0.0);
+            self.panel_base_y.resize(needed, 0.0);
+            self.panel_top_y.resize(needed, 0.0);
+            self.panel_half_width.resize(needed, 0.0);
+        }
+    }
+}
+
+struct MirrorPanelPoolHolder(UnsafeCell<Option<MirrorPanelPool>>);
+unsafe impl Sync for MirrorPanelPoolHolder {}
+static MIRROR_PANEL_POOL: MirrorPanelPoolHolder = MirrorPanelPoolHolder(UnsafeCell::new(None));
+
+#[inline]
+fn mirror_panel_pool() -> &'static mut MirrorPanelPool {
+    unsafe {
+        let cell = &mut *MIRROR_PANEL_POOL.0.get();
+        if cell.is_none() {
+            *cell = Some(MirrorPanelPool::empty());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn mirror_panel_pool_clear() {
+    let pool = mirror_panel_pool();
+    pool.unit_count = 0;
+    pool.total_panels = 0;
+}
+
+#[wasm_bindgen]
+pub fn mirror_panel_pool_set_unit_count(count: u32) {
+    let pool = mirror_panel_pool();
+    pool.ensure_unit_capacity(count);
+    pool.unit_count = count;
+}
+
+#[wasm_bindgen]
+pub fn mirror_panel_pool_set_panel_count(count: u32) {
+    let pool = mirror_panel_pool();
+    pool.ensure_panel_capacity(count);
+    pool.total_panels = count;
+}
+
+#[wasm_bindgen]
+pub fn mirror_panel_pool_set_unit(
+    idx: u32,
+    unit_id: i32,
+    unit_x: f64,
+    unit_y: f64,
+    unit_z: f64,
+    unit_ground_z: f64,
+    unit_broad_radius: f32,
+    mirror_yaw: f32,
+    mirror_pitch: f32,
+    pivot_x: f64,
+    pivot_y: f64,
+    pivot_z: f64,
+    panel_start: u32,
+    panel_count: u8,
+) {
+    let pool = mirror_panel_pool();
+    pool.ensure_unit_capacity(idx + 1);
+    let i = idx as usize;
+    pool.unit_id[i] = unit_id;
+    pool.unit_x[i] = unit_x;
+    pool.unit_y[i] = unit_y;
+    pool.unit_z[i] = unit_z;
+    pool.unit_ground_z[i] = unit_ground_z;
+    pool.unit_broad_radius[i] = unit_broad_radius;
+    pool.mirror_yaw[i] = mirror_yaw;
+    pool.mirror_pitch[i] = mirror_pitch;
+    pool.pivot_x[i] = pivot_x;
+    pool.pivot_y[i] = pivot_y;
+    pool.pivot_z[i] = pivot_z;
+    pool.panel_start[i] = panel_start;
+    pool.panel_count[i] = panel_count;
+}
+
+#[wasm_bindgen]
+pub fn mirror_panel_pool_set_panel(
+    idx: u32,
+    arm_length: f32,
+    offset_y: f32,
+    panel_angle: f32,
+    base_y: f32,
+    top_y: f32,
+    half_width: f32,
+) {
+    let pool = mirror_panel_pool();
+    pool.ensure_panel_capacity(idx + 1);
+    let i = idx as usize;
+    pool.panel_arm_length[i] = arm_length;
+    pool.panel_offset_y[i] = offset_y;
+    pool.panel_angle[i] = panel_angle;
+    pool.panel_base_y[i] = base_y;
+    pool.panel_top_y[i] = top_y;
+    pool.panel_half_width[i] = half_width;
+}
+
+/// Squared distance from a point to a 3D segment, used by the
+/// mirror-panel broadphase. Mirrors `pointSegmentDistanceSq3` in
+/// lineOfSight.ts byte-for-byte.
+#[inline]
+fn point_segment_dist_sq3(
+    px: f64, py: f64, pz: f64,
+    ax: f64, ay: f64, az: f64,
+    bx: f64, by: f64, bz: f64,
+) -> f64 {
+    let abx = bx - ax;
+    let aby = by - ay;
+    let abz = bz - az;
+    let len_sq = abx * abx + aby * aby + abz * abz;
+    if len_sq <= 1e-9 {
+        let dx = px - ax;
+        let dy = py - ay;
+        let dz = pz - az;
+        return dx * dx + dy * dy + dz * dz;
+    }
+    let t = (((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / len_sq)
+        .max(0.0)
+        .min(1.0);
+    let cx = ax + abx * t;
+    let cy = ay + aby * t;
+    let cz = az + abz * t;
+    let dx = px - cx;
+    let dy = py - cy;
+    let dz = pz - cz;
+    dx * dx + dy * dy + dz * dz
+}
+
+/// Ray-vs-tilted-rectangle intersection T (CollisionHelpers.ts port).
+/// Returns `Some(t)` in [0, 1] for the first hit, or `None`.
+#[inline]
+fn ray_tilted_rect_intersection_t(
+    sx: f64, sy: f64, sz: f64,
+    ex: f64, ey: f64, ez: f64,
+    pcx: f64, pcy: f64, pcz: f64,
+    nx: f64, ny: f64, nz: f64,
+    edx: f64, edy: f64, edz: f64,
+    half_w: f64,
+    half_h: f64,
+) -> Option<f64> {
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let dz = ez - sz;
+    let denom = dx * nx + dy * ny + dz * nz;
+    if denom.abs() < 1e-9 {
+        return None;
+    }
+    let t = ((pcx - sx) * nx + (pcy - sy) * ny + (pcz - sz) * nz) / denom;
+    if !(0.0..=1.0).contains(&t) {
+        return None;
+    }
+    let hx = sx + t * dx;
+    let hy = sy + t * dy;
+    let hz = sz + t * dz;
+    let lx = hx - pcx;
+    let ly = hy - pcy;
+    let lz = hz - pcz;
+    let along = lx * edx + ly * edy + lz * edz;
+    if along < -half_w || along > half_w {
+        return None;
+    }
+    // up-in-plane axis = n × ed
+    let ux = ny * edz - nz * edy;
+    let uy = nz * edx - nx * edz;
+    let uz = nx * edy - ny * edx;
+    let up = lx * ux + ly * uy + lz * uz;
+    if up < -half_h || up > half_h {
+        return None;
+    }
+    Some(t)
+}
+
+/// AIM-08.5 — slab-backed port of `hasForceMirrorPanelClearance`.
+/// Returns 1 when the straight sightline from (sx,sy,sz) → (tx,ty,tz)
+/// does not cross any active force-mirror panel; 0 when at least one
+/// panel blocks the segment. Hits within FORCE_MATERIAL_GRAZE_EPS of
+/// either endpoint don't count (matching the JS path).
+fn mirror_panel_clearance_segment(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+) -> u8 {
+    let pool = mirror_panel_pool();
+    let unit_count = pool.unit_count as usize;
+    if unit_count == 0 {
+        return 1;
+    }
+    for u in 0..unit_count {
+        let panel_count = pool.panel_count[u] as usize;
+        if panel_count == 0 {
+            continue;
+        }
+        let ux = pool.unit_x[u];
+        let uy = pool.unit_y[u];
+        let uz = pool.unit_z[u];
+        let broad_r = pool.unit_broad_radius[u] as f64;
+        if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
+            continue;
+        }
+
+        let mirror_yaw = pool.mirror_yaw[u] as f64;
+        let mirror_pitch = pool.mirror_pitch[u] as f64;
+        let cos_yaw = mirror_yaw.cos();
+        let sin_yaw = mirror_yaw.sin();
+        let cos_pitch = mirror_pitch.cos();
+        let sin_pitch = mirror_pitch.sin();
+
+        let pivot_x = pool.pivot_x[u];
+        let pivot_y = pool.pivot_y[u];
+        let pivot_z = pool.pivot_z[u];
+
+        let panel_start = pool.panel_start[u] as usize;
+        for pi in panel_start..panel_start + panel_count {
+            // Panel arm extends from pivot along the panel-yaw / pitch
+            // direction (same `a(α, β)` formula MirrorPanelHit.ts uses).
+            // Per-panel lateral pivot offset goes along the chassis-
+            // perpendicular axis, derived from the mirror's yaw on
+            // tick (matches JS `perpX = -sinRot; perpY = cosRot`).
+            let perp_x = -sin_yaw;
+            let perp_y = cos_yaw;
+            let offset_y = pool.panel_offset_y[pi] as f64;
+            let panel_pivot_x = pivot_x + perp_x * offset_y;
+            let panel_pivot_y = pivot_y + perp_y * offset_y;
+            let panel_pivot_z = pivot_z;
+
+            // Per-panel yaw composes the mirror turret yaw with the
+            // panel's authored angle (typically 0).
+            let panel_angle = pool.panel_angle[pi] as f64;
+            let panel_yaw = mirror_yaw + panel_angle;
+            let panel_cos_yaw = panel_yaw.cos();
+            let panel_sin_yaw = panel_yaw.sin();
+
+            let arm_length = pool.panel_arm_length[pi] as f64;
+            let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
+            let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
+            let pcz = panel_pivot_z + sin_pitch * arm_length;
+
+            // Panel face normal = arm direction. Using the panel's
+            // composed yaw + the mirror pitch matches getMirrorArmDirection.
+            let nx = panel_cos_yaw * cos_pitch;
+            let ny = panel_sin_yaw * cos_pitch;
+            let nz = sin_pitch;
+
+            // Horizontal perpendicular to panel yaw (edge axis); pitch
+            // rotates around this axis so it stays in the XY plane.
+            let edx = -panel_sin_yaw;
+            let edy = panel_cos_yaw;
+            let edz = 0.0;
+
+            let half_w = pool.panel_half_width[pi] as f64;
+            let base_y = pool.panel_base_y[pi] as f64;
+            let top_y = pool.panel_top_y[pi] as f64;
+            let half_h = (top_y - base_y) * 0.5;
+
+            let hit_t = ray_tilted_rect_intersection_t(
+                sx, sy, sz, tx, ty, tz,
+                pcx, pcy, pcz,
+                nx, ny, nz,
+                edx, edy, edz,
+                half_w, half_h,
+            );
+            if let Some(t) = hit_t {
+                if t > FORCE_MATERIAL_GRAZE_EPS && t < 1.0 - FORCE_MATERIAL_GRAZE_EPS {
+                    return 0;
+                }
+            }
+        }
+    }
+    1
+}
+
+/// JS-callable mirror-panel sightline clearance probe. Mirrors
+/// `force_field_clearance_segment` for callers that want the slab
+/// answer without going through the unified gate kernel.
+#[wasm_bindgen]
+pub fn mirror_panel_clearance_segment_export(
+    sx: f64, sy: f64, sz: f64,
+    tx: f64, ty: f64, tz: f64,
+) -> u8 {
+    mirror_panel_clearance_segment(sx, sy, sz, tx, ty, tz)
 }
 
 // ─────────────────────────────────────────────────────────────────
