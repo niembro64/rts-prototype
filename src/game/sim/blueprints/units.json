@@ -810,17 +810,30 @@
       {
         "turretId": "fastRocketTurret",
         "mount": {
-          "x": 1.0,
+          "x": 0,
           "y": 0,
           "z": 0.36
         }
       }
     ],
     "bodyShape": {
-      "kind": "rhombus",
-      "lengthFrac": 2.15,
-      "widthFrac": 0.36,
-      "heightFrac": 0.3
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": 0.85,
+          "xFrac": 0.45,
+          "yFrac": 0.18,
+          "zFrac": 0.22
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.85,
+          "xFrac": 0.45,
+          "yFrac": 0.18,
+          "zFrac": 0.28
+        }
+      ]
     },
     "hud": {
       "barsOffsetAboveTop": 14
