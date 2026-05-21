@@ -347,6 +347,7 @@
     },
     "config": {
       "hoverHeight": 200,
+      "hoverHeightRandomizationAmount": 0.5,
       "fanDistX": 0.58,
       "fanDistY": 0.62,
       "fanRadius": 0.32,
@@ -364,6 +365,7 @@
     },
     "config": {
       "hoverHeight": 600,
+      "hoverHeightRandomizationAmount": 0.5,
       "fanDistX": 1.7,
       "fanDistY": 1.7,
       "fanRadius": 1.4,
@@ -381,6 +383,7 @@
     },
     "config": {
       "hoverHeight": 400,
+      "hoverHeightRandomizationAmount": 0.5,
       "wingSpan": 2.05,
       "wingChord": 1.45,
       "wingOffsetX": -0.04,
