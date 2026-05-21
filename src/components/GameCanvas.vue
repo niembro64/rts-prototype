@@ -376,10 +376,14 @@ const displayServerTpsWorst = computed(
 );
 const {
   currentZoom,
+  diffSnapSizeAvgBytes,
+  diffSnapSizeHiBytes,
   displayGpuMs,
   frameMsAvg,
   frameMsHi,
   fullSnapAvgRate,
+  fullSnapSizeAvgBytes,
+  fullSnapSizeHiBytes,
   fullSnapWorstRate,
   gpuSourceLabel,
   gpuTimerSupported,
@@ -743,6 +747,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   fullSnapAvgRate: fullSnapAvgRate.value,
   fullSnapWorstRate: fullSnapWorstRate.value,
   fullSnapBarTarget: fullSnapBarTarget.value,
+  diffSnapSizeAvgBytes: diffSnapSizeAvgBytes.value,
+  diffSnapSizeHiBytes: diffSnapSizeHiBytes.value,
+  fullSnapSizeAvgBytes: fullSnapSizeAvgBytes.value,
+  fullSnapSizeHiBytes: fullSnapSizeHiBytes.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
@@ -837,6 +845,10 @@ watchEffect(() => {
   m.fullSnapAvgRate = fullSnapAvgRate.value;
   m.fullSnapWorstRate = fullSnapWorstRate.value;
   m.fullSnapBarTarget = fullSnapBarTarget.value;
+  m.diffSnapSizeAvgBytes = diffSnapSizeAvgBytes.value;
+  m.diffSnapSizeHiBytes = diffSnapSizeHiBytes.value;
+  m.fullSnapSizeAvgBytes = fullSnapSizeAvgBytes.value;
+  m.fullSnapSizeHiBytes = fullSnapSizeHiBytes.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;

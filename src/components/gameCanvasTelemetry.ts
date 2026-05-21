@@ -33,6 +33,10 @@ export function useGameCanvasTelemetry({
   const snapWorstRate = ref(0);
   const fullSnapAvgRate = ref(0);
   const fullSnapWorstRate = ref(0);
+  const diffSnapSizeAvgBytes = ref(0);
+  const diffSnapSizeHiBytes = ref(0);
+  const fullSnapSizeAvgBytes = ref(0);
+  const fullSnapSizeHiBytes = ref(0);
   const currentZoom = ref(0.4);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -71,6 +75,12 @@ export function useGameCanvasTelemetry({
       const fullSnapStats = scene.getFullSnapshotStats();
       setNumberRefIfChanged(fullSnapAvgRate, fullSnapStats.avgRate, 0.05);
       setNumberRefIfChanged(fullSnapWorstRate, fullSnapStats.worstRate, 0.05);
+
+      const payloadSizeStats = scene.getSnapshotPayloadSizeStats();
+      setNumberRefIfChanged(diffSnapSizeAvgBytes, payloadSizeStats.diffAvgBytes, 1);
+      setNumberRefIfChanged(diffSnapSizeHiBytes, payloadSizeStats.diffHiBytes, 1);
+      setNumberRefIfChanged(fullSnapSizeAvgBytes, payloadSizeStats.fullAvgBytes, 1);
+      setNumberRefIfChanged(fullSnapSizeHiBytes, payloadSizeStats.fullHiBytes, 1);
     }
   }
 
@@ -88,9 +98,13 @@ export function useGameCanvasTelemetry({
   return {
     currentZoom,
     displayGpuMs,
+    diffSnapSizeAvgBytes,
+    diffSnapSizeHiBytes,
     frameMsAvg,
     frameMsHi,
     fullSnapAvgRate,
+    fullSnapSizeAvgBytes,
+    fullSnapSizeHiBytes,
     fullSnapWorstRate,
     gpuSourceLabel,
     gpuTimerSupported,

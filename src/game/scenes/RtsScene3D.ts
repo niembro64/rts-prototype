@@ -1349,6 +1349,15 @@ export class RtsScene3D {
     return this.snapshotIntake.getFullSnapshotStats();
   }
 
+  public getSnapshotPayloadSizeStats(): {
+    diffAvgBytes: number;
+    diffHiBytes: number;
+    fullAvgBytes: number;
+    fullHiBytes: number;
+  } {
+    return this.snapshotIntake.getSnapshotPayloadSizeStats();
+  }
+
   /**
    * Tear down the scene. By default disconnects the GameConnection;
    * passing `{ keepConnection: true }` skips the disconnect so a live

@@ -29,6 +29,8 @@ import {
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
 
+type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
+
 export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
   private fullSnapshotCloner = new ReusableNetworkSnapshotCloner();
@@ -103,8 +105,9 @@ export class SnapshotBuffer {
   }
 
   /** Wire the gameConnection snapshot callback to accumulate events. */
-  attach(gameConnection: GameConnection): void {
+  attach(gameConnection: GameConnection, onBufferedSnapshot?: SnapshotBufferCallback): void {
     gameConnection.onSnapshot((state: NetworkServerSnapshot) => {
+      onBufferedSnapshot?.(state);
       const proj = state.projectiles;
       if (proj?.spawns) {
         for (let i = 0; i < proj.spawns.length; i++) {

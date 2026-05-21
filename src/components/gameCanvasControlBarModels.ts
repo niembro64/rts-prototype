@@ -97,6 +97,10 @@ export type GameCanvasClientControlBarModel = {
   readonly fullSnapAvgRate: number;
   readonly fullSnapWorstRate: number;
   readonly fullSnapBarTarget: number;
+  readonly diffSnapSizeAvgBytes: number;
+  readonly diffSnapSizeHiBytes: number;
+  readonly fullSnapSizeAvgBytes: number;
+  readonly fullSnapSizeHiBytes: number;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;

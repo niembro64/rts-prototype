@@ -7,6 +7,7 @@ import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ReusableNetworkSnapshotCloner, cloneNetworkSnapshot } from '../network/snapshotClone';
 import { encodeNetworkSnapshot } from '../network/snapshotWireCodec';
+import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
@@ -113,10 +114,11 @@ export class LocalGameConnection implements GameConnection {
   }
 
   private recordLocalSnapshotWireCost(state: NetworkServerSnapshot): void {
-    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     const start = performance.now();
     const payload = encodeNetworkSnapshot(state);
     const encodeMs = performance.now() - start;
+    setSnapshotWireBytes(state, payload.byteLength);
+    if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
       rate: state.serverMeta?.snaps.rate,
       bytes: payload.byteLength,

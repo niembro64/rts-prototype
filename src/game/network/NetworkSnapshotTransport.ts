@@ -8,6 +8,7 @@ import {
   decodeNetworkSnapshot,
   encodeNetworkSnapshot,
 } from './snapshotWireCodec';
+import { setSnapshotWireBytes } from './snapshotWireMetadata';
 
 const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
 
@@ -77,6 +78,7 @@ export class NetworkSnapshotTransport {
     const decodeStart = performance.now();
     const bytes = raw.byteLength;
     const state = decodeNetworkSnapshot(raw);
+    setSnapshotWireBytes(state, bytes);
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotDecode({
       rate: state.serverMeta?.snaps.rate,
       bytes,

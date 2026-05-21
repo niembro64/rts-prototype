@@ -27,6 +27,19 @@ export function fmt4(n: number): string {
   return n.toFixed(0);
 }
 
+export function fmtBytes4(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0B';
+  if (bytes < 999.5) return `${Math.round(bytes)}B`;
+  const kib = bytes / 1024;
+  if (kib < 9.95) return `${kib.toFixed(1)}k`;
+  if (kib < 999.5) return `${Math.round(kib)}k`;
+  const mib = kib / 1024;
+  if (mib < 9.95) return `${mib.toFixed(1)}m`;
+  if (mib < 999.5) return `${Math.round(mib)}m`;
+  const gib = mib / 1024;
+  return `${Math.round(gib)}g`;
+}
+
 /** Format with sign prefix (+/-) and magnitude-based precision. Uses '+' for zero. */
 export function fmtSigned(n: number): string {
   const sign = n < 0 ? '-' : '+';

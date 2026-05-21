@@ -38,6 +38,7 @@ import {
   copyNetworkUnitSnapshotInto,
   createNetworkUnitSnapshot,
 } from './unitSnapshotFields';
+import { copySnapshotWireBytes } from './snapshotWireMetadata';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -443,6 +444,7 @@ export class ReusableNetworkSnapshotCloner {
     } else {
       dst.removedEntityIds = undefined;
     }
+    copySnapshotWireBytes(state, dst);
     return dst;
   }
 

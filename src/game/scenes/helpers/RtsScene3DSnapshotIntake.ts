@@ -1,13 +1,16 @@
-import { EMA_CONFIG, EMA_INITIAL_VALUES } from '../../../config';
+import { EMA_CONFIG, EMA_INITIAL_VALUES, FRAME_TIMING_EMA } from '../../../config';
 import type { ClientViewState } from '../../network/ClientViewState';
 import { CLIENT_PREDICTION_DIAGNOSTICS } from '../../network/ClientPredictionDiagnostics';
 import type {
+  NetworkServerSnapshot,
   NetworkServerSnapshotMeta,
   NetworkServerSnapshotSimEvent,
 } from '../../network/NetworkTypes';
+import { getSnapshotWireBytes } from '../../network/snapshotWireMetadata';
 import type { GameConnection } from '../../server/GameConnection';
 import type { PlayerId } from '../../sim/types';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../../SnapshotCadenceRegression';
+import { EmaMsTracker } from './EmaMsTracker';
 import { EmaTracker } from './EmaTracker';
 import { SnapshotBuffer } from './SnapshotBuffer';
 
@@ -44,6 +47,8 @@ export class RtsScene3DSnapshotIntake {
   // (state.isDelta=false). No initial value: the EMA seeds from the
   // first real full-keyframe interval.
   private readonly fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps);
+  private readonly diffSnapSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private readonly fullSnapSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private lastSnapArrivalMs = 0;
   private lastFullSnapArrivalMs = 0;
   private startupReadyAckSent = false;
@@ -56,7 +61,10 @@ export class RtsScene3DSnapshotIntake {
   ) {}
 
   attach(): void {
-    this.snapshotBuffer.attach(this.gameConnection);
+    this.snapshotBuffer.attach(
+      this.gameConnection,
+      (state) => this.recordSnapshotPayloadSize(state),
+    );
   }
 
   consumeLatestSnapshot(options: {
@@ -139,6 +147,20 @@ export class RtsScene3DSnapshotIntake {
     };
   }
 
+  getSnapshotPayloadSizeStats(): {
+    diffAvgBytes: number;
+    diffHiBytes: number;
+    fullAvgBytes: number;
+    fullHiBytes: number;
+  } {
+    return {
+      diffAvgBytes: this.diffSnapSizeTracker.getAvg(),
+      diffHiBytes: this.diffSnapSizeTracker.getHi(),
+      fullAvgBytes: this.fullSnapSizeTracker.getAvg(),
+      fullHiBytes: this.fullSnapSizeTracker.getHi(),
+    };
+  }
+
   clear(): void {
     this.snapshotBuffer.clear();
   }
@@ -156,5 +178,12 @@ export class RtsScene3DSnapshotIntake {
       if (dt > 0) this.fullSnapTracker.update(1000 / dt);
     }
     this.lastFullSnapArrivalMs = now;
+  }
+
+  private recordSnapshotPayloadSize(state: NetworkServerSnapshot): void {
+    const bytes = getSnapshotWireBytes(state);
+    if (bytes === undefined) return;
+    if (state.isDelta) this.diffSnapSizeTracker.update(bytes);
+    else this.fullSnapSizeTracker.update(bytes);
   }
 }
