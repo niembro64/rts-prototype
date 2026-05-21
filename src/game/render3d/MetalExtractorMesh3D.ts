@@ -4,40 +4,48 @@ import type { BuildingShape } from './BuildingShape3D';
 import type { ProductionRateIndicatorRig } from './ConstructionEmitterMesh3D';
 import { buildProductionRateIndicator } from './ConstructionEmitterMesh3D';
 import {
-  applyBasis,
   createHexFrustumGeometry,
   cylinderGeom,
   detail,
   extractorBladeMat,
   invisibleMat,
-  makeBox,
 } from './BuildingMeshPrimitives3D';
 
 const extractorPyramidGeom = createHexFrustumGeometry();
+const EXTRACTOR_FACE_COUNT = 6;
+const HEX_CORNER_START_ANGLE = Math.PI / 6;
 
 /** Hexagonal frustum proportions (top/bottom radii) hard-coded in
- *  createHexFrustumGeometry. We re-derive the closed-pose blade slope
- *  from the same constants so it stays in lockstep with the pyramid art. */
+ *  createHexFrustumGeometry. The protective rotor panels derive their
+ *  exact corners from these same normalized radii so the closed pose
+ *  matches the rendered pyramid sides. */
 const PYRAMID_TOP_RADIUS_FRACTION = 0.17;
 const PYRAMID_BOTTOM_RADIUS_FRACTION = 0.5;
-/** Hexagon edge-midpoint radius = corner radius × cos(π/6) = √3/2 ≈ 0.866.
- *  The pyramid corners sit at the circumscribed radius; each FACE midpoint
- *  sits at the INSCRIBED radius. The closed blade needs to land on the
- *  face midpoint, not the corner ridge, to actually cover the face. */
-const HEX_INSCRIBED_RATIO = Math.sqrt(3) / 2;
 /** Closed-pose stand-off from the pyramid surface (in world units). Push
  *  the folded blades a small distance OUTWARD along the face normal so
  *  they don't z-fight with the pyramid body and so the slightly-thick
  *  blade reads as a panel sitting on the face rather than embedded in it. */
 const CLOSED_BLADE_STANDOFF = 0.4;
 
+type ExtractorFaceFrame = {
+  bottom0: THREE.Vector3;
+  bottom1: THREE.Vector3;
+  top0: THREE.Vector3;
+  top1: THREE.Vector3;
+  center: THREE.Vector3;
+  normal: THREE.Vector3;
+  tangent: THREE.Vector3;
+  slope: THREE.Vector3;
+  radial: THREE.Vector3;
+};
+
+const extractorSidePanelGeomCache = new Map<string, THREE.BufferGeometry[]>();
+
 /** Per-blade open/closed transform pair. The animator stores the current
  *  blend factor (0 = open, 1 = closed) and slerps/lerps between these on
- *  each frame. Closed pose lays the blade flat against the matching
- *  trapezoidal pyramid face so the six blades together "cover" the
- *  building's sides. Scale is reshaped too — the open blade is a long
- *  paddle while the closed one matches the face's slant length × average
- *  width, so the blades read as plates wrapped around the base. */
+ *  each frame. Each blade mesh is an extruded copy of one actual pyramid
+ *  side face, so the closed pose can land on the matching face without
+ *  scale tricks or average-width rectangles. */
 export type ExtractorBladeAnim = {
   openPos: THREE.Vector3;
   closedPos: THREE.Vector3;
@@ -97,15 +105,15 @@ export function buildMetalExtractorMesh(
   );
 
   const bladeLen = Math.max(32, minDim * 0.86);
-  const bladeWidth = Math.max(10, minDim * 0.2);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
+  const panelThickness = Math.max(1.2, bladeThickness * 0.25);
   const bladeRootRadius = Math.max(ratePillarRadius * 2.2, minDim * 0.28);
 
   // Simple rotor — all six blades remain visible and rotating so the
   // silhouette is stable across LODs. No higher-tier glow/trim variant.
   const simpleRotor = makeExtractorRotor(
-    bladeLen, bladeWidth, bladeThickness,
-    6, rotorY, Math.PI / 6, bladeRootRadius, 0.5,
+    bladeLen, bladeThickness, panelThickness,
+    EXTRACTOR_FACE_COUNT, rotorY, bladeRootRadius, 0.5,
     width, depth, pyramidHeight,
   );
   details.push(detail(simpleRotor, 'min', undefined, 'extractorRotor'));
@@ -123,11 +131,10 @@ export function buildMetalExtractorMesh(
 
 function makeExtractorRotor(
   bladeReach: number,
-  bladeWidth: number,
   bladeThickness: number,
+  panelThickness: number,
   bladeCount: number,
   y: number,
-  angleOffset: number,
   bladeRootRadius: number,
   bladeLengthScale: number = 1,
   buildingWidth: number,
@@ -143,149 +150,54 @@ function makeExtractorRotor(
   const fullHorizontalSpan = Math.max(16, Math.min(bladeReach - rootRadius, fullVerticalDrop));
   const horizontalSpan = fullHorizontalSpan * bladeLengthScale;
   const verticalDrop = fullVerticalDrop * bladeLengthScale;
-  const bladeAxisLength = Math.hypot(horizontalSpan, verticalDrop);
-
-  // Closed-pose geometry. Each blade lies flat against ONE of the six
-  // pyramid faces. Blade i (at rotor open-angle = corner angle) folds
-  // outward by +π/6 (half a hex sector) so it lands on the FACE midpoint
-  // rather than the corner ridge between two faces — that way the six
-  // blades collectively cover the six faces.
-  //
-  // For a regular hexagonal pyramid:
-  //   corner radius (circumscribed) = pyramidTopRadius / pyramidBottomRadius
-  //   face-edge midpoint radius (inscribed) = corner radius × √3/2
-  // The closed blade endpoints ride the inscribed radius so they sit
-  // ON the face surface, not floating outside the corners.
-  const halfMinDim = Math.min(buildingWidth, buildingDepth) * 0.5;
-  const pyramidTopRadius = PYRAMID_TOP_RADIUS_FRACTION * halfMinDim;
-  const pyramidBottomRadius = PYRAMID_BOTTOM_RADIUS_FRACTION * halfMinDim;
-  const inscribedTopRadius = pyramidTopRadius * HEX_INSCRIBED_RATIO;
-  const inscribedBottomRadius = pyramidBottomRadius * HEX_INSCRIBED_RATIO;
-
-  // Face dimensions used to reshape the closed blade so it FITS the
-  // trapezoidal face it lands on. A rectangular blade can't be a perfect
-  // rhombus, but matching the face's slant length × average edge width
-  // makes the six blades visually wrap the base.
-  const faceSlantLength = Math.hypot(
-    inscribedBottomRadius - inscribedTopRadius,
+  const panelGeometries = getExtractorSidePanelGeometries(
+    buildingWidth,
+    buildingDepth,
     pyramidHeight,
+    panelThickness,
   );
-  // Regular hexagon side length equals its circumradius, so the top
-  // edge runs at pyramidTopRadius and the bottom edge at
-  // pyramidBottomRadius. Pick the average as a uniform blade width.
-  const closedBladeWidth = (pyramidTopRadius + pyramidBottomRadius) * 0.5;
-  // Thin panel — visible from the outside, doesn't poke through the
-  // opposite face when the blade settles flush.
-  const closedBladeThickness = Math.max(0.6, bladeThickness * 0.25);
 
   for (let i = 0; i < bladeCount; i++) {
-    const openAngle = angleOffset + (i / bladeCount) * Math.PI * 2;
-    const openRadial = new THREE.Vector3(Math.cos(openAngle), 0, Math.sin(openAngle));
-    const openTangent = new THREE.Vector3(-Math.sin(openAngle), 0, Math.cos(openAngle));
-    const openBladeDir = new THREE.Vector3(
-      openRadial.x * horizontalSpan,
-      -verticalDrop,
-      openRadial.z * horizontalSpan,
+    const face = getExtractorFaceFrame(buildingWidth, buildingDepth, pyramidHeight, i);
+    const openRadial = face.radial;
+    const openTangent = face.tangent.clone();
+    const openSlopeHint = new THREE.Vector3(
+      -openRadial.x * horizontalSpan,
+      verticalDrop,
+      -openRadial.z * horizontalSpan,
     ).normalize();
-    const openNormal = new THREE.Vector3().crossVectors(openTangent, openBladeDir).normalize();
-    const openCenterRadius = rootRadius + horizontalSpan * 0.5;
-    const openCenterX = openRadial.x * openCenterRadius;
-    const openCenterY = -verticalDrop * 0.5;
-    const openCenterZ = openRadial.z * openCenterRadius;
-
-    const blade = makeBox(
-      extractorBladeMat,
-      bladeAxisLength,
-      bladeThickness,
-      bladeWidth,
-      openCenterX,
-      openCenterY,
-      openCenterZ,
-    );
-    applyBasis(blade, openBladeDir, openNormal, openTangent);
-
-    // Cache the OPEN transform straight off the live mesh — applyBasis
-    // has just written it, so a copy is the cheapest way to snapshot
-    // both rotation and the offset center we picked above.
-    const openPos = blade.position.clone();
-    const openQuat = blade.quaternion.clone();
-    const openScale = blade.scale.clone();
-
-    // Closed pose: the blade lands on the face midway between open
-    // corners (offset by half a hex sector). The face has top edge,
-    // bottom edge, and slants between them; the blade center sits on
-    // the face's surface midpoint.
-    const closedAngle = openAngle + Math.PI / bladeCount; // = openAngle + π/6
-    const cosC = Math.cos(closedAngle);
-    const sinC = Math.sin(closedAngle);
-
-    // Face edge midpoints in pyramid (building) local coords.
-    const faceTopMidX = inscribedTopRadius * cosC;
-    const faceTopMidY = pyramidHeight;
-    const faceTopMidZ = inscribedTopRadius * sinC;
-    const faceBottomMidX = inscribedBottomRadius * cosC;
-    const faceBottomMidY = 0;
-    const faceBottomMidZ = inscribedBottomRadius * sinC;
-
-    // Face normal — perpendicular to the face surface, pointing outward
-    // (radial out + slightly up because the face slopes outward as it
-    // descends). Derived from the trapezoid corner geometry: see
-    // computeHexFaceNormal proof in the project notes.
-    const closedNormalDir = new THREE.Vector3(
-      cosC * pyramidHeight,
-      inscribedBottomRadius - inscribedTopRadius,
-      sinC * pyramidHeight,
-    ).normalize();
-
-    // Stand the closed blade slightly proud of the face so it reads as
-    // a panel laid on top, not embedded in the pyramid mesh.
-    const standoffX = closedNormalDir.x * CLOSED_BLADE_STANDOFF;
-    const standoffY = closedNormalDir.y * CLOSED_BLADE_STANDOFF;
-    const standoffZ = closedNormalDir.z * CLOSED_BLADE_STANDOFF;
-
-    // Rotor sits at (0, y, 0) in building frame. The blade's local
-    // coords are relative to the rotor, so subtract y from Y.
-    const closedCenter = new THREE.Vector3(
-      (faceTopMidX + faceBottomMidX) * 0.5 + standoffX,
-      (faceTopMidY + faceBottomMidY) * 0.5 - y + standoffY,
-      (faceTopMidZ + faceBottomMidZ) * 0.5 + standoffZ,
-    );
-
-    // Closed-pose orthonormal basis for applyBasis-style construction:
-    //   X (length) → down-slope along the face (top→bottom)
-    //   Y (thickness) → face outward normal
-    //   Z (width) → horizontal tangent across the face
-    const closedBladeDir = new THREE.Vector3(
-      faceBottomMidX - faceTopMidX,
-      faceBottomMidY - faceTopMidY,
-      faceBottomMidZ - faceTopMidZ,
-    ).normalize();
-    const closedTangentDir = new THREE.Vector3()
-      .crossVectors(closedNormalDir, closedBladeDir)
+    const openNormal = new THREE.Vector3()
+      .crossVectors(openSlopeHint, openTangent)
       .normalize();
-    const closedBasis = new THREE.Matrix4().makeBasis(
-      closedBladeDir, closedNormalDir, closedTangentDir,
+    const openSlope = new THREE.Vector3()
+      .crossVectors(openTangent, openNormal)
+      .normalize();
+    const openCenterRadius = rootRadius + horizontalSpan * 0.5;
+    const openPos = new THREE.Vector3(
+      openRadial.x * openCenterRadius,
+      -verticalDrop * 0.5,
+      openRadial.z * openCenterRadius,
     );
-    const closedQuat = new THREE.Quaternion().setFromRotationMatrix(closedBasis);
+    const openQuat = quatFromBasis(openTangent, openNormal, openSlope);
 
-    // Scale the box geometry to the trapezoidal face dimensions. The
-    // mesh's local-X scale becomes the slant length (top→bottom along
-    // the face), local-Y becomes a thin panel, local-Z becomes the
-    // face's average horizontal width. Six panels read as a uniform
-    // wrap around the base.
-    const closedScale = new THREE.Vector3(
-      faceSlantLength,
-      closedBladeThickness,
-      closedBladeWidth,
+    const closedCenter = new THREE.Vector3(
+      face.center.x + face.normal.x * (CLOSED_BLADE_STANDOFF + panelThickness * 0.5),
+      face.center.y - y + face.normal.y * (CLOSED_BLADE_STANDOFF + panelThickness * 0.5),
+      face.center.z + face.normal.z * (CLOSED_BLADE_STANDOFF + panelThickness * 0.5),
     );
+    const closedQuat = quatFromBasis(face.tangent, face.normal, face.slope);
+
+    const blade = new THREE.Mesh(panelGeometries[i], extractorBladeMat);
+    blade.position.copy(openPos);
+    blade.quaternion.copy(openQuat);
 
     const anim: ExtractorBladeAnim = {
       openPos,
       closedPos: closedCenter,
       openQuat,
       closedQuat,
-      openScale,
-      closedScale,
+      openScale: new THREE.Vector3(1, 1, 1),
+      closedScale: new THREE.Vector3(1, 1, 1),
     };
     blade.userData.extractorBlade = anim;
 
@@ -295,6 +207,171 @@ function makeExtractorRotor(
   return rotor;
 }
 
+function getExtractorSidePanelGeometries(
+  width: number,
+  depth: number,
+  pyramidHeight: number,
+  panelThickness: number,
+): THREE.BufferGeometry[] {
+  const key = [
+    width.toFixed(3),
+    depth.toFixed(3),
+    pyramidHeight.toFixed(3),
+    panelThickness.toFixed(3),
+  ].join(':');
+  const cached = extractorSidePanelGeomCache.get(key);
+  if (cached) return cached;
+
+  const geometries: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < EXTRACTOR_FACE_COUNT; i++) {
+    const face = getExtractorFaceFrame(width, depth, pyramidHeight, i);
+    geometries.push(createExtractorSidePanelGeometry(face, panelThickness));
+  }
+  extractorSidePanelGeomCache.set(key, geometries);
+  return geometries;
+}
+
+function getExtractorFaceFrame(
+  width: number,
+  depth: number,
+  pyramidHeight: number,
+  faceIndex: number,
+): ExtractorFaceFrame {
+  const bottom0 = getHexFrustumCorner(width, depth, PYRAMID_BOTTOM_RADIUS_FRACTION, 0, faceIndex);
+  const bottom1 = getHexFrustumCorner(width, depth, PYRAMID_BOTTOM_RADIUS_FRACTION, 0, faceIndex + 1);
+  const top0 = getHexFrustumCorner(width, depth, PYRAMID_TOP_RADIUS_FRACTION, pyramidHeight, faceIndex);
+  const top1 = getHexFrustumCorner(width, depth, PYRAMID_TOP_RADIUS_FRACTION, pyramidHeight, faceIndex + 1);
+  const center = new THREE.Vector3()
+    .add(bottom0)
+    .add(bottom1)
+    .add(top0)
+    .add(top1)
+    .multiplyScalar(0.25);
+  const bottomMid = new THREE.Vector3().addVectors(bottom0, bottom1).multiplyScalar(0.5);
+  const topMid = new THREE.Vector3().addVectors(top0, top1).multiplyScalar(0.5);
+  const edge = new THREE.Vector3().subVectors(bottom1, bottom0);
+  const upSlope = new THREE.Vector3().subVectors(topMid, bottomMid);
+  const normal = new THREE.Vector3().crossVectors(upSlope, edge).normalize();
+  if (normal.x * center.x + normal.z * center.z < 0) normal.negate();
+
+  const tangent = edge.normalize();
+  const slope = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+  if (slope.dot(upSlope) < 0) {
+    tangent.negate();
+    slope.crossVectors(tangent, normal).normalize();
+  }
+
+  const radial = new THREE.Vector3(center.x, 0, center.z);
+  if (radial.lengthSq() < 1e-6) {
+    radial.set(normal.x, 0, normal.z);
+  }
+  radial.normalize();
+
+  return {
+    bottom0,
+    bottom1,
+    top0,
+    top1,
+    center,
+    normal,
+    tangent,
+    slope,
+    radial,
+  };
+}
+
+function getHexFrustumCorner(
+  width: number,
+  depth: number,
+  radiusFraction: number,
+  y: number,
+  cornerIndex: number,
+): THREE.Vector3 {
+  const angle = HEX_CORNER_START_ANGLE
+    + ((cornerIndex % EXTRACTOR_FACE_COUNT) / EXTRACTOR_FACE_COUNT) * Math.PI * 2;
+  return new THREE.Vector3(
+    Math.cos(angle) * radiusFraction * width,
+    y,
+    Math.sin(angle) * radiusFraction * depth,
+  );
+}
+
+function createExtractorSidePanelGeometry(
+  face: ExtractorFaceFrame,
+  panelThickness: number,
+): THREE.BufferGeometry {
+  const corners = [face.bottom0, face.bottom1, face.top1, face.top0];
+  const localCorners = corners.map((corner) => {
+    const delta = new THREE.Vector3().subVectors(corner, face.center);
+    return {
+      x: delta.dot(face.tangent),
+      z: delta.dot(face.slope),
+    };
+  });
+  const halfThickness = panelThickness * 0.5;
+  const positions: number[] = [];
+  for (const corner of localCorners) {
+    positions.push(corner.x, halfThickness, corner.z);
+  }
+  for (const corner of localCorners) {
+    positions.push(corner.x, -halfThickness, corner.z);
+  }
+
+  const sourceOrder = [0, 1, 2, 3];
+  const outerOrder = polygonSignedArea(localCorners) > 0
+    ? [...sourceOrder].reverse()
+    : sourceOrder;
+  const innerOrder = [...outerOrder].reverse().map((idx) => idx + 4);
+  const indices: number[] = [];
+  addQuadIndices(indices, outerOrder[0], outerOrder[1], outerOrder[2], outerOrder[3]);
+  addQuadIndices(indices, innerOrder[0], innerOrder[1], innerOrder[2], innerOrder[3]);
+  for (let i = 0; i < sourceOrder.length; i++) {
+    const a = sourceOrder[i];
+    const b = sourceOrder[(i + 1) % sourceOrder.length];
+    addQuadIndices(indices, a, b, b + 4, a + 4);
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  geom.computeBoundingSphere();
+  return geom;
+}
+
+function polygonSignedArea(points: ReadonlyArray<{ x: number; z: number }>): number {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area += a.x * b.z - b.x * a.z;
+  }
+  return area * 0.5;
+}
+
+function addQuadIndices(
+  indices: number[],
+  a: number,
+  b: number,
+  c: number,
+  d: number,
+): void {
+  indices.push(a, b, c, a, c, d);
+}
+
+function quatFromBasis(
+  xAxis: THREE.Vector3,
+  yAxis: THREE.Vector3,
+  zAxis: THREE.Vector3,
+): THREE.Quaternion {
+  const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+  return new THREE.Quaternion().setFromRotationMatrix(basis);
+}
+
 export function disposeMetalExtractorMeshGeoms(): void {
   extractorPyramidGeom.dispose();
+  for (const geometries of extractorSidePanelGeomCache.values()) {
+    for (const geom of geometries) geom.dispose();
+  }
+  extractorSidePanelGeomCache.clear();
 }

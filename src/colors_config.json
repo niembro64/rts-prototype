@@ -209,7 +209,7 @@
         "roughness": 0.04
       },
       "extractorBlade": {
-        "colorHex": "#d09060",
+        "colorHex": "#c8d4dd",
         "metalness": 0.78,
         "roughness": 0.18,
         "envMapIntensity": 1

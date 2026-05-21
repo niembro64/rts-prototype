@@ -83,6 +83,10 @@ export class BuildingAnimationController3D {
    *  spinning open, 1 = folded flat against the pyramid). Smoothed
    *  toward the server's open flag with BUILDING_FORTIFY_ANIM_ALPHA. */
   private extractorCloseAmounts = new Map<EntityId, number>();
+  /** Last applied extractor rotor yaw. Kept monotonic in the negative
+   *  spin direction so open/close transitions can pause at an aligned
+   *  pose, but never visibly reverse. */
+  private extractorRotorYaws = new Map<EntityId, number>();
   /** Per-entity "closed amount" for the wind turbine's stowed pose
    *  (nacelle tilts skyward + blades fold against the pole). */
   private windCloseAmounts = new Map<EntityId, number>();
@@ -117,6 +121,7 @@ export class BuildingAnimationController3D {
     this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
     this.extractorRotorPhases.delete(id);
     this.extractorCloseAmounts.delete(id);
+    this.extractorRotorYaws.delete(id);
     this.windCloseAmounts.delete(id);
     this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
   }
@@ -189,6 +194,7 @@ export class BuildingAnimationController3D {
       const twoPi = Math.PI * 2;
       const phases = this.extractorRotorPhases;
       const closeAmounts = this.extractorCloseAmounts;
+      const rotorYaws = this.extractorRotorYaws;
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
       for (const id of this.extractorBuildingIds) {
         const mesh = buildingMeshes.get(id);
@@ -207,15 +213,31 @@ export class BuildingAnimationController3D {
         const normalizedRate = rate * invBase;
         let phase = phases.get(id);
         if (phase === undefined) phase = id * 0.173; // first-frame jitter seed
-        phase = (phase + dtRate * normalizedRate * (1 - close)) % twoPi;
-        phases.set(id, phase);
+        phase += dtRate * normalizedRate * (1 - close);
 
         const rig = mesh.extractorRig;
         if (rig && mesh.buildingCachedDetailsReady === true) {
-          // Spin only applies while the blades are mostly open; as they
-          // fold the rotor settles to its rest yaw and the per-blade
-          // closed-pose quaternion takes over.
-          const yaw = -phase * (1 - close);
+          // The visual spin direction is negative yaw. When closing,
+          // settle onto the next full-turn alignment in that direction
+          // instead of the shortest path back to 0, which would reverse
+          // for half the phase range. Once fully closed, snap the stored
+          // phase to that aligned turn so opening resumes forward too.
+          const alignedPhase = getNextExtractorAlignedPhase(phase, twoPi);
+          const openYaw = -phase;
+          const closedYaw = -alignedPhase;
+          let yaw: number;
+          if (open) {
+            yaw = openYaw;
+          } else {
+            yaw = close >= 0.999
+              ? closedYaw
+              : openYaw + (closedYaw - openYaw) * close;
+            if (close >= 0.999) phase = alignedPhase;
+          }
+          const previousYaw = rotorYaws.get(id);
+          if (previousYaw !== undefined && yaw > previousYaw) yaw = previousYaw;
+          rotorYaws.set(id, yaw);
+          phases.set(id, phase);
           const rotors = rig.rotors;
           for (let r = 0; r < rotors.length; r++) {
             const rotor = rotors[r];
@@ -223,9 +245,8 @@ export class BuildingAnimationController3D {
             // Slerp each blade between its baked open and closed
             // transforms. The closed pose lays the blade flat against
             // one face of the hexagonal pyramid; six blades cover the
-            // six faces. userData carries the precomputed endpoints —
-            // including a closed scale that reshapes the blade from a
-            // long paddle into a face-fitting panel.
+            // six faces. userData carries the precomputed endpoints for
+            // the exact extruded face-panel mesh.
             for (const child of rotor.children) {
               const anim = child.userData.extractorBlade as ExtractorBladeAnim | undefined;
               if (!anim) continue;
@@ -277,6 +298,7 @@ export class BuildingAnimationController3D {
     this.factoryBuildingIdSet.clear();
     this.extractorRotorPhases.clear();
     this.extractorCloseAmounts.clear();
+    this.extractorRotorYaws.clear();
     this.windCloseAmounts.clear();
     this.windFanYaw = null;
     this.windVisualSpeed = null;
@@ -437,4 +459,10 @@ export class BuildingAnimationController3D {
     rig.shower.scale.set(rig.showerRadius * 2, h, rig.showerRadius * 2);
     rig.shower.position.y = rig.pylonBaseY + h / 2;
   }
+}
+
+function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {
+  if (!Number.isFinite(phase) || phase <= 0) return 0;
+  const alignedTurn = Math.ceil((phase - 1e-6) / twoPi);
+  return alignedTurn * twoPi;
 }

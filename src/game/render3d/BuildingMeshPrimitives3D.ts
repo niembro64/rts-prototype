@@ -35,6 +35,7 @@ export const windGlassMat = new THREE.MeshStandardMaterial({
 export const extractorBladeMat = new THREE.MeshStandardMaterial({
   ...SHINY_GRAY_METAL_MATERIAL,
   color: COLORS.buildings.materials.extractorBlade.colorHex,
+  side: THREE.DoubleSide,
 });
 export const invisibleMat = new THREE.MeshBasicMaterial({
   color: COLORS.buildings.materials.invisible.colorHex,
