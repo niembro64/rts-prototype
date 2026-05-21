@@ -325,25 +325,47 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   }
 }
 
-/** Stamp one armed entity into the combat-targeting slab. During
- *  AIM-08.5 the targeting pass calls this after JS disabled-weapon
- *  reset mutations, then the scheduled Rust batch decrements cooldowns
- *  and updates mount kinematics in-place. */
-export function stampCombatTargetingEntity(entity: Entity): void {
-  const sim = getSimWasm();
-  if (sim === undefined) return;
-  stampCombatTargetingEntityInto(sim.combatTargeting, entity);
+/** True for turrets the live world flags treat as disabled
+ *  (visualOnly, passive without mirrors, force without force fields).
+ *  Mirrors the Rust `combat_targeting_weapon_system_disabled` helper —
+ *  the slab side is reset by the scheduler, this is the JS-only
+ *  bookkeeping flag the writeback uses to clear non-slab Turret
+ *  fields (angular/pitch velocity + acceleration, burst.remaining,
+ *  forceField.transition/range). */
+export function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
+  return (
+    weapon.config.visualOnly === true ||
+    (weapon.config.passive === true && !world.mirrorsEnabled) ||
+    (weapon.config.shot?.type === 'force' && !world.forceFieldsEnabled)
+  );
+}
+
+function resetDisabledTurretJsOnlyFields(turret: Turret): void {
+  turret.angularVelocity = 0;
+  turret.angularAcceleration = 0;
+  turret.pitchVelocity = 0;
+  turret.pitchAcceleration = 0;
+  if (turret.burst) {
+    turret.burst.remaining = 0;
+  }
+  if (turret.forceField) {
+    turret.forceField.transition = 0;
+    turret.forceField.range = 0;
+  }
 }
 
 /** Copy the Rust combat-targeting slab's authoritative FSM tuple and
  *  optional mount-kinematics tuple back onto the JS Turret objects
  *  that rendering, firing, and snapshot encode still consume during
  *  AIM-08.5/.6 migration. Target writes go through setWeaponTarget so
- *  the beam inverse index remains coherent. */
-function writeBackCombatTargetingEntityFromSlab(
+ *  the beam inverse index remains coherent. Disabled turrets also
+ *  have their JS-only fields cleared here — the slab side was zeroed
+ *  by the scheduler's reset_disabled_weapons pass, this finishes the
+ *  job for fields that never crossed the boundary. */
+export function writeBackCombatTargetingEntity(
   entity: Entity,
   kinematicsTick: number | null,
-  includeState: boolean,
+  world: WorldState,
 ): void {
   const combat = entity.combat;
   if (!combat) return;
@@ -367,14 +389,12 @@ function writeBackCombatTargetingEntityFromSlab(
     if (turret.burst) {
       turret.burst.cooldown = views.burstCooldown[idx];
     }
-    if (includeState) {
-      const targetId = views.targetId[idx];
-      setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
-      turret.state = decodeTurretState(views.state[idx]);
-      turret.aimErrorYaw = views.aimErrorYaw[idx];
-      turret.aimErrorPitch = views.aimErrorPitch[idx];
-      turret.losBlockedTicks = views.losBlockedTicks[idx];
-    }
+    const targetId = views.targetId[idx];
+    setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);
+    turret.state = decodeTurretState(views.state[idx]);
+    turret.aimErrorYaw = views.aimErrorYaw[idx];
+    turret.aimErrorPitch = views.aimErrorPitch[idx];
+    turret.losBlockedTicks = views.losBlockedTicks[idx];
     if (kinematicsTick !== null && views.worldPosTick[idx] === kinematicsTick) {
       turret.worldPos.x = views.mountX[idx];
       turret.worldPos.y = views.mountY[idx];
@@ -384,15 +404,10 @@ function writeBackCombatTargetingEntityFromSlab(
       turret.worldVelocity.z = views.mountVz[idx];
       turret.worldPosTick = views.worldPosTick[idx];
     }
+    if (weaponSystemDisabled(world, turret)) {
+      resetDisabledTurretJsOnlyFields(turret);
+    }
   }
-}
-
-export function writeBackCombatTargetingEntityKinematics(entity: Entity, kinematicsTick: number): void {
-  writeBackCombatTargetingEntityFromSlab(entity, kinematicsTick, false);
-}
-
-export function writeBackCombatTargetingEntity(entity: Entity, kinematicsTick: number | null): void {
-  writeBackCombatTargetingEntityFromSlab(entity, kinematicsTick, true);
 }
 
 /** Rebuild every targetable unit/building row before the FSM runs.

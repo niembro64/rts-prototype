@@ -7981,6 +7981,46 @@ fn combat_targeting_decrement_cooldown(value: f64, dt_ms: f64) -> f64 {
     }
 }
 
+/// AIM-08.5 — Rust port of `resetDisabledWeapon`'s slab side. For every
+/// turret on `entity_slot` that the live world flags currently mark as
+/// disabled (visualOnly, passive without mirrors, force without force
+/// fields), zero the slab state the writeback layer will copy back into
+/// the JS Turret (target/state/cooldowns/aim error/LOS bookkeeping).
+/// JS-only Turret fields outside the slab (angular/pitch velocity and
+/// acceleration, burst.remaining, forceField.transition/range) are
+/// cleared by the writeback pass — see `targetingSystem.ts`.
+#[inline]
+fn combat_targeting_reset_disabled_weapons_for_entity(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) {
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if !combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            mirrors_enabled,
+            force_fields_enabled,
+        ) {
+            continue;
+        }
+        combat_targeting_set_target_state(pool, idx, -1, CT_TURRET_STATE_IDLE);
+        pool.turret_cooldown[idx] = 0.0;
+        pool.turret_burst_cooldown[idx] = 0.0;
+        pool.turret_aim_error_yaw[idx] = 0.0;
+        pool.turret_aim_error_pitch[idx] = 0.0;
+        pool.turret_los_blocked_ticks[idx] = 0;
+    }
+}
+
 #[inline]
 fn combat_targeting_decrement_entity_cooldowns(
     pool: &mut CombatTargetingPool,
@@ -10024,6 +10064,16 @@ pub fn combat_targeting_schedule_and_tick_batch(
 
         if !entity_ready {
             continue;
+        }
+
+        {
+            let pool = combat_targeting_pool();
+            combat_targeting_reset_disabled_weapons_for_entity(
+                pool,
+                entity_slot,
+                mirrors_enabled,
+                force_fields_enabled,
+            );
         }
 
         if !fire_enabled {

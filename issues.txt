@@ -139,13 +139,20 @@ AIM-08.5 — Port the targeting FSM
   The scheduled Rust batch also resolves source entity IDs to targeting
   slab slots internally, so targetingSystem.ts no longer calls
   spatialGrid.getSlot while walking armed entities.
-  Remaining work for AIM-08.5:
-    - Collapse the remaining TypeScript armed-entity traversal to a
-      pure slab-stamping / JS-only mutation pass. Auto-mode runs no
-      longer return to TypeScript between units, and hold-fire /
-      priority-command / probe dispatch now happens in Rust, but
-      TypeScript still owns disabled-weapon reset bookkeeping and JS
-      Turret writeback.
+  Disabled-weapon slab reset now runs in Rust too:
+  combat_targeting_reset_disabled_weapons_for_entity zeros target /
+  state / cooldown / aim error / LOS bookkeeping for every disabled
+  turret on entity_ready entities, inside the scheduler. The
+  TypeScript armed-entity traversal has been collapsed to a pure
+  slab-stamping / JS-only mutation pass — clearCombatActivityFlags,
+  fire-disabled priority-command cleanup, and queueTargetingUnit —
+  with no per-turret decision making. JS Turret writeback then
+  finishes the disabled-weapon reset for fields that never cross the
+  WASM boundary (angular/pitch velocity + acceleration, burst.remaining,
+  forceField.transition/range) via the shared weaponSystemDisabled
+  helper in targetingInputStamping.ts. The legacy resetDisabledWeapon /
+  weaponSystemDisabled helpers and the per-entity stampCombatTargetingEntity
+  call were deleted under Delete The Old Path.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

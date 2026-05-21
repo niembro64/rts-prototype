@@ -1,11 +1,20 @@
-// Auto-targeting system - each weapon independently finds targets
+// Auto-targeting system — every armed entity flows through Rust.
+//
+// The TypeScript pass here is now a slab-stamping + JS-only mutation
+// pass: it clears combat activity flags, optionally clears stale
+// priority commands on fire-disabled units, and queues each armed
+// entity for the Rust scheduler. The actual mode decision (priority
+// point / priority target / auto / clear locks / probe-skip) lives
+// inside combat_targeting_schedule_and_tick_batch. Disabled-weapon
+// slab state is reset by that kernel too; this file's writeback
+// finishes the job for the JS-only Turret fields that never cross
+// the WASM boundary.
 
 import type { WorldState } from '../WorldState';
-import type { Entity, Turret } from '../types';
+import type { Entity } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { GRAVITY } from '../../../config';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
-import { setWeaponTarget } from './targetIndex';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   COMBAT_LOS_ENTITY_QUERY_WIDTH,
@@ -13,10 +22,7 @@ import {
   SIGHT_DROP_GRACE_TICKS,
 } from './lineOfSight';
 import { getActiveForceFields } from './forceFieldTurret';
-import {
-  stampCombatTargetingEntity,
-  writeBackCombatTargetingEntity,
-} from './targetingInputStamping';
+import { writeBackCombatTargetingEntity } from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
 const TARGETING_BATCH_MODE_AUTO = 0;
@@ -80,42 +86,14 @@ function getTargetingKernel() {
   return sim.combatTargeting;
 }
 
-function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
-  return (
-    weapon.config.visualOnly === true ||
-    (weapon.config.passive && !world.mirrorsEnabled) ||
-    (weapon.config.shot?.type === 'force' && !world.forceFieldsEnabled)
-  );
-}
-
-function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, weaponIndex: number): boolean {
-  if (!weaponSystemDisabled(world, weapon)) return false;
-  setWeaponTarget(weapon, unit, weaponIndex, null);
-  weapon.state = 'idle';
-  weapon.cooldown = 0;
-  weapon.angularVelocity = 0;
-  weapon.angularAcceleration = 0;
-  weapon.pitchVelocity = 0;
-  weapon.pitchAcceleration = 0;
-  if (weapon.burst) {
-    weapon.burst.remaining = 0;
-    weapon.burst.cooldown = 0;
-  }
-  if (weapon.forceField) {
-    weapon.forceField.transition = 0;
-    weapon.forceField.range = 0;
-  }
-  return true;
-}
-
 type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 
 function queueTargetingUnit(
   unit: Entity,
   maxTurrets: number,
-  priorityTargetId: number | null = null,
-  priorityPoint: Vec3 | null = null,
-  scheduledProbeTick: number = -1,
+  priorityTargetId: number | null,
+  priorityPoint: Vec3 | null,
+  scheduledProbeTick: number,
 ): void {
   const batchIdx = _targetingBatchUnits.length;
   ensureTargetingBatchCapacity(batchIdx + 1, maxTurrets);
@@ -174,12 +152,12 @@ function flushTargetingBatch(
     const unit = _targetingBatchUnits[i];
     if (mode === TARGETING_BATCH_MODE_SKIP) {
       if (_targetingBatchHasCooldown[i] !== 0) {
-        writeBackCombatTargetingEntity(unit, null);
+        writeBackCombatTargetingEntity(unit, null, world);
       }
       continue;
     }
     const combat = unit.combat!;
-    writeBackCombatTargetingEntity(unit, tick);
+    writeBackCombatTargetingEntity(unit, tick, world);
     if (updateCombatActivityFlags(combat)) {
       combat.nextCombatProbeTick = -1;
       _activeCombatUnits.push(unit);
@@ -195,35 +173,18 @@ function flushTargetingBatch(
   _targetingBatchUnits.length = 0;
 }
 
-// Update auto-targeting and firing state for all units in a single pass.
-// Each weapon independently finds its own target using its own ranges.
+// Update auto-targeting and firing state for all armed entities.
 //
-// Two modes per unit:
-//
-// 1) ATTACK MODE (priorityTargetId set by attack command):
-//    Weapons try the priority target exclusively. Weapons only lock
-//    while their actual LOS and force-field sight gates are clear.
-//    Uses the hard max fire envelope, not the broader tracking/search
-//    range.
-//    The unit is already moving toward the target via the attack action handler.
-//
-// 2) AUTO MODE (no priorityTargetId):
-//    Three-state FSM with hysteresis:
-//      idle: no target
-//      tracking: turret has a target and is aimed at it
-//        - acquire: nearest enemy enters tracking.acquire range
-//        - release: tracked target exits tracking.release range (or dies) → idle
-//        - promote: tracked target enters hard max fire acquire range → engaged
-//      engaged: weapon is actively firing
-//        - release: target exits hard max fire release range → tracking
-//        - escape: target exits tracking.release → idle
-//
-//    Hysteresis prevents state flickering at max fire and optional min
-//    preference boundaries. engageRangeMin ranks preferred targets; it
-//    does not forbid close fallback targets.
+// TypeScript here only stamps inputs and queues each armed entity;
+// the Rust scheduler picks the per-entity mode (priority point,
+// priority target, auto, clear-locks for fire-disabled, or
+// probe-skip), runs the appropriate FSM kernel, decrements cooldowns,
+// and writes the result back into the combat-targeting slab. JS
+// Turret writeback then copies that slab back into the entity for
+// rendering, firing, and snapshot encode to consume.
 //
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans.
-// PERFORMANCE: Queued targeting modes share one world-order Rust FSM batch.
+// PERFORMANCE: One Rust call per tick handles every armed entity.
 export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
   _targetingBatchUnits.length = 0;
@@ -245,86 +206,41 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     );
   const forceMaterialSightObstructionActiveFlag =
     forceMaterialSightObstructionActive ? 1 : 0;
-  const flushQueuedTargeting = (): void => {
-    flushTargetingBatch(
-      world,
-      targeting,
-      tick,
-      dtMs,
-      maxTurrets,
-      mirrorsEnabledFlag,
-      forceFieldsEnabledFlag,
-      forceMaterialSightObstructionActiveFlag,
-    );
-  };
 
   for (const unit of armedEntities) {
-    if (!unit.ownership || !unit.combat) continue;
+    if (!unit.ownership) continue;
     const combat = unit.combat;
+    if (!combat) continue;
     clearCombatActivityFlags(combat);
-    // Host-aliveness check — units track hp on entity.unit, buildings on
-    // entity.building. Combat is host-agnostic; the host components own
-    // their own hp.
-    const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
-    if (hostHp <= 0) {
-      continue;
-    }
-    // Inert shells skip targeting until construction completes.
-    if (unit.buildable && !unit.buildable.isComplete) {
-      continue;
-    }
+    // Stale priority commands left over from an attack issued while
+    // hold-fire is on: drop them now so the next fire-enabled tick
+    // starts clean. The Rust scheduler would ignore them while
+    // fire_enabled=false, but downstream JS systems (turretSystem,
+    // projectileSystem, laser sounds) still read priorityTargetPoint
+    // unconditionally.
     if (combat.fireEnabled === false) {
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
-      stampCombatTargetingEntity(unit);
-      queueTargetingUnit(
-        unit,
-        maxTurrets,
-        null,
-        null,
-        -1,
-      );
-      continue;
     }
-    const priorityId = combat.priorityTargetId;
-    const priorityPoint = combat.priorityTargetPoint;
-    const scheduledProbeTick = combat.nextCombatProbeTick;
-
-    const weapons = combat.turrets;
-
-    let hasEnabledWeapon = false;
-    for (let wi = 0; wi < weapons.length; wi++) {
-      const weapon = weapons[wi];
-      const disabled = resetDisabledWeapon(world, unit, weapon, wi);
-      if (disabled) continue;
-      hasEnabledWeapon = true;
-    }
-    if (!hasEnabledWeapon) {
-      stampCombatTargetingEntity(unit);
-      queueTargetingUnit(
-        unit,
-        maxTurrets,
-        priorityId,
-        priorityPoint,
-        scheduledProbeTick,
-      );
-      continue;
-    }
-
-    // The Rust scheduled batch chooses priority-point, priority-target,
-    // hold-fire clear, skip, or auto mode from slab-backed state so TS
-    // no longer resolves command targets inside this traversal.
-    stampCombatTargetingEntity(unit);
     queueTargetingUnit(
       unit,
       maxTurrets,
-      priorityId,
-      priorityPoint,
-      scheduledProbeTick,
+      combat.priorityTargetId,
+      combat.priorityTargetPoint,
+      combat.nextCombatProbeTick,
     );
   }
 
-  flushQueuedTargeting();
+  flushTargetingBatch(
+    world,
+    targeting,
+    tick,
+    dtMs,
+    maxTurrets,
+    mirrorsEnabledFlag,
+    forceFieldsEnabledFlag,
+    forceMaterialSightObstructionActiveFlag,
+  );
   return _activeCombatUnits;
 }
