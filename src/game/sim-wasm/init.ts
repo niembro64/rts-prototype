@@ -1034,6 +1034,7 @@ export interface CombatTargetingApi {
     groundAimFraction: number,
     underOnly: number,
     lockOnTurret: number,
+    turretBlueprintCode: number,
     lockonRelationshipMask: number,
     lockonEntityFamilyMask: number,
     lockonBuildingMask: number,

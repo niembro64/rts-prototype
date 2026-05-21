@@ -60,6 +60,7 @@ import {
 } from '../../sim-wasm/init';
 import {
   buildingTypeToCode,
+  turretIdToCode,
   unitTypeToCode,
 } from '../../../types/network';
 import {
@@ -364,6 +365,7 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.config.groundAimFraction ?? 0,
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
       t.config.aimStyle.lockOnType === 'lockOnToTurret' ? 1 : 0,
+      turretIdToCode(t.config.id),
       t.config.lockOnRelationshipExcludeMask,
       t.config.lockOnEntityFamilyExcludeMask,
       t.config.lockOnBuildingExcludeMask,

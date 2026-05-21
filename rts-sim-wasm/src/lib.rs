@@ -6329,6 +6329,7 @@ struct CombatTargetingPool {
     turret_ground_aim_fraction: Vec<f64>,
     turret_under_only: Vec<u8>,
     turret_lock_on_turret: Vec<u8>,
+    turret_blueprint_code: Vec<u8>,
     turret_aim_error_yaw: Vec<f32>,
     turret_aim_error_pitch: Vec<f32>,
     turret_los_blocked_ticks: Vec<u16>,
@@ -6431,6 +6432,7 @@ impl CombatTargetingPool {
             turret_ground_aim_fraction: Vec::new(),
             turret_under_only: Vec::new(),
             turret_lock_on_turret: Vec::new(),
+            turret_blueprint_code: Vec::new(),
             turret_aim_error_yaw: Vec::new(),
             turret_aim_error_pitch: Vec::new(),
             turret_los_blocked_ticks: Vec::new(),
@@ -6479,7 +6481,8 @@ impl CombatTargetingPool {
             self.entity_aabb_half_z.resize(entity_needed, 0.0);
             self.entity_hp.resize(entity_needed, 0.0);
             self.entity_flags.resize(entity_needed, 0);
-            self.entity_family.resize(entity_needed, CT_ENTITY_FAMILY_NONE);
+            self.entity_family
+                .resize(entity_needed, CT_ENTITY_FAMILY_NONE);
             self.entity_blueprint_code
                 .resize(entity_needed, CT_BLUEPRINT_CODE_NONE);
             self.entity_detector_radius.resize(entity_needed, 0.0);
@@ -6526,6 +6529,8 @@ impl CombatTargetingPool {
             self.turret_ground_aim_fraction.resize(turret_needed, 0.0);
             self.turret_under_only.resize(turret_needed, 0);
             self.turret_lock_on_turret.resize(turret_needed, 0);
+            self.turret_blueprint_code
+                .resize(turret_needed, CT_BLUEPRINT_CODE_NONE);
             self.turret_aim_error_yaw.resize(turret_needed, 0.0);
             self.turret_aim_error_pitch.resize(turret_needed, 0.0);
             self.turret_los_blocked_ticks.resize(turret_needed, 0);
@@ -6867,6 +6872,7 @@ pub fn combat_targeting_set_turret(
     ground_aim_fraction: f64,
     under_only: u8,
     lock_on_turret: u8,
+    turret_blueprint_code: u8,
     lockon_relationship_mask: u8,
     lockon_entity_family_mask: u8,
     lockon_building_mask: u32,
@@ -6916,6 +6922,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_ground_aim_fraction[global_idx] = ground_aim_fraction;
     pool.turret_under_only[global_idx] = under_only;
     pool.turret_lock_on_turret[global_idx] = lock_on_turret;
+    pool.turret_blueprint_code[global_idx] = turret_blueprint_code;
     pool.turret_lockon_relationship_mask[global_idx] = lockon_relationship_mask;
     pool.turret_lockon_entity_family_mask[global_idx] = lockon_entity_family_mask;
     pool.turret_lockon_building_mask[global_idx] = lockon_building_mask;
@@ -7613,6 +7620,8 @@ const CT_TARGETING_TICK_MODE_PRIORITY_POINT: u8 = 1;
 const CT_TARGETING_TICK_MODE_PRIORITY_TARGET: u8 = 2;
 const CT_TARGETING_TICK_MODE_CLEAR_LOCKS: u8 = 3;
 const CT_TARGETING_TICK_MODE_SKIP: u8 = 255;
+const CT_TARGETING_CANDIDATE_REL_FRIENDLY: u8 = 1 << 0;
+const CT_TARGETING_CANDIDATE_REL_ENEMY: u8 = 1 << 1;
 
 #[inline]
 fn combat_targeting_live_turret_idx(
@@ -7726,6 +7735,178 @@ fn combat_targeting_player_observes_entity_id(
     }
 }
 
+#[inline]
+fn combat_targeting_level1_mask_excludes(mask: u32, code: u8) -> bool {
+    code != CT_BLUEPRINT_CODE_NONE && code < 32 && (mask & (1u32 << code)) != 0
+}
+
+#[inline]
+fn combat_targeting_turret_allowed_relationships(pool: &CombatTargetingPool, idx: usize) -> u8 {
+    let exclude = pool.turret_lockon_relationship_mask[idx];
+    let mut relationships = 0u8;
+    if (exclude & CT_LOCK_ON_REL_EXCLUDE_FRIENDLY) == 0 {
+        relationships |= CT_TARGETING_CANDIDATE_REL_FRIENDLY;
+    }
+    if (exclude & CT_LOCK_ON_REL_EXCLUDE_ENEMY) == 0 {
+        relationships |= CT_TARGETING_CANDIDATE_REL_ENEMY;
+    }
+    relationships
+}
+
+#[inline]
+fn combat_targeting_owner_relationship_allowed(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    source_entity_slot: usize,
+    target_entity_slot: usize,
+) -> bool {
+    if source_entity_slot >= pool.entity_owner_player_id.len()
+        || target_entity_slot >= pool.entity_owner_player_id.len()
+    {
+        return false;
+    }
+    let source_owner = pool.entity_owner_player_id[source_entity_slot];
+    let target_owner = pool.entity_owner_player_id[target_entity_slot];
+    let relationship = if source_owner == target_owner {
+        CT_TARGETING_CANDIDATE_REL_FRIENDLY
+    } else {
+        CT_TARGETING_CANDIDATE_REL_ENEMY
+    };
+    (combat_targeting_turret_allowed_relationships(pool, idx) & relationship) != 0
+}
+
+#[inline]
+fn combat_targeting_turret_lockon_allows_target_turret(
+    pool: &CombatTargetingPool,
+    source_turret_idx: usize,
+    target_turret_idx: usize,
+) -> bool {
+    if (pool.turret_lockon_entity_family_mask[source_turret_idx] & CT_LOCK_ON_FAM_EXCLUDE_TURRETS)
+        != 0
+    {
+        return false;
+    }
+    !combat_targeting_level1_mask_excludes(
+        pool.turret_lockon_turret_mask[source_turret_idx],
+        pool.turret_blueprint_code[target_turret_idx],
+    )
+}
+
+#[inline]
+fn combat_targeting_turret_lockon_allows_body_entity(
+    pool: &CombatTargetingPool,
+    source_turret_idx: usize,
+    target_entity_slot: usize,
+) -> bool {
+    match pool.entity_family[target_entity_slot] {
+        CT_ENTITY_FAMILY_BUILDING => {
+            (pool.turret_lockon_entity_family_mask[source_turret_idx]
+                & CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS)
+                == 0
+                && !combat_targeting_level1_mask_excludes(
+                    pool.turret_lockon_building_mask[source_turret_idx],
+                    pool.entity_blueprint_code[target_entity_slot],
+                )
+        }
+        CT_ENTITY_FAMILY_UNIT => {
+            (pool.turret_lockon_entity_family_mask[source_turret_idx]
+                & CT_LOCK_ON_FAM_EXCLUDE_UNITS)
+                == 0
+                && !combat_targeting_level1_mask_excludes(
+                    pool.turret_lockon_unit_mask[source_turret_idx],
+                    pool.entity_blueprint_code[target_entity_slot],
+                )
+        }
+        _ => true,
+    }
+}
+
+#[inline]
+fn combat_targeting_turret_may_lock_entity_slot(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_turret_idx: usize,
+    target_entity_slot: usize,
+) -> bool {
+    if source_entity_slot >= pool.entity_id.len()
+        || target_entity_slot >= pool.entity_id.len()
+        || source_turret_idx >= pool.turret_target_id.len()
+        || pool.entity_id[source_entity_slot] < 0
+        || pool.entity_id[target_entity_slot] < 0
+        || !combat_targeting_entity_alive(pool, target_entity_slot)
+    {
+        return false;
+    }
+    if !combat_targeting_owner_relationship_allowed(
+        pool,
+        source_turret_idx,
+        source_entity_slot,
+        target_entity_slot,
+    ) {
+        return false;
+    }
+
+    if pool.turret_lock_on_turret[source_turret_idx] != 0 {
+        let source_entity_id = pool.entity_id[source_entity_slot];
+        return combat_targeting_pick_target_aim_turret_idx(
+            pool,
+            target_entity_slot,
+            source_entity_id,
+            Some(source_turret_idx),
+        )
+        .is_some();
+    }
+
+    combat_targeting_turret_lockon_allows_body_entity(pool, source_turret_idx, target_entity_slot)
+}
+
+#[inline]
+fn combat_targeting_turret_may_lock_entity_id(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    source_turret_idx: usize,
+    target_entity_id: i32,
+) -> bool {
+    match pool.entity_slot_by_id.get(&target_entity_id) {
+        Some(&slot) => combat_targeting_turret_may_lock_entity_slot(
+            pool,
+            source_entity_slot,
+            source_turret_idx,
+            slot as usize,
+        ),
+        None => false,
+    }
+}
+
+fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
+    pool: &CombatTargetingPool,
+    source_entity_slot: u32,
+    target_entity_slot: usize,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) -> bool {
+    let source_idx = source_entity_slot as usize;
+    if source_idx >= pool.turret_count_per_entity.len() {
+        return false;
+    }
+    let count = (pool.turret_count_per_entity[source_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(source_entity_slot, turret_idx as u32);
+        if (pool.turret_config_flags[idx] & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
+            continue;
+        }
+        if combat_targeting_turret_may_lock_entity_slot(pool, source_idx, idx, target_entity_slot) {
+            return true;
+        }
+    }
+    false
+}
+
 /// AIM-08.5 — Rust port of `pickMirrorTargetTurret` /
 /// `scoreMirrorTargetTurret` from `mirrorTargetPriority.ts`. Walks the
 /// target entity's turrets in the slab and returns the maximum
@@ -7795,6 +7976,7 @@ fn combat_targeting_pick_target_aim_turret_idx(
     pool: &CombatTargetingPool,
     target_entity_slot: usize,
     source_entity_id: i32,
+    source_turret_idx: Option<usize>,
 ) -> Option<usize> {
     if target_entity_slot >= pool.turret_count_per_entity.len() {
         return None;
@@ -7808,6 +7990,11 @@ fn combat_targeting_pick_target_aim_turret_idx(
         let idx = combat_targeting_turret_global_idx(target_entity_slot as u32, ti as u32);
         if !combat_targeting_turret_is_pickable_aim_target(pool, idx) {
             continue;
+        }
+        if let Some(source_idx) = source_turret_idx {
+            if !combat_targeting_turret_lockon_allows_target_turret(pool, source_idx, idx) {
+                continue;
+            }
         }
         let dps = pool.turret_dps[idx];
         if best_any.map_or(true, |(_, best)| dps > best) {
@@ -7893,9 +8080,12 @@ fn combat_targeting_resolve_aim_point_from_slab(
 ) -> (f64, f64, f64) {
     let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
     if pool.turret_lock_on_turret[idx] != 0 {
-        if let Some(target_turret_idx) =
-            combat_targeting_pick_target_aim_turret_idx(pool, target_entity_slot, source_entity_id)
-        {
+        if let Some(target_turret_idx) = combat_targeting_pick_target_aim_turret_idx(
+            pool,
+            target_entity_slot,
+            source_entity_id,
+            Some(idx),
+        ) {
             return combat_targeting_resolve_turret_mount_from_slab(
                 pool,
                 target_entity_slot,
@@ -8889,6 +9079,17 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
             continue;
         }
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        let turret_target_valid = if target_valid != 0
+            && target_slot
+                .map(|slot| {
+                    combat_targeting_turret_may_lock_entity_slot(pool, entity_idx, idx, slot)
+                })
+                .unwrap_or(false)
+        {
+            1
+        } else {
+            0
+        };
         let dist_sq = target_slot
             .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
             .unwrap_or(f64::INFINITY);
@@ -8898,7 +9099,7 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
             target_id,
             target_radius,
             dist_sq,
-            target_valid,
+            turret_target_valid,
             mirror_valid[turret_idx],
             los_clear[turret_idx],
             ballistic_clear[turret_idx],
@@ -8987,7 +9188,10 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
         let target_slot = combat_targeting_entity_slot_for_id(pool, pool.turret_target_id[idx]);
         let target_valid = if target_observable[turret_idx] != 0 {
             target_slot
-                .map(|slot| combat_targeting_entity_alive(pool, slot) as u8)
+                .map(|slot| {
+                    (combat_targeting_turret_may_lock_entity_slot(pool, entity_idx, idx, slot))
+                        as u8
+                })
                 .unwrap_or(0)
         } else {
             0
@@ -9034,7 +9238,7 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
     }
 
     let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
-    let (target_valid, target_radius, target_vx, target_vy, target_vz) =
+    let (base_target_valid, target_radius, target_vx, target_vy, target_vz) =
         if let Some(slot) = target_slot {
             if combat_targeting_entity_alive(pool, slot) {
                 (
@@ -9083,6 +9287,18 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
         {
             continue;
         }
+
+        let target_valid = if base_target_valid != 0
+            && target_slot
+                .map(|slot| {
+                    combat_targeting_turret_may_lock_entity_slot(pool, entity_idx, idx, slot)
+                })
+                .unwrap_or(false)
+        {
+            1u8
+        } else {
+            0u8
+        };
 
         let mirror_valid = if (flags & CT_TURRET_CFG_PASSIVE) == 0 {
             1u8
@@ -9251,10 +9467,14 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         }
 
         let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
-        let observable = match target_slot {
-            Some(slot) => combat_targeting_player_observes_entity(pool, slot, source_player_id),
-            None => false,
-        };
+        let target_allowed = target_slot
+            .map(|slot| combat_targeting_turret_may_lock_entity_slot(pool, entity_idx, idx, slot))
+            .unwrap_or(false);
+        let observable = target_allowed
+            && match target_slot {
+                Some(slot) => combat_targeting_player_observes_entity(pool, slot, source_player_id),
+                None => false,
+            };
         let (target_valid, target_radius, target_vx, target_vy, target_vz) = if observable {
             if let Some(slot) = target_slot {
                 if combat_targeting_entity_alive(pool, slot) {
@@ -9691,11 +9911,139 @@ pub fn combat_targeting_auto_mode_candidate_tick(
     );
 }
 
+#[inline]
+fn combat_targeting_spatial_slot_matches_relationship(
+    state: &SpatialGridState,
+    slot: u32,
+    source_player: u8,
+    relationship_mask: u8,
+) -> bool {
+    let s = slot as usize;
+    if s >= state.slot_owner_player.len() {
+        return false;
+    }
+    let relationship = if state.slot_owner_player[s] == source_player {
+        CT_TARGETING_CANDIDATE_REL_FRIENDLY
+    } else {
+        CT_TARGETING_CANDIDATE_REL_ENEMY
+    };
+    (relationship_mask & relationship) != 0
+}
+
+fn combat_targeting_query_entities_in_circle_2d_by_relationship(
+    x: f64,
+    y: f64,
+    radius: f64,
+    source_player: u8,
+    relationship_mask: u8,
+    z_min: f64,
+    z_max: f64,
+) -> usize {
+    if relationship_mask == 0 {
+        return 0;
+    }
+
+    let state = spatial_grid();
+    state.scratch_u32.clear();
+    state.scratch_u32.push(0);
+    state.scratch_u32.push(0);
+    state.dedup.clear();
+    spatial_collect_cells_in_circle2d(
+        state,
+        x,
+        y,
+        radius + SPATIAL_MAX_UNIT_SHOT_RADIUS,
+        z_min,
+        z_max,
+    );
+    let radius_sq = radius * radius;
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut buf = std::mem::take(&mut state.scratch_u32);
+    let mut dedup = std::mem::take(&mut state.dedup);
+
+    let unit_start = buf.len();
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.units {
+                if !combat_targeting_spatial_slot_matches_relationship(
+                    state,
+                    slot,
+                    source_player,
+                    relationship_mask,
+                ) {
+                    continue;
+                }
+                spatial_push_unit_if_in_radius(
+                    state, &mut buf, slot, x, y, 0.0, radius, radius_sq, 0, true, true, true,
+                );
+            }
+        }
+    }
+    let n_units = (buf.len() - unit_start) as u32;
+
+    let bldg_start = buf.len();
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.buildings {
+                if !combat_targeting_spatial_slot_matches_relationship(
+                    state,
+                    slot,
+                    source_player,
+                    relationship_mask,
+                ) {
+                    continue;
+                }
+                spatial_push_building_if_in_radius(
+                    state, &mut dedup, &mut buf, slot, x, y, 0.0, radius_sq, 0, true, true,
+                );
+            }
+        }
+    }
+    let n_buildings = (buf.len() - bldg_start) as u32;
+
+    buf[0] = n_units;
+    buf[1] = n_buildings;
+    let total = 2 + n_units as usize + n_buildings as usize;
+    state.scratch_u32 = buf;
+    state.nearby_cells = nearby;
+    state.dedup = dedup;
+    total
+}
+
+fn combat_targeting_auto_query_relationships(
+    pool: &CombatTargetingPool,
+    entity_slot: u32,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) -> u8 {
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return 0;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    let mut relationship_mask = 0u8;
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
+        {
+            continue;
+        }
+        if (pool.turret_config_flags[idx] & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        relationship_mask |= combat_targeting_turret_allowed_relationships(pool, idx);
+    }
+    relationship_mask
+}
+
 fn combat_targeting_fill_spatial_candidate_scratch(
     entity_slot: u32,
     max_acquire_range: f64,
     max_weapon_offset: f64,
     max_targetable_radius: f64,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
     scratch: &mut CombatTargetingSpatialCandidateScratch,
 ) -> u32 {
     scratch.clear();
@@ -9711,7 +10059,7 @@ fn combat_targeting_fill_spatial_candidate_scratch(
         return 0;
     }
 
-    let (source_x, source_y, source_z, source_player) = {
+    let (source_x, source_y, source_z, source_player, relationship_mask) = {
         let pool = combat_targeting_pool();
         let source_slot = entity_slot as usize;
         if source_slot >= pool.entity_id.len()
@@ -9725,17 +10073,27 @@ fn combat_targeting_fill_spatial_candidate_scratch(
             pool.entity_pos_y[source_slot],
             pool.entity_pos_z[source_slot],
             pool.entity_owner_player_id[source_slot],
+            combat_targeting_auto_query_relationships(
+                pool,
+                entity_slot,
+                mirrors_enabled,
+                force_fields_enabled,
+            ),
         )
     };
+    if relationship_mask == 0 {
+        return 0;
+    }
 
-    let total = spatial_query_enemy_entities_in_circle_2d(
+    let total = combat_targeting_query_entities_in_circle_2d_by_relationship(
         source_x,
         source_y,
         batch_radius,
         source_player,
+        relationship_mask,
         source_z - batch_radius,
         source_z + batch_radius,
-    ) as usize;
+    );
 
     {
         let spatial = spatial_grid();
@@ -9806,6 +10164,8 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
             max_acquire_range,
             max_weapon_offset,
             max_targetable_radius,
+            mirrors_enabled,
+            force_fields_enabled,
             scratch,
         )
     } else {
@@ -10140,14 +10500,28 @@ pub fn combat_targeting_schedule_and_tick_batch(
         ) = {
             let pool = combat_targeting_pool();
             match combat_targeting_entity_slot_for_id(pool, source_entity_id) {
-                None => (0, false, false, 0u8, false, -1i32, 0u8, 0.0, 0.0, 0.0, -1i32),
+                None => (
+                    0, false, false, 0u8, false, -1i32, 0u8, 0.0, 0.0, 0.0, -1i32,
+                ),
                 Some(entity_slot_usize) => {
                     let entity_slot = entity_slot_usize as u32;
                     let entity_idx = entity_slot as usize;
                     if entity_idx >= pool.entity_flags.len()
                         || pool.entity_id[entity_idx] != source_entity_id
                     {
-                        (entity_slot, false, false, 0u8, false, -1i32, 0u8, 0.0, 0.0, 0.0, -1i32)
+                        (
+                            entity_slot,
+                            false,
+                            false,
+                            0u8,
+                            false,
+                            -1i32,
+                            0u8,
+                            0.0,
+                            0.0,
+                            0.0,
+                            -1i32,
+                        )
                     } else {
                         let flags = pool.entity_flags[entity_idx];
                         let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
@@ -10211,10 +10585,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
         };
 
         let has_priority_point = priority_point_present_val != 0;
-        if priority_target_id < 0
-            && !has_priority_point
-            && scheduled_probe_tick > current_tick
-        {
+        if priority_target_id < 0 && !has_priority_point && scheduled_probe_tick > current_tick {
             continue;
         }
 
@@ -10265,7 +10636,19 @@ pub fn combat_targeting_schedule_and_tick_batch(
 
         let priority_observable = priority_target_id >= 0 && {
             let pool = combat_targeting_pool();
-            combat_targeting_player_observes_entity_id(pool, priority_target_id, owner_player_id)
+            match combat_targeting_entity_slot_for_id(pool, priority_target_id) {
+                Some(target_slot) => {
+                    combat_targeting_player_observes_entity(pool, target_slot, owner_player_id)
+                        && combat_targeting_entity_has_turret_that_may_lock_entity_slot(
+                            pool,
+                            entity_slot,
+                            target_slot,
+                            mirrors_enabled,
+                            force_fields_enabled,
+                        )
+                }
+                None => false,
+            }
         };
 
         if priority_observable {
@@ -10670,9 +11053,6 @@ fn combat_targeting_candidate_gate_passes(
     turret_idx: u32,
     candidate_idx: usize,
     candidate_ids: &[i32],
-    candidate_pos_x: &[f64],
-    candidate_pos_y: &[f64],
-    candidate_pos_z: &[f64],
     candidate_count: usize,
     source_entity_id: i32,
     terrain_step_len: f64,
@@ -10695,33 +11075,43 @@ fn combat_targeting_candidate_gate_passes(
     let mount_z = pool.turret_mount_z[idx];
 
     let candidate_id = candidate_ids[candidate_idx];
-    let candidate_slot = pool.entity_slot_by_id.get(&candidate_id).copied();
-    let (aim_x, aim_y, aim_z) = match candidate_slot {
-        Some(slot) => combat_targeting_resolve_aim_point_from_slab(
-            pool,
-            entity_slot,
-            turret_idx,
-            source_entity_id,
-            slot as usize,
-            mount_x,
-            mount_y,
-            mount_z,
-        ),
-        None => (
-            candidate_pos_x[candidate_idx],
-            candidate_pos_y[candidate_idx],
-            candidate_pos_z[candidate_idx],
-        ),
+    let Some(candidate_slot_u32) = pool.entity_slot_by_id.get(&candidate_id).copied() else {
+        return false;
     };
+    let candidate_slot = candidate_slot_u32 as usize;
+    if !combat_targeting_turret_may_lock_entity_slot(
+        pool,
+        entity_slot as usize,
+        idx,
+        candidate_slot,
+    ) {
+        return false;
+    }
+    let (aim_x, aim_y, aim_z) = combat_targeting_resolve_aim_point_from_slab(
+        pool,
+        entity_slot,
+        turret_idx,
+        source_entity_id,
+        candidate_slot,
+        mount_x,
+        mount_y,
+        mount_z,
+    );
 
-    let target_vx = candidate_slot
-        .and_then(|s| pool.entity_vel_x.get(s as usize).copied())
+    let target_vx = pool
+        .entity_vel_x
+        .get(candidate_slot)
+        .copied()
         .unwrap_or(0.0);
-    let target_vy = candidate_slot
-        .and_then(|s| pool.entity_vel_y.get(s as usize).copied())
+    let target_vy = pool
+        .entity_vel_y
+        .get(candidate_slot)
+        .copied()
         .unwrap_or(0.0);
-    let target_vz = candidate_slot
-        .and_then(|s| pool.entity_vel_z.get(s as usize).copied())
+    let target_vz = pool
+        .entity_vel_z
+        .get(candidate_slot)
+        .copied()
         .unwrap_or(0.0);
 
     let (los_clear, ballistic_clear, force_field_clear) = compute_turret_gates_for_aim_point(
@@ -11027,6 +11417,8 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     if count == 0 {
         return seed;
     }
+    let source_entity_slot = entity_slot as usize;
+    let source_turret_idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
 
     let mut top_candidate_idx = [-1i32; TARGETING_TOPK_LOS];
     let mut top_rank = [CT_TARGET_RANK_NONE; TARGETING_TOPK_LOS];
@@ -11035,6 +11427,14 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
     let mut top_count = 0usize;
 
     for ci in 0..count {
+        if !combat_targeting_turret_may_lock_entity_id(
+            pool,
+            source_entity_slot,
+            source_turret_idx,
+            candidate_ids[ci],
+        ) {
+            continue;
+        }
         let Some((rank, dist_sq, mirror_score)) = targeting_score_candidate(
             ci,
             weapon_x,
@@ -11124,9 +11524,6 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             turret_idx,
             ci,
             candidate_ids,
-            candidate_pos_x,
-            candidate_pos_y,
-            candidate_pos_z,
             count,
             source_entity_id,
             terrain_step_len,
@@ -11163,6 +11560,14 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             }
         }
         if in_top_k {
+            continue;
+        }
+        if !combat_targeting_turret_may_lock_entity_id(
+            pool,
+            source_entity_slot,
+            source_turret_idx,
+            candidate_ids[ci],
+        ) {
             continue;
         }
 
@@ -11202,9 +11607,6 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
             turret_idx,
             ci,
             candidate_ids,
-            candidate_pos_x,
-            candidate_pos_y,
-            candidate_pos_z,
             count,
             source_entity_id,
             terrain_step_len,
