@@ -5,7 +5,6 @@ import type { Entity, Turret } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { GRAVITY } from '../../../config';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
-import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
@@ -24,7 +23,6 @@ const TARGETING_BATCH_MODE_AUTO = 0;
 const TARGETING_BATCH_MODE_SKIP = 255;
 
 const _targetingBatchUnits: Entity[] = [];
-let _targetingBatchSlots = new Uint32Array(0);
 let _targetingBatchSourceIds = new Int32Array(0);
 let _targetingBatchModes = new Uint8Array(0);
 let _targetingBatchPriorityTargetIds = new Int32Array(0);
@@ -44,7 +42,6 @@ function nextTargetingReacquireTick(tick: number): number {
 
 function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): void {
   if (maxTurrets !== _targetingBatchMaxTurrets) {
-    _targetingBatchSlots = new Uint32Array(0);
     _targetingBatchSourceIds = new Int32Array(0);
     _targetingBatchModes = new Uint8Array(0);
     _targetingBatchPriorityTargetIds = new Int32Array(0);
@@ -58,10 +55,9 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
     _targetingBatchCachedFireDistSqs = new Float64Array(0);
     _targetingBatchMaxTurrets = maxTurrets;
   }
-  if (entityCount <= _targetingBatchSlots.length) return;
-  let next = Math.max(8, _targetingBatchSlots.length);
+  if (entityCount <= _targetingBatchSourceIds.length) return;
+  let next = Math.max(8, _targetingBatchSourceIds.length);
   while (next < entityCount) next *= 2;
-  _targetingBatchSlots = new Uint32Array(next);
   _targetingBatchSourceIds = new Int32Array(next);
   _targetingBatchModes = new Uint8Array(next);
   _targetingBatchPriorityTargetIds = new Int32Array(next);
@@ -116,7 +112,6 @@ type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 
 function queueTargetingUnit(
   unit: Entity,
-  unitSlot: number,
   maxTurrets: number,
   priorityTargetId: number | null = null,
   priorityPoint: Vec3 | null = null,
@@ -125,7 +120,6 @@ function queueTargetingUnit(
   const batchIdx = _targetingBatchUnits.length;
   ensureTargetingBatchCapacity(batchIdx + 1, maxTurrets);
   _targetingBatchUnits.push(unit);
-  _targetingBatchSlots[batchIdx] = unitSlot;
   _targetingBatchSourceIds[batchIdx] = unit.id;
   _targetingBatchModes[batchIdx] = TARGETING_BATCH_MODE_SKIP;
   _targetingBatchPriorityTargetIds[batchIdx] = priorityTargetId ?? -1;
@@ -150,10 +144,8 @@ function flushTargetingBatch(
   const count = _targetingBatchUnits.length;
   if (count === 0) return;
 
-  const entitySlots = _targetingBatchSlots.subarray(0, count);
   const turretValueCount = count * maxTurrets;
   targeting.scheduleAndTickBatch(
-    entitySlots,
     _targetingBatchSourceIds.subarray(0, count),
     _targetingBatchPriorityTargetIds.subarray(0, count),
     _targetingBatchPriorityPointPresent.subarray(0, count),
@@ -285,18 +277,14 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
-      const unitSlot = spatialGrid.getSlot(unit.id);
-      if (unitSlot >= 0) {
-        stampCombatTargetingEntity(unit);
-        queueTargetingUnit(
-          unit,
-          unitSlot,
-          maxTurrets,
-          null,
-          null,
-          -1,
-        );
-      }
+      stampCombatTargetingEntity(unit);
+      queueTargetingUnit(
+        unit,
+        maxTurrets,
+        null,
+        null,
+        -1,
+      );
       continue;
     }
     const priorityId = combat.priorityTargetId;
@@ -314,24 +302,15 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     if (!hasEnabledWeapon) {
       stampCombatTargetingEntity(unit);
-      const unitSlot = spatialGrid.getSlot(unit.id);
-      if (unitSlot >= 0) {
-        queueTargetingUnit(
-          unit,
-          unitSlot,
-          maxTurrets,
-          priorityId,
-          priorityPoint,
-          scheduledProbeTick,
-        );
-      } else {
-        combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
-      }
+      queueTargetingUnit(
+        unit,
+        maxTurrets,
+        priorityId,
+        priorityPoint,
+        scheduledProbeTick,
+      );
       continue;
     }
-
-    const unitSlot = spatialGrid.getSlot(unit.id);
-    if (unitSlot < 0) continue;
 
     // The Rust scheduled batch chooses priority-point, priority-target,
     // hold-fire clear, skip, or auto mode from slab-backed state so TS
@@ -339,7 +318,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     stampCombatTargetingEntity(unit);
     queueTargetingUnit(
       unit,
-      unitSlot,
       maxTurrets,
       priorityId,
       priorityPoint,

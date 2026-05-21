@@ -9936,12 +9936,12 @@ pub fn combat_targeting_tick_batch(
 /// AIM-08.5 — scheduled mixed-mode targeting tick. This moves the
 /// remaining TypeScript mode scheduler into Rust: the kernel reads the
 /// stamped entity flags, priority commands, visibility, hold-fire flag,
-/// and probe gate, then dispatches the existing mixed-mode FSM work.
+/// and probe gate, resolves source IDs to slab slots, then dispatches
+/// the existing mixed-mode FSM work.
 /// JS still performs object-owned disabled-weapon reset mutations before
 /// this call and copies slab state back to JS turrets afterward.
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
-    entity_slots: &[u32],
     source_entity_ids: &[i32],
     priority_target_ids: &[i32],
     priority_point_present: &[u8],
@@ -9965,9 +9965,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
     out_modes: &mut [u8],
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
-    let count = entity_slots
+    let count = source_entity_ids
         .len()
-        .min(source_entity_ids.len())
         .min(priority_target_ids.len())
         .min(priority_point_present.len())
         .min(priority_point_x.len())
@@ -9987,33 +9986,39 @@ pub fn combat_targeting_schedule_and_tick_batch(
             break;
         }
 
-        let entity_slot = entity_slots[entity_i];
         let source_entity_id = source_entity_ids[entity_i];
-        let (entity_ready, fire_enabled, owner_player_id, has_enabled_weapon) = {
+        let (entity_slot, entity_ready, fire_enabled, owner_player_id, has_enabled_weapon) = {
             let pool = combat_targeting_pool();
-            let entity_idx = entity_slot as usize;
-            if entity_idx >= pool.entity_flags.len()
-                || pool.entity_id[entity_idx] != source_entity_id
-            {
-                (false, false, 0u8, false)
-            } else {
-                let flags = pool.entity_flags[entity_idx];
-                let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
-                    && (flags & CT_ENTITY_FLAG_ALIVE) != 0
-                    && (flags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) != 0;
-                let enabled = (flags & CT_ENTITY_FLAG_FIRE_ENABLED) != 0;
-                let has_weapon = combat_targeting_entity_has_enabled_weapon(
-                    pool,
-                    entity_slot,
-                    mirrors_enabled,
-                    force_fields_enabled,
-                );
-                (
-                    ready,
-                    enabled,
-                    pool.entity_owner_player_id[entity_idx],
-                    has_weapon,
-                )
+            match combat_targeting_entity_slot_for_id(pool, source_entity_id) {
+                None => (0, false, false, 0u8, false),
+                Some(entity_slot_usize) => {
+                    let entity_slot = entity_slot_usize as u32;
+                    let entity_idx = entity_slot as usize;
+                    if entity_idx >= pool.entity_flags.len()
+                        || pool.entity_id[entity_idx] != source_entity_id
+                    {
+                        (entity_slot, false, false, 0u8, false)
+                    } else {
+                        let flags = pool.entity_flags[entity_idx];
+                        let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
+                            && (flags & CT_ENTITY_FLAG_ALIVE) != 0
+                            && (flags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) != 0;
+                        let enabled = (flags & CT_ENTITY_FLAG_FIRE_ENABLED) != 0;
+                        let has_weapon = combat_targeting_entity_has_enabled_weapon(
+                            pool,
+                            entity_slot,
+                            mirrors_enabled,
+                            force_fields_enabled,
+                        );
+                        (
+                            entity_slot,
+                            ready,
+                            enabled,
+                            pool.entity_owner_player_id[entity_idx],
+                            has_weapon,
+                        )
+                    }
+                }
             }
         };
 
