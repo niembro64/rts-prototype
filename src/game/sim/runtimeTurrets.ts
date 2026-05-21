@@ -34,7 +34,6 @@ function makeRuntimeTurret(
   // over — `idlePitch` only governs the spawn pose.
   return {
     config: { ...turretConfig },
-    cooldown: 0,
     target: null,
     ranges,
     state: 'idle',

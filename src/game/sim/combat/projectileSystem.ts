@@ -26,7 +26,7 @@ import {
   updateWeaponWorldKinematics,
 } from './combatUtils';
 import {
-  clearTurretFsmOnSlab,
+  dropTurretLockMidTick,
   readFiringTurretMaskForUnit,
   readTurretBurstCooldownForFire,
   readTurretCooldownForFire,
@@ -35,7 +35,6 @@ import {
   writeTurretCooldownToSlab,
 } from './combatActivitySlab';
 import { resolveTargetAimPoint } from './aimSolver';
-import { setWeaponTarget } from './targetIndex';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveLineShotRangeSphereEndpoint, type LineShotRangeSphere } from './lineShotRange';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -340,13 +339,11 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
       const targetingTargetId = hasTargetingFsm ? _fireFsm.targetId : weapon.target;
       if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
-        if (targetingTargetId !== null) {
-          setWeaponTarget(weapon, unit, weaponIndex, null);
-        }
-        weapon.state = 'idle';
-        // Sync the slab so the end-of-pass activity-mask refresh sees
-        // the cleared FSM state.
-        clearTurretFsmOnSlab(unit, weaponIndex);
+        // Drop the lock everywhere in one call: JS Turret target +
+        // state, beam inverse index, and the slab FSM tuple. The
+        // end-of-pass activity-mask refresh re-derives the firing /
+        // active masks from the cleared slab state.
+        dropTurretLockMidTick(unit, weapon, weaponIndex);
         continue;
       }
 
@@ -369,9 +366,9 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 
       const groundTargetPoint = combat.priorityTargetPoint;
       if (targetingTargetId !== null && !world.getEntity(targetingTargetId)) {
-        setWeaponTarget(weapon, unit, weaponIndex, null);
-        weapon.state = 'idle';
-        clearTurretFsmOnSlab(unit, weaponIndex);
+        // Target despawned mid-fire — drop the lock everywhere in one
+        // call (JS Turret + beam index + slab FSM).
+        dropTurretLockMidTick(unit, weapon, weaponIndex);
         continue;
       }
       if (targetingTargetId === null && groundTargetPoint === null) continue;
@@ -402,10 +399,10 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type === 'beam') {
         if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       } else {
-        canFire = readTurretCooldownForFire(unit, weaponIndex, weapon.cooldown) <= 0;
+        canFire = readTurretCooldownForFire(unit, weaponIndex) <= 0;
         canBurstFire = weapon.burst?.remaining !== undefined &&
           weapon.burst.remaining > 0 &&
-          readTurretBurstCooldownForFire(unit, weaponIndex, weapon.burst.cooldown) <= 0;
+          readTurretBurstCooldownForFire(unit, weaponIndex) <= 0;
 
         if (!canFire && !canBurstFire) continue;
 

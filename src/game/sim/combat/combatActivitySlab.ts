@@ -13,10 +13,11 @@
 // through the helpers here so the Rust mask kernel is the single
 // source of truth.
 
-import type { CombatComponent, Entity } from '../types';
+import type { CombatComponent, Entity, Turret } from '../types';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimWasm } from '../../sim-wasm/init';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
+import { setWeaponTarget } from './targetIndex';
 import { getCombatTargetingStateViews } from './targetingInputStamping';
 
 /** Slab-first activity-mask refresh used by sim hot paths.
@@ -79,6 +80,34 @@ export function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
   sim.combatTargeting.clearTurretFsm(slot, weaponIndex);
 }
 
+/** Drop a turret's lock-on mid-tick: clears the JS Turret target +
+ *  state fields, syncs the beam inverse target index, and clears the
+ *  same FSM tuple on the combat-targeting slab in one call.
+ *
+ *  Consolidates the prior three-line pattern that lived inline in
+ *  turretSystem (ballistic out-of-reach), projectileSystem (ballistic
+ *  failure / dead target mid-fire), and commandExecution
+ *  (fire-disabled command):
+ *
+ *    setWeaponTarget(weapon, unit, weaponIndex, null);
+ *    weapon.state = 'idle';
+ *    clearTurretFsmOnSlab(unit, weaponIndex);
+ *
+ *  Keeping the JS Turret writes alongside the slab clear preserves the
+ *  current writeback semantics (downstream JS-only readers in
+ *  combatActivity.ts still consume Turret.target / Turret.state), while
+ *  funneling every mid-tick drop through one function so the slab is
+ *  never left stale relative to the JS Turret. */
+export function dropTurretLockMidTick(
+  unit: Entity,
+  weapon: Turret,
+  weaponIndex: number,
+): void {
+  setWeaponTarget(weapon, unit, weaponIndex, null);
+  weapon.state = 'idle';
+  clearTurretFsmOnSlab(unit, weaponIndex);
+}
+
 /** Slab-first read of the per-entity active-turret mask with a JS
  *  fallback. Sim hot paths (turretSystem) use this to gate the
  *  per-turret rotation loop on the Rust-computed mask without
@@ -134,33 +163,30 @@ function combatTargetingTurretSlabIndex(
   return slot * targeting.maxTurretsPerEntity() + weaponIndex;
 }
 
-/** Slab-first read of one turret's cooldown timer with a JS Turret
- *  fallback. The scheduled Rust batch decrements this every tick and
- *  the firing pass writes post-fire values back via
- *  writeTurretCooldownToSlab, so the slab is authoritative on the sim
- *  hot path. Non-sim callers fall back to the JS field, which is now
- *  effectively unused but kept until the Turret.cooldown field is
- *  deleted outright. */
+/** Slab read of one turret's cooldown timer. The scheduled Rust batch
+ *  decrements this every tick and the firing pass writes post-fire
+ *  values back via writeTurretCooldownToSlab, so the slab is the only
+ *  place cooldown lives. The firing pass is sim-only, so when the slab
+ *  index can't be resolved we return 0 to keep the call signature
+ *  total — callers gate fire on this value being <= 0 anyway. */
 export function readTurretCooldownForFire(
   unit: Entity,
   weaponIndex: number,
-  weaponCooldownJs: number,
 ): number {
   const idx = combatTargetingTurretSlabIndex(unit, weaponIndex);
-  if (idx < 0) return weaponCooldownJs;
+  if (idx < 0) return 0;
   const sim = getSimWasm()!;
   return getCombatTargetingStateViews(sim).cooldown[idx];
 }
 
-/** Slab-first read of one turret's burst cooldown timer with a JS
- *  fallback. Same ownership shape as `readTurretCooldownForFire`. */
+/** Slab read of one turret's burst cooldown timer. Same ownership shape
+ *  as `readTurretCooldownForFire`. */
 export function readTurretBurstCooldownForFire(
   unit: Entity,
   weaponIndex: number,
-  burstCooldownJs: number,
 ): number {
   const idx = combatTargetingTurretSlabIndex(unit, weaponIndex);
-  if (idx < 0) return burstCooldownJs;
+  if (idx < 0) return 0;
   const sim = getSimWasm()!;
   return getCombatTargetingStateViews(sim).burstCooldown[idx];
 }

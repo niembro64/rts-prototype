@@ -110,7 +110,6 @@ export function refreshUnitTurretsFromNetwork(
     for (let i = 0; i < turrets.length && i < previous.length; i++) {
       const prev = previous[i];
       const next = turrets[i];
-      next.cooldown = prev.cooldown;
       next.pitchVelocity = prev.pitchVelocity;
       next.barrelFireIndex = prev.barrelFireIndex;
       if (next.forceField && prev.forceField) {

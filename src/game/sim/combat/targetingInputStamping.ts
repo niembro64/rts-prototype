@@ -513,10 +513,10 @@ function stampCombatTargetingEntityInto(
   // cooldown / burstCooldown are likewise slab-owned: the scheduled
   // batch decrements them every tick and the firing pass writes
   // post-fire values back into the slab via writeTurretCooldownToSlab.
-  // Seeding from JS Turret.cooldown each tick would clobber the
-  // kernel's decrement, so we preserve the slab value for same-entity
-  // slots and only fall back to the JS-side initial value (0 from
-  // runtimeTurrets) on slot reuse.
+  // The JS Turret no longer carries a cooldown field — for same-entity
+  // slots we preserve the slab value so the kernel's decrement
+  // survives across ticks, and for slot reuse the slab gets a fresh 0
+  // because a newly-constructed turret is by definition off cooldown.
   const preservePreviousFsm = views.entityId[slot] === entity.id;
   if (turrets && preservePreviousFsm) {
     ensureStampPrevFsmCapacity(turrets.length);
@@ -586,8 +586,13 @@ function stampCombatTargetingEntityInto(
       t.angularVelocity, t.pitchVelocity,
       stateCode,
       targetId,
-      preservePreviousFsm ? _stampPrevCooldown[i] : t.cooldown,
-      preservePreviousFsm ? _stampPrevBurstCooldown[i] : (t.burst?.cooldown ?? 0),
+      // Cooldown / burstCooldown are slab-owned now. On slot reuse
+      // (preservePreviousFsm is false) the slab gets a fresh 0 — the
+      // JS Turret no longer carries a cooldown field, and burst is
+      // populated lazily by the firing pass, so neither has a useful
+      // seed value here.
+      preservePreviousFsm ? _stampPrevCooldown[i] : 0,
+      preservePreviousFsm ? _stampPrevBurstCooldown[i] : 0,
       fireMaxAcq, fireMaxRel,
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
@@ -697,10 +702,9 @@ export function writeBackCombatTargetingEntity(
     // single source of truth (projectileSystem reads them via
     // readTurretCooldownForFire / readTurretBurstCooldownForFire and
     // writes post-fire values via writeTurretCooldownToSlab /
-    // writeTurretBurstCooldownToSlab). JS Turret.cooldown survives as
-    // an initial 0 from runtimeTurrets, used only to seed the slab on
-    // slot reuse for a freshly-spawned entity in the input stamping
-    // pass.
+    // writeTurretBurstCooldownToSlab). JS Turret no longer carries a
+    // cooldown field at all — slot reuse seeds the slab with 0 and the
+    // kernel takes it from there.
     const slabStateCode = views.state[idx];
     const targetId = views.targetId[idx];
     const target = targetId < 0 ? null : targetId;

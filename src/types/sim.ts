@@ -412,7 +412,6 @@ export type TurretState = 'idle' | 'tracking' | 'engaged';
 // pitch is set directly each frame from the aim solution.
 export type Turret = {
   config: TurretConfig;
-  cooldown: number;
   target: EntityId | null;
   ranges: TurretRanges;
   state: TurretState;

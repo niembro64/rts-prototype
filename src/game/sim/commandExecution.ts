@@ -42,7 +42,7 @@ import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { pushUnitAction, setUnitActions, shiftUnitAction, spliceUnitActions, unshiftUnitAction } from './unitActions';
 import { clearCombatActivityFlags } from './combat/combatActivity';
-import { setWeaponTarget } from './combat/targetIndex';
+import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
 import {
@@ -649,10 +649,13 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
       clearCombatActivityFlags(combat);
+      // Drop every turret's lock everywhere in one call per turret:
+      // JS Turret target + state, beam inverse index, and the slab
+      // FSM tuple. The previous version only touched the JS Turret
+      // side, leaving the slab with stale (target, state) that
+      // same-tick slab-first readers would still see.
       for (let wi = 0; wi < combat.turrets.length; wi++) {
-        const weapon = combat.turrets[wi];
-        setWeaponTarget(weapon, entity, wi, null);
-        weapon.state = 'idle';
+        dropTurretLockMidTick(entity, combat.turrets[wi], wi);
       }
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);

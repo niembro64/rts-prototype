@@ -25,13 +25,12 @@ import type { Entity } from '../types';
 import { resolveWeaponWorldMount, turretMaskIncludes } from './combatUtils';
 import { clearCombatActivityFlags } from './combatActivity';
 import {
-  clearTurretFsmOnSlab,
+  dropTurretLockMidTick,
   readActiveTurretMaskForUnit,
   refreshSlabActivityMasksForUnit,
 } from './combatActivitySlab';
 import { getTransformCosSin, integrateDampedRotation, normalizeAngle } from '../../math';
 import { createTurretAimScratch, solveTurretAim, solveTurretAimAtGroundPoint } from './aimSolver';
-import { setWeaponTarget } from './targetIndex';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -135,13 +134,12 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         );
         weapon.ballisticAimInRange = solved.hasBallisticSolution;
         if (!solved.hasBallisticSolution) {
-          weapon.state = 'idle';
-          // Sync the slab so the end-of-pass activity-mask refresh
-          // (and any same-tick downstream slab readers) see the cleared
-          // FSM state. The local activeMask bit stays set so we still
-          // run the damped-spring integrator below; the firing bit
-          // drops on its own when the refresh re-derives masks.
-          clearTurretFsmOnSlab(unit, weaponIndex);
+          // Drop the lock everywhere in one call (JS Turret target +
+          // state, beam inverse index, slab FSM). The local
+          // activeMask bit stays set so we still run the damped-spring
+          // integrator below; the firing bit drops on its own when the
+          // end-of-pass refresh re-derives masks.
+          dropTurretLockMidTick(unit, weapon, weaponIndex);
         } else {
           targetAngle = solved.yaw;
           targetPitch = solved.pitch;
@@ -194,11 +192,9 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               // gravity-bounded reach. Drop the lock outright so the
               // turret is free to find a reachable target instead of
               // silently tracking a fallback "best-guess" pitch
-              // forever. Sync the slab so the end-of-pass mask refresh
-              // sees the cleared FSM state.
-              setWeaponTarget(weapon, unit, weaponIndex, null);
-              weapon.state = 'idle';
-              clearTurretFsmOnSlab(unit, weaponIndex);
+              // forever. Single helper call clears JS Turret + beam
+              // index + slab FSM in one step.
+              dropTurretLockMidTick(unit, weapon, weaponIndex);
             } else {
               targetAngle = solved.yaw;
               targetPitch = solved.pitch;
