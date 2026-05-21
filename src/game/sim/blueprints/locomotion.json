@@ -366,12 +366,15 @@
     "config": {
       "hoverHeight": 600,
       "hoverHeightRandomizationAmount": 0.5,
-      "fanDistX": 1.7,
-      "fanDistY": 1.7,
+      "fanDistX": 0,
+      "fanDistY": 2.0,
       "fanRadius": 1.4,
       "fanRingTubeRadius": 0.1,
       "fanOutwardAngleDeg": 18,
-      "fanSpinRadPerSec": 42
+      "fanSpinRadPerSec": 42,
+      "tailFanOffsetX": -3.8,
+      "tailFanRadius": 0.32,
+      "tailFanRingTubeRadius": 0.035
     }
   },
   "eagleFlying": {

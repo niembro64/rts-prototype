@@ -264,6 +264,15 @@ export type HoverConfig = {
   /** Rotor spin rate in radians per second. Positive value; direction
    *  is fixed (counter-clockwise viewed from above). */
   fanSpinRadPerSec?: number;
+  /** Optional small "dragonfly tail" fan. When `tailFanRadius` is set,
+   *  the main fan layout collapses from the 4-corner quad to a pair of
+   *  lateral "wing" fans at (x=0, z=±fanDistY×unitRadius), and one
+   *  small fan is added at (x=tailFanOffsetX×unitRadius, z=0).
+   *  `tailFanRadius` / `tailFanRingTubeRadius` are unit-radius fractions
+   *  matching the existing fan size convention. */
+  tailFanOffsetX?: number;
+  tailFanRadius?: number;
+  tailFanRingTubeRadius?: number;
 };
 
 /** Flying locomotion uses hover-style altitude physics, but the unit
