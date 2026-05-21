@@ -237,6 +237,33 @@ AIM-08.5 — Port the targeting FSM
   writeBackCombatTargetingEntity signature lost its kinematicsTick
   parameter and the SKIP-mode call site in targetingSchedulerBridge
   dropped the corresponding `null` argument.
+  ClientUnitPrediction is now slab-first too: the force-field engaged
+  check inside applyClientCombatExpensivePrediction and the
+  clientUnitPredictionIsSettled gate both go through a small
+  isTurretEngaged helper that reads readCombatTargetingTurretFsmInto
+  first and falls back to JS Turret.state only on remote clients
+  where no sim runs and the slab is unstamped. This was the last
+  downstream consumer of weapon.state without a slab-first fast path.
+  The unused combat.hasActiveCombat boolean has been deleted under
+  Delete The Old Path — it was written by writeBackCombatTargetingEntity
+  and updateCombatActivityFlags but never read anywhere; the
+  CombatComponent shape, every initializer (NetworkEntityFactory /
+  spawn / WorldState), and both writer paths drop it in the same
+  change.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
+  Remaining writeback fields still needed by downstream JS readers:
+    - cooldown / burst.cooldown (read by projectileSystem fire gate)
+    - target / state (read by writeBackCombatTargetingEntity's own
+      activity-mask scan + scattered slab-first fallbacks)
+    - activeTurretMask / firingTurretMask (read by turretSystem and
+      projectileSystem — built per-tick by writeBackCombatTargetingEntity
+      from the JS Turret target/state it just wrote)
+    - syncBeamWeaponTargetIndex per-turret call
+    - resetDisabledTurretJsOnlyFields (JS-only fields the Rust kernel
+      never sees)
+  Likely next moves: stamp activeTurretMask / firingTurretMask into
+  the slab from Rust so turretSystem / projectileSystem read masks
+  directly, then migrate cooldown to slab-owned (stamping preserves
+  slab cooldown, projectileSystem reads + writes through the slab).
 
