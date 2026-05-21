@@ -250,20 +250,36 @@ AIM-08.5 — Port the targeting FSM
   CombatComponent shape, every initializer (NetworkEntityFactory /
   spawn / WorldState), and both writer paths drop it in the same
   change.
+  The writeback's per-turret activity-mask scan no longer calls
+  hasTurretSimulationActiveCombat / isFiringCombatTurret on the JS
+  Turret it just wrote from the slab. It now reads target/state
+  directly from views.state[idx] / targetId, so the mask bookkeeping
+  stays correct after the JS Turret.target / Turret.state writes
+  above are eventually dropped. hasTurretRotationWork still reads
+  turret.angularVelocity / turret.pitchVelocity because those are
+  JS-only fields the Rust kernel never sees.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
   Remaining writeback fields still needed by downstream JS readers:
     - cooldown / burst.cooldown (read by projectileSystem fire gate)
-    - target / state (read by writeBackCombatTargetingEntity's own
-      activity-mask scan + scattered slab-first fallbacks)
+    - target / state (read by scattered slab-first fallbacks +
+      mid-tick JS writes in projectileSystem / turretSystem /
+      commandExecution that set weapon.state = 'idle' or call
+      setWeaponTarget(..., null))
     - activeTurretMask / firingTurretMask (read by turretSystem and
       projectileSystem — built per-tick by writeBackCombatTargetingEntity
-      from the JS Turret target/state it just wrote)
+      from the slab now, but still JS-resident on combat.* and mutated
+      mid-tick by turretSystem when a ballistic solution fails)
     - syncBeamWeaponTargetIndex per-turret call
     - resetDisabledTurretJsOnlyFields (JS-only fields the Rust kernel
       never sees)
   Likely next moves: stamp activeTurretMask / firingTurretMask into
   the slab from Rust so turretSystem / projectileSystem read masks
-  directly, then migrate cooldown to slab-owned (stamping preserves
-  slab cooldown, projectileSystem reads + writes through the slab).
+  directly (requires stamping per-turret angular/pitch velocity so
+  Rust can compute hasTurretRotationWork inline); then migrate
+  cooldown to slab-owned (stamping preserves slab cooldown,
+  projectileSystem reads + writes through the slab); then route every
+  mid-tick weapon.state = 'idle' / setWeaponTarget(..., null) write
+  through a slab-writing helper so the JS Turret.target / Turret.state
+  writeback can be deleted outright.
 
