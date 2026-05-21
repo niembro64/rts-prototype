@@ -909,6 +909,16 @@ export const CT_TURRET_STATE_IDLE = 0;
 export const CT_TURRET_STATE_TRACKING = 1;
 export const CT_TURRET_STATE_ENGAGED = 2;
 
+/** AIM-08.5 — `out_modes` byte the scheduler writes per queued entity.
+ *  Mirrors `CT_TARGETING_TICK_MODE_*` in Rust. The writeback path uses
+ *  these to dispatch JS-only bookkeeping (activity flags, priority
+ *  command cleanup) after the slab is authoritative for the FSM. */
+export const CT_TARGETING_TICK_MODE_AUTO = 0;
+export const CT_TARGETING_TICK_MODE_PRIORITY_POINT = 1;
+export const CT_TARGETING_TICK_MODE_PRIORITY_TARGET = 2;
+export const CT_TARGETING_TICK_MODE_CLEAR_LOCKS = 3;
+export const CT_TARGETING_TICK_MODE_SKIP = 255;
+
 /** AIM-08.1 — Targeting input slabs. The JS stamping pass populates
  *  these once per tick before the (still-authoritative) TS targeting
  *  FSM runs; AIM-08.2..5 add the SoA kernels that read from them, and
@@ -949,6 +959,12 @@ export interface CombatTargetingApi {
     flags: number,
     detectorRadius: number,
     detectionPadding: number,
+    priorityTargetId: number,
+    priorityPointPresent: number,
+    priorityPointX: number,
+    priorityPointY: number,
+    priorityPointZ: number,
+    scheduledProbeTick: number,
     turretCount: number,
   ) => void;
   unsetEntity: (entitySlot: number) => void;
@@ -1394,17 +1410,12 @@ export interface CombatTargetingApi {
   /** AIM-08.5 — scheduled mixed-mode world-order targeting batch.
    *  Rust chooses skip / hold-fire clear / priority-point /
    *  priority-target / auto from slab-backed state after resolving
-   *  source entity IDs to slab slots, updates mount kinematics for
-   *  processed rows, and writes the mode it actually ran into
+   *  source entity IDs to slab slots, reading per-entity priority +
+   *  probe-tick inputs from the slab, updating mount kinematics for
+   *  processed rows, and writing the mode it actually ran into
    *  `outModes` for the JS writeback pass. */
   readonly scheduleAndTickBatch: (
     sourceEntityIds: Int32Array,
-    priorityTargetIds: Int32Array,
-    priorityPointPresent: Uint8Array,
-    priorityPointX: Float64Array,
-    priorityPointY: Float64Array,
-    priorityPointZ: Float64Array,
-    scheduledProbeTicks: Int32Array,
     currentTick: number,
     dtMs: number,
     mirrorsEnabled: number,

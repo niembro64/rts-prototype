@@ -142,17 +142,30 @@ AIM-08.5 — Port the targeting FSM
   Disabled-weapon slab reset now runs in Rust too:
   combat_targeting_reset_disabled_weapons_for_entity zeros target /
   state / cooldown / aim error / LOS bookkeeping for every disabled
-  turret on entity_ready entities, inside the scheduler. The
-  TypeScript armed-entity traversal has been collapsed to a pure
-  slab-stamping / JS-only mutation pass — clearCombatActivityFlags,
-  fire-disabled priority-command cleanup, and queueTargetingUnit —
-  with no per-turret decision making. JS Turret writeback then
-  finishes the disabled-weapon reset for fields that never cross the
-  WASM boundary (angular/pitch velocity + acceleration, burst.remaining,
-  forceField.transition/range) via the shared weaponSystemDisabled
-  helper in targetingInputStamping.ts. The legacy resetDisabledWeapon /
-  weaponSystemDisabled helpers and the per-entity stampCombatTargetingEntity
-  call were deleted under Delete The Old Path.
+  turret on entity_ready entities, inside the scheduler. JS Turret
+  writeback then finishes the disabled-weapon reset for fields that
+  never cross the WASM boundary (angular/pitch velocity +
+  acceleration, burst.remaining, forceField.transition/range) via the
+  shared weaponSystemDisabled helper in targetingInputStamping.ts. The
+  legacy resetDisabledWeapon / weaponSystemDisabled helpers and the
+  per-entity stampCombatTargetingEntity call were deleted under Delete
+  The Old Path.
+  Per-entity targeting inputs (priorityTargetId, priorityTargetPoint,
+  nextCombatProbeTick) now live on the combat-targeting slab too: the
+  input stamping pass writes them via the extended
+  combat_targeting_set_entity boundary call, and
+  combat_targeting_schedule_and_tick_batch reads them by slot instead
+  of accepting priority/probe scratch arrays from JS. The scheduler
+  signature lost six per-entity arrays (priority target IDs / point
+  presence flags / xyz coordinates / scheduled probe ticks) in the
+  same change. The TypeScript prep loop in updateTargetingAndFiringState
+  is now just an armed-entity walk that pushes sourceIds into one
+  Int32Array; clearCombatActivityFlags and the fire-disabled JS
+  priority-command cleanup moved into the writeback path (SKIP and
+  CLEAR_LOCKS branches respectively) so they fire after the kernel
+  decides what each row actually ran as. CT_TARGETING_TICK_MODE_*
+  constants are exported from sim-wasm/init.ts so the writeback
+  dispatch reads the same byte values the Rust kernel writes.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

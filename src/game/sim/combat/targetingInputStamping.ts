@@ -257,6 +257,18 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
   const detectorRadius = getEntityDetectorRadius(entity);
   const detectionPadding = getEntityDetectionPadding(entity);
 
+  // Per-entity targeting inputs that used to be JS scratch arrays
+  // shipped to the scheduler. The Rust scheduler now reads them from
+  // the slab so updateTargetingAndFiringState can shrink to a queue +
+  // kernel call + writeback path without per-entity prep.
+  const priorityTargetId = combat?.priorityTargetId ?? null;
+  const priorityPoint = combat?.priorityTargetPoint ?? null;
+  const priorityPointPresent = priorityPoint === null ? 0 : 1;
+  const priorityPointX = priorityPoint?.x ?? 0;
+  const priorityPointY = priorityPoint?.y ?? 0;
+  const priorityPointZ = priorityPoint?.z ?? 0;
+  const scheduledProbeTick = combat?.nextCombatProbeTick ?? -1;
+
   const turrets = combat?.turrets;
   targeting.setEntity(
     slot, entity.id, playerId,
@@ -270,6 +282,10 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
     aabbHalfX, aabbHalfY, aabbHalfZ,
     hp, entityFlags,
     detectorRadius, detectionPadding,
+    priorityTargetId === null ? -1 : priorityTargetId,
+    priorityPointPresent,
+    priorityPointX, priorityPointY, priorityPointZ,
+    scheduledProbeTick,
     turrets?.length ?? 0,
   );
 

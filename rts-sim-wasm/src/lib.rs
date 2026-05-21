@@ -6231,6 +6231,16 @@ struct CombatTargetingPool {
     // `getEntityDetectionPadding` value (max body/shot/push radius for
     // units; max half-extent for buildings).
     entity_detection_padding: Vec<f32>,
+    // Per-entity targeting inputs that were JS scratch arrays before
+    // AIM-08.5's slab-only scheduler. Stamped from CombatComponent
+    // every tick so the kernel can walk the slab instead of accepting
+    // priority/probe arrays at the boundary.
+    entity_priority_target_id: Vec<i32>,
+    entity_priority_point_present: Vec<u8>,
+    entity_priority_point_x: Vec<f64>,
+    entity_priority_point_y: Vec<f64>,
+    entity_priority_point_z: Vec<f64>,
+    entity_scheduled_probe_tick: Vec<i32>,
     entity_slot_by_id: HashMap<i32, u32>,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
@@ -6335,6 +6345,12 @@ impl CombatTargetingPool {
             entity_flags: Vec::new(),
             entity_detector_radius: Vec::new(),
             entity_detection_padding: Vec::new(),
+            entity_priority_target_id: Vec::new(),
+            entity_priority_point_present: Vec::new(),
+            entity_priority_point_x: Vec::new(),
+            entity_priority_point_y: Vec::new(),
+            entity_priority_point_z: Vec::new(),
+            entity_scheduled_probe_tick: Vec::new(),
             entity_slot_by_id: HashMap::new(),
             turret_count_per_entity: Vec::new(),
             turret_mount_x: Vec::new(),
@@ -6413,6 +6429,12 @@ impl CombatTargetingPool {
             self.entity_flags.resize(entity_needed, 0);
             self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_detection_padding.resize(entity_needed, 0.0);
+            self.entity_priority_target_id.resize(entity_needed, -1);
+            self.entity_priority_point_present.resize(entity_needed, 0);
+            self.entity_priority_point_x.resize(entity_needed, 0.0);
+            self.entity_priority_point_y.resize(entity_needed, 0.0);
+            self.entity_priority_point_z.resize(entity_needed, 0.0);
+            self.entity_scheduled_probe_tick.resize(entity_needed, -1);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
         let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -6668,6 +6690,12 @@ pub fn combat_targeting_set_entity(
     flags: u8,
     detector_radius: f32,
     detection_padding: f32,
+    priority_target_id: i32,
+    priority_point_present: u8,
+    priority_point_x: f64,
+    priority_point_y: f64,
+    priority_point_z: f64,
+    scheduled_probe_tick: i32,
     turret_count: u8,
 ) {
     let pool = combat_targeting_pool();
@@ -6705,6 +6733,12 @@ pub fn combat_targeting_set_entity(
     pool.entity_flags[s] = flags;
     pool.entity_detector_radius[s] = detector_radius;
     pool.entity_detection_padding[s] = detection_padding;
+    pool.entity_priority_target_id[s] = priority_target_id;
+    pool.entity_priority_point_present[s] = priority_point_present;
+    pool.entity_priority_point_x[s] = priority_point_x;
+    pool.entity_priority_point_y[s] = priority_point_y;
+    pool.entity_priority_point_z[s] = priority_point_z;
+    pool.entity_scheduled_probe_tick[s] = scheduled_probe_tick;
     let max = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as u8;
     pool.turret_count_per_entity[s] = if turret_count > max {
         max
@@ -9983,12 +10017,6 @@ pub fn combat_targeting_tick_batch(
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
     source_entity_ids: &[i32],
-    priority_target_ids: &[i32],
-    priority_point_present: &[u8],
-    priority_point_x: &[f64],
-    priority_point_y: &[f64],
-    priority_point_z: &[f64],
-    scheduled_probe_ticks: &[i32],
     current_tick: i32,
     dt_ms: f64,
     mirrors_enabled: u8,
@@ -10007,12 +10035,6 @@ pub fn combat_targeting_schedule_and_tick_batch(
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
     let count = source_entity_ids
         .len()
-        .min(priority_target_ids.len())
-        .min(priority_point_present.len())
-        .min(priority_point_x.len())
-        .min(priority_point_y.len())
-        .min(priority_point_z.len())
-        .min(scheduled_probe_ticks.len())
         .min(out_had_cooldown.len())
         .min(out_modes.len());
 
@@ -10027,17 +10049,29 @@ pub fn combat_targeting_schedule_and_tick_batch(
         }
 
         let source_entity_id = source_entity_ids[entity_i];
-        let (entity_slot, entity_ready, fire_enabled, owner_player_id, has_enabled_weapon) = {
+        let (
+            entity_slot,
+            entity_ready,
+            fire_enabled,
+            owner_player_id,
+            has_enabled_weapon,
+            priority_target_id,
+            priority_point_present_val,
+            priority_point_x,
+            priority_point_y,
+            priority_point_z,
+            scheduled_probe_tick,
+        ) = {
             let pool = combat_targeting_pool();
             match combat_targeting_entity_slot_for_id(pool, source_entity_id) {
-                None => (0, false, false, 0u8, false),
+                None => (0, false, false, 0u8, false, -1i32, 0u8, 0.0, 0.0, 0.0, -1i32),
                 Some(entity_slot_usize) => {
                     let entity_slot = entity_slot_usize as u32;
                     let entity_idx = entity_slot as usize;
                     if entity_idx >= pool.entity_flags.len()
                         || pool.entity_id[entity_idx] != source_entity_id
                     {
-                        (entity_slot, false, false, 0u8, false)
+                        (entity_slot, false, false, 0u8, false, -1i32, 0u8, 0.0, 0.0, 0.0, -1i32)
                     } else {
                         let flags = pool.entity_flags[entity_idx];
                         let ready = (flags & CT_ENTITY_FLAG_HAS_COMBAT) != 0
@@ -10056,6 +10090,12 @@ pub fn combat_targeting_schedule_and_tick_batch(
                             enabled,
                             pool.entity_owner_player_id[entity_idx],
                             has_weapon,
+                            pool.entity_priority_target_id[entity_idx],
+                            pool.entity_priority_point_present[entity_idx],
+                            pool.entity_priority_point_x[entity_idx],
+                            pool.entity_priority_point_y[entity_idx],
+                            pool.entity_priority_point_z[entity_idx],
+                            pool.entity_scheduled_probe_tick[entity_idx],
                         )
                     }
                 }
@@ -10094,11 +10134,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
             combat_targeting_decrement_entity_cooldowns(pool, entity_slot, dt_ms)
         };
 
-        let priority_target_id = priority_target_ids[entity_i];
-        let has_priority_point = priority_point_present[entity_i] != 0;
+        let has_priority_point = priority_point_present_val != 0;
         if priority_target_id < 0
             && !has_priority_point
-            && scheduled_probe_ticks[entity_i] > current_tick
+            && scheduled_probe_tick > current_tick
         {
             continue;
         }
@@ -10133,9 +10172,9 @@ pub fn combat_targeting_schedule_and_tick_batch(
         if has_priority_point {
             combat_targeting_compute_and_apply_priority_point_fsm_batch(
                 entity_slot,
-                priority_point_x[entity_i],
-                priority_point_y[entity_i],
-                priority_point_z[entity_i],
+                priority_point_x,
+                priority_point_y,
+                priority_point_z,
                 source_entity_id,
                 mirrors_enabled,
                 force_fields_enabled,
