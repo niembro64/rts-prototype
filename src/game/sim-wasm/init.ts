@@ -157,6 +157,8 @@ import __wbg_init, {
   combat_targeting_turret_pitch_ptr,
   combat_targeting_turret_state_ptr,
   combat_targeting_turret_target_id_ptr,
+  combat_targeting_turret_cooldown_ptr,
+  combat_targeting_turret_burst_cooldown_ptr,
   combat_targeting_turret_fire_max_acquire_sq_ptr,
   combat_targeting_turret_fire_max_release_sq_ptr,
   combat_targeting_turret_fire_min_acquire_sq_ptr,
@@ -963,6 +965,8 @@ export interface CombatTargetingApi {
     pitch: number,
     state: number,
     targetId: number,
+    cooldown: number,
+    burstCooldown: number,
     fireMaxAcquireSq: number,
     fireMaxReleaseSq: number,
     fireMinAcquireSq: number,
@@ -1039,6 +1043,8 @@ export interface CombatTargetingApi {
   readonly turretPitchPtr: () => number;
   readonly turretStatePtr: () => number;
   readonly turretTargetIdPtr: () => number;
+  readonly turretCooldownPtr: () => number;
+  readonly turretBurstCooldownPtr: () => number;
   readonly turretFireMaxAcquireSqPtr: () => number;
   readonly turretFireMaxReleaseSqPtr: () => number;
   readonly turretFireMinAcquireSqPtr: () => number;
@@ -1411,6 +1417,7 @@ export interface CombatTargetingApi {
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     maxTargetableRadius: number,
+    outHadCooldown: Uint8Array,
     outModes: Uint8Array,
   ) => void;
 }
@@ -2445,6 +2452,8 @@ export function initSimWasm(): Promise<SimWasm> {
           turretPitchPtr: combat_targeting_turret_pitch_ptr,
           turretStatePtr: combat_targeting_turret_state_ptr,
           turretTargetIdPtr: combat_targeting_turret_target_id_ptr,
+          turretCooldownPtr: combat_targeting_turret_cooldown_ptr,
+          turretBurstCooldownPtr: combat_targeting_turret_burst_cooldown_ptr,
           turretFireMaxAcquireSqPtr: combat_targeting_turret_fire_max_acquire_sq_ptr,
           turretFireMaxReleaseSqPtr: combat_targeting_turret_fire_max_release_sq_ptr,
           turretFireMinAcquireSqPtr: combat_targeting_turret_fire_min_acquire_sq_ptr,

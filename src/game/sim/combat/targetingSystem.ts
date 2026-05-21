@@ -4,7 +4,6 @@ import type { WorldState } from '../WorldState';
 import type { Entity, Turret } from '../types';
 import type { Vec3 } from '@/types/vec2';
 import { GRAVITY } from '../../../config';
-import { decrementCooldown } from './combatUtils';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { spatialGrid } from '../SpatialGrid';
 import { setWeaponTarget } from './targetIndex';
@@ -118,7 +117,6 @@ type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 function queueTargetingUnit(
   unit: Entity,
   unitSlot: number,
-  hasCooldownState: boolean,
   maxTurrets: number,
   priorityTargetId: number | null = null,
   priorityPoint: Vec3 | null = null,
@@ -135,7 +133,7 @@ function queueTargetingUnit(
   _targetingBatchPriorityPointX[batchIdx] = priorityPoint?.x ?? 0;
   _targetingBatchPriorityPointY[batchIdx] = priorityPoint?.y ?? 0;
   _targetingBatchPriorityPointZ[batchIdx] = priorityPoint?.z ?? 0;
-  _targetingBatchHasCooldown[batchIdx] = hasCooldownState ? 1 : 0;
+  _targetingBatchHasCooldown[batchIdx] = 0;
   _targetingBatchScheduledProbeTicks[batchIdx] = scheduledProbeTick;
 }
 
@@ -175,13 +173,19 @@ function flushTargetingBatch(
     _targetingBatchCachedFireRanks.subarray(0, turretValueCount),
     _targetingBatchCachedFireDistSqs.subarray(0, turretValueCount),
     world.getMaxTargetableRadius(),
+    _targetingBatchHasCooldown.subarray(0, count),
     _targetingBatchModes.subarray(0, count),
   );
 
   for (let i = 0; i < count; i++) {
     const mode = _targetingBatchModes[i];
-    if (mode === TARGETING_BATCH_MODE_SKIP) continue;
     const unit = _targetingBatchUnits[i];
+    if (mode === TARGETING_BATCH_MODE_SKIP) {
+      if (_targetingBatchHasCooldown[i] !== 0) {
+        writeBackCombatTargetingEntity(unit, null);
+      }
+      continue;
+    }
     const combat = unit.combat!;
     writeBackCombatTargetingEntity(unit, tick);
     if (updateCombatActivityFlags(combat)) {
@@ -287,7 +291,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         queueTargetingUnit(
           unit,
           unitSlot,
-          false,
           maxTurrets,
           null,
           null,
@@ -302,22 +305,12 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     const weapons = combat.turrets;
 
-    let hasCooldownState = false;
     let hasEnabledWeapon = false;
     for (let wi = 0; wi < weapons.length; wi++) {
       const weapon = weapons[wi];
       const disabled = resetDisabledWeapon(world, unit, weapon, wi);
       if (disabled) continue;
       hasEnabledWeapon = true;
-      if (weapon.cooldown > 0) {
-        hasCooldownState = true;
-        weapon.cooldown = decrementCooldown(weapon.cooldown, dtMs);
-      }
-
-      if (weapon.burst?.cooldown !== undefined && weapon.burst.cooldown > 0) {
-        hasCooldownState = true;
-        weapon.burst.cooldown = decrementCooldown(weapon.burst.cooldown, dtMs);
-      }
     }
     if (!hasEnabledWeapon) {
       stampCombatTargetingEntity(unit);
@@ -326,7 +319,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         queueTargetingUnit(
           unit,
           unitSlot,
-          hasCooldownState,
           maxTurrets,
           priorityId,
           priorityPoint,
@@ -348,7 +340,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     queueTargetingUnit(
       unit,
       unitSlot,
-      hasCooldownState,
       maxTurrets,
       priorityId,
       priorityPoint,

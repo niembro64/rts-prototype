@@ -6249,6 +6249,12 @@ struct CombatTargetingPool {
     turret_pitch: Vec<f32>,
     turret_state: Vec<u8>,
     turret_target_id: Vec<i32>,
+    // Transitional AIM-08.5 runtime timers. Firing still writes these
+    // on JS Turret objects after projectile emission, then the next
+    // targeting stamp copies them into the slab so the scheduled Rust
+    // targeting batch owns per-tick cooldown decrement.
+    turret_cooldown: Vec<f64>,
+    turret_burst_cooldown: Vec<f64>,
     // Pre-squared range envelopes. Sentinels: fire_min_*_sq <= 0 means
     // "no min preference"; tracking_*_sq <= 0 and the
     // HAS_TRACKING_RANGE flag together encode "no separate tracking
@@ -6345,6 +6351,8 @@ impl CombatTargetingPool {
             turret_pitch: Vec::new(),
             turret_state: Vec::new(),
             turret_target_id: Vec::new(),
+            turret_cooldown: Vec::new(),
+            turret_burst_cooldown: Vec::new(),
             turret_fire_max_acquire_sq: Vec::new(),
             turret_fire_max_release_sq: Vec::new(),
             turret_fire_min_acquire_sq: Vec::new(),
@@ -6424,6 +6432,8 @@ impl CombatTargetingPool {
             self.turret_state
                 .resize(turret_needed, CT_TURRET_STATE_IDLE);
             self.turret_target_id.resize(turret_needed, -1);
+            self.turret_cooldown.resize(turret_needed, 0.0);
+            self.turret_burst_cooldown.resize(turret_needed, 0.0);
             self.turret_fire_max_acquire_sq.resize(turret_needed, 0.0);
             self.turret_fire_max_release_sq.resize(turret_needed, 0.0);
             self.turret_fire_min_acquire_sq.resize(turret_needed, 0.0);
@@ -6732,6 +6742,8 @@ pub fn combat_targeting_set_turret(
     pitch: f32,
     state: u8,
     target_id: i32,
+    cooldown: f64,
+    burst_cooldown: f64,
     fire_max_acquire_sq: f64,
     fire_max_release_sq: f64,
     fire_min_acquire_sq: f64,
@@ -6770,6 +6782,12 @@ pub fn combat_targeting_set_turret(
     pool.turret_pitch[global_idx] = pitch;
     pool.turret_state[global_idx] = state;
     pool.turret_target_id[global_idx] = target_id;
+    pool.turret_cooldown[global_idx] = if cooldown > 0.0 { cooldown } else { 0.0 };
+    pool.turret_burst_cooldown[global_idx] = if burst_cooldown > 0.0 {
+        burst_cooldown
+    } else {
+        0.0
+    };
     pool.turret_fire_max_acquire_sq[global_idx] = fire_max_acquire_sq;
     pool.turret_fire_max_release_sq[global_idx] = fire_max_release_sq;
     pool.turret_fire_min_acquire_sq[global_idx] = fire_min_acquire_sq;
@@ -7074,6 +7092,12 @@ combat_targeting_ptr_export!(combat_targeting_turret_rotation_ptr, turret_rotati
 combat_targeting_ptr_export!(combat_targeting_turret_pitch_ptr, turret_pitch, f32);
 combat_targeting_ptr_export!(combat_targeting_turret_state_ptr, turret_state, u8);
 combat_targeting_ptr_export!(combat_targeting_turret_target_id_ptr, turret_target_id, i32);
+combat_targeting_ptr_export!(combat_targeting_turret_cooldown_ptr, turret_cooldown, f64);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_burst_cooldown_ptr,
+    turret_burst_cooldown,
+    f64
+);
 combat_targeting_ptr_export!(
     combat_targeting_turret_fire_max_acquire_sq_ptr,
     turret_fire_max_acquire_sq,
@@ -7941,6 +7965,49 @@ fn combat_targeting_entity_has_enabled_weapon(
         }
     }
     false
+}
+
+#[inline]
+fn combat_targeting_decrement_cooldown(value: f64, dt_ms: f64) -> f64 {
+    if value <= 0.0 {
+        0.0
+    } else {
+        let next = value - dt_ms;
+        if next > 0.0 {
+            next
+        } else {
+            0.0
+        }
+    }
+}
+
+#[inline]
+fn combat_targeting_decrement_entity_cooldowns(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+    dt_ms: f64,
+) -> u8 {
+    let entity_idx = entity_slot as usize;
+    if entity_idx >= pool.turret_count_per_entity.len() {
+        return 0;
+    }
+    let count = (pool.turret_count_per_entity[entity_idx] as usize)
+        .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+    let mut had_cooldown = 0u8;
+    for turret_idx in 0..count {
+        let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
+        if pool.turret_cooldown[idx] > 0.0 {
+            had_cooldown = 1;
+            pool.turret_cooldown[idx] =
+                combat_targeting_decrement_cooldown(pool.turret_cooldown[idx], dt_ms);
+        }
+        if pool.turret_burst_cooldown[idx] > 0.0 {
+            had_cooldown = 1;
+            pool.turret_burst_cooldown[idx] =
+                combat_targeting_decrement_cooldown(pool.turret_burst_cooldown[idx], dt_ms);
+        }
+    }
+    had_cooldown
 }
 
 /// AIM-08.5 — Rust auto-targeting pre-scan over the combat-targeting
@@ -9870,8 +9937,8 @@ pub fn combat_targeting_tick_batch(
 /// remaining TypeScript mode scheduler into Rust: the kernel reads the
 /// stamped entity flags, priority commands, visibility, hold-fire flag,
 /// and probe gate, then dispatches the existing mixed-mode FSM work.
-/// JS still performs object-owned cooldown/reset mutations before this
-/// call and copies slab state back to JS turrets afterward.
+/// JS still performs object-owned disabled-weapon reset mutations before
+/// this call and copies slab state back to JS turrets afterward.
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
     entity_slots: &[u32],
@@ -9894,6 +9961,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     max_targetable_radius: f64,
+    out_had_cooldown: &mut [u8],
     out_modes: &mut [u8],
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
@@ -9906,10 +9974,12 @@ pub fn combat_targeting_schedule_and_tick_batch(
         .min(priority_point_y.len())
         .min(priority_point_z.len())
         .min(scheduled_probe_ticks.len())
+        .min(out_had_cooldown.len())
         .min(out_modes.len());
 
     for entity_i in 0..count {
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_SKIP;
+        out_had_cooldown[entity_i] = 0;
 
         let start = entity_i * MAX;
         let end = start + MAX;
@@ -9963,6 +10033,11 @@ pub fn combat_targeting_schedule_and_tick_batch(
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_CLEAR_LOCKS;
             continue;
         }
+
+        out_had_cooldown[entity_i] = {
+            let pool = combat_targeting_pool();
+            combat_targeting_decrement_entity_cooldowns(pool, entity_slot, dt_ms)
+        };
 
         let priority_target_id = priority_target_ids[entity_i];
         let has_priority_point = priority_point_present[entity_i] != 0;

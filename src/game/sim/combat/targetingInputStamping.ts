@@ -88,6 +88,8 @@ export type CombatTargetingStateViews = {
   aimErrorYaw: Float32Array;
   aimErrorPitch: Float32Array;
   losBlockedTicks: Uint16Array;
+  cooldown: Float64Array;
+  burstCooldown: Float64Array;
 };
 
 let _stateViews: CombatTargetingStateViews | null = null;
@@ -135,6 +137,8 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     aimErrorYaw: new Float32Array(buffer, targeting.turretAimErrorYawPtr(), length),
     aimErrorPitch: new Float32Array(buffer, targeting.turretAimErrorPitchPtr(), length),
     losBlockedTicks: new Uint16Array(buffer, targeting.turretLosBlockedTicksPtr(), length),
+    cooldown: new Float64Array(buffer, targeting.turretCooldownPtr(), length),
+    burstCooldown: new Float64Array(buffer, targeting.turretBurstCooldownPtr(), length),
   };
   return _stateViews;
 }
@@ -298,6 +302,8 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
       t.rotation, t.pitch,
       encodeTurretState(t.state),
       t.target === null ? -1 : t.target,
+      t.cooldown,
+      t.burst?.cooldown ?? 0,
       fireMaxAcq, fireMaxRel,
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
@@ -320,8 +326,9 @@ function stampCombatTargetingEntityInto(targeting: CombatTargetingApi, entity: E
 }
 
 /** Stamp one armed entity into the combat-targeting slab. During
- *  AIM-08.5 the targeting pass calls this after JS reset/cooldown
- *  mutations, then Rust Pass 0 updates mount kinematics in-place. */
+ *  AIM-08.5 the targeting pass calls this after JS disabled-weapon
+ *  reset mutations, then the scheduled Rust batch decrements cooldowns
+ *  and updates mount kinematics in-place. */
 export function stampCombatTargetingEntity(entity: Entity): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
@@ -356,6 +363,10 @@ function writeBackCombatTargetingEntityFromSlab(
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
     const turret = combat.turrets[i];
+    turret.cooldown = views.cooldown[idx];
+    if (turret.burst) {
+      turret.burst.cooldown = views.burstCooldown[idx];
+    }
     if (includeState) {
       const targetId = views.targetId[idx];
       setWeaponTarget(turret, entity, i, targetId < 0 ? null : targetId);

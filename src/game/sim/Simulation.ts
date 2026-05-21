@@ -488,7 +488,9 @@ export class Simulation {
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.
     stampCombatTargetingPool(this.world);
-    // Update weapon cooldowns, targeting, and firing state in one armed-unit pass.
+    // Update targeting and firing state. Cooldown timers now step inside
+    // the scheduled Rust targeting batch and write back through the
+    // transitional slab -> JS turret copy.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
     // AIM-08.0 — debug-only parity check against the upcoming SoA path.
     checkTargetingParity(this.world);
