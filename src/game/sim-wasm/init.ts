@@ -130,6 +130,7 @@ import __wbg_init, {
   combat_targeting_unset_entity,
   combat_targeting_set_turret,
   combat_targeting_update_mount_kinematics,
+  combat_targeting_update_mount_kinematics_batch,
   combat_targeting_entity_flags,
   combat_targeting_turret_count,
   combat_targeting_can_player_observe_entity,
@@ -195,6 +196,7 @@ import __wbg_init, {
   combat_targeting_apply_acquisition_choice_fsm_batch,
   combat_targeting_auto_mode_candidate_tick,
   combat_targeting_auto_mode_spatial_candidate_tick,
+  combat_targeting_auto_mode_spatial_candidate_tick_batch,
   combat_targeting_existing_lock_and_auto_scan_tick,
   force_field_pool_clear,
   force_field_pool_count,
@@ -993,6 +995,16 @@ export interface CombatTargetingApi {
     mirrorsEnabled: number,
     forceFieldsEnabled: number,
   ) => void;
+  /** AIM-08.5 — batch Pass 0 mount kinematics over a world-order run
+   *  of armed entities. Same slab mutation as updateMountKinematics,
+   *  but with one boundary crossing for the run. */
+  updateMountKinematicsBatch: (
+    entitySlots: Uint32Array,
+    currentTick: number,
+    dtMs: number,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+  ) => void;
   /** AIM-08.5 — slab-backed cloak-observability check. Returns 1 if
    *  `viewerPlayerId` can observe the entity addressed by `targetId`
    *  (alive + (uncloaked OR own-team OR reached by a viewer-owned
@@ -1325,6 +1337,26 @@ export interface CombatTargetingApi {
     needsSpatialQuery: number,
     maxAcquireRange: number,
     maxWeaponOffset: number,
+    maxTargetableRadius: number,
+  ) => void;
+  /** AIM-08.5 — multi-entity auto-mode batch. Entity slots and source
+   *  IDs are one row per queued entity; aim/cached arrays are flat
+   *  entity-major rows of maxTurretsPerEntity entries. */
+  readonly autoModeSpatialCandidateTickBatch: (
+    entitySlots: Uint32Array,
+    sourceEntityIds: Int32Array,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    losDropGraceTicks: number,
+    aimX: Float64Array,
+    aimY: Float64Array,
+    aimZ: Float64Array,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
     maxTargetableRadius: number,
   ) => void;
 }
@@ -2332,6 +2364,7 @@ export function initSimWasm(): Promise<SimWasm> {
           unsetEntity: combat_targeting_unset_entity,
           setTurret: combat_targeting_set_turret,
           updateMountKinematics: combat_targeting_update_mount_kinematics,
+          updateMountKinematicsBatch: combat_targeting_update_mount_kinematics_batch,
           entityFlags: combat_targeting_entity_flags,
           turretCount: combat_targeting_turret_count,
           canPlayerObserveEntity: combat_targeting_can_player_observe_entity,
@@ -2398,6 +2431,7 @@ export function initSimWasm(): Promise<SimWasm> {
           existingLockAndAutoScanTick: combat_targeting_existing_lock_and_auto_scan_tick,
           autoModeCandidateTick: combat_targeting_auto_mode_candidate_tick,
           autoModeSpatialCandidateTick: combat_targeting_auto_mode_spatial_candidate_tick,
+          autoModeSpatialCandidateTickBatch: combat_targeting_auto_mode_spatial_candidate_tick_batch,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,

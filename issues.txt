@@ -110,15 +110,20 @@ AIM-08.5 — Port the targeting FSM
   under-only lock state) is now stamped on the combat-targeting slab,
   so targetingSystem.ts no longer rebuilds or passes per-entity
   projectile config arrays into the priority, existing-lock, or
-  auto-mode Rust kernels.
+  auto-mode Rust kernels. Auto-mode entities now queue into contiguous
+  world-order runs and flush through
+  combat_targeting_update_mount_kinematics_batch plus
+  combat_targeting_auto_mode_spatial_candidate_tick_batch; the latter
+  runs existing-lock validation, auto-scan, Rust spatial candidate
+  queries, and fire/acquisition FSM application for each queued entity
+  without returning to TypeScript between units.
   Remaining work for AIM-08.5:
     - Move the outer world.getArmedEntities() loop into Rust so the
       per-tick entry point is a single combat_targeting_tick(...) call.
-      Auto-mode enemy queries now use the Rust spatial index directly
-      for one entity at a time; the remaining collapse needs one
-      Rust-owned multi-entity candidate pre-pass or a full Rust
-      spatial targeting tick that can service all armed entity slots
-      without returning to TypeScript between units.
+      Auto-mode runs no longer return to TypeScript between units, but
+      TypeScript still owns cooldown/reset bookkeeping, hold-fire and
+      priority-command branching, priority aim-point resolution, probe
+      scheduling, and JS Turret writeback.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs

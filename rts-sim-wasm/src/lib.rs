@@ -6947,6 +6947,29 @@ pub fn combat_targeting_update_mount_kinematics(
     }
 }
 
+/// AIM-08.5 — batch the Pass 0 mount-kinematics step across a run of
+/// armed entities. This keeps the same per-entity kernel as the
+/// reference path while removing one JS/WASM boundary crossing per
+/// auto-mode entity in the TypeScript orchestration.
+#[wasm_bindgen]
+pub fn combat_targeting_update_mount_kinematics_batch(
+    entity_slots: &[u32],
+    current_tick: i32,
+    dt_ms: f64,
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+) {
+    for &entity_slot in entity_slots {
+        combat_targeting_update_mount_kinematics(
+            entity_slot,
+            current_tick,
+            dt_ms,
+            mirrors_enabled,
+            force_fields_enabled,
+        );
+    }
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_entity_flags(entity_slot: u32) -> u8 {
     let pool = combat_targeting_pool();
@@ -9332,6 +9355,86 @@ pub fn combat_targeting_auto_mode_spatial_candidate_tick(
         &scratch.radius,
         &mut scratch.mirror_score,
     );
+}
+
+/// AIM-08.5 — multi-entity auto-mode tick over a contiguous TypeScript
+/// world-order run. For each armed entity this performs the merged
+/// existing-lock validation + auto-scan, runs the Rust-owned spatial
+/// candidate pre-pass, and applies fire/acquisition FSM transitions.
+///
+/// The flat per-turret arrays are indexed as
+/// `entity_index * COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY + turret`.
+/// TypeScript still resolves aim points during this migration because
+/// lockOnToTurret and transitional JS turret objects have not moved
+/// into the slab yet.
+#[wasm_bindgen]
+pub fn combat_targeting_auto_mode_spatial_candidate_tick_batch(
+    entity_slots: &[u32],
+    source_entity_ids: &[i32],
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_obstruction_active: u8,
+    terrain_step_len: f64,
+    entity_line_width: f64,
+    gravity: f64,
+    los_drop_grace_ticks: u16,
+    aim_x: &[f64],
+    aim_y: &[f64],
+    aim_z: &[f64],
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    max_targetable_radius: f64,
+) {
+    const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
+    let count = entity_slots.len().min(source_entity_ids.len());
+    for entity_i in 0..count {
+        let start = entity_i * MAX;
+        let end = start + MAX;
+        if end > aim_x.len()
+            || end > aim_y.len()
+            || end > aim_z.len()
+            || end > cached_fire_ranks.len()
+            || end > cached_fire_dist_sqs.len()
+        {
+            break;
+        }
+
+        let mut out_f64 = [0.0f64; 2];
+        let needs_spatial_query = combat_targeting_existing_lock_and_auto_scan_tick(
+            entity_slots[entity_i],
+            source_entity_ids[entity_i],
+            mirrors_enabled,
+            force_fields_enabled,
+            force_field_obstruction_active,
+            terrain_step_len,
+            entity_line_width,
+            gravity,
+            los_drop_grace_ticks,
+            &aim_x[start..end],
+            &aim_y[start..end],
+            &aim_z[start..end],
+            &mut cached_fire_ranks[start..end],
+            &mut cached_fire_dist_sqs[start..end],
+            &mut out_f64,
+        );
+
+        combat_targeting_auto_mode_spatial_candidate_tick(
+            entity_slots[entity_i],
+            source_entity_ids[entity_i],
+            mirrors_enabled,
+            force_fields_enabled,
+            force_field_obstruction_active,
+            terrain_step_len,
+            entity_line_width,
+            gravity,
+            &cached_fire_ranks[start..end],
+            &cached_fire_dist_sqs[start..end],
+            needs_spatial_query,
+            out_f64[0],
+            out_f64[1],
+            max_targetable_radius,
+        );
+    }
 }
 
 #[inline]
