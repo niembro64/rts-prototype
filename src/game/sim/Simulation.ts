@@ -570,6 +570,12 @@ export class Simulation {
         this.pendingProjectileVelocityUpdates.set(event.id, event);
       }
 
+      // Projectile reflection queries use the same reflector slabs as
+      // targeting, but need the post-rotation, post-force-field-update
+      // pose for this collision tick.
+      stampForceFieldPool(this.world, { includeWhenSightDisabled: true });
+      stampMirrorPanelPool(this.world);
+
       // Check projectile collisions and get dead units
       const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);
 

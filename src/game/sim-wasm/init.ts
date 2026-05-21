@@ -220,6 +220,7 @@ import __wbg_init, {
   mirror_panel_pool_set_unit,
   mirror_panel_pool_set_panel,
   mirror_panel_clearance_segment_export,
+  projectile_reflector_intersections_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
   snapshot_baseline_clear,
@@ -464,6 +465,34 @@ export interface SimWasm {
    *  views directly; per-tick ballistic integrate runs in
    *  `poolStepPackedProjectilesBatch`. */
   readonly projectilePool: ProjectilePoolViews;
+  /** WASM-PROJ-01/02 — nearest mirror-panel / force-field reflector
+   *  hit for a batch of projectile sweeps. Reads the current reflector
+   *  slabs; TypeScript only compacts inputs and consumes outputs. */
+  readonly projectileReflectorIntersectionsBatch: (
+    count: number,
+    enabled: Uint8Array,
+    startX: Float64Array,
+    startY: Float64Array,
+    startZ: Float64Array,
+    endX: Float64Array,
+    endY: Float64Array,
+    endZ: Float64Array,
+    projectileRadius: Float64Array,
+    excludeEntityId: Int32Array,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldReflectionMode: number,
+    mirrorQueryPad: number,
+    outKind: Uint8Array,
+    outEntityId: Int32Array,
+    outT: Float64Array,
+    outX: Float64Array,
+    outY: Float64Array,
+    outZ: Float64Array,
+    outNormalX: Float64Array,
+    outNormalY: Float64Array,
+    outNormalZ: Float64Array,
+  ) => void;
   /** Per-tick ballistic integrator for slots 0..count of the
    *  projectile pool. Applies gravity with exact constant-acceleration
    *  position integration.
@@ -2397,6 +2426,7 @@ export function initSimWasm(): Promise<SimWasm> {
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         projectilePool,
+        projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
         poolStepPackedProjectilesBatch: pool_step_packed_projectiles_batch,
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,

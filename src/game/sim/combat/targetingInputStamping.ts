@@ -325,19 +325,29 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
 
+type ForceFieldPoolStampOptions = {
+  /** Projectile collision needs the physical shield slab even when
+   *  force-fields are not configured to obstruct targeting sightlines. */
+  includeWhenSightDisabled?: boolean;
+};
+
 /** Rebuild the FF pool slab from getActiveForceFields(). Runs BEFORE
  *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels
- *  read current-tick force-field sphere data. Mirror-panel blockers
- *  are checked from live JS geometry in the targeting gate.
+ *  read current-tick force-field sphere data.
  *
  *  When world.forceFieldsObstructSight is false, the slab is rebuilt
  *  at count=0 instead. The kernels short-circuit on empty pools and
- *  return "clear", matching the JS `_emptyForceFields` substitution. */
-export function stampForceFieldPool(world: WorldState): void {
+ *  return "clear", matching the JS `_emptyForceFields` substitution.
+ *  Projectile collision can opt into stamping the physical shield list
+ *  even when sight obstruction is disabled. */
+export function stampForceFieldPool(
+  world: WorldState,
+  options: ForceFieldPoolStampOptions = {},
+): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   const fields = sim.forceFieldPool;
-  if (!world.forceFieldsObstructSight) {
+  if (!options.includeWhenSightDisabled && !world.forceFieldsObstructSight) {
     fields.setCount(0);
     return;
   }

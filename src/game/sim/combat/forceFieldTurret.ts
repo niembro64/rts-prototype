@@ -270,19 +270,3 @@ export function findForceFieldSegmentIntersection(
   _forceFieldHit.entityId = bestEntityId;
   return _forceFieldHit;
 }
-
-export function findForceFieldProjectileIntersection(
-  world: WorldState,
-  startX: number,
-  startY: number,
-  startZ: number,
-  endX: number,
-  endY: number,
-  endZ: number,
-): ForceFieldProjectileIntersection | null {
-  return findForceFieldSegmentIntersection(
-    world,
-    startX, startY, startZ,
-    endX, endY, endZ,
-  );
-}

@@ -17,21 +17,25 @@ import type { TurretId } from '../../../types/blueprintIds';
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
-import { findClosestPanelHit } from './MirrorPanelHit';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
 import { LAND_CELL_SIZE, ROCKET_REFLECTOR_COLLISION_MODE } from '../../../config';
-import { getUnitGroundZ } from '../unitGeometry';
-import { findForceFieldProjectileIntersection } from './forceFieldTurret';
-import { getTransformCosSin } from '../../math';
-import { resolveWeaponWorldMount, updateProjectileSourceClearance } from './combatUtils';
+import { getActiveForceFields } from './forceFieldTurret';
+import { getSimWasm } from '../../sim-wasm/init';
+import { updateProjectileSourceClearance } from './combatUtils';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
 const MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS = 96;
+const REFLECTOR_HIT_KIND_NONE = 0;
+const REFLECTOR_HIT_KIND_MIRROR = 1;
+const REFLECTOR_HIT_KIND_FORCE_FIELD = 2;
+const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN = 0;
+const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT = 1;
+const FORCE_FIELD_REFLECTION_MODE_BOTH = 2;
 
 function isValidProjectileSweep(
   prevX: number, prevY: number, prevZ: number,
@@ -49,38 +53,18 @@ function isValidProjectileSweep(
   return dx * dx + dy * dy + dz * dz <= MAX_PROJECTILE_SWEEP_DISTANCE_SQ;
 }
 
-function pointSegmentDistanceSq3(
-  px: number,
-  py: number,
-  pz: number,
-  ax: number,
-  ay: number,
-  az: number,
-  bx: number,
-  by: number,
-  bz: number,
+function encodeForceFieldReflectionMode(
+  mode: WorldState['forceFieldReflectionMode'],
 ): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const abz = bz - az;
-  const lenSq = abx * abx + aby * aby + abz * abz;
-  if (lenSq <= 1e-9) {
-    const dx = px - ax;
-    const dy = py - ay;
-    const dz = pz - az;
-    return dx * dx + dy * dy + dz * dz;
+  switch (mode) {
+    case 'outside-in':
+      return FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN;
+    case 'inside-out':
+      return FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT;
+    case 'both':
+      return FORCE_FIELD_REFLECTION_MODE_BOTH;
   }
-  const t = Math.max(
-    0,
-    Math.min(1, ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / lenSq),
-  );
-  const cx = ax + abx * t;
-  const cy = ay + aby * t;
-  const cz = az + abz * t;
-  const dx = px - cx;
-  const dy = py - cy;
-  const dz = pz - cz;
-  return dx * dx + dy * dy + dz * dz;
+  return FORCE_FIELD_REFLECTION_MODE_BOTH;
 }
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
@@ -93,7 +77,124 @@ const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
 const _collisionSpawnEvents: ProjectileSpawnEvent[] = [];
 const _collisionVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
-const _mirrorProjectilePivot = { x: 0, y: 0, z: 0 };
+
+let _reflectorBatchCapacity = 0;
+let _reflectorEnabled = new Uint8Array(0);
+let _reflectorStartX = new Float64Array(0);
+let _reflectorStartY = new Float64Array(0);
+let _reflectorStartZ = new Float64Array(0);
+let _reflectorEndX = new Float64Array(0);
+let _reflectorEndY = new Float64Array(0);
+let _reflectorEndZ = new Float64Array(0);
+let _reflectorProjectileRadius = new Float64Array(0);
+let _reflectorExcludeEntityId = new Int32Array(0);
+let _reflectorHitKind = new Uint8Array(0);
+let _reflectorHitEntityId = new Int32Array(0);
+let _reflectorHitT = new Float64Array(0);
+let _reflectorHitX = new Float64Array(0);
+let _reflectorHitY = new Float64Array(0);
+let _reflectorHitZ = new Float64Array(0);
+let _reflectorHitNormalX = new Float64Array(0);
+let _reflectorHitNormalY = new Float64Array(0);
+let _reflectorHitNormalZ = new Float64Array(0);
+
+function ensureReflectorBatchCapacity(count: number): void {
+  if (count <= _reflectorBatchCapacity) return;
+  let next = Math.max(8, _reflectorBatchCapacity);
+  while (next < count) next *= 2;
+  _reflectorBatchCapacity = next;
+  _reflectorEnabled = new Uint8Array(next);
+  _reflectorStartX = new Float64Array(next);
+  _reflectorStartY = new Float64Array(next);
+  _reflectorStartZ = new Float64Array(next);
+  _reflectorEndX = new Float64Array(next);
+  _reflectorEndY = new Float64Array(next);
+  _reflectorEndZ = new Float64Array(next);
+  _reflectorProjectileRadius = new Float64Array(next);
+  _reflectorExcludeEntityId = new Int32Array(next);
+  _reflectorHitKind = new Uint8Array(next);
+  _reflectorHitEntityId = new Int32Array(next);
+  _reflectorHitT = new Float64Array(next);
+  _reflectorHitX = new Float64Array(next);
+  _reflectorHitY = new Float64Array(next);
+  _reflectorHitZ = new Float64Array(next);
+  _reflectorHitNormalX = new Float64Array(next);
+  _reflectorHitNormalY = new Float64Array(next);
+  _reflectorHitNormalZ = new Float64Array(next);
+}
+
+function computeProjectileReflectorHits(
+  world: WorldState,
+  projectiles: readonly Entity[],
+): void {
+  const count = projectiles.length;
+  if (count === 0) return;
+  ensureReflectorBatchCapacity(count);
+  _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, count);
+
+  const mirrorsActive = world.mirrorsEnabled && world.getMirrorUnits().length > 0;
+  const forceFieldsActive = world.forceFieldsEnabled && getActiveForceFields().length > 0;
+  if (!mirrorsActive && !forceFieldsActive) return;
+
+  let enabledCount = 0;
+  for (let i = 0; i < count; i++) {
+    _reflectorEnabled[i] = 0;
+    const projEntity = projectiles[i];
+    if (!projEntity.projectile || !projEntity.ownership) continue;
+    const proj = projEntity.projectile;
+    if (proj.projectileType !== 'projectile') continue;
+
+    const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
+    const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
+    const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
+    const curX = projEntity.transform.x;
+    const curY = projEntity.transform.y;
+    const curZ = projEntity.transform.z;
+    if (!isValidProjectileSweep(prevX, prevY, prevZ, curX, curY, curZ)) continue;
+
+    _reflectorEnabled[i] = 1;
+    _reflectorStartX[i] = prevX;
+    _reflectorStartY[i] = prevY;
+    _reflectorStartZ[i] = prevZ;
+    _reflectorEndX[i] = curX;
+    _reflectorEndY[i] = curY;
+    _reflectorEndZ[i] = curZ;
+    _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.collisionRadius;
+    _reflectorExcludeEntityId[i] = proj.sourceEntityId;
+    enabledCount++;
+  }
+  if (enabledCount === 0) return;
+
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('ProjectileCollisionHandler: sim-wasm is not initialized');
+  }
+  sim.projectileReflectorIntersectionsBatch(
+    count,
+    _reflectorEnabled.subarray(0, count),
+    _reflectorStartX.subarray(0, count),
+    _reflectorStartY.subarray(0, count),
+    _reflectorStartZ.subarray(0, count),
+    _reflectorEndX.subarray(0, count),
+    _reflectorEndY.subarray(0, count),
+    _reflectorEndZ.subarray(0, count),
+    _reflectorProjectileRadius.subarray(0, count),
+    _reflectorExcludeEntityId.subarray(0, count),
+    mirrorsActive ? 1 : 0,
+    forceFieldsActive ? 1 : 0,
+    encodeForceFieldReflectionMode(world.forceFieldReflectionMode),
+    MIRROR_PROJECTILE_QUERY_PAD,
+    _reflectorHitKind.subarray(0, count),
+    _reflectorHitEntityId.subarray(0, count),
+    _reflectorHitT.subarray(0, count),
+    _reflectorHitX.subarray(0, count),
+    _reflectorHitY.subarray(0, count),
+    _reflectorHitZ.subarray(0, count),
+    _reflectorHitNormalX.subarray(0, count),
+    _reflectorHitNormalY.subarray(0, count),
+    _reflectorHitNormalZ.subarray(0, count),
+  );
+}
 
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
 const _emptyExcludeSet = new Set<EntityId>();
@@ -378,8 +479,11 @@ export function checkProjectileCollisions(
   const velocityUpdates = _collisionVelocityUpdates;
   let reflectorImpactEvents = 0;
   const collisionDtMs = dtMs;
+  const projectileEntities = world.getProjectiles();
+  computeProjectileReflectorHits(world, projectileEntities);
 
-  for (const projEntity of world.getProjectiles()) {
+  for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
+    const projEntity = projectileEntities[projectileOrdinal];
     if (!projEntity.projectile || !projEntity.ownership) continue;
 
     const proj = projEntity.projectile;
@@ -423,98 +527,23 @@ export function checkProjectileCollisions(
     let reflectorHitY = 0;
     let reflectorHitZ = 0;
     if (proj.projectileType === 'projectile') {
-      const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
-      const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
-      const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
-      const curX = projEntity.transform.x;
-      const curY = projEntity.transform.y;
-      const curZ = projEntity.transform.z;
       let bestT = Infinity;
       let bestX = 0, bestY = 0, bestZ = 0;
-      if (world.mirrorsEnabled) {
-        const mirrorCandidates = world.getMirrorUnits();
-        const projectileRadius = runtimeProfile.collisionRadius;
-        for (const u of mirrorCandidates) {
-          if (u.id === proj.sourceEntityId) continue;
-          if (!u.unit || u.unit.hp <= 0) continue;
-          const panels = u.unit.mirrorPanels;
-          if (!panels || panels.length === 0) continue;
-          const mirrorBroadRadius =
-            Math.max(u.unit.mirrorBoundRadius, u.unit.radius.shot) +
-            projectileRadius +
-            MIRROR_PROJECTILE_QUERY_PAD;
-          if (
-            pointSegmentDistanceSq3(
-              u.transform.x, u.transform.y, u.transform.z,
-              prevX, prevY, prevZ,
-              curX, curY, curZ,
-            ) > mirrorBroadRadius * mirrorBroadRadius
-          ) {
-            continue;
-          }
-          const uTurrets = u.combat?.turrets;
-          const mirrorRot = uTurrets && uTurrets.length > 0
-            ? uTurrets[0].rotation
-            : u.transform.rotation;
-          const mirrorPitch = uTurrets && uTurrets.length > 0
-            ? uTurrets[0].pitch
-            : 0;
-          const groundZ = getUnitGroundZ(u);
-          const uCS = getTransformCosSin(u.transform);
-          const mirrorPivot = uTurrets && uTurrets.length > 0
-            ? resolveWeaponWorldMount(
-                u, uTurrets[0], 0,
-                uCS.cos, uCS.sin,
-                {
-                  currentTick: world.getTick(),
-                  unitGroundZ: groundZ,
-                  surfaceN: u.unit.surfaceNormal,
-                },
-                _mirrorProjectilePivot,
-              )
-            : undefined;
-          const hit = findClosestPanelHit(
-            panels, mirrorRot, mirrorPitch,
-            u.transform.x, u.transform.y, groundZ,
-            prevX, prevY, prevZ, curX, curY, curZ,
-            -1,
-            mirrorPivot,
-          );
-          if (hit && hit.t < bestT) {
-            bestT = hit.t;
-            bestX = hit.x;
-            bestY = hit.y;
-            bestZ = hit.z;
-            reflectorNormalX = hit.normalX;
-            reflectorNormalY = hit.normalY;
-            reflectorNormalZ = hit.normalZ;
-            reflectorPlayerId = u.ownership?.playerId;
-            hitMirrorPanel = true;
-            hitForceField = false;
-          }
-        }
-      }
-      // Reflector contacts are checked geometrically, with no
-      // projectile-owner/friendly filtering. The force-field mode selects
-      // incoming, outgoing, or both boundary crossings.
-      const shieldHit = world.forceFieldsEnabled
-        ? findForceFieldProjectileIntersection(
-            world,
-            prevX, prevY, prevZ,
-            curX, curY, curZ,
-          )
-        : null;
-      if (shieldHit && shieldHit.t < bestT) {
-        bestT = shieldHit.t;
-        bestX = shieldHit.x;
-        bestY = shieldHit.y;
-        bestZ = shieldHit.z;
-        reflectorNormalX = shieldHit.nx;
-        reflectorNormalY = shieldHit.ny;
-        reflectorNormalZ = shieldHit.nz;
-        reflectorPlayerId = shieldHit.playerId;
-        hitMirrorPanel = false;
-        hitForceField = true;
+      const reflectorKind = _reflectorHitKind[projectileOrdinal];
+      if (reflectorKind !== REFLECTOR_HIT_KIND_NONE) {
+        bestT = _reflectorHitT[projectileOrdinal];
+        bestX = _reflectorHitX[projectileOrdinal];
+        bestY = _reflectorHitY[projectileOrdinal];
+        bestZ = _reflectorHitZ[projectileOrdinal];
+        reflectorNormalX = _reflectorHitNormalX[projectileOrdinal];
+        reflectorNormalY = _reflectorHitNormalY[projectileOrdinal];
+        reflectorNormalZ = _reflectorHitNormalZ[projectileOrdinal];
+        const reflectorEntityId = _reflectorHitEntityId[projectileOrdinal];
+        reflectorPlayerId = reflectorEntityId >= 0
+          ? world.getEntity(reflectorEntityId)?.ownership?.playerId
+          : undefined;
+        hitMirrorPanel = reflectorKind === REFLECTOR_HIT_KIND_MIRROR;
+        hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
       if (bestT < Infinity) {
         const shouldReflectProjectile =

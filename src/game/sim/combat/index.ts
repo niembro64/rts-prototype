@@ -23,7 +23,6 @@ export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFie
 // Force field weapons
 export {
   updateForceFieldState,
-  findForceFieldProjectileIntersection,
   resetForceFieldBuffers,
 } from './forceFieldTurret';
 

@@ -11763,6 +11763,24 @@ force_field_pool_ptr_export!(force_field_pool_radius_ptr, radius, f64);
 
 const FORCE_FIELD_GRAZE_EPS: f64 = 1e-6;
 const ARC_FF_CLEARANCE_SAMPLES: u32 = 16;
+const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN: u8 = 0;
+const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT: u8 = 1;
+const FORCE_FIELD_REFLECTION_MODE_BOTH: u8 = 2;
+const REFLECTOR_HIT_KIND_NONE: u8 = 0;
+const REFLECTOR_HIT_KIND_MIRROR: u8 = 1;
+const REFLECTOR_HIT_KIND_FORCE_FIELD: u8 = 2;
+
+struct ProjectileReflectorHit {
+    kind: u8,
+    entity_id: i32,
+    t: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+    normal_x: f64,
+    normal_y: f64,
+    normal_z: f64,
+}
 
 #[inline]
 fn force_field_segment_crosses_sphere(
@@ -11809,6 +11827,165 @@ fn force_field_segment_crosses_sphere(
     let t1 = (-b - sqrt_disc) * inv_denom;
     let t2 = (-b + sqrt_disc) * inv_denom;
     (t1 > lo && t1 < hi) || (t2 > lo && t2 < hi)
+}
+
+#[inline]
+fn force_field_reflection_mode_allows_crossing(mode: u8, radial_velocity: f64) -> bool {
+    let eps = 1e-6;
+    if radial_velocity < -eps {
+        return mode == FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN
+            || mode == FORCE_FIELD_REFLECTION_MODE_BOTH;
+    }
+    if radial_velocity > eps {
+        return mode == FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT
+            || mode == FORCE_FIELD_REFLECTION_MODE_BOTH;
+    }
+    false
+}
+
+#[inline]
+fn force_field_projectile_intersection_t(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    reflection_mode: u8,
+) -> Option<f64> {
+    let sx = start_x - center_x;
+    let sy = start_y - center_y;
+    let sz = start_z - center_z;
+    if start_x.max(end_x) < center_x - radius || start_x.min(end_x) > center_x + radius {
+        return None;
+    }
+    if start_y.max(end_y) < center_y - radius || start_y.min(end_y) > center_y + radius {
+        return None;
+    }
+    if start_z.max(end_z) < center_z - radius || start_z.min(end_z) > center_z + radius {
+        return None;
+    }
+
+    let dx = end_x - start_x;
+    let dy = end_y - start_y;
+    let dz = end_z - start_z;
+    let a = dx * dx + dy * dy + dz * dz;
+    if a <= 1e-9 {
+        return None;
+    }
+
+    let radius_sq = radius * radius;
+    let start_dist_sq = sx * sx + sy * sy + sz * sz;
+    let start_dot_velocity = sx * dx + sy * dy + sz * dz;
+    let b = 2.0 * start_dot_velocity;
+    let c = start_dist_sq - radius_sq;
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return None;
+    }
+
+    let sqrt_disc = disc.sqrt();
+    let inv_denom = 1.0 / (2.0 * a);
+    let t0 = (-b - sqrt_disc) * inv_denom;
+    let t1 = (-b + sqrt_disc) * inv_denom;
+    let first_t = t0.min(t1);
+    let second_t = t0.max(t1);
+
+    if first_t > FORCE_FIELD_GRAZE_EPS && first_t <= 1.0 {
+        let hit_x = start_x + dx * first_t - center_x;
+        let hit_y = start_y + dy * first_t - center_y;
+        let hit_z = start_z + dz * first_t - center_z;
+        let radial_velocity = dx * hit_x + dy * hit_y + dz * hit_z;
+        if force_field_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
+            return Some(first_t);
+        }
+    }
+
+    if second_t > FORCE_FIELD_GRAZE_EPS && second_t <= 1.0 && second_t != first_t {
+        let hit_x = start_x + dx * second_t - center_x;
+        let hit_y = start_y + dy * second_t - center_y;
+        let hit_z = start_z + dz * second_t - center_z;
+        let radial_velocity = dx * hit_x + dy * hit_y + dz * hit_z;
+        if force_field_reflection_mode_allows_crossing(reflection_mode, radial_velocity) {
+            return Some(second_t);
+        }
+    }
+
+    None
+}
+
+#[inline]
+fn force_field_projectile_intersection(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    reflection_mode: u8,
+    max_t: f64,
+) -> Option<ProjectileReflectorHit> {
+    let pool = force_field_pool();
+    let count = pool.count as usize;
+    if count == 0 {
+        return None;
+    }
+
+    let dx = end_x - start_x;
+    let dy = end_y - start_y;
+    let dz = end_z - start_z;
+    let mut best_t = max_t;
+    let mut best: Option<ProjectileReflectorHit> = None;
+    for i in 0..count {
+        let t = force_field_projectile_intersection_t(
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            pool.center_x[i],
+            pool.center_y[i],
+            pool.center_z[i],
+            pool.radius[i],
+            reflection_mode,
+        );
+        let Some(t) = t else {
+            continue;
+        };
+        if t >= best_t {
+            continue;
+        }
+        let hit_x = start_x + dx * t;
+        let hit_y = start_y + dy * t;
+        let hit_z = start_z + dz * t;
+        let normal_x = hit_x - pool.center_x[i];
+        let normal_y = hit_y - pool.center_y[i];
+        let normal_z = hit_z - pool.center_z[i];
+        let normal_len = (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
+        let inv_normal_len = if normal_len > 1e-9 {
+            1.0 / normal_len
+        } else {
+            1.0
+        };
+        best_t = t;
+        best = Some(ProjectileReflectorHit {
+            kind: REFLECTOR_HIT_KIND_FORCE_FIELD,
+            entity_id: pool.owner_entity_id[i],
+            t,
+            x: hit_x,
+            y: hit_y,
+            z: hit_z,
+            normal_x: normal_x * inv_normal_len,
+            normal_y: normal_y * inv_normal_len,
+            normal_z: normal_z * inv_normal_len,
+        });
+    }
+    best
 }
 
 /// Direct-segment force-field clearance. Returns 1 if the segment
@@ -12333,6 +12510,247 @@ pub fn mirror_panel_clearance_segment_export(
     tz: f64,
 ) -> u8 {
     mirror_panel_clearance_segment(sx, sy, sz, tx, ty, tz)
+}
+
+#[inline]
+fn mirror_panel_projectile_intersection(
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    exclude_unit_id: i32,
+    projectile_radius: f64,
+    query_pad: f64,
+    max_t: f64,
+) -> Option<ProjectileReflectorHit> {
+    let pool = mirror_panel_pool();
+    let unit_count = pool.unit_count as usize;
+    if unit_count == 0 {
+        return None;
+    }
+
+    let dx = tx - sx;
+    let dy = ty - sy;
+    let dz = tz - sz;
+    let extra_broad_radius = projectile_radius.max(0.0) + query_pad.max(0.0);
+    let mut best_t = max_t;
+    let mut best: Option<ProjectileReflectorHit> = None;
+
+    for u in 0..unit_count {
+        if pool.unit_id[u] == exclude_unit_id {
+            continue;
+        }
+        let panel_count = pool.panel_count[u] as usize;
+        if panel_count == 0 {
+            continue;
+        }
+        let ux = pool.unit_x[u];
+        let uy = pool.unit_y[u];
+        let uz = pool.unit_z[u];
+        let broad_r = pool.unit_broad_radius[u] as f64 + extra_broad_radius;
+        if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
+            continue;
+        }
+
+        let mirror_yaw = pool.mirror_yaw[u] as f64;
+        let mirror_pitch = pool.mirror_pitch[u] as f64;
+        let cos_yaw = mirror_yaw.cos();
+        let sin_yaw = mirror_yaw.sin();
+        let cos_pitch = mirror_pitch.cos();
+        let sin_pitch = mirror_pitch.sin();
+        let perp_x = -sin_yaw;
+        let perp_y = cos_yaw;
+        let pivot_x = pool.pivot_x[u];
+        let pivot_y = pool.pivot_y[u];
+        let pivot_z = pool.pivot_z[u];
+
+        let panel_start = pool.panel_start[u] as usize;
+        for pi in panel_start..panel_start + panel_count {
+            let offset_y = pool.panel_offset_y[pi] as f64;
+            let panel_pivot_x = pivot_x + perp_x * offset_y;
+            let panel_pivot_y = pivot_y + perp_y * offset_y;
+            let panel_pivot_z = pivot_z;
+
+            let panel_angle = pool.panel_angle[pi] as f64;
+            let panel_yaw = mirror_yaw + panel_angle;
+            let panel_cos_yaw = panel_yaw.cos();
+            let panel_sin_yaw = panel_yaw.sin();
+
+            let arm_length = pool.panel_arm_length[pi] as f64;
+            let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
+            let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
+            let pcz = panel_pivot_z + sin_pitch * arm_length;
+
+            let nx = panel_cos_yaw * cos_pitch;
+            let ny = panel_sin_yaw * cos_pitch;
+            let nz = sin_pitch;
+
+            let edx = -panel_sin_yaw;
+            let edy = panel_cos_yaw;
+            let edz = 0.0;
+
+            let half_w = pool.panel_half_width[pi] as f64;
+            let base_y = pool.panel_base_y[pi] as f64;
+            let top_y = pool.panel_top_y[pi] as f64;
+            let half_h = (top_y - base_y) * 0.5;
+
+            let hit_t = ray_tilted_rect_intersection_t(
+                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
+            );
+            let Some(t) = hit_t else {
+                continue;
+            };
+            if t >= best_t {
+                continue;
+            }
+            best_t = t;
+            best = Some(ProjectileReflectorHit {
+                kind: REFLECTOR_HIT_KIND_MIRROR,
+                entity_id: pool.unit_id[u],
+                t,
+                x: sx + t * dx,
+                y: sy + t * dy,
+                z: sz + t * dz,
+                normal_x: nx,
+                normal_y: ny,
+                normal_z: nz,
+            });
+        }
+    }
+
+    best
+}
+
+/// WASM-PROJ-01/02 — batch projectile reflector intersections.
+///
+/// TypeScript compacts projectile sweeps into parallel arrays, calls this
+/// once, then consumes the nearest reflector hit for each projectile. The
+/// kernel reads the current mirror-panel and force-field slabs, so the JS
+/// collision path no longer walks every mirror unit or force-field sphere per
+/// projectile.
+#[wasm_bindgen]
+pub fn projectile_reflector_intersections_batch(
+    count: u32,
+    enabled: &[u8],
+    start_x: &[f64],
+    start_y: &[f64],
+    start_z: &[f64],
+    end_x: &[f64],
+    end_y: &[f64],
+    end_z: &[f64],
+    projectile_radius: &[f64],
+    exclude_entity_id: &[i32],
+    mirrors_enabled: u8,
+    force_fields_enabled: u8,
+    force_field_reflection_mode: u8,
+    mirror_query_pad: f64,
+    out_kind: &mut [u8],
+    out_entity_id: &mut [i32],
+    out_t: &mut [f64],
+    out_x: &mut [f64],
+    out_y: &mut [f64],
+    out_z: &mut [f64],
+    out_normal_x: &mut [f64],
+    out_normal_y: &mut [f64],
+    out_normal_z: &mut [f64],
+) {
+    let n = count as usize;
+    debug_assert!(enabled.len() >= n);
+    debug_assert!(start_x.len() >= n);
+    debug_assert!(start_y.len() >= n);
+    debug_assert!(start_z.len() >= n);
+    debug_assert!(end_x.len() >= n);
+    debug_assert!(end_y.len() >= n);
+    debug_assert!(end_z.len() >= n);
+    debug_assert!(projectile_radius.len() >= n);
+    debug_assert!(exclude_entity_id.len() >= n);
+    debug_assert!(out_kind.len() >= n);
+    debug_assert!(out_entity_id.len() >= n);
+    debug_assert!(out_t.len() >= n);
+    debug_assert!(out_x.len() >= n);
+    debug_assert!(out_y.len() >= n);
+    debug_assert!(out_z.len() >= n);
+    debug_assert!(out_normal_x.len() >= n);
+    debug_assert!(out_normal_y.len() >= n);
+    debug_assert!(out_normal_z.len() >= n);
+
+    for i in 0..n {
+        out_kind[i] = REFLECTOR_HIT_KIND_NONE;
+        out_entity_id[i] = -1;
+        out_t[i] = f64::INFINITY;
+        out_x[i] = 0.0;
+        out_y[i] = 0.0;
+        out_z[i] = 0.0;
+        out_normal_x[i] = 0.0;
+        out_normal_y[i] = 0.0;
+        out_normal_z[i] = 0.0;
+
+        if enabled[i] == 0 {
+            continue;
+        }
+
+        let sx = start_x[i];
+        let sy = start_y[i];
+        let sz = start_z[i];
+        let tx = end_x[i];
+        let ty = end_y[i];
+        let tz = end_z[i];
+        if !(sx.is_finite()
+            && sy.is_finite()
+            && sz.is_finite()
+            && tx.is_finite()
+            && ty.is_finite()
+            && tz.is_finite())
+        {
+            continue;
+        }
+
+        let mut best: Option<ProjectileReflectorHit> = None;
+        if mirrors_enabled != 0 {
+            best = mirror_panel_projectile_intersection(
+                sx,
+                sy,
+                sz,
+                tx,
+                ty,
+                tz,
+                exclude_entity_id[i],
+                projectile_radius[i],
+                mirror_query_pad,
+                f64::INFINITY,
+            );
+        }
+        let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
+        if force_fields_enabled != 0 {
+            if let Some(force_hit) = force_field_projectile_intersection(
+                sx,
+                sy,
+                sz,
+                tx,
+                ty,
+                tz,
+                force_field_reflection_mode,
+                max_t,
+            ) {
+                best = Some(force_hit);
+            }
+        }
+
+        let Some(hit) = best else {
+            continue;
+        };
+        out_kind[i] = hit.kind;
+        out_entity_id[i] = hit.entity_id;
+        out_t[i] = hit.t;
+        out_x[i] = hit.x;
+        out_y[i] = hit.y;
+        out_z[i] = hit.z;
+        out_normal_x[i] = hit.normal_x;
+        out_normal_y[i] = hit.normal_y;
+        out_normal_z[i] = hit.normal_z;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────
