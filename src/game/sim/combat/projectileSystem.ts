@@ -28,7 +28,11 @@ import {
 import {
   clearTurretFsmOnSlab,
   readFiringTurretMaskForUnit,
+  readTurretBurstCooldownForFire,
+  readTurretCooldownForFire,
   refreshSlabActivityMasksForUnit,
+  writeTurretBurstCooldownToSlab,
+  writeTurretCooldownToSlab,
 } from './combatActivitySlab';
 import { resolveTargetAimPoint } from './aimSolver';
 import { setWeaponTarget } from './targetIndex';
@@ -389,15 +393,19 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       // their existing beam is still alive; non-beam weapons gate on
       // cooldown / burst readiness — those flags carry through to the
       // cooldown-update block below so we only compute them once.
+      // Cooldown / burstCooldown are slab-owned: the scheduled targeting
+      // batch decrements them every tick and we write the post-fire
+      // values straight back into the slab below, so the JS Turret
+      // fields are bypassed entirely on the sim hot path.
       let canFire = false;
       let canBurstFire = false;
       if (shot.type === 'beam') {
         if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       } else {
-        canFire = weapon.cooldown <= 0;
+        canFire = readTurretCooldownForFire(unit, weaponIndex, weapon.cooldown) <= 0;
         canBurstFire = weapon.burst?.remaining !== undefined &&
           weapon.burst.remaining > 0 &&
-          (weapon.burst.cooldown === undefined || weapon.burst.cooldown <= 0);
+          readTurretBurstCooldownForFire(unit, weaponIndex, weapon.burst.cooldown) <= 0;
 
         if (!canFire && !canBurstFire) continue;
 
@@ -410,14 +418,19 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (shot.type !== 'beam') {
         if (canBurstFire && weapon.burst?.remaining !== undefined) {
           weapon.burst!.remaining--;
-          weapon.burst!.cooldown = config.burst?.delay ?? 80;
+          const burstDelay = config.burst?.delay ?? 80;
+          writeTurretBurstCooldownToSlab(unit, weaponIndex, burstDelay);
           if (weapon.burst!.remaining <= 0) {
             weapon.burst = undefined;
           }
         } else if (canFire && shot.type !== 'laser') {
-          weapon.cooldown = config.cooldown;
+          writeTurretCooldownToSlab(unit, weaponIndex, config.cooldown);
           if (config.burst?.count && config.burst.count > 1) {
-            weapon.burst = { remaining: config.burst.count - 1, cooldown: config.burst?.delay ?? 80 };
+            // burst.remaining is JS-only state; burst.cooldown lives
+            // on the slab and is stamped via writeTurretBurstCooldownToSlab.
+            const burstDelay = config.burst?.delay ?? 80;
+            weapon.burst = { remaining: config.burst.count - 1, cooldown: burstDelay };
+            writeTurretBurstCooldownToSlab(unit, weaponIndex, burstDelay);
           }
         }
       }

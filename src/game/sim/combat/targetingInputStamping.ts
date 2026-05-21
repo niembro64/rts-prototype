@@ -88,6 +88,8 @@ const _stampVel = { x: 0, y: 0, z: 0 };
 let _stampPrevFsmState = new Uint8Array(0);
 let _stampPrevFsmTarget = new Int32Array(0);
 let _stampPrevLosBlockedTicks = new Uint16Array(0);
+let _stampPrevCooldown = new Float64Array(0);
+let _stampPrevBurstCooldown = new Float64Array(0);
 
 export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
@@ -145,6 +147,8 @@ function ensureStampPrevFsmCapacity(count: number): void {
   _stampPrevFsmState = new Uint8Array(next);
   _stampPrevFsmTarget = new Int32Array(next);
   _stampPrevLosBlockedTicks = new Uint16Array(next);
+  _stampPrevCooldown = new Float64Array(next);
+  _stampPrevBurstCooldown = new Float64Array(next);
 }
 
 function resetCombatTargetingSources(): void {
@@ -506,6 +510,13 @@ function stampCombatTargetingEntityInto(
   // on target change inside combat_targeting_set_target_state and
   // increments it during LOS grace counting), so we preserve the slab
   // value for same-entity slots and pass 0 for slot reuse.
+  // cooldown / burstCooldown are likewise slab-owned: the scheduled
+  // batch decrements them every tick and the firing pass writes
+  // post-fire values back into the slab via writeTurretCooldownToSlab.
+  // Seeding from JS Turret.cooldown each tick would clobber the
+  // kernel's decrement, so we preserve the slab value for same-entity
+  // slots and only fall back to the JS-side initial value (0 from
+  // runtimeTurrets) on slot reuse.
   const preservePreviousFsm = views.entityId[slot] === entity.id;
   if (turrets && preservePreviousFsm) {
     ensureStampPrevFsmCapacity(turrets.length);
@@ -515,6 +526,8 @@ function stampCombatTargetingEntityInto(
       _stampPrevFsmState[i] = views.state[idx];
       _stampPrevFsmTarget[i] = views.targetId[idx];
       _stampPrevLosBlockedTicks[i] = views.losBlockedTicks[idx];
+      _stampPrevCooldown[i] = views.cooldown[idx];
+      _stampPrevBurstCooldown[i] = views.burstCooldown[idx];
     }
   }
   targeting.setEntity(
@@ -573,8 +586,8 @@ function stampCombatTargetingEntityInto(
       t.angularVelocity, t.pitchVelocity,
       stateCode,
       targetId,
-      t.cooldown,
-      t.burst?.cooldown ?? 0,
+      preservePreviousFsm ? _stampPrevCooldown[i] : t.cooldown,
+      preservePreviousFsm ? _stampPrevBurstCooldown[i] : (t.burst?.cooldown ?? 0),
       fireMaxAcq, fireMaxRel,
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
@@ -680,10 +693,14 @@ export function writeBackCombatTargetingEntity(
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
     const turret = combat.turrets[i];
-    turret.cooldown = views.cooldown[idx];
-    if (turret.burst) {
-      turret.burst.cooldown = views.burstCooldown[idx];
-    }
+    // Cooldown / burstCooldown writeback is gone: the slab is the
+    // single source of truth (projectileSystem reads them via
+    // readTurretCooldownForFire / readTurretBurstCooldownForFire and
+    // writes post-fire values via writeTurretCooldownToSlab /
+    // writeTurretBurstCooldownToSlab). JS Turret.cooldown survives as
+    // an initial 0 from runtimeTurrets, used only to seed the slab on
+    // slot reuse for a freshly-spawned entity in the input stamping
+    // pass.
     const slabStateCode = views.state[idx];
     const targetId = views.targetId[idx];
     const target = targetId < 0 ? null : targetId;

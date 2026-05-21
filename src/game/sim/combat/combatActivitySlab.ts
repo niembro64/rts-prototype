@@ -115,3 +115,80 @@ export function readFiringTurretMaskForUnit(
   }
   return combat.firingTurretMask;
 }
+
+/** Resolve a (unit, weaponIndex) pair to a flat per-turret slab
+ *  index, or -1 if the slot is missing or the slab isn't stamped.
+ *  Internal to the cooldown helpers below — projectileSystem and
+ *  ProjectileCollisionHandler use the read/write wrappers, not this. */
+function combatTargetingTurretSlabIndex(
+  unit: Entity,
+  weaponIndex: number,
+): number {
+  if (weaponIndex < 0) return -1;
+  const sim = getSimWasm();
+  if (sim === undefined) return -1;
+  const slot = spatialGrid.getSlot(unit.id);
+  if (slot < 0) return -1;
+  const targeting = sim.combatTargeting;
+  if (weaponIndex >= targeting.turretCount(slot)) return -1;
+  return slot * targeting.maxTurretsPerEntity() + weaponIndex;
+}
+
+/** Slab-first read of one turret's cooldown timer with a JS Turret
+ *  fallback. The scheduled Rust batch decrements this every tick and
+ *  the firing pass writes post-fire values back via
+ *  writeTurretCooldownToSlab, so the slab is authoritative on the sim
+ *  hot path. Non-sim callers fall back to the JS field, which is now
+ *  effectively unused but kept until the Turret.cooldown field is
+ *  deleted outright. */
+export function readTurretCooldownForFire(
+  unit: Entity,
+  weaponIndex: number,
+  weaponCooldownJs: number,
+): number {
+  const idx = combatTargetingTurretSlabIndex(unit, weaponIndex);
+  if (idx < 0) return weaponCooldownJs;
+  const sim = getSimWasm()!;
+  return getCombatTargetingStateViews(sim).cooldown[idx];
+}
+
+/** Slab-first read of one turret's burst cooldown timer with a JS
+ *  fallback. Same ownership shape as `readTurretCooldownForFire`. */
+export function readTurretBurstCooldownForFire(
+  unit: Entity,
+  weaponIndex: number,
+  burstCooldownJs: number,
+): number {
+  const idx = combatTargetingTurretSlabIndex(unit, weaponIndex);
+  if (idx < 0) return burstCooldownJs;
+  const sim = getSimWasm()!;
+  return getCombatTargetingStateViews(sim).burstCooldown[idx];
+}
+
+/** Slab write of one turret's cooldown timer. Called from the firing
+ *  pass after a successful shot and from ProjectileCollisionHandler
+ *  when a cooldown-on-expire beam goes dark, so the kernel decrement
+ *  on the next tick sees the freshly-armed value. No-op when the slab
+ *  isn't stamped (non-sim paths). */
+export function writeTurretCooldownToSlab(
+  unit: Entity,
+  weaponIndex: number,
+  cooldown: number,
+): void {
+  const idx = combatTargetingTurretSlabIndex(unit, weaponIndex);
+  if (idx < 0) return;
+  const sim = getSimWasm()!;
+  getCombatTargetingStateViews(sim).cooldown[idx] = cooldown;
+}
+
+/** Slab write of one turret's burst cooldown timer. */
+export function writeTurretBurstCooldownToSlab(
+  unit: Entity,
+  weaponIndex: number,
+  burstCooldown: number,
+): void {
+  const idx = combatTargetingTurretSlabIndex(unit, weaponIndex);
+  if (idx < 0) return;
+  const sim = getSimWasm()!;
+  getCombatTargetingStateViews(sim).burstCooldown[idx] = burstCooldown;
+}

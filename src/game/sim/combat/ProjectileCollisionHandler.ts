@@ -24,6 +24,7 @@ import { LAND_CELL_SIZE, ROCKET_REFLECTOR_COLLISION_MODE } from '../../../config
 import { getActiveForceFields } from './forceFieldTurret';
 import { getSimWasm } from '../../sim-wasm/init';
 import { updateProjectileSourceClearance } from './combatUtils';
+import { writeTurretCooldownToSlab } from './combatActivitySlab';
 
 const MIRROR_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
@@ -1080,15 +1081,17 @@ export function checkProjectileCollisions(
       const weaponIdx = proj.config.turretIndex ?? 0;
       beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);
 
-      // For cooldown beams, start the cooldown now (after beam expires)
+      // For cooldown beams, start the cooldown now (after beam expires).
+      // Cooldown is slab-owned: the scheduled targeting batch decrements
+      // it next tick, so we write the post-expire value directly into
+      // the slab. The source entity may have despawned between the
+      // beam's creation and its expiry; writeTurretCooldownToSlab is a
+      // no-op when the slab slot is missing.
       const cooldown = proj.config.cooldown;
       if (cooldown > 0) {
         const source = world.getEntity(proj.sourceEntityId);
-        if (source?.combat) {
-          const weapon = source.combat.turrets[weaponIdx];
-          if (weapon) {
-            weapon.cooldown = cooldown;
-          }
+        if (source) {
+          writeTurretCooldownToSlab(source, weaponIdx, cooldown);
         }
       }
     }

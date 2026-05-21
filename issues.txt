@@ -261,7 +261,6 @@ AIM-08.5 — Port the targeting FSM
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
   Remaining writeback fields still needed by downstream JS readers:
-    - cooldown / burst.cooldown (read by projectileSystem fire gate)
     - target / state (read by scattered slab-first fallbacks +
       mid-tick JS writes in projectileSystem / turretSystem /
       commandExecution that set weapon.state = 'idle' or call
@@ -269,6 +268,22 @@ AIM-08.5 — Port the targeting FSM
     - syncBeamWeaponTargetIndex per-turret call
     - resetDisabledTurretJsOnlyFields (JS-only fields the Rust kernel
       never sees)
+  cooldown / burstCooldown are no longer JS writeback fields: the
+  combat-targeting slab is the single source of truth on the sim hot
+  path. Input stamping preserves the previous slab cooldown for
+  same-entity slots (next to the preservePreviousFsm state/target/LOS
+  reads), so the kernel's per-tick decrement persists across ticks
+  without an intervening JS round-trip. New slab helpers
+  readTurretCooldownForFire / readTurretBurstCooldownForFire feed the
+  projectileSystem fire gate, and writeTurretCooldownToSlab /
+  writeTurretBurstCooldownToSlab are called after each shot (in
+  projectileSystem.fireTurrets) and on cooldown-on-expire beams (in
+  ProjectileCollisionHandler). The slab->JS writeback no longer copies
+  cooldown / burst.cooldown back onto Turret objects. JS Turret.cooldown
+  survives as an initial-0 field used only to seed fresh slab rows on
+  slot reuse, and as the no-sim fallback path; the field itself can be
+  deleted once we drop NetworkEntityFactory's vestigial
+  next.cooldown = prev.cooldown preservation.
   Per-turret angular/pitch velocity now lives on the combat-targeting
   slab. Input stamping copies them through the extended
   combat_targeting_set_turret signature; the JS turretSystem rotation
@@ -292,10 +307,11 @@ AIM-08.5 — Port the targeting FSM
   combatActivity.ts can stay JS-only (NetworkEntityFactory entity
   construction, GameServer mirror / force-field toggles, and
   commandExecution's clearCombatActivityFlags still call into it).
-  Likely next moves: migrate cooldown to slab-owned (stamping
-  preserves slab cooldown, projectileSystem reads + writes through the
-  slab); then route every remaining mid-tick weapon.state = 'idle' /
-  setWeaponTarget(..., null) write through a slab-writing helper so
-  the JS Turret.target / Turret.state writeback can be deleted
-  outright.
+  Likely next moves: route every remaining mid-tick weapon.state =
+  'idle' / setWeaponTarget(..., null) write through a slab-writing
+  helper so the JS Turret.target / Turret.state writeback can be
+  deleted outright; in the same direction, drop NetworkEntityFactory's
+  next.cooldown = prev.cooldown preservation and remove Turret.cooldown
+  from the JS Turret type so the slab is the only place cooldown
+  lives.
 
