@@ -273,6 +273,10 @@ export type HoverConfig = {
   tailFanOffsetX?: number;
   tailFanRadius?: number;
   tailFanRingTubeRadius?: number;
+  /** Tilt the tail fan backward (degrees). 0 = straight down, 90 = fully
+   *  rearward. Analogous to `fanOutwardAngleDeg`, except the tilt is
+   *  along the unit's −X axis (the tail), not radially outward. */
+  tailFanBackAngleDeg?: number;
 };
 
 /** Flying locomotion uses hover-style altitude physics, but the unit

@@ -201,6 +201,14 @@ export function buildHoverFans(
       0.18,
       unitRadius * (cfg.tailFanRingTubeRadius ?? cfg.fanRingTubeRadius),
     );
+    // The tail fan sits at (x=tailFanOffsetX*r, z=0) so its
+    // center-to-fan radial vector is exactly the unit's −X axis. Feeding
+    // that direction into buildFan's outwardAngleRad therefore tilts
+    // the duct rearward — which is the visual the user wants for
+    // "the tail fan angled back."
+    const tailBackAngleRad = THREE.MathUtils.degToRad(
+      Math.max(0, Math.min(90, cfg.tailFanBackAngleDeg ?? 0)),
+    );
     fans.push(buildFan(
       group,
       {
@@ -208,7 +216,7 @@ export function buildHoverFans(
         localZ: 0,
         fanRadius: tailFanRadius,
         ringTubeRadius: tailRingTubeRadius,
-        outwardAngleRad: 0,
+        outwardAngleRad: tailBackAngleRad,
       },
       entityId,
       fans.length,

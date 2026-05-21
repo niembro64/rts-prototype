@@ -353,7 +353,7 @@
       "fanRadius": 0.32,
       "fanRingTubeRadius": 0.035,
       "fanOutwardAngleDeg": 14,
-      "fanSpinRadPerSec": 42
+      "fanSpinRadPerSec": -10
     }
   },
   "dragonflyHovercraft": {
@@ -371,10 +371,11 @@
       "fanRadius": 1.4,
       "fanRingTubeRadius": 0.1,
       "fanOutwardAngleDeg": 18,
-      "fanSpinRadPerSec": 42,
-      "tailFanOffsetX": -3.8,
-      "tailFanRadius": 0.32,
-      "tailFanRingTubeRadius": 0.035
+      "fanSpinRadPerSec": -10,
+      "tailFanOffsetX": -5,
+      "tailFanRadius": 0.7,
+      "tailFanRingTubeRadius": 0.05,
+      "tailFanBackAngleDeg": 30
     }
   },
   "eagleFlying": {
