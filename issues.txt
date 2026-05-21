@@ -117,6 +117,11 @@ AIM-08.5 — Port the targeting FSM
   runs existing-lock validation, auto-scan, Rust spatial candidate
   queries, and fire/acquisition FSM application for each queued entity
   without returning to TypeScript between units.
+  Priority-point, priority-target, fire-disabled clear, and auto-mode
+  rows now also share a mixed world-order Rust FSM dispatch
+  (combat_targeting_tick_batch), so TypeScript queues a single
+  per-tick mode batch after its remaining object-owned cooldown,
+  command, and aim-point prep.
   Remaining work for AIM-08.5:
     - Move the outer world.getArmedEntities() loop into Rust so the
       per-tick entry point is a single combat_targeting_tick(...) call.

@@ -23,63 +23,66 @@ import {
 } from './targetingInputStamping';
 
 const _activeCombatUnits: Entity[] = [];
-// AIM-08.5 unified gate inputs shared across priority-target and
-// existing-lock kernels. The Rust kernels read per-turret ballistic
-// config, mirror-panel, force-field, cloak, LOS, and ballistic gates
-// from the slab. Aim points are TS-resolved so
-// lockOnToBody/lockOnToTurret stay in one place.
-let _ppAimX = new Float64Array(0);
-let _ppAimY = new Float64Array(0);
-let _ppAimZ = new Float64Array(0);
+const TARGETING_BATCH_MODE_AUTO = 0;
+const TARGETING_BATCH_MODE_PRIORITY_POINT = 1;
+const TARGETING_BATCH_MODE_PRIORITY_TARGET = 2;
+const TARGETING_BATCH_MODE_CLEAR_LOCKS = 3;
+
 const _gateAimPointScratch: Vec3 = { x: 0, y: 0, z: 0 };
-const _autoBatchUnits: Entity[] = [];
-let _autoBatchSlots = new Uint32Array(0);
-let _autoBatchSourceIds = new Int32Array(0);
-let _autoBatchHasCooldown = new Uint8Array(0);
-let _autoBatchAimX = new Float64Array(0);
-let _autoBatchAimY = new Float64Array(0);
-let _autoBatchAimZ = new Float64Array(0);
-let _autoBatchCachedFireRanks = new Uint8Array(0);
-let _autoBatchCachedFireDistSqs = new Float64Array(0);
-let _autoBatchMaxTurrets = 0;
+const _targetingBatchUnits: Entity[] = [];
+let _targetingBatchSlots = new Uint32Array(0);
+let _targetingBatchSourceIds = new Int32Array(0);
+let _targetingBatchModes = new Uint8Array(0);
+let _targetingBatchPriorityTargetIds = new Int32Array(0);
+let _targetingBatchPriorityPointX = new Float64Array(0);
+let _targetingBatchPriorityPointY = new Float64Array(0);
+let _targetingBatchPriorityPointZ = new Float64Array(0);
+let _targetingBatchHasCooldown = new Uint8Array(0);
+let _targetingBatchAimX = new Float64Array(0);
+let _targetingBatchAimY = new Float64Array(0);
+let _targetingBatchAimZ = new Float64Array(0);
+let _targetingBatchCachedFireRanks = new Uint8Array(0);
+let _targetingBatchCachedFireDistSqs = new Float64Array(0);
+let _targetingBatchMaxTurrets = 0;
 
 function nextTargetingReacquireTick(tick: number): number {
   return tick + 1;
 }
 
-function ensurePerWeaponScratchCapacity(count: number): void {
-  if (count <= _ppAimX.length) return;
-  let next = Math.max(8, _ppAimX.length);
-  while (next < count) next *= 2;
-  _ppAimX = new Float64Array(next);
-  _ppAimY = new Float64Array(next);
-  _ppAimZ = new Float64Array(next);
-}
-
-function ensureAutoBatchCapacity(entityCount: number, maxTurrets: number): void {
-  if (maxTurrets !== _autoBatchMaxTurrets) {
-    _autoBatchSlots = new Uint32Array(0);
-    _autoBatchSourceIds = new Int32Array(0);
-    _autoBatchHasCooldown = new Uint8Array(0);
-    _autoBatchAimX = new Float64Array(0);
-    _autoBatchAimY = new Float64Array(0);
-    _autoBatchAimZ = new Float64Array(0);
-    _autoBatchCachedFireRanks = new Uint8Array(0);
-    _autoBatchCachedFireDistSqs = new Float64Array(0);
-    _autoBatchMaxTurrets = maxTurrets;
+function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): void {
+  if (maxTurrets !== _targetingBatchMaxTurrets) {
+    _targetingBatchSlots = new Uint32Array(0);
+    _targetingBatchSourceIds = new Int32Array(0);
+    _targetingBatchModes = new Uint8Array(0);
+    _targetingBatchPriorityTargetIds = new Int32Array(0);
+    _targetingBatchPriorityPointX = new Float64Array(0);
+    _targetingBatchPriorityPointY = new Float64Array(0);
+    _targetingBatchPriorityPointZ = new Float64Array(0);
+    _targetingBatchHasCooldown = new Uint8Array(0);
+    _targetingBatchAimX = new Float64Array(0);
+    _targetingBatchAimY = new Float64Array(0);
+    _targetingBatchAimZ = new Float64Array(0);
+    _targetingBatchCachedFireRanks = new Uint8Array(0);
+    _targetingBatchCachedFireDistSqs = new Float64Array(0);
+    _targetingBatchMaxTurrets = maxTurrets;
   }
-  if (entityCount <= _autoBatchSlots.length) return;
-  let next = Math.max(8, _autoBatchSlots.length);
+  if (entityCount <= _targetingBatchSlots.length) return;
+  let next = Math.max(8, _targetingBatchSlots.length);
   while (next < entityCount) next *= 2;
-  _autoBatchSlots = new Uint32Array(next);
-  _autoBatchSourceIds = new Int32Array(next);
-  _autoBatchHasCooldown = new Uint8Array(next);
+  _targetingBatchSlots = new Uint32Array(next);
+  _targetingBatchSourceIds = new Int32Array(next);
+  _targetingBatchModes = new Uint8Array(next);
+  _targetingBatchPriorityTargetIds = new Int32Array(next);
+  _targetingBatchPriorityPointX = new Float64Array(next);
+  _targetingBatchPriorityPointY = new Float64Array(next);
+  _targetingBatchPriorityPointZ = new Float64Array(next);
+  _targetingBatchHasCooldown = new Uint8Array(next);
   const turretCapacity = next * maxTurrets;
-  _autoBatchAimX = new Float64Array(turretCapacity);
-  _autoBatchAimY = new Float64Array(turretCapacity);
-  _autoBatchAimZ = new Float64Array(turretCapacity);
-  _autoBatchCachedFireRanks = new Uint8Array(turretCapacity);
-  _autoBatchCachedFireDistSqs = new Float64Array(turretCapacity);
+  _targetingBatchAimX = new Float64Array(turretCapacity);
+  _targetingBatchAimY = new Float64Array(turretCapacity);
+  _targetingBatchAimZ = new Float64Array(turretCapacity);
+  _targetingBatchCachedFireRanks = new Uint8Array(turretCapacity);
+  _targetingBatchCachedFireDistSqs = new Float64Array(turretCapacity);
 }
 
 /** Resolve each turret's aim point against a known target entity for
@@ -87,14 +90,19 @@ function ensureAutoBatchCapacity(entityCount: number, maxTurrets: number): void 
  *  mirror-panel slab + force-field slab + cloak/detector data, so
  *  TS only owes per-turret aim points (lockOnToBody / lockOnToTurret
  *  resolution stays in one place here). */
-function fillPriorityTargetGateInputs(
+function fillPriorityTargetGateInputsInto(
   weapons: Turret[],
   target: Entity,
   source: Entity,
   currentTick: number,
+  outX: Float64Array,
+  outY: Float64Array,
+  outZ: Float64Array,
+  offset: number,
 ): void {
   for (let wi = 0; wi < weapons.length; wi++) {
     const weapon = weapons[wi];
+    const outIdx = offset + wi;
     resolveTargetAimPoint(
       target,
       weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
@@ -105,9 +113,9 @@ function fillPriorityTargetGateInputs(
         currentTick,
       },
     );
-    _ppAimX[wi] = _gateAimPointScratch.x;
-    _ppAimY[wi] = _gateAimPointScratch.y;
-    _ppAimZ[wi] = _gateAimPointScratch.z;
+    outX[outIdx] = _gateAimPointScratch.x;
+    outY[outIdx] = _gateAimPointScratch.y;
+    outZ[outIdx] = _gateAimPointScratch.z;
   }
 }
 
@@ -197,21 +205,29 @@ function resetDisabledWeapon(world: WorldState, unit: Entity, weapon: Turret, we
 
 type TargetingKernel = ReturnType<typeof getTargetingKernel>;
 
-function queueAutoModeTargetingUnit(
+function queueTargetingUnit(
   unit: Entity,
   unitSlot: number,
+  mode: number,
   hasCooldownState: boolean,
   maxTurrets: number,
+  priorityTargetId: number = -1,
+  priorityPoint: Vec3 | null = null,
 ): void {
-  const batchIdx = _autoBatchUnits.length;
-  ensureAutoBatchCapacity(batchIdx + 1, maxTurrets);
-  _autoBatchUnits.push(unit);
-  _autoBatchSlots[batchIdx] = unitSlot;
-  _autoBatchSourceIds[batchIdx] = unit.id;
-  _autoBatchHasCooldown[batchIdx] = hasCooldownState ? 1 : 0;
+  const batchIdx = _targetingBatchUnits.length;
+  ensureTargetingBatchCapacity(batchIdx + 1, maxTurrets);
+  _targetingBatchUnits.push(unit);
+  _targetingBatchSlots[batchIdx] = unitSlot;
+  _targetingBatchSourceIds[batchIdx] = unit.id;
+  _targetingBatchModes[batchIdx] = mode;
+  _targetingBatchPriorityTargetIds[batchIdx] = priorityTargetId;
+  _targetingBatchPriorityPointX[batchIdx] = priorityPoint?.x ?? 0;
+  _targetingBatchPriorityPointY[batchIdx] = priorityPoint?.y ?? 0;
+  _targetingBatchPriorityPointZ[batchIdx] = priorityPoint?.z ?? 0;
+  _targetingBatchHasCooldown[batchIdx] = hasCooldownState ? 1 : 0;
 }
 
-function flushAutoModeTargetingBatch(
+function flushTargetingBatch(
   world: WorldState,
   targeting: TargetingKernel,
   tick: number,
@@ -221,10 +237,10 @@ function flushAutoModeTargetingBatch(
   forceFieldsEnabledFlag: number,
   forceMaterialSightObstructionActiveFlag: number,
 ): void {
-  const count = _autoBatchUnits.length;
+  const count = _targetingBatchUnits.length;
   if (count === 0) return;
 
-  const entitySlots = _autoBatchSlots.subarray(0, count);
+  const entitySlots = _targetingBatchSlots.subarray(0, count);
   targeting.updateMountKinematicsBatch(
     entitySlots,
     tick,
@@ -235,23 +251,47 @@ function flushAutoModeTargetingBatch(
 
   const turretValueCount = count * maxTurrets;
   for (let i = 0; i < count; i++) {
-    const unit = _autoBatchUnits[i];
+    const unit = _targetingBatchUnits[i];
+    const weapons = unit.combat!.turrets;
+    const offset = i * maxTurrets;
     writeBackCombatTargetingEntityKinematics(unit, tick);
-    fillExistingLockGateInputsInto(
-      unit.combat!.turrets,
-      world,
-      unit,
-      tick,
-      _autoBatchAimX,
-      _autoBatchAimY,
-      _autoBatchAimZ,
-      i * maxTurrets,
-    );
+    const mode = _targetingBatchModes[i];
+    if (mode === TARGETING_BATCH_MODE_PRIORITY_TARGET) {
+      const target = world.getEntity(_targetingBatchPriorityTargetIds[i]);
+      if (target !== undefined) {
+        fillPriorityTargetGateInputsInto(
+          weapons,
+          target,
+          unit,
+          tick,
+          _targetingBatchAimX,
+          _targetingBatchAimY,
+          _targetingBatchAimZ,
+          offset,
+        );
+      }
+    } else if (mode === TARGETING_BATCH_MODE_AUTO) {
+      fillExistingLockGateInputsInto(
+        weapons,
+        world,
+        unit,
+        tick,
+        _targetingBatchAimX,
+        _targetingBatchAimY,
+        _targetingBatchAimZ,
+        offset,
+      );
+    }
   }
 
-  targeting.autoModeSpatialCandidateTickBatch(
+  targeting.tickBatch(
     entitySlots,
-    _autoBatchSourceIds.subarray(0, count),
+    _targetingBatchSourceIds.subarray(0, count),
+    _targetingBatchModes.subarray(0, count),
+    _targetingBatchPriorityTargetIds.subarray(0, count),
+    _targetingBatchPriorityPointX.subarray(0, count),
+    _targetingBatchPriorityPointY.subarray(0, count),
+    _targetingBatchPriorityPointZ.subarray(0, count),
     mirrorsEnabledFlag,
     forceFieldsEnabledFlag,
     forceMaterialSightObstructionActiveFlag,
@@ -259,27 +299,27 @@ function flushAutoModeTargetingBatch(
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
     GRAVITY,
     SIGHT_DROP_GRACE_TICKS,
-    _autoBatchAimX.subarray(0, turretValueCount),
-    _autoBatchAimY.subarray(0, turretValueCount),
-    _autoBatchAimZ.subarray(0, turretValueCount),
-    _autoBatchCachedFireRanks.subarray(0, turretValueCount),
-    _autoBatchCachedFireDistSqs.subarray(0, turretValueCount),
+    _targetingBatchAimX.subarray(0, turretValueCount),
+    _targetingBatchAimY.subarray(0, turretValueCount),
+    _targetingBatchAimZ.subarray(0, turretValueCount),
+    _targetingBatchCachedFireRanks.subarray(0, turretValueCount),
+    _targetingBatchCachedFireDistSqs.subarray(0, turretValueCount),
     world.getMaxTargetableRadius(),
   );
 
   for (let i = 0; i < count; i++) {
-    const unit = _autoBatchUnits[i];
+    const unit = _targetingBatchUnits[i];
     const combat = unit.combat!;
     writeBackCombatTargetingEntity(unit, tick);
     if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
-    else {
-      combat.nextCombatProbeTick = _autoBatchHasCooldown[i] !== 0
+    else if (_targetingBatchModes[i] === TARGETING_BATCH_MODE_AUTO) {
+      combat.nextCombatProbeTick = _targetingBatchHasCooldown[i] !== 0
         ? tick + 1
         : nextTargetingReacquireTick(tick);
     }
   }
 
-  _autoBatchUnits.length = 0;
+  _targetingBatchUnits.length = 0;
 }
 
 // Update auto-targeting and firing state for all units in a single pass.
@@ -309,11 +349,11 @@ function flushAutoModeTargetingBatch(
 //    preference boundaries. engageRangeMin ranks preferred targets; it
 //    does not forbid close fallback targets.
 //
-// PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans
-// PERFORMANCE: Auto-mode runs batch Rust targeting work across contiguous entities.
+// PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full scans.
+// PERFORMANCE: Queued targeting modes share one world-order Rust FSM batch.
 export function updateTargetingAndFiringState(world: WorldState, dtMs: number): Entity[] {
   _activeCombatUnits.length = 0;
-  _autoBatchUnits.length = 0;
+  _targetingBatchUnits.length = 0;
   const tick = world.getTick();
   const armedEntities = world.getArmedEntities();
   if (armedEntities.length === 0) return _activeCombatUnits;
@@ -333,8 +373,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     );
   const forceMaterialSightObstructionActiveFlag =
     forceMaterialSightObstructionActive ? 1 : 0;
-  const flushQueuedAutoMode = (): void => {
-    flushAutoModeTargetingBatch(
+  const flushQueuedTargeting = (): void => {
+    flushTargetingBatch(
       world,
       targeting,
       tick,
@@ -364,20 +404,24 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     }
     clearCombatActivityFlags(combat);
     if (combat.fireEnabled === false) {
-      flushQueuedAutoMode();
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
       const unitSlot = spatialGrid.getSlot(unit.id);
-      targeting.clearEntityLocks(unitSlot);
-      writeBackCombatTargetingEntity(unit, null);
+      if (unitSlot >= 0) {
+        stampCombatTargetingEntity(unit);
+        queueTargetingUnit(
+          unit,
+          unitSlot,
+          TARGETING_BATCH_MODE_CLEAR_LOCKS,
+          false,
+          maxTurrets,
+        );
+      }
       continue;
     }
     const priorityId = combat.priorityTargetId;
     const priorityPoint = combat.priorityTargetPoint;
-    if (priorityId !== null || priorityPoint !== null) {
-      flushQueuedAutoMode();
-    }
     const scheduledProbeTick = combat.nextCombatProbeTick;
     // Sentinel -1 disables the gate (`-1 > tick` is false for tick >= 0).
     if (
@@ -390,7 +434,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     const playerId = unit.ownership.playerId;
     const weapons = combat.turrets;
-    ensurePerWeaponScratchCapacity(weapons.length);
 
     let hasCooldownState = false;
     let hasEnabledWeapon = false;
@@ -410,48 +453,38 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       }
     }
     if (!hasEnabledWeapon) {
-      flushQueuedAutoMode();
       stampCombatTargetingEntity(unit);
-      combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
+      const unitSlot = spatialGrid.getSlot(unit.id);
+      if (unitSlot >= 0) {
+        queueTargetingUnit(
+          unit,
+          unitSlot,
+          TARGETING_BATCH_MODE_AUTO,
+          hasCooldownState,
+          maxTurrets,
+        );
+      } else {
+        combat.nextCombatProbeTick = nextTargetingReacquireTick(tick);
+      }
       continue;
     }
 
     combat.nextCombatProbeTick = -1;
     const unitSlot = spatialGrid.getSlot(unit.id);
+    if (unitSlot < 0) continue;
 
     // Check for attack-ground priority target.
     if (priorityPoint !== null) {
-      flushQueuedAutoMode();
-      // Pass 0: refresh JS-mutated reset state, then let Rust compute
-      // authoritative per-turret mount kinematics in the slab. The
-      // writeback keeps remaining JS consumers on the same cache until
-      // AIM-08.6 makes the slab the direct source of truth.
       stampCombatTargetingEntity(unit);
-      targeting.updateMountKinematics(
+      queueTargetingUnit(
+        unit,
         unitSlot,
-        tick,
-        dtMs,
-        mirrorsEnabledFlag,
-        forceFieldsEnabledFlag,
+        TARGETING_BATCH_MODE_PRIORITY_POINT,
+        hasCooldownState,
+        maxTurrets,
+        -1,
+        priorityPoint,
       );
-      writeBackCombatTargetingEntityKinematics(unit, tick);
-      // Rust owns the LOS / ballistic / FF / mirror-panel gates and
-      // applies the FSM transition in the same call — saves ~3
-      // boundary crossings per armed weapon vs the legacy per-turret
-      // path.
-      targeting.computeAndApplyPriorityPointFsmBatch(
-        unitSlot,
-        priorityPoint.x, priorityPoint.y, priorityPoint.z,
-        unit.id,
-        mirrorsEnabledFlag,
-        forceFieldsEnabledFlag,
-        forceMaterialSightObstructionActiveFlag,
-        COMBAT_LOS_TERRAIN_STEP_LEN,
-        COMBAT_LOS_ENTITY_QUERY_WIDTH,
-        GRAVITY,
-      );
-      writeBackCombatTargetingEntity(unit, tick);
-      if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
       continue;
     }
 
@@ -467,50 +500,33 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
         : null;
 
       if (priorityTarget) {
-        flushQueuedAutoMode();
-        // Priority-target gates need current mount positions before
-        // TS resolves lockOnToBody / lockOnToTurret aim points.
         stampCombatTargetingEntity(unit);
-        targeting.updateMountKinematics(
+        queueTargetingUnit(
+          unit,
           unitSlot,
-          tick,
-          dtMs,
-          mirrorsEnabledFlag,
-          forceFieldsEnabledFlag,
-        );
-        writeBackCombatTargetingEntityKinematics(unit, tick);
-        // ATTACK MODE: try the priority target, firing only inside
-        // hard max range. Rust runs LOS / ballistic / FF /
-        // mirror-panel / FSM and the passive-mirror DPS walk in one
-        // call; TS only resolves per-turret aim points.
-        fillPriorityTargetGateInputs(weapons, priorityTarget, unit, tick);
-        targeting.computeAndApplyPriorityTargetFsmBatch(
-          unitSlot,
+          TARGETING_BATCH_MODE_PRIORITY_TARGET,
+          hasCooldownState,
+          maxTurrets,
           priorityId,
-          unit.id,
-          mirrorsEnabledFlag,
-          forceFieldsEnabledFlag,
-          forceMaterialSightObstructionActiveFlag,
-          COMBAT_LOS_TERRAIN_STEP_LEN,
-          COMBAT_LOS_ENTITY_QUERY_WIDTH,
-          GRAVITY,
-          _ppAimX, _ppAimY, _ppAimZ,
         );
-        writeBackCombatTargetingEntity(unit, tick);
-        if (updateCombatActivityFlags(combat)) _activeCombatUnits.push(unit);
         continue; // Skip auto-targeting entirely for this unit
       }
       // Priority target dead/gone — fall through to auto-targeting
     }
 
-    // AUTO MODE: standard hysteresis FSM
-    // Passes 0-3 are flushed in Rust over contiguous auto-mode runs:
-    // batched mount kinematics, existing-lock validation + auto-scan,
-    // Rust spatial candidate query, then fire/acquisition FSM apply.
+    // AUTO MODE: standard hysteresis FSM. The mixed Rust batch runs
+    // existing-lock validation, auto-scan, spatial candidate query,
+    // and fire/acquisition FSM apply for this queued row.
     stampCombatTargetingEntity(unit);
-    queueAutoModeTargetingUnit(unit, unitSlot, hasCooldownState, maxTurrets);
+    queueTargetingUnit(
+      unit,
+      unitSlot,
+      TARGETING_BATCH_MODE_AUTO,
+      hasCooldownState,
+      maxTurrets,
+    );
   }
 
-  flushQueuedAutoMode();
+  flushQueuedTargeting();
   return _activeCombatUnits;
 }

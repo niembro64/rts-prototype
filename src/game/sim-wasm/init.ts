@@ -197,6 +197,7 @@ import __wbg_init, {
   combat_targeting_auto_mode_candidate_tick,
   combat_targeting_auto_mode_spatial_candidate_tick,
   combat_targeting_auto_mode_spatial_candidate_tick_batch,
+  combat_targeting_tick_batch,
   combat_targeting_existing_lock_and_auto_scan_tick,
   force_field_pool_clear,
   force_field_pool_count,
@@ -1359,6 +1360,32 @@ export interface CombatTargetingApi {
     cachedFireDistSqs: Float64Array,
     maxTargetableRadius: number,
   ) => void;
+  /** AIM-08.5 — mixed-mode world-order FSM batch. TS still prepares
+   *  object-owned command/cooldown state and per-turret aim points,
+   *  then this one Rust call dispatches auto-mode, priority-point, and
+   *  priority-target targeting work across the queued entities. */
+  readonly tickBatch: (
+    entitySlots: Uint32Array,
+    sourceEntityIds: Int32Array,
+    modes: Uint8Array,
+    priorityTargetIds: Int32Array,
+    priorityPointX: Float64Array,
+    priorityPointY: Float64Array,
+    priorityPointZ: Float64Array,
+    mirrorsEnabled: number,
+    forceFieldsEnabled: number,
+    forceFieldObstructionActive: number,
+    terrainStepLen: number,
+    entityLineWidth: number,
+    gravity: number,
+    losDropGraceTicks: number,
+    aimX: Float64Array,
+    aimY: Float64Array,
+    aimZ: Float64Array,
+    cachedFireRanks: Uint8Array,
+    cachedFireDistSqs: Float64Array,
+    maxTargetableRadius: number,
+  ) => void;
 }
 
 /** AIM-08.1 — Force field input slab. Compact list of `count` active
@@ -2432,6 +2459,7 @@ export function initSimWasm(): Promise<SimWasm> {
           autoModeCandidateTick: combat_targeting_auto_mode_candidate_tick,
           autoModeSpatialCandidateTick: combat_targeting_auto_mode_spatial_candidate_tick,
           autoModeSpatialCandidateTickBatch: combat_targeting_auto_mode_spatial_candidate_tick_batch,
+          tickBatch: combat_targeting_tick_batch,
         },
         forceFieldPool: {
           clear: force_field_pool_clear,
