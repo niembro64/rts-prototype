@@ -584,8 +584,8 @@ export const TERRAIN_GROUND_DETAIL_CONTRAST = 0.3;
  *  Restricts the detail to the map's base 0-height flat zone: raised
  *  plateaus, lower shelves, uplands, and cliff sides all get the regular
  *  slope/height terrain colors with no green carpet or texture. */
-export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN = 5;
-export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
+export const TERRAIN_GROUND_DETAIL_HEIGHT_MIN = 12;
+export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 90;
 
 /** World-space radius over which nearby angled terrain attenuates the green
  *  grass mask. Even a completely flat triangle that falls within this radius
@@ -594,7 +594,7 @@ export const TERRAIN_GROUND_DETAIL_HEIGHT_MAX = 40;
  *  flat region rather than snapping to full green right at the cliff base.
  *  Beyond this radius the fade decays to zero, so the deep interior of a
  *  flat region reaches full grass. Larger = wider fade band; 0 disables it. */
-export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 500;
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 900;
 
 /** Exponent applied to the linear distance term when computing each ring
  *  sample's weight: weight = (1 - distance / radius) ^ FALLOFF. Higher
@@ -603,7 +603,7 @@ export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS = 500;
  *  (broad fade reaching nearly the full radius), 2 = quadratic (most of
  *  the fade happens in the first half of the radius — recommended), 3+ =
  *  even faster recovery into full grass. */
-export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF = 2;
+export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF = 1.35;
 
 /** Same idea as the ground detail texture, but applied to every surface that
  *  is NOT part of the base 0-height flat zone — cliffs, mountain faces,

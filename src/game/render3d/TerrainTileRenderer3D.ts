@@ -446,9 +446,10 @@ export class TerrainTileRenderer3D {
             'if (uGroundDetailEnabled > 0.0 || uRockDetailEnabled > 0.0) {',
             '  // ===== Shared mask infrastructure (used by both detail textures) =====',
             '  // Per-fragment geometric slope from world-position derivatives — the',
-            '  // exact triangle face slope. Guarantees actually-vertical fragments',
-            '  // fully mask out (90° edges and all), regardless of vertex normal',
-            '  // averaging.',
+            '  // exact triangle face slope. Keep this out of the main grass/rock',
+            '  // blend, because it is constant per triangle and creates visible',
+            '  // hard color changes at edges where neighboring triangles have',
+            '  // different face angles. Use it only as a vertical-cliff guard.',
             '  vec3 dpdx = dFdx(vTerrainWorldPos);',
             '  vec3 dpdy = dFdy(vTerrainWorldPos);',
             '  vec3 geomNormal = normalize(cross(dpdx, dpdy));',
@@ -460,11 +461,11 @@ export class TerrainTileRenderer3D {
             '  // carries the cliffs slope here, attenuated by how far away it',
             '  // is — so the grass mask fades smoothly inward from any steep',
             '  // edge instead of snapping to full green right at the base.',
-            '  // The smooth-shaded vTerrainSlope still contributes so the per-',
-            '  // fragment fade across the immediate triangle edge stays sharp.',
+            '  // The smooth-shaded vTerrainSlope still contributes to the local',
+            '  // transition without forcing a per-triangle hard boundary.',
             '  float bufferSlope = clamp(max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope), 0.0, 1.0);',
-            '  float maskSlope = max(geomSlope, bufferSlope);',
-            '  float flatDetail = (1.0 - smoothstep(0.05, 0.50, maskSlope)) * (1.0 - shoreline);',
+            '  float verticalCliffMask = smoothstep(0.78, 0.96, geomSlope);',
+            '  float flatDetail = (1.0 - smoothstep(0.02, 0.72, bufferSlope)) * (1.0 - verticalCliffMask) * (1.0 - shoreline);',
             '  // Restrict the grass texture to flat triangles on the world-0 plane.',
             '  // Height fades by distance from zero so lower shelves and raised',
             '  // plateaus are not treated as base grass, while the transition into',
@@ -554,7 +555,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v28';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v30';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

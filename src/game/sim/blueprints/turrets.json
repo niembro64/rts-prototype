@@ -397,7 +397,7 @@
       "tipOrbit": 1,
       "spin": {
         "idle": 2,
-        "max": 30,
+        "max": 13,
         "accel": 10,
         "decel": 5
       }
@@ -926,7 +926,7 @@
     "turretDrag": 0.15,
     "barrel": {
       "type": "singleCylinderBarrel",
-      "barrelLength": 4.2
+      "barrelLength": 3
     },
     "isManualFire": false,
     "passive": false,
