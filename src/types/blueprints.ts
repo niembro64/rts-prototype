@@ -298,6 +298,11 @@ export type FlyingConfig = {
   tailWingHeight?: number;
   tailWingThickness?: number;
   tailWingDihedralDeg?: number;
+  /** Flip the tail-wing geometry along the unit's forward axis so the
+   *  rear pair reads as a mirror image of the front wings (root toward
+   *  the tail, tip swept forward) instead of repeating the same
+   *  backward sweep. */
+  tailWingMirrorX?: boolean;
   jetOffsetX: number;
   jetOffsetY: number;
   jetOffsetZ: number;

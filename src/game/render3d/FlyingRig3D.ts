@@ -12,6 +12,14 @@ const JET_SMOKE_COLOR = 0xcccccc;
 const DEFAULT_JET_SMOKE_SPEED = 70;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
 
+// Jet exhaust routes through SmokeTrail3D's large-puff pool (same one
+// the dragonfly wing fans use) so the chunky scale reads as soft cloud
+// instead of a faceted blob.
+const JET_PUFF_START_RADIUS = 4;
+const JET_PUFF_END_RADIUS = 26;
+const JET_PUFF_LIFESPAN_MS = 1300;
+const JET_PUFF_SCOPE_PADDING = 260;
+
 // Wing panel geometry: tapered, swept-back planform for one side only.
 // Built unit-sized (root chord 1, side span 1, thickness 1) so callers can
 // scale by (chord, thickness, sideSpan). The root edge sits on local Z=0,
@@ -73,6 +81,7 @@ export function buildFlyingRig(
     heightFrac: cfg.wingHeight,
     thicknessFrac: cfg.wingThickness ?? 0.04,
     dihedralDeg: cfg.wingDihedralDeg ?? 0,
+    mirrorX: false,
   });
 
   if (
@@ -88,6 +97,7 @@ export function buildFlyingRig(
       heightFrac: cfg.tailWingHeight,
       thicknessFrac: cfg.tailWingThickness ?? cfg.wingThickness ?? 0.04,
       dihedralDeg: cfg.tailWingDihedralDeg ?? 0,
+      mirrorX: cfg.tailWingMirrorX ?? false,
     });
   }
 
@@ -123,13 +133,14 @@ export function buildFlyingRig(
         vy: 0,
         vz: 0,
         emitFramesSkip: 0,
-        lifespanMs: 850,
-        startRadius: 1,
-        endRadius: 7,
+        lifespanMs: JET_PUFF_LIFESPAN_MS,
+        startRadius: JET_PUFF_START_RADIUS,
+        endRadius: JET_PUFF_END_RADIUS,
         startAlpha: 0.85,
         color: JET_SMOKE_COLOR,
         phase: entityId * 2 + jets.length,
-        scopePadding: 180,
+        scopePadding: JET_PUFF_SCOPE_PADDING,
+        largePuff: true,
       },
     });
   }
@@ -154,6 +165,7 @@ function addWingPanels(
     heightFrac: number;
     thicknessFrac: number;
     dihedralDeg: number;
+    mirrorX: boolean;
   },
 ): void {
   const sideSpan = Math.max(0.5, unitRadius * spec.spanFrac * 0.5);
@@ -162,6 +174,11 @@ function addWingPanels(
   const offsetX = unitRadius * spec.offsetXFrac;
   const height = unitRadius * spec.heightFrac;
   const dihedralRad = spec.dihedralDeg * Math.PI / 180;
+  // mirrorX flips the wing front-to-back so a panel placed at the rear
+  // reads as a mirror image of the front wings (root toward the tail,
+  // tip swept forward toward the body) instead of repeating the same
+  // backward sweep at the back.
+  const chordSign = spec.mirrorX ? -1 : 1;
 
   for (const side of [-1, 1] as const) {
     const panelGroup = new THREE.Group();
@@ -169,7 +186,7 @@ function addWingPanels(
     panelGroup.rotation.x = -side * dihedralRad;
 
     const panel = new THREE.Mesh(side < 0 ? leftWingGeom : rightWingGeom, wingMat);
-    panel.scale.set(chord, thickness, sideSpan);
+    panel.scale.set(chord * chordSign, thickness, sideSpan);
     panelGroup.add(panel);
     group.add(panelGroup);
   }
