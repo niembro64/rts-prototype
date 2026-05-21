@@ -350,9 +350,9 @@ export class Simulation {
 
     // Update each unit's smoothed surface normal BEFORE the systems
     // that read it (commanderAbilitiesSystem, turret kinematics inside
-    // updateUnits / targetingSystem). The EMA owns the single canonical
-    // normal source so the renderer, sim turret mounts, and locomotion
-    // can never read disagreeing per-unit normals.
+    // updateUnits / the targeting scheduler bridge). The EMA owns the
+    // single canonical normal source so the renderer, sim turret
+    // mounts, and locomotion can never read disagreeing per-unit normals.
     updateUnitGroundNormal(this.world, dtMs);
 
     // Distribute energy equally among all active consumers (factories, construction, commander)

@@ -277,7 +277,8 @@ export type CombatComponent = {
   /** Cached render hot-path answer: true when any non-visual turret is
    *  tracking, engaged, or carrying a target lock. */
   hasActiveCombat: boolean;
-  /** Per-tick combat hot-path masks, written by targetingSystem.
+  /** Per-tick combat hot-path masks, written by the targeting
+   *  scheduler bridge.
    *  Bit i set in activeTurretMask means turret i still needs rotation
    *  integration this tick; bit i set in firingTurretMask means turret i
    *  is eligible for the fire/recoil path. These are transient sim-only

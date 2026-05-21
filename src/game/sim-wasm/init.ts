@@ -611,8 +611,9 @@ export interface SimWasm {
    *  alongside the entity-meta capture pass. */
   readonly turretPool: TurretPoolApi;
   /** AIM-08.1 — Targeting input slabs, stamped from JS each tick.
-   *  Source of truth for the SoA targeting kernels landing in
-   *  AIM-08.2..5; the TS FSM remains authoritative until AIM-08.6. */
+   *  Source of truth for the scheduled Rust targeting kernels. JS
+   *  still mirrors slab results back to Turret objects for downstream
+   *  rendering/firing/snapshot consumers. */
   readonly combatTargeting: CombatTargetingApi;
   /** AIM-08.1 — Compact list of active force fields rebuilt each
    *  tick from getActiveForceFields(). */
@@ -946,9 +947,9 @@ export const CT_TARGETING_TICK_MODE_CLEAR_LOCKS = 3;
 export const CT_TARGETING_TICK_MODE_SKIP = 255;
 
 /** AIM-08.1 — Targeting input slabs. The JS stamping pass populates
- *  these once per tick before the (still-authoritative) TS targeting
- *  FSM runs; AIM-08.2..5 add the SoA kernels that read from them, and
- *  AIM-08.6 deletes the TS path and makes the slab authoritative.
+ *  these once per tick before the scheduled Rust targeting batch
+ *  runs; AIM-08.2..5 added the SoA kernels that read from them, and
+ *  the slab is now authoritative for targeting FSM state.
  *  Ranges land pre-squared so the kernel can compare against distSq
  *  without re-multiplying; `outermostAcquire` is the raw radius the
  *  broadphase spatial query wants. */

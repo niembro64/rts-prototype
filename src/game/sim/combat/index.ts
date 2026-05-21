@@ -12,7 +12,7 @@ export { distance, getTargetRadius, normalizeAngle, getMovementAngle } from './c
 export { updateTurretRotation } from './turretSystem';
 
 // Targeting and weapon state
-export { updateTargetingAndFiringState } from './targetingSystem';
+export { updateTargetingAndFiringState } from './targetingSchedulerBridge';
 
 // Laser sounds
 export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } from './laserSoundSystem';

@@ -1,11 +1,11 @@
-// Auto-targeting system — every armed entity flows through Rust.
+// Auto-targeting scheduler bridge — every armed entity flows through Rust.
 //
 // The slab is the source of truth for per-entity FSM inputs:
 // stampCombatTargetingEntityInto pushes priorityTargetId,
 // priorityTargetPoint, and nextCombatProbeTick into the combat-
 // targeting slab during input stamping, so the scheduled Rust kernel
 // reads them by slot instead of accepting JS scratch arrays at the
-// boundary. This file's TypeScript work is now just:
+// boundary. This bridge's TypeScript work is now just:
 //   - walk armed entities and push them into a single sourceId queue,
 //   - call combat_targeting_schedule_and_tick_batch once,
 //   - dispatch JS-only writeback (Turret pose, activity flags,
@@ -17,7 +17,7 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { GRAVITY } from '../../../config';
-import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
+import { clearCombatActivityFlags } from './combatActivity';
 import {
   CT_TARGETING_TICK_MODE_AUTO,
   CT_TARGETING_TICK_MODE_CLEAR_LOCKS,
@@ -69,7 +69,7 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
 function getTargetingKernel() {
   const sim = getSimWasm();
   if (sim === undefined) {
-    throw new Error('targetingSystem: sim-wasm is not initialized');
+    throw new Error('targetingSchedulerBridge: sim-wasm is not initialized');
   }
   return sim.combatTargeting;
 }
@@ -134,7 +134,7 @@ function flushTargetingBatch(
       continue;
     }
     const combat = unit.combat!;
-    writeBackCombatTargetingEntity(unit, tick, world);
+    const hasActiveTurretWork = writeBackCombatTargetingEntity(unit, tick, world);
     if (mode === CT_TARGETING_TICK_MODE_CLEAR_LOCKS) {
       // Fire-disabled entities had their locks zeroed inside the
       // scheduler. Downstream JS systems (turretSystem,
@@ -143,7 +143,7 @@ function flushTargetingBatch(
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
     }
-    if (updateCombatActivityFlags(combat)) {
+    if (hasActiveTurretWork) {
       combat.nextCombatProbeTick = -1;
       _activeCombatUnits.push(unit);
     } else if (mode === CT_TARGETING_TICK_MODE_AUTO) {

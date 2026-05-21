@@ -29,7 +29,14 @@ import {
   getEntityVelocity3d,
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
+  turretBit,
 } from './combatUtils';
+import {
+  clearCombatActivityFlags,
+  hasTurretRenderActiveCombat,
+  hasTurretSimulationActiveCombat,
+  isFiringCombatTurret,
+} from './combatActivity';
 import { setWeaponTarget } from './targetIndex';
 import { turretDps } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -407,30 +414,44 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
 /** Copy the Rust combat-targeting slab's authoritative FSM tuple and
  *  optional mount-kinematics tuple back onto the JS Turret objects
  *  that rendering, firing, and snapshot encode still consume during
- *  AIM-08.5/.6 migration. Target writes go through setWeaponTarget so
- *  the beam inverse index remains coherent. Disabled turrets also
- *  have their JS-only fields cleared here — the slab side was zeroed
- *  by the scheduler's reset_disabled_weapons pass, this finishes the
- *  job for fields that never crossed the boundary. */
+ *  the slab migration. The same turret walk refreshes combat activity
+ *  masks, avoiding a second post-writeback JS turret loop. Target
+ *  writes go through setWeaponTarget so the beam inverse index remains
+ *  coherent. Disabled turrets also have their JS-only fields cleared
+ *  here — the slab side was zeroed by the scheduler's
+ *  reset_disabled_weapons pass, this finishes the job for fields that
+ *  never crossed the boundary. Returns true when any turret still
+ *  needs rotation/fire integration after writeback. */
 export function writeBackCombatTargetingEntity(
   entity: Entity,
   kinematicsTick: number | null,
   world: WorldState,
-): void {
+): boolean {
   const combat = entity.combat;
-  if (!combat) return;
+  if (!combat) return false;
   const sim = getSimWasm();
-  if (sim === undefined) return;
+  if (sim === undefined) return false;
   const slot = spatialGrid.getSlot(entity.id);
-  if (slot < 0) return;
+  if (slot < 0) {
+    clearCombatActivityFlags(combat);
+    return false;
+  }
 
   const targeting = sim.combatTargeting;
   const turretCount = Math.min(targeting.turretCount(slot), combat.turrets.length);
-  if (turretCount <= 0) return;
+  if (turretCount <= 0) {
+    clearCombatActivityFlags(combat);
+    return false;
+  }
 
   const maxTurrets = targeting.maxTurretsPerEntity();
   const turretBase = slot * maxTurrets;
   const views = getCombatTargetingStateViews(sim);
+  let activeMask = 0;
+  let firingMask = 0;
+  let overflowActive = false;
+  let overflowFiring = false;
+  let hasActiveCombat = false;
 
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
@@ -457,7 +478,25 @@ export function writeBackCombatTargetingEntity(
     if (weaponSystemDisabled(world, turret)) {
       resetDisabledTurretJsOnlyFields(turret);
     }
+    if (turret.config.visualOnly) continue;
+    if (hasTurretRenderActiveCombat(turret)) {
+      hasActiveCombat = true;
+    }
+    if (!hasTurretSimulationActiveCombat(turret)) continue;
+    const bit = turretBit(i);
+    if (bit !== 0) activeMask |= bit;
+    else overflowActive = true;
+
+    if (isFiringCombatTurret(turret)) {
+      if (bit !== 0) firingMask |= bit;
+      else overflowFiring = true;
+    }
   }
+
+  combat.hasActiveCombat = hasActiveCombat;
+  combat.activeTurretMask = overflowActive ? -1 : activeMask;
+  combat.firingTurretMask = overflowFiring ? -1 : firingMask;
+  return activeMask !== 0 || overflowActive;
 }
 
 /** Rebuild every targetable unit/building row before the FSM runs.

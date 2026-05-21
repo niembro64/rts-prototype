@@ -18,7 +18,7 @@ export {
 
 export {
   updateTargetingAndFiringState,
-} from './combat/targetingSystem';
+} from './combat/targetingSchedulerBridge';
 
 export {
   updateLaserSounds,

@@ -3,22 +3,22 @@ import { turretBit } from './combatUtils';
 
 const ACTIVE_ROTATION_EPSILON = 0.0001;
 
-function hasRotationWork(weapon: Turret): boolean {
+export function hasTurretRotationWork(weapon: Turret): boolean {
   return (
     Math.abs(weapon.angularVelocity) > ACTIVE_ROTATION_EPSILON ||
     Math.abs(weapon.pitchVelocity) > ACTIVE_ROTATION_EPSILON
   );
 }
 
-function hasRenderActiveCombat(weapon: Turret): boolean {
+export function hasTurretRenderActiveCombat(weapon: Turret): boolean {
   return weapon.target !== null || weapon.state !== 'idle';
 }
 
-function hasSimulationActiveCombat(weapon: Turret): boolean {
-  return hasRenderActiveCombat(weapon) || hasRotationWork(weapon);
+export function hasTurretSimulationActiveCombat(weapon: Turret): boolean {
+  return hasTurretRenderActiveCombat(weapon) || hasTurretRotationWork(weapon);
 }
 
-function isFiringTurret(weapon: Turret): boolean {
+export function isFiringCombatTurret(weapon: Turret): boolean {
   return (
     weapon.state === 'engaged' &&
     !weapon.config.passive &&
@@ -44,17 +44,17 @@ export function updateCombatActivityFlags(combat: CombatComponent): boolean {
     const weapon = weapons[i];
     if (weapon.config.visualOnly) continue;
 
-    if (hasRenderActiveCombat(weapon)) {
+    if (hasTurretRenderActiveCombat(weapon)) {
       hasActiveCombat = true;
     }
 
-    if (!hasSimulationActiveCombat(weapon)) continue;
+    if (!hasTurretSimulationActiveCombat(weapon)) continue;
 
     const bit = turretBit(i);
     if (bit !== 0) activeMask |= bit;
     else overflowActive = true;
 
-    if (isFiringTurret(weapon)) {
+    if (isFiringCombatTurret(weapon)) {
       if (bit !== 0) firingMask |= bit;
       else overflowFiring = true;
     }
