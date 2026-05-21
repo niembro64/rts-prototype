@@ -6171,6 +6171,7 @@ pub const CT_ENTITY_FLAG_ALIVE: u8 = 1 << 0;
 pub const CT_ENTITY_FLAG_HAS_COMBAT: u8 = 1 << 1;
 pub const CT_ENTITY_FLAG_FIRE_ENABLED: u8 = 1 << 2;
 pub const CT_ENTITY_FLAG_BUILDABLE_COMPLETE: u8 = 1 << 3;
+pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
 pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u8 = 1 << 0;
@@ -6208,6 +6209,16 @@ struct CombatTargetingPool {
     entity_aabb_half_z: Vec<f64>,
     entity_hp: Vec<f32>,
     entity_flags: Vec<u8>,
+    // Per-entity detector radius. 0 = entity is not a detector. The
+    // observability helper walks this array to find detector entities
+    // owned by the viewer; storing the radius inline avoids a
+    // per-player detector pool.
+    entity_detector_radius: Vec<f32>,
+    // Per-entity detection padding the cloak-observability walk adds
+    // when this entity is the *target*. Matches the JS
+    // `getEntityDetectionPadding` value (max body/shot/push radius for
+    // units; max half-extent for buildings).
+    entity_detection_padding: Vec<f32>,
     entity_slot_by_id: HashMap<i32, u32>,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
@@ -6282,6 +6293,8 @@ impl CombatTargetingPool {
             entity_aabb_half_z: Vec::new(),
             entity_hp: Vec::new(),
             entity_flags: Vec::new(),
+            entity_detector_radius: Vec::new(),
+            entity_detection_padding: Vec::new(),
             entity_slot_by_id: HashMap::new(),
             turret_count_per_entity: Vec::new(),
             turret_mount_x: Vec::new(),
@@ -6337,6 +6350,8 @@ impl CombatTargetingPool {
             self.entity_aabb_half_z.resize(entity_needed, 0.0);
             self.entity_hp.resize(entity_needed, 0.0);
             self.entity_flags.resize(entity_needed, 0);
+            self.entity_detector_radius.resize(entity_needed, 0.0);
+            self.entity_detection_padding.resize(entity_needed, 0.0);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
         let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -6460,6 +6475,21 @@ fn combat_targeting_pool() -> &'static mut CombatTargetingPool {
     }
 }
 
+// AIM-08.5 — per-candidate observability scratch buffer used by the
+// candidate-batch kernel. Lives outside the pool so the kernel can
+// borrow the pool mutably for ballistic-solver writes while reading
+// the observability mask as a separate slice. Resized in-place per
+// call; never freed.
+struct CombatTargetingScratchHolder(UnsafeCell<Vec<u8>>);
+unsafe impl Sync for CombatTargetingScratchHolder {}
+static COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH: CombatTargetingScratchHolder =
+    CombatTargetingScratchHolder(UnsafeCell::new(Vec::new()));
+
+#[inline]
+fn combat_targeting_candidate_observable_scratch() -> &'static mut Vec<u8> {
+    unsafe { &mut *COMBAT_TARGETING_CANDIDATE_OBSERVABLE_SCRATCH.0.get() }
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_init(initial_entity_capacity: u32) {
     let pool = combat_targeting_pool();
@@ -6504,6 +6534,8 @@ pub fn combat_targeting_set_entity(
     aabb_half_z: f64,
     hp: f32,
     flags: u8,
+    detector_radius: f32,
+    detection_padding: f32,
     turret_count: u8,
 ) {
     let pool = combat_targeting_pool();
@@ -6530,6 +6562,8 @@ pub fn combat_targeting_set_entity(
     pool.entity_aabb_half_z[s] = aabb_half_z;
     pool.entity_hp[s] = hp;
     pool.entity_flags[s] = flags;
+    pool.entity_detector_radius[s] = detector_radius;
+    pool.entity_detection_padding[s] = detection_padding;
     let max = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as u8;
     pool.turret_count_per_entity[s] = if turret_count > max {
         max
@@ -7124,6 +7158,79 @@ fn combat_targeting_set_target_state(
 fn combat_targeting_entity_alive(pool: &CombatTargetingPool, entity_slot: usize) -> bool {
     entity_slot < pool.entity_flags.len()
         && (pool.entity_flags[entity_slot] & CT_ENTITY_FLAG_ALIVE) != 0
+}
+
+/// AIM-08.5 — Rust port of `canPlayerObserveCloakedEntity` /
+/// `isEntityDetectedByPlayer`. Returns true when `viewer_player_id`
+/// can see `target_slot`:
+///   - not cloaked → always observable
+///   - cloaked, owned by viewer → observable (own team)
+///   - cloaked, enemy → walks every detector entity owned by the
+///     viewer (radius > 0, alive, buildable-complete) and returns
+///     true if any detector reaches the target's center + padding
+///
+/// The detector walk is O(N) over the slab but only triggers for
+/// cloaked enemy targets — the common case (uncloaked) short-circuits.
+fn combat_targeting_player_observes_entity(
+    pool: &CombatTargetingPool,
+    target_slot: usize,
+    viewer_player_id: u8,
+) -> bool {
+    if target_slot >= pool.entity_flags.len() {
+        return false;
+    }
+    let target_flags = pool.entity_flags[target_slot];
+    if (target_flags & CT_ENTITY_FLAG_ALIVE) == 0 {
+        return false;
+    }
+    if (target_flags & CT_ENTITY_FLAG_CLOAKED) == 0 {
+        return true;
+    }
+    if pool.entity_owner_player_id[target_slot] == viewer_player_id {
+        return true;
+    }
+    let tx = pool.entity_pos_x[target_slot];
+    let ty = pool.entity_pos_y[target_slot];
+    let padding = pool.entity_detection_padding[target_slot] as f64;
+
+    let n = pool.entity_flags.len();
+    for i in 0..n {
+        let f = pool.entity_flags[i];
+        // Online-for-sensors gate mirrors JS isEntityOnlineForSensors:
+        // alive AND buildable-complete (incomplete shells don't sense).
+        if (f & CT_ENTITY_FLAG_ALIVE) == 0 {
+            continue;
+        }
+        if (f & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) == 0 {
+            continue;
+        }
+        if pool.entity_owner_player_id[i] != viewer_player_id {
+            continue;
+        }
+        let radius = pool.entity_detector_radius[i] as f64;
+        if radius <= 0.0 {
+            continue;
+        }
+        let dx = tx - pool.entity_pos_x[i];
+        let dy = ty - pool.entity_pos_y[i];
+        let r = radius + padding;
+        if dx * dx + dy * dy <= r * r {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline]
+fn combat_targeting_player_observes_entity_id(
+    pool: &CombatTargetingPool,
+    target_id: i32,
+    viewer_player_id: u8,
+) -> bool {
+    match combat_targeting_entity_slot_for_id(pool, target_id) {
+        Some(slot) => combat_targeting_player_observes_entity(pool, slot, viewer_player_id),
+        None => false,
+    }
 }
 
 /// AIM-08.5 — Rust port of `pickMirrorTargetTurret` /
@@ -8315,9 +8422,9 @@ pub fn combat_targeting_compute_and_apply_priority_target_fsm_batch(
 /// turret resolves its own target via `pool.turret_target_id[idx]`, so
 /// the kernel walks the slab and looks up per-turret target metadata
 /// itself. The `sight_blocked` predicate (TS `ballistic && (!los ||
-/// !ff)`) is derived from the helper's three gates in-place. JS still
-/// owns the cloak observability check, the passive-mirror score, the
-/// per-turret aim point resolution, and the mirror-panel walk.
+/// !ff)`) is derived from the helper's three gates in-place. The
+/// cloak observability check now reads from slab detector/cloak data
+/// stamped by the stamping pass — no observable mask required.
 #[wasm_bindgen]
 pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     entity_slot: u32,
@@ -8329,7 +8436,6 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     entity_line_width: f64,
     gravity: f64,
     los_drop_grace_ticks: u16,
-    observable: &[u8],
     aim_x: &[f64],
     aim_y: &[f64],
     aim_z: &[f64],
@@ -8345,10 +8451,10 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
     if entity_idx >= pool.turret_count_per_entity.len() {
         return;
     }
+    let source_player_id = pool.entity_owner_player_id[entity_idx];
 
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
-        .min(observable.len())
         .min(aim_x.len())
         .min(aim_y.len())
         .min(aim_z.len())
@@ -8382,26 +8488,29 @@ pub fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch(
         }
 
         let target_slot = combat_targeting_entity_slot_for_id(pool, target_id);
-        let (target_valid, target_radius, target_vx, target_vy, target_vz) =
-            if observable[turret_idx] != 0 {
-                if let Some(slot) = target_slot {
-                    if combat_targeting_entity_alive(pool, slot) {
-                        (
-                            1u8,
-                            pool.entity_radius_shot[slot],
-                            pool.entity_vel_x[slot],
-                            pool.entity_vel_y[slot],
-                            pool.entity_vel_z[slot],
-                        )
-                    } else {
-                        (0u8, 0.0, 0.0, 0.0, 0.0)
-                    }
+        let observable = match target_slot {
+            Some(slot) => combat_targeting_player_observes_entity(pool, slot, source_player_id),
+            None => false,
+        };
+        let (target_valid, target_radius, target_vx, target_vy, target_vz) = if observable {
+            if let Some(slot) = target_slot {
+                if combat_targeting_entity_alive(pool, slot) {
+                    (
+                        1u8,
+                        pool.entity_radius_shot[slot],
+                        pool.entity_vel_x[slot],
+                        pool.entity_vel_y[slot],
+                        pool.entity_vel_z[slot],
+                    )
                 } else {
                     (0u8, 0.0, 0.0, 0.0, 0.0)
                 }
             } else {
                 (0u8, 0.0, 0.0, 0.0, 0.0)
-            };
+            }
+        } else {
+            (0u8, 0.0, 0.0, 0.0, 0.0)
+        };
 
         // For passive turrets, "valid" requires the target to still
         // carry a damaging turret locked onto us. Non-passive turrets
@@ -9061,6 +9170,12 @@ fn combat_targeting_candidate_gate_passes(
 /// equivalent yet) and the kernel reads `mp[turret_idx *
 /// candidate_count + candidate_idx]`. When the obstruction feature
 /// is off or no mirror units exist, JS should set the mask to all-1s.
+///
+/// Per-candidate observability (cloak/detector) is computed
+/// internally from slab data — `candidate_observable_scratch` on
+/// the pool is filled before the per-turret loop and reused across
+/// turrets, since the observer player is the same for every turret
+/// on this entity.
 #[wasm_bindgen]
 pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     entity_slot: u32,
@@ -9072,7 +9187,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     seed_mirror_scores: &[f64],
     candidate_count: u32,
     candidate_ids: &[i32],
-    candidate_observable: &[u8],
     candidate_pos_x: &[f64],
     candidate_pos_y: &[f64],
     candidate_pos_z: &[f64],
@@ -9104,6 +9218,7 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     if entity_idx >= pool.turret_count_per_entity.len() {
         return;
     }
+    let source_player_id = pool.entity_owner_player_id[entity_idx];
     let turret_count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
         .min(apply_mask.len())
@@ -9119,7 +9234,6 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
         .min(under_only_mask.len());
     let clamped_candidate_count = (candidate_count as usize)
         .min(candidate_ids.len())
-        .min(candidate_observable.len())
         .min(candidate_pos_x.len())
         .min(candidate_pos_y.len())
         .min(candidate_pos_z.len())
@@ -9142,6 +9256,22 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     // check inside the gate helper keeps disabled/manual-fire
     // turrets from running the LOS+ballistic+FF kernels for free.
     let _ = (mirrors_enabled, force_fields_enabled);
+
+    // Fill per-candidate observability from the slab — same observer
+    // (this entity's owner) for every turret on this entity. Stored
+    // in the dedicated scratch global so the kernel can pass it as a
+    // separate slice while still borrowing the pool mutably for
+    // ballistic-solver writes inside the inner gate loop.
+    let observable_scratch = combat_targeting_candidate_observable_scratch();
+    if observable_scratch.len() < clamped_candidate_count {
+        observable_scratch.resize(clamped_candidate_count, 0);
+    }
+    for ci in 0..clamped_candidate_count {
+        let target_id = candidate_ids[ci];
+        observable_scratch[ci] =
+            combat_targeting_player_observes_entity_id(pool, target_id, source_player_id) as u8;
+    }
+    let candidate_observable: &[u8] = &observable_scratch[..clamped_candidate_count];
 
     // Fill per-candidate mirror-target DPS from the slab. Only walks
     // when at least one turret on this entity is passive — non-passive

@@ -53,12 +53,6 @@ let _cachedFireDistSqs = new Float64Array(0);
 let _fsmApplyMask = new Uint8Array(0);
 let _fsmTargetIds = new Int32Array(0);
 let _fsmRanks = new Uint8Array(0);
-let _fsmObservable = new Uint8Array(0);
-let _fsmMirrorValid = new Uint8Array(0);
-let _fsmLosClear = new Uint8Array(0);
-let _fsmBallisticClear = new Uint8Array(0);
-let _fsmForceFieldClear = new Uint8Array(0);
-let _fsmSightBlocked = new Uint8Array(0);
 const _targetingAutoScanF64 = new Float64Array(2);
 // AIM-08.5 unified gate inputs shared across the priority-point,
 // priority-target, and existing-lock kernels. The Rust kernels read
@@ -76,7 +70,6 @@ let _ppMirrorPanelClear = new Uint8Array(0);
 let _ppAimX = new Float64Array(0);
 let _ppAimY = new Float64Array(0);
 let _ppAimZ = new Float64Array(0);
-let _ppObservable = new Uint8Array(0);
 const _gateAimPointScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 // AIM-08.5 candidate-gate mirror-panel mask. Row-major
@@ -87,7 +80,6 @@ let _candidateMirrorPanelClear = new Uint8Array(0);
 const _candidateAimScratch: Vec3 = { x: 0, y: 0, z: 0 };
 // AIM-08.3 candidate SoA scratch. TypeScript stamps object-backed
 // candidates into flat arrays; Rust owns score/rank/top-K/fallback.
-let _candidateObservable = new Uint8Array(0);
 let _candidatePosX = new Float64Array(0);
 let _candidatePosY = new Float64Array(0);
 let _candidatePosZ = new Float64Array(0);
@@ -131,12 +123,6 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _fsmApplyMask = new Uint8Array(next);
   _fsmTargetIds = new Int32Array(next);
   _fsmRanks = new Uint8Array(next);
-  _fsmObservable = new Uint8Array(next);
-  _fsmMirrorValid = new Uint8Array(next);
-  _fsmLosClear = new Uint8Array(next);
-  _fsmBallisticClear = new Uint8Array(next);
-  _fsmForceFieldClear = new Uint8Array(next);
-  _fsmSightBlocked = new Uint8Array(next);
   _candidateSeedRanks = new Uint8Array(next);
   _candidateSeedDistSqs = new Float64Array(next);
   _candidateSeedMirrorScores = new Float64Array(next);
@@ -149,7 +135,6 @@ function ensurePerWeaponScratchCapacity(count: number): void {
   _ppAimX = new Float64Array(next);
   _ppAimY = new Float64Array(next);
   _ppAimZ = new Float64Array(next);
-  _ppObservable = new Uint8Array(next);
 }
 
 const BALLISTIC_ARC_LOW = 0;
@@ -260,24 +245,23 @@ function fillPriorityTargetGateInputs(
   }
 }
 
-/** Resolve per-turret existing-lock inputs: cloak observability,
- *  target aim point, and mirror-panel clearance. Weapons with no
- *  current target leave their arrays at safe defaults — the Rust
- *  kernel skips those turrets via the slab's `turret_target_id` field
- *  anyway. The passive-mirror validation is computed inside Rust via
- *  the slab's per-turret DPS. */
+/** Resolve per-turret existing-lock inputs: target aim point and
+ *  mirror-panel clearance. Weapons with no current target leave
+ *  their arrays at safe defaults — the Rust kernel skips those
+ *  turrets via the slab's `turret_target_id` field anyway. Cloak
+ *  observability + passive-mirror validation are computed inside
+ *  Rust from slab data (cloak flag + per-player detector walk +
+ *  per-turret DPS). */
 function fillExistingLockGateInputs(
   weapons: Turret[],
   world: WorldState,
   unit: Entity,
-  playerId: PlayerId,
   currentTick: number,
   forceMaterialSightObstructionActive: boolean,
 ): void {
   for (let wi = 0; wi < weapons.length; wi++) {
     const weapon = weapons[wi];
     if (weapon.target === null) {
-      _ppObservable[wi] = 0;
       _ppAimX[wi] = 0;
       _ppAimY[wi] = 0;
       _ppAimZ[wi] = 0;
@@ -285,29 +269,13 @@ function fillExistingLockGateInputs(
       continue;
     }
     const target = world.getEntity(weapon.target);
-    let targetIsValid = false;
-    if (
-      target?.unit &&
-      target.unit.hp > 0 &&
-      canPlayerObserveCloakedEntity(world, target, playerId)
-    ) {
-      targetIsValid = true;
-    } else if (
-      target?.building &&
-      target.building.hp > 0 &&
-      canPlayerObserveCloakedEntity(world, target, playerId)
-    ) {
-      targetIsValid = true;
-    }
-    if (!targetIsValid || target === undefined) {
-      _ppObservable[wi] = 0;
+    if (target === undefined) {
       _ppAimX[wi] = 0;
       _ppAimY[wi] = 0;
       _ppAimZ[wi] = 0;
       _ppMirrorPanelClear[wi] = 1;
       continue;
     }
-    _ppObservable[wi] = 1;
     resolveTargetAimPoint(
       target,
       weapon.worldPos.x, weapon.worldPos.y, weapon.worldPos.z,
@@ -341,12 +309,6 @@ function clearFsmGateScratch(count: number): void {
   _fsmApplyMask.fill(0, 0, count);
   _fsmTargetIds.fill(-1, 0, count);
   _fsmRanks.fill(0, 0, count);
-  _fsmObservable.fill(0, 0, count);
-  _fsmMirrorValid.fill(0, 0, count);
-  _fsmLosClear.fill(0, 0, count);
-  _fsmBallisticClear.fill(0, 0, count);
-  _fsmForceFieldClear.fill(0, 0, count);
-  _fsmSightBlocked.fill(0, 0, count);
 }
 
 function getTargetingKernel() {
@@ -366,10 +328,9 @@ function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
 }
 
 function ensureCandidateScratchCapacity(count: number): void {
-  if (count <= _candidateObservable.length) return;
-  let next = Math.max(16, _candidateObservable.length);
+  if (count <= _candidatePosX.length) return;
+  let next = Math.max(16, _candidatePosX.length);
   while (next < count) next *= 2;
-  _candidateObservable = new Uint8Array(next);
   _candidatePosX = new Float64Array(next);
   _candidatePosY = new Float64Array(next);
   _candidatePosZ = new Float64Array(next);
@@ -385,13 +346,11 @@ function getTargetCandidateRadius(enemy: Entity): number {
 }
 
 function fillTargetCandidateInputs(
-  world: WorldState,
   sourcePlayerId: PlayerId | undefined,
   candidates: Entity[],
 ): void {
   ensureCandidateScratchCapacity(candidates.length);
   if (sourcePlayerId === undefined) {
-    _candidateObservable.fill(0, 0, candidates.length);
     _candidateIds.fill(-1, 0, candidates.length);
     return;
   }
@@ -399,11 +358,8 @@ function fillTargetCandidateInputs(
   for (let ci = 0; ci < candidates.length; ci++) {
     const enemy = candidates[ci];
     _candidateIds[ci] = enemy.id;
-    const observable = canPlayerObserveCloakedEntity(world, enemy, sourcePlayerId);
-    _candidateObservable[ci] = observable ? 1 : 0;
-    if (!observable) continue;
-    // _candidateMirrorScore is filled inside the Rust candidate kernel
-    // from the slab's per-turret DPS; no TS-side fill needed.
+    // _candidateMirrorScore and observability are filled inside the
+    // Rust candidate kernel from the slab; no TS-side fill needed.
     _candidateRadius[ci] = getTargetCandidateRadius(enemy);
     const enemyPosition = getEntityPosition3d(enemy, _targetingEnemyPosition);
     _candidatePosX[ci] = enemyPosition.x;
@@ -464,10 +420,7 @@ function ensureCandidateMirrorPanelCapacity(turretCount: number, candidateCount:
  *  Rust kernel consumes. Most entries are 1 in steady state:
  *    - When the obstruction feature is off, the whole mask is 1s.
  *    - Force-shot / passive-mirror weapons skip the FF gate in Rust,
- *      so their rows are filled with 1 regardless of geometry.
- *    - Observable=0 candidates fail scoring before reaching the gate,
- *      so their bits never get consulted; we leave them at 0 since
- *      they can never participate. */
+ *      so their rows are filled with 1 regardless of geometry. */
 function fillCandidateMirrorPanelMask(
   world: WorldState,
   weapons: Turret[],
@@ -495,10 +448,6 @@ function fillCandidateMirrorPanelMask(
     const mountY = weapon.worldPos.y;
     const mountZ = weapon.worldPos.z;
     for (let ci = 0; ci < candidateCount; ci++) {
-      if (_candidateObservable[ci] === 0) {
-        _candidateMirrorPanelClear[rowStart + ci] = 0;
-        continue;
-      }
       const candidate = candidates[ci];
       if (!candidate) {
         _candidateMirrorPanelClear[rowStart + ci] = 0;
@@ -527,7 +476,7 @@ function chooseBestTargetCandidatesBatch(
   forceMaterialSightObstructionActive: boolean,
 ): void {
   const sourcePlayerId = source.ownership?.playerId;
-  fillTargetCandidateInputs(world, sourcePlayerId, candidates);
+  fillTargetCandidateInputs(sourcePlayerId, candidates);
   // Ballistic config + mirror-panel mask the Rust gate consumes. The
   // ballistic config arrays are static per turret; the mirror-panel
   // mask is the only piece that requires real geometry walks each
@@ -550,7 +499,6 @@ function chooseBestTargetCandidatesBatch(
     _candidateSeedMirrorScores,
     candidates.length,
     _candidateIds,
-    _candidateObservable,
     _candidatePosX,
     _candidatePosY,
     _candidatePosZ,
@@ -835,16 +783,15 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
 
     // Pass 1: Validate existing targets with hysteresis. Rust runs the
     // LOS / ballistic / FF gates, derives sight_blocked from them, and
-    // computes the passive-mirror validity from the slab's per-turret
-    // DPS; TS pre-computes only cloak observability, per-turret aim
-    // points, and the mirror-panel clearance mask. Per-turret state
-    // transitions write straight to the slab.
+    // computes cloak observability + passive-mirror validity from the
+    // slab; TS pre-computes only per-turret aim points and the
+    // mirror-panel clearance mask. Per-turret state transitions write
+    // straight to the slab.
     fillGateBallisticConfig(weapons);
     fillExistingLockGateInputs(
       weapons,
       world,
       unit,
-      playerId,
       tick,
       forceMaterialSightObstructionActive,
     );
@@ -858,7 +805,6 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
       COMBAT_LOS_ENTITY_QUERY_WIDTH,
       GRAVITY,
       SIGHT_DROP_GRACE_TICKS,
-      _ppObservable,
       _ppAimX, _ppAimY, _ppAimZ,
       _ppProjectileSpeeds,
       _ppArcPreferences,

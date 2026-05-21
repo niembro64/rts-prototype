@@ -869,6 +869,7 @@ export const CT_ENTITY_FLAG_ALIVE = 1 << 0;
 export const CT_ENTITY_FLAG_HAS_COMBAT = 1 << 1;
 export const CT_ENTITY_FLAG_FIRE_ENABLED = 1 << 2;
 export const CT_ENTITY_FLAG_BUILDABLE_COMPLETE = 1 << 3;
+export const CT_ENTITY_FLAG_CLOAKED = 1 << 4;
 
 /** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
  *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */
@@ -915,6 +916,8 @@ export interface CombatTargetingApi {
     aabbHalfZ: number,
     hp: number,
     flags: number,
+    detectorRadius: number,
+    detectionPadding: number,
     turretCount: number,
   ) => void;
   unsetEntity: (entitySlot: number) => void;
@@ -1088,7 +1091,6 @@ export interface CombatTargetingApi {
     seedMirrorScores: Float64Array,
     candidateCount: number,
     candidateIds: Int32Array,
-    candidateObservable: Uint8Array,
     candidatePosX: Float64Array,
     candidatePosY: Float64Array,
     candidatePosZ: Float64Array,
@@ -1181,9 +1183,9 @@ export interface CombatTargetingApi {
   ) => void;
   /** AIM-08.5 — unified existing-lock gate compute + FSM apply. Each
    *  turret's current target is read from the slab; TS supplies the
-   *  cloak observability check, the aim point, and the mirror-panel
-   *  clearance mask. Rust computes the passive mirror_valid bit from
-   *  the slab and derives sight_blocked from los/ff internally. */
+   *  aim point and the mirror-panel clearance mask. Rust computes
+   *  cloak observability + passive mirror_valid from the slab and
+   *  derives sight_blocked from los/ff internally. */
   readonly computeAndApplyValidateExistingLockFsmBatch: (
     entitySlot: number,
     sourceEntityId: number,
@@ -1194,7 +1196,6 @@ export interface CombatTargetingApi {
     entityLineWidth: number,
     gravity: number,
     losDropGraceTicks: number,
-    observable: Uint8Array,
     aimX: Float64Array,
     aimY: Float64Array,
     aimZ: Float64Array,
