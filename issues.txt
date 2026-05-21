@@ -139,7 +139,7 @@ AIM-08.5 — Port the targeting FSM
   slab->JS writeback copies the timers back even for skipped rows.
   The scheduled Rust batch also resolves source entity IDs to targeting
   slab slots internally, so the targeting bridge no longer calls
-  spatialGrid.getSlot while walking armed entities.
+  spatialGrid.getSlot during scheduler dispatch.
   Disabled-weapon slab reset now runs in Rust too:
   combat_targeting_reset_disabled_weapons_for_entity zeros target /
   state / cooldown / aim error / LOS bookkeeping for every disabled
@@ -159,9 +159,10 @@ AIM-08.5 — Port the targeting FSM
   of accepting priority/probe scratch arrays from JS. The scheduler
   signature lost six per-entity arrays (priority target IDs / point
   presence flags / xyz coordinates / scheduled probe ticks) in the
-  same change. The TypeScript prep loop in updateTargetingAndFiringState
-  is now just an armed-entity walk that pushes sourceIds into one
-  Int32Array; clearCombatActivityFlags and the fire-disabled JS
+  same change. The per-tick source-id prep no longer lives in
+  updateTargetingAndFiringState: stampCombatTargetingPool compacts
+  source IDs while rebuilding slab rows, and the bridge consumes those
+  stamped arrays. clearCombatActivityFlags and the fire-disabled JS
   priority-command cleanup moved into the writeback path (SKIP and
   CLEAR_LOCKS branches respectively) so they fire after the kernel
   decides what each row actually ran as. CT_TARGETING_TICK_MODE_*
@@ -173,11 +174,5 @@ AIM-08.5 — Port the targeting FSM
   writeback also refreshes combat activity masks during the same
   turret walk, replacing the separate post-writeback
   updateCombatActivityFlags loop on the targeting hot path.
-  The source-id queue has also moved into the targeting slab stamping
-  pass: stampCombatTargetingPool compacts the per-tick source ids
-  while it is already walking unit/building entities, and
-  targetingSchedulerBridge.ts consumes that stamped list instead of
-  running its own armed-entity traversal.
-
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
