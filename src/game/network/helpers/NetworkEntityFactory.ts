@@ -120,7 +120,7 @@ export function refreshUnitTurretsFromNetwork(
   }
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
-    : { turrets, priorityTargetId: null, priorityTargetPoint: null, nextCombatProbeTick: -1, hasActiveCombat: false, activeTurretMask: 0, firingTurretMask: 0 };
+    : { turrets, priorityTargetId: null, priorityTargetPoint: null, nextCombatProbeTick: -1, activeTurretMask: 0, firingTurretMask: 0 };
   updateCombatActivityFlags(entity.combat);
 }
 
@@ -150,7 +150,7 @@ export function refreshBuildingTurretsFromNetwork(
 
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
-    : { turrets, priorityTargetId: null, priorityTargetPoint: null, nextCombatProbeTick: -1, hasActiveCombat: false, activeTurretMask: 0, firingTurretMask: 0 };
+    : { turrets, priorityTargetId: null, priorityTargetPoint: null, nextCombatProbeTick: -1, activeTurretMask: 0, firingTurretMask: 0 };
   updateCombatActivityFlags(entity.combat);
 }
 
@@ -260,7 +260,6 @@ function createUnitFromNetwork(
       priorityTargetId: null,
       priorityTargetPoint: null,
       nextCombatProbeTick: -1,
-      hasActiveCombat: false,
       activeTurretMask: 0,
       firingTurretMask: 0,
     };

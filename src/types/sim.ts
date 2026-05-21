@@ -273,9 +273,6 @@ export type CombatComponent = {
    *  attack commands clear back to `-1` implicitly by setting
    *  priorityTargetId, and live/cooldown weapons process every tick. */
   nextCombatProbeTick: number;
-  /** Cached render hot-path answer: true when any non-visual turret is
-   *  tracking, engaged, or carrying a target lock. */
-  hasActiveCombat: boolean;
   /** Per-tick combat hot-path masks, written by the targeting
    *  scheduler bridge.
    *  Bit i set in activeTurretMask means turret i still needs rotation

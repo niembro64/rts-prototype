@@ -35,7 +35,6 @@ import {
 } from './combatUtils';
 import {
   clearCombatActivityFlags,
-  hasTurretRenderActiveCombat,
   hasTurretSimulationActiveCombat,
   isFiringCombatTurret,
 } from './combatActivity';
@@ -661,7 +660,6 @@ export function writeBackCombatTargetingEntity(
   let firingMask = 0;
   let overflowActive = false;
   let overflowFiring = false;
-  let hasActiveCombat = false;
 
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
@@ -679,9 +677,6 @@ export function writeBackCombatTargetingEntity(
       resetDisabledTurretJsOnlyFields(turret);
     }
     if (turret.config.visualOnly) continue;
-    if (hasTurretRenderActiveCombat(turret)) {
-      hasActiveCombat = true;
-    }
     if (!hasTurretSimulationActiveCombat(turret)) continue;
     const bit = turretBit(i);
     if (bit !== 0) activeMask |= bit;
@@ -693,7 +688,6 @@ export function writeBackCombatTargetingEntity(
     }
   }
 
-  combat.hasActiveCombat = hasActiveCombat;
   combat.activeTurretMask = overflowActive ? -1 : activeMask;
   combat.firingTurretMask = overflowFiring ? -1 : firingMask;
   return activeMask !== 0 || overflowActive;

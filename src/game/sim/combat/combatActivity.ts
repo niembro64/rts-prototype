@@ -27,7 +27,6 @@ export function isFiringCombatTurret(weapon: Turret): boolean {
 }
 
 export function clearCombatActivityFlags(combat: CombatComponent): void {
-  combat.hasActiveCombat = false;
   combat.activeTurretMask = 0;
   combat.firingTurretMask = 0;
 }
@@ -38,16 +37,10 @@ export function updateCombatActivityFlags(combat: CombatComponent): boolean {
   let firingMask = 0;
   let overflowActive = false;
   let overflowFiring = false;
-  let hasActiveCombat = false;
 
   for (let i = 0; i < weapons.length; i++) {
     const weapon = weapons[i];
     if (weapon.config.visualOnly) continue;
-
-    if (hasTurretRenderActiveCombat(weapon)) {
-      hasActiveCombat = true;
-    }
-
     if (!hasTurretSimulationActiveCombat(weapon)) continue;
 
     const bit = turretBit(i);
@@ -62,7 +55,6 @@ export function updateCombatActivityFlags(combat: CombatComponent): boolean {
 
   // Overflow entities are extremely unusual, but treating them as
   // all-turret-active is safer than dropping turret 31+ from combat.
-  combat.hasActiveCombat = hasActiveCombat;
   combat.activeTurretMask = overflowActive ? -1 : activeMask;
   combat.firingTurretMask = overflowFiring ? -1 : firingMask;
   return activeMask !== 0 || overflowActive;
