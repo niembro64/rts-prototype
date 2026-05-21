@@ -42,18 +42,11 @@ let _hoverDeferBuf: Float64Array = new Float64Array(0);
 let _hoverDeferEntities: Entity[] = [];
 let _hoverDeferCount = 0;
 
-// Hover bank/pitch behaviour constants. Both are dimensionless
-// "radians of bank/pitch per world-unit/second of body-frame
-// velocity"; the clamps keep the unit from doing barrel rolls under
-// large transient pushes (knockback / collision spikes).
-const HOVER_BANK_PER_LATERAL_V = 0.012;
-const HOVER_PITCH_PER_FORWARD_V = 0.008;
-const HOVER_BANK_MAX = Math.PI * 0.25;   // 45° bank
-const HOVER_PITCH_MAX = Math.PI * 0.18;  // ~32° nose-down/up
-// Critically-damped spring stiffness for the hover orientation. Low
-// enough that the bank lags behind input (so it READS as a real
-// banking motion) but high enough to settle in well under a second
-// at typical RTS pacing.
+// Hover orientation spring stiffness. With targetPitch/targetRoll
+// pinned to zero, this is effectively a yaw-only spring that gives
+// hover/flying chassis rotational momentum on heading changes.
+// Banking is composed by the renderer per frame — see the
+// "Airborne Banking Is Visual" section of design_philosophy.html.
 const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const WATER_OUT_CACHE_CELL_SIZE = 25;
@@ -169,10 +162,10 @@ export class UnitForceSystem {
 
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
-      // Hover units skip this snap; their orientation is driven by
-      // the quaternion spring in the hover branch below so yaw,
-      // pitch, and roll all evolve together as a damped continuous
-      // motion.
+      // Hover/flying units skip this snap; their yaw is driven by
+      // the orientation spring in the hover branch below so heading
+      // changes carry rotational momentum. Pitch and roll are pinned
+      // to zero in the sim — banking lives in the renderer.
       if (hasThrustDir && !isAirborne) {
         const nextRotation = Math.atan2(dirY, dirX);
         if (nextRotation !== entity.transform.rotation) {
@@ -285,22 +278,21 @@ export class UnitForceSystem {
           thrustForceY = airDriveDirY * thrustMagnitude;
         }
 
-        // Quaternion orientation spring. Target yaw points along the
+        // Yaw-only orientation spring. Target yaw points along the
         // current thrust direction (or holds the current heading if
-        // idle); target pitch and roll are derived from body-frame
-        // velocity components so the drone visibly leans forward
-        // when accelerating and banks INTO the turn when its
-        // velocity has a sideways component (the classic aircraft
-        // bank). The damped spring on the unit-quaternion advances
-        // all three axes through ONE law — α = k · (axis·angle) −
-        // c · ω — with no preferred axis or gimbal lock.
+        // idle); target pitch and target roll are pinned to ZERO —
+        // pitch/roll banking is a render-time concern, computed
+        // locally from body velocity in the renderer. See the
+        // "Airborne Banking Is Visual" section of
+        // design_philosophy.html for why this lives outside the
+        // sim, and the y=z=0 mount-axis invariant that keeps
+        // turret-world-mount math agreeing with the rolled chassis.
         //
         // Defer the actual spring step into a batched WASM call
         // that runs after the per-entity loop (Phase 4+3e). JS-side
-        // here we just compute the target yaw/pitch/roll (cheap
-        // scalars, depend on body-frame velocity which is per-entity)
-        // and push the buffer entry; alpha + new orientation come
-        // back from the kernel below.
+        // here we just compute the target yaw and push the buffer
+        // entry; the resulting orientation is the yaw-only quat
+        // (pitch=roll=0) with the spring's rotational momentum.
         const orientation = entity.unit.orientation;
         const omega = entity.unit.angularVelocity3;
         if (orientation && omega) {
@@ -308,16 +300,6 @@ export class UnitForceSystem {
           const targetYaw = airHasDriveDir
             ? Math.atan2(airDriveDirY, airDriveDirX)
             : currentYaw;
-          const cosY = Math.cos(currentYaw);
-          const sinY = Math.sin(currentYaw);
-          const vForward = body.vx * cosY + body.vy * sinY;
-          const vLateral = -body.vx * sinY + body.vy * cosY;
-          let targetPitch = -HOVER_PITCH_PER_FORWARD_V * vForward;
-          let targetRoll = HOVER_BANK_PER_LATERAL_V * vLateral;
-          if (targetPitch > HOVER_PITCH_MAX) targetPitch = HOVER_PITCH_MAX;
-          else if (targetPitch < -HOVER_PITCH_MAX) targetPitch = -HOVER_PITCH_MAX;
-          if (targetRoll > HOVER_BANK_MAX) targetRoll = HOVER_BANK_MAX;
-          else if (targetRoll < -HOVER_BANK_MAX) targetRoll = -HOVER_BANK_MAX;
           const requiredLen = (_hoverDeferCount + 1) * QUAT_HOVER_BATCH_STRIDE;
           if (_hoverDeferBuf.length < requiredLen) {
             const grown = new Float64Array(
@@ -335,8 +317,8 @@ export class UnitForceSystem {
           _hoverDeferBuf[base + 5] = omega.y;
           _hoverDeferBuf[base + 6] = omega.z;
           _hoverDeferBuf[base + 7] = targetYaw;
-          _hoverDeferBuf[base + 8] = targetPitch;
-          _hoverDeferBuf[base + 9] = targetRoll;
+          _hoverDeferBuf[base + 8] = 0;
+          _hoverDeferBuf[base + 9] = 0;
           _hoverDeferEntities[_hoverDeferCount] = entity;
           _hoverDeferCount++;
         }

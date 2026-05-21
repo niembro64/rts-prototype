@@ -62,6 +62,22 @@ import type { SmokePuffEmitter } from './SmokeTrail3D';
 
 const BARREL_COLOR = 0xffffff;
 
+// Visual-only bank for hover/flying chassis. The sim writes yaw-only
+// into the orientation quat (see UnitForceSystem hover branch); the
+// renderer composes a body-frame roll on top from body-lateral
+// velocity. None of this state crosses the wire or feeds sim math —
+// the y=z=0 mount invariant on airborne turrets keeps the rolled
+// chassis agreeing with the sim's yaw-only mount math.
+// AIRBORNE_BANK_PER_LATERAL_V is dimensionless (radians of roll per
+// world-unit/sec of body-lateral velocity); AIRBORNE_BANK_MAX clamps
+// to 45° so collision spikes can't turn into barrel rolls.
+const AIRBORNE_BANK_PER_LATERAL_V = 0.012;
+const AIRBORNE_BANK_MAX = Math.PI * 0.25;
+// EMA time constant in seconds. Roughly matches the perceived lag of
+// the old critically-damped sim spring (k=30) so banking still
+// "weights" the turn instead of snapping.
+const AIRBORNE_BANK_TAU_SEC = 0.18;
+
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
 
@@ -416,19 +432,53 @@ export class Render3DEntities {
         if (existing.yawGroup) {
           const orient = e.unit?.orientation;
           if (orient) {
-            // Full 3-DOF orientation for hover-style units. Map our
-            // world-frame quat (Z-up) to Three.js (Y-up):
+            // 3-DOF chassis orientation for hover/flying units. The
+            // sim writes a yaw-only quat (pitch=roll=0 by design —
+            // see "Airborne Banking Is Visual" in
+            // design_philosophy.html); we read it and then compose a
+            // visual roll on the body-forward axis from body-lateral
+            // velocity. Mounts on these units are y=z=0, so the
+            // visual roll leaves the sim's turret-world-mount math
+            // unchanged.
+            //
+            // World→Three.js quat mapping:
             //   q_three = (-q_world.x, -q_world.z, q_world.y, q_world.w)
-            // Verified by hand against the yaw / pitch / roll basis
-            // mappings: yaw about world Z → -yaw about three Y;
-            // pitch about world Y → +pitch about three Z; roll
-            // about world X → -roll about three X.
+            // (yaw about world Z → -yaw about three Y; pitch about
+            // world Y → +pitch about three Z; roll about world X →
+            // -roll about three X.)
             existing.yawGroup.quaternion.set(
               -orient.x,
               -orient.z,
               orient.y,
               orient.w,
             );
+            const loco = e.unit?.locomotion.type;
+            if (loco === 'hover' || loco === 'flying') {
+              // Body-lateral velocity in the sim frame:
+              //   vLateral = -vx · sin(yaw) + vy · cos(yaw)
+              const vx = e.unit?.velocityX ?? 0;
+              const vy = e.unit?.velocityY ?? 0;
+              const cosY = Math.cos(tRot);
+              const sinY = Math.sin(tRot);
+              const vLateral = -vx * sinY + vy * cosY;
+              let target = AIRBORNE_BANK_PER_LATERAL_V * vLateral;
+              if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
+              else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
+              const prev = existing.visualBankRoll ?? 0;
+              // Frame-rate independent EMA: smoothed = α·prev + (1−α)·target
+              // where α = exp(−dt/τ).
+              const alpha = spinDt > 0
+                ? Math.exp(-spinDt / AIRBORNE_BANK_TAU_SEC)
+                : 1;
+              const smoothed = alpha * prev + (1 - alpha) * target;
+              existing.visualBankRoll = smoothed;
+              // Roll about the sim's body-forward axis (sim +X) maps
+              // to a negative rotation about three.js local +X under
+              // the quat mapping above. rotateX uses the LOCAL axis,
+              // which after the yaw quat above is the chassis's
+              // forward axis.
+              existing.yawGroup.rotateX(-smoothed);
+            }
           } else {
             existing.yawGroup.rotation.set(0, -tRot, 0);
           }

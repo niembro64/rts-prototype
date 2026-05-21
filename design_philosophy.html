@@ -800,6 +800,53 @@
     </section>
 
     <section>
+      <h2>Airborne Banking Is Visual, Mounts Stay On The Roll Axis</h2>
+      <p>
+        Hover and flying units should <em>look</em> like they bank into their turns &mdash; the
+        chassis rolls about its forward axis as lateral velocity builds, then unwinds when the
+        unit straightens out. Banking is the strongest visual cue that an airborne unit is
+        physically committed to a turn, and the renderer is the only place that needs to know
+        about it. The authoritative sim continues to track yaw (and yaw alone) for hover/flying
+        chassis; pitch and roll are derived from local body velocity at render time and never
+        touch sim state, the wire, or any combat math.
+      </p>
+      <p>
+        This is the same boundary as <strong>Locomotion Visuals Are Frontend</strong>: the sim
+        publishes a chassis pose the renderer is allowed to enrich, and the rig owns every
+        visual detail that doesn&rsquo;t change targeting truth. Banking is the airborne
+        analogue of wheel spin and tread phase &mdash; expressive on the screen, irrelevant to
+        the simulation.
+      </p>
+
+      <h3>Why this is a hard rule and not a convenience</h3>
+      <p>
+        The sim&rsquo;s turret-world-mount math is yaw plus surface-normal tilt &mdash; not a
+        full 3-DOF orientation quaternion (<code>getTurretWorldMount</code>). If the renderer
+        applies pitch/roll to the chassis while the sim computes mount positions with yaw only,
+        the visible barrel and the sim&rsquo;s projectile-spawn point quietly diverge. The cure
+        is geometric: <strong>every turret mount on a hover or flying unit must sit on the
+        chassis&rsquo; body-forward axis, i.e. <code>mount.y === 0</code> and
+        <code>mount.z === 0</code></strong>. A pure roll about that axis leaves the mount
+        unchanged in world space, so the sim&rsquo;s yaw-only mount math and the renderer&rsquo;s
+        rolled chassis agree pixel-perfect.
+      </p>
+      <ul class="rule-list">
+        <li>The blueprint loader enforces <code>mount.y === 0</code> and <code>mount.z === 0</code> for every turret on a hover or flying unit. A non-centerline airborne mount is a startup error, not a runtime drift.</li>
+        <li>Hover/flying turrets do not use <code>zResolver</code>; the centerline rule would be violated the moment the resolver assigned a body-top z.</li>
+        <li>The free axis is <code>mount.x</code>. An airborne turret can sit forward or aft of the chassis center along the body&rsquo;s forward axis without breaking the invariant.</li>
+        <li>Ground-locomotion turrets keep authoring freedom on all three axes &mdash; they don&rsquo;t bank, and the slope-tilt path already runs through <code>getTurretWorldMount</code>.</li>
+      </ul>
+
+      <h3>What the sim writes, what the renderer composes</h3>
+      <ul class="rule-list">
+        <li>The sim keeps a yaw-only spring on hover/flying orientation. <code>entity.unit.orientation</code> ends each tick as a quaternion equivalent to <code>setQuatFromYaw(yaw)</code> &mdash; target pitch and target roll are pinned to zero, the yaw spring still carries rotational momentum so heading turns feel weighty.</li>
+        <li>The renderer reads that orientation, derives a body-lateral velocity from <code>unit.velocityX/Y</code> projected through the current yaw, scales it into a target bank angle, EMA-smooths it per frame, and composes the roll about the body-forward axis on top of the chassis yaw quat.</li>
+        <li>The visual bank is bounded (a hard clamp keeps the chassis from doing barrel rolls under collision spikes) and decays toward zero whenever lateral velocity is small. No sim state ever sees the value.</li>
+        <li>If a future visual wants pitch (nose-down when accelerating, nose-up when braking), it lives in the same place: derived from velocity at render time, never written back to the sim.</li>
+      </ul>
+    </section>
+
+    <section>
       <h2>BAR Inspiration, Project Identity</h2>
       <p>
         Beyond All Reason is the comparison point for command ergonomics, readable large battles,

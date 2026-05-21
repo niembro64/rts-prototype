@@ -122,6 +122,8 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   // Mount-finiteness only — cross-blueprint turret-ID validation runs
   // in blueprints/index.ts where both UNIT_BLUEPRINTS and
   // TURRET_BLUEPRINTS are visible.
+  const isAirborne =
+    bp.locomotion.type === 'hover' || bp.locomotion.type === 'flying';
   for (let i = 0; i < bp.turrets.length; i++) {
     const turret = bp.turrets[i];
     const mount = turret.mount;
@@ -133,6 +135,25 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       throw new Error(
         `Invalid turret mount for ${bp.id}[${i}] ${turret.turretId}: mount x/y/z must be finite`,
       );
+    }
+    // Hover/flying invariant — banking is render-time only, and the
+    // body-forward axis is the roll axis. Any mount off that axis
+    // would visibly drift away from the sim's yaw-only mount math
+    // every time the renderer composes a bank. See the
+    // "Airborne Banking Is Visual" section of design_philosophy.html.
+    if (isAirborne) {
+      if (mount.y !== 0 || mount.z !== 0) {
+        throw new Error(
+          `Invalid airborne turret mount for ${bp.id}[${i}] ${turret.turretId}: ` +
+            `hover/flying mounts must sit on the roll axis (y=0, z=0), got y=${mount.y} z=${mount.z}`,
+        );
+      }
+      if (turret.zResolver) {
+        throw new Error(
+          `Invalid airborne turret mount for ${bp.id}[${i}] ${turret.turretId}: ` +
+            `hover/flying turrets cannot use zResolver — z must be authored as 0`,
+        );
+      }
     }
   }
 
