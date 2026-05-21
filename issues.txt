@@ -88,10 +88,24 @@ AIM-08.5 — Port the targeting FSM
   compute_turret_gates_for_aim_point consults inline. JS no longer
   fills the per-(turret, candidate) mirror_panel_clear mask, and the
   legacy hasForceMirrorPanelClearance / hasForceMaterialSightClearance
-  helpers have been deleted.
+  helpers have been deleted. The per-entity boundary-crossing count
+  for auto-mode is now down to 2 Rust calls + the spatial-grid query
+  (combat_targeting_existing_lock_and_auto_scan_tick merges the Pass
+  1 validation with the auto-scan radius computation;
+  combat_targeting_auto_mode_candidate_tick collapses prep + choose-
+  best + apply for fire-choice and acquisition into a single
+  boundary call, with scratch buffers living on the kernel's stack).
+  Priority-point / priority-target paths already ship as one call
+  each.
   Remaining work for AIM-08.5:
-    - Collapse the per-armed-entity outer loop into a single
-      rustTargetingTick(...) call.
+    - Push Pass 0 mount kinematics (suspension, surface normal,
+      blueprint mount) onto the slab and move the outer
+      world.getArmedEntities() loop into Rust so the per-tick entry
+      point is a single combat_targeting_tick(...) call. Spatial
+      grid still owns enemy queries in TS today; collapsing the
+      outer loop will need either a Rust spatial index or a
+      candidate-batch pre-pass that hands all entity batches to one
+      Rust call.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
   stamping pass (or has moved to its own file); parity shim runs
