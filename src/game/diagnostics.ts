@@ -30,12 +30,6 @@ export const GAME_DIAGNOSTICS = {
   clientPredictionDiagnostics:
     envFlag('VITE_BA_DP03_CLIENT_PREDICTION') ||
     queryFlag('dp03', 'clientPredictionDiagnostics', 'predictionDiagnostics'),
-  // AIM-08.0 — gate for the targeting parity harness that diffs the TS
-  // FSM output against the (eventually populated) SoA kernel output.
-  // See src/game/sim/combat/targetingParityHarness.ts.
-  targetingParity:
-    envFlag('VITE_BA_AIM08_PARITY') ||
-    queryFlag('aim08', 'targetingParity'),
 };
 
 export function debugLog(enabled: boolean, ...args: unknown[]): void {

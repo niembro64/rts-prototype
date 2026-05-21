@@ -22,7 +22,6 @@ import {
   unregisterPackedProjectile,
 } from './combat';
 import { clearTargetIndex } from './combat/targetIndex';
-import { checkTargetingParity } from './combat/targetingParityHarness';
 import {
   stampCombatTargetingPool,
   stampForceFieldPool,
@@ -492,8 +491,6 @@ export class Simulation {
     // the scheduled Rust targeting batch and write back through the
     // transitional slab -> JS turret copy.
     const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
-    // AIM-08.0 — debug-only parity check against the upcoming SoA path.
-    checkTargetingParity(this.world);
 
     // Update laser sounds based on targeting state (every frame)
     if (this.world.getBeamUnits().length > 0) {

@@ -168,16 +168,4 @@ AIM-08.5 — Port the targeting FSM
   dispatch reads the same byte values the Rust kernel writes.
 
   Done when: targetingSystem.ts only contains the slab-rebuild
-  stamping pass (or has moved to its own file); parity shim runs
-  end-to-end clean across the supported scenarios.
-
-AIM-08.6 — Port the writeback + tear down the parity harness
-  After .5, snapshot serialization and rendering still read JS
-  Entity.combat.turrets[]. Drop a thin writeback pass that copies
-  slab → JS Turret each tick (for snapshot encoder consumption), and
-  remove the parity harness from .0. The slab is now the source of
-  truth.
-
-  Done when: the TS targeting pass is gone from the working tree, the
-  combat slabs are the per-tick authority, and the parity harness has
-  been deleted in the same PR as its last consumer.
+  stamping pass (or has moved to its own file).
