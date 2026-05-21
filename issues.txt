@@ -171,6 +171,191 @@ AIM-08.5 — Port the targeting FSM
   stamping pass (or has moved to its own file); parity shim runs
   end-to-end clean across the supported scenarios.
 
+LOCK-ON-01 — Add authored turret lock-on exclusion fields.
+
+Evidence:
+- design_philosophy.html now defines turret lock-on as broad by default:
+  a turret with no exclusions can lock onto any targetable friendly or
+  enemy building, unit, or turret.
+- design_philosophy.html also defines these exclusion sets:
+  exclude_lock_on_level_0_friends_and_enemies,
+  exclude_lock_on_level_0_entities,
+  exclude_lock_on_level_1_buildings,
+  exclude_lock_on_level_1_units,
+  exclude_lock_on_level_1_turrets.
+
+Why it matters:
+The targeting kernel currently treats target eligibility as code-owned
+policy. Designers need a data-owned way to express "construction turrets
+only lock friendly entities", "combat turrets only lock enemies", "mirror
+turrets only lock enemy turrets", and future named exclusions without
+forking targeting code paths.
+
+Fix direction:
+Add the exclusion fields to turret blueprint types, JSON validation, and
+compiled turret config defaults. Empty arrays mean no exclusions. Valid
+level-0 relationship entries are friendly_entities and enemy_entities.
+Valid level-0 entity-family entries are buildings, units, and turrets.
+Level-1 entries reference concrete building, unit, and turret blueprint
+ids/names. Reject unknown strings at startup; do not silently ignore bad
+authoring.
+
+Done when: turret blueprints can author all five exclusion sets, omitted
+sets compile to empty arrays, invalid entries fail validation with a clear
+error, and existing turrets keep their current behavior through explicit
+or migration-authored exclusions.
+
+LOCK-ON-02 — Migrate existing turret blueprints to explicit lock-on policy.
+
+Evidence:
+- The design default is intentionally broad. Without explicit migration,
+  existing combat turrets would become eligible to lock friendly entities
+  once the filtering kernel honors the new default.
+
+Why it matters:
+The new default is useful for composition, but current gameplay expects
+most weapon turrets to attack enemies only. Construction/repair-style
+turrets are the opposite: they should lock friendly targets and ignore
+enemy targets unless a future blueprint says otherwise.
+
+Fix direction:
+Audit every turret in src/game/sim/blueprints/turrets.json and assign
+the smallest exclusion set that preserves intended behavior. Combat
+weapons should usually exclude friendly_entities. Construction/repair
+turrets should usually exclude enemy_entities. Mirror turrets should
+exclude friendly_entities, buildings, and units so they only consider
+enemy turret targets. Visual-only turrets should either remain excluded
+from targeting by visualOnly or receive explicit exclusions if that is
+clearer in data.
+
+Done when: current gameplay behavior is preserved under the new broad
+default, and each exceptional turret has an intentional authored policy
+instead of relying on hidden targeting assumptions.
+
+LOCK-ON-03 — Stamp lock-on exclusion data into the combat-targeting slab.
+
+Evidence:
+- AIM-08.5 has moved targeting decisions into Rust/SoA slabs. Any policy
+  that remains only on JS Turret objects cannot participate in the
+  scheduled Rust targeting batch without per-candidate JS callbacks.
+
+Why it matters:
+The lock-on policy must be enforced in the hot targeting path, including
+priority targets, existing-lock validation, auto acquisition, fire-choice,
+and mirror scoring. Reintroducing JS-side filters would undo the current
+targeting migration.
+
+Fix direction:
+Encode level-0 relationship and entity-family exclusions as compact
+per-turret bitmasks in the combat-targeting slab. Encode level-1 named
+exclusions through stable integer blueprint ids or precompiled lookup
+sets that Rust can query without string comparisons. Stamp target entity
+family and blueprint id on entity rows, and stamp target turret blueprint
+id on turret-target rows or equivalent candidate metadata.
+
+Done when: Rust targeting kernels can evaluate all exclusion sets from
+slab/typed-memory data only, with no JS callback and no string matching
+inside per-candidate loops.
+
+LOCK-ON-04 — Apply exclusion filters consistently across targeting modes.
+
+Evidence:
+- Targeting has several entry paths: priority-point, priority-target,
+  existing-lock validation, auto acquisition, fire-choice promotion, and
+  passive mirror target scoring.
+
+Why it matters:
+If exclusions only apply to auto acquisition, commands or stale locks can
+violate blueprint policy. A fighting turret should not keep or accept a
+friendly lock just because it arrived through a priority command, and a
+construction turret should not accidentally reacquire enemies through the
+auto path.
+
+Fix direction:
+Add one shared Rust helper that answers whether a turret slot may lock a
+candidate target/candidate turret under the authored exclusions. Use that
+helper before range, LOS, ballistic, mirror, and scoring work wherever the
+candidate can be rejected cheaply. Existing locks and priority targets
+must be dropped or ignored when the helper returns false.
+
+Done when: every targeting mode calls the same eligibility helper, and
+there is no separate hand-rolled friend/enemy or entity-family filtering
+left in TypeScript or Rust call sites.
+
+LOCK-ON-05 — Expand candidate collection beyond enemy-only assumptions.
+
+Evidence:
+- Construction turrets need to lock friendly entities, while combat
+  turrets normally lock enemy entities. A broad default also allows
+  future turrets that deliberately consider both sides.
+
+Why it matters:
+An exclusion helper is not enough if the candidate source only queries
+enemy entities. Friendly-lock turrets need friendly candidates to enter
+the targeting batch before exclusions and scoring can operate.
+
+Fix direction:
+Teach the candidate collection path to gather friendly candidates, enemy
+candidates, or both based on each turret's relationship exclusions. Keep
+the broadphase efficient: avoid scanning both ownership sets for turrets
+that exclude one side, and batch/query by relationship when possible.
+Make sure priority-target validation can accept friendly targets when the
+turret policy allows them.
+
+Done when: construction-style turrets can acquire friendly targets from
+the normal targeting path, combat turrets still avoid friendly targets,
+and mixed-policy turrets can consider both without a separate code path.
+
+LOCK-ON-06 — Represent turret targets distinctly enough for exclusions.
+
+Evidence:
+- The design treats buildings, units, and turrets as separate level-0
+  target families. It also allows named turret exclusions through
+  exclude_lock_on_level_1_turrets.
+
+Why it matters:
+If the targeting slab only sees entity ids, a turret mounted on a unit or
+building is hard to filter separately from its host. Mirror turrets need
+to lock onto enemy turret targets while ignoring the host body as a unit
+or building target.
+
+Fix direction:
+Audit the current lockOnToTurret / target aim-point flow and decide
+whether candidate identity must include a target turret index in addition
+to target entity id. If needed, add target-turret metadata to candidate
+rows, FSM state, snapshots, and aim-point resolution. Preserve existing
+entity-id target behavior for body locks.
+
+Done when: a turret-family exclusion targets turret locks, not host
+entity locks by accident, and level-1 turret blueprint exclusions can
+reject an individual mounted turret without rejecting the whole host
+unless that is explicitly authored.
+
+LOCK-ON-07 — Add parity/scenario coverage for lock-on exclusions.
+
+Evidence:
+- The exclusion rules are compositional and easy to regress: relationship
+  filters, entity-family filters, named filters, priority targets, stale
+  locks, and mirror-only behavior all interact.
+
+Why it matters:
+These rules live in the hot targeting path and will be hard to validate
+by visual playtesting alone. Regressions could look like turrets not
+firing, construction beams grabbing enemies, mirrors reflecting the wrong
+weapon, or commands overriding blueprint policy.
+
+Fix direction:
+Add focused tests or deterministic harness scenarios for:
+  - no exclusions can lock friendly/enemy buildings, units, and turrets;
+  - combat turret excludes friendly_entities;
+  - construction turret excludes enemy_entities;
+  - mirror turret excludes friendly_entities, buildings, and units;
+  - level-1 building/unit/turret named exclusions reject only those names;
+  - priority target and existing-lock validation respect the same rules.
+
+Done when: the scenarios pass through the same targeting path used in a
+real battle, and failures identify which exclusion axis regressed.
+
 AIM-08.6 — Port the writeback + tear down the parity harness
   After .5, snapshot serialization and rendering still read JS
   Entity.combat.turrets[]. Drop a thin writeback pass that copies

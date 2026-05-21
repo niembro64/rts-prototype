@@ -889,11 +889,14 @@
       </p>
       <p>
         Turret lock-on eligibility is authored as exclusion data on the turret blueprint. Exclusions
-        are subtractive: the broad default can see enemy combat targets, and each turret removes the
-        categories or names it is not allowed to lock onto. This keeps target policy in data while
-        preserving one shared targeting kernel.
+        are subtractive: by default, a turret with no lock-on exclusions is eligible to lock onto
+        any living entity the game exposes to targeting, including friendly or enemy buildings,
+        units, and turrets. Each turret then removes the relationships, categories, or names it is
+        not allowed to lock onto. This keeps target policy in data while preserving one shared
+        targeting kernel.
       </p>
       <ul class="rule-list">
+        <li><code>exclude_lock_on_level_0_friends_and_enemies</code> removes whole ownership relationships before scoring. Valid high-level entries are <code>friendly_entities</code> and <code>enemy_entities</code>.</li>
         <li><code>exclude_lock_on_level_0_entities</code> removes whole target categories before scoring. Valid high-level entries are <code>buildings</code>, <code>units</code>, and <code>turrets</code>.</li>
         <li><code>exclude_lock_on_level_1_buildings</code> removes individual building blueprint names from the remaining building candidates.</li>
         <li><code>exclude_lock_on_level_1_units</code> removes individual unit blueprint names from the remaining unit candidates.</li>
@@ -901,14 +904,17 @@
       </ul>
       <p>
         The hierarchy should be evaluated in order: ownership, aliveness, and visibility decide
-        whether something can be considered; level-0 exclusions remove entire entity families;
-        level-1 exclusions remove specific authored names inside a surviving family; range,
-        line-of-sight, and scoring then pick the best lock from the survivors. A mirror turret that
-        should lock only onto enemy turrets excludes <code>buildings</code> and <code>units</code>
-        at level 0. A normal weapon turret that should ignore turret mounts excludes
-        <code>turrets</code> at level 0. Specialist weapons can then use the level-1 lists to skip
-        named buildings, units, or turret blueprints without changing the shared target acquisition
-        code.
+        whether something can be considered; relationship exclusions remove friendly or enemy
+        candidates; entity-family exclusions remove buildings, units, or turrets; level-1
+        exclusions remove specific authored names inside a surviving family; range, line-of-sight,
+        and scoring then pick the best lock from the survivors. A construction turret that should
+        lock only onto friendly entities excludes <code>enemy_entities</code>. A fighting turret
+        that should only attack hostile targets excludes <code>friendly_entities</code>. A mirror
+        turret that should lock only onto enemy turrets excludes <code>friendly_entities</code>,
+        <code>buildings</code>, and <code>units</code> at level 0. A normal weapon turret that
+        should ignore turret mounts excludes <code>turrets</code> at level 0. Specialist weapons can
+        then use the level-1 lists to skip named buildings, units, or turret blueprints without
+        changing the shared target acquisition code.
       </p>
       <p>
         We do not want mixed or overlapping roles. A turret should not secretly define locomotion. A
@@ -1143,7 +1149,7 @@
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
-        <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is expressed through level-0 entity-family exclusions and level-1 named blueprint exclusions.</li>
+        <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
