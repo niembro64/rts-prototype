@@ -444,7 +444,6 @@ export class Render3DEntities {
       const transform = e.transform;
       const tx = transform.x;
       const ty = transform.y;
-      const tRot = transform.rotation;
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
       // carries the chassis AND its child turret / mirror groups
       // (both parented to yawGroup), so all pose/detail work below
@@ -603,25 +602,24 @@ export class Render3DEntities {
       // the y=z=0 mount invariant on airborne turrets keeps the
       // rolled chassis agreeing with the sim's yaw-only mount math.
       if (airborne && m.yawGroup) {
-        // Body-lateral acceleration in the sim frame, computed as the
-        // centripetal term v_forward · ω_z:
-        //   v_forward = vx · cos(yaw_sim) + vy · sin(yaw_sim)
+        // Body-lateral centripetal acceleration magnitude, signed by
+        // yaw rate:
+        //   |v_h|     = sqrt(vx² + vy²)   (horizontal speed)
         //   ω_z       = angularVelocity3.z  (yaw rate, world frame —
         //               equivalent to body frame for yaw-only quats)
-        //   a_lateral = v_forward · ω_z
-        // angularVelocity3 is on the wire and lerped by the rotation-
-        // velocity prediction channel, so this signal evolves
-        // continuously across frames just like velocity.
+        //   a_lateral = -|v_h| · ω_z       (sign: bank INTO the turn;
+        //               CCW = +ω_z → left wing down via rotateX(-…)
+        //               below)
+        // Using |v_h| instead of projecting velocity onto body-forward
+        // keeps the bank independent of `transform.rotation`, so a
+        // lagged rotation EMA (ROT POS: MED/SLOW) can't shrink the
+        // bank signal. Both inputs are on the wire and predicted at
+        // render rate.
         const vx = e.unit?.velocityX ?? 0;
         const vy = e.unit?.velocityY ?? 0;
-        const cosY = Math.cos(tRot);
-        const sinY = Math.sin(tRot);
-        const vForward = vx * cosY + vy * sinY;
+        const speed = Math.sqrt(vx * vx + vy * vy);
         const yawRate = e.unit?.angularVelocity3?.z ?? 0;
-        // Sign: bank INTO the turn (left turn → left wing down). With
-        // the renderer's rotateX(-smoothed) convention below, that
-        // means a negative target for a CCW (+ω_z) turn moving forward.
-        const aLateral = -vForward * yawRate;
+        const aLateral = -speed * yawRate;
         let target = AIRBORNE_BANK_PER_LATERAL_A * aLateral;
         if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
         else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
