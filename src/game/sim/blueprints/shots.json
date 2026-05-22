@@ -51,7 +51,7 @@
     "explosion": {
       "radius": 30,
       "damage": 10,
-      "force": 800
+      "force": 3000
     },
     "detonateOnExpiry": true,
     "maxLifespan": 8000,
@@ -80,7 +80,7 @@
     "explosion": {
       "radius": 36,
       "damage": 24,
-      "force": 800
+      "force": 3000
     },
     "detonateOnExpiry": true,
     "maxLifespan": 8000,
