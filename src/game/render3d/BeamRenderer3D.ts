@@ -74,10 +74,14 @@ type StartPointSphereConfig = {
 type BeamConfigFile = Partial<BeamVisualConfig> & {
   outer?: BeamVisualConfig;
   inner?: BeamVisualConfig;
-  startPointSphere?: Partial<StartPointSphereConfig>;
+  startPointSphere?: Partial<StartPointSphereConfig> & {
+    emissionOffset?: Record<string, number>;
+  };
 };
 
-const rawBeamConfig = beamConfig as BeamConfigFile;
+// JSON-shape is narrower than BeamConfigFile (no color/alpha fields —
+// those come from COLORS at merge time below), so cast through unknown.
+const rawBeamConfig = beamConfig as unknown as BeamConfigFile;
 
 const START_POINT_SPHERE_CONFIG: StartPointSphereConfig = {
   radiusMultiplier: rawBeamConfig.startPointSphere?.radiusMultiplier ?? 1.5,

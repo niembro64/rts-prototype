@@ -37,6 +37,7 @@ import {
 import { resolveTargetAimPoint } from './aimSolver';
 import { resetCollisionBuffers } from './ProjectileCollisionHandler';
 import { resolveLineShotRangeSphereEndpoint, type LineShotRangeSphere } from './lineShotRange';
+import { getShotProfile } from '../shotProfiles';
 import { getUnitGroundZ } from '../unitGeometry';
 import { createProjectileConfigFromTurret } from '../projectileConfigs';
 import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../../sim-wasm/init';
@@ -511,9 +512,13 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         if (isBeamWeapon) {
           // Beam shots can have an emission offset that pushes the visual+
           // physical start point forward from the turret mount, so the beam
-          // appears to "generate" in the air in front of the turret.
+          // appears to "generate" in the air in front of the turret. The
+          // offset is tuned per-shot in beamConfig.json and surfaced
+          // through the shot profile.
           const beamEmissionOffset =
-            shot.type === 'beam' ? (shot as BeamShot).emissionOffset : 0;
+            shot.type === 'beam'
+              ? getShotProfile(shot).visual.lineEmissionOffset
+              : 0;
           const beamStartX = spawnX + dirX * beamEmissionOffset;
           const beamStartY = spawnY + dirY * beamEmissionOffset;
           const beamStartZ = spawnZ + dirZ * beamEmissionOffset;

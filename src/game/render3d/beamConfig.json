@@ -11,7 +11,13 @@
   },
   "startPointSphere": {
     "radiusMultiplier": 0.5,
-    "minRadius": 1.0,
-    "color": "playerPrimary"
+    "minRadius": 0.1,
+    "color": "playerPrimary",
+    "emissionOffset": {
+      "miniBeamShot": 6,
+      "beamShot": 12,
+      "megaBeamShot": 28,
+      "towerBeamShot": 32
+    }
   }
 }

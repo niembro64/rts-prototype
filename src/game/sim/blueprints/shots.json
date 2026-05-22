@@ -167,8 +167,7 @@
     "width": 3,
     "damageSphere": {
       "radius": 6
-    },
-    "emissionOffset": 6
+    }
   },
   "beamShot": {
     "type": "beam",
@@ -183,8 +182,7 @@
     "width": 6,
     "damageSphere": {
       "radius": 12
-    },
-    "emissionOffset": 12
+    }
   },
   "megaBeamShot": {
     "type": "beam",
@@ -199,8 +197,7 @@
     "width": 16,
     "damageSphere": {
       "radius": 32
-    },
-    "emissionOffset": 28
+    }
   },
   "towerBeamShot": {
     "type": "beam",
@@ -215,7 +212,6 @@
     "width": 16,
     "damageSphere": {
       "radius": 32
-    },
-    "emissionOffset": 32
+    }
   }
 }
