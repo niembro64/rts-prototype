@@ -10565,8 +10565,15 @@ pub fn combat_targeting_tick_batch(
 /// stamped entity flags, priority commands, visibility, hold-fire flag,
 /// and probe gate, resolves source IDs to slab slots, then dispatches
 /// the existing mixed-mode FSM work.
-/// JS still performs object-owned disabled-weapon reset mutations before
-/// this call and copies slab state back to JS turrets afterward.
+///
+/// AIM-08.10 — every entity that gets a non-SKIP mode also has its
+/// activity-mask refreshed inline before the loop iteration ends, so
+/// the JS bridge has no per-entity post-pass: it reads
+/// `entity_active_turret_mask[slot]` straight from the slab to decide
+/// `hasActiveTurretWork`. SKIP-mode entities are intentionally not
+/// refreshed because nothing they could have changed (FSM, rotation,
+/// config) was touched this tick; the previous tick's masks remain
+/// authoritative.
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
     source_entity_ids: &[i32],
@@ -10693,6 +10700,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
             );
             combat_targeting_clear_entity_locks(entity_slot);
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_CLEAR_LOCKS;
+            combat_targeting_refresh_activity_masks_for_entity_inner(
+                combat_targeting_pool(),
+                entity_slot,
+            );
             continue;
         }
 
@@ -10730,6 +10741,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 max_targetable_radius,
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
+            combat_targeting_refresh_activity_masks_for_entity_inner(
+                combat_targeting_pool(),
+                entity_slot,
+            );
             continue;
         }
 
@@ -10748,6 +10763,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 gravity,
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_POINT;
+            combat_targeting_refresh_activity_masks_for_entity_inner(
+                combat_targeting_pool(),
+                entity_slot,
+            );
             continue;
         }
 
@@ -10785,6 +10804,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 true,
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_TARGET;
+            combat_targeting_refresh_activity_masks_for_entity_inner(
+                combat_targeting_pool(),
+                entity_slot,
+            );
             continue;
         }
 
@@ -10803,6 +10826,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
             max_targetable_radius,
         );
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
+        combat_targeting_refresh_activity_masks_for_entity_inner(
+            combat_targeting_pool(),
+            entity_slot,
+        );
     }
 }
 

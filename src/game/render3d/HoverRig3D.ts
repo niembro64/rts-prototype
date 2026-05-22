@@ -31,6 +31,7 @@ const HOVER_SMOKE_START_ALPHA = COLORS.units.locomotion.hover.smoke.startAlpha;
 const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
+const FAN_BLADE_COUNT = 3;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
@@ -150,13 +151,13 @@ function buildFan(
   const bladeChord = Math.max(0.55, bladeLength * 0.42);
   const bladeThickness = Math.max(0.14, ringTubeRadius * 0.32);
   const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < FAN_BLADE_COUNT; i++) {
     const blade = new THREE.Mesh(bladeGeom, bladeMat);
     blade.scale.set(bladeLength, bladeThickness, bladeChord);
     blade.position.x = bladeRootRadius + bladeLength * 0.5;
     blade.rotation.x = bladePitchRad;
     const bladePivot = new THREE.Group();
-    bladePivot.rotation.y = (i * Math.PI) / 2;
+    bladePivot.rotation.y = (i * Math.PI * 2) / FAN_BLADE_COUNT;
     bladePivot.add(blade);
     rotor.add(bladePivot);
   }

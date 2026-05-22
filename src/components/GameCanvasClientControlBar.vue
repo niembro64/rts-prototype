@@ -12,22 +12,23 @@ import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
 
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
 const FULLSNAP_REASONABLE_BYTES = 1024 * 1024;
-const SNAPSHOT_SIZE_OVER_PERCENT_BUDGET = 100;
+const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
 
-function snapshotSizeOverPercent(bytes: number, reasonableBytes: number): number {
+function snapshotSizeTargetRatio(bytes: number, reasonableBytes: number): number {
   if (!Number.isFinite(bytes) || !Number.isFinite(reasonableBytes) || reasonableBytes <= 0) {
     return 0;
   }
-  return Math.max(0, ((bytes - reasonableBytes) / reasonableBytes) * 100);
+  return Math.max(0, bytes / reasonableBytes);
 }
 
-function fmtPercent4(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '0%';
-  if (value < 9.95) return `${value.toFixed(1)}%`;
-  if (value < 999.5) return `${Math.round(value)}%`;
+function fmtRatio4(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value < 0.095) return value.toFixed(2);
+  if (value < 9.95) return value.toFixed(1).replace(/\.0$/, '');
+  if (value < 999.5) return `${Math.round(value)}`;
   const kilo = value / 1000;
-  if (kilo < 9.95) return `${Math.round(kilo)}k%`;
-  return '9k%';
+  if (kilo < 9.95) return `${Math.round(kilo)}k`;
+  return '9k';
 }
 
 defineProps<{
@@ -285,7 +286,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Encoded DIFFSNAP payload size before decode/unpack. Remote clients use the received byte length; local host play estimates with the same MessagePack snapshot encoder.">DS SIZE:</BarLabel>
+        <BarLabel :title="`Encoded DIFFSNAP payload size before decode/unpack. Remote clients use the received byte length; local host play estimates with the same MessagePack snapshot encoder. Target ${fmtBytes4(DIFFSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">DS SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -313,16 +314,16 @@ defineProps<{
           </div>
           <div class="stat-bar">
             <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtPercent4(snapshotSizeOverPercent(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES)) }}</span>
-              <span class="fps-label">over</span>
+              <span class="fps-value">{{ fmtRatio4(snapshotSizeTargetRatio(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES)) }}</span>
+              <span class="fps-label">x</span>
             </div>
             <div class="stat-bar-track">
               <div
                 class="stat-bar-fill"
                 :style="
                   msBarStyle(
-                    snapshotSizeOverPercent(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES),
-                    SNAPSHOT_SIZE_OVER_PERCENT_BUDGET,
+                    snapshotSizeTargetRatio(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES),
+                    SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
                   )
                 "
               ></div>
@@ -332,7 +333,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Encoded FULLSNAP payload size before decode/unpack. Remote clients use the received byte length; local host play estimates with the same MessagePack snapshot encoder.">FS SIZE:</BarLabel>
+        <BarLabel :title="`Encoded FULLSNAP payload size before decode/unpack. Remote clients use the received byte length; local host play estimates with the same MessagePack snapshot encoder. Target ${fmtBytes4(FULLSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">FS SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -360,16 +361,16 @@ defineProps<{
           </div>
           <div class="stat-bar">
             <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtPercent4(snapshotSizeOverPercent(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES)) }}</span>
-              <span class="fps-label">over</span>
+              <span class="fps-value">{{ fmtRatio4(snapshotSizeTargetRatio(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES)) }}</span>
+              <span class="fps-label">x</span>
             </div>
             <div class="stat-bar-track">
               <div
                 class="stat-bar-fill"
                 :style="
                   msBarStyle(
-                    snapshotSizeOverPercent(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES),
-                    SNAPSHOT_SIZE_OVER_PERCENT_BUDGET,
+                    snapshotSizeTargetRatio(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES),
+                    SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
                   )
                 "
               ></div>

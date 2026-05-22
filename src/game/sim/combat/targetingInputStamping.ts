@@ -620,65 +620,6 @@ function stampCombatTargetingEntityInto(
   return true;
 }
 
-/** Refresh per-entity slab bookkeeping after the targeting kernel ran.
- *  The Rust mask kernel computes activeTurretMask / firingTurretMask
- *  from slab state; readers (turretSystem, projectileSystem) pull
- *  those values straight from the slab via
- *  `readActiveTurretMaskForUnit` / `readFiringTurretMaskForUnit` in
- *  combatActivitySlab.ts. Returns true when any turret still needs
- *  rotation/fire integration after writeback.
- *
- *  AIM-08.6 — the beam inverse target index is no longer mirrored
- *  here. The Rust kernel's `turret_target_id` slab is the single
- *  source of truth, and death-cleanup readers
- *  (`getBeamWeaponsTargeting`) walk it directly on demand instead of
- *  paying the per-turret-per-tick JS Map maintenance.
- *
- *  AIM-08.7 — disabled-turret JS-only field reset (angular/pitch
- *  velocity + accel, burst.remaining, forceField.transition/range)
- *  no longer runs every tick. It now fires only at the transition
- *  moments where a turret becomes disabled (mirror/force-field
- *  toggles in GameServer), via
- *  `resetDisabledTurretJsOnlyFields` in combatActivity.ts.
- *
- *  AIM-08.8 — the slab's activity-mask values are no longer mirrored
- *  back to `combat.activeTurretMask` / `combat.firingTurretMask`. The
- *  JS fields are gone; every sim-hot reader pulls from the slab
- *  directly.
- *
- *  JS Turret.target / Turret.state are no longer mirrored from the
- *  slab: every sim-hot reader (turretSystem rotation, projectileSystem
- *  fire + active-engagement, forceFieldTurret, mirrorTargetPriority,
- *  laserSoundSystem, UnitBarrelSpinState3D, Simulation engagement
- *  halts, ClientUnitPrediction, stateSerializerEntityDelta) is
- *  slab-first, and every mid-tick mutation flows through
- *  dropTurretLockMidTick which clears both the JS Turret and the slab
- *  in one call. JS Turret.target / Turret.state on the sim hot path
- *  therefore drift away from the slab between dropTurretLockMidTick
- *  calls; that is fine because no slab-first reader reads them.
- *
- *  Mount kinematics (worldPos / worldVelocity / worldPosTick) are also
- *  not written back: live consumers (resolveWeaponWorldMount,
- *  updateWeaponWorldKinematics, aim solver, projectile launch, dgun
- *  launch) read the slab via
- *  readCombatTargetingTurretMountKinematicsInto. */
-export function writeBackCombatTargetingEntity(entity: Entity): boolean {
-  const combat = entity.combat;
-  if (!combat) return false;
-  const sim = getSimWasm();
-  if (sim === undefined) return false;
-  const slot = spatialGrid.getSlot(entity.id);
-  if (slot < 0) return false;
-
-  const targeting = sim.combatTargeting;
-  const turretCount = targeting.turretCount(slot);
-  if (turretCount <= 0) return false;
-
-  const views = getCombatTargetingStateViews(sim);
-  targeting.refreshActivityMasksForEntity(slot);
-  return views.activeTurretMask[slot] !== 0;
-}
-
 /** Rebuild every targetable unit/building row before the FSM runs.
  *  Turret rows are written for combat entities, but target lookup
  *  needs unarmed buildings too (solar/wind/extractors can be locked

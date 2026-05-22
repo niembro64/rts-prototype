@@ -21,6 +21,7 @@ const ROCKET_FIN_ROLL_RATE_RAD_PER_MS = (Math.PI * 2) / 2000;
 // past the cylinder tail end. Avoids color z-fight at the tail cap.
 const FIN_REAR_OVERHANG_MULT = 0.75;
 const PROJECTILE_INSTANCED_CAP = 8192;
+const PROJECTILE_ROCKET_FIN_COUNT = 3;
 const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
 const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CONE_RADIAL_SEGMENTS;
@@ -837,13 +838,13 @@ function createProjectileFinGeometry(): THREE.BufferGeometry {
   const FIN_THICK = 0.15;
   // Each blade becomes a triangular prism: front face + back face + 3 side
   // quads, all emitted as non-indexed triangles.
-  const fin = (axis: 'x' | 'z', sign: 1 | -1): number[] => {
-    const ox = axis === 'x' ? sign * FIN_OUT : 0;
-    const oz = axis === 'z' ? sign * FIN_OUT : 0;
-    // Perpendicular to the blade plane: for an x-axis blade, perp = z; for
-    // a z-axis blade, perp = x.
-    const px = axis === 'x' ? 0 : FIN_THICK;
-    const pz = axis === 'x' ? FIN_THICK : 0;
+  const fin = (angleRad: number): number[] => {
+    const radialX = Math.cos(angleRad);
+    const radialZ = Math.sin(angleRad);
+    const ox = radialX * FIN_OUT;
+    const oz = radialZ * FIN_OUT;
+    const px = -radialZ * FIN_THICK;
+    const pz = radialX * FIN_THICK;
     // Six prism vertices: A/B/C with +perp, A'/B'/C' with -perp.
     const A = [0, FIN_FORWARD, 0];
     const B = [0, FIN_REAR, 0];
@@ -870,12 +871,11 @@ function createProjectileFinGeometry(): THREE.BufferGeometry {
       ...Ap, ...Cn, ...An,
     ];
   };
-  const verts = new Float32Array([
-    ...fin('x', 1),
-    ...fin('z', 1),
-    ...fin('x', -1),
-    ...fin('z', -1),
-  ]);
+  const verts = new Float32Array(
+    Array.from({ length: PROJECTILE_ROCKET_FIN_COUNT }, (_, i) =>
+      fin((i / PROJECTILE_ROCKET_FIN_COUNT) * Math.PI * 2),
+    ).flat(),
+  );
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
   geom.computeVertexNormals();

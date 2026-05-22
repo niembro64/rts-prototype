@@ -46,7 +46,7 @@
     "id": "lightRocket",
     "mass": 4,
     "collision": {
-      "radius": 0.6
+      "radius": 1
     },
     "explosion": {
       "radius": 30,
@@ -74,7 +74,7 @@
     "id": "fastRocket",
     "mass": 3,
     "collision": {
-      "radius": 0.7
+      "radius": 1
     },
     "explosion": {
       "radius": 36,
@@ -126,8 +126,8 @@
       "radius": 8
     },
     "explosion": {
-      "radius": 105,
-      "damage": 100,
+      "radius": 75,
+      "damage": 150,
       "force": 10000
     },
     "detonateOnExpiry": true,
@@ -136,7 +136,7 @@
     },
     "submunitions": {
       "shotId": "mediumShot",
-      "count": 5,
+      "count": 9,
       "randomSpreadSpeedHorizontal": 60,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.4

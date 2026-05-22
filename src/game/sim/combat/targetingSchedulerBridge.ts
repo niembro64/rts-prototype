@@ -33,8 +33,9 @@ import {
   getCombatTargetingSourceCount,
   getCombatTargetingSourceEntities,
   getCombatTargetingSourceIds,
-  writeBackCombatTargetingEntity,
+  getCombatTargetingStateViews,
 } from './targetingInputStamping';
+import { spatialGrid } from '../SpatialGrid';
 
 const _activeCombatUnits: Entity[] = [];
 
@@ -111,21 +112,21 @@ function flushTargetingBatch(
     _targetingBatchModes.subarray(0, count),
   );
 
+  // AIM-08.10 — the kernel refreshes activity masks for every non-SKIP
+  // entity inside scheduleAndTickBatch, so the JS bridge has no
+  // per-entity writeback call. SKIP entities are intentionally not
+  // refreshed; their previous-tick mask remains authoritative (FSM,
+  // rotation, and config are unchanged on a probe skip).
+  const sim = getSimWasm()!;
+  const views = getCombatTargetingStateViews(sim);
+  const activeTurretMask = views.activeTurretMask;
   for (let i = 0; i < count; i++) {
     const mode = _targetingBatchModes[i];
+    if (mode === CT_TARGETING_TICK_MODE_SKIP) continue;
     const unit = sourceEntities[i];
-    if (mode === CT_TARGETING_TICK_MODE_SKIP) {
-      // Probe-skipped: no FSM transitions ran, but cooldowns may have
-      // ticked down on the slab. Refresh masks so the per-entity
-      // activity flags reflect the slab's view (zero for a probe-skip
-      // because nothing fired or rotated).
-      if (_targetingBatchHasCooldown[i] !== 0) {
-        writeBackCombatTargetingEntity(unit);
-      }
-      continue;
-    }
     const combat = unit.combat!;
-    const hasActiveTurretWork = writeBackCombatTargetingEntity(unit);
+    const slot = spatialGrid.getSlot(unit.id);
+    const hasActiveTurretWork = slot >= 0 && activeTurretMask[slot] !== 0;
     if (mode === CT_TARGETING_TICK_MODE_CLEAR_LOCKS) {
       // Fire-disabled entities had their locks zeroed inside the
       // scheduler. Downstream JS systems (turretSystem,
