@@ -24,12 +24,14 @@
     {
       "radiusMultiplier": 2.0,
       "tubeRadiusMultiplier": 0.3,
-      "offsetAlongBeam": -1.0
+      "offsetAlongBeam": -1.0,
+      "alpha": 0.5
     },
     {
       "radiusMultiplier": 2.0,
       "tubeRadiusMultiplier": 0.3,
-      "offsetAlongBeam": 1.0
+      "offsetAlongBeam": 1.0,
+      "alpha": 0.5
     }
   ]
 }

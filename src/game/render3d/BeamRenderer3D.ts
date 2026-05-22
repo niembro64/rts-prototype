@@ -75,11 +75,13 @@ type StartPointSphereConfig = {
  *  radiusMultiplier scales beam.lineRadius for the torus's main ring
  *  radius; tubeRadiusMultiplier does the same for the tube thickness;
  *  offsetAlongBeam scales beam.lineRadius for the position offset along
- *  the firing direction (negative = behind the orb, positive = forward). */
+ *  the firing direction (negative = behind the orb, positive = forward);
+ *  alpha is the ring's opacity (1 = fully opaque, 0 = invisible). */
 type StartPointTorusConfig = {
   radiusMultiplier: number;
   tubeRadiusMultiplier: number;
   offsetAlongBeam: number;
+  alpha: number;
 };
 
 type BeamConfigFile = Partial<BeamVisualConfig> & {
@@ -107,6 +109,7 @@ const START_POINT_TORUS_CONFIGS: readonly StartPointTorusConfig[] = (
   radiusMultiplier: c.radiusMultiplier ?? 2.0,
   tubeRadiusMultiplier: c.tubeRadiusMultiplier ?? 0.3,
   offsetAlongBeam: c.offsetAlongBeam ?? 0,
+  alpha: c.alpha ?? 1.0,
 }));
 
 function resolveStartPointSphereColor(ownerId: number): string | number {
@@ -336,13 +339,22 @@ export class BeamRenderer3D {
     this.root.add(this.emitterMesh);
 
     // Player-colored torus rings around the start point. One mesh per
-    // config entry; each entry bakes its own tube/radius ratio so we can
-    // scale uniformly per-instance by (lineRadius * radiusMultiplier).
+    // config entry; each entry bakes its own tube/radius ratio so we
+    // can scale uniformly per-instance by (lineRadius * radiusMultiplier).
+    // alpha < 1 flips the material into transparent mode (depthWrite
+    // off so rings don't occlude the orb / beam behind them).
     this.torusMeshes = START_POINT_TORUS_CONFIGS.map((cfg, idx) => {
       const safeRadiusMult = cfg.radiusMultiplier > 1e-5 ? cfg.radiusMultiplier : 1;
       const tubeRatio = cfg.tubeRadiusMultiplier / safeRadiusMult;
       const geom = new THREE.TorusGeometry(1, tubeRatio, 8, 24);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const alpha = Math.max(0, Math.min(1, cfg.alpha));
+      const isTransparent = alpha < 1;
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: isTransparent,
+        opacity: alpha,
+        depthWrite: !isTransparent,
+      });
       const mesh = new THREE.InstancedMesh(geom, mat, BEAM_EMITTER_CAP);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
