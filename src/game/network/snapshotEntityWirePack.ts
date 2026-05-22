@@ -5,6 +5,8 @@ import {
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
+import { setQuatFromYaw } from '../math/Quaternion';
+import { dequantizeRotation as deqRot } from './snapshotQuantization';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotAction,
@@ -23,7 +25,8 @@ const PACKED_ENTITIES_V1_VERSION = 1;
 const PACKED_ENTITIES_V2_VERSION = 2;
 const PACKED_ENTITIES_V3_VERSION = 3;
 const PACKED_ENTITIES_V4_VERSION = 4;
-const PACKED_ENTITIES_VERSION = 5;
+const PACKED_ENTITIES_V5_VERSION = 5;
+const PACKED_ENTITIES_VERSION = 6;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -72,6 +75,8 @@ const MOVEMENT_UNIT_FLAG_ROTATION = 1 << 1;
 const MOVEMENT_UNIT_FLAG_VELOCITY = 1 << 2;
 const MOVEMENT_UNIT_FLAG_ORIENTATION = 1 << 3;
 const MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY = 1 << 4;
+const MOVEMENT_UNIT_FLAG_YAW_ORIENTATION = 1 << 5;
+const MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY = 1 << 6;
 const MOVEMENT_UNIT_CHANGED_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
@@ -100,7 +105,10 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // Uint8Array varint slabs so the high-count paths pay one binary field
 // header instead of a MessagePack tag per coordinate. V5 keeps the same
 // slabs but groups rows by stable header fields so flags/player/turret
-// counts are paid once per group instead of once per row.
+// counts are paid once per group instead of once per row. V6 also
+// compacts yaw-only airborne orientation from the already-shipped
+// rotation channel and yaw-only angular velocity from three floats to
+// one.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitRows = number[];
 export type PackedMovementUnitBytes = Uint8Array;
@@ -133,6 +141,13 @@ export type PackedEntitySnapshotWireV4 = {
 };
 
 export type PackedEntitySnapshotWireV5 = {
+  v: typeof PACKED_ENTITIES_V5_VERSION;
+  m?: PackedMovementUnitBytes;
+  t?: PackedUnitTurretBytes;
+  e?: PackedEntityRow[];
+};
+
+export type PackedEntitySnapshotWireV6 = {
   v: typeof PACKED_ENTITIES_VERSION;
   m?: PackedMovementUnitBytes;
   t?: PackedUnitTurretBytes;
@@ -144,7 +159,8 @@ export type PackedEntitySnapshotWire =
   | PackedEntitySnapshotWireV2
   | PackedEntitySnapshotWireV3
   | PackedEntitySnapshotWireV4
-  | PackedEntitySnapshotWireV5;
+  | PackedEntitySnapshotWireV5
+  | PackedEntitySnapshotWireV6;
 
 export function packEntitiesForWire(
   entities: readonly NetworkServerSnapshotEntity[] | undefined,
@@ -170,7 +186,7 @@ export function packEntitiesForWire(
     }
   }
 
-  const packed: PackedEntitySnapshotWireV5 = { v: PACKED_ENTITIES_VERSION };
+  const packed: PackedEntitySnapshotWireV6 = { v: PACKED_ENTITIES_VERSION };
   const movementBytes = movementRows?.finish();
   const turretBytes = turretRows?.finish();
   if (movementBytes !== undefined) packed.m = movementBytes;
@@ -196,6 +212,7 @@ export function unpackEntitiesFromWire(
   const movementRows = packed.m;
   const turretRows = packed.v === PACKED_ENTITIES_V3_VERSION ||
     packed.v === PACKED_ENTITIES_V4_VERSION ||
+    packed.v === PACKED_ENTITIES_V5_VERSION ||
     packed.v === PACKED_ENTITIES_VERSION
     ? packed.t
     : undefined;
@@ -242,6 +259,7 @@ export function isPackedEntitySnapshotWire(
   }
   if (
     candidate.v === PACKED_ENTITIES_V4_VERSION ||
+    candidate.v === PACKED_ENTITIES_V5_VERSION ||
     candidate.v === PACKED_ENTITIES_VERSION
   ) {
     return (
@@ -665,9 +683,36 @@ function movementUnitDeltaFlags(entity: NetworkServerSnapshotEntity): number {
   if (pos !== undefined) flags |= MOVEMENT_UNIT_FLAG_POS;
   if (entity.rotation !== undefined) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
   if (velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
-  if (orientation !== undefined) flags |= MOVEMENT_UNIT_FLAG_ORIENTATION;
-  if (angularVelocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY;
+  if (orientation !== undefined) {
+    flags |= canCompactYawOrientation(entity, orientation)
+      ? MOVEMENT_UNIT_FLAG_YAW_ORIENTATION
+      : MOVEMENT_UNIT_FLAG_ORIENTATION;
+  }
+  if (angularVelocity !== undefined) {
+    flags |= canCompactYawAngularVelocity(angularVelocity)
+      ? MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
+      : MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY;
+  }
   return flags;
+}
+
+function canCompactYawOrientation(
+  entity: NetworkServerSnapshotEntity,
+  orientation: NonNullable<UnitSub['orientation']>,
+): boolean {
+  return entity.rotation !== undefined &&
+    orientation.x === 0 &&
+    orientation.y === 0 &&
+    Number.isFinite(orientation.z) &&
+    Number.isFinite(orientation.w) &&
+    Math.abs(orientation.z) <= 1.000001 &&
+    Math.abs(orientation.w) <= 1.000001;
+}
+
+function canCompactYawAngularVelocity(
+  angularVelocity: NonNullable<UnitSub['angularVelocity3']>,
+): boolean {
+  return angularVelocity.x === 0 && angularVelocity.y === 0;
 }
 
 function writeMovementUnitDeltaPayload(
@@ -702,6 +747,9 @@ function writeMovementUnitDeltaPayload(
   if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
     rows.writeFloat64(angularVelocity!.x);
     rows.writeFloat64(angularVelocity!.y);
+    rows.writeFloat64(angularVelocity!.z);
+  }
+  if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
     rows.writeFloat64(angularVelocity!.z);
   }
 }
@@ -741,12 +789,20 @@ function movementUnitChangedFields(flags: number): number {
   let changedFields = 0;
   if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) changedFields |= ENTITY_CHANGED_POS;
   if (
-    (flags & (MOVEMENT_UNIT_FLAG_ROTATION | MOVEMENT_UNIT_FLAG_ORIENTATION)) !== 0
+    (flags & (
+      MOVEMENT_UNIT_FLAG_ROTATION |
+      MOVEMENT_UNIT_FLAG_ORIENTATION |
+      MOVEMENT_UNIT_FLAG_YAW_ORIENTATION
+    )) !== 0
   ) {
     changedFields |= ENTITY_CHANGED_ROT;
   }
   if (
-    (flags & (MOVEMENT_UNIT_FLAG_VELOCITY | MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY)) !== 0
+    (flags & (
+      MOVEMENT_UNIT_FLAG_VELOCITY |
+      MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY |
+      MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
+    )) !== 0
   ) {
     changedFields |= ENTITY_CHANGED_VEL;
   }
@@ -760,6 +816,7 @@ function movementUnitDeltaRowWidth(flags: number): number {
   if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) width += 3;
   if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) width += 4;
   if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) width += 3;
+  if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) width += 1;
   return width;
 }
 
@@ -811,7 +868,7 @@ function unpackMovementUnitDeltaRows(
   version: PackedEntitySnapshotWire['v'],
 ): number {
   if (rows instanceof Uint8Array) {
-    if (version === PACKED_ENTITIES_VERSION) {
+    if (version === PACKED_ENTITIES_V5_VERSION || version === PACKED_ENTITIES_VERSION) {
       return unpackMovementUnitDeltaGroupedBytes(rows, out, outIndex);
     }
     return unpackMovementUnitDeltaBytes(rows, out, outIndex);
@@ -842,7 +899,9 @@ function unpackMovementUnitDeltaRows(
       (flags & (
         MOVEMENT_UNIT_FLAG_VELOCITY |
         MOVEMENT_UNIT_FLAG_ORIENTATION |
-        MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY
+        MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY |
+        MOVEMENT_UNIT_FLAG_YAW_ORIENTATION |
+        MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
       )) !== 0
     ) {
       const unit: UnitSub = {};
@@ -861,12 +920,20 @@ function unpackMovementUnitDeltaRows(
           w: rows[i++] as number,
         };
       }
+      if ((flags & MOVEMENT_UNIT_FLAG_YAW_ORIENTATION) !== 0) {
+        const orientation = { x: 0, y: 0, z: 0, w: 1 };
+        setQuatFromYaw(orientation, deqRot(entity.rotation ?? 0));
+        unit.orientation = orientation;
+      }
       if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
         unit.angularVelocity3 = {
           x: rows[i++] as number,
           y: rows[i++] as number,
           z: rows[i++] as number,
         };
+      }
+      if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
+        unit.angularVelocity3 = { x: 0, y: 0, z: rows[i++] as number };
       }
       entity.unit = unit;
     }
@@ -937,7 +1004,9 @@ function readMovementUnitDeltaByteEntity(
     (flags & (
       MOVEMENT_UNIT_FLAG_VELOCITY |
       MOVEMENT_UNIT_FLAG_ORIENTATION |
-      MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY
+      MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY |
+      MOVEMENT_UNIT_FLAG_YAW_ORIENTATION |
+      MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
     )) !== 0
   ) {
     const unit: UnitSub = {};
@@ -956,12 +1025,20 @@ function readMovementUnitDeltaByteEntity(
         w: reader.readFloat64(),
       };
     }
+    if ((flags & MOVEMENT_UNIT_FLAG_YAW_ORIENTATION) !== 0) {
+      const orientation = { x: 0, y: 0, z: 0, w: 1 };
+      setQuatFromYaw(orientation, deqRot(entity.rotation ?? 0));
+      unit.orientation = orientation;
+    }
     if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
       unit.angularVelocity3 = {
         x: reader.readFloat64(),
         y: reader.readFloat64(),
         z: reader.readFloat64(),
       };
+    }
+    if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
+      unit.angularVelocity3 = { x: 0, y: 0, z: reader.readFloat64() };
     }
     entity.unit = unit;
   }
@@ -975,7 +1052,7 @@ function unpackUnitTurretDeltaRows(
   version: PackedEntitySnapshotWire['v'],
 ): number {
   if (rows instanceof Uint8Array) {
-    if (version === PACKED_ENTITIES_VERSION) {
+    if (version === PACKED_ENTITIES_V5_VERSION || version === PACKED_ENTITIES_VERSION) {
       return unpackUnitTurretDeltaGroupedBytes(rows, out, outIndex);
     }
     return unpackUnitTurretDeltaBytes(rows, out, outIndex);

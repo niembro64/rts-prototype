@@ -147,6 +147,19 @@ Evidence:
   reduction). V5 decoded DTOs matched V4 decoded DTOs in all probes.
   The live high-count matrix still needs to be rerun before this child
   can be closed.
+- The 2026-05-22 version-6 entity wire pass keeps V1-V5 decode support
+  and compacts yaw-only airborne movement rows. When orientation has
+  zero X/Y and unit-quaternion Z/W, the row reconstructs orientation
+  from the already-shipped quantized rotation instead of sending four
+  Float64 components. When angularVelocity3 has zero X/Y, the row sends
+  only yaw velocity Z instead of three Float64 components. A Vite SSR
+  synthetic probe measured 1,000 yaw-only movement rows at 69,332 B for
+  the full-orientation-compatible shape vs 21,330 B for V6 compact
+  (69.2% reduction), and 5,000 rows at 353,082 B vs 113,082 B
+  (68.0% reduction). Decode parity keyed by entity id had zero
+  mismatches for id, position, rotation, velocity, yaw angular velocity,
+  and unit-length reconstructed orientation. The live high-count matrix
+  still needs to be rerun before this child can be closed.
 
 Why it matters:
 The remaining bandwidth problem is steady-state upstream, not rare
