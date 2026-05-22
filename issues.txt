@@ -66,19 +66,60 @@ Evidence:
   at 13,803 B avg / 28,072 B hi across 441 deltas.
 - After audio, minimap, projectile, entity, terrain, and buildability
   packing, the cap-243 harness is well inside both the 64 KiB DS avg /
-  128 KiB DS hi and the 1 MiB FS targets. The remaining proof is a
-  fresh PLAYER CLIENT capture at the 1,000 / 5,000-unit rows against
-  the same network budgets.
+  128 KiB DS hi and the 1 MiB FS targets.
+- The 2026-05-22 high-count PLAYER CLIENT matrix in
+  docs/dp-02-snapshot-wire-instrumentation.md proves the next limit:
+  FULLSNAP bootstrap is now under the 1 MiB target at both tested caps
+  (about 389-392 KiB at cap 1,000 and 918-923 KiB at cap 5,000), but
+  DIFFSNAP is still over budget. The 1,000-cap rows measured
+  159,039-211,790 B avg / 218,564-244,394 B hi. The 5,000-cap rows
+  measured 671,714-770,596 B avg / 841,268-859,546 B hi, and the host
+  only produced about 1.2-1.3 encoded snapshots/sec at that scale in
+  the headless harness.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
-Even when the 200-unit delta stream is under target, every remote client
-multiplies host upstream, FULLSNAP/static sections still need a targeted
-budget pass, and the 1,000 / 5,000-unit rows still need to be proven
-against the same network budgets.
+Even when the 200-unit delta stream is under target and the high-count
+FULLSNAP bootstrap is under 1 MiB, every remote client multiplies the
+DIFFSNAP stream. The 1,000 / 5,000-unit rows still exceed the normal
+internet delta budget by several multiples.
 
 Fix direction:
-Do child items as separate, measurable PRs. The remaining priority is
-to rerun the PLAYER CLIENT DS/FS capture matrix at the 1,000 / 5,000
-unit rows and record the same DS SIZE / FS SIZE avg + hi numbers
-against the documented network budgets.
+Do child items as separate, measurable PRs. FULLSNAP/static sections are
+not the active blocker; the next work is SNAP-WIRE-01A.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01A - child: high-count DIFFSNAP rows exceed the 64 KiB avg /
+                128 KiB hi targets after the packed-row passes.
+------------------------------------------------------------------------------
+
+Evidence:
+- Captured PLAYER CLIENT matrix, 2026-05-22, keyframes disabled, fog
+  disabled, debug grid disabled, all demo unit types enabled, base
+  position threshold at 5, base rotation-position threshold at 0.1,
+  and owned/allied/observed threshold multipliers at 1x:
+  - cap 1,000: DS avg 159,039-211,790 B, DS hi 218,564-244,394 B.
+  - cap 5,000: DS avg 671,714-770,596 B, DS hi 841,268-859,546 B.
+  - FULLSNAP bootstrap stayed under target: about 389-392 KiB at cap
+    1,000 and 918-923 KiB at cap 5,000.
+- A representative max-delta section breakdown from the same harness
+  family showed `entities` as the dominant section at high count:
+  roughly 614 KiB / 72% of an 849 KiB cap-5,000 delta. Projectiles,
+  audio events, and minimap entities followed at roughly 103 KiB,
+  70 KiB, and 62 KiB respectively.
+
+Why it matters:
+The remaining bandwidth problem is steady-state upstream, not rare
+bootstrap recovery. At 5,000 active units a single remote client can
+consume several megabits/sec even before WebRTC framing, retransmits,
+or additional remote clients multiply the stream.
+
+Fix direction:
+Start with the entity delta shape. Separate core movement rows from
+expensive detail rows so position/velocity updates do not drag action,
+turret, surface-normal, suspension, radius, or other detail payload with
+them. Prefer dense numeric row slabs or the existing Rust entity-row
+encoder shape over nested per-entity arrays where that reduces bytes and
+keeps a single source of truth. After the entity stream is reduced,
+rerun the same matrix and then budget the next largest delta sections:
+projectiles/beam updates, audio-event bursts, and minimap rows.

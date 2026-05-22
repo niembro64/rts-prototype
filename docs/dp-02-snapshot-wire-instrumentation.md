@@ -436,3 +436,46 @@ Static decode smoke passed through
 and all terrain integer arrays round-tripped exactly. Float32 terrain slabs had
 max absolute drift of 0.000480 world units for vertex coordinates and 0.000031
 world units for heights.
+
+### High-Count PLAYER CLIENT Matrix
+
+Run date: 2026-05-22
+
+Capture setup:
+
+- Harness: headless Chrome via Playwright, importing `GameServer` and
+  `encodeNetworkSnapshot` from Vite without starting the renderer.
+- Scenario: five-player demo battle, observed from player 1, fog disabled,
+  debug grid disabled, keyframes disabled, `terrainCenter=flat`,
+  `terrainDividers=mountain`, `terrainMapShape=circle`, all background unit
+  types enabled.
+- Delta config: the capture used position threshold 5, velocity threshold 0.5,
+  rotation position threshold 0.1, and rotation velocity threshold 0.1. Owned,
+  allied, and observed enemy entity threshold multipliers were all 1x.
+- Capture windows: the 1k rows used a 10 second immediate window so the
+  active combat stayed inside the 1k unit band; the 5k rows used a 25 second
+  window because unit count stayed stable there. The FULLSNAP sample is the
+  bootstrap snapshot with static map sections.
+
+Budget targets:
+
+- DIFFSNAP: 64 KiB average, 128 KiB high.
+- FULLSNAP: 1 MiB bootstrap/keyframe.
+
+| Cap | Configured SPS | Seconds | DS Samples | Measured SPS | Units Avg | Units Max | DS avg | DS hi | FS avg | FS hi | DS encode avg | DS encode hi |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 5 | 10.0 | 46 | 4.59 | 878 | 1,005 | 211,790 B | 244,394 B | 391,859 B | 391,859 B | 3.68 ms | 5.2 ms |
+| 1,000 | 8 | 10.0 | 71 | 7.08 | 866 | 1,005 | 184,614 B | 218,564 B | 391,077 B | 391,077 B | 3.24 ms | 6.7 ms |
+| 1,000 | 10 | 10.0 | 87 | 8.68 | 844 | 1,005 | 159,039 B | 220,746 B | 389,014 B | 389,014 B | 2.67 ms | 4.6 ms |
+| 5,000 | 5 | 26.2 | 34 | 1.30 | 5,000 | 5,005 | 671,714 B | 859,546 B | 920,629 B | 920,629 B | 13.52 ms | 20.3 ms |
+| 5,000 | 8 | 26.5 | 32 | 1.21 | 4,999 | 5,005 | 770,596 B | 855,669 B | 923,166 B | 923,166 B | 14.12 ms | 19.2 ms |
+| 5,000 | 10 | 26.5 | 32 | 1.21 | 4,999 | 5,005 | 751,034 B | 841,268 B | 918,611 B | 918,611 B | 13.54 ms | 16.7 ms |
+
+Result:
+
+- FULLSNAP bootstrap is under the 1 MiB target at both tested caps after the
+  static terrain/buildability packing pass.
+- DIFFSNAP is still over both the 64 KiB average and 128 KiB high targets at
+  the 1k and 5k rows. The remaining SNAP-WIRE-01 work should target high-count
+  delta shape first, especially the entity stream, before spending more effort
+  on FULLSNAP/static sections.
