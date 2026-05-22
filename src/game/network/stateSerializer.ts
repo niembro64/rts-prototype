@@ -93,6 +93,7 @@ function captureToRustBaseline(
 // Reusable arrays to avoid per-snapshot allocations
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _visibilityHiddenIdsBuf: EntityId[] = [];
+const _deferredDetailEntityIdsBuf: EntityId[] = [];
 registerEntitySnapshotWireSource(_entityBuf);
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
@@ -195,6 +196,7 @@ function forgetTrackedEntity(
 ): void {
   const wasVisible = tracking.prevEntityIds.delete(id);
   tracking.prevStates.delete(id);
+  tracking.deferredDetailFields.delete(id);
   if (baselineSim !== undefined && baselineHandle !== undefined) {
     const slot = spatialGrid.getSlot(id);
     if (slot >= 0) baselineSim.snapshotBaseline.unsetSlot(baselineHandle, slot);
@@ -234,6 +236,7 @@ function processRemovedEntities(
       // position so the cleanup pass below can emit a removal once
       // the player's vision later confirms the building is gone.
       tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
+      tracking.deferredDetailFields.delete(record.id);
     } else {
       // Unit died out of the recipient's vision (issues.txt FOW-17).
       // Mobile units don't persist as ghosts — without an emitted
@@ -374,8 +377,20 @@ export function serializeGameState(
       let changedFields = isNew
         ? undefined
         : rawDeltaMask | dirtyForcedFields;
-      if (changedFields !== undefined && !emitEntityDetailFields) {
-        changedFields &= ~SNAPSHOT_DETAIL_THROTTLED_FIELDS;
+      if (changedFields !== undefined) {
+        const pendingDetailFields = tracking.deferredDetailFields.get(entity.id) ?? 0;
+        if (pendingDetailFields !== 0) {
+          changedFields |= pendingDetailFields;
+        }
+        if (!emitEntityDetailFields) {
+          const deferredFields = changedFields & SNAPSHOT_DETAIL_THROTTLED_FIELDS;
+          if (deferredFields !== 0) {
+            tracking.deferredDetailFields.set(entity.id, pendingDetailFields | deferredFields);
+            changedFields &= ~SNAPSHOT_DETAIL_THROTTLED_FIELDS;
+          }
+        } else if (pendingDetailFields !== 0) {
+          tracking.deferredDetailFields.delete(entity.id);
+        }
       }
       if (!isNew && baselineHandle !== undefined) {
         verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle);
@@ -388,6 +403,51 @@ export function serializeGameState(
           captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, changedFields);
         }
       }
+    }
+
+    if (emitEntityDetailFields && tracking.deferredDetailFields.size > 0) {
+      _deferredDetailEntityIdsBuf.length = 0;
+      for (const id of tracking.deferredDetailFields.keys()) {
+        _deferredDetailEntityIdsBuf.push(id);
+      }
+      for (let i = 0; i < _deferredDetailEntityIdsBuf.length; i++) {
+        const id = _deferredDetailEntityIdsBuf[i];
+        const pendingDetailFields = tracking.deferredDetailFields.get(id) ?? 0;
+        if (pendingDetailFields === 0) {
+          tracking.deferredDetailFields.delete(id);
+          continue;
+        }
+        const entity = world.getEntity(id);
+        if (!entity) {
+          tracking.deferredDetailFields.delete(id);
+          continue;
+        }
+        if (!acceptsSerializedEntity(entity, visibility)) continue;
+
+        const prev = getPrevState(tracking, entity.id);
+        const isNew = !tracking.prevEntityIds.has(entity.id);
+        tracking.prevEntityIds.add(entity.id);
+        const next = getNextEntityState(entity);
+        const rawDeltaMask = isNew
+          ? 0
+          : getEntityDeltaChangedFields(entity, prev, next, visibility);
+        const changedFields = isNew
+          ? undefined
+          : rawDeltaMask | pendingDetailFields;
+        if (!isNew && baselineHandle !== undefined) {
+          verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle);
+        }
+        if (isNew || changedFields! > 0) {
+          const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
+          if (netEntity) _entityBuf.push(netEntity);
+          copySentPrevState(next, prev, changedFields);
+          if (baselineSim !== undefined && baselineHandle !== undefined) {
+            captureToRustBaseline(baselineSim, baselineHandle, entity, next, tick, changedFields);
+          }
+        }
+        tracking.deferredDetailFields.delete(id);
+      }
+      _deferredDetailEntityIdsBuf.length = 0;
     }
 
     if (visibility.isFiltered) {
@@ -427,6 +487,7 @@ export function serializeGameState(
             _removedIdsBuf.push(id);
           }
           tracking.prevStates.delete(id);
+          tracking.deferredDetailFields.delete(id);
           tracking.ghostedBuildingPositions.delete(id);
           if (baselineSim !== undefined && baselineHandle !== undefined) {
             const slot = spatialGrid.getSlot(id);
@@ -443,6 +504,7 @@ export function serializeGameState(
     // client also rebuilds its view from the keyframe, so on-screen
     // ghosts disappear with the data — no removal emit needed.
     tracking.ghostedBuildingPositions.clear();
+    tracking.deferredDetailFields.clear();
     // Keyframe: serialize every accepted unit + building. Both
     // categories take exactly the same path — pool an entry, capture
     // its prev state for delta tracking — so we walk both source

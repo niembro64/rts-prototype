@@ -69,15 +69,16 @@ SNAP-WIRE-01.5 - tune observed-entity delta thresholds separately from
 ------------------------------------------------------------------------------
 
 Where:
-- src/snapshotConfig.json observedEntityDelta currently uses the same
-  multipliers as ownedEntityDelta.
+- src/snapshotConfig.json observedEntityDelta currently uses a
+  conservative 2x preset while owned/allied entities remain at 1x.
 - src/game/network/stateSerializerEntityDelta.ts applies these
   multipliers in getDeltaResolution.
 
 What:
 Enemy/observed units can tolerate lower network precision than the
-local player's own units. Currently observed entities use multiplier 1
-for position, velocity, rotation position, and rotation velocity.
+local player's own units. The current 2x observed preset still needs
+measurement against alternatives such as 4x for position, velocity,
+rotation position, and rotation velocity.
 
 Fix:
 Test observedEntityDelta multipliers such as 2x and 4x for position,

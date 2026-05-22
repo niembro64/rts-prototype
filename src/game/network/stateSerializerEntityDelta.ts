@@ -111,6 +111,10 @@ export type DeltaTrackingState = {
   currentEntityIds: Set<number>;
   prevStatePool: PrevEntityState[];
   prevStatePoolIndex: number;
+  /** Detail fields suppressed on a non-detail delta. Kept per recipient so
+   *  a one-shot visual dirty bit still ships on the next detail-cadence
+   *  snapshot instead of being drained from WorldState and lost. */
+  deferredDetailFields: Map<EntityId, number>;
   /** Per-recipient last-seen positions for enemy buildings the client
    *  has as ghosts (issues.txt FOW-02b). Populated when a building
    *  exits the recipient's vision or dies out-of-vision; cleared when
@@ -135,7 +139,10 @@ export const SNAPSHOT_DIRTY_FORCE_FIELDS =
 
 export const SNAPSHOT_DETAIL_THROTTLED_FIELDS =
   ENTITY_CHANGED_NORMAL |
-  ENTITY_CHANGED_SUSPENSION;
+  ENTITY_CHANGED_SUSPENSION |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 
 const trackingStates = new Map<string, DeltaTrackingState>();
 const capturedNextStates = new Map<EntityId, PrevEntityState>();
@@ -179,6 +186,7 @@ function createDeltaTrackingState(): DeltaTrackingState {
     currentEntityIds: new Set<number>(),
     prevStatePool: [],
     prevStatePoolIndex: 0,
+    deferredDetailFields: new Map<EntityId, number>(),
     ghostedBuildingPositions: new Map<EntityId, GhostedBuildingPosition>(),
   };
 }

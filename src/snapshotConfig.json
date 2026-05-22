@@ -13,9 +13,9 @@
     "rotationVelocityThresholdMultiplier": 1
   },
   "observedEntityDelta": {
-    "positionThresholdMultiplier": 1,
-    "velocityThresholdMultiplier": 1,
-    "rotationPositionThresholdMultiplier": 1,
-    "rotationVelocityThresholdMultiplier": 1
+    "positionThresholdMultiplier": 2,
+    "velocityThresholdMultiplier": 2,
+    "rotationPositionThresholdMultiplier": 2,
+    "rotationVelocityThresholdMultiplier": 2
   }
 }
