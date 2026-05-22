@@ -751,6 +751,14 @@
       {
         "turretId": "droppingMortarTurret",
         "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      {
+        "turretId": "miniBeam",
+        "mount": {
           "x": 1.5,
           "y": 0,
           "z": 0
@@ -760,12 +768,6 @@
     "bodyShape": {
       "kind": "composite",
       "parts": [
-        {
-          "kind": "circle",
-          "offsetForward": 0,
-          "radiusFrac": 0.6,
-          "yFrac": 0.6
-        },
         {
           "kind": "cylinder",
           "offsetForward": -2.1,
