@@ -12,12 +12,24 @@
   "startPointSphere": {
     "radiusMultiplier": 0.5,
     "minRadius": 0.1,
-    "color": "playerPrimary",
+    "color": "#ffffff",
     "emissionOffset": {
       "miniBeamShot": 6,
       "beamShot": 12,
       "megaBeamShot": 28,
       "towerBeamShot": 32
     }
-  }
+  },
+  "startPointTorus": [
+    {
+      "radiusMultiplier": 2.0,
+      "tubeRadiusMultiplier": 0.3,
+      "offsetAlongBeam": -1.0
+    },
+    {
+      "radiusMultiplier": 2.0,
+      "tubeRadiusMultiplier": 0.3,
+      "offsetAlongBeam": 1.0
+    }
+  ]
 }

@@ -71,12 +71,24 @@ type StartPointSphereConfig = {
   color: string;
 };
 
+/** Torus ring drawn around the beam start point with player color.
+ *  radiusMultiplier scales beam.lineRadius for the torus's main ring
+ *  radius; tubeRadiusMultiplier does the same for the tube thickness;
+ *  offsetAlongBeam scales beam.lineRadius for the position offset along
+ *  the firing direction (negative = behind the orb, positive = forward). */
+type StartPointTorusConfig = {
+  radiusMultiplier: number;
+  tubeRadiusMultiplier: number;
+  offsetAlongBeam: number;
+};
+
 type BeamConfigFile = Partial<BeamVisualConfig> & {
   outer?: BeamVisualConfig;
   inner?: BeamVisualConfig;
   startPointSphere?: Partial<StartPointSphereConfig> & {
     emissionOffset?: Record<string, number>;
   };
+  startPointTorus?: Partial<StartPointTorusConfig>[];
 };
 
 // JSON-shape is narrower than BeamConfigFile (no color/alpha fields —
@@ -88,6 +100,14 @@ const START_POINT_SPHERE_CONFIG: StartPointSphereConfig = {
   minRadius: rawBeamConfig.startPointSphere?.minRadius ?? 1.0,
   color: rawBeamConfig.startPointSphere?.color ?? 'playerPrimary',
 };
+
+const START_POINT_TORUS_CONFIGS: readonly StartPointTorusConfig[] = (
+  rawBeamConfig.startPointTorus ?? []
+).map((c) => ({
+  radiusMultiplier: c.radiusMultiplier ?? 2.0,
+  tubeRadiusMultiplier: c.tubeRadiusMultiplier ?? 0.3,
+  offsetAlongBeam: c.offsetAlongBeam ?? 0,
+}));
 
 function resolveStartPointSphereColor(ownerId: number): string | number {
   const c = START_POINT_SPHERE_CONFIG.color;
@@ -273,6 +293,8 @@ export class BeamRenderer3D {
   private readonly layers: BeamVisualLayer[];
   private readonly emitterMesh: THREE.InstancedMesh;
   private readonly emitterColor = new THREE.Color();
+  private readonly torusMeshes: THREE.InstancedMesh[];
+  private readonly torusColor = new THREE.Color();
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
@@ -286,6 +308,10 @@ export class BeamRenderer3D {
   private _mid = new THREE.Vector3();
   private _dir = new THREE.Vector3();
   private _up = new THREE.Vector3(0, 1, 0);
+  // TorusGeometry's default ring axis points along local Z; rotating this
+  // unit Z onto the beam direction stands each torus up around the beam.
+  private _torusAxis = new THREE.Vector3(0, 0, 1);
+  private _torusPos = new THREE.Vector3();
   private _quat = new THREE.Quaternion();
   private _scale = new THREE.Vector3();
   private _matrix = new THREE.Matrix4();
@@ -308,6 +334,23 @@ export class BeamRenderer3D {
     this.emitterMesh.renderOrder = 11;
     this.emitterMesh.count = 0;
     this.root.add(this.emitterMesh);
+
+    // Player-colored torus rings around the start point. One mesh per
+    // config entry; each entry bakes its own tube/radius ratio so we can
+    // scale uniformly per-instance by (lineRadius * radiusMultiplier).
+    this.torusMeshes = START_POINT_TORUS_CONFIGS.map((cfg, idx) => {
+      const safeRadiusMult = cfg.radiusMultiplier > 1e-5 ? cfg.radiusMultiplier : 1;
+      const tubeRatio = cfg.tubeRadiusMultiplier / safeRadiusMult;
+      const geom = new THREE.TorusGeometry(1, tubeRatio, 8, 24);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const mesh = new THREE.InstancedMesh(geom, mat, BEAM_EMITTER_CAP);
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 11 + idx + 1;
+      mesh.count = 0;
+      this.root.add(mesh);
+      return mesh;
+    });
   }
 
   private placeSegment(
@@ -400,6 +443,9 @@ export class BeamRenderer3D {
 
   private hasActiveVisuals(): boolean {
     if (this.emitterMesh.count > 0) return true;
+    for (const tMesh of this.torusMeshes) {
+      if (tMesh.count > 0) return true;
+    }
     return this.layers.some(
       (layer) => layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0,
     );
@@ -436,6 +482,7 @@ export class BeamRenderer3D {
     let segIdx = 0;
     let endpointIdx = 0;
     let emitterIdx = 0;
+    let torusIdx = 0;
 
     for (const e of projectiles) {
       const pt = e.projectile?.projectileType;
@@ -476,6 +523,26 @@ export class BeamRenderer3D {
       const stride = drawReflections ? 1 : lastIdx;
       const openEndedLine = this.isOpenEndedLinePath(proj);
 
+      // Firing direction (normalized, sim coords). Used by the snap-to-
+      // turret offset, the start-point sphere position, and the start-
+      // point torus orientation + offset. Falls back to zero-direction
+      // when the snapshot's first segment is degenerate.
+      const nextPoint = points[1];
+      let beamDirX = nextPoint.x - startPoint.x;
+      let beamDirY = nextPoint.y - startPoint.y;
+      let beamDirZ = nextPoint.z - startPoint.z;
+      const beamDirLen = Math.sqrt(
+        beamDirX * beamDirX + beamDirY * beamDirY + beamDirZ * beamDirZ,
+      );
+      let hasBeamDir = false;
+      if (beamDirLen > 1e-5) {
+        const inv = 1 / beamDirLen;
+        beamDirX *= inv;
+        beamDirY *= inv;
+        beamDirZ *= inv;
+        hasBeamDir = true;
+      }
+
       let snapStartX = 0, snapStartY = 0, snapStartZ = 0;
       let hasSnapStart = false;
       if (snapToTurret) {
@@ -487,21 +554,13 @@ export class BeamRenderer3D {
           snapStartX = mount.x;
           snapStartY = mount.y;
           snapStartZ = mount.z;
-          // Mount cache stores position only — re-derive the firing
-          // direction from the snapshot's first segment so the snapped
-          // start point sits at mount + emissionOffset * forwardDir.
-          if (emissionOffset > 0) {
-            const nextPoint = points[1];
-            const ndx = nextPoint.x - startPoint.x;
-            const ndy = nextPoint.y - startPoint.y;
-            const ndz = nextPoint.z - startPoint.z;
-            const nlen = Math.sqrt(ndx * ndx + ndy * ndy + ndz * ndz);
-            if (nlen > 1e-5) {
-              const inv = emissionOffset / nlen;
-              snapStartX += ndx * inv;
-              snapStartY += ndy * inv;
-              snapStartZ += ndz * inv;
-            }
+          // Mount cache stores position only — re-apply emissionOffset
+          // along the beam's current firing direction so the snapped
+          // start sits at mount + emissionOffset * forwardDir.
+          if (emissionOffset > 0 && hasBeamDir) {
+            snapStartX += beamDirX * emissionOffset;
+            snapStartY += beamDirY * emissionOffset;
+            snapStartZ += beamDirZ * emissionOffset;
           }
           hasSnapStart = true;
         }
@@ -510,14 +569,14 @@ export class BeamRenderer3D {
       // Emitter "generator orb" at the beam start. Use the snapped
       // position when available so the orb tracks the turret smoothly
       // between snapshots; otherwise fall back to the snapshot's start.
+      const orbX = hasSnapStart ? snapStartX : startPoint.x;
+      const orbY = hasSnapStart ? snapStartY : startPoint.y;
+      const orbZ = hasSnapStart ? snapStartZ : startPoint.z;
       if (emissionOffset > 0 && emitterIdx < BEAM_EMITTER_CAP) {
         const orbRadius = Math.max(
           START_POINT_SPHERE_CONFIG.minRadius,
           profile.lineRadius * START_POINT_SPHERE_CONFIG.radiusMultiplier,
         );
-        const orbX = hasSnapStart ? snapStartX : startPoint.x;
-        const orbY = hasSnapStart ? snapStartY : startPoint.y;
-        const orbZ = hasSnapStart ? snapStartZ : startPoint.z;
         // three uses (x, height=z, y); match the segment placement.
         this._matrix.makeScale(orbRadius, orbRadius, orbRadius);
         this._matrix.setPosition(orbX, orbZ, orbY);
@@ -525,6 +584,37 @@ export class BeamRenderer3D {
         this.emitterColor.set(resolveStartPointSphereColor(proj.ownerId));
         this.emitterMesh.setColorAt(emitterIdx, this.emitterColor);
         emitterIdx++;
+      }
+
+      // Player-colored torus rings around the start point. Each ring's
+      // axis aligns with the firing direction so the torus encircles
+      // the beam; per-config offsetAlongBeam pushes it forward/back of
+      // the orb along that direction.
+      if (
+        emissionOffset > 0 &&
+        hasBeamDir &&
+        torusIdx < BEAM_EMITTER_CAP &&
+        this.torusMeshes.length > 0
+      ) {
+        // Rotate the torus's local Z (default ring axis) onto the firing
+        // direction expressed in three-coords (x, z=height, y).
+        this._dir.set(beamDirX, beamDirZ, beamDirY);
+        this._quat.setFromUnitVectors(this._torusAxis, this._dir);
+        this.torusColor.set(getPlayerColors(proj.ownerId).primary);
+        for (let ti = 0; ti < this.torusMeshes.length; ti++) {
+          const cfg = START_POINT_TORUS_CONFIGS[ti];
+          const torusScale = profile.lineRadius * cfg.radiusMultiplier;
+          const torusOffset = profile.lineRadius * cfg.offsetAlongBeam;
+          const tSimX = orbX + beamDirX * torusOffset;
+          const tSimY = orbY + beamDirY * torusOffset;
+          const tSimZ = orbZ + beamDirZ * torusOffset;
+          this._torusPos.set(tSimX, tSimZ, tSimY);
+          this._scale.set(torusScale, torusScale, torusScale);
+          this._matrix.compose(this._torusPos, this._quat, this._scale);
+          this.torusMeshes[ti].setMatrixAt(torusIdx, this._matrix);
+          this.torusMeshes[ti].setColorAt(torusIdx, this.torusColor);
+        }
+        torusIdx++;
       }
 
       for (let i = 0; i < lastIdx; i += stride) {
@@ -635,6 +725,21 @@ export class BeamRenderer3D {
         colorAttr.needsUpdate = true;
       }
     }
+
+    for (const tMesh of this.torusMeshes) {
+      tMesh.count = torusIdx;
+      if (torusIdx > 0) {
+        tMesh.instanceMatrix.clearUpdateRanges();
+        tMesh.instanceMatrix.addUpdateRange(0, torusIdx * 16);
+        tMesh.instanceMatrix.needsUpdate = true;
+        const colorAttr = tMesh.instanceColor;
+        if (colorAttr) {
+          colorAttr.clearUpdateRanges();
+          colorAttr.addUpdateRange(0, torusIdx * 3);
+          colorAttr.needsUpdate = true;
+        }
+      }
+    }
   }
 
   destroy(): void {
@@ -643,6 +748,7 @@ export class BeamRenderer3D {
       disposeMesh(layer.endpointMesh);
     }
     disposeMesh(this.emitterMesh);
+    for (const tMesh of this.torusMeshes) disposeMesh(tMesh);
     detachObject(this.root);
   }
 }
