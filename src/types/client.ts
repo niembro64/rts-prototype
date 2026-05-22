@@ -42,7 +42,7 @@ export type DriftChannelMode = 'ignore' | PositionDriftChannelMode;
  *          integrated velocity), so there is no ACC mode. */
 export type PredictionMode = 'pos' | 'vel';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
-export type CameraFovDegrees = 10 | 20 | 30 | 60 | 120;
+export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
  *  click points and shortcut lines between them — the convention in
  *  most RTS games. DETAILED shows every intermediate waypoint that

@@ -88,8 +88,8 @@
   "cameraFov": {
     "options": [
       { "value": 10, "label": "10" },
-      { "value": 20, "label": "20" },
       { "value": 30, "label": "30" },
+      { "value": 45, "label": "45" },
       { "value": 60, "label": "60" },
       { "value": 120, "label": "120" }
     ]
