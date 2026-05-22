@@ -618,7 +618,10 @@ export class Render3DEntities {
         const sinY = Math.sin(tRot);
         const vForward = vx * cosY + vy * sinY;
         const yawRate = e.unit?.angularVelocity3?.z ?? 0;
-        const aLateral = vForward * yawRate;
+        // Sign: bank INTO the turn (left turn → left wing down). With
+        // the renderer's rotateX(-smoothed) convention below, that
+        // means a negative target for a CCW (+ω_z) turn moving forward.
+        const aLateral = -vForward * yawRate;
         let target = AIRBORNE_BANK_PER_LATERAL_A * aLateral;
         if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
         else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
