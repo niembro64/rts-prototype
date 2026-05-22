@@ -60,7 +60,9 @@ function getFlyingMat(
   const color = locomotionPieceColorHex(baseColor, ownerId);
   let mat = cache.get(color);
   if (!mat) {
-    mat = new THREE.MeshBasicMaterial({ color, side });
+    mat = side === undefined
+      ? new THREE.MeshBasicMaterial({ color })
+      : new THREE.MeshBasicMaterial({ color, side });
     cache.set(color, mat);
   }
   return mat;
