@@ -9,6 +9,11 @@
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
+import {
+  getSmokeProfile,
+  type HoverSmokeUseId,
+  type ResolvedSmokeProfile,
+} from '@/smokeConfig';
 import type { HoverConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
@@ -28,7 +33,6 @@ const FAN_RING_COLOR = COLORS.units.locomotion.hover.fanRing.colorHex;
 const FAN_BLADE_COLOR = COLORS.units.locomotion.hover.fanBlade.colorHex;
 const FAN_HUB_COLOR = COLORS.units.locomotion.hover.fanHub.colorHex;
 const HOVER_SMOKE_COLOR = COLORS.units.locomotion.hover.smoke.colorHex;
-const HOVER_SMOKE_START_ALPHA = COLORS.units.locomotion.hover.smoke.startAlpha;
 const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
@@ -78,38 +82,6 @@ type HoverFan = {
   exhaustSpeed: number;
 };
 
-type FanSmokeProfile = {
-  startRadius: number;
-  endRadius: number;
-  lifespanMs: number;
-  exhaustSpeed: number;
-  scopePadding: number;
-  largePuff: boolean;
-};
-
-const SMALL_FAN_SMOKE: FanSmokeProfile = {
-  startRadius: 1,
-  endRadius: 8,
-  lifespanMs: 900,
-  exhaustSpeed: 60,
-  scopePadding: 160,
-  largePuff: false,
-};
-
-// Dragonfly wing-fan exhaust. Routed to SmokeTrail3D's large-puff
-// pool so the higher-poly sphere reads as a soft cloud at this size
-// instead of a 36-tri faceted blob, and tuned with a longer lifespan
-// + stronger downwash so the visual matches the fan's much greater
-// thrust footprint.
-const LARGE_FAN_SMOKE: FanSmokeProfile = {
-  startRadius: 4,
-  endRadius: 26,
-  lifespanMs: 1300,
-  exhaustSpeed: 90,
-  scopePadding: 260,
-  largePuff: true,
-};
-
 export type HoverMesh = {
   type: 'hover';
   group: THREE.Group;
@@ -128,13 +100,7 @@ type FanSpec = {
   fanRadius: number;
   ringTubeRadius: number;
   outwardAngleRad: number;
-  smokeProfile: FanSmokeProfile;
-  /** Per-unit smoke speed override from HoverConfig. Falls back to
-   *  `smokeProfile.exhaustSpeed` when undefined. */
-  smokeSpeedOverride: number | undefined;
-  /** Per-unit smoke frame-skip override from HoverConfig. Falls back
-   *  to 0 (emit every render frame) when undefined. */
-  smokeFramesSkipOverride: number | undefined;
+  smokeProfile: ResolvedSmokeProfile;
 };
 
 function buildFan(
@@ -146,10 +112,10 @@ function buildFan(
 ): HoverFan {
   const {
     localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
-    smokeProfile, smokeSpeedOverride, smokeFramesSkipOverride,
+    smokeProfile,
   } = spec;
-  const exhaustSpeed = smokeSpeedOverride ?? smokeProfile.exhaustSpeed;
-  const emitFramesSkip = Math.max(0, smokeFramesSkipOverride ?? 0);
+  const exhaustSpeed = smokeProfile.exhaustSpeed;
+  const emitFramesSkip = Math.max(0, smokeProfile.emitFramesSkip);
   const ringTubeRatio = ringTubeRadius / fanRadius;
   const fanY = -Math.max(0.4, ringTubeRadius * 0.9);
 
@@ -215,15 +181,16 @@ function buildFan(
       vx: 0,
       vy: 0,
       vz: -exhaustSpeed,
+      useId: smokeProfile.useId,
+      maxPoolSize: smokeProfile.maxPoolSize,
       emitFramesSkip,
-      lifespanMs: smokeProfile.lifespanMs,
+      fadeInMs: smokeProfile.fadeInMs,
+      fadeOutMs: smokeProfile.fadeOutMs,
       startRadius: smokeProfile.startRadius,
-      endRadius: smokeProfile.endRadius,
-      startAlpha: HOVER_SMOKE_START_ALPHA,
+      endRadiusMultiplier: smokeProfile.endRadiusMultiplier,
+      maxAlpha: smokeProfile.maxAlpha,
       color: HOVER_SMOKE_COLOR,
       phase: entityId * 4 + fanIndex,
-      scopePadding: smokeProfile.scopePadding,
-      largePuff: smokeProfile.largePuff,
     },
   };
 }
@@ -232,6 +199,7 @@ export function buildHoverFans(
   unitGroup: THREE.Group,
   unitRadius: number,
   cfg: HoverConfig,
+  smokeUseId: HoverSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
 ): HoverMesh {
@@ -242,6 +210,7 @@ export function buildHoverFans(
     Math.max(0, Math.min(35, cfg.fanOutwardAngleDeg ?? DEFAULT_FAN_OUTWARD_ANGLE_DEG)),
   );
   const fans: HoverFan[] = [];
+  const smokeProfile = getSmokeProfile(smokeUseId);
 
   const useDragonflyLayout = cfg.tailFanOffsetX !== undefined;
   const hasTailFan =
@@ -251,10 +220,8 @@ export function buildHoverFans(
     // Dragonfly layout: two large "wing" fans at body center forward,
     // spread laterally; optionally one small fan at the tail tip. The
     // wing fans sit on the lateral axis (localX = 0) so they read as
-    // wings, not corner thrusters. Wing-fan downwash uses the
-    // large-puff pool so the chunky scale reads as soft cloud; the
-    // tail fan keeps the small-puff profile since it's the same scale
-    // as standard hovers.
+    // wings, not corner thrusters. Smoke shape/cadence comes from the
+    // dragonflyHovercraft smoke_config entry.
     const lateral = unitRadius * cfg.fanDistY;
     for (const sz of [-1, 1]) {
       fans.push(buildFan(
@@ -265,9 +232,7 @@ export function buildHoverFans(
           fanRadius: mainFanRadius,
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
-          smokeProfile: LARGE_FAN_SMOKE,
-          smokeSpeedOverride: cfg.fanSmokeSpeed,
-          smokeFramesSkipOverride: cfg.fanSmokeFramesSkip,
+          smokeProfile,
         },
         entityId,
         fans.length,
@@ -296,9 +261,7 @@ export function buildHoverFans(
           fanRadius: tailFanRadius,
           ringTubeRadius: tailRingTubeRadius,
           outwardAngleRad: tailBackAngleRad,
-          smokeProfile: SMALL_FAN_SMOKE,
-          smokeSpeedOverride: cfg.tailFanSmokeSpeed,
-          smokeFramesSkipOverride: cfg.tailFanSmokeFramesSkip,
+          smokeProfile,
         },
         entityId,
         fans.length,
@@ -316,9 +279,7 @@ export function buildHoverFans(
           fanRadius: mainFanRadius,
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
-          smokeProfile: SMALL_FAN_SMOKE,
-          smokeSpeedOverride: cfg.fanSmokeSpeed,
-          smokeFramesSkipOverride: cfg.fanSmokeFramesSkip,
+          smokeProfile,
         },
         entityId,
         fans.length,
@@ -338,14 +299,12 @@ export function buildHoverFans(
             fanRadius: mainFanRadius,
             ringTubeRadius: mainRingTubeRadius,
             outwardAngleRad,
-            smokeProfile: SMALL_FAN_SMOKE,
-            smokeSpeedOverride: cfg.fanSmokeSpeed,
-            smokeFramesSkipOverride: cfg.fanSmokeFramesSkip,
-        },
-        entityId,
-        fans.length,
-        ownerId,
-      ));
+            smokeProfile,
+          },
+          entityId,
+          fans.length,
+          ownerId,
+        ));
       }
     }
   }

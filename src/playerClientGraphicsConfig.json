@@ -22,7 +22,6 @@
   "antialias": false,
   "burnMarkDensity": 1,
   "groundPrintDensity": 1,
-  "smokeTrailFramesSkip": 0,
   "projectileStyle": "trail",
   "fireExplosionStyle": "inferno",
   "materialExplosionStyle": "obliterate",

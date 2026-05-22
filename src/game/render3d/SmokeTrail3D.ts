@@ -7,98 +7,68 @@
 // slow frame never dumps a backlog burst and each LOD reads with stable
 // visual spacing. A puff is one slot in a single shared InstancedMesh —
 // it stays put in world space as the rocket flies away, grows slightly,
-// and fades to transparent over its lifespan.
+// and fades to transparent over its configured fade timing.
 //
 // One material is shared across every puff. Per-puff scale, alpha, and
-// color ride on each pool's InstancedMesh instance matrix + custom
+// color ride on the InstancedMesh instance matrix + custom
 // InstancedBufferAttributes (aAlpha, aColor). The fragment shader is
 // `gl_FragColor = vec4(vColor, vAlpha);` — no fancy per-tier visual
 // variants. Higher detail just means more puffs; the puffs themselves
 // look identical at every tier.
 //
-// Two parallel pools coexist inside the renderer:
-//   • "small" — low-poly sphere (6, 4). Used by projectile trails and
-//     by any SmokePuffEmitter without `largePuff`. Default since it
-//     covers small fan exhaust + missile trails cheaply.
-//   • "large" — higher-poly sphere (16, 10) so puffs scaled up to many
-//     world units (e.g. the dragonfly's wing-fan downwash) still read
-//     as round volumes instead of faceted chunks. Opted in per-emitter
-//     via `largePuff: true`.
+// One shared instanced pool renders every smoke use. Puff geometry
+// resolution comes from smoke_config.puffGeometry.
 //
-// Detail: density scales with `smokeTrailFramesSkip`, while the existing
-// fireExplosionStyle tier still caps the total particle budget. Higher
-// detail also stretches each puff's lifespan so the trail is both denser
-// AND longer, giving a clear visual upgrade at MAX without unbounded
-// cost at MIN.
+// Smoke density, velocity, fade timing, size, and per-use caps come
+// from flat smoke_config entries keyed by the actual smoke producer
+// (shot id or locomotion id).
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
-import { getGraphicsConfig, getSmokeTrails } from '@/clientBarConfig';
+import { getSmokeTrails } from '@/clientBarConfig';
+import {
+  getSmokePuffGeometryConfig,
+  getSmokePoolMaxParticles,
+  type ResolvedSmokeProfile,
+  type SmokeUseId,
+} from '@/smokeConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 
-/** Per-puff scope padding in sim-world units. Smoke trails extend
- *  BEHIND the projectile along its flight path, so a rocket whose
- *  current position is just barely off-screen could still be the
- *  source of a puff that's plainly inside the viewport. 200 mirrors
- *  the projectile padding BeamRenderer3D / Render3DEntities use for
- *  the same reason — projectile visuals routinely overhang the
- *  entity's center by more than a unit's body radius. */
-const SMOKE_SCOPE_PADDING = 200;
-
-// Engine fallbacks for any SmokeTrailSpec field a shot blueprint
-// leaves unset. Per-shot overrides live on the projectile blueprint
-// (see SmokeTrailSpec) — these only kick in when the blueprint is
-// silent. Treat them as the max-LOD baseline; the LOD frame-skip table
-// further thins emissions for lower tiers.
-const DEFAULT_EMIT_FRAMES_SKIP = 0;  // sample every render frame at max LOD
-const DEFAULT_LIFESPAN_MS = 1400;
-const DEFAULT_START_RADIUS = 2.5;
-const DEFAULT_END_RADIUS = 8.0;
-const DEFAULT_START_ALPHA = COLORS.effects.smokeTrail.default.startAlpha;
 const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
-// Pool ceilings — bounded so heavy salvo spam can't unbounded-allocate.
-// At max LOD, steady state per rocket is roughly one puff per render
-// frame for lifespanMs, so 4000 covers heavy salvos before we start
-// dropping emissions. Large pool is held to a smaller ceiling because
-// each large puff is much heavier on overdraw (bigger footprint) and
-// on geometry (more verts per instance) — only big-fan downwash uses
-// it, and a single dragonfly's two wing fans steady-state at ~120 puffs
-// at default cadence.
-const SMALL_MAX_PARTICLES = 4000;
-const LARGE_MAX_PARTICLES = 1500;
-const SMOKE_EVICTION_SCAN = 16;
+const MAX_PARTICLES = getSmokePoolMaxParticles();
+const PUFF_GEOMETRY = getSmokePuffGeometryConfig();
 
-const PARTICLE_CAP_BY_EXPLOSION_STYLE: Record<FireExplosionStyle, number> = {
-  flash: 700,
-  spark: 1200,
-  burst: 2200,
-  blaze: 3200,
-  inferno: SMALL_MAX_PARTICLES,
-};
-
-const LIFESPAN_MULT_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, number> = {
-  min: 0.5,
-  low: 0.65,
-  medium: 0.8,
-  high: 0.9,
-  max: 1.0,
+type SmokeSpawnProfile = {
+  useId: SmokeUseId;
+  maxPoolSize: number;
+  emitFramesSkip: number;
+  fadeInMs: number;
+  fadeOutMs: number;
+  startRadius: number;
+  endRadiusMultiplier: number;
+  maxAlpha: number;
 };
 
 type Puff = {
+  /** Config use key that owns this puff's per-use budget. */
+  useId: SmokeUseId;
   /** Seconds of life remaining. Reaches ≤ 0 → swap-popped. */
   timeLeft: number;
-  /** Total lifetime in seconds (for interpolating scale / alpha). */
-  lifespan: number;
+  /** Seconds since birth. Used for fade-in and radius growth. */
+  age: number;
+  /** Total derived duration in seconds (for interpolating scale / alpha). */
+  durationSec: number;
   /** Per-puff visual params, captured at spawn time from the shot's
    *  SmokeTrailSpec so a single SmokeTrail3D can serve many shot
-   *  types simultaneously. */
+  *  types simultaneously. */
   startRadius: number;
-  endRadius: number;
-  startAlpha: number;
+  finalRadius: number;
+  maxAlpha: number;
+  fadeInSec: number;
+  fadeOutSec: number;
   /** Fixed spawn position in three.js coords (sim Y → three Z). The
    *  puff stays put as the rocket flies away — only its scale and
    *  alpha change frame-to-frame. */
@@ -123,21 +93,16 @@ export type SmokePuffEmitter = {
   vx?: number;
   vy?: number;
   vz?: number;
-  emitFramesSkip?: number;
-  lifespanMs?: number;
-  startRadius?: number;
-  endRadius?: number;
-  startAlpha?: number;
+  useId: SmokeUseId;
+  maxPoolSize: number;
+  emitFramesSkip: number;
+  fadeInMs: number;
+  fadeOutMs: number;
+  startRadius: number;
+  endRadiusMultiplier: number;
+  maxAlpha: number;
   color?: number;
   phase?: number;
-  scopePadding?: number;
-  /** Route this emitter's puffs through the higher-poly large pool
-   *  instead of the default low-poly small pool. Use for emitters
-   *  whose puffs scale up to many world units (e.g. dragonfly wing
-   *  fan downwash) — at that size the low-poly sphere reads as a
-   *  faceted blob. Defaults to false; small pool covers everything
-   *  else cheaply. */
-  largePuff?: boolean;
 };
 
 const SMOKE_VERTEX_SHADER = `
@@ -160,9 +125,13 @@ void main() {
 }
 `;
 
-/** All per-pool state. One pool = one InstancedMesh of one geometry
- *  resolution. SmokeTrail3D owns two of these (small + large) and runs
- *  the per-frame advance/emit/flush loops over both. */
+function clamp01(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+/** One InstancedMesh pool for every smoke puff. */
 type PuffPool = {
   maxParticles: number;
   geom: THREE.SphereGeometry;
@@ -172,6 +141,7 @@ type PuffPool = {
   alphaAttr: THREE.InstancedBufferAttribute;
   colorAttr: THREE.InstancedBufferAttribute;
   active: Puff[];
+  activeByUse: Map<SmokeUseId, number>;
   evictionCursor: number;
   emitterCursor: number;
   colorUpdateMin: number;
@@ -181,13 +151,7 @@ type PuffPool = {
 export class SmokeTrail3D {
   private root: THREE.Group;
   private mat: THREE.ShaderMaterial;
-  // Two pools share the material but each owns its own geometry
-  // (different sphere segment counts), InstancedMesh, attribute
-  // buffers, active list, and cursors. Projectile trails always
-  // emit through `small`; emitter-based smoke routes per-puff via
-  // `emitter.largePuff`.
-  private small: PuffPool;
-  private large: PuffPool;
+  private pool: PuffPool;
   // Scratch buffers reused across frames to avoid per-frame allocs.
   private _eligible: Entity[] = [];
   private readonly _emitPoint = { x: 0, y: 0, z: 0 };
@@ -205,17 +169,11 @@ export class SmokeTrail3D {
       depthWrite: false,
     });
 
-    // Small pool: low-poly sphere (6, 4) ≈ 36 tris per puff. Reduced
-    // from (8, 6) ≈ 80 tris in an earlier pass — at the sizes these
-    // puffs render, the extra segments weren't visible.
-    this.small = this.createPool(6, 4, SMALL_MAX_PARTICLES);
-    // Large pool: higher-poly sphere (16, 10) ≈ 280 tris per puff.
-    // The extra resolution matters because large-pool puffs commonly
-    // render at 5–40+ world units, where (6, 4) reads as a faceted
-    // chunk instead of a soft cloud. Pool is hard-capped much smaller
-    // than `small` (LARGE_MAX_PARTICLES) since each instance is
-    // proportionally heavier in overdraw + vert work.
-    this.large = this.createPool(16, 10, LARGE_MAX_PARTICLES);
+    this.pool = this.createPool(
+      Math.max(3, PUFF_GEOMETRY.widthSegments | 0),
+      Math.max(2, PUFF_GEOMETRY.heightSegments | 0),
+      MAX_PARTICLES,
+    );
   }
 
   private createPool(
@@ -260,6 +218,7 @@ export class SmokeTrail3D {
       alphaAttr,
       colorAttr,
       active: [],
+      activeByUse: new Map(),
       evictionCursor: 0,
       emitterCursor: 0,
       colorUpdateMin: Number.POSITIVE_INFINITY,
@@ -272,12 +231,11 @@ export class SmokeTrail3D {
    *  no longer present. `dtMs` is the clamped effect dt the scene
    *  uses for other particle systems.
    *
-   *  RENDER-mode aware: when `scope` is provided and its mode is
-   *  not 'all', projectiles whose current position is outside the
-   *  padded scope are skipped. Re-entering scope resumes on the next
-   *  matching frame phase with no backlog burst. Already-live puffs
-   *  are NOT culled — they fade in place naturally as the camera pans
-   *  away from them. */
+   *  RENDER-mode aware: when `scope` is provided, sources outside the
+   *  current WIN/PAD/ALL footprint skip spawning. Re-entering scope
+   *  resumes on the next matching frame phase with no backlog burst.
+   *  Already-live puffs are NOT culled — they fade in place naturally
+   *  as the camera pans away from them. */
   update(
     projectiles: readonly Entity[],
     dtMs: number,
@@ -289,94 +247,70 @@ export class SmokeTrail3D {
     // every advance / emit path so toggling off clears the screen
     // immediately and the renderer does no per-frame work.
     if (!getSmokeTrails()) {
-      if (this.small.active.length > 0 || this.large.active.length > 0) {
-        this.small.active.length = 0;
-        this.large.active.length = 0;
-        this.flushPool(this.small);
-        this.flushPool(this.large);
+      if (this.pool.active.length > 0) {
+        this.pool.active.length = 0;
+        this.pool.activeByUse.clear();
+        this.flushPool(this.pool);
       }
       return;
     }
 
     if (
       projectiles.length === 0 &&
-      this.small.active.length === 0 &&
-      this.large.active.length === 0 &&
+      this.pool.active.length === 0 &&
       (!emitters || emitters.length === 0)
     ) return;
 
     const dtSec = dtMs / 1000;
 
-    // Sample graphics settings once per render frame. Smoke density is controlled
-    // by integer frame skips, not elapsed milliseconds, so trail
-    // spacing stays consistent under hitches and across graphics tiers.
-    const gfx = getGraphicsConfig();
-    const style = (gfx.fireExplosionStyle as FireExplosionStyle) ?? 'burst';
-    const frameSkip = Math.max(0, gfx.smokeTrailFramesSkip | 0);
-    const lifeMult = LIFESPAN_MULT_BY_GRAPHICS_TIER[gfx.tier] ?? 0.8;
-    const styleCap = PARTICLE_CAP_BY_EXPLOSION_STYLE[style] ?? 2200;
-    const smallCap = Math.min(this.small.maxParticles, styleCap);
-    const largeCap = Math.min(this.large.maxParticles, styleCap);
-    const defaultLifespanSec = Math.max(0.001, (DEFAULT_LIFESPAN_MS * lifeMult) / 1000);
-
-    // 1) Advance + fade existing puffs in place on both pools. Dead
+    // 1) Advance + fade existing puffs in place. Dead
     //    ones are swap-popped: the last live puff takes the dead slot's
     //    index, and we re-process that index without advancing — so a
     //    long chain of die-this-frame puffs collapses correctly in one
     //    pass. Each surviving puff writes matrix + alpha every frame;
     //    color is static after spawn and only moves when swap-pop
     //    compaction changes a puff's slot.
-    this.advancePool(this.small, dtSec, smallCap);
-    this.advancePool(this.large, dtSec, largeCap);
+    this.advancePool(this.pool, dtSec);
 
     // 2) For each projectile that leaves a trail, sample at its
-    //    frame-skip cadence. Then apply a steady-state global emission
-    //    budget so a large salvo does not fill the entire pool in one
-    //    burst and then go silent until old puffs expire. Projectile
-    //    smoke always goes to the small pool — shot specs don't carry
-    //    a pool flag and projectile trails are short-lived/dense, the
-    //    cheaper pool's bias.
+    //    frame-skip cadence. Then apply a steady-state per-use emission
+    //    budget so a large salvo does not fill that use's pool in one
+    //    burst and then go silent until old puffs expire.
     const eligible = this._eligible;
     eligible.length = 0;
     for (const e of projectiles) {
       const profile = e.projectile?.config.shotProfile;
       if (!profile?.runtime.isProjectile) continue;
-      const spec = profile.visual.smokeTrail;
+      const spec = profile.visual.smokeTrail as ResolvedSmokeProfile | undefined;
       if (!spec) continue;
       // RENDER scope cull: off-screen projectiles do no smoke work.
       // Re-entering scope resumes on the next matching frame phase,
       // with no missed-frame burst to catch up.
-      if (scope && !scope.inScope(e.transform.x, e.transform.y, SMOKE_SCOPE_PADDING)) continue;
+      if (scope && !scope.inScope(e.transform.x, e.transform.y)) continue;
 
-      const shotFramesSkip = Math.max(0, spec.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
-      const stride = Math.max(1, Math.max(frameSkip, shotFramesSkip) + 1);
+      const stride = Math.max(1, Math.max(0, spec.emitFramesSkip) + 1);
       // Phase by projectile id so a salvo does not allocate every puff
       // on the same frame at low LOD.
       if ((renderFrameIndex + (e.id % stride)) % stride !== 0) continue;
       eligible.push(e);
     }
 
-    if (eligible.length > 0 && smallCap > 0) {
-      const steadyBudget = Math.max(1, Math.ceil((smallCap * dtSec) / defaultLifespanSec));
-      const emissions = Math.min(eligible.length, steadyBudget);
-      let start = 0;
-      if (eligible.length > emissions) {
-        start = this.emissionCursor % eligible.length;
-        this.emissionCursor = (this.emissionCursor + emissions) % eligible.length;
-      } else {
-        this.emissionCursor = 0;
-      }
-      for (let n = 0; n < emissions; n++) {
+    if (eligible.length > 0) {
+      const emittedByUse = new Map<SmokeUseId, number>();
+      const start = this.emissionCursor % eligible.length;
+      let totalEmitted = 0;
+      for (let n = 0; n < eligible.length; n++) {
         const e = eligible[(start + n) % eligible.length];
         const proj = e.projectile!;
         const visual = proj.config.shotProfile.visual;
-        const spec = visual.smokeTrail!;
+        const spec = visual.smokeTrail as ResolvedSmokeProfile;
+        const useEmitted = emittedByUse.get(spec.useId) ?? 0;
+        if (useEmitted >= this.emissionBudget(spec, dtSec)) continue;
         const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
-        const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000;
         // Puff exhaust drifts opposite to the projectile's flight
         // direction at `exhaustSpeed`. Zero (the default) keeps puffs
         // stationary in world space, which is the legacy behavior.
-        const exhaustSpeed = Math.max(0, spec.exhaustSpeed ?? 0);
+        const exhaustSpeed = Math.max(0, spec.exhaustSpeed);
         let puffVx = 0;
         let puffVy = 0;
         let puffVz = 0;
@@ -393,38 +327,37 @@ export class SmokeTrail3D {
           }
         }
         this.spawnPuff(
-          this.small,
+          this.pool,
           emit.x, emit.y, emit.z,
           puffVx, puffVy, puffVz,
-          lifespanSec,
-          spec.startRadius ?? DEFAULT_START_RADIUS,
-          spec.endRadius ?? DEFAULT_END_RADIUS,
-          spec.startAlpha ?? DEFAULT_START_ALPHA,
+          spec,
           spec.color ?? DEFAULT_COLOR,
-          smallCap,
         );
+        emittedByUse.set(spec.useId, useEmitted + 1);
+        totalEmitted++;
       }
+      this.emissionCursor = (start + Math.max(1, totalEmitted)) % eligible.length;
     }
 
     if (emitters && emitters.length > 0) {
       this.emitFromEmitters(
-        emitters, frameSkip, lifeMult, scope, dtSec, defaultLifespanSec,
-        smallCap, largeCap, renderFrameIndex,
+        emitters, scope, dtSec, renderFrameIndex,
       );
     }
 
     // 3) Push attribute updates to GPU and bound the draw to the
-    //    live-puff prefix on each pool.
-    this.flushPool(this.small);
-    this.flushPool(this.large);
+    //    live-puff prefix.
+    this.flushPool(this.pool);
   }
 
-  private advancePool(pool: PuffPool, dtSec: number, particleCap: number): void {
+  private advancePool(pool: PuffPool, dtSec: number): void {
     let i = 0;
     while (i < pool.active.length) {
       const p = pool.active[i];
       p.timeLeft -= dtSec;
+      p.age += dtSec;
       if (p.timeLeft <= 0) {
+        this.adjustUseCount(pool, p.useId, -1);
         const last = pool.active.length - 1;
         if (i !== last) {
           pool.active[i] = pool.active[last];
@@ -433,12 +366,14 @@ export class SmokeTrail3D {
         pool.active.pop();
         continue;
       }
-      const t = 1 - p.timeLeft / p.lifespan; // 0 → 1 over life
-      const r = p.startRadius + t * (p.endRadius - p.startRadius);
-      // Quadratic fade-out so puffs linger bright then taper — looks
-      // more like smoke dissipating than linear alpha crossfading.
-      const k = 1 - t;
-      const alpha = p.startAlpha * k * k;
+      const t = 1 - p.timeLeft / p.durationSec; // 0 → 1 over life
+      const r = p.startRadius + t * (p.finalRadius - p.startRadius);
+      const fadeIn = p.fadeInSec <= 0 ? 1 : clamp01(p.age / p.fadeInSec);
+      const fadeOutStartSec = Math.max(0, p.durationSec - p.fadeOutSec);
+      const fadeOut = p.fadeOutSec <= 0 || p.age <= fadeOutStartSec
+        ? 1
+        : clamp01((p.durationSec - p.age) / p.fadeOutSec);
+      const alpha = p.maxAlpha * fadeIn * fadeOut;
 
       p.threeX += p.threeVX * dtSec;
       p.threeY += p.threeVY * dtSec;
@@ -450,82 +385,48 @@ export class SmokeTrail3D {
       pool.alphaArr[i] = alpha;
       i++;
     }
-    if (pool.active.length > particleCap) {
-      pool.active.length = particleCap;
-      if (pool.evictionCursor >= particleCap) pool.evictionCursor = 0;
-    }
   }
 
   private emitFromEmitters(
     emitters: readonly SmokePuffEmitter[],
-    frameSkip: number,
-    lifeMult: number,
     scope: ViewportFootprint | undefined,
     dtSec: number,
-    defaultLifespanSec: number,
-    smallCap: number,
-    largeCap: number,
     renderFrameIndex: number,
   ): void {
-    // Two independent passes (one per pool, each filtering on
-    // `largePuff`) so cap exhaustion on one pool can't starve the
-    // other in the same frame, and each pool's round-robin cursor
-    // only advances past emitters that actually matched.
-    this.emitFromEmittersForPool(
-      this.small, false, emitters, frameSkip, lifeMult, scope,
-      dtSec, defaultLifespanSec, smallCap, renderFrameIndex,
-    );
-    this.emitFromEmittersForPool(
-      this.large, true, emitters, frameSkip, lifeMult, scope,
-      dtSec, defaultLifespanSec, largeCap, renderFrameIndex,
-    );
+    this.emitFromEmittersForPool(this.pool, emitters, scope, dtSec, renderFrameIndex);
   }
 
   private emitFromEmittersForPool(
     pool: PuffPool,
-    poolWantsLarge: boolean,
     emitters: readonly SmokePuffEmitter[],
-    frameSkip: number,
-    lifeMult: number,
     scope: ViewportFootprint | undefined,
     dtSec: number,
-    defaultLifespanSec: number,
-    particleCap: number,
     renderFrameIndex: number,
   ): void {
-    if (particleCap <= 0) return;
-    const steadyBudget = Math.max(1, Math.ceil((particleCap * dtSec) / defaultLifespanSec));
     const len = emitters.length;
+    if (len === 0 || pool.maxParticles <= 0) return;
     const start = pool.emitterCursor % len;
+    const emittedByUse = new Map<SmokeUseId, number>();
     let emitted = 0;
-    for (let n = 0; n < len && emitted < steadyBudget; n++) {
+    for (let n = 0; n < len; n++) {
       const emitter = emitters[(start + n) % len];
-      if ((emitter.largePuff === true) !== poolWantsLarge) continue;
-      const padding = emitter.scopePadding ?? SMOKE_SCOPE_PADDING;
-      if (scope && !scope.inScope(emitter.x, emitter.y, padding)) continue;
-      const framesSkip = Math.max(0, emitter.emitFramesSkip ?? DEFAULT_EMIT_FRAMES_SKIP);
-      const stride = Math.max(1, Math.max(frameSkip, framesSkip) + 1);
+      if (scope && !scope.inScope(emitter.x, emitter.y)) continue;
+      const stride = Math.max(1, Math.max(0, emitter.emitFramesSkip) + 1);
       const phase = emitter.phase ?? 0;
       if ((renderFrameIndex + phase) % stride !== 0) continue;
-
-      const lifespanSec = Math.max(
-        0.001,
-        ((emitter.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000,
-      );
+      const useEmitted = emittedByUse.get(emitter.useId) ?? 0;
+      if (useEmitted >= this.emissionBudget(emitter, dtSec)) continue;
       this.spawnPuff(
         pool,
         emitter.x, emitter.y, emitter.z,
         emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
-        lifespanSec,
-        emitter.startRadius ?? DEFAULT_START_RADIUS,
-        emitter.endRadius ?? DEFAULT_END_RADIUS,
-        emitter.startAlpha ?? DEFAULT_START_ALPHA,
+        emitter,
         emitter.color ?? DEFAULT_COLOR,
-        particleCap,
       );
+      emittedByUse.set(emitter.useId, useEmitted + 1);
       emitted++;
     }
-    pool.emitterCursor = (start + Math.max(1, steadyBudget)) % len;
+    pool.emitterCursor = (start + Math.max(1, emitted)) % len;
   }
 
   private flushPool(pool: PuffPool): void {
@@ -595,31 +496,53 @@ export class SmokeTrail3D {
     if (index > pool.colorUpdateMax) pool.colorUpdateMax = index;
   }
 
+  private adjustUseCount(pool: PuffPool, useId: SmokeUseId, delta: number): void {
+    const next = (pool.activeByUse.get(useId) ?? 0) + delta;
+    if (next <= 0) pool.activeByUse.delete(useId);
+    else pool.activeByUse.set(useId, next);
+  }
+
+  private emissionBudget(profile: SmokeSpawnProfile, dtSec: number): number {
+    const durationSec = this.smokeDurationSec(profile);
+    return Math.max(1, Math.ceil((profile.maxPoolSize * dtSec) / durationSec));
+  }
+
+  private smokeDurationSec(profile: SmokeSpawnProfile): number {
+    const fadeInSec = Math.max(0, profile.fadeInMs / 1000);
+    const fadeOutSec = Math.max(0, profile.fadeOutMs / 1000);
+    return Math.max(0.001, fadeInSec + fadeOutSec);
+  }
+
   private spawnPuff(
     pool: PuffPool,
     simX: number, simY: number, simZ: number,
     simVX: number, simVY: number, simVZ: number,
-    lifespanSec: number,
-    startRadius: number,
-    endRadius: number,
-    startAlpha: number,
+    profile: SmokeSpawnProfile,
     color: number,
-    particleCap: number,
   ): void {
-    const cap = Math.min(pool.maxParticles, Math.max(0, particleCap | 0));
-    if (cap <= 0) return;
+    const useCap = Math.min(pool.maxParticles, Math.max(0, profile.maxPoolSize | 0));
+    if (useCap <= 0) return;
 
     const { r, g, b } = hexToRgb01(color);
+    const fadeInSec = Math.max(0, profile.fadeInMs / 1000);
+    const fadeOutSec = Math.max(0, profile.fadeOutMs / 1000);
+    const durationSec = this.smokeDurationSec(profile);
+    const startRadius = Math.max(0, profile.startRadius);
+    const finalRadius = startRadius * Math.max(0, profile.endRadiusMultiplier);
 
     // sim(x, y, z) → three(x, z, y) — smoke stays at the rocket's
     // 3D position when it was emitted and doesn't follow the rocket
     // forward, so a long trail lingers along the flight path.
     const puff: Puff = {
-      timeLeft: lifespanSec,
-      lifespan: lifespanSec,
+      useId: profile.useId,
+      timeLeft: durationSec,
+      age: 0,
+      durationSec,
       startRadius,
-      endRadius,
-      startAlpha,
+      finalRadius,
+      maxAlpha: profile.maxAlpha,
+      fadeInSec,
+      fadeOutSec,
       threeX: simX,
       threeY: simZ,
       threeZ: simY,
@@ -630,54 +553,62 @@ export class SmokeTrail3D {
     };
 
     let i: number;
-    if (pool.active.length < cap) {
+    const useCount = pool.activeByUse.get(profile.useId) ?? 0;
+    if (useCount >= useCap) {
+      i = this.pickEvictionSlot(pool, profile.useId);
+      const old = pool.active[i];
+      if (old && old.useId !== profile.useId) {
+        this.adjustUseCount(pool, old.useId, -1);
+        this.adjustUseCount(pool, profile.useId, 1);
+      }
+      pool.active[i] = puff;
+    } else if (pool.active.length < pool.maxParticles) {
       i = pool.active.length;
       pool.active.push(puff);
+      this.adjustUseCount(pool, profile.useId, 1);
     } else {
-      i = this.pickEvictionSlot(pool, cap);
+      i = this.pickEvictionSlot(pool);
+      const old = pool.active[i];
+      if (old) this.adjustUseCount(pool, old.useId, -1);
       pool.active[i] = puff;
+      this.adjustUseCount(pool, profile.useId, 1);
     }
 
     this._scratchMat.makeScale(startRadius, startRadius, startRadius);
     this._scratchMat.setPosition(puff.threeX, puff.threeY, puff.threeZ);
     pool.mesh.setMatrixAt(i, this._scratchMat);
-    pool.alphaArr[i] = startAlpha;
+    pool.alphaArr[i] = 0;
     this.writePuffColor(pool, i, puff);
   }
 
-  private pickEvictionSlot(pool: PuffPool, cap: number): number {
+  private pickEvictionSlot(pool: PuffPool, useId?: SmokeUseId): number {
+    const cap = pool.active.length;
     if (cap <= 1) {
       pool.evictionCursor = 0;
       return 0;
     }
-    const scan = Math.min(SMOKE_EVICTION_SCAN, cap);
-    let best = pool.evictionCursor % cap;
-    let bestLifeFrac = pool.active[best]
-      ? pool.active[best].timeLeft / pool.active[best].lifespan
-      : -1;
-    for (let n = 1; n < scan; n++) {
-      const idx = (pool.evictionCursor + n) % cap;
+    let best = -1;
+    let bestLifeFrac = Number.POSITIVE_INFINITY;
+    const start = pool.evictionCursor % cap;
+    for (let n = 0; n < cap; n++) {
+      const idx = (start + n) % cap;
       const p = pool.active[idx];
-      if (!p) {
-        best = idx;
-        bestLifeFrac = -1;
-        break;
-      }
-      const lifeFrac = p.timeLeft / p.lifespan;
+      if (useId !== undefined && p.useId !== useId) continue;
+      const lifeFrac = p.timeLeft / p.durationSec;
       if (lifeFrac < bestLifeFrac) {
         best = idx;
         bestLifeFrac = lifeFrac;
       }
     }
+    if (best < 0) best = start;
     pool.evictionCursor = (best + 1) % cap;
     return best;
   }
 
   destroy(): void {
-    disposeMesh(this.small.mesh);
-    disposeMesh(this.large.mesh);
-    this.small.active.length = 0;
-    this.large.active.length = 0;
+    disposeMesh(this.pool.mesh);
+    this.pool.active.length = 0;
+    this.pool.activeByUse.clear();
     this.root.parent?.remove(this.root);
   }
 }

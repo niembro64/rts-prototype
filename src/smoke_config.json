@@ -1,0 +1,56 @@
+{
+  "puffGeometry": {
+    "widthSegments": 12,
+    "heightSegments": 8
+  },
+  "lightRocket": {
+    "maxPoolSize": 100000,
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 0,
+    "fadeInMs": 2,
+    "fadeOutMs": 500,
+    "startRadius": 1,
+    "endRadiusMultiplier": 3,
+    "maxAlpha": 0.5
+  },
+  "fastRocket": {
+    "maxPoolSize": 100000,
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 0,
+    "fadeInMs": 2,
+    "fadeOutMs": 500,
+    "startRadius": 1,
+    "endRadiusMultiplier": 3,
+    "maxAlpha": 0.5
+  },
+  "hovercraft": {
+    "maxPoolSize": 10000,
+    "emitFramesSkip": 5,
+    "exhaustSpeed": 40,
+    "fadeInMs": 200,
+    "fadeOutMs": 1000,
+    "startRadius": 3,
+    "endRadiusMultiplier": 2,
+    "maxAlpha": 0.1
+  },
+  "dragonflyHovercraft": {
+    "maxPoolSize": 10000,
+    "emitFramesSkip": 5,
+    "exhaustSpeed": 130,
+    "fadeInMs": 200,
+    "fadeOutMs": 1000,
+    "startRadius": 20,
+    "endRadiusMultiplier": 2,
+    "maxAlpha": 0.1
+  },
+  "eagleFlying": {
+    "maxPoolSize": 10000,
+    "emitFramesSkip": 0,
+    "exhaustSpeed": 200,
+    "fadeInMs": 20,
+    "fadeOutMs": 300,
+    "startRadius": 6,
+    "endRadiusMultiplier": 2,
+    "maxAlpha": 0.1
+  }
+}

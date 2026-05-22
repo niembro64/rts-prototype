@@ -2,6 +2,11 @@
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
+import {
+  getSmokeProfile,
+  type FlyingSmokeUseId,
+  type ResolvedSmokeProfile,
+} from '@/smokeConfig';
 import type { FlyingConfig } from '@/types/blueprints';
 import type { Entity, PlayerId } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
@@ -11,17 +16,7 @@ import { locomotionPieceColorHex } from './colorUtils';
 const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
 const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
 const JET_SMOKE_COLOR = COLORS.units.locomotion.flying.smoke.colorHex;
-const JET_SMOKE_START_ALPHA = COLORS.units.locomotion.flying.smoke.startAlpha;
-const DEFAULT_JET_SMOKE_SPEED = 70;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
-
-// Jet exhaust routes through SmokeTrail3D's large-puff pool (same one
-// the dragonfly wing fans use) so the chunky scale reads as soft cloud
-// instead of a faceted blob.
-const JET_PUFF_START_RADIUS = 4;
-const JET_PUFF_END_RADIUS = 26;
-const JET_PUFF_LIFESPAN_MS = 1300;
-const JET_PUFF_SCOPE_PADDING = 260;
 
 // Wing panel geometry: tapered, swept-back planform for one side only.
 // Built unit-sized (root chord 1, side span 1, thickness 1) so callers can
@@ -81,17 +76,20 @@ export type FlyingMesh = {
   type: 'flying';
   group: THREE.Group;
   jets: FlyingJet[];
-  jetSmokeSpeed: number;
+  smokeExhaustSpeed: number;
+  smokeProfile: ResolvedSmokeProfile;
 } & LocomotionBase;
 
 export function buildFlyingRig(
   unitGroup: THREE.Group,
   unitRadius: number,
   cfg: FlyingConfig,
+  smokeUseId: FlyingSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
 ): FlyingMesh {
   const group = new THREE.Group();
+  const smokeProfile = getSmokeProfile(smokeUseId);
 
   addWingPanels(group, unitRadius, {
     spanFrac: cfg.wingSpan,
@@ -129,7 +127,7 @@ export function buildFlyingRig(
   const jetZ = unitRadius * cfg.jetOffsetY;
   const jetLateralOffsets = cfg.jetCount === 1 ? [0] : [-jetZ, jetZ];
   const jets: FlyingJet[] = [];
-  const jetSmokeFramesSkip = Math.max(0, cfg.jetSmokeFramesSkip ?? 0);
+  const smokeFramesSkip = Math.max(0, smokeProfile.emitFramesSkip);
 
   for (const lateralOffset of jetLateralOffsets) {
     const jetGroup = new THREE.Group();
@@ -154,15 +152,16 @@ export function buildFlyingRig(
         vx: 0,
         vy: 0,
         vz: 0,
-        emitFramesSkip: jetSmokeFramesSkip,
-        lifespanMs: JET_PUFF_LIFESPAN_MS,
-        startRadius: JET_PUFF_START_RADIUS,
-        endRadius: JET_PUFF_END_RADIUS,
-        startAlpha: JET_SMOKE_START_ALPHA,
+        useId: smokeProfile.useId,
+        maxPoolSize: smokeProfile.maxPoolSize,
+        emitFramesSkip: smokeFramesSkip,
+        fadeInMs: smokeProfile.fadeInMs,
+        fadeOutMs: smokeProfile.fadeOutMs,
+        startRadius: smokeProfile.startRadius,
+        endRadiusMultiplier: smokeProfile.endRadiusMultiplier,
+        maxAlpha: smokeProfile.maxAlpha,
         color: JET_SMOKE_COLOR,
         phase: entityId * 2 + jets.length,
-        scopePadding: JET_PUFF_SCOPE_PADDING,
-        largePuff: true,
       },
     });
   }
@@ -172,7 +171,8 @@ export function buildFlyingRig(
     type: 'flying',
     group,
     jets,
-    jetSmokeSpeed: cfg.jetSmokeSpeed ?? DEFAULT_JET_SMOKE_SPEED,
+    smokeExhaustSpeed: smokeProfile.exhaustSpeed,
+    smokeProfile,
     geometryKey: '',
   };
 }
@@ -234,9 +234,9 @@ export function updateFlyingRig(
     jet.smoke.x = _jetWorldPos.x;
     jet.smoke.y = _jetWorldPos.z;
     jet.smoke.z = _jetWorldPos.y;
-    jet.smoke.vx = _jetWorldDir.x * mesh.jetSmokeSpeed;
-    jet.smoke.vy = _jetWorldDir.z * mesh.jetSmokeSpeed;
-    jet.smoke.vz = _jetWorldDir.y * mesh.jetSmokeSpeed;
+    jet.smoke.vx = _jetWorldDir.x * mesh.smokeExhaustSpeed;
+    jet.smoke.vy = _jetWorldDir.z * mesh.smokeExhaustSpeed;
+    jet.smoke.vz = _jetWorldDir.y * mesh.smokeExhaustSpeed;
     smokeOut.push(jet.smoke);
   }
 }

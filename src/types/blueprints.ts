@@ -311,13 +311,6 @@ export type HoverConfig = {
   /** Rotor spin rate in radians per second. Positive value; direction
    *  is fixed (counter-clockwise viewed from above). */
   fanSpinRadPerSec?: number;
-  /** Main-fan smoke exhaust speed in world-units/sec, applied along the
-   *  fan's local exhaust axis. Overrides the renderer's profile default
-   *  for this hover unit. */
-  fanSmokeSpeed?: number;
-  /** Render frames to skip between main-fan smoke puff spawns. 0 = emit
-   *  every render frame; higher values thin the plume. */
-  fanSmokeFramesSkip?: number;
   /** Optional small "dragonfly tail" fan. Setting `tailFanOffsetX`
    *  switches the main fan layout from the 4-corner quad to a pair of
    *  lateral "wing" fans at (x=0, z=±fanDistY×unitRadius). When
@@ -333,11 +326,6 @@ export type HoverConfig = {
    *  rearward. Analogous to `fanOutwardAngleDeg`, except the tilt is
    *  along the unit's −X axis (the tail), not radially outward. */
   tailFanBackAngleDeg?: number;
-  /** Tail-fan smoke exhaust speed (dragonfly only). Falls back to the
-   *  tail-fan profile default when omitted, independent of `fanSmokeSpeed`. */
-  tailFanSmokeSpeed?: number;
-  /** Render frames to skip between tail-fan smoke puff spawns. */
-  tailFanSmokeFramesSkip?: number;
 };
 
 /** Flying locomotion uses hover-style altitude physics, but the unit
@@ -372,12 +360,6 @@ export type FlyingConfig = {
   jetRadius: number;
   jetLength: number;
   jetCount?: 1 | 2;
-  /** Jet exhaust smoke speed in world-units/sec, along the rear-pointing
-   *  jet axis. Defaults to a renderer-side baseline when omitted. */
-  jetSmokeSpeed?: number;
-  /** Render frames to skip between jet smoke puff spawns. 0 = emit
-   *  every render frame; higher values thin the plume. */
-  jetSmokeFramesSkip?: number;
 };
 
 export type LocomotionBlueprint =
@@ -495,6 +477,10 @@ export type UnitBlueprint = {
    *  mount.z. Use only when the default segment midpoint is not the
    *  desired attachment height. */
   legAttachHeightFrac: number | null;
+  /** Authored locomotion blueprint id. Kept alongside the resolved
+   *  locomotion object so renderer-side use-specific config can key by
+   *  locomotion profile without re-reading unit JSON. */
+  locomotionId: string;
   locomotion: LocomotionBlueprint;
   /** Optional chassis-vs-locomotion spring. When omitted the unit
    *  body stays rigidly attached to locomotion, matching legacy

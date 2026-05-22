@@ -53,7 +53,6 @@ export type GraphicsConfig = {
   /** Unified density knob (0..1) for wheel/tread/foot ground prints.
    *  Same role as burnMarkDensity but for the GroundPrint3D pipeline. */
   groundPrintDensity: number;
-  smokeTrailFramesSkip: number;
   projectileStyle: ProjectileStyle;
   fireExplosionStyle: FireExplosionStyle;
   materialExplosionStyle: DeathExplosionStyle;

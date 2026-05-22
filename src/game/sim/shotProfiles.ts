@@ -11,6 +11,7 @@ import {
   isProjectileShot,
   isRocketLikeShot,
 } from './types';
+import { getProjectileSmokeTrailSpec } from '@/smokeConfig';
 import shotProfileConfig from './shotProfileConfig.json';
 
 export const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
@@ -54,7 +55,7 @@ function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
     projectileFinSizeMult: shot.type === 'rocket' ? ROCKET_FIN_SIZE_MULT : 0,
     debugCollisionRadius: collisionRadius,
     debugExplosionRadius: explosion === undefined ? 0 : explosion.radius,
-    smokeTrail: shot.smokeTrail,
+    smokeTrail: getProjectileSmokeTrailSpec(shot.id, shot.smokeTrail),
     burnMarkWidth: collisionRadius * 1.5,
     lineRadius: 0,
     lineDamageSphereRadius: 0,

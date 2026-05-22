@@ -49,8 +49,8 @@
       "radius": 1.5
     },
     "explosion": {
-      "radius": 30,
-      "damage": 10,
+      "radius": 50,
+      "damage": 100,
       "force": 3000
     },
     "detonateOnExpiry": true,
@@ -61,14 +61,7 @@
     "submunitions": null,
     "homingTurnRate": 0.7,
     "homingThrust": 5000,
-    "smokeTrail": {
-      "emitFramesSkip": 0,
-      "exhaustSpeed": 50,
-      "startRadius": 1,
-      "endRadius": 8,
-      "startAlpha": 0.9,
-      "color": 13421772
-    }
+    "smokeTrail": null
   },
   "fastRocket": {
     "type": "rocket",
@@ -78,8 +71,8 @@
       "radius": 1.5
     },
     "explosion": {
-      "radius": 36,
-      "damage": 24,
+      "radius": 50,
+      "damage": 100,
       "force": 3000
     },
     "detonateOnExpiry": true,
@@ -90,14 +83,7 @@
     "submunitions": null,
     "homingTurnRate": 10,
     "homingThrust": 9000,
-    "smokeTrail": {
-      "emitFramesSkip": 0,
-      "exhaustSpeed": 80,
-      "startRadius": 1,
-      "endRadius": 7,
-      "startAlpha": 0.9,
-      "color": 13421772
-    }
+    "smokeTrail": null
   },
   "heavyShot": {
     "type": "plasma",

@@ -50,6 +50,7 @@ import {
   updateFlyingRig,
 } from './FlyingRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
+import type { FlyingSmokeUseId, HoverSmokeUseId } from '@/smokeConfig';
 
 export type Locomotion3DMesh =
   | TreadMesh
@@ -78,6 +79,16 @@ export function getChassisLift(blueprint: UnitBlueprint, unitRadius: number): nu
 
 export function geometryKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
+}
+
+function hoverSmokeUseId(locomotionId: string): HoverSmokeUseId {
+  return locomotionId === 'dragonflyHovercraft'
+    ? 'dragonflyHovercraft'
+    : 'hovercraft';
+}
+
+function flyingSmokeUseId(_locomotionId: string): FlyingSmokeUseId {
+  return 'eagleFlying';
 }
 
 /** Capture per-leg state from a legged locomotion mesh into a plain
@@ -141,12 +152,26 @@ export function buildLocomotion(
       return mesh;
     }
     case 'hover': {
-      const mesh = buildHoverFans(unitGroup, unitRadius, loc.config, entity.id, ownerId);
+      const mesh = buildHoverFans(
+        unitGroup,
+        unitRadius,
+        loc.config,
+        hoverSmokeUseId(bp.locomotionId),
+        entity.id,
+        ownerId,
+      );
       mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'flying': {
-      const mesh = buildFlyingRig(unitGroup, unitRadius, loc.config, entity.id, ownerId);
+      const mesh = buildFlyingRig(
+        unitGroup,
+        unitRadius,
+        loc.config,
+        flyingSmokeUseId(bp.locomotionId),
+        entity.id,
+        ownerId,
+      );
       mesh.geometryKey = geometryKey;
       return mesh;
     }

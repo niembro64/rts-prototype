@@ -69,25 +69,32 @@ export type SubmunitionSpec = {
   reflectedVelocityDamper?: number;
 };
 
-/** Per-shot smoke-trail tunables. Every field is optional; the
- *  3D renderer fills in engine-wide defaults for anything omitted. */
+/** Smoke tunables resolved from smoke_config.json. Blueprint-side
+ *  smokeTrail entries are legacy optional overrides for a configured
+ *  smoke use; unconfigured shots do not emit smoke. */
 export type SmokeTrailSpec = {
-  /** Render frames to skip between puff spawns for this shot.
-   *  Default: 0 (sample every render frame). */
+  /** Resolved smoke_config top-level key for this smoke use. */
+  useId?: string;
+  /** Per-use active-puff ceiling. */
+  maxPoolSize?: number;
+  /** Render frames to skip between puff spawns. Default comes from
+   *  smoke_config.json for the use case. */
   emitFramesSkip?: number;
   /** Puff emit velocity in world-units/sec, applied opposite to the
    *  projectile's instantaneous flight direction so the puffs drift
    *  rearward after birth. 0 (default) leaves puffs stationary in
    *  world space — the rocket flies on and the trail lingers in place. */
   exhaustSpeed?: number;
-  /** Per-puff lifespan in ms at max LOD. Default: 1400. */
-  lifespanMs?: number;
-  /** Sphere radius the puff is born at, world units. Default: 2.5. */
+  /** Sphere radius the puff is born at, world units. */
   startRadius?: number;
-  /** Sphere radius the puff swells to before it fully fades. Default: 8. */
-  endRadius?: number;
-  /** Puff opacity at birth (it fades to 0 over its lifespan). Default: 0.75. */
-  startAlpha?: number;
+  /** Multiplier applied to startRadius for the puff's final radius. */
+  endRadiusMultiplier?: number;
+  /** Duration in ms for alpha to ramp from 0 to maxAlpha. */
+  fadeInMs?: number;
+  /** Duration in ms for alpha to ramp from maxAlpha to 0 at end of life. */
+  fadeOutMs?: number;
+  /** Peak puff opacity after fade-in. */
+  maxAlpha?: number;
   /** Puff color as a 0xRRGGBB hex int. Default lives in colors_config.json. */
   color?: number;
 };
@@ -117,7 +124,8 @@ export type ProjectileShotBlueprint = {
    *  this budget goes to steering rather than gravity compensation.
    *  Null for non-homing shots. */
   homingThrust: number | null;
-  /** Cosmetic smoke trail config. Sim-side: no effect. */
+  /** Legacy/per-shot cosmetic smoke override. Current shared shot
+   *  smoke profiles live in smoke_config.json. Sim-side: no effect. */
   smokeTrail: SmokeTrailSpec | null;
 };
 
@@ -193,7 +201,7 @@ export type ProjectileShot = {
   trailLength?: number;
   /** Cluster / flak-burst behavior. */
   submunitions?: SubmunitionSpec;
-  /** Cosmetic smoke-trail config. */
+  /** Optional cosmetic smoke override merged with smoke_config.json. */
   smokeTrail?: SmokeTrailSpec;
 };
 

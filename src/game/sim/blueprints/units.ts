@@ -46,9 +46,10 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
         `Invalid unit blueprint ${id}: unknown locomotionId "${blueprint.locomotionId}"`,
       );
     }
-    const { locomotionId: _locomotionId, ...unitBlueprint } = blueprint;
+    const { locomotionId, ...unitBlueprint } = blueprint;
     blueprints[id] = {
       ...unitBlueprint,
+      locomotionId,
       locomotion,
     };
   }
