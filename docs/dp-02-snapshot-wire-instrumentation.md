@@ -406,6 +406,30 @@ section breakdown showed `entities` at 3,910 B, behind `audioEvents` at 4,482 B
 and ahead of `projectiles` at 1,291 B. The first FULLSNAP was still dominated
 by static sections: `buildability` 561,920 B and `terrain` 357,285 B.
 
+### Entity Movement Slab
+
+Run date: 2026-05-22
+
+The packed entity wire object now has a version-2 shape for unit movement-only
+deltas. Rows whose `changedFields` contain only position, rotation, and/or
+velocity groups move from the generic per-entity row array into one flat `m`
+numeric slab:
+
+- `m` rows are unit-only DIFFSNAP records. Unit type, health, actions, turrets,
+  surface normal, suspension, build state, and other detail fields continue to
+  use the existing generic row path.
+- Each movement row carries a compact flag word plus `id`, `playerId`, and only
+  the present movement tuples: position, yaw rotation, velocity, optional hover
+  orientation, and optional angular velocity.
+- The decoder still accepts version-1 packed entities so old captures and local
+  smoke tests can be decoded during the transition.
+
+This is the first SNAP-WIRE-01A entity-stream split. It reduces the hottest
+movement row shape without changing snapshot authority or the client prediction
+contract. The high-count matrix still needs to be rerun before SNAP-WIRE-01A can
+be closed; the remaining likely offenders are mixed movement/detail entity rows,
+projectile/beam updates, audio bursts, and minimap rows.
+
 ### Static Terrain / Buildability Packed Rows
 
 Run date: 2026-05-22

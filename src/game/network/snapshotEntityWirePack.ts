@@ -1,4 +1,9 @@
 import type { PlayerId } from '../../types/sim';
+import {
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
+} from '../../types/network';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotAction,
@@ -13,7 +18,8 @@ type WaypointSub = FactorySub['waypoints'][number];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 type SuspensionSub = NonNullable<UnitSub['suspension']>;
 
-const PACKED_ENTITIES_VERSION = 1;
+const PACKED_ENTITIES_V1_VERSION = 1;
+const PACKED_ENTITIES_VERSION = 2;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -57,6 +63,16 @@ const ENTITY_FLAG_TYPE_BUILDING = 1 << 3;
 const ENTITY_FLAG_HAS_UNIT = 1 << 4;
 const ENTITY_FLAG_HAS_BUILDING = 1 << 5;
 
+const MOVEMENT_UNIT_FLAG_POS = 1 << 0;
+const MOVEMENT_UNIT_FLAG_ROTATION = 1 << 1;
+const MOVEMENT_UNIT_FLAG_VELOCITY = 1 << 2;
+const MOVEMENT_UNIT_FLAG_ORIENTATION = 1 << 3;
+const MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY = 1 << 4;
+const MOVEMENT_UNIT_CHANGED_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL;
+
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
 const ACTION_FLAG_PATH_EXP = 1 << 2;
@@ -78,30 +94,69 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // nested arrays) so neither the JS encoder nor the Rust raw-msgpack
 // fallback need a custom extension type.
 export type PackedEntityRow = unknown[];
+export type PackedMovementUnitRows = number[];
 
-export type PackedEntitySnapshotWire = {
-  v: typeof PACKED_ENTITIES_VERSION;
+export type PackedEntitySnapshotWireV1 = {
+  v: typeof PACKED_ENTITIES_V1_VERSION;
   e: PackedEntityRow[];
 };
+
+export type PackedEntitySnapshotWireV2 = {
+  v: typeof PACKED_ENTITIES_VERSION;
+  m?: PackedMovementUnitRows;
+  e?: PackedEntityRow[];
+};
+
+export type PackedEntitySnapshotWire =
+  | PackedEntitySnapshotWireV1
+  | PackedEntitySnapshotWireV2;
 
 export function packEntitiesForWire(
   entities: readonly NetworkServerSnapshotEntity[] | undefined,
 ): PackedEntitySnapshotWire | undefined {
   if (entities === undefined) return undefined;
-  const rows: PackedEntityRow[] = new Array(entities.length);
+  const movementRows: PackedMovementUnitRows = [];
+  const detailRows: PackedEntityRow[] = [];
   for (let i = 0; i < entities.length; i++) {
-    rows[i] = packEntityRow(entities[i]);
+    const entity = entities[i];
+    if (isMovementOnlyUnitDelta(entity)) {
+      appendMovementUnitDeltaRow(movementRows, entity);
+    } else {
+      detailRows.push(packEntityRow(entity));
+    }
   }
-  return { v: PACKED_ENTITIES_VERSION, e: rows };
+
+  const packed: PackedEntitySnapshotWireV2 = { v: PACKED_ENTITIES_VERSION };
+  if (movementRows.length > 0) packed.m = movementRows;
+  if (detailRows.length > 0 || movementRows.length === 0) packed.e = detailRows;
+  return packed;
 }
 
 export function unpackEntitiesFromWire(
   packed: PackedEntitySnapshotWire,
 ): NetworkServerSnapshotEntity[] {
-  const rows = packed.e;
-  const out: NetworkServerSnapshotEntity[] = new Array(rows.length);
-  for (let i = 0; i < rows.length; i++) {
-    out[i] = unpackEntityRow(rows[i]);
+  if (packed.v === PACKED_ENTITIES_V1_VERSION) {
+    const rows = packed.e;
+    const out: NetworkServerSnapshotEntity[] = new Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      out[i] = unpackEntityRow(rows[i]);
+    }
+    return out;
+  }
+
+  const movementRows = packed.m;
+  const detailRows = packed.e;
+  const movementCount = countMovementUnitDeltaRows(movementRows);
+  const detailCount = detailRows?.length ?? 0;
+  const out: NetworkServerSnapshotEntity[] = new Array(movementCount + detailCount);
+  let outIndex = 0;
+  if (movementRows !== undefined) {
+    outIndex = unpackMovementUnitDeltaRows(movementRows, out, outIndex);
+  }
+  if (detailRows !== undefined) {
+    for (let i = 0; i < detailRows.length; i++) {
+      out[outIndex++] = unpackEntityRow(detailRows[i]);
+    }
   }
   return out;
 }
@@ -113,8 +168,11 @@ export function isPackedEntitySnapshotWire(
     return false;
   }
   const candidate = value as Partial<PackedEntitySnapshotWire>;
+  if (candidate.v === PACKED_ENTITIES_V1_VERSION) return Array.isArray(candidate.e);
+  if (candidate.v !== PACKED_ENTITIES_VERSION) return false;
   return (
-    candidate.v === PACKED_ENTITIES_VERSION && Array.isArray(candidate.e)
+    (candidate.m === undefined || isFiniteNumberArray(candidate.m)) &&
+    (candidate.e === undefined || Array.isArray(candidate.e))
   );
 }
 
@@ -182,6 +240,186 @@ function unpackEntityRow(row: PackedEntityRow): NetworkServerSnapshotEntity {
     entity.building = unpackBuilding(row[i++] as unknown[]);
   }
   return entity;
+}
+
+function isFiniteNumberArray(value: unknown): value is number[] {
+  if (!Array.isArray(value)) return false;
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== 'number' || !Number.isFinite(value[i])) return false;
+  }
+  return true;
+}
+
+function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
+  if (entity.type !== 'unit' || entity.building !== undefined) return false;
+  const changedFields = entity.changedFields;
+  if (
+    changedFields === undefined ||
+    changedFields === null ||
+    changedFields === 0 ||
+    (changedFields & ~MOVEMENT_UNIT_CHANGED_FIELDS) !== 0
+  ) {
+    return false;
+  }
+  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== undefined)) return false;
+  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== undefined)) return false;
+
+  const unit = entity.unit;
+  if (unit === undefined) return true;
+  if (unit.hp !== undefined) return false;
+  if (unit.unitType !== undefined) return false;
+  if (unit.radius !== undefined) return false;
+  if (unit.bodyCenterHeight !== undefined) return false;
+  if (unit.mass !== undefined) return false;
+  if (unit.surfaceNormal !== undefined) return false;
+  if (unit.suspension !== undefined) return false;
+  if (unit.fireEnabled !== undefined) return false;
+  if (unit.isCommander !== undefined) return false;
+  if (unit.buildTargetId !== undefined) return false;
+  if (unit.actions !== undefined) return false;
+  if (unit.turrets !== undefined) return false;
+  if (unit.build !== undefined) return false;
+  if (unit.velocity !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  if (unit.orientation !== undefined && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
+  if (unit.angularVelocity3 !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  return true;
+}
+
+function appendMovementUnitDeltaRow(
+  rows: PackedMovementUnitRows,
+  entity: NetworkServerSnapshotEntity,
+): void {
+  let flags = 0;
+  const pos = entity.pos;
+  const unit = entity.unit;
+  const velocity = unit?.velocity;
+  const orientation = unit?.orientation;
+  const angularVelocity = unit?.angularVelocity3;
+  if (pos !== undefined) flags |= MOVEMENT_UNIT_FLAG_POS;
+  if (entity.rotation !== undefined) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
+  if (velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
+  if (orientation !== undefined) flags |= MOVEMENT_UNIT_FLAG_ORIENTATION;
+  if (angularVelocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY;
+
+  rows.push(flags, entity.id, entity.playerId);
+  if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
+    rows.push(pos!.x, pos!.y, pos!.z);
+  }
+  if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
+    rows.push(entity.rotation!);
+  }
+  if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
+    rows.push(velocity!.x, velocity!.y, velocity!.z);
+  }
+  if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
+    rows.push(orientation!.x, orientation!.y, orientation!.z, orientation!.w);
+  }
+  if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
+    rows.push(angularVelocity!.x, angularVelocity!.y, angularVelocity!.z);
+  }
+}
+
+function movementUnitChangedFields(flags: number): number {
+  let changedFields = 0;
+  if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) changedFields |= ENTITY_CHANGED_POS;
+  if (
+    (flags & (MOVEMENT_UNIT_FLAG_ROTATION | MOVEMENT_UNIT_FLAG_ORIENTATION)) !== 0
+  ) {
+    changedFields |= ENTITY_CHANGED_ROT;
+  }
+  if (
+    (flags & (MOVEMENT_UNIT_FLAG_VELOCITY | MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY)) !== 0
+  ) {
+    changedFields |= ENTITY_CHANGED_VEL;
+  }
+  return changedFields;
+}
+
+function movementUnitDeltaRowWidth(flags: number): number {
+  let width = 3;
+  if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) width += 3;
+  if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) width += 1;
+  if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) width += 3;
+  if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) width += 4;
+  if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) width += 3;
+  return width;
+}
+
+function countMovementUnitDeltaRows(
+  rows: PackedMovementUnitRows | undefined,
+): number {
+  if (rows === undefined) return 0;
+  let count = 0;
+  let i = 0;
+  while (i < rows.length) {
+    const flags = rows[i] ?? 0;
+    i += movementUnitDeltaRowWidth(flags);
+    count++;
+  }
+  return count;
+}
+
+function unpackMovementUnitDeltaRows(
+  rows: PackedMovementUnitRows,
+  out: NetworkServerSnapshotEntity[],
+  outIndex: number,
+): number {
+  let i = 0;
+  while (i < rows.length) {
+    const flags = rows[i++] as number;
+    const id = rows[i++] as number;
+    const playerId = rows[i++] as PlayerId;
+    const entity: NetworkServerSnapshotEntity = {
+      id,
+      type: 'unit',
+      playerId,
+      changedFields: movementUnitChangedFields(flags),
+    };
+    if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
+      entity.pos = {
+        x: rows[i++] as number,
+        y: rows[i++] as number,
+        z: rows[i++] as number,
+      };
+    }
+    if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
+      entity.rotation = rows[i++] as number;
+    }
+    if (
+      (flags & (
+        MOVEMENT_UNIT_FLAG_VELOCITY |
+        MOVEMENT_UNIT_FLAG_ORIENTATION |
+        MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY
+      )) !== 0
+    ) {
+      const unit: UnitSub = {};
+      if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
+        unit.velocity = {
+          x: rows[i++] as number,
+          y: rows[i++] as number,
+          z: rows[i++] as number,
+        };
+      }
+      if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
+        unit.orientation = {
+          x: rows[i++] as number,
+          y: rows[i++] as number,
+          z: rows[i++] as number,
+          w: rows[i++] as number,
+        };
+      }
+      if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
+        unit.angularVelocity3 = {
+          x: rows[i++] as number,
+          y: rows[i++] as number,
+          z: rows[i++] as number,
+        };
+      }
+      entity.unit = unit;
+    }
+    out[outIndex++] = entity;
+  }
+  return outIndex;
 }
 
 function packUnit(unit: UnitSub): unknown[] {
