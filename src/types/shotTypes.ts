@@ -75,6 +75,11 @@ export type SmokeTrailSpec = {
   /** Render frames to skip between puff spawns for this shot.
    *  Default: 0 (sample every render frame). */
   emitFramesSkip?: number;
+  /** Puff emit velocity in world-units/sec, applied opposite to the
+   *  projectile's instantaneous flight direction so the puffs drift
+   *  rearward after birth. 0 (default) leaves puffs stationary in
+   *  world space — the rocket flies on and the trail lingers in place. */
+  exhaustSpeed?: number;
   /** Per-puff lifespan in ms at max LOD. Default: 1400. */
   lifespanMs?: number;
   /** Sphere radius the puff is born at, world units. Default: 2.5. */

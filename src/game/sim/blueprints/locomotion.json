@@ -355,7 +355,9 @@
       "fanRadius": 0.32,
       "fanRingTubeRadius": 0.035,
       "fanOutwardAngleDeg": 14,
-      "fanSpinRadPerSec": -10
+      "fanSpinRadPerSec": -10,
+      "fanSmokeSpeed": 60,
+      "fanSmokeFramesSkip": 0
     }
   },
   "dragonflyHovercraft": {
@@ -375,7 +377,11 @@
       "fanRingTubeRadius": 0.1,
       "fanOutwardAngleDeg": 18,
       "fanSpinRadPerSec": -10,
-      "tailFanOffsetX": -4.7
+      "fanSmokeSpeed": 90,
+      "fanSmokeFramesSkip": 0,
+      "tailFanOffsetX": -4.7,
+      "tailFanSmokeSpeed": 60,
+      "tailFanSmokeFramesSkip": 0
     }
   },
   "eagleFlying": {
@@ -408,7 +414,8 @@
       "jetRadius": 0.22,
       "jetLength": 0.6,
       "jetCount": 2,
-      "jetSmokeSpeed": 80
+      "jetSmokeSpeed": 80,
+      "jetSmokeFramesSkip": 0
     }
   }
 }

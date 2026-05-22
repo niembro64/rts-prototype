@@ -129,6 +129,12 @@ type FanSpec = {
   ringTubeRadius: number;
   outwardAngleRad: number;
   smokeProfile: FanSmokeProfile;
+  /** Per-unit smoke speed override from HoverConfig. Falls back to
+   *  `smokeProfile.exhaustSpeed` when undefined. */
+  smokeSpeedOverride: number | undefined;
+  /** Per-unit smoke frame-skip override from HoverConfig. Falls back
+   *  to 0 (emit every render frame) when undefined. */
+  smokeFramesSkipOverride: number | undefined;
 };
 
 function buildFan(
@@ -138,7 +144,12 @@ function buildFan(
   fanIndex: number,
   ownerId: PlayerId | undefined,
 ): HoverFan {
-  const { localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad, smokeProfile } = spec;
+  const {
+    localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
+    smokeProfile, smokeSpeedOverride, smokeFramesSkipOverride,
+  } = spec;
+  const exhaustSpeed = smokeSpeedOverride ?? smokeProfile.exhaustSpeed;
+  const emitFramesSkip = Math.max(0, smokeFramesSkipOverride ?? 0);
   const ringTubeRatio = ringTubeRadius / fanRadius;
   const fanY = -Math.max(0.4, ringTubeRadius * 0.9);
 
@@ -196,15 +207,15 @@ function buildFan(
     group: fanGroup,
     rotor,
     emitter,
-    exhaustSpeed: smokeProfile.exhaustSpeed,
+    exhaustSpeed,
     smoke: {
       x: 0,
       y: 0,
       z: 0,
       vx: 0,
       vy: 0,
-      vz: -smokeProfile.exhaustSpeed,
-      emitFramesSkip: 0,
+      vz: -exhaustSpeed,
+      emitFramesSkip,
       lifespanMs: smokeProfile.lifespanMs,
       startRadius: smokeProfile.startRadius,
       endRadius: smokeProfile.endRadius,
@@ -255,6 +266,8 @@ export function buildHoverFans(
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
           smokeProfile: LARGE_FAN_SMOKE,
+          smokeSpeedOverride: cfg.fanSmokeSpeed,
+          smokeFramesSkipOverride: cfg.fanSmokeFramesSkip,
         },
         entityId,
         fans.length,
@@ -284,6 +297,8 @@ export function buildHoverFans(
           ringTubeRadius: tailRingTubeRadius,
           outwardAngleRad: tailBackAngleRad,
           smokeProfile: SMALL_FAN_SMOKE,
+          smokeSpeedOverride: cfg.tailFanSmokeSpeed,
+          smokeFramesSkipOverride: cfg.tailFanSmokeFramesSkip,
         },
         entityId,
         fans.length,
@@ -302,6 +317,8 @@ export function buildHoverFans(
           ringTubeRadius: mainRingTubeRadius,
           outwardAngleRad,
           smokeProfile: SMALL_FAN_SMOKE,
+          smokeSpeedOverride: cfg.fanSmokeSpeed,
+          smokeFramesSkipOverride: cfg.fanSmokeFramesSkip,
         },
         entityId,
         fans.length,
@@ -322,6 +339,8 @@ export function buildHoverFans(
             ringTubeRadius: mainRingTubeRadius,
             outwardAngleRad,
             smokeProfile: SMALL_FAN_SMOKE,
+            smokeSpeedOverride: cfg.fanSmokeSpeed,
+            smokeFramesSkipOverride: cfg.fanSmokeFramesSkip,
         },
         entityId,
         fans.length,

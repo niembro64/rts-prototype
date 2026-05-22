@@ -360,10 +360,29 @@ export class SmokeTrail3D {
         const spec = visual.smokeTrail!;
         const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
         const lifespanSec = ((spec.lifespanMs ?? DEFAULT_LIFESPAN_MS) * lifeMult) / 1000;
+        // Puff exhaust drifts opposite to the projectile's flight
+        // direction at `exhaustSpeed`. Zero (the default) keeps puffs
+        // stationary in world space, which is the legacy behavior.
+        const exhaustSpeed = Math.max(0, spec.exhaustSpeed ?? 0);
+        let puffVx = 0;
+        let puffVy = 0;
+        let puffVz = 0;
+        if (exhaustSpeed > 0) {
+          const vx = proj.velocityX;
+          const vy = proj.velocityY;
+          const vz = proj.velocityZ;
+          const len2 = vx * vx + vy * vy + vz * vz;
+          if (len2 > 1e-6) {
+            const inv = exhaustSpeed / Math.sqrt(len2);
+            puffVx = -vx * inv;
+            puffVy = -vy * inv;
+            puffVz = -vz * inv;
+          }
+        }
         this.spawnPuff(
           this.small,
           emit.x, emit.y, emit.z,
-          0, 0, 0,
+          puffVx, puffVy, puffVz,
           lifespanSec,
           spec.startRadius ?? DEFAULT_START_RADIUS,
           spec.endRadius ?? DEFAULT_END_RADIUS,

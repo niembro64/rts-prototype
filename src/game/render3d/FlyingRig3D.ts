@@ -129,6 +129,7 @@ export function buildFlyingRig(
   const jetZ = unitRadius * cfg.jetOffsetY;
   const jetLateralOffsets = cfg.jetCount === 1 ? [0] : [-jetZ, jetZ];
   const jets: FlyingJet[] = [];
+  const jetSmokeFramesSkip = Math.max(0, cfg.jetSmokeFramesSkip ?? 0);
 
   for (const lateralOffset of jetLateralOffsets) {
     const jetGroup = new THREE.Group();
@@ -153,7 +154,7 @@ export function buildFlyingRig(
         vx: 0,
         vy: 0,
         vz: 0,
-        emitFramesSkip: 0,
+        emitFramesSkip: jetSmokeFramesSkip,
         lifespanMs: JET_PUFF_LIFESPAN_MS,
         startRadius: JET_PUFF_START_RADIUS,
         endRadius: JET_PUFF_END_RADIUS,
