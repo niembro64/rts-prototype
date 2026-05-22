@@ -134,6 +134,19 @@ Evidence:
   split movement+turret rows (21.6% reduction). V3/V4 decoded DTOs
   matched exactly in those probes. The live high-count matrix still
   needs to be rerun before this child can be closed.
+- The 2026-05-22 version-5 grouped entity wire pass keeps V1-V4 decode
+  support and groups binary movement rows by movement-field flags plus
+  playerId, and binary turret rows by playerId plus turret count. Row
+  IDs are sent as signed deltas inside each group, so repeated
+  per-row flags, player IDs, and turret counts leave the hot path.
+  Offline 5,000-row synthetic probes measured V4 -> V5 msgpack at
+  83,435 B -> 68,583 B for pos+rot+vel movement rows (17.8%
+  reduction), 139,435 B -> 124,583 B for a mixed hover sample with
+  orientation + angular velocity rows (10.7% reduction), and
+  152,005 B -> 122,299 B for split movement+turret rows (19.5%
+  reduction). V5 decoded DTOs matched V4 decoded DTOs in all probes.
+  The live high-count matrix still needs to be rerun before this child
+  can be closed.
 
 Why it matters:
 The remaining bandwidth problem is steady-state upstream, not rare
