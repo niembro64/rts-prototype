@@ -32,15 +32,26 @@ Evidence:
   50,212 B, while audioEvents moved from 16,136 B avg / 31,942 B hi to
   2,715 B avg / 5,186 B hi. Packed decode had zero event-count
   mismatches across 103 captured snapshots.
+- The 2026-05-22 minimap/projectile packed-row capture in the same doc
+  compares the previous Rust-backed audio-packed / object-minimap /
+  object-projectile path against the new packed row wire path.
+  DIFFSNAP avg moved from 58,922 B to 49,711 B, and hi moved from
+  122,910 B to 98,067 B across 180 captured delta snapshots. The
+  minimapEntities section moved from 4,343 B avg to 1,132 B avg, and
+  projectiles moved from 9,397 B avg to 3,397 B avg. Packed decode had
+  zero minimap/projectile count mismatches across 181 captured
+  snapshots.
 - Audio packing does not solve FULLSNAP bootstrap by itself: the first
   FULLSNAP in that capture had no audio and stayed unchanged at
   1,035,135 B. The earlier fixed-point capture showed a 1,076,601 B
-  FULLSNAP bootstrap, so static/keyframe sections still need a fresh
-  targeted capture and structural work.
-- After audio packing, the next likely DIFFSNAP targets are entity rows,
-  minimap entity rows, and projectile rows. Further wins need structural
-  row packing and section-specific budgets, not generic transport
-  compression.
+  FULLSNAP bootstrap. Minimap packed rows moved the later
+  minimap/projectile capture's FULLSNAP bootstrap from 1,082,261 B to
+  1,069,273 B, but static/keyframe sections still need a fresh targeted
+  capture and structural work.
+- After audio, minimap, and projectile packing, the next likely
+  DIFFSNAP target is entity row structure. Further wins need entity
+  row packing, FULLSNAP/static section budgets, and section-specific
+  work rather than generic transport compression.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
@@ -51,8 +62,8 @@ against the same network budgets.
 
 Fix direction:
 Do child items as separate, measurable PRs. Prioritize structural
-compression in the largest remaining sections: entity rows, minimap
-entity rows, projectile rows, and FULLSNAP keyframe/static sections.
+compression in the largest remaining sections: entity rows and
+FULLSNAP keyframe/static sections.
 Each item must report before/after DS SIZE and FS SIZE numbers from the
 PLAYER CLIENT bar, preferably with the same unit count and snapshot
 cadence.

@@ -47,20 +47,28 @@ export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
 export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
 const PROJECTILE_BEAM_POINT_CAP = 6;
 
-const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
-const PROJECTILE_SPAWN_FLAG_SHOT_ID = 0x002;
-const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID = 0x004;
-const PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE = 0x008;
-const PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE = 0x010;
-const PROJECTILE_SPAWN_FLAG_BEAM = 0x020;
-const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID = 0x040;
-const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE = 0x080;
-const PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE = 0x100;
-const PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE = 0x200;
+export const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
+export const PROJECTILE_SPAWN_FLAG_SHOT_ID = 0x002;
+export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID = 0x004;
+export const PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE = 0x008;
+export const PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE = 0x010;
+export const PROJECTILE_SPAWN_FLAG_BEAM = 0x020;
+export const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID = 0x040;
+export const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE = 0x080;
+export const PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE = 0x100;
+export const PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE = 0x200;
 
-const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T = 0x01;
-const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE = 0x02;
-const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE = 0x04;
+export const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T = 0x01;
+export const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE = 0x02;
+export const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE = 0x04;
+
+export const PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID = 0x01;
+export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND = 0x02;
+export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD = 0x04;
+export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID = 0x08;
+export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_X = 0x10;
+export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y = 0x20;
+export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z = 0x40;
 
 export type ProjectileSnapshotWireSource = {
   spawns: Float64WireRows;
@@ -70,7 +78,7 @@ export type ProjectileSnapshotWireSource = {
   beamPoints: Float64WireRows;
 };
 
-type MutableNumberRow = Float64Array;
+type MutableNumberRow = Float64Array | number[];
 
 type PooledProjectileSpawn = NetworkServerSnapshotProjectileSpawn & {
   _pos: Vec3;
@@ -365,15 +373,17 @@ export function writeBeamPointWireRow(
   values[base + 4] = point.vy;
   values[base + 5] = point.vz;
   let flags = 0;
-  if (point.mirrorEntityId !== undefined) flags |= 0x01;
+  if (point.mirrorEntityId !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
   if (point.reflectorKind !== undefined) {
-    flags |= 0x02;
-    if (point.reflectorKind === 'forceField') flags |= 0x04;
+    flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
+    if (point.reflectorKind === 'forceField') {
+      flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
+    }
   }
-  if (point.reflectorPlayerId !== undefined) flags |= 0x08;
-  if (point.normalX !== undefined) flags |= 0x10;
-  if (point.normalY !== undefined) flags |= 0x20;
-  if (point.normalZ !== undefined) flags |= 0x40;
+  if (point.reflectorPlayerId !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
+  if (point.normalX !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
+  if (point.normalY !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
+  if (point.normalZ !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
   values[base + 6] = flags;
   values[base + 7] = point.mirrorEntityId ?? 0;
   values[base + 8] = point.reflectorPlayerId ?? 0;

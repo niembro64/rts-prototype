@@ -61,8 +61,10 @@ import {
 } from './snapshotWireRows';
 import {
   isPackedAudioEventsWire,
-  type NetworkServerSnapshotWire,
 } from './snapshotAudioWirePack';
+import { isPackedMinimapEntitiesWire } from './snapshotMinimapWirePack';
+import { isPackedProjectileSnapshotWire } from './snapshotProjectileWirePack';
+import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -1657,6 +1659,10 @@ function emitTopLevelKey(
   const api = sim.snapshotEncode;
   switch (key) {
     case 'minimapEntities': {
+      if (isPackedMinimapEntitiesWire(value)) {
+        emitRawKeyValue(api, key, value);
+        return;
+      }
       const entries = value as NetworkServerSnapshotMinimapEntity[];
       packMinimapIntoScratch(sim, entries);
       api.emitMinimap(entries.length);
@@ -1703,6 +1709,10 @@ function emitTopLevelKey(
       return;
     }
     case 'projectiles': {
+      if (isPackedProjectileSnapshotWire(value)) {
+        emitRawKeyValue(api, key, value);
+        return;
+      }
       const projectiles = value as SnapshotProjectiles;
       if (!canEncodeProjectiles(projectiles)) {
         rawTopLevelKeys.push(key);

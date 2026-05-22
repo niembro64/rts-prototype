@@ -293,3 +293,45 @@ The first FULLSNAP bootstrap in this run had no audio events, so it was
 unchanged at 1,035,135 B in both encodings. Later FULLSNAPs that did carry
 combat audio saved 11,252 B on average. Packed decode reported zero event-count
 mismatches across the 103 captured snapshots.
+
+### Minimap And Projectile Packed Rows
+
+Run date: 2026-05-22
+
+The wire path now keeps `minimapEntities` and `projectiles` as readable DTOs in
+memory, but encodes them as compact, versioned row objects on the outbound wire.
+Minimap rows are flat `[id, x, y, type, playerId, flags]` values. Projectile
+rows reuse the existing fixed-point spawn, despawn, velocity-update, beam-header,
+and beam-point row layouts that already fed the Rust encoder scratch buffers.
+Remote decode expands both packed sections back into the original snapshot DTOs
+before client view code reads them.
+
+Capture setup:
+
+- Browser URL: `http://localhost:5175/budget-annihilation/?dp02=1`
+- Automation: headless Google Chrome via Playwright, importing `GameServer`,
+  `snapshotWireCodec`, and `snapshotRustWireEncoder` from Vite.
+- Scenario: five-player background demo battle, cap 243, observed from player
+  1, fog disabled, debug grid disabled, keyframes disabled,
+  `terrainCenter=flat`, `terrainDividers=mountain`, `terrainMapShape=circle`,
+  host snapshot cap 32/sec.
+- Comparison: each emitted snapshot was encoded once through the previous
+  Rust-backed audio-packed / object-minimap / object-projectile path and once
+  through the new packed-minimap / packed-projectile path from the same
+  in-memory snapshot. Decode parity checked minimap and projectile section
+  counts from the packed payload.
+
+| Stream | Samples | Units Avg | Legacy avg | Legacy hi | Packed avg | Packed hi | Saved avg |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FULLSNAP bootstrap | 1 | 245 | 1,082,261 B | 1,082,261 B | 1,069,273 B | 1,069,273 B | 12,988 B |
+| DIFFSNAP steady state | 180 | 240 | 58,922 B | 122,910 B | 49,711 B | 98,067 B | 9,211 B |
+
+Section detail for the same DIFFSNAP rows:
+
+| Section | Legacy avg | Packed avg | Saved avg |
+| --- | ---: | ---: | ---: |
+| `minimapEntities` | 4,343 B | 1,132 B | 3,211 B |
+| `projectiles` | 9,397 B | 3,397 B | 6,000 B |
+
+Packed decode reported zero minimap/projectile count mismatches across the 181
+captured snapshots.

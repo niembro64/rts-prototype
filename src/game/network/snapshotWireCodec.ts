@@ -11,10 +11,20 @@ import {
 } from './snapshotRustWireEncoder';
 import {
   packAudioEventsForWire,
-  packNetworkSnapshotAudioForWire,
-  unpackNetworkSnapshotAudioFromWire,
-  type NetworkServerSnapshotWire,
+  unpackAudioEventsFromWire,
+  isPackedAudioEventsWire,
 } from './snapshotAudioWirePack';
+import {
+  isPackedMinimapEntitiesWire,
+  packMinimapEntitiesForWire,
+  unpackMinimapEntitiesFromWire,
+} from './snapshotMinimapWirePack';
+import {
+  isPackedProjectileSnapshotWire,
+  packProjectilesForWire,
+  unpackProjectilesFromWire,
+} from './snapshotProjectileWirePack';
+import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 // Snapshot DTOs are pooled, so optional fields stay as own properties
 // assigned to `undefined`. Default msgpack encodes those as `nil`,
@@ -56,6 +66,8 @@ const ENTITY_MAJOR_KEYS = [
   'unit',
   'building',
 ] as const satisfies readonly (keyof NetworkServerSnapshotEntity)[];
+
+export type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 export type SnapshotWireBreakdownEntry = {
   section: string;
@@ -111,7 +123,7 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
-  const wireState = packNetworkSnapshotAudioForWire(state);
+  const wireState = packNetworkSnapshotForWire(state);
   if (!FORCE_JS_SNAPSHOT_WIRE) {
     const rustResult = encodeNetworkSnapshotWithRustFallback(wireState);
     if (rustResult) {
@@ -136,24 +148,21 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
 
 export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkServerSnapshot {
   const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-  return unpackNetworkSnapshotAudioFromWire(
-    msgpackDecode(bytes) as NetworkServerSnapshotWire,
-  );
+  return unpackNetworkSnapshotFromWire(msgpackDecode(bytes) as NetworkServerSnapshotWire);
 }
 
 export function measureNetworkSnapshotWireBreakdown(
   state: NetworkServerSnapshot,
   totalBytes?: number,
 ): SnapshotWireBreakdown {
-  const measuredTotalBytes = totalBytes ?? msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS).byteLength;
+  const wireState = packNetworkSnapshotForWire(state);
+  const measuredTotalBytes = totalBytes ?? msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS).byteLength;
   const topLevel: Record<string, number> = {};
   let topLevelSum = 0;
 
   for (let i = 0; i < TOP_LEVEL_SNAPSHOT_KEYS.length; i++) {
     const key = TOP_LEVEL_SNAPSHOT_KEYS[i];
-    const value = key === 'audioEvents'
-      ? packAudioEventsForWire(state.audioEvents)
-      : state[key];
+    const value = wireState[key];
     const bytes = encodedPairBytes(key, value);
     if (bytes <= 0) continue;
     topLevel[key] = bytes;
@@ -174,6 +183,54 @@ export function measureNetworkSnapshotWireBreakdown(
     entityTop: topEntries(entity, topLevel.entities ?? measuredTotalBytes),
     projectileTop: topEntries(projectile, topLevel.projectiles ?? measuredTotalBytes),
   };
+}
+
+export function packNetworkSnapshotForWire(
+  state: NetworkServerSnapshot,
+): NetworkServerSnapshotWire {
+  const packedAudioEvents = packAudioEventsForWire(state.audioEvents);
+  const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
+  const packedProjectiles = packProjectilesForWire(state.projectiles);
+  if (
+    packedAudioEvents === undefined &&
+    packedMinimapEntities === undefined &&
+    packedProjectiles === undefined
+  ) {
+    return state as NetworkServerSnapshotWire;
+  }
+
+  const wire = { ...state } as NetworkServerSnapshotWire;
+  if (packedAudioEvents !== undefined) wire.audioEvents = packedAudioEvents;
+  if (packedMinimapEntities !== undefined) wire.minimapEntities = packedMinimapEntities;
+  if (packedProjectiles !== undefined) wire.projectiles = packedProjectiles;
+  return wire;
+}
+
+function unpackNetworkSnapshotFromWire(
+  state: NetworkServerSnapshotWire,
+): NetworkServerSnapshot {
+  const audioEvents = state.audioEvents;
+  const minimapEntities = state.minimapEntities;
+  const projectiles = state.projectiles;
+  const hasPackedAudioEvents = isPackedAudioEventsWire(audioEvents);
+  const hasPackedMinimapEntities = isPackedMinimapEntitiesWire(minimapEntities);
+  const hasPackedProjectiles = isPackedProjectileSnapshotWire(projectiles);
+
+  if (!hasPackedAudioEvents && !hasPackedMinimapEntities && !hasPackedProjectiles) {
+    return state as NetworkServerSnapshot;
+  }
+
+  const snapshot = { ...state } as NetworkServerSnapshot;
+  if (hasPackedAudioEvents) {
+    snapshot.audioEvents = unpackAudioEventsFromWire(audioEvents);
+  }
+  if (hasPackedMinimapEntities) {
+    snapshot.minimapEntities = unpackMinimapEntitiesFromWire(minimapEntities);
+  }
+  if (hasPackedProjectiles) {
+    snapshot.projectiles = unpackProjectilesFromWire(projectiles);
+  }
+  return snapshot;
 }
 
 function isRustSnapshotWireCompareEnabled(): boolean {
