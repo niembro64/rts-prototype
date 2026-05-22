@@ -1,4 +1,4 @@
-// Background battle spawning logic (standalone physics, no Phaser)
+// Background battle spawning logic.
 
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';

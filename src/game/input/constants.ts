@@ -1,8 +1,6 @@
-// Shared input constants used by both the 2D (Phaser/Pixi) and 3D
-// (Three.js) input paths. These live in a tiny file on purpose:
-// both renderers should agree on "how much drag before a click
-// becomes a box-select" and similar tuning knobs, so divergence is
-// a bug, not a feature.
+// Shared input tuning constants (click-vs-drag threshold, etc.).
+// Kept in a tiny file on purpose: any input path should agree on
+// these knobs, so divergence is a bug not a feature.
 
 /** Pointer-down → pointer-up movement under this many screen pixels
  *  counts as a click rather than a box-select / line-path. 2D used

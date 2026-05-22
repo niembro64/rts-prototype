@@ -219,6 +219,49 @@
     </section>
 
     <section>
+      <h2>Engine Ownership: No Libraries, In-House Rust</h2>
+      <p>
+        The end-state engine is something we own end-to-end. The simulation
+        is <code>Rust</code> compiled to <code>WebAssembly</code>, living in
+        <code>rts-sim-wasm/</code>. The renderer is raw <code>WebGPU</code>
+        with <code>WGSL</code> shaders, driven directly. Networking glue,
+        input plumbing, asset pipeline, audio mixer, math kernels, ECS,
+        physics, collision, pathfinding, fog of war, snapshot serializer,
+        prediction integrator &mdash; all written by us, for this game. The
+        defining trait of this project is that we are <em>building the
+        engine</em>, not assembling one.
+      </p>
+      <p>
+        The libraries currently in <code>package.json</code>
+        (<code>three</code>, <code>vue</code>, <code>peerjs</code>,
+        <code>@msgpack/msgpack</code>, <code>@tonejs/midi</code>,
+        <code>@tauri-apps/*</code>) are scaffolding. They got the prototype
+        walking; they are not the destination. The Rust sim crate and the
+        in-tree TypeScript/shader code are the destination. Every change
+        should leave the codebase with either the same library surface or
+        less; never more.
+      </p>
+      <ul class="rule-list">
+        <li>The default answer to &ldquo;should we add a library for this?&rdquo; is <strong>no</strong>. Write it ourselves, preferably in Rust, ideally in the sim crate.</li>
+        <li>The default answer to &ldquo;can we keep this library?&rdquo; is <strong>only until we have time to replace it</strong>. The renderer migration off Three.js to raw WebGPU is the largest example; smaller libraries should follow the same path.</li>
+        <li>Adding a new <code>npm</code> or <code>cargo</code> dependency requires a deliberate, named justification &mdash; not a reflex. Vendoring the few lines we actually need is almost always preferable to taking a whole library on.</li>
+        <li>Libraries that have already been removed (Phaser, Pixi, Matter.js, standalone matter-js) are gone for good. Do not reintroduce them under any architectural argument. They were tried and failed our scaling rules.</li>
+        <li>&ldquo;In-house&rdquo; means the code is in our repo, in a language we ship from source, that we are willing to debug at any layer. Wrapping a library does not count as in-house ownership.</li>
+        <li>The Rust sim crate is the preferred home for new logic. New TypeScript modules are acceptable for orchestration, but new <em>simulation</em>, <em>physics</em>, <em>math</em>, or <em>per-unit-loop</em> code should land in <code>rts-sim-wasm/</code> from the start, not get written in TS and ported later.</li>
+      </ul>
+      <p>
+        This is the active commitment behind <strong>Languages and Frameworks</strong>,
+        <strong>TypeScript Coordinates, WASM Computes</strong>, and
+        <strong>Delete The Old Path</strong>. Those sections describe what
+        the end-state engine looks like and how migrations land; this
+        section states why we are doing it: nobody else&rsquo;s engine is
+        going to give us thousands of physically-simulated units in a
+        browser, and every library we keep is a ceiling someone else set
+        for us.
+      </p>
+    </section>
+
+    <section>
       <h2>Network Model</h2>
       <h3>Commands flow upward</h3>
       <p>
@@ -738,7 +781,7 @@
       <ul class="rule-list">
         <li>Use GPU-native code for the expensive work: custom <code>GLSL</code> for WebGL2 or <code>WGSL</code> for WebGPU.</li>
         <li>Prefer raw <code>WebGPU</code> or raw <code>WebGL2</code> for long-term high-count rendering paths where framework overhead blocks scale.</li>
-        <li>Three.js can remain a prototype shell and utility layer while it is productive, but any bottlenecked renderer path should be replaced with owned buffers, owned shaders, and direct instancing.</li>
+        <li>Three.js is treated as legacy scaffolding, not endorsed architecture. It can remain in place while it is still productive, but every bottlenecked renderer path should be replaced with owned buffers, owned shaders, and direct instancing &mdash; the end state is raw <code>WebGPU</code> + <code>WGSL</code> with no rendering library in the tree. See <strong>Engine Ownership</strong>.</li>
         <li>Vue is UI only. Vue must not own simulation cadence, render-loop state, per-unit updates, or per-frame battlefield data.</li>
         <li>Do not introduce rendering frameworks that hide draw-call count, buffer ownership, material compilation, culling, or shader control from us.</li>
       </ul>
@@ -1289,7 +1332,7 @@
       <h3>Scope of the rule</h3>
       <ul class="rule-list">
         <li>Inside our own simulation, server, prediction, networking, and entity-state modules: no <code>?:</code> on properties, no <code>?.</code> on access. Use <code>T | null</code> with explicit guards.</li>
-        <li>At third-party boundaries (Three.js, Phaser, browser APIs, WebRTC, Matter): pragmatic optional chaining is acceptable. Wrap the boundary; keep our domain strict.</li>
+        <li>At third-party boundaries (Three.js, browser APIs, WebRTC): pragmatic optional chaining is acceptable. Wrap the boundary; keep our domain strict.</li>
         <li>Function parameters with defaults (<code>fn(x: number = 0)</code>) are a different concept and remain allowed.</li>
         <li>"Field is semantically inapplicable to this kind of entity" is not an optional field. It is a discriminated union. Express it that way.</li>
         <li>In numeric hot loops, prefer a sentinel value (<code>targetId = -1</code>, <code>tetherId = -1</code>) over <code>number | null</code>. It avoids both the boxed null check and the shape variance, and it composes with WASM SoA storage.</li>

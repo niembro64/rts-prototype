@@ -1,5 +1,4 @@
-// LobbyManager — lobby/background battle lifecycle management
-// Extracted from PhaserCanvas.vue to keep the component lean.
+// LobbyManager — lobby/background battle lifecycle management.
 
 import { createGame, destroyGame } from '../createGame';
 import { GameServer } from '../server/GameServer';

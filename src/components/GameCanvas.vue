@@ -904,7 +904,7 @@ watchEffect(() => {
 
 <template>
   <div class="game-wrapper">
-    <!-- Top status bar lives outside the Three.js game area, like the bottom controls. -->
+    <!-- Top status bar lives outside the 3D game area, like the bottom controls. -->
     <div
       v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible"
       class="top-controls-shell"
@@ -955,7 +955,7 @@ watchEffect(() => {
       <!-- Main game container (real game) -->
       <div
         ref="containerRef"
-        class="phaser-container"
+        class="game-container"
         v-show="gameStarted"
       >
         <div
@@ -1107,7 +1107,7 @@ watchEffect(() => {
   min-height: 0;
 }
 
-.phaser-container {
+.game-container {
   position: relative;
   width: 100%;
   height: 100%;
@@ -1135,7 +1135,7 @@ watchEffect(() => {
   z-index: 0;
 }
 
-.phaser-container canvas {
+.game-container canvas {
   display: block;
 }
 
@@ -1153,7 +1153,7 @@ watchEffect(() => {
   pointer-events: auto;
 }
 
-.player-client-off .phaser-container canvas,
+.player-client-off .game-container canvas,
 .player-client-off .background-battle-container canvas {
   visibility: hidden;
 }

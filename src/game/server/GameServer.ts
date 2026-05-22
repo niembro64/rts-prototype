@@ -1,5 +1,5 @@
-// GameServer - Headless simulation server (no Phaser dependency)
-// Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval
+// GameServer - Headless simulation server.
+// Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval.
 
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';

@@ -1,9 +1,7 @@
-// Shared screen-rect box-selection. Both the 2D (Pixi) and 3D
-// (Three.js) input paths do the same thing: walk owned entities,
-// project each world position to screen pixels, keep the ones that
-// fall inside the drag rect, and prefer units over buildings. The
-// only renderer-specific bit is the projection itself — abstracted
-// here as a ProjectToScreen callback.
+// Screen-rect box-selection: walk owned entities, project each world
+// position to screen pixels, keep the ones that fall inside the drag
+// rect, and prefer units over buildings. The renderer-specific
+// projection is abstracted as a ProjectToScreen callback.
 
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
 import type { SelectionEntitySource } from './SelectionHelper';

@@ -379,7 +379,7 @@
       <li><code>RemoteGameConnection</code> &mdash; goes over WebRTC. Snapshots are msgpack-encoded (with an optional Rust-accelerated entity codec) and shipped over PeerJS DataChannels. Commands flow back the same way.</li>
     </ul>
     <p>
-      In practice the host&#39;s browser tab is the &ldquo;server&rdquo;: <code>PhaserCanvas.vue</code> owns the server lifecycle. The <code>RtsScene</code> renderer is uniform &mdash; it always paints <code>ClientViewState</code>, regardless of whether the local user is host or guest. There is no <code>networkRole</code> branching in render code.
+      In practice the host&#39;s browser tab is the &ldquo;server&rdquo;: <code>GameCanvas.vue</code> owns the server lifecycle. The <code>RtsScene3D</code> renderer is uniform &mdash; it always paints <code>ClientViewState</code>, regardless of whether the local user is host or guest. There is no <code>networkRole</code> branching in render code.
     </p>
     <p>
       Server-side authorization runs on every inbound command in <code>GameServer</code>: ownership is verified, admin-only commands are restricted to player 0, mismatched orders are silently dropped before they ever enter the command queue. Backpressure-aware snapshot dropping protects the data channel when a client falls behind.

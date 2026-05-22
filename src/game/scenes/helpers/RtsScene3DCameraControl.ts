@@ -2,9 +2,9 @@ import type { SceneCameraState } from '@/types/game';
 import type { OrbitCamera } from '../../render3d/OrbitCamera';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 
-// Mini "camera" accessor that PhaserCanvas.vue reads for zoom display. It
-// derives a Pixi-equivalent zoom number from the 3D orbit distance so UI
-// sliders show a consistent value.
+// Mini "camera" accessor read by GameCanvas.vue for the zoom display.
+// Derives a scalar zoom number from the 3D orbit distance so UI sliders
+// have a consistent axis to read.
 //
 // Two zoom-shaped values:
 //

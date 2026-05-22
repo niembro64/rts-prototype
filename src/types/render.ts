@@ -1,8 +1,4 @@
-// Render types still consumed by the 3D-only path. Most of the
-// original 2D-rendering types (UnitRenderContext, BuildingRenderContext,
-// Tread/wheel setups, debris fragments, burn-mark quads, etc.) lived
-// here but were tied to PIXI / 2D-only modules; they've been deleted
-// alongside src/game/render/.
+// Render types consumed by the 3D renderer.
 
 /** Arachnid leg geometry — used by 3D locomotion to drive procedural
  *  step animations. Named differently from the blueprint LegConfig to

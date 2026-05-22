@@ -1,4 +1,4 @@
-// ThreeApp — Three.js application wrapper (parallel to PixiApp, for the 3D PoC).
+// ThreeApp — Three.js application wrapper.
 //
 // Sets up a scene, renderer, camera, lights, and a ground plane. Owns the
 // render loop and delegates per-frame work to a callback.

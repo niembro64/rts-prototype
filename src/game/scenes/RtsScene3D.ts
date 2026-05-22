@@ -1,9 +1,5 @@
-// RtsScene3D — 3D equivalent of RtsScene.
-//
-// Implements the same public API surface (callbacks + methods) so PhaserCanvas.vue
-// can drive it interchangeably with the 2D scene. Internally it uses ThreeApp and
-// Render3DEntities instead of Pixi graphics while delegating focused input/view
-// state to helpers.
+// RtsScene3D — Three.js-backed game scene. Uses ThreeApp and
+// Render3DEntities with focused input/view state pushed into helpers.
 
 import type { ClientViewState } from '../network/ClientViewState';
 import { audioManager } from '../audio/AudioManager';
@@ -251,7 +247,7 @@ export class RtsScene3D {
   private rendererWarmupToken = 0;
   private destroyed = false;
 
-  // Phaser-compat accessors used by PhaserCanvas.vue
+  // Scene lifecycle accessor read by GameCanvas.vue.
   private _restartCb: (() => void) | null = null;
   public readonly scene: SceneLifecycle = {
     onRestart: (cb: () => void) => { this._restartCb = cb; },

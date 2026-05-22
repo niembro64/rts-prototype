@@ -1,14 +1,12 @@
-// CommanderModeController — shared state machine for the two
-// commander-driven modes (build + D-gun), plus the command
-// builders each one needs. Renderer-agnostic: no Phaser keys, no
-// DOM events, no graphics. Both the 2D BuildingPlacementController
-// and the 3D Input3DManager own one of these; their renderer-
-// specific code (hotkeys, ghost visuals, click dispatch) calls
-// through it so the behavior stays in lock-step.
+// CommanderModeController — state machine for the two commander-driven
+// modes (build + D-gun), plus the command builders each one needs.
+// No DOM events, no graphics: Input3DManager owns one of these and its
+// input-specific code (hotkeys, ghost visuals, click dispatch) calls
+// through it.
 //
-// Mutual exclusion: entering one mode automatically exits the
-// other. Callers only check preconditions they care about
-// (usually "is a commander selected") before calling `enter*`.
+// Mutual exclusion: entering one mode automatically exits the other.
+// Callers only check preconditions they care about (usually "is a
+// commander selected") before calling `enter*`.
 
 import type { Entity, BuildingType } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
