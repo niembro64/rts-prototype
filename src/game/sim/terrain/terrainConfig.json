@@ -8,6 +8,7 @@
   "terrainTriangleSampleCentroid": true,
   "terrainTrianglePreserveWaterline": true,
   "terrainTriangleVertexKeyScale": 1000,
+  "terrainHideUnderwaterTriangles": false,
   "terrainShapeMagnitude": 800,
   "terrainDTerrain": 200,
   "terrainCirclePerimeterEdgeFraction": 0.49,
