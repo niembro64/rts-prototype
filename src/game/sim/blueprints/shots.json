@@ -63,7 +63,7 @@
     "homingThrust": 5000,
     "smokeTrail": {
       "emitFramesSkip": 0,
-      "exhaustSpeed": 0,
+      "exhaustSpeed": 50,
       "startRadius": 1,
       "endRadius": 8,
       "startAlpha": 0.9,
@@ -92,7 +92,7 @@
     "homingThrust": 9000,
     "smokeTrail": {
       "emitFramesSkip": 0,
-      "exhaustSpeed": 0,
+      "exhaustSpeed": 80,
       "startRadius": 1,
       "endRadius": 7,
       "startAlpha": 0.9,
