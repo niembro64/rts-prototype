@@ -7,6 +7,14 @@ export type SnapshotDeltaResolutionConfig = {
   rotationVelocityThresholdMultiplier: number;
 };
 
+export type SnapshotCompressionFormat = 'gzip' | 'deflate' | 'deflate-raw';
+
+export type FullSnapshotCompressionConfig = {
+  enabled: boolean;
+  format: SnapshotCompressionFormat;
+  minBytes: number;
+};
+
 export type SnapshotConfig = {
   deltaEnabled: boolean;
   positionThreshold: number;
@@ -17,6 +25,7 @@ export type SnapshotConfig = {
   entityDetailSnapshotRateHz: number;
   ownedEntityDelta: SnapshotDeltaResolutionConfig;
   observedEntityDelta: SnapshotDeltaResolutionConfig;
+  fullSnapshotCompression: FullSnapshotCompressionConfig;
 };
 
 export type EmaLowConfig = {

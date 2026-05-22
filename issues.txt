@@ -67,28 +67,6 @@ Done when:
 We have a chosen observedEntityDelta preset with measured DS SIZE
 reduction and no unacceptable visual or gameplay-readability loss.
 
-------------------------------------------------------------------------------
-SNAP-WIRE-01.6 - add optional transport compression for FULLSNAPs first.
-------------------------------------------------------------------------------
-
-What:
-Large FULLSNAPs are good candidates for generic compression because
-they are large and infrequent. DIFFSNAPs at 30 Hz are more latency- and
-CPU-sensitive, so compressing them blindly may hurt frame pacing.
-
-Fix:
-Add an experimental transport-compression path for FULLSNAP payloads
-only. Measure encode/decode CPU cost, payload reduction, latency, and
-compatibility in local and remote play. Prefer browser-native APIs when
-available; otherwise choose a small dependency only if it is clearly
-worth the size and runtime cost.
-
-Done when:
-FULLSNAP compression can be toggled for A/B testing and reports before
-/ after FS SIZE and encode/decode time. Leave DIFFSNAP compression
-off unless later data proves it is worth it.
-
-------------------------------------------------------------------------------
 SNAP-WIRE-01.7 - evaluate DIFFSNAP compression only after byte sources
                  are known.
 ------------------------------------------------------------------------------

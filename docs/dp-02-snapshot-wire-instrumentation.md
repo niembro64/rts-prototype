@@ -18,6 +18,35 @@ window.__BA_DP02_SNAPSHOT_WIRE__.report()
 window.__BA_DP02_SNAPSHOT_WIRE__.reset()
 ```
 
+## FULLSNAP Transport Compression
+
+FULLSNAP compression is experimental and disabled by default. Enable it for
+remote WebRTC A/B captures with either:
+
+- URL flag: `?fullSnapshotCompression=1`
+- Env flag: `VITE_BA_FULLSNAP_COMPRESSION=1`
+
+The path compresses `state.isDelta === false` payloads only, using the browser
+Compression Streams API and the format configured in `src/snapshotConfig.json`.
+DIFFSNAPs stay raw MessagePack. If the compressed payload is not smaller than
+the raw FULLSNAP, the sender falls back to raw bytes for that snapshot.
+
+Transport-compression stats are exposed separately from the DP-02 source-section
+breakdown because compressed bytes no longer map cleanly to individual snapshot
+sections:
+
+```js
+window.__BA_SNAPSHOT_TRANSPORT_COMPRESSION__.rows()
+window.__BA_SNAPSHOT_TRANSPORT_COMPRESSION__.report()
+window.__BA_SNAPSHOT_TRANSPORT_COMPRESSION__.reset()
+```
+
+The report shows raw FULLSNAP bytes, transport bytes, percent saved, compression
+ms, and decompression ms. The client bar's FS SIZE uses the received transport
+byte length, so when compression is enabled on a remote client that value is the
+compressed FULLSNAP size. Local in-memory host play still reports the raw
+MessagePack estimate.
+
 ## Rust Parity Compare
 
 Run the app with either:

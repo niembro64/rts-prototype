@@ -17,5 +17,10 @@
     "velocityThresholdMultiplier": 2,
     "rotationPositionThresholdMultiplier": 2,
     "rotationVelocityThresholdMultiplier": 2
+  },
+  "fullSnapshotCompression": {
+    "enabled": false,
+    "format": "gzip",
+    "minBytes": 32768
   }
 }

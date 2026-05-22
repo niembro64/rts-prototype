@@ -350,7 +350,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Encoded FULLSNAP payload size before decode/unpack. Remote clients use the received byte length; local host play estimates with the same MessagePack snapshot encoder. Target ${fmtBytes4(FULLSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">FS SIZE:</BarLabel>
+        <BarLabel :title="`Encoded FULLSNAP payload size before decode/unpack. Remote clients use the received transport byte length, including experimental FULLSNAP compression when enabled; local host play estimates with the raw MessagePack snapshot encoder. Target ${fmtBytes4(FULLSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">FS SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

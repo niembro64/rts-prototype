@@ -79,6 +79,7 @@ const PEER_OPTIONS: PeerOptions = {
 
 const SIGNALING_RECONNECT_INITIAL_DELAY_MS = 1000;
 const SIGNALING_RECONNECT_MAX_DELAY_MS = 10000;
+type NetworkStateMessage = Extract<NetworkMessage, { type: 'state' }>;
 
 export class NetworkManager {
   private peer: Peer | null = null;
@@ -109,6 +110,8 @@ export class NetworkManager {
   });
   private signalingReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
+  private stateDecodeQueue: Promise<void> = Promise.resolve();
+  private stateDecodeGeneration = 0;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
    *  here so disconnect() can cancel it — otherwise a stale timeout
    *  can fire after the user retries and destroy the new peer. */
@@ -551,20 +554,12 @@ export class NetworkManager {
         return;
       case 'state':
         // Client receives state from host. Host ships snapshots as a
-        // MessagePack Uint8Array so PeerJS carries one flat binary
-        // payload instead of a deep object tree.
+        // MessagePack Uint8Array (optionally FULLSNAP-compressed)
+        // so PeerJS carries one flat binary payload instead of a deep
+        // object tree.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message)) return;
-          const hostConn = this.connections.get(1);
-          const state = this.snapshotTransport.decodeReceivedState(
-            message.data,
-            hostConn?.dataChannel,
-          );
-          if (this.onStateReceived) {
-            this.onStateReceived(state);
-          } else {
-            this.snapshotTransport.storePendingState(state);
-          }
+          this.queueStateMessage(message);
         }
         break;
 
@@ -810,7 +805,18 @@ export class NetworkManager {
       this.getUniversalGameId(),
       state,
     );
-    return message !== null ? this.sendTo(playerId, message) : false;
+    if (message === null) return false;
+    if (message instanceof Promise) {
+      void message
+        .then((resolved) => {
+          if (resolved !== null) this.sendTo(playerId, resolved);
+        })
+        .catch((err: unknown) => {
+          console.warn('[NET] Failed to build compressed snapshot:', err);
+        });
+      return true;
+    }
+    return this.sendTo(playerId, message);
   }
 
   // Send command to host (client only)
@@ -923,6 +929,8 @@ export class NetworkManager {
     this.gameStarted = false;
     this.roster.clear();
     this.snapshotTransport.reset();
+    this.stateDecodeGeneration++;
+    this.stateDecodeQueue = Promise.resolve();
 
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;
@@ -937,6 +945,28 @@ export class NetworkManager {
     this.onLobbySettings = undefined;
     this.getLobbySettings = undefined;
     this.onPlayerInfoUpdate = undefined;
+  }
+
+  private queueStateMessage(message: NetworkStateMessage): void {
+    const generation = this.stateDecodeGeneration;
+    this.stateDecodeQueue = this.stateDecodeQueue
+      .then(async () => {
+        if (generation !== this.stateDecodeGeneration) return;
+        const hostConn = this.connections.get(1);
+        const state = await this.snapshotTransport.decodeReceivedState(
+          message,
+          hostConn?.dataChannel,
+        );
+        if (generation !== this.stateDecodeGeneration) return;
+        if (this.onStateReceived) {
+          this.onStateReceived(state);
+        } else {
+          this.snapshotTransport.storePendingState(state);
+        }
+      })
+      .catch((err: unknown) => {
+        console.warn('[NET] Failed to decode snapshot:', err);
+      });
   }
 }
 

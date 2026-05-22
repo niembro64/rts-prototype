@@ -186,6 +186,7 @@ import type { Command } from './commands';
 import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
 import type { ForceFieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
+import type { SnapshotCompressionFormat } from './config';
 import type {
   TerrainBuildabilityGrid,
   TerrainMapShape,
@@ -259,7 +260,15 @@ export type LobbySettings = {
 
 // Server → Client
 export type NetworkServerSnapshotMessage =
-  | { type: 'state'; gameId?: string; data: Uint8Array | ArrayBuffer }
+  | {
+      type: 'state';
+      gameId?: string;
+      data: Uint8Array | ArrayBuffer;
+      compression?: {
+        format: SnapshotCompressionFormat;
+        rawBytes: number;
+      };
+    }
   | { type: 'playerAssignment'; playerId: PlayerId; gameId?: string }
   | {
       type: 'gameStart';
