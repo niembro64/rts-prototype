@@ -72,11 +72,10 @@ export class BuildingAnimationController3D {
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
   /** Per-entity rotor phase. Each extractor advances its own counter
-   *  by `dt × EXTRACTOR_ROTOR_RAD_PER_SEC × coverageFraction`, so an
-   *  extractor sitting on bare ground (0 covered tiles) stays
-   *  stationary while one fully covering a deposit spins at full
-   *  speed. Indexed by entity id; entries get pruned when the
-   *  extractor despawns. */
+   *  from a ROT VEL-smoothed local angular speed, so an extractor on
+   *  bare ground stays stationary while one fully covering a deposit
+   *  spins at full speed. Indexed by entity id; entries get pruned
+   *  when the extractor despawns. */
   private extractorRotorPhases = new Map<EntityId, number>();
   /** Courtesy ROT VEL binding for extractor rotor spin-up/spin-down.
    *  The value is a local visual angular speed, not snapshot drift. */
