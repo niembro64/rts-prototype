@@ -65,6 +65,10 @@ import {
 import { isPackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { isPackedMinimapEntitiesWire } from './snapshotMinimapWirePack';
 import { isPackedProjectileSnapshotWire } from './snapshotProjectileWirePack';
+import {
+  isPackedBuildabilityGridWire,
+  isPackedTerrainTileMapWire,
+} from './snapshotStaticWirePack';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
@@ -1736,6 +1740,10 @@ function emitTopLevelKey(
       return;
     }
     case 'terrain': {
+      if (isPackedTerrainTileMapWire(value)) {
+        emitRawKeyValue(api, key, value);
+        return;
+      }
       const terrain = value as TerrainTileMap;
       if (!canEncodeTerrain(terrain)) {
         rawTopLevelKeys.push(key);
@@ -1746,6 +1754,10 @@ function emitTopLevelKey(
       return;
     }
     case 'buildability': {
+      if (isPackedBuildabilityGridWire(value)) {
+        emitRawKeyValue(api, key, value);
+        return;
+      }
       const buildability = value as TerrainBuildabilityGrid;
       if (!canEncodeBuildability(buildability)) {
         rawTopLevelKeys.push(key);

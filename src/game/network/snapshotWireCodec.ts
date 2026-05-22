@@ -29,6 +29,14 @@ import {
   packProjectilesForWire,
   unpackProjectilesFromWire,
 } from './snapshotProjectileWirePack';
+import {
+  isPackedBuildabilityGridWire,
+  isPackedTerrainTileMapWire,
+  packBuildabilityForWire,
+  packTerrainForWire,
+  unpackBuildabilityFromWire,
+  unpackTerrainFromWire,
+} from './snapshotStaticWirePack';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 // Snapshot DTOs are pooled, so optional fields stay as own properties
@@ -197,11 +205,15 @@ export function packNetworkSnapshotForWire(
   const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
   const packedProjectiles = packProjectilesForWire(state.projectiles);
   const packedEntities = packEntitiesForWire(state.entities);
+  const packedTerrain = packTerrainForWire(state.terrain);
+  const packedBuildability = packBuildabilityForWire(state.buildability);
   if (
     packedAudioEvents === undefined &&
     packedMinimapEntities === undefined &&
     packedProjectiles === undefined &&
-    packedEntities === undefined
+    packedEntities === undefined &&
+    packedTerrain === undefined &&
+    packedBuildability === undefined
   ) {
     return state as NetworkServerSnapshotWire;
   }
@@ -211,6 +223,8 @@ export function packNetworkSnapshotForWire(
   if (packedMinimapEntities !== undefined) wire.minimapEntities = packedMinimapEntities;
   if (packedProjectiles !== undefined) wire.projectiles = packedProjectiles;
   if (packedEntities !== undefined) wire.entities = packedEntities;
+  if (packedTerrain !== undefined) wire.terrain = packedTerrain;
+  if (packedBuildability !== undefined) wire.buildability = packedBuildability;
   return wire;
 }
 
@@ -221,16 +235,22 @@ function unpackNetworkSnapshotFromWire(
   const minimapEntities = state.minimapEntities;
   const projectiles = state.projectiles;
   const entities = state.entities;
+  const terrain = state.terrain;
+  const buildability = state.buildability;
   const hasPackedAudioEvents = isPackedAudioEventsWire(audioEvents);
   const hasPackedMinimapEntities = isPackedMinimapEntitiesWire(minimapEntities);
   const hasPackedProjectiles = isPackedProjectileSnapshotWire(projectiles);
   const hasPackedEntities = isPackedEntitySnapshotWire(entities);
+  const hasPackedTerrain = isPackedTerrainTileMapWire(terrain);
+  const hasPackedBuildability = isPackedBuildabilityGridWire(buildability);
 
   if (
     !hasPackedAudioEvents &&
     !hasPackedMinimapEntities &&
     !hasPackedProjectiles &&
-    !hasPackedEntities
+    !hasPackedEntities &&
+    !hasPackedTerrain &&
+    !hasPackedBuildability
   ) {
     return state as NetworkServerSnapshot;
   }
@@ -247,6 +267,12 @@ function unpackNetworkSnapshotFromWire(
   }
   if (hasPackedEntities) {
     snapshot.entities = unpackEntitiesFromWire(entities);
+  }
+  if (hasPackedTerrain) {
+    snapshot.terrain = unpackTerrainFromWire(terrain);
+  }
+  if (hasPackedBuildability) {
+    snapshot.buildability = unpackBuildabilityFromWire(buildability);
   }
   return snapshot;
 }

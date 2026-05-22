@@ -48,19 +48,27 @@ Evidence:
   msgpack at 17,148 B vs packed msgpack at 4,194 B (75.5% reduction)
   via the offline parity test. A 5-entity representative sample
   measured raw at 822 B vs packed at 198 B (75.9% reduction). Live
-  PLAYER CLIENT DS/FS numbers from the same harness as the previous
-  captures still need to be recorded for the issues log.
-- Audio packing does not solve FULLSNAP bootstrap by itself: the first
-  FULLSNAP in that capture had no audio and stayed unchanged at
-  1,035,135 B. The earlier fixed-point capture showed a 1,076,601 B
-  FULLSNAP bootstrap. Minimap packed rows moved the later
-  minimap/projectile capture's FULLSNAP bootstrap from 1,082,261 B to
-  1,069,273 B, but static/keyframe sections still need a fresh targeted
-  capture and structural work.
-- After audio, minimap, projectile, and entity packing, the remaining
-  DIFFSNAP / FULLSNAP targets are the FULLSNAP terrain + buildability
-  static sections, and a fresh PLAYER CLIENT capture to confirm the
-  entity-packing win at 1k / 5k unit counts.
+  2026-05-22 PLAYER CLIENT capture against the same 5-player demo /
+  cap 243 / 32 SPS harness measured DIFFSNAP at 13,664 B avg /
+  27,054 B hi across 445 deltas, and FULLSNAP bootstrap at 961,963 B.
+  The previous audio + minimap + projectile packed-row capture measured
+  49,711 B DIFFSNAP avg / 98,067 B hi and 1,069,273 B FULLSNAP
+  bootstrap.
+- The 2026-05-22 static terrain/buildability packed-row capture attacks
+  the remaining FULLSNAP static sections. FULLSNAP bootstrap moved from
+  961,963 B to 291,265 B. The `buildability` section moved from
+  561,920 B to 11,933 B via exact run-length triples over flag/level
+  cell pairs, and the `terrain` section moved from 357,285 B to
+  236,331 B via compact binary numeric slabs. Static decode smoke
+  passed: buildability flags/levels and all terrain integer arrays
+  round-tripped exactly; Float32 terrain coord/height drift stayed
+  below 0.0005 world units. DIFFSNAP stayed effectively unchanged
+  at 13,803 B avg / 28,072 B hi across 441 deltas.
+- After audio, minimap, projectile, entity, terrain, and buildability
+  packing, the cap-243 harness is well inside both the 64 KiB DS avg /
+  128 KiB DS hi and the 1 MiB FS targets. The remaining proof is a
+  fresh PLAYER CLIENT capture at the 1,000 / 5,000-unit rows against
+  the same network budgets.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
@@ -70,10 +78,7 @@ budget pass, and the 1,000 / 5,000-unit rows still need to be proven
 against the same network budgets.
 
 Fix direction:
-Do child items as separate, measurable PRs. The remaining priorities
-are: (1) capture live PLAYER CLIENT DS/FS bytes for the entity pack
-change against the same 5-player demo / cap 243 / 32 SPS setup as the
-prior captures, (2) attack the FULLSNAP terrain + buildability static
-sections. Each item must report before/after DS SIZE and FS SIZE
-numbers from the PLAYER CLIENT bar, preferably with the same unit
-count and snapshot cadence.
+Do child items as separate, measurable PRs. The remaining priority is
+to rerun the PLAYER CLIENT DS/FS capture matrix at the 1,000 / 5,000
+unit rows and record the same DS SIZE / FS SIZE avg + hi numbers
+against the documented network budgets.

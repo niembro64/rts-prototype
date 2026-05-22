@@ -378,8 +378,61 @@ Round-trip parity passed for all five entity classes in the smoke test
 `unpackEntitiesFromWire`).
 
 The synthetic 170-entity sample is intentionally close to the 18.6 KiB
-`entities` average measured on the prior fixed-point DIFFSNAP capture, so
-a real PLAYER CLIENT capture should land near the same 75% reduction when
-re-run against the 5-player / cap 243 / 32 SPS harness used for the
-audio, minimap, and projectile pack captures. That live capture is the
-next follow-up — see `SNAP-WIRE-01` in `issues.txt`.
+`entities` average measured on the prior fixed-point DIFFSNAP capture. The live
+PLAYER CLIENT capture below confirms the expected reduction against the
+5-player / cap 243 / 32 SPS harness used for the audio, minimap, and projectile
+pack captures.
+
+Live PLAYER CLIENT capture:
+
+- Run date: 2026-05-22
+- Harness: headless Chrome via Playwright, importing `GameServer` and
+  `LocalGameConnection` from Vite without starting the renderer. The local
+  listener was marked ready before `server.start()` so the capture measured the
+  post-startup delta stream.
+- Scenario: five-player demo battle, cap 243, observed from player 1, fog
+  disabled, debug grid disabled, keyframes disabled, host snapshot cap 32/sec,
+  `terrainCenter=flat`, `terrainDividers=mountain`, `terrainMapShape=circle`,
+  all background unit types enabled.
+
+| Stream | Seconds | Samples | Units Avg | Packed avg | Packed hi | Prior packed avg | Prior packed hi |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FULLSNAP bootstrap | - | 1 | 245 | 961,963 B | 961,963 B | 1,069,273 B | 1,069,273 B |
+| DIFFSNAP steady state | 23.7 | 445 | 225 | 13,664 B | 27,054 B | 49,711 B | 98,067 B |
+
+The prior packed columns are the audio + minimap + projectile packed-row
+capture immediately above. In the entity-packed delta capture, the latest
+section breakdown showed `entities` at 3,910 B, behind `audioEvents` at 4,482 B
+and ahead of `projectiles` at 1,291 B. The first FULLSNAP was still dominated
+by static sections: `buildability` 561,920 B and `terrain` 357,285 B.
+
+### Static Terrain / Buildability Packed Rows
+
+Run date: 2026-05-22
+
+The wire path now packs the static FULLSNAP-only map sections before
+MessagePack encoding:
+
+- `buildability` uses exact run-length triples over `(flag, level)` cell pairs.
+- `terrain` uses compact binary numeric slabs: Float32 vertex coords/heights,
+  Uint16 indices/offsets, Int16 neighbor indices, and Int8 level arrays.
+
+Capture setup matched the live entity-packed capture above.
+
+| Stream | Seconds | Samples | Units Avg | Static-packed avg | Static-packed hi | Entity-packed avg | Entity-packed hi |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FULLSNAP bootstrap | - | 1 | 245 | 291,265 B | 291,265 B | 961,963 B | 961,963 B |
+| DIFFSNAP steady state | 23.7 | 441 | 228 | 13,803 B | 28,072 B | 13,664 B | 27,054 B |
+
+FULLSNAP section movement:
+
+| Section | Entity-packed | Static-packed | Saved |
+| --- | ---: | ---: | ---: |
+| `buildability` | 561,920 B | 11,933 B | 549,987 B |
+| `terrain` | 357,285 B | 236,331 B | 120,954 B |
+
+Static decode smoke passed through
+`encodeNetworkSnapshot` -> `decodeNetworkSnapshot`: buildability flags/levels
+and all terrain integer arrays round-tripped exactly. Float32 terrain slabs had
+max absolute drift of 0.000480 world units for vertex coordinates and 0.000031
+world units for heights.
