@@ -446,6 +446,19 @@ const fullSnapBarTarget = computed(() => {
   if (kf === 'ALL') return sps;
   return Math.max(0.1, sps * (kf as number));
 });
+const remoteSnapshotClientCount = computed(() =>
+  Math.max(0, lobbyPlayerCount.value - 1),
+);
+const snapshotMbpsPerClient = computed(() => {
+  const diffSnapAvgRate = Math.max(0, snapAvgRate.value - fullSnapAvgRate.value);
+  const bytesPerSec =
+    diffSnapSizeAvgBytes.value * diffSnapAvgRate +
+    fullSnapSizeAvgBytes.value * fullSnapAvgRate.value;
+  return Math.max(0, (bytesPerSec * 8) / 1_000_000);
+});
+const snapshotMbpsHostTotal = computed(() =>
+  snapshotMbpsPerClient.value * remoteSnapshotClientCount.value,
+);
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.grid ?? loadStoredGrid(currentBattleMode.value),
 );
@@ -751,6 +764,9 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   diffSnapSizeHiBytes: diffSnapSizeHiBytes.value,
   fullSnapSizeAvgBytes: fullSnapSizeAvgBytes.value,
   fullSnapSizeHiBytes: fullSnapSizeHiBytes.value,
+  snapshotMbpsPerClient: snapshotMbpsPerClient.value,
+  snapshotMbpsHostTotal: snapshotMbpsHostTotal.value,
+  remoteSnapshotClientCount: remoteSnapshotClientCount.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
@@ -849,6 +865,9 @@ watchEffect(() => {
   m.diffSnapSizeHiBytes = diffSnapSizeHiBytes.value;
   m.fullSnapSizeAvgBytes = fullSnapSizeAvgBytes.value;
   m.fullSnapSizeHiBytes = fullSnapSizeHiBytes.value;
+  m.snapshotMbpsPerClient = snapshotMbpsPerClient.value;
+  m.snapshotMbpsHostTotal = snapshotMbpsHostTotal.value;
+  m.remoteSnapshotClientCount = remoteSnapshotClientCount.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;

@@ -101,6 +101,9 @@ export type GameCanvasClientControlBarModel = {
   readonly diffSnapSizeHiBytes: number;
   readonly fullSnapSizeAvgBytes: number;
   readonly fullSnapSizeHiBytes: number;
+  readonly snapshotMbpsPerClient: number;
+  readonly snapshotMbpsHostTotal: number;
+  readonly remoteSnapshotClientCount: number;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;

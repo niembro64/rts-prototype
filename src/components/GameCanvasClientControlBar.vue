@@ -13,6 +13,8 @@ import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
 const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
 const FULLSNAP_REASONABLE_BYTES = 1024 * 1024;
 const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
+const SNAPSHOT_MBPS_REASONABLE_BUDGET =
+  ((DIFFSNAP_REASONABLE_BYTES * 30) + FULLSNAP_REASONABLE_BYTES) * 8 / 1_000_000;
 
 function snapshotSizeTargetRatio(bytes: number, reasonableBytes: number): number {
   if (!Number.isFinite(bytes) || !Number.isFinite(reasonableBytes) || reasonableBytes <= 0) {
@@ -29,6 +31,21 @@ function fmtRatio4(value: number): string {
   const kilo = value / 1000;
   if (kilo < 9.95) return `${Math.round(kilo)}k`;
   return '9k';
+}
+
+function fmtMbps4(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value < 0.095) return value.toFixed(2);
+  if (value < 9.95) return value.toFixed(1).replace(/\.0$/, '');
+  if (value < 999.5) return `${Math.round(value)}`;
+  return '999';
+}
+
+function snapshotHostMbpsBudget(remoteClientCount: number): number {
+  return Math.max(
+    SNAPSHOT_MBPS_REASONABLE_BUDGET,
+    SNAPSHOT_MBPS_REASONABLE_BUDGET * remoteClientCount,
+  );
 }
 
 defineProps<{
@@ -371,6 +388,41 @@ defineProps<{
                   msBarStyle(
                     snapshotSizeTargetRatio(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES),
                     SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
+                  )
+                "
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel :title="`Estimated snapshot upstream: ((DIFFSNAP avg bytes x DIFFSNAP avg rate) + (FULLSNAP avg bytes x FULLSNAP avg rate)) x 8. Host total multiplies by ${model.remoteSnapshotClientCount} remote client(s). WebRTC framing, retransmits, and congestion overhead are not included.`">NET:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtMbps4(model.snapshotMbpsPerClient) }}</span>
+              <span class="fps-label">each</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.snapshotMbpsPerClient, SNAPSHOT_MBPS_REASONABLE_BUDGET)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtMbps4(model.snapshotMbpsHostTotal) }}</span>
+              <span class="fps-label">host</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="
+                  msBarStyle(
+                    model.snapshotMbpsHostTotal,
+                    snapshotHostMbpsBudget(model.remoteSnapshotClientCount),
                   )
                 "
               ></div>

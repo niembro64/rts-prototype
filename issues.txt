@@ -41,29 +41,6 @@ Do the child items below as separate, measurable PRs. Each item must
 report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
 bar, preferably with the same unit count and snapshot cadence.
 
-SNAP-WIRE-01.4 - split high-frequency entity detail channels from core
-                 movement updates.
-------------------------------------------------------------------------------
-
-What:
-DIFFSNAPs should prioritize core simulation state: id, position,
-rotation, velocity, health/removal, and necessary targeting changes.
-Detail channels such as suspension, surface normals, turret pose,
-factory/build detail, force-field range, and other cosmetic or
-slow-changing fields can often be sent less frequently or with larger
-thresholds.
-
-Fix:
-Audit ENTITY_CHANGED_* producers and consumers. Introduce separate
-cadence/threshold rules for high-frequency detail fields so they do
-not dirty an entity at 30 Hz unless gameplay correctness requires it.
-
-Done when:
-A 200-unit moving battle sends fewer changed entity records per
-DIFFSNAP without visible jitter or prediction regressions in core unit
-movement.
-
-------------------------------------------------------------------------------
 SNAP-WIRE-01.5 - tune observed-entity delta thresholds separately from
                  owned/allied entities.
 ------------------------------------------------------------------------------
@@ -208,27 +185,6 @@ apply targeted reductions:
 Done when:
 Projectile-heavy battles have bounded DIFFSNAP size without missing
 visible shots, beams, or important incoming-fire feedback.
-
-------------------------------------------------------------------------------
-SNAP-WIRE-01.11 - add per-client upstream budget telemetry.
-------------------------------------------------------------------------------
-
-What:
-DS SIZE and FS SIZE show payload size, but the host needs a direct
-network-budget number: estimated Mbps per remote client and total
-snapshot Mbps across all connected clients.
-
-Fix:
-Compute and display or log:
-  (diffsnap_avg_bytes * effective_diffsnap_rate +
-   fullsnap_avg_bytes * effective_fullsnap_rate) * 8
-per client, plus host total = per-client estimate * remote listener
-count. Include WebRTC overhead caveat in tooltip/log text.
-
-Done when:
-When DS SIZE or FS SIZE is high, the UI/diagnostic output also shows
-the approximate Mbps impact so we can judge whether a snapshot payload
-is actually internet-safe.
 
 ------------------------------------------------------------------------------
 SNAP-WIRE-01.12 - define acceptance budgets for snapshot-size work.
