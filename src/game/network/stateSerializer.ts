@@ -309,6 +309,7 @@ export function serializeGameState(
       for (const id of _removedIdsBuf) {
         tracking.prevEntityIds.delete(id);
         tracking.prevStates.delete(id);
+        tracking.deferredDetailFields.delete(id);
         if (baselineSim !== undefined && baselineHandle !== undefined) {
           const slot = spatialGrid.getSlot(id);
           if (slot >= 0) baselineSim.snapshotBaseline.unsetSlot(baselineHandle, slot);
