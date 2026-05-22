@@ -41,6 +41,15 @@ Evidence:
   projectiles moved from 9,397 B avg to 3,397 B avg. Packed decode had
   zero minimap/projectile count mismatches across 181 captured
   snapshots.
+- The 2026-05-22 entity packed-row code-path lands per-entity flag/row
+  packing for the `entities` top-level key. A synthetic 170-entity
+  delta-shaped sample (100 pos+vel-only units, 50 keyframe buildings,
+  20 hover units with orientation + angular velocity) measured raw
+  msgpack at 17,148 B vs packed msgpack at 4,194 B (75.5% reduction)
+  via the offline parity test. A 5-entity representative sample
+  measured raw at 822 B vs packed at 198 B (75.9% reduction). Live
+  PLAYER CLIENT DS/FS numbers from the same harness as the previous
+  captures still need to be recorded for the issues log.
 - Audio packing does not solve FULLSNAP bootstrap by itself: the first
   FULLSNAP in that capture had no audio and stayed unchanged at
   1,035,135 B. The earlier fixed-point capture showed a 1,076,601 B
@@ -48,10 +57,10 @@ Evidence:
   minimap/projectile capture's FULLSNAP bootstrap from 1,082,261 B to
   1,069,273 B, but static/keyframe sections still need a fresh targeted
   capture and structural work.
-- After audio, minimap, and projectile packing, the next likely
-  DIFFSNAP target is entity row structure. Further wins need entity
-  row packing, FULLSNAP/static section budgets, and section-specific
-  work rather than generic transport compression.
+- After audio, minimap, projectile, and entity packing, the remaining
+  DIFFSNAP / FULLSNAP targets are the FULLSNAP terrain + buildability
+  static sections, and a fresh PLAYER CLIENT capture to confirm the
+  entity-packing win at 1k / 5k unit counts.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
@@ -61,9 +70,10 @@ budget pass, and the 1,000 / 5,000-unit rows still need to be proven
 against the same network budgets.
 
 Fix direction:
-Do child items as separate, measurable PRs. Prioritize structural
-compression in the largest remaining sections: entity rows and
-FULLSNAP keyframe/static sections.
-Each item must report before/after DS SIZE and FS SIZE numbers from the
-PLAYER CLIENT bar, preferably with the same unit count and snapshot
-cadence.
+Do child items as separate, measurable PRs. The remaining priorities
+are: (1) capture live PLAYER CLIENT DS/FS bytes for the entity pack
+change against the same 5-player demo / cap 243 / 32 SPS setup as the
+prior captures, (2) attack the FULLSNAP terrain + buildability static
+sections. Each item must report before/after DS SIZE and FS SIZE
+numbers from the PLAYER CLIENT bar, preferably with the same unit
+count and snapshot cadence.

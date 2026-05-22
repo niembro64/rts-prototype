@@ -335,3 +335,51 @@ Section detail for the same DIFFSNAP rows:
 
 Packed decode reported zero minimap/projectile count mismatches across the 181
 captured snapshots.
+
+### Entity Packed Rows
+
+Run date: 2026-05-22
+
+The wire path now packs each `NetworkServerSnapshotEntity` into a flat,
+flag-headed array on the outbound wire. Per entity:
+
+- A header byte/word carries which optional fields follow (pos, rotation,
+  changedFields, unit subobject, building subobject, plus the binary
+  unit/building discriminator).
+- `pos`, `velocity`, `surfaceNormal`, `suspension.offset`, `suspension.velocity`,
+  `orientation`, `angularVelocity3`, `hp`, `radius`, `dim`, `build.paid`,
+  action `pos` / `grid`, turret `angular`, and waypoint `pos` are each
+  written as flat numeric tuples instead of `{x,y,z}` / `{curr,max}` /
+  `{rot,vel,pitch,pitchVel}` objects. Property-name overhead disappears.
+- Booleans that only ever ride as `true` (`fireEnabled: false`,
+  `isCommander: true`, `solar.open`, `factory.producing`, `build.complete`,
+  `legContact`, `pathExp`) move into the per-section flag header instead of
+  occupying their own msgpack key + value pair.
+- Optional subobjects (`actions`, `turrets`, `factory`, `solar`,
+  `metalExtractionRate`, etc.) are gated by header flag bits, so absence
+  costs only the bit, not a key/value pair.
+
+When `state.entities` arrives packed at the Rust encoder, the encoder
+returns null and the JS msgpack path emits the snapshot. The packed shape
+is the source of the byte win; the host loses Rust's per-entity envelope
+speed on packed snapshots but the rest of the snapshot still walks the
+Rust path on subsequent runs that haven't moved entities yet.
+
+Offline parity capture (no live harness yet — only synthetic samples
+encoded through `@msgpack/msgpack` directly):
+
+| Sample | Raw msgpack | Packed msgpack | Saved |
+| --- | ---: | ---: | ---: |
+| 5-entity representative (full-detail building, sparse-delta unit, hover unit, bare entity, unit with actions/turrets/build) | 822 B | 198 B | 624 B (75.9%) |
+| Synthetic 170-entity DIFFSNAP shape (100 pos+vel-only units, 50 keyframe buildings, 20 hover units with orientation + angular velocity) | 17,148 B | 4,194 B | 12,954 B (75.5%) |
+
+Round-trip parity passed for all five entity classes in the smoke test
+(`packEntitiesForWire` → `msgpackEncode` → `msgpackDecode` →
+`unpackEntitiesFromWire`).
+
+The synthetic 170-entity sample is intentionally close to the 18.6 KiB
+`entities` average measured on the prior fixed-point DIFFSNAP capture, so
+a real PLAYER CLIENT capture should land near the same 75% reduction when
+re-run against the 5-player / cap 243 / 32 SPS harness used for the
+audio, minimap, and projectile pack captures. That live capture is the
+next follow-up — see `SNAP-WIRE-01` in `issues.txt`.

@@ -15,6 +15,11 @@ import {
   isPackedAudioEventsWire,
 } from './snapshotAudioWirePack';
 import {
+  isPackedEntitySnapshotWire,
+  packEntitiesForWire,
+  unpackEntitiesFromWire,
+} from './snapshotEntityWirePack';
+import {
   isPackedMinimapEntitiesWire,
   packMinimapEntitiesForWire,
   unpackMinimapEntitiesFromWire,
@@ -191,10 +196,12 @@ export function packNetworkSnapshotForWire(
   const packedAudioEvents = packAudioEventsForWire(state.audioEvents);
   const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
   const packedProjectiles = packProjectilesForWire(state.projectiles);
+  const packedEntities = packEntitiesForWire(state.entities);
   if (
     packedAudioEvents === undefined &&
     packedMinimapEntities === undefined &&
-    packedProjectiles === undefined
+    packedProjectiles === undefined &&
+    packedEntities === undefined
   ) {
     return state as NetworkServerSnapshotWire;
   }
@@ -203,6 +210,7 @@ export function packNetworkSnapshotForWire(
   if (packedAudioEvents !== undefined) wire.audioEvents = packedAudioEvents;
   if (packedMinimapEntities !== undefined) wire.minimapEntities = packedMinimapEntities;
   if (packedProjectiles !== undefined) wire.projectiles = packedProjectiles;
+  if (packedEntities !== undefined) wire.entities = packedEntities;
   return wire;
 }
 
@@ -212,11 +220,18 @@ function unpackNetworkSnapshotFromWire(
   const audioEvents = state.audioEvents;
   const minimapEntities = state.minimapEntities;
   const projectiles = state.projectiles;
+  const entities = state.entities;
   const hasPackedAudioEvents = isPackedAudioEventsWire(audioEvents);
   const hasPackedMinimapEntities = isPackedMinimapEntitiesWire(minimapEntities);
   const hasPackedProjectiles = isPackedProjectileSnapshotWire(projectiles);
+  const hasPackedEntities = isPackedEntitySnapshotWire(entities);
 
-  if (!hasPackedAudioEvents && !hasPackedMinimapEntities && !hasPackedProjectiles) {
+  if (
+    !hasPackedAudioEvents &&
+    !hasPackedMinimapEntities &&
+    !hasPackedProjectiles &&
+    !hasPackedEntities
+  ) {
     return state as NetworkServerSnapshot;
   }
 
@@ -229,6 +244,9 @@ function unpackNetworkSnapshotFromWire(
   }
   if (hasPackedProjectiles) {
     snapshot.projectiles = unpackProjectilesFromWire(projectiles);
+  }
+  if (hasPackedEntities) {
+    snapshot.entities = unpackEntitiesFromWire(entities);
   }
   return snapshot;
 }

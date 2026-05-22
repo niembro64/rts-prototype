@@ -62,6 +62,7 @@ import {
 import {
   isPackedAudioEventsWire,
 } from './snapshotAudioWirePack';
+import { isPackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { isPackedMinimapEntitiesWire } from './snapshotMinimapWirePack';
 import { isPackedProjectileSnapshotWire } from './snapshotProjectileWirePack';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
@@ -1850,6 +1851,14 @@ export function encodeNetworkSnapshotWithRustFallback(
   }
   const keys = _snapshotKeys;
   if (keys[0] !== 'tick' || keys[1] !== 'entities') return null;
+
+  // Packed entities ship as a small object, not an array of per-entity
+  // DTOs. The Rust envelope API expects a concrete entity count and
+  // per-entity calls, so when entities are pre-packed by the wire codec
+  // we bail out and let JS msgpack encode the whole snapshot. The
+  // bytes-saved still flows through because the packed shape is what
+  // ultimately hits the wire.
+  if (isPackedEntitySnapshotWire(state.entities)) return null;
 
   const api = sim.snapshotEncode;
   api.envelopeBegin(state.tick, state.entities.length, keys.length);
