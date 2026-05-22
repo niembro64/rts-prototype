@@ -21,6 +21,7 @@ const HEX_CORNER_START_ANGLE = Math.PI / 6;
  *  matches the rendered pyramid sides. */
 const PYRAMID_TOP_RADIUS_FRACTION = 0.17;
 const PYRAMID_BOTTOM_RADIUS_FRACTION = 0.5;
+const EXTRACTOR_PANEL_EXTRUSION_SCALE = 4;
 /** Closed-pose stand-off from the pyramid surface (in world units). Push
  *  the folded blades a small distance OUTWARD along the face normal so
  *  they don't z-fight with the pyramid body and so the slightly-thick
@@ -106,7 +107,7 @@ export function buildMetalExtractorMesh(
 
   const bladeLen = Math.max(32, minDim * 0.86);
   const bladeThickness = Math.max(4.5, minDim * 0.11);
-  const panelThickness = Math.max(1.2, bladeThickness * 0.25);
+  const panelThickness = Math.max(1.2, bladeThickness * 0.25) * EXTRACTOR_PANEL_EXTRUSION_SCALE;
   const bladeRootRadius = Math.max(ratePillarRadius * 2.2, minDim * 0.28);
 
   // Simple rotor — all six blades remain visible and rotating so the

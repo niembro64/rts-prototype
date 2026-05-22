@@ -67,6 +67,8 @@ type ProjectileTailHistory = {
   // Velocity at the time history.x0/y0/z0 was recorded. Used to detect
   // reflections by comparing against the projectile's current velocity.
   vx0: number; vy0: number; vz0: number;
+  reflectionAnchorX?: number; reflectionAnchorY?: number; reflectionAnchorZ?: number;
+  preReflectionX?: number; preReflectionY?: number; preReflectionZ?: number;
 };
 
 type DynamicCurvedConeGeometry = {
@@ -393,17 +395,17 @@ export class ProjectileRenderer3D {
       // Even on first sight, a reflection event for this id means the
       // bounce point should anchor the tail.
       if (reflectionX !== undefined && reflectionY !== undefined && reflectionZ !== undefined) {
-        anchorTailAtReflection(history, x, y, z, vx, vy, vz, nowMs, reflectionX, reflectionY, reflectionZ);
+        anchorTailAtReflection(history, x, y, z, vx, vy, vz, nowMs, reflectionX, reflectionY, reflectionZ, false);
       }
       return history;
     }
 
     // Explicit reflection signal from the sim: anchor the trailing
-    // samples at the actual collision point on the force-field sphere
-    // or mirror panel, then record the current post-reflection position
-    // as the newest sample.
+    // samples at the actual collision point and keep the last
+    // pre-reflection sample as the older parabola point while the
+    // visible tail still reaches back through the bounce.
     if (reflectionX !== undefined && reflectionY !== undefined && reflectionZ !== undefined) {
-      anchorTailAtReflection(history, x, y, z, vx, vy, vz, nowMs, reflectionX, reflectionY, reflectionZ);
+      anchorTailAtReflection(history, x, y, z, vx, vy, vz, nowMs, reflectionX, reflectionY, reflectionZ, true);
       return history;
     }
 
@@ -426,6 +428,7 @@ export class ProjectileRenderer3D {
         history.x1 = x; history.y1 = y; history.z1 = z; history.t1 = nowMs;
         history.x2 = x; history.y2 = y; history.z2 = z; history.t2 = nowMs;
         history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
+        clearTailReflectionAnchors(history);
         return history;
       }
     }
@@ -467,28 +470,59 @@ export class ProjectileRenderer3D {
     let candidateBy = fallbackAxisY;
     let candidateBz = fallbackSlopeZ;
     let fitValid = false;
+    let sampleCount = history.samples;
+    let sample1X = history.x1;
+    let sample1Y = history.y1;
+    let sample1Z = history.z1;
+    let sample2X = history.x2;
+    let sample2Y = history.y2;
+    let sample2Z = history.z2;
 
-    if (history.samples >= 3) {
-      let axisX = history.x2 - history.x0;
-      let axisY = history.y2 - history.y0;
+    if (
+      history.reflectionAnchorX !== undefined &&
+      history.reflectionAnchorY !== undefined &&
+      history.reflectionAnchorZ !== undefined &&
+      history.preReflectionX !== undefined &&
+      history.preReflectionY !== undefined &&
+      history.preReflectionZ !== undefined
+    ) {
+      const anchorDx = history.reflectionAnchorX - history.x0;
+      const anchorDy = history.reflectionAnchorY - history.y0;
+      const anchorDz = history.reflectionAnchorZ - history.z0;
+      if (Math.hypot(anchorDx, anchorDy, anchorDz) < length) {
+        sampleCount = 3;
+        sample1X = history.reflectionAnchorX;
+        sample1Y = history.reflectionAnchorY;
+        sample1Z = history.reflectionAnchorZ;
+        sample2X = history.preReflectionX;
+        sample2Y = history.preReflectionY;
+        sample2Z = history.preReflectionZ;
+      } else {
+        clearTailReflectionAnchors(history);
+      }
+    }
+
+    if (sampleCount >= 3) {
+      let axisX = sample2X - history.x0;
+      let axisY = sample2Y - history.y0;
       let axisLen = Math.hypot(axisX, axisY);
       if (axisLen <= TAIL_HISTORY_MIN_FIT_DISTANCE) {
-        axisX = history.x1 - history.x0;
-        axisY = history.y1 - history.y0;
+        axisX = sample1X - history.x0;
+        axisY = sample1Y - history.y0;
         axisLen = Math.hypot(axisX, axisY);
       }
 
       if (axisLen > TAIL_HISTORY_MIN_FIT_DISTANCE) {
         axisX /= axisLen;
         axisY /= axisLen;
-        const q1 = (history.x1 - history.x0) * axisX +
-          (history.y1 - history.y0) * axisY;
-        const q2 = (history.x2 - history.x0) * axisX +
-          (history.y2 - history.y0) * axisY;
+        const q1 = (sample1X - history.x0) * axisX +
+          (sample1Y - history.y0) * axisY;
+        const q2 = (sample2X - history.x0) * axisX +
+          (sample2Y - history.y0) * axisY;
 
         if (q1 > TAIL_HISTORY_MIN_FIT_DISTANCE && q2 > q1 + TAIL_HISTORY_MIN_FIT_DISTANCE) {
-          const z1 = history.z1 - history.z0;
-          const z2 = history.z2 - history.z0;
+          const z1 = sample1Z - history.z0;
+          const z2 = sample2Z - history.z0;
           const denom = q1 * q2 * (q2 - q1);
           if (Math.abs(denom) > 1e-9) {
             candidateAz = (z2 * q1 - z1 * q2) / denom;
@@ -507,9 +541,9 @@ export class ProjectileRenderer3D {
       // fallback, so a freshly-anchored tail points straight at the
       // actual collision point on the reflector instead of along the
       // outgoing trajectory.
-      const anchorDx = history.x1 - history.x0;
-      const anchorDy = history.y1 - history.y0;
-      const anchorDz = history.z1 - history.z0;
+      const anchorDx = sample1X - history.x0;
+      const anchorDy = sample1Y - history.y0;
+      const anchorDz = sample1Z - history.z0;
       const anchorHorizLen = Math.hypot(anchorDx, anchorDy);
       if (anchorHorizLen > TAIL_HISTORY_MIN_FIT_DISTANCE) {
         const inv = 1 / anchorHorizLen;
@@ -772,17 +806,47 @@ function anchorTailAtReflection(
   vx: number, vy: number, vz: number,
   nowMs: number,
   reflectionX: number, reflectionY: number, reflectionZ: number,
+  hasPreReflectionSample: boolean,
 ): void {
+  const preReflectionX = history.x0;
+  const preReflectionY = history.y0;
+  const preReflectionZ = history.z0;
+  const preReflectionDx = preReflectionX - reflectionX;
+  const preReflectionDy = preReflectionY - reflectionY;
+  const preReflectionDz = preReflectionZ - reflectionZ;
+  const hasUsablePreReflectionSample = hasPreReflectionSample &&
+    preReflectionDx * preReflectionDx +
+    preReflectionDy * preReflectionDy +
+    preReflectionDz * preReflectionDz > TAIL_HISTORY_MIN_MOVE_SQ;
+
   // Newest sample = current post-reflection projectile position.
   history.x0 = x; history.y0 = y; history.z0 = z; history.t0 = nowMs;
-  // Older samples pinned at the actual contact point on the reflector,
-  // so the straight tail emerges from there until new samples land.
   history.x1 = reflectionX; history.y1 = reflectionY; history.z1 = reflectionZ;
   history.t1 = nowMs;
-  history.x2 = reflectionX; history.y2 = reflectionY; history.z2 = reflectionZ;
+  if (hasUsablePreReflectionSample) {
+    history.x2 = preReflectionX; history.y2 = preReflectionY; history.z2 = preReflectionZ;
+    history.reflectionAnchorX = reflectionX;
+    history.reflectionAnchorY = reflectionY;
+    history.reflectionAnchorZ = reflectionZ;
+    history.preReflectionX = preReflectionX;
+    history.preReflectionY = preReflectionY;
+    history.preReflectionZ = preReflectionZ;
+  } else {
+    history.x2 = reflectionX; history.y2 = reflectionY; history.z2 = reflectionZ;
+    clearTailReflectionAnchors(history);
+  }
   history.t2 = nowMs;
   history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
-  history.samples = 2;
+  history.samples = hasUsablePreReflectionSample ? 3 : 2;
+}
+
+function clearTailReflectionAnchors(history: ProjectileTailHistory): void {
+  history.reflectionAnchorX = undefined;
+  history.reflectionAnchorY = undefined;
+  history.reflectionAnchorZ = undefined;
+  history.preReflectionX = undefined;
+  history.preReflectionY = undefined;
+  history.preReflectionZ = undefined;
 }
 
 function verticalParabolaArcPrimitive(slope: number): number {
