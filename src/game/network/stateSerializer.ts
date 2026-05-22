@@ -156,6 +156,7 @@ export type SerializeGameStateOptions = {
   audioOverride?: SerializerAudioOverride;
   sprayOverride?: SerializerSprayOverride;
   minimapOverride?: SerializerMinimapOverride;
+  emitProjectileDetailFields?: boolean;
 };
 
 export type SerializerAudioOverride = {
@@ -591,6 +592,7 @@ export function serializeGameState(
     world,
     deltaEnabled,
     visibility,
+    emitBeamUpdates: options?.emitProjectileDetailFields !== false,
     projectileSpawns,
     projectileDespawns,
     projectileVelocityUpdates,

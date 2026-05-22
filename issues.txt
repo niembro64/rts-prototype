@@ -40,29 +40,3 @@ Fix direction:
 Do the child items below as separate, measurable PRs. Each item must
 report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
 bar, preferably with the same unit count and snapshot cadence.
-
-SNAP-WIRE-01.10 - make projectile and beam updates budget-aware.
-------------------------------------------------------------------------------
-
-Where:
-- src/game/network/stateSerializerProjectiles.ts emits projectile
-  spawns, despawns, velocityUpdates, and beamUpdates.
-
-What:
-Projectile and beam payloads can grow quickly during combat. Beam
-points are particularly expensive because each path can include many
-position/velocity/normal fields.
-
-Fix:
-Measure projectile/beam byte contribution via SNAP-WIRE-01.1. Then
-apply targeted reductions:
-- lower-rate velocity updates where client prediction can coast,
-- cap or quantize beam path detail,
-- omit fields that can be derived by the client,
-- coarsen off-screen/out-of-vision projectile detail.
-
-Done when:
-Projectile-heavy battles have bounded DIFFSNAP size without missing
-visible shots, beams, or important incoming-fire feedback.
-
-------------------------------------------------------------------------------

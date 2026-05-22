@@ -98,6 +98,7 @@ export class ServerSnapshotPublisher {
   private snapshotCounter = 0;
   private minimapSnapshotCounter = 0;
   private entityDetailSnapshotCounter = 0;
+  private projectileDetailSnapshotCounter = 0;
   private staticResyncToken = 0;
 
   reset(): void {
@@ -105,6 +106,7 @@ export class ServerSnapshotPublisher {
     this.snapshotCounter = 0;
     this.minimapSnapshotCounter = 0;
     this.entityDetailSnapshotCounter = 0;
+    this.projectileDetailSnapshotCounter = 0;
   }
 
   forceNextKeyframe(includeStatic = false): void {
@@ -130,6 +132,9 @@ export class ServerSnapshotPublisher {
     const emitEntityDetailsOnDelta = isDelta
       ? this.resolveEntityDetailDeltaEmit(input.maxSnapshotsDisplay)
       : this.resolveEntityDetailKeyframeEmit();
+    const emitProjectileDetailsOnDelta = isDelta
+      ? this.resolveProjectileDetailDeltaEmit(input.maxSnapshotsDisplay)
+      : this.resolveProjectileDetailKeyframeEmit();
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -261,6 +266,7 @@ export class ServerSnapshotPublisher {
         recipientPlayerId: listener.playerId,
         visibility,
         emitEntityDetailFields: shouldEmitEntityDetails,
+        emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
         audioOverride,
         sprayOverride,
         minimapOverride,
@@ -408,6 +414,22 @@ export class ServerSnapshotPublisher {
 
   private resolveEntityDetailKeyframeEmit(): boolean {
     this.entityDetailSnapshotCounter = 0;
+    return true;
+  }
+
+  private resolveProjectileDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {
+    const targetHz = SNAPSHOT_CONFIG.projectileDetailSnapshotRateHz;
+    if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
+    const sourceHz = snapshotRateHz(snapshotRate);
+    const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
+    this.projectileDetailSnapshotCounter++;
+    if (this.projectileDetailSnapshotCounter < interval) return false;
+    this.projectileDetailSnapshotCounter = 0;
+    return true;
+  }
+
+  private resolveProjectileDetailKeyframeEmit(): boolean {
+    this.projectileDetailSnapshotCounter = 0;
     return true;
   }
 

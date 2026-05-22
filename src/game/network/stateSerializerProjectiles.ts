@@ -44,7 +44,8 @@ export const PROJECTILE_SPAWN_WIRE_STRIDE = 27;
 export const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
 export const PROJECTILE_VELOCITY_WIRE_STRIDE = 7;
 export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
-export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 15;
+export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
+const PROJECTILE_BEAM_POINT_CAP = 6;
 
 const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
 const PROJECTILE_SPAWN_FLAG_SHOT_ID = 0x002;
@@ -88,6 +89,7 @@ export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   deltaEnabled: boolean;
   visibility?: SnapshotVisibility;
+  emitBeamUpdates?: boolean;
   projectileSpawns?: ProjectileSpawnEvent[];
   projectileDespawns?: ProjectileDespawnEvent[];
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[];
@@ -136,7 +138,7 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
 }
 
 function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
 }
 
 function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
@@ -362,9 +364,6 @@ export function writeBeamPointWireRow(
   values[base + 3] = point.vx;
   values[base + 4] = point.vy;
   values[base + 5] = point.vz;
-  values[base + 6] = point.ax;
-  values[base + 7] = point.ay;
-  values[base + 8] = point.az;
   let flags = 0;
   if (point.mirrorEntityId !== undefined) flags |= 0x01;
   if (point.reflectorKind !== undefined) {
@@ -375,12 +374,12 @@ export function writeBeamPointWireRow(
   if (point.normalX !== undefined) flags |= 0x10;
   if (point.normalY !== undefined) flags |= 0x20;
   if (point.normalZ !== undefined) flags |= 0x40;
-  values[base + 9] = flags;
-  values[base + 10] = point.mirrorEntityId ?? 0;
-  values[base + 11] = point.reflectorPlayerId ?? 0;
-  values[base + 12] = point.normalX ?? 0;
-  values[base + 13] = point.normalY ?? 0;
-  values[base + 14] = point.normalZ ?? 0;
+  values[base + 6] = flags;
+  values[base + 7] = point.mirrorEntityId ?? 0;
+  values[base + 8] = point.reflectorPlayerId ?? 0;
+  values[base + 9] = point.normalX ?? 0;
+  values[base + 10] = point.normalY ?? 0;
+  values[base + 11] = point.normalZ ?? 0;
 }
 
 function copyBeamPointIntoWireRow(point: NetworkServerSnapshotBeamPoint): void {
@@ -509,10 +508,26 @@ function resetProjectilePools(): void {
   _beamPointPoolIndex = 0;
 }
 
+function getBeamWirePointCount(sourceCount: number): number {
+  return Math.min(sourceCount, PROJECTILE_BEAM_POINT_CAP);
+}
+
+function getBeamWireSourcePointIndex(
+  wireIndex: number,
+  sourceCount: number,
+  wireCount: number,
+): number {
+  if (sourceCount <= wireCount) return wireIndex;
+  if (wireIndex === 0) return 0;
+  if (wireIndex === wireCount - 1) return sourceCount - 1;
+  return wireIndex;
+}
+
 export function serializeProjectileSnapshot({
   world,
   deltaEnabled,
   visibility,
+  emitBeamUpdates = true,
   projectileSpawns,
   projectileDespawns,
   projectileVelocityUpdates,
@@ -684,12 +699,12 @@ export function serializeProjectileSnapshot({
       }
       const out = getPooledVelocityUpdate();
       out.id = vu.id;
-      out._pos.x = vu.pos.x;
-      out._pos.y = vu.pos.y;
-      out._pos.z = vu.pos.z;
-      out._velocity.x = vu.velocity.x;
-      out._velocity.y = vu.velocity.y;
-      out._velocity.z = vu.velocity.z;
+      out._pos.x = qPos(vu.pos.x);
+      out._pos.y = qPos(vu.pos.y);
+      out._pos.z = qPos(vu.pos.z);
+      out._velocity.x = qVel(vu.velocity.x);
+      out._velocity.y = qVel(vu.velocity.y);
+      out._velocity.z = qVel(vu.velocity.z);
       _velUpdateBuf.push(out);
       copyProjectileVelocityUpdateIntoWireRow(out);
     }
@@ -698,7 +713,7 @@ export function serializeProjectileSnapshot({
 
   let netBeamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;
   const lineProjectiles = world.getLineProjectiles();
-  if (lineProjectiles.length > 0) {
+  if (emitBeamUpdates && lineProjectiles.length > 0) {
     _beamUpdateBuf.length = 0;
     for (let i = 0; i < lineProjectiles.length; i++) {
       const entity = lineProjectiles[i];
@@ -713,9 +728,10 @@ export function serializeProjectileSnapshot({
       update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
       update.endpointDamageable = proj.endpointDamageable === false ? false : undefined;
       const dstPts = update.points;
-      dstPts.length = srcPts.length;
-      for (let p = 0; p < srcPts.length; p++) {
-        const sp = srcPts[p];
+      const wirePointCount = getBeamWirePointCount(srcPts.length);
+      dstPts.length = wirePointCount;
+      for (let p = 0; p < wirePointCount; p++) {
+        const sp = srcPts[getBeamWireSourcePointIndex(p, srcPts.length, wirePointCount)];
         const out = getPooledBeamPoint();
         out.x = qPos(sp.x);
         out.y = qPos(sp.y);
@@ -729,14 +745,6 @@ export function serializeProjectileSnapshot({
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
         }
-        // Beam-path point acceleration mirrors the turret-angular-acc
-        // and unit-movement-accel decision: instantaneous force values
-        // are unstable to integrate under arbitrary client dt, so we
-        // omit them from the wire and let the client extrapolate from
-        // velocity alone.
-        out.ax = 0;
-        out.ay = 0;
-        out.az = 0;
         const canReferenceReflector = canReferenceEntityId(world, visibility, sp.mirrorEntityId);
         out.mirrorEntityId = canReferenceReflector ? sp.mirrorEntityId : undefined;
         out.reflectorKind = canReferenceReflector ? sp.reflectorKind : undefined;

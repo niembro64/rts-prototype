@@ -1944,7 +1944,7 @@ export interface SnapshotEncodeApi {
    *  each), despawn ids from projDespawnScratch, velocity-update
    *  tuples from projVelScratch (7 f64 each), beam-update headers
    *  from beamUpdateScratch (4 f64 each, with point_count[3] driving
-   *  the per-update slice of beamPointScratch (15 f64 each)). */
+   *  the per-update slice of beamPointScratch (12 f64 each)). */
   emitProjectiles: (
     hasSpawns: number,
     spawnCount: number,
@@ -2092,7 +2092,7 @@ export interface SnapshotEncodeApi {
   beamUpdateScratchEnsure: (count: number) => void;
   /** Stride per beam-update header (f64 count). */
   readonly beamUpdateScratchStride: number;
-  /** Raw pointer to the beam-point scratch (Float64Array, 15 f64 per
+  /** Raw pointer to the beam-point scratch (Float64Array, 12 f64 per
    *  point — flat across all beam updates in pool order). */
   beamPointScratchPtr: () => number;
   /** Pre-grow the beam-point scratch to hold `count` total points. */
@@ -2655,7 +2655,7 @@ export function initSimWasm(): Promise<SimWasm> {
           beamUpdateScratchStride: 4,
           beamPointScratchPtr: snapshot_encode_beam_point_scratch_ptr,
           beamPointScratchEnsure: snapshot_encode_beam_point_scratch_ensure,
-          beamPointScratchStride: 15,
+          beamPointScratchStride: 12,
           emitScanPulses: snapshot_encode_envelope_emit_scan_pulses,
           scanPulseScratchPtr: snapshot_encode_scan_pulse_scratch_ptr,
           scanPulseScratchEnsure: snapshot_encode_scan_pulse_scratch_ensure,

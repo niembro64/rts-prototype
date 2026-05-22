@@ -23,6 +23,7 @@ export type SnapshotConfig = {
   rotationVelocityThreshold: number;
   minimapSnapshotRateHz: number;
   entityDetailSnapshotRateHz: number;
+  projectileDetailSnapshotRateHz: number;
   ownedEntityDelta: SnapshotDeltaResolutionConfig;
   observedEntityDelta: SnapshotDeltaResolutionConfig;
   fullSnapshotCompression: FullSnapshotCompressionConfig;

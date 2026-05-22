@@ -1366,7 +1366,6 @@ type ProjectileVelocityUpdateFixture = {
 type BeamPointFixture = {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
-  ax: number; ay: number; az: number;
   mirrorEntityId?: number;
   reflectorKind?: 'mirror' | 'forceField';
   reflectorPlayerId?: number;
@@ -1467,7 +1466,7 @@ function packProjVelocityUpdatesIntoScratch(
 }
 
 const BEAM_UPDATE_HEADER_STRIDE = 4;
-const BEAM_POINT_STRIDE = 15;
+const BEAM_POINT_STRIDE = 12;
 
 function packBeamUpdatesIntoScratch(
   memory: WebAssembly.Memory,
@@ -1509,9 +1508,6 @@ function packBeamUpdatesIntoScratch(
       pointView[pb + 3] = pt.vx;
       pointView[pb + 4] = pt.vy;
       pointView[pb + 5] = pt.vz;
-      pointView[pb + 6] = pt.ax;
-      pointView[pb + 7] = pt.ay;
-      pointView[pb + 8] = pt.az;
       let pflags = 0;
       if (pt.mirrorEntityId !== undefined) pflags |= 0x01;
       if (pt.reflectorKind !== undefined) {
@@ -1522,12 +1518,12 @@ function packBeamUpdatesIntoScratch(
       if (pt.normalX !== undefined) pflags |= 0x10;
       if (pt.normalY !== undefined) pflags |= 0x20;
       if (pt.normalZ !== undefined) pflags |= 0x40;
-      pointView[pb + 9] = pflags;
-      pointView[pb + 10] = pt.mirrorEntityId ?? 0;
-      pointView[pb + 11] = pt.reflectorPlayerId ?? 0;
-      pointView[pb + 12] = pt.normalX ?? 0;
-      pointView[pb + 13] = pt.normalY ?? 0;
-      pointView[pb + 14] = pt.normalZ ?? 0;
+      pointView[pb + 6] = pflags;
+      pointView[pb + 7] = pt.mirrorEntityId ?? 0;
+      pointView[pb + 8] = pt.reflectorPlayerId ?? 0;
+      pointView[pb + 9] = pt.normalX ?? 0;
+      pointView[pb + 10] = pt.normalY ?? 0;
+      pointView[pb + 11] = pt.normalZ ?? 0;
     }
     pointOffset += u.points.length;
   }
@@ -2665,8 +2661,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         beamUpdates: [{
           id: 11001,
           points: [
-            { x: 100, y: 200, z: 50, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
-            { x: 1000, y: 800, z: 50, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 100, y: 200, z: 50, vx: 0, vy: 0, vz: 0 },
+            { x: 1000, y: 800, z: 50, vx: 0, vy: 0, vz: 0 },
           ],
         }],
       },
@@ -2680,15 +2676,15 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         beamUpdates: [{
           id: 11002,
           points: [
-            { x: 0, y: 0, z: 10, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 0, y: 0, z: 10, vx: 0, vy: 0, vz: 0 },
             {
-              x: 500, y: 500, z: 10, vx: 1, vy: 2, vz: 0, ax: 0, ay: 0, az: 0,
+              x: 500, y: 500, z: 10, vx: 1, vy: 2, vz: 0,
               mirrorEntityId: 4242,
               reflectorKind: 'mirror',
               reflectorPlayerId: 2,
               normalX: -707, normalY: 707, normalZ: 0,
             },
-            { x: 1000, y: 0, z: 10, vx: -1, vy: 2, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 1000, y: 0, z: 10, vx: -1, vy: 2, vz: 0 },
           ],
           obstructionT: 0.755,
           endpointDamageable: false,
@@ -2704,14 +2700,14 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         beamUpdates: [{
           id: 11003,
           points: [
-            { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
             {
-              x: 200, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0,
+              x: 200, y: 100, z: 0, vx: 0, vy: 0, vz: 0,
               mirrorEntityId: 7777,
               reflectorKind: 'forceField',
               reflectorPlayerId: 3,
             },
-            { x: 350, y: 50, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 350, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
           ],
         }],
       },
@@ -2742,16 +2738,16 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           {
             id: 12003,
             points: [
-              { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
-              { x: 500, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+              { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
+              { x: 500, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
             ],
           },
           {
             id: 12004,
             points: [
-              { x: 0, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
-              { x: 500, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
-              { x: 1000, y: 100, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+              { x: 0, y: 100, z: 0, vx: 0, vy: 0, vz: 0 },
+              { x: 500, y: 100, z: 0, vx: 0, vy: 0, vz: 0 },
+              { x: 1000, y: 100, z: 0, vx: 0, vy: 0, vz: 0 },
             ],
             obstructionT: 0.5,
           },
@@ -2782,8 +2778,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         beamUpdates: [{
           id: 12011,
           points: [
-            { x: 10, y: 10, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
-            { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 },
+            { x: 10, y: 10, z: 0, vx: 0, vy: 0, vz: 0 },
+            { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
           ],
           endpointDamageable: true,
         }],

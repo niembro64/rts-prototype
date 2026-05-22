@@ -98,7 +98,7 @@ export class ClientProjectileStore {
       const dp = ensureBeamPoint(dstTarget, i);
       dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
       dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
-      dp.ax = sp.ax; dp.ay = sp.ay; dp.az = sp.az;
+      dp.ax = 0; dp.ay = 0; dp.az = 0;
       dp.mirrorEntityId = sp.mirrorEntityId;
       dp.reflectorKind = sp.reflectorKind;
       dp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -115,7 +115,7 @@ export class ClientProjectileStore {
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.ax = sp.ax; pp.ay = sp.ay; pp.az = sp.az;
+        pp.ax = 0; pp.ay = 0; pp.az = 0;
         pp.mirrorEntityId = sp.mirrorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -141,7 +141,7 @@ export class ClientProjectileStore {
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.ax = sp.ax; pp.ay = sp.ay; pp.az = sp.az;
+        pp.ax = 0; pp.ay = 0; pp.az = 0;
         pp.mirrorEntityId = sp.mirrorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;

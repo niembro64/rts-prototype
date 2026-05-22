@@ -6,6 +6,7 @@
   "rotationVelocityThreshold": 0.1,
   "minimapSnapshotRateHz": 8,
   "entityDetailSnapshotRateHz": 8,
+  "projectileDetailSnapshotRateHz": 8,
   "ownedEntityDelta": {
     "positionThresholdMultiplier": 1,
     "velocityThresholdMultiplier": 1,

@@ -149,6 +149,10 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //   entityDetailSnapshotRateHz — upper cadence for high-frequency
 //                             visual/detail entity fields that do
 //                             not change core movement truth.
+//   projectileDetailSnapshotRateHz — upper cadence for live beam path
+//                             corrections on delta snapshots. Beam
+//                             points carry velocity, so clients coast
+//                             between lower-rate authoritative paths.
 //   fullSnapshotCompression — disabled-by-default experimental
 //                             transport compression for FULLSNAP
 //                             payloads only. Toggle for A/B captures;

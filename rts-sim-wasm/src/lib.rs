@@ -14985,20 +14985,18 @@ pub fn snapshot_encode_beam_update_scratch_ensure(count: u32) {
     }
 }
 
-/// Beam-point scratch — flat 15 f64 per point across ALL beam updates
+/// Beam-point scratch — flat 12 f64 per point across ALL beam updates
 /// (first update's N1 points, then next update's N2 points, etc.).
 ///   [0..3]  x, y, z
 ///   [3..6]  vx, vy, vz
-///   [6..9]  ax, ay, az (server zeros these — kept for byte-equality
-///           with current JS encoder; future commit may drop)
-///   [9]     flags: bit 0 has_mirrorEntityId, bit 1 has_reflectorKind,
+///   [6]     flags: bit 0 has_mirrorEntityId, bit 1 has_reflectorKind,
 ///           bit 2 reflectorKind_is_forceField (else 'mirror' when
 ///           bit 1 set), bit 3 has_reflectorPlayerId, bit 4 has_normalX,
 ///           bit 5 has_normalY, bit 6 has_normalZ.
-///   [10]    mirrorEntityId
-///   [11]    reflectorPlayerId
-///   [12..15] normalX, normalY, normalZ
-const SNAPSHOT_ENCODE_BEAM_POINT_STRIDE: usize = 15;
+///   [7]     mirrorEntityId
+///   [8]     reflectorPlayerId
+///   [9..12] normalX, normalY, normalZ
+const SNAPSHOT_ENCODE_BEAM_POINT_STRIDE: usize = 12;
 
 struct SnapshotEncodeBeamPointScratch {
     buf: Vec<f64>,
@@ -16014,10 +16012,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 let vx = point_scratch.buf[pb + 3];
                 let vy = point_scratch.buf[pb + 4];
                 let vz = point_scratch.buf[pb + 5];
-                let ax = point_scratch.buf[pb + 6];
-                let ay = point_scratch.buf[pb + 7];
-                let az = point_scratch.buf[pb + 8];
-                let pflags = point_scratch.buf[pb + 9] as u32;
+                let pflags = point_scratch.buf[pb + 6] as u32;
                 let has_mirror_id = (pflags & 0x01) != 0;
                 let has_reflector_kind = (pflags & 0x02) != 0;
                 let kind_is_force_field = (pflags & 0x04) != 0;
@@ -16025,15 +16020,17 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 let has_normal_x = (pflags & 0x10) != 0;
                 let has_normal_y = (pflags & 0x20) != 0;
                 let has_normal_z = (pflags & 0x40) != 0;
-                let mirror_id = point_scratch.buf[pb + 10] as u32;
-                let reflector_player = point_scratch.buf[pb + 11] as u32;
-                let nx = point_scratch.buf[pb + 12];
-                let ny = point_scratch.buf[pb + 13];
-                let nz = point_scratch.buf[pb + 14];
+                let mirror_id = point_scratch.buf[pb + 7] as u32;
+                let reflector_player = point_scratch.buf[pb + 8] as u32;
+                let nx = point_scratch.buf[pb + 9];
+                let ny = point_scratch.buf[pb + 10];
+                let nz = point_scratch.buf[pb + 11];
 
-                // BeamPoint DTO field count = always 9 (x,y,z,vx,vy,vz,
-                // ax,ay,az) + optional reflector + normal fields.
-                let mut pf_count: usize = 9;
+                // BeamPoint DTO field count = always 6 (x,y,z,vx,vy,vz)
+                // + optional reflector + normal fields. Acceleration is
+                // intentionally not on the wire; clients extrapolate from
+                // velocity only between path corrections.
+                let mut pf_count: usize = 6;
                 if has_mirror_id {
                     pf_count += 1;
                 }
@@ -16055,7 +16052,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 w.write_map_header(pf_count);
 
                 // Pool order from createPooledBeamPoint: x, y, z,
-                // vx, vy, vz, ax, ay, az, [mirrorEntityId,
+                // vx, vy, vz, [mirrorEntityId,
                 // reflectorKind, reflectorPlayerId, normalX/Y/Z].
                 w.write_str("x");
                 w.write_number(x);
@@ -16069,12 +16066,6 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 w.write_number(vy);
                 w.write_str("vz");
                 w.write_number(vz);
-                w.write_str("ax");
-                w.write_number(ax);
-                w.write_str("ay");
-                w.write_number(ay);
-                w.write_str("az");
-                w.write_number(az);
                 if has_mirror_id {
                     w.write_str("mirrorEntityId");
                     w.write_uint(mirror_id as u64);
