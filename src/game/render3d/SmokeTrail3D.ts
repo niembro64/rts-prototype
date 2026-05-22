@@ -31,6 +31,7 @@ import {
   getSmokePuffGeometryConfig,
   getSmokePoolMaxParticles,
   type ResolvedSmokeProfile,
+  type SmokeCapPolicy,
   type SmokeUseId,
 } from '@/smokeConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -44,6 +45,7 @@ const PUFF_GEOMETRY = getSmokePuffGeometryConfig();
 type SmokeSpawnProfile = {
   useId: SmokeUseId;
   maxPoolSize: number;
+  capPolicy: SmokeCapPolicy;
   emitFramesSkip: number;
   fadeInMs: number;
   fadeOutMs: number;
@@ -95,6 +97,7 @@ export type SmokePuffEmitter = {
   vz?: number;
   useId: SmokeUseId;
   maxPoolSize: number;
+  capPolicy: SmokeCapPolicy;
   emitFramesSkip: number;
   fadeInMs: number;
   fadeOutMs: number;
@@ -326,13 +329,14 @@ export class SmokeTrail3D {
             puffVz = -vz * inv;
           }
         }
-        this.spawnPuff(
+        const spawned = this.spawnPuff(
           this.pool,
           emit.x, emit.y, emit.z,
           puffVx, puffVy, puffVz,
           spec,
           spec.color ?? DEFAULT_COLOR,
         );
+        if (!spawned) continue;
         emittedByUse.set(spec.useId, useEmitted + 1);
         totalEmitted++;
       }
@@ -416,13 +420,14 @@ export class SmokeTrail3D {
       if ((renderFrameIndex + phase) % stride !== 0) continue;
       const useEmitted = emittedByUse.get(emitter.useId) ?? 0;
       if (useEmitted >= this.emissionBudget(emitter, dtSec)) continue;
-      this.spawnPuff(
+      const spawned = this.spawnPuff(
         pool,
         emitter.x, emitter.y, emitter.z,
         emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
         emitter,
         emitter.color ?? DEFAULT_COLOR,
       );
+      if (!spawned) continue;
       emittedByUse.set(emitter.useId, useEmitted + 1);
       emitted++;
     }
@@ -519,9 +524,9 @@ export class SmokeTrail3D {
     simVX: number, simVY: number, simVZ: number,
     profile: SmokeSpawnProfile,
     color: number,
-  ): void {
+  ): boolean {
     const useCap = Math.min(pool.maxParticles, Math.max(0, profile.maxPoolSize | 0));
-    if (useCap <= 0) return;
+    if (useCap <= 0) return false;
 
     const { r, g, b } = hexToRgb01(color);
     const fadeInSec = Math.max(0, profile.fadeInMs / 1000);
@@ -555,6 +560,7 @@ export class SmokeTrail3D {
     let i: number;
     const useCount = pool.activeByUse.get(profile.useId) ?? 0;
     if (useCount >= useCap) {
+      if (profile.capPolicy === 'skipWhenFull') return false;
       i = this.pickEvictionSlot(pool, profile.useId);
       const old = pool.active[i];
       if (old && old.useId !== profile.useId) {
@@ -567,6 +573,7 @@ export class SmokeTrail3D {
       pool.active.push(puff);
       this.adjustUseCount(pool, profile.useId, 1);
     } else {
+      if (profile.capPolicy === 'skipWhenFull') return false;
       i = this.pickEvictionSlot(pool);
       const old = pool.active[i];
       if (old) this.adjustUseCount(pool, old.useId, -1);
@@ -579,6 +586,7 @@ export class SmokeTrail3D {
     pool.mesh.setMatrixAt(i, this._scratchMat);
     pool.alphaArr[i] = 0;
     this.writePuffColor(pool, i, puff);
+    return true;
   }
 
   private pickEvictionSlot(pool: PuffPool, useId?: SmokeUseId): number {

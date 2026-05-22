@@ -25,21 +25,6 @@ import {
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
 
-/** Phase 10 D.3g — compare the Rust-side snapshot_baseline_diff_slot
- *  result against the JS-side getEntityDeltaChangedFields output
- *  every per-entity per-recipient emit. Mismatches are
- *  console.warn'd with the entity id and both masks. Auto-enabled
- *  in Vite dev builds; production builds skip the check entirely
- *  (~50 µs/snapshot saved). Force-disable by changing the RHS to
- *  `false` if dev console traffic is too noisy. */
-const VERIFY_RUST_DIFF: boolean = import.meta.env.DEV;
-
-/** Rate-limit for the diff-mismatch warning. After this many warns
- *  we stop logging individual divergences (one bookend message
- *  prints once) so a systematic mismatch can't flood the console.
- *  Reset by reloading the page. */
-const VERIFY_RUST_DIFF_WARN_LIMIT = 50;
-let _verifyRustDiffWarnCount = 0;
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
@@ -431,26 +416,21 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   prev.normalZ = sn?.nz ?? 1;
 }
 
-/** Phase 10 D.3g — compute the Rust-side diff mask for one entity
- *  and warn if it doesn't match `expectedJsMask` (the raw
- *  getEntityDeltaChangedFields output, before dirtyForcedFields are
- *  OR'd in). Caller must gate on `VERIFY_RUST_DIFF`, `!isNew`, and
- *  the listener actually having a WASM baseline handle. Cheap no-op
- *  when slotUsed returns 0 (baseline isn't fresh yet — the JS path's
- *  isNew check covers that case). */
-export function verifyRustDiffMask(
+/** Phase 10 D.3g — compute the Rust-side diff mask for one entity.
+ *  Returns `undefined` only when the Rust baseline path is unavailable
+ *  for this entity/listener, allowing callers to fall back to the
+ *  legacy TS diff during startup or non-WASM operation. */
+export function getRustEntityDeltaChangedFields(
   entity: Entity,
   next: PrevEntityState,
-  expectedJsMask: number,
   baselineHandle: number,
   world: WorldState,
-): void {
-  if (!VERIFY_RUST_DIFF) return;
+): number | undefined {
   const sim = getSimWasm();
-  if (sim === undefined) return;
+  if (sim === undefined) return undefined;
   const slot = spatialGrid.getSlot(entity.id);
-  if (slot < 0) return;
-  if (sim.snapshotBaseline.slotUsed(baselineHandle, slot) === 0) return;
+  if (slot < 0) return undefined;
+  if (sim.snapshotBaseline.slotUsed(baselineHandle, slot) === 0) return undefined;
 
   const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
     SNAPSHOT_CONFIG.movementPositionThreshold,
@@ -470,7 +450,7 @@ export function verifyRustDiffMask(
   );
 
   const kind = entity.type === 'unit' ? SNAPSHOT_DIFF_KIND_UNIT : SNAPSHOT_DIFF_KIND_BUILDING;
-  const rustMask = sim.snapshotBaseline.diffSlot(
+  return sim.snapshotBaseline.diffSlot(
     baselineHandle, slot, kind,
     next.x, next.y, next.z, next.rotation,
     next.velocityX, next.velocityY, next.velocityZ,
@@ -488,27 +468,6 @@ export function verifyRustDiffMask(
     entity.combat ? 1 : 0,
     entity.factory ? 1 : 0,
   );
-  if (rustMask !== expectedJsMask) {
-    if (_verifyRustDiffWarnCount < VERIFY_RUST_DIFF_WARN_LIMIT) {
-      _verifyRustDiffWarnCount++;
-      console.warn(
-        '[snapshot diff] Rust/JS mask divergence',
-        {
-          entityId: entity.id,
-          entityType: entity.type,
-          jsMask: expectedJsMask.toString(2),
-          rustMask: rustMask.toString(2),
-          diff: (expectedJsMask ^ rustMask).toString(2),
-        },
-      );
-      if (_verifyRustDiffWarnCount === VERIFY_RUST_DIFF_WARN_LIMIT) {
-        console.warn(
-          `[snapshot diff] reached ${VERIFY_RUST_DIFF_WARN_LIMIT} divergence warns; ` +
-          `suppressing further warns for this session.`,
-        );
-      }
-    }
-  }
 }
 
 export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void {

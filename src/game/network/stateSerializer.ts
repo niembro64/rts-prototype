@@ -47,11 +47,11 @@ import {
   dirtyEntityIdsBuf as _dirtyEntityIdsBuf,
   getDeltaTrackingState,
   getEntityDeltaChangedFields,
+  getRustEntityDeltaChangedFields,
   getNextEntityState,
   getPrevState,
   removedEntityIdsBuf as _removedIdsBuf,
   SNAPSHOT_DETAIL_THROTTLED_FIELDS,
-  verifyRustDiffMask,
 } from './stateSerializerEntityDelta';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
@@ -416,9 +416,12 @@ export function serializeGameState(
       tracking.prevEntityIds.add(entity.id);
       const next = getNextEntityState(entity);
       const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS;
+      const rustDeltaMask = !isNew && baselineHandle !== undefined
+        ? getRustEntityDeltaChangedFields(entity, next, baselineHandle, world)
+        : undefined;
       const rawDeltaMask = isNew
         ? 0
-        : getEntityDeltaChangedFields(entity, prev, next, world);
+        : rustDeltaMask ?? getEntityDeltaChangedFields(entity, prev, next, world);
       let changedFields = isNew
         ? undefined
         : rawDeltaMask | dirtyForcedFields;
@@ -447,9 +450,6 @@ export function serializeGameState(
         )
       ) {
         continue;
-      }
-      if (!isNew && baselineHandle !== undefined) {
-        verifyRustDiffMask(entity, next, rawDeltaMask, baselineHandle, world);
       }
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
@@ -484,9 +484,12 @@ export function serializeGameState(
         const isNew = !tracking.prevEntityIds.has(entity.id);
         tracking.prevEntityIds.add(entity.id);
         const next = getNextEntityState(entity);
+        const rustDeltaMask = !isNew && baselineHandle !== undefined
+          ? getRustEntityDeltaChangedFields(entity, next, baselineHandle, world)
+          : undefined;
         const rawDeltaMask = isNew
           ? 0
-          : getEntityDeltaChangedFields(entity, prev, next, world);
+          : rustDeltaMask ?? getEntityDeltaChangedFields(entity, prev, next, world);
         const changedFields = isNew
           ? undefined
           : rawDeltaMask | pendingDetailFields;
@@ -500,9 +503,6 @@ export function serializeGameState(
           )
         ) {
           continue;
-        }
-        if (!isNew && baselineHandle !== undefined) {
-          verifyRustDiffMask(entity, next, rawDeltaMask, baselineHandle, world);
         }
         if (isNew || changedFields! > 0) {
           const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);

@@ -1,0 +1,21 @@
+{
+  "fogOfWar": {
+    "maxPoolSize": 1000,
+    "capPolicy": "skipWhenFull",
+    "densitySamples": 128,
+    "maxSpawnsPerFrame": 8,
+    "spawnAttemptsPerFog": 32,
+    "fadeInMs": 2000,
+    "fadeOutMs": 2000,
+    "radius": 3000,
+    "maxAlpha": 0.2,
+    "transparentOuterFraction": 0.4,
+    "colorHex": "#cccccc",
+    "zMin": -500,
+    "zRange": 1600
+  },
+  "sphereGeometry": {
+    "widthSegments": 24,
+    "heightSegments": 16
+  }
+}

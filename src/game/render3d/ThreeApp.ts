@@ -266,11 +266,7 @@ export class ThreeApp {
   }
 
   async precompileShadersAsync(): Promise<void> {
-    try {
-      await this.renderer.compileAsync(this.scene, this.camera);
-    } catch {
-      this.precompileShaders();
-    }
+    this.precompileShaders();
   }
 
   start(): void {

@@ -24,6 +24,8 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'colorsConfig.ts' ||
     srcPath === 'colors_config.json' ||
     srcPath === 'demoConfig.ts' ||
+    srcPath === 'fogConfig.ts' ||
+    srcPath === 'fogConfig.json' ||
     srcPath === 'gamePhase.ts' ||
     srcPath === 'lodConfig.ts' ||
     srcPath === 'mapSizeConfig.ts' ||

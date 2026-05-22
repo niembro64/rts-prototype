@@ -37,6 +37,7 @@ import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { FogOfWarShroudRenderer3D } from '../render3d/FogOfWarShroudRenderer3D';
+import { FogOfWarFog3D } from '../render3d/FogOfWarFog3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
 import { Debris3D } from '../render3d/Debris3D';
@@ -155,6 +156,7 @@ export class RtsScene3D {
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
   private fogOfWarShroudRenderer!: FogOfWarShroudRenderer3D;
+  private fogOfWarFogRenderer!: FogOfWarFog3D;
   private audioSystem = new RtsScene3DAudioSystem();
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
@@ -505,6 +507,11 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
+    this.fogOfWarFogRenderer = new FogOfWarFog3D(
+      this.threeApp.world,
+      this.mapWidth,
+      this.mapHeight,
+    );
 
     const canvasParent = this.threeApp.canvas.parentElement;
     if (canvasParent) {
@@ -607,6 +614,7 @@ export class RtsScene3D {
         sprayRenderer: this.sprayRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
         fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
+        fogOfWarFogRenderer: this.fogOfWarFogRenderer,
         healthBar3D: this.healthBar3D,
         nameLabel3D: this.nameLabel3D,
         waypoint3D: this.waypoint3D,
@@ -1379,6 +1387,7 @@ export class RtsScene3D {
       sprayRenderer: this.sprayRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,
       fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
+      fogOfWarFogRenderer: this.fogOfWarFogRenderer,
       longtaskTracker: this.longtaskTracker,
       audioSystem: this.audioSystem,
     });

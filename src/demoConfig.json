@@ -14,7 +14,8 @@
     "radar": { "radiusFraction": 0.65 },
     "fabricator": { "radiusFraction": 0.6 },
     "cannonTower": { "radiusFraction": 0.45 },
-    "megaBeamTower": { "radiusFraction": 0.4 }
+    "megaBeamTower": { "radiusFraction": 0.4 },
+    "fogOfWar": { "radiusFraction": 0.9 }
   },
   "initialUnitWaypointType": "fight",
   "factoryWaypointType": "fight",

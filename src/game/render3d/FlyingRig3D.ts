@@ -156,6 +156,7 @@ export function buildFlyingRig(
         vz: 0,
         useId: smokeProfile.useId,
         maxPoolSize: smokeProfile.maxPoolSize,
+        capPolicy: smokeProfile.capPolicy,
         emitFramesSkip: smokeFramesSkip,
         fadeInMs: smokeProfile.fadeInMs,
         fadeOutMs: smokeProfile.fadeOutMs,

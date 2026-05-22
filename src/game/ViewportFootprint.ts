@@ -118,6 +118,19 @@ export class ViewportFootprint {
     return this.version;
   }
 
+  /** Current camera/scope AABB in sim-space. This remains the current
+   *  camera footprint even when mode='all'; the render mode only
+   *  changes inScope() culling behavior. */
+  getBounds(padding: number = 0): FootprintBounds {
+    const p = Math.max(0, padding);
+    return {
+      minX: this.minX - p,
+      maxX: this.maxX + p,
+      minY: this.minY - p,
+      maxY: this.maxY + p,
+    };
+  }
+
   /** Conservative AABB scope test:
    *   - mode='all'     → always true (no culling).
    *   - mode='window'  → AABB + per-entity padding.

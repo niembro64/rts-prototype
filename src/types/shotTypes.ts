@@ -77,6 +77,8 @@ export type SmokeTrailSpec = {
   useId?: string;
   /** Per-use active-puff ceiling. */
   maxPoolSize?: number;
+  /** What to do when the use-specific puff ceiling is reached. */
+  capPolicy: 'evictOldest' | 'skipWhenFull';
   /** Render frames to skip between puff spawns. Default comes from
    *  smoke_config.json for the use case. */
   emitFramesSkip?: number;

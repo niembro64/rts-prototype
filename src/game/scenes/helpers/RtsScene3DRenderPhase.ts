@@ -22,6 +22,7 @@ import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { FogOfWarShroudRenderer3D } from '../../render3d/FogOfWarShroudRenderer3D';
+import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
@@ -52,6 +53,7 @@ export type RtsScene3DRenderPhaseResources = {
   sprayRenderer: SprayRenderer3D;
   smokeTrailRenderer: SmokeTrail3D;
   fogOfWarShroudRenderer: FogOfWarShroudRenderer3D;
+  fogOfWarFogRenderer: FogOfWarFog3D;
   healthBar3D: HealthBar3D | null;
   nameLabel3D: NameLabel3D | null;
   waypoint3D: Waypoint3D | null;
@@ -142,6 +144,7 @@ export class RtsScene3DRenderPhase {
       sprayRenderer,
       smokeTrailRenderer,
       fogOfWarShroudRenderer,
+      fogOfWarFogRenderer,
       healthBar3D,
       nameLabel3D,
       waypoint3D,
@@ -263,6 +266,12 @@ export class RtsScene3DRenderPhase {
         this.renderFrameIndex,
         this.renderScope,
         entityRenderer.getHoverSmokeEmitters(),
+      );
+      fogOfWarFogRenderer.update(
+        this.clientViewState,
+        this.getLocalPlayerId(),
+        serverMeta?.fogOfWarEnabled === true,
+        this.smokeTrailAccumMs,
       );
       this.smokeTrailAccumMs = 0;
     }

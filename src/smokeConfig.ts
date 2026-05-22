@@ -19,8 +19,11 @@ export type SmokePuffGeometryConfig = {
   heightSegments: number;
 };
 
+export type SmokeCapPolicy = 'evictOldest' | 'skipWhenFull';
+
 export type SmokeProfile = {
   maxPoolSize: number;
+  capPolicy: SmokeCapPolicy;
   emitFramesSkip: number;
   exhaustSpeed: number;
   fadeInMs: number;
@@ -39,9 +42,21 @@ export type SmokeConfig = Record<SmokeUseId, SmokeProfile> & {
   puffGeometry: SmokePuffGeometryConfig;
 };
 
-export const SMOKE_CONFIG = rawSmokeConfig as SmokeConfig;
+const SMOKE_CONFIG_RAW = rawSmokeConfig as SmokeConfig;
 
 const SMOKE_USE_ID_SET = new Set<string>(SMOKE_USE_IDS);
+const SMOKE_CAP_POLICY_SET = new Set<string>(['evictOldest', 'skipWhenFull']);
+
+function assertSmokeCapPolicy(value: unknown, fieldName: string): asserts value is SmokeCapPolicy {
+  if (typeof value === 'string' && SMOKE_CAP_POLICY_SET.has(value)) return;
+  throw new Error(`${fieldName} must be "evictOldest" or "skipWhenFull"`);
+}
+
+for (const useId of SMOKE_USE_IDS) {
+  assertSmokeCapPolicy(SMOKE_CONFIG_RAW[useId].capPolicy, `smoke_config.${useId}.capPolicy`);
+}
+
+export const SMOKE_CONFIG = SMOKE_CONFIG_RAW;
 
 export function isSmokeUseId(value: string): value is SmokeUseId {
   return SMOKE_USE_ID_SET.has(value);

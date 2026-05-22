@@ -183,6 +183,7 @@ function buildFan(
       vz: -exhaustSpeed,
       useId: smokeProfile.useId,
       maxPoolSize: smokeProfile.maxPoolSize,
+      capPolicy: smokeProfile.capPolicy,
       emitFramesSkip,
       fadeInMs: smokeProfile.fadeInMs,
       fadeOutMs: smokeProfile.fadeOutMs,
