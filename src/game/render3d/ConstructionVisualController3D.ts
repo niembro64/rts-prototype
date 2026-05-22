@@ -11,18 +11,8 @@ import {
 } from '@/shellConfig';
 import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
 import { getRotationVelEmaMode } from '@/clientBarConfig';
-import type { DriftChannelMode } from '@/types/client';
 import type { ClientViewState } from '../network/ClientViewState';
-import { DRIFT_CHANNEL_HALF_LIFE_SEC, halfLifeBlend } from '../network/driftEma';
-
-/** Construction-tower decorative spin smoothing tracks the rotation
- *  velocity channel from the per-channel snapshot EMAs, falling back
- *  to 'medium' when the user selects 'ignore' (decorative animation
- *  has no useful 'ignore' semantics). */
-function visualAnimHalfLife(mode: DriftChannelMode): number {
-  if (mode === 'ignore') return DRIFT_CHANNEL_HALF_LIFE_SEC.medium;
-  return DRIFT_CHANNEL_HALF_LIFE_SEC[mode];
-}
+import { halfLifeBlend } from '../network/driftEma';
 import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -35,6 +25,7 @@ import type { FactoryConstructionRig } from './BuildingShape3D';
 import type { ConstructionEmitterRig, ConstructionTowerOrbitPart } from './ConstructionEmitterMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { hexStringToRgb } from './colorUtils';
+import { visualAnimBlend } from './visualAnimationEma';
 
 type ConstructionTowerSpinRig = {
   towerOrbitParts: ConstructionTowerOrbitPart[];
@@ -293,10 +284,10 @@ export class ConstructionVisualController3D {
     dtSec: number,
   ): void {
     if (rig.towerOrbitParts.length === 0) return;
-    const rotVelHalfLife = visualAnimHalfLife(getRotationVelEmaMode());
-    const alpha = halfLifeBlend(
+    const alpha = visualAnimBlend(
+      getRotationVelEmaMode(),
       dtSec,
-      rotVelHalfLife * CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
+      CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
     );
     const target = Math.max(0, resourceRateSum);
     const amountBefore = rig.displayTowerSpinAmount;

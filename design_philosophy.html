@@ -422,11 +422,12 @@
         Fields that do not appear in any of the lists above are not on
         the wire and are therefore not subject to snapshot drift. Static
         building position, decorative locomotion-rig state (wheel spin
-        phase, tread cleat phase, leg plant pose, hover fan smoke), and
-        visual-only chassis embellishments (airborne bank roll, solar
-        petal fold, extractor blade fold) live entirely client-side and
-        get their smoothness from local controllers, not from one of the
-        four channels. See <strong>Locomotion Visuals Are Frontend</strong>
+        phase, tread cleat phase, leg plant pose, hover fan smoke),
+        visual-only chassis embellishments (airborne bank roll), and
+        discrete open/close pose transitions (solar petal fold,
+        extractor blade fold, wind-turbine close pose) live entirely
+        client-side and get their smoothness from local controllers, not
+        from any of the four channels. See <strong>Locomotion Visuals Are Frontend</strong>
         and <strong>Airborne Banking Is Visual</strong>.
       </p>
       <p>
@@ -434,11 +435,19 @@
         same <em>kind</em> of motion as a wire channel may opt in to the
         same EMA mode for consistency &mdash; the wind-turbine fan yaw
         reads rotation-position mode, and the wind-turbine blade
-        speed and the construction-tower orbit spin read
+        speed, construction-tower orbit spin, extractor rotor spin,
+        radar head, and radar sweep read
         rotation-velocity mode. These are courtesy bindings, not
         snapshot-drift corrections: there is no server target to drift
         toward, so the mode supplies a half-life and the local
         animator EMA-blends toward a locally derived target value.
+      </p>
+      <p>
+        Discrete open/close pose transitions do not opt in to rotation
+        position. Their state is a local pose switch between authored
+        endpoints, not a continuously rotating wire field, so they keep
+        fixed local controller alphas unless a future gameplay reason
+        puts an actual rotation target on the wire.
       </p>
 
       <h3>Rendering samples prediction</h3>
@@ -931,7 +940,7 @@
       <ul class="rule-list">
         <li>The sim keeps a yaw-only spring on hover/flying orientation. <code>entity.unit.orientation</code> ends each tick as a quaternion equivalent to <code>setQuatFromYaw(yaw)</code> &mdash; target pitch and target roll are pinned to zero, the yaw spring still carries rotational momentum so heading turns feel weighty.</li>
         <li>The renderer reads that orientation, derives a body-lateral velocity from <code>unit.velocityX/Y</code> projected through the current yaw, scales it into a target bank angle, EMA-smooths it per frame, and composes the roll about the body-forward axis on top of the chassis yaw quat.</li>
-        <li>The visual bank is bounded (a hard clamp keeps the chassis from doing barrel rolls under collision spikes) and decays toward zero whenever lateral velocity is small. No sim state ever sees the value.</li>
+        <li>The visual bank is bounded (a hard clamp keeps the chassis from doing barrel rolls under collision spikes) and decays toward zero whenever lateral velocity is small. It intentionally uses local render-side smoothing rather than the rotation-position channel. No sim state ever sees the value.</li>
         <li>If a future visual wants pitch (nose-down when accelerating, nose-up when braking), it lives in the same place: derived from velocity at render time, never written back to the sim.</li>
       </ul>
     </section>

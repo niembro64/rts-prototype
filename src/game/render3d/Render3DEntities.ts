@@ -74,9 +74,9 @@ const BARREL_COLOR = COLORS.units.turret.barrel.colorHex;
 // to 45° so collision spikes can't turn into barrel rolls.
 const AIRBORNE_BANK_PER_LATERAL_V = 0.012;
 const AIRBORNE_BANK_MAX = Math.PI * 0.25;
-// EMA time constant in seconds. Roughly matches the perceived lag of
-// the old critically-damped sim spring (k=30) so banking still
-// "weights" the turn instead of snapping.
+// EMA time constant in seconds. Intentionally independent from ROT POS:
+// banking is a local velocity-derived embellishment that never travels
+// on the wire.
 const AIRBORNE_BANK_TAU_SEC = 0.18;
 
 // Shared Y-up axis for manual instanced transform composition.

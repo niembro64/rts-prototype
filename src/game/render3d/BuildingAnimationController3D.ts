@@ -13,16 +13,7 @@ import {
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
-import { DRIFT_CHANNEL_HALF_LIFE_SEC, halfLifeBlend } from '../network/driftEma';
-import type { DriftChannelMode } from '@/types/client';
-
-/** Visual animation half-life lookup — falls back to 'medium' for
- *  'ignore' (the snapshot-drift channel's 'ignore' is meaningless for
- *  decorative motion like wind-turbine fan smoothing). */
-function visualAnimHalfLife(mode: DriftChannelMode): number {
-  if (mode === 'ignore') return DRIFT_CHANNEL_HALF_LIFE_SEC.medium;
-  return DRIFT_CHANNEL_HALF_LIFE_SEC[mode];
-}
+import { halfLifeBlend } from '../network/driftEma';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
@@ -35,7 +26,11 @@ import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
+import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
 
+// Open/close pose transitions are discrete local state changes, not
+// snapshot rotation fields. They intentionally keep fixed controller
+// alphas instead of borrowing ROT POS as a courtesy binding.
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
@@ -83,6 +78,9 @@ export class BuildingAnimationController3D {
    *  speed. Indexed by entity id; entries get pruned when the
    *  extractor despawns. */
   private extractorRotorPhases = new Map<EntityId, number>();
+  /** Courtesy ROT VEL binding for extractor rotor spin-up/spin-down.
+   *  The value is a local visual angular speed, not snapshot drift. */
+  private extractorRotorSpeeds = new Map<EntityId, number>();
   /** Per-entity "closed amount" for the extractor's blade fold (0 =
    *  spinning open, 1 = folded flat against the pyramid). Smoothed
    *  toward the server's open flag with BUILDING_FORTIFY_ANIM_ALPHA. */
@@ -94,6 +92,11 @@ export class BuildingAnimationController3D {
   /** Per-entity "closed amount" for the wind turbine's stowed pose
    *  (nacelle tilts skyward + blades fold against the pole). */
   private windCloseAmounts = new Map<EntityId, number>();
+  /** Courtesy ROT VEL binding for radar decorative angular speeds. */
+  private radarHeadPhases = new Map<EntityId, number>();
+  private radarSweepPhases = new Map<EntityId, number>();
+  private radarHeadSpeeds = new Map<EntityId, number>();
+  private radarSweepSpeeds = new Map<EntityId, number>();
 
   constructor(
     clientViewState: ClientViewState,
@@ -127,11 +130,16 @@ export class BuildingAnimationController3D {
     this.removeAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
     this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
     this.extractorRotorPhases.delete(id);
+    this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
     this.extractorRotorYaws.delete(id);
     this.windCloseAmounts.delete(id);
     this.removeAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
     this.removeAnimatedBuilding(this.radarBuildingIds, this.radarBuildingIdSet, id);
+    this.radarHeadPhases.delete(id);
+    this.radarSweepPhases.delete(id);
+    this.radarHeadSpeeds.delete(id);
+    this.radarSweepSpeeds.delete(id);
   }
 
   update(
@@ -191,19 +199,22 @@ export class BuildingAnimationController3D {
     }
 
     if (this.extractorBuildingIds.length > 0) {
-      // Each extractor advances its own rotor phase by dt × base ×
-      // coverageFraction, so spin scales 1:1 with metal-per-second.
+      // Each extractor EMA-blends its local rotor angular speed toward
+      // base × coverageFraction, so spin scales 1:1 with
+      // metal-per-second while still honoring the ROT VEL courtesy
+      // binding.
       // 0 covered tiles → stationary; full coverage → full base rate.
       // While the extractor is fortified (closed) we suspend spin
       // entirely — the blades have folded down against the pyramid
       // sides and are no longer producing.
       const invBase = INV_EXTRACTOR_BASE_PRODUCTION;
-      const dtRate = spinDt * EXTRACTOR_ROTOR_RAD_PER_SEC;
       const twoPi = Math.PI * 2;
       const phases = this.extractorRotorPhases;
+      const speeds = this.extractorRotorSpeeds;
       const closeAmounts = this.extractorCloseAmounts;
       const rotorYaws = this.extractorRotorYaws;
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
+      const rotorSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
       for (const id of this.extractorBuildingIds) {
         const mesh = buildingMeshes.get(id);
         const entity = this.clientViewState.getEntity(id);
@@ -221,7 +232,11 @@ export class BuildingAnimationController3D {
         const normalizedRate = rate * invBase;
         let phase = phases.get(id);
         if (phase === undefined) phase = id * 0.173; // first-frame jitter seed
-        phase += dtRate * normalizedRate * (1 - close);
+        const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC * normalizedRate * (1 - close);
+        let speed = speeds.get(id) ?? 0;
+        speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
+        if (targetSpeed === 0 && speed < 0.001) speed = 0;
+        phase += spinDt * speed;
 
         const rig = mesh.extractorRig;
         if (rig && mesh.buildingCachedDetailsReady === true) {
@@ -267,6 +282,7 @@ export class BuildingAnimationController3D {
           }
         }
         phases.set(id, phase);
+        speeds.set(id, speed);
         this.applyProductionRateIndicator(
           rig?.rateIndicator,
           normalizedRate,
@@ -295,14 +311,26 @@ export class BuildingAnimationController3D {
     }
 
     if (this.radarBuildingIds.length > 0) {
-      const t = timeMs / 1000;
+      const radarSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
       for (const id of this.radarBuildingIds) {
         const mesh = buildingMeshes.get(id);
         const rig = mesh?.radarRig;
         if (!mesh || !rig || mesh.buildingCachedDetailsReady !== true) continue;
         const seed = id * 0.137;
-        rig.head.rotation.y = t * RADAR_HEAD_RAD_PER_SEC + seed;
-        rig.sweep.rotation.y = -t * RADAR_SWEEP_RAD_PER_SEC + seed * 2.7;
+        let headSpeed = this.radarHeadSpeeds.get(id) ?? 0;
+        let sweepSpeed = this.radarSweepSpeeds.get(id) ?? 0;
+        headSpeed = lerp(headSpeed, RADAR_HEAD_RAD_PER_SEC, radarSpeedAlpha);
+        sweepSpeed = lerp(sweepSpeed, -RADAR_SWEEP_RAD_PER_SEC, radarSpeedAlpha);
+        let headPhase = this.radarHeadPhases.get(id) ?? seed;
+        let sweepPhase = this.radarSweepPhases.get(id) ?? seed * 2.7;
+        headPhase += spinDt * headSpeed;
+        sweepPhase += spinDt * sweepSpeed;
+        this.radarHeadSpeeds.set(id, headSpeed);
+        this.radarSweepSpeeds.set(id, sweepSpeed);
+        this.radarHeadPhases.set(id, headPhase);
+        this.radarSweepPhases.set(id, sweepPhase);
+        rig.head.rotation.y = headPhase;
+        rig.sweep.rotation.y = sweepPhase;
       }
     }
   }
@@ -319,9 +347,14 @@ export class BuildingAnimationController3D {
     this.radarBuildingIds.length = 0;
     this.radarBuildingIdSet.clear();
     this.extractorRotorPhases.clear();
+    this.extractorRotorSpeeds.clear();
     this.extractorCloseAmounts.clear();
     this.extractorRotorYaws.clear();
     this.windCloseAmounts.clear();
+    this.radarHeadPhases.clear();
+    this.radarSweepPhases.clear();
+    this.radarHeadSpeeds.clear();
+    this.radarSweepSpeeds.clear();
     this.windFanYaw = null;
     this.windVisualSpeed = null;
     this.windRotorPhase = 0;

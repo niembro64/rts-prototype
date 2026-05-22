@@ -1,5 +1,6 @@
 import {
   getMovementPosEmaMode,
+  getMovementVelEmaMode,
   getPredictionMode,
 } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
@@ -59,6 +60,7 @@ function applyBeamPathPrediction(
   target: BeamPathTarget,
   deltaMs: number,
   movPosBlend: number,
+  movVelBlend: number,
 ): boolean {
   const proj = entity.projectile;
   if (!proj) return false;
@@ -117,10 +119,22 @@ function applyBeamPathPrediction(
     const nx = movPosBlend < 0 ? px : lerp(px, tp.x, movPosBlend);
     const ny = movPosBlend < 0 ? py : lerp(py, tp.y, movPosBlend);
     const nz = movPosBlend < 0 ? pz : lerp(pz, tp.z, movPosBlend);
+    const pvx = pp.vx, pvy = pp.vy, pvz = pp.vz;
+    let nvx = pvx, nvy = pvy, nvz = pvz;
+    if (movVelBlend >= 1) {
+      nvx = tp.vx; nvy = tp.vy; nvz = tp.vz;
+    } else if (movVelBlend >= 0) {
+      nvx = lerp(pvx, tp.vx, movVelBlend);
+      nvy = lerp(pvy, tp.vy, movVelBlend);
+      nvz = lerp(pvz, tp.vz, movVelBlend);
+    }
     if (
       Math.abs(nx - px) > 1e-4 ||
       Math.abs(ny - py) > 1e-4 ||
       Math.abs(nz - pz) > 1e-4 ||
+      Math.abs(nvx - pvx) > 1e-4 ||
+      Math.abs(nvy - pvy) > 1e-4 ||
+      Math.abs(nvz - pvz) > 1e-4 ||
       pp.mirrorEntityId !== tp.mirrorEntityId
       || pp.reflectorKind !== tp.reflectorKind
       || pp.reflectorPlayerId !== tp.reflectorPlayerId
@@ -136,7 +150,7 @@ function applyBeamPathPrediction(
     pp.x = nx;
     pp.y = ny;
     pp.z = nz;
-    pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
+    pp.vx = nvx; pp.vy = nvy; pp.vz = nvz;
     pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
     pp.mirrorEntityId = tp.mirrorEntityId;
     pp.reflectorKind = tp.reflectorKind;
@@ -208,10 +222,11 @@ export class ClientPredictionStepper {
       totalTargetAgeMs: 0,
       maxTargetAgeMs: 0,
     };
-    // Beam paths follow the movement-position channel for their per-
-    // vertex EMA. Projectiles use the same channel through
-    // applyClientProjectilePrediction (passed via the same blend).
+    // Beam paths follow the movement-position and movement-velocity
+    // channels for their per-vertex EMAs. Projectiles use the same
+    // channels through applyClientProjectilePrediction.
     const beamMovPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
+    const beamMovVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const forceFieldsEnabled = getServerForceFieldsEnabled();
@@ -238,7 +253,7 @@ export class ClientPredictionStepper {
 
       const beamTarget = beamPathTargets.get(id);
       noteTargetAge(targetAgeStats, beamTarget?.updatedAtMs, now);
-      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamMovPosBlend)) {
+      if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamMovPosBlend, beamMovVelBlend)) {
         beamPathsChanged = true;
       }
     }
