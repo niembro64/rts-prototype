@@ -67,6 +67,10 @@ export type TurretMesh = {
    *  (beam/laser turrets). Tells the alloc + per-frame writer to route
    *  through the cone instanced pool instead of the cylinder pool. */
   barrelUsesCone?: boolean;
+  /** True for beam/rocket turrets that render as a head sphere only.
+   *  The per-frame writer skips applyTurretAimPose3D and colors the
+   *  head white when engaged (vs unit color when idle/tracking). */
+  headOnly?: boolean;
   /** Pitch pivot (rotation.z = pitch) — tilts firing direction up/down.
    *  Parent of spinGroup. */
   pitchGroup?: THREE.Group;
@@ -174,9 +178,10 @@ export function buildTurretMesh3D(
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
-  if (!barrel || isForceField || turretOff) {
+  const headOnly = turret.config.headOnly === true;
+  if (!barrel || isForceField || turretOff || headOnly) {
     parent.add(root);
-    return { root, head, headRadius: cachedHeadRadius, barrels };
+    return { root, head, headRadius: cachedHeadRadius, barrels, headOnly };
   }
 
   // Barrel pivots through the head's center, so its Y in turret-root

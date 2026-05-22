@@ -163,15 +163,26 @@ function writeTurretsToPool(
     const dst = pool.turrets[i];
     const t = dst.turret;
     t.id = turretIdToCode(src.config.id);
-    t.angular.rot = qRot(src.rotation);
-    t.angular.vel = qRot(src.angularVelocity);
-    // Acceleration intentionally omitted from the wire: it's the
-    // instantaneous damped-spring force at this tick (depends on
-    // error-to-target), not a constant, and integrating it across an
-    // arbitrary client-side dt overshoots. Clients predict turret
-    // motion from velocity alone.
-    t.angular.pitch = qRot(src.pitch);
-    t.angular.pitchVel = qRot(src.pitchVelocity);
+    // headOnly turrets (beam/rocket) render a head sphere only — the
+    // client doesn't orient anything from these values, so we omit the
+    // aim motion from the wire. Sim still tracks rotation/pitch
+    // internally for fire direction; only the snapshot drops them.
+    if (src.config.headOnly) {
+      t.angular.rot = 0;
+      t.angular.vel = 0;
+      t.angular.pitch = 0;
+      t.angular.pitchVel = 0;
+    } else {
+      t.angular.rot = qRot(src.rotation);
+      t.angular.vel = qRot(src.angularVelocity);
+      // Acceleration intentionally omitted from the wire: it's the
+      // instantaneous damped-spring force at this tick (depends on
+      // error-to-target), not a constant, and integrating it across an
+      // arbitrary client-side dt overshoots. Clients predict turret
+      // motion from velocity alone.
+      t.angular.pitch = qRot(src.pitch);
+      t.angular.pitchVel = qRot(src.pitchVelocity);
+    }
     const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _snapshotTurretFsm);
     const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : src.target;
     dst.targetId = canReferenceEntityId?.(targetId ?? undefined) === false

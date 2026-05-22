@@ -298,6 +298,10 @@ export function getEntityDeltaChangedFields(
       mask |= ENTITY_CHANGED_TURRETS;
     } else {
       let turretsAlreadyChanged = false;
+      // headOnly turrets (beam/rocket) have rotation/pitch/velocity
+      // pre-zeroed by captureEntityState, so the threshold checks here
+      // naturally compare 0 vs 0 and never fire — those turrets only
+      // dirty the entity on target/state/forceField transitions.
       for (let i = 0; i < next.weaponCount; i++) {
         if (!turretsAlreadyChanged) {
           if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
@@ -379,10 +383,15 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
       if (stateCode === CT_TURRET_STATE_ENGAGED) prev.isEngagedBits |= (1 << i);
       if (targetId !== null) prev.targetBits |= (1 << i);
-      prev.turretRots[i] = w.rotation;
-      prev.turretAngVels[i] = w.angularVelocity;
-      prev.turretPitches[i] = w.pitch;
-      prev.turretPitchVels[i] = w.pitchVelocity;
+      // headOnly turrets (beam/rocket) hide their aim motion from the
+      // wire — sim keeps the values for fire direction but the snapshot
+      // contract is "0 always". Mirror that here so diff/wire/Rust-pool
+      // views all agree.
+      const headOnly = w.config.headOnly === true;
+      prev.turretRots[i] = headOnly ? 0 : w.rotation;
+      prev.turretAngVels[i] = headOnly ? 0 : w.angularVelocity;
+      prev.turretPitches[i] = headOnly ? 0 : w.pitch;
+      prev.turretPitchVels[i] = headOnly ? 0 : w.pitchVelocity;
       prev.turretTargetIds[i] = targetId ?? -1;
       prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
@@ -658,10 +667,18 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
     const w = turrets![t];
     const hasTargetingFsm = readCombatTargetingTurretFsmFromSimInto(sim, e, t, _deltaTurretFsm);
     const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
+    // Mirror the snapshot contract on the Rust diff side: headOnly
+    // turrets pass 0 for rotation/pitch/velocity so the Rust mask never
+    // diverges from the JS mask on aim motion.
+    const headOnly = w.config.headOnly === true;
     sim.turretPool.setTurret(
       slot, t,
-      w.rotation, w.angularVelocity, w.angularAcceleration,
-      w.pitch, w.pitchVelocity, w.pitchAcceleration,
+      headOnly ? 0 : w.rotation,
+      headOnly ? 0 : w.angularVelocity,
+      headOnly ? 0 : w.angularAcceleration,
+      headOnly ? 0 : w.pitch,
+      headOnly ? 0 : w.pitchVelocity,
+      headOnly ? 0 : w.pitchAcceleration,
       w.forceField?.range ?? 0,
       targetId ?? -1,
     );

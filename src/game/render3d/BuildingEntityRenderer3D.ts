@@ -31,6 +31,11 @@ import {
 
 const BUILDING_HEIGHT = 120;
 
+/** Shared white material used to indicate "locked on" for headOnly
+ *  building turrets (towerBeamTurret). Allocated once at module load
+ *  so we don't churn materials per-tower-per-frame. */
+const _lockedOnHeadMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+
 export type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
   width: number;
@@ -446,6 +451,8 @@ export class BuildingEntityRenderer3D {
   private updateTurretPoses(entity: Entity, mesh: EntityMesh): void {
     const combatTurrets = entity.combat?.turrets;
     if (!combatTurrets || mesh.turrets.length !== combatTurrets.length) return;
+    const underConstruction =
+      !!entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost;
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
@@ -456,6 +463,20 @@ export class BuildingEntityRenderer3D {
         turret.mount.z - headRadius,
         turret.mount.y,
       );
+      if (turret.config.headOnly) {
+        // No barrel to orient — skip the aim pose entirely. While the
+        // shell override owns the head material during construction,
+        // we leave it alone; after construction, swap to the white
+        // locked-on material when engaged, restore the primary
+        // material otherwise.
+        if (turretMesh.head && !underConstruction) {
+          turretMesh.head.material =
+            turret.state === 'engaged'
+              ? _lockedOnHeadMat
+              : this.getPrimaryMat(entity.ownership?.playerId);
+        }
+        continue;
+      }
       applyTurretAimPose3D(
         turretMesh,
         entity.transform.rotation,

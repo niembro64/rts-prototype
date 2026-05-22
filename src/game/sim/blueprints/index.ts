@@ -518,6 +518,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction ?? undefined,
     radius: { ...turretBlueprint.radius },
+    headOnly: turretBlueprint.headOnly,
     visualOnly: shot === null,
     constructionEmitter: turretBlueprint.constructionEmitter !== null
       ? {

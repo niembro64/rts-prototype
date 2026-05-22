@@ -42,6 +42,7 @@
     "radius": {
       "body": 3
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLow",
@@ -107,6 +108,7 @@
     "radius": {
       "body": 9
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLow",
@@ -164,6 +166,7 @@
     "radius": {
       "body": 10
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLow",
@@ -221,6 +224,7 @@
     "radius": {
       "body": 12
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcHigh",
@@ -275,6 +279,7 @@
     "radius": {
       "body": 9
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLowOnlyUnder",
@@ -340,6 +345,7 @@
     "radius": {
       "body": 32
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcHigh",
@@ -405,6 +411,7 @@
     "radius": {
       "body": 16
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLow",
@@ -471,6 +478,7 @@
     "radius": {
       "body": 8
     },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -523,6 +531,7 @@
     "radius": {
       "body": 8
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -582,6 +591,7 @@
     "radius": {
       "body": 8
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayBisectTurretAndBody",
@@ -634,6 +644,7 @@
     "radius": {
       "body": 6
     },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -686,6 +697,7 @@
     "radius": {
       "body": 3
     },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -738,6 +750,7 @@
     "radius": {
       "body": 15
     },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -810,6 +823,7 @@
     "radius": {
       "body": 12
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -860,6 +874,7 @@
     "radius": {
       "body": 8
     },
+    "headOnly": false,
     "constructionEmitter": {
       "defaultSize": "small",
       "particleTravelSpeed": 50,
@@ -932,6 +947,7 @@
     "radius": {
       "body": 16
     },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",
@@ -990,6 +1006,7 @@
     "radius": {
       "body": 16
     },
+    "headOnly": false,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "ballisticArcLow",
@@ -1044,6 +1061,7 @@
     "radius": {
       "body": 4
     },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayDirect",

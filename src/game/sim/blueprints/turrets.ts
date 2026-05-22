@@ -31,6 +31,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'verticalLauncher',
   'idlePitch',
   'groundAimFraction',
+  'headOnly',
   'constructionEmitter',
   'excludeLockOnLevel0FriendsAndEnemies',
   'excludeLockOnLevel0Entities',

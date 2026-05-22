@@ -4,6 +4,7 @@ import { SHELL_PALE_HEX } from '@/shellConfig';
 import type { Entity, EntityId } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
 import {
+  entityInstanceColorHex,
   entityInstanceColorKey,
   isConstructionShell,
   setEntityInstanceColor,
@@ -247,13 +248,20 @@ export class UnitDetailInstanceRenderer3D {
       }
     }
 
+    const turretHeadHex = entityInstanceColorHex(entity);
     for (const turret of mesh.turrets) {
+      // headOnly turrets manage their head color per-frame from
+      // engagement state (white when locked-on) via
+      // writeTurretHeadMatrix; don't clobber that here on ownership
+      // changes — the next frame's writer will reconcile.
       if (
         turret.headSlot !== undefined &&
-        this.turretHeadColorKey.get(turret.headSlot) !== colorKey
+        !turret.headOnly &&
+        this.turretHeadColorKey.get(turret.headSlot) !== turretHeadHex
       ) {
-        setEntityInstanceColor(this.turretHeadInstanced, turret.headSlot, entity, this.scratchColor);
-        this.turretHeadColorKey.set(turret.headSlot, colorKey);
+        this.scratchColor.set(turretHeadHex);
+        this.turretHeadInstanced.setColorAt(turret.headSlot, this.scratchColor);
+        this.turretHeadColorKey.set(turret.headSlot, turretHeadHex);
         this.turretHeadInstanced.instanceColor!.needsUpdate = true;
       }
       if (turret.barrelSlots) {
@@ -337,12 +345,21 @@ export class UnitDetailInstanceRenderer3D {
     if (writeColor) setEntityInstanceColor(pool.mesh, slot, entity, this.scratchColor);
   }
 
-  writeTurretHeadMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
+  writeTurretHeadMatrix(
+    slot: number,
+    matrix: THREE.Matrix4,
+    entity: Entity,
+    /** Hex override for headOnly turrets (e.g. white when locked-on).
+     *  When undefined the normal entity color (player or construction
+     *  shell) is used. */
+    colorOverride?: number,
+  ): void {
     this.turretHeadInstanced.setMatrixAt(slot, matrix);
-    const colorKey = entityInstanceColorKey(entity);
-    if (this.turretHeadColorKey.get(slot) !== colorKey) {
-      setEntityInstanceColor(this.turretHeadInstanced, slot, entity, this.scratchColor);
-      this.turretHeadColorKey.set(slot, colorKey);
+    const colorHex = colorOverride ?? entityInstanceColorHex(entity);
+    if (this.turretHeadColorKey.get(slot) !== colorHex) {
+      this.scratchColor.set(colorHex);
+      this.turretHeadInstanced.setColorAt(slot, this.scratchColor);
+      this.turretHeadColorKey.set(slot, colorHex);
       this.turretHeadColorDirty = true;
     }
   }

@@ -946,6 +946,57 @@
     </section>
 
     <section>
+      <h2>Beam And Rocket Turrets Render As Heads, Not Barrels</h2>
+      <p>
+        Beam-family turrets (<code>beamTurret</code>, <code>miniBeam</code>,
+        <code>megaBeamTurret</code>, <code>towerBeamTurret</code>) and rocket-family turrets
+        (<code>salvoRocketTurret</code>, <code>fastRocketTurret</code>) render as a single
+        sphere &mdash; the turret head &mdash; with no barrel attached. The head shows the
+        unit&rsquo;s player color while idle or tracking and flips to white the instant the
+        turret engages a target. That color flip <em>is</em> the lock-on cue; there is no
+        rotating barrel to read.
+      </p>
+      <p>
+        Marking a turret blueprint with <code>headOnly: true</code> is the contract. The
+        renderer builds no barrel meshes for it, skips <code>applyTurretAimPose3D</code> on its
+        root group every tick, and the snapshot serializer pins the wire&rsquo;s
+        rotation / angular-velocity / pitch / pitch-velocity slots to zero. The simulation
+        still tracks the live aim values internally so beams trace and rockets launch in the
+        correct direction &mdash; those values just never leave the host.
+      </p>
+      <h3>Why this is its own boundary</h3>
+      <p>
+        Aim motion is the busiest channel a turret pushes through the delta serializer.
+        A continuously tracking turret dirties its host entity every frame on rotation /
+        pitch / angular-velocity thresholds, which forces the entire entity row back onto the
+        wire. For weapons where the renderer never <em>uses</em> aim motion &mdash; beams
+        define their direction by the start/end points stamped on the beam projectile;
+        verticalLauncher rockets ignore turret yaw entirely &mdash; that traffic is pure
+        overhead. Zeroing the four angular fields collapses those transitions out of the diff
+        path so the entity only dirties on target-acquisition or state changes, which is what
+        the visual actually depends on.
+      </p>
+      <h3>What the renderer still reads</h3>
+      <ul class="rule-list">
+        <li>The turret&rsquo;s engaged/idle state, sent as the usual FSM bit on every
+        snapshot. The head color writer flips to white iff <code>turret.state === 'engaged'</code>.</li>
+        <li>The turret&rsquo;s mount point, identical to every other turret &mdash; the head
+        sphere sits where it always sat.</li>
+        <li>Beam endpoints and projectile spawns, which carry their own world-space geometry
+        on the wire. None of them need turret yaw/pitch on the client to be reconstructed.</li>
+      </ul>
+      <h3>Where the rule does not apply</h3>
+      <p>
+        Mirror turrets and the disruptor cannon stay full-barrel: the mirror panel has to
+        rotate to bisect its targets, and the disruptor is an authored melee gun whose visible
+        barrel is half the read. Construction emitters, force-field turrets, and visual-only
+        hardpoints continue to use their existing dedicated rigs &mdash; <code>headOnly</code>
+        is a strict subset of the &ldquo;straight-line projectile or beam, head sphere is the
+        whole visual&rdquo; category, not a catch-all.
+      </p>
+    </section>
+
+    <section>
       <h2>BAR Inspiration, Project Identity</h2>
       <p>
         Beyond All Reason is the comparison point for command ergonomics, readable large battles,

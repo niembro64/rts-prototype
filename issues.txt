@@ -40,3 +40,41 @@ Fix direction:
 Do the child items below as separate, measurable PRs. Each item must
 report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
 bar, preferably with the same unit count and snapshot cadence.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-02 - beam and rocket turrets render head-only and skip aim
+               motion on the wire (DONE on landing of this change).
+------------------------------------------------------------------------------
+
+What changed:
+- Added a `headOnly: boolean` flag on TurretBlueprint, set true for
+  the beam family (beamTurret, miniBeam, megaBeamTurret, towerBeamTurret)
+  and the rocket family (salvoRocketTurret, fastRocketTurret).
+- 3D renderer skips barrel mesh construction and the per-tick
+  applyTurretAimPose3D call for these turrets. The head sphere is the
+  whole visual; it shows the unit's player color when idle / tracking
+  and flips to white when turret.state === 'engaged'.
+- Snapshot serializer pins rot / vel / pitch / pitchVel to 0 for
+  headOnly turrets on the wire. captureEntityState + the Rust turret
+  pool sync mirror this, so the JS / Rust diff masks both see 0-vs-0
+  on aim motion and no longer dirty the host entity from rotation
+  drift. Target / engaged-state / forceField-range transitions still
+  dirty the entity normally.
+- Sim still tracks the live rotation / pitch internally for beam
+  direction and rocket launch &mdash; only the wire and the renderer
+  drop the values.
+
+Why it matters:
+A tracking turret used to push its host entity into ENTITY_CHANGED_TURRETS
+every frame from yaw/pitch threshold breaches. The wire payload remained
+fixed-stride (10 floats per turret), so reducing dirty frequency was the
+bandwidth lever rather than the per-row width.
+
+Follow-up worth measuring:
+- Compare DIFFSNAP / FULLSNAP sizes on a battle dominated by beam +
+  rocket units (e.g. the `units.json` mix that bundles miniBeam on
+  smaller chassis, plus a salvoRocketTurret line).
+- If the wire savings warrant it, consider a follow-up that shrinks
+  the wire stride per turret to skip the four angular slots entirely
+  when headOnly is set &mdash; would require coordinated changes in the
+  Rust wire encoder/decoder and would be the natural sequel.

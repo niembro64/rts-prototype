@@ -11,6 +11,11 @@ import type { TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 
+/** Color the head sphere shows when a headOnly (beam/rocket) turret is
+ *  engaged — i.e. has acquired and is firing on a target. Idle/tracking
+ *  states fall back to the entity's normal player/construction color. */
+const HEADONLY_LOCKED_ON_COLOR_HEX = 0xffffff;
+
 export type UnitTurretPose3DUpdate = {
   entity: Entity;
   mesh: EntityMesh;
@@ -83,29 +88,40 @@ export class UnitTurretPose3D {
         continue;
       }
 
-      applyTurretAimPose3D(
-        turretMesh,
-        entity.transform.rotation,
-        turret.rotation,
-        turret.pitch,
-        chassisTiltInverse,
-      );
-      if (turretMesh.spinGroup) {
-        turretMesh.spinGroup.rotation.x = barrelSpinEnabled
-          ? spinAngleFor(turretIdx) ?? 0
-          : 0;
+      if (!turret.config.headOnly) {
+        applyTurretAimPose3D(
+          turretMesh,
+          entity.transform.rotation,
+          turret.rotation,
+          turret.pitch,
+          chassisTiltInverse,
+        );
+        if (turretMesh.spinGroup) {
+          turretMesh.spinGroup.rotation.x = barrelSpinEnabled
+            ? spinAngleFor(turretIdx) ?? 0
+            : 0;
+        }
       }
 
       if (
         turretMesh.headSlot !== undefined &&
         turretMesh.headRadius !== undefined
       ) {
+        // headOnly turrets (beam/rocket) communicate lock-on by
+        // switching head color to white when engaged — the visual
+        // replaces the missing barrel as the "this turret has acquired
+        // a target" signal.
+        const headColorOverride =
+          turretMesh.headOnly && turret.state === 'engaged'
+            ? HEADONLY_LOCKED_ON_COLOR_HEX
+            : undefined;
         this.writeHeadInstance(
           entity,
           mesh,
           turretMesh,
           parentQuaternion,
           unitDetailInstances,
+          headColorOverride,
         );
       }
 
@@ -123,6 +139,7 @@ export class UnitTurretPose3D {
     turretMesh: TurretMesh,
     parentQuaternion: THREE.Quaternion,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
+    colorOverride: number | undefined,
   ): void {
     const liftPos = mesh.liftGroup?.position;
     const headRadius = turretMesh.headRadius;
@@ -136,7 +153,12 @@ export class UnitTurretPose3D {
     this.headWorldPos.copy(mesh.group.position).add(this.headLocalPos);
     this.headMat.makeScale(headRadius, headRadius, headRadius);
     this.headMat.setPosition(this.headWorldPos);
-    unitDetailInstances.writeTurretHeadMatrix(turretMesh.headSlot, this.headMat, entity);
+    unitDetailInstances.writeTurretHeadMatrix(
+      turretMesh.headSlot,
+      this.headMat,
+      entity,
+      colorOverride,
+    );
   }
 
   private writeMountCache(
