@@ -42,34 +42,6 @@ report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
 bar, preferably with the same unit count and snapshot cadence.
 
 ------------------------------------------------------------------------------
-SNAP-WIRE-01.2 - stop resending static terrain/buildability on every
-                 recurring FULLSNAP.
-------------------------------------------------------------------------------
-
-Where:
-- src/game/server/ServerSnapshotPublisher.ts sets state.terrain and
-  state.buildability whenever !isDelta.
-
-What:
-Every full keyframe currently includes static terrain and buildability
-payloads. Those are needed for initial bootstrap and map-changing
-resyncs, but they should not ride every 1-second recovery FULLSNAP.
-
-Fix:
-Split full keyframes into:
-- Bootstrap/static fullsnap: includes terrain/buildability.
-- Recovery fullsnap: includes authoritative dynamic state only.
-
-Track, per listener, whether static map data has already been sent for
-the current battle/map identity. Resend only on listener attach,
-explicit static resync, or map/buildability identity change.
-
-Done when:
-Recurring FS SIZE drops by the terrain/buildability byte cost while
-newly joined/reconnected clients still receive terrain and buildability
-before rendering the battle.
-
-------------------------------------------------------------------------------
 SNAP-WIRE-01.3 - make minimap updates lower-rate or dirty-thresholded.
 ------------------------------------------------------------------------------
 

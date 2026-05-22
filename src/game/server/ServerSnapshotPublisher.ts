@@ -47,6 +47,9 @@ export type SnapshotListenerEntry = {
   playerId?: PlayerId;
   trackingKey: string;
   deltaTrackingKey: string;
+  lastStaticTerrainTileMap?: TerrainTileMap;
+  lastStaticBuildabilityGrid?: TerrainBuildabilityGrid;
+  lastStaticResyncToken?: number;
   /** Team shroud-version sum at the last keyframe where we shipped
    *  the shroud bitmap to this listener (issues.txt FOW-OPT-02).
    *  Compared against the live sum each keyframe to skip the
@@ -90,13 +93,15 @@ export class ServerSnapshotPublisher {
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
+  private staticResyncToken = 0;
 
   reset(): void {
     this.isFirstSnapshot = true;
     this.snapshotCounter = 0;
   }
 
-  forceNextKeyframe(): void {
+  forceNextKeyframe(includeStatic = false): void {
+    if (includeStatic) this.staticResyncToken++;
     this.reset();
   }
 
@@ -159,7 +164,12 @@ export class ServerSnapshotPublisher {
     // listeners this avoids running captureEntityState N times per
     // entity. The serializer falls back to inline capture if the cache
     // is missed (covers any direct caller that didn't precapture).
-    captureSnapshotEntityStates(input.world, isDelta, this.dirtyIdsBuf);
+    const hasListenerStaticBootstrap = this.hasListenerNeedingStaticMap(input);
+    captureSnapshotEntityStates(
+      input.world,
+      isDelta && !hasListenerStaticBootstrap,
+      this.dirtyIdsBuf,
+    );
 
     // Share one SnapshotVisibility per team across the listener loop
     // (issues.txt FOW-OPT-01). Two teammates merge the same set of
@@ -185,6 +195,8 @@ export class ServerSnapshotPublisher {
 
     const serializeForListener = (listener: SnapshotListenerEntry): NetworkServerSnapshot => {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
+      const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
+      const listenerIsDelta = isDelta && !listenerNeedsStaticMap;
       // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
       // minimap payloads. The first teammate to hit each cache slot
       // triggers the underlying serializer using THIS listener's
@@ -235,7 +247,7 @@ export class ServerSnapshotPublisher {
       };
       const state = serializeGameState(
         input.world,
-        isDelta,
+        listenerIsDelta,
         gamePhase,
         winnerId,
         sprayTargets,
@@ -249,11 +261,14 @@ export class ServerSnapshotPublisher {
         serializeOptions,
       );
 
-      const shouldSendStaticTerrain = !isDelta;
+      const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
       state.terrain = shouldSendStaticTerrain ? input.terrainTileMap : undefined;
       state.buildability = shouldSendStaticTerrain
         ? input.terrainBuildabilityGrid
         : undefined;
+      if (shouldSendStaticTerrain) {
+        this.markListenerStaticMapSent(listener, input);
+      }
       // FOW-11 shroud payload: ship only on keyframes, only when the
       // team's bitmap has new content since the last ship to this
       // listener (FOW-OPT-02). The version sum monotonically increases
@@ -300,11 +315,23 @@ export class ServerSnapshotPublisher {
       return state;
     };
 
-    let sharedGlobalState: NetworkServerSnapshot | undefined;
+    let sharedGlobalDynamicState: NetworkServerSnapshot | undefined;
+    let sharedGlobalStaticState: NetworkServerSnapshot | undefined;
     for (const listener of input.listeners) {
       if (listener.playerId !== undefined) continue;
-      if (!sharedGlobalState) sharedGlobalState = serializeForListener(listener);
-      listener.callback(sharedGlobalState);
+      if (this.listenerNeedsStaticMap(listener, input)) {
+        if (!sharedGlobalStaticState) {
+          sharedGlobalStaticState = serializeForListener(listener);
+        } else {
+          this.markListenerStaticMapSent(listener, input);
+        }
+        listener.callback(sharedGlobalStaticState);
+      } else {
+        if (!sharedGlobalDynamicState) {
+          sharedGlobalDynamicState = serializeForListener(listener);
+        }
+        listener.callback(sharedGlobalDynamicState);
+      }
     }
 
     for (const listener of input.listeners) {
@@ -330,5 +357,30 @@ export class ServerSnapshotPublisher {
       return false;
     }
     return true;
+  }
+
+  private hasListenerNeedingStaticMap(input: ServerSnapshotPublisherInput): boolean {
+    for (const listener of input.listeners) {
+      if (this.listenerNeedsStaticMap(listener, input)) return true;
+    }
+    return false;
+  }
+
+  private listenerNeedsStaticMap(
+    listener: SnapshotListenerEntry,
+    input: ServerSnapshotPublisherInput,
+  ): boolean {
+    return listener.lastStaticTerrainTileMap !== input.terrainTileMap ||
+      listener.lastStaticBuildabilityGrid !== input.terrainBuildabilityGrid ||
+      listener.lastStaticResyncToken !== this.staticResyncToken;
+  }
+
+  private markListenerStaticMapSent(
+    listener: SnapshotListenerEntry,
+    input: ServerSnapshotPublisherInput,
+  ): void {
+    listener.lastStaticTerrainTileMap = input.terrainTileMap;
+    listener.lastStaticBuildabilityGrid = input.terrainBuildabilityGrid;
+    listener.lastStaticResyncToken = this.staticResyncToken;
   }
 }

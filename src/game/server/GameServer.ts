@@ -799,12 +799,14 @@ export class GameServer {
     this.snapshotPublisher.reset();
   }
 
-  // Force the next emitted snapshot to be a self-contained keyframe.
+  // Force the next emitted snapshot to be a dynamic keyframe. Static
+  // terrain/buildability is listener-gated; pass includeStatic for an
+  // explicit map resync.
   // Used after network battle start so clients that attach their
   // render scene slightly after the first server tick still receive
   // commander/unit creation data even when KEYFRAMES is set to NONE.
-  forceNextSnapshotKeyframe(): void {
-    this.snapshotPublisher.forceNextKeyframe();
+  forceNextSnapshotKeyframe(includeStatic = false): void {
+    this.snapshotPublisher.forceNextKeyframe(includeStatic);
   }
 
   // Change snapshot cadence. Invalid/legacy rates normalize to the
