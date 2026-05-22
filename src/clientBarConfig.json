@@ -48,7 +48,7 @@
     ]
   },
   "rotationPosEma": {
-    "default": "fast",
+    "default": "medium",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
