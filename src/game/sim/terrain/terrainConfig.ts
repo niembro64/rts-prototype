@@ -43,14 +43,17 @@ export const TERRAIN_TRIANGLE_PRESERVE_WATERLINE =
 export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE =
   terrainConfig.terrainTriangleVertexKeyScale;
 
-/** Render-only. When true, the terrain renderer drops triangles whose
- *  three vertices all sit at or below `WATER_LEVEL` from the geometry it
- *  ships to the GPU. Shoreline triangles (any vertex above water) are
- *  kept. The authoritative mesh — used by the sim for height queries,
- *  unit grounding, and pathing — is untouched, so this is purely a
- *  visual / triangle-count optimization. */
-export const TERRAIN_HIDE_UNDERWATER_TRIANGLES =
-  terrainConfig.terrainHideUnderwaterTriangles;
+/** Render-only "solid ocean" mode. When true:
+ *    (a) `WaterRenderer3D` draws the ocean surface fully opaque
+ *        (transparency disabled, depth writes on), and
+ *    (b) `TerrainTileRenderer3D` culls triangles whose three vertices
+ *        all sit at or below `WATER_LEVEL` — they would be invisible
+ *        through the opaque water anyway, so neither their indices nor
+ *        their vertices are uploaded to the GPU. Shoreline triangles
+ *        (any vertex above water) are still drawn.
+ *  The authoritative mesh — used by the sim for height queries, unit
+ *  grounding, and pathing — is untouched. */
+export const WATER_FULLY_OPAQUE = terrainConfig.waterFullyOpaque;
 
 /** Magnitude only; TerrainShape decides the sign. */
 export const TERRAIN_SHAPE_MAGNITUDE = terrainConfig.terrainShapeMagnitude;

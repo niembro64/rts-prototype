@@ -49,9 +49,9 @@ import {
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
-  TERRAIN_HIDE_UNDERWATER_TRIANGLES,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
+  WATER_FULLY_OPAQUE,
   WATER_LEVEL,
 } from '../sim/Terrain';
 import {
@@ -696,7 +696,7 @@ export class TerrainTileRenderer3D {
       TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeEndDistance,
       graphicsConfig.tier,
       graphicsConfig.terrainTileSideWalls ? 1 : 0,
-      TERRAIN_HIDE_UNDERWATER_TRIANGLES ? 1 : 0,
+      WATER_FULLY_OPAQUE ? 1 : 0,
       triangleDebug ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
       getTerrainVersion(),
@@ -884,9 +884,16 @@ export class TerrainTileRenderer3D {
             cellSize,
           ),
         );
-      const meshVertexToTerrainVertex = new Array<number>(authoritativeMesh.vertexCount);
-
-      for (let i = 0; i < authoritativeMesh.vertexCount; i++) {
+      // Lazy vertex allocation: a mesh vertex is only pushed into the GPU
+      // buffers when a kept triangle first references it. With
+      // WATER_FULLY_OPAQUE the wholly-underwater triangles are skipped,
+      // so their vertices (when not also touched by a shoreline
+      // triangle) never get written — the vertex buffer shrinks
+      // alongside the index buffer instead of carrying orphans.
+      const meshVertexToTerrainVertex = new Int32Array(authoritativeMesh.vertexCount).fill(-1);
+      const allocateTerrainVertex = (i: number): number => {
+        const existing = meshVertexToTerrainVertex[i];
+        if (existing >= 0) return existing;
         const coordOffset = i * 2;
         const wx = authoritativeMesh.vertexCoords[coordOffset];
         const wz = authoritativeMesh.vertexCoords[coordOffset + 1];
@@ -929,7 +936,8 @@ export class TerrainTileRenderer3D {
             precomputedShadow,
           ),
         );
-      }
+        return idx;
+      };
 
       // Per-triangle keep mask. A triangle is dropped from the rendered
       // mesh only when every one of its three vertices sits at or below
@@ -942,7 +950,7 @@ export class TerrainTileRenderer3D {
         const ib = authoritativeMesh.triangleIndices[triOffset + 1];
         const ic = authoritativeMesh.triangleIndices[triOffset + 2];
         if (
-          TERRAIN_HIDE_UNDERWATER_TRIANGLES &&
+          WATER_FULLY_OPAQUE &&
           authoritativeMesh.vertexHeights[ia] <= WATER_LEVEL &&
           authoritativeMesh.vertexHeights[ib] <= WATER_LEVEL &&
           authoritativeMesh.vertexHeights[ic] <= WATER_LEVEL
@@ -951,9 +959,9 @@ export class TerrainTileRenderer3D {
         }
         triangleIsRendered[tri] = 1;
         terrainIndices.push(
-          meshVertexToTerrainVertex[ia],
-          meshVertexToTerrainVertex[ib],
-          meshVertexToTerrainVertex[ic],
+          allocateTerrainVertex(ia),
+          allocateTerrainVertex(ib),
+          allocateTerrainVertex(ic),
         );
         terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
       }

@@ -6,7 +6,7 @@
 // terrain share one material/shader/color path.
 
 import * as THREE from 'three';
-import { WATER_LEVEL } from '../sim/Terrain';
+import { WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
 import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
@@ -44,11 +44,15 @@ export class WaterRenderer3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.waterGeometry = new THREE.BufferGeometry();
+    // WATER_FULLY_OPAQUE mode swaps the transparent-water material for an
+    // opaque one: no alpha blending, depth writes on. Triangles beneath
+    // the ocean are also culled (see TerrainTileRenderer3D), so the
+    // opaque plane hides what would otherwise be empty space below.
     this.waterMaterial = new THREE.MeshBasicMaterial({
       color: WATER_RENDER_CONFIG.color,
-      transparent: true,
-      opacity: WATER_RENDER_CONFIG.opacity,
-      depthWrite: false,
+      transparent: !WATER_FULLY_OPAQUE,
+      opacity: WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity,
+      depthWrite: WATER_FULLY_OPAQUE,
       depthTest: true,
       polygonOffset: true,
       polygonOffsetFactor: WATER_DEPTH_OFFSET_FACTOR,
@@ -102,7 +106,9 @@ export class WaterRenderer3D {
       return;
     }
     if (!this.built) this.buildGeometry();
-    this.waterMaterial.opacity = graphicsConfig.waterOpacity;
+    this.waterMaterial.opacity = WATER_FULLY_OPAQUE
+      ? 1
+      : graphicsConfig.waterOpacity;
     this.waterMesh.visible = true;
   }
 
