@@ -1,6 +1,6 @@
 {
   "fogOfWar": {
-    "maxPoolSize": 1000,
+    "maxPoolSize": 100,
     "capPolicy": "skipWhenFull",
     "densitySamples": 128,
     "maxSpawnsPerFrame": 8,
