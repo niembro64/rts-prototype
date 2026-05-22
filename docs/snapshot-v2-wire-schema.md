@@ -45,12 +45,18 @@ Fixed-point scales:
 
 | Class | Scale | Type | Notes |
 | --- | ---: | --- | --- |
-| Entity position | 100 | zig-zag varint or i32 array | 0.01 world-unit precision. |
+| Entity position | 100 | zig-zag varint or i32 array | 0.01 world-unit precision; already integer-scaled in the current MessagePack bridge. |
 | Minimap position | 1 | zig-zag varint or i32 array | Whole world units; already shipped as integer MessagePack numbers today. |
-| Projectile/beam position | 1 | zig-zag varint or i32 array | Matches current projectile quantization. |
-| Velocity | 10 | zig-zag varint or i32 array | 0.1 world-units/sec. |
-| Rotation/turret angle | 1000 | zig-zag varint or i32 array | 0.001 rad. |
-| Normal/quaternion component | 1000 | zig-zag varint or i16 array | Range usually [-1, 1]. |
+| Projectile/beam position | 1 | zig-zag varint or i32 array | Whole world units; projectile spawns, velocity corrections, and beam points use this today. |
+| Velocity | 10 | zig-zag varint or i32 array | 0.1 world-units/sec; units, projectile spawns, projectile corrections, and beam point velocities use this today. |
+| Rotation/turret angle | 1000 | zig-zag varint or i32 array | 0.001 rad; entity yaw, projectile heading, turret yaw/pitch, turret angular rates, and beam obstructionT use this today. |
+| Normal/quaternion component | 1000 | zig-zag varint or i16 array | Range usually [-1, 1]; unit normals and beam reflection normals use this today. |
+| Suspension offset | 100 | zig-zag varint or i32 array | 0.01 world-unit precision; suspension velocity uses the velocity scale. |
+
+The current MessagePack-compatible path still pays object/key overhead, but its
+high-volume numeric DTO fields now use the same integer scales expected by
+snapshot-v2. The v2 migration should preserve these scales while moving the
+rows into packed arrays/varints.
 
 ## Sections
 

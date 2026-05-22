@@ -24,6 +24,10 @@ import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
 import { applyEntitySensorBlueprint } from '../../sim/cloakDetection';
 import {
+  dequantizeEntityPosition as deqEntityPos,
+  dequantizeRotation as deqRot,
+} from '../snapshotQuantization';
+import {
   applyNetworkSuspensionState,
   decodeNetworkUnitActions,
   decodeNetworkUnitType,
@@ -47,10 +51,10 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   if (wireTurretId !== turret.config.id) return;
   turret.target = nw.targetId ?? null;
   turret.state = codeToTurretState(nw.state);
-  turret.rotation = wire.angular.rot;
-  turret.pitch = wire.angular.pitch;
-  turret.angularVelocity = wire.angular.vel;
-  turret.pitchVelocity = wire.angular.pitchVel;
+  turret.rotation = deqRot(wire.angular.rot);
+  turret.pitch = deqRot(wire.angular.pitch);
+  turret.angularVelocity = deqRot(wire.angular.vel);
+  turret.pitchVelocity = deqRot(wire.angular.pitchVel);
   // angularAcceleration / pitchAcceleration are no longer shipped on
   // the wire (the sim still writes them for its own turret physics,
   // but the client never receives them and predicts rotation from
@@ -157,13 +161,17 @@ export function refreshBuildingTurretsFromNetwork(
 export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity): Entity | null {
   const { id, type, pos, rotation, playerId } = netEntity;
   if (!pos || rotation === undefined) return null;
+  const x = deqEntityPos(pos.x);
+  const y = deqEntityPos(pos.y);
+  const z = deqEntityPos(pos.z);
+  const rot = deqRot(rotation);
 
   if (type === 'unit') {
-    return createUnitFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
+    return createUnitFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 
   if (type === 'building') {
-    return createBuildingFromNetwork(netEntity, id, pos.x, pos.y, rotation, playerId);
+    return createBuildingFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 
   return null;
@@ -174,6 +182,7 @@ function createUnitFromNetwork(
   id: number,
   x: number,
   y: number,
+  z: number,
   rotation: number,
   playerId: number
 ): Entity | null {
@@ -193,7 +202,7 @@ function createUnitFromNetwork(
   const entity: Entity = {
     id,
     type: 'unit',
-    transform: { x, y, z: netEntity.pos?.z ?? 0, rotation },
+    transform: { x, y, z, rotation },
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
@@ -306,6 +315,7 @@ function createBuildingFromNetwork(
   id: number,
   x: number,
   y: number,
+  z: number,
   rotation: number,
   playerId: number
 ): Entity | null {
@@ -323,7 +333,7 @@ function createBuildingFromNetwork(
   const entity: Entity = {
     id,
     type: 'building',
-    transform: { x, y, z: netEntity.pos?.z ?? 0, rotation },
+    transform: { x, y, z, rotation },
     ownership: { playerId },
     selectable: { selected: false },
     building: {

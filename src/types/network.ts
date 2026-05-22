@@ -381,8 +381,11 @@ export type NetworkServerSnapshotScanPulse = {
 
 export type NetworkServerSnapshotProjectileSpawn = {
   id: number;
+  /** PROJECTILE_POSITION_WIRE_SCALE fixed-point spawn position. */
   pos: Vec3;
+  /** ROTATION_WIRE_SCALE fixed-point heading. */
   rotation: number;
+  /** VELOCITY_WIRE_SCALE fixed-point initial velocity. */
   velocity: Vec3;
   /** Bit-packed projectile type code (see PROJECTILE_TYPE_* constants
    *  and projectileTypeToCode / codeToProjectileType helpers). */
@@ -405,6 +408,7 @@ export type NetworkServerSnapshotProjectileSpawn = {
   /** True when this projectile came from a parent detonation (e.g.
    *  cluster-flak submunitions) rather than a turret launch. */
   fromParentDetonation?: boolean;
+  /** PROJECTILE_POSITION_WIRE_SCALE fixed-point line-shot endpoints. */
   beam?: { start: Vec3; end: Vec3 };
   targetEntityId?: number;
   homingTurnRate?: number;
@@ -416,7 +420,9 @@ export type NetworkServerSnapshotProjectileDespawn = {
 
 export type NetworkServerSnapshotVelocityUpdate = {
   id: number;
+  /** PROJECTILE_POSITION_WIRE_SCALE fixed-point position. */
   pos: Vec3;
+  /** VELOCITY_WIRE_SCALE fixed-point velocity. */
   velocity: Vec3;
 };
 
@@ -426,8 +432,11 @@ export type NetworkServerSnapshotVelocityUpdate = {
  *  extrapolate every vertex independently between snapshots; the
  *  reflector vertices set `mirrorEntityId` to the redirecting reflector
  *  entity (legacy field name; mirrors and force fields both use it).
- *  Start leaves it undefined; the end can carry reflector metadata
- *  when the authoritative max-segment cap terminated on a reflector. */
+ *  Position uses PROJECTILE_POSITION_WIRE_SCALE, velocity uses
+ *  VELOCITY_WIRE_SCALE, and normals use NORMAL_WIRE_SCALE fixed-point
+ *  integers. Start leaves reflector metadata undefined; the end can
+ *  carry it when the authoritative max-segment cap terminated on a
+ *  reflector. */
 export type NetworkServerSnapshotBeamPoint = {
   x: number;
   y: number;
@@ -601,6 +610,7 @@ export type NetworkServerSnapshotTurret = {
      *  data such as ranges/turn acceleration/drag stays client-local
      *  and blueprint-derived. */
     id: TurretTypeCode;
+    /** ROTATION_WIRE_SCALE fixed-point yaw/pitch positions and rates. */
     angular: {
       /** Yaw (horizontal heading, rot around z-axis). */
       rot: number;
@@ -653,12 +663,13 @@ export const ENTITY_CHANGED_COMBAT_MODE = 1 << 12;
 export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
-  /** 3D position (x,y = plane, z = altitude). The 2D client reads only
-   *  x/y; the 3D client reads all three. Present on full records and
-   *  on deltas whose changedFields include ENTITY_CHANGED_POS. */
+  /** 3D position (x,y = plane, z = altitude), encoded as
+   *  ENTITY_POSITION_WIRE_SCALE fixed-point integers. The 2D client
+   *  reads only x/y; the 3D client reads all three. Present on full
+   *  records and on deltas whose changedFields include ENTITY_CHANGED_POS. */
   pos?: Vec3;
-  /** Present on full records and on deltas whose changedFields include
-   *  ENTITY_CHANGED_ROT. */
+  /** ROTATION_WIRE_SCALE fixed-point yaw. Present on full records and
+   *  on deltas whose changedFields include ENTITY_CHANGED_ROT. */
   rotation?: number;
   playerId: PlayerId;
   changedFields?: number | null;
@@ -673,6 +684,7 @@ export type NetworkServerSnapshotEntity = {
     radius?: { body?: number; shot?: number; push?: number };
     bodyCenterHeight?: number;
     mass?: number;
+    /** VELOCITY_WIRE_SCALE fixed-point linear velocity. */
     velocity?: Vec3;
     /** Per-unit smoothed surface normal (unit-length nx, ny, nz). The
      *  sim EMA-blends raw → smoothed each tick (see updateUnitGroundNormal) so
@@ -686,7 +698,9 @@ export type NetworkServerSnapshotEntity = {
      *  throttled between detail-cadence snapshots. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
     /** Runtime chassis suspension relative to the locomotion anchor.
-     *  Offsets are chassis-local: x = forward, y = lateral, z = up. */
+     *  Offsets are SUSPENSION_WIRE_SCALE fixed-point values:
+     *  x = forward, y = lateral, z = up. Velocity uses
+     *  VELOCITY_WIRE_SCALE. */
     suspension?: {
       offset: Vec3;
       velocity: Vec3;

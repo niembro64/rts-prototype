@@ -18,6 +18,13 @@ import { isFiniteNumber } from '../math';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { refreshUnitActionHash } from '../sim/unitActions';
 import {
+  dequantizeEntityPosition as deqEntityPos,
+  dequantizeNormal as deqNormal,
+  dequantizeRotation as deqRot,
+  dequantizeSuspension as deqSuspension,
+  dequantizeVelocity as deqVel,
+} from './snapshotQuantization';
+import {
   copyActionInto,
   copyTurretInto,
   createActionDto,
@@ -109,12 +116,12 @@ export function applyNetworkSuspensionState(
 ): void {
   const state = entity.unit?.suspension;
   if (!state || !suspension) return;
-  state.offsetX = suspension.offset.x;
-  state.offsetY = suspension.offset.y;
-  state.offsetZ = suspension.offset.z;
-  state.velocityX = suspension.velocity.x;
-  state.velocityY = suspension.velocity.y;
-  state.velocityZ = suspension.velocity.z;
+  state.offsetX = deqSuspension(suspension.offset.x);
+  state.offsetY = deqSuspension(suspension.offset.y);
+  state.offsetZ = deqSuspension(suspension.offset.z);
+  state.velocityX = deqVel(suspension.velocity.x);
+  state.velocityY = deqVel(suspension.velocity.y);
+  state.velocityZ = deqVel(suspension.velocity.z);
   state.legContact = suspension.legContact === true;
 }
 
@@ -157,9 +164,9 @@ export function readNetworkUnitMass(
 
 export function readNetworkUnitVelocity(src: NetworkUnitSnapshot | undefined): Vec3 {
   return {
-    x: finiteOr(src?.velocity?.x, 0),
-    y: finiteOr(src?.velocity?.y, 0),
-    z: finiteOr(src?.velocity?.z, 0),
+    x: deqVel(finiteOr(src?.velocity?.x, 0)),
+    y: deqVel(finiteOr(src?.velocity?.y, 0)),
+    z: deqVel(finiteOr(src?.velocity?.z, 0)),
   };
 }
 
@@ -168,9 +175,9 @@ export function readNetworkUnitSurfaceNormal(
 ): { nx: number; ny: number; nz: number } {
   return src?.surfaceNormal
     ? {
-        nx: finiteOr(src.surfaceNormal.nx, 0),
-        ny: finiteOr(src.surfaceNormal.ny, 0),
-        nz: finiteOr(src.surfaceNormal.nz, 1),
+        nx: deqNormal(finiteOr(src.surfaceNormal.nx, 0)),
+        ny: deqNormal(finiteOr(src.surfaceNormal.ny, 0)),
+        nz: deqNormal(finiteOr(src.surfaceNormal.nz, 1000)),
       }
     : { nx: 0, ny: 0, nz: 1 };
 }
@@ -445,9 +452,9 @@ export function applyNetworkUnitDriftFieldsToTarget(
 ): void {
   const cf = changedFields ?? 0;
   if ((isFull || (cf & ENTITY_CHANGED_POS)) && src.pos) {
-    target.x = src.pos.x;
-    target.y = src.pos.y;
-    target.z = src.pos.z;
+    target.x = deqEntityPos(src.pos.x);
+    target.y = deqEntityPos(src.pos.y);
+    target.z = deqEntityPos(src.pos.z);
   }
   if (isFull && isFiniteNumber(src.unit?.bodyCenterHeight)) {
     target.bodyCenterHeight = src.unit.bodyCenterHeight;
@@ -455,20 +462,20 @@ export function applyNetworkUnitDriftFieldsToTarget(
   if (isFull || (cf & ENTITY_CHANGED_NORMAL)) {
     const sn = src.unit?.surfaceNormal;
     if (sn) {
-      target.surfaceNormalX = sn.nx;
-      target.surfaceNormalY = sn.ny;
-      target.surfaceNormalZ = sn.nz;
+      target.surfaceNormalX = deqNormal(sn.nx);
+      target.surfaceNormalY = deqNormal(sn.ny);
+      target.surfaceNormalZ = deqNormal(sn.nz);
     }
   }
   if ((isFull || (cf & ENTITY_CHANGED_ROT)) && isFiniteNumber(src.rotation)) {
-    target.rotation = src.rotation;
+    target.rotation = deqRot(src.rotation);
   }
   if (isFull || (cf & ENTITY_CHANGED_VEL)) {
     const v = src.unit?.velocity;
     if (v !== undefined) {
-      target.velocityX = v.x;
-      target.velocityY = v.y;
-      target.velocityZ = v.z;
+      target.velocityX = deqVel(v.x);
+      target.velocityY = deqVel(v.y);
+      target.velocityZ = deqVel(v.z);
     }
   }
   // Full 3-DOF orientation triad for hover-style entities. The

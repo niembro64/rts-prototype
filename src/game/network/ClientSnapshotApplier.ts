@@ -24,6 +24,10 @@ import {
   applyNetworkUnitStaticFields,
 } from './unitSnapshotFields';
 import {
+  dequantizeEntityPosition as deqEntityPos,
+  dequantizeRotation as deqRot,
+} from './snapshotQuantization';
+import {
   applyNetworkBuildState,
   getBuildingBuildRequired,
   getUnitBuildRequired,
@@ -90,12 +94,12 @@ export function snapClientNonVisualState(
   const sb = server.building;
   if (entity.building) {
     if ((isFull || cf! & ENTITY_CHANGED_POS) && server.pos) {
-      entity.transform.x = server.pos.x;
-      entity.transform.y = server.pos.y;
-      entity.transform.z = server.pos.z;
+      entity.transform.x = deqEntityPos(server.pos.x);
+      entity.transform.y = deqEntityPos(server.pos.y);
+      entity.transform.z = deqEntityPos(server.pos.z);
     }
     if ((isFull || cf! & ENTITY_CHANGED_ROT) && server.rotation !== undefined) {
-      entity.transform.rotation = server.rotation;
+      entity.transform.rotation = deqRot(server.rotation);
     }
   }
 

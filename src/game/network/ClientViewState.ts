@@ -49,6 +49,12 @@ import type {
 import { ClientProjectileStore } from './ClientProjectileStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
+import {
+  dequantizeEntityPosition as deqEntityPos,
+  dequantizeProjectilePosition as deqProjPos,
+  dequantizeRotation as deqRot,
+  dequantizeVelocity as deqVel,
+} from './snapshotQuantization';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -222,10 +228,10 @@ export class ClientViewState {
       target.turrets.length = turrets.length;
       for (let i = 0; i < turrets.length; i++) {
         const wireAng = turrets[i].turret.angular;
-        target.turrets[i].rotation = wireAng.rot;
-        target.turrets[i].angularVelocity = wireAng.vel;
-        target.turrets[i].pitch = wireAng.pitch;
-        target.turrets[i].pitchVelocity = wireAng.pitchVel;
+        target.turrets[i].rotation = deqRot(wireAng.rot);
+        target.turrets[i].angularVelocity = deqRot(wireAng.vel);
+        target.turrets[i].pitch = deqRot(wireAng.pitch);
+        target.turrets[i].pitchVelocity = deqRot(wireAng.pitchVel);
         target.turrets[i].forceFieldRange = turrets[i].currentForceFieldRange ?? undefined;
       }
       return true;
@@ -431,12 +437,12 @@ export class ClientViewState {
           const target = this.getOrCreateServerTarget(netEntity.id);
           this.clearTargetPredictionAccum(netEntity.id);
           if ((isFull || cf! & ENTITY_CHANGED_POS) && netEntity.pos) {
-            target.x = netEntity.pos.x;
-            target.y = netEntity.pos.y;
-            target.z = netEntity.pos.z;
+            target.x = deqEntityPos(netEntity.pos.x);
+            target.y = deqEntityPos(netEntity.pos.y);
+            target.z = deqEntityPos(netEntity.pos.z);
           }
           if ((isFull || cf! & ENTITY_CHANGED_ROT) && netEntity.rotation !== undefined) {
-            target.rotation = netEntity.rotation;
+            target.rotation = deqRot(netEntity.rotation);
           }
           this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
           target.updatedAtMs = now;
@@ -458,9 +464,12 @@ export class ClientViewState {
       }
 
       if (existing && netEntity.pos && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
-        const dx = existing.transform.x - netEntity.pos.x;
-        const dy = existing.transform.y - netEntity.pos.y;
-        const dz = existing.transform.z - netEntity.pos.z;
+        const netX = deqEntityPos(netEntity.pos.x);
+        const netY = deqEntityPos(netEntity.pos.y);
+        const netZ = deqEntityPos(netEntity.pos.z);
+        const dx = existing.transform.x - netX;
+        const dy = existing.transform.y - netY;
+        const dz = existing.transform.z - netZ;
         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         applyStats.correction.count++;
         applyStats.correction.totalDistance += distance;
@@ -477,9 +486,9 @@ export class ClientViewState {
         const netVelocity = netEntity.unit?.velocity;
         const localUnit = existing.unit;
         if (localUnit && netVelocity && (isFull || (cf & ENTITY_CHANGED_VEL) !== 0)) {
-          const dvx = (localUnit.velocityX ?? 0) - netVelocity.x;
-          const dvy = (localUnit.velocityY ?? 0) - netVelocity.y;
-          const dvz = (localUnit.velocityZ ?? 0) - netVelocity.z;
+          const dvx = (localUnit.velocityX ?? 0) - deqVel(netVelocity.x);
+          const dvy = (localUnit.velocityY ?? 0) - deqVel(netVelocity.y);
+          const dvz = (localUnit.velocityZ ?? 0) - deqVel(netVelocity.z);
           const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
           applyStats.correction.velocityCount++;
           applyStats.correction.totalVelocityDelta += velocityDelta;
@@ -578,12 +587,12 @@ export class ClientViewState {
             target = createServerTarget();
             this.serverTargets.set(vu.id, target);
           }
-          target.x = vu.pos.x;
-          target.y = vu.pos.y;
-          target.z = vu.pos.z;
-          target.velocityX = vu.velocity.x;
-          target.velocityZ = vu.velocity.z;
-          target.velocityY = vu.velocity.y;
+          target.x = deqProjPos(vu.pos.x);
+          target.y = deqProjPos(vu.pos.y);
+          target.z = deqProjPos(vu.pos.z);
+          target.velocityX = deqVel(vu.velocity.x);
+          target.velocityZ = deqVel(vu.velocity.z);
+          target.velocityY = deqVel(vu.velocity.y);
           target.updatedAtMs = now;
           this.clearTargetPredictionAccum(vu.id);
           this.projectileStore.markVelocityUpdateActive(entity, vu.id);

@@ -217,9 +217,39 @@ and tolerate the extra work better than steady-state deltas.
 
 ### Fixed-Point Integer Class
 
-Minimap positions are the first explicit fixed-point integer class. They use
-scale 1 world unit in `src/game/network/snapshotQuantization.ts` and are written
-as whole JS numbers in both the DTO and Rust row paths. The Rust and JS
-MessagePack encoders emit whole finite numbers as integer MessagePack values,
-so minimap `pos.x` / `pos.y` now have a documented fixed-point scale end to
-end without a client-side decode migration.
+Run date: 2026-05-22
+
+The current MessagePack/Rust bridge now writes these high-volume snapshot
+numeric classes as fixed-point integers and dequantizes them at client apply
+boundaries:
+
+- Entity position: scale 100.
+- Minimap and projectile/beam positions: scale 1.
+- Linear velocity: scale 10.
+- Rotation, turret yaw/pitch, turret angular rates, and beam obstructionT:
+  scale 1000.
+- Surface normals and beam reflection normals: scale 1000.
+- Suspension offsets: scale 100.
+
+Capture setup:
+
+- Harness URL: `http://localhost:5175/budget-annihilation/src/main.ts`
+- Measurement: headless Chrome via Playwright, importing `GameServer` and
+  `snapshotWireCodec` from Vite without starting the renderer.
+- Scenario: demo battle, cap 243, observed from player 1, fog disabled, debug
+  grid disabled, keyframes disabled, host snapshot cap 32/sec.
+- Comparison: each emitted snapshot was encoded once as the current
+  fixed-point integer DTO and once as a same-snapshot decimal replay that
+  divides fixed-point fields back to their previous decimal scales.
+
+| Stream | Seconds | Samples | Units Avg | Current avg | Current hi | Decimal replay avg | Decimal replay hi | Saved avg |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FULLSNAP bootstrap | - | 1 | 245 | 1,076,601 B | 1,076,601 B | 1,081,514 B | 1,081,514 B | 4,913 B (0.5%) |
+| DIFFSNAP steady state | 22.9 | 687 | 207 | 52,554 B | 114,475 B | 54,771 B | 119,586 B | 2,217 B (4.0%) |
+
+The delta stream's remaining large average sections were audio events
+(`~26.5 KiB`), entities (`~18.6 KiB`), minimap entities (`~4.0 KiB`), and
+projectiles (`~2.8 KiB`). Fixed-point integers help the existing
+MessagePack-compatible bridge, but the remaining SNAP-WIRE-01 work still needs
+structural row packing and section-specific budgets rather than more generic
+transport compression.

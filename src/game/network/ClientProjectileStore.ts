@@ -23,6 +23,12 @@ import {
   decodeProjectileShotId,
   isLineProjectileEntity,
 } from './ClientProjectileUtils';
+import {
+  dequantizeNormal as deqNormal,
+  dequantizeProjectilePosition as deqProjPos,
+  dequantizeRotation as deqRot,
+  dequantizeVelocity as deqVel,
+} from './snapshotQuantization';
 
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
@@ -87,7 +93,9 @@ export class ClientProjectileStore {
       this.beamPathTargets.set(update.id, target);
     }
     target.updatedAtMs = now;
-    target.obstructionT = update.obstructionT;
+    target.obstructionT = update.obstructionT === undefined
+      ? undefined
+      : deqRot(update.obstructionT);
     target.endpointDamageable = update.endpointDamageable;
 
     const srcPts = update.points;
@@ -96,22 +104,22 @@ export class ClientProjectileStore {
     for (let i = 0; i < srcPts.length; i++) {
       const sp = srcPts[i];
       const dp = ensureBeamPoint(dstTarget, i);
-      dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
-      dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
+      dp.x = deqProjPos(sp.x); dp.y = deqProjPos(sp.y); dp.z = deqProjPos(sp.z);
+      dp.vx = deqVel(sp.vx); dp.vy = deqVel(sp.vy); dp.vz = deqVel(sp.vz);
       dp.ax = 0; dp.ay = 0; dp.az = 0;
       dp.mirrorEntityId = sp.mirrorEntityId;
       dp.reflectorKind = sp.reflectorKind;
       dp.reflectorPlayerId = sp.reflectorPlayerId;
-      dp.normalX = sp.normalX;
-      dp.normalY = sp.normalY;
-      dp.normalZ = sp.normalZ;
+      dp.normalX = sp.normalX === undefined ? undefined : deqNormal(sp.normalX);
+      dp.normalY = sp.normalY === undefined ? undefined : deqNormal(sp.normalY);
+      dp.normalZ = sp.normalZ === undefined ? undefined : deqNormal(sp.normalZ);
     }
 
     const projPts = proj.points ?? (proj.points = []);
     if (projPts.length === 0) {
       projPts.length = srcPts.length;
       for (let i = 0; i < srcPts.length; i++) {
-        const sp = srcPts[i];
+        const sp = dstTarget[i];
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
@@ -124,7 +132,7 @@ export class ClientProjectileStore {
         pp.normalZ = sp.normalZ;
       }
       if (srcPts.length > 0) {
-        const start = srcPts[0];
+        const start = dstTarget[0];
         entity.transform.x = start.x;
         entity.transform.y = start.y;
         entity.transform.z = start.z;
@@ -137,7 +145,7 @@ export class ClientProjectileStore {
         projPts.length = srcPts.length;
       }
       for (let i = oldLen; i < srcPts.length; i++) {
-        const sp = srcPts[i];
+        const sp = dstTarget[i];
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
@@ -150,7 +158,7 @@ export class ClientProjectileStore {
         pp.normalZ = sp.normalZ;
       }
     }
-    proj.obstructionT = update.obstructionT;
+    proj.obstructionT = target.obstructionT;
     proj.endpointDamageable = update.endpointDamageable !== false;
     this.activeBeamPathIds.add(update.id);
     this.options.clearPredictionAccum(update.id);
@@ -224,9 +232,9 @@ export class ClientProjectileStore {
       turretIndex: spawn.turretIndex,
     };
 
-    const spawnX = spawn.pos.x;
-    const spawnY = spawn.pos.y;
-    const spawnZ = spawn.pos.z;
+    const spawnX = deqProjPos(spawn.pos.x);
+    const spawnY = deqProjPos(spawn.pos.y);
+    const spawnZ = deqProjPos(spawn.pos.z);
 
     const projectileType = codeToProjectileType(spawn.projectileType);
     if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);
@@ -234,7 +242,7 @@ export class ClientProjectileStore {
     const entity: Entity = {
       id: spawn.id,
       type: 'shot',
-      transform: { x: spawnX, y: spawnY, z: spawnZ, rotation: spawn.rotation },
+      transform: { x: spawnX, y: spawnY, z: spawnZ, rotation: deqRot(spawn.rotation) },
       ownership: { playerId: spawn.playerId },
       projectile: {
         ownerId: spawn.playerId,
@@ -244,9 +252,9 @@ export class ClientProjectileStore {
         sourceTurretId: sourceTurretId ?? config.sourceTurretId,
         sourceBarrelIndex: spawn.barrelIndex,
         projectileType,
-        velocityX: spawn.velocity.x,
-        velocityY: spawn.velocity.y,
-        velocityZ: spawn.velocity.z,
+        velocityX: deqVel(spawn.velocity.x),
+        velocityY: deqVel(spawn.velocity.y),
+        velocityZ: deqVel(spawn.velocity.z),
         timeAlive: 0,
         maxLifespan: spawn.maxLifespan ?? config.shotProfile.runtime.maxLifespan,
         hitEntities: new Set(),
@@ -255,12 +263,16 @@ export class ClientProjectileStore {
         segmentLimitReached: false,
         points: spawn.beam ? [
           {
-            x: spawn.beam.start.x, y: spawn.beam.start.y, z: spawn.beam.start.z,
+            x: deqProjPos(spawn.beam.start.x),
+            y: deqProjPos(spawn.beam.start.y),
+            z: deqProjPos(spawn.beam.start.z),
             vx: 0, vy: 0, vz: 0,
             ax: 0, ay: 0, az: 0,
           },
           {
-            x: spawn.beam.end.x, y: spawn.beam.end.y, z: spawn.beam.end.z,
+            x: deqProjPos(spawn.beam.end.x),
+            y: deqProjPos(spawn.beam.end.y),
+            z: deqProjPos(spawn.beam.end.z),
             vx: 0, vy: 0, vz: 0,
             ax: 0, ay: 0, az: 0,
           },

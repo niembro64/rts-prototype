@@ -549,13 +549,13 @@ export function serializeProjectileSnapshot({
         if (!shouldSendProjectileSpawnEvent(ps, visibility, world)) continue;
         const out = getPooledProjectileSpawn();
         out.id = ps.id;
-        out._pos.x = ps.pos.x;
-        out._pos.y = ps.pos.y;
-        out._pos.z = ps.pos.z;
-        out.rotation = ps.rotation;
-        out._velocity.x = ps.velocity.x;
-        out._velocity.y = ps.velocity.y;
-        out._velocity.z = ps.velocity.z;
+        out._pos.x = qPos(ps.pos.x);
+        out._pos.y = qPos(ps.pos.y);
+        out._pos.z = qPos(ps.pos.z);
+        out.rotation = qRot(ps.rotation);
+        out._velocity.x = qVel(ps.velocity.x);
+        out._velocity.y = qVel(ps.velocity.y);
+        out._velocity.z = qVel(ps.velocity.z);
         out.projectileType = projectileTypeToCode(ps.projectileType);
         out.maxLifespan = typeof ps.maxLifespan === 'number' && Number.isFinite(ps.maxLifespan)
           ? ps.maxLifespan
@@ -574,12 +574,12 @@ export function serializeProjectileSnapshot({
         out.isDGun = ps.isDGun === true ? true : undefined;
         out.fromParentDetonation = ps.fromParentDetonation === true ? true : undefined;
         if (ps.beam) {
-          out._beamStart.x = ps.beam.start.x;
-          out._beamStart.y = ps.beam.start.y;
-          out._beamStart.z = ps.beam.start.z;
-          out._beamEnd.x = ps.beam.end.x;
-          out._beamEnd.y = ps.beam.end.y;
-          out._beamEnd.z = ps.beam.end.z;
+          out._beamStart.x = qPos(ps.beam.start.x);
+          out._beamStart.y = qPos(ps.beam.start.y);
+          out._beamStart.z = qPos(ps.beam.start.z);
+          out._beamEnd.x = qPos(ps.beam.end.x);
+          out._beamEnd.y = qPos(ps.beam.end.y);
+          out._beamEnd.z = qPos(ps.beam.end.z);
           out.beam = out._beam;
         } else {
           out.beam = undefined;
@@ -614,13 +614,13 @@ export function serializeProjectileSnapshot({
         }
         const out = getPooledProjectileSpawn();
         out.id = entity.id;
-        out._pos.x = entity.transform.x;
-        out._pos.y = entity.transform.y;
-        out._pos.z = entity.transform.z;
-        out.rotation = entity.transform.rotation;
-        out._velocity.x = proj.velocityX;
-        out._velocity.y = proj.velocityY;
-        out._velocity.z = proj.velocityZ;
+        out._pos.x = qPos(entity.transform.x);
+        out._pos.y = qPos(entity.transform.y);
+        out._pos.z = qPos(entity.transform.z);
+        out.rotation = qRot(entity.transform.rotation);
+        out._velocity.x = qVel(proj.velocityX);
+        out._velocity.y = qVel(proj.velocityY);
+        out._velocity.z = qVel(proj.velocityZ);
         out.projectileType = projectileTypeToCode(proj.projectileType);
         out.maxLifespan = Number.isFinite(proj.maxLifespan)
           ? proj.maxLifespan
@@ -646,12 +646,12 @@ export function serializeProjectileSnapshot({
         if (pts && pts.length >= 2) {
           const start = pts[0];
           const end = pts[pts.length - 1];
-          out._beamStart.x = start.x;
-          out._beamStart.y = start.y;
-          out._beamStart.z = start.z;
-          out._beamEnd.x = end.x;
-          out._beamEnd.y = end.y;
-          out._beamEnd.z = end.z;
+          out._beamStart.x = qPos(start.x);
+          out._beamStart.y = qPos(start.y);
+          out._beamStart.z = qPos(start.z);
+          out._beamEnd.x = qPos(end.x);
+          out._beamEnd.y = qPos(end.y);
+          out._beamEnd.z = qPos(end.z);
           out.beam = out._beam;
         } else {
           out.beam = undefined;
