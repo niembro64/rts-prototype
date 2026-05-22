@@ -123,7 +123,7 @@
     "id": "mortarShot",
     "mass": 30,
     "collision": {
-      "radius": 6
+      "radius": 8
     },
     "explosion": {
       "radius": 105,
@@ -136,7 +136,7 @@
     },
     "submunitions": {
       "shotId": "mediumShot",
-      "count": 3,
+      "count": 5,
       "randomSpreadSpeedHorizontal": 60,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.4

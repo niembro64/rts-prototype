@@ -219,7 +219,7 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "body": 9
+      "body": 12
     },
     "constructionEmitter": null,
     "aimStyle": {
@@ -273,7 +273,7 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": 1,
     "radius": {
-      "body": 7
+      "body": 9
     },
     "constructionEmitter": null,
     "aimStyle": {

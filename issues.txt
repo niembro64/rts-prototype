@@ -206,3 +206,322 @@ targetingSchedulerBridge.ts has no JS bridge loop after the schedule
 call; the activity-mask refresh is a Rust kernel responsibility; the
 "hasActiveTurretWork" decision comes from the scheduler return value,
 not a per-entity post-pass.
+
+==============================================================================
+
+SNAPSHOT WIRE SIZE PLAN (SNAP-WIRE-01 family)
+
+==============================================================================
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01 - parent: snapshot payloads exceed the current per-client
+               internet budget at small battle sizes.
+------------------------------------------------------------------------------
+
+Evidence:
+- With roughly 200 on-screen units, PLAYER CLIENT telemetry showed
+  DIFFSNAP avg around 150 KiB, about 130% over the current reasonable
+  64 KiB DIFFSNAP target.
+- FULLSNAP avg showed about 1.2 MiB, about 17% over the current
+  reasonable 1 MiB FULLSNAP target.
+- At 30 DIFFSNAPs/sec plus 1 FULLSNAP/sec, those numbers imply roughly
+  45 Mbps per remote client before WebRTC overhead.
+
+Why it matters:
+Snapshot bandwidth is per remote client and burns host upstream first.
+A 4-client game at this rate can require well over 150 Mbps of host
+upstream just for state snapshots, before commands, WebRTC framing,
+retransmits, congestion behavior, and other traffic.
+
+Fix direction:
+Do the child items below as separate, measurable PRs. Each item must
+report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
+bar, preferably with the same unit count and snapshot cadence.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.1 - add per-section snapshot byte breakdown instrumentation.
+------------------------------------------------------------------------------
+
+What:
+The PLAYER CLIENT bar currently reports total encoded DIFFSNAP and
+FULLSNAP byte sizes, but it does not show which section dominates:
+entities, minimapEntities, projectiles, terrain, buildability,
+audioEvents, economy, serverMeta, grid, shroud, scanPulses,
+sprayTargets, or gameState.
+
+Fix:
+Add development/diagnostic instrumentation around snapshot encoding
+that records encoded byte contribution by top-level snapshot section
+and by major entity/projectile sub-section where practical. Expose it
+through a console diagnostic object or a temporary telemetry table;
+do not clutter the normal player UI unless we decide the signal is
+useful long term.
+
+Done when:
+Given one representative DIFFSNAP and FULLSNAP, we can identify the
+largest three byte contributors without guessing. The instrumentation
+must work for both local host play and remote WebRTC clients.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.2 - stop resending static terrain/buildability on every
+                 recurring FULLSNAP.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/server/ServerSnapshotPublisher.ts sets state.terrain and
+  state.buildability whenever !isDelta.
+
+What:
+Every full keyframe currently includes static terrain and buildability
+payloads. Those are needed for initial bootstrap and map-changing
+resyncs, but they should not ride every 1-second recovery FULLSNAP.
+
+Fix:
+Split full keyframes into:
+- Bootstrap/static fullsnap: includes terrain/buildability.
+- Recovery fullsnap: includes authoritative dynamic state only.
+
+Track, per listener, whether static map data has already been sent for
+the current battle/map identity. Resend only on listener attach,
+explicit static resync, or map/buildability identity change.
+
+Done when:
+Recurring FS SIZE drops by the terrain/buildability byte cost while
+newly joined/reconnected clients still receive terrain and buildability
+before rendering the battle.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.3 - make minimap updates lower-rate or dirty-thresholded.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/network/stateSerializer.ts always includes
+  serializeMinimapSnapshotEntities output in snapshots.
+- src/game/network/stateSerializerMinimap.ts walks all radar-visible
+  units/buildings and emits minimap positions.
+
+What:
+Minimap data can change every snapshot for every moving entity. It
+does not need the same 30 Hz cadence or precision as authoritative
+unit movement.
+
+Fix:
+Choose one implementation:
+- Emit minimap entities at a lower cadence, e.g. 5-10 Hz.
+- Emit only when minimap position changed by a coarse threshold.
+- Derive visible-unit minimap positions from normal entity snapshots
+  and only send radar-only/minimap-only contacts separately.
+
+Done when:
+DS SIZE improves measurably in active movement scenarios and the
+minimap still looks stable enough for normal play.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.4 - split high-frequency entity detail channels from core
+                 movement updates.
+------------------------------------------------------------------------------
+
+What:
+DIFFSNAPs should prioritize core simulation state: id, position,
+rotation, velocity, health/removal, and necessary targeting changes.
+Detail channels such as suspension, surface normals, turret pose,
+factory/build detail, force-field range, and other cosmetic or
+slow-changing fields can often be sent less frequently or with larger
+thresholds.
+
+Fix:
+Audit ENTITY_CHANGED_* producers and consumers. Introduce separate
+cadence/threshold rules for high-frequency detail fields so they do
+not dirty an entity at 30 Hz unless gameplay correctness requires it.
+
+Done when:
+A 200-unit moving battle sends fewer changed entity records per
+DIFFSNAP without visible jitter or prediction regressions in core unit
+movement.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.5 - tune observed-entity delta thresholds separately from
+                 owned/allied entities.
+------------------------------------------------------------------------------
+
+Where:
+- src/snapshotConfig.json observedEntityDelta currently uses the same
+  multipliers as ownedEntityDelta.
+- src/game/network/stateSerializerEntityDelta.ts applies these
+  multipliers in getDeltaResolution.
+
+What:
+Enemy/observed units can tolerate lower network precision than the
+local player's own units. Currently observed entities use multiplier 1
+for position, velocity, rotation position, and rotation velocity.
+
+Fix:
+Test observedEntityDelta multipliers such as 2x and 4x for position,
+velocity, rotation position, and rotation velocity. Keep owned/allied
+entities high fidelity unless a separate test proves they can be
+coarsened safely.
+
+Done when:
+We have a chosen observedEntityDelta preset with measured DS SIZE
+reduction and no unacceptable visual or gameplay-readability loss.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.6 - add optional transport compression for FULLSNAPs first.
+------------------------------------------------------------------------------
+
+What:
+Large FULLSNAPs are good candidates for generic compression because
+they are large and infrequent. DIFFSNAPs at 30 Hz are more latency- and
+CPU-sensitive, so compressing them blindly may hurt frame pacing.
+
+Fix:
+Add an experimental transport-compression path for FULLSNAP payloads
+only. Measure encode/decode CPU cost, payload reduction, latency, and
+compatibility in local and remote play. Prefer browser-native APIs when
+available; otherwise choose a small dependency only if it is clearly
+worth the size and runtime cost.
+
+Done when:
+FULLSNAP compression can be toggled for A/B testing and reports before
+/ after FS SIZE and encode/decode time. Leave DIFFSNAP compression
+off unless later data proves it is worth it.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.7 - evaluate DIFFSNAP compression only after byte sources
+                 are known.
+------------------------------------------------------------------------------
+
+What:
+At 30 Hz, generic compression may reduce bytes but can add CPU spikes,
+latency, allocation pressure, and jitter. It should not be the first
+DIFFSNAP fix.
+
+Fix:
+After SNAP-WIRE-01.1 identifies byte sources and SNAP-WIRE-01.3-.5
+reduce avoidable churn, test fast compression on DIFFSNAP payloads
+behind a flag. Compare:
+- byte reduction,
+- encode/decode ms,
+- dropped frames,
+- end-to-end snapshot latency,
+- host CPU with multiple remote clients.
+
+Done when:
+We either enable DIFFSNAP compression with measured wins, or document
+why structural compression beats generic compression for this path.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.8 - design snapshot-v2 compact binary schema.
+------------------------------------------------------------------------------
+
+What:
+The current path is still fundamentally structured MessagePack. Even
+with the Rust encoder, much of the shape follows object/map semantics.
+A dedicated snapshot-v2 wire format can pack repeated rows and field
+masks much tighter.
+
+Fix:
+Design a versioned binary schema with:
+- top-level section table,
+- per-section byte lengths,
+- entity field masks,
+- packed arrays for repeated entities/projectiles/minimap entries,
+- varints for ids/counts,
+- fixed-point integers for positions, velocities, rotations, normals,
+- explicit schema/version negotiation for future compatibility.
+
+Done when:
+There is a written schema and migration plan that can coexist with the
+current MessagePack path behind a feature flag.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.9 - convert high-volume numeric fields to fixed-point ints.
+------------------------------------------------------------------------------
+
+What:
+Many values are rounded before encoding, but still travel through the
+MessagePack/Rust encoder as numbers that may be emitted as floats.
+Positions, velocities, rotations, normals, turret angles, minimap
+positions, projectile positions/velocities, and beam points are all
+high-volume numeric fields.
+
+Fix:
+For each high-volume numeric class, choose scale/range and encode as
+signed or unsigned integers. Start with the safest classes:
+- minimap positions,
+- unit/entity positions,
+- velocities,
+- rotations/turret angles,
+- normals,
+- projectile/beam points.
+
+Done when:
+At least one high-volume numeric class is shipped as fixed-point ints
+end-to-end, with byte savings and no visible precision regression.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.10 - make projectile and beam updates budget-aware.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/network/stateSerializerProjectiles.ts emits projectile
+  spawns, despawns, velocityUpdates, and beamUpdates.
+
+What:
+Projectile and beam payloads can grow quickly during combat. Beam
+points are particularly expensive because each path can include many
+position/velocity/normal fields.
+
+Fix:
+Measure projectile/beam byte contribution via SNAP-WIRE-01.1. Then
+apply targeted reductions:
+- lower-rate velocity updates where client prediction can coast,
+- cap or quantize beam path detail,
+- omit fields that can be derived by the client,
+- coarsen off-screen/out-of-vision projectile detail.
+
+Done when:
+Projectile-heavy battles have bounded DIFFSNAP size without missing
+visible shots, beams, or important incoming-fire feedback.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.11 - add per-client upstream budget telemetry.
+------------------------------------------------------------------------------
+
+What:
+DS SIZE and FS SIZE show payload size, but the host needs a direct
+network-budget number: estimated Mbps per remote client and total
+snapshot Mbps across all connected clients.
+
+Fix:
+Compute and display or log:
+  (diffsnap_avg_bytes * effective_diffsnap_rate +
+   fullsnap_avg_bytes * effective_fullsnap_rate) * 8
+per client, plus host total = per-client estimate * remote listener
+count. Include WebRTC overhead caveat in tooltip/log text.
+
+Done when:
+When DS SIZE or FS SIZE is high, the UI/diagnostic output also shows
+the approximate Mbps impact so we can judge whether a snapshot payload
+is actually internet-safe.
+
+------------------------------------------------------------------------------
+SNAP-WIRE-01.12 - define acceptance budgets for snapshot-size work.
+------------------------------------------------------------------------------
+
+What:
+The current reasonable targets are 64 KiB DIFFSNAP and 1 MiB FULLSNAP,
+but the project needs explicit pass/fail budgets tied to expected
+cadence, player count, and unit count.
+
+Fix:
+Write a small benchmark matrix for snapshot payload budgets:
+- unit counts: 200, 1,000, 5,000,
+- cadence: 30 DIFFSNAP/sec, 1 FULLSNAP/sec,
+- clients: 1, 2, 4,
+- metrics: DS avg/hi, FS avg/hi, estimated Mbps/client, estimated
+  host Mbps, encode/decode/apply ms.
+
+Done when:
+Snapshot optimization PRs can cite the same budget matrix and declare
+whether they moved the project toward or away from target.
