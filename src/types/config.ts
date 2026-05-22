@@ -1,12 +1,5 @@
 // Types extracted from src/config.ts
 
-export type SnapshotDeltaResolutionConfig = {
-  positionThresholdMultiplier: number;
-  velocityThresholdMultiplier: number;
-  rotationPositionThresholdMultiplier: number;
-  rotationVelocityThresholdMultiplier: number;
-};
-
 export type SnapshotCompressionFormat = 'gzip' | 'deflate' | 'deflate-raw';
 
 export type FullSnapshotCompressionConfig = {
@@ -26,8 +19,6 @@ export type SnapshotConfig = {
   minimapSnapshotRateHz: number;
   entityDetailSnapshotRateHz: number;
   projectileDetailSnapshotRateHz: number;
-  ownedEntityDelta: SnapshotDeltaResolutionConfig;
-  observedEntityDelta: SnapshotDeltaResolutionConfig;
   fullSnapshotCompression: FullSnapshotCompressionConfig;
 };
 

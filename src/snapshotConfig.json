@@ -9,18 +9,6 @@
   "minimapSnapshotRateHz": 8,
   "entityDetailSnapshotRateHz": 1,
   "projectileDetailSnapshotRateHz": 1,
-  "ownedEntityDelta": {
-    "positionThresholdMultiplier": 1,
-    "velocityThresholdMultiplier": 1,
-    "rotationPositionThresholdMultiplier": 1,
-    "rotationVelocityThresholdMultiplier": 1
-  },
-  "observedEntityDelta": {
-    "positionThresholdMultiplier": 1,
-    "velocityThresholdMultiplier": 1,
-    "rotationPositionThresholdMultiplier": 1,
-    "rotationVelocityThresholdMultiplier": 1
-  },
   "fullSnapshotCompression": {
     "enabled": false,
     "format": "gzip",

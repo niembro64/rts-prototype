@@ -1,10 +1,8 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
-import type { SnapshotVisibility } from './stateSerializerVisibility';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
-import type { SnapshotDeltaResolutionConfig } from '../../types/config';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   CT_TURRET_STATE_ENGAGED,
@@ -202,27 +200,6 @@ function getTrackingKey(key: string | number | undefined): string {
   return key === undefined ? DEFAULT_TRACKING_KEY : String(key);
 }
 
-function getDeltaResolution(
-  entity: Entity,
-  visibility: SnapshotVisibility | undefined,
-): SnapshotDeltaResolutionConfig {
-  // No recipient at all (admin / global observer) treats every entity
-  // as owned so deltas stay at full precision — matches the original
-  // recipientPlayerId === undefined branch. We check hasRecipient
-  // rather than isFiltered so the fog-off-but-recipient-set path
-  // (demo battle's local player view with fog disabled) still picks
-  // owned-vs-observed correctly: the player wants full precision on
-  // their own units and coarser updates for the enemies they happen
-  // to see, regardless of whether the fog overlay is up.
-  // FOW-06: allies share full-precision deltas the same as the
-  // recipient's own entities, so teammates' units don't smear during
-  // shared-camera plays.
-  if (!visibility || !visibility.hasRecipient) return SNAPSHOT_CONFIG.ownedEntityDelta;
-  return visibility.isOwnedByRecipientOrAlly(entity.ownership?.playerId)
-    ? SNAPSHOT_CONFIG.ownedEntityDelta
-    : SNAPSHOT_CONFIG.observedEntityDelta;
-}
-
 function acquireCapturedNextState(): PrevEntityState {
   if (capturedNextStatePoolIndex >= capturedNextStatePool.length) {
     capturedNextStatePool.push(createPrevEntityState());
@@ -259,27 +236,23 @@ export function getEntityDeltaChangedFields(
   entity: Entity,
   prev: PrevEntityState,
   next: PrevEntityState,
-  visibility: SnapshotVisibility | undefined,
   world: WorldState,
 ): number {
-  const resolution = getDeltaResolution(entity, visibility);
   const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
-    SNAPSHOT_CONFIG.movementPositionThreshold * resolution.positionThresholdMultiplier,
+    SNAPSHOT_CONFIG.movementPositionThreshold,
     world.mapWidth,
     world.mapHeight,
   );
-  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold *
-    resolution.velocityThresholdMultiplier;
+  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold;
   const movementVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold * resolution.velocityThresholdMultiplier,
+    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold,
   );
   const rotationPositionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier,
+    SNAPSHOT_CONFIG.rotationPositionThreshold,
   );
-  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold *
-    resolution.rotationVelocityThresholdMultiplier;
+  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold;
   const rotationVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold * resolution.rotationVelocityThresholdMultiplier,
+    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold,
   );
 
   let mask = 0;
@@ -468,7 +441,6 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
 export function verifyRustDiffMask(
   entity: Entity,
   next: PrevEntityState,
-  visibility: SnapshotVisibility | undefined,
   expectedJsMask: number,
   baselineHandle: number,
   world: WorldState,
@@ -480,24 +452,21 @@ export function verifyRustDiffMask(
   if (slot < 0) return;
   if (sim.snapshotBaseline.slotUsed(baselineHandle, slot) === 0) return;
 
-  const resolution = getDeltaResolution(entity, visibility);
   const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
-    SNAPSHOT_CONFIG.movementPositionThreshold * resolution.positionThresholdMultiplier,
+    SNAPSHOT_CONFIG.movementPositionThreshold,
     world.mapWidth,
     world.mapHeight,
   );
-  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold *
-    resolution.velocityThresholdMultiplier;
+  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold;
   const movementVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold * resolution.velocityThresholdMultiplier,
+    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold,
   );
   const rotationPositionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier,
+    SNAPSHOT_CONFIG.rotationPositionThreshold,
   );
-  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold *
-    resolution.rotationVelocityThresholdMultiplier;
+  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold;
   const rotationVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold * resolution.rotationVelocityThresholdMultiplier,
+    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold,
   );
 
   const kind = entity.type === 'unit' ? SNAPSHOT_DIFF_KIND_UNIT : SNAPSHOT_DIFF_KIND_BUILDING;

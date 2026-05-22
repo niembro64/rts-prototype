@@ -12,7 +12,6 @@ export type {
   FullSnapshotCompressionConfig,
   SnapshotConfig,
   SnapshotCompressionFormat,
-  SnapshotDeltaResolutionConfig,
   EmaLowConfig,
   EmaTierConfig,
   EmaHighConfig,
@@ -148,15 +147,6 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //                               velocity direction must change by
 //                               more than this ratio of a full 360°
 //                               turn to re-send. 0.05 = 18°.
-//   ownedEntityDelta        — multipliers applied to the threshold
-//                             groups above for recipient-owned
-//                             entities. Velocity multipliers apply to
-//                             both magnitude and direction. 1 keeps
-//                             full fidelity on your own units' orders
-//                             / aim.
-//   observedEntityDelta     — same multipliers for entities owned by
-//                             other players. Set >1 to coarsen
-//                             remote movement / turret churn.
 //   minimapSnapshotRateHz   — upper cadence for full minimap contact
 //                             lists on delta snapshots. Keyframes
 //                             always carry a fresh minimap baseline.

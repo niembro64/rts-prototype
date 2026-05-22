@@ -90,12 +90,10 @@ export class SnapshotVisibility {
   private readonly gridW: number;
   private readonly gridH: number;
   /** Recipient + their declared allies (FOW-06). Populated whenever a
-   *  recipient is set, regardless of fog status — that way delta
-   *  resolution still distinguishes owned from observed entities
-   *  even with `fogOfWarEnabled=false`. Used by isOwnedByRecipientOrAlly
-   *  so every ownership check across the serializer treats allies
-   *  symmetrically with the recipient — private fields, delta
-   *  resolution, kill credit, the lot.
+   *  recipient is set, regardless of fog status. Used by
+   *  isOwnedByRecipientOrAlly so every ownership check across the
+   *  serializer treats allies symmetrically with the recipient:
+   *  private fields, kill credit, the lot.
    *
    *  Stored as a number bitmask (issues.txt FOW-OPT-10) — playerId p
    *  maps to bit (p - 1), so PlayerIds 1..31 fit. isOwnedByRecipientOrAlly
@@ -106,8 +104,7 @@ export class SnapshotVisibility {
 
   /** True when fog-of-war filtering is active for this snapshot
    *  (recipient set AND world.fogOfWarEnabled). Distinct from "has a
-   *  recipient" — a recipient with fog disabled still wants
-   *  owned-vs-observed delta resolution. */
+   *  recipient" because a recipient can still exist with fog disabled. */
   readonly isFiltered: boolean;
 
   /** Per-emit memo for isEntityVisible (issues.txt FOW-OPT-09). The
@@ -194,7 +191,7 @@ export class SnapshotVisibility {
   /** True when the given playerId belongs to the recipient or one of
    *  their allies. Works regardless of fog status — a recipient with
    *  fog disabled still gets the team-aware "this is one of ours"
-   *  answer for delta resolution, ownership checks, etc. */
+   *  answer for ownership checks and team-routed visibility. */
   isOwnedByRecipientOrAlly(playerId: PlayerId | undefined): boolean {
     if (playerId === undefined) return false;
     return (this.viewMask & (1 << (playerId - 1))) !== 0;
@@ -202,10 +199,8 @@ export class SnapshotVisibility {
 
   /** True when this visibility object was built for a specific
    *  player (with or without fog filtering). Distinct from isFiltered
-   *  — the latter is false when fog is off, but a player-bound
-   *  visibility still wants per-team delta resolution and ownership
-   *  routing. Admin / spectator-style observers (no recipient) get
-   *  false. */
+   *  — the latter is false when fog is off. Admin / spectator-style
+   *  observers (no recipient) get false. */
   get hasRecipient(): boolean {
     return this.viewMask !== 0;
   }

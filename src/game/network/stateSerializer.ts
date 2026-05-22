@@ -375,7 +375,7 @@ export function serializeGameState(
       const dirtyForcedFields = dirtyFields & SNAPSHOT_DIRTY_FORCE_FIELDS;
       const rawDeltaMask = isNew
         ? 0
-        : getEntityDeltaChangedFields(entity, prev, next, visibility, world);
+        : getEntityDeltaChangedFields(entity, prev, next, world);
       let changedFields = isNew
         ? undefined
         : rawDeltaMask | dirtyForcedFields;
@@ -395,7 +395,7 @@ export function serializeGameState(
         }
       }
       if (!isNew && baselineHandle !== undefined) {
-        verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle, world);
+        verifyRustDiffMask(entity, next, rawDeltaMask, baselineHandle, world);
       }
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
@@ -432,12 +432,12 @@ export function serializeGameState(
         const next = getNextEntityState(entity);
         const rawDeltaMask = isNew
           ? 0
-          : getEntityDeltaChangedFields(entity, prev, next, visibility, world);
+          : getEntityDeltaChangedFields(entity, prev, next, world);
         const changedFields = isNew
           ? undefined
           : rawDeltaMask | pendingDetailFields;
         if (!isNew && baselineHandle !== undefined) {
-          verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle, world);
+          verifyRustDiffMask(entity, next, rawDeltaMask, baselineHandle, world);
         }
         if (isNew || changedFields! > 0) {
           const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
