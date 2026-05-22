@@ -176,3 +176,865 @@ where that reduces bytes and keeps a single source of truth. After the
 5,000-cap entity stream is reduced, rerun the same matrix and then
 budget the next largest delta sections: projectile/beam bursts,
 minimap rows, and remaining audio-event bursts.
+
+==============================================================================
+
+GRAVITY UNIVERSALITY (PHYS-GRAV-01 family)
+
+The "Gravity is universal; thrust answers it" section of
+design_philosophy.html is explicit:
+
+  "Gravity is applied to every mass body every tick. No ignoresGravity
+  shortcut, no projectile-class exemption, no 'flat trajectory' flag
+  that bypasses integration."
+
+  "Guided projectiles add a counter-gravity thrust term inside the
+  same homing/steering update that produces lateral correction toward
+  the target. Guidance and gravity-cancellation are one acceleration
+  vector, not two systems."
+
+The current codebase violates this for rocket-class shots and
+terrain-following DGUN waves. Rockets opt out of gravity entirely
+instead of letting their thrust spend a slice of budget on
+counter-gravity; D-gun waves bypass force integration altogether and
+clamp position to terrain.
+
+==============================================================================
+
+------------------------------------------------------------------------------
+PHYS-GRAV-01 - parent: rocket-class projectiles bypass gravity instead
+               of cancelling it through thrust.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/sim/combat/projectileSystem.ts:255 stamps a per-projectile
+  has-gravity flag based on the shot profile:
+      _packedProjectileHasGravity[slot] =
+        proj.config.shotProfile.runtime.isRocketLike ? 0 : 1;
+- src/game/sim/combat/projectileSystem.ts:776-785 then selects
+  `projectileGravity = terrainFollow || isRocket ? 0 : GRAVITY` and
+  applies it directly:
+      let aNetZ = terrainFollow ? 0 : -projectileGravity;
+- src/game/sim/combat/projectileSystem.ts:848 and :866 pass that same
+  `projectileGravity` (0 for rockets) into solveKinematicIntercept and
+  computeHomingThrust, so the homing solver never sees a non-zero `g`
+  for rocket-class shots. The HomingSteering kernel already supports a
+  `+ gravity` counter-thrust term (lib.rs:1802 `let mut a_z = perp_z *
+  a_lateral_mag + gravity;`); the caller chooses not to use it.
+- rts-sim-wasm/src/lib.rs:1400-1414 stores `has_gravity: Vec<u8>` in
+  the projectile pool, and the pool step at lib.rs:1832-1838
+  conditionally skips both the position and velocity gravity terms
+  when the flag is zero:
+      if p.has_gravity[i] != 0 {
+          p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
+          p.vel_z[i] -= GRAVITY * dt_sec;
+      } else {
+          p.pos_z[i] += p.vel_z[i] * dt_sec;
+      }
+- rts-sim-wasm/src/lib.rs:1466 also exposes
+  `projectile_pool_has_gravity_ptr` to JS, and src/game/sim-wasm/init.ts
+  wires it through (`hasGravity: projectile_pool_has_gravity_ptr()`).
+  The flag is a load-bearing part of the JS/WASM contract.
+- Comment block at lib.rs:1681-1684 acknowledges the violation
+  explicitly: "Rocket-class callers pass gravity 0 [...]" — the design
+  was written to support the counter-gravity term but the integration
+  point opted out instead of opting in.
+
+Why it matters:
+This is exactly the `ignoresGravity` shortcut the philosophy rules
+out. A spent or under-powered rocket should sag the way a real spent
+missile sags; right now it floats indefinitely along its last
+velocity, because gravity is never integrated. The philosophy also
+demands "Guidance and gravity-cancellation are one acceleration
+vector, not two systems" — the current code is two systems.
+
+Fix direction:
+Do the child items as separate, measurable PRs. Order matters:
+PHYS-GRAV-01A wires the counter-gravity into the homing kernel call
+sites; PHYS-GRAV-01B removes the `has_gravity` plumbing once the
+flag is no longer load-bearing.
+
+------------------------------------------------------------------------------
+PHYS-GRAV-01A - child: change rocket-class call sites to pass
+                GRAVITY into the homing math so the homing thrust
+                pays the counter-gravity tax instead of zeroing it.
+------------------------------------------------------------------------------
+
+Evidence:
+- projectileSystem.ts:778 currently sets `projectileGravity = 0` for
+  rockets. The HomingSteering kernel already accepts a `gravity` arg
+  and adds `+ gravity` to its `a_z` (lib.rs:1802), then saturates the
+  combined thrust against `max_thrust_accel`. The caller can simply
+  pass GRAVITY and the kernel will correctly spend a slice of the
+  rocket's authored thrust budget on cancelling gravity.
+
+Fix direction:
+Pass GRAVITY (the universal constant from sharedSimConstants.json)
+into both call sites (`solveKinematicIntercept` at line 848 and
+`computeHomingThrust` at line 866) for rocket-class shots. Verify
+visually that flight paths still look like clean lines for healthy
+rockets (the counter-gravity is bounded by max thrust, so the visible
+behavior should be indistinguishable), and that low-thrust or
+lifespan-expired rockets now sag as the philosophy describes.
+
+------------------------------------------------------------------------------
+PHYS-GRAV-01B - child: delete the `has_gravity` per-projectile flag
+                from the WASM pool and its JS/wire plumbing.
+------------------------------------------------------------------------------
+
+Evidence:
+- After PHYS-GRAV-01A, every non-terrain-follow projectile integrates
+  GRAVITY. The flag becomes a no-op for the active path.
+- Touch points to remove together (Delete-The-Old-Path):
+    - rts-sim-wasm/src/lib.rs:1400 (field), :1414 (init), :1466
+      (export), :1832-1838 (conditional step → unconditional step).
+    - src/game/sim-wasm/init.ts:40 (import), :2419 (typed-array
+      handle in PROJECTILE_POOL).
+    - src/game/sim/combat/projectileSystem.ts:255
+      (`_packedProjectileHasGravity` write) and any reader.
+
+Fix direction:
+Strip the flag, replace the conditional integration with the
+gravity branch unconditionally, drop the typed-array handle and
+export. Terrain-follow handling moves under PHYS-GRAV-02.
+
+------------------------------------------------------------------------------
+PHYS-GRAV-02 - parent: D-gun terrain-following projectiles bypass
+               force integration entirely and clamp directly to
+               terrain height.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/sim/combat/projectileSystem.ts:776 selects terrain-follow
+  for `proj.projectileType === 'projectile' &&
+  entity.dgunProjectile?.terrainFollow === true`.
+- src/game/sim/combat/projectileSystem.ts:880-887 then writes the
+  next-tick position directly and reconstructs velocity backwards
+  from position:
+      if (terrainFollow) {
+        entity.transform.x = position.x + proj.velocityX * dtSec;
+        entity.transform.y = position.y + proj.velocityY * dtSec;
+        const terrainZ = world.getGroundZ(...) + groundOffset;
+        proj.velocityZ = dtSec > 0 ? (terrainZ - position.z) / dtSec : 0;
+        entity.transform.z = terrainZ;
+      }
+  This skips the F=MA path: there is no integrated acceleration in Z,
+  velocity is derived from a position clamp rather than a force, and
+  the body never feels gravity. It is a clamp disguised as motion,
+  exactly what the "Mass must matter" section forbids ("Ground contact
+  is spring and friction behavior against terrain, not a clamp
+  disguised as physics.")
+
+Why it matters:
+D-gun waves are gameplay-affecting projectiles. Treating them as
+position-edit rather than thrust-vs-gravity means heavier units never
+resist them differently, terrain-shading and ground contact don't
+generate the same forces that any other projectile would feel, and
+the visible behavior is impossible to reuse for other "follow the
+ground" shots without copying the bypass.
+
+Fix direction:
+Replace the position clamp with a terrain-following force law that
+applies gravity unconditionally plus a vertical thrust term that
+fights `g · m` and damps toward `terrainZ + groundOffset`. The wave
+still tracks the ground in normal play, but if its thrust budget
+runs out (out-of-fuel, lifespan expired) it correctly falls under
+gravity. Reuse the existing homing/steering kernel shape so that
+gravity cancellation is one acceleration vector, not two systems.
+Once this lands, the `terrainFollow` short-circuit and the
+`dgunProjectile?.terrainFollow` optional field can be retired.
+
+==============================================================================
+
+TYPESCRIPT IN THE HOT PATH (TS-WASM-01 family)
+
+The "TypeScript Coordinates, WASM Computes" section of
+design_philosophy.html is explicit: per-unit, per-projectile, and
+per-frame loops must live in WebAssembly (compiled from Rust), not in
+TypeScript. Several per-unit loops still run in TS today. None are
+catastrophic at 200 units, but they all compound at the 5,000-unit
+design target.
+
+==============================================================================
+
+------------------------------------------------------------------------------
+TS-WASM-01 - parent: per-entity hot loops still execute in
+             TypeScript when their kernels should live in Rust.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/sim/Simulation.ts (1,657 LOC) is still the top-level tick
+  driver. Although most heavy kernels delegate to WASM, several
+  per-unit loops are TypeScript:
+    - applyArrivalThrust (Simulation.ts:1214-1293) — PD controller
+      that computes locomotion thrust per unit per tick.
+    - updateUnitGroundNormal (src/game/sim/unitGroundNormal.ts) —
+      per-unit ground-normal EMA, called every tick.
+    - UnitSuspensionSystem.update (src/game/sim/unitSuspension.ts) —
+      per-unit suspension spring integration, called every tick.
+    - UnitForceSystem.applyForces (src/game/server/UnitForceSystem.ts)
+      — per-unit force gathering, called every tick from
+      GameServer.tick() (GameServer.ts:392 region).
+- src/game/server/PhysicsEngine3D.ts (915 LOC) and
+  src/game/server/UnitForceSystem.ts (699 LOC) are still instantiated
+  in GameServer.ts:192-193 and called every tick. The integration
+  itself now runs in Rust kernels, but the per-unit force-selection
+  loop, suspension state, and physics-body bookkeeping all live in TS.
+- Client prediction has a similar shape: ClientPredictionStepper,
+  ClientUnitPrediction, and ClientProjectilePrediction iterate over
+  predicted entities per render frame in TS, even though they call
+  into shared kernels (advanceUnitMotionPhysicsMutable,
+  solveKinematicIntercept, computeHomingThrust).
+- Snapshot wire packing runs per-snapshot loops in TS
+  (snapshotEntityWirePack.ts, snapshotProjectileWirePack.ts,
+  snapshotMinimapWirePack.ts, stateSerializer*.ts). At 5,000 entities
+  per 10 SPS snapshot, this is on the edge of the budget the
+  philosophy reserves for "large serialization loops".
+
+Why it matters:
+The philosophy lists per-unit update loops, physics integration and
+collision detection, and large serialization loops explicitly in the
+"What TypeScript must never own in hot paths" section. The current
+split keeps the kernels in Rust but the per-unit iteration in JS.
+At 5,000 active units, an N-per-tick TS loop is exactly the scaling
+shape the design rules out.
+
+Fix direction:
+Do child items as separate, measurable PRs. Order matters: move the
+larger, more frequent loops first (arrival control) and use the
+patterns established to migrate the smaller EMA/spring loops.
+
+------------------------------------------------------------------------------
+TS-WASM-01A - child: move applyArrivalThrust into a Rust batch
+              kernel so locomotion PD-control runs in WASM.
+------------------------------------------------------------------------------
+
+Evidence:
+- Simulation.ts:1214-1293 currently computes per-unit:
+    - target-velocity from waypoint + arrival shape,
+    - position error (waypoint - body.pos),
+    - velocity error (target - body.vel),
+    - thrust = positionGain · pos_err - dampingGain · body.vel,
+    - clamp/saturate against authored thrust limits,
+    - write back to body's force accumulator via
+      setUnitMovementAcceleration.
+- The Rust crate already exposes the physics pool, force accumulator,
+  and unit motion helpers (advance_unit_motion in lib.rs around 565).
+  An arrival-control kernel can sit alongside them and consume the
+  same packed pool storage.
+
+Fix direction:
+Land a Rust kernel `arrival_control_step_batch(...)` that reads the
+authored thrust/mass profile, body kinematics, and current waypoint
+from packed slabs and writes the per-tick thrust into the existing
+force accumulator. Delete applyArrivalThrust from Simulation.ts in
+the same change (Delete The Old Path). Verify gameplay parity at
+N=200 and check 5,000-unit tick budget; the PD math is unchanged,
+only the iteration moves.
+
+------------------------------------------------------------------------------
+TS-WASM-01B - child: move updateUnitGroundNormal EMA into Rust.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/sim/unitGroundNormal.ts iterates over every unit each tick
+  and EMA-blends a smoothed surface normal. It is called every tick
+  from Simulation.update().
+- The same normal feeds both server-side chassis tilt and renderer
+  ground clamping, so the normal is read on every visual frame too.
+  Moving the EMA into WASM keeps a single source of truth for the
+  surface normal and removes a per-unit JS loop.
+
+Fix direction:
+Add a Rust kernel that EMA-blends the per-unit ground normal against
+the smoothed terrain sample. Expose the smoothed values via the same
+typed-array pointer mechanism the other pools use. Delete the TS
+implementation; the renderer reads the smoothed normal through the
+existing accessor.
+
+------------------------------------------------------------------------------
+TS-WASM-01C - child: move UnitSuspensionSystem per-unit spring into
+              Rust (or scope it strictly client-side visual).
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/sim/unitSuspension.ts +
+  src/game/server/UnitSuspensionSystem.ts run a per-unit spring
+  integrator every tick from GameServer.tick().
+- The suspension state is decorative chassis bob; per the
+  "Locomotion Visuals Are Frontend" philosophy section, it should
+  live on the client renderer or in the Rust sim, never as a TS
+  per-unit loop on the host.
+
+Fix direction:
+Decide whether the suspension model is gameplay-affecting (move to
+Rust kernel, on the wire) or purely visual (move to client renderer,
+off the wire entirely). Either way, the TS per-unit loop on the host
+should go away.
+
+------------------------------------------------------------------------------
+TS-WASM-01D - child: move snapshot wire-pack and serializer loops
+              into Rust now that the encoded shape is stable.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/network/snapshotEntityWirePack.ts (1,100+ LOC),
+  snapshotProjectileWirePack.ts, snapshotMinimapWirePack.ts,
+  snapshotAudioWirePack.ts, snapshotStaticWirePack.ts, and the
+  stateSerializer*.ts files all run per-snapshot loops over the live
+  entity/projectile/minimap/audio sets in TS.
+- snapshotRustWireEncoder.ts already wraps a Rust encoder for the
+  outer frame but still reads from the TS serializer functions, so
+  Rust never owns the inner per-entity loop.
+- The 2026-05-22 entity packed-row work shows the wire shape is
+  stable enough to land in Rust now (V1-V6 versions are append-only
+  and the encoder is bit-deterministic).
+
+Fix direction:
+Migrate the per-entity / per-projectile / per-minimap / per-audio
+emit loops into the Rust encoder. Keep the JS wrappers only as
+thin call-into-WASM shells. This also cuts the JS/WASM boundary
+crossings the philosophy warns about: today every snapshot copies
+entity slab values from WASM into JS arrays just to be re-packed
+into a wire buffer.
+
+------------------------------------------------------------------------------
+TS-WASM-01E - child: client prediction step body is still a per-unit
+              JS loop; move the inner step into WASM and let the JS
+              shell just drive cadence.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/network/ClientPredictionStepper.ts,
+  ClientUnitPrediction.ts, ClientProjectilePrediction.ts all iterate
+  over predicted entities per render frame and call shared kernels
+  for the math.
+- The philosophy explicitly assigns "client prediction integrator"
+  to the WASM layer in the "What TypeScript must never own in hot
+  paths" list. The shared kernels are already there; only the
+  iteration is still in JS.
+
+Fix direction:
+Add a Rust `client_predict_step(dt)` entry point that walks the
+predicted-entity slab in linear memory and applies the same EMA /
+integration the JS does today. Delete the JS per-entity loop; the
+JS layer becomes "set dt, call WASM, sample for render."
+
+==============================================================================
+
+EXPLICIT ABSENCE (ABSENCE-01 family)
+
+The "Explicit Absence" section of design_philosophy.html bans `?:`
+property declarations and `?.` access inside our own simulation,
+server, prediction, networking, and entity-state modules. Optional
+chaining usage is already at 0 in the in-scope tree, but optional
+property declarations still appear in core types.
+
+==============================================================================
+
+------------------------------------------------------------------------------
+ABSENCE-01 - parent: 308 `?:` declarations remain across in-scope
+             modules; 221 of them are in two files.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/types/network.ts: 135 `?:` declarations. This file defines the
+  NetworkServerSnapshotEntity DTO shape and dozens of inner
+  unit/building/turret sub-shapes (pos, unit, building, projectile,
+  audio, minimap, etc). The DTOs are pooled — the same object is
+  reused across snapshots — so optional fields carry zombie values
+  between snapshots unless every release path explicitly resets them.
+- src/types/sim.ts: 86 `?:` declarations. This is the core
+  entity-state shape file. Optional component slots (`body?`,
+  `unit?`, `building?`, `combat?`, `projectile?`, etc.) are the most
+  common pattern, and the philosophy is explicit that "field is
+  semantically inapplicable to this kind of entity is NOT an
+  optional field. It is a discriminated union. Express it that way."
+- 87 other `?:` declarations spread across src/game/sim/*, including:
+    - Simulation.ts (10): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
+      onSimEvent?, onGameOver? plus a few method param defaults.
+    - WorldState.ts (6): RemovedSnapshotEntity.playerId?,
+      onEntityRemoving?, etc.
+    - snapshotWireTypes.ts (5): audioEvents?, minimapEntities?,
+      projectiles?, terrain?, buildability?.
+    - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
+      buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
+- Sentinel violations (number|null in hot loops, where the
+  philosophy prescribes numeric sentinels like `targetId = -1`):
+    - src/game/sim/combat/targetingInputStamping.ts:124 — `targetId:
+      EntityId | null` on CombatTargetingTurretFsmOut, stamped once
+      per turret per frame.
+    - src/types/sim.ts:623 — Builder.currentBuildTarget: EntityId |
+      null.
+    - src/game/sim/damage/DamageSystem.ts:164 — closestEntityId:
+      EntityId | null inside a damage-sphere search.
+- Transform shape variance: src/types/sim.ts:89-90 declares cached
+  `rotCos?` and `rotSin?` on the Transform. Sometimes-populated
+  cached fields are exactly the V8 hidden-class deoptimization the
+  philosophy calls out.
+
+Why it matters:
+"Pooled objects carry zombie fields between users when those fields
+are T? rather than T | null with an explicit reset on release."
+DTOs in src/types/network.ts are pooled and flow through every
+snapshot. Optional-field zombies are exactly the "seemingly ready
+when actually not" bug class the philosophy is trying to retire.
+
+Fix direction:
+Address as child PRs, file by file. The migration is intentionally
+gradual ("every file we touch should leave with fewer optional
+properties..."), but two files concentrate most of the risk and
+should be the first scheduled passes.
+
+------------------------------------------------------------------------------
+ABSENCE-01A - child: convert pooled DTO optional fields in
+              src/types/network.ts to T | null with explicit reset.
+------------------------------------------------------------------------------
+
+Evidence:
+- NetworkServerSnapshotEntity carries 50+ optional sub-fields across
+  pos, unit, building, projectile, combat, audio sub-shapes. The DTO
+  is pooled via src/game/network/snapshotPool.ts; the release path
+  must guarantee every optional slot is cleared.
+- src/game/network/unitSnapshotFields.ts already has clearNetwork*
+  helpers; some optional fields may not be reset there. Audit each.
+
+Fix direction:
+File-scoped pass. Change each `field?: T` to `field: T | null = null`
+with an explicit guard at every reader. Add reset calls in
+clearNetwork* / snapshotPool release helpers for any field newly
+on the must-null list. Keep the wire encoding unchanged.
+
+------------------------------------------------------------------------------
+ABSENCE-01B - child: convert entity-state component slots in
+              src/types/sim.ts to discriminated unions or T | null.
+------------------------------------------------------------------------------
+
+Evidence:
+- Entity carries `body?`, `unit?`, `building?`, `combat?`,
+  `projectile?`, etc. Per philosophy these should be a discriminated
+  union, not optional fields.
+- Transform.rotCos?/rotSin? cache fields on src/types/sim.ts:89-90
+  are the kind of "sometimes populated" pattern that deoptimizes V8
+  hidden classes per philosophy.
+
+Fix direction:
+Either model Entity as a discriminated union keyed by `kind`
+('unit' | 'building' | 'projectile' | …), or settle for `T | null`
+plus explicit guards at the readers. For the rotation cache, either
+always populate the cache (uniform shape) or move the cache to a
+separate map keyed by entity ID.
+
+------------------------------------------------------------------------------
+ABSENCE-01C - child: swap number|null target IDs for numeric
+              sentinels in hot-loop types.
+------------------------------------------------------------------------------
+
+Evidence:
+- targetingInputStamping.ts:124 stamps `targetId: EntityId | null`
+  for every armed turret every frame.
+- Builder.currentBuildTarget (sim.ts:623) and
+  closestEntityId (DamageSystem.ts:164) carry the same shape.
+- Other hot-loop sites in combat targeting and projectile homing
+  use `proj.homingTargetId !== undefined` checks (projectileSystem.ts
+  :788, :795) — same anti-pattern in `T | undefined` form.
+
+Fix direction:
+Use -1 as the unambiguous "no target" sentinel for entity IDs in hot
+loops. Update readers from `x === null` / `x === undefined` to
+`x === -1`. Document the sentinel choice once, in a shared comment
+or type.
+
+==============================================================================
+
+CONFIG IS DATA, NOT CODE (BLUEPRINT-01 family)
+
+The "Config Is Data, Not Code" section of design_philosophy.html
+requires blueprints, tuning tables, and authored content in JSON
+validated against a shared schema; the TS-to-Rust migration depends
+on Rust being able to read the data directly. Today only one constants
+file crosses that bridge.
+
+==============================================================================
+
+------------------------------------------------------------------------------
+BLUEPRINT-01 - parent: the Rust sim cannot consume the blueprint
+               JSON files; types are hand-maintained on both sides.
+------------------------------------------------------------------------------
+
+Evidence:
+- rts-sim-wasm/build.rs only consumes
+  src/sharedSimConstants.json (universal tuning constants such as
+  GRAVITY). It generates a single Rust constants file.
+- The blueprint JSON files (src/game/sim/blueprints/units.json,
+  buildings.json, turrets.json, shots.json, locomotion.json,
+  unitRoster.json, fallbacks.json) are not consumed by Rust. There
+  are no include_str! or serde_json calls in
+  rts-sim-wasm/src/lib.rs that load these.
+- Type definitions are hand-maintained in TypeScript only
+  (src/types/blueprints.ts, ~503 LOC). Rust types are defined
+  separately inside lib.rs without a generated bridge.
+- 17 top-level config pairs in src/ have both `fooConfig.json` and
+  `fooConfig.ts`; 16 other configs are JSON-only. The .ts wrapper
+  pattern is inconsistent — the data lives in JSON in both cases,
+  but coverage of the typed-import wrapper is uneven.
+- Naming inconsistency: src/colors_config.json paired with
+  src/colorsConfig.ts; src/smoke_config.json paired with
+  src/smokeConfig.ts. The other 13 pairs follow camelCase on both
+  sides. Pick one and rename the outliers.
+
+Why it matters:
+The TS-to-Rust migration cannot finish while blueprints live as
+TypeScript-readable-only data. Hand-maintained parallel types are
+the canonical drift surface: a field added to TS today silently
+disagrees with the Rust struct tomorrow.
+
+Fix direction:
+Address as child PRs. Order: schema first, then Rust consumption,
+then code-generation of types from the schema, then the renames.
+
+------------------------------------------------------------------------------
+BLUEPRINT-01A - child: write a single schema (JSON Schema or a
+                custom validated format) for each blueprint kind and
+                land a build-time generator for both TS types and
+                Rust structs.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/types/blueprints.ts is hand-edited. Rust equivalents (where
+  they exist) are hand-edited separately. There is no `schemas/`
+  directory at the repo root.
+
+Fix direction:
+Add `schemas/blueprints/*.schema.json` (or equivalent). Wire a
+build step that generates `src/types/blueprints.generated.ts` and
+the Rust counterpart from each schema. Existing hand-edited types
+are deleted in the same change once parity is verified
+(Delete The Old Path).
+
+------------------------------------------------------------------------------
+BLUEPRINT-01B - child: have rts-sim-wasm consume the blueprint JSON
+                files directly (at build time via include_str! or
+                at runtime via a single dump-from-host frame).
+------------------------------------------------------------------------------
+
+Evidence:
+- Rust today knows nothing about units, turrets, shots, buildings,
+  or locomotion; all of that data lives in TS data structures
+  derived from JSON.
+- rts-sim-wasm/build.rs already demonstrates the include-and-generate
+  pattern for sharedSimConstants.json.
+
+Fix direction:
+Extend build.rs to include the blueprint JSON files and emit
+generated Rust constants for each blueprint table, keyed by the
+generated structs from BLUEPRINT-01A. Migrate hot-path lookups in
+lib.rs to read from those tables instead of receiving blueprint
+parameters by argument from JS.
+
+------------------------------------------------------------------------------
+BLUEPRINT-01C - child: decide whether to keep, complete, or drop
+                the inconsistent .ts wrapper layer over the
+                top-level *Config.json files.
+------------------------------------------------------------------------------
+
+Evidence:
+- 17 of 33 top-level configs in src/ have both .json and .ts; the
+  other 16 are JSON-only. The .ts wrappers are mostly trivial
+  re-exports (`export const X = config.x;`).
+- colorsConfig.ts has real logic (CSS hex → RGB tuples). That kind
+  of wrapper has clear value.
+- Trivial re-export wrappers do not.
+
+Fix direction:
+Either standardize: every top-level config gets a generated
+typed wrapper (script-generated, not hand-maintained), or none do
+and all callers import the JSON directly with `import type`
+declarations. Don't ship both shapes side by side.
+
+------------------------------------------------------------------------------
+BLUEPRINT-01D - child: rename `colors_config.json` and
+                `smoke_config.json` to match the camelCase pattern
+                used by every other config pair.
+------------------------------------------------------------------------------
+
+Evidence:
+- The other 31 config files use camelCase. `colors_config.json` and
+  `smoke_config.json` are the only outliers.
+
+Fix direction:
+Rename to colorsConfig.json and smokeConfig.json; update imports.
+Trivial mechanical change; do it as its own PR so it doesn't muddy
+review of larger blueprint work.
+
+==============================================================================
+
+HEAD-ONLY TURRET COLOR (HEAD-ONLY-01 family)
+
+The "Beam And Rocket Turrets Render As Heads, Not Barrels" section is
+explicit about the engagement-state color shift:
+
+  "The head shows the unit's player color while idle or tracking and
+  shifts halfway toward white the instant the turret engages a target.
+  The color flip *is* the lock-on cue."
+
+The current implementation shows a fixed accent color (already a blend
+of player primary and white) at all times, regardless of engagement.
+
+==============================================================================
+
+------------------------------------------------------------------------------
+HEAD-ONLY-01 - parent: headOnly turret heads do not shift color on
+               engagement; the color is permanent.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/render3d/UnitTurretPose3D.ts:106-108 selects
+  `headColorOverride = turretMesh.headOnly ?
+  entityTurretAccentColorHex(entity) : undefined;` — there is no
+  branch on `turret.state === 'engaged'`.
+- src/game/render3d/Render3DEntities.ts:535 falls back to
+  `tm.head.material = tm.headOnly ? turretAccentMat : primaryMat;`
+  for the per-mesh path. Same shape: no engagement state in the
+  selector.
+- src/game/render3d/UnitDetailInstanceRenderer3D.ts uses a similar
+  `turret.headOnly ? turretAccentHex : turretHeadHex` selector on
+  the instanced path. No engagement branch.
+- The engagement state IS available on the wire and on the entity
+  (it's the FSM bit used elsewhere) — the renderer just doesn't
+  consult it for headOnly color selection.
+
+Why it matters:
+Per philosophy, "The color flip *is* the lock-on cue." Without it,
+beam and rocket turrets give the player no visual feedback that
+they have acquired a target. The whole point of the headOnly
+variant is to make the turret state visible without a barrel pose.
+
+Fix direction:
+Add the engagement-state branch to all three head-color selectors:
+- UnitTurretPose3D.ts (per-mesh path)
+- Render3DEntities.ts (per-mesh fallback)
+- UnitDetailInstanceRenderer3D.ts (instanced path)
+Use player primary while idle/tracking; blend halfway to white when
+`turret.state === 'engaged'`. Keep the existing accent color choice
+as the engaged-state value; introduce a new "idle/tracking" color
+that is the pure player primary.
+
+==============================================================================
+
+WIRE-PATH HOT ALLOCATIONS (WIRE-PERF-01 family)
+
+The "Browser Performance Rules" and "Hot paths are data-oriented"
+sections require "Reuse arrays by setting length = 0" and "Pool
+snapshot DTOs, event objects, scratch arrays, and temporary buffers."
+Several snapshot pack/unpack call sites still allocate fresh arrays
+per snapshot.
+
+==============================================================================
+
+------------------------------------------------------------------------------
+WIRE-PERF-01 - parent: snapshot pack/unpack helpers allocate fresh
+               arrays per snapshot in TS rather than reusing pools.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/network/snapshotProjectileWirePack.ts allocates new
+  arrays around lines 103, 114, 125, 140, 154, 171, 245, 257, 284,
+  316 (one `new Array(...)` per packed projectile sub-slab).
+- src/game/network/snapshotEntityWirePack.ts allocates arrays at
+  205, 223, 511, 567, 1066, 1140.
+- src/game/network/snapshotMinimapWirePack.ts allocates arrays at
+  24 and 49.
+- These run on the host per snapshot (5-10 Hz) per remote client,
+  so the allocation pressure scales with N_entities × N_clients ×
+  SPS. At 5,000 entities the allocator gets a steady drumbeat of
+  short-lived arrays.
+
+Why it matters:
+GC pressure on the host directly translates into snapshot jitter
+and tick-budget variance. The philosophy is explicit: "Do not
+allocate in per-unit, per-projectile, per-turret, per-cell, or
+per-frame loops unless the allocation is proven irrelevant." 5-10
+Hz over 5,000 entities is not "proven irrelevant."
+
+Fix direction:
+Add per-section pooled scratch arrays in
+src/game/network/snapshotPooledScratch.ts (the pool already exists
+for other paths). Each pack/unpack uses `arr.length = 0` instead
+of `new Array(...)`. Children below split per-file.
+
+------------------------------------------------------------------------------
+WIRE-PERF-01A - child: pool the packed projectile sub-slabs in
+                snapshotProjectileWirePack.ts.
+------------------------------------------------------------------------------
+
+Fix direction:
+Replace each `new Array(...)` call site with a pooled scratch array
+acquired from snapshotPooledScratch and released at the end of the
+pack/unpack. Verify byte-equality of the packed output against the
+existing instrumentation parity tests in snapshotEncoderTest.ts.
+
+------------------------------------------------------------------------------
+WIRE-PERF-01B - child: pool the packed entity sub-slabs in
+                snapshotEntityWirePack.ts.
+------------------------------------------------------------------------------
+
+Fix direction:
+Same shape as WIRE-PERF-01A, applied to the entity wire pack
+allocations. Coordinate with TS-WASM-01D so that the migration to
+a Rust encoder doesn't immediately invalidate the pool; pooling
+buys time and is a low-risk intermediate.
+
+------------------------------------------------------------------------------
+WIRE-PERF-01C - child: pool the packed minimap sub-slabs in
+                snapshotMinimapWirePack.ts.
+------------------------------------------------------------------------------
+
+Fix direction:
+Same shape as WIRE-PERF-01A and -01B. Two call sites total; quick.
+
+==============================================================================
+
+MISCELLANEOUS WIRE / RENDERER / DIAGNOSTIC ITEMS
+
+==============================================================================
+
+------------------------------------------------------------------------------
+WIRE-FORCEFIELD-01 - clarify whether `currentForceFieldRange`
+                     belongs on the wire.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/network/stateSerializerEntities.ts:192 and :351-352
+  ship `currentForceFieldRange` per turret on the snapshot.
+- src/types/network.ts (NetworkServerSnapshotTurret) declares the
+  field.
+- design_philosophy.html line 446-449 says the force-field range
+  visualizer "rides this channel because it is a slow visual
+  progress that pairs with the turret's rotation correction", but
+  also line 931-939 says "Nothing about locomotion visuals
+  crosses the wire" and the same logic should apply to slow
+  visualization progress that can be derived locally.
+
+Why it matters:
+If the value is gameplay-authoritative (e.g. it gates collision /
+projectile reflection radius), it belongs on the wire. If it is
+purely a slow visual progress (a fill bar that ramps from 0 to 1),
+it can be computed locally from the engaged-state FSM bit and a
+local timer. Today the field has the ambiguous middle ground.
+
+Fix direction:
+Decide one of two outcomes, document it in code:
+(a) gameplay-authoritative → keep on wire; mark the field as
+    such in the NetworkServerSnapshotTurret type; ensure the
+    server is the single source of truth for the radius value.
+(b) visual-only → remove from wire; have the client derive the
+    progress from the engaged-state FSM bit + a local timer
+    keyed on engagement transitions; update the renderer.
+
+------------------------------------------------------------------------------
+WIRE-BEAMPOINT-01 - mark BeamPoint ax/ay/az as client-side
+                    integration scratch so they aren't accidentally
+                    shipped later.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/types/shotTypes.ts:273-275 declares ax/ay/az on BeamPoint.
+- Verified: NetworkServerSnapshotBeamPoint (src/types/network.ts
+  :441-455) does not ship them; this is correct per the "no ACC on
+  the wire" rule.
+- The presence of the fields in the in-memory type without a
+  comment invites a future contributor to add them to the wire.
+
+Fix direction:
+Either delete the fields and recompute acceleration on the client
+from successive velocities (clean), or annotate them with a
+type-level comment marking them client-side-only (cheap).
+
+------------------------------------------------------------------------------
+DIAG-BLOAT-01 - snapshotEncoderTest.ts is shipped in the runtime
+                bundle even though it is a test harness.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/sim-wasm/snapshotEncoderTest.ts is 3,162 LOC of
+  byte-equality tests for the Rust encoder vs JS msgpack encoder.
+- It is referenced from src/game/sim-wasm/init.ts:2316 and runs
+  on init when the GAME_DIAGNOSTICS flag is set.
+- It is part of the shipped JS bundle, gated only by a runtime
+  flag, so it costs bytes-on-the-wire to every player even when
+  the diagnostics are off.
+
+Why it matters:
+Browser bundle size affects cold-load latency. Diagnostic code
+that only fires under a flag does not belong in the production
+bundle; it belongs in a dev-only entry point.
+
+Fix direction:
+Move the test harness behind a Vite dev-only import (e.g. a
+dynamic `import()` that only resolves when the diagnostic flag is
+set, behind `import.meta.env.DEV`) so it does not contribute to
+the production bundle. Alternatively, gate the entire file behind
+a Vite `define`/`tree-shake` so the production build elides it.
+
+------------------------------------------------------------------------------
+RENDER-WEBGPU-01 - Three.js → raw WebGPU migration is unstarted.
+------------------------------------------------------------------------------
+
+Evidence:
+- package.json still depends on `three` 0.184.0.
+- src/game/render3d/ has 86 files, all built around THREE.* APIs.
+- A repo-wide grep for `WebGPU`, `WGSL`, `GPUDevice`, or
+  `gpu.requestAdapter()` returns zero matches. The migration that
+  the philosophy frames as "the largest example" of replacing
+  scaffolding has not begun.
+- The "Engine Ownership: No Libraries, In-House Rust" section
+  treats Three.js as legacy scaffolding and reserves the end-state
+  for raw WebGPU + WGSL.
+
+Why it matters:
+This is the biggest outstanding migration in the project, and
+keeping it visible as a tracked issue ensures it doesn't get
+forgotten beneath smaller items. Replacing Three.js is not
+something to start with a single PR; it is a multi-month effort
+that should start with a bounded slice (e.g. ground plane,
+instanced units, terrain) and migrate piecemeal — but in the
+philosophy's own framing, until the old path is gone, the
+migration is not done.
+
+Fix direction:
+Out of scope for any single child here. The right first step is
+to land a WebGPU initialization layer in src/game/render3d/ that
+coexists with Three.js, port the simplest renderer (likely
+TerrainTileRenderer3D or a primitive ground pass) to it, and
+delete the Three.js path for that one renderer in the same
+change. Iterate. Don't start a parallel renderer tree without a
+deletion plan; the philosophy is explicit that two renderer
+shapes interfere even when only one is supposed to be active.
+
+------------------------------------------------------------------------------
+RENDER-PERUNIT-01 - per-entity render-list updates in TS at
+                    per-frame cadence.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/render3d/Render3DEntities.ts iterates over visible
+  entities every frame (updateUnits / updateUnitMeshes around
+  lines 426+/439+) and updates per-unit pose, turret pose, barrel
+  spin, and material color in JS.
+- This is the "render-list generation for thousands of objects"
+  shape called out in the TS-must-never-own-this list.
+
+Why it matters:
+The Three.js scene-graph traversal already has its own per-object
+cost; adding a per-unit JS update on top of it compounds the
+language-overhead penalty the philosophy is trying to avoid at
+scale.
+
+Fix direction:
+Tightly coupled to RENDER-WEBGPU-01. Migrating to instanced
+WebGPU rendering replaces per-unit JS pose writes with batched
+GPU buffer uploads sourced directly from WASM linear memory. Until
+then, the best intermediate is to ensure the per-frame JS pass is
+strictly batched (no per-unit allocation, no Object.assign, no
+.map / .filter / .forEach in the inner loop).
