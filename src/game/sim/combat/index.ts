@@ -15,10 +15,19 @@ export { updateTurretRotation } from './turretSystem';
 export { updateTargetingAndFiringState } from './targetingSchedulerBridge';
 
 // Laser sounds
-export { updateLaserSounds, emitLaserStopsForEntity, emitLaserStopsForTarget } from './laserSoundSystem';
+export {
+  updateLaserSounds,
+  emitLaserStopsForEntity,
+  emitLaserStopsForTarget,
+  resetLaserSoundState,
+} from './laserSoundSystem';
 
 // Force field sounds
-export { updateForceFieldSounds, emitForceFieldStopsForEntity } from './forceFieldSoundSystem';
+export {
+  updateForceFieldSounds,
+  emitForceFieldStopsForEntity,
+  resetForceFieldSoundState,
+} from './forceFieldSoundSystem';
 
 // Force field weapons
 export {

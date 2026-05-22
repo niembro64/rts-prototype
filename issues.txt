@@ -76,6 +76,16 @@ Evidence:
   measured 671,714-770,596 B avg / 841,268-859,546 B hi, and the host
   only produced about 1.2-1.3 encoded snapshots/sec at that scale in
   the headless harness.
+- The 2026-05-22 follow-up Vite SSR probe in the same doc adds the
+  version-3 unit turret slab and changes continuous beam/force-field
+  audio from every-tick start/stop streaming to transition events plus
+  a 60-tick active refresh. The 1,000-cap / 10 SPS row is now inside
+  target at 43,519 B avg / 83,281 B hi across 83 delta samples. The
+  5,000-cap / 10 SPS row is still over budget at 221,055 B avg /
+  322,977 B hi across 13 delta samples. At 5,000 cap, average sections
+  were still led by `entities` at 143,557 B, followed by
+  `minimapEntities` 28,350 B, `projectiles` 26,873 B, and
+  `audioEvents` 21,555 B.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
@@ -107,6 +117,13 @@ Evidence:
   roughly 614 KiB / 72% of an 849 KiB cap-5,000 delta. Projectiles,
   audio events, and minimap entities followed at roughly 103 KiB,
   70 KiB, and 62 KiB respectively.
+- After the version-3 unit turret slab and continuous audio lifecycle
+  pass, the 2026-05-22 Vite SSR probe measured cap 1,000 / 10 SPS at
+  43,519 B avg / 83,281 B hi, which is inside the normal 64 KiB avg /
+  128 KiB hi targets. Cap 5,000 / 10 SPS improved to 221,055 B avg /
+  322,977 B hi but remains over budget; average packed sections were
+  `entities` 143,557 B, `minimapEntities` 28,350 B, `projectiles`
+  26,873 B, and `audioEvents` 21,555 B.
 
 Why it matters:
 The remaining bandwidth problem is steady-state upstream, not rare
@@ -115,11 +132,11 @@ consume several megabits/sec even before WebRTC framing, retransmits,
 or additional remote clients multiply the stream.
 
 Fix direction:
-Start with the entity delta shape. Separate core movement rows from
-expensive detail rows so position/velocity updates do not drag action,
-turret, surface-normal, suspension, radius, or other detail payload with
-them. Prefer dense numeric row slabs or the existing Rust entity-row
-encoder shape over nested per-entity arrays where that reduces bytes and
-keeps a single source of truth. After the entity stream is reduced,
-rerun the same matrix and then budget the next largest delta sections:
-projectiles/beam updates, audio-event bursts, and minimap rows.
+Continue with the high-count entity delta shape. The 1,000-cap row is
+now inside target, but the 5,000-cap row is still entity-led. Prefer
+denser movement/turret slabs, lower-detail high-count entity cadence, or
+the existing Rust entity-row encoder shape over nested per-entity arrays
+where that reduces bytes and keeps a single source of truth. After the
+5,000-cap entity stream is reduced, rerun the same matrix and then
+budget the next largest delta sections: projectile/beam bursts,
+minimap rows, and remaining audio-event bursts.

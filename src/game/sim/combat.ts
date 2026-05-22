@@ -24,11 +24,13 @@ export {
   updateLaserSounds,
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
+  resetLaserSoundState,
 } from './combat/laserSoundSystem';
 
 export {
   updateForceFieldSounds,
   emitForceFieldStopsForEntity,
+  resetForceFieldSoundState,
 } from './combat/forceFieldSoundSystem';
 
 export {

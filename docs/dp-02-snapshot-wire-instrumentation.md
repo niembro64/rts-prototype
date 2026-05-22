@@ -430,6 +430,69 @@ contract. The high-count matrix still needs to be rerun before SNAP-WIRE-01A can
 be closed; the remaining likely offenders are mixed movement/detail entity rows,
 projectile/beam updates, audio bursts, and minimap rows.
 
+### Entity Turret Slab / Continuous Audio Lifecycle
+
+Run date: 2026-05-22
+
+The packed entity wire object now has a version-3 shape for unit deltas whose
+only expensive detail group is turret pose/state. Mixed movement+turret deltas
+split into:
+
+- `m`: the existing movement-only unit slab for position, yaw, velocity,
+  optional hover orientation, and optional angular velocity.
+- `t`: a flat unit-turret slab keyed by entity id, player id, turret count, and
+  per-turret flag/pose/state rows.
+- `e`: the generic detail row path for full records and deltas that still carry
+  health, actions, surface normal, suspension, build/factory state, or other
+  non-turret detail.
+
+The decoder expands a mixed movement+turret record into separate correction
+records for the same entity id. The client already applies sparse deltas in
+sequence, so this keeps authority unchanged while letting movement and turret
+corrections use their denser row shapes.
+
+The continuous beam/force-field audio path now emits lifecycle transitions plus
+a 60-tick active refresh instead of emitting `laserStart`/`laserStop` and
+`forceFieldStart`/`forceFieldStop` every simulation tick. The refresh keeps
+late/missed clients recoverable without turning continuous sound state into a
+per-tick event stream.
+
+Validation:
+
+- `vue-tsc --noEmit` passed.
+- The WASM snapshot encoder byte-equality smoke printed 114/114 fixtures passed
+  during the Vite SSR captures.
+- Mixed movement+turret entity smoke: `packEntitiesForWire` produced `v:3`
+  with `m` + `t`, and `unpackEntitiesFromWire` expanded it into movement and
+  turret correction records for the same entity id.
+
+Short Vite SSR headless captures used the same five-player demo setup as the
+matrix below (`terrainCenter=flat`, `terrainDividers=mountain`,
+`terrainMapShape=circle`, fog/grid disabled, keyframes disabled, observed from
+player 1). The harness ran in Node through Vite SSR with a file-fetch shim for
+the local WASM artifact, so these rows are follow-up engineering probes rather
+than browser/Playwright replacement rows.
+
+| Cap | Configured SPS | Seconds | DS Samples | Measured SPS | Units Avg | Units Max | DS avg | DS hi | FS avg | FS hi |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 10 | 10.1 | 83 | 8.23 | 843 | 1,005 | 43,519 B | 83,281 B | 349,209 B | 349,209 B |
+| 5,000 | 10 | 13.2 | 13 | 0.98 | 4,999 | 5,005 | 221,055 B | 322,977 B | - | - |
+
+Average top-level sections:
+
+| Cap | `entities` | `audioEvents` | `projectiles` | `minimapEntities` |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 22,771 B | 8,599 B | 5,724 B | 5,679 B |
+| 5,000 | 143,557 B | 21,555 B | 26,873 B | 28,350 B |
+
+The 1k / 10 SPS row is now inside both the 64 KiB average and 128 KiB high
+DIFFSNAP targets. The 5k row is still over budget; entities remain the largest
+average section. A 5k entity subkey probe measured the packed entity section at
+about 147,265 B average before the audio lifecycle change, split roughly as
+`m` 75,947 B, `t` 43,051 B, and `e` 28,254 B. That points the next
+SNAP-WIRE-01A pass at denser movement/turret slabs or lower-detail 5k entity
+cadence before moving to projectile/minimap bursts.
+
 ### Static Terrain / Buildability Packed Rows
 
 Run date: 2026-05-22

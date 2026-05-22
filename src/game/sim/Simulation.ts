@@ -13,8 +13,10 @@ import {
   updateLaserSounds,
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
+  resetLaserSoundState,
   updateForceFieldSounds,
   emitForceFieldStopsForEntity,
+  resetForceFieldSoundState,
   fireTurrets,
   updateForceFieldState,
   resetForceFieldBuffers,
@@ -1648,6 +1650,8 @@ export class Simulation {
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetForceFieldBuffers();
+    resetLaserSoundState();
+    resetForceFieldSoundState();
     this.spatialGridBuildingVersion = -1;
   }
 }
