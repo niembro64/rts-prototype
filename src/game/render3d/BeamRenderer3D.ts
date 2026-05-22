@@ -543,35 +543,42 @@ export class BeamRenderer3D {
         hasBeamDir = true;
       }
 
-      let snapStartX = 0, snapStartY = 0, snapStartZ = 0;
-      let hasSnapStart = false;
+      // Sim's points[0] sits at the turret mount center; snap-to-turret
+      // re-anchors to the live mount so the start tracks the turret
+      // smoothly between snapshots. Either way, this position is the
+      // LOGICAL start (mount center) — the visual offset is applied
+      // below.
+      let baseStartX = startPoint.x;
+      let baseStartY = startPoint.y;
+      let baseStartZ = startPoint.z;
       if (snapToTurret) {
         const turretIdx = proj.config.turretIndex ?? 0;
         const mount = turretMountResolver!.getTurretMountWorldState(
           proj.sourceEntityId, turretIdx,
         );
         if (mount) {
-          snapStartX = mount.x;
-          snapStartY = mount.y;
-          snapStartZ = mount.z;
-          // Mount cache stores position only — re-apply emissionOffset
-          // along the beam's current firing direction so the snapped
-          // start sits at mount + emissionOffset * forwardDir.
-          if (emissionOffset > 0 && hasBeamDir) {
-            snapStartX += beamDirX * emissionOffset;
-            snapStartY += beamDirY * emissionOffset;
-            snapStartZ += beamDirZ * emissionOffset;
-          }
-          hasSnapStart = true;
+          baseStartX = mount.x;
+          baseStartY = mount.y;
+          baseStartZ = mount.z;
         }
       }
 
-      // Emitter "generator orb" at the beam start. Use the snapped
-      // position when available so the orb tracks the turret smoothly
-      // between snapshots; otherwise fall back to the snapshot's start.
-      const orbX = hasSnapStart ? snapStartX : startPoint.x;
-      const orbY = hasSnapStart ? snapStartY : startPoint.y;
-      const orbZ = hasSnapStart ? snapStartZ : startPoint.z;
+      // Visual start = mount-center start pushed forward along the
+      // firing direction by emissionOffset, so the beam visually
+      // "generates" outside the turret. The first beam segment, orb,
+      // and torus rings all anchor here; the sim path itself remains
+      // at the mount center.
+      let visualStartX = baseStartX;
+      let visualStartY = baseStartY;
+      let visualStartZ = baseStartZ;
+      if (emissionOffset > 0 && hasBeamDir) {
+        visualStartX += beamDirX * emissionOffset;
+        visualStartY += beamDirY * emissionOffset;
+        visualStartZ += beamDirZ * emissionOffset;
+      }
+      const orbX = visualStartX;
+      const orbY = visualStartY;
+      const orbZ = visualStartZ;
       if (emissionOffset > 0 && emitterIdx < BEAM_EMITTER_CAP) {
         const orbRadius = Math.max(
           START_POINT_SPHERE_CONFIG.minRadius,
@@ -620,10 +627,12 @@ export class BeamRenderer3D {
       for (let i = 0; i < lastIdx; i += stride) {
         const a = points[i];
         const b = points[Math.min(i + stride, lastIdx)];
-        const useSnap = hasSnapStart && i === 0;
-        const ax = useSnap ? snapStartX : a.x;
-        const ay = useSnap ? snapStartY : a.y;
-        const az = useSnap ? snapStartZ : a.z;
+        // First segment starts at the visual offset point — there is
+        // no cylinder drawn between the mount center and the orb.
+        const useVisualStart = i === 0;
+        const ax = useVisualStart ? visualStartX : a.x;
+        const ay = useVisualStart ? visualStartY : a.y;
+        const az = useVisualStart ? visualStartZ : a.z;
         let bx = b.x;
         let by = b.y;
         let bz = b.z;

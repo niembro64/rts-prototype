@@ -524,7 +524,7 @@
     "radius": {
       "body": 8
     },
-    "headOnly": false,
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": {
       "angleType": "rayBisectTurretAndBody",
