@@ -374,10 +374,7 @@
       "fanRingTubeRadius": 0.1,
       "fanOutwardAngleDeg": 18,
       "fanSpinRadPerSec": -10,
-      "tailFanOffsetX": -4.7,
-      "tailFanRadius": 0.7,
-      "tailFanRingTubeRadius": 0.05,
-      "tailFanBackAngleDeg": 40
+      "tailFanOffsetX": -4.7
     }
   },
   "eagleFlying": {

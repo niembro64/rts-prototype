@@ -755,6 +755,14 @@
           "y": 0,
           "z": 0
         }
+      },
+      {
+        "turretId": "miniBeam",
+        "mount": {
+          "x": -4.7,
+          "y": 0,
+          "z": 0
+        }
       }
     ],
     "bodyShape": {

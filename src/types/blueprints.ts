@@ -299,10 +299,12 @@ export type HoverConfig = {
   /** Rotor spin rate in radians per second. Positive value; direction
    *  is fixed (counter-clockwise viewed from above). */
   fanSpinRadPerSec?: number;
-  /** Optional small "dragonfly tail" fan. When `tailFanRadius` is set,
-   *  the main fan layout collapses from the 4-corner quad to a pair of
-   *  lateral "wing" fans at (x=0, z=±fanDistY×unitRadius), and one
-   *  small fan is added at (x=tailFanOffsetX×unitRadius, z=0).
+  /** Optional small "dragonfly tail" fan. Setting `tailFanOffsetX`
+   *  switches the main fan layout from the 4-corner quad to a pair of
+   *  lateral "wing" fans at (x=0, z=±fanDistY×unitRadius). When
+   *  `tailFanRadius` is also set (> 0), an additional small fan is
+   *  rendered at (x=tailFanOffsetX×unitRadius, z=0); omit
+   *  `tailFanRadius` to keep the wing-fan layout without a tail fan.
    *  `tailFanRadius` / `tailFanRingTubeRadius` are unit-radius fractions
    *  matching the existing fan size convention. */
   tailFanOffsetX?: number;

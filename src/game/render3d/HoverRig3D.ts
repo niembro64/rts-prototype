@@ -211,16 +211,18 @@ export function buildHoverFans(
   );
   const fans: HoverFan[] = [];
 
+  const useDragonflyLayout = cfg.tailFanOffsetX !== undefined;
   const hasTailFan =
-    cfg.tailFanRadius !== undefined && cfg.tailFanRadius > 0;
+    useDragonflyLayout && cfg.tailFanRadius !== undefined && cfg.tailFanRadius > 0;
 
-  if (hasTailFan) {
+  if (useDragonflyLayout) {
     // Dragonfly layout: two large "wing" fans at body center forward,
-    // spread laterally; one small fan at the tail tip. The wing fans
-    // sit on the lateral axis (localX = 0) so they read as wings, not
-    // corner thrusters. Wing-fan downwash uses the large-puff pool so
-    // the chunky scale reads as soft cloud; the tail fan keeps the
-    // small-puff profile since it's the same scale as standard hovers.
+    // spread laterally; optionally one small fan at the tail tip. The
+    // wing fans sit on the lateral axis (localX = 0) so they read as
+    // wings, not corner thrusters. Wing-fan downwash uses the
+    // large-puff pool so the chunky scale reads as soft cloud; the
+    // tail fan keeps the small-puff profile since it's the same scale
+    // as standard hovers.
     const lateral = unitRadius * cfg.fanDistY;
     for (const sz of [-1, 1]) {
       fans.push(buildFan(
@@ -237,32 +239,34 @@ export function buildHoverFans(
         fans.length,
       ));
     }
-    const tailFanRadius = Math.max(0.6, unitRadius * cfg.tailFanRadius!);
-    const tailRingTubeRadius = Math.max(
-      0.18,
-      unitRadius * (cfg.tailFanRingTubeRadius ?? cfg.fanRingTubeRadius),
-    );
-    // The tail fan sits at (x=tailFanOffsetX*r, z=0) so its
-    // center-to-fan radial vector is exactly the unit's −X axis. Feeding
-    // that direction into buildFan's outwardAngleRad therefore tilts
-    // the duct rearward — which is the visual the user wants for
-    // "the tail fan angled back."
-    const tailBackAngleRad = THREE.MathUtils.degToRad(
-      Math.max(0, Math.min(90, cfg.tailFanBackAngleDeg ?? 0)),
-    );
-    fans.push(buildFan(
-      group,
-      {
-        localX: unitRadius * (cfg.tailFanOffsetX ?? 0),
-        localZ: 0,
-        fanRadius: tailFanRadius,
-        ringTubeRadius: tailRingTubeRadius,
-        outwardAngleRad: tailBackAngleRad,
-        smokeProfile: SMALL_FAN_SMOKE,
-      },
-      entityId,
-      fans.length,
-    ));
+    if (hasTailFan) {
+      const tailFanRadius = Math.max(0.6, unitRadius * cfg.tailFanRadius!);
+      const tailRingTubeRadius = Math.max(
+        0.18,
+        unitRadius * (cfg.tailFanRingTubeRadius ?? cfg.fanRingTubeRadius),
+      );
+      // The tail fan sits at (x=tailFanOffsetX*r, z=0) so its
+      // center-to-fan radial vector is exactly the unit's −X axis. Feeding
+      // that direction into buildFan's outwardAngleRad therefore tilts
+      // the duct rearward — which is the visual the user wants for
+      // "the tail fan angled back."
+      const tailBackAngleRad = THREE.MathUtils.degToRad(
+        Math.max(0, Math.min(90, cfg.tailFanBackAngleDeg ?? 0)),
+      );
+      fans.push(buildFan(
+        group,
+        {
+          localX: unitRadius * (cfg.tailFanOffsetX ?? 0),
+          localZ: 0,
+          fanRadius: tailFanRadius,
+          ringTubeRadius: tailRingTubeRadius,
+          outwardAngleRad: tailBackAngleRad,
+          smokeProfile: SMALL_FAN_SMOKE,
+        },
+        entityId,
+        fans.length,
+      ));
+    }
   } else {
     const fx = unitRadius * cfg.fanDistX;
     const fz = unitRadius * cfg.fanDistY;
