@@ -31,6 +31,12 @@ import {
   type Float64WireRows,
   type Uint32WireRows,
 } from './snapshotWireRows';
+import {
+  quantizeNormal as qNormal,
+  quantizeProjectilePosition as qPos,
+  quantizeRotation as qRot,
+  quantizeVelocity as qVel,
+} from './snapshotQuantization';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
@@ -119,22 +125,6 @@ const projectileWireSource: ProjectileSnapshotWireSource = {
 const projectileWireSources = new WeakMap<object, ProjectileSnapshotWireSource>([
   [_projectilesBuf, projectileWireSource],
 ]);
-
-function qPos(n: number): number {
-  return Math.round(n);
-}
-
-function qVel(n: number): number {
-  return Math.round(n * 10) / 10;
-}
-
-function qRot(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
-
-function qNormal(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
 
 function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   return {

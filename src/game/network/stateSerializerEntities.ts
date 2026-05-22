@@ -57,6 +57,13 @@ import {
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
+import {
+  quantizeEntityPosition as qPos,
+  quantizeNormal as qNormal,
+  quantizeRotation as qRot,
+  quantizeSuspension as qSuspension,
+  quantizeVelocity as qVel,
+} from './snapshotQuantization';
 
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -141,30 +148,6 @@ const entityWireSource: EntitySnapshotWireSource = {
   waypointStrings: [],
 };
 const entityWireSources = new WeakMap<object, EntitySnapshotWireSource>();
-
-// Keep more precision than the delta threshold so snapshots don't
-// round away the small separations produced by unit contact resolution.
-const POSITION_WIRE_PRECISION = 100;
-
-function qPos(n: number): number {
-  return Math.round(n * POSITION_WIRE_PRECISION) / POSITION_WIRE_PRECISION;
-}
-
-function qVel(n: number): number {
-  return Math.round(n * 10) / 10;
-}
-
-function qRot(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
-
-function qNormal(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
-
-function qSuspension(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 function writeTurretsToPool(
   pool: PooledEntry,

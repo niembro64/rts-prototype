@@ -13,10 +13,10 @@
     "rotationVelocityThresholdMultiplier": 1
   },
   "observedEntityDelta": {
-    "positionThresholdMultiplier": 2,
-    "velocityThresholdMultiplier": 2,
-    "rotationPositionThresholdMultiplier": 2,
-    "rotationVelocityThresholdMultiplier": 2
+    "positionThresholdMultiplier": 4,
+    "velocityThresholdMultiplier": 4,
+    "rotationPositionThresholdMultiplier": 4,
+    "rotationVelocityThresholdMultiplier": 4
   },
   "fullSnapshotCompression": {
     "enabled": false,

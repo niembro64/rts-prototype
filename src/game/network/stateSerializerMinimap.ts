@@ -19,6 +19,7 @@ import {
   reserveFloat64WireRows,
   type Float64WireRows,
 } from './snapshotWireRows';
+import { quantizeMinimapPosition as qPos } from './snapshotQuantization';
 
 export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 6;
 
@@ -38,10 +39,6 @@ const minimapWireSources = new WeakMap<object, MinimapSnapshotWireSource>();
 export function resetMinimapPoolForKey(key: string | number | undefined): void {
   deleteSnapshotPoolForKey(minimapPools, key);
   if (key !== undefined) minimapWireSourcesByKey.delete(String(key));
-}
-
-function qPos(n: number): number {
-  return Math.round(n);
 }
 
 function writeMinimapEntity(

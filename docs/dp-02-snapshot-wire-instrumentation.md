@@ -172,3 +172,54 @@ Post-fix parity probes:
 The full-keyframe static `terrain` and `buildability` top-level fields now stay
 on the Rust path. Remaining DP-02 parity work is focused on debug-grid raw
 fallback, less common audio/projectile variants, and remote recipients.
+
+## SNAP-WIRE-01 Followups
+
+### Observed-Entity Delta Preset
+
+Run date: 2026-05-22
+
+Capture setup:
+
+- Browser URL: `http://localhost:5175/budget-annihilation/?dp02=1`
+- Automation: headless Google Chrome via Playwright with software WebGL.
+- Scenario: demo battle, cap 243, observed from player 1, fog disabled, debug
+  grid disabled, keyframes disabled, host snapshot cap 32/sec.
+- Measurement source: `window.__BA_DP02_SNAPSHOT_WIRE__.rows()`, after startup
+  reset. This is the same local snapshot encode path used for the PLAYER
+  CLIENT DS SIZE estimate.
+
+| Observed preset | Seconds | Samples | Units Avg | DS avg | DS hi | Encode avg | Encode hi |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2x position/velocity/rotation thresholds | 21.6 | 40 | 239 | 76,578 B | 123,411 B | 0.33 ms | 0.60 ms |
+| 4x position/velocity/rotation thresholds | 21.6 | 37 | 239 | 75,659 B | 115,088 B | 0.33 ms | 0.60 ms |
+
+The 4x preset is now the chosen default for observed enemy entities. Owned and
+allied entities remain at 1x fidelity. The measured byte win is modest because
+projectiles and audio dominated these short combat windows, but it moved DS avg
+down about 1.2% and DS hi down about 6.7% without changing command authority or
+owned-unit precision. FS SIZE is not expected to move from this preset because
+full snapshots do not run the entity delta-threshold gate.
+
+### DIFFSNAP Compression Decision
+
+Generic DIFFSNAP compression remains disabled. The measured high-byte sections
+in the captures above were structural sources: entities, projectile beam /
+velocity updates, and audio events. At 30 Hz, compressing every delta would add
+CPU, allocation, latency, and jitter to the host's hottest network path while
+leaving those sources semantically unchanged.
+
+The project should keep spending DIFFSNAP effort on structural compression:
+field masks, packed rows, fixed-point integers, beam/detail budgets, and the
+snapshot-v2 schema in `docs/snapshot-v2-wire-schema.md`. FULLSNAP transport
+compression stays available behind the existing flag because keyframes are rare
+and tolerate the extra work better than steady-state deltas.
+
+### Fixed-Point Integer Class
+
+Minimap positions are the first explicit fixed-point integer class. They use
+scale 1 world unit in `src/game/network/snapshotQuantization.ts` and are written
+as whole JS numbers in both the DTO and Rust row paths. The Rust and JS
+MessagePack encoders emit whole finite numbers as integer MessagePack values,
+so minimap `pos.x` / `pos.y` now have a documented fixed-point scale end to
+end without a client-side decode migration.
