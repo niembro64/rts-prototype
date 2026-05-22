@@ -524,6 +524,7 @@ export function checkProjectileCollisions(
     let reflectorNormalY: number | undefined;
     let reflectorNormalZ: number | undefined;
     let reflectorPlayerId: number | undefined;
+    let clearedHomingTargetId: EntityId | undefined;
     let reflectorHitX = 0;
     let reflectorHitY = 0;
     let reflectorHitZ = 0;
@@ -547,6 +548,10 @@ export function checkProjectileCollisions(
         hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
       if (bestT < Infinity) {
+        if (isRocketShot && proj.homingTargetId !== undefined) {
+          clearedHomingTargetId = proj.homingTargetId;
+          proj.homingTargetId = undefined;
+        }
         const shouldReflectProjectile =
           !isRocketShot || ROCKET_REFLECTOR_COLLISION_MODE === 'reflect';
         const reflected = shouldReflectProjectile &&
@@ -603,6 +608,8 @@ export function checkProjectileCollisions(
               z: projEntity.transform.z,
             },
             velocity: { x: reflected.x, y: reflected.y, z: reflected.z },
+            clearHomingTarget: clearedHomingTargetId !== undefined ? true : undefined,
+            visibilityHomingTargetId: clearedHomingTargetId,
           });
           reflectedProjectile = true;
           if (reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS) {

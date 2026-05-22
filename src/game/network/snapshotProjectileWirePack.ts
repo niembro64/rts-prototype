@@ -269,6 +269,7 @@ function unpackProjectileVelocityUpdates(
         y: rows[base + 5] ?? 0,
         z: rows[base + 6] ?? 0,
       },
+      clearHomingTarget: (rows[base + 7] ?? 0) !== 0 ? true : undefined,
     };
   }
   return updates;

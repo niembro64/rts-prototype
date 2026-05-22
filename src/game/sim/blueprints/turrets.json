@@ -427,13 +427,13 @@
     "id": "salvoRocketTurret",
     "projectileId": "lightRocket",
     "range": 800,
-    "cooldown": 2000,
+    "cooldown": 500,
     "launchForce": 500,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
       "type": "coneMultiBarrel",
-      "barrelCount": 3,
+      "barrelCount": 1,
       "barrelLength": 0.1,
       "baseOrbit": 0,
       "tipOrbit": 1,
@@ -462,7 +462,7 @@
     "color": 16777215,
     "spread": {
       "angle": 0.7853981633974483,
-      "pelletCount": 3
+      "pelletCount": 1
     },
     "burst": null,
     "forceField": null,

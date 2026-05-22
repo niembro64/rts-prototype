@@ -424,6 +424,7 @@ export type NetworkServerSnapshotVelocityUpdate = {
   pos: Vec3;
   /** VELOCITY_WIRE_SCALE fixed-point velocity. */
   velocity: Vec3;
+  clearHomingTarget?: boolean;
 };
 
 /** Wire-format vertex of a beam/laser polyline. The full beam is

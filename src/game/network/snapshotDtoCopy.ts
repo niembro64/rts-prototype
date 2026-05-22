@@ -108,6 +108,8 @@ export function copyVelocityInto(
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
+  if (src.clearHomingTarget === true) dst.clearHomingTarget = true;
+  else delete dst.clearHomingTarget;
   return dst;
 }
 

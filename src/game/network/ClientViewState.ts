@@ -594,6 +594,9 @@ export class ClientViewState {
           target.velocityZ = deqVel(vu.velocity.z);
           target.velocityY = deqVel(vu.velocity.y);
           target.updatedAtMs = now;
+          if (vu.clearHomingTarget === true) {
+            entity.projectile.homingTargetId = undefined;
+          }
           this.clearTargetPredictionAccum(vu.id);
           this.projectileStore.markVelocityUpdateActive(entity, vu.id);
         }

@@ -2114,7 +2114,8 @@ export interface SnapshotEncodeApi {
   /** Stride per proj-spawn entry (f64 count). */
   readonly projSpawnScratchStride: number;
   /** Raw pointer to the projectile-velocity-update scratch
-   *  (Float64Array, 7 f64 per entry: id, pos.x/y/z, vel.x/y/z). */
+   *  (Float64Array, 8 f64 per entry: id, pos.x/y/z, vel.x/y/z,
+   *  clearHomingTarget flag). */
   projVelScratchPtr: () => number;
   /** Pre-grow the proj-vel scratch to hold `count` entries. */
   projVelScratchEnsure: (count: number) => void;
@@ -2694,7 +2695,7 @@ export function initSimWasm(): Promise<SimWasm> {
           projSpawnScratchStride: 27,
           projVelScratchPtr: snapshot_encode_proj_vel_scratch_ptr,
           projVelScratchEnsure: snapshot_encode_proj_vel_scratch_ensure,
-          projVelScratchStride: 7,
+          projVelScratchStride: 8,
           removedIdsScratchPtr: snapshot_encode_removed_ids_scratch_ptr,
           removedIdsScratchEnsure: snapshot_encode_removed_ids_scratch_ensure,
           appendRawValue: messagepack_writer_append_raw_value,

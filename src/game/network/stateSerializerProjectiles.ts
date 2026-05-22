@@ -42,7 +42,7 @@ type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
 export const PROJECTILE_SPAWN_WIRE_STRIDE = 27;
 export const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
-export const PROJECTILE_VELOCITY_WIRE_STRIDE = 7;
+export const PROJECTILE_VELOCITY_WIRE_STRIDE = 8;
 export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
 export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
 const PROJECTILE_BEAM_POINT_CAP = 6;
@@ -349,6 +349,7 @@ export function writeProjectileVelocityUpdateWireRow(
   values[base + 4] = update.velocity.x;
   values[base + 5] = update.velocity.y;
   values[base + 6] = update.velocity.z;
+  values[base + 7] = update.clearHomingTarget === true ? 1 : 0;
 }
 
 function copyProjectileVelocityUpdateIntoWireRow(update: NetworkServerSnapshotVelocityUpdate): void {
@@ -701,7 +702,7 @@ export function serializeProjectileSnapshot({
           visibility,
           vu.pos.x,
           vu.pos.y,
-          projectile?.homingTargetId,
+          projectile?.homingTargetId ?? vu.visibilityHomingTargetId,
           world,
         )
       ) {
@@ -715,6 +716,7 @@ export function serializeProjectileSnapshot({
       out._velocity.x = qVel(vu.velocity.x);
       out._velocity.y = qVel(vu.velocity.y);
       out._velocity.z = qVel(vu.velocity.z);
+      out.clearHomingTarget = vu.clearHomingTarget === true ? true : undefined;
       _velUpdateBuf.push(out);
       copyProjectileVelocityUpdateIntoWireRow(out);
     }

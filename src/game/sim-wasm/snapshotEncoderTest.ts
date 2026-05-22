@@ -1362,6 +1362,7 @@ type ProjectileVelocityUpdateFixture = {
   id: number;
   pos: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
+  clearHomingTarget?: boolean;
 };
 type BeamPointFixture = {
   x: number; y: number; z: number;
@@ -1387,7 +1388,7 @@ type ProjectilesFixture = {
 };
 
 const PROJ_SPAWN_SCRATCH_STRIDE = 27;
-const PROJ_VEL_SCRATCH_STRIDE = 7;
+const PROJ_VEL_SCRATCH_STRIDE = 8;
 
 function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: ProjectileSpawnFixture[]): void {
   if (spawns.length === 0) return;
@@ -1462,6 +1463,7 @@ function packProjVelocityUpdatesIntoScratch(
     view[base + 4] = u.velocity.x;
     view[base + 5] = u.velocity.y;
     view[base + 6] = u.velocity.z;
+    view[base + 7] = u.clearHomingTarget === true ? 1 : 0;
   }
 }
 
@@ -2147,7 +2149,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 701, entities: [], economy: {},
       projectiles: {
         velocityUpdates: [
-          { id: 2001, pos: { x: 100, y: 200, z: 50 }, velocity: { x: 25, y: 10, z: 5 } },
+          { id: 2001, pos: { x: 100, y: 200, z: 50 }, velocity: { x: 25, y: 10, z: 5 }, clearHomingTarget: true },
         ],
       },
       isDelta: true,
