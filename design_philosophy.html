@@ -952,9 +952,10 @@
         <code>megaBeamTurret</code>, <code>towerBeamTurret</code>) and rocket-family turrets
         (<code>salvoRocketTurret</code>, <code>fastRocketTurret</code>) render as a single
         sphere &mdash; the turret head &mdash; with no barrel attached. The head shows the
-        unit&rsquo;s player color while idle or tracking and flips to white the instant the
-        turret engages a target. That color flip <em>is</em> the lock-on cue; there is no
-        rotating barrel to read.
+        unit&rsquo;s player color while idle or tracking and shifts halfway toward white the
+        instant the turret engages a target. The color flip <em>is</em> the lock-on cue, and
+        keeping it blended with the player color (rather than flattening to pure white) means
+        every engaged turret still reads as &ldquo;that player&rdquo; in a crowded fight.
       </p>
       <p>
         Marking a turret blueprint with <code>headOnly: true</code> is the contract. The
@@ -979,7 +980,8 @@
       <h3>What the renderer still reads</h3>
       <ul class="rule-list">
         <li>The turret&rsquo;s engaged/idle state, sent as the usual FSM bit on every
-        snapshot. The head color writer flips to white iff <code>turret.state === 'engaged'</code>.</li>
+        snapshot. The head color writer blends the player primary halfway toward white iff
+        <code>turret.state === 'engaged'</code>.</li>
         <li>The turret&rsquo;s mount point, identical to every other turret &mdash; the head
         sphere sits where it always sat.</li>
         <li>Beam endpoints and projectile spawns, which carry their own world-space geometry
