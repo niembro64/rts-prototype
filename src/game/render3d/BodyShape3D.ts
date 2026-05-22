@@ -107,12 +107,13 @@ function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
 }
 
-function buildCircleSpec(part: { radiusFrac: number; yFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
-  const y = circleYFrac(part.radiusFrac, part.yFrac);
+function buildCircleSpec(part: { radiusFrac: number; yFrac?: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+  const halfHeight = circleYFrac(part.radiusFrac, part.yFrac);
+  const centerY = part.centerYFrac ?? halfHeight;
   return {
     geometry: getUnitSphere(),
-    x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
-    scaleX: part.radiusFrac, scaleY: y, scaleZ: part.radiusFrac,
+    x: part.offsetForward ?? 0, y: centerY, z: part.offsetLateral ?? 0,
+    scaleX: part.radiusFrac, scaleY: halfHeight, scaleZ: part.radiusFrac,
   };
 }
 

@@ -772,14 +772,15 @@
           "kind": "circle",
           "offsetForward": 0,
           "radiusFrac": 0.6,
-          "yFrac": 0.6
+          "yFrac": 0.6,
+          "centerYFrac": 0
         },
         {
           "kind": "cylinder",
           "offsetForward": -2.1,
           "lengthFrac": 4.2,
           "radiusFrac": 0.2,
-          "centerYFrac": 0.6
+          "centerYFrac": 0
         }
       ]
     },

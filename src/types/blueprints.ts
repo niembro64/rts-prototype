@@ -366,6 +366,11 @@ export type UnitBodyShapePart =
       radiusFrac: number;
       /** Vertical half-height. Defaults to radiusFrac for legacy spheres. */
       yFrac?: number;
+      /** Optional sphere center height. Defaults to the half-height
+       *  (`yFrac` / `radiusFrac`) so legacy spheres sit with their
+       *  bottom on the body baseline. Set to 0 to center the sphere
+       *  on the roll axis. */
+      centerYFrac?: number;
     }
   | {
       kind: 'oval';

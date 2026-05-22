@@ -15,6 +15,14 @@ function circleYFrac(radiusFrac: number, yFrac?: number): number {
   return yFrac ?? radiusFrac;
 }
 
+function circleCenterYFrac(part: {
+  radiusFrac: number;
+  yFrac?: number;
+  centerYFrac?: number;
+}): number {
+  return part.centerYFrac ?? circleYFrac(part.radiusFrac, part.yFrac);
+}
+
 const TOP_Y_CACHE: Map<string, number> = new Map();
 const BODY_PART_CONTAIN_EPS = 1e-6;
 
@@ -142,7 +150,7 @@ export function getBodyTopFrac(bodyShape: UnitBodyShape): number {
   } else if (spec.kind === 'rect' || spec.kind === 'rhombus') {
     topY = spec.heightFrac;
   } else if (spec.kind === 'circle') {
-    topY = 2 * circleYFrac(spec.radiusFrac, spec.yFrac);
+    topY = circleCenterYFrac(spec) + circleYFrac(spec.radiusFrac, spec.yFrac);
   } else if (spec.kind === 'oval') {
     topY = 2 * spec.yFrac;
   } else {
@@ -162,7 +170,7 @@ export function getBodyTopY(bodyShape: UnitBodyShape, unitRadius: number): numbe
 }
 
 function bodyPartTopFrac(part: UnitBodyShapePart): number {
-  if (part.kind === 'circle') return 2 * circleYFrac(part.radiusFrac, part.yFrac);
+  if (part.kind === 'circle') return circleCenterYFrac(part) + circleYFrac(part.radiusFrac, part.yFrac);
   if (part.kind === 'oval') return 2 * part.yFrac;
   return (part.centerYFrac ?? part.radiusFrac) + part.radiusFrac;
 }
@@ -270,7 +278,7 @@ export function getSegmentMidYAt(
     return spec.heightFrac * unitRadius / 2;
   }
   if (spec.kind === 'circle') {
-    return circleYFrac(spec.radiusFrac, spec.yFrac) * unitRadius;
+    return circleCenterYFrac(spec) * unitRadius;
   }
   if (spec.kind === 'oval') {
     return spec.yFrac * unitRadius;
@@ -288,7 +296,7 @@ export function getSegmentMidYAt(
       bestDist = d;
     }
   }
-  if (best.kind === 'circle') return circleYFrac(best.radiusFrac, best.yFrac) * unitRadius;
+  if (best.kind === 'circle') return circleCenterYFrac(best) * unitRadius;
   if (best.kind === 'cylinder' || best.kind === 'cone') return (best.centerYFrac ?? best.radiusFrac) * unitRadius;
   return best.yFrac * unitRadius;
 }
