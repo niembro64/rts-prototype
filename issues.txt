@@ -184,3 +184,171 @@ Write a small benchmark matrix for snapshot payload budgets:
 Done when:
 Snapshot optimization PRs can cite the same budget matrix and declare
 whether they moved the project toward or away from target.
+
+==============================================================================
+
+EMA CHANNEL COVERAGE PLAN (EMA-COVERAGE-01 family)
+
+==============================================================================
+
+------------------------------------------------------------------------------
+EMA-COVERAGE-01 - parent: the four PLAYER CLIENT EMA knobs (MOVE POS,
+                  MOVE VEL, ROT POS, ROT VEL) must drive every
+                  authoritative field they nominally cover.
+------------------------------------------------------------------------------
+
+Context:
+design_philosophy.html now declares the exact set of authoritative
+fields each EMA channel applies to. The whole point of one knob per
+channel is uniform smoothing across every field that belongs to that
+channel. Any field that is "supposed to" ride a channel but currently
+skips the EMA blend is a knob lying about what it controls, and a
+playtester selecting `ignore` or `slow` on that channel will see the
+field continue to snap-correct anyway.
+
+This family enumerates the known gaps. Each child item should be a
+small, focused fix that lands the EMA application on the missing
+field, plus a manual verification that toggling the channel mode now
+visibly changes that field's behavior.
+
+------------------------------------------------------------------------------
+EMA-COVERAGE-01.1 - beam path per-vertex velocity skips the MOVE VEL
+                    EMA and is snap-copied from the server target.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/network/ClientPredictionStepper.ts, applyBeamPathPrediction.
+  Lines that copy pp.vx = tp.vx, pp.vy = tp.vy, pp.vz = tp.vz directly
+  from the target point without consulting getMovementVelEmaMode().
+
+What:
+Per the design philosophy, the MOVE VEL channel is supposed to cover
+"the per-vertex tangential velocity on a line-shot beam
+(proj.points[i].vx/vy/vz)". Today the per-vertex position IS blended
+through MOVE POS, but the per-vertex velocity is snap-copied from the
+freshest beam target every tick regardless of mode. Setting MOVE VEL
+to `ignore`, `slow`, or any other mode has no observable effect on
+beam-vertex velocity values.
+
+Fix:
+Get the MOVE VEL blend factor inside applyBeamPathPrediction (the
+same way movPosBlend is already plumbed in), and lerp pp.vx/vy/vz
+toward tp.vx/vy/vz with that blend instead of overwriting them. Keep
+the snap-copy path when movVelBlend < 0 (ignore) or >= 1 (snap), to
+match the unit/projectile prediction pattern.
+
+Done when:
+Toggling MOVE VEL between snap / fast / medium / slow / ignore on the
+PLAYER CLIENT bar visibly changes how beam-vertex velocities approach
+their server targets, in the same way the unit and projectile velocity
+channels already do.
+
+------------------------------------------------------------------------------
+EMA-COVERAGE-01.2 - decorative building animations should opt in to
+                    the ROT VEL channel for consistency.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/render3d/BuildingAnimationController3D.ts: extractor rotor
+  spin (uses EXTRACTOR_ROTOR_RAD_PER_SEC × coverage, no channel
+  binding), radar head + sweep (timeMs × RADAR_*_RAD_PER_SEC, no
+  channel binding).
+- src/game/render3d/ConstructionVisualController3D.ts already binds
+  the construction-tower orbit spin to ROT VEL via
+  visualAnimHalfLife(getRotationVelEmaMode()). The wind-turbine fan
+  yaw / blade speed in BuildingAnimationController3D also already
+  bind to ROT POS / ROT VEL.
+
+What:
+The wind turbine and construction tower already follow the
+"decorative animations that visually represent the same kind of
+motion as a wire channel may opt in to the same EMA mode for
+consistency" pattern from design_philosophy.html. The extractor rotor
+and radar head/sweep do not — they tick at fixed rad/sec regardless
+of the ROT VEL knob.
+
+This is a courtesy binding, not a snapshot-drift correction: there is
+no server target for these phases. But for consistency, a playtester
+who sets ROT VEL to `slow` should see ALL decorative rotational
+animations slow their rate-of-approach to their local targets, not
+just the wind turbine and construction tower.
+
+Fix:
+Route the extractor rotor's spin-rate-target blend and the radar
+head/sweep rate-target blend through visualAnimHalfLife(
+getRotationVelEmaMode()) the same way the wind turbine does, falling
+back to 'medium' on 'ignore'. Document that these are courtesy
+bindings, not snapshot drift.
+
+Done when:
+The full set of decorative rotational animations (wind turbine,
+construction tower orbit, extractor rotor, radar head + sweep)
+respond to the ROT VEL channel uniformly.
+
+------------------------------------------------------------------------------
+EMA-COVERAGE-01.3 - decorative building open/close fold animations
+                    should opt in to a documented channel or be
+                    explicitly excluded.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/render3d/BuildingAnimationController3D.ts: solar petal
+  fold (SOLAR_PETAL_ANIM_ALPHA = 0.16), extractor blade fold
+  (BUILDING_FORTIFY_ANIM_ALPHA = 0.12), wind turbine close pose
+  (BUILDING_FORTIFY_ANIM_ALPHA = 0.12).
+
+What:
+The fold animations between open/closed states use hardcoded alpha
+constants instead of either (a) opting in to ROT POS as a decorative
+courtesy binding, or (b) being explicitly excluded as "discrete pose
+transitions, not rotations." Today they fall into neither bucket and
+just use magic numbers.
+
+Fix:
+Decide whether these fold animations should follow ROT POS as
+decorative kin to rotation (consistent with wind-turbine fan yaw
+already binding to ROT POS), or whether they should remain on
+hardcoded constants because they represent discrete pose switches
+rather than continuous rotation. Update design_philosophy.html to
+reflect the decision, and either bind them to the channel or leave a
+note in code explaining why the constant is independent.
+
+Done when:
+There is one clear rule for how decorative open/close pose
+transitions interact with the EMA channels, and the code matches it.
+
+------------------------------------------------------------------------------
+EMA-COVERAGE-01.4 - airborne visual bank roll uses its own hardcoded
+                    tau instead of the ROT POS channel.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/render3d/Render3DEntities.ts: AIRBORNE_BANK_TAU_SEC = 0.18
+  drives `m.visualBankRoll` smoothing for hover/flying chassis.
+
+What:
+The visual chassis-roll-into-turns derivation uses its own tau rather
+than ROT POS. Per design_philosophy.html "Airborne Banking Is Visual,
+Mounts Stay On The Roll Axis", airborne banking is explicitly a
+render-side derivation from velocity, and the design also lists
+"airborne bank roll" under client-only embellishments that "get their
+smoothness from local controllers, not from one of the four
+channels."
+
+So strictly speaking this is consistent with the current design. The
+open question is whether ROT POS should also influence visualBankRoll
+as a courtesy binding (analogous to the wind-turbine fan yaw / ROT
+POS), so that a playtester selecting ROT POS = slow also sees
+banking respond more slowly.
+
+Fix:
+Either bind visualBankRoll's smoothing tau to
+visualAnimHalfLife(getRotationPosEmaMode()) for consistency with the
+wind turbine, or leave it independent and add a code comment citing
+the design philosophy rationale so a future reader doesn't ask the
+same question.
+
+Done when:
+The choice between "courtesy ROT POS binding" and "intentionally
+independent" is documented in both the source file and in
+design_philosophy.html, and the code matches.

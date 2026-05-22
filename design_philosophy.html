@@ -351,6 +351,96 @@
         toward it.
       </p>
 
+      <h3>What each EMA channel applies to</h3>
+      <p>
+        The four EMA knobs are not abstract presentation sliders; each
+        one binds to a specific named set of authoritative state fields,
+        and the rendered value of every one of those fields walks toward
+        its server target through the chosen mode every client tick. The
+        whole point of having one knob per channel &mdash; rather than
+        per-field tuning buried in code &mdash; is that the same
+        smoothing behavior is applied uniformly to every field that
+        belongs to that channel. A channel that is only applied to some
+        of its fields is a bug, not a freedom: changing the
+        <code>rotation position</code> mode must move <em>every</em>
+        rotation-position field in lockstep, or the knob is lying about
+        what it controls.
+      </p>
+      <ul class="rule-list">
+        <li>
+          <strong>Movement position</strong> &mdash; the world-space
+          3D position of every visually rendered moving thing. That
+          means the unit body center
+          (<code>entity.transform.x/y/z</code>), the projectile body
+          center (<code>entity.transform.x/y/z</code> on
+          non-line shots), and every per-vertex point along a line-shot
+          beam (<code>proj.points[i].x/y/z</code>). Anything the player
+          sees as "where this thing is right now" rides on this
+          channel.
+        </li>
+        <li>
+          <strong>Movement velocity</strong> &mdash; the 3D linear
+          velocity of every moving thing whose authoritative velocity
+          travels on the wire. That means the unit linear velocity
+          (<code>entity.unit.velocityX/Y/Z</code>), the projectile
+          linear velocity
+          (<code>proj.velocityX/Y/Z</code> on non-line shots), and the
+          per-vertex tangential velocity on a line-shot beam
+          (<code>proj.points[i].vx/vy/vz</code>). These are the values
+          the client integrates forward between snapshots under
+          <code>VEL</code> prediction, so the velocity EMA controls how
+          fast that integration realigns with the server's freshest
+          velocity.
+        </li>
+        <li>
+          <strong>Rotation position</strong> &mdash; the orientation of
+          every rotating thing on the wire, in both scalar and full
+          3-DOF form. That means the unit body yaw scalar
+          (<code>entity.transform.rotation</code>), the unit hover-style
+          body orientation quaternion
+          (<code>entity.unit.orientation.{x,y,z,w}</code>), and each
+          turret's yaw and pitch
+          (<code>weapon.rotation</code>, <code>weapon.pitch</code>). The
+          force-field range visualizer also rides this channel because
+          it is a slow visual progress that pairs with the turret's
+          rotation correction.
+        </li>
+        <li>
+          <strong>Rotation velocity</strong> &mdash; the angular rate
+          of every rotating thing whose authoritative angular velocity
+          travels on the wire. That means the unit hover-style angular
+          velocity vector
+          (<code>entity.unit.angularVelocity3.{x,y,z}</code>), each
+          turret's yaw rate (<code>weapon.angularVelocity</code>), and
+          each turret's pitch rate
+          (<code>weapon.pitchVelocity</code>). These are the
+          derivatives the client integrates while drifting toward the
+          rotation-position target.
+        </li>
+      </ul>
+      <p>
+        Fields that do not appear in any of the lists above are not on
+        the wire and are therefore not subject to snapshot drift. Static
+        building position, decorative locomotion-rig state (wheel spin
+        phase, tread cleat phase, leg plant pose, hover fan smoke), and
+        visual-only chassis embellishments (airborne bank roll, solar
+        petal fold, extractor blade fold) live entirely client-side and
+        get their smoothness from local controllers, not from one of the
+        four channels. See <strong>Locomotion Visuals Are Frontend</strong>
+        and <strong>Airborne Banking Is Visual</strong>.
+      </p>
+      <p>
+        Decorative client-only animations that visually represent the
+        same <em>kind</em> of motion as a wire channel may opt in to the
+        same EMA mode for consistency &mdash; the wind-turbine fan yaw
+        reads rotation-position mode, and the wind-turbine blade
+        speed and the construction-tower orbit spin read
+        rotation-velocity mode. These are courtesy bindings, not
+        snapshot-drift corrections: there is no server target to drift
+        toward, so the mode supplies a half-life and the local
+        animator EMA-blends toward a locally derived target value.
+      </p>
+
       <h3>Rendering samples prediction</h3>
       <p>
         Rendering should not own simulation cadence. <code>requestAnimationFrame</code> is a display
