@@ -4,10 +4,10 @@
 // a `ForceShot` (shot.type === 'force') configured with a barrier sphere.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
-// One look at every LOD tier: a translucent force-field bubble plus a
-// small turret-accent emitter sphere on the host turret. Per-LOD variation
-// would just blink the visuals on/off as the camera moves — the
-// minimal / simple / normal / enhanced tiers all render the same.
+// One look at every LOD tier: a translucent force-field bubble that
+// fades in with `turret.forceField.range`. Per-LOD variation would just
+// blink the bubble on/off as the camera moves — the minimal / simple /
+// normal / enhanced tiers all render the same.
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
@@ -20,23 +20,6 @@ import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { writeHexToRgb01Array } from './colorUtils';
-import { turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
-
-/** How far the force-field emitter sphere is embedded into the body
- *  part it's mounted on. Expressed as a chassis-local Y offset added
- *  to the part's top:
- *
- *    insetY = -INSET_BELOW_DOME_FRAC × emitter_max_radius
- *
- *  At 0 the emitter sphere center sits exactly at the dome's top
- *  (bottom hemisphere embedded in the body, top hemisphere above).
- *  Positive values would lift the emitter; negative values sink it
- *  further. We use 0 — half-embedded — which reads as a turret
- *  emitter "sunk into the head" without disappearing entirely. */
-const INSET_DEPTH_BELOW_DOME = 0;
-
-const EMITTER_BASE_RADIUS = 4;
-const EMITTER_MAX_RADIUS = 10;
 
 // Opacity multiplier on top of barrier.alpha so the bubble reads more
 // solid in 3D than the 2D translucent fill.
@@ -47,12 +30,12 @@ function isForceFieldTurret(t: Turret): boolean {
 }
 
 type FieldMesh = {
-  // Per-field cache. The emitter + bubble visuals are written into the
-  // shared `sphereInstancedMesh` slots in the per-frame loop — every
-  // active field consumes exactly two instance slots, so the entire
-  // force-field layer renders in one draw call regardless of field
-  // count. The mount* fields cache the chassis-local mount computation
-  // so we only re-derive it when the unit blueprint or mount changes.
+  // Per-field cache. The bubble visual is written into the shared
+  // `sphereInstancedMesh` slot in the per-frame loop — every active
+  // field consumes one instance slot, so the entire force-field layer
+  // renders in one draw call regardless of field count. The mount*
+  // fields cache the chassis-local mount computation so we only
+  // re-derive it when the unit blueprint or mount changes.
   mountUnitType: string | null;
   mountRadius: number;
   mountOffsetX: number;
@@ -87,9 +70,8 @@ function resolveForceFieldColor(playerId: number | undefined): number {
 // Shader for the sphereInstanced pool — same shape as
 // SmokeTrail3D / Explosion3D / SprayRenderer3D. Per-instance `aAlpha`
 // + `aColor` ride on InstancedBufferAttributes; the fragment is just
-// `vec4(vColor, vAlpha)`. Both emitter and bubble use this shader: the
-// emitter writes alpha=1 with the turret accent color, the bubble writes
-// the same force-field color with the fade-in alpha.
+// `vec4(vColor, vAlpha)`. The bubble writes the force-field color with
+// the fade-in alpha.
 const FIELD_SPHERE_VS = `
 attribute float aAlpha;
 attribute vec3 aColor;
@@ -111,24 +93,22 @@ void main() {
 `;
 
 /** Cap on shared sphere instances. Every active force field consumes
- *  exactly two slots — one for the small turret-accent emitter and one for
- *  the translucent bubble. 512 fits ~256 simultaneous fields, well
- *  above any realistic concurrent count. */
+ *  one slot for the translucent bubble. 512 is well above any
+ *  realistic concurrent count. */
 const SPHERE_INSTANCED_CAP = 512;
 
 export class ForceFieldRenderer3D {
   private root: THREE.Group;
-  // Unit sphere reused for both the bubble and the emitter (both write
-  // into the shared sphereInstancedMesh below).
+  // Unit sphere reused for the bubble write into the shared
+  // sphereInstancedMesh below.
   private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
   private fields = new Map<FieldKey, FieldMesh>();
 
-  /** Shared InstancedMesh covering every emitter + bubble sphere
-   *  across every active force field on the map. Slots are allocated
-   *  TRANSIENT per frame: walk active fields, write [0, count). count
-   *  is set to the live prefix at end-of-frame so off-screen / inactive
-   *  fields cost zero GPU time. The whole force-field layer is one
-   *  draw call. */
+  /** Shared InstancedMesh covering every bubble sphere across every
+   *  active force field on the map. Slots are allocated TRANSIENT per
+   *  frame: walk active fields, write [0, count). count is set to the
+   *  live prefix at end-of-frame so off-screen / inactive fields cost
+   *  zero GPU time. The whole force-field layer is one draw call. */
   private sphereInstancedMesh: THREE.InstancedMesh;
   private sphereInstancedMat: THREE.ShaderMaterial;
   private sphereAlphaArr = new Float32Array(SPHERE_INSTANCED_CAP);
@@ -136,12 +116,11 @@ export class ForceFieldRenderer3D {
   private sphereAlphaAttr: THREE.InstancedBufferAttribute;
   private sphereColorAttr: THREE.InstancedBufferAttribute;
   /** Per-frame transient slot cursor — reset in beginFrame, advanced
-   *  per emitter + per bubble in _processUnit, used as the count at
-   *  end-of-frame. */
+   *  per bubble in _processUnit, used as the count at end-of-frame. */
   private _sphereCursor = 0;
-  /** Scratch matrices for the emitter+bubble instance write. Same
-   *  pattern as the chassis pools — compose `T(worldPos) · S(scale)`
-   *  per slot, no per-frame allocations. */
+  /** Scratch matrices for the bubble instance write. Same pattern as
+   *  the chassis pools — compose `T(worldPos) · S(scale)` per slot,
+   *  no per-frame allocations. */
   private _sphereScratchMat = new THREE.Matrix4();
   private _sphereScratchPos = new THREE.Vector3();
   private _sphereScratchScale = new THREE.Vector3();
@@ -174,7 +153,7 @@ export class ForceFieldRenderer3D {
     this.scope = scope;
     this.getYawGroup = getYawGroup;
 
-    // Build the shared emitter+bubble InstancedMesh. Same construction
+    // Build the shared bubble InstancedMesh. Same construction
     // pattern as SmokeTrail3D / Explosion3D / SprayRenderer3D.
     this.sphereAlphaAttr = new THREE.InstancedBufferAttribute(this.sphereAlphaArr, 1);
     this.sphereAlphaAttr.setUsage(THREE.DynamicDrawUsage);
@@ -255,15 +234,15 @@ export class ForceFieldRenderer3D {
     field.mountZ = mountZ;
     field.mountLiftY = mountLiftY;
     field.localX = offsetX;
-    field.localY = mountZ - mountLiftY + INSET_DEPTH_BELOW_DOME;
+    field.localY = mountZ - mountLiftY;
     field.localZ = offsetY;
   }
 
   /** Begin a fused per-frame iteration. Caller follows with a series
    *  of perUnit calls and finishes with endFrame. The `graphicsConfig`
-   *  argument is currently unused — the bubble + emitter visuals
-   *  ignore tier (they read the same at every LOD) — but the parameter
-   *  is preserved so existing callers don't need to change shape. */
+   *  argument is currently unused — the bubble visual ignores tier
+   *  (reads the same at every LOD) — but the parameter is preserved
+   *  so existing callers don't need to change shape. */
   beginFrame(_graphicsConfig: GraphicsConfig = getGraphicsConfig()): void {
     this._seenFieldKeys.clear();
     this._sphereCursor = 0;
@@ -312,7 +291,7 @@ export class ForceFieldRenderer3D {
     this.endFrame();
   }
 
-  /** Internal per-unit body. Writes emitter and active bubble instances. */
+  /** Internal per-unit body. Writes the active bubble instance. */
   private _processUnit(unit: Entity): void {
     const seen = this._seenFieldKeys;
 
@@ -321,11 +300,11 @@ export class ForceFieldRenderer3D {
     if (!unit.combat || !unit.unit) return;
     if (!this.scope.inScope(unit.transform.x, unit.transform.y, 300)) return;
 
-    // The bubble + emitter are written in absolute world coords below,
-    // so they don't need a parent. yawGroup is only consulted to read
-    // the unit's parent-chain pose for accurate world-position
-    // composition (chassis tilt + yaw); when it's missing we fall
-    // back to the unit's transform.
+    // The bubble is written in absolute world coords below, so it
+    // doesn't need a parent. yawGroup is only consulted to read the
+    // unit's parent-chain pose for accurate world-position composition
+    // (chassis tilt + yaw); when it's missing we fall back to the
+    // unit's transform.
     const yawGroup = this.getYawGroup(unit.id);
 
     const turrets = unit.combat.turrets;
@@ -336,12 +315,23 @@ export class ForceFieldRenderer3D {
 
       const shot = turret.config.shot;
       if (!shot || shot.type !== 'force' || !shot.barrier) continue;
-      const fieldColor = resolveForceFieldColor(unit.ownership?.playerId);
 
       const key = forceFieldKey(unit.id, ti);
       seen.add(key);
       const field = this.acquire(key);
       this.updateMountCache(field, unit, turret);
+
+      if (progress <= 0) continue;
+
+      // Bubble — translucent team-color sphere with fade-in alpha.
+      // The field sphere can be configured lower in world-space than
+      // the turret mount via barrier.originOffsetZ so the shield wraps
+      // the host body instead of centering on the turret.
+      const barrier = shot.barrier;
+      const outer = barrier.outerRange;
+      if (outer <= 0) continue;
+      const fadeIn = Math.min(progress * 3, 1);
+      const fieldColor = resolveForceFieldColor(unit.ownership?.playerId);
 
       // Chassis-local mount position. turret.mount is already in world
       // units, baked from the unit blueprint's 3D mount at unit-creation
@@ -351,15 +341,6 @@ export class ForceFieldRenderer3D {
       const localY = field.localY;
       const localZ = field.localZ;
 
-      // Central emitter sphere: fixed half-white / half-team turret
-      // accent. It stays visible while idle so force-field turrets
-      // read as physical turret parts; the bubble below is gated by
-      // active progress.
-      const emitterColor = turretAccentColorHexForPlayer(unit.ownership?.playerId);
-      const emitterVisualProgress = Math.max(progress, 0.3);
-      const emitterRadius = EMITTER_BASE_RADIUS
-        + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * emitterVisualProgress;
-
       // Compose the field's WORLD position from the unit's parent
       // chain — group → realYawGroup → liftGroup. The InstancedMesh
       // slots live in the renderer's world group (not parented to
@@ -368,7 +349,6 @@ export class ForceFieldRenderer3D {
       const liftGroupNode = yawGroup; // getYawGroup returns liftGroup
       const realYawGroup = liftGroupNode?.parent;
       const groupOuter = realYawGroup?.parent;
-      let havePosition = false;
       if (liftGroupNode && realYawGroup && groupOuter) {
         this._sphereYawQuat.setFromAxisAngle(
           ForceFieldRenderer3D._SPHERE_UP,
@@ -382,7 +362,6 @@ export class ForceFieldRenderer3D {
         this._sphereScratchPos
           .copy(groupOuter.position)
           .add(this._sphereLocalPos);
-        havePosition = true;
       } else {
         // No liftGroup — unit isn't rendered at rich tier this frame.
         // Rebuild the same base-Y convention Render3DEntities uses:
@@ -401,35 +380,9 @@ export class ForceFieldRenderer3D {
           unit.transform.z - bodyCenterHeight + field.mountLiftY + localY,
           unit.transform.y + rz,
         );
-        havePosition = true;
       }
 
-      // Emitter slot (small turret-accent sphere, always drawn).
-      if (havePosition && this._sphereCursor < SPHERE_INSTANCED_CAP) {
-        this._sphereScratchScale.set(emitterRadius, emitterRadius, emitterRadius);
-        this._sphereScratchMat.compose(
-          this._sphereScratchPos,
-          ForceFieldRenderer3D._IDENTITY_QUAT,
-          this._sphereScratchScale,
-        );
-        this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
-        this.sphereAlphaArr[this._sphereCursor] = 0.9;
-        writeHexToRgb01Array(emitterColor, this.sphereColorArr, this._sphereCursor * 3);
-        this._sphereCursor++;
-      }
-
-      if (progress <= 0) continue;
-
-      // Bubble — translucent team-color sphere with fade-in alpha.
-      // The emitter remains mounted at the turret origin; the actual
-      // field sphere can be configured lower in world-space so the
-      // shield wraps the host body instead of centering on the turret.
-      const barrier = shot.barrier;
-      const outer = barrier.outerRange;
-      if (outer <= 0) continue;
-      const fadeIn = Math.min(progress * 3, 1);
-
-      if (havePosition && this._sphereCursor < SPHERE_INSTANCED_CAP) {
+      if (this._sphereCursor < SPHERE_INSTANCED_CAP) {
         const fieldCenterY = this._sphereScratchPos.y - barrier.originOffsetZ;
         this._sphereScratchScale.set(outer, outer, outer);
         this._sphereScratchPos.y = fieldCenterY;

@@ -58,8 +58,6 @@ export type ForceFieldVisualConfig = {
   colorMode: 'player' | 'config';
   /** Fallback used when no owning player is known or colorMode='config'. */
   fallbackColor: number;
-  /** Idle emitter color; active pulse lerps from this toward the field color. */
-  emitterIdleColor: number;
 };
 
 export type ForceFieldImpactVisualConfig = {

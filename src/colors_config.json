@@ -402,8 +402,7 @@
         "particleAlpha": 0.2
       },
       "shield": {
-        "fallbackColorHex": "#ffffff",
-        "emitterIdleColorHex": "#ffffff"
+        "fallbackColorHex": "#ffffff"
       },
       "impact": {
         "fallbackColorHex": "#ffffff",

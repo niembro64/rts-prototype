@@ -604,14 +604,13 @@ export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFie
     particleAlpha: COLORS.effects.forceField.barrier.particleAlpha,
   };
 
-/** Force-field shield visual configuration. The bubble + emitter
- *  render at every tier; the MAX-tier orbital rings are tuned via
- *  RING_* constants inside ForceFieldRenderer3D rather than here. */
+/** Force-field shield visual configuration. The bubble renders at
+ *  every tier; the MAX-tier orbital rings are tuned via RING_*
+ *  constants inside ForceFieldRenderer3D rather than here. */
 export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
   {
     ...forceFieldVisualConfigJson.shield,
     fallbackColor: COLORS.effects.forceField.shield.fallbackColorHex,
-    emitterIdleColor: COLORS.effects.forceField.shield.emitterIdleColorHex,
   } as ForceFieldVisualConfig;
 
 /** Force-field projectile interception visual.
