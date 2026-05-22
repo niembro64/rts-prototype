@@ -19,16 +19,6 @@ const _laserFsm: CombatTargetingTurretFsmOut = {
   targetId: null,
 };
 
-function readBeamTargetId(
-  unit: Entity,
-  weaponIndex: number,
-  jsTargetId: EntityId | null,
-): EntityId | null {
-  return readCombatTargetingTurretFsmInto(unit, weaponIndex, _laserFsm)
-    ? _laserFsm.targetId
-    : jsTargetId;
-}
-
 function isBeamEngagedWithTargetingState(
   unit: Entity,
   weaponIndex: number,
@@ -70,17 +60,15 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
 // Reads the inverse target index (targetIndex.ts) instead of scanning every
 // unit × every turret on each death — at 1000 units × 8 turrets the old scan
 // was the dominant cost during battle peaks.
-export function emitLaserStopsForTarget(_world: WorldState, targetId: EntityId): SimEvent[] {
+export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): SimEvent[] {
   _laserStopTarget.length = 0;
-  const refs = getBeamWeaponsTargeting(targetId);
+  const refs = getBeamWeaponsTargeting(world, targetId);
   for (let r = 0; r < refs.length; r++) {
     const { unit, weaponIndex } = refs[r];
     if (!unit.combat || !unit.unit || unit.unit.hp <= 0) continue;
     const weapon = unit.combat.turrets[weaponIndex];
     if (!weapon) continue;
-    if (readBeamTargetId(unit, weaponIndex, weapon.target) !== targetId) continue;
     const config = weapon.config;
-    if (config.shot?.type !== 'beam') continue;
     _laserStopTarget.push({
       type: 'laserStop',
       turretId: config.id,

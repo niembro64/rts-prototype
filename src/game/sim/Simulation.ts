@@ -21,7 +21,6 @@ import {
   registerPackedProjectile,
   unregisterPackedProjectile,
 } from './combat';
-import { clearTargetIndex } from './combat/targetIndex';
 import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
@@ -1649,7 +1648,6 @@ export class Simulation {
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     resetForceFieldBuffers();
-    clearTargetIndex();
     this.spatialGridBuildingVersion = -1;
   }
 }

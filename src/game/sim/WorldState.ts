@@ -19,7 +19,6 @@ import {
 import type { ForceFieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
-import { dropWeaponsForUnit } from './combat/targetIndex';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { createUnitSuspension } from './unitSuspension';
 import { applyEntitySensorBlueprint } from './cloakDetection';
@@ -340,11 +339,6 @@ export class WorldState {
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
     if (entity) this.onEntityRemoving?.(entity);
-    if (entity?.unit) {
-      // Drop any inverse-target index entries that referred to this
-      // unit's beam weapons before its bookkeeping is gone.
-      dropWeaponsForUnit(entity);
-    }
     if (entity?.type === 'unit') this.unitSetVersion++;
     if (entity?.type === 'building') this.buildingVersion++;
     if (entity?.type === 'unit' || entity?.type === 'building') {

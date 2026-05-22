@@ -1090,7 +1090,7 @@ export interface CombatTargetingApi {
    *  when the rotation pass discovers a ballistic-fail or other reason
    *  to drop a turret's lock, so the next activity-mask refresh sees
    *  the cleared state. Mirrors `weapon.state = 'idle'` plus
-   *  `setWeaponTarget(..., null)` for the slab. */
+   *  `weapon.target = null` for the slab. */
   clearTurretFsm: (entitySlot: number, turretIdx: number) => void;
   entityFlags: (entitySlot: number) => number;
   turretCount: (entitySlot: number) => number;

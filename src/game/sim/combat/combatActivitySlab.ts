@@ -17,7 +17,6 @@ import type { CombatComponent, Entity, Turret } from '../types';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimWasm } from '../../sim-wasm/init';
 import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
-import { setWeaponTarget } from './targetIndex';
 import { getCombatTargetingStateViews } from './targetingInputStamping';
 
 /** Slab-first activity-mask refresh used by sim hot paths.
@@ -29,8 +28,8 @@ import { getCombatTargetingStateViews } from './targetingInputStamping';
  *  transitional JS readers that still touch the JS fields.
  *
  *  Mid-tick FSM state mutations (`weapon.state = 'idle'`,
- *  setWeaponTarget(..., null)) must also write through to the slab
- *  via clearTurretFsmOnSlab so the kernel sees the cleared state when
+ *  `weapon.target = null`) must also write through to the slab via
+ *  clearTurretFsmOnSlab so the kernel sees the cleared state when
  *  computing masks here. Falls back to the JS-only
  *  updateCombatActivityFlags path when the sim is not available or
  *  the entity is missing a spatial slot. */
@@ -66,12 +65,12 @@ export function refreshSlabActivityMasksForUnit(
 }
 
 /** Slab-side mid-tick lock clear. Mirrors the JS
- *  `weapon.state = 'idle'` plus `setWeaponTarget(..., null)` writes
- *  that turretSystem / projectileSystem do when a ballistic gate
- *  fails or a target dies mid-pass, so the activity-mask refresh
- *  later in the same tick sees the cleared FSM state. No-op when the
- *  sim is unavailable or the entity lacks a spatial slot — the slab
- *  is not the source of truth on those paths. */
+ *  `weapon.state = 'idle'` plus `weapon.target = null` writes that
+ *  turretSystem / projectileSystem do when a ballistic gate fails or
+ *  a target dies mid-pass, so the activity-mask refresh later in the
+ *  same tick sees the cleared FSM state. No-op when the sim is
+ *  unavailable or the entity lacks a spatial slot — the slab is not
+ *  the source of truth on those paths. */
 export function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
@@ -81,15 +80,15 @@ export function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
 }
 
 /** Drop a turret's lock-on mid-tick: clears the JS Turret target +
- *  state fields, syncs the beam inverse target index, and clears the
- *  same FSM tuple on the combat-targeting slab in one call.
+ *  state fields and the same FSM tuple on the combat-targeting slab
+ *  in one call.
  *
  *  Consolidates the prior three-line pattern that lived inline in
  *  turretSystem (ballistic out-of-reach), projectileSystem (ballistic
  *  failure / dead target mid-fire), and commandExecution
  *  (fire-disabled command):
  *
- *    setWeaponTarget(weapon, unit, weaponIndex, null);
+ *    weapon.target = null;
  *    weapon.state = 'idle';
  *    clearTurretFsmOnSlab(unit, weaponIndex);
  *
@@ -103,7 +102,7 @@ export function dropTurretLockMidTick(
   weapon: Turret,
   weaponIndex: number,
 ): void {
-  setWeaponTarget(weapon, unit, weaponIndex, null);
+  weapon.target = null;
   weapon.state = 'idle';
   clearTurretFsmOnSlab(unit, weaponIndex);
 }

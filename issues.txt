@@ -56,35 +56,6 @@ and deletes the predecessor in the same change (see "Delete The Old
 Path"). No "we will come back to it later" parity flags.
 
 ------------------------------------------------------------------------------
-AIM-08.6 - beam inverse target index sync still runs per turret in JS
-           writeback.
-------------------------------------------------------------------------------
-
-Where:
-- src/game/sim/combat/targetingInputStamping.ts::
-  writeBackCombatTargetingEntity (per-turret loop calling
-  syncBeamWeaponTargetIndex).
-- src/game/sim/combat/targetIndex.ts owns the JS-side
-  target -> beam-weapon mapping.
-
-What:
-Every tick, for every turret on every alive armed entity, JS reads the
-new slab targetId and updates the beam inverse index so death handlers
-can answer "which beams were aimed at me?" in O(k). The index is a JS
-Map keyed on entity id.
-
-Fix:
-Move the inverse-index maintenance inside the Rust targeting kernel so
-the mapping updates in place whenever the kernel writes a target. JS
-keeps a read-only view and consults it only during death cleanup.
-
-Done when:
-writeBackCombatTargetingEntity no longer calls syncBeamWeaponTargetIndex
-per turret; the Rust kernel owns the index; the JS targetIndex.ts
-becomes a read-only wrapper around slab pointers (or is deleted if no
-JS reader survives).
-
-------------------------------------------------------------------------------
 AIM-08.7 - disabled-turret JS-only field reset still runs every tick.
 ------------------------------------------------------------------------------
 
