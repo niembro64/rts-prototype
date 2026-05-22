@@ -19,6 +19,7 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'audioConfig.ts' ||
     srcPath === 'battleBarConfig.ts' ||
     srcPath === 'barThemes.ts' ||
+    srcPath === 'beamConfig.json' ||
     srcPath === 'clientBarConfig.ts' ||
     srcPath === 'colorsConfig.ts' ||
     srcPath === 'colors_config.json' ||
@@ -30,6 +31,8 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'playerNamesConfig.ts' ||
     srcPath === 'serverBarConfig.ts' ||
     srcPath === 'shellConfig.ts' ||
+    srcPath === 'smokeConfig.ts' ||
+    srcPath === 'smoke_config.json' ||
     srcPath === 'uiLabels.ts' ||
     srcPath === 'game/sim/blueprints/unitRoster.ts' ||
     srcPath === 'game/sim/blueprints/unitRoster.json' ||

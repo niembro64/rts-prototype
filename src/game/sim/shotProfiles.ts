@@ -13,7 +13,7 @@ import {
 } from './types';
 import { getProjectileSmokeTrailSpec } from '@/smokeConfig';
 import shotProfileConfig from './shotProfileConfig.json';
-import beamConfig from '@/game/render3d/beamConfig.json';
+import beamConfig from '@/beamConfig.json';
 
 // Beam emission offset (forward distance from the turret mount where the
 // beam visually + physically "generates") is tuned per-shot in

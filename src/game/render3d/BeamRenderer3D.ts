@@ -18,7 +18,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
 import { COLORS } from '@/colorsConfig';
 import { detachObject, disposeMesh } from './threeUtils';
-import beamConfig from './beamConfig.json';
+import beamConfig from '@/beamConfig.json';
 
 // Visual tuning (color, wave alpha range, wave spacing/speed, start-point
 // sphere look) lives in beamConfig.json — edit that file to retune how
