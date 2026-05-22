@@ -14,6 +14,13 @@ import {
   SNAPSHOT_DIFF_KIND_BUILDING,
 } from '../sim-wasm/init';
 import {
+  snapshotPositionDeltaExceeded,
+  snapshotPositionThresholdWorldUnits,
+  snapshotRotationDeltaExceeded,
+  snapshotRotationThresholdRadians,
+  snapshotVectorVelocityDeltaExceeded,
+} from '../snapshotDeltaThresholds';
+import {
   encodeCombatTargetingTurretState,
   readCombatTargetingTurretFsmFromSimInto,
   readCombatTargetingTurretFsmInto,
@@ -128,10 +135,11 @@ export const removedEntityIdsBuf: number[] = [];
 export const dirtyEntityIdsBuf: EntityId[] = [];
 export const dirtyEntityFieldsBuf: number[] = [];
 
+// Turret dirty marks are candidate triggers; the threshold diff decides
+// whether aim motion is actually worth sending on this delta.
 export const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_ACTIONS |
-  ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY |
   ENTITY_CHANGED_COMBAT_MODE |
@@ -140,7 +148,6 @@ export const SNAPSHOT_DIRTY_FORCE_FIELDS =
 export const SNAPSHOT_DETAIL_THROTTLED_FIELDS =
   ENTITY_CHANGED_NORMAL |
   ENTITY_CHANGED_SUSPENSION |
-  ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY;
 
@@ -253,28 +260,52 @@ export function getEntityDeltaChangedFields(
   prev: PrevEntityState,
   next: PrevEntityState,
   visibility: SnapshotVisibility | undefined,
+  world: WorldState,
 ): number {
   const resolution = getDeltaResolution(entity, visibility);
-  const posTh = SNAPSHOT_CONFIG.positionThreshold * resolution.positionThresholdMultiplier;
-  const velTh = SNAPSHOT_CONFIG.velocityThreshold * resolution.velocityThresholdMultiplier;
-  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier;
-  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold * resolution.rotationVelocityThresholdMultiplier;
+  const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
+    SNAPSHOT_CONFIG.movementPositionThreshold * resolution.positionThresholdMultiplier,
+    world.mapWidth,
+    world.mapHeight,
+  );
+  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold *
+    resolution.velocityThresholdMultiplier;
+  const movementVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
+    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold * resolution.velocityThresholdMultiplier,
+  );
+  const rotationPositionThresholdRadians = snapshotRotationThresholdRadians(
+    SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier,
+  );
+  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold *
+    resolution.rotationVelocityThresholdMultiplier;
+  const rotationVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
+    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold * resolution.rotationVelocityThresholdMultiplier,
+  );
 
   let mask = 0;
 
-  if (Math.abs(next.x - prev.x) > posTh ||
-      Math.abs(next.y - prev.y) > posTh ||
-      Math.abs(next.z - prev.z) > posTh) {
+  if (snapshotPositionDeltaExceeded(
+    next.x, next.y, next.z,
+    prev.x, prev.y, prev.z,
+    positionThresholdWorldUnits,
+  )) {
     mask |= ENTITY_CHANGED_POS;
   }
-  if (Math.abs(next.rotation - prev.rotation) > rotPosTh) {
+  if (snapshotRotationDeltaExceeded(
+    next.rotation,
+    prev.rotation,
+    rotationPositionThresholdRadians,
+  )) {
     mask |= ENTITY_CHANGED_ROT;
   }
 
   if (entity.unit) {
-    if (Math.abs(next.velocityX - prev.velocityX) > velTh ||
-        Math.abs(next.velocityY - prev.velocityY) > velTh ||
-        Math.abs(next.velocityZ - prev.velocityZ) > velTh) {
+    if (snapshotVectorVelocityDeltaExceeded(
+      next.velocityX, next.velocityY, next.velocityZ,
+      prev.velocityX, prev.velocityY, prev.velocityZ,
+      movementVelocityMagnitudeThresholdRatio,
+      movementVelocityDirectionThresholdRadians,
+    )) {
       mask |= ENTITY_CHANGED_VEL;
     }
     if (next.hp !== prev.hp) {
@@ -304,10 +335,29 @@ export function getEntityDeltaChangedFields(
       // dirty the entity on target/state/forceField transitions.
       for (let i = 0; i < next.weaponCount; i++) {
         if (!turretsAlreadyChanged) {
-          if (Math.abs(next.turretRots[i] - prev.turretRots[i]) > rotPosTh ||
-              Math.abs(next.turretAngVels[i] - prev.turretAngVels[i]) > rotVelTh ||
-              Math.abs(next.turretPitches[i] - prev.turretPitches[i]) > rotPosTh ||
-              Math.abs(next.turretPitchVels[i] - prev.turretPitchVels[i]) > rotVelTh ||
+          const turretRotationChanged = snapshotRotationDeltaExceeded(
+            next.turretRots[i],
+            prev.turretRots[i],
+            rotationPositionThresholdRadians,
+          );
+          const turretAngularVelocityChanged = snapshotVectorVelocityDeltaExceeded(
+            next.turretAngVels[i],
+            next.turretPitchVels[i],
+            0,
+            prev.turretAngVels[i],
+            prev.turretPitchVels[i],
+            0,
+            rotationVelocityMagnitudeThresholdRatio,
+            rotationVelocityDirectionThresholdRadians,
+          );
+          const turretPitchChanged = snapshotRotationDeltaExceeded(
+            next.turretPitches[i],
+            prev.turretPitches[i],
+            rotationPositionThresholdRadians,
+          );
+          if (turretRotationChanged ||
+              turretAngularVelocityChanged ||
+              turretPitchChanged ||
               next.turretTargetIds[i] !== prev.turretTargetIds[i] ||
               Math.abs(next.forceFieldRanges[i] - prev.forceFieldRanges[i]) > 0.001) {
             mask |= ENTITY_CHANGED_TURRETS;
@@ -421,6 +471,7 @@ export function verifyRustDiffMask(
   visibility: SnapshotVisibility | undefined,
   expectedJsMask: number,
   baselineHandle: number,
+  world: WorldState,
 ): void {
   if (!VERIFY_RUST_DIFF) return;
   const sim = getSimWasm();
@@ -430,10 +481,24 @@ export function verifyRustDiffMask(
   if (sim.snapshotBaseline.slotUsed(baselineHandle, slot) === 0) return;
 
   const resolution = getDeltaResolution(entity, visibility);
-  const posTh = SNAPSHOT_CONFIG.positionThreshold * resolution.positionThresholdMultiplier;
-  const velTh = SNAPSHOT_CONFIG.velocityThreshold * resolution.velocityThresholdMultiplier;
-  const rotPosTh = SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier;
-  const rotVelTh = SNAPSHOT_CONFIG.rotationVelocityThreshold * resolution.rotationVelocityThresholdMultiplier;
+  const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
+    SNAPSHOT_CONFIG.movementPositionThreshold * resolution.positionThresholdMultiplier,
+    world.mapWidth,
+    world.mapHeight,
+  );
+  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold *
+    resolution.velocityThresholdMultiplier;
+  const movementVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
+    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold * resolution.velocityThresholdMultiplier,
+  );
+  const rotationPositionThresholdRadians = snapshotRotationThresholdRadians(
+    SNAPSHOT_CONFIG.rotationPositionThreshold * resolution.rotationPositionThresholdMultiplier,
+  );
+  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold *
+    resolution.rotationVelocityThresholdMultiplier;
+  const rotationVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
+    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold * resolution.rotationVelocityThresholdMultiplier,
+  );
 
   const kind = entity.type === 'unit' ? SNAPSHOT_DIFF_KIND_UNIT : SNAPSHOT_DIFF_KIND_BUILDING;
   const rustMask = sim.snapshotBaseline.diffSlot(
@@ -444,7 +509,12 @@ export function verifyRustDiffMask(
     next.normalX, next.normalY, next.normalZ,
     next.actionCount, next.actionHash,
     next.isEngagedBits, next.targetBits,
-    posTh, rotPosTh, velTh, rotVelTh,
+    positionThresholdWorldUnits,
+    rotationPositionThresholdRadians,
+    movementVelocityMagnitudeThresholdRatio,
+    movementVelocityDirectionThresholdRadians,
+    rotationVelocityMagnitudeThresholdRatio,
+    rotationVelocityDirectionThresholdRadians,
     entity.buildable ? 1 : 0,
     entity.combat ? 1 : 0,
     entity.factory ? 1 : 0,

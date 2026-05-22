@@ -13409,6 +13409,8 @@ const ENTITY_CHANGED_NORMAL: u32 = 1 << 8;
 const SNAPSHOT_BASELINE_CAPTURE_FULL: u32 = u32::MAX;
 const SNAPSHOT_NORMAL_THRESHOLD: f64 = 0.001;
 const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
+const SNAPSHOT_FULL_ROTATION_RADIANS: f64 = std::f64::consts::PI * 2.0;
+const SNAPSHOT_RATIO_DELTA_EPSILON: f64 = 1e-9;
 
 // Kind tags for snapshot_baseline_diff_slot (mirror EntityType strings
 // 'unit' / 'building' — kept separate from ENTITY_META_TYPE_* because
@@ -13416,6 +13418,114 @@ const SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD: f32 = 0.001;
 // entity-meta pool first).
 pub const SNAPSHOT_DIFF_KIND_UNIT: u8 = 1;
 pub const SNAPSHOT_DIFF_KIND_BUILDING: u8 = 2;
+
+fn snapshot_finite_non_negative(value: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
+    }
+}
+
+fn snapshot_position_delta_exceeded(
+    x: f64,
+    y: f64,
+    z: f64,
+    prev_x: f64,
+    prev_y: f64,
+    prev_z: f64,
+    threshold: f64,
+) -> bool {
+    let dx = x - prev_x;
+    let dy = y - prev_y;
+    let dz = z - prev_z;
+    (dx * dx + dy * dy + dz * dz).sqrt() > threshold
+}
+
+fn snapshot_angular_distance_radians(next: f64, prev: f64) -> f64 {
+    let raw = (next - prev).abs() % SNAPSHOT_FULL_ROTATION_RADIANS;
+    if raw > std::f64::consts::PI {
+        SNAPSHOT_FULL_ROTATION_RADIANS - raw
+    } else {
+        raw
+    }
+}
+
+fn snapshot_rotation_delta_exceeded(next: f64, prev: f64, threshold: f64) -> bool {
+    snapshot_angular_distance_radians(next, prev) > threshold
+}
+
+fn snapshot_vector_magnitude_ratio_delta_exceeded(
+    next_x: f64,
+    next_y: f64,
+    next_z: f64,
+    prev_x: f64,
+    prev_y: f64,
+    prev_z: f64,
+    ratio: f64,
+) -> bool {
+    let next_magnitude = (next_x * next_x + next_y * next_y + next_z * next_z).sqrt();
+    let baseline = (prev_x * prev_x + prev_y * prev_y + prev_z * prev_z).sqrt();
+    let delta = (next_magnitude - baseline).abs();
+    delta > SNAPSHOT_RATIO_DELTA_EPSILON && delta > baseline * snapshot_finite_non_negative(ratio)
+}
+
+fn snapshot_vector_direction_delta_exceeded(
+    next_x: f64,
+    next_y: f64,
+    next_z: f64,
+    prev_x: f64,
+    prev_y: f64,
+    prev_z: f64,
+    threshold_radians: f64,
+) -> bool {
+    let next_magnitude = (next_x * next_x + next_y * next_y + next_z * next_z).sqrt();
+    let prev_magnitude = (prev_x * prev_x + prev_y * prev_y + prev_z * prev_z).sqrt();
+    if next_magnitude <= SNAPSHOT_RATIO_DELTA_EPSILON
+        || prev_magnitude <= SNAPSHOT_RATIO_DELTA_EPSILON
+    {
+        return false;
+    }
+
+    let threshold = snapshot_finite_non_negative(threshold_radians);
+    if threshold >= std::f64::consts::PI {
+        return false;
+    }
+
+    let normalized_dot = ((next_x * prev_x + next_y * prev_y + next_z * prev_z)
+        / (next_magnitude * prev_magnitude))
+        .clamp(-1.0, 1.0);
+    normalized_dot < threshold.cos()
+}
+
+fn snapshot_vector_velocity_delta_exceeded(
+    next_x: f64,
+    next_y: f64,
+    next_z: f64,
+    prev_x: f64,
+    prev_y: f64,
+    prev_z: f64,
+    magnitude_ratio: f64,
+    direction_threshold_radians: f64,
+) -> bool {
+    snapshot_vector_magnitude_ratio_delta_exceeded(
+        next_x,
+        next_y,
+        next_z,
+        prev_x,
+        prev_y,
+        prev_z,
+        magnitude_ratio,
+    ) || snapshot_vector_direction_delta_exceeded(
+        next_x,
+        next_y,
+        next_z,
+        prev_x,
+        prev_y,
+        prev_z,
+        direction_threshold_radians,
+    )
+}
 
 /// Phase 10 D.3d — diff kernel. Returns the CHANGED-FIELDS mask for
 /// one slot by comparing the caller-supplied `current` scalars (and
@@ -13426,9 +13536,11 @@ pub const SNAPSHOT_DIFF_KIND_BUILDING: u8 = 2;
 /// case to match getEntityDeltaChangedFields's isNew path).
 ///
 /// Threshold math is byte-equivalent with
-/// stateSerializerEntityDelta.ts:getEntityDeltaChangedFields: each
-/// per-axis |next-prev| > th comparison runs independently and the
-/// per-field mask bit ORs into the result.
+/// stateSerializerEntityDelta.ts:getEntityDeltaChangedFields:
+/// position and rotation position thresholds arrive as absolute
+/// world/radian values; velocity magnitude thresholds arrive as ratios
+/// of their baseline speeds, and velocity direction thresholds arrive
+/// as angular thresholds in radians.
 #[wasm_bindgen]
 pub fn snapshot_baseline_diff_slot(
     handle: u32,
@@ -13453,8 +13565,10 @@ pub fn snapshot_baseline_diff_slot(
     target_bits: u32,
     pos_threshold: f64,
     rot_pos_threshold: f64,
-    vel_threshold: f64,
-    rot_vel_threshold: f64,
+    movement_vel_magnitude_threshold_ratio: f64,
+    movement_vel_direction_threshold_radians: f64,
+    rot_vel_magnitude_threshold_ratio: f64,
+    rot_vel_direction_threshold_radians: f64,
     has_buildable: u8,
     has_combat: u8,
     has_factory: u8,
@@ -13470,21 +13584,24 @@ pub fn snapshot_baseline_diff_slot(
 
     let mut mask: u32 = 0;
 
-    if (x - b.x[s]).abs() > pos_threshold
-        || (y - b.y[s]).abs() > pos_threshold
-        || (z - b.z[s]).abs() > pos_threshold
-    {
+    if snapshot_position_delta_exceeded(x, y, z, b.x[s], b.y[s], b.z[s], pos_threshold) {
         mask |= ENTITY_CHANGED_POS;
     }
-    if (rotation - b.rotation[s]).abs() > rot_pos_threshold {
+    if snapshot_rotation_delta_exceeded(rotation, b.rotation[s], rot_pos_threshold) {
         mask |= ENTITY_CHANGED_ROT;
     }
 
     if kind == SNAPSHOT_DIFF_KIND_UNIT {
-        if (velocity_x - b.velocity_x[s]).abs() > vel_threshold
-            || (velocity_y - b.velocity_y[s]).abs() > vel_threshold
-            || (velocity_z - b.velocity_z[s]).abs() > vel_threshold
-        {
+        if snapshot_vector_velocity_delta_exceeded(
+            velocity_x,
+            velocity_y,
+            velocity_z,
+            b.velocity_x[s],
+            b.velocity_y[s],
+            b.velocity_z[s],
+            movement_vel_magnitude_threshold_ratio,
+            movement_vel_direction_threshold_radians,
+        ) {
             mask |= ENTITY_CHANGED_VEL;
         }
         // movement_accel_x/y/z params remain on the ABI for now but are
@@ -13542,13 +13659,26 @@ pub fn snapshot_baseline_diff_slot(
             let mut turrets_changed = false;
             for t in 0..(cur_weapon_count as usize) {
                 let idx = base + t;
-                if ((turret.rotation[idx] - b.turret_rots[idx]).abs() as f64) > rot_pos_threshold
-                    || ((turret.angular_velocity[idx] - b.turret_ang_vels[idx]).abs() as f64)
-                        > rot_vel_threshold
-                    || ((turret.pitch[idx] - b.turret_pitches[idx]).abs() as f64)
-                        > rot_pos_threshold
-                    || ((turret.pitch_velocity[idx] - b.turret_pitch_vels[idx]).abs() as f64)
-                        > rot_vel_threshold
+                let angular_velocity_changed = snapshot_vector_velocity_delta_exceeded(
+                    turret.angular_velocity[idx] as f64,
+                    turret.pitch_velocity[idx] as f64,
+                    0.0,
+                    b.turret_ang_vels[idx] as f64,
+                    b.turret_pitch_vels[idx] as f64,
+                    0.0,
+                    rot_vel_magnitude_threshold_ratio,
+                    rot_vel_direction_threshold_radians,
+                );
+                if snapshot_rotation_delta_exceeded(
+                    turret.rotation[idx] as f64,
+                    b.turret_rots[idx] as f64,
+                    rot_pos_threshold,
+                ) || angular_velocity_changed
+                    || snapshot_rotation_delta_exceeded(
+                        turret.pitch[idx] as f64,
+                        b.turret_pitches[idx] as f64,
+                        rot_pos_threshold,
+                    )
                     || turret.target_id[idx] != b.turret_target_ids[idx]
                     || (turret.force_field_range[idx] - b.force_field_ranges[idx]).abs()
                         > SNAPSHOT_FORCE_FIELD_RANGE_THRESHOLD

@@ -44,6 +44,10 @@ import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
+import {
+  snapshotRotationThresholdRadians,
+  snapshotVectorVelocityDeltaExceeded,
+} from '../../snapshotDeltaThresholds';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -901,13 +905,15 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     if (homingTargetForReporting) {
       entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
 
-      const velTh = SNAPSHOT_CONFIG.velocityThreshold;
       const lastVx = proj.lastSentVelX ?? proj.velocityX;
       const lastVy = proj.lastSentVelY ?? proj.velocityY;
       const lastVz = proj.lastSentVelZ ?? proj.velocityZ;
-      if (Math.abs(proj.velocityX - lastVx) > velTh ||
-          Math.abs(proj.velocityY - lastVy) > velTh ||
-          Math.abs(proj.velocityZ - lastVz) > velTh) {
+      if (snapshotVectorVelocityDeltaExceeded(
+        proj.velocityX, proj.velocityY, proj.velocityZ,
+        lastVx, lastVy, lastVz,
+        SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold,
+        snapshotRotationThresholdRadians(SNAPSHOT_CONFIG.movementVelocityDirectionThreshold),
+      )) {
         proj.lastSentVelX = proj.velocityX;
         proj.lastSentVelY = proj.velocityY;
         proj.lastSentVelZ = proj.velocityZ;

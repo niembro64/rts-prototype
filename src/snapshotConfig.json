@@ -1,12 +1,14 @@
 {
   "deltaEnabled": true,
-  "positionThreshold": 0.5,
-  "velocityThreshold": 0.5,
-  "rotationPositionThreshold": 0.09817477042468103,
-  "rotationVelocityThreshold": 0.1,
+  "movementPositionThreshold": 0.0001,
+  "movementVelocityMagnitudeThreshold": 0.05,
+  "movementVelocityDirectionThreshold": 0.02,
+  "rotationPositionThreshold": 0.01,
+  "rotationVelocityMagnitudeThreshold": 0.05,
+  "rotationVelocityDirectionThreshold": 0.05,
   "minimapSnapshotRateHz": 8,
-  "entityDetailSnapshotRateHz": 8,
-  "projectileDetailSnapshotRateHz": 8,
+  "entityDetailSnapshotRateHz": 1,
+  "projectileDetailSnapshotRateHz": 1,
   "ownedEntityDelta": {
     "positionThresholdMultiplier": 1,
     "velocityThresholdMultiplier": 1,
@@ -14,10 +16,10 @@
     "rotationVelocityThresholdMultiplier": 1
   },
   "observedEntityDelta": {
-    "positionThresholdMultiplier": 4,
-    "velocityThresholdMultiplier": 4,
-    "rotationPositionThresholdMultiplier": 4,
-    "rotationVelocityThresholdMultiplier": 4
+    "positionThresholdMultiplier": 1,
+    "velocityThresholdMultiplier": 1,
+    "rotationPositionThresholdMultiplier": 1,
+    "rotationVelocityThresholdMultiplier": 1
   },
   "fullSnapshotCompression": {
     "enabled": false,

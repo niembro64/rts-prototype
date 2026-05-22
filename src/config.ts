@@ -103,14 +103,22 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 // SKIPPED ENTIRELY for that snap — those are the bytes deltas save.
 //
 // UNITS USED BELOW:
-//   - "world unit" (wu) is the sim's native length scale. The map is
-//     measured in wu (e.g. ~3000 wu wide); a typical unit's body
-//     radius is ~10–20 wu. NOT screen pixels — zoom doesn't change
-//     a wu value.
-//   - Linear velocity (entity.unit.velocityX/Y) is in wu / SECOND.
-//   - Angular velocity (turret.angularVelocity) is in rad / SECOND.
-//     (Both are integrated against `dtSec` in the sim — not per-tick.)
-//   - Rotation thresholds use Math.PI fractions for precision.
+//   - Threshold values are authored as ratios, not absolute world
+//     units/radians. 0.1 means 10%.
+//   - movementPositionThreshold is a ratio of the larger map axis.
+//     On a 10,600wu square map, 0.1 means a 1,060wu position delta.
+//   - movementVelocityMagnitudeThreshold is relative to the last-sent
+//     speed. A 5wu/s drop matters at 5wu/s, but not at 100wu/s.
+//   - movementVelocityDirectionThreshold is a ratio of a full turn
+//     between velocity vectors. 0.05 means 18 degrees. Direction is
+//     ignored when either velocity vector is effectively stopped.
+//   - rotationPositionThreshold is a ratio of a full turn. 0.1 means
+//     36 degrees.
+//   - rotationVelocityMagnitudeThreshold is relative to the last-sent
+//     yaw/pitch angular speed vector magnitude.
+//   - rotationVelocityDirectionThreshold is a ratio of a full turn
+//     between yaw/pitch angular velocity vectors. For one-axis turret
+//     motion, a sign flip is a 180 degree direction change.
 //
 // THE TIERS BELOW are reference points only — pick the resolution
 // that matches your bandwidth budget vs visual smoothness target.
@@ -120,26 +128,32 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //   deltaEnabled            — master switch; false ⇒ every snap is a
 //                             full keyframe (debug only; ~5-10×
 //                             bandwidth in active play).
-//   positionThreshold       — entity x/y must move more than this
-//                             many WORLD UNITS to re-send. LOW 2.0,
-//                             MID 0.5, HIGH 0.1.
-//   velocityThreshold       — velocityX/Y must change by more than
-//                             this (WORLD UNITS / SECOND) to re-send.
-//                             LOW 2.0, MID 0.5, HIGH 0.1.
+//   movementPositionThreshold — entity position must move by more than
+//                             this ratio of the larger map axis to
+//                             re-send. 0.1 = 10% of the full map.
+//   movementVelocityMagnitudeThreshold — velocity speed must change by
+//                             more than this ratio of the last-sent
+//                             speed to re-send. 0.1 = 10%.
+//   movementVelocityDirectionThreshold — velocity heading must change
+//                             by more than this ratio of a full 360°
+//                             turn to re-send. 0.05 = 18°.
 //   rotationPositionThreshold — body + turret rotations must change
-//                               by more than this many RADIANS to
-//                               re-send. LOW π/8 ≈ 0.3927 (22.5°),
-//                               MID π/32 ≈ 0.0982 (5.6°), HIGH π/64
-//                               ≈ 0.0491 (2.8°). The JSON value
-//                               below is π/32 evaluated to a
-//                               literal.
-//   rotationVelocityThreshold — turret angular velocity (RAD / SEC)
-//                               re-send threshold. LOW 0.5, MID
-//                               0.1, HIGH 0.01.
-//   ownedEntityDelta        — multipliers applied to the four
-//                             thresholds above for recipient-owned
-//                             entities. 1 keeps full fidelity on
-//                             your own units' orders / aim.
+//                               by more than this ratio of a full
+//                               360° turn to re-send. 0.1 = 36°.
+//   rotationVelocityMagnitudeThreshold — turret yaw/pitch angular
+//                               speed must change by more than this
+//                               ratio of the last-sent angular speed
+//                               to re-send. 0.1 = 10%.
+//   rotationVelocityDirectionThreshold — turret yaw/pitch angular
+//                               velocity direction must change by
+//                               more than this ratio of a full 360°
+//                               turn to re-send. 0.05 = 18°.
+//   ownedEntityDelta        — multipliers applied to the threshold
+//                             groups above for recipient-owned
+//                             entities. Velocity multipliers apply to
+//                             both magnitude and direction. 1 keeps
+//                             full fidelity on your own units' orders
+//                             / aim.
 //   observedEntityDelta     — same multipliers for entities owned by
 //                             other players. Set >1 to coarsen
 //                             remote movement / turret churn.
@@ -147,8 +161,10 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //                             lists on delta snapshots. Keyframes
 //                             always carry a fresh minimap baseline.
 //   entityDetailSnapshotRateHz — upper cadence for high-frequency
-//                             visual/detail entity fields that do
-//                             not change core movement truth.
+//                             visual/detail entity fields such as
+//                             normals, suspension, building, and
+//                             factory state. Turret aim motion is
+//                             threshold-gated on normal deltas.
 //   projectileDetailSnapshotRateHz — upper cadence for live beam path
 //                             corrections on delta snapshots. Beam
 //                             points carry velocity, so clients coast

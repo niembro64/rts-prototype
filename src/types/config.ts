@@ -17,10 +17,12 @@ export type FullSnapshotCompressionConfig = {
 
 export type SnapshotConfig = {
   deltaEnabled: boolean;
-  positionThreshold: number;
-  velocityThreshold: number;
+  movementPositionThreshold: number;
+  movementVelocityMagnitudeThreshold: number;
+  movementVelocityDirectionThreshold: number;
   rotationPositionThreshold: number;
-  rotationVelocityThreshold: number;
+  rotationVelocityMagnitudeThreshold: number;
+  rotationVelocityDirectionThreshold: number;
   minimapSnapshotRateHz: number;
   entityDetailSnapshotRateHz: number;
   projectileDetailSnapshotRateHz: number;
