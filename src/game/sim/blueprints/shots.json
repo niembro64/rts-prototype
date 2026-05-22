@@ -72,17 +72,17 @@
     },
     "explosion": {
       "radius": 50,
-      "damage": 100,
+      "damage": 40,
       "force": 3000
     },
     "detonateOnExpiry": true,
-    "maxLifespan": 2000,
+    "maxLifespan": 1000,
     "hitSound": {
       "$audio": "event.hit.fastRocket"
     },
     "submunitions": null,
     "homingTurnRate": 10,
-    "homingThrust": 9000,
+    "homingThrust": 100000,
     "smokeTrail": null
   },
   "heavyShot": {

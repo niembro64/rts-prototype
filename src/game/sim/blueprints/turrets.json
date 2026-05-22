@@ -1023,7 +1023,7 @@
     "projectileId": "fastRocket",
     "range": 430,
     "cooldown": 50,
-    "launchForce": 4200,
+    "launchForce": 5000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
