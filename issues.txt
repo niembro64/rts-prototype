@@ -5,319 +5,204 @@ Please always commit and push before and after any code changes we make. If ther
 
 As we go make sure we are not creating duplicate code, we should be reusing code as much as possible. If we find ourselves copy/pasting code, we should stop and refactor to reuse code instead. This is especially important for the new code we are writing, but also applies to existing code. If we see duplicate code in existing files, we should refactor it to be reusable and delete the duplicates. Create new helper files for reusable code if necessary, we prefer small file sizes.
 
+Each item in this file has a unique ID. IDs are stable: once assigned, an
+ID is never reused for a different issue, even after the original is
+deleted. When you split or expand an item, give the children new IDs in
+the same family rather than reusing the parent's ID.
+
 ==============================================================================
 
 DESIGN PHILOSOPHY GAP PLAN
 
 ==============================================================================
 
-AIMING / TARGETING SYSTEM ISSUES
+AIMING / TARGETING SYSTEM (AIM-08 family)
 
-AIM-08 - Aiming/targeting hot paths remain TypeScript object loops instead of WASM/SoA batches.
+------------------------------------------------------------------------------
+AIM-08 - parent: aiming/targeting hot paths still keep a TS object writeback
+         bridge alongside the Rust slab.
+------------------------------------------------------------------------------
 
 Evidence:
-- design_philosophy.html:520-570 and 614-619 call out targeting batches, per-unit loops, projectile stepping, and spatial queries as migration targets for Rust/WASM over typed memory.
-- src/game/sim/combat/targetingSchedulerBridge.ts still mirrors slab state back to JS Turret objects for rendering/firing/snapshot consumers. The source-id queue is now compacted during the slab stamping pass in targetingInputStamping.ts. Candidate scoring/ranking dispatches to the AIM-08.3 Rust kernel, ballistic arc solving dispatches to the AIM-08.4 Rust slab kernel, and AIM-08.5 now batches gate resolution, cooldown decrement, mode scheduling, disabled-weapon slab reset, and FSM transition writes in Rust, but the slab->JS Turret writeback bridge is still transitional.
+- design_philosophy.html sections "Scale Target", "Browser Performance
+  Rules", and "TypeScript Coordinates, WASM Computes" call out targeting
+  batches, per-unit loops, projectile stepping, and spatial queries as
+  Rust/WASM migration targets running over typed memory.
+- The targeting FSM port itself is complete: the per-armed-entity
+  scheduler (mount kinematics, existing-lock re-validation, candidate
+  scan, fire-gate dispatch, state transitions, LOS-grace decay) runs as
+  a single combat_targeting_schedule_and_tick_batch Rust call. JS
+  consumers (rendering, firing, snapshot encode, force-field engagement,
+  movement-halt checks, barrel-spin, beam audio, mirror-target priority,
+  aim-solver mount kinematics, client prediction) are slab-first; the
+  JS Turret target/state writeback has been deleted, and the mask
+  refresh is Rust-owned.
+- The transitional residue lives in src/game/sim/combat/
+  targetingInputStamping.ts::writeBackCombatTargetingEntity and in the
+  mid-tick lock-drop path. Items AIM-08.6 - AIM-08.9 below are the
+  concrete remaining sub-tasks; each is independently shippable. When
+  all four are done, writeBackCombatTargetingEntity collapses to a
+  single Rust call per processed entity (or is removed entirely and
+  the scheduler exposes the activeTurretMask !== 0 result directly).
 
 Why it matters:
-The current code has good local pooling and some WASM helpers, but the main targeting loop still scales as JS object orchestration over armed entities and candidate arrays. That is acceptable for prototype correctness, but it is not aligned with the stated 5,000-unit architecture.
+The current writeback still scales as a per-turret JS object loop on
+every armed entity every tick. Tolerable at prototype scale; not aligned
+with the 5,000-unit target.
 
 Fix direction:
-Keep the remaining JS consumers stable while designing the fully data-oriented path: flat turret/entity inputs, candidate slots, visibility/LOS results, target output IDs/states, and downstream rendering/firing/snapshot readers that consume slab state directly. Delete each old JS bridge loop as its consumer migrates.
+Each AIM-08.x below = its own PR. Each PR migrates one bridge component
+and deletes the predecessor in the same change (see "Delete The Old
+Path"). No "we will come back to it later" parity flags.
 
-MIGRATION PLAN (each phase = its own PR; each lands one kernel and deletes
-the TS path it replaces, never both alongside — see "Delete The Old Path").
+------------------------------------------------------------------------------
+AIM-08.6 - beam inverse target index sync still runs per turret in JS
+           writeback.
+------------------------------------------------------------------------------
 
-AIM-08.5 — Port the targeting FSM
-  The per-armed-entity loop (Pass 0 mount kinematics, Pass 1 existing-
-  lock re-validation, Pass 2 candidate scan, fire-gate dispatch, state
-  transitions, losBlockedTicks decay) becomes the top-level Rust
-  kernel that consumes all of .1-.4 and writes new turret targets +
-  states back into the slab. JS dispatch becomes a single
-  combat_targeting_schedule_and_tick_batch(...) call. Delete the old
-  targetingSystem.ts FSM logic.
+Where:
+- src/game/sim/combat/targetingInputStamping.ts::
+  writeBackCombatTargetingEntity (per-turret loop calling
+  syncBeamWeaponTargetIndex).
+- src/game/sim/combat/targetIndex.ts owns the JS-side
+  target -> beam-weapon mapping.
 
-  Current progress: per-transition slab writes are batched in Rust for
-  priority-point, priority-target, existing-lock validation, fire-choice,
-  and acquisition-choice. Rust now reads slab target radius/distance for
-  priority/existing-lock FSM batches. Candidate scoring/selection now
-  runs as a per-entity Rust batch that reads turret ranges from the slab
-  and writes target/rank arrays for the batched FSM apply calls.
-  Fire-choice and acquisition candidate-prep masks/seeds now also batch
-  through Rust; passive mirror seed scores remain object-owned in TS.
-  All four targeting passes now use Rust-internal LOS + ballistic +
-  FF gates and apply the FSM transitions inside one boundary call:
-    - combat_targeting_compute_and_apply_priority_point_fsm_batch
-    - combat_targeting_compute_and_apply_priority_target_fsm_batch
-    - combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch
-    - combat_targeting_compute_and_choose_best_candidates_batch
-  A shared compute_turret_gates_for_aim_point Rust helper centralizes
-  the LOS / ballistic / FF logic with ground-aim-fraction + under-only
-  handling. Building AABB half-extents are stamped on the slab so
-  aim-point resolution lives in Rust (sphere targets use entity
-  center; AABB targets clamp into the box). The JS gate callback
-  (passesWeaponFireGates / targetCandidatePassesFireGates) and every
-  TS gate helper it relied on
-  (hasWeaponLineOfSight / hasWeaponBallisticSolution /
-   hasWeaponForceMaterialSightClearance /
-   targetLockOnPointIsBelowWeaponMount /
-   weaponNeedsBallisticSolution /
-   weaponUsesUnderOnlyBallisticLock /
-   weaponRequiresForceMaterialSightClearance /
-   _targetingBallisticAim / UNDER_ONLY_*) have been deleted under
-  Delete The Old Path. Per-turret DPS is now stamped on the slab and
-  every passive-mirror computation runs through Rust helpers
-  (combat_targeting_is_mirror_target_for_slot for the boolean check;
-  combat_targeting_mirror_target_score_for_slot for the DPS-ranked
-  score). The priority-target / existing-lock kernels compute their
-  mirror_valid gate internally; combat_targeting_prepare_fire_choice_
-  fsm_inputs seeds passive fire-choice ranks with the target's mirror
-  DPS; and the candidate-batch kernel fills its per-candidate
-  mirror_score from the slab on entry. Every TS-side
-  getMirrorTargetScore / isMirrorTarget caller in the targeting bridge
-  is gone (the JS getMirrorTargetScore export survives only for the
-  damage path). Cloak observability now lives in Rust: each entity
-  row carries CT_ENTITY_FLAG_CLOAKED + detector_radius +
-  detection_padding, and the kernels (existing-lock, candidates,
-  priority-target via combat_targeting_can_player_observe_entity)
-  walk the slab for detectors instead of consuming JS-precomputed
-  observable masks. Mirror-panel sightline clearance also lives in
-  Rust: a per-tick MirrorPanelPool slab (unit pose + slope-aware
-  pivot + panel range; per-panel arm length / offsets / base+top Y /
-  half-width) feeds a Rust port of pointSegmentDistanceSq3 +
-  rayTiltedRectIntersectionT + findClosestPanelHit that
-  compute_turret_gates_for_aim_point consults inline. JS no longer
-  fills the per-(turret, candidate) mirror_panel_clear mask, and the
-  legacy hasForceMirrorPanelClearance / hasForceMaterialSightClearance
-  helpers have been deleted. The per-entity boundary-crossing count
-  for auto-mode is now down to 2 Rust calls
-  (combat_targeting_existing_lock_and_auto_scan_tick merges the Pass
-  1 validation with the auto-scan radius computation;
-  combat_targeting_auto_mode_spatial_candidate_tick keeps the
-  spatial-grid enemy query and candidate SoA stamping inside Rust,
-  then collapses prep + choose-best + apply for fire-choice and
-  acquisition into a single boundary call, with scratch buffers living
-  in Rust).
-  Priority-point / priority-target paths already ship as one call
-  each. Pass 0 mount kinematics now runs in Rust through
-  combat_targeting_update_mount_kinematics: the slab carries
-  per-entity ground Z / rotation / surface normal / suspension offsets
-  plus per-turret local mount and previous world-pos tick, then the
-  Rust pass writes current world mount position/velocity back into the
-  slab. TS only writes that slab result back to Turret.worldPos /
-  worldVelocity while rendering, firing, and snapshot encode still read
-  JS Turret objects. Per-turret ballistic gate config (projectile
-  speed, arc preference, max flight time, ground-aim fraction, and
-  under-only lock state) is now stamped on the combat-targeting slab,
-  so the targeting bridge no longer rebuilds or passes per-entity
-  projectile config arrays into the priority, existing-lock, or
-  auto-mode Rust kernels. Auto-mode entities now queue into contiguous
-  world-order runs and flush through
-  combat_targeting_update_mount_kinematics_batch plus
-  combat_targeting_auto_mode_spatial_candidate_tick_batch; the latter
-  runs existing-lock validation, auto-scan, Rust spatial candidate
-  queries, and fire/acquisition FSM application for each queued entity
-  without returning to TypeScript between units.
-  Priority-point, priority-target, fire-disabled clear, and auto-mode
-  rows now also share a mixed world-order Rust FSM dispatch
-  (combat_targeting_tick_batch), so TypeScript queues a single
-  per-tick mode batch after its remaining object-owned command prep.
-  Per-turret target aim-point resolution now lives in
-  Rust too: the slab carries a lockOnToTurret flag, Rust ports
-  pickTargetAimTurret / body-AABB clamping / turret-mount resolution,
-  and combat_targeting_tick_batch no longer accepts TS-built aim
-  arrays for priority-target or existing-lock gates. The mixed
-  scheduler itself now lives in Rust through
-  combat_targeting_schedule_and_tick_batch: the kernel reads stamped
-  entity flags, hold-fire state, priority point/target commands,
-  priority-target observability, enabled-weapon state, and probe gates,
-  updates mount kinematics for processed rows, and writes the actual
-  processed mode back for the transitional JS writeback pass.
-  Cooldown timers now live on the combat-targeting slab too: JS stamps
-  per-turret cooldown / burst-cooldown values, the scheduled Rust batch
-  decrements them before probe skip decisions, and the transitional
-  slab->JS writeback copies the timers back even for skipped rows.
-  The scheduled Rust batch also resolves source entity IDs to targeting
-  slab slots internally, so the targeting bridge no longer calls
-  spatialGrid.getSlot during scheduler dispatch.
-  Disabled-weapon slab reset now runs in Rust too:
-  combat_targeting_reset_disabled_weapons_for_entity zeros target /
-  state / cooldown / aim error / LOS bookkeeping for every disabled
-  turret on entity_ready entities, inside the scheduler. JS Turret
-  writeback then finishes the disabled-weapon reset for fields that
-  never cross the WASM boundary (angular/pitch velocity +
-  acceleration, burst.remaining, forceField.transition/range) via the
-  shared weaponSystemDisabled helper in targetingInputStamping.ts. The
-  legacy resetDisabledWeapon / weaponSystemDisabled helpers and the
-  per-entity stampCombatTargetingEntity call were deleted under Delete
-  The Old Path.
-  Per-entity targeting inputs (priorityTargetId, priorityTargetPoint,
-  nextCombatProbeTick) now live on the combat-targeting slab too: the
-  input stamping pass writes them via the extended
-  combat_targeting_set_entity boundary call, and
-  combat_targeting_schedule_and_tick_batch reads them by slot instead
-  of accepting priority/probe scratch arrays from JS. The scheduler
-  signature lost six per-entity arrays (priority target IDs / point
-  presence flags / xyz coordinates / scheduled probe ticks) in the
-  same change. The per-tick source-id prep no longer lives in
-  updateTargetingAndFiringState: stampCombatTargetingPool compacts
-  source IDs while rebuilding slab rows, and the bridge consumes those
-  stamped arrays. clearCombatActivityFlags and the fire-disabled JS
-  priority-command cleanup moved into the writeback path (SKIP and
-  CLEAR_LOCKS branches respectively) so they fire after the kernel
-  decides what each row actually ran as. CT_TARGETING_TICK_MODE_*
-  constants are exported from sim-wasm/init.ts so the writeback
-  dispatch reads the same byte values the Rust kernel writes.
-  The old targetingSystem.ts surface has been deleted; the remaining
-  queue/kernel/writeback boundary now lives in
-  targetingSchedulerBridge.ts. The transitional slab->JS Turret
-  writeback also refreshes combat activity masks during the same
-  turret walk, replacing the separate post-writeback
-  updateCombatActivityFlags loop on the targeting hot path.
-  Beam audio is the first migrated downstream reader:
-  laserSoundSystem now reads turret target/state from the
-  combat-targeting slab via readCombatTargetingTurretFsmInto, with a
-  JS Turret fallback for non-sim paths.
-  Mirror target priority now uses the same slab target/state reader
-  when choosing direct-threat turrets for the JS aim solver, again
-  falling back to JS Turret fields outside the stamped sim path.
-  The JS aim solver also reads current-tick lockOnToTurret mount
-  positions from the combat-targeting slab when Rust updated that
-  target row, falling back to the live JS resolver for probe-skipped
-  or unstamped rows.
-  Firing, force-field engagement, movement halt checks, barrel-spin
-  rendering, snapshot DTO encoding, JS delta capture, and the Rust
-  snapshot turret-pool sync now read the slab target/state tuple first
-  and fall back to JS Turret fields only for unstamped/non-sim paths.
-  Combat-targeting input stamping now preserves the previous slab FSM
-  target/state tuple when a spatial slot still belongs to the same
-  entity, so the scheduler no longer has to be re-seeded from JS
-  Turret.target/state every tick.
-  The beam inverse target index now has an explicit slab-facing sync
-  path and tracks its own per-weapon target mirror, so writeback no
-  longer depends on setWeaponTarget / JS Turret.target as the index's
-  source of truth.
-  Turret.losBlockedTicks has been deleted from the JS Turret type:
-  the Rust combat-targeting kernel is now the sole owner of the LOS
-  grace counter (it resets in combat_targeting_set_target_state on
-  target change, increments during LOS grace counting, and zeroes on
-  disabled-weapon reset). Input stamping passes the slab's previous
-  value back via the preservePreviousFsm path (or 0 on slot reuse),
-  so the kernel-managed counter survives across ticks without a JS
-  round-trip. setWeaponTarget no longer resets losBlockedTicks (the
-  kernel does it). The unused scoreMirrorTargetTurret JS-only helper
-  (no callers; only the slab-aware
-  scoreMirrorTargetTurretFromTarget is consumed by pickMirrorTarget-
-  Turret) has been deleted under Delete The Old Path.
-  The aim_error_yaw/pitch fields on the Rust combat-targeting slab
-  have also been deleted: the kernel only ever wrote them (and zeroed
-  them on disable) but never read them; JS Turret.aimErrorYaw/Pitch
-  is computed by updateTurretRotation each tick and read by
-  isWeaponAimedForFire in the same tick, so the slab round-trip
-  through stamping + writeback was dead bandwidth. combat_targeting_
-  set_turret's signature lost two f32 params, the disabled-weapon
-  reset stopped touching them, and the two Vec storages + pointer
-  exports were dropped. JS Turret.aimErrorYaw/Pitch lives on as a
-  local-only field between updateTurretRotation and the firing pass.
-  The mount-kinematics writeback (worldPos / worldVelocity /
-  worldPosTick) has been deleted from writeBackCombatTargetingEntity:
-  live consumers read the slab directly. A new
-  readCombatTargetingTurretMountKinematicsInto helper exposes both
-  the slab's current-tick mount position and mount velocity; the
-  combatUtils helpers (resolveWeaponWorldMount,
-  updateWeaponWorldKinematics) check the slab first before falling
-  back to the JS Turret cache or recomputing from chassis pose, and
-  updateWeaponWorldKinematics mirrors slab pos+vel into the JS
-  Turret cache so direct readers of weapon.worldVelocity (projectile
-  launch inheritance in projectileSystem, commander dgun launch in
-  commandExecution) see the slab's value without a code change. The
-  aim solver's writeTurretMountVelocity also queries the slab first
-  via the same reader so turret aim solves consume the current-tick
-  mount velocity instead of a one-tick-stale JS Turret cache. The
-  writeBackCombatTargetingEntity signature lost its kinematicsTick
-  parameter and the SKIP-mode call site in targetingSchedulerBridge
-  dropped the corresponding `null` argument.
-  ClientUnitPrediction is now slab-first too: the force-field engaged
-  check inside applyClientCombatExpensivePrediction and the
-  clientUnitPredictionIsSettled gate both go through a small
-  isTurretEngaged helper that reads readCombatTargetingTurretFsmInto
-  first and falls back to JS Turret.state only on remote clients
-  where no sim runs and the slab is unstamped. This was the last
-  downstream consumer of weapon.state without a slab-first fast path.
-  The unused combat.hasActiveCombat boolean has been deleted under
-  Delete The Old Path — it was written by writeBackCombatTargetingEntity
-  and updateCombatActivityFlags but never read anywhere; the
-  CombatComponent shape, every initializer (NetworkEntityFactory /
-  spawn / WorldState), and both writer paths drop it in the same
-  change.
-  The writeback's per-turret activity-mask scan no longer calls
-  hasTurretSimulationActiveCombat / isFiringCombatTurret on the JS
-  Turret it just wrote from the slab. It now reads target/state
-  directly from views.state[idx] / targetId, so the mask bookkeeping
-  stays correct after the JS Turret.target / Turret.state writes
-  above are eventually dropped. hasTurretRotationWork still reads
-  turret.angularVelocity / turret.pitchVelocity because those are
-  JS-only fields the Rust kernel never sees.
-  Done when: rendering/firing/snapshot consumers read targeting state
-  from the slab so the remaining JS Turret writeback can be deleted.
-  The JS Turret.target / Turret.state writeback has been deleted from
-  writeBackCombatTargetingEntity: every sim-hot reader is slab-first,
-  every mid-tick mutation routes through dropTurretLockMidTick (which
-  still updates JS Turret.target / Turret.state for the JS-only
-  activity-mask path), and the unused decodeCombatTargetingTurretState
-  helper was deleted under Delete The Old Path. JS Turret.target /
-  Turret.state on the sim hot path now drift relative to the slab
-  between dropTurretLockMidTick calls; that is fine because no
-  slab-first reader reads them. The writeback still does the per-turret
-  beam inverse target index sync, the disabled-turret JS-only field
-  reset (angular/pitch velocity + acceleration, burst.remaining,
-  forceField.transition/range), and the Rust mask kernel call that
-  mirrors slab masks into combat.activeTurretMask /
-  combat.firingTurretMask.
-  cooldown / burstCooldown are no longer JS writeback fields and the
-  JS Turret.cooldown field itself is gone: the combat-targeting slab
-  is now the single source of truth. NetworkEntityFactory no longer
-  preserves prev.cooldown on snapshot-driven slot reuse (the slab is
-  reseeded anyway, and the JS field had no consumer). runtimeTurrets
-  no longer initializes Turret.cooldown. Input stamping uses a 0 seed
-  on slot reuse and the previous slab cooldown for same-entity slots,
-  so the kernel's per-tick decrement persists across ticks without an
-  intervening JS round-trip. readTurretCooldownForFire /
-  readTurretBurstCooldownForFire now have no JS fallback parameter —
-  the firing pass is sim-only and the slab is always present.
-  Per-turret angular/pitch velocity now lives on the combat-targeting
-  slab. Input stamping copies them through the extended
-  combat_targeting_set_turret signature; the JS turretSystem rotation
-  pass writes the updated values back via the Float32Array views before
-  it calls the slab-side activity-mask refresh.
-  Per-entity activeTurretMask / firingTurretMask are now Rust-owned:
-  combat_targeting_refresh_activity_masks_for_entity walks the slab's
-  FSM target/state + angular/pitch velocity + config flags, then writes
-  the masks into entity_active_turret_mask / entity_firing_turret_mask
-  on the slab. JS readers consume the masks through
-  readActiveTurretMaskForUnit / readFiringTurretMaskForUnit (slab-first
-  with a JS combat.* fallback for non-sim paths). The writeback path,
-  turretSystem rotation pass, and projectileSystem fire pass all route
-  through refreshSlabActivityMasksForUnit instead of the legacy JS
-  updateCombatActivityFlags scan; mid-tick lock drops in turretSystem /
-  projectileSystem call combatTargeting.clearTurretFsm to sync the slab
-  state ahead of the refresh. The mid-tick
-  `combat.firingTurretMask &= ~bit` writes in turretSystem are gone —
-  the post-pass refresh re-derives the mask from the cleared slab
-  state. The slab-aware helpers live in combatActivitySlab.ts so
-  combatActivity.ts can stay JS-only (NetworkEntityFactory entity
-  construction, GameServer mirror / force-field toggles, and
-  commandExecution's clearCombatActivityFlags still call into it).
-  Likely next moves: the writeback's remaining JS bridge work is
-  the beam inverse target index sync + disabled-turret JS-only field
-  reset + activity-mask refresh. Moving the beam index to Rust (so
-  the kernel maintains the target → beam-weapon mapping internally
-  and JS only reads it for death cleanup) would let the per-turret
-  writeback loop collapse into the single Rust mask call. The
-  disabled-turret JS-only field reset is small and bound to JS-only
-  Turret fields the kernel never sees; it could move to a JS-only
-  helper called by GameServer's mirror / force-field disable paths
-  instead of being part of every tick's writeback. Either change
-  shrinks the per-tick boundary work further but neither is required
-  for the FSM port itself, which is complete.
+What:
+Every tick, for every turret on every alive armed entity, JS reads the
+new slab targetId and updates the beam inverse index so death handlers
+can answer "which beams were aimed at me?" in O(k). The index is a JS
+Map keyed on entity id.
 
+Fix:
+Move the inverse-index maintenance inside the Rust targeting kernel so
+the mapping updates in place whenever the kernel writes a target. JS
+keeps a read-only view and consults it only during death cleanup.
+
+Done when:
+writeBackCombatTargetingEntity no longer calls syncBeamWeaponTargetIndex
+per turret; the Rust kernel owns the index; the JS targetIndex.ts
+becomes a read-only wrapper around slab pointers (or is deleted if no
+JS reader survives).
+
+------------------------------------------------------------------------------
+AIM-08.7 - disabled-turret JS-only field reset still runs every tick.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/sim/combat/targetingInputStamping.ts::
+  writeBackCombatTargetingEntity (per-turret loop calling
+  resetDisabledTurretJsOnlyFields when weaponSystemDisabled is true).
+
+What:
+For every turret with weaponSystemDisabled === true, the per-tick
+writeback zeros angular/pitch velocity + acceleration, burst.remaining,
+and forceField.transition/range. These are JS-only Turret fields the
+kernel never sees; the slab-side reset is already done by the
+scheduler's reset_disabled_weapons pass. Running the reset every tick
+does no harm but wastes a per-turret loop iteration on entities whose
+disabled-set never changes.
+
+Fix:
+Move the JS-only reset to a transition-time helper invoked only at the
+moments weaponSystemDisabled actually flips from false to true:
+- GameServer mirror enable/disable toggle path.
+- GameServer force-field enable/disable toggle path.
+- Per-turret config.visualOnly changes (currently startup-only).
+
+Done when:
+writeBackCombatTargetingEntity no longer calls
+resetDisabledTurretJsOnlyFields; only the disable-transition paths call
+it, and weaponSystemDisabled stops being read in the per-tick loop.
+
+------------------------------------------------------------------------------
+AIM-08.8 - combat.activeTurretMask / combat.firingTurretMask are still
+           mirrored from the slab every tick.
+------------------------------------------------------------------------------
+
+Where:
+- src/game/sim/combat/targetingInputStamping.ts::
+  writeBackCombatTargetingEntity (final block: reads
+  views.activeTurretMask[slot] / views.firingTurretMask[slot] into
+  combat.activeTurretMask / combat.firingTurretMask).
+
+What:
+The Rust kernel owns the masks on the slab. The JS mirror exists for
+transitional readers that still touch combat.activeTurretMask /
+combat.firingTurretMask directly instead of calling
+readActiveTurretMaskForUnit / readFiringTurretMaskForUnit.
+
+Fix:
+Repoint every remaining direct reader of combat.activeTurretMask /
+combat.firingTurretMask to the slab-first readers in
+combatActivitySlab.ts (slab-first with combat.* fallback for non-sim
+paths). Then drop the JS mirror; the writeback's final block becomes
+just the refreshActivityMasksForEntity call and the activeMask !== 0
+return.
+
+Done when:
+No sim-path reader reads combat.activeTurretMask /
+combat.firingTurretMask; writeBackCombatTargetingEntity stops mirroring
+the masks; the non-sim fallback in the slab-first readers either
+disappears or is documented as remote-client-only.
+
+------------------------------------------------------------------------------
+AIM-08.9 - dropTurretLockMidTick still writes JS Turret.target /
+           Turret.state.
+------------------------------------------------------------------------------
+
+Where:
+- The mid-tick mutation helper clears both the slab and the JS Turret
+  in one call. The slab-side clear is necessary. The JS-side write
+  exists because legacy activity-mask code read JS Turret.target /
+  Turret.state.
+- Callers include turretSystem mid-tick lock drops, projectileSystem
+  fire-time invalidations, forceFieldTurret transitions, and death
+  cleanup paths.
+
+What:
+AIM-08.5 moved the activity-mask kernel to read slab state directly,
+so the JS Turret target/state writes inside dropTurretLockMidTick may
+now be unnecessary. The blob's earlier note ("JS Turret.target /
+Turret.state on the sim hot path therefore drift away from the slab
+between dropTurretLockMidTick calls; that is fine because no slab-first
+reader reads them") suggests the writes are already redundant for
+in-sim consumers, but no audit has confirmed it.
+
+Fix:
+Audit every consumer of Turret.target / Turret.state across the
+codebase. For each one, confirm it is slab-first or non-sim only.
+Then drop the JS Turret writes from dropTurretLockMidTick and keep
+only the slab clear.
+
+Done when:
+dropTurretLockMidTick clears slab only; no reader treats the JS fields
+as authoritative on the sim hot path; ideally the JS Turret.target /
+Turret.state fields themselves can be deleted in the same change (with
+Turret.aimErrorYaw/Pitch as the lone JS-local exception, since
+updateTurretRotation and isWeaponAimedForFire use them within the same
+tick without crossing the slab).
+
+------------------------------------------------------------------------------
+AIM-08.10 - writeBackCombatTargetingEntity should disappear once
+            AIM-08.6 / .7 / .8 land.
+------------------------------------------------------------------------------
+
+What:
+With the per-turret beam-index sync (.6), disabled-field reset (.7),
+and JS mask mirror (.8) gone, the writeback function is just
+refreshActivityMasksForEntity + read activeMask. That work belongs
+inside the scheduler kernel itself - it already knows which slots it
+processed.
+
+Fix:
+Extend combat_targeting_schedule_and_tick_batch to refresh activity
+masks for every processed entity as part of the same batch, and return
+an active-set bitmask (or processed-entity flag array) for the JS-side
+"does this entity still need rotation/fire integration?" gate. Then
+delete writeBackCombatTargetingEntity entirely.
+
+Done when:
+targetingSchedulerBridge.ts has no JS bridge loop after the schedule
+call; the activity-mask refresh is a Rust kernel responsibility; the
+"hasActiveTurretWork" decision comes from the scheduler return value,
+not a per-entity post-pass.
