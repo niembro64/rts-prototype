@@ -22,59 +22,32 @@ SNAP-WIRE-01 - parent: snapshot payloads exceed the current per-client
 ------------------------------------------------------------------------------
 
 Evidence:
-- With roughly 200 on-screen units, PLAYER CLIENT telemetry showed
-  DIFFSNAP avg around 150 KiB, about 130% over the current reasonable
-  64 KiB DIFFSNAP target.
-- FULLSNAP avg showed about 1.2 MiB, about 17% over the current
-  reasonable 1 MiB FULLSNAP target.
-- At 30 DIFFSNAPs/sec plus 1 FULLSNAP/sec, those numbers imply roughly
-  45 Mbps per remote client before WebRTC overhead.
+- The latest 2026-05-22 fixed-point capture in
+  docs/dp-02-snapshot-wire-instrumentation.md shows the roughly
+  200-unit DIFFSNAP stream back inside budget: 52,554 B avg and
+  114,475 B hi, against the 64 KiB avg / 128 KiB hi targets.
+- The same capture still shows FULLSNAP bootstrap at 1,076,601 B,
+  about 28 KiB over the 1 MiB avg target, though still inside the
+  1.25 MiB hi budget.
+- The remaining large DIFFSNAP sections were audio events (~26.5 KiB),
+  entities (~18.6 KiB), minimap entities (~4.0 KiB), and projectiles
+  (~2.8 KiB). Further wins need structural row packing and
+  section-specific budgets, not generic transport compression.
+- At 30 DIFFSNAPs/sec plus 1 FULLSNAP/sec, those current average
+  numbers imply roughly 21.2 Mbps per remote client before WebRTC
+  overhead.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
-A 4-client game at this rate can require well over 150 Mbps of host
-upstream just for state snapshots, before commands, WebRTC framing,
-retransmits, congestion behavior, and other traffic.
+Even when the 200-unit delta stream is under target, every remote client
+multiplies host upstream, FULLSNAP is still slightly over target, and
+the 1,000 / 5,000-unit rows still need to be proven against the same
+network budgets.
 
 Fix direction:
-Do the child items below as separate, measurable PRs. Each item must
-report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
-bar, preferably with the same unit count and snapshot cadence.
-
-------------------------------------------------------------------------------
-SNAP-WIRE-02 - beam and rocket turrets render head-only and skip aim
-               motion on the wire (DONE on landing of this change).
-------------------------------------------------------------------------------
-
-What changed:
-- Added a `headOnly: boolean` flag on TurretBlueprint, set true for
-  the beam family (beamTurret, miniBeam, megaBeamTurret, towerBeamTurret)
-  and the rocket family (salvoRocketTurret, fastRocketTurret).
-- 3D renderer skips barrel mesh construction and the per-tick
-  applyTurretAimPose3D call for these turrets. The head sphere is the
-  whole visual; it shows the unit's player color when idle / tracking
-  and flips to white when turret.state === 'engaged'.
-- Snapshot serializer pins rot / vel / pitch / pitchVel to 0 for
-  headOnly turrets on the wire. captureEntityState + the Rust turret
-  pool sync mirror this, so the JS / Rust diff masks both see 0-vs-0
-  on aim motion and no longer dirty the host entity from rotation
-  drift. Target / engaged-state / forceField-range transitions still
-  dirty the entity normally.
-- Sim still tracks the live rotation / pitch internally for beam
-  direction and rocket launch &mdash; only the wire and the renderer
-  drop the values.
-
-Why it matters:
-A tracking turret used to push its host entity into ENTITY_CHANGED_TURRETS
-every frame from yaw/pitch threshold breaches. The wire payload remained
-fixed-stride (10 floats per turret), so reducing dirty frequency was the
-bandwidth lever rather than the per-row width.
-
-Follow-up worth measuring:
-- Compare DIFFSNAP / FULLSNAP sizes on a battle dominated by beam +
-  rocket units (e.g. the `units.json` mix that bundles miniBeam on
-  smaller chassis, plus a salvoRocketTurret line).
-- If the wire savings warrant it, consider a follow-up that shrinks
-  the wire stride per turret to skip the four angular slots entirely
-  when headOnly is set &mdash; would require coordinated changes in the
-  Rust wire encoder/decoder and would be the natural sequel.
+Do child items as separate, measurable PRs. Prioritize structural
+compression in the largest remaining sections: audio events, entity
+rows, minimap entity rows, projectile rows, and FULLSNAP keyframe/static
+sections. Each item must report before/after DS SIZE and FS SIZE numbers
+from the PLAYER CLIENT bar, preferably with the same unit count and
+snapshot cadence.
