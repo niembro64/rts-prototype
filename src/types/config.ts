@@ -19,6 +19,9 @@ export type SnapshotConfig = {
   minimapSnapshotRateHz: number;
   entityDetailSnapshotRateHz: number;
   projectileDetailSnapshotRateHz: number;
+  highCountEntityLodUnitThreshold: number;
+  highCountForeignEntitySnapshotCadence: number;
+  highCountMinimapSnapshotRateHz: number;
   fullSnapshotCompression: FullSnapshotCompressionConfig;
 };
 

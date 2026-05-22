@@ -96,6 +96,7 @@ export class ServerSnapshotPublisher {
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
+  private emitSequence = 0;
   private minimapSnapshotCounter = 0;
   private entityDetailSnapshotCounter = 0;
   private projectileDetailSnapshotCounter = 0;
@@ -104,6 +105,7 @@ export class ServerSnapshotPublisher {
   reset(): void {
     this.isFirstSnapshot = true;
     this.snapshotCounter = 0;
+    this.emitSequence = 0;
     this.minimapSnapshotCounter = 0;
     this.entityDetailSnapshotCounter = 0;
     this.projectileDetailSnapshotCounter = 0;
@@ -125,9 +127,11 @@ export class ServerSnapshotPublisher {
     const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
     const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
 
+    const emitSequence = this.emitSequence++;
+    const unitCount = input.world.getUnits().length;
     const isDelta = this.resolveSnapshotDelta(input.keyframeRatio);
     const emitMinimapOnDelta = isDelta
-      ? this.resolveMinimapDeltaEmit(input.maxSnapshotsDisplay)
+      ? this.resolveMinimapDeltaEmit(input.maxSnapshotsDisplay, unitCount)
       : this.resolveMinimapKeyframeEmit();
     const emitEntityDetailsOnDelta = isDelta
       ? this.resolveEntityDetailDeltaEmit(input.maxSnapshotsDisplay)
@@ -158,7 +162,7 @@ export class ServerSnapshotPublisher {
       gridEnabled: input.debugGridPublisher.isEnabled(),
       allowedUnits: input.backgroundMode ? input.backgroundAllowedTypes : undefined,
       maxUnits: input.world.maxTotalUnits,
-      unitCount: input.world.getUnits().length,
+      unitCount,
       mirrorsEnabled: input.world.mirrorsEnabled,
       forceFieldsEnabled: input.world.forceFieldsEnabled,
       forceFieldsObstructSight: input.world.forceFieldsObstructSight,
@@ -265,6 +269,7 @@ export class ServerSnapshotPublisher {
         removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
         visibility,
+        snapshotSequence: emitSequence,
         emitEntityDetailFields: shouldEmitEntityDetails,
         emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
         audioOverride,
@@ -385,8 +390,8 @@ export class ServerSnapshotPublisher {
     return true;
   }
 
-  private resolveMinimapDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.minimapSnapshotRateHz;
+  private resolveMinimapDeltaEmit(snapshotRate: SnapshotRate, unitCount: number): boolean {
+    const targetHz = this.resolveMinimapTargetHz(unitCount);
     if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
     const sourceHz = snapshotRateHz(snapshotRate);
     const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
@@ -399,6 +404,19 @@ export class ServerSnapshotPublisher {
   private resolveMinimapKeyframeEmit(): boolean {
     this.minimapSnapshotCounter = 0;
     return true;
+  }
+
+  private resolveMinimapTargetHz(unitCount: number): number {
+    const highCountThreshold = SNAPSHOT_CONFIG.highCountEntityLodUnitThreshold;
+    const highCountHz = SNAPSHOT_CONFIG.highCountMinimapSnapshotRateHz;
+    if (
+      unitCount >= highCountThreshold &&
+      Number.isFinite(highCountHz) &&
+      highCountHz > 0
+    ) {
+      return Math.min(SNAPSHOT_CONFIG.minimapSnapshotRateHz, highCountHz);
+    }
+    return SNAPSHOT_CONFIG.minimapSnapshotRateHz;
   }
 
   private resolveEntityDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {

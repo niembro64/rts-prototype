@@ -26,6 +26,7 @@ type PooledSimEvent = NetworkServerSnapshotSimEvent & {
  *  the shared snapshotPool.ts helper owns the get / advance / reset
  *  bookkeeping. */
 const audioPools = new Map<string, SnapshotPool<NetworkServerSnapshotSimEvent>>();
+const _attackAlertVictimPlayers = new Set<number>();
 
 function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
   const event: PooledSimEvent = {
@@ -83,6 +84,7 @@ export function serializeAudioEvents(
 ): NetworkServerSnapshotSimEvent[] | undefined {
   const state = getOrCreateSnapshotPool(audioPools, resolveSnapshotPoolKey(trackingKey));
   state.index = 0;
+  _attackAlertVictimPlayers.clear();
   if (!audioEvents || audioEvents.length === 0) return undefined;
 
   const audioBuf = state.buf;
@@ -95,6 +97,11 @@ export function serializeAudioEvents(
     // visibility gate entirely and decide solely on victimPlayerId.
     if (source.type === 'attackAlert') {
       if (!visibility || !visibility.isAuthoredByRecipient(source.victimPlayerId)) continue;
+      const victimPlayerId = source.victimPlayerId;
+      if (victimPlayerId !== undefined) {
+        if (_attackAlertVictimPlayers.has(victimPlayerId)) continue;
+        _attackAlertVictimPlayers.add(victimPlayerId);
+      }
     } else if (visibility) {
       // FOW-OPT-08: one bucket walk for both the vision and earshot
       // checks. Previously this was a sequential

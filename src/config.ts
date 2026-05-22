@@ -159,6 +159,17 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //                             corrections on delta snapshots. Beam
 //                             points carry velocity, so clients coast
 //                             between lower-rate authoritative paths.
+//   highCountEntityLodUnitThreshold — active-unit count at which remote
+//                             clients begin receiving foreign
+//                             movement/turret deltas in staggered
+//                             buckets instead of every delta. Owned
+//                             and allied entities remain full-rate.
+//   highCountForeignEntitySnapshotCadence — number of high-count delta
+//                             snapshots over which foreign
+//                             movement/turret-only entity updates are
+//                             spread.
+//   highCountMinimapSnapshotRateHz — minimap cadence cap used only
+//                             after the high-count threshold is met.
 //   fullSnapshotCompression — disabled-by-default experimental
 //                             transport compression for FULLSNAP
 //                             payloads only. Toggle for A/B captures;
