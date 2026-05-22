@@ -59,6 +59,7 @@ function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
     burnMarkWidth: collisionRadius * 1.5,
     lineRadius: 0,
     lineDamageSphereRadius: 0,
+    lineEmissionOffset: 0,
   };
 }
 
@@ -99,6 +100,7 @@ function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
     burnMarkWidth: shot.width * 2,
     lineRadius: shot.radius,
     lineDamageSphereRadius: shot.damageSphere.radius,
+    lineEmissionOffset: shot.type === 'beam' ? shot.emissionOffset : 0,
   };
 }
 

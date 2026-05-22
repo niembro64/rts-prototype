@@ -140,6 +140,9 @@ export type BeamShotBlueprint = {
   width: number;
   /** Endpoint damage sphere radius. */
   damageSphere: { radius: number };
+  /** Distance forward from the turret mount center where the beam is
+   *  "generated" (visually + for damage). 0 emits from the mount center. */
+  emissionOffset: number;
   hitSound: SoundEntry | null;
 };
 
@@ -217,6 +220,8 @@ export type BeamShot = {
   width: number;
   /** Endpoint damage sphere. */
   damageSphere: { radius: number };
+  /** Forward offset from the turret mount center where the beam starts. */
+  emissionOffset: number;
 };
 
 // Laser shot: pulsed line weapon with duration + cooldown.
@@ -318,6 +323,9 @@ export type ShotVisualProfile = {
   burnMarkWidth: number;
   lineRadius: number;
   lineDamageSphereRadius: number;
+  /** Forward offset (world units) from the turret mount center to where the
+   *  beam visually + physically begins. 0 for non-beam line shots. */
+  lineEmissionOffset: number;
 };
 
 export type ShotProfile = {

@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { isLineShotType } from '../sim/types';
+import { getPlayerColors, isLineShotType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
@@ -25,10 +25,16 @@ import beamConfig from './beamConfig.json';
 // constants below shape buffer sizes and cylinder geometry, not look.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_CAP = 4096;
+const BEAM_EMITTER_CAP = 4096;
 const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
+/** Sphere drawn at the beam emission point (the "generator orb" in front
+ *  of the turret). Sized as a multiple of the beam's body radius so larger
+ *  beams get larger emitter orbs. */
+const EMITTER_SPHERE_RADIUS_MULT = 1.5;
+const EMITTER_MIN_RADIUS = 1.0;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -240,6 +246,8 @@ function createBeamVisualLayer(
 export class BeamRenderer3D {
   private root: THREE.Group;
   private readonly layers: BeamVisualLayer[];
+  private readonly emitterMesh: THREE.InstancedMesh;
+  private readonly emitterColor = new THREE.Color();
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
@@ -264,6 +272,17 @@ export class BeamRenderer3D {
     this.layers = BEAM_VISUAL_LAYERS.map((layer, i) =>
       createBeamVisualLayer(this.root, layer.config, layer.radiusMultiplier, 12 + i),
     );
+
+    // Opaque "generator orb" at each active beam's emission point. Uses
+    // per-instance color so each orb takes its firing unit's player color.
+    const emitterGeom = new THREE.SphereGeometry(1, 16, 12);
+    const emitterMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    this.emitterMesh = new THREE.InstancedMesh(emitterGeom, emitterMat, BEAM_EMITTER_CAP);
+    this.emitterMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.emitterMesh.frustumCulled = false;
+    this.emitterMesh.renderOrder = 11;
+    this.emitterMesh.count = 0;
+    this.root.add(this.emitterMesh);
   }
 
   private placeSegment(
@@ -355,6 +374,7 @@ export class BeamRenderer3D {
   }
 
   private hasActiveVisuals(): boolean {
+    if (this.emitterMesh.count > 0) return true;
     return this.layers.some(
       (layer) => layer.activeSegmentCount > 0 || layer.activeEndpointCount > 0,
     );
@@ -390,6 +410,7 @@ export class BeamRenderer3D {
 
     let segIdx = 0;
     let endpointIdx = 0;
+    let emitterIdx = 0;
 
     for (const e of projectiles) {
       const pt = e.projectile?.projectileType;
@@ -419,6 +440,7 @@ export class BeamRenderer3D {
         ENDPOINT_MIN_RADIUS,
         profile.lineDamageSphereRadius,
       );
+      const emissionOffset = profile.lineEmissionOffset;
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
@@ -440,8 +462,44 @@ export class BeamRenderer3D {
           snapStartX = mount.x;
           snapStartY = mount.y;
           snapStartZ = mount.z;
+          // Mount cache stores position only — re-derive the firing
+          // direction from the snapshot's first segment so the snapped
+          // start point sits at mount + emissionOffset * forwardDir.
+          if (emissionOffset > 0) {
+            const nextPoint = points[1];
+            const ndx = nextPoint.x - startPoint.x;
+            const ndy = nextPoint.y - startPoint.y;
+            const ndz = nextPoint.z - startPoint.z;
+            const nlen = Math.sqrt(ndx * ndx + ndy * ndy + ndz * ndz);
+            if (nlen > 1e-5) {
+              const inv = emissionOffset / nlen;
+              snapStartX += ndx * inv;
+              snapStartY += ndy * inv;
+              snapStartZ += ndz * inv;
+            }
+          }
           hasSnapStart = true;
         }
+      }
+
+      // Emitter "generator orb" at the beam start. Use the snapped
+      // position when available so the orb tracks the turret smoothly
+      // between snapshots; otherwise fall back to the snapshot's start.
+      if (emissionOffset > 0 && emitterIdx < BEAM_EMITTER_CAP) {
+        const orbRadius = Math.max(
+          EMITTER_MIN_RADIUS,
+          profile.lineRadius * EMITTER_SPHERE_RADIUS_MULT,
+        );
+        const orbX = hasSnapStart ? snapStartX : startPoint.x;
+        const orbY = hasSnapStart ? snapStartY : startPoint.y;
+        const orbZ = hasSnapStart ? snapStartZ : startPoint.z;
+        // three uses (x, height=z, y); match the segment placement.
+        this._matrix.makeScale(orbRadius, orbRadius, orbRadius);
+        this._matrix.setPosition(orbX, orbZ, orbY);
+        this.emitterMesh.setMatrixAt(emitterIdx, this._matrix);
+        this.emitterColor.set(getPlayerColors(proj.ownerId).primary);
+        this.emitterMesh.setColorAt(emitterIdx, this.emitterColor);
+        emitterIdx++;
       }
 
       for (let i = 0; i < lastIdx; i += stride) {
@@ -539,6 +597,19 @@ export class BeamRenderer3D {
       }
       layer.activeEndpointCount = endpointIdx;
     }
+
+    this.emitterMesh.count = emitterIdx;
+    if (emitterIdx > 0) {
+      this.emitterMesh.instanceMatrix.clearUpdateRanges();
+      this.emitterMesh.instanceMatrix.addUpdateRange(0, emitterIdx * 16);
+      this.emitterMesh.instanceMatrix.needsUpdate = true;
+      const colorAttr = this.emitterMesh.instanceColor;
+      if (colorAttr) {
+        colorAttr.clearUpdateRanges();
+        colorAttr.addUpdateRange(0, emitterIdx * 3);
+        colorAttr.needsUpdate = true;
+      }
+    }
   }
 
   destroy(): void {
@@ -546,6 +617,7 @@ export class BeamRenderer3D {
       disposeMesh(layer.segmentMesh);
       disposeMesh(layer.endpointMesh);
     }
+    disposeMesh(this.emitterMesh);
     detachObject(this.root);
   }
 }

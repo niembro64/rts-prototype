@@ -390,6 +390,7 @@ function buildShotConfig(
       radius: shotBlueprint.radius,
       width: shotBlueprint.width,
       damageSphere: { radius: shotBlueprint.damageSphere.radius },
+      emissionOffset: shotBlueprint.emissionOffset,
     };
     return shot;
   }

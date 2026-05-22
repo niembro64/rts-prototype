@@ -509,17 +509,28 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         }
 
         if (isBeamWeapon) {
+          // Beam shots can have an emission offset that pushes the visual+
+          // physical start point forward from the turret mount, so the beam
+          // appears to "generate" in the air in front of the turret.
+          const beamEmissionOffset =
+            shot.type === 'beam' ? (shot as BeamShot).emissionOffset : 0;
+          const beamStartX = spawnX + dirX * beamEmissionOffset;
+          const beamStartY = spawnY + dirY * beamEmissionOffset;
+          const beamStartZ = spawnZ + dirZ * beamEmissionOffset;
+
           // Line shots are bounded by the turret's 3D firing sphere.
           // Beam length is true 3D distance — a pitched beam exits the
           // sphere at the same radius as a level one, so altitude
-          // separation costs reach the way physical range should.
+          // separation costs reach the way physical range should. The
+          // sphere is centered on the turret mount (not the offset start),
+          // so emissionOffset doesn't change effective range.
           const rangeSphere = _lineShotRangeSphere;
           rangeSphere.centerX = weaponX;
           rangeSphere.centerY = weaponY;
           rangeSphere.centerZ = mountZ;
           rangeSphere.radius = weapon.ranges.fire.max.release;
           const endpoint = resolveLineShotRangeSphereEndpoint(
-            spawnX, spawnY, spawnZ,
+            beamStartX, beamStartY, beamStartZ,
             dirX, dirY, dirZ,
             rangeSphere,
             _lineShotRangeEnd,
@@ -530,7 +541,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
 
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
-          const beam = world.createBeam(spawnX, spawnY, spawnZ, endX, endY, playerId, unit.id, projectileConfig, beamProjectileType);
+          const beam = world.createBeam(beamStartX, beamStartY, beamStartZ, endX, endY, playerId, unit.id, projectileConfig, beamProjectileType);
           if (beam.projectile) {
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
@@ -544,7 +555,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
           newProjectiles.push(beam);
           spawnEvents.push({
             id: beam.id,
-            pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: yaw,
+            pos: { x: beamStartX, y: beamStartY, z: beamStartZ }, rotation: yaw,
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretId: config.id,
@@ -555,7 +566,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             turretIndex: weaponIndex,
             barrelIndex,
             beam: {
-              start: { x: spawnX, y: spawnY, z: spawnZ },
+              start: { x: beamStartX, y: beamStartY, z: beamStartZ },
               end: { x: endX, y: endY, z: endZ },
             },
           });
@@ -1008,9 +1019,10 @@ export function updateProjectiles(
           if (isContinuous) proj.timeAlive = 0;
         }
 
-        // Keep beam starts on the turret mount center, matching the
-        // projectile-spawn path. Direction still follows the current
-        // yaw + pitch, so the visible barrel points along the shot.
+        // Beam starts follow the turret mount center plus a forward
+        // emissionOffset along the current aim direction. Direction
+        // still follows the current yaw + pitch, so the visible barrel
+        // points along the shot.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
@@ -1031,11 +1043,15 @@ export function updateProjectiles(
         const dirX = Math.cos(turretAngle) * dirPitchCos;
         const dirY = Math.sin(turretAngle) * dirPitchCos;
         const dirZ = Math.sin(turretPitch);
+        const beamEmissionOffset = proj.config.shotProfile.visual.lineEmissionOffset;
+        const beamStartX = beamMount.x + dirX * beamEmissionOffset;
+        const beamStartY = beamMount.y + dirY * beamEmissionOffset;
+        const beamStartZ = beamMount.z + dirZ * beamEmissionOffset;
         // Ensure points polyline exists (createBeam seeds 2-point line at
         // spawn; defensive-init covers any path that forgot to).
         const points = proj.points ?? (proj.points = [
-          createBeamPoint(beamMount.x, beamMount.y, beamMount.z),
-          createBeamPoint(beamMount.x, beamMount.y, beamMount.z),
+          createBeamPoint(beamStartX, beamStartY, beamStartZ),
+          createBeamPoint(beamStartX, beamStartY, beamStartZ),
         ]);
 
         // Start-point velocity = (current start − last tick's start) / dt.
@@ -1050,9 +1066,9 @@ export function updateProjectiles(
           proj.prevStartZ !== undefined
         ) {
           const inv = 1 / dtSec;
-          const vx = (beamMount.x - proj.prevStartX) * inv;
-          const vy = (beamMount.y - proj.prevStartY) * inv;
-          const vz = (beamMount.z - proj.prevStartZ) * inv;
+          const vx = (beamStartX - proj.prevStartX) * inv;
+          const vy = (beamStartY - proj.prevStartY) * inv;
+          const vz = (beamStartZ - proj.prevStartZ) * inv;
           startPoint.vx = vx;
           startPoint.vy = vy;
           startPoint.vz = vz;
@@ -1072,28 +1088,30 @@ export function updateProjectiles(
         } else {
           writeZeroBeamMotion(startPoint);
         }
-        proj.prevStartX = beamMount.x;
-        proj.prevStartY = beamMount.y;
-        proj.prevStartZ = beamMount.z;
+        proj.prevStartX = beamStartX;
+        proj.prevStartY = beamStartY;
+        proj.prevStartZ = beamStartZ;
         proj.prevStartVx = startPoint.vx;
         proj.prevStartVy = startPoint.vy;
         proj.prevStartVz = startPoint.vz;
-        startPoint.x = beamMount.x;
-        startPoint.y = beamMount.y;
-        startPoint.z = beamMount.z;
+        startPoint.x = beamStartX;
+        startPoint.y = beamStartY;
+        startPoint.z = beamStartZ;
         clearBeamReflectorMetadata(startPoint);
 
         // Per-tick re-trace. The beam is bounded by the firing
-        // turret's 3D fire-release sphere. The first segment runs to the
-        // sphere edge; reflected segments are clipped against the same
-        // original sphere inside findBeamPath.
+        // turret's 3D fire-release sphere centered on the mount (not
+        // the offset start), so emissionOffset doesn't change reach.
+        // The first segment runs to the sphere edge; reflected
+        // segments are clipped against the same original sphere
+        // inside findBeamPath.
         const rangeSphere = _lineShotRangeSphere;
         rangeSphere.centerX = beamMount.x;
         rangeSphere.centerY = beamMount.y;
         rangeSphere.centerZ = beamMount.z;
         rangeSphere.radius = weapon.ranges.fire.max.release;
         const endpoint = resolveLineShotRangeSphereEndpoint(
-          beamMount.x, beamMount.y, beamMount.z,
+          beamStartX, beamStartY, beamStartZ,
           dirX, dirY, dirZ,
           rangeSphere,
           _lineShotRangeEnd,
