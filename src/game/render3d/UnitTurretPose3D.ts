@@ -4,6 +4,10 @@ import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
+import {
+  blendHexTowardWhite,
+  entityInstanceColorHex,
+} from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
@@ -11,10 +15,10 @@ import type { TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
 
-/** Color the head sphere shows when a headOnly (beam/rocket) turret is
- *  engaged — i.e. has acquired and is firing on a target. Idle/tracking
- *  states fall back to the entity's normal player/construction color. */
-const HEADONLY_LOCKED_ON_COLOR_HEX = 0xffffff;
+/** How far the engaged headOnly turret head shifts from the unit's
+ *  player color toward white. 0 = unchanged player color, 1 = pure
+ *  white. 0.5 = halfway between the two, the canonical lock-on cue. */
+const HEADONLY_LOCKED_ON_WHITE_WEIGHT = 0.5;
 
 export type UnitTurretPose3DUpdate = {
   entity: Entity;
@@ -108,12 +112,17 @@ export class UnitTurretPose3D {
         turretMesh.headRadius !== undefined
       ) {
         // headOnly turrets (beam/rocket) communicate lock-on by
-        // switching head color to white when engaged — the visual
-        // replaces the missing barrel as the "this turret has acquired
-        // a target" signal.
+        // shifting their head color halfway to white when engaged — the
+        // visual replaces the missing barrel as the "this turret has
+        // acquired a target" signal. Per-frame blend keeps the cue
+        // owner-aware (each player still reads as themselves, just
+        // brightened) instead of flattening everyone to the same white.
         const headColorOverride =
           turretMesh.headOnly && turret.state === 'engaged'
-            ? HEADONLY_LOCKED_ON_COLOR_HEX
+            ? blendHexTowardWhite(
+                entityInstanceColorHex(entity),
+                HEADONLY_LOCKED_ON_WHITE_WEIGHT,
+              )
             : undefined;
         this.writeHeadInstance(
           entity,
