@@ -32,6 +32,7 @@ const DEFAULT_FAN_SPIN_RAD_PER_SEC = 42;
 const DEFAULT_FAN_OUTWARD_ANGLE_DEG = 14;
 const FAN_BLADE_PITCH_DEG = 24;
 const FAN_BLADE_COUNT = 3;
+const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
@@ -261,6 +262,23 @@ export function buildHoverFans(
           fanRadius: tailFanRadius,
           ringTubeRadius: tailRingTubeRadius,
           outwardAngleRad: tailBackAngleRad,
+          smokeProfile: SMALL_FAN_SMOKE,
+        },
+        entityId,
+        fans.length,
+      ));
+    }
+  } else if (cfg.fanLayout === 'triFront') {
+    const fanDist = unitRadius * Math.hypot(cfg.fanDistX, cfg.fanDistY);
+    for (const angle of TRI_FRONT_FAN_ANGLES_RAD) {
+      fans.push(buildFan(
+        group,
+        {
+          localX: Math.cos(angle) * fanDist,
+          localZ: Math.sin(angle) * fanDist,
+          fanRadius: mainFanRadius,
+          ringTubeRadius: mainRingTubeRadius,
+          outwardAngleRad,
           smokeProfile: SMALL_FAN_SMOKE,
         },
         entityId,

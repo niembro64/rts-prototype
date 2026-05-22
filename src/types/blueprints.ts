@@ -291,6 +291,8 @@ export type HoverConfig = {
   hoverHeightEMA?: number;
   fanDistX: number;
   fanDistY: number;
+  /** Visual fan placement. Omit for the legacy four-corner quad. */
+  fanLayout?: 'quad' | 'triFront';
   fanRadius: number;
   fanRingTubeRadius: number;
   /** Degrees each duct tilts away from the unit center. The exhaust

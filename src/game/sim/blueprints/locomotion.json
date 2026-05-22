@@ -351,6 +351,7 @@
       "hoverHeightEMA": 0.99,
       "fanDistX": 0.58,
       "fanDistY": 0.62,
+      "fanLayout": "triFront",
       "fanRadius": 0.32,
       "fanRingTubeRadius": 0.035,
       "fanOutwardAngleDeg": 14,
