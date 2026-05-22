@@ -17,7 +17,6 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { GRAVITY } from '../../../config';
-import { clearCombatActivityFlags } from './combatActivity';
 import {
   CT_TARGETING_TICK_MODE_AUTO,
   CT_TARGETING_TICK_MODE_CLEAR_LOCKS,
@@ -117,15 +116,12 @@ function flushTargetingBatch(
     const unit = sourceEntities[i];
     if (mode === CT_TARGETING_TICK_MODE_SKIP) {
       // Probe-skipped: no FSM transitions ran, but cooldowns may have
-      // ticked down on the slab. Mirror those back to JS Turret so
-      // firing / snapshot encode read the same numbers as the slab.
-      // Activity flags stay zero because a probe-skip means no live
-      // turret work, no firing, no rotation — clear them here since
-      // the per-entity prep loop no longer does it up front.
+      // ticked down on the slab. Refresh masks so the per-entity
+      // activity flags reflect the slab's view (zero for a probe-skip
+      // because nothing fired or rotated).
       if (_targetingBatchHasCooldown[i] !== 0) {
         writeBackCombatTargetingEntity(unit);
       }
-      clearCombatActivityFlags(unit.combat!);
       continue;
     }
     const combat = unit.combat!;

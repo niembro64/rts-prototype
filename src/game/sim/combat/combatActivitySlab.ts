@@ -1,52 +1,38 @@
 // AIM-08.5 — Slab-aware activity-mask helpers used by sim hot paths.
 //
-// Split out of combatActivity.ts so the slab-reading code can import
-// from targetingInputStamping (views + state-encoding helpers) without
-// creating a circular module dependency:
-//   combatActivity   -> (nothing slab-side)
-//   combatActivitySlab -> targetingInputStamping -> combatActivity
-//
-// JS-only callers (NetworkEntityFactory init, GameServer mirror /
-// force-field toggles, commandExecution fire-enabled) keep using
-// combatActivity's updateCombatActivityFlags. Sim hot paths
-// (turretSystem, projectileSystem, targeting bridge writeback) route
-// through the helpers here so the Rust mask kernel is the single
-// source of truth.
+// AIM-08.8 — the previous transitional JS mirror
+// (`combat.activeTurretMask` / `combat.firingTurretMask`) is gone; the
+// Rust kernel's slab is the single source of truth and JS readers go
+// through `readActiveTurretMaskForUnit` / `readFiringTurretMaskForUnit`
+// directly.
 
 import type { CombatComponent, Entity, Turret } from '../types';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimWasm } from '../../sim-wasm/init';
-import { clearCombatActivityFlags, updateCombatActivityFlags } from './combatActivity';
 import { getCombatTargetingStateViews } from './targetingInputStamping';
 
 /** Slab-first activity-mask refresh used by sim hot paths.
  *
  *  Writes the current JS Turret angular/pitch velocity into the slab
  *  (the kernel needs them to compute hasTurretRotationWork inline),
- *  invokes the Rust mask kernel, and mirrors the slab masks back to
- *  combat.activeTurretMask / combat.firingTurretMask for the
- *  transitional JS readers that still touch the JS fields.
- *
- *  Mid-tick FSM state mutations (`weapon.state = 'idle'`,
- *  `weapon.target = null`) must also write through to the slab via
- *  clearTurretFsmOnSlab so the kernel sees the cleared state when
- *  computing masks here. Falls back to the JS-only
- *  updateCombatActivityFlags path when the sim is not available or
- *  the entity is missing a spatial slot. */
+ *  then invokes the Rust mask kernel. Mid-tick FSM state mutations
+ *  (`weapon.state = 'idle'`, `weapon.target = null`) must also write
+ *  through to the slab via clearTurretFsmOnSlab so the kernel sees
+ *  the cleared state when computing masks here. No-op when the sim is
+ *  unavailable or the entity is missing a spatial slot — the slab is
+ *  the only consumer of these masks, so there is nothing to fall
+ *  back to. */
 export function refreshSlabActivityMasksForUnit(
   unit: Entity,
   combat: CombatComponent,
-): boolean {
+): void {
   const sim = getSimWasm();
-  if (sim === undefined) return updateCombatActivityFlags(combat);
+  if (sim === undefined) return;
   const slot = spatialGrid.getSlot(unit.id);
-  if (slot < 0) return updateCombatActivityFlags(combat);
+  if (slot < 0) return;
   const targeting = sim.combatTargeting;
   const turretCount = Math.min(targeting.turretCount(slot), combat.turrets.length);
-  if (turretCount <= 0) {
-    clearCombatActivityFlags(combat);
-    return false;
-  }
+  if (turretCount <= 0) return;
   const views = getCombatTargetingStateViews(sim);
   const maxTurrets = targeting.maxTurretsPerEntity();
   const turretBase = slot * maxTurrets;
@@ -57,11 +43,6 @@ export function refreshSlabActivityMasksForUnit(
     views.pitchVelocity[idx] = turret.pitchVelocity;
   }
   targeting.refreshActivityMasksForEntity(slot);
-  const activeMask = views.activeTurretMask[slot];
-  const firingMask = views.firingTurretMask[slot];
-  combat.activeTurretMask = activeMask;
-  combat.firingTurretMask = firingMask;
-  return activeMask !== 0;
 }
 
 /** Slab-side mid-tick lock clear. Mirrors the JS
@@ -107,41 +88,28 @@ export function dropTurretLockMidTick(
   clearTurretFsmOnSlab(unit, weaponIndex);
 }
 
-/** Slab-first read of the per-entity active-turret mask with a JS
- *  fallback. Sim hot paths (turretSystem) use this to gate the
- *  per-turret rotation loop on the Rust-computed mask without
- *  reading the transitional combat.activeTurretMask mirror. */
-export function readActiveTurretMaskForUnit(
-  unit: Entity,
-  combat: CombatComponent,
-): number {
+/** Slab read of the per-entity active-turret mask. Sim hot paths
+ *  (turretSystem) use this to gate the per-turret rotation loop on the
+ *  Rust-computed mask. Returns 0 when the sim is unavailable or the
+ *  entity has no spatial slot — both cases mean "no work to do this
+ *  tick", which is the correct gate for the rotation loop. */
+export function readActiveTurretMaskForUnit(unit: Entity): number {
   const sim = getSimWasm();
-  if (sim !== undefined) {
-    const slot = spatialGrid.getSlot(unit.id);
-    if (slot >= 0) {
-      const views = getCombatTargetingStateViews(sim);
-      return views.activeTurretMask[slot];
-    }
-  }
-  return combat.activeTurretMask;
+  if (sim === undefined) return 0;
+  const slot = spatialGrid.getSlot(unit.id);
+  if (slot < 0) return 0;
+  return getCombatTargetingStateViews(sim).activeTurretMask[slot];
 }
 
-/** Slab-first read of the per-entity firing-turret mask with a JS
- *  fallback. Used by projectileSystem to gate the fire pass on the
- *  Rust-computed mask. */
-export function readFiringTurretMaskForUnit(
-  unit: Entity,
-  combat: CombatComponent,
-): number {
+/** Slab read of the per-entity firing-turret mask. Used by
+ *  projectileSystem to gate the fire pass on the Rust-computed mask.
+ *  Same fallback shape as `readActiveTurretMaskForUnit`. */
+export function readFiringTurretMaskForUnit(unit: Entity): number {
   const sim = getSimWasm();
-  if (sim !== undefined) {
-    const slot = spatialGrid.getSlot(unit.id);
-    if (slot >= 0) {
-      const views = getCombatTargetingStateViews(sim);
-      return views.firingTurretMask[slot];
-    }
-  }
-  return combat.firingTurretMask;
+  if (sim === undefined) return 0;
+  const slot = spatialGrid.getSlot(unit.id);
+  if (slot < 0) return 0;
+  return getCombatTargetingStateViews(sim).firingTurretMask[slot];
 }
 
 /** Resolve a (unit, weaponIndex) pair to a flat per-turret slab

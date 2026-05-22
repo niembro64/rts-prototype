@@ -273,14 +273,6 @@ export type CombatComponent = {
    *  attack commands clear back to `-1` implicitly by setting
    *  priorityTargetId, and live/cooldown weapons process every tick. */
   nextCombatProbeTick: number;
-  /** Per-tick combat hot-path masks, written by the targeting
-   *  scheduler bridge.
-   *  Bit i set in activeTurretMask means turret i still needs rotation
-   *  integration this tick; bit i set in firingTurretMask means turret i
-   *  is eligible for the fire/recoil path. These are transient sim-only
-   *  fields and are never serialized. */
-  activeTurretMask: number;
-  firingTurretMask: number;
 };
 
 // Building component - static structures with a real 3D extent.

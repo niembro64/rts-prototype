@@ -265,8 +265,6 @@ function placeCompleteBuilding(
       priorityTargetId: null,
       priorityTargetPoint: null,
       nextCombatProbeTick: -1,
-      activeTurretMask: 0,
-      firingTurretMask: 0,
     };
   }
 

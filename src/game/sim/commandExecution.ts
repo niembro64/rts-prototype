@@ -41,7 +41,6 @@ import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { pushUnitAction, setUnitActions, shiftUnitAction, spliceUnitActions, unshiftUnitAction } from './unitActions';
-import { clearCombatActivityFlags } from './combat/combatActivity';
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
@@ -648,7 +647,6 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
       combat.nextCombatProbeTick = -1;
-      clearCombatActivityFlags(combat);
       // Drop every turret's lock everywhere in one call per turret:
       // JS Turret target + state, beam inverse index, and the slab
       // FSM tuple. The previous version only touched the JS Turret

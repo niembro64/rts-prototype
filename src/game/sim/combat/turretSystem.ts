@@ -23,7 +23,6 @@
 import type { WorldState } from '../WorldState';
 import type { Entity } from '../types';
 import { resolveWeaponWorldMount, turretMaskIncludes } from './combatUtils';
-import { clearCombatActivityFlags } from './combatActivity';
 import {
   dropTurretLockMidTick,
   readActiveTurretMaskForUnit,
@@ -56,19 +55,13 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     if (!unit.combat || !unit.ownership) continue;
     const combat = unit.combat;
     const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
-    if (hostHp <= 0) {
-      clearCombatActivityFlags(combat);
-      continue;
-    }
+    if (hostHp <= 0) continue;
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
-    if (unit.buildable && !unit.buildable.isComplete) {
-      clearCombatActivityFlags(combat);
-      continue;
-    }
+    if (unit.buildable && !unit.buildable.isComplete) continue;
 
     const { cos, sin } = getTransformCosSin(unit.transform);
-    const activeMask = readActiveTurretMaskForUnit(unit, combat);
+    const activeMask = readActiveTurretMaskForUnit(unit);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 

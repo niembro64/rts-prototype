@@ -32,7 +32,6 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { clearCombatActivityFlags } from './combatActivity';
 import { turretDps } from './mirrorTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 import {
@@ -623,9 +622,10 @@ function stampCombatTargetingEntityInto(
 
 /** Refresh per-entity slab bookkeeping after the targeting kernel ran.
  *  The Rust mask kernel computes activeTurretMask / firingTurretMask
- *  from slab state and we mirror those into combat.activeTurretMask /
- *  combat.firingTurretMask for the transitional JS readers that still
- *  touch those mask fields. Returns true when any turret still needs
+ *  from slab state; readers (turretSystem, projectileSystem) pull
+ *  those values straight from the slab via
+ *  `readActiveTurretMaskForUnit` / `readFiringTurretMaskForUnit` in
+ *  combatActivitySlab.ts. Returns true when any turret still needs
  *  rotation/fire integration after writeback.
  *
  *  AIM-08.6 — the beam inverse target index is no longer mirrored
@@ -640,6 +640,11 @@ function stampCombatTargetingEntityInto(
  *  moments where a turret becomes disabled (mirror/force-field
  *  toggles in GameServer), via
  *  `resetDisabledTurretJsOnlyFields` in combatActivity.ts.
+ *
+ *  AIM-08.8 — the slab's activity-mask values are no longer mirrored
+ *  back to `combat.activeTurretMask` / `combat.firingTurretMask`. The
+ *  JS fields are gone; every sim-hot reader pulls from the slab
+ *  directly.
  *
  *  JS Turret.target / Turret.state are no longer mirrored from the
  *  slab: every sim-hot reader (turretSystem rotation, projectileSystem
@@ -663,25 +668,15 @@ export function writeBackCombatTargetingEntity(entity: Entity): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return false;
   const slot = spatialGrid.getSlot(entity.id);
-  if (slot < 0) {
-    clearCombatActivityFlags(combat);
-    return false;
-  }
+  if (slot < 0) return false;
 
   const targeting = sim.combatTargeting;
   const turretCount = targeting.turretCount(slot);
-  if (turretCount <= 0) {
-    clearCombatActivityFlags(combat);
-    return false;
-  }
+  if (turretCount <= 0) return false;
 
   const views = getCombatTargetingStateViews(sim);
   targeting.refreshActivityMasksForEntity(slot);
-  const activeMask = views.activeTurretMask[slot];
-  const firingMask = views.firingTurretMask[slot];
-  combat.activeTurretMask = activeMask;
-  combat.firingTurretMask = firingMask;
-  return activeMask !== 0;
+  return views.activeTurretMask[slot] !== 0;
 }
 
 /** Rebuild every targetable unit/building row before the FSM runs.

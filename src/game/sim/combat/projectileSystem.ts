@@ -320,7 +320,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
     const combat = unit.combat;
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-    const firingMask = readFiringTurretMaskForUnit(unit, combat);
+    const firingMask = readFiringTurretMaskForUnit(unit);
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
 

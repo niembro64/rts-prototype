@@ -49,10 +49,7 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
 import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
-import {
-  resetDisabledTurretJsOnlyFields,
-  updateCombatActivityFlags,
-} from '../sim/combat/combatActivity';
+import { resetDisabledTurretJsOnlyFields } from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
@@ -672,7 +669,6 @@ export class GameServer {
         turret.state = 'idle';
         resetDisabledTurretJsOnlyFields(turret);
       }
-      updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
     }
   }
@@ -691,7 +687,6 @@ export class GameServer {
         turret.state = 'idle';
         resetDisabledTurretJsOnlyFields(turret);
       }
-      updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
     }
   }

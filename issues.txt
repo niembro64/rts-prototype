@@ -56,37 +56,6 @@ and deletes the predecessor in the same change (see "Delete The Old
 Path"). No "we will come back to it later" parity flags.
 
 ------------------------------------------------------------------------------
-AIM-08.8 - combat.activeTurretMask / combat.firingTurretMask are still
-           mirrored from the slab every tick.
-------------------------------------------------------------------------------
-
-Where:
-- src/game/sim/combat/targetingInputStamping.ts::
-  writeBackCombatTargetingEntity (final block: reads
-  views.activeTurretMask[slot] / views.firingTurretMask[slot] into
-  combat.activeTurretMask / combat.firingTurretMask).
-
-What:
-The Rust kernel owns the masks on the slab. The JS mirror exists for
-transitional readers that still touch combat.activeTurretMask /
-combat.firingTurretMask directly instead of calling
-readActiveTurretMaskForUnit / readFiringTurretMaskForUnit.
-
-Fix:
-Repoint every remaining direct reader of combat.activeTurretMask /
-combat.firingTurretMask to the slab-first readers in
-combatActivitySlab.ts (slab-first with combat.* fallback for non-sim
-paths). Then drop the JS mirror; the writeback's final block becomes
-just the refreshActivityMasksForEntity call and the activeMask !== 0
-return.
-
-Done when:
-No sim-path reader reads combat.activeTurretMask /
-combat.firingTurretMask; writeBackCombatTargetingEntity stops mirroring
-the masks; the non-sim fallback in the slab-first readers either
-disappears or is documented as remote-client-only.
-
-------------------------------------------------------------------------------
 AIM-08.9 - dropTurretLockMidTick still writes JS Turret.target /
            Turret.state.
 ------------------------------------------------------------------------------
