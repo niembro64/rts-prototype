@@ -21,7 +21,8 @@ type SuspensionSub = NonNullable<UnitSub['suspension']>;
 
 const PACKED_ENTITIES_V1_VERSION = 1;
 const PACKED_ENTITIES_V2_VERSION = 2;
-const PACKED_ENTITIES_VERSION = 3;
+const PACKED_ENTITIES_V3_VERSION = 3;
+const PACKED_ENTITIES_VERSION = 4;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -74,6 +75,7 @@ const MOVEMENT_UNIT_CHANGED_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL;
+const PACKED_ENTITY_BINARY_HEADER_BYTES = 4;
 
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
@@ -92,12 +94,15 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 //   [flags, id, playerId, ...optional fields in fixed slot order]
 // The flags field tells the decoder which optional fields follow.
 //
-// Encoding stays in msgpack-friendly primitives (numbers, strings,
-// nested arrays) so neither the JS encoder nor the Rust raw-msgpack
-// fallback need a custom extension type.
+// Detail rows stay in msgpack-friendly primitives (numbers, strings,
+// nested arrays). V4 movement-only and split unit-turret rows use
+// Uint8Array varint slabs so the high-count paths pay one binary field
+// header instead of a MessagePack tag per coordinate.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitRows = number[];
+export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretRows = number[];
+export type PackedUnitTurretBytes = Uint8Array;
 
 export type PackedEntitySnapshotWireV1 = {
   v: typeof PACKED_ENTITIES_V1_VERSION;
@@ -111,42 +116,55 @@ export type PackedEntitySnapshotWireV2 = {
 };
 
 export type PackedEntitySnapshotWireV3 = {
-  v: typeof PACKED_ENTITIES_VERSION;
+  v: typeof PACKED_ENTITIES_V3_VERSION;
   m?: PackedMovementUnitRows;
   t?: PackedUnitTurretRows;
+  e?: PackedEntityRow[];
+};
+
+export type PackedEntitySnapshotWireV4 = {
+  v: typeof PACKED_ENTITIES_VERSION;
+  m?: PackedMovementUnitBytes;
+  t?: PackedUnitTurretBytes;
   e?: PackedEntityRow[];
 };
 
 export type PackedEntitySnapshotWire =
   | PackedEntitySnapshotWireV1
   | PackedEntitySnapshotWireV2
-  | PackedEntitySnapshotWireV3;
+  | PackedEntitySnapshotWireV3
+  | PackedEntitySnapshotWireV4;
 
 export function packEntitiesForWire(
   entities: readonly NetworkServerSnapshotEntity[] | undefined,
 ): PackedEntitySnapshotWire | undefined {
   if (entities === undefined) return undefined;
-  const movementRows: PackedMovementUnitRows = [];
-  const turretRows: PackedUnitTurretRows = [];
+  let movementRows: PackedEntityBinaryWriter | undefined;
+  let turretRows: PackedEntityBinaryWriter | undefined;
   const detailRows: PackedEntityRow[] = [];
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (isMovementOnlyUnitDelta(entity)) {
+      if (movementRows === undefined) movementRows = new PackedEntityBinaryWriter(entities.length);
       appendMovementUnitDeltaRow(movementRows, entity);
     } else if (isSplitUnitTurretDelta(entity)) {
       if (hasMovementUnitDeltaFields(entity)) {
+        if (movementRows === undefined) movementRows = new PackedEntityBinaryWriter(entities.length);
         appendMovementUnitDeltaRow(movementRows, entity);
       }
+      if (turretRows === undefined) turretRows = new PackedEntityBinaryWriter(entities.length);
       appendUnitTurretDeltaRow(turretRows, entity);
     } else {
       detailRows.push(packEntityRow(entity));
     }
   }
 
-  const packed: PackedEntitySnapshotWireV3 = { v: PACKED_ENTITIES_VERSION };
-  if (movementRows.length > 0) packed.m = movementRows;
-  if (turretRows.length > 0) packed.t = turretRows;
-  if (detailRows.length > 0 || (movementRows.length === 0 && turretRows.length === 0)) {
+  const packed: PackedEntitySnapshotWireV4 = { v: PACKED_ENTITIES_VERSION };
+  const movementBytes = movementRows?.finish();
+  const turretBytes = turretRows?.finish();
+  if (movementBytes !== undefined) packed.m = movementBytes;
+  if (turretBytes !== undefined) packed.t = turretBytes;
+  if (detailRows.length > 0 || (movementBytes === undefined && turretBytes === undefined)) {
     packed.e = detailRows;
   }
   return packed;
@@ -165,7 +183,10 @@ export function unpackEntitiesFromWire(
   }
 
   const movementRows = packed.m;
-  const turretRows = packed.v === PACKED_ENTITIES_VERSION ? packed.t : undefined;
+  const turretRows = packed.v === PACKED_ENTITIES_V3_VERSION ||
+    packed.v === PACKED_ENTITIES_VERSION
+    ? packed.t
+    : undefined;
   const detailRows = packed.e;
   const movementCount = countMovementUnitDeltaRows(movementRows);
   const turretCount = countUnitTurretDeltaRows(turretRows);
@@ -200,10 +221,17 @@ export function isPackedEntitySnapshotWire(
       (candidate.e === undefined || Array.isArray(candidate.e))
     );
   }
+  if (candidate.v === PACKED_ENTITIES_V3_VERSION) {
+    return (
+      (candidate.m === undefined || isFiniteNumberArray(candidate.m)) &&
+      (candidate.t === undefined || isFiniteNumberArray(candidate.t)) &&
+      (candidate.e === undefined || Array.isArray(candidate.e))
+    );
+  }
   if (candidate.v !== PACKED_ENTITIES_VERSION) return false;
   return (
-    (candidate.m === undefined || isFiniteNumberArray(candidate.m)) &&
-    (candidate.t === undefined || isFiniteNumberArray(candidate.t)) &&
+    (candidate.m === undefined || candidate.m instanceof Uint8Array) &&
+    (candidate.t === undefined || candidate.t instanceof Uint8Array) &&
     (candidate.e === undefined || Array.isArray(candidate.e))
   );
 }
@@ -280,6 +308,121 @@ function isFiniteNumberArray(value: unknown): value is number[] {
     if (typeof value[i] !== 'number' || !Number.isFinite(value[i])) return false;
   }
   return true;
+}
+
+class PackedEntityBinaryWriter {
+  private bytes: Uint8Array;
+  private view: DataView;
+  private length = PACKED_ENTITY_BINARY_HEADER_BYTES;
+  private count = 0;
+
+  constructor(estimatedRows: number) {
+    this.bytes = new Uint8Array(Math.max(
+      16,
+      PACKED_ENTITY_BINARY_HEADER_BYTES + estimatedRows * 18,
+    ));
+    this.view = new DataView(this.bytes.buffer);
+  }
+
+  writeVarUint(value: number): void {
+    let v = Math.max(0, Math.floor(value));
+    while (v >= 0x80) {
+      this.writeByte((v % 0x80) | 0x80);
+      v = Math.floor(v / 0x80);
+    }
+    this.writeByte(v);
+  }
+
+  writeVarInt(value: number): void {
+    const v = Math.round(value);
+    this.writeVarUint(v < 0 ? (-v * 2) - 1 : v * 2);
+  }
+
+  writeFloat64(value: number): void {
+    this.ensureCapacity(8);
+    this.view.setFloat64(this.length, value, true);
+    this.length += 8;
+  }
+
+  finishRow(): void {
+    this.count++;
+  }
+
+  finish(): Uint8Array | undefined {
+    if (this.count === 0) return undefined;
+    this.bytes[0] = this.count & 0xff;
+    this.bytes[1] = Math.floor(this.count / 0x100) & 0xff;
+    this.bytes[2] = Math.floor(this.count / 0x10000) & 0xff;
+    this.bytes[3] = Math.floor(this.count / 0x1000000) & 0xff;
+    return this.bytes.subarray(0, this.length);
+  }
+
+  private writeByte(value: number): void {
+    this.ensureCapacity(1);
+    this.bytes[this.length++] = value;
+  }
+
+  private ensureCapacity(additionalBytes: number): void {
+    const needed = this.length + additionalBytes;
+    if (needed <= this.bytes.length) return;
+
+    let nextLength = this.bytes.length;
+    while (nextLength < needed) nextLength *= 2;
+    const next = new Uint8Array(nextLength);
+    next.set(this.bytes.subarray(0, this.length));
+    this.bytes = next;
+    this.view = new DataView(next.buffer);
+  }
+}
+
+class PackedEntityBinaryReader {
+  private readonly view: DataView;
+  private offset = PACKED_ENTITY_BINARY_HEADER_BYTES;
+
+  constructor(private readonly bytes: Uint8Array) {
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  }
+
+  get count(): number {
+    return packedEntityBinaryRowCount(this.bytes);
+  }
+
+  readVarUint(): number {
+    let value = 0;
+    let multiplier = 1;
+    while (this.offset < this.bytes.byteLength) {
+      const byte = this.bytes[this.offset++];
+      value += (byte & 0x7f) * multiplier;
+      if ((byte & 0x80) === 0) return value;
+      multiplier *= 0x80;
+    }
+    return value;
+  }
+
+  readVarInt(): number {
+    const value = this.readVarUint();
+    return value % 2 === 0 ? value / 2 : -((value + 1) / 2);
+  }
+
+  readFloat64(): number {
+    if (this.offset + 8 > this.bytes.byteLength) {
+      this.offset = this.bytes.byteLength;
+      return 0;
+    }
+    const value = this.view.getFloat64(this.offset, true);
+    this.offset += 8;
+    return value;
+  }
+}
+
+function packedEntityBinaryRowCount(rows: Uint8Array): number {
+  if (rows.byteLength < PACKED_ENTITY_BINARY_HEADER_BYTES) return 0;
+  return (
+    rows[0] +
+    rows[1] * 0x100 +
+    rows[2] * 0x10000 +
+    rows[3] * 0x1000000
+  );
 }
 
 function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
@@ -364,7 +507,7 @@ function hasMovementUnitDeltaFields(entity: NetworkServerSnapshotEntity): boolea
 }
 
 function appendMovementUnitDeltaRow(
-  rows: PackedMovementUnitRows,
+  rows: PackedEntityBinaryWriter,
   entity: NetworkServerSnapshotEntity,
 ): void {
   let flags = 0;
@@ -379,50 +522,63 @@ function appendMovementUnitDeltaRow(
   if (orientation !== undefined) flags |= MOVEMENT_UNIT_FLAG_ORIENTATION;
   if (angularVelocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY;
 
-  rows.push(flags, entity.id, entity.playerId);
+  rows.writeVarUint(flags);
+  rows.writeVarUint(entity.id);
+  rows.writeVarUint(entity.playerId);
   if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
-    rows.push(pos!.x, pos!.y, pos!.z);
+    rows.writeVarInt(pos!.x);
+    rows.writeVarInt(pos!.y);
+    rows.writeVarInt(pos!.z);
   }
   if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
-    rows.push(entity.rotation!);
+    rows.writeVarInt(entity.rotation!);
   }
   if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
-    rows.push(velocity!.x, velocity!.y, velocity!.z);
+    rows.writeVarInt(velocity!.x);
+    rows.writeVarInt(velocity!.y);
+    rows.writeVarInt(velocity!.z);
   }
   if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
-    rows.push(orientation!.x, orientation!.y, orientation!.z, orientation!.w);
+    rows.writeFloat64(orientation!.x);
+    rows.writeFloat64(orientation!.y);
+    rows.writeFloat64(orientation!.z);
+    rows.writeFloat64(orientation!.w);
   }
   if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
-    rows.push(angularVelocity!.x, angularVelocity!.y, angularVelocity!.z);
+    rows.writeFloat64(angularVelocity!.x);
+    rows.writeFloat64(angularVelocity!.y);
+    rows.writeFloat64(angularVelocity!.z);
   }
+  rows.finishRow();
 }
 
 function appendUnitTurretDeltaRow(
-  rows: PackedUnitTurretRows,
+  rows: PackedEntityBinaryWriter,
   entity: NetworkServerSnapshotEntity,
 ): void {
   const turrets = entity.unit!.turrets!;
-  rows.push(entity.id, entity.playerId, turrets.length);
+  rows.writeVarUint(entity.id);
+  rows.writeVarUint(entity.playerId);
+  rows.writeVarUint(turrets.length);
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];
     const angular = turret.turret.angular;
     let flags = 0;
     if (turret.targetId !== undefined) flags |= TURRET_FLAG_TARGET_ID;
     if (turret.currentForceFieldRange !== undefined) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
-    rows.push(
-      flags,
-      turret.turret.id,
-      turret.state,
-      angular.rot,
-      angular.vel,
-      angular.pitch,
-      angular.pitchVel,
-    );
-    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) rows.push(turret.targetId!);
+    rows.writeVarUint(flags);
+    rows.writeVarUint(turret.turret.id);
+    rows.writeVarUint(turret.state);
+    rows.writeVarInt(angular.rot);
+    rows.writeVarInt(angular.vel);
+    rows.writeVarInt(angular.pitch);
+    rows.writeVarInt(angular.pitchVel);
+    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) rows.writeVarUint(turret.targetId!);
     if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
-      rows.push(turret.currentForceFieldRange!);
+      rows.writeFloat64(turret.currentForceFieldRange!);
     }
   }
+  rows.finishRow();
 }
 
 function movementUnitChangedFields(flags: number): number {
@@ -452,9 +608,10 @@ function movementUnitDeltaRowWidth(flags: number): number {
 }
 
 function countMovementUnitDeltaRows(
-  rows: PackedMovementUnitRows | undefined,
+  rows: PackedMovementUnitRows | PackedMovementUnitBytes | undefined,
 ): number {
   if (rows === undefined) return 0;
+  if (rows instanceof Uint8Array) return packedEntityBinaryRowCount(rows);
   let count = 0;
   let i = 0;
   while (i < rows.length) {
@@ -478,9 +635,10 @@ function unitTurretRowWidth(rows: PackedUnitTurretRows, offset: number): number 
 }
 
 function countUnitTurretDeltaRows(
-  rows: PackedUnitTurretRows | undefined,
+  rows: PackedUnitTurretRows | PackedUnitTurretBytes | undefined,
 ): number {
   if (rows === undefined) return 0;
+  if (rows instanceof Uint8Array) return packedEntityBinaryRowCount(rows);
   let count = 0;
   let i = 0;
   while (i < rows.length) {
@@ -491,10 +649,14 @@ function countUnitTurretDeltaRows(
 }
 
 function unpackMovementUnitDeltaRows(
-  rows: PackedMovementUnitRows,
+  rows: PackedMovementUnitRows | PackedMovementUnitBytes,
   out: NetworkServerSnapshotEntity[],
   outIndex: number,
 ): number {
+  if (rows instanceof Uint8Array) {
+    return unpackMovementUnitDeltaBytes(rows, out, outIndex);
+  }
+
   let i = 0;
   while (i < rows.length) {
     const flags = rows[i++] as number;
@@ -553,11 +715,79 @@ function unpackMovementUnitDeltaRows(
   return outIndex;
 }
 
-function unpackUnitTurretDeltaRows(
-  rows: PackedUnitTurretRows,
+function unpackMovementUnitDeltaBytes(
+  rows: PackedMovementUnitBytes,
   out: NetworkServerSnapshotEntity[],
   outIndex: number,
 ): number {
+  const reader = new PackedEntityBinaryReader(rows);
+  const count = reader.count;
+  for (let i = 0; i < count; i++) {
+    const flags = reader.readVarUint();
+    const id = reader.readVarUint();
+    const playerId = reader.readVarUint() as PlayerId;
+    const entity: NetworkServerSnapshotEntity = {
+      id,
+      type: 'unit',
+      playerId,
+      changedFields: movementUnitChangedFields(flags),
+    };
+    if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
+      entity.pos = {
+        x: reader.readVarInt(),
+        y: reader.readVarInt(),
+        z: reader.readVarInt(),
+      };
+    }
+    if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
+      entity.rotation = reader.readVarInt();
+    }
+    if (
+      (flags & (
+        MOVEMENT_UNIT_FLAG_VELOCITY |
+        MOVEMENT_UNIT_FLAG_ORIENTATION |
+        MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY
+      )) !== 0
+    ) {
+      const unit: UnitSub = {};
+      if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
+        unit.velocity = {
+          x: reader.readVarInt(),
+          y: reader.readVarInt(),
+          z: reader.readVarInt(),
+        };
+      }
+      if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
+        unit.orientation = {
+          x: reader.readFloat64(),
+          y: reader.readFloat64(),
+          z: reader.readFloat64(),
+          w: reader.readFloat64(),
+        };
+      }
+      if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
+        unit.angularVelocity3 = {
+          x: reader.readFloat64(),
+          y: reader.readFloat64(),
+          z: reader.readFloat64(),
+        };
+      }
+      entity.unit = unit;
+    }
+    out[outIndex++] = entity;
+  }
+  return outIndex;
+}
+
+function unpackUnitTurretDeltaRows(
+  rows: PackedUnitTurretRows | PackedUnitTurretBytes,
+  out: NetworkServerSnapshotEntity[],
+  outIndex: number,
+): number {
+  if (rows instanceof Uint8Array) {
+    return unpackUnitTurretDeltaBytes(rows, out, outIndex);
+  }
+
   let i = 0;
   while (i < rows.length) {
     const id = rows[i++] as number;
@@ -581,6 +811,49 @@ function unpackUnitTurretDeltaRows(
       if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
       if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
         turret.currentForceFieldRange = rows[i++] as number;
+      }
+      turrets[turretIndex] = turret;
+    }
+    out[outIndex++] = {
+      id,
+      type: 'unit',
+      playerId,
+      changedFields: ENTITY_CHANGED_TURRETS,
+      unit: { turrets },
+    };
+  }
+  return outIndex;
+}
+
+function unpackUnitTurretDeltaBytes(
+  rows: PackedUnitTurretBytes,
+  out: NetworkServerSnapshotEntity[],
+  outIndex: number,
+): number {
+  const reader = new PackedEntityBinaryReader(rows);
+  const count = reader.count;
+  for (let i = 0; i < count; i++) {
+    const id = reader.readVarUint();
+    const playerId = reader.readVarUint() as PlayerId;
+    const turretCount = reader.readVarUint();
+    const turrets: NetworkServerSnapshotTurret[] = new Array(turretCount);
+    for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
+      const flags = reader.readVarUint();
+      const turretId = reader.readVarUint() as NetworkServerSnapshotTurret['turret']['id'];
+      const state = reader.readVarUint() as NetworkServerSnapshotTurret['state'];
+      const angular: TurretAngular = {
+        rot: reader.readVarInt(),
+        vel: reader.readVarInt(),
+        pitch: reader.readVarInt(),
+        pitchVel: reader.readVarInt(),
+      };
+      const turret: NetworkServerSnapshotTurret = {
+        turret: { id: turretId, angular },
+        state,
+      };
+      if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
+      if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
+        turret.currentForceFieldRange = reader.readFloat64();
       }
       turrets[turretIndex] = turret;
     }

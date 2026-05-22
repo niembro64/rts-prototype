@@ -124,6 +124,16 @@ Evidence:
   322,977 B hi but remains over budget; average packed sections were
   `entities` 143,557 B, `minimapEntities` 28,350 B, `projectiles`
   26,873 B, and `audioEvents` 21,555 B.
+- The 2026-05-22 version-4 entity wire pass moves the active
+  movement-only and split unit-turret rows from MessagePack number
+  arrays into binary varint slabs while preserving V1-V3 decode
+  support. Offline 5,000-row synthetic probes measured the packed
+  entity sub-shape at 109,967 B -> 82,103 B for pos+vel movement
+  rows (25.3% reduction), 145,773 B -> 113,064 B for a mixed
+  movement sample (22.4% reduction), and 324,490 B -> 254,315 B for
+  split movement+turret rows (21.6% reduction). V3/V4 decoded DTOs
+  matched exactly in those probes. The live high-count matrix still
+  needs to be rerun before this child can be closed.
 
 Why it matters:
 The remaining bandwidth problem is steady-state upstream, not rare
