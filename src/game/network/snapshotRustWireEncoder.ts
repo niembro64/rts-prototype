@@ -59,6 +59,10 @@ import {
   type Float64WireRows,
   type Uint32WireRows,
 } from './snapshotWireRows';
+import {
+  isPackedAudioEventsWire,
+  type NetworkServerSnapshotWire,
+} from './snapshotAudioWirePack';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 
@@ -1683,6 +1687,12 @@ function emitTopLevelKey(
       return;
     }
     case 'audioEvents': {
+      if (isPackedAudioEventsWire(value)) {
+        // Already converted from DTO objects into the compact audio wire
+        // shape by snapshotWireCodec; don't count it as raw DTO fallback.
+        emitRawKeyValue(api, key, value);
+        return;
+      }
       const events = value as NetworkServerSnapshotSimEvent[];
       if (!canEncodeAudioEvents(events)) {
         rawTopLevelKeys.push(key);
@@ -1742,7 +1752,7 @@ function emitTopLevelKey(
 
 function emitEnvelopeTail(
   sim: SimWasm,
-  state: NetworkServerSnapshot,
+  state: NetworkServerSnapshotWire,
   keys: readonly string[],
   startIndex: number,
 ): number {
@@ -1813,7 +1823,7 @@ function emitEnvelopeTail(
 }
 
 export function encodeNetworkSnapshotWithRustFallback(
-  state: NetworkServerSnapshot,
+  state: NetworkServerSnapshotWire,
 ): RustSnapshotEncodeResult | null {
   const sim = getSimWasm();
   if (!sim) return null;

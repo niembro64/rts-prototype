@@ -9,6 +9,12 @@ import {
   encodeNetworkSnapshotWithRustFallback,
   type RustSnapshotEncodeResult,
 } from './snapshotRustWireEncoder';
+import {
+  packAudioEventsForWire,
+  packNetworkSnapshotAudioForWire,
+  unpackNetworkSnapshotAudioFromWire,
+  type NetworkServerSnapshotWire,
+} from './snapshotAudioWirePack';
 
 // Snapshot DTOs are pooled, so optional fields stay as own properties
 // assigned to `undefined`. Default msgpack encodes those as `nil`,
@@ -105,13 +111,14 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
+  const wireState = packNetworkSnapshotAudioForWire(state);
   if (!FORCE_JS_SNAPSHOT_WIRE) {
-    const rustResult = encodeNetworkSnapshotWithRustFallback(state);
+    const rustResult = encodeNetworkSnapshotWithRustFallback(wireState);
     if (rustResult) {
       noteRustSnapshotWireResult(rustResult);
       if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
-        const jsBytes = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
-        compareRustSnapshotWireResult(state, jsBytes, rustResult);
+        const jsBytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
+        compareRustSnapshotWireResult(wireState, jsBytes, rustResult);
       }
       rustSnapshotWireStats.rustSends++;
       return rustResult.bytes;
@@ -119,17 +126,19 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
     noteRustSnapshotWireUnavailable();
   }
 
-  const bytes = msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS);
+  const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
   rustSnapshotWireStats.jsSends++;
   if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
-    compareRustSnapshotWire(state, bytes);
+    compareRustSnapshotWire(wireState, bytes);
   }
   return bytes;
 }
 
 export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkServerSnapshot {
   const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-  return msgpackDecode(bytes) as NetworkServerSnapshot;
+  return unpackNetworkSnapshotAudioFromWire(
+    msgpackDecode(bytes) as NetworkServerSnapshotWire,
+  );
 }
 
 export function measureNetworkSnapshotWireBreakdown(
@@ -142,7 +151,10 @@ export function measureNetworkSnapshotWireBreakdown(
 
   for (let i = 0; i < TOP_LEVEL_SNAPSHOT_KEYS.length; i++) {
     const key = TOP_LEVEL_SNAPSHOT_KEYS[i];
-    const bytes = encodedPairBytes(key, state[key]);
+    const value = key === 'audioEvents'
+      ? packAudioEventsForWire(state.audioEvents)
+      : state[key];
+    const bytes = encodedPairBytes(key, value);
     if (bytes <= 0) continue;
     topLevel[key] = bytes;
     topLevelSum += bytes;
@@ -315,7 +327,7 @@ function noteRustSnapshotWireUnavailable(): void {
   }
 }
 
-function compareRustSnapshotWire(state: NetworkServerSnapshot, jsBytes: Uint8Array): void {
+function compareRustSnapshotWire(state: NetworkServerSnapshotWire, jsBytes: Uint8Array): void {
   const rustResult = encodeNetworkSnapshotWithRustFallback(state);
   if (!rustResult) {
     noteRustSnapshotWireUnavailable();
@@ -327,7 +339,7 @@ function compareRustSnapshotWire(state: NetworkServerSnapshot, jsBytes: Uint8Arr
 }
 
 function compareRustSnapshotWireResult(
-  state: NetworkServerSnapshot,
+  state: NetworkServerSnapshotWire,
   jsBytes: Uint8Array,
   rustResult: RustSnapshotEncodeResult,
 ): boolean {

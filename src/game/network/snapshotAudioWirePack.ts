@@ -1,0 +1,444 @@
+import type {
+  NetworkServerSnapshot,
+  NetworkServerSnapshotSimEvent,
+} from './NetworkTypes';
+import {
+  dequantizeNormal,
+  dequantizeProjectilePosition,
+  dequantizeRotation,
+  dequantizeVelocity,
+  quantizeNormal,
+  quantizeProjectilePosition,
+  quantizeRotation,
+  quantizeVelocity,
+} from './snapshotQuantization';
+
+const PACKED_AUDIO_EVENTS_VERSION = 1;
+
+const EVENT_HAS_SOURCE_TYPE = 0x001;
+const EVENT_HAS_SOURCE_KEY = 0x002;
+const EVENT_HAS_PLAYER_ID = 0x004;
+const EVENT_HAS_ENTITY_ID = 0x008;
+const EVENT_HAS_FORCE_FIELD_IMPACT = 0x010;
+const EVENT_HAS_KILLER_PLAYER_ID = 0x020;
+const EVENT_HAS_VICTIM_PLAYER_ID = 0x040;
+const EVENT_HAS_AUDIO_ONLY = 0x080;
+const EVENT_AUDIO_ONLY_VALUE = 0x100;
+const EVENT_HAS_DEATH_CONTEXT = 0x200;
+const EVENT_HAS_IMPACT_CONTEXT = 0x400;
+
+const DEATH_HAS_VISUAL_RADIUS = 0x01;
+const DEATH_HAS_PUSH_RADIUS = 0x02;
+const DEATH_HAS_BASE_Z = 0x04;
+const DEATH_HAS_UNIT_TYPE = 0x08;
+const DEATH_HAS_ROTATION = 0x10;
+const DEATH_HAS_TURRET_POSES = 0x20;
+
+const AUDIO_EVENT_TYPES = [
+  'fire',
+  'hit',
+  'death',
+  'laserStart',
+  'laserStop',
+  'forceFieldStart',
+  'forceFieldStop',
+  'forceFieldImpact',
+  'ping',
+  'attackAlert',
+  'projectileExpire',
+] as const satisfies readonly NetworkServerSnapshotSimEvent['type'][];
+
+const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], number> = {
+  fire: 0,
+  hit: 1,
+  death: 2,
+  laserStart: 3,
+  laserStop: 4,
+  forceFieldStart: 5,
+  forceFieldStop: 6,
+  forceFieldImpact: 7,
+  ping: 8,
+  attackAlert: 9,
+  projectileExpire: 10,
+};
+
+const AUDIO_EVENT_SOURCE_TYPES = [
+  'turret',
+  'unit',
+  'building',
+  'system',
+] as const;
+
+const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<string, number> = {
+  turret: 0,
+  unit: 1,
+  building: 2,
+  system: 3,
+};
+
+export type PackedAudioEventsWire = {
+  v: typeof PACKED_AUDIO_EVENTS_VERSION;
+  s: string[];
+  e: number[][];
+  d: number[][] | undefined;
+  i: number[][] | undefined;
+  t: number[][] | undefined;
+};
+
+export type NetworkServerSnapshotWire = Omit<NetworkServerSnapshot, 'audioEvents'> & {
+  audioEvents?: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
+};
+
+export function packNetworkSnapshotAudioForWire(
+  state: NetworkServerSnapshot,
+): NetworkServerSnapshotWire {
+  const audioEvents = state.audioEvents;
+  if (audioEvents === undefined || audioEvents.length === 0) {
+    return state as NetworkServerSnapshotWire;
+  }
+
+  const wire = { ...state } as NetworkServerSnapshotWire;
+  wire.audioEvents = packAudioEventsForWire(audioEvents);
+  return wire;
+}
+
+export function unpackNetworkSnapshotAudioFromWire(
+  state: NetworkServerSnapshotWire,
+): NetworkServerSnapshot {
+  if (!isPackedAudioEventsWire(state.audioEvents)) {
+    return state as NetworkServerSnapshot;
+  }
+
+  const snapshot = { ...state } as NetworkServerSnapshot;
+  snapshot.audioEvents = unpackAudioEventsFromWire(state.audioEvents);
+  return snapshot;
+}
+
+export function packAudioEventsForWire(
+  events: readonly NetworkServerSnapshotSimEvent[] | undefined,
+): PackedAudioEventsWire | undefined {
+  if (events === undefined) return undefined;
+  if (events.length === 0) return undefined;
+
+  const strings: string[] = [];
+  const stringSlots = new Map<string, number>();
+  const eventRows: number[][] = [];
+  const deathRows: number[][] = [];
+  const impactRows: number[][] = [];
+  const turretPoseRows: number[][] = [];
+
+  for (let eventIndex = 0; eventIndex < events.length; eventIndex++) {
+    const event = events[eventIndex];
+    const typeCode = AUDIO_EVENT_TYPE_CODES[event.type];
+    if (typeCode === undefined) continue;
+
+    let flags = 0;
+    if (event.sourceType !== undefined) flags |= EVENT_HAS_SOURCE_TYPE;
+    if (event.sourceKey !== undefined) flags |= EVENT_HAS_SOURCE_KEY;
+    if (event.playerId !== undefined) flags |= EVENT_HAS_PLAYER_ID;
+    if (event.entityId !== undefined) flags |= EVENT_HAS_ENTITY_ID;
+    if (event.forceFieldImpact !== undefined) flags |= EVENT_HAS_FORCE_FIELD_IMPACT;
+    if (event.killerPlayerId !== undefined) flags |= EVENT_HAS_KILLER_PLAYER_ID;
+    if (event.victimPlayerId !== undefined) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
+    if (event.audioOnly !== undefined) {
+      flags |= EVENT_HAS_AUDIO_ONLY;
+      if (event.audioOnly) flags |= EVENT_AUDIO_ONLY_VALUE;
+    }
+    if (event.deathContext !== undefined) flags |= EVENT_HAS_DEATH_CONTEXT;
+    if (event.impactContext !== undefined) flags |= EVENT_HAS_IMPACT_CONTEXT;
+
+    const row = [
+      typeCode,
+      flags,
+      stringSlot(strings, stringSlots, event.turretId),
+      quantizeProjectilePosition(event.pos.x),
+      quantizeProjectilePosition(event.pos.y),
+      quantizeProjectilePosition(event.pos.z),
+    ];
+
+    if (event.sourceType !== undefined) {
+      row.push(AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0);
+    }
+    if (event.sourceKey !== undefined) {
+      row.push(stringSlot(strings, stringSlots, event.sourceKey));
+    }
+    if (event.playerId !== undefined) row.push(event.playerId);
+    if (event.entityId !== undefined) row.push(event.entityId);
+    if (event.forceFieldImpact !== undefined) {
+      row.push(
+        quantizeNormal(event.forceFieldImpact.normal.x),
+        quantizeNormal(event.forceFieldImpact.normal.y),
+        quantizeNormal(event.forceFieldImpact.normal.z),
+        event.forceFieldImpact.playerId,
+      );
+    }
+    if (event.killerPlayerId !== undefined) row.push(event.killerPlayerId);
+    if (event.victimPlayerId !== undefined) row.push(event.victimPlayerId);
+    if (event.audioOnly !== undefined) row.push(event.audioOnly ? 1 : 0);
+    if (event.deathContext !== undefined) {
+      appendDeathContextRow(event.deathContext, strings, stringSlots, deathRows, turretPoseRows);
+    }
+    if (event.impactContext !== undefined) {
+      impactRows.push([
+        quantizeProjectilePosition(event.impactContext.collisionRadius),
+        quantizeProjectilePosition(event.impactContext.explosionRadius),
+        quantizeProjectilePosition(event.impactContext.projectile.pos.x),
+        quantizeProjectilePosition(event.impactContext.projectile.pos.y),
+        quantizeVelocity(event.impactContext.projectile.vel.x),
+        quantizeVelocity(event.impactContext.projectile.vel.y),
+        quantizeVelocity(event.impactContext.entity.vel.x),
+        quantizeVelocity(event.impactContext.entity.vel.y),
+        quantizeProjectilePosition(event.impactContext.entity.collisionRadius),
+        quantizeNormal(event.impactContext.penetrationDir.x),
+        quantizeNormal(event.impactContext.penetrationDir.y),
+      ]);
+    }
+    eventRows.push(row);
+  }
+
+  return {
+    v: PACKED_AUDIO_EVENTS_VERSION,
+    s: strings,
+    e: eventRows,
+    d: deathRows.length > 0 ? deathRows : undefined,
+    i: impactRows.length > 0 ? impactRows : undefined,
+    t: turretPoseRows.length > 0 ? turretPoseRows : undefined,
+  };
+}
+
+export function unpackAudioEventsFromWire(
+  packed: PackedAudioEventsWire,
+): NetworkServerSnapshotSimEvent[] {
+  const events: NetworkServerSnapshotSimEvent[] = [];
+  const strings = packed.s;
+  const deathRows = packed.d ?? [];
+  const impactRows = packed.i ?? [];
+  const turretPoseRows = packed.t ?? [];
+  let deathOffset = 0;
+  let impactOffset = 0;
+  let turretPoseOffset = 0;
+
+  for (let rowIndex = 0; rowIndex < packed.e.length; rowIndex++) {
+    const row = packed.e[rowIndex];
+    const type = AUDIO_EVENT_TYPES[row[0]];
+    if (type === undefined) continue;
+
+    const flags = row[1] ?? 0;
+    let cursor = 6;
+    const event: NetworkServerSnapshotSimEvent = {
+      type,
+      turretId: (strings[row[2]] ?? '') as NetworkServerSnapshotSimEvent['turretId'],
+      pos: {
+        x: dequantizeProjectilePosition(row[3] ?? 0),
+        y: dequantizeProjectilePosition(row[4] ?? 0),
+        z: dequantizeProjectilePosition(row[5] ?? 0),
+      },
+    };
+
+    if ((flags & EVENT_HAS_SOURCE_TYPE) !== 0) {
+      event.sourceType = AUDIO_EVENT_SOURCE_TYPES[row[cursor++]] ?? 'system';
+    }
+    if ((flags & EVENT_HAS_SOURCE_KEY) !== 0) {
+      event.sourceKey = strings[row[cursor++]] ?? '';
+    }
+    if ((flags & EVENT_HAS_PLAYER_ID) !== 0) event.playerId = row[cursor++];
+    if ((flags & EVENT_HAS_ENTITY_ID) !== 0) event.entityId = row[cursor++];
+    if ((flags & EVENT_HAS_FORCE_FIELD_IMPACT) !== 0) {
+      event.forceFieldImpact = {
+        normal: {
+          x: dequantizeNormal(row[cursor++] ?? 0),
+          y: dequantizeNormal(row[cursor++] ?? 0),
+          z: dequantizeNormal(row[cursor++] ?? 0),
+        },
+        playerId: row[cursor++],
+      };
+    }
+    if ((flags & EVENT_HAS_KILLER_PLAYER_ID) !== 0) event.killerPlayerId = row[cursor++];
+    if ((flags & EVENT_HAS_VICTIM_PLAYER_ID) !== 0) event.victimPlayerId = row[cursor++];
+    if ((flags & EVENT_HAS_AUDIO_ONLY) !== 0) event.audioOnly = row[cursor++] !== 0;
+    if ((flags & EVENT_HAS_DEATH_CONTEXT) !== 0) {
+      const result = unpackDeathContextRow(
+        deathRows[deathOffset++],
+        strings,
+        turretPoseRows,
+        turretPoseOffset,
+      );
+      event.deathContext = result.context;
+      turretPoseOffset = result.nextTurretPoseOffset;
+    }
+    if ((flags & EVENT_HAS_IMPACT_CONTEXT) !== 0) {
+      event.impactContext = unpackImpactContextRow(impactRows[impactOffset++]);
+    }
+    events.push(event);
+  }
+
+  return events;
+}
+
+export function isPackedAudioEventsWire(value: unknown): value is PackedAudioEventsWire {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Partial<PackedAudioEventsWire>;
+  return (
+    candidate.v === PACKED_AUDIO_EVENTS_VERSION &&
+    Array.isArray(candidate.s) &&
+    Array.isArray(candidate.e)
+  );
+}
+
+function stringSlot(
+  strings: string[],
+  slots: Map<string, number>,
+  value: string,
+): number {
+  const existing = slots.get(value);
+  if (existing !== undefined) return existing;
+  const next = strings.length;
+  strings.push(value);
+  slots.set(value, next);
+  return next;
+}
+
+function appendDeathContextRow(
+  context: NonNullable<NetworkServerSnapshotSimEvent['deathContext']>,
+  strings: string[],
+  stringSlots: Map<string, number>,
+  deathRows: number[][],
+  turretPoseRows: number[][],
+): void {
+  let flags = 0;
+  if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
+  if (context.pushRadius !== undefined) flags |= DEATH_HAS_PUSH_RADIUS;
+  if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
+  if (context.unitType !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
+  if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
+  if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
+
+  const row = [
+    flags,
+    quantizeVelocity(context.unitVel.x),
+    quantizeVelocity(context.unitVel.y),
+    quantizeNormal(context.hitDir.x),
+    quantizeNormal(context.hitDir.y),
+    quantizeVelocity(context.projectileVel.x),
+    quantizeVelocity(context.projectileVel.y),
+    context.attackMagnitude,
+    quantizeProjectilePosition(context.radius),
+    context.color,
+  ];
+
+  if (context.visualRadius !== undefined) row.push(quantizeProjectilePosition(context.visualRadius));
+  if (context.pushRadius !== undefined) row.push(quantizeProjectilePosition(context.pushRadius));
+  if (context.baseZ !== undefined) row.push(quantizeProjectilePosition(context.baseZ));
+  if (context.unitType !== undefined) {
+    row.push(stringSlot(strings, stringSlots, context.unitType));
+  }
+  if (context.rotation !== undefined) row.push(quantizeRotation(context.rotation));
+  if (context.turretPoses !== undefined) {
+    row.push(context.turretPoses.length);
+    for (let i = 0; i < context.turretPoses.length; i++) {
+      const pose = context.turretPoses[i];
+      turretPoseRows.push([
+        quantizeRotation(pose.rotation),
+        quantizeRotation(pose.pitch),
+      ]);
+    }
+  }
+
+  deathRows.push(row);
+}
+
+function unpackDeathContextRow(
+  row: number[] | undefined,
+  strings: readonly string[],
+  turretPoseRows: readonly number[][],
+  turretPoseOffset: number,
+): {
+  context: NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
+  nextTurretPoseOffset: number;
+} {
+  const source = row ?? [];
+  const flags = source[0] ?? 0;
+  let cursor = 10;
+  const context: NonNullable<NetworkServerSnapshotSimEvent['deathContext']> = {
+    unitVel: {
+      x: dequantizeVelocity(source[1] ?? 0),
+      y: dequantizeVelocity(source[2] ?? 0),
+    },
+    hitDir: {
+      x: dequantizeNormal(source[3] ?? 0),
+      y: dequantizeNormal(source[4] ?? 0),
+    },
+    projectileVel: {
+      x: dequantizeVelocity(source[5] ?? 0),
+      y: dequantizeVelocity(source[6] ?? 0),
+    },
+    attackMagnitude: source[7] ?? 0,
+    radius: dequantizeProjectilePosition(source[8] ?? 0),
+    color: source[9] ?? 0,
+  };
+
+  if ((flags & DEATH_HAS_VISUAL_RADIUS) !== 0) {
+    context.visualRadius = dequantizeProjectilePosition(source[cursor++] ?? 0);
+  }
+  if ((flags & DEATH_HAS_PUSH_RADIUS) !== 0) {
+    context.pushRadius = dequantizeProjectilePosition(source[cursor++] ?? 0);
+  }
+  if ((flags & DEATH_HAS_BASE_Z) !== 0) {
+    context.baseZ = dequantizeProjectilePosition(source[cursor++] ?? 0);
+  }
+  if ((flags & DEATH_HAS_UNIT_TYPE) !== 0) {
+    context.unitType = strings[source[cursor++]] as NonNullable<typeof context.unitType>;
+  }
+  if ((flags & DEATH_HAS_ROTATION) !== 0) {
+    context.rotation = dequantizeRotation(source[cursor++] ?? 0);
+  }
+  if ((flags & DEATH_HAS_TURRET_POSES) !== 0) {
+    const count = source[cursor++] ?? 0;
+    const poses: NonNullable<typeof context.turretPoses> = [];
+    for (let i = 0; i < count; i++) {
+      const pose = turretPoseRows[turretPoseOffset + i] ?? [];
+      poses.push({
+        rotation: dequantizeRotation(pose[0] ?? 0),
+        pitch: dequantizeRotation(pose[1] ?? 0),
+      });
+    }
+    context.turretPoses = poses;
+    turretPoseOffset += count;
+  }
+
+  return {
+    context,
+    nextTurretPoseOffset: turretPoseOffset,
+  };
+}
+
+function unpackImpactContextRow(
+  row: number[] | undefined,
+): NonNullable<NetworkServerSnapshotSimEvent['impactContext']> {
+  const source = row ?? [];
+  return {
+    collisionRadius: dequantizeProjectilePosition(source[0] ?? 0),
+    explosionRadius: dequantizeProjectilePosition(source[1] ?? 0),
+    projectile: {
+      pos: {
+        x: dequantizeProjectilePosition(source[2] ?? 0),
+        y: dequantizeProjectilePosition(source[3] ?? 0),
+      },
+      vel: {
+        x: dequantizeVelocity(source[4] ?? 0),
+        y: dequantizeVelocity(source[5] ?? 0),
+      },
+    },
+    entity: {
+      vel: {
+        x: dequantizeVelocity(source[6] ?? 0),
+        y: dequantizeVelocity(source[7] ?? 0),
+      },
+      collisionRadius: dequantizeProjectilePosition(source[8] ?? 0),
+    },
+    penetrationDir: {
+      x: dequantizeNormal(source[9] ?? 0),
+      y: dequantizeNormal(source[10] ?? 0),
+    },
+  };
+}

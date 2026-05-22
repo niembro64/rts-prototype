@@ -253,3 +253,43 @@ projectiles (`~2.8 KiB`). Fixed-point integers help the existing
 MessagePack-compatible bridge, but the remaining SNAP-WIRE-01 work still needs
 structural row packing and section-specific budgets rather than more generic
 transport compression.
+
+### Audio Event Packed Rows
+
+Run date: 2026-05-22
+
+The wire path now keeps `NetworkServerSnapshot.audioEvents` as readable event
+objects in memory, but encodes the outbound wire value as compact rows:
+event/source codes, a per-snapshot string table for audio/source keys, fixed
+point event positions, fixed point impact/death context vectors, and packed
+optional-field flags. Remote decode expands the rows back into the original
+event objects before the client view or audio scheduler reads the snapshot.
+
+Capture setup:
+
+- Browser URL: `http://localhost:5175/budget-annihilation/?dp02=1`
+- Automation: headless Google Chrome via Playwright, importing `GameServer`,
+  `snapshotWireCodec`, and `snapshotRustWireEncoder` from Vite.
+- Scenario: five-player background demo battle, cap 243, observed from player
+  1, `terrainCenter=flat`, `terrainDividers=mountain`,
+  `terrainMapShape=circle`, host snapshot cap 32/sec.
+- Comparison: each emitted snapshot was encoded once through the previous
+  Rust-backed object-audio path
+  (`encodeNetworkSnapshotWithRustFallback(state)`) and once through the new
+  packed-audio path (`encodeNetworkSnapshot(state)`) from the same in-memory
+  snapshot. Decode parity checked event counts from the packed payload.
+
+| Stream | Samples | Units Avg | Legacy avg | Legacy hi | Packed avg | Packed hi | Saved avg |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DIFFSNAP steady state | 96 | 240 | 63,633 B | 166,628 B | 50,212 B | 151,675 B | 13,421 B |
+
+Audio-section detail for the same DIFFSNAP rows:
+
+| Section | Legacy avg | Legacy hi | Packed avg | Packed hi | Saved avg |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `audioEvents` | 16,136 B | 31,942 B | 2,715 B | 5,186 B | 13,421 B |
+
+The first FULLSNAP bootstrap in this run had no audio events, so it was
+unchanged at 1,035,135 B in both encodings. Later FULLSNAPs that did carry
+combat audio saved 11,252 B on average. Packed decode reported zero event-count
+mismatches across the 103 captured snapshots.

@@ -26,28 +26,33 @@ Evidence:
   docs/dp-02-snapshot-wire-instrumentation.md shows the roughly
   200-unit DIFFSNAP stream back inside budget: 52,554 B avg and
   114,475 B hi, against the 64 KiB avg / 128 KiB hi targets.
-- The same capture still shows FULLSNAP bootstrap at 1,076,601 B,
-  about 28 KiB over the 1 MiB avg target, though still inside the
-  1.25 MiB hi budget.
-- The remaining large DIFFSNAP sections were audio events (~26.5 KiB),
-  entities (~18.6 KiB), minimap entities (~4.0 KiB), and projectiles
-  (~2.8 KiB). Further wins need structural row packing and
-  section-specific budgets, not generic transport compression.
-- At 30 DIFFSNAPs/sec plus 1 FULLSNAP/sec, those current average
-  numbers imply roughly 21.2 Mbps per remote client before WebRTC
-  overhead.
+- The 2026-05-22 audio packed-row capture in the same doc compares the
+  same snapshots through the previous Rust object-audio encoding and
+  the new packed-audio wire path. DIFFSNAP avg moved from 63,633 B to
+  50,212 B, while audioEvents moved from 16,136 B avg / 31,942 B hi to
+  2,715 B avg / 5,186 B hi. Packed decode had zero event-count
+  mismatches across 103 captured snapshots.
+- Audio packing does not solve FULLSNAP bootstrap by itself: the first
+  FULLSNAP in that capture had no audio and stayed unchanged at
+  1,035,135 B. The earlier fixed-point capture showed a 1,076,601 B
+  FULLSNAP bootstrap, so static/keyframe sections still need a fresh
+  targeted capture and structural work.
+- After audio packing, the next likely DIFFSNAP targets are entity rows,
+  minimap entity rows, and projectile rows. Further wins need structural
+  row packing and section-specific budgets, not generic transport
+  compression.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
 Even when the 200-unit delta stream is under target, every remote client
-multiplies host upstream, FULLSNAP is still slightly over target, and
-the 1,000 / 5,000-unit rows still need to be proven against the same
-network budgets.
+multiplies host upstream, FULLSNAP/static sections still need a targeted
+budget pass, and the 1,000 / 5,000-unit rows still need to be proven
+against the same network budgets.
 
 Fix direction:
 Do child items as separate, measurable PRs. Prioritize structural
-compression in the largest remaining sections: audio events, entity
-rows, minimap entity rows, projectile rows, and FULLSNAP keyframe/static
-sections. Each item must report before/after DS SIZE and FS SIZE numbers
-from the PLAYER CLIENT bar, preferably with the same unit count and
-snapshot cadence.
+compression in the largest remaining sections: entity rows, minimap
+entity rows, projectile rows, and FULLSNAP keyframe/static sections.
+Each item must report before/after DS SIZE and FS SIZE numbers from the
+PLAYER CLIENT bar, preferably with the same unit count and snapshot
+cadence.
