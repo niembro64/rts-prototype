@@ -260,17 +260,20 @@ AIM-08.5 — Port the targeting FSM
   JS-only fields the Rust kernel never sees.
   Done when: rendering/firing/snapshot consumers read targeting state
   from the slab so the remaining JS Turret writeback can be deleted.
-  Remaining writeback fields still needed by downstream JS readers:
-    - target / state (read by scattered slab-first fallbacks; mid-tick
-      JS writes in projectileSystem / turretSystem / commandExecution
-      now all route through the dropTurretLockMidTick helper in
-      combatActivitySlab.ts, which clears JS Turret.target +
-      Turret.state, syncs the beam inverse index, AND clears the slab
-      FSM tuple in one call — closing the gap where the fire-disabled
-      command path used to skip the slab clear)
-    - syncBeamWeaponTargetIndex per-turret call
-    - resetDisabledTurretJsOnlyFields (JS-only fields the Rust kernel
-      never sees)
+  The JS Turret.target / Turret.state writeback has been deleted from
+  writeBackCombatTargetingEntity: every sim-hot reader is slab-first,
+  every mid-tick mutation routes through dropTurretLockMidTick (which
+  still updates JS Turret.target / Turret.state for the JS-only
+  activity-mask path), and the unused decodeCombatTargetingTurretState
+  helper was deleted under Delete The Old Path. JS Turret.target /
+  Turret.state on the sim hot path now drift relative to the slab
+  between dropTurretLockMidTick calls; that is fine because no
+  slab-first reader reads them. The writeback still does the per-turret
+  beam inverse target index sync, the disabled-turret JS-only field
+  reset (angular/pitch velocity + acceleration, burst.remaining,
+  forceField.transition/range), and the Rust mask kernel call that
+  mirrors slab masks into combat.activeTurretMask /
+  combat.firingTurretMask.
   cooldown / burstCooldown are no longer JS writeback fields and the
   JS Turret.cooldown field itself is gone: the combat-targeting slab
   is now the single source of truth. NetworkEntityFactory no longer
@@ -305,21 +308,16 @@ AIM-08.5 — Port the targeting FSM
   combatActivity.ts can stay JS-only (NetworkEntityFactory entity
   construction, GameServer mirror / force-field toggles, and
   commandExecution's clearCombatActivityFlags still call into it).
-  Likely next moves: the JS Turret.target / Turret.state writeback in
-  writeBackCombatTargetingEntity is now the only thing left keeping
-  those two JS fields populated on the sim hot path. Every sim-hot
-  reader is already slab-first (turretSystem rotation, projectileSystem
-  fire + active-engagement, forceFieldTurret, mirrorTargetPriority,
-  laserSoundSystem, UnitBarrelSpinState3D, Simulation engagement
-  halts, ClientUnitPrediction), and every mid-tick mutation now flows
-  through dropTurretLockMidTick. The remaining JS consumers of
-  Turret.target / Turret.state are the JS-only activity-mask path in
-  combatActivity.ts (NetworkEntityFactory entity construction,
-  GameServer mirror/force-field toggles, commandExecution
-  clearCombatActivityFlags) and the non-sim slab-first fallbacks. To
-  delete the writeback outright we either need the JS-only path to
-  also become slab-first (using refreshSlabActivityMasksForUnit when
-  the slab is stamped) or accept that JS Turret.target / Turret.state
-  diverge mid-tick on the sim hot path because no slab-first reader
-  reads them anyway.
+  Likely next moves: the writeback's remaining JS bridge work is
+  the beam inverse target index sync + disabled-turret JS-only field
+  reset + activity-mask refresh. Moving the beam index to Rust (so
+  the kernel maintains the target → beam-weapon mapping internally
+  and JS only reads it for death cleanup) would let the per-turret
+  writeback loop collapse into the single Rust mask call. The
+  disabled-turret JS-only field reset is small and bound to JS-only
+  Turret fields the kernel never sees; it could move to a JS-only
+  helper called by GameServer's mirror / force-field disable paths
+  instead of being part of every tick's writeback. Either change
+  shrinks the per-tick boundary work further but neither is required
+  for the FSM port itself, which is complete.
 

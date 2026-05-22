@@ -195,12 +195,6 @@ export function encodeCombatTargetingTurretState(state: TurretState): CombatTarg
   }
 }
 
-export function decodeCombatTargetingTurretState(state: number): TurretState {
-  if (state === CT_TURRET_STATE_ENGAGED) return 'engaged';
-  if (state === CT_TURRET_STATE_TRACKING) return 'tracking';
-  return 'idle';
-}
-
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
   const targeting = sim.combatTargeting;
   const entityCapacity = targeting.entityCapacity();
@@ -649,26 +643,34 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
   }
 }
 
-/** Copy the Rust combat-targeting slab's authoritative FSM tuple back
- *  onto the JS Turret objects that rendering, firing, and snapshot
- *  encode still consume during the slab migration. The activity-mask
- *  refresh runs entirely in Rust now: the slab's angular/pitch
- *  velocity (stamped during input stamping) plus the kernel-updated
- *  target/state tuple drive `combat_targeting_refresh_activity_masks_
- *  for_entity`, and JS only mirrors the slab masks back to
- *  combat.activeTurretMask / combat.firingTurretMask for the
- *  transitional readers that still touch the JS fields. The beam
- *  inverse target index syncs directly from the slab tuple. Disabled
- *  turrets also have their JS-only fields cleared here — the slab
- *  side was zeroed by the scheduler's reset_disabled_weapons pass,
- *  this finishes the job for fields that never crossed the boundary.
- *  Returns true when any turret still needs rotation/fire integration
- *  after writeback.
+/** Refresh per-entity slab bookkeeping after the targeting kernel ran.
+ *  The Rust mask kernel computes activeTurretMask / firingTurretMask
+ *  from slab state and we mirror those into combat.activeTurretMask /
+ *  combat.firingTurretMask for the transitional JS readers that still
+ *  touch those mask fields. The beam inverse target index is
+ *  resynchronized so death handlers can answer "which beams were aimed
+ *  at me?" in O(k). Disabled turrets get their JS-only fields cleared
+ *  here (angular/pitch velocity + accel, burst.remaining,
+ *  forceField.transition/range) — the slab side was zeroed by the
+ *  scheduler's reset_disabled_weapons pass, this finishes the job for
+ *  fields that never crossed the boundary. Returns true when any
+ *  turret still needs rotation/fire integration after writeback.
  *
- *  Mount kinematics (worldPos / worldVelocity / worldPosTick) are no
- *  longer written back here: live consumers
- *  (resolveWeaponWorldMount, updateWeaponWorldKinematics, aim solver,
- *  projectile launch, dgun launch) read the slab via
+ *  JS Turret.target / Turret.state are no longer mirrored from the
+ *  slab: every sim-hot reader (turretSystem rotation, projectileSystem
+ *  fire + active-engagement, forceFieldTurret, mirrorTargetPriority,
+ *  laserSoundSystem, UnitBarrelSpinState3D, Simulation engagement
+ *  halts, ClientUnitPrediction, stateSerializerEntityDelta) is
+ *  slab-first, and every mid-tick mutation flows through
+ *  dropTurretLockMidTick which clears both the JS Turret and the slab
+ *  in one call. JS Turret.target / Turret.state on the sim hot path
+ *  therefore drift away from the slab between dropTurretLockMidTick
+ *  calls; that is fine because no slab-first reader reads them.
+ *
+ *  Mount kinematics (worldPos / worldVelocity / worldPosTick) are also
+ *  not written back: live consumers (resolveWeaponWorldMount,
+ *  updateWeaponWorldKinematics, aim solver, projectile launch, dgun
+ *  launch) read the slab via
  *  readCombatTargetingTurretMountKinematicsInto. */
 export function writeBackCombatTargetingEntity(
   entity: Entity,
@@ -698,19 +700,9 @@ export function writeBackCombatTargetingEntity(
   for (let i = 0; i < turretCount; i++) {
     const idx = turretBase + i;
     const turret = combat.turrets[i];
-    // Cooldown / burstCooldown writeback is gone: the slab is the
-    // single source of truth (projectileSystem reads them via
-    // readTurretCooldownForFire / readTurretBurstCooldownForFire and
-    // writes post-fire values via writeTurretCooldownToSlab /
-    // writeTurretBurstCooldownToSlab). JS Turret no longer carries a
-    // cooldown field at all — slot reuse seeds the slab with 0 and the
-    // kernel takes it from there.
-    const slabStateCode = views.state[idx];
     const targetId = views.targetId[idx];
     const target = targetId < 0 ? null : targetId;
     syncBeamWeaponTargetIndex(turret, entity, i, target);
-    turret.target = target;
-    turret.state = decodeCombatTargetingTurretState(slabStateCode);
     if (weaponSystemDisabled(world, turret)) {
       resetDisabledTurretJsOnlyFields(turret);
     }
