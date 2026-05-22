@@ -141,10 +141,10 @@ vec3 transformed = _segMid
   + _segFwd * position.z * instThickness;
 `;
 
-function makeInstancedLegMaterial(color: number, shell: boolean): THREE.MeshBasicMaterial {
+function makeInstancedLegMaterial(shell: boolean): THREE.MeshBasicMaterial {
   const material = shell
     ? createShellMaterial()
-    : new THREE.MeshBasicMaterial({ color });
+    : new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true });
   material.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
@@ -167,6 +167,7 @@ function buildInstancedCylinderGeom(
   startBuf: THREE.InstancedBufferAttribute,
   endBuf: THREE.InstancedBufferAttribute,
   thickBuf: THREE.InstancedBufferAttribute,
+  colorBuf: THREE.InstancedBufferAttribute,
 ): THREE.InstancedBufferGeometry {
   const base = new THREE.CylinderGeometry(1, 1, 1, 10);
   const inst = new THREE.InstancedBufferGeometry();
@@ -178,6 +179,7 @@ function buildInstancedCylinderGeom(
   inst.setAttribute('instStart', startBuf);
   inst.setAttribute('instEnd', endBuf);
   inst.setAttribute('instThickness', thickBuf);
+  inst.setAttribute('color', colorBuf);
   // The base geom's bounding sphere is at origin with radius 1; our
   // instances live anywhere on the map, so disable culling. Empty
   // slots have thickness 0 and contribute zero pixels anyway.
@@ -190,12 +192,20 @@ class CylinderPool {
   private startBuf: THREE.InstancedBufferAttribute;
   private endBuf: THREE.InstancedBufferAttribute;
   private thickBuf: THREE.InstancedBufferAttribute;
+  private colorBuf: THREE.InstancedBufferAttribute;
   private mesh: THREE.Mesh;
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
+  // Route hex colors through THREE.Color so the sRGB → working-linear
+  // conversion matches the joint / foot-pad pools (which use
+  // setColorAt). Writing hex/255 raw to the vertex-color attribute
+  // bypasses color management and renders cylinders visibly brighter
+  // than the spheres they connect to. See BurnMark3D for the same
+  // pitfall documented in detail.
+  private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, color: number, shell: boolean) {
+  constructor(parent: THREE.Group, shell: boolean) {
     this.startBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP * 3), 3,
     ).setUsage(THREE.DynamicDrawUsage);
@@ -205,15 +215,18 @@ class CylinderPool {
     this.thickBuf = new THREE.InstancedBufferAttribute(
       new Float32Array(SLOT_CAP), 1,
     ).setUsage(THREE.DynamicDrawUsage);
+    this.colorBuf = new THREE.InstancedBufferAttribute(
+      new Float32Array(SLOT_CAP * 3), 3,
+    ).setUsage(THREE.DynamicDrawUsage);
 
-    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf);
-    const material = makeInstancedLegMaterial(color, shell);
+    const geom = buildInstancedCylinderGeom(this.startBuf, this.endBuf, this.thickBuf, this.colorBuf);
+    const material = makeInstancedLegMaterial(shell);
     this.mesh = new THREE.Mesh(geom, material);
     this.mesh.frustumCulled = false;
     parent.add(this.mesh);
   }
 
-  alloc(onRelocate: SlotRelocator): number {
+  alloc(color: number, onRelocate: SlotRelocator): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -223,6 +236,12 @@ class CylinderPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    const c = CylinderPool._scratchColor.set(color);
+    const arr = this.colorBuf.array as Float32Array;
+    const i3 = slot * 3;
+    arr[i3 + 0] = c.r;
+    arr[i3 + 1] = c.g;
+    arr[i3 + 2] = c.b;
     return slot;
   }
 
@@ -239,6 +258,7 @@ class CylinderPool {
     const sa = this.startBuf.array as Float32Array;
     const ea = this.endBuf.array as Float32Array;
     const ta = this.thickBuf.array as Float32Array;
+    const ca = this.colorBuf.array as Float32Array;
     const s3 = src * 3;
     const d3 = dst * 3;
     sa[d3 + 0] = sa[s3 + 0];
@@ -248,6 +268,9 @@ class CylinderPool {
     ea[d3 + 1] = ea[s3 + 1];
     ea[d3 + 2] = ea[s3 + 2];
     ta[dst] = ta[src];
+    ca[d3 + 0] = ca[s3 + 0];
+    ca[d3 + 1] = ca[s3 + 1];
+    ca[d3 + 2] = ca[s3 + 2];
     ta[src] = 0;
   };
 
@@ -277,6 +300,7 @@ class CylinderPool {
     this.startBuf.needsUpdate = true;
     this.endBuf.needsUpdate = true;
     this.thickBuf.needsUpdate = true;
+    this.colorBuf.needsUpdate = true;
     // Trim the GPU instance count to the high-water mark of allocated
     // slots. Without this, instanceCount stays at SLOT_CAP (16384) for
     // the lifetime of the pool — the GPU runs the vertex shader on
@@ -308,6 +332,7 @@ class CylinderPool {
  *  contribute no fragments. */
 class JointSpherePool {
   private readonly mesh: THREE.InstancedMesh;
+  private readonly shell: boolean;
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
@@ -316,14 +341,20 @@ class JointSpherePool {
   private static readonly _scratchScale = new THREE.Vector3();
   private static readonly _IDENTITY_QUAT = new THREE.Quaternion();
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+  private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, color: number, shell: boolean) {
+  constructor(parent: THREE.Group, shell: boolean) {
+    this.shell = shell;
     const geom = new THREE.SphereGeometry(1, 8, 6);
     const material = shell
       ? createShellMaterial()
-      : new THREE.MeshBasicMaterial({ color });
+      : new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (!shell) {
+      this.mesh.setColorAt(0, JointSpherePool._scratchColor.set(0xffffff));
+      this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    }
     this.mesh.count = 0;
     // Same caveat as the cylinder + chassis + particle pools — instances
     // live anywhere on the map, source-geom bounding sphere is at origin.
@@ -331,7 +362,7 @@ class JointSpherePool {
     parent.add(this.mesh);
   }
 
-  alloc(onRelocate: SlotRelocator): number {
+  alloc(color: number, onRelocate: SlotRelocator): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -341,6 +372,9 @@ class JointSpherePool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    if (!this.shell) {
+      this.mesh.setColorAt(slot, JointSpherePool._scratchColor.set(color));
+    }
     return slot;
   }
 
@@ -356,6 +390,14 @@ class JointSpherePool {
     const s16 = src * 16;
     const d16 = dst * 16;
     for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
+    const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
+    if (colorArr) {
+      const s3 = src * 3;
+      const d3 = dst * 3;
+      colorArr[d3 + 0] = colorArr[s3 + 0];
+      colorArr[d3 + 1] = colorArr[s3 + 1];
+      colorArr[d3 + 2] = colorArr[s3 + 2];
+    }
     // Source matrix becomes the visually-zero matrix; trim by
     // instanceCount keeps it off-screen but be defensive.
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
@@ -383,6 +425,7 @@ class JointSpherePool {
     if (this.nextSlot > 0) {
       this.mesh.instanceMatrix.needsUpdate = true;
     }
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 
   destroy(): void {
@@ -395,6 +438,7 @@ class JointSpherePool {
  *  orientation, while joints are uniform balls. */
 class FootPadPool {
   private readonly mesh: THREE.InstancedMesh;
+  private readonly shell: boolean;
   private nextSlot = 0;
   private freeList: number[] = [];
   private relocators: (SlotRelocator | null)[] = [];
@@ -405,20 +449,26 @@ class FootPadPool {
   private static readonly _UP = new THREE.Vector3(0, 1, 0);
   private static readonly _scratchNormal = new THREE.Vector3();
   private static readonly _ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
+  private static readonly _scratchColor = new THREE.Color();
 
-  constructor(parent: THREE.Group, color: number, shell: boolean) {
+  constructor(parent: THREE.Group, shell: boolean) {
+    this.shell = shell;
     const geom = new THREE.SphereGeometry(1, 12, 8);
     const material = shell
       ? createShellMaterial()
-      : new THREE.MeshBasicMaterial({ color });
+      : new THREE.MeshBasicMaterial({ color: 0xffffff });
     this.mesh = new THREE.InstancedMesh(geom, material, SLOT_CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (!shell) {
+      this.mesh.setColorAt(0, FootPadPool._scratchColor.set(0xffffff));
+      this.mesh.instanceColor!.setUsage(THREE.DynamicDrawUsage);
+    }
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
     parent.add(this.mesh);
   }
 
-  alloc(onRelocate: SlotRelocator): number {
+  alloc(color: number, onRelocate: SlotRelocator): number {
     let slot: number;
     if (this.freeList.length > 0) {
       slot = this.freeList.pop()!;
@@ -428,6 +478,9 @@ class FootPadPool {
       return -1;
     }
     this.relocators[slot] = onRelocate;
+    if (!this.shell) {
+      this.mesh.setColorAt(slot, FootPadPool._scratchColor.set(color));
+    }
     return slot;
   }
 
@@ -443,6 +496,14 @@ class FootPadPool {
     const s16 = src * 16;
     const d16 = dst * 16;
     for (let i = 0; i < 16; i++) arr[d16 + i] = arr[s16 + i];
+    const colorArr = this.mesh.instanceColor?.array as Float32Array | undefined;
+    if (colorArr) {
+      const s3 = src * 3;
+      const d3 = dst * 3;
+      colorArr[d3 + 0] = colorArr[s3 + 0];
+      colorArr[d3 + 1] = colorArr[s3 + 1];
+      colorArr[d3 + 2] = colorArr[s3 + 2];
+    }
     for (let i = 0; i < 16; i++) arr[s16 + i] = 0;
   };
 
@@ -484,6 +545,7 @@ class FootPadPool {
     if (this.nextSlot > 0) {
       this.mesh.instanceMatrix.needsUpdate = true;
     }
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 
   destroy(): void {
@@ -501,15 +563,15 @@ export class LegInstancedRenderer {
   private shellJoints: JointSpherePool;
   private shellPads: FootPadPool;
 
-  constructor(parent: THREE.Group, color: number) {
-    this.upper = new CylinderPool(parent, color, false);
-    this.lower = new CylinderPool(parent, color, false);
-    this.joints = new JointSpherePool(parent, color, false);
-    this.pads = new FootPadPool(parent, color, false);
-    this.shellUpper = new CylinderPool(parent, color, true);
-    this.shellLower = new CylinderPool(parent, color, true);
-    this.shellJoints = new JointSpherePool(parent, color, true);
-    this.shellPads = new FootPadPool(parent, color, true);
+  constructor(parent: THREE.Group) {
+    this.upper = new CylinderPool(parent, false);
+    this.lower = new CylinderPool(parent, false);
+    this.joints = new JointSpherePool(parent, false);
+    this.pads = new FootPadPool(parent, false);
+    this.shellUpper = new CylinderPool(parent, true);
+    this.shellLower = new CylinderPool(parent, true);
+    this.shellJoints = new JointSpherePool(parent, true);
+    this.shellPads = new FootPadPool(parent, true);
   }
 
   /** Allocate an upper-cylinder slot. Returns -1 if the pool is
@@ -519,20 +581,20 @@ export class LegInstancedRenderer {
    *  this slot is moved — the caller MUST update its stored slot
    *  index in the callback or subsequent updates will write the wrong
    *  buffer entries. */
-  allocUpper(shell: boolean, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellUpper : this.upper).alloc(onRelocate);
+  allocUpper(shell: boolean, color: number, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellUpper : this.upper).alloc(color, onRelocate);
   }
-  allocLower(shell: boolean, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellLower : this.lower).alloc(onRelocate);
+  allocLower(shell: boolean, color: number, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellLower : this.lower).alloc(color, onRelocate);
   }
   /** Allocate a joint-sphere slot (used at FULL LOD for hip / knee).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
-  allocJoint(shell: boolean, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellJoints : this.joints).alloc(onRelocate);
+  allocJoint(shell: boolean, color: number, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellJoints : this.joints).alloc(color, onRelocate);
   }
-  allocFootPad(shell: boolean, onRelocate: SlotRelocator): number {
-    return (shell ? this.shellPads : this.pads).alloc(onRelocate);
+  allocFootPad(shell: boolean, color: number, onRelocate: SlotRelocator): number {
+    return (shell ? this.shellPads : this.pads).alloc(color, onRelocate);
   }
 
   freeUpper(slot: number, shell = false): void { (shell ? this.shellUpper : this.upper).free(slot); }
