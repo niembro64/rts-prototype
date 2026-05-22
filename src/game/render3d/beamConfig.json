@@ -8,5 +8,10 @@
     "waveHighToLowAlphaLengthRatio": 0.5,
     "waveSpacing": 500,
     "waveSpeed": 50
+  },
+  "startPointSphere": {
+    "radiusMultiplier": 0.5,
+    "minRadius": 1.0,
+    "color": "playerPrimary"
   }
 }

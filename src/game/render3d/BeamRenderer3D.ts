@@ -20,9 +20,10 @@ import { COLORS } from '@/colorsConfig';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from './beamConfig.json';
 
-// Visual tuning (color, wave alpha range, wave spacing/speed) lives in
-// beamConfig.json — edit that file to retune how beams look. The remaining
-// constants below shape buffer sizes and cylinder geometry, not look.
+// Visual tuning (color, wave alpha range, wave spacing/speed, start-point
+// sphere look) lives in beamConfig.json — edit that file to retune how
+// beams look. The remaining constants below shape buffer sizes and
+// cylinder geometry, not look.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_CAP = 4096;
 const BEAM_EMITTER_CAP = 4096;
@@ -30,11 +31,6 @@ const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
-/** Sphere drawn at the beam emission point (the "generator orb" in front
- *  of the turret). Sized as a multiple of the beam's body radius so larger
- *  beams get larger emitter orbs. */
-const EMITTER_SPHERE_RADIUS_MULT = 1.5;
-const EMITTER_MIN_RADIUS = 1.0;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -64,12 +60,37 @@ type BeamVisualConfig = {
   waveSpeed: number;
 };
 
+/** Start-point sphere ("generator orb") visual config. radiusMultiplier
+ *  scales the beam body radius; minRadius floors it so even thin beams
+ *  show a visible orb. color may be a CSS hex (e.g. "#ffaa00") for a
+ *  fixed color, or the sentinels "playerPrimary" / "playerSecondary"
+ *  to take the firing unit's player color. */
+type StartPointSphereConfig = {
+  radiusMultiplier: number;
+  minRadius: number;
+  color: string;
+};
+
 type BeamConfigFile = Partial<BeamVisualConfig> & {
   outer?: BeamVisualConfig;
   inner?: BeamVisualConfig;
+  startPointSphere?: Partial<StartPointSphereConfig>;
 };
 
 const rawBeamConfig = beamConfig as BeamConfigFile;
+
+const START_POINT_SPHERE_CONFIG: StartPointSphereConfig = {
+  radiusMultiplier: rawBeamConfig.startPointSphere?.radiusMultiplier ?? 1.5,
+  minRadius: rawBeamConfig.startPointSphere?.minRadius ?? 1.0,
+  color: rawBeamConfig.startPointSphere?.color ?? 'playerPrimary',
+};
+
+function resolveStartPointSphereColor(ownerId: number): string | number {
+  const c = START_POINT_SPHERE_CONFIG.color;
+  if (c === 'playerPrimary') return getPlayerColors(ownerId).primary;
+  if (c === 'playerSecondary') return getPlayerColors(ownerId).secondary;
+  return c;
+}
 const rawOuterVisualConfig = rawBeamConfig.outer ?? (rawBeamConfig as BeamVisualConfig);
 const OUTER_VISUAL_CONFIG: BeamVisualConfig = {
   ...rawOuterVisualConfig,
@@ -487,8 +508,8 @@ export class BeamRenderer3D {
       // between snapshots; otherwise fall back to the snapshot's start.
       if (emissionOffset > 0 && emitterIdx < BEAM_EMITTER_CAP) {
         const orbRadius = Math.max(
-          EMITTER_MIN_RADIUS,
-          profile.lineRadius * EMITTER_SPHERE_RADIUS_MULT,
+          START_POINT_SPHERE_CONFIG.minRadius,
+          profile.lineRadius * START_POINT_SPHERE_CONFIG.radiusMultiplier,
         );
         const orbX = hasSnapStart ? snapStartX : startPoint.x;
         const orbY = hasSnapStart ? snapStartY : startPoint.y;
@@ -497,7 +518,7 @@ export class BeamRenderer3D {
         this._matrix.makeScale(orbRadius, orbRadius, orbRadius);
         this._matrix.setPosition(orbX, orbZ, orbY);
         this.emitterMesh.setMatrixAt(emitterIdx, this._matrix);
-        this.emitterColor.set(getPlayerColors(proj.ownerId).primary);
+        this.emitterColor.set(resolveStartPointSphereColor(proj.ownerId));
         this.emitterMesh.setColorAt(emitterIdx, this.emitterColor);
         emitterIdx++;
       }
