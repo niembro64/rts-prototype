@@ -5,23 +5,23 @@
   },
   "lightRocket": {
     "maxPoolSize": 100000,
-    "emitFramesSkip": 0,
-    "exhaustSpeed": 0,
-    "fadeInMs": 2,
-    "fadeOutMs": 500,
-    "startRadius": 1,
-    "endRadiusMultiplier": 3,
-    "maxAlpha": 0.5
+    "emitFramesSkip": 3,
+    "exhaustSpeed": 100,
+    "fadeInMs": 10,
+    "fadeOutMs": 1000,
+    "startRadius": 2,
+    "endRadiusMultiplier": 6,
+    "maxAlpha": 0.2
   },
   "fastRocket": {
     "maxPoolSize": 100000,
     "emitFramesSkip": 0,
-    "exhaustSpeed": 0,
-    "fadeInMs": 2,
-    "fadeOutMs": 500,
-    "startRadius": 1,
-    "endRadiusMultiplier": 3,
-    "maxAlpha": 0.5
+    "exhaustSpeed": 100,
+    "fadeInMs": 10,
+    "fadeOutMs": 1000,
+    "startRadius": 6,
+    "endRadiusMultiplier": 5,
+    "maxAlpha": 0.2
   },
   "hovercraft": {
     "maxPoolSize": 10000,

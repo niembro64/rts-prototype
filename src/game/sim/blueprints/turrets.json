@@ -423,73 +423,6 @@
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": []
   },
-  "salvoRocketTurret": {
-    "id": "salvoRocketTurret",
-    "projectileId": "lightRocket",
-    "range": 800,
-    "cooldown": 2000,
-    "launchForce": 500,
-    "turretTurnAccel": 200,
-    "turretDrag": 0.15,
-    "barrel": {
-      "type": "coneMultiBarrel",
-      "barrelCount": 1,
-      "barrelLength": 0.1,
-      "baseOrbit": 0,
-      "tipOrbit": 1,
-      "spin": {
-        "idle": 2,
-        "max": 13,
-        "accel": 10,
-        "decel": 5
-      }
-    },
-    "isManualFire": false,
-    "passive": false,
-    "requiresNonObstructedLineOfSight": false,
-    "rangeMultiplierOverrides": {
-      "engageRangeMax": {
-        "acquire": 0.95,
-        "release": 1
-      },
-      "engageRangeMin": {
-        "acquire": 0.6,
-        "release": 0.55
-      },
-      "trackingRange": null
-    },
-    "eventsSmooth": false,
-    "color": 16777215,
-    "spread": {
-      "angle": 0.7853981633974483,
-      "pelletCount": 1
-    },
-    "burst": null,
-    "forceField": null,
-    "mirrorPanels": [],
-    "audio": {
-      "fireSound": {
-        "$audio": "event.fire.salvoRocketTurret"
-      }
-    },
-    "verticalLauncher": true,
-    "idlePitch": 1.5707963267948966,
-    "groundAimFraction": null,
-    "radius": {
-      "body": 8
-    },
-    "headOnly": true,
-    "constructionEmitter": null,
-    "aimStyle": {
-      "angleType": "rayDirect",
-      "lockOnType": "lockOnToBody"
-    },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
-  },
   "dgunTurret": {
     "id": "dgunTurret",
     "projectileId": "disruptorShot",
@@ -1018,12 +951,79 @@
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": []
   },
+  "salvoRocketTurret": {
+    "id": "salvoRocketTurret",
+    "projectileId": "lightRocket",
+    "range": 800,
+    "cooldown": 2000,
+    "launchForce": 500,
+    "turretTurnAccel": 200,
+    "turretDrag": 0.15,
+    "barrel": {
+      "type": "coneMultiBarrel",
+      "barrelCount": 1,
+      "barrelLength": 0.1,
+      "baseOrbit": 0,
+      "tipOrbit": 1,
+      "spin": {
+        "idle": 2,
+        "max": 13,
+        "accel": 10,
+        "decel": 5
+      }
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": {
+        "acquire": 0.6,
+        "release": 0.55
+      },
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0.7853981633974483,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "forceField": null,
+    "mirrorPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.salvoRocketTurret"
+      }
+    },
+    "verticalLauncher": true,
+    "idlePitch": 1.5707963267948966,
+    "groundAimFraction": null,
+    "radius": {
+      "body": 8
+    },
+    "headOnly": true,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect",
+      "lockOnType": "lockOnToBody"
+    },
+    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
+    "excludeLockOnLevel0Entities": [],
+    "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Units": [],
+    "excludeLockOnLevel1Turrets": []
+  },
   "fastRocketTurret": {
     "id": "fastRocketTurret",
     "projectileId": "fastRocket",
     "range": 430,
-    "cooldown": 200,
-    "launchForce": 1200,
+    "cooldown": 50,
+    "launchForce": 4200,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {

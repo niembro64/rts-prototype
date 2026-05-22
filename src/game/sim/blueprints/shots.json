@@ -46,7 +46,7 @@
     "id": "lightRocket",
     "mass": 4,
     "collision": {
-      "radius": 1.5
+      "radius": 2
     },
     "explosion": {
       "radius": 50,
@@ -68,7 +68,7 @@
     "id": "fastRocket",
     "mass": 3,
     "collision": {
-      "radius": 1.5
+      "radius": 2
     },
     "explosion": {
       "radius": 50,
@@ -76,7 +76,7 @@
       "force": 3000
     },
     "detonateOnExpiry": true,
-    "maxLifespan": 8000,
+    "maxLifespan": 3000,
     "hitSound": {
       "$audio": "event.hit.fastRocket"
     },
