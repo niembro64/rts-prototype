@@ -6,6 +6,7 @@ import {
   formatRunningMax,
   type RunningStats,
 } from './diagnosticStats';
+import type { SnapshotWireBreakdown } from './network/snapshotWireCodec';
 import type { SnapshotRate } from '../types/server';
 
 const REPORT_INTERVAL_MS = 10_000;
@@ -27,6 +28,8 @@ type EncodeBucket = {
     bytes: RunningStats;
     encodeMs: RunningStats;
   };
+  latestFullBreakdown?: SnapshotWireBreakdown;
+  latestDeltaBreakdown?: SnapshotWireBreakdown;
 };
 
 export type SnapshotEncodeInstrumentationReportRow = {
@@ -47,6 +50,26 @@ export type SnapshotEncodeInstrumentationReportRow = {
   encodeMsMax: number | string;
 };
 
+export type SnapshotEncodeInstrumentationBreakdownRow = {
+  source: SnapshotEncodeInstrumentationSource;
+  listener: string;
+  rate: string;
+  unitBand: string;
+  kind: 'DIFFSNAP' | 'FULLSNAP';
+  totalBytes: number;
+  top1: string;
+  top1Bytes: number;
+  top1Pct: number;
+  top2: string;
+  top2Bytes: number;
+  top2Pct: number;
+  top3: string;
+  top3Bytes: number;
+  top3Pct: number;
+  entityTop: string;
+  projectileTop: string;
+};
+
 export type SnapshotEncodeInstrumentationSample = {
   source: SnapshotEncodeInstrumentationSource;
   listener: string;
@@ -55,6 +78,7 @@ export type SnapshotEncodeInstrumentationSample = {
   bytes: number;
   encodeMs: number;
   isDelta: boolean;
+  breakdown?: SnapshotWireBreakdown;
   now?: number;
 };
 
@@ -62,6 +86,7 @@ export type SnapshotEncodeInstrumentationDebugApi = {
   reset(): void;
   report(): void;
   rows(): SnapshotEncodeInstrumentationReportRow[];
+  breakdowns(): SnapshotEncodeInstrumentationBreakdownRow[];
 };
 
 declare global {
@@ -139,6 +164,10 @@ export class SnapshotEncodeInstrumentation {
     if (sample.unitCount !== undefined) addRunningStat(bucket.stats.units, sample.unitCount);
     addRunningStat(bucket.stats.bytes, sample.bytes);
     addRunningStat(bucket.stats.encodeMs, sample.encodeMs);
+    if (sample.breakdown !== undefined) {
+      if (sample.isDelta) bucket.latestDeltaBreakdown = sample.breakdown;
+      else bucket.latestFullBreakdown = sample.breakdown;
+    }
     this.maybeReport(now);
   }
 
@@ -166,6 +195,11 @@ export class SnapshotEncodeInstrumentation {
   rows(): SnapshotEncodeInstrumentationReportRow[] {
     if (!this.enabled) return [];
     return this.buildRows();
+  }
+
+  breakdowns(): SnapshotEncodeInstrumentationBreakdownRow[] {
+    if (!this.enabled) return [];
+    return this.buildBreakdownRows();
   }
 
   report(): void {
@@ -211,12 +245,73 @@ export class SnapshotEncodeInstrumentation {
     return rows;
   }
 
+  private buildBreakdownRows(): SnapshotEncodeInstrumentationBreakdownRow[] {
+    const rows: SnapshotEncodeInstrumentationBreakdownRow[] = [];
+    for (const bucket of this.buckets.values()) {
+      this.appendBreakdownRow(rows, bucket, 'FULLSNAP', bucket.latestFullBreakdown);
+      this.appendBreakdownRow(rows, bucket, 'DIFFSNAP', bucket.latestDeltaBreakdown);
+    }
+    rows.sort((a, b) =>
+      a.source.localeCompare(b.source) ||
+      a.listener.localeCompare(b.listener) ||
+      a.rate.localeCompare(b.rate) ||
+      a.unitBand.localeCompare(b.unitBand) ||
+      a.kind.localeCompare(b.kind)
+    );
+    return rows;
+  }
+
+  private appendBreakdownRow(
+    rows: SnapshotEncodeInstrumentationBreakdownRow[],
+    bucket: EncodeBucket,
+    kind: 'DIFFSNAP' | 'FULLSNAP',
+    breakdown: SnapshotWireBreakdown | undefined,
+  ): void {
+    if (breakdown === undefined) return;
+    const top = breakdown.topLevelTop;
+    rows.push({
+      source: bucket.source,
+      listener: bucket.listener,
+      rate: bucket.rate,
+      unitBand: bucket.unitBand,
+      kind,
+      totalBytes: breakdown.totalBytes,
+      top1: top[0]?.section ?? '',
+      top1Bytes: top[0]?.bytes ?? 0,
+      top1Pct: top[0]?.pct ?? 0,
+      top2: top[1]?.section ?? '',
+      top2Bytes: top[1]?.bytes ?? 0,
+      top2Pct: top[1]?.pct ?? 0,
+      top3: top[2]?.section ?? '',
+      top3Bytes: top[2]?.bytes ?? 0,
+      top3Pct: top[2]?.pct ?? 0,
+      entityTop: formatDetailTop(breakdown.entityTop),
+      projectileTop: formatDetailTop(breakdown.projectileTop),
+    });
+  }
+
   private printReport(now: number): void {
     const rows = this.buildRows();
     if (rows.length === 0) return;
     console.info(`[DP-02] Snapshot wire encode report @ ${Math.round(now)}ms`);
     console.table(rows);
+    const breakdownRows = this.buildBreakdownRows();
+    if (breakdownRows.length > 0) {
+      console.info('[DP-02] Snapshot wire section breakdown (latest per bucket/kind)');
+      console.table(breakdownRows);
+    }
   }
+}
+
+function formatDetailTop(entries: SnapshotWireBreakdown['entityTop']): string {
+  if (entries.length === 0) return '';
+  const parts: string[] = [];
+  const count = Math.min(3, entries.length);
+  for (let i = 0; i < count; i++) {
+    const entry = entries[i];
+    parts.push(`${entry.section} ${entry.bytes}B/${entry.pct}%`);
+  }
+  return parts.join(', ');
 }
 
 export const SNAPSHOT_ENCODE_INSTRUMENTATION = new SnapshotEncodeInstrumentation();
@@ -229,5 +324,6 @@ if (
     reset: () => SNAPSHOT_ENCODE_INSTRUMENTATION.reset(),
     report: () => SNAPSHOT_ENCODE_INSTRUMENTATION.report(),
     rows: () => SNAPSHOT_ENCODE_INSTRUMENTATION.rows(),
+    breakdowns: () => SNAPSHOT_ENCODE_INSTRUMENTATION.breakdowns(),
   };
 }

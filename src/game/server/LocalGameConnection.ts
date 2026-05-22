@@ -6,7 +6,10 @@ import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { ReusableNetworkSnapshotCloner, cloneNetworkSnapshot } from '../network/snapshotClone';
-import { encodeNetworkSnapshot } from '../network/snapshotWireCodec';
+import {
+  encodeNetworkSnapshot,
+  measureNetworkSnapshotWireBreakdown,
+} from '../network/snapshotWireCodec';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
@@ -132,6 +135,9 @@ export class LocalGameConnection implements GameConnection {
       bytes: payload.byteLength,
       encodeMs,
       isDelta: state.isDelta,
+      breakdown: SNAPSHOT_ENCODE_INSTRUMENTATION.enabled
+        ? measureNetworkSnapshotWireBreakdown(state, payload.byteLength)
+        : undefined,
     });
   }
 

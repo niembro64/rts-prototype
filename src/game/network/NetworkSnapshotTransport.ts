@@ -7,6 +7,7 @@ import type { PlayerId } from '../sim/types';
 import {
   decodeNetworkSnapshot,
   encodeNetworkSnapshot,
+  measureNetworkSnapshotWireBreakdown,
 } from './snapshotWireCodec';
 import { setSnapshotWireBytes } from './snapshotWireMetadata';
 
@@ -44,6 +45,9 @@ export class NetworkSnapshotTransport {
       bytes: buf.byteLength,
       encodeMs,
       isDelta: state.isDelta,
+      breakdown: SNAPSHOT_ENCODE_INSTRUMENTATION.enabled
+        ? measureNetworkSnapshotWireBreakdown(state, buf.byteLength)
+        : undefined,
     });
 
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsSent % 100 === 0) {

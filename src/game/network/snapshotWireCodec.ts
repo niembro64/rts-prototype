@@ -1,5 +1,10 @@
 import { encode as msgpackEncode, decode as msgpackDecode } from '@msgpack/msgpack';
-import type { NetworkServerSnapshot } from './NetworkTypes';
+import type {
+  NetworkServerSnapshot,
+  NetworkServerSnapshotBeamUpdate,
+  NetworkServerSnapshotEntity,
+  NetworkServerSnapshotProjectileSpawn,
+} from './NetworkTypes';
 import {
   encodeNetworkSnapshotWithRustFallback,
   type RustSnapshotEncodeResult,
@@ -14,6 +19,53 @@ import {
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
+
+const TOP_LEVEL_SNAPSHOT_KEYS = [
+  'tick',
+  'entities',
+  'minimapEntities',
+  'economy',
+  'sprayTargets',
+  'audioEvents',
+  'scanPulses',
+  'shroud',
+  'projectiles',
+  'gameState',
+  'serverMeta',
+  'grid',
+  'terrain',
+  'buildability',
+  'isDelta',
+  'visibilityFiltered',
+  'removedEntityIds',
+] as const satisfies readonly (keyof NetworkServerSnapshot)[];
+
+const ENTITY_MAJOR_KEYS = [
+  'id',
+  'type',
+  'pos',
+  'rotation',
+  'playerId',
+  'changedFields',
+  'unit',
+  'building',
+] as const satisfies readonly (keyof NetworkServerSnapshotEntity)[];
+
+export type SnapshotWireBreakdownEntry = {
+  section: string;
+  bytes: number;
+  pct: number;
+};
+
+export type SnapshotWireBreakdown = {
+  totalBytes: number;
+  topLevel: Record<string, number>;
+  entity: Record<string, number>;
+  projectile: Record<string, number>;
+  topLevelTop: SnapshotWireBreakdownEntry[];
+  entityTop: SnapshotWireBreakdownEntry[];
+  projectileTop: SnapshotWireBreakdownEntry[];
+};
 
 type RustSnapshotWireStats = {
   rustSends: number;
@@ -80,6 +132,38 @@ export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkSer
   return msgpackDecode(bytes) as NetworkServerSnapshot;
 }
 
+export function measureNetworkSnapshotWireBreakdown(
+  state: NetworkServerSnapshot,
+  totalBytes?: number,
+): SnapshotWireBreakdown {
+  const measuredTotalBytes = totalBytes ?? msgpackEncode(state, SNAPSHOT_ENCODE_OPTIONS).byteLength;
+  const topLevel: Record<string, number> = {};
+  let topLevelSum = 0;
+
+  for (let i = 0; i < TOP_LEVEL_SNAPSHOT_KEYS.length; i++) {
+    const key = TOP_LEVEL_SNAPSHOT_KEYS[i];
+    const bytes = encodedPairBytes(key, state[key]);
+    if (bytes <= 0) continue;
+    topLevel[key] = bytes;
+    topLevelSum += bytes;
+  }
+  const envelopeBytes = Math.max(0, measuredTotalBytes - topLevelSum);
+  if (envelopeBytes > 0) topLevel.envelope = envelopeBytes;
+
+  const entity = measureEntityBreakdown(state.entities);
+  const projectile = measureProjectileBreakdown(state.projectiles);
+
+  return {
+    totalBytes: measuredTotalBytes,
+    topLevel,
+    entity,
+    projectile,
+    topLevelTop: topEntries(topLevel, measuredTotalBytes),
+    entityTop: topEntries(entity, topLevel.entities ?? measuredTotalBytes),
+    projectileTop: topEntries(projectile, topLevel.projectiles ?? measuredTotalBytes),
+  };
+}
+
 function isRustSnapshotWireCompareEnabled(): boolean {
   if (import.meta.env.VITE_BA_DP02_RUST_SNAPSHOT_WIRE === '1') return true;
   if (typeof window === 'undefined') return false;
@@ -101,6 +185,108 @@ function isForceJsSnapshotWireEnabled(): boolean {
   if (value === '' || value === '1') return true;
   const normalized = value.toLowerCase();
   return normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
+function encodedPairBytes(key: string, value: unknown): number {
+  const bytes = msgpackEncode({ [key]: value }, SNAPSHOT_ENCODE_OPTIONS).byteLength;
+  return Math.max(0, bytes - 1);
+}
+
+function addPairBytes(
+  target: Record<string, number>,
+  section: string,
+  key: string,
+  value: unknown,
+): void {
+  const bytes = encodedPairBytes(key, value);
+  if (bytes <= 0) return;
+  target[section] = (target[section] ?? 0) + bytes;
+}
+
+function measureEntityBreakdown(
+  entities: readonly NetworkServerSnapshotEntity[],
+): Record<string, number> {
+  const sections: Record<string, number> = {};
+  for (let i = 0; i < entities.length; i++) {
+    const entity = entities[i];
+    for (let keyI = 0; keyI < ENTITY_MAJOR_KEYS.length; keyI++) {
+      const key = ENTITY_MAJOR_KEYS[keyI];
+      addPairBytes(sections, `entities.${key}`, key, entity[key]);
+    }
+    if (entity.unit !== undefined) {
+      for (const [key, value] of Object.entries(entity.unit)) {
+        addPairBytes(sections, `entities.unit.${key}`, key, value);
+      }
+    }
+    if (entity.building !== undefined) {
+      for (const [key, value] of Object.entries(entity.building)) {
+        addPairBytes(sections, `entities.building.${key}`, key, value);
+      }
+    }
+  }
+  return sections;
+}
+
+function measureProjectileBreakdown(
+  projectiles: NetworkServerSnapshot['projectiles'],
+): Record<string, number> {
+  const sections: Record<string, number> = {};
+  if (projectiles === undefined) return sections;
+
+  addPairBytes(sections, 'projectiles.spawns', 'spawns', projectiles.spawns);
+  addPairBytes(sections, 'projectiles.despawns', 'despawns', projectiles.despawns);
+  addPairBytes(sections, 'projectiles.velocityUpdates', 'velocityUpdates', projectiles.velocityUpdates);
+  addPairBytes(sections, 'projectiles.beamUpdates', 'beamUpdates', projectiles.beamUpdates);
+
+  const spawns = projectiles.spawns;
+  if (spawns !== undefined) {
+    for (let i = 0; i < spawns.length; i++) measureProjectileSpawn(sections, spawns[i]);
+  }
+  const beamUpdates = projectiles.beamUpdates;
+  if (beamUpdates !== undefined) {
+    for (let i = 0; i < beamUpdates.length; i++) measureBeamUpdate(sections, beamUpdates[i]);
+  }
+  return sections;
+}
+
+function measureProjectileSpawn(
+  sections: Record<string, number>,
+  spawn: NetworkServerSnapshotProjectileSpawn,
+): void {
+  for (const [key, value] of Object.entries(spawn)) {
+    addPairBytes(sections, `projectiles.spawns.${key}`, key, value);
+  }
+}
+
+function measureBeamUpdate(
+  sections: Record<string, number>,
+  beam: NetworkServerSnapshotBeamUpdate,
+): void {
+  addPairBytes(sections, 'projectiles.beamUpdates.id', 'id', beam.id);
+  addPairBytes(sections, 'projectiles.beamUpdates.points', 'points', beam.points);
+  addPairBytes(sections, 'projectiles.beamUpdates.obstructionT', 'obstructionT', beam.obstructionT);
+  addPairBytes(
+    sections,
+    'projectiles.beamUpdates.endpointDamageable',
+    'endpointDamageable',
+    beam.endpointDamageable,
+  );
+}
+
+function topEntries(
+  sections: Record<string, number>,
+  totalBytes: number,
+): SnapshotWireBreakdownEntry[] {
+  const rows: SnapshotWireBreakdownEntry[] = [];
+  for (const [section, bytes] of Object.entries(sections)) {
+    rows.push({
+      section,
+      bytes,
+      pct: totalBytes > 0 ? Number(((bytes / totalBytes) * 100).toFixed(1)) : 0,
+    });
+  }
+  rows.sort((a, b) => b.bytes - a.bytes || a.section.localeCompare(b.section));
+  return rows.slice(0, 8);
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
