@@ -737,9 +737,9 @@
     "shortName": "DRF",
     "hp": 240,
     "radius": {
-      "body": 26,
-      "shot": 24,
-      "push": 19.2
+      "body": 16,
+      "shot": 40,
+      "push": 50
     },
     "bodyCenterHeight": 3.2,
     "mass": 90,
