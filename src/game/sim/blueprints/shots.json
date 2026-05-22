@@ -54,7 +54,7 @@
       "force": 3000
     },
     "detonateOnExpiry": true,
-    "maxLifespan": 8000,
+    "maxLifespan": 6000,
     "hitSound": {
       "$audio": "event.hit.lightRocket"
     },
@@ -76,7 +76,7 @@
       "force": 3000
     },
     "detonateOnExpiry": true,
-    "maxLifespan": 3000,
+    "maxLifespan": 2000,
     "hitSound": {
       "$audio": "event.hit.fastRocket"
     },
