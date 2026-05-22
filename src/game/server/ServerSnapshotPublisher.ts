@@ -1,4 +1,5 @@
 import { SNAPSHOT_CONFIG } from '../../config';
+import { snapshotRateHz } from '../../serverBarConfig';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
 import { getUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import type { WorldState } from '../sim/WorldState';
@@ -41,6 +42,8 @@ type ShroudPayloadCacheEntry = {
   payload: NetworkServerSnapshotShroud | undefined;
   built: boolean;
 };
+
+const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 
 export type SnapshotListenerEntry = {
   callback: SnapshotCallback;
@@ -93,11 +96,13 @@ export class ServerSnapshotPublisher {
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
+  private minimapSnapshotCounter = 0;
   private staticResyncToken = 0;
 
   reset(): void {
     this.isFirstSnapshot = true;
     this.snapshotCounter = 0;
+    this.minimapSnapshotCounter = 0;
   }
 
   forceNextKeyframe(includeStatic = false): void {
@@ -117,6 +122,9 @@ export class ServerSnapshotPublisher {
     const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
 
     const isDelta = this.resolveSnapshotDelta(input.keyframeRatio);
+    const emitMinimapOnDelta = isDelta
+      ? this.resolveMinimapDeltaEmit(input.maxSnapshotsDisplay)
+      : this.resolveMinimapKeyframeEmit();
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -197,6 +205,7 @@ export class ServerSnapshotPublisher {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
       const listenerIsDelta = isDelta && !listenerNeedsStaticMap;
+      const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
       // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
       // minimap payloads. The first teammate to hit each cache slot
       // triggers the underlying serializer using THIS listener's
@@ -205,7 +214,9 @@ export class ServerSnapshotPublisher {
       const teamKey = visibility.teamMaskKey;
       let audioOverride: SerializerAudioOverride | undefined;
       let sprayOverride: SerializerSprayOverride | undefined;
-      let minimapOverride: SerializerMinimapOverride | undefined;
+      let minimapOverride: SerializerMinimapOverride | undefined = shouldEmitMinimap
+        ? undefined
+        : NO_MINIMAP_OVERRIDE;
       if (teamKey !== undefined) {
         audioOverride = teamAudioCache.get(teamKey);
         if (!audioOverride) {
@@ -221,16 +232,18 @@ export class ServerSnapshotPublisher {
           };
           teamSprayCache.set(teamKey, sprayOverride);
         }
-        minimapOverride = teamMinimapCache.get(teamKey);
-        if (!minimapOverride) {
-          minimapOverride = {
-            value: serializeMinimapSnapshotEntities(
-              input.world,
-              visibility,
-              listener.deltaTrackingKey,
-            ),
-          };
-          teamMinimapCache.set(teamKey, minimapOverride);
+        if (shouldEmitMinimap) {
+          minimapOverride = teamMinimapCache.get(teamKey);
+          if (!minimapOverride) {
+            minimapOverride = {
+              value: serializeMinimapSnapshotEntities(
+                input.world,
+                visibility,
+                listener.deltaTrackingKey,
+              ),
+            };
+            teamMinimapCache.set(teamKey, minimapOverride);
+          }
         }
       }
       const serializeOptions: SerializeGameStateOptions = {
@@ -356,6 +369,22 @@ export class ServerSnapshotPublisher {
       this.snapshotCounter = 0;
       return false;
     }
+    return true;
+  }
+
+  private resolveMinimapDeltaEmit(snapshotRate: SnapshotRate): boolean {
+    const targetHz = SNAPSHOT_CONFIG.minimapSnapshotRateHz;
+    if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
+    const sourceHz = snapshotRateHz(snapshotRate);
+    const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
+    this.minimapSnapshotCounter++;
+    if (this.minimapSnapshotCounter < interval) return false;
+    this.minimapSnapshotCounter = 0;
+    return true;
+  }
+
+  private resolveMinimapKeyframeEmit(): boolean {
+    this.minimapSnapshotCounter = 0;
     return true;
   }
 

@@ -41,33 +41,6 @@ Do the child items below as separate, measurable PRs. Each item must
 report before/after DS SIZE and FS SIZE numbers from the PLAYER CLIENT
 bar, preferably with the same unit count and snapshot cadence.
 
-------------------------------------------------------------------------------
-SNAP-WIRE-01.3 - make minimap updates lower-rate or dirty-thresholded.
-------------------------------------------------------------------------------
-
-Where:
-- src/game/network/stateSerializer.ts always includes
-  serializeMinimapSnapshotEntities output in snapshots.
-- src/game/network/stateSerializerMinimap.ts walks all radar-visible
-  units/buildings and emits minimap positions.
-
-What:
-Minimap data can change every snapshot for every moving entity. It
-does not need the same 30 Hz cadence or precision as authoritative
-unit movement.
-
-Fix:
-Choose one implementation:
-- Emit minimap entities at a lower cadence, e.g. 5-10 Hz.
-- Emit only when minimap position changed by a coarse threshold.
-- Derive visible-unit minimap positions from normal entity snapshots
-  and only send radar-only/minimap-only contacts separately.
-
-Done when:
-DS SIZE improves measurably in active movement scenarios and the
-minimap still looks stable enough for normal play.
-
-------------------------------------------------------------------------------
 SNAP-WIRE-01.4 - split high-frequency entity detail channels from core
                  movement updates.
 ------------------------------------------------------------------------------

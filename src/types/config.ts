@@ -13,6 +13,7 @@ export type SnapshotConfig = {
   velocityThreshold: number;
   rotationPositionThreshold: number;
   rotationVelocityThreshold: number;
+  minimapSnapshotRateHz: number;
   ownedEntityDelta: SnapshotDeltaResolutionConfig;
   observedEntityDelta: SnapshotDeltaResolutionConfig;
 };

@@ -4,6 +4,7 @@
   "velocityThreshold": 0.5,
   "rotationPositionThreshold": 0.09817477042468103,
   "rotationVelocityThreshold": 0.1,
+  "minimapSnapshotRateHz": 8,
   "ownedEntityDelta": {
     "positionThresholdMultiplier": 1,
     "velocityThresholdMultiplier": 1,

@@ -140,6 +140,9 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //   observedEntityDelta     — same multipliers for entities owned by
 //                             other players. Set >1 to coarsen
 //                             remote movement / turret churn.
+//   minimapSnapshotRateHz   — upper cadence for full minimap contact
+//                             lists on delta snapshots. Keyframes
+//                             always carry a fresh minimap baseline.
 export const SNAPSHOT_CONFIG: SnapshotConfig = snapshotConfigJson;
 
 // Re-export bar config values used by sim/server code
