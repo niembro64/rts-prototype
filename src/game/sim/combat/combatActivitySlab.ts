@@ -6,7 +6,7 @@
 // through `readActiveTurretMaskForUnit` / `readFiringTurretMaskForUnit`
 // directly.
 
-import type { CombatComponent, Entity, Turret } from '../types';
+import type { CombatComponent, Entity } from '../types';
 import { spatialGrid } from '../SpatialGrid';
 import { getSimWasm } from '../../sim-wasm/init';
 import { getCombatTargetingStateViews } from './targetingInputStamping';
@@ -60,31 +60,24 @@ export function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
   sim.combatTargeting.clearTurretFsm(slot, weaponIndex);
 }
 
-/** Drop a turret's lock-on mid-tick: clears the JS Turret target +
- *  state fields and the same FSM tuple on the combat-targeting slab
- *  in one call.
+/** Drop a turret's lock-on mid-tick on the combat-targeting slab.
+ *  Called from turretSystem (ballistic out-of-reach),
+ *  projectileSystem (ballistic failure / dead target mid-fire), and
+ *  commandExecution (fire-disabled command).
  *
- *  Consolidates the prior three-line pattern that lived inline in
- *  turretSystem (ballistic out-of-reach), projectileSystem (ballistic
- *  failure / dead target mid-fire), and commandExecution
- *  (fire-disabled command):
- *
- *    weapon.target = null;
- *    weapon.state = 'idle';
- *    clearTurretFsmOnSlab(unit, weaponIndex);
- *
- *  Keeping the JS Turret writes alongside the slab clear preserves the
- *  current writeback semantics (downstream JS-only readers in
- *  combatActivity.ts still consume Turret.target / Turret.state), while
- *  funneling every mid-tick drop through one function so the slab is
- *  never left stale relative to the JS Turret. */
-export function dropTurretLockMidTick(
-  unit: Entity,
-  weapon: Turret,
-  weaponIndex: number,
-): void {
-  weapon.target = null;
-  weapon.state = 'idle';
+ *  AIM-08.9 — the parallel JS Turret.target / Turret.state writes
+ *  are gone. Every sim-hot reader of those fields is slab-first
+ *  (`readCombatTargetingTurretFsmInto`, `isBeamEngagedWithTargetingState`,
+ *  `isTurretEngaged`, `getTurretMirrorDps`, etc.) and the slab is
+ *  always available on the server where this function runs, so the
+ *  JS values were never the source of truth on the sim hot path.
+ *  Non-sim consumers (NetworkEntityFactory snapshot apply,
+ *  ClientUnitPrediction) keep their own JS-mirror lifecycle: the
+ *  snapshot serializer reads slab and ships authoritative state, the
+ *  client hydrates JS Turret fields from that snapshot, and any drift
+ *  between mid-tick slab clears and the next snapshot is irrelevant
+ *  because no server-side reader consults the JS fields. */
+export function dropTurretLockMidTick(unit: Entity, weaponIndex: number): void {
   clearTurretFsmOnSlab(unit, weaponIndex);
 }
 

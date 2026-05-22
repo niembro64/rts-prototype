@@ -343,7 +343,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
         // state, beam inverse index, and the slab FSM tuple. The
         // end-of-pass activity-mask refresh re-derives the firing /
         // active masks from the cleared slab state.
-        dropTurretLockMidTick(unit, weapon, weaponIndex);
+        dropTurretLockMidTick(unit, weaponIndex);
         continue;
       }
 
@@ -368,7 +368,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (targetingTargetId !== null && !world.getEntity(targetingTargetId)) {
         // Target despawned mid-fire — drop the lock everywhere in one
         // call (JS Turret + beam index + slab FSM).
-        dropTurretLockMidTick(unit, weapon, weaponIndex);
+        dropTurretLockMidTick(unit, weaponIndex);
         continue;
       }
       if (targetingTargetId === null && groundTargetPoint === null) continue;

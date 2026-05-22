@@ -653,7 +653,7 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
       // side, leaving the slab with stale (target, state) that
       // same-tick slab-first readers would still see.
       for (let wi = 0; wi < combat.turrets.length; wi++) {
-        dropTurretLockMidTick(entity, combat.turrets[wi], wi);
+        dropTurretLockMidTick(entity, wi);
       }
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);

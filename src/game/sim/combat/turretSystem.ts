@@ -132,7 +132,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           // activeMask bit stays set so we still run the damped-spring
           // integrator below; the firing bit drops on its own when the
           // end-of-pass refresh re-derives masks.
-          dropTurretLockMidTick(unit, weapon, weaponIndex);
+          dropTurretLockMidTick(unit, weaponIndex);
         } else {
           targetAngle = solved.yaw;
           targetPitch = solved.pitch;
@@ -187,7 +187,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
               // silently tracking a fallback "best-guess" pitch
               // forever. Single helper call clears JS Turret + beam
               // index + slab FSM in one step.
-              dropTurretLockMidTick(unit, weapon, weaponIndex);
+              dropTurretLockMidTick(unit, weaponIndex);
             } else {
               targetAngle = solved.yaw;
               targetPitch = solved.pitch;

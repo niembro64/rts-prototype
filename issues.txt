@@ -56,43 +56,6 @@ and deletes the predecessor in the same change (see "Delete The Old
 Path"). No "we will come back to it later" parity flags.
 
 ------------------------------------------------------------------------------
-AIM-08.9 - dropTurretLockMidTick still writes JS Turret.target /
-           Turret.state.
-------------------------------------------------------------------------------
-
-Where:
-- The mid-tick mutation helper clears both the slab and the JS Turret
-  in one call. The slab-side clear is necessary. The JS-side write
-  exists because legacy activity-mask code read JS Turret.target /
-  Turret.state.
-- Callers include turretSystem mid-tick lock drops, projectileSystem
-  fire-time invalidations, forceFieldTurret transitions, and death
-  cleanup paths.
-
-What:
-AIM-08.5 moved the activity-mask kernel to read slab state directly,
-so the JS Turret target/state writes inside dropTurretLockMidTick may
-now be unnecessary. The blob's earlier note ("JS Turret.target /
-Turret.state on the sim hot path therefore drift away from the slab
-between dropTurretLockMidTick calls; that is fine because no slab-first
-reader reads them") suggests the writes are already redundant for
-in-sim consumers, but no audit has confirmed it.
-
-Fix:
-Audit every consumer of Turret.target / Turret.state across the
-codebase. For each one, confirm it is slab-first or non-sim only.
-Then drop the JS Turret writes from dropTurretLockMidTick and keep
-only the slab clear.
-
-Done when:
-dropTurretLockMidTick clears slab only; no reader treats the JS fields
-as authoritative on the sim hot path; ideally the JS Turret.target /
-Turret.state fields themselves can be deleted in the same change (with
-Turret.aimErrorYaw/Pitch as the lone JS-local exception, since
-updateTurretRotation and isWeaponAimedForFire use them within the same
-tick without crossing the slab).
-
-------------------------------------------------------------------------------
 AIM-08.10 - writeBackCombatTargetingEntity should disappear once
             AIM-08.6 / .7 / .8 land.
 ------------------------------------------------------------------------------
