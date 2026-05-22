@@ -621,51 +621,25 @@ function stampCombatTargetingEntityInto(
   return true;
 }
 
-/** True for turrets the live world flags treat as disabled
- *  (visualOnly, passive without mirrors, force without force fields).
- *  Mirrors the Rust `combat_targeting_weapon_system_disabled` helper —
- *  the slab side is reset by the scheduler, this is the JS-only
- *  bookkeeping flag the writeback uses to clear non-slab Turret
- *  fields (angular/pitch velocity + acceleration, burst.remaining,
- *  forceField.transition/range). */
-export function weaponSystemDisabled(world: WorldState, weapon: Turret): boolean {
-  return (
-    weapon.config.visualOnly === true ||
-    (weapon.config.passive === true && !world.mirrorsEnabled) ||
-    (weapon.config.shot?.type === 'force' && !world.forceFieldsEnabled)
-  );
-}
-
-function resetDisabledTurretJsOnlyFields(turret: Turret): void {
-  turret.angularVelocity = 0;
-  turret.angularAcceleration = 0;
-  turret.pitchVelocity = 0;
-  turret.pitchAcceleration = 0;
-  if (turret.burst) {
-    turret.burst.remaining = 0;
-  }
-  if (turret.forceField) {
-    turret.forceField.transition = 0;
-    turret.forceField.range = 0;
-  }
-}
-
 /** Refresh per-entity slab bookkeeping after the targeting kernel ran.
  *  The Rust mask kernel computes activeTurretMask / firingTurretMask
  *  from slab state and we mirror those into combat.activeTurretMask /
  *  combat.firingTurretMask for the transitional JS readers that still
- *  touch those mask fields. Disabled turrets get their JS-only fields
- *  cleared here (angular/pitch velocity + accel, burst.remaining,
- *  forceField.transition/range) — the slab side was zeroed by the
- *  scheduler's reset_disabled_weapons pass, this finishes the job for
- *  fields that never crossed the boundary. Returns true when any
- *  turret still needs rotation/fire integration after writeback.
+ *  touch those mask fields. Returns true when any turret still needs
+ *  rotation/fire integration after writeback.
  *
  *  AIM-08.6 — the beam inverse target index is no longer mirrored
  *  here. The Rust kernel's `turret_target_id` slab is the single
  *  source of truth, and death-cleanup readers
  *  (`getBeamWeaponsTargeting`) walk it directly on demand instead of
  *  paying the per-turret-per-tick JS Map maintenance.
+ *
+ *  AIM-08.7 — disabled-turret JS-only field reset (angular/pitch
+ *  velocity + accel, burst.remaining, forceField.transition/range)
+ *  no longer runs every tick. It now fires only at the transition
+ *  moments where a turret becomes disabled (mirror/force-field
+ *  toggles in GameServer), via
+ *  `resetDisabledTurretJsOnlyFields` in combatActivity.ts.
  *
  *  JS Turret.target / Turret.state are no longer mirrored from the
  *  slab: every sim-hot reader (turretSystem rotation, projectileSystem
@@ -683,10 +657,7 @@ function resetDisabledTurretJsOnlyFields(turret: Turret): void {
  *  updateWeaponWorldKinematics, aim solver, projectile launch, dgun
  *  launch) read the slab via
  *  readCombatTargetingTurretMountKinematicsInto. */
-export function writeBackCombatTargetingEntity(
-  entity: Entity,
-  world: WorldState,
-): boolean {
+export function writeBackCombatTargetingEntity(entity: Entity): boolean {
   const combat = entity.combat;
   if (!combat) return false;
   const sim = getSimWasm();
@@ -698,21 +669,13 @@ export function writeBackCombatTargetingEntity(
   }
 
   const targeting = sim.combatTargeting;
-  const turretCount = Math.min(targeting.turretCount(slot), combat.turrets.length);
+  const turretCount = targeting.turretCount(slot);
   if (turretCount <= 0) {
     clearCombatActivityFlags(combat);
     return false;
   }
 
   const views = getCombatTargetingStateViews(sim);
-
-  for (let i = 0; i < turretCount; i++) {
-    const turret = combat.turrets[i];
-    if (weaponSystemDisabled(world, turret)) {
-      resetDisabledTurretJsOnlyFields(turret);
-    }
-  }
-
   targeting.refreshActivityMasksForEntity(slot);
   const activeMask = views.activeTurretMask[slot];
   const firingMask = views.firingTurretMask[slot];

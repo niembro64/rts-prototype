@@ -56,36 +56,6 @@ and deletes the predecessor in the same change (see "Delete The Old
 Path"). No "we will come back to it later" parity flags.
 
 ------------------------------------------------------------------------------
-AIM-08.7 - disabled-turret JS-only field reset still runs every tick.
-------------------------------------------------------------------------------
-
-Where:
-- src/game/sim/combat/targetingInputStamping.ts::
-  writeBackCombatTargetingEntity (per-turret loop calling
-  resetDisabledTurretJsOnlyFields when weaponSystemDisabled is true).
-
-What:
-For every turret with weaponSystemDisabled === true, the per-tick
-writeback zeros angular/pitch velocity + acceleration, burst.remaining,
-and forceField.transition/range. These are JS-only Turret fields the
-kernel never sees; the slab-side reset is already done by the
-scheduler's reset_disabled_weapons pass. Running the reset every tick
-does no harm but wastes a per-turret loop iteration on entities whose
-disabled-set never changes.
-
-Fix:
-Move the JS-only reset to a transition-time helper invoked only at the
-moments weaponSystemDisabled actually flips from false to true:
-- GameServer mirror enable/disable toggle path.
-- GameServer force-field enable/disable toggle path.
-- Per-turret config.visualOnly changes (currently startup-only).
-
-Done when:
-writeBackCombatTargetingEntity no longer calls
-resetDisabledTurretJsOnlyFields; only the disable-transition paths call
-it, and weaponSystemDisabled stops being read in the per-tick loop.
-
-------------------------------------------------------------------------------
 AIM-08.8 - combat.activeTurretMask / combat.firingTurretMask are still
            mirrored from the slab every tick.
 ------------------------------------------------------------------------------

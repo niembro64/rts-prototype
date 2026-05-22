@@ -49,7 +49,10 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
 import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
-import { updateCombatActivityFlags } from '../sim/combat/combatActivity';
+import {
+  resetDisabledTurretJsOnlyFields,
+  updateCombatActivityFlags,
+} from '../sim/combat/combatActivity';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { factoryProductionSystem } from '../sim/factoryProduction';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
@@ -667,10 +670,7 @@ export class GameServer {
         if (!turret.config.passive) continue;
         turret.target = null;
         turret.state = 'idle';
-        turret.angularVelocity = 0;
-        turret.angularAcceleration = 0;
-        turret.pitchVelocity = 0;
-        turret.pitchAcceleration = 0;
+        resetDisabledTurretJsOnlyFields(turret);
       }
       updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
@@ -689,14 +689,7 @@ export class GameServer {
         if (turret.config.shot?.type !== 'force') continue;
         turret.target = null;
         turret.state = 'idle';
-        turret.angularVelocity = 0;
-        turret.angularAcceleration = 0;
-        turret.pitchVelocity = 0;
-        turret.pitchAcceleration = 0;
-        if (turret.forceField) {
-          turret.forceField.transition = 0;
-          turret.forceField.range = 0;
-        }
+        resetDisabledTurretJsOnlyFields(turret);
       }
       updateCombatActivityFlags(combat);
       this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
