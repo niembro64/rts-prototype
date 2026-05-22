@@ -1499,8 +1499,8 @@ export interface CombatTargetingApi {
    *  priority-target / auto from slab-backed state after resolving
    *  source entity IDs to slab slots, reading per-entity priority +
    *  probe-tick inputs from the slab, updating mount kinematics for
-   *  processed rows, and writing the mode it actually ran into
-   *  `outModes` for the JS writeback pass. */
+   *  processed rows, refreshing activity masks inline, and writing
+   *  compact mode / active-work outputs for the JS bookkeeping pass. */
   readonly scheduleAndTickBatch: (
     sourceEntityIds: Int32Array,
     currentTick: number,
@@ -1517,6 +1517,7 @@ export interface CombatTargetingApi {
     maxTargetableRadius: number,
     outHadCooldown: Uint8Array,
     outModes: Uint8Array,
+    outHasActiveWork: Uint8Array,
   ) => void;
 }
 

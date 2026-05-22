@@ -8,9 +8,8 @@
 // boundary. This bridge's TypeScript work is now just:
 //   - consume the sourceId queue built during targeting slab stamping,
 //   - call combat_targeting_schedule_and_tick_batch once,
-//   - dispatch JS-only writeback (Turret pose, activity flags,
-//     fire-disabled priority command cleanup) per-row based on the
-//     mode byte the kernel wrote back.
+//   - apply JS-only command/probe bookkeeping from the compact mode
+//     and active-work bytes the kernel wrote back.
 // Cooldown decrement, fire-gate dispatch, FSM transitions, and the
 // disabled-weapon slab reset all live inside the Rust scheduler.
 
@@ -33,14 +32,13 @@ import {
   getCombatTargetingSourceCount,
   getCombatTargetingSourceEntities,
   getCombatTargetingSourceIds,
-  getCombatTargetingStateViews,
 } from './targetingInputStamping';
-import { spatialGrid } from '../SpatialGrid';
 
 const _activeCombatUnits: Entity[] = [];
 
 let _targetingBatchModes = new Uint8Array(0);
 let _targetingBatchHasCooldown = new Uint8Array(0);
+let _targetingBatchHasActiveWork = new Uint8Array(0);
 let _targetingBatchCachedFireRanks = new Uint8Array(0);
 let _targetingBatchCachedFireDistSqs = new Float64Array(0);
 let _targetingBatchMaxTurrets = 0;
@@ -53,6 +51,7 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
   if (maxTurrets !== _targetingBatchMaxTurrets) {
     _targetingBatchModes = new Uint8Array(0);
     _targetingBatchHasCooldown = new Uint8Array(0);
+    _targetingBatchHasActiveWork = new Uint8Array(0);
     _targetingBatchCachedFireRanks = new Uint8Array(0);
     _targetingBatchCachedFireDistSqs = new Float64Array(0);
     _targetingBatchMaxTurrets = maxTurrets;
@@ -62,6 +61,7 @@ function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): 
   while (next < entityCount) next *= 2;
   _targetingBatchModes = new Uint8Array(next);
   _targetingBatchHasCooldown = new Uint8Array(next);
+  _targetingBatchHasActiveWork = new Uint8Array(next);
   const turretCapacity = next * maxTurrets;
   _targetingBatchCachedFireRanks = new Uint8Array(turretCapacity);
   _targetingBatchCachedFireDistSqs = new Float64Array(turretCapacity);
@@ -110,23 +110,17 @@ function flushTargetingBatch(
     world.getMaxTargetableRadius(),
     _targetingBatchHasCooldown.subarray(0, count),
     _targetingBatchModes.subarray(0, count),
+    _targetingBatchHasActiveWork.subarray(0, count),
   );
 
-  // AIM-08.10 — the kernel refreshes activity masks for every non-SKIP
-  // entity inside scheduleAndTickBatch, so the JS bridge has no
-  // per-entity writeback call. SKIP entities are intentionally not
-  // refreshed; their previous-tick mask remains authoritative (FSM,
-  // rotation, and config are unchanged on a probe skip).
-  const sim = getSimWasm()!;
-  const views = getCombatTargetingStateViews(sim);
-  const activeTurretMask = views.activeTurretMask;
+  // AIM-08.10 — the scheduler refreshes activity masks and returns the
+  // active-work decision in _targetingBatchHasActiveWork, so this loop
+  // does not inspect per-entity slab masks after the kernel call.
   for (let i = 0; i < count; i++) {
     const mode = _targetingBatchModes[i];
     if (mode === CT_TARGETING_TICK_MODE_SKIP) continue;
     const unit = sourceEntities[i];
     const combat = unit.combat!;
-    const slot = spatialGrid.getSlot(unit.id);
-    const hasActiveTurretWork = slot >= 0 && activeTurretMask[slot] !== 0;
     if (mode === CT_TARGETING_TICK_MODE_CLEAR_LOCKS) {
       // Fire-disabled entities had their locks zeroed inside the
       // scheduler. Downstream JS systems (turretSystem,
@@ -135,7 +129,7 @@ function flushTargetingBatch(
       combat.priorityTargetId = null;
       combat.priorityTargetPoint = null;
     }
-    if (hasActiveTurretWork) {
+    if (_targetingBatchHasActiveWork[i] !== 0) {
       combat.nextCombatProbeTick = -1;
       _activeCombatUnits.push(unit);
     } else if (mode === CT_TARGETING_TICK_MODE_AUTO) {
@@ -151,8 +145,8 @@ function flushTargetingBatch(
 // Update auto-targeting and firing state for all stamped targeting sources.
 //
 // TypeScript here consumes the source queue that the slab stamping
-// pass already built, calls the Rust scheduler, then walks the
-// result back into JS Turret objects + combat-activity flags. Every
+// pass already built, calls the Rust scheduler, then applies the
+// remaining JS command/probe bookkeeping from typed outputs. Every
 // FSM decision (priority point / priority target / auto / clear locks
 // for fire-disabled, probe-skip) lives inside
 // combat_targeting_schedule_and_tick_batch and reads per-entity

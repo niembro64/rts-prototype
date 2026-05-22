@@ -6279,9 +6279,8 @@ struct CombatTargetingPool {
     // work epsilon). The firing mask additionally requires turret i to
     // be ENGAGED and not passive / force-shot. JS readers (turretSystem,
     // projectileSystem) consume these directly via the slab views; the
-    // JS-side `combat.activeTurretMask`/`firingTurretMask` are
-    // mirrored from this slot during writeback for the remaining JS-
-    // owned bookkeeping paths.
+    // JS readers consume these directly via slab views or scheduler
+    // output flags; there is no parallel JS-side mask mirror.
     entity_active_turret_mask: Vec<u32>,
     entity_firing_turret_mask: Vec<u32>,
     entity_slot_by_id: HashMap<i32, u32>,
@@ -8342,8 +8341,7 @@ fn combat_targeting_refresh_activity_masks_for_entity_inner(
         }
         let state = pool.turret_state[idx];
         let has_fsm_work = pool.turret_target_id[idx] >= 0 || state != CT_TURRET_STATE_IDLE;
-        let has_rotation_work = pool.turret_angular_velocity[idx].abs()
-            > CT_ROTATION_WORK_EPSILON
+        let has_rotation_work = pool.turret_angular_velocity[idx].abs() > CT_ROTATION_WORK_EPSILON
             || pool.turret_pitch_velocity[idx].abs() > CT_ROTATION_WORK_EPSILON;
         if !has_fsm_work && !has_rotation_work {
             continue;
@@ -8358,6 +8356,20 @@ fn combat_targeting_refresh_activity_masks_for_entity_inner(
     }
     pool.entity_active_turret_mask[entity_idx] = active_mask;
     pool.entity_firing_turret_mask[entity_idx] = firing_mask;
+}
+
+#[inline]
+fn combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot: u32) -> u8 {
+    let pool = combat_targeting_pool();
+    combat_targeting_refresh_activity_masks_for_entity_inner(pool, entity_slot);
+    let entity_idx = entity_slot as usize;
+    if entity_idx < pool.entity_active_turret_mask.len()
+        && pool.entity_active_turret_mask[entity_idx] != 0
+    {
+        1
+    } else {
+        0
+    }
 }
 
 /// AIM-08.5 — single-entity activity mask refresh entry point. JS
@@ -10567,13 +10579,11 @@ pub fn combat_targeting_tick_batch(
 /// the existing mixed-mode FSM work.
 ///
 /// AIM-08.10 — every entity that gets a non-SKIP mode also has its
-/// activity-mask refreshed inline before the loop iteration ends, so
-/// the JS bridge has no per-entity post-pass: it reads
-/// `entity_active_turret_mask[slot]` straight from the slab to decide
-/// `hasActiveTurretWork`. SKIP-mode entities are intentionally not
-/// refreshed because nothing they could have changed (FSM, rotation,
-/// config) was touched this tick; the previous tick's masks remain
-/// authoritative.
+/// activity-mask refreshed inline before the loop iteration ends, and
+/// the active-work decision is returned through `out_has_active_work`.
+/// SKIP-mode entities are intentionally not refreshed because nothing
+/// they could have changed (FSM, rotation, config) was touched this
+/// tick; the previous tick's masks remain authoritative.
 #[wasm_bindgen]
 pub fn combat_targeting_schedule_and_tick_batch(
     source_entity_ids: &[i32],
@@ -10591,16 +10601,19 @@ pub fn combat_targeting_schedule_and_tick_batch(
     max_targetable_radius: f64,
     out_had_cooldown: &mut [u8],
     out_modes: &mut [u8],
+    out_has_active_work: &mut [u8],
 ) {
     const MAX: usize = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
     let count = source_entity_ids
         .len()
         .min(out_had_cooldown.len())
-        .min(out_modes.len());
+        .min(out_modes.len())
+        .min(out_has_active_work.len());
 
     for entity_i in 0..count {
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_SKIP;
         out_had_cooldown[entity_i] = 0;
+        out_has_active_work[entity_i] = 0;
 
         let start = entity_i * MAX;
         let end = start + MAX;
@@ -10700,10 +10713,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
             );
             combat_targeting_clear_entity_locks(entity_slot);
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_CLEAR_LOCKS;
-            combat_targeting_refresh_activity_masks_for_entity_inner(
-                combat_targeting_pool(),
-                entity_slot,
-            );
+            out_has_active_work[entity_i] =
+                combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
             continue;
         }
 
@@ -10741,10 +10752,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 max_targetable_radius,
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
-            combat_targeting_refresh_activity_masks_for_entity_inner(
-                combat_targeting_pool(),
-                entity_slot,
-            );
+            out_has_active_work[entity_i] =
+                combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
             continue;
         }
 
@@ -10763,10 +10772,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 gravity,
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_POINT;
-            combat_targeting_refresh_activity_masks_for_entity_inner(
-                combat_targeting_pool(),
-                entity_slot,
-            );
+            out_has_active_work[entity_i] =
+                combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
             continue;
         }
 
@@ -10804,10 +10811,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 true,
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_PRIORITY_TARGET;
-            combat_targeting_refresh_activity_masks_for_entity_inner(
-                combat_targeting_pool(),
-                entity_slot,
-            );
+            out_has_active_work[entity_i] =
+                combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
             continue;
         }
 
@@ -10826,10 +10831,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
             max_targetable_radius,
         );
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
-        combat_targeting_refresh_activity_masks_for_entity_inner(
-            combat_targeting_pool(),
-            entity_slot,
-        );
+        out_has_active_work[entity_i] =
+            combat_targeting_refresh_activity_masks_for_entity_and_read_active(entity_slot);
     }
 }
 
@@ -17088,6 +17091,8 @@ mod lock_on_exclusion_tests {
             0.0,
             0.0,
             0.0,
+            0.0,
+            0.0,
             spec.state,
             spec.target_id,
             0.0,
@@ -17104,8 +17109,6 @@ mod lock_on_exclusion_tests {
             0.0,
             0.0,
             -1,
-            0.0,
-            0.0,
             0,
             spec.flags,
             spec.dps,
@@ -17130,6 +17133,7 @@ mod lock_on_exclusion_tests {
         let mut cached_fire_dist_sqs = [0.0f64; MAX];
         let mut out_had_cooldown = [0u8; 1];
         let mut out_modes = [CT_TARGETING_TICK_MODE_SKIP; 1];
+        let mut out_has_active_work = [0u8; 1];
         combat_targeting_schedule_and_tick_batch(
             &source_ids,
             10,
@@ -17146,6 +17150,7 @@ mod lock_on_exclusion_tests {
             4.0,
             &mut out_had_cooldown,
             &mut out_modes,
+            &mut out_has_active_work,
         );
 
         let pool = combat_targeting_pool();
