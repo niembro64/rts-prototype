@@ -2,6 +2,7 @@ import type { PlayerId } from '../../types/sim';
 import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
 import type {
@@ -19,7 +20,8 @@ type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 type SuspensionSub = NonNullable<UnitSub['suspension']>;
 
 const PACKED_ENTITIES_V1_VERSION = 1;
-const PACKED_ENTITIES_VERSION = 2;
+const PACKED_ENTITIES_V2_VERSION = 2;
+const PACKED_ENTITIES_VERSION = 3;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -95,6 +97,7 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // fallback need a custom extension type.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitRows = number[];
+export type PackedUnitTurretRows = number[];
 
 export type PackedEntitySnapshotWireV1 = {
   v: typeof PACKED_ENTITIES_V1_VERSION;
@@ -102,33 +105,50 @@ export type PackedEntitySnapshotWireV1 = {
 };
 
 export type PackedEntitySnapshotWireV2 = {
+  v: typeof PACKED_ENTITIES_V2_VERSION;
+  m?: PackedMovementUnitRows;
+  e?: PackedEntityRow[];
+};
+
+export type PackedEntitySnapshotWireV3 = {
   v: typeof PACKED_ENTITIES_VERSION;
   m?: PackedMovementUnitRows;
+  t?: PackedUnitTurretRows;
   e?: PackedEntityRow[];
 };
 
 export type PackedEntitySnapshotWire =
   | PackedEntitySnapshotWireV1
-  | PackedEntitySnapshotWireV2;
+  | PackedEntitySnapshotWireV2
+  | PackedEntitySnapshotWireV3;
 
 export function packEntitiesForWire(
   entities: readonly NetworkServerSnapshotEntity[] | undefined,
 ): PackedEntitySnapshotWire | undefined {
   if (entities === undefined) return undefined;
   const movementRows: PackedMovementUnitRows = [];
+  const turretRows: PackedUnitTurretRows = [];
   const detailRows: PackedEntityRow[] = [];
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (isMovementOnlyUnitDelta(entity)) {
       appendMovementUnitDeltaRow(movementRows, entity);
+    } else if (isSplitUnitTurretDelta(entity)) {
+      if (hasMovementUnitDeltaFields(entity)) {
+        appendMovementUnitDeltaRow(movementRows, entity);
+      }
+      appendUnitTurretDeltaRow(turretRows, entity);
     } else {
       detailRows.push(packEntityRow(entity));
     }
   }
 
-  const packed: PackedEntitySnapshotWireV2 = { v: PACKED_ENTITIES_VERSION };
+  const packed: PackedEntitySnapshotWireV3 = { v: PACKED_ENTITIES_VERSION };
   if (movementRows.length > 0) packed.m = movementRows;
-  if (detailRows.length > 0 || movementRows.length === 0) packed.e = detailRows;
+  if (turretRows.length > 0) packed.t = turretRows;
+  if (detailRows.length > 0 || (movementRows.length === 0 && turretRows.length === 0)) {
+    packed.e = detailRows;
+  }
   return packed;
 }
 
@@ -145,13 +165,18 @@ export function unpackEntitiesFromWire(
   }
 
   const movementRows = packed.m;
+  const turretRows = packed.v === PACKED_ENTITIES_VERSION ? packed.t : undefined;
   const detailRows = packed.e;
   const movementCount = countMovementUnitDeltaRows(movementRows);
+  const turretCount = countUnitTurretDeltaRows(turretRows);
   const detailCount = detailRows?.length ?? 0;
-  const out: NetworkServerSnapshotEntity[] = new Array(movementCount + detailCount);
+  const out: NetworkServerSnapshotEntity[] = new Array(movementCount + turretCount + detailCount);
   let outIndex = 0;
   if (movementRows !== undefined) {
     outIndex = unpackMovementUnitDeltaRows(movementRows, out, outIndex);
+  }
+  if (turretRows !== undefined) {
+    outIndex = unpackUnitTurretDeltaRows(turretRows, out, outIndex);
   }
   if (detailRows !== undefined) {
     for (let i = 0; i < detailRows.length; i++) {
@@ -169,9 +194,16 @@ export function isPackedEntitySnapshotWire(
   }
   const candidate = value as Partial<PackedEntitySnapshotWire>;
   if (candidate.v === PACKED_ENTITIES_V1_VERSION) return Array.isArray(candidate.e);
+  if (candidate.v === PACKED_ENTITIES_V2_VERSION) {
+    return (
+      (candidate.m === undefined || isFiniteNumberArray(candidate.m)) &&
+      (candidate.e === undefined || Array.isArray(candidate.e))
+    );
+  }
   if (candidate.v !== PACKED_ENTITIES_VERSION) return false;
   return (
     (candidate.m === undefined || isFiniteNumberArray(candidate.m)) &&
+    (candidate.t === undefined || isFiniteNumberArray(candidate.t)) &&
     (candidate.e === undefined || Array.isArray(candidate.e))
   );
 }
@@ -285,6 +317,52 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   return true;
 }
 
+function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
+  if (entity.type !== 'unit' || entity.building !== undefined) return false;
+  const changedFields = entity.changedFields;
+  if (
+    changedFields === undefined ||
+    changedFields === null ||
+    changedFields === 0 ||
+    (changedFields & ENTITY_CHANGED_TURRETS) === 0 ||
+    (changedFields & ~(MOVEMENT_UNIT_CHANGED_FIELDS | ENTITY_CHANGED_TURRETS)) !== 0
+  ) {
+    return false;
+  }
+  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== undefined)) return false;
+  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== undefined)) return false;
+
+  const unit = entity.unit;
+  if (unit === undefined || unit.turrets === undefined) return false;
+  if (unit.hp !== undefined) return false;
+  if (unit.unitType !== undefined) return false;
+  if (unit.radius !== undefined) return false;
+  if (unit.bodyCenterHeight !== undefined) return false;
+  if (unit.mass !== undefined) return false;
+  if (unit.surfaceNormal !== undefined) return false;
+  if (unit.suspension !== undefined) return false;
+  if (unit.fireEnabled !== undefined) return false;
+  if (unit.isCommander !== undefined) return false;
+  if (unit.buildTargetId !== undefined) return false;
+  if (unit.actions !== undefined) return false;
+  if (unit.build !== undefined) return false;
+  if (unit.velocity !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  if (unit.orientation !== undefined && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
+  if (unit.angularVelocity3 !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  return true;
+}
+
+function hasMovementUnitDeltaFields(entity: NetworkServerSnapshotEntity): boolean {
+  const unit = entity.unit;
+  return (
+    entity.pos !== undefined ||
+    entity.rotation !== undefined ||
+    unit?.velocity !== undefined ||
+    unit?.orientation !== undefined ||
+    unit?.angularVelocity3 !== undefined
+  );
+}
+
 function appendMovementUnitDeltaRow(
   rows: PackedMovementUnitRows,
   entity: NetworkServerSnapshotEntity,
@@ -316,6 +394,34 @@ function appendMovementUnitDeltaRow(
   }
   if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
     rows.push(angularVelocity!.x, angularVelocity!.y, angularVelocity!.z);
+  }
+}
+
+function appendUnitTurretDeltaRow(
+  rows: PackedUnitTurretRows,
+  entity: NetworkServerSnapshotEntity,
+): void {
+  const turrets = entity.unit!.turrets!;
+  rows.push(entity.id, entity.playerId, turrets.length);
+  for (let i = 0; i < turrets.length; i++) {
+    const turret = turrets[i];
+    const angular = turret.turret.angular;
+    let flags = 0;
+    if (turret.targetId !== undefined) flags |= TURRET_FLAG_TARGET_ID;
+    if (turret.currentForceFieldRange !== undefined) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
+    rows.push(
+      flags,
+      turret.turret.id,
+      turret.state,
+      angular.rot,
+      angular.vel,
+      angular.pitch,
+      angular.pitchVel,
+    );
+    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) rows.push(turret.targetId!);
+    if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
+      rows.push(turret.currentForceFieldRange!);
+    }
   }
 }
 
@@ -354,6 +460,31 @@ function countMovementUnitDeltaRows(
   while (i < rows.length) {
     const flags = rows[i] ?? 0;
     i += movementUnitDeltaRowWidth(flags);
+    count++;
+  }
+  return count;
+}
+
+function unitTurretRowWidth(rows: PackedUnitTurretRows, offset: number): number {
+  let width = 3;
+  const turretCount = rows[offset + 2] ?? 0;
+  for (let i = 0; i < turretCount; i++) {
+    const flags = rows[offset + width] ?? 0;
+    width += 7;
+    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) width += 1;
+    if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) width += 1;
+  }
+  return width;
+}
+
+function countUnitTurretDeltaRows(
+  rows: PackedUnitTurretRows | undefined,
+): number {
+  if (rows === undefined) return 0;
+  let count = 0;
+  let i = 0;
+  while (i < rows.length) {
+    i += unitTurretRowWidth(rows, i);
     count++;
   }
   return count;
@@ -418,6 +549,48 @@ function unpackMovementUnitDeltaRows(
       entity.unit = unit;
     }
     out[outIndex++] = entity;
+  }
+  return outIndex;
+}
+
+function unpackUnitTurretDeltaRows(
+  rows: PackedUnitTurretRows,
+  out: NetworkServerSnapshotEntity[],
+  outIndex: number,
+): number {
+  let i = 0;
+  while (i < rows.length) {
+    const id = rows[i++] as number;
+    const playerId = rows[i++] as PlayerId;
+    const turretCount = rows[i++] as number;
+    const turrets: NetworkServerSnapshotTurret[] = new Array(turretCount);
+    for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
+      const flags = rows[i++] as number;
+      const turretId = rows[i++] as NetworkServerSnapshotTurret['turret']['id'];
+      const state = rows[i++] as NetworkServerSnapshotTurret['state'];
+      const angular: TurretAngular = {
+        rot: rows[i++] as number,
+        vel: rows[i++] as number,
+        pitch: rows[i++] as number,
+        pitchVel: rows[i++] as number,
+      };
+      const turret: NetworkServerSnapshotTurret = {
+        turret: { id: turretId, angular },
+        state,
+      };
+      if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
+      if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
+        turret.currentForceFieldRange = rows[i++] as number;
+      }
+      turrets[turretIndex] = turret;
+    }
+    out[outIndex++] = {
+      id,
+      type: 'unit',
+      playerId,
+      changedFields: ENTITY_CHANGED_TURRETS,
+      unit: { turrets },
+    };
   }
   return outIndex;
 }
