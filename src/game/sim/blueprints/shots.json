@@ -46,7 +46,7 @@
     "id": "lightRocket",
     "mass": 4,
     "collision": {
-      "radius": 1
+      "radius": 1.5
     },
     "explosion": {
       "radius": 30,
@@ -75,7 +75,7 @@
     "id": "fastRocket",
     "mass": 3,
     "collision": {
-      "radius": 1
+      "radius": 1.5
     },
     "explosion": {
       "radius": 36,
