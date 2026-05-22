@@ -677,7 +677,8 @@ export type NetworkServerSnapshotEntity = {
      *  triangle-snapping raw normal. Quantized to 0.001 precision on
      *  the wire (qNormal); ~3 bytes per unit per snapshot after delta
      *  encoding. Omitted on snapshots where the unit's normal didn't
-     *  change since last keyframe. */
+     *  change enough to send, or where visual detail fields are being
+     *  throttled between detail-cadence snapshots. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
     /** Runtime chassis suspension relative to the locomotion anchor.
      *  Offsets are chassis-local: x = forward, y = lateral, z = up. */

@@ -133,6 +133,10 @@ export const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_COMBAT_MODE |
   ENTITY_CHANGED_SUSPENSION;
 
+export const SNAPSHOT_DETAIL_THROTTLED_FIELDS =
+  ENTITY_CHANGED_NORMAL |
+  ENTITY_CHANGED_SUSPENSION;
+
 const trackingStates = new Map<string, DeltaTrackingState>();
 const capturedNextStates = new Map<EntityId, PrevEntityState>();
 const capturedNextStatePool: PrevEntityState[] = [];
@@ -576,7 +580,7 @@ export function copySentPrevState(
     to.isProducing = from.isProducing;
     to.buildQueueLen = from.buildQueueLen;
   }
-  if (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL)) {
+  if (changedFields & ENTITY_CHANGED_NORMAL) {
     to.normalX = from.normalX;
     to.normalY = from.normalY;
     to.normalZ = from.normalZ;

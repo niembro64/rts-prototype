@@ -616,7 +616,7 @@ export function serializeEntitySnapshot(
       ENTITY_CHANGED_BUILDING |
       ENTITY_CHANGED_SUSPENSION;
     const hasSurfaceNormalFields = isFull ||
-      (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL));
+      (changedFields! & ENTITY_CHANGED_NORMAL);
     const hasOrientationFields = entity.unit.orientation !== null &&
       (isFull || (changedFields! & ENTITY_CHANGED_ROT));
     const hasAngularVelocityFields = entity.unit.orientation !== null &&
@@ -657,7 +657,7 @@ export function serializeEntitySnapshot(
 
       if (
         isFull ||
-        (changedFields! & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))
+        (changedFields! & ENTITY_CHANGED_NORMAL)
       ) {
         writeNetworkUnitSurfaceNormal(u, entity.unit, qNormal);
       } else {

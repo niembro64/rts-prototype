@@ -42,6 +42,7 @@ import {
   getNextEntityState,
   getPrevState,
   removedEntityIdsBuf as _removedIdsBuf,
+  SNAPSHOT_DETAIL_THROTTLED_FIELDS,
   verifyRustDiffMask,
 } from './stateSerializerEntityDelta';
 import { spatialGrid } from '../sim/SpatialGrid';
@@ -137,6 +138,12 @@ export type SerializeGameStateOptions = {
    */
   recipientPlayerId?: PlayerId;
   visibility?: SnapshotVisibility;
+  /**
+   * High-frequency visual detail fields can ride a lower cadence than
+   * core movement. Defaults to true for direct serializeGameState
+   * callers; ServerSnapshotPublisher sets it per emitted snapshot.
+   */
+  emitEntityDetailFields?: boolean;
   /**
    * When the publisher has already built a team-shared output for this
    * recipient's team (issues.txt FOW-OPT-20), pass the precomputed
@@ -268,6 +275,7 @@ export function serializeGameState(
   // when both `sim` and `baselineHandle` are present.
   const baselineHandle = options?.snapshotBaselineHandle;
   const baselineSim = baselineHandle === undefined ? undefined : getSimWasm();
+  const emitEntityDetailFields = options?.emitEntityDetailFields !== false;
 
   // Reset entity pool for this frame
   resetEntitySnapshotPool();
@@ -363,9 +371,12 @@ export function serializeGameState(
       const rawDeltaMask = isNew
         ? 0
         : getEntityDeltaChangedFields(entity, prev, next, visibility);
-      const changedFields = isNew
+      let changedFields = isNew
         ? undefined
         : rawDeltaMask | dirtyForcedFields;
+      if (changedFields !== undefined && !emitEntityDetailFields) {
+        changedFields &= ~SNAPSHOT_DETAIL_THROTTLED_FIELDS;
+      }
       if (!isNew && baselineHandle !== undefined) {
         verifyRustDiffMask(entity, next, visibility, rawDeltaMask, baselineHandle);
       }

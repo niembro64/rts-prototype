@@ -452,7 +452,7 @@ export function applyNetworkUnitDriftFieldsToTarget(
   if (isFull && isFiniteNumber(src.unit?.bodyCenterHeight)) {
     target.bodyCenterHeight = src.unit.bodyCenterHeight;
   }
-  if (isFull || (cf & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL))) {
+  if (isFull || (cf & ENTITY_CHANGED_NORMAL)) {
     const sn = src.unit?.surfaceNormal;
     if (sn) {
       target.surfaceNormalX = sn.nx;

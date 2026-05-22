@@ -97,12 +97,14 @@ export class ServerSnapshotPublisher {
   private isFirstSnapshot = true;
   private snapshotCounter = 0;
   private minimapSnapshotCounter = 0;
+  private entityDetailSnapshotCounter = 0;
   private staticResyncToken = 0;
 
   reset(): void {
     this.isFirstSnapshot = true;
     this.snapshotCounter = 0;
     this.minimapSnapshotCounter = 0;
+    this.entityDetailSnapshotCounter = 0;
   }
 
   forceNextKeyframe(includeStatic = false): void {
@@ -125,6 +127,9 @@ export class ServerSnapshotPublisher {
     const emitMinimapOnDelta = isDelta
       ? this.resolveMinimapDeltaEmit(input.maxSnapshotsDisplay)
       : this.resolveMinimapKeyframeEmit();
+    const emitEntityDetailsOnDelta = isDelta
+      ? this.resolveEntityDetailDeltaEmit(input.maxSnapshotsDisplay)
+      : this.resolveEntityDetailKeyframeEmit();
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -206,6 +211,7 @@ export class ServerSnapshotPublisher {
       const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
       const listenerIsDelta = isDelta && !listenerNeedsStaticMap;
       const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
+      const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
       // FOW-OPT-20: look up (or fill) the team-shared audio / spray /
       // minimap payloads. The first teammate to hit each cache slot
       // triggers the underlying serializer using THIS listener's
@@ -254,6 +260,7 @@ export class ServerSnapshotPublisher {
         removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
         visibility,
+        emitEntityDetailFields: shouldEmitEntityDetails,
         audioOverride,
         sprayOverride,
         minimapOverride,
@@ -385,6 +392,22 @@ export class ServerSnapshotPublisher {
 
   private resolveMinimapKeyframeEmit(): boolean {
     this.minimapSnapshotCounter = 0;
+    return true;
+  }
+
+  private resolveEntityDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {
+    const targetHz = SNAPSHOT_CONFIG.entityDetailSnapshotRateHz;
+    if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
+    const sourceHz = snapshotRateHz(snapshotRate);
+    const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
+    this.entityDetailSnapshotCounter++;
+    if (this.entityDetailSnapshotCounter < interval) return false;
+    this.entityDetailSnapshotCounter = 0;
+    return true;
+  }
+
+  private resolveEntityDetailKeyframeEmit(): boolean {
+    this.entityDetailSnapshotCounter = 0;
     return true;
   }
 

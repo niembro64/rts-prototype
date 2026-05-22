@@ -143,6 +143,9 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //   minimapSnapshotRateHz   — upper cadence for full minimap contact
 //                             lists on delta snapshots. Keyframes
 //                             always carry a fresh minimap baseline.
+//   entityDetailSnapshotRateHz — upper cadence for high-frequency
+//                             visual/detail entity fields that do
+//                             not change core movement truth.
 export const SNAPSHOT_CONFIG: SnapshotConfig = snapshotConfigJson;
 
 // Re-export bar config values used by sim/server code

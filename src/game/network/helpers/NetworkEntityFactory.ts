@@ -224,8 +224,8 @@ function createUnitFromNetwork(
       mirrorPanels: [],
       mirrorBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
-      // (full keyframes always carry it, per-tick deltas ship it on
-      // ENTITY_CHANGED_POS). Defaults to flat-up so non-keyframe
+      // (full keyframes always carry it, deltas ship it on
+      // ENTITY_CHANGED_NORMAL). Defaults to flat-up so non-keyframe
       // creations or pre-unit-ground-normal-EMA snapshots don't leave a zero normal
       // for downstream consumers.
       surfaceNormal,
