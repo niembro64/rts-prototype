@@ -48,6 +48,10 @@ export type BodyMeshPart = {
   scaleX: number;
   scaleY: number;
   scaleZ: number;
+  /** Optional rotation in radians around the unit's lateral (Z) axis,
+   *  applied to the geometry before translation. Used by tilted
+   *  cylinder parts. */
+  rotZ?: number;
 };
 
 export type BodyGeomEntry = {
@@ -125,12 +129,13 @@ function buildOvalSpec(part: { xFrac: number; yFrac: number; zFrac: number; offs
   };
 }
 
-function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
+function buildCylinderSpec(part: { lengthFrac: number; radiusFrac: number; centerYFrac?: number; pitchRad?: number; offsetForward?: number; offsetLateral?: number }): BodyMeshPart {
   const y = part.centerYFrac ?? part.radiusFrac;
   return {
     geometry: getUnitCylinder(),
     x: part.offsetForward ?? 0, y, z: part.offsetLateral ?? 0,
     scaleX: part.lengthFrac, scaleY: part.radiusFrac, scaleZ: part.radiusFrac,
+    rotZ: part.pitchRad,
   };
 }
 

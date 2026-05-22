@@ -15,6 +15,8 @@ export type UnitChassisInstancePose3DUpdate = {
   unitDetailInstances: UnitDetailInstanceRenderer3D;
 };
 
+const _PART_ROT_AXIS = new THREE.Vector3(0, 0, 1);
+
 export class UnitChassisInstancePose3D {
   private readonly parentMat = new THREE.Matrix4();
   private readonly partMat = new THREE.Matrix4();
@@ -22,6 +24,7 @@ export class UnitChassisInstancePose3D {
   private readonly parentScale = new THREE.Vector3();
   private readonly partLocalPos = new THREE.Vector3();
   private readonly partScale = new THREE.Vector3();
+  private readonly partQuat = new THREE.Quaternion();
   private readonly identityQuat = new THREE.Quaternion();
 
   update(options: UnitChassisInstancePose3DUpdate): void {
@@ -48,7 +51,7 @@ export class UnitChassisInstancePose3D {
       for (let partIdx = 0; partIdx < slotCount; partIdx++) {
         const part = bodyEntry.parts[partIdx];
         const slot = mesh.smoothChassisSlots[partIdx];
-        this.composePart(part.x, part.y, part.z, part.scaleX, part.scaleY, part.scaleZ);
+        this.composePart(part.x, part.y, part.z, part.scaleX, part.scaleY, part.scaleZ, part.rotZ);
         this.finalMat.multiplyMatrices(this.parentMat, this.partMat);
         unitDetailInstances.writeSmoothChassisMatrix(
           slot,
@@ -64,7 +67,7 @@ export class UnitChassisInstancePose3D {
     const part = bodyEntry.parts[0];
     if (!part) return;
     this.composeParent(parentPosition, parentQuaternion, radius);
-    this.composePart(part.x, part.y, part.z, part.scaleX, part.scaleY, part.scaleZ);
+    this.composePart(part.x, part.y, part.z, part.scaleX, part.scaleY, part.scaleZ, part.rotZ);
     this.finalMat.multiplyMatrices(this.parentMat, this.partMat);
     unitDetailInstances.writePolyChassisMatrix(
       entity,
@@ -90,12 +93,16 @@ export class UnitChassisInstancePose3D {
     scaleX: number,
     scaleY: number,
     scaleZ: number,
+    rotZ?: number,
   ): void {
     this.partLocalPos.set(x, y, z);
     this.partScale.set(scaleX, scaleY, scaleZ);
+    const quat = rotZ
+      ? this.partQuat.setFromAxisAngle(_PART_ROT_AXIS, rotZ)
+      : this.identityQuat;
     this.partMat.compose(
       this.partLocalPos,
-      this.identityQuat,
+      quat,
       this.partScale,
     );
   }

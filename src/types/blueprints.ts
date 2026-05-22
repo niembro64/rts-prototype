@@ -394,6 +394,10 @@ export type UnitBodyShapePart =
       /** Optional cylinder center height. Defaults to radiusFrac so the
        *  part sits on the body baseline. */
       centerYFrac?: number;
+      /** Optional pitch in radians applied around the unit's lateral
+       *  (Z) axis. Positive tilts the cylinder's +X (forward) end up.
+       *  Defaults to 0. */
+      pitchRad?: number;
     }
   | {
       /** Like cylinder, but the rearward (−X) end is a point and the

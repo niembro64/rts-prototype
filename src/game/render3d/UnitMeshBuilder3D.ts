@@ -162,6 +162,7 @@ export class UnitMeshBuilder3D {
         const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(ownerId));
         mesh.position.set(part.x, part.y, part.z);
         mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
+        if (part.rotZ) mesh.rotation.z = part.rotZ;
         mesh.userData.entityId = entity.id;
         chassis.add(mesh);
         chassisMeshes.push(mesh);

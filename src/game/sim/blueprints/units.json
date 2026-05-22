@@ -757,7 +757,7 @@
         }
       },
       {
-        "turretId": "miniBeam",
+        "turretId": "beamTurret",
         "mount": {
           "x": -4.7,
           "y": 0,
@@ -773,14 +773,15 @@
           "offsetForward": 0,
           "radiusFrac": 0.6,
           "yFrac": 0.6,
-          "centerYFrac": 0
+          "centerYFrac": 1.2
         },
         {
           "kind": "cylinder",
-          "offsetForward": -2.1,
-          "lengthFrac": 4.2,
+          "offsetForward": -2.35,
+          "lengthFrac": 4.8508,
           "radiusFrac": 0.2,
-          "centerYFrac": 0
+          "centerYFrac": 0.6,
+          "pitchRad": 0.25
         }
       ]
     },
