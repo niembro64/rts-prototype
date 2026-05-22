@@ -65,18 +65,29 @@ const BARREL_COLOR = COLORS.units.turret.barrel.colorHex;
 
 // Visual-only bank for hover/flying chassis. The sim writes yaw-only
 // into the orientation quat (see UnitForceSystem hover branch); the
-// renderer composes a body-frame roll on top from body-lateral
-// velocity. None of this state crosses the wire or feeds sim math —
-// the y=z=0 mount invariant on airborne turrets keeps the rolled
-// chassis agreeing with the sim's yaw-only mount math.
-// AIRBORNE_BANK_PER_LATERAL_V is dimensionless (radians of roll per
-// world-unit/sec of body-lateral velocity); AIRBORNE_BANK_MAX clamps
-// to 45° so collision spikes can't turn into barrel rolls.
-const AIRBORNE_BANK_PER_LATERAL_V = 0.012;
+// renderer composes a body-frame roll on top from the body-lateral
+// acceleration the chassis is experiencing. None of this state
+// crosses the wire or feeds sim math — the y=z=0 mount invariant on
+// airborne turrets keeps the rolled chassis agreeing with the sim's
+// yaw-only mount math.
+//
+// We bank on centripetal acceleration (forward speed × yaw rate)
+// rather than lateral velocity: the yaw spring continuously aligns
+// body forward with the thrust direction, so in a sustained turn the
+// body-lateral velocity collapses to ~0 and a velocity-derived bank
+// would decay to flat right when the visible turn is at its strongest.
+// `v_forward · ω_z` stays high for as long as the unit is actually
+// turning, so the bank persists through the turn.
+//
+// AIRBORNE_BANK_PER_LATERAL_A is dimensionless (radians of roll per
+// (world-unit/sec) · (rad/sec) of body-lateral acceleration);
+// AIRBORNE_BANK_MAX clamps to 45° so collision spikes can't turn
+// into barrel rolls.
+const AIRBORNE_BANK_PER_LATERAL_A = 0.003;
 const AIRBORNE_BANK_MAX = Math.PI * 0.25;
 // EMA time constant in seconds. Intentionally independent from ROT POS:
-// banking is a local velocity-derived embellishment that never travels
-// on the wire.
+// banking is a local acceleration-derived embellishment that never
+// travels on the wire.
 const AIRBORNE_BANK_TAU_SEC = 0.18;
 
 // Shared Y-up axis for manual instanced transform composition.
@@ -586,22 +597,29 @@ export class Render3DEntities {
       if (m.yawGroup) m.yawGroup.rotation.set(0, yaw, 0);
 
       // Airborne visual bank — composed on top of the canonical yaw
-      // write above so the chassis rolls into turns from body-lateral
-      // velocity. Sim has no pitch/roll for hover/flying (see
-      // "Airborne Banking Is Visual" in design_philosophy.html); the
-      // y=z=0 mount invariant on airborne turrets keeps the rolled
-      // chassis agreeing with the sim's yaw-only mount math.
+      // write above so the chassis rolls into turns from body-frame
+      // lateral acceleration. Sim has no pitch/roll for hover/flying
+      // (see "Airborne Banking Is Visual" in design_philosophy.html);
+      // the y=z=0 mount invariant on airborne turrets keeps the
+      // rolled chassis agreeing with the sim's yaw-only mount math.
       if (airborne && m.yawGroup) {
-        // Body-lateral velocity in the sim frame:
-        //   vLateral = -vx · sin(yaw_sim) + vy · cos(yaw_sim)
-        // (tRot is the sim yaw; the local `yaw` above is the three.js
-        // mapping `-tRot`.)
+        // Body-lateral acceleration in the sim frame, computed as the
+        // centripetal term v_forward · ω_z:
+        //   v_forward = vx · cos(yaw_sim) + vy · sin(yaw_sim)
+        //   ω_z       = angularVelocity3.z  (yaw rate, world frame —
+        //               equivalent to body frame for yaw-only quats)
+        //   a_lateral = v_forward · ω_z
+        // angularVelocity3 is on the wire and lerped by the rotation-
+        // velocity prediction channel, so this signal evolves
+        // continuously across frames just like velocity.
         const vx = e.unit?.velocityX ?? 0;
         const vy = e.unit?.velocityY ?? 0;
         const cosY = Math.cos(tRot);
         const sinY = Math.sin(tRot);
-        const vLateral = -vx * sinY + vy * cosY;
-        let target = AIRBORNE_BANK_PER_LATERAL_V * vLateral;
+        const vForward = vx * cosY + vy * sinY;
+        const yawRate = e.unit?.angularVelocity3?.z ?? 0;
+        const aLateral = vForward * yawRate;
+        let target = AIRBORNE_BANK_PER_LATERAL_A * aLateral;
         if (target > AIRBORNE_BANK_MAX) target = AIRBORNE_BANK_MAX;
         else if (target < -AIRBORNE_BANK_MAX) target = -AIRBORNE_BANK_MAX;
         const prev = m.visualBankRoll ?? 0;

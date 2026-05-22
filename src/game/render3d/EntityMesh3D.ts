@@ -149,8 +149,9 @@ export type EntityMesh = {
   geometryKey: string;
   /** Smoothed visual bank angle (radians, sim-frame: positive rolls
    *  the body-+Y wing down) for hover/flying chassis. EMA-tracked at
-   *  render cadence from body-lateral velocity; never crosses the
-   *  wire, never read by sim code. Undefined for ground units.
+   *  render cadence from body-lateral centripetal acceleration
+   *  (v_forward · ω_z); never crosses the wire, never read by sim
+   *  code. Undefined for ground units.
    *  See the "Airborne Banking Is Visual" section of
    *  design_philosophy.html. */
   visualBankRoll?: number;
