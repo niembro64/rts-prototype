@@ -778,10 +778,10 @@
         {
           "kind": "cylinder",
           "offsetForward": -2.35,
-          "lengthFrac": 4.8508,
+          "lengthFrac": 4.7265,
           "radiusFrac": 0.2,
-          "centerYFrac": 0.6,
-          "pitchRad": 0.25
+          "centerYFrac": 0.95,
+          "pitchRad": 0.10598
         }
       ]
     },
