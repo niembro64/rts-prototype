@@ -3,9 +3,10 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { FlyingConfig } from '@/types/blueprints';
-import type { Entity } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
+import { locomotionPieceColorHex } from './colorUtils';
 
 const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
 const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
@@ -49,11 +50,26 @@ const leftWingGeom = buildWingPanelGeom(-1);
 const rightWingGeom = buildWingPanelGeom(1);
 const jetGeom = new THREE.CylinderGeometry(1, 1, 1, 18, 1, true);
 jetGeom.rotateZ(Math.PI / 2);
-const wingMat = new THREE.MeshBasicMaterial({ color: WING_COLOR, side: THREE.DoubleSide });
-const jetMat = new THREE.MeshBasicMaterial({ color: JET_COLOR });
+const wingMats = new Map<number, THREE.MeshBasicMaterial>();
+const jetMats = new Map<number, THREE.MeshBasicMaterial>();
 const _jetWorldPos = new THREE.Vector3();
 const _jetWorldQuat = new THREE.Quaternion();
 const _jetWorldDir = new THREE.Vector3();
+
+function getFlyingMat(
+  cache: Map<number, THREE.MeshBasicMaterial>,
+  baseColor: number,
+  ownerId: PlayerId | undefined,
+  side?: THREE.Side,
+): THREE.MeshBasicMaterial {
+  const color = locomotionPieceColorHex(baseColor, ownerId);
+  let mat = cache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color, side });
+    cache.set(color, mat);
+  }
+  return mat;
+}
 
 type FlyingJet = {
   group: THREE.Group;
@@ -73,6 +89,7 @@ export function buildFlyingRig(
   unitRadius: number,
   cfg: FlyingConfig,
   entityId: number,
+  ownerId: PlayerId | undefined,
 ): FlyingMesh {
   const group = new THREE.Group();
 
@@ -84,6 +101,7 @@ export function buildFlyingRig(
     thicknessFrac: cfg.wingThickness ?? 0.04,
     dihedralDeg: cfg.wingDihedralDeg ?? 0,
     mirrorX: false,
+    ownerId,
   });
 
   if (
@@ -100,6 +118,7 @@ export function buildFlyingRig(
       thicknessFrac: cfg.tailWingThickness ?? cfg.wingThickness ?? 0.04,
       dihedralDeg: cfg.tailWingDihedralDeg ?? 0,
       mirrorX: cfg.tailWingMirrorX ?? false,
+      ownerId,
     });
   }
 
@@ -115,7 +134,7 @@ export function buildFlyingRig(
     const jetGroup = new THREE.Group();
     jetGroup.position.set(jetX, jetY, lateralOffset);
 
-    const nozzle = new THREE.Mesh(jetGeom, jetMat);
+    const nozzle = new THREE.Mesh(jetGeom, getFlyingMat(jetMats, JET_COLOR, ownerId));
     nozzle.scale.set(jetLength, jetRadius, jetRadius);
     jetGroup.add(nozzle);
 
@@ -168,6 +187,7 @@ function addWingPanels(
     thicknessFrac: number;
     dihedralDeg: number;
     mirrorX: boolean;
+    ownerId: PlayerId | undefined;
   },
 ): void {
   const sideSpan = Math.max(0.5, unitRadius * spec.spanFrac * 0.5);
@@ -187,7 +207,10 @@ function addWingPanels(
     panelGroup.position.set(offsetX, height, 0);
     panelGroup.rotation.x = -side * dihedralRad;
 
-    const panel = new THREE.Mesh(side < 0 ? leftWingGeom : rightWingGeom, wingMat);
+    const panel = new THREE.Mesh(
+      side < 0 ? leftWingGeom : rightWingGeom,
+      getFlyingMat(wingMats, WING_COLOR, spec.ownerId, THREE.DoubleSide),
+    );
     panel.scale.set(chord * chordSign, thickness, sideSpan);
     panelGroup.add(panel);
     group.add(panelGroup);

@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import { getPlayerColors } from '../sim/types';
-import { blendHexTowardWhite } from './EntityInstanceColor3D';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import { getBuildFraction } from '../sim/buildableHelpers';
@@ -33,17 +31,6 @@ import {
 
 const BUILDING_HEIGHT = 120;
 
-/** Lock-on cue: shift the player primary halfway to white. 0 = unchanged
- *  primary; 1 = pure white. Matches HEADONLY_LOCKED_ON_WHITE_WEIGHT in
- *  the unit head writer so units and buildings cue identically. */
-const HEADONLY_LOCKED_ON_WHITE_WEIGHT = 0.5;
-
-/** Fallback locked-on tint for buildings without a known owner. */
-const NEUTRAL_LOCKED_ON_HEX = blendHexTowardWhite(
-  COLORS.units.neutral.colorHex,
-  HEADONLY_LOCKED_ON_WHITE_WEIGHT,
-);
-
 export type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
   width: number;
@@ -54,8 +41,8 @@ export type BuildingEntityMeshFactoryOptions = {
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
-  barrelMat: THREE.Material;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
 };
 
 export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): EntityMesh {
@@ -69,8 +56,8 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     turretHeadGeom,
     barrelGeom,
     coneBarrelGeom,
-    barrelMat,
     getPrimaryMat,
+    getTurretAccentMat,
   } = options;
   const shapeType: BuildingShapeType = entity.buildingType
     ? getBuildingConfig(entity.buildingType).renderProfile
@@ -116,8 +103,8 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
         headGeom: turretHeadGeom,
         barrelGeom,
         coneBarrelGeom,
-        barrelMat,
         primaryMat: getPrimaryMat(ownerId),
+        turretAccentMat: getTurretAccentMat(ownerId),
       });
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;
@@ -156,8 +143,8 @@ export type BuildingEntityRenderer3DOptions = {
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
-  barrelMat: THREE.Material;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   /** Current local player id, for ghost-building detection (FOW-02a).
    *  A foreign building stays on the client after exiting vision
@@ -181,8 +168,8 @@ export class BuildingEntityRenderer3D {
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
-  private readonly barrelMat: THREE.Material;
   private readonly getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   private readonly getLocalPlayerId: () => PlayerId | undefined;
   private readonly animations: BuildingAnimationController3D;
@@ -194,14 +181,6 @@ export class BuildingEntityRenderer3D {
    *  player's last-seen intel doesn't include current ownership shifts,
    *  and stripping team color is the standard "this is stale" cue. */
   private readonly ghostMat: THREE.MeshLambertMaterial;
-  /** Per-player cache of the headOnly turret head material used when
-   *  the turret is engaged (locked-on). The color is the player primary
-   *  shifted halfway toward white so the cue still reads as "this is
-   *  player X" instead of the same global white for everyone. Lazily
-   *  populated on first lock-on per player; disposed on renderer
-   *  destroy alongside the ghost material. */
-  private readonly lockedOnHeadMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
-  private neutralLockedOnHeadMat: THREE.MeshLambertMaterial | undefined;
   /** Per-frame scratch of local player's vision sources, used to mark
    *  ghost state on each building. Recomputed at the top of update()
    *  so it stays in sync with whichever seat the user is currently
@@ -216,8 +195,8 @@ export class BuildingEntityRenderer3D {
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
     this.coneBarrelGeom = options.coneBarrelGeom;
-    this.barrelMat = options.barrelMat;
     this.getPrimaryMat = options.getPrimaryMat;
+    this.getTurretAccentMat = options.getTurretAccentMat;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.getLocalPlayerId = options.getLocalPlayerId;
     this.ghostMat = new THREE.MeshLambertMaterial({
@@ -273,31 +252,6 @@ export class BuildingEntityRenderer3D {
     this.lastEntitySetVersion = -1;
     this.animations.destroy();
     this.ghostMat.dispose();
-    for (const mat of this.lockedOnHeadMats.values()) mat.dispose();
-    this.lockedOnHeadMats.clear();
-    this.neutralLockedOnHeadMat?.dispose();
-    this.neutralLockedOnHeadMat = undefined;
-  }
-
-  private getLockedOnHeadMat(playerId: PlayerId | undefined): THREE.Material {
-    if (playerId === undefined) {
-      if (!this.neutralLockedOnHeadMat) {
-        this.neutralLockedOnHeadMat = new THREE.MeshLambertMaterial({
-          color: NEUTRAL_LOCKED_ON_HEX,
-        });
-      }
-      return this.neutralLockedOnHeadMat;
-    }
-    let mat = this.lockedOnHeadMats.get(playerId);
-    if (!mat) {
-      const blended = blendHexTowardWhite(
-        getPlayerColors(playerId).primary,
-        HEADONLY_LOCKED_ON_WHITE_WEIGHT,
-      );
-      mat = new THREE.MeshLambertMaterial({ color: blended });
-      this.lockedOnHeadMats.set(playerId, mat);
-    }
-    return mat;
   }
 
   /** Walk the client's units + buildings and pull out the local player's
@@ -367,8 +321,8 @@ export class BuildingEntityRenderer3D {
         turretHeadGeom: this.turretHeadGeom,
         barrelGeom: this.barrelGeom,
         coneBarrelGeom: this.coneBarrelGeom,
-        barrelMat: this.barrelMat,
         getPrimaryMat: this.getPrimaryMat,
+        getTurretAccentMat: this.getTurretAccentMat,
       });
       this.meshes.set(entity.id, mesh);
       this.animations.register(entity, mesh);
@@ -507,16 +461,16 @@ export class BuildingEntityRenderer3D {
       if (turret.config.headOnly) {
         // No barrel to orient — skip the aim pose entirely. While the
         // shell override owns the head material during construction,
-        // we leave it alone; after construction, swap to the locked-on
-        // material (player primary blended halfway to white) when
-        // engaged, restore the plain primary material otherwise.
+        // leave it alone; after construction, head-only turrets use the
+        // same half-white team accent as physical barrels.
         if (turretMesh.head && !underConstruction) {
-          turretMesh.head.material =
-            turret.state === 'engaged'
-              ? this.getLockedOnHeadMat(entity.ownership?.playerId)
-              : this.getPrimaryMat(entity.ownership?.playerId);
+          turretMesh.head.material = this.getTurretAccentMat(entity.ownership?.playerId);
         }
         continue;
+      }
+      if (!underConstruction) {
+        const turretAccentMat = this.getTurretAccentMat(entity.ownership?.playerId);
+        for (const barrel of turretMesh.barrels) barrel.material = turretAccentMat;
       }
       applyTurretAimPose3D(
         turretMesh,

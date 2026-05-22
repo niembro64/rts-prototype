@@ -43,7 +43,7 @@ import { ConstructionVisualController3D } from './ConstructionVisualController3D
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
-import { isConstructionShell } from './EntityInstanceColor3D';
+import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
@@ -178,6 +178,7 @@ export class Render3DEntities {
   );
 
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
+  private turretAccentMats = new Map<number, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: COLORS.units.neutral.colorHex });
   // Mirror panels keep their existing shape and mount, but use the
   // force-field shield treatment so they read as reflector surfaces
@@ -246,8 +247,8 @@ export class Render3DEntities {
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
       coneBarrelGeom: this.coneBarrelGeom,
-      barrelMat: this.barrelMat,
       getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
+      getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       getLocalPlayerId: () => this.getLocalPlayerId(),
     });
@@ -282,11 +283,11 @@ export class Render3DEntities {
       turretHeadGeom: this.turretHeadGeom,
       barrelGeom: this.barrelGeom,
       coneBarrelGeom: this.coneBarrelGeom,
-      barrelMat: this.barrelMat,
       mirrorGeom: this.mirrorGeom,
       mirrorArmGeom: this.mirrorArmGeom,
       mirrorSupportGeom: this.mirrorSupportGeom,
       getPrimaryMat: (playerId) => this.getPrimaryMat(playerId),
+      getTurretAccentMat: (playerId) => this.getTurretAccentMat(playerId),
       getMirrorShinyMat: () => this.getMirrorShinyMat(),
       getMapWidth: () => this.clientViewState.getMapWidth(),
       getMapHeight: () => this.clientViewState.getMapHeight(),
@@ -304,6 +305,16 @@ export class Render3DEntities {
     if (!mat) {
       mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(pid).primary });
       this.primaryMats.set(pid, mat);
+    }
+    return mat;
+  }
+
+  private getTurretAccentMat(pid: PlayerId | undefined): THREE.MeshLambertMaterial {
+    const color = turretAccentColorHexForPlayer(pid);
+    let mat = this.turretAccentMats.get(color);
+    if (!mat) {
+      mat = new THREE.MeshLambertMaterial({ color });
+      this.turretAccentMats.set(color, mat);
     }
     return mat;
   }
@@ -462,7 +473,8 @@ export class Render3DEntities {
       const unitGfx = getGraphicsConfig();
       const unitGeometryKey = graphicsKey(unitGfx);
       const unitIsShell = isConstructionShell(e);
-      const unitRenderKey = `${unitGeometryKey}|shell:${unitIsShell ? 1 : 0}`;
+      const ownerKey = pid ?? 'neutral';
+      const unitRenderKey = `${unitGeometryKey}|shell:${unitIsShell ? 1 : 0}|owner:${ownerKey}`;
 
       let m = this.unitMeshes.get(e.id);
       if (m && m.geometryKey !== unitRenderKey) {
@@ -506,9 +518,11 @@ export class Render3DEntities {
         const isShellState = isConstructionShell(e);
         if (!isShellState) {
           const primaryMat = this.getPrimaryMat(pid);
+          const turretAccentMat = this.getTurretAccentMat(pid);
           for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
           for (const tm of m.turrets) {
-            if (tm.head) tm.head.material = this.getPrimaryMat(pid);
+            if (tm.head) tm.head.material = tm.headOnly ? turretAccentMat : primaryMat;
+            for (const barrel of tm.barrels) barrel.material = turretAccentMat;
           }
           if (m.mirrors) {
             for (const arm of m.mirrors.arms) arm.material = primaryMat;
@@ -804,6 +818,7 @@ export class Render3DEntities {
     this.mirrorShinyNeutralMat.dispose();
     this.barrelMat.dispose();
     for (const m of this.primaryMats.values()) m.dispose();
+    for (const m of this.turretAccentMats.values()) m.dispose();
     this.neutralMat.dispose();
   }
 }

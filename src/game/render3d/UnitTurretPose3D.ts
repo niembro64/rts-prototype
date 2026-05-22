@@ -4,21 +4,13 @@ import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
-import {
-  blendHexTowardWhite,
-  entityInstanceColorHex,
-} from './EntityInstanceColor3D';
+import { entityTurretAccentColorHex } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
-
-/** How far the engaged headOnly turret head shifts from the unit's
- *  player color toward white. 0 = unchanged player color, 1 = pure
- *  white. 0.5 = halfway between the two, the canonical lock-on cue. */
-const HEADONLY_LOCKED_ON_WHITE_WEIGHT = 0.5;
 
 export type UnitTurretPose3DUpdate = {
   entity: Entity;
@@ -111,19 +103,9 @@ export class UnitTurretPose3D {
         turretMesh.headSlot !== undefined &&
         turretMesh.headRadius !== undefined
       ) {
-        // headOnly turrets (beam/rocket) communicate lock-on by
-        // shifting their head color halfway to white when engaged — the
-        // visual replaces the missing barrel as the "this turret has
-        // acquired a target" signal. Per-frame blend keeps the cue
-        // owner-aware (each player still reads as themselves, just
-        // brightened) instead of flattening everyone to the same white.
-        const headColorOverride =
-          turretMesh.headOnly && turret.state === 'engaged'
-            ? blendHexTowardWhite(
-                entityInstanceColorHex(entity),
-                HEADONLY_LOCKED_ON_WHITE_WEIGHT,
-              )
-            : undefined;
+        const headColorOverride = turretMesh.headOnly
+          ? entityTurretAccentColorHex(entity)
+          : undefined;
         this.writeHeadInstance(
           entity,
           mesh,

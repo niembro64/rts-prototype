@@ -19,6 +19,18 @@ export function entityInstanceColorHex(entity: Entity): number {
   return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
 }
 
+export function turretAccentColorHexForPlayer(playerId: number | undefined): number {
+  const primary = playerId !== undefined
+    ? getPlayerColors(playerId).primary
+    : COLORS.units.neutral.colorHex;
+  return blendHexTowardWhite(primary, 0.5);
+}
+
+export function entityTurretAccentColorHex(entity: Entity): number {
+  if (isConstructionShell(entity)) return SHELL_PALE_HEX;
+  return turretAccentColorHexForPlayer(entity.ownership?.playerId);
+}
+
 export function setEntityInstanceColor(
   mesh: THREE.InstancedMesh,
   slot: number,

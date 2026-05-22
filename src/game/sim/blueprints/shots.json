@@ -11,7 +11,7 @@
       "damage": 6,
       "force": 500
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "hitSound": {
       "$audio": "event.hit.lightShot"
     },
@@ -32,7 +32,7 @@
       "damage": 12,
       "force": 1000
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "hitSound": {
       "$audio": "event.hit.mediumShot"
     },
@@ -53,7 +53,7 @@
       "damage": 10,
       "force": 800
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "maxLifespan": 8000,
     "hitSound": {
       "$audio": "event.hit.lightRocket"
@@ -81,7 +81,7 @@
       "damage": 24,
       "force": 800
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "maxLifespan": 8000,
     "hitSound": {
       "$audio": "event.hit.fastRocket"
@@ -109,7 +109,7 @@
       "damage": 150,
       "force": 7000
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "hitSound": {
       "$audio": "event.hit.heavyShot"
     },
@@ -130,14 +130,14 @@
       "damage": 150,
       "force": 10000
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "hitSound": {
       "$audio": "event.hit.mortarShot"
     },
     "submunitions": {
       "shotId": "mediumShot",
-      "count": 9,
-      "randomSpreadSpeedHorizontal": 60,
+      "count": 13,
+      "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.4
     },
@@ -157,7 +157,7 @@
       "damage": 999999,
       "force": 2499750
     },
-    "detonateOnExpiry": true,
+    "detonateOnExpiry": false,
     "hitSound": {
       "$audio": "event.hit.disruptorShot"
     },

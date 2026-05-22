@@ -91,10 +91,6 @@ import {
   LAND_CELL_SIZE,
 } from '../../config';
 
-/** Same color the per-mesh leg path used. Single uniform value
- *  across the whole shared pool — legs aren't team-tinted. */
-const LEG_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
-
 export type RtsScene3DConfig = {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
@@ -398,10 +394,7 @@ export class RtsScene3D {
     // 500 units. Construct BEFORE the entity renderer because the
     // renderer takes the leg pool as a constructor dependency and
     // forwards it through every locomotion build/update/destroy.
-    this.legInstancedRenderer = new LegInstancedRenderer(
-      this.threeApp.world,
-      LEG_COLOR,
-    );
+    this.legInstancedRenderer = new LegInstancedRenderer(this.threeApp.world);
     this.entityRenderer = new Render3DEntities(
       this.threeApp.world,
       this.clientViewState,

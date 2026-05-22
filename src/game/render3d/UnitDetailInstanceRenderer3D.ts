@@ -6,6 +6,7 @@ import type { EntityMesh } from './EntityMesh3D';
 import {
   entityInstanceColorHex,
   entityInstanceColorKey,
+  entityTurretAccentColorHex,
   isConstructionShell,
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
@@ -249,25 +250,22 @@ export class UnitDetailInstanceRenderer3D {
     }
 
     const turretHeadHex = entityInstanceColorHex(entity);
+    const turretAccentHex = entityTurretAccentColorHex(entity);
     for (const turret of mesh.turrets) {
-      // headOnly turrets manage their head color per-frame from
-      // engagement state (white when locked-on) via
-      // writeTurretHeadMatrix; don't clobber that here on ownership
-      // changes — the next frame's writer will reconcile.
+      const headColorKey = turret.headOnly ? turretAccentHex : turretHeadHex;
       if (
         turret.headSlot !== undefined &&
-        !turret.headOnly &&
-        this.turretHeadColorKey.get(turret.headSlot) !== turretHeadHex
+        this.turretHeadColorKey.get(turret.headSlot) !== headColorKey
       ) {
-        this.scratchColor.set(turretHeadHex);
+        this.scratchColor.set(headColorKey);
         this.turretHeadInstanced.setColorAt(turret.headSlot, this.scratchColor);
-        this.turretHeadColorKey.set(turret.headSlot, turretHeadHex);
+        this.turretHeadColorKey.set(turret.headSlot, headColorKey);
         this.turretHeadInstanced.instanceColor!.needsUpdate = true;
       }
       if (turret.barrelSlots) {
         const barrelColorKey = isConstructionShell(entity)
           ? SHELL_PALE_HEX
-          : COLORS.units.turret.barrel.colorHex;
+          : turretAccentHex;
         const targetMesh = turret.barrelUsesCone
           ? this.coneBarrelInstanced
           : this.barrelInstanced;
@@ -349,7 +347,7 @@ export class UnitDetailInstanceRenderer3D {
     slot: number,
     matrix: THREE.Matrix4,
     entity: Entity,
-    /** Hex override for headOnly turrets (e.g. white when locked-on).
+    /** Hex override for headOnly turrets.
      *  When undefined the normal entity color (player or construction
      *  shell) is used. */
     colorOverride?: number,

@@ -21,7 +21,7 @@
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import type { Entity } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 import type { TreadConfig } from '@/types/blueprints';
 import { TREAD_CHASSIS_LIFT_Y } from '../math/BodyDimensions';
 import {
@@ -38,6 +38,7 @@ import {
   sampleLocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
+import { locomotionPieceColorHex } from './colorUtils';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
 const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
@@ -62,9 +63,23 @@ const TREAD_BELT_TAU_SEC = 0.04;
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
 const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
-const treadMat = new THREE.MeshBasicMaterial({ color: TREAD_COLOR });
-const wheelMat = new THREE.MeshBasicMaterial({ color: WHEEL_COLOR });
-const cleatMat = new THREE.MeshBasicMaterial({ color: COLORS.units.locomotion.tread.cleat.colorHex });
+const treadMats = new Map<number, THREE.MeshBasicMaterial>();
+const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
+const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
+
+function getLocomotionMat(
+  cache: Map<number, THREE.MeshBasicMaterial>,
+  baseColor: number,
+  ownerId: PlayerId | undefined,
+): THREE.MeshBasicMaterial {
+  const color = locomotionPieceColorHex(baseColor, ownerId);
+  let mat = cache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color });
+    cache.set(color, mat);
+  }
+  return mat;
+}
 
 /** Per-side state owned by the rig. The `group` holds the side's
  *  slab, end caps, internal wheels, and animated cleats — all in a
@@ -124,6 +139,7 @@ export function buildTreads(
   r: number,
   cfg: TreadConfig,
   animatedWheels: boolean,
+  ownerId: PlayerId | undefined,
 ): TreadMesh {
   const group = new THREE.Group();
   const length = r * cfg.treadLength;
@@ -139,6 +155,13 @@ export function buildTreads(
   const cleats: THREE.Mesh[] = [];
   let cleatSpacing = 0;
   const cleatLoopLength = 2 * straightLength + 2 * Math.PI * treadRadius;
+  const treadMat = getLocomotionMat(treadMats, TREAD_COLOR, ownerId);
+  const wheelMat = getLocomotionMat(wheelMats, WHEEL_COLOR, ownerId);
+  const cleatMat = getLocomotionMat(
+    cleatMats,
+    COLORS.units.locomotion.tread.cleat.colorHex,
+    ownerId,
+  );
 
   for (const side of [-1, 1] as const) {
     const sideGroup = new THREE.Group();

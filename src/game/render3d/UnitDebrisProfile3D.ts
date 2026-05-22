@@ -90,6 +90,9 @@ export interface DebrisTurretMount {
   /** Mirror-host turrets skip their head/barrels (the mirror panels
    *  are the visible body); the consumer respects this flag. */
   isMirrorHost: boolean;
+  /** True when the live turret renders as a head sphere with no
+   *  physical barrel mesh. */
+  headOnly: boolean;
   /** Pre-resolved barrel geometry (shot-width / barrel-thickness /
    *  cone orbits) — null when the turret has no visible barrel. */
   barrelProfile: DebrisBarrelProfile | null;
@@ -286,6 +289,7 @@ export function getDebrisUnitProfile(
       shotHeight,
       headRadius,
       isMirrorHost,
+      headOnly: tb.headOnly === true,
       barrelProfile,
       mirrorPanels,
     });

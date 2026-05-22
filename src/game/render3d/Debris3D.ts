@@ -27,7 +27,8 @@ import { MAP_BG_COLOR, GRAVITY } from '../../config';
 import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import { getMirrorPanelCenter } from '../sim/mirrorPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
-import { hexToRgb01 } from './colorUtils';
+import { hexToRgb01, locomotionPieceColorFromPrimary } from './colorUtils';
+import { blendHexTowardWhite } from './EntityInstanceColor3D';
 import { disposeMesh } from './threeUtils';
 import { getBodyTopY } from '../math/BodyDimensions';
 import {
@@ -116,7 +117,6 @@ const { r: BG_R, g: BG_G, b: BG_B } = hexToRgb01(MAP_BG_COLOR);
 const TREAD_COLOR = COLORS.units.debris.tread.colorHex;
 const WHEEL_COLOR = COLORS.units.debris.wheel.colorHex;
 const LEG_COLOR = COLORS.units.debris.leg.colorHex;
-const BARREL_COLOR = COLORS.units.debris.barrel.colorHex;
 const MIRROR_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
 
 // ── Lambert + per-instance alpha/color shader patch ─────────────
@@ -537,10 +537,10 @@ export class Debris3D {
     const resolveColor = (role: DebrisColorRole): number => {
       switch (role) {
         case 'primary': return primary;
-        case 'tread': return TREAD_COLOR;
-        case 'wheel': return WHEEL_COLOR;
-        case 'leg': return LEG_COLOR;
-        case 'barrel': return BARREL_COLOR;
+        case 'tread': return locomotionPieceColorFromPrimary(TREAD_COLOR, primary);
+        case 'wheel': return locomotionPieceColorFromPrimary(WHEEL_COLOR, primary);
+        case 'leg': return locomotionPieceColorFromPrimary(LEG_COLOR, primary);
+        case 'barrel': return blendHexTowardWhite(primary, 0.5);
         case 'mirrorPanel': return MIRROR_PANEL_DEBRIS_COLOR;
       }
     };
@@ -609,6 +609,7 @@ export class Debris3D {
     const tox = mount.mountX;
     const toz = mount.mountZ;
     const shotHeight = mount.shotHeight;
+    const turretAccent = blendHexTowardWhite(primary, 0.5);
 
     if (!mount.isMirrorHost) {
       // Turret head — SPHERE centered at the mount. Pose-independent
@@ -619,7 +620,7 @@ export class Debris3D {
         y: shotHeight,
         z: toz,
         radius: mount.headRadius,
-        color: primary,
+        color: mount.headOnly ? turretAccent : primary,
       });
 
       // Barrels — one cylinder per physical barrel. Each is built as a
@@ -642,7 +643,7 @@ export class Debris3D {
             ax: tox + a.x, ay: shotHeight + a.z, az: toz + a.y,
             bx: tox + b.x, by: shotHeight + b.z, bz: toz + b.y,
             thickness: thick,
-            color: BARREL_COLOR,
+            color: turretAccent,
           });
         };
 

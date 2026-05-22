@@ -99,9 +99,11 @@ export type TurretMesh3DDeps = {
   /** Tapered barrel geometry used for beam/laser turrets so the barrel
    *  narrows to a point at the muzzle. */
   coneBarrelGeom: THREE.CylinderGeometry;
-  barrelMat: THREE.Material;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
+  /** Half player color, half white. Used for head-only turret heads
+   *  and all physical barrel meshes. */
+  turretAccentMat: THREE.Material;
   /** When true, skip building the per-Mesh head sphere — the caller
    *  is rendering the head through the shared InstancedMesh path
    *  instead. Barrels still build and pivot at headRadius regardless,
@@ -131,6 +133,7 @@ export function buildTurretMesh3D(
   const barrel = turret.config.barrel;
   const isForceField = barrel?.type === 'complexSingleEmitter';
   const headRadius = getTurretHeadRadius(turret.config);
+  const headOnly = turret.config.headOnly === true;
 
   if (turret.config.constructionEmitter) {
     const constructionEmitter = buildConstructionEmitterRigFromTurretConfig(
@@ -164,7 +167,7 @@ export function buildTurretMesh3D(
   // at the head center even when the head itself is hidden.
   let head: THREE.Mesh | undefined;
   if (!skipHeadMesh) {
-    head = new THREE.Mesh(deps.headGeom, deps.primaryMat);
+    head = new THREE.Mesh(deps.headGeom, headOnly ? deps.turretAccentMat : deps.primaryMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
     root.add(head);
@@ -178,7 +181,6 @@ export function buildTurretMesh3D(
   const cachedHeadRadius = hideHead ? undefined : headRadius;
 
   const barrels: THREE.Mesh[] = [];
-  const headOnly = turret.config.headOnly === true;
   if (!barrel || isForceField || turretOff || headOnly) {
     parent.add(root);
     return { root, head, headRadius: cachedHeadRadius, barrels, headOnly };
@@ -237,7 +239,7 @@ export function buildTurretMesh3D(
     const dz = tipZ - baseZ;
     const length = Math.hypot(dx, dy, dz);
     if (length < 1e-4) return;
-    const m = new THREE.Mesh(segmentGeom, deps.barrelMat);
+    const m = new THREE.Mesh(segmentGeom, deps.turretAccentMat);
     m.scale.set(cylRadius, length, cylRadius);
     m.position.set(
       (baseX + tipX) / 2,

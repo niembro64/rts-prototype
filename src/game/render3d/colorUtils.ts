@@ -4,7 +4,35 @@
 // attributes that need 0..1 floats. Centralized so a future format
 // change (premultiplied alpha, sRGB → linear, ...) lands in one place.
 
+import { getPlayerColors, type PlayerId } from '../sim/types';
+
 export type Rgb01 = { r: number; g: number; b: number };
+const LOCOMOTION_TEAM_COLOR_FRACTION = 0.5;
+
+/** Blend two 0xRRGGBB colors in ordinary 8-bit RGB space. `t = 0`
+ *  returns `baseHex`; `t = 1` returns `tintHex`. */
+export function blendHexColors(baseHex: number, tintHex: number, t: number): number {
+  const clampedT = Math.max(0, Math.min(1, t));
+  const r = (baseHex >> 16) & 0xff;
+  const g = (baseHex >> 8) & 0xff;
+  const b = baseHex & 0xff;
+  const tr = (tintHex >> 16) & 0xff;
+  const tg = (tintHex >> 8) & 0xff;
+  const tb = tintHex & 0xff;
+  const br = Math.round(r + (tr - r) * clampedT);
+  const bg = Math.round(g + (tg - g) * clampedT);
+  const bb = Math.round(b + (tb - b) * clampedT);
+  return (br << 16) | (bg << 8) | bb;
+}
+
+export function locomotionPieceColorHex(baseHex: number, ownerId: PlayerId | undefined): number {
+  if (ownerId === undefined) return baseHex;
+  return locomotionPieceColorFromPrimary(baseHex, getPlayerColors(ownerId).primary);
+}
+
+export function locomotionPieceColorFromPrimary(baseHex: number, primaryHex: number): number {
+  return blendHexColors(baseHex, primaryHex, LOCOMOTION_TEAM_COLOR_FRACTION);
+}
 
 /** Hex-int (0xRRGGBB) → 0..1 RGB. Pre-bake at module load when the
  *  hex is a constant; call per-frame is fine but allocates an object

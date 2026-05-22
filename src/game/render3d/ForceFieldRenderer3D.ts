@@ -4,8 +4,8 @@
 // a `ForceShot` (shot.type === 'force') configured with a barrier sphere.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
-// One look at every LOD tier: a translucent team-color bubble plus a
-// small pulsing emitter sphere on the host turret. Per-LOD variation
+// One look at every LOD tier: a translucent force-field bubble plus a
+// small turret-accent emitter sphere on the host turret. Per-LOD variation
 // would just blink the visuals on/off as the camera moves — the
 // minimal / simple / normal / enhanced tiers all render the same.
 
@@ -19,7 +19,8 @@ import { getGraphicsConfig } from '@/clientBarConfig';
 import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
-import { hexToRgb01, writeHexToRgb01Array } from './colorUtils';
+import { writeHexToRgb01Array } from './colorUtils';
+import { turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 
 /** How far the force-field emitter sphere is embedded into the body
  *  part it's mounted on. Expressed as a chassis-local Y offset added
@@ -87,7 +88,7 @@ function resolveForceFieldColor(playerId: number | undefined): number {
 // SmokeTrail3D / Explosion3D / SprayRenderer3D. Per-instance `aAlpha`
 // + `aColor` ride on InstancedBufferAttributes; the fragment is just
 // `vec4(vColor, vAlpha)`. Both emitter and bubble use this shader: the
-// emitter writes alpha=1 with a pulsing team color, the bubble writes
+// emitter writes alpha=1 with the turret accent color, the bubble writes
 // the same force-field color with the fade-in alpha.
 const FIELD_SPHERE_VS = `
 attribute float aAlpha;
@@ -110,7 +111,7 @@ void main() {
 `;
 
 /** Cap on shared sphere instances. Every active force field consumes
- *  exactly two slots — one for the small pulsing emitter and one for
+ *  exactly two slots — one for the small turret-accent emitter and one for
  *  the translucent bubble. 512 fits ~256 simultaneous fields, well
  *  above any realistic concurrent count. */
 const SPHERE_INSTANCED_CAP = 512;
@@ -258,10 +259,6 @@ export class ForceFieldRenderer3D {
     field.localZ = offsetY;
   }
 
-  // Per-frame state computed in beginFrame(), read in perUnit(),
-  // cleaned up in endFrame().
-  private _frameNowSec = 0;
-
   /** Begin a fused per-frame iteration. Caller follows with a series
    *  of perUnit calls and finishes with endFrame. The `graphicsConfig`
    *  argument is currently unused — the bubble + emitter visuals
@@ -270,7 +267,6 @@ export class ForceFieldRenderer3D {
   beginFrame(_graphicsConfig: GraphicsConfig = getGraphicsConfig()): void {
     this._seenFieldKeys.clear();
     this._sphereCursor = 0;
-    this._frameNowSec = performance.now() / 1000;
   }
 
   /** Process one unit. The fill is gameplay-relevant info (a force
@@ -316,10 +312,9 @@ export class ForceFieldRenderer3D {
     this.endFrame();
   }
 
-  /** Internal per-unit body. Reads frame state set by beginFrame(). */
+  /** Internal per-unit body. Writes emitter and active bubble instances. */
   private _processUnit(unit: Entity): void {
     const seen = this._seenFieldKeys;
-    const nowSec = this._frameNowSec;
 
     // Sanity guard — perUnit already filtered, but check again so
     // _processUnit is safe to call directly.
@@ -356,17 +351,11 @@ export class ForceFieldRenderer3D {
       const localY = field.localY;
       const localZ = field.localZ;
 
-      // Central pulsing emitter sphere: lerp idle color → field color
-      // on the transition-time sin wave. Stays visible while idle so
-      // force-field turrets read as physical parts of the unit; the
-      // bubble below is gated by active progress.
-      const freq = (Math.PI * 2) / (shot.transitionTime / 1000);
-      const pulse = Math.sin(nowSec * freq) * 0.5 + 0.5;
-      const idleRgb = hexToRgb01(FORCE_FIELD_VISUAL.emitterIdleColor);
-      const fieldRgb = hexToRgb01(fieldColor);
-      const er = idleRgb.r + (fieldRgb.r - idleRgb.r) * pulse;
-      const eg = idleRgb.g + (fieldRgb.g - idleRgb.g) * pulse;
-      const eb = idleRgb.b + (fieldRgb.b - idleRgb.b) * pulse;
+      // Central emitter sphere: fixed half-white / half-team turret
+      // accent. It stays visible while idle so force-field turrets
+      // read as physical turret parts; the bubble below is gated by
+      // active progress.
+      const emitterColor = turretAccentColorHexForPlayer(unit.ownership?.playerId);
       const emitterVisualProgress = Math.max(progress, 0.3);
       const emitterRadius = EMITTER_BASE_RADIUS
         + (EMITTER_MAX_RADIUS - EMITTER_BASE_RADIUS) * emitterVisualProgress;
@@ -415,7 +404,7 @@ export class ForceFieldRenderer3D {
         havePosition = true;
       }
 
-      // Emitter slot (small pulsing sphere, always drawn).
+      // Emitter slot (small turret-accent sphere, always drawn).
       if (havePosition && this._sphereCursor < SPHERE_INSTANCED_CAP) {
         this._sphereScratchScale.set(emitterRadius, emitterRadius, emitterRadius);
         this._sphereScratchMat.compose(
@@ -425,9 +414,7 @@ export class ForceFieldRenderer3D {
         );
         this.sphereInstancedMesh.setMatrixAt(this._sphereCursor, this._sphereScratchMat);
         this.sphereAlphaArr[this._sphereCursor] = 0.9;
-        this.sphereColorArr[this._sphereCursor * 3]     = er;
-        this.sphereColorArr[this._sphereCursor * 3 + 1] = eg;
-        this.sphereColorArr[this._sphereCursor * 3 + 2] = eb;
+        writeHexToRgb01Array(emitterColor, this.sphereColorArr, this._sphereCursor * 3);
         this._sphereCursor++;
       }
 

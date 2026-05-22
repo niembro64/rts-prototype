@@ -10,10 +10,11 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { HoverConfig } from '@/types/blueprints';
-import type { Entity } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
+import { locomotionPieceColorHex } from './colorUtils';
 
 /** Minimum world-Y gap the rendered fan ring is allowed to have above
  *  terrain. The sim is supposed to keep hovers above ground via the
@@ -37,13 +38,27 @@ const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const hubGeom = new THREE.SphereGeometry(1, 18, 12);
 const bladeGeom = new THREE.BoxGeometry(1, 1, 1);
-const ringMat = new THREE.MeshBasicMaterial({ color: FAN_RING_COLOR });
-const bladeMat = new THREE.MeshBasicMaterial({ color: FAN_BLADE_COLOR });
-const hubMat = new THREE.MeshBasicMaterial({ color: FAN_HUB_COLOR });
+const ringMats = new Map<number, THREE.MeshBasicMaterial>();
+const bladeMats = new Map<number, THREE.MeshBasicMaterial>();
+const hubMats = new Map<number, THREE.MeshBasicMaterial>();
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
 const _fanWorldDir = new THREE.Vector3();
+
+function getFanMat(
+  cache: Map<number, THREE.MeshBasicMaterial>,
+  baseColor: number,
+  ownerId: PlayerId | undefined,
+): THREE.MeshBasicMaterial {
+  const color = locomotionPieceColorHex(baseColor, ownerId);
+  let mat = cache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color });
+    cache.set(color, mat);
+  }
+  return mat;
+}
 
 function getRingGeom(tubeRatio: number): THREE.TorusGeometry {
   const key = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
@@ -121,6 +136,7 @@ function buildFan(
   spec: FanSpec,
   entityId: number,
   fanIndex: number,
+  ownerId: PlayerId | undefined,
 ): HoverFan {
   const { localX, localZ, fanRadius, ringTubeRadius, outwardAngleRad, smokeProfile } = spec;
   const ringTubeRatio = ringTubeRadius / fanRadius;
@@ -139,7 +155,10 @@ function buildFan(
     fanGroup.quaternion.setFromUnitVectors(LOCAL_EXHAUST_DIR, exhaustDir);
   }
 
-  const ring = new THREE.Mesh(getRingGeom(ringTubeRatio), ringMat);
+  const ring = new THREE.Mesh(
+    getRingGeom(ringTubeRatio),
+    getFanMat(ringMats, FAN_RING_COLOR, ownerId),
+  );
   ring.rotation.x = Math.PI / 2;
   ring.scale.setScalar(fanRadius);
   fanGroup.add(ring);
@@ -153,7 +172,7 @@ function buildFan(
   const bladeThickness = Math.max(0.14, ringTubeRadius * 0.32);
   const bladePitchRad = THREE.MathUtils.degToRad(FAN_BLADE_PITCH_DEG);
   for (let i = 0; i < FAN_BLADE_COUNT; i++) {
-    const blade = new THREE.Mesh(bladeGeom, bladeMat);
+    const blade = new THREE.Mesh(bladeGeom, getFanMat(bladeMats, FAN_BLADE_COLOR, ownerId));
     blade.scale.set(bladeLength, bladeThickness, bladeChord);
     blade.position.x = bladeRootRadius + bladeLength * 0.5;
     blade.rotation.x = bladePitchRad;
@@ -163,7 +182,7 @@ function buildFan(
     rotor.add(bladePivot);
   }
 
-  const hub = new THREE.Mesh(hubGeom, hubMat);
+  const hub = new THREE.Mesh(hubGeom, getFanMat(hubMats, FAN_HUB_COLOR, ownerId));
   hub.scale.setScalar(hubRadius);
   rotor.add(hub);
   fanGroup.add(rotor);
@@ -203,6 +222,7 @@ export function buildHoverFans(
   unitRadius: number,
   cfg: HoverConfig,
   entityId: number,
+  ownerId: PlayerId | undefined,
 ): HoverMesh {
   const group = new THREE.Group();
   const mainFanRadius = Math.max(1, unitRadius * cfg.fanRadius);
@@ -238,6 +258,7 @@ export function buildHoverFans(
         },
         entityId,
         fans.length,
+        ownerId,
       ));
     }
     if (hasTailFan) {
@@ -266,6 +287,7 @@ export function buildHoverFans(
         },
         entityId,
         fans.length,
+        ownerId,
       ));
     }
   } else if (cfg.fanLayout === 'triFront') {
@@ -283,6 +305,7 @@ export function buildHoverFans(
         },
         entityId,
         fans.length,
+        ownerId,
       ));
     }
   } else {
@@ -299,10 +322,11 @@ export function buildHoverFans(
             ringTubeRadius: mainRingTubeRadius,
             outwardAngleRad,
             smokeProfile: SMALL_FAN_SMOKE,
-          },
-          entityId,
-          fans.length,
-        ));
+        },
+        entityId,
+        fans.length,
+        ownerId,
+      ));
       }
     }
   }

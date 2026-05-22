@@ -32,11 +32,11 @@ export type UnitMeshBuilder3DOptions = {
   turretHeadGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   coneBarrelGeom: THREE.CylinderGeometry;
-  barrelMat: THREE.Material;
   mirrorGeom: THREE.BoxGeometry;
   mirrorArmGeom: THREE.BoxGeometry;
   mirrorSupportGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
+  getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   getMirrorShinyMat: () => THREE.Material;
   getMapWidth: () => number;
   getMapHeight: () => number;
@@ -76,11 +76,11 @@ export class UnitMeshBuilder3D {
   private readonly turretHeadGeom: THREE.SphereGeometry;
   private readonly barrelGeom: THREE.CylinderGeometry;
   private readonly coneBarrelGeom: THREE.CylinderGeometry;
-  private readonly barrelMat: THREE.Material;
   private readonly mirrorGeom: THREE.BoxGeometry;
   private readonly mirrorArmGeom: THREE.BoxGeometry;
   private readonly mirrorSupportGeom: THREE.CylinderGeometry;
   private readonly getPrimaryMat: UnitMeshBuilder3DOptions['getPrimaryMat'];
+  private readonly getTurretAccentMat: UnitMeshBuilder3DOptions['getTurretAccentMat'];
   private readonly getMirrorShinyMat: UnitMeshBuilder3DOptions['getMirrorShinyMat'];
   private readonly getMapWidth: () => number;
   private readonly getMapHeight: () => number;
@@ -93,11 +93,11 @@ export class UnitMeshBuilder3D {
     this.turretHeadGeom = options.turretHeadGeom;
     this.barrelGeom = options.barrelGeom;
     this.coneBarrelGeom = options.coneBarrelGeom;
-    this.barrelMat = options.barrelMat;
     this.mirrorGeom = options.mirrorGeom;
     this.mirrorArmGeom = options.mirrorArmGeom;
     this.mirrorSupportGeom = options.mirrorSupportGeom;
     this.getPrimaryMat = options.getPrimaryMat;
+    this.getTurretAccentMat = options.getTurretAccentMat;
     this.getMirrorShinyMat = options.getMirrorShinyMat;
     this.getMapWidth = options.getMapWidth;
     this.getMapHeight = options.getMapHeight;
@@ -261,8 +261,8 @@ export class UnitMeshBuilder3D {
         headGeom: this.turretHeadGeom,
         barrelGeom: this.barrelGeom,
         coneBarrelGeom: this.coneBarrelGeom,
-        barrelMat: this.barrelMat,
         primaryMat: this.getPrimaryMat(ownerId),
+        turretAccentMat: this.getTurretAccentMat(ownerId),
         skipHead: headSlot !== undefined,
         skipBarrels: false,
       });

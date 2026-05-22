@@ -32,9 +32,10 @@ import type { LegStyle as LegLod } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
-import type { Entity } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
+import { locomotionPieceColorHex } from './colorUtils';
 import {
   getLocomotionSurfaceHeight,
   getLocomotionSurfaceNormal,
@@ -112,6 +113,7 @@ const FOOT_PAD_HALF_HEIGHT_MULT = 0.45;
 const FOOT_PAD_MIN_RADIUS = 1.1;
 const FOOT_PAD_MIN_HALF_HEIGHT = 0.35;
 const FOOT_PAD_GROUND_CLEARANCE = 0.35;
+const LEG_SEGMENT_COLOR = COLORS.units.locomotion.leg.segment.colorHex;
 const AIRBORNE_TOUCHDOWN_REST_DISTANCE_MULT = 0.7;
 const AIRBORNE_MAX_REACH_FRACTION = 0.96;
 const AIRBORNE_BASE_EXTENSION = 0.65;
@@ -320,11 +322,13 @@ export function buildLegs(
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
+  ownerId: PlayerId | undefined,
 ): LegMesh | undefined {
   if (legLod === 'none') return undefined;
 
   const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
   const shellPool = !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
+  const legColor = locomotionPieceColorHex(LEG_SEGMENT_COLOR, ownerId);
 
   const group = new THREE.Group();
   worldGroup.add(group);
@@ -398,14 +402,14 @@ export function buildLegs(
     // LegInstancedRenderer pools. Each alloc registers a relocator
     // so a future flush()-time defrag can call back into the leg and
     // update the stored index when a slot is packed downward.
-    leg.upperSlot = legRenderer.allocUpper(shellPool, (s) => { leg.upperSlot = s; });
+    leg.upperSlot = legRenderer.allocUpper(shellPool, legColor, (s) => { leg.upperSlot = s; });
     if (legLod === 'animated' || legLod === 'full') {
-      leg.lowerSlot = legRenderer.allocLower(shellPool, (s) => { leg.lowerSlot = s; });
+      leg.lowerSlot = legRenderer.allocLower(shellPool, legColor, (s) => { leg.lowerSlot = s; });
     }
-    leg.footPadSlot = legRenderer.allocFootPad(shellPool, (s) => { leg.footPadSlot = s; });
+    leg.footPadSlot = legRenderer.allocFootPad(shellPool, legColor, (s) => { leg.footPadSlot = s; });
     if (legLod === 'full') {
-      leg.hipJointSlot = legRenderer.allocJoint(shellPool, (s) => { leg.hipJointSlot = s; });
-      leg.kneeJointSlot = legRenderer.allocJoint(shellPool, (s) => { leg.kneeJointSlot = s; });
+      leg.hipJointSlot = legRenderer.allocJoint(shellPool, legColor, (s) => { leg.hipJointSlot = s; });
+      leg.kneeJointSlot = legRenderer.allocJoint(shellPool, legColor, (s) => { leg.kneeJointSlot = s; });
     }
 
     legs.push(leg);

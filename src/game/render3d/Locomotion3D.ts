@@ -101,7 +101,7 @@ export function buildLocomotion(
   worldGroup: THREE.Group,
   entity: Entity,
   unitRadius: number,
-  _pid: PlayerId | undefined,
+  ownerId: PlayerId | undefined,
   gfx: GraphicsConfig,
   mapWidth: number,
   mapHeight: number,
@@ -121,12 +121,12 @@ export function buildLocomotion(
 
   switch (loc.type) {
     case 'treads': {
-      const mesh = buildTreads(unitGroup, unitRadius, loc.config, gfx.treadsAnimated);
+      const mesh = buildTreads(unitGroup, unitRadius, loc.config, gfx.treadsAnimated, ownerId);
       mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'wheels': {
-      const mesh = buildWheels(unitGroup, unitRadius, loc.config);
+      const mesh = buildWheels(unitGroup, unitRadius, loc.config, ownerId);
       mesh.geometryKey = geometryKey;
       return mesh;
     }
@@ -135,18 +135,18 @@ export function buildLocomotion(
       const mesh = buildLegs(
         worldGroup, entity, unitRadius, loc.config,
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
-        mapWidth, mapHeight, legRenderer,
+        mapWidth, mapHeight, legRenderer, ownerId,
       );
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'hover': {
-      const mesh = buildHoverFans(unitGroup, unitRadius, loc.config, entity.id);
+      const mesh = buildHoverFans(unitGroup, unitRadius, loc.config, entity.id, ownerId);
       mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'flying': {
-      const mesh = buildFlyingRig(unitGroup, unitRadius, loc.config, entity.id);
+      const mesh = buildFlyingRig(unitGroup, unitRadius, loc.config, entity.id, ownerId);
       mesh.geometryKey = geometryKey;
       return mesh;
     }
