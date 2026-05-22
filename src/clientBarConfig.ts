@@ -44,6 +44,7 @@ export const CLIENT_CONFIG = {
   audioSmoothing: clientBarConfig.audioSmoothing,
   burnMarks: clientBarConfig.burnMarks,
   locomotionMarks: clientBarConfig.locomotionMarks,
+  smokeTrails: clientBarConfig.smokeTrails,
   beamSnapToTurret: clientBarConfig.beamSnapToTurret,
   triangleDebug: clientBarConfig.triangleDebug,
   buildGridDebug: clientBarConfig.buildGridDebug,
@@ -132,6 +133,7 @@ const AUDIO_SCOPE_STORAGE_KEY = sk.audioScope;
 const AUDIO_SMOOTHING_STORAGE_KEY = sk.audioSmoothing;
 const BURN_MARKS_STORAGE_KEY = sk.burnMarks;
 const LOCOMOTION_MARKS_STORAGE_KEY = sk.locomotionMarks;
+const SMOKE_TRAILS_STORAGE_KEY = sk.smokeTrails;
 const BEAM_SNAP_TO_TURRET_STORAGE_KEY = sk.beamSnapToTurret;
 const TRIANGLE_DEBUG_STORAGE_KEY = sk.triangleDebug;
 const BUILD_GRID_DEBUG_STORAGE_KEY = sk.buildGridDebug;
@@ -189,6 +191,7 @@ let currentAudioScope: AudioScope = _cd.audio.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
 let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
+let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
@@ -276,6 +279,10 @@ function loadFromStorage(): void {
   const storedLocomotionMarks = readPersisted(LOCOMOTION_MARKS_STORAGE_KEY);
   if (storedLocomotionMarks !== null) {
     currentLocomotionMarks = storedLocomotionMarks === 'true';
+  }
+  const storedSmokeTrails = readPersisted(SMOKE_TRAILS_STORAGE_KEY);
+  if (storedSmokeTrails !== null) {
+    currentSmokeTrails = storedSmokeTrails === 'true';
   }
   const storedBeamSnapToTurret = readPersisted(BEAM_SNAP_TO_TURRET_STORAGE_KEY);
   if (storedBeamSnapToTurret !== null) {
@@ -533,6 +540,18 @@ export function getLocomotionMarks(): boolean {
 export function setLocomotionMarks(enabled: boolean): void {
   currentLocomotionMarks = enabled;
   persist(LOCOMOTION_MARKS_STORAGE_KEY, String(enabled));
+}
+
+/** Smoke-trail toggle: thrust-projectile smoke puffs rendered by
+ *  SmokeTrail3D. Default on — turning it off clears any live puffs
+ *  immediately and skips spawning new ones. */
+export function getSmokeTrails(): boolean {
+  return currentSmokeTrails;
+}
+
+export function setSmokeTrails(enabled: boolean): void {
+  currentSmokeTrails = enabled;
+  persist(SMOKE_TRAILS_STORAGE_KEY, String(enabled));
 }
 
 export function getBeamSnapToTurret(): boolean {

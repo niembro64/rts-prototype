@@ -18,6 +18,7 @@
   "audioSmoothing": { "default": true },
   "burnMarks": { "default": false },
   "locomotionMarks": { "default": true },
+  "smokeTrails": { "default": true },
   "beamSnapToTurret": { "default": true },
   "triangleDebug": { "default": false },
   "buildGridDebug": { "default": false },
@@ -38,7 +39,7 @@
     ]
   },
   "movementVelEma": {
-    "default": "fast",
+    "default": "medium",
     "options": [
       { "value": "ignore", "label": "IGN" },
       { "value": "snap", "label": "SNAP" },
@@ -134,6 +135,7 @@
     "audioSmoothing": "player-client-audio-smoothing",
     "burnMarks": "player-client-burn-marks-v2",
     "locomotionMarks": "player-client-locomotion-marks",
+    "smokeTrails": "player-client-smoke-trails",
     "beamSnapToTurret": "player-client-beam-snap-to-turret",
     "triangleDebug": "player-client-triangle-debug",
     "buildGridDebug": "player-client-build-grid-debug",

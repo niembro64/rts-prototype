@@ -82,6 +82,10 @@ export type ClientBarConfig = {
    *  unit movement. Default on — these decay quickly and read as
    *  part of the unit silhouettes' motion. */
   readonly locomotionMarks: BooleanSetting;
+  /** Smoke-puff trails behind thrust-powered projectiles (rockets,
+   *  missiles) rendered by SmokeTrail3D. Default on — toggle off to
+   *  cut the visual clutter and the per-puff overdraw on heavy salvos. */
+  readonly smokeTrails: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;

@@ -107,6 +107,7 @@ export type GameCanvasClientControlBarModel = {
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;
+  readonly smokeTrails: boolean;
   readonly beamSnapToTurret: boolean;
   readonly movementPosEma: PositionDriftChannelMode;
   readonly movementVelEma: DriftChannelMode;
@@ -142,6 +143,7 @@ export type GameCanvasClientControlBarModel = {
   toggleAudioSmoothing(): void;
   toggleBurnMarks(): void;
   toggleLocomotionMarks(): void;
+  toggleSmokeTrails(): void;
   toggleBeamSnapToTurret(): void;
   changeMovementPosEma(mode: PositionDriftChannelMode): void;
   changeMovementVelEma(mode: DriftChannelMode): void;

@@ -22,6 +22,7 @@ import {
   getBurnMarks,
   getLegsRadiusToggle,
   getLocomotionMarks,
+  getSmokeTrails,
   getProjRangeToggle,
   getRangeToggle,
   getRenderMode,
@@ -46,6 +47,7 @@ import {
   setBurnMarks,
   setLegsRadiusToggle,
   setLocomotionMarks,
+  setSmokeTrails,
   setProjRangeToggle,
   setRangeToggle,
   setRenderMode,
@@ -84,6 +86,7 @@ export function useGameCanvasClientSettings({
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
   const burnMarks = ref<boolean>(getBurnMarks());
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
+  const smokeTrails = ref<boolean>(getSmokeTrails());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
@@ -232,6 +235,12 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = newValue;
   }
 
+  function toggleSmokeTrails(): void {
+    const newValue = !smokeTrails.value;
+    setSmokeTrails(newValue);
+    smokeTrails.value = newValue;
+  }
+
   function toggleBeamSnapToTurret(): void {
     const newValue = !beamSnapToTurret.value;
     setBeamSnapToTurret(newValue);
@@ -345,6 +354,8 @@ export function useGameCanvasClientSettings({
     burnMarks.value = cd.burnMarks.default;
     setLocomotionMarks(cd.locomotionMarks.default);
     locomotionMarks.value = cd.locomotionMarks.default;
+    setSmokeTrails(cd.smokeTrails.default);
+    smokeTrails.value = cd.smokeTrails.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
     beamSnapToTurret.value = cd.beamSnapToTurret.default;
     setTriangleDebug(cd.triangleDebug.default);
@@ -414,6 +425,7 @@ export function useGameCanvasClientSettings({
     audioSmoothing,
     burnMarks,
     locomotionMarks,
+    smokeTrails,
     beamSnapToTurret,
     triangleDebug,
     buildGridDebug,
@@ -456,6 +468,7 @@ export function useGameCanvasClientSettings({
     toggleAudioSmoothing,
     toggleBurnMarks,
     toggleLocomotionMarks,
+    toggleSmokeTrails,
     toggleBeamSnapToTurret,
     toggleTriangleDebug,
     toggleBuildGridDebug,

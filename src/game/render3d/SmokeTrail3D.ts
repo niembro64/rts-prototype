@@ -35,7 +35,7 @@ import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import type { ConcreteGraphicsQuality, FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
-import { getGraphicsConfig } from '@/clientBarConfig';
+import { getGraphicsConfig, getSmokeTrails } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
@@ -285,6 +285,19 @@ export class SmokeTrail3D {
     scope?: ViewportFootprint,
     emitters?: readonly SmokePuffEmitter[],
   ): void {
+    // PLAYER CLIENT bar toggle: when off, wipe any live puffs and skip
+    // every advance / emit path so toggling off clears the screen
+    // immediately and the renderer does no per-frame work.
+    if (!getSmokeTrails()) {
+      if (this.small.active.length > 0 || this.large.active.length > 0) {
+        this.small.active.length = 0;
+        this.large.active.length = 0;
+        this.flushPool(this.small);
+        this.flushPool(this.large);
+      }
+      return;
+    }
+
     if (
       projectiles.length === 0 &&
       this.small.active.length === 0 &&

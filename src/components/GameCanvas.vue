@@ -235,6 +235,7 @@ const {
   audioSmoothing,
   burnMarks,
   locomotionMarks,
+  smokeTrails,
   beamSnapToTurret,
   triangleDebug,
   buildGridDebug,
@@ -277,6 +278,7 @@ const {
   toggleAudioSmoothing,
   toggleBurnMarks,
   toggleLocomotionMarks,
+  toggleSmokeTrails,
   toggleBeamSnapToTurret,
   toggleTriangleDebug,
   toggleBuildGridDebug,
@@ -770,6 +772,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
+  smokeTrails: smokeTrails.value,
   beamSnapToTurret: beamSnapToTurret.value,
   movementPosEma: movementPosEma.value,
   movementVelEma: movementVelEma.value,
@@ -805,6 +808,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleAudioSmoothing,
   toggleBurnMarks,
   toggleLocomotionMarks,
+  toggleSmokeTrails,
   toggleBeamSnapToTurret,
   changeMovementPosEma,
   changeMovementVelEma,
@@ -871,6 +875,7 @@ watchEffect(() => {
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;
+  m.smokeTrails = smokeTrails.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
   m.movementPosEma = movementPosEma.value;
   m.movementVelEma = movementVelEma.value;

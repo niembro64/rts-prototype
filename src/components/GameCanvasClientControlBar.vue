@@ -452,6 +452,11 @@ defineProps<{
           title="Draw wheel, tread, and footstep prints from unit movement"
           @click="model.toggleLocomotionMarks"
         >LOCO</BarButton>
+        <BarButton
+          :active="model.smokeTrails"
+          title="Draw smoke-puff trails behind thrust-powered projectiles"
+          @click="model.toggleSmokeTrails"
+        >SMOKE</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
