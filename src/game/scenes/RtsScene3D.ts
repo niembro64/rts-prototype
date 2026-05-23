@@ -341,9 +341,9 @@ export class RtsScene3D {
       () => this.localPlayerId,
       this.backgroundMode,
       this.lobbyPreview,
+      (x, z) => getSurfaceHeight(x, z, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
     );
     this.cameras = this.cameraControl.cameras;
-    this.cameraFramingSystem.seedInitialCamera();
 
   }
 
@@ -483,6 +483,12 @@ export class RtsScene3D {
     this.threeApp.orbit.setTerrainSampler((x, z) =>
       getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight)
     );
+    // Camera target.y rides the local surface height so the orbit's
+    // derived camera position clears mountains under the initial
+    // framing. Deferred to here (rather than the constructor) so the
+    // ground generator is already configured by `setTerrainMapShape`
+    // & friends above and the orbit's clearance sampler is live.
+    this.cameraFramingSystem.seedInitialCamera();
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.forceFieldImpactRenderer = new ForceFieldImpactRenderer3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(

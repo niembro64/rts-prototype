@@ -22,6 +22,7 @@ export class RtsScene3DCameraFramingSystem {
     private readonly getLocalPlayerId: () => PlayerId,
     private readonly backgroundMode: boolean,
     private readonly lobbyPreview: boolean,
+    private readonly getSurfaceY: (x: number, z: number) => number,
   ) {}
 
   seedInitialCamera(): void {
@@ -43,7 +44,7 @@ export class RtsScene3DCameraFramingSystem {
 
     this.threeApp.orbit.setState({
       targetX: initialTarget.x,
-      targetY: 0,
+      targetY: this.getSurfaceY(initialTarget.x, initialTarget.y),
       targetZ: initialTarget.y,
       distance: this.baseDistance / initialZoom,
       yaw: this.povYawForLocalSeat(),
@@ -81,7 +82,7 @@ export class RtsScene3DCameraFramingSystem {
 
     const cx = commander.transform.x;
     const cz = commander.transform.y;
-    this.threeApp.orbit.setTarget(cx, 0, cz);
+    this.threeApp.orbit.setTarget(cx, this.getSurfaceY(cx, cz), cz);
 
     const forwardX = this.mapWidth / 2 - cx;
     const forwardZ = this.mapHeight / 2 - cz;
@@ -95,7 +96,9 @@ export class RtsScene3DCameraFramingSystem {
   }
 
   private centerCameraOnMap(): void {
-    this.threeApp.orbit.setTarget(this.mapWidth / 2, 0, this.mapHeight / 2);
+    const cx = this.mapWidth / 2;
+    const cz = this.mapHeight / 2;
+    this.threeApp.orbit.setTarget(cx, this.getSurfaceY(cx, cz), cz);
     this.hasCenteredCamera = true;
   }
 
