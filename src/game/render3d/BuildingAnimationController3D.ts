@@ -12,6 +12,10 @@ import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
 } from '../../config';
+import {
+  RESOURCE_KIND_ENERGY,
+  RESOURCE_KIND_METAL,
+} from '@/types/network';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
 import { lerp, lerpAngle } from '../math';
@@ -23,6 +27,7 @@ import {
 } from './SolarCollectorMesh3D';
 import type {
   ConstructionEmitterRig,
+  ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
@@ -55,6 +60,29 @@ const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
   const base = getBuildingConfig('extractor').metalProduction ?? 0;
   return base > 0 ? 1 / base : 0;
 })();
+const INV_SOLAR_BASE_PRODUCTION = (() => {
+  const base = getBuildingConfig('solar').energyProduction ?? 0;
+  return base > 0 ? 1 / base : 0;
+})();
+const INV_WIND_MAX_PRODUCTION = (() => {
+  const base = getBuildingConfig('wind').energyProduction ?? 0;
+  const maxRate = base * WIND_SPEED_MAX;
+  return maxRate > 0 ? 1 / maxRate : 0;
+})();
+const INV_CONVERTER_BASE_RATE = (() => {
+  const base = getBuildingConfig('resourceConverter').conversionRate ?? 0;
+  return base > 0 ? 1 / base : 0;
+})();
+
+function resourcePylonRateFraction(signedRate: number, inverseFullRate: number): number {
+  if (signedRate === 0 || inverseFullRate <= 0) return 0;
+  return Math.max(0, Math.min(1, Math.abs(signedRate) * inverseFullRate));
+}
+
+function applyResourcePylonDirection(pylon: ResourcePylonRig | undefined, signedRate: number): void {
+  if (!pylon || signedRate === 0) return;
+  pylon.direction = signedRate > 0 ? 'outbound' : 'inbound';
+}
 
 export class BuildingAnimationController3D {
   private readonly clientViewState: ClientViewState;
@@ -65,6 +93,8 @@ export class BuildingAnimationController3D {
   private windBuildingIdSet = new Set<EntityId>();
   private extractorBuildingIds: EntityId[] = [];
   private extractorBuildingIdSet = new Set<EntityId>();
+  private converterBuildingIds: EntityId[] = [];
+  private converterBuildingIdSet = new Set<EntityId>();
   private factoryBuildingIds: EntityId[] = [];
   private factoryBuildingIdSet = new Set<EntityId>();
   private radarBuildingIds: EntityId[] = [];
@@ -118,6 +148,9 @@ export class BuildingAnimationController3D {
     if (mesh.extractorRig) {
       this.addAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
     }
+    if (mesh.converterRig) {
+      this.addAnimatedBuilding(this.converterBuildingIds, this.converterBuildingIdSet, id);
+    }
     if (mesh.factoryBuildSpotRig) {
       this.addAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
     }
@@ -130,6 +163,7 @@ export class BuildingAnimationController3D {
     this.removeAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
     this.removeAnimatedBuilding(this.windBuildingIds, this.windBuildingIdSet, id);
     this.removeAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
+    this.removeAnimatedBuilding(this.converterBuildingIds, this.converterBuildingIdSet, id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);
@@ -157,11 +191,13 @@ export class BuildingAnimationController3D {
         if (!mesh || !entity) continue;
         this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
         const open = entity.building?.activeState?.open !== false;
+        const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+        applyResourcePylonDirection(mesh.solarRig?.pylon, signedRate);
         this.constructionVisuals.updateAmbientResourcePylon(
           mesh.solarRig?.pylon,
           entity,
           mesh.group,
-          open ? 1 : 0,
+          open ? resourcePylonRateFraction(signedRate, INV_SOLAR_BASE_PRODUCTION) : 0,
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
@@ -173,9 +209,7 @@ export class BuildingAnimationController3D {
 
     if (this.windBuildingIds.length > 0) {
       this.updateWindAnimationGlobals();
-      const wind = this.clientViewState.getServerMeta()?.wind;
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
-      const normalizedWindRate = wind ? wind.speed / WIND_SPEED_MAX : 0;
       const closeAmounts = this.windCloseAmounts;
       for (const id of this.windBuildingIds) {
         const mesh = buildingMeshes.get(id);
@@ -190,14 +224,13 @@ export class BuildingAnimationController3D {
         closeAmounts.set(id, close);
 
         this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true, close);
+        const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+        applyResourcePylonDirection(mesh.windRig?.pylon, signedRate);
         this.constructionVisuals.updateAmbientResourcePylon(
           mesh.windRig?.pylon,
           entity,
           mesh.group,
-          // Closed turbines produce no energy — collapse the rate
-          // indicator to match. The sim already filters them out of
-          // WindPowerTracker, this just keeps the visual in sync.
-          normalizedWindRate * (1 - close),
+          resourcePylonRateFraction(signedRate, INV_WIND_MAX_PRODUCTION) * (1 - close),
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
@@ -292,16 +325,54 @@ export class BuildingAnimationController3D {
         }
         phases.set(id, phase);
         speeds.set(id, speed);
+        const signedRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
+        applyResourcePylonDirection(rig?.pylon, signedRate);
         this.constructionVisuals.updateAmbientResourcePylon(
           rig?.pylon,
           entity,
           mesh.group,
-          normalizedRate,
+          resourcePylonRateFraction(signedRate, invBase) * (1 - close),
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
+        );
+      }
+    }
+
+    if (this.converterBuildingIds.length > 0) {
+      const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
+      for (const id of this.converterBuildingIds) {
+        const mesh = buildingMeshes.get(id);
+        const entity = this.clientViewState.getEntity(id);
+        const rig = mesh?.converterRig;
+        if (!mesh || !entity || !rig) continue;
+        const detailsLowReady = mesh.buildingCachedDetailsReady === true
+          && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low');
+        const detailsHighReady = mesh.buildingCachedDetailsReady === true
+          && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high');
+        const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
+        const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
+        applyResourcePylonDirection(rig.energyPylon, energyRate);
+        applyResourcePylonDirection(rig.metalPylon, metalRate);
+        this.constructionVisuals.updateAmbientResourcePylon(
+          rig.energyPylon,
+          entity,
+          mesh.group,
+          resourcePylonRateFraction(energyRate, INV_CONVERTER_BASE_RATE),
+          rateAlpha,
+          detailsLowReady,
+          detailsHighReady,
+        );
+        this.constructionVisuals.updateAmbientResourcePylon(
+          rig.metalPylon,
+          entity,
+          mesh.group,
+          resourcePylonRateFraction(metalRate, INV_CONVERTER_BASE_RATE),
+          rateAlpha,
+          detailsLowReady,
+          detailsHighReady,
         );
       }
     }
@@ -365,6 +436,8 @@ export class BuildingAnimationController3D {
     this.windBuildingIdSet.clear();
     this.extractorBuildingIds.length = 0;
     this.extractorBuildingIdSet.clear();
+    this.converterBuildingIds.length = 0;
+    this.converterBuildingIdSet.clear();
     this.factoryBuildingIds.length = 0;
     this.factoryBuildingIdSet.clear();
     this.radarBuildingIds.length = 0;

@@ -61,6 +61,10 @@ import {
   disposeFactoryMeshGeoms,
   type FactoryBuildSpotRig,
 } from './FactoryMesh3D';
+import {
+  buildResourcePylonRig,
+  type ResourcePylonRig,
+} from './ConstructionEmitterMesh3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -110,11 +114,17 @@ export type BuildingShape = {
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;
   radarRig?: RadarRig;
+  converterRig?: ResourceConverterRig;
 };
 
 export type RadarRig = {
   head: THREE.Mesh;
   sweep: THREE.Mesh;
+};
+
+export type ResourceConverterRig = {
+  energyPylon: ResourcePylonRig;
+  metalPylon: ResourcePylonRig;
 };
 
 // ── Standard dimensions ────────────────────────────────────────────────
@@ -353,6 +363,11 @@ function buildResourceConverterMesh(
 
   const ringRadius = Math.max(14, minDim * 0.32);
   const ringHeight = height * 0.62;
+  const pylonBaseY = height * 0.18;
+  const pylonHeight = Math.max(18, height * 0.5);
+  const pylonRadius = Math.max(2.8, minDim * 0.045);
+  const showerRadius = pylonRadius * 1.65;
+  const pylonOffset = Math.max(ringRadius * 0.68, minDim * 0.2);
 
   const energyRing = new THREE.Mesh(converterRingGeom, converterEnergyRingMat);
   energyRing.scale.set(ringRadius, ringRadius, 1);
@@ -379,7 +394,48 @@ function buildResourceConverterMesh(
     'low',
   ));
 
-  return { primary, details, height };
+  const energyPylon = buildResourcePylonRig({
+    resource: 'energy',
+    direction: 'inbound',
+    showerRadius,
+    pylonHeight,
+    pylonBaseY,
+    x: -pylonOffset,
+    z: 0,
+    pylonRadius,
+    sprayTravelSpeed: 120,
+    sprayParticleRadius: Math.max(1.35, pylonRadius * 0.42),
+    flowRadius: Math.max(34, pylonHeight * 1.25),
+    channel: 0,
+  });
+  const metalPylon = buildResourcePylonRig({
+    resource: 'metal',
+    direction: 'outbound',
+    showerRadius,
+    pylonHeight,
+    pylonBaseY,
+    x: pylonOffset,
+    z: 0,
+    pylonRadius,
+    sprayTravelSpeed: 120,
+    sprayParticleRadius: Math.max(1.35, pylonRadius * 0.42),
+    flowRadius: Math.max(34, pylonHeight * 1.25),
+    channel: 1,
+  });
+  for (const mesh of energyPylon.staticMeshes) details.push(detail(mesh, 'low'));
+  for (const mesh of metalPylon.staticMeshes) details.push(detail(mesh, 'low'));
+  details.push(detail(energyPylon.rig.shower, 'low'));
+  details.push(detail(metalPylon.rig.shower, 'low'));
+
+  return {
+    primary,
+    details,
+    height,
+    converterRig: {
+      energyPylon: energyPylon.rig,
+      metalPylon: metalPylon.rig,
+    },
+  };
 }
 
 /** Tear down shared geometries + materials on renderer destroy. Callers

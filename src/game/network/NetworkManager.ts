@@ -19,6 +19,7 @@ export type {
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotEconomy,
+  NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotVelocityUpdate,

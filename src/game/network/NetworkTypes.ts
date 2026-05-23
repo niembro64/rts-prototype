@@ -21,6 +21,7 @@ export type {
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotEconomy,
+  NetworkServerSnapshotResourceMovement,
   LobbyPlayerInfoPayload,
   LobbySettings,
   LobbyPlayer,

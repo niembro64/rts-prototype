@@ -14,6 +14,7 @@ import type {
   NetworkServerSnapshotEntity,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
+  NetworkServerSnapshotResourceMovement,
 } from './NetworkManager';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type { MinimapEntity } from '@/types/ui';
@@ -27,6 +28,10 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_NORMAL,
+  RESOURCE_FLOW_OUTBOUND,
+  RESOURCE_KIND_ENERGY,
+  RESOURCE_KIND_METAL,
+  type ResourceKindCode,
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -59,6 +64,11 @@ import {
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
 
+type ClientResourcePylonSignedRates = {
+  energy: number;
+  metal: number;
+};
+
 export type ClientSnapshotApplyStats = {
   correction: ClientPredictionCorrectionStats;
 };
@@ -72,6 +82,7 @@ export class ClientViewState {
   private projectileStore!: ClientProjectileStore;
 
   private sprayTargetStore = new ClientSprayTargetStore();
+  private resourcePylonSignedRates = new Map<EntityId, ClientResourcePylonSignedRates>();
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -307,6 +318,30 @@ export class ClientViewState {
     ) {
       this.activeEntityPredictionIds.add(server.id);
       this.dirtyUnitRenderIds.add(server.id);
+    }
+  }
+
+  private applyResourceMovements(
+    movements: readonly NetworkServerSnapshotResourceMovement[] | undefined,
+  ): void {
+    this.resourcePylonSignedRates.clear();
+    if (movements === undefined) return;
+    for (let i = 0; i < movements.length; i++) {
+      const movement = movements[i];
+      const amount = movement.direction === RESOURCE_FLOW_OUTBOUND
+        ? movement.amountPerSecond
+        : -movement.amountPerSecond;
+      if (amount === 0 || !Number.isFinite(amount)) continue;
+      let rates = this.resourcePylonSignedRates.get(movement.sourceEntityId);
+      if (rates === undefined) {
+        rates = { energy: 0, metal: 0 };
+        this.resourcePylonSignedRates.set(movement.sourceEntityId, rates);
+      }
+      if (movement.resource === RESOURCE_KIND_ENERGY) {
+        rates.energy += amount;
+      } else if (movement.resource === RESOURCE_KIND_METAL) {
+        rates.metal += amount;
+      }
     }
   }
 
@@ -619,6 +654,7 @@ export class ClientViewState {
       }
     }
 
+    this.applyResourceMovements(state.resourceMovements);
     this.sprayTargetStore.applySnapshot(state.sprayTargets);
 
     // Store audio events for processing (reuse constant for empty case)
@@ -711,6 +747,12 @@ export class ClientViewState {
 
   getTerrainBuildabilityGrid(): TerrainBuildabilityGrid | null {
     return this.terrainBuildabilityGrid;
+  }
+
+  getResourcePylonSignedRate(entityId: EntityId, resource: ResourceKindCode): number {
+    const rates = this.resourcePylonSignedRates.get(entityId);
+    if (rates === undefined) return 0;
+    return resource === RESOURCE_KIND_ENERGY ? rates.energy : rates.metal;
   }
 
   getAllEntities(): Entity[] {
@@ -988,6 +1030,7 @@ export class ClientViewState {
     this.serverTargets.clear();
     this.projectileStore.clear();
     this.sprayTargetStore.reset();
+    this.resourcePylonSignedRates.clear();
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.scanPulses.length = 0;
     this.visionPlayerMask = 0;

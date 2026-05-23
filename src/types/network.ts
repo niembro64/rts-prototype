@@ -351,6 +351,25 @@ export type NetworkServerSnapshotSimEvent = {
   audioOnly: boolean | null;
 };
 
+export const RESOURCE_KIND_ENERGY = 0;
+export const RESOURCE_KIND_METAL = 1;
+export type ResourceKindCode = typeof RESOURCE_KIND_ENERGY | typeof RESOURCE_KIND_METAL;
+
+export const RESOURCE_FLOW_INBOUND = 0;
+export const RESOURCE_FLOW_OUTBOUND = 1;
+export type ResourceFlowDirectionCode =
+  | typeof RESOURCE_FLOW_INBOUND
+  | typeof RESOURCE_FLOW_OUTBOUND;
+
+export type NetworkServerSnapshotResourceMovement = {
+  playerId: PlayerId;
+  sourceEntityId: number;
+  targetEntityId: number | null;
+  resource: ResourceKindCode;
+  amountPerSecond: number;
+  direction: ResourceFlowDirectionCode;
+};
+
 /** Wire shape for the FOW-11 keyframe shroud payload. cellSize is
  *  echoed for forwards-compat — clients can render at any resolution
  *  by resampling. The bitmap is BIT-PACKED row-major
@@ -522,6 +541,7 @@ export type NetworkServerSnapshot = {
   entities: NetworkServerSnapshotEntity[];
   minimapEntities?: NetworkServerSnapshotMinimapEntity[];
   economy: Record<PlayerId, NetworkServerSnapshotEconomy>;
+  resourceMovements?: NetworkServerSnapshotResourceMovement[];
   sprayTargets?: NetworkServerSnapshotSprayTarget[];
   audioEvents?: NetworkServerSnapshotSimEvent[];
   /** Active temporary vision pulses (FOW-14 — scanner sweeps) owned

@@ -32,6 +32,7 @@ import {
 import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
+import { serializeResourceMovements } from './stateSerializerResourceMovements';
 import { serializeSprayTargets } from './stateSerializerSpray';
 import {
   SnapshotVisibility,
@@ -124,6 +125,7 @@ const _snapshotBuf: NetworkServerSnapshot = {
   entities: _entityBuf,
   minimapEntities: undefined,
   economy: serializeEconomySnapshot(0, undefined),
+  resourceMovements: undefined,
   sprayTargets: undefined,
   audioEvents: undefined,
   projectiles: undefined,
@@ -638,6 +640,8 @@ export function serializeGameState(
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
+  const netResourceMovements = serializeResourceMovements(world, visibility);
+
   const netSprayTargets = options?.sprayOverride
     ? options.sprayOverride.value
     : serializeSprayTargets(sprayTargets, visibility, options?.trackingKey);
@@ -679,6 +683,7 @@ export function serializeGameState(
   _snapshotBuf.entities = _entityBuf;
   _snapshotBuf.minimapEntities = netMinimapEntities;
   _snapshotBuf.economy = netEconomy;
+  _snapshotBuf.resourceMovements = netResourceMovements;
   _snapshotBuf.sprayTargets = netSprayTargets;
   _snapshotBuf.audioEvents = netAudioEvents;
   _snapshotBuf.scanPulses = netScanPulses;

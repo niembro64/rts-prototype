@@ -114,6 +114,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     extractorRig: shape.extractorRig,
     solarRig: shape.solarRig,
     radarRig: shape.radarRig,
+    converterRig: shape.converterRig,
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
     solarOpenAmount: entity.building?.activeState?.open === false ? 0 : 1,

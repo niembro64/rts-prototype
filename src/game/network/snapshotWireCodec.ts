@@ -53,6 +53,7 @@ const TOP_LEVEL_SNAPSHOT_KEYS = [
   'entities',
   'minimapEntities',
   'economy',
+  'resourceMovements',
   'sprayTargets',
   'audioEvents',
   'scanPulses',

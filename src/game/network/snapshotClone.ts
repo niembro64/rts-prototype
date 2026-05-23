@@ -6,6 +6,7 @@ import type {
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotBeamUpdate,
+  NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
@@ -16,6 +17,7 @@ import {
   copyBeamInto,
   copyCellInto,
   copyMinimapEntityInto,
+  copyResourceMovementInto,
   copyScanPulseInto,
   copySimEventInto,
   copySpawnInto,
@@ -26,6 +28,7 @@ import {
   createBeamDto,
   createCellDto,
   createMinimapEntityDto,
+  createResourceMovementDto,
   createScanPulseDto,
   createSimEventDto,
   createSpawnDto,
@@ -248,6 +251,7 @@ export class ReusableNetworkSnapshotCloner {
     isDelta: false,
   };
   private economyKeys: string[] = [];
+  private resourceMovements: NetworkServerSnapshotResourceMovement[] = [];
   private sprayTargets: NetworkServerSnapshotSprayTarget[] = [];
   private audioEvents: NetworkServerSnapshotSimEvent[] = [];
   private scanPulses: NetworkServerSnapshotScanPulse[] = [];
@@ -283,6 +287,7 @@ export class ReusableNetworkSnapshotCloner {
       delete this.snapshot.economy[Number(this.economyKeys[i]) as keyof NetworkServerSnapshot['economy']];
     }
     this.economyKeys.length = 0;
+    this.resourceMovements.length = 0;
     this.sprayTargets.length = 0;
     this.audioEvents.length = 0;
     this.scanPulses.length = 0;
@@ -299,6 +304,7 @@ export class ReusableNetworkSnapshotCloner {
     this.grid.searchCells.length = 0;
     this.removedEntityIds.length = 0;
     this.snapshot.sprayTargets = undefined;
+    this.snapshot.resourceMovements = undefined;
     this.snapshot.audioEvents = undefined;
     this.snapshot.scanPulses = undefined;
     this.snapshot.shroud = undefined;
@@ -344,6 +350,12 @@ export class ReusableNetworkSnapshotCloner {
         economy[playerId] ?? cloneEconomyEntry(state.economy[playerId]),
       );
     }
+    dst.resourceMovements = this.copyArray(
+      state.resourceMovements,
+      this.resourceMovements,
+      createResourceMovementDto,
+      copyResourceMovementInto,
+    );
     dst.sprayTargets = this.copyArray(state.sprayTargets, this.sprayTargets, createSprayDto, copySprayInto);
     dst.audioEvents = this.copyArray(state.audioEvents, this.audioEvents, createSimEventDto, copySimEventInto);
     dst.scanPulses = this.copyArray(state.scanPulses, this.scanPulses, createScanPulseDto, copyScanPulseInto);

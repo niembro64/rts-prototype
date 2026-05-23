@@ -16,13 +16,19 @@ import type {
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileSpawn,
+  NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
-import { PROJECTILE_TYPE_UNKNOWN, TURRET_ID_UNKNOWN } from '@/types/network';
+import {
+  PROJECTILE_TYPE_UNKNOWN,
+  RESOURCE_FLOW_INBOUND,
+  RESOURCE_KIND_ENERGY,
+  TURRET_ID_UNKNOWN,
+} from '@/types/network';
 import type { PlayerId } from '@/types/sim';
 
 /** Factory waypoint wire shape — anonymous in the snapshot type, lifted
@@ -345,6 +351,30 @@ export function copySprayInto(
   dst.intensity = src.intensity;
   dst.speed = src.speed;
   dst.particleRadius = src.particleRadius;
+  return dst;
+}
+
+export function createResourceMovementDto(): NetworkServerSnapshotResourceMovement {
+  return {
+    playerId: 1 as PlayerId,
+    sourceEntityId: 0,
+    targetEntityId: null,
+    resource: RESOURCE_KIND_ENERGY,
+    amountPerSecond: 0,
+    direction: RESOURCE_FLOW_INBOUND,
+  };
+}
+
+export function copyResourceMovementInto(
+  src: NetworkServerSnapshotResourceMovement,
+  dst: NetworkServerSnapshotResourceMovement,
+): NetworkServerSnapshotResourceMovement {
+  dst.playerId = src.playerId;
+  dst.sourceEntityId = src.sourceEntityId;
+  dst.targetEntityId = src.targetEntityId;
+  dst.resource = src.resource;
+  dst.amountPerSecond = src.amountPerSecond;
+  dst.direction = src.direction;
   return dst;
 }
 
