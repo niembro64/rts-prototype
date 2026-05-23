@@ -11,7 +11,7 @@
     "solar": { "radiusFraction": 0.8 },
     "wind": { "radiusFraction": 0.75 },
     "commander": { "radiusFraction": 0.7 },
-    "radar": { "radiusFraction": 0.65 },
+    "radar": { "radiusFraction": 0.62 },
     "fabricator": { "radiusFraction": 0.6 },
     "cannonTower": { "radiusFraction": 0.45 },
     "megaBeamTower": { "radiusFraction": 0.4 },
