@@ -2,6 +2,7 @@ import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, 
 import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
+import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitLocomotion } from './locomotion';
@@ -212,10 +213,14 @@ export class WorldState {
    *  output. 0 = lossless; 0.5 = lose half of the source resource on
    *  every conversion. Read by economy.update each tick. */
   public converterTax: number = 0;
+  /** Per-tick resource movement records. Cleared at the start of each
+   *  simulation tick and filled by the resource movement system so
+   *  accounting and renderer-facing pylon flow read one channel. */
+  public resourceMovements: ResourceMovement[] = [];
   /** Optional server-side lifecycle hook. WorldState owns entity
    *  removal, but host-only systems such as physics own external
    *  resources that must be released before the entity disappears. */
-  public onEntityRemoving?: (entity: Entity) => void;
+  public onEntityRemoving: ((entity: Entity) => void) | null = null;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   // Shared cache manager avoids creating new arrays on every getUnits()/getBuildings()/getProjectiles() call
@@ -342,7 +347,7 @@ export class WorldState {
   // Remove entity from world
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
-    if (entity) this.onEntityRemoving?.(entity);
+    if (entity && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
     if (entity?.type === 'unit') this.unitSetVersion++;
     if (entity?.type === 'building') this.buildingVersion++;
     if (entity?.type === 'unit' || entity?.type === 'building') {

@@ -403,9 +403,9 @@ code only partially implements this contract.
 ==============================================================================
 
 ------------------------------------------------------------------------------
-PYLON-01 - parent: resource movement is fragmented across multiple
-           sim paths and multiple visual indicator shapes; the
-           pylon contract only applies to construction turrets today.
+PYLON-01 - parent: resource pylon rendering is fragmented across
+           multiple visual indicator shapes; the pylon contract only
+           applies to construction turrets today.
 ------------------------------------------------------------------------------
 
 Evidence:
@@ -427,59 +427,30 @@ Evidence:
   sphere but no pylons. The player cannot read from the building visual
   which resource is being consumed vs produced; they have to infer it
   from the resource bars in the HUD.
-- Sim-side, resource movements flow through several distinct paths:
-  energyDistribution.ts for construction-shell payments,
-  buildingProduction.ts for solar/wind/extractor, and a
-  converter-specific tick for the converter. There is no single
-  resource-movement channel that publishes
-  (resource, amount, direction, source, optional target) for every
-  delta, so the renderer has no uniform per-entity rate to read from.
+- The sim-side accounting path now publishes ResourceMovement records
+  through src/game/sim/resourceMovement.ts, but the renderer still does
+  not consume that channel. The visible contract is therefore still
+  split: construction turrets render resource balls, production
+  buildings render the old height-only indicator, and converters render
+  decorative rings.
 
 Why it matters:
 The philosophy is explicit: "There must be no resource movement that
-bypasses this contract." The current shape has production, consumption,
-conversion, and construction payments using parallel sim paths and
-parallel visual indicators. Two consequences: a future resource feature
-(ammo costs, upkeep, reclaim, conversion variants) will either invent a
-third-or-fourth shape or quietly bypass the pylon visual entirely, and
-the player cannot tell at a glance whether a building is adding,
-draining, or converting because the visual vocabulary is inconsistent.
+bypasses this contract." The current renderer shape still has
+production, construction, and conversion using parallel visual
+indicators. Two consequences: a future resource feature (ammo costs,
+upkeep, reclaim, conversion variants) will either invent another shape
+or quietly bypass the pylon visual entirely, and the player cannot tell
+at a glance whether a building is adding, draining, or converting
+because the visual vocabulary is inconsistent.
 
 Fix direction:
-Address as child PRs. The order is: (a) define the standard
-resource-movement sim channel and route every existing
-resource-touching sim path through it; (b) generalize the construction
+Address as child PRs. The order is: (a) generalize the construction
 emitter pylon rig into the shared ResourcePylonRig used by all hosts;
-(c) replace each per-building rate indicator with the shared rig;
-(d) add pylons to the resource converter. Delete the old
+(b) replace each per-building rate indicator with the shared rig;
+(c) add pylons to the resource converter. Delete the old
 ProductionRateIndicatorRig path in the same change that lands its
 replacement (Delete The Old Path).
-
-------------------------------------------------------------------------------
-PYLON-01A - child: define the single resource-movement sim channel
-            and route production, consumption, construction, and
-            conversion through it.
-------------------------------------------------------------------------------
-
-Evidence:
-- energyDistribution.ts currently owns the construction-payment path
-  (commander build target + factory shell). Solar/wind/extractor
-  production runs in its own buildingProduction.ts tick. The resource
-  converter runs in a converter-specific tick that touches both
-  stockpiles directly.
-- There is no shared ResourceMovement type or function carrying
-  (resource, amount, direction, source, optional target). Stockpile
-  updates happen across multiple files via direct add/subtract calls,
-  so the renderer cannot derive a uniform per-source rate.
-
-Fix direction:
-Add a single ResourceMovementSystem (Rust eventually; TS for now)
-that owns every per-tick stockpile delta. Every existing per-tick
-adjustment publishes through it. The system reduces movements to
-per-player stockpile updates and exposes per-source rate fractions
-and direction tags to the renderer through one uniform query. No
-helper, no shortcut, no building-type-specific bypass that adjusts a
-player's pool outside the channel.
 
 ------------------------------------------------------------------------------
 PYLON-01B - child: generalize the construction emitter rig into a
@@ -532,7 +503,7 @@ Evidence:
 Fix direction:
 After PYLON-01B lands, swap each per-building rate indicator for one
 ResourcePylonRig (inbound, no target). Wire the rate input through
-the unified ResourceMovement channel from PYLON-01A. Delete
+the unified ResourceMovement channel. Delete
 buildProductionRateIndicator() and ProductionRateIndicatorRig in the
 same change.
 

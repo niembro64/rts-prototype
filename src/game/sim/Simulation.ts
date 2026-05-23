@@ -8,6 +8,7 @@ import { updateShroudBitmaps } from './shroudBitmap';
 import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
+import { resourceMovementSystem } from './resourceMovement';
 import {
   updateTargetingAndFiringState,
   updateTurretRotation,
@@ -334,6 +335,7 @@ export class Simulation {
 
     // Replan budget resets each tick — see updateUnits / stuck detection.
     this.replansThisTick = 0;
+    resourceMovementSystem.beginTick(this.world);
 
     this.simElapsedMs += dtMs;
     const tick = this.world.getTick();
@@ -370,7 +372,7 @@ export class Simulation {
     this.windPowerTracker.update(this.world, this.windState);
 
     // Update economy income and production.
-    economyManager.update(dtMs, (pid) => this.world.isCommanderAlive(pid));
+    economyManager.update(this.world, dtMs, this.windState.speed);
 
     // Resource converters: per-tick metal↔energy conversion governed by
     // world.converterTax. Runs after income so converters operate on

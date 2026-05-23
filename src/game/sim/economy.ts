@@ -1,4 +1,4 @@
-import type { EconomyState, PlayerId, ResourceCost } from './types';
+import type { EconomyState, Entity, EntityId, PlayerId, ResourceCost } from './types';
 import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
@@ -10,6 +10,12 @@ import {
 import { getUnitBlueprint } from './blueprints';
 import { getBuildingConfig } from './buildConfigs';
 import { isEntityActive } from './buildableHelpers';
+import {
+  resourceMovementSystem,
+  type ResourceKind,
+  type ResourceMovementDirection,
+  type ResourceMovementReason,
+} from './resourceMovement';
 import type { WorldState } from './WorldState';
 
 // Economy constants (using values from config.ts + blueprints)
@@ -124,14 +130,6 @@ export class EconomyManager {
     return economy.income.base + economy.income.production - economy.expenditure;
   }
 
-  // Try to spend energy (returns amount actually spent)
-  trySpendEnergy(playerId: PlayerId, amount: number): number {
-    const economy = this.getOrCreateEconomy(playerId);
-    const actualSpend = Math.min(amount, economy.stockpile.curr);
-    economy.stockpile.curr -= actualSpend;
-    return actualSpend;
-  }
-
   /** True iff the player's energy pool holds at least `amount`. The
    *  dgun gate uses this — the dgun is paid in ENERGY only (see
    *  `spendInstant` below) so the gate must read the same pool. */
@@ -140,30 +138,59 @@ export class EconomyManager {
   }
 
   // Spend energy instantly (for things like D-gun)
-  spendInstant(playerId: PlayerId, amount: number): boolean {
+  spendInstant(
+    world: WorldState,
+    playerId: PlayerId,
+    amount: number,
+    sourceEntityId: EntityId | null,
+    targetEntityId: EntityId | null,
+    reason: ResourceMovementReason,
+  ): boolean {
     const economy = this.getOrCreateEconomy(playerId);
-    if (economy.stockpile.curr >= amount) {
-      economy.stockpile.curr -= amount;
-      return true;
-    }
-    return false;
+    if (economy.stockpile.curr < amount) return false;
+    resourceMovementSystem.debit(economy, world, {
+      playerId,
+      sourceEntityId,
+      targetEntityId,
+      resource: 'energy',
+      amount,
+      amountPerSecond: 0,
+      direction: 'outbound',
+      reason,
+    });
+    return true;
   }
 
-  addStockpile(playerId: PlayerId, amount: ResourceCost): ResourceCost {
+  addStockpile(
+    world: WorldState,
+    playerId: PlayerId,
+    amount: ResourceCost,
+    sourceEntityId: EntityId | null,
+    targetEntityId: EntityId | null,
+    reason: ResourceMovementReason,
+  ): ResourceCost {
     const economy = this.getOrCreateEconomy(playerId);
-    const energy = Math.max(0, Math.min(amount.energy, economy.stockpile.max - economy.stockpile.curr));
-    const metal = Math.max(0, Math.min(amount.metal, economy.metal.stockpile.max - economy.metal.stockpile.curr));
-    economy.stockpile.curr += energy;
-    economy.metal.stockpile.curr += metal;
+    const energy = resourceMovementSystem.credit(economy, world, {
+      playerId,
+      sourceEntityId,
+      targetEntityId,
+      resource: 'energy',
+      amount: amount.energy,
+      amountPerSecond: 0,
+      direction: 'inbound',
+      reason,
+    });
+    const metal = resourceMovementSystem.credit(economy, world, {
+      playerId,
+      sourceEntityId,
+      targetEntityId,
+      resource: 'metal',
+      amount: amount.metal,
+      amountPerSecond: 0,
+      direction: 'inbound',
+      reason,
+    });
     return { energy, metal };
-  }
-
-  // Try to spend metal (returns amount actually spent)
-  trySpendMetal(playerId: PlayerId, amount: number): number {
-    const economy = this.getOrCreateEconomy(playerId);
-    const actualSpend = Math.min(amount, economy.metal.stockpile.curr);
-    economy.metal.stockpile.curr -= actualSpend;
-    return actualSpend;
   }
 
   // Record metal expenditure (called by distribution system)
@@ -173,27 +200,129 @@ export class EconomyManager {
   }
 
   // Update economy each tick (energy + metal income).
-  update(dtMs: number, _hasCommander?: (playerId: PlayerId) => boolean): void {
+  update(world: WorldState, dtMs: number, windSpeed: number): void {
     const dtSec = dtMs / 1000;
 
-    for (const economy of this.economies.values()) {
-      // Energy income — unconditional.
-      const totalEnergy = economy.income.base + economy.income.production;
-      economy.stockpile.curr = Math.min(
-        economy.stockpile.curr + totalEnergy * dtSec,
-        economy.stockpile.max,
-      );
+    for (const [playerId, economy] of this.economies) {
       economy.expenditure = 0;
-
-      // Metal income — base + extraction (from completed extractors
-      // sitting on deposits). Unconditional, like energy.
-      const totalMetal = economy.metal.income.base + economy.metal.income.extraction;
-      economy.metal.stockpile.curr = Math.min(
-        economy.metal.stockpile.curr + totalMetal * dtSec,
-        economy.metal.stockpile.max,
-      );
       economy.metal.expenditure = 0;
+      this.creditResource(
+        world,
+        economy,
+        playerId,
+        'energy',
+        economy.income.base * dtSec,
+        economy.income.base,
+        null,
+        null,
+        'inbound',
+        'baseIncome',
+      );
+      this.creditResource(
+        world,
+        economy,
+        playerId,
+        'metal',
+        economy.metal.income.base * dtSec,
+        economy.metal.income.base,
+        null,
+        null,
+        'inbound',
+        'baseIncome',
+      );
     }
+
+    if (dtSec <= 0) return;
+    this.applyProducerIncome(world, dtSec, windSpeed);
+  }
+
+  private applyProducerIncome(world: WorldState, dtSec: number, windSpeed: number): void {
+    const solarRate = getBuildingConfig('solar').energyProduction ?? 0;
+    if (solarRate > 0) {
+      for (const entity of world.getSolarBuildings()) {
+        if (!this.isProducingActiveStateBuilding(entity)) continue;
+        const ownership = entity.ownership;
+        if (ownership === null) continue;
+        const economy = this.economies.get(ownership.playerId);
+        if (!economy) continue;
+        this.creditResource(
+          world,
+          economy,
+          ownership.playerId,
+          'energy',
+          solarRate * dtSec,
+          solarRate,
+          entity.id,
+          null,
+          'inbound',
+          'production',
+        );
+      }
+    }
+
+    const windRateBase = getBuildingConfig('wind').energyProduction ?? 0;
+    const windRate = windRateBase * windSpeed;
+    if (windRate > 0) {
+      for (const entity of world.getWindBuildings()) {
+        if (!this.isOpenProducerBuilding(entity)) continue;
+        const ownership = entity.ownership;
+        if (ownership === null) continue;
+        const economy = this.economies.get(ownership.playerId);
+        if (!economy) continue;
+        this.creditResource(
+          world,
+          economy,
+          ownership.playerId,
+          'energy',
+          windRate * dtSec,
+          windRate,
+          entity.id,
+          null,
+          'inbound',
+          'production',
+        );
+      }
+    }
+
+    for (const entity of world.getExtractorBuildings()) {
+      if (!this.isProducingActiveStateBuilding(entity)) continue;
+      const ownership = entity.ownership;
+      if (ownership === null) continue;
+      const metalRate = entity.metalExtractionRate ?? 0;
+      if (metalRate <= 0) continue;
+      const economy = this.economies.get(ownership.playerId);
+      if (!economy) continue;
+      this.creditResource(
+        world,
+        economy,
+        ownership.playerId,
+        'metal',
+        metalRate * dtSec,
+        metalRate,
+        entity.id,
+        null,
+        'inbound',
+        'production',
+      );
+    }
+  }
+
+  private isProducingActiveStateBuilding(entity: Entity): boolean {
+    const ownership = entity.ownership;
+    const building = entity.building;
+    if (ownership === null || building === null) return false;
+    if (building.hp <= 0 || !isEntityActive(entity)) return false;
+    const activeState = building.activeState;
+    return activeState !== undefined && activeState.producing;
+  }
+
+  private isOpenProducerBuilding(entity: Entity): boolean {
+    const ownership = entity.ownership;
+    const building = entity.building;
+    if (ownership === null || building === null) return false;
+    if (building.hp <= 0 || !isEntityActive(entity)) return false;
+    const activeState = building.activeState;
+    return activeState === undefined || activeState.open;
   }
 
   // Record energy expenditure (called by construction system)
@@ -245,8 +374,17 @@ export class EconomyManager {
         const consumed = yieldFactor > 0
           ? sourceAvailable * (acceptedOutput / wantOutput)
           : 0;
-        economy.metal.stockpile.curr = metalCurr - consumed;
-        economy.stockpile.curr = energyCurr + acceptedOutput;
+        this.applyConverterMovements(
+          world,
+          pid,
+          totalRate,
+          ratePerSec,
+          consumed,
+          acceptedOutput,
+          'metal',
+          'energy',
+          dtSec,
+        );
       } else {
         const sourceAvailable = Math.min(sourceTarget, energyCurr);
         if (sourceAvailable <= 0) continue;
@@ -257,10 +395,106 @@ export class EconomyManager {
         const consumed = yieldFactor > 0
           ? sourceAvailable * (acceptedOutput / wantOutput)
           : 0;
-        economy.stockpile.curr = energyCurr - consumed;
-        economy.metal.stockpile.curr = metalCurr + acceptedOutput;
+        this.applyConverterMovements(
+          world,
+          pid,
+          totalRate,
+          ratePerSec,
+          consumed,
+          acceptedOutput,
+          'energy',
+          'metal',
+          dtSec,
+        );
       }
     }
+  }
+
+  private applyConverterMovements(
+    world: WorldState,
+    playerId: PlayerId,
+    totalRate: number,
+    ratePerSec: number,
+    consumed: number,
+    acceptedOutput: number,
+    consumedResource: ResourceKind,
+    outputResource: ResourceKind,
+    dtSec: number,
+  ): void {
+    const economy = this.economies.get(playerId);
+    if (!economy) return;
+    let remainingRate = totalRate;
+    let remainingConsumed = consumed;
+    let remainingOutput = acceptedOutput;
+    for (const entity of world.getConverterBuildings()) {
+      if (!this.isActiveConverterForPlayer(entity, playerId)) continue;
+      const finalShare = remainingRate <= ratePerSec;
+      const consumedShare = finalShare
+        ? remainingConsumed
+        : Math.min(remainingConsumed, consumed * (ratePerSec / totalRate));
+      const outputShare = finalShare
+        ? remainingOutput
+        : Math.min(remainingOutput, acceptedOutput * (ratePerSec / totalRate));
+      if (consumedShare > 0) {
+        resourceMovementSystem.debit(economy, world, {
+          playerId,
+          sourceEntityId: entity.id,
+          targetEntityId: null,
+          resource: consumedResource,
+          amount: consumedShare,
+          amountPerSecond: dtSec > 0 ? consumedShare / dtSec : 0,
+          direction: 'inbound',
+          reason: 'conversion',
+        });
+        remainingConsumed -= consumedShare;
+      }
+      if (outputShare > 0) {
+        resourceMovementSystem.credit(economy, world, {
+          playerId,
+          sourceEntityId: entity.id,
+          targetEntityId: null,
+          resource: outputResource,
+          amount: outputShare,
+          amountPerSecond: dtSec > 0 ? outputShare / dtSec : 0,
+          direction: 'outbound',
+          reason: 'conversion',
+        });
+        remainingOutput -= outputShare;
+      }
+      remainingRate -= ratePerSec;
+      if (remainingRate <= 0) break;
+    }
+  }
+
+  private isActiveConverterForPlayer(entity: Entity, playerId: PlayerId): boolean {
+    const ownership = entity.ownership;
+    const building = entity.building;
+    if (ownership === null || building === null) return false;
+    return ownership.playerId === playerId && building.hp > 0 && isEntityActive(entity);
+  }
+
+  private creditResource(
+    world: WorldState,
+    economy: EconomyState,
+    playerId: PlayerId,
+    resource: ResourceKind,
+    amount: number,
+    amountPerSecond: number,
+    sourceEntityId: EntityId | null,
+    targetEntityId: EntityId | null,
+    direction: ResourceMovementDirection,
+    reason: ResourceMovementReason,
+  ): number {
+    return resourceMovementSystem.credit(economy, world, {
+      playerId,
+      sourceEntityId,
+      targetEntityId,
+      resource,
+      amount,
+      amountPerSecond,
+      direction,
+      reason,
+    });
   }
 
   // Reset all state (call between game sessions)

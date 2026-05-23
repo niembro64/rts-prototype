@@ -7,7 +7,7 @@
 // independent-bar intent.
 
 import type { WorldState } from './WorldState';
-import type { Entity, EntityId, PlayerId } from './types';
+import type { EconomyState, Entity, EntityId, PlayerId } from './types';
 import { NO_ENTITY_ID } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
@@ -19,9 +19,10 @@ import {
   getTotalRemainingCost,
   isEntityActive,
 } from './buildableHelpers';
+import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
 
 export type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
-import type { EnergyBuffers } from '@/types/ui';
+import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 
 export function createEnergyBuffers(): EnergyBuffers {
   return {
@@ -29,6 +30,9 @@ export function createEnergyBuffers(): EnergyBuffers {
     consumersByPlayer: new Map(),
     buildTargetSet: new Set(),
     constructionRateByTarget: new Map(),
+    constructionSourceHeadByTarget: new Map(),
+    constructionSourceTailByTarget: new Map(),
+    constructionSources: [],
     buildingConsumerIds: new Set(),
   };
 }
@@ -38,7 +42,109 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.consumersByPlayer.clear();
   buffers.buildTargetSet.clear();
   buffers.constructionRateByTarget.clear();
+  buffers.constructionSourceHeadByTarget.clear();
+  buffers.constructionSourceTailByTarget.clear();
+  buffers.constructionSources.length = 0;
   buffers.buildingConsumerIds.clear();
+}
+
+function addConstructionSource(
+  buffers: EnergyBuffers,
+  targetId: EntityId,
+  sourceEntityId: EntityId,
+  maxResourcePerTick: number,
+): void {
+  const sources = buffers.constructionSources;
+  const index = sources.length;
+  sources.push({ sourceEntityId, maxResourcePerTick, nextIndex: -1 });
+  const tail = buffers.constructionSourceTailByTarget.get(targetId);
+  if (tail === undefined) {
+    buffers.constructionSourceHeadByTarget.set(targetId, index);
+  } else {
+    sources[tail].nextIndex = index;
+  }
+  buffers.constructionSourceTailByTarget.set(targetId, index);
+}
+
+function spendResourceForConsumer(
+  world: WorldState,
+  buffers: EnergyBuffers,
+  economy: EconomyState,
+  consumer: EnergyConsumer,
+  resource: ResourceKind,
+  requestedAmount: number,
+  dtSec: number,
+): number {
+  if (requestedAmount <= 0) return 0;
+  const amountPerSecond = dtSec > 0 ? requestedAmount / dtSec : 0;
+  const reason = consumer.type === 'heal' ? 'repair' : 'construction';
+  if (consumer.sourceEntityId !== null) {
+    return resourceMovementSystem.debit(economy, world, {
+      playerId: consumer.playerId,
+      sourceEntityId: consumer.sourceEntityId,
+      targetEntityId: consumer.entity.id,
+      resource,
+      amount: requestedAmount,
+      amountPerSecond,
+      direction: 'outbound',
+      reason,
+    });
+  }
+
+  const targetId = consumer.sourceBreakdownTargetId;
+  if (targetId === null) {
+    return resourceMovementSystem.debit(economy, world, {
+      playerId: consumer.playerId,
+      sourceEntityId: null,
+      targetEntityId: consumer.entity.id,
+      resource,
+      amount: requestedAmount,
+      amountPerSecond,
+      direction: 'outbound',
+      reason,
+    });
+  }
+
+  const head = buffers.constructionSourceHeadByTarget.get(targetId);
+  const totalCap = consumer.maxResourcePerTick;
+  if (head === undefined || totalCap <= 0) {
+    return resourceMovementSystem.debit(economy, world, {
+      playerId: consumer.playerId,
+      sourceEntityId: null,
+      targetEntityId: consumer.entity.id,
+      resource,
+      amount: requestedAmount,
+      amountPerSecond,
+      direction: 'outbound',
+      reason,
+    });
+  }
+
+  let spent = 0;
+  let remaining = requestedAmount;
+  let index = head;
+  while (index !== -1 && remaining > 0) {
+    const source = buffers.constructionSources[index];
+    const nextIndex = source.nextIndex;
+    const share = nextIndex === -1
+      ? remaining
+      : Math.min(remaining, requestedAmount * (source.maxResourcePerTick / totalCap));
+    if (share > 0) {
+      spent += resourceMovementSystem.debit(economy, world, {
+        playerId: consumer.playerId,
+        sourceEntityId: source.sourceEntityId,
+        targetEntityId: consumer.entity.id,
+        resource,
+        amount: share,
+        amountPerSecond: dtSec > 0 ? share / dtSec : 0,
+        direction: 'outbound',
+        reason,
+      });
+      remaining -= share;
+    }
+    index = nextIndex;
+  }
+  return spent;
 }
 
 // Distribute resources to active consumers (one player at a time).
@@ -77,10 +183,19 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     type: 'build' | 'heal',
     remainingCost: number,
     maxResourcePerTick: number,
-    sourceFactoryId?: EntityId,
+    sourceEntityId: EntityId | null,
+    sourceBreakdownTargetId: EntityId | null,
   ) => {
     const idx = consumers.length;
-    consumers.push({ entity, type, sourceFactoryId, remainingCost, playerId, maxResourcePerTick });
+    consumers.push({
+      entity,
+      type,
+      sourceEntityId,
+      sourceBreakdownTargetId,
+      remainingCost,
+      playerId,
+      maxResourcePerTick,
+    });
     let arr = byPlayer.get(playerId);
     if (!arr) {
       arr = [];
@@ -94,15 +209,21 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   buildTargets.clear();
   const constructionRateByTarget = buffers.constructionRateByTarget;
   constructionRateByTarget.clear();
+  buffers.constructionSourceHeadByTarget.clear();
+  buffers.constructionSourceTailByTarget.clear();
+  buffers.constructionSources.length = 0;
 
   // 1) Walk builder units. Aggregate their per-target rate caps so the
   //    pass below knows how fast a building can be funded.
   for (const entity of world.getBuilderUnits()) {
-    const targetId = entity.builder?.currentBuildTarget;
-    if (targetId === undefined || targetId === NO_ENTITY_ID) continue;
+    const builder = entity.builder;
+    if (builder === null) continue;
+    const targetId = builder.currentBuildTarget;
+    if (targetId === NO_ENTITY_ID) continue;
     buildTargets.add(targetId);
-    const rate = entity.builder!.constructionRate;
+    const rate = builder.constructionRate;
     constructionRateByTarget.set(targetId, (constructionRateByTarget.get(targetId) ?? 0) + rate);
+    addConstructionSource(buffers, targetId, entity.id, rate * dtSec);
   }
 
   // 2) Walk buildings:
@@ -133,6 +254,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
             remainingCost,
             rateCap,
             entity.id,
+            null,
           );
         }
       }
@@ -149,7 +271,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const remainingCost = getTotalRemainingCost(entity.buildable);
       if (remainingCost > 0) {
         const rateCap = (constructionRateByTarget.get(entity.id) ?? Infinity) * dtSec;
-        addConsumer(entity.ownership.playerId, entity, 'build', remainingCost, rateCap);
+        addConsumer(entity.ownership.playerId, entity, 'build', remainingCost, rateCap, null, entity.id);
       }
     }
   }
@@ -179,6 +301,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
             'build',
             remainingCost,
             commanderRateCap,
+            commander.id,
+            null,
           );
         }
       }
@@ -187,7 +311,15 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const hpToHeal = target.unit.maxHp - target.unit.hp;
       const remaining = hpToHeal * healCostPerHp;
       if (remaining > 0) {
-        addConsumer(commander.ownership.playerId, target, 'heal', remaining, commanderRateCap);
+        addConsumer(
+          commander.ownership.playerId,
+          target,
+          'heal',
+          remaining,
+          commanderRateCap,
+          commander.id,
+          null,
+        );
       }
     }
   }
@@ -227,26 +359,43 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         if (!buildable) continue;
         const remE = getRemainingResource(buildable, 'energy');
         const remT = getRemainingResource(buildable, 'metal');
-        const spendE = Math.min(equalEnergyShare, remE, c.maxResourcePerTick);
-        const spendT = Math.min(equalMetalShare, remT, c.maxResourcePerTick);
+        const spendE = spendResourceForConsumer(
+          world,
+          buffers,
+          economy,
+          c,
+          'energy',
+          Math.min(equalEnergyShare, remE, c.maxResourcePerTick),
+          dtSec,
+        );
+        const spendT = spendResourceForConsumer(
+          world,
+          buffers,
+          economy,
+          c,
+          'metal',
+          Math.min(equalMetalShare, remT, c.maxResourcePerTick),
+          dtSec,
+        );
         if (spendE > 0) buildable.paid.energy += spendE;
         if (spendT > 0) buildable.paid.metal += spendT;
         if (spendE > 0 || spendT > 0) {
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
-          if (c.sourceFactoryId !== undefined) {
-            const factory = world.getEntity(c.sourceFactoryId);
-            if (factory?.factory?.currentShellId === c.entity.id) {
-              factory.factory.currentBuildProgress = getBuildFraction(buildable);
+          if (c.sourceEntityId !== null) {
+            const factory = world.getEntity(c.sourceEntityId);
+            const factoryComp = factory === undefined ? null : factory.factory;
+            if (factory !== undefined && factoryComp !== null && factoryComp.currentShellId === c.entity.id) {
+              factoryComp.currentBuildProgress = getBuildFraction(buildable);
               // Per-resource transfer-rate fractions for the 3D
               // "shower" cylinders. spendX <= maxResourcePerTick by
               // construction so the divide is always 0..1.
               const cap = c.maxResourcePerTick;
               if (cap > 0) {
-                factory.factory.energyRateFraction = spendE / cap;
-                factory.factory.metalRateFraction = spendT / cap;
+                factoryComp.energyRateFraction = spendE / cap;
+                factoryComp.metalRateFraction = spendT / cap;
               } else {
-                factory.factory.energyRateFraction = 0;
-                factory.factory.metalRateFraction = 0;
+                factoryComp.energyRateFraction = 0;
+                factoryComp.metalRateFraction = 0;
               }
               world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
             }
@@ -256,7 +405,15 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         totalMetalSpent += spendT;
       } else {
         // Healing — energy only.
-        const energyToSpend = Math.min(equalEnergyShare, c.remainingCost, c.maxResourcePerTick);
+        const energyToSpend = spendResourceForConsumer(
+          world,
+          buffers,
+          economy,
+          c,
+          'energy',
+          Math.min(equalEnergyShare, c.remainingCost, c.maxResourcePerTick),
+          dtSec,
+        );
         totalEnergySpent += energyToSpend;
         const hpHealed = energyToSpend / 0.5;
         const unit = c.entity.unit!;
@@ -268,9 +425,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       }
     }
 
-    economy.stockpile.curr = Math.max(0, economy.stockpile.curr - totalEnergySpent);
-    economy.metal.stockpile.curr = Math.max(0, economy.metal.stockpile.curr - totalMetalSpent);
-    economyManager.recordExpenditure(playerId, totalEnergySpent / dtSec);
-    economyManager.recordMetalExpenditure(playerId, totalMetalSpent / dtSec);
+    if (dtSec > 0) {
+      economyManager.recordExpenditure(playerId, totalEnergySpent / dtSec);
+      economyManager.recordMetalExpenditure(playerId, totalMetalSpent / dtSec);
+    }
   }
 }

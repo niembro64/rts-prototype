@@ -227,11 +227,20 @@ export type EnergyBuffers = {
   consumersByPlayer: Map<PlayerId, number[]>;
   buildTargetSet: Set<EntityId>;
   constructionRateByTarget: Map<EntityId, number>;
+  constructionSourceHeadByTarget: Map<EntityId, number>;
+  constructionSourceTailByTarget: Map<EntityId, number>;
+  constructionSources: EnergySource[];
   /** Building IDs already added as a 'building' consumer this tick.
    *  Used by the commander pass to skip re-adding a target that a
    *  builder unit has already registered, in O(1) instead of an
    *  O(consumers-per-player) linear walk. */
   buildingConsumerIds: Set<EntityId>;
+};
+
+export type EnergySource = {
+  sourceEntityId: EntityId;
+  maxResourcePerTick: number;
+  nextIndex: number;
 };
 
 export type EnergyConsumer = {
@@ -241,11 +250,13 @@ export type EnergyConsumer = {
    *  healed. */
   entity: Entity;
   type: 'build' | 'heal';
-  /** Factory that spawned this shell, when this build consumer is a
-   *  factory-produced unit. The shell owns resource truth, but the
-   *  factory owns queue UI progress, so resource flow into the shell
-   *  dirties the factory snapshot too. */
-  sourceFactoryId?: EntityId;
+  /** Direct pylon host when a single factory or commander funds this
+   *  consumer. Null when the consumer uses the target-keyed builder
+   *  source breakdown. */
+  sourceEntityId: EntityId | null;
+  /** Build target whose builder-source linked list should receive this
+   *  consumer's resource flow. Null for direct-source consumers. */
+  sourceBreakdownTargetId: EntityId | null;
   /** Remaining resource work this consumer needs to finish. Healing
    *  stores energy repair cost; building stores total construction
    *  resource remaining across energy and metal. */

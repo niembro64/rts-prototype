@@ -533,7 +533,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const dgunTurret = turrets[dgunIdx];
 
   // Spend energy
-  economyManager.spendInstant(playerId, dgunCost);
+  economyManager.spendInstant(ctx.world, playerId, dgunCost, commander.id, null, 'ability');
 
   // Calculate direction to target
   const fireAngle = Math.atan2(dy, dx);

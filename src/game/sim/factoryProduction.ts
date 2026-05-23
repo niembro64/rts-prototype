@@ -265,17 +265,14 @@ export class FactoryProductionSystem {
     if (shellId === null) return;
     const shell = world.getEntity(shellId);
     if (shell?.buildable && shell.ownership) {
-      const economy = economyManager.getEconomy(shell.ownership.playerId);
-      if (economy) {
-        economy.stockpile.curr = Math.min(
-          economy.stockpile.max,
-          economy.stockpile.curr + shell.buildable.paid.energy,
-        );
-        economy.metal.stockpile.curr = Math.min(
-          economy.metal.stockpile.max,
-          economy.metal.stockpile.curr + shell.buildable.paid.metal,
-        );
-      }
+      economyManager.addStockpile(
+        world,
+        shell.ownership.playerId,
+        shell.buildable.paid,
+        factory.id,
+        shell.id,
+        'refund',
+      );
       world.removeEntity(shellId);
     }
     factoryComp.currentShellId = null;
