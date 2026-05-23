@@ -24,8 +24,8 @@
 // TERRAIN_D_TERRAIN steps above/below world height 0, before terrain
 // CENTER polarity is applied. VALLEY inverts the level count, MOUNTAIN
 // preserves it, and FLAT collapses it to 0. Around each pad the terrain
-// blends smoothly from that derived height back to natural over
-// `terrainBlendRadius` unless a ring overrides it with `blendRadius`.
+// blends smoothly from that derived height back to natural over the
+// ring's `terrainBlendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
@@ -54,11 +54,14 @@ export type DepositRing = {
   sliceOffset?: number;
   /** Signed count of TERRAIN_D_TERRAIN steps before CENTER polarity. */
   dTerrainLevels: number;
-  /** Optional world-unit blend width outside the circular flat pad.
-   *  Defaults to METAL_DEPOSIT_CONFIG.terrainBlendRadius. Larger values
-   *  make the deposit pad integrate more gradually with surrounding
-   *  terrain. */
-  blendRadius?: number;
+  /** Circular terrain-flattening diameter in fine building cells; can be
+   *  larger than the resource footprint to give the extractor a clean
+   *  buildable pad without increasing production area. */
+  flatPadCells: number;
+  /** World-unit width outside the circular flat pad where terrain eases
+   *  back to the natural heightmap. Larger values make the deposit pad
+   *  integrate more gradually with surrounding terrain. */
+  terrainBlendRadius: number;
   /** Optional free-form note for the author — purely descriptive, not
    *  read by any runtime code. Useful for labeling where a ring sits
    *  ("inner near spawn", "back side cluster", etc.). */
@@ -77,20 +80,13 @@ export type DepositRing = {
  *    - `resourceCells`: square logical metal-producing footprint in
  *      fine building cells. The extractor building footprint and
  *      visual deposit size use this.
- *    - `flatPadCells`: circular terrain-flattening diameter in fine
- *      building cells; can be larger than `resourceCells` to give the
- *      extractor a clean buildable pad without increasing production
- *      area.
- *    - `terrainBlendRadius`: world-unit width outside each deposit's
- *      flat pad where terrain eases back to the natural heightmap.
  *    - `rings`: concentric deposit rings; order doesn't matter — the
- *      renderer and placement validator iterate over all of them. */
+ *      renderer and placement validator iterate over all of them. Each
+ *      ring carries its own `flatPadCells` and `terrainBlendRadius`. */
 export const METAL_DEPOSIT_CONFIG = {
   edgeMarginPx: rawConfig.edgeMarginPx,
   coinHeight: rawConfig.coinHeight,
   resourceCells: rawConfig.resourceCells,
-  flatPadCells: rawConfig.flatPadCells,
-  terrainBlendRadius: rawConfig.terrainBlendRadius,
   rings: rawConfig.rings as DepositRing[],
 };
 
@@ -154,8 +150,10 @@ export function generateMetalDeposits(
 
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
-    const blendRadius =
-      ring.blendRadius ?? METAL_DEPOSIT_CONFIG.terrainBlendRadius;
+    const flatPadCells = validMetalDepositFlatPadCells(ring.flatPadCells);
+    const blendRadius = validMetalDepositTerrainBlendRadius(
+      ring.terrainBlendRadius,
+    );
     const dTerrainLevels = signedMetalDepositDTerrainLevels(
       ring.dTerrainLevels,
       terrainSign,
@@ -170,7 +168,7 @@ export function generateMetalDeposits(
     if (ring.radiusFraction <= 1e-6) {
       deposits.push({
         id: id++,
-        ...makeMetalDepositPlacement(cx, cy),
+        ...makeMetalDepositPlacement(cx, cy, flatPadCells),
         dTerrainLevels,
         height,
         blendRadius,
@@ -189,7 +187,7 @@ export function generateMetalDeposits(
         const point = mapOvalPointAt(ovalMetrics, angle, ringRadius);
         deposits.push({
           id: id++,
-          ...makeMetalDepositPlacement(point.x, point.y),
+          ...makeMetalDepositPlacement(point.x, point.y, flatPadCells),
           dTerrainLevels,
           height,
           blendRadius,
@@ -204,15 +202,15 @@ export function generateMetalDeposits(
 function makeMetalDepositPlacement(
   rawX: number,
   rawY: number,
+  flatPadCells: number,
 ): MetalDepositPlacement {
   const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
-  const flatPadCells = METAL_DEPOSIT_CONFIG.flatPadCells;
   const resourceHalfSize = (resourceCells * BUILD_GRID_CELL_SIZE) / 2;
   const flatPadRadius = (flatPadCells * BUILD_GRID_CELL_SIZE) / 2;
   const resourceHalfDiagonal = Math.SQRT2 * resourceHalfSize;
   if (flatPadRadius < resourceHalfDiagonal) {
     throw new Error(
-      `METAL_DEPOSIT_CONFIG.flatPadCells (${flatPadCells}) must produce a circular radius >= the resource square half-diagonal (${resourceHalfDiagonal.toFixed(2)} world units)`,
+      `Metal deposit ring flatPadCells (${flatPadCells}) must produce a circular radius >= the resource square half-diagonal (${resourceHalfDiagonal.toFixed(2)} world units)`,
     );
   }
   const snapped = snapBuildingToGrid(rawX, rawY, resourceCells, resourceCells);
@@ -237,6 +235,24 @@ function signedMetalDepositDTerrainLevels(
     );
   }
   return levels * terrainSign;
+}
+
+function validMetalDepositFlatPadCells(cells: number): number {
+  if (!Number.isFinite(cells) || !Number.isInteger(cells) || cells <= 0) {
+    throw new Error(
+      `Metal deposit ring flatPadCells must be a positive integer; received ${cells}`,
+    );
+  }
+  return cells;
+}
+
+function validMetalDepositTerrainBlendRadius(radius: number): number {
+  if (!Number.isFinite(radius) || radius < 0) {
+    throw new Error(
+      `Metal deposit ring terrainBlendRadius must be a finite non-negative number; received ${radius}`,
+    );
+  }
+  return radius;
 }
 
 function metalDepositHeightForDTerrainLevels(levels: number): number {
