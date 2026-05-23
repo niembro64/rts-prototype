@@ -10,7 +10,7 @@
 // Coordinate mapping: sim (x, y) → three (x, z). Y is up. Ground at y=0.
 
 import * as THREE from 'three';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import type { SprayTarget } from '@/types/ui';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerColors } from '../sim/types';
@@ -399,9 +399,13 @@ export class Render3DEntities {
    *  intentionally uses ordinary instanceColor only: no per-instance alpha
    *  attributes and no material shader patching. Per-Mesh fallbacks still use
    *  applyShellOverride for the translucent shell material. */
-  private updateShellInstanceColors(e: Entity, m: EntityMesh): void {
+  private updateShellInstanceColors(
+    e: Entity,
+    m: EntityMesh,
+    turrets: readonly Turret[] = [],
+  ): void {
     this.unitMassInstances.syncColorForEntity(e);
-    this.unitDetailInstances.syncShellColors(e, m);
+    this.unitDetailInstances.syncShellColors(e, m, turrets);
   }
 
   private updateUnits(): void {
@@ -445,6 +449,7 @@ export class Render3DEntities {
       const tx = transform.x;
       const ty = transform.y;
       const tRot = transform.rotation;
+      const turrets = e.combat?.turrets ?? [];
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
       // carries the chassis AND its child turret / mirror groups
       // (both parented to yawGroup), so all pose/detail work below
@@ -467,7 +472,7 @@ export class Render3DEntities {
           existing.group,
           isConstructionShell(e),
         );
-        this.updateShellInstanceColors(e, existing);
+        this.updateShellInstanceColors(e, existing, turrets);
       }
       this.barrelSpinState.advance(e, spinDt);
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
@@ -478,7 +483,6 @@ export class Render3DEntities {
         ?? e.unit?.radius.shot
         ?? 15;
       const pid = e.ownership?.playerId;
-      const turrets = e.combat?.turrets ?? [];
       const fullUnitDetail = true;
       const unitGraphicsTier = this.frameState.gfx.tier;
       const unitGfx = getGraphicsConfig();
@@ -513,7 +517,7 @@ export class Render3DEntities {
         });
         if (legSnap !== undefined) this.legStateCache.delete(e.id);
         applyShellOverride(m.group, unitIsShell);
-        this.updateShellInstanceColors(e, m);
+        this.updateShellInstanceColors(e, m, turrets);
         this.unitMeshes.set(e.id, m);
       } else {
         // Per-frame team-color refresh for the per-Mesh paths
@@ -531,8 +535,13 @@ export class Render3DEntities {
           const primaryMat = this.getPrimaryMat(pid);
           const turretAccentMat = this.getTurretAccentMat(pid);
           for (const mesh of m.chassisMeshes) mesh.material = primaryMat;
-          for (const tm of m.turrets) {
-            if (tm.head) tm.head.material = tm.headOnly ? turretAccentMat : primaryMat;
+          for (let i = 0; i < m.turrets.length; i++) {
+            const tm = m.turrets[i];
+            if (tm.head) {
+              tm.head.material = tm.headOnly && turrets[i]?.state === 'engaged'
+                ? turretAccentMat
+                : primaryMat;
+            }
             for (const barrel of tm.barrels) barrel.material = turretAccentMat;
           }
           if (m.mirrors) {

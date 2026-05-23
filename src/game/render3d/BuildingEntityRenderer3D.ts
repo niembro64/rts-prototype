@@ -461,10 +461,12 @@ export class BuildingEntityRenderer3D {
       if (turret.config.headOnly) {
         // No barrel to orient — skip the aim pose entirely. While the
         // shell override owns the head material during construction,
-        // leave it alone; after construction, head-only turrets use the
-        // same half-white team accent as physical barrels.
+        // leave it alone; after construction, the engaged state flips
+        // the head from player primary to the half-white lock-on cue.
         if (turretMesh.head && !underConstruction) {
-          turretMesh.head.material = this.getTurretAccentMat(entity.ownership?.playerId);
+          turretMesh.head.material = turret.state === 'engaged'
+            ? this.getTurretAccentMat(entity.ownership?.playerId)
+            : this.getPrimaryMat(entity.ownership?.playerId);
         }
         continue;
       }

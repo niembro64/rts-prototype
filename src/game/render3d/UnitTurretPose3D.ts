@@ -4,7 +4,7 @@ import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
-import { entityTurretAccentColorHex } from './EntityInstanceColor3D';
+import { entityHeadOnlyTurretHeadColorHex } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
@@ -104,7 +104,7 @@ export class UnitTurretPose3D {
         turretMesh.headRadius !== undefined
       ) {
         const headColorOverride = turretMesh.headOnly
-          ? entityTurretAccentColorHex(entity)
+          ? entityHeadOnlyTurretHeadColorHex(entity, turret.state)
           : undefined;
         this.writeHeadInstance(
           entity,

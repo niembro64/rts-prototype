@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import { SHELL_PALE_HEX } from '@/shellConfig';
-import type { Entity, EntityId } from '../sim/types';
+import type { Entity, EntityId, Turret } from '../sim/types';
 import type { EntityMesh } from './EntityMesh3D';
 import {
   entityInstanceColorHex,
   entityInstanceColorKey,
+  entityHeadOnlyTurretHeadColorHex,
   entityTurretAccentColorHex,
   isConstructionShell,
   setEntityInstanceColor,
@@ -226,7 +227,7 @@ export class UnitDetailInstanceRenderer3D {
     this.releaseAllMirrorPanelSlots();
   }
 
-  syncShellColors(entity: Entity, mesh: EntityMesh): void {
+  syncShellColors(entity: Entity, mesh: EntityMesh, turrets: readonly Turret[] = []): void {
     const colorKey = entityInstanceColorKey(entity);
 
     if (
@@ -251,8 +252,11 @@ export class UnitDetailInstanceRenderer3D {
 
     const turretHeadHex = entityInstanceColorHex(entity);
     const turretAccentHex = entityTurretAccentColorHex(entity);
-    for (const turret of mesh.turrets) {
-      const headColorKey = turret.headOnly ? turretAccentHex : turretHeadHex;
+    for (let i = 0; i < mesh.turrets.length; i++) {
+      const turret = mesh.turrets[i];
+      const headColorKey = turret.headOnly
+        ? entityHeadOnlyTurretHeadColorHex(entity, turrets[i]?.state)
+        : turretHeadHex;
       if (
         turret.headSlot !== undefined &&
         this.turretHeadColorKey.get(turret.headSlot) !== headColorKey

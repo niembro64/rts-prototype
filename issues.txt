@@ -600,61 +600,6 @@ Rename to colorsConfig.json and smokeConfig.json; update imports.
 Trivial mechanical change; do it as its own PR so it doesn't muddy
 review of larger blueprint work.
 
-==============================================================================
-
-HEAD-ONLY TURRET COLOR (HEAD-ONLY-01 family)
-
-The "Beam And Rocket Turrets Render As Heads, Not Barrels" section is
-explicit about the engagement-state color shift:
-
-  "The head shows the unit's player color while idle or tracking and
-  shifts halfway toward white the instant the turret engages a target.
-  The color flip *is* the lock-on cue."
-
-The current implementation shows a fixed accent color (already a blend
-of player primary and white) at all times, regardless of engagement.
-
-==============================================================================
-
-------------------------------------------------------------------------------
-HEAD-ONLY-01 - parent: headOnly turret heads do not shift color on
-               engagement; the color is permanent.
-------------------------------------------------------------------------------
-
-Evidence:
-- src/game/render3d/UnitTurretPose3D.ts:106-108 selects
-  `headColorOverride = turretMesh.headOnly ?
-  entityTurretAccentColorHex(entity) : undefined;` — there is no
-  branch on `turret.state === 'engaged'`.
-- src/game/render3d/Render3DEntities.ts:535 falls back to
-  `tm.head.material = tm.headOnly ? turretAccentMat : primaryMat;`
-  for the per-mesh path. Same shape: no engagement state in the
-  selector.
-- src/game/render3d/UnitDetailInstanceRenderer3D.ts uses a similar
-  `turret.headOnly ? turretAccentHex : turretHeadHex` selector on
-  the instanced path. No engagement branch.
-- The engagement state IS available on the wire and on the entity
-  (it's the FSM bit used elsewhere) — the renderer just doesn't
-  consult it for headOnly color selection.
-
-Why it matters:
-Per philosophy, "The color flip *is* the lock-on cue." Without it,
-beam and rocket turrets give the player no visual feedback that
-they have acquired a target. The whole point of the headOnly
-variant is to make the turret state visible without a barrel pose.
-
-Fix direction:
-Add the engagement-state branch to all three head-color selectors:
-- UnitTurretPose3D.ts (per-mesh path)
-- Render3DEntities.ts (per-mesh fallback)
-- UnitDetailInstanceRenderer3D.ts (instanced path)
-Use player primary while idle/tracking; blend halfway to white when
-`turret.state === 'engaged'`. Keep the existing accent color choice
-as the engaged-state value; introduce a new "idle/tracking" color
-that is the pure player primary.
-
-==============================================================================
-
 WIRE-PATH HOT ALLOCATIONS (WIRE-PERF-01 family)
 
 The "Browser Performance Rules" and "Hot paths are data-oriented"
@@ -765,26 +710,6 @@ Decide one of two outcomes, document it in code:
     progress from the engaged-state FSM bit + a local timer
     keyed on engagement transitions; update the renderer.
 
-------------------------------------------------------------------------------
-WIRE-BEAMPOINT-01 - mark BeamPoint ax/ay/az as client-side
-                    integration scratch so they aren't accidentally
-                    shipped later.
-------------------------------------------------------------------------------
-
-Evidence:
-- src/types/shotTypes.ts:273-275 declares ax/ay/az on BeamPoint.
-- Verified: NetworkServerSnapshotBeamPoint (src/types/network.ts
-  :441-455) does not ship them; this is correct per the "no ACC on
-  the wire" rule.
-- The presence of the fields in the in-memory type without a
-  comment invites a future contributor to add them to the wire.
-
-Fix direction:
-Either delete the fields and recompute acceleration on the client
-from successive velocities (clean), or annotate them with a
-type-level comment marking them client-side-only (cheap).
-
-------------------------------------------------------------------------------
 DIAG-BLOAT-01 - snapshotEncoderTest.ts is shipped in the runtime
                 bundle even though it is a test harness.
 ------------------------------------------------------------------------------
