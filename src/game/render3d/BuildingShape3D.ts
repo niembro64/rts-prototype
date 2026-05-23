@@ -21,7 +21,7 @@
 
 import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
-import { COLORS } from '@/colorsConfig';
+import { COLORS, RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
   RADAR_BUILDING_VISUAL_HEIGHT,
@@ -195,6 +195,8 @@ export function buildBuildingShape(
       return buildMegaBeamTowerMesh(primaryMat);
     case 'cannonTower':
       return buildCannonTowerMesh(primaryMat);
+    case 'resourceConverter':
+      return buildResourceConverterMesh(width, depth, primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);
     default:
@@ -316,6 +318,70 @@ function createRadarDishGeometry(
   return geom;
 }
 
+// ── Resource converter ───────────────────────────────────────────────
+// Squat hex platform with two perpendicular torus rings (energy + metal
+// resource colors) cradling a central glow sphere. Reads at a glance as
+// "transmutes one resource into the other."
+const converterPlatformGeom = createHexFrustumGeometry(0.42, 0.5);
+const converterRingGeom = new THREE.TorusGeometry(1, 0.075, 10, 32);
+const converterFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
+const converterEnergyRingMat = new THREE.MeshStandardMaterial({
+  color: RESOURCE_COLOR_HEX.energy,
+  metalness: 0.4,
+  roughness: 0.35,
+  emissive: RESOURCE_COLOR_HEX.energy,
+  emissiveIntensity: 0.35,
+});
+const converterMetalRingMat = new THREE.MeshStandardMaterial({
+  color: RESOURCE_COLOR_HEX.metal,
+  metalness: 0.6,
+  roughness: 0.3,
+  emissive: RESOURCE_COLOR_HEX.metal,
+  emissiveIntensity: 0.2,
+});
+const converterCoreMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
+
+function buildResourceConverterMesh(
+  width: number,
+  depth: number,
+  primaryMat: THREE.Material,
+): BuildingShape {
+  const height = 60;
+  const minDim = Math.min(width, depth);
+  const primary = new THREE.Mesh(converterPlatformGeom, primaryMat);
+  const details: BuildingShape['details'] = [];
+
+  const ringRadius = Math.max(14, minDim * 0.32);
+  const ringHeight = height * 0.62;
+
+  const energyRing = new THREE.Mesh(converterRingGeom, converterEnergyRingMat);
+  energyRing.scale.set(ringRadius, ringRadius, 1);
+  energyRing.position.set(0, ringHeight, 0);
+  energyRing.rotation.x = Math.PI / 2;
+  details.push(detail(energyRing, 'low'));
+
+  const metalRing = new THREE.Mesh(converterRingGeom, converterMetalRingMat);
+  metalRing.scale.set(ringRadius * 0.86, ringRadius * 0.86, 1);
+  metalRing.position.set(0, ringHeight, 0);
+  metalRing.rotation.z = Math.PI / 2;
+  details.push(detail(metalRing, 'low'));
+
+  const coreRadius = Math.max(5, minDim * 0.09);
+  details.push(detail(
+    makeSphere(converterCoreMat, coreRadius, 0, ringHeight, 0),
+    'min',
+  ));
+
+  const collarRadius = Math.max(8, minDim * 0.18);
+  const collarH = Math.max(6, height * 0.12);
+  details.push(detail(
+    makeCylinder(converterFrameMat, collarRadius, collarH, 0, height * 0.36, 0, hexCylinderGeom),
+    'low',
+  ));
+
+  return { primary, details, height };
+}
+
 /** Tear down shared geometries + materials on renderer destroy. Callers
  *  (Render3DEntities.destroy) invoke once at app teardown. */
 export function disposeBuildingGeoms(): void {
@@ -333,4 +399,10 @@ export function disposeBuildingGeoms(): void {
   radarGlowMat.dispose();
   radarSweepMat.dispose();
   hazardStripeMat.dispose();
+  converterPlatformGeom.dispose();
+  converterRingGeom.dispose();
+  converterFrameMat.dispose();
+  converterEnergyRingMat.dispose();
+  converterMetalRingMat.dispose();
+  converterCoreMat.dispose();
 }

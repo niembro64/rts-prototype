@@ -28,6 +28,10 @@ export type BattleBarConfig = {
   };
   readonly terrainShapeMagnitude: OptionsConfig<number>;
   readonly terrainDTerrain: OptionsConfig<number>;
+  /** Tax (fraction in [0, 1)) applied to a resource converter's
+   *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of
+   *  the source amount on every conversion. */
+  readonly converterTax: OptionsConfig<number>;
   /** Map width and length options in canonical LAND_CELL_SIZE cells. */
   readonly mapSize: {
     readonly width: {

@@ -82,6 +82,10 @@ export const BATTLE_CONFIG = {
     default: battleBarConfig.terrainDTerrain.default,
     options: battleBarConfig.terrainDTerrain.options as readonly number[],
   },
+  converterTax: {
+    default: battleBarConfig.converterTax.default,
+    options: battleBarConfig.converterTax.options as readonly number[],
+  },
   mapSize: {
     width: MAP_DIMENSION_CONFIG.width,
     length: MAP_DIMENSION_CONFIG.length,
@@ -136,6 +140,8 @@ const STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE = sk.demoTerrainShapeMagnitude;
 const STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE = sk.realTerrainShapeMagnitude;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
+const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
+const STORAGE_REAL_CONVERTER_TAX = sk.realConverterTax;
 const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
 const STORAGE_REAL_MAP_LAND_CELLS = sk.realMapLandCells;
 const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = sk.demoMapWidthLandCells;
@@ -465,6 +471,71 @@ export function normalizeTerrainShapeMagnitude(value: number): number {
 
 export function normalizeTerrainDTerrain(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.terrainDTerrain);
+}
+
+/** Match against the configured options with a small epsilon so float
+ *  options like [0.0, 0.1, 0.5] survive a String→Number roundtrip
+ *  without missing a match. */
+function matchFloatOption(
+  value: number,
+  options: readonly number[],
+): number | null {
+  if (!Number.isFinite(value)) return null;
+  for (const opt of options) {
+    if (Math.abs(opt - value) < 1e-6) return opt;
+  }
+  return null;
+}
+
+function parseFloatOption(
+  value: string | null,
+  options: readonly number[],
+): number | null {
+  if (value === null || value === '') return null;
+  return matchFloatOption(Number(value), options);
+}
+
+function loadModeFloatOption(
+  mode: BattleMode,
+  realKey: string,
+  demoKey: string,
+  config: { readonly default: number; readonly options: readonly number[] },
+): number {
+  ensureBattleMigrations();
+  const primary = parseFloatOption(
+    readPersisted(mode === 'real' ? realKey : demoKey),
+    config.options,
+  );
+  if (primary !== null) return primary;
+  if (mode === 'real') {
+    const demoFallback = parseFloatOption(
+      readPersisted(demoKey),
+      config.options,
+    );
+    if (demoFallback !== null) return demoFallback;
+  }
+  return config.default;
+}
+
+export function normalizeConverterTax(value: number): number {
+  return matchFloatOption(value, BATTLE_CONFIG.converterTax.options)
+    ?? BATTLE_CONFIG.converterTax.default;
+}
+
+export function loadStoredConverterTax(mode: BattleMode): number {
+  return loadModeFloatOption(
+    mode,
+    STORAGE_REAL_CONVERTER_TAX,
+    STORAGE_DEMO_CONVERTER_TAX,
+    BATTLE_CONFIG.converterTax,
+  );
+}
+
+export function saveConverterTax(value: number, mode: BattleMode): void {
+  persist(
+    mode === 'real' ? STORAGE_REAL_CONVERTER_TAX : STORAGE_DEMO_CONVERTER_TAX,
+    String(normalizeConverterTax(value)),
+  );
 }
 
 function parseMapLandCellAxis(s: string | null, axis: 'width' | 'length'): number | null {
