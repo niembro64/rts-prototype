@@ -59,6 +59,10 @@ export type DepositRing = {
    *  make the deposit pad integrate more gradually with surrounding
    *  terrain. */
   blendRadius?: number;
+  /** Optional free-form note for the author — purely descriptive, not
+   *  read by any runtime code. Useful for labeling where a ring sits
+   *  ("inner near spawn", "back side cluster", etc.). */
+  comment?: string;
 };
 
 /** Authored layout config for the metal deposit ring placer. Pure data

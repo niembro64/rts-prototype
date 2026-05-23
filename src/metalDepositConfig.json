@@ -6,69 +6,94 @@
   "terrainBlendRadius": 600,
   "rings": [
     {
+      "comment": "",
       "radiusFraction": 0.28,
       "countPerPlayer": 1,
       "sliceOffset": -0.05,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.37,
       "countPerPlayer": 1,
       "sliceOffset": -0.055,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.68,
       "countPerPlayer": 1,
       "sliceOffset": 0.02,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.75,
       "countPerPlayer": 1,
       "sliceOffset": -0.015,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
       "sliceOffset": 0.68,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.8,
       "countPerPlayer": 1,
       "sliceOffset": 0.63,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.72,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.6,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.5,
       "countPerPlayer": 1,
       "sliceOffset": 0.64,
       "dTerrainLevels": 0
     },
     {
+      "comment": "",
       "radiusFraction": 0.5,
       "countPerPlayer": 1,
       "sliceOffset": -0.65,
       "dTerrainLevels": -1
     },
     {
-      "radiusFraction": 0.92,
+      "comment": "",
+      "radiusFraction": 0.55,
+      "countPerPlayer": 1,
+      "sliceOffset": -0.60,
+      "dTerrainLevels": -1
+    },
+    {
+      "comment": "",
+      "radiusFraction": 0.85,
       "countPerPlayer": 1,
       "sliceOffset": -0.7,
+      "dTerrainLevels": 1
+    },
+    {
+      "comment": "",
+      "radiusFraction": 0.80,
+      "countPerPlayer": 1,
+      "sliceOffset": -0.75,
       "dTerrainLevels": 1
     }
   ]
