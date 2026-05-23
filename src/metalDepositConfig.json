@@ -109,7 +109,7 @@
       "sliceOffset": -0.59,
       "dTerrainLevels": -1,
       "flatPadCells": 10,
-      "terrainBlendRadius": 600
+      "terrainBlendRadius": 100
     },
     {
       "comment": "FRONT LEFT TRIANGLE",
