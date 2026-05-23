@@ -1,9 +1,9 @@
 // Central visual color/material configuration. Keep authored shared colors,
-// opacity, and material shine values in colors_config.json. Colors are written
+// opacity, and material shine values in colorsConfig.json. Colors are written
 // as CSS strings there so editors can show color chips; this module normalizes
 // them back to the numeric values and tuples Three.js/render code expects.
 
-import rawColorsConfig from './colors_config.json';
+import rawColorsConfig from './colorsConfig.json';
 import type { ActionType, WaypointType } from './game/sim/types';
 
 export type RgbTuple = readonly [number, number, number];
@@ -70,7 +70,7 @@ function cssHexToNumber(value: string, fieldName: string): number {
   return (r << 16) | (g << 8) | b;
 }
 
-export const COLORS = normalizeConfigValue('colors', rawColorsConfig as JsonValue, 'colors_config') as any;
+export const COLORS = normalizeConfigValue('colors', rawColorsConfig as JsonValue, 'colorsConfig') as any;
 
 export function readRgbTuple(value: readonly number[], fieldName: string): RgbTuple {
   if (value.length !== 3 || value.some((component) => !Number.isFinite(component))) {

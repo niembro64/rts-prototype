@@ -1,6 +1,6 @@
 import type { ShotId } from './types/blueprintIds';
 import type { SmokeTrailSpec } from './types/shotTypes';
-import rawSmokeConfig from './smoke_config.json';
+import rawSmokeConfig from './smokeConfig.json';
 
 export const SMOKE_USE_IDS = [
   'lightRocket',
@@ -53,7 +53,7 @@ function assertSmokeCapPolicy(value: unknown, fieldName: string): asserts value 
 }
 
 for (const useId of SMOKE_USE_IDS) {
-  assertSmokeCapPolicy(SMOKE_CONFIG_RAW[useId].capPolicy, `smoke_config.${useId}.capPolicy`);
+  assertSmokeCapPolicy(SMOKE_CONFIG_RAW[useId].capPolicy, `smokeConfig.${useId}.capPolicy`);
 }
 
 export const SMOKE_CONFIG = SMOKE_CONFIG_RAW;

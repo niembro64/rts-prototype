@@ -22,7 +22,7 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'beamConfig.json' ||
     srcPath === 'clientBarConfig.ts' ||
     srcPath === 'colorsConfig.ts' ||
-    srcPath === 'colors_config.json' ||
+    srcPath === 'colorsConfig.json' ||
     srcPath === 'demoConfig.ts' ||
     srcPath === 'fogConfig.ts' ||
     srcPath === 'fogConfig.json' ||
@@ -34,7 +34,7 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'serverBarConfig.ts' ||
     srcPath === 'shellConfig.ts' ||
     srcPath === 'smokeConfig.ts' ||
-    srcPath === 'smoke_config.json' ||
+    srcPath === 'smokeConfig.json' ||
     srcPath === 'uiLabels.ts' ||
     srcPath === 'game/sim/blueprints/unitRoster.ts' ||
     srcPath === 'game/sim/blueprints/unitRoster.json' ||

@@ -17,10 +17,10 @@
 // look identical at every tier.
 //
 // One shared instanced pool renders every smoke use. Puff geometry
-// resolution comes from smoke_config.puffGeometry.
+// resolution comes from smokeConfig.puffGeometry.
 //
 // Smoke density, velocity, fade timing, size, and per-use caps come
-// from flat smoke_config entries keyed by the actual smoke producer
+// from flat smokeConfig entries keyed by the actual smoke producer
 // (shot id or locomotion id).
 
 import * as THREE from 'three';

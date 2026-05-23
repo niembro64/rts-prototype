@@ -323,7 +323,6 @@ import __wbg_init, {
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
 } from './pkg/rts_sim_wasm';
-import { runSnapshotEncoderByteEqualityTest } from './snapshotEncoderTest';
 
 
 /** Public handle to the loaded WASM module. Re-exported kernels
@@ -2336,6 +2335,7 @@ export function initSimWasm(): Promise<SimWasm> {
       // Dev-only: a regression here means the production encoder
       // would diverge from the wire format as we land more fields.
       if (import.meta.env.DEV) {
+        const { runSnapshotEncoderByteEqualityTest } = await import('./snapshotEncoderTest');
         await runSnapshotEncoderByteEqualityTest(memory);
       }
       const capacity = pool_capacity();

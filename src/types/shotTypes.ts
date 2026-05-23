@@ -69,18 +69,18 @@ export type SubmunitionSpec = {
   reflectedVelocityDamper?: number;
 };
 
-/** Smoke tunables resolved from smoke_config.json. Blueprint-side
+/** Smoke tunables resolved from smokeConfig.json. Blueprint-side
  *  smokeTrail entries are legacy optional overrides for a configured
  *  smoke use; unconfigured shots do not emit smoke. */
 export type SmokeTrailSpec = {
-  /** Resolved smoke_config top-level key for this smoke use. */
+  /** Resolved smokeConfig top-level key for this smoke use. */
   useId?: string;
   /** Per-use active-puff ceiling. */
   maxPoolSize?: number;
   /** What to do when the use-specific puff ceiling is reached. */
   capPolicy: 'evictOldest' | 'skipWhenFull';
   /** Render frames to skip between puff spawns. Default comes from
-   *  smoke_config.json for the use case. */
+   *  smokeConfig.json for the use case. */
   emitFramesSkip?: number;
   /** Puff emit velocity in world-units/sec, applied opposite to the
    *  projectile's instantaneous flight direction so the puffs drift
@@ -97,7 +97,7 @@ export type SmokeTrailSpec = {
   fadeOutMs?: number;
   /** Peak puff opacity after fade-in. */
   maxAlpha?: number;
-  /** Puff color as a 0xRRGGBB hex int. Default lives in colors_config.json. */
+  /** Puff color as a 0xRRGGBB hex int. Default lives in colorsConfig.json. */
   color?: number;
 };
 
@@ -127,7 +127,7 @@ export type ProjectileShotBlueprint = {
    *  Null for non-homing shots. */
   homingThrust: number | null;
   /** Legacy/per-shot cosmetic smoke override. Current shared shot
-   *  smoke profiles live in smoke_config.json. Sim-side: no effect. */
+   *  smoke profiles live in smokeConfig.json. Sim-side: no effect. */
   smokeTrail: SmokeTrailSpec | null;
 };
 
@@ -203,7 +203,7 @@ export type ProjectileShot = {
   trailLength?: number;
   /** Cluster / flak-burst behavior. */
   submunitions?: SubmunitionSpec;
-  /** Optional cosmetic smoke override merged with smoke_config.json. */
+  /** Optional cosmetic smoke override merged with smokeConfig.json. */
   smokeTrail?: SmokeTrailSpec;
 };
 

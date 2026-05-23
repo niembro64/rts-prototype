@@ -160,6 +160,16 @@ Evidence:
   mismatches for id, position, rotation, velocity, yaw angular velocity,
   and unit-length reconstructed orientation. The live high-count matrix
   still needs to be rerun before this child can be closed.
+- The 2026-05-23 minimap V2 wire pass moves `minimapEntities` from
+  six-number MessagePack rows into grouped Uint8Array varint slabs keyed
+  by entity type, playerId, and radar-only flag while preserving V1
+  decode support. The pass also extracts the shared binary varint
+  writer/reader used by the entity slabs so the minimap encoder does
+  not carry a duplicate implementation. A synthetic 5-player row mix
+  measured raw msgpack at 10,967 B -> 4,949 B for 1,000 entries
+  (54.9% reduction) and 58,727 B -> 24,914 B for 5,000 entries
+  (57.6% reduction). The live high-count matrix still needs to be
+  rerun before this child can be closed.
 
 Why it matters:
 The remaining bandwidth problem is steady-state upstream, not rare
@@ -511,10 +521,6 @@ Evidence:
   `fooConfig.ts`; 16 other configs are JSON-only. The .ts wrapper
   pattern is inconsistent — the data lives in JSON in both cases,
   but coverage of the typed-import wrapper is uneven.
-- Naming inconsistency: src/colors_config.json paired with
-  src/colorsConfig.ts; src/smoke_config.json paired with
-  src/smokeConfig.ts. The other 13 pairs follow camelCase on both
-  sides. Pick one and rename the outliers.
 
 Why it matters:
 The TS-to-Rust migration cannot finish while blueprints live as
@@ -524,7 +530,7 @@ disagrees with the Rust struct tomorrow.
 
 Fix direction:
 Address as child PRs. Order: schema first, then Rust consumption,
-then code-generation of types from the schema, then the renames.
+then code-generation of types from the schema.
 
 ------------------------------------------------------------------------------
 BLUEPRINT-01A - child: write a single schema (JSON Schema or a
@@ -585,21 +591,6 @@ typed wrapper (script-generated, not hand-maintained), or none do
 and all callers import the JSON directly with `import type`
 declarations. Don't ship both shapes side by side.
 
-------------------------------------------------------------------------------
-BLUEPRINT-01D - child: rename `colors_config.json` and
-                `smoke_config.json` to match the camelCase pattern
-                used by every other config pair.
-------------------------------------------------------------------------------
-
-Evidence:
-- The other 31 config files use camelCase. `colors_config.json` and
-  `smoke_config.json` are the only outliers.
-
-Fix direction:
-Rename to colorsConfig.json and smokeConfig.json; update imports.
-Trivial mechanical change; do it as its own PR so it doesn't muddy
-review of larger blueprint work.
-
 WIRE-PATH HOT ALLOCATIONS (WIRE-PERF-01 family)
 
 The "Browser Performance Rules" and "Hot paths are data-oriented"
@@ -619,10 +610,13 @@ Evidence:
 - src/game/network/snapshotProjectileWirePack.ts allocates new
   arrays around lines 103, 114, 125, 140, 154, 171, 245, 257, 284,
   316 (one `new Array(...)` per packed projectile sub-slab).
-- src/game/network/snapshotEntityWirePack.ts allocates arrays at
-  205, 223, 511, 567, 1066, 1140.
-- src/game/network/snapshotMinimapWirePack.ts allocates arrays at
-  24 and 49.
+- src/game/network/snapshotEntityWirePack.ts still allocates arrays in
+  the movement/turret output allocation, grouped chunk, and nested
+  detail decode paths.
+- src/game/network/snapshotMinimapWirePack.ts V2 removed the
+  six-number packed row array from the pack path, but still allocates
+  transient group/chunk arrays while packing and a DTO array while
+  unpacking.
 - These run on the host per snapshot (5-10 Hz) per remote client,
   so the allocation pressure scales with N_entities × N_clients ×
   SPS. At 5,000 entities the allocator gets a steady drumbeat of
@@ -664,12 +658,14 @@ a Rust encoder doesn't immediately invalidate the pool; pooling
 buys time and is a low-risk intermediate.
 
 ------------------------------------------------------------------------------
-WIRE-PERF-01C - child: pool the packed minimap sub-slabs in
+WIRE-PERF-01C - child: pool the remaining minimap pack/unpack scratch in
                 snapshotMinimapWirePack.ts.
 ------------------------------------------------------------------------------
 
 Fix direction:
-Same shape as WIRE-PERF-01A and -01B. Two call sites total; quick.
+Pool or eliminate the remaining transient group/chunk arrays in the V2
+pack path where practical, and decide whether decode output can safely
+reuse a DTO pool without corrupting retained snapshot references.
 
 ==============================================================================
 
@@ -710,32 +706,6 @@ Decide one of two outcomes, document it in code:
     progress from the engaged-state FSM bit + a local timer
     keyed on engagement transitions; update the renderer.
 
-DIAG-BLOAT-01 - snapshotEncoderTest.ts is shipped in the runtime
-                bundle even though it is a test harness.
-------------------------------------------------------------------------------
-
-Evidence:
-- src/game/sim-wasm/snapshotEncoderTest.ts is 3,162 LOC of
-  byte-equality tests for the Rust encoder vs JS msgpack encoder.
-- It is referenced from src/game/sim-wasm/init.ts:2316 and runs
-  on init when the GAME_DIAGNOSTICS flag is set.
-- It is part of the shipped JS bundle, gated only by a runtime
-  flag, so it costs bytes-on-the-wire to every player even when
-  the diagnostics are off.
-
-Why it matters:
-Browser bundle size affects cold-load latency. Diagnostic code
-that only fires under a flag does not belong in the production
-bundle; it belongs in a dev-only entry point.
-
-Fix direction:
-Move the test harness behind a Vite dev-only import (e.g. a
-dynamic `import()` that only resolves when the diagnostic flag is
-set, behind `import.meta.env.DEV`) so it does not contribute to
-the production bundle. Alternatively, gate the entire file behind
-a Vite `define`/`tree-shake` so the production build elides it.
-
-------------------------------------------------------------------------------
 RENDER-WEBGPU-01 - Three.js → raw WebGPU migration is unstarted.
 ------------------------------------------------------------------------------
 

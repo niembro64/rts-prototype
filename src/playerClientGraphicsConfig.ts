@@ -3,7 +3,7 @@
 // Rust/WASM can load the same source of truth.
 //
 // `waterOpacity` in the JSON intentionally mirrors
-// colors_config.json.world.water.opacity. It remains here because this
+// colorsConfig.json.world.water.opacity. It remains here because this
 // graphics preset is pure data consumed independently from render
 // material construction.
 

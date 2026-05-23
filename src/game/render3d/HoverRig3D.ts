@@ -222,7 +222,7 @@ export function buildHoverFans(
     // spread laterally; optionally one small fan at the tail tip. The
     // wing fans sit on the lateral axis (localX = 0) so they read as
     // wings, not corner thrusters. Smoke shape/cadence comes from the
-    // dragonflyHovercraft smoke_config entry.
+    // dragonflyHovercraft smokeConfig entry.
     const lateral = unitRadius * cfg.fanDistY;
     for (const sz of [-1, 1]) {
       fans.push(buildFan(
