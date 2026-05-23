@@ -206,7 +206,7 @@ export class SnapshotVisibility {
   }
 
   canSeePrivateEntityDetails(entity: Entity): boolean {
-    if (!this.isFiltered) return true;
+    if (!this.hasRecipient) return true;
     return this.isOwnedByRecipientOrAlly(entity.ownership?.playerId);
   }
 

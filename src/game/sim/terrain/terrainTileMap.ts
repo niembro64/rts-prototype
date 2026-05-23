@@ -18,6 +18,7 @@ import {
   setAuthoritativeTerrainTileMap,
 } from './terrainState';
 import { getTerrainHeight } from './terrainHeightGenerator';
+import { buildTerrainCellTriangleIndex } from './terrainCellTriangleIndex';
 
 export { setAuthoritativeTerrainTileMap };
 
@@ -1272,37 +1273,13 @@ function buildConformingMeshFromLeaves(
     triangleLevels,
   );
 
-  const cellBuckets: number[][] = Array.from({ length: cellsX * cellsY }, () => []);
-  for (let tri = 0; tri < triangleIndices.length / 3; tri++) {
-    const ia = triangleIndices[tri * 3];
-    const ib = triangleIndices[tri * 3 + 1];
-    const ic = triangleIndices[tri * 3 + 2];
-    const ax = vertexCoords[ia * 2];
-    const az = vertexCoords[ia * 2 + 1];
-    const bx = vertexCoords[ib * 2];
-    const bz = vertexCoords[ib * 2 + 1];
-    const cx = vertexCoords[ic * 2];
-    const cz = vertexCoords[ic * 2 + 1];
-    const minCellX = Math.max(0, Math.min(cellsX - 1, Math.floor(Math.min(ax, bx, cx) / cellSize)));
-    const maxCellX = Math.max(0, Math.min(cellsX - 1, Math.floor(Math.max(ax, bx, cx) / cellSize)));
-    const minCellY = Math.max(0, Math.min(cellsY - 1, Math.floor(Math.min(az, bz, cz) / cellSize)));
-    const maxCellY = Math.max(0, Math.min(cellsY - 1, Math.floor(Math.max(az, bz, cz) / cellSize)));
-    for (let cy = minCellY; cy <= maxCellY; cy++) {
-      for (let cx2 = minCellX; cx2 <= maxCellX; cx2++) {
-        cellBuckets[cy * cellsX + cx2].push(tri);
-      }
-    }
-  }
-
-  const cellTriangleOffsets = new Array<number>(cellBuckets.length + 1);
-  const cellTriangleIndices: number[] = [];
-  for (let i = 0; i < cellBuckets.length; i++) {
-    cellTriangleOffsets[i] = cellTriangleIndices.length;
-    for (let j = 0; j < cellBuckets[i].length; j++) {
-      cellTriangleIndices.push(cellBuckets[i][j]);
-    }
-  }
-  cellTriangleOffsets[cellBuckets.length] = cellTriangleIndices.length;
+  const { cellTriangleOffsets, cellTriangleIndices } = buildTerrainCellTriangleIndex({
+    cellsX,
+    cellsY,
+    cellSize,
+    vertexCoords,
+    triangleIndices,
+  });
 
   return {
     vertexCoords,

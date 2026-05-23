@@ -123,7 +123,6 @@ type PooledEntry = {
   unitHp: NonNullable<UnitSub['hp']>;
   unitVelocity: NonNullable<UnitSub['velocity']>;
   unitSuspension: NonNullable<UnitSub['suspension']>;
-  unitRadius: { body: number; shot: number; push: number };
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
   buildingSub: BuildingSub;
@@ -232,7 +231,6 @@ function createPooledEntry(): PooledEntry {
       offset: { x: 0, y: 0, z: 0 },
       velocity: { x: 0, y: 0, z: 0 },
     },
-    unitRadius: { body: 0, shot: 0, push: 0 },
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
@@ -634,7 +632,6 @@ export function serializeEntitySnapshot(
         writeNetworkUnitStaticFields(
           u,
           entity.unit,
-          poolEntry.unitRadius,
           isCommander(entity),
         );
       } else {

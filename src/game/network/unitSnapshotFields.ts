@@ -139,13 +139,17 @@ function finiteOr(value: unknown, fallback: number): number {
 
 export function readNetworkUnitRadius(
   src: NetworkUnitSnapshot | undefined,
-  fallback: number,
+  fallback: number | NetworkUnitRadius,
 ): { body: number; shot: number; push: number } {
   return {
-    body: finiteOr(src?.radius?.body, fallback),
-    shot: finiteOr(src?.radius?.shot, fallback),
-    push: finiteOr(src?.radius?.push, fallback),
+    body: finiteOr(src?.radius?.body, radiusFallback(fallback, 'body')),
+    shot: finiteOr(src?.radius?.shot, radiusFallback(fallback, 'shot')),
+    push: finiteOr(src?.radius?.push, radiusFallback(fallback, 'push')),
   };
+}
+
+function radiusFallback(fallback: number | NetworkUnitRadius, key: keyof NetworkUnitRadius): number {
+  return typeof fallback === 'number' ? fallback : finiteOr(fallback[key], 15);
 }
 
 export function readNetworkUnitBodyCenterHeight(
@@ -185,16 +189,12 @@ export function readNetworkUnitSurfaceNormal(
 export function writeNetworkUnitStaticFields(
   dst: NetworkUnitSnapshot,
   unit: Unit,
-  radius: NetworkUnitRadius,
   unitIsCommander: boolean,
 ): void {
   dst.unitType = unitTypeToCode(unit.unitType);
-  dst.radius = radius;
-  radius.body = unit.radius.body;
-  radius.shot = unit.radius.shot;
-  radius.push = unit.radius.push;
-  dst.bodyCenterHeight = unit.bodyCenterHeight;
-  dst.mass = unit.mass;
+  dst.radius = undefined;
+  dst.bodyCenterHeight = undefined;
+  dst.mass = undefined;
   dst.isCommander = unitIsCommander ? true : undefined;
 }
 

@@ -189,17 +189,19 @@ function createUnitFromNetwork(
 ): Entity | null {
   const u = netEntity.unit;
 
-  const defaultRadius = 15;
   const unitType = decodeNetworkUnitType(u?.unitType);
   if (!unitType) return null;
   const actions = decodeNetworkUnitActions(u?.actions);
-  const radius = readNetworkUnitRadius(u, defaultRadius);
   const velocity = readNetworkUnitVelocity(u);
   const surfaceNormal = readNetworkUnitSurfaceNormal(u);
   let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
   try {
     unitBlueprint = getUnitBlueprint(unitType);
   } catch { /* unknown unit type fallback handled by existing defaults */ }
+  const radius = readNetworkUnitRadius(
+    u,
+    unitBlueprint?.radius ?? { body: 15, shot: 15, push: 15 },
+  );
   const entity: Entity = {
     id,
     type: 'unit',
@@ -211,9 +213,12 @@ function createUnitFromNetwork(
       hp: u?.hp?.curr ?? 100,
       maxHp: u?.hp?.max ?? 100,
       radius,
-      bodyCenterHeight: readNetworkUnitBodyCenterHeight(u, radius.push),
+      bodyCenterHeight: readNetworkUnitBodyCenterHeight(
+        u,
+        unitBlueprint?.bodyCenterHeight ?? radius.push,
+      ),
       locomotion: getUnitLocomotion(unitType),
-      mass: readNetworkUnitMass(u, 25),
+      mass: readNetworkUnitMass(u, unitBlueprint?.mass ?? 25),
       actions,
       actionHash: computeUnitActionHash(actions),
       patrolStartIndex: null,

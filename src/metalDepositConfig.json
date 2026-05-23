@@ -6,39 +6,63 @@
   "terrainBlendRadius": 600,
   "rings": [
     {
-      "radiusFraction": 0.3,
+      "radiusFraction": 0.28,
       "countPerPlayer": 1,
-      "sliceOffset": 0,
+      "sliceOffset": -0.05,
       "dTerrainLevels": 0
     },
     {
       "radiusFraction": 0.35,
       "countPerPlayer": 1,
-      "sliceOffset": 0.2,
-      "dTerrainLevels": 0
-    },
-    {
-      "radiusFraction": 0.6,
-      "countPerPlayer": 2,
-      "sliceOffset": 0.4,
+      "sliceOffset": -0.05,
       "dTerrainLevels": 0
     },
     {
       "radiusFraction": 0.68,
       "countPerPlayer": 1,
-      "sliceOffset": 0.01,
-      "dTerrainLevels": 1
+      "sliceOffset": 0.02,
+      "dTerrainLevels": 0
     },
     {
-      "radiusFraction": 0.745,
-      "countPerPlayer": 5,
-      "sliceOffset": 0.01,
-      "dTerrainLevels": 1
+      "radiusFraction": 0.75,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.02,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.83,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.67,
+      "dTerrainLevels": 0
     },
     {
       "radiusFraction": 0.8,
-      "countPerPlayer": 2,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.63,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.7,
+      "countPerPlayer": 1,
       "sliceOffset": 0.6,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.6,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.6,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.5,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.65,
+      "dTerrainLevels": 0
+    },
+    {
+      "radiusFraction": 0.5,
+      "countPerPlayer": 1,
+      "sliceOffset": -0.65,
       "dTerrainLevels": 0
     }
   ]
