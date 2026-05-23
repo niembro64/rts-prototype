@@ -1,5 +1,6 @@
 import { getMapSize } from '../config';
 import {
+  loadStoredConverterTax,
   loadStoredMapLandDimensions,
   loadStoredRealCap,
   loadStoredTerrainCenter,
@@ -98,6 +99,7 @@ export async function createRealBattleServer({
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+    converterTax: loadStoredConverterTax('real'),
   });
 }
 

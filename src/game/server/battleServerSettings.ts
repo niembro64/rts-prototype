@@ -1,5 +1,6 @@
 import type { BattleMode } from '../../battleBarConfig';
 import {
+  loadStoredConverterTax,
   loadStoredForceFieldReflectionMode,
   loadStoredForceFieldsObstructSight,
   loadStoredForceFieldsEnabled,
@@ -71,6 +72,11 @@ export function applyStoredBattleServerSettings(
     type: 'setFogOfWarEnabled',
     tick: 0,
     enabled: loadStoredFogOfWarEnabled(mode),
+  }, authority);
+  server.receiveCommand({
+    type: 'setConverterTax',
+    tick: 0,
+    tax: loadStoredConverterTax(mode),
   }, authority);
   server.receiveCommand({
     type: 'setSendGridInfo',
