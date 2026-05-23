@@ -14515,14 +14515,8 @@ pub fn snapshot_encode_entity_basic(
 
 /// Encode an entity with a unit sub-object. Delta records only emit
 /// `hp` and `velocity` when the corresponding changedFields bit is set.
-/// Optional keys gated by `has_*` flags: movementAccel, surfaceNormal,
-/// suspension.
-///
-/// suspension is nested: `{offset, velocity, [legContact]}`. The
-/// `legContact` key is either `true` or absent (never `false`) —
-/// JS writes `out.legContact = ... ? true : undefined;` and
-/// ignoreUndefined drops the undefined case. `leg_contact` here is
-/// 0 (omit) or 1 (emit true).
+/// Optional keys gated by `has_*` flags include surfaceNormal,
+/// orientation, angularVelocity3, actions, turrets, and build state.
 ///
 /// Field order inside `unit` mirrors the pooled DTO's runtime
 /// insertion order in stateSerializerEntities.ts.
@@ -14556,14 +14550,6 @@ pub fn snapshot_encode_entity_unit(
     qnormal_x: f64,
     qnormal_y: f64,
     qnormal_z: f64,
-    has_suspension: u8,
-    qsuspension_offset_x: f64,
-    qsuspension_offset_y: f64,
-    qsuspension_offset_z: f64,
-    qsuspension_vel_x: f64,
-    qsuspension_vel_y: f64,
-    qsuspension_vel_z: f64,
-    suspension_leg_contact: u8,
     has_orientation: u8,
     qorient_x: f64,
     qorient_y: f64,
@@ -14632,9 +14618,6 @@ pub fn snapshot_encode_entity_unit(
         unit_field_count += 1;
     }
     if has_surface_normal != 0 {
-        unit_field_count += 1;
-    }
-    if has_suspension != 0 {
         unit_field_count += 1;
     }
     if has_orientation != 0 {
@@ -14722,32 +14705,6 @@ pub fn snapshot_encode_entity_unit(
         w.write_number(qnormal_y);
         w.write_str("nz");
         w.write_number(qnormal_z);
-    }
-
-    if has_suspension != 0 {
-        let suspension_field_count = if suspension_leg_contact != 0 { 3 } else { 2 };
-        w.write_str("suspension");
-        w.write_map_header(suspension_field_count);
-        w.write_str("offset");
-        w.write_map_header(3);
-        w.write_str("x");
-        w.write_number(qsuspension_offset_x);
-        w.write_str("y");
-        w.write_number(qsuspension_offset_y);
-        w.write_str("z");
-        w.write_number(qsuspension_offset_z);
-        w.write_str("velocity");
-        w.write_map_header(3);
-        w.write_str("x");
-        w.write_number(qsuspension_vel_x);
-        w.write_str("y");
-        w.write_number(qsuspension_vel_y);
-        w.write_str("z");
-        w.write_number(qsuspension_vel_z);
-        if suspension_leg_contact != 0 {
-            w.write_str("legContact");
-            w.write_bool(true);
-        }
     }
 
     if has_orientation != 0 {

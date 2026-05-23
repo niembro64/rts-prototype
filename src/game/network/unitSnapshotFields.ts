@@ -339,7 +339,6 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.surfaceNormal = undefined;
   }
-  dst.suspension = undefined;
   if (src.orientation) {
     const o = dst.orientation ?? (dst.orientation = { x: 0, y: 0, z: 0, w: 1 });
     o.x = src.orientation.x;

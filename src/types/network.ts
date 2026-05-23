@@ -702,13 +702,6 @@ export type NetworkServerSnapshotEntity = {
      *  change enough to send, or where visual detail fields are being
      *  throttled between detail-cadence snapshots. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
-    /** Retired wire field. Chassis suspension is client-render visual
-     *  state now, so authoritative snapshots no longer emit it. */
-    suspension?: {
-      offset: Vec3;
-      velocity: Vec3;
-      legContact?: boolean;
-    };
     /** Full 3-DOF orientation triad for entities that need roll or
      *  arbitrary orientation (hover drones banking into turns, future
      *  free-flying projectiles with spin). Omitted entirely for

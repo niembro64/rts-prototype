@@ -1797,9 +1797,9 @@ export interface SnapshotEncodeApi {
     changedFields: number,
   ) => number;
   /** Encode envelope + the unit sub-object. Numeric vector components
-   *  are pre-quantized JS numbers (caller does qVel / qNormal /
-   *  retired visual-suspension slots). Optional static fields cover full keyframes;
-   *  delta-only fields stay gated by their has* flags. */
+   *  are pre-quantized JS numbers (caller does qVel / qNormal).
+   *  Optional static fields cover full keyframes; delta-only fields
+   *  stay gated by their has* flags. */
   encodeEntityUnit: (
     id: number,
     typeTag: number,
@@ -1823,10 +1823,6 @@ export interface SnapshotEncodeApi {
     mass: number,
     hasSurfaceNormal: number,
     qnormalX: number, qnormalY: number, qnormalZ: number,
-    hasSuspension: number,
-    qsuspensionOffsetX: number, qsuspensionOffsetY: number, qsuspensionOffsetZ: number,
-    qsuspensionVelX: number, qsuspensionVelY: number, qsuspensionVelZ: number,
-    suspensionLegContact: number,
     hasOrientation: number,
     qorientX: number, qorientY: number, qorientZ: number, qorientW: number,
     hasAngularVelocity3: number,

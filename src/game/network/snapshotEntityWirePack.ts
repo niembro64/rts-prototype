@@ -25,7 +25,6 @@ type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
 type FactorySub = NonNullable<BuildingSub['factory']>;
 type WaypointSub = FactorySub['waypoints'][number];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
-type SuspensionSub = NonNullable<UnitSub['suspension']>;
 
 const PACKED_ENTITIES_V1_VERSION = 1;
 const PACKED_ENTITIES_V2_VERSION = 2;
@@ -44,8 +43,7 @@ const UNIT_FLAG_RADIUS = 1 << 3;
 const UNIT_FLAG_BODY_CENTER_HEIGHT = 1 << 4;
 const UNIT_FLAG_MASS = 1 << 5;
 const UNIT_FLAG_SURFACE_NORMAL = 1 << 6;
-const UNIT_FLAG_SUSPENSION = 1 << 7;
-const UNIT_FLAG_SUSPENSION_LEG_CONTACT = 1 << 8;
+const UNIT_FLAG_RETIRED_SUSPENSION = 1 << 7;
 const UNIT_FLAG_ORIENTATION = 1 << 9;
 const UNIT_FLAG_ANGULAR_VELOCITY = 1 << 10;
 const UNIT_FLAG_FIRE_DISABLED = 1 << 11;
@@ -473,7 +471,6 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.bodyCenterHeight !== undefined) return false;
   if (unit.mass !== undefined) return false;
   if (unit.surfaceNormal !== undefined) return false;
-  if (unit.suspension !== undefined) return false;
   if (unit.fireEnabled !== undefined) return false;
   if (unit.isCommander !== undefined) return false;
   if (unit.buildTargetId !== undefined) return false;
@@ -509,7 +506,6 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (unit.bodyCenterHeight !== undefined) return false;
   if (unit.mass !== undefined) return false;
   if (unit.surfaceNormal !== undefined) return false;
-  if (unit.suspension !== undefined) return false;
   if (unit.fireEnabled !== undefined) return false;
   if (unit.isCommander !== undefined) return false;
   if (unit.buildTargetId !== undefined) return false;
@@ -1123,10 +1119,6 @@ function packUnit(unit: UnitSub): unknown[] {
   if (unit.bodyCenterHeight !== undefined) flags |= UNIT_FLAG_BODY_CENTER_HEIGHT;
   if (unit.mass !== undefined) flags |= UNIT_FLAG_MASS;
   if (unit.surfaceNormal !== undefined) flags |= UNIT_FLAG_SURFACE_NORMAL;
-  if (unit.suspension !== undefined) {
-    flags |= UNIT_FLAG_SUSPENSION;
-    if (unit.suspension.legContact === true) flags |= UNIT_FLAG_SUSPENSION_LEG_CONTACT;
-  }
   if (unit.orientation !== undefined) flags |= UNIT_FLAG_ORIENTATION;
   if (unit.angularVelocity3 !== undefined) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
   if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
@@ -1161,10 +1153,6 @@ function packUnit(unit: UnitSub): unknown[] {
   if ((flags & UNIT_FLAG_SURFACE_NORMAL) !== 0) {
     const sn = unit.surfaceNormal!;
     row.push(sn.nx, sn.ny, sn.nz);
-  }
-  if ((flags & UNIT_FLAG_SUSPENSION) !== 0) {
-    const s = unit.suspension!;
-    row.push(s.offset.x, s.offset.y, s.offset.z, s.velocity.x, s.velocity.y, s.velocity.z);
   }
   if ((flags & UNIT_FLAG_ORIENTATION) !== 0) {
     const o = unit.orientation!;
@@ -1228,20 +1216,7 @@ function unpackUnit(row: unknown[]): UnitSub {
     const nz = row[i++] as number;
     unit.surfaceNormal = { nx, ny, nz };
   }
-  if ((flags & UNIT_FLAG_SUSPENSION) !== 0) {
-    const ox = row[i++] as number;
-    const oy = row[i++] as number;
-    const oz = row[i++] as number;
-    const vx = row[i++] as number;
-    const vy = row[i++] as number;
-    const vz = row[i++] as number;
-    const suspension: SuspensionSub = {
-      offset: { x: ox, y: oy, z: oz },
-      velocity: { x: vx, y: vy, z: vz },
-    };
-    if ((flags & UNIT_FLAG_SUSPENSION_LEG_CONTACT) !== 0) suspension.legContact = true;
-    unit.suspension = suspension;
-  }
+  if ((flags & UNIT_FLAG_RETIRED_SUSPENSION) !== 0) i += 6;
   if ((flags & UNIT_FLAG_ORIENTATION) !== 0) {
     const x = row[i++] as number;
     const y = row[i++] as number;

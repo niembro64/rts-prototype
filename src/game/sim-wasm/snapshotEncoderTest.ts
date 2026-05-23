@@ -247,11 +247,6 @@ type UnitFixture = BasicEntityFixture & {
     bodyCenterHeight?: number;
     mass?: number;
     surfaceNormal?: { nx: number; ny: number; nz: number };
-    suspension?: {
-      offset: { x: number; y: number; z: number };
-      velocity: { x: number; y: number; z: number };
-      legContact?: true;
-    };
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
     fireEnabled?: false;
@@ -430,44 +425,14 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: -200, y: 0, z: 0 },
       },
     },
-    // suspension without legContact (legged walker airborne mid-step)
-    {
-      id: 110, type: 'unit', pos: { x: 0, y: 0, z: 50 }, rotation: 0, playerId: 1,
-      unit: {
-        hp: { curr: 100, max: 100 },
-        velocity: { x: 0, y: 0, z: -10 },
-        suspension: {
-          offset: { x: 0, y: 0, z: 200 },
-          velocity: { x: 0, y: 0, z: -50 },
-        },
-      },
-    },
-    // suspension with legContact (grounded, settled)
-    {
-      id: 220, type: 'unit', pos: { x: 100, y: 200, z: 30 }, rotation: 314, playerId: 2,
-      unit: {
-        hp: { curr: 88, max: 100 },
-        velocity: { x: 0, y: 0, z: 0 },
-        suspension: {
-          offset: { x: 5, y: -3, z: 0 },
-          velocity: { x: 0, y: 0, z: 0 },
-          legContact: true,
-        },
-      },
-    },
-    // suspension + surfaceNormal (mid-stride on slope, acceleration
-    // omitted — no longer shipped).
+    // surfaceNormal delta on slope (acceleration and visual suspension
+    // are no longer shipped).
     {
       id: 330, type: 'unit', pos: { x: 5000, y: 5000, z: 200 }, rotation: 1571, playerId: 2, changedFields: 0x204,
       unit: {
         hp: { curr: 75, max: 120 },
         velocity: { x: 50, y: 25, z: 3 },
         surfaceNormal: { nx: 100, ny: 100, nz: 985 },
-        suspension: {
-          offset: { x: -10, y: 5, z: 100 },
-          velocity: { x: 0, y: 0, z: 20 },
-          legContact: true,
-        },
       },
     },
     // Everything together — unit on a slope (acceleration not shipped;
@@ -479,11 +444,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 60, max: 100 },
         velocity: { x: 75, y: -25, z: 200 },
         surfaceNormal: { nx: 50, ny: -100, nz: 990 },
-        suspension: {
-          offset: { x: 0, y: 0, z: 150 },
-          velocity: { x: 0, y: 0, z: 50 },
-          legContact: true,
-        },
       },
     },
     // POS-client hover unit: orientation only, no angular fields
@@ -856,8 +816,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     const changed = f.changedFields ?? 0;
     const sn = f.unit.surfaceNormal;
     const hasNormal = sn !== undefined ? 1 : 0;
-    const sp = f.unit.suspension;
-    const hasSuspension = sp !== undefined ? 1 : 0;
     const or = f.unit.orientation;
     const hasOrientation = or !== undefined ? 1 : 0;
     const av = f.unit.angularVelocity3;
@@ -912,10 +870,6 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       f.unit.mass ?? 0,
       hasNormal,
       sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
-      hasSuspension,
-      sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
-      sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
-      sp?.legContact === true ? 1 : 0,
       hasOrientation,
       or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
       hasAngularVelocity3,
@@ -2924,7 +2878,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       if (e.type === 'unit') {
         const u = e as UnitFixture;
         const sn = u.unit.surfaceNormal;
-        const sp = u.unit.suspension;
         const or = u.unit.orientation;
         const av = u.unit.angularVelocity3;
         const ufActions = u.unit.actions;
@@ -2960,10 +2913,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           u.unit.mass !== undefined ? 1 : 0,
           u.unit.mass ?? 0,
           sn !== undefined ? 1 : 0, sn?.nx ?? 0, sn?.ny ?? 0, sn?.nz ?? 0,
-          sp !== undefined ? 1 : 0,
-          sp?.offset.x ?? 0, sp?.offset.y ?? 0, sp?.offset.z ?? 0,
-          sp?.velocity.x ?? 0, sp?.velocity.y ?? 0, sp?.velocity.z ?? 0,
-          sp?.legContact === true ? 1 : 0,
           or !== undefined ? 1 : 0, or?.x ?? 0, or?.y ?? 0, or?.z ?? 0, or?.w ?? 0,
           av !== undefined ? 1 : 0, av?.x ?? 0, av?.y ?? 0, av?.z ?? 0,
           u.unit.fireEnabled === false ? 1 : 0,
