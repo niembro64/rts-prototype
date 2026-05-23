@@ -1,3 +1,19 @@
+// Construction emitter rig: the trio of resource pylons + showers +
+// build-spray sources that visually communicate "energy/metal flowing
+// out to a construction site". Mounted on a `constructionTurret` and
+// shared verbatim across hosts — commanders, fabricators, and the future
+// construction aircraft all render through this same rig with only the
+// visualVariant (small/large) and rate-source differing.
+//
+// Pairing with capability components:
+//   - Builder unit (commander, aircraft) → emitter rate inferred from
+//     the target shell's paid-resource deltas; sprays target the
+//     selected build site.
+//   - Factory building (fabricator) → emitter rate read from the
+//     factory's per-resource transfer fractions; sprays target the
+//     external build spot. The "forming unit" orb + sparks at that
+//     spot belongs to a separate `FactoryBuildSpotRig`, not this rig.
+
 import * as THREE from 'three';
 import type { ConstructionEmitterSize } from '@/types/blueprints';
 import type { TurretConfig } from '../sim/types';

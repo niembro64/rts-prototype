@@ -74,7 +74,7 @@ export class UnitTurretPose3D {
         if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = 0;
         if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
         if (visible) {
-          constructionVisuals.updateCommanderEmitter(
+          constructionVisuals.updateBuilderConstructionEmitter(
             turretMesh.constructionEmitter,
             entity,
             graphicsTier,

@@ -8,7 +8,7 @@ import type { MirrorMesh } from './MirrorMesh3D';
 import type {
   BuildingDetailMesh,
   ExtractorRig,
-  FactoryConstructionRig,
+  FactoryBuildSpotRig,
   RadarRig,
   WindTurbineRig,
 } from './BuildingShape3D';
@@ -115,7 +115,7 @@ export type EntityMesh = {
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
-  factoryRig?: FactoryConstructionRig;
+  factoryBuildSpotRig?: FactoryBuildSpotRig;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;

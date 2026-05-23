@@ -59,12 +59,12 @@ import {
 import {
   buildFactoryMesh,
   disposeFactoryMeshGeoms,
-  type FactoryConstructionRig,
+  type FactoryBuildSpotRig,
 } from './FactoryMesh3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
-export type { FactoryConstructionRig } from './FactoryMesh3D';
+export type { FactoryBuildSpotRig } from './FactoryMesh3D';
 
 /** Short building types we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
@@ -105,7 +105,7 @@ export type BuildingShape = {
   /** The building's render height so the caller can position the
    *  primary body correctly on the ground plane. */
   height: number;
-  factoryRig?: FactoryConstructionRig;
+  factoryBuildSpotRig?: FactoryBuildSpotRig;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;

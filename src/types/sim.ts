@@ -617,7 +617,13 @@ export type Buildable = {
   healthBuildFraction?: number;
 };
 
-// Builder component
+/** Builder component. Gives a unit the ability to construct
+ *  **buildings** (and assist/repair them) anywhere within `buildRange`.
+ *  The host visualizes the work through a `constructionTurret` mount.
+ *
+ *  Builder ≠ factory: buildings come from builders, units come from
+ *  factories. Currently mounted on commanders; the planned construction
+ *  aircraft will use the same component with a hover locomotion. */
 export type Builder = {
   buildRange: number;
   /** Max resource units per second this builder can add to each
@@ -671,13 +677,20 @@ export type UnitBuildConfig = {
   fireRange?: number;
 };
 
-// Factory component. The factory spawns the head of `buildQueue` as a
-// shell entity at its build spot the moment production starts; the
-// shell then absorbs resources from the player's stockpiles via
-// energyDistribution. `currentShellId` is the shell currently being
-// funded (null while the queue is empty or while the build spot is
-// blocked). Once the shell flips `isComplete`, it leaves the spot and
-// the factory clears `currentShellId` to take the next queue entry.
+// Factory component. The host (today: the fabricator building) produces
+// **units** at a fixed build spot adjacent to its footprint. The factory
+// spawns the head of `buildQueue` as a shell entity at its build spot
+// the moment production starts; the shell then absorbs resources from
+// the player's stockpiles via energyDistribution. `currentShellId` is
+// the shell currently being funded (null while the queue is empty or
+// while the build spot is blocked). Once the shell flips `isComplete`,
+// it leaves the spot and the factory clears `currentShellId` to take
+// the next queue entry. The host visualizes the work through a
+// `constructionTurret` mount (same emitter rig as builder units).
+//
+// Factory ≠ builder: factories produce units at a fixed spot; builders
+// (commanders, future construction aircraft) construct buildings at
+// chosen locations.
 //
 // `currentBuildProgress` is the average fill ratio of that shell,
 // kept as a pure UI/snapshot mirror so the build-queue strip can draw a

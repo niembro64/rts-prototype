@@ -21,7 +21,10 @@ import {
   writeSolarPetalMatrix,
   type SolarPetalAnimation,
 } from './SolarCollectorMesh3D';
-import type { ProductionRateIndicatorRig } from './ConstructionEmitterMesh3D';
+import type {
+  ConstructionEmitterRig,
+  ProductionRateIndicatorRig,
+} from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -116,7 +119,7 @@ export class BuildingAnimationController3D {
     if (mesh.extractorRig) {
       this.addAnimatedBuilding(this.extractorBuildingIds, this.extractorBuildingIdSet, id);
     }
-    if (mesh.factoryRig) {
+    if (mesh.factoryBuildSpotRig) {
       this.addAnimatedBuilding(this.factoryBuildingIds, this.factoryBuildingIdSet, id);
     }
     if (mesh.radarRig) {
@@ -296,15 +299,25 @@ export class BuildingAnimationController3D {
       const mesh = buildingMeshes.get(id);
       const entity = this.clientViewState.getEntity(id);
       if (!mesh || !entity) continue;
-      this.constructionVisuals.updateFactoryConstructionRig(
-        mesh.factoryRig,
+      const tier = mesh.buildingCachedGraphicsTier ?? 'min';
+      const detailsReady = mesh.buildingCachedDetailsReady === true;
+      const emitterRig = findConstructionEmitterRig(mesh, entity);
+      if (emitterRig) {
+        this.constructionVisuals.updateFactoryConstructionEmitter(
+          emitterRig,
+          entity,
+          tier,
+          detailsReady,
+          currentDtMs,
+        );
+      }
+      this.constructionVisuals.updateFactoryBuildSpot(
+        mesh.factoryBuildSpotRig,
         entity,
-        mesh.buildingCachedGraphicsTier ?? 'min',
-        mesh.buildingCachedDetailsReady === true,
+        tier,
+        detailsReady,
         mesh.buildingCachedWidth ?? entity.building?.width ?? 100,
         mesh.buildingCachedDepth ?? entity.building?.height ?? 100,
-        mesh.group,
-        currentDtMs,
         timeMs,
       );
     }
@@ -519,4 +532,21 @@ function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {
   if (!Number.isFinite(phase) || phase <= 0) return 0;
   const alignedTurn = Math.ceil((phase - 1e-6) / twoPi);
   return alignedTurn * twoPi;
+}
+
+/** Locate the construction emitter rig mounted on this building's
+ *  `constructionTurret`. Buildings can only carry one (factories do today,
+ *  cannon towers and the like don't), so the first match wins. */
+function findConstructionEmitterRig(
+  mesh: EntityMesh,
+  entity: Entity,
+): ConstructionEmitterRig | undefined {
+  const combatTurrets = entity.combat?.turrets;
+  if (!combatTurrets) return undefined;
+  for (let i = 0; i < combatTurrets.length && i < mesh.turrets.length; i++) {
+    if (combatTurrets[i].config.constructionEmitter) {
+      return mesh.turrets[i].constructionEmitter;
+    }
+  }
+  return undefined;
 }

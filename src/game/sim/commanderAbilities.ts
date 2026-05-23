@@ -77,8 +77,8 @@ export class CommanderAbilitiesSystem {
 
       // Build sprays for buildables are emitted render-side (per-pylon
       // colored sprays driven by buildable.paid deltas in
-      // updateCommanderEmitter), so the sim only ships heal sprays —
-      // there is no renderer counterpart for those.
+      // updateBuilderConstructionEmitter), so the sim only ships heal
+      // sprays — there is no renderer counterpart for those.
       if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
         // Healing a damaged unit - energy/progress handled by shared system
         // Check if fully healed

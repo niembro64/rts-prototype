@@ -22,7 +22,7 @@ import {
   getFactoryConstructionRadius,
   type FactoryBuildSpot,
 } from '../sim/factoryConstructionSite';
-import type { FactoryConstructionRig } from './BuildingShape3D';
+import type { FactoryBuildSpotRig } from './BuildingShape3D';
 import type { ConstructionEmitterRig, ConstructionTowerOrbitPart } from './ConstructionEmitterMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { hexStringToRgb } from './colorUtils';
@@ -46,7 +46,6 @@ export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
   private factorySprayTargets: SprayTarget[] = [];
   private factorySprayTargetPool: SprayTarget[] = [];
-  private _factorySprayTargetLocal = new THREE.Vector3();
   private _factorySpraySourceWorld = new THREE.Vector3();
   private _factorySprayTargetWorld = new THREE.Vector3();
   private _factoryBuildSpot: FactoryBuildSpot = {
@@ -79,9 +78,13 @@ export class ConstructionVisualController3D {
     this.factorySprayTargetPool.length = 0;
   }
 
-  updateCommanderEmitter(
+  /** Drive a builder-unit's construction emitter (commander, future
+   *  construction aircraft, anything with a `builder` component). The
+   *  rate is inferred from the build target's paid-resource deltas
+   *  against the unit's per-tick construction cap. */
+  updateBuilderConstructionEmitter(
     rig: ConstructionEmitterRig,
-    commander: Entity,
+    builderUnit: Entity,
     tier: ConcreteGraphicsQuality,
     dtMs: number,
   ): void {
@@ -89,10 +92,10 @@ export class ConstructionVisualController3D {
     const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
     const rateAlpha = halfLifeBlend(dtSec, halfLife);
 
-    const targetId = commander.builder?.currentBuildTarget ?? NO_ENTITY_ID;
+    const targetId = builderUnit.builder?.currentBuildTarget ?? NO_ENTITY_ID;
     let targetRateE = 0;
     let targetRateT = 0;
-    if (targetId !== NO_ENTITY_ID && commander.builder && dtSec > 0) {
+    if (targetId !== NO_ENTITY_ID && builderUnit.builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
       const buildable = target?.buildable;
       if (target && buildable && !buildable.isComplete) {
@@ -106,7 +109,7 @@ export class ConstructionVisualController3D {
         rig.lastPaid.energy = buildable.paid.energy;
         rig.lastPaid.metal = buildable.paid.metal;
 
-        const cap = commander.builder.constructionRate * dtSec;
+        const cap = builderUnit.builder.constructionRate * dtSec;
         if (cap > 0) {
           targetRateE = Math.max(0, Math.min(1, dE / cap));
           targetRateT = Math.max(0, Math.min(1, dT / cap));
@@ -124,7 +127,7 @@ export class ConstructionVisualController3D {
     if (
       buildingTierAtLeast(tier, 'high')
       && targetId !== null
-      && commander.ownership
+      && builderUnit.ownership
     ) {
       const target = this.clientViewState.getEntity(targetId);
       if (!target) return;
@@ -147,8 +150,8 @@ export class ConstructionVisualController3D {
       this.emitPylonResourceSprays(
         rig,
         rig.group,
-        commander.id,
-        commander.ownership.playerId,
+        builderUnit.id,
+        builderUnit.ownership.playerId,
         target.id,
         this._factorySprayTargetWorld,
         sphereRadius,
@@ -156,22 +159,19 @@ export class ConstructionVisualController3D {
     }
   }
 
-  updateFactoryConstructionRig(
-    rig: FactoryConstructionRig | undefined,
+  /** Drive a factory's construction emitter (the tower/showers/sprays
+   *  rig mounted on the factory's `constructionTurret`). The rate is
+   *  read directly from the factory's per-resource transfer fractions.
+   *  Spray target is the factory's external build spot. */
+  updateFactoryConstructionEmitter(
+    rig: ConstructionEmitterRig,
     e: Entity,
     tier: ConcreteGraphicsQuality,
     detailsReady: boolean,
-    footprintW: number,
-    footprintD: number,
-    group: THREE.Group,
     dtMs: number,
-    timeMs: number,
   ): void {
-    if (!rig) return;
-
     const factory = e.factory;
     const queuedUnitType = factory?.buildQueue[0];
-    const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
     const active = detailsReady
       && !!factory
       && !!queuedUnitType
@@ -186,16 +186,66 @@ export class ConstructionVisualController3D {
     this.updateConstructionTowerSpin(rig, targetEnergy + targetMetal, dtSec);
     this.blendSmoothedRates(rig.smoothedRates, targetEnergy, targetMetal, rateAlpha);
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
+    this.applyShowerFromSmoothedRates(rig);
+
+    if (!active) return;
+    if (!buildingTierAtLeast(tier, 'high') || !e.ownership) return;
+
+    let buildSpotRadius = 12;
+    if (queuedUnitType) {
+      try {
+        buildSpotRadius = getUnitBlueprint(queuedUnitType).radius.push;
+      } catch {
+        // Unknown queue ids should not break rendering; keep the default.
+      }
+    }
+    const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
+      mapWidth: this.clientViewState.getMapWidth(),
+      mapHeight: this.clientViewState.getMapHeight(),
+    }, this._factoryBuildSpot);
+    rig.group.updateWorldMatrix(true, false);
+    this._factorySprayTargetWorld.set(buildSpot.x, e.transform.z, buildSpot.y);
+    this.emitPylonResourceSprays(
+      rig,
+      rig.group,
+      e.id,
+      e.ownership.playerId,
+      e.id,
+      this._factorySprayTargetWorld,
+      buildSpotRadius,
+    );
+  }
+
+  /** Drive the factory's "forming unit" visualizer at the build spot —
+   *  ghost orb, core orb, sparks. This is the unit-being-assembled
+   *  preview that's specific to factories (commanders/aircraft don't
+   *  show a forming-unit shell, they spray at the buildable shell that
+   *  already exists in the world). */
+  updateFactoryBuildSpot(
+    rig: FactoryBuildSpotRig | undefined,
+    e: Entity,
+    _tier: ConcreteGraphicsQuality,
+    detailsReady: boolean,
+    footprintW: number,
+    footprintD: number,
+    timeMs: number,
+  ): void {
+    if (!rig) return;
+
+    const factory = e.factory;
+    const queuedUnitType = factory?.buildQueue[0];
+    const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
+    const active = detailsReady
+      && !!factory
+      && !!queuedUnitType
+      && factory.isProducing;
 
     if (!active) {
       rig.unitGhost.visible = false;
       rig.unitCore.visible = false;
       for (const spark of rig.sparks) spark.visible = false;
-      this.applyShowerFromSmoothedRates(rig);
       return;
     }
-
-    this.applyShowerFromSmoothedRates(rig);
 
     let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
     let buildSpotRadius = blueprintRadius;
@@ -240,24 +290,6 @@ export class ConstructionVisualController3D {
     rig.unitCore.visible = false;
     rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
     rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
-
-    if (buildingTierAtLeast(tier, 'high') && e.ownership) {
-      group.updateWorldMatrix(true, false);
-      rig.group.updateWorldMatrix(true, false);
-      this._factorySprayTargetLocal.set(localSpotX, centerY + radius * 0.06, localSpotZ);
-      this._factorySprayTargetWorld
-        .copy(this._factorySprayTargetLocal)
-        .applyMatrix4(group.matrixWorld);
-      this.emitPylonResourceSprays(
-        rig,
-        rig.group,
-        e.id,
-        e.ownership.playerId,
-        e.id,
-        this._factorySprayTargetWorld,
-        radius,
-      );
-    }
 
     for (const spark of rig.sparks) spark.visible = false;
   }

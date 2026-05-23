@@ -78,27 +78,12 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     group.add(detail.mesh);
   }
 
-  if (shape.factoryRig?.group) {
-    shape.factoryRig.group.userData.entityId = entity.id;
-    shape.factoryRig.group.traverse((obj) => {
-      obj.userData.entityId = entity.id;
-    });
-    group.add(shape.factoryRig.group);
-  }
-
   const buildingTurretMeshes: TurretMesh[] = [];
   const buildingTurrets = entity.combat?.turrets;
   if (buildingTurrets) {
     const buildingGfx = getGraphicsConfig();
     for (let ti = 0; ti < buildingTurrets.length; ti++) {
       const turret = buildingTurrets[ti];
-      if (turret.config.constructionEmitter) {
-        // Construction emitter renders via factoryRig. Push an empty
-        // placeholder so building turret indices stay aligned with
-        // combat.turrets indices.
-        buildingTurretMeshes.push({ root: new THREE.Group(), barrels: [] });
-        continue;
-      }
       const turretMesh = buildTurretMesh3D(group, turret, buildingGfx, {
         headGeom: turretHeadGeom,
         barrelGeom,
@@ -124,7 +109,7 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     turrets: buildingTurretMeshes,
     geometryKey,
     buildingDetails: shape.details,
-    factoryRig: shape.factoryRig,
+    factoryBuildSpotRig: shape.factoryBuildSpotRig,
     windRig: shape.windRig,
     extractorRig: shape.extractorRig,
     solarRig: shape.solarRig,
@@ -451,13 +436,17 @@ export class BuildingEntityRenderer3D {
     for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
       const turret = combatTurrets[turretIndex];
       const turretMesh = mesh.turrets[turretIndex];
-      if (turret.config.constructionEmitter) continue;
       const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
       turretMesh.root.position.set(
         turret.mount.x,
         turret.mount.z - headRadius,
         turret.mount.y,
       );
+      // Construction emitters have no head sphere, no barrels, and
+      // don't aim — the rig is parented directly to turretMesh.root and
+      // is driven each frame by ConstructionVisualController. Skip the
+      // head/aim/barrel work that follows.
+      if (turret.config.constructionEmitter) continue;
       if (turret.config.headOnly) {
         // No barrel to orient — skip the aim pose entirely. While the
         // shell override owns the head material during construction,

@@ -28,7 +28,7 @@ export const SHELL_PALE_HEX = COLORS.construction.shell.pale.colorHex;
 
 // ── Build-bubble visuals ─────────────────────────────────────────
 // The "build bubble" is the cluster of orbs the factory's
-// FactoryConstructionRig emits while a unit is forming at the build
+// FactoryBuildSpotRig emits while a unit is forming at the build
 // spot — outer ghost shell, inner glowing core, travelling pulses
 // from the nozzle, orbiting sparks. Per user direction the palette is
 // strictly whitish / grayish (no team color, no amber, no cyan
