@@ -96,15 +96,14 @@ export class ServerBootstrap {
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
-    // map size + player count + CENTER terrain polarity). Push their
-    // flat zones (with per-ring dTerrain-derived height) to the heightmap
-    // BEFORE the physics ground lookup or any sim/render code samples
-    // terrain, so every consumer sees the raised/lowered pads on first read.
+    // map size + player count). Push their flat zones (with per-ring
+    // dTerrain-derived height) to the heightmap BEFORE the physics
+    // ground lookup or any sim/render code samples terrain, so every
+    // consumer sees the raised/lowered pads on first read.
     const deposits = generateMetalDeposits(
       mapWidth,
       mapHeight,
       playerIds.length,
-      centerMagnitude,
     );
     setMetalDepositFlatZones(
       deposits.map((d) => ({

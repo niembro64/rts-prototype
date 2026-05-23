@@ -297,7 +297,6 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
       this.playerIds.length,
-      this.centerMagnitude,
     );
     setMetalDepositFlatZones(
       metalDeposits.map((d) => ({
@@ -564,7 +563,6 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
       this.playerIds.length,
-      this.centerMagnitude,
     );
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.

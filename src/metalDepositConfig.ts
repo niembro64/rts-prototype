@@ -21,12 +21,10 @@
 // Resource coverage is exact and cell-based rather than radius-based.
 //
 // Each ring also carries `dTerrainLevels`: a signed integer count of
-// TERRAIN_D_TERRAIN steps above/below world height 0, before terrain
-// CENTER polarity is applied. The sign of `centerMagnitude` drives
-// polarity: negative inverts the level count (valley), positive
-// preserves it (mountain), zero collapses it to 0 (flat). Around each
-// pad the terrain blends smoothly from that derived height back to
-// natural over the ring's `terrainBlendRadius`.
+// TERRAIN_D_TERRAIN steps above/below world height 0. The value is
+// used as-authored — the CENTER bar's sign does NOT flip it. Around
+// each pad the terrain blends smoothly from that derived height back
+// to natural over the ring's `terrainBlendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
@@ -52,7 +50,8 @@ export type DepositRing = {
    *  spoke). Scales automatically with player count: 0.25 means 30° at
    *  3 players, 18° at 5. Negative values rotate the other way. */
   sliceOffset?: number;
-  /** Signed count of TERRAIN_D_TERRAIN steps before CENTER polarity. */
+  /** Signed count of TERRAIN_D_TERRAIN steps above/below world height
+   *  0, used as-authored regardless of the CENTER bar sign. */
   dTerrainLevels: number;
   /** Circular terrain-flattening diameter in fine building cells; can be
    *  larger than the resource footprint to give the extractor a clean
@@ -105,7 +104,8 @@ export type MetalDeposit = {
   resourceHalfSize: number;
   /** Radius of the circular flat terrain pad in world units. */
   flatPadRadius: number;
-  /** Signed count of TERRAIN_D_TERRAIN steps after CENTER polarity. */
+  /** Signed count of TERRAIN_D_TERRAIN steps, taken directly from the
+   *  authored ring config. */
   dTerrainLevels: number;
   /** Signed z elevation (sim units) of this deposit's flat pad. */
   height: number;
@@ -127,17 +127,14 @@ type MetalDepositPlacement = Pick<
 
 /**
  * Compute the deterministic deposit list for a map of given size and
- * player count. Same `(mapWidth, mapHeight, playerCount,
- * centerMagnitude)` always produces the same deposits in the same
- * order — fine to call independently on host and clients without
- * networking the list. Only the SIGN of `centerMagnitude` matters
- * here (drives ring dTerrain polarity).
+ * player count. Same `(mapWidth, mapHeight, playerCount)` always
+ * produces the same deposits in the same order — fine to call
+ * independently on host and clients without networking the list.
  */
 export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
-  centerMagnitude = -1,
 ): MetalDeposit[] {
   const deposits: MetalDeposit[] = [];
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
@@ -147,7 +144,6 @@ export function generateMetalDeposits(
   const players = Math.max(1, playerCount);
   const sliceWidth = (2 * Math.PI) / players;
   let id = 0;
-  const terrainSign = Math.sign(centerMagnitude) as -1 | 0 | 1;
 
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
@@ -155,10 +151,7 @@ export function generateMetalDeposits(
     const blendRadius = validMetalDepositTerrainBlendRadius(
       ring.terrainBlendRadius,
     );
-    const dTerrainLevels = signedMetalDepositDTerrainLevels(
-      ring.dTerrainLevels,
-      terrainSign,
-    );
+    const dTerrainLevels = validMetalDepositDTerrainLevels(ring.dTerrainLevels);
     const height = metalDepositHeightForDTerrainLevels(dTerrainLevels);
     // Slice-fraction offset: scaled by the player's slice width so the
     // configured value means the same thing (a fraction of one slice)
@@ -226,16 +219,13 @@ function makeMetalDepositPlacement(
   };
 }
 
-function signedMetalDepositDTerrainLevels(
-  levels: number,
-  terrainSign: -1 | 0 | 1,
-): number {
+function validMetalDepositDTerrainLevels(levels: number): number {
   if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
     throw new Error(
       `Metal deposit dTerrainLevels must be a finite integer; received ${levels}`,
     );
   }
-  return levels * terrainSign;
+  return levels;
 }
 
 function validMetalDepositFlatPadCells(cells: number): number {

@@ -286,16 +286,10 @@ export class Input3DManager {
     width: number,
     height: number,
     playerCount: number,
-    centerMagnitude = -1,
   ): void {
     this.mapWidth = width;
     this.mapHeight = height;
-    this.metalDeposits = generateMetalDeposits(
-      width,
-      height,
-      playerCount,
-      centerMagnitude,
-    );
+    this.metalDeposits = generateMetalDeposits(width, height, playerCount);
   }
 
   getHoveredEntity(): Entity | null {
