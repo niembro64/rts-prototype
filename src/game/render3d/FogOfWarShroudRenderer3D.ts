@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
+import { HORIZON_RENDER_EXTEND } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotShroud } from '../network/NetworkTypes';
@@ -21,12 +22,59 @@ const UPDATE_INTERVAL_MS = 110;
 //   - CURRENTLY VISIBLE: punched out via a per-source radial gradient.
 const UNEXPLORED_ALPHA = 245;
 const EXPLORED_ALPHA = 130;
+const SHROUD_Y = 2;
 
 type VisionSource = {
   x: number;
   y: number;
   radius: number;
 };
+
+function createHorizonShroudGeometry(mapWidth: number, mapHeight: number): THREE.BufferGeometry {
+  const outer = Math.max(0, HORIZON_RENDER_EXTEND);
+  const worldX = [-outer, 0, mapWidth, mapWidth + outer];
+  const worldY = [-outer, 0, mapHeight, mapHeight + outer];
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  // Nine quads: the center maps the full alpha texture, while the
+  // horizon bands clamp to the nearest texture edge instead of
+  // stretching the shroud across the extended water/shelf plane.
+  for (let yIndex = 0; yIndex < worldY.length; yIndex++) {
+    const y = worldY[yIndex];
+    const v = 1 - clamp01(y / mapHeight);
+    for (let xIndex = 0; xIndex < worldX.length; xIndex++) {
+      const x = worldX[xIndex];
+      positions.push(x - mapWidth / 2, mapHeight / 2 - y, 0);
+      uvs.push(clamp01(x / mapWidth), v);
+    }
+  }
+
+  const columns = worldX.length;
+  for (let yIndex = 0; yIndex < worldY.length - 1; yIndex++) {
+    for (let xIndex = 0; xIndex < worldX.length - 1; xIndex++) {
+      const a = yIndex * columns + xIndex;
+      const b = a + 1;
+      const c = a + columns;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function clamp01(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
 
 /** Three-state fog-of-war shroud (issues.txt FOW-01).
  *
@@ -126,14 +174,15 @@ export class FogOfWarShroudRenderer3D {
       toneMapped: false,
     });
 
-    const geom = new THREE.PlaneGeometry(mapWidth, mapHeight);
+    const geom = createHorizonShroudGeometry(mapWidth, mapHeight);
     this.mesh = new THREE.Mesh(geom, this.material);
     this.mesh.rotation.x = -Math.PI / 2;
-    this.mesh.position.set(mapWidth / 2, 2, mapHeight / 2);
+    this.mesh.position.set(mapWidth / 2, SHROUD_Y, mapHeight / 2);
     // Render last and ignore depth — the shroud is a 2D info layer, not
     // a physical object. Tall terrain shouldn't poke through it.
     this.mesh.renderOrder = 9000;
     this.mesh.visible = false;
+    this.mesh.frustumCulled = false;
     world.add(this.mesh);
   }
 

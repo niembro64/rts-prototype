@@ -711,45 +711,6 @@ FOG OF WAR CONCEPT REVIEW
 
 ==============================================================================
 
-------------------------------------------------------------------------------
-FOW-CONCEPT-01 - the tactical shroud is disabled, so fog of war has no
-                 readable explored/unexplored/live-vision surface.
-------------------------------------------------------------------------------
-
-Evidence:
-- design_philosophy.html says fog of war and fog filtering are
-  authoritative simulation responsibilities, while snapshots should ship
-  recipient-aware fog/minimap deltas and clients should present the
-  corrected local view.
-- src/game/scenes/helpers/RtsScene3DRenderPhase.ts:168-184 calls
-  FogOfWarShroudRenderer3D.update(..., false, ...), permanently hiding
-  the three-state shroud. The comment says the in-bounds shroud plane
-  created an ugly hard edge against the off-map shelf/water, so the
-  visual shroud was disabled.
-- src/game/render3d/FogOfWarShroudRenderer3D.ts already implements the
-  concept players need: unexplored, explored-dark, and currently visible.
-  But because it is disabled, the player cannot read what has been
-  scouted from the main view.
-- src/game/render3d/FogOfWarFog3D.ts still runs when fog is enabled, but
-  it spawns decorative soft fog spheres outside current local vision. It
-  does not cover all unseen space, does not preserve explored history,
-  and does not communicate the actual tactical visibility boundary.
-
-Why it matters:
-Server-side filtering can prevent information leaks, but it does not
-solve the player-facing RTS problem: the commander needs to know what is
-currently visible, what was explored before, and what remains unknown.
-The current active visual is ambience, not an information layer.
-
-Fix direction:
-Re-enable a strategic shroud after redesigning it so it covers the whole
-readable battlefield consistently, including the off-map shelf/horizon
-case that caused the current seam. Prefer a terrain/material/WebGPU
-overlay or terrain-shader integration over a flat in-bounds plane if
-that is what removes the seam. Keep FogOfWarFog3D as optional ambience
-only; it should not be the primary fog-of-war read.
-
-------------------------------------------------------------------------------
 FOW-CONCEPT-02 - visual shroud reveal semantics do not match
                  authoritative full-vision semantics.
 ------------------------------------------------------------------------------
