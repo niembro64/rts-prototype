@@ -122,8 +122,10 @@ export type ProjectileShotBlueprint = {
   /** Maximum thrust force (world-unit-newtons) the projectile's engine
    *  produces while homing. Combined with `mass`, this is the in-flight
    *  acceleration budget (`a_max = homingThrust / mass`) that bounds the
-   *  steering vector. Rocket-class shots ignore projectile gravity, so
-   *  this budget goes to steering rather than gravity compensation.
+   *  steering vector. Gravity applies to rockets like every other mass
+   *  body; the homing equation adds a counter-gravity term to the same
+   *  thrust vector, so this budget pays for both lateral steering and
+   *  holding altitude. A weak engine sags; it does not skip integration.
    *  Null for non-homing shots. */
   homingThrust: number | null;
   /** Legacy/per-shot cosmetic smoke override. Current shared shot
