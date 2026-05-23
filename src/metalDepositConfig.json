@@ -32,7 +32,7 @@
     {
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
-      "sliceOffset": 0.67,
+      "sliceOffset": 0.68,
       "dTerrainLevels": 0
     },
     {
@@ -42,7 +42,7 @@
       "dTerrainLevels": 0
     },
     {
-      "radiusFraction": 0.7,
+      "radiusFraction": 0.72,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
       "dTerrainLevels": 0
@@ -56,20 +56,20 @@
     {
       "radiusFraction": 0.5,
       "countPerPlayer": 1,
-      "sliceOffset": 0.65,
+      "sliceOffset": 0.64,
       "dTerrainLevels": 0
     },
     {
       "radiusFraction": 0.5,
       "countPerPlayer": 1,
       "sliceOffset": -0.65,
-      "dTerrainLevels": 0
+      "dTerrainLevels": -1
     },
     {
-      "radiusFraction": 0.9,
+      "radiusFraction": 0.92,
       "countPerPlayer": 1,
       "sliceOffset": -0.7,
-      "dTerrainLevels": 0
+      "dTerrainLevels": 1
     }
   ]
 }
