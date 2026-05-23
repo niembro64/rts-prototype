@@ -351,8 +351,9 @@ export type TurretConfig = {
   radius: TurretRadiusConfig;
   /** See TurretBlueprint.headOnly — beam/rocket turrets with no barrel
    *  visual. Rendered as a head sphere only; head color flips to white
-   *  when the turret is engaged. Renderer skips yaw/pitch pose; delta
-   *  serializer skips rotation/pitch/velocity comparisons. */
+   *  when the turret is engaged. Plain head-only turrets skip yaw/pitch
+   *  pose and rotation/pitch/velocity snapshots; mirror-panel hosts are
+   *  an exception because the panel slab uses the hidden turret pose. */
   headOnly?: boolean;
   /** Visual-only turret hardpoints do not acquire targets or fire.
    *  They exist so reusable turret art, such as construction emitters,

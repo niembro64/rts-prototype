@@ -34,6 +34,7 @@ import {
   createWaypointDto,
   type WaypointDto,
 } from './snapshotDtoCopy';
+import { turretAimMotionIsSnapshotVisible } from './turretSnapshotFields';
 import {
   createFloat64WireRows,
   createUint32WireRows,
@@ -163,11 +164,11 @@ function writeTurretsToPool(
     const dst = pool.turrets[i];
     const t = dst.turret;
     t.id = turretIdToCode(src.config.id);
-    // headOnly turrets (beam/rocket) render a head sphere only — the
-    // client doesn't orient anything from these values, so we omit the
-    // aim motion from the wire. Sim still tracks rotation/pitch
-    // internally for fire direction; only the snapshot drops them.
-    if (src.config.headOnly) {
+    // Plain headOnly turrets (beam/rocket) render a head sphere only,
+    // so the client doesn't orient anything from these values. Mirror
+    // panel hosts are different: the panel slab is posed from this
+    // passive turret even though the head/barrel art is hidden.
+    if (!turretAimMotionIsSnapshotVisible(entity, src)) {
       t.angular.rot = 0;
       t.angular.vel = 0;
       t.angular.pitch = 0;

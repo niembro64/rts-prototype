@@ -24,6 +24,7 @@ import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
+import { turretAimMotionIsSnapshotVisible } from './turretSnapshotFields';
 
 import {
   ENTITY_CHANGED_ACTIONS,
@@ -287,10 +288,11 @@ export function getEntityDeltaChangedFields(
       mask |= ENTITY_CHANGED_TURRETS;
     } else {
       let turretsAlreadyChanged = false;
-      // headOnly turrets (beam/rocket) have rotation/pitch/velocity
+      // Plain headOnly turrets (beam/rocket) have rotation/pitch/velocity
       // pre-zeroed by captureEntityState, so the threshold checks here
-      // naturally compare 0 vs 0 and never fire — those turrets only
-      // dirty the entity on target/state/forceField transitions.
+      // naturally compare 0 vs 0 and never fire. Mirror-panel hosts are
+      // intentionally not pre-zeroed because the passive turret pose is
+      // visible as mirror slab motion.
       for (let i = 0; i < next.weaponCount; i++) {
         if (!turretsAlreadyChanged) {
           const turretRotationChanged = snapshotRotationDeltaExceeded(
@@ -391,15 +393,15 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
       if (stateCode === CT_TURRET_STATE_ENGAGED) prev.isEngagedBits |= (1 << i);
       if (targetId !== null) prev.targetBits |= (1 << i);
-      // headOnly turrets (beam/rocket) hide their aim motion from the
-      // wire — sim keeps the values for fire direction but the snapshot
-      // contract is "0 always". Mirror that here so diff/wire/Rust-pool
-      // views all agree.
-      const headOnly = w.config.headOnly === true;
-      prev.turretRots[i] = headOnly ? 0 : w.rotation;
-      prev.turretAngVels[i] = headOnly ? 0 : w.angularVelocity;
-      prev.turretPitches[i] = headOnly ? 0 : w.pitch;
-      prev.turretPitchVels[i] = headOnly ? 0 : w.pitchVelocity;
+      // Plain headOnly turrets (beam/rocket) hide their aim motion from
+      // the wire — sim keeps the values for fire direction but the
+      // snapshot contract is "0 always". Mirror-panel hosts are the
+      // exception because the passive turret pose drives the panel slab.
+      const snapshotAimMotion = turretAimMotionIsSnapshotVisible(entity, w);
+      prev.turretRots[i] = snapshotAimMotion ? w.rotation : 0;
+      prev.turretAngVels[i] = snapshotAimMotion ? w.angularVelocity : 0;
+      prev.turretPitches[i] = snapshotAimMotion ? w.pitch : 0;
+      prev.turretPitchVels[i] = snapshotAimMotion ? w.pitchVelocity : 0;
       prev.turretTargetIds[i] = targetId ?? -1;
       prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
@@ -665,18 +667,18 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
     const w = turrets![t];
     const hasTargetingFsm = readCombatTargetingTurretFsmFromSimInto(sim, e, t, _deltaTurretFsm);
     const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
-    // Mirror the snapshot contract on the Rust diff side: headOnly
-    // turrets pass 0 for rotation/pitch/velocity so the Rust mask never
-    // diverges from the JS mask on aim motion.
-    const headOnly = w.config.headOnly === true;
+    // Mirror the snapshot contract on the Rust diff side: plain
+    // headOnly turrets pass 0 for aim motion, while mirror-panel hosts
+    // keep the passive turret pose because it is visible geometry.
+    const snapshotAimMotion = turretAimMotionIsSnapshotVisible(e, w);
     sim.turretPool.setTurret(
       slot, t,
-      headOnly ? 0 : w.rotation,
-      headOnly ? 0 : w.angularVelocity,
-      headOnly ? 0 : w.angularAcceleration,
-      headOnly ? 0 : w.pitch,
-      headOnly ? 0 : w.pitchVelocity,
-      headOnly ? 0 : w.pitchAcceleration,
+      snapshotAimMotion ? w.rotation : 0,
+      snapshotAimMotion ? w.angularVelocity : 0,
+      snapshotAimMotion ? w.angularAcceleration : 0,
+      snapshotAimMotion ? w.pitch : 0,
+      snapshotAimMotion ? w.pitchVelocity : 0,
+      snapshotAimMotion ? w.pitchAcceleration : 0,
       w.forceField?.range ?? 0,
       targetId ?? -1,
     );

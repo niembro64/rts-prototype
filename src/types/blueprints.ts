@@ -119,12 +119,13 @@ export type TurretBlueprint = {
   /** Beam/rocket turrets with no visible barrel: only the head sphere
    *  renders. The head shows the unit color when idle/tracking and
    *  switches to white when the turret locks on. Because there's no
-   *  barrel to orient, the renderer skips the per-tick yaw/pitch pose
-   *  and the delta serializer skips rotation/pitch/velocity comparisons
-   *  — these turrets never dirty an entity due to aim motion, only on
-   *  target/state transitions. The sim still tracks rotation/pitch
-   *  internally to produce the correct fire direction; the values
-   *  simply aren't part of the visible/network contract. */
+   *  barrel to orient, plain head-only turrets skip per-tick yaw/pitch
+   *  pose and rotation/pitch/velocity snapshots — these turrets never
+   *  dirty an entity due to aim motion, only on target/state
+   *  transitions. Mirror-panel hosts are the exception because the
+   *  panel slab uses the hidden passive turret pose. The sim still
+   *  tracks rotation/pitch internally to produce the correct fire
+   *  direction. */
   headOnly: boolean;
   /** Explicit aiming solver mode:
    *  - angleType: rayDirect for straight-line aim,
