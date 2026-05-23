@@ -55,7 +55,7 @@ type SurfaceNormal = { nx: number; ny: number; nz: number };
 
 export type RemovedSnapshotEntity = {
   id: EntityId;
-  playerId?: PlayerId;
+  playerId: PlayerId | null;
   x: number;
   y: number;
   type: 'unit' | 'building';
@@ -352,13 +352,13 @@ export class WorldState {
   // Remove entity from world
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
-    if (entity && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
-    if (entity?.type === 'unit') this.unitSetVersion++;
-    if (entity?.type === 'building') this.buildingVersion++;
-    if (entity?.type === 'unit' || entity?.type === 'building') {
+    if (entity !== undefined && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
+    if (entity !== undefined && entity.type === 'unit') this.unitSetVersion++;
+    if (entity !== undefined && entity.type === 'building') this.buildingVersion++;
+    if (entity !== undefined && (entity.type === 'unit' || entity.type === 'building')) {
       this.removedSnapshotEntities.push({
         id,
-        playerId: entity.ownership?.playerId,
+        playerId: entity.ownership !== null ? entity.ownership.playerId : null,
         x: entity.transform.x,
         y: entity.transform.y,
         type: entity.type,
@@ -561,7 +561,8 @@ export class WorldState {
     const buf = this._queryBuf;
     buf.length = 0;
     for (const e of this.getUnits()) {
-      if (e.ownership?.playerId !== playerId) buf.push(e);
+      const ownership = e.ownership;
+      if (ownership === null || ownership.playerId !== playerId) buf.push(e);
     }
     return buf;
   }
@@ -571,7 +572,7 @@ export class WorldState {
     const buf = this._queryBuf;
     buf.length = 0;
     for (const e of this.getAllEntities()) {
-      if (e.ownership?.playerId !== undefined &&
+      if (e.ownership !== null &&
           e.ownership.playerId !== playerId &&
           (e.type === 'unit' || e.type === 'building')) {
         buf.push(e);
@@ -583,7 +584,7 @@ export class WorldState {
   // Get commander for a player
   getCommander(playerId: PlayerId): Entity | undefined {
     for (const e of this.getCommanderUnits()) {
-      if (e.ownership?.playerId === playerId) return e;
+      if (e.ownership !== null && e.ownership.playerId === playerId) return e;
     }
     return undefined;
   }
@@ -644,34 +645,34 @@ export class WorldState {
   // Get factories by player
   getFactoriesByPlayer(playerId: PlayerId): Entity[] {
     return this.getBuildings().filter(
-      (e) => e.ownership?.playerId === playerId && e.factory !== null
+      (e) => e.ownership !== null && e.ownership.playerId === playerId && e.factory !== null
     );
   }
 
   // Check if a player's commander is alive
   isCommanderAlive(playerId: PlayerId): boolean {
     const commander = this.getCommander(playerId);
-    return commander !== undefined && (commander.unit?.hp ?? 0) > 0;
+    return commander !== undefined && commander.unit !== null && commander.unit.hp > 0;
   }
 
   // Get selected entities for active player
   getSelectedEntities(): Entity[] {
     return this.getAllEntities().filter(
-      (e) => e.selectable?.selected && e.ownership?.playerId === this.activePlayerId
+      (e) => e.selectable !== null && e.selectable.selected && e.ownership !== null && e.ownership.playerId === this.activePlayerId
     );
   }
 
   // Get selected units for active player
   getSelectedUnits(): Entity[] {
     return this.getUnits().filter(
-      (e) => e.selectable?.selected && e.ownership?.playerId === this.activePlayerId
+      (e) => e.selectable !== null && e.selectable.selected && e.ownership !== null && e.ownership.playerId === this.activePlayerId
     );
   }
 
   // Get selected factories for active player
   getSelectedFactories(): Entity[] {
     return this.getBuildings().filter(
-      (e) => e.selectable?.selected && e.factory !== null && e.ownership?.playerId === this.activePlayerId
+      (e) => e.selectable !== null && e.selectable.selected && e.factory !== null && e.ownership !== null && e.ownership.playerId === this.activePlayerId
     );
   }
 
@@ -683,7 +684,7 @@ export class WorldState {
   // Clear all selections (only for active player's units)
   clearSelection(): void {
     for (const entity of this.entities.values()) {
-      if (entity.selectable && entity.ownership?.playerId === this.activePlayerId) {
+      if (entity.selectable !== null && entity.ownership !== null && entity.ownership.playerId === this.activePlayerId) {
         entity.selectable.selected = false;
       }
     }
@@ -693,7 +694,12 @@ export class WorldState {
   selectEntities(ids: EntityId[]): void {
     for (const id of ids) {
       const entity = this.entities.get(id);
-      if (entity?.selectable && entity.ownership?.playerId === this.activePlayerId) {
+      if (
+        entity !== undefined &&
+        entity.selectable !== null &&
+        entity.ownership !== null &&
+        entity.ownership.playerId === this.activePlayerId
+      ) {
         entity.selectable.selected = true;
       }
     }
@@ -894,7 +900,7 @@ export class WorldState {
   createBuilding(
     x: number, y: number,
     width: number, height: number, depth: number,
-    playerId?: PlayerId,
+    playerId: PlayerId | null = null,
   ): Entity {
     const id = this.generateEntityId();
     // Transform.z is the building's vertical CENTER. Base sits on the
@@ -921,7 +927,7 @@ export class WorldState {
       selectable: { selected: false },
     };
 
-    if (playerId !== undefined) {
+    if (playerId !== null) {
       entity.ownership = { playerId };
     }
 
@@ -938,7 +944,7 @@ export class WorldState {
     sourceEntityId: EntityId,
     config: ProjectileConfig,
     projectileType: ProjectileType = 'projectile',
-    provenance?: { shotId?: ShotId; sourceTurretId?: TurretId },
+    provenance: { shotId: ShotId | null; sourceTurretId: TurretId | null } | null = null,
   ): Entity {
     const id = this.generateEntityId();
 
@@ -961,8 +967,10 @@ export class WorldState {
       ownerId,
       sourceEntityId,
       config,
-      shotId: provenance?.shotId ?? config.shot.id,
-      sourceTurretId: provenance?.sourceTurretId ?? config.sourceTurretId,
+      shotId: provenance !== null && provenance.shotId !== null ? provenance.shotId : config.shot.id,
+      sourceTurretId: provenance !== null && provenance.sourceTurretId !== null
+        ? provenance.sourceTurretId
+        : config.sourceTurretId,
       projectileType,
       velocityX,
       velocityY,

@@ -151,24 +151,24 @@ Evidence:
   and `Buildable.healthBuildFraction` to an always-present number.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 228 other `?:` declarations remain across src/game/network/*,
+- 223 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
   ClientPredictionTargets' ServerTarget / BeamPathTarget caches to
-  explicit `T | null`, and removed optional reads from
-  ClientPredictionStepper and ClientProjectileStore. Remaining examples
-  include:
+  explicit `T | null`, removed optional reads from
+  ClientPredictionStepper and ClientProjectileStore, and the follow-up
+  WorldState pass converted RemovedSnapshotEntity.playerId plus
+  creation provenance/owner defaults to explicit `null`. Remaining
+  examples include:
     - Simulation.ts (2): targetPoint `z?` helper parameters only.
-    - WorldState.ts (3): RemovedSnapshotEntity.playerId?,
-      onEntityRemoving?, etc.
     - stateSerializer.ts (28): serialize options and optional
       parameters.
     - snapshotProjectileWirePack.ts (4): packed V2 field aliases
       s?/d?/u?/b?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
       buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
-- Optional chaining remains at 520 in the in-scope tree after the
+- Optional chaining remains at 500 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -176,7 +176,8 @@ Evidence:
   The construction/combat pass also removed the active-state and build
   health optional reads it touched, and the prediction/callback pass
   removed the optional reads in ClientPredictionStepper,
-  ClientProjectileStore, and the touched Simulation callback paths. It
+  ClientProjectileStore, the touched Simulation callback paths,
+  WorldState, and the touched stateSerializerVisibility helpers. It
   should be migrated in small file-level passes alongside optional
   property declarations.
 Why it matters:

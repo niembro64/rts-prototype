@@ -143,7 +143,7 @@ export class SnapshotVisibility {
     private readonly world: WorldState,
     mapWidth: number,
     mapHeight: number,
-    precomputedTeamMask?: number,
+    precomputedTeamMask: number | undefined = undefined,
   ) {
     this.isFiltered = fogEnabled && recipientPlayerId !== undefined;
     this.gridW = Math.max(1, Math.ceil(mapWidth / VISION_CELL_SIZE));
@@ -162,7 +162,7 @@ export class SnapshotVisibility {
   static forRecipient(
     world: WorldState,
     recipientPlayerId: PlayerId | undefined,
-    precomputedTeamMask?: number,
+    precomputedTeamMask: number | undefined = undefined,
   ): SnapshotVisibility {
     const visibility = new SnapshotVisibility(
       recipientPlayerId,
@@ -192,8 +192,8 @@ export class SnapshotVisibility {
    *  their allies. Works regardless of fog status — a recipient with
    *  fog disabled still gets the team-aware "this is one of ours"
    *  answer for ownership checks and team-routed visibility. */
-  isOwnedByRecipientOrAlly(playerId: PlayerId | undefined): boolean {
-    if (playerId === undefined) return false;
+  isOwnedByRecipientOrAlly(playerId: PlayerId | null | undefined): boolean {
+    if (playerId === null || playerId === undefined) return false;
     return (this.viewMask & (1 << (playerId - 1))) !== 0;
   }
 
@@ -211,7 +211,8 @@ export class SnapshotVisibility {
 
   canSeePrivateEntityDetails(entity: Entity): boolean {
     if (!this.hasRecipient) return true;
-    return this.isOwnedByRecipientOrAlly(entity.ownership?.playerId);
+    const ownership = entity.ownership;
+    return this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null);
   }
 
   canReferenceEntityId(world: WorldState, entityId: EntityId | undefined): boolean {
@@ -228,7 +229,8 @@ export class SnapshotVisibility {
    *  (FOW-04). Radar coverage does NOT grant full visibility. */
   isEntityVisible(entity: Entity): boolean {
     if (!this.isFiltered) return true;
-    if (this.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) return true;
+    const ownership = entity.ownership;
+    if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) return true;
     const cached = this.entityVisibilityMemo.get(entity.id);
     if (cached !== undefined) return cached;
     const padding = getEntityVisibilityPadding(entity);
@@ -286,7 +288,8 @@ export class SnapshotVisibility {
    *  without leaking the rest of the snapshot. */
   isEntityOnRadar(entity: Entity): boolean {
     if (!this.isFiltered) return true;
-    if (this.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) return true;
+    const ownership = entity.ownership;
+    if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) return true;
     const padding = getEntityVisibilityPadding(entity);
     if (!this.canSeeCloakedEntity(entity, padding)) return false;
     if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
@@ -586,8 +589,9 @@ export function getEntityFullVisionRadius(entity: Entity): number {
     ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
     : BUILDING_VISION_RADIUS;
 
-  const turrets = entity.combat?.turrets;
-  if (turrets) {
+  const combat = entity.combat;
+  if (combat !== null) {
+    const turrets = combat.turrets;
     for (let i = 0; i < turrets.length; i++) {
       radius = Math.max(radius, turrets[i].config.range + TURRET_VISION_PAD);
     }
