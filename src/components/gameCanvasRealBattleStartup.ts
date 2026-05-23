@@ -3,15 +3,13 @@ import {
   loadStoredConverterTax,
   loadStoredMapLandDimensions,
   loadStoredRealCap,
-  loadStoredTerrainCenter,
-  loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
   loadStoredTerrainRuntimeConfig,
   type BattleTerrainRuntimeConfig,
 } from '../battleBarConfig';
 import {
-  setTerrainCenterShape,
-  setTerrainDividersShape,
+  setTerrainCenterMagnitude,
+  setTerrainDividersMagnitude,
   setTerrainMapShape,
   setTerrainRuntimeConfig,
 } from '../game/sim/Terrain';
@@ -25,11 +23,9 @@ import { applyStoredBattleServerSettings } from '../game/server/battleServerSett
 import type { GameConnection } from '../game/server/GameConnection';
 import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape, TerrainShape } from '../types/terrain';
+import type { TerrainMapShape } from '../types/terrain';
 
 export type RealBattleStartupTerrain = {
-  terrainCenter: TerrainShape;
-  terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
   terrainRuntimeConfig: BattleTerrainRuntimeConfig;
   mapDimensions: MapLandCellDimensions;
@@ -47,8 +43,6 @@ export type StartRealBattleServerOptions = {
 };
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
-  const terrainCenter = loadStoredTerrainCenter('real');
-  const terrainDividers = loadStoredTerrainDividers('real');
   const terrainMapShape = loadStoredTerrainMapShape('real');
   const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig('real');
   const mapDimensions = loadStoredMapLandDimensions('real');
@@ -58,12 +52,10 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
     mapDimensions.lengthLandCells,
   );
   setTerrainRuntimeConfig(terrainRuntimeConfig);
-  setTerrainCenterShape(terrainCenter);
-  setTerrainDividersShape(terrainDividers);
+  setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
+  setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainMapShape(terrainMapShape);
   return {
-    terrainCenter,
-    terrainDividers,
     terrainMapShape,
     terrainRuntimeConfig,
     mapDimensions,
@@ -91,11 +83,10 @@ export async function createRealBattleServer({
   return GameServer.create({
     playerIds,
     aiPlayerIds,
-    terrainCenter: terrain.terrainCenter,
-    terrainDividers: terrain.terrainDividers,
+    centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+    dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     terrainMapShape: terrain.terrainMapShape,
     terrainPlateauEnabled: terrain.terrainRuntimeConfig.plateauEnabled,
-    terrainShapeMagnitude: terrain.terrainRuntimeConfig.terrainShapeMagnitude,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,

@@ -27,8 +27,8 @@ import {
   getTerrainRuntimeConfig,
   setAuthoritativeTerrainTileMap,
   setMetalDepositFlatZones,
-  setTerrainCenterShape,
-  setTerrainDividersShape,
+  setTerrainCenterMagnitude,
+  setTerrainDividersMagnitude,
   setTerrainMapShape,
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
@@ -78,17 +78,21 @@ export class ServerBootstrap {
     // branches on "solo". Set BEFORE WorldState, deposit flattening,
     // and renderer mesh baking so every consumer reads the same surface.
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
+    const centerMagnitude =
+      config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+    const dividersMagnitude =
+      config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     setTerrainRuntimeConfig({
       plateauEnabled:
         config.terrainPlateauEnabled ?? terrainRuntimeConfig.plateauEnabled,
-      terrainShapeMagnitude:
-        config.terrainShapeMagnitude ?? terrainRuntimeConfig.terrainShapeMagnitude,
+      centerMagnitude,
+      dividersMagnitude,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
-    setTerrainCenterShape(config.terrainCenter ?? 'valley');
-    setTerrainDividersShape(config.terrainDividers ?? 'valley');
+    setTerrainCenterMagnitude(centerMagnitude);
+    setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
@@ -100,7 +104,7 @@ export class ServerBootstrap {
       mapWidth,
       mapHeight,
       playerIds.length,
-      config.terrainCenter,
+      centerMagnitude,
     );
     setMetalDepositFlatZones(
       deposits.map((d) => ({

@@ -1,5 +1,5 @@
 import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars';
-import type { TerrainMapShape, TerrainShape } from './terrain';
+import type { TerrainMapShape } from './terrain';
 import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ForceFieldReflectionMode } from './shotTypes';
 
@@ -17,16 +17,19 @@ export type BattleBarConfig = {
     readonly default: ForceFieldReflectionMode;
   };
   readonly fogOfWarEnabled: BooleanSetting;
-  /** Shape of the central ripple zone (CENTER button group). */
-  readonly center: LabeledOptionsConfig<TerrainShape>;
-  /** Shape of the team-separator ridges (DIVIDERS button group). */
-  readonly dividers: LabeledOptionsConfig<TerrainShape>;
+  /** Signed altitude amplitude of the central ripple zone (CENTER
+   *  button group). Negative values dish the centre below ground
+   *  (valley), positive raise it (mountain), zero suppresses the
+   *  feature entirely. */
+  readonly centerMagnitude: OptionsConfig<number>;
+  /** Signed altitude amplitude of the team-separator ridges (DIVIDERS
+   *  button group). Same sign convention as `centerMagnitude`. */
+  readonly dividersMagnitude: OptionsConfig<number>;
   /** Overall map boundary shape: full square map or circular island. */
   readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
   readonly plateau: {
     readonly enabled: LabeledOptionsConfig<boolean>;
   };
-  readonly terrainShapeMagnitude: OptionsConfig<number>;
   readonly terrainDTerrain: OptionsConfig<number>;
   /** Tax (fraction in [0, 1)) applied to a resource converter's
    *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of

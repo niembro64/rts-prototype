@@ -25,7 +25,7 @@ import type { BuildGhost3D } from './BuildGhost3D';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
 import type { CommandQueue } from '../sim/commands';
 import type { InputContext } from '@/types/input';
-import type { TerrainBuildabilityGrid, TerrainShape } from '@/types/terrain';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
 import {
   findClosestSelectableEntityToPoint,
@@ -286,11 +286,16 @@ export class Input3DManager {
     width: number,
     height: number,
     playerCount: number,
-    terrainCenter: TerrainShape = 'valley',
+    centerMagnitude = -1,
   ): void {
     this.mapWidth = width;
     this.mapHeight = height;
-    this.metalDeposits = generateMetalDeposits(width, height, playerCount, terrainCenter);
+    this.metalDeposits = generateMetalDeposits(
+      width,
+      height,
+      playerCount,
+      centerMagnitude,
+    );
   }
 
   getHoveredEntity(): Entity | null {

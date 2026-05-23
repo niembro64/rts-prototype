@@ -58,13 +58,33 @@ export const WATER_FULLY_OPAQUE = terrainConfig.waterFullyOpaque;
 
 export type TerrainRuntimeConfig = {
   plateauEnabled: boolean;
-  terrainShapeMagnitude: number;
+  /** Signed altitude of the central ripple (CENTER bar). */
+  centerMagnitude: number;
+  /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
+  dividersMagnitude: number;
   terrainDTerrain: number;
 };
 
-/** Magnitude only; TerrainShape decides the sign. */
-export let TERRAIN_SHAPE_MAGNITUDE = BATTLE_CONFIG.terrainShapeMagnitude.default;
-export let TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
+/** Currently-installed signed CENTER amplitude (matches the active
+ *  battle's CENTER bar pick). The actual terrain heightmap reads this
+ *  directly — sign decides ripple polarity, magnitude decides height. */
+export let TERRAIN_CENTER_MAGNITUDE = BATTLE_CONFIG.centerMagnitude.default;
+/** Currently-installed signed DIVIDERS amplitude. */
+export let TERRAIN_DIVIDERS_MAGNITUDE = BATTLE_CONFIG.dividersMagnitude.default;
+
+/** Conservative upper bound on terrain heights — both ripples can
+ *  stack at their intersection, so use the sum of absolute amplitudes
+ *  doubled to match the prior "magnitude × 2" headroom convention. */
+function computeTerrainMaxRenderY(
+  centerMag: number,
+  dividersMag: number,
+): number {
+  return Math.abs(centerMag) + Math.abs(dividersMag);
+}
+export let TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
+  TERRAIN_CENTER_MAGNITUDE,
+  TERRAIN_DIVIDERS_MAGNITUDE,
+);
 
 /** Vertical spacing between authored terrain plateau levels. */
 export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
@@ -100,11 +120,19 @@ export const TERRAIN_PLATEAU_CONFIG: {
 
 export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean {
   let changed = false;
-  const nextShapeMagnitude = Math.max(0, config.terrainShapeMagnitude);
-  if (TERRAIN_SHAPE_MAGNITUDE !== nextShapeMagnitude) {
-    TERRAIN_SHAPE_MAGNITUDE = nextShapeMagnitude;
-    TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
+  if (TERRAIN_CENTER_MAGNITUDE !== config.centerMagnitude) {
+    TERRAIN_CENTER_MAGNITUDE = config.centerMagnitude;
     changed = true;
+  }
+  if (TERRAIN_DIVIDERS_MAGNITUDE !== config.dividersMagnitude) {
+    TERRAIN_DIVIDERS_MAGNITUDE = config.dividersMagnitude;
+    changed = true;
+  }
+  if (changed) {
+    TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
+      TERRAIN_CENTER_MAGNITUDE,
+      TERRAIN_DIVIDERS_MAGNITUDE,
+    );
   }
 
   const nextDTerrain = Math.max(0, config.terrainDTerrain);

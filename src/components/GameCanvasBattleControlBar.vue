@@ -100,12 +100,12 @@ defineProps<{
         <BarLabel>CENTER:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="opt in BATTLE_CONFIG.center.options"
-            :key="opt.value"
-            :active="model.terrainCenter === opt.value"
-            :title="`Set the central ripple to ${opt.label.toLowerCase()}`"
-            @click="model.applyTerrainShape('center', opt.value)"
-          >{{ opt.label }}</BarButton>
+            v-for="opt in BATTLE_CONFIG.centerMagnitude.options"
+            :key="opt"
+            :active="model.centerMagnitude === opt"
+            :title="`Set the central ripple altitude to ${opt}`"
+            @click="model.applyCenterMagnitude(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
@@ -113,12 +113,12 @@ defineProps<{
         <BarLabel>DIVIDERS:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="opt in BATTLE_CONFIG.dividers.options"
-            :key="opt.value"
-            :active="model.terrainDividers === opt.value"
-            :title="`Set the team-separator ridges to ${opt.label.toLowerCase()}`"
-            @click="model.applyTerrainShape('dividers', opt.value)"
-          >{{ opt.label }}</BarButton>
+            v-for="opt in BATTLE_CONFIG.dividersMagnitude.options"
+            :key="opt"
+            :active="model.dividersMagnitude === opt"
+            :title="`Set the team-separator ridge altitude to ${opt}`"
+            @click="model.applyDividersMagnitude(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
@@ -145,19 +145,6 @@ defineProps<{
             :title="`Turn terrain plateaus ${opt.label.toLowerCase()}`"
             @click="model.applyTerrainPlateauEnabled(opt.value)"
           >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup v-if="!model.gameStarted">
-        <BarDivider />
-        <BarLabel>MAGNITUDE:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in BATTLE_CONFIG.terrainShapeMagnitude.options"
-            :key="opt"
-            :active="model.terrainShapeMagnitude === opt"
-            :title="`Set terrain shape magnitude to ${opt}`"
-            @click="model.applyTerrainShapeMagnitude(opt)"
-          >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">

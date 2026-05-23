@@ -1,5 +1,5 @@
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape, TerrainShape } from '../types/terrain';
+import type { TerrainMapShape } from '../types/terrain';
 import type {
   AudioScope,
   CameraFovDegrees,
@@ -33,11 +33,10 @@ export type GameCanvasBattleControlBarModel = {
   readonly gameStarted: boolean;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
-  readonly terrainCenter: TerrainShape;
-  readonly terrainDividers: TerrainShape;
+  readonly centerMagnitude: number;
+  readonly dividersMagnitude: number;
   readonly terrainMapShape: TerrainMapShape;
   readonly terrainPlateauEnabled: boolean;
-  readonly terrainShapeMagnitude: number;
   readonly terrainDTerrain: number;
   readonly displayUnitCount: number;
   readonly currentForceFieldsObstructSight: boolean;
@@ -48,10 +47,10 @@ export type GameCanvasBattleControlBarModel = {
   toggleDemoUnitType(unitType: string): void;
   changeMaxTotalUnits(cap: number): void;
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
-  applyTerrainShape(kind: 'center' | 'dividers', shape: TerrainShape): void;
+  applyCenterMagnitude(value: number): void;
+  applyDividersMagnitude(value: number): void;
   applyTerrainMapShape(shape: TerrainMapShape): void;
   applyTerrainPlateauEnabled(enabled: boolean): void;
-  applyTerrainShapeMagnitude(value: number): void;
   applyTerrainDTerrain(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;

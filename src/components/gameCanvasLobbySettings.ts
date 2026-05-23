@@ -4,19 +4,19 @@ import {
   getDefaultMapLandDimensions,
   loadStoredConverterTax,
   loadStoredFogOfWarEnabled,
+  normalizeCenterMagnitude,
   normalizeConverterTax,
+  normalizeDividersMagnitude,
   normalizeTerrainDTerrain,
   normalizeTerrainPlateauEnabled,
-  normalizeTerrainShapeMagnitude,
+  saveCenterMagnitude,
   saveConverterTax,
+  saveDividersMagnitude,
   saveMapLandDimensions,
   saveFogOfWarEnabled,
-  saveTerrainCenter,
   saveTerrainDTerrain,
-  saveTerrainDividers,
   saveTerrainMapShape,
   saveTerrainPlateauEnabled,
-  saveTerrainShapeMagnitude,
   type BattleMode,
 } from '../battleBarConfig';
 import type {
@@ -25,25 +25,19 @@ import type {
   NetworkRole,
 } from '../game/network/NetworkManager';
 import {
-  setTerrainCenterShape,
-  setTerrainDividersShape,
   setTerrainMapShape,
   setTerrainRuntimeConfig,
 } from '../game/sim/Terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape, TerrainShape } from '../types/terrain';
+import type { TerrainMapShape } from '../types/terrain';
 
 export type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
   broadcastLobbySettingsIfHost(): void;
-  applyTerrainShape(
-    kind: 'center' | 'dividers',
-    shape: TerrainShape,
-    broadcast?: boolean,
-  ): void;
+  applyCenterMagnitude(value: number, broadcast?: boolean): void;
+  applyDividersMagnitude(value: number, broadcast?: boolean): void;
   applyTerrainMapShape(shape: TerrainMapShape, broadcast?: boolean): void;
   applyTerrainPlateauEnabled(enabled: boolean, broadcast?: boolean): void;
-  applyTerrainShapeMagnitude(value: number, broadcast?: boolean): void;
   applyTerrainDTerrain(value: number, broadcast?: boolean): void;
   applyMapLandDimensions(
     dimensions: MapLandCellDimensions,
@@ -62,11 +56,10 @@ export type GameCanvasLobbySettingsOptions = {
   networkRole: Ref<NetworkRole | null>;
   roomCode: Ref<string>;
   gameStarted: Ref<boolean>;
-  terrainCenter: Ref<TerrainShape>;
-  terrainDividers: Ref<TerrainShape>;
+  centerMagnitude: Ref<number>;
+  dividersMagnitude: Ref<number>;
   terrainMapShape: Ref<TerrainMapShape>;
   terrainPlateauEnabled: Ref<boolean>;
-  terrainShapeMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
@@ -90,11 +83,10 @@ export function useGameCanvasLobbySettings({
   networkRole,
   roomCode,
   gameStarted,
-  terrainCenter,
-  terrainDividers,
+  centerMagnitude,
+  dividersMagnitude,
   terrainMapShape,
   terrainPlateauEnabled,
-  terrainShapeMagnitude,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -112,18 +104,18 @@ export function useGameCanvasLobbySettings({
   function applyCurrentTerrainRuntimeConfig(): void {
     setTerrainRuntimeConfig({
       plateauEnabled: terrainPlateauEnabled.value,
-      terrainShapeMagnitude: terrainShapeMagnitude.value,
+      centerMagnitude: centerMagnitude.value,
+      dividersMagnitude: dividersMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
     });
   }
 
   function currentLobbySettings(): LobbySettings {
     return {
-      terrainCenter: terrainCenter.value,
-      terrainDividers: terrainDividers.value,
+      centerMagnitude: centerMagnitude.value,
+      dividersMagnitude: dividersMagnitude.value,
       terrainMapShape: terrainMapShape.value,
       terrainPlateauEnabled: terrainPlateauEnabled.value,
-      terrainShapeMagnitude: terrainShapeMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
@@ -138,19 +130,22 @@ export function useGameCanvasLobbySettings({
     }
   }
 
-  function applyTerrainShape(
-    kind: 'center' | 'dividers',
-    shape: TerrainShape,
-    broadcast = true,
-  ): void {
+  function applyCenterMagnitude(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
-    if (kind === 'center') {
-      terrainCenter.value = shape;
-      saveTerrainCenter(shape, mode);
-    } else {
-      terrainDividers.value = shape;
-      saveTerrainDividers(shape, mode);
-    }
+    const normalized = normalizeCenterMagnitude(value);
+    centerMagnitude.value = normalized;
+    saveCenterMagnitude(normalized, mode);
+    applyCurrentTerrainRuntimeConfig();
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
+  function applyDividersMagnitude(value: number, broadcast = true): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizeDividersMagnitude(value);
+    dividersMagnitude.value = normalized;
+    saveDividersMagnitude(normalized, mode);
+    applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
   }
@@ -171,16 +166,6 @@ export function useGameCanvasLobbySettings({
     const normalized = normalizeTerrainPlateauEnabled(enabled);
     terrainPlateauEnabled.value = normalized;
     saveTerrainPlateauEnabled(normalized, mode);
-    applyCurrentTerrainRuntimeConfig();
-    restartPreviewIfNeeded();
-    if (broadcast) broadcastLobbySettingsIfHost();
-  }
-
-  function applyTerrainShapeMagnitude(value: number, broadcast = true): void {
-    const mode = currentBattleMode.value;
-    const normalized = normalizeTerrainShapeMagnitude(value);
-    terrainShapeMagnitude.value = normalized;
-    saveTerrainShapeMagnitude(normalized, mode);
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
@@ -216,10 +201,10 @@ export function useGameCanvasLobbySettings({
       settings.terrainPlateauEnabled === undefined
         ? terrainPlateauEnabled.value
         : normalizeTerrainPlateauEnabled(settings.terrainPlateauEnabled);
-    const nextShapeMagnitude =
-      settings.terrainShapeMagnitude === undefined
-        ? terrainShapeMagnitude.value
-        : normalizeTerrainShapeMagnitude(settings.terrainShapeMagnitude);
+    const nextCenterMagnitude = normalizeCenterMagnitude(settings.centerMagnitude);
+    const nextDividersMagnitude = normalizeDividersMagnitude(
+      settings.dividersMagnitude,
+    );
     const nextDTerrain =
       settings.terrainDTerrain === undefined
         ? terrainDTerrain.value
@@ -228,29 +213,26 @@ export function useGameCanvasLobbySettings({
       settings.fogOfWarEnabled !== undefined &&
       settings.fogOfWarEnabled !== loadStoredFogOfWarEnabled('real');
     const changed =
-      settings.terrainCenter !== terrainCenter.value ||
-      settings.terrainDividers !== terrainDividers.value ||
+      nextCenterMagnitude !== centerMagnitude.value ||
+      nextDividersMagnitude !== dividersMagnitude.value ||
       settings.terrainMapShape !== terrainMapShape.value ||
       nextPlateauEnabled !== terrainPlateauEnabled.value ||
-      nextShapeMagnitude !== terrainShapeMagnitude.value ||
       nextDTerrain !== terrainDTerrain.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
       fogOfWarChanged;
 
-    terrainCenter.value = settings.terrainCenter;
-    terrainDividers.value = settings.terrainDividers;
+    centerMagnitude.value = nextCenterMagnitude;
+    dividersMagnitude.value = nextDividersMagnitude;
     terrainMapShape.value = settings.terrainMapShape;
     terrainPlateauEnabled.value = nextPlateauEnabled;
-    terrainShapeMagnitude.value = nextShapeMagnitude;
     terrainDTerrain.value = nextDTerrain;
     mapWidthLandCells.value = settings.mapWidthLandCells;
     mapLengthLandCells.value = settings.mapLengthLandCells;
-    saveTerrainCenter(settings.terrainCenter, 'real');
-    saveTerrainDividers(settings.terrainDividers, 'real');
+    saveCenterMagnitude(nextCenterMagnitude, 'real');
+    saveDividersMagnitude(nextDividersMagnitude, 'real');
     saveTerrainMapShape(settings.terrainMapShape, 'real');
     saveTerrainPlateauEnabled(nextPlateauEnabled, 'real');
-    saveTerrainShapeMagnitude(nextShapeMagnitude, 'real');
     saveTerrainDTerrain(nextDTerrain, 'real');
     saveMapLandDimensions(
       {
@@ -266,8 +248,6 @@ export function useGameCanvasLobbySettings({
       saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
     }
     applyCurrentTerrainRuntimeConfig();
-    setTerrainCenterShape(settings.terrainCenter);
-    setTerrainDividersShape(settings.terrainDividers);
     setTerrainMapShape(settings.terrainMapShape);
 
     const restartPreview = options.restartPreview ?? true;
@@ -283,19 +263,17 @@ export function useGameCanvasLobbySettings({
 
   function resetTerrainDefaults(): void {
     const mode = currentBattleMode.value;
-    const centerDefault = BATTLE_CONFIG.center.default;
-    const dividersDefault = BATTLE_CONFIG.dividers.default;
+    const centerMagnitudeDefault = BATTLE_CONFIG.centerMagnitude.default;
+    const dividersMagnitudeDefault = BATTLE_CONFIG.dividersMagnitude.default;
     const mapShapeDefault = BATTLE_CONFIG.mapShape.default;
     const plateauEnabledDefault = BATTLE_CONFIG.plateau.enabled.default;
-    const shapeMagnitudeDefault = BATTLE_CONFIG.terrainShapeMagnitude.default;
     const dTerrainDefault = BATTLE_CONFIG.terrainDTerrain.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
     if (
-      terrainCenter.value === centerDefault &&
-      terrainDividers.value === dividersDefault &&
+      centerMagnitude.value === centerMagnitudeDefault &&
+      dividersMagnitude.value === dividersMagnitudeDefault &&
       terrainMapShape.value === mapShapeDefault &&
       terrainPlateauEnabled.value === plateauEnabledDefault &&
-      terrainShapeMagnitude.value === shapeMagnitudeDefault &&
       terrainDTerrain.value === dTerrainDefault &&
       sameMapLandDimensions(
         {
@@ -308,19 +286,17 @@ export function useGameCanvasLobbySettings({
       return;
     }
 
-    terrainCenter.value = centerDefault;
-    terrainDividers.value = dividersDefault;
+    centerMagnitude.value = centerMagnitudeDefault;
+    dividersMagnitude.value = dividersMagnitudeDefault;
     terrainMapShape.value = mapShapeDefault;
     terrainPlateauEnabled.value = plateauEnabledDefault;
-    terrainShapeMagnitude.value = shapeMagnitudeDefault;
     terrainDTerrain.value = dTerrainDefault;
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
     mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
-    saveTerrainCenter(centerDefault, mode);
-    saveTerrainDividers(dividersDefault, mode);
+    saveCenterMagnitude(centerMagnitudeDefault, mode);
+    saveDividersMagnitude(dividersMagnitudeDefault, mode);
     saveTerrainMapShape(mapShapeDefault, mode);
     saveTerrainPlateauEnabled(plateauEnabledDefault, mode);
-    saveTerrainShapeMagnitude(shapeMagnitudeDefault, mode);
     saveTerrainDTerrain(dTerrainDefault, mode);
     saveMapLandDimensions(mapDimensionsDefault, mode);
     applyCurrentTerrainRuntimeConfig();
@@ -330,10 +306,10 @@ export function useGameCanvasLobbySettings({
   return {
     currentLobbySettings,
     broadcastLobbySettingsIfHost,
-    applyTerrainShape,
+    applyCenterMagnitude,
+    applyDividersMagnitude,
     applyTerrainMapShape,
     applyTerrainPlateauEnabled,
-    applyTerrainShapeMagnitude,
     applyTerrainDTerrain,
     applyMapLandDimensions,
     applyLobbySettingsFromHost,

@@ -1,37 +1,25 @@
 import {
-  terrainShapeSign,
   type TerrainMapShape,
-  type TerrainShape,
   type TerrainTileMap,
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   applyTerrainRuntimeConfig,
+  TERRAIN_CENTER_MAGNITUDE,
   TERRAIN_D_TERRAIN,
+  TERRAIN_DIVIDERS_MAGNITUDE,
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_PLATEAU_CONFIG,
-  TERRAIN_SHAPE_MAGNITUDE,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
-let terrainCenterShape: TerrainShape = 'mountain';
-let terrainDividersShape: TerrainShape = 'mountain';
-let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
-let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
+let mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
+let mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
 let terrainMapShape: TerrainMapShape = 'circle';
 let teamCount = 0;
 let terrainVersion = 1;
 let authoritativeTerrainTileMap: TerrainTileMap | null = null;
-
-function shapeToAmplitude(shape: TerrainShape): number {
-  return terrainShapeSign(shape) * TERRAIN_SHAPE_MAGNITUDE;
-}
-
-function refreshShapeAmplitudes(): void {
-  mountainRippleAmplitude = shapeToAmplitude(terrainCenterShape);
-  mountainSeparatorAmplitude = shapeToAmplitude(terrainDividersShape);
-}
 
 export function getTerrainVersion(): number {
   return terrainVersion;
@@ -90,30 +78,40 @@ export function getTerrainMapShape(): TerrainMapShape {
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
   return {
     plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
-    terrainShapeMagnitude: TERRAIN_SHAPE_MAGNITUDE,
+    centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
   };
 }
 
 export function setTerrainRuntimeConfig(config: TerrainRuntimeConfig): void {
   if (!applyTerrainRuntimeConfig(config)) return;
-  refreshShapeAmplitudes();
+  mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
+  mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
   invalidateTerrainConfig();
 }
 
-export function setTerrainCenterShape(shape: TerrainShape): void {
-  terrainCenterShape = shape;
-  const next = shapeToAmplitude(shape);
-  if (next === mountainRippleAmplitude) return;
-  mountainRippleAmplitude = next;
+export function setTerrainCenterMagnitude(value: number): void {
+  if (value === mountainRippleAmplitude) return;
+  mountainRippleAmplitude = value;
+  applyTerrainRuntimeConfig({
+    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
+    centerMagnitude: value,
+    dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
+    terrainDTerrain: TERRAIN_D_TERRAIN,
+  });
   invalidateTerrainConfig();
 }
 
-export function setTerrainDividersShape(shape: TerrainShape): void {
-  terrainDividersShape = shape;
-  const next = shapeToAmplitude(shape);
-  if (next === mountainSeparatorAmplitude) return;
-  mountainSeparatorAmplitude = next;
+export function setTerrainDividersMagnitude(value: number): void {
+  if (value === mountainSeparatorAmplitude) return;
+  mountainSeparatorAmplitude = value;
+  applyTerrainRuntimeConfig({
+    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
+    centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    dividersMagnitude: value,
+    terrainDTerrain: TERRAIN_D_TERRAIN,
+  });
   invalidateTerrainConfig();
 }
 

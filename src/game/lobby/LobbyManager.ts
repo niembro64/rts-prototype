@@ -11,8 +11,6 @@ import {
   loadStoredConverterTax,
   loadStoredDemoUnits,
   loadStoredDemoCap,
-  loadStoredTerrainCenter,
-  loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
   loadStoredMapLandDimensions,
   loadStoredTerrainRuntimeConfig,
@@ -20,8 +18,8 @@ import {
   type BattleMode,
 } from '../../battleBarConfig';
 import {
-  setTerrainCenterShape,
-  setTerrainDividersShape,
+  setTerrainCenterMagnitude,
+  setTerrainDividersMagnitude,
   setTerrainMapShape,
   setTerrainRuntimeConfig,
 } from '../sim/Terrain';
@@ -93,8 +91,6 @@ export async function createBackgroundBattle(
   // renderer bakes its tile mesh once when the scene is created — both
   // must read the current shape, not the module's compile-time
   // default.
-  const terrainCenter = loadStoredTerrainCenter(mode);
-  const terrainDividers = loadStoredTerrainDividers(mode);
   const terrainMapShape = loadStoredTerrainMapShape(mode);
   const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig(mode);
   const mapDimensions = loadStoredMapLandDimensions(mode);
@@ -104,8 +100,8 @@ export async function createBackgroundBattle(
     mapDimensions.lengthLandCells,
   );
   setTerrainRuntimeConfig(terrainRuntimeConfig);
-  setTerrainCenterShape(terrainCenter);
-  setTerrainDividersShape(terrainDividers);
+  setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
+  setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainMapShape(terrainMapShape);
 
   // GAME LOBBY preview = a stripped-down background battle showing
@@ -144,11 +140,10 @@ export async function createBackgroundBattle(
   // reinforcement tick reconciles to their stored preference.
   const server = await GameServer.create({
     playerIds: demoPlayerIds,
-    terrainCenter,
-    terrainDividers,
+    centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+    dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     terrainMapShape,
     terrainPlateauEnabled: terrainRuntimeConfig.plateauEnabled,
-    terrainShapeMagnitude: terrainRuntimeConfig.terrainShapeMagnitude,
     terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: mapDimensions.widthLandCells,
     mapLengthLandCells: mapDimensions.lengthLandCells,
@@ -193,8 +188,8 @@ export async function createBackgroundBattle(
     clientViewState,
     mapWidth: mapSize.width,
     mapHeight: mapSize.height,
-    terrainCenter,
-    terrainDividers,
+    centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+    dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     terrainMapShape,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,

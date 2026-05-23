@@ -22,10 +22,11 @@
 //
 // Each ring also carries `dTerrainLevels`: a signed integer count of
 // TERRAIN_D_TERRAIN steps above/below world height 0, before terrain
-// CENTER polarity is applied. VALLEY inverts the level count, MOUNTAIN
-// preserves it, and FLAT collapses it to 0. Around each pad the terrain
-// blends smoothly from that derived height back to natural over the
-// ring's `terrainBlendRadius`.
+// CENTER polarity is applied. The sign of `centerMagnitude` drives
+// polarity: negative inverts the level count (valley), positive
+// preserves it (mountain), zero collapses it to 0 (flat). Around each
+// pad the terrain blends smoothly from that derived height back to
+// natural over the ring's `terrainBlendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
@@ -34,7 +35,6 @@ import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
 import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
 import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
-import { terrainShapeSign, type TerrainShape } from './types/terrain';
 import rawConfig from './metalDepositConfig.json';
 
 export type DepositRing = {
@@ -128,15 +128,16 @@ type MetalDepositPlacement = Pick<
 /**
  * Compute the deterministic deposit list for a map of given size and
  * player count. Same `(mapWidth, mapHeight, playerCount,
- * terrainCenterShape)` always produces the same deposits in the same
+ * centerMagnitude)` always produces the same deposits in the same
  * order — fine to call independently on host and clients without
- * networking the list.
+ * networking the list. Only the SIGN of `centerMagnitude` matters
+ * here (drives ring dTerrain polarity).
  */
 export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
-  terrainCenterShape: TerrainShape = 'valley',
+  centerMagnitude = -1,
 ): MetalDeposit[] {
   const deposits: MetalDeposit[] = [];
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
@@ -146,7 +147,7 @@ export function generateMetalDeposits(
   const players = Math.max(1, playerCount);
   const sliceWidth = (2 * Math.PI) / players;
   let id = 0;
-  const terrainSign = terrainShapeSign(terrainCenterShape);
+  const terrainSign = Math.sign(centerMagnitude) as -1 | 0 | 1;
 
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;

@@ -4,7 +4,7 @@ import type { PlayerId } from './sim';
 import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
-import type { TerrainMapShape, TerrainShape } from './terrain';
+import type { TerrainMapShape } from './terrain';
 
 export type GameConfig = {
   parent: HTMLElement;
@@ -19,11 +19,14 @@ export type GameConfig = {
   clientViewState: import('../game/network/ClientViewState').ClientViewState;
   mapWidth: number;
   mapHeight: number;
-  /** CENTER terrain shape used for the central terrain heightmap and
-   *  terrain-polarized metal-deposit dTerrain levels. */
-  terrainCenter?: TerrainShape;
-  /** DIVIDERS terrain shape used for team-separator ridges/trenches. */
-  terrainDividers?: TerrainShape;
+  /** Signed CENTER amplitude used for the central terrain heightmap and
+   *  terrain-polarized metal-deposit dTerrain levels. Sign decides
+   *  ripple polarity (negative dishes a valley, positive raises a
+   *  mountain), magnitude decides height. */
+  centerMagnitude?: number;
+  /** Signed DIVIDERS amplitude used for team-separator ridges/trenches.
+   *  Same sign convention as `centerMagnitude`. */
+  dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
   backgroundMode?: boolean;
   /** Lobby-preview rendering: skip the usual demo zoom + base spawn
@@ -100,13 +103,12 @@ export type GameConnection = {
 
 export type GameServerConfig = {
   playerIds: PlayerId[];
-  /** CENTER terrain shape selected by the host/lobby. */
-  terrainCenter?: TerrainShape;
-  /** DIVIDERS terrain shape selected by the host/lobby. */
-  terrainDividers?: TerrainShape;
+  /** Signed CENTER amplitude selected by the host/lobby. */
+  centerMagnitude?: number;
+  /** Signed DIVIDERS amplitude selected by the host/lobby. */
+  dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
   terrainPlateauEnabled?: boolean;
-  terrainShapeMagnitude?: number;
   terrainDTerrain?: number;
   /** Map width in canonical LAND_CELL_SIZE cells. */
   mapWidthLandCells?: number;

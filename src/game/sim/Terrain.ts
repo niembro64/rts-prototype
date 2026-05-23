@@ -1,6 +1,5 @@
 // Public terrain facade. Keep external imports stable while the terrain
 // implementation is split into focused modules under ./terrain.
-export type { TerrainShape } from '@/types/terrain';
 export {
   TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
   TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION,
@@ -30,8 +29,8 @@ export {
   getTerrainVersion,
   getTerrainTeamCount,
   setTerrainRuntimeConfig,
-  setTerrainCenterShape,
-  setTerrainDividersShape,
+  setTerrainCenterMagnitude,
+  setTerrainDividersMagnitude,
   setTerrainMapShape,
   setTerrainTeamCount,
 } from './terrain/terrainState';

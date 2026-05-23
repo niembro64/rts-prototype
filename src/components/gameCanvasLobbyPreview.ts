@@ -1,16 +1,15 @@
 import { computed, nextTick, watch, type ComputedRef, type Ref } from 'vue';
 import {
+  loadStoredCenterMagnitude,
+  loadStoredDividersMagnitude,
   loadStoredMapLandDimensions,
   loadStoredTerrainDTerrain,
   loadStoredTerrainPlateauEnabled,
-  loadStoredTerrainCenter,
-  loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
-  loadStoredTerrainShapeMagnitude,
   type BattleMode,
 } from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
-import type { TerrainMapShape, TerrainShape } from '../types/terrain';
+import type { TerrainMapShape } from '../types/terrain';
 
 export type GameCanvasLobbyPreviewOptions = {
   backgroundContainerRef: Ref<HTMLDivElement | null>;
@@ -21,11 +20,10 @@ export type GameCanvasLobbyPreviewOptions = {
   gameStarted: Ref<boolean>;
   lobbyPlayerCount: ComputedRef<number>;
   localPlayerId: Ref<PlayerId>;
-  terrainCenter: Ref<TerrainShape>;
-  terrainDividers: Ref<TerrainShape>;
+  centerMagnitude: Ref<number>;
+  dividersMagnitude: Ref<number>;
   terrainMapShape: Ref<TerrainMapShape>;
   terrainPlateauEnabled: Ref<boolean>;
-  terrainShapeMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
@@ -42,11 +40,10 @@ export function useGameCanvasLobbyPreview({
   gameStarted,
   lobbyPlayerCount,
   localPlayerId,
-  terrainCenter,
-  terrainDividers,
+  centerMagnitude,
+  dividersMagnitude,
   terrainMapShape,
   terrainPlateauEnabled,
-  terrainShapeMagnitude,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -65,11 +62,10 @@ export function useGameCanvasLobbyPreview({
   }
 
   watch(currentBattleMode, (mode) => {
-    terrainCenter.value = loadStoredTerrainCenter(mode);
-    terrainDividers.value = loadStoredTerrainDividers(mode);
+    centerMagnitude.value = loadStoredCenterMagnitude(mode);
+    dividersMagnitude.value = loadStoredDividersMagnitude(mode);
     terrainMapShape.value = loadStoredTerrainMapShape(mode);
     terrainPlateauEnabled.value = loadStoredTerrainPlateauEnabled(mode);
-    terrainShapeMagnitude.value = loadStoredTerrainShapeMagnitude(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;

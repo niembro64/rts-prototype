@@ -5,7 +5,7 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { audioManager } from '../audio/AudioManager';
 import type { SceneCameraState } from '@/types/game';
 import { isShotId, isTurretId, isUnitTypeId } from '@/types/blueprintIds';
-import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
+import type { TerrainMapShape } from '@/types/terrain';
 import { COLORS } from '@/colorsConfig';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
@@ -57,8 +57,8 @@ import {
   getTerrainMeshHeight,
   getSurfaceHeight,
   setTerrainTeamCount,
-  setTerrainCenterShape,
-  setTerrainDividersShape,
+  setTerrainCenterMagnitude,
+  setTerrainDividersMagnitude,
   setTerrainMapShape,
   setMetalDepositFlatZones,
 } from '../sim/Terrain';
@@ -101,8 +101,8 @@ export type RtsScene3DConfig = {
   clientViewState: ClientViewState;
   mapWidth: number;
   mapHeight: number;
-  terrainCenter?: TerrainShape;
-  terrainDividers?: TerrainShape;
+  centerMagnitude?: number;
+  dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — uses the dedicated wider zoom and
@@ -193,8 +193,8 @@ export class RtsScene3D {
   private playerIds: PlayerId[];
   private mapWidth: number;
   private mapHeight: number;
-  private terrainCenter: TerrainShape;
-  private terrainDividers: TerrainShape;
+  private centerMagnitude: number;
+  private dividersMagnitude: number;
   private terrainMapShape: TerrainMapShape;
   private backgroundMode: boolean;
   private lobbyPreview: boolean;
@@ -269,8 +269,8 @@ export class RtsScene3D {
     this.playerIds = config.playerIds;
     if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;
     this.onRendererWarmupChange = config.onRendererWarmupChange;
-    this.terrainCenter = config.terrainCenter ?? 'valley';
-    this.terrainDividers = config.terrainDividers ?? 'valley';
+    this.centerMagnitude = config.centerMagnitude ?? 0;
+    this.dividersMagnitude = config.dividersMagnitude ?? 0;
     this.terrainMapShape = config.terrainMapShape ?? 'circle';
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
@@ -280,8 +280,8 @@ export class RtsScene3D {
     // including one-player maps. The host's GameServer sets this too,
     // but remote clients only construct the renderer.
     setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
-    setTerrainCenterShape(this.terrainCenter);
-    setTerrainDividersShape(this.terrainDividers);
+    setTerrainCenterMagnitude(this.centerMagnitude);
+    setTerrainDividersMagnitude(this.dividersMagnitude);
     setTerrainMapShape(this.terrainMapShape);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
@@ -297,7 +297,7 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
       this.playerIds.length,
-      this.terrainCenter,
+      this.centerMagnitude,
     );
     setMetalDepositFlatZones(
       metalDeposits.map((d) => ({
@@ -564,7 +564,7 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
       this.playerIds.length,
-      this.terrainCenter,
+      this.centerMagnitude,
     );
     // Keep scene's waypointMode in lockstep with the InputManager so the
     // SelectionPanel reflects the active mode when M/F/H hotkeys fire.

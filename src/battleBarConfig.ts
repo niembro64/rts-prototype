@@ -1,6 +1,6 @@
 import type { BattleBarConfig } from './types/battle';
 import type { ForceFieldReflectionMode } from './types/shotTypes';
-import type { TerrainMapShape, TerrainShape } from './types/terrain';
+import type { TerrainMapShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
@@ -54,15 +54,17 @@ export const BATTLE_CONFIG = {
   forceFieldReflectionMode: {
     default: battleBarConfig.forceFieldReflectionMode.default as ForceFieldReflectionMode,
   },
-  // Terrain shape — applied at game-construction time via
-  // setTerrainCenterShape / setTerrainDividersShape (Terrain.ts).
-  center: {
-    default: battleBarConfig.center.default as TerrainShape,
-    options: battleBarConfig.center.options as ReadonlyArray<{ value: TerrainShape; label: string }>,
+  // CENTER / DIVIDERS amplitudes — applied at game-construction time
+  // via setTerrainCenterMagnitude / setTerrainDividersMagnitude
+  // (Terrain.ts). Signed: negative dishes the feature below ground,
+  // positive raises it above, zero suppresses it.
+  centerMagnitude: {
+    default: battleBarConfig.centerMagnitude.default,
+    options: battleBarConfig.centerMagnitude.options as readonly number[],
   },
-  dividers: {
-    default: battleBarConfig.dividers.default as TerrainShape,
-    options: battleBarConfig.dividers.options as ReadonlyArray<{ value: TerrainShape; label: string }>,
+  dividersMagnitude: {
+    default: battleBarConfig.dividersMagnitude.default,
+    options: battleBarConfig.dividersMagnitude.options as readonly number[],
   },
   mapShape: {
     default: battleBarConfig.mapShape.default as TerrainMapShape,
@@ -73,10 +75,6 @@ export const BATTLE_CONFIG = {
       default: battleBarConfig.plateau.enabled.default,
       options: battleBarConfig.plateau.enabled.options as ReadonlyArray<{ value: boolean; label: string }>,
     },
-  },
-  terrainShapeMagnitude: {
-    default: battleBarConfig.terrainShapeMagnitude.default,
-    options: battleBarConfig.terrainShapeMagnitude.options as readonly number[],
   },
   terrainDTerrain: {
     default: battleBarConfig.terrainDTerrain.default,
@@ -128,16 +126,14 @@ const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
 const STORAGE_DEMO_FORCE_FIELD_REFLECTION_MODE = sk.demoForceFieldReflectionMode;
 const STORAGE_REAL_FORCE_FIELD_REFLECTION_MODE = sk.realForceFieldReflectionMode;
-const STORAGE_DEMO_TERRAIN_CENTER = sk.demoTerrainCenter;
-const STORAGE_REAL_TERRAIN_CENTER = sk.realTerrainCenter;
-const STORAGE_DEMO_TERRAIN_DIVIDERS = sk.demoTerrainDividers;
-const STORAGE_REAL_TERRAIN_DIVIDERS = sk.realTerrainDividers;
+const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
+const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
+const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
+const STORAGE_REAL_DIVIDERS_MAGNITUDE = sk.realDividersMagnitude;
 const STORAGE_DEMO_TERRAIN_MAP_SHAPE = sk.demoTerrainMapShape;
 const STORAGE_REAL_TERRAIN_MAP_SHAPE = sk.realTerrainMapShape;
 const STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED = sk.demoTerrainPlateauEnabled;
 const STORAGE_REAL_TERRAIN_PLATEAU_ENABLED = sk.realTerrainPlateauEnabled;
-const STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE = sk.demoTerrainShapeMagnitude;
-const STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE = sk.realTerrainShapeMagnitude;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
@@ -282,7 +278,8 @@ export type BattleMode = 'demo' | 'real';
 
 export type BattleTerrainRuntimeConfig = {
   plateauEnabled: boolean;
-  terrainShapeMagnitude: number;
+  centerMagnitude: number;
+  dividersMagnitude: number;
   terrainDTerrain: number;
 };
 
@@ -405,15 +402,6 @@ export function saveForceFieldReflectionMode(
   );
 }
 
-/** Validate a string against the known TerrainShape values. Anything
- *  else (corrupted localStorage, removed value) returns null so the
- *  caller falls back to the config default. */
-function parseTerrainShape(s: string | null): TerrainShape | null {
-  if (s === 'lake') return 'valley';
-  if (s === 'valley' || s === 'mountain' || s === 'flat') return s;
-  return null;
-}
-
 function parseTerrainMapShape(s: string | null): TerrainMapShape | null {
   if (s === 'square' || s === 'circle') return s;
   return null;
@@ -423,7 +411,7 @@ function parseNumberOption(
   value: string | null,
   options: readonly number[],
 ): number | null {
-  if (!value) return null;
+  if (value === null || value === '') return null;
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n)) return null;
   return options.includes(n) ? n : null;
@@ -465,8 +453,12 @@ export function normalizeTerrainPlateauEnabled(value: unknown): boolean {
     : BATTLE_CONFIG.plateau.enabled.default;
 }
 
-export function normalizeTerrainShapeMagnitude(value: number): number {
-  return normalizeNumberOption(value, BATTLE_CONFIG.terrainShapeMagnitude);
+export function normalizeCenterMagnitude(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.centerMagnitude);
+}
+
+export function normalizeDividersMagnitude(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.dividersMagnitude);
 }
 
 export function normalizeTerrainDTerrain(value: number): number {
@@ -590,60 +582,37 @@ function readStoredMapLandDimensions(
   return null;
 }
 
-export function loadStoredTerrainCenter(mode: BattleMode): TerrainShape {
-  ensureBattleMigrations();
-  const primary = parseTerrainShape(
-    readPersisted(
-      mode === 'real'
-        ? STORAGE_REAL_TERRAIN_CENTER
-        : STORAGE_DEMO_TERRAIN_CENTER,
-    ),
+export function loadStoredCenterMagnitude(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_CENTER_MAGNITUDE,
+    STORAGE_DEMO_CENTER_MAGNITUDE,
+    BATTLE_CONFIG.centerMagnitude,
   );
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = parseTerrainShape(
-      readPersisted(STORAGE_DEMO_TERRAIN_CENTER),
-    );
-    if (demoFallback !== null) return demoFallback;
-  }
-  return BATTLE_CONFIG.center.default;
 }
 
-export function saveTerrainCenter(shape: TerrainShape, mode: BattleMode): void {
+export function saveCenterMagnitude(value: number, mode: BattleMode): void {
   persist(
-    mode === 'real' ? STORAGE_REAL_TERRAIN_CENTER : STORAGE_DEMO_TERRAIN_CENTER,
-    shape,
+    mode === 'real' ? STORAGE_REAL_CENTER_MAGNITUDE : STORAGE_DEMO_CENTER_MAGNITUDE,
+    String(normalizeCenterMagnitude(value)),
   );
 }
 
-export function loadStoredTerrainDividers(mode: BattleMode): TerrainShape {
-  ensureBattleMigrations();
-  const primary = parseTerrainShape(
-    readPersisted(
-      mode === 'real'
-        ? STORAGE_REAL_TERRAIN_DIVIDERS
-        : STORAGE_DEMO_TERRAIN_DIVIDERS,
-    ),
+export function loadStoredDividersMagnitude(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_DIVIDERS_MAGNITUDE,
+    STORAGE_DEMO_DIVIDERS_MAGNITUDE,
+    BATTLE_CONFIG.dividersMagnitude,
   );
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = parseTerrainShape(
-      readPersisted(STORAGE_DEMO_TERRAIN_DIVIDERS),
-    );
-    if (demoFallback !== null) return demoFallback;
-  }
-  return BATTLE_CONFIG.dividers.default;
 }
 
-export function saveTerrainDividers(
-  shape: TerrainShape,
-  mode: BattleMode,
-): void {
+export function saveDividersMagnitude(value: number, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_TERRAIN_DIVIDERS
-      : STORAGE_DEMO_TERRAIN_DIVIDERS,
-    shape,
+      ? STORAGE_REAL_DIVIDERS_MAGNITUDE
+      : STORAGE_DEMO_DIVIDERS_MAGNITUDE,
+    String(normalizeDividersMagnitude(value)),
   );
 }
 
@@ -699,27 +668,6 @@ export function saveTerrainPlateauEnabled(
   );
 }
 
-export function loadStoredTerrainShapeMagnitude(mode: BattleMode): number {
-  return loadModeNumberOption(
-    mode,
-    STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE,
-    STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE,
-    BATTLE_CONFIG.terrainShapeMagnitude,
-  );
-}
-
-export function saveTerrainShapeMagnitude(
-  value: number,
-  mode: BattleMode,
-): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE
-      : STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE,
-    String(normalizeTerrainShapeMagnitude(value)),
-  );
-}
-
 export function loadStoredTerrainDTerrain(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
@@ -743,7 +691,8 @@ export function loadStoredTerrainRuntimeConfig(
 ): BattleTerrainRuntimeConfig {
   return {
     plateauEnabled: loadStoredTerrainPlateauEnabled(mode),
-    terrainShapeMagnitude: loadStoredTerrainShapeMagnitude(mode),
+    centerMagnitude: loadStoredCenterMagnitude(mode),
+    dividersMagnitude: loadStoredDividersMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
   };
 }

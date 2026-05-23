@@ -190,7 +190,6 @@ import type { SnapshotCompressionFormat } from './config';
 import type {
   TerrainBuildabilityGrid,
   TerrainMapShape,
-  TerrainShape,
   TerrainTileMap,
 } from './terrain';
 
@@ -250,11 +249,12 @@ export type NetworkPlayerActionMessage =
 // complexity, and atomic-replace avoids the "client missed one
 // field" failure mode if a future delta protocol drops a packet.
 export type LobbySettings = {
-  terrainCenter: TerrainShape;
-  terrainDividers: TerrainShape;
+  /** Signed altitude of the central ripple (CENTER bar). */
+  centerMagnitude: number;
+  /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
+  dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
   terrainPlateauEnabled?: boolean;
-  terrainShapeMagnitude?: number;
   terrainDTerrain?: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;

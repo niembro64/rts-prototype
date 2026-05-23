@@ -8,21 +8,13 @@
   "forceFieldsObstructSight": { "default": true },
   "fogOfWarEnabled": { "default": true },
   "forceFieldReflectionMode": { "default": "both" },
-  "center": {
-    "default": "mountain",
-    "options": [
-      { "value": "valley", "label": "VALLEY" },
-      { "value": "mountain", "label": "MOUNTAIN" },
-      { "value": "flat", "label": "FLAT" }
-    ]
+  "centerMagnitude": {
+    "default": 400,
+    "options": [-200, 0, 200, 400, 800, 1600, 3200]
   },
-  "dividers": {
-    "default": "mountain",
-    "options": [
-      { "value": "valley", "label": "VALLEYS" },
-      { "value": "mountain", "label": "MOUNTAINS" },
-      { "value": "flat", "label": "FLAT" }
-    ]
+  "dividersMagnitude": {
+    "default": 400,
+    "options": [-200, 0, 200, 400, 800, 1600, 3200]
   },
   "mapShape": {
     "default": "circle",
@@ -39,10 +31,6 @@
         { "value": false, "label": "OFF" }
       ]
     }
-  },
-  "terrainShapeMagnitude": {
-    "default": 400,
-    "options": [400, 800, 1600, 3200]
   },
   "terrainDTerrain": {
     "default": 200,
@@ -74,16 +62,14 @@
     "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
     "demoForceFieldReflectionMode": "demo-battle-force-field-reflection-mode",
     "realForceFieldReflectionMode": "real-battle-force-field-reflection-mode",
-    "demoTerrainCenter": "demo-battle-terrain-center",
-    "realTerrainCenter": "real-battle-terrain-center",
-    "demoTerrainDividers": "demo-battle-terrain-dividers",
-    "realTerrainDividers": "real-battle-terrain-dividers",
+    "demoCenterMagnitude": "demo-battle-center-magnitude",
+    "realCenterMagnitude": "real-battle-center-magnitude",
+    "demoDividersMagnitude": "demo-battle-dividers-magnitude",
+    "realDividersMagnitude": "real-battle-dividers-magnitude",
     "demoTerrainMapShape": "demo-battle-terrain-map-shape",
     "realTerrainMapShape": "real-battle-terrain-map-shape",
     "demoTerrainPlateauEnabled": "demo-battle-terrain-plateau-enabled",
     "realTerrainPlateauEnabled": "real-battle-terrain-plateau-enabled",
-    "demoTerrainShapeMagnitude": "demo-battle-terrain-shape-magnitude",
-    "realTerrainShapeMagnitude": "real-battle-terrain-shape-magnitude",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoConverterTax": "demo-battle-converter-tax",
@@ -110,8 +96,6 @@
     ["demo-battle-force-fields-block-targeting", "demo-battle-force-fields-obstruct-sight"],
     ["real-battle-force-fields-block-targeting", "real-battle-force-fields-obstruct-sight"],
     ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
-    ["rts-terrain-center", "demo-battle-terrain-center"],
-    ["rts-terrain-dividers", "demo-battle-terrain-dividers"],
     ["rts-terrain-map-shape", "demo-battle-terrain-map-shape"],
     ["rts-map-land-cells", "demo-battle-map-width-land-cells"]
   ]

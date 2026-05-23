@@ -25,16 +25,15 @@ import {
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import {
   loadStoredCap,
+  loadStoredCenterMagnitude,
+  loadStoredDividersMagnitude,
   loadStoredGrid,
-  loadStoredTerrainCenter,
-  loadStoredTerrainDividers,
   loadStoredTerrainDTerrain,
   loadStoredTerrainMapShape,
   loadStoredTerrainPlateauEnabled,
-  loadStoredTerrainShapeMagnitude,
   loadStoredMapLandDimensions,
 } from '../battleBarConfig';
-import type { TerrainMapShape, TerrainShape } from '../types/terrain';
+import type { TerrainMapShape } from '../types/terrain';
 import {
   SERVER_CONFIG,
   loadStoredUnitGroundNormalEmaMode,
@@ -226,11 +225,10 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 // roomCode=''). Switching into the GAME LOBBY flips
 // `currentBattleMode` to `real`; the lobby-preview composable reloads
 // these refs from the real-battle keys at that point.
-const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter('demo'));
-const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers('demo'));
+const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
+const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
 const terrainPlateauEnabled = ref<boolean>(loadStoredTerrainPlateauEnabled('demo'));
-const terrainShapeMagnitude = ref<number>(loadStoredTerrainShapeMagnitude('demo'));
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
@@ -368,11 +366,10 @@ useGameCanvasLobbyPreview({
   gameStarted,
   lobbyPlayerCount,
   localPlayerId,
-  terrainCenter,
-  terrainDividers,
+  centerMagnitude,
+  dividersMagnitude,
   terrainMapShape,
   terrainPlateauEnabled,
-  terrainShapeMagnitude,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -490,10 +487,10 @@ const displayServerIp = computed(
 const {
   currentLobbySettings,
   broadcastLobbySettingsIfHost,
-  applyTerrainShape,
+  applyCenterMagnitude,
+  applyDividersMagnitude,
   applyTerrainMapShape,
   applyTerrainPlateauEnabled,
-  applyTerrainShapeMagnitude,
   applyTerrainDTerrain,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
@@ -504,11 +501,10 @@ const {
   networkRole,
   roomCode,
   gameStarted,
-  terrainCenter,
-  terrainDividers,
+  centerMagnitude,
+  dividersMagnitude,
   terrainMapShape,
   terrainPlateauEnabled,
-  terrainShapeMagnitude,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -671,11 +667,10 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   gameStarted: gameStarted.value,
   mapWidthLandCells: mapWidthLandCells.value,
   mapLengthLandCells: mapLengthLandCells.value,
-  terrainCenter: terrainCenter.value,
-  terrainDividers: terrainDividers.value,
+  centerMagnitude: centerMagnitude.value,
+  dividersMagnitude: dividersMagnitude.value,
   terrainMapShape: terrainMapShape.value,
   terrainPlateauEnabled: terrainPlateauEnabled.value,
-  terrainShapeMagnitude: terrainShapeMagnitude.value,
   terrainDTerrain: terrainDTerrain.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
@@ -686,10 +681,10 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   toggleDemoUnitType,
   changeMaxTotalUnits,
   applyMapLandDimensions,
-  applyTerrainShape,
+  applyCenterMagnitude,
+  applyDividersMagnitude,
   applyTerrainMapShape,
   applyTerrainPlateauEnabled,
-  applyTerrainShapeMagnitude,
   applyTerrainDTerrain,
   setForceFieldsObstructSight,
   setFogOfWarEnabled,
@@ -710,11 +705,10 @@ watchEffect(() => {
   m.gameStarted = gameStarted.value;
   m.mapWidthLandCells = mapWidthLandCells.value;
   m.mapLengthLandCells = mapLengthLandCells.value;
-  m.terrainCenter = terrainCenter.value;
-  m.terrainDividers = terrainDividers.value;
+  m.centerMagnitude = centerMagnitude.value;
+  m.dividersMagnitude = dividersMagnitude.value;
   m.terrainMapShape = terrainMapShape.value;
   m.terrainPlateauEnabled = terrainPlateauEnabled.value;
-  m.terrainShapeMagnitude = terrainShapeMagnitude.value;
   m.terrainDTerrain = terrainDTerrain.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
@@ -1074,11 +1068,10 @@ watchEffect(() => {
       :local-player-id="localPlayerId"
       :error="lobbyError"
       :is-connecting="isConnecting"
-      :terrain-center="terrainCenter"
-      :terrain-dividers="terrainDividers"
+      :center-magnitude="centerMagnitude"
+      :dividers-magnitude="dividersMagnitude"
       :terrain-map-shape="terrainMapShape"
       :terrain-plateau-enabled="terrainPlateauEnabled"
-      :terrain-shape-magnitude="terrainShapeMagnitude"
       :terrain-d-terrain="terrainDTerrain"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
@@ -1095,11 +1088,10 @@ watchEffect(() => {
       @cancel="handleLobbyCancel"
       @offline="handleOffline"
       @spectate="toggleSpectateMode"
-      @set-terrain-center="(s) => applyTerrainShape('center', s)"
-      @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
+      @set-center-magnitude="(v) => applyCenterMagnitude(v)"
+      @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
       @set-terrain-plateau-enabled="(e) => applyTerrainPlateauEnabled(e)"
-      @set-terrain-shape-magnitude="(v) => applyTerrainShapeMagnitude(v)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"

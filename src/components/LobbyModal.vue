@@ -11,7 +11,7 @@ import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
-import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
+import type { TerrainMapShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
@@ -26,11 +26,10 @@ const props = defineProps<{
   localPlayerId: PlayerId;
   error: string | null;
   isConnecting: boolean;
-  terrainCenter: TerrainShape;
-  terrainDividers: TerrainShape;
+  centerMagnitude: number;
+  dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
   terrainPlateauEnabled: boolean;
-  terrainShapeMagnitude: number;
   terrainDTerrain: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
@@ -49,11 +48,10 @@ const emit = defineEmits<{
   (e: 'start'): void;
   (e: 'cancel'): void;
   (e: 'spectate'): void;
-  (e: 'setTerrainCenter', shape: TerrainShape): void;
-  (e: 'setTerrainDividers', shape: TerrainShape): void;
+  (e: 'setCenterMagnitude', value: number): void;
+  (e: 'setDividersMagnitude', value: number): void;
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
   (e: 'setTerrainPlateauEnabled', enabled: boolean): void;
-  (e: 'setTerrainShapeMagnitude', value: number): void;
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
@@ -69,11 +67,10 @@ const emit = defineEmits<{
 // Surface the labeled-options arrays to the template. The host
 // clicks one to pick the shape; non-hosts see the same UI but the
 // click handler is gated on isHost so only the host can change it.
-const centerOptions = BATTLE_CONFIG.center.options;
-const dividersOptions = BATTLE_CONFIG.dividers.options;
+const centerMagnitudeOptions = BATTLE_CONFIG.centerMagnitude.options;
+const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 const plateauEnabledOptions = BATTLE_CONFIG.plateau.enabled.options;
-const terrainShapeMagnitudeOptions = BATTLE_CONFIG.terrainShapeMagnitude.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
@@ -91,14 +88,14 @@ const allUnitsActive = computed(() => {
   return true;
 });
 
-function pickTerrainCenter(shape: TerrainShape): void {
+function pickCenterMagnitude(value: number): void {
   if (!props.isHost) return;
-  emit('setTerrainCenter', shape);
+  emit('setCenterMagnitude', value);
 }
 
-function pickTerrainDividers(shape: TerrainShape): void {
+function pickDividersMagnitude(value: number): void {
   if (!props.isHost) return;
-  emit('setTerrainDividers', shape);
+  emit('setDividersMagnitude', value);
 }
 
 function pickTerrainMapShape(shape: TerrainMapShape): void {
@@ -109,11 +106,6 @@ function pickTerrainMapShape(shape: TerrainMapShape): void {
 function pickTerrainPlateauEnabled(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setTerrainPlateauEnabled', enabled);
-}
-
-function pickTerrainShapeMagnitude(value: number): void {
-  if (!props.isHost) return;
-  emit('setTerrainShapeMagnitude', value);
 }
 
 function pickTerrainDTerrain(value: number): void {
@@ -553,12 +545,12 @@ const terrainSectionVars = computed(() =>
                 <BarLabel>CENTER:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="opt in centerOptions"
-                    :key="opt.value"
-                    :active="terrainCenter === opt.value"
-                    :title="isHost ? `Set the central ripple to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                    @click="pickTerrainCenter(opt.value)"
-                  >{{ opt.label }}</BarButton>
+                    v-for="opt in centerMagnitudeOptions"
+                    :key="opt"
+                    :active="centerMagnitude === opt"
+                    :title="isHost ? `Set the central ripple altitude to ${opt}` : 'Only the host can change terrain'"
+                    @click="pickCenterMagnitude(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>
@@ -566,12 +558,12 @@ const terrainSectionVars = computed(() =>
                 <BarLabel>DIVIDERS:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="opt in dividersOptions"
-                    :key="opt.value"
-                    :active="terrainDividers === opt.value"
-                    :title="isHost ? `Set the team-separator ridges to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                    @click="pickTerrainDividers(opt.value)"
-                  >{{ opt.label }}</BarButton>
+                    v-for="opt in dividersMagnitudeOptions"
+                    :key="opt"
+                    :active="dividersMagnitude === opt"
+                    :title="isHost ? `Set the team-separator ridge altitude to ${opt}` : 'Only the host can change terrain'"
+                    @click="pickDividersMagnitude(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>
@@ -598,19 +590,6 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Turn terrain plateaus ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                     @click="pickTerrainPlateauEnabled(opt.value)"
                   >{{ opt.label }}</BarButton>
-                </BarButtonGroup>
-              </BarControlGroup>
-              <BarControlGroup>
-                <BarDivider />
-                <BarLabel>MAGNITUDE:</BarLabel>
-                <BarButtonGroup>
-                  <BarButton
-                    v-for="opt in terrainShapeMagnitudeOptions"
-                    :key="opt"
-                    :active="terrainShapeMagnitude === opt"
-                    :title="isHost ? `Set terrain shape magnitude to ${opt}` : 'Only the host can change terrain'"
-                    @click="pickTerrainShapeMagnitude(opt)"
-                  >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>
