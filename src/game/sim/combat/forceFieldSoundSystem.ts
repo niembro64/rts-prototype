@@ -62,6 +62,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
           type: 'forceFieldStop',
           turretId: config.id,
           pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+          playerId: unit.ownership.playerId,
           entityId: soundEntityId,
         });
       } else {
@@ -71,6 +72,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
             type: 'forceFieldStart',
             turretId: config.id,
             pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+            playerId: unit.ownership.playerId,
             entityId: soundEntityId,
           });
         }

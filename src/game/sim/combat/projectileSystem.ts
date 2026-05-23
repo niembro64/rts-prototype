@@ -479,6 +479,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             type: 'fire',
             turretId: config.id,
             pos: { x: spawnX, y: spawnY, z: spawnZ },
+            playerId,
+            entityId: unit.id,
           });
         }
 

@@ -236,7 +236,10 @@ export class ServerSnapshotPublisher {
         audioOverride = teamAudioCache.get(teamKey);
         if (!audioOverride) {
           audioOverride = {
-            value: serializeAudioEvents(audioEvents, visibility, listener.deltaTrackingKey),
+            value: serializeAudioEvents(audioEvents, visibility, listener.deltaTrackingKey, {
+              unitCount,
+              snapshotSequence: emitSequence,
+            }),
           };
           teamAudioCache.set(teamKey, audioOverride);
         }

@@ -86,129 +86,60 @@ Evidence:
   were still led by `entities` at 143,557 B, followed by
   `minimapEntities` 28,350 B, `projectiles` 26,873 B, and
   `audioEvents` 21,555 B.
+- The 2026-05-23 high-count LOD pass closes the remaining DIFFSNAP
+  budget gap in the live Vite SSR harness. It spreads high-count
+  foreign movement/turret/HP entity rows over 16 deltas, spreads
+  foreign projectile velocity/beam corrections over 8 deltas, lowers
+  high-count minimap cadence to 1 Hz, and spreads high-volume foreign
+  fire/hit/start/impact events over 8 deltas while keeping
+  spawn/despawn, death, attack-alert, ping, and stop events immediate.
+  Captured 5-player PLAYER CLIENT rows with keyframes disabled:
+  - cap 1,000: DIFFSNAP 37,229 B avg / 63,503 B hi across 40 deltas.
+  - cap 5,000: DIFFSNAP 52,193 B avg / 98,782 B hi across 40 deltas.
+  - cap 5,000 average sections: `entities` 32,029 B, `projectiles`
+    9,217 B, `audioEvents` 7,758 B, `minimapEntities` 2,436 B.
+- The same 2026-05-23 harness now shows FULLSNAP bootstrap over the
+  1 MiB target in this checkout: 1,817,697 B at cap 1,000 and
+  2,305,159 B at cap 5,000. The remaining SNAP-WIRE work has shifted
+  back to bootstrap/static/full-entity payload size.
 
 Why it matters:
 Snapshot bandwidth is per remote client and burns host upstream first.
-Even when the 200-unit delta stream is under target and the high-count
-FULLSNAP bootstrap is under 1 MiB, every remote client multiplies the
-DIFFSNAP stream. The 1,000 / 5,000-unit rows still exceed the normal
-internet delta budget by several multiples.
+The high-count DIFFSNAP stream is back under the normal internet delta
+budget, but joining/recovering clients still need a FULLSNAP bootstrap.
+A multi-megabyte bootstrap delays recovery, stresses the data channel,
+and can stack badly when several clients connect or resync together.
 
 Fix direction:
-Do child items as separate, measurable PRs. FULLSNAP/static sections are
-not the active blocker; the next work is SNAP-WIRE-01A.
+Do child items as separate, measurable PRs. SNAP-WIRE-01A is closed by
+the 2026-05-23 high-count LOD capture; the next work is SNAP-WIRE-01B.
 
 ------------------------------------------------------------------------------
-SNAP-WIRE-01A - child: high-count DIFFSNAP rows exceed the 64 KiB avg /
-                128 KiB hi targets after the packed-row passes.
+SNAP-WIRE-01B - child: FULLSNAP bootstrap exceeds the 1 MiB target in
+                the current high-count harness.
 ------------------------------------------------------------------------------
 
 Evidence:
-- Captured PLAYER CLIENT matrix, 2026-05-22, keyframes disabled, fog
-  disabled, debug grid disabled, all demo unit types enabled, base
-  position threshold at 5, base rotation-position threshold at 0.1,
-  and owned/allied/observed threshold multipliers at 1x:
-  - cap 1,000: DS avg 159,039-211,790 B, DS hi 218,564-244,394 B.
-  - cap 5,000: DS avg 671,714-770,596 B, DS hi 841,268-859,546 B.
-  - FULLSNAP bootstrap stayed under target: about 389-392 KiB at cap
-    1,000 and 918-923 KiB at cap 5,000.
-- A representative max-delta section breakdown from the same harness
-  family showed `entities` as the dominant section at high count:
-  roughly 614 KiB / 72% of an 849 KiB cap-5,000 delta. Projectiles,
-  audio events, and minimap entities followed at roughly 103 KiB,
-  70 KiB, and 62 KiB respectively.
-- After the version-3 unit turret slab and continuous audio lifecycle
-  pass, the 2026-05-22 Vite SSR probe measured cap 1,000 / 10 SPS at
-  43,519 B avg / 83,281 B hi, which is inside the normal 64 KiB avg /
-  128 KiB hi targets. Cap 5,000 / 10 SPS improved to 221,055 B avg /
-  322,977 B hi but remains over budget; average packed sections were
-  `entities` 143,557 B, `minimapEntities` 28,350 B, `projectiles`
-  26,873 B, and `audioEvents` 21,555 B.
-- The 2026-05-22 version-4 entity wire pass moves the active
-  movement-only and split unit-turret rows from MessagePack number
-  arrays into binary varint slabs while preserving V1-V3 decode
-  support. Offline 5,000-row synthetic probes measured the packed
-  entity sub-shape at 109,967 B -> 82,103 B for pos+vel movement
-  rows (25.3% reduction), 145,773 B -> 113,064 B for a mixed
-  movement sample (22.4% reduction), and 324,490 B -> 254,315 B for
-  split movement+turret rows (21.6% reduction). V3/V4 decoded DTOs
-  matched exactly in those probes. The live high-count matrix still
-  needs to be rerun before this child can be closed.
-- The 2026-05-22 version-5 grouped entity wire pass keeps V1-V4 decode
-  support and groups binary movement rows by movement-field flags plus
-  playerId, and binary turret rows by playerId plus turret count. Row
-  IDs are sent as signed deltas inside each group, so repeated
-  per-row flags, player IDs, and turret counts leave the hot path.
-  Offline 5,000-row synthetic probes measured V4 -> V5 msgpack at
-  83,435 B -> 68,583 B for pos+rot+vel movement rows (17.8%
-  reduction), 139,435 B -> 124,583 B for a mixed hover sample with
-  orientation + angular velocity rows (10.7% reduction), and
-  152,005 B -> 122,299 B for split movement+turret rows (19.5%
-  reduction). V5 decoded DTOs matched V4 decoded DTOs in all probes.
-  The live high-count matrix still needs to be rerun before this child
-  can be closed.
-- The 2026-05-22 version-6 entity wire pass keeps V1-V5 decode support
-  and compacts yaw-only airborne movement rows. When orientation has
-  zero X/Y and unit-quaternion Z/W, the row reconstructs orientation
-  from the already-shipped quantized rotation instead of sending four
-  Float64 components. When angularVelocity3 has zero X/Y, the row sends
-  only yaw velocity Z instead of three Float64 components. A Vite SSR
-  synthetic probe measured 1,000 yaw-only movement rows at 69,332 B for
-  the full-orientation-compatible shape vs 21,330 B for V6 compact
-  (69.2% reduction), and 5,000 rows at 353,082 B vs 113,082 B
-  (68.0% reduction). Decode parity keyed by entity id had zero
-  mismatches for id, position, rotation, velocity, yaw angular velocity,
-  and unit-length reconstructed orientation. The live high-count matrix
-  still needs to be rerun before this child can be closed.
-- The 2026-05-23 minimap V2 wire pass moves `minimapEntities` from
-  six-number MessagePack rows into grouped Uint8Array varint slabs keyed
-  by entity type, playerId, and radar-only flag while preserving V1
-  decode support. The pass also extracts the shared binary varint
-  writer/reader used by the entity slabs so the minimap encoder does
-  not carry a duplicate implementation. A synthetic 5-player row mix
-  measured raw msgpack at 10,967 B -> 4,949 B for 1,000 entries
-  (54.9% reduction) and 58,727 B -> 24,914 B for 5,000 entries
-  (57.6% reduction). The live high-count matrix still needs to be
-  rerun before this child can be closed.
-- The 2026-05-23 projectile V2 wire pass moves `spawns`, `despawns`,
-  `velocityUpdates`, and `beamUpdates` (with embedded beam points) from
-  MessagePack number arrays into Uint8Array varint slabs using the
-  shared `snapshotBinaryWire` writer/reader. Spawn rows group by
-  optional-field flag mask; velocity updates group by the
-  clear-homing-target bit; despawns and beam updates use delta IDs
-  with per-row varuint flags. The V1 decode path is preserved.
-  Synthetic probes measured msgpack-encoded sizes for representative
-  shapes: 5,000 velocity updates went from 81,760 B to 57,213 B
-  (30.0% reduction), 1,000 velocity updates from 15,949 B to 11,411 B
-  (28.5% reduction), 200 mixed spawns from 8,478 B to 5,478 B (35.4%
-  reduction), 500 sorted-id despawns from 1,395 B to 526 B (62.3%
-  reduction), 500 random-id despawns from 1,512 B to 1,192 B (21.2%
-  reduction), 20 multi-segment beams from 1,591 B to 1,122 B (29.5%
-  reduction), and a combined 5,000-cap tick (5,000 velocity updates
-  + 30 spawns + 30 despawns + 10 beams) from 83,435 B to 58,381 B
-  (30.0% reduction). All round-trip parity checks pass when comparing
-  decoded DTOs keyed by id. The encode path no longer uses pooled
-  scratch arrays because binary writers own their buffers; the now-
-  unused `createPooledNumberArrayScratch` and `PooledNumberArrayScratch`
-  helpers were deleted along with their codec wiring. The live
-  high-count matrix still needs to be rerun before this child can be
-  closed.
+- 2026-05-23 Vite SSR PLAYER CLIENT harness, 5 players, 10 SPS,
+  keyframes disabled after startup, current checkout:
+  - cap 1,000: FULLSNAP bootstrap 1,817,697 B.
+  - cap 5,000: FULLSNAP bootstrap 2,305,159 B.
+- The same run has DIFFSNAP inside budget, so the remaining wire-size
+  blocker is no longer steady-state delta traffic.
 
 Why it matters:
-The remaining bandwidth problem is steady-state upstream, not rare
-bootstrap recovery. At 5,000 active units a single remote client can
-consume several megabits/sec even before WebRTC framing, retransmits,
-or additional remote clients multiply the stream.
+A remote client cannot enter or recover from a match without receiving
+a bootstrap FULLSNAP. Oversized bootstraps can delay join, increase
+WebRTC retransmit pressure, and create host spikes when multiple
+clients connect or need recovery snapshots.
 
 Fix direction:
-Continue with the high-count entity delta shape. The 1,000-cap row is
-now inside target, but the 5,000-cap row is still entity-led. Prefer
-denser movement/turret slabs, lower-detail high-count entity cadence, or
-the existing Rust entity-row encoder shape over nested per-entity arrays
-where that reduces bytes and keeps a single source of truth. After the
-5,000-cap entity stream is reduced, rerun the same matrix and then
-budget the next largest delta sections: projectile/beam bursts,
-minimap rows, and remaining audio-event bursts.
+First capture a FULLSNAP top-level and entity/static breakdown from the
+same harness. Confirm whether the growth is terrain/buildability,
+full-entity rows, or both. Then reduce the dominant section with a
+measurable static/full-row packing pass, or split immutable terrain /
+buildability bootstrap into a separately cached transfer if that keeps
+the gameplay snapshot under the 1 MiB recovery target.
 
 ==============================================================================
 

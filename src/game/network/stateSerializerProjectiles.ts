@@ -7,6 +7,7 @@ import type {
   ProjectileVelocityUpdateEvent,
 } from '../sim/combat';
 import type { Vec3 } from '../../types/vec2';
+import { SNAPSHOT_CONFIG } from '../../config';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotBeamPoint,
@@ -98,7 +99,8 @@ export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   deltaEnabled: boolean;
   visibility?: SnapshotVisibility;
-  emitBeamUpdates?: boolean;
+  emitBeamUpdates: boolean;
+  snapshotSequence: number;
   projectileSpawns?: ProjectileSpawnEvent[];
   projectileDespawns?: ProjectileDespawnEvent[];
   projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[];
@@ -535,17 +537,41 @@ function getBeamWireSourcePointIndex(
   return wireIndex;
 }
 
+function shouldDeferForeignHighCountProjectileCorrection(
+  id: number,
+  ownerId: PlayerId | undefined,
+  unitCount: number,
+  visibility: SnapshotVisibility | undefined,
+  deltaEnabled: boolean,
+  snapshotSequence: number,
+): boolean {
+  if (!deltaEnabled) return false;
+  if (ownerId === undefined) return false;
+  if (visibility === undefined || !visibility.hasRecipient) return false;
+  if (visibility.isOwnedByRecipientOrAlly(ownerId)) return false;
+  if (unitCount < SNAPSHOT_CONFIG.highCountEntityLodUnitThreshold) return false;
+
+  const cadence = Math.max(
+    1,
+    Math.floor(SNAPSHOT_CONFIG.highCountForeignProjectileSnapshotCadence),
+  );
+  if (cadence <= 1) return false;
+  return ((id + snapshotSequence) % cadence) !== 0;
+}
+
 export function serializeProjectileSnapshot({
   world,
   deltaEnabled,
   visibility,
-  emitBeamUpdates = true,
+  emitBeamUpdates,
+  snapshotSequence,
   projectileSpawns,
   projectileDespawns,
   projectileVelocityUpdates,
 }: SerializeProjectileSnapshotOptions): ProjectileSnapshot | undefined {
   resetProjectilePools();
   resetProjectileWireSource();
+  const unitCount = world.getUnits().length;
 
   // Full keyframes synthesize spawns for every live projectile entity so a
   // client that missed the original spawn event can still recover it.
@@ -697,9 +723,22 @@ export function serializeProjectileSnapshot({
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
       const projectile = world.getEntity(vu.id)?.projectile;
+      const ownerId = projectile !== undefined ? projectile.ownerId : undefined;
+      if (
+        shouldDeferForeignHighCountProjectileCorrection(
+          vu.id,
+          ownerId,
+          unitCount,
+          visibility,
+          deltaEnabled,
+          snapshotSequence,
+        )
+      ) {
+        continue;
+      }
       if (
         !shouldSendProjectileAtPoint(
-          projectile?.ownerId,
+          ownerId,
           visibility,
           vu.pos.x,
           vu.pos.y,
@@ -736,6 +775,18 @@ export function serializeProjectileSnapshot({
       if (!proj) continue;
       const srcPts = proj.points;
       if (!srcPts || srcPts.length < 2) continue;
+      if (
+        shouldDeferForeignHighCountProjectileCorrection(
+          entity.id,
+          proj.ownerId,
+          unitCount,
+          visibility,
+          deltaEnabled,
+          snapshotSequence,
+        )
+      ) {
+        continue;
+      }
       if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;
 
       const update = getPooledBeamUpdate();

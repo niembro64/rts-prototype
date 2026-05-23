@@ -124,6 +124,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
           type: 'laserStop',
           turretId: config.id,
           pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+          playerId: unit.ownership.playerId,
           entityId: soundEntityId,
         });
         continue;
@@ -146,6 +147,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
             type: 'laserStart',
             turretId: config.id,
             pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+            playerId: unit.ownership.playerId,
             entityId: soundEntityId,
           });
         }
@@ -155,6 +157,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
           type: 'laserStop',
           turretId: config.id,
           pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+          playerId: unit.ownership.playerId,
           entityId: soundEntityId,
         });
       }

@@ -630,6 +630,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     type: 'fire',
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
     turretId: dgunTurret.config.id,
+    playerId,
+    entityId: commander.id,
   };
   ctx.onSimEvent?.(dgunSimEvent);
   ctx.pendingSimEvents.push(dgunSimEvent);

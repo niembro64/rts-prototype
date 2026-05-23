@@ -21,6 +21,8 @@ export type SnapshotConfig = {
   projectileDetailSnapshotRateHz: number;
   highCountEntityLodUnitThreshold: number;
   highCountForeignEntitySnapshotCadence: number;
+  highCountForeignProjectileSnapshotCadence: number;
+  highCountForeignAudioSnapshotCadence: number;
   highCountMinimapSnapshotRateHz: number;
   fullSnapshotCompression: FullSnapshotCompressionConfig;
 };

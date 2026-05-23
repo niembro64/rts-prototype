@@ -14,6 +14,7 @@ import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { GamePhase } from '../../types/network';
 import {
+  ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -110,7 +111,8 @@ const HIGH_COUNT_FOREIGN_THROTTLED_ENTITY_FIELDS =
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_NORMAL |
-  ENTITY_CHANGED_SUSPENSION;
+  ENTITY_CHANGED_SUSPENSION |
+  ENTITY_CHANGED_HP;
 
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -643,7 +645,10 @@ export function serializeGameState(
 
   const netAudioEvents = options?.audioOverride
     ? options.audioOverride.value
-    : serializeAudioEvents(audioEvents, visibility, options?.trackingKey);
+    : serializeAudioEvents(audioEvents, visibility, options?.trackingKey, {
+        unitCount: world.getUnits().length,
+        snapshotSequence,
+      });
 
   const netScanPulses = serializeScanPulses(world, visibility);
 
@@ -658,6 +663,7 @@ export function serializeGameState(
     deltaEnabled,
     visibility,
     emitBeamUpdates: options?.emitProjectileDetailFields !== false,
+    snapshotSequence,
     projectileSpawns,
     projectileDespawns,
     projectileVelocityUpdates,

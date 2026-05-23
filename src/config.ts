@@ -168,6 +168,16 @@ export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxS
 //                             snapshots over which foreign
 //                             movement/turret-only entity updates are
 //                             spread.
+//   highCountForeignProjectileSnapshotCadence — number of high-count
+//                             delta snapshots over which foreign
+//                             projectile velocity/beam corrections
+//                             are spread. Spawn/despawn events remain
+//                             immediate.
+//   highCountForeignAudioSnapshotCadence — number of high-count delta
+//                             snapshots over which high-volume foreign
+//                             fire/hit/start/impact events are spread.
+//                             Deaths, attack alerts, pings, and stop
+//                             events remain immediate.
 //   highCountMinimapSnapshotRateHz — minimap cadence cap used only
 //                             after the high-count threshold is met.
 //   fullSnapshotCompression — disabled-by-default experimental

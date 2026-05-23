@@ -370,6 +370,8 @@ export function emitBeamHitAudio(
         audioEvents.push({
           type: 'hit', turretId: (config.shot as BeamShot | LaserShot).id,
           pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
+          playerId: proj.ownerId,
+          entityId: proj.sourceEntityId,
           impactContext: buildImpactContext(
             config, impactX, impactY,
             beamDirX * BEAM_EXPLOSION_MAGNITUDE, beamDirY * BEAM_EXPLOSION_MAGNITUDE,

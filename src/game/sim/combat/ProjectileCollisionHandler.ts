@@ -235,6 +235,7 @@ function pushReflectorImpactEvent(
     sourceType: 'turret',
     sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
     pos: { x, y, z },
+    playerId,
     entityId: projectileEntityId,
     forceFieldImpact: {
       normal: { x: normalX, y: normalY, z: normalZ },
@@ -724,6 +725,8 @@ export function checkProjectileCollisions(
             type: 'hit',
             turretId: shotId,
             pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+            playerId: projEntity.ownership.playerId,
+            entityId: projEntity.id,
             impactContext: buildImpactContext(
               config, projEntity.transform.x, projEntity.transform.y,
               proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -782,6 +785,8 @@ export function checkProjectileCollisions(
           type: 'projectileExpire',
           turretId: shotId,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+          playerId: projEntity.ownership.playerId,
+          entityId: projEntity.id,
           impactContext: buildImpactContext(
             config, projEntity.transform.x, projEntity.transform.y,
             proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -959,6 +964,8 @@ export function checkProjectileCollisions(
                 type: 'hit',
                 turretId: shotId,
                 pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+                playerId: projEntity.ownership.playerId,
+                entityId: projEntity.id,
                 impactContext: buildImpactContext(
                   config, projEntity.transform.x, projEntity.transform.y,
                   proj.velocityX ?? 0, proj.velocityY ?? 0,
@@ -1048,6 +1055,8 @@ export function checkProjectileCollisions(
               type: 'projectileExpire',
               turretId: shotId,
               pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+              playerId: projEntity.ownership.playerId,
+              entityId: projEntity.id,
               impactContext: buildImpactContext(
                 config, projEntity.transform.x, projEntity.transform.y,
                 proj.velocityX ?? 0, proj.velocityY ?? 0,
