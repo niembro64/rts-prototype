@@ -606,9 +606,13 @@ Evidence:
   src/game/network/snapshotPooledScratch.ts. Remaining projectile
   decode arrays are retained snapshot DTO outputs and should not be
   scratch-pooled until snapshot ownership/lifetime is changed.
-- src/game/network/snapshotEntityWirePack.ts still allocates arrays in
-  the movement/turret output allocation, grouped chunk, and nested
-  detail decode paths.
+- The 2026-05-23 entity scratch pass reuses pack-side movement/turret
+  group/key scratch, reuses per-group binary writers, avoids allocating
+  a detail-row array when the delta is fully binary slabs, and removes
+  the transient per-group chunk arrays from the entity movement/turret
+  slab finish path. Remaining entity decode / detail DTO arrays are
+  retained snapshot outputs and should not be scratch-pooled until
+  snapshot ownership / lifetime is changed.
 - src/game/network/snapshotMinimapWirePack.ts V2 removed the
   six-number packed row array from the pack path. The 2026-05-23
   minimap scratch pass also reuses pack-side group/key scratch,
@@ -629,21 +633,11 @@ per-frame loops unless the allocation is proven irrelevant." 5-10
 Hz over 5,000 entities is not "proven irrelevant."
 
 Fix direction:
-Add per-section pooled scratch arrays in
-src/game/network/snapshotPooledScratch.ts (the pool already exists
-for other paths). Each pack/unpack uses `arr.length = 0` instead
-of `new Array(...)`. Children below split per-file.
-
-------------------------------------------------------------------------------
-WIRE-PERF-01B - child: pool the packed entity sub-slabs in
-                snapshotEntityWirePack.ts.
-------------------------------------------------------------------------------
-
-Fix direction:
-Apply the same pooled scratch shape to the entity wire pack
-allocations. Coordinate with TS-WASM-01D so that the migration to
-a Rust encoder doesn't immediately invalidate the pool; pooling
-buys time and is a low-risk intermediate.
+The pack-side scratch paths are covered for projectile, minimap, and
+entity slabs. The remaining allocation work is tied to snapshot output
+ownership: retained decode DTO arrays cannot be reused safely until the
+client snapshot lifetime model changes or TS-WASM-01D moves these loops
+behind the Rust encoder.
 
 MISCELLANEOUS WIRE / RENDERER / DIAGNOSTIC ITEMS
 
