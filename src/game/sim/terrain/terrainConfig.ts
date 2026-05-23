@@ -1,4 +1,5 @@
-import { LAND_CELL_SIZE } from '../../../config';
+import { BATTLE_CONFIG } from '../../../battleBarConfig';
+import { LAND_CELL_SIZE } from '../../../mapSizeConfig';
 import terrainConfig from './terrainConfig.json';
 
 /** Floor of the world's vertical extent: the bottom face of every 3D tile. */
@@ -62,11 +63,11 @@ export type TerrainRuntimeConfig = {
 };
 
 /** Magnitude only; TerrainShape decides the sign. */
-export let TERRAIN_SHAPE_MAGNITUDE = terrainConfig.terrainShapeMagnitude;
+export let TERRAIN_SHAPE_MAGNITUDE = BATTLE_CONFIG.terrainShapeMagnitude.default;
 export let TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. */
-export let TERRAIN_D_TERRAIN = terrainConfig.terrainDTerrain;
+export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
 
 export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION =
   terrainConfig.terrainCirclePerimeterEdgeFraction;
@@ -87,7 +88,7 @@ export const TERRAIN_PLATEAU_CONFIG: {
   readonly fullTerraceMaxSlope: number;
   readonly noTerraceMinSlope: number;
 } = {
-  enabled: terrainConfig.plateau.enabled,
+  enabled: BATTLE_CONFIG.plateau.enabled.default,
   shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
   rampEdgeSharpness: terrainConfig.plateau.rampEdgeSharpness,
   buildableShelfHeightTolerance: terrainConfig.plateau.buildableShelfHeightTolerance,

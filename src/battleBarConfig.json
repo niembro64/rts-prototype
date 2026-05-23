@@ -33,7 +33,7 @@
   },
   "plateau": {
     "enabled": {
-      "default": true,
+      "default": false,
       "options": [
         { "value": true, "label": "ON" },
         { "value": false, "label": "OFF" }
@@ -41,7 +41,7 @@
     }
   },
   "terrainShapeMagnitude": {
-    "default": 3200,
+    "default": 400,
     "options": [400, 800, 1600, 3200]
   },
   "terrainDTerrain": {

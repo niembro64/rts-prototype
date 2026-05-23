@@ -9,13 +9,10 @@
   "terrainTrianglePreserveWaterline": true,
   "terrainTriangleVertexKeyScale": 1000,
   "waterFullyOpaque": true,
-  "terrainShapeMagnitude": 3200,
-  "terrainDTerrain": 200,
   "terrainCirclePerimeterEdgeFraction": 0.49,
   "terrainCirclePerimeterTransitionWidthFraction": 0.1,
   "terrainGenerationEdgeTransitionWidthFraction": 0.04,
   "plateau": {
-    "enabled": true,
     "shelfFractionOfStep": 0.99,
     "rampEdgeSharpness": 0,
     "buildableShelfHeightTolerance": 20,
