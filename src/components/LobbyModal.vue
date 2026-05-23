@@ -6,6 +6,9 @@ import { BAR_THEMES, barVars } from '../barThemes';
 import CommanderAvatar from './CommanderAvatar.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarButton from './BarButton.vue';
+import BarControlGroup from './BarControlGroup.vue';
+import BarDivider from './BarDivider.vue';
+import BarLabel from './BarLabel.vue';
 import LoadingEmblem from './LoadingEmblem.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape, TerrainShape } from '@/types/terrain';
@@ -489,197 +492,187 @@ const terrainSectionVars = computed(() =>
         </div>
 
         <div class="lobby-right">
-          <!-- Terrain controls use the shared button components, but
-               keep lobby-specific labels in a fixed-width column
-               instead of reusing the compact bottom-bar label row. -->
-          <!-- Non-host: use the SAME `bar-readonly` pattern as the
-               bottom BATTLE bar (pointer-events: none, cursor: default
-               on every .control-btn). Avoids the per-button `:disabled`
-               attribute, whose `.control-btn.active:disabled` rule
-               dims the active text/bg and made the lobby's bright
-               text look softer than the bottom bar's bright text.
-               Host-gating still happens inside the click handlers. -->
+          <!-- Battle-config bar. Same component family + flex-wrap
+               layout as the bottom DEMO BATTLE bar, just adapted to
+               the lobby's right column: small `.control-btn` buttons
+               grouped into wrapping `BarControlGroup`s. Non-host
+               viewers get the `bar-readonly` pointer-events lock so
+               the saturated active palette stays bright. -->
           <div
-            class="terrain-section"
+            class="control-bar terrain-section"
             :class="{ 'bar-readonly': !isHost }"
             :style="terrainSectionVars"
           >
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">WIDTH:</div>
-              <BarButtonGroup>
+            <div class="bar-controls">
+              <BarControlGroup>
+                <BarLabel>WIDTH:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in mapWidthOptions"
+                    :key="opt.label"
+                    :active="mapWidthLandCells === opt.valueLandCells"
+                    :title="isHost ? `Set map width to ${opt.label} land cells` : 'Only the host can change terrain'"
+                    @click="pickMapWidthLandCells(opt.valueLandCells)"
+                  >{{ opt.label }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>LENGTH:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in mapLengthOptions"
+                    :key="opt.label"
+                    :active="mapLengthLandCells === opt.valueLandCells"
+                    :title="isHost ? `Set map length to ${opt.label} land cells` : 'Only the host can change terrain'"
+                    @click="pickMapLengthLandCells(opt.valueLandCells)"
+                  >{{ opt.label }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>CENTER:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in centerOptions"
+                    :key="opt.value"
+                    :active="terrainCenter === opt.value"
+                    :title="isHost ? `Set the central ripple to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                    @click="pickTerrainCenter(opt.value)"
+                  >{{ opt.label }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>DIVIDERS:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in dividersOptions"
+                    :key="opt.value"
+                    :active="terrainDividers === opt.value"
+                    :title="isHost ? `Set the team-separator ridges to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                    @click="pickTerrainDividers(opt.value)"
+                  >{{ opt.label }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>PERIMETER:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in mapShapeOptions"
+                    :key="opt.value"
+                    :active="terrainMapShape === opt.value"
+                    :title="isHost ? `Set the map perimeter to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                    @click="pickTerrainMapShape(opt.value)"
+                  >{{ opt.label }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>PLATEAU:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in plateauEnabledOptions"
+                    :key="String(opt.value)"
+                    :active="terrainPlateauEnabled === opt.value"
+                    :title="isHost ? `Turn terrain plateaus ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                    @click="pickTerrainPlateauEnabled(opt.value)"
+                  >{{ opt.label }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>MAGNITUDE:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in terrainShapeMagnitudeOptions"
+                    :key="opt"
+                    :active="terrainShapeMagnitude === opt"
+                    :title="isHost ? `Set terrain shape magnitude to ${opt}` : 'Only the host can change terrain'"
+                    @click="pickTerrainShapeMagnitude(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>D-TERRAIN:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in terrainDTerrainOptions"
+                    :key="opt"
+                    :active="terrainDTerrain === opt"
+                    :title="isHost ? `Set terrain plateau step to ${opt}` : 'Only the host can change terrain'"
+                    @click="pickTerrainDTerrain(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <!-- Real-battle config groups. These were previously editable
+                   mid-battle on the bottom BATTLE bar; that bar is now
+                   demo-only, so the lobby is the single place to set
+                   them for an upcoming real game. -->
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>UNITS:</BarLabel>
                 <BarButton
-                  v-for="opt in mapWidthOptions"
-                  :key="opt.label"
-                  size="large"
-                  :active="mapWidthLandCells === opt.valueLandCells"
-                  :title="isHost ? `Set map width to ${opt.label} land cells` : 'Only the host can change terrain'"
-                  @click="pickMapWidthLandCells(opt.valueLandCells)"
-                >{{ opt.label }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">LENGTH:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in mapLengthOptions"
-                  :key="opt.label"
-                  size="large"
-                  :active="mapLengthLandCells === opt.valueLandCells"
-                  :title="isHost ? `Set map length to ${opt.label} land cells` : 'Only the host can change terrain'"
-                  @click="pickMapLengthLandCells(opt.valueLandCells)"
-                >{{ opt.label }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">CENTER:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in centerOptions"
-                  :key="opt.value"
-                  size="large"
-                  :active="terrainCenter === opt.value"
-                  :title="isHost ? `Set the central ripple to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                  @click="pickTerrainCenter(opt.value)"
-                >{{ opt.label }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">DIVIDERS:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in dividersOptions"
-                  :key="opt.value"
-                  size="large"
-                  :active="terrainDividers === opt.value"
-                  :title="isHost ? `Set the team-separator ridges to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                  @click="pickTerrainDividers(opt.value)"
-                >{{ opt.label }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">PERIMETER:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in mapShapeOptions"
-                  :key="opt.value"
-                  size="large"
-                  :active="terrainMapShape === opt.value"
-                  :title="isHost ? `Set the map perimeter to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                  @click="pickTerrainMapShape(opt.value)"
-                >{{ opt.label }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">PLATEAU:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in plateauEnabledOptions"
-                  :key="String(opt.value)"
-                  size="large"
-                  :active="terrainPlateauEnabled === opt.value"
-                  :title="isHost ? `Turn terrain plateaus ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                  @click="pickTerrainPlateauEnabled(opt.value)"
-                >{{ opt.label }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">MAGNITUDE:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in terrainShapeMagnitudeOptions"
-                  :key="opt"
-                  size="large"
-                  :active="terrainShapeMagnitude === opt"
-                  :title="isHost ? `Set terrain shape magnitude to ${opt}` : 'Only the host can change terrain'"
-                  @click="pickTerrainShapeMagnitude(opt)"
-                >{{ opt.toLocaleString() }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">D-TERRAIN:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in terrainDTerrainOptions"
-                  :key="opt"
-                  size="large"
-                  :active="terrainDTerrain === opt"
-                  :title="isHost ? `Set terrain plateau step to ${opt}` : 'Only the host can change terrain'"
-                  @click="pickTerrainDTerrain(opt)"
-                >{{ opt.toLocaleString() }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <!-- Real-battle config rows. These were previously editable
-                 mid-battle on the bottom BATTLE bar; that bar is now
-                 demo-only, so the lobby is the single place to set
-                 them for an upcoming real game. -->
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">UNITS:</div>
-              <BarButtonGroup>
-                <BarButton
-                  size="large"
                   :active="allUnitsActive"
                   :title="isHost ? 'Toggle all unit types on/off' : 'Only the host can change battle settings'"
                   @click="pickToggleAllUnits"
                 >ALL</BarButton>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="ut in unitTypes"
+                    :key="ut"
+                    :active="allowedUnitsSet.has(ut)"
+                    :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
+                    @click="pickToggleUnit(ut)"
+                  >{{ unitShortName(ut) }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>CAP:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in capOptions"
+                    :key="opt"
+                    :active="unitCap === opt"
+                    :title="isHost ? `Max ${opt} total units` : 'Only the host can change battle settings'"
+                    @click="pickUnitCap(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>FORCE FIELDS:</BarLabel>
                 <BarButton
-                  v-for="ut in unitTypes"
-                  :key="ut"
-                  size="large"
-                  :active="allowedUnitsSet.has(ut)"
-                  :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"
-                  @click="pickToggleUnit(ut)"
-                >{{ unitShortName(ut) }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">CAP:</div>
-              <BarButtonGroup>
-                <BarButton
-                  v-for="opt in capOptions"
-                  :key="opt"
-                  size="large"
-                  :active="unitCap === opt"
-                  :title="isHost ? `Max ${opt} total units` : 'Only the host can change battle settings'"
-                  @click="pickUnitCap(opt)"
-                >{{ opt.toLocaleString() }}</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">FORCE FIELDS:</div>
-              <BarButtonGroup>
-                <BarButton
-                  size="large"
                   :active="forceFieldsObstructSight"
                   :title="isHost ? 'Force fields obstruct turret sight through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
                   @click="pickForceFieldsObstructSight(!forceFieldsObstructSight)"
                 >OBSTRUCT SIGHT</BarButton>
-              </BarButtonGroup>
-            </div>
-            <div class="terrain-control-row">
-              <div class="terrain-control-label">FOG:</div>
-              <BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>FOG:</BarLabel>
                 <BarButton
-                  size="large"
                   :active="fogOfWarEnabled"
                   :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
                   @click="pickFogOfWar(!fogOfWarEnabled)"
                 >FOG</BarButton>
-              </BarButtonGroup>
-            </div>
-            <!-- Reset row sits inside the same options block as the
-                 settings it resets, so all battle config — including
-                 the "go back to defaults" affordance — is contained in
-                 one section. Host-only; non-host viewers don't see the
-                 row at all. -->
-            <div v-if="isHost" class="terrain-control-row">
-              <div class="terrain-control-label">DEFAULTS:</div>
-              <BarButtonGroup>
+              </BarControlGroup>
+              <!-- Reset group sits inside the same options bar as the
+                   settings it resets, so all battle config — including
+                   the "go back to defaults" affordance — is contained in
+                   one section. Host-only; non-host viewers don't see
+                   the group at all. -->
+              <BarControlGroup v-if="isHost">
+                <BarDivider />
+                <BarLabel>DEFAULTS:</BarLabel>
                 <BarButton
-                  size="large"
                   title="Reset every battle setting (units, cap, terrain, FF, system) to its default value"
                   @click="pickResetDefaults"
                 >RESET ALL</BarButton>
-              </BarButtonGroup>
+              </BarControlGroup>
             </div>
           </div>
         </div>
@@ -1369,35 +1362,6 @@ const terrainSectionVars = computed(() =>
   font-size: 14px;
   color: #888;
   padding: 14px 20px;
-}
-
-/* Terrain controls use large shared buttons plus a lobby-specific
- * fixed label column so every row starts at the same x-position. */
-.terrain-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.terrain-control-row {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-}
-
-.terrain-control-label {
-  color: #aaa;
-  font-family: monospace;
-  font-size: 13px;
-  font-weight: 700;
-  text-align: right;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.terrain-section .button-group {
-  flex: 1;
 }
 
 .error-message {

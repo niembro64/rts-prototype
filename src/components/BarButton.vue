@@ -6,9 +6,7 @@
 // so non-host clients viewing read-only lobby controls see WHICH
 // option the host has selected without it looking interactive.
 
-type BarButtonSize = 'small' | 'large';
-
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   /** ACTIVE state — bg + border fully colored, white text.
    *  The "this is THE selected option" highlight. Mutually exclusive with
    *  `activeLevel` in normal use; if both are passed, `active`
@@ -23,12 +21,7 @@ const props = withDefaults(defineProps<{
   disabled?: boolean;
   /** Native HTML title for hover tooltips. */
   title?: string;
-  /** Visual density. Bottom bars use compact buttons by default;
-   *  lobby controls can opt into the larger touch target. */
-  size?: BarButtonSize;
-}>(), {
-  size: 'small',
-});
+}>();
 
 defineEmits<{
   (e: 'click'): void;
@@ -39,10 +32,7 @@ defineEmits<{
   <button
     type="button"
     class="control-btn"
-    :class="[
-      `control-btn--${props.size}`,
-      { active: props.active, 'active-level': props.activeLevel },
-    ]"
+    :class="{ active: props.active, 'active-level': props.activeLevel }"
     :disabled="props.disabled"
     :title="props.title"
     @click="$emit('click')"
