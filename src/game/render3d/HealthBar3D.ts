@@ -14,7 +14,7 @@ import type { Entity } from '../sim/types';
 import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
 import { getResourceFillRatio } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
-import { ENTITY_HUD_BAR_STACK_GAP } from '@/entityHudConfig';
+import { ENTITY_HUD_BAR_STACK_GAP } from '@/config';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import {
   SHELL_BAR_COLORS,

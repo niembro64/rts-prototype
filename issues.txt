@@ -211,10 +211,6 @@ Evidence:
 - Type definitions are hand-maintained in TypeScript only
   (src/types/blueprints.ts, ~503 LOC). Rust types are defined
   separately inside lib.rs without a generated bridge.
-- 17 top-level config pairs in src/ have both `fooConfig.json` and
-  `fooConfig.ts`; 16 other configs are JSON-only. The .ts wrapper
-  pattern is inconsistent — the data lives in JSON in both cases,
-  but coverage of the typed-import wrapper is uneven.
 
 Why it matters:
 The TS-to-Rust migration cannot finish while blueprints live as
@@ -264,26 +260,6 @@ generated Rust constants for each blueprint table, keyed by the
 generated structs from BLUEPRINT-01A. Migrate hot-path lookups in
 lib.rs to read from those tables instead of receiving blueprint
 parameters by argument from JS.
-
-------------------------------------------------------------------------------
-BLUEPRINT-01C - child: decide whether to keep, complete, or drop
-                the inconsistent .ts wrapper layer over the
-                top-level *Config.json files.
-------------------------------------------------------------------------------
-
-Evidence:
-- 17 of 33 top-level configs in src/ have both .json and .ts; the
-  other 16 are JSON-only. The .ts wrappers are mostly trivial
-  re-exports (`export const X = config.x;`).
-- colorsConfig.ts has real logic (CSS hex → RGB tuples). That kind
-  of wrapper has clear value.
-- Trivial re-export wrappers do not.
-
-Fix direction:
-Either standardize: every top-level config gets a generated
-typed wrapper (script-generated, not hand-maintained), or none do
-and all callers import the JSON directly with `import type`
-declarations. Don't ship both shapes side by side.
 
 WIRE-PATH HOT ALLOCATIONS (WIRE-PERF-01 family)
 

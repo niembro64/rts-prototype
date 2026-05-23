@@ -15,8 +15,11 @@ import type {
   DeathContext,
   KnockbackInfo,
 } from './types';
-import { KNOCKBACK, PROJECTILE_MASS_MULTIPLIER } from '../../../config';
-import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
+import {
+  BEAM_EXPLOSION_MAGNITUDE,
+  KNOCKBACK,
+  PROJECTILE_MASS_MULTIPLIER,
+} from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice, getTransformCosSin } from '../../math';
 import { findClosestPanelHit } from '../combat/MirrorPanelHit';
@@ -517,7 +520,8 @@ export class DamageSystem {
       if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
         // (yaw + pitch from the mirror turret rotation/pitch).
-        const unitTurrets = unit.combat?.turrets;
+        const unitCombat = unit.combat;
+        const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
         const mirrorRot = unitTurrets && unitTurrets.length > 0
           ? unitTurrets[0].rotation
           : unit.transform.rotation;
@@ -559,7 +563,9 @@ export class DamageSystem {
           _segHit.normalZ = hit.normalZ;
           _segHit.panelIndex = hit.panelIndex;
           _segHit.reflectorKind = 'mirror';
-          _segHit.reflectorPlayerId = unit.ownership?.playerId;
+          _segHit.reflectorPlayerId = unit.ownership !== null
+            ? unit.ownership.playerId
+            : undefined;
         }
       }
 
@@ -870,7 +876,10 @@ export class DamageSystem {
 
       // Calculate momentum-based knockback (p = mv)
       const projMass = (source.projectileMass ?? 0) * PROJECTILE_MASS_MULTIPLIER;
-      const projSpeed = magnitude(source.velocity?.x ?? 0, source.velocity?.y ?? 0);
+      const sourceVelocity = source.velocity;
+      const projSpeed = sourceVelocity === undefined
+        ? 0
+        : magnitude(sourceVelocity.x, sourceVelocity.y);
       const force = projMass * projSpeed;
       const forceX = knockbackDirX * force;
       const forceY = knockbackDirY * force;
@@ -888,8 +897,12 @@ export class DamageSystem {
 
       // Apply damage with death context (attacker velocity = actual projectile velocity)
       // Use actual projectile velocity if available, otherwise fallback to direction * damage
-      const attackerVelX = source.velocity?.x ?? knockbackDirX * source.damage;
-      const attackerVelY = source.velocity?.y ?? knockbackDirY * source.damage;
+      const attackerVelX = sourceVelocity === undefined
+        ? knockbackDirX * source.damage
+        : sourceVelocity.x;
+      const attackerVelY = sourceVelocity === undefined
+        ? knockbackDirY * source.damage
+        : sourceVelocity.y;
       this.applyDamageToEntity(entity, source.damage, result, source.sourceEntityId, {
         penetrationDir: { x: penNormX, y: penNormY },
         attackerVel: { x: attackerVelX, y: attackerVelY },
@@ -1115,6 +1128,10 @@ export class DamageSystem {
   ): void {
     if (result.killerPlayerIds.has(deadEntityId)) return;
     const killer = this.world.getEntity(sourceEntityId);
-    result.killerPlayerIds.set(deadEntityId, killer?.ownership?.playerId);
+    const ownership = killer !== undefined ? killer.ownership : null;
+    result.killerPlayerIds.set(
+      deadEntityId,
+      ownership !== null ? ownership.playerId : undefined,
+    );
   }
 }

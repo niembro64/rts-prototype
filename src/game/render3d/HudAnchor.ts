@@ -18,7 +18,7 @@ import {
   ENTITY_HUD_BAR_STACK_ROWS,
   ENTITY_HUD_NAME_GAP_ABOVE_BARS,
   DEFAULT_UNIT_HUD_LAYOUT,
-} from '@/entityHudConfig';
+} from '@/config';
 import { SHELL_BAR_WORLD_HEIGHT } from '@/shellConfig';
 import { NAME_LABEL_WORLD_HEIGHT } from '@/nameLabelConfig';
 

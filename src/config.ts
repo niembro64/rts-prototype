@@ -48,6 +48,9 @@ import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
 import forceFieldVisualConfigJson from './forceFieldVisualConfig.json';
+import explosionConfigJson from './explosionConfig.json';
+import entityHudConfigJson from './entityHudConfig.json';
+import telemetryConfigJson from './telemetryConfig.json';
 import economyConfigJson from './economyConfig.json';
 import windConfigJson from './windConfig.json';
 import physicsTuningConfigJson from './physicsTuningConfig.json';
@@ -56,6 +59,7 @@ import cameraConfigJson from './cameraConfig.json';
 import realBattleConfigJson from './realBattleConfig.json';
 import backgroundBattleConfigJson from './backgroundBattleConfig.json';
 import type { CameraFovDegrees } from './types/client';
+import type { EntityHudBlueprint } from './types/blueprints';
 import type { DemoBattleWaypointType } from './demoConfig';
 import { COLORS } from './colorsConfig';
 export { LAND_CELL_SIZE } from './mapSizeConfig';
@@ -86,6 +90,7 @@ export const WAYPOINT_GROUND_LIFT = worldRenderConfigJson.waypointGroundLift;
 export const SERVER_GRID_DEBUG_INTERVAL_MS = serverDebugGridConfigJson.snapshotIntervalMs;
 export const SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS = serverDebugGridConfigJson.maxOccupiedCells;
 export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxSearchCells;
+export const GOOD_TPS = telemetryConfigJson.goodTps;
 
 // F=============================================================================
 // SNAPSHOT / NETWORKING
@@ -444,6 +449,7 @@ export const COST_MULTIPLIER = economyConfigJson.costMultiplier;
  * Beam/railgun knockback uses momentum-based force (mass × velocity × PROJECTILE_MASS_MULTIPLIER).
  */
 export const KNOCKBACK: KnockbackConfig = combatConfigJson.knockback;
+export const BEAM_EXPLOSION_MAGNITUDE = explosionConfigJson.beamExplosionMagnitude;
 
 // Color conversion utilities
 export function hexToStr(c: number): string {
@@ -798,6 +804,27 @@ export type { SynthId, SoundEntry } from './audioConfig';
 // =============================================================================
 // UI
 // =============================================================================
+
+/** Default per-blueprint HUD bar offsets, in world units above the
+ *  entity's visual HUD top. Individual unit/building blueprints can
+ *  override this by editing their `hud` block. */
+export const DEFAULT_UNIT_HUD_LAYOUT: EntityHudBlueprint = {
+  barsOffsetAboveTop: entityHudConfigJson.defaultUnitHudLayout.barsOffsetAboveTop,
+};
+
+export const DEFAULT_BUILDING_HUD_LAYOUT: EntityHudBlueprint = {
+  barsOffsetAboveTop: entityHudConfigJson.defaultBuildingHudLayout.barsOffsetAboveTop,
+};
+
+/** Distance between stacked HUD bars: HP, energy, metal. */
+export const ENTITY_HUD_BAR_STACK_GAP = entityHudConfigJson.barStackGap;
+
+/** The full status stack is HP + resource build bars. */
+export const ENTITY_HUD_BAR_STACK_ROWS = entityHudConfigJson.barStackRows;
+
+/** Visual air gap between the top edge of the full bar stack and the
+ *  bottom edge of the name label sprite. */
+export const ENTITY_HUD_NAME_GAP_ABOVE_BARS = entityHudConfigJson.nameGapAboveBars;
 
 // =============================================================================
 // CAMERA & ZOOM

@@ -6,7 +6,7 @@ import type { Entity, EntityId, BeamShot, LaserShot, PlayerId } from '../types';
 import { getPlayerPrimaryColor } from '../types';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { SimEvent, ImpactContext, SimEventSourceType } from './types';
-import { BEAM_EXPLOSION_MAGNITUDE } from '../../../explosionConfig';
+import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitBodyCenterHeight } from '../unitGeometry';
@@ -39,9 +39,15 @@ export function buildImpactContext(
   let penDirX = 0, penDirY = 0;
 
   if (entity) {
-    entityVelX = entity.unit?.velocityX ?? 0;
-    entityVelY = entity.unit?.velocityY ?? 0;
-    entityCollisionRadius = entity.unit?.radius.shot ?? (entity.building ? entity.building.width / 2 : 0);
+    const unit = entity.unit;
+    const building = entity.building;
+    if (unit !== null) {
+      entityVelX = unit.velocityX;
+      entityVelY = unit.velocityY;
+      entityCollisionRadius = unit.radius.shot;
+    } else if (building !== null) {
+      entityCollisionRadius = building.width / 2;
+    }
 
     // Normalized direction from projectile center to entity center
     const dx = entity.transform.x - projectileX;
@@ -303,14 +309,17 @@ function emitAttackAlerts(
   audioEvents: SimEvent[],
 ): void {
   const attacker = world.getEntity(attackerSourceEntityId);
-  if (!attacker?.ownership) return;
+  if (attacker === undefined || attacker.ownership === null) return;
   const attackerPlayerId = attacker.ownership.playerId;
   const hits = result.hitEntityIds;
   if (hits.length === 0) return;
   _attackAlertSeenVictims.clear();
   for (let i = 0; i < hits.length; i++) {
     const victim = world.getEntity(hits[i]);
-    const victimPlayerId = victim?.ownership?.playerId;
+    const victimOwnership = victim !== undefined ? victim.ownership : null;
+    const victimPlayerId = victimOwnership !== null
+      ? victimOwnership.playerId
+      : undefined;
     if (victimPlayerId === undefined || victimPlayerId === attackerPlayerId) continue;
     if (_attackAlertSeenVictims.has(victimPlayerId)) continue;
     if (!canPlayerObserveCloakedEntity(world, attacker, victimPlayerId)) continue;

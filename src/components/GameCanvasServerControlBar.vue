@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { GOOD_TPS } from '../telemetryConfig';
+import { GOOD_TPS } from '../config';
 import {
   SERVER_CONFIG,
   snapshotRateLabel,

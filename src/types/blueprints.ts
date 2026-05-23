@@ -446,7 +446,7 @@ export type UnitBodyShape =
 export type EntityHudBlueprint = {
   /** First bar sprite centerline offset above the computed visual HUD
    *  top, in world units. Names are derived from this bar anchor plus
-   *  the global bar stack/name gap in entityHudConfig. */
+   *  the global bar stack/name gap in config.ts. */
   barsOffsetAboveTop: number;
 };
 

@@ -19,7 +19,7 @@ import type {
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
-import { PLAYER_CLIENT_MAX_GRAPHICS_CONFIG } from './playerClientGraphicsConfig';
+import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 
 export type { CameraSmoothMode } from './types/client';
@@ -31,6 +31,7 @@ export type { CameraSmoothMode } from './types/client';
 // one place and the bar inherits it.
 
 type OptionList<T> = ReadonlyArray<{ value: T; label: string }>;
+const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as GraphicsConfig;
 
 export const CLIENT_CONFIG = {
   render: {

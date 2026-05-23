@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CLIENT_CONFIG } from '../clientBarConfig';
-import { GOOD_TPS } from '../telemetryConfig';
+import { GOOD_TPS } from '../config';
 import { snapshotRateHz } from '../serverBarConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
