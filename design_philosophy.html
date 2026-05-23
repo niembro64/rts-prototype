@@ -1274,6 +1274,37 @@
         config flags are gone, its wire codes are gone, and its tests are gone or repointed.
       </p>
 
+      <h3>One language per behavior</h3>
+      <p>
+        The most common shape of this rule in practice is the JavaScript/TypeScript-to-Rust
+        migration. The moment a Rust/WASM implementation works &mdash; or a JS/TS library has
+        been replaced by owned code that covers its functionality &mdash; the predecessor
+        TypeScript file, JavaScript module, or third-party library must leave the tree in the
+        same change. Two language implementations of the same behavior is not a transition state
+        we are allowed to rest in: exactly one of them becomes the path that actually runs, and
+        the other rots silently while still being importable, callable, and grep-visible.
+      </p>
+      <p>
+        We need <strong>one version of code, not separate code between multiple languages or
+        libraries</strong>. A physics kernel ported to Rust deletes the TypeScript physics kernel
+        it replaced. A renderer path rebuilt on raw <code>WebGPU</code> / <code>WGSL</code>
+        deletes the Three.js abstraction it replaced. A custom data structure or algorithm that
+        supplants a library removes that library from <code>package.json</code>, its lockfile
+        entry, and every import. &ldquo;Working in Rust&rdquo; <em>is</em> the trigger; there is
+        no &ldquo;we&rsquo;ll keep the TS version for safety&rdquo; pause, no
+        &ldquo;leave the library installed in case we need it,&rdquo; no parallel-paths phase
+        that lingers across more than one commit.
+      </p>
+      <p>
+        The end-state shape is one implementation per behavior, written in the language that
+        layer commits to: Rust/WASM for simulation, physics, and dense numeric work; TypeScript
+        for coordination, UI, and IO; <code>WGSL</code> / raw GPU code for shaders. A behavior
+        that exists in two of those languages is a half-finished migration, not a redundancy
+        worth preserving. The moment the replacement works, the predecessor is dead code &mdash;
+        and dead code in the working tree is treated as a bug to be fixed in the same change,
+        not a TODO for later.
+      </p>
+
       <h3>Why this matters here specifically</h3>
       <ul class="rule-list">
         <li>We are actively moving from JavaScript object loops and JavaScript physics math toward Rust/WASM kernels over typed-array linear memory. Leaving the JS implementation alongside the WASM kernel guarantees one becomes the de-facto path and the other rots, undetected, until something invokes it and produces a result that disagrees with the live path.</li>
