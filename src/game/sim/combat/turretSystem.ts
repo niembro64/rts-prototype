@@ -45,7 +45,7 @@ const _turretAim = createTurretAimScratch();
 const _turretMount = { x: 0, y: 0, z: 0 };
 const _turretRotationFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
-  targetId: null,
+  targetId: -1,
 };
 
 export function updateTurretRotation(world: WorldState, dtMs: number, units: readonly Entity[] = world.getArmedEntities()): void {
@@ -104,7 +104,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         _turretRotationFsm,
       )
         ? _turretRotationFsm.targetId
-        : weapon.target;
+        : (weapon.target ?? -1);
 
       if (unit.combat.priorityTargetPoint !== null) {
         const targetPoint = unit.combat.priorityTargetPoint;
@@ -138,7 +138,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           targetPitch = solved.pitch;
           hasActiveTarget = true;
         }
-      } else if (targetingTargetId !== null) {
+      } else if (targetingTargetId !== -1) {
         const target = world.getEntity(targetingTargetId);
         if (target) {
           // Origin (weapon mount) in true 3D world coords. The

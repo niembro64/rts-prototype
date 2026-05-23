@@ -14,7 +14,7 @@ export type MirrorTargetTurretPick = {
 
 const _mirrorTargetFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_IDLE,
-  targetId: null,
+  targetId: -1,
 };
 
 /** Sustained DPS for a turret based on its compiled shot config and

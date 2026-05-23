@@ -121,7 +121,10 @@ export type CombatTargetingTurretStateCode =
 
 export type CombatTargetingTurretFsmOut = {
   stateCode: CombatTargetingTurretStateCode;
-  targetId: EntityId | null;
+  /** Numeric sentinel: -1 when the turret has no lock-on target this
+   *  tick. Pooled DTO read per turret per frame, so the uniform shape
+   *  keeps V8 hidden classes stable and avoids the boxed-null check. */
+  targetId: EntityId;
 };
 
 export type CombatTargetingTurretMountOut = {
@@ -288,7 +291,7 @@ export function readCombatTargetingTurretFsmFromSimInto(
   const views = getCombatTargetingStateViews(sim);
   out.stateCode = views.state[idx] as CombatTargetingTurretStateCode;
   const targetId = views.targetId[idx];
-  out.targetId = targetId < 0 ? null : targetId;
+  out.targetId = targetId < 0 ? -1 : targetId;
   return true;
 }
 

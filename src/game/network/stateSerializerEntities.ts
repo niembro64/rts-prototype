@@ -72,7 +72,7 @@ const MAX_ACTIONS_PER_ENTITY = 16;
 const MAX_WAYPOINTS_PER_ENTITY = 16;
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
-  targetId: null,
+  targetId: -1,
 };
 
 export const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
@@ -185,10 +185,11 @@ function writeTurretsToPool(
       t.angular.pitchVel = qRot(src.pitchVelocity);
     }
     const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _snapshotTurretFsm);
-    const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : src.target;
-    dst.targetId = canReferenceEntityId?.(targetId ?? undefined) === false
+    const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : (src.target ?? -1);
+    const wireTargetId = targetId === -1 ? undefined : targetId;
+    dst.targetId = canReferenceEntityId?.(wireTargetId) === false
       ? undefined
-      : targetId ?? undefined;
+      : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
     dst.currentForceFieldRange = src.forceField?.range;
   }

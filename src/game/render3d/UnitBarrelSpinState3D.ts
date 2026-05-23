@@ -12,7 +12,7 @@ type BarrelSpinState = {
 
 const _barrelSpinFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 
 export type BarrelSpinFrameState = {

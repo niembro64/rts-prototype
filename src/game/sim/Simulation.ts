@@ -82,7 +82,7 @@ import {
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
 const _combatStopFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 
 function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
@@ -1336,10 +1336,10 @@ export class Simulation {
       const stateCode = hasTargetingFsm
         ? _combatStopFsm.stateCode
         : (turret.state === 'engaged' ? CT_TURRET_STATE_ENGAGED : 0);
-      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : turret.target;
+      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : (turret.target ?? -1);
       if (
         stateCode === CT_TURRET_STATE_ENGAGED &&
-        (targetId !== null || combat.priorityTargetPoint !== null)
+        (targetId !== -1 || combat.priorityTargetPoint !== null)
       ) return true;
     }
     return false;
@@ -1366,10 +1366,10 @@ export class Simulation {
       const stateCode = hasTargetingFsm
         ? _combatStopFsm.stateCode
         : (turret.state === 'engaged' ? CT_TURRET_STATE_ENGAGED : 0);
-      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : turret.target;
+      const targetId = hasTargetingFsm ? _combatStopFsm.targetId : (turret.target ?? -1);
       if (
         stateCode === CT_TURRET_STATE_ENGAGED &&
-        (targetId !== null || combat.priorityTargetPoint !== null)
+        (targetId !== -1 || combat.priorityTargetPoint !== null)
       ) engaged++;
     }
     if (total === 0) return false;

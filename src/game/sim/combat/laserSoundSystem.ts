@@ -16,7 +16,7 @@ const _laserStopOwner: SimEvent[] = [];
 const _laserStopTarget: SimEvent[] = [];
 const _laserFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 const LASER_SOUND_REFRESH_TICKS = 60;
 const activeLaserSoundIds = new Set<number>();
@@ -33,7 +33,7 @@ function isBeamEngagedWithTargetingState(
       && (jsTargetId !== null || unit.combat?.priorityTargetPoint !== null);
   }
   return _laserFsm.stateCode === CT_TURRET_STATE_ENGAGED
-    && (_laserFsm.targetId !== null || unit.combat?.priorityTargetPoint !== null);
+    && (_laserFsm.targetId !== -1 || unit.combat?.priorityTargetPoint !== null);
 }
 
 // Emit laserStop events for all beam weapons on a dying entity (the beam owner).

@@ -504,6 +504,19 @@ Evidence:
 - Other hot-loop sites in combat targeting and projectile homing
   use `proj.homingTargetId !== undefined` checks (projectileSystem.ts
   :788, :795) — same anti-pattern in `T | undefined` form.
+- The 2026-05-23 FSM-sentinel pass moves
+  `CombatTargetingTurretFsmOut.targetId` from `EntityId | null` to a
+  numeric `EntityId` field with -1 as the "no target" sentinel. All
+  eight pooled `_xxxFsm` initializers and the eight reader sites
+  (`stateSerializerEntities`, `stateSerializerEntityDelta`,
+  `Simulation` stop/fight predicates, `projectileSystem`,
+  `turretSystem`, `laserSoundSystem`, `mirrorTargetPriority`,
+  `ClientUnitPrediction`, `UnitBarrelSpinState3D`, `forceFieldTurret`)
+  were updated together. Mixed reads of `_fsm.targetId` vs
+  `weapon.target ?? -1` normalize to a single sentinel-shape number.
+  `tsc --noEmit` passes. Remaining child work:
+  `Builder.currentBuildTarget`, `closestEntityId` in `DamageSystem`,
+  and projectile `homingTargetId !== undefined` are still open.
 
 Fix direction:
 Use -1 as the unambiguous "no target" sentinel for entity IDs in hot

@@ -45,7 +45,7 @@ const DEFAULT_TRACKING_KEY = 'default';
 const NORMAL_THRESHOLD = 0.001;
 const _deltaTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 
 export type PrevEntityState = {
@@ -390,9 +390,9 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       const stateCode = hasTargetingFsm
         ? _deltaTurretFsm.stateCode
         : encodeCombatTargetingTurretState(w.state);
-      const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
+      const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
       if (stateCode === CT_TURRET_STATE_ENGAGED) prev.isEngagedBits |= (1 << i);
-      if (targetId !== null) prev.targetBits |= (1 << i);
+      if (targetId !== -1) prev.targetBits |= (1 << i);
       // Plain headOnly turrets (beam/rocket) hide their aim motion from
       // the wire — sim keeps the values for fire direction but the
       // snapshot contract is "0 always". Mirror-panel hosts are the
@@ -402,7 +402,7 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretAngVels[i] = snapshotAimMotion ? w.angularVelocity : 0;
       prev.turretPitches[i] = snapshotAimMotion ? w.pitch : 0;
       prev.turretPitchVels[i] = snapshotAimMotion ? w.pitchVelocity : 0;
-      prev.turretTargetIds[i] = targetId ?? -1;
+      prev.turretTargetIds[i] = targetId;
       prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
     }
   }
@@ -666,7 +666,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
   for (let t = 0; t < turretCount; t++) {
     const w = turrets![t];
     const hasTargetingFsm = readCombatTargetingTurretFsmFromSimInto(sim, e, t, _deltaTurretFsm);
-    const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : w.target;
+    const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
     // Mirror the snapshot contract on the Rust diff side: plain
     // headOnly turrets pass 0 for aim motion, while mirror-panel hosts
     // keep the passive turret pose because it is visible geometry.
@@ -680,7 +680,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       snapshotAimMotion ? w.pitchVelocity : 0,
       snapshotAimMotion ? w.pitchAcceleration : 0,
       w.forceField?.range ?? 0,
-      targetId ?? -1,
+      targetId,
     );
   }
 }

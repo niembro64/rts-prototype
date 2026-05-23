@@ -122,7 +122,7 @@ const _lineShotRangeEnd = { x: 0, y: 0, z: 0 };
 const _lineShotRangeSphere: LineShotRangeSphere = { centerX: 0, centerY: 0, centerZ: 0, radius: 0 };
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
@@ -347,7 +347,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
-      const targetingTargetId = hasTargetingFsm ? _fireFsm.targetId : weapon.target;
+      const targetingTargetId = hasTargetingFsm ? _fireFsm.targetId : (weapon.target ?? -1);
       if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
         // Drop the lock everywhere in one call: JS Turret target +
         // state, beam inverse index, and the slab FSM tuple. The
@@ -375,13 +375,13 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       }
 
       const groundTargetPoint = combat.priorityTargetPoint;
-      if (targetingTargetId !== null && !world.getEntity(targetingTargetId)) {
+      if (targetingTargetId !== -1 && !world.getEntity(targetingTargetId)) {
         // Target despawned mid-fire — drop the lock everywhere in one
         // call (JS Turret + beam index + slab FSM).
         dropTurretLockMidTick(unit, weaponIndex);
         continue;
       }
-      if (targetingTargetId === null && groundTargetPoint === null) continue;
+      if (targetingTargetId === -1 && groundTargetPoint === null) continue;
       if (!isWeaponAimedForFire(weapon)) continue;
 
       // Use the canonical 3D turret mount cache. Targeting normally
@@ -610,7 +610,7 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             projectile.projectile.lastSentVelZ = projVz;
           }
           // Set homing properties if weapon has homingTurnRate and weapon has a locked target
-          if (projShot.homingTurnRate && targetingTargetId !== null) {
+          if (projShot.homingTurnRate && targetingTargetId !== -1) {
             projectile.projectile!.homingTargetId = targetingTargetId;
             projectile.projectile!.homingTurnRate = projShot.homingTurnRate;
           }
@@ -632,8 +632,8 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
             barrelIndex,
-            targetEntityId: (projShot.homingTurnRate && targetingTargetId !== null) ? targetingTargetId : undefined,
-            homingTurnRate: (projShot.homingTurnRate && targetingTargetId !== null)
+            targetEntityId: (projShot.homingTurnRate && targetingTargetId !== -1) ? targetingTargetId : undefined,
+            homingTurnRate: (projShot.homingTurnRate && targetingTargetId !== -1)
               ? projShot.homingTurnRate
               : undefined,
           });

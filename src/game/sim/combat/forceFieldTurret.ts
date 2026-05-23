@@ -16,7 +16,7 @@ const _forceFieldMount = { x: 0, y: 0, z: 0 };
 const _forceFieldHit = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, playerId: 0, entityId: 0 };
 const _forceFieldFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 
 // Compact list of force field weapons with progress > 0, built by

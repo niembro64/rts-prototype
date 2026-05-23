@@ -53,7 +53,7 @@ type UnitPredictionTarget = ServerTarget;
 // hydrated JS Turret.state.
 const _predictFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
-  targetId: null,
+  targetId: -1,
 };
 function isTurretEngaged(
   entity: Entity,
