@@ -503,6 +503,17 @@ const terrainSectionVars = computed(() =>
             :class="{ 'bar-readonly': !isHost }"
             :style="terrainSectionVars"
           >
+            <div class="bar-info">
+              <BarButton
+                :active="true"
+                class="bar-label"
+                :title="isHost ? 'Click to reset every battle setting (units, cap, terrain, FF, fog) to its default value' : 'Only the host can change battle settings'"
+                @click="pickResetDefaults"
+              >
+                <span class="bar-label-text">REAL BATTLE</span
+                ><span class="bar-label-hover">DEFAULTS</span>
+              </BarButton>
+            </div>
             <div class="bar-controls">
               <BarControlGroup>
                 <BarLabel>WIDTH:</BarLabel>
@@ -659,19 +670,6 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
                   @click="pickFogOfWar(!fogOfWarEnabled)"
                 >FOG</BarButton>
-              </BarControlGroup>
-              <!-- Reset group sits inside the same options bar as the
-                   settings it resets, so all battle config — including
-                   the "go back to defaults" affordance — is contained in
-                   one section. Host-only; non-host viewers don't see
-                   the group at all. -->
-              <BarControlGroup v-if="isHost">
-                <BarDivider />
-                <BarLabel>DEFAULTS:</BarLabel>
-                <BarButton
-                  title="Reset every battle setting (units, cap, terrain, FF, system) to its default value"
-                  @click="pickResetDefaults"
-                >RESET ALL</BarButton>
               </BarControlGroup>
             </div>
           </div>
