@@ -1,5 +1,5 @@
 {
-  "fovDegrees": 30,
+  "fovDegrees": 45,
   "panMultiplier": 6.0,
   "minTerrainClearance": 80,
   "targetTerrainBand": 200,
