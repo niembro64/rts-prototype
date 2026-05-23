@@ -1179,6 +1179,138 @@
     </section>
 
     <section>
+      <h2>Resource Movement Flows Through Pylons</h2>
+      <p>
+        The general gameplay shape is simple: <strong>buildings build units, units build
+        buildings</strong>, and both do that work through their turrets. The economy that fuels
+        those turrets &mdash; production, consumption, conversion, construction payment, repair
+        drain, future ammo costs &mdash; is its own shared abstraction: the
+        <em>resource pylon</em>. Every entity that adds to a resource pool, draws from one, or
+        moves resource between pools carries one pylon per affected resource, and that pylon is
+        the single source of truth for both the simulation accounting and the on-screen
+        visualization at that point on the host.
+      </p>
+      <p>
+        There must be no resource movement that bypasses this contract. The sim does not have a
+        parallel "production" path that nudges the player&rsquo;s stockpile directly while
+        construction payments go through one helper and converter ticks go through another; the
+        renderer does not have a special-case "factory shower," "solar trickle," or
+        "converter glow" that lives outside the pylon rig. One channel in the sim, one rig in the
+        renderer, every resource movement.
+      </p>
+
+      <h3>What a pylon is</h3>
+      <ul class="rule-list">
+        <li>
+          A pylon is tagged with exactly one resource type: <strong>energy</strong> or
+          <strong>metal</strong>. A host that touches both resources mounts one pylon per
+          resource &mdash; not one combined pylon with a polymorphic type. Per-resource pylons
+          keep the player&rsquo;s read of "what is flowing where" decomposable.
+        </li>
+        <li>
+          A pylon&rsquo;s vertical <em>resource bar shower</em> height is the absolute magnitude
+          of the current rate of change in that resource lane, on the same scale whether the
+          pylon is producing or consuming. The bar communicates "how much per second is moving
+          through this point right now."
+        </li>
+        <li>
+          A pylon&rsquo;s direction is communicated by its <em>pylon resource balls</em>: discrete
+          coloured spheres that visibly flow either INTO the pylon head or OUT of it, at a rate
+          tied to the same number that drives the shower height.
+        </li>
+        <li>
+          A pylon&rsquo;s direction encodes the local physical flow of the resource at the
+          pylon&rsquo;s position on the host. <strong>Inbound balls</strong> mean the pylon is
+          absorbing the resource at that point &mdash; a solar collector pulling energy from the
+          sun, an extractor pulling metal from a deposit, a converter draining its consumed
+          resource out of the player&rsquo;s pool. <strong>Outbound balls</strong> mean the pylon
+          is projecting the resource away from that point &mdash; a construction turret sending
+          energy and metal to a build site, a converter releasing its produced resource back into
+          the player&rsquo;s pool. The net effect on the player&rsquo;s stockpile is recovered from
+          the host&rsquo;s role plus the pylon direction; it is not encoded by some second
+          orthogonal field on the pylon.
+        </li>
+        <li>
+          A pylon that has a discrete target &mdash; a construction-emitter pylon spraying a
+          build site &mdash; aims its ball flow at that target. A pylon that interacts with
+          "the pool" or "the environment" as a whole &mdash; solar, wind, extractor, converter
+          &mdash; uses random world-space directions for the inbound or outbound balls. The
+          absence of a target is a real configuration of the contract, not a missing field.
+        </li>
+      </ul>
+
+      <h3>Who carries which pylons</h3>
+      <p>
+        Every host that affects a resource pool must mount the pylons that match what it does.
+        These are not optional decorations.
+      </p>
+      <ul class="rule-list">
+        <li>
+          <strong>Solar collector</strong> &mdash; one energy pylon, inbound balls from random
+          sky-side directions; shower height tracks current production rate.
+        </li>
+        <li>
+          <strong>Wind turbine</strong> &mdash; one energy pylon, inbound balls; rate scales with
+          wind speed and the open/closed state.
+        </li>
+        <li>
+          <strong>Metal extractor</strong> &mdash; one metal pylon, inbound balls; rate scales
+          with deposit coverage.
+        </li>
+        <li>
+          <strong>Construction turret</strong> (on commanders, fabricators, future construction
+          aircraft) &mdash; one energy pylon and one metal pylon, both outbound toward the build
+          target; shower heights match the per-resource throughput the builder or factory is
+          actually paying this tick.
+        </li>
+        <li>
+          <strong>Resource converter</strong> &mdash; one energy pylon and one metal pylon, in
+          opposing directions. While the converter is consuming surplus energy and emitting
+          metal, the energy pylon shows inbound balls and the metal pylon shows outbound balls;
+          when the surplus flips, the directions flip with it. There is no separate "converter
+          art" &mdash; the converter <em>is</em> two pylons running in opposing modes.
+        </li>
+        <li>
+          Any new building, unit, or turret that touches a resource pool gets pylons for the
+          resources it touches. Upkeep mechanics, ammo-cost weapons that bill energy on fire,
+          reclaim that returns metal, repair that drains energy &mdash; all of them surface
+          through pylons. There is no "small enough to skip" exception.
+        </li>
+      </ul>
+
+      <h3>One channel in the sim, one rig in the renderer</h3>
+      <p>
+        On the simulation side, every per-tick stockpile delta &mdash; production loops, build
+        payments, repair drains, converter ticks, reclaim recovery, anything &mdash; flows
+        through a single <em>resource-movement</em> channel whose payload identifies the
+        resource, the magnitude per second, the direction (inbound or outbound at the source
+        pylon), the source entity, and, when applicable, the target entity. The accounting
+        code that reduces those movements to per-player stockpile updates is the
+        <em>only</em> code that touches stockpiles; there is no helper, no shortcut, no
+        building-type-specific bypass that adjusts a player&rsquo;s pool outside that channel.
+      </p>
+      <p>
+        On the renderer side, every pylon is the same rig type configured by resource +
+        direction + rate + optional target, driven by the same channel the sim publishes.
+        The pylon mesh, the shower geometry, and the resource-ball emission pipeline are shape-
+        and host-agnostic: a building&rsquo;s pylon and a unit-mounted construction-turret pylon
+        render through one code path. Production-rate indicators, build-emitter rigs, and
+        converter visuals all collapse into this one rig. When a new feature is tempted to add
+        another "shower-like" indicator, the answer is to render it as a pylon, not to invent
+        a parallel visual.
+      </p>
+      <p>
+        This is the resource-side counterpart to <strong>Materials Are Independent Of
+        Shape</strong> and <strong>Single Source Of Truth</strong>. The material rule says the
+        surface contract is constant across shapes; the pylon rule says the resource-flow
+        contract is constant across hosts. Two pieces that move the same resource at the same
+        rate must look identical and accumulate identically. Branches that move resources
+        outside the pylon channel are exactly the drift surface this philosophy is trying to
+        retire.
+      </p>
+    </section>
+
+    <section>
       <h2>Config Is Data, Not Code</h2>
       <p>
         Blueprints, tuning tables, and authored content belong in language-neutral data files
@@ -1400,6 +1532,7 @@
         <li>Keep host command targets separate from turret lock-on targets. A unit or building may carry player intent such as attack, guard, repair, or assist; each mounted turret may inherit that target only if its own exclusion policy and targeting gates accept it.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
+        <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as inbound or outbound resource balls. Solar/wind/extractor pull inbound balls from random world directions; construction turrets push outbound balls at a build target; converters run one pylon inbound and one outbound. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
