@@ -39,12 +39,18 @@ export function createSpawnDto(): NetworkServerSnapshotProjectileSpawn {
     velocity: { x: 0, y: 0, z: 0 },
     projectileType: PROJECTILE_TYPE_UNKNOWN,
     turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
+    maxLifespan: null,
+    shotId: null,
+    sourceTurretId: null,
     playerId: 1,
     sourceEntityId: 0,
     turretIndex: 0,
     barrelIndex: 0,
+    isDGun: null,
+    fromParentDetonation: null,
+    beam: null,
+    targetEntityId: null,
+    homingTurnRate: null,
   };
 }
 
@@ -82,7 +88,7 @@ export function copySpawnInto(
     dst.beam.end.y = src.beam.end.y;
     dst.beam.end.z = src.beam.end.z;
   } else {
-    dst.beam = undefined;
+    dst.beam = null;
   }
   dst.targetEntityId = src.targetEntityId;
   dst.homingTurnRate = src.homingTurnRate;
@@ -94,6 +100,7 @@ export function createVelocityDto(): NetworkServerSnapshotVelocityUpdate {
     id: 0,
     pos: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
+    clearHomingTarget: null,
   };
 }
 
@@ -108,8 +115,7 @@ export function copyVelocityInto(
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
-  if (src.clearHomingTarget === true) dst.clearHomingTarget = true;
-  else delete dst.clearHomingTarget;
+  dst.clearHomingTarget = src.clearHomingTarget === true ? true : null;
   return dst;
 }
 
@@ -119,6 +125,7 @@ export function createMinimapEntityDto(): NetworkServerSnapshotMinimapEntity {
     pos: { x: 0, y: 0 },
     type: 'unit',
     playerId: 1,
+    radarOnly: null,
   };
 }
 
@@ -131,8 +138,7 @@ export function copyMinimapEntityInto(
   dst.pos.y = src.pos.y;
   dst.type = src.type;
   dst.playerId = src.playerId;
-  if (src.radarOnly) dst.radarOnly = true;
-  else delete dst.radarOnly;
+  dst.radarOnly = src.radarOnly === true ? true : null;
   return dst;
 }
 
@@ -140,8 +146,8 @@ export function createBeamDto(): NetworkServerSnapshotBeamUpdate {
   return {
     id: 0,
     points: [],
-    obstructionT: undefined,
-    endpointDamageable: undefined,
+    obstructionT: null,
+    endpointDamageable: null,
   };
 }
 
@@ -158,7 +164,20 @@ export function copyBeamInto(
     const sp = src.points[i];
     let dp = dstPts[i];
     if (!dp) {
-      dp = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+      dp = {
+        x: 0,
+        y: 0,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        mirrorEntityId: null,
+        reflectorKind: null,
+        reflectorPlayerId: null,
+        normalX: null,
+        normalY: null,
+        normalZ: null,
+      };
       dstPts[i] = dp;
     }
     dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
@@ -177,14 +196,17 @@ export function createSimEventDto(): NetworkServerSnapshotSimEvent {
   return {
     type: 'fire',
     turretId: '',
-    sourceType: undefined,
-    sourceKey: undefined,
+    sourceType: null,
+    sourceKey: null,
     pos: { x: 0, y: 0, z: 0 },
-    playerId: undefined,
-    forceFieldImpact: undefined,
-    killerPlayerId: undefined,
-    victimPlayerId: undefined,
-    audioOnly: undefined,
+    playerId: null,
+    entityId: null,
+    deathContext: null,
+    impactContext: null,
+    forceFieldImpact: null,
+    killerPlayerId: null,
+    victimPlayerId: null,
+    audioOnly: null,
   };
 }
 
@@ -213,7 +235,7 @@ export function copySimEventInto(
         normal: { ...src.forceFieldImpact.normal },
         playerId: src.forceFieldImpact.playerId,
       }
-    : undefined;
+    : null;
   dst.killerPlayerId = src.killerPlayerId;
   dst.victimPlayerId = src.victimPlayerId;
   dst.audioOnly = src.audioOnly;
@@ -289,12 +311,12 @@ export function copyTurretInto(
 
 export function createSprayDto(): NetworkServerSnapshotSprayTarget {
   return {
-    source: { id: 0, pos: { x: 0, y: 0 }, z: undefined, playerId: 1 as PlayerId },
-    target: { id: 0, pos: { x: 0, y: 0 }, z: undefined, dim: undefined, radius: undefined },
+    source: { id: 0, pos: { x: 0, y: 0 }, z: null, playerId: 1 as PlayerId },
+    target: { id: 0, pos: { x: 0, y: 0 }, z: null, dim: null, radius: null },
     type: 'build',
     intensity: 0,
-    speed: undefined,
-    particleRadius: undefined,
+    speed: null,
+    particleRadius: null,
   };
 }
 
@@ -316,7 +338,7 @@ export function copySprayInto(
     dst.target.dim.x = src.target.dim.x;
     dst.target.dim.y = src.target.dim.y;
   } else {
-    dst.target.dim = undefined;
+    dst.target.dim = null;
   }
   dst.target.radius = src.target.radius;
   dst.type = src.type;
@@ -327,7 +349,7 @@ export function copySprayInto(
 }
 
 export function createWaypointDto(): WaypointDto {
-  return { pos: { x: 0, y: 0 }, posZ: undefined, type: '' };
+  return { pos: { x: 0, y: 0 }, posZ: null, type: '' };
 }
 
 export function copyWaypointInto(src: WaypointDto, dst: WaypointDto): WaypointDto {

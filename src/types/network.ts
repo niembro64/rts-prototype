@@ -320,35 +320,35 @@ export type NetworkServerSnapshotSimEvent = {
     | 'attackAlert'
     | 'projectileExpire';
   turretId: SimEventAudioKey;
-  sourceType?: SimEventSourceType;
-  sourceKey?: string;
+  sourceType: SimEventSourceType | null;
+  sourceKey: string | null;
   /** Event origin in 3D sim coords. See SimEvent in types/combat.ts. */
   pos: Vec3;
-  playerId?: PlayerId;
-  entityId?: number;
-  deathContext?: SimDeathContext;
-  impactContext?: ImpactContext;
-  forceFieldImpact?: ForceFieldImpactContext;
+  playerId: PlayerId | null;
+  entityId: number | null;
+  deathContext: SimDeathContext | null;
+  impactContext: ImpactContext | null;
+  forceFieldImpact: ForceFieldImpactContext | null;
   /** For 'death' events: playerId of the entity that landed the
    *  killing blow. Carries through serializeAudioEvents' kill-credit
    *  branch (issues.txt FOW-17) — the audio serializer forwards the
    *  event to this player's snapshot even when the death position
    *  isn't in their vision, so they get the "+1, you got it" hit
    *  even on off-screen kills. */
-  killerPlayerId?: PlayerId;
+  killerPlayerId: PlayerId | null;
   /** For 'attackAlert' events: playerId of the victim taking damage.
    *  Drives the FOW-08-followup remainder routing — the alert is
    *  forwarded to this player's snapshot regardless of vision so they
    *  see a marker at the attacker's position when un-homed splash
    *  damage from inside the fog lands on their unit. */
-  victimPlayerId?: PlayerId;
+  victimPlayerId: PlayerId | null;
   /** FOW-09 earshot reveal flag. When true, the client should play
    *  the audio side of the event but skip every visual branch —
    *  "distant gunfire from over there" without leaking the position
    *  through an explosion sprite. Server sets it when forwarding an
    *  event outside the recipient's vision but within their earshot
    *  pad; never set in-vision. */
-  audioOnly?: boolean;
+  audioOnly: boolean | null;
 };
 
 /** Wire shape for the FOW-11 keyframe shroud payload. cellSize is
@@ -395,27 +395,27 @@ export type NetworkServerSnapshotProjectileSpawn = {
    *  and projectileTypeToCode / codeToProjectileType helpers). */
   projectileType: ProjectileTypeCode;
   /** Resolved finite runtime timeout in ms, when the projectile has one. */
-  maxLifespan?: number;
+  maxLifespan: number | null;
   /** Compatibility/source turret wire code. Prefer sourceTurretId + shotId. */
   turretId: TurretTypeCode;
   /** Actual shot blueprint wire code for client hydration. */
-  shotId?: ShotTypeCode;
+  shotId: ShotTypeCode | null;
   /** Real turret blueprint wire code that authored this projectile. */
-  sourceTurretId?: TurretTypeCode;
+  sourceTurretId: TurretTypeCode | null;
   playerId: number;
   sourceEntityId: number;
   turretIndex: number;
   /** Barrel selected for visual/audio cadence within the source turret's cluster.
    *  Authoritative shots spawn from the turret mount center. */
   barrelIndex: number;
-  isDGun?: boolean;
+  isDGun: boolean | null;
   /** True when this projectile came from a parent detonation (e.g.
    *  cluster-flak submunitions) rather than a turret launch. */
-  fromParentDetonation?: boolean;
+  fromParentDetonation: boolean | null;
   /** PROJECTILE_POSITION_WIRE_SCALE fixed-point line-shot endpoints. */
-  beam?: { start: Vec3; end: Vec3 };
-  targetEntityId?: number;
-  homingTurnRate?: number;
+  beam: { start: Vec3; end: Vec3 } | null;
+  targetEntityId: number | null;
+  homingTurnRate: number | null;
 };
 
 export type NetworkServerSnapshotProjectileDespawn = {
@@ -428,7 +428,7 @@ export type NetworkServerSnapshotVelocityUpdate = {
   pos: Vec3;
   /** VELOCITY_WIRE_SCALE fixed-point velocity. */
   velocity: Vec3;
-  clearHomingTarget?: boolean;
+  clearHomingTarget: boolean | null;
 };
 
 /** Wire-format vertex of a beam/laser polyline. The full beam is
@@ -450,12 +450,12 @@ export type NetworkServerSnapshotBeamPoint = {
   vy: number;
   vz: number;
   /** Legacy name: any beam reflector entity, not only mirrors. */
-  mirrorEntityId?: number;
-  reflectorKind?: BeamReflectorKind;
-  reflectorPlayerId?: PlayerId;
-  normalX?: number;
-  normalY?: number;
-  normalZ?: number;
+  mirrorEntityId: number | null;
+  reflectorKind: BeamReflectorKind | null;
+  reflectorPlayerId: PlayerId | null;
+  normalX: number | null;
+  normalY: number | null;
+  normalZ: number | null;
 };
 
 export type NetworkServerSnapshotBeamUpdate = {
@@ -464,10 +464,10 @@ export type NetworkServerSnapshotBeamUpdate = {
    *  (range / hit / ground / terminal reflector), middles = reflections. Each carries its
    *  own position and velocity from the authoritative every-tick beam trace. */
   points: NetworkServerSnapshotBeamPoint[];
-  obstructionT?: number;
+  obstructionT: number | null;
   /** False when the authoritative path has no physical impact endpoint,
    *  so clients should not render an endpoint damage orb. */
-  endpointDamageable?: boolean;
+  endpointDamageable: boolean | null;
 };
 
 export type NetworkServerSnapshotGridCell = {
@@ -583,16 +583,16 @@ export type NetworkServerSnapshotMinimapEntity = {
    *  type / owner-color identification — since the player only has
    *  positional intel. Omitted (treated as false) for entities the
    *  recipient sees in full. */
-  radarOnly?: boolean;
+  radarOnly: boolean | null;
 };
 
 export type NetworkServerSnapshotSprayTarget = {
-  source: { id: number; pos: Vec2; z?: number; playerId: PlayerId };
-  target: { id: number; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
+  source: { id: number; pos: Vec2; z: number | null; playerId: PlayerId };
+  target: { id: number; pos: Vec2; z: number | null; dim: Vec2 | null; radius: number | null };
   type: 'build' | 'heal';
   intensity: number;
-  speed?: number;
-  particleRadius?: number;
+  speed: number | null;
+  particleRadius: number | null;
 };
 
 export type NetworkServerSnapshotAction = {
@@ -693,15 +693,15 @@ export type NetworkServerSnapshotEntity = {
     /** Static fields are present on full records and omitted from
      *  ordinary deltas after the entity has been created.
      *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
-    unitType?: number;
-    hp?: { curr: number; max: number };
+    unitType: number | null;
+    hp: { curr: number; max: number } | null;
     /** Unit radii. Static on full records and omitted from ordinary
      *  deltas unless the unit blueprint/runtime radius changes. */
-    radius?: { body?: number; shot?: number; push?: number };
-    bodyCenterHeight?: number;
-    mass?: number;
+    radius: { body: number | null; shot: number | null; push: number | null } | null;
+    bodyCenterHeight: number | null;
+    mass: number | null;
     /** VELOCITY_WIRE_SCALE fixed-point linear velocity. */
-    velocity?: Vec3;
+    velocity: Vec3 | null;
     /** Per-unit smoothed surface normal (unit-length nx, ny, nz). The
      *  sim EMA-blends raw → smoothed each tick (see updateUnitGroundNormal) so
      *  the rendered chassis tilt and the slope-tilted turret world
@@ -712,62 +712,63 @@ export type NetworkServerSnapshotEntity = {
      *  encoding. Omitted on snapshots where the unit's normal didn't
      *  change enough to send, or where visual detail fields are being
      *  throttled between detail-cadence snapshots. */
-    surfaceNormal?: { nx: number; ny: number; nz: number };
+    surfaceNormal: { nx: number; ny: number; nz: number } | null;
     /** Full 3-DOF orientation triad for entities that need roll or
      *  arbitrary orientation (hover drones banking into turns, future
      *  free-flying projectiles with spin). Omitted entirely for
      *  ground units, which continue to ship `rotation` (yaw scalar)
      *  on the parent NetworkServerSnapshotEntity. The client reads
      *  this when present and falls back to the yaw scalar otherwise. */
-    orientation?: { x: number; y: number; z: number; w: number };
+    orientation: { x: number; y: number; z: number; w: number } | null;
     /** Angular velocity 3-vector in world frame (rad/s). Paired with
      *  `orientation`; PREDICT VEL clients integrate omega forward each
      *  frame between snapshots. Angular acceleration is intentionally
      *  not shipped (see design philosophy: client extrapolates from
      *  velocity, never re-derives server-side forces). */
-    angularVelocity3?: Vec3;
-    fireEnabled?: boolean;
-    isCommander?: boolean;
-    buildTargetId?: number | null;
-    actions?: NetworkServerSnapshotAction[];
-    turrets?: NetworkServerSnapshotTurret[];
+    angularVelocity3: Vec3 | null;
+    fireEnabled: boolean | null;
+    isCommander: boolean | null;
+    buildTargetId: number | null;
+    buildTargetIdPresent: boolean;
+    actions: NetworkServerSnapshotAction[] | null;
+    turrets: NetworkServerSnapshotTurret[] | null;
     /** Unit shell construction state. Present whenever the unit was
      *  spawned by a factory and is still being funded by it. Same
      *  shape as `building.build`. Omitted (or `complete: true`) once
      *  the unit becomes active. */
-    build?: {
+    build: {
       complete: boolean;
       paid: { energy: number; metal: number };
-    };
+    } | null;
   } | null;
   building: {
     /** type / dim are present on full records and omitted from
      *  ordinary deltas after the entity has been created.
      *  Numeric wire ID — see BUILDING_TYPE_* / buildingTypeToCode helpers. */
-    type?: number;
+    type: number | null;
     /** Footprint in world units — planar xy is dim.x/dim.y. Full
      *  depth (vertical extent) lives on the building entity, not
      *  here — clients re-derive it from the blueprint. */
-    dim?: Vec2;
-    hp?: { curr: number; max: number };
+    dim: Vec2 | null;
+    hp: { curr: number; max: number } | null;
     /** `paid` carries the per-resource accumulator so the
      *  client can render independent build bars; `required` is
      *  omitted because the client re-derives it from the entity's
      *  blueprint. The aggregate fill ratio (formerly `progress`)
      *  is computed client-side via `getBuildFraction(buildable)`. */
-    build?: {
+    build: {
       complete: boolean;
       paid: { energy: number; metal: number };
-    };
+    } | null;
     /** Extractor output in metal/sec after footprint coverage is applied. */
-    metalExtractionRate?: number;
-    solar?: {
+    metalExtractionRate: number | null;
+    solar: {
       open: boolean;
-    };
+    } | null;
     /** Building-mounted combat turrets use the same compact wire shape
      *  as unit turrets. Static authored data stays blueprint-derived. */
-    turrets?: NetworkServerSnapshotTurret[];
-    factory?: {
+    turrets: NetworkServerSnapshotTurret[] | null;
+    factory: {
       /** Queue of unit type codes (see UNIT_TYPE_* / unitTypeToCode). */
       queue: number[];
       /** Average fill of the factory's currentShellId, or 0 if
@@ -784,8 +785,8 @@ export type NetworkServerSnapshotEntity = {
       /** `posZ` carries the click-altitude of the player-issued
        *  factory waypoint; absent for synthetic / legacy waypoints
        *  (renderers fall back to terrain sample). */
-      waypoints: { pos: Vec2; posZ?: number; type: string }[];
-    };
+      waypoints: { pos: Vec2; posZ: number | null; type: string }[];
+    } | null;
   } | null;
 };
 

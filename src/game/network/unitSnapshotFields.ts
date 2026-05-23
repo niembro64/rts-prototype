@@ -38,8 +38,22 @@ type Quantize = (n: number) => number;
 
 export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
   return {
+    unitType: null,
     hp: { curr: 0, max: 0 },
+    radius: null,
+    bodyCenterHeight: null,
+    mass: null,
     velocity: { x: 0, y: 0, z: 0 },
+    surfaceNormal: null,
+    orientation: null,
+    angularVelocity3: null,
+    fireEnabled: null,
+    isCommander: null,
+    buildTargetId: null,
+    buildTargetIdPresent: false,
+    actions: null,
+    turrets: null,
+    build: null,
   };
 }
 
@@ -175,18 +189,18 @@ export function writeNetworkUnitStaticFields(
   unitIsCommander: boolean,
 ): void {
   dst.unitType = unitTypeToCode(unit.unitType);
-  dst.radius = undefined;
-  dst.bodyCenterHeight = undefined;
-  dst.mass = undefined;
-  dst.isCommander = unitIsCommander ? true : undefined;
+  dst.radius = null;
+  dst.bodyCenterHeight = null;
+  dst.mass = null;
+  dst.isCommander = unitIsCommander ? true : null;
 }
 
 export function clearNetworkUnitStaticFields(dst: NetworkUnitSnapshot): void {
-  dst.unitType = undefined;
-  dst.radius = undefined;
-  dst.bodyCenterHeight = undefined;
-  dst.mass = undefined;
-  dst.isCommander = undefined;
+  dst.unitType = null;
+  dst.radius = null;
+  dst.bodyCenterHeight = null;
+  dst.mass = null;
+  dst.isCommander = null;
 }
 
 export function writeNetworkUnitVelocity(
@@ -213,18 +227,18 @@ export function writeNetworkUnitSurfaceNormal(
 }
 
 export function clearNetworkUnitSurfaceNormal(dst: NetworkUnitSnapshot): void {
-  dst.surfaceNormal = undefined;
+  dst.surfaceNormal = null;
 }
 
 export function writeNetworkUnitCombatMode(
   dst: NetworkUnitSnapshot,
   entity: Entity,
 ): void {
-  dst.fireEnabled = entity.combat?.fireEnabled === false ? false : undefined;
+  dst.fireEnabled = entity.combat?.fireEnabled === false ? false : null;
 }
 
 export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
-  dst.fireEnabled = undefined;
+  dst.fireEnabled = null;
 }
 
 export function writeNetworkUnitActions(
@@ -269,14 +283,14 @@ export function writeNetworkUnitActions(
 }
 
 export function clearNetworkUnitActions(dst: NetworkUnitSnapshot): void {
-  dst.actions = undefined;
+  dst.actions = null;
 }
 
 function copyVec3OptionalInto(
-  src: Vec3 | undefined,
-  dst: Vec3 | undefined,
-): Vec3 | undefined {
-  if (!src) return undefined;
+  src: Vec3 | null,
+  dst: Vec3 | null,
+): Vec3 | null {
+  if (!src) return null;
   const out = dst ?? { x: 0, y: 0, z: 0 };
   out.x = src.x;
   out.y = src.y;
@@ -306,67 +320,68 @@ export function copyNetworkUnitSnapshotInto(
   dst: NetworkUnitSnapshot,
 ): NetworkUnitSnapshot {
   dst.unitType = src.unitType;
-  if (src.hp) {
+  if (src.hp !== null) {
     const hp = dst.hp ?? (dst.hp = { curr: 0, max: 0 });
     hp.curr = src.hp.curr;
     hp.max = src.hp.max;
   } else {
-    dst.hp = undefined;
+    dst.hp = null;
   }
-  if (src.radius) {
+  if (src.radius !== null) {
     const radius = dst.radius ?? (dst.radius = { body: 0, shot: 0, push: 0 });
     radius.body = src.radius.body;
     radius.shot = src.radius.shot;
     radius.push = src.radius.push;
   } else {
-    dst.radius = undefined;
+    dst.radius = null;
   }
   dst.bodyCenterHeight = src.bodyCenterHeight;
   dst.mass = src.mass;
-  if (src.velocity) {
+  if (src.velocity !== null) {
     const velocity = dst.velocity ?? (dst.velocity = { x: 0, y: 0, z: 0 });
     velocity.x = src.velocity.x;
     velocity.y = src.velocity.y;
     velocity.z = src.velocity.z;
   } else {
-    dst.velocity = undefined;
+    dst.velocity = null;
   }
-  if (src.surfaceNormal) {
+  if (src.surfaceNormal !== null) {
     const sn = dst.surfaceNormal ?? (dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 });
     sn.nx = src.surfaceNormal.nx;
     sn.ny = src.surfaceNormal.ny;
     sn.nz = src.surfaceNormal.nz;
   } else {
-    dst.surfaceNormal = undefined;
+    dst.surfaceNormal = null;
   }
-  if (src.orientation) {
+  if (src.orientation !== null) {
     const o = dst.orientation ?? (dst.orientation = { x: 0, y: 0, z: 0, w: 1 });
     o.x = src.orientation.x;
     o.y = src.orientation.y;
     o.z = src.orientation.z;
     o.w = src.orientation.w;
   } else {
-    dst.orientation = undefined;
+    dst.orientation = null;
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
   dst.fireEnabled = src.fireEnabled;
   dst.isCommander = src.isCommander;
   dst.buildTargetId = src.buildTargetId;
+  dst.buildTargetIdPresent = src.buildTargetIdPresent;
   dst.build = src.build
     ? copyNetworkUnitBuildState(src.build, dst.build ?? createNetworkUnitBuildState())
-    : undefined;
+    : null;
 
-  if (src.actions) {
+  if (src.actions !== null) {
     const actions = dst.actions ?? (dst.actions = []);
     actions.length = src.actions.length;
     for (let i = 0; i < src.actions.length; i++) {
       actions[i] = copyActionInto(src.actions[i], actions[i] ?? createActionDto());
     }
   } else {
-    dst.actions = undefined;
+    dst.actions = null;
   }
 
-  if (src.turrets) {
+  if (src.turrets !== null) {
     const turrets = dst.turrets ?? (dst.turrets = []);
     turrets.length = src.turrets.length;
     for (let i = 0; i < src.turrets.length; i++) {
@@ -376,7 +391,7 @@ export function copyNetworkUnitSnapshotInto(
       );
     }
   } else {
-    dst.turrets = undefined;
+    dst.turrets = null;
   }
 
   return dst;
@@ -410,7 +425,7 @@ export function applyNetworkUnitDriftFieldsToTarget(
   }
   if (isFull || (cf & ENTITY_CHANGED_VEL)) {
     const v = src.unit?.velocity;
-    if (v !== undefined) {
+    if (v !== null && v !== undefined) {
       target.velocityX = deqVel(v.x);
       target.velocityY = deqVel(v.y);
       target.velocityZ = deqVel(v.z);

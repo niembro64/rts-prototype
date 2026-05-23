@@ -83,11 +83,17 @@ function copyBuildStateInto(
 
 function createReusableBuilding(): ReusableEntityBuilding {
   return {
+    type: null,
+    dim: null,
     hp: { curr: 0, max: 0 },
     build: {
       complete: false,
       paid: { energy: 0, metal: 0 },
     },
+    metalExtractionRate: null,
+    solar: null,
+    turrets: null,
+    factory: null,
   };
 }
 
@@ -120,27 +126,27 @@ function copyBuildingInto(
     dst.dim.x = src.dim.x;
     dst.dim.y = src.dim.y;
   } else {
-    dst.dim = undefined;
+    dst.dim = null;
   }
   if (src.hp) {
     const hp = dst.hp ?? (dst.hp = { curr: 0, max: 0 });
     hp.curr = src.hp.curr;
     hp.max = src.hp.max;
   } else {
-    dst.hp = undefined;
+    dst.hp = null;
   }
   dst.build = src.build
     ? copyBuildStateInto(src.build, dst.build ?? {
         complete: false,
         paid: { energy: 0, metal: 0 },
       })
-    : undefined;
+    : null;
   dst.metalExtractionRate = src.metalExtractionRate;
   if (src.solar) {
     if (!dst.solar) dst.solar = { open: true };
     dst.solar.open = src.solar.open;
   } else {
-    dst.solar = undefined;
+    dst.solar = null;
   }
   if (src.turrets) {
     const turrets = dst.turrets ?? (dst.turrets = []);
@@ -152,7 +158,7 @@ function copyBuildingInto(
       );
     }
   } else {
-    dst.turrets = undefined;
+    dst.turrets = null;
   }
   if (src.factory) {
     if (!dst.factory) {
@@ -167,7 +173,7 @@ function copyBuildingInto(
     }
     copyFactoryInto(src.factory, dst.factory);
   } else {
-    dst.factory = undefined;
+    dst.factory = null;
   }
   return dst;
 }

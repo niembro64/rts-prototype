@@ -39,12 +39,11 @@ import {
 } from './snapshotStaticWirePack';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
-// Snapshot DTOs are pooled, so optional fields stay as own properties
-// assigned to `undefined`. Default msgpack encodes those as `nil`,
-// which the client decodes as `null` and treats as a present value
-// (e.g. `metalExtractionRate !== undefined` would fire on null).
-// `ignoreUndefined: true` makes msgpack skip those keys entirely,
-// matching `JSON.stringify`'s behavior.
+// Some top-level snapshot sections and legacy transport envelopes still
+// use `undefined` for omission. Default msgpack encodes those as `nil`,
+// so `ignoreUndefined: true` keeps the wire behavior aligned with
+// JSON-style omission. Pooled nested DTOs use explicit null and are
+// converted to presence bits by the section packers before msgpack.
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();

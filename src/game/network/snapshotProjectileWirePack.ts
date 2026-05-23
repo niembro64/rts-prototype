@@ -201,22 +201,22 @@ function packProjectileSpawnsV2(
 
 function computeSpawnFlags(spawn: NetworkServerSnapshotProjectileSpawn): number {
   let flags = 0;
-  if (spawn.maxLifespan !== undefined) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
-  if (spawn.sourceTurretId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
-  if (spawn.isDGun !== undefined) {
+  if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
+  if (spawn.shotId !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
+  if (spawn.sourceTurretId !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
+  if (spawn.isDGun !== null) {
     flags |= spawn.isDGun
       ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
       : PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE;
   }
-  if (spawn.fromParentDetonation !== undefined) {
+  if (spawn.fromParentDetonation !== null) {
     flags |= spawn.fromParentDetonation
       ? PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE
       : PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE;
   }
-  if (spawn.beam !== undefined) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
-  if (spawn.targetEntityId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
-  if (spawn.homingTurnRate !== undefined) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
+  if (spawn.beam !== null) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
+  if (spawn.targetEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
+  if (spawn.homingTurnRate !== null) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
   return flags;
 }
 
@@ -302,11 +302,19 @@ function unpackProjectileSpawnsV2(
         rotation,
         velocity: { x: velX, y: velY, z: velZ },
         projectileType,
+        maxLifespan: null,
         turretId,
+        shotId: null,
+        sourceTurretId: null,
         playerId,
         sourceEntityId,
         turretIndex,
         barrelIndex,
+        isDGun: null,
+        fromParentDetonation: null,
+        beam: null,
+        targetEntityId: null,
+        homingTurnRate: null,
       };
 
       if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
@@ -482,6 +490,7 @@ function unpackProjectileVelocityUpdatesV2(
           y: reader.readVarInt(),
           z: reader.readVarInt(),
         },
+        clearHomingTarget: null,
       };
       if ((flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0) {
         update.clearHomingTarget = true;
@@ -519,8 +528,8 @@ function packBeamUpdatesV2(
     lastBeamId = update.id;
 
     let flags = 0;
-    if (update.obstructionT !== undefined) flags |= PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T;
-    if (update.endpointDamageable !== undefined) {
+    if (update.obstructionT !== null) flags |= PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T;
+    if (update.endpointDamageable !== null) {
       flags |= update.endpointDamageable
         ? PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE
         : PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE;
@@ -545,17 +554,17 @@ function writeBeamPointV2(
   point: NetworkServerSnapshotBeamPoint,
 ): void {
   let flags = 0;
-  if (point.mirrorEntityId !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
-  if (point.reflectorKind !== undefined) {
+  if (point.mirrorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
+  if (point.reflectorKind !== null) {
     flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
     if (point.reflectorKind === 'forceField') {
       flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
     }
   }
-  if (point.reflectorPlayerId !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
-  if (point.normalX !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
-  if (point.normalY !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
-  if (point.normalZ !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
+  if (point.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
+  if (point.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
+  if (point.normalY !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
+  if (point.normalZ !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
   writer.writeVarUint(flags);
   writer.writeVarInt(point.x);
   writer.writeVarInt(point.y);
@@ -594,6 +603,8 @@ function unpackBeamUpdatesV2(
     const update: NetworkServerSnapshotBeamUpdate = {
       id,
       points: [],
+      obstructionT: null,
+      endpointDamageable: null,
     };
     if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0) {
       update.obstructionT = reader.readVarInt();
@@ -623,6 +634,12 @@ function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamP
     vx: reader.readVarInt(),
     vy: reader.readVarInt(),
     vz: reader.readVarInt(),
+    mirrorEntityId: null,
+    reflectorKind: null,
+    reflectorPlayerId: null,
+    normalX: null,
+    normalY: null,
+    normalZ: null,
   };
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {
     point.mirrorEntityId = reader.readVarUint();
@@ -670,11 +687,19 @@ function unpackProjectileSpawnsV1(
         z: rows[base + 7] ?? 0,
       },
       projectileType: rows[base + 8] ?? 0,
+      maxLifespan: null,
       turretId: rows[base + 10] ?? 0,
+      shotId: null,
+      sourceTurretId: null,
       playerId: rows[base + 13] ?? 1,
       sourceEntityId: rows[base + 14] ?? 0,
       turretIndex: rows[base + 15] ?? 0,
       barrelIndex: rows[base + 16] ?? 0,
+      isDGun: null,
+      fromParentDetonation: null,
+      beam: null,
+      targetEntityId: null,
+      homingTurnRate: null,
     };
 
     if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
@@ -753,7 +778,7 @@ function unpackProjectileVelocityUpdatesV1(
         y: rows[base + 5] ?? 0,
         z: rows[base + 6] ?? 0,
       },
-      clearHomingTarget: (rows[base + 7] ?? 0) !== 0 ? true : undefined,
+      clearHomingTarget: (rows[base + 7] ?? 0) !== 0 ? true : null,
     };
   }
   return updates;
@@ -775,6 +800,8 @@ function unpackBeamUpdatesV1(
     const update: NetworkServerSnapshotBeamUpdate = {
       id: rows[base + 0] ?? 0,
       points: unpackBeamPointsV1(pointRows, pointOffset, pointCount),
+      obstructionT: null,
+      endpointDamageable: null,
     };
     pointOffset += pointCount;
 
@@ -809,6 +836,12 @@ function unpackBeamPointsV1(
       vx: source[base + 3] ?? 0,
       vy: source[base + 4] ?? 0,
       vz: source[base + 5] ?? 0,
+      mirrorEntityId: null,
+      reflectorKind: null,
+      reflectorPlayerId: null,
+      normalX: null,
+      normalY: null,
+      normalZ: null,
     };
 
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {

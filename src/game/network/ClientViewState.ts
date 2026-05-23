@@ -458,7 +458,7 @@ export class ClientViewState {
         // to an older target and visibly overshoot.
         this.clearTargetPredictionAccum(netEntity.id);
         applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
-        this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets, isFull);
+        this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets ?? null, isFull);
         target.updatedAtMs = now;
       }
 
@@ -632,7 +632,7 @@ export class ClientViewState {
     if (audioEventsForReflection) {
       for (let i = 0; i < audioEventsForReflection.length; i++) {
         const evt = audioEventsForReflection[i];
-        if (evt.type !== 'forceFieldImpact' || evt.entityId === undefined) continue;
+        if (evt.type !== 'forceFieldImpact' || evt.entityId === null) continue;
         const entity = this.entities.get(evt.entityId);
         const proj = entity?.projectile;
         if (!proj) continue;

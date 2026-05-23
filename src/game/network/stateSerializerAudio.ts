@@ -38,17 +38,17 @@ function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
   const event: PooledSimEvent = {
     type: 'fire',
     turretId: '',
-    sourceType: undefined,
-    sourceKey: undefined,
+    sourceType: null,
+    sourceKey: null,
     pos: { x: 0, y: 0, z: 0 },
-    playerId: undefined,
-    entityId: undefined,
-    deathContext: undefined,
-    impactContext: undefined,
-    forceFieldImpact: undefined,
-    killerPlayerId: undefined,
-    victimPlayerId: undefined,
-    audioOnly: undefined,
+    playerId: null,
+    entityId: null,
+    deathContext: null,
+    impactContext: null,
+    forceFieldImpact: null,
+    killerPlayerId: null,
+    victimPlayerId: null,
+    audioOnly: null,
   } as PooledSimEvent;
   definePooledScratchProperty(event, '_pos', { x: 0, y: 0, z: 0 });
   event.pos = event._pos;
@@ -149,19 +149,19 @@ export function serializeAudioEvents(
     const out = getPooledItem(state, createPooledSimEvent) as PooledSimEvent;
     out.type = source.type;
     out.turretId = source.turretId;
-    out.sourceType = source.sourceType;
-    out.sourceKey = source.sourceKey;
+    out.sourceType = source.sourceType ?? null;
+    out.sourceKey = source.sourceKey ?? null;
     out._pos.x = source.pos.x;
     out._pos.y = source.pos.y;
     out._pos.z = source.pos.z;
-    out.playerId = shouldForwardAudioEventPlayerId(source.type) ? source.playerId : undefined;
-    out.entityId = source.entityId;
-    out.deathContext = source.deathContext;
-    out.impactContext = source.impactContext;
-    out.forceFieldImpact = source.forceFieldImpact;
-    out.killerPlayerId = source.killerPlayerId;
-    out.victimPlayerId = source.victimPlayerId;
-    out.audioOnly = audioOnly ? true : undefined;
+    out.playerId = shouldForwardAudioEventPlayerId(source.type) ? source.playerId ?? null : null;
+    out.entityId = source.entityId ?? null;
+    out.deathContext = source.deathContext ?? null;
+    out.impactContext = source.impactContext ?? null;
+    out.forceFieldImpact = source.forceFieldImpact ?? null;
+    out.killerPlayerId = source.killerPlayerId ?? null;
+    out.victimPlayerId = source.victimPlayerId ?? null;
+    out.audioOnly = audioOnly ? true : null;
     audioBuf.push(out);
   }
   return audioBuf.length > 0 ? audioBuf : undefined;

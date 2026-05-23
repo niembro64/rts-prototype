@@ -133,19 +133,19 @@ export function packAudioEventsForWire(
     if (typeCode === undefined) continue;
 
     let flags = 0;
-    if (event.sourceType !== undefined) flags |= EVENT_HAS_SOURCE_TYPE;
-    if (event.sourceKey !== undefined) flags |= EVENT_HAS_SOURCE_KEY;
-    if (event.playerId !== undefined) flags |= EVENT_HAS_PLAYER_ID;
-    if (event.entityId !== undefined) flags |= EVENT_HAS_ENTITY_ID;
-    if (event.forceFieldImpact !== undefined) flags |= EVENT_HAS_FORCE_FIELD_IMPACT;
-    if (event.killerPlayerId !== undefined) flags |= EVENT_HAS_KILLER_PLAYER_ID;
-    if (event.victimPlayerId !== undefined) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
-    if (event.audioOnly !== undefined) {
+    if (event.sourceType !== null) flags |= EVENT_HAS_SOURCE_TYPE;
+    if (event.sourceKey !== null) flags |= EVENT_HAS_SOURCE_KEY;
+    if (event.playerId !== null) flags |= EVENT_HAS_PLAYER_ID;
+    if (event.entityId !== null) flags |= EVENT_HAS_ENTITY_ID;
+    if (event.forceFieldImpact !== null) flags |= EVENT_HAS_FORCE_FIELD_IMPACT;
+    if (event.killerPlayerId !== null) flags |= EVENT_HAS_KILLER_PLAYER_ID;
+    if (event.victimPlayerId !== null) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
+    if (event.audioOnly !== null) {
       flags |= EVENT_HAS_AUDIO_ONLY;
       if (event.audioOnly) flags |= EVENT_AUDIO_ONLY_VALUE;
     }
-    if (event.deathContext !== undefined) flags |= EVENT_HAS_DEATH_CONTEXT;
-    if (event.impactContext !== undefined) flags |= EVENT_HAS_IMPACT_CONTEXT;
+    if (event.deathContext !== null) flags |= EVENT_HAS_DEATH_CONTEXT;
+    if (event.impactContext !== null) flags |= EVENT_HAS_IMPACT_CONTEXT;
 
     const row = [
       typeCode,
@@ -156,15 +156,15 @@ export function packAudioEventsForWire(
       quantizeProjectilePosition(event.pos.z),
     ];
 
-    if (event.sourceType !== undefined) {
+    if (event.sourceType !== null) {
       row.push(AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0);
     }
-    if (event.sourceKey !== undefined) {
+    if (event.sourceKey !== null) {
       row.push(stringSlot(strings, stringSlots, event.sourceKey));
     }
-    if (event.playerId !== undefined) row.push(event.playerId);
-    if (event.entityId !== undefined) row.push(event.entityId);
-    if (event.forceFieldImpact !== undefined) {
+    if (event.playerId !== null) row.push(event.playerId);
+    if (event.entityId !== null) row.push(event.entityId);
+    if (event.forceFieldImpact !== null) {
       row.push(
         quantizeNormal(event.forceFieldImpact.normal.x),
         quantizeNormal(event.forceFieldImpact.normal.y),
@@ -172,13 +172,13 @@ export function packAudioEventsForWire(
         event.forceFieldImpact.playerId,
       );
     }
-    if (event.killerPlayerId !== undefined) row.push(event.killerPlayerId);
-    if (event.victimPlayerId !== undefined) row.push(event.victimPlayerId);
-    if (event.audioOnly !== undefined) row.push(event.audioOnly ? 1 : 0);
-    if (event.deathContext !== undefined) {
+    if (event.killerPlayerId !== null) row.push(event.killerPlayerId);
+    if (event.victimPlayerId !== null) row.push(event.victimPlayerId);
+    if (event.audioOnly !== null) row.push(event.audioOnly ? 1 : 0);
+    if (event.deathContext !== null) {
       appendDeathContextRow(event.deathContext, strings, stringSlots, deathRows, turretPoseRows);
     }
-    if (event.impactContext !== undefined) {
+    if (event.impactContext !== null) {
       impactRows.push([
         quantizeProjectilePosition(event.impactContext.collisionRadius),
         quantizeProjectilePosition(event.impactContext.explosionRadius),
@@ -228,11 +228,21 @@ export function unpackAudioEventsFromWire(
     const event: NetworkServerSnapshotSimEvent = {
       type,
       turretId: (strings[row[2]] ?? '') as NetworkServerSnapshotSimEvent['turretId'],
+      sourceType: null,
+      sourceKey: null,
       pos: {
         x: dequantizeProjectilePosition(row[3] ?? 0),
         y: dequantizeProjectilePosition(row[4] ?? 0),
         z: dequantizeProjectilePosition(row[5] ?? 0),
       },
+      playerId: null,
+      entityId: null,
+      deathContext: null,
+      impactContext: null,
+      forceFieldImpact: null,
+      killerPlayerId: null,
+      victimPlayerId: null,
+      audioOnly: null,
     };
 
     if ((flags & EVENT_HAS_SOURCE_TYPE) !== 0) {

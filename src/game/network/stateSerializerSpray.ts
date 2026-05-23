@@ -48,24 +48,24 @@ export function serializeSprayTargets(
     out.source.id = source.source.id;
     out.source.pos.x = source.source.pos.x;
     out.source.pos.y = source.source.pos.y;
-    out.source.z = source.source.z;
+    out.source.z = source.source.z ?? null;
     out.source.playerId = source.source.playerId;
     out.target.id = source.target.id;
     out.target.pos.x = source.target.pos.x;
     out.target.pos.y = source.target.pos.y;
-    out.target.z = source.target.z;
+    out.target.z = source.target.z ?? null;
     if (source.target.dim) {
       if (!out.target.dim) out.target.dim = { x: 0, y: 0 };
       out.target.dim.x = source.target.dim.x;
       out.target.dim.y = source.target.dim.y;
     } else {
-      out.target.dim = undefined;
+      out.target.dim = null;
     }
-    out.target.radius = source.target.radius;
+    out.target.radius = source.target.radius ?? null;
     out.type = source.type;
     out.intensity = source.intensity;
-    out.speed = source.speed;
-    out.particleRadius = source.particleRadius;
+    out.speed = source.speed ?? null;
+    out.particleRadius = source.particleRadius ?? null;
     sprayBuf.push(out);
   }
   return sprayBuf.length > 0 ? sprayBuf : undefined;

@@ -227,9 +227,12 @@ function createPooledEntry(): PooledEntry {
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
-      type: undefined, dim: undefined, hp: buildingHp,
+      type: null, dim: null, hp: buildingHp,
       build: buildingBuild,
-      metalExtractionRate: undefined,
+      metalExtractionRate: null,
+      solar: null,
+      turrets: null,
+      factory: null,
     },
     buildingHp,
     buildingBuild,
@@ -295,8 +298,8 @@ function appendRawEntityWireRow(): void {
   entityWireSource.rowIndices.push(-1);
 }
 
-function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | undefined): number {
-  if (actions === undefined || actions.length === 0) return -1;
+function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | null): number {
+  if (actions === null || actions.length === 0) return -1;
   const rows = entityWireSource.actionRows;
   const offset = reserveFloat64WireRows(rows, actions.length, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
   const values = rows.values;
@@ -325,8 +328,8 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
   return offset;
 }
 
-function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | undefined): number {
-  if (turrets === undefined || turrets.length === 0) return -1;
+function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | null): number {
+  if (turrets === null || turrets.length === 0) return -1;
   const rows = entityWireSource.turretRows;
   const offset = reserveFloat64WireRows(rows, turrets.length, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
   const values = rows.values;
@@ -370,7 +373,7 @@ function appendWaypointWireRows(waypoints: readonly FactorySub['waypoints'][numb
     const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
     values[base + 0] = waypoint.pos.x;
     values[base + 1] = waypoint.pos.y;
-    values[base + 2] = waypoint.posZ !== undefined ? 1 : 0;
+    values[base + 2] = waypoint.posZ !== null ? 1 : 0;
     values[base + 3] = waypoint.posZ ?? 0;
     values[base + 4] = strings.length;
     strings.push(waypoint.type);
@@ -432,42 +435,42 @@ function appendUnitEntityWireRow(
   values[base + 10] = unit.velocity?.x ?? 0;
   values[base + 11] = unit.velocity?.y ?? 0;
   values[base + 12] = unit.velocity?.z ?? 0;
-  values[base + 13] = unit.unitType !== undefined ? 1 : 0;
+  values[base + 13] = unit.unitType !== null ? 1 : 0;
   values[base + 14] = unit.unitType ?? 0;
-  values[base + 15] = radius !== undefined ? 1 : 0;
-  values[base + 16] = radius !== undefined && radius.body !== undefined ? radius.body : 0;
-  values[base + 17] = radius !== undefined && radius.shot !== undefined ? radius.shot : 0;
-  values[base + 18] = radius !== undefined && radius.push !== undefined ? radius.push : 0;
-  values[base + 19] = unit.bodyCenterHeight !== undefined ? 1 : 0;
+  values[base + 15] = radius !== null ? 1 : 0;
+  values[base + 16] = radius !== null && radius.body !== null ? radius.body : 0;
+  values[base + 17] = radius !== null && radius.shot !== null ? radius.shot : 0;
+  values[base + 18] = radius !== null && radius.push !== null ? radius.push : 0;
+  values[base + 19] = unit.bodyCenterHeight !== null ? 1 : 0;
   values[base + 20] = unit.bodyCenterHeight ?? 0;
-  values[base + 21] = unit.mass !== undefined ? 1 : 0;
+  values[base + 21] = unit.mass !== null ? 1 : 0;
   values[base + 22] = unit.mass ?? 0;
-  values[base + 23] = surfaceNormal !== undefined ? 1 : 0;
-  values[base + 24] = surfaceNormal !== undefined ? surfaceNormal.nx : 0;
-  values[base + 25] = surfaceNormal !== undefined ? surfaceNormal.ny : 0;
-  values[base + 26] = surfaceNormal !== undefined ? surfaceNormal.nz : 0;
-  values[base + 27] = orientation !== undefined ? 1 : 0;
-  values[base + 28] = orientation !== undefined ? orientation.x : 0;
-  values[base + 29] = orientation !== undefined ? orientation.y : 0;
-  values[base + 30] = orientation !== undefined ? orientation.z : 0;
-  values[base + 31] = orientation !== undefined ? orientation.w : 0;
-  values[base + 32] = angularVelocity !== undefined ? 1 : 0;
-  values[base + 33] = angularVelocity !== undefined ? angularVelocity.x : 0;
-  values[base + 34] = angularVelocity !== undefined ? angularVelocity.y : 0;
-  values[base + 35] = angularVelocity !== undefined ? angularVelocity.z : 0;
+  values[base + 23] = surfaceNormal !== null ? 1 : 0;
+  values[base + 24] = surfaceNormal !== null ? surfaceNormal.nx : 0;
+  values[base + 25] = surfaceNormal !== null ? surfaceNormal.ny : 0;
+  values[base + 26] = surfaceNormal !== null ? surfaceNormal.nz : 0;
+  values[base + 27] = orientation !== null ? 1 : 0;
+  values[base + 28] = orientation !== null ? orientation.x : 0;
+  values[base + 29] = orientation !== null ? orientation.y : 0;
+  values[base + 30] = orientation !== null ? orientation.z : 0;
+  values[base + 31] = orientation !== null ? orientation.w : 0;
+  values[base + 32] = angularVelocity !== null ? 1 : 0;
+  values[base + 33] = angularVelocity !== null ? angularVelocity.x : 0;
+  values[base + 34] = angularVelocity !== null ? angularVelocity.y : 0;
+  values[base + 35] = angularVelocity !== null ? angularVelocity.z : 0;
   values[base + 36] = unit.fireEnabled === false ? 1 : 0;
   values[base + 37] = unit.isCommander === true ? 1 : 0;
-  values[base + 38] = buildTargetId !== undefined ? 1 : 0;
+  values[base + 38] = unit.buildTargetIdPresent ? 1 : 0;
   values[base + 39] = buildTargetId === null ? 1 : 0;
   values[base + 40] = typeof buildTargetId === 'number' ? buildTargetId : 0;
-  values[base + 41] = actions !== undefined ? 1 : 0;
-  values[base + 42] = actions !== undefined ? actions.length : 0;
-  values[base + 43] = turrets !== undefined ? 1 : 0;
-  values[base + 44] = turrets !== undefined ? turrets.length : 0;
-  values[base + 45] = build !== undefined ? 1 : 0;
-  values[base + 46] = build !== undefined && build.complete === true ? 1 : 0;
-  values[base + 47] = build !== undefined ? build.paid.energy : 0;
-  values[base + 48] = build !== undefined ? build.paid.metal : 0;
+  values[base + 41] = actions !== null ? 1 : 0;
+  values[base + 42] = actions !== null ? actions.length : 0;
+  values[base + 43] = turrets !== null ? 1 : 0;
+  values[base + 44] = turrets !== null ? turrets.length : 0;
+  values[base + 45] = build !== null ? 1 : 0;
+  values[base + 46] = build !== null && build.complete === true ? 1 : 0;
+  values[base + 47] = build !== null ? build.paid.energy : 0;
+  values[base + 48] = build !== null ? build.paid.metal : 0;
   values[base + 49] = turretOffset;
   values[base + 50] = actionOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
@@ -498,29 +501,29 @@ function appendBuildingEntityWireRow(
   values[base + 5] = entity.playerId;
   values[base + 6] = entity.changedFields !== null ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
-  values[base + 8] = building.type !== undefined ? 1 : 0;
+  values[base + 8] = building.type !== null ? 1 : 0;
   values[base + 9] = building.type ?? 0;
-  values[base + 10] = dim !== undefined ? 1 : 0;
-  values[base + 11] = dim !== undefined ? dim.x : 0;
-  values[base + 12] = dim !== undefined ? dim.y : 0;
+  values[base + 10] = dim !== null ? 1 : 0;
+  values[base + 11] = dim !== null ? dim.x : 0;
+  values[base + 12] = dim !== null ? dim.y : 0;
   values[base + 13] = building.hp?.curr ?? 0;
   values[base + 14] = building.hp?.max ?? 0;
   values[base + 15] = building.build?.complete ? 1 : 0;
   values[base + 16] = building.build?.paid.energy ?? 0;
   values[base + 17] = building.build?.paid.metal ?? 0;
-  values[base + 18] = building.metalExtractionRate !== undefined ? 1 : 0;
+  values[base + 18] = building.metalExtractionRate !== null ? 1 : 0;
   values[base + 19] = building.metalExtractionRate ?? 0;
-  values[base + 20] = solar !== undefined ? 1 : 0;
-  values[base + 21] = solar !== undefined && solar.open === true ? 1 : 0;
-  values[base + 22] = turrets !== undefined ? 1 : 0;
-  values[base + 23] = turrets !== undefined ? turrets.length : 0;
-  values[base + 24] = factory !== undefined ? 1 : 0;
-  values[base + 25] = factory !== undefined ? factory.queue.length : 0;
-  values[base + 26] = factory !== undefined ? factory.progress : 0;
-  values[base + 27] = factory !== undefined && factory.producing === true ? 1 : 0;
-  values[base + 28] = factory !== undefined ? factory.energyRate : 0;
-  values[base + 29] = factory !== undefined ? factory.metalRate : 0;
-  values[base + 30] = factory !== undefined ? factory.waypoints.length : 0;
+  values[base + 20] = solar !== null ? 1 : 0;
+  values[base + 21] = solar !== null && solar.open === true ? 1 : 0;
+  values[base + 22] = turrets !== null ? 1 : 0;
+  values[base + 23] = turrets !== null ? turrets.length : 0;
+  values[base + 24] = factory !== null ? 1 : 0;
+  values[base + 25] = factory !== null ? factory.queue.length : 0;
+  values[base + 26] = factory !== null ? factory.progress : 0;
+  values[base + 27] = factory !== null && factory.producing === true ? 1 : 0;
+  values[base + 28] = factory !== null ? factory.energyRate : 0;
+  values[base + 29] = factory !== null ? factory.metalRate : 0;
+  values[base + 30] = factory !== null ? factory.waypoints.length : 0;
   values[base + 31] = turretOffset;
   values[base + 32] = factoryQueueOffset;
   values[base + 33] = factoryWaypointOffset;
@@ -608,8 +611,8 @@ export function serializeEntitySnapshot(
     if (hasUnitFields) {
       const u = poolEntry.unitSub;
       ne.unit = u;
-      u.hp = undefined;
-      u.velocity = undefined;
+      u.hp = null;
+      u.velocity = null;
 
       if (isFull) {
         writeNetworkUnitStaticFields(
@@ -653,12 +656,12 @@ export function serializeEntitySnapshot(
       if (orient && (isFull || (changedFields! & ENTITY_CHANGED_ROT))) {
         u.orientation = orient;
       } else {
-        u.orientation = undefined;
+        u.orientation = null;
       }
       if (orient && (isFull || (changedFields! & ENTITY_CHANGED_VEL))) {
-        u.angularVelocity3 = entity.unit.angularVelocity3 ?? undefined;
+        u.angularVelocity3 = entity.unit.angularVelocity3 ?? null;
       } else {
-        u.angularVelocity3 = undefined;
+        u.angularVelocity3 = null;
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_COMBAT_MODE)) {
@@ -674,7 +677,7 @@ export function serializeEntitySnapshot(
         u.hp = hp;
       }
 
-      u.build = undefined;
+      u.build = null;
       if ((isFull || (changedFields! & ENTITY_CHANGED_BUILDING)) && entity.buildable) {
         u.build = {
           complete: entity.buildable.isComplete,
@@ -690,7 +693,7 @@ export function serializeEntitySnapshot(
         writeNetworkUnitActions(u, entity.unit, poolEntry.actions, canReferenceEntityId);
       }
 
-      u.turrets = undefined;
+      u.turrets = null;
       const weapons0 = entity.combat?.turrets;
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
         u.turrets = writeTurretsToPool(
@@ -701,12 +704,14 @@ export function serializeEntitySnapshot(
         );
       }
 
-      u.buildTargetId = undefined;
+      u.buildTargetId = null;
+      u.buildTargetIdPresent = false;
       if (canSeePrivateDetails && entity.builder && (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS))) {
         const targetId = entity.builder.currentBuildTarget;
         u.buildTargetId = targetId !== NO_ENTITY_ID && canReferenceEntityId(targetId)
           ? targetId
           : null;
+        u.buildTargetIdPresent = true;
       }
     }
   }
@@ -719,11 +724,11 @@ export function serializeEntitySnapshot(
     if (hasBuildingFields) {
       const b = poolEntry.buildingSub;
       ne.building = b;
-      b.hp = undefined;
-      b.build = undefined;
-      b.solar = undefined;
-      b.metalExtractionRate = undefined;
-      b.turrets = undefined;
+      b.hp = null;
+      b.build = null;
+      b.solar = null;
+      b.metalExtractionRate = null;
+      b.turrets = null;
 
       if (isFull) {
         b.dim = poolEntry.buildingDim;
@@ -731,17 +736,17 @@ export function serializeEntitySnapshot(
         b.dim.y = entity.building.height;
         b.type = entity.buildingType !== undefined
           ? buildingTypeToCode(entity.buildingType)
-          : undefined;
+          : null;
         b.metalExtractionRate = entity.buildingType === 'extractor'
           ? entity.metalExtractionRate ?? 0
-          : undefined;
+          : null;
       } else {
-        b.dim = undefined;
-        b.type = undefined;
+        b.dim = null;
+        b.type = null;
         b.metalExtractionRate = (changedFields! & ENTITY_CHANGED_BUILDING) !== 0 &&
           entity.buildingType === 'extractor'
           ? entity.metalExtractionRate ?? 0
-          : undefined;
+          : null;
       }
 
       if (isFull || (changedFields! & ENTITY_CHANGED_HP)) {
@@ -784,7 +789,7 @@ export function serializeEntitySnapshot(
         );
       }
 
-      b.factory = undefined;
+      b.factory = null;
       if (canSeePrivateDetails && (isFull || (changedFields! & ENTITY_CHANGED_FACTORY))) {
         if (entity.factory) {
           const f = poolEntry.factorySub;
@@ -815,12 +820,12 @@ export function serializeEntitySnapshot(
           poolEntry.waypoints.length = wpCount;
           poolEntry.waypoints[0].pos.x = entity.factory.rallyX;
           poolEntry.waypoints[0].pos.y = entity.factory.rallyY;
-          poolEntry.waypoints[0].posZ = undefined;
+          poolEntry.waypoints[0].posZ = null;
           poolEntry.waypoints[0].type = 'move';
           for (let i = 0; i < wps.length; i++) {
             poolEntry.waypoints[i + 1].pos.x = wps[i].x;
             poolEntry.waypoints[i + 1].pos.y = wps[i].y;
-            poolEntry.waypoints[i + 1].posZ = wps[i].z;
+            poolEntry.waypoints[i + 1].posZ = wps[i].z ?? null;
             poolEntry.waypoints[i + 1].type = wps[i].type;
           }
           f.waypoints = poolEntry.waypoints;

@@ -143,13 +143,26 @@ function createPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   return {
     id: 0,
     points: [],
-    obstructionT: undefined,
-    endpointDamageable: undefined,
+    obstructionT: null,
+    endpointDamageable: null,
   };
 }
 
 function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+  return {
+    x: 0,
+    y: 0,
+    z: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    mirrorEntityId: null,
+    reflectorKind: null,
+    reflectorPlayerId: null,
+    normalX: null,
+    normalY: null,
+    normalZ: null,
+  };
 }
 
 function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
@@ -159,19 +172,19 @@ function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
     projectileType: PROJECTILE_TYPE_UNKNOWN,
-    maxLifespan: undefined,
+    maxLifespan: null,
     turretId: TURRET_ID_UNKNOWN,
-    shotId: undefined,
-    sourceTurretId: undefined,
+    shotId: null,
+    sourceTurretId: null,
     playerId: 1,
     sourceEntityId: 0,
     turretIndex: 0,
     barrelIndex: 0,
-    isDGun: undefined,
-    fromParentDetonation: undefined,
-    beam: undefined,
-    targetEntityId: undefined,
-    homingTurnRate: undefined,
+    isDGun: null,
+    fromParentDetonation: null,
+    beam: null,
+    targetEntityId: null,
+    homingTurnRate: null,
   } as PooledProjectileSpawn;
   definePooledScratchProperty(spawn, '_pos', { x: 0, y: 0, z: 0 });
   definePooledScratchProperty(spawn, '_velocity', { x: 0, y: 0, z: 0 });
@@ -197,6 +210,7 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
     id: 0,
     pos: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
+    clearHomingTarget: null,
   } as PooledVelocityUpdate;
   definePooledScratchProperty(update, '_pos', { x: 0, y: 0, z: 0 });
   definePooledScratchProperty(update, '_velocity', { x: 0, y: 0, z: 0 });
@@ -213,8 +227,8 @@ function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   }
   _beamUpdatePoolIndex++;
   update.points.length = 0;
-  update.obstructionT = undefined;
-  update.endpointDamageable = undefined;
+  update.obstructionT = null;
+  update.endpointDamageable = null;
   return update;
 }
 
@@ -225,12 +239,12 @@ function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
     _beamPointPool[_beamPointPoolIndex] = point;
   }
   _beamPointPoolIndex++;
-  point.mirrorEntityId = undefined;
-  point.reflectorKind = undefined;
-  point.reflectorPlayerId = undefined;
-  point.normalX = undefined;
-  point.normalY = undefined;
-  point.normalZ = undefined;
+  point.mirrorEntityId = null;
+  point.reflectorKind = null;
+  point.reflectorPlayerId = null;
+  point.normalX = null;
+  point.normalY = null;
+  point.normalZ = null;
   return point;
 }
 
@@ -295,32 +309,32 @@ export function writeProjectileSpawnWireRow(
   values[base + 15] = spawn.turretIndex;
   values[base + 16] = spawn.barrelIndex;
   const beam = spawn.beam;
-  values[base + 17] = beam !== undefined ? beam.start.x : 0;
-  values[base + 18] = beam !== undefined ? beam.start.y : 0;
-  values[base + 19] = beam !== undefined ? beam.start.z : 0;
-  values[base + 20] = beam !== undefined ? beam.end.x : 0;
-  values[base + 21] = beam !== undefined ? beam.end.y : 0;
-  values[base + 22] = beam !== undefined ? beam.end.z : 0;
+  values[base + 17] = beam !== null ? beam.start.x : 0;
+  values[base + 18] = beam !== null ? beam.start.y : 0;
+  values[base + 19] = beam !== null ? beam.start.z : 0;
+  values[base + 20] = beam !== null ? beam.end.x : 0;
+  values[base + 21] = beam !== null ? beam.end.y : 0;
+  values[base + 22] = beam !== null ? beam.end.z : 0;
   values[base + 23] = spawn.targetEntityId ?? 0;
   values[base + 24] = spawn.homingTurnRate ?? 0;
   values[base + 25] = 0;
   let flags = 0;
-  if (spawn.maxLifespan !== undefined) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
-  if (spawn.sourceTurretId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
-  if (spawn.isDGun !== undefined) {
+  if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
+  if (spawn.shotId !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
+  if (spawn.sourceTurretId !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
+  if (spawn.isDGun !== null) {
     flags |= spawn.isDGun
       ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
       : PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE;
   }
-  if (spawn.fromParentDetonation !== undefined) {
+  if (spawn.fromParentDetonation !== null) {
     flags |= spawn.fromParentDetonation
       ? PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE
       : PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE;
   }
-  if (spawn.beam !== undefined) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
-  if (spawn.targetEntityId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
-  if (spawn.homingTurnRate !== undefined) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
+  if (spawn.beam !== null) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
+  if (spawn.targetEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
+  if (spawn.homingTurnRate !== null) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
   values[base + 26] = flags;
 }
 
@@ -377,17 +391,17 @@ export function writeBeamPointWireRow(
   values[base + 4] = point.vy;
   values[base + 5] = point.vz;
   let flags = 0;
-  if (point.mirrorEntityId !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
-  if (point.reflectorKind !== undefined) {
+  if (point.mirrorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
+  if (point.reflectorKind !== null) {
     flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
     if (point.reflectorKind === 'forceField') {
       flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
     }
   }
-  if (point.reflectorPlayerId !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
-  if (point.normalX !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
-  if (point.normalY !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
-  if (point.normalZ !== undefined) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
+  if (point.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
+  if (point.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
+  if (point.normalY !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
+  if (point.normalZ !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
   values[base + 6] = flags;
   values[base + 7] = point.mirrorEntityId ?? 0;
   values[base + 8] = point.reflectorPlayerId ?? 0;
@@ -413,8 +427,8 @@ export function writeBeamUpdateWireRow(
 ): void {
   values[base + 0] = update.id;
   let flags = 0;
-  if (update.obstructionT !== undefined) flags |= PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T;
-  if (update.endpointDamageable !== undefined) {
+  if (update.obstructionT !== null) flags |= PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T;
+  if (update.endpointDamageable !== null) {
     flags |= update.endpointDamageable
       ? PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE
       : PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE;
@@ -597,20 +611,20 @@ export function serializeProjectileSnapshot({
         out.projectileType = projectileTypeToCode(ps.projectileType);
         out.maxLifespan = typeof ps.maxLifespan === 'number' && Number.isFinite(ps.maxLifespan)
           ? ps.maxLifespan
-          : undefined;
+          : null;
         out.turretId = turretIdToCode(ps.turretId);
         out.shotId = shotIdToCode(ps.shotId);
         out.sourceTurretId = ps.sourceTurretId !== undefined
           ? turretIdToCode(ps.sourceTurretId)
-          : undefined;
+          : null;
         out.playerId = ps.playerId;
         out.sourceEntityId = canReferenceEntityId(world, visibility, ps.sourceEntityId)
           ? ps.sourceEntityId
           : 0;
         out.turretIndex = ps.turretIndex;
         out.barrelIndex = ps.barrelIndex;
-        out.isDGun = ps.isDGun === true ? true : undefined;
-        out.fromParentDetonation = ps.fromParentDetonation === true ? true : undefined;
+        out.isDGun = ps.isDGun === true ? true : null;
+        out.fromParentDetonation = ps.fromParentDetonation === true ? true : null;
         if (ps.beam) {
           out._beamStart.x = qPos(ps.beam.start.x);
           out._beamStart.y = qPos(ps.beam.start.y);
@@ -620,12 +634,12 @@ export function serializeProjectileSnapshot({
           out._beamEnd.z = qPos(ps.beam.end.z);
           out.beam = out._beam;
         } else {
-          out.beam = undefined;
+          out.beam = null;
         }
         out.targetEntityId = canReferenceEntityId(world, visibility, ps.targetEntityId)
-          ? ps.targetEntityId
-          : undefined;
-        out.homingTurnRate = ps.homingTurnRate;
+          ? ps.targetEntityId ?? null
+          : null;
+        out.homingTurnRate = ps.homingTurnRate ?? null;
         _spawnBuf.push(out);
         copyProjectileSpawnIntoWireRow(out);
         if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
@@ -662,21 +676,21 @@ export function serializeProjectileSnapshot({
         out.projectileType = projectileTypeToCode(proj.projectileType);
         out.maxLifespan = Number.isFinite(proj.maxLifespan)
           ? proj.maxLifespan
-          : undefined;
+          : null;
         out.turretId = proj.sourceTurretId !== undefined
           ? turretIdToCode(proj.sourceTurretId)
           : TURRET_ID_UNKNOWN;
         out.shotId = shotIdToCode(proj.shotId);
         out.sourceTurretId = proj.sourceTurretId !== undefined
           ? turretIdToCode(proj.sourceTurretId)
-          : undefined;
+          : null;
         out.playerId = proj.ownerId;
         out.sourceEntityId = canReferenceEntityId(world, visibility, proj.sourceEntityId)
           ? proj.sourceEntityId
           : 0;
         out.turretIndex = proj.config.turretIndex ?? 0;
         out.barrelIndex = proj.sourceBarrelIndex ?? 0;
-        out.isDGun = entity.dgunProjectile?.isDGun ? true : undefined;
+        out.isDGun = entity.dgunProjectile?.isDGun ? true : null;
         // Re-sync spawns carry the projectile's current pos; mark it
         // as authoritative rather than a fresh turret launch.
         out.fromParentDetonation = true;
@@ -692,12 +706,12 @@ export function serializeProjectileSnapshot({
           out._beamEnd.z = qPos(end.z);
           out.beam = out._beam;
         } else {
-          out.beam = undefined;
+          out.beam = null;
         }
         out.targetEntityId = canReferenceEntityId(world, visibility, proj.homingTargetId)
-          ? proj.homingTargetId
-          : undefined;
-        out.homingTurnRate = proj.homingTurnRate;
+          ? proj.homingTargetId ?? null
+          : null;
+        out.homingTurnRate = proj.homingTurnRate ?? null;
         _spawnBuf.push(out);
         copyProjectileSpawnIntoWireRow(out);
       }
@@ -758,7 +772,7 @@ export function serializeProjectileSnapshot({
       out._velocity.x = qVel(vu.velocity.x);
       out._velocity.y = qVel(vu.velocity.y);
       out._velocity.z = qVel(vu.velocity.z);
-      out.clearHomingTarget = vu.clearHomingTarget === true ? true : undefined;
+      out.clearHomingTarget = vu.clearHomingTarget === true ? true : null;
       _velUpdateBuf.push(out);
       copyProjectileVelocityUpdateIntoWireRow(out);
     }
@@ -791,8 +805,8 @@ export function serializeProjectileSnapshot({
 
       const update = getPooledBeamUpdate();
       update.id = entity.id;
-      update.obstructionT = proj.obstructionT === undefined ? undefined : qRot(proj.obstructionT);
-      update.endpointDamageable = proj.endpointDamageable === false ? false : undefined;
+      update.obstructionT = proj.obstructionT === undefined ? null : qRot(proj.obstructionT);
+      update.endpointDamageable = proj.endpointDamageable === false ? false : null;
       const dstPts = update.points;
       const wirePointCount = getBeamWirePointCount(srcPts.length);
       dstPts.length = wirePointCount;
@@ -812,12 +826,12 @@ export function serializeProjectileSnapshot({
           out.vz = qVel(sp.vz);
         }
         const canReferenceReflector = canReferenceEntityId(world, visibility, sp.mirrorEntityId);
-        out.mirrorEntityId = canReferenceReflector ? sp.mirrorEntityId : undefined;
-        out.reflectorKind = canReferenceReflector ? sp.reflectorKind : undefined;
-        out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId : undefined;
-        out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : undefined;
-        out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : undefined;
-        out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : undefined;
+        out.mirrorEntityId = canReferenceReflector ? sp.mirrorEntityId ?? null : null;
+        out.reflectorKind = canReferenceReflector ? sp.reflectorKind ?? null : null;
+        out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId ?? null : null;
+        out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : null;
+        out.normalY = canReferenceReflector && sp.normalY !== undefined ? qNormal(sp.normalY) : null;
+        out.normalZ = canReferenceReflector && sp.normalZ !== undefined ? qNormal(sp.normalZ) : null;
         dstPts[p] = out;
         copyBeamPointIntoWireRow(out);
       }

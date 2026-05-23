@@ -118,6 +118,7 @@ export function unpackMinimapEntitiesFromWire(
         ? 'building'
         : 'unit',
       playerId: (rows[base + 4] ?? 1) as NetworkServerSnapshotMinimapEntity['playerId'],
+      radarOnly: null,
     };
     if ((flags & MINIMAP_ENTITY_FLAG_RADAR_ONLY) !== 0) {
       entry.radarOnly = true;
@@ -219,6 +220,7 @@ function unpackMinimapEntitiesV2(
           ? 'building'
           : 'unit',
         playerId,
+        radarOnly: null,
       };
       if ((flags & MINIMAP_ENTITY_FLAG_RADAR_ONLY) !== 0) {
         entry.radarOnly = true;

@@ -54,8 +54,7 @@ function writeMinimapEntity(
   // Reset the pool slot's flag — pool entries are reused so a slot
   // that was radarOnly last frame must be cleared when it now carries
   // a full-vision entity.
-  if (radarOnly) out.radarOnly = true;
-  else delete out.radarOnly;
+  out.radarOnly = radarOnly ? true : null;
   return out;
 }
 

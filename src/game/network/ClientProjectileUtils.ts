@@ -11,7 +11,7 @@ export function isLineProjectileEntity(entity: Entity): boolean {
 export function decodeProjectileShotId(
   spawn: NetworkServerSnapshotProjectileSpawn,
 ): ShotId | undefined {
-  return spawn.shotId !== undefined
+  return spawn.shotId !== null
     ? codeToShotId(spawn.shotId) ?? undefined
     : undefined;
 }

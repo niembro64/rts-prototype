@@ -94,10 +94,10 @@ export class ClientProjectileStore {
       this.beamPathTargets.set(update.id, target);
     }
     target.updatedAtMs = now;
-    target.obstructionT = update.obstructionT === undefined
+    target.obstructionT = update.obstructionT === null
       ? undefined
       : deqRot(update.obstructionT);
-    target.endpointDamageable = update.endpointDamageable;
+    target.endpointDamageable = update.endpointDamageable ?? undefined;
 
     const srcPts = update.points;
     const dstTarget = target.points;
@@ -108,12 +108,12 @@ export class ClientProjectileStore {
       dp.x = deqProjPos(sp.x); dp.y = deqProjPos(sp.y); dp.z = deqProjPos(sp.z);
       dp.vx = deqVel(sp.vx); dp.vy = deqVel(sp.vy); dp.vz = deqVel(sp.vz);
       dp.ax = 0; dp.ay = 0; dp.az = 0;
-      dp.mirrorEntityId = sp.mirrorEntityId;
-      dp.reflectorKind = sp.reflectorKind;
-      dp.reflectorPlayerId = sp.reflectorPlayerId;
-      dp.normalX = sp.normalX === undefined ? undefined : deqNormal(sp.normalX);
-      dp.normalY = sp.normalY === undefined ? undefined : deqNormal(sp.normalY);
-      dp.normalZ = sp.normalZ === undefined ? undefined : deqNormal(sp.normalZ);
+      dp.mirrorEntityId = sp.mirrorEntityId ?? undefined;
+      dp.reflectorKind = sp.reflectorKind ?? undefined;
+      dp.reflectorPlayerId = sp.reflectorPlayerId ?? undefined;
+      dp.normalX = sp.normalX === null ? undefined : deqNormal(sp.normalX);
+      dp.normalY = sp.normalY === null ? undefined : deqNormal(sp.normalY);
+      dp.normalZ = sp.normalZ === null ? undefined : deqNormal(sp.normalZ);
     }
 
     const projPts = proj.points ?? (proj.points = []);
@@ -289,7 +289,7 @@ export class ClientProjectileStore {
     }
     if (spawn.homingTurnRate) {
       entity.projectile!.homingTurnRate = spawn.homingTurnRate;
-      if (spawn.targetEntityId !== undefined) {
+      if (spawn.targetEntityId !== null) {
         entity.projectile!.homingTargetId = spawn.targetEntityId;
       }
     }

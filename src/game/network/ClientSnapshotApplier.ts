@@ -54,7 +54,7 @@ export function snapClientNonVisualState(
     if (isFull || cf! & ENTITY_CHANGED_BUILDING) {
       cacheDirty = applyNetworkBuildState(
         entity,
-        su.build,
+        su.build ?? undefined,
         getUnitBuildRequired(entity.unit.unitType),
       ) || cacheDirty;
     }
@@ -79,7 +79,7 @@ export function snapClientNonVisualState(
     applyNetworkTurretNonVisualState(entity, su.turrets);
 
     if (entity.builder && (
-      su.buildTargetId !== undefined
+      su.buildTargetIdPresent
       || isFull
       || cf! & ENTITY_CHANGED_ACTIONS
     )) {
@@ -99,7 +99,7 @@ export function snapClientNonVisualState(
     }
   }
 
-  if (entity.building && sb?.type !== undefined && isFull) {
+  if (entity.building && sb?.type !== null && sb?.type !== undefined && isFull) {
     const buildingType = codeToBuildingType(sb.type);
     if (buildingType) entity.buildingType = buildingType as BuildingType;
   }
@@ -112,8 +112,8 @@ export function snapClientNonVisualState(
     }
   }
 
-  if (entity.building && sb && (isFull || sb.metalExtractionRate !== undefined)) {
-    entity.metalExtractionRate = sb.metalExtractionRate;
+  if (entity.building && sb && (isFull || sb.metalExtractionRate !== null)) {
+    entity.metalExtractionRate = sb.metalExtractionRate ?? undefined;
   }
 
   if (entity.building && sb?.hp && (isFull || cf! & ENTITY_CHANGED_HP)) {
@@ -179,7 +179,7 @@ export function snapClientNonVisualState(
       entity.factory.waypoints[i - 1] = {
         x: wps[i].pos.x,
         y: wps[i].pos.y,
-        z: wps[i].posZ,
+        z: wps[i].posZ ?? undefined,
         type: wps[i].type as 'move' | 'fight' | 'patrol',
       };
     }

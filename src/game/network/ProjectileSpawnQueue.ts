@@ -16,7 +16,7 @@ type QueuedProjectileSpawn = {
 export function decodeProjectileSourceTurretId(
   spawn: NetworkServerSnapshotProjectileSpawn,
 ): TurretId | undefined {
-  const sourceTurretId = spawn.sourceTurretId !== undefined
+  const sourceTurretId = spawn.sourceTurretId !== null
     ? codeToTurretId(spawn.sourceTurretId) ?? undefined
     : undefined;
   if (sourceTurretId) return sourceTurretId;
@@ -105,12 +105,12 @@ export class ProjectileSpawnQueue {
   }
 
   private release(queued: QueuedProjectileSpawn): void {
-    queued.spawn.beam = undefined;
-    queued.spawn.maxLifespan = undefined;
-    queued.spawn.isDGun = undefined;
-    queued.spawn.fromParentDetonation = undefined;
-    queued.spawn.targetEntityId = undefined;
-    queued.spawn.homingTurnRate = undefined;
+    queued.spawn.beam = null;
+    queued.spawn.maxLifespan = null;
+    queued.spawn.isDGun = null;
+    queued.spawn.fromParentDetonation = null;
+    queued.spawn.targetEntityId = null;
+    queued.spawn.homingTurnRate = null;
     queued.playAt = 0;
     this.pool.push(queued);
   }

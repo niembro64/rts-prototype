@@ -19,18 +19,18 @@ export class ClientSprayTargetStore {
         target.source.id = source.source.id;
         target.source.pos.x = source.source.pos.x;
         target.source.pos.y = source.source.pos.y;
-        target.source.z = source.source.z;
+        target.source.z = source.source.z ?? undefined;
         target.source.playerId = source.source.playerId;
         target.target.id = source.target.id;
         target.target.pos.x = source.target.pos.x;
         target.target.pos.y = source.target.pos.y;
-        target.target.z = source.target.z;
-        target.target.dim = source.target.dim;
-        target.target.radius = source.target.radius;
+        target.target.z = source.target.z ?? undefined;
+        target.target.dim = source.target.dim ?? undefined;
+        target.target.radius = source.target.radius ?? undefined;
         target.type = source.type;
         target.intensity = source.intensity;
-        target.speed = source.speed;
-        target.particleRadius = source.particleRadius;
+        target.speed = source.speed ?? undefined;
+        target.particleRadius = source.particleRadius ?? undefined;
         this.targets.push(target);
       }
     }

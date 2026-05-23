@@ -968,7 +968,7 @@ export class RtsScene3D {
       // turret poses — to enrich it with the live per-turret yaw /
       // pitch so debris cylinders spawn where the actual barrels
       // were pointing at death.
-      const ent = event.entityId !== undefined
+      const ent = event.entityId !== null
         ? this.clientViewState.getEntity(event.entityId)
         : undefined;
       if (!ctx && ent) {
@@ -1098,18 +1098,18 @@ export class RtsScene3D {
         return;
       }
       case 'laserStart':
-        if (event.entityId !== undefined) {
+        if (event.entityId !== null) {
           audioManager.startLaserSound(event.entityId, undefined);
         }
         return;
       case 'laserStop':
-        if (event.entityId !== undefined) audioManager.stopLaserSound(event.entityId);
+        if (event.entityId !== null) audioManager.stopLaserSound(event.entityId);
         return;
       case 'forceFieldStart':
-        if (event.entityId !== undefined) audioManager.startForceFieldSound(event.entityId);
+        if (event.entityId !== null) audioManager.startForceFieldSound(event.entityId);
         return;
       case 'forceFieldStop':
-        if (event.entityId !== undefined) audioManager.stopForceFieldSound(event.entityId);
+        if (event.entityId !== null) audioManager.stopForceFieldSound(event.entityId);
         return;
       // ping / attackAlert / forceFieldImpact have no one-shot sound
       // wired yet; the visual is the whole UX. Drop through.

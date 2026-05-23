@@ -26,6 +26,40 @@ type FactorySub = NonNullable<BuildingSub['factory']>;
 type WaypointSub = FactorySub['waypoints'][number];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 
+function createEmptyUnitSub(): UnitSub {
+  return {
+    unitType: null,
+    hp: null,
+    radius: null,
+    bodyCenterHeight: null,
+    mass: null,
+    velocity: null,
+    surfaceNormal: null,
+    orientation: null,
+    angularVelocity3: null,
+    fireEnabled: null,
+    isCommander: null,
+    buildTargetId: null,
+    buildTargetIdPresent: false,
+    actions: null,
+    turrets: null,
+    build: null,
+  };
+}
+
+function createEmptyBuildingSub(): BuildingSub {
+  return {
+    type: null,
+    dim: null,
+    hp: null,
+    build: null,
+    metalExtractionRate: null,
+    solar: null,
+    turrets: null,
+    factory: null,
+  };
+}
+
 const PACKED_ENTITIES_V1_VERSION = 1;
 const PACKED_ENTITIES_V2_VERSION = 2;
 const PACKED_ENTITIES_V3_VERSION = 3;
@@ -469,21 +503,21 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
 
   const unit = entity.unit;
   if (unit === null) return true;
-  if (unit.hp !== undefined) return false;
-  if (unit.unitType !== undefined) return false;
-  if (unit.radius !== undefined) return false;
-  if (unit.bodyCenterHeight !== undefined) return false;
-  if (unit.mass !== undefined) return false;
-  if (unit.surfaceNormal !== undefined) return false;
-  if (unit.fireEnabled !== undefined) return false;
-  if (unit.isCommander !== undefined) return false;
-  if (unit.buildTargetId !== undefined) return false;
-  if (unit.actions !== undefined) return false;
-  if (unit.turrets !== undefined) return false;
-  if (unit.build !== undefined) return false;
-  if (unit.velocity !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
-  if (unit.orientation !== undefined && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
-  if (unit.angularVelocity3 !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  if (unit.hp !== null) return false;
+  if (unit.unitType !== null) return false;
+  if (unit.radius !== null) return false;
+  if (unit.bodyCenterHeight !== null) return false;
+  if (unit.mass !== null) return false;
+  if (unit.surfaceNormal !== null) return false;
+  if (unit.fireEnabled !== null) return false;
+  if (unit.isCommander !== null) return false;
+  if (unit.buildTargetIdPresent) return false;
+  if (unit.actions !== null) return false;
+  if (unit.turrets !== null) return false;
+  if (unit.build !== null) return false;
+  if (unit.velocity !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  if (unit.orientation !== null && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
+  if (unit.angularVelocity3 !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
   return true;
 }
 
@@ -502,21 +536,21 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== null)) return false;
 
   const unit = entity.unit;
-  if (unit === null || unit.turrets === undefined) return false;
-  if (unit.hp !== undefined) return false;
-  if (unit.unitType !== undefined) return false;
-  if (unit.radius !== undefined) return false;
-  if (unit.bodyCenterHeight !== undefined) return false;
-  if (unit.mass !== undefined) return false;
-  if (unit.surfaceNormal !== undefined) return false;
-  if (unit.fireEnabled !== undefined) return false;
-  if (unit.isCommander !== undefined) return false;
-  if (unit.buildTargetId !== undefined) return false;
-  if (unit.actions !== undefined) return false;
-  if (unit.build !== undefined) return false;
-  if (unit.velocity !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
-  if (unit.orientation !== undefined && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
-  if (unit.angularVelocity3 !== undefined && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  if (unit === null || unit.turrets === null) return false;
+  if (unit.hp !== null) return false;
+  if (unit.unitType !== null) return false;
+  if (unit.radius !== null) return false;
+  if (unit.bodyCenterHeight !== null) return false;
+  if (unit.mass !== null) return false;
+  if (unit.surfaceNormal !== null) return false;
+  if (unit.fireEnabled !== null) return false;
+  if (unit.isCommander !== null) return false;
+  if (unit.buildTargetIdPresent) return false;
+  if (unit.actions !== null) return false;
+  if (unit.build !== null) return false;
+  if (unit.velocity !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
+  if (unit.orientation !== null && (changedFields & ENTITY_CHANGED_ROT) === 0) return false;
+  if (unit.angularVelocity3 !== null && (changedFields & ENTITY_CHANGED_VEL) === 0) return false;
   return true;
 }
 
@@ -525,9 +559,11 @@ function hasMovementUnitDeltaFields(entity: NetworkServerSnapshotEntity): boolea
   return (
     entity.pos !== null ||
     entity.rotation !== null ||
-    unit?.velocity !== undefined ||
-    unit?.orientation !== undefined ||
-    unit?.angularVelocity3 !== undefined
+    (unit !== null && (
+      unit.velocity !== null ||
+      unit.orientation !== null ||
+      unit.angularVelocity3 !== null
+    ))
   );
 }
 
@@ -540,13 +576,13 @@ function movementUnitDeltaFlags(entity: NetworkServerSnapshotEntity): number {
   const angularVelocity = unit?.angularVelocity3;
   if (pos !== null) flags |= MOVEMENT_UNIT_FLAG_POS;
   if (entity.rotation !== null) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
-  if (velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
-  if (orientation !== undefined) {
+  if (velocity !== null && velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
+  if (orientation !== null && orientation !== undefined) {
     flags |= canCompactYawOrientation(entity, orientation)
       ? MOVEMENT_UNIT_FLAG_YAW_ORIENTATION
       : MOVEMENT_UNIT_FLAG_ORIENTATION;
   }
-  if (angularVelocity !== undefined) {
+  if (angularVelocity !== null && angularVelocity !== undefined) {
     flags |= canCompactYawAngularVelocity(angularVelocity)
       ? MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
       : MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY;
@@ -854,7 +890,7 @@ function unpackMovementUnitDeltaRows(
         MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
       )) !== 0
     ) {
-      const unit: UnitSub = {};
+      const unit = createEmptyUnitSub();
       if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
         unit.velocity = {
           x: rows[i++] as number,
@@ -963,7 +999,7 @@ function readMovementUnitDeltaByteEntity(
       MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
     )) !== 0
   ) {
-    const unit: UnitSub = {};
+      const unit = createEmptyUnitSub();
     if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
       unit.velocity = {
         x: reader.readVarInt(),
@@ -1047,7 +1083,10 @@ function unpackUnitTurretDeltaRows(
       changedFields: ENTITY_CHANGED_TURRETS,
       pos: null,
       rotation: null,
-      unit: { turrets },
+      unit: {
+        ...createEmptyUnitSub(),
+        turrets,
+      },
       building: null,
     };
   }
@@ -1126,31 +1165,34 @@ function readUnitTurretDeltaByteEntity(
     changedFields: ENTITY_CHANGED_TURRETS,
     pos: null,
     rotation: null,
-    unit: { turrets },
+    unit: {
+      ...createEmptyUnitSub(),
+      turrets,
+    },
     building: null,
   };
 }
 
 function packUnit(unit: UnitSub): unknown[] {
   let flags = 0;
-  if (unit.hp !== undefined) flags |= UNIT_FLAG_HP;
-  if (unit.velocity !== undefined) flags |= UNIT_FLAG_VELOCITY;
-  if (unit.unitType !== undefined) flags |= UNIT_FLAG_UNIT_TYPE;
-  if (unit.radius !== undefined) flags |= UNIT_FLAG_RADIUS;
-  if (unit.bodyCenterHeight !== undefined) flags |= UNIT_FLAG_BODY_CENTER_HEIGHT;
-  if (unit.mass !== undefined) flags |= UNIT_FLAG_MASS;
-  if (unit.surfaceNormal !== undefined) flags |= UNIT_FLAG_SURFACE_NORMAL;
-  if (unit.orientation !== undefined) flags |= UNIT_FLAG_ORIENTATION;
-  if (unit.angularVelocity3 !== undefined) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
+  if (unit.hp !== null) flags |= UNIT_FLAG_HP;
+  if (unit.velocity !== null) flags |= UNIT_FLAG_VELOCITY;
+  if (unit.unitType !== null) flags |= UNIT_FLAG_UNIT_TYPE;
+  if (unit.radius !== null) flags |= UNIT_FLAG_RADIUS;
+  if (unit.bodyCenterHeight !== null) flags |= UNIT_FLAG_BODY_CENTER_HEIGHT;
+  if (unit.mass !== null) flags |= UNIT_FLAG_MASS;
+  if (unit.surfaceNormal !== null) flags |= UNIT_FLAG_SURFACE_NORMAL;
+  if (unit.orientation !== null) flags |= UNIT_FLAG_ORIENTATION;
+  if (unit.angularVelocity3 !== null) flags |= UNIT_FLAG_ANGULAR_VELOCITY;
   if (unit.fireEnabled === false) flags |= UNIT_FLAG_FIRE_DISABLED;
   if (unit.isCommander === true) flags |= UNIT_FLAG_IS_COMMANDER;
-  if (unit.buildTargetId !== undefined) {
+  if (unit.buildTargetIdPresent) {
     flags |= UNIT_FLAG_BUILD_TARGET_ID;
     if (unit.buildTargetId === null) flags |= UNIT_FLAG_BUILD_TARGET_NULL;
   }
-  if (unit.actions !== undefined) flags |= UNIT_FLAG_ACTIONS;
-  if (unit.turrets !== undefined) flags |= UNIT_FLAG_TURRETS;
-  if (unit.build !== undefined) {
+  if (unit.actions !== null) flags |= UNIT_FLAG_ACTIONS;
+  if (unit.turrets !== null) flags |= UNIT_FLAG_TURRETS;
+  if (unit.build !== null) {
     flags |= UNIT_FLAG_BUILD;
     if (unit.build.complete === true) flags |= UNIT_FLAG_BUILD_COMPLETE;
   }
@@ -1204,7 +1246,7 @@ function packUnit(unit: UnitSub): unknown[] {
 function unpackUnit(row: unknown[]): UnitSub {
   let i = 0;
   const flags = row[i++] as number;
-  const unit: UnitSub = {};
+  const unit = createEmptyUnitSub();
   if ((flags & UNIT_FLAG_HP) !== 0) {
     const curr = row[i++] as number;
     const max = row[i++] as number;
@@ -1261,6 +1303,7 @@ function unpackUnit(row: unknown[]): UnitSub {
     unit.buildTargetId = (flags & UNIT_FLAG_BUILD_TARGET_NULL) !== 0
       ? null
       : (row[i++] as number);
+    unit.buildTargetIdPresent = true;
   }
   if ((flags & UNIT_FLAG_ACTIONS) !== 0) {
     unit.actions = unpackActions(row[i++] as unknown[]);
@@ -1281,20 +1324,20 @@ function unpackUnit(row: unknown[]): UnitSub {
 
 function packBuilding(building: BuildingSub): unknown[] {
   let flags = 0;
-  if (building.type !== undefined) flags |= BUILDING_FLAG_TYPE;
-  if (building.dim !== undefined) flags |= BUILDING_FLAG_DIM;
-  if (building.hp !== undefined) flags |= BUILDING_FLAG_HP;
-  if (building.build !== undefined) {
+  if (building.type !== null) flags |= BUILDING_FLAG_TYPE;
+  if (building.dim !== null) flags |= BUILDING_FLAG_DIM;
+  if (building.hp !== null) flags |= BUILDING_FLAG_HP;
+  if (building.build !== null) {
     flags |= BUILDING_FLAG_BUILD;
     if (building.build.complete === true) flags |= BUILDING_FLAG_BUILD_COMPLETE;
   }
-  if (building.metalExtractionRate !== undefined) flags |= BUILDING_FLAG_METAL_EXTRACTION_RATE;
-  if (building.solar !== undefined) {
+  if (building.metalExtractionRate !== null) flags |= BUILDING_FLAG_METAL_EXTRACTION_RATE;
+  if (building.solar !== null) {
     flags |= BUILDING_FLAG_SOLAR;
     if (building.solar.open === true) flags |= BUILDING_FLAG_SOLAR_OPEN;
   }
-  if (building.turrets !== undefined) flags |= BUILDING_FLAG_TURRETS;
-  if (building.factory !== undefined) {
+  if (building.turrets !== null) flags |= BUILDING_FLAG_TURRETS;
+  if (building.factory !== null) {
     flags |= BUILDING_FLAG_FACTORY;
     if (building.factory.producing === true) flags |= BUILDING_FLAG_FACTORY_PRODUCING;
   }
@@ -1328,7 +1371,7 @@ function packBuilding(building: BuildingSub): unknown[] {
 function unpackBuilding(row: unknown[]): BuildingSub {
   let i = 0;
   const flags = row[i++] as number;
-  const building: BuildingSub = {};
+  const building = createEmptyBuildingSub();
   if ((flags & BUILDING_FLAG_TYPE) !== 0) {
     building.type = row[i++] as number;
   }
@@ -1531,7 +1574,7 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
 
 function packWaypoint(waypoint: WaypointSub): unknown[] {
   let flags = 0;
-  if (waypoint.posZ !== undefined) flags |= WAYPOINT_FLAG_POS_Z;
+  if (waypoint.posZ !== null) flags |= WAYPOINT_FLAG_POS_Z;
   const row: unknown[] = [flags, waypoint.pos.x, waypoint.pos.y, waypoint.type];
   if ((flags & WAYPOINT_FLAG_POS_Z) !== 0) row.push(waypoint.posZ!);
   return row;
@@ -1541,6 +1584,7 @@ function unpackWaypoint(row: unknown[]): WaypointSub {
   const flags = row[0] as number;
   const waypoint: WaypointSub = {
     pos: { x: row[1] as number, y: row[2] as number },
+    posZ: null,
     type: row[3] as string,
   };
   if ((flags & WAYPOINT_FLAG_POS_Z) !== 0) waypoint.posZ = row[4] as number;

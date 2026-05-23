@@ -249,14 +249,14 @@ function packTurretsIntoScratch(
 
 function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
-    (unit.unitType !== undefined && !isUint(unit.unitType, 0xFFFF_FFFF)) ||
-    (unit.radius !== undefined && (
+    (unit.unitType !== null && !isUint(unit.unitType, 0xFFFF_FFFF)) ||
+    (unit.radius !== null && (
       !Number.isFinite(unit.radius.body) ||
       !Number.isFinite(unit.radius.shot) ||
       !Number.isFinite(unit.radius.push)
     )) ||
-    (unit.bodyCenterHeight !== undefined && !Number.isFinite(unit.bodyCenterHeight)) ||
-    (unit.mass !== undefined && !Number.isFinite(unit.mass)) ||
+    (unit.bodyCenterHeight !== null && !Number.isFinite(unit.bodyCenterHeight)) ||
+    (unit.mass !== null && !Number.isFinite(unit.mass)) ||
     unit.fireEnabled === true ||
     unit.isCommander === false
   );
@@ -293,39 +293,39 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     unit.hp?.curr ?? 0,
     unit.hp?.max ?? 0,
     unit.velocity?.x ?? 0, unit.velocity?.y ?? 0, unit.velocity?.z ?? 0,
-    unit.unitType !== undefined ? 1 : 0,
+    unit.unitType !== null ? 1 : 0,
     unit.unitType ?? 0,
-    unit.radius !== undefined ? 1 : 0,
+    unit.radius !== null ? 1 : 0,
     unit.radius?.body ?? 0,
     unit.radius?.shot ?? 0,
     unit.radius?.push ?? 0,
-    unit.bodyCenterHeight !== undefined ? 1 : 0,
+    unit.bodyCenterHeight !== null ? 1 : 0,
     unit.bodyCenterHeight ?? 0,
-    unit.mass !== undefined ? 1 : 0,
+    unit.mass !== null ? 1 : 0,
     unit.mass ?? 0,
-    surfaceNormal !== undefined ? 1 : 0,
+    surfaceNormal !== null ? 1 : 0,
     surfaceNormal?.nx ?? 0,
     surfaceNormal?.ny ?? 0,
     surfaceNormal?.nz ?? 0,
-    orientation !== undefined ? 1 : 0,
+    orientation !== null ? 1 : 0,
     orientation?.x ?? 0,
     orientation?.y ?? 0,
     orientation?.z ?? 0,
     orientation?.w ?? 0,
-    angularVelocity !== undefined ? 1 : 0,
+    angularVelocity !== null ? 1 : 0,
     angularVelocity?.x ?? 0,
     angularVelocity?.y ?? 0,
     angularVelocity?.z ?? 0,
     unit.fireEnabled === false ? 1 : 0,
     unit.isCommander === true ? 1 : 0,
-    unit.buildTargetId !== undefined ? 1 : 0,
+    unit.buildTargetIdPresent ? 1 : 0,
     unit.buildTargetId === null ? 1 : 0,
     typeof unit.buildTargetId === 'number' ? unit.buildTargetId : 0,
-    actions !== undefined ? 1 : 0,
+    actions !== null ? 1 : 0,
     actions?.length ?? 0,
-    turrets !== undefined ? 1 : 0,
+    turrets !== null ? 1 : 0,
     turrets?.length ?? 0,
-    build !== undefined ? 1 : 0,
+    build !== null ? 1 : 0,
     build?.complete === true ? 1 : 0,
     build?.paid.energy ?? 0,
     build?.paid.metal ?? 0,
@@ -335,7 +335,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
 
 function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
   return (
-    (building.type !== undefined && typeof building.type !== 'number') ||
+    (building.type !== null && typeof building.type !== 'number') ||
     (building.factory?.queue.some((code) => !isUint(code, 0xFFFF_FFFF)) ?? false)
   );
 }
@@ -369,9 +369,9 @@ function encodeBuildingEntity(
     entity.playerId,
     entity.changedFields !== null ? 1 : 0,
     entity.changedFields ?? 0,
-    building.type !== undefined ? 1 : 0,
+    building.type !== null ? 1 : 0,
     building.type ?? 0,
-    building.dim !== undefined ? 1 : 0,
+    building.dim !== null ? 1 : 0,
     building.dim?.x ?? 0,
     building.dim?.y ?? 0,
     building.hp?.curr ?? 0,
@@ -379,13 +379,13 @@ function encodeBuildingEntity(
     building.build?.complete ? 1 : 0,
     building.build?.paid.energy ?? 0,
     building.build?.paid.metal ?? 0,
-    building.metalExtractionRate !== undefined ? 1 : 0,
+    building.metalExtractionRate !== null ? 1 : 0,
     building.metalExtractionRate ?? 0,
-    building.solar !== undefined ? 1 : 0,
+    building.solar !== null ? 1 : 0,
     building.solar?.open === true ? 1 : 0,
-    turrets !== undefined ? 1 : 0,
+    turrets !== null ? 1 : 0,
     turrets?.length ?? 0,
-    factory !== undefined ? 1 : 0,
+    factory !== null ? 1 : 0,
     factory?.queue.length ?? 0,
     factory?.progress ?? 0,
     factory?.producing === true ? 1 : 0,
@@ -775,7 +775,7 @@ function packWaypointsIntoScratch(
     const base = i * api.waypointScratchStride;
     view[base + 0] = waypoint.pos.x;
     view[base + 1] = waypoint.pos.y;
-    view[base + 2] = waypoint.posZ !== undefined ? 1 : 0;
+    view[base + 2] = waypoint.posZ !== null ? 1 : 0;
     view[base + 3] = waypoint.posZ ?? 0;
     view[base + 4] = stringSlots.get(waypoint.type) ?? 0;
   }
@@ -814,7 +814,7 @@ function packMinimapIntoScratch(
       : SNAPSHOT_ENTITY_TYPE_BUILDING;
     view[base + 4] = entry.playerId;
     let packed = 0;
-    if (entry.radarOnly !== undefined) {
+    if (entry.radarOnly !== null) {
       packed |= 0x01;
       if (entry.radarOnly) packed |= 0x02;
     }
@@ -1040,12 +1040,12 @@ function packSprayTargetsIntoScratch(
     view[base + 14] = spray.particleRadius ?? 0;
     let flags = 0;
     if (spray.type === 'heal') flags |= 0x01;
-    if (spray.source.z !== undefined) flags |= 0x02;
-    if (spray.target.z !== undefined) flags |= 0x04;
-    if (spray.target.dim !== undefined) flags |= 0x08;
-    if (spray.target.radius !== undefined) flags |= 0x10;
-    if (spray.speed !== undefined) flags |= 0x20;
-    if (spray.particleRadius !== undefined) flags |= 0x40;
+    if (spray.source.z !== null) flags |= 0x02;
+    if (spray.target.z !== null) flags |= 0x04;
+    if (spray.target.dim !== null) flags |= 0x08;
+    if (spray.target.radius !== null) flags |= 0x10;
+    if (spray.speed !== null) flags |= 0x20;
+    if (spray.particleRadius !== null) flags |= 0x40;
     view[base + 15] = flags;
   }
 }
@@ -1080,7 +1080,7 @@ function packDeathContextsIntoScratch(
   let totalPoses = 0;
   for (let i = 0; i < events.length; i++) {
     const context = events[i].deathContext;
-    if (context === undefined) continue;
+    if (context === null) continue;
     deathContextCount++;
     totalPoses += context.turretPoses?.length ?? 0;
   }
@@ -1108,7 +1108,7 @@ function packDeathContextsIntoScratch(
   let poseOffset = 0;
   for (let i = 0; i < events.length; i++) {
     const context = events[i].deathContext;
-    if (context === undefined) continue;
+    if (context === null) continue;
     const base = deathContextIndex * api.deathContextScratchStride;
     view[base + 0] = context.unitVel.x;
     view[base + 1] = context.unitVel.y;
@@ -1155,7 +1155,7 @@ function packImpactContextsIntoScratch(
 ): void {
   let impactContextCount = 0;
   for (let i = 0; i < events.length; i++) {
-    if (events[i].impactContext !== undefined) impactContextCount++;
+    if (events[i].impactContext !== null) impactContextCount++;
   }
   if (impactContextCount === 0) return;
 
@@ -1169,7 +1169,7 @@ function packImpactContextsIntoScratch(
   let impactContextIndex = 0;
   for (let i = 0; i < events.length; i++) {
     const context = events[i].impactContext;
-    if (context === undefined) continue;
+    if (context === null) continue;
     const base = impactContextIndex * api.impactContextScratchStride;
     view[base + 0] = context.collisionRadius;
     view[base + 1] = context.explosionRadius;
@@ -1216,23 +1216,23 @@ function packAudioEventsIntoScratch(
     view[base + 11] = event.forceFieldImpact?.playerId ?? 0;
     view[base + 12] = event.sourceType ? AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] : 0;
     view[base + 13] = stringSlots.get(event.turretId) ?? 0;
-    view[base + 14] = event.sourceKey !== undefined
+    view[base + 14] = event.sourceKey !== null
       ? stringSlots.get(event.sourceKey) ?? 0
       : 0;
     let flags = 0;
-    if (event.sourceType !== undefined) flags |= 0x001;
-    if (event.sourceKey !== undefined) flags |= 0x002;
-    if (event.playerId !== undefined) flags |= 0x004;
-    if (event.entityId !== undefined) flags |= 0x008;
-    if (event.forceFieldImpact !== undefined) flags |= 0x010;
-    if (event.killerPlayerId !== undefined) flags |= 0x020;
-    if (event.victimPlayerId !== undefined) flags |= 0x040;
-    if (event.audioOnly !== undefined) {
+    if (event.sourceType !== null) flags |= 0x001;
+    if (event.sourceKey !== null) flags |= 0x002;
+    if (event.playerId !== null) flags |= 0x004;
+    if (event.entityId !== null) flags |= 0x008;
+    if (event.forceFieldImpact !== null) flags |= 0x010;
+    if (event.killerPlayerId !== null) flags |= 0x020;
+    if (event.victimPlayerId !== null) flags |= 0x040;
+    if (event.audioOnly !== null) {
       flags |= 0x080;
       if (event.audioOnly) flags |= 0x100;
     }
-    if (event.deathContext !== undefined) flags |= 0x200;
-    if (event.impactContext !== undefined) flags |= 0x400;
+    if (event.deathContext !== null) flags |= 0x200;
+    if (event.impactContext !== null) flags |= 0x400;
     view[base + 15] = flags;
   }
 }
@@ -1241,7 +1241,7 @@ function emitAudioEvents(sim: SimWasm, events: readonly NetworkServerSnapshotSim
   const strings: string[] = [];
   for (const event of events) {
     strings.push(event.turretId);
-    if (event.sourceKey !== undefined) strings.push(event.sourceKey);
+    if (event.sourceKey !== null) strings.push(event.sourceKey);
     if (event.deathContext?.unitType !== undefined) strings.push(event.deathContext.unitType);
   }
   const stringSlots = packStringsIntoScratch(sim, strings);
@@ -1255,7 +1255,7 @@ function canEncodeAudioEvents(events: readonly NetworkServerSnapshotSimEvent[]):
   for (const event of events) {
     if (AUDIO_EVENT_TYPE_CODES[event.type] === undefined) return false;
     if (
-      event.sourceType !== undefined &&
+      event.sourceType !== null &&
       AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] === undefined
     ) {
       return false;

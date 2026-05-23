@@ -393,7 +393,12 @@ function createBuildingFromNetwork(
     const waypoints: { x: number; y: number; z?: number; type: 'move' | 'fight' | 'patrol' }[] = [];
     for (let i = 1; i < wps.length; i++) {
       const wp = wps[i];
-      waypoints.push({ x: wp.pos.x, y: wp.pos.y, z: wp.posZ, type: wp.type as 'move' | 'fight' | 'patrol' });
+      waypoints.push({
+        x: wp.pos.x,
+        y: wp.pos.y,
+        z: wp.posZ ?? undefined,
+        type: wp.type as 'move' | 'fight' | 'patrol',
+      });
     }
     const buildQueue: string[] = [];
     for (let i = 0; i < f.queue.length; i++) {

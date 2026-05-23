@@ -129,15 +129,13 @@ ABSENCE-01 - parent: optional property declarations remain across
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/types/network.ts: 124 `?:` declarations after the 2026-05-23
-  pooled entity DTO pass converted NetworkServerSnapshotEntity's
-  top-level presence fields plus action/turret presence fields to
-  explicit `T | null`. This file defines the
-  NetworkServerSnapshotEntity DTO shape and dozens of inner
-  unit/building/turret sub-shapes (pos, unit, building, projectile,
-  audio, minimap, etc). The DTOs are pooled — the same object is
-  reused across snapshots — so optional fields carry zombie values
-  between snapshots unless every release path explicitly resets them.
+- src/types/network.ts: 69 `?:` declarations after the 2026-05-23
+  pooled DTO pass converted NetworkServerSnapshotEntity's nested
+  unit/building fields plus projectile, beam, audio, minimap, spray,
+  and factory waypoint DTO fields to explicit `T | null`. The remaining
+  optional declarations in this file are mostly lobby/transport
+  envelopes, top-level snapshot sections, and server metadata rather
+  than the pooled per-entity/per-event DTO slots.
 - src/types/sim.ts: 83 `?:` declarations. This is the core
   entity-state shape file. Optional component slots (`body?`,
   `unit?`, `building?`, `combat?`, `projectile?`, etc.) are the most
@@ -171,31 +169,6 @@ gradual ("every file we touch should leave with fewer optional
 properties..."), but two files concentrate most of the risk and
 should be the first scheduled passes.
 
-------------------------------------------------------------------------------
-ABSENCE-01A - child: convert pooled DTO optional fields in
-              src/types/network.ts to T | null with explicit reset.
-------------------------------------------------------------------------------
-
-Evidence:
-- NetworkServerSnapshotEntity still carries many optional sub-fields
-  inside unit/building/projectile/combat/audio sub-shapes. The
-  2026-05-23 pooled entity DTO pass converted the entity top-level
-  presence fields (`pos`, `rotation`, `changedFields`, `unit`,
-  `building`) and NetworkServerSnapshotAction /
-  NetworkServerSnapshotTurret presence fields to explicit null, with
-  the entity packers treating null as omitted so wire encoding stays
-  unchanged. The remaining pooled nested fields still need the same
-  treatment.
-- src/game/network/unitSnapshotFields.ts already has clearNetwork*
-  helpers; some optional fields may not be reset there. Audit each.
-
-Fix direction:
-File-scoped pass. Change each `field?: T` to `field: T | null = null`
-with an explicit guard at every reader. Add reset calls in
-clearNetwork* / snapshotPool release helpers for any field newly
-on the must-null list. Keep the wire encoding unchanged.
-
-------------------------------------------------------------------------------
 ABSENCE-01B - child: convert entity-state component slots in
               src/types/sim.ts to discriminated unions or T | null.
 ------------------------------------------------------------------------------
