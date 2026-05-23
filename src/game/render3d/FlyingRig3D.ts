@@ -17,21 +17,22 @@ const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
 const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
 const JET_SMOKE_COLOR = COLORS.units.locomotion.flying.smoke.colorHex;
 const LOCAL_EXHAUST_DIR = new THREE.Vector3(-1, 0, 0);
+const DEFAULT_WING_SWEEP_FRAC = 0.35;
+const DEFAULT_WING_TIP_HALF_CHORD_FRAC = 0.12;
 
 // Wing panel geometry: tapered, swept-back planform for one side only.
 // Built unit-sized (root chord 1, side span 1, thickness 1) so callers can
 // scale by (chord, thickness, sideSpan). The root edge sits on local Z=0,
 // letting each side rotate around the fuselage for dihedral/anhedral.
-function buildWingPanelGeom(lateralSign: -1 | 1): THREE.BufferGeometry {
+function buildWingPanelGeom(lateralSign: -1 | 1, sweepFrac: number): THREE.BufferGeometry {
   const rootHalfChord = 0.5;
-  const tipHalfChord = 0.12;
-  const sweep = 0.35;
+  const tipHalfChord = DEFAULT_WING_TIP_HALF_CHORD_FRAC;
   const tipZ = lateralSign;
 
   const shape = new THREE.Shape();
   shape.moveTo(rootHalfChord, 0);
-  shape.lineTo(-sweep + tipHalfChord, tipZ);
-  shape.lineTo(-sweep - tipHalfChord, tipZ);
+  shape.lineTo(-sweepFrac + tipHalfChord, tipZ);
+  shape.lineTo(-sweepFrac - tipHalfChord, tipZ);
   shape.lineTo(-rootHalfChord, 0);
   shape.lineTo(rootHalfChord, 0);
 
@@ -41,8 +42,7 @@ function buildWingPanelGeom(lateralSign: -1 | 1): THREE.BufferGeometry {
   return geom;
 }
 
-const leftWingGeom = buildWingPanelGeom(-1);
-const rightWingGeom = buildWingPanelGeom(1);
+const wingGeomCache = new Map<string, THREE.BufferGeometry>();
 const jetGeom = new THREE.CylinderGeometry(1, 1, 1, 18, 1, true);
 jetGeom.rotateZ(Math.PI / 2);
 const wingMats = new Map<number, THREE.MeshBasicMaterial>();
@@ -66,6 +66,16 @@ function getFlyingMat(
     cache.set(color, mat);
   }
   return mat;
+}
+
+function getWingPanelGeom(lateralSign: -1 | 1, sweepFrac: number): THREE.BufferGeometry {
+  const key = `${lateralSign}:${sweepFrac.toFixed(3)}`;
+  let geom = wingGeomCache.get(key);
+  if (!geom) {
+    geom = buildWingPanelGeom(lateralSign, sweepFrac);
+    wingGeomCache.set(key, geom);
+  }
+  return geom;
 }
 
 type FlyingJet = {
@@ -93,16 +103,19 @@ export function buildFlyingRig(
   const group = new THREE.Group();
   const smokeProfile = getSmokeProfile(smokeUseId);
 
-  addWingPanels(group, unitRadius, {
-    spanFrac: cfg.wingSpan,
-    chordFrac: cfg.wingChord,
-    offsetXFrac: cfg.wingOffsetX,
-    heightFrac: cfg.wingHeight,
-    thicknessFrac: cfg.wingThickness ?? 0.04,
-    dihedralDeg: cfg.wingDihedralDeg ?? 0,
-    mirrorX: false,
-    ownerId,
-  });
+  if (cfg.wingEnabled !== false) {
+    addWingPanels(group, unitRadius, {
+      spanFrac: cfg.wingSpan,
+      chordFrac: cfg.wingChord,
+      offsetXFrac: cfg.wingOffsetX,
+      heightFrac: cfg.wingHeight,
+      thicknessFrac: cfg.wingThickness ?? 0.04,
+      dihedralDeg: cfg.wingDihedralDeg ?? 0,
+      sweepFrac: cfg.wingSweepFrac ?? DEFAULT_WING_SWEEP_FRAC,
+      mirrorX: false,
+      ownerId,
+    });
+  }
 
   if (
     cfg.tailWingSpan !== undefined &&
@@ -117,6 +130,7 @@ export function buildFlyingRig(
       heightFrac: cfg.tailWingHeight,
       thicknessFrac: cfg.tailWingThickness ?? cfg.wingThickness ?? 0.04,
       dihedralDeg: cfg.tailWingDihedralDeg ?? 0,
+      sweepFrac: cfg.tailWingSweepFrac ?? cfg.wingSweepFrac ?? DEFAULT_WING_SWEEP_FRAC,
       mirrorX: cfg.tailWingMirrorX ?? false,
       ownerId,
     });
@@ -190,6 +204,7 @@ function addWingPanels(
     heightFrac: number;
     thicknessFrac: number;
     dihedralDeg: number;
+    sweepFrac: number;
     mirrorX: boolean;
     ownerId: PlayerId | undefined;
   },
@@ -200,6 +215,7 @@ function addWingPanels(
   const offsetX = unitRadius * spec.offsetXFrac;
   const height = unitRadius * spec.heightFrac;
   const dihedralRad = spec.dihedralDeg * Math.PI / 180;
+  const sweepFrac = Math.max(0, spec.sweepFrac);
   // mirrorX flips the wing front-to-back so a panel placed at the rear
   // reads as a mirror image of the front wings (root toward the tail,
   // tip swept forward toward the body) instead of repeating the same
@@ -212,7 +228,7 @@ function addWingPanels(
     panelGroup.rotation.x = -side * dihedralRad;
 
     const panel = new THREE.Mesh(
-      side < 0 ? leftWingGeom : rightWingGeom,
+      getWingPanelGeom(side, sweepFrac),
       getFlyingMat(wingMats, WING_COLOR, spec.ownerId, THREE.DoubleSide),
     );
     panel.scale.set(chord * chordSign, thickness, sideSpan);

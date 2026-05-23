@@ -338,18 +338,27 @@ export type FlyingConfig = {
   hoverHeightRandomizationAmount?: number;
   /** Same semantics as `HoverConfig.hoverHeightEMA`. */
   hoverHeightEMA?: number;
+  /** Allows a flying profile to suppress the primary/front wing pair
+   *  while keeping its rear wing pair and jets. Defaults to true. */
+  wingEnabled?: boolean;
   wingSpan: number;
   wingChord: number;
   wingOffsetX: number;
   wingHeight: number;
   wingThickness?: number;
   wingDihedralDeg?: number;
+  /** Planform sweep as a chord fraction. Positive values sweep primary
+   *  wing tips backward; with `tailWingMirrorX`, larger values make the
+   *  tail wing tips project farther forward. */
+  wingSweepFrac?: number;
   tailWingSpan?: number;
   tailWingChord?: number;
   tailWingOffsetX?: number;
   tailWingHeight?: number;
   tailWingThickness?: number;
   tailWingDihedralDeg?: number;
+  /** Tail-specific planform sweep. See `wingSweepFrac`. */
+  tailWingSweepFrac?: number;
   /** Flip the tail-wing geometry along the unit's forward axis so the
    *  rear pair reads as a mirror image of the front wings (root toward
    *  the tail, tip swept forward) instead of repeating the same
