@@ -13,6 +13,7 @@
     "energyProduction": 50,
     "metalProduction": null,
     "constructionRate": null,
+    "conversionRate": null,
     "renderProfile": "solar",
     "visualHeight": 52,
     "anchorProfile": "constantVisualTop",
@@ -37,6 +38,7 @@
     "energyProduction": 50,
     "metalProduction": null,
     "constructionRate": null,
+    "conversionRate": null,
     "renderProfile": "wind",
     "visualHeight": 250,
     "anchorProfile": "constantVisualTop",
@@ -195,6 +197,31 @@
         }
       }
     ],
+    "detector": null
+  },
+  "resourceConverter": {
+    "id": "resourceConverter",
+    "name": "Converter",
+    "gridWidth": 3,
+    "gridHeight": 3,
+    "gridDepth": 3,
+    "hp": 240,
+    "cost": {
+      "energy": 120,
+      "metal": 120
+    },
+    "energyProduction": null,
+    "metalProduction": null,
+    "constructionRate": null,
+    "conversionRate": 25,
+    "renderProfile": "resourceConverter",
+    "visualHeight": 60,
+    "anchorProfile": "constantVisualTop",
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "cloak": null,
+    "turrets": [],
     "detector": null
   }
 }

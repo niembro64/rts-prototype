@@ -10,7 +10,7 @@ export const UNIT_TYPE_IDS = [
 export type UnitTypeId = typeof UNIT_TYPE_IDS[number];
 
 export const BUILDING_TYPE_IDS = [
-  'solar', 'wind', 'factory', 'extractor', 'megaBeamTower', 'cannonTower', 'radar',
+  'solar', 'wind', 'factory', 'extractor', 'megaBeamTower', 'cannonTower', 'radar', 'resourceConverter',
 ] as const;
 
 export const SHOT_IDS = [

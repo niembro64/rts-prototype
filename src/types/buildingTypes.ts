@@ -7,6 +7,7 @@ export type BuildingType =
   | 'extractor'
   | 'radar'
   | 'megaBeamTower'
-  | 'cannonTower';
+  | 'cannonTower'
+  | 'resourceConverter';
 export type BuildingRenderProfile = BuildingType | 'unknown';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
