@@ -29,6 +29,9 @@ export class ClientSprayTargetStore {
         target.target.radius = source.target.radius ?? undefined;
         target.type = source.type;
         target.intensity = source.intensity;
+        target.channel = 0;
+        target.flow = 'direct';
+        target.flowRadius = 0;
         target.speed = source.speed ?? undefined;
         target.particleRadius = source.particleRadius ?? undefined;
         this.targets.push(target);
@@ -54,8 +57,14 @@ export class ClientSprayTargetStore {
         target: { id: 0, pos: { x: 0, y: 0 }, z: 0 },
         type: 'build',
         intensity: 0,
+        channel: 0,
+        flow: 'direct',
+        flowRadius: 0,
       };
     }
+    target.channel = 0;
+    target.flow = 'direct';
+    target.flowRadius = 0;
     target.speed = undefined;
     target.particleRadius = undefined;
     return target;

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { WIND_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
-import type { ProductionRateIndicatorRig } from './ConstructionEmitterMesh3D';
-import { buildProductionRateIndicator } from './ConstructionEmitterMesh3D';
+import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
+import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
 import {
   boxGeom,
   cylinderGeom,
@@ -35,7 +35,7 @@ export type WindBladeAnim = {
 export type WindTurbineRig = {
   root: THREE.Mesh;
   rotor: THREE.Mesh;
-  rateIndicator?: ProductionRateIndicatorRig;
+  pylon: ResourcePylonRig;
   /** Authored pitch applied to root.rotation.x at full close (1.0). */
   closedPitch: number;
 };
@@ -60,13 +60,24 @@ export function buildWindTurbineMesh(
     makeCylinder(windTowerMat, towerRadius, towerH, 0, towerH / 2, 0),
     'low',
   ));
-  const energyRateIndicator = buildProductionRateIndicator(
-    'energy',
-    towerRadius * 1.8,
-    towerH,
-    0,
-  );
-  details.push(detail(energyRateIndicator.rig.shower, 'low'));
+  const energyPylon = buildResourcePylonRig({
+    resource: 'energy',
+    direction: 'inbound',
+    showerRadius: towerRadius * 1.8,
+    pylonHeight: towerH,
+    pylonBaseY: 0,
+    x: 0,
+    z: 0,
+    pylonRadius: Math.max(1.8, towerRadius * 0.45),
+    sprayTravelSpeed: 130,
+    sprayParticleRadius: Math.max(1.2, towerRadius * 0.34),
+    flowRadius: Math.max(42, towerH * 0.9),
+    channel: 0,
+  });
+  for (const mesh of energyPylon.staticMeshes) {
+    details.push(detail(mesh, 'low'));
+  }
+  details.push(detail(energyPylon.rig.shower, 'low'));
 
   const root = new THREE.Mesh(boxGeom, invisibleMat);
   root.position.set(0, towerH, 0);
@@ -169,7 +180,7 @@ export function buildWindTurbineMesh(
     windRig: {
       root,
       rotor,
-      rateIndicator: energyRateIndicator.rig,
+      pylon: energyPylon.rig,
       // Pitch the nacelle to point straight up. The root's open-pose
       // pitch is 0 (horizontal nacelle); -π/2 sends it skyward so the
       // rotor sits at the top of the tower with its face pointing up.

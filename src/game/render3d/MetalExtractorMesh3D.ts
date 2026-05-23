@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { EXTRACTOR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import type { BuildingShape } from './BuildingShape3D';
-import type { ProductionRateIndicatorRig } from './ConstructionEmitterMesh3D';
-import { buildProductionRateIndicator } from './ConstructionEmitterMesh3D';
+import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
+import { buildResourcePylonRig } from './ConstructionEmitterMesh3D';
 import {
   createHexFrustumGeometry,
   cylinderGeom,
@@ -62,7 +62,7 @@ export type ExtractorBladeAnim = {
  *  bands is a free visibility toggle, no rebuild needed. */
 export type ExtractorRig = {
   rotors: THREE.Mesh[];
-  rateIndicator?: ProductionRateIndicatorRig;
+  pylon: ResourcePylonRig;
 };
 
 /** Metal extractor detail.
@@ -86,19 +86,24 @@ export function buildMetalExtractorMesh(
   const shortRatePillarHeight = Math.max(10, Math.min(16, EXTRACTOR_BUILDING_VISUAL_HEIGHT - ratePillarBaseY - 4));
   const ratePillarHeight = shortRatePillarHeight * 2;
   const ratePillarRadius = Math.max(3.8, minDim * 0.055);
-  const metalRateIndicator = buildProductionRateIndicator(
-    'metal',
-    ratePillarRadius * 1.7,
-    ratePillarHeight,
-    ratePillarBaseY,
-    0,
-    0,
-    ratePillarRadius,
-  );
-  for (const mesh of metalRateIndicator.staticMeshes) {
+  const metalPylon = buildResourcePylonRig({
+    resource: 'metal',
+    direction: 'inbound',
+    showerRadius: ratePillarRadius * 1.7,
+    pylonHeight: ratePillarHeight,
+    pylonBaseY: ratePillarBaseY,
+    x: 0,
+    z: 0,
+    pylonRadius: ratePillarRadius,
+    sprayTravelSpeed: 110,
+    sprayParticleRadius: Math.max(1.4, ratePillarRadius * 0.42),
+    flowRadius: Math.max(30, ratePillarHeight * 1.1),
+    channel: 1,
+  });
+  for (const mesh of metalPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
   }
-  details.push(detail(metalRateIndicator.rig.shower, 'low'));
+  details.push(detail(metalPylon.rig.shower, 'low'));
 
   const rotorY = Math.min(
     EXTRACTOR_BUILDING_VISUAL_HEIGHT - 3,
@@ -125,7 +130,7 @@ export function buildMetalExtractorMesh(
     height: pyramidHeight,
     extractorRig: {
       rotors: [simpleRotor],
-      rateIndicator: metalRateIndicator.rig,
+      pylon: metalPylon.rig,
     },
   };
 }

@@ -1,4 +1,4 @@
-// Construction emitter rig: the trio of resource pylons + showers +
+// Construction emitter rig: the pair of resource pylons + showers +
 // build-spray sources that visually communicate "energy/metal flowing
 // out to a construction site". Mounted on a `constructionTurret` and
 // shared verbatim across hosts — commanders, fabricators, and the future
@@ -28,26 +28,30 @@ export type ConstructionTowerOrbitPart = {
   baseRotationY: number;
 };
 
-export type ProductionRateIndicatorRig = {
+export type ResourcePylonDirection = 'inbound' | 'outbound';
+
+export type ResourcePylonRig = {
+  resource: ConstructionTowerResource;
+  direction: ResourcePylonDirection;
   shower: THREE.Mesh;
   showerRadius: number;
   pylonHeight: number;
   pylonBaseY: number;
+  topLocal: THREE.Vector3;
+  topBaseLocal: THREE.Vector3;
+  sprayTravelSpeed: number;
+  sprayParticleRadius: number;
+  flowRadius: number;
+  channel: number;
   smoothedRate: number;
+  displaySmoothedRate: number;
 };
 
 export type ConstructionEmitterRig = {
   group: THREE.Group;
   /** Same per-resource pylon pair the factory uses: energy / metal. */
-  showers: THREE.Mesh[];
+  pylons: ResourcePylonRig[];
   towerOrbitParts: ConstructionTowerOrbitPart[];
-  showerRadius: number;
-  pylonHeight: number;
-  pylonBaseY: number;
-  pylonTopsLocal: THREE.Vector3[];
-  pylonTopBaseLocals: THREE.Vector3[];
-  sprayTravelSpeed: number;
-  sprayParticleRadius: number;
   smoothedRates: { energy: number; metal: number };
   /** Second-stage display EMA layered on top of `smoothedRates`. Drives
    *  the visible shower height + build-spray emission so motion eases
@@ -65,9 +69,7 @@ export type ConstructionEmitterRig = {
 type ConstructionPylonTrio = {
   staticMeshes: THREE.Mesh[];
   towerOrbitParts: ConstructionTowerOrbitPart[];
-  showers: THREE.Mesh[];
-  pylonTopsLocal: THREE.Vector3[];
-  pylonTopBaseLocals: THREE.Vector3[];
+  pylons: ResourcePylonRig[];
 };
 
 export type ConstructionTowerResource = 'energy' | 'metal';
@@ -77,6 +79,21 @@ type ConstructionTowerVariant = {
   resource: ConstructionTowerResource;
   showerMaterial: THREE.Material;
   capMaterial: THREE.Material;
+};
+
+export type ResourcePylonBuildOptions = {
+  resource: ConstructionTowerResource;
+  direction: ResourcePylonDirection;
+  showerRadius: number;
+  pylonHeight: number;
+  pylonBaseY: number;
+  x: number;
+  z: number;
+  pylonRadius: number;
+  sprayTravelSpeed: number;
+  sprayParticleRadius: number;
+  flowRadius: number;
+  channel: number;
 };
 
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
@@ -163,55 +180,62 @@ const CONSTRUCTION_TOWER_SIZE_STYLE: Record<ConstructionTowerSize, {
   },
 };
 
-export function buildProductionRateIndicator(
-  resource: ConstructionTowerResource,
-  showerRadius: number,
-  pylonHeight: number,
-  pylonBaseY: number,
-  x = 0,
-  z = 0,
-  pylonRadius = 0,
-): {
+export function buildResourcePylonRig(options: ResourcePylonBuildOptions): {
   staticMeshes: THREE.Mesh[];
-  rig: ProductionRateIndicatorRig;
+  rig: ResourcePylonRig;
 } {
-  const variant = CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[resource];
+  const variant = CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[options.resource];
   const staticMeshes: THREE.Mesh[] = [];
-  if (pylonRadius > 0) {
+  if (options.pylonRadius > 0) {
     staticMeshes.push(makeCylinder(
       frameMat,
-      pylonRadius,
-      pylonHeight,
-      x,
-      pylonBaseY + pylonHeight / 2,
-      z,
+      options.pylonRadius,
+      options.pylonHeight,
+      options.x,
+      options.pylonBaseY + options.pylonHeight / 2,
+      options.z,
     ));
     staticMeshes.push(makeSphere(
       variant.capMaterial,
-      Math.max(1.6, pylonRadius * 1.45),
-      x,
-      pylonBaseY + pylonHeight + Math.max(1.0, pylonRadius * 0.5),
-      z,
+      Math.max(1.6, options.pylonRadius * 1.45),
+      options.x,
+      options.pylonBaseY + options.pylonHeight + Math.max(1.0, options.pylonRadius * 0.5),
+      options.z,
     ));
   }
   const shower = makeCylinder(
     variant.showerMaterial,
-    showerRadius,
+    options.showerRadius,
     1,
-    x,
-    pylonBaseY,
-    z,
+    options.x,
+    options.pylonBaseY,
+    options.z,
   );
   shower.visible = false;
   shower.renderOrder = 6;
+  const capRadius = Math.max(1.6, options.pylonRadius * 1.45);
+  const topLocal = new THREE.Vector3(
+    options.x,
+    options.pylonBaseY + options.pylonHeight + Math.max(1.0, options.pylonRadius * 0.5) + capRadius * 0.35,
+    options.z,
+  );
   return {
     staticMeshes,
     rig: {
+      resource: options.resource,
+      direction: options.direction,
       shower,
-      showerRadius,
-      pylonHeight,
-      pylonBaseY,
+      showerRadius: options.showerRadius,
+      pylonHeight: options.pylonHeight,
+      pylonBaseY: options.pylonBaseY,
+      topLocal,
+      topBaseLocal: topLocal.clone(),
+      sprayTravelSpeed: options.sprayTravelSpeed,
+      sprayParticleRadius: options.sprayParticleRadius,
+      flowRadius: options.flowRadius,
+      channel: options.channel,
       smoothedRate: 0,
+      displaySmoothedRate: 0,
     },
   };
 }
@@ -243,19 +267,16 @@ export function buildConstructionEmitterRigFromTurretConfig(
     pylonBaseY,
   );
   for (const mesh of pylonTrio.staticMeshes) root.add(mesh);
-  for (const shower of pylonTrio.showers) root.add(shower);
+  for (const pylon of pylonTrio.pylons) {
+    pylon.sprayTravelSpeed = spec.particleTravelSpeed;
+    pylon.sprayParticleRadius = spec.particleRadius;
+    root.add(pylon.shower);
+  }
 
   return {
     group: root,
-    showers: pylonTrio.showers,
+    pylons: pylonTrio.pylons,
     towerOrbitParts: pylonTrio.towerOrbitParts,
-    showerRadius: dims.showerRadius,
-    pylonHeight: dims.pylonHeight,
-    pylonBaseY,
-    pylonTopsLocal: pylonTrio.pylonTopsLocal,
-    pylonTopBaseLocals: pylonTrio.pylonTopBaseLocals,
-    sprayTravelSpeed: spec.particleTravelSpeed,
-    sprayParticleRadius: spec.particleRadius,
     smoothedRates: { energy: 0, metal: 0 },
     displaySmoothedRates: { energy: 0, metal: 0 },
     lastPaidTargetId: null,
@@ -289,9 +310,7 @@ function buildConstructionPylonTrio(
 ): ConstructionPylonTrio {
   const staticMeshes: THREE.Mesh[] = [];
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [];
-  const showers: THREE.Mesh[] = [];
-  const pylonTopsLocal: THREE.Vector3[] = [];
-  const pylonTopBaseLocals: THREE.Vector3[] = [];
+  const pylons: ResourcePylonRig[] = [];
 
   for (let i = 0; i < CONSTRUCTION_TOWER_VARIANTS.length; i++) {
     const a = (i / CONSTRUCTION_TOWER_VARIANTS.length) * Math.PI * 2;
@@ -308,12 +327,10 @@ function buildConstructionPylonTrio(
     );
     staticMeshes.push(...tower.staticMeshes);
     towerOrbitParts.push(...tower.towerOrbitParts);
-    showers.push(tower.shower);
-    pylonTopsLocal.push(tower.topLocal);
-    pylonTopBaseLocals.push(tower.topBaseLocal);
+    pylons.push(tower.rig);
   }
 
-  return { staticMeshes, towerOrbitParts, showers, pylonTopsLocal, pylonTopBaseLocals };
+  return { staticMeshes, towerOrbitParts, pylons };
 }
 
 function buildConstructionTowerPiece(
@@ -329,9 +346,7 @@ function buildConstructionTowerPiece(
 ): {
   staticMeshes: THREE.Mesh[];
   towerOrbitParts: ConstructionTowerOrbitPart[];
-  shower: THREE.Mesh;
-  topLocal: THREE.Vector3;
-  topBaseLocal: THREE.Vector3;
+  rig: ResourcePylonRig;
 } {
   const style = CONSTRUCTION_TOWER_SIZE_STYLE[size];
   const baseRadius = innerPylonRadius * style.baseRadiusMult;
@@ -399,9 +414,22 @@ function buildConstructionTowerPiece(
   return {
     staticMeshes,
     towerOrbitParts,
-    shower,
-    topLocal,
-    topBaseLocal: topLocal.clone(),
+    rig: {
+      resource: variant.resource,
+      direction: 'outbound',
+      shower,
+      showerRadius,
+      pylonHeight,
+      pylonBaseY,
+      topLocal,
+      topBaseLocal: topLocal.clone(),
+      sprayTravelSpeed: 0,
+      sprayParticleRadius: 0,
+      flowRadius: Math.max(24, pylonHeight * 1.15),
+      channel: variant.resource === 'energy' ? 0 : 1,
+      smoothedRate: 0,
+      displaySmoothedRate: 0,
+    },
   };
 }
 

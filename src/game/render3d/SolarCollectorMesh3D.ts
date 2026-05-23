@@ -3,8 +3,8 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { SOLAR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import {
-  buildProductionRateIndicator,
-  type ProductionRateIndicatorRig,
+  buildResourcePylonRig,
+  type ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
 
@@ -22,7 +22,7 @@ export type SolarPetalAnimation = {
 };
 
 export type SolarRig = {
-  rateIndicator: ProductionRateIndicatorRig;
+  pylon: ResourcePylonRig;
 };
 
 const SOLAR_HEIGHT = SOLAR_BUILDING_VISUAL_HEIGHT;
@@ -265,26 +265,31 @@ export function buildSolarCollector(
   const shortRatePillarHeight = Math.max(10, Math.min(16, SOLAR_HEIGHT - ratePillarBaseY - 4));
   const ratePillarHeight = shortRatePillarHeight * 2;
   const ratePillarRadius = Math.max(3.8, minDim * 0.055);
-  const energyRateIndicator = buildProductionRateIndicator(
-    'energy',
-    ratePillarRadius * 1.7,
-    ratePillarHeight,
-    ratePillarBaseY,
-    0,
-    0,
-    ratePillarRadius,
-  );
-  for (const mesh of energyRateIndicator.staticMeshes) {
+  const energyPylon = buildResourcePylonRig({
+    resource: 'energy',
+    direction: 'inbound',
+    showerRadius: ratePillarRadius * 1.7,
+    pylonHeight: ratePillarHeight,
+    pylonBaseY: ratePillarBaseY,
+    x: 0,
+    z: 0,
+    pylonRadius: ratePillarRadius,
+    sprayTravelSpeed: 120,
+    sprayParticleRadius: Math.max(1.4, ratePillarRadius * 0.42),
+    flowRadius: Math.max(36, ratePillarHeight * 1.35),
+    channel: 0,
+  });
+  for (const mesh of energyPylon.staticMeshes) {
     details.push(detail(mesh, 'low'));
   }
-  details.push(detail(energyRateIndicator.rig.shower, 'low'));
+  details.push(detail(energyPylon.rig.shower, 'low'));
 
   return {
     primary,
     details,
     height: SOLAR_HEIGHT,
     primaryMaterialLocked: true,
-    solarRig: { rateIndicator: energyRateIndicator.rig },
+    solarRig: { pylon: energyPylon.rig },
   };
 }
 

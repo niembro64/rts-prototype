@@ -403,9 +403,9 @@ code only partially implements this contract.
 ==============================================================================
 
 ------------------------------------------------------------------------------
-PYLON-01 - parent: resource pylon rendering is fragmented across
-           multiple visual indicator shapes; the pylon contract only
-           applies to construction turrets today.
+PYLON-01 - parent: resource pylon rendering is still incomplete;
+           converters and renderer rate sources do not yet follow the
+           full pylon contract.
 ------------------------------------------------------------------------------
 
 Evidence:
@@ -415,13 +415,10 @@ Evidence:
   emitted by SprayRenderer3D toward the build target. This is the
   reference implementation; it lives on the commander, the fabricator,
   and (per the recent cleanup) goes through one shared rendering path.
-- Solar collector, wind turbine, and metal extractor each carry a
-  ProductionRateIndicatorRig (one shower, no resource balls — see
-  buildProductionRateIndicator in
-  src/game/render3d/ConstructionEmitterMesh3D.ts). The visual contract
-  is adjacent to pylons but not the same: these buildings publish a
-  single height-only indicator and never emit the inbound resource
-  balls the philosophy requires for pool-additive sources.
+- Solar collector, wind turbine, and metal extractor now each carry a
+  shared inbound ResourcePylonRig and emit random inbound resource
+  balls, but their rates are still renderer-local derivations rather
+  than ResourceMovement records.
 - Resource converter (buildResourceConverterMesh in BuildingShape3D.ts)
   has decorative resource-colored torus rings around a central glow
   sphere but no pylons. The player cannot read from the building visual
@@ -429,10 +426,10 @@ Evidence:
   from the resource bars in the HUD.
 - The sim-side accounting path now publishes ResourceMovement records
   through src/game/sim/resourceMovement.ts, but the renderer still does
-  not consume that channel. The visible contract is therefore still
-  split: construction turrets render resource balls, production
-  buildings render the old height-only indicator, and converters render
-  decorative rings.
+  not consume that channel. Construction turrets and production
+  buildings now share ResourcePylonRig and resource-ball spray modes,
+  but converters still render decorative rings and the production
+  pylon rates are still locally derived by the renderer.
 
 Why it matters:
 The philosophy is explicit: "There must be no resource movement that
@@ -445,67 +442,29 @@ at a glance whether a building is adding, draining, or converting
 because the visual vocabulary is inconsistent.
 
 Fix direction:
-Address as child PRs. The order is: (a) generalize the construction
-emitter pylon rig into the shared ResourcePylonRig used by all hosts;
-(b) replace each per-building rate indicator with the shared rig;
-(c) add pylons to the resource converter. Delete the old
-ProductionRateIndicatorRig path in the same change that lands its
-replacement (Delete The Old Path).
+Address as child PRs. Remaining order: (a) drive renderer pylon rates
+from the shared ResourceMovement channel instead of local visual
+derivations; (b) add energy and metal pylons to the resource converter.
 
 ------------------------------------------------------------------------------
-PYLON-01B - child: generalize the construction emitter rig into a
-            shared ResourcePylonRig used by every resource-touching
-            host (buildings, unit turrets, future converter pylons).
-------------------------------------------------------------------------------
-
-Evidence:
-- buildConstructionEmitterRigFromTurretConfig() in
-  ConstructionEmitterMesh3D.ts builds the canonical pylon pair (one
-  energy, one metal) hard-wired to "two pylons side-by-side, same
-  resource ordering, same outbound-toward-target spray system."
-- buildProductionRateIndicator() in the same file builds a
-  one-shower-no-balls indicator used by solar/wind/extractor — a
-  parallel rig shape with no resource-ball emission at all.
-- SprayRenderer3D currently only emits build sprays toward an explicit
-  target. There is no "spawn balls from random world-space directions
-  flowing toward the pylon" mode for pool-additive sources, and no
-  "outbound at random world-space directions" mode for converter
-  producing sides.
-
-Fix direction:
-Introduce a single ResourcePylonRig(resource, direction, position,
-size, optional target) as the standard rig type. Construction
-emitters become a pair of these (both outbound, both with a target).
-Solar/wind/extractor become a single rig each (inbound, no target —
-balls spawn from random world offsets and converge on the pylon
-head). Converter becomes two of these in opposing modes (one inbound,
-one outbound, no target). SprayRenderer3D grows the
-"no-target inbound" and "no-target outbound" emission modes.
-buildProductionRateIndicator() and ProductionRateIndicatorRig are
-deleted in the same change once parity is verified.
-
-------------------------------------------------------------------------------
-PYLON-01C - child: replace per-building rate indicators with the
-            shared pylon rig (solar collector, wind turbine,
-            metal extractor).
+PYLON-01C - child: production pylons still use renderer-local rate
+            derivation instead of ResourceMovement records.
 ------------------------------------------------------------------------------
 
 Evidence:
 - SolarCollectorMesh3D, WindTurbineMesh3D, and MetalExtractorMesh3D
-  each carry a ProductionRateIndicatorRig built by
-  buildProductionRateIndicator(). The rig has one shower and no balls.
-- BuildingAnimationController3D.applyProductionRateIndicator() drives
-  only the shower height, with no direction or ball flow.
-- Wind/extractor rigs hide their indicator while the building is
-  closed/folded; that visibility logic must transfer to the new
-  pylon rig.
+  now each carry one inbound ResourcePylonRig. ConstructionEmitterMesh3D
+  no longer exports ProductionRateIndicatorRig, and SprayRenderer3D
+  now supports random inbound/outbound pylon flows.
+- BuildingAnimationController3D still computes production pylon rates
+  locally from open state, wind speed, and metalExtractionRate. It does
+  not consume the ResourceMovement records published by the sim.
 
 Fix direction:
-After PYLON-01B lands, swap each per-building rate indicator for one
-ResourcePylonRig (inbound, no target). Wire the rate input through
-the unified ResourceMovement channel. Delete
-buildProductionRateIndicator() and ProductionRateIndicatorRig in the
-same change.
+Ship or expose compact ResourceMovement records to the renderer and
+drive these ResourcePylonRig rates from that one channel. Keep the
+existing close/fold visibility gates, but remove the local rate
+derivation once the channel is available.
 
 ------------------------------------------------------------------------------
 PYLON-01D - child: add pylons to the resource converter building.

@@ -180,11 +180,21 @@ export type ForceContribution = {
 };
 
 // Spray target
+export type SprayFlowMode = 'direct' | 'randomInbound' | 'randomOutbound';
+
 export type SprayTarget = {
   source: { id: EntityId; pos: Vec2; z?: number; playerId: PlayerId };
   target: { id: EntityId; pos: Vec2; z?: number; dim?: Vec2; radius?: number };
   type: 'build' | 'heal';
   intensity: number;
+  /** Separates multiple streams between the same entity pair, e.g.
+   *  energy and metal pylons spraying at the same build target. */
+  channel: number;
+  /** Direct sprays fly source -> target. Random pylon flows use the
+   *  source point as their pylon head and generate per-particle random
+   *  world offsets inward or outward from that point. */
+  flow: SprayFlowMode;
+  flowRadius: number;
   /** Optional particle travel speed in world units per second. Build
    *  sprays use this to move linearly from source to target; omitted
    *  heal sprays use the renderer's heal default. */

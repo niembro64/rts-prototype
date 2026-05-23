@@ -251,7 +251,10 @@ export class SprayRenderer3D {
       const tx = spray.target.pos.x;
       const ty = spray.target.z ?? TRAIL_Y;
       const tz = spray.target.pos.y;
-      const dist = Math.hypot(tx - sx, ty - sy, tz - sz);
+      const directDist = Math.hypot(tx - sx, ty - sy, tz - sz);
+      const dist = spray.flow === 'direct'
+        ? directDist
+        : Math.max(1, spray.flowRadius);
       const flightSec = this.flightTimeForDistance(dist, spray);
       const key = this.sprayKey(spray);
       this.activeSprayKeys.add(key);
@@ -292,7 +295,7 @@ export class SprayRenderer3D {
   }
 
   private sprayKey(spray: SprayTarget): string {
-    return `${spray.type}:${spray.source.id}:${spray.target.id}`;
+    return `${spray.type}:${spray.source.id}:${spray.target.id}:${spray.channel}:${spray.flow}`;
   }
 
   private random(): number {
@@ -338,19 +341,45 @@ export class SprayRenderer3D {
   ): void {
     if (this.particleCount >= MAX_PARTICLES) return;
 
-    const sx = spray.source.pos.x;
-    const sy = spray.source.z ?? TRAIL_Y;
-    const sz = spray.source.pos.y;
-    const tx = spray.target.pos.x;
-    const ty = spray.target.z ?? TRAIL_Y;
-    const tz = spray.target.pos.y;
+    let sx = spray.source.pos.x;
+    let sy = spray.source.z ?? TRAIL_Y;
+    let sz = spray.source.pos.y;
+    let tx = spray.target.pos.x;
+    let ty = spray.target.z ?? TRAIL_Y;
+    let tz = spray.target.pos.y;
+    if (spray.flow !== 'direct') {
+      const radius = Math.max(1, spray.flowRadius);
+      const azimuth = this.random() * Math.PI * 2;
+      const cosTheta = 1 - 2 * this.random();
+      const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+      const shell = radius * (0.45 + this.random() * 0.55);
+      const px = sx + Math.cos(azimuth) * sinTheta * shell;
+      const py = sy + cosTheta * shell;
+      const pz = sz + Math.sin(azimuth) * sinTheta * shell;
+      if (spray.flow === 'randomInbound') {
+        tx = sx;
+        ty = sy;
+        tz = sz;
+        sx = px;
+        sy = py;
+        sz = pz;
+      } else {
+        tx = px;
+        ty = py;
+        tz = pz;
+      }
+    }
     const dim = spray.target.dim;
     const sphereRadius = Math.max(spray.target.radius ?? 0, 0);
 
-    let endX: number;
-    let endY: number;
-    let endZ: number;
-    if (spray.type === 'build') {
+    let endX = tx;
+    let endY = ty;
+    let endZ = tz;
+    if (spray.type === 'build' && spray.flow !== 'direct') {
+      endX = tx;
+      endY = ty;
+      endZ = tz;
+    } else if (spray.type === 'build') {
       // Build sprays paint the full volume of the thing being built so
       // particles arrive distributed across every part of the target —
       // a uniform 3D sphere when only `radius` is supplied, or a
@@ -384,9 +413,11 @@ export class SprayRenderer3D {
       endZ = tz + Math.sin(areaPhase) * areaRing;
       endY = ty + (this.random() * 2 - 1) * Math.min(healSpread * 0.4, 5);
     }
-    const targetSpread = spray.type === 'build'
-      ? (dim ? Math.max(dim.x, dim.y, sphereRadius * 2) * 0.5 : sphereRadius)
-      : sphereRadius * 0.25;
+    const targetSpread = spray.flow !== 'direct'
+      ? Math.max(1, spray.flowRadius)
+      : spray.type === 'build'
+        ? (dim ? Math.max(dim.x, dim.y, sphereRadius * 2) * 0.5 : sphereRadius)
+        : sphereRadius * 0.25;
     const dx = endX - sx;
     const dy = endY - sy;
     const dz = endZ - sz;

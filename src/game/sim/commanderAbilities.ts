@@ -97,6 +97,9 @@ export class CommanderAbilitiesSystem {
           },
           type: 'heal',
           intensity: Math.max(0.1, intensity),
+          channel: 0,
+          flow: 'direct',
+          flowRadius: 0,
         });
       }
     }

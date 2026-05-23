@@ -23,7 +23,6 @@ import {
 } from './SolarCollectorMesh3D';
 import type {
   ConstructionEmitterRig,
-  ProductionRateIndicatorRig,
 } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
@@ -158,12 +157,16 @@ export class BuildingAnimationController3D {
         if (!mesh || !entity) continue;
         this.updateSolarCollectorAnimation(mesh, entity, mesh.buildingCachedDetailsReady === true);
         const open = entity.building?.activeState?.open !== false;
-        this.applyProductionRateIndicator(
-          mesh.solarRig?.rateIndicator,
+        this.constructionVisuals.updateAmbientResourcePylon(
+          mesh.solarRig?.pylon,
+          entity,
+          mesh.group,
           open ? 1 : 0,
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
+          mesh.buildingCachedDetailsReady === true
+            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
         );
       }
     }
@@ -187,8 +190,10 @@ export class BuildingAnimationController3D {
         closeAmounts.set(id, close);
 
         this.updateWindTurbineRig(mesh, mesh.buildingCachedDetailsReady === true, close);
-        this.applyProductionRateIndicator(
-          mesh.windRig?.rateIndicator,
+        this.constructionVisuals.updateAmbientResourcePylon(
+          mesh.windRig?.pylon,
+          entity,
+          mesh.group,
           // Closed turbines produce no energy — collapse the rate
           // indicator to match. The sim already filters them out of
           // WindPowerTracker, this just keeps the visual in sync.
@@ -196,6 +201,8 @@ export class BuildingAnimationController3D {
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
+          mesh.buildingCachedDetailsReady === true
+            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
         );
       }
     }
@@ -285,12 +292,16 @@ export class BuildingAnimationController3D {
         }
         phases.set(id, phase);
         speeds.set(id, speed);
-        this.applyProductionRateIndicator(
-          rig?.rateIndicator,
+        this.constructionVisuals.updateAmbientResourcePylon(
+          rig?.pylon,
+          entity,
+          mesh.group,
           normalizedRate,
           rateAlpha,
           mesh.buildingCachedDetailsReady === true
             && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
+          mesh.buildingCachedDetailsReady === true
+            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
         );
       }
     }
@@ -508,24 +519,6 @@ export class BuildingAnimationController3D {
     }
   }
 
-  private applyProductionRateIndicator(
-    rig: ProductionRateIndicatorRig | undefined,
-    targetRate: number,
-    alpha: number,
-    visible: boolean,
-  ): void {
-    if (!rig) return;
-    const target = visible ? Math.max(0, Math.min(1, targetRate)) : 0;
-    rig.smoothedRate += (target - rig.smoothedRate) * alpha;
-    if (!visible || rig.smoothedRate < 0.01) {
-      rig.shower.visible = false;
-      return;
-    }
-    rig.shower.visible = true;
-    const h = rig.pylonHeight * rig.smoothedRate;
-    rig.shower.scale.set(rig.showerRadius * 2, h, rig.showerRadius * 2);
-    rig.shower.position.y = rig.pylonBaseY + h / 2;
-  }
 }
 
 function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {

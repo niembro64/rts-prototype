@@ -23,7 +23,12 @@ import {
   type FactoryBuildSpot,
 } from '../sim/factoryConstructionSite';
 import type { FactoryBuildSpotRig } from './BuildingShape3D';
-import type { ConstructionEmitterRig, ConstructionTowerOrbitPart } from './ConstructionEmitterMesh3D';
+import type {
+  ConstructionEmitterRig,
+  ConstructionTowerOrbitPart,
+  ConstructionTowerResource,
+  ResourcePylonRig,
+} from './ConstructionEmitterMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { hexStringToRgb } from './colorUtils';
 import { visualAnimBlend } from './visualAnimationEma';
@@ -33,14 +38,17 @@ type ConstructionTowerSpinRig = {
   towerSpinAmount: number;
   displayTowerSpinAmount: number;
   towerSpinPhase: number;
-  pylonTopsLocal: THREE.Vector3[];
-  pylonTopBaseLocals: THREE.Vector3[];
+  pylons: ResourcePylonRig[];
 };
 
 const RESOURCE_SPRAY_COLORS = [
   hexStringToRgb(SHELL_BAR_COLORS.energy),
   hexStringToRgb(SHELL_BAR_COLORS.metal),
 ] as const;
+const RESOURCE_SPRAY_COLOR_BY_RESOURCE: Record<ConstructionTowerResource, { r: number; g: number; b: number }> = {
+  energy: RESOURCE_SPRAY_COLORS[0],
+  metal: RESOURCE_SPRAY_COLORS[1],
+};
 
 export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
@@ -294,6 +302,48 @@ export class ConstructionVisualController3D {
     for (const spark of rig.sparks) spark.visible = false;
   }
 
+  updateAmbientResourcePylon(
+    pylon: ResourcePylonRig | undefined,
+    host: Entity,
+    group: THREE.Group,
+    targetRate: number,
+    alpha: number,
+    visible: boolean,
+    emitBalls: boolean,
+  ): void {
+    if (!pylon) return;
+    const target = visible ? Math.max(0, Math.min(1, targetRate)) : 0;
+    pylon.smoothedRate += (target - pylon.smoothedRate) * alpha;
+    pylon.displaySmoothedRate = pylon.smoothedRate;
+    this.applyResourcePylonShower(pylon);
+    if (!emitBalls || !host.ownership || pylon.displaySmoothedRate < 0.05) return;
+
+    group.updateWorldMatrix(true, false);
+    this._factorySpraySourceWorld
+      .copy(pylon.topLocal)
+      .applyMatrix4(group.matrixWorld);
+    const spray = this.acquireFactorySprayTarget();
+    spray.source.id = host.id;
+    spray.source.pos.x = this._factorySpraySourceWorld.x;
+    spray.source.pos.y = this._factorySpraySourceWorld.z;
+    spray.source.z = this._factorySpraySourceWorld.y;
+    spray.source.playerId = host.ownership.playerId;
+    spray.target.id = host.id;
+    spray.target.pos.x = this._factorySpraySourceWorld.x;
+    spray.target.pos.y = this._factorySpraySourceWorld.z;
+    spray.target.z = this._factorySpraySourceWorld.y;
+    spray.target.dim = undefined;
+    spray.target.radius = pylon.flowRadius;
+    spray.type = 'build';
+    spray.intensity = Math.min(1, pylon.displaySmoothedRate);
+    spray.channel = pylon.channel;
+    spray.flow = pylon.direction === 'inbound' ? 'randomInbound' : 'randomOutbound';
+    spray.flowRadius = pylon.flowRadius;
+    spray.speed = pylon.sprayTravelSpeed;
+    spray.particleRadius = pylon.sprayParticleRadius;
+    spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
+  }
+
   private acquireFactorySprayTarget(): SprayTarget {
     let target = this.factorySprayTargetPool.pop();
     if (!target) {
@@ -302,11 +352,17 @@ export class ConstructionVisualController3D {
         target: { id: 0, pos: { x: 0, y: 0 }, z: 0, radius: 0 },
         type: 'build',
         intensity: 0,
+        channel: 0,
+        flow: 'direct',
+        flowRadius: 0,
       };
     }
     target.colorRGB = undefined;
     target.speed = undefined;
     target.particleRadius = undefined;
+    target.channel = 0;
+    target.flow = 'direct';
+    target.flowRadius = 0;
     this.factorySprayTargets.push(target);
     return target;
   }
@@ -350,9 +406,10 @@ export class ConstructionVisualController3D {
       part.mesh.position.z = part.baseX * s + part.baseZ * c;
       part.mesh.rotation.y = part.baseRotationY + rig.towerSpinPhase;
     }
-    for (let i = 0; i < rig.pylonTopsLocal.length && i < rig.pylonTopBaseLocals.length; i++) {
-      const base = rig.pylonTopBaseLocals[i];
-      const current = rig.pylonTopsLocal[i];
+    for (let i = 0; i < rig.pylons.length; i++) {
+      const pylon = rig.pylons[i];
+      const base = pylon.topBaseLocal;
+      const current = pylon.topLocal;
       current.x = base.x * c - base.z * s;
       current.y = base.y;
       current.z = base.x * s + base.z * c;
@@ -383,35 +440,31 @@ export class ConstructionVisualController3D {
   }
 
   private applyShowerFromSmoothedRates(rig: {
-    showers: THREE.Mesh[];
-    showerRadius: number;
-    pylonHeight: number;
-    pylonBaseY: number;
+    pylons: ResourcePylonRig[];
     displaySmoothedRates: { energy: number; metal: number };
   }): void {
-    const smoothed: readonly [number, number] = [
-      rig.displaySmoothedRates.energy,
-      rig.displaySmoothedRates.metal,
-    ];
-    for (let i = 0; i < rig.showers.length && i < smoothed.length; i++) {
-      const shower = rig.showers[i];
-      const r = smoothed[i];
-      if (r < 0.01) {
-        shower.visible = false;
-        continue;
-      }
-      shower.visible = true;
-      const h = rig.pylonHeight * r;
-      shower.scale.set(rig.showerRadius * 2, h, rig.showerRadius * 2);
-      shower.position.y = rig.pylonBaseY + h / 2;
+    for (let i = 0; i < rig.pylons.length; i++) {
+      const pylon = rig.pylons[i];
+      pylon.displaySmoothedRate = rig.displaySmoothedRates[pylon.resource];
+      this.applyResourcePylonShower(pylon);
     }
+  }
+
+  private applyResourcePylonShower(pylon: ResourcePylonRig): void {
+    const r = pylon.displaySmoothedRate;
+    if (r < 0.01) {
+      pylon.shower.visible = false;
+      return;
+    }
+    pylon.shower.visible = true;
+    const h = pylon.pylonHeight * r;
+    pylon.shower.scale.set(pylon.showerRadius * 2, h, pylon.showerRadius * 2);
+    pylon.shower.position.y = pylon.pylonBaseY + h / 2;
   }
 
   private emitPylonResourceSprays(
     rig: {
-      pylonTopsLocal: THREE.Vector3[];
-      sprayTravelSpeed: number;
-      sprayParticleRadius: number;
+      pylons: ResourcePylonRig[];
       displaySmoothedRates: { energy: number; metal: number };
     },
     group: THREE.Group,
@@ -421,15 +474,12 @@ export class ConstructionVisualController3D {
     targetWorld: THREE.Vector3,
     targetRadius: number,
   ): void {
-    const smoothed: readonly [number, number] = [
-      rig.displaySmoothedRates.energy,
-      rig.displaySmoothedRates.metal,
-    ];
-    for (let i = 0; i < rig.pylonTopsLocal.length && i < smoothed.length; i++) {
-      const rate = smoothed[i];
+    for (let i = 0; i < rig.pylons.length; i++) {
+      const pylon = rig.pylons[i];
+      const rate = rig.displaySmoothedRates[pylon.resource];
       if (rate < 0.05) continue;
       this._factorySpraySourceWorld
-        .copy(rig.pylonTopsLocal[i])
+        .copy(pylon.topLocal)
         .applyMatrix4(group.matrixWorld);
       const spray = this.acquireFactorySprayTarget();
       spray.source.id = sourceId;
@@ -445,9 +495,12 @@ export class ConstructionVisualController3D {
       spray.target.radius = targetRadius;
       spray.type = 'build';
       spray.intensity = Math.min(1, rate);
-      spray.speed = rig.sprayTravelSpeed;
-      spray.particleRadius = rig.sprayParticleRadius;
-      spray.colorRGB = RESOURCE_SPRAY_COLORS[i];
+      spray.channel = pylon.channel;
+      spray.flow = 'direct';
+      spray.flowRadius = 0;
+      spray.speed = pylon.sprayTravelSpeed;
+      spray.particleRadius = pylon.sprayParticleRadius;
+      spray.colorRGB = RESOURCE_SPRAY_COLOR_BY_RESOURCE[pylon.resource];
     }
   }
 }
