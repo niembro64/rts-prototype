@@ -9,7 +9,7 @@
   "fogOfWarEnabled": { "default": true },
   "forceFieldReflectionMode": { "default": "both" },
   "center": {
-    "default": "flat",
+    "default": "mountain",
     "options": [
       { "value": "valley", "label": "VALLEY" },
       { "value": "mountain", "label": "MOUNTAIN" },

@@ -1,6 +1,6 @@
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 
-const PACKED_TERRAIN_VERSION = 1;
+const PACKED_TERRAIN_VERSION = 2;
 const PACKED_BUILDABILITY_VERSION = 1;
 
 type TerrainMeta = [
@@ -63,12 +63,12 @@ export function packTerrainForWire(
     ],
     vc: writeFloat32Bytes(terrain.meshVertexCoords),
     vh: writeFloat32Bytes(terrain.meshVertexHeights),
-    ti: writeUint16Bytes(terrain.meshTriangleIndices),
+    ti: writeUint32Bytes(terrain.meshTriangleIndices),
     tl: writeInt8Bytes(terrain.meshTriangleLevels),
-    ni: writeInt16Bytes(terrain.meshTriangleNeighborIndices),
+    ni: writeInt32Bytes(terrain.meshTriangleNeighborIndices),
     nl: writeInt8Bytes(terrain.meshTriangleNeighborLevels),
-    co: writeUint16Bytes(terrain.meshCellTriangleOffsets),
-    ci: writeUint16Bytes(terrain.meshCellTriangleIndices),
+    co: writeUint32Bytes(terrain.meshCellTriangleOffsets),
+    ci: writeUint32Bytes(terrain.meshCellTriangleIndices),
   };
 }
 
@@ -88,12 +88,12 @@ export function unpackTerrainFromWire(
     version: meta[8],
     meshVertexCoords: readFloat32Bytes(packed.vc),
     meshVertexHeights: readFloat32Bytes(packed.vh),
-    meshTriangleIndices: readUint16Bytes(packed.ti),
+    meshTriangleIndices: readUint32Bytes(packed.ti),
     meshTriangleLevels: readInt8Bytes(packed.tl),
-    meshTriangleNeighborIndices: readInt16Bytes(packed.ni),
+    meshTriangleNeighborIndices: readInt32Bytes(packed.ni),
     meshTriangleNeighborLevels: readInt8Bytes(packed.nl),
-    meshCellTriangleOffsets: readUint16Bytes(packed.co),
-    meshCellTriangleIndices: readUint16Bytes(packed.ci),
+    meshCellTriangleOffsets: readUint32Bytes(packed.co),
+    meshCellTriangleIndices: readUint32Bytes(packed.ci),
   };
 }
 
@@ -239,40 +239,40 @@ function readFloat32Bytes(bytes: Uint8Array): number[] {
   return out;
 }
 
-function writeUint16Bytes(values: readonly number[]): Uint8Array {
-  const bytes = new Uint8Array(values.length * 2);
+function writeUint32Bytes(values: readonly number[]): Uint8Array {
+  const bytes = new Uint8Array(values.length * 4);
   const view = new DataView(bytes.buffer);
   for (let i = 0; i < values.length; i++) {
-    view.setUint16(i * 2, values[i], true);
+    view.setUint32(i * 4, values[i], true);
   }
   return bytes;
 }
 
-function readUint16Bytes(bytes: Uint8Array): number[] {
-  const count = Math.floor(bytes.byteLength / 2);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 2);
+function readUint32Bytes(bytes: Uint8Array): number[] {
+  const count = Math.floor(bytes.byteLength / 4);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 4);
   const out = new Array<number>(count);
   for (let i = 0; i < count; i++) {
-    out[i] = view.getUint16(i * 2, true);
+    out[i] = view.getUint32(i * 4, true);
   }
   return out;
 }
 
-function writeInt16Bytes(values: readonly number[]): Uint8Array {
-  const bytes = new Uint8Array(values.length * 2);
+function writeInt32Bytes(values: readonly number[]): Uint8Array {
+  const bytes = new Uint8Array(values.length * 4);
   const view = new DataView(bytes.buffer);
   for (let i = 0; i < values.length; i++) {
-    view.setInt16(i * 2, values[i], true);
+    view.setInt32(i * 4, values[i], true);
   }
   return bytes;
 }
 
-function readInt16Bytes(bytes: Uint8Array): number[] {
-  const count = Math.floor(bytes.byteLength / 2);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 2);
+function readInt32Bytes(bytes: Uint8Array): number[] {
+  const count = Math.floor(bytes.byteLength / 4);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, count * 4);
   const out = new Array<number>(count);
   for (let i = 0; i < count; i++) {
-    out[i] = view.getInt16(i * 2, true);
+    out[i] = view.getInt32(i * 4, true);
   }
   return out;
 }

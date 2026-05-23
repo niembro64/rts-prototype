@@ -412,14 +412,14 @@
     },
     "beam": {
       "outer": {
-        "colorRgb01": "#ffffff",
-        "waveLowAlpha": 0.02,
-        "waveHighAlpha": 0.07
-      },
-      "inner": {
-        "colorRgb01": "#ffffff",
+        "colorRgb01": "#ffaaff",
         "waveLowAlpha": 0.1,
         "waveHighAlpha": 0.2
+      },
+      "inner": {
+        "colorRgb01": "#aaffff",
+        "waveLowAlpha": 0.2,
+        "waveHighAlpha": 0.3
       }
     },
     "projectile": {
