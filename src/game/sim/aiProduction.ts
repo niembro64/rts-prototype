@@ -23,7 +23,7 @@ function initWeights(): void {
   }
 }
 
-function pickRandomUnit(world: WorldState, allowedTypes?: ReadonlySet<string>): string {
+function pickRandomUnit(world: WorldState, allowedTypes: ReadonlySet<string> | null): string {
   initWeights();
 
   if (allowedTypes && allowedTypes.size > 0) {
@@ -64,7 +64,7 @@ function pickRandomUnit(world: WorldState, allowedTypes?: ReadonlySet<string>): 
 export function updateAiProduction(
   world: WorldState,
   aiPlayerIds: ReadonlySet<PlayerId>,
-  allowedTypes?: ReadonlySet<string>,
+  allowedTypes: ReadonlySet<string> | null,
 ): void {
   if (aiPlayerIds.size === 0) return;
   // Honour an explicit empty selection — when the user has every

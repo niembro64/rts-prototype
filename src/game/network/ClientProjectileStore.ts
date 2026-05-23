@@ -34,7 +34,7 @@ import {
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
   clearPredictionAccum: (id: EntityId) => void;
-  markEntitySetChanged: (invalidateCaches?: boolean) => void;
+  markEntitySetChanged: (invalidateCaches: boolean | undefined) => void;
 };
 
 export class ClientProjectileStore {
@@ -85,8 +85,9 @@ export class ClientProjectileStore {
 
   applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate, now = performance.now()): void {
     const entity = this.options.entities.get(update.id);
-    const proj = entity?.projectile;
-    if (!entity || !proj) return;
+    if (entity === undefined) return;
+    const proj = entity.projectile;
+    if (proj === null) return;
 
     let target = this.beamPathTargets.get(update.id);
     if (!target) {
@@ -95,9 +96,9 @@ export class ClientProjectileStore {
     }
     target.updatedAtMs = now;
     target.obstructionT = update.obstructionT === null
-      ? undefined
+      ? null
       : deqRot(update.obstructionT);
-    target.endpointDamageable = update.endpointDamageable ?? undefined;
+    target.endpointDamageable = update.endpointDamageable;
 
     const srcPts = update.points;
     const dstTarget = target.points;
@@ -159,7 +160,7 @@ export class ClientProjectileStore {
         pp.normalZ = sp.normalZ;
       }
     }
-    proj.obstructionT = target.obstructionT;
+    proj.obstructionT = target.obstructionT === null ? undefined : target.obstructionT;
     proj.endpointDamageable = update.endpointDamageable !== false;
     this.activeBeamPathIds.add(update.id);
     this.options.clearPredictionAccum(update.id);
@@ -175,7 +176,9 @@ export class ClientProjectileStore {
     out.length = 0;
     for (const id of this.activeProjectilePredictionIds) {
       const entity = this.options.entities.get(id);
-      if (entity?.projectile?.projectileType === 'projectile') out.push(entity);
+      if (entity === undefined) continue;
+      const projectile = entity.projectile;
+      if (projectile !== null && projectile.projectileType === 'projectile') out.push(entity);
     }
     return out;
   }
@@ -184,10 +187,12 @@ export class ClientProjectileStore {
     out.length = 0;
     for (const id of this.activeProjectilePredictionIds) {
       const entity = this.options.entities.get(id);
-      const profile = entity?.projectile?.config.shotProfile;
+      if (entity === undefined) continue;
+      const projectile = entity.projectile;
+      if (projectile === null || projectile.projectileType !== 'projectile') continue;
+      const profile = projectile.config.shotProfile;
       if (
-        entity?.projectile?.projectileType === 'projectile' &&
-        profile?.visual.smokeTrail
+        profile.visual.smokeTrail !== undefined
       ) {
         out.push(entity);
       }
@@ -199,7 +204,8 @@ export class ClientProjectileStore {
     out.length = 0;
     for (const id of this.activeBeamPathIds) {
       const entity = this.options.entities.get(id);
-      if (entity?.projectile && isLineProjectileEntity(entity)) out.push(entity);
+      if (entity === undefined || entity.projectile === null) continue;
+      if (isLineProjectileEntity(entity)) out.push(entity);
     }
     return out;
   }
@@ -208,7 +214,15 @@ export class ClientProjectileStore {
     this.collectLine(out);
     for (const id of this.activeProjectilePredictionIds) {
       const entity = this.options.entities.get(id);
-      if (entity?.projectile?.projectileType === 'projectile' && entity.dgunProjectile?.isDGun) {
+      if (entity === undefined) continue;
+      const projectile = entity.projectile;
+      const dgunProjectile = entity.dgunProjectile;
+      if (
+        projectile !== null &&
+        projectile.projectileType === 'projectile' &&
+        dgunProjectile !== null &&
+        dgunProjectile.isDGun
+      ) {
         out.push(entity);
       }
     }

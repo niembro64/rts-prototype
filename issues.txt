@@ -151,10 +151,15 @@ Evidence:
   and `Buildable.healthBuildFraction` to an always-present number.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 245 other `?:` declarations remain across src/game/network/*,
-  src/game/sim/*, and src/game/server/*, including:
-    - Simulation.ts (9): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
-      onSimEvent?, onGameOver? plus a few method param defaults.
+- 228 other `?:` declarations remain across src/game/network/*,
+  src/game/sim/*, and src/game/server/* after the 2026-05-23
+  prediction/callback pass converted Simulation callbacks,
+  Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
+  ClientPredictionTargets' ServerTarget / BeamPathTarget caches to
+  explicit `T | null`, and removed optional reads from
+  ClientPredictionStepper and ClientProjectileStore. Remaining examples
+  include:
+    - Simulation.ts (2): targetPoint `z?` helper parameters only.
     - WorldState.ts (3): RemovedSnapshotEntity.playerId?,
       onEntityRemoving?, etc.
     - stateSerializer.ts (28): serialize options and optional
@@ -163,14 +168,17 @@ Evidence:
       s?/d?/u?/b?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
       buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
-- Optional chaining remains at 561 in the in-scope tree after the
+- Optional chaining remains at 520 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
   unitPhysicsBody, commandAuthority, and ServerSnapshotMetaBuilder.
   The construction/combat pass also removed the active-state and build
-  health optional reads it touched. It should be migrated in small
-  file-level passes alongside optional property declarations.
+  health optional reads it touched, and the prediction/callback pass
+  removed the optional reads in ClientPredictionStepper,
+  ClientProjectileStore, and the touched Simulation callback paths. It
+  should be migrated in small file-level passes alongside optional
+  property declarations.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

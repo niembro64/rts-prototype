@@ -205,7 +205,7 @@ export class GameServer {
 
     // Handle unit deaths: remove entities. WorldState.onEntityRemoving
     // releases physics bodies for every removal path.
-    this.simulation.onUnitDeath = (deadUnitIds: EntityId[], _deathContexts?: Map<EntityId, DeathContext>) => {
+    this.simulation.onUnitDeath = (deadUnitIds: EntityId[], _deathContexts: Map<EntityId, DeathContext> | null) => {
       for (const id of deadUnitIds) {
         this.world.removeEntity(id);
       }

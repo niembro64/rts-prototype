@@ -434,25 +434,30 @@ export function applyNetworkUnitDriftFieldsToTarget(
   // Full 3-DOF orientation triad for hover-style entities. The
   // wire field is gated on the entity having one server-side, so
   // ground units never produce these and we leave the cached
-  // target fields undefined.
-  const o = src.unit?.orientation;
-  if (o) {
-    const t = target.orientation ?? (target.orientation = { x: 0, y: 0, z: 0, w: 1 });
+  // target fields null.
+  const unit = src.unit;
+  const o = unit !== null ? unit.orientation : null;
+  if (o !== null) {
+    let t = target.orientation;
+    if (t === null) {
+      t = { x: 0, y: 0, z: 0, w: 1 };
+      target.orientation = t;
+    }
     t.x = o.x;
     t.y = o.y;
     t.z = o.z;
     t.w = o.w;
   } else if (isFull) {
-    target.orientation = undefined;
+    target.orientation = null;
   }
-  const av = src.unit?.angularVelocity3;
-  if (av) {
+  const av = unit !== null ? unit.angularVelocity3 : null;
+  if (av !== null) {
     target.angularVelocityX = av.x;
     target.angularVelocityY = av.y;
     target.angularVelocityZ = av.z;
   } else if (isFull || (cf & ENTITY_CHANGED_VEL)) {
-    target.angularVelocityX = undefined;
-    target.angularVelocityY = undefined;
-    target.angularVelocityZ = undefined;
+    target.angularVelocityX = null;
+    target.angularVelocityY = null;
+    target.angularVelocityZ = null;
   }
 }

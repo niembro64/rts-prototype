@@ -341,7 +341,7 @@ export function applyClientUnitVisualPrediction(options: {
   // componentwise-lerp + renormalize rather than slerp because the
   // per-frame blend is small (a few percent of the remaining error)
   // and componentwise lerp is much cheaper.
-  if (rotPosBlend >= 0 && target.orientation && entity.unit.orientation) {
+  if (rotPosBlend >= 0 && target.orientation !== null && entity.unit.orientation !== null) {
     const eo = entity.unit.orientation;
     const to = target.orientation;
     eo.x = lerp(eo.x, to.x, rotPosBlend);
@@ -360,12 +360,14 @@ export function applyClientUnitVisualPrediction(options: {
   if (
     rotVelBlend >= 0
     && entity.unit.angularVelocity3
-    && target.angularVelocityX !== undefined
+    && target.angularVelocityX !== null
+    && target.angularVelocityY !== null
+    && target.angularVelocityZ !== null
   ) {
     const av = entity.unit.angularVelocity3;
     av.x = lerp(av.x, target.angularVelocityX, rotVelBlend);
-    av.y = lerp(av.y, target.angularVelocityY ?? 0, rotVelBlend);
-    av.z = lerp(av.z, target.angularVelocityZ ?? 0, rotVelBlend);
+    av.y = lerp(av.y, target.angularVelocityY, rotVelBlend);
+    av.z = lerp(av.z, target.angularVelocityZ, rotVelBlend);
   }
 
   // Unit Ground Normal EMA is its own knob — orthogonal to the per-channel snapshot

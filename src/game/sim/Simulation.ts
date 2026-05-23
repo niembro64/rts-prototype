@@ -221,19 +221,19 @@ export class Simulation {
 
   // Callback for when units die (to clean up physics bodies)
   // deathContexts contains info about the killing blow for directional explosions
-  public onUnitDeath?: (deadUnitIds: EntityId[], deathContexts?: Map<EntityId, DeathContext>) => void;
+  public onUnitDeath: ((deadUnitIds: EntityId[], deathContexts: Map<EntityId, DeathContext> | null) => void) | null = null;
 
   // Callback for when units are spawned (to create physics bodies)
-  public onUnitSpawn?: (newUnits: Entity[]) => void;
+  public onUnitSpawn: ((newUnits: Entity[]) => void) | null = null;
 
   // Callback for when buildings are destroyed
-  public onBuildingDeath?: (deadBuildingIds: EntityId[]) => void;
+  public onBuildingDeath: ((deadBuildingIds: EntityId[]) => void) | null = null;
 
   // Callback for audio events
-  public onSimEvent?: (event: SimEvent) => void;
+  public onSimEvent: ((event: SimEvent) => void) | null = null;
 
   // Callback for game over (passes winner ID)
-  public onGameOver?: (winnerId: PlayerId) => void;
+  public onGameOver: ((winnerId: PlayerId) => void) | null = null;
 
   constructor(
     world: WorldState,
@@ -252,7 +252,7 @@ export class Simulation {
 
   // AI player IDs (for auto-production)
   private aiPlayerIds: Set<PlayerId> = new Set();
-  private aiAllowedUnitTypes?: ReadonlySet<string>;
+  private aiAllowedUnitTypes: ReadonlySet<string> | null = null;
 
   // Set the player IDs for this game
   setPlayerIds(playerIds: PlayerId[]): void {
@@ -264,9 +264,9 @@ export class Simulation {
     this.aiPlayerIds = new Set(ids);
   }
 
-  // Set allowed unit types for AI production (undefined = all allowed)
-  setAiAllowedUnitTypes(types?: ReadonlySet<string>): void {
-    this.aiAllowedUnitTypes = types;
+  // Set allowed unit types for AI production (null = all allowed)
+  setAiAllowedUnitTypes(types: ReadonlySet<string> | null | undefined = null): void {
+    this.aiAllowedUnitTypes = types ?? null;
   }
 
   // Get the winner ID (null if game not over)
@@ -406,12 +406,14 @@ export class Simulation {
     // Notify about newly spawned unit shells immediately so their
     // elevated initial position can fall/settle during construction.
     if (productionResult.spawnedUnits.length > 0) {
-      this.onUnitSpawn?.(productionResult.spawnedUnits);
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(productionResult.spawnedUnits);
     }
     // Completed shells should already have bodies, but keep the
     // activation notification as a defensive fallback for old paths.
     if (productionResult.completedUnits.length > 0) {
-      this.onUnitSpawn?.(productionResult.completedUnits);
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(productionResult.completedUnits);
     }
 
     // Update commander auto-build and auto-heal
@@ -491,14 +493,16 @@ export class Simulation {
     if (aliveCount === 1) {
       this.gameOverWinnerId = lastAliveId;
       this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
-      this.onGameOver?.(this.gameOverWinnerId);
+      const onGameOver = this.onGameOver;
+      if (onGameOver !== null) onGameOver(this.gameOverWinnerId);
     }
     // If no players remain (somehow), no winner
     else if (aliveCount === 0 && this.playerIds.length > 0) {
       // Draw or error state - just pick first player
       this.gameOverWinnerId = this.playerIds[0];
       this.gamePhase = transitionPhase(this.gamePhase, 'gameOver');
-      this.onGameOver?.(this.gameOverWinnerId);
+      const onGameOver = this.onGameOver;
+      if (onGameOver !== null) onGameOver(this.gameOverWinnerId);
     }
   }
 
@@ -527,7 +531,8 @@ export class Simulation {
     if (this.world.getBeamUnits().length > 0) {
       const laserSimEvents = updateLaserSounds(this.world);
       for (const event of laserSimEvents) {
-        this.onSimEvent?.(event);
+        const onSimEvent = this.onSimEvent;
+        if (onSimEvent !== null) onSimEvent(event);
         this.pendingSimEvents.push(event);
       }
     }
@@ -539,7 +544,8 @@ export class Simulation {
     if (forceFieldUnits && forceFieldUnits.length > 0) {
       const forceFieldSimEvents = updateForceFieldSounds(forceFieldUnits);
       for (const event of forceFieldSimEvents) {
-        this.onSimEvent?.(event);
+        const onSimEvent = this.onSimEvent;
+        if (onSimEvent !== null) onSimEvent(event);
         this.pendingSimEvents.push(event);
       }
     }
@@ -561,7 +567,8 @@ export class Simulation {
 
     // Emit fire audio events
     for (const event of fireResult.events) {
-      this.onSimEvent?.(event);
+      const onSimEvent = this.onSimEvent;
+      if (onSimEvent !== null) onSimEvent(event);
       this.pendingSimEvents.push(event);
     }
 
@@ -626,7 +633,8 @@ export class Simulation {
 
       // Emit hit/death audio events
       for (const event of collisionResult.events) {
-        this.onSimEvent?.(event);
+        const onSimEvent = this.onSimEvent;
+        if (onSimEvent !== null) onSimEvent(event);
         this.pendingSimEvents.push(event);
       }
 
@@ -653,7 +661,8 @@ export class Simulation {
           spatialGrid.removeUnit(id);
           buf.push(id);
         }
-        this.onUnitDeath?.(buf, collisionResult.deathContexts);
+        const onUnitDeath = this.onUnitDeath;
+        if (onUnitDeath !== null) onUnitDeath(buf, collisionResult.deathContexts);
       }
 
       if (collisionResult.deadBuildingIds.size > 0) {
@@ -663,7 +672,8 @@ export class Simulation {
           spatialGrid.removeBuilding(id);
           buf.push(id);
         }
-        this.onBuildingDeath?.(buf);
+        const onBuildingDeath = this.onBuildingDeath;
+        if (onBuildingDeath !== null) onBuildingDeath(buf);
       }
     }
 
@@ -722,7 +732,8 @@ export class Simulation {
         }
         spatialGrid.removeUnit(id);
       }
-      this.onUnitDeath?.(deadUnitIds);
+      const onUnitDeath = this.onUnitDeath;
+      if (onUnitDeath !== null) onUnitDeath(deadUnitIds, null);
       for (const id of deadUnitIds) {
         this.world.removeEntity(id);
       }
@@ -734,7 +745,8 @@ export class Simulation {
         if (building) this.emitSyntheticDeathEvent(building);
         spatialGrid.removeBuilding(id);
       }
-      this.onBuildingDeath?.(deadBuildingIds);
+      const onBuildingDeath = this.onBuildingDeath;
+      if (onBuildingDeath !== null) onBuildingDeath(deadBuildingIds);
       for (const id of deadBuildingIds) {
         this.world.removeEntity(id);
       }

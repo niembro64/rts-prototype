@@ -186,7 +186,7 @@ function executePingCommand(ctx: CommandContext, command: PingCommand): void {
     playerId: command.playerId,
     pos: { x, y, z },
   };
-  ctx.onSimEvent?.(event);
+  if (ctx.onSimEvent !== null) ctx.onSimEvent(event);
   ctx.pendingSimEvents.push(event);
 }
 
@@ -225,7 +225,7 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
     playerId: command.playerId,
     pos: { x, y, z },
   };
-  ctx.onSimEvent?.(event);
+  if (ctx.onSimEvent !== null) ctx.onSimEvent(event);
   ctx.pendingSimEvents.push(event);
 }
 
@@ -633,7 +633,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     playerId,
     entityId: commander.id,
   };
-  ctx.onSimEvent?.(dgunSimEvent);
+  if (ctx.onSimEvent !== null) ctx.onSimEvent(dgunSimEvent);
   ctx.pendingSimEvents.push(dgunSimEvent);
 }
 

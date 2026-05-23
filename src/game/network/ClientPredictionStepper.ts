@@ -159,7 +159,7 @@ function applyBeamPathPrediction(
     pp.normalY = tp.normalY;
     pp.normalZ = tp.normalZ;
   }
-  proj.obstructionT = target.obstructionT;
+  proj.obstructionT = target.obstructionT === null ? undefined : target.obstructionT;
   proj.endpointDamageable = target.endpointDamageable !== false;
 
   const start = projPts[0];
@@ -235,7 +235,7 @@ export class ClientPredictionStepper {
     let beamPathsChanged = false;
     for (const id of activeBeamPathIds) {
       const entity = entities.get(id);
-      if (!entity?.projectile || !isLineProjectileEntity(entity)) {
+      if (entity === undefined || entity.projectile === null || !isLineProjectileEntity(entity)) {
         activeBeamPathIds.delete(id);
         beamPathTargets.delete(id);
         continue;
@@ -252,7 +252,7 @@ export class ClientPredictionStepper {
       }
 
       const beamTarget = beamPathTargets.get(id);
-      noteTargetAge(targetAgeStats, beamTarget?.updatedAtMs, now);
+      noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
       if (beamTarget && applyBeamPathPrediction(entity, beamTarget, deltaMs, beamMovPosBlend, beamMovVelBlend)) {
         beamPathsChanged = true;
       }
@@ -261,14 +261,14 @@ export class ClientPredictionStepper {
 
     for (const id of activeEntityPredictionIds) {
       const entity = entities.get(id);
-      if (!entity?.unit && !entity?.combat) {
+      if (entity === undefined || (entity.unit === null && entity.combat === null)) {
         activeEntityPredictionIds.delete(id);
         predictionCadence.clear(id);
         continue;
       }
 
       const target = serverTargets.get(id);
-      noteTargetAge(targetAgeStats, target?.updatedAtMs, now);
+      noteTargetAge(targetAgeStats, target === undefined ? undefined : target.updatedAtMs, now);
       if (entity.unit) {
         applyClientUnitVisualPrediction({
           entity,
@@ -297,13 +297,13 @@ export class ClientPredictionStepper {
 
     for (const id of activeProjectilePredictionIds) {
       const entity = entities.get(id);
-      if (!entity?.projectile) {
+      if (entity === undefined || entity.projectile === null) {
         activeProjectilePredictionIds.delete(id);
         continue;
       }
 
       const target = serverTargets.get(id);
-      noteTargetAge(targetAgeStats, target?.updatedAtMs, now);
+      noteTargetAge(targetAgeStats, target === undefined ? undefined : target.updatedAtMs, now);
       const predictionStep = predictionCadence.consumeDelta(deltaMs);
 
       const projectileResult = applyClientProjectilePrediction({

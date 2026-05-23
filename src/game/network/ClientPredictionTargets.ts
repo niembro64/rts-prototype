@@ -17,13 +17,12 @@ export type ServerTarget = {
   bodyCenterHeight: number;
   predictedGroundContact: boolean;
   /** Full 3-DOF orientation triad, populated only when the snapshot
-   *  carries an `orientation` field (hover units etc.). Undefined for
-   *  ground units — the client reads `rotation` (yaw scalar) when
-   *  these are absent. */
-  orientation?: { x: number; y: number; z: number; w: number };
-  angularVelocityX?: number;
-  angularVelocityY?: number;
-  angularVelocityZ?: number;
+   *  carries an `orientation` field (hover units etc.). Null for ground
+   *  units — the client reads `rotation` (yaw scalar) when absent. */
+  orientation: { x: number; y: number; z: number; w: number } | null;
+  angularVelocityX: number | null;
+  angularVelocityY: number | null;
+  angularVelocityZ: number | null;
   turrets: {
     rotation: number;
     angularVelocity: number;
@@ -41,6 +40,10 @@ export function createServerTarget(): ServerTarget {
     surfaceNormalX: 0, surfaceNormalY: 0, surfaceNormalZ: 1,
     bodyCenterHeight: 0,
     predictedGroundContact: true,
+    orientation: null,
+    angularVelocityX: null,
+    angularVelocityY: null,
+    angularVelocityZ: null,
     turrets: [],
   };
 }
@@ -48,12 +51,17 @@ export function createServerTarget(): ServerTarget {
 export type BeamPathTarget = {
   updatedAtMs: number;
   points: BeamPoint[];
-  obstructionT?: number;
-  endpointDamageable?: boolean;
+  obstructionT: number | null;
+  endpointDamageable: boolean | null;
 };
 
 export function createBeamPathTarget(): BeamPathTarget {
-  return { updatedAtMs: 0, points: [] };
+  return {
+    updatedAtMs: 0,
+    points: [],
+    obstructionT: null,
+    endpointDamageable: null,
+  };
 }
 
 // Module-level free list of BeamPoint objects. Beam paths grow and

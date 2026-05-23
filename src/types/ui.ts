@@ -228,7 +228,7 @@ export type CommandContext = {
   constructionSystem: import('../game/sim/construction').ConstructionSystem;
   pendingProjectileSpawns: import('./combat').ProjectileSpawnEvent[];
   pendingSimEvents: import('./combat').SimEvent[];
-  onSimEvent?: (event: import('./combat').SimEvent) => void;
+  onSimEvent: ((event: import('./combat').SimEvent) => void) | null;
 };
 
 // Energy buffers
