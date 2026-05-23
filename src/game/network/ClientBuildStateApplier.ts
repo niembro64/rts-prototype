@@ -50,7 +50,11 @@ export function applyNetworkBuildState(
   if (!required) return false;
   let buildable = entity.buildable;
   if (!buildable) {
-    buildable = createBuildable(required, { paid: build.paid });
+    buildable = createBuildable(required, {
+      paid: build.paid,
+      isGhost: null,
+      healthBuildFraction: null,
+    });
     buildable.healthBuildFraction = getBuildFraction(buildable);
     entity.buildable = buildable;
     return true;

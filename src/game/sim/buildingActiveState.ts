@@ -53,10 +53,10 @@ export function createInitialBuildingActiveState(): BuildingActiveState {
   };
 }
 
-export function ensureBuildingActiveState(entity: Entity): BuildingActiveState | undefined {
-  if (!entity.building) return undefined;
-  if (!buildingTypeHasActiveState(entity.buildingType)) return undefined;
-  if (!entity.building.activeState) {
+export function ensureBuildingActiveState(entity: Entity): BuildingActiveState | null {
+  if (entity.building === null) return null;
+  if (!buildingTypeHasActiveState(entity.buildingType)) return null;
+  if (entity.building.activeState === null) {
     entity.building.activeState = createInitialBuildingActiveState();
   }
   return entity.building.activeState;
@@ -81,13 +81,16 @@ function getExtractorMetalRate(entity: Entity): number {
  *  the per-deposit rate that was added at claim time is suspended while
  *  the extractor is fortified. */
 function setBuildingProducing(entity: Entity, producing: boolean): boolean {
-  const state = entity.building?.activeState;
-  if (!state || state.producing === producing) return false;
-  const playerId = entity.ownership?.playerId;
-  if (!playerId) {
+  const building = entity.building;
+  if (building === null) return false;
+  const state = building.activeState;
+  if (state === null || state.producing === producing) return false;
+  const ownership = entity.ownership;
+  if (ownership === null) {
     state.producing = false;
     return false;
   }
+  const playerId = ownership.playerId;
 
   if (entity.buildingType === 'solar') {
     const amount = getSolarEnergyProduction();
@@ -180,8 +183,11 @@ export function notifyBuildingActiveStateDamaged(world: WorldState, entity: Enti
  *  closed pose. DamageSystem multiplies incoming damage by
  *  BUILDING_CLOSED_DAMAGE_MULTIPLIER when this is true. */
 export function isBuildingActiveStateFortified(entity: Entity): boolean {
+  const building = entity.building;
   return buildingTypeHasActiveState(entity.buildingType)
-    && entity.building?.activeState?.open === false;
+    && building !== null
+    && building.activeState !== null
+    && building.activeState.open === false;
 }
 
 /** Per-tick driver. Counts down the grace timer (open → closed) and

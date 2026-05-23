@@ -188,7 +188,8 @@ export function releaseDepositsForExtractor(
       // (including the new deposit) back to the player's tally.
       syncExtractorRate(promoted);
       world.markSnapshotDirty(promoted.id, ENTITY_CHANGED_BUILDING);
-      if (promoted.building?.activeState?.open !== false) {
+      const activeState = promoted.building === null ? null : promoted.building.activeState;
+      if (activeState === null || activeState.open !== false) {
         economyManager.addMetalExtraction(promoted.ownership.playerId, perDeposit);
       }
     }

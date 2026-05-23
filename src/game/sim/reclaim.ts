@@ -18,7 +18,7 @@ export function getReclaimResourceValue(target: Entity): ResourceCost {
     const hpFraction = hpState ? hpState.hp / Math.max(1, hpState.maxHp) : 0;
     const buildFraction = Math.max(
       0.0001,
-      Math.min(1, Math.max(target.buildable.healthBuildFraction ?? 0, hpFraction)),
+      Math.min(1, Math.max(target.buildable.healthBuildFraction, hpFraction)),
     );
     return {
       energy: target.buildable.paid.energy / buildFraction,

@@ -271,11 +271,9 @@ export type CombatComponent = {
   turrets: Turret[];
   /** Player-controlled fire permission. False is hold-fire: weapons
    *  keep cooldown state but do not acquire, track, or fire at
-   *  targets. Stays optional because the wire format treats `=== false`
-   *  as the only meaningful state and `undefined` as the default `true`
-   *  — converting would require wire-format coupling we don't want
-   *  here. */
-  fireEnabled?: boolean;
+   *  targets. Always present so command, targeting, and snapshot code
+   *  all make an explicit fire/hold decision. */
+  fireEnabled: boolean;
   /** Player attack-command target. `null` is the canonical "no
    *  priority target" value; setting an EntityId forces every turret
    *  on this entity toward it and fires as soon as it enters fire
@@ -291,6 +289,16 @@ export type CombatComponent = {
    *  priorityTargetId, and live/cooldown weapons process every tick. */
   nextCombatProbeTick: number;
 };
+
+export function createCombatComponent(turrets: Turret[]): CombatComponent {
+  return {
+    turrets,
+    fireEnabled: true,
+    priorityTargetId: null,
+    priorityTargetPoint: null,
+    nextCombatProbeTick: -1,
+  };
+}
 
 // Building component - static structures with a real 3D extent.
 // width (x-footprint) × height (y-footprint) × depth (z, vertical).
@@ -324,7 +332,7 @@ export type Building = {
    *  bounding-circle radius for every candidate evaluation. Immutable
    *  for the life of the building (dimensions never change). */
   targetRadius: number;
-  activeState?: BuildingActiveState;
+  activeState: BuildingActiveState | null;
 };
 
 // Turret configuration (compiled turret definition)
@@ -630,7 +638,7 @@ export type Buildable = {
   required: ResourceCost;
   isComplete: boolean;
   isGhost: boolean;
-  healthBuildFraction?: number;
+  healthBuildFraction: number;
 };
 
 /** Builder component. Gives a unit the ability to construct

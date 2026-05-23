@@ -1,5 +1,10 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
-import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from './types';
+import {
+  createCombatComponent,
+  createEmptyEntityComponentSlots,
+  createTransform,
+  NO_ENTITY_ID,
+} from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
 import type { ResourceMovement } from './resourceMovement';
@@ -821,12 +826,7 @@ export class WorldState {
     // Create combat component (turrets + per-host bookkeeping) from
     // blueprint. Every unit blueprint declares at least one turret, so
     // every unit gets a combat component at spawn.
-    entity.combat = {
-      turrets: createUnitRuntimeTurrets(unitId, bp.radius.body),
-      priorityTargetId: null,
-      priorityTargetPoint: null,
-      nextCombatProbeTick: -1,
-    };
+    entity.combat = createCombatComponent(createUnitRuntimeTurrets(unitId, bp.radius.body));
 
     // Cache mirror panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
@@ -916,6 +916,7 @@ export class WorldState {
         hp: 500,
         maxHp: 500,
         targetRadius: Math.sqrt(width * width + height * height) / 2,
+        activeState: null,
       },
       selectable: { selected: false },
     };

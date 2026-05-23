@@ -140,14 +140,18 @@ Evidence:
   The remaining optional declarations in this file are mostly
   lobby/transport envelopes and lobby settings rather than pooled
   per-entity/per-event DTO slots.
-- src/types/sim.ts: 63 `?:` declarations. The 2026-05-23
+- src/types/sim.ts: 60 `?:` declarations. The 2026-05-23
   entity-component pass converted Entity's component slots (`body`,
   `unit`, `building`, `combat`, `projectile`, etc.) to explicit
   `T | null` fields with a shared null-slot initializer, and converted
   Transform's `rotCos` / `rotSin` cache to explicit `number | null`.
+  The follow-up construction/combat pass converted
+  `CombatComponent.fireEnabled` to an always-present boolean,
+  `Building.activeState` to explicit `BuildingActiveState | null`,
+  and `Buildable.healthBuildFraction` to an always-present number.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 248 other `?:` declarations remain across src/game/network/*,
+- 245 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/*, including:
     - Simulation.ts (9): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
       onSimEvent?, onGameOver? plus a few method param defaults.
@@ -159,13 +163,14 @@ Evidence:
       s?/d?/u?/b?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
       buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
-- Optional chaining remains at 569 in the in-scope tree after the
+- Optional chaining remains at 561 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
   unitPhysicsBody, commandAuthority, and ServerSnapshotMetaBuilder.
-  It should be migrated in small file-level passes alongside optional
-  property declarations.
+  The construction/combat pass also removed the active-state and build
+  health optional reads it touched. It should be migrated in small
+  file-level passes alongside optional property declarations.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

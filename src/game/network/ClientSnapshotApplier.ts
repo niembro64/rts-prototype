@@ -134,11 +134,12 @@ export function snapClientNonVisualState(
     // Wire field name is `solar` for legacy reasons; semantically the
     // shared BuildingActiveState open flag for solar / wind / extractor.
     if (sb.solar) {
+      const activeState = entity.building.activeState;
       entity.building.activeState = {
         open: sb.solar.open,
-        producing: entity.building.activeState?.producing ?? false,
-        damageDelayMs: entity.building.activeState?.damageDelayMs ?? 0,
-        reopenDelayMs: entity.building.activeState?.reopenDelayMs ?? 0,
+        producing: activeState === null ? false : activeState.producing,
+        damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
+        reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
       };
     } else if (
       isFull

@@ -1,5 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId, BuildingType } from './types';
+import { createCombatComponent } from './types';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
@@ -260,12 +261,7 @@ function placeCompleteBuilding(
   // same code path as armed units.
   const buildingTurrets = createBuildingRuntimeTurrets(buildingType);
   if (buildingTurrets.length > 0) {
-    entity.combat = {
-      turrets: buildingTurrets,
-      priorityTargetId: null,
-      priorityTargetPoint: null,
-      nextCombatProbeTick: -1,
-    };
+    entity.combat = createCombatComponent(buildingTurrets);
   }
 
   grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);

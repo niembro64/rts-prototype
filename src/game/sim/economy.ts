@@ -313,7 +313,7 @@ export class EconomyManager {
     if (ownership === null || building === null) return false;
     if (building.hp <= 0 || !isEntityActive(entity)) return false;
     const activeState = building.activeState;
-    return activeState !== undefined && activeState.producing;
+    return activeState !== null && activeState.producing;
   }
 
   private isOpenProducerBuilding(entity: Entity): boolean {
@@ -322,7 +322,7 @@ export class EconomyManager {
     if (ownership === null || building === null) return false;
     if (building.hp <= 0 || !isEntityActive(entity)) return false;
     const activeState = building.activeState;
-    return activeState === undefined || activeState.open;
+    return activeState === null || activeState.open;
   }
 
   // Record energy expenditure (called by construction system)

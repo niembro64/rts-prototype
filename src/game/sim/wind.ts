@@ -59,7 +59,8 @@ export class WindPowerTracker {
       if (!isEntityActive(entity)) continue;
       // Closed (fortified) wind turbines stop producing — they're in
       // their stowed pose with blades folded against the pole.
-      if (entity.building.activeState?.open === false) continue;
+      const activeState = entity.building.activeState;
+      if (activeState !== null && activeState.open === false) continue;
       const pid = entity.ownership.playerId;
       nextProductionByPlayer.set(
         pid,

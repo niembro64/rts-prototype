@@ -15,21 +15,26 @@ export function getInitialBuildHp(maxHp: number): number {
 }
 
 export type BuildableState = {
-  paid?: ResourceCost;
-  isGhost?: boolean;
-  healthBuildFraction?: number;
+  paid: ResourceCost | null;
+  isGhost: boolean | null;
+  healthBuildFraction: number | null;
 };
 
 /** Canonical construction-component factory. Buildable means "this
  *  entity is currently under construction"; callers should delete it
  *  on activation instead of creating completed Buildables. */
-export function createBuildable(required: ResourceCost, state: BuildableState = {}): Buildable {
+export function createBuildable(required: ResourceCost, state: BuildableState | null = null): Buildable {
+  const paid = state === null || state.paid === null
+    ? makeZeroResourceCost()
+    : cloneResourceCost(state.paid);
   return {
-    paid: state.paid ? cloneResourceCost(state.paid) : makeZeroResourceCost(),
+    paid,
     required: cloneResourceCost(required),
     isComplete: false,
-    isGhost: state.isGhost ?? false,
-    healthBuildFraction: state.healthBuildFraction ?? 0,
+    isGhost: state !== null && state.isGhost === true,
+    healthBuildFraction: state === null || state.healthBuildFraction === null
+      ? 0
+      : state.healthBuildFraction,
   };
 }
 

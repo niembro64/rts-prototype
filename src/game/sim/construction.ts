@@ -188,7 +188,11 @@ export class ConstructionSystem {
       playerId
     );
 
-    entity.buildable = createBuildable(config.cost, { isGhost: true });
+    entity.buildable = createBuildable(config.cost, {
+      paid: null,
+      isGhost: true,
+      healthBuildFraction: null,
+    });
 
     entity.buildingType = buildingType;
     applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));

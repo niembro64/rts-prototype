@@ -1,7 +1,12 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, Turret } from '../../sim/types';
-import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '../../sim/types';
+import {
+  createCombatComponent,
+  createEmptyEntityComponentSlots,
+  createTransform,
+  NO_ENTITY_ID,
+} from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToTurretState,
@@ -121,7 +126,7 @@ export function refreshUnitTurretsFromNetwork(
   }
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
-    : { turrets, priorityTargetId: null, priorityTargetPoint: null, nextCombatProbeTick: -1 };
+    : createCombatComponent(turrets);
 }
 
 export function refreshBuildingTurretsFromNetwork(
@@ -150,7 +155,7 @@ export function refreshBuildingTurretsFromNetwork(
 
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
-    : { turrets, priorityTargetId: null, priorityTargetPoint: null, nextCombatProbeTick: -1 };
+    : createCombatComponent(turrets);
 }
 
 /**
@@ -264,13 +269,9 @@ function createUnitFromNetwork(
 
   const turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, u?.turrets);
   if (turrets) {
-    entity.combat = {
-      turrets,
-      fireEnabled: u?.fireEnabled !== false,
-      priorityTargetId: null,
-      priorityTargetPoint: null,
-      nextCombatProbeTick: -1,
-    };
+    const combat = createCombatComponent(turrets);
+    combat.fireEnabled = u?.fireEnabled !== false;
+    entity.combat = combat;
   }
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the
@@ -306,7 +307,11 @@ function createUnitFromNetwork(
         energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
         metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
       },
-      { paid: u.build.paid },
+      {
+        paid: u.build.paid,
+        isGhost: null,
+        healthBuildFraction: null,
+      },
     );
     entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
   }
@@ -361,7 +366,7 @@ function createBuildingFromNetwork(
             damageDelayMs: 0,
             reopenDelayMs: 0,
           }
-        : undefined,
+        : null,
     },
     buildingType,
     metalExtractionRate: buildingType === 'extractor'
@@ -374,7 +379,11 @@ function createBuildingFromNetwork(
     // required is re-derived from the local building config — it's a
     // pure function of buildingType and never changes after spawn, so
     // no need to ship it on the wire.
-    entity.buildable = createBuildable(config.cost, { paid: b.build.paid });
+    entity.buildable = createBuildable(config.cost, {
+      paid: b.build.paid,
+      isGhost: null,
+      healthBuildFraction: null,
+    });
     entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
   }
 

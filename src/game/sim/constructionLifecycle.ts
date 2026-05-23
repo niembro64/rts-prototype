@@ -18,7 +18,7 @@ export type ConstructionLifecycleResult = {
 function growConstructionHp(world: WorldState, entity: Entity, nextBuildFraction: number): void {
   const buildable = entity.buildable;
   if (!buildable) return;
-  const prevFrac = Math.max(0, Math.min(1, buildable.healthBuildFraction ?? 0));
+  const prevFrac = Math.max(0, Math.min(1, buildable.healthBuildFraction));
   const frac = Math.max(0, Math.min(1, nextBuildFraction));
   const deltaFrac = Math.max(0, frac - prevFrac);
   if (frac !== buildable.healthBuildFraction) {
