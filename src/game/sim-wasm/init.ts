@@ -1798,7 +1798,7 @@ export interface SnapshotEncodeApi {
   ) => number;
   /** Encode envelope + the unit sub-object. Numeric vector components
    *  are pre-quantized JS numbers (caller does qVel / qNormal /
-   *  qSuspension). Optional static fields cover full keyframes;
+   *  retired visual-suspension slots). Optional static fields cover full keyframes;
    *  delta-only fields stay gated by their has* flags. */
   encodeEntityUnit: (
     id: number,

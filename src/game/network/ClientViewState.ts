@@ -27,7 +27,6 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_NORMAL,
-  ENTITY_CHANGED_SUSPENSION,
 } from '../../types/network';
 
 import { setAuthoritativeTerrainTileMap } from '../sim/Terrain';
@@ -300,10 +299,7 @@ export class ClientViewState {
         // the host flipped normal mode). Otherwise the new target.normal
         // would land but applyClientUnitVisualPrediction's EMA — which
         // owns the entity.unit.surfaceNormal lerp — wouldn't run.
-        ENTITY_CHANGED_NORMAL |
-        // Suspension state can affect prediction even if the quantized
-        // body position did not move.
-        ENTITY_CHANGED_SUSPENSION
+        ENTITY_CHANGED_NORMAL
       )) !== 0 ||
       Array.isArray(server.unit?.turrets)
     ) {

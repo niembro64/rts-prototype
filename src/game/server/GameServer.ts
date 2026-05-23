@@ -62,7 +62,6 @@ import {
   type SnapshotListenerEntry,
 } from './ServerSnapshotPublisher';
 import { UnitForceSystem } from './UnitForceSystem';
-import { UnitSuspensionSystem } from './UnitSuspensionSystem';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 import {
   isForceFieldReflectionMode,
@@ -109,7 +108,6 @@ export class GameServer {
   private gameOverListeners: GameOverCallback[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
   private unitForceSystem: UnitForceSystem;
-  private unitSuspensionSystem: UnitSuspensionSystem;
 
   // Game over tracking
   private isGameOver: boolean = false;
@@ -190,7 +188,6 @@ export class GameServer {
     this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
 
     this.unitForceSystem = new UnitForceSystem(this.world, this.simulation, this.physics);
-    this.unitSuspensionSystem = new UnitSuspensionSystem(this.world, this.physics);
 
     // Setup simulation callbacks (need `this` references for physics
     // body cleanup and game-over fan-out, so they live here rather than
@@ -393,10 +390,6 @@ export class GameServer {
 
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
-
-    // Update visible chassis-vs-locomotion springs after the physics
-    // anchor has its authoritative velocity for this tick.
-    this.unitSuspensionSystem.update(dtMs);
 
   }
 

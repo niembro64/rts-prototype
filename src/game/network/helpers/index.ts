@@ -6,7 +6,3 @@ export {
   refreshBuildingTurretsFromNetwork,
   refreshUnitTurretsFromNetwork,
 } from './NetworkEntityFactory';
-
-export {
-  applyNetworkSuspensionState,
-} from '../unitSnapshotFields';

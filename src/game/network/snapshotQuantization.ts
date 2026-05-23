@@ -4,7 +4,6 @@ export const PROJECTILE_POSITION_WIRE_SCALE = 1;
 export const VELOCITY_WIRE_SCALE = 10;
 export const ROTATION_WIRE_SCALE = 1000;
 export const NORMAL_WIRE_SCALE = 1000;
-export const SUSPENSION_WIRE_SCALE = 100;
 
 function quantizeFixedPoint(value: number, scale: number): number {
   return Math.round(value * scale);
@@ -60,12 +59,4 @@ export function quantizeNormal(value: number): number {
 
 export function dequantizeNormal(value: number): number {
   return dequantizeFixedPoint(value, NORMAL_WIRE_SCALE);
-}
-
-export function quantizeSuspension(value: number): number {
-  return quantizeFixedPoint(value, SUSPENSION_WIRE_SCALE);
-}
-
-export function dequantizeSuspension(value: number): number {
-  return dequantizeFixedPoint(value, SUSPENSION_WIRE_SCALE);
 }

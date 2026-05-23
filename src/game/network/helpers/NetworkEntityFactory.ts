@@ -29,7 +29,6 @@ import {
   dequantizeRotation as deqRot,
 } from '../snapshotQuantization';
 import {
-  applyNetworkSuspensionState,
   decodeNetworkUnitActions,
   decodeNetworkUnitType,
   readNetworkUnitBodyCenterHeight,
@@ -272,8 +271,6 @@ function createUnitFromNetwork(
       nextCombatProbeTick: -1,
     };
   }
-  applyNetworkSuspensionState(entity, u?.suspension);
-
   // Cache mirror panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the
   // hydrated client and the authoritative sim share one rectangle.

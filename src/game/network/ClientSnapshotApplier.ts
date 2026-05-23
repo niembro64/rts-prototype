@@ -9,7 +9,6 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_SUSPENSION,
   codeToBuildingType,
   codeToUnitType,
 } from '../../types/network';
@@ -20,7 +19,6 @@ import {
 } from './helpers';
 import {
   applyNetworkUnitCombatMode,
-  applyNetworkSuspensionState,
   applyNetworkUnitActions,
   applyNetworkUnitStaticFields,
 } from './unitSnapshotFields';
@@ -61,9 +59,6 @@ export function snapClientNonVisualState(
       ) || cacheDirty;
     }
     applyNetworkUnitStaticFields(entity.unit, su);
-    if (isFull || cf! & ENTITY_CHANGED_SUSPENSION) {
-      applyNetworkSuspensionState(entity, su.suspension);
-    }
     if (isFull || cf! & ENTITY_CHANGED_COMBAT_MODE) {
       applyNetworkUnitCombatMode(entity, su);
     }

@@ -30,16 +30,14 @@ Evidence:
 - src/game/sim/Simulation.ts (1,657 LOC) is still the top-level tick
   driver. Although most heavy kernels delegate to WASM, several
   per-unit loops are TypeScript:
-    - UnitSuspensionSystem.update (src/game/sim/unitSuspension.ts) —
-      per-unit suspension spring integration, called every tick.
     - UnitForceSystem.applyForces (src/game/server/UnitForceSystem.ts)
       — per-unit force gathering, called every tick from
       GameServer.tick() (GameServer.ts:392 region).
 - src/game/server/PhysicsEngine3D.ts (915 LOC) and
   src/game/server/UnitForceSystem.ts (699 LOC) are still instantiated
-  in GameServer.ts:192-193 and called every tick. The integration
+  in GameServer.ts:192 region and called every tick. The integration
   itself now runs in Rust kernels, but the per-unit force-selection
-  loop, suspension state, and physics-body bookkeeping all live in TS.
+  loop and physics-body bookkeeping still live in TS.
 - Client prediction has a similar shape: ClientPredictionStepper,
   ClientUnitPrediction, and ClientProjectilePrediction iterate over
   predicted entities per render frame in TS, even though they call
@@ -60,29 +58,9 @@ At 5,000 active units, an N-per-tick TS loop is exactly the scaling
 shape the design rules out.
 
 Fix direction:
-Do child items as separate, measurable PRs. Continue with the spring
-loop and remaining JS gather/scatter paths, using the arrival-control
-pattern where it fits.
-
-------------------------------------------------------------------------------
-TS-WASM-01C - child: move UnitSuspensionSystem per-unit spring into
-              Rust (or scope it strictly client-side visual).
-------------------------------------------------------------------------------
-
-Evidence:
-- src/game/sim/unitSuspension.ts +
-  src/game/server/UnitSuspensionSystem.ts run a per-unit spring
-  integrator every tick from GameServer.tick().
-- The suspension state is decorative chassis bob; per the
-  "Locomotion Visuals Are Frontend" philosophy section, it should
-  live on the client renderer or in the Rust sim, never as a TS
-  per-unit loop on the host.
-
-Fix direction:
-Decide whether the suspension model is gameplay-affecting (move to
-Rust kernel, on the wire) or purely visual (move to client renderer,
-off the wire entirely). Either way, the TS per-unit loop on the host
-should go away.
+Do child items as separate, measurable PRs. Continue with the remaining
+JS gather/scatter paths, using the arrival-control pattern where it
+fits.
 
 ------------------------------------------------------------------------------
 TS-WASM-01D - child: move snapshot wire-pack and serializer loops

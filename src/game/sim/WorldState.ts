@@ -21,7 +21,6 @@ import type { ForceFieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
 import { buildMirrorPanelCache } from './mirrorPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
-import { createUnitSuspension } from './unitSuspension';
 import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
 
@@ -802,7 +801,10 @@ export class WorldState {
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
     );
-    entity.unit!.suspension = createUnitSuspension(bp.suspension);
+    // Chassis suspension is renderer-owned visual state. The
+    // authoritative host keeps it absent so turret mounts, targeting,
+    // snapshots, and physics all read the rigid body anchor only.
+    entity.unit!.suspension = null;
     applyEntitySensorBlueprint(entity, bp);
 
     // Create combat component (turrets + per-host bookkeeping) from

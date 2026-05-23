@@ -657,15 +657,11 @@ export const ENTITY_CHANGED_FACTORY   = 1 << 7;
  *  normal could only ride POS-bit deltas, so stationary units would
  *  hold a stale normal until they moved or until the next keyframe. */
 export const ENTITY_CHANGED_NORMAL    = 1 << 8;
-/** Visible chassis suspension offset/velocity changed. This is
- *  separate from POS because the locomotion anchor can remain still
- *  while the chassis spring bounces relative to it. */
-export const ENTITY_CHANGED_SUSPENSION = 1 << 9;
-// Bits 1 << 10 and 1 << 11 were previously assigned to retired wire
-// channels (acceleration-on-the-wire and a vertical-launch actuator,
-// respectively). The bits are intentionally left empty so COMBAT_MODE
-// keeps its existing position rather than renumbering downstream
-// consumers.
+// Bits 1 << 9, 1 << 10, and 1 << 11 were previously assigned to
+// retired wire channels (visual suspension, acceleration-on-the-wire,
+// and a vertical-launch actuator, respectively). The bits are
+// intentionally left empty so COMBAT_MODE keeps its existing position
+// rather than renumbering downstream consumers.
 /** Player-controlled combat mode such as fire/hold-fire changed. */
 export const ENTITY_CHANGED_COMBAT_MODE = 1 << 12;
 
@@ -706,10 +702,8 @@ export type NetworkServerSnapshotEntity = {
      *  change enough to send, or where visual detail fields are being
      *  throttled between detail-cadence snapshots. */
     surfaceNormal?: { nx: number; ny: number; nz: number };
-    /** Runtime chassis suspension relative to the locomotion anchor.
-     *  Offsets are SUSPENSION_WIRE_SCALE fixed-point values:
-     *  x = forward, y = lateral, z = up. Velocity uses
-     *  VELOCITY_WIRE_SCALE. */
+    /** Retired wire field. Chassis suspension is client-render visual
+     *  state now, so authoritative snapshots no longer emit it. */
     suspension?: {
       offset: Vec3;
       velocity: Vec3;

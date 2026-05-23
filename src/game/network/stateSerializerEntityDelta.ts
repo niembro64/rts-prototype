@@ -36,7 +36,6 @@ import {
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_SUSPENSION,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
@@ -127,12 +126,10 @@ export const SNAPSHOT_DIRTY_FORCE_FIELDS =
   ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY |
-  ENTITY_CHANGED_COMBAT_MODE |
-  ENTITY_CHANGED_SUSPENSION;
+  ENTITY_CHANGED_COMBAT_MODE;
 
 export const SNAPSHOT_DETAIL_THROTTLED_FIELDS =
   ENTITY_CHANGED_NORMAL |
-  ENTITY_CHANGED_SUSPENSION |
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY;
 
@@ -642,8 +639,8 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       buildable?.paid.energy ?? 0,
       buildable?.paid.metal ?? 0,
       e.builder?.currentBuildTarget ?? NO_ENTITY_ID,
-      u.suspension?.offsetZ ?? 0,
-      u.suspension?.velocityZ ?? 0,
+      0,
+      0,
       buildable ? getBuildFraction(buildable) : 0,
     );
   } else if (e.building) {

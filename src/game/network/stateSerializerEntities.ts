@@ -21,7 +21,6 @@ import {
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_SUSPENSION,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
   buildingTypeToCode,
@@ -49,13 +48,11 @@ import {
   clearNetworkUnitCombatMode,
   clearNetworkUnitStaticFields,
   clearNetworkUnitSurfaceNormal,
-  clearNetworkUnitSuspension,
   createNetworkUnitSnapshot,
   writeNetworkUnitActions,
   writeNetworkUnitCombatMode,
   writeNetworkUnitStaticFields,
   writeNetworkUnitSurfaceNormal,
-  writeNetworkUnitSuspension,
   writeNetworkUnitVelocity,
 } from './unitSnapshotFields';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
@@ -63,7 +60,6 @@ import {
   quantizeEntityPosition as qPos,
   quantizeNormal as qNormal,
   quantizeRotation as qRot,
-  quantizeSuspension as qSuspension,
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
 
@@ -122,7 +118,6 @@ type PooledEntry = {
   unitSub: UnitSub;
   unitHp: NonNullable<UnitSub['hp']>;
   unitVelocity: NonNullable<UnitSub['velocity']>;
-  unitSuspension: NonNullable<UnitSub['suspension']>;
   buildingDim: { x: number; y: number };
   solarSub: { open: boolean };
   buildingSub: BuildingSub;
@@ -227,10 +222,6 @@ function createPooledEntry(): PooledEntry {
     unitSub,
     unitHp,
     unitVelocity,
-    unitSuspension: {
-      offset: { x: 0, y: 0, z: 0 },
-      velocity: { x: 0, y: 0, z: 0 },
-    },
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
@@ -608,8 +599,7 @@ export function serializeEntitySnapshot(
   if (entity.type === 'unit' && entity.unit) {
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
-      ENTITY_CHANGED_BUILDING |
-      ENTITY_CHANGED_SUSPENSION;
+      ENTITY_CHANGED_BUILDING;
     const hasSurfaceNormalFields = isFull ||
       (changedFields! & ENTITY_CHANGED_NORMAL);
     const hasOrientationFields = entity.unit.orientation !== null &&
@@ -658,11 +648,7 @@ export function serializeEntitySnapshot(
         clearNetworkUnitSurfaceNormal(u);
       }
 
-      if (isFull || (changedFields! & ENTITY_CHANGED_SUSPENSION)) {
-        writeNetworkUnitSuspension(u, entity.unit, poolEntry.unitSuspension, qSuspension, qVel);
-      } else {
-        clearNetworkUnitSuspension(u);
-      }
+      u.suspension = undefined;
 
       // Orientation + angular velocity for entities that have one —
       // currently hover units. Ground units have these undefined on

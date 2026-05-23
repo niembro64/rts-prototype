@@ -21,7 +21,6 @@ import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeNormal as deqNormal,
   dequantizeRotation as deqRot,
-  dequantizeSuspension as deqSuspension,
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
 import {
@@ -33,7 +32,6 @@ import {
 
 export type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
 export type NetworkUnitRadius = NonNullable<NetworkUnitSnapshot['radius']>;
-export type NetworkUnitSuspension = NonNullable<NetworkUnitSnapshot['suspension']>;
 
 type Vec3 = { x: number; y: number; z: number };
 type Quantize = (n: number) => number;
@@ -108,21 +106,6 @@ export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapsho
     unit.locomotion = getUnitLocomotion(unitType);
   }
   if (isFiniteNumber(src.mass)) unit.mass = src.mass;
-}
-
-export function applyNetworkSuspensionState(
-  entity: Entity,
-  suspension: NetworkUnitSnapshot['suspension'] | undefined | null,
-): void {
-  const state = entity.unit?.suspension;
-  if (!state || !suspension) return;
-  state.offsetX = deqSuspension(suspension.offset.x);
-  state.offsetY = deqSuspension(suspension.offset.y);
-  state.offsetZ = deqSuspension(suspension.offset.z);
-  state.velocityX = deqVel(suspension.velocity.x);
-  state.velocityY = deqVel(suspension.velocity.y);
-  state.velocityZ = deqVel(suspension.velocity.z);
-  state.legContact = suspension.legContact === true;
 }
 
 export function applyNetworkUnitCombatMode(
@@ -233,32 +216,6 @@ export function clearNetworkUnitSurfaceNormal(dst: NetworkUnitSnapshot): void {
   dst.surfaceNormal = undefined;
 }
 
-export function writeNetworkUnitSuspension(
-  dst: NetworkUnitSnapshot,
-  unit: Unit,
-  out: NetworkUnitSuspension,
-  qSuspension: Quantize,
-  qVel: Quantize,
-): void {
-  const suspension = unit.suspension;
-  if (!suspension) {
-    dst.suspension = undefined;
-    return;
-  }
-  out.offset.x = qSuspension(suspension.offsetX);
-  out.offset.y = qSuspension(suspension.offsetY);
-  out.offset.z = qSuspension(suspension.offsetZ);
-  out.velocity.x = qVel(suspension.velocityX);
-  out.velocity.y = qVel(suspension.velocityY);
-  out.velocity.z = qVel(suspension.velocityZ);
-  out.legContact = suspension.legContact ? true : undefined;
-  dst.suspension = out;
-}
-
-export function clearNetworkUnitSuspension(dst: NetworkUnitSnapshot): void {
-  dst.suspension = undefined;
-}
-
 export function writeNetworkUnitCombatMode(
   dst: NetworkUnitSnapshot,
   entity: Entity,
@@ -344,13 +301,6 @@ function copyNetworkUnitBuildState(
   return dst;
 }
 
-function createNetworkUnitSuspensionState(): NetworkUnitSuspension {
-  return {
-    offset: { x: 0, y: 0, z: 0 },
-    velocity: { x: 0, y: 0, z: 0 },
-  };
-}
-
 export function copyNetworkUnitSnapshotInto(
   src: NetworkUnitSnapshot,
   dst: NetworkUnitSnapshot,
@@ -389,18 +339,7 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.surfaceNormal = undefined;
   }
-  if (src.suspension) {
-    const suspension = dst.suspension ?? (dst.suspension = createNetworkUnitSuspensionState());
-    suspension.offset.x = src.suspension.offset.x;
-    suspension.offset.y = src.suspension.offset.y;
-    suspension.offset.z = src.suspension.offset.z;
-    suspension.velocity.x = src.suspension.velocity.x;
-    suspension.velocity.y = src.suspension.velocity.y;
-    suspension.velocity.z = src.suspension.velocity.z;
-    suspension.legContact = src.suspension.legContact;
-  } else {
-    dst.suspension = undefined;
-  }
+  dst.suspension = undefined;
   if (src.orientation) {
     const o = dst.orientation ?? (dst.orientation = { x: 0, y: 0, z: 0, w: 1 });
     o.x = src.orientation.x;
