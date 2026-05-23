@@ -646,6 +646,12 @@ export type BuildingConfig = {
   /** Max resource units per second this building can add to each
    *  construction resource lane of its active shell. */
   constructionRate: number | null;
+  /** Source-resource throughput (units per second) for a resource
+   *  converter. Each tick, a completed converter consumes this much of
+   *  whichever resource is in surplus (metal vs energy) and pays out
+   *  the other resource minus the configured CONVERTER TAX. `null` for
+   *  any non-converter building. */
+  conversionRate: number | null;
   renderProfile: BuildingRenderProfile;
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;

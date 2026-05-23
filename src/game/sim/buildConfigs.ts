@@ -18,6 +18,7 @@ function buildBuildingConfig(type: BuildingType): BuildingConfig {
     energyProduction: bp.energyProduction,
     metalProduction: bp.metalProduction,
     constructionRate: bp.constructionRate,
+    conversionRate: bp.conversionRate,
     renderProfile: bp.renderProfile,
     visualHeight: bp.visualHeight,
     anchorProfile: bp.anchorProfile,
@@ -34,6 +35,7 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
   radar: buildBuildingConfig('radar'),
   megaBeamTower: buildBuildingConfig('megaBeamTower'),
   cannonTower: buildBuildingConfig('cannonTower'),
+  resourceConverter: buildBuildingConfig('resourceConverter'),
 };
 
 // Helper to get building config

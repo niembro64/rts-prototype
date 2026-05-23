@@ -29,6 +29,12 @@ export type BuildingBlueprint = {
   energyProduction: number | null;
   metalProduction: number | null;
   constructionRate: number | null;
+  /** Source-resource throughput (units per second) for a resource
+   *  converter. Each tick, a completed converter consumes this much of
+   *  whichever resource is in surplus (metal vs energy) and pays out
+   *  the other resource minus the configured CONVERTER TAX. `null` for
+   *  any non-converter building. */
+  conversionRate: number | null;
   renderProfile: BuildingRenderProfile;
   /** Primary visual/anchor height above ground, in world units. */
   visualHeight: number;
@@ -49,6 +55,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'energyProduction',
   'metalProduction',
   'constructionRate',
+  'conversionRate',
   'turrets',
   'detector',
   'cloak',
