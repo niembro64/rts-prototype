@@ -13,6 +13,7 @@ import type { Entity, BuildingType } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
 import {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementDiagnostics,
@@ -41,6 +42,8 @@ export class BuildGhost3D {
   private footprint: THREE.Mesh;
   /** Commander build-range circle (drawn as a thin ring). */
   private rangeRing: THREE.Mesh;
+  /** Radar footprint preview shown while placing radar towers. */
+  private radarRangeRing: THREE.Mesh;
   /** Warning line from commander to ghost, shown only when out of range. */
   private rangeLine: THREE.Line;
   private rangeLineGeom: THREE.BufferGeometry;
@@ -67,6 +70,7 @@ export class BuildGhost3D {
   private cellBorderMatMetalDeposit: THREE.LineBasicMaterial;
   private cellBorderMatBad: THREE.LineBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
+  private radarRingMat: THREE.MeshBasicMaterial;
   private lineMat: THREE.LineBasicMaterial;
 
   // Reusable scratch arrays.
@@ -167,6 +171,20 @@ export class BuildGhost3D {
     this.rangeRing.position.y = RANGE_Y;
     this.group.add(this.rangeRing);
 
+    this.radarRingMat = new THREE.MeshBasicMaterial({
+      color: COLORS.effects.buildGhost.radarRangeRing.colorHex,
+      transparent: true,
+      opacity: COLORS.effects.buildGhost.radarRangeRing.opacity,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const radarRingGeom = new THREE.RingGeometry(0.992, 1.0, 96);
+    this.radarRangeRing = new THREE.Mesh(radarRingGeom, this.radarRingMat);
+    this.radarRangeRing.rotation.x = -Math.PI / 2;
+    this.radarRangeRing.position.y = RANGE_Y;
+    this.radarRangeRing.visible = false;
+    this.group.add(this.radarRangeRing);
+
     // Out-of-range warning line.
     this.lineMat = new THREE.LineBasicMaterial({
       color: COLORS.effects.buildGhost.outOfRangeLine.colorHex,
@@ -233,6 +251,14 @@ export class BuildGhost3D {
     this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
     this.footprint.visible = !this.updateDiagnosticCells(diagnostics);
+
+    if (buildingType === 'radar') {
+      this.radarRangeRing.visible = true;
+      this.radarRangeRing.position.set(snapped.x, targetGroundY + RANGE_Y, snapped.y);
+      this.radarRangeRing.scale.set(RADAR_VISION_RADIUS, RADAR_VISION_RADIUS, 1);
+    } else {
+      this.radarRangeRing.visible = false;
+    }
 
     if (commander?.builder) {
       const commanderGroundY = getUnitGroundZ(commander);
@@ -364,6 +390,7 @@ export class BuildGhost3D {
     this.world.remove(this.group);
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
     (this.rangeRing.geometry as THREE.BufferGeometry).dispose();
+    (this.radarRangeRing.geometry as THREE.BufferGeometry).dispose();
     this.cellGeom.dispose();
     this.cellBorderGeom.dispose();
     this.rangeLineGeom.dispose();
@@ -378,6 +405,7 @@ export class BuildGhost3D {
     this.cellBorderMatMetalDeposit.dispose();
     this.cellBorderMatBad.dispose();
     this.ringMat.dispose();
+    this.radarRingMat.dispose();
     this.lineMat.dispose();
   }
 }

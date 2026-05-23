@@ -2392,6 +2392,121 @@ pub fn terrain_has_line_of_sight(
     1
 }
 
+fn fog_mark_circle_scanline_impl(
+    bitmap: &mut [u8],
+    rgba: Option<&mut [u8]>,
+    grid_w: u32,
+    grid_h: u32,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    cell_anchor: f64,
+    rgb_value: u8,
+) -> u32 {
+    if radius <= 0.0 || grid_w == 0 || grid_h == 0 {
+        return 0;
+    }
+    let grid_w_usize = grid_w as usize;
+    let grid_h_usize = grid_h as usize;
+    let expected_cells = grid_w_usize.saturating_mul(grid_h_usize);
+    if bitmap.len() < expected_cells {
+        return 0;
+    }
+    let mut rgba = rgba;
+    if let Some(buf) = rgba.as_ref() {
+        if buf.len() < expected_cells.saturating_mul(4) {
+            rgba = None;
+        }
+    }
+
+    let r2 = radius * radius;
+    let min_y = (cy - radius).floor().max(0.0) as i32;
+    let max_y = (cy + radius).ceil().min((grid_h - 1) as f64) as i32;
+    let mut modified = 0u32;
+    for y in min_y..=max_y {
+        let dy = y as f64 + cell_anchor - cy;
+        let dy_sq = dy * dy;
+        if dy_sq > r2 {
+            continue;
+        }
+        let xspan = (r2 - dy_sq).sqrt();
+        let x_min = (cx - cell_anchor - xspan).ceil().max(0.0) as i32;
+        let x_max = (cx - cell_anchor + xspan).floor().min((grid_w - 1) as f64) as i32;
+        if x_min > x_max {
+            continue;
+        }
+        let row = y as usize * grid_w_usize;
+        for x in x_min..=x_max {
+            let idx = row + x as usize;
+            if bitmap[idx] != 0 {
+                continue;
+            }
+            bitmap[idx] = 1;
+            modified = 1;
+            if let Some(buf) = rgba.as_deref_mut() {
+                let p = idx << 2;
+                buf[p] = rgb_value;
+                buf[p + 1] = rgb_value;
+                buf[p + 2] = rgb_value;
+            }
+        }
+    }
+    modified
+}
+
+/// Fog/shroud scanline circle fill. Mutates a row-major byte bitmap
+/// in-place and returns 1 if any cell flipped 0 -> 1.
+#[wasm_bindgen]
+pub fn fog_mark_circle_scanline(
+    bitmap: &mut [u8],
+    grid_w: u32,
+    grid_h: u32,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    cell_anchor: f64,
+) -> u32 {
+    fog_mark_circle_scanline_impl(
+        bitmap,
+        None,
+        grid_w,
+        grid_h,
+        cx,
+        cy,
+        radius,
+        cell_anchor,
+        0,
+    )
+}
+
+/// Fog/shroud scanline circle fill with an aligned RGBA side buffer.
+/// Each newly revealed bitmap cell also writes `rgb_value` to RGB,
+/// leaving alpha untouched.
+#[wasm_bindgen]
+pub fn fog_mark_circle_scanline_rgba(
+    bitmap: &mut [u8],
+    rgba: &mut [u8],
+    grid_w: u32,
+    grid_h: u32,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    cell_anchor: f64,
+    rgb_value: u8,
+) -> u32 {
+    fog_mark_circle_scanline_impl(
+        bitmap,
+        Some(rgba),
+        grid_w,
+        grid_h,
+        cx,
+        cy,
+        radius,
+        cell_anchor,
+        rgb_value,
+    )
+}
+
 /// Sample terrain surface normal at world-space (x, z). Writes
 /// (nx, ny, nz) into out_buf[0..3] and returns 1 on success, 0 on
 /// "no mesh installed / degenerate" so JS can fall back to TS.

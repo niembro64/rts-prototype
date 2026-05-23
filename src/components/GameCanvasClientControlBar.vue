@@ -579,6 +579,11 @@ defineProps<{
           title="BUILD - show every fine build-placement cell using the same green/red/blue colors as the building ghost"
           @click="model.toggleBuildGridDebug"
         >BUILD</BarButton>
+        <BarButton
+          :active="model.sightBoundary"
+          title="SIGHT - draw the local player's current vision and radar coverage boundary"
+          @click="model.toggleSightBoundary"
+        >SIGHT</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

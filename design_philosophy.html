@@ -1317,7 +1317,7 @@
         collapses three different failure modes into the same silent no-op: not yet initialized,
         semantically inapplicable, and previously torn down. An
         <code>entity.turret?.fire()</code> chain swallows all three. The unit just does not shoot,
-        no stack trace, no symptom anyone can grep for. In a multiplayer RTS with pooled state
+        no stack trace, no symptom anyone can grep for. In an online multiplayer RTS with pooled state
         and delta-encoded snapshots, that class of bug compounds.
       </p>
 

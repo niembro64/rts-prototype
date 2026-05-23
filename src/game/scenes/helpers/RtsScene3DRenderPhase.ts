@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getSightBoundary } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -23,6 +24,7 @@ import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { FogOfWarShroudRenderer3D } from '../../render3d/FogOfWarShroudRenderer3D';
 import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
+import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
@@ -54,6 +56,7 @@ export type RtsScene3DRenderPhaseResources = {
   smokeTrailRenderer: SmokeTrail3D;
   fogOfWarShroudRenderer: FogOfWarShroudRenderer3D;
   fogOfWarFogRenderer: FogOfWarFog3D;
+  sightBoundaryRenderer: SightBoundaryRenderer3D;
   healthBar3D: HealthBar3D | null;
   nameLabel3D: NameLabel3D | null;
   waypoint3D: Waypoint3D | null;
@@ -145,6 +148,7 @@ export class RtsScene3DRenderPhase {
       smokeTrailRenderer,
       fogOfWarShroudRenderer,
       fogOfWarFogRenderer,
+      sightBoundaryRenderer,
       healthBar3D,
       nameLabel3D,
       waypoint3D,
@@ -181,6 +185,12 @@ export class RtsScene3DRenderPhase {
       this.getLocalPlayerId(),
       false,
       deltaMs,
+    );
+    sightBoundaryRenderer.update(
+      this.clientViewState,
+      this.getLocalPlayerId(),
+      getSightBoundary(),
+      this.renderScope,
     );
     entityRenderer.update(
       renderFrameState,

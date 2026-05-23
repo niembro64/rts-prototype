@@ -9,6 +9,7 @@ import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
 import type { TurretMesh } from './TurretMesh3D';
 import type { EntityMesh, RangeRingMesh, RadiusRingMeshes } from './EntityMesh3D';
 import {
@@ -30,6 +31,7 @@ export type OverlayEntityMesh = Pick<
   | 'radiusRings'
   | 'radiusRingsVisible'
   | 'buildRing'
+  | 'radarRing'
   | 'rangeRingsVisible'
 >;
 
@@ -95,6 +97,10 @@ export class SelectionOverlayRenderer3D {
   private readonly ringMatBuild = makeRangeCircleMaterial(
     COLORS.effects.selectionOverlay.build.colorHex,
     COLORS.effects.selectionOverlay.build.opacity,
+  );
+  private readonly ringMatRadar = makeRangeCircleMaterial(
+    COLORS.effects.selectionOverlay.radar.colorHex,
+    COLORS.effects.selectionOverlay.radar.opacity,
   );
   private readonly selectionRingMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.selectionOverlay.selectionRing.colorHex,
@@ -179,11 +185,12 @@ export class SelectionOverlayRenderer3D {
     const showEngageMinAcquire = getRangeToggle('engageMinAcquire');
     const showEngageMinRelease = getRangeToggle('engageMinRelease');
     const showBuild = getRangeToggle('build');
+    const showRadar = entity.buildingType === 'radar' && entity.selectable?.selected === true;
     const showAnyTurretRange =
       showTrackAcquire || showTrackRelease
       || showEngageAcquire || showEngageRelease
       || showEngageMinAcquire || showEngageMinRelease;
-    if (!showAnyTurretRange && !showBuild) {
+    if (!showAnyTurretRange && !showBuild && !showRadar) {
       if (m.rangeRingsVisible) this.hideRangeRings(m);
       m.rangeRingsVisible = false;
       return;
@@ -278,13 +285,30 @@ export class SelectionOverlayRenderer3D {
     } else if (m.buildRing) {
       m.buildRing.visible = false;
     }
-    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined);
+
+    if (showRadar) {
+      if (!m.radarRing) {
+        m.radarRing = this.createRangeCircle(this.ringMatRadar);
+        m.radarRing.renderOrder = RANGE_CIRCLE_RENDER_ORDER;
+        this.world.add(m.radarRing);
+      }
+      m.radarRing.visible = true;
+      m.radarRing.position.set(ux, unitGroundZ, uy);
+      this.writeRangeCircle(m.radarRing, RADAR_VISION_RADIUS);
+    } else if (m.radarRing) {
+      m.radarRing.visible = false;
+    }
+    m.rangeRingsVisible = showAnyTurretRange || (showBuild && builder !== undefined) || showRadar;
   }
 
   removeWorldParentedOverlays(m: OverlayEntityMesh): void {
     if (m.buildRing) {
       this.removeRangeCircle(m.buildRing);
       m.buildRing = undefined;
+    }
+    if (m.radarRing) {
+      this.removeRangeCircle(m.radarRing);
+      m.radarRing = undefined;
     }
     for (const tm of m.turrets) {
       if (!tm.rangeRings) continue;
@@ -311,6 +335,7 @@ export class SelectionOverlayRenderer3D {
     this.ringMatEngageMinAcquire.dispose();
     this.ringMatEngageMinRelease.dispose();
     this.ringMatBuild.dispose();
+    this.ringMatRadar.dispose();
     this.selectionRingMat.dispose();
   }
 
@@ -341,6 +366,7 @@ export class SelectionOverlayRenderer3D {
   private hideRangeRings(m: OverlayEntityMesh): void {
     this.hideTurretRangeRings(m);
     if (m.buildRing) m.buildRing.visible = false;
+    if (m.radarRing) m.radarRing.visible = false;
   }
 
   private hideTurretRangeRings(m: OverlayEntityMesh): void {

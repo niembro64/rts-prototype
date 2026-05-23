@@ -68,6 +68,20 @@ export const BATTLE_CONFIG = {
     default: battleBarConfig.mapShape.default as TerrainMapShape,
     options: battleBarConfig.mapShape.options as ReadonlyArray<{ value: TerrainMapShape; label: string }>,
   },
+  plateau: {
+    enabled: {
+      default: battleBarConfig.plateau.enabled.default,
+      options: battleBarConfig.plateau.enabled.options as ReadonlyArray<{ value: boolean; label: string }>,
+    },
+  },
+  terrainShapeMagnitude: {
+    default: battleBarConfig.terrainShapeMagnitude.default,
+    options: battleBarConfig.terrainShapeMagnitude.options as readonly number[],
+  },
+  terrainDTerrain: {
+    default: battleBarConfig.terrainDTerrain.default,
+    options: battleBarConfig.terrainDTerrain.options as readonly number[],
+  },
   mapSize: {
     width: MAP_DIMENSION_CONFIG.width,
     length: MAP_DIMENSION_CONFIG.length,
@@ -116,6 +130,12 @@ const STORAGE_DEMO_TERRAIN_DIVIDERS = sk.demoTerrainDividers;
 const STORAGE_REAL_TERRAIN_DIVIDERS = sk.realTerrainDividers;
 const STORAGE_DEMO_TERRAIN_MAP_SHAPE = sk.demoTerrainMapShape;
 const STORAGE_REAL_TERRAIN_MAP_SHAPE = sk.realTerrainMapShape;
+const STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED = sk.demoTerrainPlateauEnabled;
+const STORAGE_REAL_TERRAIN_PLATEAU_ENABLED = sk.realTerrainPlateauEnabled;
+const STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE = sk.demoTerrainShapeMagnitude;
+const STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE = sk.realTerrainShapeMagnitude;
+const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
+const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
 const STORAGE_REAL_MAP_LAND_CELLS = sk.realMapLandCells;
 const STORAGE_DEMO_MAP_WIDTH_LAND_CELLS = sk.demoMapWidthLandCells;
@@ -254,6 +274,12 @@ export function saveRealBarsCollapsed(collapsed: boolean): void {
  *  two namespaces stay isolated. */
 export type BattleMode = 'demo' | 'real';
 
+export type BattleTerrainRuntimeConfig = {
+  plateauEnabled: boolean;
+  terrainShapeMagnitude: number;
+  terrainDTerrain: number;
+};
+
 export function getDefaultCap(mode: BattleMode): number {
   return BATTLE_MODE_DEFAULTS[mode].cap;
 }
@@ -385,6 +411,60 @@ function parseTerrainShape(s: string | null): TerrainShape | null {
 function parseTerrainMapShape(s: string | null): TerrainMapShape | null {
   if (s === 'square' || s === 'circle') return s;
   return null;
+}
+
+function parseNumberOption(
+  value: string | null,
+  options: readonly number[],
+): number | null {
+  if (!value) return null;
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return null;
+  return options.includes(n) ? n : null;
+}
+
+function normalizeNumberOption(
+  value: number,
+  config: { readonly default: number; readonly options: readonly number[] },
+): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && config.options.includes(n) ? n : config.default;
+}
+
+function loadModeNumberOption(
+  mode: BattleMode,
+  realKey: string,
+  demoKey: string,
+  config: { readonly default: number; readonly options: readonly number[] },
+): number {
+  ensureBattleMigrations();
+  const primary = parseNumberOption(
+    readPersisted(mode === 'real' ? realKey : demoKey),
+    config.options,
+  );
+  if (primary !== null) return primary;
+  if (mode === 'real') {
+    const demoFallback = parseNumberOption(
+      readPersisted(demoKey),
+      config.options,
+    );
+    if (demoFallback !== null) return demoFallback;
+  }
+  return config.default;
+}
+
+export function normalizeTerrainPlateauEnabled(value: unknown): boolean {
+  return typeof value === 'boolean'
+    ? value
+    : BATTLE_CONFIG.plateau.enabled.default;
+}
+
+export function normalizeTerrainShapeMagnitude(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.terrainShapeMagnitude);
+}
+
+export function normalizeTerrainDTerrain(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.terrainDTerrain);
 }
 
 function parseMapLandCellAxis(s: string | null, axis: 'width' | 'length'): number | null {
@@ -525,6 +605,76 @@ export function saveTerrainMapShape(
       : STORAGE_DEMO_TERRAIN_MAP_SHAPE,
     shape,
   );
+}
+
+export function loadStoredTerrainPlateauEnabled(mode: BattleMode): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_TERRAIN_PLATEAU_ENABLED,
+    STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED,
+    BATTLE_CONFIG.plateau.enabled.default,
+  );
+}
+
+export function saveTerrainPlateauEnabled(
+  enabled: boolean,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_TERRAIN_PLATEAU_ENABLED
+      : STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED,
+    String(normalizeTerrainPlateauEnabled(enabled)),
+  );
+}
+
+export function loadStoredTerrainShapeMagnitude(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE,
+    STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE,
+    BATTLE_CONFIG.terrainShapeMagnitude,
+  );
+}
+
+export function saveTerrainShapeMagnitude(
+  value: number,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_TERRAIN_SHAPE_MAGNITUDE
+      : STORAGE_DEMO_TERRAIN_SHAPE_MAGNITUDE,
+    String(normalizeTerrainShapeMagnitude(value)),
+  );
+}
+
+export function loadStoredTerrainDTerrain(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_TERRAIN_D_TERRAIN,
+    STORAGE_DEMO_TERRAIN_D_TERRAIN,
+    BATTLE_CONFIG.terrainDTerrain,
+  );
+}
+
+export function saveTerrainDTerrain(value: number, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_TERRAIN_D_TERRAIN
+      : STORAGE_DEMO_TERRAIN_D_TERRAIN,
+    String(normalizeTerrainDTerrain(value)),
+  );
+}
+
+export function loadStoredTerrainRuntimeConfig(
+  mode: BattleMode,
+): BattleTerrainRuntimeConfig {
+  return {
+    plateauEnabled: loadStoredTerrainPlateauEnabled(mode),
+    terrainShapeMagnitude: loadStoredTerrainShapeMagnitude(mode),
+    terrainDTerrain: loadStoredTerrainDTerrain(mode),
+  };
 }
 
 export function getDefaultMapLandDimensions(): MapLandCellDimensions {

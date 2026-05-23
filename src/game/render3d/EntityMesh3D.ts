@@ -107,6 +107,9 @@ export type EntityMesh = {
    *  horizontal check, so this lives at the local terrain surface and
    *  draws as a fixed-width ground ribbon instead of a 3D sphere. */
   buildRing?: RangeRingMesh;
+  /** Radar-building ground-plane circle. This previews the visual
+   *  fog/shroud clearing radius without changing snapshot semantics. */
+  radarRing?: RangeRingMesh;
   rangeRingsVisible?: boolean;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary

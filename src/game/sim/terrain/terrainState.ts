@@ -6,8 +6,17 @@ import {
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
 import { getSimWasm } from '../../sim-wasm/init';
-import { TERRAIN_FINE_TRIANGLE_SUBDIV, TERRAIN_SHAPE_MAGNITUDE } from './terrainConfig';
+import {
+  applyTerrainRuntimeConfig,
+  TERRAIN_D_TERRAIN,
+  TERRAIN_FINE_TRIANGLE_SUBDIV,
+  TERRAIN_PLATEAU_CONFIG,
+  TERRAIN_SHAPE_MAGNITUDE,
+  type TerrainRuntimeConfig,
+} from './terrainConfig';
 
+let terrainCenterShape: TerrainShape = 'mountain';
+let terrainDividersShape: TerrainShape = 'mountain';
 let mountainRippleAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 let mountainSeparatorAmplitude = TERRAIN_SHAPE_MAGNITUDE;
 let terrainMapShape: TerrainMapShape = 'circle';
@@ -17,6 +26,11 @@ let authoritativeTerrainTileMap: TerrainTileMap | null = null;
 
 function shapeToAmplitude(shape: TerrainShape): number {
   return terrainShapeSign(shape) * TERRAIN_SHAPE_MAGNITUDE;
+}
+
+function refreshShapeAmplitudes(): void {
+  mountainRippleAmplitude = shapeToAmplitude(terrainCenterShape);
+  mountainSeparatorAmplitude = shapeToAmplitude(terrainDividersShape);
 }
 
 export function getTerrainVersion(): number {
@@ -73,7 +87,22 @@ export function getTerrainMapShape(): TerrainMapShape {
   return terrainMapShape;
 }
 
+export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
+  return {
+    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
+    terrainShapeMagnitude: TERRAIN_SHAPE_MAGNITUDE,
+    terrainDTerrain: TERRAIN_D_TERRAIN,
+  };
+}
+
+export function setTerrainRuntimeConfig(config: TerrainRuntimeConfig): void {
+  if (!applyTerrainRuntimeConfig(config)) return;
+  refreshShapeAmplitudes();
+  invalidateTerrainConfig();
+}
+
 export function setTerrainCenterShape(shape: TerrainShape): void {
+  terrainCenterShape = shape;
   const next = shapeToAmplitude(shape);
   if (next === mountainRippleAmplitude) return;
   mountainRippleAmplitude = next;
@@ -81,6 +110,7 @@ export function setTerrainCenterShape(shape: TerrainShape): void {
 }
 
 export function setTerrainDividersShape(shape: TerrainShape): void {
+  terrainDividersShape = shape;
   const next = shapeToAmplitude(shape);
   if (next === mountainSeparatorAmplitude) return;
   mountainSeparatorAmplitude = next;

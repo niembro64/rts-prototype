@@ -31,6 +31,23 @@
       { "value": "circle", "label": "CIRCLE" }
     ]
   },
+  "plateau": {
+    "enabled": {
+      "default": true,
+      "options": [
+        { "value": true, "label": "ON" },
+        { "value": false, "label": "OFF" }
+      ]
+    }
+  },
+  "terrainShapeMagnitude": {
+    "default": 3200,
+    "options": [400, 800, 1600, 3200]
+  },
+  "terrainDTerrain": {
+    "default": 200,
+    "options": [200, 400, 800]
+  },
 
   "modeDefaults": {
     "demo": { "cap": 243, "grid": true, "fogOfWar": false, "barsCollapsed": false },
@@ -59,6 +76,12 @@
     "realTerrainDividers": "real-battle-terrain-dividers",
     "demoTerrainMapShape": "demo-battle-terrain-map-shape",
     "realTerrainMapShape": "real-battle-terrain-map-shape",
+    "demoTerrainPlateauEnabled": "demo-battle-terrain-plateau-enabled",
+    "realTerrainPlateauEnabled": "real-battle-terrain-plateau-enabled",
+    "demoTerrainShapeMagnitude": "demo-battle-terrain-shape-magnitude",
+    "realTerrainShapeMagnitude": "real-battle-terrain-shape-magnitude",
+    "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
+    "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoMapLandCells": "demo-battle-map-land-cells",
     "realMapLandCells": "real-battle-map-land-cells",
     "demoMapWidthLandCells": "demo-battle-map-width-land-cells",

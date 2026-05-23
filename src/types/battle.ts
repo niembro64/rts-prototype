@@ -23,6 +23,11 @@ export type BattleBarConfig = {
   readonly dividers: LabeledOptionsConfig<TerrainShape>;
   /** Overall map boundary shape: full square map or circular island. */
   readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
+  readonly plateau: {
+    readonly enabled: LabeledOptionsConfig<boolean>;
+  };
+  readonly terrainShapeMagnitude: OptionsConfig<number>;
+  readonly terrainDTerrain: OptionsConfig<number>;
   /** Map width and length options in canonical LAND_CELL_SIZE cells. */
   readonly mapSize: {
     readonly width: {

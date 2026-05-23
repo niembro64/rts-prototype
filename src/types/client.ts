@@ -89,6 +89,10 @@ export type ClientBarConfig = {
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
+  /** Draws the local player's current sight/sensor boundary on the
+   *  terrain. This is a presentation/debug overlay only; authoritative
+   *  fog filtering still lives on the host. */
+  readonly sightBoundary: BooleanSetting;
   /** Per-channel client-side drift EMAs. Position channels select from
    *  snap / fast / medium / slow. Velocity channels also allow ignore.
    *  The rendered entity always stores the most recent snapshot value

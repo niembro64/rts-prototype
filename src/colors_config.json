@@ -513,6 +513,10 @@
         "colorHex": "#44ff44",
         "opacity": 0.65
       },
+      "radar": {
+        "colorHex": "#66e6ff",
+        "opacity": 0.6
+      },
       "selectionRing": {
         "colorHex": "#ffffff",
         "emissiveHex": "#333333",
@@ -555,6 +559,10 @@
       "rangeRing": {
         "colorHex": "#00ff00",
         "opacity": 0.35
+      },
+      "radarRangeRing": {
+        "colorHex": "#66e6ff",
+        "opacity": 0.45
       },
       "outOfRangeLine": {
         "colorHex": "#ff4444",

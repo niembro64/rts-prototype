@@ -23,6 +23,7 @@ import {
   getLegsRadiusToggle,
   getLocomotionMarks,
   getSmokeTrails,
+  getSightBoundary,
   getProjRangeToggle,
   getRangeToggle,
   getRenderMode,
@@ -48,6 +49,7 @@ import {
   setLegsRadiusToggle,
   setLocomotionMarks,
   setSmokeTrails,
+  setSightBoundary,
   setProjRangeToggle,
   setRangeToggle,
   setRenderMode,
@@ -90,6 +92,7 @@ export function useGameCanvasClientSettings({
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
+  const sightBoundary = ref<boolean>(getSightBoundary());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
   const movementVelEma = ref<DriftChannelMode>(getMovementVelEmaMode());
   const rotationPosEma = ref<PositionDriftChannelMode>(getRotationPosEmaMode());
@@ -259,6 +262,12 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = newValue;
   }
 
+  function toggleSightBoundary(): void {
+    const newValue = !sightBoundary.value;
+    setSightBoundary(newValue);
+    sightBoundary.value = newValue;
+  }
+
   function changeMovementPosEma(mode: PositionDriftChannelMode): void {
     setMovementPosEmaMode(mode);
     movementPosEma.value = mode;
@@ -362,6 +371,8 @@ export function useGameCanvasClientSettings({
     triangleDebug.value = cd.triangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
     buildGridDebug.value = cd.buildGridDebug.default;
+    setSightBoundary(cd.sightBoundary.default);
+    sightBoundary.value = cd.sightBoundary.default;
     setMovementPosEmaMode(cd.movementPosEma.default);
     movementPosEma.value = cd.movementPosEma.default;
     setMovementVelEmaMode(cd.movementVelEma.default);
@@ -429,6 +440,7 @@ export function useGameCanvasClientSettings({
     beamSnapToTurret,
     triangleDebug,
     buildGridDebug,
+    sightBoundary,
     movementPosEma,
     movementVelEma,
     rotationPosEma,
@@ -472,6 +484,7 @@ export function useGameCanvasClientSettings({
     toggleBeamSnapToTurret,
     toggleTriangleDebug,
     toggleBuildGridDebug,
+    toggleSightBoundary,
     changeMovementPosEma,
     changeMovementVelEma,
     changeRotationPosEma,

@@ -55,24 +55,38 @@ export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE =
  *  grounding, and pathing — is untouched. */
 export const WATER_FULLY_OPAQUE = terrainConfig.waterFullyOpaque;
 
+export type TerrainRuntimeConfig = {
+  plateauEnabled: boolean;
+  terrainShapeMagnitude: number;
+  terrainDTerrain: number;
+};
+
 /** Magnitude only; TerrainShape decides the sign. */
-export const TERRAIN_SHAPE_MAGNITUDE = terrainConfig.terrainShapeMagnitude;
-export const TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
+export let TERRAIN_SHAPE_MAGNITUDE = terrainConfig.terrainShapeMagnitude;
+export let TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
 
 /** Vertical spacing between authored terrain plateau levels. */
-export const TERRAIN_D_TERRAIN = terrainConfig.terrainDTerrain;
+export let TERRAIN_D_TERRAIN = terrainConfig.terrainDTerrain;
 
 export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION =
   terrainConfig.terrainCirclePerimeterEdgeFraction;
 export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION =
   terrainConfig.terrainCirclePerimeterTransitionWidthFraction;
-export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
+export let TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 
 /** Fade authored terrain features to flat before the outer map buffer. */
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
   terrainConfig.terrainGenerationEdgeTransitionWidthFraction;
 
-export const TERRAIN_PLATEAU_CONFIG = {
+export const TERRAIN_PLATEAU_CONFIG: {
+  enabled: boolean;
+  readonly shelfFractionOfStep: number;
+  readonly rampEdgeSharpness: number;
+  readonly buildableShelfHeightTolerance: number;
+  readonly slopeSampleDistance: number;
+  readonly fullTerraceMaxSlope: number;
+  readonly noTerraceMinSlope: number;
+} = {
   enabled: terrainConfig.plateau.enabled,
   shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
   rampEdgeSharpness: terrainConfig.plateau.rampEdgeSharpness,
@@ -81,7 +95,31 @@ export const TERRAIN_PLATEAU_CONFIG = {
     LAND_CELL_SIZE * terrainConfig.plateau.slopeSampleDistanceLandCellMultiplier,
   fullTerraceMaxSlope: terrainConfig.plateau.fullTerraceMaxSlope,
   noTerraceMinSlope: terrainConfig.plateau.noTerraceMinSlope,
-} as const;
+};
+
+export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean {
+  let changed = false;
+  const nextShapeMagnitude = Math.max(0, config.terrainShapeMagnitude);
+  if (TERRAIN_SHAPE_MAGNITUDE !== nextShapeMagnitude) {
+    TERRAIN_SHAPE_MAGNITUDE = nextShapeMagnitude;
+    TERRAIN_MAX_RENDER_Y = TERRAIN_SHAPE_MAGNITUDE * 2;
+    changed = true;
+  }
+
+  const nextDTerrain = Math.max(0, config.terrainDTerrain);
+  if (TERRAIN_D_TERRAIN !== nextDTerrain) {
+    TERRAIN_D_TERRAIN = nextDTerrain;
+    TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
+    changed = true;
+  }
+
+  if (TERRAIN_PLATEAU_CONFIG.enabled !== config.plateauEnabled) {
+    TERRAIN_PLATEAU_CONFIG.enabled = config.plateauEnabled;
+    changed = true;
+  }
+
+  return changed;
+}
 
 /** Three summed wave components form the central mountain ripple.
  *  Each carries its own wavelength and magnitude (the per-component

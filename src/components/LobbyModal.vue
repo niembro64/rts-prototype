@@ -26,6 +26,9 @@ const props = defineProps<{
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  terrainPlateauEnabled: boolean;
+  terrainShapeMagnitude: number;
+  terrainDTerrain: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   unitTypes: readonly string[];
@@ -45,6 +48,9 @@ const emit = defineEmits<{
   (e: 'setTerrainCenter', shape: TerrainShape): void;
   (e: 'setTerrainDividers', shape: TerrainShape): void;
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
+  (e: 'setTerrainPlateauEnabled', enabled: boolean): void;
+  (e: 'setTerrainShapeMagnitude', value: number): void;
+  (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
@@ -61,6 +67,9 @@ const emit = defineEmits<{
 const centerOptions = BATTLE_CONFIG.center.options;
 const dividersOptions = BATTLE_CONFIG.dividers.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
+const plateauEnabledOptions = BATTLE_CONFIG.plateau.enabled.options;
+const terrainShapeMagnitudeOptions = BATTLE_CONFIG.terrainShapeMagnitude.options;
+const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
@@ -89,6 +98,21 @@ function pickTerrainDividers(shape: TerrainShape): void {
 function pickTerrainMapShape(shape: TerrainMapShape): void {
   if (!props.isHost) return;
   emit('setTerrainMapShape', shape);
+}
+
+function pickTerrainPlateauEnabled(enabled: boolean): void {
+  if (!props.isHost) return;
+  emit('setTerrainPlateauEnabled', enabled);
+}
+
+function pickTerrainShapeMagnitude(value: number): void {
+  if (!props.isHost) return;
+  emit('setTerrainShapeMagnitude', value);
+}
+
+function pickTerrainDTerrain(value: number): void {
+  if (!props.isHost) return;
+  emit('setTerrainDTerrain', value);
 }
 
 function pickMapWidthLandCells(widthLandCells: number): void {
@@ -333,7 +357,7 @@ const terrainSectionVars = computed(() =>
       <!-- Initial screen -->
       <template v-if="!isInLobby && !isConnecting">
         <h1 class="title">BUDGET ANNIHILATION</h1>
-        <p class="subtitle">Multiplayer RTS</p>
+        <p class="subtitle">Online Multiplayer RTS</p>
 
         <div class="main-actions">
           <button class="lobby-btn host-btn" @click="handleHost">Host</button>
@@ -543,6 +567,45 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? `Set the map perimeter to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
                   @click="pickTerrainMapShape(opt.value)"
                 >{{ opt.label }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">PLATEAU:</div>
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in plateauEnabledOptions"
+                  :key="String(opt.value)"
+                  size="large"
+                  :active="terrainPlateauEnabled === opt.value"
+                  :title="isHost ? `Turn terrain plateaus ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                  @click="pickTerrainPlateauEnabled(opt.value)"
+                >{{ opt.label }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">MAGNITUDE:</div>
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in terrainShapeMagnitudeOptions"
+                  :key="opt"
+                  size="large"
+                  :active="terrainShapeMagnitude === opt"
+                  :title="isHost ? `Set terrain shape magnitude to ${opt}` : 'Only the host can change terrain'"
+                  @click="pickTerrainShapeMagnitude(opt)"
+                >{{ opt.toLocaleString() }}</BarButton>
+              </BarButtonGroup>
+            </div>
+            <div class="terrain-control-row">
+              <div class="terrain-control-label">D-TERRAIN:</div>
+              <BarButtonGroup>
+                <BarButton
+                  v-for="opt in terrainDTerrainOptions"
+                  :key="opt"
+                  size="large"
+                  :active="terrainDTerrain === opt"
+                  :title="isHost ? `Set terrain plateau step to ${opt}` : 'Only the host can change terrain'"
+                  @click="pickTerrainDTerrain(opt)"
+                >{{ opt.toLocaleString() }}</BarButton>
               </BarButtonGroup>
             </div>
             <!-- Real-battle config rows. These were previously editable

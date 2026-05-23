@@ -19,14 +19,17 @@ export {
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
   WATER_LEVEL_FRACTION,
+  type TerrainRuntimeConfig,
 } from './terrain/terrainConfig';
 export {
   getTerrainMapBoundaryFade,
   getTerrainHeight,
 } from './terrain/terrainHeightGenerator';
 export {
+  getTerrainRuntimeConfig,
   getTerrainVersion,
   getTerrainTeamCount,
+  setTerrainRuntimeConfig,
   setTerrainCenterShape,
   setTerrainDividersShape,
   setTerrainMapShape,

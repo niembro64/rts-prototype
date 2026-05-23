@@ -1038,3 +1038,175 @@ GPU buffer uploads sourced directly from WASM linear memory. Until
 then, the best intermediate is to ensure the per-frame JS pass is
 strictly batched (no per-unit allocation, no Object.assign, no
 .map / .filter / .forEach in the inner loop).
+
+==============================================================================
+
+FOG OF WAR CONCEPT REVIEW
+
+==============================================================================
+
+------------------------------------------------------------------------------
+FOW-CONCEPT-01 - the tactical shroud is disabled, so fog of war has no
+                 readable explored/unexplored/live-vision surface.
+------------------------------------------------------------------------------
+
+Evidence:
+- design_philosophy.html says fog of war and fog filtering are
+  authoritative simulation responsibilities, while snapshots should ship
+  recipient-aware fog/minimap deltas and clients should present the
+  corrected local view.
+- src/game/scenes/helpers/RtsScene3DRenderPhase.ts:168-184 calls
+  FogOfWarShroudRenderer3D.update(..., false, ...), permanently hiding
+  the three-state shroud. The comment says the in-bounds shroud plane
+  created an ugly hard edge against the off-map shelf/water, so the
+  visual shroud was disabled.
+- src/game/render3d/FogOfWarShroudRenderer3D.ts already implements the
+  concept players need: unexplored, explored-dark, and currently visible.
+  But because it is disabled, the player cannot read what has been
+  scouted from the main view.
+- src/game/render3d/FogOfWarFog3D.ts still runs when fog is enabled, but
+  it spawns decorative soft fog spheres outside current local vision. It
+  does not cover all unseen space, does not preserve explored history,
+  and does not communicate the actual tactical visibility boundary.
+
+Why it matters:
+Server-side filtering can prevent information leaks, but it does not
+solve the player-facing RTS problem: the commander needs to know what is
+currently visible, what was explored before, and what remains unknown.
+The current active visual is ambience, not an information layer.
+
+Fix direction:
+Re-enable a strategic shroud after redesigning it so it covers the whole
+readable battlefield consistently, including the off-map shelf/horizon
+case that caused the current seam. Prefer a terrain/material/WebGPU
+overlay or terrain-shader integration over a flat in-bounds plane if
+that is what removes the seam. Keep FogOfWarFog3D as optional ambience
+only; it should not be the primary fog-of-war read.
+
+------------------------------------------------------------------------------
+FOW-CONCEPT-02 - visual shroud reveal semantics do not match
+                 authoritative full-vision semantics.
+------------------------------------------------------------------------------
+
+Evidence:
+- src/game/network/stateSerializerVisibility.ts separates full vision
+  from radar: full vision sends entities in the main snapshot, while
+  radar only reveals minimap blips.
+- Full entity visibility in SnapshotVisibility.isEntityVisible() checks
+  terrain line of sight through hasTerrainLineOfSight().
+- src/game/sim/shroudBitmap.ts uses canEntityProvideVision() plus a
+  radius-only markCircle() pass. canEntityProvideVision() explicitly
+  includes radar, and the shroud pass does not apply terrain line of
+  sight.
+- src/game/render3d/FogOfWarShroudRenderer3D.ts and
+  src/game/render3d/FogOfWarFog3D.ts collect the same
+  canEntityProvideVision()/getEntityVisionRadius() sources, so radar
+  and 2D radius coverage visually clear the shroud like optical sight.
+
+Why it matters:
+The player can be shown terrain as currently visible or explored even
+where the host would still hide enemy entity detail behind a ridge, or
+where the only source is radar that should communicate "sensor contact"
+rather than true sight. That weakens the fog concept because the visual
+language and the authoritative information contract disagree.
+
+Fix direction:
+Define separate visibility layers and render them separately:
+full optical vision should use the same host-side source classification
+and line-of-sight mask as entity visibility; radar should produce a
+distinct sensor/minimap treatment; exploration history should be clear
+about whether it means "physically seen" or "sensor-covered." The
+server should ship or expose compact masks/source packets for those
+layers instead of the client re-deriving a different approximation.
+
+------------------------------------------------------------------------------
+FOW-CONCEPT-03 - live team vision is not represented by the client-side
+                 fog renderers.
+------------------------------------------------------------------------------
+
+Evidence:
+- SnapshotVisibility builds a recipient view mask from the recipient
+  plus allies, and buildRecipientShroudView() ORs allied shroud history
+  into the keyframe payload.
+- FogOfWarShroudRenderer3D.collectSources() only reads
+  clientViewState.getUnitsByPlayer(localPlayerId) and
+  getBuildingsByPlayer(localPlayerId), then adds server-filtered scan
+  pulses.
+- FogOfWarFog3D.collectSources() has the same local-player-only source
+  collection.
+
+Why it matters:
+The host correctly lets allied vision affect filtering and shroud
+history, but the live visual clear around moving allied units/buildings
+is missing on the client. In team play, the main view can receive allied
+information while the fog presentation still looks like only the local
+seat has eyes.
+
+Fix direction:
+Make live fog presentation consume the same team-merged visibility
+contract as the snapshot filter. Either ship compact team-visible masks
+from the host, or ship a filtered team vision-source packet that includes
+only sources the recipient is allowed to know. Do not infer team vision
+by scanning arbitrary client entities unless that source set is already
+authoritative and recipient-safe.
+
+------------------------------------------------------------------------------
+FOW-CONCEPT-04 - fog visibility ignores force/material sight blockers
+                 even though the design treats material LOS as a shared
+                 contract.
+------------------------------------------------------------------------------
+
+Evidence:
+- design_philosophy.html says surface materials are shape-independent
+  contracts and line-of-sight queries should treat every shape carrying
+  the same material the same way.
+- src/game/sim/combat/lineOfSight.ts has force-field and combat LOS
+  helpers that account for force-field/mirror obstruction in combat
+  targeting.
+- src/game/network/stateSerializerVisibility.ts uses only
+  hasTerrainLineOfSight() for fog-of-war entity visibility.
+- src/game/sim/terrain/terrainLineOfSight.ts explicitly documents that
+  the helper is terrain-only for fog-of-war visibility.
+
+Why it matters:
+If mirror/force-field material is meant to block sight, then fog vision
+is currently a separate, weaker LOS policy than combat targeting. That
+creates a conceptual split: the same material can block a turret's view
+but not the player's fog-of-war visibility.
+
+Fix direction:
+Decide the rule explicitly. If fog vision should ignore force/material
+occlusion, document that exception in the design philosophy and code. If
+it should obey the material contract, route fog visibility through a
+shared LOS policy that includes terrain plus the relevant material
+blockers, with a compact kernel suitable for per-recipient visibility.
+
+------------------------------------------------------------------------------
+FOW-CONCEPT-05 - fog-of-war calculation still lives in TypeScript hot
+                 paths instead of the Rust/WASM engine.
+------------------------------------------------------------------------------
+
+Evidence:
+- design_philosophy.html assigns visibility and fog to the Rust/WASM
+  engine, and explicitly lists pathfinding and fog-of-war calculation
+  among the hot paths TypeScript must not own.
+- SnapshotVisibility in src/game/network/stateSerializerVisibility.ts
+  builds per-recipient source pools and spatial hashes in TypeScript.
+- updateShroudBitmaps() in src/game/sim/shroudBitmap.ts walks unit and
+  building source lists and marks bitmap circles in TypeScript.
+- The active visual fog paths are Three.js/canvas systems in
+  FogOfWarShroudRenderer3D.ts and FogOfWarFog3D.ts.
+
+Why it matters:
+The present shape is acceptable for prototype validation, but it is not
+the end-state architecture described by the philosophy. At 5,000 units,
+recipient-specific visibility, shroud masks, minimap contacts, and
+projectile/audio gates are exactly the kind of repeated numeric work
+that should be batched in WASM and handed to TS as compact results.
+
+Fix direction:
+Create a FOW-specific child of the TS-WASM migration: move source
+classification, team mask merge, visibility masks, shroud bitmap update,
+and recipient query kernels into Rust/WASM over packed entity/source
+slabs. TypeScript should orchestrate snapshot routing and rendering, not
+own the visibility inner loops.

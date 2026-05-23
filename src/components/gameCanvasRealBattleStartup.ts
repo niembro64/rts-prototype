@@ -5,8 +5,15 @@ import {
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
+  loadStoredTerrainRuntimeConfig,
+  type BattleTerrainRuntimeConfig,
 } from '../battleBarConfig';
-import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../game/sim/Terrain';
+import {
+  setTerrainCenterShape,
+  setTerrainDividersShape,
+  setTerrainMapShape,
+  setTerrainRuntimeConfig,
+} from '../game/sim/Terrain';
 import { GameServer } from '../game/server/GameServer';
 import {
   LocalGameConnection,
@@ -23,6 +30,7 @@ export type RealBattleStartupTerrain = {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  terrainRuntimeConfig: BattleTerrainRuntimeConfig;
   mapDimensions: MapLandCellDimensions;
   mapSize: { width: number; height: number };
 };
@@ -41,12 +49,14 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   const terrainCenter = loadStoredTerrainCenter('real');
   const terrainDividers = loadStoredTerrainDividers('real');
   const terrainMapShape = loadStoredTerrainMapShape('real');
+  const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig('real');
   const mapDimensions = loadStoredMapLandDimensions('real');
   const mapSize = getMapSize(
     false,
     mapDimensions.widthLandCells,
     mapDimensions.lengthLandCells,
   );
+  setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterShape(terrainCenter);
   setTerrainDividersShape(terrainDividers);
   setTerrainMapShape(terrainMapShape);
@@ -54,6 +64,7 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
     terrainCenter,
     terrainDividers,
     terrainMapShape,
+    terrainRuntimeConfig,
     mapDimensions,
     mapSize,
   };
@@ -82,6 +93,9 @@ export async function createRealBattleServer({
     terrainCenter: terrain.terrainCenter,
     terrainDividers: terrain.terrainDividers,
     terrainMapShape: terrain.terrainMapShape,
+    terrainPlateauEnabled: terrain.terrainRuntimeConfig.plateauEnabled,
+    terrainShapeMagnitude: terrain.terrainRuntimeConfig.terrainShapeMagnitude,
+    terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
   });

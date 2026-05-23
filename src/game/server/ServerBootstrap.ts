@@ -24,11 +24,13 @@ import { WorldState } from '../sim/WorldState';
 import {
   buildTerrainBuildabilityGrid,
   buildTerrainTileMap,
+  getTerrainRuntimeConfig,
   setAuthoritativeTerrainTileMap,
   setMetalDepositFlatZones,
   setTerrainCenterShape,
   setTerrainDividersShape,
   setTerrainMapShape,
+  setTerrainRuntimeConfig,
   setTerrainTeamCount,
 } from '../sim/Terrain';
 import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
@@ -75,6 +77,15 @@ export class ServerBootstrap {
     // still uses one slice and one divider slice; no map-building math
     // branches on "solo". Set BEFORE WorldState, deposit flattening,
     // and renderer mesh baking so every consumer reads the same surface.
+    const terrainRuntimeConfig = getTerrainRuntimeConfig();
+    setTerrainRuntimeConfig({
+      plateauEnabled:
+        config.terrainPlateauEnabled ?? terrainRuntimeConfig.plateauEnabled,
+      terrainShapeMagnitude:
+        config.terrainShapeMagnitude ?? terrainRuntimeConfig.terrainShapeMagnitude,
+      terrainDTerrain:
+        config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+    });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterShape(config.terrainCenter ?? 'valley');
     setTerrainDividersShape(config.terrainDividers ?? 'valley');

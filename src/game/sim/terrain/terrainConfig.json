@@ -9,7 +9,7 @@
   "terrainTrianglePreserveWaterline": true,
   "terrainTriangleVertexKeyScale": 1000,
   "waterFullyOpaque": true,
-  "terrainShapeMagnitude": 800,
+  "terrainShapeMagnitude": 3200,
   "terrainDTerrain": 200,
   "terrainCirclePerimeterEdgeFraction": 0.49,
   "terrainCirclePerimeterTransitionWidthFraction": 0.1,

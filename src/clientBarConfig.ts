@@ -48,6 +48,7 @@ export const CLIENT_CONFIG = {
   beamSnapToTurret: clientBarConfig.beamSnapToTurret,
   triangleDebug: clientBarConfig.triangleDebug,
   buildGridDebug: clientBarConfig.buildGridDebug,
+  sightBoundary: clientBarConfig.sightBoundary,
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
    *  position from the last-seen velocity each frame); 'pos' skips
    *  integration entirely and snaps straight to snapshot position.
@@ -137,6 +138,7 @@ const SMOKE_TRAILS_STORAGE_KEY = sk.smokeTrails;
 const BEAM_SNAP_TO_TURRET_STORAGE_KEY = sk.beamSnapToTurret;
 const TRIANGLE_DEBUG_STORAGE_KEY = sk.triangleDebug;
 const BUILD_GRID_DEBUG_STORAGE_KEY = sk.buildGridDebug;
+const SIGHT_BOUNDARY_STORAGE_KEY = sk.sightBoundary;
 const MOVEMENT_POS_EMA_STORAGE_KEY = sk.movementPosEma;
 const MOVEMENT_VEL_EMA_STORAGE_KEY = sk.movementVelEma;
 const ROTATION_POS_EMA_STORAGE_KEY = sk.rotationPosEma;
@@ -195,6 +197,7 @@ let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
+let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
 let currentMovementVelEma: DriftChannelMode = _cd.movementVelEma.default;
 let currentRotationPosEma: PositionDriftChannelMode = _cd.rotationPosEma.default;
@@ -295,6 +298,10 @@ function loadFromStorage(): void {
   const storedBuildGridDebug = readPersisted(BUILD_GRID_DEBUG_STORAGE_KEY);
   if (storedBuildGridDebug !== null) {
     currentBuildGridDebug = storedBuildGridDebug === 'true';
+  }
+  const storedSightBoundary = readPersisted(SIGHT_BOUNDARY_STORAGE_KEY);
+  if (storedSightBoundary !== null) {
+    currentSightBoundary = storedSightBoundary === 'true';
   }
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
@@ -579,6 +586,15 @@ export function getBuildGridDebug(): boolean {
 export function setBuildGridDebug(enabled: boolean): void {
   currentBuildGridDebug = enabled;
   persist(BUILD_GRID_DEBUG_STORAGE_KEY, String(enabled));
+}
+
+export function getSightBoundary(): boolean {
+  return currentSightBoundary;
+}
+
+export function setSightBoundary(enabled: boolean): void {
+  currentSightBoundary = enabled;
+  persist(SIGHT_BOUNDARY_STORAGE_KEY, String(enabled));
 }
 
 export function getMovementPosEmaMode(): PositionDriftChannelMode {

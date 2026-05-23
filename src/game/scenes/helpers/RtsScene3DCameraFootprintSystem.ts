@@ -3,11 +3,6 @@ import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from '../../sim/Terrain';
 import type { FootprintBounds, FootprintQuad } from '../../ViewportFootprint';
 
 const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
-const RENDER_SCOPE_PLANE_Y = [
-  TILE_FLOOR_Y,
-  0,
-  TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
-] as const;
 const RENDER_SCOPE_NDC_SAMPLES = [
   [-1,  1], [0,  1], [1,  1],
   [-1,  0], [0,  0], [1,  0],
@@ -80,7 +75,11 @@ export class RtsScene3DCameraFootprintSystem {
     for (const point of baseQuad) include(point);
 
     for (const [ndcX, ndcY] of RENDER_SCOPE_NDC_SAMPLES) {
-      for (const planeY of RENDER_SCOPE_PLANE_Y) {
+      for (const planeY of [
+        TILE_FLOOR_Y,
+        0,
+        TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
+      ] as const) {
         include(this.pointOnHorizontalPlane(camera, ndcX, ndcY, planeY));
       }
     }

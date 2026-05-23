@@ -134,6 +134,45 @@ defineProps<{
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel>PLATEAU:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.plateau.enabled.options"
+            :key="String(opt.value)"
+            :active="model.terrainPlateauEnabled === opt.value"
+            :title="`Turn terrain plateaus ${opt.label.toLowerCase()}`"
+            @click="model.applyTerrainPlateauEnabled(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel>MAGNITUDE:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.terrainShapeMagnitude.options"
+            :key="opt"
+            :active="model.terrainShapeMagnitude === opt"
+            :title="`Set terrain shape magnitude to ${opt}`"
+            @click="model.applyTerrainShapeMagnitude(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel>D-TERRAIN:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.terrainDTerrain.options"
+            :key="opt"
+            :active="model.terrainDTerrain === opt"
+            :title="`Set terrain plateau step to ${opt}`"
+            @click="model.applyTerrainDTerrain(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>

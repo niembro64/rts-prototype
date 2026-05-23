@@ -28,7 +28,10 @@ import {
   loadStoredGrid,
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
+  loadStoredTerrainDTerrain,
   loadStoredTerrainMapShape,
+  loadStoredTerrainPlateauEnabled,
+  loadStoredTerrainShapeMagnitude,
   loadStoredMapLandDimensions,
 } from '../battleBarConfig';
 import type { TerrainMapShape, TerrainShape } from '../types/terrain';
@@ -226,6 +229,9 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 const terrainCenter = ref<TerrainShape>(loadStoredTerrainCenter('demo'));
 const terrainDividers = ref<TerrainShape>(loadStoredTerrainDividers('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
+const terrainPlateauEnabled = ref<boolean>(loadStoredTerrainPlateauEnabled('demo'));
+const terrainShapeMagnitude = ref<number>(loadStoredTerrainShapeMagnitude('demo'));
+const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
@@ -239,6 +245,7 @@ const {
   beamSnapToTurret,
   triangleDebug,
   buildGridDebug,
+  sightBoundary,
   movementPosEma,
   movementVelEma,
   rotationPosEma,
@@ -282,6 +289,7 @@ const {
   toggleBeamSnapToTurret,
   toggleTriangleDebug,
   toggleBuildGridDebug,
+  toggleSightBoundary,
   changeMovementPosEma,
   changeMovementVelEma,
   changeRotationPosEma,
@@ -363,6 +371,9 @@ useGameCanvasLobbyPreview({
   terrainCenter,
   terrainDividers,
   terrainMapShape,
+  terrainPlateauEnabled,
+  terrainShapeMagnitude,
+  terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -481,6 +492,9 @@ const {
   broadcastLobbySettingsIfHost,
   applyTerrainShape,
   applyTerrainMapShape,
+  applyTerrainPlateauEnabled,
+  applyTerrainShapeMagnitude,
+  applyTerrainDTerrain,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
   resetTerrainDefaults,
@@ -493,6 +507,9 @@ const {
   terrainCenter,
   terrainDividers,
   terrainMapShape,
+  terrainPlateauEnabled,
+  terrainShapeMagnitude,
+  terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -655,6 +672,9 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   terrainCenter: terrainCenter.value,
   terrainDividers: terrainDividers.value,
   terrainMapShape: terrainMapShape.value,
+  terrainPlateauEnabled: terrainPlateauEnabled.value,
+  terrainShapeMagnitude: terrainShapeMagnitude.value,
+  terrainDTerrain: terrainDTerrain.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
@@ -665,6 +685,9 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyMapLandDimensions,
   applyTerrainShape,
   applyTerrainMapShape,
+  applyTerrainPlateauEnabled,
+  applyTerrainShapeMagnitude,
+  applyTerrainDTerrain,
   setForceFieldsObstructSight,
   setFogOfWarEnabled,
 });
@@ -686,6 +709,9 @@ watchEffect(() => {
   m.terrainCenter = terrainCenter.value;
   m.terrainDividers = terrainDividers.value;
   m.terrainMapShape = terrainMapShape.value;
+  m.terrainPlateauEnabled = terrainPlateauEnabled.value;
+  m.terrainShapeMagnitude = terrainShapeMagnitude.value;
+  m.terrainDTerrain = terrainDTerrain.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
@@ -786,6 +812,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   showServerControls: showServerControls.value,
   triangleDebug: triangleDebug.value,
   buildGridDebug: buildGridDebug.value,
+  sightBoundary: sightBoundary.value,
   renderMode: renderMode.value,
   audioScope: audioScope.value,
   allSoundsActive: allSoundsActive.value,
@@ -821,6 +848,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleEdgeScroll,
   toggleTriangleDebug,
   toggleBuildGridDebug,
+  toggleSightBoundary,
   changeRenderMode,
   changeAudioScope,
   toggleAllSounds,
@@ -889,6 +917,7 @@ watchEffect(() => {
   m.showServerControls = showServerControls.value;
   m.triangleDebug = triangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
+  m.sightBoundary = sightBoundary.value;
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
   m.allSoundsActive = allSoundsActive.value;
@@ -1043,6 +1072,9 @@ watchEffect(() => {
       :terrain-center="terrainCenter"
       :terrain-dividers="terrainDividers"
       :terrain-map-shape="terrainMapShape"
+      :terrain-plateau-enabled="terrainPlateauEnabled"
+      :terrain-shape-magnitude="terrainShapeMagnitude"
+      :terrain-d-terrain="terrainDTerrain"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
       :unit-types="demoUnitTypes"
@@ -1060,6 +1092,9 @@ watchEffect(() => {
       @set-terrain-center="(s) => applyTerrainShape('center', s)"
       @set-terrain-dividers="(s) => applyTerrainShape('dividers', s)"
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
+      @set-terrain-plateau-enabled="(e) => applyTerrainPlateauEnabled(e)"
+      @set-terrain-shape-magnitude="(v) => applyTerrainShapeMagnitude(v)"
+      @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"
       @toggle-all-units="toggleAllDemoUnits"

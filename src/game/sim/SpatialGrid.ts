@@ -35,7 +35,6 @@ import {
 
 // Default Z band for ground-plane queries.
 const DEFAULT_CIRCLE_Z_MIN = TILE_FLOOR_Y;
-const DEFAULT_CIRCLE_Z_MAX = TERRAIN_MAX_RENDER_Y;
 
 export class SpatialGrid {
   private cellSize: number;
@@ -346,7 +345,7 @@ export class SpatialGrid {
   queryEnemyEntitiesInCircle2D(
     x: number, y: number, radius: number, excludePlayerId: PlayerId,
     zMin: number = DEFAULT_CIRCLE_Z_MIN - this.cellSize,
-    zMax: number = DEFAULT_CIRCLE_Z_MAX + this.cellSize * 2,
+    zMax: number = TERRAIN_MAX_RENDER_Y + this.cellSize * 2,
   ): Entity[] {
     const total = this.api().queryEnemyEntitiesInCircle2D(x, y, radius, excludePlayerId, zMin, zMax);
     const slots = this.readScratch(total);

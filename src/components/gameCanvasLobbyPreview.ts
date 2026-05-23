@@ -1,9 +1,12 @@
 import { computed, nextTick, watch, type ComputedRef, type Ref } from 'vue';
 import {
   loadStoredMapLandDimensions,
+  loadStoredTerrainDTerrain,
+  loadStoredTerrainPlateauEnabled,
   loadStoredTerrainCenter,
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
+  loadStoredTerrainShapeMagnitude,
   type BattleMode,
 } from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
@@ -21,6 +24,9 @@ export type GameCanvasLobbyPreviewOptions = {
   terrainCenter: Ref<TerrainShape>;
   terrainDividers: Ref<TerrainShape>;
   terrainMapShape: Ref<TerrainMapShape>;
+  terrainPlateauEnabled: Ref<boolean>;
+  terrainShapeMagnitude: Ref<number>;
+  terrainDTerrain: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -39,6 +45,9 @@ export function useGameCanvasLobbyPreview({
   terrainCenter,
   terrainDividers,
   terrainMapShape,
+  terrainPlateauEnabled,
+  terrainShapeMagnitude,
+  terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -59,6 +68,9 @@ export function useGameCanvasLobbyPreview({
     terrainCenter.value = loadStoredTerrainCenter(mode);
     terrainDividers.value = loadStoredTerrainDividers(mode);
     terrainMapShape.value = loadStoredTerrainMapShape(mode);
+    terrainPlateauEnabled.value = loadStoredTerrainPlateauEnabled(mode);
+    terrainShapeMagnitude.value = loadStoredTerrainShapeMagnitude(mode);
+    terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;
     mapLengthLandCells.value = mapDimensions.lengthLandCells;

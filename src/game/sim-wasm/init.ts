@@ -48,6 +48,8 @@ import __wbg_init, {
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_has_line_of_sight,
+  fog_mark_circle_scanline,
+  fog_mark_circle_scanline_rgba,
   combat_has_line_of_sight,
   spatial_init,
   spatial_clear,
@@ -614,6 +616,29 @@ export interface SimWasm {
     sx: number, sy: number, sz: number,
     tx: number, ty: number, tz: number,
     stepLen: number,
+  ) => number;
+  /** FOW-OPT-WASM — shared scanline circle fill for server shroud
+   *  bitmaps and client reveal alpha maps. Returns 1 if any byte flipped
+   *  0 -> 1. TypeScript keeps only orchestration/fallback. */
+  readonly fogMarkCircleScanline: (
+    bitmap: Uint8Array,
+    gridW: number,
+    gridH: number,
+    cx: number,
+    cy: number,
+    radius: number,
+    cellAnchor: number,
+  ) => number;
+  readonly fogMarkCircleScanlineRgba: (
+    bitmap: Uint8Array,
+    rgba: Uint8Array,
+    gridW: number,
+    gridH: number,
+    cx: number,
+    cy: number,
+    radius: number,
+    cellAnchor: number,
+    rgbValue: number,
   ) => number;
   /** AIM-08.LOS — one-kernel combat sightline gate. Returns 1 when
    *  terrain plus live unit/building blockers all clear, 0 when any
@@ -2464,6 +2489,8 @@ export function initSimWasm(): Promise<SimWasm> {
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainHasLineOfSight: terrain_has_line_of_sight,
+        fogMarkCircleScanline: fog_mark_circle_scanline,
+        fogMarkCircleScanlineRgba: fog_mark_circle_scanline_rgba,
         combatHasLineOfSight: combat_has_line_of_sight,
         memory,
         pathfinder: {

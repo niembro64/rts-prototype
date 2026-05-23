@@ -36,6 +36,9 @@ export type GameCanvasBattleControlBarModel = {
   readonly terrainCenter: TerrainShape;
   readonly terrainDividers: TerrainShape;
   readonly terrainMapShape: TerrainMapShape;
+  readonly terrainPlateauEnabled: boolean;
+  readonly terrainShapeMagnitude: number;
+  readonly terrainDTerrain: number;
   readonly displayUnitCount: number;
   readonly currentForceFieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
@@ -46,6 +49,9 @@ export type GameCanvasBattleControlBarModel = {
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyTerrainShape(kind: 'center' | 'dividers', shape: TerrainShape): void;
   applyTerrainMapShape(shape: TerrainMapShape): void;
+  applyTerrainPlateauEnabled(enabled: boolean): void;
+  applyTerrainShapeMagnitude(value: number): void;
+  applyTerrainDTerrain(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
 };
@@ -121,6 +127,7 @@ export type GameCanvasClientControlBarModel = {
   readonly showServerControls: boolean;
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
+  readonly sightBoundary: boolean;
   readonly renderMode: RenderMode;
   readonly audioScope: AudioScope;
   readonly allSoundsActive: boolean;
@@ -156,6 +163,7 @@ export type GameCanvasClientControlBarModel = {
   toggleEdgeScroll(): void;
   toggleTriangleDebug(): void;
   toggleBuildGridDebug(): void;
+  toggleSightBoundary(): void;
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
   toggleAllSounds(): void;

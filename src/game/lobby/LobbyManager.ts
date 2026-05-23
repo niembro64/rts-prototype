@@ -14,10 +14,16 @@ import {
   loadStoredTerrainDividers,
   loadStoredTerrainMapShape,
   loadStoredMapLandDimensions,
+  loadStoredTerrainRuntimeConfig,
   getDefaultDemoUnits,
   type BattleMode,
 } from '../../battleBarConfig';
-import { setTerrainCenterShape, setTerrainDividersShape, setTerrainMapShape } from '../sim/Terrain';
+import {
+  setTerrainCenterShape,
+  setTerrainDividersShape,
+  setTerrainMapShape,
+  setTerrainRuntimeConfig,
+} from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
 import type { GameInstance } from '@/types/game';
 import { applyStoredBattleServerSettings } from '../server/battleServerSettings';
@@ -89,12 +95,14 @@ export async function createBackgroundBattle(
   const terrainCenter = loadStoredTerrainCenter(mode);
   const terrainDividers = loadStoredTerrainDividers(mode);
   const terrainMapShape = loadStoredTerrainMapShape(mode);
+  const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig(mode);
   const mapDimensions = loadStoredMapLandDimensions(mode);
   const mapSize = getMapSize(
     true,
     mapDimensions.widthLandCells,
     mapDimensions.lengthLandCells,
   );
+  setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterShape(terrainCenter);
   setTerrainDividersShape(terrainDividers);
   setTerrainMapShape(terrainMapShape);
@@ -138,6 +146,9 @@ export async function createBackgroundBattle(
     terrainCenter,
     terrainDividers,
     terrainMapShape,
+    terrainPlateauEnabled: terrainRuntimeConfig.plateauEnabled,
+    terrainShapeMagnitude: terrainRuntimeConfig.terrainShapeMagnitude,
+    terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: mapDimensions.widthLandCells,
     mapLengthLandCells: mapDimensions.lengthLandCells,
     backgroundMode: true,

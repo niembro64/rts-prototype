@@ -105,6 +105,9 @@ export type GameServerConfig = {
   /** DIVIDERS terrain shape selected by the host/lobby. */
   terrainDividers?: TerrainShape;
   terrainMapShape?: TerrainMapShape;
+  terrainPlateauEnabled?: boolean;
+  terrainShapeMagnitude?: number;
+  terrainDTerrain?: number;
   /** Map width in canonical LAND_CELL_SIZE cells. */
   mapWidthLandCells?: number;
   /** Map length/height in canonical LAND_CELL_SIZE cells. */

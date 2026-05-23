@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
-  canEntityProvideFullVision,
-  getEntityFullVisionRadius,
+  canEntityProvideVision,
+  getEntityVisionRadius,
 } from '../network/stateSerializerVisibility';
 import type { Entity, PlayerId } from '../sim/types';
 import { DEMO_CONFIG } from '@/demoConfig';
@@ -152,8 +152,9 @@ export class FogOfWarFog3D {
     }
 
     const dtSec = Math.max(0, dtMs / 1000);
-    this.advancePool(dtSec);
     this.collectSources(clientViewState, localPlayerId);
+    this.fadeVisibleFog();
+    this.advancePool(dtSec);
     this.spawnTowardDensity(dtSec);
     this.flushPool();
   }
@@ -251,11 +252,11 @@ export class FogOfWarFog3D {
   private collectFromOwned(entities: readonly Entity[]): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!canEntityProvideFullVision(entity)) continue;
+      if (!canEntityProvideVision(entity)) continue;
       this.sources.push({
         x: entity.transform.x,
         y: entity.transform.y,
-        radius: getEntityFullVisionRadius(entity),
+        radius: getEntityVisionRadius(entity),
       });
     }
   }
@@ -307,6 +308,22 @@ export class FogOfWarFog3D {
       if (this.spawnFog(x, y)) emitted++;
     }
     this.spawnCredit = Math.max(0, this.spawnCredit - emitted);
+  }
+
+  private fadeVisibleFog(): void {
+    const fadeOutSec = Math.max(0, this.profile.fadeOutMs / 1000);
+    const active = this.pool.active;
+    for (let i = 0; i < active.length; i++) {
+      const fog = active[i];
+      if (!this.isInVision(fog.threeX, fog.threeZ)) continue;
+      if (fadeOutSec <= 0) {
+        fog.timeLeft = 0;
+        fog.durationSec = fog.age;
+        continue;
+      }
+      fog.timeLeft = Math.max(0.001, Math.min(fog.timeLeft, fadeOutSec));
+      fog.durationSec = Math.min(fog.durationSec, fog.age + fog.timeLeft);
+    }
   }
 
   private spawnFog(x: number, y: number): boolean {

@@ -253,6 +253,9 @@ export type LobbySettings = {
   terrainCenter: TerrainShape;
   terrainDividers: TerrainShape;
   terrainMapShape: TerrainMapShape;
+  terrainPlateauEnabled?: boolean;
+  terrainShapeMagnitude?: number;
+  terrainDTerrain?: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   fogOfWarEnabled?: boolean;

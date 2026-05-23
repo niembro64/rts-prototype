@@ -22,6 +22,7 @@
   "beamSnapToTurret": { "default": true },
   "triangleDebug": { "default": false },
   "buildGridDebug": { "default": false },
+  "sightBoundary": { "default": false },
   "predictionMode": {
     "default": "vel",
     "options": [
@@ -139,6 +140,7 @@
     "beamSnapToTurret": "player-client-beam-snap-to-turret",
     "triangleDebug": "player-client-triangle-debug",
     "buildGridDebug": "player-client-build-grid-debug",
+    "sightBoundary": "player-client-sight-boundary",
     "movementPosEma": "player-client-movement-pos-ema",
     "movementVelEma": "player-client-movement-vel-ema",
     "rotationPosEma": "player-client-rotation-pos-ema",

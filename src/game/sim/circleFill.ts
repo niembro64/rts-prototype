@@ -16,6 +16,8 @@
 // only the offset between cell index and the point we test against
 // the circle differs.
 
+import { getSimWasm } from '../sim-wasm/init';
+
 /** Mark all cells inside the circle (cx, cy) of radius r on a
  *  row-major byte-per-cell bitmap. Returns true iff any cell flipped
  *  0→1 — callers tracking version counters / dirty flags can use this
@@ -46,6 +48,31 @@ export function markCircleScanline(
   rgbBuffer?: Uint8ClampedArray,
   rgbValue?: number,
 ): boolean {
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    const modified = rgbBuffer === undefined
+      ? sim.fogMarkCircleScanline(
+        bitmap,
+        gridW,
+        gridH,
+        cx,
+        cy,
+        r,
+        cellAnchor,
+      )
+      : sim.fogMarkCircleScanlineRgba(
+        bitmap,
+        rgbBuffer as unknown as Uint8Array,
+        gridW,
+        gridH,
+        cx,
+        cy,
+        r,
+        cellAnchor,
+        rgbValue ?? 0,
+      );
+    return modified !== 0;
+  }
   if (r <= 0) return false;
   const r2 = r * r;
   const minY = Math.max(0, Math.floor(cy - r));
