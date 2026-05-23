@@ -302,6 +302,7 @@ import __wbg_init, {
   messagepack_writer_ptr,
   messagepack_writer_len,
   arrival_control_step_batch,
+  unit_ground_normal_step_batch,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -473,6 +474,23 @@ export interface SimWasm {
     controlRadiusMin: number,
     responseTimeSec: number,
     minAccel: number,
+  ) => number;
+  /** TS-WASM-01B — batched per-unit ground-normal EMA. TypeScript
+   *  supplies stored and raw terrain normals; Rust blends, normalizes,
+   *  and reports which rows crossed the dirty threshold. */
+  readonly unitGroundNormalStepBatch: (
+    storedX: Float64Array,
+    storedY: Float64Array,
+    storedZ: Float64Array,
+    rawX: Float64Array,
+    rawY: Float64Array,
+    rawZ: Float64Array,
+    outX: Float64Array,
+    outY: Float64Array,
+    outZ: Float64Array,
+    outDirty: Uint8Array,
+    alpha: number,
+    dirtyEpsilon: number,
   ) => number;
   /** Phase 4 + 3e — batched hover orientation kernel. UnitForceSystem
    *  builds a per-tick scratch with one entry per hover entity:
@@ -2496,6 +2514,7 @@ export function initSimWasm(): Promise<SimWasm> {
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
         arrivalControlStepBatch: arrival_control_step_batch,
+        unitGroundNormalStepBatch: unit_ground_normal_step_batch,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,

@@ -30,8 +30,9 @@ Evidence:
 - src/game/sim/Simulation.ts (1,657 LOC) is still the top-level tick
   driver. Although most heavy kernels delegate to WASM, several
   per-unit loops are TypeScript:
-    - updateUnitGroundNormal (src/game/sim/unitGroundNormal.ts) —
-      per-unit ground-normal EMA, called every tick.
+    - updateUnitGroundNormal (src/game/sim/unitGroundNormal.ts) now
+      batches the EMA math through Rust, but raw-normal collection,
+      JS-object storage, and dirty scatter still loop per unit.
     - UnitSuspensionSystem.update (src/game/sim/unitSuspension.ts) —
       per-unit suspension spring integration, called every tick.
     - UnitForceSystem.applyForces (src/game/server/UnitForceSystem.ts)
@@ -62,29 +63,31 @@ At 5,000 active units, an N-per-tick TS loop is exactly the scaling
 shape the design rules out.
 
 Fix direction:
-Do child items as separate, measurable PRs. Continue with the
-ground-normal EMA and spring loops, using the arrival-control batch
-pattern where it fits.
+Do child items as separate, measurable PRs. Continue with the spring
+loop and remaining JS gather/scatter paths, using the arrival-control
+and ground-normal batch patterns where they fit.
 
 ------------------------------------------------------------------------------
-TS-WASM-01B - child: move updateUnitGroundNormal EMA into Rust.
+TS-WASM-01B2 - child: move unit ground-normal storage/source
+               collection fully into WASM.
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/game/sim/unitGroundNormal.ts iterates over every unit each tick
-  and EMA-blends a smoothed surface normal. It is called every tick
-  from Simulation.update().
+- The 2026-05-23 `unit_ground_normal_step_batch` move puts the EMA
+  blend and renormalization in Rust, but src/game/sim/unitGroundNormal.ts
+  still loops over every unit to collect raw cached terrain normals,
+  copy JS `unit.surfaceNormal` into scratch arrays, scatter the result
+  back to JS objects, and mark dirty entities.
 - The same normal feeds both server-side chassis tilt and renderer
-  ground clamping, so the normal is read on every visual frame too.
-  Moving the EMA into WASM keeps a single source of truth for the
-  surface normal and removes a per-unit JS loop.
+  ground clamping, so keeping the smoothed state as JS object fields
+  forces JS-side reads/writes even after the numeric EMA kernel moved.
 
 Fix direction:
-Add a Rust kernel that EMA-blends the per-unit ground normal against
-the smoothed terrain sample. Expose the smoothed values via the same
-typed-array pointer mechanism the other pools use. Delete the TS
-implementation; the renderer reads the smoothed normal through the
-existing accessor.
+Move the smoothed normal fields into a WASM-owned SoA keyed by the
+existing unit/body slot, let Rust sample the installed terrain mesh for
+raw normals, and expose typed-array views for consumers that still need
+TS access. Delete the JS scratch pack/scatter path once readers use the
+WASM-backed source.
 
 ------------------------------------------------------------------------------
 TS-WASM-01C - child: move UnitSuspensionSystem per-unit spring into

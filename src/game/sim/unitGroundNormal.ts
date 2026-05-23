@@ -23,8 +23,8 @@
 // payload ships the smoothed value (Phase 2).
 
 import type { WorldState } from './WorldState';
-import { magnitude3 } from '../math';
 import { halfLifeBlend } from '../network/driftEma';
+import { getSimWasm } from '../sim-wasm/init';
 import {
   UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC,
   UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT,
@@ -34,6 +34,32 @@ import { ENTITY_CHANGED_NORMAL } from '../../types/network';
 
 let _activeMode: UnitGroundNormalEmaMode = UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT;
 const SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
+let _normalEntities: number[] = [];
+let _normalStoredX = new Float64Array(0);
+let _normalStoredY = new Float64Array(0);
+let _normalStoredZ = new Float64Array(0);
+let _normalRawX = new Float64Array(0);
+let _normalRawY = new Float64Array(0);
+let _normalRawZ = new Float64Array(0);
+let _normalOutX = new Float64Array(0);
+let _normalOutY = new Float64Array(0);
+let _normalOutZ = new Float64Array(0);
+let _normalDirty = new Uint8Array(0);
+
+function ensureNormalCapacity(required: number): void {
+  if (_normalStoredX.length >= required) return;
+  const next = Math.max(required, _normalStoredX.length * 2, 128);
+  _normalStoredX = new Float64Array(next);
+  _normalStoredY = new Float64Array(next);
+  _normalStoredZ = new Float64Array(next);
+  _normalRawX = new Float64Array(next);
+  _normalRawY = new Float64Array(next);
+  _normalRawZ = new Float64Array(next);
+  _normalOutX = new Float64Array(next);
+  _normalOutY = new Float64Array(next);
+  _normalOutZ = new Float64Array(next);
+  _normalDirty = new Uint8Array(next);
+}
 
 /** Set the active unit ground normal EMA mode. Wired to the HOST SERVER bar in
  *  Phase 3; until then this is a programmatic knob. */
@@ -57,66 +83,62 @@ export function updateUnitGroundNormal(world: WorldState, dtMs: number): void {
   const halfLife = getUnitGroundNormalEmaHalfLife();
   const dtSec = dtMs / 1000;
   const alpha = halfLifeBlend(dtSec, halfLife);
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('updateUnitGroundNormal: sim-wasm is not initialized');
+  }
 
-  for (const entity of world.getUnits()) {
+  const units = world.getUnits();
+  ensureNormalCapacity(units.length);
+  let count = 0;
+  for (let i = 0; i < units.length; i++) {
+    const entity = units[i];
     const u = entity.unit;
     if (!u) continue;
     const raw = world.getCachedSurfaceNormal(entity.transform.x, entity.transform.y);
     const stored = u.surfaceNormal;
-    const beforeNx = stored.nx;
-    const beforeNy = stored.ny;
-    const beforeNz = stored.nz;
-
-    if (alpha >= 1) {
-      // SNAP mode (or first-tick on a fresh unit if alpha resolves to 1
-      // via halfLife=0). Just copy — no need to renormalize, raw is
-      // already unit length.
-      stored.nx = raw.nx;
-      stored.ny = raw.ny;
-      stored.nz = raw.nz;
-      markSurfaceNormalDirtyIfChanged(world, entity.id, stored, beforeNx, beforeNy, beforeNz);
-      continue;
-    }
-
-    // Linear blend in 3-space then renormalize. Lerping unit vectors
-    // produces a sub-unit vector for non-collinear inputs; renormalize
-    // so downstream consumers (quaternion math, slope-tilt mount math)
-    // still get a unit normal.
-    const nx = stored.nx + (raw.nx - stored.nx) * alpha;
-    const ny = stored.ny + (raw.ny - stored.ny) * alpha;
-    const nz = stored.nz + (raw.nz - stored.nz) * alpha;
-    const len = magnitude3(nx, ny, nz);
-    if (len > 1e-6) {
-      const inv = 1 / len;
-      stored.nx = nx * inv;
-      stored.ny = ny * inv;
-      stored.nz = nz * inv;
-    } else {
-      // Degenerate (anti-parallel inputs around the half-blend point —
-      // shouldn't happen in practice for slope normals, but if it does,
-      // snap to raw rather than zero out). Defensive only.
-      stored.nx = raw.nx;
-      stored.ny = raw.ny;
-      stored.nz = raw.nz;
-    }
-    markSurfaceNormalDirtyIfChanged(world, entity.id, stored, beforeNx, beforeNy, beforeNz);
+    _normalEntities[count] = entity.id;
+    _normalStoredX[count] = stored.nx;
+    _normalStoredY[count] = stored.ny;
+    _normalStoredZ[count] = stored.nz;
+    _normalRawX[count] = raw.nx;
+    _normalRawY[count] = raw.ny;
+    _normalRawZ[count] = raw.nz;
+    count++;
   }
-}
-
-function markSurfaceNormalDirtyIfChanged(
-  world: WorldState,
-  entityId: number,
-  normal: { nx: number; ny: number; nz: number },
-  beforeNx: number,
-  beforeNy: number,
-  beforeNz: number,
-): void {
-  if (
-    Math.abs(normal.nx - beforeNx) <= SURFACE_NORMAL_DIRTY_EPSILON &&
-    Math.abs(normal.ny - beforeNy) <= SURFACE_NORMAL_DIRTY_EPSILON &&
-    Math.abs(normal.nz - beforeNz) <= SURFACE_NORMAL_DIRTY_EPSILON
-  ) {
+  if (count === 0) {
+    _normalEntities.length = 0;
     return;
   }
-  world.markSnapshotDirty(entityId, ENTITY_CHANGED_NORMAL);
+
+  sim.unitGroundNormalStepBatch(
+    _normalStoredX.subarray(0, count),
+    _normalStoredY.subarray(0, count),
+    _normalStoredZ.subarray(0, count),
+    _normalRawX.subarray(0, count),
+    _normalRawY.subarray(0, count),
+    _normalRawZ.subarray(0, count),
+    _normalOutX.subarray(0, count),
+    _normalOutY.subarray(0, count),
+    _normalOutZ.subarray(0, count),
+    _normalDirty.subarray(0, count),
+    alpha,
+    SURFACE_NORMAL_DIRTY_EPSILON,
+  );
+
+  for (let i = 0; i < count; i++) {
+    const entityId = _normalEntities[i];
+    const entity = world.getEntity(entityId);
+    const unit = entity !== undefined ? entity.unit : undefined;
+    if (unit !== undefined) {
+      const stored = unit.surfaceNormal;
+      stored.nx = _normalOutX[i];
+      stored.ny = _normalOutY[i];
+      stored.nz = _normalOutZ[i];
+      if (_normalDirty[i] !== 0) {
+        world.markSnapshotDirty(entityId, ENTITY_CHANGED_NORMAL);
+      }
+    }
+  }
+  _normalEntities.length = 0;
 }

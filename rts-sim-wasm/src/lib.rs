@@ -674,6 +674,80 @@ pub fn arrival_control_step_batch(
     active_count
 }
 
+#[inline]
+fn compute_unit_ground_normal_step(
+    stored_x: f64,
+    stored_y: f64,
+    stored_z: f64,
+    raw_x: f64,
+    raw_y: f64,
+    raw_z: f64,
+    alpha: f64,
+) -> (f64, f64, f64) {
+    if alpha >= 1.0 {
+        return (raw_x, raw_y, raw_z);
+    }
+
+    let nx = stored_x + (raw_x - stored_x) * alpha;
+    let ny = stored_y + (raw_y - stored_y) * alpha;
+    let nz = stored_z + (raw_z - stored_z) * alpha;
+    let len = (nx * nx + ny * ny + nz * nz).sqrt();
+    if len > 1e-6 {
+        let inv = 1.0 / len;
+        (nx * inv, ny * inv, nz * inv)
+    } else {
+        (raw_x, raw_y, raw_z)
+    }
+}
+
+#[wasm_bindgen]
+pub fn unit_ground_normal_step_batch(
+    stored_x: &[f64],
+    stored_y: &[f64],
+    stored_z: &[f64],
+    raw_x: &[f64],
+    raw_y: &[f64],
+    raw_z: &[f64],
+    out_x: &mut [f64],
+    out_y: &mut [f64],
+    out_z: &mut [f64],
+    out_dirty: &mut [u8],
+    alpha: f64,
+    dirty_epsilon: f64,
+) -> u32 {
+    let count = stored_x.len();
+    debug_assert!(stored_y.len() >= count);
+    debug_assert!(stored_z.len() >= count);
+    debug_assert!(raw_x.len() >= count);
+    debug_assert!(raw_y.len() >= count);
+    debug_assert!(raw_z.len() >= count);
+    debug_assert!(out_x.len() >= count);
+    debug_assert!(out_y.len() >= count);
+    debug_assert!(out_z.len() >= count);
+    debug_assert!(out_dirty.len() >= count);
+
+    let mut dirty_count = 0_u32;
+    for i in 0..count {
+        let before_x = stored_x[i];
+        let before_y = stored_y[i];
+        let before_z = stored_z[i];
+        let (nx, ny, nz) = compute_unit_ground_normal_step(
+            before_x, before_y, before_z, raw_x[i], raw_y[i], raw_z[i], alpha,
+        );
+        out_x[i] = nx;
+        out_y[i] = ny;
+        out_z[i] = nz;
+        let dirty = (nx - before_x).abs() > dirty_epsilon
+            || (ny - before_y).abs() > dirty_epsilon
+            || (nz - before_z).abs() > dirty_epsilon;
+        out_dirty[i] = if dirty { 1 } else { 0 };
+        if dirty {
+            dirty_count += 1;
+        }
+    }
+    dirty_count
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Phase 3d-2 — Pool-backed integrate + sphere-sphere kernels
 //
@@ -17311,7 +17385,7 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
 }
 
 #[cfg(test)]
-mod arrival_control_tests {
+mod sim_kernel_tests {
     use super::*;
 
     #[test]
@@ -17364,6 +17438,21 @@ mod arrival_control_tests {
         assert_eq!(active, 1);
         assert!(x < 0.0, "arrival should thrust opposite overshoot velocity");
         assert!(y.abs() < 1e-12);
+    }
+
+    #[test]
+    fn ground_normal_step_blends_and_renormalizes() {
+        let (nx, ny, nz) = compute_unit_ground_normal_step(0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.5);
+        let inv_sqrt_2 = 1.0 / 2.0_f64.sqrt();
+        assert!((nx - inv_sqrt_2).abs() < 1e-12);
+        assert!(ny.abs() < 1e-12);
+        assert!((nz - inv_sqrt_2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn ground_normal_step_snaps_at_full_alpha() {
+        let (nx, ny, nz) = compute_unit_ground_normal_step(0.0, 0.0, 1.0, 0.25, 0.5, 0.75, 1.0);
+        assert_eq!((nx, ny, nz), (0.25, 0.5, 0.75));
     }
 }
 
