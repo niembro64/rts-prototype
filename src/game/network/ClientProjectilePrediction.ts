@@ -52,6 +52,9 @@ const _clientHomingAimPoint = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _clientProjectilePositionScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectileVelocityScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectileSnapshotPosScratch = { x: 0, y: 0, z: 0 };
+const _clientProjectileSnapshotVelScratch = { x: 0, y: 0, z: 0 };
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -74,16 +77,21 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   return (shot.homingThrust ?? 0) / mass;
 }
 
-/** Resolve the homing thrust acceleration the client predicts this
- *  tick. Homing projectiles only steer toward their inherited target;
- *  if that target is missing or dead, guidance stops. */
+/** Resolve the homing thrust acceleration the client predicts for a
+ *  rocket given its current position and velocity. Used for both the
+ *  live dead-reckon path (passing the entity's current state) and the
+ *  snapshot-target advance (passing the snapshot's state) so both
+ *  evolve under the same gravity + counter-thrust vector. Homing
+ *  projectiles only steer toward their inherited target; if that
+ *  target is missing or dead, guidance stops. */
 function resolveClientHomingThrust(options: {
   entity: Entity;
   dt: number;
   position: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
   getEntity: (id: EntityId) => Entity | undefined;
 }): { x: number; y: number; z: number } | null {
-  const { entity, dt, position, getEntity } = options;
+  const { entity, dt, position, velocity, getEntity } = options;
   const proj = entity.projectile;
   if (!proj || proj.homingTurnRate === undefined) return null;
   const shot = proj.config.shot as ProjectileShot;
@@ -126,12 +134,14 @@ function resolveClientHomingThrust(options: {
     targetAcceleration.x * targetAcceleration.x +
     targetAcceleration.y * targetAcceleration.y +
     targetAcceleration.z * targetAcceleration.z;
-  const projectileSpeed = magnitude3(proj.velocityX, proj.velocityY, proj.velocityZ);
+  const projectileSpeed = magnitude3(velocity.x, velocity.y, velocity.z);
   if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
     _clientHomingOriginState.position.x = position.x;
     _clientHomingOriginState.position.y = position.y;
     _clientHomingOriginState.position.z = position.z;
-    getEntityVelocity3d(entity, _clientHomingOriginState.velocity);
+    _clientHomingOriginState.velocity.x = velocity.x;
+    _clientHomingOriginState.velocity.y = velocity.y;
+    _clientHomingOriginState.velocity.z = velocity.z;
     getEntityAcceleration3d(entity, _clientHomingOriginState.acceleration);
     _clientHomingTargetState.position.x = steerX;
     _clientHomingTargetState.position.y = steerY;
@@ -165,7 +175,7 @@ function resolveClientHomingThrust(options: {
   }
 
   const thrust = computeHomingThrust(
-    proj.velocityX, proj.velocityY, proj.velocityZ,
+    velocity.x, velocity.y, velocity.z,
     steerX, steerY, steerZ,
     position.x, position.y, position.z,
     proj.homingTurnRate ?? 0,
@@ -216,16 +226,21 @@ export function applyClientProjectilePrediction(options: {
   // Projectiles have no per-tick snapshot positions to snap to (only
   // spawn / despawn events), so position integration always runs.
   // All projectiles apply gravity while drifting sparse server targets.
-  // Homing and D-gun terrain-follow thrust counter it when available.
+  // Homing and D-gun terrain-follow thrust counter it when available —
+  // the same acceleration vector the live dead-reckon path below uses,
+  // so the snapshot target evolves the way the server's authoritative
+  // rocket actually evolves between snapshots instead of sagging
+  // ballistically while the live entity counter-thrusts.
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
   if (target) {
-    target.x += target.velocityX * targetDt;
-    target.y += target.velocityY * targetDt;
+    let targetAccX = 0;
+    let targetAccY = 0;
+    let targetAccZ = -projectileGravity;
     if (isDGunWave) {
       const terrainTargetZ =
         getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
       const shot = proj.config.shot as ProjectileShot;
-      const thrustZ = computeTerrainFollowVerticalThrustAccel({
+      targetAccZ += computeTerrainFollowVerticalThrustAccel({
         positionZ: target.z,
         velocityZ: target.velocityZ,
         targetZ: terrainTargetZ,
@@ -235,13 +250,32 @@ export function applyClientProjectilePrediction(options: {
         dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
         maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
       });
-      const targetNetZ = -projectileGravity + thrustZ;
-      target.z = integrateConstantAccelerationPosition(target.z, target.velocityZ, targetNetZ, targetDt);
-      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, targetNetZ, targetDt);
     } else {
-      target.z = integrateConstantAccelerationPosition(target.z, target.velocityZ, -projectileGravity, targetDt);
-      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, -projectileGravity, targetDt);
+      _clientProjectileSnapshotPosScratch.x = target.x;
+      _clientProjectileSnapshotPosScratch.y = target.y;
+      _clientProjectileSnapshotPosScratch.z = target.z;
+      _clientProjectileSnapshotVelScratch.x = target.velocityX;
+      _clientProjectileSnapshotVelScratch.y = target.velocityY;
+      _clientProjectileSnapshotVelScratch.z = target.velocityZ;
+      const thrust = resolveClientHomingThrust({
+        entity,
+        dt: targetDt,
+        position: _clientProjectileSnapshotPosScratch,
+        velocity: _clientProjectileSnapshotVelScratch,
+        getEntity,
+      });
+      if (thrust) {
+        targetAccX += thrust.x;
+        targetAccY += thrust.y;
+        targetAccZ += thrust.z;
+      }
     }
+    target.x = integrateConstantAccelerationPosition(target.x, target.velocityX, targetAccX, targetDt);
+    target.y = integrateConstantAccelerationPosition(target.y, target.velocityY, targetAccY, targetDt);
+    target.z = integrateConstantAccelerationPosition(target.z, target.velocityZ, targetAccZ, targetDt);
+    target.velocityX = integrateConstantAccelerationVelocity(target.velocityX, targetAccX, targetDt);
+    target.velocityY = integrateConstantAccelerationVelocity(target.velocityY, targetAccY, targetDt);
+    target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, targetAccZ, targetDt);
     if (movPosBlend >= 0) {
       const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
       entity.transform.x = lerp(position.x, target.x, movPosBlend);
@@ -265,10 +299,14 @@ export function applyClientProjectilePrediction(options: {
   let aNetZ = -projectileGravity;
   let isHoming = false;
   if (!isDGunWave) {
+    _clientProjectileVelocityScratch.x = proj.velocityX;
+    _clientProjectileVelocityScratch.y = proj.velocityY;
+    _clientProjectileVelocityScratch.z = proj.velocityZ;
     const thrust = resolveClientHomingThrust({
       entity,
       dt,
       position,
+      velocity: _clientProjectileVelocityScratch,
       getEntity,
     });
     if (thrust) {
