@@ -5,6 +5,7 @@
   "megaBeamTowerCount": 2,
   "cannonTowerCount": 2,
   "radarCount": 1,
+  "resourceConverterCount": 2,
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {
@@ -13,6 +14,7 @@
     "commander": { "radiusFraction": 0.7 },
     "radar": { "radiusFraction": 0.62 },
     "fabricator": { "radiusFraction": 0.6 },
+    "resourceConverter": { "radiusFraction": 0.55 },
     "cannonTower": { "radiusFraction": 0.45 },
     "megaBeamTower": { "radiusFraction": 0.4 },
     "fogOfWar": { "radiusFraction": 0.8 }

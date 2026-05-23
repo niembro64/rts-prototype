@@ -398,6 +398,7 @@ function placeFactoryArcRowForUnitTypes(
  *           solar arc
  *           wind arc
  *           fabricator arc
+ *           resource converter arc
  *           megaBeam tower arc
  *           cannon tower arc ← closest to map center
  *
@@ -457,6 +458,10 @@ export function spawnInitialBases(
   const cannonTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.cannonTower.radiusFraction,
+  );
+  const resourceConverterRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.baseRings.resourceConverter.radiusFraction,
   );
 
   // Each player's slice of the spawn oval is ONE HALF of the
@@ -523,6 +528,13 @@ export function spawnInitialBases(
     entities.push(...placeArcRow(
       world, construction, 'cannonTower', DEMO_CONFIG.cannonTowerCount,
       oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
+    ));
+
+    // Resource converter arc — economy buildings on their own ring
+    // between fabricators and the static-defense rings.
+    entities.push(...placeArcRow(
+      world, construction, 'resourceConverter', DEMO_CONFIG.resourceConverterCount,
+      oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
   }
 

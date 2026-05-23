@@ -25,6 +25,9 @@ export const DEMO_CONFIG = {
   /** Number of radar towers per player on the sensor ring. */
   radarCount: demoConfig.radarCount,
 
+  /** Number of resource converters per player on the converter arc. */
+  resourceConverterCount: demoConfig.resourceConverterCount,
+
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the
    * 360°/N angular cycle) actually used for placing buildings
