@@ -1,7 +1,7 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, Turret } from '../../sim/types';
-import { NO_ENTITY_ID } from '../../sim/types';
+import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToTurretState,
@@ -104,7 +104,7 @@ export function refreshUnitTurretsFromNetwork(
   const previous = entity.combat?.turrets;
   const turrets = createTurretsFromNetwork(unitType, unitBodyRadius, netTurrets);
   if (!turrets) {
-    entity.combat = undefined;
+    entity.combat = null;
     return;
   }
 
@@ -133,12 +133,12 @@ export function refreshBuildingTurretsFromNetwork(
   try {
     turrets = createBuildingRuntimeTurrets(buildingType);
   } catch {
-    entity.combat = undefined;
+    entity.combat = null;
     return;
   }
 
   if (turrets.length === 0) {
-    entity.combat = undefined;
+    entity.combat = null;
     return;
   }
 
@@ -202,9 +202,10 @@ function createUnitFromNetwork(
     unitBlueprint?.radius ?? { body: 15, shot: 15, push: 15 },
   );
   const entity: Entity = {
+    ...createEmptyEntityComponentSlots(),
     id,
     type: 'unit',
-    transform: { x, y, z, rotation },
+    transform: createTransform(x, y, z, rotation),
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
@@ -334,9 +335,10 @@ function createBuildingFromNetwork(
   const height = config.gridHeight * BUILD_GRID_CELL_SIZE;
   const depth = config.gridDepth * BUILD_GRID_CELL_SIZE;
   const entity: Entity = {
+    ...createEmptyEntityComponentSlots(),
     id,
     type: 'building',
-    transform: { x, y, z, rotation },
+    transform: createTransform(x, y, z, rotation),
     ownership: { playerId },
     selectable: { selected: false },
     building: {
@@ -364,7 +366,7 @@ function createBuildingFromNetwork(
     buildingType,
     metalExtractionRate: buildingType === 'extractor'
       ? b.metalExtractionRate ?? 0
-      : undefined,
+      : null,
   };
   applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
 

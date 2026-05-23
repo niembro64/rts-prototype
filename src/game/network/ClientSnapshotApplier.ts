@@ -113,7 +113,7 @@ export function snapClientNonVisualState(
   }
 
   if (entity.building && sb && (isFull || sb.metalExtractionRate !== null)) {
-    entity.metalExtractionRate = sb.metalExtractionRate ?? undefined;
+    entity.metalExtractionRate = sb.metalExtractionRate ?? null;
   }
 
   if (entity.building && sb?.hp && (isFull || cf! & ENTITY_CHANGED_HP)) {

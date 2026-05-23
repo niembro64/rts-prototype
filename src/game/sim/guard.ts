@@ -14,7 +14,7 @@ export function isFriendlyGuardTarget(
   playerId: PlayerId,
 ): target is Entity {
   return isAliveGuardTarget(target) &&
-    target.ownership !== undefined &&
+    target.ownership !== null &&
     target.ownership.playerId === playerId;
 }
 
@@ -22,11 +22,11 @@ export function getGuardFollowRadius(entity: Entity, target: Entity): number {
   const unit = entity.unit;
   const targetUnit = target.unit;
   const targetBuilding = target.building;
-  const unitRadius = unit === undefined ? 0 : unit.radius.body;
+  const unitRadius = unit === null ? 0 : unit.radius.body;
   let targetRadius = 0;
-  if (targetUnit !== undefined) {
+  if (targetUnit !== null) {
     targetRadius = targetUnit.radius.body;
-  } else if (targetBuilding !== undefined) {
+  } else if (targetBuilding !== null) {
     targetRadius = targetBuilding.targetRadius ??
       Math.max(targetBuilding.width, targetBuilding.height) / 2;
   }

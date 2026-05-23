@@ -13,14 +13,14 @@ export function applyEntitySensorBlueprint(
   if (blueprint.cloak !== null && blueprint.cloak.enabled === true) {
     entity.cloak = { enabled: true };
   } else {
-    delete entity.cloak;
+    entity.cloak = null;
   }
 
   const detectorRadius = blueprint.detector !== null ? blueprint.detector.radius : 0;
   if (Number.isFinite(detectorRadius) && detectorRadius > 0) {
     entity.detector = { radius: detectorRadius };
   } else {
-    delete entity.detector;
+    entity.detector = null;
   }
 }
 

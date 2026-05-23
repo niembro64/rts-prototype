@@ -737,7 +737,7 @@ export function serializeProjectileSnapshot({
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
       const projectile = world.getEntity(vu.id)?.projectile;
-      const ownerId = projectile !== undefined ? projectile.ownerId : undefined;
+      const ownerId = projectile !== null && projectile !== undefined ? projectile.ownerId : undefined;
       if (
         shouldDeferForeignHighCountProjectileCorrection(
           vu.id,
@@ -756,7 +756,7 @@ export function serializeProjectileSnapshot({
           visibility,
           vu.pos.x,
           vu.pos.y,
-          projectile !== undefined && projectile.homingTargetId !== NO_ENTITY_ID
+          projectile !== null && projectile !== undefined && projectile.homingTargetId !== NO_ENTITY_ID
             ? projectile.homingTargetId
             : vu.visibilityHomingTargetId,
           world,

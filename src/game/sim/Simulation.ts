@@ -1270,7 +1270,7 @@ export class Simulation {
   ): void {
     const unit = entity.unit;
     const body = entity.body;
-    const bodySlot = body !== undefined ? body.physicsBody.slot : -1;
+    const bodySlot = body !== null ? body.physicsBody.slot : -1;
     if (!unit || bodySlot < 0 || distance <= 0.0001) {
       if (unit) {
         unit.thrustDirX = 0;

@@ -26,7 +26,7 @@ export function getUnitBuildRequired(
 }
 
 export function getBuildingBuildRequired(
-  buildingType: BuildingType | undefined,
+  buildingType: BuildingType | null | undefined,
 ): Buildable['required'] | undefined {
   if (!buildingType) return undefined;
   try {
@@ -43,7 +43,7 @@ export function applyNetworkBuildState(
 ): boolean {
   if (!build || build.complete) {
     if (!entity.buildable) return false;
-    delete entity.buildable;
+    entity.buildable = null;
     return true;
   }
 

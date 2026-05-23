@@ -150,7 +150,7 @@ function resolveTargetTurretAimPoint(
   out: Vec3,
 ): boolean {
   const sourceEntityId = source === undefined ? undefined : source.id;
-  const surfaceN = target.unit === undefined ? undefined : target.unit.surfaceNormal;
+  const surfaceN = target.unit === null ? undefined : target.unit.surfaceNormal;
   const picked = pickTargetAimTurret(target, sourceEntityId);
   if (!picked) return false;
   if (

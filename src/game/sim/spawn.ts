@@ -591,7 +591,7 @@ export function spawnMetalExtractorsOnDeposits(
       extractor.building.maxHp = config.hp;
     }
     applyCompletedBuildingEffects(world, extractor);
-    delete extractor.buildable;
+    extractor.buildable = null;
     entities.push(extractor);
   }
 

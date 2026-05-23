@@ -40,7 +40,7 @@ export const BUILDING_REOPEN_DELAY_MS = 5000;
 export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.25;
 
 /** Which building types use the active-state fortify mechanic. */
-export function buildingTypeHasActiveState(type: BuildingType | undefined): boolean {
+export function buildingTypeHasActiveState(type: BuildingType | null | undefined): boolean {
   return type === 'solar' || type === 'wind' || type === 'extractor';
 }
 

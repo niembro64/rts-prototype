@@ -177,7 +177,7 @@ export class SelectionOverlayRenderer3D {
     const showTrackRelease = getRangeToggle('trackRelease');
     const showEngageAcquire = getRangeToggle('engageAcquire');
     const showSingleSelectedUnitTurretCircle =
-      entity.unit !== undefined &&
+      entity.unit !== null &&
       entity.selectable?.selected === true &&
       this.clientViewState.getSelectedIds().size === 1;
     const showEngageRelease =

@@ -111,8 +111,8 @@ export class EntityCacheManager {
       this.cachedAll.push(entity);
       const ownership = entity.ownership;
       if (
-        entity.detector !== undefined &&
-        ownership !== undefined &&
+        entity.detector !== null &&
+        ownership !== null &&
         (entity.type === 'unit' || entity.type === 'building')
       ) {
         this.getOrCreateDetectorsByPlayer(ownership.playerId).push(entity);
@@ -143,7 +143,7 @@ export class EntityCacheManager {
         case 'unit':
           this.cachedUnits.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
-          if (ownership !== undefined) {
+          if (ownership !== null) {
             this.getOrCreateUnitsByPlayer(ownership.playerId).push(entity);
           }
           // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
@@ -159,7 +159,7 @@ export class EntityCacheManager {
           ) {
             this.cachedDamagedUnits.push(entity);
           }
-          if (entity.unit !== undefined && entity.unit.mirrorPanels.length > 0) {
+          if (entity.unit !== null && entity.unit.mirrorPanels.length > 0) {
             this.cachedMirrorUnits.push(entity);
           }
           if (entity.commander) this.cachedCommanderUnits.push(entity);
@@ -168,7 +168,7 @@ export class EntityCacheManager {
         case 'building':
           this.cachedBuildings.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
-          if (ownership !== undefined) {
+          if (ownership !== null) {
             this.getOrCreateBuildingsByPlayer(ownership.playerId).push(entity);
           }
           // Same logic as cachedDamagedUnits: include any construction
@@ -199,7 +199,7 @@ export class EntityCacheManager {
           break;
         case 'shot':
           this.cachedProjectiles.push(entity);
-          if (entity.projectile !== undefined && entity.projectile.projectileType === 'projectile') {
+          if (entity.projectile !== null && entity.projectile.projectileType === 'projectile') {
             this.cachedTravelingProjectiles.push(entity);
             if (entity.projectile.config.shotProfile.visual.smokeTrail) {
               this.cachedSmokeTrailProjectiles.push(entity);

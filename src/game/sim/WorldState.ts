@@ -1,5 +1,5 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
-import { NO_ENTITY_ID } from './types';
+import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
 import { EntityCacheManager } from './EntityCacheManager';
@@ -634,7 +634,7 @@ export class WorldState {
   // Get factories by player
   getFactoriesByPlayer(playerId: PlayerId): Entity[] {
     return this.getBuildings().filter(
-      (e) => e.ownership?.playerId === playerId && e.factory !== undefined
+      (e) => e.ownership?.playerId === playerId && e.factory !== null
     );
   }
 
@@ -661,7 +661,7 @@ export class WorldState {
   // Get selected factories for active player
   getSelectedFactories(): Entity[] {
     return this.getBuildings().filter(
-      (e) => e.selectable?.selected && e.factory !== undefined && e.ownership?.playerId === this.activePlayerId
+      (e) => e.selectable?.selected && e.factory !== null && e.ownership?.playerId === this.activePlayerId
     );
   }
 
@@ -732,14 +732,10 @@ export class WorldState {
     // the cell entry for any downstream reader on this tick.
     const spawnNormal = this.getCachedSurfaceNormal(x, y);
     const entity: Entity = {
+      ...createEmptyEntityComponentSlots(),
       id,
       type: 'unit',
-      transform: {
-        x,
-        y,
-        z: groundZ + spawnCenterHeight,
-        rotation: 0,
-      },
+      transform: createTransform(x, y, groundZ + spawnCenterHeight, 0),
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
@@ -904,9 +900,10 @@ export class WorldState {
     // anywhere else groundZ is 0 and behavior is unchanged.
     const baseZ = this.getGroundZ(x, y);
     const entity: Entity = {
+      ...createEmptyEntityComponentSlots(),
       id,
       type: 'building',
-      transform: { x, y, z: baseZ + depth / 2, rotation: 0 },
+      transform: createTransform(x, y, baseZ + depth / 2, 0),
       building: {
         width,
         height,
@@ -975,9 +972,10 @@ export class WorldState {
     };
 
     const entity: Entity = {
+      ...createEmptyEntityComponentSlots(),
       id,
       type: 'shot',
-      transform: { x, y, z: 0, rotation },
+      transform: createTransform(x, y, 0, rotation),
       ownership: { playerId: ownerId },
       projectile,
     };

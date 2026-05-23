@@ -16,8 +16,8 @@ export { distance, normalizeAngle };
  *  it's the player's commander unit. Centralized so a future tweak to
  *  the predicate (e.g. `commander && !isDying`) can't get applied to
  *  some sites and missed at others. */
-export function isCommander(entity: { commander?: unknown }): boolean {
-  return entity.commander !== undefined;
+export function isCommander(entity: { commander: unknown | null }): boolean {
+  return entity.commander !== null;
 }
 
 /** Bit-mask of which turrets are engaged/firing. Indices >= this can't

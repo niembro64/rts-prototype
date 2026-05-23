@@ -734,7 +734,7 @@ export function serializeEntitySnapshot(
         b.dim = poolEntry.buildingDim;
         b.dim.x = entity.building.width;
         b.dim.y = entity.building.height;
-        b.type = entity.buildingType !== undefined
+        b.type = entity.buildingType !== null
           ? buildingTypeToCode(entity.buildingType)
           : null;
         b.metalExtractionRate = entity.buildingType === 'extractor'

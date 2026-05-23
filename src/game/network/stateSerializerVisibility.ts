@@ -581,7 +581,7 @@ export function getEntityFullVisionRadius(entity: Entity): number {
   // above keeps the lookup correct across construction completion and
   // death (HP→0).
   const cached = entity._cachedFullVisionRadius;
-  if (cached !== undefined) return cached;
+  if (cached >= 0) return cached;
   let radius = entity.unit
     ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
     : BUILDING_VISION_RADIUS;

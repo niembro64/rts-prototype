@@ -77,7 +77,7 @@ function completeConstruction(
   // Buildable is the "currently under construction" component. Once
   // activation effects have run, remove it so completed entities do
   // not carry stale construction history through sim/render/network.
-  delete entity.buildable;
+  entity.buildable = null;
   world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 

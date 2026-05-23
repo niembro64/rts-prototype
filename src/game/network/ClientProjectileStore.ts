@@ -1,5 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
-import { NO_ENTITY_ID } from '../sim/types';
+import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '../sim/types';
 import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
@@ -241,9 +241,10 @@ export class ClientProjectileStore {
     if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);
 
     const entity: Entity = {
+      ...createEmptyEntityComponentSlots(),
       id: spawn.id,
       type: 'shot',
-      transform: { x: spawnX, y: spawnY, z: spawnZ, rotation: deqRot(spawn.rotation) },
+      transform: createTransform(spawnX, spawnY, spawnZ, deqRot(spawn.rotation)),
       ownership: { playerId: spawn.playerId },
       projectile: {
         ownerId: spawn.playerId,

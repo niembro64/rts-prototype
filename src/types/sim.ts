@@ -87,9 +87,25 @@ export type Transform = {
   y: number;
   z: number;
   rotation: number;
-  rotCos?: number;
-  rotSin?: number;
+  rotCos: number | null;
+  rotSin: number | null;
 };
+
+export function createTransform(
+  x: number,
+  y: number,
+  z: number,
+  rotation: number,
+): Transform {
+  return {
+    x,
+    y,
+    z,
+    rotation,
+    rotCos: null,
+    rotSin: null,
+  };
+}
 
 // Body component - reference to the 3D physics body.
 export type Body = {
@@ -729,30 +745,26 @@ export type DGunProjectile = {
 // Entity type discriminator
 export type EntityType = 'unit' | 'building' | 'shot';
 
-// Full entity data
-export type Entity = {
-  id: EntityId;
-  type: EntityType;
-  transform: Transform;
-  body?: Body;
-  selectable?: Selectable;
-  ownership?: Ownership;
-  cloak?: Cloak;
-  detector?: Detector;
-  unit?: Unit;
-  building?: Building;
+export type EntityComponentSlots = {
+  body: Body | null;
+  selectable: Selectable | null;
+  ownership: Ownership | null;
+  cloak: Cloak | null;
+  detector: Detector | null;
+  unit: Unit | null;
+  building: Building | null;
   /** Combat capability — turrets + per-host bookkeeping. Present iff
    *  the entity has at least one runtime turret (combat OR visualOnly).
    *  The cache only adds entities to the armed list when at least one
    *  of those turrets is non-visualOnly. */
-  combat?: CombatComponent;
-  projectile?: Projectile;
-  buildable?: Buildable;
-  builder?: Builder;
-  factory?: Factory;
-  commander?: Commander;
-  dgunProjectile?: DGunProjectile;
-  buildingType?: BuildingType;
+  combat: CombatComponent | null;
+  projectile: Projectile | null;
+  buildable: Buildable | null;
+  builder: Builder | null;
+  factory: Factory | null;
+  commander: Commander | null;
+  dgunProjectile: DGunProjectile | null;
+  buildingType: BuildingType | null;
   /** For extractors only — every deposit whose ownership this
    *  extractor currently HOLDS. The deposit-claim system is binary:
    *  a deposit can be owned by at most one extractor at a time, and
@@ -760,21 +772,45 @@ export type Entity = {
    *  whose footprint overlaps a deposit that is ALREADY owned by
    *  another extractor will not appear in this list — it becomes the
    *  fallback owner only when the original is destroyed.
-   *  Empty/undefined = inactive (no metal income, no rotor spin). */
-  ownedDepositIds?: number[];
+   *  Null = inactive (no metal income, no rotor spin). */
+  ownedDepositIds: number[] | null;
   /** For extractors only — actual metal/sec this extractor is
    *  producing right now: `ownedDepositIds.length × baseProduction`
    *  when active, 0 when inactive. Kept as a stored field (not
    *  derived) so the renderer's spin animator and the wire format
    *  can read it without re-running the ownership math each frame. */
-  metalExtractionRate?: number;
-  /** Cached blueprint full-vision radius (issues.txt FOW-OPT-15).
-   *  getEntityFullVisionRadius walks turrets + builder ranges on
-   *  every call; the inputs are blueprint-constant (turret config
-   *  ranges, builder buildRange, commander/unit defaults) so the
-   *  computed max is the same every call. Populated lazily on first
-   *  query; -1 means "not yet computed". The eligibility gate
-   *  (HP > 0, building complete, etc.) stays dynamic and is checked
-   *  before this cache is consulted. */
-  _cachedFullVisionRadius?: number;
+  metalExtractionRate: number | null;
+  /** Cached blueprint full-vision radius. `-1` means not yet
+   *  computed; non-negative values are valid cached radii. */
+  _cachedFullVisionRadius: number;
+};
+
+export function createEmptyEntityComponentSlots(): EntityComponentSlots {
+  return {
+    body: null,
+    selectable: null,
+    ownership: null,
+    cloak: null,
+    detector: null,
+    unit: null,
+    building: null,
+    combat: null,
+    projectile: null,
+    buildable: null,
+    builder: null,
+    factory: null,
+    commander: null,
+    dgunProjectile: null,
+    buildingType: null,
+    ownedDepositIds: null,
+    metalExtractionRate: null,
+    _cachedFullVisionRadius: -1,
+  };
+}
+
+// Full entity data
+export type Entity = EntityComponentSlots & {
+  id: EntityId;
+  type: EntityType;
+  transform: Transform;
 };

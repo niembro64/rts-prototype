@@ -70,7 +70,7 @@ export function buildSelectionInfo(
   // Check for capabilities. Every commander has a d-gun, so the
   // commander unit IS the dgunner — no second find call needed.
   const commander = selectedUnits.find(isCommander);
-  const builder = selectedUnits.find(u => u.builder !== undefined);
+  const builder = selectedUnits.find(u => u.builder !== null);
   const dgunner = commander;
   let fireControlCount = 0;
   let allFireEnabled = true;
@@ -89,7 +89,7 @@ export function buildSelectionInfo(
   }
 
   // Check for factory
-  const factory = selectedBuildings.find(b => b.factory !== undefined);
+  const factory = selectedBuildings.find(b => b.factory !== null);
 
   // Get factory queue info if factory is selected
   let factoryQueue: { unitId: string; label: string }[] | undefined;

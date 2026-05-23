@@ -903,7 +903,7 @@ function isAliveAttackTarget(target: Entity | undefined): target is Entity {
 
 function isAttackableEnemyTargetForPlayer(target: Entity | undefined, playerId: PlayerId): target is Entity {
   return isAliveAttackTarget(target) &&
-    target.ownership !== undefined &&
+    target.ownership !== null &&
     target.ownership.playerId !== playerId;
 }
 

@@ -1729,7 +1729,7 @@ export class Input3DManager {
     for (let i = 0; i < selectedBuildings.length; i++) {
       const b = selectedBuildings[i];
       if (
-        b.factory !== undefined &&
+        b.factory !== null &&
         b.ownership?.playerId === this.context.activePlayerId
       ) {
         out.push(b);

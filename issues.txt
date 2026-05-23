@@ -136,12 +136,13 @@ Evidence:
   optional declarations in this file are mostly lobby/transport
   envelopes, top-level snapshot sections, and server metadata rather
   than the pooled per-entity/per-event DTO slots.
-- src/types/sim.ts: 83 `?:` declarations. This is the core
-  entity-state shape file. Optional component slots (`body?`,
-  `unit?`, `building?`, `combat?`, `projectile?`, etc.) are the most
-  common pattern, and the philosophy is explicit that "field is
-  semantically inapplicable to this kind of entity is NOT an
-  optional field. It is a discriminated union. Express it that way."
+- src/types/sim.ts: 63 `?:` declarations. The 2026-05-23
+  entity-component pass converted Entity's component slots (`body`,
+  `unit`, `building`, `combat`, `projectile`, etc.) to explicit
+  `T | null` fields with a shared null-slot initializer, and converted
+  Transform's `rotCos` / `rotSin` cache to explicit `number | null`.
+  The remaining declarations are mostly turret/projectile runtime
+  detail fields and config-like shape variance.
 - 103 other `?:` declarations spread across src/game/sim/*, including:
     - Simulation.ts (10): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
       onSimEvent?, onGameOver? plus a few method param defaults.
@@ -151,11 +152,6 @@ Evidence:
       projectiles?, terrain?, buildability?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
       buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
-- Transform shape variance: src/types/sim.ts:89-90 declares cached
-  `rotCos?` and `rotSin?` on the Transform. Sometimes-populated
-  cached fields are exactly the V8 hidden-class deoptimization the
-  philosophy calls out.
-
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."
@@ -168,25 +164,6 @@ Address as child PRs, file by file. The migration is intentionally
 gradual ("every file we touch should leave with fewer optional
 properties..."), but two files concentrate most of the risk and
 should be the first scheduled passes.
-
-ABSENCE-01B - child: convert entity-state component slots in
-              src/types/sim.ts to discriminated unions or T | null.
-------------------------------------------------------------------------------
-
-Evidence:
-- Entity carries `body?`, `unit?`, `building?`, `combat?`,
-  `projectile?`, etc. Per philosophy these should be a discriminated
-  union, not optional fields.
-- Transform.rotCos?/rotSin? cache fields on src/types/sim.ts:89-90
-  are the kind of "sometimes populated" pattern that deoptimizes V8
-  hidden classes per philosophy.
-
-Fix direction:
-Either model Entity as a discriminated union keyed by `kind`
-('unit' | 'building' | 'projectile' | …), or settle for `T | null`
-plus explicit guards at the readers. For the rotation cache, either
-always populate the cache (uniform shape) or move the cache to a
-separate map keyed by entity ID.
 
 CONFIG IS DATA, NOT CODE (BLUEPRINT-01 family)
 

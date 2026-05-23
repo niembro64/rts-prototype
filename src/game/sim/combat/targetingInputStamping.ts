@@ -481,7 +481,7 @@ function stampCombatTargetingEntityInto(
     entityFamily = CT_ENTITY_FAMILY_BUILDING;
     const buildingType = entity.buildingType;
     entityBlueprintCode =
-      buildingType !== undefined ? buildingTypeToCode(buildingType) : CT_BLUEPRINT_CODE_NONE;
+      buildingType !== null ? buildingTypeToCode(buildingType) : CT_BLUEPRINT_CODE_NONE;
   }
 
   // Detector + padding stamped per-entity so the Rust observability

@@ -5,7 +5,7 @@ import type { Entity } from '../sim/types';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 
 export function isLineProjectileEntity(entity: Entity): boolean {
-  return entity.projectile !== undefined && isLineShotType(entity.projectile.projectileType);
+  return entity.projectile !== null && isLineShotType(entity.projectile.projectileType);
 }
 
 export function decodeProjectileShotId(

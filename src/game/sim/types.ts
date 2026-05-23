@@ -65,6 +65,7 @@ export type {
 } from '@/types/sim';
 
 export { isLineShot, isLineShotType, isProjectileShot, isRocketLikeShot, getShotMaxLifespan, NO_ENTITY_ID } from '@/types/sim';
+export { createEmptyEntityComponentSlots, createTransform } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';
 import { COLORS } from '@/colorsConfig';

@@ -200,7 +200,7 @@ export class GameServer {
       const body = entity.body?.physicsBody;
       if (!body) return;
       this.physics.removeBody(body);
-      entity.body = undefined;
+      entity.body = null;
     };
 
     // Handle unit deaths: remove entities. WorldState.onEntityRemoving
@@ -641,14 +641,14 @@ export class GameServer {
     const entity = this.world.getEntity(entityId);
     return (
       entity?.type === 'unit' &&
-      entity.unit !== undefined &&
+      entity.unit !== null &&
       entity.ownership?.playerId === playerId
     );
   }
 
   private isOwnedFactory(entityId: EntityId, playerId: PlayerId): boolean {
     const entity = this.world.getEntity(entityId);
-    return entity?.factory !== undefined && entity.ownership?.playerId === playerId;
+    return entity !== undefined && entity.factory !== null && entity.ownership?.playerId === playerId;
   }
 
   private setMirrorsEnabled(enabled: boolean): void {
