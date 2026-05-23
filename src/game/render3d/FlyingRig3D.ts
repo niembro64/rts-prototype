@@ -103,7 +103,13 @@ export function buildFlyingRig(
   const group = new THREE.Group();
   const smokeProfile = getSmokeProfile(smokeUseId);
 
-  if (cfg.wingEnabled !== false) {
+  if (
+    cfg.wingEnabled !== false &&
+    cfg.wingSpan !== undefined &&
+    cfg.wingChord !== undefined &&
+    cfg.wingOffsetX !== undefined &&
+    cfg.wingHeight !== undefined
+  ) {
     addWingPanels(group, unitRadius, {
       spanFrac: cfg.wingSpan,
       chordFrac: cfg.wingChord,

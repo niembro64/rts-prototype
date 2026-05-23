@@ -339,12 +339,13 @@ export type FlyingConfig = {
   /** Same semantics as `HoverConfig.hoverHeightEMA`. */
   hoverHeightEMA?: number;
   /** Allows a flying profile to suppress the primary/front wing pair
-   *  while keeping its rear wing pair and jets. Defaults to true. */
+   *  while keeping its rear wing pair and jets. Defaults to true. When
+   *  false, the wing* dimension fields can be omitted. */
   wingEnabled?: boolean;
-  wingSpan: number;
-  wingChord: number;
-  wingOffsetX: number;
-  wingHeight: number;
+  wingSpan?: number;
+  wingChord?: number;
+  wingOffsetX?: number;
+  wingHeight?: number;
   wingThickness?: number;
   wingDihedralDeg?: number;
   /** Planform sweep as a chord fraction. Positive values sweep primary
