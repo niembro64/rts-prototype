@@ -70,6 +70,8 @@ import {
 } from '../sim-wasm/init';
 import type { EntityId } from '../sim/types';
 
+type SurfaceNormal = { nx: number; ny: number; nz: number };
+
 // Phase 3d-2 scratch buffers. Body state lives in the WASM-side
 // BodyPool, so per-tick marshalling shrinks to: a Uint32Array of
 // active slot ids + per-body pre-sampled ground state (terrain
@@ -185,6 +187,7 @@ export class Body3D {
     halfZ?: number;
     groundOffset?: number;
     restitution: number;
+    surfaceNormal: SurfaceNormal | null;
   }): Body3D {
     const views = pv();
     const slot = views.allocSlot();
@@ -208,6 +211,12 @@ export class Body3D {
     views.invMass[slot] = args.mass > 0 ? 1 / args.mass : 0;
     views.restitution[slot] = args.restitution;
     views.groundOffset[slot] = args.groundOffset ?? 0;
+    views.entityId[slot] = args.entityId ?? -1;
+    if (args.surfaceNormal !== null) {
+      views.surfaceNormalX[slot] = args.surfaceNormal.nx;
+      views.surfaceNormalY[slot] = args.surfaceNormal.ny;
+      views.surfaceNormalZ[slot] = args.surfaceNormal.nz;
+    }
     let flags = BODY_FLAG_OCCUPIED;
     if (args.isStatic) flags |= BODY_FLAG_IS_STATIC;
     if (args.shape === 'cuboid') flags |= BODY_FLAG_SHAPE_CUBOID;
@@ -250,6 +259,24 @@ export class Body3D {
   set groundLaunchAy(v: number) { pv().launchY[this.slot] = v; }
   get groundLaunchAz(): number { return pv().launchZ[this.slot]; }
   set groundLaunchAz(v: number) { pv().launchZ[this.slot] = v; }
+  get surfaceNormalX(): number { return pv().surfaceNormalX[this.slot]; }
+  set surfaceNormalX(v: number) { pv().surfaceNormalX[this.slot] = v; }
+  get surfaceNormalY(): number { return pv().surfaceNormalY[this.slot]; }
+  set surfaceNormalY(v: number) { pv().surfaceNormalY[this.slot] = v; }
+  get surfaceNormalZ(): number { return pv().surfaceNormalZ[this.slot]; }
+  set surfaceNormalZ(v: number) { pv().surfaceNormalZ[this.slot] = v; }
+
+  createSurfaceNormalView(): SurfaceNormal {
+    const slot = this.slot;
+    return {
+      get nx(): number { return pv().surfaceNormalX[slot]; },
+      set nx(v: number) { pv().surfaceNormalX[slot] = v; },
+      get ny(): number { return pv().surfaceNormalY[slot]; },
+      set ny(v: number) { pv().surfaceNormalY[slot] = v; },
+      get nz(): number { return pv().surfaceNormalZ[slot]; },
+      set nz(v: number) { pv().surfaceNormalZ[slot] = v; },
+    };
+  }
 
   // Geometry — set at construction, read often, never written after.
   get radius(): number { return pv().radius[this.slot]; }
@@ -399,6 +426,7 @@ export class PhysicsEngine3D {
     label: string,
     entityId?: EntityId,
     initialZ?: number,
+    surfaceNormal: SurfaceNormal | null = null,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
@@ -417,6 +445,7 @@ export class PhysicsEngine3D {
       radius: physicsRadius,
       groundOffset: bodyCenterHeight,
       restitution: 0.2,
+      surfaceNormal,
     });
     this.addBody(body);
     return body;
@@ -450,6 +479,7 @@ export class PhysicsEngine3D {
       halfY: height / 2,
       halfZ: depth / 2,
       restitution: 0.1,
+      surfaceNormal: null,
     });
     this.addBody(body);
     return body;

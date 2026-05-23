@@ -30,9 +30,6 @@ Evidence:
 - src/game/sim/Simulation.ts (1,657 LOC) is still the top-level tick
   driver. Although most heavy kernels delegate to WASM, several
   per-unit loops are TypeScript:
-    - updateUnitGroundNormal (src/game/sim/unitGroundNormal.ts) now
-      batches the EMA math through Rust, but raw-normal collection,
-      JS-object storage, and dirty scatter still loop per unit.
     - UnitSuspensionSystem.update (src/game/sim/unitSuspension.ts) —
       per-unit suspension spring integration, called every tick.
     - UnitForceSystem.applyForces (src/game/server/UnitForceSystem.ts)
@@ -65,29 +62,7 @@ shape the design rules out.
 Fix direction:
 Do child items as separate, measurable PRs. Continue with the spring
 loop and remaining JS gather/scatter paths, using the arrival-control
-and ground-normal batch patterns where they fit.
-
-------------------------------------------------------------------------------
-TS-WASM-01B2 - child: move unit ground-normal storage/source
-               collection fully into WASM.
-------------------------------------------------------------------------------
-
-Evidence:
-- The 2026-05-23 `unit_ground_normal_step_batch` move puts the EMA
-  blend and renormalization in Rust, but src/game/sim/unitGroundNormal.ts
-  still loops over every unit to collect raw cached terrain normals,
-  copy JS `unit.surfaceNormal` into scratch arrays, scatter the result
-  back to JS objects, and mark dirty entities.
-- The same normal feeds both server-side chassis tilt and renderer
-  ground clamping, so keeping the smoothed state as JS object fields
-  forces JS-side reads/writes even after the numeric EMA kernel moved.
-
-Fix direction:
-Move the smoothed normal fields into a WASM-owned SoA keyed by the
-existing unit/body slot, let Rust sample the installed terrain mesh for
-raw normals, and expose typed-array views for consumers that still need
-TS access. Delete the JS scratch pack/scatter path once readers use the
-WASM-backed source.
+pattern where it fits.
 
 ------------------------------------------------------------------------------
 TS-WASM-01C - child: move UnitSuspensionSystem per-unit spring into

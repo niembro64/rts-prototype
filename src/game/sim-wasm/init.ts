@@ -302,7 +302,7 @@ import __wbg_init, {
   messagepack_writer_ptr,
   messagepack_writer_len,
   arrival_control_step_batch,
-  unit_ground_normal_step_batch,
+  unit_ground_normal_step_pool,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -315,6 +315,9 @@ import __wbg_init, {
   pool_launch_x_ptr,
   pool_launch_y_ptr,
   pool_launch_z_ptr,
+  pool_surface_normal_x_ptr,
+  pool_surface_normal_y_ptr,
+  pool_surface_normal_z_ptr,
   pool_radius_ptr,
   pool_half_x_ptr,
   pool_half_y_ptr,
@@ -324,6 +327,7 @@ import __wbg_init, {
   pool_ground_offset_ptr,
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
+  pool_entity_id_ptr,
 } from './pkg/rts_sim_wasm';
 
 
@@ -475,20 +479,12 @@ export interface SimWasm {
     responseTimeSec: number,
     minAccel: number,
   ) => number;
-  /** TS-WASM-01B — batched per-unit ground-normal EMA. TypeScript
-   *  supplies stored and raw terrain normals; Rust blends, normalizes,
-   *  and reports which rows crossed the dirty threshold. */
-  readonly unitGroundNormalStepBatch: (
-    storedX: Float64Array,
-    storedY: Float64Array,
-    storedZ: Float64Array,
-    rawX: Float64Array,
-    rawY: Float64Array,
-    rawZ: Float64Array,
-    outX: Float64Array,
-    outY: Float64Array,
-    outZ: Float64Array,
-    outDirty: Uint8Array,
+  /** TS-WASM-01B2 — body-pool-backed per-unit ground-normal EMA.
+   *  Rust walks occupied dynamic body slots, samples the installed
+   *  terrain mesh, updates the WASM-owned normal SoA, and writes the
+   *  EntityIds whose normal crossed the dirty threshold. */
+  readonly unitGroundNormalStepPool: (
+    dirtyEntityIdsOut: Uint32Array,
     alpha: number,
     dirtyEpsilon: number,
   ) => number;
@@ -2304,6 +2300,9 @@ export interface BodyPoolViews {
   launchX: Float64Array;
   launchY: Float64Array;
   launchZ: Float64Array;
+  surfaceNormalX: Float64Array;
+  surfaceNormalY: Float64Array;
+  surfaceNormalZ: Float64Array;
   radius: Float64Array;
   halfX: Float64Array;
   halfY: Float64Array;
@@ -2313,6 +2312,7 @@ export interface BodyPoolViews {
   groundOffset: Float64Array;
   sleepTicks: Float64Array;
   flags: Uint8Array;
+  entityId: Int32Array;
 }
 
 let cached: Promise<SimWasm> | undefined;
@@ -2389,6 +2389,8 @@ export function initSimWasm(): Promise<SimWasm> {
         new Float64Array(memory.buffer, ptr, capacity);
       const u8View = (ptr: number): Uint8Array =>
         new Uint8Array(memory.buffer, ptr, capacity);
+      const i32View = (ptr: number): Int32Array =>
+        new Int32Array(memory.buffer, ptr, capacity);
 
       // Hold field pointers so refreshViews() can rebuild the
       // typed-array views over potentially-detached WASM memory
@@ -2406,6 +2408,9 @@ export function initSimWasm(): Promise<SimWasm> {
         launchX: pool_launch_x_ptr(),
         launchY: pool_launch_y_ptr(),
         launchZ: pool_launch_z_ptr(),
+        surfaceNormalX: pool_surface_normal_x_ptr(),
+        surfaceNormalY: pool_surface_normal_y_ptr(),
+        surfaceNormalZ: pool_surface_normal_z_ptr(),
         radius: pool_radius_ptr(),
         halfX: pool_half_x_ptr(),
         halfY: pool_half_y_ptr(),
@@ -2415,6 +2420,7 @@ export function initSimWasm(): Promise<SimWasm> {
         groundOffset: pool_ground_offset_ptr(),
         sleepTicks: pool_sleep_ticks_ptr(),
         flags: pool_flags_ptr(),
+        entityId: pool_entity_id_ptr(),
       };
 
       const pool: BodyPoolViews = {
@@ -2434,6 +2440,9 @@ export function initSimWasm(): Promise<SimWasm> {
           pool.launchX = f64View(ptrs.launchX);
           pool.launchY = f64View(ptrs.launchY);
           pool.launchZ = f64View(ptrs.launchZ);
+          pool.surfaceNormalX = f64View(ptrs.surfaceNormalX);
+          pool.surfaceNormalY = f64View(ptrs.surfaceNormalY);
+          pool.surfaceNormalZ = f64View(ptrs.surfaceNormalZ);
           pool.radius = f64View(ptrs.radius);
           pool.halfX = f64View(ptrs.halfX);
           pool.halfY = f64View(ptrs.halfY);
@@ -2443,6 +2452,7 @@ export function initSimWasm(): Promise<SimWasm> {
           pool.groundOffset = f64View(ptrs.groundOffset);
           pool.sleepTicks = f64View(ptrs.sleepTicks);
           pool.flags = u8View(ptrs.flags);
+          pool.entityId = i32View(ptrs.entityId);
         },
         // Initialised below; the explicit assignments make the
         // type narrowing happy.
@@ -2458,6 +2468,9 @@ export function initSimWasm(): Promise<SimWasm> {
         launchX: f64View(ptrs.launchX),
         launchY: f64View(ptrs.launchY),
         launchZ: f64View(ptrs.launchZ),
+        surfaceNormalX: f64View(ptrs.surfaceNormalX),
+        surfaceNormalY: f64View(ptrs.surfaceNormalY),
+        surfaceNormalZ: f64View(ptrs.surfaceNormalZ),
         radius: f64View(ptrs.radius),
         halfX: f64View(ptrs.halfX),
         halfY: f64View(ptrs.halfY),
@@ -2467,6 +2480,7 @@ export function initSimWasm(): Promise<SimWasm> {
         groundOffset: f64View(ptrs.groundOffset),
         sleepTicks: f64View(ptrs.sleepTicks),
         flags: u8View(ptrs.flags),
+        entityId: i32View(ptrs.entityId),
       };
 
       // Phase 5a — projectile pool views over the WASM linear
@@ -2514,7 +2528,7 @@ export function initSimWasm(): Promise<SimWasm> {
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
         arrivalControlStepBatch: arrival_control_step_batch,
-        unitGroundNormalStepBatch: unit_ground_normal_step_batch,
+        unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,

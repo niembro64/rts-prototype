@@ -26,8 +26,10 @@ export function createPhysicsBodyForUnit(
     `unit_${entity.id}`,
     entity.id,
     entity.transform.z,
+    entity.unit.surfaceNormal,
   );
   entity.body = { physicsBody: body };
+  entity.unit.surfaceNormal = body.createSurfaceNormalView();
 
   if (options.ignoreOverlappingBuildings) {
     const padding = options.overlapPadding ?? 0;

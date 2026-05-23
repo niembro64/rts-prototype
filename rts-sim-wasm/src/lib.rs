@@ -326,6 +326,9 @@ struct BodyPool {
     launch_x: Vec<f64>,
     launch_y: Vec<f64>,
     launch_z: Vec<f64>,
+    surface_normal_x: Vec<f64>,
+    surface_normal_y: Vec<f64>,
+    surface_normal_z: Vec<f64>,
 
     // Geometry / mass — set at body creation, rarely changed after.
     radius: Vec<f64>,
@@ -342,6 +345,11 @@ struct BodyPool {
 
     // Bitfield: see BODY_FLAG_* constants.
     flags: Vec<u8>,
+
+    // Owning simulation entity ID for dynamic unit bodies. `-1`
+    // means the slot is static, free, or not associated with an
+    // entity that participates in snapshot dirtying.
+    entity_id: Vec<i32>,
 
     // Free-list + high-water mark for slot allocation.
     free_slots: Vec<u32>,
@@ -364,6 +372,9 @@ impl BodyPool {
             launch_x: vec![0.0; cap],
             launch_y: vec![0.0; cap],
             launch_z: vec![0.0; cap],
+            surface_normal_x: vec![0.0; cap],
+            surface_normal_y: vec![0.0; cap],
+            surface_normal_z: vec![1.0; cap],
             radius: vec![0.0; cap],
             half_x: vec![0.0; cap],
             half_y: vec![0.0; cap],
@@ -373,6 +384,7 @@ impl BodyPool {
             ground_offset: vec![0.0; cap],
             sleep_ticks: vec![0.0; cap],
             flags: vec![0u8; cap],
+            entity_id: vec![-1; cap],
             free_slots: Vec::with_capacity(64),
             next_unused_slot: 0,
         }
@@ -405,6 +417,9 @@ impl BodyPool {
         self.launch_x[i] = 0.0;
         self.launch_y[i] = 0.0;
         self.launch_z[i] = 0.0;
+        self.surface_normal_x[i] = 0.0;
+        self.surface_normal_y[i] = 0.0;
+        self.surface_normal_z[i] = 1.0;
         self.radius[i] = 0.0;
         self.half_x[i] = 0.0;
         self.half_y[i] = 0.0;
@@ -414,6 +429,7 @@ impl BodyPool {
         self.ground_offset[i] = 0.0;
         self.sleep_ticks[i] = 0.0;
         self.flags[i] = BODY_FLAG_OCCUPIED;
+        self.entity_id[i] = -1;
         slot
     }
 
@@ -426,6 +442,7 @@ impl BodyPool {
             "freeing already-free slot"
         );
         self.flags[i] = 0;
+        self.entity_id[i] = -1;
         self.free_slots.push(slot);
     }
 }
@@ -506,6 +523,9 @@ pool_ptr_export!(pool_accel_z_ptr, accel_z, f64);
 pool_ptr_export!(pool_launch_x_ptr, launch_x, f64);
 pool_ptr_export!(pool_launch_y_ptr, launch_y, f64);
 pool_ptr_export!(pool_launch_z_ptr, launch_z, f64);
+pool_ptr_export!(pool_surface_normal_x_ptr, surface_normal_x, f64);
+pool_ptr_export!(pool_surface_normal_y_ptr, surface_normal_y, f64);
+pool_ptr_export!(pool_surface_normal_z_ptr, surface_normal_z, f64);
 pool_ptr_export!(pool_radius_ptr, radius, f64);
 pool_ptr_export!(pool_half_x_ptr, half_x, f64);
 pool_ptr_export!(pool_half_y_ptr, half_y, f64);
@@ -515,6 +535,7 @@ pool_ptr_export!(pool_restitution_ptr, restitution, f64);
 pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
+pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
 
 const ARRIVAL_FLAG_FLYING: u8 = 1 << 0;
 const ARRIVAL_FLAG_LAST_ACTION: u8 = 1 << 1;
@@ -701,47 +722,50 @@ fn compute_unit_ground_normal_step(
 }
 
 #[wasm_bindgen]
-pub fn unit_ground_normal_step_batch(
-    stored_x: &[f64],
-    stored_y: &[f64],
-    stored_z: &[f64],
-    raw_x: &[f64],
-    raw_y: &[f64],
-    raw_z: &[f64],
-    out_x: &mut [f64],
-    out_y: &mut [f64],
-    out_z: &mut [f64],
-    out_dirty: &mut [u8],
+pub fn unit_ground_normal_step_pool(
+    out_dirty_entity_ids: &mut [u32],
     alpha: f64,
     dirty_epsilon: f64,
 ) -> u32 {
-    let count = stored_x.len();
-    debug_assert!(stored_y.len() >= count);
-    debug_assert!(stored_z.len() >= count);
-    debug_assert!(raw_x.len() >= count);
-    debug_assert!(raw_y.len() >= count);
-    debug_assert!(raw_z.len() >= count);
-    debug_assert!(out_x.len() >= count);
-    debug_assert!(out_y.len() >= count);
-    debug_assert!(out_z.len() >= count);
-    debug_assert!(out_dirty.len() >= count);
-
+    let terrain = terrain_grid();
+    if !terrain.installed {
+        return 0;
+    }
+    let p = pool();
     let mut dirty_count = 0_u32;
-    for i in 0..count {
-        let before_x = stored_x[i];
-        let before_y = stored_y[i];
-        let before_z = stored_z[i];
+    let end = p.next_unused_slot as usize;
+    debug_assert!(out_dirty_entity_ids.len() >= POOL_CAPACITY_USIZE);
+    for slot in 0..end {
+        let flags = p.flags[slot];
+        if flags & BODY_FLAG_OCCUPIED == 0
+            || flags & BODY_FLAG_IS_STATIC != 0
+            || flags & BODY_FLAG_SHAPE_CUBOID != 0
+        {
+            continue;
+        }
+        let entity_id = p.entity_id[slot];
+        if entity_id < 0 {
+            continue;
+        }
+        let (raw_x, raw_y, raw_z) =
+            match terrain_surface_normal_at(terrain, p.pos_x[slot], p.pos_y[slot]) {
+                Some(normal) => normal,
+                None => continue,
+            };
+        let before_x = p.surface_normal_x[slot];
+        let before_y = p.surface_normal_y[slot];
+        let before_z = p.surface_normal_z[slot];
         let (nx, ny, nz) = compute_unit_ground_normal_step(
-            before_x, before_y, before_z, raw_x[i], raw_y[i], raw_z[i], alpha,
+            before_x, before_y, before_z, raw_x, raw_y, raw_z, alpha,
         );
-        out_x[i] = nx;
-        out_y[i] = ny;
-        out_z[i] = nz;
+        p.surface_normal_x[slot] = nx;
+        p.surface_normal_y[slot] = ny;
+        p.surface_normal_z[slot] = nz;
         let dirty = (nx - before_x).abs() > dirty_epsilon
             || (ny - before_y).abs() > dirty_epsilon
             || (nz - before_z).abs() > dirty_epsilon;
-        out_dirty[i] = if dirty { 1 } else { 0 };
         if dirty {
+            out_dirty_entity_ids[dirty_count as usize] = entity_id as u32;
             dirty_count += 1;
         }
     }
@@ -2722,32 +2746,16 @@ pub fn fog_mark_circle_scanline_rgba(
     )
 }
 
-/// Sample terrain surface normal at world-space (x, z). Writes
-/// (nx, ny, nz) into out_buf[0..3] and returns 1 on success, 0 on
-/// "no mesh installed / degenerate" so JS can fall back to TS.
-/// nz is the up component (vertical); nx / ny are the horizontal
-/// slope components. Below-water samples return (0, 0, 1) as the
-/// flat water surface normal — matches getSurfaceNormal in
-/// terrainSurface.ts.
-#[wasm_bindgen]
-pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
-    debug_assert!(out_buf.len() >= 3);
-    let t = terrain_grid();
-    if !t.installed {
-        return 0;
-    }
+fn terrain_surface_normal_at(t: &TerrainGrid, x: f64, z: f64) -> Option<(f64, f64, f64)> {
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
     let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
         Some(s) => s,
-        None => return 0,
+        None => return None,
     };
     let (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     let h0 = wa * ah + wb * bh + wc * ch;
     if h0 < TERRAIN_WATER_LEVEL {
-        out_buf[0] = 0.0;
-        out_buf[1] = 0.0;
-        out_buf[2] = 1.0;
-        return 1;
+        return Some((0.0, 0.0, 1.0));
     }
     // Triangle-plane normal — same math as terrainMeshNormalFromSample.
     let ux = bx - ax;
@@ -2766,10 +2774,31 @@ pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
     }
     let len_sq = nx * nx + vertical * vertical + nz * nz;
     let len = if len_sq > 0.0 { len_sq.sqrt() } else { 1.0 };
-    out_buf[0] = nx / len;
     // Match terrainMeshNormalFromSample's return shape: { nx, ny: nz, nz: vertical }.
-    out_buf[1] = nz / len;
-    out_buf[2] = vertical / len;
+    Some((nx / len, nz / len, vertical / len))
+}
+
+/// Sample terrain surface normal at world-space (x, z). Writes
+/// (nx, ny, nz) into out_buf[0..3] and returns 1 on success, 0 on
+/// "no mesh installed / degenerate" so JS can fall back to TS.
+/// nz is the up component (vertical); nx / ny are the horizontal
+/// slope components. Below-water samples return (0, 0, 1) as the
+/// flat water surface normal — matches getSurfaceNormal in
+/// terrainSurface.ts.
+#[wasm_bindgen]
+pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
+    debug_assert!(out_buf.len() >= 3);
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+    let (nx, ny, nz) = match terrain_surface_normal_at(t, x, z) {
+        Some(normal) => normal,
+        None => return 0,
+    };
+    out_buf[0] = nx;
+    out_buf[1] = ny;
+    out_buf[2] = nz;
     1
 }
 
