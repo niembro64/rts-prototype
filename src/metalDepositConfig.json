@@ -12,6 +12,12 @@
       "dTerrainLevels": 0
     },
     {
+      "radiusFraction": 0.35,
+      "countPerPlayer": 1,
+      "sliceOffset": 0.2,
+      "dTerrainLevels": 0
+    },
+    {
       "radiusFraction": 0.6,
       "countPerPlayer": 2,
       "sliceOffset": 0.4,
