@@ -170,6 +170,29 @@ Evidence:
   (54.9% reduction) and 58,727 B -> 24,914 B for 5,000 entries
   (57.6% reduction). The live high-count matrix still needs to be
   rerun before this child can be closed.
+- The 2026-05-23 projectile V2 wire pass moves `spawns`, `despawns`,
+  `velocityUpdates`, and `beamUpdates` (with embedded beam points) from
+  MessagePack number arrays into Uint8Array varint slabs using the
+  shared `snapshotBinaryWire` writer/reader. Spawn rows group by
+  optional-field flag mask; velocity updates group by the
+  clear-homing-target bit; despawns and beam updates use delta IDs
+  with per-row varuint flags. The V1 decode path is preserved.
+  Synthetic probes measured msgpack-encoded sizes for representative
+  shapes: 5,000 velocity updates went from 81,760 B to 57,213 B
+  (30.0% reduction), 1,000 velocity updates from 15,949 B to 11,411 B
+  (28.5% reduction), 200 mixed spawns from 8,478 B to 5,478 B (35.4%
+  reduction), 500 sorted-id despawns from 1,395 B to 526 B (62.3%
+  reduction), 500 random-id despawns from 1,512 B to 1,192 B (21.2%
+  reduction), 20 multi-segment beams from 1,591 B to 1,122 B (29.5%
+  reduction), and a combined 5,000-cap tick (5,000 velocity updates
+  + 30 spawns + 30 despawns + 10 beams) from 83,435 B to 58,381 B
+  (30.0% reduction). All round-trip parity checks pass when comparing
+  decoded DTOs keyed by id. The encode path no longer uses pooled
+  scratch arrays because binary writers own their buffers; the now-
+  unused `createPooledNumberArrayScratch` and `PooledNumberArrayScratch`
+  helpers were deleted along with their codec wiring. The live
+  high-count matrix still needs to be rerun before this child can be
+  closed.
 
 Why it matters:
 The remaining bandwidth problem is steady-state upstream, not rare

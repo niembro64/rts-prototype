@@ -30,10 +30,6 @@ import {
   unpackProjectilesFromWire,
 } from './snapshotProjectileWirePack';
 import {
-  createPooledNumberArrayScratch,
-  type PooledNumberArrayScratch,
-} from './snapshotPooledScratch';
-import {
   isPackedBuildabilityGridWire,
   isPackedTerrainTileMapWire,
   packBuildabilityForWire,
@@ -52,14 +48,6 @@ import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
 const RUST_SNAPSHOT_WIRE_COMPARE_ENABLED = import.meta.env.DEV && isRustSnapshotWireCompareEnabled();
 const FORCE_JS_SNAPSHOT_WIRE = isForceJsSnapshotWireEnabled();
-// Scratch arrays are valid only during the synchronous pack -> encode/measure window.
-// Callers that keep the packed wire object must call packNetworkSnapshotForWire without scratch.
-const encodeProjectilePackScratch = createPooledNumberArrayScratch();
-const measureProjectilePackScratch = createPooledNumberArrayScratch();
-
-type NetworkSnapshotWirePackScratch = {
-  projectiles?: PooledNumberArrayScratch;
-};
 
 const TOP_LEVEL_SNAPSHOT_KEYS = [
   'tick',
@@ -148,34 +136,27 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
-  encodeProjectilePackScratch.reset();
-  try {
-    const wireState = packNetworkSnapshotForWire(state, {
-      projectiles: encodeProjectilePackScratch,
-    });
-    if (!FORCE_JS_SNAPSHOT_WIRE) {
-      const rustResult = encodeNetworkSnapshotWithRustFallback(wireState);
-      if (rustResult) {
-        noteRustSnapshotWireResult(rustResult);
-        if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
-          const jsBytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
-          compareRustSnapshotWireResult(wireState, jsBytes, rustResult);
-        }
-        rustSnapshotWireStats.rustSends++;
-        return rustResult.bytes;
+  const wireState = packNetworkSnapshotForWire(state);
+  if (!FORCE_JS_SNAPSHOT_WIRE) {
+    const rustResult = encodeNetworkSnapshotWithRustFallback(wireState);
+    if (rustResult) {
+      noteRustSnapshotWireResult(rustResult);
+      if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
+        const jsBytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
+        compareRustSnapshotWireResult(wireState, jsBytes, rustResult);
       }
-      noteRustSnapshotWireUnavailable();
+      rustSnapshotWireStats.rustSends++;
+      return rustResult.bytes;
     }
-
-    const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
-    rustSnapshotWireStats.jsSends++;
-    if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
-      compareRustSnapshotWire(wireState, bytes);
-    }
-    return bytes;
-  } finally {
-    encodeProjectilePackScratch.release();
+    noteRustSnapshotWireUnavailable();
   }
+
+  const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
+  rustSnapshotWireStats.jsSends++;
+  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
+    compareRustSnapshotWire(wireState, bytes);
+  }
+  return bytes;
 }
 
 export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkServerSnapshot {
@@ -187,50 +168,42 @@ export function measureNetworkSnapshotWireBreakdown(
   state: NetworkServerSnapshot,
   totalBytes?: number,
 ): SnapshotWireBreakdown {
-  measureProjectilePackScratch.reset();
-  try {
-    const wireState = packNetworkSnapshotForWire(state, {
-      projectiles: measureProjectilePackScratch,
-    });
-    const measuredTotalBytes = totalBytes ?? msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS).byteLength;
-    const topLevel: Record<string, number> = {};
-    let topLevelSum = 0;
+  const wireState = packNetworkSnapshotForWire(state);
+  const measuredTotalBytes = totalBytes ?? msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS).byteLength;
+  const topLevel: Record<string, number> = {};
+  let topLevelSum = 0;
 
-    for (let i = 0; i < TOP_LEVEL_SNAPSHOT_KEYS.length; i++) {
-      const key = TOP_LEVEL_SNAPSHOT_KEYS[i];
-      const value = wireState[key];
-      const bytes = encodedPairBytes(key, value);
-      if (bytes <= 0) continue;
-      topLevel[key] = bytes;
-      topLevelSum += bytes;
-    }
-    const envelopeBytes = Math.max(0, measuredTotalBytes - topLevelSum);
-    if (envelopeBytes > 0) topLevel.envelope = envelopeBytes;
-
-    const entity = measureEntityBreakdown(state.entities);
-    const projectile = measureProjectileBreakdown(state.projectiles);
-
-    return {
-      totalBytes: measuredTotalBytes,
-      topLevel,
-      entity,
-      projectile,
-      topLevelTop: topEntries(topLevel, measuredTotalBytes),
-      entityTop: topEntries(entity, topLevel.entities ?? measuredTotalBytes),
-      projectileTop: topEntries(projectile, topLevel.projectiles ?? measuredTotalBytes),
-    };
-  } finally {
-    measureProjectilePackScratch.release();
+  for (let i = 0; i < TOP_LEVEL_SNAPSHOT_KEYS.length; i++) {
+    const key = TOP_LEVEL_SNAPSHOT_KEYS[i];
+    const value = wireState[key];
+    const bytes = encodedPairBytes(key, value);
+    if (bytes <= 0) continue;
+    topLevel[key] = bytes;
+    topLevelSum += bytes;
   }
+  const envelopeBytes = Math.max(0, measuredTotalBytes - topLevelSum);
+  if (envelopeBytes > 0) topLevel.envelope = envelopeBytes;
+
+  const entity = measureEntityBreakdown(state.entities);
+  const projectile = measureProjectileBreakdown(state.projectiles);
+
+  return {
+    totalBytes: measuredTotalBytes,
+    topLevel,
+    entity,
+    projectile,
+    topLevelTop: topEntries(topLevel, measuredTotalBytes),
+    entityTop: topEntries(entity, topLevel.entities ?? measuredTotalBytes),
+    projectileTop: topEntries(projectile, topLevel.projectiles ?? measuredTotalBytes),
+  };
 }
 
 export function packNetworkSnapshotForWire(
   state: NetworkServerSnapshot,
-  scratch?: NetworkSnapshotWirePackScratch,
 ): NetworkServerSnapshotWire {
   const packedAudioEvents = packAudioEventsForWire(state.audioEvents);
   const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
-  const packedProjectiles = packProjectilesForWire(state.projectiles, scratch?.projectiles);
+  const packedProjectiles = packProjectilesForWire(state.projectiles);
   const packedEntities = packEntitiesForWire(state.entities);
   const packedTerrain = packTerrainForWire(state.terrain);
   const packedBuildability = packBuildabilityForWire(state.buildability);
