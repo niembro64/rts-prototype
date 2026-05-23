@@ -1,4 +1,5 @@
 import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
+import { NO_ENTITY_ID } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
 import { EntityCacheManager } from './EntityCacheManager';
@@ -826,7 +827,7 @@ export class WorldState {
       entity.builder = {
         buildRange: bp.builder.buildRange,
         constructionRate: bp.builder.constructionRate,
-        currentBuildTarget: null,
+        currentBuildTarget: NO_ENTITY_ID,
       };
     }
 
@@ -955,6 +956,7 @@ export class WorldState {
       maxLifespan,
       maxHits,
       hasLeftSource: false,
+      homingTargetId: NO_ENTITY_ID,
       lastSentVelX: velocityX,
       lastSentVelY: velocityY,
       lastSentVelZ: 0,

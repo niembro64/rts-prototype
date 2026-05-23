@@ -1,6 +1,7 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, Turret } from '../../sim/types';
+import { NO_ENTITY_ID } from '../../sim/types';
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToTurretState,
@@ -289,7 +290,7 @@ function createUnitFromNetwork(
       entity.builder = {
         buildRange: unitBlueprint.builder.buildRange,
         constructionRate: unitBlueprint.builder.constructionRate,
-        currentBuildTarget: u.buildTargetId ?? null,
+        currentBuildTarget: u.buildTargetId ?? NO_ENTITY_ID,
       };
     }
   }

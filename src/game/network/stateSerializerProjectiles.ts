@@ -1,5 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { PlayerId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import type {
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
@@ -454,7 +455,7 @@ function shouldSendProjectileAtPoint(
   // instead of taking a silent HP drop from an attacker still hidden
   // in fog. FOW-06 broadens the target check from recipient-only to
   // team-aware via isOwnedByRecipientOrAlly.
-  if (homingTargetId !== undefined && world) {
+  if (homingTargetId !== undefined && homingTargetId !== NO_ENTITY_ID && world) {
     const target = world.getEntity(homingTargetId);
     if (visibility.isOwnedByRecipientOrAlly(target?.ownership?.playerId)) return true;
   }
@@ -507,7 +508,7 @@ function canReferenceEntityId(
   visibility: SnapshotVisibility | undefined,
   entityId: number | undefined,
 ): boolean {
-  if (entityId === undefined) return false;
+  if (entityId === undefined || entityId === NO_ENTITY_ID) return false;
   return visibility?.canReferenceEntityId(world, entityId) ?? true;
 }
 
@@ -702,7 +703,9 @@ export function serializeProjectileSnapshot({
           visibility,
           vu.pos.x,
           vu.pos.y,
-          projectile?.homingTargetId ?? vu.visibilityHomingTargetId,
+          projectile !== undefined && projectile.homingTargetId !== NO_ENTITY_ID
+            ? projectile.homingTargetId
+            : vu.visibilityHomingTargetId,
           world,
         )
       ) {

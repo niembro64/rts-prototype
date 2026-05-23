@@ -399,24 +399,24 @@ property declarations still appear in core types.
 ==============================================================================
 
 ------------------------------------------------------------------------------
-ABSENCE-01 - parent: 308 `?:` declarations remain across in-scope
+ABSENCE-01 - parent: 324 `?:` declarations remain across in-scope
              modules; 221 of them are in two files.
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/types/network.ts: 135 `?:` declarations. This file defines the
+- src/types/network.ts: 138 `?:` declarations. This file defines the
   NetworkServerSnapshotEntity DTO shape and dozens of inner
   unit/building/turret sub-shapes (pos, unit, building, projectile,
   audio, minimap, etc). The DTOs are pooled — the same object is
   reused across snapshots — so optional fields carry zombie values
   between snapshots unless every release path explicitly resets them.
-- src/types/sim.ts: 86 `?:` declarations. This is the core
+- src/types/sim.ts: 83 `?:` declarations. This is the core
   entity-state shape file. Optional component slots (`body?`,
   `unit?`, `building?`, `combat?`, `projectile?`, etc.) are the most
   common pattern, and the philosophy is explicit that "field is
   semantically inapplicable to this kind of entity is NOT an
   optional field. It is a discriminated union. Express it that way."
-- 87 other `?:` declarations spread across src/game/sim/*, including:
+- 103 other `?:` declarations spread across src/game/sim/*, including:
     - Simulation.ts (10): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
       onSimEvent?, onGameOver? plus a few method param defaults.
     - WorldState.ts (6): RemovedSnapshotEntity.playerId?,
@@ -425,15 +425,6 @@ Evidence:
       projectiles?, terrain?, buildability?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
       buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
-- Sentinel violations (number|null in hot loops, where the
-  philosophy prescribes numeric sentinels like `targetId = -1`):
-    - src/game/sim/combat/targetingInputStamping.ts:124 — `targetId:
-      EntityId | null` on CombatTargetingTurretFsmOut, stamped once
-      per turret per frame.
-    - src/types/sim.ts:623 — Builder.currentBuildTarget: EntityId |
-      null.
-    - src/game/sim/damage/DamageSystem.ts:164 — closestEntityId:
-      EntityId | null inside a damage-sphere search.
 - Transform shape variance: src/types/sim.ts:89-90 declares cached
   `rotCos?` and `rotSin?` on the Transform. Sometimes-populated
   cached fields are exactly the V8 hidden-class deoptimization the
@@ -490,41 +481,6 @@ Either model Entity as a discriminated union keyed by `kind`
 plus explicit guards at the readers. For the rotation cache, either
 always populate the cache (uniform shape) or move the cache to a
 separate map keyed by entity ID.
-
-------------------------------------------------------------------------------
-ABSENCE-01C - child: swap number|null target IDs for numeric
-              sentinels in hot-loop types.
-------------------------------------------------------------------------------
-
-Evidence:
-- targetingInputStamping.ts:124 stamps `targetId: EntityId | null`
-  for every armed turret every frame.
-- Builder.currentBuildTarget (sim.ts:623) and
-  closestEntityId (DamageSystem.ts:164) carry the same shape.
-- Other hot-loop sites in combat targeting and projectile homing
-  use `proj.homingTargetId !== undefined` checks (projectileSystem.ts
-  :788, :795) — same anti-pattern in `T | undefined` form.
-- The 2026-05-23 FSM-sentinel pass moves
-  `CombatTargetingTurretFsmOut.targetId` from `EntityId | null` to a
-  numeric `EntityId` field with -1 as the "no target" sentinel. All
-  eight pooled `_xxxFsm` initializers and the eight reader sites
-  (`stateSerializerEntities`, `stateSerializerEntityDelta`,
-  `Simulation` stop/fight predicates, `projectileSystem`,
-  `turretSystem`, `laserSoundSystem`, `mirrorTargetPriority`,
-  `ClientUnitPrediction`, `UnitBarrelSpinState3D`, `forceFieldTurret`)
-  were updated together. Mixed reads of `_fsm.targetId` vs
-  `weapon.target ?? -1` normalize to a single sentinel-shape number.
-  `tsc --noEmit` passes. Remaining child work:
-  `Builder.currentBuildTarget`, `closestEntityId` in `DamageSystem`,
-  and projectile `homingTargetId !== undefined` are still open.
-
-Fix direction:
-Use -1 as the unambiguous "no target" sentinel for entity IDs in hot
-loops. Update readers from `x === null` / `x === undefined` to
-`x === -1`. Document the sentinel choice once, in a shared comment
-or type.
-
-==============================================================================
 
 CONFIG IS DATA, NOT CODE (BLUEPRINT-01 family)
 

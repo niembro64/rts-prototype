@@ -8,6 +8,7 @@
 
 import type { WorldState } from './WorldState';
 import type { Entity, EntityId, PlayerId } from './types';
+import { NO_ENTITY_ID } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
@@ -98,7 +99,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   //    pass below knows how fast a building can be funded.
   for (const entity of world.getBuilderUnits()) {
     const targetId = entity.builder?.currentBuildTarget;
-    if (targetId == null) continue;
+    if (targetId === undefined || targetId === NO_ENTITY_ID) continue;
     buildTargets.add(targetId);
     const rate = entity.builder!.constructionRate;
     constructionRateByTarget.set(targetId, (constructionRateByTarget.get(targetId) ?? 0) + rate);

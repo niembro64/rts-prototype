@@ -1,5 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { assertUnitActionHashSynced } from '../sim/unitActions';
 import { SNAPSHOT_CONFIG } from '../../config';
@@ -640,7 +641,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       buildable && !buildable.isComplete ? 0 : 1,
       buildable?.paid.energy ?? 0,
       buildable?.paid.metal ?? 0,
-      e.builder?.currentBuildTarget ?? -1,
+      e.builder?.currentBuildTarget ?? NO_ENTITY_ID,
       u.suspension?.offsetZ ?? 0,
       u.suspension?.velocityZ ?? 0,
       buildable ? getBuildFraction(buildable) : 0,

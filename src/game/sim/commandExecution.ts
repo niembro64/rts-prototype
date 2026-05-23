@@ -27,6 +27,7 @@ import type {
   WaitCommand,
 } from './commands';
 import type { Entity, PlayerId, Unit, UnitAction } from './types';
+import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
@@ -295,7 +296,7 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
     resetFlyingLoiterToCurrentPosition(entity, ctx.world);
     entity.unit.thrustDirX = 0;
     entity.unit.thrustDirY = 0;
-    if (entity.builder) entity.builder.currentBuildTarget = null;
+    if (entity.builder) entity.builder.currentBuildTarget = NO_ENTITY_ID;
     if (entity.combat) {
       entity.combat.priorityTargetId = null;
       entity.combat.priorityTargetPoint = null;
@@ -307,10 +308,10 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
 
 function clearBuilderTargetIfRemoved(entity: Entity, removedActions: readonly UnitAction[]): void {
   const builder = entity.builder;
-  if (!builder || builder.currentBuildTarget === null) return;
+  if (!builder || builder.currentBuildTarget === NO_ENTITY_ID) return;
   for (let i = 0; i < removedActions.length; i++) {
     if (getUnitActionTargetId(removedActions[i]) === builder.currentBuildTarget) {
-      builder.currentBuildTarget = null;
+      builder.currentBuildTarget = NO_ENTITY_ID;
       return;
     }
   }

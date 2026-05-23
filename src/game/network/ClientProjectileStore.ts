@@ -1,4 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
@@ -259,6 +260,7 @@ export class ClientProjectileStore {
         maxLifespan: spawn.maxLifespan ?? config.shotProfile.runtime.maxLifespan,
         hitEntities: new Set(),
         maxHits: 1,
+        homingTargetId: NO_ENTITY_ID,
         endpointDamageable: projectileType !== 'beam' && projectileType !== 'laser',
         segmentLimitReached: false,
         points: spawn.beam ? [

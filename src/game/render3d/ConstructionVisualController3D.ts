@@ -16,6 +16,7 @@ import { halfLifeBlend } from '../network/driftEma';
 import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import {
   getFactoryBuildSpot,
   getFactoryConstructionRadius,
@@ -88,10 +89,10 @@ export class ConstructionVisualController3D {
     const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
     const rateAlpha = halfLifeBlend(dtSec, halfLife);
 
-    const targetId = commander.builder?.currentBuildTarget ?? null;
+    const targetId = commander.builder?.currentBuildTarget ?? NO_ENTITY_ID;
     let targetRateE = 0;
     let targetRateT = 0;
-    if (targetId !== null && commander.builder && dtSec > 0) {
+    if (targetId !== NO_ENTITY_ID && commander.builder && dtSec > 0) {
       const target = this.clientViewState.getEntity(targetId);
       const buildable = target?.buildable;
       if (target && buildable && !buildable.isComplete) {

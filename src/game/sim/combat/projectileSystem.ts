@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
-import { isLineShot, isLineShotType, isProjectileShot } from '../types';
+import { isLineShot, isLineShotType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
@@ -238,7 +238,7 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   const profile = proj.config.shotProfile.runtime;
   if (!profile.isProjectile) return false;
   const shot = proj.config.shot as ProjectileShot;
-  if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== undefined) return false;
+  if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== NO_ENTITY_ID) return false;
   if (proj.maxHits !== 1) return false;
   return true;
 }
@@ -786,14 +786,14 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     let aNetZ = -projectileGravity;
     let homingTargetForReporting: Entity | null = null;
 
-    if (!isDGunWave && proj.homingTargetId !== undefined) {
+    if (!isDGunWave && proj.homingTargetId !== NO_ENTITY_ID) {
       let homingTarget = world.getEntity(proj.homingTargetId);
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
         // Projectiles inherit a lock from the firing turret. They do
         // not acquire replacement targets after launch; missing or
         // dead targets simply end guidance.
-        proj.homingTargetId = undefined;
+        proj.homingTargetId = NO_ENTITY_ID;
         homingTarget = undefined;
       }
       if (homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0))) {

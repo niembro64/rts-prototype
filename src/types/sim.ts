@@ -45,6 +45,7 @@ export type {
   TurretRanges,
 } from './combatTypes';
 export type { EntityId, PlayerId } from './entityTypes';
+export { NO_ENTITY_ID } from './entityTypes';
 export type { UnitLocomotion } from './locomotionTypes';
 export type { ResourceCost } from './economyTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
@@ -569,7 +570,8 @@ export type Projectile = {
    *  use their endpoint damage point. While false, collision damage and
    *  explosion effects are suppressed. */
   hasLeftSource?: boolean;
-  homingTargetId?: EntityId;
+  /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
+  homingTargetId: EntityId;
   homingTurnRate?: number;
   lastSentVelX?: number;
   lastSentVelY?: number;
@@ -622,7 +624,8 @@ export type Builder = {
    *  construction resource lane. Repair uses the same work-rate cap
    *  for its energy cost. */
   constructionRate: number;
-  currentBuildTarget: EntityId | null;
+  /** Sentinel `NO_ENTITY_ID` means no direct construction target. */
+  currentBuildTarget: EntityId;
 };
 
 // Building configuration. gridWidth/gridHeight are the footprint on

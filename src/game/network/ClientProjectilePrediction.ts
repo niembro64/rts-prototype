@@ -1,4 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import { isLineShotType, type ProjectileShot } from '@/types/sim';
 import {
   GRAVITY,
@@ -89,14 +90,14 @@ function resolveClientHomingThrust(options: {
   const maxThrustAccel = getHomingMaxThrustAccel(shot);
   if (maxThrustAccel <= 0) return null;
 
-  if (proj.homingTargetId === undefined) {
+  if (proj.homingTargetId === NO_ENTITY_ID) {
     return null;
   }
 
   const homingTarget = getEntity(proj.homingTargetId);
   const targetValid = !!(homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0)));
   if (!targetValid) {
-    proj.homingTargetId = undefined;
+    proj.homingTargetId = NO_ENTITY_ID;
   }
   if (!(targetValid && homingTarget)) return null;
 

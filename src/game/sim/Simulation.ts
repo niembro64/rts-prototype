@@ -1,6 +1,7 @@
 import { WorldState } from './WorldState';
 import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, Unit, UnitAction } from './types';
+import { NO_ENTITY_ID } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { buildUnitDeathEvent, buildBuildingDeathEvent } from './combat/damageHelpers';
 import { updateShroudBitmaps } from './shroudBitmap';
@@ -1006,7 +1007,7 @@ export class Simulation {
       const removeStart = getActionIntentStart(actions, i);
       spliceUnitActions(unit, removeStart, i - removeStart + 1);
       if (targetId !== undefined && entity.builder?.currentBuildTarget === targetId) {
-        entity.builder.currentBuildTarget = null;
+        entity.builder.currentBuildTarget = NO_ENTITY_ID;
       }
       changed = true;
       i = removeStart - 1;

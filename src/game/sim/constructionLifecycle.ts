@@ -4,6 +4,7 @@
 // flags so buildings and units cannot drift into separate semantics.
 
 import type { Entity } from './types';
+import { NO_ENTITY_ID } from './types';
 import type { WorldState } from './WorldState';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { getBuildFraction, isBuildFullyPaid } from './buildableHelpers';
@@ -49,7 +50,7 @@ function isConstructionAlive(entity: Entity): boolean {
 function clearDirectBuilderTargets(world: WorldState, targetId: number): void {
   for (const builder of world.getBuilderUnits()) {
     if (builder.builder?.currentBuildTarget !== targetId) continue;
-    builder.builder.currentBuildTarget = null;
+    builder.builder.currentBuildTarget = NO_ENTITY_ID;
     world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
   }
 }

@@ -8,6 +8,7 @@
  */
 
 import type { Entity, PlayerId, EntityId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
@@ -595,7 +596,7 @@ export class ClientViewState {
           target.velocityY = deqVel(vu.velocity.y);
           target.updatedAtMs = now;
           if (vu.clearHomingTarget === true) {
-            entity.projectile.homingTargetId = undefined;
+            entity.projectile.homingTargetId = NO_ENTITY_ID;
           }
           this.clearTargetPredictionAccum(vu.id);
           this.projectileStore.markVelocityUpdateActive(entity, vu.id);

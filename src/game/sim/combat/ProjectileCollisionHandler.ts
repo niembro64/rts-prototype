@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
-import { isLineShotType } from '../types';
+import { isLineShotType, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -547,9 +547,9 @@ export function checkProjectileCollisions(
         hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
       if (bestT < Infinity) {
-        if (isRocketShot && proj.homingTargetId !== undefined) {
+        if (isRocketShot && proj.homingTargetId !== NO_ENTITY_ID) {
           clearedHomingTargetId = proj.homingTargetId;
-          proj.homingTargetId = undefined;
+          proj.homingTargetId = NO_ENTITY_ID;
         }
         const shouldReflectProjectile =
           !isRocketShot || ROCKET_REFLECTOR_COLLISION_MODE === 'reflect';

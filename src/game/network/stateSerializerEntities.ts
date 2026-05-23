@@ -1,5 +1,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
 import {
@@ -729,8 +730,10 @@ export function serializeEntitySnapshot(
 
       u.buildTargetId = undefined;
       if (canSeePrivateDetails && entity.builder && (isFull || (changedFields! & ENTITY_CHANGED_ACTIONS))) {
-        const targetId = entity.builder.currentBuildTarget ?? undefined;
-        u.buildTargetId = canReferenceEntityId(targetId) ? targetId ?? null : null;
+        const targetId = entity.builder.currentBuildTarget;
+        u.buildTargetId = targetId !== NO_ENTITY_ID && canReferenceEntityId(targetId)
+          ? targetId
+          : null;
       }
     }
   }

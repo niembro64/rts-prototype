@@ -1,4 +1,5 @@
 import type { Entity, BuildingType } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 import type { NetworkServerSnapshotEntity } from './NetworkManager';
 import {
   ENTITY_CHANGED_ACTIONS,
@@ -87,7 +88,7 @@ export function snapClientNonVisualState(
       || isFull
       || cf! & ENTITY_CHANGED_ACTIONS
     )) {
-      entity.builder.currentBuildTarget = su.buildTargetId ?? null;
+      entity.builder.currentBuildTarget = su.buildTargetId ?? NO_ENTITY_ID;
     }
   }
 

@@ -4,6 +4,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { BeamReflectorKind, Entity, EntityId, PlayerId } from '../types';
+import { NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
   LineDamageSource,
@@ -160,8 +161,8 @@ export class DamageSystem {
     sourceEntityId: EntityId,
     lineWidth: number
   ): { t: number; entityId: EntityId } | null {
-    let closestT: number | null = null;
-    let closestEntityId: EntityId | null = null;
+    let closestT = Infinity;
+    let closestEntityId: EntityId = NO_ENTITY_ID;
 
     // PERFORMANCE: Single line-cell sweep filling both arrays. Uses the
     // wider building pad (+100); the per-entity intersection check below
@@ -180,7 +181,7 @@ export class DamageSystem {
         unit.unit.radius.shot + lineWidth / 2
       );
 
-      if (t !== null && (closestT === null || t < closestT)) {
+      if (t !== null && t < closestT) {
         closestT = t;
         closestEntityId = unit.id;
       }
@@ -204,13 +205,13 @@ export class DamageSystem {
         rectX, rectY, bWidth, bHeight
       );
 
-      if (t !== null && (closestT === null || t < closestT)) {
+      if (t !== null && t < closestT) {
         closestT = t;
         closestEntityId = building.id;
       }
     }
 
-    return closestT !== null ? { t: closestT, entityId: closestEntityId! } : null;
+    return closestEntityId !== NO_ENTITY_ID ? { t: closestT, entityId: closestEntityId } : null;
   }
 
   // Find beam path with reflections off mirror units and force-field
