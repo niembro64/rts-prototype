@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
-  canEntityProvideVision,
-  getEntityVisionRadius,
+  canEntityProvideFullVision,
+  getEntityFullVisionRadius,
 } from '../network/stateSerializerVisibility';
 import type { Entity, PlayerId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -42,10 +42,9 @@ function clampUnit(value: number): number {
 
 /**
  * Draws the exact presentation meaning of "my sight": the outer union
- * boundary of local current-vision sources plus active scan pulses. Radar
- * towers are included here because they expand the player's current fog
- * coverage, even though enemy units inside radar-only coverage still render
- * according to the server's radar/contact rules.
+ * boundary of local optical full-vision sources plus active scan pulses.
+ * Radar towers intentionally stay out of this optical boundary; they reveal
+ * minimap contacts and need a distinct sensor treatment.
  */
 export class SightBoundaryRenderer3D {
   private readonly parent: THREE.Group;
@@ -134,11 +133,11 @@ export class SightBoundaryRenderer3D {
   private collectFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!canEntityProvideVision(entity)) continue;
+      if (!canEntityProvideFullVision(entity)) continue;
       this.pushSource(
         entity.transform.x,
         entity.transform.y,
-        getEntityVisionRadius(entity),
+        getEntityFullVisionRadius(entity),
         renderScope,
       );
     }

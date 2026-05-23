@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
-  canEntityProvideVision,
-  getEntityVisionRadius,
+  canEntityProvideFullVision,
+  getEntityFullVisionRadius,
 } from '../network/stateSerializerVisibility';
 import type { Entity, PlayerId } from '../sim/types';
 import { DEMO_CONFIG } from '@/demoConfig';
@@ -252,11 +252,11 @@ export class FogOfWarFog3D {
   private collectFromOwned(entities: readonly Entity[]): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!canEntityProvideVision(entity)) continue;
+      if (!canEntityProvideFullVision(entity)) continue;
       this.sources.push({
         x: entity.transform.x,
         y: entity.transform.y,
-        radius: getEntityVisionRadius(entity),
+        radius: getEntityFullVisionRadius(entity),
       });
     }
   }

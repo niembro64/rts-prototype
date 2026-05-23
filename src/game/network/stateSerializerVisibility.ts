@@ -568,13 +568,6 @@ export function canEntityProvideDetectorVision(entity: Entity): boolean {
   return canEntityProvideDetection(entity);
 }
 
-/** Legacy: returns true if entity contributes ANY vision (full OR
- *  radar). Kept for the client-side shroud renderer, which lights up
- *  terrain wherever the local player has any kind of coverage. */
-export function canEntityProvideVision(entity: Entity): boolean {
-  return canEntityProvideFullVision(entity) || canEntityProvideRadarVision(entity);
-}
-
 export function getEntityFullVisionRadius(entity: Entity): number {
   if (!canEntityProvideFullVision(entity)) return 0;
   // FOW-OPT-15: the radius is determined by blueprint-constant inputs
@@ -605,15 +598,6 @@ export function getEntityFullVisionRadius(entity: Entity): number {
 export function getEntityRadarRadius(entity: Entity): number {
   if (!canEntityProvideRadarVision(entity)) return 0;
   return RADAR_VISION_RADIUS;
-}
-
-/** Legacy: returns max of full + radar radii. The client-side shroud
- *  renderer uses this so radar coverage clears the shroud — terrain
- *  inside a radar's footprint counts as "currently visible" for the
- *  exploration overlay even though enemies there only appear as
- *  minimap blips. */
-export function getEntityVisionRadius(entity: Entity): number {
-  return Math.max(getEntityFullVisionRadius(entity), getEntityRadarRadius(entity));
 }
 
 export function getEntityVisibilityPadding(entity: Entity): number {

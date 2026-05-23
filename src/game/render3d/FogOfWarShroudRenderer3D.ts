@@ -5,8 +5,8 @@ import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotShroud } from '../network/NetworkTypes';
 import {
-  canEntityProvideVision,
-  getEntityVisionRadius,
+  canEntityProvideFullVision,
+  getEntityFullVisionRadius,
 } from '../network/stateSerializerVisibility';
 import { markCircleScanline } from '../sim/circleFill';
 import { SHROUD_CELL_SIZE } from '../sim/WorldState';
@@ -326,7 +326,8 @@ export class FogOfWarShroudRenderer3D {
     // list. On a 1k-entity map the prior code paid one ownership
     // check per entity each paint; the cache slice is exactly the
     // set we care about so we skip straight to the
-    // canEntityProvideVision predicate.
+    // canEntityProvideFullVision predicate. Radar is deliberately not
+    // optical sight; it produces minimap contacts, not clear terrain.
     this.collectFromOwned(clientViewState.getUnitsByPlayer(localPlayerId));
     this.collectFromOwned(clientViewState.getBuildingsByPlayer(localPlayerId));
     // FOW-14: temporary scanner sweeps clear the shroud for the
@@ -345,11 +346,11 @@ export class FogOfWarShroudRenderer3D {
   private collectFromOwned(entities: readonly Entity[]): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!canEntityProvideVision(entity)) continue;
+      if (!canEntityProvideFullVision(entity)) continue;
       this.sources.push({
         x: entity.transform.x,
         y: entity.transform.y,
-        radius: getEntityVisionRadius(entity),
+        radius: getEntityFullVisionRadius(entity),
       });
     }
   }

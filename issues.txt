@@ -721,14 +721,18 @@ Evidence:
   radar only reveals minimap blips.
 - Full entity visibility in SnapshotVisibility.isEntityVisible() checks
   terrain line of sight through hasTerrainLineOfSight().
-- src/game/sim/shroudBitmap.ts uses canEntityProvideVision() plus a
-  radius-only markCircle() pass. canEntityProvideVision() explicitly
-  includes radar, and the shroud pass does not apply terrain line of
-  sight.
+- The 2026-05-23 optical-source cleanup removed the legacy combined
+  full-or-radar helper and switched server shroud history,
+  FogOfWarShroudRenderer3D, FogOfWarFog3D, and SightBoundaryRenderer3D
+  to canEntityProvideFullVision()/getEntityFullVisionRadius(). Radar
+  no longer clears terrain shroud/fog or draws as optical sight.
+- src/game/sim/shroudBitmap.ts still uses a radius-only markCircle()
+  pass. It does not apply the same terrain line-of-sight mask as
+  SnapshotVisibility.isEntityVisible().
 - src/game/render3d/FogOfWarShroudRenderer3D.ts and
-  src/game/render3d/FogOfWarFog3D.ts collect the same
-  canEntityProvideVision()/getEntityVisionRadius() sources, so radar
-  and 2D radius coverage visually clear the shroud like optical sight.
+  src/game/render3d/FogOfWarFog3D.ts still re-derive local current
+  vision as 2D radius coverage, so terrain behind ridges can visually
+  clear even when the host would hide enemy entity detail there.
 
 Why it matters:
 The player can be shown terrain as currently visible or explored even

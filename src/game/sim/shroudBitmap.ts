@@ -19,8 +19,8 @@ import type { WorldState } from './WorldState';
 import { SHROUD_CELL_SIZE } from './WorldState';
 import type { PlayerId, Entity } from './types';
 import {
-  canEntityProvideVision,
-  getEntityVisionRadius,
+  canEntityProvideFullVision,
+  getEntityFullVisionRadius,
 } from '../network/stateSerializerVisibility';
 import { markCircleScanline } from './circleFill';
 
@@ -33,7 +33,7 @@ const UPDATE_EVERY_N_TICKS = 6;
 /** Mark cells revealed by a player's current vision sources. Called by
  *  Simulation.update each tick (sub-sampled to UPDATE_EVERY_N_TICKS).
  *  Allocates the bitmap lazily so a player who never produces a
- *  vision source never owns one. Bumps the player's
+ *  full-vision source never owns one. Bumps the player's
  *  shroudBitmapVersions counter whenever at least one new cell
  *  flipped 0→1 so the publisher can detect "nothing changed since
  *  the last ship" (issues.txt FOW-OPT-02).
@@ -93,8 +93,8 @@ function revealForSources(
   let modified = false;
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
-    if (!canEntityProvideVision(entity)) continue;
-    const radius = getEntityVisionRadius(entity);
+    if (!canEntityProvideFullVision(entity)) continue;
+    const radius = getEntityFullVisionRadius(entity);
     if (radius <= 0) continue;
     if (markCircle(
       bitmap,
