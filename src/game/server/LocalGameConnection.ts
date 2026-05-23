@@ -32,17 +32,17 @@ export class LocalGameConnection implements GameConnection {
   /** Who this client acts as for command attribution. `undefined`
    *  is an explicit spectator authority: the server receives the
    *  command but rejects gameplay and server-control mutations. */
-  private commandPlayerId?: PlayerId;
+  private commandPlayerId: PlayerId | undefined = undefined;
   private commandAuthorityMode: LocalCommandAuthorityMode;
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
    *  commandPlayerId so a true spectator can view-as-N without being
    *  able to issue orders as N (issues.txt FOW-07). */
-  private filterPlayerId?: PlayerId;
+  private filterPlayerId: PlayerId | undefined = undefined;
 
   constructor(
     server: GameServer,
-    playerId?: PlayerId,
+    playerId: PlayerId | undefined = undefined,
     commandAuthorityMode: LocalCommandAuthorityMode = 'player',
   ) {
     this.server = server;
@@ -52,7 +52,8 @@ export class LocalGameConnection implements GameConnection {
     this.snapshotListenerKey = this.subscribeSnapshots(playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
-      this.gameOverCallback?.(winnerId);
+      const callback = this.gameOverCallback;
+      if (callback !== null) callback(winnerId);
     });
   }
 
@@ -122,16 +123,19 @@ export class LocalGameConnection implements GameConnection {
     const encodeMs = performance.now() - start;
     setSnapshotWireBytes(state, payload.byteLength);
     if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
+    const serverMeta = state.serverMeta;
+    const snapshotRate = serverMeta !== undefined ? serverMeta.snaps.rate : undefined;
+    const unitCount = serverMeta !== undefined ? serverMeta.units.count : undefined;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
-      rate: state.serverMeta?.snaps.rate,
+      rate: snapshotRate,
       bytes: payload.byteLength,
       encodeMs,
     });
     SNAPSHOT_ENCODE_INSTRUMENTATION.record({
       source: 'local',
       listener: this.snapshotListenerKey,
-      rate: state.serverMeta?.snaps.rate,
-      unitCount: state.serverMeta?.units.count,
+      rate: snapshotRate,
+      unitCount,
       bytes: payload.byteLength,
       encodeMs,
       isDelta: state.isDelta,

@@ -4,7 +4,7 @@ export type CommandAuthority =
   | { mode: 'host-admin' }
   | { mode: 'local-offline'; playerId: PlayerId }
   | { mode: 'player'; playerId: PlayerId }
-  | { mode: 'spectator'; playerId?: PlayerId };
+  | { mode: 'spectator'; playerId: PlayerId | undefined };
 
 export function commandAuthorityPlayerId(
   authority: CommandAuthority,

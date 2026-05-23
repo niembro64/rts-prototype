@@ -11,15 +11,15 @@ export type ServerSnapshotMetaInput = {
   keyframeRatio: KeyframeRatio;
   ipAddress: string;
   gridEnabled: boolean;
-  allowedUnits?: Iterable<string>;
-  maxUnits?: number;
-  unitCount?: number;
-  mirrorsEnabled?: boolean;
-  forceFieldsEnabled?: boolean;
-  forceFieldsObstructSight?: boolean;
-  forceFieldReflectionMode?: ForceFieldReflectionMode;
-  fogOfWarEnabled?: boolean;
-  converterTax?: number;
+  allowedUnits: Iterable<string> | undefined;
+  maxUnits: number | undefined;
+  unitCount: number | undefined;
+  mirrorsEnabled: boolean | undefined;
+  forceFieldsEnabled: boolean | undefined;
+  forceFieldsObstructSight: boolean | undefined;
+  forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
+  fogOfWarEnabled: boolean | undefined;
+  converterTax: number | undefined;
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
@@ -62,7 +62,7 @@ export class ServerSnapshotMetaBuilder {
       server: { time: this.formatServerTime(), ip: input.ipAddress },
       grid: input.gridEnabled,
       units: {
-        allowed: input.allowedUnits ? [...input.allowedUnits] : undefined,
+        allowed: input.allowedUnits !== undefined ? [...input.allowedUnits] : undefined,
         max: input.maxUnits,
         count: input.unitCount,
       },

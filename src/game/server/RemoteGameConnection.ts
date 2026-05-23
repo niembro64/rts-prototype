@@ -27,8 +27,15 @@ export class RemoteGameConnection implements GameConnection {
     } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
       this.pendingSnapshot = state;
     }
-    if (state.gameState?.phase === 'gameOver' && state.gameState.winnerId !== undefined) {
-      this.gameOverCallback?.(state.gameState.winnerId);
+    const gameState = state.gameState;
+    const gameOverCallback = this.gameOverCallback;
+    if (
+      gameState !== undefined &&
+      gameState.phase === 'gameOver' &&
+      gameState.winnerId !== undefined &&
+      gameOverCallback !== null
+    ) {
+      gameOverCallback(gameState.winnerId);
     }
   }
 

@@ -229,6 +229,7 @@ export class GameServer {
       for (const entity of newUnits) {
         createPhysicsBodyForUnit(this.world, this.physics, entity, {
           ignoreOverlappingBuildings: true,
+          overlapPadding: undefined,
         });
       }
     };
