@@ -412,12 +412,12 @@
     },
     "beam": {
       "outer": {
-        "colorRgb01": "#ffaaff",
+        "colorRgb01": "#ffffff",
         "waveLowAlpha": 0.1,
         "waveHighAlpha": 0.2
       },
       "inner": {
-        "colorRgb01": "#aaffff",
+        "colorRgb01": "#ffffff",
         "waveLowAlpha": 0.2,
         "waveHighAlpha": 0.3
       }
