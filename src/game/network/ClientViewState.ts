@@ -111,6 +111,8 @@ export class ClientViewState {
 
   // Server metadata from latest snapshot
   private serverMeta: NetworkServerSnapshotMeta | null = null;
+  private visionPlayerMask = 0;
+  private readonly visionPlayerIds: PlayerId[] = [];
   private forceFieldsEnabledForPrediction = true;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
@@ -684,6 +686,7 @@ export class ClientViewState {
     if (state.serverMeta) {
       this.serverMeta = state.serverMeta;
     }
+    this.visionPlayerMask = state.visionPlayerMask ?? 0;
     return applyStats;
   }
 
@@ -836,6 +839,26 @@ export class ClientViewState {
     return this.scanPulses;
   }
 
+  /** Player IDs whose full-vision entities should drive live fog /
+   *  sight presentation for this client. The host sends a compact
+   *  recipient+allies bitmask; older/unfiltered snapshots fall back to
+   *  the local player so standalone rendering keeps its prior behavior. */
+  getVisionPlayerIds(localPlayerId: PlayerId): readonly PlayerId[] {
+    const out = this.visionPlayerIds;
+    out.length = 0;
+    let pending = this.visionPlayerMask;
+    if (pending === 0) {
+      out.push(localPlayerId);
+      return out;
+    }
+    while (pending !== 0) {
+      const lowBit = pending & -pending;
+      out.push((32 - Math.clz32(lowBit)) as PlayerId);
+      pending ^= lowBit;
+    }
+    return out;
+  }
+
   /** Drain the latest authoritative shroud payload (FOW-11). The
    *  shroud renderer calls this once per paint cycle; returning the
    *  payload exactly once mirrors the audio-event drain pattern so
@@ -967,6 +990,8 @@ export class ClientViewState {
     this.sprayTargetStore.reset();
     this.pendingAudioEvents = EMPTY_AUDIO;
     this.scanPulses.length = 0;
+    this.visionPlayerMask = 0;
+    this.visionPlayerIds.length = 0;
     this.pendingShroud = null;
     this.minimapOverrideStore.reset();
     this.gameOverWinnerId = null;

@@ -239,8 +239,12 @@ export class FogOfWarFog3D {
 
   private collectSources(clientViewState: ClientViewState, localPlayerId: PlayerId): void {
     this.sources.length = 0;
-    this.collectFromOwned(clientViewState.getUnitsByPlayer(localPlayerId));
-    this.collectFromOwned(clientViewState.getBuildingsByPlayer(localPlayerId));
+    const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i];
+      this.collectFromOwned(clientViewState.getUnitsByPlayer(playerId));
+      this.collectFromOwned(clientViewState.getBuildingsByPlayer(playerId));
+    }
 
     const pulses = clientViewState.getScanPulses();
     for (let i = 0; i < pulses.length; i++) {

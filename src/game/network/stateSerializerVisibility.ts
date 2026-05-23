@@ -4,7 +4,7 @@ import type {
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotShroud,
 } from '../../types/network';
-import { hasTerrainLineOfSight } from '../sim/terrain/terrainLineOfSight';
+import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import { SHROUD_CELL_SIZE } from '../sim/WorldState';
 import { buildRecipientShroudView } from '../sim/shroudBitmap';
 import {
@@ -205,6 +205,10 @@ export class SnapshotVisibility {
     return this.viewMask !== 0;
   }
 
+  getVisionPlayerMask(): number {
+    return this.viewMask;
+  }
+
   canSeePrivateEntityDetails(entity: Entity): boolean {
     if (!this.hasRecipient) return true;
     return this.isOwnedByRecipientOrAlly(entity.ownership?.playerId);
@@ -244,9 +248,9 @@ export class SnapshotVisibility {
   }
 
   /** Distance-then-LOS scan over fullSources. Reuses the spatial hash
-   *  for the distance candidate set, then runs hasTerrainLineOfSight
-   *  against the heightmap only on the candidates that pass distance
-   *  — so a tank behind a tall ridge falls out of vision even when
+   *  for the distance candidate set, then runs the shared fog LOS
+   *  policy only on the candidates that pass distance — so a tank
+   *  behind terrain or force material falls out of vision even when
    *  the source's 2D circle covers its position. */
   private isEntityVisibleWithLos(
     x: number,
@@ -266,7 +270,7 @@ export class SnapshotVisibility {
       const dy = y - source.y;
       const r = source.radius + padding;
       if (dx * dx + dy * dy > r * r) continue;
-      if (hasTerrainLineOfSight(
+      if (hasFogOfWarLineOfSight(
         this.world,
         source.x, source.y, source.z,
         x, y, targetZ,

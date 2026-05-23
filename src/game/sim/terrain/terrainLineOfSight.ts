@@ -8,8 +8,8 @@ import type { WorldState } from '../WorldState';
 const TERRAIN_LOS_STEP_FRAC = 0.5;
 
 /** True if the straight line from (sx,sy,sz) to (tx,ty,tz) clears the
- *  terrain surface. This terrain-only helper remains for fog-of-war
- *  visibility, which does not care about unit/building occluders. */
+ *  terrain surface. Higher-level callers compose this with any
+ *  non-terrain blockers their policy requires. */
 export function hasTerrainLineOfSight(
   world: WorldState,
   sx: number, sy: number, sz: number,

@@ -120,8 +120,12 @@ export class SightBoundaryRenderer3D {
     renderScope: ViewportFootprint,
   ): void {
     this.sources.length = 0;
-    this.collectFromOwned(clientViewState.getUnitsByPlayer(localPlayerId), renderScope);
-    this.collectFromOwned(clientViewState.getBuildingsByPlayer(localPlayerId), renderScope);
+    const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i];
+      this.collectFromOwned(clientViewState.getUnitsByPlayer(playerId), renderScope);
+      this.collectFromOwned(clientViewState.getBuildingsByPlayer(playerId), renderScope);
+    }
 
     const pulses = clientViewState.getScanPulses();
     for (let i = 0; i < pulses.length; i++) {

@@ -558,6 +558,12 @@ export type NetworkServerSnapshot = {
    *  absent full-keyframe entities as last-seen state unless an explicit
    *  removal arrives. */
   visibilityFiltered?: boolean;
+  /** Bitmask of player IDs whose full-vision entities may contribute
+   *  to this recipient's live fog presentation. Bit p-1 corresponds
+   *  to PlayerId p. Sent by the host so the client consumes the same
+   *  recipient+allies visibility contract as snapshot filtering
+   *  without guessing from arbitrary visible entities. */
+  visionPlayerMask?: number;
   removedEntityIds?: number[];
 };
 

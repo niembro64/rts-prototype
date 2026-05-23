@@ -302,6 +302,7 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.serverMeta = undefined;
     this.snapshot.removedEntityIds = undefined;
     this.snapshot.visibilityFiltered = undefined;
+    this.snapshot.visionPlayerMask = undefined;
   }
 
   clone(state: NetworkServerSnapshot): NetworkServerSnapshot {
@@ -435,6 +436,7 @@ export class ReusableNetworkSnapshotCloner {
       : undefined;
     dst.isDelta = state.isDelta;
     dst.visibilityFiltered = state.visibilityFiltered === true ? true : undefined;
+    dst.visionPlayerMask = state.visionPlayerMask;
     if (state.removedEntityIds && state.removedEntityIds.length > 0) {
       this.removedEntityIds.length = state.removedEntityIds.length;
       for (let i = 0; i < state.removedEntityIds.length; i++) {

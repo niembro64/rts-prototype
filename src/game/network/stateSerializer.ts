@@ -132,6 +132,7 @@ const _snapshotBuf: NetworkServerSnapshot = {
   isDelta: false,
   removedEntityIds: undefined,
   visibilityFiltered: undefined,
+  visionPlayerMask: undefined,
 };
 
 export type SerializeGameStateOptions = {
@@ -688,6 +689,9 @@ export function serializeGameState(
   _snapshotBuf.isDelta = deltaEnabled;
   _snapshotBuf.removedEntityIds = _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
   _snapshotBuf.visibilityFiltered = visibility.isFiltered ? true : undefined;
+  _snapshotBuf.visionPlayerMask = visibility.hasRecipient
+    ? visibility.getVisionPlayerMask()
+    : undefined;
 
   return _snapshotBuf;
 }

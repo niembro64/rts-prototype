@@ -321,15 +321,15 @@ export class FogOfWarShroudRenderer3D {
 
   private collectSources(clientViewState: ClientViewState, localPlayerId: PlayerId): void {
     this.sources.length = 0;
-    // FOW-OPT-06: pull the local player's units/buildings directly
-    // from the per-player cache instead of filtering the world-wide
-    // list. On a 1k-entity map the prior code paid one ownership
-    // check per entity each paint; the cache slice is exactly the
-    // set we care about so we skip straight to the
-    // canEntityProvideFullVision predicate. Radar is deliberately not
-    // optical sight; it produces minimap contacts, not clear terrain.
-    this.collectFromOwned(clientViewState.getUnitsByPlayer(localPlayerId));
-    this.collectFromOwned(clientViewState.getBuildingsByPlayer(localPlayerId));
+    // Pull only the host-declared recipient+allies player set. That
+    // keeps team fog presentation aligned with SnapshotVisibility
+    // without treating arbitrary visible enemies as sight sources.
+    const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
+    for (let i = 0; i < playerIds.length; i++) {
+      const playerId = playerIds[i];
+      this.collectFromOwned(clientViewState.getUnitsByPlayer(playerId));
+      this.collectFromOwned(clientViewState.getBuildingsByPlayer(playerId));
+    }
     // FOW-14: temporary scanner sweeps clear the shroud for the
     // duration of the pulse. Server already filtered the list to this
     // recipient's team, so every entry is one we should honor.

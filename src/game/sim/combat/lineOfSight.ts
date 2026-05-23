@@ -12,6 +12,7 @@ import { getSimWasm } from '../../sim-wasm/init';
 import type { WorldState } from '../WorldState';
 import type { EntityId, Turret } from '../../../types/sim';
 import { UNIT_BLUEPRINTS } from '../blueprints/units';
+import { hasTerrainLineOfSight } from '../terrain/terrainLineOfSight';
 
 /** Terrain samples still use the half-cell cadence; the walk now runs
  *  inside the AIM-08.LOS Rust combat LOS kernel. */
@@ -91,6 +92,42 @@ export function hasForceFieldClearance(
       maxCrossings,
     ) === 1
   );
+}
+
+export function hasMirrorPanelClearance(
+  sx: number, sy: number, sz: number,
+  tx: number, ty: number, tz: number,
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return true;
+  return sim.mirrorPanelPool.clearanceSegment(sx, sy, sz, tx, ty, tz) === 1;
+}
+
+/** Fog/entity-visibility sightline policy. This intentionally does not
+ *  use hasCombatLineOfSight because ordinary unit/building bodies do
+ *  not hide fog-of-war information. Shape-independent force material
+ *  does: when OBSTRUCT SIGHT is active, force-field spheres and mirror
+ *  panels block the same visibility ray after terrain has cleared. */
+export function hasFogOfWarLineOfSight(
+  world: WorldState,
+  sx: number, sy: number, sz: number,
+  tx: number, ty: number, tz: number,
+): boolean {
+  if (!hasTerrainLineOfSight(world, sx, sy, sz, tx, ty, tz)) return false;
+  if (!world.forceFieldsObstructSight) return true;
+  if (
+    world.forceFieldsEnabled &&
+    !hasForceFieldClearance(sx, sy, sz, tx, ty, tz)
+  ) {
+    return false;
+  }
+  if (
+    world.mirrorsEnabled &&
+    !hasMirrorPanelClearance(sx, sy, sz, tx, ty, tz)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /** True if the parabolic ballistic arc described by

@@ -65,8 +65,9 @@ const TOP_LEVEL_SNAPSHOT_KEYS = [
   'terrain',
   'buildability',
   'isDelta',
-  'visibilityFiltered',
   'removedEntityIds',
+  'visibilityFiltered',
+  'visionPlayerMask',
 ] as const satisfies readonly (keyof NetworkServerSnapshot)[];
 
 const ENTITY_MAJOR_KEYS = [
