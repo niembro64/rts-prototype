@@ -857,10 +857,10 @@ export class WorldState {
       'projectile',
     );
 
-    // Mark as terrain-following D-gun wave.
+    // Mark as D-gun wave; projectile integration applies gravity plus
+    // bounded vertical thrust to ride terrain at this offset.
     entity.dgunProjectile = {
       isDGun: true,
-      terrainFollow: true,
       groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
     };
 

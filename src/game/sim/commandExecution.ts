@@ -563,10 +563,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const dgunFireZ = ctx.world.getGroundZ(spawnX, spawnY) + DGUN_TERRAIN_FOLLOW_HEIGHT;
 
   // D-gun is a terrain-following wave: it travels horizontally in the
-  // commanded direction and snaps to local terrain height during
-  // integration. Keep horizontal mount-center inheritance so firing
-  // from a moving commander still uses the turret's own motion, but
-  // never let vertical mount velocity turn it into a ballistic shell.
+  // commanded direction while vertical thrust rides the local terrain.
+  // Keep horizontal mount-center inheritance so firing from a moving
+  // commander still uses the turret's own motion, but never let
+  // vertical mount velocity turn it into a ballistic shell.
   const dgunShot = dgunTurret.config.shot;
   if (!dgunShot || dgunShot.type === 'force') {
     throw new Error('D-gun turret must use a projectile, beam, or laser shot');

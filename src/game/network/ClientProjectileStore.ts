@@ -282,7 +282,6 @@ export class ClientProjectileStore {
     if (spawn.isDGun) {
       entity.dgunProjectile = {
         isDGun: true,
-        terrainFollow: true,
         groundOffset: DGUN_TERRAIN_FOLLOW_HEIGHT,
       };
     }

@@ -1,6 +1,13 @@
 import type { Entity, EntityId } from '../sim/types';
 import { isLineShotType, type ProjectileShot } from '@/types/sim';
-import { GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, LAND_CELL_SIZE } from '../../config';
+import {
+  GRAVITY,
+  DGUN_TERRAIN_FOLLOW_HEIGHT,
+  DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
+  DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
+  DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
+  LAND_CELL_SIZE,
+} from '../../config';
 import { getSurfaceHeight } from '../sim/Terrain';
 import {
   getEntityAcceleration3d,
@@ -10,6 +17,7 @@ import {
 import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   computeHomingThrust,
+  computeTerrainFollowVerticalThrustAccel,
   integrateConstantAccelerationPosition,
   integrateConstantAccelerationVelocity,
   lerp,
@@ -201,30 +209,37 @@ export function applyClientProjectilePrediction(options: {
   const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
   proj.timeAlive += entityDeltaMs;
 
-  const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
-  const projectileGravity = terrainFollow ? 0 : GRAVITY;
+  const isDGunWave = entity.dgunProjectile?.isDGun === true;
+  const projectileGravity = GRAVITY;
   // PREDICT mode picks which authored derivatives feed extrapolation.
   // Projectiles have no per-tick snapshot positions to snap to (only
   // spawn / despawn events), so position integration always runs.
-  // All non-terrain-follow projectiles apply gravity while drifting
-  // sparse server targets. Homing thrust counters it when available.
+  // All projectiles apply gravity while drifting sparse server targets.
+  // Homing and D-gun terrain-follow thrust counter it when available.
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
   if (target) {
-    const nextTargetZ = terrainFollow
-      ? target.z
-      : integrateConstantAccelerationPosition(target.z, target.velocityZ, -projectileGravity, targetDt);
-    if (!terrainFollow) {
-      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, -projectileGravity, targetDt);
-    }
-    const targetPrevZ = target.z;
     target.x += target.velocityX * targetDt;
     target.y += target.velocityY * targetDt;
-    if (terrainFollow) {
-      const nextZ = getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-      target.velocityZ = targetDt > 0 ? (nextZ - targetPrevZ) / targetDt : 0;
-      target.z = nextZ;
+    if (isDGunWave) {
+      const terrainTargetZ =
+        getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+      const shot = proj.config.shot as ProjectileShot;
+      const thrustZ = computeTerrainFollowVerticalThrustAccel({
+        positionZ: target.z,
+        velocityZ: target.velocityZ,
+        targetZ: terrainTargetZ,
+        mass: shot.mass,
+        gravity: projectileGravity,
+        springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
+        dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
+        maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
+      });
+      const targetNetZ = -projectileGravity + thrustZ;
+      target.z = integrateConstantAccelerationPosition(target.z, target.velocityZ, targetNetZ, targetDt);
+      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, targetNetZ, targetDt);
     } else {
-      target.z = nextTargetZ;
+      target.z = integrateConstantAccelerationPosition(target.z, target.velocityZ, -projectileGravity, targetDt);
+      target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, -projectileGravity, targetDt);
     }
     if (movPosBlend >= 0) {
       const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
@@ -241,14 +256,14 @@ export function applyClientProjectilePrediction(options: {
   }
 
   // Traveling projectiles: dead-reckon with one combined-acceleration
-  // step. Homing thrust and gravity share the same vector, matching the
-  // authoritative projectile path.
+  // step. Homing / terrain-follow thrust and gravity share the same
+  // vector, matching the authoritative projectile path.
   const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   let aNetX = 0;
   let aNetY = 0;
-  let aNetZ = terrainFollow ? 0 : -projectileGravity;
+  let aNetZ = -projectileGravity;
   let isHoming = false;
-  if (!terrainFollow) {
+  if (!isDGunWave) {
     const thrust = resolveClientHomingThrust({
       entity,
       dt,
@@ -264,20 +279,29 @@ export function applyClientProjectilePrediction(options: {
   }
 
   const halfDtSq = 0.5 * dt * dt;
-  if (terrainFollow) {
-    entity.transform.x = position.x + proj.velocityX * dt;
-    entity.transform.y = position.y + proj.velocityY * dt;
-    const nextZ = getSurfaceHeight(entity.transform.x, entity.transform.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-    proj.velocityZ = dt > 0 ? (nextZ - position.z) / dt : 0;
-    entity.transform.z = nextZ;
-  } else {
-    entity.transform.x = position.x + proj.velocityX * dt + aNetX * halfDtSq;
-    entity.transform.y = position.y + proj.velocityY * dt + aNetY * halfDtSq;
-    entity.transform.z = position.z + proj.velocityZ * dt + aNetZ * halfDtSq;
-    proj.velocityX += aNetX * dt;
-    proj.velocityY += aNetY * dt;
-    proj.velocityZ += aNetZ * dt;
+  if (isDGunWave) {
+    const targetX = position.x + proj.velocityX * dt + aNetX * halfDtSq;
+    const targetY = position.y + proj.velocityY * dt + aNetY * halfDtSq;
+    const terrainTargetZ =
+      getSurfaceHeight(targetX, targetY, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
+    const shot = proj.config.shot as ProjectileShot;
+    aNetZ += computeTerrainFollowVerticalThrustAccel({
+      positionZ: position.z,
+      velocityZ: proj.velocityZ,
+      targetZ: terrainTargetZ,
+      mass: shot.mass,
+      gravity: projectileGravity,
+      springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
+      dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
+      maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
+    });
   }
+  entity.transform.x = position.x + proj.velocityX * dt + aNetX * halfDtSq;
+  entity.transform.y = position.y + proj.velocityY * dt + aNetY * halfDtSq;
+  entity.transform.z = position.z + proj.velocityZ * dt + aNetZ * halfDtSq;
+  proj.velocityX += aNetX * dt;
+  proj.velocityY += aNetY * dt;
+  proj.velocityZ += aNetZ * dt;
 
   if (isHoming) {
     entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
@@ -285,7 +309,7 @@ export function applyClientProjectilePrediction(options: {
 
   const groundPosition = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   const groundZ = getSurfaceHeight(groundPosition.x, groundPosition.y, mapWidth, mapHeight, LAND_CELL_SIZE);
-  if (!terrainFollow && groundPosition.z <= groundZ && proj.velocityZ <= 0) {
+  if (groundPosition.z <= groundZ && proj.velocityZ <= 0) {
     entity.transform.z = groundZ;
     return { becameLineProjectile: false, shouldDelete: true };
   }

@@ -7,9 +7,9 @@
 // The thrust vector pushes velocity toward the predicted intercept at
 // the projectile's authored angular rate (centripetal accel `ω · |v|`
 // perpendicular to v, in the v→d plane). Callers pass the projectile's
-// effective gravity: rocket-class shots pass 0, while gravity-affected
-// homing shots can pass the world gravity if their engine should spend
-// thrust budget on counter-gravity.
+// effective gravity. Guided projectiles that should hold altitude pass
+// the world gravity so their engine spends thrust budget on
+// counter-gravity.
 //
 // The whole vector is then clamped to the projectile's available
 // thrust acceleration (`homingThrust / mass`). The caller integrates
@@ -34,8 +34,8 @@ const _htWasmScratch = new Float64Array(3);
  * Compute the thrust acceleration vector a guided projectile applies
  * this tick. The result combines lateral steering toward the target
  * with the caller-provided gravity compensation term, bounded by the
- * projectile's max thrust acceleration. Pass `gravity = 0` for
- * gravity-free rockets.
+ * projectile's max thrust acceleration. Pass `gravity = 0` only for
+ * callers that genuinely have no gravity to counter.
  */
 export function computeHomingThrust(
   velX: number, velY: number, velZ: number,

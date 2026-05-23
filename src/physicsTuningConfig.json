@@ -9,6 +9,9 @@
     "massMultiplier": 1.0
   },
   "dgun": {
-    "terrainFollowHeight": 4
+    "terrainFollowHeight": 4,
+    "terrainFollowSpringAccelPerWorldUnit": 1200,
+    "terrainFollowDampingRatio": 1,
+    "terrainFollowMaxThrustForce": 60000
   }
 }

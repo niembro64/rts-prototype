@@ -700,8 +700,7 @@ export type Commander = {
 // D-gun projectile marker
 export type DGunProjectile = {
   isDGun: boolean;
-  terrainFollow?: boolean;
-  groundOffset?: number;
+  groundOffset: number;
 };
 
 // Entity type discriminator

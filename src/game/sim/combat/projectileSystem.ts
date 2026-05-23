@@ -10,12 +10,22 @@ import { beamIndex } from '../BeamIndex';
 import {
   getTransformCosSin,
   computeHomingThrust,
+  computeTerrainFollowVerticalThrustAccel,
   countBarrels,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
 } from '../../math';
-import { PROJECTILE_MASS_MULTIPLIER, SNAPSHOT_CONFIG, GRAVITY, DGUN_TERRAIN_FOLLOW_HEIGHT, BEAM_MAX_SEGMENTS } from '../../../config';
+import {
+  PROJECTILE_MASS_MULTIPLIER,
+  SNAPSHOT_CONFIG,
+  GRAVITY,
+  DGUN_TERRAIN_FOLLOW_HEIGHT,
+  DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
+  DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
+  DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
+  BEAM_MAX_SEGMENTS,
+} from '../../../config';
 import {
   getEntityAcceleration3d,
   getEntityPosition3d,
@@ -764,22 +774,19 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = position.y;
     proj.prevZ = position.z;
 
-    // D-gun waves are still their own terrain-following projectile
-    // class. Every other projectile, including rockets, shares the
-    // same constant-acceleration gravity step the ballistic aim solver
-    // uses; homing guidance counters gravity with bounded thrust.
-    const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
-    const projectileGravity = terrainFollow ? 0 : GRAVITY;
+    const isDGunWave = proj.projectileType === 'projectile' && entity.dgunProjectile?.isDGun === true;
+    const projectileGravity = GRAVITY;
 
-    // Per-tick acceleration. Gravity and homing thrust combine before
-    // integration so guided projectiles spend engine budget on both
-    // steering and counter-gravity in one acceleration vector.
+    // Per-tick acceleration. Gravity and thrust combine before
+    // integration so guided / terrain-follow projectiles spend engine
+    // budget on steering, terrain hold, and counter-gravity in one
+    // acceleration vector.
     let aNetX = 0;
     let aNetY = 0;
-    let aNetZ = terrainFollow ? 0 : -projectileGravity;
+    let aNetZ = -projectileGravity;
     let homingTargetForReporting: Entity | null = null;
 
-    if (!terrainFollow && proj.homingTargetId !== undefined) {
+    if (!isDGunWave && proj.homingTargetId !== undefined) {
       let homingTarget = world.getEntity(proj.homingTargetId);
       const targetValid = homingTarget && ((homingTarget.unit && homingTarget.unit.hp > 0) || (homingTarget.building && homingTarget.building.hp > 0));
       if (!targetValid) {
@@ -871,22 +878,29 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // contribute through the same `pos + v*t + 0.5*a*t²` shape the
     // ballistic aim solver targets.
     const halfDtSq = 0.5 * dtSec * dtSec;
-    if (terrainFollow) {
-      entity.transform.x = position.x + proj.velocityX * dtSec;
-      entity.transform.y = position.y + proj.velocityY * dtSec;
-      const terrainPosition = getEntityPosition3d(entity, _projectilePositionScratch);
-      const terrainZ = world.getGroundZ(terrainPosition.x, terrainPosition.y) +
-        (entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT);
-      proj.velocityZ = dtSec > 0 ? (terrainZ - position.z) / dtSec : 0;
-      entity.transform.z = terrainZ;
-    } else {
-      entity.transform.x = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
-      entity.transform.y = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
-      entity.transform.z = position.z + proj.velocityZ * dtSec + aNetZ * halfDtSq;
-      proj.velocityX += aNetX * dtSec;
-      proj.velocityY += aNetY * dtSec;
-      proj.velocityZ += aNetZ * dtSec;
+    if (isDGunWave) {
+      const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
+      const targetX = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
+      const targetY = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
+      const targetZ = world.getGroundZ(targetX, targetY) + groundOffset;
+      const shot = proj.config.shot as ProjectileShot;
+      aNetZ += computeTerrainFollowVerticalThrustAccel({
+        positionZ: position.z,
+        velocityZ: proj.velocityZ,
+        targetZ,
+        mass: shot.mass,
+        gravity: projectileGravity,
+        springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
+        dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
+        maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
+      });
     }
+    entity.transform.x = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
+    entity.transform.y = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
+    entity.transform.z = position.z + proj.velocityZ * dtSec + aNetZ * halfDtSq;
+    proj.velocityX += aNetX * dtSec;
+    proj.velocityY += aNetY * dtSec;
+    proj.velocityZ += aNetZ * dtSec;
 
     const wasSourceCleared = !!proj.hasLeftSource;
     const updatedPosition = getEntityPosition3d(entity, _projectilePositionScratch);

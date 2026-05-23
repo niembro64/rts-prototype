@@ -337,10 +337,17 @@ export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED =
 /** Body sleep transition tick threshold shared with the WASM integrator. */
 export const BODY_SLEEP_TICKS = sharedSimConstants.bodySleepTicks;
 
-/** D-gun wave altitude above local terrain. The D-gun is no longer a
- *  ballistic shell; it rides the terrain at this offset until its
- *  range-derived runtime timeout expires. */
+/** D-gun wave altitude above local terrain. */
 export const DGUN_TERRAIN_FOLLOW_HEIGHT = physicsTuningConfigJson.dgun.terrainFollowHeight;
+/** Vertical spring acceleration used by the D-gun terrain-follow thrust. */
+export const DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT =
+  physicsTuningConfigJson.dgun.terrainFollowSpringAccelPerWorldUnit;
+/** Critical-damping ratio for the D-gun terrain-follow thrust. */
+export const DGUN_TERRAIN_FOLLOW_DAMPING_RATIO =
+  physicsTuningConfigJson.dgun.terrainFollowDampingRatio;
+/** Maximum upward D-gun terrain-follow engine force before mass division. */
+export const DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE =
+  physicsTuningConfigJson.dgun.terrainFollowMaxThrustForce;
 
 // =============================================================================
 // ECONOMY & RESOURCES

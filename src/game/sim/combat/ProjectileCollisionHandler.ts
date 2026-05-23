@@ -494,7 +494,6 @@ export function checkProjectileCollisions(
     const damageSourceKey = proj.sourceTurretId ?? shotId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
     const isDGunProjectile = projEntity.dgunProjectile?.isDGun === true;
-    const isTerrainFollowingDGun = projEntity.dgunProjectile?.terrainFollow === true;
     const profile = config.shotProfile;
     const runtimeProfile = profile.runtime;
     const isRocketShot = runtimeProfile.isRocketLike;
@@ -646,7 +645,6 @@ export function checkProjectileCollisions(
       !hitMirrorPanel &&
       !hitForceField &&
       proj.projectileType === 'projectile' &&
-      !isTerrainFollowingDGun &&
       proj.hasLeftSource &&
       projEntity.transform.z <= groundZAtProj;
     if (hitGround) {

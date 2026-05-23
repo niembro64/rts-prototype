@@ -33,6 +33,10 @@ export {
 } from './CollisionHelpers';
 
 export { computeHomingThrust, type HomingThrustResult } from './HomingSteering';
+export {
+  computeTerrainFollowVerticalThrustAccel,
+  type TerrainFollowVerticalThrustInput,
+} from './TerrainFollowThrust';
 
 export {
   type BarrelEndpoint,
