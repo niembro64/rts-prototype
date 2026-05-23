@@ -610,9 +610,12 @@ Evidence:
   the movement/turret output allocation, grouped chunk, and nested
   detail decode paths.
 - src/game/network/snapshotMinimapWirePack.ts V2 removed the
-  six-number packed row array from the pack path, but still allocates
-  transient group/chunk arrays while packing and a DTO array while
-  unpacking.
+  six-number packed row array from the pack path. The 2026-05-23
+  minimap scratch pass also reuses pack-side group/key scratch,
+  reuses per-group binary writers, and removes the transient chunk
+  array. Remaining minimap decode DTO arrays are retained snapshot
+  outputs and should not be scratch-pooled until snapshot ownership /
+  lifetime is changed.
 - These run on the host per snapshot (5-10 Hz) per remote client,
   so the allocation pressure scales with N_entities × N_clients ×
   SPS. At 5,000 entities the allocator gets a steady drumbeat of
@@ -641,18 +644,6 @@ Apply the same pooled scratch shape to the entity wire pack
 allocations. Coordinate with TS-WASM-01D so that the migration to
 a Rust encoder doesn't immediately invalidate the pool; pooling
 buys time and is a low-risk intermediate.
-
-------------------------------------------------------------------------------
-WIRE-PERF-01C - child: pool the remaining minimap pack/unpack scratch in
-                snapshotMinimapWirePack.ts.
-------------------------------------------------------------------------------
-
-Fix direction:
-Pool or eliminate the remaining transient group/chunk arrays in the V2
-pack path where practical, and decide whether decode output can safely
-reuse a DTO pool without corrupting retained snapshot references.
-
-==============================================================================
 
 MISCELLANEOUS WIRE / RENDERER / DIAGNOSTIC ITEMS
 

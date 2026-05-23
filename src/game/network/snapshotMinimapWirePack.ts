@@ -41,6 +41,48 @@ type PackedMinimapGroup = {
   lastId: number;
 };
 
+const _packGroups: PackedMinimapGroup[] = [];
+const _packGroupPool: PackedMinimapGroup[] = [];
+const _packGroupsByKey: (PackedMinimapGroup | undefined)[] = [];
+const _packGroupKeys: number[] = [];
+
+function rentMinimapGroup(
+  typeTag: number,
+  playerId: number,
+  flags: number,
+  estimatedBytes: number,
+): PackedMinimapGroup {
+  const group = _packGroupPool.pop();
+  if (group !== undefined) {
+    group.typeTag = typeTag;
+    group.playerId = playerId;
+    group.flags = flags;
+    group.writer.reset(estimatedBytes);
+    group.count = 0;
+    group.lastId = 0;
+    return group;
+  }
+  return {
+    typeTag,
+    playerId,
+    flags,
+    writer: new PackedBinaryWriter(estimatedBytes),
+    count: 0,
+    lastId: 0,
+  };
+}
+
+function resetMinimapPackScratch(): void {
+  for (let i = 0; i < _packGroupKeys.length; i++) {
+    _packGroupsByKey[_packGroupKeys[i]] = undefined;
+  }
+  _packGroupKeys.length = 0;
+  for (let i = 0; i < _packGroups.length; i++) {
+    _packGroupPool.push(_packGroups[i]);
+  }
+  _packGroups.length = 0;
+}
+
 export function packMinimapEntitiesForWire(
   entries: readonly NetworkServerSnapshotMinimapEntity[] | undefined,
 ): PackedMinimapEntitiesWire | undefined {
@@ -103,8 +145,8 @@ export function isPackedMinimapEntitiesWire(
 function packMinimapEntitiesV2(
   entries: readonly NetworkServerSnapshotMinimapEntity[],
 ): Uint8Array {
-  const groups: PackedMinimapGroup[] = [];
-  const groupsByKey: (PackedMinimapGroup | undefined)[] = [];
+  resetMinimapPackScratch();
+  const estimatedGroupBytes = Math.max(24, Math.ceil(entries.length / 4) * 8);
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
@@ -114,18 +156,12 @@ function packMinimapEntitiesV2(
     const flags = entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0;
     const playerId = entry.playerId;
     const key = typeTag * 0x1000 + playerId * 0x10 + flags;
-    let group = groupsByKey[key];
+    let group = _packGroupsByKey[key];
     if (group === undefined) {
-      group = {
-        typeTag,
-        playerId,
-        flags,
-        writer: new PackedBinaryWriter(Math.max(24, Math.ceil(entries.length / 4) * 8)),
-        count: 0,
-        lastId: 0,
-      };
-      groupsByKey[key] = group;
-      groups.push(group);
+      group = rentMinimapGroup(typeTag, playerId, flags, estimatedGroupBytes);
+      _packGroupsByKey[key] = group;
+      _packGroupKeys.push(key);
+      _packGroups.push(group);
     }
 
     group.writer.writeVarInt(entry.id - group.lastId);
@@ -135,25 +171,25 @@ function packMinimapEntitiesV2(
     group.count++;
   }
 
-  const chunks: Uint8Array[] = new Array(groups.length);
   let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
-  for (let i = 0; i < groups.length; i++) {
-    chunks[i] = groups[i].writer.finishBytes();
-    estimatedBytes += chunks[i].byteLength + 8;
+  for (let i = 0; i < _packGroups.length; i++) {
+    estimatedBytes += _packGroups[i].writer.byteLength + 8;
   }
 
   const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
-  out.writeVarUint(groups.length);
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
+  out.writeVarUint(_packGroups.length);
+  for (let i = 0; i < _packGroups.length; i++) {
+    const group = _packGroups[i];
     out.writeVarUint(group.typeTag);
     out.writeVarUint(group.playerId);
     out.writeVarUint(group.flags);
     out.writeVarUint(group.count);
-    out.writeBytes(chunks[i]);
+    out.writeBytes(group.writer.finishBytes());
   }
   out.setUint32LE(0, entries.length);
-  return out.finishBytes();
+  const packed = out.finishBytes();
+  resetMinimapPackScratch();
+  return packed;
 }
 
 function unpackMinimapEntitiesV2(

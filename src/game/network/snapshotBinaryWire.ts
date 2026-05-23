@@ -11,6 +11,19 @@ export class PackedBinaryWriter {
     this.length = initialLength;
   }
 
+  get byteLength(): number {
+    return this.length;
+  }
+
+  reset(estimatedBytes: number, initialLength = 0): void {
+    const needed = Math.max(16, estimatedBytes, initialLength);
+    if (this.bytes.length < needed) {
+      this.bytes = new Uint8Array(needed);
+      this.view = new DataView(this.bytes.buffer);
+    }
+    this.length = initialLength;
+  }
+
   writeVarUint(value: number): void {
     let v = Math.max(0, Math.floor(value));
     while (v >= 0x80) {
