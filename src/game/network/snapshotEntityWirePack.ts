@@ -285,14 +285,14 @@ export function isPackedEntitiesField(value: unknown): value is PackedEntitySnap
 
 function packEntityRow(entity: NetworkServerSnapshotEntity): PackedEntityRow {
   let flags = 0;
-  if (entity.pos !== undefined) flags |= ENTITY_FLAG_HAS_POS;
-  if (entity.rotation !== undefined) flags |= ENTITY_FLAG_HAS_ROTATION;
-  if (entity.changedFields !== undefined && entity.changedFields !== null) {
+  if (entity.pos !== null) flags |= ENTITY_FLAG_HAS_POS;
+  if (entity.rotation !== null) flags |= ENTITY_FLAG_HAS_ROTATION;
+  if (entity.changedFields !== null) {
     flags |= ENTITY_FLAG_HAS_CHANGED_FIELDS;
   }
   if (entity.type === 'building') flags |= ENTITY_FLAG_TYPE_BUILDING;
-  if (entity.unit !== undefined) flags |= ENTITY_FLAG_HAS_UNIT;
-  if (entity.building !== undefined) flags |= ENTITY_FLAG_HAS_BUILDING;
+  if (entity.unit !== null) flags |= ENTITY_FLAG_HAS_UNIT;
+  if (entity.building !== null) flags |= ENTITY_FLAG_HAS_BUILDING;
 
   const row: PackedEntityRow = [flags, entity.id, entity.playerId];
   if ((flags & ENTITY_FLAG_HAS_POS) !== 0) {
@@ -305,10 +305,10 @@ function packEntityRow(entity: NetworkServerSnapshotEntity): PackedEntityRow {
   if ((flags & ENTITY_FLAG_HAS_CHANGED_FIELDS) !== 0) {
     row.push(entity.changedFields!);
   }
-  if (entity.unit !== undefined) {
+  if (entity.unit !== null) {
     row.push(packUnit(entity.unit));
   }
-  if (entity.building !== undefined) {
+  if (entity.building !== null) {
     row.push(packBuilding(entity.building));
   }
   return row;
@@ -323,6 +323,11 @@ function unpackEntityRow(row: PackedEntityRow): NetworkServerSnapshotEntity {
     id,
     type: (flags & ENTITY_FLAG_TYPE_BUILDING) !== 0 ? 'building' : 'unit',
     playerId,
+    pos: null,
+    rotation: null,
+    changedFields: null,
+    unit: null,
+    building: null,
   };
   if ((flags & ENTITY_FLAG_HAS_POS) !== 0) {
     const x = row[i++] as number;
@@ -450,21 +455,20 @@ function resetEntityPackScratch(): void {
 }
 
 function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
-  if (entity.type !== 'unit' || entity.building !== undefined) return false;
+  if (entity.type !== 'unit' || entity.building !== null) return false;
   const changedFields = entity.changedFields;
   if (
-    changedFields === undefined ||
     changedFields === null ||
     changedFields === 0 ||
     (changedFields & ~MOVEMENT_UNIT_CHANGED_FIELDS) !== 0
   ) {
     return false;
   }
-  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== undefined)) return false;
-  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== undefined)) return false;
+  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== null)) return false;
+  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== null)) return false;
 
   const unit = entity.unit;
-  if (unit === undefined) return true;
+  if (unit === null) return true;
   if (unit.hp !== undefined) return false;
   if (unit.unitType !== undefined) return false;
   if (unit.radius !== undefined) return false;
@@ -484,10 +488,9 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
 }
 
 function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
-  if (entity.type !== 'unit' || entity.building !== undefined) return false;
+  if (entity.type !== 'unit' || entity.building !== null) return false;
   const changedFields = entity.changedFields;
   if (
-    changedFields === undefined ||
     changedFields === null ||
     changedFields === 0 ||
     (changedFields & ENTITY_CHANGED_TURRETS) === 0 ||
@@ -495,11 +498,11 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   ) {
     return false;
   }
-  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== undefined)) return false;
-  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== undefined)) return false;
+  if (((changedFields & ENTITY_CHANGED_POS) !== 0) !== (entity.pos !== null)) return false;
+  if (((changedFields & ENTITY_CHANGED_ROT) !== 0) !== (entity.rotation !== null)) return false;
 
   const unit = entity.unit;
-  if (unit === undefined || unit.turrets === undefined) return false;
+  if (unit === null || unit.turrets === undefined) return false;
   if (unit.hp !== undefined) return false;
   if (unit.unitType !== undefined) return false;
   if (unit.radius !== undefined) return false;
@@ -520,8 +523,8 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
 function hasMovementUnitDeltaFields(entity: NetworkServerSnapshotEntity): boolean {
   const unit = entity.unit;
   return (
-    entity.pos !== undefined ||
-    entity.rotation !== undefined ||
+    entity.pos !== null ||
+    entity.rotation !== null ||
     unit?.velocity !== undefined ||
     unit?.orientation !== undefined ||
     unit?.angularVelocity3 !== undefined
@@ -535,8 +538,8 @@ function movementUnitDeltaFlags(entity: NetworkServerSnapshotEntity): number {
   const velocity = unit?.velocity;
   const orientation = unit?.orientation;
   const angularVelocity = unit?.angularVelocity3;
-  if (pos !== undefined) flags |= MOVEMENT_UNIT_FLAG_POS;
-  if (entity.rotation !== undefined) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
+  if (pos !== null) flags |= MOVEMENT_UNIT_FLAG_POS;
+  if (entity.rotation !== null) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
   if (velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
   if (orientation !== undefined) {
     flags |= canCompactYawOrientation(entity, orientation)
@@ -555,7 +558,7 @@ function canCompactYawOrientation(
   entity: NetworkServerSnapshotEntity,
   orientation: NonNullable<UnitSub['orientation']>,
 ): boolean {
-  return entity.rotation !== undefined &&
+  return entity.rotation !== null &&
     orientation.x === 0 &&
     orientation.y === 0 &&
     Number.isFinite(orientation.z) &&
@@ -712,8 +715,8 @@ function writeUnitTurretDeltaPayload(
     const turret = turrets[i];
     const angular = turret.turret.angular;
     let flags = 0;
-    if (turret.targetId !== undefined) flags |= TURRET_FLAG_TARGET_ID;
-    if (turret.currentForceFieldRange !== undefined) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
+    if (turret.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
+    if (turret.currentForceFieldRange !== null) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
     rows.writeVarUint(flags);
     rows.writeVarUint(turret.turret.id);
     rows.writeVarUint(turret.state);
@@ -827,6 +830,10 @@ function unpackMovementUnitDeltaRows(
       type: 'unit',
       playerId,
       changedFields: movementUnitChangedFields(flags),
+      pos: null,
+      rotation: null,
+      unit: null,
+      building: null,
     };
     if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
       entity.pos = {
@@ -932,6 +939,10 @@ function readMovementUnitDeltaByteEntity(
     type: 'unit',
     playerId,
     changedFields: movementUnitChangedFields(flags),
+    pos: null,
+    rotation: null,
+    unit: null,
+    building: null,
   };
   if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
     entity.pos = {
@@ -1020,6 +1031,8 @@ function unpackUnitTurretDeltaRows(
       const turret: NetworkServerSnapshotTurret = {
         turret: { id: turretId, angular },
         state,
+        targetId: null,
+        currentForceFieldRange: null,
       };
       if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = rows[i++] as number;
       if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
@@ -1032,7 +1045,10 @@ function unpackUnitTurretDeltaRows(
       type: 'unit',
       playerId,
       changedFields: ENTITY_CHANGED_TURRETS,
+      pos: null,
+      rotation: null,
       unit: { turrets },
+      building: null,
     };
   }
   return outIndex;
@@ -1094,6 +1110,8 @@ function readUnitTurretDeltaByteEntity(
     const turret: NetworkServerSnapshotTurret = {
       turret: { id: turretId, angular },
       state,
+      targetId: null,
+      currentForceFieldRange: null,
     };
     if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
     if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {
@@ -1106,7 +1124,10 @@ function readUnitTurretDeltaByteEntity(
     type: 'unit',
     playerId,
     changedFields: ENTITY_CHANGED_TURRETS,
+    pos: null,
+    rotation: null,
     unit: { turrets },
+    building: null,
   };
 }
 
@@ -1365,13 +1386,13 @@ function unpackActions(rows: unknown[]): NetworkServerSnapshotAction[] {
 
 function packAction(action: NetworkServerSnapshotAction): unknown[] {
   let flags = 0;
-  if (action.pos !== undefined) flags |= ACTION_FLAG_POS;
-  if (action.posZ !== undefined) flags |= ACTION_FLAG_POS_Z;
+  if (action.pos !== null) flags |= ACTION_FLAG_POS;
+  if (action.posZ !== null) flags |= ACTION_FLAG_POS_Z;
   if (action.pathExp === true) flags |= ACTION_FLAG_PATH_EXP;
-  if (action.targetId !== undefined) flags |= ACTION_FLAG_TARGET_ID;
-  if (action.buildingType !== undefined) flags |= ACTION_FLAG_BUILDING_TYPE;
-  if (action.grid !== undefined) flags |= ACTION_FLAG_GRID;
-  if (action.buildingId !== undefined) flags |= ACTION_FLAG_BUILDING_ID;
+  if (action.targetId !== null) flags |= ACTION_FLAG_TARGET_ID;
+  if (action.buildingType !== null) flags |= ACTION_FLAG_BUILDING_TYPE;
+  if (action.grid !== null) flags |= ACTION_FLAG_GRID;
+  if (action.buildingId !== null) flags |= ACTION_FLAG_BUILDING_ID;
 
   const row: unknown[] = [flags, action.type];
   if ((flags & ACTION_FLAG_POS) !== 0) {
@@ -1393,7 +1414,16 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
   let i = 0;
   const flags = row[i++] as number;
   const type = row[i++] as NetworkServerSnapshotAction['type'];
-  const action: NetworkServerSnapshotAction = { type };
+  const action: NetworkServerSnapshotAction = {
+    type,
+    pos: null,
+    posZ: null,
+    pathExp: null,
+    targetId: null,
+    buildingType: null,
+    grid: null,
+    buildingId: null,
+  };
   if ((flags & ACTION_FLAG_POS) !== 0) {
     const x = row[i++] as number;
     const y = row[i++] as number;
@@ -1430,8 +1460,8 @@ function unpackTurrets(rows: unknown[]): NetworkServerSnapshotTurret[] {
 
 function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   let flags = 0;
-  if (t.targetId !== undefined) flags |= TURRET_FLAG_TARGET_ID;
-  if (t.currentForceFieldRange !== undefined) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
+  if (t.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
+  if (t.currentForceFieldRange !== null) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
 
   const angular = t.turret.angular;
   const row: unknown[] = [
@@ -1462,6 +1492,8 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
   const turret: NetworkServerSnapshotTurret = {
     turret: { id, angular },
     state,
+    targetId: null,
+    currentForceFieldRange: null,
   };
   if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = row[i++] as number;
   if ((flags & TURRET_FLAG_FORCE_FIELD_RANGE) !== 0) {

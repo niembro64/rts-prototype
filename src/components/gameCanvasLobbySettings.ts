@@ -2,10 +2,13 @@ import { nextTick, type ComputedRef, type Ref } from 'vue';
 import {
   BATTLE_CONFIG,
   getDefaultMapLandDimensions,
+  loadStoredConverterTax,
   loadStoredFogOfWarEnabled,
+  normalizeConverterTax,
   normalizeTerrainDTerrain,
   normalizeTerrainPlateauEnabled,
   normalizeTerrainShapeMagnitude,
+  saveConverterTax,
   saveMapLandDimensions,
   saveFogOfWarEnabled,
   saveTerrainCenter,
@@ -125,6 +128,7 @@ export function useGameCanvasLobbySettings({
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
       fogOfWarEnabled: loadStoredFogOfWarEnabled('real'),
+      converterTax: loadStoredConverterTax('real'),
     };
   }
 
@@ -257,6 +261,9 @@ export function useGameCanvasLobbySettings({
     );
     if (settings.fogOfWarEnabled !== undefined) {
       saveFogOfWarEnabled(settings.fogOfWarEnabled, 'real');
+    }
+    if (settings.converterTax !== undefined) {
+      saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
     }
     applyCurrentTerrainRuntimeConfig();
     setTerrainCenterShape(settings.terrainCenter);

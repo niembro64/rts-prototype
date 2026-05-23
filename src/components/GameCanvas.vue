@@ -536,11 +536,13 @@ const {
   allDemoUnitsActive,
   currentForceFieldsObstructSight,
   currentFogOfWarEnabled,
+  currentConverterTax,
   toggleDemoUnitType,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
   setForceFieldsObstructSight,
   setFogOfWarEnabled,
+  setConverterTax,
   resetDemoDefaults,
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
@@ -678,6 +680,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
+  currentConverterTax: currentConverterTax.value,
   resetDemoDefaults,
   toggleAllDemoUnits,
   toggleDemoUnitType,
@@ -690,6 +693,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyTerrainDTerrain,
   setForceFieldsObstructSight,
   setFogOfWarEnabled,
+  setConverterTax,
 });
 watchEffect(() => {
   const m = battleControlBarModel as {
@@ -715,6 +719,7 @@ watchEffect(() => {
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
+  m.currentConverterTax = currentConverterTax.value;
 });
 
 // Same reactive() pattern as battleControlBarModel: stable proxy
@@ -1082,6 +1087,7 @@ watchEffect(() => {
       :unit-cap="displayUnitCap"
       :force-fields-obstruct-sight="currentForceFieldsObstructSight"
       :fog-of-war-enabled="currentFogOfWarEnabled"
+      :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       @host="handleHost"
       @join="handleJoin"
@@ -1101,6 +1107,7 @@ watchEffect(() => {
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-force-fields-obstruct-sight="(e) => setForceFieldsObstructSight(e)"
       @set-fog-of-war-enabled="(e) => setFogOfWarEnabled(e)"
+      @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"
     />

@@ -70,6 +70,7 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
     forceFieldsObstructSight: meta.forceFieldsObstructSight,
     forceFieldReflectionMode: meta.forceFieldReflectionMode,
     fogOfWarEnabled: meta.fogOfWarEnabled,
+    converterTax: meta.converterTax,
     cpu: meta.cpu ? { ...meta.cpu } : undefined,
     wind: meta.wind ? { ...meta.wind } : undefined,
     unitGroundNormalEma: meta.unitGroundNormalEma,

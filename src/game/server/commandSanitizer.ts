@@ -127,6 +127,13 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return isForceFieldReflectionMode(command.mode)
         ? { ...command, tick, mode: BATTLE_CONFIG.forceFieldReflectionMode.default }
         : null;
+    case 'setConverterTax': {
+      const tax = command.tax;
+      if (typeof tax !== 'number' || !Number.isFinite(tax)) return null;
+      const options = BATTLE_CONFIG.converterTax.options;
+      const matched = options.find((opt) => Math.abs(opt - tax) < 1e-6);
+      return matched !== undefined ? { ...command, tick, tax: matched } : null;
+    }
   }
 }
 

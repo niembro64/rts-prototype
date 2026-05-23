@@ -156,6 +156,9 @@ export class ServerBootstrap {
     if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
       world.maxTotalUnits = config.initialMaxTotalUnits;
     }
+    if (config.converterTax !== undefined && Number.isFinite(config.converterTax)) {
+      world.converterTax = config.converterTax;
+    }
 
     // AI player configuration
     const aiPlayerIds = config.aiPlayerIds ?? (backgroundMode ? [...playerIds] : []);

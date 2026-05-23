@@ -440,7 +440,7 @@ export class ClientViewState {
             target.y = deqEntityPos(netEntity.pos.y);
             target.z = deqEntityPos(netEntity.pos.z);
           }
-          if ((isFull || cf! & ENTITY_CHANGED_ROT) && netEntity.rotation !== undefined) {
+          if ((isFull || cf! & ENTITY_CHANGED_ROT) && netEntity.rotation !== null) {
             target.rotation = deqRot(netEntity.rotation);
           }
           this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);

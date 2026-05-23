@@ -202,6 +202,19 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>CONVERTER TAX:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.converterTax.options"
+            :key="opt"
+            :active="Math.abs(model.currentConverterTax - opt) < 1e-6"
+            :title="`Tax applied to resource converters: ${opt.toFixed(1)}`"
+            @click="model.setConverterTax(opt)"
+          >{{ opt.toFixed(1) }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>FOG:</BarLabel>
         <BarButton
           :active="model.currentFogOfWarEnabled"

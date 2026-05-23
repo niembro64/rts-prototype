@@ -168,6 +168,7 @@ export class ServerSnapshotPublisher {
       forceFieldsObstructSight: input.world.forceFieldsObstructSight,
       forceFieldReflectionMode: input.world.forceFieldReflectionMode,
       fogOfWarEnabled: input.world.fogOfWarEnabled,
+      converterTax: input.world.converterTax,
       tickMsAvg: input.tickMsAvg,
       tickMsHi: input.tickMsHi,
       tickMsInitialized: input.tickMsInitialized,

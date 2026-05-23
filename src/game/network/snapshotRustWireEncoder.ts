@@ -198,22 +198,22 @@ function packActionsIntoScratch(
     const action = actions[i];
     const base = i * api.actionScratchStride;
     view[base + 0] = action.type;
-    view[base + 1] = action.pos !== undefined ? 1 : 0;
+    view[base + 1] = action.pos !== null ? 1 : 0;
     view[base + 2] = action.pos?.x ?? 0;
     view[base + 3] = action.pos?.y ?? 0;
-    view[base + 4] = action.posZ !== undefined ? 1 : 0;
+    view[base + 4] = action.posZ !== null ? 1 : 0;
     view[base + 5] = action.posZ ?? 0;
     view[base + 6] = action.pathExp === true ? 1 : 0;
-    view[base + 7] = action.targetId !== undefined ? 1 : 0;
+    view[base + 7] = action.targetId !== null ? 1 : 0;
     view[base + 8] = action.targetId ?? 0;
-    view[base + 9] = action.buildingType !== undefined ? 1 : 0;
-    view[base + 10] = action.buildingType !== undefined
+    view[base + 9] = action.buildingType !== null ? 1 : 0;
+    view[base + 10] = action.buildingType !== null
       ? stringSlots.get(action.buildingType) ?? 0
       : 0;
-    view[base + 11] = action.grid !== undefined ? 1 : 0;
+    view[base + 11] = action.grid !== null ? 1 : 0;
     view[base + 12] = action.grid?.x ?? 0;
     view[base + 13] = action.grid?.y ?? 0;
-    view[base + 14] = action.buildingId !== undefined ? 1 : 0;
+    view[base + 14] = action.buildingId !== null ? 1 : 0;
     view[base + 15] = action.buildingId ?? 0;
   }
 }
@@ -240,9 +240,9 @@ function packTurretsIntoScratch(
     view[base + 3] = angular.pitchVel;
     view[base + 4] = src.turret.id;
     view[base + 5] = src.state;
-    view[base + 6] = src.targetId !== undefined ? 1 : 0;
+    view[base + 6] = src.targetId !== null ? 1 : 0;
     view[base + 7] = src.targetId ?? 0;
-    view[base + 8] = src.currentForceFieldRange !== undefined ? 1 : 0;
+    view[base + 8] = src.currentForceFieldRange !== null ? 1 : 0;
     view[base + 9] = src.currentForceFieldRange ?? 0;
   }
 }
@@ -270,7 +270,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
   const strings: string[] = [];
   if (actions) {
     for (const action of actions) {
-      if (action.buildingType !== undefined) strings.push(action.buildingType);
+      if (action.buildingType !== null) strings.push(action.buildingType);
     }
   }
   const stringSlots = packStringsIntoScratch(sim, strings);
@@ -288,7 +288,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
     entity.rotation ?? 0,
     entity.playerId,
-    entity.changedFields !== undefined ? 1 : 0,
+    entity.changedFields !== null ? 1 : 0,
     entity.changedFields ?? 0,
     unit.hp?.curr ?? 0,
     unit.hp?.max ?? 0,
@@ -367,7 +367,7 @@ function encodeBuildingEntity(
     entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
     entity.rotation ?? 0,
     entity.playerId,
-    entity.changedFields !== undefined ? 1 : 0,
+    entity.changedFields !== null ? 1 : 0,
     entity.changedFields ?? 0,
     building.type !== undefined ? 1 : 0,
     building.type ?? 0,
@@ -397,40 +397,39 @@ function encodeBuildingEntity(
 }
 
 function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolean {
-  const isFull = entity.changedFields === undefined;
+  const isFull = entity.changedFields === null;
   if (
     !isUint(entity.id, 0xFFFF_FFFF) ||
     !isUint(entity.playerId, 0xFF) ||
-    entity.changedFields === null ||
-    (entity.changedFields !== undefined && !isUint(entity.changedFields, 0xFFFF_FFFF)) ||
-    (isFull && (entity.pos === undefined || entity.rotation === undefined))
+    (entity.changedFields !== null && !isUint(entity.changedFields, 0xFFFF_FFFF)) ||
+    (isFull && (entity.pos === null || entity.rotation === null))
   ) {
     return false;
   }
   if (entity.type === 'unit') {
-    if (entity.building !== undefined) return false;
-    if (entity.unit !== undefined) return encodeUnitEntity(sim, entity, entity.unit);
+    if (entity.building !== null) return false;
+    if (entity.unit !== null) return encodeUnitEntity(sim, entity, entity.unit);
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,
       SNAPSHOT_ENTITY_TYPE_UNIT,
       entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
       entity.rotation ?? 0,
       entity.playerId,
-      entity.changedFields !== undefined ? 1 : 0,
+      entity.changedFields !== null ? 1 : 0,
       entity.changedFields ?? 0,
     );
     return true;
   }
   if (entity.type === 'building') {
-    if (entity.unit !== undefined) return false;
-    if (entity.building !== undefined) return encodeBuildingEntity(sim, entity, entity.building);
+    if (entity.unit !== null) return false;
+    if (entity.building !== null) return encodeBuildingEntity(sim, entity, entity.building);
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,
       SNAPSHOT_ENTITY_TYPE_BUILDING,
       entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
       entity.rotation ?? 0,
       entity.playerId,
-      entity.changedFields !== undefined ? 1 : 0,
+      entity.changedFields !== null ? 1 : 0,
       entity.changedFields ?? 0,
     );
     return true;

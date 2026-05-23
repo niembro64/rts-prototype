@@ -19,6 +19,7 @@ export type ServerSnapshotMetaInput = {
   forceFieldsObstructSight?: boolean;
   forceFieldReflectionMode?: ForceFieldReflectionMode;
   fogOfWarEnabled?: boolean;
+  converterTax?: number;
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
@@ -70,6 +71,7 @@ export class ServerSnapshotMetaBuilder {
       forceFieldsObstructSight: input.forceFieldsObstructSight,
       forceFieldReflectionMode: input.forceFieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,
+      converterTax: input.converterTax,
       cpu: { avg: cpuAvg, hi: cpuHi },
       wind: {
         x: input.wind.x,

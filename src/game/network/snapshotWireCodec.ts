@@ -327,12 +327,12 @@ function measureEntityBreakdown(
       const key = ENTITY_MAJOR_KEYS[keyI];
       addPairBytes(sections, `entities.${key}`, key, entity[key]);
     }
-    if (entity.unit !== undefined) {
+    if (entity.unit !== null) {
       for (const [key, value] of Object.entries(entity.unit)) {
         addPairBytes(sections, `entities.unit.${key}`, key, value);
       }
     }
-    if (entity.building !== undefined) {
+    if (entity.building !== null) {
       for (const [key, value] of Object.entries(entity.building)) {
         addPairBytes(sections, `entities.building.${key}`, key, value);
       }

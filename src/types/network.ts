@@ -259,6 +259,7 @@ export type LobbySettings = {
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   fogOfWarEnabled?: boolean;
+  converterTax?: number;
 };
 
 // Server → Client
@@ -491,6 +492,10 @@ export type NetworkServerSnapshotMeta = {
   forceFieldsObstructSight?: boolean;
   forceFieldReflectionMode?: ForceFieldReflectionMode;
   fogOfWarEnabled?: boolean;
+  /** Tax (fraction in [0, 1)) applied to each resource converter's
+   *  per-tick output. Authoritative on the host; mirrored to clients
+   *  so the DEMO BATTLE bar can show the active value. */
+  converterTax?: number;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
    *  on spikes and decays slowly. Both can exceed 100 when the server is
@@ -595,23 +600,23 @@ export type NetworkServerSnapshotAction = {
    *  actionTypeToCode / codeToActionType helpers). String form used
    *  to take 6-12 bytes per action; the int code is one byte. */
   type: ActionTypeCode;
-  pos?: Vec2;
+  pos: Vec2 | null;
   /** Altitude (sim.z = three.y) of the action's 3D ground point —
    *  the original click point that produced this action, preserved
    *  so joining clients see waypoint markers at the same altitude
    *  the issuing client did. Sent only when the action carries a
    *  click-derived z (renderers fall back to a terrain sample when
    *  absent). */
-  posZ?: number;
+  posZ: number | null;
   /** True for path-expansion intermediates (cells the planner
    *  inserted along the route). Used by the client renderer to hide
    *  these in SIMPLE waypoint mode. Omitted when false to save bytes
    *  — the renderer treats `undefined` as `false`. */
-  pathExp?: boolean;
-  targetId?: number;
-  buildingType?: string;
-  grid?: Vec2;
-  buildingId?: number;
+  pathExp: boolean | null;
+  targetId: number | null;
+  buildingType: string | null;
+  grid: Vec2 | null;
+  buildingId: number | null;
 };
 
 export type NetworkServerSnapshotTurret = {
@@ -632,7 +637,7 @@ export type NetworkServerSnapshotTurret = {
       pitchVel: number;
     };
   };
-  targetId?: number;
+  targetId: number | null;
   /** Bit-packed turret state code (see TURRET_STATE_* constants and
    *  turretStateToCode / codeToTurretState helpers). */
   state: TurretStateCode;
@@ -641,7 +646,7 @@ export type NetworkServerSnapshotTurret = {
    *  transition state to decide when a force-field barrier exists for
    *  projectile reflection / obstruction, so clients receive it as a
    *  correction target instead of deriving an independent local timer. */
-  currentForceFieldRange?: number;
+  currentForceFieldRange: number | null;
 };
 
 // Bitmask for per-field delta updates within an entity.
@@ -678,13 +683,13 @@ export type NetworkServerSnapshotEntity = {
    *  ENTITY_POSITION_WIRE_SCALE fixed-point integers. The 2D client
    *  reads only x/y; the 3D client reads all three. Present on full
    *  records and on deltas whose changedFields include ENTITY_CHANGED_POS. */
-  pos?: Vec3;
+  pos: Vec3 | null;
   /** ROTATION_WIRE_SCALE fixed-point yaw. Present on full records and
    *  on deltas whose changedFields include ENTITY_CHANGED_ROT. */
-  rotation?: number;
+  rotation: number | null;
   playerId: PlayerId;
-  changedFields?: number | null;
-  unit?: {
+  changedFields: number | null;
+  unit: {
     /** Static fields are present on full records and omitted from
      *  ordinary deltas after the entity has been created.
      *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
@@ -734,8 +739,8 @@ export type NetworkServerSnapshotEntity = {
       complete: boolean;
       paid: { energy: number; metal: number };
     };
-  };
-  building?: {
+  } | null;
+  building: {
     /** type / dim are present on full records and omitted from
      *  ordinary deltas after the entity has been created.
      *  Numeric wire ID — see BUILDING_TYPE_* / buildingTypeToCode helpers. */
@@ -781,7 +786,7 @@ export type NetworkServerSnapshotEntity = {
        *  (renderers fall back to terrain sample). */
       waypoints: { pos: Vec2; posZ?: number; type: string }[];
     };
-  };
+  } | null;
 };
 
 export type NetworkServerSnapshotEconomy = {

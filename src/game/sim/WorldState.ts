@@ -208,6 +208,10 @@ export class WorldState {
   public forceFieldReflectionMode: ForceFieldReflectionMode = DEFAULT_FORCE_FIELD_REFLECTION_MODE;
   // Whether player-specific snapshots and the client fog overlay use vision.
   public fogOfWarEnabled: boolean = true;
+  /** Tax (fraction in [0, 1)) applied to a resource converter's per-tick
+   *  output. 0 = lossless; 0.5 = lose half of the source resource on
+   *  every conversion. Read by economy.update each tick. */
+  public converterTax: number = 0;
   /** Optional server-side lifecycle hook. WorldState owns entity
    *  removal, but host-only systems such as physics own external
    *  resources that must be released before the entity disappears. */
@@ -515,6 +519,12 @@ export class WorldState {
   getExtractorBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getExtractorBuildings();
+  }
+
+  // Get resource converter buildings (cached - DO NOT MODIFY returned array)
+  getConverterBuildings(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getConverterBuildings();
   }
 
   // Get every building that uses the shared BuildingActiveState fortify

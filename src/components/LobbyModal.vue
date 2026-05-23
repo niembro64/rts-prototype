@@ -39,6 +39,7 @@ const props = defineProps<{
   unitCap: number;
   forceFieldsObstructSight: boolean;
   fogOfWarEnabled: boolean;
+  converterTax: number;
   previewLoading: boolean;
 }>();
 
@@ -60,6 +61,7 @@ const emit = defineEmits<{
   (e: 'setUnitCap', cap: number): void;
   (e: 'setForceFieldsObstructSight', enabled: boolean): void;
   (e: 'setFogOfWarEnabled', enabled: boolean): void;
+  (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
 }>();
@@ -73,6 +75,7 @@ const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 const plateauEnabledOptions = BATTLE_CONFIG.plateau.enabled.options;
 const terrainShapeMagnitudeOptions = BATTLE_CONFIG.terrainShapeMagnitude.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
+const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
 const capOptions = BATTLE_CONFIG.cap.options;
@@ -157,6 +160,11 @@ function pickForceFieldsObstructSight(enabled: boolean): void {
 function pickFogOfWar(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setFogOfWarEnabled', enabled);
+}
+
+function pickConverterTax(value: number): void {
+  if (!props.isHost) return;
+  emit('setConverterTax', value);
 }
 
 function unitShortName(unitType: string): string {
@@ -670,6 +678,19 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
                   @click="pickFogOfWar(!fogOfWarEnabled)"
                 >FOG</BarButton>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>CONVERTER TAX:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in converterTaxOptions"
+                    :key="opt"
+                    :active="Math.abs(converterTax - opt) < 1e-6"
+                    :title="isHost ? `Set resource converter tax to ${opt.toFixed(1)}` : 'Only the host can change battle settings'"
+                    @click="pickConverterTax(opt)"
+                  >{{ opt.toFixed(1) }}</BarButton>
+                </BarButtonGroup>
               </BarControlGroup>
             </div>
           </div>

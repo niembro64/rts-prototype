@@ -495,6 +495,10 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(authority)) return;
         this.setFogOfWarEnabled(sanitizedCommand.enabled);
         return;
+      case 'setConverterTax':
+        if (!this.canApplyServerControlCommand(authority)) return;
+        this.setConverterTax(sanitizedCommand.tax);
+        return;
     }
     const authorizedCommand = this.authorizeGameplayCommand(sanitizedCommand, authority);
     if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
@@ -702,6 +706,11 @@ export class GameServer {
     if (this.world.fogOfWarEnabled === enabled) return;
     this.world.fogOfWarEnabled = enabled;
     this.forceNextSnapshotKeyframe();
+  }
+
+  private setConverterTax(tax: number): void {
+    if (this.world.converterTax === tax) return;
+    this.world.converterTax = tax;
   }
 
   // Add a snapshot listener. Returns the trackingKey so callers can

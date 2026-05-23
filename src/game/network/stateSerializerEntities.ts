@@ -183,12 +183,12 @@ function writeTurretsToPool(
     }
     const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _snapshotTurretFsm);
     const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : (src.target ?? -1);
-    const wireTargetId = targetId === -1 ? undefined : targetId;
-    dst.targetId = canReferenceEntityId?.(wireTargetId) === false
-      ? undefined
+    const wireTargetId = targetId === -1 ? null : targetId;
+    dst.targetId = wireTargetId !== null && canReferenceEntityId?.(wireTargetId) === false
+      ? null
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
-    dst.currentForceFieldRange = src.forceField?.range;
+    dst.currentForceFieldRange = src.forceField?.range ?? null;
   }
   return pool.turrets;
 }
@@ -216,9 +216,9 @@ function createPooledEntry(): PooledEntry {
       pos: entityPos,
       rotation: 0,
       playerId: 1 as PlayerId,
-      changedFields: undefined,
-      unit: undefined,
-      building: undefined,
+      changedFields: null,
+      unit: null,
+      building: null,
     },
     entityPos,
     unitSub,
@@ -305,21 +305,21 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
     const action = actions[i];
     const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
     values[base + 0] = action.type;
-    values[base + 1] = action.pos !== undefined ? 1 : 0;
+    values[base + 1] = action.pos !== null ? 1 : 0;
     values[base + 2] = action.pos?.x ?? 0;
     values[base + 3] = action.pos?.y ?? 0;
-    values[base + 4] = action.posZ !== undefined ? 1 : 0;
+    values[base + 4] = action.posZ !== null ? 1 : 0;
     values[base + 5] = action.posZ ?? 0;
     values[base + 6] = action.pathExp === true ? 1 : 0;
-    values[base + 7] = action.targetId !== undefined ? 1 : 0;
+    values[base + 7] = action.targetId !== null ? 1 : 0;
     values[base + 8] = action.targetId ?? 0;
-    values[base + 9] = action.buildingType !== undefined ? 1 : 0;
-    values[base + 10] = action.buildingType !== undefined ? strings.length : 0;
-    if (action.buildingType !== undefined) strings.push(action.buildingType);
-    values[base + 11] = action.grid !== undefined ? 1 : 0;
+    values[base + 9] = action.buildingType !== null ? 1 : 0;
+    values[base + 10] = action.buildingType !== null ? strings.length : 0;
+    if (action.buildingType !== null) strings.push(action.buildingType);
+    values[base + 11] = action.grid !== null ? 1 : 0;
     values[base + 12] = action.grid?.x ?? 0;
     values[base + 13] = action.grid?.y ?? 0;
-    values[base + 14] = action.buildingId !== undefined ? 1 : 0;
+    values[base + 14] = action.buildingId !== null ? 1 : 0;
     values[base + 15] = action.buildingId ?? 0;
   }
   return offset;
@@ -340,9 +340,9 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 3] = angular.pitchVel;
     values[base + 4] = src.turret.id;
     values[base + 5] = src.state;
-    values[base + 6] = src.targetId !== undefined ? 1 : 0;
+    values[base + 6] = src.targetId !== null ? 1 : 0;
     values[base + 7] = src.targetId ?? 0;
-    values[base + 8] = src.currentForceFieldRange !== undefined ? 1 : 0;
+    values[base + 8] = src.currentForceFieldRange !== null ? 1 : 0;
     values[base + 9] = src.currentForceFieldRange ?? 0;
   }
   return offset;
@@ -393,7 +393,7 @@ function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
   values[base + 4] = pos?.z ?? 0;
   values[base + 5] = entity.rotation ?? 0;
   values[base + 6] = entity.playerId;
-  values[base + 7] = entity.changedFields !== undefined ? 1 : 0;
+  values[base + 7] = entity.changedFields !== null ? 1 : 0;
   values[base + 8] = entity.changedFields ?? 0;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
   entityWireSource.rowIndices.push(rowIndex);
@@ -425,7 +425,7 @@ function appendUnitEntityWireRow(
   values[base + 3] = pos?.z ?? 0;
   values[base + 4] = entity.rotation ?? 0;
   values[base + 5] = entity.playerId;
-  values[base + 6] = entity.changedFields !== undefined ? 1 : 0;
+  values[base + 6] = entity.changedFields !== null ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
   values[base + 8] = unit.hp?.curr ?? 0;
   values[base + 9] = unit.hp?.max ?? 0;
@@ -496,7 +496,7 @@ function appendBuildingEntityWireRow(
   values[base + 3] = pos?.z ?? 0;
   values[base + 4] = entity.rotation ?? 0;
   values[base + 5] = entity.playerId;
-  values[base + 6] = entity.changedFields !== undefined ? 1 : 0;
+  values[base + 6] = entity.changedFields !== null ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
   values[base + 8] = building.type !== undefined ? 1 : 0;
   values[base + 9] = building.type ?? 0;
@@ -531,8 +531,8 @@ function appendBuildingEntityWireRow(
 function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void {
   if (
     entity.type === 'unit' &&
-    entity.unit !== undefined &&
-    entity.building === undefined
+    entity.unit !== null &&
+    entity.building === null
   ) {
     appendUnitEntityWireRow(entity, entity.unit);
     return;
@@ -540,14 +540,14 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
 
   if (
     entity.type === 'building' &&
-    entity.building !== undefined &&
-    entity.unit === undefined
+    entity.building !== null &&
+    entity.unit === null
   ) {
     appendBuildingEntityWireRow(entity, entity.building);
     return;
   }
 
-  if (entity.unit === undefined && entity.building === undefined) {
+  if (entity.unit === null && entity.building === null) {
     appendBasicEntityWireRow(entity);
     return;
   }
@@ -571,9 +571,9 @@ export function serializeEntitySnapshot(
   ne.id = entity.id;
   ne.type = entity.type;
   ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
-  ne.changedFields = isFull ? undefined : changedFields;
-  ne.pos = undefined;
-  ne.rotation = undefined;
+  ne.changedFields = isFull ? null : changedFields;
+  ne.pos = null;
+  ne.rotation = null;
 
   if (isFull || (changedFields & ENTITY_CHANGED_POS)) {
     const pos = poolEntry.entityPos;
@@ -586,8 +586,8 @@ export function serializeEntitySnapshot(
     ne.rotation = qRot(entity.transform.rotation);
   }
 
-  ne.unit = undefined;
-  ne.building = undefined;
+  ne.unit = null;
+  ne.building = null;
 
   if (entity.type === 'unit' && entity.unit) {
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |

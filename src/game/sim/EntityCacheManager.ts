@@ -26,6 +26,9 @@ export class EntityCacheManager {
   /** Metal extractors specifically. Used by deposit ownership / income
    *  helpers that walk only this building type. */
   private cachedExtractorBuildings: Entity[] = [];
+  /** Resource converters specifically. The per-tick conversion pass
+   *  walks only these — no need to scan every building each tick. */
+  private cachedConverterBuildings: Entity[] = [];
   /** Every building that uses the shared BuildingActiveState fortify
    *  mechanic (solar + wind + extractor). updateBuildingActiveStates
    *  runs every tick and only touches this list. */
@@ -89,6 +92,7 @@ export class EntityCacheManager {
     this.cachedWindBuildings.length = 0;
     this.cachedSolarBuildings.length = 0;
     this.cachedExtractorBuildings.length = 0;
+    this.cachedConverterBuildings.length = 0;
     this.cachedActiveStateBuildings.length = 0;
     this.cachedFactoryBuildings.length = 0;
     this.cachedForceFieldUnits.length = 0;
@@ -188,6 +192,8 @@ export class EntityCacheManager {
           } else if (entity.buildingType === 'extractor') {
             this.cachedExtractorBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
+          } else if (entity.buildingType === 'resourceConverter') {
+            this.cachedConverterBuildings.push(entity);
           }
           if (entity.factory) this.cachedFactoryBuildings.push(entity);
           break;
@@ -294,6 +300,10 @@ export class EntityCacheManager {
 
   getExtractorBuildings(): Entity[] {
     return this.cachedExtractorBuildings;
+  }
+
+  getConverterBuildings(): Entity[] {
+    return this.cachedConverterBuildings;
   }
 
   getActiveStateBuildings(): Entity[] {

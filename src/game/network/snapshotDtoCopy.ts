@@ -223,13 +223,13 @@ export function copySimEventInto(
 export function createActionDto(): NetworkServerSnapshotAction {
   return {
     type: 0,
-    pos: undefined,
-    posZ: undefined,
-    pathExp: undefined,
-    targetId: undefined,
-    buildingType: undefined,
-    grid: undefined,
-    buildingId: undefined,
+    pos: null,
+    posZ: null,
+    pathExp: null,
+    targetId: null,
+    buildingType: null,
+    grid: null,
+    buildingId: null,
   };
 }
 
@@ -243,7 +243,7 @@ export function copyActionInto(
     dst.pos.x = src.pos.x;
     dst.pos.y = src.pos.y;
   } else {
-    dst.pos = undefined;
+    dst.pos = null;
   }
   dst.posZ = src.posZ;
   dst.pathExp = src.pathExp;
@@ -254,7 +254,7 @@ export function copyActionInto(
     dst.grid.x = src.grid.x;
     dst.grid.y = src.grid.y;
   } else {
-    dst.grid = undefined;
+    dst.grid = null;
   }
   dst.buildingId = src.buildingId;
   return dst;
@@ -266,9 +266,9 @@ export function createTurretDto(): NetworkServerSnapshotTurret {
       id: TURRET_ID_UNKNOWN,
       angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 },
     },
-    targetId: undefined,
+    targetId: null,
     state: 0,
-    currentForceFieldRange: undefined,
+    currentForceFieldRange: null,
   };
 }
 

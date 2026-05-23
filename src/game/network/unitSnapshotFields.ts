@@ -53,13 +53,13 @@ function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitActio
     type: codeToActionType(action.type) as UnitAction['type'],
     x: action.pos.x,
     y: action.pos.y,
-    z: action.posZ,
-    isPathExpansion: action.pathExp,
-    targetId: action.targetId,
-    buildingType: action.buildingType as BuildingType | undefined,
+    z: action.posZ ?? undefined,
+    isPathExpansion: action.pathExp ?? undefined,
+    targetId: action.targetId ?? undefined,
+    buildingType: (action.buildingType ?? undefined) as BuildingType | undefined,
     gridX: action.grid?.x,
     gridY: action.grid?.y,
-    buildingId: action.buildingId,
+    buildingId: action.buildingId ?? undefined,
   };
 }
 
@@ -121,7 +121,7 @@ function finiteOr(value: unknown, fallback: number): number {
 }
 
 export function readNetworkUnitRadius(
-  src: NetworkUnitSnapshot | undefined,
+  src: NetworkUnitSnapshot | undefined | null,
   fallback: number | NetworkUnitRadius,
 ): { body: number; shot: number; push: number } {
   return {
@@ -136,20 +136,20 @@ function radiusFallback(fallback: number | NetworkUnitRadius, key: keyof Network
 }
 
 export function readNetworkUnitBodyCenterHeight(
-  src: NetworkUnitSnapshot | undefined,
+  src: NetworkUnitSnapshot | undefined | null,
   fallback: number,
 ): number {
   return finiteOr(src?.bodyCenterHeight, finiteOr(src?.radius?.push, fallback));
 }
 
 export function readNetworkUnitMass(
-  src: NetworkUnitSnapshot | undefined,
+  src: NetworkUnitSnapshot | undefined | null,
   fallback: number,
 ): number {
   return finiteOr(src?.mass, fallback);
 }
 
-export function readNetworkUnitVelocity(src: NetworkUnitSnapshot | undefined): Vec3 {
+export function readNetworkUnitVelocity(src: NetworkUnitSnapshot | undefined | null): Vec3 {
   return {
     x: deqVel(finiteOr(src?.velocity?.x, 0)),
     y: deqVel(finiteOr(src?.velocity?.y, 0)),
@@ -158,7 +158,7 @@ export function readNetworkUnitVelocity(src: NetworkUnitSnapshot | undefined): V
 }
 
 export function readNetworkUnitSurfaceNormal(
-  src: NetworkUnitSnapshot | undefined,
+  src: NetworkUnitSnapshot | undefined | null,
 ): { nx: number; ny: number; nz: number } {
   return src?.surfaceNormal
     ? {
@@ -246,24 +246,24 @@ export function writeNetworkUnitActions(
       action.pos.x = src.x;
       action.pos.y = src.y;
     } else {
-      action.pos = undefined;
+      action.pos = null;
     }
-    action.posZ = src.z;
-    action.pathExp = src.isPathExpansion ? true : undefined;
+    action.posZ = src.z ?? null;
+    action.pathExp = src.isPathExpansion ? true : null;
     action.targetId = canReferenceEntityId?.(src.targetId) === false
-      ? undefined
-      : src.targetId;
-    action.buildingType = src.buildingType;
+      ? null
+      : src.targetId ?? null;
+    action.buildingType = src.buildingType ?? null;
     if (src.gridX !== undefined) {
       if (!action.grid) action.grid = { x: 0, y: 0 };
       action.grid.x = src.gridX;
       action.grid.y = src.gridY!;
     } else {
-      action.grid = undefined;
+      action.grid = null;
     }
     action.buildingId = canReferenceEntityId?.(src.buildingId) === false
-      ? undefined
-      : src.buildingId;
+      ? null
+      : src.buildingId ?? null;
   }
   dst.actions = actionPool;
 }

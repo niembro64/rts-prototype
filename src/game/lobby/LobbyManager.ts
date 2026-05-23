@@ -8,6 +8,7 @@ import { getMapSize } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { BACKGROUND_UNIT_TYPES } from '../server/BackgroundBattleStandalone';
 import {
+  loadStoredConverterTax,
   loadStoredDemoUnits,
   loadStoredDemoCap,
   loadStoredTerrainCenter,
@@ -154,6 +155,7 @@ export async function createBackgroundBattle(
     backgroundMode: true,
     initialAllowedTypes,
     initialMaxTotalUnits: loadStoredDemoCap(),
+    converterTax: loadStoredConverterTax(mode),
     aiPlayerIds,
     spawnDemoInitialState: !isLobbyPreview,
   });

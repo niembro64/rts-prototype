@@ -40,7 +40,8 @@ export type CommandType =
   | 'setForceFieldsEnabled'
   | 'setForceFieldsObstructSight'
   | 'setForceFieldReflectionMode'
-  | 'setFogOfWarEnabled';
+  | 'setFogOfWarEnabled'
+  | 'setConverterTax';
 
 export type BaseCommand = {
   type: CommandType;
@@ -298,6 +299,11 @@ export type SetFogOfWarEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetConverterTaxCommand = BaseCommand & {
+  type: 'setConverterTax';
+  tax: number;
+};
+
 export type Command =
   | SelectCommand
   | MoveCommand
@@ -333,4 +339,5 @@ export type Command =
   | SetForceFieldsEnabledCommand
   | SetForceFieldsObstructSightCommand
   | SetForceFieldReflectionModeCommand
-  | SetFogOfWarEnabledCommand;
+  | SetFogOfWarEnabledCommand
+  | SetConverterTaxCommand;

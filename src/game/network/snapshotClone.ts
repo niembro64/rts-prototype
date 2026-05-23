@@ -184,17 +184,17 @@ function copyEntityInto(
     dst.pos.y = src.pos.y;
     dst.pos.z = src.pos.z;
   } else {
-    dst.pos = undefined;
+    dst.pos = null;
   }
   dst.rotation = src.rotation;
   dst.playerId = src.playerId;
   dst.changedFields = src.changedFields;
   dst.unit = src.unit
     ? copyNetworkUnitSnapshotInto(src.unit, dst.unit ?? createNetworkUnitSnapshot())
-    : undefined;
+    : null;
   dst.building = src.building
     ? copyBuildingInto(src.building, dst.building ?? createReusableBuilding())
-    : undefined;
+    : null;
   return dst;
 }
 
@@ -205,6 +205,9 @@ function createReusableEntity(): NetworkServerSnapshotEntity {
     pos: { x: 0, y: 0, z: 0 },
     rotation: 0,
     playerId: 1,
+    changedFields: null,
+    unit: null,
+    building: null,
   };
 }
 

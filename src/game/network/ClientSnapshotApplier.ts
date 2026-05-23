@@ -94,7 +94,7 @@ export function snapClientNonVisualState(
       entity.transform.y = deqEntityPos(server.pos.y);
       entity.transform.z = deqEntityPos(server.pos.z);
     }
-    if ((isFull || cf! & ENTITY_CHANGED_ROT) && server.rotation !== undefined) {
+    if ((isFull || cf! & ENTITY_CHANGED_ROT) && server.rotation !== null) {
       entity.transform.rotation = deqRot(server.rotation);
     }
   }

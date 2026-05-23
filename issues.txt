@@ -123,12 +123,16 @@ property declarations still appear in core types.
 ==============================================================================
 
 ------------------------------------------------------------------------------
-ABSENCE-01 - parent: 324 `?:` declarations remain across in-scope
-             modules; 221 of them are in two files.
+ABSENCE-01 - parent: optional property declarations remain across
+             in-scope modules; two files still concentrate most of
+             the risk.
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/types/network.ts: 138 `?:` declarations. This file defines the
+- src/types/network.ts: 124 `?:` declarations after the 2026-05-23
+  pooled entity DTO pass converted NetworkServerSnapshotEntity's
+  top-level presence fields plus action/turret presence fields to
+  explicit `T | null`. This file defines the
   NetworkServerSnapshotEntity DTO shape and dozens of inner
   unit/building/turret sub-shapes (pos, unit, building, projectile,
   audio, minimap, etc). The DTOs are pooled — the same object is
@@ -173,10 +177,15 @@ ABSENCE-01A - child: convert pooled DTO optional fields in
 ------------------------------------------------------------------------------
 
 Evidence:
-- NetworkServerSnapshotEntity carries 50+ optional sub-fields across
-  pos, unit, building, projectile, combat, audio sub-shapes. The DTO
-  is pooled via src/game/network/snapshotPool.ts; the release path
-  must guarantee every optional slot is cleared.
+- NetworkServerSnapshotEntity still carries many optional sub-fields
+  inside unit/building/projectile/combat/audio sub-shapes. The
+  2026-05-23 pooled entity DTO pass converted the entity top-level
+  presence fields (`pos`, `rotation`, `changedFields`, `unit`,
+  `building`) and NetworkServerSnapshotAction /
+  NetworkServerSnapshotTurret presence fields to explicit null, with
+  the entity packers treating null as omitted so wire encoding stays
+  unchanged. The remaining pooled nested fields still need the same
+  treatment.
 - src/game/network/unitSnapshotFields.ts already has clearNetwork*
   helpers; some optional fields may not be reset there. Audit each.
 

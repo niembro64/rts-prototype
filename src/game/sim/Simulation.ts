@@ -372,6 +372,11 @@ export class Simulation {
     // Update economy income and production.
     economyManager.update(dtMs, (pid) => this.world.isCommanderAlive(pid));
 
+    // Resource converters: per-tick metal↔energy conversion governed by
+    // world.converterTax. Runs after income so converters operate on
+    // post-income stockpiles.
+    economyManager.processConverters(this.world, dtMs);
+
     // Update each unit's smoothed surface normal BEFORE the systems
     // that read it (commanderAbilitiesSystem, turret kinematics inside
     // updateUnits / the targeting scheduler bridge). The EMA owns the

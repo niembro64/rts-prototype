@@ -4,7 +4,10 @@ import {
   getDefaultCap,
   getDefaultFogOfWar,
   getDefaultDemoUnits,
+  loadStoredConverterTax,
   loadStoredFogOfWarEnabled,
+  normalizeConverterTax,
+  saveConverterTax,
   saveDemoUnits,
   saveForceFieldsObstructSight,
   saveFogOfWarEnabled,
@@ -23,11 +26,13 @@ export type GameCanvasBattleSettings = {
   allDemoUnitsActive: ComputedRef<boolean>;
   currentForceFieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
+  currentConverterTax: ComputedRef<number>;
   toggleDemoUnitType(unitType: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
+  setConverterTax(tax: number): void;
   resetDemoDefaults(): void;
 };
 
@@ -74,6 +79,11 @@ export function useGameCanvasBattleSettings({
     () =>
       serverMetaFromSnapshot.value?.fogOfWarEnabled ??
       loadStoredFogOfWarEnabled(currentBattleMode.value),
+  );
+  const currentConverterTax = computed(
+    () =>
+      serverMetaFromSnapshot.value?.converterTax ??
+      loadStoredConverterTax(currentBattleMode.value),
   );
 
   function toggleDemoUnitType(unitType: string): void {
@@ -125,6 +135,13 @@ export function useGameCanvasBattleSettings({
     if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
   }
 
+  function setConverterTax(tax: number): void {
+    const normalized = normalizeConverterTax(tax);
+    getActiveConnection()?.sendCommand({ type: 'setConverterTax', tick: 0, tax: normalized });
+    saveConverterTax(normalized, currentBattleMode.value);
+    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
+  }
+
   function resetDemoDefaults(): void {
     const defaultUnits = getDefaultDemoUnits();
     const defaultSet = new Set(defaultUnits);
@@ -140,6 +157,7 @@ export function useGameCanvasBattleSettings({
     changeMaxTotalUnits(getDefaultCap(currentBattleMode.value));
     setForceFieldsObstructSight(BATTLE_CONFIG.forceFieldsObstructSight.default);
     setFogOfWarEnabled(getDefaultFogOfWar(currentBattleMode.value));
+    setConverterTax(BATTLE_CONFIG.converterTax.default);
     resetTerrainDefaults();
     resetGridInfoToDefault();
     broadcastLobbySettingsIfHost();
@@ -151,11 +169,13 @@ export function useGameCanvasBattleSettings({
     allDemoUnitsActive,
     currentForceFieldsObstructSight,
     currentFogOfWarEnabled,
+    currentConverterTax,
     toggleDemoUnitType,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
     setForceFieldsObstructSight,
     setFogOfWarEnabled,
+    setConverterTax,
     resetDemoDefaults,
   };
 }

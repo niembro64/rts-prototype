@@ -160,7 +160,7 @@ export function refreshBuildingTurretsFromNetwork(
  */
 export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity): Entity | null {
   const { id, type, pos, rotation, playerId } = netEntity;
-  if (!pos || rotation === undefined) return null;
+  if (!pos || rotation === null) return null;
   const x = deqEntityPos(pos.x);
   const y = deqEntityPos(pos.y);
   const z = deqEntityPos(pos.z);

@@ -42,6 +42,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly displayUnitCount: number;
   readonly currentForceFieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
+  readonly currentConverterTax: number;
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
   toggleDemoUnitType(unitType: string): void;
@@ -54,6 +55,7 @@ export type GameCanvasBattleControlBarModel = {
   applyTerrainDTerrain(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
+  setConverterTax(tax: number): void;
 };
 
 export type GameCanvasServerControlBarModel = {

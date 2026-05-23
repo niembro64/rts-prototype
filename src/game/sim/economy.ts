@@ -8,6 +8,9 @@ import {
   BASE_METAL_PER_SECOND,
 } from '../../config';
 import { getUnitBlueprint } from './blueprints';
+import { getBuildingConfig } from './buildConfigs';
+import { isEntityActive } from './buildableHelpers';
+import type { WorldState } from './WorldState';
 
 // Economy constants (using values from config.ts + blueprints)
 export const ECONOMY_CONSTANTS = {
@@ -197,6 +200,67 @@ export class EconomyManager {
   recordExpenditure(playerId: PlayerId, amount: number): void {
     const economy = this.getOrCreateEconomy(playerId);
     economy.expenditure += amount;
+  }
+
+  /** Per-tick conversion pass for resource converter buildings. Each
+   *  completed converter contributes its blueprint conversionRate to
+   *  its owner's per-second source-resource throughput; whichever
+   *  resource the owner currently has more of is consumed at that rate
+   *  and the other resource is credited at `consumed * (1 - tax)`. Idle
+   *  when the two stockpiles are equal. */
+  processConverters(world: WorldState, dtMs: number): void {
+    const dtSec = dtMs / 1000;
+    if (dtSec <= 0) return;
+    const tax = world.converterTax;
+    const ratePerSec = getBuildingConfig('resourceConverter').conversionRate ?? 0;
+    if (ratePerSec <= 0) return;
+
+    const totalRatePerPlayer = new Map<PlayerId, number>();
+    for (const entity of world.getConverterBuildings()) {
+      if (!entity.ownership || !entity.building) continue;
+      if (entity.building.hp <= 0) continue;
+      if (!isEntityActive(entity)) continue;
+      const pid = entity.ownership.playerId;
+      totalRatePerPlayer.set(pid, (totalRatePerPlayer.get(pid) ?? 0) + ratePerSec);
+    }
+
+    for (const [pid, totalRate] of totalRatePerPlayer) {
+      const economy = this.economies.get(pid);
+      if (!economy) continue;
+
+      const energyCurr = economy.stockpile.curr;
+      const metalCurr = economy.metal.stockpile.curr;
+      if (energyCurr === metalCurr) continue;
+
+      const sourceTarget = totalRate * dtSec;
+      const yieldFactor = Math.max(0, 1 - tax);
+
+      if (metalCurr > energyCurr) {
+        const sourceAvailable = Math.min(sourceTarget, metalCurr);
+        if (sourceAvailable <= 0) continue;
+        const headroom = economy.stockpile.max - energyCurr;
+        if (headroom <= 0) continue;
+        const wantOutput = sourceAvailable * yieldFactor;
+        const acceptedOutput = Math.min(wantOutput, headroom);
+        const consumed = yieldFactor > 0
+          ? sourceAvailable * (acceptedOutput / wantOutput)
+          : 0;
+        economy.metal.stockpile.curr = metalCurr - consumed;
+        economy.stockpile.curr = energyCurr + acceptedOutput;
+      } else {
+        const sourceAvailable = Math.min(sourceTarget, energyCurr);
+        if (sourceAvailable <= 0) continue;
+        const headroom = economy.metal.stockpile.max - metalCurr;
+        if (headroom <= 0) continue;
+        const wantOutput = sourceAvailable * yieldFactor;
+        const acceptedOutput = Math.min(wantOutput, headroom);
+        const consumed = yieldFactor > 0
+          ? sourceAvailable * (acceptedOutput / wantOutput)
+          : 0;
+        economy.stockpile.curr = energyCurr - consumed;
+        economy.metal.stockpile.curr = metalCurr + acceptedOutput;
+      }
+    }
   }
 
   // Reset all state (call between game sessions)

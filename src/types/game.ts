@@ -135,6 +135,10 @@ export type GameServerConfig = {
    *  `setMaxTotalUnits` arrive from the stored value — leaving a
    *  mismatch like "4075 units / 16 cap" on screen. */
   initialMaxTotalUnits?: number;
+  /** Initial CONVERTER TAX value (fraction in [0, 1)). Lobby /
+   *  battle-bar selections feed this so each new battle starts with
+   *  the configured tax instead of the WorldState default 0.0. */
+  converterTax?: number;
 };
 
 export type EmaConfig = {
