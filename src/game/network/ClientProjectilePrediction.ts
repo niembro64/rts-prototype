@@ -77,7 +77,6 @@ function resolveClientHomingThrust(options: {
   const { entity, dt, position, getEntity } = options;
   const proj = entity.projectile;
   if (!proj || proj.homingTurnRate === undefined) return null;
-  const isRocket = proj.config.shotProfile.runtime.isRocketLike;
   const shot = proj.config.shot as ProjectileShot;
   const maxThrustAccel = getHomingMaxThrustAccel(shot);
   if (maxThrustAccel <= 0) return null;
@@ -145,7 +144,7 @@ function resolveClientHomingThrust(options: {
       targetVelocity: _clientHomingTargetState.velocity,
       targetAcceleration: _clientHomingTargetState.acceleration,
       projectileSpeed,
-      gravity: isRocket ? 0 : GRAVITY,
+      gravity: GRAVITY,
       preferLateSolution: false,
       maxTimeSec: remainingSec,
     }, _clientHomingIntercept);
@@ -162,7 +161,7 @@ function resolveClientHomingThrust(options: {
     position.x, position.y, position.z,
     proj.homingTurnRate ?? 0,
     maxThrustAccel,
-    isRocket ? 0 : GRAVITY,
+    GRAVITY,
     dt,
   );
   _clientThrustResult.x = thrust.thrustX;
@@ -203,13 +202,12 @@ export function applyClientProjectilePrediction(options: {
   proj.timeAlive += entityDeltaMs;
 
   const terrainFollow = entity.dgunProjectile?.terrainFollow === true;
-  const isRocket = proj.config.shotProfile.runtime.isRocketLike;
-  const projectileGravity = terrainFollow || isRocket ? 0 : GRAVITY;
+  const projectileGravity = terrainFollow ? 0 : GRAVITY;
   // PREDICT mode picks which authored derivatives feed extrapolation.
   // Projectiles have no per-tick snapshot positions to snap to (only
   // spawn / despawn events), so position integration always runs.
-  // Rocket-class projectiles ignore gravity; all other non-terrain-
-  // follow projectiles apply it while drifting sparse server targets.
+  // All non-terrain-follow projectiles apply gravity while drifting
+  // sparse server targets. Homing thrust counters it when available.
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
   if (target) {
     const nextTargetZ = terrainFollow
@@ -243,8 +241,8 @@ export function applyClientProjectilePrediction(options: {
   }
 
   // Traveling projectiles: dead-reckon with one combined-acceleration
-  // step. Rocket-class shots use zero gravity; homing thrust then only
-  // spends its budget on steering.
+  // step. Homing thrust and gravity share the same vector, matching the
+  // authoritative projectile path.
   const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   let aNetX = 0;
   let aNetY = 0;

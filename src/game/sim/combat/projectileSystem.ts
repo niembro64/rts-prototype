@@ -78,7 +78,6 @@ let _packedProjectileVx: Float64Array = new Float64Array(0);
 let _packedProjectileVy: Float64Array = new Float64Array(0);
 let _packedProjectileVz: Float64Array = new Float64Array(0);
 let _packedProjectileTimeAlive: Float64Array = new Float64Array(0);
-let _packedProjectileHasGravity: Uint8Array = new Uint8Array(0);
 let _packedProjectilePoolCapacity = 0;
 let _packedProjectileViewsBound = false;
 const _packedProjectileEntities: Entity[] = [];
@@ -101,7 +100,6 @@ function refreshPackedProjectileViews(): void {
   _packedProjectileVy = sim.projectilePool.velY;
   _packedProjectileVz = sim.projectilePool.velZ;
   _packedProjectileTimeAlive = sim.projectilePool.timeAlive;
-  _packedProjectileHasGravity = sim.projectilePool.hasGravity;
   if (!_packedProjectileViewsBound) {
     _packedProjectilePoolCapacity = sim.projectilePool.capacity;
     _packedProjectileIds = new Int32Array(_packedProjectilePoolCapacity);
@@ -252,7 +250,6 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
   _packedProjectileTimeAlive[slot] = proj.timeAlive;
-  _packedProjectileHasGravity[slot] = proj.config.shotProfile.runtime.isRocketLike ? 0 : 1;
 }
 
 export function unregisterPackedProjectile(id: EntityId): void {
@@ -271,7 +268,6 @@ export function unregisterPackedProjectile(id: EntityId): void {
     _packedProjectileVy[slot] = _packedProjectileVy[last];
     _packedProjectileVz[slot] = _packedProjectileVz[last];
     _packedProjectileTimeAlive[slot] = _packedProjectileTimeAlive[last];
-    _packedProjectileHasGravity[slot] = _packedProjectileHasGravity[last];
     if (moved) _packedProjectileSlots.set(moved.id, slot);
   }
   _packedProjectileCount = last;
@@ -768,18 +764,16 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = position.y;
     proj.prevZ = position.z;
 
-    // D-gun waves are their own terrain-following projectile class:
-    // they move horizontally and snap to local terrain height every
-    // tick, never integrating gravity or thrust. Rocket-class shots
-    // ignore gravity entirely; everyone else shares the same constant-
-    // acceleration step the ballistic aim solver uses.
+    // D-gun waves are still their own terrain-following projectile
+    // class. Every other projectile, including rockets, shares the
+    // same constant-acceleration gravity step the ballistic aim solver
+    // uses; homing guidance counters gravity with bounded thrust.
     const terrainFollow = proj.projectileType === 'projectile' && entity.dgunProjectile?.terrainFollow === true;
-    const isRocket = proj.config.shotProfile.runtime.isRocketLike;
-    const projectileGravity = terrainFollow || isRocket ? 0 : GRAVITY;
+    const projectileGravity = terrainFollow ? 0 : GRAVITY;
 
-    // Per-tick acceleration. Non-rocket projectile gravity is integrated
-    // in the same step as homing thrust. Rocket-class shots use zero
-    // gravity here, so their homing thrust only spends budget on steering.
+    // Per-tick acceleration. Gravity and homing thrust combine before
+    // integration so guided projectiles spend engine budget on both
+    // steering and counter-gravity in one acceleration vector.
     let aNetX = 0;
     let aNetY = 0;
     let aNetZ = terrainFollow ? 0 : -projectileGravity;

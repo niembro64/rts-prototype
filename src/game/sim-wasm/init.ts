@@ -37,7 +37,6 @@ import __wbg_init, {
   projectile_pool_vel_y_ptr,
   projectile_pool_vel_z_ptr,
   projectile_pool_time_alive_ptr,
-  projectile_pool_has_gravity_ptr,
   pool_step_packed_projectiles_batch,
   solve_kinematic_intercept,
   compute_homing_thrust,
@@ -2213,7 +2212,6 @@ export interface ProjectilePoolViews {
   velY: Float64Array;
   velZ: Float64Array;
   timeAlive: Float64Array;
-  hasGravity: Uint8Array;
 }
 
 /** Layout stride for `quatHoverOrientationStepBatch`. Mirrors
@@ -2431,8 +2429,6 @@ export function initSimWasm(): Promise<SimWasm> {
       // memory. Same lifetime/refresh pattern as the body pool.
       const projF64View = (ptr: number): Float64Array =>
         new Float64Array(memory.buffer, ptr, projCapacity);
-      const projU8View = (ptr: number): Uint8Array =>
-        new Uint8Array(memory.buffer, ptr, projCapacity);
       const projPtrs = {
         posX: projectile_pool_pos_x_ptr(),
         posY: projectile_pool_pos_y_ptr(),
@@ -2441,7 +2437,6 @@ export function initSimWasm(): Promise<SimWasm> {
         velY: projectile_pool_vel_y_ptr(),
         velZ: projectile_pool_vel_z_ptr(),
         timeAlive: projectile_pool_time_alive_ptr(),
-        hasGravity: projectile_pool_has_gravity_ptr(),
       };
       const projectilePool: ProjectilePoolViews = {
         capacity: projCapacity,
@@ -2453,7 +2448,6 @@ export function initSimWasm(): Promise<SimWasm> {
           projectilePool.velY = projF64View(projPtrs.velY);
           projectilePool.velZ = projF64View(projPtrs.velZ);
           projectilePool.timeAlive = projF64View(projPtrs.timeAlive);
-          projectilePool.hasGravity = projU8View(projPtrs.hasGravity);
         },
         posX: projF64View(projPtrs.posX),
         posY: projF64View(projPtrs.posY),
@@ -2462,7 +2456,6 @@ export function initSimWasm(): Promise<SimWasm> {
         velY: projF64View(projPtrs.velY),
         velZ: projF64View(projPtrs.velZ),
         timeAlive: projF64View(projPtrs.timeAlive),
-        hasGravity: projU8View(projPtrs.hasGravity),
       };
 
       const handle: SimWasm = {

@@ -179,7 +179,7 @@ minimap rows, and remaining audio-event bursts.
 
 ==============================================================================
 
-GRAVITY UNIVERSALITY (PHYS-GRAV-01 family)
+GRAVITY UNIVERSALITY (PHYS-GRAV family)
 
 The "Gravity is universal; thrust answers it" section of
 design_philosophy.html is explicit:
@@ -193,110 +193,10 @@ design_philosophy.html is explicit:
   the target. Guidance and gravity-cancellation are one acceleration
   vector, not two systems."
 
-The current codebase violates this for rocket-class shots and
-terrain-following DGUN waves. Rockets opt out of gravity entirely
-instead of letting their thrust spend a slice of budget on
-counter-gravity; D-gun waves bypass force integration altogether and
-clamp position to terrain.
+The current remaining violation is terrain-following DGUN waves: they
+bypass force integration altogether and clamp position to terrain.
 
 ==============================================================================
-
-------------------------------------------------------------------------------
-PHYS-GRAV-01 - parent: rocket-class projectiles bypass gravity instead
-               of cancelling it through thrust.
-------------------------------------------------------------------------------
-
-Evidence:
-- src/game/sim/combat/projectileSystem.ts:255 stamps a per-projectile
-  has-gravity flag based on the shot profile:
-      _packedProjectileHasGravity[slot] =
-        proj.config.shotProfile.runtime.isRocketLike ? 0 : 1;
-- src/game/sim/combat/projectileSystem.ts:776-785 then selects
-  `projectileGravity = terrainFollow || isRocket ? 0 : GRAVITY` and
-  applies it directly:
-      let aNetZ = terrainFollow ? 0 : -projectileGravity;
-- src/game/sim/combat/projectileSystem.ts:848 and :866 pass that same
-  `projectileGravity` (0 for rockets) into solveKinematicIntercept and
-  computeHomingThrust, so the homing solver never sees a non-zero `g`
-  for rocket-class shots. The HomingSteering kernel already supports a
-  `+ gravity` counter-thrust term (lib.rs:1802 `let mut a_z = perp_z *
-  a_lateral_mag + gravity;`); the caller chooses not to use it.
-- rts-sim-wasm/src/lib.rs:1400-1414 stores `has_gravity: Vec<u8>` in
-  the projectile pool, and the pool step at lib.rs:1832-1838
-  conditionally skips both the position and velocity gravity terms
-  when the flag is zero:
-      if p.has_gravity[i] != 0 {
-          p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
-          p.vel_z[i] -= GRAVITY * dt_sec;
-      } else {
-          p.pos_z[i] += p.vel_z[i] * dt_sec;
-      }
-- rts-sim-wasm/src/lib.rs:1466 also exposes
-  `projectile_pool_has_gravity_ptr` to JS, and src/game/sim-wasm/init.ts
-  wires it through (`hasGravity: projectile_pool_has_gravity_ptr()`).
-  The flag is a load-bearing part of the JS/WASM contract.
-- Comment block at lib.rs:1681-1684 acknowledges the violation
-  explicitly: "Rocket-class callers pass gravity 0 [...]" — the design
-  was written to support the counter-gravity term but the integration
-  point opted out instead of opting in.
-
-Why it matters:
-This is exactly the `ignoresGravity` shortcut the philosophy rules
-out. A spent or under-powered rocket should sag the way a real spent
-missile sags; right now it floats indefinitely along its last
-velocity, because gravity is never integrated. The philosophy also
-demands "Guidance and gravity-cancellation are one acceleration
-vector, not two systems" — the current code is two systems.
-
-Fix direction:
-Do the child items as separate, measurable PRs. Order matters:
-PHYS-GRAV-01A wires the counter-gravity into the homing kernel call
-sites; PHYS-GRAV-01B removes the `has_gravity` plumbing once the
-flag is no longer load-bearing.
-
-------------------------------------------------------------------------------
-PHYS-GRAV-01A - child: change rocket-class call sites to pass
-                GRAVITY into the homing math so the homing thrust
-                pays the counter-gravity tax instead of zeroing it.
-------------------------------------------------------------------------------
-
-Evidence:
-- projectileSystem.ts:778 currently sets `projectileGravity = 0` for
-  rockets. The HomingSteering kernel already accepts a `gravity` arg
-  and adds `+ gravity` to its `a_z` (lib.rs:1802), then saturates the
-  combined thrust against `max_thrust_accel`. The caller can simply
-  pass GRAVITY and the kernel will correctly spend a slice of the
-  rocket's authored thrust budget on cancelling gravity.
-
-Fix direction:
-Pass GRAVITY (the universal constant from sharedSimConstants.json)
-into both call sites (`solveKinematicIntercept` at line 848 and
-`computeHomingThrust` at line 866) for rocket-class shots. Verify
-visually that flight paths still look like clean lines for healthy
-rockets (the counter-gravity is bounded by max thrust, so the visible
-behavior should be indistinguishable), and that low-thrust or
-lifespan-expired rockets now sag as the philosophy describes.
-
-------------------------------------------------------------------------------
-PHYS-GRAV-01B - child: delete the `has_gravity` per-projectile flag
-                from the WASM pool and its JS/wire plumbing.
-------------------------------------------------------------------------------
-
-Evidence:
-- After PHYS-GRAV-01A, every non-terrain-follow projectile integrates
-  GRAVITY. The flag becomes a no-op for the active path.
-- Touch points to remove together (Delete-The-Old-Path):
-    - rts-sim-wasm/src/lib.rs:1400 (field), :1414 (init), :1466
-      (export), :1832-1838 (conditional step → unconditional step).
-    - src/game/sim-wasm/init.ts:40 (import), :2419 (typed-array
-      handle in PROJECTILE_POOL).
-    - src/game/sim/combat/projectileSystem.ts:255
-      (`_packedProjectileHasGravity` write) and any reader.
-
-Fix direction:
-Strip the flag, replace the conditional integration with the
-gravity branch unconditionally, drop the typed-array handle and
-export. Terrain-follow handling moves under PHYS-GRAV-02.
 
 ------------------------------------------------------------------------------
 PHYS-GRAV-02 - parent: D-gun terrain-following projectiles bypass

@@ -1397,7 +1397,6 @@ struct ProjectilePool {
     vel_y: Vec<f64>,
     vel_z: Vec<f64>,
     time_alive: Vec<f64>,
-    has_gravity: Vec<u8>,
 }
 
 impl ProjectilePool {
@@ -1411,7 +1410,6 @@ impl ProjectilePool {
             vel_y: vec![0.0; cap],
             vel_z: vec![0.0; cap],
             time_alive: vec![0.0; cap],
-            has_gravity: vec![0u8; cap],
         }
     }
 }
@@ -1463,7 +1461,6 @@ projectile_pool_ptr_export!(projectile_pool_vel_x_ptr, vel_x, f64);
 projectile_pool_ptr_export!(projectile_pool_vel_y_ptr, vel_y, f64);
 projectile_pool_ptr_export!(projectile_pool_vel_z_ptr, vel_z, f64);
 projectile_pool_ptr_export!(projectile_pool_time_alive_ptr, time_alive, f64);
-projectile_pool_ptr_export!(projectile_pool_has_gravity_ptr, has_gravity, u8);
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 5b — Kinematic intercept solver
@@ -1679,8 +1676,8 @@ pub fn solve_kinematic_intercept(
 //  Returns the bounded steering acceleration a guided projectile
 //  applies this tick: lateral guidance toward the predicted intercept
 //  plus optional gravity compensation, clamped to the projectile's
-//  available thrust acceleration. Rocket-class callers pass gravity 0
-//  so their engine budget goes to steering rather than holding altitude.
+//  available thrust acceleration. Rocket-class callers pass universal
+//  gravity, so their engine budget pays for steering and holding altitude.
 //
 //  Output buffer (3 f64s): thrustX, thrustY, thrustZ.
 //
@@ -1830,12 +1827,8 @@ pub fn pool_step_packed_projectiles_batch(count: u32, dt_sec: f64) {
     for i in 0..n {
         p.pos_x[i] += p.vel_x[i] * dt_sec;
         p.pos_y[i] += p.vel_y[i] * dt_sec;
-        if p.has_gravity[i] != 0 {
-            p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
-            p.vel_z[i] -= GRAVITY * dt_sec;
-        } else {
-            p.pos_z[i] += p.vel_z[i] * dt_sec;
-        }
+        p.pos_z[i] += p.vel_z[i] * dt_sec - GRAVITY * half_dt_sq;
+        p.vel_z[i] -= GRAVITY * dt_sec;
     }
 }
 
