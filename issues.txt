@@ -30,8 +30,6 @@ Evidence:
 - src/game/sim/Simulation.ts (1,657 LOC) is still the top-level tick
   driver. Although most heavy kernels delegate to WASM, several
   per-unit loops are TypeScript:
-    - applyArrivalThrust (Simulation.ts:1214-1293) — PD controller
-      that computes locomotion thrust per unit per tick.
     - updateUnitGroundNormal (src/game/sim/unitGroundNormal.ts) —
       per-unit ground-normal EMA, called every tick.
     - UnitSuspensionSystem.update (src/game/sim/unitSuspension.ts) —
@@ -64,37 +62,9 @@ At 5,000 active units, an N-per-tick TS loop is exactly the scaling
 shape the design rules out.
 
 Fix direction:
-Do child items as separate, measurable PRs. Order matters: move the
-larger, more frequent loops first (arrival control) and use the
-patterns established to migrate the smaller EMA/spring loops.
-
-------------------------------------------------------------------------------
-TS-WASM-01A - child: move applyArrivalThrust into a Rust batch
-              kernel so locomotion PD-control runs in WASM.
-------------------------------------------------------------------------------
-
-Evidence:
-- Simulation.ts:1214-1293 currently computes per-unit:
-    - target-velocity from waypoint + arrival shape,
-    - position error (waypoint - body.pos),
-    - velocity error (target - body.vel),
-    - thrust = positionGain · pos_err - dampingGain · body.vel,
-    - clamp/saturate against authored thrust limits,
-    - write back to body's force accumulator via
-      setUnitMovementAcceleration.
-- The Rust crate already exposes the physics pool, force accumulator,
-  and unit motion helpers (advance_unit_motion in lib.rs around 565).
-  An arrival-control kernel can sit alongside them and consume the
-  same packed pool storage.
-
-Fix direction:
-Land a Rust kernel `arrival_control_step_batch(...)` that reads the
-authored thrust/mass profile, body kinematics, and current waypoint
-from packed slabs and writes the per-tick thrust into the existing
-force accumulator. Delete applyArrivalThrust from Simulation.ts in
-the same change (Delete The Old Path). Verify gameplay parity at
-N=200 and check 5,000-unit tick budget; the PD math is unchanged,
-only the iteration moves.
+Do child items as separate, measurable PRs. Continue with the
+ground-normal EMA and spring loops, using the arrival-control batch
+pattern where it fits.
 
 ------------------------------------------------------------------------------
 TS-WASM-01B - child: move updateUnitGroundNormal EMA into Rust.

@@ -516,6 +516,164 @@ pool_ptr_export!(pool_ground_offset_ptr, ground_offset, f64);
 pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
 
+const ARRIVAL_FLAG_FLYING: u8 = 1 << 0;
+const ARRIVAL_FLAG_LAST_ACTION: u8 = 1 << 1;
+
+#[inline]
+fn arrival_horizontal_drive_accel(
+    drive_force: f64,
+    traction: f64,
+    mass: f64,
+    thrust_multiplier: f64,
+    force_scale: f64,
+    unit_mass_multiplier: f64,
+) -> f64 {
+    let physics_mass = mass * unit_mass_multiplier;
+    if !physics_mass.is_finite() || physics_mass <= 0.0 || force_scale <= 0.0 {
+        return 0.0;
+    }
+
+    let traction_force_magnitude = drive_force * thrust_multiplier * traction * mass / force_scale;
+    traction_force_magnitude * 1_000_000.0 / physics_mass
+}
+
+#[inline]
+fn compute_arrival_control_thrust(
+    dx: f64,
+    dy: f64,
+    distance: f64,
+    body_vx: f64,
+    body_vy: f64,
+    radius_push: f64,
+    drive_force: f64,
+    traction: f64,
+    mass: f64,
+    flags: u8,
+    dt_sec: f64,
+    thrust_multiplier: f64,
+    force_scale: f64,
+    unit_mass_multiplier: f64,
+    control_radius_min: f64,
+    response_time_sec: f64,
+    min_accel: f64,
+) -> (f64, f64, u8) {
+    if distance <= 0.0001 || !distance.is_finite() {
+        return (0.0, 0.0, 0);
+    }
+
+    let inv_distance = 1.0 / distance;
+    if flags & ARRIVAL_FLAG_FLYING != 0 {
+        return (dx * inv_distance, dy * inv_distance, 1);
+    }
+
+    if flags & ARRIVAL_FLAG_LAST_ACTION == 0 {
+        return (dx * inv_distance, dy * inv_distance, 1);
+    }
+
+    let max_accel = arrival_horizontal_drive_accel(
+        drive_force,
+        traction,
+        mass,
+        thrust_multiplier,
+        force_scale,
+        unit_mass_multiplier,
+    );
+    if max_accel <= min_accel || !max_accel.is_finite() {
+        return (dx * inv_distance, dy * inv_distance, 1);
+    }
+
+    let control_radius = control_radius_min.max(radius_push * 8.0);
+    let position_gain = max_accel / control_radius;
+    let velocity_gain = 2.0 * position_gain.sqrt();
+    let response_gain = if dt_sec > 0.0 {
+        (1.0 / response_time_sec).min(1.0 / dt_sec)
+    } else {
+        1.0 / response_time_sec
+    };
+    let damping_gain = velocity_gain.max(response_gain);
+
+    let accel_x = dx * position_gain - body_vx * damping_gain;
+    let accel_y = dy * position_gain - body_vy * damping_gain;
+    if !accel_x.is_finite() || !accel_y.is_finite() {
+        return (0.0, 0.0, 0);
+    }
+
+    let accel_len = (accel_x * accel_x + accel_y * accel_y).sqrt();
+    if accel_len <= min_accel {
+        return (0.0, 0.0, 0);
+    }
+
+    let thrust_scale = (accel_len / max_accel).min(1.0);
+    let out_scale = thrust_scale / accel_len;
+    (accel_x * out_scale, accel_y * out_scale, 1)
+}
+
+#[wasm_bindgen]
+pub fn arrival_control_step_batch(
+    slots: &[u32],
+    dx: &[f64],
+    dy: &[f64],
+    distance: &[f64],
+    radius_push: &[f64],
+    drive_force: &[f64],
+    traction: &[f64],
+    mass: &[f64],
+    flags: &[u8],
+    out_thrust_x: &mut [f64],
+    out_thrust_y: &mut [f64],
+    out_active: &mut [u8],
+    dt_sec: f64,
+    thrust_multiplier: f64,
+    force_scale: f64,
+    unit_mass_multiplier: f64,
+    control_radius_min: f64,
+    response_time_sec: f64,
+    min_accel: f64,
+) -> u32 {
+    let count = slots.len();
+    debug_assert!(dx.len() >= count);
+    debug_assert!(dy.len() >= count);
+    debug_assert!(distance.len() >= count);
+    debug_assert!(radius_push.len() >= count);
+    debug_assert!(drive_force.len() >= count);
+    debug_assert!(traction.len() >= count);
+    debug_assert!(mass.len() >= count);
+    debug_assert!(flags.len() >= count);
+    debug_assert!(out_thrust_x.len() >= count);
+    debug_assert!(out_thrust_y.len() >= count);
+    debug_assert!(out_active.len() >= count);
+
+    let p = pool();
+    let mut active_count = 0_u32;
+    for i in 0..count {
+        let slot = slots[i] as usize;
+        let (thrust_x, thrust_y, active) = compute_arrival_control_thrust(
+            dx[i],
+            dy[i],
+            distance[i],
+            p.vel_x[slot],
+            p.vel_y[slot],
+            radius_push[i],
+            drive_force[i],
+            traction[i],
+            mass[i],
+            flags[i],
+            dt_sec,
+            thrust_multiplier,
+            force_scale,
+            unit_mass_multiplier,
+            control_radius_min,
+            response_time_sec,
+            min_accel,
+        );
+        out_thrust_x[i] = thrust_x;
+        out_thrust_y[i] = thrust_y;
+        out_active[i] = active;
+        active_count += active as u32;
+    }
+    active_count
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Phase 3d-2 — Pool-backed integrate + sphere-sphere kernels
 //
@@ -2459,17 +2617,7 @@ pub fn fog_mark_circle_scanline(
     radius: f64,
     cell_anchor: f64,
 ) -> u32 {
-    fog_mark_circle_scanline_impl(
-        bitmap,
-        None,
-        grid_w,
-        grid_h,
-        cx,
-        cy,
-        radius,
-        cell_anchor,
-        0,
-    )
+    fog_mark_circle_scanline_impl(bitmap, None, grid_w, grid_h, cx, cy, radius, cell_anchor, 0)
 }
 
 /// Fog/shroud scanline circle fill with an aligned RGBA side buffer.
@@ -17160,6 +17308,63 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
         w.write_uint(expires_at_tick as u64);
     }
     w.buf.len() as u32
+}
+
+#[cfg(test)]
+mod arrival_control_tests {
+    use super::*;
+
+    #[test]
+    fn intermediate_waypoints_use_normalized_thrust() {
+        let (x, y, active) = compute_arrival_control_thrust(
+            3.0,
+            4.0,
+            5.0,
+            100.0,
+            0.0,
+            10.0,
+            100.0,
+            1.0,
+            100.0,
+            0,
+            1.0 / 30.0,
+            8.0,
+            150_000.0,
+            50.0,
+            20.0,
+            0.22,
+            0.001,
+        );
+        assert_eq!(active, 1);
+        assert!((x - 0.6).abs() < 1e-12);
+        assert!((y - 0.8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn final_waypoints_brake_against_current_velocity() {
+        let (x, y, active) = compute_arrival_control_thrust(
+            10.0,
+            0.0,
+            10.0,
+            20.0,
+            0.0,
+            10.0,
+            100.0,
+            1.0,
+            100.0,
+            ARRIVAL_FLAG_LAST_ACTION,
+            1.0 / 30.0,
+            8.0,
+            150_000.0,
+            50.0,
+            20.0,
+            0.22,
+            0.001,
+        );
+        assert_eq!(active, 1);
+        assert!(x < 0.0, "arrival should thrust opposite overshoot velocity");
+        assert!(y.abs() < 1e-12);
+    }
 }
 
 #[cfg(test)]

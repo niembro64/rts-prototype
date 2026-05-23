@@ -67,7 +67,7 @@ import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { getActionIntentStart, getUnitActionTargetId } from './unitActionIntents';
-import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
+import { CT_TURRET_STATE_ENGAGED, getSimWasm } from '../sim-wasm/init';
 import {
   rotateFirstUnitActionToEnd,
   setUnitActions,
@@ -76,7 +76,6 @@ import {
 } from './unitActions';
 import {
   LOCOMOTION_FORCE_SCALE,
-  getLocomotionForceProfile,
 } from './locomotion';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
@@ -137,6 +136,8 @@ const ARRIVAL_FINAL_STOP_SPEED = 10;
 const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
+const ARRIVAL_BATCH_FLAG_FLYING = 1 << 0;
+const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
 const FLYING_LOITER_RADIAL_GAIN = 0.65;
@@ -199,6 +200,20 @@ export class Simulation {
   private _deadBuildingIdsBuf: EntityId[] = [];
   private _deathCheckIdsBuf: EntityId[] = [];
   private _movingUnitsBuf: Entity[] = [];
+  private _arrivalEntitiesBuf: Entity[] = [];
+  private _arrivalSlotsBuf = new Uint32Array(0);
+  private _arrivalDxBuf = new Float64Array(0);
+  private _arrivalDyBuf = new Float64Array(0);
+  private _arrivalDistanceBuf = new Float64Array(0);
+  private _arrivalRadiusPushBuf = new Float64Array(0);
+  private _arrivalDriveForceBuf = new Float64Array(0);
+  private _arrivalTractionBuf = new Float64Array(0);
+  private _arrivalMassBuf = new Float64Array(0);
+  private _arrivalFlagsBuf = new Uint8Array(0);
+  private _arrivalOutXBuf = new Float64Array(0);
+  private _arrivalOutYBuf = new Float64Array(0);
+  private _arrivalActiveBuf = new Uint8Array(0);
+  private _arrivalCount = 0;
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
@@ -746,6 +761,7 @@ export class Simulation {
   private updateUnits(dtSec: number): void {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;
+    this._arrivalCount = 0;
 
     for (const entity of this.world.getUnits()) {
       spatialGrid.updateUnit(entity);
@@ -834,9 +850,7 @@ export class Simulation {
           continue;
         }
 
-        if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
-          movingUnits.push(entity);
-        }
+        this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
         continue;
       }
 
@@ -862,9 +876,7 @@ export class Simulation {
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
-            movingUnits.push(entity);
-          }
+          this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
         } else {
           if ((unit.stuckTicks ?? 0) < 0) {
             unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
@@ -898,9 +910,7 @@ export class Simulation {
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
-            movingUnits.push(entity);
-          }
+          this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
         } else {
           unit.stuckTicks = 0;
         }
@@ -933,15 +943,11 @@ export class Simulation {
         const dy = currentAction.y - transform.y;
         const distance = magnitude(dx, dy);
         if (distance > 15) {
-          if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
-            movingUnits.push(entity);
-          }
+          this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
         } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
           unit.stuckTicks = 0;
         } else {
-          if (this.applyArrivalThrust(entity, currentAction, targetDx, targetDy, targetDistance, dtSec)) {
-            movingUnits.push(entity);
-          }
+          this.queueArrivalThrust(entity, currentAction, targetDx, targetDy, targetDistance);
         }
         continue;
       }
@@ -976,10 +982,10 @@ export class Simulation {
         continue;
       }
 
-      if (this.applyArrivalThrust(entity, currentAction, dx, dy, distance, dtSec)) {
-        movingUnits.push(entity);
-      }
+      this.queueArrivalThrust(entity, currentAction, dx, dy, distance);
     }
+
+    this.flushArrivalThrust(movingUnits, dtSec);
 
     // Stuck-detection / replan pass — runs after every unit has had
     // its thrust set this tick. Looking at thrust + actual physics
@@ -1212,34 +1218,60 @@ export class Simulation {
     return Math.max(0, Math.min(this.world.mapHeight, y));
   }
 
-  /** Velocity-aware arrival controller. The action supplies a desired
-   *  position; current physics velocity decides whether we should keep
-   *  pulling toward it, bleed speed, or thrust directly against motion.
-   *  The resulting thrust vector carries both direction and force
-   *  fraction; UnitForceSystem clamps it against the unit's authored
-   *  drive profile. */
-  private applyArrivalThrust(
+  private ensureArrivalCapacity(required: number): void {
+    if (this._arrivalSlotsBuf.length >= required) return;
+    const next = Math.max(required, this._arrivalSlotsBuf.length * 2, 128);
+    const slots = new Uint32Array(next);
+    slots.set(this._arrivalSlotsBuf);
+    this._arrivalSlotsBuf = slots;
+    const dx = new Float64Array(next);
+    dx.set(this._arrivalDxBuf);
+    this._arrivalDxBuf = dx;
+    const dy = new Float64Array(next);
+    dy.set(this._arrivalDyBuf);
+    this._arrivalDyBuf = dy;
+    const distance = new Float64Array(next);
+    distance.set(this._arrivalDistanceBuf);
+    this._arrivalDistanceBuf = distance;
+    const radiusPush = new Float64Array(next);
+    radiusPush.set(this._arrivalRadiusPushBuf);
+    this._arrivalRadiusPushBuf = radiusPush;
+    const driveForce = new Float64Array(next);
+    driveForce.set(this._arrivalDriveForceBuf);
+    this._arrivalDriveForceBuf = driveForce;
+    const traction = new Float64Array(next);
+    traction.set(this._arrivalTractionBuf);
+    this._arrivalTractionBuf = traction;
+    const mass = new Float64Array(next);
+    mass.set(this._arrivalMassBuf);
+    this._arrivalMassBuf = mass;
+    const flags = new Uint8Array(next);
+    flags.set(this._arrivalFlagsBuf);
+    this._arrivalFlagsBuf = flags;
+    this._arrivalOutXBuf = new Float64Array(next);
+    this._arrivalOutYBuf = new Float64Array(next);
+    this._arrivalActiveBuf = new Uint8Array(next);
+  }
+
+  /** Pack one action-system arrival request for the WASM batch. The
+   *  TypeScript side still owns action queue semantics; Rust owns the
+   *  velocity-aware PD controller over the packed candidates. */
+  private queueArrivalThrust(
     entity: Entity,
     action: UnitAction,
     dx: number,
     dy: number,
     distance: number,
-    dtSec: number,
-  ): boolean {
+  ): void {
     const unit = entity.unit;
-    const body = entity.body?.physicsBody;
-    if (!unit || !body || distance <= 0.0001) {
+    const body = entity.body;
+    const bodySlot = body !== undefined ? body.physicsBody.slot : -1;
+    if (!unit || bodySlot < 0 || distance <= 0.0001) {
       if (unit) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
       }
-      return false;
-    }
-
-    if (unit.locomotion.type === 'flying') {
-      unit.thrustDirX = dx / distance;
-      unit.thrustDirY = dy / distance;
-      return true;
+      return;
     }
 
     // Intermediate waypoints (anything that isn't the final action in
@@ -1248,50 +1280,63 @@ export class Simulation {
     // only fires when the unit needs to stop at a precise point — i.e.
     // the very last action in the queue.
     const isLastAction = unit.actions.length <= 1 && action.type !== 'patrol';
-    if (!isLastAction) {
-      unit.thrustDirX = dx / distance;
-      unit.thrustDirY = dy / distance;
-      return true;
+    const index = this._arrivalCount++;
+    this.ensureArrivalCapacity(this._arrivalCount);
+    this._arrivalEntitiesBuf[index] = entity;
+    this._arrivalSlotsBuf[index] = bodySlot;
+    this._arrivalDxBuf[index] = dx;
+    this._arrivalDyBuf[index] = dy;
+    this._arrivalDistanceBuf[index] = distance;
+    this._arrivalRadiusPushBuf[index] = unit.radius.push;
+    this._arrivalDriveForceBuf[index] = unit.locomotion.driveForce;
+    this._arrivalTractionBuf[index] = unit.locomotion.traction;
+    this._arrivalMassBuf[index] = unit.mass;
+    this._arrivalFlagsBuf[index] =
+      (unit.locomotion.type === 'flying' ? ARRIVAL_BATCH_FLAG_FLYING : 0) |
+      (isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0);
+  }
+
+  private flushArrivalThrust(movingUnits: Entity[], dtSec: number): void {
+    const count = this._arrivalCount;
+    if (count === 0) return;
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('Simulation.flushArrivalThrust: sim-wasm is not initialized');
     }
+    sim.arrivalControlStepBatch(
+      this._arrivalSlotsBuf.subarray(0, count),
+      this._arrivalDxBuf.subarray(0, count),
+      this._arrivalDyBuf.subarray(0, count),
+      this._arrivalDistanceBuf.subarray(0, count),
+      this._arrivalRadiusPushBuf.subarray(0, count),
+      this._arrivalDriveForceBuf.subarray(0, count),
+      this._arrivalTractionBuf.subarray(0, count),
+      this._arrivalMassBuf.subarray(0, count),
+      this._arrivalFlagsBuf.subarray(0, count),
+      this._arrivalOutXBuf.subarray(0, count),
+      this._arrivalOutYBuf.subarray(0, count),
+      this._arrivalActiveBuf.subarray(0, count),
+      dtSec,
+      this.world.thrustMultiplier,
+      LOCOMOTION_FORCE_SCALE,
+      UNIT_MASS_MULTIPLIER,
+      ARRIVAL_CONTROL_RADIUS,
+      ARRIVAL_RESPONSE_TIME_SEC,
+      ARRIVAL_MIN_ACCEL,
+    );
 
-    const maxAccel = this.getUnitHorizontalDriveAccel(unit);
-    if (maxAccel <= ARRIVAL_MIN_ACCEL) {
-      unit.thrustDirX = dx / distance;
-      unit.thrustDirY = dy / distance;
-      return true;
+    for (let i = 0; i < count; i++) {
+      const entity = this._arrivalEntitiesBuf[i];
+      const unit = entity.unit;
+      if (unit) {
+        unit.thrustDirX = this._arrivalOutXBuf[i];
+        unit.thrustDirY = this._arrivalOutYBuf[i];
+        if (this._arrivalActiveBuf[i] !== 0) movingUnits.push(entity);
+      }
+      this._arrivalEntitiesBuf[i] = undefined as unknown as Entity;
     }
-
-    const controlRadius = Math.max(ARRIVAL_CONTROL_RADIUS, unit.radius.push * 8);
-    const positionGain = maxAccel / controlRadius;
-    const velocityGain = 2 * Math.sqrt(positionGain);
-    const responseGain = dtSec > 0
-      ? Math.min(1 / ARRIVAL_RESPONSE_TIME_SEC, 1 / dtSec)
-      : 1 / ARRIVAL_RESPONSE_TIME_SEC;
-    const dampingGain = Math.max(velocityGain, responseGain);
-
-    let accelX = dx * positionGain - body.vx * dampingGain;
-    let accelY = dy * positionGain - body.vy * dampingGain;
-
-    if (!Number.isFinite(accelX) || !Number.isFinite(accelY)) {
-      unit.thrustDirX = 0;
-      unit.thrustDirY = 0;
-      return false;
-    }
-
-    const accelLen = magnitude(accelX, accelY);
-    if (accelLen <= ARRIVAL_MIN_ACCEL) {
-      unit.thrustDirX = 0;
-      unit.thrustDirY = 0;
-      return false;
-    }
-
-    const thrustScale = Math.min(1, accelLen / maxAccel);
-    const invAccelLen = 1 / accelLen;
-    accelX *= invAccelLen * thrustScale;
-    accelY *= invAccelLen * thrustScale;
-    unit.thrustDirX = accelX;
-    unit.thrustDirY = accelY;
-    return true;
+    this._arrivalCount = 0;
   }
 
   private hasArrivedAtAction(entity: Entity, action: UnitAction, distance: number): boolean {
@@ -1309,18 +1354,6 @@ export class Simulation {
     const vx = body?.vx ?? unit?.velocityX ?? 0;
     const vy = body?.vy ?? unit?.velocityY ?? 0;
     return magnitude(vx, vy) <= ARRIVAL_FINAL_STOP_SPEED;
-  }
-
-  private getUnitHorizontalDriveAccel(unit: Unit): number {
-    const force = getLocomotionForceProfile(
-      unit.locomotion,
-      unit.mass,
-      this.world.thrustMultiplier,
-      LOCOMOTION_FORCE_SCALE,
-    );
-    const physicsMass = unit.mass * UNIT_MASS_MULTIPLIER;
-    if (!Number.isFinite(physicsMass) || physicsMass <= 0) return 0;
-    return force.tractionForceMagnitude * 1e6 / physicsMass;
   }
 
   /** True when any non-visual turret is engaged with a target, so the

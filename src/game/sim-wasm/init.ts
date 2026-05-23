@@ -301,6 +301,7 @@ import __wbg_init, {
   messagepack_writer_append_raw_value,
   messagepack_writer_ptr,
   messagepack_writer_len,
+  arrival_control_step_batch,
   pool_pos_x_ptr,
   pool_pos_y_ptr,
   pool_pos_z_ptr,
@@ -447,6 +448,31 @@ export interface SimWasm {
     ignoredStaticSlots: Uint32Array,
     cellSize: number,
     wakeTransitionsOut: Uint32Array,
+  ) => number;
+  /** TS-WASM-01A — batched arrival controller. TypeScript action
+   *  orchestration packs one row per unit that wants waypoint thrust;
+   *  the Rust kernel reads body velocity from the BodyPool and writes
+   *  normalized/scaled thrust requests for UnitForceSystem to consume. */
+  readonly arrivalControlStepBatch: (
+    slots: Uint32Array,
+    dx: Float64Array,
+    dy: Float64Array,
+    distance: Float64Array,
+    radiusPush: Float64Array,
+    driveForce: Float64Array,
+    traction: Float64Array,
+    mass: Float64Array,
+    flags: Uint8Array,
+    outThrustX: Float64Array,
+    outThrustY: Float64Array,
+    outActive: Uint8Array,
+    dtSec: number,
+    thrustMultiplier: number,
+    forceScale: number,
+    unitMassMultiplier: number,
+    controlRadiusMin: number,
+    responseTimeSec: number,
+    minAccel: number,
   ) => number;
   /** Phase 4 + 3e — batched hover orientation kernel. UnitForceSystem
    *  builds a per-tick scratch with one entry per hover entity:
@@ -2469,6 +2495,7 @@ export function initSimWasm(): Promise<SimWasm> {
         engineStaticsAdd: engine_statics_add,
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
+        arrivalControlStepBatch: arrival_control_step_batch,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
