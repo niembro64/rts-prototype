@@ -35,10 +35,12 @@ import {
   writeProjectileSpawnWireRow,
   writeProjectileVelocityUpdateWireRow,
 } from './stateSerializerProjectiles';
+import type { PooledNumberArrayScratch } from './snapshotPooledScratch';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
 const PACKED_PROJECTILES_VERSION = 1;
+const EMPTY_PROJECTILE_ROWS: readonly number[] = [];
 
 export type PackedProjectileSnapshotWire = {
   v: typeof PACKED_PROJECTILES_VERSION;
@@ -51,16 +53,17 @@ export type PackedProjectileSnapshotWire = {
 
 export function packProjectilesForWire(
   projectiles: ProjectileSnapshot | undefined,
+  scratch?: PooledNumberArrayScratch,
 ): PackedProjectileSnapshotWire | undefined {
   if (projectiles === undefined) return undefined;
 
   return {
     v: PACKED_PROJECTILES_VERSION,
-    s: packProjectileSpawns(projectiles.spawns),
-    d: packProjectileDespawns(projectiles.despawns),
-    u: packProjectileVelocityUpdates(projectiles.velocityUpdates),
-    b: packBeamUpdates(projectiles.beamUpdates),
-    p: packBeamPoints(projectiles.beamUpdates),
+    s: packProjectileSpawns(projectiles.spawns, scratch),
+    d: packProjectileDespawns(projectiles.despawns, scratch),
+    u: packProjectileVelocityUpdates(projectiles.velocityUpdates, scratch),
+    b: packBeamUpdates(projectiles.beamUpdates, scratch),
+    p: packBeamPoints(projectiles.beamUpdates, scratch),
   };
 }
 
@@ -98,9 +101,11 @@ export function isPackedProjectileSnapshotWire(
 
 function packProjectileSpawns(
   spawns: readonly NetworkServerSnapshotProjectileSpawn[] | undefined,
+  scratch: PooledNumberArrayScratch | undefined,
 ): number[] | undefined {
   if (spawns === undefined) return undefined;
-  const rows = new Array<number>(spawns.length * PROJECTILE_SPAWN_WIRE_STRIDE);
+  const rows = scratch?.acquire(spawns.length * PROJECTILE_SPAWN_WIRE_STRIDE) ??
+    new Array<number>(spawns.length * PROJECTILE_SPAWN_WIRE_STRIDE);
   for (let i = 0; i < spawns.length; i++) {
     writeProjectileSpawnWireRow(rows, i * PROJECTILE_SPAWN_WIRE_STRIDE, spawns[i]);
   }
@@ -109,9 +114,10 @@ function packProjectileSpawns(
 
 function packProjectileDespawns(
   despawns: ProjectileSnapshot['despawns'],
+  scratch: PooledNumberArrayScratch | undefined,
 ): number[] | undefined {
   if (despawns === undefined) return undefined;
-  const rows = new Array<number>(despawns.length);
+  const rows = scratch?.acquire(despawns.length) ?? new Array<number>(despawns.length);
   for (let i = 0; i < despawns.length; i++) {
     rows[i] = despawns[i].id;
   }
@@ -120,9 +126,11 @@ function packProjectileDespawns(
 
 function packProjectileVelocityUpdates(
   updates: readonly NetworkServerSnapshotVelocityUpdate[] | undefined,
+  scratch: PooledNumberArrayScratch | undefined,
 ): number[] | undefined {
   if (updates === undefined) return undefined;
-  const rows = new Array<number>(updates.length * PROJECTILE_VELOCITY_WIRE_STRIDE);
+  const rows = scratch?.acquire(updates.length * PROJECTILE_VELOCITY_WIRE_STRIDE) ??
+    new Array<number>(updates.length * PROJECTILE_VELOCITY_WIRE_STRIDE);
   for (let i = 0; i < updates.length; i++) {
     writeProjectileVelocityUpdateWireRow(
       rows,
@@ -135,9 +143,11 @@ function packProjectileVelocityUpdates(
 
 function packBeamUpdates(
   updates: readonly NetworkServerSnapshotBeamUpdate[] | undefined,
+  scratch: PooledNumberArrayScratch | undefined,
 ): number[] | undefined {
   if (updates === undefined) return undefined;
-  const rows = new Array<number>(updates.length * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
+  const rows = scratch?.acquire(updates.length * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE) ??
+    new Array<number>(updates.length * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
   for (let i = 0; i < updates.length; i++) {
     writeBeamUpdateWireRow(rows, i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE, updates[i]);
   }
@@ -146,12 +156,14 @@ function packBeamUpdates(
 
 function packBeamPoints(
   updates: readonly NetworkServerSnapshotBeamUpdate[] | undefined,
+  scratch: PooledNumberArrayScratch | undefined,
 ): number[] | undefined {
   if (updates === undefined) return undefined;
   let pointCount = 0;
   for (let i = 0; i < updates.length; i++) pointCount += updates[i].points.length;
 
-  const rows = new Array<number>(pointCount * PROJECTILE_BEAM_POINT_WIRE_STRIDE);
+  const rows = scratch?.acquire(pointCount * PROJECTILE_BEAM_POINT_WIRE_STRIDE) ??
+    new Array<number>(pointCount * PROJECTILE_BEAM_POINT_WIRE_STRIDE);
   let rowIndex = 0;
   for (let i = 0; i < updates.length; i++) {
     const points = updates[i].points;
@@ -314,7 +326,7 @@ function unpackBeamPoints(
   count: number,
 ): NetworkServerSnapshotBeamPoint[] {
   const points: NetworkServerSnapshotBeamPoint[] = new Array(count);
-  const source = rows ?? [];
+  const source = rows ?? EMPTY_PROJECTILE_ROWS;
   for (let i = 0; i < count; i++) {
     const base = (offset + i) * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
     const flags = source[base + 6] ?? 0;

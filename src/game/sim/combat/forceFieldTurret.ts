@@ -47,8 +47,11 @@ export function getActiveForceFields(): readonly ActiveForceFieldRef[] {
   return _activeForceFields;
 }
 
-// Update force field state (transition progress 0→1)
-// currentForceFieldRange carries visual/gameplay progress (0→1) for serialization.
+// Update force field state (transition progress 0→1). The transition is
+// host-owned because progress > 0 gates whether the barrier exists for
+// projectile reflection / obstruction. The snapshot wire ships the same
+// value as currentForceFieldRange so clients correct to server progress
+// rather than running an independent visual-only timer.
 export function updateForceFieldState(world: WorldState, dtMs: number): void {
   _activeForceFields.length = 0;
 
@@ -81,7 +84,8 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
         weapon.forceField.transition = Math.max(weapon.forceField.transition - progressDelta, 0);
       }
 
-      // Serialize progress as forceField.range (0→1)
+      // Serialize authoritative barrier activation progress as
+      // forceField.range (0→1).
       weapon.forceField.range = weapon.forceField.transition;
 
       if (weapon.forceField.transition > 0 && unit.unit && unit.unit.hp > 0) {

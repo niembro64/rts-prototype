@@ -630,6 +630,11 @@ export type NetworkServerSnapshotTurret = {
   /** Bit-packed turret state code (see TURRET_STATE_* constants and
    *  turretStateToCode / codeToTurretState helpers). */
   state: TurretStateCode;
+  /** Server-authored force-field activation progress (0..1). This is
+   *  not locomotion garnish: the authoritative host uses the same
+   *  transition state to decide when a force-field barrier exists for
+   *  projectile reflection / obstruction, so clients receive it as a
+   *  correction target instead of deriving an independent local timer. */
   currentForceFieldRange?: number;
 };
 

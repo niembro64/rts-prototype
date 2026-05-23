@@ -607,9 +607,13 @@ WIRE-PERF-01 - parent: snapshot pack/unpack helpers allocate fresh
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/game/network/snapshotProjectileWirePack.ts allocates new
-  arrays around lines 103, 114, 125, 140, 154, 171, 245, 257, 284,
-  316 (one `new Array(...)` per packed projectile sub-slab).
+- The encode / DP-02 measurement path in
+  src/game/network/snapshotProjectileWirePack.ts now leases pooled
+  numeric arrays for the packed projectile spawns, despawns, velocity
+  updates, beam updates, and beam-point slabs via
+  src/game/network/snapshotPooledScratch.ts. Remaining projectile
+  decode arrays are retained snapshot DTO outputs and should not be
+  scratch-pooled until snapshot ownership/lifetime is changed.
 - src/game/network/snapshotEntityWirePack.ts still allocates arrays in
   the movement/turret output allocation, grouped chunk, and nested
   detail decode paths.
@@ -636,23 +640,12 @@ for other paths). Each pack/unpack uses `arr.length = 0` instead
 of `new Array(...)`. Children below split per-file.
 
 ------------------------------------------------------------------------------
-WIRE-PERF-01A - child: pool the packed projectile sub-slabs in
-                snapshotProjectileWirePack.ts.
-------------------------------------------------------------------------------
-
-Fix direction:
-Replace each `new Array(...)` call site with a pooled scratch array
-acquired from snapshotPooledScratch and released at the end of the
-pack/unpack. Verify byte-equality of the packed output against the
-existing instrumentation parity tests in snapshotEncoderTest.ts.
-
-------------------------------------------------------------------------------
 WIRE-PERF-01B - child: pool the packed entity sub-slabs in
                 snapshotEntityWirePack.ts.
 ------------------------------------------------------------------------------
 
 Fix direction:
-Same shape as WIRE-PERF-01A, applied to the entity wire pack
+Apply the same pooled scratch shape to the entity wire pack
 allocations. Coordinate with TS-WASM-01D so that the migration to
 a Rust encoder doesn't immediately invalidate the pool; pooling
 buys time and is a low-risk intermediate.
@@ -674,38 +667,6 @@ MISCELLANEOUS WIRE / RENDERER / DIAGNOSTIC ITEMS
 ==============================================================================
 
 ------------------------------------------------------------------------------
-WIRE-FORCEFIELD-01 - clarify whether `currentForceFieldRange`
-                     belongs on the wire.
-------------------------------------------------------------------------------
-
-Evidence:
-- src/game/network/stateSerializerEntities.ts:192 and :351-352
-  ship `currentForceFieldRange` per turret on the snapshot.
-- src/types/network.ts (NetworkServerSnapshotTurret) declares the
-  field.
-- design_philosophy.html line 446-449 says the force-field range
-  visualizer "rides this channel because it is a slow visual
-  progress that pairs with the turret's rotation correction", but
-  also line 931-939 says "Nothing about locomotion visuals
-  crosses the wire" and the same logic should apply to slow
-  visualization progress that can be derived locally.
-
-Why it matters:
-If the value is gameplay-authoritative (e.g. it gates collision /
-projectile reflection radius), it belongs on the wire. If it is
-purely a slow visual progress (a fill bar that ramps from 0 to 1),
-it can be computed locally from the engaged-state FSM bit and a
-local timer. Today the field has the ambiguous middle ground.
-
-Fix direction:
-Decide one of two outcomes, document it in code:
-(a) gameplay-authoritative → keep on wire; mark the field as
-    such in the NetworkServerSnapshotTurret type; ensure the
-    server is the single source of truth for the radius value.
-(b) visual-only → remove from wire; have the client derive the
-    progress from the engaged-state FSM bit + a local timer
-    keyed on engagement transitions; update the renderer.
-
 RENDER-WEBGPU-01 - Three.js → raw WebGPU migration is unstarted.
 ------------------------------------------------------------------------------
 
