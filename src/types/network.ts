@@ -505,52 +505,77 @@ export type NetworkServerSnapshotMeta = {
   snaps: { rate: SnapshotRate; keyframes: KeyframeRatio };
   server: { time: string; ip: string };
   grid: boolean;
-  units: { allowed?: string[]; max?: number; count?: number };
-  mirrorsEnabled?: boolean;
-  forceFieldsEnabled?: boolean;
-  forceFieldsObstructSight?: boolean;
-  forceFieldReflectionMode?: ForceFieldReflectionMode;
-  fogOfWarEnabled?: boolean;
+  units: {
+    allowed: string[] | undefined;
+    max: number | undefined;
+    count: number | undefined;
+  };
+  mirrorsEnabled: boolean | undefined;
+  forceFieldsEnabled: boolean | undefined;
+  forceFieldsObstructSight: boolean | undefined;
+  forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
+  fogOfWarEnabled: boolean | undefined;
   /** Tax (fraction in [0, 1)) applied to each resource converter's
    *  per-tick output. Authoritative on the host; mirrored to clients
    *  so the DEMO BATTLE bar can show the active value. */
-  converterTax?: number;
+  converterTax: number | undefined;
   /** Host CPU load as a percent of the per-tick budget (1000/tickRate ms).
    *  `avg` = EMA-smoothed steady-state load; `hi` = EMA spike, climbs fast
    *  on spikes and decays slowly. Both can exceed 100 when the server is
    *  falling behind (tick work > tick budget). */
-  cpu?: { avg: number; hi: number };
-  wind?: {
+  cpu: { avg: number; hi: number } | undefined;
+  wind: {
     x: number;
     y: number;
     speed: number;
     angle: number;
-  };
+  } | undefined;
   /** HOST SERVER unit ground normal EMA mode (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC key).
    *  Bare string on the wire — the value space is just 'snap' / 'fast'
    *  / 'mid' / 'slow'. Remote clients read this so their HOST SERVER
    *  unit ground normal bar reflects the host's setting rather than
    *  their own stale localStorage. */
-  unitGroundNormalEma?: UnitGroundNormalEmaMode;
+  unitGroundNormalEma: UnitGroundNormalEmaMode | undefined;
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
 
+export type NetworkServerSnapshotProjectiles = {
+  spawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
+  despawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
+  velocityUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
+  /** Authoritative live beam/laser paths. Sent every snapshot so
+   *  clients draw reflected segments directly instead of re-tracing
+   *  mirror/unit/building intersections in the render frame. */
+  beamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;
+};
+
+export type NetworkServerSnapshotGameState = {
+  phase: GamePhase;
+  winnerId: PlayerId | undefined;
+};
+
+export type NetworkServerSnapshotGrid = {
+  cells: NetworkServerSnapshotGridCell[];
+  searchCells: NetworkServerSnapshotGridCell[];
+  cellSize: number;
+};
+
 export type NetworkServerSnapshot = {
   tick: number;
   entities: NetworkServerSnapshotEntity[];
-  minimapEntities?: NetworkServerSnapshotMinimapEntity[];
+  minimapEntities: NetworkServerSnapshotMinimapEntity[] | undefined;
   economy: Record<PlayerId, NetworkServerSnapshotEconomy>;
-  resourceMovements?: NetworkServerSnapshotResourceMovement[];
-  sprayTargets?: NetworkServerSnapshotSprayTarget[];
-  audioEvents?: NetworkServerSnapshotSimEvent[];
+  resourceMovements: NetworkServerSnapshotResourceMovement[] | undefined;
+  sprayTargets: NetworkServerSnapshotSprayTarget[] | undefined;
+  audioEvents: NetworkServerSnapshotSimEvent[] | undefined;
   /** Active temporary vision pulses (FOW-14 — scanner sweeps) owned
    *  by the recipient or one of their allies, with the tick they
    *  expire on. The client passes these into FogOfWarShroudRenderer3D
    *  so the shroud lifts inside the sweep radius the same way it
    *  does around a unit's vision circle. Omitted when no pulses are
    *  live for the recipient's team. */
-  scanPulses?: NetworkServerSnapshotScanPulse[];
+  scanPulses: NetworkServerSnapshotScanPulse[] | undefined;
   /** Authoritative explored-tile bitmap for this recipient
    *  (FOW-11). One byte per (cellSize × cellSize) cell, 0 = never
    *  explored, 1 = ever explored. Sent on keyframes only — the
@@ -558,38 +583,26 @@ export type NetworkServerSnapshot = {
    *  reconnect restores the dark-shroud history that local vision
    *  tracking alone can't reconstruct. Already team-merged on the
    *  server (recipient + allies). */
-  shroud?: NetworkServerSnapshotShroud;
-  projectiles?: {
-    spawns?: NetworkServerSnapshotProjectileSpawn[];
-    despawns?: NetworkServerSnapshotProjectileDespawn[];
-    velocityUpdates?: NetworkServerSnapshotVelocityUpdate[];
-    /** Authoritative live beam/laser paths. Sent every snapshot so
-     *  clients draw reflected segments directly instead of re-tracing
-     *  mirror/unit/building intersections in the render frame. */
-    beamUpdates?: NetworkServerSnapshotBeamUpdate[];
-  };
-  gameState?: { phase: GamePhase; winnerId?: PlayerId };
-  serverMeta?: NetworkServerSnapshotMeta;
-  grid?: {
-    cells: NetworkServerSnapshotGridCell[];
-    searchCells: NetworkServerSnapshotGridCell[];
-    cellSize: number;
-  };
-  terrain?: TerrainTileMap;
-  buildability?: TerrainBuildabilityGrid;
+  shroud: NetworkServerSnapshotShroud | undefined;
+  projectiles: NetworkServerSnapshotProjectiles | undefined;
+  gameState: NetworkServerSnapshotGameState | undefined;
+  serverMeta: NetworkServerSnapshotMeta | undefined;
+  grid: NetworkServerSnapshotGrid | undefined;
+  terrain: TerrainTileMap | undefined;
+  buildability: TerrainBuildabilityGrid | undefined;
   isDelta: boolean;
   /** True when the authoritative snapshot intentionally omits entities
    *  outside the recipient player's current vision. Clients must keep
    *  absent full-keyframe entities as last-seen state unless an explicit
    *  removal arrives. */
-  visibilityFiltered?: boolean;
+  visibilityFiltered: boolean | undefined;
   /** Bitmask of player IDs whose full-vision entities may contribute
    *  to this recipient's live fog presentation. Bit p-1 corresponds
    *  to PlayerId p. Sent by the host so the client consumes the same
    *  recipient+allies visibility contract as snapshot filtering
    *  without guessing from arbitrary visible entities. */
-  visionPlayerMask?: number;
-  removedEntityIds?: number[];
+  visionPlayerMask: number | undefined;
+  removedEntityIds: number[] | undefined;
 };
 
 export type NetworkServerSnapshotMinimapEntity = {

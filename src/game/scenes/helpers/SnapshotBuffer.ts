@@ -107,14 +107,14 @@ export class SnapshotBuffer {
   /** Wire the gameConnection snapshot callback to accumulate events. */
   attach(gameConnection: GameConnection, onBufferedSnapshot?: SnapshotBufferCallback): void {
     gameConnection.onSnapshot((state: NetworkServerSnapshot) => {
-      onBufferedSnapshot?.(state);
+      if (onBufferedSnapshot !== undefined) onBufferedSnapshot(state);
       const proj = state.projectiles;
-      if (proj?.spawns) {
+      if (proj !== undefined && proj.spawns !== undefined) {
         for (let i = 0; i < proj.spawns.length; i++) {
           this.pushBufferedSpawn(proj.spawns[i]);
         }
       }
-      if (proj?.despawns) {
+      if (proj !== undefined && proj.despawns !== undefined) {
         for (let i = 0; i < proj.despawns.length; i++) {
           const index = this.bufferedDespawns.length;
           const out = this.bufferedDespawnsPool[index] ?? { id: 0 };
@@ -128,7 +128,7 @@ export class SnapshotBuffer {
           this.pushBufferedAudio(state.audioEvents[i]);
         }
       }
-      if (proj?.velocityUpdates) {
+      if (proj !== undefined && proj.velocityUpdates !== undefined) {
         for (let i = 0; i < proj.velocityUpdates.length; i++) {
           const vu = proj.velocityUpdates[i];
           let out = this.bufferedVelocityUpdates.get(vu.id);
@@ -141,7 +141,7 @@ export class SnapshotBuffer {
           this.bufferedVelocityUpdates.set(vu.id, copyVelocityInto(vu, out));
         }
       }
-      if (proj?.beamUpdates) {
+      if (proj !== undefined && proj.beamUpdates !== undefined) {
         for (let i = 0; i < proj.beamUpdates.length; i++) {
           const bu = proj.beamUpdates[i];
           let out = this.bufferedBeamUpdates.get(bu.id);
@@ -156,7 +156,7 @@ export class SnapshotBuffer {
       }
       if (state.grid) {
         this.bufferedGrid = state.grid;
-      } else if (state.serverMeta?.grid === false) {
+      } else if (state.serverMeta !== undefined && state.serverMeta.grid === false) {
         this.bufferedGrid = undefined;
       }
       // Never let startup deltas overwrite an unapplied full
@@ -250,16 +250,28 @@ export class SnapshotBuffer {
     // Write back nested projectiles
     const hasProjectiles = netSpawns || netDespawns || netVelUpdates || netBeamUpdates;
     if (hasProjectiles) {
-      if (!state.projectiles) state.projectiles = {};
-      state.projectiles.spawns = netSpawns;
-      state.projectiles.despawns = netDespawns;
-      state.projectiles.velocityUpdates = netVelUpdates;
-      state.projectiles.beamUpdates = netBeamUpdates;
+      if (!state.projectiles) {
+        state.projectiles = {
+          spawns: undefined,
+          despawns: undefined,
+          velocityUpdates: undefined,
+          beamUpdates: undefined,
+        };
+      }
+      const projectiles = state.projectiles;
+      projectiles.spawns = netSpawns;
+      projectiles.despawns = netDespawns;
+      projectiles.velocityUpdates = netVelUpdates;
+      projectiles.beamUpdates = netBeamUpdates;
     } else {
       state.projectiles = undefined;
     }
 
-    if (!state.grid && this.bufferedGrid && state.serverMeta?.grid !== false) {
+    if (
+      !state.grid &&
+      this.bufferedGrid &&
+      (state.serverMeta === undefined || state.serverMeta.grid !== false)
+    ) {
       state.grid = this.bufferedGrid;
     }
     if (state.grid === this.bufferedGrid) {

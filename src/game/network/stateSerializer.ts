@@ -128,9 +128,14 @@ const _snapshotBuf: NetworkServerSnapshot = {
   resourceMovements: undefined,
   sprayTargets: undefined,
   audioEvents: undefined,
+  scanPulses: undefined,
+  shroud: undefined,
   projectiles: undefined,
   gameState: undefined,
   grid: undefined,
+  serverMeta: undefined,
+  terrain: undefined,
+  buildability: undefined,
   isDelta: false,
   removedEntityIds: undefined,
   visibilityFiltered: undefined,
@@ -217,8 +222,10 @@ function shouldDeferForeignHighCountEntityDelta(
   if (!highCountEntityLodEnabled || changedFields === undefined || changedFields <= 0) {
     return false;
   }
-  if (!visibility?.hasRecipient) return false;
-  if (visibility.isOwnedByRecipientOrAlly(entity.ownership?.playerId)) return false;
+  if (visibility === undefined || !visibility.hasRecipient) return false;
+  const ownership = entity.ownership;
+  const ownerPlayerId = ownership !== null ? ownership.playerId : undefined;
+  if (visibility.isOwnedByRecipientOrAlly(ownerPlayerId)) return false;
   if ((changedFields & ~HIGH_COUNT_FOREIGN_THROTTLED_ENTITY_FIELDS) !== 0) return false;
 
   const cadence = Math.max(1, Math.floor(SNAPSHOT_CONFIG.highCountForeignEntitySnapshotCadence));

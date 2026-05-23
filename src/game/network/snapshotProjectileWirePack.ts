@@ -47,6 +47,15 @@ const EMPTY_PROJECTILE_ROWS: readonly number[] = [];
 
 const VELOCITY_FLAG_CLEAR_HOMING = 0x01;
 
+function createEmptyProjectileSnapshot(): ProjectileSnapshot {
+  return {
+    spawns: undefined,
+    despawns: undefined,
+    velocityUpdates: undefined,
+    beamUpdates: undefined,
+  };
+}
+
 export type PackedProjectileSnapshotWireV1 = {
   v: typeof PACKED_PROJECTILES_V1_VERSION;
   s: number[] | undefined;
@@ -88,7 +97,7 @@ export function unpackProjectilesFromWire(
   packed: PackedProjectileSnapshotWire,
 ): ProjectileSnapshot {
   if (packed.v === PACKED_PROJECTILES_V2_VERSION) {
-    const projectiles: ProjectileSnapshot = {};
+    const projectiles = createEmptyProjectileSnapshot();
     const spawns = packed.s !== undefined ? unpackProjectileSpawnsV2(packed.s) : undefined;
     const despawns = packed.d !== undefined ? unpackProjectileDespawnsV2(packed.d) : undefined;
     const velocityUpdates = packed.u !== undefined
@@ -102,7 +111,7 @@ export function unpackProjectilesFromWire(
     return projectiles;
   }
 
-  const projectiles: ProjectileSnapshot = {};
+  const projectiles = createEmptyProjectileSnapshot();
   const spawns = unpackProjectileSpawnsV1(packed.s);
   const despawns = unpackProjectileDespawnsV1(packed.d);
   const velocityUpdates = unpackProjectileVelocityUpdatesV1(packed.u);

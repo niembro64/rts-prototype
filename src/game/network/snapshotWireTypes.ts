@@ -12,10 +12,10 @@ export type NetworkServerSnapshotWire = Omit<
   NetworkServerSnapshot,
   'audioEvents' | 'entities' | 'minimapEntities' | 'projectiles' | 'terrain' | 'buildability'
 > & {
-  audioEvents?: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
+  audioEvents: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
   entities: NetworkServerSnapshot['entities'] | PackedEntitySnapshotWire;
-  minimapEntities?: NetworkServerSnapshot['minimapEntities'] | PackedMinimapEntitiesWire;
-  projectiles?: NetworkServerSnapshot['projectiles'] | PackedProjectileSnapshotWire;
-  terrain?: NetworkServerSnapshot['terrain'] | PackedTerrainTileMapWire;
-  buildability?: NetworkServerSnapshot['buildability'] | PackedTerrainBuildabilityGridWire;
+  minimapEntities: NetworkServerSnapshot['minimapEntities'] | PackedMinimapEntitiesWire;
+  projectiles: NetworkServerSnapshot['projectiles'] | PackedProjectileSnapshotWire;
+  terrain: NetworkServerSnapshot['terrain'] | PackedTerrainTileMapWire;
+  buildability: NetworkServerSnapshot['buildability'] | PackedTerrainBuildabilityGridWire;
 };

@@ -117,8 +117,8 @@ EXPLICIT ABSENCE (ABSENCE-01 family)
 The "Explicit Absence" section of design_philosophy.html bans `?:`
 property declarations and `?.` access inside our own simulation,
 server, prediction, networking, and entity-state modules. Optional
-chaining usage is already at 0 in the in-scope tree, but optional
-property declarations still appear in core types.
+property declarations still appear in core types, and optional
+chaining still needs a separate cleanup pass across the in-scope tree.
 
 ==============================================================================
 
@@ -129,13 +129,17 @@ ABSENCE-01 - parent: optional property declarations remain across
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/types/network.ts: 69 `?:` declarations after the 2026-05-23
+- src/types/network.ts: 41 `?:` declarations after the 2026-05-23
   pooled DTO pass converted NetworkServerSnapshotEntity's nested
   unit/building fields plus projectile, beam, audio, minimap, spray,
-  and factory waypoint DTO fields to explicit `T | null`. The remaining
-  optional declarations in this file are mostly lobby/transport
-  envelopes, top-level snapshot sections, and server metadata rather
-  than the pooled per-entity/per-event DTO slots.
+  and factory waypoint DTO fields to explicit `T | null`, and the
+  follow-up snapshot-section pass converted NetworkServerSnapshotMeta,
+  NetworkServerSnapshot's top-level optional sections, projectiles,
+  gameState, grid, static terrain/buildability, removal, and visibility
+  slots to explicit `T | undefined` with pooled object initialization.
+  The remaining optional declarations in this file are mostly
+  lobby/transport envelopes and lobby settings rather than pooled
+  per-entity/per-event DTO slots.
 - src/types/sim.ts: 63 `?:` declarations. The 2026-05-23
   entity-component pass converted Entity's component slots (`body`,
   `unit`, `building`, `combat`, `projectile`, etc.) to explicit
@@ -143,15 +147,22 @@ Evidence:
   Transform's `rotCos` / `rotSin` cache to explicit `number | null`.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 103 other `?:` declarations spread across src/game/sim/*, including:
-    - Simulation.ts (10): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
+- 263 other `?:` declarations remain across src/game/network/*,
+  src/game/sim/*, and src/game/server/*, including:
+    - Simulation.ts (9): onUnitDeath?, onUnitSpawn?, onBuildingDeath?,
       onSimEvent?, onGameOver? plus a few method param defaults.
-    - WorldState.ts (6): RemovedSnapshotEntity.playerId?,
+    - WorldState.ts (3): RemovedSnapshotEntity.playerId?,
       onEntityRemoving?, etc.
-    - snapshotWireTypes.ts (5): audioEvents?, minimapEntities?,
-      projectiles?, terrain?, buildability?.
+    - stateSerializer.ts (28): serialize options and optional
+      parameters.
+    - snapshotProjectileWirePack.ts (4): packed V2 field aliases
+      s?/d?/u?/b?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
       buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
+- Optional chaining remains at 577 in the in-scope tree after the
+  snapshot-section pass removed it from SnapshotBuffer and one touched
+  serializer helper. It should be migrated in small file-level passes
+  alongside optional property declarations.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

@@ -247,8 +247,23 @@ export class ReusableNetworkSnapshotCloner {
   private snapshot: NetworkServerSnapshot = {
     tick: 0,
     entities: [],
+    minimapEntities: undefined,
     economy: {} as NetworkServerSnapshot['economy'],
+    resourceMovements: undefined,
+    sprayTargets: undefined,
+    audioEvents: undefined,
+    scanPulses: undefined,
+    shroud: undefined,
+    projectiles: undefined,
+    gameState: undefined,
+    serverMeta: undefined,
+    grid: undefined,
+    terrain: undefined,
+    buildability: undefined,
     isDelta: false,
+    visibilityFiltered: undefined,
+    visionPlayerMask: undefined,
+    removedEntityIds: undefined,
   };
   private economyKeys: string[] = [];
   private resourceMovements: NetworkServerSnapshotResourceMovement[] = [];
@@ -260,9 +275,17 @@ export class ReusableNetworkSnapshotCloner {
   private velocityUpdates: NetworkServerSnapshotVelocityUpdate[] = [];
   private minimapEntities: NetworkServerSnapshotMinimapEntity[] = [];
   private beamUpdates: NetworkServerSnapshotBeamUpdate[] = [];
-  private projectiles: NonNullable<NetworkServerSnapshot['projectiles']> = {};
+  private projectiles: NonNullable<NetworkServerSnapshot['projectiles']> = {
+    spawns: undefined,
+    despawns: undefined,
+    velocityUpdates: undefined,
+    beamUpdates: undefined,
+  };
   private grid: NonNullable<NetworkServerSnapshot['grid']> = { cells: [], searchCells: [], cellSize: 0 };
-  private gameState: NonNullable<NetworkServerSnapshot['gameState']> = { phase: 'battle' };
+  private gameState: NonNullable<NetworkServerSnapshot['gameState']> = {
+    phase: 'battle',
+    winnerId: undefined,
+  };
   // Pooled serverMeta + each of its optional sub-objects. The previous
   // implementation rebuilt the whole tree as a fresh object literal
   // every snapshot (6 nested spreads); these reusable slots cut that
@@ -274,7 +297,16 @@ export class ReusableNetworkSnapshotCloner {
     snaps: { rate: 0, keyframes: 0 },
     server: { time: '', ip: '' },
     grid: false,
-    units: {},
+    units: { allowed: undefined, max: undefined, count: undefined },
+    mirrorsEnabled: undefined,
+    forceFieldsEnabled: undefined,
+    forceFieldsObstructSight: undefined,
+    forceFieldReflectionMode: undefined,
+    fogOfWarEnabled: undefined,
+    converterTax: undefined,
+    cpu: undefined,
+    wind: undefined,
+    unitGroundNormalEma: undefined,
   };
   private serverMetaUnitsAllowed: string[] = [];
   private serverMetaCpu = { avg: 0, hi: 0 };
