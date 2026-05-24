@@ -148,6 +148,8 @@ let _stateViews: CombatTargetingStateViews | null = null;
 const _combatTargetingSourceEntities: Entity[] = [];
 let _combatTargetingSourceIds = new Int32Array(0);
 let _combatTargetingSourceCount = 0;
+let _combatTargetingSensorSourceSlots = new Uint32Array(0);
+let _combatTargetingSensorSourceCount = 0;
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -177,6 +179,7 @@ function ensureStampPrevFsmCapacity(count: number): void {
 function resetCombatTargetingSources(): void {
   _combatTargetingSourceEntities.length = 0;
   _combatTargetingSourceCount = 0;
+  _combatTargetingSensorSourceCount = 0;
 }
 
 function ensureCombatTargetingSourceCapacity(count: number): void {
@@ -196,6 +199,26 @@ function queueCombatTargetingSource(entity: Entity): void {
   _combatTargetingSourceEntities.push(entity);
   _combatTargetingSourceIds[idx] = entity.id;
   _combatTargetingSourceCount++;
+}
+
+function ensureCombatTargetingSensorSourceCapacity(count: number): void {
+  if (count <= _combatTargetingSensorSourceSlots.length) return;
+  let next = Math.max(8, _combatTargetingSensorSourceSlots.length);
+  while (next < count) next *= 2;
+  const slots = new Uint32Array(next);
+  slots.set(_combatTargetingSensorSourceSlots.subarray(0, _combatTargetingSensorSourceCount));
+  _combatTargetingSensorSourceSlots = slots;
+}
+
+function queueCombatTargetingSensorSourceSlot(slot: number): void {
+  const idx = _combatTargetingSensorSourceCount;
+  ensureCombatTargetingSensorSourceCapacity(idx + 1);
+  _combatTargetingSensorSourceSlots[idx] = slot;
+  _combatTargetingSensorSourceCount++;
+}
+
+function getCombatTargetingSensorSourceSlots(): Uint32Array {
+  return _combatTargetingSensorSourceSlots.subarray(0, _combatTargetingSensorSourceCount);
 }
 
 export function getCombatTargetingSourceEntities(): readonly Entity[] {
@@ -515,6 +538,14 @@ function stampCombatTargetingEntityInto(
   const fullVisionRadius = getEntityFullVisionRadius(entity);
   const radarRadius = getEntityRadarRadius(entity);
   const detectionPadding = getEntityDetectionPadding(entity);
+  if (
+    playerMaskBit(playerId) !== 0 &&
+    hp > 0 &&
+    (entityFlags & CT_ENTITY_FLAG_BUILDABLE_COMPLETE) !== 0 &&
+    (fullVisionRadius > 0 || radarRadius > 0 || detectorRadius > 0)
+  ) {
+    queueCombatTargetingSensorSourceSlot(slot);
+  }
 
   // Per-entity targeting inputs that used to be JS scratch arrays
   // shipped to the scheduler. The Rust scheduler now reads them from
@@ -676,7 +707,7 @@ export function stampCombatTargetingPool(world: WorldState): void {
     }
   }
 
-  targeting.rebuildObservationMasks();
+  targeting.rebuildObservationMasksForSources(getCombatTargetingSensorSourceSlots());
   const scanPulses = world.scanPulses;
   for (let i = 0; i < scanPulses.length; i++) {
     const pulse = scanPulses[i];

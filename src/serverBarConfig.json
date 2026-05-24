@@ -3,24 +3,23 @@
     "normalMin": 5,
     "normalMax": 10,
     "diagnosticMin": 16,
-    "default": 16,
+    "demoDefault": 16,
+    "realDefault": 16,
     "options": [1, 4, 5, 8, 10, 16, 32, 64, 128],
     "legacyUncappedFallback": 60
   },
   "tickRate": {
-    "default": 128,
+    "demoDefault": 128,
+    "realDefault": 128,
     "options": [1, 4, 8, 16, 32, 64, 128, 256, 512]
   },
   "unitGroundNormalEma": {
     "options": ["snap", "fast", "mid", "slow"]
   },
   "keyframe": {
-    "default": 0.0625,
+    "demoDefault": 0.0625,
+    "realDefault": 0.0625,
     "options": ["ALL", 0.25, 0.0625, 0.015625, "NONE"]
-  },
-  "modeDefaults": {
-    "demo": {},
-    "real": {}
   },
   "storageKeySuffixes": {
     "snapshotRate": "snapshot-rate",

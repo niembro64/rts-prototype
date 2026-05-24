@@ -130,6 +130,7 @@ import __wbg_init, {
   combat_targeting_set_entity,
   combat_targeting_unset_entity,
   combat_targeting_rebuild_observation_masks,
+  combat_targeting_rebuild_observation_masks_for_sources,
   combat_targeting_add_sensor_observation_circle,
   combat_targeting_set_turret,
   combat_targeting_update_mount_kinematics,
@@ -1104,6 +1105,10 @@ export interface CombatTargetingApi {
    *  and detector sources. Must run after all entities are stamped and
    *  before any targeting scheduler tick. */
   rebuildObservationMasks: () => void;
+  /** Same as rebuildObservationMasks, but walks only the stamped source
+   *  slots supplied by JS. The caller must have cleared the targeting
+   *  pool earlier in the tick. */
+  rebuildObservationMasksForSources: (sourceSlots: Uint32Array) => void;
   /** Adds a temporary full-sight source, currently scan pulses. Full
    *  sight is included in radar-level coverage. */
   addSensorObservationCircle: (
@@ -2222,12 +2227,14 @@ export interface PathfinderApi {
   init: (mapWidth: number, mapHeight: number) => void;
   /** Rebuild blocked mask + CC labels from `buildingCells` (flat
    *  Uint32Array of interleaved gx, gy pairs). The terrain mask is
-   *  cached by `terrainVersion`; full mask + CC by both versions —
-   *  no-op when nothing has changed. */
+   *  cached by `terrainVersion`; full mask + CC by terrain/building
+   *  versions plus the JS-side building-grid identity — no-op when
+   *  nothing has changed. */
   rebuildMaskAndCc: (
     buildingCells: Uint32Array,
     terrainVersion: number,
     buildingVersion: number,
+    buildingGridId: number,
   ) => void;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
@@ -2624,6 +2631,7 @@ export function initSimWasm(): Promise<SimWasm> {
           setEntity: combat_targeting_set_entity,
           unsetEntity: combat_targeting_unset_entity,
           rebuildObservationMasks: combat_targeting_rebuild_observation_masks,
+          rebuildObservationMasksForSources: combat_targeting_rebuild_observation_masks_for_sources,
           addSensorObservationCircle: combat_targeting_add_sensor_observation_circle,
           setTurret: combat_targeting_set_turret,
           updateMountKinematics: combat_targeting_update_mount_kinematics,

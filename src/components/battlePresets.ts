@@ -2,12 +2,16 @@ import { BUILDABLE_UNIT_IDS } from '../game/sim/blueprints/unitRoster';
 import type { BattleMode } from '../battleBarConfig';
 import { persist, readPersisted } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
+import type { ForceFieldReflectionMode } from '../types/shotTypes';
 
 export type BattlePreset = {
   readonly name: string;
   readonly units: readonly string[];
   readonly cap: number;
+  readonly mirrorsEnabled: boolean;
+  readonly forceFieldsEnabled: boolean;
   readonly forceFieldsObstructSight: boolean;
+  readonly forceFieldReflectionMode: ForceFieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
   readonly converterTax: number;
   readonly centerMagnitude: number;
@@ -40,12 +44,23 @@ function allUnits(): readonly string[] {
   return BUILDABLE_UNIT_IDS;
 }
 
+// Shared subsystem toggles that historically lived as inline
+// BATTLE_CONFIG defaults. Folding them into the presets means every
+// battle bar fallback flows through a preset — the JSON has zero
+// inline defaults.
+const SUBSYSTEM_DEFAULTS = {
+  mirrorsEnabled: true,
+  forceFieldsEnabled: true,
+  forceFieldReflectionMode: 'both' as ForceFieldReflectionMode,
+};
+
 function buildPresets(): readonly BattlePreset[] {
   return [
     {
       name: DEMO_BATTLE_DEFAULT_PRESET_NAME,
       units: allUnits(),
       cap: 243,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: true,
       fogOfWarEnabled: true,
       converterTax: 0.0,
@@ -63,6 +78,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: REAL_BATTLE_DEFAULT_PRESET_NAME,
       units: allUnits(),
       cap: 243,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: true,
       fogOfWarEnabled: true,
       converterTax: 0.0,
@@ -80,6 +96,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Lictor Mandate',
       units: allUnits(),
       cap: 243,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.0,
@@ -97,6 +114,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Hoplon Phalanx',
       units: allUnits(),
       cap: 729,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.1,
@@ -114,6 +132,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Domovoi Tempest',
       units: allUnits(),
       cap: 2187,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.0,
@@ -131,6 +150,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Tuatha Vanguard',
       units: allUnits(),
       cap: 81,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.5,
@@ -148,6 +168,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Jötunn Crucible',
       units: allUnits(),
       cap: 1262,
+      ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.1,

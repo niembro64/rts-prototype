@@ -1,38 +1,29 @@
 {
+  "demoDefault": "DEMO BATTLE DEFAULT",
+  "realDefault": "REAL BATTLE DEFAULT",
+
   "cap": {
-    "default": 81,
     "options": [9, 81, 243, 729, 1262, 2187]
   },
-  "mirrorsEnabled": { "default": true },
-  "forceFieldsEnabled": { "default": true },
-  "forceFieldsObstructSight": { "default": true },
-  "fogOfWarEnabled": { "default": true },
-  "forceFieldReflectionMode": { "default": "both" },
   "centerMagnitude": {
-    "default": 400,
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
   "dividersMagnitude": {
-    "default": 400,
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
   "mapShape": {
-    "default": "circle",
     "options": [
       { "value": "square", "label": "SQUARE" },
       { "value": "circle", "label": "CIRCLE" }
     ]
   },
   "terrainDTerrain": {
-    "default": 0,
     "options": [100, 200, 400, 800, 0]
   },
   "metalDepositStep": {
-    "default": 200,
     "options": [100, 200, 400, 800]
   },
   "converterTax": {
-    "default": 0.0,
     "options": [0.0, 0.1, 0.5]
   },
 

@@ -42,45 +42,54 @@ function sanitizeDemoUnitIds(value: unknown): string[] | null {
   return result;
 }
 
+// `BATTLE_CONFIG.*.default` is no longer authored in JSON. Every
+// inline default has been moved into the DEMO BATTLE DEFAULT and REAL
+// BATTLE DEFAULT presets. The JSON only owns the *options* lists and
+// names the two presets that supply the defaults. The TS shim
+// resolves the legacy `.default` field through the demo preset so the
+// many call sites that read `BATTLE_CONFIG.cap.default` etc. keep
+// working without each having to know about the demo/real split.
+const _demoPreset = getModeDefaultPreset('demo');
+
 export const BATTLE_CONFIG = {
   units: buildUnitToggleConfig(),
   cap: {
-    default: battleBarConfig.cap.default,
+    default: _demoPreset.cap,
     options: battleBarConfig.cap.options as readonly number[],
   },
-  mirrorsEnabled: battleBarConfig.mirrorsEnabled,
-  forceFieldsEnabled: battleBarConfig.forceFieldsEnabled,
-  forceFieldsObstructSight: battleBarConfig.forceFieldsObstructSight,
-  fogOfWarEnabled: battleBarConfig.fogOfWarEnabled,
+  mirrorsEnabled: { default: _demoPreset.mirrorsEnabled },
+  forceFieldsEnabled: { default: _demoPreset.forceFieldsEnabled },
+  forceFieldsObstructSight: { default: _demoPreset.forceFieldsObstructSight },
+  fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
   forceFieldReflectionMode: {
-    default: battleBarConfig.forceFieldReflectionMode.default as ForceFieldReflectionMode,
+    default: _demoPreset.forceFieldReflectionMode,
   },
   // CENTER / DIVIDERS amplitudes — applied at game-construction time
   // via setTerrainCenterMagnitude / setTerrainDividersMagnitude
   // (Terrain.ts). Signed: negative dishes the feature below ground,
   // positive raises it above, zero suppresses it.
   centerMagnitude: {
-    default: battleBarConfig.centerMagnitude.default,
+    default: _demoPreset.centerMagnitude,
     options: battleBarConfig.centerMagnitude.options as readonly number[],
   },
   dividersMagnitude: {
-    default: battleBarConfig.dividersMagnitude.default,
+    default: _demoPreset.dividersMagnitude,
     options: battleBarConfig.dividersMagnitude.options as readonly number[],
   },
   mapShape: {
-    default: battleBarConfig.mapShape.default as TerrainMapShape,
+    default: _demoPreset.terrainMapShape,
     options: battleBarConfig.mapShape.options as ReadonlyArray<{ value: TerrainMapShape; label: string }>,
   },
   terrainDTerrain: {
-    default: battleBarConfig.terrainDTerrain.default,
+    default: _demoPreset.terrainDTerrain,
     options: battleBarConfig.terrainDTerrain.options as readonly number[],
   },
   metalDepositStep: {
-    default: battleBarConfig.metalDepositStep.default,
+    default: _demoPreset.metalDepositStep,
     options: battleBarConfig.metalDepositStep.options as readonly number[],
   },
   converterTax: {
-    default: battleBarConfig.converterTax.default,
+    default: _demoPreset.converterTax,
     options: battleBarConfig.converterTax.options as readonly number[],
   },
   mapSize: {
@@ -88,6 +97,11 @@ export const BATTLE_CONFIG = {
     length: MAP_DIMENSION_CONFIG.length,
   },
 } satisfies BattleBarConfig;
+
+// Compile-time guard: if anyone re-adds `demoDefault`/`realDefault`
+// pointers to presets that don't exist, this surfaces immediately.
+void (battleBarConfig.demoDefault as string);
+void (battleBarConfig.realDefault as string);
 
 // Per-mode defaults are not authored here. Each DEMO BATTLE / REAL
 // BATTLE bar reads its fallback values from the matching default

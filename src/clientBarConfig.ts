@@ -67,39 +67,87 @@ type ClientDefaults = {
   readonly waypointDetail: WaypointDetail;
 };
 
-type ClientModeDefaultOverrides =
-  Partial<Omit<ClientDefaults, 'sounds' | 'lobbyVisible'>> & {
-    readonly sounds?: Partial<Record<SoundCategory, boolean>>;
-    readonly lobbyVisible?: Partial<ClientDefaults['lobbyVisible']>;
-  };
+// Every per-mode default lives in JSON as paired `demoDefault` and
+// `realDefault` fields. The TS shim picks the right one for each mode
+// here — there is no `modeDefaults` override block any more, every
+// field is fully authored for both modes side-by-side in the JSON.
+function pickDefault<T>(
+  section: { demoDefault: T; realDefault: T },
+  mode: ClientMode,
+): T {
+  return mode === 'real' ? section.realDefault : section.demoDefault;
+}
 
+function resolveClientDefaults(mode: ClientMode): ClientDefaults {
+  return {
+    render: pickDefault(clientBarConfig.render, mode) as RenderMode,
+    audio: pickDefault(clientBarConfig.audio, mode) as Exclude<AudioScope, 'off'>,
+    audioSmoothing: pickDefault(clientBarConfig.audioSmoothing, mode),
+    burnMarks: pickDefault(clientBarConfig.burnMarks, mode),
+    locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
+    smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
+    beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
+    triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
+    buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
+    sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
+    radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
+    fogShade: pickDefault(clientBarConfig.fogShade, mode),
+    fogClouds: pickDefault(clientBarConfig.fogClouds, mode),
+    predictionMode: pickDefault(clientBarConfig.predictionMode, mode) as PredictionMode,
+    movementPosEma: pickDefault(clientBarConfig.movementPosEma, mode) as PositionDriftChannelMode,
+    movementVelEma: pickDefault(clientBarConfig.movementVelEma, mode) as DriftChannelMode,
+    rotationPosEma: pickDefault(clientBarConfig.rotationPosEma, mode) as PositionDriftChannelMode,
+    rotationVelEma: pickDefault(clientBarConfig.rotationVelEma, mode) as DriftChannelMode,
+    unitGroundNormalEma: pickDefault(clientBarConfig.unitGroundNormalEma, mode) as DriftMode,
+    legsRadius: pickDefault(clientBarConfig.legsRadius, mode),
+    cameraSmooth: pickDefault(clientBarConfig.cameraSmooth, mode) as CameraSmoothMode,
+    // FOV default lives in config.ts as CAMERA_FOV_DEGREES — keep one
+    // canonical source for that one knob; the JSON only owns the options list.
+    cameraFov: CAMERA_FOV_DEGREES,
+    edgeScroll: pickDefault(clientBarConfig.edgeScroll, mode),
+    dragPan: pickDefault(clientBarConfig.dragPan, mode),
+    sounds: { ...pickDefault(clientBarConfig.sounds, mode) } as Record<SoundCategory, boolean>,
+    rangeToggles: pickDefault(clientBarConfig.rangeToggles, mode),
+    projRangeToggles: pickDefault(clientBarConfig.projRangeToggles, mode),
+    unitRadiusToggles: pickDefault(clientBarConfig.unitRadiusToggles, mode),
+    lobbyVisible: { ...pickDefault(clientBarConfig.lobbyVisible, mode) },
+    waypointDetail: pickDefault(clientBarConfig.waypointDetail, mode) as WaypointDetail,
+  };
+}
+
+const DEMO_CLIENT_DEFAULTS = resolveClientDefaults('demo');
+
+// `CLIENT_CONFIG` keeps the legacy `.default` accessor populated with
+// the DEMO CLIENT value (the app boots in demo). Per-mode reads should
+// go through `getClientConfig(mode)` / the bar's storage helpers; the
+// `.default` field exists for callers that just need the boot-time value.
 export const CLIENT_CONFIG = {
   render: {
-    default: clientBarConfig.render.default as RenderMode,
+    default: DEMO_CLIENT_DEFAULTS.render,
     options: clientBarConfig.render.options as OptionList<RenderMode>,
   },
   audio: {
-    default: clientBarConfig.audio.default as Exclude<AudioScope, 'off'>,
+    default: DEMO_CLIENT_DEFAULTS.audio,
     options: clientBarConfig.audio.options as OptionList<Exclude<AudioScope, 'off'>>,
   },
-  audioSmoothing: clientBarConfig.audioSmoothing,
-  burnMarks: clientBarConfig.burnMarks,
-  locomotionMarks: clientBarConfig.locomotionMarks,
-  smokeTrails: clientBarConfig.smokeTrails,
-  beamSnapToTurret: clientBarConfig.beamSnapToTurret,
-  triangleDebug: clientBarConfig.triangleDebug,
-  buildGridDebug: clientBarConfig.buildGridDebug,
-  sightBoundary: clientBarConfig.sightBoundary,
-  radarBoundary: clientBarConfig.radarBoundary,
-  fogShade: clientBarConfig.fogShade,
-  fogClouds: clientBarConfig.fogClouds,
+  audioSmoothing: { default: DEMO_CLIENT_DEFAULTS.audioSmoothing },
+  burnMarks: { default: DEMO_CLIENT_DEFAULTS.burnMarks },
+  locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
+  smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
+  beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
+  triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
+  buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
+  sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
+  radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
+  fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
+  fogClouds: { default: DEMO_CLIENT_DEFAULTS.fogClouds },
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
    *  position from the last-seen velocity each frame); 'pos' skips
    *  integration entirely and snaps straight to snapshot position.
    *  There is no ACC mode — acceleration is not shipped on the wire,
    *  so the client cannot integrate it. */
   predictionMode: {
-    default: clientBarConfig.predictionMode.default as PredictionMode,
+    default: DEMO_CLIENT_DEFAULTS.predictionMode,
     options: clientBarConfig.predictionMode.options as OptionList<PredictionMode>,
   },
   /** Per-channel snapshot drift EMAs. Position channels always apply
@@ -107,47 +155,45 @@ export const CLIENT_CONFIG = {
    *  channels also expose IGNORE because keeping the predicted
    *  derivative can be meaningful there. */
   movementPosEma: {
-    default: clientBarConfig.movementPosEma.default as PositionDriftChannelMode,
+    default: DEMO_CLIENT_DEFAULTS.movementPosEma,
     options: clientBarConfig.movementPosEma.options as OptionList<PositionDriftChannelMode>,
   },
   movementVelEma: {
-    default: clientBarConfig.movementVelEma.default as DriftChannelMode,
+    default: DEMO_CLIENT_DEFAULTS.movementVelEma,
     options: clientBarConfig.movementVelEma.options as OptionList<DriftChannelMode>,
   },
   rotationPosEma: {
-    default: clientBarConfig.rotationPosEma.default as PositionDriftChannelMode,
+    default: DEMO_CLIENT_DEFAULTS.rotationPosEma,
     options: clientBarConfig.rotationPosEma.options as OptionList<PositionDriftChannelMode>,
   },
   rotationVelEma: {
-    default: clientBarConfig.rotationVelEma.default as DriftChannelMode,
+    default: DEMO_CLIENT_DEFAULTS.rotationVelEma,
     options: clientBarConfig.rotationVelEma.options as OptionList<DriftChannelMode>,
   },
   /** Client-side unit ground normal EMA layered ON TOP of the host's
    *  ground-normal EMA. SNAP = no client smoothing. */
   unitGroundNormalEma: {
-    default: clientBarConfig.unitGroundNormalEma.default as DriftMode,
+    default: DEMO_CLIENT_DEFAULTS.unitGroundNormalEma,
     options: clientBarConfig.unitGroundNormalEma.options as OptionList<DriftMode>,
   },
-  legsRadius: clientBarConfig.legsRadius,
+  legsRadius: { default: DEMO_CLIENT_DEFAULTS.legsRadius },
   cameraSmooth: {
-    default: clientBarConfig.cameraSmooth.default as CameraSmoothMode,
+    default: DEMO_CLIENT_DEFAULTS.cameraSmooth,
     options: clientBarConfig.cameraSmooth.options as OptionList<CameraSmoothMode>,
   },
   cameraFov: {
-    // FOV default lives in config.ts as CAMERA_FOV_DEGREES — keep one
-    // canonical source. Options list is JSON-authored.
     default: CAMERA_FOV_DEGREES,
     options: clientBarConfig.cameraFov.options as OptionList<CameraFovDegrees>,
   },
-  edgeScroll: clientBarConfig.edgeScroll,
-  dragPan: clientBarConfig.dragPan,
-  sounds: clientBarConfig.sounds as { default: Record<SoundCategory, boolean> },
-  rangeToggles: clientBarConfig.rangeToggles,
-  projRangeToggles: clientBarConfig.projRangeToggles,
-  unitRadiusToggles: clientBarConfig.unitRadiusToggles,
-  lobbyVisible: clientBarConfig.lobbyVisible,
+  edgeScroll: { default: DEMO_CLIENT_DEFAULTS.edgeScroll },
+  dragPan: { default: DEMO_CLIENT_DEFAULTS.dragPan },
+  sounds: { default: { ...DEMO_CLIENT_DEFAULTS.sounds } },
+  rangeToggles: { default: DEMO_CLIENT_DEFAULTS.rangeToggles },
+  projRangeToggles: { default: DEMO_CLIENT_DEFAULTS.projRangeToggles },
+  unitRadiusToggles: { default: DEMO_CLIENT_DEFAULTS.unitRadiusToggles },
+  lobbyVisible: { default: { ...DEMO_CLIENT_DEFAULTS.lobbyVisible } },
   waypointDetail: {
-    default: clientBarConfig.waypointDetail.default as WaypointDetail,
+    default: DEMO_CLIENT_DEFAULTS.waypointDetail,
     options: clientBarConfig.waypointDetail.options as OptionList<WaypointDetail>,
   },
 } satisfies ClientBarConfig;
@@ -164,58 +210,6 @@ export const PROJ_RANGE_TYPES: ProjRangeType[] =
 
 export const UNIT_RADIUS_TYPES: UnitRadiusType[] =
   clientBarConfig.unitRadiusTypes as UnitRadiusType[];
-
-const BASE_CLIENT_DEFAULTS: ClientDefaults = {
-  render: CLIENT_CONFIG.render.default,
-  audio: CLIENT_CONFIG.audio.default,
-  audioSmoothing: CLIENT_CONFIG.audioSmoothing.default,
-  burnMarks: CLIENT_CONFIG.burnMarks.default,
-  locomotionMarks: CLIENT_CONFIG.locomotionMarks.default,
-  smokeTrails: CLIENT_CONFIG.smokeTrails.default,
-  beamSnapToTurret: CLIENT_CONFIG.beamSnapToTurret.default,
-  triangleDebug: CLIENT_CONFIG.triangleDebug.default,
-  buildGridDebug: CLIENT_CONFIG.buildGridDebug.default,
-  sightBoundary: CLIENT_CONFIG.sightBoundary.default,
-  radarBoundary: CLIENT_CONFIG.radarBoundary.default,
-  fogShade: CLIENT_CONFIG.fogShade.default,
-  fogClouds: CLIENT_CONFIG.fogClouds.default,
-  predictionMode: CLIENT_CONFIG.predictionMode.default,
-  movementPosEma: CLIENT_CONFIG.movementPosEma.default,
-  movementVelEma: CLIENT_CONFIG.movementVelEma.default,
-  rotationPosEma: CLIENT_CONFIG.rotationPosEma.default,
-  rotationVelEma: CLIENT_CONFIG.rotationVelEma.default,
-  unitGroundNormalEma: CLIENT_CONFIG.unitGroundNormalEma.default,
-  legsRadius: CLIENT_CONFIG.legsRadius.default,
-  cameraSmooth: CLIENT_CONFIG.cameraSmooth.default,
-  cameraFov: CLIENT_CONFIG.cameraFov.default,
-  edgeScroll: CLIENT_CONFIG.edgeScroll.default,
-  dragPan: CLIENT_CONFIG.dragPan.default,
-  sounds: { ...CLIENT_CONFIG.sounds.default },
-  rangeToggles: CLIENT_CONFIG.rangeToggles.default,
-  projRangeToggles: CLIENT_CONFIG.projRangeToggles.default,
-  unitRadiusToggles: CLIENT_CONFIG.unitRadiusToggles.default,
-  lobbyVisible: { ...CLIENT_CONFIG.lobbyVisible.default },
-  waypointDetail: CLIENT_CONFIG.waypointDetail.default,
-};
-
-const CLIENT_MODE_DEFAULT_OVERRIDES =
-  clientBarConfig.modeDefaults as Record<ClientMode, ClientModeDefaultOverrides>;
-
-function resolveClientDefaults(mode: ClientMode): ClientDefaults {
-  const overrides = CLIENT_MODE_DEFAULT_OVERRIDES[mode] ?? {};
-  return {
-    ...BASE_CLIENT_DEFAULTS,
-    ...overrides,
-    sounds: {
-      ...BASE_CLIENT_DEFAULTS.sounds,
-      ...(overrides.sounds ?? {}),
-    },
-    lobbyVisible: {
-      ...BASE_CLIENT_DEFAULTS.lobbyVisible,
-      ...(overrides.lobbyVisible ?? {}),
-    },
-  };
-}
 
 function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
   return {

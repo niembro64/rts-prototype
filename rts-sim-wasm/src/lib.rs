@@ -4709,6 +4709,7 @@ struct PathfinderState {
     // Cache keys — invalidated on terrain/building/grid-dim change.
     terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
     full_mask_key: u128,   // = tVer | bVer | gridW | gridH
+    full_mask_grid_id: u32,
 
     // Sorted snap offsets — populated once per grid-dim change.
     snap_offsets: Vec<(i16, i16)>,
@@ -4738,6 +4739,7 @@ impl PathfinderState {
             bfs_queue: Vec::new(),
             terrain_only_key: u64::MAX,
             full_mask_key: u128::MAX,
+            full_mask_grid_id: u32::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
         }
@@ -4792,6 +4794,7 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
         // Same dims — just invalidate caches so the next rebuild fires.
         state.terrain_only_key = u64::MAX;
         state.full_mask_key = u128::MAX;
+        state.full_mask_grid_id = u32::MAX;
         state.map_width = map_width;
         state.map_height = map_height;
         return;
@@ -4824,6 +4827,7 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.bfs_queue.resize(n, 0);
     state.terrain_only_key = u64::MAX;
     state.full_mask_key = u128::MAX;
+    state.full_mask_grid_id = u32::MAX;
     pathfinder_build_snap_offsets(state);
 }
 
@@ -4937,13 +4941,14 @@ fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terrain_version:
 
 /// Rebuilds the full blocked mask + CC labels from the terrain mask
 /// + a flat list of building-occupied cells (gx, gy pairs interleaved).
-/// `terrain_version` + `building_version` are passed by JS so the
-/// rebuild can short-circuit when nothing has changed.
+/// JS passes terrain/building versions plus a building-grid identity so
+/// the rebuild can short-circuit when nothing has changed.
 #[wasm_bindgen]
 pub fn pathfinder_rebuild_mask_and_cc(
     building_cells: &[u32],
     terrain_version: u32,
     building_version: u32,
+    building_grid_id: u32,
 ) {
     let state = pathfinder_state();
     pathfinder_rebuild_terrain_mask(state, terrain_version);
@@ -4953,7 +4958,7 @@ pub fn pathfinder_rebuild_mask_and_cc(
         | ((building_version as u128) << 64)
         | ((state.grid_w as u128) << 32)
         | (state.grid_h as u128);
-    if key == state.full_mask_key {
+    if key == state.full_mask_key && building_grid_id == state.full_mask_grid_id {
         return;
     }
 
@@ -5036,6 +5041,7 @@ pub fn pathfinder_rebuild_mask_and_cc(
     }
 
     state.full_mask_key = key;
+    state.full_mask_grid_id = building_grid_id;
 }
 
 #[inline]
@@ -8302,6 +8308,48 @@ fn combat_targeting_mark_observation_circle(
     state.dedup = dedup;
 }
 
+#[inline]
+fn combat_targeting_mark_observation_from_source_slot(
+    pool: &mut CombatTargetingPool,
+    source_slot: usize,
+) {
+    if !combat_targeting_entity_online_for_sensors(pool, source_slot) {
+        return;
+    }
+    let owner_bit = combat_targeting_player_bit(pool.entity_owner_player_id[source_slot]);
+    if owner_bit == 0 {
+        return;
+    }
+    let source_x = pool.entity_pos_x[source_slot];
+    let source_y = pool.entity_pos_y[source_slot];
+
+    let full_radius = pool.entity_full_vision_radius[source_slot] as f64;
+    let radar_radius = pool.entity_radar_radius[source_slot] as f64;
+    let sensor_radius = if full_radius > radar_radius {
+        full_radius
+    } else {
+        radar_radius
+    };
+    let detector_radius = pool.entity_detector_radius[source_slot] as f64;
+    combat_targeting_mark_observation_circle(
+        pool,
+        source_x,
+        source_y,
+        sensor_radius,
+        owner_bit,
+        false,
+    );
+
+    combat_targeting_mark_observation_circle(
+        pool,
+        source_x,
+        source_y,
+        detector_radius,
+        owner_bit,
+        true,
+    );
+}
+
 /// Rebuilds per-target radar-level and detector coverage masks from
 /// stamped sensor sources using the spatial grid. This is the hot-path
 /// targeting equivalent of the snapshot visibility aggregate: do the
@@ -8319,41 +8367,19 @@ pub fn combat_targeting_rebuild_observation_masks() {
 
     let n = pool.entity_flags.len();
     for source_slot in 0..n {
-        if !combat_targeting_entity_online_for_sensors(pool, source_slot) {
-            continue;
-        }
-        let owner_bit = combat_targeting_player_bit(pool.entity_owner_player_id[source_slot]);
-        if owner_bit == 0 {
-            continue;
-        }
-        let source_x = pool.entity_pos_x[source_slot];
-        let source_y = pool.entity_pos_y[source_slot];
+        combat_targeting_mark_observation_from_source_slot(pool, source_slot);
+    }
+}
 
-        let full_radius = pool.entity_full_vision_radius[source_slot] as f64;
-        let radar_radius = pool.entity_radar_radius[source_slot] as f64;
-        let sensor_radius = if full_radius > radar_radius {
-            full_radius
-        } else {
-            radar_radius
-        };
-        let detector_radius = pool.entity_detector_radius[source_slot] as f64;
-        combat_targeting_mark_observation_circle(
-            pool,
-            source_x,
-            source_y,
-            sensor_radius,
-            owner_bit,
-            false,
-        );
-
-        combat_targeting_mark_observation_circle(
-            pool,
-            source_x,
-            source_y,
-            detector_radius,
-            owner_bit,
-            true,
-        );
+/// Hot-path variant used by JS stamping: entity/turret rows have just
+/// been cleared and stamped, and JS has compacted the actual sensor source
+/// slots while walking live entities. This avoids scanning the whole slot
+/// capacity, which can include projectile-created high-water slots.
+#[wasm_bindgen]
+pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u32]) {
+    let pool = combat_targeting_pool();
+    for &source_slot in source_slots {
+        combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
     }
 }
 

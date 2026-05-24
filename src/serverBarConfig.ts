@@ -7,6 +7,12 @@ import serverBarConfig from './serverBarConfig.json';
 // ── Static tuning data (sourced from serverBarConfig.json) ──
 // JSON owns the values so both TS and Rust/WASM can load the same
 // source of truth. Functions + persistence stay in this module.
+//
+// Every per-mode default lives in JSON as paired `demoDefault` and
+// `realDefault` fields. The DEMO SERVER bar reads the `demoDefault`
+// for each setting; the REAL SERVER bar reads the `realDefault`.
+// The `SERVER_CONFIG.*.default` field below is a compat accessor that
+// resolves to the demo default (the app boots in demo).
 
 export type ServerMode = BattleMode;
 
@@ -17,7 +23,7 @@ export const HOST_SNAPSHOT_RATE_NORMAL_MAX =
 export const HOST_SNAPSHOT_RATE_DIAGNOSTIC_MIN =
   serverBarConfig.hostSnapshotRate.diagnosticMin;
 export const HOST_SNAPSHOT_RATE_DEFAULT: SnapshotRate =
-  serverBarConfig.hostSnapshotRate.default as SnapshotRate;
+  serverBarConfig.hostSnapshotRate.demoDefault as SnapshotRate;
 export const HOST_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] =
   serverBarConfig.hostSnapshotRate.options as readonly SnapshotRate[];
 export const LEGACY_UNCAPPED_SNAPSHOT_RATE_FALLBACK =
@@ -87,46 +93,36 @@ type ServerDefaults = {
   readonly unitGroundNormalEmaMode: UnitGroundNormalEmaMode;
 };
 
-type ServerModeDefaultOverrides = Partial<ServerDefaults>;
-
-const BASE_SERVER_DEFAULTS: ServerDefaults = {
-  tickRate: serverBarConfig.tickRate.default as TickRate,
-  snapshotRate: HOST_SNAPSHOT_RATE_DEFAULT,
-  keyframeRatio: serverBarConfig.keyframe.default as KeyframeRatio,
-  unitGroundNormalEmaMode: UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT,
-};
-
-const SERVER_MODE_DEFAULT_OVERRIDES =
-  serverBarConfig.modeDefaults as Record<ServerMode, ServerModeDefaultOverrides>;
-
 function resolveServerDefaults(mode: ServerMode): ServerDefaults {
+  const key = mode === 'real' ? 'realDefault' : 'demoDefault';
   return {
-    ...BASE_SERVER_DEFAULTS,
-    ...(SERVER_MODE_DEFAULT_OVERRIDES[mode] ?? {}),
+    tickRate: serverBarConfig.tickRate[key] as TickRate,
+    snapshotRate: serverBarConfig.hostSnapshotRate[key] as SnapshotRate,
+    keyframeRatio: serverBarConfig.keyframe[key] as KeyframeRatio,
+    // The unit-ground-normal EMA's canonical default lives in
+    // shellConfig (the source of truth for the EMA-mode constants);
+    // both DEMO SERVER and REAL SERVER bars inherit it.
+    unitGroundNormalEmaMode: UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT,
   };
 }
 
+const DEMO_SERVER_DEFAULTS = resolveServerDefaults('demo');
+
 export const SERVER_CONFIG = {
   tickRate: {
-    default: BASE_SERVER_DEFAULTS.tickRate,
+    default: DEMO_SERVER_DEFAULTS.tickRate,
     options: serverBarConfig.tickRate.options as readonly TickRate[],
   },
   unitGroundNormalEma: {
-    // Default comes from shellConfig (the canonical EMA-mode source).
-    // Options list lives in serverBarConfig.json.
-    default: BASE_SERVER_DEFAULTS.unitGroundNormalEmaMode,
+    default: DEMO_SERVER_DEFAULTS.unitGroundNormalEmaMode,
     options: serverBarConfig.unitGroundNormalEma.options as readonly UnitGroundNormalEmaMode[],
   },
   snapshot: {
-    default: BASE_SERVER_DEFAULTS.snapshotRate,
+    default: DEMO_SERVER_DEFAULTS.snapshotRate,
     options: HOST_SNAPSHOT_RATE_OPTIONS,
-    // 5-10 SPS is normal play. 16+ SPS remains available as diagnostic
-    // headroom for low-unit-count tests and snapshot/prediction debugging.
   },
   keyframe: {
-    // Fraction of DIFFSNAPs that are actually FULLSNAPs.
-    // Each option is 4x rarer (skips one power of two): 1/1, 1/4, 1/16, 1/64.
-    default: BASE_SERVER_DEFAULTS.keyframeRatio,
+    default: DEMO_SERVER_DEFAULTS.keyframeRatio,
     options: serverBarConfig.keyframe.options as readonly KeyframeRatio[],
   },
 } as const satisfies ServerBarConfig;

@@ -24,6 +24,7 @@ import {
 } from '../game/network/NetworkManager';
 import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
 import {
+  BATTLE_CONFIG,
   loadStoredCap,
   loadStoredCenterMagnitude,
   loadStoredDividersMagnitude,
@@ -773,7 +774,10 @@ watchEffect(() => {
   m.activePresetName = findMatchingPresetName({
     units: currentAllowedUnits.value,
     cap: displayUnitCap.value,
+    mirrorsEnabled: BATTLE_CONFIG.mirrorsEnabled.default,
+    forceFieldsEnabled: BATTLE_CONFIG.forceFieldsEnabled.default,
     forceFieldsObstructSight: currentForceFieldsObstructSight.value,
+    forceFieldReflectionMode: BATTLE_CONFIG.forceFieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
@@ -783,6 +787,8 @@ watchEffect(() => {
     metalDepositStep: metalDepositStep.value,
     mapWidthLandCells: mapWidthLandCells.value,
     mapLengthLandCells: mapLengthLandCells.value,
+    grid: displayGridInfo.value,
+    barsCollapsed: bottomBarsCollapsed.value,
   });
 });
 

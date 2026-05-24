@@ -1,6 +1,7 @@
 {
   "render": {
-    "default": "padded",
+    "demoDefault": "padded",
+    "realDefault": "padded",
     "options": [
       { "value": "window", "label": "WIN" },
       { "value": "padded", "label": "PAD" },
@@ -8,33 +9,36 @@
     ]
   },
   "audio": {
-    "default": "padded",
+    "demoDefault": "padded",
+    "realDefault": "padded",
     "options": [
       { "value": "window", "label": "WIN" },
       { "value": "padded", "label": "PAD" },
       { "value": "all", "label": "ALL" }
     ]
   },
-  "audioSmoothing": { "default": true },
-  "burnMarks": { "default": false },
-  "locomotionMarks": { "default": true },
-  "smokeTrails": { "default": true },
-  "beamSnapToTurret": { "default": true },
-  "triangleDebug": { "default": false },
-  "buildGridDebug": { "default": false },
-  "sightBoundary": { "default": false },
-  "radarBoundary": { "default": false },
-  "fogShade": { "default": false },
-  "fogClouds": { "default": true },
+  "audioSmoothing": { "demoDefault": true, "realDefault": true },
+  "burnMarks": { "demoDefault": false, "realDefault": false },
+  "locomotionMarks": { "demoDefault": true, "realDefault": true },
+  "smokeTrails": { "demoDefault": true, "realDefault": true },
+  "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
+  "triangleDebug": { "demoDefault": false, "realDefault": false },
+  "buildGridDebug": { "demoDefault": false, "realDefault": false },
+  "sightBoundary": { "demoDefault": false, "realDefault": false },
+  "radarBoundary": { "demoDefault": false, "realDefault": false },
+  "fogShade": { "demoDefault": false, "realDefault": true },
+  "fogClouds": { "demoDefault": true, "realDefault": true },
   "predictionMode": {
-    "default": "vel",
+    "demoDefault": "vel",
+    "realDefault": "vel",
     "options": [
       { "value": "pos", "label": "POS" },
       { "value": "vel", "label": "VEL" }
     ]
   },
   "movementPosEma": {
-    "default": "medium",
+    "demoDefault": "medium",
+    "realDefault": "medium",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
@@ -43,7 +47,8 @@
     ]
   },
   "movementVelEma": {
-    "default": "medium",
+    "demoDefault": "medium",
+    "realDefault": "medium",
     "options": [
       { "value": "ignore", "label": "IGN" },
       { "value": "snap", "label": "SNAP" },
@@ -53,7 +58,8 @@
     ]
   },
   "rotationPosEma": {
-    "default": "medium",
+    "demoDefault": "medium",
+    "realDefault": "medium",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
@@ -62,7 +68,8 @@
     ]
   },
   "rotationVelEma": {
-    "default": "medium",
+    "demoDefault": "medium",
+    "realDefault": "medium",
     "options": [
       { "value": "ignore", "label": "IGN" },
       { "value": "snap", "label": "SNAP" },
@@ -72,7 +79,8 @@
     ]
   },
   "unitGroundNormalEma": {
-    "default": "fast",
+    "demoDefault": "fast",
+    "realDefault": "fast",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
@@ -80,9 +88,10 @@
       { "value": "slow", "label": "SLOW" }
     ]
   },
-  "legsRadius": { "default": false },
+  "legsRadius": { "demoDefault": false, "realDefault": false },
   "cameraSmooth": {
-    "default": "mid",
+    "demoDefault": "mid",
+    "realDefault": "mid",
     "options": [
       { "value": "snap", "label": "SNAP" },
       { "value": "fast", "label": "FAST" },
@@ -99,43 +108,40 @@
       { "value": 120, "label": "120" }
     ]
   },
-  "edgeScroll": { "default": false },
-  "dragPan": { "default": true },
+  "edgeScroll": { "demoDefault": false, "realDefault": true },
+  "dragPan": { "demoDefault": true, "realDefault": true },
   "sounds": {
-    "default": {
+    "demoDefault": {
       "fire": false,
       "hit": false,
       "dead": false,
       "beam": false,
       "field": false,
       "music": false
+    },
+    "realDefault": {
+      "fire": true,
+      "hit": true,
+      "dead": true,
+      "beam": true,
+      "field": true,
+      "music": false
     }
   },
-  "rangeToggles": { "default": false },
-  "projRangeToggles": { "default": false },
-  "unitRadiusToggles": { "default": false },
-  "lobbyVisible": { "default": { "mobile": true, "desktop": true } },
+  "rangeToggles": { "demoDefault": false, "realDefault": false },
+  "projRangeToggles": { "demoDefault": false, "realDefault": false },
+  "unitRadiusToggles": { "demoDefault": false, "realDefault": false },
+  "lobbyVisible": {
+    "demoDefault": { "mobile": true, "desktop": true },
+    "realDefault": { "mobile": true, "desktop": true }
+  },
   "waypointDetail": {
-    "default": "simple",
+    "demoDefault": "simple",
+    "realDefault": "simple",
     "options": [
       { "value": "simple", "label": "SIMPLE" },
       { "value": "detailed", "label": "DETAILED" }
     ]
-  },
-  "modeDefaults": {
-    "demo": {},
-    "real": {
-      "edgeScroll": true,
-      "fogShade": true,
-      "sounds": {
-        "fire": true,
-        "hit": true,
-        "dead": true,
-        "beam": true,
-        "field": true,
-        "music": false
-      }
-    }
   },
 
   "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],

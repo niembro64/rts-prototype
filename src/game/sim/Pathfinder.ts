@@ -67,13 +67,46 @@ const VALIDATE_SAMPLE_STEP_WU = 5;
 
 let _initMapWidth = 0;
 let _initMapHeight = 0;
+let _initSim: ReturnType<typeof getSimWasm> | null = null;
+let _maskCacheMapWidth = 0;
+let _maskCacheMapHeight = 0;
+let _maskCacheTerrainVersion = -1;
+let _maskCacheBuildingVersion = -1;
+let _maskCacheBuildingGrid: BuildingGrid | null = null;
+const _buildingGridIds = new WeakMap<BuildingGrid, number>();
+let _nextBuildingGridId = 1;
+
+function invalidateMaskCache(): void {
+  _maskCacheMapWidth = 0;
+  _maskCacheMapHeight = 0;
+  _maskCacheTerrainVersion = -1;
+  _maskCacheBuildingVersion = -1;
+  _maskCacheBuildingGrid = null;
+}
+
+function buildingGridId(buildingGrid: BuildingGrid): number {
+  let id = _buildingGridIds.get(buildingGrid);
+  if (id === undefined) {
+    id = _nextBuildingGridId++;
+    if (_nextBuildingGridId > 0xffff_ffff) _nextBuildingGridId = 1;
+    _buildingGridIds.set(buildingGrid, id);
+  }
+  return id;
+}
 
 function ensureInitialized(mapWidth: number, mapHeight: number): void {
-  if (mapWidth === _initMapWidth && mapHeight === _initMapHeight) return;
   const sim = getSimWasm()!;
+  if (sim !== _initSim) {
+    _initSim = sim;
+    _initMapWidth = 0;
+    _initMapHeight = 0;
+    invalidateMaskCache();
+  }
+  if (mapWidth === _initMapWidth && mapHeight === _initMapHeight) return;
   sim.pathfinder.init(mapWidth, mapHeight);
   _initMapWidth = mapWidth;
   _initMapHeight = mapHeight;
+  invalidateMaskCache();
 }
 
 // Reusable Uint32Array for the per-rebuild building-occupied-cells
@@ -128,10 +161,24 @@ function ensureMaskAndCC(
   const sim = getSimWasm()!;
   const tVer = getTerrainVersion();
   const bVer = buildingGrid.getVersion();
+  if (
+    mapWidth === _maskCacheMapWidth &&
+    mapHeight === _maskCacheMapHeight &&
+    tVer === _maskCacheTerrainVersion &&
+    bVer === _maskCacheBuildingVersion &&
+    buildingGrid === _maskCacheBuildingGrid
+  ) {
+    return;
+  }
   const occ = collectBuildingCells(buildingGrid);
-  // Rust caches mask + CC by (tVer, bVer) pair; this is a no-op when
-  // nothing has changed.
-  sim.pathfinder.rebuildMaskAndCc(occ, tVer, bVer);
+  // Rust caches mask + CC by terrain/building versions plus grid identity;
+  // this is a no-op when nothing has changed.
+  sim.pathfinder.rebuildMaskAndCc(occ, tVer, bVer, buildingGridId(buildingGrid));
+  _maskCacheMapWidth = mapWidth;
+  _maskCacheMapHeight = mapHeight;
+  _maskCacheTerrainVersion = tVer;
+  _maskCacheBuildingVersion = bVer;
+  _maskCacheBuildingGrid = buildingGrid;
 }
 
 // ── Public entry: findPath ───────────────────────────────────────
