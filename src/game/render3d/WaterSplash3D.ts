@@ -29,7 +29,7 @@ import { WATER_LEVEL } from '../sim/Terrain';
 import { disposeMesh } from './threeUtils';
 
 const MAX_DROPLETS = 384;
-const GRAVITY = 280; // sim u/s²
+const GRAVITY = 420; // sim u/s² — beefed so droplets fall back quickly
 // Per-spawn droplet caps. A single shot dropping in water should
 // never burst more than this; with hundreds of in-flight shots the
 // pool would otherwise drain in a frame.
@@ -134,8 +134,9 @@ export class WaterSplash3D {
     );
     // Sim ships 2D projectile velocity; synthesize a downward speed
     // from horizontal motion + mass so the rebound carries believable
-    // vertical energy. Heavier shots come in harder.
-    const descentSpeed = Math.max(140, horizSpeed * 1.2) + mass * 6;
+    // vertical energy. Kept modest — most of an incoming shell's
+    // kinetic energy is absorbed by the water, not flung back out.
+    const descentSpeed = Math.max(50, horizSpeed * 0.45) + mass * 1.5;
     const energy = descentSpeed + horizSpeed;
 
     // Distribute droplets across the three groups, scaling totals
@@ -154,8 +155,12 @@ export class WaterSplash3D {
     const fwdX = incomingVelX / hSpeedSafe;
     const fwdZ = incomingVelY / hSpeedSafe;
 
-    const reboundUp = descentSpeed * 0.65;
-    const lateralCarry = horizSpeed * 0.55;
+    // Only a fraction of the incoming energy comes back out; the
+    // rest goes into displacing water. Lateral carry is small —
+    // droplets shouldn't sail across half the map after a shell
+    // impact, they should fall right back near where they came up.
+    const reboundUp = descentSpeed * 0.35;
+    const lateralCarry = horizSpeed * 0.12;
     const widthBase = Math.max(0.35, mass * 0.32);
 
     const threeX = simX;
@@ -170,12 +175,12 @@ export class WaterSplash3D {
         // this group makes the central column.
         Math.random() * 0.26,
         Math.random() * Math.PI * 2,
-        reboundUp * (1.05 + Math.random() * 0.35),
+        reboundUp * (0.9 + Math.random() * 0.3),
         // Negligible lateral carry: the jet rises, the crown carries.
         fwdX * lateralCarry * 0.1,
         fwdZ * lateralCarry * 0.1,
         widthBase * (1.0 + Math.random() * 0.4),
-        1100 + Math.random() * 500,
+        500 + Math.random() * 300,
         0.5, // jet droplets stretch less — column reads as fat beads
       )) return;
     }
@@ -188,11 +193,11 @@ export class WaterSplash3D {
       if (!this.seed(
         threeX, threeY, threeZ,
         theta, phi,
-        reboundUp * (0.55 + Math.random() * 0.45),
-        fwdX * lateralCarry * (0.6 + Math.random() * 0.9),
-        fwdZ * lateralCarry * (0.6 + Math.random() * 0.9),
+        reboundUp * (0.4 + Math.random() * 0.4),
+        fwdX * lateralCarry * (0.5 + Math.random() * 0.7),
+        fwdZ * lateralCarry * (0.5 + Math.random() * 0.7),
         widthBase * (0.7 + Math.random() * 0.6),
-        700 + Math.random() * 700,
+        400 + Math.random() * 400,
         1.0,
       )) return;
     }
@@ -205,12 +210,12 @@ export class WaterSplash3D {
       if (!this.seed(
         threeX, threeY, threeZ,
         theta, phi,
-        reboundUp * (0.7 + Math.random() * 0.7),
-        fwdX * lateralCarry * (0.3 + Math.random() * 0.7),
-        fwdZ * lateralCarry * (0.3 + Math.random() * 0.7),
+        reboundUp * (0.5 + Math.random() * 0.5),
+        fwdX * lateralCarry * (0.25 + Math.random() * 0.6),
+        fwdZ * lateralCarry * (0.25 + Math.random() * 0.6),
         widthBase * (0.55 + Math.random() * 0.6),
-        800 + Math.random() * 700,
-        0.9,
+        450 + Math.random() * 400,
+        0.85,
       )) return;
     }
   }
@@ -313,7 +318,7 @@ export class WaterSplash3D {
       const qzAx = axX * pyAx - axY * pxAx;
 
       const streakLen =
-        d.width * (1.4 + speed * 0.012) * d.lengthScale;
+        d.width * (1.2 + speed * 0.006) * d.lengthScale;
       const w = d.width * (1 - t * 0.35);
       const longScale = streakLen * (1 - t * 0.2);
 
