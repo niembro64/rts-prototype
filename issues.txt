@@ -153,7 +153,7 @@ Evidence:
   and Projectile.hasLeftSource to always-present runtime fields.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 57 other `?:` declarations remain across src/game/network/*,
+- 47 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -194,15 +194,19 @@ Evidence:
   serialize options and optional parameters, snapshotEntityWirePack's
   packed movement/turret/detail aliases, projectileSystem's reflector
   metadata helper shape, and DamageSystem's reflector player-id slot
-  to explicit `T | undefined`.
+  to explicit `T | undefined`. The 2026-05-24 projectile/audio
+  serializer pass converted stateSerializerProjectiles and
+  stateSerializerAudio option/parameter shapes and the touched
+  projectile visibility guards to explicit absence.
   Remaining examples include:
     - BackgroundBattleStandalone.ts (7): background unit selection
       helpers.
-    - stateSerializerProjectiles.ts (6): projectile serializer options.
     - DamageSystem.ts (4): beam-path / death-context helper params.
-    - stateSerializerAudio.ts (4): audio serializer options.
     - NetworkSnapshotTransport.ts (4): transport diagnostics/options.
-- Optional chaining remains at 369 in the in-scope tree after the
+    - ClientViewState.ts (4): view-state helper params/options.
+    - projectileConfigs.ts (3): projectile config helper params.
+    - factoryProduction.ts (3): factory API helper params.
+- Optional chaining remains at 363 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -227,7 +231,8 @@ Evidence:
   callback optional reads from NetworkManager and the remaining
   optional reads from stateSerializerMinimap and unitGeometry. The
   serializer/wire pass removed optional reads from stateSerializer
-  and snapshotEntityWirePack.
+  and snapshotEntityWirePack. The projectile/audio serializer pass
+  removed optional reads from stateSerializerProjectiles.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

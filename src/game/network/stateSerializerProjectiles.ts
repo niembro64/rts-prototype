@@ -98,12 +98,12 @@ type PooledVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
 export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
   deltaEnabled: boolean;
-  visibility?: SnapshotVisibility;
+  visibility: SnapshotVisibility | undefined;
   emitBeamUpdates: boolean;
   snapshotSequence: number;
-  projectileSpawns?: ProjectileSpawnEvent[];
-  projectileDespawns?: ProjectileDespawnEvent[];
-  projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[];
+  projectileSpawns: ProjectileSpawnEvent[] | undefined;
+  projectileDespawns: ProjectileDespawnEvent[] | undefined;
+  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined;
 };
 
 const _spawnBuf: NetworkServerSnapshotProjectileSpawn[] = [];
@@ -459,10 +459,10 @@ function shouldSendProjectileAtPoint(
   visibility: SnapshotVisibility | undefined,
   x: number,
   y: number,
-  homingTargetId?: number,
-  world?: WorldState,
+  homingTargetId: number | undefined = undefined,
+  world: WorldState | undefined = undefined,
 ): boolean {
-  if (!visibility || !visibility.isFiltered) return true;
+  if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
   if (visibility.isPointVisible(x, y)) return true;
   // FOW-08-followup: forward in-flight updates when the projectile is
@@ -471,9 +471,12 @@ function shouldSendProjectileAtPoint(
   // instead of taking a silent HP drop from an attacker still hidden
   // in fog. FOW-06 broadens the target check from recipient-only to
   // team-aware via isOwnedByRecipientOrAlly.
-  if (homingTargetId !== undefined && homingTargetId !== NO_ENTITY_ID && world) {
+  if (homingTargetId !== undefined && homingTargetId !== NO_ENTITY_ID && world !== undefined) {
     const target = world.getEntity(homingTargetId);
-    if (visibility.isOwnedByRecipientOrAlly(target?.ownership?.playerId)) return true;
+    const targetOwnerId = target !== undefined && target.ownership !== null
+      ? target.ownership.playerId
+      : undefined;
+    if (visibility.isOwnedByRecipientOrAlly(targetOwnerId)) return true;
   }
   return false;
 }
@@ -483,7 +486,7 @@ function shouldSendBeamPath(
   visibility: SnapshotVisibility | undefined,
   points: ReadonlyArray<{ x: number; y: number }>,
 ): boolean {
-  if (!visibility || !visibility.isFiltered) return true;
+  if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
   // FOW-08-followup: forward the beam if EITHER end is visible. A
   // laser fired from fog that lands on the recipient's unit now
@@ -502,7 +505,7 @@ function shouldSendProjectileSpawnEvent(
   visibility: SnapshotVisibility | undefined,
   world: WorldState,
 ): boolean {
-  if (!visibility || !visibility.isFiltered) return true;
+  if (visibility === undefined || !visibility.isFiltered) return true;
   if (visibility.isOwnedByRecipientOrAlly(spawn.playerId)) return true;
   if (visibility.isPointVisible(spawn.pos.x, spawn.pos.y)) return true;
   // FOW-08: forward the spawn when the shot is targeting one of the
@@ -514,7 +517,10 @@ function shouldSendProjectileSpawnEvent(
   // same incoming-arc reveal.
   if (spawn.targetEntityId !== undefined) {
     const target = world.getEntity(spawn.targetEntityId);
-    if (visibility.isOwnedByRecipientOrAlly(target?.ownership?.playerId)) return true;
+    const targetOwnerId = target !== undefined && target.ownership !== null
+      ? target.ownership.playerId
+      : undefined;
+    if (visibility.isOwnedByRecipientOrAlly(targetOwnerId)) return true;
   }
   return false;
 }
@@ -525,7 +531,7 @@ function canReferenceEntityId(
   entityId: number | undefined,
 ): boolean {
   if (entityId === undefined || entityId === NO_ENTITY_ID) return false;
-  return visibility?.canReferenceEntityId(world, entityId) ?? true;
+  return visibility === undefined ? true : visibility.canReferenceEntityId(world, entityId);
 }
 
 function resetProjectilePools(): void {
@@ -591,7 +597,7 @@ export function serializeProjectileSnapshot({
   // client that missed the original spawn event can still recover it.
   let netProjectileSpawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
   const wantKeyframeProjectileResync = !deltaEnabled;
-  const tickSpawnCount = projectileSpawns?.length ?? 0;
+  const tickSpawnCount = projectileSpawns === undefined ? 0 : projectileSpawns.length;
   if (tickSpawnCount > 0 || wantKeyframeProjectileResync) {
     _spawnBuf.length = 0;
     if (wantKeyframeProjectileResync) _resyncSeenIds.clear();
@@ -690,7 +696,8 @@ export function serializeProjectileSnapshot({
           : 0;
         out.turretIndex = proj.config.turretIndex ?? 0;
         out.barrelIndex = proj.sourceBarrelIndex ?? 0;
-        out.isDGun = entity.dgunProjectile?.isDGun ? true : null;
+        const dgunProjectile = entity.dgunProjectile;
+        out.isDGun = dgunProjectile !== null && dgunProjectile.isDGun ? true : null;
         // Re-sync spawns carry the projectile's current pos; mark it
         // as authoritative rather than a fresh turret launch.
         out.fromParentDetonation = true;
@@ -736,7 +743,8 @@ export function serializeProjectileSnapshot({
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
-      const projectile = world.getEntity(vu.id)?.projectile;
+      const projectileEntity = world.getEntity(vu.id);
+      const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
       const ownerId = projectile !== null && projectile !== undefined ? projectile.ownerId : undefined;
       if (
         shouldDeferForeignHighCountProjectileCorrection(

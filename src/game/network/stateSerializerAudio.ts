@@ -84,10 +84,10 @@ export function resetAudioPoolForKey(key: string | number | undefined): void {
 }
 
 export function serializeAudioEvents(
-  audioEvents?: SimEvent[],
-  visibility?: SnapshotVisibility,
-  trackingKey?: string | number,
-  options?: SerializeAudioEventsOptions,
+  audioEvents: SimEvent[] | undefined = undefined,
+  visibility: SnapshotVisibility | undefined = undefined,
+  trackingKey: string | number | undefined = undefined,
+  options: SerializeAudioEventsOptions | undefined = undefined,
 ): NetworkServerSnapshotSimEvent[] | undefined {
   const state = getOrCreateSnapshotPool(audioPools, resolveSnapshotPoolKey(trackingKey));
   state.index = 0;
