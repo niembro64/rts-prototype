@@ -136,6 +136,11 @@ export class SprayRenderer3D {
   // 1 for build particles (uniform size, no per-particle jitter or
   // mid-flight growth), 0 for heal (existing per-particle variation).
   private pUniformSize = new Uint8Array(MAX_PARTICLES);
+  // Per-particle alpha-fade direction for resource-pylon flow visuals.
+  //   0  → constant alpha (heal sprays)
+  //   1  → opaque at start (source = pylon head), transparent at end
+  //  -1  → transparent at start, opaque at end (target = pylon head)
+  private pFadeDir = new Int8Array(MAX_PARTICLES);
   private pWobble = new Float32Array(MAX_PARTICLES);
   private pArc = new Float32Array(MAX_PARTICLES);
   private pSeed = new Float32Array(MAX_PARTICLES);
@@ -440,11 +445,13 @@ export class SprayRenderer3D {
       // mid-flight growth (see writeParticlesToMesh).
       this.pSize[idx] = this.buildParticleRadius(spray.particleRadius);
       this.pUniformSize[idx] = 1;
+      this.pFadeDir[idx] = spray.flow === 'randomInbound' ? -1 : 1;
     } else {
       this.pSize[idx] = HEAL_PARTICLE_BASE_RADIUS
         * (0.72 + this.random() * 0.52)
         * (0.5 + 0.5 * scaledIntensity);
       this.pUniformSize[idx] = 0;
+      this.pFadeDir[idx] = 0;
     }
     // Build sprays travel in a straight line (no wiggle); heal sprays
     // keep the perpendicular sine oscillation for a stream-like read.
@@ -486,6 +493,7 @@ export class SprayRenderer3D {
       this.pLife[index] = this.pLife[last];
       this.pSize[index] = this.pSize[last];
       this.pUniformSize[index] = this.pUniformSize[last];
+      this.pFadeDir[index] = this.pFadeDir[last];
       this.pWobble[index] = this.pWobble[last];
       this.pArc[index] = this.pArc[last];
       this.pSeed[index] = this.pSeed[last];
@@ -519,13 +527,17 @@ export class SprayRenderer3D {
       const py = sy + dy * phase + this.pArc[i] * envelope;
       const pz = sz + dz * phase + perpZ * wobble;
 
-      // Constant alpha across the particle's lifetime — start and end
-      // read at the same opacity so a particle doesn't appear to fade
-      // in at the source or die out before reaching the target. With
-      // the spray immediately stopping new emissions when a build
-      // completes, holding alpha lets the trailing particles complete
-      // their full flight without visually dissolving mid-air.
-      const alpha = PARTICLE_ALPHA;
+      // Resource-pylon flow particles fade so the stream reads as
+      // condensing/dissipating at the pylon head: fully opaque at the
+      // head, fully transparent at the far end. Heal sprays keep a
+      // constant alpha across the particle's lifetime.
+      const fadeDir = this.pFadeDir[i];
+      const fadeScale = fadeDir === 0
+        ? 1
+        : fadeDir > 0
+          ? 1 - phase
+          : phase;
+      const alpha = PARTICLE_ALPHA * fadeScale;
 
       // Heal particles inflate slightly as they fly (start 0.78×, end
       // 1.14×). Build particles render at uniform size — pSize is the
