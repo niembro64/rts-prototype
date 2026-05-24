@@ -211,7 +211,7 @@ Evidence:
   guards. The 2026-05-24 network type pass converted the remaining
   declarations in src/types/network.ts, and the 2026-05-24 sim type
   pass converted the remaining declarations in src/types/sim.ts.
-- Optional chaining remains at 304 in the in-scope tree after the
+- Optional chaining remains at 296 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -247,7 +247,13 @@ Evidence:
   2026-05-24 sim type / small optional-chain pass removed optional
   reads from NetworkLobbyRoster, ClientSelectionState, buildGrid,
   cloakDetection, and the touched factory-shell path in
-  energyDistribution.
+  energyDistribution. The 2026-05-24 small helper pass removed
+  optional reads from SpatialGrid, commanderAbilities, turretInit,
+  builderRange, constructionLifecycle, reclaim, blueprint display /
+  mount helpers, targetIndex, ClientSprayTargetStore,
+  ProjectileSpawnQueue, terrainCellTriangleIndex, construction,
+  forceFieldSoundSystem, laserSoundSystem, mirrorTargetPriority,
+  forceFieldTurret, and turretSnapshotFields.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

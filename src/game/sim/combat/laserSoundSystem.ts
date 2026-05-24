@@ -28,24 +28,26 @@ function isBeamEngagedWithTargetingState(
   jsState: TurretState,
   jsTargetId: EntityId | null,
 ): boolean {
+  const priorityTargetPoint = unit.combat !== null ? unit.combat.priorityTargetPoint : null;
   if (!readCombatTargetingTurretFsmInto(unit, weaponIndex, _laserFsm)) {
     return jsState === 'engaged'
-      && (jsTargetId !== null || unit.combat?.priorityTargetPoint !== null);
+      && (jsTargetId !== null || priorityTargetPoint !== null);
   }
   return _laserFsm.stateCode === CT_TURRET_STATE_ENGAGED
-    && (_laserFsm.targetId !== -1 || unit.combat?.priorityTargetPoint !== null);
+    && (_laserFsm.targetId !== -1 || priorityTargetPoint !== null);
 }
 
 // Emit laserStop events for all beam weapons on a dying entity (the beam owner).
 // Must be called before the entity is removed from the world.
 export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
   _laserStopOwner.length = 0;
-  const turrets = entity.combat?.turrets;
-  if (!turrets) return _laserStopOwner;
+  if (entity.combat === null) return _laserStopOwner;
+  const turrets = entity.combat.turrets;
 
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
-    if (config.shot?.type === 'beam') {
+    const shot = config.shot;
+    if (shot !== undefined && shot.type === 'beam') {
       const soundEntityId = entity.id * 100 + i;
       if (!activeLaserSoundIds.delete(soundEntityId)) continue;
       _laserStopOwner.push({
@@ -109,7 +111,8 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
     for (let i = 0; i < turrets.length; i++) {
       const weapon = turrets[i];
       const config = weapon.config;
-      const isBeamWeapon = config.shot?.type === 'beam';
+      const shot = config.shot;
+      const isBeamWeapon = shot !== undefined && shot.type === 'beam';
 
       if (!isBeamWeapon) continue;
 

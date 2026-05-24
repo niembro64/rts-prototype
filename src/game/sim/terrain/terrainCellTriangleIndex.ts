@@ -34,7 +34,8 @@ export function buildTerrainCellTriangleIndex(
     const maxCellY = clampCell(Math.floor(Math.max(az, bz, cz) / cellSize), cellsY);
     for (let cy = minCellY; cy <= maxCellY; cy++) {
       for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
-        cellBuckets[cy * cellsX + cellX]?.push(tri);
+        const bucket = cellBuckets[cy * cellsX + cellX];
+        if (bucket !== undefined) bucket.push(tri);
       }
     }
   }

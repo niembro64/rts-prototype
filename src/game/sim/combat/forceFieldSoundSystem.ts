@@ -15,12 +15,13 @@ let forceFieldSoundRefreshTick = 0;
 // Must be called before the entity is removed from the world.
 export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
   _forceFieldStopOwner.length = 0;
-  const turrets = entity.combat?.turrets;
-  if (!turrets) return _forceFieldStopOwner;
+  if (entity.combat === null) return _forceFieldStopOwner;
+  const turrets = entity.combat.turrets;
 
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
-    if (config.shot?.type !== 'force') continue;
+    const shot = config.shot;
+    if (shot === undefined || shot.type !== 'force') continue;
 
     const soundEntityId = entity.id * 100 + i;
     if (!activeForceFieldSoundIds.delete(soundEntityId)) continue;
@@ -50,10 +51,11 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
     for (let i = 0; i < turrets.length; i++) {
       const weapon = turrets[i];
       const config = weapon.config;
-      if (config.shot?.type !== 'force') continue;
+      const shot = config.shot;
+      if (shot === undefined || shot.type !== 'force') continue;
 
       const soundEntityId = unit.id * 100 + i;
-      const progress = weapon.forceField?.transition ?? (weapon.forceField?.range ?? 0);
+      const progress = weapon.forceField !== undefined ? weapon.forceField.transition : 0;
       const wasActive = activeForceFieldSoundIds.has(soundEntityId);
 
       if (isDead || progress <= 0) {

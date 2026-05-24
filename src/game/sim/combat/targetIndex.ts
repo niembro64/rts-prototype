@@ -64,7 +64,9 @@ export function getBeamWeaponsTargeting(
       const entity = world.getEntity(entityId);
       if (!entity || !entity.combat) continue;
       const weapon = entity.combat.turrets[i];
-      if (!weapon || weapon.config.shot?.type !== 'beam') continue;
+      if (!weapon) continue;
+      const shot = weapon.config.shot;
+      if (shot === undefined || shot.type !== 'beam') continue;
       _outRefs.push({ unit: entity, weaponIndex: i });
     }
   }

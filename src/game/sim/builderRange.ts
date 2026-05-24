@@ -2,7 +2,7 @@ import { magnitude } from '../math';
 import type { Entity } from './types';
 
 export function getBuildRange(entity: Entity): number {
-  return entity.builder?.buildRange ?? 0;
+  return entity.builder !== null ? entity.builder.buildRange : 0;
 }
 
 export function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {
@@ -20,7 +20,9 @@ export function getBuildTargetHorizontalDistance(builder: Entity, target: Entity
 
   const dx = target.transform.x - builder.transform.x;
   const dy = target.transform.y - builder.transform.y;
-  const radius = target.unit?.radius.push ?? target.unit?.radius.shot ?? 0;
+  const radius = target.unit !== null
+    ? target.unit.radius.push
+    : 0;
   return Math.max(0, magnitude(dx, dy) - radius);
 }
 

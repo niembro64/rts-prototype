@@ -61,7 +61,7 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       const weapon = turrets[weaponIndex];
       const config = weapon.config;
       const shot = config.shot;
-      if (!shot || shot.type !== 'force') continue;
+      if (shot === undefined || shot.type !== 'force') continue;
       const fieldShot = shot as ForceShot;
 
       const transitionTime = fieldShot.transitionTime;
@@ -90,7 +90,7 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
 
       if (weapon.forceField.transition > 0 && unit.unit && unit.unit.hp > 0) {
         const barrier = fieldShot.barrier;
-        const radius = barrier?.outerRange ?? config.range;
+        const radius = barrier !== undefined ? barrier.outerRange : config.range;
         if (radius <= 0) continue;
         const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
         const mount = updateWeaponWorldKinematics(
@@ -104,13 +104,14 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
           },
           _forceFieldMount,
         );
-        const originOffsetZ = barrier?.originOffsetZ ?? 0;
+        const originOffsetZ = barrier !== undefined ? barrier.originOffsetZ : 0;
+        const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeForceFields.push({
           centerX: mount.x,
           centerY: mount.y,
           centerZ: mount.z - originOffsetZ,
           radius,
-          playerId: unit.ownership?.playerId ?? 0,
+          playerId,
           entityId: unit.id,
         });
       }

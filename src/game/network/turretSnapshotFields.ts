@@ -7,5 +7,6 @@ import type { Entity, Turret } from '../sim/types';
  */
 export function turretAimMotionIsSnapshotVisible(entity: Entity, turret: Turret): boolean {
   if (turret.config.headOnly !== true) return true;
-  return turret.config.passive === true && (entity.unit?.mirrorPanels.length ?? 0) > 0;
+  const mirrorPanelCount = entity.unit !== null ? entity.unit.mirrorPanels.length : 0;
+  return turret.config.passive === true && mirrorPanelCount > 0;
 }

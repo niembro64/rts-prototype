@@ -41,6 +41,10 @@ export class ConstructionSystem {
     return this.buildingGrid;
   }
 
+  private isCellOccupied(gridX: number, gridY: number): boolean {
+    const cell = this.buildingGrid.getCell(gridX, gridY);
+    return cell !== undefined && cell.occupied === true;
+  }
 
   // Start a new building construction
   startBuilding(
@@ -60,7 +64,7 @@ export class ConstructionSystem {
       world.mapWidth,
       world.mapHeight,
       world.metalDeposits,
-      (gx, gy) => this.buildingGrid.getCell(gx, gy)?.occupied === true,
+      (gx, gy) => this.isCellOccupied(gx, gy),
       this.terrainBuildabilityGrid,
     );
     if (!diagnostics.canPlace) {
@@ -152,7 +156,7 @@ export class ConstructionSystem {
 
     // Assign builder (only for non-commanders - commanders use their buildQueue instead)
     const builder = world.getEntity(builderId);
-    if (builder?.builder && !builder.commander) {
+    if (builder !== undefined && builder.builder !== null && builder.commander === null) {
       builder.builder.currentBuildTarget = entity.id;
       world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
     }
@@ -213,7 +217,7 @@ export class ConstructionSystem {
       this.mapWidth,
       this.mapHeight,
       [],
-      (gx, gy) => this.buildingGrid.getCell(gx, gy)?.occupied === true,
+      (gx, gy) => this.isCellOccupied(gx, gy),
       this.terrainBuildabilityGrid,
     ).canPlace;
   }
@@ -231,7 +235,12 @@ export class ConstructionSystem {
     const builder = world.getEntity(builderId);
     const target = world.getEntity(targetId);
 
-    if (!builder?.builder || !target?.buildable) {
+    if (
+      builder === undefined ||
+      builder.builder === null ||
+      target === undefined ||
+      target.buildable === null
+    ) {
       return false;
     }
 

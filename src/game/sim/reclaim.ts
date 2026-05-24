@@ -6,7 +6,7 @@ export const RECLAIM_REFUND_FRACTION = 0.5;
 
 export function isReclaimableTarget(target: Entity | null | undefined): target is Entity {
   if (!target || target.commander) return false;
-  if (target.buildable?.isGhost) return false;
+  if (target.buildable !== null && target.buildable.isGhost) return false;
   if (target.unit) return target.unit.hp > 0;
   if (target.building) return target.building.hp > 0;
   return false;
@@ -30,7 +30,7 @@ export function getReclaimResourceValue(target: Entity): ResourceCost {
     return cloneResourceCost(getBuildingConfig(target.buildingType).cost);
   }
 
-  if (target.unit?.unitType) {
+  if (target.unit !== null) {
     const config = getUnitBuildConfig(target.unit.unitType);
     if (config) return cloneResourceCost(config.cost);
   }

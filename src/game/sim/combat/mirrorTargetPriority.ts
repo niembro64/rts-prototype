@@ -31,7 +31,7 @@ export function turretDps(turret: Turret): number {
     return period > 0 ? (shot.dps * shot.duration) / period : 0;
   }
   if (isProjectileShot(shot)) {
-    const damage = shot.explosion?.damage ?? 0;
+    const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
     return turret.config.cooldown > 0
       ? (damage * 1000) / turret.config.cooldown
       : 0;
@@ -68,8 +68,8 @@ export function pickMirrorTargetTurret(
   target: Entity,
   ourUnitId: number,
 ): MirrorTargetTurretPick | null {
-  const turrets = target.combat?.turrets;
-  if (!turrets) return null;
+  if (target.combat === null) return null;
+  const turrets = target.combat.turrets;
   let best: MirrorTargetTurretPick | null = null;
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];
@@ -110,5 +110,6 @@ export function pickTargetAimTurret(
 }
 
 export function getMirrorTargetScore(target: Entity, ourUnitId: number): number {
-  return pickMirrorTargetTurret(target, ourUnitId)?.score ?? 0;
+  const pick = pickMirrorTargetTurret(target, ourUnitId);
+  return pick !== null ? pick.score : 0;
 }

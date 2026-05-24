@@ -10,7 +10,7 @@ export class ClientSprayTargetStore {
   private pool: SprayTarget[] = [];
 
   applySnapshot(snapshotSprayTargets: NetworkServerSnapshot['sprayTargets']): void {
-    const nextActiveCount = snapshotSprayTargets?.length ?? 0;
+    const nextActiveCount = snapshotSprayTargets !== undefined ? snapshotSprayTargets.length : 0;
     this.releaseActiveTargets(nextActiveCount);
     if (snapshotSprayTargets && snapshotSprayTargets.length > 0) {
       for (let i = 0; i < snapshotSprayTargets.length; i++) {

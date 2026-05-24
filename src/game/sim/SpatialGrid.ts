@@ -170,11 +170,12 @@ export class SpatialGrid {
     const slot = this.slotFor(entity);
     this.kindBySlot[slot] = SPATIAL_KIND_UNIT;
     this.unitSlots.add(entity.id);
+    const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
     this.api().setUnit(
       slot,
       entity.transform.x, entity.transform.y, entity.transform.z,
       entity.unit.radius.push, entity.unit.radius.shot,
-      entity.ownership?.playerId ?? 0,
+      playerId,
       1,
     );
   }
@@ -209,11 +210,12 @@ export class SpatialGrid {
     this.kindBySlot[slot] = SPATIAL_KIND_BUILDING;
     this.buildingSlots.add(entity.id);
     const b = entity.building;
+    const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
     this.api().setBuilding(
       slot,
       entity.transform.x, entity.transform.y, entity.transform.z,
       b.width / 2, b.height / 2, b.depth / 2,
-      entity.ownership?.playerId ?? 0,
+      playerId,
       b.hp > 0 ? 1 : 0,
       isEntityActive(entity) ? 1 : 0,
     );

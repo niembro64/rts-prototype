@@ -53,9 +53,13 @@ export class ProjectileSpawnQueue {
 
   shouldSmooth(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
     const sourceTurretId = decodeProjectileSourceTurretId(spawn);
+    const sourceTurretConfig = sourceTurretId !== undefined
+      ? TURRET_CONFIGS[sourceTurretId]
+      : undefined;
     return spawn.projectileType === PROJECTILE_TYPE_PROJECTILE &&
       !spawn.fromParentDetonation &&
-      !!(sourceTurretId && TURRET_CONFIGS[sourceTurretId]?.eventsSmooth);
+      sourceTurretConfig !== undefined &&
+      sourceTurretConfig.eventsSmooth;
   }
 
   enqueue(spawn: NetworkServerSnapshotProjectileSpawn, now: number): void {

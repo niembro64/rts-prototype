@@ -72,17 +72,24 @@ export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.megaBeamTower.visualHeight;
 export const CANNON_TOWER_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.cannonTower.visualHeight;
+
+function firstTurretMountZ(
+  blueprint: BuildingBlueprint,
+  fallback: number,
+): number {
+  const turret = blueprint.turrets[0];
+  return turret !== undefined ? turret.mount.z : fallback;
+}
+
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
-  BUILDING_BLUEPRINTS.factory.turrets[0]?.mount.z ?? FACTORY_BASE_VISUAL_HEIGHT;
+  firstTurretMountZ(BUILDING_BLUEPRINTS.factory, FACTORY_BASE_VISUAL_HEIGHT);
 /** Pivot height for the megaBeam turret on the tower — head sits just
  *  above the body socket so the barrel clears the tapered hex shaft. */
 export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z =
-  BUILDING_BLUEPRINTS.megaBeamTower.turrets[0]?.mount.z ??
-  MEGA_BEAM_TOWER_VISUAL_HEIGHT;
+  firstTurretMountZ(BUILDING_BLUEPRINTS.megaBeamTower, MEGA_BEAM_TOWER_VISUAL_HEIGHT);
 /** Pivot height for the cannon tower's heavier static turret head. */
 export const CANNON_TOWER_TURRET_MOUNT_Z =
-  BUILDING_BLUEPRINTS.cannonTower.turrets[0]?.mount.z ??
-  CANNON_TOWER_VISUAL_HEIGHT;
+  firstTurretMountZ(BUILDING_BLUEPRINTS.cannonTower, CANNON_TOWER_VISUAL_HEIGHT);
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;

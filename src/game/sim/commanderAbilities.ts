@@ -31,11 +31,14 @@ export class CommanderAbilitiesSystem {
       let commanderSprayX = commanderX;
       let commanderSprayY = commanderY;
       let commanderSprayZ = commander.transform.z;
-      const commanderTurrets = commander.combat?.turrets;
-      const constructionTurretIndex = commanderTurrets?.findIndex(
-        (turret) => turret.config.id === 'constructionTurret',
-      ) ?? -1;
-      if (constructionTurretIndex >= 0 && commanderTurrets) {
+      const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
+      let constructionTurretIndex = -1;
+      if (commanderTurrets !== null) {
+        constructionTurretIndex = commanderTurrets.findIndex(
+          (turret) => turret.config.id === 'constructionTurret',
+        );
+      }
+      if (constructionTurretIndex >= 0 && commanderTurrets !== null) {
         const { cos, sin } = getTransformCosSin(commander.transform);
         const mount = updateWeaponWorldKinematics(
           commander,
@@ -51,7 +54,7 @@ export class CommanderAbilitiesSystem {
             // of the position cache; updateUnitGroundNormal EMAs raw → smoothed
             // each tick so the construction emitter mount doesn't snap
             // on triangle crossings.
-            surfaceN: commander.unit?.surfaceNormal,
+            surfaceN: commander.unit.surfaceNormal,
           },
           _constructionEmitterMount,
         );
@@ -68,7 +71,7 @@ export class CommanderAbilitiesSystem {
       // Energy spending is handled by the shared energy distribution system.
       // Commander building progress is advanced there.
 
-      if (currentAction?.type === 'reclaim') {
+      if (currentAction !== undefined && currentAction.type === 'reclaim') {
         if (this.reclaimTarget(world, playerId, commander, currentTarget, dtMs)) {
           completedBuildings.push({ commanderId: commander.id, buildingId: currentTarget.id });
         }

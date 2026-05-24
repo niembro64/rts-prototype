@@ -49,7 +49,7 @@ function isConstructionAlive(entity: Entity): boolean {
 
 function clearDirectBuilderTargets(world: WorldState, targetId: number): void {
   for (const builder of world.getBuilderUnits()) {
-    if (builder.builder?.currentBuildTarget !== targetId) continue;
+    if (builder.builder === null || builder.builder.currentBuildTarget !== targetId) continue;
     builder.builder.currentBuildTarget = NO_ENTITY_ID;
     world.markSnapshotDirty(builder.id, ENTITY_CHANGED_ACTIONS);
   }

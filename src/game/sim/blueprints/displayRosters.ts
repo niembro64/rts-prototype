@@ -53,7 +53,8 @@ const unitRosterDisplayById = new Map<string, UnitRosterDisplay>(
 );
 
 export function getUnitDisplayShortName(unitType: string): string {
-  return unitRosterDisplayById.get(unitType)?.shortName ?? fallbackShortName(unitType);
+  const display = unitRosterDisplayById.get(unitType);
+  return display !== undefined ? display.shortName : fallbackShortName(unitType);
 }
 
 export const buildingRosterDisplay: BuildingRosterDisplay[] = (
