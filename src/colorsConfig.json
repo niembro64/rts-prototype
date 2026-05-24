@@ -22,8 +22,8 @@
       }
     },
     "water": {
-      "colorHex": "#1f6f8c",
-      "opacity": 0.2
+      "colorHex": "#22303B",
+      "opacity": 0.8
     },
     "sky": {
       "topColor": "#6d9dcc",
@@ -47,11 +47,11 @@
         "shade": 1
       },
       "ground": {
-        "baseColorHex": "#414f35",
-        "detailContrast": 0.3
+        "baseColorHex": "#222b1a",
+        "detailContrast": 0.5
       },
       "rock": {
-        "baseColorHex": "#6f6a5b",
+        "baseColorHex": "#38362f",
         "detailContrast": 0.1,
         "shadePaletteRgb": [
           "#36322b",
