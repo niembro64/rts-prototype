@@ -86,7 +86,7 @@ export async function createRealBattleServer({
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     terrainMapShape: terrain.terrainMapShape,
-    terrainPlateauEnabled: terrain.terrainRuntimeConfig.plateauEnabled,
+    terrainPlateauAmount: terrain.terrainRuntimeConfig.plateauAmount,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
     mapLengthLandCells: terrain.mapDimensions.lengthLandCells,

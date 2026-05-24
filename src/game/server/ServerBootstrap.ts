@@ -82,8 +82,8 @@ export class ServerBootstrap {
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     setTerrainRuntimeConfig({
-      plateauEnabled:
-        config.terrainPlateauEnabled ?? terrainRuntimeConfig.plateauEnabled,
+      plateauAmount:
+        config.terrainPlateauAmount ?? terrainRuntimeConfig.plateauAmount,
       centerMagnitude,
       dividersMagnitude,
       terrainDTerrain:

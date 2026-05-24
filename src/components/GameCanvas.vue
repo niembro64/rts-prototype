@@ -30,7 +30,7 @@ import {
   loadStoredGrid,
   loadStoredTerrainDTerrain,
   loadStoredTerrainMapShape,
-  loadStoredTerrainPlateauEnabled,
+  loadStoredTerrainPlateauAmount,
   loadStoredMapLandDimensions,
 } from '../battleBarConfig';
 import type { TerrainMapShape } from '../types/terrain';
@@ -228,7 +228,7 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
 const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
-const terrainPlateauEnabled = ref<boolean>(loadStoredTerrainPlateauEnabled('demo'));
+const terrainPlateauAmount = ref<number>(loadStoredTerrainPlateauAmount('demo'));
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
@@ -369,7 +369,7 @@ useGameCanvasLobbyPreview({
   centerMagnitude,
   dividersMagnitude,
   terrainMapShape,
-  terrainPlateauEnabled,
+  terrainPlateauAmount,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -490,7 +490,7 @@ const {
   applyCenterMagnitude,
   applyDividersMagnitude,
   applyTerrainMapShape,
-  applyTerrainPlateauEnabled,
+  applyTerrainPlateauAmount,
   applyTerrainDTerrain,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
@@ -504,7 +504,7 @@ const {
   centerMagnitude,
   dividersMagnitude,
   terrainMapShape,
-  terrainPlateauEnabled,
+  terrainPlateauAmount,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -670,7 +670,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   centerMagnitude: centerMagnitude.value,
   dividersMagnitude: dividersMagnitude.value,
   terrainMapShape: terrainMapShape.value,
-  terrainPlateauEnabled: terrainPlateauEnabled.value,
+  terrainPlateauAmount: terrainPlateauAmount.value,
   terrainDTerrain: terrainDTerrain.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
@@ -684,7 +684,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyCenterMagnitude,
   applyDividersMagnitude,
   applyTerrainMapShape,
-  applyTerrainPlateauEnabled,
+  applyTerrainPlateauAmount,
   applyTerrainDTerrain,
   setForceFieldsObstructSight,
   setFogOfWarEnabled,
@@ -708,7 +708,7 @@ watchEffect(() => {
   m.centerMagnitude = centerMagnitude.value;
   m.dividersMagnitude = dividersMagnitude.value;
   m.terrainMapShape = terrainMapShape.value;
-  m.terrainPlateauEnabled = terrainPlateauEnabled.value;
+  m.terrainPlateauAmount = terrainPlateauAmount.value;
   m.terrainDTerrain = terrainDTerrain.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
@@ -1071,7 +1071,7 @@ watchEffect(() => {
       :center-magnitude="centerMagnitude"
       :dividers-magnitude="dividersMagnitude"
       :terrain-map-shape="terrainMapShape"
-      :terrain-plateau-enabled="terrainPlateauEnabled"
+      :terrain-plateau-amount="terrainPlateauAmount"
       :terrain-d-terrain="terrainDTerrain"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
@@ -1091,7 +1091,7 @@ watchEffect(() => {
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
-      @set-terrain-plateau-enabled="(e) => applyTerrainPlateauEnabled(e)"
+      @set-terrain-plateau-amount="(v) => applyTerrainPlateauAmount(v)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"

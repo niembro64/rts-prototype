@@ -10,7 +10,7 @@ import { isWaterAt } from './terrainSurface';
 
 export function getTerrainBuildabilityConfigKey(): string {
   return [
-    TERRAIN_PLATEAU_CONFIG.enabled ? 1 : 0,
+    TERRAIN_PLATEAU_CONFIG.amount,
     TERRAIN_D_TERRAIN,
     TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
   ].join(':');
@@ -24,7 +24,7 @@ export function getTerrainPlateauLevelAt(
   cellSize: number = LAND_CELL_SIZE,
 ): number | null {
   assertCanonicalLandCellSize('getTerrainPlateauLevelAt cellSize', cellSize);
-  if (!TERRAIN_PLATEAU_CONFIG.enabled) return 0;
+  if (TERRAIN_PLATEAU_CONFIG.amount <= 0) return 0;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return 0;
   const flatZone = findDepositFlatZoneAt(x, z);

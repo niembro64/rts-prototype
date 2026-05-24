@@ -36,7 +36,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
   readonly terrainMapShape: TerrainMapShape;
-  readonly terrainPlateauEnabled: boolean;
+  readonly terrainPlateauAmount: number;
   readonly terrainDTerrain: number;
   readonly displayUnitCount: number;
   readonly currentForceFieldsObstructSight: boolean;
@@ -50,7 +50,7 @@ export type GameCanvasBattleControlBarModel = {
   applyCenterMagnitude(value: number): void;
   applyDividersMagnitude(value: number): void;
   applyTerrainMapShape(shape: TerrainMapShape): void;
-  applyTerrainPlateauEnabled(enabled: boolean): void;
+  applyTerrainPlateauAmount(amount: number): void;
   applyTerrainDTerrain(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;

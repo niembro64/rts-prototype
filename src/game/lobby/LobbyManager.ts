@@ -106,12 +106,11 @@ export async function createBackgroundBattle(
 
   // GAME LOBBY preview = a stripped-down background battle showing
   // only commanders. The full DEMO BATTLE keeps its initialized
-  // buildings, units, and fabricator orders, but the local demo seat
-  // is excluded from AI control so it behaves like the REAL BATTLE.
+  // buildings, units, and fabricator orders, but AI is disabled so
+  // the player-toggle flow gives full command authority over every
+  // seat, matching the control surface used by the REAL BATTLE.
   const isLobbyPreview = mode === 'real';
-  const aiPlayerIds: PlayerId[] = isLobbyPreview
-    ? []
-    : demoPlayerIds.filter((playerId) => playerId !== resolvedLocalPlayerId);
+  const aiPlayerIds: PlayerId[] = [];
 
   // Restore stored demo unit selection (fall back to config defaults).
   // We resolve this BEFORE creating the GameServer so the constructor's
@@ -143,7 +142,7 @@ export async function createBackgroundBattle(
     centerMagnitude: terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     terrainMapShape,
-    terrainPlateauEnabled: terrainRuntimeConfig.plateauEnabled,
+    terrainPlateauAmount: terrainRuntimeConfig.plateauAmount,
     terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
     mapWidthLandCells: mapDimensions.widthLandCells,
     mapLengthLandCells: mapDimensions.lengthLandCells,
@@ -158,9 +157,9 @@ export async function createBackgroundBattle(
   const connection = new LocalGameConnection(server, resolvedLocalPlayerId, 'local-offline');
   applyStoredBattleServerSettings(server, mode, { ipAddress });
 
-  // Tell the AI / UI layer about the same selection (the GameServer
-  // already used it for the initial spawn). Skipped in lobby-preview
-  // mode — there's no AI to talk to.
+  // Tell the demo UI / background-unit filters about the same
+  // selection (the GameServer already used it for the initial spawn).
+  // Skipped in lobby-preview mode because that path has no demo units.
   if (!isLobbyPreview) {
     for (const ut of BACKGROUND_UNIT_TYPES) {
       server.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));

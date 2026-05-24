@@ -139,12 +139,16 @@ defineProps<{
         <BarLabel>PLATEAU:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="opt in BATTLE_CONFIG.plateau.enabled.options"
-            :key="String(opt.value)"
-            :active="model.terrainPlateauEnabled === opt.value"
-            :title="`Turn terrain plateaus ${opt.label.toLowerCase()}`"
-            @click="model.applyTerrainPlateauEnabled(opt.value)"
-          >{{ opt.label }}</BarButton>
+            v-for="opt in BATTLE_CONFIG.plateau.amount.options"
+            :key="opt"
+            :active="model.terrainPlateauAmount === opt"
+            :title="opt === 0
+              ? 'Smooth terrain — no plateau snapping'
+              : opt === 5
+                ? 'Force every slope into a plateau (cliffs everywhere)'
+                : `Plateau amount ${opt} — wider slope window admits more terrain into terraces`"
+            @click="model.applyTerrainPlateauAmount(opt)"
+          >{{ opt }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
