@@ -1,5 +1,20 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
+export type UnitPathfindingTerrainMode = 'land' | 'anywhere';
+
+export type UnitPathfindingConfig = {
+  id: string;
+  terrainMode: UnitPathfindingTerrainMode;
+  /** True for profiles that can route over water and steep terrain. */
+  ignoreTerrainBlocking: boolean;
+  /** Null when terrainMode is `anywhere`; otherwise the slope limit
+   *  authored in pathfindingConfig.json. */
+  maxSlopeDeg: number | null;
+  /** Precomputed cosine threshold for pathfinding against terrain
+   *  normals. 0 when terrain blocking is ignored. */
+  minSurfaceNormalZ: number;
+};
+
 export type UnitLocomotion = {
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
   /** Authored propulsion scalar supplied by the locomotion blueprint. */
@@ -8,12 +23,8 @@ export type UnitLocomotion = {
    *  For hover units this acts as a horizontal-thrust scalar (no actual
    *  ground contact); 1.0 is full authority. */
   traction: number;
-  /** Maximum traversable slope in degrees from horizontal. Hovers
-   *  ignore terrain slope, but the field stays for path-validity
-   *  uniformity (set near 90°). */
-  maxSlopeDeg: number;
-  /** Precomputed cosine threshold for pathfinding against terrain normals. */
-  minSurfaceNormalZ: number;
+  /** Named pathfinding profile resolved from pathfindingConfig.json. */
+  pathfinding: UnitPathfindingConfig;
   /** Hover-only: target altitude above the ground directly below the
    *  unit, in world units. The hover physics integrator uses this to
    *  size the inverse-distance lift force so that the equilibrium

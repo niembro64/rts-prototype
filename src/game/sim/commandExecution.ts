@@ -35,7 +35,11 @@ import { magnitude, getTransformCosSin } from '../math';
 import { getProjectileLaunchSpeed, updateWeaponWorldKinematics } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
-import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
+import {
+  expandPathActions,
+  pathTerrainFilterForLocomotion,
+  type PathTerrainFilter,
+} from './Pathfinder';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
@@ -58,8 +62,7 @@ import {
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
-  const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
-  return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+  return pathTerrainFilterForLocomotion(unit.unit?.locomotion);
 }
 
 function refreshPatrolStartIndex(unit: Unit): void {
@@ -1109,21 +1112,22 @@ function addPathActions(
  *  waypoints + a single FINAL waypoint that carries the action-
  *  specific type and metadata (targetId / buildingType / buildingId
  *  / etc). Used by attack / repair / build commands so the unit
- *  pathfinds AROUND water and obstacles to reach the action's
+ *  runs through the unit's movement filter to reach the action's
  *  target instead of writing a single bee-line action that walks
- *  the unit straight at the target's coordinates.
+ *  terrain-bound units straight at the target's coordinates.
  *
  *  Why this matters: a `repair` / `attack` / `build` action whose
  *  (x, y) is across water made the unit press into the shoreline
  *  with the water-pusher catching them, while the visualized line
  *  cut straight across the valley — exactly the "paths over water"
  *  artifact the user reported. Routing through `expandPathActions`
- *  here makes the planner do its job (water/building/mountain
- *  avoidance) and the visualized path matches what the unit
- *  actually walks. The final waypoint inherits the original
- *  action's metadata so the per-action handler at the destination
- *  (attack the target, repair the target, build the building)
- *  still runs as before. */
+ *  here makes the planner do its job for the unit's locomotion:
+ *  ground profiles avoid water/buildings/mountains, while airborne
+ *  profiles ignore terrain blocking and route over land or water.
+ *  The visualized path matches what the unit actually walks or flies.
+ *  The final waypoint inherits the original action's metadata so the
+ *  per-action handler at the destination (attack the target, repair
+ *  the target, build the building) still runs as before. */
 function addPathActionsWithFinal(
   unit: Entity,
   finalAction: UnitAction,

@@ -4693,6 +4693,7 @@ struct PathfinderState {
 
     blocked: Vec<u8>,
     terrain_blocked: Vec<u8>,
+    building_blocked: Vec<u8>,
     terrain_normal_z: Vec<f32>,
     cc_labels: Vec<i16>,
 
@@ -4726,6 +4727,7 @@ impl PathfinderState {
             map_height: 0.0,
             blocked: Vec::new(),
             terrain_blocked: Vec::new(),
+            building_blocked: Vec::new(),
             terrain_normal_z: Vec::new(),
             cc_labels: Vec::new(),
             g_score: Vec::new(),
@@ -4803,6 +4805,8 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.blocked.resize(n, 0);
     state.terrain_blocked.clear();
     state.terrain_blocked.resize(n, 0);
+    state.building_blocked.clear();
+    state.building_blocked.resize(n, 0);
     state.terrain_normal_z.clear();
     state.terrain_normal_z.resize(n, 1.0);
     state.cc_labels.clear();
@@ -4957,6 +4961,7 @@ pub fn pathfinder_rebuild_mask_and_cc(
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     state.blocked.copy_from_slice(&state.terrain_blocked);
+    state.building_blocked.fill(0);
 
     // Building dilation by BUILDING_INFLATION_CELLS.
     let bk = PATHFINDER_BUILDING_INFLATION_CELLS;
@@ -4976,7 +4981,9 @@ pub fn pathfinder_rebuild_mask_and_cc(
                 if nx < 0 || nx >= grid_w {
                     continue;
                 }
-                state.blocked[(row + nx) as usize] = 1;
+                let idx = (row + nx) as usize;
+                state.building_blocked[idx] = 1;
+                state.blocked[idx] = 1;
             }
         }
     }
@@ -5032,7 +5039,15 @@ pub fn pathfinder_rebuild_mask_and_cc(
 }
 
 #[inline]
-fn pathfinder_is_cell_passable(state: &PathfinderState, idx: usize, min_normal_z: f32) -> bool {
+fn pathfinder_is_cell_passable(
+    state: &PathfinderState,
+    idx: usize,
+    min_normal_z: f32,
+    ignore_terrain_blocking: bool,
+) -> bool {
+    if ignore_terrain_blocking {
+        return state.building_blocked[idx] == 0;
+    }
     if state.blocked[idx] == 1 {
         return false;
     }
@@ -5048,11 +5063,17 @@ fn pathfinder_is_grid_cell_passable(
     gx: i32,
     gy: i32,
     min_normal_z: f32,
+    ignore_terrain_blocking: bool,
 ) -> bool {
     if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
         return false;
     }
-    pathfinder_is_cell_passable(state, (gy * state.grid_w + gx) as usize, min_normal_z)
+    pathfinder_is_cell_passable(
+        state,
+        (gy * state.grid_w + gx) as usize,
+        min_normal_z,
+        ignore_terrain_blocking,
+    )
 }
 
 fn pathfinder_find_nearest_open(
@@ -5060,6 +5081,7 @@ fn pathfinder_find_nearest_open(
     gx: i32,
     gy: i32,
     min_normal_z: f32,
+    ignore_terrain_blocking: bool,
 ) -> Option<(i32, i32)> {
     for &(dx, dy) in &state.snap_offsets {
         let nx = gx + dx as i32;
@@ -5067,7 +5089,12 @@ fn pathfinder_find_nearest_open(
         if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
             continue;
         }
-        if pathfinder_is_cell_passable(state, (ny * state.grid_w + nx) as usize, min_normal_z) {
+        if pathfinder_is_cell_passable(
+            state,
+            (ny * state.grid_w + nx) as usize,
+            min_normal_z,
+            ignore_terrain_blocking,
+        ) {
             return Some((nx, ny));
         }
     }
@@ -5080,6 +5107,7 @@ fn pathfinder_find_nearest_in_component(
     gy: i32,
     component: i16,
     min_normal_z: f32,
+    ignore_terrain_blocking: bool,
 ) -> Option<(i32, i32)> {
     if component <= 0 {
         return None;
@@ -5095,7 +5123,7 @@ fn pathfinder_find_nearest_in_component(
         }
         let idx = (ny * grid_w + nx) as usize;
         if state.cc_labels[idx] == component
-            && pathfinder_is_cell_passable(state, idx, min_normal_z)
+            && pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking)
         {
             return Some((nx, ny));
         }
@@ -5110,7 +5138,7 @@ fn pathfinder_find_nearest_in_component(
             if state.cc_labels[idx] != component {
                 continue;
             }
-            if !pathfinder_is_cell_passable(state, idx, min_normal_z) {
+            if !pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking) {
                 continue;
             }
             let dx = nx - gx;
@@ -5203,6 +5231,7 @@ fn pathfinder_a_star(
     goal_gx: i32,
     goal_gy: i32,
     min_normal_z: f32,
+    ignore_terrain_blocking: bool,
 ) -> Option<AStarResult> {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -5259,7 +5288,7 @@ fn pathfinder_a_star(
                 continue;
             }
             let nidx = (ny * grid_w + nx) as usize;
-            if !pathfinder_is_cell_passable(state, nidx, min_normal_z) {
+            if !pathfinder_is_cell_passable(state, nidx, min_normal_z, ignore_terrain_blocking) {
                 continue;
             }
             if state.closed[nidx] != 0 {
@@ -5319,6 +5348,7 @@ fn pathfinder_has_los(
     x1: f64,
     y1: f64,
     min_normal_z: f32,
+    ignore_terrain_blocking: bool,
 ) -> bool {
     let mut gx = (x0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
     let mut gy = (y0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
@@ -5334,7 +5364,7 @@ fn pathfinder_has_los(
         if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
             return false;
         }
-        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z) {
+        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z, ignore_terrain_blocking) {
             return false;
         }
         if gx == tgx && gy == tgy {
@@ -5344,10 +5374,22 @@ fn pathfinder_has_los(
         let a_x = e2 > -dy;
         let a_y = e2 < dx;
         if a_x && a_y {
-            if !pathfinder_is_grid_cell_passable(state, gx + sx, gy, min_normal_z) {
+            if !pathfinder_is_grid_cell_passable(
+                state,
+                gx + sx,
+                gy,
+                min_normal_z,
+                ignore_terrain_blocking,
+            ) {
                 return false;
             }
-            if !pathfinder_is_grid_cell_passable(state, gx, gy + sy, min_normal_z) {
+            if !pathfinder_is_grid_cell_passable(
+                state,
+                gx,
+                gy + sy,
+                min_normal_z,
+                ignore_terrain_blocking,
+            ) {
                 return false;
             }
         }
@@ -5374,6 +5416,9 @@ fn pathfinder_cell_center(gx: i32, gy: i32) -> (f64, f64) {
 /// Plan a path from (start_x, start_y) to (goal_x, goal_y).
 /// `min_normal_z` is the per-unit slope filter (0 = no filter,
 /// matches normalizeMinSurfaceNormalZ returning undefined in JS).
+/// `ignore_terrain_blocking` lets airborne locomotion ignore water,
+/// terrain-inflation, and slope gates while still respecting map bounds
+/// and building-occupied cells.
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
 /// (x, y) f64 pairs; returns the waypoint count.
 ///
@@ -5386,6 +5431,7 @@ pub fn pathfinder_find_path(
     goal_x: f64,
     goal_y: f64,
     min_normal_z: f32,
+    ignore_terrain_blocking: bool,
 ) -> u32 {
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
@@ -5408,8 +5454,13 @@ pub fn pathfinder_find_path(
     let mut start_cell_gx = sgx;
     let mut start_cell_gy = sgy;
     let mut start_was_snapped = false;
-    if !pathfinder_is_cell_passable(state, (sgy * grid_w + sgx) as usize, min_normal_z) {
-        match pathfinder_find_nearest_open(state, sgx, sgy, min_normal_z) {
+    if !pathfinder_is_cell_passable(
+        state,
+        (sgy * grid_w + sgx) as usize,
+        min_normal_z,
+        ignore_terrain_blocking,
+    ) {
+        match pathfinder_find_nearest_open(state, sgx, sgy, min_normal_z, ignore_terrain_blocking) {
             Some((nx, ny)) => {
                 start_cell_gx = nx;
                 start_cell_gy = ny;
@@ -5424,25 +5475,49 @@ pub fn pathfinder_find_path(
         }
     }
 
-    // Snap goal to start's component.
-    let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
     let mut goal_cell_gx = ggx;
     let mut goal_cell_gy = ggy;
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
-    if state.cc_labels[ggy_idx] != start_label
-        || !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z)
-    {
-        match pathfinder_find_nearest_in_component(state, ggx, ggy, start_label, min_normal_z) {
-            Some((nx, ny)) => {
-                goal_cell_gx = nx;
-                goal_cell_gy = ny;
-                goal_was_snapped = true;
+    if ignore_terrain_blocking {
+        if !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, true) {
+            match pathfinder_find_nearest_open(state, ggx, ggy, min_normal_z, true) {
+                Some((nx, ny)) => {
+                    goal_cell_gx = nx;
+                    goal_cell_gy = ny;
+                    goal_was_snapped = true;
+                }
+                None => {
+                    state.waypoint_scratch.push(start_x);
+                    state.waypoint_scratch.push(start_y);
+                    return 1;
+                }
             }
-            None => {
-                state.waypoint_scratch.push(start_x);
-                state.waypoint_scratch.push(start_y);
-                return 1;
+        }
+    } else {
+        // Snap goal to start's component for terrain-bound locomotion.
+        let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
+        if state.cc_labels[ggy_idx] != start_label
+            || !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, false)
+        {
+            match pathfinder_find_nearest_in_component(
+                state,
+                ggx,
+                ggy,
+                start_label,
+                min_normal_z,
+                false,
+            ) {
+                Some((nx, ny)) => {
+                    goal_cell_gx = nx;
+                    goal_cell_gy = ny;
+                    goal_was_snapped = true;
+                }
+                None => {
+                    state.waypoint_scratch.push(start_x);
+                    state.waypoint_scratch.push(start_y);
+                    return 1;
+                }
             }
         }
     }
@@ -5467,6 +5542,7 @@ pub fn pathfinder_find_path(
         goal_cell_gx,
         goal_cell_gy,
         min_normal_z,
+        ignore_terrain_blocking,
     ) {
         Some(r) => r,
         None => {
@@ -5518,7 +5594,15 @@ pub fn pathfinder_find_path(
             let ngy = (next_idx - ngx) / grid_w;
             let (cand_x, cand_y) = pathfinder_cell_center(cgx, cgy);
             let (next_x, next_y) = pathfinder_cell_center(ngx, ngy);
-            if !pathfinder_has_los(state, anchor_x, anchor_y, next_x, next_y, min_normal_z) {
+            if !pathfinder_has_los(
+                state,
+                anchor_x,
+                anchor_y,
+                next_x,
+                next_y,
+                min_normal_z,
+                ignore_terrain_blocking,
+            ) {
                 state.waypoint_scratch.push(cand_x);
                 state.waypoint_scratch.push(cand_y);
                 anchor_x = cand_x;

@@ -2213,11 +2213,14 @@ export interface PathfinderApi {
   ) => void;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
-   *  waypoint COUNT (not the f64 element count). */
+   *  waypoint COUNT (not the f64 element count). `ignoreTerrainBlocking`
+   *  is used by airborne locomotion to ignore water/slope/terrain
+   *  inflation while still respecting map bounds and buildings. */
   findPath: (
     startX: number, startY: number,
     goalX: number, goalY: number,
     minNormalZ: number,
+    ignoreTerrainBlocking: boolean,
   ) => number;
   /** Raw pointer to the waypoint scratch buffer. Build a fresh
    *  Float64Array(memory.buffer, ptr, count * 2) view per call. */

@@ -1,4 +1,8 @@
-import type { LocomotionBlueprint, LocomotionPhysics } from '@/types/blueprints';
+import type {
+  LocomotionBlueprint,
+  LocomotionPhysics,
+  PathfindingBlueprint,
+} from '@/types/blueprints';
 import type { UnitLocomotion } from './types';
 
 export const LOCOMOTION_TRACTION = {
@@ -16,17 +20,6 @@ export const LOCOMOTION_TRACTION = {
 export const LOCOMOTION_FORCE_SCALE = 150000;
 
 export type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
-
-export const LOCOMOTION_MAX_SLOPE_DEG: Record<LocomotionType, number> = {
-  wheels: 10,
-  treads: 20,
-  legs: 70,
-  // Hovers fly over arbitrary terrain — set near 90° so pathfinding
-  // treats every land cell as traversable.
-  hover: 89,
-  // Flying units use the same traversal rule as hovers.
-  flying: 89,
-};
 
 function assertPositiveFinite(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
@@ -47,14 +40,41 @@ function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
 export function createLocomotionPhysics(
   type: LocomotionType,
   driveForce: number,
-  maxSlopeDeg = LOCOMOTION_MAX_SLOPE_DEG[type],
 ): LocomotionPhysics {
   assertPositiveFinite(`${type}.driveForce`, driveForce);
-  assertSlopeDegrees(`${type}.maxSlopeDeg`, maxSlopeDeg);
   return {
     driveForce,
     traction: LOCOMOTION_TRACTION[type],
+  };
+}
+
+function createRuntimePathfindingConfig(
+  label: string,
+  pathfinding: PathfindingBlueprint,
+): UnitLocomotion['pathfinding'] {
+  if (pathfinding.terrainMode === 'anywhere') {
+    if (pathfinding.maxSlopeDeg !== null) {
+      throw new Error(`Invalid ${label}: anywhere pathfinding must use maxSlopeDeg=null`);
+    }
+    return {
+      id: pathfinding.id,
+      terrainMode: pathfinding.terrainMode,
+      ignoreTerrainBlocking: true,
+      maxSlopeDeg: null,
+      minSurfaceNormalZ: 0,
+    };
+  }
+  const maxSlopeDeg = pathfinding.maxSlopeDeg;
+  if (maxSlopeDeg === null) {
+    throw new Error(`Invalid ${label}: land pathfinding requires maxSlopeDeg`);
+  }
+  assertSlopeDegrees(`${label}.maxSlopeDeg`, maxSlopeDeg);
+  return {
+    id: pathfinding.id,
+    terrainMode: pathfinding.terrainMode,
+    ignoreTerrainBlocking: false,
     maxSlopeDeg,
+    minSurfaceNormalZ: maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg),
   };
 }
 
@@ -62,8 +82,10 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   const { type, physics } = locomotion;
   assertPositiveFinite(`${type}.driveForce`, physics.driveForce);
   assertPositiveFinite(`${type}.traction`, physics.traction);
-  const maxSlopeDeg = physics.maxSlopeDeg ?? LOCOMOTION_MAX_SLOPE_DEG[type];
-  assertSlopeDegrees(`${type}.maxSlopeDeg`, maxSlopeDeg);
+  const pathfinding = createRuntimePathfindingConfig(
+    `${type}.pathfinding(${locomotion.pathfindingId})`,
+    locomotion.pathfinding,
+  );
   const isAirborne = type === 'hover' || type === 'flying';
   const hoverHeight = isAirborne ? locomotion.config.hoverHeight : undefined;
   let hoverHeightRandomizationAmount: number | undefined;
@@ -93,8 +115,7 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     type,
     driveForce: physics.driveForce,
     traction: physics.traction,
-    maxSlopeDeg,
-    minSurfaceNormalZ: maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg),
+    pathfinding,
     hoverHeight,
     hoverHeightRandomizationAmount,
     hoverHeightEMA,
@@ -106,8 +127,7 @@ export function cloneUnitLocomotion(locomotion: UnitLocomotion): UnitLocomotion 
     type: locomotion.type,
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,
-    maxSlopeDeg: locomotion.maxSlopeDeg,
-    minSurfaceNormalZ: locomotion.minSurfaceNormalZ,
+    pathfinding: { ...locomotion.pathfinding },
     hoverHeight: locomotion.hoverHeight,
     hoverHeightRandomizationAmount: locomotion.hoverHeightRandomizationAmount,
     hoverHeightEMA: locomotion.hoverHeightEMA,

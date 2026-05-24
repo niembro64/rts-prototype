@@ -46,6 +46,8 @@ export type {
   LegConfig,
   LegLayoutEntry,
   LocomotionPhysics,
+  PathfindingBlueprint,
+  PathfindingTerrainMode,
   UnitBodyShape,
   UnitBodyShapePart,
   EntityHudBlueprint,

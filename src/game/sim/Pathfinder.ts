@@ -20,6 +20,9 @@
 //   • Two-tier C-space inflation: 2 cells around water (so unit
 //     bodies clear the shore), 1 cell around buildings (so the
 //     demo's tight factory gaps stay passable).
+//   • Airborne queries (hover + flying) ignore terrain blocking so
+//     water and slope do not force them onto land-only routes; they
+//     still stay inside the map and avoid occupied building cells.
 //   • Connected-component pre-flight. If start and goal are in
 //     different components A* would just thrash; instead we snap
 //     the goal to the nearest cell in start's component.
@@ -38,12 +41,13 @@ import {
   getTerrainVersion,
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
-import type { ActionType, UnitAction } from './types';
+import type { ActionType, UnitAction, UnitLocomotion } from './types';
 
 type Vec2 = { x: number; y: number };
 
 export type PathTerrainFilter = {
   minSurfaceNormalZ?: number;
+  ignoreTerrainBlocking?: boolean;
 };
 
 /** Slope nz floor — anything flatter than this nz is walkable.
@@ -92,9 +96,26 @@ function collectBuildingCells(buildingGrid: BuildingGrid): Uint32Array {
 }
 
 function normalizeMinSurfaceNormalZ(filter?: PathTerrainFilter): number {
+  if (filter?.ignoreTerrainBlocking === true) return 0;
   const value = filter?.minSurfaceNormalZ;
   if (value === undefined || !Number.isFinite(value) || value <= SLOPE_BLOCK_NZ) return 0;
   return Math.min(1, value);
+}
+
+function shouldIgnoreTerrainBlocking(filter?: PathTerrainFilter): boolean {
+  return filter?.ignoreTerrainBlocking === true;
+}
+
+export function pathTerrainFilterForLocomotion(
+  locomotion: UnitLocomotion | undefined,
+): PathTerrainFilter | undefined {
+  if (locomotion === undefined) return undefined;
+  const pathfinding = locomotion.pathfinding;
+  if (pathfinding.ignoreTerrainBlocking) {
+    return { ignoreTerrainBlocking: true };
+  }
+  const minSurfaceNormalZ = pathfinding.minSurfaceNormalZ;
+  return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
 }
 
 function ensureMaskAndCC(
@@ -122,8 +143,16 @@ function findPath(
 ): Vec2[] {
   ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
   const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
+  const ignoreTerrainBlocking = shouldIgnoreTerrainBlocking(terrainFilter);
   const sim = getSimWasm()!;
-  const count = sim.pathfinder.findPath(startX, startY, goalX, goalY, minSurfaceNormalZ);
+  const count = sim.pathfinder.findPath(
+    startX,
+    startY,
+    goalX,
+    goalY,
+    minSurfaceNormalZ,
+    ignoreTerrainBlocking,
+  );
   if (count === 0) {
     return [{ x: startX, y: startY }];
   }
@@ -219,7 +248,11 @@ function validatePathDoesNotCrossWater(
  *  `terrainFilter.minSurfaceNormalZ` adds a per-unit locomotion slope
  *  gate on top of the global terrain mask. Higher values mean flatter
  *  required terrain; cells whose surface normal z falls below the
- *  threshold are treated as blocked for that path query. */
+ *  threshold are treated as blocked for that path query.
+ *
+ *  `terrainFilter.ignoreTerrainBlocking` is for airborne locomotion:
+ *  water, terrain inflation, and slope are ignored, while map bounds
+ *  and building-occupied cells remain blockers. */
 export function expandPathActions(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -239,7 +272,7 @@ export function expandPathActions(
     buildingGrid,
     terrainFilter,
   );
-  if (VALIDATE_PATHS) {
+  if (VALIDATE_PATHS && !shouldIgnoreTerrainBlocking(terrainFilter)) {
     validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
   }
   const out: UnitAction[] = [];

@@ -4,7 +4,11 @@ import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
-import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
+import {
+  expandPathActions,
+  pathTerrainFilterForLocomotion,
+  type PathTerrainFilter,
+} from './Pathfinder';
 import { setUnitActions } from './unitActions';
 import {
   ENTITY_CHANGED_ACTIONS,
@@ -24,8 +28,7 @@ export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
 
 function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
-  const minSurfaceNormalZ = unit.unit?.locomotion.minSurfaceNormalZ;
-  return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+  return pathTerrainFilterForLocomotion(unit.unit?.locomotion);
 }
 
 // Factory production system

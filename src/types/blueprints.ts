@@ -267,8 +267,8 @@ export type LegLayoutEntry = {
 
 export type LocomotionPhysics = {
   /** Authored propulsion force scalar. The server turns this into a
-   *  slope-aware force with unit mass, terrain normal, gravity, water
-   *  blocking, and any external force accumulators. This replaces the
+   *  force with unit mass, terrain normal, gravity, water blocking,
+   *  and any external force accumulators. This replaces the
    *  old top-level Unit.moveSpeed value, which was already used as
    *  thrust rather than as a hard speed cap. */
   driveForce: number;
@@ -277,9 +277,26 @@ export type LocomotionPhysics = {
    *  air resistance. Wheels have low traction, treads middle, legs
    *  high. */
   traction: number;
+};
+
+export type PathfindingTerrainMode = 'land' | 'anywhere';
+
+export type PathfindingBlueprint = {
+  id: string;
+  /** `land` uses terrain/water/slope blocking; `anywhere` ignores
+   *  terrain blocking while still respecting map bounds and buildings. */
+  terrainMode: PathfindingTerrainMode;
   /** Maximum traversable terrain slope in degrees from horizontal.
-   *  A* treats steeper cells as blocked for this locomotion profile. */
-  maxSlopeDeg: number;
+   *  Required for `land`; null for `anywhere` because slope is ignored. */
+  maxSlopeDeg: number | null;
+};
+
+type LocomotionBlueprintBase = {
+  physics: LocomotionPhysics;
+  /** Authored reference into pathfindingConfig.json. */
+  pathfindingId: string;
+  /** Resolved pathfinding profile; filled by the blueprint loader. */
+  pathfinding: PathfindingBlueprint;
 };
 
 /** Hover locomotion (drones, gunships) — no ground contact. The
@@ -374,11 +391,11 @@ export type FlyingConfig = {
 };
 
 export type LocomotionBlueprint =
-  | { type: 'wheels'; physics: LocomotionPhysics; config: WheelConfig }
-  | { type: 'treads'; physics: LocomotionPhysics; config: TreadConfig }
-  | { type: 'legs'; physics: LocomotionPhysics; config: LegConfig }
-  | { type: 'hover'; physics: LocomotionPhysics; config: HoverConfig }
-  | { type: 'flying'; physics: LocomotionPhysics; config: FlyingConfig };
+  | (LocomotionBlueprintBase & { type: 'wheels'; config: WheelConfig })
+  | (LocomotionBlueprintBase & { type: 'treads'; config: TreadConfig })
+  | (LocomotionBlueprintBase & { type: 'legs'; config: LegConfig })
+  | (LocomotionBlueprintBase & { type: 'hover'; config: HoverConfig })
+  | (LocomotionBlueprintBase & { type: 'flying'; config: FlyingConfig });
 
 export type UnitBodyShapePart =
   | {

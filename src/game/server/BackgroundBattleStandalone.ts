@@ -16,7 +16,7 @@ import {
   mapOvalPointAt,
   type MapOvalMetrics,
 } from '../sim/mapOval';
-import { expandPathActions } from '../sim/Pathfinder';
+import { expandPathActions, pathTerrainFilterForLocomotion } from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
 import type { BuildingGrid } from '../sim/buildGrid';
@@ -127,7 +127,7 @@ function spawnUnit(
         x, y, targetX, targetY, waypointType,
         world.mapWidth, world.mapHeight, buildingGrid,
         undefined,
-        { minSurfaceNormalZ: unit.unit.locomotion.minSurfaceNormalZ },
+        pathTerrainFilterForLocomotion(unit.unit.locomotion),
       ),
     );
   }

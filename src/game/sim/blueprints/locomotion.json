@@ -1,10 +1,10 @@
 {
   "jackal": {
     "type": "wheels",
+    "pathfindingId": "wheelsLand",
     "physics": {
       "driveForce": 300,
-      "traction": 0.45,
-      "maxSlopeDeg": 10
+      "traction": 0.45
     },
     "config": {
       "wheelDistX": 0.6,
@@ -17,10 +17,10 @@
   },
   "lynx": {
     "type": "treads",
+    "pathfindingId": "treadsLand",
     "physics": {
       "driveForce": 170,
-      "traction": 0.75,
-      "maxSlopeDeg": 20
+      "traction": 0.75
     },
     "config": {
       "treadOffset": 0.8,
@@ -32,10 +32,10 @@
   },
   "daddy": {
     "type": "legs",
+    "pathfindingId": "legsLand",
     "physics": {
       "driveForce": 200,
-      "traction": 1,
-      "maxSlopeDeg": 70
+      "traction": 1
     },
     "config": {
       "upperThickness": 2.5,
@@ -69,10 +69,10 @@
   },
   "badger": {
     "type": "treads",
+    "pathfindingId": "treadsLand",
     "physics": {
       "driveForce": 200,
-      "traction": 0.75,
-      "maxSlopeDeg": 20
+      "traction": 0.75
     },
     "config": {
       "treadOffset": 0.85,
@@ -84,10 +84,10 @@
   },
   "mongoose": {
     "type": "wheels",
+    "pathfindingId": "wheelsLand",
     "physics": {
       "driveForce": 220,
-      "traction": 0.45,
-      "maxSlopeDeg": 10
+      "traction": 0.45
     },
     "config": {
       "wheelDistX": 0.65,
@@ -100,10 +100,10 @@
   },
   "tick": {
     "type": "legs",
+    "pathfindingId": "legsLand",
     "physics": {
       "driveForce": 120,
-      "traction": 1,
-      "maxSlopeDeg": 70
+      "traction": 1
     },
     "config": {
       "upperThickness": 2,
@@ -137,10 +137,10 @@
   },
   "mammoth": {
     "type": "treads",
+    "pathfindingId": "treadsLand",
     "physics": {
       "driveForce": 60,
-      "traction": 0.75,
-      "maxSlopeDeg": 20
+      "traction": 0.75
     },
     "config": {
       "treadOffset": 0.9,
@@ -152,10 +152,10 @@
   },
   "formik": {
     "type": "legs",
+    "pathfindingId": "legsLand",
     "physics": {
       "driveForce": 60,
-      "traction": 1,
-      "maxSlopeDeg": 70
+      "traction": 1
     },
     "config": {
       "upperThickness": 9,
@@ -199,10 +199,10 @@
   },
   "widow": {
     "type": "legs",
+    "pathfindingId": "legsLand",
     "physics": {
       "driveForce": 70,
-      "traction": 1,
-      "maxSlopeDeg": 70
+      "traction": 1
     },
     "config": {
       "upperThickness": 7,
@@ -236,10 +236,10 @@
   },
   "hippo": {
     "type": "treads",
+    "pathfindingId": "treadsLand",
     "physics": {
       "driveForce": 55,
-      "traction": 0.75,
-      "maxSlopeDeg": 20
+      "traction": 0.75
     },
     "config": {
       "treadOffset": 1.1,
@@ -251,10 +251,10 @@
   },
   "tarantula": {
     "type": "legs",
+    "pathfindingId": "legsLand",
     "physics": {
       "driveForce": 200,
-      "traction": 1,
-      "maxSlopeDeg": 70
+      "traction": 1
     },
     "config": {
       "upperThickness": 6.5,
@@ -288,10 +288,10 @@
   },
   "loris": {
     "type": "treads",
+    "pathfindingId": "treadsLand",
     "physics": {
       "driveForce": 160,
-      "traction": 0.75,
-      "maxSlopeDeg": 20
+      "traction": 0.75
     },
     "config": {
       "treadOffset": 0.85,
@@ -303,10 +303,10 @@
   },
   "commander": {
     "type": "legs",
+    "pathfindingId": "legsLand",
     "physics": {
       "driveForce": 50,
-      "traction": 1,
-      "maxSlopeDeg": 70
+      "traction": 1
     },
     "config": {
       "upperThickness": 8,
@@ -340,10 +340,10 @@
   },
   "hovercraft": {
     "type": "hover",
+    "pathfindingId": "airborneAnywhere",
     "physics": {
       "driveForce": 30,
-      "traction": 1,
-      "maxSlopeDeg": 89
+      "traction": 1
     },
     "config": {
       "hoverHeight": 150,
@@ -360,17 +360,17 @@
   },
   "dragonflyHovercraft": {
     "type": "hover",
+    "pathfindingId": "airborneAnywhere",
     "physics": {
       "driveForce": 20,
-      "traction": 1,
-      "maxSlopeDeg": 89
+      "traction": 1
     },
     "config": {
       "hoverHeight": 600,
       "hoverHeightRandomizationAmount": 0.99,
       "hoverHeightEMA": 0.99,
       "fanDistX": 0,
-      "fanDistY": 2.0,
+      "fanDistY": 2,
       "fanRadius": 1.4,
       "fanRingTubeRadius": 0.1,
       "fanOutwardAngleDeg": 18,
@@ -380,10 +380,10 @@
   },
   "constructionDrone": {
     "type": "hover",
+    "pathfindingId": "airborneAnywhere",
     "physics": {
       "driveForce": 35,
-      "traction": 1,
-      "maxSlopeDeg": 89
+      "traction": 1
     },
     "config": {
       "hoverHeight": 180,
@@ -400,10 +400,10 @@
   },
   "eagleFlying": {
     "type": "flying",
+    "pathfindingId": "airborneAnywhere",
     "physics": {
       "driveForce": 40,
-      "traction": 1,
-      "maxSlopeDeg": 89
+      "traction": 1
     },
     "config": {
       "hoverHeight": 500,

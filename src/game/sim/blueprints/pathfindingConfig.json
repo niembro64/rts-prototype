@@ -1,0 +1,22 @@
+{
+  "wheelsLand": {
+    "id": "wheelsLand",
+    "terrainMode": "land",
+    "maxSlopeDeg": 10
+  },
+  "treadsLand": {
+    "id": "treadsLand",
+    "terrainMode": "land",
+    "maxSlopeDeg": 20
+  },
+  "legsLand": {
+    "id": "legsLand",
+    "terrainMode": "land",
+    "maxSlopeDeg": 70
+  },
+  "airborneAnywhere": {
+    "id": "airborneAnywhere",
+    "terrainMode": "anywhere",
+    "maxSlopeDeg": null
+  }
+}

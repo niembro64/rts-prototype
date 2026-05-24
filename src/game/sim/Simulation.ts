@@ -58,7 +58,11 @@ import {
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
-import { expandPathActions, type PathTerrainFilter } from './Pathfinder';
+import {
+  expandPathActions,
+  pathTerrainFilterForLocomotion,
+  type PathTerrainFilter,
+} from './Pathfinder';
 import { getUnitBlueprint } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
@@ -1636,8 +1640,7 @@ export class Simulation {
   }
 
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | undefined {
-    const minSurfaceNormalZ = entity.unit?.locomotion.minSurfaceNormalZ;
-    return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+    return pathTerrainFilterForLocomotion(entity.unit?.locomotion);
   }
 
   // Get force accumulator for external force application (used by RtsScene)
