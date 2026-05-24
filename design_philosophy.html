@@ -316,6 +316,78 @@
         automatically when battle-level fog is off.
       </p>
 
+      <h3>Sight, radar, and contacts are separate information tiers</h3>
+      <p>
+        The visibility model needs three named areas, because each answers a different gameplay
+        question. <strong>Area of unit sight</strong> is the footprint of one full-vision source:
+        a scout, commander, building mast, temporary scan pulse, or future sensor mount. It is useful
+        for debug, overlays, source authoring, and local reasoning, but it is not the player&rsquo;s
+        whole knowledge of the map. <strong>Area of total player sight</strong> is the union of all
+        full-vision sources owned by the player and their allies. It grants full entity identity,
+        private detail allowed by ownership rules, normal terrain/force-material sight checks, visual
+        events, and the main snapshot entity row. <strong>Area of total player radar coverage</strong>
+        is the weaker union of radar sources. It grants positional contact only, not full identity,
+        health, orders, animation state, or full snapshot presence.
+      </p>
+      <p>
+        A radar-only enemy should be represented to the player as a contact, not as the real entity.
+        The small sphere/blip idea is the right shape: a generic radar contact at a quantized or
+        otherwise coarse position, with no unit blueprint, no exact body dimensions, and no private
+        state. The authoritative sim may internally associate that contact with a real entity so
+        projectiles can collide with the real world, but the client should only receive the contact
+        tier it earned. Losing full sight while retaining radar should degrade the player&rsquo;s
+        information; it should not silently keep streaming a full unit under another visual.
+      </p>
+      <p>
+        Long-range weapons should consume player/team intelligence, not pretend their own barrel can
+        see forever. A target can be fired on when the weapon&rsquo;s range, line-of-fire policy, ballistic
+        solver, and required intelligence tier all pass. Full sight gives exact aim and normal target
+        selection. Radar-only contact can support weapons explicitly authored for blind or remote
+        fire, such as artillery, missiles, or other indirect systems, but direct beams and precision
+        line weapons should usually require full sight and unobstructed line of sight. The ballistic
+        solver answers &ldquo;can this shot physically reach that point?&rdquo; It does not by itself answer
+        &ldquo;does this player have enough information to choose that point?&rdquo;
+      </p>
+      <p>
+        This intentionally pushes scouting and radar into army composition. A long-range turret with
+        short local sight should be powerful only when supported by forward units, scan pulses, radar
+        coverage, or allied sight. Current prototype behavior that derives full vision from every
+        turret&rsquo;s weapon range is a convenience shortcut, not the long-term rule; fire envelope and
+        sight envelope must be authored separately.
+      </p>
+      <ul class="rule-list">
+        <li>Full sight may reveal and identify; radar may locate; detector coverage may uncloak; none of those automatically imply the others.</li>
+        <li>Radar-only contacts are eligible inputs to weapons that explicitly allow radar fire. They are not full entities in the recipient&rsquo;s main snapshot.</li>
+        <li>Weapon range, tracking range, unit sight, radar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
+        <li>Team sight is a player-level aggregate. A turret firing using another unit&rsquo;s sight is using team intelligence, not gaining that other unit&rsquo;s local sight radius.</li>
+      </ul>
+
+      <h3>Visibility computation must stay aggregate and indexed</h3>
+      <p>
+        Sight and radar cannot be implemented as &ldquo;each unit checks every other unit&rdquo; work. The
+        authoritative sim should build player/team coverage from sensor sources, cache it at a
+        deliberate cadence, and let targeting and snapshot serialization query that aggregate. The
+        current direction is already right: spatial hashes, recipient/team visibility objects,
+        memoized entity visibility, scheduled targeting probes, and Rust/WASM slabs. New sight/radar
+        work should extend that shape.
+      </p>
+      <p>
+        The scalable model is a small set of source pools and contact masks per player or team:
+        full-sight sources, radar sources, detector sources, and temporary scan sources. Coarse cells
+        answer &ldquo;could this point be covered?&rdquo; cheaply; precise distance and line-of-sight checks run
+        only on candidates that survived the broadphase. Targeting should query enemy candidates from
+        the existing spatial index by outer weapon envelope, stamp or derive each candidate&rsquo;s
+        visibility tier once per source entity/team, and reuse that answer across the source&rsquo;s
+        turrets. Snapshot serialization should reuse the same aggregate view instead of recomputing
+        a separate truth.
+      </p>
+      <ul class="rule-list">
+        <li>Rebuild or incrementally refresh coverage when sources move, finish construction, die, cloak/uncloak, or change teams; do not run full source-vs-target scans every frame.</li>
+        <li>Use coarse bitsets or cell buckets for radar/full-sight membership, then exact radius and terrain/force-material LOS only when a candidate needs it.</li>
+        <li>Keep radar cheaper than sight: radar coverage should be mostly geometric unless a deliberate radar-jamming or radar-occlusion feature is introduced.</li>
+        <li>Run expensive acquisition only for turrets that need work. Existing target hysteresis, drop grace, probe scheduling, and broadphase candidate buffers are the right pattern.</li>
+      </ul>
+
       <h3>Delta thresholds match channel semantics</h3>
       <p>
         A <code>FULLSNAP</code> is a recovery baseline. A <code>DIFFSNAP</code> is a minimal update
@@ -1096,6 +1168,32 @@
         <li><code>shot</code> owns projectile, beam, laser, force-field, inherited homing target, recoil, damage, impulse, and collision behavior.</li>
         <li><code>building</code> owns static footprint, construction, production, extraction, storage, or other building-specific behavior.</li>
       </ul>
+
+      <h3>Sensors are capabilities, not free turret range</h3>
+      <p>
+        Sight, radar, and cloak detection should be authored as sensor capability sources, not as
+        automatic properties of every combat turret. A sensor may be mounted on a unit, building, or
+        a turret-like hardpoint when it needs a visible dish, mast, sweep, or directional rig, but
+        that does not mean every turret config should inherit sight and radar fields. The common
+        combat turret contract should stay focused: mount pose, yaw/pitch dynamics, lock-on policy,
+        acquire/release/fire envelopes, cooldown, line-of-sight gate, ballistic/fire feasibility,
+        host-directed policy, and the shot or utility effect it emits.
+      </p>
+      <p>
+        If a weapon needs unusual intelligence behavior, express that as a narrow targeting
+        requirement on the turret, not as a hidden sight radius. Examples: requires full sight,
+        can fire on radar contact, can maintain lock briefly after sight loss, can fire at a
+        commanded ground point, or can only attack targets it personally sees. Those requirements
+        are gates over the player/team sensor aggregate. They do not create new vision by themselves.
+      </p>
+      <p>
+        This keeps the composition clean. A radar tower can be a building with a radar sensor and a
+        decorative rotating rig. A scout can be a unit with a strong full-sight sensor and weak
+        weapons. An artillery platform can be a unit with a long fire envelope, short local sight,
+        and permission to fire on radar contacts. A command unit can carry both full sight and
+        detector coverage without pretending its gun barrels are what make it observant.
+      </p>
+
       <h3>Lock-on policy lives on turrets, not rockets</h3>
       <p>
         A turret is the only piece that acquires a lock-on target. A rocket can inherit the exact
@@ -1144,6 +1242,20 @@
         order must reach an attack weapon, a build order must reach a construction beam, an assist
         order must reach a repair beam. Without a host-directed turret of the right kind, the host
         has no way to act on the order.
+      </p>
+      <p>
+        This is a hard validation rule, not a convention. The blueprint loader walks every unit
+        and building blueprint and groups its mounted turrets by kind (attack, construction,
+        repair, and any future category a turret advertises). For each kind that appears on the
+        host, exactly one of those mounts must be tagged <code>hostDirected: true</code> &mdash;
+        no more, no less. Zero host-directed mounts of a kind the host carries is a configuration
+        error: the player&rsquo;s order for that kind has no weapon to land on. Two or more
+        host-directed mounts of the same kind is also an error: command target inheritance is
+        ambiguous when more than one weapon claims to be <em>the</em> primary for its role. The
+        loader must throw at startup rather than ship a unit whose orders silently fail or
+        silently double-up. Hosts that carry no turret of a given kind simply have no
+        host-directed slot for it &mdash; the rule only fires once at least one turret of that
+        kind is present.
       </p>
       <p>
         A host-directed turret is not <em>only</em> host-directed. When the host has no current
@@ -1616,7 +1728,8 @@
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or building may carry player intent such as attack, guard, repair, or assist; each mounted turret may inherit that target only if its own exclusion policy and targeting gates accept it.</li>
-        <li>Tag every turret mount as <code>host-directed</code> or <code>fully-autonomous</code>. Every kind of turret a host can mount needs at least one host-directed variant so player and AI commands can land. When the host is locked on to another entity, only host-directed turrets may consider that lock-on; fully-autonomous turrets ignore it and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets.</li>
+        <li>Tag every turret mount as <code>host-directed</code> or <code>fully-autonomous</code>. For each kind of turret a host mounts, exactly one of that kind must be host-directed &mdash; the blueprint loader throws at startup on zero (orders cannot land) or two-or-more (ambiguous primary). When the host is locked on to another entity, only host-directed turrets may consider that lock-on; fully-autonomous turrets ignore it and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets.</li>
+        <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies, radar locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as inbound or outbound resource balls. Solar/wind/extractor pull inbound balls from random world directions; construction turrets push outbound balls at a build target; converters run one pylon inbound and one outbound. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
