@@ -102,24 +102,7 @@
       "flatPadCells":40,
       "terrainBlendRadius": 600
     },
-    {
-      "comment": "RIGHT ARC",
-      "radiusFraction": 0.5,
-      "countPerPlayer": 1,
-      "sliceOffset": 0.6,
-      "dTerrainLevels": 0,
-      "flatPadCells":40,
-      "terrainBlendRadius": 600
-    },
-    {
-      "comment": "RIGHT ARC",
-      "radiusFraction": 0.4,
-      "countPerPlayer": 1,
-      "sliceOffset": 0.6,
-      "dTerrainLevels": 0,
-      "flatPadCells":40,
-      "terrainBlendRadius": 600
-    },
+
     {
       "comment": "BACK LEFT TRIANGLE",
       "radiusFraction": 0.772,
