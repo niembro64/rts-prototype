@@ -28,7 +28,7 @@ function buildPresets(): readonly BattlePreset[] {
   const defaults = getDefaultDemoUnits();
   return [
     {
-      name: 'Roman Bulwark',
+      name: 'Lictor Mandate',
       units: defaults,
       cap: 243,
       forceFieldsObstructSight: true,
@@ -43,7 +43,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 53,
     },
     {
-      name: 'Aegean Onslaught',
+      name: 'Hoplon Phalanx',
       units: allUnits().filter(
         (u) => u !== 'constructionDrone' && u !== 'tick',
       ),
@@ -60,7 +60,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 53,
     },
     {
-      name: 'Slavic Tempest',
+      name: 'Domovoi Tempest',
       units: allUnits(),
       cap: 2187,
       forceFieldsObstructSight: true,
@@ -75,7 +75,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 119,
     },
     {
-      name: 'Celtic Vanguard',
+      name: 'Tuatha Vanguard',
       units: [
         'jackal',
         'lynx',
@@ -97,7 +97,7 @@ function buildPresets(): readonly BattlePreset[] {
       mapLengthLandCells: 35,
     },
     {
-      name: 'Norse Crucible',
+      name: 'Jötunn Crucible',
       units: [
         'mammoth',
         'tarantula',
