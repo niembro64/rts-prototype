@@ -61,6 +61,7 @@ import {
   ServerSnapshotPublisher,
   type SnapshotListenerEntry,
 } from './ServerSnapshotPublisher';
+import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 import {
@@ -77,6 +78,12 @@ import { sanitizeCommand } from './commandSanitizer';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
+
+export type GameServerStartupProgress = (progress: number) => void | Promise<void>;
+
+export type GameServerCreateOptions = {
+  onProgress?: GameServerStartupProgress;
+};
 
 export class GameServer {
   private physics: PhysicsEngine3D;
@@ -148,12 +155,39 @@ export class GameServer {
    *  is created. main.ts kicks initSimWasm() in parallel with the
    *  Vue mount, so by the time host code calls create() the
    *  promise is usually already resolved (no actual wait). */
-  static async create(config: GameServerConfig): Promise<GameServer> {
+  static async create(
+    config: GameServerConfig,
+    options: GameServerCreateOptions = {},
+  ): Promise<GameServer> {
+    const report = async (progress: number) => {
+      if (!options.onProgress) return;
+      const clamped = Number.isFinite(progress)
+        ? Math.max(0, Math.min(1, progress))
+        : 0;
+      await options.onProgress(clamped);
+    };
+
+    await report(0);
     await initSimWasm();
-    return new GameServer(config);
+    await report(0.08);
+
+    const boot = options.onProgress
+      ? await ServerBootstrap.bootstrapAsync(config, undefined, (progress) =>
+          report(0.08 + progress * 0.84),
+        )
+      : ServerBootstrap.bootstrap(config);
+    await report(0.94);
+
+    const server = new GameServer(config, undefined, boot);
+    await report(1);
+    return server;
   }
 
-  constructor(config: GameServerConfig, physics: PhysicsEngine3D | undefined = undefined) {
+  constructor(
+    config: GameServerConfig,
+    physics: PhysicsEngine3D | undefined = undefined,
+    bootstrapped?: BootstrappedServerWorld,
+  ) {
     this.tickRateHz = 60;
 
     // Start visible host TPS at 0.0 until the first real tick period
@@ -176,7 +210,7 @@ export class GameServer {
     // tile map before physics ground lookup, etc.) and lives inside
     // ServerBootstrap so this constructor can stay focused on
     // instance-level concerns.
-    const boot = ServerBootstrap.bootstrap(config, physics);
+    const boot = bootstrapped ?? ServerBootstrap.bootstrap(config, physics);
     this.physics = boot.physics;
     this.world = boot.world;
     this.simulation = boot.simulation;

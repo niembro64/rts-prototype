@@ -35,11 +35,12 @@ type BackgroundBattleOptions = {
 const BACKGROUND_LOAD_PROGRESS = {
   start: 0,
   overlayPainted: 0.06,
-  settingsLoaded: 0.16,
-  sceneCreated: 0.72,
-  sceneBound: 0.78,
-  firstSnapshot: 0.86,
-  shaderWarmup: 0.94,
+  settingsLoaded: 0.1,
+  battleCreated: 0.76,
+  sceneCreated: 0.78,
+  sceneBound: 0.82,
+  firstSnapshot: 0.88,
+  shaderWarmup: 0.95,
   done: 1,
 } as const;
 
@@ -64,6 +65,11 @@ export function useGameCanvasBackgroundBattle({
   let backgroundBattleGen = 0;
   let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 
+  async function reportLoadingProgress(progress: number): Promise<void> {
+    onLoadingProgress(progress);
+    await waitForLoadingOverlayPaint();
+  }
+
   function clearBackgroundSceneWait(): void {
     if (!checkBgSceneInterval) return;
     clearInterval(checkBgSceneInterval);
@@ -87,7 +93,7 @@ export function useGameCanvasBackgroundBattle({
       return;
     }
     stopBackgroundBattle();
-    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.start);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.start);
     onRendererWarmupChange(getPlayerClientEnabled());
     const myGen = backgroundBattleGen;
     await waitForLoadingOverlayPaint();
@@ -95,8 +101,8 @@ export function useGameCanvasBackgroundBattle({
       onRendererWarmupChange(false);
       return;
     }
-    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted);
-    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded);
     const battle = await createBackgroundBattle(
       backgroundContainerRef.value,
       getLocalIpAddress(),
@@ -109,13 +115,17 @@ export function useGameCanvasBackgroundBattle({
           : BACKGROUND_LOAD_PROGRESS.done);
         onRendererWarmupChange(warming && getPlayerClientEnabled());
       },
+      (progress) => reportLoadingProgress(
+        BACKGROUND_LOAD_PROGRESS.settingsLoaded +
+          progress * (BACKGROUND_LOAD_PROGRESS.battleCreated - BACKGROUND_LOAD_PROGRESS.settingsLoaded),
+      ),
     );
     if (myGen !== backgroundBattleGen) {
       destroyBackgroundBattle(battle);
       onRendererWarmupChange(false);
       return;
     }
-    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated);
     backgroundBattle = battle;
     const scene = battle.gameInstance.getScene();
     if (scene) {

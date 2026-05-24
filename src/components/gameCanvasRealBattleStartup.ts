@@ -36,6 +36,7 @@ export type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
+  onLoadingProgress?: (progress: number) => void | Promise<void>;
 };
 
 export type StartRealBattleServerOptions = {
@@ -79,19 +80,25 @@ export async function createRealBattleServer({
   playerIds,
   aiPlayerIds,
   terrain,
+  onLoadingProgress,
 }: CreateRealBattleServerOptions): Promise<GameServer> {
-  return GameServer.create({
-    playerIds,
-    aiPlayerIds,
-    centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
-    dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-    terrainMapShape: terrain.terrainMapShape,
-    terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
-    metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
-    mapWidthLandCells: terrain.mapDimensions.widthLandCells,
-    mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
-    converterTax: loadStoredConverterTax('real'),
-  });
+  return GameServer.create(
+    {
+      playerIds,
+      aiPlayerIds,
+      centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+      dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
+      terrainMapShape: terrain.terrainMapShape,
+      terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
+      metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
+      mapWidthLandCells: terrain.mapDimensions.widthLandCells,
+      mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+      converterTax: loadStoredConverterTax('real'),
+    },
+    {
+      onProgress: onLoadingProgress,
+    },
+  );
 }
 
 export function applySettingsAndStartRealBattleServer(

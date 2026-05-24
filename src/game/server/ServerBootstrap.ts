@@ -55,7 +55,156 @@ export interface BootstrappedServerWorld {
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
 }
 
+type BootstrapProgress = (progress: number) => void | Promise<void>;
+
 export class ServerBootstrap {
+  static async bootstrapAsync(
+    config: GameServerConfig,
+    providedPhysics: PhysicsEngine3D | undefined = undefined,
+    onProgress: BootstrapProgress = () => {},
+  ): Promise<BootstrappedServerWorld> {
+    const report = async (progress: number) => {
+      const clamped = Number.isFinite(progress)
+        ? Math.max(0, Math.min(1, progress))
+        : 0;
+      await onProgress(clamped);
+    };
+
+    await report(0);
+    const playerIds = normalizePlayerIds(config.playerIds);
+    const backgroundMode = config.backgroundMode ?? false;
+
+    const mapConfig = getMapSize(
+      backgroundMode,
+      config.mapWidthLandCells,
+      config.mapLengthLandCells,
+    );
+    const mapWidth = mapConfig.width;
+    const mapHeight = mapConfig.height;
+    await report(0.06);
+
+    const terrainRuntimeConfig = getTerrainRuntimeConfig();
+    const centerMagnitude =
+      config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+    const dividersMagnitude =
+      config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
+    setTerrainRuntimeConfig({
+      centerMagnitude,
+      dividersMagnitude,
+      terrainDTerrain:
+        config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+      metalDepositStep:
+        config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
+    });
+    setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
+    setTerrainCenterMagnitude(centerMagnitude);
+    setTerrainDividersMagnitude(dividersMagnitude);
+    setTerrainMapShape(config.terrainMapShape ?? 'circle');
+    await report(0.14);
+
+    const deposits = generateMetalDeposits(
+      mapWidth,
+      mapHeight,
+      playerIds.length,
+    );
+    await report(0.24);
+
+    const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
+    setAuthoritativeTerrainTileMap(terrainTileMap);
+    await report(0.38);
+
+    const terrainBuildabilityGrid = buildTerrainBuildabilityGrid(mapWidth, mapHeight);
+    await report(0.48);
+
+    const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
+    const world = new WorldState(42, mapWidth, mapHeight);
+    world.playerCount = playerIds.length;
+    world.metalDeposits = deposits;
+    physics.setGroundLookup(
+      (x, y) => world.getGroundZ(x, y),
+      (x, y) => world.getCachedSurfaceNormal(x, y),
+    );
+    world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
+    world.setActivePlayer(0 as PlayerId);
+    await report(0.58);
+
+    const commandQueue = new CommandQueue();
+    const simulation = new Simulation(world, commandQueue, terrainBuildabilityGrid);
+    simulation.setPlayerIds(playerIds);
+    await report(0.66);
+
+    const backgroundAllowedTypes = new Set(
+      config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
+    );
+    if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
+      world.maxTotalUnits = config.initialMaxTotalUnits;
+    }
+    if (config.converterTax !== undefined && Number.isFinite(config.converterTax)) {
+      world.converterTax = config.converterTax;
+    }
+    const aiPlayerIds = config.aiPlayerIds ?? (backgroundMode ? [...playerIds] : []);
+    const spawnDemoInitialState =
+      backgroundMode && (config.spawnDemoInitialState ?? aiPlayerIds.length > 0);
+    await report(0.72);
+
+    if (spawnDemoInitialState) {
+      const constructionSystem = simulation.getConstructionSystem();
+      const entities = spawnInitialBases(
+        world,
+        constructionSystem,
+        playerIds,
+        'demo',
+        backgroundAllowedTypes,
+      );
+      await report(0.78);
+
+      entities.push(...spawnMetalExtractorsOnDeposits(world, constructionSystem, playerIds));
+      await report(0.82);
+
+      await ServerBootstrap.createInitialPhysicsBodiesAsync(
+        world,
+        physics,
+        entities,
+        0.82,
+        0.88,
+        report,
+      );
+
+      spawnBackgroundUnitsStandalone(
+        world, physics, true,
+        constructionSystem.getGrid(),
+        backgroundAllowedTypes,
+        playerIds,
+      );
+      await report(0.94);
+    } else {
+      const entities = spawnInitialEntities(world, playerIds);
+      await report(0.82);
+      await ServerBootstrap.createInitialPhysicsBodiesAsync(
+        world,
+        physics,
+        entities,
+        0.82,
+        0.94,
+        report,
+      );
+    }
+    simulation.setAiPlayerIds(aiPlayerIds);
+    await report(1);
+
+    return {
+      physics,
+      world,
+      simulation,
+      commandQueue,
+      playerIds,
+      backgroundMode,
+      backgroundAllowedTypes,
+      terrainTileMap,
+      terrainBuildabilityGrid,
+    };
+  }
+
   static bootstrap(
     config: GameServerConfig,
     providedPhysics: PhysicsEngine3D | undefined = undefined,
@@ -237,5 +386,43 @@ export class ServerBootstrap {
         });
       }
     }
+  }
+
+  private static async createInitialPhysicsBodiesAsync(
+    world: WorldState,
+    physics: PhysicsEngine3D,
+    entities: Entity[],
+    startProgress: number,
+    endProgress: number,
+    report: BootstrapProgress,
+  ): Promise<void> {
+    await report(startProgress);
+    const midProgress = startProgress + (endProgress - startProgress) * 0.45;
+    for (const entity of entities) {
+      if (entity.type === 'building' && entity.building) {
+        const baseZ = entity.transform.z - entity.building.depth / 2;
+        const body = physics.createBuildingBody(
+          entity.transform.x,
+          entity.transform.y,
+          entity.building.width,
+          entity.building.height,
+          entity.building.depth,
+          baseZ,
+          `building_${entity.id}`,
+        );
+        entity.body = { physicsBody: body };
+      }
+    }
+    await report(midProgress);
+
+    for (const entity of entities) {
+      if (entity.type === 'unit' && entity.unit) {
+        createPhysicsBodyForUnit(world, physics, entity, {
+          ignoreOverlappingBuildings: true,
+          overlapPadding: entity.unit.radius.push,
+        });
+      }
+    }
+    await report(endProgress);
   }
 }

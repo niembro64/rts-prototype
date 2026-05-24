@@ -37,6 +37,8 @@ export type BackgroundBattleState = {
   clientViewState: ClientViewState;
 };
 
+export type BackgroundBattleLoadProgress = (progress: number) => void | Promise<void>;
+
 /** Create and start a background battle server + game instance.
  *  Returns the state needed to control / tear down the background
  *  battle.
@@ -64,8 +66,19 @@ export async function createBackgroundBattle(
   playerIds?: PlayerId[],
   localPlayerId?: PlayerId,
   onRendererWarmupChange?: (warming: boolean) => void,
+  onLoadProgress?: BackgroundBattleLoadProgress,
 ): Promise<BackgroundBattleState> {
+  const report = async (progress: number) => {
+    if (!onLoadProgress) return;
+    const clamped = Number.isFinite(progress)
+      ? Math.max(0, Math.min(1, progress))
+      : 0;
+    await onLoadProgress(clamped);
+  };
+
+  await report(0);
   const rect = container.getBoundingClientRect();
+  await report(0.03);
 
   // Player IDs come from the caller (lobby) or fall back to the
   // demo's [1..DEMO_CONFIG.playerCount]. Either way a single source
@@ -103,6 +116,7 @@ export async function createBackgroundBattle(
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
   setTerrainMapShape(terrainMapShape);
+  await report(0.1);
 
   // GAME LOBBY preview = a stripped-down background battle showing
   // only commanders. The full DEMO BATTLE keeps its initialized
@@ -128,6 +142,7 @@ export async function createBackgroundBattle(
   const initialAllowedTypes = isLobbyPreview
     ? new Set<string>()
     : new Set(BACKGROUND_UNIT_TYPES.filter(ut => storedDemoUnits.includes(ut)));
+  await report(0.14);
 
   // Create a GameServer for background mode (WASM physics).
   //
@@ -138,28 +153,35 @@ export async function createBackgroundBattle(
   // would only take effect AFTER the spawn — meaning users would see
   // a battle sized by the bare config defaults until the next
   // reinforcement tick reconciles to their stored preference.
-  const server = await GameServer.create({
-    playerIds: demoPlayerIds,
-    centerMagnitude: terrainRuntimeConfig.centerMagnitude,
-    dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
-    terrainMapShape,
-    terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
-    metalDepositStep: terrainRuntimeConfig.metalDepositStep,
-    mapWidthLandCells: mapDimensions.widthLandCells,
-    mapLengthLandCells: mapDimensions.lengthLandCells,
-    backgroundMode: true,
-    initialAllowedTypes,
-    initialMaxTotalUnits: loadStoredDemoCap(),
-    converterTax: loadStoredConverterTax(mode),
-    aiPlayerIds,
-    spawnDemoInitialState: !isLobbyPreview,
-  });
+  const server = await GameServer.create(
+    {
+      playerIds: demoPlayerIds,
+      centerMagnitude: terrainRuntimeConfig.centerMagnitude,
+      dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
+      terrainMapShape,
+      terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
+      metalDepositStep: terrainRuntimeConfig.metalDepositStep,
+      mapWidthLandCells: mapDimensions.widthLandCells,
+      mapLengthLandCells: mapDimensions.lengthLandCells,
+      backgroundMode: true,
+      initialAllowedTypes,
+      initialMaxTotalUnits: loadStoredDemoCap(),
+      converterTax: loadStoredConverterTax(mode),
+      aiPlayerIds,
+      spawnDemoInitialState: !isLobbyPreview,
+    },
+    {
+      onProgress: (progress) => report(0.14 + progress * 0.5),
+    },
+  );
+  await report(0.66);
 
   const connection = new LocalGameConnection(server, resolvedLocalPlayerId, 'local-offline');
   applyStoredBattleServerSettings(server, mode, {
     ipAddress,
     maxTotalUnits: undefined,
   });
+  await report(0.7);
 
   // Tell the AI / UI layer about the same selection (the GameServer
   // already used it for the initial spawn). Skipped in lobby-preview
@@ -169,6 +191,7 @@ export async function createBackgroundBattle(
       server.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
     }
   }
+  await report(0.74);
 
   // (Demo cap is now applied via `initialMaxTotalUnits` on
   // GameServer.create above — that path runs BEFORE the initial
@@ -176,11 +199,13 @@ export async function createBackgroundBattle(
   // frame. The post-construction `setMaxTotalUnits` command path
   // still exists for runtime cap changes.)
   server.start();
+  await report(0.78);
 
   // Background-battle CVS — owned by the returned gameInstance; destroyed
   // when the lobby tears it down.
   const clientViewState = new ClientViewState();
   clientViewState.setMapDimensions(mapSize.width, mapSize.height);
+  await report(0.82);
   const gameInstance = createGame({
     parent: container,
     width: rect.width || window.innerWidth,
@@ -198,6 +223,7 @@ export async function createBackgroundBattle(
     lobbyPreview: isLobbyPreview,
     onRendererWarmupChange,
   });
+  await report(1);
 
   return { gameInstance, server, connection, clientViewState };
 }
