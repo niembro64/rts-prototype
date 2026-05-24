@@ -280,6 +280,11 @@ export function getTerrainHeight(
   y: number,
   mapWidth: number,
   mapHeight: number,
+  /** Set false to ignore deposit flat-zone overrides — used when a
+   *  caller needs the natural map surface that a deposit pad would
+   *  override (e.g. ring authoring with `dTerrainLevels: null`, which
+   *  parks the pad at whatever the natural height happens to be). */
+  includeDeposits = true,
 ): number {
   // Build the oval metrics + center sample ONCE per call and thread
   // them through every stage that needs them (natural ripple/ridge,
@@ -320,9 +325,12 @@ export function getTerrainHeight(
     ovalMetrics,
     ovalSample,
   );
-  const override = depositOverride(x, y);
-  const blended =
-    override.height * (1 - override.weight) + terracedShaped * override.weight;
+  let blended = terracedShaped;
+  if (includeDeposits) {
+    const override = depositOverride(x, y);
+    blended =
+      override.height * (1 - override.weight) + terracedShaped * override.weight;
+  }
 
   return Math.max(TILE_FLOOR_Y, blended);
 }

@@ -20,18 +20,21 @@
 // config, while terrain flattening reads a separate flat-pad config.
 // Resource coverage is exact and cell-based rather than radius-based.
 //
-// Each ring also carries `dTerrainLevels`: a signed integer count of
-// TERRAIN_D_TERRAIN steps above/below world height 0. The value is
-// used as-authored — the CENTER bar's sign does NOT flip it. Around
-// each pad the terrain blends smoothly from that derived height back
-// to natural over the ring's `terrainBlendRadius`.
+// Each ring also carries `dTerrainLevels`. When set to an integer it
+// is a signed count of TERRAIN_D_TERRAIN steps above/below world
+// height 0, used as-authored — the CENTER bar's sign does NOT flip
+// it. When set to `null` the pad sits at whatever height the natural
+// (post-plateau, post-boundary) heightmap happens to be at the
+// deposit's xy — only the vertical origin differs from the integer
+// case. Around each pad the terrain blends smoothly from the derived
+// height back to natural over the ring's `terrainBlendRadius`.
 //
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
 
 import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
-import { TERRAIN_D_TERRAIN } from './game/sim/Terrain';
+import { getTerrainHeight, TERRAIN_D_TERRAIN } from './game/sim/Terrain';
 import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
 import rawConfig from './metalDepositConfig.json';
 
@@ -51,8 +54,10 @@ export type DepositRing = {
    *  3 players, 18° at 5. Negative values rotate the other way. */
   sliceOffset?: number;
   /** Signed count of TERRAIN_D_TERRAIN steps above/below world height
-   *  0, used as-authored regardless of the CENTER bar sign. */
-  dTerrainLevels: number;
+   *  0, used as-authored regardless of the CENTER bar sign. Pass
+   *  `null` to anchor the pad at the natural terrain height under the
+   *  deposit's xy instead. */
+  dTerrainLevels: number | null;
   /** Circular terrain-flattening diameter in fine building cells; can be
    *  larger than the resource footprint to give the extractor a clean
    *  buildable pad without increasing production area. */
@@ -105,8 +110,9 @@ export type MetalDeposit = {
   /** Radius of the circular flat terrain pad in world units. */
   flatPadRadius: number;
   /** Signed count of TERRAIN_D_TERRAIN steps, taken directly from the
-   *  authored ring config. */
-  dTerrainLevels: number;
+   *  authored ring config. `null` means the pad rides the natural
+   *  terrain height under the deposit's xy (see `height`). */
+  dTerrainLevels: number | null;
   /** Signed z elevation (sim units) of this deposit's flat pad. */
   height: number;
   /** World-unit blend width outside the circular flat pad before natural
@@ -152,21 +158,31 @@ export function generateMetalDeposits(
       ring.terrainBlendRadius,
     );
     const dTerrainLevels = validMetalDepositDTerrainLevels(ring.dTerrainLevels);
-    const height = metalDepositHeightForDTerrainLevels(dTerrainLevels);
     // Slice-fraction offset: scaled by the player's slice width so the
     // configured value means the same thing (a fraction of one slice)
     // regardless of how many players are dividing the map.
     const ringAngularOffset = (ring.sliceOffset ?? 0) * sliceWidth;
-
-    // Center: one deposit, regardless of countPerPlayer.
-    if (ring.radiusFraction <= 1e-6) {
+    const placeOne = (rawX: number, rawY: number): void => {
+      const placement = makeMetalDepositPlacement(rawX, rawY, flatPadCells);
+      // dTerrainLevels=null → ride the natural terrain at the snapped
+      // pad center (post-snap so the published height matches where
+      // the pad actually lives).
+      const height =
+        dTerrainLevels === null
+          ? getTerrainHeight(placement.x, placement.y, mapWidth, mapHeight, false)
+          : dTerrainLevels * TERRAIN_D_TERRAIN;
       deposits.push({
         id: id++,
-        ...makeMetalDepositPlacement(cx, cy, flatPadCells),
+        ...placement,
         dTerrainLevels,
         height,
         blendRadius,
       });
+    };
+
+    // Center: one deposit, regardless of countPerPlayer.
+    if (ring.radiusFraction <= 1e-6) {
+      placeOne(cx, cy);
       continue;
     }
 
@@ -179,13 +195,7 @@ export function generateMetalDeposits(
         const angleInSlice = -sliceWidth / 2 + t * sliceWidth;
         const angle = sliceCenter + angleInSlice + ringAngularOffset;
         const point = mapOvalPointAt(ovalMetrics, angle, ringRadius);
-        deposits.push({
-          id: id++,
-          ...makeMetalDepositPlacement(point.x, point.y, flatPadCells),
-          dTerrainLevels,
-          height,
-          blendRadius,
-        });
+        placeOne(point.x, point.y);
       }
     }
   }
@@ -219,10 +229,11 @@ function makeMetalDepositPlacement(
   };
 }
 
-function validMetalDepositDTerrainLevels(levels: number): number {
+function validMetalDepositDTerrainLevels(levels: number | null): number | null {
+  if (levels === null) return null;
   if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
     throw new Error(
-      `Metal deposit dTerrainLevels must be a finite integer; received ${levels}`,
+      `Metal deposit dTerrainLevels must be a finite integer or null; received ${levels}`,
     );
   }
   return levels;
@@ -246,11 +257,3 @@ function validMetalDepositTerrainBlendRadius(radius: number): number {
   return radius;
 }
 
-function metalDepositHeightForDTerrainLevels(levels: number): number {
-  if (!Number.isFinite(levels) || !Number.isInteger(levels)) {
-    throw new Error(
-      `Metal deposit dTerrainLevels must be a finite integer; received ${levels}`,
-    );
-  }
-  return levels * TERRAIN_D_TERRAIN;
-}
