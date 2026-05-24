@@ -142,7 +142,7 @@ export class BuildingGrid {
 
         // Check if occupied
         const cell = this.getCell(checkX, checkY);
-        if (cell?.occupied) {
+        if (cell !== undefined && cell.occupied) {
           return false;
         }
       }

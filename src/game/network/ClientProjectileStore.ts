@@ -1,5 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
-import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '../sim/types';
+import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
 import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
@@ -266,6 +266,7 @@ export class ClientProjectileStore {
         config,
         shotId: shotId ?? config.shot.id,
         sourceTurretId: sourceTurretId ?? config.sourceTurretId,
+        ...PROJECTILE_ABSENCE_SLOTS,
         sourceBarrelIndex: spawn.barrelIndex,
         projectileType,
         velocityX: deqVel(spawn.velocity.x),

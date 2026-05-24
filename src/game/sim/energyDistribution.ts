@@ -233,15 +233,19 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   //    • Factory unit shells (currentShellId points at a unit entity).
   for (const entity of world.getBuildings()) {
     // 2a) Factory currently funding a unit shell?
-    if (entity.factory?.isProducing && entity.factory.currentShellId !== null
-        && entity.ownership && isEntityActive(entity)) {
+    const factory = entity.factory;
+    const ownership = entity.ownership;
+    if (factory !== null && factory.isProducing && factory.currentShellId !== null
+        && ownership !== null && isEntityActive(entity)) {
       // currentShellId was admitted by factoryProduction at shell-spawn
       // time. Do not re-check the unit cap here: the incomplete shell
       // already counts as a unit, so a cap-1 spawn would otherwise starve.
-      const shell = world.getEntity(entity.factory.currentShellId);
+      const shell = world.getEntity(factory.currentShellId);
       if (
-        shell?.buildable &&
-        shell.ownership?.playerId === entity.ownership.playerId &&
+        shell !== undefined &&
+        shell.buildable !== null &&
+        shell.ownership !== null &&
+        shell.ownership.playerId === ownership.playerId &&
         !shell.buildable.isComplete &&
         !shell.buildable.isGhost
       ) {
@@ -250,7 +254,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           const config = getBuildingConfig(entity.buildingType!);
           const rateCap = (config.constructionRate ?? Infinity) * dtSec;
           addConsumer(
-            entity.ownership.playerId,
+            ownership.playerId,
             shell,
             'build',
             remainingCost,

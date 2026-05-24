@@ -54,6 +54,8 @@ function makeRuntimeTurret(
     aimErrorYaw: 0,
     aimErrorPitch: 0,
     ballisticAimInRange: true,
+    burst: undefined,
+    forceField: undefined,
     barrelFireIndex: 0,
   };
 }

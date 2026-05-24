@@ -340,38 +340,38 @@ export type TurretConfig = {
   id: TurretId;
   range: number;
   cooldown: number;
-  color?: number;
-  barrel?: BarrelShape;
+  color: number;
+  barrel: BarrelShape;
   angular: { turnAccel: number; drag: number };
   rangeOverrides: TurretRangeOverrides;
   /** Smooth this turret's projectile spawn events across snapshot intervals. */
   eventsSmooth: boolean;
-  spread?: { pelletCount?: number; angle?: number };
-  burst?: { count?: number; delay?: number };
-  isManualFire?: boolean;
-  passive?: boolean;
+  spread: { pelletCount: number; angle: number } | undefined;
+  burst: { count: number; delay: number } | undefined;
+  isManualFire: boolean;
+  passive: boolean;
   /** Actual terrain/entity line-of-sight gate for this turret. Cross
    *  force-field sight obstruction is a separate battle setting. */
   requiresNonObstructedLineOfSight: boolean;
   /** Undefined for visual-only construction emitters. Those turrets
    *  mount renderer-owned construction hardware but do not represent a
    *  simulated weapon or projectile. */
-  shot?: ShotConfig;
-  turretIndex?: number;
+  shot: ShotConfig | undefined;
+  turretIndex: number | undefined;
   /** Explicit aiming solver mode. See TurretBlueprint.aimStyle. */
   aimStyle: TurretAimStyle;
   /** VLS: turret stays pitched straight up and fires every pellet
    *  into a random cone around vertical. See TurretBlueprint
    *  .verticalLauncher. */
-  verticalLauncher?: boolean;
+  verticalLauncher: boolean;
   /** Initial-spawn pitch in radians applied once at turret creation.
    *  See TurretBlueprint.idlePitch. */
-  idlePitch?: number;
+  idlePitch: number;
   /** Aim a fraction of the way to the target on the ground rather
    *  than at the target itself; the round detonates short and its
    *  submunitions (if any) bounce + spread the rest of the way. See
    *  TurretBlueprint.groundAimFraction. */
-  groundAimFraction?: number;
+  groundAimFraction: number | undefined;
   /** World-space radius of the rendered turret body sphere. */
   radius: TurretRadiusConfig;
   /** See TurretBlueprint.headOnly — beam/rocket turrets with no barrel
@@ -380,15 +380,15 @@ export type TurretConfig = {
    *  skip yaw/pitch pose and rotation/pitch/velocity snapshots;
    *  mirror-panel hosts are an exception because the panel slab uses
    *  the hidden turret pose. */
-  headOnly?: boolean;
+  headOnly: boolean;
   /** Visual-only turret hardpoints do not acquire targets or fire.
    *  They exist so reusable turret art, such as construction emitters,
    *  can mount through the same blueprint path as combat turrets. */
-  visualOnly?: boolean;
+  visualOnly: boolean;
   /** Host-directed turret. See TurretBlueprint.hostDirected. */
   hostDirected: boolean;
-  constructionEmitter?: ConstructionEmitterVisualSpec;
-  visualVariant?: ConstructionEmitterSize;
+  constructionEmitter: ConstructionEmitterVisualSpec | undefined;
+  visualVariant: ConstructionEmitterSize | undefined;
   /** LOCK-ON-03 — Compiled per-turret lock-on exclusion bitmasks. JS
    *  walks each turret blueprint once at config build and packs the
    *  authored exclusion arrays into these bitmasks so the per-tick
@@ -412,17 +412,17 @@ export type ProjectileConfig = {
   shot: ActiveProjectileShot;
   shotProfile: ShotProfile;
   /** Real turret blueprint that authored this projectile, when one exists. */
-  sourceTurretId?: TurretId;
+  sourceTurretId: TurretId | undefined;
   /** Source-turret base range. Active line shots use the live turret's
    *  computed 2D fire circle while retracing; shot-only children keep 0. */
   range: number;
   /** Source-turret cooldown. Used when laser projectiles expire. */
   cooldown: number;
   /** Source-turret visual barrel geometry. Present only for turret-fired shots. */
-  barrel?: BarrelShape;
-  radius?: TurretRadiusConfig;
+  barrel: BarrelShape | undefined;
+  radius: TurretRadiusConfig | undefined;
   /** Source turret slot on the owning unit. Used by active beam bookkeeping. */
-  turretIndex?: number;
+  turretIndex: number | undefined;
 };
 
 // Turret FSM state: idle → tracking → engaged
@@ -498,8 +498,8 @@ export type Turret = {
    *  the turret does not spend shells on guaranteed-short fallback
    *  shots. Default true. */
   ballisticAimInRange: boolean;
-  burst?: { remaining: number; cooldown: number };
-  forceField?: { transition: number; range: number };
+  burst: { remaining: number; cooldown: number } | undefined;
+  forceField: { transition: number; range: number } | undefined;
   /** Round-robin pointer across the physical barrels on this turret.
    *  Each fired pellet picks barrelIndex = (barrelFireIndex + pellet)
    *  % barrelCount, then the pointer advances by the pellet count.
@@ -523,17 +523,17 @@ export type Projectile = {
   shotId: ShotId;
   /** Real turret blueprint id that ultimately authored this projectile.
    *  Submunitions inherit this from their parent projectile. */
-  sourceTurretId?: TurretId;
+  sourceTurretId: TurretId | undefined;
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  prevX?: number;
-  prevY?: number;
-  prevZ?: number;
-  collisionStartX?: number;
-  collisionStartY?: number;
-  collisionStartZ?: number;
+  prevX: number | undefined;
+  prevY: number | undefined;
+  prevZ: number | undefined;
+  collisionStartX: number | undefined;
+  collisionStartY: number | undefined;
+  collisionStartZ: number | undefined;
   timeAlive: number;
   /** Finite runtime timeout for lasers and special projectile classes;
    *  Infinity for ordinary traveling shot bodies. */
@@ -545,37 +545,37 @@ export type Projectile = {
    *  non-line projectiles. Mutated in place — each re-trace resizes
    *  the array length and overwrites the per-vertex fields, so the
    *  array reference is stable. */
-  points?: BeamPoint[];
+  points: BeamPoint[] | undefined;
   /** False when the path has no physical impact endpoint, such as a
    *  no-hit range boundary or BEAM_MAX_SEGMENTS ending on a reflector.
    *  The beam is still rendered, but no endpoint damage sphere applies. */
-  endpointDamageable?: boolean;
-  segmentLimitReached?: boolean;
+  endpointDamageable: boolean | undefined;
+  segmentLimitReached: boolean | undefined;
   /** Source barrel index for visual/audio cadence metadata on turret shots. */
-  sourceBarrelIndex?: number;
+  sourceBarrelIndex: number | undefined;
   /** Internal: previous tick's start position/velocity. Used to
    *  compute points[0] velocity and acceleration. Not serialized. */
-  prevStartX?: number;
-  prevStartY?: number;
-  prevStartZ?: number;
-  prevStartVx?: number;
-  prevStartVy?: number;
-  prevStartVz?: number;
+  prevStartX: number | undefined;
+  prevStartY: number | undefined;
+  prevStartZ: number | undefined;
+  prevStartVx: number | undefined;
+  prevStartVy: number | undefined;
+  prevStartVz: number | undefined;
   /** Internal: previous beam-trace tick's end position. Used to compute
    *  the end-point velocity/acceleration. Not serialized. */
-  prevEndX?: number;
-  prevEndY?: number;
-  prevEndZ?: number;
-  prevEndVx?: number;
-  prevEndVy?: number;
-  prevEndVz?: number;
+  prevEndX: number | undefined;
+  prevEndY: number | undefined;
+  prevEndZ: number | undefined;
+  prevEndVx: number | undefined;
+  prevEndVy: number | undefined;
+  prevEndVz: number | undefined;
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
-  prevEndTick?: number;
+  prevEndTick: number | undefined;
   /** Internal: previous beam-trace tick's reflection points keyed by
    *  mirrorEntityId. Used to finite-diff each reflection point's
    *  velocity. Not serialized. */
-  prevReflectionPoints?: {
+  prevReflectionPoints: {
     mirrorEntityId: EntityId;
     x: number;
     y: number;
@@ -584,13 +584,13 @@ export type Projectile = {
     vy: number;
     vz: number;
     tick: number;
-  }[];
-  targetEntityId?: EntityId;
-  obstructionT?: number;
-  obstructionTick?: number;
+  }[] | undefined;
+  targetEntityId: EntityId | undefined;
+  obstructionT: number | undefined;
+  obstructionTick: number | undefined;
   hitEntities: Set<EntityId>;
   maxHits: number;
-  hasExploded?: boolean;
+  hasExploded: boolean | undefined;
   /** False until the shot's active point has cleared the source unit's
    *  shot sphere. Traveling projectiles use their center; line shots
    *  use their endpoint damage point. While false, collision damage and
@@ -598,18 +598,94 @@ export type Projectile = {
   hasLeftSource: boolean;
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
   homingTargetId: EntityId;
-  homingTurnRate?: number;
-  lastSentVelX?: number;
-  lastSentVelY?: number;
-  lastSentVelZ?: number;
+  homingTurnRate: number | undefined;
+  lastSentVelX: number | undefined;
+  lastSentVelY: number | undefined;
+  lastSentVelZ: number | undefined;
   /** Client-only persistent anchor: exact spawn point at creation,
    *  overwritten with the exact bounce point on every reflection. The
    *  curved-cone tail renderer uses this as the parabola's far endpoint
    *  so the tail describes the actual flight segment instead of a fit
    *  through EMA-smoothed render samples. Authoritative — not EMA'd. */
-  originX?: number;
-  originY?: number;
-  originZ?: number;
+  originX: number | undefined;
+  originY: number | undefined;
+  originZ: number | undefined;
+};
+
+export type ProjectileAbsenceSlots = Pick<Projectile,
+  | 'prevX'
+  | 'prevY'
+  | 'prevZ'
+  | 'collisionStartX'
+  | 'collisionStartY'
+  | 'collisionStartZ'
+  | 'points'
+  | 'endpointDamageable'
+  | 'segmentLimitReached'
+  | 'sourceBarrelIndex'
+  | 'prevStartX'
+  | 'prevStartY'
+  | 'prevStartZ'
+  | 'prevStartVx'
+  | 'prevStartVy'
+  | 'prevStartVz'
+  | 'prevEndX'
+  | 'prevEndY'
+  | 'prevEndZ'
+  | 'prevEndVx'
+  | 'prevEndVy'
+  | 'prevEndVz'
+  | 'prevEndTick'
+  | 'prevReflectionPoints'
+  | 'targetEntityId'
+  | 'obstructionT'
+  | 'obstructionTick'
+  | 'hasExploded'
+  | 'homingTurnRate'
+  | 'lastSentVelX'
+  | 'lastSentVelY'
+  | 'lastSentVelZ'
+  | 'originX'
+  | 'originY'
+  | 'originZ'
+>;
+
+export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
+  prevX: undefined,
+  prevY: undefined,
+  prevZ: undefined,
+  collisionStartX: undefined,
+  collisionStartY: undefined,
+  collisionStartZ: undefined,
+  points: undefined,
+  endpointDamageable: undefined,
+  segmentLimitReached: undefined,
+  sourceBarrelIndex: undefined,
+  prevStartX: undefined,
+  prevStartY: undefined,
+  prevStartZ: undefined,
+  prevStartVx: undefined,
+  prevStartVy: undefined,
+  prevStartVz: undefined,
+  prevEndX: undefined,
+  prevEndY: undefined,
+  prevEndZ: undefined,
+  prevEndVx: undefined,
+  prevEndVy: undefined,
+  prevEndVz: undefined,
+  prevEndTick: undefined,
+  prevReflectionPoints: undefined,
+  targetEntityId: undefined,
+  obstructionT: undefined,
+  obstructionTick: undefined,
+  hasExploded: undefined,
+  homingTurnRate: undefined,
+  lastSentVelX: undefined,
+  lastSentVelY: undefined,
+  lastSentVelZ: undefined,
+  originX: undefined,
+  originY: undefined,
+  originZ: undefined,
 };
 
 // Economy state per player. Each pool (energy / metal) has its
@@ -701,7 +777,7 @@ export type UnitBuildConfig = {
   locomotion: UnitLocomotion;
   mass: number;
   hp: number;
-  fireRange?: number;
+  fireRange: number | undefined;
 };
 
 // Factory component. The host (today: the fabricator building) produces

@@ -4,6 +4,7 @@ import {
   createEmptyEntityComponentSlots,
   createTransform,
   NO_ENTITY_ID,
+  PROJECTILE_ABSENCE_SLOTS,
 } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ShotId, TurretId } from '../../types/blueprintIds';
@@ -919,6 +920,7 @@ export class WorldState {
       sourceTurretId: provenance !== null && provenance.sourceTurretId !== null
         ? provenance.sourceTurretId
         : config.sourceTurretId,
+      ...PROJECTILE_ABSENCE_SLOTS,
       projectileType,
       velocityX,
       velocityY,

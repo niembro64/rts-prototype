@@ -135,7 +135,13 @@ Evidence:
   explicit `T | undefined`; initialized LobbyPlayer metadata slots
   through a shared constructor; and made raw state messages carry
   `compression: undefined`.
-- src/types/sim.ts: 58 `?:` declarations. The 2026-05-23
+- src/types/sim.ts now has 0 `?:` declarations after the 2026-05-24
+  sim type pass converted TurretConfig / ProjectileConfig shape
+  variance, Turret burst / force-field runtime state, Projectile
+  runtime detail slots, and UnitBuildConfig.fireRange to explicit
+  `T | undefined` fields. The same pass added a shared
+  PROJECTILE_ABSENCE_SLOTS initializer and wired authoritative
+  and client projectile creation through it. Earlier, the 2026-05-23
   entity-component pass converted Entity's component slots (`body`,
   `unit`, `building`, `combat`, `projectile`, etc.) to explicit
   `T | null` fields with a shared null-slot initializer, and converted
@@ -146,8 +152,6 @@ Evidence:
   and `Buildable.healthBuildFraction` to an always-present number.
   The 2026-05-24 combat helper pass converted Projectile.hitEntities
   and Projectile.hasLeftSource to always-present runtime fields.
-  The remaining declarations are mostly turret/projectile runtime
-  detail fields and config-like shape variance.
 - 0 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
@@ -205,9 +209,9 @@ Evidence:
   terrainHeightGenerator, terrainTileMap, and
   stateSerializerEntityDelta to explicit `T | undefined` / explicit
   guards. The 2026-05-24 network type pass converted the remaining
-  declarations in src/types/network.ts. Remaining optional declarations
-  are now concentrated in src/types/sim.ts.
-- Optional chaining remains at 319 in the in-scope tree after the
+  declarations in src/types/network.ts, and the 2026-05-24 sim type
+  pass converted the remaining declarations in src/types/sim.ts.
+- Optional chaining remains at 304 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -239,20 +243,24 @@ Evidence:
   reads from projectileConfigs, factoryProduction,
   NetworkSnapshotTransport, unitSnapshotFields, stateSerializerEntities,
   stateSerializerEntityDelta, terrainTileMap, MirrorPanelHit,
-  mirrorTargetPriority, and the touched ClientViewState paths.
+  mirrorTargetPriority, and the touched ClientViewState paths. The
+  2026-05-24 sim type / small optional-chain pass removed optional
+  reads from NetworkLobbyRoster, ClientSelectionState, buildGrid,
+  cloakDetection, and the touched factory-shell path in
+  energyDistribution.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."
-The remaining runtime/detail shapes in src/types/sim.ts still allow
-implicit absence, and optional chaining in the in-scope tree still
-hides whether a field was intentionally cleared or merely omitted.
+Optional chaining in the in-scope tree still hides whether a field was
+intentionally cleared or merely omitted.
 
 Fix direction:
 Address as child PRs, file by file. The migration is intentionally
 gradual ("every file we touch should leave with fewer optional
-properties..."). The next optional-property pass should focus on
-src/types/sim.ts; optional chaining should continue in small touched-file
-passes.
+properties..."). Optional chaining should continue in small touched-file
+passes. Optional-property declarations are currently clear across
+src/types/sim.ts, src/types/network.ts, src/game/network/*,
+src/game/sim/*, and src/game/server/*.
 
 CONFIG IS DATA, NOT CODE (BLUEPRINT-01 family)
 

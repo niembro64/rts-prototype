@@ -51,6 +51,9 @@ export function createProjectileConfigFromShot(
     sourceTurretId,
     range: 0,
     cooldown: 0,
+    barrel: undefined,
+    radius: undefined,
+    turretIndex: undefined,
   };
 }
 

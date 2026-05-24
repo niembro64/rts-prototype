@@ -38,7 +38,7 @@ export class ClientSelectionState {
   select(id: EntityId): void {
     this.selectedIds.add(id);
     const entity = this.entities.get(id);
-    if (!entity?.selectable) return;
+    if (entity === undefined || entity.selectable === null) return;
     if (!entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
     entity.selectable.selected = true;
     this.markPredictionActive(entity);
@@ -47,7 +47,7 @@ export class ClientSelectionState {
   deselect(id: EntityId): void {
     this.selectedIds.delete(id);
     const entity = this.entities.get(id);
-    if (!entity?.selectable) return;
+    if (entity === undefined || entity.selectable === null) return;
     if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
     entity.selectable.selected = false;
   }
@@ -55,7 +55,7 @@ export class ClientSelectionState {
   clear(): void {
     for (const id of this.selectedIds) {
       const entity = this.entities.get(id);
-      if (!entity?.selectable) continue;
+      if (entity === undefined || entity.selectable === null) continue;
       if (entity.selectable.selected && entity.unit) this.dirtyUnitRenderIds.add(id);
       entity.selectable.selected = false;
     }

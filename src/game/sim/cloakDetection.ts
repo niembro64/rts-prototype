@@ -32,7 +32,7 @@ export function isEntityOnlineForSensors(entity: Entity): boolean {
 }
 
 export function isEntityCloaked(entity: Entity): boolean {
-  return entity.cloak?.enabled === true && isEntityOnlineForSensors(entity);
+  return entity.cloak !== null && entity.cloak.enabled && isEntityOnlineForSensors(entity);
 }
 
 export function canEntityProvideDetection(entity: Entity): boolean {
@@ -41,7 +41,7 @@ export function canEntityProvideDetection(entity: Entity): boolean {
 
 export function getEntityDetectorRadius(entity: Entity): number {
   if (!isEntityOnlineForSensors(entity)) return 0;
-  const radius = entity.detector?.radius ?? 0;
+  const radius = entity.detector !== null ? entity.detector.radius : 0;
   return Number.isFinite(radius) && radius > 0 ? radius : 0;
 }
 
@@ -65,7 +65,7 @@ export function isEntityDetectedByPlayer(
   playerId: PlayerId,
   padding = getEntityDetectionPadding(target),
 ): boolean {
-  if (target.ownership?.playerId === playerId) return true;
+  if (target.ownership !== null && target.ownership.playerId === playerId) return true;
   // FOW-OPT-19: detector-equipped entities are a tiny minority of a
   // player's roster, so iterate just the cached slice instead of
   // scanning every owned unit + building to filter for the rare

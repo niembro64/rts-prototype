@@ -136,11 +136,13 @@ export class NetworkLobbyRoster {
 
   buildLocalPlayerInfo(localPlayerId: PlayerId): LobbyPlayerInfoPayload {
     const self = this.players.get(localPlayerId);
-    const timezone = self?.timezone || getBrowserTimezone();
+    const timezone = self !== undefined && self.timezone
+      ? self.timezone
+      : getBrowserTimezone();
     return {
-      name: self?.name ?? getInitialLocalUsername(),
-      ipAddress: self?.ipAddress,
-      location: self?.location,
+      name: self !== undefined ? self.name : getInitialLocalUsername(),
+      ipAddress: self !== undefined ? self.ipAddress : undefined,
+      location: self !== undefined ? self.location : undefined,
       timezone: timezone || undefined,
       localTime: formatLocalTime(timezone),
     };
@@ -174,7 +176,8 @@ export class NetworkLobbyRoster {
   }
 
   getLocalPlayerName(localPlayerId: PlayerId): string {
-    return this.players.get(localPlayerId)?.name ?? getDefaultPlayerName(localPlayerId);
+    const player = this.players.get(localPlayerId);
+    return player !== undefined ? player.name : getDefaultPlayerName(localPlayerId);
   }
 
   toArray(): LobbyPlayer[] {

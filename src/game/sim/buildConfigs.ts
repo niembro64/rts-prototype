@@ -1,4 +1,4 @@
-import type { BuildingConfig, BuildingType } from './types';
+import type { BuildingConfig, BuildingType, UnitBuildConfig } from './types';
 import { COST_MULTIPLIER } from '../../config';
 import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_IDS } from './blueprints';
 
@@ -45,7 +45,7 @@ export function getBuildingConfig(type: BuildingType): BuildingConfig {
 
 // Helper to get unit build config (now backed by blueprints)
 // Returns a shim matching the old UnitBuildConfig shape for backward compatibility
-export function getUnitBuildConfig(unitId: string) {
+export function getUnitBuildConfig(unitId: string): UnitBuildConfig | undefined {
   const bp = getUnitBlueprint(unitId);
   if (!bp) return undefined;
   return {
@@ -60,6 +60,7 @@ export function getUnitBuildConfig(unitId: string) {
     locomotion: getUnitLocomotion(unitId),
     mass: bp.mass,
     hp: bp.hp,
+    fireRange: undefined,
   };
 }
 
