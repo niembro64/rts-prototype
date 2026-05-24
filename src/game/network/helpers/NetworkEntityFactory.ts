@@ -290,13 +290,13 @@ function createUnitFromNetwork(
         dgunEnergyCost: unitBlueprint.dgun.energyCost,
       };
     }
-    if (unitBlueprint?.builder) {
-      entity.builder = {
-        buildRange: unitBlueprint.builder.buildRange,
-        constructionRate: unitBlueprint.builder.constructionRate,
-        currentBuildTarget: u.buildTargetId ?? NO_ENTITY_ID,
-      };
-    }
+  }
+  if (unitBlueprint?.builder) {
+    entity.builder = {
+      buildRange: unitBlueprint.builder.buildRange,
+      constructionRate: unitBlueprint.builder.constructionRate,
+      currentBuildTarget: u?.buildTargetId ?? NO_ENTITY_ID,
+    };
   }
 
   // Shell construction state — `required` is re-derived from the
