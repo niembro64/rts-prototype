@@ -220,6 +220,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     if (builder === null) continue;
     const targetId = builder.currentBuildTarget;
     if (targetId === NO_ENTITY_ID) continue;
+    const target = world.getEntity(targetId);
+    if (!target || !isBuildTargetInRange(entity, target)) continue;
     buildTargets.add(targetId);
     const rate = builder.constructionRate;
     constructionRateByTarget.set(targetId, (constructionRateByTarget.get(targetId) ?? 0) + rate);

@@ -14,7 +14,8 @@
     "hippo",
     "mosquito",
     "dragonfly",
-    "eagle"
+    "eagle",
+    "constructionDrone"
   ],
   "defaultDisabledDemoUnitIds": []
 }

@@ -800,6 +800,71 @@
     "fightStopEngagedRatio": 0.5,
     "locomotionId": "dragonflyHovercraft"
   },
+  "constructionDrone": {
+    "id": "constructionDrone",
+    "name": "Construction Drone",
+    "shortName": "CDR",
+    "hp": 120,
+    "radius": {
+      "body": 11,
+      "shot": 10,
+      "push": 14
+    },
+    "bodyCenterHeight": 3.3,
+    "mass": 45,
+    "cost": {
+      "energy": 180,
+      "metal": 160
+    },
+    "turrets": [
+      {
+        "turretId": "constructionTurret",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "visualVariant": "small"
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": 0,
+          "xFrac": 0.55,
+          "yFrac": 0.22,
+          "zFrac": 0.45
+        },
+        {
+          "kind": "cylinder",
+          "offsetForward": -0.55,
+          "lengthFrac": 0.8,
+          "radiusFrac": 0.12,
+          "centerYFrac": 0.22,
+          "pitchRad": 0
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": {
+      "buildRange": 170,
+      "constructionRate": 35
+    },
+    "dgun": null,
+    "cloak": null,
+    "detector": null,
+    "deathSound": {
+      "$audio": "event.death.constructionDrone"
+    },
+    "fightStopEngagedRatio": null,
+    "locomotionId": "constructionDrone"
+  },
   "eagle": {
     "id": "eagle",
     "name": "Eagle",

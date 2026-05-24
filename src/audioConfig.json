@@ -57,7 +57,8 @@
       "loris": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.3 },
       "mosquito": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.35 },
       "dragonfly": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.25 },
-      "eagle": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.25 }
+      "eagle": { "synth": "explosion", "volume": 1.0, "playSpeed": 0.25 },
+      "constructionDrone": { "synth": "explosion", "volume": 0.8, "playSpeed": 0.35 }
     }
   },
 

@@ -1,8 +1,8 @@
 // BuildGhost3D — translucent footprint preview for build mode in the
 // 3D scene. Ground-cell colors describe only placement/resource facts:
 // green = buildable flat ground, red = blocked/unbuildable ground,
-// blue = required resource/special build cells. Commander range is
-// shown separately because the commander can walk to the site.
+// blue = required resource/special build cells. Builder range is
+// shown separately because the builder can move to the site.
 //
 // Ownership: Input3DManager drives it (call setTarget on mouse move,
 // hide on mode exit). The meshes are parented to the world group so
@@ -19,7 +19,6 @@ import {
   type BuildPlacementDiagnostics,
   getSnappedBuildPosition,
 } from '../input/helpers';
-import { getUnitGroundZ } from '../sim/unitGeometry';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
 const RESOURCE_CELL_Y = 1.1;
@@ -40,11 +39,11 @@ export class BuildGhost3D {
 
   /** Flat footprint rectangle (scaled to the current building type). */
   private footprint: THREE.Mesh;
-  /** Commander build-range circle (drawn as a thin ring). */
+  /** Builder build-range circle (drawn as a thin ring). */
   private rangeRing: THREE.Mesh;
   /** Radar footprint preview shown while placing radar towers. */
   private radarRangeRing: THREE.Mesh;
-  /** Warning line from commander to ghost, shown only when out of range. */
+  /** Warning line from builder to ghost, shown only when out of range. */
   private rangeLine: THREE.Line;
   private rangeLineGeom: THREE.BufferGeometry;
   /** Per-footprint-cell diagnostic tiles. */
@@ -155,7 +154,7 @@ export class BuildGhost3D {
     this.footprint.renderOrder = 20;
     this.group.add(this.footprint);
 
-    // Thin ring at commander build-range radius. Inner radius set to
+    // Thin ring at builder build-range radius. Inner radius set to
     // just under outer so it reads as a stroke rather than a filled
     // disc.
     this.ringMat = new THREE.MeshBasicMaterial({
@@ -206,17 +205,17 @@ export class BuildGhost3D {
   }
 
   /** Update the ghost position + styling. Sim y maps to world z on
-   *  the ground plane. Pass a freshly selected commander so the
+   *  the ground plane. Pass a freshly selected builder so the
    *  range circle + in-range check reflect the current selection.
    *  `canPlace` comes from the client-side placement validator
-   *  (terrain/resource/overlap/map bounds). Commander range is drawn
+   *  (terrain/resource/overlap/map bounds). Builder range is drawn
    *  with the range ring/line only; it never changes the ground-cell
    *  diagnostic colors. */
   setTarget(
     buildingType: BuildingType,
     worldX: number,
     worldY: number,
-    commander: Entity | null,
+    builder: Entity | null,
     canPlace: boolean,
     diagnostics?: BuildPlacementDiagnostics,
   ): void {
@@ -224,10 +223,10 @@ export class BuildGhost3D {
     const config = getBuildingConfig(buildingType);
     const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
     const depth = config.gridHeight * BUILD_GRID_CELL_SIZE;
-    const commanderKey = commander?.builder
-      ? `${commander.id}:${commander.transform.x}:${commander.transform.y}:${commander.transform.z}:${commander.builder.buildRange}`
+    const builderKey = builder?.builder
+      ? `${builder.id}:${builder.transform.x}:${builder.transform.y}:${builder.transform.z}:${builder.builder.buildRange}`
       : 'none';
-    const targetKey = `${buildingType}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${commanderKey}`;
+    const targetKey = `${buildingType}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${builderKey}`;
     if (
       this.group.visible &&
       targetKey === this.lastTargetKey &&
@@ -239,10 +238,10 @@ export class BuildGhost3D {
     this.lastDiagnostics = diagnostics;
 
     let inRange = true;
-    if (commander?.builder) {
-      const dx = snapped.x - commander.transform.x;
-      const dy = snapped.y - commander.transform.y;
-      inRange = Math.hypot(dx, dy) <= commander.builder.buildRange;
+    if (builder?.builder) {
+      const dx = snapped.x - builder.transform.x;
+      const dy = snapped.y - builder.transform.y;
+      inRange = Math.hypot(dx, dy) <= builder.builder.buildRange;
     }
 
     const okVisually = canPlace;
@@ -260,19 +259,19 @@ export class BuildGhost3D {
       this.radarRangeRing.visible = false;
     }
 
-    if (commander?.builder) {
-      const commanderGroundY = getUnitGroundZ(commander);
-      const ringY = commanderGroundY + RANGE_Y;
+    if (builder?.builder) {
+      const builderGroundY = this.getGroundHeight(builder.transform.x, builder.transform.y);
+      const ringY = builderGroundY + RANGE_Y;
       this.rangeRing.visible = true;
-      this.rangeRing.position.set(commander.transform.x, ringY, commander.transform.y);
-      const r = commander.builder.buildRange;
+      this.rangeRing.position.set(builder.transform.x, ringY, builder.transform.y);
+      const r = builder.builder.buildRange;
       this.rangeRing.scale.set(r, r, 1);
 
       this.rangeLine.visible = !inRange;
       if (!inRange) {
-        this._linePositions[0] = commander.transform.x;
+        this._linePositions[0] = builder.transform.x;
         this._linePositions[1] = ringY;
-        this._linePositions[2] = commander.transform.y;
+        this._linePositions[2] = builder.transform.y;
         this._linePositions[3] = snapped.x;
         this._linePositions[4] = targetGroundY + RANGE_Y;
         this._linePositions[5] = snapped.y;

@@ -378,6 +378,26 @@
       "tailFanOffsetX": -4.7
     }
   },
+  "constructionDrone": {
+    "type": "hover",
+    "physics": {
+      "driveForce": 35,
+      "traction": 1,
+      "maxSlopeDeg": 89
+    },
+    "config": {
+      "hoverHeight": 180,
+      "hoverHeightRandomizationAmount": 0.25,
+      "hoverHeightEMA": 0.96,
+      "fanDistX": 0.58,
+      "fanDistY": 0.58,
+      "fanLayout": "quad",
+      "fanRadius": 0.26,
+      "fanRingTubeRadius": 0.035,
+      "fanOutwardAngleDeg": 12,
+      "fanSpinRadPerSec": -9
+    }
+  },
   "eagleFlying": {
     "type": "flying",
     "physics": {

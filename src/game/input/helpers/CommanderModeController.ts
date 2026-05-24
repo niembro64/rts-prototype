@@ -1,12 +1,13 @@
-// CommanderModeController — state machine for the two commander-driven
-// modes (build + D-gun), plus the command builders each one needs.
+// CommanderModeController — state machine for build mode and the
+// commander-only D-gun mode, plus the command builders each one needs.
 // No DOM events, no graphics: Input3DManager owns one of these and its
 // input-specific code (hotkeys, ghost visuals, click dispatch) calls
 // through it.
 //
 // Mutual exclusion: entering one mode automatically exits the other.
 // Callers only check preconditions they care about (usually "is a
-// commander selected") before calling `enter*`.
+// builder selected" for build or "is a commander selected" for D-gun)
+// before calling `enter*`.
 
 import type { Entity, BuildingType } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
@@ -97,7 +98,7 @@ export class CommanderModeController {
    *  building type at the grid-snapped position. Returns null if
    *  no building type is active. */
   buildStartBuildCommand(
-    commander: Entity,
+    builder: Entity,
     worldX: number,
     worldY: number,
     tick: number,
@@ -108,7 +109,7 @@ export class CommanderModeController {
     return {
       type: 'startBuild',
       tick,
-      builderId: commander.id,
+      builderId: builder.id,
       buildingType: this._buildType,
       gridX: snapped.gridX,
       gridY: snapped.gridY,

@@ -406,7 +406,7 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
 
 function executeStartBuildCommand(ctx: CommandContext, command: StartBuildCommand): void {
   const builder = ctx.world.getEntity(command.builderId);
-  if (!builder?.builder || !builder.ownership || !builder.commander || !builder.unit) return;
+  if (!builder?.builder || !builder.ownership || !builder.unit) return;
 
   const playerId = builder.ownership.playerId;
 

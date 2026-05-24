@@ -117,7 +117,7 @@ export class Input3DManager {
   public onWaypointModeChange?: (mode: WaypointType) => void;
   public onControlGroupsChange?: (groups: readonly (readonly EntityId[])[]) => void;
 
-  // Shared commander-mode state machine (build + D-gun). The 2D
+  // Shared build / commander-special state machine. The 2D
   // BuildingPlacementController owns one of these too so the two
   // renderers can't drift on mode entry/exit semantics. Click
   // dispatch while a mode is active is handled below in
@@ -330,8 +330,7 @@ export class Input3DManager {
 
   /** Enter build mode with a building type. Called from the UI
    *  (scene.startBuildMode forwards to here). Next left-click on the
-   *  ground will issue a startBuild command for the selected
-   *  commander. */
+   *  ground will issue a startBuild command for the selected builder. */
   setBuildMode(type: BuildingType): void {
     this.exitRepairAreaMode();
     this.exitAttackAreaMode();
@@ -611,9 +610,19 @@ export class Input3DManager {
     return this.entitySource.getSelectedUnits().some(isCommander);
   }
 
+  private hasSelectedBuilder(): boolean {
+    return this.entitySource.getSelectedUnits().some((unit) => unit.builder !== null);
+  }
+
   private getSelectedCommander(): Entity | null {
     return (
       this.entitySource.getSelectedUnits().find(isCommander) ?? null
+    );
+  }
+
+  private getSelectedBuilder(): Entity | null {
+    return (
+      this.entitySource.getSelectedUnits().find((unit) => unit.builder !== null) ?? null
     );
   }
 
@@ -711,6 +720,9 @@ export class Input3DManager {
       this.context.activePlayerId,
     );
     if (changed) this.setWaypointMode('move');
+    if (this.mode.isInBuildMode && !this.hasSelectedBuilder()) {
+      this.mode.exitBuildMode();
+    }
     if (this.repairAreaMode && !this.hasSelectedCommander()) {
       this.exitRepairAreaMode();
     }
@@ -761,7 +773,7 @@ export class Input3DManager {
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
       const buildingType = getBuildModeBuildingTypeByIndex(numericBuildHotkey);
-      if (buildingType && (this.mode.isInBuildMode || this.hasSelectedCommander())) {
+      if (buildingType && (this.mode.isInBuildMode || this.hasSelectedBuilder())) {
         this.exitRepairAreaMode();
         this.exitAttackAreaMode();
         this.exitAttackGroundMode();
@@ -818,7 +830,7 @@ export class Input3DManager {
         this.enqueueScanAtCursor();
         break;
       case 'b':
-        if (!this.hasSelectedCommander()) break;
+        if (!this.hasSelectedBuilder()) break;
         this.exitRepairAreaMode();
         this.exitAttackAreaMode();
         this.exitAttackGroundMode();
@@ -1137,13 +1149,13 @@ export class Input3DManager {
     }
   }
 
-  /** Fire a startBuild command for the selected commander at the
+  /** Fire a startBuild command for the selected builder at the
    *  snapped grid position under the cursor. Stays in build mode if
    *  shift is held (lets the user place multiple of the same type). */
   private handleBuildClick(e: MouseEvent): void {
-    const commander = this.getSelectedCommander();
-    if (!commander) {
-      // Commander got deselected mid-placement — drop build mode.
+    const builder = this.getSelectedBuilder();
+    if (!builder) {
+      // Builder got deselected mid-placement — drop build mode.
       this.mode.exitBuildMode();
       return;
     }
@@ -1156,7 +1168,7 @@ export class Input3DManager {
     if (this.buildGhost) {
       this.buildGhost.setTarget(
         buildType, world.x, world.y,
-        commander,
+        builder,
         diagnostics.canPlace,
         diagnostics,
       );
@@ -1170,7 +1182,7 @@ export class Input3DManager {
       return;
     }
     const cmd = this.mode.buildStartBuildCommand(
-      commander, world.x, world.y,
+      builder, world.x, world.y,
       this.context.getTick(), e.shiftKey,
     );
     if (!cmd) return;
@@ -1425,7 +1437,7 @@ export class Input3DManager {
         if (this.buildGhost) {
           this.buildGhost.setTarget(
             buildType, world.x, world.y,
-            this.getSelectedCommander(),
+            this.getSelectedBuilder(),
             this.buildGhostCanPlace,
             diagnostics,
           );
