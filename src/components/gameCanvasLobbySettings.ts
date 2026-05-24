@@ -7,6 +7,7 @@ import {
   normalizeCenterMagnitude,
   normalizeConverterTax,
   normalizeDividersMagnitude,
+  normalizeMetalDepositStep,
   normalizeTerrainDTerrain,
   normalizeTerrainPlateauEnabled,
   saveCenterMagnitude,
@@ -14,6 +15,7 @@ import {
   saveDividersMagnitude,
   saveMapLandDimensions,
   saveFogOfWarEnabled,
+  saveMetalDepositStep,
   saveTerrainDTerrain,
   saveTerrainMapShape,
   saveTerrainPlateauEnabled,
@@ -39,6 +41,7 @@ export type GameCanvasLobbySettings = {
   applyTerrainMapShape(shape: TerrainMapShape, broadcast?: boolean): void;
   applyTerrainPlateauEnabled(enabled: boolean, broadcast?: boolean): void;
   applyTerrainDTerrain(value: number, broadcast?: boolean): void;
+  applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyMapLandDimensions(
     dimensions: MapLandCellDimensions,
     broadcast?: boolean,
@@ -61,6 +64,7 @@ export type GameCanvasLobbySettingsOptions = {
   terrainMapShape: Ref<TerrainMapShape>;
   terrainPlateauEnabled: Ref<boolean>;
   terrainDTerrain: Ref<number>;
+  metalDepositStep: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -88,6 +92,7 @@ export function useGameCanvasLobbySettings({
   terrainMapShape,
   terrainPlateauEnabled,
   terrainDTerrain,
+  metalDepositStep,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -107,6 +112,7 @@ export function useGameCanvasLobbySettings({
       centerMagnitude: centerMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
+      metalDepositStep: metalDepositStep.value,
     });
   }
 
@@ -117,6 +123,7 @@ export function useGameCanvasLobbySettings({
       terrainMapShape: terrainMapShape.value,
       terrainPlateauEnabled: terrainPlateauEnabled.value,
       terrainDTerrain: terrainDTerrain.value,
+      metalDepositStep: metalDepositStep.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
       fogOfWarEnabled: loadStoredFogOfWarEnabled('real'),
@@ -181,6 +188,16 @@ export function useGameCanvasLobbySettings({
     if (broadcast) broadcastLobbySettingsIfHost();
   }
 
+  function applyMetalDepositStep(value: number, broadcast = true): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizeMetalDepositStep(value);
+    metalDepositStep.value = normalized;
+    saveMetalDepositStep(normalized, mode);
+    applyCurrentTerrainRuntimeConfig();
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
   function applyMapLandDimensions(
     dimensions: MapLandCellDimensions,
     broadcast = true,
@@ -209,6 +226,10 @@ export function useGameCanvasLobbySettings({
       settings.terrainDTerrain === undefined
         ? terrainDTerrain.value
         : normalizeTerrainDTerrain(settings.terrainDTerrain);
+    const nextMetalDepositStep =
+      settings.metalDepositStep === undefined
+        ? metalDepositStep.value
+        : normalizeMetalDepositStep(settings.metalDepositStep);
     const fogOfWarChanged =
       settings.fogOfWarEnabled !== undefined &&
       settings.fogOfWarEnabled !== loadStoredFogOfWarEnabled('real');
@@ -218,6 +239,7 @@ export function useGameCanvasLobbySettings({
       settings.terrainMapShape !== terrainMapShape.value ||
       nextPlateauEnabled !== terrainPlateauEnabled.value ||
       nextDTerrain !== terrainDTerrain.value ||
+      nextMetalDepositStep !== metalDepositStep.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
       settings.mapLengthLandCells !== mapLengthLandCells.value ||
       fogOfWarChanged;
@@ -227,6 +249,7 @@ export function useGameCanvasLobbySettings({
     terrainMapShape.value = settings.terrainMapShape;
     terrainPlateauEnabled.value = nextPlateauEnabled;
     terrainDTerrain.value = nextDTerrain;
+    metalDepositStep.value = nextMetalDepositStep;
     mapWidthLandCells.value = settings.mapWidthLandCells;
     mapLengthLandCells.value = settings.mapLengthLandCells;
     saveCenterMagnitude(nextCenterMagnitude, 'real');
@@ -234,6 +257,7 @@ export function useGameCanvasLobbySettings({
     saveTerrainMapShape(settings.terrainMapShape, 'real');
     saveTerrainPlateauEnabled(nextPlateauEnabled, 'real');
     saveTerrainDTerrain(nextDTerrain, 'real');
+    saveMetalDepositStep(nextMetalDepositStep, 'real');
     saveMapLandDimensions(
       {
         widthLandCells: settings.mapWidthLandCells,
@@ -268,6 +292,7 @@ export function useGameCanvasLobbySettings({
     const mapShapeDefault = BATTLE_CONFIG.mapShape.default;
     const plateauEnabledDefault = BATTLE_CONFIG.plateau.enabled.default;
     const dTerrainDefault = BATTLE_CONFIG.terrainDTerrain.default;
+    const metalDepositStepDefault = BATTLE_CONFIG.metalDepositStep.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
     if (
       centerMagnitude.value === centerMagnitudeDefault &&
@@ -275,6 +300,7 @@ export function useGameCanvasLobbySettings({
       terrainMapShape.value === mapShapeDefault &&
       terrainPlateauEnabled.value === plateauEnabledDefault &&
       terrainDTerrain.value === dTerrainDefault &&
+      metalDepositStep.value === metalDepositStepDefault &&
       sameMapLandDimensions(
         {
           widthLandCells: mapWidthLandCells.value,
@@ -291,6 +317,7 @@ export function useGameCanvasLobbySettings({
     terrainMapShape.value = mapShapeDefault;
     terrainPlateauEnabled.value = plateauEnabledDefault;
     terrainDTerrain.value = dTerrainDefault;
+    metalDepositStep.value = metalDepositStepDefault;
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
     mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
     saveCenterMagnitude(centerMagnitudeDefault, mode);
@@ -298,6 +325,7 @@ export function useGameCanvasLobbySettings({
     saveTerrainMapShape(mapShapeDefault, mode);
     saveTerrainPlateauEnabled(plateauEnabledDefault, mode);
     saveTerrainDTerrain(dTerrainDefault, mode);
+    saveMetalDepositStep(metalDepositStepDefault, mode);
     saveMapLandDimensions(mapDimensionsDefault, mode);
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -311,6 +339,7 @@ export function useGameCanvasLobbySettings({
     applyTerrainMapShape,
     applyTerrainPlateauEnabled,
     applyTerrainDTerrain,
+    applyMetalDepositStep,
     applyMapLandDimensions,
     applyLobbySettingsFromHost,
     resetTerrainDefaults,

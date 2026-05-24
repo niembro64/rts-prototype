@@ -3,6 +3,7 @@ import {
   loadStoredCenterMagnitude,
   loadStoredDividersMagnitude,
   loadStoredMapLandDimensions,
+  loadStoredMetalDepositStep,
   loadStoredTerrainDTerrain,
   loadStoredTerrainPlateauEnabled,
   loadStoredTerrainMapShape,
@@ -25,6 +26,7 @@ export type GameCanvasLobbyPreviewOptions = {
   terrainMapShape: Ref<TerrainMapShape>;
   terrainPlateauEnabled: Ref<boolean>;
   terrainDTerrain: Ref<number>;
+  metalDepositStep: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -45,6 +47,7 @@ export function useGameCanvasLobbyPreview({
   terrainMapShape,
   terrainPlateauEnabled,
   terrainDTerrain,
+  metalDepositStep,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -67,6 +70,7 @@ export function useGameCanvasLobbyPreview({
     terrainMapShape.value = loadStoredTerrainMapShape(mode);
     terrainPlateauEnabled.value = loadStoredTerrainPlateauEnabled(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
+    metalDepositStep.value = loadStoredMetalDepositStep(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;
     mapLengthLandCells.value = mapDimensions.lengthLandCells;

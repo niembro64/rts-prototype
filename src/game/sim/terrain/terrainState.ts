@@ -6,6 +6,7 @@ import { getTerrainDividerTeamCount } from '../playerLayout';
 import { getSimWasm } from '../../sim-wasm/init';
 import {
   applyTerrainRuntimeConfig,
+  METAL_DEPOSIT_STEP,
   TERRAIN_CENTER_MAGNITUDE,
   TERRAIN_D_TERRAIN,
   TERRAIN_DIVIDERS_MAGNITUDE,
@@ -81,6 +82,7 @@ export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    metalDepositStep: METAL_DEPOSIT_STEP,
   };
 }
 
@@ -99,6 +101,7 @@ export function setTerrainCenterMagnitude(value: number): void {
     centerMagnitude: value,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    metalDepositStep: METAL_DEPOSIT_STEP,
   });
   invalidateTerrainConfig();
 }
@@ -111,6 +114,7 @@ export function setTerrainDividersMagnitude(value: number): void {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    metalDepositStep: METAL_DEPOSIT_STEP,
   });
   invalidateTerrainConfig();
 }

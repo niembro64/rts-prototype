@@ -36,6 +36,10 @@
     "default": 200,
     "options": [100, 200, 400, 800]
   },
+  "metalDepositStep": {
+    "default": 200,
+    "options": [100, 200, 400, 800]
+  },
   "converterTax": {
     "default": 0.0,
     "options": [0.0, 0.1, 0.5]
@@ -82,6 +86,8 @@
     "realTerrainPlateauEnabled": "real-battle-terrain-plateau-enabled",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
+    "demoMetalDepositStep": "demo-battle-metal-deposit-step",
+    "realMetalDepositStep": "real-battle-metal-deposit-step",
     "demoConverterTax": "demo-battle-converter-tax",
     "realConverterTax": "real-battle-converter-tax",
     "demoMapLandCells": "demo-battle-map-land-cells",

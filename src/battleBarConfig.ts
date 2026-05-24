@@ -80,6 +80,10 @@ export const BATTLE_CONFIG = {
     default: battleBarConfig.terrainDTerrain.default,
     options: battleBarConfig.terrainDTerrain.options as readonly number[],
   },
+  metalDepositStep: {
+    default: battleBarConfig.metalDepositStep.default,
+    options: battleBarConfig.metalDepositStep.options as readonly number[],
+  },
   converterTax: {
     default: battleBarConfig.converterTax.default,
     options: battleBarConfig.converterTax.options as readonly number[],
@@ -136,6 +140,8 @@ const STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED = sk.demoTerrainPlateauEnabled;
 const STORAGE_REAL_TERRAIN_PLATEAU_ENABLED = sk.realTerrainPlateauEnabled;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
+const STORAGE_DEMO_METAL_DEPOSIT_STEP = sk.demoMetalDepositStep;
+const STORAGE_REAL_METAL_DEPOSIT_STEP = sk.realMetalDepositStep;
 const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
 const STORAGE_REAL_CONVERTER_TAX = sk.realConverterTax;
 const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
@@ -280,7 +286,10 @@ export type BattleTerrainRuntimeConfig = {
   plateauEnabled: boolean;
   centerMagnitude: number;
   dividersMagnitude: number;
+  /** Plateau lattice step in world units. */
   terrainDTerrain: number;
+  /** Metal-extractor pad altitude step in world units. */
+  metalDepositStep: number;
 };
 
 export function getDefaultCap(mode: BattleMode): number {
@@ -463,6 +472,10 @@ export function normalizeDividersMagnitude(value: number): number {
 
 export function normalizeTerrainDTerrain(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.terrainDTerrain);
+}
+
+export function normalizeMetalDepositStep(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.metalDepositStep);
 }
 
 /** Match against the configured options with a small epsilon so float
@@ -686,6 +699,24 @@ export function saveTerrainDTerrain(value: number, mode: BattleMode): void {
   );
 }
 
+export function loadStoredMetalDepositStep(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_METAL_DEPOSIT_STEP,
+    STORAGE_DEMO_METAL_DEPOSIT_STEP,
+    BATTLE_CONFIG.metalDepositStep,
+  );
+}
+
+export function saveMetalDepositStep(value: number, mode: BattleMode): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_METAL_DEPOSIT_STEP
+      : STORAGE_DEMO_METAL_DEPOSIT_STEP,
+    String(normalizeMetalDepositStep(value)),
+  );
+}
+
 export function loadStoredTerrainRuntimeConfig(
   mode: BattleMode,
 ): BattleTerrainRuntimeConfig {
@@ -694,6 +725,7 @@ export function loadStoredTerrainRuntimeConfig(
     centerMagnitude: loadStoredCenterMagnitude(mode),
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
+    metalDepositStep: loadStoredMetalDepositStep(mode),
   };
 }
 

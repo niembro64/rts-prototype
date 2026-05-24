@@ -31,6 +31,12 @@ export type BattleBarConfig = {
     readonly enabled: LabeledOptionsConfig<boolean>;
   };
   readonly terrainDTerrain: OptionsConfig<number>;
+  /** Vertical step (world units) between metal-extractor pad altitude
+   *  levels — a deposit ring's `dTerrainLevels` is multiplied by this
+   *  to get its pad `height`. Independent from `terrainDTerrain` so
+   *  the plateau lattice and the deposit lattice can use different
+   *  step sizes. */
+  readonly metalDepositStep: OptionsConfig<number>;
   /** Tax (fraction in [0, 1)) applied to a resource converter's
    *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of
    *  the source amount on every conversion. */

@@ -88,6 +88,8 @@ export class ServerBootstrap {
       dividersMagnitude,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+      metalDepositStep:
+        config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);

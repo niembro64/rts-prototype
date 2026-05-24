@@ -149,14 +149,27 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
-        <BarLabel>D-TERRAIN:</BarLabel>
+        <BarLabel>D-PLATEAU:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in BATTLE_CONFIG.terrainDTerrain.options"
             :key="opt"
             :active="model.terrainDTerrain === opt"
-            :title="`Set terrain plateau step to ${opt}`"
+            :title="`Vertical spacing between plateau levels: ${opt}`"
             @click="model.applyTerrainDTerrain(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel>D-DEPOSIT:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.metalDepositStep.options"
+            :key="opt"
+            :active="model.metalDepositStep === opt"
+            :title="`Vertical step between metal-extractor pad altitudes: ${opt}`"
+            @click="model.applyMetalDepositStep(opt)"
           >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

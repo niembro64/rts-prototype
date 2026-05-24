@@ -29,6 +29,7 @@ import {
   loadStoredDividersMagnitude,
   loadStoredGrid,
   loadStoredTerrainDTerrain,
+  loadStoredMetalDepositStep,
   loadStoredTerrainMapShape,
   loadStoredTerrainPlateauEnabled,
   loadStoredMapLandDimensions,
@@ -230,6 +231,7 @@ const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
 const terrainPlateauEnabled = ref<boolean>(loadStoredTerrainPlateauEnabled('demo'));
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
+const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
@@ -371,6 +373,7 @@ useGameCanvasLobbyPreview({
   terrainMapShape,
   terrainPlateauEnabled,
   terrainDTerrain,
+  metalDepositStep,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -492,6 +495,7 @@ const {
   applyTerrainMapShape,
   applyTerrainPlateauEnabled,
   applyTerrainDTerrain,
+  applyMetalDepositStep,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
   resetTerrainDefaults,
@@ -506,6 +510,7 @@ const {
   terrainMapShape,
   terrainPlateauEnabled,
   terrainDTerrain,
+  metalDepositStep,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -672,6 +677,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   terrainMapShape: terrainMapShape.value,
   terrainPlateauEnabled: terrainPlateauEnabled.value,
   terrainDTerrain: terrainDTerrain.value,
+  metalDepositStep: metalDepositStep.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
@@ -686,6 +692,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyTerrainMapShape,
   applyTerrainPlateauEnabled,
   applyTerrainDTerrain,
+  applyMetalDepositStep,
   setForceFieldsObstructSight,
   setFogOfWarEnabled,
   setConverterTax,
@@ -710,6 +717,7 @@ watchEffect(() => {
   m.terrainMapShape = terrainMapShape.value;
   m.terrainPlateauEnabled = terrainPlateauEnabled.value;
   m.terrainDTerrain = terrainDTerrain.value;
+  m.metalDepositStep = metalDepositStep.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
@@ -1073,6 +1081,7 @@ watchEffect(() => {
       :terrain-map-shape="terrainMapShape"
       :terrain-plateau-enabled="terrainPlateauEnabled"
       :terrain-d-terrain="terrainDTerrain"
+      :metal-deposit-step="metalDepositStep"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
       :unit-types="demoUnitTypes"
@@ -1093,6 +1102,7 @@ watchEffect(() => {
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
       @set-terrain-plateau-enabled="(e) => applyTerrainPlateauEnabled(e)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
+      @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
       @toggle-unit="(ut) => toggleDemoUnitType(ut)"
       @toggle-all-units="toggleAllDemoUnits"

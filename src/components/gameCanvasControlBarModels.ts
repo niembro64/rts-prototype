@@ -38,6 +38,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly terrainMapShape: TerrainMapShape;
   readonly terrainPlateauEnabled: boolean;
   readonly terrainDTerrain: number;
+  readonly metalDepositStep: number;
   readonly displayUnitCount: number;
   readonly currentForceFieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
@@ -52,6 +53,7 @@ export type GameCanvasBattleControlBarModel = {
   applyTerrainMapShape(shape: TerrainMapShape): void;
   applyTerrainPlateauEnabled(enabled: boolean): void;
   applyTerrainDTerrain(value: number): void;
+  applyMetalDepositStep(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setConverterTax(tax: number): void;

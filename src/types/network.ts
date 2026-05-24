@@ -255,7 +255,10 @@ export type LobbySettings = {
   dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
   terrainPlateauEnabled?: boolean;
+  /** Plateau lattice step (world units). */
   terrainDTerrain?: number;
+  /** Metal-extractor pad altitude step (world units). */
+  metalDepositStep?: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   fogOfWarEnabled?: boolean;

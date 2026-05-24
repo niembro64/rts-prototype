@@ -109,7 +109,10 @@ export type GameServerConfig = {
   dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
   terrainPlateauEnabled?: boolean;
+  /** Plateau lattice step (world units). */
   terrainDTerrain?: number;
+  /** Metal-extractor pad altitude step (world units). */
+  metalDepositStep?: number;
   /** Map width in canonical LAND_CELL_SIZE cells. */
   mapWidthLandCells?: number;
   /** Map length/height in canonical LAND_CELL_SIZE cells. */

@@ -77,7 +77,10 @@ export type TerrainRuntimeConfig = {
   centerMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
+  /** Plateau lattice step (D-PLATEAU bar). */
   terrainDTerrain: number;
+  /** Metal-extractor pad altitude step (D-DEPOSIT bar). */
+  metalDepositStep: number;
 };
 
 /** Currently-installed signed CENTER amplitude (matches the active
@@ -101,8 +104,17 @@ export let TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
   TERRAIN_DIVIDERS_MAGNITUDE,
 );
 
-/** Vertical spacing between authored terrain plateau levels. */
+/** Vertical spacing between authored terrain plateau levels. Drives
+ *  plateau snapping in `applyTerrainPlateaus` and building-footprint
+ *  level snapping in `terrainBuildability`. */
 export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
+
+/** Vertical step (world units) between metal-extractor pad altitude
+ *  levels. A deposit ring's `dTerrainLevels` is multiplied by this
+ *  to get the pad's `height`. Independent from `TERRAIN_D_TERRAIN`
+ *  so the deposit lattice can use a different step than the plateau
+ *  lattice. */
+export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
 
 export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION =
   terrainConfig.terrainCirclePerimeterEdgeFraction;
@@ -147,6 +159,12 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
   if (TERRAIN_D_TERRAIN !== nextDTerrain) {
     TERRAIN_D_TERRAIN = nextDTerrain;
     TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
+    changed = true;
+  }
+
+  const nextDepositStep = Math.max(0, config.metalDepositStep);
+  if (METAL_DEPOSIT_STEP !== nextDepositStep) {
+    METAL_DEPOSIT_STEP = nextDepositStep;
     changed = true;
   }
 

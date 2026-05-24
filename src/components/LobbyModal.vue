@@ -31,6 +31,7 @@ const props = defineProps<{
   terrainMapShape: TerrainMapShape;
   terrainPlateauEnabled: boolean;
   terrainDTerrain: number;
+  metalDepositStep: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   unitTypes: readonly string[];
@@ -53,6 +54,7 @@ const emit = defineEmits<{
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
   (e: 'setTerrainPlateauEnabled', enabled: boolean): void;
   (e: 'setTerrainDTerrain', value: number): void;
+  (e: 'setMetalDepositStep', value: number): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
@@ -72,6 +74,7 @@ const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 const plateauEnabledOptions = BATTLE_CONFIG.plateau.enabled.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
+const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
@@ -111,6 +114,11 @@ function pickTerrainPlateauEnabled(enabled: boolean): void {
 function pickTerrainDTerrain(value: number): void {
   if (!props.isHost) return;
   emit('setTerrainDTerrain', value);
+}
+
+function pickMetalDepositStep(value: number): void {
+  if (!props.isHost) return;
+  emit('setMetalDepositStep', value);
 }
 
 function pickMapWidthLandCells(widthLandCells: number): void {
@@ -594,14 +602,27 @@ const terrainSectionVars = computed(() =>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
-                <BarLabel>D-TERRAIN:</BarLabel>
+                <BarLabel>D-PLATEAU:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
                     v-for="opt in terrainDTerrainOptions"
                     :key="opt"
                     :active="terrainDTerrain === opt"
-                    :title="isHost ? `Set terrain plateau step to ${opt}` : 'Only the host can change terrain'"
+                    :title="isHost ? `Vertical spacing between plateau levels: ${opt}` : 'Only the host can change terrain'"
                     @click="pickTerrainDTerrain(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>D-DEPOSIT:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in metalDepositStepOptions"
+                    :key="opt"
+                    :active="metalDepositStep === opt"
+                    :title="isHost ? `Vertical step between metal-extractor pad altitudes: ${opt}` : 'Only the host can change terrain'"
+                    @click="pickMetalDepositStep(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>

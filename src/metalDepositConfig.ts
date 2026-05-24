@@ -21,7 +21,7 @@
 // Resource coverage is exact and cell-based rather than radius-based.
 //
 // Each ring also carries `dTerrainLevels`. When set to an integer it
-// is a signed count of TERRAIN_D_TERRAIN steps above/below world
+// is a signed count of METAL_DEPOSIT_STEP units above/below world
 // height 0, used as-authored — the CENTER bar's sign does NOT flip
 // it. When set to `null` the pad sits at whatever height the natural
 // (post-plateau, post-boundary) heightmap happens to be at the
@@ -36,8 +36,8 @@ import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
 import {
   getTerrainHeight,
+  METAL_DEPOSIT_STEP,
   setMetalDepositFlatZones,
-  TERRAIN_D_TERRAIN,
   type TerrainFlatZone,
 } from './game/sim/Terrain';
 import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
@@ -58,7 +58,7 @@ export type DepositRing = {
    *  spoke). Scales automatically with player count: 0.25 means 30° at
    *  3 players, 18° at 5. Negative values rotate the other way. */
   sliceOffset?: number;
-  /** Signed count of TERRAIN_D_TERRAIN steps above/below world height
+  /** Signed count of METAL_DEPOSIT_STEP units above/below world height
    *  0, used as-authored regardless of the CENTER bar sign. Pass
    *  `null` to anchor the pad at the natural terrain height under the
    *  deposit's xy instead. */
@@ -114,8 +114,8 @@ export type MetalDeposit = {
   resourceHalfSize: number;
   /** Radius of the circular flat terrain pad in world units. */
   flatPadRadius: number;
-  /** Signed count of TERRAIN_D_TERRAIN steps, taken directly from the
-   *  authored ring config. `null` means the pad rides the natural
+  /** Signed count of METAL_DEPOSIT_STEP units, taken directly from
+   *  the authored ring config. `null` means the pad rides the natural
    *  terrain height under the deposit's xy (see `height`). */
   dTerrainLevels: number | null;
   /** Signed z elevation (sim units) of this deposit's flat pad. */
@@ -224,7 +224,7 @@ export function generateMetalDeposits(
   for (let i = 0; i < placements.length; i++) {
     const p = placements[i];
     if (p.dTerrainLevels === null) continue;
-    const height = p.dTerrainLevels * TERRAIN_D_TERRAIN;
+    const height = p.dTerrainLevels * METAL_DEPOSIT_STEP;
     heights[i] = height;
     explicitZones.push({
       x: p.placement.x,
