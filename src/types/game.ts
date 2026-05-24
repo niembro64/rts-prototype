@@ -108,7 +108,8 @@ export type GameServerConfig = {
   /** Signed DIVIDERS amplitude selected by the host/lobby. */
   dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
-  terrainPlateauEnabled?: boolean;
+  /** Plateau intensity 0..5 (see BattleTerrainRuntimeConfig). */
+  terrainPlateauAmount?: number;
   terrainDTerrain?: number;
   /** Map width in canonical LAND_CELL_SIZE cells. */
   mapWidthLandCells?: number;

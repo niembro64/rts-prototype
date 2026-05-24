@@ -73,7 +73,11 @@ export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE =
 export const WATER_FULLY_OPAQUE = terrainConfig.waterFullyOpaque;
 
 export type TerrainRuntimeConfig = {
-  plateauEnabled: boolean;
+  /** Plateau intensity 0..5 — 0 disables terracing entirely (perfectly
+   *  smooth surface); higher values progressively admit steeper slopes
+   *  into the terraced set, with 5 forcing every slope (including
+   *  cliffs) into discrete TERRAIN_D_TERRAIN levels. */
+  plateauAmount: number;
   /** Signed altitude of the central ripple (CENTER bar). */
   centerMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
@@ -115,23 +119,60 @@ export let TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
   terrainConfig.terrainGenerationEdgeTransitionWidthFraction;
 
+/** Slope window for a given plateau amount. Amount 0 disables
+ *  terracing entirely; the caller short-circuits on `amount <= 0`.
+ *  Higher amounts open the slope window wider so steeper terrain
+ *  starts to terrace; amount 5 forces every slope into a plateau by
+ *  pushing the gate beyond any realistic slope value (cliffs). */
+function plateauSlopeWindowForAmount(amount: number): {
+  fullTerraceMaxSlope: number;
+  noTerraceMinSlope: number;
+} {
+  if (amount >= 5) {
+    return {
+      fullTerraceMaxSlope: Number.POSITIVE_INFINITY,
+      noTerraceMinSlope: Number.POSITIVE_INFINITY,
+    };
+  }
+  // Per-level full-terrace ceilings — chosen so amount 1 only
+  // terraces nearly-flat ground and amount 4 catches most slopes
+  // short of cliffs. Amount 3 matches the prior PLATEAU: ON default
+  // (0.45 / 0.9) for visual continuity with old maps.
+  const fullByAmount = [0, 0.1, 0.25, 0.45, 0.8];
+  const fadeByAmount = [0, 0.1, 0.2, 0.45, 0.6];
+  const idx = Math.max(0, Math.min(fullByAmount.length - 1, Math.floor(amount)));
+  const full = fullByAmount[idx];
+  const fade = fadeByAmount[idx];
+  return {
+    fullTerraceMaxSlope: full,
+    noTerraceMinSlope: full + Math.max(1e-6, fade),
+  };
+}
+
+const DEFAULT_PLATEAU_SLOPE_WINDOW = plateauSlopeWindowForAmount(
+  BATTLE_CONFIG.plateau.amount.default,
+);
+
 export const TERRAIN_PLATEAU_CONFIG: {
-  enabled: boolean;
+  /** Plateau intensity 0..5; 0 disables terracing entirely. */
+  amount: number;
   readonly shelfFractionOfStep: number;
   readonly rampEdgeSharpness: number;
   readonly buildableShelfHeightTolerance: number;
   readonly slopeSampleDistance: number;
-  readonly fullTerraceMaxSlope: number;
-  readonly noTerraceMinSlope: number;
+  /** Derived from `amount` — see plateauSlopeWindowForAmount. */
+  fullTerraceMaxSlope: number;
+  /** Derived from `amount`. */
+  noTerraceMinSlope: number;
 } = {
-  enabled: BATTLE_CONFIG.plateau.enabled.default,
+  amount: BATTLE_CONFIG.plateau.amount.default,
   shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
   rampEdgeSharpness: terrainConfig.plateau.rampEdgeSharpness,
   buildableShelfHeightTolerance: terrainConfig.plateau.buildableShelfHeightTolerance,
   slopeSampleDistance:
     LAND_CELL_SIZE * terrainConfig.plateau.slopeSampleDistanceLandCellMultiplier,
-  fullTerraceMaxSlope: terrainConfig.plateau.fullTerraceMaxSlope,
-  noTerraceMinSlope: terrainConfig.plateau.noTerraceMinSlope,
+  fullTerraceMaxSlope: DEFAULT_PLATEAU_SLOPE_WINDOW.fullTerraceMaxSlope,
+  noTerraceMinSlope: DEFAULT_PLATEAU_SLOPE_WINDOW.noTerraceMinSlope,
 };
 
 export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean {
@@ -158,8 +199,12 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     changed = true;
   }
 
-  if (TERRAIN_PLATEAU_CONFIG.enabled !== config.plateauEnabled) {
-    TERRAIN_PLATEAU_CONFIG.enabled = config.plateauEnabled;
+  const nextAmount = Math.max(0, Math.floor(config.plateauAmount));
+  if (TERRAIN_PLATEAU_CONFIG.amount !== nextAmount) {
+    TERRAIN_PLATEAU_CONFIG.amount = nextAmount;
+    const window = plateauSlopeWindowForAmount(nextAmount);
+    TERRAIN_PLATEAU_CONFIG.fullTerraceMaxSlope = window.fullTerraceMaxSlope;
+    TERRAIN_PLATEAU_CONFIG.noTerraceMinSlope = window.noTerraceMinSlope;
     changed = true;
   }
 

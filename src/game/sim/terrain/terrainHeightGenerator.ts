@@ -32,7 +32,7 @@ function plateauRampCurve(t: number): number {
 }
 
 function applyTerrainPlateaus(height: number, strength: number = 1): number {
-  if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height))
+  if (TERRAIN_PLATEAU_CONFIG.amount <= 0 || !Number.isFinite(height))
     return height;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return height;
@@ -317,9 +317,11 @@ export function getTerrainHeight(
   // blended into the surface, so the terracing covers everything the
   // player will actually walk on (including the post-blend regions
   // around deposits). Slope-gating still uses the natural ripple+ridge
-  // slope so flat bowls and plateaus terrace but steep ramps don't.
+  // slope so flat bowls and plateaus terrace but steep ramps don't —
+  // except at amount=5, where plateauSlopeWindowForAmount opens the
+  // window to infinity and every slope terraces into a cliff.
   let terraced = blended;
-  if (TERRAIN_PLATEAU_CONFIG.enabled) {
+  if (TERRAIN_PLATEAU_CONFIG.amount > 0) {
     const naturalSlope = estimateGeneratedTerrainSlope(
       x,
       y,

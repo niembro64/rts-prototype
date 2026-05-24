@@ -254,7 +254,9 @@ export type LobbySettings = {
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
-  terrainPlateauEnabled?: boolean;
+  /** Plateau intensity 0..5 (0 = smooth / off, 5 = force every slope
+   *  into a TERRAIN_D_TERRAIN-step plateau, generating cliffs). */
+  terrainPlateauAmount?: number;
   terrainDTerrain?: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
