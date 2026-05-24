@@ -8,7 +8,6 @@
   "waterSubdivisions": 96,
   "waterFrameStride": 1,
   "waterWaveAmplitude": 6,
-  "waterOpacity": 0.82,
   "unitShape": "full",
   "legs": "full",
   "treadsAnimated": true,

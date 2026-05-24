@@ -33,7 +33,6 @@ export type GraphicsConfig = {
   waterSubdivisions: number;
   waterFrameStride: number;
   waterWaveAmplitude: number;
-  waterOpacity: number;
   unitShape: UnitShape;
   legs: LegStyle;
   treadsAnimated: boolean;

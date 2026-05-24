@@ -97,18 +97,17 @@ export class WaterRenderer3D {
 
   update(
     _dtSec: number,
-    graphicsConfig: GraphicsConfig,
+    _graphicsConfig: GraphicsConfig,
     _frameState?: RenderFrameState3D,
     _sharedLodGrid?: unknown,
   ): void {
-    if (graphicsConfig.waterOpacity <= 0) {
+    const opacity = WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity;
+    if (opacity <= 0) {
       this.waterMesh.visible = false;
       return;
     }
     if (!this.built) this.buildGeometry();
-    this.waterMaterial.opacity = WATER_FULLY_OPAQUE
-      ? 1
-      : graphicsConfig.waterOpacity;
+    this.waterMaterial.opacity = opacity;
     this.waterMesh.visible = true;
   }
 
