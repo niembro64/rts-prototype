@@ -18,7 +18,7 @@ import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
-import { getSurfaceNormal } from '../Terrain';
+import { getSurfaceNormal, isWaterAt } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
 import { LAND_CELL_SIZE, ROCKET_REFLECTOR_COLLISION_MODE } from '../../../config';
 import { getActiveForceFields } from './forceFieldTurret';
@@ -650,6 +650,20 @@ export function checkProjectileCollisions(
       projEntity.transform.z <= groundZAtProj;
     if (hitGround) {
       projEntity.transform.z = groundZAtProj;
+    }
+
+    // Water hit — silent terminal. No explosion, no submunitions,
+    // no impact audio/FX. The shot just vanishes into the water.
+    const hitWater =
+      hitGround &&
+      isWaterAt(
+        projEntity.transform.x, projEntity.transform.y,
+        world.mapWidth, world.mapHeight,
+      );
+    if (hitWater) {
+      projectilesToRemove.push(projEntity.id);
+      despawnEvents.push({ id: projEntity.id });
+      continue;
     }
 
     // Check if the projectile hit a terminal timeout, ground, or barrier.
