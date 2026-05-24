@@ -1,9 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import {
   BATTLE_CONFIG,
-  getDefaultCap,
-  getDefaultFogOfWar,
-  getDefaultDemoUnits,
   loadStoredConverterTax,
   loadStoredFogOfWarEnabled,
   normalizeConverterTax,
@@ -16,6 +13,13 @@ import {
 } from '../battleBarConfig';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type { GameConnection } from '../game/server/GameConnection';
+import type { MapLandCellDimensions } from '../mapSizeConfig';
+import type { TerrainMapShape } from '../types/terrain';
+import {
+  type BattlePreset,
+  getDefaultPreset,
+  saveSelectedPresetName,
+} from './battlePresets';
 
 export type GameCanvasBattleSettings = {
   currentAllowedUnits: ComputedRef<readonly string[]>;
@@ -34,6 +38,7 @@ export type GameCanvasBattleSettings = {
   setFogOfWarEnabled(enabled: boolean): void;
   setConverterTax(tax: number): void;
   resetDemoDefaults(): void;
+  applyPreset(preset: BattlePreset): void;
 };
 
 export type GameCanvasBattleSettingsOptions = {
@@ -41,9 +46,17 @@ export type GameCanvasBattleSettingsOptions = {
   currentBattleMode: ComputedRef<BattleMode>;
   demoUnitTypes: readonly string[];
   getActiveConnection: () => GameConnection | null;
-  resetTerrainDefaults: () => void;
   resetGridInfoToDefault: () => void;
   broadcastLobbySettingsIfHost: () => void;
+  applyCenterMagnitude: (value: number, broadcast?: boolean) => void;
+  applyDividersMagnitude: (value: number, broadcast?: boolean) => void;
+  applyTerrainMapShape: (shape: TerrainMapShape, broadcast?: boolean) => void;
+  applyTerrainDTerrain: (value: number, broadcast?: boolean) => void;
+  applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
+  applyMapLandDimensions: (
+    dimensions: MapLandCellDimensions,
+    broadcast?: boolean,
+  ) => void;
 };
 
 export function useGameCanvasBattleSettings({
@@ -51,9 +64,14 @@ export function useGameCanvasBattleSettings({
   currentBattleMode,
   demoUnitTypes,
   getActiveConnection,
-  resetTerrainDefaults,
   resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
+  applyCenterMagnitude,
+  applyDividersMagnitude,
+  applyTerrainMapShape,
+  applyTerrainDTerrain,
+  applyMetalDepositStep,
+  applyMapLandDimensions,
 }: GameCanvasBattleSettingsOptions): GameCanvasBattleSettings {
   const currentAllowedUnits = computed<readonly string[]>(
     () =>
@@ -142,25 +160,40 @@ export function useGameCanvasBattleSettings({
     if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
   }
 
-  function resetDemoDefaults(): void {
-    const defaultUnits = getDefaultDemoUnits();
-    const defaultSet = new Set(defaultUnits);
+  function applyPreset(preset: BattlePreset): void {
+    const presetSet = new Set(preset.units);
     for (const unitType of demoUnitTypes) {
       getActiveConnection()?.sendCommand({
         type: 'setBackgroundUnitType',
         tick: 0,
         unitType,
-        enabled: defaultSet.has(unitType),
+        enabled: presetSet.has(unitType),
       });
     }
-    saveDemoUnits(defaultUnits);
-    changeMaxTotalUnits(getDefaultCap(currentBattleMode.value));
-    setForceFieldsObstructSight(BATTLE_CONFIG.forceFieldsObstructSight.default);
-    setFogOfWarEnabled(getDefaultFogOfWar(currentBattleMode.value));
-    setConverterTax(BATTLE_CONFIG.converterTax.default);
-    resetTerrainDefaults();
+    saveDemoUnits([...preset.units]);
+    changeMaxTotalUnits(preset.cap);
+    setForceFieldsObstructSight(preset.forceFieldsObstructSight);
+    setFogOfWarEnabled(preset.fogOfWarEnabled);
+    setConverterTax(preset.converterTax);
+    applyCenterMagnitude(preset.centerMagnitude, false);
+    applyDividersMagnitude(preset.dividersMagnitude, false);
+    applyTerrainMapShape(preset.terrainMapShape, false);
+    applyTerrainDTerrain(preset.terrainDTerrain, false);
+    applyMetalDepositStep(preset.metalDepositStep, false);
+    applyMapLandDimensions(
+      {
+        widthLandCells: preset.mapWidthLandCells,
+        lengthLandCells: preset.mapLengthLandCells,
+      },
+      false,
+    );
     resetGridInfoToDefault();
+    saveSelectedPresetName(preset.name);
     broadcastLobbySettingsIfHost();
+  }
+
+  function resetDemoDefaults(): void {
+    applyPreset(getDefaultPreset());
   }
 
   return {
@@ -177,5 +210,6 @@ export function useGameCanvasBattleSettings({
     setFogOfWarEnabled,
     setConverterTax,
     resetDemoDefaults,
+    applyPreset,
   };
 }

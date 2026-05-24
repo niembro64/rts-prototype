@@ -40,6 +40,19 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>PRESETS:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="preset in model.presets"
+            :key="preset.name"
+            :active="model.activePresetName === preset.name"
+            :title="`Apply preset: ${preset.name}`"
+            @click="model.applyPreset(preset)"
+          >{{ preset.name }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>UNITS:</BarLabel>
         <BarButton
           :active="model.allDemoUnitsActive"

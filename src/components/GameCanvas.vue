@@ -59,6 +59,7 @@ import { useGameCanvasLobbyPreview } from './gameCanvasLobbyPreview';
 import { useGameCanvasLobbyActions } from './gameCanvasLobbyActions';
 import { useGameCanvasLobbySettings } from './gameCanvasLobbySettings';
 import { useGameCanvasBattleSettings } from './gameCanvasBattleSettings';
+import { BATTLE_PRESETS, findMatchingPresetName } from './battlePresets';
 import { useGameCanvasServerSettings } from './gameCanvasServerSettings';
 import { useGameCanvasClientSettings } from './gameCanvasClientSettings';
 import { useGameCanvasRealBattleHandoff } from './gameCanvasRealBattleHandoff';
@@ -540,14 +541,20 @@ const {
   setFogOfWarEnabled,
   setConverterTax,
   resetDemoDefaults,
+  applyPreset,
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
   currentBattleMode,
   demoUnitTypes,
   getActiveConnection: () => activeConnection,
-  resetTerrainDefaults,
   resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
+  applyCenterMagnitude,
+  applyDividersMagnitude,
+  applyTerrainMapShape,
+  applyTerrainDTerrain,
+  applyMetalDepositStep,
+  applyMapLandDimensions,
 });
 
 const {
@@ -676,6 +683,9 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   currentForceFieldsObstructSight: currentForceFieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentConverterTax: currentConverterTax.value,
+  presets: BATTLE_PRESETS,
+  activePresetName: null,
+  applyPreset,
   resetDemoDefaults,
   toggleAllDemoUnits,
   toggleDemoUnitType,
@@ -714,6 +724,20 @@ watchEffect(() => {
   m.currentForceFieldsObstructSight = currentForceFieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentConverterTax = currentConverterTax.value;
+  m.activePresetName = findMatchingPresetName({
+    units: currentAllowedUnits.value,
+    cap: displayUnitCap.value,
+    forceFieldsObstructSight: currentForceFieldsObstructSight.value,
+    fogOfWarEnabled: currentFogOfWarEnabled.value,
+    converterTax: currentConverterTax.value,
+    centerMagnitude: centerMagnitude.value,
+    dividersMagnitude: dividersMagnitude.value,
+    terrainMapShape: terrainMapShape.value,
+    terrainDTerrain: terrainDTerrain.value,
+    metalDepositStep: metalDepositStep.value,
+    mapWidthLandCells: mapWidthLandCells.value,
+    mapLengthLandCells: mapLengthLandCells.value,
+  });
 });
 
 // Same reactive() pattern as battleControlBarModel: stable proxy

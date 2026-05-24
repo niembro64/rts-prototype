@@ -1,5 +1,6 @@
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { TerrainMapShape } from '../types/terrain';
+import type { BattlePreset } from './battlePresets';
 import type {
   AudioScope,
   CameraFovDegrees,
@@ -42,6 +43,9 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentForceFieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
   readonly currentConverterTax: number;
+  readonly presets: readonly BattlePreset[];
+  readonly activePresetName: string | null;
+  applyPreset(preset: BattlePreset): void;
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
   toggleDemoUnitType(unitType: string): void;
