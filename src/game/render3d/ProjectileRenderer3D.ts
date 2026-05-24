@@ -245,9 +245,10 @@ export class ProjectileRenderer3D {
           }
         } else if (
           tailShape === 'cone' &&
-          curvedConeCount < PROJECTILE_INSTANCED_CAP
+          curvedConeCount < PROJECTILE_INSTANCED_CAP &&
+          proj
         ) {
-          const stamps = this.advanceTrailStamps(e.id, tx, ty, tz, tailLength);
+          const stamps = this.advanceTrailStamps(e.id, proj, tx, ty, tz, tailLength);
           if (stamps.count >= 1) {
             this.writeProjectileCurvedConeTail(
               curvedConeCount++,
@@ -352,6 +353,7 @@ export class ProjectileRenderer3D {
 
   private advanceTrailStamps(
     id: EntityId,
+    proj: NonNullable<Entity['projectile']>,
     headX: number,
     headY: number,
     headZ: number,
@@ -362,12 +364,40 @@ export class ProjectileRenderer3D {
       stamps = { points: new Float32Array(TRAIL_STAMP_CAP * 3), count: 0 };
       this.trailStamps.set(id, stamps);
     }
+    const pts = stamps.points;
+
+    // Forced reflection stamp: ClientViewState parks the exact
+    // force-field / mirror contact point on the projectile after each
+    // bounce. Insert it ahead of the head's regular distance-threshold
+    // stamp so the trail kinks at the actual shield surface rather than
+    // one tick past it. The pre-bounce stamps shift deeper into the
+    // buffer untouched, preserving the incoming arc.
+    const bounceX = proj.pendingReflectionX;
+    const bounceY = proj.pendingReflectionY;
+    const bounceZ = proj.pendingReflectionZ;
+    if (bounceX !== undefined && bounceY !== undefined && bounceZ !== undefined) {
+      const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
+      for (let i = newCount - 1; i >= 1; i--) {
+        const dst = i * 3;
+        const src = (i - 1) * 3;
+        pts[dst] = pts[src];
+        pts[dst + 1] = pts[src + 1];
+        pts[dst + 2] = pts[src + 2];
+      }
+      pts[0] = bounceX;
+      pts[1] = bounceY;
+      pts[2] = bounceZ;
+      stamps.count = newCount;
+      proj.pendingReflectionX = undefined;
+      proj.pendingReflectionY = undefined;
+      proj.pendingReflectionZ = undefined;
+    }
+
     // Step size determines how far the head travels between stamps. We
     // pick one segment's worth of tail length so the trail naturally
     // spans the configured visual length when fully populated.
     const stampStep = Math.max(0.25, tailLength / CURVED_CONE_CURVE_SEGMENTS);
     const stampStepSq = stampStep * stampStep;
-    const pts = stamps.points;
     let shouldStamp = stamps.count === 0;
     if (!shouldStamp) {
       const dx = headX - pts[0];

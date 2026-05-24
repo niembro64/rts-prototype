@@ -661,6 +661,27 @@ export class ClientViewState {
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
+    // Stash the exact force-field / mirror-panel contact point on the
+    // reflected projectile so the curved-cone tail renderer can insert
+    // it as a forced trail stamp on the next frame. The velocityUpdate
+    // above already snapped the head to one-tick-past-bounce; this puts
+    // the actual bounce point on the projectile so the trail kinks
+    // exactly at the shield surface instead of one tick past it. Audio
+    // event pos is unquantized f64.
+    const audioEventsForReflection = this.pendingAudioEvents;
+    if (audioEventsForReflection !== undefined && audioEventsForReflection.length > 0) {
+      for (let i = 0; i < audioEventsForReflection.length; i++) {
+        const evt = audioEventsForReflection[i];
+        if (evt.type !== 'forceFieldImpact' || evt.entityId === null) continue;
+        const entity = this.entities.get(evt.entityId);
+        const proj = entity?.projectile;
+        if (!proj) continue;
+        proj.pendingReflectionX = evt.pos.x;
+        proj.pendingReflectionY = evt.pos.y;
+        proj.pendingReflectionZ = evt.pos.z;
+      }
+    }
+
 
     // Snapshot owns the full list of active scan pulses for this
     // client's team. Length is small (a few at most), so a fresh copy

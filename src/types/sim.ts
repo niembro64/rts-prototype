@@ -602,6 +602,15 @@ export type Projectile = {
   lastSentVelX: number | undefined;
   lastSentVelY: number | undefined;
   lastSentVelZ: number | undefined;
+  /** Client-only one-shot: exact force-field / mirror-panel contact
+   *  point from the most recent reflection, sourced from the
+   *  unquantized forceFieldImpact audio event. Consumed by the
+   *  curved-cone tail renderer on the next frame as a forced trail
+   *  stamp so the tail kinks exactly at the bounce surface instead of
+   *  one tick past it. Cleared after consumption. */
+  pendingReflectionX: number | undefined;
+  pendingReflectionY: number | undefined;
+  pendingReflectionZ: number | undefined;
 };
 
 export type ProjectileAbsenceSlots = Pick<Projectile,
@@ -637,6 +646,9 @@ export type ProjectileAbsenceSlots = Pick<Projectile,
   | 'lastSentVelX'
   | 'lastSentVelY'
   | 'lastSentVelZ'
+  | 'pendingReflectionX'
+  | 'pendingReflectionY'
+  | 'pendingReflectionZ'
 >;
 
 export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
@@ -672,6 +684,9 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   lastSentVelX: undefined,
   lastSentVelY: undefined,
   lastSentVelZ: undefined,
+  pendingReflectionX: undefined,
+  pendingReflectionY: undefined,
+  pendingReflectionZ: undefined,
 };
 
 // Economy state per player. Each pool (energy / metal) has its
