@@ -461,48 +461,7 @@ then, the best intermediate is to ensure the per-frame JS pass is
 strictly batched (no per-unit allocation, no Object.assign, no
 .map / .filter / .forEach in the inner loop).
 
-FOG OF WAR CONCEPT REVIEW
 
-==============================================================================
-
-FOW-CONCEPT-02 - visual shroud reveal semantics do not match
-                 authoritative full-vision semantics.
-------------------------------------------------------------------------------
-
-Evidence:
-- src/game/network/stateSerializerVisibility.ts separates full vision
-  from radar: full vision sends entities in the main snapshot, while
-  radar only reveals minimap blips.
-- Full entity visibility in SnapshotVisibility.isEntityVisible() checks
-  terrain line of sight through hasTerrainLineOfSight().
-- The 2026-05-23 optical-source cleanup removed the legacy combined
-  full-or-radar helper and switched server shroud history,
-  FogOfWarShroudRenderer3D, FogOfWarFog3D, and SightBoundaryRenderer3D
-  to canEntityProvideFullVision()/getEntityFullVisionRadius(). Radar
-  no longer clears terrain shroud/fog or draws as optical sight.
-- src/game/sim/shroudBitmap.ts still uses a radius-only markCircle()
-  pass. It does not apply the same terrain line-of-sight mask as
-  SnapshotVisibility.isEntityVisible().
-- src/game/render3d/FogOfWarShroudRenderer3D.ts and
-  src/game/render3d/FogOfWarFog3D.ts still re-derive local current
-  vision as 2D radius coverage, so terrain behind ridges can visually
-  clear even when the host would hide enemy entity detail there.
-
-Why it matters:
-The player can be shown terrain as currently visible or explored even
-where the host would still hide enemy entity detail behind a ridge, or
-where the only source is radar that should communicate "sensor contact"
-rather than true sight. That weakens the fog concept because the visual
-language and the authoritative information contract disagree.
-
-Fix direction:
-Define separate visibility layers and render them separately:
-full optical vision should use the same host-side source classification
-and line-of-sight mask as entity visibility; radar should produce a
-distinct sensor/minimap treatment; exploration history should be clear
-about whether it means "physically seen" or "sensor-covered." The
-server should ship or expose compact masks/source packets for those
-layers instead of the client re-deriving a different approximation.
 
 ------------------------------------------------------------------------------
 FOW-CONCEPT-05 - fog-of-war calculation still lives in TypeScript hot
