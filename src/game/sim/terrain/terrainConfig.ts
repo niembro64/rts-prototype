@@ -59,6 +59,20 @@ export const TERRAIN_TRIANGLE_PRESERVE_WATERLINE =
 export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE =
   terrainConfig.terrainTriangleVertexKeyScale;
 
+/** Post-bake Laplacian smoothing pass applied to mesh vertex heights at the
+ *  very end of terrain generation, before the per-cell triangle index is
+ *  built. Each step replaces every vertex's height with a blend toward the
+ *  average of its triangle-edge neighbors. `maxSteps` = number of passes
+ *  (0 disables smoothing). `amount` is the blend factor per pass in [0, 1]
+ *  (0 = no change, 1 = fully replace with neighbor average). */
+export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
+  readonly maxSteps: number;
+  readonly amount: number;
+} = {
+  maxSteps: terrainConfig.meshHeightSmoothing.maxSteps,
+  amount: terrainConfig.meshHeightSmoothing.amount,
+};
+
 /** Render-only "solid ocean" mode. When true:
  *    (a) `WaterRenderer3D` draws the ocean surface fully opaque
  *        (transparency disabled, depth writes on), and

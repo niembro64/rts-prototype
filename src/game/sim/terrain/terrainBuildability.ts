@@ -1,10 +1,11 @@
 import { LAND_CELL_SIZE } from '../../../config';
+import { BUILD_CONFIG } from '../../../buildConfig';
 import { assertCanonicalLandCellSize } from '../../landGrid';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { TERRAIN_D_TERRAIN, TERRAIN_PLATEAU_CONFIG } from './terrainConfig';
 import { findDepositFlatZoneAt } from './terrainFlatZones';
-import { getTerrainMeshHeight } from './terrainTileMap';
+import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
 import { getTerrainVersion } from './terrainState';
 import { isWaterAt } from './terrainSurface';
 
@@ -14,6 +15,7 @@ export function getTerrainBuildabilityConfigKey(): string {
   return [
     TERRAIN_D_TERRAIN,
     TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
+    BUILD_CONFIG.maxBuildableSlopeAngleDegrees,
   ].join(':');
 }
 
@@ -39,8 +41,8 @@ export function getTerrainPlateauLevelAt(
 }
 
 export type FootprintBuildability = {
-  /** True iff every sampled corner/edge/center is dry land AND on
-   *  the same plateau level. */
+  /** True iff every sampled corner/edge/center is dry land, under the
+   *  max buildable slope angle, and on the same plateau level. */
   buildable: boolean;
   /** The shared plateau level (when buildable). null when buildable
    *  is false OR the underlying sample yielded no plateau level. */
@@ -80,6 +82,10 @@ export function evaluateBuildabilityFootprint(
   let footprintLevel: number | null = null;
   for (const [sx, sz] of samples) {
     if (isWaterAt(sx, sz, mapWidth, mapHeight, cellSize)) {
+      return { buildable: false, level: null };
+    }
+    const normal = getTerrainMeshNormal(sx, sz, mapWidth, mapHeight, cellSize);
+    if (normal.nz < BUILD_CONFIG.minBuildableSurfaceNormalUp) {
       return { buildable: false, level: null };
     }
     const level = getTerrainPlateauLevelAt(

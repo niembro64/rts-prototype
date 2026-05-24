@@ -1,7 +1,7 @@
 // BuildGhost3D — translucent footprint preview for build mode in the
 // 3D scene. Ground-cell colors describe only placement/resource facts:
-// green = buildable flat ground, red = blocked/unbuildable ground,
-// blue = required resource/special build cells. Builder range is
+// green = buildable ground, red = blocked/unbuildable ground,
+// blue = unused metal-deposit cells. Builder range is
 // shown separately because the builder can move to the site.
 //
 // Ownership: Input3DManager drives it (call setTarget on mouse move,
@@ -62,11 +62,9 @@ export class BuildGhost3D {
   private footMatBad: THREE.MeshBasicMaterial;
   private cellMatOk: THREE.MeshBasicMaterial;
   private cellMatMetal: THREE.MeshBasicMaterial;
-  private cellMatMetalDeposit: THREE.MeshBasicMaterial;
   private cellMatBad: THREE.MeshBasicMaterial;
   private cellBorderMatOk: THREE.LineBasicMaterial;
   private cellBorderMatMetal: THREE.LineBasicMaterial;
-  private cellBorderMatMetalDeposit: THREE.LineBasicMaterial;
   private cellBorderMatBad: THREE.LineBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
   private radarRingMat: THREE.MeshBasicMaterial;
@@ -107,13 +105,6 @@ export class BuildGhost3D {
       side: THREE.DoubleSide,
       toneMapped: false,
     });
-    this.cellMatMetalDeposit = new THREE.MeshBasicMaterial({
-      color: COLORS.effects.buildGhost.cellMetalDeposit.colorHex,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
     this.cellMatBad = new THREE.MeshBasicMaterial({
       color: COLORS.effects.buildGhost.cellBad.colorHex,
       transparent: false,
@@ -129,12 +120,6 @@ export class BuildGhost3D {
     });
     this.cellBorderMatMetal = new THREE.LineBasicMaterial({
       color: COLORS.effects.buildGhost.cellBorderMetal.colorHex,
-      transparent: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    this.cellBorderMatMetalDeposit = new THREE.LineBasicMaterial({
-      color: COLORS.effects.buildGhost.cellBorderMetalDeposit.colorHex,
       transparent: false,
       depthWrite: false,
       toneMapped: false,
@@ -306,7 +291,6 @@ export class BuildGhost3D {
 
   private materialForCell(cell: BuildPlacementCellDiagnostic): CellMaterialPair {
     if (cell.blocking) return { fill: this.cellMatBad, border: this.cellBorderMatBad };
-    if (cell.reason === 'metal') return { fill: this.cellMatMetal, border: this.cellBorderMatMetal };
     return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
@@ -353,13 +337,13 @@ export class BuildGhost3D {
   private updateMetalDepositCells(cells: BuildPlacementCellDiagnostic[] | null | undefined): void {
     const depositCells = cells ?? [];
     while (this.depositCellMeshes.length < depositCells.length) {
-      const mesh = new THREE.Mesh(this.cellGeom, this.cellMatMetalDeposit);
+      const mesh = new THREE.Mesh(this.cellGeom, this.cellMatMetal);
       mesh.rotation.x = -Math.PI / 2;
       mesh.renderOrder = 28;
       this.group.add(mesh);
       this.depositCellMeshes.push(mesh);
 
-      const border = new THREE.LineSegments(this.cellBorderGeom, this.cellBorderMatMetalDeposit);
+      const border = new THREE.LineSegments(this.cellBorderGeom, this.cellBorderMatMetal);
       border.rotation.x = -Math.PI / 2;
       border.renderOrder = 29;
       this.group.add(border);
@@ -397,11 +381,9 @@ export class BuildGhost3D {
     this.footMatBad.dispose();
     this.cellMatOk.dispose();
     this.cellMatMetal.dispose();
-    this.cellMatMetalDeposit.dispose();
     this.cellMatBad.dispose();
     this.cellBorderMatOk.dispose();
     this.cellBorderMatMetal.dispose();
-    this.cellBorderMatMetalDeposit.dispose();
     this.cellBorderMatBad.dispose();
     this.ringMat.dispose();
     this.radarRingMat.dispose();

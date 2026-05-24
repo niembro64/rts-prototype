@@ -14,22 +14,21 @@ import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getRockDetailTexture } from './RockDetailTexture';
 
 const DEPOSIT_MESH_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, {
-  radialStep: number;
+  outlineStep: number;
   material: 'lambert' | 'standard';
 }> = {
-  // radialStep samples from the same high-detail smoothed perimeter.
-  // Lower tiers keep every Nth point; higher tiers add the skipped
-  // points so the coin follows the irregular resource-cell cluster
+  // outlineStep samples from the same high-detail smoothed cell-union
+  // perimeter. Lower tiers keep every Nth point; higher tiers add the
+  // skipped points so the coin follows the irregular resource-cell cluster
   // more closely without changing gameplay.
-  min:    { radialStep: 12, material: 'lambert' },
-  low:    { radialStep: 6, material: 'lambert' },
-  medium: { radialStep: 3, material: 'lambert' },
-  high:   { radialStep: 2, material: 'standard' },
-  max:    { radialStep: 1, material: 'standard' },
+  min:    { outlineStep: 8, material: 'lambert' },
+  low:    { outlineStep: 6, material: 'lambert' },
+  medium: { outlineStep: 4, material: 'lambert' },
+  high:   { outlineStep: 3, material: 'standard' },
+  max:    { outlineStep: 2, material: 'standard' },
 };
 
-const DEPOSIT_MAX_RADIAL_SEGMENTS = 96;
-const DEPOSIT_PROFILE_SMOOTH_PASSES = 3;
+const DEPOSIT_BOUNDARY_SMOOTH_PASSES = 2;
 const DEPOSIT_VISUAL_MARGIN = BUILD_GRID_CELL_SIZE * 0.16;
 const DEPOSIT_ROCK_UV_WORLD_SIZE = 360;
 
@@ -38,7 +37,7 @@ const DEPOSIT_DARK = new THREE.Color(COLORS.environment.metalDeposit.darkColorHe
 const DEPOSIT_LIGHT = new THREE.Color(COLORS.environment.metalDeposit.lightColorHex);
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
-  private deposits: ReadonlyArray<MetalDeposit>;
+  private clusters: ReadonlyArray<MetalDepositVisualCluster>;
   private records: Array<{
     node: THREE.Group;
     tier: ConcreteGraphicsQuality | null;
@@ -50,7 +49,7 @@ export class MetalDepositRenderer3D {
     deposits: ReadonlyArray<MetalDeposit>,
     initialTier: ConcreteGraphicsQuality = 'medium',
   ) {
-    this.deposits = deposits;
+    this.clusters = makeMetalDepositVisualClusters(deposits);
     this.group = new THREE.Group();
     parentWorld.add(this.group);
     this.records = [];
@@ -58,9 +57,9 @@ export class MetalDepositRenderer3D {
   }
 
   update(graphicsConfig: GraphicsConfig): void {
-    if (this.deposits.length === 0) return;
+    if (this.clusters.length === 0) return;
     const tier = graphicsConfig.tier;
-    for (let i = 0; i < this.deposits.length; i++) {
+    for (let i = 0; i < this.clusters.length; i++) {
       const record = this.records[i];
       if (tier !== record.tier) this.setDepositTier(i, tier);
       record.node.visible = true;
@@ -69,7 +68,7 @@ export class MetalDepositRenderer3D {
   }
 
   private buildAll(tier: ConcreteGraphicsQuality): void {
-    for (let i = 0; i < this.deposits.length; i++) {
+    for (let i = 0; i < this.clusters.length; i++) {
       const node = this.buildDepositNode(i, tier);
       node.visible = true;
       this.records[i] = { node, tier };
@@ -90,20 +89,20 @@ export class MetalDepositRenderer3D {
   }
 
   private buildDepositNode(index: number, tier: ConcreteGraphicsQuality): THREE.Group {
-    const d = this.deposits[index];
+    const cluster = this.clusters[index];
     const meshDetail = DEPOSIT_MESH_BY_GRAPHICS_TIER[tier];
     const coinHeight = METAL_DEPOSIT_CONFIG.coinHeight;
     const node = new THREE.Group();
     const mesh = new THREE.Mesh(
-      makeDepositCoinGeometry(d, meshDetail.radialStep, coinHeight),
+      makeDepositCoinGeometry(cluster, meshDetail.outlineStep, coinHeight),
       this.getMaterial(meshDetail.material),
     );
     node.add(mesh);
     // The mesh contains only the above-ground crown. Relying on the
     // terrain surface to hide below-ground triangles leaks at grazing
     // camera angles because the terrain is a surface, not a solid mask.
-    node.position.set(d.x, d.height + 0.04, d.y);
-    node.rotation.y = seededNoise(d.id * 991 + 13) * Math.PI * 2;
+    node.position.set(cluster.x, cluster.height + 0.04, cluster.y);
+    node.userData.metalDepositIds = cluster.depositIds;
     node.userData.graphicsTier = tier;
     return node;
   }
@@ -161,64 +160,234 @@ function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
   });
 }
 
-/** Inset of the flat top face relative to the equator (sharp-edge)
- *  ring. The generated radial profile is shared by both rings so the
- *  bevel stays clean while the outline follows the smoothed irregular
- *  metal-cell cluster. 0.65 = top flat is 65% of the equator diameter. */
-const COIN_FLAT_RADIUS_FRAC = 0.65;
+type DepositOutlinePoint = { x: number; z: number };
+type DepositVisualCell = {
+  gx: number;
+  gy: number;
+  x: number;
+  y: number;
+};
+type DepositShapeSource = {
+  x: number;
+  y: number;
+  cells: readonly DepositVisualCell[];
+  resourceHalfSize: number;
+};
+type MetalDepositVisualCluster = DepositShapeSource & {
+  id: number;
+  seed: number;
+  height: number;
+  depositIds: number[];
+};
+type GridEdge = {
+  sx: number;
+  sy: number;
+  ex: number;
+  ey: number;
+  key: string;
+};
+
+function makeMetalDepositVisualClusters(
+  deposits: ReadonlyArray<MetalDeposit>,
+): MetalDepositVisualCluster[] {
+  if (deposits.length === 0) return [];
+
+  const parents = deposits.map((_, index) => index);
+  const find = (index: number): number => {
+    let root = index;
+    while (parents[root] !== root) root = parents[root];
+    while (parents[index] !== index) {
+      const next = parents[index];
+      parents[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number): void => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parents[rootB] = rootA;
+  };
+
+  const cellOwners = new Map<string, number[]>();
+  for (let depositIndex = 0; depositIndex < deposits.length; depositIndex++) {
+    for (const cell of deposits[depositIndex].cells) {
+      const key = gridCellKey(cell.gx, cell.gy);
+      const owners = cellOwners.get(key);
+      if (owners) owners.push(depositIndex);
+      else cellOwners.set(key, [depositIndex]);
+    }
+  }
+
+  for (const owners of cellOwners.values()) {
+    for (let i = 1; i < owners.length; i++) union(owners[0], owners[i]);
+  }
+
+  const neighborOffsets: ReadonlyArray<readonly [number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (let depositIndex = 0; depositIndex < deposits.length; depositIndex++) {
+    for (const cell of deposits[depositIndex].cells) {
+      for (const [dx, dy] of neighborOffsets) {
+        const owners = cellOwners.get(gridCellKey(cell.gx + dx, cell.gy + dy));
+        if (!owners) continue;
+        for (const owner of owners) union(depositIndex, owner);
+      }
+    }
+  }
+
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < deposits.length; i++) {
+    const root = find(i);
+    const group = groups.get(root);
+    if (group) group.push(i);
+    else groups.set(root, [i]);
+  }
+
+  const clusters: MetalDepositVisualCluster[] = [];
+  for (const group of groups.values()) {
+    group.sort((a, b) => deposits[a].id - deposits[b].id);
+    clusters.push(makeMetalDepositVisualCluster(group, deposits));
+  }
+  clusters.sort((a, b) => a.id - b.id);
+  return clusters;
+}
+
+function makeMetalDepositVisualCluster(
+  depositIndices: readonly number[],
+  deposits: ReadonlyArray<MetalDeposit>,
+): MetalDepositVisualCluster {
+  const cellsByKey = new Map<string, DepositVisualCell>();
+  let heightSum = 0;
+  let heightCount = 0;
+
+  for (const depositIndex of depositIndices) {
+    const deposit = deposits[depositIndex];
+    for (const cell of deposit.cells) {
+      const key = gridCellKey(cell.gx, cell.gy);
+      if (cellsByKey.has(key)) continue;
+      cellsByKey.set(key, { gx: cell.gx, gy: cell.gy, x: cell.x, y: cell.y });
+      heightSum += deposit.height;
+      heightCount++;
+    }
+  }
+
+  const cells = Array.from(cellsByKey.values()).sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
+  const depositIds = depositIndices.map((index) => deposits[index].id);
+  const id = Math.min(...depositIds);
+  const seed = hashMetalDepositVisualClusterSeed(depositIds);
+  const height = heightCount > 0
+    ? heightSum / heightCount
+    : averageDeposits(depositIndices, deposits, 'height');
+
+  if (cells.length === 0) {
+    const x = averageDeposits(depositIndices, deposits, 'x');
+    const y = averageDeposits(depositIndices, deposits, 'y');
+    const resourceHalfSize = Math.max(
+      BUILD_GRID_CELL_SIZE * 0.5,
+      ...depositIndices.map((index) => deposits[index].resourceHalfSize),
+    );
+    return { id, seed, x, y, height, cells, resourceHalfSize, depositIds };
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  let minGx = Infinity;
+  let minGy = Infinity;
+  let maxGx = -Infinity;
+  let maxGy = -Infinity;
+  for (const cell of cells) {
+    sumX += cell.x;
+    sumY += cell.y;
+    minGx = Math.min(minGx, cell.gx);
+    minGy = Math.min(minGy, cell.gy);
+    maxGx = Math.max(maxGx, cell.gx);
+    maxGy = Math.max(maxGy, cell.gy);
+  }
+
+  const resourceHalfSize = Math.max(
+    BUILD_GRID_CELL_SIZE * 0.5,
+    ((maxGx - minGx + 1) * BUILD_GRID_CELL_SIZE) / 2,
+    ((maxGy - minGy + 1) * BUILD_GRID_CELL_SIZE) / 2,
+  );
+  return {
+    id,
+    seed,
+    x: sumX / cells.length,
+    y: sumY / cells.length,
+    height,
+    cells,
+    resourceHalfSize,
+    depositIds,
+  };
+}
+
+function averageDeposits(
+  depositIndices: readonly number[],
+  deposits: ReadonlyArray<MetalDeposit>,
+  field: 'height' | 'x' | 'y',
+): number {
+  if (depositIndices.length === 0) return 0;
+  let sum = 0;
+  for (const index of depositIndices) sum += deposits[index][field];
+  return sum / depositIndices.length;
+}
+
+function hashMetalDepositVisualClusterSeed(depositIds: readonly number[]): number {
+  let h = 2166136261 >>> 0;
+  for (const id of depositIds) h = Math.imul(h ^ id, 16777619);
+  return h >>> 0;
+}
 
 function makeDepositCoinGeometry(
-  deposit: MetalDeposit,
-  radialStep: number,
+  source: MetalDepositVisualCluster,
+  outlineStep: number,
   height: number,
 ): THREE.BufferGeometry {
-  const radialIndices = makeRadialIndices(radialStep);
-  const profile = makeSmoothedDepositProfile(deposit);
+  const outline = makeSmoothedDepositOutline(source, outlineStep);
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
   const visibleHeight = height * 0.5;
-  const seed = deposit.id;
+  const seed = source.seed;
 
-  // Center vertex for the above-ground top flat-disk fan.
-  const topCenter = 0;
-  positions.push(0, visibleHeight, 0);
-  pushDepositUv(uvs, 0, 0, seed);
-  pushDepositColor(colors, seed, 0, 0.78);
-
-  // Top rim — flat disk at y=visibleHeight, inset to COIN_FLAT_RADIUS_FRAC.
   const topStart = positions.length / 3;
-  for (const i of radialIndices) {
-    const p = profilePerimeterPoint(profile, i, COIN_FLAT_RADIUS_FRAC);
+  for (let i = 0; i < outline.length; i++) {
+    const p = outline[i];
     positions.push(p.x, visibleHeight, p.z);
     pushDepositUv(uvs, p.x, p.z, seed);
     pushDepositColor(colors, seed, 1000 + i, 0.7 + seededNoise(seed * 521 + i * 31) * 0.18);
   }
 
-  // Ground ridge — the widest edge sits just above the terrain pad.
-  const equatorStart = positions.length / 3;
-  for (const i of radialIndices) {
-    const p = profilePerimeterPoint(profile, i, 1);
+  const groundStart = positions.length / 3;
+  for (let i = 0; i < outline.length; i++) {
+    const p = outline[i];
     positions.push(p.x, 0, p.z);
     pushDepositUv(uvs, p.x, p.z, seed);
     pushDepositColor(colors, seed, 1500 + i, 0.45 + seededNoise(seed * 467 + i * 23) * 0.2);
   }
 
-  const n = radialIndices.length;
+  const contour = outline.map((p) => new THREE.Vector2(p.x, p.z));
+  const faces = THREE.ShapeUtils.triangulateShape(contour, []);
+  for (const face of faces) {
+    indices.push(topStart + face[0], topStart + face[2], topStart + face[1]);
+  }
+
+  const n = outline.length;
   for (let i = 0; i < n; i++) {
     const next = (i + 1) % n;
     const topA = topStart + i;
     const topB = topStart + next;
-    const eqA = equatorStart + i;
-    const eqB = equatorStart + next;
+    const groundA = groundStart + i;
+    const groundB = groundStart + next;
 
-    // Top flat fan — face normal +Y.
-    indices.push(topCenter, topB, topA);
-    // Upper bevel — slants from the inset top rim down-and-out to
-    // the ground ridge. Two triangles per segment, wound so the normal
-    // points up-and-outward.
-    indices.push(topA, topB, eqA, topB, eqB, eqA);
+    // Vertical rim follows the same smoothed outline as the top face, so
+    // the visible deposit footprint stays tied to the metal-producing cells.
+    indices.push(topA, topB, groundA, topB, groundB, groundA);
   }
 
   const indexed = new THREE.BufferGeometry();
@@ -232,82 +401,222 @@ function makeDepositCoinGeometry(
   return geom;
 }
 
-function makeSmoothedDepositProfile(deposit: MetalDeposit): number[] {
-  const profile: number[] = [];
-  for (let i = 0; i < DEPOSIT_MAX_RADIAL_SEGMENTS; i++) {
-    const a = (i / DEPOSIT_MAX_RADIAL_SEGMENTS) * Math.PI * 2;
-    const dx = Math.cos(a);
-    const dz = Math.sin(a);
-    let radius = BUILD_GRID_CELL_SIZE * 0.5;
-    for (const cell of deposit.cells) {
-      const minX = cell.gx * BUILD_GRID_CELL_SIZE - deposit.x - DEPOSIT_VISUAL_MARGIN;
-      const maxX = minX + BUILD_GRID_CELL_SIZE + DEPOSIT_VISUAL_MARGIN * 2;
-      const minZ = cell.gy * BUILD_GRID_CELL_SIZE - deposit.y - DEPOSIT_VISUAL_MARGIN;
-      const maxZ = minZ + BUILD_GRID_CELL_SIZE + DEPOSIT_VISUAL_MARGIN * 2;
-      radius = Math.max(radius, rayRectExitDistance(dx, dz, minX, minZ, maxX, maxZ));
-    }
-    profile.push(radius);
-  }
-
-  let smoothed = profile;
-  for (let pass = 0; pass < DEPOSIT_PROFILE_SMOOTH_PASSES; pass++) {
-    const next = new Array<number>(DEPOSIT_MAX_RADIAL_SEGMENTS);
-    for (let i = 0; i < DEPOSIT_MAX_RADIAL_SEGMENTS; i++) {
-      const prev = smoothed[(i - 1 + DEPOSIT_MAX_RADIAL_SEGMENTS) % DEPOSIT_MAX_RADIAL_SEGMENTS];
-      const curr = smoothed[i];
-      const nextRadius = smoothed[(i + 1) % DEPOSIT_MAX_RADIAL_SEGMENTS];
-      next[i] = prev * 0.23 + curr * 0.54 + nextRadius * 0.23;
-    }
-    smoothed = next;
-  }
-  return smoothed;
+function makeSmoothedDepositOutline(
+  source: DepositShapeSource,
+  outlineStep: number,
+): DepositOutlinePoint[] {
+  const raw = makeDepositCellBoundary(source);
+  const padded = offsetDepositLoop(raw, DEPOSIT_VISUAL_MARGIN);
+  const smoothed = smoothDepositLoop(padded, DEPOSIT_BOUNDARY_SMOOTH_PASSES);
+  return decimateDepositLoop(smoothed, outlineStep);
 }
 
-function rayRectExitDistance(
-  dx: number,
-  dz: number,
-  minX: number,
-  minZ: number,
-  maxX: number,
-  maxZ: number,
-): number {
-  let tMin = -Infinity;
-  let tMax = Infinity;
-  const eps = 1e-8;
-  if (Math.abs(dx) < eps) {
-    if (0 < minX || 0 > maxX) return 0;
-  } else {
-    const tx0 = minX / dx;
-    const tx1 = maxX / dx;
-    tMin = Math.max(tMin, Math.min(tx0, tx1));
-    tMax = Math.min(tMax, Math.max(tx0, tx1));
+function makeDepositCellBoundary(source: DepositShapeSource): DepositOutlinePoint[] {
+  const loops = makeDepositCellBoundaryLoops(source);
+  let best: DepositOutlinePoint[] | null = null;
+  let bestArea = 0;
+  for (const loop of loops) {
+    const area = signedLoopArea(loop);
+    if (area > bestArea) {
+      best = loop;
+      bestArea = area;
+    }
   }
-  if (Math.abs(dz) < eps) {
-    if (0 < minZ || 0 > maxZ) return 0;
-  } else {
-    const tz0 = minZ / dz;
-    const tz1 = maxZ / dz;
-    tMin = Math.max(tMin, Math.min(tz0, tz1));
-    tMax = Math.min(tMax, Math.max(tz0, tz1));
+  if (best !== null && best.length >= 3) return best;
+
+  let fallback: DepositOutlinePoint[] | null = null;
+  for (const loop of loops) {
+    const area = Math.abs(signedLoopArea(loop));
+    if (area > bestArea) {
+      fallback = loop;
+      bestArea = area;
+    }
   }
-  if (tMax < Math.max(0, tMin)) return 0;
-  return Math.max(0, tMax);
+  if (fallback !== null && fallback.length >= 3) {
+    if (signedLoopArea(fallback) < 0) fallback.reverse();
+    return fallback;
+  }
+  return makeFallbackDepositBoundary(source);
 }
 
-function makeRadialIndices(step: number): number[] {
-  const out: number[] = [];
-  const stride = Math.max(1, Math.floor(step));
-  for (let i = 0; i < DEPOSIT_MAX_RADIAL_SEGMENTS; i += stride) out.push(i);
+function makeDepositCellBoundaryLoops(source: DepositShapeSource): DepositOutlinePoint[][] {
+  const occupied = new Set<string>();
+  for (const cell of source.cells) occupied.add(gridCellKey(cell.gx, cell.gy));
+
+  const edges: GridEdge[] = [];
+  const pushEdge = (sx: number, sy: number, ex: number, ey: number): void => {
+    edges.push({ sx, sy, ex, ey, key: `${sx},${sy}->${ex},${ey}` });
+  };
+
+  for (const cell of source.cells) {
+    const gx = cell.gx;
+    const gy = cell.gy;
+    if (!occupied.has(gridCellKey(gx, gy - 1))) pushEdge(gx, gy, gx + 1, gy);
+    if (!occupied.has(gridCellKey(gx + 1, gy))) pushEdge(gx + 1, gy, gx + 1, gy + 1);
+    if (!occupied.has(gridCellKey(gx, gy + 1))) pushEdge(gx + 1, gy + 1, gx, gy + 1);
+    if (!occupied.has(gridCellKey(gx - 1, gy))) pushEdge(gx, gy + 1, gx, gy);
+  }
+
+  const outgoing = new Map<string, GridEdge[]>();
+  for (const edge of edges) {
+    const key = gridPointKey(edge.sx, edge.sy);
+    const list = outgoing.get(key);
+    if (list) list.push(edge);
+    else outgoing.set(key, [edge]);
+  }
+
+  const used = new Set<string>();
+  const loops: DepositOutlinePoint[][] = [];
+  for (const first of edges) {
+    if (used.has(first.key)) continue;
+    const loop: DepositOutlinePoint[] = [];
+    let current: GridEdge | null = first;
+    const startKey = gridPointKey(first.sx, first.sy);
+    for (let guard = 0; current !== null && guard < edges.length + 4; guard++) {
+      used.add(current.key);
+      loop.push(gridPointToLocal(current.sx, current.sy, source));
+      const endKey = gridPointKey(current.ex, current.ey);
+      if (endKey === startKey) {
+        current = null;
+        break;
+      }
+      current = pickNextDepositBoundaryEdge(outgoing.get(endKey) ?? [], used);
+    }
+    if (current === null && loop.length >= 3) loops.push(loop);
+  }
+  return loops;
+}
+
+function pickNextDepositBoundaryEdge(
+  candidates: readonly GridEdge[],
+  used: ReadonlySet<string>,
+): GridEdge | null {
+  for (const edge of candidates) {
+    if (!used.has(edge.key)) return edge;
+  }
+  return null;
+}
+
+function gridCellKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
+}
+
+function gridPointKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
+}
+
+function gridPointToLocal(
+  gx: number,
+  gy: number,
+  source: DepositShapeSource,
+): DepositOutlinePoint {
+  return {
+    x: gx * BUILD_GRID_CELL_SIZE - source.x,
+    z: gy * BUILD_GRID_CELL_SIZE - source.y,
+  };
+}
+
+function makeFallbackDepositBoundary(source: DepositShapeSource): DepositOutlinePoint[] {
+  const halfSize = Math.max(BUILD_GRID_CELL_SIZE * 0.5, source.resourceHalfSize);
+  return [
+    { x: -halfSize, z: -halfSize },
+    { x: halfSize, z: -halfSize },
+    { x: halfSize, z: halfSize },
+    { x: -halfSize, z: halfSize },
+  ];
+}
+
+function offsetDepositLoop(
+  points: readonly DepositOutlinePoint[],
+  margin: number,
+): DepositOutlinePoint[] {
+  if (margin <= 0 || points.length < 3) return points.slice();
+  const winding = signedLoopArea(points) >= 0 ? 1 : -1;
+  const out: DepositOutlinePoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const prev = points[(i - 1 + points.length) % points.length];
+    const curr = points[i];
+    const next = points[(i + 1) % points.length];
+    const prevEdge = normalizeDepositVector(curr.x - prev.x, curr.z - prev.z);
+    const nextEdge = normalizeDepositVector(next.x - curr.x, next.z - curr.z);
+    const prevNormal = outwardDepositNormal(prevEdge, winding);
+    const nextNormal = outwardDepositNormal(nextEdge, winding);
+    let mx = prevNormal.x + nextNormal.x;
+    let mz = prevNormal.z + nextNormal.z;
+    const mLen = Math.hypot(mx, mz);
+    if (mLen < 1e-6) {
+      out.push({
+        x: curr.x + prevNormal.x * margin,
+        z: curr.z + prevNormal.z * margin,
+      });
+      continue;
+    }
+    mx /= mLen;
+    mz /= mLen;
+    const denom = Math.max(0.35, mx * prevNormal.x + mz * prevNormal.z);
+    const distance = Math.min(margin * 2.6, margin / denom);
+    out.push({
+      x: curr.x + mx * distance,
+      z: curr.z + mz * distance,
+    });
+  }
   return out;
 }
 
-function profilePerimeterPoint(profile: readonly number[], i: number, scale: number): { x: number; z: number } {
-  const a = (i / DEPOSIT_MAX_RADIAL_SEGMENTS) * Math.PI * 2;
-  const radius = profile[i] * scale;
-  return {
-    x: Math.cos(a) * radius,
-    z: Math.sin(a) * radius,
-  };
+function smoothDepositLoop(
+  points: readonly DepositOutlinePoint[],
+  passes: number,
+): DepositOutlinePoint[] {
+  let current = points.slice();
+  for (let pass = 0; pass < passes && current.length >= 3; pass++) {
+    const next: DepositOutlinePoint[] = [];
+    for (let i = 0; i < current.length; i++) {
+      const a = current[i];
+      const b = current[(i + 1) % current.length];
+      next.push(
+        { x: a.x * 0.75 + b.x * 0.25, z: a.z * 0.75 + b.z * 0.25 },
+        { x: a.x * 0.25 + b.x * 0.75, z: a.z * 0.25 + b.z * 0.75 },
+      );
+    }
+    current = next;
+  }
+  return current;
+}
+
+function decimateDepositLoop(
+  points: readonly DepositOutlinePoint[],
+  step: number,
+): DepositOutlinePoint[] {
+  const stride = Math.max(1, Math.floor(step));
+  if (stride <= 1) return points.slice();
+  const out: DepositOutlinePoint[] = [];
+  for (let i = 0; i < points.length; i += stride) out.push(points[i]);
+  return out.length >= 3 ? out : points.slice();
+}
+
+function normalizeDepositVector(x: number, z: number): DepositOutlinePoint {
+  const len = Math.hypot(x, z);
+  if (len < 1e-6) return { x: 0, z: 0 };
+  return { x: x / len, z: z / len };
+}
+
+function outwardDepositNormal(
+  edge: DepositOutlinePoint,
+  winding: number,
+): DepositOutlinePoint {
+  return winding >= 0
+    ? { x: edge.z, z: -edge.x }
+    : { x: -edge.z, z: edge.x };
+}
+
+function signedLoopArea(points: readonly DepositOutlinePoint[]): number {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area += a.x * b.z - b.x * a.z;
+  }
+  return area * 0.5;
 }
 
 function pushDepositUv(uvs: number[], x: number, z: number, seed: number): void {

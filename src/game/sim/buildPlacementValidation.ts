@@ -209,9 +209,22 @@ function getBuildingPlacementDiagnosticsAtGrid(
     failureReason ??= 'terrain';
   }
 
+  const footprintCellKeys = new Set(cells.map((cell) => cellKey(cell.gx, cell.gy)));
+  const metalDepositCells: BuildPlacementCellDiagnostic[] = getMetalDepositGridCells(metalDeposits)
+    .filter((cell) => !footprintCellKeys.has(cellKey(cell.gx, cell.gy)))
+    .map((cell) => ({
+      gx: cell.gx,
+      gy: cell.gy,
+      x: cell.x,
+      y: cell.y,
+      reason: 'metal',
+      blocking: false,
+      terrainLevel: null,
+      metalCovered: true,
+      depositId: cell.depositId,
+    }));
   let metalFraction: number | null = null;
   let metalTotalCells: number | null = null;
-  let metalDepositCells: BuildPlacementCellDiagnostic[] | null = null;
   if (candidateType === 'extractor') {
     const coverage = getMetalDepositFootprintCoverage(
       metalDeposits,
@@ -224,17 +237,6 @@ function getBuildingPlacementDiagnosticsAtGrid(
     metalFraction = coverage.fraction;
     metalCoveredCells = coverage.coveredCells;
     metalTotalCells = coverage.totalCells;
-    metalDepositCells = getMetalDepositGridCells(metalDeposits).map((cell) => ({
-      gx: cell.gx,
-      gy: cell.gy,
-      x: cell.x,
-      y: cell.y,
-      reason: 'metal',
-      blocking: false,
-      terrainLevel: null,
-      metalCovered: true,
-      depositId: cell.depositId,
-    }));
   }
 
   return {

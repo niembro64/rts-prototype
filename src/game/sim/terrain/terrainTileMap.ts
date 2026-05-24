@@ -3,6 +3,7 @@ import { LAND_CELL_SIZE } from '../../../config';
 import { assertCanonicalLandCellSize } from '../../landGrid';
 import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
+  TERRAIN_MESH_HEIGHT_SMOOTHING,
   TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES,
   TERRAIN_TRIANGLE_MAX_SURFACE_ERROR,
   TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA,
@@ -1324,6 +1325,45 @@ function findMeshNeighborDiscrepancyLeafIndices(
   return splitLeafIndices;
 }
 
+/** Laplacian smoothing of mesh vertex heights using triangle-edge adjacency.
+ *  Each pass replaces every vertex height with a blend of itself and the
+ *  mean of its neighbors. Vertex positions and the triangle index are
+ *  untouched — only heights change. */
+function smoothMeshVertexHeights(
+  vertexHeights: number[],
+  triangleIndices: readonly number[],
+): void {
+  const steps = Math.max(0, TERRAIN_MESH_HEIGHT_SMOOTHING.maxSteps | 0);
+  const amount = Math.max(0, Math.min(1, TERRAIN_MESH_HEIGHT_SMOOTHING.amount));
+  if (steps <= 0 || amount <= 0 || vertexHeights.length === 0) return;
+
+  const vertexCount = vertexHeights.length;
+  const neighborSets = new Array<Set<number>>(vertexCount);
+  for (let i = 0; i < vertexCount; i++) neighborSets[i] = new Set<number>();
+  for (let t = 0; t < triangleIndices.length; t += 3) {
+    const a = triangleIndices[t];
+    const b = triangleIndices[t + 1];
+    const c = triangleIndices[t + 2];
+    neighborSets[a].add(b); neighborSets[a].add(c);
+    neighborSets[b].add(a); neighborSets[b].add(c);
+    neighborSets[c].add(a); neighborSets[c].add(b);
+  }
+  const neighbors: number[][] = neighborSets.map((s) => [...s]);
+
+  const next = new Array<number>(vertexCount);
+  for (let pass = 0; pass < steps; pass++) {
+    for (let v = 0; v < vertexCount; v++) {
+      const ns = neighbors[v];
+      if (ns.length === 0) { next[v] = vertexHeights[v]; continue; }
+      let sum = 0;
+      for (let k = 0; k < ns.length; k++) sum += vertexHeights[ns[k]];
+      const avg = sum / ns.length;
+      next[v] = vertexHeights[v] + (avg - vertexHeights[v]) * amount;
+    }
+    for (let v = 0; v < vertexCount; v++) vertexHeights[v] = next[v];
+  }
+}
+
 function buildConformingMeshFromLeaves(
   ctx: TerrainMeshBuildContext,
   leaves: readonly TerrainHierarchyTriangle[],
@@ -1394,6 +1434,8 @@ function buildConformingMeshFromLeaves(
   triangleIndices = resolvedTriangles.triangleIndices;
   triangleLevels = resolvedTriangles.triangleLevels;
   triangleLeafIndices = resolvedTriangles.triangleLeafIndices;
+
+  smoothMeshVertexHeights(vertexHeights, triangleIndices);
 
   const triangleNeighbors = buildTriangleNeighborMetadata(
     ctx,

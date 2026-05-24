@@ -9,6 +9,10 @@
   "terrainTriangleSampleCentroid": true,
   "terrainTrianglePreserveWaterline": true,
   "terrainTriangleVertexKeyScale": 1000,
+  "meshHeightSmoothing": {
+    "maxSteps": 0,
+    "amount": 0.5
+  },
   "waterFullyOpaque": false,
   "terrainCirclePerimeterEdgeFraction": 0.49,
   "terrainCirclePerimeterTransitionWidthFraction": 0.1,

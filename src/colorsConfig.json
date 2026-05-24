@@ -93,7 +93,7 @@
         "alpha": 130
       },
       "cloud": {
-        "maxAlpha": 0.5
+        "maxAlpha": 0.2
       },
       "gradientStart": "rgb(0, 0, 0)",
       "gradientEnd": "rgba(0, 0, 0, 0)"
