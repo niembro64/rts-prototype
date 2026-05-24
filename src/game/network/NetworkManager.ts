@@ -51,7 +51,7 @@ import {
 import { NetworkCommandTransport } from './NetworkCommandTransport';
 import { NetworkDataChannelMonitor } from './NetworkDataChannelMonitor';
 import { NetworkHeartbeatTracker } from './NetworkHeartbeatTracker';
-import { NetworkLobbyRoster } from './NetworkLobbyRoster';
+import { createLobbyPlayer, NetworkLobbyRoster } from './NetworkLobbyRoster';
 import {
   generateRoomCode,
   normalizeRoomCode,
@@ -497,11 +497,7 @@ export class NetworkManager {
 
       const playerName = getDefaultPlayerName(playerId);
 
-      const player: LobbyPlayer = {
-        playerId,
-        name: playerName,
-        isHost: false,
-      };
+      const player = createLobbyPlayer(playerId, playerName, false);
       this.roster.set(player);
 
       // Send player their assignment
@@ -696,11 +692,11 @@ export class NetworkManager {
         if (!this.isMessageForCurrentGame(message.gameId)) return;
         // Update player list without dropping richer metadata that may
         // have arrived first via heartbeat or playerInfoUpdate.
-        this.mergeRosterPlayer({
-          playerId: message.playerId,
-          name: message.playerName,
-          isHost: message.playerId === 1,
-        });
+        this.mergeRosterPlayer(createLobbyPlayer(
+          message.playerId,
+          message.playerName,
+          message.playerId === 1,
+        ));
         break;
 
       case 'playerLeft':
@@ -717,11 +713,11 @@ export class NetworkManager {
         // already-known IP.
         if (this.role === 'client') {
           if (!this.isMessageForCurrentGame(message.gameId)) return;
-          const target = this.mergeRosterPlayer({
-            playerId: message.playerId,
-            name: message.name ?? getDefaultPlayerName(message.playerId),
-            isHost: message.playerId === 1,
-          });
+          const target = this.mergeRosterPlayer(createLobbyPlayer(
+            message.playerId,
+            message.name ?? getDefaultPlayerName(message.playerId),
+            message.playerId === 1,
+          ));
           this.roster.applyPlayerInfo(target, message);
           this.emitPlayerInfoUpdate(this.roster.copy(target));
         }

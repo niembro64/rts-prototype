@@ -6,6 +6,7 @@ import {
 } from '@/types/network';
 import type { PlayerId } from '../sim/types';
 import type { LobbyPlayer } from './NetworkTypes';
+import { createLobbyPlayer } from './NetworkLobbyRoster';
 import { normalizeRoomCode } from './NetworkRoomCode';
 
 type BuildBattleHandoffOptions = {
@@ -34,11 +35,7 @@ export function buildBattleHandoff({
     const existing = roster.get(playerId);
     return existing
       ? { ...existing }
-      : {
-          playerId,
-          name: getDefaultPlayerName(playerId),
-          isHost: playerId === 1,
-        };
+      : createLobbyPlayer(playerId, getDefaultPlayerName(playerId), playerId === 1);
   });
   return {
     protocol: BATTLE_HANDOFF_PROTOCOL,

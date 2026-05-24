@@ -79,6 +79,7 @@ export class NetworkSnapshotTransport {
       type: 'state',
       gameId,
       data: buf,
+      compression: undefined,
     };
   }
 
@@ -190,6 +191,7 @@ export class NetworkSnapshotTransport {
           type: 'state',
           gameId,
           data: raw,
+          compression: undefined,
         };
       }
 
@@ -234,6 +236,7 @@ export class NetworkSnapshotTransport {
         type: 'state',
         gameId,
         data: raw,
+        compression: undefined,
       };
     } finally {
       this.pendingFullCompressionPlayerIds.delete(playerId);

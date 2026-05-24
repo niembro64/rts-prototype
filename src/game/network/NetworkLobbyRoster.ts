@@ -21,6 +21,22 @@ type PlayerInfoResult = {
   changed: boolean;
 };
 
+export function createLobbyPlayer(
+  playerId: PlayerId,
+  name: string,
+  isHost: boolean,
+): LobbyPlayer {
+  return {
+    playerId,
+    name,
+    isHost,
+    ipAddress: undefined,
+    location: undefined,
+    timezone: undefined,
+    localTime: undefined,
+  };
+}
+
 export class NetworkLobbyRoster {
   private players: Map<PlayerId, LobbyPlayer> = new Map();
 
@@ -49,11 +65,7 @@ export class NetworkLobbyRoster {
   }
 
   seedHost(playerId: PlayerId): LobbyPlayer {
-    const player: LobbyPlayer = {
-      playerId,
-      name: getInitialLocalUsername(),
-      isHost: true,
-    };
+    const player = createLobbyPlayer(playerId, getInitialLocalUsername(), true);
     this.players.set(playerId, player);
     return player;
   }

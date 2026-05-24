@@ -196,31 +196,31 @@ import type {
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
 
 export type LobbyPlayerInfoPayload = {
-  ipAddress?: string;
-  location?: string;
-  timezone?: string;
-  localTime?: string;
-  name?: string;
+  ipAddress: string | undefined;
+  location: string | undefined;
+  timezone: string | undefined;
+  localTime: string | undefined;
+  name: string | undefined;
 };
 
 // Client → Server
 export type NetworkPlayerActionMessage =
-  | { type: 'command'; gameId?: string; data: Command }
-  | { type: 'clientReady'; gameId?: string }
+  | { type: 'command'; gameId: string | undefined; data: Command }
+  | { type: 'clientReady'; gameId: string | undefined }
   // Client reports its own IP / location / timezone to the host.
   // The host updates the local LobbyPlayer record and re-broadcasts
   // (see `playerInfoUpdate` below) so every connected client sees
   // the same player list with IP + location columns populated.
   | {
       type: 'playerInfo';
-      gameId?: string;
-      ipAddress?: string;
-      location?: string;
-      timezone?: string;
-      localTime?: string;
+      gameId: string | undefined;
+      ipAddress: string | undefined;
+      location: string | undefined;
+      timezone: string | undefined;
+      localTime: string | undefined;
       /** Optional rename — set when the local user edits their own
        *  lobby player slot. Host re-broadcasts via `playerInfoUpdate`. */
-      name?: string;
+      name: string | undefined;
     }
   // Heartbeat ping. Both directions (client→host AND host→client)
   // — every peer sends one every couple seconds while the GAME
@@ -233,10 +233,10 @@ export type NetworkPlayerActionMessage =
   // drops) that don't fire PeerJS's `close` event.
   | {
       type: 'heartbeat';
-      gameId?: string;
+      gameId: string | undefined;
       playerId: PlayerId;
-      playerInfo?: LobbyPlayerInfoPayload;
-      players?: LobbyPlayer[];
+      playerInfo: LobbyPlayerInfoPayload | undefined;
+      players: LobbyPlayer[] | undefined;
     };
 
 // Host → Client lobby-settings sync. Carries the host's
@@ -255,54 +255,54 @@ export type LobbySettings = {
   dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
-  terrainDTerrain?: number;
+  terrainDTerrain: number | undefined;
   /** Metal-extractor pad altitude step (world units). */
-  metalDepositStep?: number;
+  metalDepositStep: number | undefined;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
-  fogOfWarEnabled?: boolean;
-  converterTax?: number;
+  fogOfWarEnabled: boolean | undefined;
+  converterTax: number | undefined;
 };
 
 // Server → Client
 export type NetworkServerSnapshotMessage =
   | {
       type: 'state';
-      gameId?: string;
+      gameId: string | undefined;
       data: Uint8Array | ArrayBuffer;
-      compression?: {
+      compression: {
         format: SnapshotCompressionFormat;
         rawBytes: number;
-      };
+      } | undefined;
     }
-  | { type: 'playerAssignment'; playerId: PlayerId; gameId?: string }
+  | { type: 'playerAssignment'; playerId: PlayerId; gameId: string | undefined }
   | {
       type: 'gameStart';
       playerIds: PlayerId[];
-      gameId?: string;
-      handoff?: BattleHandoff;
-      assignedPlayerId?: PlayerId;
+      gameId: string | undefined;
+      handoff: BattleHandoff | undefined;
+      assignedPlayerId: PlayerId | undefined;
     }
-  | { type: 'playerJoined'; gameId?: string; playerId: PlayerId; playerName: string }
-  | { type: 'playerLeft'; gameId?: string; playerId: PlayerId }
-  | { type: 'lobbySettings'; gameId?: string; settings: LobbySettings }
+  | { type: 'playerJoined'; gameId: string | undefined; playerId: PlayerId; playerName: string }
+  | { type: 'playerLeft'; gameId: string | undefined; playerId: PlayerId }
+  | { type: 'lobbySettings'; gameId: string | undefined; settings: LobbySettings }
   // Host fans a player's IP + location out to every connected
   // client (whoever just resolved their ipapi.co lookup, or a
   // back-fill on `playerJoined` for late-joiners). Carries
   // playerId so receivers can match it to their player list.
   | {
       type: 'playerInfoUpdate';
-      gameId?: string;
+      gameId: string | undefined;
       playerId: PlayerId;
-      ipAddress?: string;
-      location?: string;
-      timezone?: string;
-      localTime?: string;
+      ipAddress: string | undefined;
+      location: string | undefined;
+      timezone: string | undefined;
+      localTime: string | undefined;
       /** Optional rename. Sent by the host whenever a player's
        *  username changes from their own lobby slot, or when the host
        *  receives a `playerInfo` rename. Receivers update the matching
        *  LobbyPlayer.name in place. */
-      name?: string;
+      name: string | undefined;
     };
 
 // Combined (transport envelope)
@@ -835,19 +835,19 @@ export type LobbyPlayer = {
    *  value out to every connected client via
    *  `playerInfoUpdate`. May be undefined briefly between the
    *  player joining and the lookup completing. */
-  ipAddress?: string;
+  ipAddress: string | undefined;
   /** Coarse human-readable location ("Austin, US") from the same
    *  lookup, or a timezone-derived fallback if the IP service
    *  didn't return one. Same staleness window as `ipAddress`. */
-  location?: string;
+  location: string | undefined;
   /** IANA timezone of the player's machine (e.g.
    *  `America/Los_Angeles`). Used by that player to report a
    *  formatted localTime through the host-controlled lobby stream. */
-  timezone?: string;
+  timezone: string | undefined;
   /** Host-propagated time label last reported by that player's
    *  client heartbeat. UI displays this canonical string instead
    *  of formatting remote player times directly. */
-  localTime?: string;
+  localTime: string | undefined;
 };
 
 export type BattleHandoff = {
@@ -857,7 +857,7 @@ export type BattleHandoff = {
   hostPlayerId: PlayerId;
   playerIds: PlayerId[];
   players: LobbyPlayer[];
-  settings?: LobbySettings;
+  settings: LobbySettings | undefined;
 };
 
 export type NetworkRole = 'host' | 'client';
