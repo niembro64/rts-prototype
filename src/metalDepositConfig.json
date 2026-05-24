@@ -71,8 +71,8 @@
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
       "sliceOffset": 0.68,
-      "dTerrainLevels": 0,
-      "flatPadCells": 10,
+      "dTerrainLevels": 2,
+      "flatPadCells": 40,
       "terrainBlendRadius": 600
     },
     {
@@ -80,8 +80,8 @@
       "radiusFraction": 0.8,
       "countPerPlayer": 1,
       "sliceOffset": 0.63,
-      "dTerrainLevels": 0,
-      "flatPadCells": 10,
+      "dTerrainLevels": 2,
+      "flatPadCells": 40,
       "terrainBlendRadius": 600
     },
     {
@@ -89,8 +89,8 @@
       "radiusFraction": 0.7,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
-      "dTerrainLevels": 0,
-      "flatPadCells": 10,
+      "dTerrainLevels": 2,
+      "flatPadCells":40,
       "terrainBlendRadius": 600
     },
     {
@@ -98,8 +98,8 @@
       "radiusFraction": 0.6,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
-      "dTerrainLevels": 0,
-      "flatPadCells": 40,
+      "dTerrainLevels": 2,
+      "flatPadCells":40,
       "terrainBlendRadius": 600
     },
     {
@@ -107,8 +107,8 @@
       "radiusFraction": 0.5,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
-      "dTerrainLevels": 0,
-      "flatPadCells": 10,
+      "dTerrainLevels": 2,
+      "flatPadCells":40,
       "terrainBlendRadius": 600
     },
     {
@@ -116,8 +116,8 @@
       "radiusFraction": 0.4,
       "countPerPlayer": 1,
       "sliceOffset": 0.6,
-      "dTerrainLevels": 0,
-      "flatPadCells": 20,
+      "dTerrainLevels": 2,
+      "flatPadCells":40,
       "terrainBlendRadius": 600
     },
     {
@@ -125,7 +125,7 @@
       "radiusFraction": 0.772,
       "countPerPlayer": 1,
       "sliceOffset": -0.7,
-      "dTerrainLevels": 3,
+      "dTerrainLevels": 4,
       "flatPadCells": 20,
       "terrainBlendRadius": 1000
     },
@@ -134,7 +134,7 @@
       "radiusFraction": 0.85,
       "countPerPlayer": 1,
       "sliceOffset": -0.68,
-      "dTerrainLevels": 3,
+      "dTerrainLevels": 4,
       "flatPadCells": 40,
       "terrainBlendRadius": 0
     },
@@ -143,7 +143,7 @@
       "radiusFraction": 0.85,
       "countPerPlayer": 1,
       "sliceOffset": -0.72,
-      "dTerrainLevels": 3,
+      "dTerrainLevels": 4,
       "flatPadCells": 40,
       "terrainBlendRadius": 0
     }

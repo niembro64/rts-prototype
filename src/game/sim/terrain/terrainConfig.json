@@ -22,7 +22,7 @@
     "radiusFraction": 0.4,
     "phase": 1.7,
     "components": [
-      { "wavelength": 1000, "magnitude": 0.9 },
+      { "wavelength": 700, "magnitude": 0.9 },
       { "wavelength": 600, "magnitude": 0 },
       { "wavelength": 600, "magnitude": 0 }
     ]
