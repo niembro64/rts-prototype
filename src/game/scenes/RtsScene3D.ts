@@ -42,6 +42,11 @@ import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
+
+// Sim z-up surface normal for a flat water plane. Reused for every
+// water-splash event so the force-field impact ring spawns at the
+// right orientation without allocating a literal per event.
+const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
@@ -926,6 +931,21 @@ export class RtsScene3D {
       const vx = ctx ? ctx.projectile.vel.x : 0;
       const vy = ctx ? ctx.projectile.vel.y : 0;
       this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);
+      // Surface ripple — reuse the force-field/mirror impact ring as
+      // the spreading surface-reflection flash. Same material
+      // contract (Materials Are Independent Of Shape): a circular
+      // reflective surface flashing under impact reads identically
+      // whether the surface is a mirror, a force-field shell, or a
+      // body of water. The water plane is flat so the surface
+      // normal is straight up; sim is z-up so +Z is the right
+      // normal value.
+      this.forceFieldImpactRenderer.spawn(
+        event.pos.x,
+        event.pos.y,
+        event.pos.z,
+        WATER_SURFACE_NORMAL_SIM,
+        event.playerId ?? undefined,
+      );
     } else if (event.type === 'projectileExpire') {
       // Ground / expired-projectile fire — always a small pop, no meaningful
       // momentum (the projectile stopped). event.pos.z carries the exact
