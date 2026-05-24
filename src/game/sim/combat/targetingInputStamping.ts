@@ -71,11 +71,16 @@ import {
   isEntityCloaked,
 } from '../cloakDetection';
 import {
+  getEntityFullVisionRadius,
+  getEntityRadarRadius,
+} from '../sensorCoverage';
+import {
   getShotMaxLifespan,
   isProjectileShot,
   type Entity,
   type EntityId,
   type HysteresisRange,
+  type PlayerId,
   type ProjectileShot,
   type Turret,
   type TurretRanges,
@@ -143,6 +148,20 @@ let _stateViews: CombatTargetingStateViews | null = null;
 const _combatTargetingSourceEntities: Entity[] = [];
 let _combatTargetingSourceIds = new Int32Array(0);
 let _combatTargetingSourceCount = 0;
+
+function playerMaskBit(playerId: number): number {
+  if (playerId < 1 || playerId > 31) return 0;
+  return 1 << (playerId - 1);
+}
+
+function getEntityViewMask(world: WorldState, playerId: number): number {
+  let mask = playerMaskBit(playerId);
+  if (mask === 0) return 0;
+  for (const allyId of world.getAllies(playerId as PlayerId)) {
+    mask |= playerMaskBit(allyId);
+  }
+  return mask >>> 0;
+}
 
 function ensureStampPrevFsmCapacity(count: number): void {
   if (count <= _stampPrevFsmState.length) return;
@@ -422,6 +441,7 @@ export function stampForceFieldPool(
 function stampCombatTargetingEntityInto(
   sim: SimWasm,
   targeting: CombatTargetingApi,
+  world: WorldState,
   entity: Entity,
 ): boolean {
   const combat = entity.combat;
@@ -433,6 +453,7 @@ function stampCombatTargetingEntityInto(
 
   const ownership = entity.ownership;
   const playerId = ownership ? ownership.playerId : 0;
+  const viewMask = getEntityViewMask(world, playerId);
   const pos = getEntityPosition3d(entity, _stampPos);
   const vel = getEntityVelocity3d(entity, _stampVel);
   const groundZ = getUnitGroundZ(entity);
@@ -491,6 +512,8 @@ function stampCombatTargetingEntityInto(
   // detector list TS used to maintain). Padding is what the cloak
   // check adds when this entity is the *target*.
   const detectorRadius = getEntityDetectorRadius(entity);
+  const fullVisionRadius = getEntityFullVisionRadius(entity);
+  const radarRadius = getEntityRadarRadius(entity);
   const detectionPadding = getEntityDetectionPadding(entity);
 
   // Per-entity targeting inputs that used to be JS scratch arrays
@@ -536,7 +559,7 @@ function stampCombatTargetingEntityInto(
     }
   }
   targeting.setEntity(
-    slot, entity.id, playerId,
+    slot, entity.id, playerId, viewMask,
     pos.x, pos.y, pos.z,
     vel.x, vel.y, vel.z,
     groundZ,
@@ -547,7 +570,7 @@ function stampCombatTargetingEntityInto(
     aabbHalfX, aabbHalfY, aabbHalfZ,
     hp, entityFlags,
     entityFamily, entityBlueprintCode,
-    detectorRadius, detectionPadding,
+    detectorRadius, fullVisionRadius, radarRadius, detectionPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,
     priorityPointX, priorityPointY, priorityPointZ,
@@ -643,14 +666,21 @@ export function stampCombatTargetingPool(world: WorldState): void {
   targeting.clear();
 
   for (const entity of world.getUnits()) {
-    if (stampCombatTargetingEntityInto(sim, targeting, entity)) {
+    if (stampCombatTargetingEntityInto(sim, targeting, world, entity)) {
       queueCombatTargetingSource(entity);
     }
   }
   for (const entity of world.getBuildings()) {
-    if (stampCombatTargetingEntityInto(sim, targeting, entity)) {
+    if (stampCombatTargetingEntityInto(sim, targeting, world, entity)) {
       queueCombatTargetingSource(entity);
     }
+  }
+
+  targeting.rebuildObservationMasks();
+  const scanPulses = world.scanPulses;
+  for (let i = 0; i < scanPulses.length; i++) {
+    const pulse = scanPulses[i];
+    targeting.addSensorObservationCircle(pulse.playerId, pulse.x, pulse.y, pulse.radius);
   }
 }
 

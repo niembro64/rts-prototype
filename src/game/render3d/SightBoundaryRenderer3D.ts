@@ -3,17 +3,25 @@ import { COLORS } from '@/colorsConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import {
   canEntityProvideFullVision,
+  canEntityProvideRadarVision,
   getEntityFullVisionRadius,
-} from '../network/stateSerializerVisibility';
+  getEntityRadarRadius,
+} from '../sim/sensorCoverage';
 import type { Entity, PlayerId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 import { hexToRgb01 } from './colorUtils';
 
-type SightSource = {
+type SensorBoundarySource = {
   x: number;
   y: number;
   radius: number;
+};
+
+export type SensorBoundaryMode = 'sight' | 'radar';
+
+type SensorBoundaryRendererOptions = {
+  mode?: SensorBoundaryMode;
 };
 
 type AngleInterval = {
@@ -31,6 +39,11 @@ const STYLE = {
   renderOrder: 24,
 };
 
+const STYLE_BY_MODE = {
+  sight: COLORS.effects.selectionOverlay.radiusScale,
+  radar: COLORS.effects.selectionOverlay.radar,
+} as const;
+
 function normalizeAngle(angle: number): number {
   const n = angle % TAU;
   return n < 0 ? n + TAU : n;
@@ -41,10 +54,11 @@ function clampUnit(value: number): number {
 }
 
 /**
- * Draws the exact presentation meaning of "my sight": the outer union
- * boundary of local optical full-vision sources plus active scan pulses.
- * Radar towers intentionally stay out of this optical boundary; they reveal
- * minimap contacts and need a distinct sensor treatment.
+ * Draws sensor coverage union boundaries.
+ *
+ * - sight: total player full sight, including active scan pulses.
+ * - radar: total radar-level knowledge, which includes all sight sources
+ *   plus radar-only sources because full sight is a stronger intel tier.
  */
 export class SightBoundaryRenderer3D {
   private readonly parent: THREE.Group;
@@ -52,20 +66,25 @@ export class SightBoundaryRenderer3D {
   private readonly lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
   private readonly material: THREE.LineBasicMaterial;
   private readonly lineMesh: THREE.LineSegments;
-  private readonly sources: SightSource[] = [];
+  private readonly sources: SensorBoundarySource[] = [];
   private readonly intervals: AngleInterval[] = [];
-  private readonly color = hexToRgb01(COLORS.effects.selectionOverlay.radiusScale.colorHex);
+  private readonly mode: SensorBoundaryMode;
+  private readonly color: { r: number; g: number; b: number };
 
   constructor(
     parent: THREE.Group,
     getTerrainHeight: (x: number, y: number) => number,
+    options: SensorBoundaryRendererOptions = {},
   ) {
     this.parent = parent;
     this.getTerrainHeight = getTerrainHeight;
+    this.mode = options.mode ?? 'sight';
+    const style = STYLE_BY_MODE[this.mode];
+    this.color = hexToRgb01(style.colorHex);
     this.material = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: COLORS.effects.selectionOverlay.radiusScale.opacity,
+      opacity: style.opacity,
       depthTest: false,
       depthWrite: false,
     });
@@ -123,8 +142,12 @@ export class SightBoundaryRenderer3D {
     const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
-      this.collectFromOwned(clientViewState.getUnitsByPlayer(playerId), renderScope);
-      this.collectFromOwned(clientViewState.getBuildingsByPlayer(playerId), renderScope);
+      this.collectSightFromOwned(clientViewState.getUnitsByPlayer(playerId), renderScope);
+      this.collectSightFromOwned(clientViewState.getBuildingsByPlayer(playerId), renderScope);
+      if (this.mode === 'radar') {
+        this.collectRadarFromOwned(clientViewState.getUnitsByPlayer(playerId), renderScope);
+        this.collectRadarFromOwned(clientViewState.getBuildingsByPlayer(playerId), renderScope);
+      }
     }
 
     const pulses = clientViewState.getScanPulses();
@@ -134,7 +157,7 @@ export class SightBoundaryRenderer3D {
     }
   }
 
-  private collectFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
+  private collectSightFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
       if (!canEntityProvideFullVision(entity)) continue;
@@ -142,6 +165,19 @@ export class SightBoundaryRenderer3D {
         entity.transform.x,
         entity.transform.y,
         getEntityFullVisionRadius(entity),
+        renderScope,
+      );
+    }
+  }
+
+  private collectRadarFromOwned(entities: readonly Entity[], renderScope: ViewportFootprint): void {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!canEntityProvideRadarVision(entity)) continue;
+      this.pushSource(
+        entity.transform.x,
+        entity.transform.y,
+        getEntityRadarRadius(entity),
         renderScope,
       );
     }
@@ -241,7 +277,7 @@ export class SightBoundaryRenderer3D {
     intervals.length = write + 1;
   }
 
-  private drawArc(source: SightSource, start: number, end: number): void {
+  private drawArc(source: SensorBoundarySource, start: number, end: number): void {
     const span = end - start;
     if (span <= EPSILON) return;
 
@@ -264,7 +300,7 @@ export class SightBoundaryRenderer3D {
     }
   }
 
-  private sampleArcPoint(source: SightSource, angle: number): { x: number; y: number; height: number } {
+  private sampleArcPoint(source: SensorBoundarySource, angle: number): { x: number; y: number; height: number } {
     const x = source.x + Math.cos(angle) * source.radius;
     const y = source.y + Math.sin(angle) * source.radius;
     return {

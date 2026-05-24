@@ -29,9 +29,9 @@ export type GameConfig = {
   dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
   backgroundMode?: boolean;
-  /** Lobby-preview rendering: skip the usual demo zoom + base spawn
-   *  so the small pane in the GAME LOBBY shows commanders only
-   *  (no units, no buildings) at a hardcoded wide zoom. The
+  /** Lobby-preview rendering: select the lobby camera defaults and
+   *  skip the usual demo base spawn so the small pane in the GAME
+   *  LOBBY shows commanders only (no units, no buildings). The
    *  caller is responsible for matching the GameServer config
    *  (empty `aiPlayerIds`, etc.) so the simulation matches what
    *  the renderer expects. Defaults to false. */

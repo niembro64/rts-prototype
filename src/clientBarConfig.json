@@ -23,6 +23,7 @@
   "triangleDebug": { "default": false },
   "buildGridDebug": { "default": false },
   "sightBoundary": { "default": false },
+  "radarBoundary": { "default": false },
   "fogShade": { "default": false },
   "fogClouds": { "default": true },
   "predictionMode": {
@@ -143,6 +144,7 @@
     "triangleDebug": "player-client-triangle-debug",
     "buildGridDebug": "player-client-build-grid-debug",
     "sightBoundary": "player-client-sight-boundary",
+    "radarBoundary": "player-client-radar-boundary",
     "fogShade": "player-client-fog-shade",
     "fogClouds": "player-client-fog-clouds",
     "movementPosEma": "player-client-movement-pos-ema",

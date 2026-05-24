@@ -110,10 +110,10 @@ export type RtsScene3DConfig = {
   dividersMagnitude?: number;
   terrainMapShape?: TerrainMapShape;
   backgroundMode: boolean;
-  /** GAME LOBBY preview pane — uses the dedicated wider zoom and
-   *  expects the GameServer to have spawned commanders only (no
-   *  AI, no buildings, no background units). Set by the lobby
-   *  preview path; everywhere else this stays false. */
+  /** GAME LOBBY preview pane — selects the lobby camera defaults and
+   *  expects the GameServer to have spawned commanders only (no AI,
+   *  no buildings, no background units). Set by the lobby preview
+   *  path; everywhere else this stays false. */
   lobbyPreview?: boolean;
   /** Resolves a player ID to its display name. Powered by the host
    *  app's lobby roster; the scene uses it to label commanders via
@@ -165,6 +165,7 @@ export class RtsScene3D {
   private fogOfWarShroudRenderer!: FogOfWarShroudRenderer3D;
   private fogOfWarFogRenderer!: FogOfWarFog3D;
   private sightBoundaryRenderer!: SightBoundaryRenderer3D;
+  private radarBoundaryRenderer!: SightBoundaryRenderer3D;
   private audioSystem = new RtsScene3DAudioSystem();
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
@@ -329,6 +330,9 @@ export class RtsScene3D {
     );
     this.predictionPhase = new RtsScene3DPredictionPhase(this.clientViewState);
     const baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
+    const cameraBattleKind = this.lobbyPreview
+      ? 'lobbyBattle'
+      : this.backgroundMode ? 'demoBattle' : 'realBattle';
     this.cameraControl = new RtsScene3DCameraControl(this.threeApp, baseDistance);
     this.cameraFramingSystem = new RtsScene3DCameraFramingSystem(
       this.threeApp,
@@ -337,8 +341,7 @@ export class RtsScene3D {
       this.mapHeight,
       this.playerIds,
       () => this.localPlayerId,
-      this.backgroundMode,
-      this.lobbyPreview,
+      cameraBattleKind,
       (x, z) => getSurfaceHeight(x, z, this.mapWidth, this.mapHeight, LAND_CELL_SIZE),
     );
     this.cameras = this.cameraControl.cameras;
@@ -521,6 +524,11 @@ export class RtsScene3D {
       this.threeApp.world,
       (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
     );
+    this.radarBoundaryRenderer = new SightBoundaryRenderer3D(
+      this.threeApp.world,
+      (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
+      { mode: 'radar' },
+    );
 
     const canvasParent = this.threeApp.canvas.parentElement;
     if (canvasParent) {
@@ -625,6 +633,7 @@ export class RtsScene3D {
         fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
         fogOfWarFogRenderer: this.fogOfWarFogRenderer,
         sightBoundaryRenderer: this.sightBoundaryRenderer,
+        radarBoundaryRenderer: this.radarBoundaryRenderer,
         healthBar3D: this.healthBar3D,
         nameLabel3D: this.nameLabel3D,
         waypoint3D: this.waypoint3D,
@@ -1421,6 +1430,7 @@ export class RtsScene3D {
       fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
       fogOfWarFogRenderer: this.fogOfWarFogRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
+      radarBoundaryRenderer: this.radarBoundaryRenderer,
       longtaskTracker: this.longtaskTracker,
       audioSystem: this.audioSystem,
     });

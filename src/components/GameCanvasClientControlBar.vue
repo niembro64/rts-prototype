@@ -581,9 +581,14 @@ defineProps<{
         >BUILD</BarButton>
         <BarButton
           :active="model.sightBoundary"
-          title="SIGHT - draw the local player's current vision and radar coverage boundary"
+          title="SIGHT - draw the local player's total full-sight boundary"
           @click="model.toggleSightBoundary"
         >SIGHT</BarButton>
+        <BarButton
+          :active="model.radarBoundary"
+          title="RADAR - draw radar-level coverage, including all SIGHT areas plus radar-only sensor areas"
+          @click="model.toggleRadarBoundary"
+        >RADAR</BarButton>
         <BarButton
           :active="model.fogShade"
           title="SHADE - show the client fog-of-war dark overlay outside current vision when battle FOG is enabled"

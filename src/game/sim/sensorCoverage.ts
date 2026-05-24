@@ -1,0 +1,51 @@
+import type { Entity } from './types';
+import { getEntityDetectionPadding } from './cloakDetection';
+
+export const UNIT_VISION_RADIUS = 1200;
+export const COMMANDER_VISION_RADIUS = 1600;
+export const BUILDING_VISION_RADIUS = 1000;
+export const RADAR_VISION_RADIUS = 4200;
+export const BUILDER_VISION_PAD = 250;
+
+/** True when the entity contributes a normal line-of-sight source
+ *  (units, non-radar buildings — alive AND finished). Radar buildings
+ *  are intentionally excluded: they are sensors, not eyes. */
+export function canEntityProvideFullVision(entity: Entity): boolean {
+  if (entity.unit) return entity.unit.hp > 0;
+  if (!entity.building || entity.building.hp <= 0) return false;
+  if (entity.buildingType === 'radar') return false;
+  if (entity.buildable && !entity.buildable.isComplete) return false;
+  return true;
+}
+
+/** True when the entity is a radar-class sensor (alive AND finished).
+ *  Currently only the radar building qualifies; mobile-radar units can
+ *  be added by extending this predicate without touching callers. */
+export function canEntityProvideRadarVision(entity: Entity): boolean {
+  if (!entity.building || entity.building.hp <= 0) return false;
+  if (entity.buildingType !== 'radar') return false;
+  if (entity.buildable && !entity.buildable.isComplete) return false;
+  return true;
+}
+
+export function getEntityFullVisionRadius(entity: Entity): number {
+  if (!canEntityProvideFullVision(entity)) return 0;
+  // Full sight is sensor capability, not weapon reach.
+  let radius = entity.unit
+    ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
+    : BUILDING_VISION_RADIUS;
+
+  if (entity.builder) {
+    radius = Math.max(radius, entity.builder.buildRange + BUILDER_VISION_PAD);
+  }
+  return radius;
+}
+
+export function getEntityRadarRadius(entity: Entity): number {
+  if (!canEntityProvideRadarVision(entity)) return 0;
+  return RADAR_VISION_RADIUS;
+}
+
+export function getEntityVisibilityPadding(entity: Entity): number {
+  return getEntityDetectionPadding(entity);
+}

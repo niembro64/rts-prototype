@@ -133,6 +133,7 @@ export type GameCanvasClientControlBarModel = {
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly sightBoundary: boolean;
+  readonly radarBoundary: boolean;
   readonly fogShade: boolean;
   readonly fogClouds: boolean;
   readonly renderMode: RenderMode;
@@ -171,6 +172,7 @@ export type GameCanvasClientControlBarModel = {
   toggleTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   toggleSightBoundary(): void;
+  toggleRadarBoundary(): void;
   toggleFogShade(): void;
   toggleFogClouds(): void;
   changeRenderMode(mode: RenderMode): void;

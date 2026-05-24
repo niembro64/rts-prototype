@@ -326,8 +326,10 @@
         full-vision sources owned by the player and their allies. It grants full entity identity,
         private detail allowed by ownership rules, normal terrain/force-material sight checks, visual
         events, and the main snapshot entity row. <strong>Area of total player radar coverage</strong>
-        is the weaker union of radar sources. It grants positional contact only, not full identity,
-        health, orders, animation state, or full snapshot presence.
+        is the radar-level aggregate: all total player sight areas plus radar-only sensor areas.
+        Full sight is a stronger information tier, so it necessarily also supplies radar-level
+        location. Radar-only coverage grants positional contact only, not full identity, health,
+        orders, animation state, or full snapshot presence.
       </p>
       <p>
         A radar-only enemy should be represented to the player as a contact, not as the real entity.
@@ -356,7 +358,7 @@
         sight envelope must be authored separately.
       </p>
       <ul class="rule-list">
-        <li>Full sight may reveal and identify; radar may locate; detector coverage may uncloak; none of those automatically imply the others.</li>
+        <li>Full sight may reveal and identify, and always counts as radar-level location; radar-only coverage may locate; detector coverage may uncloak but does not locate by itself.</li>
         <li>Radar-only contacts are eligible inputs to weapons that explicitly allow radar fire. They are not full entities in the recipient&rsquo;s main snapshot.</li>
         <li>Weapon range, tracking range, unit sight, radar range, and detector range are separate envelopes. Sharing a number between them should be an authored choice, not a default coupling.</li>
         <li>Team sight is a player-level aggregate. A turret firing using another unit&rsquo;s sight is using team intelligence, not gaining that other unit&rsquo;s local sight radius.</li>
@@ -1729,7 +1731,7 @@
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or building may carry player intent such as attack, guard, repair, or assist; each mounted turret may inherit that target only if its own exclusion policy and targeting gates accept it.</li>
         <li>Tag every turret mount as <code>host-directed</code> or <code>fully-autonomous</code>. For each kind of turret a host mounts, exactly one of that kind must be host-directed &mdash; the blueprint loader throws at startup on zero (orders cannot land) or two-or-more (ambiguous primary). When the host is locked on to another entity, only host-directed turrets may consider that lock-on; fully-autonomous turrets ignore it and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets.</li>
-        <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies, radar locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
+        <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as inbound or outbound resource balls. Solar/wind/extractor pull inbound balls from random world directions; construction turrets push outbound balls at a build target; converters run one pylon inbound and one outbound. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>

@@ -129,6 +129,8 @@ import __wbg_init, {
   combat_targeting_entity_capacity,
   combat_targeting_set_entity,
   combat_targeting_unset_entity,
+  combat_targeting_rebuild_observation_masks,
+  combat_targeting_add_sensor_observation_circle,
   combat_targeting_set_turret,
   combat_targeting_update_mount_kinematics,
   combat_targeting_update_mount_kinematics_batch,
@@ -1061,6 +1063,7 @@ export interface CombatTargetingApi {
     entitySlot: number,
     entityId: number,
     ownerPlayerId: number,
+    viewMask: number,
     posX: number,
     posY: number,
     posZ: number,
@@ -1085,6 +1088,8 @@ export interface CombatTargetingApi {
     family: number,
     blueprintCode: number,
     detectorRadius: number,
+    fullVisionRadius: number,
+    radarRadius: number,
     detectionPadding: number,
     priorityTargetId: number,
     priorityPointPresent: number,
@@ -1095,6 +1100,18 @@ export interface CombatTargetingApi {
     turretCount: number,
   ) => void;
   unsetEntity: (entitySlot: number) => void;
+  /** Rebuilds targeting observability masks from stamped sight/radar
+   *  and detector sources. Must run after all entities are stamped and
+   *  before any targeting scheduler tick. */
+  rebuildObservationMasks: () => void;
+  /** Adds a temporary full-sight source, currently scan pulses. Full
+   *  sight is included in radar-level coverage. */
+  addSensorObservationCircle: (
+    ownerPlayerId: number,
+    x: number,
+    y: number,
+    radius: number,
+  ) => void;
   setTurret: (
     entitySlot: number,
     turretIdx: number,
@@ -2606,6 +2623,8 @@ export function initSimWasm(): Promise<SimWasm> {
           entityCapacity: combat_targeting_entity_capacity,
           setEntity: combat_targeting_set_entity,
           unsetEntity: combat_targeting_unset_entity,
+          rebuildObservationMasks: combat_targeting_rebuild_observation_masks,
+          addSensorObservationCircle: combat_targeting_add_sensor_observation_circle,
           setTurret: combat_targeting_set_turret,
           updateMountKinematics: combat_targeting_update_mount_kinematics,
           updateMountKinematicsBatch: combat_targeting_update_mount_kinematics_batch,

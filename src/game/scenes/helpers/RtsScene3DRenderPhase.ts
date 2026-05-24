@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getFogClouds, getFogShade, getSightBoundary } from '@/clientBarConfig';
+import { getFogClouds, getFogShade, getRadarBoundary, getSightBoundary } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -59,6 +59,7 @@ export type RtsScene3DRenderPhaseResources = {
   fogOfWarShroudRenderer: FogOfWarShroudRenderer3D;
   fogOfWarFogRenderer: FogOfWarFog3D;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
+  radarBoundaryRenderer: SightBoundaryRenderer3D;
   healthBar3D: HealthBar3D | null;
   nameLabel3D: NameLabel3D | null;
   waypoint3D: Waypoint3D | null;
@@ -152,6 +153,7 @@ export class RtsScene3DRenderPhase {
       fogOfWarShroudRenderer,
       fogOfWarFogRenderer,
       sightBoundaryRenderer,
+      radarBoundaryRenderer,
       healthBar3D,
       nameLabel3D,
       waypoint3D,
@@ -184,6 +186,12 @@ export class RtsScene3DRenderPhase {
       this.clientViewState,
       this.getLocalPlayerId(),
       getSightBoundary(),
+      this.renderScope,
+    );
+    radarBoundaryRenderer.update(
+      this.clientViewState,
+      this.getLocalPlayerId(),
+      getRadarBoundary(),
       this.renderScope,
     );
     entityRenderer.update(

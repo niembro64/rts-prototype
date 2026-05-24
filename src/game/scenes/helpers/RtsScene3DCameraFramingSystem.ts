@@ -1,9 +1,8 @@
 import { getCameraSmoothMode } from '@/clientBarConfig';
 import {
-  LOBBY_PREVIEW_SPIN_RATE,
-  ZOOM_INITIAL_DEMO,
-  ZOOM_INITIAL_GAME,
-  ZOOM_INITIAL_LOBBY_PREVIEW,
+  CAMERA_BATTLE_DEFAULTS,
+  type CameraBattleKind,
+  type CameraBattleFocus,
 } from '../../../config';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import { isCommander } from '../../sim/combat/combatUtils';
@@ -20,33 +19,19 @@ export class RtsScene3DCameraFramingSystem {
     private readonly mapHeight: number,
     private readonly playerIds: readonly PlayerId[],
     private readonly getLocalPlayerId: () => PlayerId,
-    private readonly backgroundMode: boolean,
-    private readonly lobbyPreview: boolean,
+    private readonly cameraBattleKind: CameraBattleKind,
     private readonly getSurfaceY: (x: number, z: number) => number,
   ) {}
 
   seedInitialCamera(): void {
-    const initialZoom = this.lobbyPreview
-      ? ZOOM_INITIAL_LOBBY_PREVIEW
-      : this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
-    const framesLocalCommander = !this.lobbyPreview;
-    const seatIndex = framesLocalCommander
-      ? Math.max(0, this.playerIds.indexOf(this.getLocalPlayerId()))
-      : 0;
-    const initialTarget = framesLocalCommander
-      ? getSpawnPositionForSeat(
-          seatIndex,
-          Math.max(1, this.playerIds.length),
-          this.mapWidth,
-          this.mapHeight,
-        )
-      : { x: this.mapWidth / 2, y: this.mapHeight / 2 };
+    const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
+    const initialTarget = this.initialTarget(defaults.focus);
 
     this.threeApp.orbit.setState({
       targetX: initialTarget.x,
       targetY: this.getSurfaceY(initialTarget.x, initialTarget.y),
       targetZ: initialTarget.y,
-      distance: this.baseDistance / initialZoom,
+      distance: this.baseDistance / defaults.zoom,
       yaw: this.povYawForLocalSeat(),
       pitch: this.threeApp.orbit.pitch,
     });
@@ -54,11 +39,12 @@ export class RtsScene3DCameraFramingSystem {
   }
 
   tickCameraSmoothing(deltaSec: number): void {
+    const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
     this.threeApp.orbit.setSmoothTau(this.cameraSmoothTauSec());
     this.threeApp.orbit.tick(deltaSec);
-    if (this.lobbyPreview) {
+    if (defaults.autoRotate && defaults.autoRotateRate !== 0) {
       this.threeApp.orbit.setOrbitAngles(
-        this.threeApp.orbit.yaw + LOBBY_PREVIEW_SPIN_RATE * deltaSec,
+        this.threeApp.orbit.yaw + defaults.autoRotateRate * deltaSec,
         this.threeApp.orbit.pitch,
       );
     }
@@ -66,7 +52,8 @@ export class RtsScene3DCameraFramingSystem {
 
   centerAfterFirstSnapshot(units: readonly Entity[]): void {
     if (this.hasCenteredCamera) return;
-    if (this.lobbyPreview) {
+    const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
+    if (defaults.focus === 'map-center') {
       this.centerCameraOnMap();
     } else {
       this.centerCameraOnCommander(units);
@@ -102,6 +89,19 @@ export class RtsScene3DCameraFramingSystem {
     this.hasCenteredCamera = true;
   }
 
+  private initialTarget(focus: CameraBattleFocus): { x: number; y: number } {
+    if (focus === 'map-center') {
+      return { x: this.mapWidth / 2, y: this.mapHeight / 2 };
+    }
+
+    return getSpawnPositionForSeat(
+      this.localSeatIndex(),
+      Math.max(1, this.playerIds.length),
+      this.mapWidth,
+      this.mapHeight,
+    );
+  }
+
   private cameraSmoothTauSec(): number {
     switch (getCameraSmoothMode()) {
       case 'fast': return 0.05;
@@ -114,12 +114,16 @@ export class RtsScene3DCameraFramingSystem {
 
   private povYawForLocalSeat(): number {
     const playerCount = Math.max(1, this.playerIds.length);
-    const seatIndex = this.lobbyPreview
+    const seatIndex = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind].focus === 'map-center'
       ? 0
-      : Math.max(0, this.playerIds.indexOf(this.getLocalPlayerId()));
+      : this.localSeatIndex();
     const angle = getPlayerBaseAngle(seatIndex, playerCount);
     const forwardSimX = -Math.cos(angle);
     const forwardSimY = -Math.sin(angle);
     return Math.atan2(-forwardSimX, forwardSimY);
+  }
+
+  private localSeatIndex(): number {
+    return Math.max(0, this.playerIds.indexOf(this.getLocalPlayerId()));
   }
 }

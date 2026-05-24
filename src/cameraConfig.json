@@ -7,13 +7,27 @@
   "zoom": {
     "min": 0.2,
     "max": 40.0,
-    "stepFraction": 0.2,
-    "initialDemo": 3.5,
-    "initialGame": 3.0,
-    "initialLobbyPreview": 0.6
+    "stepFraction": 0.2
   },
-  "lobbyPreview": {
-    "spinRate": 0.0925
+  "battleDefaults": {
+    "demoBattle": {
+      "focus": "map-center",
+      "zoom": 0.7,
+      "autoRotate": false,
+      "autoRotateRate": 0.0
+    },
+    "lobbyBattle": {
+      "focus": "map-center",
+      "zoom": 0.6,
+      "autoRotate": true,
+      "autoRotateRate": 0.0925
+    },
+    "realBattle": {
+      "focus": "local-commander",
+      "zoom": 3.0,
+      "autoRotate": false,
+      "autoRotateRate": 0.0
+    }
   },
   "anchor": {
     "zoomIn": "cursor",

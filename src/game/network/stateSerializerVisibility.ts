@@ -4,18 +4,31 @@ import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import {
   canEntityProvideDetection,
-  getEntityDetectionPadding,
   getEntityDetectorRadius,
   isEntityCloaked,
 } from '../sim/cloakDetection';
+import {
+  canEntityProvideFullVision,
+  canEntityProvideRadarVision,
+  getEntityFullVisionRadius,
+  getEntityRadarRadius,
+  getEntityVisibilityPadding,
+} from '../sim/sensorCoverage';
+
+export {
+  BUILDER_VISION_PAD,
+  BUILDING_VISION_RADIUS,
+  COMMANDER_VISION_RADIUS,
+  RADAR_VISION_RADIUS,
+  UNIT_VISION_RADIUS,
+  canEntityProvideFullVision,
+  canEntityProvideRadarVision,
+  getEntityFullVisionRadius,
+  getEntityRadarRadius,
+  getEntityVisibilityPadding,
+} from '../sim/sensorCoverage';
 
 export const VISION_CELL_SIZE = 512;
-export const UNIT_VISION_RADIUS = 1200;
-export const COMMANDER_VISION_RADIUS = 1600;
-export const BUILDING_VISION_RADIUS = 1000;
-export const RADAR_VISION_RADIUS = 4200;
-export const TURRET_VISION_PAD = 250;
-export const BUILDER_VISION_PAD = 250;
 /** Additional radius beyond a full-vision source where sounds carry
  *  but visuals do not (FOW-09). A vision-source's effective audio
  *  reach is `radius + EARSHOT_PAD`. Tuned roughly half the unit
@@ -539,72 +552,8 @@ export class SnapshotVisibility {
   }
 }
 
-/** True when the entity contributes a normal line-of-sight source
- *  (units, non-radar buildings — alive AND finished). Radar buildings
- *  are intentionally excluded: they are sensors, not eyes. Buildings
- *  under construction or still in placement-ghost state provide no
- *  vision (issues.txt FOW-16): they don't physically exist yet, so a
- *  half-built sensor exposing its full radius from 1 HP would leak
- *  intel before the structure is online. */
-export function canEntityProvideFullVision(entity: Entity): boolean {
-  if (entity.unit) return entity.unit.hp > 0;
-  if (!entity.building || entity.building.hp <= 0) return false;
-  if (entity.buildingType === 'radar') return false;
-  if (entity.buildable && !entity.buildable.isComplete) return false;
-  return true;
-}
-
-/** True when the entity is a radar-class sensor (alive AND finished).
- *  Same construction-gate as full vision — a half-built radar has no
- *  signal output. Currently only the radar building qualifies; mobile-
- *  radar units could be added by extending this predicate without
- *  touching callers. */
-export function canEntityProvideRadarVision(entity: Entity): boolean {
-  if (!entity.building || entity.building.hp <= 0) return false;
-  if (entity.buildingType !== 'radar') return false;
-  if (entity.buildable && !entity.buildable.isComplete) return false;
-  return true;
-}
-
 export function canEntityProvideDetectorVision(entity: Entity): boolean {
   return canEntityProvideDetection(entity);
-}
-
-export function getEntityFullVisionRadius(entity: Entity): number {
-  if (!canEntityProvideFullVision(entity)) return 0;
-  // FOW-OPT-15: the radius is determined by blueprint-constant inputs
-  // (unit/commander default, turret config ranges, builder.buildRange)
-  // so the max is the same every call once the entity exists. Cache it
-  // on the entity the first time we compute it; the eligibility gate
-  // above keeps the lookup correct across construction completion and
-  // death (HP→0).
-  const cached = entity._cachedFullVisionRadius;
-  if (cached >= 0) return cached;
-  let radius = entity.unit
-    ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
-    : BUILDING_VISION_RADIUS;
-
-  const combat = entity.combat;
-  if (combat !== null) {
-    const turrets = combat.turrets;
-    for (let i = 0; i < turrets.length; i++) {
-      radius = Math.max(radius, turrets[i].config.range + TURRET_VISION_PAD);
-    }
-  }
-  if (entity.builder) {
-    radius = Math.max(radius, entity.builder.buildRange + BUILDER_VISION_PAD);
-  }
-  entity._cachedFullVisionRadius = radius;
-  return radius;
-}
-
-export function getEntityRadarRadius(entity: Entity): number {
-  if (!canEntityProvideRadarVision(entity)) return 0;
-  return RADAR_VISION_RADIUS;
-}
-
-export function getEntityVisibilityPadding(entity: Entity): number {
-  return getEntityDetectionPadding(entity);
 }
 
 /** Per-emit cache used to share one SnapshotVisibility across every

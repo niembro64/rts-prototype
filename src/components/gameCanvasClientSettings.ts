@@ -24,6 +24,7 @@ import {
   getBurnMarks,
   getLegsRadiusToggle,
   getLocomotionMarks,
+  getRadarBoundary,
   getSmokeTrails,
   getSightBoundary,
   getProjRangeToggle,
@@ -52,6 +53,7 @@ import {
   setBurnMarks,
   setLegsRadiusToggle,
   setLocomotionMarks,
+  setRadarBoundary,
   setSmokeTrails,
   setSightBoundary,
   setProjRangeToggle,
@@ -97,6 +99,7 @@ export function useGameCanvasClientSettings({
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const sightBoundary = ref<boolean>(getSightBoundary());
+  const radarBoundary = ref<boolean>(getRadarBoundary());
   const fogShade = ref<boolean>(getFogShade());
   const fogClouds = ref<boolean>(getFogClouds());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
@@ -274,6 +277,12 @@ export function useGameCanvasClientSettings({
     sightBoundary.value = newValue;
   }
 
+  function toggleRadarBoundary(): void {
+    const newValue = !radarBoundary.value;
+    setRadarBoundary(newValue);
+    radarBoundary.value = newValue;
+  }
+
   function toggleFogShade(): void {
     const newValue = !fogShade.value;
     setFogShade(newValue);
@@ -391,6 +400,8 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = cd.buildGridDebug.default;
     setSightBoundary(cd.sightBoundary.default);
     sightBoundary.value = cd.sightBoundary.default;
+    setRadarBoundary(cd.radarBoundary.default);
+    radarBoundary.value = cd.radarBoundary.default;
     setFogShade(cd.fogShade.default);
     fogShade.value = cd.fogShade.default;
     setFogClouds(cd.fogClouds.default);
@@ -463,6 +474,7 @@ export function useGameCanvasClientSettings({
     triangleDebug,
     buildGridDebug,
     sightBoundary,
+    radarBoundary,
     fogShade,
     fogClouds,
     movementPosEma,
@@ -509,6 +521,7 @@ export function useGameCanvasClientSettings({
     toggleTriangleDebug,
     toggleBuildGridDebug,
     toggleSightBoundary,
+    toggleRadarBoundary,
     toggleFogShade,
     toggleFogClouds,
     changeMovementPosEma,

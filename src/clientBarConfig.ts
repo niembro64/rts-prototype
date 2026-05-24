@@ -50,6 +50,7 @@ export const CLIENT_CONFIG = {
   triangleDebug: clientBarConfig.triangleDebug,
   buildGridDebug: clientBarConfig.buildGridDebug,
   sightBoundary: clientBarConfig.sightBoundary,
+  radarBoundary: clientBarConfig.radarBoundary,
   fogShade: clientBarConfig.fogShade,
   fogClouds: clientBarConfig.fogClouds,
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
@@ -142,6 +143,7 @@ const BEAM_SNAP_TO_TURRET_STORAGE_KEY = sk.beamSnapToTurret;
 const TRIANGLE_DEBUG_STORAGE_KEY = sk.triangleDebug;
 const BUILD_GRID_DEBUG_STORAGE_KEY = sk.buildGridDebug;
 const SIGHT_BOUNDARY_STORAGE_KEY = sk.sightBoundary;
+const RADAR_BOUNDARY_STORAGE_KEY = sk.radarBoundary;
 const FOG_SHADE_STORAGE_KEY = sk.fogShade;
 const FOG_CLOUDS_STORAGE_KEY = sk.fogClouds;
 const MOVEMENT_POS_EMA_STORAGE_KEY = sk.movementPosEma;
@@ -203,6 +205,7 @@ let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
+let currentRadarBoundary: boolean = _cd.radarBoundary.default;
 let currentFogShade: boolean = _cd.fogShade.default;
 let currentFogClouds: boolean = _cd.fogClouds.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
@@ -309,6 +312,10 @@ function loadFromStorage(): void {
   const storedSightBoundary = readPersisted(SIGHT_BOUNDARY_STORAGE_KEY);
   if (storedSightBoundary !== null) {
     currentSightBoundary = storedSightBoundary === 'true';
+  }
+  const storedRadarBoundary = readPersisted(RADAR_BOUNDARY_STORAGE_KEY);
+  if (storedRadarBoundary !== null) {
+    currentRadarBoundary = storedRadarBoundary === 'true';
   }
   const storedFogShade = readPersisted(FOG_SHADE_STORAGE_KEY);
   if (storedFogShade !== null) {
@@ -610,6 +617,15 @@ export function getSightBoundary(): boolean {
 export function setSightBoundary(enabled: boolean): void {
   currentSightBoundary = enabled;
   persist(SIGHT_BOUNDARY_STORAGE_KEY, String(enabled));
+}
+
+export function getRadarBoundary(): boolean {
+  return currentRadarBoundary;
+}
+
+export function setRadarBoundary(enabled: boolean): void {
+  currentRadarBoundary = enabled;
+  persist(RADAR_BOUNDARY_STORAGE_KEY, String(enabled));
 }
 
 export function getFogShade(): boolean {

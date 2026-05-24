@@ -36,6 +36,7 @@ export type RtsScene3DRendererResources = {
   fogOfWarShroudRenderer?: Destroyable | null;
   fogOfWarFogRenderer?: Destroyable | null;
   sightBoundaryRenderer?: Destroyable | null;
+  radarBoundaryRenderer?: Destroyable | null;
   longtaskTracker: Destroyable;
   audioSystem: Clearable;
 };
@@ -68,6 +69,7 @@ export function teardownRtsScene3DRenderers(
   resources.fogOfWarShroudRenderer?.destroy();
   resources.fogOfWarFogRenderer?.destroy();
   resources.sightBoundaryRenderer?.destroy();
+  resources.radarBoundaryRenderer?.destroy();
   resources.longtaskTracker.destroy();
   resources.audioSystem.clear();
 }

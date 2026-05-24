@@ -245,6 +245,7 @@ const {
   triangleDebug,
   buildGridDebug,
   sightBoundary,
+  radarBoundary,
   fogShade,
   fogClouds,
   movementPosEma,
@@ -291,6 +292,7 @@ const {
   toggleTriangleDebug,
   toggleBuildGridDebug,
   toggleSightBoundary,
+  toggleRadarBoundary,
   toggleFogShade,
   toggleFogClouds,
   changeMovementPosEma,
@@ -839,6 +841,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   triangleDebug: triangleDebug.value,
   buildGridDebug: buildGridDebug.value,
   sightBoundary: sightBoundary.value,
+  radarBoundary: radarBoundary.value,
   fogShade: fogShade.value,
   fogClouds: fogClouds.value,
   renderMode: renderMode.value,
@@ -877,6 +880,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleTriangleDebug,
   toggleBuildGridDebug,
   toggleSightBoundary,
+  toggleRadarBoundary,
   toggleFogShade,
   toggleFogClouds,
   changeRenderMode,
@@ -948,6 +952,7 @@ watchEffect(() => {
   m.triangleDebug = triangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
   m.sightBoundary = sightBoundary.value;
+  m.radarBoundary = radarBoundary.value;
   m.fogShade = fogShade.value;
   m.fogClouds = fogClouds.value;
   m.renderMode = renderMode.value;

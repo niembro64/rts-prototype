@@ -858,31 +858,41 @@ export const ZOOM_MAX = cameraConfigJson.zoom.max;
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 
-/** Initial zoom level for the demo game (zoomed out overview) */
-export const ZOOM_INITIAL_DEMO = cameraConfigJson.zoom.initialDemo;
+export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
+export type CameraBattleFocus = 'map-center' | 'local-commander';
+export type CameraBattleDefault = {
+  readonly focus: CameraBattleFocus;
+  /** Higher = closer. Values below 1 are pulled back for broad map reads. */
+  readonly zoom: number;
+  readonly autoRotate: boolean;
+  readonly autoRotateRate: number;
+};
 
-/** Initial zoom level when a real game starts. Higher = closer.
- *  3.0 frames the local commander as a clearly visible sphere
- *  (~50 px on a 3150-wu map at default FOV) so the player has
- *  something to look AT on spawn instead of a featureless ground
- *  with two distant dots. The 0.5 default that came over from the
- *  2D era put the camera ~2× baseDistance away — fine when the
- *  map is full of units, useless when a real game opens with just
- *  two commanders. The user can wheel out to see the opponent. */
-export const ZOOM_INITIAL_GAME = cameraConfigJson.zoom.initialGame;
-
-/** GAME LOBBY preview pane — pulled WAY back so the whole map
- *  fits in the small box and players can read the terrain layout
- *  (CENTER + DIVIDERS) at a glance. The preview shows commanders
- *  only (no units, no buildings) and slowly orbits around the map
- *  center, so a wide framing makes the relative spawn positions
- *  legible during the spin. */
-export const ZOOM_INITIAL_LOBBY_PREVIEW = cameraConfigJson.zoom.initialLobbyPreview;
-
-/** Continuous-orbit rate (radians per second) for the GAME LOBBY
- *  preview camera. ~5.3 °/s = a full rotation every ~68 s — slow
- *  enough that it reads as "alive" rather than "frantic". */
-export const LOBBY_PREVIEW_SPIN_RATE = cameraConfigJson.lobbyPreview.spinRate;
+/** Initial camera framing per battle surface.
+ *
+ *  - demoBattle: wide map-center view for the standalone demo battle.
+ *  - lobbyBattle: wide map-center preview with slow automatic rotation.
+ *  - realBattle: existing local-commander POV, facing into the map. */
+export const CAMERA_BATTLE_DEFAULTS = {
+  demoBattle: {
+    focus: cameraConfigJson.battleDefaults.demoBattle.focus as CameraBattleFocus,
+    zoom: cameraConfigJson.battleDefaults.demoBattle.zoom,
+    autoRotate: cameraConfigJson.battleDefaults.demoBattle.autoRotate,
+    autoRotateRate: cameraConfigJson.battleDefaults.demoBattle.autoRotateRate,
+  },
+  lobbyBattle: {
+    focus: cameraConfigJson.battleDefaults.lobbyBattle.focus as CameraBattleFocus,
+    zoom: cameraConfigJson.battleDefaults.lobbyBattle.zoom,
+    autoRotate: cameraConfigJson.battleDefaults.lobbyBattle.autoRotate,
+    autoRotateRate: cameraConfigJson.battleDefaults.lobbyBattle.autoRotateRate,
+  },
+  realBattle: {
+    focus: cameraConfigJson.battleDefaults.realBattle.focus as CameraBattleFocus,
+    zoom: cameraConfigJson.battleDefaults.realBattle.zoom,
+    autoRotate: cameraConfigJson.battleDefaults.realBattle.autoRotate,
+    autoRotateRate: cameraConfigJson.battleDefaults.realBattle.autoRotateRate,
+  },
+} as const satisfies Record<CameraBattleKind, CameraBattleDefault>;
 
 /** Camera pan speed multiplier (middle-click drag). 1.0 = 1:1 with mouse movement */
 export const CAMERA_PAN_MULTIPLIER = cameraConfigJson.panMultiplier;

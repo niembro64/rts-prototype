@@ -93,6 +93,10 @@ export type ClientBarConfig = {
    *  terrain. This is a presentation/debug overlay only; authoritative
    *  fog filtering still lives on the host. */
   readonly sightBoundary: BooleanSetting;
+  /** Draws the local player's radar-level coverage boundary on the
+   *  terrain. Radar-level coverage includes all full-sight coverage
+   *  plus radar-only sensor coverage. */
+  readonly radarBoundary: BooleanSetting;
   /** Live fog-of-war shade over terrain outside current full vision.
    *  This is a client presentation toggle only; the DEMO/REAL battle
    *  FOG control owns whether authoritative fog filtering is active. */
