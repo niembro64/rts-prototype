@@ -37,18 +37,18 @@ let cachedWeightSignature = '';
 
 /** Stable string signature for an allowedTypes set. Sorting keeps
  *  signature equality independent of insertion order. */
-function signatureFor(allowedTypes?: ReadonlySet<string>): string {
-  if (!allowedTypes) return '*';
+function signatureFor(allowedTypes: ReadonlySet<string> | undefined = undefined): string {
+  if (allowedTypes === undefined) return '*';
   if (allowedTypes.size === 0) return '∅';
   return [...allowedTypes].sort().join('|');
 }
 
-function ensureWeightTable(allowedTypes?: ReadonlySet<string>): void {
+function ensureWeightTable(allowedTypes: ReadonlySet<string> | undefined = undefined): void {
   const sig = signatureFor(allowedTypes);
   if (sig === cachedWeightSignature && backgroundUnitWeights.length > 0) return;
   cachedWeightSignature = sig;
 
-  const types = allowedTypes
+  const types = allowedTypes !== undefined
     ? BACKGROUND_UNIT_TYPES.filter(t => allowedTypes.has(t))
     : BACKGROUND_UNIT_TYPES;
   let totalWeight = 0;
@@ -68,7 +68,7 @@ function ensureWeightTable(allowedTypes?: ReadonlySet<string>): void {
   }
 }
 
-function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string | null {
+function selectWeightedUnitType(allowedTypes: ReadonlySet<string> | undefined = undefined): string | null {
   ensureWeightTable(allowedTypes);
   if (backgroundUnitWeights.length === 0) return null;
   const r = Math.random();
@@ -78,12 +78,12 @@ function selectWeightedUnitType(allowedTypes?: ReadonlySet<string>): string | nu
   return backgroundUnitWeights[backgroundUnitWeights.length - 1].type;
 }
 
-function selectUnitType(allowedTypes?: ReadonlySet<string>): string | null {
+function selectUnitType(allowedTypes: ReadonlySet<string> | undefined = undefined): string | null {
   // No allowed types → caller will skip the spawn.
-  if (allowedTypes && allowedTypes.size === 0) return null;
+  if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
     return selectWeightedUnitType(allowedTypes);
-  } else if (allowedTypes && allowedTypes.size > 0) {
+  } else if (allowedTypes !== undefined && allowedTypes.size > 0) {
     const allowed = Array.from(allowedTypes);
     return allowed[Math.floor(Math.random() * allowed.length)];
   }
@@ -101,9 +101,9 @@ function spawnUnit(
   targetY: number,
   buildingGrid: BuildingGrid,
   waypointType: DemoBattleWaypointType,
-  allowedTypes?: ReadonlySet<string>,
+  allowedTypes: ReadonlySet<string> | undefined = undefined,
 ): Entity | null {
-  if (allowedTypes && allowedTypes.size === 0) return null;
+  if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
 
   const unitType = selectUnitType(allowedTypes);
   // Defensive: only ever spawn from the allowed-types set. If
@@ -142,7 +142,8 @@ function spawnUnit(
 function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): number {
   let count = 0;
   for (const unit of world.getUnitsByPlayer(playerId)) {
-    if (unit.unit?.unitType === 'commander') continue;
+    const unitComponent = unit.unit;
+    if (unitComponent !== null && unitComponent.unitType === 'commander') continue;
     count++;
   }
   return count;
@@ -183,8 +184,8 @@ export function spawnBackgroundUnitsStandalone(
   physics: PhysicsEngine,
   initialSpawn: boolean,
   buildingGrid: BuildingGrid,
-  allowedTypes?: ReadonlySet<string>,
-  playerIds?: readonly PlayerId[],
+  allowedTypes: ReadonlySet<string> | undefined = undefined,
+  playerIds: readonly PlayerId[] | undefined = undefined,
 ): Entity[] {
   const spawned: Entity[] = [];
   const players = normalizePlayerIds(

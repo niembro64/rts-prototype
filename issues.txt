@@ -153,7 +153,7 @@ Evidence:
   and Projectile.hasLeftSource to always-present runtime fields.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 47 other `?:` declarations remain across src/game/network/*,
+- 40 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -197,16 +197,16 @@ Evidence:
   to explicit `T | undefined`. The 2026-05-24 projectile/audio
   serializer pass converted stateSerializerProjectiles and
   stateSerializerAudio option/parameter shapes and the touched
-  projectile visibility guards to explicit absence.
+  projectile visibility guards to explicit absence. The 2026-05-24
+  background battle pass converted BackgroundBattleStandalone helper
+  params and its touched commander unit read to explicit absence.
   Remaining examples include:
-    - BackgroundBattleStandalone.ts (7): background unit selection
-      helpers.
     - DamageSystem.ts (4): beam-path / death-context helper params.
     - NetworkSnapshotTransport.ts (4): transport diagnostics/options.
     - ClientViewState.ts (4): view-state helper params/options.
     - projectileConfigs.ts (3): projectile config helper params.
     - factoryProduction.ts (3): factory API helper params.
-- Optional chaining remains at 363 in the in-scope tree after the
+- Optional chaining remains at 362 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -232,7 +232,9 @@ Evidence:
   optional reads from stateSerializerMinimap and unitGeometry. The
   serializer/wire pass removed optional reads from stateSerializer
   and snapshotEntityWirePack. The projectile/audio serializer pass
-  removed optional reads from stateSerializerProjectiles.
+  removed optional reads from stateSerializerProjectiles. The
+  background battle pass removed the remaining optional read from
+  BackgroundBattleStandalone.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."
