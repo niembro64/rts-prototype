@@ -11,16 +11,16 @@
   },
   "battleDefaults": {
     "demoBattle": {
-      "focus": "map-center",
-      "zoom": 0.7,
-      "autoRotate": false,
-      "autoRotateRate": 0.0
+      "focus": "map-origin-map-height-agnostic",
+      "zoom": 0.4,
+      "autoRotate": true,
+      "autoRotateRate": 0.05
     },
     "lobbyBattle": {
-      "focus": "map-center",
-      "zoom": 0.6,
+      "focus": "map-origin-map-height-agnostic",
+      "zoom": 0.4,
       "autoRotate": true,
-      "autoRotateRate": 0.0925
+      "autoRotateRate": 0.05
     },
     "realBattle": {
       "focus": "local-commander",

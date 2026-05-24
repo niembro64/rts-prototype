@@ -44,6 +44,11 @@ const STYLE_BY_MODE = {
   radar: COLORS.effects.selectionOverlay.radar,
 } as const;
 
+const RENDER_ORDER_BY_MODE: Record<SensorBoundaryMode, number> = {
+  radar: STYLE.renderOrder,
+  sight: STYLE.renderOrder + 1,
+};
+
 function normalizeAngle(angle: number): number {
   const n = angle % TAU;
   return n < 0 ? n + TAU : n;
@@ -90,7 +95,7 @@ export class SightBoundaryRenderer3D {
     });
     this.lineMesh = new THREE.LineSegments(this.lineBuffer.geometry, this.material);
     this.lineMesh.frustumCulled = false;
-    this.lineMesh.renderOrder = STYLE.renderOrder;
+    this.lineMesh.renderOrder = RENDER_ORDER_BY_MODE[this.mode];
     this.lineMesh.visible = false;
     parent.add(this.lineMesh);
   }

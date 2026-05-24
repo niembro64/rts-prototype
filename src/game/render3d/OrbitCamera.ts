@@ -4,6 +4,7 @@
 //   - Scroll wheel        → zoom (dolly along view direction)
 //   - Alt + middle drag   → orbit (yaw + pitch)
 //   - Middle drag         → pan (slide target on the world ground)
+//   - Ctrl + middle drag  → height pan (left/right on ground, up/down in world height)
 //   - Shift + middle drag → pan (alias)
 //   - Touch 1 finger      → pan
 //   - Touch 2 fingers     → centroid pan + pinch zoom + twist rotate
@@ -189,7 +190,7 @@ export class OrbitCamera {
   private zoomOutAnchor: CameraAnchorMode = 'screen-center';
   private rotateAnchor: CameraAnchorMode = 'screen-center';
 
-  private dragMode: 'none' | 'orbit' | 'pan' = 'none';
+  private dragMode: 'none' | 'orbit' | 'pan' | 'height-pan' = 'none';
   private lastMouseX = 0;
   private lastMouseY = 0;
   private touchMode: 'none' | 'pan' | 'pinch' = 'none';
@@ -340,10 +341,10 @@ export class OrbitCamera {
       // Middle mouse button = camera control
       if (e.button !== 1) return;
       e.preventDefault();
-      this.dragMode = e.altKey ? 'orbit' : 'pan';
+      this.dragMode = e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan';
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
-      if (this.dragMode === 'pan') {
+      if (this.dragMode === 'pan' || this.dragMode === 'height-pan') {
         this.capturePanAnchor(e.clientX, e.clientY);
       } else if (this.dragMode === 'orbit') {
         // Capture pivot + start camera position + start yaw/pitch
@@ -493,6 +494,8 @@ export class OrbitCamera {
         }
       } else if (this.dragMode === 'pan') {
         this.panByScreenDelta(dx, dy);
+      } else if (this.dragMode === 'height-pan') {
+        this.panHeightByScreenDelta(dx, dy);
       }
     };
 
@@ -663,6 +666,14 @@ export class OrbitCamera {
     }
   }
 
+  private panWorldScale(): number {
+    const refDist = this.panAnchorValid ? this.panAnchorDistance : this.distance;
+    const vFovRad = (this.camera.fov * Math.PI) / 180;
+    const worldPerPixel =
+      (2 * Math.tan(vFovRad / 2) * refDist) / this.canvas.clientHeight;
+    return worldPerPixel * this.panMultiplier;
+  }
+
   private panByScreenDelta(dx: number, dy: number): void {
     if (dx === 0 && dy === 0) return;
     // Move-the-camera pan with bounded magnitude: world-per-pixel
@@ -673,17 +684,26 @@ export class OrbitCamera {
     // pitch — no exact-3D plane-raycast blowup when the camera is
     // near horizontal. Drag direction is RTS / 2D-camera convention:
     // cursor drag direction = camera drag direction in world.
-    const refDist = this.panAnchorValid ? this.panAnchorDistance : this.distance;
-    const vFovRad = (this.camera.fov * Math.PI) / 180;
-    const worldPerPixel =
-      (2 * Math.tan(vFovRad / 2) * refDist) / this.canvas.clientHeight;
-    const scale = worldPerPixel * this.panMultiplier;
+    const scale = this.panWorldScale();
     const rx = Math.cos(this.yaw);
     const rz = Math.sin(this.yaw);
     const fx = Math.sin(this.yaw);
     const fz = -Math.cos(this.yaw);
     this.toTargetX -= dx * scale * rx - dy * scale * fx;
     this.toTargetZ -= dx * scale * rz - dy * scale * fz;
+    this.applyDestinationIfSnap();
+  }
+
+  private panHeightByScreenDelta(dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+    const scale = this.panWorldScale();
+    const rx = Math.cos(this.yaw);
+    const rz = Math.sin(this.yaw);
+    // Sim calls this vertical axis Z; Three.js stores it as world Y.
+    // Dragging up (negative screen Y delta) raises the target.
+    this.toTargetX -= dx * scale * rx;
+    this.toTargetZ -= dx * scale * rz;
+    this.toTargetY -= dy * scale;
     this.applyDestinationIfSnap();
   }
 

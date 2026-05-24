@@ -520,8 +520,8 @@
         "opacity": 0.65
       },
       "radar": {
-        "colorHex": "#66e6ff",
-        "opacity": 0.6
+        "colorHex": "#ff0000",
+        "opacity": 0.72
       },
       "selectionRing": {
         "colorHex": "#ffffff",

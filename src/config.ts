@@ -859,7 +859,10 @@ export const ZOOM_MAX = cameraConfigJson.zoom.max;
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 
 export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
-export type CameraBattleFocus = 'map-center' | 'local-commander';
+export type CameraBattleFocus =
+  | 'map-origin-use-map-height'
+  | 'map-origin-map-height-agnostic'
+  | 'local-commander';
 export type CameraBattleDefault = {
   readonly focus: CameraBattleFocus;
   /** Higher = closer. Values below 1 are pulled back for broad map reads. */
@@ -870,8 +873,8 @@ export type CameraBattleDefault = {
 
 /** Initial camera framing per battle surface.
  *
- *  - demoBattle: wide map-center view for the standalone demo battle.
- *  - lobbyBattle: wide map-center preview with slow automatic rotation.
+ *  - demoBattle: wide map-origin view for the standalone demo battle.
+ *  - lobbyBattle: wide map-origin preview with slow automatic rotation.
  *  - realBattle: existing local-commander POV, facing into the map. */
 export const CAMERA_BATTLE_DEFAULTS = {
   demoBattle: {

@@ -9,6 +9,16 @@ import { isCommander } from '../../sim/combat/combatUtils';
 import { getPlayerBaseAngle, getSpawnPositionForSeat } from '../../sim/spawn';
 import type { Entity, PlayerId } from '../../sim/types';
 
+type CameraTarget = {
+  x: number;
+  y: number;
+  z: number;
+};
+type MapOriginCameraFocus = Extract<
+  CameraBattleFocus,
+  'map-origin-use-map-height' | 'map-origin-map-height-agnostic'
+>;
+
 export class RtsScene3DCameraFramingSystem {
   private hasCenteredCamera = false;
 
@@ -29,8 +39,8 @@ export class RtsScene3DCameraFramingSystem {
 
     this.threeApp.orbit.setState({
       targetX: initialTarget.x,
-      targetY: this.getSurfaceY(initialTarget.x, initialTarget.y),
-      targetZ: initialTarget.y,
+      targetY: initialTarget.y,
+      targetZ: initialTarget.z,
       distance: this.baseDistance / defaults.zoom,
       yaw: this.povYawForLocalSeat(),
       pitch: this.threeApp.orbit.pitch,
@@ -53,8 +63,8 @@ export class RtsScene3DCameraFramingSystem {
   centerAfterFirstSnapshot(units: readonly Entity[]): void {
     if (this.hasCenteredCamera) return;
     const defaults = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind];
-    if (defaults.focus === 'map-center') {
-      this.centerCameraOnMap();
+    if (this.isMapOriginFocus(defaults.focus)) {
+      this.centerCameraOnMapOrigin(defaults.focus);
     } else {
       this.centerCameraOnCommander(units);
     }
@@ -82,24 +92,38 @@ export class RtsScene3DCameraFramingSystem {
     this.hasCenteredCamera = true;
   }
 
-  private centerCameraOnMap(): void {
-    const cx = this.mapWidth / 2;
-    const cz = this.mapHeight / 2;
-    this.threeApp.orbit.setTarget(cx, this.getSurfaceY(cx, cz), cz);
+  private centerCameraOnMapOrigin(focus: MapOriginCameraFocus): void {
+    const target = this.mapOriginTarget(focus);
+    this.threeApp.orbit.setTarget(target.x, target.y, target.z);
     this.hasCenteredCamera = true;
   }
 
-  private initialTarget(focus: CameraBattleFocus): { x: number; y: number } {
-    if (focus === 'map-center') {
-      return { x: this.mapWidth / 2, y: this.mapHeight / 2 };
+  private initialTarget(focus: CameraBattleFocus): CameraTarget {
+    if (this.isMapOriginFocus(focus)) {
+      return this.mapOriginTarget(focus);
     }
 
-    return getSpawnPositionForSeat(
+    const spawn = getSpawnPositionForSeat(
       this.localSeatIndex(),
       Math.max(1, this.playerIds.length),
       this.mapWidth,
       this.mapHeight,
     );
+    return {
+      x: spawn.x,
+      y: this.getSurfaceY(spawn.x, spawn.y),
+      z: spawn.y,
+    };
+  }
+
+  private mapOriginTarget(focus: MapOriginCameraFocus): CameraTarget {
+    const x = this.mapWidth / 2;
+    const z = this.mapHeight / 2;
+    return {
+      x,
+      y: focus === 'map-origin-use-map-height' ? this.getSurfaceY(x, z) : 0,
+      z,
+    };
   }
 
   private cameraSmoothTauSec(): number {
@@ -114,7 +138,7 @@ export class RtsScene3DCameraFramingSystem {
 
   private povYawForLocalSeat(): number {
     const playerCount = Math.max(1, this.playerIds.length);
-    const seatIndex = CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind].focus === 'map-center'
+    const seatIndex = this.isMapOriginFocus(CAMERA_BATTLE_DEFAULTS[this.cameraBattleKind].focus)
       ? 0
       : this.localSeatIndex();
     const angle = getPlayerBaseAngle(seatIndex, playerCount);
@@ -125,5 +149,10 @@ export class RtsScene3DCameraFramingSystem {
 
   private localSeatIndex(): number {
     return Math.max(0, this.playerIds.indexOf(this.getLocalPlayerId()));
+  }
+
+  private isMapOriginFocus(focus: CameraBattleFocus): focus is MapOriginCameraFocus {
+    return focus === 'map-origin-use-map-height'
+      || focus === 'map-origin-map-height-agnostic';
   }
 }
