@@ -1128,6 +1128,26 @@
         searches for enemies normally. A mirror turret can reject the same host target unless it is
         an allowed enemy turret. Commands belong to the host; lock-on belongs to the turret.
       </p>
+      <h3>Primary turrets carry the host lock-on; secondary turrets ignore it</h3>
+      <p>
+        Every turret mount on a unit or building is tagged as either <code>primary</code> or
+        <code>secondary</code>. When the host is &ldquo;locked on&rdquo; to another entity &mdash;
+        whether through a player command, an AI order, or any other host-level target intent &mdash;
+        only the primary turrets are allowed to consider that lock-on as a candidate target.
+        Secondary turrets completely ignore the host&rsquo;s lock-on and run their own independent
+        targeting flow as if the host carried no target at all.
+      </p>
+      <p>
+        This keeps the host&rsquo;s declared focus &mdash; the thing the player pointed at &mdash;
+        anchored to the weapons that define the unit&rsquo;s role, while letting auxiliary turrets
+        (anti-air defense, point-defense, repair beams, secondary cannons) keep doing their own job
+        without being yanked off it whenever the host acquires a new lock. A tank with a primary
+        main gun and a secondary anti-air turret will point its main gun at the commanded enemy
+        ground unit while the anti-air turret keeps shooting passing aircraft, regardless of what
+        the host is locked onto. Primary turrets still apply their own exclusion policy and
+        validity gates on top of the host target; secondary turrets skip the inheritance step
+        entirely.
+      </p>
       <p>
         Turret lock-on eligibility is authored as exclusion data on the turret blueprint. Exclusions
         are subtractive: by default, a turret with no lock-on exclusions is eligible to lock onto
@@ -1573,6 +1593,7 @@
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep locomotion, unit, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or building may carry player intent such as attack, guard, repair, or assist; each mounted turret may inherit that target only if its own exclusion policy and targeting gates accept it.</li>
+        <li>Tag every turret mount as <code>primary</code> or <code>secondary</code>. When the host is locked on to another entity, only primary turrets may consider that lock-on; secondary turrets ignore it entirely and run their own independent targeting flow.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as inbound or outbound resource balls. Solar/wind/extractor pull inbound balls from random world directions; construction turrets push outbound balls at a build target; converters run one pylon inbound and one outbound. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
