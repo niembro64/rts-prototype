@@ -23,7 +23,7 @@
   "triangleDebug": { "default": false },
   "buildGridDebug": { "default": false },
   "sightBoundary": { "default": false },
-  "fogShade": { "default": true },
+  "fogShade": { "default": false },
   "fogClouds": { "default": true },
   "predictionMode": {
     "default": "vel",

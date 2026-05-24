@@ -40,7 +40,7 @@
     "demo": {
       "cap": 243,
       "grid": true,
-      "fogOfWar": false,
+      "fogOfWar": true,
       "barsCollapsed": false
     },
     "real": {
