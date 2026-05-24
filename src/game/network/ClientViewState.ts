@@ -609,24 +609,26 @@ export class ClientViewState {
       }
     }
 
-    // Process projectile velocity updates (homing / server correction)
-    // Store as drift targets — client-side prediction should already be close
+    // Process projectile velocity updates (reflection / homing course
+    // correction / despawn-of-target). Each one is a discrete
+    // authoritative event: the new state is exact truth as of the
+    // emitting server tick. Snap the entity state directly instead of
+    // routing through serverTargets + EMA — EMA-blending toward a step
+    // function produces a smoothing ramp that doesn't correspond to any
+    // real trajectory, which used to manifest as wiggly tails on
+    // reflected plasma. After snapping, the dead-reckon loop advances
+    // from the new state cleanly.
     if (state.projectiles?.velocityUpdates) {
       for (const vu of state.projectiles.velocityUpdates) {
         const entity = this.entities.get(vu.id);
         if (entity?.projectile) {
-          let target = this.serverTargets.get(vu.id);
-          if (!target) {
-            target = createServerTarget();
-            this.serverTargets.set(vu.id, target);
-          }
-          target.x = deqProjPos(vu.pos.x);
-          target.y = deqProjPos(vu.pos.y);
-          target.z = deqProjPos(vu.pos.z);
-          target.velocityX = deqVel(vu.velocity.x);
-          target.velocityZ = deqVel(vu.velocity.z);
-          target.velocityY = deqVel(vu.velocity.y);
-          target.updatedAtMs = now;
+          entity.transform.x = deqProjPos(vu.pos.x);
+          entity.transform.y = deqProjPos(vu.pos.y);
+          entity.transform.z = deqProjPos(vu.pos.z);
+          entity.projectile.velocityX = deqVel(vu.velocity.x);
+          entity.projectile.velocityY = deqVel(vu.velocity.y);
+          entity.projectile.velocityZ = deqVel(vu.velocity.z);
+          this.serverTargets.delete(vu.id);
           if (vu.clearHomingTarget === true) {
             entity.projectile.homingTargetId = NO_ENTITY_ID;
           }

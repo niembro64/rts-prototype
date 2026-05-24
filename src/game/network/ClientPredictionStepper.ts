@@ -302,13 +302,12 @@ export class ClientPredictionStepper {
         continue;
       }
 
-      const target = serverTargets.get(id);
-      noteTargetAge(targetAgeStats, target === undefined ? undefined : target.updatedAtMs, now);
+      // Projectiles snap on velocityUpdate (consumed in ClientViewState)
+      // and dead-reckon between events; no server-target EMA loop.
       const predictionStep = predictionCadence.consumeDelta(deltaMs);
 
       const projectileResult = applyClientProjectilePrediction({
         entity,
-        target,
         predictionStep,
         mapWidth: getMapWidth(),
         mapHeight: getMapHeight(),

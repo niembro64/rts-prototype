@@ -19,29 +19,12 @@ import { resolveTargetAimPoint } from '../sim/combat/aimSolver';
 import {
   computeHomingThrust,
   computeTerrainFollowVerticalThrustAccel,
-  integrateConstantAccelerationPosition,
-  integrateConstantAccelerationVelocity,
-  lerp,
   magnitude3,
   solveKinematicIntercept,
   type KinematicInterceptSolution,
   type KinematicState3,
 } from '../math';
-import { getChannelBlend } from './driftEma';
-import {
-  getMovementPosEmaMode,
-  getMovementVelEmaMode,
-} from '@/clientBarConfig';
 import type { PredictionStep } from './ClientPredictionCadence';
-
-type ProjectilePredictionTarget = {
-  x: number;
-  y: number;
-  z: number;
-  velocityX: number;
-  velocityY: number;
-  velocityZ: number;
-};
 
 export type ClientProjectilePredictionResult = {
   becameLineProjectile: boolean;
@@ -53,8 +36,6 @@ const _clientHomingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _clientHomingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _clientProjectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectileVelocityScratch = { x: 0, y: 0, z: 0 };
-const _clientProjectileSnapshotPosScratch = { x: 0, y: 0, z: 0 };
-const _clientProjectileSnapshotVelScratch = { x: 0, y: 0, z: 0 };
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -191,7 +172,6 @@ function resolveClientHomingThrust(options: {
 
 export function applyClientProjectilePrediction(options: {
   entity: Entity;
-  target: ProjectilePredictionTarget | undefined;
   predictionStep: PredictionStep;
   mapWidth: number;
   mapHeight: number;
@@ -199,7 +179,6 @@ export function applyClientProjectilePrediction(options: {
 }): ClientProjectilePredictionResult {
   const {
     entity,
-    target,
     predictionStep,
     mapWidth,
     mapHeight,
@@ -213,86 +192,22 @@ export function applyClientProjectilePrediction(options: {
 
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
-  const targetDt = predictionStep.targetDeltaMs / 1000;
-  // Projectiles follow the same per-channel movement EMAs as units.
-  // Movement position always corrects; movement velocity can still IGNORE.
-  const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
-  const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
   proj.timeAlive += entityDeltaMs;
 
   const isDGunWave = entity.dgunProjectile?.isDGun === true;
   const projectileGravity = GRAVITY;
-  // PREDICT mode picks which authored derivatives feed extrapolation.
-  // Projectiles have no per-tick snapshot positions to snap to (only
-  // spawn / despawn events), so position integration always runs.
-  // All projectiles apply gravity while drifting sparse server targets.
-  // Homing and D-gun terrain-follow thrust counter it when available —
-  // the same acceleration vector the live dead-reckon path below uses,
-  // so the snapshot target evolves the way the server's authoritative
-  // rocket actually evolves between snapshots instead of sagging
-  // ballistically while the live entity counter-thrusts.
   const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
-  if (target) {
-    let targetAccX = 0;
-    let targetAccY = 0;
-    let targetAccZ = -projectileGravity;
-    if (isDGunWave) {
-      const terrainTargetZ =
-        getSurfaceHeight(target.x, target.y, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-      const shot = proj.config.shot as ProjectileShot;
-      targetAccZ += computeTerrainFollowVerticalThrustAccel({
-        positionZ: target.z,
-        velocityZ: target.velocityZ,
-        targetZ: terrainTargetZ,
-        mass: shot.mass,
-        gravity: projectileGravity,
-        springAccelPerWorldUnit: DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
-        dampingRatio: DGUN_TERRAIN_FOLLOW_DAMPING_RATIO,
-        maxThrustForce: DGUN_TERRAIN_FOLLOW_MAX_THRUST_FORCE,
-      });
-    } else {
-      _clientProjectileSnapshotPosScratch.x = target.x;
-      _clientProjectileSnapshotPosScratch.y = target.y;
-      _clientProjectileSnapshotPosScratch.z = target.z;
-      _clientProjectileSnapshotVelScratch.x = target.velocityX;
-      _clientProjectileSnapshotVelScratch.y = target.velocityY;
-      _clientProjectileSnapshotVelScratch.z = target.velocityZ;
-      const thrust = resolveClientHomingThrust({
-        entity,
-        dt: targetDt,
-        position: _clientProjectileSnapshotPosScratch,
-        velocity: _clientProjectileSnapshotVelScratch,
-        getEntity,
-      });
-      if (thrust) {
-        targetAccX += thrust.x;
-        targetAccY += thrust.y;
-        targetAccZ += thrust.z;
-      }
-    }
-    target.x = integrateConstantAccelerationPosition(target.x, target.velocityX, targetAccX, targetDt);
-    target.y = integrateConstantAccelerationPosition(target.y, target.velocityY, targetAccY, targetDt);
-    target.z = integrateConstantAccelerationPosition(target.z, target.velocityZ, targetAccZ, targetDt);
-    target.velocityX = integrateConstantAccelerationVelocity(target.velocityX, targetAccX, targetDt);
-    target.velocityY = integrateConstantAccelerationVelocity(target.velocityY, targetAccY, targetDt);
-    target.velocityZ = integrateConstantAccelerationVelocity(target.velocityZ, targetAccZ, targetDt);
-    if (movPosBlend >= 0) {
-      const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
-      entity.transform.x = lerp(position.x, target.x, movPosBlend);
-      entity.transform.y = lerp(position.y, target.y, movPosBlend);
-      entity.transform.z = lerp(position.z, target.z, movPosBlend);
-    }
-    if (movVelBlend >= 0) {
-      proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelBlend);
-      proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelBlend);
-      proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelBlend);
-    }
-    entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-  }
 
-  // Traveling projectiles: dead-reckon with one combined-acceleration
-  // step. Homing / terrain-follow thrust and gravity share the same
-  // vector, matching the authoritative projectile path.
+  // Projectiles are deterministic between discrete events: spawn,
+  // reflection, homing course correction, despawn. Each event arrives
+  // as a velocityUpdate that has already been *snapped* directly into
+  // entity.transform / proj.velocity by ClientViewState. Between events
+  // the client just dead-reckons under gravity + homing/terrain-follow
+  // thrust — the same vector the server uses — so the client and server
+  // trajectories agree to within quantization. No EMA correction loop:
+  // applying a low-pass filter to a step function would produce a ramp
+  // that doesn't correspond to any real trajectory and visibly wiggles
+  // the tail behind reflected projectiles.
   const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
   let aNetX = 0;
   let aNetY = 0;

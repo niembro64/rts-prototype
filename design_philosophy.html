@@ -521,28 +521,31 @@
       <ul class="rule-list">
         <li>
           <strong>Movement position</strong> &mdash; the world-space
-          3D position of every visually rendered moving thing. That
-          means the unit body center
-          (<code>entity.transform.x/y/z</code>), the projectile body
-          center (<code>entity.transform.x/y/z</code> on
-          non-line shots), and every per-vertex point along a line-shot
-          beam (<code>proj.points[i].x/y/z</code>). Anything the player
-          sees as "where this thing is right now" rides on this
-          channel.
+          3D position of every visually rendered moving thing whose
+          state travels on the wire as a continuous stream. That means
+          the unit body center (<code>entity.transform.x/y/z</code>)
+          and every per-vertex point along a line-shot beam
+          (<code>proj.points[i].x/y/z</code>). Anything the player sees
+          as "where this thing is right now" for a continuously
+          corrected entity rides on this channel. Travelling
+          projectiles (non-line shots) are <em>not</em> on this channel
+          &mdash; their position is event-driven, not continuously
+          corrected; see <strong>Ballistic projectiles are
+          event-driven</strong> below.
         </li>
         <li>
           <strong>Movement velocity</strong> &mdash; the 3D linear
-          velocity of every moving thing whose authoritative velocity
-          travels on the wire. That means the unit linear velocity
-          (<code>entity.unit.velocityX/Y/Z</code>), the projectile
-          linear velocity
-          (<code>proj.velocityX/Y/Z</code> on non-line shots), and the
-          per-vertex tangential velocity on a line-shot beam
+          velocity of every continuously-corrected moving thing whose
+          authoritative velocity travels on the wire. That means the
+          unit linear velocity (<code>entity.unit.velocityX/Y/Z</code>)
+          and the per-vertex tangential velocity on a line-shot beam
           (<code>proj.points[i].vx/vy/vz</code>). These are the values
           the client integrates forward between snapshots under
           <code>VEL</code> prediction, so the velocity EMA controls how
           fast that integration realigns with the server's freshest
-          velocity.
+          velocity. Travelling-projectile velocity
+          (<code>proj.velocityX/Y/Z</code>) is event-snapped, not on
+          this channel.
         </li>
         <li>
           <strong>Rotation position</strong> &mdash; the orientation of
@@ -600,6 +603,52 @@
         endpoints, not a continuously rotating wire field, so they keep
         fixed local controller alphas unless a future gameplay reason
         puts an actual rotation target on the wire.
+      </p>
+
+      <h3>Ballistic projectiles are event-driven</h3>
+      <p>
+        Travelling projectiles (non-line shots: plasma, rockets,
+        D-gun waves) are deliberately <em>excluded</em> from the
+        movement-position and movement-velocity EMA channels. Their
+        trajectory between discrete events is fully deterministic from
+        starting conditions plus the universal gravity constant plus
+        per-shot thrust (homing, terrain-follow), and the client and
+        server run the same kernel against the same inputs. There is
+        no continuous server/client divergence for the EMA to correct.
+      </p>
+      <p>
+        Accordingly, the wire format carries no per-snapshot rolling
+        state for projectiles. Every server-to-client message about a
+        travelling projectile is a discrete authoritative event: a
+        spawn (initial position, velocity, type), a reflection or
+        homing course correction (a <code>velocityUpdate</code> with
+        the new post-event pos + velocity), or a despawn. Between
+        events, the client dead-reckons under gravity + per-shot
+        thrust with no correction loop.
+      </p>
+      <p>
+        When a <code>velocityUpdate</code> arrives, the client
+        <em>snaps</em> <code>entity.transform.x/y/z</code> and
+        <code>proj.velocityX/Y/Z</code> directly to the event's
+        values and never populates a drift target. EMA-blending toward
+        a step function would produce a smoothing ramp through
+        coordinate space that does not correspond to any real
+        trajectory &mdash; visible as wiggle behind reflected shots in
+        the curved-cone tail, because the tail stamps freeze a record
+        of wherever the predicted head actually was. Snapping makes
+        the discontinuity instantaneous: subsequent dead-reckon stamps
+        land on the true post-event trajectory and the tail behind a
+        reflection is as clean as the tail behind a fresh shot.
+      </p>
+      <p>
+        This generalises: any field whose authoritative evolution
+        between events is fully reproducible from a known starting
+        state under a deterministic kernel should be snapped on the
+        events and dead-reckoned between them, not low-pass filtered
+        toward a sparse target. EMA is the right answer for genuine
+        continuous mismatch (unit physics, contacts, action latency);
+        it is the wrong answer for known step functions in
+        deterministic state.
       </p>
 
       <h3>Rendering samples prediction</h3>
