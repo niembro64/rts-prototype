@@ -58,7 +58,7 @@ type DiagnosticsStats = {
 
 declare global {
   interface Window {
-    __BA_DP03_CLIENT_PREDICTION__?: ClientPredictionDiagnosticsDebugApi;
+    __BA_DP03_CLIENT_PREDICTION__: ClientPredictionDiagnosticsDebugApi | undefined;
   }
 }
 

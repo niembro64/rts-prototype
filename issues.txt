@@ -153,7 +153,7 @@ Evidence:
   and Projectile.hasLeftSource to always-present runtime fields.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 40 other `?:` declarations remain across src/game/network/*,
+- 0 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -199,14 +199,19 @@ Evidence:
   stateSerializerAudio option/parameter shapes and the touched
   projectile visibility guards to explicit absence. The 2026-05-24
   background battle pass converted BackgroundBattleStandalone helper
-  params and its touched commander unit read to explicit absence.
-  Remaining examples include:
-    - DamageSystem.ts (4): beam-path / death-context helper params.
-    - NetworkSnapshotTransport.ts (4): transport diagnostics/options.
-    - ClientViewState.ts (4): view-state helper params/options.
-    - projectileConfigs.ts (3): projectile config helper params.
-    - factoryProduction.ts (3): factory API helper params.
-- Optional chaining remains at 362 in the in-scope tree after the
+  params and its touched commander unit read to explicit absence. The
+  2026-05-24 helper absence passes converted the remaining declarations
+  in commandSanitizer, projectileConfigs, DamageSystem,
+  NetworkSnapshotTransport, ClientViewState, factoryProduction,
+  lineOfSight, snapshotWireCodec, spawn, unitSnapshotFields,
+  commandExecution, unitSuspension, shotProfiles, MirrorPanelHit,
+  targetingInputStamping, mirrorTargetPriority, runtimeTurrets,
+  ClientPredictionDiagnostics, stateSerializerEntities,
+  terrainHeightGenerator, terrainTileMap, and
+  stateSerializerEntityDelta to explicit `T | undefined` / explicit
+  guards. Remaining optional declarations are now concentrated in
+  src/types/network.ts and src/types/sim.ts.
+- Optional chaining remains at 355 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -234,7 +239,11 @@ Evidence:
   and snapshotEntityWirePack. The projectile/audio serializer pass
   removed optional reads from stateSerializerProjectiles. The
   background battle pass removed the remaining optional read from
-  BackgroundBattleStandalone.
+  BackgroundBattleStandalone. The helper absence passes removed optional
+  reads from projectileConfigs, factoryProduction,
+  NetworkSnapshotTransport, unitSnapshotFields, stateSerializerEntities,
+  stateSerializerEntityDelta, terrainTileMap, MirrorPanelHit,
+  mirrorTargetPriority, and the touched ClientViewState paths.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

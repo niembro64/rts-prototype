@@ -159,7 +159,7 @@ function getGeneratedNaturalTerrainHeight(
   /** Pre-computed oval sample for (x, y). Threaded by getTerrainHeight
    *  so the same sample is reused across natural+plateau+boundary
    *  pipeline stages instead of being re-sampled three times. */
-  ovalSample?: MapOvalSample,
+  ovalSample: MapOvalSample | undefined = undefined,
 ): number {
   const oval = ovalSample ?? sampleMapOvalAt(ovalMetrics, x, y);
 

@@ -53,7 +53,7 @@ export type ForceFieldClearanceOptions = {
   /** Number of force fields a turret may "see through." 0 = any
    *  intervening field blocks lock-on (default). Future targeting
    *  brain upgrades raise this per-player to pierce N shields. */
-  maxCrossings?: number;
+  maxCrossings: number | undefined;
 };
 
 /** AIM-08.2 — Sentinel passed to the Rust kernel so no shield owner is
@@ -79,7 +79,7 @@ const NO_EXCLUDED_OWNER = -1;
 export function hasForceFieldClearance(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
-  options: ForceFieldClearanceOptions = {},
+  options: ForceFieldClearanceOptions = { maxCrossings: undefined },
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;
@@ -146,7 +146,7 @@ export function hasArcForceFieldClearance(
   launchX: number, launchY: number, launchZ: number,
   launchVx: number, launchVy: number, launchVz: number,
   flightTime: number,
-  options: ForceFieldClearanceOptions = {},
+  options: ForceFieldClearanceOptions = { maxCrossings: undefined },
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;
@@ -170,8 +170,8 @@ export function hasCombatLineOfSight(
   _world: WorldState,
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
-  sourceEntityId?: EntityId,
-  targetEntityId?: EntityId,
+  sourceEntityId: EntityId | undefined = undefined,
+  targetEntityId: EntityId | undefined = undefined,
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;

@@ -238,12 +238,12 @@ export class DamageSystem {
     sourceEntityId: EntityId,
     lineWidth: number,
     maxSegments: number = 4,
-    rangeSphere?: LineShotRangeSphere,
+    rangeSphere: LineShotRangeSphere | undefined = undefined,
   ): {
     endX: number; endY: number; endZ: number;
-    obstructionT?: number;
+    obstructionT: number | undefined;
     reflections: BeamReflectorPoint[];
-    terminalReflection?: BeamReflectorPoint;
+    terminalReflection: BeamReflectorPoint | undefined;
     endpointDamageable: boolean;
     segmentLimitReached: boolean;
   } {
@@ -289,7 +289,9 @@ export class DamageSystem {
           endX: curEX,
           endY: curEY,
           endZ: curEZ,
+          obstructionT: undefined,
           reflections,
+          terminalReflection: undefined,
           endpointDamageable: rangeSphere === undefined,
           segmentLimitReached: false,
         };
@@ -303,6 +305,7 @@ export class DamageSystem {
             endZ: hit.z,
             obstructionT: hit.t,
             reflections,
+            terminalReflection: undefined,
             endpointDamageable: true,
             segmentLimitReached: false,
           };
@@ -311,7 +314,9 @@ export class DamageSystem {
           endX: hit.x,
           endY: hit.y,
           endZ: hit.z,
+          obstructionT: undefined,
           reflections,
+          terminalReflection: undefined,
           endpointDamageable: true,
           segmentLimitReached: false,
         };
@@ -335,6 +340,7 @@ export class DamageSystem {
           endX: hit.x,
           endY: hit.y,
           endZ: hit.z,
+          obstructionT: undefined,
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
@@ -351,6 +357,7 @@ export class DamageSystem {
           endX: hit.x,
           endY: hit.y,
           endZ: hit.z,
+          obstructionT: undefined,
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
@@ -369,6 +376,7 @@ export class DamageSystem {
           endX: hit.x,
           endY: hit.y,
           endZ: hit.z,
+          obstructionT: undefined,
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
@@ -388,6 +396,7 @@ export class DamageSystem {
           endX: hit.x,
           endY: hit.y,
           endZ: hit.z,
+          obstructionT: undefined,
           reflections,
           terminalReflection: reflection,
           endpointDamageable: false,
@@ -438,7 +447,9 @@ export class DamageSystem {
       endX: curEX,
       endY: curEY,
       endZ: curEZ,
+      obstructionT: undefined,
       reflections,
+      terminalReflection: undefined,
       endpointDamageable: rangeSphere === undefined,
       segmentLimitReached: false,
     };
@@ -1087,7 +1098,7 @@ export class DamageSystem {
     damage: number,
     result: DamageResult,
     sourceEntityId: EntityId,
-    deathContext?: DeathContext
+    deathContext: DeathContext | undefined = undefined,
   ): void {
     if (entity.unit && entity.unit.hp > 0) {
       entity.unit.hp -= damage;

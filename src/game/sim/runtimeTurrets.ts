@@ -19,7 +19,7 @@ import { createRuntimeTurretMount } from './turretMounts';
 function makeRuntimeTurret(
   turretId: string,
   mount: { x: number; y: number; z: number },
-  visualVariant?: BuildingTurretMount['visualVariant'],
+  visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
   const turretConfig = getTurretConfig(turretId);
   if (visualVariant !== undefined) {

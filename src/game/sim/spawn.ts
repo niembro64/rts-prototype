@@ -336,7 +336,7 @@ function placeArcRow(
 }
 
 function getAvailableDemoFactoryUnitTypes(
-  availableUnitTypes?: ReadonlySet<string>,
+  availableUnitTypes: ReadonlySet<string> | undefined = undefined,
 ): string[] {
   return BUILDABLE_UNIT_IDS.filter((unitType) =>
     availableUnitTypes ? availableUnitTypes.has(unitType) : true,
@@ -409,7 +409,7 @@ export function spawnInitialBases(
   construction: ConstructionSystem,
   playerIds: PlayerId[],
   mode: InitialBaseMode = 'demo',
-  availableUnitTypes?: ReadonlySet<string>,
+  availableUnitTypes: ReadonlySet<string> | undefined = undefined,
 ): Entity[] {
   const entities: Entity[] = [];
 

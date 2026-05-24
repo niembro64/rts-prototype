@@ -66,8 +66,8 @@ export function advanceUnitSuspension(
   rotation: number,
   dtMs: number,
   options: {
-    legContact?: boolean;
-  } = {},
+    legContact: boolean | undefined;
+  } = { legContact: undefined },
 ): boolean {
   const s = unit.suspension;
   if (!s || dtMs <= 0) return false;
@@ -130,15 +130,18 @@ export function advanceUnitSuspension(
   s.offsetZ += s.velocityZ * dtSec;
 
   const max = s.config.maxOffset;
-  const clampedX = clampAxis(s.offsetX, s.velocityX, max?.x);
+  const maxX = max !== undefined ? max.x : undefined;
+  const maxY = max !== undefined ? max.y : undefined;
+  const maxZ = max !== undefined ? max.z : undefined;
+  const clampedX = clampAxis(s.offsetX, s.velocityX, maxX);
   s.offsetX = clampedX.value;
   s.velocityX = clampedX.velocity;
-  const clampedY = clampAxis(s.offsetY, s.velocityY, max?.y);
+  const clampedY = clampAxis(s.offsetY, s.velocityY, maxY);
   s.offsetY = clampedY.value;
   s.velocityY = clampedY.velocity;
 
-  if (max?.z !== undefined) {
-    const clampedZ = clampAxis(s.offsetZ, s.velocityZ, max.z);
+  if (maxZ !== undefined) {
+    const clampedZ = clampAxis(s.offsetZ, s.velocityZ, maxZ);
     s.offsetZ = clampedZ.value;
     s.velocityZ = clampedZ.velocity;
   }

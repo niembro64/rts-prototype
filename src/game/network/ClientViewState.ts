@@ -249,14 +249,14 @@ export class ClientViewState {
   private deleteEntityLocalState(id: EntityId): void {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
-    const existed = this.entities.delete(id);
+    this.entities.delete(id);
     this.serverTargets.delete(id);
     this.projectileStore.remove(id, wasLineProjectile);
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
-    if (existed) {
-      this.markEntitySetChanged(existing?.type !== 'shot');
+    if (existing !== undefined) {
+      this.markEntitySetChanged(existing.type !== 'shot');
     }
   }
 
@@ -264,7 +264,7 @@ export class ClientViewState {
     if (entity.unit) {
       this.activeEntityPredictionIds.add(entity.id);
       this.dirtyUnitRenderIds.add(entity.id);
-    } else if (entity.building && entity.combat?.turrets.length) {
+    } else if (entity.building && entity.combat !== null && entity.combat.turrets.length > 0) {
       this.activeEntityPredictionIds.add(entity.id);
     } else if (entity.projectile && !isLineProjectileEntity(entity)) {
       this.projectileStore.activeProjectilePredictionIds.add(entity.id);
@@ -273,11 +273,12 @@ export class ClientViewState {
 
   private markNetworkEntityPredictionActive(
     server: NetworkServerSnapshotEntity,
-    entity?: Entity,
+    entity: Entity | undefined = undefined,
   ): void {
     const cf = server.changedFields;
     if (server.type === 'building') {
-      if (Array.isArray(server.building?.turrets)) {
+      const building = server.building;
+      if (building !== null && Array.isArray(building.turrets)) {
         this.activeEntityPredictionIds.add(server.id);
       }
       return;
@@ -307,7 +308,7 @@ export class ClientViewState {
         // owns the entity.unit.surfaceNormal lerp — wouldn't run.
         ENTITY_CHANGED_NORMAL
       )) !== 0 ||
-      Array.isArray(server.unit?.turrets)
+      (server.unit !== null && Array.isArray(server.unit.turrets))
     ) {
       this.activeEntityPredictionIds.add(server.id);
       this.dirtyUnitRenderIds.add(server.id);
@@ -368,13 +369,16 @@ export class ClientViewState {
     entity: Entity,
     server: NetworkServerSnapshotEntity,
   ): boolean {
-    const hp = server.unit?.hp;
-    const build = server.unit?.build;
-    const curr = hp?.curr ?? entity.unit?.hp ?? 0;
-    const max = hp?.max ?? entity.unit?.maxHp ?? 0;
-    const complete = build?.complete ?? entity.buildable?.isComplete ?? true;
+    const serverUnit = server.unit;
+    const hp = serverUnit !== null ? serverUnit.hp : null;
+    const build = serverUnit !== null ? serverUnit.build : null;
+    const entityUnit = entity.unit;
+    const buildable = entity.buildable;
+    const curr = hp !== null ? hp.curr : entityUnit !== null ? entityUnit.hp : 0;
+    const max = hp !== null ? hp.max : entityUnit !== null ? entityUnit.maxHp : 0;
+    const complete = build !== null ? build.complete : buildable !== null ? buildable.isComplete : true;
     return curr < max ||
-      !!(entity.buildable && !entity.buildable.isGhost && !complete);
+      !!(buildable && !buildable.isGhost && !complete);
   }
 
   private buildingHealthBarCacheMembership(entity: Entity): boolean {
@@ -389,13 +393,15 @@ export class ClientViewState {
     server: NetworkServerSnapshotEntity,
   ): boolean {
     const building = entity.building;
-    const hp = server.building?.hp;
-    const build = server.building?.build;
-    const curr = hp?.curr ?? building?.hp ?? 0;
-    const max = hp?.max ?? building?.maxHp ?? 0;
-    const complete = build?.complete ?? entity.buildable?.isComplete ?? true;
+    const serverBuilding = server.building;
+    const hp = serverBuilding !== null ? serverBuilding.hp : null;
+    const build = serverBuilding !== null ? serverBuilding.build : null;
+    const buildable = entity.buildable;
+    const curr = hp !== null ? hp.curr : building !== null ? building.hp : 0;
+    const max = hp !== null ? hp.max : building !== null ? building.maxHp : 0;
+    const complete = build !== null ? build.complete : buildable !== null ? buildable.isComplete : true;
     return curr < max ||
-      !!(entity.buildable && !entity.buildable.isGhost && !complete);
+      !!(buildable && !buildable.isGhost && !complete);
   }
 
   private rebuildCachesIfNeeded(includeProjectileChanges = false): void {
@@ -414,7 +420,7 @@ export class ClientViewState {
    */
   applyNetworkState(
     state: NetworkServerSnapshot,
-    options: { syncEconomy?: boolean } = {},
+    options: { syncEconomy: boolean | undefined } = { syncEconomy: undefined },
   ): ClientSnapshotApplyStats {
     const applyStats: ClientSnapshotApplyStats = {
       correction: {
@@ -453,13 +459,13 @@ export class ClientViewState {
       const isBuildingUpdate = netEntity.type === 'building';
       const existing = this.entities.get(netEntity.id);
       const previousTarget = this.serverTargets.get(netEntity.id);
-      const previousTargetAgeMs = previousTarget?.updatedAtMs
+      const previousTargetAgeMs = previousTarget !== undefined && previousTarget.updatedAtMs
         ? Math.max(0, now - previousTarget.updatedAtMs)
         : 0;
       if (isBuildingUpdate) {
         // Building bodies are static, but armed buildings still use the
         // same turret target/prediction path as units.
-        const turretSnapshot = netEntity.building?.turrets;
+        const turretSnapshot = netEntity.building !== null ? netEntity.building.turrets : null;
         if (turretSnapshot) {
           const target = this.getOrCreateServerTarget(netEntity.id);
           this.clearTargetPredictionAccum(netEntity.id);
@@ -486,7 +492,7 @@ export class ClientViewState {
         // to an older target and visibly overshoot.
         this.clearTargetPredictionAccum(netEntity.id);
         applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
-        this.copyNetworkTurretsToTarget(target, netEntity.unit?.turrets ?? null, isFull);
+        this.copyNetworkTurretsToTarget(target, netEntity.unit !== null ? netEntity.unit.turrets : null, isFull);
         target.updatedAtMs = now;
       }
 
@@ -510,7 +516,7 @@ export class ClientViewState {
             applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
           }
         }
-        const netVelocity = netEntity.unit?.velocity;
+        const netVelocity = netEntity.unit !== null ? netEntity.unit.velocity : null;
         const localUnit = existing.unit;
         if (localUnit && netVelocity && (isFull || (cf & ENTITY_CHANGED_VEL) !== 0)) {
           const dvx = (localUnit.velocityX ?? 0) - deqVel(netVelocity.x);
@@ -921,12 +927,12 @@ export class ClientViewState {
 
   // === Entity lookup for input handling ===
 
-  findUnitAt(x: number, y: number, playerId?: PlayerId): Entity | null {
+  findUnitAt(x: number, y: number, playerId: PlayerId | undefined = undefined): Entity | null {
     for (const entity of this.getUnits()) {
-      if (playerId !== undefined && entity.ownership?.playerId !== playerId)
+      if (playerId !== undefined && (entity.ownership === null || entity.ownership.playerId !== playerId))
         continue;
 
-      const radius = entity.unit?.radius.body ?? 15;
+      const radius = entity.unit !== null ? entity.unit.radius.body : 15;
       const dx = entity.transform.x - x;
       const dy = entity.transform.y - y;
       if (dx * dx + dy * dy <= radius * radius) {
@@ -959,7 +965,7 @@ export class ClientViewState {
     y1: number,
     x2: number,
     y2: number,
-    playerId?: PlayerId,
+    playerId: PlayerId | undefined = undefined,
   ): Entity[] {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
@@ -969,7 +975,7 @@ export class ClientViewState {
     const results: Entity[] = [];
 
     for (const entity of this.getUnits()) {
-      if (playerId !== undefined && entity.ownership?.playerId !== playerId)
+      if (playerId !== undefined && (entity.ownership === null || entity.ownership.playerId !== playerId))
         continue;
 
       if (

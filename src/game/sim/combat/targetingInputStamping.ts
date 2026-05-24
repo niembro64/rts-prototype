@@ -380,7 +380,7 @@ const BALLISTIC_ARC_HIGH = 1;
 type ForceFieldPoolStampOptions = {
   /** Projectile collision needs the physical shield slab even when
    *  force-fields are not configured to obstruct targeting sightlines. */
-  includeWhenSightDisabled?: boolean;
+  includeWhenSightDisabled: boolean | undefined;
 };
 
 /** Rebuild the FF pool slab from getActiveForceFields(). Runs BEFORE
@@ -394,7 +394,7 @@ type ForceFieldPoolStampOptions = {
  *  even when sight obstruction is disabled. */
 export function stampForceFieldPool(
   world: WorldState,
-  options: ForceFieldPoolStampOptions = {},
+  options: ForceFieldPoolStampOptions = { includeWhenSightDisabled: undefined },
 ): void {
   const sim = getSimWasm();
   if (sim === undefined) return;

@@ -84,15 +84,16 @@ export function pickMirrorTargetTurret(
 
 export function pickTargetAimTurret(
   target: Entity,
-  sourceEntityId?: number,
+  sourceEntityId: number | undefined = undefined,
 ): MirrorTargetTurretPick | null {
   if (sourceEntityId !== undefined) {
     const directThreat = pickMirrorTargetTurret(target, sourceEntityId);
     if (directThreat) return directThreat;
   }
 
-  const turrets = target.combat?.turrets;
-  if (!turrets) return null;
+  const combat = target.combat;
+  if (combat === null) return null;
+  const turrets = combat.turrets;
   let best: MirrorTargetTurretPick | null = null;
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];

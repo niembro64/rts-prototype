@@ -32,7 +32,7 @@ export type TerrainMeshSample = {
   h10: number;
   h11: number;
   h01: number;
-  triangle?: TerrainTriangleSample;
+  triangle: TerrainTriangleSample | undefined;
 };
 
 export type TerrainMeshView = {
@@ -1636,8 +1636,8 @@ export function getTerrainMeshSample(
     candidateMap.subdiv === TERRAIN_FINE_TRIANGLE_SUBDIV
       ? candidateMap
       : null;
-  const cellsX = installedMap?.cellsX ?? Math.max(1, Math.ceil(mapWidth / size));
-  const cellsZ = installedMap?.cellsY ?? Math.max(1, Math.ceil(mapHeight / size));
+  const cellsX = installedMap !== null ? installedMap.cellsX : Math.max(1, Math.ceil(mapWidth / size));
+  const cellsZ = installedMap !== null ? installedMap.cellsY : Math.max(1, Math.ceil(mapHeight / size));
   const maxX = cellsX * size;
   const maxZ = cellsZ * size;
   const px = x <= 0 ? 0 : x >= maxX ? maxX : x;
@@ -1710,6 +1710,7 @@ export function getTerrainMeshSample(
     h10,
     h11,
     h01,
+    triangle: undefined,
   };
 }
 

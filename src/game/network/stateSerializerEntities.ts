@@ -562,18 +562,20 @@ export function serializeEntitySnapshot(
   entity: Entity,
   changedFields: number | undefined,
   world: WorldState,
-  visibility?: SnapshotVisibility,
+  visibility: SnapshotVisibility | undefined = undefined,
 ): NetworkServerSnapshotEntity | null {
   const poolEntry = getPooledEntry();
   const ne = poolEntry.entity;
   const isFull = changedFields === undefined;
-  const canSeePrivateDetails = visibility?.canSeePrivateEntityDetails(entity) ?? true;
+  const canSeePrivateDetails = visibility !== undefined
+    ? visibility.canSeePrivateEntityDetails(entity)
+    : true;
   const canReferenceEntityId = (id: number | undefined): boolean =>
-    id === undefined || (visibility?.canReferenceEntityId(world, id) ?? true);
+    id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
 
   ne.id = entity.id;
   ne.type = entity.type;
-  ne.playerId = entity.ownership?.playerId ?? 1 as PlayerId;
+  ne.playerId = entity.ownership !== null ? entity.ownership.playerId : 1 as PlayerId;
   ne.changedFields = isFull ? null : changedFields;
   ne.pos = null;
   ne.rotation = null;

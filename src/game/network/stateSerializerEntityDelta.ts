@@ -677,7 +677,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       snapshotAimMotion ? w.pitch : 0,
       snapshotAimMotion ? w.pitchVelocity : 0,
       snapshotAimMotion ? w.pitchAcceleration : 0,
-      w.forceField?.range ?? 0,
+      w.forceField !== undefined ? w.forceField.range : 0,
       targetId,
     );
   }
@@ -686,7 +686,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
 export function captureSnapshotEntityStates(
   world: WorldState,
   isDelta: boolean,
-  dirtyEntityIds?: readonly EntityId[],
+  dirtyEntityIds: readonly EntityId[] | undefined = undefined,
 ): void {
   capturedNextStates.clear();
   capturedNextStatePoolIndex = 0;

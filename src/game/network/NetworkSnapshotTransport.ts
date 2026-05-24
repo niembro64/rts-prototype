@@ -24,8 +24,8 @@ const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
 type NetworkStateMessage = Extract<NetworkMessage, { type: 'state' }>;
 type StateMessageBuild = NetworkStateMessage | Promise<NetworkStateMessage | null> | null;
 type SnapshotSendTelemetry = {
-  rate?: SnapshotRate;
-  unitCount?: number;
+  rate: SnapshotRate | undefined;
+  unitCount: number | undefined;
   isDelta: boolean;
 };
 
@@ -84,13 +84,13 @@ export class NetworkSnapshotTransport {
 
   async decodeReceivedState(
     message: NetworkStateMessage,
-    hostDataChannel?: RTCDataChannel,
+    hostDataChannel: RTCDataChannel | undefined = undefined,
   ): Promise<NetworkServerSnapshot> {
     this.snapshotsReceived++;
     if (GAME_DIAGNOSTICS.networkSnapshots && this.snapshotsReceived % 100 === 0) {
       debugLog(
         true,
-        `[NET] Client received snapshot #${this.snapshotsReceived} (dc=${hostDataChannel?.readyState ?? 'none'})`,
+        `[NET] Client received snapshot #${this.snapshotsReceived} (dc=${hostDataChannel === undefined ? 'none' : hostDataChannel.readyState})`,
       );
     }
 
@@ -127,8 +127,9 @@ export class NetworkSnapshotTransport {
 
     const state = decodeNetworkSnapshot(payload);
     setSnapshotWireBytes(state, bytes);
+    const serverMeta = state.serverMeta;
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotDecode({
-      rate: state.serverMeta?.snaps.rate,
+      rate: serverMeta === undefined ? undefined : serverMeta.snaps.rate,
       bytes,
       decodeMs: performance.now() - decodeStart,
     });
@@ -245,7 +246,7 @@ export class NetworkSnapshotTransport {
     telemetry: SnapshotSendTelemetry,
     wireBytes: number,
     encodeMs: number,
-    breakdownState?: NetworkServerSnapshot,
+    breakdownState: NetworkServerSnapshot | undefined = undefined,
   ): void {
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotEncode({
       rate: telemetry.rate,
@@ -277,9 +278,10 @@ export class NetworkSnapshotTransport {
   }
 
   private captureSendTelemetry(state: NetworkServerSnapshot): SnapshotSendTelemetry {
+    const serverMeta = state.serverMeta;
     return {
-      rate: state.serverMeta?.snaps.rate,
-      unitCount: state.serverMeta?.units.count,
+      rate: serverMeta === undefined ? undefined : serverMeta.snaps.rate,
+      unitCount: serverMeta === undefined ? undefined : serverMeta.units.count,
       isDelta: state.isDelta,
     };
   }

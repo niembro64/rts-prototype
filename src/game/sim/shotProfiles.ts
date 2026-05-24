@@ -15,13 +15,19 @@ import { getProjectileSmokeTrailSpec } from '@/smokeConfig';
 import shotProfileConfig from './shotProfileConfig.json';
 import beamConfig from '@/beamConfig.json';
 
+type BeamConfigForShotProfiles = {
+  startPointSphere: { emissionOffset: Record<string, number> | undefined } | undefined;
+};
+
 // Beam emission offset (forward distance from the turret mount where the
 // beam visually + physically "generates") is tuned per-shot in
 // beamConfig.json. The sim reads from there so both the start-point orb
 // and the damage start stay in lockstep with a single source of truth.
+const beamStartPointSphere = (beamConfig as BeamConfigForShotProfiles).startPointSphere;
 const BEAM_EMISSION_OFFSET_BY_SHOT: Readonly<Record<string, number>> =
-  (beamConfig as { startPointSphere?: { emissionOffset?: Record<string, number> } })
-    .startPointSphere?.emissionOffset ?? {};
+  beamStartPointSphere !== undefined && beamStartPointSphere.emissionOffset !== undefined
+    ? beamStartPointSphere.emissionOffset
+    : {};
 
 export const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
 export const ROCKET_TAIL_LENGTH_MULT = shotProfileConfig.rocketTailLengthMult;

@@ -39,7 +39,7 @@ import { isForceFieldReflectionMode } from '../../types/shotTypes';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 
-type GroundPoint = { x: number; y: number; z?: number };
+type GroundPoint = { x: number; y: number; z: number | undefined };
 
 export function sanitizeCommand(command: Command, world: WorldState): Command | null {
   if (!command || typeof command.type !== 'string') return null;
@@ -172,7 +172,7 @@ function sanitizeGroundPoint(
   world: WorldState,
   x: unknown,
   y: unknown,
-  z?: unknown,
+  z: unknown = undefined,
 ): GroundPoint | null {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   if (z !== undefined && !Number.isFinite(z)) return null;

@@ -234,7 +234,8 @@ export function writeNetworkUnitCombatMode(
   dst: NetworkUnitSnapshot,
   entity: Entity,
 ): void {
-  dst.fireEnabled = entity.combat?.fireEnabled === false ? false : null;
+  const combat = entity.combat;
+  dst.fireEnabled = combat !== null && combat.fireEnabled === false ? false : null;
 }
 
 export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
@@ -245,7 +246,7 @@ export function writeNetworkUnitActions(
   dst: NetworkUnitSnapshot,
   unit: Unit,
   actionPool: NetworkServerSnapshotAction[],
-  canReferenceEntityId?: (id: number | undefined) => boolean,
+  canReferenceEntityId: ((id: number | undefined) => boolean) | undefined = undefined,
 ): void {
   const actions = unit.actions ?? [];
   const count = actions.length;
@@ -264,7 +265,7 @@ export function writeNetworkUnitActions(
     }
     action.posZ = src.z ?? null;
     action.pathExp = src.isPathExpansion ? true : null;
-    action.targetId = canReferenceEntityId?.(src.targetId) === false
+    action.targetId = canReferenceEntityId !== undefined && canReferenceEntityId(src.targetId) === false
       ? null
       : src.targetId ?? null;
     action.buildingType = src.buildingType ?? null;
@@ -275,7 +276,7 @@ export function writeNetworkUnitActions(
     } else {
       action.grid = null;
     }
-    action.buildingId = canReferenceEntityId?.(src.buildingId) === false
+    action.buildingId = canReferenceEntityId !== undefined && canReferenceEntityId(src.buildingId) === false
       ? null
       : src.buildingId ?? null;
   }

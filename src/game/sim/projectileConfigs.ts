@@ -16,7 +16,7 @@ function getShotOnlyConfig(shotId: ShotId): ActiveProjectileShot {
 
 export function createProjectileConfigFromTurret(
   turretConfig: TurretConfig,
-  turretIndex?: number,
+  turretIndex: number | undefined = undefined,
 ): ProjectileConfig {
   const shot = turretConfig.shot;
   if (!shot || shot.type === 'force') {
@@ -25,7 +25,7 @@ export function createProjectileConfigFromTurret(
     // keeps them out at runtime; the type guard here mirrors that
     // contract for the type system.
     throw new Error(
-      `Turret ${turretConfig.id} (shot.type=${shot?.type ?? 'none'}) cannot create a projectile config`,
+      `Turret ${turretConfig.id} (shot.type=${shot === undefined ? 'none' : shot.type}) cannot create a projectile config`,
     );
   }
   return {
@@ -42,7 +42,7 @@ export function createProjectileConfigFromTurret(
 
 export function createProjectileConfigFromShot(
   shotId: ShotId,
-  sourceTurretId?: TurretId,
+  sourceTurretId: TurretId | undefined = undefined,
 ): ProjectileConfig {
   const shot = getShotOnlyConfig(shotId);
   return {
@@ -63,7 +63,7 @@ export function createProjectileConfigFromShot(
 export function getProjectileConfigForSpawn(
   sourceTurretId: string | undefined,
   shotId: string | undefined,
-  turretIndex?: number,
+  turretIndex: number | undefined = undefined,
 ): ProjectileConfig {
   const validSourceTurretId = sourceTurretId && isTurretId(sourceTurretId)
     ? sourceTurretId

@@ -1011,7 +1011,12 @@ function enqueueGuardAction(
 }
 
 // Add an action to a unit (respecting queue flag)
-export function addActionToUnit(entity: Entity, action: UnitAction, queue: boolean, world?: WorldState): void {
+export function addActionToUnit(
+  entity: Entity,
+  action: UnitAction,
+  queue: boolean,
+  world: WorldState | undefined = undefined,
+): void {
   if (!entity.unit) return;
 
   if (!queue) {
@@ -1029,7 +1034,9 @@ export function addActionToUnit(entity: Entity, action: UnitAction, queue: boole
     entity.unit.patrolStartIndex = entity.unit.actions.length - 1;
   }
 
-  world?.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  if (world !== undefined) {
+    world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
 }
 
 /** Plan a path from the unit's current position to (goalX, goalY) and

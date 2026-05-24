@@ -75,7 +75,7 @@ export function findClosestPanelHit(
   sx: number, sy: number, sz: number,
   ex: number, ey: number, ez: number,
   excludePanelIndex: number,
-  pivotOverride?: { x: number; y: number; z: number },
+  pivotOverride: { x: number; y: number; z: number } | undefined = undefined,
 ): MirrorPanelHit | null {
   if (panels.length === 0) return null;
 
@@ -97,7 +97,7 @@ export function findClosestPanelHit(
     // direction. Slope-aware callers provide the real turret joint;
     // legacy/fallback callers use the upright pivot formula.
     const armLength = panel.offsetX;
-    if (pivotOverride) {
+    if (pivotOverride !== undefined) {
       _panelPivot.x = pivotOverride.x + perpX * panel.offsetY;
       _panelPivot.y = pivotOverride.y + perpY * panel.offsetY;
       _panelPivot.z = pivotOverride.z;

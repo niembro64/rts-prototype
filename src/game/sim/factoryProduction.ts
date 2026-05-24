@@ -232,7 +232,7 @@ export class FactoryProductionSystem {
   // Remove a unit from factory's build queue. Removing the head
   // (index 0) when a shell is already spawned destroys the shell and
   // refunds the resources already paid into it.
-  dequeueUnit(factory: Entity, index: number, world?: WorldState): boolean {
+  dequeueUnit(factory: Entity, index: number, world: WorldState | undefined = undefined): boolean {
     if (!factory.factory) return false;
     const factoryComp = factory.factory;
     if (index < 0 || index >= factoryComp.buildQueue.length) {
@@ -250,7 +250,7 @@ export class FactoryProductionSystem {
   }
 
   // Cancel current production (destroys the shell, refunds paid).
-  cancelCurrent(factory: Entity, world?: WorldState): boolean {
+  cancelCurrent(factory: Entity, world: WorldState | undefined = undefined): boolean {
     if (!factory.factory || !factory.factory.isProducing) return false;
     if (factory.factory.currentShellId !== null && world) {
       this.cancelCurrentShell(world, factory);
@@ -270,7 +270,7 @@ export class FactoryProductionSystem {
     const shellId = factoryComp.currentShellId;
     if (shellId === null) return;
     const shell = world.getEntity(shellId);
-    if (shell?.buildable && shell.ownership) {
+    if (shell !== undefined && shell.buildable !== null && shell.ownership !== null) {
       economyManager.addStockpile(
         world,
         shell.ownership.playerId,
@@ -291,14 +291,16 @@ export class FactoryProductionSystem {
 
   // Get build queue for display. The head's progress comes from the
   // shell entity (average of the resource bars).
-  getBuildQueue(factory: Entity, world?: WorldState): { unitId: string; progress: number }[] {
+  getBuildQueue(factory: Entity, world: WorldState | undefined = undefined): { unitId: string; progress: number }[] {
     if (!factory.factory) return [];
     return factory.factory.buildQueue.map((unitId, index) => {
       if (index !== 0 || factory.factory!.currentShellId === null || !world) {
         return { unitId, progress: 0 };
       }
       const shell = world.getEntity(factory.factory!.currentShellId);
-      const progress = shell?.buildable ? getBuildFraction(shell.buildable) : 0;
+      const progress = shell !== undefined && shell.buildable !== null
+        ? getBuildFraction(shell.buildable)
+        : 0;
       return { unitId, progress };
     });
   }

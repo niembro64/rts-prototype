@@ -132,7 +132,7 @@ let rustUnavailableLogged = false;
 
 declare global {
   interface Window {
-    __BA_DP02_RUST_SNAPSHOT_WIRE__?: RustSnapshotWireDebugApi;
+    __BA_DP02_RUST_SNAPSHOT_WIRE__: RustSnapshotWireDebugApi | undefined;
   }
 }
 
@@ -167,7 +167,7 @@ export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkSer
 
 export function measureNetworkSnapshotWireBreakdown(
   state: NetworkServerSnapshot,
-  totalBytes?: number,
+  totalBytes: number | undefined = undefined,
 ): SnapshotWireBreakdown {
   const wireState = packNetworkSnapshotForWire(state);
   const measuredTotalBytes = totalBytes ?? msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS).byteLength;
