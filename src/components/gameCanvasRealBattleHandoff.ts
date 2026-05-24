@@ -54,6 +54,7 @@ type UseGameCanvasRealBattleHandoffOptions = {
     options?: { restartPreview?: boolean },
   ) => void;
   currentLobbySettings: () => LobbySettings;
+  onLoadingProgress: (progress: number) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
 
@@ -87,6 +88,7 @@ export function useGameCanvasRealBattleHandoff({
   upsertLobbyPlayer,
   applyLobbySettingsFromHost,
   currentLobbySettings,
+  onLoadingProgress,
   bindSceneUi,
 }: UseGameCanvasRealBattleHandoffOptions) {
   async function startGameWithPlayers(
@@ -115,6 +117,7 @@ export function useGameCanvasRealBattleHandoff({
       setActiveConnection,
       setBattleStartTime,
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
+      onLoadingProgress,
       bindSceneUi,
     });
   }

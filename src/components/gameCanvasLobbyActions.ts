@@ -27,6 +27,7 @@ export type GameCanvasLobbyActionsOptions = {
   battleLoading: Ref<boolean>;
   setupNetworkCallbacks: () => void;
   reportLocalPlayerInfo: () => void;
+  onLoadingProgress: (progress: number) => void;
   startGameWithPlayers: (
     playerIds: PlayerId[],
     aiPlayerIds?: PlayerId[],
@@ -46,6 +47,7 @@ export function useGameCanvasLobbyActions({
   battleLoading,
   setupNetworkCallbacks,
   reportLocalPlayerInfo,
+  onLoadingProgress,
   startGameWithPlayers,
 }: GameCanvasLobbyActionsOptions): GameCanvasLobbyActions {
   async function handleHost(): Promise<void> {
@@ -121,6 +123,7 @@ export function useGameCanvasLobbyActions({
     networkRole.value = null;
     networkNotice.value = null;
     battleLoading.value = true;
+    onLoadingProgress(0);
     localPlayerId.value = 1;
 
     nextTick(() => {

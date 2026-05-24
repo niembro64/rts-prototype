@@ -40,6 +40,7 @@ const props = defineProps<{
   fogOfWarEnabled: boolean;
   converterTax: number;
   previewLoading: boolean;
+  previewLoadingProgress: number;
 }>();
 
 const emit = defineEmits<{
@@ -353,7 +354,7 @@ const terrainSectionVars = computed(() =>
           role="status"
           aria-live="polite"
         >
-          <LoadingEmblem compact />
+          <LoadingEmblem compact :progress="previewLoadingProgress" />
         </div>
       </div>
 

@@ -25,11 +25,23 @@ type BackgroundBattleOptions = {
   getPreviewPlayerIds: () => PlayerId[] | undefined;
   getPreviewLocalPlayerId: () => PlayerId | undefined;
   getPlayerClientEnabled: () => boolean;
+  onLoadingProgress: (progress: number) => void;
   bindSceneUi: (scene: GameScene) => void;
   onRendererWarmupChange: (warming: boolean) => void;
   onStarted: (battle: BackgroundBattleState) => void;
   onStopped: () => void;
 };
+
+const BACKGROUND_LOAD_PROGRESS = {
+  start: 0,
+  overlayPainted: 0.06,
+  settingsLoaded: 0.16,
+  sceneCreated: 0.72,
+  sceneBound: 0.78,
+  firstSnapshot: 0.86,
+  shaderWarmup: 0.94,
+  done: 1,
+} as const;
 
 export function useGameCanvasBackgroundBattle({
   backgroundContainerRef,
@@ -38,6 +50,7 @@ export function useGameCanvasBackgroundBattle({
   getPreviewPlayerIds,
   getPreviewLocalPlayerId,
   getPlayerClientEnabled,
+  onLoadingProgress,
   bindSceneUi,
   onRendererWarmupChange,
   onStarted,
@@ -74,6 +87,7 @@ export function useGameCanvasBackgroundBattle({
       return;
     }
     stopBackgroundBattle();
+    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.start);
     onRendererWarmupChange(getPlayerClientEnabled());
     const myGen = backgroundBattleGen;
     await waitForLoadingOverlayPaint();
@@ -81,25 +95,42 @@ export function useGameCanvasBackgroundBattle({
       onRendererWarmupChange(false);
       return;
     }
+    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted);
+    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded);
     const battle = await createBackgroundBattle(
       backgroundContainerRef.value,
       getLocalIpAddress(),
       getBattleMode(),
       getPreviewPlayerIds(),
       getPreviewLocalPlayerId(),
-      (warming) => onRendererWarmupChange(warming && getPlayerClientEnabled()),
+      (warming) => {
+        onLoadingProgress(warming
+          ? BACKGROUND_LOAD_PROGRESS.shaderWarmup
+          : BACKGROUND_LOAD_PROGRESS.done);
+        onRendererWarmupChange(warming && getPlayerClientEnabled());
+      },
     );
     if (myGen !== backgroundBattleGen) {
       destroyBackgroundBattle(battle);
       onRendererWarmupChange(false);
       return;
     }
+    onLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated);
     backgroundBattle = battle;
+    const scene = battle.gameInstance.getScene();
+    if (scene) {
+      const previousStartupReady = scene.onStartupReady;
+      scene.onStartupReady = () => {
+        previousStartupReady?.();
+        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot);
+      };
+    }
     onStarted(battle);
 
     checkBgSceneInterval = waitForSceneAndBind(
       () => backgroundBattle?.gameInstance?.getScene(),
       (bgScene) => {
+        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneBound);
         bgScene.setClientRenderEnabled(getPlayerClientEnabled());
         bindSceneUi(bgScene);
         checkBgSceneInterval = null;

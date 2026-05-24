@@ -1,32 +1,62 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue';
+
+const props = withDefaults(defineProps<{
   compact?: boolean;
-}>();
+  progress?: number;
+}>(), {
+  progress: 0,
+});
+
+const clampedProgress = computed(() => {
+  const raw = props.progress;
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.min(1, raw));
+});
+const percentValue = computed(() => Math.round(clampedProgress.value * 100));
+const progressBarStyle = computed(() => ({
+  transform: `scaleX(${clampedProgress.value})`,
+}));
 </script>
 
 <template>
-  <div class="loading-emblem" :class="{ compact }">
-    <div class="loader-orbit" aria-hidden="true">
-      <div class="loader-ring"></div>
-      <div class="loader-ping"></div>
-      <div class="loader-unit">
-        <span class="unit-track unit-track-left"></span>
-        <span class="unit-track unit-track-right"></span>
-        <span class="unit-hull"></span>
-        <span class="unit-cockpit"></span>
-        <span class="unit-turret"></span>
-        <span class="unit-barrel"></span>
-      </div>
+  <div class="loading-emblem" :class="{ compact: props.compact }">
+    <div class="loader-unit" aria-hidden="true">
+      <span class="unit-track unit-track-left"></span>
+      <span class="unit-track unit-track-right"></span>
+      <span class="unit-hull"></span>
+      <span class="unit-cockpit"></span>
+      <span class="unit-turret"></span>
+      <span class="unit-barrel"></span>
     </div>
     <div class="loader-title">BUDGET ANNIHILATION</div>
+    <div class="loader-progress-wrap">
+      <div class="loader-progress-meta">
+        <span>LOADED</span>
+        <span>{{ percentValue }}%</span>
+      </div>
+      <div
+        class="loader-progress-track"
+        role="progressbar"
+        aria-label="Loading progress"
+        :aria-valuenow="percentValue"
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <div class="loader-progress-fill" :style="progressBarStyle"></div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .loading-emblem {
-  --loader-size: 86px;
+  --loader-size: 70px;
   --loader-title-size: 22px;
-  --loader-gap: 16px;
+  --loader-percent-size: 13px;
+  --loader-gap: 12px;
+  --loader-width: min(360px, 76vw);
+  --loader-track-height: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -37,43 +67,21 @@ defineProps<{
 }
 
 .loading-emblem.compact {
-  --loader-size: 54px;
+  --loader-size: 38px;
   --loader-title-size: 12px;
-  --loader-gap: 9px;
-}
-
-.loader-orbit {
-  position: relative;
-  width: var(--loader-size);
-  height: var(--loader-size);
-  filter: drop-shadow(0 0 20px rgba(112, 205, 255, 0.28));
-}
-
-.loader-ring,
-.loader-ping {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-}
-
-.loader-ring {
-  border: 2px solid rgba(237, 243, 255, 0.13);
-  border-top-color: #80c7ff;
-  border-right-color: rgba(110, 242, 207, 0.72);
-  animation: loader-ring-spin 1.1s linear infinite;
-}
-
-.loader-ping {
-  inset: 13%;
-  border: 1px solid rgba(110, 242, 207, 0.28);
-  animation: loader-ping 1.55s ease-out infinite;
+  --loader-percent-size: 10px;
+  --loader-gap: 7px;
+  --loader-width: min(176px, 82vw);
+  --loader-track-height: 8px;
 }
 
 .loader-unit {
-  position: absolute;
-  inset: 18%;
-  animation: loader-unit-spin 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
-  transform-origin: 50% 50%;
+  position: relative;
+  width: var(--loader-size);
+  height: var(--loader-size);
+  filter:
+    drop-shadow(0 0 16px rgba(112, 205, 255, 0.24))
+    drop-shadow(0 0 26px rgba(110, 242, 207, 0.14));
 }
 
 .unit-track,
@@ -114,7 +122,7 @@ defineProps<{
   top: 31%;
   width: 44%;
   height: 38%;
-  border-radius: 8px 13px 10px 13px;
+  border-radius: 6px 8px 7px 8px;
   background: linear-gradient(135deg, #35a6c8 0%, #126077 52%, #0d3344 100%);
   border: 1px solid rgba(188, 246, 255, 0.28);
   transform: rotate(-18deg);
@@ -163,32 +171,54 @@ defineProps<{
     0 0 34px rgba(110, 242, 207, 0.18);
 }
 
-@keyframes loader-ring-spin {
-  to { transform: rotate(360deg); }
+.loader-progress-wrap {
+  width: var(--loader-width);
+  display: grid;
+  gap: 6px;
 }
 
-@keyframes loader-unit-spin {
-  0% { transform: rotate(0deg) scale(0.98); }
-  50% { transform: rotate(180deg) scale(1.04); }
-  100% { transform: rotate(360deg) scale(0.98); }
+.loader-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: monospace;
+  font-size: var(--loader-percent-size);
+  font-weight: 800;
+  color: rgba(237, 243, 255, 0.82);
+  line-height: 1;
+  text-shadow: 0 0 14px rgba(74, 158, 255, 0.42);
 }
 
-@keyframes loader-ping {
-  0% {
-    opacity: 0.72;
-    transform: scale(0.62);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.32);
-  }
+.loader-progress-track {
+  width: 100%;
+  height: var(--loader-track-height);
+  overflow: hidden;
+  border: 1px solid rgba(237, 243, 255, 0.24);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0)),
+    rgba(7, 15, 24, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.34),
+    0 0 24px rgba(74, 158, 255, 0.22);
+}
+
+.loader-progress-fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background:
+    linear-gradient(90deg, #4a9eff 0%, #57d6f4 52%, #6ef2cf 100%);
+  box-shadow:
+    0 0 16px rgba(74, 158, 255, 0.5),
+    0 0 22px rgba(110, 242, 207, 0.28);
+  transition: transform 0.18s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loader-ring,
-  .loader-ping,
-  .loader-unit {
-    animation-duration: 8s;
+  .loader-progress-fill {
+    transition: none;
   }
 }
 </style>

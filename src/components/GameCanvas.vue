@@ -85,6 +85,21 @@ const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
 const showLoadingOverlay = computed(() => battleLoading.value || rendererWarmupLoading.value);
+const loadingProgress = ref(0);
+const displayedLoadingProgress = computed(() => loadingProgress.value);
+
+function setLoadingProgress(progress: number): void {
+  if (!Number.isFinite(progress)) {
+    loadingProgress.value = 0;
+    return;
+  }
+  const clamped = Math.max(0, Math.min(1, progress));
+  if (clamped <= 0) {
+    loadingProgress.value = 0;
+    return;
+  }
+  loadingProgress.value = Math.max(loadingProgress.value, clamped);
+}
 
 let getBackgroundBattle = (): BackgroundBattleState | null => null;
 let startBackgroundBattle = async (): Promise<void> => {};
@@ -344,6 +359,7 @@ const {
     ? localPlayerId.value
     : undefined,
   getPlayerClientEnabled: () => playerClientEnabled.value,
+  onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => bindGameSceneUi(scene),
   onRendererWarmupChange: (warming) => {
     if (!gameStarted.value) rendererWarmupLoading.value = warming;
@@ -601,6 +617,7 @@ const {
   upsertLobbyPlayer,
   applyLobbySettingsFromHost,
   currentLobbySettings,
+  onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => {
     bindGameSceneUi(scene, true);
   },
@@ -656,6 +673,7 @@ const {
   setupNetworkCallbacks,
   reportLocalPlayerInfo,
   startGameWithPlayers,
+  onLoadingProgress: setLoadingProgress,
 });
 
 // Reactive object instead of computed-returning-fresh-literal so the
@@ -1014,7 +1032,7 @@ watchEffect(() => {
           role="status"
           aria-live="polite"
         >
-          <LoadingEmblem />
+          <LoadingEmblem :progress="displayedLoadingProgress" />
         </div>
       </div>
 
@@ -1030,7 +1048,7 @@ watchEffect(() => {
           role="status"
           aria-live="polite"
         >
-          <LoadingEmblem />
+          <LoadingEmblem :progress="displayedLoadingProgress" />
         </div>
       </div>
 
@@ -1120,6 +1138,7 @@ watchEffect(() => {
       :fog-of-war-enabled="currentFogOfWarEnabled"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
+      :preview-loading-progress="displayedLoadingProgress"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"
