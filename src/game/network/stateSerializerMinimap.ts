@@ -46,9 +46,10 @@ function writeMinimapEntity(
   entity: Entity,
   radarOnly: boolean,
 ): NetworkServerSnapshotMinimapEntity {
+  const ownership = entity.ownership;
   out.id = entity.id;
   out.type = entity.unit ? 'unit' : 'building';
-  out.playerId = (entity.ownership?.playerId ?? 1) as PlayerId;
+  out.playerId = (ownership !== null ? ownership.playerId : 1) as PlayerId;
   out.pos.x = qPos(entity.transform.x);
   out.pos.y = qPos(entity.transform.y);
   // Reset the pool slot's flag — pool entries are reused so a slot
@@ -77,6 +78,7 @@ function appendMinimapWireRow(
   entity: Entity,
   radarOnly: boolean,
 ): void {
+  const ownership = entity.ownership;
   const rowIndex = reserveFloat64WireRows(source, 1, MINIMAP_SNAPSHOT_WIRE_STRIDE);
   const values = source.values;
   const base = rowIndex * MINIMAP_SNAPSHOT_WIRE_STRIDE;
@@ -86,7 +88,7 @@ function appendMinimapWireRow(
   values[base + 3] = entity.unit
     ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
     : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
-  values[base + 4] = entity.ownership?.playerId ?? 1;
+  values[base + 4] = ownership !== null ? ownership.playerId : 1;
   let flags = 0;
   if (radarOnly) flags |= 0x01;
   values[base + 5] = flags;
@@ -100,8 +102,8 @@ export function getMinimapSnapshotWireSource(
 
 export function serializeMinimapSnapshotEntities(
   world: WorldState,
-  visibility?: SnapshotVisibility,
-  trackingKey?: string | number,
+  visibility: SnapshotVisibility | undefined,
+  trackingKey: string | number | undefined,
 ): NetworkServerSnapshotMinimapEntity[] | undefined {
   const poolKey = resolveSnapshotPoolKey(trackingKey);
   const state = getOrCreateSnapshotPool(minimapPools, poolKey);

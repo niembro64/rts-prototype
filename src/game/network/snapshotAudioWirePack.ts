@@ -88,7 +88,7 @@ export type PackedAudioEventsWire = {
 };
 
 export type NetworkServerSnapshotWire = Omit<NetworkServerSnapshot, 'audioEvents'> & {
-  audioEvents?: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
+  audioEvents: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
 };
 
 export function packNetworkSnapshotAudioForWire(

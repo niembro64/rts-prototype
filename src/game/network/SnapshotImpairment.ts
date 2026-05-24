@@ -44,7 +44,7 @@ const GLOBAL_STATS: SnapshotImpairmentStats = {
 
 declare global {
   interface Window {
-    __BA_DP03_SNAPSHOT_IMPAIRMENT__?: SnapshotImpairmentDebugApi;
+    __BA_DP03_SNAPSHOT_IMPAIRMENT__: SnapshotImpairmentDebugApi | undefined;
   }
 }
 
@@ -60,7 +60,7 @@ export class SnapshotImpairmentQueue {
   schedule(
     state: NetworkServerSnapshot,
     deliver: SnapshotDelivery,
-    cloneForDelay?: SnapshotClone,
+    cloneForDelay: SnapshotClone | undefined = undefined,
   ): void {
     if (!CONFIG.enabled) {
       deliver(state);

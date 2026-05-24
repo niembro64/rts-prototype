@@ -50,7 +50,7 @@ export type SnapshotTransportCompressionDebugApi = {
 
 declare global {
   interface Window {
-    __BA_SNAPSHOT_TRANSPORT_COMPRESSION__?: SnapshotTransportCompressionDebugApi;
+    __BA_SNAPSHOT_TRANSPORT_COMPRESSION__: SnapshotTransportCompressionDebugApi | undefined;
   }
 }
 

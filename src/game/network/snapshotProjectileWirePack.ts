@@ -67,10 +67,10 @@ export type PackedProjectileSnapshotWireV1 = {
 
 export type PackedProjectileSnapshotWireV2 = {
   v: typeof PACKED_PROJECTILES_V2_VERSION;
-  s?: Uint8Array;
-  d?: Uint8Array;
-  u?: Uint8Array;
-  b?: Uint8Array;
+  s: Uint8Array | undefined;
+  d: Uint8Array | undefined;
+  u: Uint8Array | undefined;
+  b: Uint8Array | undefined;
 };
 
 export type PackedProjectileSnapshotWire =
@@ -81,7 +81,13 @@ export function packProjectilesForWire(
   projectiles: ProjectileSnapshot | undefined,
 ): PackedProjectileSnapshotWireV2 | undefined {
   if (projectiles === undefined) return undefined;
-  const packed: PackedProjectileSnapshotWireV2 = { v: PACKED_PROJECTILES_V2_VERSION };
+  const packed: PackedProjectileSnapshotWireV2 = {
+    v: PACKED_PROJECTILES_V2_VERSION,
+    s: undefined,
+    d: undefined,
+    u: undefined,
+    b: undefined,
+  };
   const spawnBytes = packProjectileSpawnsV2(projectiles.spawns);
   const despawnBytes = packProjectileDespawnsV2(projectiles.despawns);
   const velocityBytes = packProjectileVelocityUpdatesV2(projectiles.velocityUpdates);

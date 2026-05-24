@@ -153,7 +153,7 @@ Evidence:
   and Projectile.hasLeftSource to always-present runtime fields.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 141 other `?:` declarations remain across src/game/network/*,
+- 101 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -179,13 +179,24 @@ Evidence:
   2026-05-24 combat helper pass converted combatUtils,
   aimSolver, damageHelpers, and touched projectile hit bookkeeping
   helpers to explicit `T | undefined` parameters / explicit guards.
+  The 2026-05-24 networking helper pass converted
+  snapshotProjectileWirePack's packed V2 aliases,
+  stateSerializerGrid's optional params, stateSerializerSpray /
+  stateSerializerMinimap params, snapshotAudioWirePack's wire
+  audioEvents field, snapshotWireMetadata's symbol metadata slot,
+  SnapshotImpairment / snapshotTransportCompression debug globals,
+  ClientBuildStateApplier's stale progress shape, and the touched
+  unitGeometry / turretMounts helpers to explicit absence. The same
+  pass converted NetworkManager's callback slots and message helpers,
+  plus NetworkCommandTransport, NetworkHeartbeatTracker, and
+  NetworkBattleHandoff option shapes, to explicit absence.
   Remaining examples include:
     - stateSerializer.ts (28): serialize options and optional
       parameters.
-    - snapshotProjectileWirePack.ts (4): packed V2 field aliases
-      s?/d?/u?/b?.
+    - snapshotEntityWirePack.ts (14): packed movement/turret/detail
+      aliases.
     - combat/projectileSystem.ts (1): reflector metadata helper shape.
-- Optional chaining remains at 427 in the in-scope tree after the
+- Optional chaining remains at 396 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -206,7 +217,9 @@ Evidence:
   combatUtils, aimSolver, damageHelpers, WorldState,
   ClientProjectileStore, and the touched projectile collision helpers. It
   should be migrated in small file-level passes alongside optional
-  property declarations.
+  property declarations. The networking helper pass also removed the
+  callback optional reads from NetworkManager and the remaining
+  optional reads from stateSerializerMinimap and unitGeometry.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

@@ -13,13 +13,13 @@ type BuildBattleHandoffOptions = {
   roomCode: string;
   playerIds: Iterable<PlayerId>;
   players: ReadonlyMap<PlayerId, LobbyPlayer>;
-  settings?: LobbySettings;
+  settings: LobbySettings | undefined;
 };
 
 type BattleHandoffMessage = {
-  gameId?: string;
+  gameId: string | undefined;
   playerIds: PlayerId[];
-  handoff?: BattleHandoff;
+  handoff: BattleHandoff | undefined;
 };
 
 export function buildBattleHandoff({

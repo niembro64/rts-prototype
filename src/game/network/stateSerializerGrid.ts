@@ -10,11 +10,11 @@ const gridBuf: NonNullable<NetworkServerSnapshot['grid']> = {
 };
 
 export function serializeGridSnapshot(
-  gridCells?: NetworkServerSnapshotGridCell[],
-  gridSearchCells?: NetworkServerSnapshotGridCell[],
-  gridCellSize?: number,
+  gridCells: NetworkServerSnapshotGridCell[] | undefined,
+  gridSearchCells: NetworkServerSnapshotGridCell[] | undefined,
+  gridCellSize: number | undefined,
 ): NonNullable<NetworkServerSnapshot['grid']> | undefined {
-  if (!gridCells) return undefined;
+  if (gridCells === undefined) return undefined;
 
   gridBuf.cells = gridCells;
   gridBuf.searchCells = gridSearchCells ?? [];

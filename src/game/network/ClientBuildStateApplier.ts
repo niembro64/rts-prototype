@@ -6,7 +6,6 @@ import { createBuildable, getBuildFraction } from '../sim/buildableHelpers';
 
 export type NetworkBuildState = {
   complete: boolean;
-  progress?: number;
   paid: Buildable['paid'];
 };
 

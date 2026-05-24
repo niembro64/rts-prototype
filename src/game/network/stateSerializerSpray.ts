@@ -25,9 +25,9 @@ export function resetSprayPoolForKey(key: string | number | undefined): void {
 }
 
 export function serializeSprayTargets(
-  sprayTargets?: SprayTarget[],
-  visibility?: SnapshotVisibility,
-  trackingKey?: string | number,
+  sprayTargets: SprayTarget[] | undefined,
+  visibility: SnapshotVisibility | undefined,
+  trackingKey: string | number | undefined,
 ): NetworkServerSnapshotSprayTarget[] | undefined {
   const state = getOrCreateSnapshotPool(sprayPools, resolveSnapshotPoolKey(trackingKey));
   state.index = 0;

@@ -18,7 +18,7 @@ export function createRuntimeTurretMount(
 
 export function getRuntimeTurretMount(
   turret: RuntimeTurretMountSource,
-  out?: Vec3,
+  out: Vec3 | undefined = undefined,
 ): Vec3 {
   const dst = out ?? { x: 0, y: 0, z: 0 };
   const mount = turret.mount;

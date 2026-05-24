@@ -3,7 +3,7 @@ import type { NetworkServerSnapshot } from './NetworkTypes';
 const SNAPSHOT_WIRE_BYTES = Symbol('snapshotWireBytes');
 
 type SnapshotWireByteCarrier = NetworkServerSnapshot & {
-  [SNAPSHOT_WIRE_BYTES]?: number;
+  [SNAPSHOT_WIRE_BYTES]: number | undefined;
 };
 
 export function setSnapshotWireBytes(
@@ -25,7 +25,12 @@ export function getSnapshotWireBytes(state: NetworkServerSnapshot): number | und
 }
 
 export function clearSnapshotWireBytes(state: NetworkServerSnapshot): void {
-  delete (state as SnapshotWireByteCarrier)[SNAPSHOT_WIRE_BYTES];
+  Object.defineProperty(state, SNAPSHOT_WIRE_BYTES, {
+    value: undefined,
+    writable: true,
+    configurable: true,
+    enumerable: false,
+  });
 }
 
 export function copySnapshotWireBytes(

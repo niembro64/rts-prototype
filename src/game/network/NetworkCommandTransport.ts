@@ -10,7 +10,7 @@ type NetworkCommandTransportOptions = {
   getGameId: () => string;
   getHostConnection: () => DataConnection | undefined;
   getRole: () => NetworkRole | null;
-  isMessageForCurrentGame: (message: { gameId?: string }) => boolean;
+  isMessageForCurrentGame: (message: { gameId: string | undefined }) => boolean;
   onClientReady: (playerId: PlayerId) => void;
   onCommandReceived: (command: Command, fromPlayerId: PlayerId) => void;
   send: (conn: DataConnection, message: NetworkMessage) => boolean;
@@ -44,13 +44,13 @@ export class NetworkCommandTransport {
     switch (message.type) {
       case 'command':
         if (this.options.getRole() !== 'host') return true;
-        if (!this.options.isMessageForCurrentGame(message)) return true;
+        if (!this.options.isMessageForCurrentGame({ gameId: message.gameId })) return true;
         this.options.onCommandReceived(message.data, fromPlayerId);
         return true;
 
       case 'clientReady':
         if (this.options.getRole() !== 'host') return true;
-        if (!this.options.isMessageForCurrentGame(message)) return true;
+        if (!this.options.isMessageForCurrentGame({ gameId: message.gameId })) return true;
         this.options.onClientReady(fromPlayerId);
         return true;
 

@@ -8,8 +8,8 @@ type NetworkHeartbeatTrackerOptions = {
   getConnections: () => Iterable<[PlayerId, DataConnection]>;
   isGameStarted: () => boolean;
   send: (conn: DataConnection, message: NetworkMessage) => boolean;
-  sendIntervalMs?: number;
-  timeoutMs?: number;
+  sendIntervalMs: number | undefined;
+  timeoutMs: number | undefined;
 };
 
 const DEFAULT_HEARTBEAT_SEND_INTERVAL_MS = 2000;

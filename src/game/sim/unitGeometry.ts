@@ -2,8 +2,11 @@ import type { Entity, Unit } from './types';
 
 type UnitBodyCenterSource = Pick<Unit, 'bodyCenterHeight' | 'radius'>;
 
-export function getUnitBodyCenterHeight(unit?: UnitBodyCenterSource | null): number {
-  return unit?.bodyCenterHeight ?? unit?.radius.push ?? 0;
+export function getUnitBodyCenterHeight(
+  unit: UnitBodyCenterSource | null | undefined = null,
+): number {
+  if (unit === null || unit === undefined) return 0;
+  return unit.bodyCenterHeight ?? unit.radius.push;
 }
 
 /** World Z of the host's footprint base — the height the host sits on
