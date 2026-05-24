@@ -29,7 +29,6 @@ const props = defineProps<{
   centerMagnitude: number;
   dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
-  terrainPlateauEnabled: boolean;
   terrainDTerrain: number;
   metalDepositStep: number;
   mapWidthLandCells: number;
@@ -52,7 +51,6 @@ const emit = defineEmits<{
   (e: 'setCenterMagnitude', value: number): void;
   (e: 'setDividersMagnitude', value: number): void;
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
-  (e: 'setTerrainPlateauEnabled', enabled: boolean): void;
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
@@ -72,7 +70,6 @@ const emit = defineEmits<{
 const centerMagnitudeOptions = BATTLE_CONFIG.centerMagnitude.options;
 const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
-const plateauEnabledOptions = BATTLE_CONFIG.plateau.enabled.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
@@ -104,11 +101,6 @@ function pickDividersMagnitude(value: number): void {
 function pickTerrainMapShape(shape: TerrainMapShape): void {
   if (!props.isHost) return;
   emit('setTerrainMapShape', shape);
-}
-
-function pickTerrainPlateauEnabled(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setTerrainPlateauEnabled', enabled);
 }
 
 function pickTerrainDTerrain(value: number): void {
@@ -589,28 +581,19 @@ const terrainSectionVars = computed(() =>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
-                <BarLabel>PLATEAU:</BarLabel>
-                <BarButtonGroup>
-                  <BarButton
-                    v-for="opt in plateauEnabledOptions"
-                    :key="String(opt.value)"
-                    :active="terrainPlateauEnabled === opt.value"
-                    :title="isHost ? `Turn terrain plateaus ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                    @click="pickTerrainPlateauEnabled(opt.value)"
-                  >{{ opt.label }}</BarButton>
-                </BarButtonGroup>
-              </BarControlGroup>
-              <BarControlGroup>
-                <BarDivider />
                 <BarLabel>D-PLATEAU:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
                     v-for="opt in terrainDTerrainOptions"
                     :key="opt"
                     :active="terrainDTerrain === opt"
-                    :title="isHost ? `Vertical spacing between plateau levels: ${opt}` : 'Only the host can change terrain'"
+                    :title="isHost
+                      ? (opt === 0
+                        ? 'NONE — disable plateau terracing'
+                        : `Vertical spacing between plateau levels: ${opt}`)
+                      : 'Only the host can change terrain'"
                     @click="pickTerrainDTerrain(opt)"
-                  >{{ opt.toLocaleString() }}</BarButton>
+                  >{{ opt === 0 ? 'NONE' : opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>

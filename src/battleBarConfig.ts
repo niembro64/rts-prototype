@@ -70,12 +70,6 @@ export const BATTLE_CONFIG = {
     default: battleBarConfig.mapShape.default as TerrainMapShape,
     options: battleBarConfig.mapShape.options as ReadonlyArray<{ value: TerrainMapShape; label: string }>,
   },
-  plateau: {
-    enabled: {
-      default: battleBarConfig.plateau.enabled.default,
-      options: battleBarConfig.plateau.enabled.options as ReadonlyArray<{ value: boolean; label: string }>,
-    },
-  },
   terrainDTerrain: {
     default: battleBarConfig.terrainDTerrain.default,
     options: battleBarConfig.terrainDTerrain.options as readonly number[],
@@ -136,8 +130,6 @@ const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
 const STORAGE_REAL_DIVIDERS_MAGNITUDE = sk.realDividersMagnitude;
 const STORAGE_DEMO_TERRAIN_MAP_SHAPE = sk.demoTerrainMapShape;
 const STORAGE_REAL_TERRAIN_MAP_SHAPE = sk.realTerrainMapShape;
-const STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED = sk.demoTerrainPlateauEnabled;
-const STORAGE_REAL_TERRAIN_PLATEAU_ENABLED = sk.realTerrainPlateauEnabled;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_METAL_DEPOSIT_STEP = sk.demoMetalDepositStep;
@@ -283,10 +275,9 @@ export function saveRealBarsCollapsed(collapsed: boolean): void {
 export type BattleMode = 'demo' | 'real';
 
 export type BattleTerrainRuntimeConfig = {
-  plateauEnabled: boolean;
   centerMagnitude: number;
   dividersMagnitude: number;
-  /** Plateau lattice step in world units. */
+  /** Plateau lattice step in world units. 0 = NONE (no terracing). */
   terrainDTerrain: number;
   /** Metal-extractor pad altitude step in world units. */
   metalDepositStep: number;
@@ -454,12 +445,6 @@ function loadModeNumberOption(
     if (demoFallback !== null) return demoFallback;
   }
   return config.default;
-}
-
-export function normalizeTerrainPlateauEnabled(value: unknown): boolean {
-  return typeof value === 'boolean'
-    ? value
-    : BATTLE_CONFIG.plateau.enabled.default;
 }
 
 export function normalizeCenterMagnitude(value: number): number {
@@ -660,27 +645,6 @@ export function saveTerrainMapShape(
   );
 }
 
-export function loadStoredTerrainPlateauEnabled(mode: BattleMode): boolean {
-  return loadModeBool(
-    mode,
-    STORAGE_REAL_TERRAIN_PLATEAU_ENABLED,
-    STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED,
-    BATTLE_CONFIG.plateau.enabled.default,
-  );
-}
-
-export function saveTerrainPlateauEnabled(
-  enabled: boolean,
-  mode: BattleMode,
-): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TERRAIN_PLATEAU_ENABLED
-      : STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED,
-    String(normalizeTerrainPlateauEnabled(enabled)),
-  );
-}
-
 export function loadStoredTerrainDTerrain(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
@@ -721,7 +685,6 @@ export function loadStoredTerrainRuntimeConfig(
   mode: BattleMode,
 ): BattleTerrainRuntimeConfig {
   return {
-    plateauEnabled: loadStoredTerrainPlateauEnabled(mode),
     centerMagnitude: loadStoredCenterMagnitude(mode),
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),

@@ -11,7 +11,6 @@ import {
   TERRAIN_D_TERRAIN,
   TERRAIN_DIVIDERS_MAGNITUDE,
   TERRAIN_FINE_TRIANGLE_SUBDIV,
-  TERRAIN_PLATEAU_CONFIG,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
@@ -78,7 +77,6 @@ export function getTerrainMapShape(): TerrainMapShape {
 
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
   return {
-    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
@@ -97,7 +95,6 @@ export function setTerrainCenterMagnitude(value: number): void {
   if (value === mountainRippleAmplitude) return;
   mountainRippleAmplitude = value;
   applyTerrainRuntimeConfig({
-    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
     centerMagnitude: value,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
@@ -110,7 +107,6 @@ export function setTerrainDividersMagnitude(value: number): void {
   if (value === mountainSeparatorAmplitude) return;
   mountainSeparatorAmplitude = value;
   applyTerrainRuntimeConfig({
-    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,

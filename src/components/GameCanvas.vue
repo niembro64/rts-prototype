@@ -31,7 +31,6 @@ import {
   loadStoredTerrainDTerrain,
   loadStoredMetalDepositStep,
   loadStoredTerrainMapShape,
-  loadStoredTerrainPlateauEnabled,
   loadStoredMapLandDimensions,
 } from '../battleBarConfig';
 import type { TerrainMapShape } from '../types/terrain';
@@ -229,7 +228,6 @@ const demoUnitTypes = BACKGROUND_UNIT_TYPES;
 const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
 const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
-const terrainPlateauEnabled = ref<boolean>(loadStoredTerrainPlateauEnabled('demo'));
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
@@ -371,7 +369,6 @@ useGameCanvasLobbyPreview({
   centerMagnitude,
   dividersMagnitude,
   terrainMapShape,
-  terrainPlateauEnabled,
   terrainDTerrain,
   metalDepositStep,
   mapWidthLandCells,
@@ -493,7 +490,6 @@ const {
   applyCenterMagnitude,
   applyDividersMagnitude,
   applyTerrainMapShape,
-  applyTerrainPlateauEnabled,
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyMapLandDimensions,
@@ -508,7 +504,6 @@ const {
   centerMagnitude,
   dividersMagnitude,
   terrainMapShape,
-  terrainPlateauEnabled,
   terrainDTerrain,
   metalDepositStep,
   mapWidthLandCells,
@@ -675,7 +670,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   centerMagnitude: centerMagnitude.value,
   dividersMagnitude: dividersMagnitude.value,
   terrainMapShape: terrainMapShape.value,
-  terrainPlateauEnabled: terrainPlateauEnabled.value,
   terrainDTerrain: terrainDTerrain.value,
   metalDepositStep: metalDepositStep.value,
   displayUnitCount: displayUnitCount.value,
@@ -690,7 +684,6 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyCenterMagnitude,
   applyDividersMagnitude,
   applyTerrainMapShape,
-  applyTerrainPlateauEnabled,
   applyTerrainDTerrain,
   applyMetalDepositStep,
   setForceFieldsObstructSight,
@@ -715,7 +708,6 @@ watchEffect(() => {
   m.centerMagnitude = centerMagnitude.value;
   m.dividersMagnitude = dividersMagnitude.value;
   m.terrainMapShape = terrainMapShape.value;
-  m.terrainPlateauEnabled = terrainPlateauEnabled.value;
   m.terrainDTerrain = terrainDTerrain.value;
   m.metalDepositStep = metalDepositStep.value;
   m.displayUnitCount = displayUnitCount.value;
@@ -1079,7 +1071,6 @@ watchEffect(() => {
       :center-magnitude="centerMagnitude"
       :dividers-magnitude="dividersMagnitude"
       :terrain-map-shape="terrainMapShape"
-      :terrain-plateau-enabled="terrainPlateauEnabled"
       :terrain-d-terrain="terrainDTerrain"
       :metal-deposit-step="metalDepositStep"
       :map-width-land-cells="mapWidthLandCells"
@@ -1100,7 +1091,6 @@ watchEffect(() => {
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
-      @set-terrain-plateau-enabled="(e) => applyTerrainPlateauEnabled(e)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"

@@ -9,8 +9,9 @@ import { getTerrainVersion } from './terrainState';
 import { isWaterAt } from './terrainSurface';
 
 export function getTerrainBuildabilityConfigKey(): string {
+  // TERRAIN_D_TERRAIN doubles as the on/off signal — `0` is the
+  // D-PLATEAU "NONE" option and short-circuits terracing.
   return [
-    TERRAIN_PLATEAU_CONFIG.enabled ? 1 : 0,
     TERRAIN_D_TERRAIN,
     TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
   ].join(':');
@@ -24,7 +25,6 @@ export function getTerrainPlateauLevelAt(
   cellSize: number = LAND_CELL_SIZE,
 ): number | null {
   assertCanonicalLandCellSize('getTerrainPlateauLevelAt cellSize', cellSize);
-  if (!TERRAIN_PLATEAU_CONFIG.enabled) return 0;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return 0;
   const flatZone = findDepositFlatZoneAt(x, z);

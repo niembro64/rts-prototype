@@ -23,18 +23,9 @@
       { "value": "circle", "label": "CIRCLE" }
     ]
   },
-  "plateau": {
-    "enabled": {
-      "default": false,
-      "options": [
-        { "value": true, "label": "ON" },
-        { "value": false, "label": "OFF" }
-      ]
-    }
-  },
   "terrainDTerrain": {
-    "default": 200,
-    "options": [100, 200, 400, 800]
+    "default": 0,
+    "options": [100, 200, 400, 800, 0]
   },
   "metalDepositStep": {
     "default": 200,
@@ -82,8 +73,6 @@
     "realDividersMagnitude": "real-battle-dividers-magnitude",
     "demoTerrainMapShape": "demo-battle-terrain-map-shape",
     "realTerrainMapShape": "real-battle-terrain-map-shape",
-    "demoTerrainPlateauEnabled": "demo-battle-terrain-plateau-enabled",
-    "realTerrainPlateauEnabled": "real-battle-terrain-plateau-enabled",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoMetalDepositStep": "demo-battle-metal-deposit-step",

@@ -72,12 +72,12 @@ export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE =
 export const WATER_FULLY_OPAQUE = terrainConfig.waterFullyOpaque;
 
 export type TerrainRuntimeConfig = {
-  plateauEnabled: boolean;
   /** Signed altitude of the central ripple (CENTER bar). */
   centerMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
-  /** Plateau lattice step (D-PLATEAU bar). */
+  /** Plateau lattice step (D-PLATEAU bar). 0 = NONE (terracing
+   *  disabled — the sim short-circuits on step <= 0). */
   terrainDTerrain: number;
   /** Metal-extractor pad altitude step (D-DEPOSIT bar). */
   metalDepositStep: number;
@@ -126,13 +126,14 @@ export let TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
   terrainConfig.terrainGenerationEdgeTransitionWidthFraction;
 
+/** Terracing is enabled iff `TERRAIN_D_TERRAIN > 0` (the D-PLATEAU bar
+ *  picks `0` for the "NONE" option). The other fields here remain
+ *  static authored shape knobs for the snapping curve. */
 export const TERRAIN_PLATEAU_CONFIG: {
-  enabled: boolean;
   readonly shelfFractionOfStep: number;
   readonly rampEdgeSharpness: number;
   readonly buildableShelfHeightTolerance: number;
 } = {
-  enabled: BATTLE_CONFIG.plateau.enabled.default,
   shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
   rampEdgeSharpness: terrainConfig.plateau.rampEdgeSharpness,
   buildableShelfHeightTolerance: terrainConfig.plateau.buildableShelfHeightTolerance,
@@ -165,11 +166,6 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
   const nextDepositStep = Math.max(0, config.metalDepositStep);
   if (METAL_DEPOSIT_STEP !== nextDepositStep) {
     METAL_DEPOSIT_STEP = nextDepositStep;
-    changed = true;
-  }
-
-  if (TERRAIN_PLATEAU_CONFIG.enabled !== config.plateauEnabled) {
-    TERRAIN_PLATEAU_CONFIG.enabled = config.plateauEnabled;
     changed = true;
   }
 

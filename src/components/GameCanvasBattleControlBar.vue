@@ -136,28 +136,17 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
-        <BarLabel>PLATEAU:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in BATTLE_CONFIG.plateau.enabled.options"
-            :key="String(opt.value)"
-            :active="model.terrainPlateauEnabled === opt.value"
-            :title="`Turn terrain plateaus ${opt.label.toLowerCase()}`"
-            @click="model.applyTerrainPlateauEnabled(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup v-if="!model.gameStarted">
-        <BarDivider />
         <BarLabel>D-PLATEAU:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in BATTLE_CONFIG.terrainDTerrain.options"
             :key="opt"
             :active="model.terrainDTerrain === opt"
-            :title="`Vertical spacing between plateau levels: ${opt}`"
+            :title="opt === 0
+              ? 'NONE — disable plateau terracing'
+              : `Vertical spacing between plateau levels: ${opt}`"
             @click="model.applyTerrainDTerrain(opt)"
-          >{{ opt.toLocaleString() }}</BarButton>
+          >{{ opt === 0 ? 'NONE' : opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">

@@ -143,7 +143,6 @@ export async function createBackgroundBattle(
     centerMagnitude: terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
     terrainMapShape,
-    terrainPlateauEnabled: terrainRuntimeConfig.plateauEnabled,
     terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
     metalDepositStep: terrainRuntimeConfig.metalDepositStep,
     mapWidthLandCells: mapDimensions.widthLandCells,

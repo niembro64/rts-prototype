@@ -27,9 +27,10 @@ export type BattleBarConfig = {
   readonly dividersMagnitude: OptionsConfig<number>;
   /** Overall map boundary shape: full square map or circular island. */
   readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
-  readonly plateau: {
-    readonly enabled: LabeledOptionsConfig<boolean>;
-  };
+  /** Plateau lattice step in world units. The value `0` is the "NONE"
+   *  option (no terracing — the sim short-circuits on step <= 0), so
+   *  this bar replaces the old PLATEAU on/off toggle plus the step
+   *  picker in one control. */
   readonly terrainDTerrain: OptionsConfig<number>;
   /** Vertical step (world units) between metal-extractor pad altitude
    *  levels — a deposit ring's `dTerrainLevels` is multiplied by this

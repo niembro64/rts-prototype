@@ -254,8 +254,7 @@ export type LobbySettings = {
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
-  terrainPlateauEnabled?: boolean;
-  /** Plateau lattice step (world units). */
+  /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain?: number;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep?: number;

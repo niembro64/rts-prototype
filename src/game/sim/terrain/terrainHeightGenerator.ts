@@ -40,9 +40,9 @@ function plateauRampCurve(t: number): number {
  *  the job of the deposit blend ring downstream, NOT the slope
  *  estimator. */
 function applyTerrainPlateaus(height: number): number {
-  if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height))
-    return height;
+  if (!Number.isFinite(height)) return height;
   const step = TERRAIN_D_TERRAIN;
+  // step <= 0 = D-PLATEAU "NONE" picked, so terracing is disabled.
   if (step <= 0) return height;
 
   const flatHalf = Math.min(
