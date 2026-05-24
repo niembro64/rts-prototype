@@ -38,6 +38,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'excludeLockOnLevel1Buildings',
   'excludeLockOnLevel1Units',
   'excludeLockOnLevel1Turrets',
+  'hostDirected',
 ] as const;
 
 const TURRET_LOCK_ON_RELATIONSHIP_SET: ReadonlySet<string> = new Set(

@@ -385,6 +385,8 @@ export type TurretConfig = {
    *  They exist so reusable turret art, such as construction emitters,
    *  can mount through the same blueprint path as combat turrets. */
   visualOnly?: boolean;
+  /** Host-directed turret. See TurretBlueprint.hostDirected. */
+  hostDirected: boolean;
   constructionEmitter?: ConstructionEmitterVisualSpec;
   visualVariant?: ConstructionEmitterSize;
   /** LOCK-ON-03 — Compiled per-turret lock-on exclusion bitmasks. JS

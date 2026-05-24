@@ -1400,7 +1400,10 @@ export class Simulation {
    *  the engaged-turret fraction crosses the unit blueprint's
    *  fightStopEngagedRatio. `null` ratio = never halt (skirmishers
    *  march through fire). visualOnly turrets are excluded from both
-   *  the engaged count and the denominator. */
+   *  the engaged count and the denominator. Fully-autonomous
+   *  (non-host-directed) turrets are also excluded: only the weapons
+   *  that define the unit's commanded role can pin a fight-move or
+   *  patrol leg. */
   private shouldStopForFightCombat(entity: Entity): boolean {
     if (!entity.unit) return false;
     const ratio = getUnitBlueprint(entity.unit.unitType).fightStopEngagedRatio;
@@ -1412,6 +1415,7 @@ export class Simulation {
     for (let i = 0; i < combat.turrets.length; i++) {
       const turret = combat.turrets[i];
       if (turret.config.visualOnly) continue;
+      if (!turret.config.hostDirected) continue;
       total++;
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _combatStopFsm);
       const stateCode = hasTargetingFsm

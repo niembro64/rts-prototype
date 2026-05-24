@@ -1001,6 +1001,7 @@ export const CT_TURRET_CFG_PASSIVE = 1 << 4;
 export const CT_TURRET_CFG_VISUAL_ONLY = 1 << 5;
 export const CT_TURRET_CFG_SHOT_IS_FORCE = 1 << 6;
 export const CT_TURRET_CFG_HAS_TRACKING_RANGE = 1 << 7;
+export const CT_TURRET_CFG_HOST_DIRECTED = 1 << 8;
 
 /** AIM-08.1 — FSM state encodings. Mirrors `CT_TURRET_STATE_*`. */
 export const CT_TURRET_STATE_IDLE = 0;

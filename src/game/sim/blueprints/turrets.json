@@ -52,7 +52,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "pulseTurret": {
     "id": "pulseTurret",
@@ -118,7 +119,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "cannonTurret": {
     "id": "cannonTurret",
@@ -176,7 +178,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "mortarTurret": {
     "id": "mortarTurret",
@@ -234,7 +237,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "droppingMortarTurret": {
     "id": "droppingMortarTurret",
@@ -289,7 +293,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "gatlingMortarTurret": {
     "id": "gatlingMortarTurret",
@@ -355,7 +360,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "hippoGatlingTurret": {
     "id": "hippoGatlingTurret",
@@ -421,7 +427,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "dgunTurret": {
     "id": "dgunTurret",
@@ -474,7 +481,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "mirrorTurret": {
     "id": "mirrorTurret",
@@ -534,7 +542,8 @@
     "excludeLockOnLevel0Entities": ["buildings", "units"],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "beamTurret": {
     "id": "beamTurret",
@@ -587,7 +596,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "miniBeam": {
     "id": "miniBeam",
@@ -640,7 +650,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "megaBeamTurret": {
     "id": "megaBeamTurret",
@@ -693,7 +704,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "forceTurret": {
     "id": "forceTurret",
@@ -766,7 +778,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "constructionTurret": {
     "id": "constructionTurret",
@@ -837,7 +850,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "towerBeamTurret": {
     "id": "towerBeamTurret",
@@ -890,7 +904,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "towerCannonTurret": {
     "id": "towerCannonTurret",
@@ -949,7 +964,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "salvoRocketTurret": {
     "id": "salvoRocketTurret",
@@ -1016,7 +1032,8 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   },
   "fastRocketTurret": {
     "id": "fastRocketTurret",
@@ -1071,6 +1088,7 @@
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
     "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": []
+    "excludeLockOnLevel1Turrets": [],
+    "hostDirected": true
   }
 }

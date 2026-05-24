@@ -52,6 +52,7 @@ import {
   CT_TURRET_CFG_VISUAL_ONLY,
   CT_TURRET_CFG_SHOT_IS_FORCE,
   CT_TURRET_CFG_HAS_TRACKING_RANGE,
+  CT_TURRET_CFG_HOST_DIRECTED,
   CT_TURRET_STATE_IDLE,
   CT_TURRET_STATE_TRACKING,
   CT_TURRET_STATE_ENGAGED,
@@ -371,6 +372,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
+  if (turret.config.hostDirected) f |= CT_TURRET_CFG_HOST_DIRECTED;
   return f;
 }
 

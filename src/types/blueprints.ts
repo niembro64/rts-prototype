@@ -183,6 +183,18 @@ export type TurretBlueprint = {
   excludeLockOnLevel1Buildings: string[];
   excludeLockOnLevel1Units: string[];
   excludeLockOnLevel1Turrets: string[];
+  /** Host-directed vs fully-autonomous targeting policy. A
+   *  host-directed turret inherits its host's lock-on (player/AI
+   *  command target) when the host is locked on, applying its own
+   *  exclusion/range/LOS gates on top. When the host has no lock the
+   *  turret falls back to autonomous scanning like any other turret.
+   *  A fully-autonomous turret (`hostDirected: false`) ignores the
+   *  host lock entirely and always runs independent acquisition.
+   *  Fight-move and patrol halt logic also counts only host-directed
+   *  turrets when deciding whether to stop. Every kind of turret a
+   *  host can mount needs at least one host-directed variant so
+   *  commands can land. */
+  hostDirected: boolean;
 };
 
 /** Chassis-local 3D mount offset, authored in body-radius fractions.

@@ -6617,14 +6617,19 @@ pub const CT_ENTITY_FLAG_BUILDABLE_COMPLETE: u8 = 1 << 3;
 pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
-pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u8 = 1 << 0;
-pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u8 = 1 << 1;
-pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u8 = 1 << 2;
-pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u8 = 1 << 3;
-pub const CT_TURRET_CFG_PASSIVE: u8 = 1 << 4;
-pub const CT_TURRET_CFG_VISUAL_ONLY: u8 = 1 << 5;
-pub const CT_TURRET_CFG_SHOT_IS_FORCE: u8 = 1 << 6;
-pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u8 = 1 << 7;
+pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u16 = 1 << 0;
+pub const CT_TURRET_CFG_NEEDS_BALLISTIC: u16 = 1 << 1;
+pub const CT_TURRET_CFG_VERTICAL_LAUNCHER: u16 = 1 << 2;
+pub const CT_TURRET_CFG_IS_MANUAL_FIRE: u16 = 1 << 3;
+pub const CT_TURRET_CFG_PASSIVE: u16 = 1 << 4;
+pub const CT_TURRET_CFG_VISUAL_ONLY: u16 = 1 << 5;
+pub const CT_TURRET_CFG_SHOT_IS_FORCE: u16 = 1 << 6;
+pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u16 = 1 << 7;
+/// When set, the turret inherits the host entity's priority target /
+/// priority point. When clear (fully-autonomous), priority FSM batches
+/// must skip this turret entirely so it keeps running its own
+/// independent acquisition.
+pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
 
 // FSM state encodings — match TurretState string order in TS.
 pub const CT_TURRET_STATE_IDLE: u8 = 0;
@@ -6790,7 +6795,7 @@ struct CombatTargetingPool {
     turret_lock_on_turret: Vec<u8>,
     turret_blueprint_code: Vec<u8>,
     turret_los_blocked_ticks: Vec<u16>,
-    turret_config_flags: Vec<u8>,
+    turret_config_flags: Vec<u16>,
     // LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from
     // each turret blueprint's authored exclusion arrays.
     //   relationship_mask:   CT_LOCK_ON_REL_EXCLUDE_*  (friendly / enemy)
@@ -7325,7 +7330,7 @@ pub fn combat_targeting_set_turret(
     local_mount_z: f64,
     world_pos_tick: i32,
     los_blocked_ticks: u16,
-    config_flags: u8,
+    config_flags: u16,
     dps: f32,
     projectile_speed: f64,
     arc_preference: u8,
@@ -7739,7 +7744,7 @@ combat_targeting_ptr_export!(
 combat_targeting_ptr_export!(
     combat_targeting_turret_config_flags_ptr,
     turret_config_flags,
-    u8
+    u16
 );
 combat_targeting_ptr_export!(
     combat_targeting_turret_ballistic_has_solution_ptr,
@@ -9032,7 +9037,7 @@ fn combat_targeting_clear_choice_prep_outputs(
 }
 
 #[inline]
-fn combat_targeting_choice_prep_result(current: u8, flags: u8) -> u8 {
+fn combat_targeting_choice_prep_result(current: u8, flags: u16) -> u8 {
     if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
         current | CT_TARGETING_PREP_HAS_APPLY | CT_TARGETING_PREP_HAS_PASSIVE_APPLY
     } else {
@@ -9332,7 +9337,7 @@ fn compute_turret_gates_for_aim_point(
     entity_slot: u32,
     turret_idx: u32,
     idx: usize,
-    flags: u8,
+    flags: u16,
     mount_x: f64,
     mount_y: f64,
     mount_z: f64,
@@ -9503,6 +9508,12 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         // The TS Pass 0 also forces their state to 'idle' for the kinematics
         // step, but the priority-point branch skips them outright.
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        // Fully-autonomous turrets ignore the host's priority point
+        // entirely. They keep their existing FSM state and run their own
+        // independent acquisition.
+        if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
             continue;
         }
         // System-disabled weapons have already been reset by the TS
@@ -9853,6 +9864,12 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
         let flags = pool.turret_config_flags[idx];
 
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
+            continue;
+        }
+        // Fully-autonomous turrets ignore the host's priority target
+        // entirely. They keep their existing FSM state and run their own
+        // independent acquisition.
+        if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
             continue;
         }
         if combat_targeting_weapon_system_disabled(pool, idx, mirrors_enabled, force_fields_enabled)
@@ -17550,7 +17567,7 @@ mod lock_on_exclusion_tests {
     struct TurretSpec {
         state: u8,
         target_id: i32,
-        flags: u8,
+        flags: u16,
         dps: f32,
         lock_on_turret: u8,
         blueprint_code: u8,
@@ -17566,7 +17583,7 @@ mod lock_on_exclusion_tests {
             Self {
                 state: CT_TURRET_STATE_IDLE,
                 target_id: -1,
-                flags: 0,
+                flags: CT_TURRET_CFG_HOST_DIRECTED,
                 dps: 10.0,
                 lock_on_turret: 0,
                 blueprint_code: TURRET_CODE_A,

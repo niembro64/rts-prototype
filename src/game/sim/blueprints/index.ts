@@ -520,6 +520,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     radius: { ...turretBlueprint.radius },
     headOnly: turretBlueprint.headOnly,
     visualOnly: shot === null,
+    hostDirected: turretBlueprint.hostDirected,
     constructionEmitter: turretBlueprint.constructionEmitter !== null
       ? {
           defaultSize: turretBlueprint.constructionEmitter.defaultSize,
