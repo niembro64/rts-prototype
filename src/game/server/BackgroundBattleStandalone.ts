@@ -126,7 +126,7 @@ function spawnUnit(
       expandPathActions(
         x, y, targetX, targetY, waypointType,
         world.mapWidth, world.mapHeight, buildingGrid,
-        undefined,
+        null,
         pathTerrainFilterForLocomotion(unit.unit.locomotion),
       ),
     );

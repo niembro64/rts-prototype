@@ -46,8 +46,8 @@ import type { ActionType, UnitAction, UnitLocomotion } from './types';
 type Vec2 = { x: number; y: number };
 
 export type PathTerrainFilter = {
-  minSurfaceNormalZ?: number;
-  ignoreTerrainBlocking?: boolean;
+  minSurfaceNormalZ: number | null;
+  ignoreTerrainBlocking: boolean;
 };
 
 /** Slope nz floor — anything flatter than this nz is walkable.
@@ -95,27 +95,29 @@ function collectBuildingCells(buildingGrid: BuildingGrid): Uint32Array {
   return _buildingCellsScratch.subarray(0, count);
 }
 
-function normalizeMinSurfaceNormalZ(filter?: PathTerrainFilter): number {
-  if (filter?.ignoreTerrainBlocking === true) return 0;
-  const value = filter?.minSurfaceNormalZ;
-  if (value === undefined || !Number.isFinite(value) || value <= SLOPE_BLOCK_NZ) return 0;
+function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
+  if (filter === null || filter.ignoreTerrainBlocking) return 0;
+  const value = filter.minSurfaceNormalZ;
+  if (value === null || !Number.isFinite(value) || value <= SLOPE_BLOCK_NZ) return 0;
   return Math.min(1, value);
 }
 
-function shouldIgnoreTerrainBlocking(filter?: PathTerrainFilter): boolean {
-  return filter?.ignoreTerrainBlocking === true;
+function shouldIgnoreTerrainBlocking(filter: PathTerrainFilter | null): boolean {
+  return filter !== null && filter.ignoreTerrainBlocking;
 }
 
 export function pathTerrainFilterForLocomotion(
   locomotion: UnitLocomotion | undefined,
-): PathTerrainFilter | undefined {
-  if (locomotion === undefined) return undefined;
+): PathTerrainFilter | null {
+  if (locomotion === undefined) return null;
   const pathfinding = locomotion.pathfinding;
   if (pathfinding.ignoreTerrainBlocking) {
-    return { ignoreTerrainBlocking: true };
+    return { minSurfaceNormalZ: null, ignoreTerrainBlocking: true };
   }
   const minSurfaceNormalZ = pathfinding.minSurfaceNormalZ;
-  return minSurfaceNormalZ !== undefined ? { minSurfaceNormalZ } : undefined;
+  return minSurfaceNormalZ !== undefined
+    ? { minSurfaceNormalZ, ignoreTerrainBlocking: false }
+    : null;
 }
 
 function ensureMaskAndCC(
@@ -139,7 +141,7 @@ function findPath(
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
-  terrainFilter?: PathTerrainFilter,
+  terrainFilter: PathTerrainFilter | null,
 ): Vec2[] {
   ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
   const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
@@ -259,8 +261,8 @@ export function expandPathActions(
   type: ActionType,
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
-  goalZ?: number,
-  terrainFilter?: PathTerrainFilter,
+  goalZ: number | null,
+  terrainFilter: PathTerrainFilter | null,
 ): UnitAction[] {
   const path = findPath(
     startX,
@@ -281,7 +283,7 @@ export function expandPathActions(
     const px = path[i].x;
     const py = path[i].y;
     const isFinal = i === lastIdx;
-    const isFinalUnsnapped = isFinal && goalZ !== undefined && px === goalX && py === goalY;
+    const isFinalUnsnapped = isFinal && goalZ !== null && px === goalX && py === goalY;
     const z = isFinalUnsnapped
       ? goalZ
       : getSurfaceHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);

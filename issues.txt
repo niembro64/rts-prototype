@@ -151,7 +151,7 @@ Evidence:
   and `Buildable.healthBuildFraction` to an always-present number.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 200 other `?:` declarations remain across src/game/network/*,
+- 174 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -166,15 +166,22 @@ Evidence:
   the touched GameServer snapshot-listener/ownership checks to
   explicit `T | undefined` / explicit guards, then converted
   PhysicsEngine3D's body allocation and apply-force option shapes.
+  The 2026-05-24 pathfinder / build-placement pass converted
+  PathTerrainFilter, expandPathActions goalZ, the touched
+  pathTerrainFilterForUnit helpers, Simulation's attack/guard
+  target-point helper params, NetworkEntityFactory's factory waypoint
+  temp shape, and BuildPlacementDiagnostics / cell diagnostics to
+  explicit `T | null` / `T | undefined` fields with explicit guards.
+  The same pass converted metal deposit coverage cells/results and
+  factory build-spot options/out params to explicit `T | null`.
   Remaining examples include:
-    - Simulation.ts (2): targetPoint `z?` helper parameters only.
     - stateSerializer.ts (28): serialize options and optional
       parameters.
     - snapshotProjectileWirePack.ts (4): packed V2 field aliases
       s?/d?/u?/b?.
     - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
-      buildPlacementValidation.ts (8), combat/damageHelpers.ts (7).
-- Optional chaining remains at 480 in the in-scope tree after the
+      combat/damageHelpers.ts (7).
+- Optional chaining remains at 469 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -187,7 +194,10 @@ Evidence:
   2026-05-24 server snapshot/debug-grid pass removed optional reads
   from the touched GameServer, ServerDebugGridPublisher, and
   PhysicsEngine3D paths; the same pass also removed optional reads
-  from UnitForceSystem. It
+  from UnitForceSystem. The 2026-05-24 pathfinder / build-placement
+  pass removed optional reads from Pathfinder and
+  buildPlacementValidation, metalDeposits, factoryConstructionSite,
+  plus the touched path terrain and factory build-spot call sites. It
   should be migrated in small file-level passes alongside optional
   property declarations.
 Why it matters:

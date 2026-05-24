@@ -61,8 +61,10 @@ import {
 } from './unitActionIntents';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
-function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
-  return pathTerrainFilterForLocomotion(unit.unit?.locomotion);
+function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
+  return unit.unit === null
+    ? null
+    : pathTerrainFilterForLocomotion(unit.unit.locomotion);
 }
 
 function refreshPatrolStartIndex(unit: Unit): void {
@@ -251,7 +253,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
       const unit = ctx.world.getEntity(entityIds[i]);
       if (!unit || unit.type !== 'unit' || !unit.unit) continue;
       const target = command.individualTargets[i];
-      addPathActions(unit, target.x, target.y, command.waypointType, command.queue, ctx, target.z);
+      addPathActions(unit, target.x, target.y, command.waypointType, command.queue, ctx, target.z ?? null);
     }
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
@@ -281,7 +283,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
         command.waypointType,
         command.queue,
         ctx,
-        command.targetZ,
+        command.targetZ ?? null,
       );
       index++;
     }
@@ -1041,7 +1043,7 @@ function addPathActions(
   type: UnitAction['type'],
   queue: boolean,
   ctx: CommandContext,
-  goalZ?: number,
+  goalZ: number | null,
 ): void {
   // When appending to an existing queue (queue=true), plan from the
   // END of the current queue, not from the unit's CURRENT position.
@@ -1151,7 +1153,7 @@ function addPathActionsWithFinal(
     finalAction.x, finalAction.y, 'move',
     ctx.world.mapWidth, ctx.world.mapHeight,
     ctx.constructionSystem.getGrid(),
-    finalAction.z,
+    finalAction.z ?? null,
     pathTerrainFilterForUnit(unit),
   );
   if (actions.length === 0) return;

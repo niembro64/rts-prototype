@@ -21,9 +21,9 @@ export type FactoryBuildSpot = {
 };
 
 export type FactoryBuildSpotOptions = {
-  mapWidth?: number;
-  mapHeight?: number;
-  clampRadius?: number;
+  mapWidth: number | null;
+  mapHeight: number | null;
+  clampRadius: number | null;
 };
 
 const FACTORY_CONSTRUCTION_RADIUS_CELLS = 6;
@@ -52,9 +52,19 @@ export function getFactoryWaypointDirection(factory: Entity): { x: number; y: nu
 
 function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: number }): void {
   const factoryComp = factory.factory;
-  const waypoint = factoryComp?.waypoints[0];
-  const targetX = waypoint?.x ?? factoryComp?.rallyX ?? factory.transform.x + 1;
-  const targetY = waypoint?.y ?? factoryComp?.rallyY ?? factory.transform.y;
+  const waypoint = factoryComp === null || factoryComp.waypoints.length === 0
+    ? null
+    : factoryComp.waypoints[0];
+  const targetX = waypoint !== null
+    ? waypoint.x
+    : factoryComp === null
+      ? factory.transform.x + 1
+      : factoryComp.rallyX;
+  const targetY = waypoint !== null
+    ? waypoint.y
+    : factoryComp === null
+      ? factory.transform.y
+      : factoryComp.rallyY;
   let dx = targetX - factory.transform.x;
   let dy = targetY - factory.transform.y;
   let len = Math.hypot(dx, dy);
@@ -71,8 +81,8 @@ function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: num
 export function getFactoryBuildSpot(
   factory: Entity,
   unitRadius: number = 0,
-  options: FactoryBuildSpotOptions = {},
-  out?: FactoryBuildSpot,
+  options: FactoryBuildSpotOptions | null = null,
+  out: FactoryBuildSpot | null = null,
 ): FactoryBuildSpot {
   const dims = getFactoryFootprintDimensions();
   const dir = _buildSpotDir;
@@ -86,14 +96,19 @@ export function getFactoryBuildSpot(
   const offset = Math.min(dims.constructionRadius, Math.max(outsideFootprint, preferredOffset));
   const localX = dir.x * offset;
   const localY = dir.y * offset;
-  const clampRadius = Math.max(0, options.clampRadius ?? unitRadius);
+  const mapWidth = options === null ? null : options.mapWidth;
+  const mapHeight = options === null ? null : options.mapHeight;
+  const clampRadius = Math.max(
+    0,
+    options === null || options.clampRadius === null ? unitRadius : options.clampRadius,
+  );
   let x = factory.transform.x + localX;
   let y = factory.transform.y + localY;
-  if (options.mapWidth !== undefined && Number.isFinite(options.mapWidth)) {
-    x = Math.max(clampRadius, Math.min(options.mapWidth - clampRadius, x));
+  if (mapWidth !== null && Number.isFinite(mapWidth)) {
+    x = Math.max(clampRadius, Math.min(mapWidth - clampRadius, x));
   }
-  if (options.mapHeight !== undefined && Number.isFinite(options.mapHeight)) {
-    y = Math.max(clampRadius, Math.min(options.mapHeight - clampRadius, y));
+  if (mapHeight !== null && Number.isFinite(mapHeight)) {
+    y = Math.max(clampRadius, Math.min(mapHeight - clampRadius, y));
   }
   const result = out ?? {
     x: 0,

@@ -210,6 +210,7 @@ export class ConstructionVisualController3D {
     const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
       mapWidth: this.clientViewState.getMapWidth(),
       mapHeight: this.clientViewState.getMapHeight(),
+      clampRadius: null,
     }, this._factoryBuildSpot);
     rig.group.updateWorldMatrix(true, false);
     this._factorySprayTargetWorld.set(buildSpot.x, e.transform.z, buildSpot.y);
@@ -284,6 +285,7 @@ export class ConstructionVisualController3D {
     const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
       mapWidth: this.clientViewState.getMapWidth(),
       mapHeight: this.clientViewState.getMapHeight(),
+      clampRadius: null,
     }, this._factoryBuildSpot);
     const spotDx = buildSpot.x - e.transform.x;
     const spotDz = buildSpot.y - e.transform.y;

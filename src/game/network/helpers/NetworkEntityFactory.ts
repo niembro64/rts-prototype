@@ -401,7 +401,7 @@ function createBuildingFromNetwork(
     // waypoints[0] = rally point, rest = user-set waypoints
     const wps = f.waypoints;
     const rally = wps[0];
-    const waypoints: { x: number; y: number; z?: number; type: 'move' | 'fight' | 'patrol' }[] = [];
+    const waypoints: { x: number; y: number; z: number | undefined; type: 'move' | 'fight' | 'patrol' }[] = [];
     for (let i = 1; i < wps.length; i++) {
       const wp = wps[i];
       waypoints.push({

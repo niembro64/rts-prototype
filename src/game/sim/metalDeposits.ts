@@ -7,7 +7,7 @@ export type MetalDepositFootprintCell = {
   gx: number;
   gy: number;
   covered: boolean;
-  depositId?: number;
+  depositId: number | null;
 };
 
 export type MetalDepositGridCell = {
@@ -22,7 +22,7 @@ export type MetalDepositFootprintCoverage = {
   fraction: number;
   coveredCells: number;
   totalCells: number;
-  primaryDepositId?: number;
+  primaryDepositId: number | null;
 };
 
 export function metalDepositContainsPoint(
@@ -149,9 +149,9 @@ export function getMetalDepositFootprintCoverage(
   halfWidth: number,
   halfHeight: number,
   sampleSize: number,
-  outCells?: MetalDepositFootprintCell[],
+  outCells: MetalDepositFootprintCell[] | null = null,
 ): MetalDepositFootprintCoverage {
-  if (outCells) outCells.length = 0;
+  if (outCells !== null) outCells.length = 0;
   const width = Math.max(0, halfWidth * 2);
   const height = Math.max(0, halfHeight * 2);
   const cellsX = Math.max(1, Math.round(width / Math.max(1e-6, sampleSize)));
@@ -174,20 +174,20 @@ export function getMetalDepositFootprintCoverage(
         coveredCells++;
         hitCounts.set(deposit.id, (hitCounts.get(deposit.id) ?? 0) + 1);
       }
-      if (outCells) {
+      if (outCells !== null) {
         outCells.push({
           x: sampleX,
           y: sampleY,
           gx,
           gy,
           covered: deposit !== null,
-          depositId: deposit?.id,
+          depositId: deposit === null ? null : deposit.id,
         });
       }
     }
   }
 
-  let primaryDepositId: number | undefined;
+  let primaryDepositId: number | null = null;
   let primaryCount = 0;
   for (const [depositId, count] of hitCounts) {
     if (count > primaryCount) {

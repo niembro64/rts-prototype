@@ -27,8 +27,10 @@ import {
 export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
 
-function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | undefined {
-  return pathTerrainFilterForLocomotion(unit.unit?.locomotion);
+function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
+  return unit.unit === null
+    ? null
+    : pathTerrainFilterForLocomotion(unit.unit.locomotion);
 }
 
 // Factory production system
@@ -135,6 +137,7 @@ export class FactoryProductionSystem {
     const spawn = getFactoryBuildSpot(factory, bp.radius.push, {
       mapWidth: world.mapWidth,
       mapHeight: world.mapHeight,
+      clampRadius: null,
     });
     const unit = world.createUnitFromBlueprint(spawn.x, spawn.y, factory.ownership.playerId, unitType);
     unit.buildable = createBuildable({
@@ -174,7 +177,7 @@ export class FactoryProductionSystem {
         const leg = expandPathActions(
           anchorX, anchorY, wp.x, wp.y, wp.type,
           world.mapWidth, world.mapHeight, buildingGrid,
-          wp.z,
+          wp.z ?? null,
           pathTerrainFilterForUnit(unit),
         );
         if (wp.type === 'patrol' && patrolStartActionIndex === -1) {

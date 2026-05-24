@@ -1510,7 +1510,7 @@ export class Simulation {
       pathActionType,
       this.world.mapWidth, this.world.mapHeight,
       this.constructionSystem.getGrid(),
-      finalAction.z,
+      finalAction.z ?? null,
       this.pathTerrainFilterForUnit(entity),
     );
     if (newPath.length === 0) return false;
@@ -1558,7 +1558,7 @@ export class Simulation {
   private tryRefreshAttackApproach(
     entity: Entity,
     currentAction: UnitAction,
-    targetPoint: { x: number; y: number; z?: number },
+    targetPoint: { x: number; y: number; z: number },
   ): boolean {
     if (!entity.unit || currentAction.type !== 'attack' || currentAction.targetId === undefined) {
       return false;
@@ -1605,7 +1605,7 @@ export class Simulation {
   private tryRefreshGuardApproach(
     entity: Entity,
     currentAction: UnitAction,
-    targetPoint: { x: number; y: number; z?: number },
+    targetPoint: { x: number; y: number; z: number },
   ): boolean {
     if (!entity.unit || currentAction.type !== 'guard' || currentAction.targetId === undefined) {
       return false;
@@ -1639,8 +1639,10 @@ export class Simulation {
     return true;
   }
 
-  private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | undefined {
-    return pathTerrainFilterForLocomotion(entity.unit?.locomotion);
+  private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | null {
+    return entity.unit === null
+      ? null
+      : pathTerrainFilterForLocomotion(entity.unit.locomotion);
   }
 
   // Get force accumulator for external force application (used by RtsScene)

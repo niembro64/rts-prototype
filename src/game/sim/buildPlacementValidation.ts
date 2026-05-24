@@ -27,9 +27,9 @@ export type BuildPlacementCellDiagnostic = {
   y: number;
   reason: BuildPlacementCellReason;
   blocking: boolean;
-  terrainLevel?: number;
-  metalCovered?: boolean;
-  depositId?: number;
+  terrainLevel: number | null;
+  metalCovered: boolean;
+  depositId: number | null;
 };
 
 export type BuildPlacementDiagnostics = {
@@ -39,11 +39,11 @@ export type BuildPlacementDiagnostics = {
   x: number;
   y: number;
   cells: BuildPlacementCellDiagnostic[];
-  failureReason?: BuildPlacementFailureReason;
-  metalFraction?: number;
-  metalCoveredCells?: number;
-  metalTotalCells?: number;
-  metalDepositCells?: BuildPlacementCellDiagnostic[];
+  failureReason: BuildPlacementFailureReason | null;
+  metalFraction: number | null;
+  metalCoveredCells: number | null;
+  metalTotalCells: number | null;
+  metalDepositCells: BuildPlacementCellDiagnostic[] | null;
 };
 
 export type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
@@ -96,7 +96,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
   const mapCellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
   const cells: BuildPlacementCellDiagnostic[] = [];
   let hasBlockingCell = false;
-  let failureReason: BuildPlacementFailureReason | undefined;
+  let failureReason: BuildPlacementFailureReason | null = null;
   let metalCoveredCells = 0;
   const terrainLevelCounts = new Map<number, number>();
 
@@ -130,8 +130,8 @@ function getBuildingPlacementDiagnosticsAtGrid(
       let reason: BuildPlacementCellReason = 'ok';
       let blocking = false;
       let metalCovered = false;
-      let depositId: number | undefined;
-      let terrainLevel: number | undefined;
+      let depositId: number | null = null;
+      let terrainLevel: number | null = null;
 
       if (gx < 0 || gy < 0 || gx >= mapCellsX || gy >= mapCellsY) {
         reason = 'outOfBounds';
@@ -162,7 +162,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
       if (!blocking && candidateType === 'extractor') {
         const deposit = findDepositContainingPoint(metalDeposits, x, y);
         metalCovered = deposit !== null;
-        depositId = deposit?.id;
+        depositId = deposit === null ? null : deposit.id;
         if (metalCovered) {
           reason = 'metal';
           metalCoveredCells++;
@@ -179,7 +179,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }
   }
 
-  let expectedTerrainLevel: number | undefined;
+  let expectedTerrainLevel: number | null = null;
   let expectedTerrainCount = -1;
   for (const [level, count] of terrainLevelCounts) {
     if (count > expectedTerrainCount) {
@@ -188,7 +188,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }
   }
 
-  if (expectedTerrainLevel !== undefined) {
+  if (expectedTerrainLevel !== null) {
     for (const cell of cells) {
       if (!cell.blocking && cell.terrainLevel !== expectedTerrainLevel) {
         cell.reason = 'terrain';
@@ -209,9 +209,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
     failureReason ??= 'terrain';
   }
 
-  let metalFraction: number | undefined;
-  let metalTotalCells: number | undefined;
-  let metalDepositCells: BuildPlacementCellDiagnostic[] | undefined;
+  let metalFraction: number | null = null;
+  let metalTotalCells: number | null = null;
+  let metalDepositCells: BuildPlacementCellDiagnostic[] | null = null;
   if (candidateType === 'extractor') {
     const coverage = getMetalDepositFootprintCoverage(
       metalDeposits,
@@ -231,6 +231,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
       y: cell.y,
       reason: 'metal',
       blocking: false,
+      terrainLevel: null,
       metalCovered: true,
       depositId: cell.depositId,
     }));
@@ -245,7 +246,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     cells,
     failureReason,
     metalFraction,
-    metalCoveredCells,
+    metalCoveredCells: candidateType === 'extractor' ? metalCoveredCells : null,
     metalTotalCells,
     metalDepositCells,
   };

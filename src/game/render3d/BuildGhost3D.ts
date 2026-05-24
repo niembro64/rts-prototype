@@ -350,7 +350,7 @@ export class BuildGhost3D {
     return cells.length > 0;
   }
 
-  private updateMetalDepositCells(cells?: BuildPlacementCellDiagnostic[]): void {
+  private updateMetalDepositCells(cells: BuildPlacementCellDiagnostic[] | null | undefined): void {
     const depositCells = cells ?? [];
     while (this.depositCellMeshes.length < depositCells.length) {
       const mesh = new THREE.Mesh(this.cellGeom, this.cellMatMetalDeposit);
