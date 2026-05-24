@@ -72,15 +72,11 @@ export class ConstructionSystem {
 
     // Extractors can be placed ANYWHERE that satisfies the normal
     // building placement rules — there's no longer a "must overlap
-    // a deposit" gate. Production is cell-coverage based inside the
-    // claimed irregular deposit: when the
-    // extractor finishes building, applyCompletedBuildingEffects
-    // tries to claim every deposit its footprint overlaps. Each
-    // deposit can be owned by at most one extractor at a time, so
-    // a second extractor on the same deposit just sits inert until
-    // the first is destroyed (then it inherits ownership). No
-    // production / claim work happens at startBuilding — those
-    // fields stay zero / empty until completion.
+    // a deposit" gate. When the extractor finishes building,
+    // applyCompletedBuildingEffects computes metal/sec directly from
+    // the number of generated metal cells under this fixed footprint.
+    // No production work happens at startBuilding — those fields stay
+    // zero / empty until completion.
 
     const physicalSize = {
       width: config.gridWidth * BUILD_GRID_CELL_SIZE,
@@ -110,10 +106,10 @@ export class ConstructionSystem {
     }
     if (buildingType === 'extractor') {
       // Inactive at construction start. The completion handler runs
-      // claimDepositsForExtractor, which fills `ownedDepositIds` and
-      // sets `metalExtractionRate` based on which deposits are still
-      // free at that moment.
-      entity.ownedDepositIds = [];
+      // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
+      // `metalExtractionRate` from the number of metal cells under this
+      // fixed build footprint.
+      entity.coveredDepositIds = [];
       entity.metalExtractionRate = 0;
     }
 

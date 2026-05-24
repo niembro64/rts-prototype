@@ -773,18 +773,15 @@ export type EntityComponentSlots = {
   commander: Commander | null;
   dgunProjectile: DGunProjectile | null;
   buildingType: BuildingType | null;
-  /** For extractors only — every deposit whose ownership this
-   *  extractor currently HOLDS. The deposit-claim system is binary:
-   *  a deposit can be owned by at most one extractor at a time, and
-   *  only the owner produces metal (and visually spins). An extractor
-   *  whose footprint overlaps a deposit that is ALREADY owned by
-   *  another extractor will not appear in this list — it becomes the
-   *  fallback owner only when the original is destroyed.
+  /** For extractors only — every deposit with at least one generated
+   *  metal cell under this extractor's fixed build footprint. Output is
+   *  computed from the covered metal-cell count, not from whole-deposit
+   *  ownership.
    *  Null = inactive (no metal income, no rotor spin). */
-  ownedDepositIds: number[] | null;
+  coveredDepositIds: number[] | null;
   /** For extractors only — actual metal/sec this extractor is
-   *  producing right now: the covered-cell fraction of every owned
-   *  deposit times baseProduction, or 0 when inactive. Kept as a stored field (not
+   *  producing right now: covered metal-cell count times the per-cell
+   *  extractor rate, or 0 when inactive. Kept as a stored field (not
    *  derived) so the renderer's spin animator and the wire format
    *  can read it without re-running the ownership math each frame. */
   metalExtractionRate: number | null;
@@ -810,7 +807,7 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     commander: null,
     dgunProjectile: null,
     buildingType: null,
-    ownedDepositIds: null,
+    coveredDepositIds: null,
     metalExtractionRate: null,
     _cachedFullVisionRadius: -1,
   };

@@ -78,8 +78,8 @@ function getExtractorMetalRate(entity: Entity): number {
  *  the open state at the iteration site — so we only need to track the
  *  flag here (no economy delta). Metal extractors push metal income
  *  through economyManager when they open and remove it when they close;
- *  the per-deposit rate that was added at claim time is suspended while
- *  the extractor is fortified. */
+ *  the covered-cell rate computed at completion is suspended while the
+ *  extractor is fortified. */
 function setBuildingProducing(entity: Entity, producing: boolean): boolean {
   const building = entity.building;
   if (building === null) return false;

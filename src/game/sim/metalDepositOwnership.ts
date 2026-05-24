@@ -1,35 +1,13 @@
-// Metal-deposit ownership — the binary "one extractor per deposit"
-// claim system. A deposit is FREE (not in `world.depositOwners`) or
-// OWNED by exactly one COMPLETED extractor. Irregular deposits are
-// still claimed as whole deposits, but the owning extractor's rate is
-// scaled by the number of generated metal cells its footprint covers.
-// The claim transitions
-// happen at exactly two points:
+// Metal-deposit coverage bookkeeping. Extractor income is directly
+// proportional to the number of generated metal-producing build cells
+// under the extractor footprint at the position where it was built:
 //
-//   1) `claimDepositsForExtractor(world, extractor)` runs when the
-//      extractor finishes construction. Every overlapping deposit
-//      that is currently free becomes owned by this extractor.
-//      Overlapping deposits that are ALREADY owned by some other
-//      extractor stay where they are — the new extractor is inert
-//      with respect to them and may inherit ownership later if the
-//      current owner is destroyed.
+//   metalExtractionRate = coveredMetalCellCount × perMetalCellProduction
 //
-//   2) `releaseDepositsForExtractor(world, extractor)` runs when a
-//      completed extractor is destroyed. Every deposit it currently
-//      owns is released; for each released deposit the system then
-//      scans surviving completed extractors and promotes the first
-//      one whose footprint still overlaps the deposit to the new
-//      owner. The promoted extractor's `ownedDepositIds`,
-//      `metalExtractionRate`, and the player's metal income are
-//      updated in lockstep.
-//
-// Both helpers maintain the invariants:
-//
-//   – Every entry in `world.depositOwners` points to a still-alive
-//     completed extractor entity.
-//   – Every extractor's `ownedDepositIds` matches what
-//     `world.depositOwners` says.
-//   – `metalExtractionRate = sum(coveredCells / depositCells) × baseProduction`.
+// There is intentionally no whole-deposit ownership gate here. Building
+// footprints cannot overlap on the build grid, so two extractors cannot
+// produce from the same metal cell at the same time, but they may split
+// different cells from the same irregular deposit.
 //
 // Visual / wire-format consistency falls out automatically:
 // `metalExtractionRate` is wire-serialized and the renderer's
@@ -38,14 +16,12 @@
 
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
-import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
-import { ENTITY_CHANGED_BUILDING } from '../../types/network';
+import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 import {
   getMetalDepositCoveredCellCount,
   getMetalDepositsOverlappingBuildingFootprint,
-  metalDepositOverlapsBuildingFootprint,
 } from './metalDeposits';
 
 /** Resolve an extractor's grid-aligned footprint AABB from its world
@@ -71,20 +47,34 @@ function baseProduction(): number {
   return getBuildingConfig('extractor').metalProduction ?? 0;
 }
 
-/** Set the extractor's stored fields to match its owned deposit list
- *  and current grid-footprint coverage. */
-function syncExtractorRate(world: WorldState, extractor: Entity): void {
-  const owned = extractor.ownedDepositIds ?? [];
+function perMetalCellProduction(): number {
+  const nominalCellCount = Math.max(
+    1,
+    METAL_DEPOSIT_CONFIG.resourceCells * METAL_DEPOSIT_CONFIG.resourceCells,
+  );
+  return baseProduction() / nominalCellCount;
+}
+
+/** Set the extractor's stored fields to match the metal cells covered
+ *  by its current fixed grid footprint. */
+function syncExtractorRateFromCoveredCells(world: WorldState, extractor: Entity): void {
   const footprint = getExtractorFootprintGrid(extractor);
-  if (!footprint || owned.length === 0) {
+  if (!footprint) {
+    extractor.coveredDepositIds = [];
     extractor.metalExtractionRate = 0;
     return;
   }
-  let rate = 0;
-  const base = baseProduction();
-  for (const depositId of owned) {
-    const deposit = world.metalDeposits[depositId];
-    if (!deposit || deposit.resourceCellCount <= 0) continue;
+
+  const touchedDepositIds: number[] = [];
+  let coveredCellCount = 0;
+  const candidates = getMetalDepositsOverlappingBuildingFootprint(
+    world.metalDeposits,
+    footprint.gridX,
+    footprint.gridY,
+    footprint.gridW,
+    footprint.gridH,
+  );
+  for (const deposit of candidates) {
     const coveredCells = getMetalDepositCoveredCellCount(
       deposit,
       footprint.gridX,
@@ -93,136 +83,36 @@ function syncExtractorRate(world: WorldState, extractor: Entity): void {
       footprint.gridH,
     );
     if (coveredCells <= 0) continue;
-    rate += base * (coveredCells / deposit.resourceCellCount);
+    touchedDepositIds.push(deposit.id);
+    coveredCellCount += coveredCells;
   }
-  extractor.metalExtractionRate = rate;
+  extractor.coveredDepositIds = touchedDepositIds;
+  extractor.metalExtractionRate = coveredCellCount * perMetalCellProduction();
 }
 
-/** First-time claim, called from applyCompletedBuildingEffects.
- *  Walks every deposit overlapping the extractor footprint; each one
- *  that's currently free becomes owned by this extractor. Returns
- *  the metal/sec the player's income should grow by (= the new
- *  rate, since the extractor was inactive before this call). */
-export function claimDepositsForExtractor(
+/** First-time coverage calculation, called from applyCompletedBuildingEffects.
+ *  Records the deposit ids touched by the extractor footprint and
+ *  stores metal/sec as a direct function of covered metal cells. */
+export function computeExtractorMetalCoverage(
   world: WorldState,
   extractor: Entity,
 ): number {
   if (extractor.buildingType !== 'extractor' || !extractor.ownership) return 0;
-  const footprint = getExtractorFootprintGrid(extractor);
-  if (!footprint) return 0;
-
-  const candidates = getMetalDepositsOverlappingBuildingFootprint(
-    world.metalDeposits,
-    footprint.gridX,
-    footprint.gridY,
-    footprint.gridW,
-    footprint.gridH,
-  );
-
-  const owned: number[] = [];
-  for (const deposit of candidates) {
-    if (world.depositOwners.has(deposit.id)) continue; // already taken
-    world.depositOwners.set(deposit.id, extractor.id);
-    owned.push(deposit.id);
-  }
-  extractor.ownedDepositIds = owned;
-  syncExtractorRate(world, extractor);
+  syncExtractorRateFromCoveredCells(world, extractor);
   return extractor.metalExtractionRate ?? 0;
 }
 
-/** Release ownership and try to transfer each deposit to a surviving
- *  completed extractor. Called from removeCompletedBuildingEffects.
- *  The `extractor` parameter is the one being destroyed; it's already
- *  excluded from candidate scans (we look for OTHER extractors).
- *
- *  Side effects per released deposit, in order:
- *    1. Remove from `world.depositOwners`.
- *    2. Subtract one base-rate from the destroyed extractor's owner's
- *       income (unless that's already been done by the caller — we
- *       handle the full rate diff here).
- *    3. Pick a successor: the first OTHER completed extractor whose
- *       footprint still overlaps this deposit. If found, promote it:
- *       set `world.depositOwners`, push to its `ownedDepositIds`,
- *       resync its rate, and add the income delta.
- *
- *  Returns the metal/sec the destroyed extractor's owner's income
- *  should shrink by (= the rate the extractor had right before the
- *  release; new owners' income changes are applied directly via
- *  economyManager). */
-export function releaseDepositsForExtractor(
+/** Clear extractor coverage bookkeeping. There is no transfer step:
+ *  another extractor could not have been over the same build cells
+ *  while this extractor occupied them. */
+export function clearExtractorMetalCoverage(
   world: WorldState,
   extractor: Entity,
 ): number {
+  void world;
   if (extractor.buildingType !== 'extractor' || !extractor.ownership) return 0;
-  const owned = extractor.ownedDepositIds ?? [];
-  if (owned.length === 0) {
-    extractor.metalExtractionRate = 0;
-    return 0;
-  }
-  const lostIncome = extractor.metalExtractionRate ?? owned.length * baseProduction();
-  const ownerId = extractor.ownership.playerId;
-
-  // Surviving completed extractor candidates — built once, scanned
-  // per released deposit. We exclude this extractor (it's about to be
-  // gone) and any non-extractor / incomplete entries.
-  const successors: Entity[] = [];
-  for (const b of world.getBuildings()) {
-    if (b === extractor) continue;
-    if (b.buildingType !== 'extractor') continue;
-    if (!b.building || b.building.hp <= 0) continue;
-    if (b.buildable && !b.buildable.isComplete) continue;
-    successors.push(b);
-  }
-
-  for (const depositId of owned) {
-    world.depositOwners.delete(depositId);
-    // Find a surviving extractor whose footprint covers this deposit.
-    const deposit = world.metalDeposits[depositId];
-    if (!deposit) continue;
-    let promoted: Entity | null = null;
-    for (const candidate of successors) {
-      // Skip candidates that already own this deposit (shouldn't
-      // happen given the invariant, but cheap to check) or that
-      // already have it in their owned list from a previous pass.
-      if (candidate.ownedDepositIds?.includes(depositId)) {
-        promoted = candidate;
-        break;
-      }
-      const fp = getExtractorFootprintGrid(candidate);
-      if (!fp) continue;
-      if (!metalDepositOverlapsBuildingFootprint(deposit, fp.gridX, fp.gridY, fp.gridW, fp.gridH)) {
-        continue;
-      }
-      promoted = candidate;
-      break;
-    }
-    if (promoted && promoted.ownership) {
-      world.depositOwners.set(depositId, promoted.id);
-      const oldRate = promoted.metalExtractionRate ?? 0;
-      const list = promoted.ownedDepositIds ?? (promoted.ownedDepositIds = []);
-      if (!list.includes(depositId)) list.push(depositId);
-      // Promoted extractor gains the covered fraction of this irregular
-      // deposit. Update its stored rate immediately; only credit the
-      // player when the extractor is currently OPEN — a fortified
-      // (closed) extractor accumulates potential rate via
-      // `metalExtractionRate` but pays nothing until it reopens, at
-      // which point setBuildingProducing(open=true) adds the full rate
-      // (including the new deposit) back to the player's tally.
-      syncExtractorRate(world, promoted);
-      world.markSnapshotDirty(promoted.id, ENTITY_CHANGED_BUILDING);
-      const activeState = promoted.building === null ? null : promoted.building.activeState;
-      const gainedRate = Math.max(0, (promoted.metalExtractionRate ?? 0) - oldRate);
-      if (gainedRate > 0 && (activeState === null || activeState.open !== false)) {
-        economyManager.addMetalExtraction(promoted.ownership.playerId, gainedRate);
-      }
-    }
-  }
-
-  extractor.ownedDepositIds = [];
+  const lostIncome = extractor.metalExtractionRate ?? 0;
+  extractor.coveredDepositIds = [];
   extractor.metalExtractionRate = 0;
-  // Caller subtracts `lostIncome` from the destroyed extractor's
-  // owner's metal extraction tally (mirrors what addMetalExtraction
-  // did when the extractor first claimed).
-  void ownerId;
   return lostIncome;
 }

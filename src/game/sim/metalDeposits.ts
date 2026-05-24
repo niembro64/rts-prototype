@@ -106,9 +106,7 @@ export function getMetalDepositCoveredCellCount(
 }
 
 /** Every deposit whose resource cells overlap the building footprint
- *  anchored at (gridX, gridY) by ≥ 1 cell. Each result is a CANDIDATE
- *  to be claimed by the new extractor — the deposit-ownership map
- *  decides which are actually free vs. already taken. */
+ *  anchored at (gridX, gridY) by ≥ 1 cell. */
 export function getMetalDepositsOverlappingBuildingFootprint(
   deposits: ReadonlyArray<MetalDeposit>,
   gridX: number,

@@ -495,7 +495,6 @@ const {
   applyMetalDepositStep,
   applyMapLandDimensions,
   applyLobbySettingsFromHost,
-  resetTerrainDefaults,
 } = useGameCanvasLobbySettings({
   network: networkManager,
   currentBattleMode,
