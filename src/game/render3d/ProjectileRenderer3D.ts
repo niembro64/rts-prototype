@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getProjRangeToggle } from '@/clientBarConfig';
 import { COLORS } from '@/colorsConfig';
+import { GRAVITY } from '@/config';
 import type { Entity, EntityId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -26,15 +27,11 @@ const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
 const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CONE_RADIAL_SEGMENTS;
 const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RADIAL_SEGMENTS * 6;
-const TAIL_HISTORY_MAX_SAMPLES = 3;
-const TAIL_HISTORY_MIN_MOVE_SQ = 0.01;
-const TAIL_HISTORY_MIN_FIT_DISTANCE = 0.1;
-// Dot product threshold between the projectile's current velocity and the
-// velocity at the most recent recorded sample. A sharp drop (reflection off
-// a mirror panel or force field flips the velocity) drops the dot below
-// this, triggering an anchor reset so the parabola fit doesn't span the
-// pre/post-reflection path. Set well below any homing turn-per-frame rate.
-const TAIL_HISTORY_REFLECT_DOT = 0.5;
+// Horizontal head→origin distance below which the analytic ballistic
+// curve degenerates and we fall back to a straight cone aimed along the
+// reversed velocity vector (just-spawned / just-reflected projectiles
+// haven't traveled far enough yet to fit a stable parabola).
+const TAIL_MIN_FIT_DISTANCE = 0.1;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 const IDENTITY_QUAT = new THREE.Quaternion();
 const CURVED_CONE_COS = Array.from(
@@ -57,21 +54,6 @@ const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
 type ProjectileRadiusMeshes = {
   collision?: THREE.LineSegments;
   explosion?: THREE.LineSegments;
-};
-
-type ProjectileTailHistory = {
-  samples: number;
-  // x0 = newest sample (current projectile position).
-  // x1 = previous sample, rolled from x0 on each move.
-  // x2 = pinned flight-segment origin (spawn position, or post-reflect
-  // position if the projectile has bounced). Never rolled, so the parabola
-  // fit always describes the full arc of the current flight segment.
-  x0: number; y0: number; z0: number; t0: number;
-  x1: number; y1: number; z1: number; t1: number;
-  x2: number; y2: number; z2: number; t2: number;
-  // Velocity at the time history.x0/y0/z0 was recorded. Used to detect
-  // reflections by comparing against the projectile's current velocity.
-  vx0: number; vy0: number; vz0: number;
 };
 
 type DynamicCurvedConeGeometry = {
@@ -131,7 +113,6 @@ export class ProjectileRenderer3D {
   private readonly projectileRenderScratch: Entity[] = [];
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
-  private readonly projectileTailHistories = new Map<number, ProjectileTailHistory>();
   private lastProjectileEntitySetVersion = -1;
 
   private readonly projDir = new THREE.Vector3();
@@ -206,7 +187,6 @@ export class ProjectileRenderer3D {
     let finCount = 0;
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');
-    const now = performance.now();
 
     for (const e of projectiles) {
       if (pruneProjectiles) seen.add(e.id);
@@ -214,20 +194,6 @@ export class ProjectileRenderer3D {
       const ty = e.transform.y;
       const tz = e.transform.z;
       const proj = e.projectile;
-      const reflectionX = proj?.pendingReflectionX;
-      const reflectionY = proj?.pendingReflectionY;
-      const reflectionZ = proj?.pendingReflectionZ;
-      if (proj && reflectionX !== undefined) {
-        proj.pendingReflectionX = undefined;
-        proj.pendingReflectionY = undefined;
-        proj.pendingReflectionZ = undefined;
-      }
-      const tailHistory = this.recordProjectileTailHistory(
-        e.id, tx, ty, tz,
-        proj?.velocityX ?? 0, proj?.velocityY ?? 0, proj?.velocityZ ?? 0,
-        now,
-        reflectionX, reflectionY, reflectionZ,
-      );
 
       if (!this.scope.inScope(tx, ty, 50)) {
         this.hideProjRadiusMeshes(e.id);
@@ -264,15 +230,11 @@ export class ProjectileRenderer3D {
           }
         } else if (
           tailShape === 'cone' &&
-          curvedConeCount < PROJECTILE_INSTANCED_CAP &&
-          tailHistory.samples >= 2
+          curvedConeCount < PROJECTILE_INSTANCED_CAP
         ) {
-          // Hold the tail off for one frame after a spawn or reflection so
-          // we never extrapolate a curve from a single anchor point.
           this.writeProjectileCurvedConeTail(
             curvedConeCount++,
             e,
-            tailHistory,
             tailLength,
             tailRadius,
           );
@@ -329,11 +291,6 @@ export class ProjectileRenderer3D {
           this.projectileRadiusMeshes.delete(id);
         }
       }
-      for (const id of this.projectileTailHistories.keys()) {
-        if (!seen.has(id)) {
-          this.projectileTailHistories.delete(id);
-        }
-      }
       this.lastProjectileEntitySetVersion = entitySetVersion;
     }
   }
@@ -372,87 +329,24 @@ export class ProjectileRenderer3D {
     ]);
   }
 
-  private recordProjectileTailHistory(
-    id: EntityId,
-    x: number,
-    y: number,
-    z: number,
-    vx: number,
-    vy: number,
-    vz: number,
-    nowMs: number,
-    reflectionX?: number,
-    reflectionY?: number,
-    reflectionZ?: number,
-  ): ProjectileTailHistory {
-    let history = this.projectileTailHistories.get(id);
-    if (!history) {
-      history = {
-        samples: 1,
-        x0: x, y0: y, z0: z, t0: nowMs,
-        x1: x, y1: y, z1: z, t1: nowMs,
-        x2: x, y2: y, z2: z, t2: nowMs,
-        vx0: vx, vy0: vy, vz0: vz,
-      };
-      this.projectileTailHistories.set(id, history);
-      return history;
-    }
-
-    // Explicit reflection signal from the sim: re-pin x2 at the current
-    // (post-reflection) position so the parabola fit describes only the
-    // new flight segment instead of bridging across the bounce.
-    if (reflectionX !== undefined && reflectionY !== undefined && reflectionZ !== undefined) {
-      resetTailHistoryAnchor(history, x, y, z, vx, vy, vz, nowMs);
-      return history;
-    }
-
-    // Reflection fallback — if the projectile's current velocity points
-    // in a substantially different direction than the velocity at the
-    // last sample but no explicit anchor arrived (e.g., a reflection
-    // event was dropped), re-pin the anchor here so the parabola fit
-    // doesn't span pre/post-bounce.
-    const prevSpeedSq = history.vx0 * history.vx0 +
-      history.vy0 * history.vy0 +
-      history.vz0 * history.vz0;
-    const curSpeedSq = vx * vx + vy * vy + vz * vz;
-    if (prevSpeedSq > 1e-6 && curSpeedSq > 1e-6) {
-      const dotNorm =
-        (history.vx0 * vx + history.vy0 * vy + history.vz0 * vz) /
-        Math.sqrt(prevSpeedSq * curSpeedSq);
-      if (dotNorm < TAIL_HISTORY_REFLECT_DOT) {
-        resetTailHistoryAnchor(history, x, y, z, vx, vy, vz, nowMs);
-        return history;
-      }
-    }
-
-    const dx = x - history.x0;
-    const dy = y - history.y0;
-    const dz = z - history.z0;
-    if (dx * dx + dy * dy + dz * dz < TAIL_HISTORY_MIN_MOVE_SQ) return history;
-
-    // Roll x0 → x1; x2 stays pinned to the flight-segment origin so the
-    // parabola fit always has a long "lever arm" back to spawn (or to
-    // the most recent post-reflect anchor) and can describe the full
-    // arc rather than just the last couple frames.
-    history.x1 = history.x0; history.y1 = history.y0; history.z1 = history.z0; history.t1 = history.t0;
-    history.x0 = x; history.y0 = y; history.z0 = z; history.t0 = nowMs;
-    history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
-    history.samples = Math.min(TAIL_HISTORY_MAX_SAMPLES, history.samples + 1);
-    return history;
-  }
-
   private writeProjectileCurvedConeTail(
     slot: number,
     entity: Entity,
-    history: ProjectileTailHistory,
     length: number,
     radius: number,
   ): void {
     const proj = entity.projectile;
+    const headX = entity.transform.x;
+    const headY = entity.transform.y;
+    const headZ = entity.transform.z;
     const vx = proj?.velocityX ?? 0;
     const vy = proj?.velocityY ?? 0;
     const vz = proj?.velocityZ ?? 0;
     const horizontalSpeed = Math.hypot(vx, vy);
+
+    // Reversed velocity direction — used as the tail axis when we have
+    // no usable origin anchor (just-spawned / reflected projectile that
+    // hasn't separated from its origin yet, or zero-velocity edge case).
     const fallbackAxisX = horizontalSpeed > 1e-6
       ? -vx / horizontalSpeed
       : -Math.cos(entity.transform.rotation);
@@ -460,89 +354,40 @@ export class ProjectileRenderer3D {
       ? -vy / horizontalSpeed
       : -Math.sin(entity.transform.rotation);
     const fallbackSlopeZ = horizontalSpeed > 1e-6 ? -vz / horizontalSpeed : 0;
-    let candidateAz = 0;
-    let candidateBx = fallbackAxisX;
-    let candidateBy = fallbackAxisY;
-    let candidateBz = fallbackSlopeZ;
-    let fitValid = false;
 
-    // history.x2 is the pinned flight-segment origin (spawn or
-    // post-reflect anchor) and history.x1 is the previous sample, so
-    // the fit always spans the full current segment.
-    if (history.samples >= 3) {
-      let axisX = history.x2 - history.x0;
-      let axisY = history.y2 - history.y0;
-      let axisLen = Math.hypot(axisX, axisY);
-      if (axisLen <= TAIL_HISTORY_MIN_FIT_DISTANCE) {
-        axisX = history.x1 - history.x0;
-        axisY = history.y1 - history.y0;
-        axisLen = Math.hypot(axisX, axisY);
+    // Analytic ballistic arc from the authoritative origin (spawn point
+    // or last reflection bounce, never EMA-smoothed) to the predicted
+    // head. Curvature comes from GRAVITY acting over the current
+    // horizontal speed; the linear coefficient is solved so the arc
+    // passes exactly through origin.z. The arc is parameterised in
+    // backward horizontal distance d ≥ 0 from the head:
+    //   pz(d) = head.z + bz·d + az·d²
+    // with az = -G / (2·vh²) and bz fixed by the origin endpoint.
+    let curveAz = 0;
+    let curveBx = fallbackAxisX;
+    let curveBy = fallbackAxisY;
+    let curveBz = fallbackSlopeZ;
+
+    const originX = proj?.originX;
+    const originY = proj?.originY;
+    const originZ = proj?.originZ;
+    if (
+      originX !== undefined && originY !== undefined && originZ !== undefined &&
+      horizontalSpeed > 1e-6
+    ) {
+      const dx = originX - headX;
+      const dy = originY - headY;
+      const dz = originZ - headZ;
+      const q = Math.hypot(dx, dy);
+      if (q > TAIL_MIN_FIT_DISTANCE) {
+        const az = -GRAVITY / (2 * horizontalSpeed * horizontalSpeed);
+        const bz = (dz - az * q * q) / q;
+        const invQ = 1 / q;
+        curveBx = dx * invQ;
+        curveBy = dy * invQ;
+        curveBz = bz;
+        curveAz = az;
       }
-
-      if (axisLen > TAIL_HISTORY_MIN_FIT_DISTANCE) {
-        axisX /= axisLen;
-        axisY /= axisLen;
-        const q1 = (history.x1 - history.x0) * axisX +
-          (history.y1 - history.y0) * axisY;
-        const q2 = (history.x2 - history.x0) * axisX +
-          (history.y2 - history.y0) * axisY;
-
-        if (q1 > TAIL_HISTORY_MIN_FIT_DISTANCE && q2 > q1 + TAIL_HISTORY_MIN_FIT_DISTANCE) {
-          const z1 = history.z1 - history.z0;
-          const z2 = history.z2 - history.z0;
-          const denom = q1 * q2 * (q2 - q1);
-          if (Math.abs(denom) > 1e-9) {
-            candidateAz = (z2 * q1 - z1 * q2) / denom;
-            candidateBx = axisX;
-            candidateBy = axisY;
-            candidateBz = (z1 - candidateAz * q1 * q1) / q1;
-            fitValid = Number.isFinite(candidateAz + candidateBz);
-          }
-        }
-      }
-    }
-
-    if (!fitValid) {
-      // Two-sample case (just spawned or just reflected): aim the tail
-      // straight at the pinned anchor so it visually points back to the
-      // segment origin instead of the velocity direction.
-      const anchorDx = history.x2 - history.x0;
-      const anchorDy = history.y2 - history.y0;
-      const anchorDz = history.z2 - history.z0;
-      const anchorHorizLen = Math.hypot(anchorDx, anchorDy);
-      if (anchorHorizLen > TAIL_HISTORY_MIN_FIT_DISTANCE) {
-        const inv = 1 / anchorHorizLen;
-        candidateAz = 0;
-        candidateBx = anchorDx * inv;
-        candidateBy = anchorDy * inv;
-        candidateBz = anchorDz * inv;
-      } else {
-        candidateAz = 0;
-        candidateBx = fallbackAxisX;
-        candidateBy = fallbackAxisY;
-        candidateBz = fallbackSlopeZ;
-      }
-    }
-
-    let curveAz = candidateAz;
-    let curveBx = candidateBx;
-    let curveBy = candidateBy;
-    let curveBz = candidateBz;
-
-    let curveHorizontalLen = Math.hypot(curveBx, curveBy);
-    if (curveHorizontalLen <= 1e-6) {
-      curveBx = fallbackAxisX;
-      curveBy = fallbackAxisY;
-      curveBz = fallbackSlopeZ;
-      curveAz = 0;
-      curveHorizontalLen = 1;
-    }
-    if (Math.abs(curveHorizontalLen - 1) > 1e-6) {
-      const invCurveHorizontalLen = 1 / curveHorizontalLen;
-      curveBx *= invCurveHorizontalLen;
-      curveBy *= invCurveHorizontalLen;
-      curveBz *= invCurveHorizontalLen;
-      curveAz *= invCurveHorizontalLen * invCurveHorizontalLen;
     }
 
     const positions = this.curvedCone.positions;
@@ -556,9 +401,9 @@ export class ProjectileRenderer3D {
         curveBz,
         curveAz,
       );
-      const px = history.x0 + curveBx * curveDistance;
-      const py = history.y0 + curveBy * curveDistance;
-      const pz = history.z0 + curveBz * curveDistance +
+      const px = headX + curveBx * curveDistance;
+      const py = headY + curveBy * curveDistance;
+      const pz = headZ + curveBz * curveDistance +
         curveAz * curveDistance * curveDistance;
       const tx = curveBx;
       const ty = curveBy;
@@ -763,23 +608,6 @@ export class ProjectileRenderer3D {
     attr.addUpdateRange(minSlot * 16, (maxSlot - minSlot + 1) * 16);
     attr.needsUpdate = true;
   }
-}
-
-function resetTailHistoryAnchor(
-  history: ProjectileTailHistory,
-  x: number, y: number, z: number,
-  vx: number, vy: number, vz: number,
-  nowMs: number,
-): void {
-  // Re-pin x2 (and clear the rolling samples) at the projectile's
-  // current position. Used for explicit reflection events and for the
-  // velocity-dot-product fallback when a reflection signal was dropped,
-  // so the new flight segment starts with a fresh anchor.
-  history.x0 = x; history.y0 = y; history.z0 = z; history.t0 = nowMs;
-  history.x1 = x; history.y1 = y; history.z1 = z; history.t1 = nowMs;
-  history.x2 = x; history.y2 = y; history.z2 = z; history.t2 = nowMs;
-  history.vx0 = vx; history.vy0 = vy; history.vz0 = vz;
-  history.samples = 1;
 }
 
 function verticalParabolaArcPrimitive(slope: number): number {

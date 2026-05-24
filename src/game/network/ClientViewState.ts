@@ -660,9 +660,9 @@ export class ClientViewState {
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
     // Stamp force-field / mirror-panel collision points onto the
-    // reflected projectile so the curved-cone tail renderer can anchor
-    // its trailing sample at the actual bounce point. Audio events flow
-    // separately to the scheduler; this is a read-only peek.
+    // reflected projectile as its new origin anchor — the curved-cone
+    // tail renderer fits an analytic ballistic arc from origin → current
+    // position, so the bounce point becomes the new arc start.
     const audioEventsForReflection = this.pendingAudioEvents;
     if (audioEventsForReflection) {
       for (let i = 0; i < audioEventsForReflection.length; i++) {
@@ -671,9 +671,9 @@ export class ClientViewState {
         const entity = this.entities.get(evt.entityId);
         const proj = entity?.projectile;
         if (!proj) continue;
-        proj.pendingReflectionX = evt.pos.x;
-        proj.pendingReflectionY = evt.pos.y;
-        proj.pendingReflectionZ = evt.pos.z;
+        proj.originX = evt.pos.x;
+        proj.originY = evt.pos.y;
+        proj.originZ = evt.pos.z;
       }
     }
 

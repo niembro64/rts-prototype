@@ -602,13 +602,14 @@ export type Projectile = {
   lastSentVelX?: number;
   lastSentVelY?: number;
   lastSentVelZ?: number;
-  /** Client-only one-shot: the actual collision point on a force field
-   *  sphere or mirror panel from the most recent reflection. Consumed
-   *  by the tail renderer as the trailing anchor for the curved cone
-   *  so the tail visibly emerges from where the projectile bounced. */
-  pendingReflectionX?: number;
-  pendingReflectionY?: number;
-  pendingReflectionZ?: number;
+  /** Client-only persistent anchor: exact spawn point at creation,
+   *  overwritten with the exact bounce point on every reflection. The
+   *  curved-cone tail renderer uses this as the parabola's far endpoint
+   *  so the tail describes the actual flight segment instead of a fit
+   *  through EMA-smoothed render samples. Authoritative — not EMA'd. */
+  originX?: number;
+  originY?: number;
+  originZ?: number;
 };
 
 // Economy state per player. Each pool (energy / metal) has its
@@ -787,8 +788,9 @@ export type EntityComponentSlots = {
    *  derived) so the renderer's spin animator and the wire format
    *  can read it without re-running the ownership math each frame. */
   metalExtractionRate: number | null;
-  /** Cached blueprint full-vision radius. `-1` means not yet
-   *  computed; non-negative values are valid cached radii. */
+  /** Legacy cached blueprint full-vision radius. Sensor coverage no
+   *  longer reads this because full sight is cheap to recompute and
+   *  must not retain old turret-range-derived values across hot reloads. */
   _cachedFullVisionRadius: number;
 };
 
