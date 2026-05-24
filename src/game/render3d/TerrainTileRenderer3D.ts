@@ -70,6 +70,7 @@ import {
   terrainPrecomputedShadow,
   terrainSunShade,
 } from './SunLighting';
+import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { clamp01 } from '../math';
 
@@ -95,6 +96,7 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
 const TRIANGLE_DEBUG_COLOR = new THREE.Color();
 const TERRAIN_HORIZON_COLOR = new THREE.Color(TERRAIN_HORIZON_BLEND_CONFIG.color);
+const TERRAIN_HORIZON_WATER_COLOR = WATER_SURFACE_LINEAR_COLOR.clone();
 
 function smoothstep01(t: number): number {
   const clamped = clamp01(t);
@@ -256,6 +258,7 @@ export class TerrainTileRenderer3D {
     value: TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeEnd,
   };
   private terrainHorizonColorUniform = { value: TERRAIN_HORIZON_COLOR };
+  private terrainHorizonWaterColorUniform = { value: TERRAIN_HORIZON_WATER_COLOR };
   private terrainHorizonShadeUniform = { value: TERRAIN_HORIZON_BLEND_CONFIG.shade };
   private buildGridTexture: THREE.DataTexture;
   private buildGridPixels = new Uint8Array(4);
@@ -347,6 +350,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uTerrainHorizonFadeStart = this.terrainHorizonFadeStartUniform;
       shader.uniforms.uTerrainHorizonFadeEnd = this.terrainHorizonFadeEndUniform;
       shader.uniforms.uTerrainHorizonColor = this.terrainHorizonColorUniform;
+      shader.uniforms.uTerrainHorizonWaterColor = this.terrainHorizonWaterColorUniform;
       shader.uniforms.uTerrainHorizonShade = this.terrainHorizonShadeUniform;
       shader.uniforms.uBuildGridMap = this.buildGridMapUniform;
       shader.uniforms.uBuildGridMapSize = this.buildGridMapSizeUniform;
@@ -405,6 +409,7 @@ export class TerrainTileRenderer3D {
             'uniform float uTerrainHorizonFadeStart;',
             'uniform float uTerrainHorizonFadeEnd;',
             'uniform vec3 uTerrainHorizonColor;',
+            'uniform vec3 uTerrainHorizonWaterColor;',
             'uniform float uTerrainHorizonShade;',
             'uniform sampler2D uBuildGridMap;',
             'uniform vec2 uBuildGridMapSize;',
@@ -554,6 +559,13 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         )
         .replace(
+          'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
+          [
+            'vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;',
+            'outgoingLight = mix(outgoingLight, uTerrainHorizonWaterColor, horizonBlend);',
+          ].join('\n'),
+        )
+        .replace(
           '#include <dithering_fragment>',
           [
             'if (uTriangleDebugEnabled > 0.0) {',
@@ -563,7 +575,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v30';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v31';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

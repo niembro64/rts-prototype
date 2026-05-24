@@ -1,8 +1,8 @@
 {
   "edgeMarginPx": 200,
   "coinHeight": 10,
-  "resourceCells": 5     ,
-  "resourceRadiusCells": 4,
+  "resourceCells": 5,
+  "resourceRadiusCells": 6,
   "rings": [
     {
       "comment": "CENTER PIECE",
@@ -28,7 +28,7 @@
       "countPerPlayer": 1,
       "sliceOffset": -0.4,
       "dTerrainLevels": null,
-      "flatPadCells": 10,
+      "flatPadCells": 14,
       "terrainBlendRadius": 1000
     },
     {
@@ -37,7 +37,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 0.2,
       "dTerrainLevels": null,
-      "flatPadCells": 10,
+      "flatPadCells": 14,
       "terrainBlendRadius": 600
     },
     {

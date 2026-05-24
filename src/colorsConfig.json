@@ -1,12 +1,12 @@
 {
   "resources": {
     "energy": {
-      "colorHex": "#f5d442",
-      "cssColor": "#f5d442"
+      "colorHex": "#c3b783",
+      "cssColor": "#c3b783"
     },
     "metal": {
-      "colorHex": "#d09060",
-      "cssColor": "#d09060"
+      "colorHex": "#87abc0",
+      "cssColor": "#87abc0"
     }
   },
   "world": {
