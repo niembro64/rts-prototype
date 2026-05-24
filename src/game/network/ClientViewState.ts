@@ -659,23 +659,6 @@ export class ClientViewState {
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
-    // Stamp force-field / mirror-panel collision points onto the
-    // reflected projectile as its new origin anchor — the curved-cone
-    // tail renderer fits an analytic ballistic arc from origin → current
-    // position, so the bounce point becomes the new arc start.
-    const audioEventsForReflection = this.pendingAudioEvents;
-    if (audioEventsForReflection) {
-      for (let i = 0; i < audioEventsForReflection.length; i++) {
-        const evt = audioEventsForReflection[i];
-        if (evt.type !== 'forceFieldImpact' || evt.entityId === null) continue;
-        const entity = this.entities.get(evt.entityId);
-        const proj = entity?.projectile;
-        if (!proj) continue;
-        proj.originX = evt.pos.x;
-        proj.originY = evt.pos.y;
-        proj.originZ = evt.pos.z;
-      }
-    }
 
     // Snapshot owns the full list of active scan pulses for this
     // client's team. Length is small (a few at most), so a fresh copy

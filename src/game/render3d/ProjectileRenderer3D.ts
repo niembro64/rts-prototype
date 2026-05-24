@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getProjRangeToggle } from '@/clientBarConfig';
 import { COLORS } from '@/colorsConfig';
-import { GRAVITY } from '@/config';
 import type { Entity, EntityId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -27,11 +26,14 @@ const CURVED_CONE_CURVE_SEGMENTS = 6;
 const CURVED_CONE_RADIAL_SEGMENTS = 10;
 const CURVED_CONE_VERTS_PER_TAIL = (CURVED_CONE_CURVE_SEGMENTS + 1) * CURVED_CONE_RADIAL_SEGMENTS;
 const CURVED_CONE_INDICES_PER_TAIL = CURVED_CONE_CURVE_SEGMENTS * CURVED_CONE_RADIAL_SEGMENTS * 6;
-// Horizontal head→origin distance below which the analytic ballistic
-// curve degenerates and we fall back to a straight cone aimed along the
-// reversed velocity vector (just-spawned / just-reflected projectiles
-// haven't traveled far enough yet to fit a stable parabola).
-const TAIL_MIN_FIT_DISTANCE = 0.1;
+// Trail stamps form the centerline of the tail tube. Vertex 0 is the
+// live head (entity transform, every frame); vertices 1..N are stamps
+// frozen in render space the moment they were laid down, so MOVE POS /
+// VEL EMAs only ever affect the head — old stamps don't drift around
+// behind the projectile. CAP is one less than the axial vertex count
+// because the live head occupies the leading slot.
+const TRAIL_STAMP_CAP = CURVED_CONE_CURVE_SEGMENTS;
+const TRAIL_MIN_TANGENT_SQ = 1e-6;
 const PROJ_CYL_AXIS = new THREE.Vector3(0, 1, 0);
 const IDENTITY_QUAT = new THREE.Quaternion();
 const CURVED_CONE_COS = Array.from(
@@ -54,6 +56,14 @@ const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
 type ProjectileRadiusMeshes = {
   collision?: THREE.LineSegments;
   explosion?: THREE.LineSegments;
+};
+
+type TrailStampBuffer = {
+  // Length TRAIL_STAMP_CAP * 3, indexed newest-first. Slot 0 is the most
+  // recent stamp; slot count-1 is the oldest. Unused slots are dropped
+  // when stamping past the cap (the oldest stamp is evicted).
+  points: Float32Array;
+  count: number;
 };
 
 type DynamicCurvedConeGeometry = {
@@ -113,6 +123,11 @@ export class ProjectileRenderer3D {
   private readonly projectileRenderScratch: Entity[] = [];
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
+  private readonly trailStamps = new Map<EntityId, TrailStampBuffer>();
+  // Scratch buffer used inside writeProjectileCurvedConeTail to assemble
+  // the full (CURVED_CONE_CURVE_SEGMENTS + 1) * 3 centerline before
+  // emitting rings. Reused across projectiles to avoid per-frame allocs.
+  private readonly tailCenterline = new Float32Array((CURVED_CONE_CURVE_SEGMENTS + 1) * 3);
   private lastProjectileEntitySetVersion = -1;
 
   private readonly projDir = new THREE.Vector3();
@@ -232,12 +247,15 @@ export class ProjectileRenderer3D {
           tailShape === 'cone' &&
           curvedConeCount < PROJECTILE_INSTANCED_CAP
         ) {
-          this.writeProjectileCurvedConeTail(
-            curvedConeCount++,
-            e,
-            tailLength,
-            tailRadius,
-          );
+          const stamps = this.advanceTrailStamps(e.id, tx, ty, tz, tailLength);
+          if (stamps.count >= 1) {
+            this.writeProjectileCurvedConeTail(
+              curvedConeCount++,
+              tx, ty, tz,
+              stamps,
+              tailRadius,
+            );
+          }
         }
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
           const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
@@ -291,6 +309,9 @@ export class ProjectileRenderer3D {
           this.projectileRadiusMeshes.delete(id);
         }
       }
+      for (const id of this.trailStamps.keys()) {
+        if (!seen.has(id)) this.trailStamps.delete(id);
+      }
       this.lastProjectileEntitySetVersion = entitySetVersion;
     }
   }
@@ -329,86 +350,113 @@ export class ProjectileRenderer3D {
     ]);
   }
 
+  private advanceTrailStamps(
+    id: EntityId,
+    headX: number,
+    headY: number,
+    headZ: number,
+    tailLength: number,
+  ): TrailStampBuffer {
+    let stamps = this.trailStamps.get(id);
+    if (!stamps) {
+      stamps = { points: new Float32Array(TRAIL_STAMP_CAP * 3), count: 0 };
+      this.trailStamps.set(id, stamps);
+    }
+    // Step size determines how far the head travels between stamps. We
+    // pick one segment's worth of tail length so the trail naturally
+    // spans the configured visual length when fully populated.
+    const stampStep = Math.max(0.25, tailLength / CURVED_CONE_CURVE_SEGMENTS);
+    const stampStepSq = stampStep * stampStep;
+    const pts = stamps.points;
+    let shouldStamp = stamps.count === 0;
+    if (!shouldStamp) {
+      const dx = headX - pts[0];
+      const dy = headY - pts[1];
+      const dz = headZ - pts[2];
+      if (dx * dx + dy * dy + dz * dz >= stampStepSq) shouldStamp = true;
+    }
+    if (shouldStamp) {
+      const newCount = Math.min(TRAIL_STAMP_CAP, stamps.count + 1);
+      // Shift older stamps one slot deeper, dropping the oldest if at cap.
+      for (let i = newCount - 1; i >= 1; i--) {
+        const dst = i * 3;
+        const src = (i - 1) * 3;
+        pts[dst] = pts[src];
+        pts[dst + 1] = pts[src + 1];
+        pts[dst + 2] = pts[src + 2];
+      }
+      pts[0] = headX;
+      pts[1] = headY;
+      pts[2] = headZ;
+      stamps.count = newCount;
+    }
+    return stamps;
+  }
+
   private writeProjectileCurvedConeTail(
     slot: number,
-    entity: Entity,
-    length: number,
+    headX: number,
+    headY: number,
+    headZ: number,
+    stamps: TrailStampBuffer,
     radius: number,
   ): void {
-    const proj = entity.projectile;
-    const headX = entity.transform.x;
-    const headY = entity.transform.y;
-    const headZ = entity.transform.z;
-    const vx = proj?.velocityX ?? 0;
-    const vy = proj?.velocityY ?? 0;
-    const vz = proj?.velocityZ ?? 0;
-    const horizontalSpeed = Math.hypot(vx, vy);
-
-    // Reversed velocity direction — used as the tail axis when we have
-    // no usable origin anchor (just-spawned / reflected projectile that
-    // hasn't separated from its origin yet, or zero-velocity edge case).
-    const fallbackAxisX = horizontalSpeed > 1e-6
-      ? -vx / horizontalSpeed
-      : -Math.cos(entity.transform.rotation);
-    const fallbackAxisY = horizontalSpeed > 1e-6
-      ? -vy / horizontalSpeed
-      : -Math.sin(entity.transform.rotation);
-    const fallbackSlopeZ = horizontalSpeed > 1e-6 ? -vz / horizontalSpeed : 0;
-
-    // Analytic ballistic arc from the authoritative origin (spawn point
-    // or last reflection bounce, never EMA-smoothed) to the predicted
-    // head. Curvature comes from GRAVITY acting over the current
-    // horizontal speed; the linear coefficient is solved so the arc
-    // passes exactly through origin.z. The arc is parameterised in
-    // backward horizontal distance d ≥ 0 from the head:
-    //   pz(d) = head.z + bz·d + az·d²
-    // with az = -G / (2·vh²) and bz fixed by the origin endpoint.
-    let curveAz = 0;
-    let curveBx = fallbackAxisX;
-    let curveBy = fallbackAxisY;
-    let curveBz = fallbackSlopeZ;
-
-    const originX = proj?.originX;
-    const originY = proj?.originY;
-    const originZ = proj?.originZ;
-    if (
-      originX !== undefined && originY !== undefined && originZ !== undefined &&
-      horizontalSpeed > 1e-6
-    ) {
-      const dx = originX - headX;
-      const dy = originY - headY;
-      const dz = originZ - headZ;
-      const q = Math.hypot(dx, dy);
-      if (q > TAIL_MIN_FIT_DISTANCE) {
-        const az = -GRAVITY / (2 * horizontalSpeed * horizontalSpeed);
-        const bz = (dz - az * q * q) / q;
-        const invQ = 1 / q;
-        curveBx = dx * invQ;
-        curveBy = dy * invQ;
-        curveBz = bz;
-        curveAz = az;
-      }
+    // Centerline layout: vertex 0 is the live head, vertices 1..N are
+    // stamped points in newest→oldest order. When fewer than N stamps
+    // exist (just-spawned projectile), pad with copies of the oldest
+    // available point — the ring radius taper hides the collapsed tail.
+    const centerline = this.tailCenterline;
+    centerline[0] = headX;
+    centerline[1] = headY;
+    centerline[2] = headZ;
+    const pts = stamps.points;
+    const count = stamps.count;
+    for (let i = 1; i <= CURVED_CONE_CURVE_SEGMENTS; i++) {
+      const stampIdx = i - 1 < count ? i - 1 : count - 1;
+      const src = stampIdx * 3;
+      const dst = i * 3;
+      centerline[dst] = pts[src];
+      centerline[dst + 1] = pts[src + 1];
+      centerline[dst + 2] = pts[src + 2];
     }
 
     const positions = this.curvedCone.positions;
     const normals = this.curvedCone.normals;
     const vertexBase = slot * CURVED_CONE_VERTS_PER_TAIL;
     for (let segment = 0; segment <= CURVED_CONE_CURVE_SEGMENTS; segment++) {
+      const ci = segment * 3;
+      const px = centerline[ci];
+      const py = centerline[ci + 1];
+      const pz = centerline[ci + 2];
+
+      // Tangent via centered difference (forward at the head, backward
+      // at the tail end). Direction sign doesn't matter — setCurveBasis
+      // only uses it to build an orthonormal frame for the ring.
+      let tanX: number, tanY: number, tanZ: number;
+      if (segment === 0) {
+        tanX = centerline[3] - px;
+        tanY = centerline[4] - py;
+        tanZ = centerline[5] - pz;
+      } else if (segment === CURVED_CONE_CURVE_SEGMENTS) {
+        const pi = (segment - 1) * 3;
+        tanX = px - centerline[pi];
+        tanY = py - centerline[pi + 1];
+        tanZ = pz - centerline[pi + 2];
+      } else {
+        const ni = (segment + 1) * 3;
+        const pi = (segment - 1) * 3;
+        tanX = centerline[ni] - centerline[pi];
+        tanY = centerline[ni + 1] - centerline[pi + 1];
+        tanZ = centerline[ni + 2] - centerline[pi + 2];
+      }
+      if (tanX * tanX + tanY * tanY + tanZ * tanZ < TRAIL_MIN_TANGENT_SQ) {
+        // Padded collapsed tail — fall back to a stable axis so we don't
+        // emit NaN rings.
+        tanX = 0; tanY = 0; tanZ = 1;
+      }
+      this.setCurveBasis(tanX, tanY, tanZ);
+
       const u = segment / CURVED_CONE_CURVE_SEGMENTS;
-      const arcDistance = length * u;
-      const curveDistance = solveVerticalParabolaArcDistance(
-        arcDistance,
-        curveBz,
-        curveAz,
-      );
-      const px = headX + curveBx * curveDistance;
-      const py = headY + curveBy * curveDistance;
-      const pz = headZ + curveBz * curveDistance +
-        curveAz * curveDistance * curveDistance;
-      const tx = curveBx;
-      const ty = curveBy;
-      const tz = curveBz + 2 * curveAz * curveDistance;
-      this.setCurveBasis(tx, ty, tz);
       const ringRadius = radius * (1 - u);
       for (let radial = 0; radial < CURVED_CONE_RADIAL_SEGMENTS; radial++) {
         const normalX = this.curveRight.x * CURVED_CONE_COS[radial] +
@@ -608,47 +656,6 @@ export class ProjectileRenderer3D {
     attr.addUpdateRange(minSlot * 16, (maxSlot - minSlot + 1) * 16);
     attr.needsUpdate = true;
   }
-}
-
-function verticalParabolaArcPrimitive(slope: number): number {
-  return 0.5 * (
-    slope * Math.sqrt(1 + slope * slope) +
-    Math.asinh(slope)
-  );
-}
-
-function verticalParabolaArcLength(distance: number, slope: number, curvature: number): number {
-  if (distance <= 0) return 0;
-  if (Math.abs(curvature) <= 1e-9) {
-    return distance * Math.sqrt(1 + slope * slope);
-  }
-  const k = 2 * curvature;
-  const start = verticalParabolaArcPrimitive(slope);
-  const end = verticalParabolaArcPrimitive(slope + k * distance);
-  return Math.max(0, (end - start) / k);
-}
-
-function solveVerticalParabolaArcDistance(
-  arcDistance: number,
-  slope: number,
-  curvature: number,
-): number {
-  if (arcDistance <= 0) return 0;
-  if (Math.abs(curvature) <= 1e-9) {
-    return arcDistance / Math.sqrt(1 + slope * slope);
-  }
-
-  let lo = 0;
-  let hi = arcDistance;
-  for (let i = 0; i < 10; i++) {
-    const mid = (lo + hi) * 0.5;
-    if (verticalParabolaArcLength(mid, slope, curvature) < arcDistance) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return (lo + hi) * 0.5;
 }
 
 // Local +Y aligns with projDir (rocket-rearward) after the instance

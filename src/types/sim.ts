@@ -602,14 +602,6 @@ export type Projectile = {
   lastSentVelX: number | undefined;
   lastSentVelY: number | undefined;
   lastSentVelZ: number | undefined;
-  /** Client-only persistent anchor: exact spawn point at creation,
-   *  overwritten with the exact bounce point on every reflection. The
-   *  curved-cone tail renderer uses this as the parabola's far endpoint
-   *  so the tail describes the actual flight segment instead of a fit
-   *  through EMA-smoothed render samples. Authoritative — not EMA'd. */
-  originX: number | undefined;
-  originY: number | undefined;
-  originZ: number | undefined;
 };
 
 export type ProjectileAbsenceSlots = Pick<Projectile,
@@ -645,9 +637,6 @@ export type ProjectileAbsenceSlots = Pick<Projectile,
   | 'lastSentVelX'
   | 'lastSentVelY'
   | 'lastSentVelZ'
-  | 'originX'
-  | 'originY'
-  | 'originZ'
 >;
 
 export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
@@ -683,9 +672,6 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   lastSentVelX: undefined,
   lastSentVelY: undefined,
   lastSentVelZ: undefined,
-  originX: undefined,
-  originY: undefined,
-  originZ: undefined,
 };
 
 // Economy state per player. Each pool (energy / metal) has its
