@@ -120,7 +120,11 @@ export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION =
   terrainConfig.terrainCirclePerimeterEdgeFraction;
 export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION =
   terrainConfig.terrainCirclePerimeterTransitionWidthFraction;
-export let TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
+
+/** The terrain height outside the round island. Keep this at the world floor:
+ *  water is a separate plane above it, so the island edge visibly descends
+ *  through the waterline instead of flattening at the water surface. */
+export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = TILE_FLOOR_Y;
 
 /** Fade authored terrain features to flat before the outer map buffer. */
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
@@ -159,7 +163,6 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
   const nextDTerrain = Math.max(0, config.terrainDTerrain);
   if (TERRAIN_D_TERRAIN !== nextDTerrain) {
     TERRAIN_D_TERRAIN = nextDTerrain;
-    TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
     changed = true;
   }
 

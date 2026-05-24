@@ -2279,10 +2279,10 @@ pub fn integrate_damped_rotation(
 
 // Mirrors src/game/sim/terrain/terrainConfig.ts:
 //   TILE_FLOOR_Y       = -1200
-//   WATER_LEVEL_FRACTION = 0.71
+//   WATER_LEVEL_FRACTION = 0.9
 //   WATER_LEVEL        = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION)
 const TERRAIN_TILE_FLOOR_Y: f64 = -1200.0;
-const TERRAIN_WATER_LEVEL_FRACTION: f64 = 0.71;
+const TERRAIN_WATER_LEVEL_FRACTION: f64 = 0.9;
 const TERRAIN_WATER_LEVEL: f64 = TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEVEL_FRACTION);
 
 // Matches terrainTileMap.ts TERRAIN_MESH_EPSILON for the degenerate
