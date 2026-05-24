@@ -77,7 +77,7 @@ export function getTerrainMapShape(): TerrainMapShape {
 
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
   return {
-    plateauAmount: TERRAIN_PLATEAU_CONFIG.amount,
+    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
@@ -95,7 +95,7 @@ export function setTerrainCenterMagnitude(value: number): void {
   if (value === mountainRippleAmplitude) return;
   mountainRippleAmplitude = value;
   applyTerrainRuntimeConfig({
-    plateauAmount: TERRAIN_PLATEAU_CONFIG.amount,
+    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
     centerMagnitude: value,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
@@ -107,7 +107,7 @@ export function setTerrainDividersMagnitude(value: number): void {
   if (value === mountainSeparatorAmplitude) return;
   mountainSeparatorAmplitude = value;
   applyTerrainRuntimeConfig({
-    plateauAmount: TERRAIN_PLATEAU_CONFIG.amount,
+    plateauEnabled: TERRAIN_PLATEAU_CONFIG.enabled,
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,

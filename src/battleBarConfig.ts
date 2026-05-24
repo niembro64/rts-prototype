@@ -71,9 +71,9 @@ export const BATTLE_CONFIG = {
     options: battleBarConfig.mapShape.options as ReadonlyArray<{ value: TerrainMapShape; label: string }>,
   },
   plateau: {
-    amount: {
-      default: battleBarConfig.plateau.amount.default,
-      options: battleBarConfig.plateau.amount.options as readonly number[],
+    enabled: {
+      default: battleBarConfig.plateau.enabled.default,
+      options: battleBarConfig.plateau.enabled.options as ReadonlyArray<{ value: boolean; label: string }>,
     },
   },
   terrainDTerrain: {
@@ -132,8 +132,8 @@ const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
 const STORAGE_REAL_DIVIDERS_MAGNITUDE = sk.realDividersMagnitude;
 const STORAGE_DEMO_TERRAIN_MAP_SHAPE = sk.demoTerrainMapShape;
 const STORAGE_REAL_TERRAIN_MAP_SHAPE = sk.realTerrainMapShape;
-const STORAGE_DEMO_TERRAIN_PLATEAU_AMOUNT = sk.demoTerrainPlateauAmount;
-const STORAGE_REAL_TERRAIN_PLATEAU_AMOUNT = sk.realTerrainPlateauAmount;
+const STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED = sk.demoTerrainPlateauEnabled;
+const STORAGE_REAL_TERRAIN_PLATEAU_ENABLED = sk.realTerrainPlateauEnabled;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
@@ -277,10 +277,7 @@ export function saveRealBarsCollapsed(collapsed: boolean): void {
 export type BattleMode = 'demo' | 'real';
 
 export type BattleTerrainRuntimeConfig = {
-  /** Plateau intensity 0..5 (0 = off, 5 = force every slope into a
-   *  TERRAIN_D_TERRAIN-step plateau even where it would create
-   *  cliffs). */
-  plateauAmount: number;
+  plateauEnabled: boolean;
   centerMagnitude: number;
   dividersMagnitude: number;
   terrainDTerrain: number;
@@ -450,9 +447,10 @@ function loadModeNumberOption(
   return config.default;
 }
 
-export function normalizeTerrainPlateauAmount(value: unknown): number {
-  if (typeof value !== 'number') return BATTLE_CONFIG.plateau.amount.default;
-  return normalizeNumberOption(value, BATTLE_CONFIG.plateau.amount);
+export function normalizeTerrainPlateauEnabled(value: unknown): boolean {
+  return typeof value === 'boolean'
+    ? value
+    : BATTLE_CONFIG.plateau.enabled.default;
 }
 
 export function normalizeCenterMagnitude(value: number): number {
@@ -649,24 +647,24 @@ export function saveTerrainMapShape(
   );
 }
 
-export function loadStoredTerrainPlateauAmount(mode: BattleMode): number {
-  return loadModeNumberOption(
+export function loadStoredTerrainPlateauEnabled(mode: BattleMode): boolean {
+  return loadModeBool(
     mode,
-    STORAGE_REAL_TERRAIN_PLATEAU_AMOUNT,
-    STORAGE_DEMO_TERRAIN_PLATEAU_AMOUNT,
-    BATTLE_CONFIG.plateau.amount,
+    STORAGE_REAL_TERRAIN_PLATEAU_ENABLED,
+    STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED,
+    BATTLE_CONFIG.plateau.enabled.default,
   );
 }
 
-export function saveTerrainPlateauAmount(
-  amount: number,
+export function saveTerrainPlateauEnabled(
+  enabled: boolean,
   mode: BattleMode,
 ): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_TERRAIN_PLATEAU_AMOUNT
-      : STORAGE_DEMO_TERRAIN_PLATEAU_AMOUNT,
-    String(normalizeTerrainPlateauAmount(amount)),
+      ? STORAGE_REAL_TERRAIN_PLATEAU_ENABLED
+      : STORAGE_DEMO_TERRAIN_PLATEAU_ENABLED,
+    String(normalizeTerrainPlateauEnabled(enabled)),
   );
 }
 
@@ -692,7 +690,7 @@ export function loadStoredTerrainRuntimeConfig(
   mode: BattleMode,
 ): BattleTerrainRuntimeConfig {
   return {
-    plateauAmount: loadStoredTerrainPlateauAmount(mode),
+    plateauEnabled: loadStoredTerrainPlateauEnabled(mode),
     centerMagnitude: loadStoredCenterMagnitude(mode),
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),

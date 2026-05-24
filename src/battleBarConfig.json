@@ -24,9 +24,12 @@
     ]
   },
   "plateau": {
-    "amount": {
-      "default": 0,
-      "options": [0, 1, 2, 3, 4, 5]
+    "enabled": {
+      "default": false,
+      "options": [
+        { "value": true, "label": "ON" },
+        { "value": false, "label": "OFF" }
+      ]
     }
   },
   "terrainDTerrain": {
@@ -75,8 +78,8 @@
     "realDividersMagnitude": "real-battle-dividers-magnitude",
     "demoTerrainMapShape": "demo-battle-terrain-map-shape",
     "realTerrainMapShape": "real-battle-terrain-map-shape",
-    "demoTerrainPlateauAmount": "demo-battle-terrain-plateau-amount",
-    "realTerrainPlateauAmount": "real-battle-terrain-plateau-amount",
+    "demoTerrainPlateauEnabled": "demo-battle-terrain-plateau-enabled",
+    "realTerrainPlateauEnabled": "real-battle-terrain-plateau-enabled",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoConverterTax": "demo-battle-converter-tax",

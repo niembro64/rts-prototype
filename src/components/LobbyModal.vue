@@ -29,7 +29,7 @@ const props = defineProps<{
   centerMagnitude: number;
   dividersMagnitude: number;
   terrainMapShape: TerrainMapShape;
-  terrainPlateauAmount: number;
+  terrainPlateauEnabled: boolean;
   terrainDTerrain: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
@@ -51,7 +51,7 @@ const emit = defineEmits<{
   (e: 'setCenterMagnitude', value: number): void;
   (e: 'setDividersMagnitude', value: number): void;
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
-  (e: 'setTerrainPlateauAmount', amount: number): void;
+  (e: 'setTerrainPlateauEnabled', enabled: boolean): void;
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
@@ -70,7 +70,7 @@ const emit = defineEmits<{
 const centerMagnitudeOptions = BATTLE_CONFIG.centerMagnitude.options;
 const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
-const plateauAmountOptions = BATTLE_CONFIG.plateau.amount.options;
+const plateauEnabledOptions = BATTLE_CONFIG.plateau.enabled.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
@@ -103,9 +103,9 @@ function pickTerrainMapShape(shape: TerrainMapShape): void {
   emit('setTerrainMapShape', shape);
 }
 
-function pickTerrainPlateauAmount(amount: number): void {
+function pickTerrainPlateauEnabled(enabled: boolean): void {
   if (!props.isHost) return;
-  emit('setTerrainPlateauAmount', amount);
+  emit('setTerrainPlateauEnabled', enabled);
 }
 
 function pickTerrainDTerrain(value: number): void {
@@ -329,7 +329,7 @@ const terrainSectionVars = computed(() =>
         v-if="!isInLobby"
         class="spectate-btn"
         @click="emit('spectate')"
-        title="Play Demo"
+        title="Watch Battle"
       >
         ●
       </button>
@@ -363,7 +363,6 @@ const terrainSectionVars = computed(() =>
         <p class="subtitle">Online Multiplayer RTS</p>
 
         <div class="main-actions">
-          <button class="lobby-btn demo-btn" @click="emit('spectate')">Demo Battle</button>
           <button class="lobby-btn host-btn" @click="handleHost">Host</button>
 
           <div class="join-row">
@@ -585,18 +584,12 @@ const terrainSectionVars = computed(() =>
                 <BarLabel>PLATEAU:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="opt in plateauAmountOptions"
-                    :key="opt"
-                    :active="terrainPlateauAmount === opt"
-                    :title="isHost
-                      ? (opt === 0
-                        ? 'Smooth terrain — no plateau snapping'
-                        : opt === 5
-                          ? 'Force every slope into a plateau (cliffs everywhere)'
-                          : `Plateau amount ${opt} — wider slope window admits more terrain into terraces`)
-                      : 'Only the host can change terrain'"
-                    @click="pickTerrainPlateauAmount(opt)"
-                  >{{ opt }}</BarButton>
+                    v-for="opt in plateauEnabledOptions"
+                    :key="String(opt.value)"
+                    :active="terrainPlateauEnabled === opt.value"
+                    :title="isHost ? `Turn terrain plateaus ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
+                    @click="pickTerrainPlateauEnabled(opt.value)"
+                  >{{ opt.label }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>
@@ -989,16 +982,6 @@ const terrainSectionVars = computed(() =>
 
 .host-btn:hover:not(:disabled) {
   background: #55cc55;
-}
-
-.demo-btn {
-  background: #4a9eff;
-  color: white;
-  width: 100%;
-}
-
-.demo-btn:hover:not(:disabled) {
-  background: #5aafff;
 }
 
 .join-btn {

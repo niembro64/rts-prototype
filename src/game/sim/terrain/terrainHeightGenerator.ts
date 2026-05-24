@@ -32,7 +32,7 @@ function plateauRampCurve(t: number): number {
 }
 
 function applyTerrainPlateaus(height: number, strength: number = 1): number {
-  if (TERRAIN_PLATEAU_CONFIG.amount <= 0 || !Number.isFinite(height))
+  if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height))
     return height;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return height;
@@ -65,19 +65,15 @@ function applyTerrainPlateaus(height: number, strength: number = 1): number {
 }
 
 function getTerrainPlateauStrength(naturalSlope: number): number {
-  // Terrace STEEP terrain: at or above `fullTerraceMinSlope` the
-  // surface fully snaps to TERRAIN_D_TERRAIN levels (creating plateaus
-  // + cliffs). At or below `noTerraceMaxSlope` the natural shape is
-  // left alone. The band in between smoothly fades.
-  const noSlope = TERRAIN_PLATEAU_CONFIG.noTerraceMaxSlope;
-  const fullSlope = Math.max(
-    noSlope + 1e-6,
-    TERRAIN_PLATEAU_CONFIG.fullTerraceMinSlope,
+  const fullSlope = Math.max(0, TERRAIN_PLATEAU_CONFIG.fullTerraceMaxSlope);
+  const noSlope = Math.max(
+    fullSlope + 1e-6,
+    TERRAIN_PLATEAU_CONFIG.noTerraceMinSlope,
   );
-  if (naturalSlope <= noSlope) return 0;
-  if (naturalSlope >= fullSlope) return 1;
-  const t = (naturalSlope - noSlope) / (fullSlope - noSlope);
-  return smootherstep(clamp01(t));
+  if (naturalSlope <= fullSlope) return 1;
+  if (naturalSlope >= noSlope) return 0;
+  const t = (naturalSlope - fullSlope) / (noSlope - fullSlope);
+  return 1 - smootherstep(clamp01(t));
 }
 
 function estimateGeneratedTerrainSlope(
@@ -321,11 +317,9 @@ export function getTerrainHeight(
   // blended into the surface, so the terracing covers everything the
   // player will actually walk on (including the post-blend regions
   // around deposits). Slope-gating still uses the natural ripple+ridge
-  // slope so flat bowls and plateaus terrace but steep ramps don't —
-  // except at amount=5, where plateauSlopeWindowForAmount opens the
-  // window to infinity and every slope terraces into a cliff.
+  // slope so flat bowls and plateaus terrace but steep ramps don't.
   let terraced = blended;
-  if (TERRAIN_PLATEAU_CONFIG.amount > 0) {
+  if (TERRAIN_PLATEAU_CONFIG.enabled) {
     const naturalSlope = estimateGeneratedTerrainSlope(
       x,
       y,

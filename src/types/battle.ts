@@ -28,11 +28,7 @@ export type BattleBarConfig = {
   /** Overall map boundary shape: full square map or circular island. */
   readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
   readonly plateau: {
-    /** Plateau intensity. 0 = perfectly smooth (no terracing); higher
-     *  numbers admit progressively steeper slopes into the terraced
-     *  set, with 5 forcing every slope (including cliffs) into
-     *  discrete TERRAIN_D_TERRAIN levels. */
-    readonly amount: OptionsConfig<number>;
+    readonly enabled: LabeledOptionsConfig<boolean>;
   };
   readonly terrainDTerrain: OptionsConfig<number>;
   /** Tax (fraction in [0, 1)) applied to a resource converter's

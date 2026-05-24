@@ -4,7 +4,7 @@ import {
   loadStoredDividersMagnitude,
   loadStoredMapLandDimensions,
   loadStoredTerrainDTerrain,
-  loadStoredTerrainPlateauAmount,
+  loadStoredTerrainPlateauEnabled,
   loadStoredTerrainMapShape,
   type BattleMode,
 } from '../battleBarConfig';
@@ -23,7 +23,7 @@ export type GameCanvasLobbyPreviewOptions = {
   centerMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
   terrainMapShape: Ref<TerrainMapShape>;
-  terrainPlateauAmount: Ref<number>;
+  terrainPlateauEnabled: Ref<boolean>;
   terrainDTerrain: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
@@ -43,7 +43,7 @@ export function useGameCanvasLobbyPreview({
   centerMagnitude,
   dividersMagnitude,
   terrainMapShape,
-  terrainPlateauAmount,
+  terrainPlateauEnabled,
   terrainDTerrain,
   mapWidthLandCells,
   mapLengthLandCells,
@@ -65,7 +65,7 @@ export function useGameCanvasLobbyPreview({
     centerMagnitude.value = loadStoredCenterMagnitude(mode);
     dividersMagnitude.value = loadStoredDividersMagnitude(mode);
     terrainMapShape.value = loadStoredTerrainMapShape(mode);
-    terrainPlateauAmount.value = loadStoredTerrainPlateauAmount(mode);
+    terrainPlateauEnabled.value = loadStoredTerrainPlateauEnabled(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;
