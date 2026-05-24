@@ -75,20 +75,25 @@ export function findDepositFlatZoneAt(x: number, y: number): TerrainFlatZone | n
 
 /** Resolve every deposit's contribution to (x, y). Returns the
  *  natural-terrain weight (`weight`) and the deposit pad height the
- *  caller should blend in.
+ *  caller should blend in. The caller's blend is
+ *    `height * (1 - weight) + natural * weight`.
  *
  *  Inside ANY deposit's inner radius: that deposit dominates entirely
  *  (returned with weight 0) so the flat pad stays exact — extractors
- *  rely on it being level. Outside every inner radius, all reachable
- *  blend rings contribute simultaneously: each ring's deposit-side
- *  weight is `w_z` (1 at the edge of its inner radius, smooth fall to
- *  0 at radius + blendRadius). Their combined influence is the
- *  probabilistic union `1 - prod(1 - w_z)`, and the deposit-side pad
- *  height is the w_z-weighted average of every reachable ring's
- *  height. This way two pads with overlapping blend bands hand off
- *  smoothly to each other instead of "snap to whichever deposit is
- *  closest", which used to throw a discontinuous cliff where the
- *  winner flipped. */
+ *  rely on it being level. If two flat pads overlap, the closest one
+ *  wins and the discontinuity is left to the author (the user has
+ *  said overlapping `flatPadCells` are allowed to cliff).
+ *
+ *  Outside every inner radius, each reachable blend ring contributes
+ *  via an "effective weight" e_z = w_z · ∏_{j≠z}(1 - w_j), where
+ *  w_z = 1 at the edge of z's inner radius and smoothly falls to 0
+ *  at radius + blendRadius. The natural-terrain weight is
+ *  ∏_z(1 - w_z). This makes the blend continuous across every pad
+ *  edge: at deposit z's outer edge of its inner radius, w_z → 1, so
+ *  e_z absorbs every other deposit's contribution AND the natural
+ *  weight, and the output equals h_z — matching the flat pad
+ *  interior. Two pads with overlapping blend bands hand off smoothly
+ *  to each other instead of cliffing at the boundary. */
 export function depositOverride(
   x: number,
   y: number,
@@ -97,43 +102,71 @@ export function depositOverride(
   const candidates = getDepositFlatZoneCandidates(x, y);
   if (candidates.length === 0) return { weight: 1, height: 0 };
 
-  // First: inner-radius dominance. The closest containing pad wins
-  // outright so the flat pad stays exact under the deposit.
+  // Single pass: pick up the closest containing pad if any, otherwise
+  // build the blend-ring weight list.
   let containing: TerrainFlatZone | null = null;
   let containingD2 = Infinity;
+  const blendWeights: number[] = [];
+  const blendHeights: number[] = [];
   for (const z of candidates) {
     const dx = x - z.x;
     const dy = y - z.y;
     const d2 = dx * dx + dy * dy;
-    if (d2 <= z.radius * z.radius && d2 < containingD2) {
-      containing = z;
-      containingD2 = d2;
+    if (d2 <= z.radius * z.radius) {
+      if (d2 < containingD2) {
+        containing = z;
+        containingD2 = d2;
+      }
+      continue;
     }
-  }
-  if (containing !== null) return { weight: 0, height: containing.height };
-
-  // Else: smooth multi-zone blend in the union of blend bands.
-  let oneMinusProduct = 1;
-  let weightedHeight = 0;
-  let weightSum = 0;
-  for (const z of candidates) {
+    if (containing !== null) continue;
     const blendRadius = Math.max(0, z.blendRadius);
     if (blendRadius <= 0) continue;
-    const dx = x - z.x;
-    const dy = y - z.y;
-    const d = Math.sqrt(dx * dx + dy * dy);
+    const d = Math.sqrt(d2);
     if (d >= z.radius + blendRadius) continue;
-    if (d <= z.radius) continue;
     const t = (d - z.radius) / blendRadius;
     const wz = (1 + Math.cos(t * Math.PI)) * 0.5;
-    oneMinusProduct *= 1 - wz;
-    weightedHeight += wz * z.height;
-    weightSum += wz;
+    blendWeights.push(wz);
+    blendHeights.push(z.height);
   }
-  if (weightSum <= 0) return { weight: 1, height: 0 };
-  const totalInfluence = 1 - oneMinusProduct;
+  if (containing !== null) return { weight: 0, height: containing.height };
+  const n = blendWeights.length;
+  if (n === 0) return { weight: 1, height: 0 };
+
+  // Effective per-deposit weights e_z = w_z · ∏_{j≠z}(1 - w_j) and
+  // natural weight ∏_z(1 - w_z). When any w_i → 1 the corresponding
+  // (1 - w_i) zeroes every other deposit's e AND the natural weight,
+  // so e_i absorbs everything and the output collapses to h_i —
+  // continuous with the flat-pad interior on the other side of the
+  // edge.
+  let prodAll = 1;
+  for (let i = 0; i < n; i++) prodAll *= 1 - blendWeights[i];
+
+  let weightedHeightSum = 0;
+  let effectiveSum = 0;
+  for (let i = 0; i < n; i++) {
+    const oneMinus = 1 - blendWeights[i];
+    let ei: number;
+    if (oneMinus > 1e-12) {
+      ei = blendWeights[i] * (prodAll / oneMinus);
+    } else {
+      // w_i is numerically 1; compute the leave-one-out product directly.
+      let prodExcl = 1;
+      for (let j = 0; j < n; j++) {
+        if (j === i) continue;
+        prodExcl *= 1 - blendWeights[j];
+      }
+      ei = blendWeights[i] * prodExcl;
+    }
+    weightedHeightSum += ei * blendHeights[i];
+    effectiveSum += ei;
+  }
+  const totalWeight = effectiveSum + prodAll;
+  if (totalWeight <= 0) return { weight: 1, height: 0 };
+  if (effectiveSum <= 0) return { weight: 1, height: 0 };
+
   return {
-    weight: 1 - totalInfluence,
-    height: weightedHeight / weightSum,
+    weight: prodAll / totalWeight,
+    height: weightedHeightSum / effectiveSum,
   };
 }
