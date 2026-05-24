@@ -21,7 +21,7 @@
     "options": [100, 200, 400, 800, 0]
   },
   "metalDepositStep": {
-    "options": [100, 200, 400, 800]
+    "options": [0, 100, 200, 400, 800]
   },
   "converterTax": {
     "options": [0.0, 0.1, 0.5]
