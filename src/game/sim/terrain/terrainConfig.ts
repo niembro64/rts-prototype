@@ -15,10 +15,26 @@ export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 // authoritative triangles where error allows.
 export const TERRAIN_FINE_TRIANGLE_SUBDIV = terrainConfig.terrainFineTriangleSubdiv;
 
-/** Maximum vertical deviation, in world units, allowed when a land cell is
- *  collapsed to a lower subdivision. Steep but planar cells simplify; curved,
- *  terraced, waterline, and ridge cells keep more triangles. */
-export const TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR = terrainConfig.terrainTriangleMaxHeightError;
+/** Maximum perpendicular deviation, in world units, allowed when a terrain
+ *  triangle is collapsed to a lower subdivision. Measuring error against the
+ *  candidate plane, rather than only in world-Z height, lets steep-but-planar
+ *  terrain simplify without top-down projection bias. */
+export const TERRAIN_TRIANGLE_MAX_SURFACE_ERROR =
+  terrainConfig.terrainTriangleMaxSurfaceError;
+
+/** @deprecated Use TERRAIN_TRIANGLE_MAX_SURFACE_ERROR. The collapse check now
+ *  measures perpendicular surface error instead of world-Z height error. */
+export const TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR = TERRAIN_TRIANGLE_MAX_SURFACE_ERROR;
+
+/** Maximum source-surface normal divergence allowed inside a collapsed
+ *  triangle. This catches curved terrain whose sampled points happen to stay
+ *  within the positional error tolerance. */
+export const TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES =
+  terrainConfig.terrainTriangleMaxNormalAngleDegrees;
+export const TERRAIN_TRIANGLE_MIN_NORMAL_DOT = Math.cos(
+  Math.max(0, Math.min(180, TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES)) *
+    Math.PI / 180,
+);
 
 /** Maximum hierarchy-level delta allowed across touching triangle edges.
  *  `1` gives a 2:1 balanced transition band around high-detail terrain. */

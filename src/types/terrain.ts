@@ -5,8 +5,9 @@ export type TerrainMapShape = 'square' | 'circle';
  *  Terrain topology is independent from LAND GRID gameplay cells. The
  *  authoritative mesh is a global bottom-up equilateral-triangle hierarchy:
  *  fine lattice triangles are grouped upward only when the larger triangle
- *  stays within terrain error constraints. The final baked mesh is fixed per
- *  match and shared by host sim, client prediction, and rendering.
+ *  stays within surface-distance and normal-angle error constraints. The
+ *  final baked mesh is fixed per match and shared by host sim, client
+ *  prediction, and rendering.
  *
  *  LAND GRID cells remain useful for gameplay, overlays, and broad lookup.
  *  `meshCellTriangleOffsets` / `meshCellTriangleIndices` are an acceleration
@@ -67,4 +68,3 @@ export type TerrainBuildabilityGrid = {
   readonly flags: readonly number[];
   readonly levels: readonly number[];
 };
-

@@ -10,11 +10,11 @@
   "forceFieldReflectionMode": { "default": "both" },
   "centerMagnitude": {
     "default": 400,
-    "options": [-200, 0, 200, 400, 800, 1600, 3200]
+    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
   "dividersMagnitude": {
     "default": 400,
-    "options": [-200, 0, 200, 400, 800, 1600, 3200]
+    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
   "mapShape": {
     "default": "circle",
@@ -42,8 +42,18 @@
   },
 
   "modeDefaults": {
-    "demo": { "cap": 243, "grid": true, "fogOfWar": false, "barsCollapsed": false },
-    "real": { "cap": 243, "grid": false, "fogOfWar": true, "barsCollapsed": false }
+    "demo": {
+      "cap": 243,
+      "grid": true,
+      "fogOfWar": false,
+      "barsCollapsed": false
+    },
+    "real": {
+      "cap": 243,
+      "grid": false,
+      "fogOfWar": true,
+      "barsCollapsed": false
+    }
   },
 
   "storageKeys": {
@@ -92,9 +102,18 @@
     ["rts-real-grid", "real-battle-grid"],
     ["rts-mirrors-enabled", "demo-battle-mirrors-enabled"],
     ["rts-force-fields-enabled", "demo-battle-force-fields-enabled"],
-    ["rts-force-fields-block-targeting", "demo-battle-force-fields-obstruct-sight"],
-    ["demo-battle-force-fields-block-targeting", "demo-battle-force-fields-obstruct-sight"],
-    ["real-battle-force-fields-block-targeting", "real-battle-force-fields-obstruct-sight"],
+    [
+      "rts-force-fields-block-targeting",
+      "demo-battle-force-fields-obstruct-sight"
+    ],
+    [
+      "demo-battle-force-fields-block-targeting",
+      "demo-battle-force-fields-obstruct-sight"
+    ],
+    [
+      "real-battle-force-fields-block-targeting",
+      "real-battle-force-fields-obstruct-sight"
+    ],
     ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
     ["rts-terrain-map-shape", "demo-battle-terrain-map-shape"],
     ["rts-map-land-cells", "demo-battle-map-width-land-cells"]

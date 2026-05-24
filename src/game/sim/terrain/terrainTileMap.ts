@@ -4,8 +4,9 @@ import { assertCanonicalLandCellSize } from '../../landGrid';
 import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES,
-  TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR,
+  TERRAIN_TRIANGLE_MAX_SURFACE_ERROR,
   TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA,
+  TERRAIN_TRIANGLE_MIN_NORMAL_DOT,
   TERRAIN_TRIANGLE_PRESERVE_WATERLINE,
   TERRAIN_TRIANGLE_SAMPLE_CENTROID,
   TERRAIN_TRIANGLE_VERTEX_KEY_SCALE,
@@ -77,6 +78,12 @@ type MeshPoint = {
   h: number;
 };
 
+type TerrainNormal = {
+  nx: number;
+  ny: number;
+  nz: number;
+};
+
 type TerrainMeshBuildContext = {
   mapWidth: number;
   mapHeight: number;
@@ -84,6 +91,7 @@ type TerrainMeshBuildContext = {
   fineHeight: number;
   rootSide: number;
   heightCache: Map<string, number>;
+  normalCache: Map<string, TerrainNormal>;
 };
 
 type BuiltTerrainMesh = {
@@ -210,6 +218,99 @@ function terrainHeightAtLattice(ctx: TerrainMeshBuildContext, i: number, j: numb
   return h;
 }
 
+function normalizeTerrainNormal(
+  nx: number,
+  ny: number,
+  nz: number,
+): TerrainNormal {
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+  return { nx: nx / len, ny: ny / len, nz: nz / len };
+}
+
+function terrainPlaneNormal(
+  a: MeshPoint,
+  b: MeshPoint,
+  c: MeshPoint,
+): TerrainNormal {
+  const ux = b.x - a.x;
+  const uy = b.h - a.h;
+  const uz = b.z - a.z;
+  const vx = c.x - a.x;
+  const vy = c.h - a.h;
+  const vz = c.z - a.z;
+  let nx = uy * vz - uz * vy;
+  let vertical = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  if (vertical < 0) {
+    nx = -nx;
+    vertical = -vertical;
+    nz = -nz;
+  }
+  return normalizeTerrainNormal(nx, nz, vertical);
+}
+
+function terrainPointPlaneDistance(
+  x: number,
+  z: number,
+  h: number,
+  planePoint: MeshPoint,
+  planeNormal: TerrainNormal,
+): number {
+  return Math.abs(
+    planeNormal.nx * (x - planePoint.x) +
+      planeNormal.ny * (z - planePoint.z) +
+      planeNormal.nz * (h - planePoint.h),
+  );
+}
+
+function terrainNormalAtLattice(
+  ctx: TerrainMeshBuildContext,
+  i: number,
+  j: number,
+): TerrainNormal {
+  const key = latticeKey(i, j);
+  const cached = ctx.normalCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const gx =
+    (terrainHeightAtLattice(ctx, i + 1, j) -
+      terrainHeightAtLattice(ctx, i - 1, j)) /
+    (2 * ctx.fineEdge);
+  const hj =
+    terrainHeightAtLattice(ctx, i, j + 1) -
+    terrainHeightAtLattice(ctx, i, j - 1);
+  const gz = (hj - gx * ctx.fineEdge) / (2 * ctx.fineHeight);
+  const normal = normalizeTerrainNormal(-gx, -gz, 1);
+  ctx.normalCache.set(key, normal);
+  return normal;
+}
+
+function terrainNormalAtWorld(
+  ctx: TerrainMeshBuildContext,
+  x: number,
+  z: number,
+): TerrainNormal {
+  const eps = Math.max(1, Math.min(ctx.fineEdge, ctx.fineHeight));
+  const x0 = clampToMap(x - eps, ctx.mapWidth);
+  const x1 = clampToMap(x + eps, ctx.mapWidth);
+  const z0 = clampToMap(z - eps, ctx.mapHeight);
+  const z1 = clampToMap(z + eps, ctx.mapHeight);
+  const gx =
+    (terrainHeightAtWorld(ctx, x1, z) - terrainHeightAtWorld(ctx, x0, z)) /
+    Math.max(TERRAIN_MESH_EPSILON, x1 - x0);
+  const gz =
+    (terrainHeightAtWorld(ctx, x, z1) - terrainHeightAtWorld(ctx, x, z0)) /
+    Math.max(TERRAIN_MESH_EPSILON, z1 - z0);
+  return normalizeTerrainNormal(-gx, -gz, 1);
+}
+
+function terrainNormalsExceedTolerance(
+  a: TerrainNormal,
+  b: TerrainNormal,
+): boolean {
+  return a.nx * b.nx + a.ny * b.ny + a.nz * b.nz < TERRAIN_TRIANGLE_MIN_NORMAL_DOT;
+}
+
 function terrainTriangleHierarchyLevel(
   ctx: TerrainMeshBuildContext,
   tri: TerrainHierarchyTriangle,
@@ -314,6 +415,7 @@ function canCollapseTerrainTriangle(
   tri: TerrainHierarchyTriangle,
 ): boolean {
   const [a, b, c] = triangleWorldVertices(ctx, tri);
+  const planeNormal = terrainPlaneNormal(a, b, c);
   let checked = 0;
   let failed = false;
 
@@ -333,7 +435,20 @@ function canCollapseTerrainTriangle(
       failed = true;
       return true;
     }
-    if (Math.abs(actual - approx) > TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR) {
+    if (
+      terrainPointPlaneDistance(x, z, actual, a, planeNormal) >
+      TERRAIN_TRIANGLE_MAX_SURFACE_ERROR
+    ) {
+      failed = true;
+      return true;
+    }
+    if (
+      actual >= WATER_LEVEL &&
+      terrainNormalsExceedTolerance(
+        terrainNormalAtLattice(ctx, i, j),
+        planeNormal,
+      )
+    ) {
       failed = true;
       return true;
     }
@@ -354,7 +469,21 @@ function canCollapseTerrainTriangle(
     ) {
       return false;
     }
-    if (Math.abs(actual - approx) > TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR) return false;
+    if (
+      terrainPointPlaneDistance(centroidX, centroidZ, actual, a, planeNormal) >
+      TERRAIN_TRIANGLE_MAX_SURFACE_ERROR
+    ) {
+      return false;
+    }
+    if (
+      actual >= WATER_LEVEL &&
+      terrainNormalsExceedTolerance(
+        terrainNormalAtWorld(ctx, centroidX, centroidZ),
+        planeNormal,
+      )
+    ) {
+      return false;
+    }
   }
 
   return true;
@@ -1352,6 +1481,7 @@ function buildAdaptiveEquilateralTerrainMesh(
     fineHeight,
     rootSide,
     heightCache: new Map<string, number>(),
+    normalCache: new Map<string, TerrainNormal>(),
   };
   const rows = Math.ceil(mapHeight / fineHeight);
   const cols = Math.ceil(mapWidth / fineEdge);
