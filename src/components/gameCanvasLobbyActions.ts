@@ -27,7 +27,7 @@ export type GameCanvasLobbyActionsOptions = {
   battleLoading: Ref<boolean>;
   setupNetworkCallbacks: () => void;
   reportLocalPlayerInfo: () => void;
-  onLoadingProgress: (progress: number) => void;
+  onLoadingProgress: (progress: number, phase?: string) => void;
   startGameWithPlayers: (
     playerIds: PlayerId[],
     aiPlayerIds?: PlayerId[],
@@ -123,7 +123,7 @@ export function useGameCanvasLobbyActions({
     networkRole.value = null;
     networkNotice.value = null;
     battleLoading.value = true;
-    onLoadingProgress(0);
+    onLoadingProgress(0, 'Preparing battle');
     localPlayerId.value = 1;
 
     nextTick(() => {

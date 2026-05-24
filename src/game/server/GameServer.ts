@@ -79,7 +79,10 @@ import { sanitizeCommand } from './commandSanitizer';
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
 
-export type GameServerStartupProgress = (progress: number) => void | Promise<void>;
+export type GameServerStartupProgress = (
+  progress: number,
+  phase?: string,
+) => void | Promise<void>;
 
 export type GameServerCreateOptions = {
   onProgress?: GameServerStartupProgress;
@@ -159,27 +162,27 @@ export class GameServer {
     config: GameServerConfig,
     options: GameServerCreateOptions = {},
   ): Promise<GameServer> {
-    const report = async (progress: number) => {
+    const report = async (progress: number, phase?: string) => {
       if (!options.onProgress) return;
       const clamped = Number.isFinite(progress)
         ? Math.max(0, Math.min(1, progress))
         : 0;
-      await options.onProgress(clamped);
+      await options.onProgress(clamped, phase);
     };
 
-    await report(0);
+    await report(0, 'Loading simulation core');
     await initSimWasm();
-    await report(0.08);
+    await report(0.08, 'Simulation core ready');
 
     const boot = options.onProgress
-      ? await ServerBootstrap.bootstrapAsync(config, undefined, (progress) =>
-          report(0.08 + progress * 0.84),
+      ? await ServerBootstrap.bootstrapAsync(config, undefined, (progress, phase) =>
+          report(0.08 + progress * 0.84, phase),
         )
       : ServerBootstrap.bootstrap(config);
-    await report(0.94);
+    await report(0.94, 'Finalizing server');
 
     const server = new GameServer(config, undefined, boot);
-    await report(1);
+    await report(1, 'Server ready');
     return server;
   }
 

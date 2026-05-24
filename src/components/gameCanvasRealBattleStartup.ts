@@ -36,7 +36,7 @@ export type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
-  onLoadingProgress?: (progress: number) => void | Promise<void>;
+  onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
 
 export type StartRealBattleServerOptions = {

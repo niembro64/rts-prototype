@@ -25,7 +25,7 @@ type BackgroundBattleOptions = {
   getPreviewPlayerIds: () => PlayerId[] | undefined;
   getPreviewLocalPlayerId: () => PlayerId | undefined;
   getPlayerClientEnabled: () => boolean;
-  onLoadingProgress: (progress: number) => void;
+  onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
   onRendererWarmupChange: (warming: boolean) => void;
   onStarted: (battle: BackgroundBattleState) => void;
@@ -65,8 +65,8 @@ export function useGameCanvasBackgroundBattle({
   let backgroundBattleGen = 0;
   let checkBgSceneInterval: ReturnType<typeof setInterval> | null = null;
 
-  async function reportLoadingProgress(progress: number): Promise<void> {
-    onLoadingProgress(progress);
+  async function reportLoadingProgress(progress: number, phase: string): Promise<void> {
+    onLoadingProgress(progress, phase);
     await waitForLoadingOverlayPaint();
   }
 
@@ -93,7 +93,7 @@ export function useGameCanvasBackgroundBattle({
       return;
     }
     stopBackgroundBattle();
-    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.start);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.start, 'Preparing battle');
     onRendererWarmupChange(getPlayerClientEnabled());
     const myGen = backgroundBattleGen;
     await waitForLoadingOverlayPaint();
@@ -101,8 +101,8 @@ export function useGameCanvasBackgroundBattle({
       onRendererWarmupChange(false);
       return;
     }
-    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted);
-    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted, 'Preparing loading screen');
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded, 'Loading battle settings');
     const battle = await createBackgroundBattle(
       backgroundContainerRef.value,
       getLocalIpAddress(),
@@ -110,14 +110,18 @@ export function useGameCanvasBackgroundBattle({
       getPreviewPlayerIds(),
       getPreviewLocalPlayerId(),
       (warming) => {
-        onLoadingProgress(warming
-          ? BACKGROUND_LOAD_PROGRESS.shaderWarmup
-          : BACKGROUND_LOAD_PROGRESS.done);
+        onLoadingProgress(
+          warming
+            ? BACKGROUND_LOAD_PROGRESS.shaderWarmup
+            : BACKGROUND_LOAD_PROGRESS.done,
+          warming ? 'Warming shaders' : 'Ready',
+        );
         onRendererWarmupChange(warming && getPlayerClientEnabled());
       },
-      (progress) => reportLoadingProgress(
+      (progress, phase) => reportLoadingProgress(
         BACKGROUND_LOAD_PROGRESS.settingsLoaded +
           progress * (BACKGROUND_LOAD_PROGRESS.battleCreated - BACKGROUND_LOAD_PROGRESS.settingsLoaded),
+        phase ?? 'Creating battle',
       ),
     );
     if (myGen !== backgroundBattleGen) {
@@ -125,14 +129,14 @@ export function useGameCanvasBackgroundBattle({
       onRendererWarmupChange(false);
       return;
     }
-    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated);
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
     backgroundBattle = battle;
     const scene = battle.gameInstance.getScene();
     if (scene) {
       const previousStartupReady = scene.onStartupReady;
       scene.onStartupReady = () => {
         previousStartupReady?.();
-        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot);
+        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot, 'Applying first snapshot');
       };
     }
     onStarted(battle);
@@ -140,7 +144,7 @@ export function useGameCanvasBackgroundBattle({
     checkBgSceneInterval = waitForSceneAndBind(
       () => backgroundBattle?.gameInstance?.getScene(),
       (bgScene) => {
-        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneBound);
+        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneBound, 'Binding game UI');
         bgScene.setClientRenderEnabled(getPlayerClientEnabled());
         bindSceneUi(bgScene);
         checkBgSceneInterval = null;

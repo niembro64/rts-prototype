@@ -41,6 +41,7 @@ const props = defineProps<{
   converterTax: number;
   previewLoading: boolean;
   previewLoadingProgress: number;
+  previewLoadingPhase: string;
 }>();
 
 const emit = defineEmits<{
@@ -354,7 +355,11 @@ const terrainSectionVars = computed(() =>
           role="status"
           aria-live="polite"
         >
-          <LoadingEmblem compact :progress="previewLoadingProgress" />
+          <LoadingEmblem
+            compact
+            :progress="previewLoadingProgress"
+            :phase="previewLoadingPhase"
+          />
         </div>
       </div>
 

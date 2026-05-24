@@ -4,8 +4,10 @@ import { computed } from 'vue';
 const props = withDefaults(defineProps<{
   compact?: boolean;
   progress?: number;
+  phase?: string;
 }>(), {
   progress: 0,
+  phase: 'Preparing battle',
 });
 
 const clampedProgress = computed(() => {
@@ -17,6 +19,7 @@ const percentValue = computed(() => Math.round(clampedProgress.value * 100));
 const progressBarStyle = computed(() => ({
   transform: `scaleX(${clampedProgress.value})`,
 }));
+const phaseText = computed(() => props.phase.trim() || 'Preparing battle');
 </script>
 
 <template>
@@ -30,16 +33,14 @@ const progressBarStyle = computed(() => ({
       <span class="unit-barrel"></span>
     </div>
     <div class="loader-title">BUDGET ANNIHILATION</div>
+    <div class="loader-phase">{{ phaseText }}</div>
     <div class="loader-progress-wrap">
-      <div class="loader-progress-meta">
-        <span>LOADED</span>
-        <span>{{ percentValue }}%</span>
-      </div>
       <div
         class="loader-progress-track"
         role="progressbar"
-        aria-label="Loading progress"
+        :aria-label="phaseText"
         :aria-valuenow="percentValue"
+        :aria-valuetext="phaseText"
         aria-valuemin="0"
         aria-valuemax="100"
       >
@@ -53,7 +54,7 @@ const progressBarStyle = computed(() => ({
 .loading-emblem {
   --loader-size: 70px;
   --loader-title-size: 22px;
-  --loader-percent-size: 13px;
+  --loader-phase-size: 13px;
   --loader-gap: 12px;
   --loader-width: min(360px, 76vw);
   --loader-track-height: 14px;
@@ -69,7 +70,7 @@ const progressBarStyle = computed(() => ({
 .loading-emblem.compact {
   --loader-size: 38px;
   --loader-title-size: 12px;
-  --loader-percent-size: 10px;
+  --loader-phase-size: 10px;
   --loader-gap: 7px;
   --loader-width: min(176px, 82vw);
   --loader-track-height: 8px;
@@ -171,23 +172,21 @@ const progressBarStyle = computed(() => ({
     0 0 34px rgba(110, 242, 207, 0.18);
 }
 
+.loader-phase {
+  width: var(--loader-width);
+  min-height: calc(var(--loader-phase-size) * 1.25);
+  font-family: monospace;
+  font-size: var(--loader-phase-size);
+  font-weight: 800;
+  line-height: 1.25;
+  color: rgba(237, 243, 255, 0.82);
+  text-shadow: 0 0 14px rgba(74, 158, 255, 0.42);
+}
+
 .loader-progress-wrap {
   width: var(--loader-width);
   display: grid;
   gap: 6px;
-}
-
-.loader-progress-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-family: monospace;
-  font-size: var(--loader-percent-size);
-  font-weight: 800;
-  color: rgba(237, 243, 255, 0.82);
-  line-height: 1;
-  text-shadow: 0 0 14px rgba(74, 158, 255, 0.42);
 }
 
 .loader-progress-track {

@@ -54,7 +54,7 @@ type UseGameCanvasRealBattleHandoffOptions = {
     options?: { restartPreview?: boolean },
   ) => void;
   currentLobbySettings: () => LobbySettings;
-  onLoadingProgress: (progress: number) => void;
+  onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
 

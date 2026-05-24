@@ -86,17 +86,24 @@ const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
 const showLoadingOverlay = computed(() => battleLoading.value || rendererWarmupLoading.value);
 const loadingProgress = ref(0);
+const loadingPhase = ref('Preparing battle');
 const displayedLoadingProgress = computed(() => loadingProgress.value);
+const displayedLoadingPhase = computed(() => loadingPhase.value);
 
-function setLoadingProgress(progress: number): void {
+function setLoadingProgress(progress: number, phase?: string): void {
   if (!Number.isFinite(progress)) {
     loadingProgress.value = 0;
+    loadingPhase.value = phase ?? 'Preparing battle';
     return;
   }
   const clamped = Math.max(0, Math.min(1, progress));
   if (clamped <= 0) {
     loadingProgress.value = 0;
+    loadingPhase.value = phase ?? 'Preparing battle';
     return;
+  }
+  if (phase && clamped >= loadingProgress.value) {
+    loadingPhase.value = phase;
   }
   loadingProgress.value = Math.max(loadingProgress.value, clamped);
 }
@@ -1032,7 +1039,10 @@ watchEffect(() => {
           role="status"
           aria-live="polite"
         >
-          <LoadingEmblem :progress="displayedLoadingProgress" />
+          <LoadingEmblem
+            :progress="displayedLoadingProgress"
+            :phase="displayedLoadingPhase"
+          />
         </div>
       </div>
 
@@ -1048,7 +1058,10 @@ watchEffect(() => {
           role="status"
           aria-live="polite"
         >
-          <LoadingEmblem :progress="displayedLoadingProgress" />
+          <LoadingEmblem
+            :progress="displayedLoadingProgress"
+            :phase="displayedLoadingPhase"
+          />
         </div>
       </div>
 
@@ -1139,6 +1152,7 @@ watchEffect(() => {
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       :preview-loading-progress="displayedLoadingProgress"
+      :preview-loading-phase="displayedLoadingPhase"
       @host="handleHost"
       @join="handleJoin"
       @start="handleLobbyStart"

@@ -55,7 +55,7 @@ export interface BootstrappedServerWorld {
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
 }
 
-type BootstrapProgress = (progress: number) => void | Promise<void>;
+type BootstrapProgress = (progress: number, phase?: string) => void | Promise<void>;
 
 export class ServerBootstrap {
   static async bootstrapAsync(
@@ -63,14 +63,14 @@ export class ServerBootstrap {
     providedPhysics: PhysicsEngine3D | undefined = undefined,
     onProgress: BootstrapProgress = () => {},
   ): Promise<BootstrappedServerWorld> {
-    const report = async (progress: number) => {
+    const report = async (progress: number, phase?: string) => {
       const clamped = Number.isFinite(progress)
         ? Math.max(0, Math.min(1, progress))
         : 0;
-      await onProgress(clamped);
+      await onProgress(clamped, phase);
     };
 
-    await report(0);
+    await report(0, 'Reading map size');
     const playerIds = normalizePlayerIds(config.playerIds);
     const backgroundMode = config.backgroundMode ?? false;
 
@@ -81,7 +81,7 @@ export class ServerBootstrap {
     );
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
-    await report(0.06);
+    await report(0.06, 'Reading map size');
 
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
@@ -100,21 +100,21 @@ export class ServerBootstrap {
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
-    await report(0.14);
+    await report(0.14, 'Configuring terrain');
 
     const deposits = generateMetalDeposits(
       mapWidth,
       mapHeight,
       playerIds.length,
     );
-    await report(0.24);
+    await report(0.24, 'Generating metal deposits');
 
     const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(terrainTileMap);
-    await report(0.38);
+    await report(0.38, 'Building terrain map');
 
     const terrainBuildabilityGrid = buildTerrainBuildabilityGrid(mapWidth, mapHeight);
-    await report(0.48);
+    await report(0.48, 'Building placement grid');
 
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     const world = new WorldState(42, mapWidth, mapHeight);
@@ -126,12 +126,12 @@ export class ServerBootstrap {
     );
     world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     world.setActivePlayer(0 as PlayerId);
-    await report(0.58);
+    await report(0.58, 'Creating physics world');
 
     const commandQueue = new CommandQueue();
     const simulation = new Simulation(world, commandQueue, terrainBuildabilityGrid);
     simulation.setPlayerIds(playerIds);
-    await report(0.66);
+    await report(0.66, 'Creating simulation');
 
     const backgroundAllowedTypes = new Set(
       config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
@@ -145,7 +145,7 @@ export class ServerBootstrap {
     const aiPlayerIds = config.aiPlayerIds ?? (backgroundMode ? [...playerIds] : []);
     const spawnDemoInitialState =
       backgroundMode && (config.spawnDemoInitialState ?? aiPlayerIds.length > 0);
-    await report(0.72);
+    await report(0.72, 'Preparing spawn rules');
 
     if (spawnDemoInitialState) {
       const constructionSystem = simulation.getConstructionSystem();
@@ -156,10 +156,10 @@ export class ServerBootstrap {
         'demo',
         backgroundAllowedTypes,
       );
-      await report(0.78);
+      await report(0.78, 'Spawning bases');
 
       entities.push(...spawnMetalExtractorsOnDeposits(world, constructionSystem, playerIds));
-      await report(0.82);
+      await report(0.82, 'Placing metal extractors');
 
       await ServerBootstrap.createInitialPhysicsBodiesAsync(
         world,
@@ -167,30 +167,33 @@ export class ServerBootstrap {
         entities,
         0.82,
         0.88,
+        'Creating base physics',
         report,
       );
 
+      await report(0.9, 'Generating demo units');
       spawnBackgroundUnitsStandalone(
         world, physics, true,
         constructionSystem.getGrid(),
         backgroundAllowedTypes,
         playerIds,
       );
-      await report(0.94);
+      await report(0.94, 'Demo units ready');
     } else {
       const entities = spawnInitialEntities(world, playerIds);
-      await report(0.82);
+      await report(0.82, 'Spawning commanders');
       await ServerBootstrap.createInitialPhysicsBodiesAsync(
         world,
         physics,
         entities,
         0.82,
         0.94,
+        'Creating unit physics',
         report,
       );
     }
     simulation.setAiPlayerIds(aiPlayerIds);
-    await report(1);
+    await report(1, 'Starting AI players');
 
     return {
       physics,
@@ -394,9 +397,10 @@ export class ServerBootstrap {
     entities: Entity[],
     startProgress: number,
     endProgress: number,
+    phase: string,
     report: BootstrapProgress,
   ): Promise<void> {
-    await report(startProgress);
+    await report(startProgress, phase);
     const midProgress = startProgress + (endProgress - startProgress) * 0.45;
     for (const entity of entities) {
       if (entity.type === 'building' && entity.building) {
@@ -413,7 +417,7 @@ export class ServerBootstrap {
         entity.body = { physicsBody: body };
       }
     }
-    await report(midProgress);
+    await report(midProgress, phase);
 
     for (const entity of entities) {
       if (entity.type === 'unit' && entity.unit) {
@@ -423,6 +427,6 @@ export class ServerBootstrap {
         });
       }
     }
-    await report(endProgress);
+    await report(endProgress, phase);
   }
 }

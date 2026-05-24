@@ -48,7 +48,7 @@ export type StartRealBattleWithPlayersOptions = {
   setActiveConnection: (connection: GameConnection | null) => void;
   setBattleStartTime: (time: number) => void;
   lookupPlayerName: (playerId: PlayerId) => string | null;
-  onLoadingProgress: (progress: number) => void;
+  onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
 
@@ -69,15 +69,15 @@ export async function startRealBattleWithPlayers(
   aiPlayerIds: PlayerId[] | undefined,
   options: StartRealBattleWithPlayersOptions,
 ): Promise<void> {
-  async function reportLoadingProgress(progress: number): Promise<void> {
-    options.onLoadingProgress(progress);
+  async function reportLoadingProgress(progress: number, phase: string): Promise<void> {
+    options.onLoadingProgress(progress, phase);
     await waitForLoadingOverlayPaint();
   }
 
   options.showLobby.value = false;
   options.gameStarted.value = true;
   options.battleLoading.value = true;
-  await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.start);
+  await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.start, 'Preparing battle');
   options.setBattleStartTime(Date.now());
   if (options.networkRole.value !== null) {
     options.localPlayerId.value = options.network.getLocalPlayerId();
@@ -98,22 +98,23 @@ export async function startRealBattleWithPlayers(
       options.battleLoading.value = false;
       return;
     }
-    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.overlayPainted);
+    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.overlayPainted, 'Preparing loading screen');
 
     const rect = options.containerRef.value.getBoundingClientRect();
     let gameConnection: GameConnection;
     const realBattleTerrain = loadAndApplyRealBattleTerrain();
-    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.terrainLoaded);
+    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.terrainLoaded, 'Loading terrain settings');
 
     if (options.networkRole.value !== 'client') {
       const createdServer = await createRealBattleServer({
         playerIds,
         aiPlayerIds,
         terrain: realBattleTerrain,
-        onLoadingProgress: (progress) => reportLoadingProgress(
+        onLoadingProgress: (progress, phase) => reportLoadingProgress(
           REAL_BATTLE_LOAD_PROGRESS.terrainLoaded +
             progress *
               (REAL_BATTLE_LOAD_PROGRESS.serverReady - REAL_BATTLE_LOAD_PROGRESS.terrainLoaded),
+          phase ?? 'Starting server',
         ),
       });
       if (
@@ -125,7 +126,7 @@ export async function startRealBattleWithPlayers(
         options.battleLoading.value = false;
         return;
       }
-      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.serverReady);
+      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.serverReady, 'Server ready');
 
       options.lifecycle.clearSnapshotListeners(options.getCurrentServer());
       options.setCurrentServer(createdServer);
@@ -157,12 +158,12 @@ export async function startRealBattleWithPlayers(
         );
       }
       options.hasServer.value = true;
-      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.connectionReady);
+      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.connectionReady, 'Connecting local player');
     } else {
       const remoteConnection = createRemoteRealBattleConnection();
       options.setActiveConnection(remoteConnection);
       gameConnection = remoteConnection;
-      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.connectionReady);
+      await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.connectionReady, 'Connecting to host');
     }
 
     const container = options.containerRef.value;
@@ -179,7 +180,7 @@ export async function startRealBattleWithPlayers(
         startupReady &&
         rendererWarmupDone
       ) {
-        options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.done);
+        options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.done, 'Ready');
         options.battleLoading.value = false;
       }
     };
@@ -200,24 +201,27 @@ export async function startRealBattleWithPlayers(
       lookupPlayerName: options.lookupPlayerName,
       onRendererWarmupChange: (warming) => {
         if (warming) {
-          options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.shaderWarmup);
+          options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.shaderWarmup, 'Warming shaders');
         } else if (startupReady) {
-          options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.done);
+          options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.done, 'Ready');
         }
         rendererWarmupDone = !warming;
         maybeFinishLoading();
       },
     });
-    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.sceneCreated);
+    await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
     setPlayerClientRenderEnabled(gameInstance, options.playerClientEnabled.value);
     gameInstance.app.setCameraFovDegrees(options.cameraFovDegrees.value);
     const scene = gameInstance.getScene();
     if (scene) {
       scene.onStartupReady = () => {
         startupReady = true;
-        options.onLoadingProgress(rendererWarmupDone
-          ? REAL_BATTLE_LOAD_PROGRESS.done
-          : REAL_BATTLE_LOAD_PROGRESS.firstSnapshot);
+        options.onLoadingProgress(
+          rendererWarmupDone
+            ? REAL_BATTLE_LOAD_PROGRESS.done
+            : REAL_BATTLE_LOAD_PROGRESS.firstSnapshot,
+          rendererWarmupDone ? 'Ready' : 'Applying first snapshot',
+        );
         maybeFinishLoading();
       };
     }
