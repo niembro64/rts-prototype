@@ -202,19 +202,19 @@ const _emptyExcludeSet = new Set<EntityId>();
 
 // Reusable set for excluding the source entity from splash while projectile is still inside source
 const _sourceExcludeSet = new Set<EntityId>();
-function getSplashExcludes(proj: { hasLeftSource?: boolean; sourceEntityId: EntityId }): Set<EntityId> {
+function getSplashExcludes(proj: { hasLeftSource: boolean; sourceEntityId: EntityId }): Set<EntityId> {
   if (proj.hasLeftSource) return _emptyExcludeSet;
   _sourceExcludeSet.clear();
   _sourceExcludeSet.add(proj.sourceEntityId);
   return _sourceExcludeSet;
 }
 
-function ensureProjectileHitEntities(proj: { hitEntities?: Set<EntityId> }): Set<EntityId> {
-  return proj.hitEntities ?? (proj.hitEntities = new Set<EntityId>());
+function ensureProjectileHitEntities(proj: { hitEntities: Set<EntityId> }): Set<EntityId> {
+  return proj.hitEntities;
 }
 
-function getProjectileHitCount(proj: { hitEntities?: Set<EntityId> }): number {
-  return proj.hitEntities?.size ?? 0;
+function getProjectileHitCount(proj: { hitEntities: Set<EntityId> }): number {
+  return proj.hitEntities.size;
 }
 
 function pushReflectorImpactEvent(
@@ -458,7 +458,7 @@ export function checkProjectileCollisions(
   world: WorldState,
   dtMs: number,
   damageSystem: DamageSystem,
-  forceAccumulator?: ForceAccumulator
+  forceAccumulator: ForceAccumulator | undefined = undefined,
 ): CollisionResult {
   // Reuse module-level containers (cleared each call)
   _collisionProjectilesToRemove.length = 0;
@@ -958,7 +958,7 @@ export function checkProjectileCollisions(
           proj.collisionStartY = currentY;
           proj.collisionStartZ = currentZ;
         } else {
-          const hitEntities = proj.hitEntities ?? _emptyExcludeSet;
+          const hitEntities = proj.hitEntities;
 
           // 3D swept: capsule from prev→current (the projectile's flight
           // path this tick) vs each unit sphere. Normal projectiles keep

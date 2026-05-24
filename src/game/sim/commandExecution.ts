@@ -561,7 +561,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const mount = updateWeaponWorldKinematics(
     commander, dgunTurret, dgunIdx,
     cos, sin,
-    { currentTick: ctx.world.getTick(), surfaceN: commander.unit?.surfaceNormal },
+    {
+      currentTick: ctx.world.getTick(),
+      dtMs: undefined,
+      unitGroundZ: undefined,
+      surfaceN: commander.unit !== null ? commander.unit.surfaceNormal : undefined,
+    },
     _dgunMount,
   );
   const spawnX = mount.x;

@@ -140,7 +140,7 @@ Evidence:
   The remaining optional declarations in this file are mostly
   lobby/transport envelopes and lobby settings rather than pooled
   per-entity/per-event DTO slots.
-- src/types/sim.ts: 60 `?:` declarations. The 2026-05-23
+- src/types/sim.ts: 58 `?:` declarations. The 2026-05-23
   entity-component pass converted Entity's component slots (`body`,
   `unit`, `building`, `combat`, `projectile`, etc.) to explicit
   `T | null` fields with a shared null-slot initializer, and converted
@@ -149,9 +149,11 @@ Evidence:
   `CombatComponent.fireEnabled` to an always-present boolean,
   `Building.activeState` to explicit `BuildingActiveState | null`,
   and `Buildable.healthBuildFraction` to an always-present number.
+  The 2026-05-24 combat helper pass converted Projectile.hitEntities
+  and Projectile.hasLeftSource to always-present runtime fields.
   The remaining declarations are mostly turret/projectile runtime
   detail fields and config-like shape variance.
-- 174 other `?:` declarations remain across src/game/network/*,
+- 141 other `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -173,15 +175,17 @@ Evidence:
   temp shape, and BuildPlacementDiagnostics / cell diagnostics to
   explicit `T | null` / `T | undefined` fields with explicit guards.
   The same pass converted metal deposit coverage cells/results and
-  factory build-spot options/out params to explicit `T | null`.
+  factory build-spot options/out params to explicit `T | null`. The
+  2026-05-24 combat helper pass converted combatUtils,
+  aimSolver, damageHelpers, and touched projectile hit bookkeeping
+  helpers to explicit `T | undefined` parameters / explicit guards.
   Remaining examples include:
     - stateSerializer.ts (28): serialize options and optional
       parameters.
     - snapshotProjectileWirePack.ts (4): packed V2 field aliases
       s?/d?/u?/b?.
-    - combat/combatUtils.ts (10), combat/aimSolver.ts (10),
-      combat/damageHelpers.ts (7).
-- Optional chaining remains at 469 in the in-scope tree after the
+    - combat/projectileSystem.ts (1): reflector metadata helper shape.
+- Optional chaining remains at 427 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -197,7 +201,10 @@ Evidence:
   from UnitForceSystem. The 2026-05-24 pathfinder / build-placement
   pass removed optional reads from Pathfinder and
   buildPlacementValidation, metalDeposits, factoryConstructionSite,
-  plus the touched path terrain and factory build-spot call sites. It
+  plus the touched path terrain and factory build-spot call sites. The
+  2026-05-24 combat helper pass removed optional reads from
+  combatUtils, aimSolver, damageHelpers, WorldState,
+  ClientProjectileStore, and the touched projectile collision helpers. It
   should be migrated in small file-level passes alongside optional
   property declarations.
 Why it matters:

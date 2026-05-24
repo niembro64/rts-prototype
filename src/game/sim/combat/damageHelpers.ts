@@ -16,7 +16,7 @@ import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 function eventAudioKey(
   sourceKey: string,
   sourceType: SimEventSourceType,
-  fallbackUnitType?: string,
+  fallbackUnitType: string | undefined = undefined,
 ): SimEvent['turretId'] {
   if (sourceType === 'turret' && isTurretId(sourceKey)) return sourceKey;
   if (fallbackUnitType && isUnitTypeId(fallbackUnitType)) return fallbackUnitType;
@@ -29,7 +29,7 @@ export function buildImpactContext(
   projectileX: number, projectileY: number,
   projectileVelX: number, projectileVelY: number,
   collisionRadius: number,
-  entity?: Entity,
+  entity: Entity | undefined = undefined,
 ): ImpactContext {
   // Single explosion radius now (no primary/secondary). The shot
   // profile owns the fallback policy for projectiles vs line shots.
@@ -38,7 +38,7 @@ export function buildImpactContext(
   let entityVelX = 0, entityVelY = 0, entityCollisionRadius = 0;
   let penDirX = 0, penDirY = 0;
 
-  if (entity) {
+  if (entity !== undefined) {
     const unit = entity.unit;
     const building = entity.building;
     if (unit !== null) {
@@ -91,34 +91,44 @@ export function buildUnitDeathEvent(
   sourceKey: string,
   ctx: DeathContext | undefined,
   sourceType: SimEventSourceType = 'turret',
-  killerPlayerId?: PlayerId,
+  killerPlayerId: PlayerId | undefined = undefined,
 ): SimEvent {
-  const playerColor = getPlayerPrimaryColor(target?.ownership?.playerId);
+  const targetOwnership = target !== undefined ? target.ownership : null;
+  const targetPlayerId = targetOwnership !== null ? targetOwnership.playerId : undefined;
+  const targetBody = target !== undefined ? target.body : null;
+  const targetPhysicsBody = targetBody !== null ? targetBody.physicsBody : null;
+  const targetUnit = target !== undefined ? target.unit : null;
+  const targetCombat = target !== undefined ? target.combat : null;
+  const targetTransform = target !== undefined ? target.transform : null;
+  const playerColor = getPlayerPrimaryColor(targetPlayerId);
   const unitVel = {
-    x: target?.body?.physicsBody.vx ?? 0,
-    y: target?.body?.physicsBody.vy ?? 0,
+    x: targetPhysicsBody !== null ? targetPhysicsBody.vx : 0,
+    y: targetPhysicsBody !== null ? targetPhysicsBody.vy : 0,
   };
-  const collider = target?.unit?.radius;
-  const visualRadius = target?.unit?.radius.body ?? collider?.shot ?? 15;
-  const pushRadius = collider?.push ?? collider?.shot ?? visualRadius;
-  const bodyCenterHeight = getUnitBodyCenterHeight(target?.unit);
-  const radius = collider?.shot ?? visualRadius;
-  const deathX = target?.body?.physicsBody.x ?? target?.transform.x ?? 0;
-  const deathY = target?.body?.physicsBody.y ?? target?.transform.y ?? 0;
-  const deathZ = target?.body?.physicsBody.z ?? target?.transform.z ?? 0;
-  const baseZ = target ? deathZ - bodyCenterHeight : undefined;
-  const unitType = target?.unit?.unitType;
+  const collider = targetUnit !== null ? targetUnit.radius : undefined;
+  const visualRadius = targetUnit !== null ? targetUnit.radius.body : (collider !== undefined ? collider.shot : 15);
+  const pushRadius = collider !== undefined ? (collider.push ?? collider.shot) : visualRadius;
+  const bodyCenterHeight = getUnitBodyCenterHeight(targetUnit);
+  const radius = collider !== undefined ? collider.shot : visualRadius;
+  const deathX = targetPhysicsBody !== null ? targetPhysicsBody.x : (targetTransform !== null ? targetTransform.x : 0);
+  const deathY = targetPhysicsBody !== null ? targetPhysicsBody.y : (targetTransform !== null ? targetTransform.y : 0);
+  const deathZ = targetPhysicsBody !== null ? targetPhysicsBody.z : (targetTransform !== null ? targetTransform.z : 0);
+  const baseZ = target !== undefined ? deathZ - bodyCenterHeight : undefined;
+  const unitType = targetUnit !== null ? targetUnit.unitType : undefined;
   const deathUnitType = unitType && isUnitTypeId(unitType) ? unitType : undefined;
-  const rotation = target?.transform.rotation ?? 0;
+  const rotation = targetTransform !== null ? targetTransform.rotation : 0;
   // Per-turret yaw + pitch at death — Debris3D rotates each barrel
   // template by these so the cylinder spawns where the live mesh
   // was, not at the chassis-aligned default. Captured here on the
   // authoritative side so remote clients don't have to rely on the
   // entity still being present in their view state.
-  const turretPoses = target?.combat?.turrets?.map((t) => ({
-    rotation: t.rotation,
-    pitch: t.pitch,
-  }));
+  const targetTurrets = targetCombat !== null ? targetCombat.turrets : null;
+  const turretPoses = targetTurrets !== null
+    ? targetTurrets.map((t) => ({
+        rotation: t.rotation,
+        pitch: t.pitch,
+      }))
+    : undefined;
   // ctx present → rich directional context from the killing blow.
   // ctx absent → synthesize a neutral one so the renderer still fires
   //   material debris (splash kills, DoT, cleanup-pass kills).
@@ -178,19 +188,28 @@ export function buildBuildingDeathEvent(
   id: EntityId,
   sourceKey: string,
   sourceType: SimEventSourceType = 'turret',
-  killerPlayerId?: PlayerId,
+  killerPlayerId: PlayerId | undefined = undefined,
 ): SimEvent {
-  const playerColor = getPlayerPrimaryColor(building?.ownership?.playerId);
+  const buildingOwnership = building !== undefined ? building.ownership : null;
+  const buildingPlayerId = buildingOwnership !== null ? buildingOwnership.playerId : undefined;
+  const buildingComponent = building !== undefined ? building.building : null;
+  const buildingBody = building !== undefined ? building.body : null;
+  const buildingPhysicsBody = buildingBody !== null ? buildingBody.physicsBody : null;
+  const buildingTransform = building !== undefined ? building.transform : null;
+  const playerColor = getPlayerPrimaryColor(buildingPlayerId);
   const footprintRadius = Math.hypot(
-    building?.building?.width ?? 100,
-    building?.building?.height ?? 100,
+    buildingComponent !== null ? buildingComponent.width : 100,
+    buildingComponent !== null ? buildingComponent.height : 100,
   ) / 2;
-  const baseZ = building && building.building
-    ? (building.body?.physicsBody.z ?? building.transform.z) - building.building.depth / 2
+  const buildingZ = buildingPhysicsBody !== null
+    ? buildingPhysicsBody.z
+    : (buildingTransform !== null ? buildingTransform.z : 0);
+  const baseZ = buildingComponent !== null
+    ? buildingZ - buildingComponent.depth / 2
     : undefined;
-  const deathX = building?.body?.physicsBody.x ?? building?.transform.x ?? 0;
-  const deathY = building?.body?.physicsBody.y ?? building?.transform.y ?? 0;
-  const deathZ = building?.body?.physicsBody.z ?? building?.transform.z ?? 0;
+  const deathX = buildingPhysicsBody !== null ? buildingPhysicsBody.x : (buildingTransform !== null ? buildingTransform.x : 0);
+  const deathY = buildingPhysicsBody !== null ? buildingPhysicsBody.y : (buildingTransform !== null ? buildingTransform.y : 0);
+  const deathZ = buildingPhysicsBody !== null ? buildingPhysicsBody.z : (buildingTransform !== null ? buildingTransform.z : 0);
   return {
     type: 'death',
     turretId: eventAudioKey(sourceKey, sourceType),
@@ -209,7 +228,7 @@ export function buildBuildingDeathEvent(
       attackMagnitude: 50,
       radius: footprintRadius,
       visualRadius: footprintRadius,
-      pushRadius: building?.building?.depth ?? footprintRadius,
+      pushRadius: buildingComponent !== null ? buildingComponent.depth : footprintRadius,
       baseZ,
       color: playerColor,
     },
@@ -220,7 +239,7 @@ export function buildBuildingDeathEvent(
 // Apply knockback forces from a DamageResult's knockback array
 export function applyKnockbackForces(
   knockbacks: KnockbackInfo[],
-  forceAccumulator?: ForceAccumulator
+  forceAccumulator: ForceAccumulator | undefined = undefined,
 ): void {
   if (!forceAccumulator) return;
   for (const knockback of knockbacks) {
@@ -256,7 +275,7 @@ export function collectKillsAndDeathContexts(
   buildingsToRemove: Set<EntityId>,
   audioEvents: SimEvent[],
   deathContexts: Map<EntityId, DeathContext>,
-  attackerSourceEntityId?: EntityId,
+  attackerSourceEntityId: EntityId | undefined = undefined,
 ): void {
   for (const id of result.killedUnitIds) {
     if (!unitsToRemove.has(id)) {
@@ -349,7 +368,7 @@ export function applyDirectionalKnockback(
   force: number,
   dirX: number,
   dirY: number,
-  forceAccumulator?: ForceAccumulator,
+  forceAccumulator: ForceAccumulator | undefined = undefined,
 ): void {
   if (!forceAccumulator || force <= 0) return;
   for (const hitId of hitEntityIds) {
@@ -371,7 +390,7 @@ export function emitBeamHitAudio(
   audioEvents: SimEvent[],
 ): void {
   if (config.shot.type === 'beam') return; // Skip continuous beams
-  const hitEntities = proj.hitEntities ?? (proj.hitEntities = new Set<EntityId>());
+  const hitEntities = proj.hitEntities;
   for (const hitId of hitEntityIds) {
     if (!hitEntities.has(hitId)) {
       const entity = world.getEntity(hitId);

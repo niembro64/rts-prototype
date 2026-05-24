@@ -586,14 +586,14 @@ export type Projectile = {
   targetEntityId?: EntityId;
   obstructionT?: number;
   obstructionTick?: number;
-  hitEntities?: Set<EntityId>;
+  hitEntities: Set<EntityId>;
   maxHits: number;
   hasExploded?: boolean;
   /** False until the shot's active point has cleared the source unit's
    *  shot sphere. Traveling projectiles use their center; line shots
    *  use their endpoint damage point. While false, collision damage and
    *  explosion effects are suppressed. */
-  hasLeftSource?: boolean;
+  hasLeftSource: boolean;
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
   homingTargetId: EntityId;
   homingTurnRate?: number;

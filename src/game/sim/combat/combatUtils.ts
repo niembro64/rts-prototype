@@ -71,11 +71,19 @@ const _entityPositionScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _entityVelocityScratch: Vec3 = { x: 0, y: 0, z: 0 };
 const _mountKinematicsVelScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
+type SurfaceNormal = { nx: number; ny: number; nz: number };
+
 export type WeaponKinematicsOptions = {
-  currentTick?: number;
-  dtMs?: number;
-  unitGroundZ?: number;
-  surfaceN?: { nx: number; ny: number; nz: number };
+  currentTick: number | undefined;
+  dtMs: number | undefined;
+  unitGroundZ: number | undefined;
+  surfaceN: SurfaceNormal | undefined;
+};
+
+export type WeaponWorldMountOptions = {
+  currentTick: number | undefined;
+  unitGroundZ: number | undefined;
+  surfaceN: SurfaceNormal | undefined;
 };
 
 export function resolveWeaponWorldMount(
@@ -88,20 +96,20 @@ export function resolveWeaponWorldMount(
   turretIndex: number,
   cos: number,
   sin: number,
-  options?: {
-    currentTick?: number;
-    unitGroundZ?: number;
-    surfaceN?: { nx: number; ny: number; nz: number };
-  },
+  options: WeaponWorldMountOptions | undefined = undefined,
   out: Vec3 = _rwmOut,
 ): Vec3 {
+  const currentTick = options === undefined ? undefined : options.currentTick;
+  const optionUnitGroundZ = options === undefined ? undefined : options.unitGroundZ;
+  const optionSurfaceN = options === undefined ? undefined : options.surfaceN;
+
   // Prefer the Rust combat-targeting slab when the scheduler updated
   // mount kinematics for this entity this tick — the slab is the
   // source of truth and saves a chassis-tilt recompute.
   if (
-    options?.currentTick !== undefined &&
+    currentTick !== undefined &&
     readCombatTargetingTurretMountKinematicsInto(
-      unit, turretIndex, options.currentTick, out, _mountKinematicsVelScratch,
+      unit, turretIndex, currentTick, out, _mountKinematicsVelScratch,
     )
   ) {
     return out;
@@ -113,7 +121,7 @@ export function resolveWeaponWorldMount(
   // the cache may be a tick stale.
   if (
     turret.worldPosTick >= 0 &&
-    (options?.currentTick === undefined || turret.worldPosTick === options.currentTick)
+    (currentTick === undefined || turret.worldPosTick === currentTick)
   ) {
     out.x = turret.worldPos.x;
     out.y = turret.worldPos.y;
@@ -121,17 +129,18 @@ export function resolveWeaponWorldMount(
     return out;
   }
 
-  const unitGroundZ = options?.unitGroundZ ?? getUnitGroundZ(unit);
+  const unitGroundZ = optionUnitGroundZ ?? getUnitGroundZ(unit);
   const localMount = getRuntimeTurretMount(turret);
-  const suspension = unit.unit?.suspension;
+  const sourceUnit = unit.unit;
+  const suspension = sourceUnit !== null ? sourceUnit.suspension : null;
   const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
   const mount = getTurretWorldMount(
     unitPosition.x, unitPosition.y, unitGroundZ,
     cos, sin,
-    localMount.x + (suspension?.offsetX ?? 0),
-    localMount.y + (suspension?.offsetY ?? 0),
-    localMount.z + (suspension?.offsetZ ?? 0),
-    options?.surfaceN ?? FLAT_SURFACE_NORMAL,
+    localMount.x + (suspension !== null ? suspension.offsetX : 0),
+    localMount.y + (suspension !== null ? suspension.offsetY : 0),
+    localMount.z + (suspension !== null ? suspension.offsetZ : 0),
+    optionSurfaceN ?? FLAT_SURFACE_NORMAL,
   );
   out.x = mount.x;
   out.y = mount.y;
@@ -155,7 +164,7 @@ export function updateWeaponWorldKinematics(
   turretIndex: number,
   cos: number,
   sin: number,
-  options: WeaponKinematicsOptions = {},
+  options: WeaponKinematicsOptions,
   out: Vec3 = _rwmOut,
 ): Vec3 {
   const worldPos = turret.worldPos;
@@ -192,14 +201,15 @@ export function updateWeaponWorldKinematics(
 
   const unitGroundZ = options.unitGroundZ ?? getUnitGroundZ(unit);
   const localMount = getRuntimeTurretMount(turret);
-  const suspension = unit.unit?.suspension;
+  const sourceUnit = unit.unit;
+  const suspension = sourceUnit !== null ? sourceUnit.suspension : null;
   const unitPosition = getEntityPosition3d(unit, _entityPositionScratch);
   const mount = getTurretWorldMount(
     unitPosition.x, unitPosition.y, unitGroundZ,
     cos, sin,
-    localMount.x + (suspension?.offsetX ?? 0),
-    localMount.y + (suspension?.offsetY ?? 0),
-    localMount.z + (suspension?.offsetZ ?? 0),
+    localMount.x + (suspension !== null ? suspension.offsetX : 0),
+    localMount.y + (suspension !== null ? suspension.offsetY : 0),
+    localMount.z + (suspension !== null ? suspension.offsetZ : 0),
     options.surfaceN ?? FLAT_SURFACE_NORMAL,
   );
 
@@ -240,8 +250,11 @@ export function updateWeaponWorldKinematics(
  *  so the server's targeting/firing path and the client renderer share
  *  the same authored 3D pivot. */
 export function getTurretMountHeight(unit: Entity, turretIndex: number): number {
-  const turret = unit.combat?.turrets?.[turretIndex];
-  return turret ? getRuntimeTurretMountHeight(turret) : (unit.unit?.bodyCenterHeight ?? 0);
+  const combat = unit.combat;
+  const turret = combat !== null ? combat.turrets[turretIndex] : undefined;
+  if (turret !== undefined) return getRuntimeTurretMountHeight(turret);
+  const sourceUnit = unit.unit;
+  return sourceUnit !== null ? sourceUnit.bodyCenterHeight : 0;
 }
 
 export function getEntityPosition3d(entity: Entity, out: Vec3): Vec3 {
@@ -312,23 +325,24 @@ export function getEntityAcceleration3d(
 
 export function updateProjectileSourceClearance(
   source: Entity | undefined,
-  projectile: { hasLeftSource?: boolean },
+  projectile: { hasLeftSource: boolean },
   pointX: number,
   pointY: number,
   pointZ: number,
   pointRadius: number,
 ): boolean {
   if (projectile.hasLeftSource) return true;
-  if (!source?.unit) {
+  if (source === undefined || source.unit === null) {
     projectile.hasLeftSource = true;
     return true;
   }
 
+  const sourceUnit = source.unit;
   const sourcePosition = getEntityPosition3d(source, _entityPositionScratch);
   const dx = pointX - sourcePosition.x;
   const dy = pointY - sourcePosition.y;
   const dz = pointZ - sourcePosition.z;
-  const clearance = source.unit.radius.shot + Math.max(0, pointRadius) + 2;
+  const clearance = sourceUnit.radius.shot + Math.max(0, pointRadius) + 2;
   if (dx * dx + dy * dy + dz * dz > clearance * clearance) {
     projectile.hasLeftSource = true;
     return true;

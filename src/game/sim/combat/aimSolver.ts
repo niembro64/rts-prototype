@@ -23,9 +23,9 @@ import { getUnitGroundZ } from '../unitGeometry';
 type GroundHeightLookup = (x: number, y: number) => number;
 
 type ResolveTargetAimPointOptions = {
-  lockOnType?: TurretAimLockOnType;
-  source?: Entity;
-  currentTick?: number;
+  lockOnType: TurretAimLockOnType | undefined;
+  source: Entity | undefined;
+  currentTick: number | undefined;
 };
 
 const _mirrorEnemyTurretMount = { x: 0, y: 0, z: 0 };
@@ -190,11 +190,14 @@ export function resolveTargetAimPoint(
   originY: number,
   originZ: number,
   out: Vec3,
-  options?: ResolveTargetAimPointOptions,
+  options: ResolveTargetAimPointOptions | undefined = undefined,
 ): Vec3 {
+  const lockOnType = options === undefined ? undefined : options.lockOnType;
+  const source = options === undefined ? undefined : options.source;
+  const currentTick = options === undefined ? undefined : options.currentTick;
   if (
-    options?.lockOnType === 'lockOnToTurret' &&
-    resolveTargetTurretAimPoint(target, options.source, options.currentTick, out)
+    lockOnType === 'lockOnToTurret' &&
+    resolveTargetTurretAimPoint(target, source, currentTick, out)
   ) {
     return out;
   }
@@ -365,7 +368,7 @@ export function solveDirectTurretAim(
   _currentPitch: number,
   config: TurretConfig,
   out: DirectTurretAim,
-  currentTick?: number,
+  currentTick: number | undefined = undefined,
 ): DirectTurretAim {
   resolveTargetAimPoint(
     target,
@@ -395,7 +398,7 @@ function solveRayBisectTurretAndBodyAim(
   currentPitch: number,
   config: TurretConfig,
   out: DirectTurretAim,
-  currentTick?: number,
+  currentTick: number | undefined = undefined,
 ): DirectTurretAim {
   const hasTurretPoint = resolveTargetTurretAimPoint(
     target,
@@ -483,7 +486,7 @@ function solveRayTurretAim(
   currentPitch: number,
   config: TurretConfig,
   out: DirectTurretAim,
-  currentTick?: number,
+  currentTick: number | undefined = undefined,
 ): DirectTurretAim {
   if (config.aimStyle.angleType === 'rayBisectTurretAndBody') {
     return solveRayBisectTurretAndBodyAim(
@@ -532,7 +535,8 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   if (config.visualOnly) return false;
   if (config.verticalLauncher) return false;
   if (config.isManualFire) return false;
-  if (config.shot?.type === 'force') return false;
+  const shot = config.shot;
+  if (shot !== undefined && shot.type === 'force') return false;
   return true;
 }
 
@@ -644,7 +648,7 @@ export function solveProjectileTurretAim(
   inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
-  currentTick?: number,
+  currentTick: number | undefined = undefined,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
 
@@ -704,7 +708,7 @@ export function solveProjectileTurretAimAtPoint(
   inheritOriginVelocity: boolean,
   groundHeightAt: GroundHeightLookup,
   out: ProjectileTurretAim,
-  currentTick?: number,
+  currentTick: number | undefined = undefined,
 ): ProjectileTurretAim {
   const shot = weapon.config.shot as ProjectileShot;
   out.aim.x = aimPoint.x;
@@ -749,7 +753,7 @@ export function solveTurretAimAtGroundPoint(
   currentPitch: number,
   groundHeightAt: GroundHeightLookup,
   out: TurretAimSolution,
-  currentTick?: number,
+  currentTick: number | undefined = undefined,
 ): TurretAimSolution {
   if (!weaponUsesNormalAim(weapon)) {
     return solveTurretAimAtPoint(

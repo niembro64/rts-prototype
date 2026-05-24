@@ -311,7 +311,12 @@ function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, turretIndex: 
 
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
-export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: ForceAccumulator, units: readonly Entity[] = world.getArmedEntities()): FireTurretsResult {
+export function fireTurrets(
+  world: WorldState,
+  dtMs: number,
+  forceAccumulator: ForceAccumulator | undefined = undefined,
+  units: readonly Entity[] = world.getArmedEntities(),
+): FireTurretsResult {
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
@@ -390,7 +395,12 @@ export function fireTurrets(world: WorldState, dtMs: number, forceAccumulator?: 
       const weaponMount = updateWeaponWorldKinematics(
         unit, weapon, weaponIndex,
         unitCos, unitSin,
-        { currentTick, dtMs, unitGroundZ },
+        {
+          currentTick,
+          dtMs,
+          unitGroundZ,
+          surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
+        },
         _fireWeaponMount,
       );
       const weaponX = weaponMount.x;
@@ -1044,7 +1054,7 @@ export function updateProjectiles(
             currentTick,
             dtMs,
             unitGroundZ,
-            surfaceN: source.unit?.surfaceNormal,
+            surfaceN: source.unit !== null ? source.unit.surfaceNormal : undefined,
           },
           _beamWeaponMount,
         );
