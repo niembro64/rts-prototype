@@ -71,6 +71,11 @@ import {
 import type { EntityId } from '../sim/types';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
+type ApplyForceOptions = { canLaunchFromGround: boolean };
+
+const DEFAULT_APPLY_FORCE_OPTIONS: ApplyForceOptions = {
+  canLaunchFromGround: false,
+};
 
 // Phase 3d-2 scratch buffers. Body state lives in the WASM-side
 // BodyPool, so per-tick marshalling shrinks to: a Uint32Array of
@@ -150,7 +155,7 @@ export class Body3D {
   /** Debug / log tag — entity type or id for tracing. */
   label: string;
   /** Owning sim entity id for dynamic unit bodies. */
-  entityId?: EntityId;
+  entityId: EntityId | undefined;
 
   private constructor(args: {
     slot: number;
@@ -158,7 +163,7 @@ export class Body3D {
     mass: number;
     isStatic: boolean;
     label: string;
-    entityId?: EntityId;
+    entityId: EntityId | undefined;
   }) {
     this.slot = args.slot;
     this.shape = args.shape;
@@ -177,15 +182,15 @@ export class Body3D {
     isStatic: boolean;
     mass: number;
     label: string;
-    entityId?: EntityId;
+    entityId: EntityId | undefined;
     x: number;
     y: number;
     z: number;
-    radius?: number;
-    halfX?: number;
-    halfY?: number;
-    halfZ?: number;
-    groundOffset?: number;
+    radius: number | undefined;
+    halfX: number | undefined;
+    halfY: number | undefined;
+    halfZ: number | undefined;
+    groundOffset: number | undefined;
     restitution: number;
     surfaceNormal: SurfaceNormal | null;
   }): Body3D {
@@ -424,14 +429,14 @@ export class PhysicsEngine3D {
     bodyCenterHeight: number,
     mass: number,
     label: string,
-    entityId?: EntityId,
-    initialZ?: number,
+    entityId: EntityId | undefined = undefined,
+    initialZ: number | undefined = undefined,
     surfaceNormal: SurfaceNormal | null = null,
   ): Body3D {
     refreshAndBindBody3DPool(getSimWasm()!.pool);
     const physicsMass = mass * UNIT_MASS_MULTIPLIER;
-    const z = Number.isFinite(initialZ)
-      ? initialZ!
+    const z = initialZ !== undefined && Number.isFinite(initialZ)
+      ? initialZ
       : this.getGroundZ(x, y) + bodyCenterHeight;
     const body = Body3D.allocate({
       shape: 'sphere',
@@ -443,6 +448,9 @@ export class PhysicsEngine3D {
       y,
       z,
       radius: physicsRadius,
+      halfX: undefined,
+      halfY: undefined,
+      halfZ: undefined,
       groundOffset: bodyCenterHeight,
       restitution: 0.2,
       surfaceNormal,
@@ -472,12 +480,15 @@ export class PhysicsEngine3D {
       isStatic: true,
       mass: 0,
       label,
+      entityId: undefined,
       x,
       y,
       z: baseZ + depth / 2,
+      radius: undefined,
       halfX: width / 2,
       halfY: height / 2,
       halfZ: depth / 2,
+      groundOffset: undefined,
       restitution: 0.1,
       surfaceNormal: null,
     });
@@ -529,7 +540,7 @@ export class PhysicsEngine3D {
     fx: number,
     fy: number,
     fz: number,
-    options?: { canLaunchFromGround?: boolean },
+    options: ApplyForceOptions = DEFAULT_APPLY_FORCE_OPTIONS,
   ): void {
     if (body.isStatic) return;
     if ((fx * fx + fy * fy + fz * fz) > 0) {
@@ -541,7 +552,7 @@ export class PhysicsEngine3D {
     body.ax += ax;
     body.ay += ay;
     body.az += az;
-    if (options?.canLaunchFromGround) {
+    if (options.canLaunchFromGround) {
       body.groundLaunchAx += ax;
       body.groundLaunchAy += ay;
       body.groundLaunchAz += az;

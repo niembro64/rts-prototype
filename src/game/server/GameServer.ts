@@ -153,7 +153,7 @@ export class GameServer {
     return new GameServer(config);
   }
 
-  constructor(config: GameServerConfig, physics?: PhysicsEngine3D) {
+  constructor(config: GameServerConfig, physics: PhysicsEngine3D | undefined = undefined) {
     this.tickRateHz = 60;
 
     // Start visible host TPS at 0.0 until the first real tick period
@@ -197,8 +197,9 @@ export class GameServer {
 
   private setupSimulationCallbacks(): void {
     this.world.onEntityRemoving = (entity: Entity) => {
-      const body = entity.body?.physicsBody;
-      if (!body) return;
+      const bodySlot = entity.body;
+      if (bodySlot === null) return;
+      const body = bodySlot.physicsBody;
       this.physics.removeBody(body);
       entity.body = null;
     };
@@ -401,8 +402,10 @@ export class GameServer {
     this.physics.collectLastStepEntityIds(ids);
     for (let i = 0; i < ids.length; i++) {
       const entity = this.world.getEntity(ids[i]);
-      if (!entity || !entity.body?.physicsBody || !entity.unit) continue;
-      const body = entity.body.physicsBody;
+      if (entity === undefined || entity.unit === null) continue;
+      const bodySlot = entity.body;
+      if (bodySlot === null) continue;
+      const body = bodySlot.physicsBody;
       entity.transform.x = body.x;
       entity.transform.y = body.y;
       entity.transform.z = body.z;
@@ -635,21 +638,28 @@ export class GameServer {
   }
 
   private isOwnedEntity(entityId: EntityId, playerId: PlayerId): boolean {
-    return this.world.getEntity(entityId)?.ownership?.playerId === playerId;
+    const entity = this.world.getEntity(entityId);
+    if (entity === undefined || entity.ownership === null) return false;
+    return entity.ownership.playerId === playerId;
   }
 
   private isOwnedUnit(entityId: EntityId, playerId: PlayerId): boolean {
     const entity = this.world.getEntity(entityId);
+    if (entity === undefined) return false;
     return (
-      entity?.type === 'unit' &&
+      entity.type === 'unit' &&
       entity.unit !== null &&
-      entity.ownership?.playerId === playerId
+      entity.ownership !== null &&
+      entity.ownership.playerId === playerId
     );
   }
 
   private isOwnedFactory(entityId: EntityId, playerId: PlayerId): boolean {
     const entity = this.world.getEntity(entityId);
-    return entity !== undefined && entity.factory !== null && entity.ownership?.playerId === playerId;
+    return entity !== undefined &&
+      entity.factory !== null &&
+      entity.ownership !== null &&
+      entity.ownership.playerId === playerId;
   }
 
   private setMirrorsEnabled(enabled: boolean): void {
@@ -680,7 +690,8 @@ export class GameServer {
       if (!combat) continue;
       const turrets = combat.turrets;
       for (const turret of turrets) {
-        if (turret.config.shot?.type !== 'force') continue;
+        const shot = turret.config.shot;
+        if (shot === undefined || shot.type !== 'force') continue;
         turret.target = null;
         turret.state = 'idle';
         resetDisabledTurretJsOnlyFields(turret);
@@ -718,16 +729,27 @@ export class GameServer {
   // later removeSnapshotListener — without that, listeners (and the
   // closures they capture) accumulate forever as clients connect /
   // disconnect or as connections are re-created across restarts.
-  addSnapshotListener(callback: SnapshotCallback, playerId?: PlayerId): string {
+  addSnapshotListener(callback: SnapshotCallback, playerId: PlayerId | undefined = undefined): string {
     const trackingScope = playerId === undefined ? 'global' : `player-${playerId}`;
     const trackingKey = `${trackingScope}-${this.snapshotListenerId++}`;
     const deltaTrackingKey = playerId === undefined ? 'global-shared' : trackingKey;
     // Phase 10 D.3e — allocate a Rust-side snapshot baseline handle
     // for this listener. Undefined if WASM hasn't booted yet (the
     // serialize path skips baseline ops when undefined).
-    const snapshotBaselineHandle = getSimWasm()?.snapshotBaseline.create();
+    const simWasm = getSimWasm();
+    const snapshotBaselineHandle = simWasm === undefined
+      ? undefined
+      : simWasm.snapshotBaseline.create();
     this.snapshotListeners.push({
-      callback, playerId, trackingKey, deltaTrackingKey, snapshotBaselineHandle,
+      callback,
+      playerId,
+      trackingKey,
+      deltaTrackingKey,
+      lastStaticTerrainTileMap: undefined,
+      lastStaticBuildabilityGrid: undefined,
+      lastStaticResyncToken: undefined,
+      lastSentShroudVersionSum: undefined,
+      snapshotBaselineHandle,
     });
     this.recomputeShroudUpdatePlayerMask();
     return trackingKey;
@@ -751,7 +773,10 @@ export class GameServer {
     const [removed] = this.snapshotListeners.splice(idx, 1);
     this.startupReadyListenerKeys.delete(removed.trackingKey);
     if (removed.snapshotBaselineHandle !== undefined) {
-      getSimWasm()?.snapshotBaseline.destroy(removed.snapshotBaselineHandle);
+      const simWasm = getSimWasm();
+      if (simWasm !== undefined) {
+        simWasm.snapshotBaseline.destroy(removed.snapshotBaselineHandle);
+      }
     }
     if (!this.snapshotListeners.some((l) => l.deltaTrackingKey === removed.deltaTrackingKey)) {
       resetDeltaTrackingForKey(removed.deltaTrackingKey);
@@ -868,7 +893,7 @@ export class GameServer {
         let touched = false;
         if (factoryComp.currentShellId !== null) {
           const shell = this.world.getEntity(factoryComp.currentShellId);
-          if (shell?.unit?.unitType === unitType) {
+          if (shell !== undefined && shell.unit !== null && shell.unit.unitType === unitType) {
             factoryProductionSystem.cancelActiveShell(this.world, factory);
             touched = true;
           }
@@ -887,7 +912,7 @@ export class GameServer {
       }
       // Kill all existing units of this type
       for (const unit of this.world.getUnits()) {
-        if (unit.unit?.unitType === unitType) {
+        if (unit.unit !== null && unit.unit.unitType === unitType) {
           this.world.removeEntity(unit.id);
         }
       }

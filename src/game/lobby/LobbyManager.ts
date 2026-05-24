@@ -156,7 +156,10 @@ export async function createBackgroundBattle(
   });
 
   const connection = new LocalGameConnection(server, resolvedLocalPlayerId, 'local-offline');
-  applyStoredBattleServerSettings(server, mode, { ipAddress });
+  applyStoredBattleServerSettings(server, mode, {
+    ipAddress,
+    maxTotalUnits: undefined,
+  });
 
   // Tell the AI / UI layer about the same selection (the GameServer
   // already used it for the initial spawn). Skipped in lobby-preview

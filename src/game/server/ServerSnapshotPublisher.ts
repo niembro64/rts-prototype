@@ -47,17 +47,17 @@ const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 
 export type SnapshotListenerEntry = {
   callback: SnapshotCallback;
-  playerId?: PlayerId;
+  playerId: PlayerId | undefined;
   trackingKey: string;
   deltaTrackingKey: string;
-  lastStaticTerrainTileMap?: TerrainTileMap;
-  lastStaticBuildabilityGrid?: TerrainBuildabilityGrid;
-  lastStaticResyncToken?: number;
+  lastStaticTerrainTileMap: TerrainTileMap | undefined;
+  lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
+  lastStaticResyncToken: number | undefined;
   /** Team shroud-version sum at the last keyframe where we shipped
    *  the shroud bitmap to this listener (issues.txt FOW-OPT-02).
    *  Compared against the live sum each keyframe to skip the
    *  multi-KB payload when no new cells were explored. */
-  lastSentShroudVersionSum?: number;
+  lastSentShroudVersionSum: number | undefined;
   /** Phase 10 D.3e — Rust-side snapshot baseline handle for this
    *  listener (u32 index into the WASM SnapshotBaselineRegistry).
    *  Allocated via sim.snapshotBaseline.create() on add, released
@@ -65,7 +65,7 @@ export type SnapshotListenerEntry = {
    *  DeltaTrackingState.prevStates map for the same listener;
    *  populated per-tick by the serializer's baseline pass. Undefined
    *  if the listener was registered before initSimWasm resolved. */
-  snapshotBaselineHandle?: number;
+  snapshotBaselineHandle: number | undefined;
 };
 
 export type ServerSnapshotPublisherInput = {

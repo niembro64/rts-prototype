@@ -18,14 +18,19 @@ import type { GameServer } from './GameServer';
 import type { CommandAuthority } from './commandAuthority';
 
 export type StoredBattleServerSettingsOptions = {
-  ipAddress?: string;
-  maxTotalUnits?: number;
+  ipAddress: string | undefined;
+  maxTotalUnits: number | undefined;
+};
+
+const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsOptions = {
+  ipAddress: undefined,
+  maxTotalUnits: undefined,
 };
 
 export function applyStoredBattleServerSettings(
   server: GameServer,
   mode: BattleMode,
-  options: StoredBattleServerSettingsOptions = {},
+  options: StoredBattleServerSettingsOptions = DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS,
 ): void {
   const authority: CommandAuthority = { mode: 'host-admin' };
   server.setTickRate(loadStoredTickRate());

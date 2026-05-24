@@ -58,7 +58,7 @@ export interface BootstrappedServerWorld {
 export class ServerBootstrap {
   static bootstrap(
     config: GameServerConfig,
-    providedPhysics?: PhysicsEngine3D,
+    providedPhysics: PhysicsEngine3D | undefined = undefined,
   ): BootstrappedServerWorld {
     const playerIds = normalizePlayerIds(config.playerIds);
     const backgroundMode = config.backgroundMode ?? false;

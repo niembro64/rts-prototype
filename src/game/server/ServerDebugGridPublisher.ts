@@ -16,9 +16,15 @@ const GRID_DEBUG_CELL_POOL_MAX =
   SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS + SERVER_GRID_DEBUG_MAX_SEARCH_CELLS;
 
 export type ServerDebugGridSnapshot = {
-  cells?: NetworkServerSnapshotGridCell[];
-  searchCells?: NetworkServerSnapshotGridCell[];
-  cellSize?: number;
+  cells: NetworkServerSnapshotGridCell[] | undefined;
+  searchCells: NetworkServerSnapshotGridCell[] | undefined;
+  cellSize: number | undefined;
+};
+
+const EMPTY_GRID_SNAPSHOT: ServerDebugGridSnapshot = {
+  cells: undefined,
+  searchCells: undefined,
+  cellSize: undefined,
 };
 
 export class ServerDebugGridPublisher {
@@ -51,12 +57,12 @@ export class ServerDebugGridPublisher {
   }
 
   refresh(nowMs: number, world: WorldState): ServerDebugGridSnapshot {
-    if (!this.enabled) return {};
+    if (!this.enabled) return EMPTY_GRID_SNAPSHOT;
     if (
       !this.forceRefresh &&
       nowMs - this.lastSnapshotMs < SERVER_GRID_DEBUG_INTERVAL_MS
     ) {
-      return {};
+      return EMPTY_GRID_SNAPSHOT;
     }
 
     this.forceRefresh = false;
@@ -169,9 +175,11 @@ export class ServerDebugGridPublisher {
 
     for (const unit of world.getUnits()) {
       if (!unit.unit || unit.unit.hp <= 0) continue;
-      const turrets = unit.combat?.turrets;
+      const combat = unit.combat;
+      const turrets = combat === null ? undefined : combat.turrets;
       if (!turrets || turrets.length === 0) continue;
-      const playerId = unit.ownership?.playerId;
+      const ownership = unit.ownership;
+      const playerId = ownership === null ? undefined : ownership.playerId;
       if (playerId === undefined) continue;
       const playerMask = this.playerMask(playerId);
       if (playerMask === 0) continue;

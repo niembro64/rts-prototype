@@ -98,7 +98,7 @@ export class UnitForceSystem {
     const activeIds = this.physicsForceUnitIdsBuf;
     for (let i = 0; i < activeIds.length; i++) {
       const entity = this.world.getEntity(activeIds[i]);
-      if (!entity || !entity.body?.physicsBody || !entity.unit) continue;
+      if (entity === undefined || entity.body === null || entity.unit === null) continue;
 
       const body = entity.body.physicsBody;
 
@@ -156,9 +156,9 @@ export class UnitForceSystem {
       const groundContact = this.hasUnitGroundContact(entity.unit, body);
 
       const externalForce = forceAccumulator.getFinalForce(entity.id);
-      const externalFx = (externalForce?.fx ?? 0) / 3600;
-      const externalFy = (externalForce?.fy ?? 0) / 3600;
-      const externalFz = (externalForce?.fz ?? 0) / 3600;
+      const externalFx = externalForce === null ? 0 : externalForce.fx / 3600;
+      const externalFy = externalForce === null ? 0 : externalForce.fy / 3600;
+      const externalFz = externalForce === null ? 0 : externalForce.fz / 3600;
 
       // Unit faces its movement direction (yaw only — chassis tilt
       // is a render concern; sim transform.rotation stays a 2D yaw).
@@ -519,9 +519,14 @@ export class UnitForceSystem {
       );
       for (let i = 0; i < _hoverDeferCount; i++) {
         const entity = _hoverDeferEntities[i];
-        const orientation = entity.unit?.orientation;
-        const omega = entity.unit?.angularVelocity3;
-        if (!orientation || !omega) {
+        const unit = entity.unit;
+        if (unit === null) {
+          _hoverDeferEntities[i] = undefined as unknown as Entity;
+          continue;
+        }
+        const orientation = unit.orientation;
+        const omega = unit.angularVelocity3;
+        if (orientation === null || omega === null) {
           _hoverDeferEntities[i] = undefined as unknown as Entity;
           continue;
         }
@@ -533,8 +538,8 @@ export class UnitForceSystem {
         omega.x = _hoverDeferBuf[base + 4];
         omega.y = _hoverDeferBuf[base + 5];
         omega.z = _hoverDeferBuf[base + 6];
-        const angularAccel = entity.unit?.angularAcceleration3;
-        if (angularAccel) {
+        const angularAccel = unit.angularAcceleration3;
+        if (angularAccel !== null) {
           angularAccel.x = _hoverDeferBuf[base + 10];
           angularAccel.y = _hoverDeferBuf[base + 11];
           angularAccel.z = _hoverDeferBuf[base + 12];
@@ -572,7 +577,8 @@ export class UnitForceSystem {
 
     const units = this.world.getUnits();
     for (let i = 0; i < units.length; i++) {
-      if (units[i].unit?.locomotion.type === 'flying') {
+      const unit = units[i].unit;
+      if (unit !== null && unit.locomotion.type === 'flying') {
         pushId(units[i].id);
       }
     }
