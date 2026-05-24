@@ -1,0 +1,11 @@
+{
+  "_doc": "Slope window per PLATEAU amount. levels[i] applies to PLATEAU = i. Each entry has a `fullTerraceMaxSlope` (slope at or below which terracing applies at full strength) and a `noTerraceMinSlope` (slope at or above which terracing is suppressed); the band in between fades smoothly. `null` means open-ended (no upper bound — used for the cliffs-everywhere setting). Index 0 (PLATEAU OFF) is unused at runtime since the sim short-circuits on amount <= 0, but is included so the array is index-aligned with the bar buttons.",
+  "levels": [
+    { "fullTerraceMaxSlope": 0, "noTerraceMinSlope": 0 },
+    { "fullTerraceMaxSlope": 0.1, "noTerraceMinSlope": 0.2 },
+    { "fullTerraceMaxSlope": 0.25, "noTerraceMinSlope": 0.45 },
+    { "fullTerraceMaxSlope": 0.45, "noTerraceMinSlope": 0.9 },
+    { "fullTerraceMaxSlope": 0.8, "noTerraceMinSlope": 1.4 },
+    { "fullTerraceMaxSlope": null, "noTerraceMinSlope": null }
+  ]
+}

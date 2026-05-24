@@ -1,5 +1,6 @@
 import { BATTLE_CONFIG } from '../../../battleBarConfig';
 import { LAND_CELL_SIZE } from '../../../mapSizeConfig';
+import plateauConfig from '../../../plateauConfig.json';
 import terrainConfig from './terrainConfig.json';
 
 /** Floor of the world's vertical extent: the bottom face of every 3D tile. */
@@ -119,34 +120,32 @@ export let TERRAIN_CIRCLE_UNDERWATER_HEIGHT = WATER_LEVEL - TERRAIN_D_TERRAIN;
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
   terrainConfig.terrainGenerationEdgeTransitionWidthFraction;
 
-/** Slope window for a given plateau amount. Amount 0 disables
- *  terracing entirely; the caller short-circuits on `amount <= 0`.
- *  Higher amounts open the slope window wider so steeper terrain
- *  starts to terrace; amount 5 forces every slope into a plateau by
- *  pushing the gate beyond any realistic slope value (cliffs). */
+/** Slope window for a given plateau amount, looked up in
+ *  `plateauConfig.json`. Amount 0 disables terracing entirely; the
+ *  caller short-circuits on `amount <= 0`. Higher amounts use wider
+ *  slope windows so steeper terrain starts to terrace. A `null` entry
+ *  in the JSON means "open-ended" (treated as +Infinity) — the gate
+ *  is past every realistic slope, so every slope terraces into a
+ *  cliff. Edit the JSON to retune the per-level thresholds without
+ *  touching code. */
 function plateauSlopeWindowForAmount(amount: number): {
   fullTerraceMaxSlope: number;
   noTerraceMinSlope: number;
 } {
-  if (amount >= 5) {
-    return {
-      fullTerraceMaxSlope: Number.POSITIVE_INFINITY,
-      noTerraceMinSlope: Number.POSITIVE_INFINITY,
-    };
-  }
-  // Per-level full-terrace ceilings — chosen so amount 1 only
-  // terraces nearly-flat ground and amount 4 catches most slopes
-  // short of cliffs. Amount 3 matches the prior PLATEAU: ON default
-  // (0.45 / 0.9) for visual continuity with old maps.
-  const fullByAmount = [0, 0.1, 0.25, 0.45, 0.8];
-  const fadeByAmount = [0, 0.1, 0.2, 0.45, 0.6];
-  const idx = Math.max(0, Math.min(fullByAmount.length - 1, Math.floor(amount)));
-  const full = fullByAmount[idx];
-  const fade = fadeByAmount[idx];
-  return {
-    fullTerraceMaxSlope: full,
-    noTerraceMinSlope: full + Math.max(1e-6, fade),
-  };
+  const levels = plateauConfig.levels;
+  const idx = Math.max(0, Math.min(levels.length - 1, Math.floor(amount)));
+  const level = levels[idx];
+  // `null` in the JSON means open-ended — terrace every slope, the
+  // cliffs-everywhere setting.
+  const full =
+    level.fullTerraceMaxSlope === null
+      ? Number.POSITIVE_INFINITY
+      : level.fullTerraceMaxSlope;
+  const fade =
+    level.noTerraceMinSlope === null
+      ? Number.POSITIVE_INFINITY
+      : level.noTerraceMinSlope;
+  return { fullTerraceMaxSlope: full, noTerraceMinSlope: fade };
 }
 
 const DEFAULT_PLATEAU_SLOPE_WINDOW = plateauSlopeWindowForAmount(
