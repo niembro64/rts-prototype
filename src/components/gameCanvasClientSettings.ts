@@ -1,6 +1,5 @@
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch, type Ref } from 'vue';
 import {
-  CLIENT_CONFIG,
   RANGE_TYPES,
   PROJ_RANGE_TYPES,
   UNIT_RADIUS_TYPES,
@@ -11,6 +10,7 @@ import {
   getBuildGridDebug,
   getCameraFovDegrees,
   getCameraSmoothMode,
+  getClientConfig,
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getFogClouds,
@@ -40,6 +40,7 @@ import {
   setBuildGridDebug,
   setCameraFovDegrees,
   setCameraSmoothMode,
+  setClientMode,
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setFogClouds,
@@ -64,6 +65,7 @@ import {
   setUnitRadiusToggle,
   setWaypointDetail,
   type CameraSmoothMode,
+  type ClientMode,
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
@@ -83,12 +85,15 @@ import type {
 import type { RenderMode } from '../types/graphics';
 
 type UseGameCanvasClientSettingsOptions = {
+  currentClientMode: Readonly<Ref<ClientMode>>;
   applyCameraFovDegrees: (fov: CameraFovDegrees) => void;
 };
 
 export function useGameCanvasClientSettings({
+  currentClientMode,
   applyCameraFovDegrees,
 }: UseGameCanvasClientSettingsOptions) {
+  setClientMode(currentClientMode.value);
   const renderMode = ref<RenderMode>(getRenderMode());
   const audioScope = ref<AudioScope>(getAudioScope());
   const audioSmoothing = ref<boolean>(getAudioSmoothing());
@@ -119,14 +124,6 @@ export function useGameCanvasClientSettings({
     field: getSoundToggle('field'),
     music: getSoundToggle('music'),
   });
-  audioManager.setMuted(audioScope.value === 'off');
-  // OTHER-1: push the persisted per-category state into AudioManager
-  // so the SOUNDS: buttons gate actual playback. Music goes through
-  // musicPlayer below; AudioManager ignores it.
-  for (const cat of SOUND_CATEGORIES) {
-    audioManager.setCategoryEnabled(cat, soundToggles[cat]);
-  }
-  if (!soundToggles.music) musicPlayer.stop();
   const rangeToggles = reactive<Record<RangeType, boolean>>({
     trackAcquire: getRangeToggle('trackAcquire'),
     trackRelease: getRangeToggle('trackRelease'),
@@ -148,6 +145,58 @@ export function useGameCanvasClientSettings({
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
+
+  function applyAudioRuntimeState(): void {
+    audioManager.setMuted(audioScope.value === 'off');
+    // OTHER-1: push the persisted per-category state into AudioManager
+    // so the SOUNDS: buttons gate actual playback. Music goes through
+    // musicPlayer below; AudioManager ignores it.
+    for (const cat of SOUND_CATEGORIES) {
+      audioManager.setCategoryEnabled(cat, soundToggles[cat]);
+    }
+    if (!soundToggles.music) musicPlayer.stop();
+  }
+
+  function syncRefsFromClientConfig(): void {
+    renderMode.value = getRenderMode();
+    audioScope.value = getAudioScope();
+    audioSmoothing.value = getAudioSmoothing();
+    burnMarks.value = getBurnMarks();
+    locomotionMarks.value = getLocomotionMarks();
+    smokeTrails.value = getSmokeTrails();
+    beamSnapToTurret.value = getBeamSnapToTurret();
+    triangleDebug.value = getTriangleDebug();
+    buildGridDebug.value = getBuildGridDebug();
+    sightBoundary.value = getSightBoundary();
+    radarBoundary.value = getRadarBoundary();
+    fogShade.value = getFogShade();
+    fogClouds.value = getFogClouds();
+    movementPosEma.value = getMovementPosEmaMode();
+    movementVelEma.value = getMovementVelEmaMode();
+    rotationPosEma.value = getRotationPosEmaMode();
+    rotationVelEma.value = getRotationVelEmaMode();
+    predictionMode.value = getPredictionMode();
+    clientUnitGroundNormalEmaMode.value = getClientUnitGroundNormalEmaMode();
+    edgeScrollEnabled.value = getEdgeScrollEnabled();
+    dragPanEnabled.value = getDragPanEnabled();
+    waypointDetail.value = getWaypointDetail();
+    for (const cat of SOUND_CATEGORIES) soundToggles[cat] = getSoundToggle(cat);
+    for (const rt of RANGE_TYPES) rangeToggles[rt] = getRangeToggle(rt);
+    for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
+    for (const urt of UNIT_RADIUS_TYPES) unitRadiusToggles[urt] = getUnitRadiusToggle(urt);
+    legsRadiusToggle.value = getLegsRadiusToggle();
+    cameraSmoothMode.value = getCameraSmoothMode();
+    cameraFovDegrees.value = getCameraFovDegrees();
+    applyAudioRuntimeState();
+    applyCameraFovDegrees(cameraFovDegrees.value);
+  }
+
+  applyAudioRuntimeState();
+
+  watch(currentClientMode, (mode) => {
+    setClientMode(mode);
+    syncRefsFromClientConfig();
+  });
 
   function changeRenderMode(mode: RenderMode): void {
     setRenderMode(mode);
@@ -381,7 +430,7 @@ export function useGameCanvasClientSettings({
   }
 
   function resetClientDefaults(): void {
-    const cd = CLIENT_CONFIG;
+    const cd = getClientConfig(currentClientMode.value);
     changeRenderMode(cd.render.default);
     changeAudioScope(cd.audio.default);
     setAudioSmoothing(cd.audioSmoothing.default);

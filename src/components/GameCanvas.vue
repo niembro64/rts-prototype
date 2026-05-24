@@ -32,6 +32,7 @@ import {
   loadStoredMetalDepositStep,
   loadStoredTerrainMapShape,
   loadStoredMapLandDimensions,
+  type BattleMode,
 } from '../battleBarConfig';
 import type { TerrainMapShape } from '../types/terrain';
 import {
@@ -127,6 +128,9 @@ const localPlayerId = ref<PlayerId>(1);
 const lobbyError = ref<string | null>(null);
 const isConnecting = ref(false);
 const gameStarted = ref(false);
+const currentBattleMode = computed<BattleMode>(
+  () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
+);
 const {
   mobileBarsVisible,
   spectateMode,
@@ -135,7 +139,7 @@ const {
   toggleBottomBars,
   togglePlayerClientEnabled,
   toggleSpectateMode,
-} = useGameCanvasChromeState(gameStarted, applyPlayerClientEnabled);
+} = useGameCanvasChromeState(currentBattleMode, applyPlayerClientEnabled);
 
 function getActiveOrbitCamera(): import('../game/render3d/OrbitCamera').OrbitCamera | null {
   return foregroundGame.getScene()?.getOrbitCamera() ?? null;
@@ -149,7 +153,6 @@ const serverMetaFromSnapshot = ref<NetworkServerSnapshotMeta | null>(null);
 const {
   lobbyPlayerCount,
   networkStatus,
-  currentBattleMode,
   localLobbyPlayer,
   showPlayerToggle,
   lobbyModalVisible,
@@ -159,7 +162,10 @@ const {
   serverBarVars,
   clientBarVars,
   battleLabel,
+  serverLabel,
+  clientLabel,
 } = useGameCanvasShellDisplay({
+  currentBattleMode,
   isMobile,
   showLobby,
   spectateMode,
@@ -330,6 +336,7 @@ const {
   toggleAllSounds,
   toggleSoundCategory,
 } = useGameCanvasClientSettings({
+  currentClientMode: currentBattleMode,
   applyCameraFovDegrees,
 });
 
@@ -453,7 +460,16 @@ const displayTickRate = computed(
 // HOST SERVER unit ground normal EMA mode. Picks the half-life used by the
 // sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
 // localStorage and pushed via setUnitGroundNormalEmaMode command.
-const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(loadStoredUnitGroundNormalEmaMode());
+const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(
+  loadStoredUnitGroundNormalEmaMode(currentBattleMode.value),
+);
+// Reload the persisted EMA mode when the bar swaps namespaces. The
+// host pushes its own setting via the setUnitGroundNormalEmaMode
+// command path; this watcher keeps the local control's display in
+// sync with the new mode's stored value.
+watch(currentBattleMode, (mode) => {
+  serverUnitGroundNormalEmaMode.value = loadStoredUnitGroundNormalEmaMode(mode);
+});
 // HOST SERVER unit ground normal EMA — the host applies its setting via the
 // setUnitGroundNormalEmaMode command, but remote clients render this control
 // from snapshot meta (their own localStorage is irrelevant once
@@ -777,6 +793,7 @@ watchEffect(() => {
 const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
+  serverLabel: serverLabel.value,
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
   displayTickRate: displayTickRate.value,
@@ -799,6 +816,7 @@ watchEffect(() => {
   };
   m.isReadonly = serverBarReadonly.value;
   m.barStyle = serverBarVars.value;
+  m.serverLabel = serverLabel.value;
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
   m.displayTickRate = displayTickRate.value;
@@ -816,6 +834,7 @@ watchEffect(() => {
 // scale across sound/range/radius toggles and live telemetry.
 const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   barStyle: clientBarVars.value,
+  clientLabel: clientLabel.value,
   playerClientEnabled: playerClientEnabled.value,
   displayedClientTime: displayedClientTime.value,
   displayedClientIp: displayedClientIp.value,
@@ -927,6 +946,7 @@ watchEffect(() => {
     -readonly [K in keyof GameCanvasClientControlBarModel]: GameCanvasClientControlBarModel[K];
   };
   m.barStyle = clientBarVars.value;
+  m.clientLabel = clientLabel.value;
   m.playerClientEnabled = playerClientEnabled.value;
   m.displayedClientTime = displayedClientTime.value;
   m.displayedClientIp = displayedClientIp.value;
@@ -1031,6 +1051,7 @@ watchEffect(() => {
       <div
         ref="backgroundContainerRef"
         class="background-battle-container"
+        :class="{ 'loading-active': showDemoLoadingOverlay }"
         v-show="!gameStarted"
       >
         <div
@@ -1050,6 +1071,7 @@ watchEffect(() => {
       <div
         ref="containerRef"
         class="game-container"
+        :class="{ 'loading-active': showRealLoadingOverlay }"
         v-show="gameStarted"
       >
         <div
@@ -1244,10 +1266,15 @@ watchEffect(() => {
   display: block;
 }
 
+.background-battle-container.loading-active,
+.game-container.loading-active {
+  z-index: 3700;
+}
+
 .battle-loading-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 3200;
+  z-index: 3600;
   display: flex;
   flex-direction: column;
   align-items: center;

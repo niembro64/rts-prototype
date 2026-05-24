@@ -122,6 +122,21 @@
       { "value": "detailed", "label": "DETAILED" }
     ]
   },
+  "modeDefaults": {
+    "demo": {},
+    "real": {
+      "edgeScroll": true,
+      "fogShade": true,
+      "sounds": {
+        "fire": true,
+        "hit": true,
+        "dead": true,
+        "beam": true,
+        "field": true,
+        "music": false
+      }
+    }
+  },
 
   "soundCategories": ["fire", "hit", "dead", "beam", "field", "music"],
   "rangeTypes": [
@@ -133,57 +148,36 @@
   "projRangeTypes": ["collision", "explosion"],
   "unitRadiusTypes": ["visual", "shot", "push"],
 
-  "storageKeys": {
-    "renderMode": "player-client-render-mode",
-    "audioScope": "player-client-audio-scope",
-    "audioSmoothing": "player-client-audio-smoothing",
-    "burnMarks": "player-client-burn-marks-v2",
-    "locomotionMarks": "player-client-locomotion-marks",
-    "smokeTrails": "player-client-smoke-trails",
-    "beamSnapToTurret": "player-client-beam-snap-to-turret",
-    "triangleDebug": "player-client-triangle-debug",
-    "buildGridDebug": "player-client-build-grid-debug",
-    "sightBoundary": "player-client-sight-boundary",
-    "radarBoundary": "player-client-radar-boundary",
-    "fogShade": "player-client-fog-shade",
-    "fogClouds": "player-client-fog-clouds",
-    "movementPosEma": "player-client-movement-pos-ema",
-    "movementVelEma": "player-client-movement-vel-ema",
-    "rotationPosEma": "player-client-rotation-pos-ema",
-    "rotationVelEma": "player-client-rotation-vel-ema",
-    "predictionMode": "player-client-prediction-mode",
-    "unitGroundNormalEmaMode": "player-client-unit-ground-normal-ema-mode",
-    "soundToggles": "player-client-sound-toggles",
-    "rangeToggles": "player-client-range-toggles",
-    "projRangeToggles": "player-client-proj-range-toggles",
-    "unitRadiusToggles": "player-client-unit-radius-toggles",
-    "legsRadius": "player-client-legs-radius",
-    "cameraSmooth": "player-client-camera-smooth",
-    "cameraFov": "player-client-camera-fov-degrees",
-    "edgeScroll": "player-client-edge-scroll",
-    "dragPan": "player-client-drag-pan",
-    "lobbyVisible": "demo-battle-lobby-visible",
-    "waypointDetail": "player-client-waypoint-detail"
-  },
-
-  "storageMigrations": [
-    ["rts-render-mode", "player-client-render-mode"],
-    ["rts-audio-scope", "player-client-audio-scope"],
-    ["rts-audio-smoothing", "player-client-audio-smoothing"],
-    ["rts-triangle-debug", "player-client-triangle-debug"],
-    ["rts-build-grid-debug", "player-client-build-grid-debug"],
-    ["rts-sound-toggles", "player-client-sound-toggles"],
-    ["rts-range-toggles", "player-client-range-toggles"],
-    ["rts-proj-range-toggles", "player-client-proj-range-toggles"],
-    ["rts-unit-radius-toggles", "player-client-unit-radius-toggles"],
-    ["rts-legs-radius", "player-client-legs-radius"],
-    ["rts-camera-smooth", "player-client-camera-smooth"],
-    ["rts-camera-fov-degrees", "player-client-camera-fov-degrees"],
-    ["rts-edge-scroll", "player-client-edge-scroll"],
-    ["rts-drag-pan", "player-client-drag-pan"],
-    ["rts-lobby-visible", "demo-battle-lobby-visible"],
-    ["player-client-lobby-visible", "demo-battle-lobby-visible"],
-    ["rts-waypoint-detail", "player-client-waypoint-detail"],
-    ["player-client-tilt-ema-mode", "player-client-unit-ground-normal-ema-mode"]
-  ]
+  "storageKeySuffixes": {
+    "renderMode": "render-mode",
+    "audioScope": "audio-scope",
+    "audioSmoothing": "audio-smoothing",
+    "burnMarks": "burn-marks-v2",
+    "locomotionMarks": "locomotion-marks",
+    "smokeTrails": "smoke-trails",
+    "beamSnapToTurret": "beam-snap-to-turret",
+    "triangleDebug": "triangle-debug",
+    "buildGridDebug": "build-grid-debug",
+    "sightBoundary": "sight-boundary",
+    "radarBoundary": "radar-boundary",
+    "fogShade": "fog-shade",
+    "fogClouds": "fog-clouds",
+    "movementPosEma": "movement-pos-ema",
+    "movementVelEma": "movement-vel-ema",
+    "rotationPosEma": "rotation-pos-ema",
+    "rotationVelEma": "rotation-vel-ema",
+    "predictionMode": "prediction-mode",
+    "unitGroundNormalEmaMode": "unit-ground-normal-ema-mode",
+    "soundToggles": "sound-toggles",
+    "rangeToggles": "range-toggles",
+    "projRangeToggles": "proj-range-toggles",
+    "unitRadiusToggles": "unit-radius-toggles",
+    "legsRadius": "legs-radius",
+    "cameraSmooth": "camera-smooth",
+    "cameraFov": "camera-fov-degrees",
+    "edgeScroll": "edge-scroll",
+    "dragPan": "drag-pan",
+    "lobbyVisible": "lobby-visible",
+    "waypointDetail": "waypoint-detail"
+  }
 }

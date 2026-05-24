@@ -52,7 +52,7 @@ function fullSnapLabel(opt: string | number): string {
         title="Click to reset server settings to defaults"
         @click="model.resetServerDefaults"
       >
-        <span class="bar-label-text">HOST SERVER</span
+        <span class="bar-label-text">{{ model.serverLabel }}</span
         ><span class="bar-label-hover">DEFAULTS</span>
       </BarButton>
     </div>

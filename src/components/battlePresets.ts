@@ -1,4 +1,5 @@
-import { BATTLE_CONFIG } from '../battleBarConfig';
+import { BUILDABLE_UNIT_IDS } from '../game/sim/blueprints/unitRoster';
+import type { BattleMode } from '../battleBarConfig';
 import { persist, readPersisted } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
 
@@ -16,16 +17,65 @@ export type BattlePreset = {
   readonly metalDepositStep: number;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
+  /** Whether the host's grid-debug overlay is on by default. */
+  readonly grid: boolean;
+  /** Whether the bottom control bars are collapsed by default. */
+  readonly barsCollapsed: boolean;
 };
 
 export type BattlePresetSnapshot = Omit<BattlePreset, 'name'>;
 
+// Stable identifiers for the two presets that supply DEMO BATTLE and
+// REAL BATTLE bar defaults. The bars never carry their own defaults;
+// every fallback flows through one of these presets.
+export const DEMO_BATTLE_DEFAULT_PRESET_NAME = 'DEMO BATTLE DEFAULT';
+export const REAL_BATTLE_DEFAULT_PRESET_NAME = 'REAL BATTLE DEFAULT';
+
+const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
+  demo: DEMO_BATTLE_DEFAULT_PRESET_NAME,
+  real: REAL_BATTLE_DEFAULT_PRESET_NAME,
+};
+
 function allUnits(): readonly string[] {
-  return Object.keys(BATTLE_CONFIG.units);
+  return BUILDABLE_UNIT_IDS;
 }
 
 function buildPresets(): readonly BattlePreset[] {
   return [
+    {
+      name: DEMO_BATTLE_DEFAULT_PRESET_NAME,
+      units: allUnits(),
+      cap: 243,
+      forceFieldsObstructSight: true,
+      fogOfWarEnabled: true,
+      converterTax: 0.0,
+      centerMagnitude: 400,
+      dividersMagnitude: 400,
+      terrainMapShape: 'circle',
+      terrainDTerrain: 0,
+      metalDepositStep: 200,
+      mapWidthLandCells: 53,
+      mapLengthLandCells: 53,
+      grid: true,
+      barsCollapsed: false,
+    },
+    {
+      name: REAL_BATTLE_DEFAULT_PRESET_NAME,
+      units: allUnits(),
+      cap: 243,
+      forceFieldsObstructSight: true,
+      fogOfWarEnabled: true,
+      converterTax: 0.0,
+      centerMagnitude: 400,
+      dividersMagnitude: 400,
+      terrainMapShape: 'circle',
+      terrainDTerrain: 0,
+      metalDepositStep: 200,
+      mapWidthLandCells: 53,
+      mapLengthLandCells: 53,
+      grid: false,
+      barsCollapsed: false,
+    },
     {
       name: 'Lictor Mandate',
       units: allUnits(),
@@ -40,6 +90,8 @@ function buildPresets(): readonly BattlePreset[] {
       metalDepositStep: 200,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
+      grid: false,
+      barsCollapsed: false,
     },
     {
       name: 'Hoplon Phalanx',
@@ -55,6 +107,8 @@ function buildPresets(): readonly BattlePreset[] {
       metalDepositStep: 400,
       mapWidthLandCells: 79,
       mapLengthLandCells: 53,
+      grid: false,
+      barsCollapsed: false,
     },
     {
       name: 'Domovoi Tempest',
@@ -70,6 +124,8 @@ function buildPresets(): readonly BattlePreset[] {
       metalDepositStep: 100,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
+      grid: false,
+      barsCollapsed: false,
     },
     {
       name: 'Tuatha Vanguard',
@@ -85,6 +141,8 @@ function buildPresets(): readonly BattlePreset[] {
       metalDepositStep: 200,
       mapWidthLandCells: 23,
       mapLengthLandCells: 35,
+      grid: false,
+      barsCollapsed: false,
     },
     {
       name: 'Jötunn Crucible',
@@ -100,6 +158,8 @@ function buildPresets(): readonly BattlePreset[] {
       metalDepositStep: 800,
       mapWidthLandCells: 53,
       mapLengthLandCells: 79,
+      grid: false,
+      barsCollapsed: false,
     },
   ];
 }
@@ -108,6 +168,19 @@ export const BATTLE_PRESETS: readonly BattlePreset[] = buildPresets();
 export const DEFAULT_PRESET_NAME: string = BATTLE_PRESETS[0].name;
 
 const STORAGE_SELECTED_PRESET = 'battle-selected-preset';
+
+/** Resolve the preset that supplies the default values for a given
+ *  battle mode. Every DEMO BATTLE / REAL BATTLE bar default — cap,
+ *  fog of war, terrain, grid overlay, bar collapse — flows through
+ *  the preset returned here. The bars own no inline defaults. */
+export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
+  const name = MODE_DEFAULT_PRESET_NAMES[mode];
+  const found = BATTLE_PRESETS.find((p) => p.name === name);
+  if (!found) {
+    throw new Error(`Missing battle mode default preset: ${name}`);
+  }
+  return found;
+}
 
 export function getDefaultPreset(): BattlePreset {
   const name = loadDefaultPresetName();

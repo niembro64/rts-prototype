@@ -9,6 +9,7 @@ import {
   isDemoUnitEnabledByDefault,
 } from './game/sim/blueprints/unitRoster';
 import battleBarConfig from './battleBarConfig.json';
+import { getModeDefaultPreset } from './components/battlePresets';
 
 // ── Authored data lives in battleBarConfig.json ──
 // The TS shim composes BATTLE_CONFIG by reading the JSON and layering
@@ -88,11 +89,12 @@ export const BATTLE_CONFIG = {
   },
 } satisfies BattleBarConfig;
 
-// Default caps per mode (must be values from BATTLE_CONFIG.cap.options)
-export const DEMO_CAP_DEFAULT = BATTLE_CONFIG.cap.default;
-export const REAL_CAP_DEFAULT = BATTLE_CONFIG.cap.default;
-
-export const BATTLE_MODE_DEFAULTS = battleBarConfig.modeDefaults;
+// Per-mode defaults are not authored here. Each DEMO BATTLE / REAL
+// BATTLE bar reads its fallback values from the matching default
+// preset (DEMO BATTLE DEFAULT / REAL BATTLE DEFAULT) via
+// `getModeDefaultPreset(mode)` in battlePresets.ts.
+export const DEMO_CAP_DEFAULT = getModeDefaultPreset('demo').cap;
+export const REAL_CAP_DEFAULT = getModeDefaultPreset('real').cap;
 
 // ── localStorage keys (module-private) ──
 // `demo-battle-*` and `real-battle-*` namespace each setting to the
@@ -204,7 +206,7 @@ export function getDefaultDemoUnits(): string[] {
 }
 
 export function loadStoredDemoCap(): number {
-  return loadPosNum(STORAGE_DEMO_CAP) ?? BATTLE_MODE_DEFAULTS.demo.cap;
+  return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultPreset('demo').cap;
 }
 
 export function saveDemoCap(value: number): void {
@@ -212,7 +214,7 @@ export function saveDemoCap(value: number): void {
 }
 
 export function loadStoredRealCap(): number {
-  return loadPosNum(STORAGE_REAL_CAP) ?? BATTLE_MODE_DEFAULTS.real.cap;
+  return loadPosNum(STORAGE_REAL_CAP) ?? getModeDefaultPreset('real').cap;
 }
 
 export function saveRealCap(value: number): void {
@@ -220,7 +222,7 @@ export function saveRealCap(value: number): void {
 }
 
 export function loadStoredDemoGrid(): boolean {
-  return loadBool(STORAGE_DEMO_GRID) ?? BATTLE_MODE_DEFAULTS.demo.grid;
+  return loadBool(STORAGE_DEMO_GRID) ?? getModeDefaultPreset('demo').grid;
 }
 
 export function saveDemoGrid(enabled: boolean): void {
@@ -228,7 +230,7 @@ export function saveDemoGrid(enabled: boolean): void {
 }
 
 export function loadStoredRealGrid(): boolean {
-  return loadBool(STORAGE_REAL_GRID) ?? BATTLE_MODE_DEFAULTS.real.grid;
+  return loadBool(STORAGE_REAL_GRID) ?? getModeDefaultPreset('real').grid;
 }
 
 export function saveRealGrid(enabled: boolean): void {
@@ -247,7 +249,7 @@ export function saveStoredGrid(mode: BattleMode, enabled: boolean): void {
 export function loadStoredDemoBarsCollapsed(): boolean {
   return (
     loadBool(STORAGE_DEMO_BARS_COLLAPSED) ??
-    BATTLE_MODE_DEFAULTS.demo.barsCollapsed
+    getModeDefaultPreset('demo').barsCollapsed
   );
 }
 
@@ -258,7 +260,7 @@ export function saveDemoBarsCollapsed(collapsed: boolean): void {
 export function loadStoredRealBarsCollapsed(): boolean {
   return (
     loadBool(STORAGE_REAL_BARS_COLLAPSED) ??
-    BATTLE_MODE_DEFAULTS.real.barsCollapsed
+    getModeDefaultPreset('real').barsCollapsed
   );
 }
 
@@ -284,7 +286,7 @@ export type BattleTerrainRuntimeConfig = {
 };
 
 export function getDefaultCap(mode: BattleMode): number {
-  return BATTLE_MODE_DEFAULTS[mode].cap;
+  return getModeDefaultPreset(mode).cap;
 }
 
 export function loadStoredCap(mode: BattleMode): number {
@@ -297,11 +299,11 @@ export function saveStoredCap(mode: BattleMode, value: number): void {
 }
 
 export function getDefaultGrid(mode: BattleMode): boolean {
-  return BATTLE_MODE_DEFAULTS[mode].grid;
+  return getModeDefaultPreset(mode).grid;
 }
 
 export function getDefaultFogOfWar(mode: BattleMode): boolean {
-  return BATTLE_MODE_DEFAULTS[mode].fogOfWar;
+  return getModeDefaultPreset(mode).fogOfWarEnabled;
 }
 
 /** Read a per-mode boolean. When `mode === 'real'` and the real
@@ -373,7 +375,7 @@ export function loadStoredFogOfWarEnabled(mode: BattleMode): boolean {
     mode,
     STORAGE_REAL_FOG_OF_WAR_ENABLED,
     STORAGE_DEMO_FOG_OF_WAR_ENABLED,
-    BATTLE_MODE_DEFAULTS[mode].fogOfWar,
+    getModeDefaultPreset(mode).fogOfWarEnabled,
   );
 }
 

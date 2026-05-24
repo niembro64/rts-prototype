@@ -64,6 +64,7 @@ export type GameCanvasBattleControlBarModel = {
 export type GameCanvasServerControlBarModel = {
   readonly isReadonly: boolean;
   readonly barStyle: ControlBarStyle;
+  readonly serverLabel: string;
   readonly displayServerTime: string;
   readonly displayServerIp: string;
   readonly displayTickRate: TickRate;
@@ -83,6 +84,7 @@ export type GameCanvasServerControlBarModel = {
 
 export type GameCanvasClientControlBarModel = {
   readonly barStyle: ControlBarStyle;
+  readonly clientLabel: string;
   readonly playerClientEnabled: boolean;
   readonly displayedClientTime: string;
   readonly displayedClientIp: string;

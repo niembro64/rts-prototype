@@ -46,23 +46,23 @@ export function useGameCanvasServerSettings({
       tick: 0,
       rate: normalizedRate,
     });
-    saveSnapshotRate(normalizedRate);
+    saveSnapshotRate(normalizedRate, currentBattleMode.value);
   }
 
   function setTickRateValue(rate: TickRate): void {
     getActiveConnection()?.sendCommand({ type: 'setTickRate', tick: 0, rate });
-    saveTickRate(rate);
+    saveTickRate(rate, currentBattleMode.value);
   }
 
   function setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void {
     getActiveConnection()?.sendCommand({ type: 'setUnitGroundNormalEmaMode', tick: 0, mode });
-    saveUnitGroundNormalEmaMode(mode);
+    saveUnitGroundNormalEmaMode(mode, currentBattleMode.value);
     serverUnitGroundNormalEmaMode.value = mode;
   }
 
   function setKeyframeRatioValue(ratio: KeyframeRatio): void {
     getActiveConnection()?.sendCommand({ type: 'setKeyframeRatio', tick: 0, ratio });
-    saveKeyframeRatio(ratio);
+    saveKeyframeRatio(ratio, currentBattleMode.value);
   }
 
   function toggleSendGridInfo(): void {

@@ -33,13 +33,13 @@ export function applyStoredBattleServerSettings(
   options: StoredBattleServerSettingsOptions = DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS,
 ): void {
   const authority: CommandAuthority = { mode: 'host-admin' };
-  server.setTickRate(loadStoredTickRate());
-  server.setSnapshotRate(loadStoredSnapshotRate());
-  server.setKeyframeRatio(loadStoredKeyframeRatio());
+  server.setTickRate(loadStoredTickRate(mode));
+  server.setSnapshotRate(loadStoredSnapshotRate(mode));
+  server.setKeyframeRatio(loadStoredKeyframeRatio(mode));
   server.receiveCommand({
     type: 'setUnitGroundNormalEmaMode',
     tick: 0,
-    mode: loadStoredUnitGroundNormalEmaMode(),
+    mode: loadStoredUnitGroundNormalEmaMode(mode),
   }, authority);
 
   if (options.ipAddress !== undefined) {

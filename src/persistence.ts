@@ -42,8 +42,8 @@ export function readPersisted(key: string): string | null {
  *  old key has a value AND the new key is empty, copy the value
  *  over, then delete the old key. Idempotent — safe to call on
  *  every module load. Used to evolve the storage namespace (e.g.
- *  the `rts-*` → `player-client-*` / `host-server-*` / `demo-battle-*`
- *  / `real-battle-*` rename) without nuking users' saved settings. */
+ *  the `rts-*` → `host-server-*` / `demo-battle-*` / `real-battle-*`
+ *  rename) without nuking users' saved settings. */
 export function migrateKey(oldKey: string, newKey: string): void {
   try {
     const oldVal = localStorage.getItem(oldKey);

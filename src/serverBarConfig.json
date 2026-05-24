@@ -18,16 +18,14 @@
     "default": 0.0625,
     "options": ["ALL", 0.25, 0.0625, 0.015625, "NONE"]
   },
-  "storageKeys": {
-    "snapshotRate": "host-server-snapshot-rate",
-    "keyframeRatio": "host-server-keyframe-ratio",
-    "tickRate": "host-server-tick-rate",
-    "unitGroundNormalEmaMode": "host-server-unit-ground-normal-ema-mode"
+  "modeDefaults": {
+    "demo": {},
+    "real": {}
   },
-  "storageMigrations": [
-    ["rts-snapshot-rate", "host-server-snapshot-rate"],
-    ["rts-keyframe-ratio", "host-server-keyframe-ratio"],
-    ["rts-tick-rate", "host-server-tick-rate"],
-    ["host-server-tilt-ema-mode", "host-server-unit-ground-normal-ema-mode"]
-  ]
+  "storageKeySuffixes": {
+    "snapshotRate": "snapshot-rate",
+    "keyframeRatio": "keyframe-ratio",
+    "tickRate": "tick-rate",
+    "unitGroundNormalEmaMode": "unit-ground-normal-ema-mode"
+  }
 }

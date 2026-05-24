@@ -1,6 +1,6 @@
 {
   "cap": {
-    "default": 243,
+    "default": 81,
     "options": [9, 81, 243, 729, 1262, 2187]
   },
   "mirrorsEnabled": { "default": true },
@@ -34,21 +34,6 @@
   "converterTax": {
     "default": 0.0,
     "options": [0.0, 0.1, 0.5]
-  },
-
-  "modeDefaults": {
-    "demo": {
-      "cap": 243,
-      "grid": true,
-      "fogOfWar": true,
-      "barsCollapsed": false
-    },
-    "real": {
-      "cap": 243,
-      "grid": false,
-      "fogOfWar": true,
-      "barsCollapsed": false
-    }
   },
 
   "storageKeys": {

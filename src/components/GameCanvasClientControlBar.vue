@@ -62,13 +62,13 @@ defineProps<{
         title="Click to reset client settings to defaults"
         @click="model.resetClientDefaults"
       >
-        <span class="bar-label-text">PLAYER CLIENT</span
+        <span class="bar-label-text">{{ model.clientLabel }}</span
         ><span class="bar-label-hover">DEFAULTS</span>
       </BarButton>
       <BarButton
         :active="model.playerClientEnabled"
         class="client-power-button"
-        :title="model.playerClientEnabled ? 'Turn PLAYER CLIENT game rendering off' : 'Turn PLAYER CLIENT game rendering on'"
+        :title="model.playerClientEnabled ? `Turn ${model.clientLabel} game rendering off` : `Turn ${model.clientLabel} game rendering on`"
         @click="model.togglePlayerClientEnabled"
       >{{ model.playerClientEnabled ? 'ON' : 'OFF' }}</BarButton>
     </div>
@@ -196,7 +196,7 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="PLAYER CLIENT update-loop ticks per second. This includes prediction/input/render prep cadence.">R-TPS:</BarLabel>
+        <BarLabel :title="`${model.clientLabel} update-loop ticks per second. This includes prediction/input/render prep cadence.`">R-TPS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

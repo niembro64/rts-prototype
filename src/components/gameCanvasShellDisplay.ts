@@ -9,6 +9,7 @@ import type {
 import type { PlayerId } from '../game/sim/types';
 
 type UseGameCanvasShellDisplayOptions = {
+  currentBattleMode: Readonly<Ref<BattleMode>>;
   isMobile: boolean;
   showLobby: Ref<boolean>;
   spectateMode: Ref<boolean>;
@@ -23,6 +24,7 @@ type UseGameCanvasShellDisplayOptions = {
 };
 
 export function useGameCanvasShellDisplay({
+  currentBattleMode,
   isMobile,
   showLobby,
   spectateMode,
@@ -48,10 +50,6 @@ export function useGameCanvasShellDisplay({
     if (gameStarted.value) return 'OFFLINE';
     return networkNotice.value ? 'NETWORK' : '';
   });
-
-  const currentBattleMode = computed<BattleMode>(
-    () => (gameStarted.value || roomCode.value !== '' ? 'real' : 'demo'),
-  );
 
   const localLobbyPlayer = computed(
     () => lobbyPlayers.value.find((p) => p.playerId === localPlayerId.value) ?? null,
@@ -84,6 +82,12 @@ export function useGameCanvasShellDisplay({
   const clientBarVars = computed(() => barVars(BAR_THEMES.client));
 
   const battleLabel = computed(() => gameStarted.value ? 'REAL BATTLE' : 'DEMO BATTLE');
+  const serverLabel = computed(() =>
+    currentBattleMode.value === 'real' ? 'REAL SERVER' : 'DEMO SERVER',
+  );
+  const clientLabel = computed(() =>
+    currentBattleMode.value === 'real' ? 'REAL CLIENT' : 'DEMO CLIENT',
+  );
   return {
     lobbyPlayerCount,
     networkStatus,
@@ -97,5 +101,7 @@ export function useGameCanvasShellDisplay({
     serverBarVars,
     clientBarVars,
     battleLabel,
+    serverLabel,
+    clientLabel,
   };
 }

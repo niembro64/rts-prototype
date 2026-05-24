@@ -18,11 +18,12 @@ import type {
   WaypointDetail,
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
-import { persist, persistJson, readPersisted, migrateKey } from './persistence';
+import { persist, persistJson, readPersisted } from './persistence';
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 
 export type { CameraSmoothMode } from './types/client';
+export type ClientMode = 'demo' | 'real';
 
 // ── Authored data lives in clientBarConfig.json ──
 // The TS shim re-exports CLIENT_CONFIG as a typed view over the JSON.
@@ -32,6 +33,45 @@ export type { CameraSmoothMode } from './types/client';
 
 type OptionList<T> = ReadonlyArray<{ value: T; label: string }>;
 const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as GraphicsConfig;
+
+type ClientDefaults = {
+  readonly render: RenderMode;
+  readonly audio: Exclude<AudioScope, 'off'>;
+  readonly audioSmoothing: boolean;
+  readonly burnMarks: boolean;
+  readonly locomotionMarks: boolean;
+  readonly smokeTrails: boolean;
+  readonly beamSnapToTurret: boolean;
+  readonly triangleDebug: boolean;
+  readonly buildGridDebug: boolean;
+  readonly sightBoundary: boolean;
+  readonly radarBoundary: boolean;
+  readonly fogShade: boolean;
+  readonly fogClouds: boolean;
+  readonly predictionMode: PredictionMode;
+  readonly movementPosEma: PositionDriftChannelMode;
+  readonly movementVelEma: DriftChannelMode;
+  readonly rotationPosEma: PositionDriftChannelMode;
+  readonly rotationVelEma: DriftChannelMode;
+  readonly unitGroundNormalEma: DriftMode;
+  readonly legsRadius: boolean;
+  readonly cameraSmooth: CameraSmoothMode;
+  readonly cameraFov: CameraFovDegrees;
+  readonly edgeScroll: boolean;
+  readonly dragPan: boolean;
+  readonly sounds: Record<SoundCategory, boolean>;
+  readonly rangeToggles: boolean;
+  readonly projRangeToggles: boolean;
+  readonly unitRadiusToggles: boolean;
+  readonly lobbyVisible: { readonly mobile: boolean; readonly desktop: boolean };
+  readonly waypointDetail: WaypointDetail;
+};
+
+type ClientModeDefaultOverrides =
+  Partial<Omit<ClientDefaults, 'sounds' | 'lobbyVisible'>> & {
+    readonly sounds?: Partial<Record<SoundCategory, boolean>>;
+    readonly lobbyVisible?: Partial<ClientDefaults['lobbyVisible']>;
+  };
 
 export const CLIENT_CONFIG = {
   render: {
@@ -125,55 +165,204 @@ export const PROJ_RANGE_TYPES: ProjRangeType[] =
 export const UNIT_RADIUS_TYPES: UnitRadiusType[] =
   clientBarConfig.unitRadiusTypes as UnitRadiusType[];
 
-// ── localStorage keys (module-private) ──
-// Every key in this file is for the PLAYER CLIENT bar — namespace
-// prefix `player-client-` makes that explicit in DevTools and lets
-// the four bar namespaces (demo-battle, real-battle, host-server,
-// player-client) be wiped/inspected independently. The previous
-// `rts-*` keys are migrated on first load via `migrateKey()` so
-// existing users don't lose their preferences across this rename.
-const sk = clientBarConfig.storageKeys;
-const RENDER_MODE_STORAGE_KEY = sk.renderMode;
-const AUDIO_SCOPE_STORAGE_KEY = sk.audioScope;
-const AUDIO_SMOOTHING_STORAGE_KEY = sk.audioSmoothing;
-const BURN_MARKS_STORAGE_KEY = sk.burnMarks;
-const LOCOMOTION_MARKS_STORAGE_KEY = sk.locomotionMarks;
-const SMOKE_TRAILS_STORAGE_KEY = sk.smokeTrails;
-const BEAM_SNAP_TO_TURRET_STORAGE_KEY = sk.beamSnapToTurret;
-const TRIANGLE_DEBUG_STORAGE_KEY = sk.triangleDebug;
-const BUILD_GRID_DEBUG_STORAGE_KEY = sk.buildGridDebug;
-const SIGHT_BOUNDARY_STORAGE_KEY = sk.sightBoundary;
-const RADAR_BOUNDARY_STORAGE_KEY = sk.radarBoundary;
-const FOG_SHADE_STORAGE_KEY = sk.fogShade;
-const FOG_CLOUDS_STORAGE_KEY = sk.fogClouds;
-const MOVEMENT_POS_EMA_STORAGE_KEY = sk.movementPosEma;
-const MOVEMENT_VEL_EMA_STORAGE_KEY = sk.movementVelEma;
-const ROTATION_POS_EMA_STORAGE_KEY = sk.rotationPosEma;
-const ROTATION_VEL_EMA_STORAGE_KEY = sk.rotationVelEma;
-const PREDICTION_MODE_STORAGE_KEY = sk.predictionMode;
-const UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY = sk.unitGroundNormalEmaMode;
-const SOUND_TOGGLES_STORAGE_KEY = sk.soundToggles;
-const RANGE_TOGGLES_STORAGE_KEY = sk.rangeToggles;
-const PROJ_RANGE_TOGGLES_STORAGE_KEY = sk.projRangeToggles;
-const UNIT_RADIUS_TOGGLES_STORAGE_KEY = sk.unitRadiusToggles;
-const LEGS_RADIUS_STORAGE_KEY = sk.legsRadius;
-const CAMERA_SMOOTH_STORAGE_KEY = sk.cameraSmooth;
-const CAMERA_FOV_STORAGE_KEY = sk.cameraFov;
-const EDGE_SCROLL_STORAGE_KEY = sk.edgeScroll;
-const DRAG_PAN_STORAGE_KEY = sk.dragPan;
-// The "BUDGET ANNIHILATION" lobby modal IS the demo-battle pre-game
-// view — its visibility belongs to the demo-battle namespace.
-const LOBBY_VISIBLE_STORAGE_KEY = sk.lobbyVisible;
-const WAYPOINT_DETAIL_STORAGE_KEY = sk.waypointDetail;
+const BASE_CLIENT_DEFAULTS: ClientDefaults = {
+  render: CLIENT_CONFIG.render.default,
+  audio: CLIENT_CONFIG.audio.default,
+  audioSmoothing: CLIENT_CONFIG.audioSmoothing.default,
+  burnMarks: CLIENT_CONFIG.burnMarks.default,
+  locomotionMarks: CLIENT_CONFIG.locomotionMarks.default,
+  smokeTrails: CLIENT_CONFIG.smokeTrails.default,
+  beamSnapToTurret: CLIENT_CONFIG.beamSnapToTurret.default,
+  triangleDebug: CLIENT_CONFIG.triangleDebug.default,
+  buildGridDebug: CLIENT_CONFIG.buildGridDebug.default,
+  sightBoundary: CLIENT_CONFIG.sightBoundary.default,
+  radarBoundary: CLIENT_CONFIG.radarBoundary.default,
+  fogShade: CLIENT_CONFIG.fogShade.default,
+  fogClouds: CLIENT_CONFIG.fogClouds.default,
+  predictionMode: CLIENT_CONFIG.predictionMode.default,
+  movementPosEma: CLIENT_CONFIG.movementPosEma.default,
+  movementVelEma: CLIENT_CONFIG.movementVelEma.default,
+  rotationPosEma: CLIENT_CONFIG.rotationPosEma.default,
+  rotationVelEma: CLIENT_CONFIG.rotationVelEma.default,
+  unitGroundNormalEma: CLIENT_CONFIG.unitGroundNormalEma.default,
+  legsRadius: CLIENT_CONFIG.legsRadius.default,
+  cameraSmooth: CLIENT_CONFIG.cameraSmooth.default,
+  cameraFov: CLIENT_CONFIG.cameraFov.default,
+  edgeScroll: CLIENT_CONFIG.edgeScroll.default,
+  dragPan: CLIENT_CONFIG.dragPan.default,
+  sounds: { ...CLIENT_CONFIG.sounds.default },
+  rangeToggles: CLIENT_CONFIG.rangeToggles.default,
+  projRangeToggles: CLIENT_CONFIG.projRangeToggles.default,
+  unitRadiusToggles: CLIENT_CONFIG.unitRadiusToggles.default,
+  lobbyVisible: { ...CLIENT_CONFIG.lobbyVisible.default },
+  waypointDetail: CLIENT_CONFIG.waypointDetail.default,
+};
 
-// Migration table — old `rts-*` keys and renamed player-client keys
-// → current storage keys. Run once at module init (inside
-// `loadFromStorage` below) so renames are invisible to existing users.
-const LEGACY_KEY_MIGRATIONS: ReadonlyArray<readonly [string, string]> =
-  clientBarConfig.storageMigrations as unknown as ReadonlyArray<readonly [string, string]>;
+const CLIENT_MODE_DEFAULT_OVERRIDES =
+  clientBarConfig.modeDefaults as Record<ClientMode, ClientModeDefaultOverrides>;
+
+function resolveClientDefaults(mode: ClientMode): ClientDefaults {
+  const overrides = CLIENT_MODE_DEFAULT_OVERRIDES[mode] ?? {};
+  return {
+    ...BASE_CLIENT_DEFAULTS,
+    ...overrides,
+    sounds: {
+      ...BASE_CLIENT_DEFAULTS.sounds,
+      ...(overrides.sounds ?? {}),
+    },
+    lobbyVisible: {
+      ...BASE_CLIENT_DEFAULTS.lobbyVisible,
+      ...(overrides.lobbyVisible ?? {}),
+    },
+  };
+}
+
+function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
+  return {
+    ...CLIENT_CONFIG,
+    render: { ...CLIENT_CONFIG.render, default: defaults.render },
+    audio: { ...CLIENT_CONFIG.audio, default: defaults.audio },
+    audioSmoothing: { default: defaults.audioSmoothing },
+    burnMarks: { default: defaults.burnMarks },
+    locomotionMarks: { default: defaults.locomotionMarks },
+    smokeTrails: { default: defaults.smokeTrails },
+    beamSnapToTurret: { default: defaults.beamSnapToTurret },
+    triangleDebug: { default: defaults.triangleDebug },
+    buildGridDebug: { default: defaults.buildGridDebug },
+    sightBoundary: { default: defaults.sightBoundary },
+    radarBoundary: { default: defaults.radarBoundary },
+    fogShade: { default: defaults.fogShade },
+    fogClouds: { default: defaults.fogClouds },
+    predictionMode: { ...CLIENT_CONFIG.predictionMode, default: defaults.predictionMode },
+    movementPosEma: { ...CLIENT_CONFIG.movementPosEma, default: defaults.movementPosEma },
+    movementVelEma: { ...CLIENT_CONFIG.movementVelEma, default: defaults.movementVelEma },
+    rotationPosEma: { ...CLIENT_CONFIG.rotationPosEma, default: defaults.rotationPosEma },
+    rotationVelEma: { ...CLIENT_CONFIG.rotationVelEma, default: defaults.rotationVelEma },
+    unitGroundNormalEma: {
+      ...CLIENT_CONFIG.unitGroundNormalEma,
+      default: defaults.unitGroundNormalEma,
+    },
+    legsRadius: { default: defaults.legsRadius },
+    cameraSmooth: { ...CLIENT_CONFIG.cameraSmooth, default: defaults.cameraSmooth },
+    cameraFov: { ...CLIENT_CONFIG.cameraFov, default: defaults.cameraFov },
+    edgeScroll: { default: defaults.edgeScroll },
+    dragPan: { default: defaults.dragPan },
+    sounds: { default: { ...defaults.sounds } },
+    rangeToggles: { default: defaults.rangeToggles },
+    projRangeToggles: { default: defaults.projRangeToggles },
+    unitRadiusToggles: { default: defaults.unitRadiusToggles },
+    lobbyVisible: { default: { ...defaults.lobbyVisible } },
+    waypointDetail: { ...CLIENT_CONFIG.waypointDetail, default: defaults.waypointDetail },
+  };
+}
+
+const CLIENT_MODE_CONFIGS: Record<ClientMode, ClientBarConfig> = {
+  demo: buildClientConfig(resolveClientDefaults('demo')),
+  real: buildClientConfig(resolveClientDefaults('real')),
+};
+
+// ── localStorage keys (module-private) ──
+// DEMO CLIENT and REAL CLIENT settings live in separate namespaces.
+// No legacy keys are migrated into these namespaces.
+type ClientStorageKeyName =
+  | 'renderMode'
+  | 'audioScope'
+  | 'audioSmoothing'
+  | 'burnMarks'
+  | 'locomotionMarks'
+  | 'smokeTrails'
+  | 'beamSnapToTurret'
+  | 'triangleDebug'
+  | 'buildGridDebug'
+  | 'sightBoundary'
+  | 'radarBoundary'
+  | 'fogShade'
+  | 'fogClouds'
+  | 'movementPosEma'
+  | 'movementVelEma'
+  | 'rotationPosEma'
+  | 'rotationVelEma'
+  | 'predictionMode'
+  | 'unitGroundNormalEmaMode'
+  | 'soundToggles'
+  | 'rangeToggles'
+  | 'projRangeToggles'
+  | 'unitRadiusToggles'
+  | 'legsRadius'
+  | 'cameraSmooth'
+  | 'cameraFov'
+  | 'edgeScroll'
+  | 'dragPan'
+  | 'lobbyVisible'
+  | 'waypointDetail';
+
+type ClientStorageKeys = Record<ClientStorageKeyName, string>;
+
+const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
+  'renderMode',
+  'audioScope',
+  'audioSmoothing',
+  'burnMarks',
+  'locomotionMarks',
+  'smokeTrails',
+  'beamSnapToTurret',
+  'triangleDebug',
+  'buildGridDebug',
+  'sightBoundary',
+  'radarBoundary',
+  'fogShade',
+  'fogClouds',
+  'movementPosEma',
+  'movementVelEma',
+  'rotationPosEma',
+  'rotationVelEma',
+  'predictionMode',
+  'unitGroundNormalEmaMode',
+  'soundToggles',
+  'rangeToggles',
+  'projRangeToggles',
+  'unitRadiusToggles',
+  'legsRadius',
+  'cameraSmooth',
+  'cameraFov',
+  'edgeScroll',
+  'dragPan',
+  'lobbyVisible',
+  'waypointDetail',
+];
+
+const storageKeySuffixes =
+  clientBarConfig.storageKeySuffixes as Record<ClientStorageKeyName, string>;
+
+function buildStorageKeys(mode: ClientMode): ClientStorageKeys {
+  const keys = {} as ClientStorageKeys;
+  for (const name of CLIENT_STORAGE_KEY_NAMES) {
+    keys[name] = `${mode}-client-${storageKeySuffixes[name]}`;
+  }
+  return keys;
+}
+
+const CLIENT_STORAGE_KEYS: Record<ClientMode, ClientStorageKeys> = {
+  demo: buildStorageKeys('demo'),
+  real: buildStorageKeys('real'),
+};
 
 // ── Runtime state ──
-const _cd = CLIENT_CONFIG;
+let currentClientMode: ClientMode = 'demo';
+
+export function getClientMode(): ClientMode {
+  return currentClientMode;
+}
+
+export function getClientConfig(mode: ClientMode = currentClientMode): ClientBarConfig {
+  return CLIENT_MODE_CONFIGS[mode];
+}
+
+function activeStorageKeys(): ClientStorageKeys {
+  return CLIENT_STORAGE_KEYS[currentClientMode];
+}
+
+const _cd = CLIENT_MODE_CONFIGS.demo;
 let currentRenderMode: RenderMode = _cd.render.default;
 const currentRangeToggles: Record<RangeType, boolean> = {
   trackAcquire: _cd.rangeToggles.default,
@@ -224,6 +413,7 @@ const _isMobile = typeof navigator !== 'undefined' &&
 let currentLobbyVisible: boolean = _isMobile
   ? _cd.lobbyVisible.default.mobile
   : _cd.lobbyVisible.default.desktop;
+let currentWaypointDetail: WaypointDetail = _cd.waypointDetail.default;
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
   return _cd.cameraFov.options.some((opt) => opt.value === value);
@@ -257,12 +447,51 @@ function readPositionDriftChannelMode(
   return isPositionDriftChannelMode(stored) ? stored : fallback;
 }
 
-// ── Load from localStorage on module init ──
+function applyClientDefaults(mode: ClientMode): void {
+  const cd = getClientConfig(mode);
+  currentRenderMode = cd.render.default;
+  for (const rt of RANGE_TYPES) currentRangeToggles[rt] = cd.rangeToggles.default;
+  for (const prt of PROJ_RANGE_TYPES) currentProjRangeToggles[prt] = cd.projRangeToggles.default;
+  for (const urt of UNIT_RADIUS_TYPES) currentUnitRadiusToggles[urt] = cd.unitRadiusToggles.default;
+  currentLegsRadius = cd.legsRadius.default;
+  currentCameraSmoothMode = cd.cameraSmooth.default;
+  currentCameraFovDegrees = cd.cameraFov.default;
+  currentAudioScope = cd.audio.default;
+  currentAudioSmoothing = cd.audioSmoothing.default;
+  currentBurnMarks = cd.burnMarks.default;
+  currentLocomotionMarks = cd.locomotionMarks.default;
+  currentSmokeTrails = cd.smokeTrails.default;
+  currentBeamSnapToTurret = cd.beamSnapToTurret.default;
+  currentTriangleDebug = cd.triangleDebug.default;
+  currentBuildGridDebug = cd.buildGridDebug.default;
+  currentSightBoundary = cd.sightBoundary.default;
+  currentRadarBoundary = cd.radarBoundary.default;
+  currentFogShade = cd.fogShade.default;
+  currentFogClouds = cd.fogClouds.default;
+  currentMovementPosEma = cd.movementPosEma.default;
+  currentMovementVelEma = cd.movementVelEma.default;
+  currentRotationPosEma = cd.rotationPosEma.default;
+  currentRotationVelEma = cd.rotationVelEma.default;
+  currentPredictionMode = cd.predictionMode.default;
+  currentClientUnitGroundNormalEmaMode = cd.unitGroundNormalEma.default;
+  for (const cat of SOUND_CATEGORIES) currentSoundToggles[cat] = cd.sounds.default[cat];
+  currentEdgeScrollEnabled = cd.edgeScroll.default;
+  currentDragPanEnabled = cd.dragPan.default;
+  currentLobbyVisible = _isMobile
+    ? cd.lobbyVisible.default.mobile
+    : cd.lobbyVisible.default.desktop;
+  currentWaypointDetail = cd.waypointDetail.default;
+}
+
+// ── Load from localStorage on module init / mode switch ──
 // Each read is independent — a bad JSON value or throw from ONE key
 // must not prevent every later key from loading.
-function loadFromStorage(): void {
-  for (const [oldK, newK] of LEGACY_KEY_MIGRATIONS) migrateKey(oldK, newK);
-  const storedRenderMode = readPersisted(RENDER_MODE_STORAGE_KEY);
+function loadFromStorage(mode: ClientMode): void {
+  currentClientMode = mode;
+  applyClientDefaults(mode);
+  const cd = getClientConfig(mode);
+  const keys = CLIENT_STORAGE_KEYS[mode];
+  const storedRenderMode = readPersisted(keys.renderMode);
   if (
     storedRenderMode &&
     (storedRenderMode === 'window' ||
@@ -271,7 +500,7 @@ function loadFromStorage(): void {
   ) {
     currentRenderMode = storedRenderMode;
   }
-  const storedAudioScope = readPersisted(AUDIO_SCOPE_STORAGE_KEY);
+  const storedAudioScope = readPersisted(keys.audioScope);
   if (
     storedAudioScope &&
     (storedAudioScope === 'off' ||
@@ -281,55 +510,55 @@ function loadFromStorage(): void {
   ) {
     currentAudioScope = storedAudioScope;
   }
-  const storedAudioSmoothing = readPersisted(AUDIO_SMOOTHING_STORAGE_KEY);
+  const storedAudioSmoothing = readPersisted(keys.audioSmoothing);
   if (storedAudioSmoothing !== null) {
     currentAudioSmoothing = storedAudioSmoothing === 'true';
   }
-  const storedBurnMarks = readPersisted(BURN_MARKS_STORAGE_KEY);
+  const storedBurnMarks = readPersisted(keys.burnMarks);
   if (storedBurnMarks !== null) {
     currentBurnMarks = storedBurnMarks === 'true';
   }
-  const storedLocomotionMarks = readPersisted(LOCOMOTION_MARKS_STORAGE_KEY);
+  const storedLocomotionMarks = readPersisted(keys.locomotionMarks);
   if (storedLocomotionMarks !== null) {
     currentLocomotionMarks = storedLocomotionMarks === 'true';
   }
-  const storedSmokeTrails = readPersisted(SMOKE_TRAILS_STORAGE_KEY);
+  const storedSmokeTrails = readPersisted(keys.smokeTrails);
   if (storedSmokeTrails !== null) {
     currentSmokeTrails = storedSmokeTrails === 'true';
   }
-  const storedBeamSnapToTurret = readPersisted(BEAM_SNAP_TO_TURRET_STORAGE_KEY);
+  const storedBeamSnapToTurret = readPersisted(keys.beamSnapToTurret);
   if (storedBeamSnapToTurret !== null) {
     currentBeamSnapToTurret = storedBeamSnapToTurret === 'true';
   }
-  const storedTriangleDebug = readPersisted(TRIANGLE_DEBUG_STORAGE_KEY);
+  const storedTriangleDebug = readPersisted(keys.triangleDebug);
   if (storedTriangleDebug !== null) {
     currentTriangleDebug = storedTriangleDebug === 'true';
   }
-  const storedBuildGridDebug = readPersisted(BUILD_GRID_DEBUG_STORAGE_KEY);
+  const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
     currentBuildGridDebug = storedBuildGridDebug === 'true';
   }
-  const storedSightBoundary = readPersisted(SIGHT_BOUNDARY_STORAGE_KEY);
+  const storedSightBoundary = readPersisted(keys.sightBoundary);
   if (storedSightBoundary !== null) {
     currentSightBoundary = storedSightBoundary === 'true';
   }
-  const storedRadarBoundary = readPersisted(RADAR_BOUNDARY_STORAGE_KEY);
+  const storedRadarBoundary = readPersisted(keys.radarBoundary);
   if (storedRadarBoundary !== null) {
     currentRadarBoundary = storedRadarBoundary === 'true';
   }
-  const storedFogShade = readPersisted(FOG_SHADE_STORAGE_KEY);
+  const storedFogShade = readPersisted(keys.fogShade);
   if (storedFogShade !== null) {
     currentFogShade = storedFogShade === 'true';
   }
-  const storedFogClouds = readPersisted(FOG_CLOUDS_STORAGE_KEY);
+  const storedFogClouds = readPersisted(keys.fogClouds);
   if (storedFogClouds !== null) {
     currentFogClouds = storedFogClouds === 'true';
   }
-  const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
+  const storedLegsRadius = readPersisted(keys.legsRadius);
   if (storedLegsRadius !== null) {
     currentLegsRadius = storedLegsRadius === 'true';
   }
-  const storedCameraSmooth = readPersisted(CAMERA_SMOOTH_STORAGE_KEY);
+  const storedCameraSmooth = readPersisted(keys.cameraSmooth);
   if (
     storedCameraSmooth === 'snap'
     || storedCameraSmooth === 'fast'
@@ -338,11 +567,11 @@ function loadFromStorage(): void {
   ) {
     currentCameraSmoothMode = storedCameraSmooth;
   } else if (storedCameraSmooth === 'true') {
-    currentCameraSmoothMode = _cd.cameraSmooth.default;
+    currentCameraSmoothMode = cd.cameraSmooth.default;
   } else if (storedCameraSmooth === 'false') {
     currentCameraSmoothMode = 'snap';
   }
-  const storedCameraFov = readPersisted(CAMERA_FOV_STORAGE_KEY);
+  const storedCameraFov = readPersisted(keys.cameraFov);
   if (storedCameraFov !== null) {
     const parsed = Number(storedCameraFov);
     if (Number.isFinite(parsed) && isCameraFovDegrees(parsed)) {
@@ -350,29 +579,29 @@ function loadFromStorage(): void {
     }
   }
   currentMovementPosEma = readPositionDriftChannelMode(
-    MOVEMENT_POS_EMA_STORAGE_KEY,
+    keys.movementPosEma,
     currentMovementPosEma,
   );
   currentMovementVelEma = readDriftChannelMode(
-    MOVEMENT_VEL_EMA_STORAGE_KEY,
+    keys.movementVelEma,
     currentMovementVelEma,
   );
   currentRotationPosEma = readPositionDriftChannelMode(
-    ROTATION_POS_EMA_STORAGE_KEY,
+    keys.rotationPosEma,
     currentRotationPosEma,
   );
   currentRotationVelEma = readDriftChannelMode(
-    ROTATION_VEL_EMA_STORAGE_KEY,
+    keys.rotationVelEma,
     currentRotationVelEma,
   );
-  const storedPredictionMode = readPersisted(PREDICTION_MODE_STORAGE_KEY);
+  const storedPredictionMode = readPersisted(keys.predictionMode);
   if (
     storedPredictionMode === 'pos' ||
     storedPredictionMode === 'vel'
   ) {
     currentPredictionMode = storedPredictionMode;
   }
-  const storedClientUnitGroundNormal = readPersisted(UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY);
+  const storedClientUnitGroundNormal = readPersisted(keys.unitGroundNormalEmaMode);
   if (
     storedClientUnitGroundNormal &&
     (storedClientUnitGroundNormal === 'snap' ||
@@ -382,7 +611,7 @@ function loadFromStorage(): void {
   ) {
     currentClientUnitGroundNormalEmaMode = storedClientUnitGroundNormal;
   }
-  const storedSoundToggles = readPersisted(SOUND_TOGGLES_STORAGE_KEY);
+  const storedSoundToggles = readPersisted(keys.soundToggles);
   if (storedSoundToggles) {
     try {
       const parsed = JSON.parse(storedSoundToggles);
@@ -393,7 +622,7 @@ function loadFromStorage(): void {
       }
     } catch { /* malformed JSON — keep defaults */ }
   }
-  const storedRangeToggles = readPersisted(RANGE_TOGGLES_STORAGE_KEY);
+  const storedRangeToggles = readPersisted(keys.rangeToggles);
   if (storedRangeToggles) {
     try {
       const parsed = JSON.parse(storedRangeToggles);
@@ -404,7 +633,7 @@ function loadFromStorage(): void {
       }
     } catch { /* malformed JSON — keep defaults */ }
   }
-  const storedProjRangeToggles = readPersisted(PROJ_RANGE_TOGGLES_STORAGE_KEY);
+  const storedProjRangeToggles = readPersisted(keys.projRangeToggles);
   if (storedProjRangeToggles) {
     try {
       const parsed = JSON.parse(storedProjRangeToggles);
@@ -415,7 +644,7 @@ function loadFromStorage(): void {
       }
     } catch { /* malformed JSON — keep defaults */ }
   }
-  const storedUnitRadiusToggles = readPersisted(UNIT_RADIUS_TOGGLES_STORAGE_KEY);
+  const storedUnitRadiusToggles = readPersisted(keys.unitRadiusToggles);
   if (storedUnitRadiusToggles) {
     try {
       const parsed = JSON.parse(storedUnitRadiusToggles);
@@ -426,28 +655,28 @@ function loadFromStorage(): void {
       }
     } catch { /* malformed JSON — keep defaults */ }
   }
-  const storedEdgeScroll = readPersisted(EDGE_SCROLL_STORAGE_KEY);
+  const storedEdgeScroll = readPersisted(keys.edgeScroll);
   if (storedEdgeScroll !== null) {
     currentEdgeScrollEnabled = storedEdgeScroll === 'true';
   }
-  const storedDragPan = readPersisted(DRAG_PAN_STORAGE_KEY);
+  const storedDragPan = readPersisted(keys.dragPan);
   if (storedDragPan !== null) {
     currentDragPanEnabled = storedDragPan === 'true';
   }
-  const storedLobbyVisible = readPersisted(LOBBY_VISIBLE_STORAGE_KEY);
+  const storedLobbyVisible = readPersisted(keys.lobbyVisible);
   if (storedLobbyVisible !== null) {
     currentLobbyVisible = storedLobbyVisible === 'true';
   }
-  const storedWaypointDetail = readPersisted(WAYPOINT_DETAIL_STORAGE_KEY);
+  const storedWaypointDetail = readPersisted(keys.waypointDetail);
   if (storedWaypointDetail === 'simple' || storedWaypointDetail === 'detailed') {
     currentWaypointDetail = storedWaypointDetail;
   }
 }
 
-// NOTE: loadFromStorage() is invoked at the very bottom of this file,
-// after every module-level `let current*` declaration — otherwise the
-// waypoint-detail block below would hit a temporal-dead-zone
-// ReferenceError because that state variable is declared later in the file.
+export function setClientMode(mode: ClientMode): void {
+  if (mode === currentClientMode) return;
+  loadFromStorage(mode);
+}
 
 export function getGraphicsConfig(): GraphicsConfig {
   return PLAYER_CLIENT_MAX_GRAPHICS_CONFIG;
@@ -459,7 +688,7 @@ export function getRenderMode(): RenderMode {
 
 export function setRenderMode(mode: RenderMode): void {
   currentRenderMode = mode;
-  persist(RENDER_MODE_STORAGE_KEY, mode);
+  persist(activeStorageKeys().renderMode, mode);
 }
 
 export function getRangeToggle(type: RangeType): boolean {
@@ -468,7 +697,7 @@ export function getRangeToggle(type: RangeType): boolean {
 
 export function setRangeToggle(type: RangeType, show: boolean): void {
   currentRangeToggles[type] = show;
-  persistJson(RANGE_TOGGLES_STORAGE_KEY, currentRangeToggles);
+  persistJson(activeStorageKeys().rangeToggles, currentRangeToggles);
 }
 
 export function anyRangeToggleActive(): boolean {
@@ -481,7 +710,7 @@ export function getProjRangeToggle(type: ProjRangeType): boolean {
 
 export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   currentProjRangeToggles[type] = show;
-  persistJson(PROJ_RANGE_TOGGLES_STORAGE_KEY, currentProjRangeToggles);
+  persistJson(activeStorageKeys().projRangeToggles, currentProjRangeToggles);
 }
 
 export function anyProjRangeToggleActive(): boolean {
@@ -494,7 +723,7 @@ export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
 
 export function setUnitRadiusToggle(type: UnitRadiusType, show: boolean): void {
   currentUnitRadiusToggles[type] = show;
-  persistJson(UNIT_RADIUS_TOGGLES_STORAGE_KEY, currentUnitRadiusToggles);
+  persistJson(activeStorageKeys().unitRadiusToggles, currentUnitRadiusToggles);
 }
 
 export function anyUnitRadiusToggleActive(): boolean {
@@ -507,7 +736,7 @@ export function getLegsRadiusToggle(): boolean {
 
 export function setLegsRadiusToggle(show: boolean): void {
   currentLegsRadius = show;
-  persist(LEGS_RADIUS_STORAGE_KEY, String(show));
+  persist(activeStorageKeys().legsRadius, String(show));
 }
 
 export function getCameraSmoothMode(): CameraSmoothMode {
@@ -516,7 +745,7 @@ export function getCameraSmoothMode(): CameraSmoothMode {
 
 export function setCameraSmoothMode(mode: CameraSmoothMode): void {
   currentCameraSmoothMode = mode;
-  persist(CAMERA_SMOOTH_STORAGE_KEY, mode);
+  persist(activeStorageKeys().cameraSmooth, mode);
 }
 
 export function getCameraFovDegrees(): CameraFovDegrees {
@@ -525,7 +754,7 @@ export function getCameraFovDegrees(): CameraFovDegrees {
 
 export function setCameraFovDegrees(fov: CameraFovDegrees): void {
   currentCameraFovDegrees = fov;
-  persist(CAMERA_FOV_STORAGE_KEY, String(fov));
+  persist(activeStorageKeys().cameraFov, String(fov));
 }
 
 export function getAudioScope(): AudioScope {
@@ -534,7 +763,7 @@ export function getAudioScope(): AudioScope {
 
 export function setAudioScope(scope: AudioScope): void {
   currentAudioScope = scope;
-  persist(AUDIO_SCOPE_STORAGE_KEY, scope);
+  persist(activeStorageKeys().audioScope, scope);
 }
 
 export function getAudioSmoothing(): boolean {
@@ -543,7 +772,7 @@ export function getAudioSmoothing(): boolean {
 
 export function setAudioSmoothing(enabled: boolean): void {
   currentAudioSmoothing = enabled;
-  persist(AUDIO_SMOOTHING_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().audioSmoothing, String(enabled));
 }
 
 /** Burn-mark toggle: beam, laser, and dgun projectile scorch trails
@@ -556,7 +785,7 @@ export function getBurnMarks(): boolean {
 
 export function setBurnMarks(enabled: boolean): void {
   currentBurnMarks = enabled;
-  persist(BURN_MARKS_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().burnMarks, String(enabled));
 }
 
 /** Locomotion-mark toggle: wheel, tread, and footstep prints from
@@ -568,7 +797,7 @@ export function getLocomotionMarks(): boolean {
 
 export function setLocomotionMarks(enabled: boolean): void {
   currentLocomotionMarks = enabled;
-  persist(LOCOMOTION_MARKS_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().locomotionMarks, String(enabled));
 }
 
 /** Smoke-trail toggle: thrust-projectile smoke puffs rendered by
@@ -580,7 +809,7 @@ export function getSmokeTrails(): boolean {
 
 export function setSmokeTrails(enabled: boolean): void {
   currentSmokeTrails = enabled;
-  persist(SMOKE_TRAILS_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().smokeTrails, String(enabled));
 }
 
 export function getBeamSnapToTurret(): boolean {
@@ -589,7 +818,7 @@ export function getBeamSnapToTurret(): boolean {
 
 export function setBeamSnapToTurret(enabled: boolean): void {
   currentBeamSnapToTurret = enabled;
-  persist(BEAM_SNAP_TO_TURRET_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().beamSnapToTurret, String(enabled));
 }
 
 export function getTriangleDebug(): boolean {
@@ -598,7 +827,7 @@ export function getTriangleDebug(): boolean {
 
 export function setTriangleDebug(enabled: boolean): void {
   currentTriangleDebug = enabled;
-  persist(TRIANGLE_DEBUG_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().triangleDebug, String(enabled));
 }
 
 export function getBuildGridDebug(): boolean {
@@ -607,7 +836,7 @@ export function getBuildGridDebug(): boolean {
 
 export function setBuildGridDebug(enabled: boolean): void {
   currentBuildGridDebug = enabled;
-  persist(BUILD_GRID_DEBUG_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().buildGridDebug, String(enabled));
 }
 
 export function getSightBoundary(): boolean {
@@ -616,7 +845,7 @@ export function getSightBoundary(): boolean {
 
 export function setSightBoundary(enabled: boolean): void {
   currentSightBoundary = enabled;
-  persist(SIGHT_BOUNDARY_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().sightBoundary, String(enabled));
 }
 
 export function getRadarBoundary(): boolean {
@@ -625,7 +854,7 @@ export function getRadarBoundary(): boolean {
 
 export function setRadarBoundary(enabled: boolean): void {
   currentRadarBoundary = enabled;
-  persist(RADAR_BOUNDARY_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().radarBoundary, String(enabled));
 }
 
 export function getFogShade(): boolean {
@@ -634,7 +863,7 @@ export function getFogShade(): boolean {
 
 export function setFogShade(enabled: boolean): void {
   currentFogShade = enabled;
-  persist(FOG_SHADE_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().fogShade, String(enabled));
 }
 
 export function getFogClouds(): boolean {
@@ -643,7 +872,7 @@ export function getFogClouds(): boolean {
 
 export function setFogClouds(enabled: boolean): void {
   currentFogClouds = enabled;
-  persist(FOG_CLOUDS_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().fogClouds, String(enabled));
 }
 
 export function getMovementPosEmaMode(): PositionDriftChannelMode {
@@ -652,7 +881,7 @@ export function getMovementPosEmaMode(): PositionDriftChannelMode {
 
 export function setMovementPosEmaMode(mode: PositionDriftChannelMode): void {
   currentMovementPosEma = mode;
-  persist(MOVEMENT_POS_EMA_STORAGE_KEY, mode);
+  persist(activeStorageKeys().movementPosEma, mode);
 }
 
 export function getMovementVelEmaMode(): DriftChannelMode {
@@ -661,7 +890,7 @@ export function getMovementVelEmaMode(): DriftChannelMode {
 
 export function setMovementVelEmaMode(mode: DriftChannelMode): void {
   currentMovementVelEma = mode;
-  persist(MOVEMENT_VEL_EMA_STORAGE_KEY, mode);
+  persist(activeStorageKeys().movementVelEma, mode);
 }
 
 export function getRotationPosEmaMode(): PositionDriftChannelMode {
@@ -670,7 +899,7 @@ export function getRotationPosEmaMode(): PositionDriftChannelMode {
 
 export function setRotationPosEmaMode(mode: PositionDriftChannelMode): void {
   currentRotationPosEma = mode;
-  persist(ROTATION_POS_EMA_STORAGE_KEY, mode);
+  persist(activeStorageKeys().rotationPosEma, mode);
 }
 
 export function getRotationVelEmaMode(): DriftChannelMode {
@@ -679,7 +908,7 @@ export function getRotationVelEmaMode(): DriftChannelMode {
 
 export function setRotationVelEmaMode(mode: DriftChannelMode): void {
   currentRotationVelEma = mode;
-  persist(ROTATION_VEL_EMA_STORAGE_KEY, mode);
+  persist(activeStorageKeys().rotationVelEma, mode);
 }
 
 export function getPredictionMode(): PredictionMode {
@@ -688,7 +917,7 @@ export function getPredictionMode(): PredictionMode {
 
 export function setPredictionMode(mode: PredictionMode): void {
   currentPredictionMode = mode;
-  persist(PREDICTION_MODE_STORAGE_KEY, mode);
+  persist(activeStorageKeys().predictionMode, mode);
 }
 
 /** Active client-side unit ground normal EMA mode. */
@@ -698,7 +927,7 @@ export function getClientUnitGroundNormalEmaMode(): DriftMode {
 
 export function setClientUnitGroundNormalEmaMode(mode: DriftMode): void {
   currentClientUnitGroundNormalEmaMode = mode;
-  persist(UNIT_GROUND_NORMAL_EMA_MODE_STORAGE_KEY, mode);
+  persist(activeStorageKeys().unitGroundNormalEmaMode, mode);
 }
 
 export function getSoundToggle(category: SoundCategory): boolean {
@@ -710,7 +939,7 @@ export function setSoundToggle(
   enabled: boolean,
 ): void {
   currentSoundToggles[category] = enabled;
-  persistJson(SOUND_TOGGLES_STORAGE_KEY, currentSoundToggles);
+  persistJson(activeStorageKeys().soundToggles, currentSoundToggles);
 }
 
 export function getEdgeScrollEnabled(): boolean {
@@ -719,7 +948,7 @@ export function getEdgeScrollEnabled(): boolean {
 
 export function setEdgeScrollEnabled(enabled: boolean): void {
   currentEdgeScrollEnabled = enabled;
-  persist(EDGE_SCROLL_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().edgeScroll, String(enabled));
 }
 
 export function getDragPanEnabled(): boolean {
@@ -728,7 +957,7 @@ export function getDragPanEnabled(): boolean {
 
 export function setDragPanEnabled(enabled: boolean): void {
   currentDragPanEnabled = enabled;
-  persist(DRAG_PAN_STORAGE_KEY, String(enabled));
+  persist(activeStorageKeys().dragPan, String(enabled));
 }
 
 export function getLobbyVisible(): boolean {
@@ -737,12 +966,8 @@ export function getLobbyVisible(): boolean {
 
 export function setLobbyVisible(visible: boolean): void {
   currentLobbyVisible = visible;
-  persist(LOBBY_VISIBLE_STORAGE_KEY, String(visible));
+  persist(activeStorageKeys().lobbyVisible, String(visible));
 }
-
-// ── Waypoint detail mode ──
-
-let currentWaypointDetail: WaypointDetail = _cd.waypointDetail.default;
 
 export function getWaypointDetail(): WaypointDetail {
   return currentWaypointDetail;
@@ -750,10 +975,9 @@ export function getWaypointDetail(): WaypointDetail {
 
 export function setWaypointDetail(mode: WaypointDetail): void {
   currentWaypointDetail = mode;
-  persist(WAYPOINT_DETAIL_STORAGE_KEY, mode);
+  persist(activeStorageKeys().waypointDetail, mode);
 }
 
-// Run the localStorage loader AFTER every state variable above has
-// been declared. Keeping this at the bottom is load-bearing — moving
-// it back near the loader definition will crash on module init.
-loadFromStorage();
+// Initial page load starts on the demo shell; GameCanvas switches this
+// to the real namespace when the user enters the lobby or starts a game.
+loadFromStorage('demo');

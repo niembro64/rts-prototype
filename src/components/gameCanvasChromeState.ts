@@ -4,6 +4,7 @@ import {
   loadStoredRealBarsCollapsed,
   saveDemoBarsCollapsed,
   saveRealBarsCollapsed,
+  type BattleMode,
 } from '../battleBarConfig';
 import {
   getLobbyVisible,
@@ -15,20 +16,23 @@ type PlayerClientRenderInstance = {
   getScene?: () => { setClientRenderEnabled(enabled: boolean): void } | null | undefined;
 };
 
-const PLAYER_CLIENT_ENABLED_STORAGE_KEY = 'player-client-game-enabled';
+const CLIENT_ENABLED_STORAGE_KEYS: Record<BattleMode, string> = {
+  demo: 'demo-client-game-enabled',
+  real: 'real-client-game-enabled',
+};
 
-function loadStoredPlayerClientEnabled(): boolean {
+function loadStoredClientEnabled(mode: BattleMode): boolean {
   try {
-    const raw = window.localStorage.getItem(PLAYER_CLIENT_ENABLED_STORAGE_KEY);
+    const raw = window.localStorage.getItem(CLIENT_ENABLED_STORAGE_KEYS[mode]);
     return raw === null ? true : raw !== 'false';
   } catch {
     return true;
   }
 }
 
-function savePlayerClientEnabled(enabled: boolean): void {
+function saveClientEnabled(mode: BattleMode, enabled: boolean): void {
   try {
-    window.localStorage.setItem(PLAYER_CLIENT_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false');
+    window.localStorage.setItem(CLIENT_ENABLED_STORAGE_KEYS[mode], enabled ? 'true' : 'false');
   } catch {
     // The toggle still works for this session when storage is unavailable.
   }
@@ -44,7 +48,7 @@ export function setPlayerClientRenderEnabled(
 }
 
 export function useGameCanvasChromeState(
-  gameStarted: Ref<boolean>,
+  currentBattleMode: Readonly<Ref<BattleMode>>,
   onPlayerClientEnabledChange: () => void,
 ): {
   mobileBarsVisible: Ref<boolean>;
@@ -57,24 +61,29 @@ export function useGameCanvasChromeState(
 } {
   const mobileBarsVisible = ref(false);
   const spectateMode = ref(!getLobbyVisible());
-  const bottomBarsCollapsed = ref(loadStoredDemoBarsCollapsed());
-  const playerClientEnabled = ref(loadStoredPlayerClientEnabled());
+  const bottomBarsCollapsed = ref(
+    currentBattleMode.value === 'real'
+      ? loadStoredRealBarsCollapsed()
+      : loadStoredDemoBarsCollapsed(),
+  );
+  const playerClientEnabled = ref(loadStoredClientEnabled(currentBattleMode.value));
 
-  watch(gameStarted, (started) => {
-    bottomBarsCollapsed.value = started
+  watch(currentBattleMode, (mode) => {
+    bottomBarsCollapsed.value = mode === 'real'
       ? loadStoredRealBarsCollapsed()
       : loadStoredDemoBarsCollapsed();
+    playerClientEnabled.value = loadStoredClientEnabled(mode);
   });
 
   watch(playerClientEnabled, (enabled) => {
-    savePlayerClientEnabled(enabled);
+    saveClientEnabled(currentBattleMode.value, enabled);
     onPlayerClientEnabledChange();
   });
 
   function toggleBottomBars(): void {
     const next = !bottomBarsCollapsed.value;
     bottomBarsCollapsed.value = next;
-    if (gameStarted.value) saveRealBarsCollapsed(next);
+    if (currentBattleMode.value === 'real') saveRealBarsCollapsed(next);
     else saveDemoBarsCollapsed(next);
   }
 
@@ -97,4 +106,3 @@ export function useGameCanvasChromeState(
     toggleSpectateMode,
   };
 }
-
