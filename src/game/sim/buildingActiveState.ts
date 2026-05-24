@@ -1,29 +1,26 @@
 // Shared "fortifiable" state for producer buildings — solar collectors,
 // wind turbines, and metal extractors.
 //
-// All three buildings share the same lifecycle:
+// Open/closed (the visible "on"/"off" pose) is purely a damage-survival
+// mechanic and is INDEPENDENT of whether the building produces its
+// resource. Production runs continuously from completion to destruction
+// regardless of the open flag.
+//
+// Lifecycle:
 //
 //   - At completion (real construction or pre-placed) the building
-//     starts CLOSED / not-producing and counts down
-//     BUILDING_REOPEN_DELAY_MS before opening for the first time. This
-//     is the shared activation debounce — every on/off producer goes
-//     through it, no per-type variation.
-//   - Once OPEN they produce their resource.
+//     starts CLOSED and counts down BUILDING_REOPEN_DELAY_MS before
+//     opening for the first time. This is the shared activation
+//     debounce — every on/off producer goes through it, no per-type
+//     variation. Production is already running at this point.
 //   - The first incoming damage hit starts a 2-second grace timer
 //     (state.damageDelayMs counts down from BUILDING_DAMAGE_DELAY_MS).
-//     During the grace they still take full damage and still produce.
-//   - When the grace expires the building snaps CLOSED. Production
-//     stops and incoming damage is multiplied by
-//     BUILDING_CLOSED_DAMAGE_MULTIPLIER (0.25 = 4× more durable).
+//   - When the grace expires the building snaps CLOSED. Incoming
+//     damage is multiplied by BUILDING_CLOSED_DAMAGE_MULTIPLIER
+//     (0.25 = 4× more durable).
 //   - After BUILDING_REOPEN_DELAY_MS (5 s) of quiet (no further hits)
-//     the building auto-reopens and production resumes.
+//     the building auto-reopens.
 //   - Any hit while closed RESETS the reopen timer to the full 5 s.
-//
-// Per-type production hooks (solar adds to energy income, wind feeds the
-// WindPowerTracker, extractor feeds metal income through the deposit
-// ownership rate) plug into the same open/close transitions so the
-// renderer's "is it open?" predicate and the sim's "does it produce?"
-// flag never disagree.
 
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { getBuildingConfig } from './buildConfigs';
@@ -131,10 +128,10 @@ function setBuildingProducing(entity: Entity, producing: boolean): boolean {
 
 /** Called from applyCompletedBuildingEffects (and the standalone
  *  background-battle spawner) once any on/off producer building is
- *  alive and owned. Puts it into the shared initial pose: CLOSED, not
- *  producing, with the reopen timer primed to BUILDING_REOPEN_DELAY_MS.
- *  The per-tick driver then counts that down and snaps the building
- *  OPEN, matching every later close→open transition in the lifecycle. */
+ *  alive and owned. Puts it into the shared initial pose: CLOSED with
+ *  the reopen timer primed to BUILDING_REOPEN_DELAY_MS, while
+ *  production starts immediately (production is independent of the
+ *  open flag). */
 export function initializeBuildingActiveState(world: WorldState, entity: Entity): void {
   const state = ensureBuildingActiveState(entity);
   if (!state || !entity.building || !isEntityActive(entity) || entity.building.hp <= 0) return;
@@ -151,7 +148,7 @@ export function initializeBuildingActiveState(world: WorldState, entity: Entity)
     state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
     changed = true;
   }
-  if (setBuildingProducing(entity, false)) changed = true;
+  if (setBuildingProducing(entity, true)) changed = true;
   if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 
@@ -191,7 +188,8 @@ export function isBuildingActiveStateFortified(entity: Entity): boolean {
 }
 
 /** Per-tick driver. Counts down the grace timer (open → closed) and
- *  the reopen timer (closed → open). Production follows the open flag. */
+ *  the reopen timer (closed → open). Production runs continuously and
+ *  is independent of the open flag. */
 export function updateBuildingActiveStates(world: WorldState, dtMs: number): void {
   for (const entity of world.getActiveStateBuildings()) {
     if (!entity.building) continue;
@@ -221,7 +219,7 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
       }
     }
 
-    setBuildingProducing(entity, state.open);
+    setBuildingProducing(entity, true);
     if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
   }
 }
