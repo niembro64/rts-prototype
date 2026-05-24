@@ -29,7 +29,7 @@ export class RtsScene3DCameraFramingSystem {
     const initialZoom = this.lobbyPreview
       ? ZOOM_INITIAL_LOBBY_PREVIEW
       : this.backgroundMode ? ZOOM_INITIAL_DEMO : ZOOM_INITIAL_GAME;
-    const framesLocalCommander = !this.backgroundMode && !this.lobbyPreview;
+    const framesLocalCommander = !this.lobbyPreview;
     const seatIndex = framesLocalCommander
       ? Math.max(0, this.playerIds.indexOf(this.getLocalPlayerId()))
       : 0;
@@ -66,7 +66,7 @@ export class RtsScene3DCameraFramingSystem {
 
   centerAfterFirstSnapshot(units: readonly Entity[]): void {
     if (this.hasCenteredCamera) return;
-    if (this.backgroundMode || this.lobbyPreview) {
+    if (this.lobbyPreview) {
       this.centerCameraOnMap();
     } else {
       this.centerCameraOnCommander(units);
