@@ -1,0 +1,630 @@
+import { COST_MULTIPLIER } from '@/config';
+import {
+  getShotBlueprint,
+  getTurretBlueprint,
+  getUnitBlueprint,
+  getUnitLocomotion,
+} from '@/game/sim/blueprints';
+import { createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
+import {
+  getTurretBarrelCenterToTipLength,
+  getTurretBarrelDiameter,
+  getTurretHeadRadius,
+} from '@/game/math';
+import type {
+  BarrelShape,
+  LocomotionBlueprint,
+  ShotBlueprint,
+  UnitBodyShape,
+  UnitBodyShapePart,
+  UnitBlueprint,
+} from '@/types/blueprints';
+import type {
+  ProjectileShot,
+  ShotConfig,
+  Turret,
+  TurretConfig,
+} from '@/game/sim/types';
+import { isProjectileShot } from '@/game/sim/types';
+import type { BuildableUnitId } from '@/game/sim/blueprints';
+
+export type LoadingUnitInfoNode = {
+  label: string;
+  value?: string;
+  detail?: string;
+  children?: LoadingUnitInfoNode[];
+};
+
+export type LoadingUnitInfoSection = {
+  id: string;
+  title: string;
+  items: LoadingUnitInfoNode[];
+};
+
+export type LoadingUnitInfo = {
+  summary: LoadingUnitInfoNode[];
+  leftSections: LoadingUnitInfoSection[];
+  rightSections: LoadingUnitInfoSection[];
+};
+
+type Firepower = {
+  alphaDamage: number;
+  sustainedDps: number;
+};
+
+export function buildLoadingUnitInfo(unitId: BuildableUnitId): LoadingUnitInfo {
+  const blueprint = getUnitBlueprint(unitId);
+  const locomotion = getUnitLocomotion(unitId);
+  const turrets = createUnitRuntimeTurrets(unitId, blueprint.radius.body);
+  const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
+  const firepower = turrets.reduce<Firepower>(
+    (acc, turret) => {
+      const next = computeTurretFirepower(turret.config);
+      acc.alphaDamage += next.alphaDamage;
+      acc.sustainedDps += next.sustainedDps;
+      return acc;
+    },
+    { alphaDamage: 0, sustainedDps: 0 },
+  );
+  const longestRange = turrets.reduce(
+    (best, turret) => Math.max(best, turret.ranges.fire.max.acquire),
+    0,
+  );
+  const buildCost = {
+    energy: blueprint.cost.energy * COST_MULTIPLIER,
+    metal: blueprint.cost.metal * COST_MULTIPLIER,
+  };
+
+  return {
+    summary: [
+      stat('Role', summarizeUnitRole(blueprint, damagingTurrets.length)),
+      stat('Cost', `${fmt(buildCost.energy)}E / ${fmt(buildCost.metal)}M`),
+      stat('HP', fmt(blueprint.hp)),
+      stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'non-damaging'),
+      stat('Range', longestRange > 0 ? fmt(longestRange) : 'none'),
+      stat('Mobility', `${labelCase(locomotion.type)} / ${locomotion.pathfinding.terrainMode}`),
+    ],
+    leftSections: [
+      buildEconomySection(blueprint, buildCost),
+      buildMovementSection(blueprint),
+      buildVisualPiecesSection(blueprint),
+    ],
+    rightSections: [
+      buildCombatSummarySection(turrets, firepower, longestRange),
+      buildTurretsSection(turrets),
+      buildSystemsSection(blueprint),
+    ],
+  };
+}
+
+function buildEconomySection(
+  blueprint: UnitBlueprint,
+  buildCost: { energy: number; metal: number },
+): LoadingUnitInfoSection {
+  return {
+    id: 'economy',
+    title: 'Unit',
+    items: [
+      stat('Blueprint', blueprint.id),
+      stat('Short name', blueprint.shortName),
+      stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
+      stat('Authored cost', `${fmt(blueprint.cost.energy)}E / ${fmt(blueprint.cost.metal)}M`),
+      stat('Hit points', fmt(blueprint.hp)),
+      stat('Mass', fmt(blueprint.mass)),
+      stat('Body radius', fmt(blueprint.radius.body)),
+      stat('Hit radius', fmt(blueprint.radius.shot)),
+      stat('Push radius', fmt(blueprint.radius.push)),
+      stat('Body center height', fmt(blueprint.bodyCenterHeight)),
+      stat(
+        'Fight-move stop',
+        blueprint.fightStopEngagedRatio === null
+          ? 'never; keeps moving'
+          : `${fmt(blueprint.fightStopEngagedRatio * 100)}% turrets engaged`,
+      ),
+    ],
+  };
+}
+
+function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
+  const runtime = getUnitLocomotion(blueprint.id);
+  const locomotion = blueprint.locomotion;
+  const items: LoadingUnitInfoNode[] = [
+    stat('Type', labelCase(runtime.type)),
+    stat('Profile', blueprint.locomotionId),
+    stat('Drive force', fmt(runtime.driveForce)),
+    stat('Traction', fmt(runtime.traction, 2)),
+    node('Pathfinding', locomotion.pathfindingId, undefined, [
+      stat('Terrain mode', runtime.pathfinding.terrainMode),
+      stat('Ignores blocking', yesNo(runtime.pathfinding.ignoreTerrainBlocking)),
+      stat('Max slope', runtime.pathfinding.maxSlopeDeg === null ? 'any' : `${fmt(runtime.pathfinding.maxSlopeDeg)} deg`),
+      stat('Surface normal floor', fmt(runtime.pathfinding.minSurfaceNormalZ, 3)),
+    ]),
+    ...describeLocomotionConfig(locomotion),
+  ];
+  if (runtime.hoverHeight !== undefined) {
+    items.push(stat('Hover height', fmt(runtime.hoverHeight)));
+  }
+  if (runtime.hoverHeightRandomizationAmount !== undefined && runtime.hoverHeightRandomizationAmount > 0) {
+    items.push(stat('Altitude jitter', `${fmt(runtime.hoverHeightRandomizationAmount * 100, 1)}%`));
+  }
+  if (runtime.hoverHeightEMA !== undefined && runtime.hoverHeightEMA > 0) {
+    items.push(stat('Altitude EMA', fmt(runtime.hoverHeightEMA, 3)));
+  }
+  if (blueprint.suspension) {
+    items.push(node('Suspension', 'visual body spring', undefined, [
+      stat('Stiffness', fmt(blueprint.suspension.stiffness)),
+      stat('Damping ratio', fmt(blueprint.suspension.dampingRatio, 2)),
+      stat('Mass scale', blueprint.suspension.massScale === undefined ? '1' : fmt(blueprint.suspension.massScale, 2)),
+      stat(
+        'Max offset',
+        blueprint.suspension.maxOffset
+          ? `x ${fmt(blueprint.suspension.maxOffset.x ?? 0)}, y ${fmt(blueprint.suspension.maxOffset.y ?? 0)}, z ${fmt(blueprint.suspension.maxOffset.z ?? 0)}`
+          : 'unclamped',
+      ),
+    ]));
+  }
+  return { id: 'movement', title: 'Movement', items };
+}
+
+function buildVisualPiecesSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
+  return {
+    id: 'visual-pieces',
+    title: 'Pieces',
+    items: [
+      describeBodyShape(blueprint.bodyShape, blueprint.radius.body),
+      describeLocomotionPieces(blueprint.locomotion, blueprint.radius.body),
+      node(
+        'Hardpoints',
+        `${blueprint.turrets.length} turret mount${plural(blueprint.turrets.length)}`,
+        undefined,
+        blueprint.turrets.map((mount, index) => node(
+          `Mount ${index + 1}`,
+          mount.turretId,
+          `x ${fmt(mount.mount.x * blueprint.radius.body)}, y ${fmt(mount.mount.y * blueprint.radius.body)}, z ${fmt(mount.mount.z * blueprint.radius.body)}`,
+        )),
+      ),
+    ],
+  };
+}
+
+function buildCombatSummarySection(
+  turrets: readonly Turret[],
+  firepower: Firepower,
+  longestRange: number,
+): LoadingUnitInfoSection {
+  const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
+  const visualOnly = turrets.length - damagingTurrets.length;
+  return {
+    id: 'combat-summary',
+    title: 'Combat',
+    items: [
+      stat('Turrets', `${turrets.length} total / ${damagingTurrets.length} weapon${plural(damagingTurrets.length)}`),
+      stat('Visual systems', visualOnly > 0 ? fmt(visualOnly) : 'none'),
+      stat('Alpha strike', firepower.alphaDamage > 0 ? fmt(firepower.alphaDamage, 1) : 'none'),
+      stat('Sustained damage', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'none'),
+      stat('Longest fire range', longestRange > 0 ? fmt(longestRange) : 'none'),
+      stat('Manual weapons', fmt(turrets.filter((turret) => turret.config.isManualFire).length)),
+      stat('Host-directed weapons', fmt(turrets.filter((turret) => turret.config.hostDirected).length)),
+    ],
+  };
+}
+
+function buildTurretsSection(turrets: readonly Turret[]): LoadingUnitInfoSection {
+  return {
+    id: 'turrets',
+    title: 'Turrets',
+    items: turrets.map((turret, index) => describeTurret(turret, index)),
+  };
+}
+
+function buildSystemsSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
+  const items: LoadingUnitInfoNode[] = [];
+  if (blueprint.builder) {
+    items.push(node('Builder', 'construction capable', undefined, [
+      stat('Build range', fmt(blueprint.builder.buildRange)),
+      stat('Construction rate', `${fmt(blueprint.builder.constructionRate)}/s`),
+    ]));
+  }
+  if (blueprint.dgun) {
+    items.push(node('D-gun', blueprint.dgun.turretId, undefined, [
+      stat('Energy cost', fmt(blueprint.dgun.energyCost)),
+    ]));
+  }
+  if (blueprint.detector) {
+    items.push(stat('Detector radius', fmt(blueprint.detector.radius)));
+  }
+  if (blueprint.cloak) {
+    items.push(stat('Cloak', blueprint.cloak.enabled ? 'available' : 'disabled'));
+  }
+  if (items.length === 0) items.push(stat('Special systems', 'none'));
+  return { id: 'systems', title: 'Systems', items };
+}
+
+function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
+  const config = turret.config;
+  const blueprint = getTurretBlueprint(config.id);
+  const firepower = computeTurretFirepower(config);
+  const children: LoadingUnitInfoNode[] = [
+    stat('Mount', `x ${fmt(turret.mount.x)}, y ${fmt(turret.mount.y)}, z ${fmt(turret.mount.z)}`),
+    stat('Head radius', fmt(getTurretHeadRadius(config))),
+    stat('Range', `fire ${rangePair(turret.ranges.fire.max)}${turret.ranges.tracking ? ` / track ${rangePair(turret.ranges.tracking)}` : ''}`),
+    stat('Cooldown', config.cooldown > 0 ? ms(config.cooldown) : 'continuous'),
+    stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'utility'),
+    stat('Aim', `${config.aimStyle.angleType}, ${config.aimStyle.lockOnType}`),
+    stat('Line of sight', config.requiresNonObstructedLineOfSight ? 'required' : 'not required'),
+    stat('Targeting', config.hostDirected ? 'host-directed' : 'autonomous'),
+  ];
+
+  if (config.spread) {
+    children.push(stat('Spread', `${config.spread.pelletCount} pellets over ${rad(config.spread.angle)}`));
+  }
+  if (config.burst) {
+    children.push(stat('Burst', `${config.burst.count} shots, ${ms(config.burst.delay)} spacing`));
+  }
+  if (config.verticalLauncher) children.push(stat('Launcher', 'vertical'));
+  if (config.groundAimFraction !== undefined) {
+    children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
+  }
+  if (config.barrel) children.push(describeBarrel(config, config.barrel));
+  if (config.shot) children.push(describeShot(config.shot, blueprint.projectileId));
+  if (config.constructionEmitter) {
+    children.push(node('Construction emitter', config.visualVariant ?? config.constructionEmitter.defaultSize, undefined, [
+      stat('Particle speed', fmt(config.constructionEmitter.particleTravelSpeed)),
+      stat('Particle radius', fmt(config.constructionEmitter.particleRadius)),
+    ]));
+  }
+  if (blueprint.mirrorPanels.length > 0) {
+    children.push(node('Mirror panels', fmt(blueprint.mirrorPanels.length), undefined, blueprint.mirrorPanels.map((panel, panelIndex) => stat(
+      `Panel ${panelIndex + 1}`,
+      `offset ${fmt(panel.offsetX)}, lateral ${fmt(panel.offsetY)}, angle ${rad(panel.angle)}`,
+    ))));
+  }
+  const exclusions = describeLockOnExclusions(blueprint);
+  if (exclusions.length > 0) children.push(node('Lock-on exclusions', undefined, undefined, exclusions));
+
+  return node(
+    `${index + 1}. ${config.id}`,
+    config.visualOnly ? 'visual' : blueprint.projectileId ?? 'utility',
+    undefined,
+    children,
+  );
+}
+
+function describeShot(shot: ShotConfig, projectileId: string | null): LoadingUnitInfoNode {
+  if (shot.type === 'force') {
+    return node('Shot', 'force field', undefined, [
+      stat('Arc', rad(shot.angle)),
+      stat('Transition', ms(shot.transitionTime)),
+      ...(shot.barrier ? [
+        stat('Barrier outer radius', fmt(shot.barrier.outerRange)),
+        stat('Barrier origin offset', fmt(shot.barrier.originOffsetZ)),
+      ] : []),
+    ]);
+  }
+
+  const label = projectileId ?? shot.id;
+  const children: LoadingUnitInfoNode[] = [stat('Type', shot.type)];
+  if (shot.type === 'beam' || shot.type === 'laser') {
+    children.push(
+      stat('DPS', fmt(shot.dps, 1)),
+      stat('Width', fmt(shot.width)),
+      stat('Trace radius', fmt(shot.radius)),
+      stat('Endpoint radius', fmt(shot.damageSphere.radius)),
+      stat('Force', fmt(shot.force)),
+      stat('Recoil', fmt(shot.recoil)),
+    );
+    if (shot.type === 'laser') children.push(stat('Duration', ms(shot.duration)));
+  } else {
+    children.push(
+      stat('Mass', fmt(shot.mass)),
+      stat('Launch force', fmt(shot.launchForce)),
+      stat('Collision radius', fmt(shot.collision.radius)),
+      stat('TTL', shot.maxLifespan === undefined ? 'impact/ground only' : ms(shot.maxLifespan)),
+      stat('Detonate on expiry', yesNo(shot.detonateOnExpiry === true)),
+    );
+    if (shot.explosion) {
+      children.push(node('Explosion', `${fmt(shot.explosion.damage)} damage`, undefined, [
+        stat('Radius', fmt(shot.explosion.radius)),
+        stat('Force', fmt(shot.explosion.force)),
+      ]));
+    } else {
+      children.push(stat('Explosion', 'none'));
+    }
+    if (shot.homingTurnRate !== undefined || shot.homingThrust !== undefined) {
+      children.push(node('Homing', 'guided', undefined, [
+        stat('Turn rate', shot.homingTurnRate === undefined ? 'none' : `${fmt(shot.homingTurnRate, 2)} rad/s`),
+        stat('Thrust', shot.homingThrust === undefined ? 'none' : fmt(shot.homingThrust)),
+      ]));
+    }
+    if (shot.submunitions) {
+      children.push(node('Submunitions', `${shot.submunitions.count} x ${shot.submunitions.shotId}`, undefined, [
+        stat('Horizontal spread', fmt(shot.submunitions.randomSpreadSpeedHorizontal)),
+        stat('Vertical spread', fmt(shot.submunitions.randomSpreadSpeedVertical)),
+        stat('Velocity damper', fmt(shot.submunitions.reflectedVelocityDamper ?? 1, 2)),
+      ]));
+    }
+    if (shot.smokeTrail) {
+      children.push(stat('Smoke trail', shot.smokeTrail.useId ?? 'custom'));
+    }
+  }
+  return node('Shot', label, undefined, children);
+}
+
+function describeBarrel(config: TurretConfig, barrel: BarrelShape): LoadingUnitInfoNode {
+  const baseChildren = [
+    stat('Length', fmt(getTurretBarrelCenterToTipLength(config))),
+    stat('Diameter', fmt(getTurretBarrelDiameter(config))),
+  ];
+  if (barrel.type === 'simpleMultiBarrel') {
+    return node('Barrel', 'parallel cluster', undefined, [
+      stat('Count', fmt(barrel.barrelCount)),
+      stat('Orbit', fmt(barrel.orbitRadius)),
+      stat('Spin', `${fmt(barrel.spin.idle)}-${fmt(barrel.spin.max)} rad/s`),
+      ...baseChildren,
+    ]);
+  }
+  if (barrel.type === 'coneMultiBarrel') {
+    return node('Barrel', 'splayed cluster', undefined, [
+      stat('Count', fmt(barrel.barrelCount)),
+      stat('Base orbit', fmt(barrel.baseOrbit)),
+      stat('Tip orbit', barrel.tipOrbit === undefined ? 'derived from spread' : fmt(barrel.tipOrbit)),
+      stat('Spin', `${fmt(barrel.spin.idle)}-${fmt(barrel.spin.max)} rad/s`),
+      ...baseChildren,
+    ]);
+  }
+  if (barrel.type === 'complexSingleEmitter') {
+    return node('Emitter geometry', barrel.grate.shape, undefined, [
+      stat('Pieces', fmt(barrel.grate.count)),
+      stat('Length', fmt(barrel.grate.length)),
+      stat('Width', fmt(barrel.grate.width)),
+      stat('Taper', fmt(barrel.grate.taper, 2)),
+      stat('Reverse phase', yesNo(barrel.grate.reversePhase)),
+    ]);
+  }
+  return node('Barrel', labelCase(barrel.type), undefined, baseChildren);
+}
+
+function describeBodyShape(shape: UnitBodyShape, radius: number): LoadingUnitInfoNode {
+  if (shape.kind === 'composite') {
+    return node('Body', `${shape.parts.length} authored parts`, undefined, shape.parts.map((part, index) =>
+      describeBodyPart(part, radius, index),
+    ));
+  }
+  return describeBodyShapeLeaf('Body', shape, radius);
+}
+
+function describeBodyShapeLeaf(label: string, shape: Exclude<UnitBodyShape, { kind: 'composite' }>, radius: number): LoadingUnitInfoNode {
+  if (shape.kind === 'circle') {
+    return stat(label, `sphere r ${fmt(shape.radiusFrac * radius)}, y ${fmt((shape.yFrac ?? shape.radiusFrac) * radius)}`);
+  }
+  if (shape.kind === 'oval') {
+    return stat(label, `oval ${fmt(shape.xFrac * radius)} x ${fmt(shape.yFrac * radius)} x ${fmt(shape.zFrac * radius)}`);
+  }
+  if (shape.kind === 'rect') {
+    return stat(label, `box ${fmt(shape.lengthFrac * radius * 2)} x ${fmt(shape.heightFrac * radius)} x ${fmt(shape.widthFrac * radius * 2)}`);
+  }
+  if (shape.kind === 'rhombus') {
+    return stat(label, `rhombus ${fmt(shape.lengthFrac * radius * 2)} x ${fmt(shape.heightFrac * radius)} x ${fmt(shape.widthFrac * radius * 2)}`);
+  }
+  return stat(label, `${shape.sides}-gon r ${fmt(shape.radiusFrac * radius)}, h ${fmt(shape.heightFrac * radius)}, rot ${rad(shape.rotation)}`);
+}
+
+function describeBodyPart(part: UnitBodyShapePart, radius: number, index: number): LoadingUnitInfoNode {
+  const offset = `offset x ${fmt(part.offsetForward * radius)}, z ${fmt((part.offsetLateral ?? 0) * radius)}`;
+  if (part.kind === 'circle') {
+    return stat(`Part ${index + 1}`, `sphere r ${fmt(part.radiusFrac * radius)}; ${offset}`);
+  }
+  if (part.kind === 'oval') {
+    return stat(`Part ${index + 1}`, `oval ${fmt(part.xFrac * radius)} x ${fmt(part.yFrac * radius)} x ${fmt(part.zFrac * radius)}; ${offset}`);
+  }
+  if (part.kind === 'cone') {
+    return stat(`Part ${index + 1}`, `cone len ${fmt(part.lengthFrac * radius)}, r ${fmt(part.radiusFrac * radius)}; ${offset}`);
+  }
+  return stat(`Part ${index + 1}`, `cylinder len ${fmt(part.lengthFrac * radius)}, r ${fmt(part.radiusFrac * radius)}; ${offset}`);
+}
+
+function describeLocomotionPieces(locomotion: LocomotionBlueprint, radius: number): LoadingUnitInfoNode {
+  if (locomotion.type === 'wheels') {
+    const config = locomotion.config;
+    return node('Locomotion pieces', '4 wheels', undefined, [
+      stat('Wheel positions', `x +/-${fmt(config.wheelDistX * radius)}, z +/-${fmt(config.wheelDistY * radius)}`),
+      stat('Wheel radius', fmt(config.wheelRadius * radius)),
+      stat('Tire width', fmt(config.treadWidth * radius)),
+      stat('Spin speed', fmt(config.rotationSpeed)),
+    ]);
+  }
+  if (locomotion.type === 'treads') {
+    const config = locomotion.config;
+    const wheelCount = Math.max(2, Math.round(config.treadLength * 2));
+    return node('Locomotion pieces', '2 tread ribbons', undefined, [
+      stat('Side offset', `+/-${fmt(config.treadOffset * radius)}`),
+      stat('Ribbon size', `${fmt(config.treadLength * radius)} x ${fmt(config.treadWidth * radius)}`),
+      stat('Internal wheels', `${wheelCount * 2} total`),
+      stat('End caps', '4 rounded caps'),
+      stat('Animated cleats', 'full belt loop'),
+    ]);
+  }
+  if (locomotion.type === 'legs') {
+    const config = locomotion.config;
+    return node('Locomotion pieces', `${config.leftSide.length * 2} mirrored legs`, undefined, config.leftSide.map((leg, index) =>
+      node(`Left leg ${index + 1}`, undefined, undefined, [
+        stat('Attach', `x ${fmt(leg.attachOffsetXFrac * radius)}, z ${fmt(leg.attachOffsetYFrac * radius)}`),
+        stat('Upper / lower', `${fmt(leg.upperLegLengthFrac * radius)} / ${fmt(leg.lowerLegLengthFrac * radius)}`),
+        stat('Snap trigger', rad(leg.snapTriggerAngle)),
+        stat('Snap target', rad(leg.snapTargetAngle)),
+      ]),
+    ));
+  }
+  if (locomotion.type === 'hover') {
+    const config = locomotion.config;
+    const fanCount = config.tailFanOffsetX !== undefined
+      ? (config.tailFanRadius !== undefined && config.tailFanRadius > 0 ? 3 : 2)
+      : (config.fanLayout === 'triFront' ? 3 : 4);
+    return node('Locomotion pieces', `${fanCount} ducted fans`, undefined, [
+      stat('Main fan radius', fmt(config.fanRadius * radius)),
+      stat('Ring tube', fmt(config.fanRingTubeRadius * radius)),
+      stat('Fan layout', config.tailFanOffsetX !== undefined ? 'dragonfly' : (config.fanLayout ?? 'quad')),
+      stat('Spin rate', `${fmt(config.fanSpinRadPerSec ?? 42)} rad/s`),
+      ...(config.tailFanRadius !== undefined ? [stat('Tail fan radius', fmt(config.tailFanRadius * radius))] : []),
+    ]);
+  }
+  const config = locomotion.config;
+  return node('Locomotion pieces', 'fixed wing aircraft', undefined, [
+    stat('Primary wings', config.wingEnabled === false ? 'disabled' : wingSummary(config.wingSpan, config.wingChord, radius)),
+    stat('Tail wings', wingSummary(config.tailWingSpan, config.tailWingChord, radius)),
+    stat('Jets', `${config.jetCount ?? 2} nozzle${plural(config.jetCount ?? 2)}`),
+    stat('Jet size', `r ${fmt(config.jetRadius * radius)}, len ${fmt(config.jetLength * radius)}`),
+  ]);
+}
+
+function describeLocomotionConfig(locomotion: LocomotionBlueprint): LoadingUnitInfoNode[] {
+  if (locomotion.type === 'hover' || locomotion.type === 'flying') {
+    const config = locomotion.config;
+    return [
+      stat('Hover height', fmt(config.hoverHeight)),
+      stat('Randomization', config.hoverHeightRandomizationAmount ? `${fmt(config.hoverHeightRandomizationAmount * 100, 1)}%` : 'none'),
+      stat('EMA smoothing', config.hoverHeightEMA ? fmt(config.hoverHeightEMA, 3) : 'none'),
+    ];
+  }
+  return [];
+}
+
+function describeLockOnExclusions(blueprint: ReturnType<typeof getTurretBlueprint>): LoadingUnitInfoNode[] {
+  const items: LoadingUnitInfoNode[] = [];
+  if (blueprint.excludeLockOnLevel0FriendsAndEnemies.length > 0) {
+    items.push(stat('Relationships', blueprint.excludeLockOnLevel0FriendsAndEnemies.join(', ')));
+  }
+  if (blueprint.excludeLockOnLevel0Entities.length > 0) {
+    items.push(stat('Families', blueprint.excludeLockOnLevel0Entities.join(', ')));
+  }
+  if (blueprint.excludeLockOnLevel1Buildings.length > 0) {
+    items.push(stat('Buildings', blueprint.excludeLockOnLevel1Buildings.join(', ')));
+  }
+  if (blueprint.excludeLockOnLevel1Units.length > 0) {
+    items.push(stat('Units', blueprint.excludeLockOnLevel1Units.join(', ')));
+  }
+  if (blueprint.excludeLockOnLevel1Turrets.length > 0) {
+    items.push(stat('Turrets', blueprint.excludeLockOnLevel1Turrets.join(', ')));
+  }
+  return items;
+}
+
+function computeTurretFirepower(config: TurretConfig): Firepower {
+  const shot = config.shot;
+  if (!shot) return { alphaDamage: 0, sustainedDps: 0 };
+  const pelletCount = config.spread?.pelletCount ?? 1;
+  const burstCount = config.burst?.count ?? 1;
+  const burstDelay = config.burst?.delay ?? 80;
+  if (shot.type === 'beam') {
+    return { alphaDamage: shot.dps, sustainedDps: shot.dps };
+  }
+  if (shot.type === 'laser') {
+    const alphaDamage = shot.dps * (shot.duration / 1000) * pelletCount * burstCount;
+    const cycleMs = Math.max(shot.duration, config.cooldown, (burstCount - 1) * burstDelay + shot.duration);
+    return {
+      alphaDamage,
+      sustainedDps: cycleMs > 0 ? (alphaDamage * 1000) / cycleMs : 0,
+    };
+  }
+  if (isProjectileShot(shot)) {
+    const alphaDamage = projectileDamageWithSubmunitions(shot) * pelletCount * burstCount;
+    const cycleMs = Math.max(config.cooldown, (burstCount - 1) * burstDelay + 1);
+    return {
+      alphaDamage,
+      sustainedDps: cycleMs > 0 ? (alphaDamage * 1000) / cycleMs : 0,
+    };
+  }
+  return { alphaDamage: 0, sustainedDps: 0 };
+}
+
+function projectileDamageWithSubmunitions(shot: ProjectileShot, depth = 0): number {
+  let damage = shot.explosion?.damage ?? 0;
+  if (shot.submunitions && depth < 2) {
+    try {
+      const childBlueprint = getShotBlueprint(shot.submunitions.shotId);
+      const childDamage = projectileBlueprintDamage(childBlueprint, depth + 1);
+      damage += shot.submunitions.count * childDamage;
+    } catch {
+      // Keep loading UI resilient if a hot-reloaded shot reference is invalid.
+    }
+  }
+  return damage;
+}
+
+function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
+  if (shot.type === 'beam') return shot.dps;
+  if (shot.type === 'laser') return shot.dps * (shot.duration / 1000);
+  let damage = shot.explosion?.damage ?? 0;
+  if (shot.submunitions && depth < 2) {
+    try {
+      damage += shot.submunitions.count * projectileBlueprintDamage(
+        getShotBlueprint(shot.submunitions.shotId),
+        depth + 1,
+      );
+    } catch {
+      // Loading UI should not fail on bad hot-reload data.
+    }
+  }
+  return damage;
+}
+
+function summarizeUnitRole(blueprint: UnitBlueprint, weaponCount: number): string {
+  if (blueprint.builder) return 'builder / support';
+  if (weaponCount === 0) return 'utility';
+  if (blueprint.locomotion.type === 'flying') return 'air strike';
+  if (blueprint.locomotion.type === 'hover') return 'hover skirmisher';
+  if (blueprint.locomotion.type === 'legs') return 'walker assault';
+  if (blueprint.locomotion.type === 'treads') return 'armored assault';
+  return 'wheeled combat';
+}
+
+function node(
+  label: string,
+  value?: string,
+  detail?: string,
+  children?: LoadingUnitInfoNode[],
+): LoadingUnitInfoNode {
+  return { label, value, detail, children };
+}
+
+function stat(label: string, value: string): LoadingUnitInfoNode {
+  return { label, value };
+}
+
+function fmt(value: number, decimals = 0): string {
+  if (!Number.isFinite(value)) return 'n/a';
+  const fixed = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toString();
+  return fixed.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function ms(value: number): string {
+  return value >= 1000 ? `${fmt(value / 1000, 2)}s` : `${fmt(value)}ms`;
+}
+
+function rad(value: number): string {
+  return `${fmt(value, 2)} rad`;
+}
+
+function rangePair(range: { acquire: number; release: number }): string {
+  return `${fmt(range.acquire)}/${fmt(range.release)}`;
+}
+
+function yesNo(value: boolean): string {
+  return value ? 'yes' : 'no';
+}
+
+function labelCase(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function plural(count: number): string {
+  return count === 1 ? '' : 's';
+}
+
+function wingSummary(span: number | undefined, chord: number | undefined, radius: number): string {
+  if (span === undefined || chord === undefined) return 'none';
+  return `span ${fmt(span * radius)}, chord ${fmt(chord * radius)}`;
+}

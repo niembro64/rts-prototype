@@ -17,16 +17,19 @@ export function useGameCanvasForegroundGame(): GameCanvasForegroundGame {
 
   function destroy(): void {
     if (!gameInstance) {
+      clientViewState?.clear();
       clientViewState = null;
       return;
     }
     destroyGame(gameInstance);
     gameInstance = null;
+    clientViewState?.clear();
     clientViewState = null;
   }
 
   return {
     create(config) {
+      destroy();
       clientViewState = new ClientViewState();
       clientViewState.setMapDimensions(config.mapWidth, config.mapHeight);
       gameInstance = createGame({

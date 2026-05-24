@@ -233,6 +233,14 @@ export async function createBackgroundBattle(
 
 /** Tear down a background battle: stop the server and destroy the game instance. */
 export function destroyBackgroundBattle(state: BackgroundBattleState): void {
-  state.server.stop();
-  destroyGame(state.gameInstance);
+  try {
+    destroyGame(state.gameInstance);
+  } finally {
+    try {
+      state.connection.disconnect();
+      state.clientViewState.clear();
+    } finally {
+      state.server.stop();
+    }
+  }
 }

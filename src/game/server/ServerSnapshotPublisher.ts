@@ -89,6 +89,13 @@ export class ServerSnapshotPublisher {
     this.projectileDetailSnapshotCounter = 0;
   }
 
+  clear(): void {
+    this.reset();
+    this.dirtyIdsBuf.length = 0;
+    this.dirtyFieldsBuf.length = 0;
+    this.removedEntitiesBuf.length = 0;
+  }
+
   forceNextKeyframe(includeStatic = false): void {
     if (includeStatic) this.staticResyncToken++;
     this.reset();

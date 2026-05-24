@@ -191,7 +191,7 @@ const showDemoLoadingOverlay = computed(
   () => showLoadingOverlay.value && !gameStarted.value && !loadingInLobbyPreview.value,
 );
 const showRealLoadingOverlay = computed(
-  () => showLoadingOverlay.value && gameStarted.value,
+  () => battleLoading.value && gameStarted.value,
 );
 
 const {

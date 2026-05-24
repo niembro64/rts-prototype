@@ -38,6 +38,10 @@ type WorkerPreviewMessage =
   | ({ type: 'resize' } & PreviewSize)
   | { type: 'destroy' };
 
+type WorkerPreviewResponse = {
+  type: 'destroyed';
+};
+
 const DPR_CAP = 1.75;
 
 export function pickRandomLoadingUnit(): LoadingUnitPreviewSelection {
@@ -116,6 +120,23 @@ function createWorkerDriver(
   const worker = new Worker(new URL('./loadingUnitPreviewWorker.ts', import.meta.url), {
     type: 'module',
   });
+  let destroyed = false;
+  let terminateFallback: ReturnType<typeof setTimeout> | null = null;
+
+  function finishTerminate(): void {
+    if (terminateFallback !== null) {
+      clearTimeout(terminateFallback);
+      terminateFallback = null;
+    }
+    worker.removeEventListener('message', handleWorkerMessage);
+    worker.terminate();
+  }
+
+  function handleWorkerMessage(event: MessageEvent<WorkerPreviewResponse>): void {
+    if (event.data.type === 'destroyed') finishTerminate();
+  }
+
+  worker.addEventListener('message', handleWorkerMessage);
   const offscreen = canvas.transferControlToOffscreen();
   const initMessage: WorkerPreviewMessage = {
     type: 'init',
@@ -128,13 +149,20 @@ function createWorkerDriver(
 
   return {
     resize: (nextSize) => {
+      if (destroyed) return;
       const message: WorkerPreviewMessage = { type: 'resize', ...nextSize };
       worker.postMessage(message);
     },
     destroy: () => {
+      if (destroyed) return;
+      destroyed = true;
       const message: WorkerPreviewMessage = { type: 'destroy' };
-      worker.postMessage(message);
-      worker.terminate();
+      try {
+        worker.postMessage(message);
+        terminateFallback = setTimeout(finishTerminate, 1000);
+      } catch {
+        finishTerminate();
+      }
     },
   };
 }

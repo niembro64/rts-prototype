@@ -5,6 +5,7 @@ import {
   pickRandomLoadingUnit,
   type LoadingUnitPreviewRuntime,
 } from './loadingUnitPreview3d';
+import { buildLoadingUnitInfo } from './loadingUnitInfo';
 
 const props = withDefaults(defineProps<{
   compact?: boolean;
@@ -27,6 +28,7 @@ const progressBarStyle = computed(() => ({
 const phaseText = computed(() => props.phase.trim() || 'Preparing battle');
 const previewHost = ref<HTMLElement | null>(null);
 const previewUnit = pickRandomLoadingUnit();
+const unitInfo = buildLoadingUnitInfo(previewUnit.id);
 let previewRuntime: LoadingUnitPreviewRuntime | null = null;
 
 onMounted(() => {
@@ -47,7 +49,107 @@ onBeforeUnmount(() => {
 <template>
   <div class="loading-emblem" :class="{ compact: props.compact }">
     <div ref="previewHost" class="loader-unit-preview" aria-hidden="true"></div>
+    <div v-if="!props.compact" class="loader-info-panel loader-info-left">
+      <section
+        v-for="section in unitInfo.leftSections"
+        :key="section.id"
+        class="loader-info-section"
+      >
+        <h2>{{ section.title }}</h2>
+        <div class="loader-info-list">
+          <div
+            v-for="item in section.items"
+            :key="`${section.id}-${item.label}`"
+            class="loader-info-item"
+          >
+            <div class="loader-info-row">
+              <span class="loader-info-label">{{ item.label }}</span>
+              <span v-if="item.value" class="loader-info-value">{{ item.value }}</span>
+            </div>
+            <div v-if="item.detail" class="loader-info-detail">{{ item.detail }}</div>
+            <div v-if="item.children?.length" class="loader-info-children">
+              <div
+                v-for="child in item.children"
+                :key="`${section.id}-${item.label}-${child.label}`"
+                class="loader-info-item child"
+              >
+                <div class="loader-info-row">
+                  <span class="loader-info-label">{{ child.label }}</span>
+                  <span v-if="child.value" class="loader-info-value">{{ child.value }}</span>
+                </div>
+                <div v-if="child.detail" class="loader-info-detail">{{ child.detail }}</div>
+                <div v-if="child.children?.length" class="loader-info-children nested">
+                  <div
+                    v-for="grandchild in child.children"
+                    :key="`${section.id}-${item.label}-${child.label}-${grandchild.label}`"
+                    class="loader-info-row grandchild"
+                  >
+                    <span class="loader-info-label">{{ grandchild.label }}</span>
+                    <span v-if="grandchild.value" class="loader-info-value">{{ grandchild.value }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div v-if="!props.compact" class="loader-info-panel loader-info-right">
+      <section
+        v-for="section in unitInfo.rightSections"
+        :key="section.id"
+        class="loader-info-section"
+      >
+        <h2>{{ section.title }}</h2>
+        <div class="loader-info-list">
+          <div
+            v-for="item in section.items"
+            :key="`${section.id}-${item.label}`"
+            class="loader-info-item"
+          >
+            <div class="loader-info-row">
+              <span class="loader-info-label">{{ item.label }}</span>
+              <span v-if="item.value" class="loader-info-value">{{ item.value }}</span>
+            </div>
+            <div v-if="item.detail" class="loader-info-detail">{{ item.detail }}</div>
+            <div v-if="item.children?.length" class="loader-info-children">
+              <div
+                v-for="child in item.children"
+                :key="`${section.id}-${item.label}-${child.label}`"
+                class="loader-info-item child"
+              >
+                <div class="loader-info-row">
+                  <span class="loader-info-label">{{ child.label }}</span>
+                  <span v-if="child.value" class="loader-info-value">{{ child.value }}</span>
+                </div>
+                <div v-if="child.detail" class="loader-info-detail">{{ child.detail }}</div>
+                <div v-if="child.children?.length" class="loader-info-children nested">
+                  <div
+                    v-for="grandchild in child.children"
+                    :key="`${section.id}-${item.label}-${child.label}-${grandchild.label}`"
+                    class="loader-info-row grandchild"
+                  >
+                    <span class="loader-info-label">{{ grandchild.label }}</span>
+                    <span v-if="grandchild.value" class="loader-info-value">{{ grandchild.value }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
     <div class="loader-unit-name">{{ previewUnit.name }}</div>
+    <div v-if="!props.compact" class="loader-summary-strip">
+      <div
+        v-for="item in unitInfo.summary"
+        :key="item.label"
+        class="loader-summary-item"
+      >
+        <span>{{ item.label }}</span>
+        <strong>{{ item.value }}</strong>
+      </div>
+    </div>
     <div class="loader-title">BUDGET ANNIHILATION</div>
     <div class="loader-phase">{{ phaseText }}</div>
     <div class="loader-progress-wrap">
@@ -161,6 +263,117 @@ onBeforeUnmount(() => {
   display: block;
 }
 
+.loader-info-panel {
+  position: absolute;
+  z-index: 2;
+  top: clamp(18px, 3vh, 34px);
+  bottom: clamp(205px, 29vh, 255px);
+  width: clamp(270px, 27vw, 430px);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(237, 243, 255, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(10, 19, 29, 0.82), rgba(4, 8, 13, 0.76)),
+    rgba(5, 8, 12, 0.72);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 18px 46px rgba(0, 0, 0, 0.34);
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(110, 242, 207, 0.42) rgba(255, 255, 255, 0.06);
+}
+
+.loader-info-left {
+  left: max(18px, env(safe-area-inset-left));
+}
+
+.loader-info-right {
+  right: max(18px, env(safe-area-inset-right));
+}
+
+.loader-info-section + .loader-info-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(237, 243, 255, 0.12);
+}
+
+.loader-info-section h2 {
+  margin: 0 0 8px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: rgba(110, 242, 207, 0.86);
+}
+
+.loader-info-list {
+  display: grid;
+  gap: 6px;
+}
+
+.loader-info-item {
+  min-width: 0;
+}
+
+.loader-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 10px;
+  line-height: 1.24;
+}
+
+.loader-info-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgba(237, 243, 255, 0.58);
+  text-align: left;
+}
+
+.loader-info-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgba(237, 243, 255, 0.9);
+  text-align: right;
+}
+
+.loader-info-detail {
+  margin-top: 2px;
+  font-family: monospace;
+  font-size: 9px;
+  line-height: 1.25;
+  color: rgba(237, 243, 255, 0.52);
+  text-align: left;
+}
+
+.loader-info-children {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+  padding-left: 9px;
+  border-left: 1px solid rgba(74, 158, 255, 0.28);
+}
+
+.loader-info-children.nested {
+  gap: 3px;
+  margin-top: 4px;
+  border-left-color: rgba(110, 242, 207, 0.22);
+}
+
+.loader-info-item.child .loader-info-row,
+.loader-info-row.grandchild {
+  font-size: 9px;
+}
+
 .loader-unit-name {
   position: relative;
   z-index: 2;
@@ -180,6 +393,43 @@ onBeforeUnmount(() => {
 
 .loading-emblem.compact .loader-unit-name {
   font-size: var(--loader-name-size);
+}
+
+.loader-summary-strip {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  width: min(980px, 76vw);
+  border: 1px solid rgba(237, 243, 255, 0.16);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(3, 9, 15, 0.58);
+  box-shadow: 0 0 28px rgba(74, 158, 255, 0.12);
+}
+
+.loader-summary-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px;
+  font-family: monospace;
+  line-height: 1.1;
+  background: rgba(237, 243, 255, 0.035);
+}
+
+.loader-summary-item span {
+  overflow-wrap: anywhere;
+  font-size: 9px;
+  color: rgba(237, 243, 255, 0.56);
+  text-transform: uppercase;
+}
+
+.loader-summary-item strong {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  color: rgba(237, 243, 255, 0.92);
 }
 
 .loader-title {
@@ -257,6 +507,64 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .loader-progress-fill {
     transition: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .loader-info-panel {
+    top: max(10px, env(safe-area-inset-top));
+    bottom: auto;
+    width: calc(50vw - 16px);
+    max-height: 34vh;
+    padding: 8px;
+  }
+
+  .loader-info-left {
+    left: 8px;
+  }
+
+  .loader-info-right {
+    right: 8px;
+  }
+
+  .loader-info-section h2 {
+    font-size: 10px;
+  }
+
+  .loader-info-row {
+    gap: 7px;
+    font-size: 9px;
+  }
+
+  .loader-info-item.child .loader-info-row,
+  .loader-info-row.grandchild,
+  .loader-info-detail {
+    font-size: 8px;
+  }
+
+  .loader-summary-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: min(620px, 92vw);
+  }
+}
+
+@media (max-width: 520px) {
+  .loader-info-panel {
+    width: calc(50vw - 12px);
+    max-height: 30vh;
+    padding: 7px;
+  }
+
+  .loader-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .loader-summary-item {
+    padding: 5px 7px;
+  }
+
+  .loader-summary-item strong {
+    font-size: 9px;
   }
 }
 </style>

@@ -97,6 +97,7 @@ export class LoadingUnitPreviewScene {
   private startTime = 0;
   private width = DEFAULT_WIDTH;
   private height = DEFAULT_HEIGHT;
+  private disposed = false;
 
   constructor(options: LoadingUnitPreviewSceneOptions) {
     this.fullBleed = options.fullBleed;
@@ -117,6 +118,7 @@ export class LoadingUnitPreviewScene {
   }
 
   resize(size: LoadingUnitPreviewSceneSize): void {
+    if (this.disposed) return;
     this.width = Math.max(1, Math.round(size.width));
     this.height = Math.max(1, Math.round(size.height));
     this.renderer.setPixelRatio(Math.max(1, size.dpr));
@@ -127,6 +129,7 @@ export class LoadingUnitPreviewScene {
   }
 
   render(now: number): void {
+    if (this.disposed) return;
     if (this.startTime === 0) this.startTime = now;
     const elapsed = now - this.startTime;
     this.spinRoot.rotation.y = elapsed * SPIN_RAD_PER_MS;
@@ -135,7 +138,13 @@ export class LoadingUnitPreviewScene {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.spinRoot.clear();
+    this.scene.clear();
+    this.renderer.renderLists.dispose();
     this.shellMaterial.dispose();
+    this.renderer.forceContextLoss();
     this.renderer.dispose();
   }
 
@@ -155,16 +164,17 @@ export class LoadingUnitPreviewScene {
     const aspect = this.width / this.height;
     const verticalFov = THREE.MathUtils.degToRad(CAMERA_FOV_DEGREES);
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
-    const margin = this.fullBleed ? 1.22 : 1.5;
+    const margin = this.fullBleed ? 1.9 : 1.9;
     const distance = Math.max(
       (this.fitHalfHeight * margin) / Math.tan(verticalFov / 2),
       (this.fitHalfWidth * margin) / Math.tan(horizontalFov / 2),
       this.boundsRadius * 1.2,
     );
-    const lift = this.fitHalfHeight * (this.fullBleed ? 0.32 : 0.42);
+    const lift = this.fitHalfHeight * (this.fullBleed ? 0.18 : 0.32);
     this.camera.position.set(0, lift, distance);
     this.camera.near = Math.max(0.1, distance - this.boundsRadius * 3.4);
     this.camera.far = distance + this.boundsRadius * 3.4;
+    this.spinRoot.position.y = this.fullBleed ? this.fitHalfHeight * 0.28 : 0;
     this.camera.lookAt(scratchTarget.set(0, 0, 0));
     this.camera.updateProjectionMatrix();
   }

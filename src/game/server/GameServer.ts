@@ -364,8 +364,10 @@ export class GameServer {
   // Stop the game loop
   stop(): void {
     this.tickLoop.stop();
-    this.snapshotListeners.length = 0;
+    this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;
+    this.commandQueue.clear();
+    this.physicsSyncUnitIdsBuf.length = 0;
 
     // Clear simulation singletons so entity refs don't survive across sessions
     spatialGrid.clear();
@@ -382,9 +384,10 @@ export class GameServer {
     resetDeltaTracking();
 
     // Reset keyframe state for next session
-    this.snapshotPublisher.reset();
+    this.snapshotPublisher.clear();
     this.startupReadyListenerKeys.clear();
     this.startupGateOpen = false;
+    this.detachSimulationCallbacks();
 
     // Release the WASM-side per-engine static-cuboid broadphase
     // handle so its HashMap + visit-stamp Vec come back to Rust's
@@ -392,6 +395,21 @@ export class GameServer {
     // GameServer.create() (avoids unbounded growth across
     // load/teardown cycles in dev hot-reload).
     this.physics.dispose();
+  }
+
+  private releaseSnapshotListeners(): void {
+    while (this.snapshotListeners.length > 0) {
+      this.removeSnapshotListener(this.snapshotListeners[0].trackingKey);
+    }
+  }
+
+  private detachSimulationCallbacks(): void {
+    this.world.onEntityRemoving = null;
+    this.simulation.onUnitDeath = null;
+    this.simulation.onUnitSpawn = null;
+    this.simulation.onBuildingDeath = null;
+    this.simulation.onSimEvent = null;
+    this.simulation.onGameOver = null;
   }
 
   // Main simulation tick — variable timestep (driven by internal setInterval)

@@ -21,9 +21,17 @@ type DestroyMessage = {
 
 type PreviewWorkerMessage = InitMessage | ResizeMessage | DestroyMessage;
 
+type DestroyedMessage = {
+  type: 'destroyed';
+};
+
 type AnimationScope = typeof self & {
   requestAnimationFrame?: (callback: FrameRequestCallback) => number;
   cancelAnimationFrame?: (handle: number) => void;
+};
+
+type ClosableWorkerScope = typeof self & {
+  close?: () => void;
 };
 
 let preview: LoadingUnitPreviewScene | null = null;
@@ -53,11 +61,17 @@ self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
     return;
   }
 
+  destroyPreview();
+  self.postMessage({ type: 'destroyed' } satisfies DestroyedMessage);
+  (self as ClosableWorkerScope).close?.();
+};
+
+function destroyPreview(): void {
   running = false;
   cancelScheduledFrame();
   preview?.dispose();
   preview = null;
-};
+}
 
 function tick(now: number): void {
   frameHandle = null;
