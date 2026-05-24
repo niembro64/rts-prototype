@@ -16,16 +16,13 @@
   "plateau": {
     "shelfFractionOfStep": 0.99,
     "rampEdgeSharpness": 0,
-    "buildableShelfHeightTolerance": 20,
-    "slopeSampleDistanceLandCellMultiplier": 0.5,
-    "fullTerraceMaxSlope": 0.45,
-    "noTerraceMinSlope": 0.9
+    "buildableShelfHeightTolerance": 20
   },
   "ripple": {
     "radiusFraction": 0.4,
     "phase": 1.7,
     "components": [
-      { "wavelength": 600, "magnitude": 0.9 },
+      { "wavelength": 300, "magnitude": 0.9 },
       { "wavelength": 600, "magnitude": 0 },
       { "wavelength": 600, "magnitude": 0 }
     ]

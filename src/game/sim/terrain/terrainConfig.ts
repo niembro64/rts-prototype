@@ -1,5 +1,4 @@
 import { BATTLE_CONFIG } from '../../../battleBarConfig';
-import { LAND_CELL_SIZE } from '../../../mapSizeConfig';
 import terrainConfig from './terrainConfig.json';
 
 /** Floor of the world's vertical extent: the bottom face of every 3D tile. */
@@ -120,18 +119,11 @@ export const TERRAIN_PLATEAU_CONFIG: {
   readonly shelfFractionOfStep: number;
   readonly rampEdgeSharpness: number;
   readonly buildableShelfHeightTolerance: number;
-  readonly slopeSampleDistance: number;
-  readonly fullTerraceMaxSlope: number;
-  readonly noTerraceMinSlope: number;
 } = {
   enabled: BATTLE_CONFIG.plateau.enabled.default,
   shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
   rampEdgeSharpness: terrainConfig.plateau.rampEdgeSharpness,
   buildableShelfHeightTolerance: terrainConfig.plateau.buildableShelfHeightTolerance,
-  slopeSampleDistance:
-    LAND_CELL_SIZE * terrainConfig.plateau.slopeSampleDistanceLandCellMultiplier,
-  fullTerraceMaxSlope: terrainConfig.plateau.fullTerraceMaxSlope,
-  noTerraceMinSlope: terrainConfig.plateau.noTerraceMinSlope,
 };
 
 export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean {

@@ -31,13 +31,19 @@ function plateauRampCurve(t: number): number {
   return smooth + (t - smooth) * sharpness;
 }
 
-function applyTerrainPlateaus(height: number, strength: number = 1): number {
+/** Snap height to the nearest TERRAIN_D_TERRAIN multiple. The
+ *  `shelfFractionOfStep` slice of each step is treated as a flat
+ *  shelf at that level; the remainder is a connecting ramp shaped by
+ *  `rampEdgeSharpness` (0 = smoothstep, 1 = hard cliff at shelf
+ *  edges). The plateau gate is unconditional — every point snaps
+ *  whenever PLATEAU is ON. Smoothing back to the natural surface is
+ *  the job of the deposit blend ring downstream, NOT the slope
+ *  estimator. */
+function applyTerrainPlateaus(height: number): number {
   if (!TERRAIN_PLATEAU_CONFIG.enabled || !Number.isFinite(height))
     return height;
   const step = TERRAIN_D_TERRAIN;
   if (step <= 0) return height;
-  const terraceStrength = clamp01(strength);
-  if (terraceStrength <= 0) return height;
 
   const flatHalf = Math.min(
     0.49,
@@ -59,60 +65,7 @@ function applyTerrainPlateaus(height: number, strength: number = 1): number {
     const rampT = (1 + signedFromNearest - flatHalf) / rampSpan;
     plateauLevel = nearestLevel - 1 + plateauRampCurve(rampT);
   }
-  const plateauHeight = plateauLevel * step;
-
-  return height + (plateauHeight - height) * terraceStrength;
-}
-
-function getTerrainPlateauStrength(naturalSlope: number): number {
-  const fullSlope = Math.max(0, TERRAIN_PLATEAU_CONFIG.fullTerraceMaxSlope);
-  const noSlope = Math.max(
-    fullSlope + 1e-6,
-    TERRAIN_PLATEAU_CONFIG.noTerraceMinSlope,
-  );
-  if (naturalSlope <= fullSlope) return 1;
-  if (naturalSlope >= noSlope) return 0;
-  const t = (naturalSlope - fullSlope) / (noSlope - fullSlope);
-  return 1 - smootherstep(clamp01(t));
-}
-
-function estimateGeneratedTerrainSlope(
-  x: number,
-  y: number,
-  mapWidth: number,
-  mapHeight: number,
-  ovalMetrics: MapOvalMetrics,
-): number {
-  const eps = Math.max(1, TERRAIN_PLATEAU_CONFIG.slopeSampleDistance);
-  const hx0 = getGeneratedNaturalTerrainHeight(
-    x - eps,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const hx1 = getGeneratedNaturalTerrainHeight(
-    x + eps,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const hy0 = getGeneratedNaturalTerrainHeight(
-    x,
-    y - eps,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const hy1 = getGeneratedNaturalTerrainHeight(
-    x,
-    y + eps,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  return Math.hypot((hx1 - hx0) / (2 * eps), (hy1 - hy0) / (2 * eps));
+  return plateauLevel * step;
 }
 
 function getTerrainCircleEndRadiusForMinDim(minDim: number): number {
@@ -260,20 +213,26 @@ function getGeneratedNaturalTerrainHeight(
 }
 
 /**
- * Analytical terrain height at (x, y). Re-computes ripple + ridge +
- * slope-gated plateau + boundary fade + deposit override from scratch.
+ * Analytical terrain height at (x, y). Pipeline:
+ *   1. Natural ripple + ridge (`getGeneratedNaturalTerrainHeight`)
+ *   2. Map boundary fade (round-island falloff)
+ *   3. Plateau snapping — when PLATEAU is ON, snap unconditionally
+ *      to TERRAIN_D_TERRAIN levels, turning the natural surface into
+ *      a stair of plateaus + cliffs
+ *   4. Deposit override — flat pad inside `flatPadCells` at exactly
+ *      its `height`, smoothly blending out to the already-plateaued
+ *      terrain across `terrainBlendRadius`
  *
- * COST: ~5x a single ripple+ridge evaluation when slope-gated plateaus
- * are enabled — `estimateGeneratedTerrainSlope` does four extra
- * `getGeneratedNaturalTerrainHeight` calls (central-difference). This
- * is acceptable during one-time terrain baking
- * (`buildTerrainTileMap`) but DANGEROUS for any recurring caller.
+ * Because the blend ring is applied AFTER plateau snapping, a metal
+ * extractor placed across a cliff smooths that cliff into a ramp:
+ * the inside of the pad stays flat at h, the outside transitions
+ * smoothly to the stair-stepped neighbour.
  *
  * For runtime hot paths (per-pixel minimap, per-tile pathfinding,
  * per-frame visual normals) use `getTerrainMeshHeight` /
- * `getTerrainMeshNormal` from `terrainTileMap.ts` instead — those are
- * O(1) lookups against the baked authoritative tile map and stay in
- * sync via `getTerrainVersion`.
+ * `getTerrainMeshNormal` from `terrainTileMap.ts` — those are O(1)
+ * lookups against the baked authoritative tile map and stay in sync
+ * via `getTerrainVersion`.
  */
 export function getTerrainHeight(
   x: number,
@@ -281,17 +240,12 @@ export function getTerrainHeight(
   mapWidth: number,
   mapHeight: number,
   /** Set false to ignore deposit flat-zone overrides — used when a
-   *  caller needs the natural map surface that a deposit pad would
-   *  override (e.g. ring authoring with `dTerrainLevels: null`, which
-   *  parks the pad at whatever the natural height happens to be). */
+   *  caller needs the natural-plus-plateau surface that a deposit pad
+   *  would override (e.g. ring authoring with `dTerrainLevels: null`,
+   *  which parks the pad at whatever the post-plateau height happens
+   *  to be). */
   includeDeposits = true,
 ): number {
-  // Build the oval metrics + center sample ONCE per call and thread
-  // them through every stage that needs them (natural ripple/ridge,
-  // optional plateau slope estimator, boundary fade). Audit measured
-  // 3 redundant makeMapOvalMetrics calls per getTerrainHeight before
-  // this — small per call but called from every baked tile vertex,
-  // every analytical fallback, every getTerrainMapBoundaryFade probe.
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
   const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
   const natural = getGeneratedNaturalTerrainHeight(
@@ -307,31 +261,13 @@ export function getTerrainHeight(
     ovalMetrics,
     ovalSample,
   );
-  let blended = shaped;
+  const terraced = applyTerrainPlateaus(shaped);
+
+  let blended = terraced;
   if (includeDeposits) {
     const override = depositOverride(x, y);
-    blended = override.height * (1 - override.weight) + shaped * override.weight;
+    blended = override.height * (1 - override.weight) + terraced * override.weight;
   }
 
-  // Plateau snapping is applied LAST, after deposit pads have been
-  // blended into the surface, so the terracing covers everything the
-  // player will actually walk on (including the post-blend regions
-  // around deposits). Slope-gating still uses the natural ripple+ridge
-  // slope so flat bowls and plateaus terrace but steep ramps don't.
-  let terraced = blended;
-  if (TERRAIN_PLATEAU_CONFIG.enabled) {
-    const naturalSlope = estimateGeneratedTerrainSlope(
-      x,
-      y,
-      mapWidth,
-      mapHeight,
-      ovalMetrics,
-    );
-    terraced = applyTerrainPlateaus(
-      blended,
-      getTerrainPlateauStrength(naturalSlope),
-    );
-  }
-
-  return Math.max(TILE_FLOOR_Y, terraced);
+  return Math.max(TILE_FLOOR_Y, blended);
 }
