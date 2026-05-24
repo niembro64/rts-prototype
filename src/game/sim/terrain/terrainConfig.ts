@@ -122,30 +122,29 @@ export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
 
 /** Slope window for a given plateau amount, looked up in
  *  `plateauConfig.json`. Amount 0 disables terracing entirely; the
- *  caller short-circuits on `amount <= 0`. Higher amounts use wider
- *  slope windows so steeper terrain starts to terrace. A `null` entry
- *  in the JSON means "open-ended" (treated as +Infinity) — the gate
- *  is past every realistic slope, so every slope terraces into a
- *  cliff. Edit the JSON to retune the per-level thresholds without
- *  touching code. */
+ *  caller short-circuits on `amount <= 0`. For amounts 1..N the
+ *  STEEPNESS gates terracing: slopes at or above `fullTerraceMinSlope`
+ *  terrace fully (snap to TERRAIN_D_TERRAIN levels, producing cliffs);
+ *  slopes at or below `noTerraceMaxSlope` stay smooth; the band in
+ *  between fades. `null` entries mean +Infinity so no slope ever
+ *  triggers terracing (used for the OFF row). Edit the JSON to retune
+ *  per-level thresholds without touching code. */
 function plateauSlopeWindowForAmount(amount: number): {
-  fullTerraceMaxSlope: number;
-  noTerraceMinSlope: number;
+  fullTerraceMinSlope: number;
+  noTerraceMaxSlope: number;
 } {
   const levels = plateauConfig.levels;
   const idx = Math.max(0, Math.min(levels.length - 1, Math.floor(amount)));
   const level = levels[idx];
-  // `null` in the JSON means open-ended — terrace every slope, the
-  // cliffs-everywhere setting.
-  const full =
-    level.fullTerraceMaxSlope === null
+  const fullMin =
+    level.fullTerraceMinSlope === null
       ? Number.POSITIVE_INFINITY
-      : level.fullTerraceMaxSlope;
-  const fade =
-    level.noTerraceMinSlope === null
+      : level.fullTerraceMinSlope;
+  const noMax =
+    level.noTerraceMaxSlope === null
       ? Number.POSITIVE_INFINITY
-      : level.noTerraceMinSlope;
-  return { fullTerraceMaxSlope: full, noTerraceMinSlope: fade };
+      : level.noTerraceMaxSlope;
+  return { fullTerraceMinSlope: fullMin, noTerraceMaxSlope: noMax };
 }
 
 const DEFAULT_PLATEAU_SLOPE_WINDOW = plateauSlopeWindowForAmount(
@@ -159,10 +158,11 @@ export const TERRAIN_PLATEAU_CONFIG: {
   readonly rampEdgeSharpness: number;
   readonly buildableShelfHeightTolerance: number;
   readonly slopeSampleDistance: number;
-  /** Derived from `amount` — see plateauSlopeWindowForAmount. */
-  fullTerraceMaxSlope: number;
-  /** Derived from `amount`. */
-  noTerraceMinSlope: number;
+  /** Slopes at or above this terrace at full strength (creating
+   *  cliffs on steep terrain). Derived from `amount`. */
+  fullTerraceMinSlope: number;
+  /** Slopes at or below this stay smooth. Derived from `amount`. */
+  noTerraceMaxSlope: number;
 } = {
   amount: BATTLE_CONFIG.plateau.amount.default,
   shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
@@ -170,8 +170,8 @@ export const TERRAIN_PLATEAU_CONFIG: {
   buildableShelfHeightTolerance: terrainConfig.plateau.buildableShelfHeightTolerance,
   slopeSampleDistance:
     LAND_CELL_SIZE * terrainConfig.plateau.slopeSampleDistanceLandCellMultiplier,
-  fullTerraceMaxSlope: DEFAULT_PLATEAU_SLOPE_WINDOW.fullTerraceMaxSlope,
-  noTerraceMinSlope: DEFAULT_PLATEAU_SLOPE_WINDOW.noTerraceMinSlope,
+  fullTerraceMinSlope: DEFAULT_PLATEAU_SLOPE_WINDOW.fullTerraceMinSlope,
+  noTerraceMaxSlope: DEFAULT_PLATEAU_SLOPE_WINDOW.noTerraceMaxSlope,
 };
 
 export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean {
@@ -202,8 +202,8 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
   if (TERRAIN_PLATEAU_CONFIG.amount !== nextAmount) {
     TERRAIN_PLATEAU_CONFIG.amount = nextAmount;
     const window = plateauSlopeWindowForAmount(nextAmount);
-    TERRAIN_PLATEAU_CONFIG.fullTerraceMaxSlope = window.fullTerraceMaxSlope;
-    TERRAIN_PLATEAU_CONFIG.noTerraceMinSlope = window.noTerraceMinSlope;
+    TERRAIN_PLATEAU_CONFIG.fullTerraceMinSlope = window.fullTerraceMinSlope;
+    TERRAIN_PLATEAU_CONFIG.noTerraceMaxSlope = window.noTerraceMaxSlope;
     changed = true;
   }
 

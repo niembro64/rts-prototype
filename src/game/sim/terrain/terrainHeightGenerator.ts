@@ -65,15 +65,19 @@ function applyTerrainPlateaus(height: number, strength: number = 1): number {
 }
 
 function getTerrainPlateauStrength(naturalSlope: number): number {
-  const fullSlope = Math.max(0, TERRAIN_PLATEAU_CONFIG.fullTerraceMaxSlope);
-  const noSlope = Math.max(
-    fullSlope + 1e-6,
-    TERRAIN_PLATEAU_CONFIG.noTerraceMinSlope,
+  // Terrace STEEP terrain: at or above `fullTerraceMinSlope` the
+  // surface fully snaps to TERRAIN_D_TERRAIN levels (creating plateaus
+  // + cliffs). At or below `noTerraceMaxSlope` the natural shape is
+  // left alone. The band in between smoothly fades.
+  const noSlope = TERRAIN_PLATEAU_CONFIG.noTerraceMaxSlope;
+  const fullSlope = Math.max(
+    noSlope + 1e-6,
+    TERRAIN_PLATEAU_CONFIG.fullTerraceMinSlope,
   );
-  if (naturalSlope <= fullSlope) return 1;
-  if (naturalSlope >= noSlope) return 0;
-  const t = (naturalSlope - fullSlope) / (noSlope - fullSlope);
-  return 1 - smootherstep(clamp01(t));
+  if (naturalSlope <= noSlope) return 0;
+  if (naturalSlope >= fullSlope) return 1;
+  const t = (naturalSlope - noSlope) / (fullSlope - noSlope);
+  return smootherstep(clamp01(t));
 }
 
 function estimateGeneratedTerrainSlope(

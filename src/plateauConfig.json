@@ -1,11 +1,11 @@
 {
-  "_doc": "Slope window per PLATEAU amount. levels[i] applies to PLATEAU = i. Each entry has a `fullTerraceMaxSlope` (slope at or below which terracing applies at full strength) and a `noTerraceMinSlope` (slope at or above which terracing is suppressed); the band in between fades smoothly. `null` means open-ended (no upper bound — used for the cliffs-everywhere setting). Index 0 (PLATEAU OFF) is unused at runtime since the sim short-circuits on amount <= 0, but is included so the array is index-aligned with the bar buttons.",
+  "_doc": "Slope window per PLATEAU amount. levels[i] applies to PLATEAU = i. Slopes at or above `fullTerraceMinSlope` get snapped to TERRAIN_D_TERRAIN levels at full strength (turning steep terrain into a staircase of plateaus + cliffs). Slopes at or below `noTerraceMaxSlope` stay smooth (untouched). The band in between fades smoothly. Use `null` to mean +Infinity (no slope ever triggers terracing — useful for OFF). For PLATEAU = 5 (cliffs everywhere) set both to 0 so every non-zero slope terraces. Index 0 (PLATEAU OFF) is unused at runtime since the sim short-circuits on amount <= 0, but is kept so the array is index-aligned with the bar buttons.",
   "levels": [
-    { "fullTerraceMaxSlope": 0, "noTerraceMinSlope": 0 },
-    { "fullTerraceMaxSlope": 0.1, "noTerraceMinSlope": 0.2 },
-    { "fullTerraceMaxSlope": 0.25, "noTerraceMinSlope": 0.45 },
-    { "fullTerraceMaxSlope": 0.45, "noTerraceMinSlope": 0.9 },
-    { "fullTerraceMaxSlope": 0.8, "noTerraceMinSlope": 1.4 },
-    { "fullTerraceMaxSlope": null, "noTerraceMinSlope": null }
+    { "fullTerraceMinSlope": null, "noTerraceMaxSlope": null },
+    { "fullTerraceMinSlope": 1.0, "noTerraceMaxSlope": 0.8 },
+    { "fullTerraceMinSlope": 0.7, "noTerraceMaxSlope": 0.5 },
+    { "fullTerraceMinSlope": 0.5, "noTerraceMaxSlope": 0.3 },
+    { "fullTerraceMinSlope": 0.3, "noTerraceMaxSlope": 0.15 },
+    { "fullTerraceMinSlope": 0, "noTerraceMaxSlope": 0 }
   ]
 }
