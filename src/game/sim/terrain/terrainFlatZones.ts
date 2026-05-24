@@ -73,6 +73,22 @@ export function findDepositFlatZoneAt(x: number, y: number): TerrainFlatZone | n
   return null;
 }
 
+/** Resolve every deposit's contribution to (x, y). Returns the
+ *  natural-terrain weight (`weight`) and the deposit pad height the
+ *  caller should blend in.
+ *
+ *  Inside ANY deposit's inner radius: that deposit dominates entirely
+ *  (returned with weight 0) so the flat pad stays exact — extractors
+ *  rely on it being level. Outside every inner radius, all reachable
+ *  blend rings contribute simultaneously: each ring's deposit-side
+ *  weight is `w_z` (1 at the edge of its inner radius, smooth fall to
+ *  0 at radius + blendRadius). Their combined influence is the
+ *  probabilistic union `1 - prod(1 - w_z)`, and the deposit-side pad
+ *  height is the w_z-weighted average of every reachable ring's
+ *  height. This way two pads with overlapping blend bands hand off
+ *  smoothly to each other instead of "snap to whichever deposit is
+ *  closest", which used to throw a discontinuous cliff where the
+ *  winner flipped. */
 export function depositOverride(
   x: number,
   y: number,
@@ -80,22 +96,44 @@ export function depositOverride(
   if (depositFlatZones.length === 0) return { weight: 1, height: 0 };
   const candidates = getDepositFlatZoneCandidates(x, y);
   if (candidates.length === 0) return { weight: 1, height: 0 };
-  let minWeight = 1;
-  let bestHeight = 0;
+
+  // First: inner-radius dominance. The closest containing pad wins
+  // outright so the flat pad stays exact under the deposit.
+  let containing: TerrainFlatZone | null = null;
+  let containingD2 = Infinity;
   for (const z of candidates) {
     const dx = x - z.x;
     const dy = y - z.y;
-    const d = Math.sqrt(dx * dx + dy * dy);
-    if (d <= z.radius) return { weight: 0, height: z.height };
-    const blendRadius = Math.max(0, z.blendRadius);
-    if (blendRadius > 0 && d < z.radius + blendRadius) {
-      const t = (d - z.radius) / blendRadius;
-      const w = (1 - Math.cos(t * Math.PI)) * 0.5;
-      if (w < minWeight) {
-        minWeight = w;
-        bestHeight = z.height;
-      }
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= z.radius * z.radius && d2 < containingD2) {
+      containing = z;
+      containingD2 = d2;
     }
   }
-  return { weight: minWeight, height: bestHeight };
+  if (containing !== null) return { weight: 0, height: containing.height };
+
+  // Else: smooth multi-zone blend in the union of blend bands.
+  let oneMinusProduct = 1;
+  let weightedHeight = 0;
+  let weightSum = 0;
+  for (const z of candidates) {
+    const blendRadius = Math.max(0, z.blendRadius);
+    if (blendRadius <= 0) continue;
+    const dx = x - z.x;
+    const dy = y - z.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d >= z.radius + blendRadius) continue;
+    if (d <= z.radius) continue;
+    const t = (d - z.radius) / blendRadius;
+    const wz = (1 + Math.cos(t * Math.PI)) * 0.5;
+    oneMinusProduct *= 1 - wz;
+    weightedHeight += wz * z.height;
+    weightSum += wz;
+  }
+  if (weightSum <= 0) return { weight: 1, height: 0 };
+  const totalInfluence = 1 - oneMinusProduct;
+  return {
+    weight: 1 - totalInfluence,
+    height: weightedHeight / weightSum,
+  };
 }

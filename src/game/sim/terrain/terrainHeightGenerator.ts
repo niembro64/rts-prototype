@@ -302,11 +302,24 @@ export function getTerrainHeight(
     ovalMetrics,
     ovalSample,
   );
-  let terraced = natural;
+  const shaped = applyTerrainMapBoundaryForSample(
+    natural,
+    ovalMetrics,
+    ovalSample,
+  );
+  let blended = shaped;
+  if (includeDeposits) {
+    const override = depositOverride(x, y);
+    blended = override.height * (1 - override.weight) + shaped * override.weight;
+  }
+
+  // Plateau snapping is applied LAST, after deposit pads have been
+  // blended into the surface, so the terracing covers everything the
+  // player will actually walk on (including the post-blend regions
+  // around deposits). Slope-gating still uses the natural ripple+ridge
+  // slope so flat bowls and plateaus terrace but steep ramps don't.
+  let terraced = blended;
   if (TERRAIN_PLATEAU_CONFIG.enabled) {
-    // Slope estimator samples four neighbors at ±eps — those need
-    // their own oval samples (different positions), so only metrics
-    // get threaded here.
     const naturalSlope = estimateGeneratedTerrainSlope(
       x,
       y,
@@ -315,22 +328,10 @@ export function getTerrainHeight(
       ovalMetrics,
     );
     terraced = applyTerrainPlateaus(
-      natural,
+      blended,
       getTerrainPlateauStrength(naturalSlope),
     );
   }
 
-  const terracedShaped = applyTerrainMapBoundaryForSample(
-    terraced,
-    ovalMetrics,
-    ovalSample,
-  );
-  let blended = terracedShaped;
-  if (includeDeposits) {
-    const override = depositOverride(x, y);
-    blended =
-      override.height * (1 - override.weight) + terracedShaped * override.weight;
-  }
-
-  return Math.max(TILE_FLOOR_Y, blended);
+  return Math.max(TILE_FLOOR_Y, terraced);
 }

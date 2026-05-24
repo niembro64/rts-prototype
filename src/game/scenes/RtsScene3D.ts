@@ -60,7 +60,6 @@ import {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
   setTerrainMapShape,
-  setMetalDepositFlatZones,
 } from '../sim/Terrain';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
@@ -288,24 +287,15 @@ export class RtsScene3D {
     this.backgroundMode = config.backgroundMode;
 
     // Metal deposits are deterministic from map size + player count,
-    // so the client re-derives the same list and pushes flat zones to
-    // its local Terrain module. The server already does this in its
-    // own GameServer constructor; we mirror it here so the client's
-    // baked terrain mesh matches the server's heightmap. Captured for
-    // rendering further down so the marker pass uses the same list.
+    // so the client re-derives the same list. `generateMetalDeposits`
+    // installs the resulting flat zones into the client's local
+    // Terrain module itself (see its docstring), so by the time the
+    // marker pass below reads `metalDeposits` the heightmap already
+    // matches the server's.
     const metalDeposits = generateMetalDeposits(
       this.mapWidth,
       this.mapHeight,
       this.playerIds.length,
-    );
-    setMetalDepositFlatZones(
-      metalDeposits.map((d) => ({
-        x: d.x,
-        y: d.y,
-        radius: d.flatPadRadius,
-        height: d.height,
-        blendRadius: d.blendRadius,
-      })),
     );
     this.metalDeposits = metalDeposits;
     this.lobbyPreview = config.lobbyPreview ?? false;

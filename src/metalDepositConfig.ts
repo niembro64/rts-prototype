@@ -34,7 +34,12 @@
 
 import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
-import { getTerrainHeight, TERRAIN_D_TERRAIN } from './game/sim/Terrain';
+import {
+  getTerrainHeight,
+  setMetalDepositFlatZones,
+  TERRAIN_D_TERRAIN,
+  type TerrainFlatZone,
+} from './game/sim/Terrain';
 import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
 import rawConfig from './metalDepositConfig.json';
 
@@ -131,26 +136,47 @@ type MetalDepositPlacement = Pick<
   | 'flatPadRadius'
 >;
 
+type PendingPlacement = {
+  placement: MetalDepositPlacement;
+  dTerrainLevels: number | null;
+  blendRadius: number;
+};
+
 /**
  * Compute the deterministic deposit list for a map of given size and
- * player count. Same `(mapWidth, mapHeight, playerCount)` always
- * produces the same deposits in the same order — fine to call
- * independently on host and clients without networking the list.
+ * player count, and install the resulting flat zones into the terrain
+ * state. Same `(mapWidth, mapHeight, playerCount)` always produces the
+ * same deposits in the same order — fine to call independently on
+ * host and clients without networking the list.
+ *
+ * SIDE EFFECT: calls `setMetalDepositFlatZones` twice — first with
+ * the explicit-height pads, then with the full list once `null`
+ * rings have resolved their height from the post-blend terrain. The
+ * caller does NOT need to install zones separately.
+ *
+ * Two passes are required so that a `dTerrainLevels: null` ring rides
+ * the terrain ALREADY SHAPED by every explicit-height pad nearby
+ * (including their blend rings). Without the intermediate install,
+ * a null pad anchored to raw natural terrain near a tall mountain
+ * commander pad would sit far below it and create a cliff at the
+ * blend overlap.
  */
 export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
 ): MetalDeposit[] {
-  const deposits: MetalDeposit[] = [];
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
   const halfExtent = ovalMetrics.minDim / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
   const cx = ovalMetrics.cx;
   const cy = ovalMetrics.cy;
   const players = Math.max(1, playerCount);
   const sliceWidth = (2 * Math.PI) / players;
-  let id = 0;
 
+  // Pass 1: lay out every deposit's xy + per-ring metadata. No
+  // heights yet — those depend on whether the ring is explicit-height
+  // (immediate) or null (sampled after explicit pads are installed).
+  const placements: PendingPlacement[] = [];
   for (const ring of METAL_DEPOSIT_CONFIG.rings) {
     const ringRadius = ring.radiusFraction * halfExtent;
     const flatPadCells = validMetalDepositFlatPadCells(ring.flatPadCells);
@@ -162,27 +188,17 @@ export function generateMetalDeposits(
     // configured value means the same thing (a fraction of one slice)
     // regardless of how many players are dividing the map.
     const ringAngularOffset = (ring.sliceOffset ?? 0) * sliceWidth;
-    const placeOne = (rawX: number, rawY: number): void => {
-      const placement = makeMetalDepositPlacement(rawX, rawY, flatPadCells);
-      // dTerrainLevels=null → ride the natural terrain at the snapped
-      // pad center (post-snap so the published height matches where
-      // the pad actually lives).
-      const height =
-        dTerrainLevels === null
-          ? getTerrainHeight(placement.x, placement.y, mapWidth, mapHeight, false)
-          : dTerrainLevels * TERRAIN_D_TERRAIN;
-      deposits.push({
-        id: id++,
-        ...placement,
+    const pushPlacement = (rawX: number, rawY: number): void => {
+      placements.push({
+        placement: makeMetalDepositPlacement(rawX, rawY, flatPadCells),
         dTerrainLevels,
-        height,
         blendRadius,
       });
     };
 
     // Center: one deposit, regardless of countPerPlayer.
     if (ring.radiusFraction <= 1e-6) {
-      placeOne(cx, cy);
+      pushPlacement(cx, cy);
       continue;
     }
 
@@ -195,10 +211,74 @@ export function generateMetalDeposits(
         const angleInSlice = -sliceWidth / 2 + t * sliceWidth;
         const angle = sliceCenter + angleInSlice + ringAngularOffset;
         const point = mapOvalPointAt(ovalMetrics, angle, ringRadius);
-        placeOne(point.x, point.y);
+        pushPlacement(point.x, point.y);
       }
     }
   }
+
+  // Pass 2: heights for explicit-dTerrain rings, and install those
+  // pads so the null-ring sampler in pass 3 sees the terrain already
+  // shaped by them (including blend bands).
+  const heights = new Array<number>(placements.length);
+  const explicitZones: TerrainFlatZone[] = [];
+  for (let i = 0; i < placements.length; i++) {
+    const p = placements[i];
+    if (p.dTerrainLevels === null) continue;
+    const height = p.dTerrainLevels * TERRAIN_D_TERRAIN;
+    heights[i] = height;
+    explicitZones.push({
+      x: p.placement.x,
+      y: p.placement.y,
+      radius: p.placement.flatPadRadius,
+      height,
+      blendRadius: p.blendRadius,
+    });
+  }
+  setMetalDepositFlatZones(explicitZones);
+
+  // Pass 3: resolve every null-dTerrain pad against the post-blend
+  // terrain. `includeDeposits=true` makes getTerrainHeight fold the
+  // explicit zones we just installed into the sampled height, so a
+  // null pad next to a tall commander mountain rides up onto its
+  // blend skirt instead of sitting at raw natural terrain underneath.
+  // Null pads do NOT see each other (order-dependent feedback);
+  // they'll smooth into each other when the full set is installed in
+  // pass 4.
+  for (let i = 0; i < placements.length; i++) {
+    const p = placements[i];
+    if (p.dTerrainLevels !== null) continue;
+    heights[i] = getTerrainHeight(
+      p.placement.x,
+      p.placement.y,
+      mapWidth,
+      mapHeight,
+      true,
+    );
+  }
+
+  // Pass 4: emit the final deposit list and install the full flat-zone
+  // set (including resolved nulls).
+  const deposits: MetalDeposit[] = [];
+  const allZones: TerrainFlatZone[] = [];
+  for (let i = 0; i < placements.length; i++) {
+    const p = placements[i];
+    const height = heights[i];
+    deposits.push({
+      id: i,
+      ...p.placement,
+      dTerrainLevels: p.dTerrainLevels,
+      height,
+      blendRadius: p.blendRadius,
+    });
+    allZones.push({
+      x: p.placement.x,
+      y: p.placement.y,
+      radius: p.placement.flatPadRadius,
+      height,
+      blendRadius: p.blendRadius,
+    });
+  }
+  setMetalDepositFlatZones(allZones);
 
   return deposits;
 }

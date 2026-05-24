@@ -26,7 +26,6 @@ import {
   buildTerrainTileMap,
   getTerrainRuntimeConfig,
   setAuthoritativeTerrainTileMap,
-  setMetalDepositFlatZones,
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
   setTerrainMapShape,
@@ -96,23 +95,15 @@ export class ServerBootstrap {
     setTerrainMapShape(config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
-    // map size + player count). Push their flat zones (with per-ring
-    // dTerrain-derived height) to the heightmap BEFORE the physics
-    // ground lookup or any sim/render code samples terrain, so every
-    // consumer sees the raised/lowered pads on first read.
+    // map size + player count). `generateMetalDeposits` installs the
+    // resulting flat zones into the terrain state itself (see its
+    // docstring — needed for the two-pass null-dTerrain resolution),
+    // so by the time we hit `buildTerrainTileMap` the heightmap and
+    // every downstream sim/render sampler already sees the pads.
     const deposits = generateMetalDeposits(
       mapWidth,
       mapHeight,
       playerIds.length,
-    );
-    setMetalDepositFlatZones(
-      deposits.map((d) => ({
-        x: d.x,
-        y: d.y,
-        radius: d.flatPadRadius,
-        height: d.height,
-        blendRadius: d.blendRadius,
-      })),
     );
     const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(terrainTileMap);
