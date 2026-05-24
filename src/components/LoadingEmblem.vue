@@ -149,104 +149,16 @@ onBeforeUnmount(() => {
     drop-shadow(0 0 34px rgba(110, 242, 207, 0.13));
 }
 
+.loader-unit-preview :deep(.loader-unit-stage) {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
 .loader-unit-preview :deep(.loader-unit-canvas) {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-stage) {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-  perspective: 1500px;
-  perspective-origin: 50% 42%;
-  transform-style: preserve-3d;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-camera) {
-  position: absolute;
-  left: 50%;
-  top: var(--loader-css-anchor-y, 45%);
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-  transform:
-    translate3d(-50%, -50%, 0)
-    rotateX(58deg)
-    rotateZ(-14deg)
-    scale(var(--loader-css-unit-scale, 1));
-  will-change: transform;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-spin),
-.loader-unit-preview :deep(.loader-css-unit-model),
-.loader-unit-preview :deep(.loader-css-unit-piece) {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-spin) {
-  animation: loader-css-unit-spin 7.5s linear infinite;
-  will-change: transform;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-face) {
-  position: absolute;
-  left: 0;
-  top: 0;
-  box-sizing: border-box;
-  transform-style: preserve-3d;
-  backface-visibility: visible;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 46%),
-    var(--loader-shell-color);
-  border: 0.7px solid rgba(255, 255, 255, 0.25);
-  opacity: var(--loader-shell-opacity);
-  box-shadow:
-    inset 0 0 5px rgba(255, 255, 255, 0.16),
-    0 0 5px rgba(237, 243, 255, 0.06);
-}
-
-.loader-unit-preview :deep(.loader-css-unit-sphere-slice),
-.loader-unit-preview :deep(.loader-css-unit-cylinder-cap) {
-  border-radius: 999px;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-cylinder-side) {
-  border-radius: 1px;
-}
-
-.loader-unit-preview :deep(.loader-css-unit-cone-side) {
-  clip-path: polygon(0 16%, 100% 50%, 0 84%);
-}
-
-.loader-unit-preview :deep(.loader-css-unit-ring) {
-  position: absolute;
-  left: 0;
-  top: 0;
-  border-style: solid;
-  border-color: var(--loader-shell-color);
-  border-radius: 999px;
-  opacity: var(--loader-shell-opacity);
-  transform-style: preserve-3d;
-  box-shadow:
-    inset 0 0 6px rgba(255, 255, 255, 0.18),
-    0 0 5px rgba(237, 243, 255, 0.1);
-}
-
-@keyframes loader-css-unit-spin {
-  from {
-    transform: rotateY(0deg);
-  }
-
-  to {
-    transform: rotateY(360deg);
-  }
 }
 
 .loader-unit-name {
@@ -345,10 +257,6 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .loader-progress-fill {
     transition: none;
-  }
-
-  .loader-unit-preview :deep(.loader-css-unit-spin) {
-    animation: none;
   }
 }
 </style>
