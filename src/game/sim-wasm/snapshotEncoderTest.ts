@@ -1488,13 +1488,13 @@ function packBeamUpdatesIntoScratch(
 type AudioEventType =
   | 'fire' | 'hit' | 'death' | 'laserStart' | 'laserStop'
   | 'forceFieldStart' | 'forceFieldStop' | 'forceFieldImpact'
-  | 'ping' | 'attackAlert' | 'projectileExpire';
+  | 'ping' | 'attackAlert' | 'projectileExpire' | 'waterSplash';
 type AudioEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
 const AUDIO_EVENT_TYPE_CODES: Record<AudioEventType, number> = {
   fire: 0, hit: 1, death: 2, laserStart: 3, laserStop: 4,
   forceFieldStart: 5, forceFieldStop: 6, forceFieldImpact: 7,
-  ping: 8, attackAlert: 9, projectileExpire: 10,
+  ping: 8, attackAlert: 9, projectileExpire: 10, waterSplash: 11,
 };
 
 const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<AudioEventSourceType, number> = {

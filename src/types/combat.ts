@@ -72,7 +72,8 @@ export type SimEvent = {
     | 'forceFieldImpact'
     | 'ping'
     | 'attackAlert'
-    | 'projectileExpire';
+    | 'projectileExpire'
+    | 'waterSplash';
   /** Legacy wire field for the one-shot audio routing key. Fire,
    *  laser, and force-field events use turret ids; hit/projectile
    *  expire events use shot ids; death events may use a unit id. Keep

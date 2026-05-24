@@ -41,6 +41,7 @@ import { FogOfWarFog3D } from '../render3d/FogOfWarFog3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ForceFieldImpactRenderer3D } from '../render3d/ForceFieldImpactRenderer3D';
+import { WaterSplash3D } from '../render3d/WaterSplash3D';
 import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
@@ -141,6 +142,7 @@ export class RtsScene3D {
   private waterRenderer!: WaterRenderer3D;
   private explosionRenderer!: Explosion3D;
   private forceFieldImpactRenderer!: ForceFieldImpactRenderer3D;
+  private waterSplashRenderer!: WaterSplash3D;
   private debrisRenderer!: Debris3D;
   /** Per-frame world-XY visibility footprint driven by the PLAYER
    *  CLIENT `RENDER: WIN/PAD/ALL` toggle. Populated each frame from
@@ -482,6 +484,7 @@ export class RtsScene3D {
     this.cameraFramingSystem.seedInitialCamera();
     this.explosionRenderer = new Explosion3D(this.threeApp.world);
     this.forceFieldImpactRenderer = new ForceFieldImpactRenderer3D(this.threeApp.world);
+    this.waterSplashRenderer = new WaterSplash3D(this.threeApp.world);
     this.debrisRenderer = new Debris3D(
       this.threeApp.world,
       (x, z) => getTerrainMeshHeight(x, z, this.mapWidth, this.mapHeight),
@@ -607,6 +610,7 @@ export class RtsScene3D {
         waterRenderer: this.waterRenderer,
         explosionRenderer: this.explosionRenderer,
         forceFieldImpactRenderer: this.forceFieldImpactRenderer,
+        waterSplashRenderer: this.waterSplashRenderer,
         debrisRenderer: this.debrisRenderer,
         burnMarkRenderer: this.burnMarkRenderer,
         groundPrintRenderer: this.groundPrintRenderer,
@@ -860,7 +864,7 @@ export class RtsScene3D {
     // FOW-09 main: events forwarded by the audio earshot pad arrive
     // with audioOnly=true. The sound has already played above; skip
     // every visual branch so the explosion sprite / debris / ping
-    // marker don't leak the still-shrouded source's position.
+    // marker don't leak the still-fog-hidden source's position.
     if (event.audioOnly) return;
     if (event.type === 'ping' || event.type === 'attackAlert') {
       // Visual rings removed; sim events still flow (manual ping
@@ -916,6 +920,12 @@ export class RtsScene3D {
         undefined,
         effectGfx.fireExplosionStyle,
       );
+    } else if (event.type === 'waterSplash') {
+      const ctx = event.impactContext;
+      const mass = ctx ? Math.max(ctx.collisionRadius, 1) : 2;
+      const vx = ctx ? ctx.projectile.vel.x : 0;
+      const vy = ctx ? ctx.projectile.vel.y : 0;
+      this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);
     } else if (event.type === 'projectileExpire') {
       // Ground / expired-projectile fire — always a small pop, no meaningful
       // momentum (the projectile stopped). event.pos.z carries the exact
@@ -1153,7 +1163,7 @@ export class RtsScene3D {
     this.inputManager?.setActivePlayerId(playerId);
     // Tell the connection to filter snapshots for the new player. On
     // local connections this re-binds the server-side listener so the
-    // client view state, minimap, and fog-of-war shroud pick up the
+    // client view state, minimap, and fog-of-war visuals pick up the
     // new player's vision sources on the next snapshot. Remote
     // connections don't expose this — the network recipient is fixed.
     this.gameConnection.setRecipientPlayerId?.(playerId);
@@ -1380,6 +1390,7 @@ export class RtsScene3D {
       waterRenderer: this.waterRenderer,
       explosionRenderer: this.explosionRenderer,
       forceFieldImpactRenderer: this.forceFieldImpactRenderer,
+      waterSplashRenderer: this.waterSplashRenderer,
       debrisRenderer: this.debrisRenderer,
       burnMarkRenderer: this.burnMarkRenderer,
       groundPrintRenderer: this.groundPrintRenderer,

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getSightBoundary } from '@/clientBarConfig';
+import { getFogClouds, getFogShade, getSightBoundary } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -16,6 +16,7 @@ import type { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRe
 import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
 import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { ForceFieldImpactRenderer3D } from '../../render3d/ForceFieldImpactRenderer3D';
+import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
 import type { Debris3D } from '../../render3d/Debris3D';
 import type { BurnMark3D } from '../../render3d/BurnMark3D';
 import type { GroundPrint3D } from '../../render3d/GroundPrint3D';
@@ -48,6 +49,7 @@ export type RtsScene3DRenderPhaseResources = {
   waterRenderer: WaterRenderer3D;
   explosionRenderer: Explosion3D;
   forceFieldImpactRenderer: ForceFieldImpactRenderer3D;
+  waterSplashRenderer: WaterSplash3D;
   debrisRenderer: Debris3D;
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
@@ -140,6 +142,7 @@ export class RtsScene3DRenderPhase {
       waterRenderer,
       explosionRenderer,
       forceFieldImpactRenderer,
+      waterSplashRenderer,
       debrisRenderer,
       burnMarkRenderer,
       groundPrintRenderer,
@@ -170,10 +173,11 @@ export class RtsScene3DRenderPhase {
     this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
 
     const serverMeta = this.clientViewState.getServerMeta();
+    const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
     fogOfWarShroudRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
-      serverMeta?.fogOfWarEnabled === true,
+      fogOfWarEnabled && getFogShade(),
       deltaMs,
     );
     sightBoundaryRenderer.update(
@@ -224,6 +228,7 @@ export class RtsScene3DRenderPhase {
       this.debrisAccumMs = 0;
     }
     forceFieldImpactRenderer.update(effectDtMs, lineProjectiles);
+    waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       const burnMarkProjectiles = this.clientViewState.collectBurnMarkProjectiles(this.burnMarkProjectilesScratch);
@@ -270,7 +275,7 @@ export class RtsScene3DRenderPhase {
       fogOfWarFogRenderer.update(
         this.clientViewState,
         this.getLocalPlayerId(),
-        serverMeta?.fogOfWarEnabled === true,
+        fogOfWarEnabled && getFogClouds(),
         this.smokeTrailAccumMs,
       );
       this.smokeTrailAccumMs = 0;

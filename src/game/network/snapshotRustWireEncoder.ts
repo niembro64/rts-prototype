@@ -1062,6 +1062,7 @@ const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], numb
   ping: 8,
   attackAlert: 9,
   projectileExpire: 10,
+  waterSplash: 11,
 };
 
 const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<string, number> = {

@@ -320,7 +320,8 @@ export type NetworkServerSnapshotSimEvent = {
     | 'forceFieldImpact'
     | 'ping'
     | 'attackAlert'
-    | 'projectileExpire';
+    | 'projectileExpire'
+    | 'waterSplash';
   turretId: SimEventAudioKey;
   sourceType: SimEventSourceType | null;
   sourceKey: string | null;
@@ -372,17 +373,11 @@ export type NetworkServerSnapshotResourceMovement = {
   direction: ResourceFlowDirectionCode;
 };
 
-/** Wire shape for the FOW-11 keyframe shroud payload. cellSize is
- *  echoed for forwards-compat — clients can render at any resolution
- *  by resampling. The bitmap is BIT-PACKED row-major
- *  (issues.txt FOW-OPT-02): cell index `i = cy * gridW + cx` lives in
- *  byte `i >> 3` at bit `i & 7`, so the wire array length is
- *  `((gridW * gridH) + 7) >> 3` — 1/8 the byte-per-cell cost. 0 =
- *  never explored, 1 = ever explored. Already team-merged
- *  (recipient + allies) on the server. Skipped on keyframes when the
- *  team's bitmap is unchanged since the last ship to this listener,
- *  so the field stays absent on long static stretches even at
- *  keyframe cadence. */
+/** Legacy explored-history shroud payload. The runtime no longer emits
+ *  this field; fog presentation is now client-local live shade/clouds
+ *  controlled from the PLAYER CLIENT DEBUG section. The type remains
+ *  so older encoded snapshots can still be decoded without changing
+ *  the envelope schema. */
 export type NetworkServerSnapshotShroud = {
   gridW: number;
   gridH: number;
@@ -391,7 +386,7 @@ export type NetworkServerSnapshotShroud = {
 };
 
 /** Wire shape for an active scan pulse (FOW-14). Only the geometric
- *  info the client needs to draw vision through the shroud — the
+ *  info the client needs to clear live fog shade/clouds — the
  *  authoritative TTL stays on the server, but a copy of expiresAtTick
  *  rides along so a freshly-joined / reconnected client knows how
  *  much of the sweep is left. */
@@ -573,18 +568,13 @@ export type NetworkServerSnapshot = {
   audioEvents: NetworkServerSnapshotSimEvent[] | undefined;
   /** Active temporary vision pulses (FOW-14 — scanner sweeps) owned
    *  by the recipient or one of their allies, with the tick they
-   *  expire on. The client passes these into FogOfWarShroudRenderer3D
-   *  so the shroud lifts inside the sweep radius the same way it
-   *  does around a unit's vision circle. Omitted when no pulses are
-   *  live for the recipient's team. */
+   *  expire on. The client passes these into live fog renderers so
+   *  the shade/clouds clear inside the sweep radius the same way they
+   *  do around a unit's vision circle. Omitted when no pulses are live
+   *  for the recipient's team. */
   scanPulses: NetworkServerSnapshotScanPulse[] | undefined;
-  /** Authoritative explored-tile bitmap for this recipient
-   *  (FOW-11). One byte per (cellSize × cellSize) cell, 0 = never
-   *  explored, 1 = ever explored. Sent on keyframes only — the
-   *  client OR-s its local bitmap with this so a mid-game join /
-   *  reconnect restores the dark-shroud history that local vision
-   *  tracking alone can't reconstruct. Already team-merged on the
-   *  server (recipient + allies). */
+  /** Legacy explored-history shroud slot. Runtime snapshots leave this
+   *  undefined. */
   shroud: NetworkServerSnapshotShroud | undefined;
   projectiles: NetworkServerSnapshotProjectiles | undefined;
   gameState: NetworkServerSnapshotGameState | undefined;

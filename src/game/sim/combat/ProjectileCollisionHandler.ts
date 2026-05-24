@@ -652,8 +652,11 @@ export function checkProjectileCollisions(
       projEntity.transform.z = groundZAtProj;
     }
 
-    // Water hit — silent terminal. No explosion, no submunitions,
-    // no impact audio/FX. The shot just vanishes into the water.
+    // Water hit — silent terminal (no explosion, no submunitions, no
+    // damage). Emits a waterSplash visual sized by the projectile's
+    // collider radius (mass surrogate) and trajectory at impact, so
+    // clients can spawn reflective droplets oriented by the incoming
+    // velocity instead of a fire explosion.
     const hitWater =
       hitGround &&
       isWaterAt(
@@ -661,6 +664,21 @@ export function checkProjectileCollisions(
         world.mapWidth, world.mapHeight,
       );
     if (hitWater) {
+      if (proj.hasLeftSource) {
+        const projRadius = runtimeProfile.collisionRadius;
+        audioEvents.push({
+          type: 'waterSplash',
+          turretId: shotId,
+          pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+          playerId: projEntity.ownership.playerId,
+          entityId: projEntity.id,
+          impactContext: buildImpactContext(
+            config, projEntity.transform.x, projEntity.transform.y,
+            proj.velocityX ?? 0, proj.velocityY ?? 0,
+            projRadius,
+          ),
+        });
+      }
       projectilesToRemove.push(projEntity.id);
       despawnEvents.push({ id: projEntity.id });
       continue;

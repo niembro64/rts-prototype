@@ -46,6 +46,7 @@ const AUDIO_EVENT_TYPES = [
   'ping',
   'attackAlert',
   'projectileExpire',
+  'waterSplash',
 ] as const satisfies readonly NetworkServerSnapshotSimEvent['type'][];
 
 const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], number> = {
@@ -60,6 +61,7 @@ const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], numb
   ping: 8,
   attackAlert: 9,
   projectileExpire: 10,
+  waterSplash: 11,
 };
 
 const AUDIO_EVENT_SOURCE_TYPES = [

@@ -25,6 +25,7 @@ export type RtsScene3DRendererResources = {
   waterRenderer?: Destroyable | null;
   explosionRenderer?: Destroyable | null;
   forceFieldImpactRenderer?: Destroyable | null;
+  waterSplashRenderer?: Destroyable | null;
   debrisRenderer?: Destroyable | null;
   burnMarkRenderer?: Destroyable | null;
   groundPrintRenderer?: Destroyable | null;
@@ -56,6 +57,7 @@ export function teardownRtsScene3DRenderers(
   resources.waterRenderer?.destroy();
   resources.explosionRenderer?.destroy();
   resources.forceFieldImpactRenderer?.destroy();
+  resources.waterSplashRenderer?.destroy();
   resources.debrisRenderer?.destroy();
   resources.burnMarkRenderer?.destroy();
   resources.groundPrintRenderer?.destroy();
