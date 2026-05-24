@@ -655,12 +655,12 @@ const terrainSectionVars = computed(() =>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />
-                <BarLabel>FOG:</BarLabel>
+                <BarLabel>FOG OF WAR:</BarLabel>
                 <BarButton
                   :active="fogOfWarEnabled"
-                  :title="isHost ? 'Enable player vision, radar coverage, and fog-of-war rendering' : 'Only the host can change battle settings'"
+                  :title="isHost ? 'Enable authoritative player vision, radar coverage, and fog-of-war filtering' : 'Only the host can change battle settings'"
                   @click="pickFogOfWar(!fogOfWarEnabled)"
-                >FOG</BarButton>
+                >{{ fogOfWarEnabled ? 'ON' : 'OFF' }}</BarButton>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />

@@ -329,9 +329,6 @@ export class GameServer {
     this.tickLoop.stop();
     this.snapshotListeners.length = 0;
     this.gameOverListeners.length = 0;
-    // Listener set is empty now — mask drops to 0 so a leftover
-    // world reference won't keep doing shroud OR work for nobody.
-    this.world.shroudUpdatePlayerMask = 0;
 
     // Clear simulation singletons so entity refs don't survive across sessions
     spatialGrid.clear();
@@ -748,10 +745,8 @@ export class GameServer {
       lastStaticTerrainTileMap: undefined,
       lastStaticBuildabilityGrid: undefined,
       lastStaticResyncToken: undefined,
-      lastSentShroudVersionSum: undefined,
       snapshotBaselineHandle,
     });
-    this.recomputeShroudUpdatePlayerMask();
     return trackingKey;
   }
 
@@ -787,24 +782,6 @@ export class GameServer {
     resetAudioPoolForKey(removed.deltaTrackingKey);
     resetSprayPoolForKey(removed.deltaTrackingKey);
     resetMinimapPoolForKey(removed.deltaTrackingKey);
-    this.recomputeShroudUpdatePlayerMask();
-  }
-
-  /** Rebuild world.shroudUpdatePlayerMask from the current listener
-   *  set (issues.txt FOW-OPT-12). Each listener contributes its own
-   *  player + every ally to the mask, so updateShroudBitmaps only
-   *  touches players whose bitmap actually feeds some team's view.
-   *  Called whenever the listener set changes. */
-  private recomputeShroudUpdatePlayerMask(): void {
-    let mask = 0;
-    for (const listener of this.snapshotListeners) {
-      if (listener.playerId === undefined) continue;
-      mask |= 1 << (listener.playerId - 1);
-      for (const allyId of this.world.getAllies(listener.playerId)) {
-        mask |= 1 << (allyId - 1);
-      }
-    }
-    this.world.shroudUpdatePlayerMask = mask;
   }
 
   // Add a game over listener. Returns the callback reference so callers

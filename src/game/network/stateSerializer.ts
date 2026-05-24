@@ -291,8 +291,7 @@ function processRemovedEntities(
       // Unit died out of the recipient's vision (issues.txt FOW-17).
       // Mobile units don't persist as ghosts — without an emitted
       // removal here the stale entity stays in prevEntityIds and on
-      // the client at its last-seen position forever (mostly hidden
-      // behind shroud, but a real memory leak per kill). Emit a
+      // the client at its last-seen position forever. Emit a
       // silent removal: the recipient already lost sight of this
       // unit, so the deletion looks the same as a move-out-of-vision
       // and no extra info leaks.
@@ -662,10 +661,8 @@ export function serializeGameState(
 
   const netScanPulses = serializeScanPulses(world, visibility);
 
-  // FOW-11 shroud payload is decided by the publisher — it owns the
-  // per-listener "have I sent this yet" tracking for the FOW-OPT-02
-  // skip-when-unchanged gate. Leave the slot undefined here; the
-  // publisher overwrites it after this serialize call returns.
+  // Explored-history shroud rendering was removed; keep the legacy
+  // wire slot empty.
   const netShroud = undefined;
 
   const netProjectiles = serializeProjectileSnapshot({

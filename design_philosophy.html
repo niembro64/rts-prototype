@@ -292,6 +292,30 @@
         <li>Backpressure should drop or coarsen snapshots before it lets the browser build an unbounded send queue.</li>
       </ul>
 
+      <h3>Fog behavior and fog visuals are separate controls</h3>
+      <p>
+        The <strong>DEMO BATTLE</strong> and <strong>REAL BATTLE</strong> bars own whether
+        fog of war is functionally active. That battle-level <code>FOG OF WAR</code> control governs
+        authoritative player vision, radar coverage, recipient-specific snapshot filtering, and
+        whether enemy units outside vision exist in the client view at all.
+      </p>
+      <p>
+        The <strong>PLAYER CLIENT</strong> bar owns only fog presentation. Its
+        <code>DEBUG:</code> controls may show or hide the sight boundary, the live dark shade over
+        currently unseen terrain, and the soft fog cloud puffs. Fog visual colors and shade alpha
+        belong in <code>colorsConfig.json</code>; fog cloud behavior and geometry belong in
+        <code>fogConfig.json</code>.
+        Those controls must not change gameplay truth, server filtering, radar semantics, or what
+        entity data is delivered to the player.
+      </p>
+      <p>
+        There is no persistent black explored/unexplored shroud. We should not track or render
+        &ldquo;ever seen&rdquo; terrain history as a separate black map state unless it is deliberately
+        reintroduced as a gameplay feature with its own design justification. The current visual
+        model for unseen areas is live-only: optional shade and optional clouds, both disabled
+        automatically when battle-level fog is off.
+      </p>
+
       <h3>Delta thresholds match channel semantics</h3>
       <p>
         A <code>FULLSNAP</code> is a recovery baseline. A <code>DIFFSNAP</code> is a minimal update

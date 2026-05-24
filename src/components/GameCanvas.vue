@@ -245,6 +245,8 @@ const {
   triangleDebug,
   buildGridDebug,
   sightBoundary,
+  fogShade,
+  fogClouds,
   movementPosEma,
   movementVelEma,
   rotationPosEma,
@@ -289,6 +291,8 @@ const {
   toggleTriangleDebug,
   toggleBuildGridDebug,
   toggleSightBoundary,
+  toggleFogShade,
+  toggleFogClouds,
   changeMovementPosEma,
   changeMovementVelEma,
   changeRotationPosEma,
@@ -835,6 +839,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   triangleDebug: triangleDebug.value,
   buildGridDebug: buildGridDebug.value,
   sightBoundary: sightBoundary.value,
+  fogShade: fogShade.value,
+  fogClouds: fogClouds.value,
   renderMode: renderMode.value,
   audioScope: audioScope.value,
   allSoundsActive: allSoundsActive.value,
@@ -871,6 +877,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleTriangleDebug,
   toggleBuildGridDebug,
   toggleSightBoundary,
+  toggleFogShade,
+  toggleFogClouds,
   changeRenderMode,
   changeAudioScope,
   toggleAllSounds,
@@ -940,6 +948,8 @@ watchEffect(() => {
   m.triangleDebug = triangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
   m.sightBoundary = sightBoundary.value;
+  m.fogShade = fogShade.value;
+  m.fogClouds = fogClouds.value;
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
   m.allSoundsActive = allSoundsActive.value;

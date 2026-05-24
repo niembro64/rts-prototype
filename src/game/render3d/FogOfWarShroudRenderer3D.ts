@@ -3,25 +3,15 @@ import { COLORS } from '@/colorsConfig';
 import { HORIZON_RENDER_EXTEND } from '../../config';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, PlayerId } from '../sim/types';
-import type { NetworkServerSnapshotShroud } from '../network/NetworkTypes';
 import {
   canEntityProvideFullVision,
   getEntityFullVisionRadius,
 } from '../network/stateSerializerVisibility';
-import { markCircleScanline } from '../sim/circleFill';
-import { SHROUD_CELL_SIZE } from '../sim/WorldState';
 
-// Repaint cadence. The shroud is purely cosmetic; sub-100ms updates are
+// Repaint cadence. The shade is purely cosmetic; sub-100ms updates are
 // imperceptible at RTS pace and let us keep the canvas-paint cost low.
 const UPDATE_INTERVAL_MS = 110;
-
-// Alpha values in the canvas R channel (used as alphaMap by the
-// material — 0 = clear, 255 = solid black). Three states:
-//   - UNEXPLORED: nearly opaque, terrain barely visible.
-//   - EXPLORED-DARK: mid shroud, terrain readable but dimmed.
-//   - CURRENTLY VISIBLE: punched out via a per-source radial gradient.
-const UNEXPLORED_ALPHA = 245;
-const EXPLORED_ALPHA = 130;
+const FOG_SHADE_CELL_SIZE = 64;
 const SHROUD_Y = 2;
 
 type VisionSource = {
@@ -40,7 +30,7 @@ function createHorizonShroudGeometry(mapWidth: number, mapHeight: number): THREE
 
   // Nine quads: the center maps the full alpha texture, while the
   // horizon bands clamp to the nearest texture edge instead of
-  // stretching the shroud across the extended water/shelf plane.
+  // stretching the shade across the extended water/shelf plane.
   for (let yIndex = 0; yIndex < worldY.length; yIndex++) {
     const y = worldY[yIndex];
     const v = 1 - clamp01(y / mapHeight);
@@ -76,45 +66,34 @@ function clamp01(value: number): number {
   return value;
 }
 
-/** Three-state fog-of-war shroud (issues.txt FOW-01).
+/** Live fog-of-war shade.
  *
  *  The server's snapshot filter already prevents the client from
  *  receiving entities outside the local player's vision, so this
- *  renderer does NOT exist to occlude enemies — that's authoritative.
- *  Its only job is showing the player which areas of terrain they've
- *  already explored. Without it, the world looks identical whether the
- *  player has scouted it or not, which is the canonical RTS gap noted
- *  in issues.txt.
- *
- *  Exploration history is tracked client-side: every update OR's the
- *  current vision mask into a persistent `revealed` bitmap, so areas
- *  light up the first time a vision source touches them and stay lit
- *  forever (until the local-player id changes, e.g. a lobby seat swap).
- *  Server doesn't persist this — mid-game joins start blank, which is
- *  fine; FOW-11 in issues.txt covers the server-side variant. */
+ *  renderer does NOT exist to occlude enemies. It is only a client
+ *  presentation layer for unseen terrain while battle-level FOG is on.
+ *  It deliberately does not track explored history: there is no black
+ *  "never seen" region and no dark "explored but not visible" state. */
 export class FogOfWarShroudRenderer3D {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly imageData: ImageData;
-  private readonly revealed: Uint8Array;
   private readonly texture: THREE.CanvasTexture;
   private readonly material: THREE.MeshBasicMaterial;
   private readonly mesh: THREE.Mesh;
   private readonly sources: VisionSource[] = [];
   private updateAccumMs = UPDATE_INTERVAL_MS;
-  private lastPlayerId: PlayerId | null = null;
   /** Last `enabled` state we drew at. Tracked so toggling fog back on
    *  forces an immediate repaint instead of leaving the canvas at
    *  whatever it held when fog last turned off — without this the
-   *  shroud snaps in only on the next UPDATE_INTERVAL_MS tick (110ms
+   *  shade snaps in only on the next UPDATE_INTERVAL_MS tick (110ms
    *  of visible flash). */
   private lastEnabled = false;
-  /** Hash of the source pool at the LAST paint (issues.txt
-   *  FOW-OPT-04). Identical hash + no shroud-apply since last paint
+  /** Hash of the source pool at the LAST paint. Identical hash
    *  ⇒ the alphaMap output would be byte-for-byte identical, so we
-   *  skip collectSources/markRevealed/paintAlphaMap entirely. Reset
+   *  skip paintAlphaMap entirely. Reset
    *  to null whenever the canvas needs an unconditional repaint
-   *  (seat swap, fog toggle on, server shroud applied). */
+   *  (fog toggle on). */
   private lastSourcesHash: number | null = null;
 
   constructor(
@@ -122,14 +101,10 @@ export class FogOfWarShroudRenderer3D {
     private readonly mapWidth: number,
     private readonly mapHeight: number,
   ) {
-    // FOW-OPT-18: canvas grid matches the server's shroud grid exactly
-    // so applyServerShroud can byte-copy with a Y-flip instead of
-    // running a per-pixel resample. Both grids derive from the same
-    // SHROUD_CELL_SIZE + (mapWidth, mapHeight) so they stay in lockstep
-    // by construction. Texture filtering on the GPU (LinearFilter) takes
-    // care of smoothing the coarse grid back up to screen space.
-    const gridW = Math.max(1, Math.ceil(mapWidth / SHROUD_CELL_SIZE));
-    const gridH = Math.max(1, Math.ceil(mapHeight / SHROUD_CELL_SIZE));
+    // A coarse alpha grid is enough for this presentation layer;
+    // texture filtering on the GPU smooths it back up to screen space.
+    const gridW = Math.max(1, Math.ceil(mapWidth / FOG_SHADE_CELL_SIZE));
+    const gridH = Math.max(1, Math.ceil(mapHeight / FOG_SHADE_CELL_SIZE));
     this.canvas = document.createElement('canvas');
     this.canvas.width = gridW;
     this.canvas.height = gridH;
@@ -139,13 +114,7 @@ export class FogOfWarShroudRenderer3D {
     }
     this.ctx = ctx;
     this.imageData = ctx.createImageData(gridW, gridH);
-    this.revealed = new Uint8Array(gridW * gridH);
-    // FOW-OPT-17: seed the ImageData buffer to UNEXPLORED + alpha=255
-    // up front. markRevealed / applyServerShroud then mutate only the
-    // cells that flip 0→1 (writing EXPLORED into the same buffer), and
-    // paintAlphaMap can putImageData straight through without rebuilding
-    // the per-pixel base coat every frame.
-    fillImageDataUnexplored(this.imageData);
+    fillImageDataShade(this.imageData);
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.wrapS = THREE.ClampToEdgeWrapping;
@@ -159,14 +128,11 @@ export class FogOfWarShroudRenderer3D {
     // post-rotation plane's UV V=1-at-Y=0 mapping ONLY when flipY is
     // off. With flipY left at its default true, the texture is
     // mirrored on upload and every vision circle renders at the
-    // opposite end of the map from its source unit (so e.g. a unit on
-    // the south edge punches its circle through the shroud at the
-    // north edge — its own position stays opaque and the player sees
-    // the unit "hidden" by the shroud).
+    // opposite end of the map from its source unit.
     this.texture.flipY = false;
 
     this.material = new THREE.MeshBasicMaterial({
-      color: COLORS.world.fogOfWar.colorHex,
+      color: COLORS.world.fogOfWar.shade.colorHex,
       transparent: true,
       alphaMap: this.texture,
       depthWrite: false,
@@ -178,7 +144,7 @@ export class FogOfWarShroudRenderer3D {
     this.mesh = new THREE.Mesh(geom, this.material);
     this.mesh.rotation.x = -Math.PI / 2;
     this.mesh.position.set(mapWidth / 2, SHROUD_Y, mapHeight / 2);
-    // Render last and ignore depth — the shroud is a 2D info layer, not
+    // Render last and ignore depth — the shade is a 2D info layer, not
     // a physical object. Tall terrain shouldn't poke through it.
     this.mesh.renderOrder = 9000;
     this.mesh.visible = false;
@@ -198,38 +164,12 @@ export class FogOfWarShroudRenderer3D {
       return;
     }
 
-    // Lobby seat swap or replay scrub → exploration is per-player, so
-    // start a fresh history. Reset both the revealed bitmap AND the
-    // ImageData base-coat buffer (FOW-OPT-17 keeps the buffer in sync
-    // with revealed, so the two must reset together).
-    if (this.lastPlayerId !== localPlayerId) {
-      this.lastPlayerId = localPlayerId;
-      this.revealed.fill(0);
-      fillImageDataUnexplored(this.imageData);
-      this.updateAccumMs = UPDATE_INTERVAL_MS;
-      this.lastSourcesHash = null;
-    }
-
     // Fog just toggled back on — force a repaint this frame so the
-    // shroud snaps in immediately instead of showing the canvas in
+    // shade snaps in immediately instead of showing the canvas in
     // whatever state it held last.
     if (!this.lastEnabled) {
       this.updateAccumMs = UPDATE_INTERVAL_MS;
       this.lastEnabled = true;
-      this.lastSourcesHash = null;
-    }
-
-    // FOW-11: fold any authoritative bitmap from the latest keyframe
-    // into the local revealed array BEFORE the live OR pass. The
-    // server's record covers anything the recipient (and their
-    // allies) ever explored — a mid-game join / reconnect lands with
-    // a populated bitmap so the dark-shroud history shows up
-    // immediately, then live vision keeps it current.
-    const shroud = clientViewState.consumePendingShroud();
-    if (shroud) {
-      this.applyServerShroud(shroud);
-      // Server reveals can light up explored cells we haven't observed
-      // locally — force a repaint regardless of source-hash stability.
       this.lastSourcesHash = null;
     }
 
@@ -238,15 +178,14 @@ export class FogOfWarShroudRenderer3D {
     this.updateAccumMs = 0;
 
     this.collectSources(clientViewState, localPlayerId);
-    // FOW-OPT-04: skip the full paint when the local source pool is
+    // Skip the full paint when the local source pool is
     // byte-identical to the last paint. With no source movement (an
-    // idle base) and no fresh shroud apply, the alphaMap output would
+    // idle base), the alphaMap output would
     // be identical to what's already on the canvas — putImageData +
     // radial-gradient pass would just repaint identical pixels, and a
     // hash compare keeps the static case near-free.
     const sourcesHash = this.hashSources();
     if (sourcesHash === this.lastSourcesHash) return;
-    this.markRevealed();
     this.paintAlphaMap();
     this.texture.needsUpdate = true;
     this.lastSourcesHash = sourcesHash;
@@ -254,8 +193,7 @@ export class FogOfWarShroudRenderer3D {
 
   /** Cheap rolling hash of the current source pool. Quantizes positions
    *  and radii to integer world units (sub-unit drift is below the
-   *  alphaMap's per-cell resolution anyway — one cell is SHROUD_CELL_SIZE
-   *  world units after FOW-OPT-18) so a unit parked in place doesn't
+   *  alphaMap's per-cell resolution anyway) so a unit parked in place doesn't
    *  trigger repaints from float noise. The hash is order-sensitive —
    *  fine because collectSources walks ClientViewState's units / buildings
    *  / pulses in a stable order. */
@@ -268,48 +206,6 @@ export class FogOfWarShroudRenderer3D {
       h = (Math.imul(h, 31) + (s.radius | 0)) | 0;
     }
     return h;
-  }
-
-  /** OR the server-side shroud bitmap into the local revealed array.
-   *  Wire bitmap is bit-packed (issues.txt FOW-OPT-02): cell
-   *  `i = sy * gridW + sx` is bit `i & 7` of byte `i >> 3`. Never
-   *  CLEARS pixels — explored history is monotonic from the client's
-   *  perspective.
-   *
-   *  FOW-OPT-18: server and canvas grids are sized identically (both
-   *  derive from SHROUD_CELL_SIZE + map dimensions), so the only
-   *  per-cell work is a Y-flip — server row 0 is world y=0 (bottom),
-   *  canvas row 0 is world y=mapHeight (top, see texture.flipY=false
-   *  + the paint code's `1 - source.y/mapHeight` mapping). Any
-   *  size-mismatch is treated as an invariant violation and skipped
-   *  (a future grid-resolution divergence would need to bring back a
-   *  resample path; not worth the LUT complexity until then).
-   *
-   *  FOW-OPT-17: cells that flip 0→1 also write EXPLORED_ALPHA into
-   *  the ImageData base-coat buffer at the matching index, keeping it
-   *  in sync with `revealed`. */
-  private applyServerShroud(shroud: NetworkServerSnapshotShroud): void {
-    const gridW = this.canvas.width;
-    const gridH = this.canvas.height;
-    if (shroud.gridW !== gridW || shroud.gridH !== gridH) return;
-    const srcBits = shroud.bitmap;
-    const rgb = this.imageData.data;
-    for (let cy = 0; cy < gridH; cy++) {
-      const sy = gridH - 1 - cy;
-      const srcRowStart = sy * gridW;
-      const dstRowStart = cy * gridW;
-      for (let cx = 0; cx < gridW; cx++) {
-        const cellIdx = srcRowStart + cx;
-        if ((srcBits[cellIdx >> 3] & (1 << (cellIdx & 7))) === 0) continue;
-        const dstIdx = dstRowStart + cx;
-        if (this.revealed[dstIdx] !== 0) continue;
-        this.revealed[dstIdx] = 1;
-        const p = dstIdx << 2;
-        rgb[p] = EXPLORED_ALPHA;
-        rgb[p + 1] = EXPLORED_ALPHA;
-        rgb[p + 2] = EXPLORED_ALPHA;
-      }
-    }
   }
 
   destroy(): void {
@@ -330,7 +226,7 @@ export class FogOfWarShroudRenderer3D {
       this.collectFromOwned(clientViewState.getUnitsByPlayer(playerId));
       this.collectFromOwned(clientViewState.getBuildingsByPlayer(playerId));
     }
-    // FOW-14: temporary scanner sweeps clear the shroud for the
+    // FOW-14: temporary scanner sweeps clear the shade for the
     // duration of the pulse. Server already filtered the list to this
     // recipient's team, so every entry is one we should honor.
     const pulses = clientViewState.getScanPulses();
@@ -355,44 +251,16 @@ export class FogOfWarShroudRenderer3D {
     }
   }
 
-  private markRevealed(): void {
-    // Pixel-corner sampling (cellAnchor=0) matches the original loop's
-    // `dx = x - cx`. Defers per-row span math to the shared scanline
-    // helper (issues.txt FOW-OPT-05) so the per-cell distance test
-    // is one sqrt per row instead of per pixel.
-    //
-    // FOW-OPT-17: pass the ImageData byte array + EXPLORED_ALPHA so
-    // any cell flipping 0→1 also gets its RGB written into the
-    // base-coat buffer in the same scan, keeping the paint state in
-    // sync with `revealed` without a per-frame full-buffer rebuild.
-    const width = this.canvas.width;
-    const height = this.canvas.height;
-    const rgb = this.imageData.data;
-    for (let i = 0; i < this.sources.length; i++) {
-      const source = this.sources[i];
-      const cx = (source.x / this.mapWidth) * width;
-      const cy = (1 - source.y / this.mapHeight) * height;
-      const r = (source.radius / this.mapWidth) * width;
-      markCircleScanline(this.revealed, width, height, cx, cy, r, 0, rgb, EXPLORED_ALPHA);
-    }
-  }
-
   private paintAlphaMap(): void {
-    // FOW-OPT-17: the ImageData buffer is maintained incrementally —
-    // initialized to UNEXPLORED at construction / seat-swap, with
-    // EXPLORED written into individual cells by markRevealed and
-    // applyServerShroud the instant a cell flips 0→1. So pushing
-    // the buffer is a single putImageData with no per-frame
-    // base-coat loop. The radial-gradient pass below then paints
-    // live vision circles on top.
+    fillImageDataShade(this.imageData);
     this.ctx.putImageData(this.imageData, 0, 0);
 
     // Vision-circle pass: paint each source as a radial gradient from
     // solid black at the inner core to transparent at the rim. With the
     // material's alphaMap reading the canvas R channel, solid black
-    // (R=0) renders as a transparent shroud → the player sees through.
+    // (R=0) renders as a transparent shade → the player sees through.
     // The 0.78 inner stop keeps the core sharp and only feathers the
-    // outer 22%, which is what RTS shroud rims traditionally look like.
+    // outer 22%.
     for (let i = 0; i < this.sources.length; i++) {
       const source = this.sources[i];
       const cx = (source.x / this.mapWidth) * this.canvas.width;
@@ -409,19 +277,18 @@ export class FogOfWarShroudRenderer3D {
   }
 }
 
-/** Seed (or re-seed) the ImageData base-coat buffer to the UNEXPLORED
- *  state — RGB = UNEXPLORED_ALPHA, alpha channel = 255. Called once at
- *  construction and again whenever exploration history resets
- *  (FOW-OPT-17: the buffer mirrors `revealed`, so both reset together).
- *  The 4-byte memset is the only place that writes the alpha channel;
- *  the incremental-update paths in markRevealed/applyServerShroud touch
- *  RGB only so this value persists. */
-function fillImageDataUnexplored(imageData: ImageData): void {
+function fillImageDataShade(imageData: ImageData): void {
   const data = imageData.data;
+  const shadeAlpha = clampByte(COLORS.world.fogOfWar.shade.alpha);
   for (let p = 0; p < data.length; p += 4) {
-    data[p] = UNEXPLORED_ALPHA;
-    data[p + 1] = UNEXPLORED_ALPHA;
-    data[p + 2] = UNEXPLORED_ALPHA;
+    data[p] = shadeAlpha;
+    data[p + 1] = shadeAlpha;
+    data[p + 2] = shadeAlpha;
     data[p + 3] = 255;
   }
+}
+
+function clampByte(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(255, Math.round(value)));
 }

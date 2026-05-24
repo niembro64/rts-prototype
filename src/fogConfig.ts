@@ -11,9 +11,7 @@ export type FogOfWarProfile = {
   fadeInMs: number;
   fadeOutMs: number;
   radius: number;
-  maxAlpha: number;
   transparentOuterFraction: number;
-  colorHex: string;
   zMin: number;
   zRange: number;
 };
@@ -39,9 +37,3 @@ function assertFogCapPolicy(value: unknown, fieldName: string): asserts value is
 assertFogCapPolicy(FOG_CONFIG_RAW.fogOfWar.capPolicy, 'fogConfig.fogOfWar.capPolicy');
 
 export const FOG_CONFIG = FOG_CONFIG_RAW;
-
-export function cssHexToNumber(value: string, fieldName: string): number {
-  const match = /^#([0-9a-f]{6})$/i.exec(value.trim());
-  if (!match) throw new Error(`${fieldName} must be a CSS hex color like #cccccc`);
-  return Number.parseInt(match[1], 16);
-}

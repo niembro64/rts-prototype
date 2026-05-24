@@ -133,6 +133,8 @@ export type GameCanvasClientControlBarModel = {
   readonly triangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly sightBoundary: boolean;
+  readonly fogShade: boolean;
+  readonly fogClouds: boolean;
   readonly renderMode: RenderMode;
   readonly audioScope: AudioScope;
   readonly allSoundsActive: boolean;
@@ -169,6 +171,8 @@ export type GameCanvasClientControlBarModel = {
   toggleTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   toggleSightBoundary(): void;
+  toggleFogShade(): void;
+  toggleFogClouds(): void;
   changeRenderMode(mode: RenderMode): void;
   changeAudioScope(scope: AudioScope): void;
   toggleAllSounds(): void;

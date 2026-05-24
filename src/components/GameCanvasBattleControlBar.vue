@@ -217,12 +217,12 @@ defineProps<{
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>FOG:</BarLabel>
+        <BarLabel>FOG OF WAR:</BarLabel>
         <BarButton
           :active="model.currentFogOfWarEnabled"
-          title="Enable player vision, radar coverage, and fog-of-war rendering"
+          title="Enable authoritative player vision, radar coverage, and fog-of-war filtering"
           @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
-        >FOG</BarButton>
+        >{{ model.currentFogOfWarEnabled ? 'ON' : 'OFF' }}</BarButton>
         <BarDivider />
       </BarControlGroup>
     </div>

@@ -487,8 +487,8 @@ function shouldSendBeamPath(
   if (visibility.isOwnedByRecipientOrAlly(ownerId)) return true;
   // FOW-08-followup: forward the beam if EITHER end is visible. A
   // laser fired from fog that lands on the recipient's unit now
-  // flashes for them — the source still falls inside the shroud, but
-  // the beam line is drawn from the (still-shrouded) attacker toward
+  // flashes for them — the source still falls outside vision, but
+  // the beam line is drawn from the still-hidden attacker toward
   // the visible endpoint, so the player can see the direction of
   // fire rather than HP melting from nothing.
   const sourcePoint = points[0];

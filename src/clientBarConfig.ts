@@ -50,6 +50,8 @@ export const CLIENT_CONFIG = {
   triangleDebug: clientBarConfig.triangleDebug,
   buildGridDebug: clientBarConfig.buildGridDebug,
   sightBoundary: clientBarConfig.sightBoundary,
+  fogShade: clientBarConfig.fogShade,
+  fogClouds: clientBarConfig.fogClouds,
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
    *  position from the last-seen velocity each frame); 'pos' skips
    *  integration entirely and snaps straight to snapshot position.
@@ -140,6 +142,8 @@ const BEAM_SNAP_TO_TURRET_STORAGE_KEY = sk.beamSnapToTurret;
 const TRIANGLE_DEBUG_STORAGE_KEY = sk.triangleDebug;
 const BUILD_GRID_DEBUG_STORAGE_KEY = sk.buildGridDebug;
 const SIGHT_BOUNDARY_STORAGE_KEY = sk.sightBoundary;
+const FOG_SHADE_STORAGE_KEY = sk.fogShade;
+const FOG_CLOUDS_STORAGE_KEY = sk.fogClouds;
 const MOVEMENT_POS_EMA_STORAGE_KEY = sk.movementPosEma;
 const MOVEMENT_VEL_EMA_STORAGE_KEY = sk.movementVelEma;
 const ROTATION_POS_EMA_STORAGE_KEY = sk.rotationPosEma;
@@ -199,6 +203,8 @@ let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
+let currentFogShade: boolean = _cd.fogShade.default;
+let currentFogClouds: boolean = _cd.fogClouds.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
 let currentMovementVelEma: DriftChannelMode = _cd.movementVelEma.default;
 let currentRotationPosEma: PositionDriftChannelMode = _cd.rotationPosEma.default;
@@ -303,6 +309,14 @@ function loadFromStorage(): void {
   const storedSightBoundary = readPersisted(SIGHT_BOUNDARY_STORAGE_KEY);
   if (storedSightBoundary !== null) {
     currentSightBoundary = storedSightBoundary === 'true';
+  }
+  const storedFogShade = readPersisted(FOG_SHADE_STORAGE_KEY);
+  if (storedFogShade !== null) {
+    currentFogShade = storedFogShade === 'true';
+  }
+  const storedFogClouds = readPersisted(FOG_CLOUDS_STORAGE_KEY);
+  if (storedFogClouds !== null) {
+    currentFogClouds = storedFogClouds === 'true';
   }
   const storedLegsRadius = readPersisted(LEGS_RADIUS_STORAGE_KEY);
   if (storedLegsRadius !== null) {
@@ -596,6 +610,24 @@ export function getSightBoundary(): boolean {
 export function setSightBoundary(enabled: boolean): void {
   currentSightBoundary = enabled;
   persist(SIGHT_BOUNDARY_STORAGE_KEY, String(enabled));
+}
+
+export function getFogShade(): boolean {
+  return currentFogShade;
+}
+
+export function setFogShade(enabled: boolean): void {
+  currentFogShade = enabled;
+  persist(FOG_SHADE_STORAGE_KEY, String(enabled));
+}
+
+export function getFogClouds(): boolean {
+  return currentFogClouds;
+}
+
+export function setFogClouds(enabled: boolean): void {
+  currentFogClouds = enabled;
+  persist(FOG_CLOUDS_STORAGE_KEY, String(enabled));
 }
 
 export function getMovementPosEmaMode(): PositionDriftChannelMode {

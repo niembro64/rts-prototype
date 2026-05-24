@@ -1,6 +1,6 @@
 {
   "fogOfWar": {
-    "maxPoolSize": 400,
+    "maxPoolSize": 800,
     "capPolicy": "skipWhenFull",
     "densitySamples": 128,
     "maxSpawnsPerFrame": 8,
@@ -8,9 +8,7 @@
     "fadeInMs": 2000,
     "fadeOutMs": 2000,
     "radius": 2000,
-    "maxAlpha": 0.1,
     "transparentOuterFraction": 0.4,
-    "colorHex": "#cccccc",
     "zMin": -500,
     "zRange": 1600
   },

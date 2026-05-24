@@ -1,4 +1,4 @@
-import { BATTLE_CONFIG, getDefaultDemoUnits } from '../battleBarConfig';
+import { BATTLE_CONFIG } from '../battleBarConfig';
 import { persist, readPersisted } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
 
@@ -25,13 +25,12 @@ function allUnits(): readonly string[] {
 }
 
 function buildPresets(): readonly BattlePreset[] {
-  const defaults = getDefaultDemoUnits();
   return [
     {
       name: 'Lictor Mandate',
       units: allUnits(),
       cap: 243,
-      forceFieldsObstructSight: true,
+      forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.0,
       centerMagnitude: 400,
@@ -61,7 +60,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Domovoi Tempest',
       units: allUnits(),
       cap: 2187,
-      forceFieldsObstructSight: true,
+      forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.0,
       centerMagnitude: 0,
@@ -76,7 +75,7 @@ function buildPresets(): readonly BattlePreset[] {
       name: 'Tuatha Vanguard',
       units: allUnits(),
       cap: 81,
-      forceFieldsObstructSight: true,
+      forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.5,
       centerMagnitude: 200,

@@ -1,6 +1,6 @@
 {
   "pool": {
-    "maxDroplets": 384,
+    "maxDroplets": 100,
     "maxDropletsPerSpawn": 24
   },
 

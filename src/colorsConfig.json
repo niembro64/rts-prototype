@@ -43,7 +43,7 @@
     },
     "terrain": {
       "horizonBlend": {
-        "colorHex": "#163f4c",
+        "colorHex": "#22303B",
         "shade": 1
       },
       "ground": {
@@ -88,7 +88,13 @@
       "coolResidueColorHex": "#221100"
     },
     "fogOfWar": {
-      "colorHex": "#000000",
+      "shade": {
+        "colorHex": "#000000",
+        "alpha": 130
+      },
+      "cloud": {
+        "maxAlpha": 0.5
+      },
       "gradientStart": "rgb(0, 0, 0)",
       "gradientEnd": "rgba(0, 0, 0, 0)"
     }

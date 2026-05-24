@@ -13,6 +13,8 @@ import {
   getCameraSmoothMode,
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
+  getFogClouds,
+  getFogShade,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPredictionMode,
@@ -39,6 +41,8 @@ import {
   setCameraSmoothMode,
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
+  setFogClouds,
+  setFogShade,
   setMovementPosEmaMode,
   setMovementVelEmaMode,
   setPredictionMode,
@@ -93,6 +97,8 @@ export function useGameCanvasClientSettings({
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const sightBoundary = ref<boolean>(getSightBoundary());
+  const fogShade = ref<boolean>(getFogShade());
+  const fogClouds = ref<boolean>(getFogClouds());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
   const movementVelEma = ref<DriftChannelMode>(getMovementVelEmaMode());
   const rotationPosEma = ref<PositionDriftChannelMode>(getRotationPosEmaMode());
@@ -268,6 +274,18 @@ export function useGameCanvasClientSettings({
     sightBoundary.value = newValue;
   }
 
+  function toggleFogShade(): void {
+    const newValue = !fogShade.value;
+    setFogShade(newValue);
+    fogShade.value = newValue;
+  }
+
+  function toggleFogClouds(): void {
+    const newValue = !fogClouds.value;
+    setFogClouds(newValue);
+    fogClouds.value = newValue;
+  }
+
   function changeMovementPosEma(mode: PositionDriftChannelMode): void {
     setMovementPosEmaMode(mode);
     movementPosEma.value = mode;
@@ -373,6 +391,10 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = cd.buildGridDebug.default;
     setSightBoundary(cd.sightBoundary.default);
     sightBoundary.value = cd.sightBoundary.default;
+    setFogShade(cd.fogShade.default);
+    fogShade.value = cd.fogShade.default;
+    setFogClouds(cd.fogClouds.default);
+    fogClouds.value = cd.fogClouds.default;
     setMovementPosEmaMode(cd.movementPosEma.default);
     movementPosEma.value = cd.movementPosEma.default;
     setMovementVelEmaMode(cd.movementVelEma.default);
@@ -441,6 +463,8 @@ export function useGameCanvasClientSettings({
     triangleDebug,
     buildGridDebug,
     sightBoundary,
+    fogShade,
+    fogClouds,
     movementPosEma,
     movementVelEma,
     rotationPosEma,
@@ -485,6 +509,8 @@ export function useGameCanvasClientSettings({
     toggleTriangleDebug,
     toggleBuildGridDebug,
     toggleSightBoundary,
+    toggleFogShade,
+    toggleFogClouds,
     changeMovementPosEma,
     changeMovementVelEma,
     changeRotationPosEma,

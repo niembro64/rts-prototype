@@ -23,6 +23,8 @@
   "triangleDebug": { "default": false },
   "buildGridDebug": { "default": false },
   "sightBoundary": { "default": false },
+  "fogShade": { "default": true },
+  "fogClouds": { "default": true },
   "predictionMode": {
     "default": "vel",
     "options": [
@@ -141,6 +143,8 @@
     "triangleDebug": "player-client-triangle-debug",
     "buildGridDebug": "player-client-build-grid-debug",
     "sightBoundary": "player-client-sight-boundary",
+    "fogShade": "player-client-fog-shade",
+    "fogClouds": "player-client-fog-clouds",
     "movementPosEma": "player-client-movement-pos-ema",
     "movementVelEma": "player-client-movement-vel-ema",
     "rotationPosEma": "player-client-rotation-pos-ema",

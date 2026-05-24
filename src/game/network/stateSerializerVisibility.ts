@@ -1,12 +1,7 @@
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
-import type {
-  NetworkServerSnapshotScanPulse,
-  NetworkServerSnapshotShroud,
-} from '../../types/network';
+import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
-import { SHROUD_CELL_SIZE } from '../sim/WorldState';
-import { buildRecipientShroudView } from '../sim/shroudBitmap';
 import {
   canEntityProvideDetection,
   getEntityDetectionPadding,
@@ -130,9 +125,9 @@ export class SnapshotVisibility {
    *  recipient + allies, rendered as a base-36 string. Two recipients
    *  on the same team share the same key (the mask is just "which
    *  playerIds count as ours"), so the per-emit visibility cache
-   *  (issues.txt FOW-OPT-01) and the per-team shroud cache (FOW-OPT-11)
-   *  both key off this. Undefined for admin/spectator visibilities
-   *  (no recipient), which the caches use to skip caching entirely.
+   *  (issues.txt FOW-OPT-01) keys off this. Undefined for
+   *  admin/spectator visibilities (no recipient), which the caches
+   *  use to skip caching entirely.
    *  Materialized once in the constructor so callers holding the
    *  instance don't re-walk getAllies (issues.txt FOW-OPT-21). */
   readonly teamMaskKey: string | undefined;
@@ -320,7 +315,7 @@ export class SnapshotVisibility {
    *  (issues.txt FOW-OPT-08). The audio path used to call
    *  isPointVisible AND isPointWithinEarshot in sequence — two
    *  spatial-hash lookups + two walks of the same cell bucket per
-   *  fog-shrouded event. This single helper returns IN_VISION as
+   *  fog-hidden event. This single helper returns IN_VISION as
    *  soon as one source covers the point (mirrors isPointVisible's
    *  early-return), demotes to IN_EARSHOT when only the padded
    *  radius reaches, and returns OUT_OF_RANGE when no candidate
@@ -655,24 +650,6 @@ export function getOrBuildVisibility(
   const fresh = SnapshotVisibility.forRecipient(world, recipientPlayerId, mask);
   cache.set(key, fresh);
   return fresh;
-}
-
-/** Build the FOW-11 keyframe shroud payload for the given recipient,
- *  team-merging with their allies. Returns undefined when the
- *  recipient has no recorded history yet so the snapshot field stays
- *  absent on the empty-keyframe-1 case. */
-export function serializeShroudPayload(
-  world: WorldState,
-  recipientPlayerId: PlayerId,
-): NetworkServerSnapshotShroud | undefined {
-  const view = buildRecipientShroudView(world, recipientPlayerId);
-  if (!view) return undefined;
-  return {
-    gridW: world.shroudGridW,
-    gridH: world.shroudGridH,
-    cellSize: SHROUD_CELL_SIZE,
-    bitmap: view,
-  };
 }
 
 /** Reusable buffer for the admin / spectator path only — filtered

@@ -12,7 +12,6 @@ import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
-  serializeShroudPayload,
 } from '../network/stateSerializerVisibility';
 import { serializeAudioEvents } from '../network/stateSerializerAudio';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
@@ -22,26 +21,10 @@ import type {
   SerializerMinimapOverride,
   SerializerSprayOverride,
 } from '../network/stateSerializer';
-import { computeTeamShroudVersionSum } from '../sim/shroudBitmap';
-import type { NetworkServerSnapshotShroud } from '../../types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
 import type { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
-
-/** Per-emit cache slot for a team's shroud payload (issues.txt
- *  FOW-OPT-11). Two teammates on the same team always merge the
- *  same per-player bitmaps into the same packed wire payload, so
- *  building it once per team per emit replaces N builds with 1.
- *  versionSum is the cheap team-wide invalidation signal — cached
- *  on entry to avoid recomputing it for each teammate. payload is
- *  built lazily so the first teammate to *need* it triggers the OR
- *  + pack work; later teammates share the same Uint8Array. */
-type ShroudPayloadCacheEntry = {
-  versionSum: number;
-  payload: NetworkServerSnapshotShroud | undefined;
-  built: boolean;
-};
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 
@@ -53,11 +36,6 @@ export type SnapshotListenerEntry = {
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
   lastStaticResyncToken: number | undefined;
-  /** Team shroud-version sum at the last keyframe where we shipped
-   *  the shroud bitmap to this listener (issues.txt FOW-OPT-02).
-   *  Compared against the live sum each keyframe to skip the
-   *  multi-KB payload when no new cells were explored. */
-  lastSentShroudVersionSum: number | undefined;
   /** Phase 10 D.3e — Rust-side snapshot baseline handle for this
    *  listener (u32 index into the WASM SnapshotBaselineRegistry).
    *  Allocated via sim.snapshotBaseline.create() on add, released
@@ -200,12 +178,6 @@ export class ServerSnapshotPublisher {
     // we'd rebuild the same structure once per listener.
     const visibilityCache = createSnapshotVisibilityCache();
 
-    // Per-team shroud cache (issues.txt FOW-OPT-11). One slot per
-    // team-mask key; the build cost (OR ally bitmaps + bit-pack) runs
-    // once per team per emit, then every teammate's listener reuses
-    // the same packed Uint8Array.
-    const shroudPayloadCache = new Map<string, ShroudPayloadCacheEntry>();
-
     // FOW-OPT-20: per-team output cache for the three team-uniform
     // serializers. The first teammate's serializeForListener call
     // fills the slot (which goes through that listener's per-listener
@@ -303,48 +275,6 @@ export class ServerSnapshotPublisher {
         : undefined;
       if (shouldSendStaticTerrain) {
         this.markListenerStaticMapSent(listener, input);
-      }
-      // FOW-11 shroud payload: ship only on keyframes, only when the
-      // team's bitmap has new content since the last ship to this
-      // listener (FOW-OPT-02). The version sum monotonically increases
-      // whenever any allied player explores a new cell — when it
-      // matches what we last sent, the merged bitmap is identical and
-      // the client's local OR pass has kept it current. The actual
-      // OR + pack work is deduplicated per team across teammates
-      // (FOW-OPT-11) via shroudPayloadCache.
-      state.shroud = undefined;
-      if (
-        !isDelta &&
-        listener.playerId !== undefined &&
-        input.world.fogOfWarEnabled
-      ) {
-        // FOW-OPT-21: read the team-mask key off the SnapshotVisibility
-        // instance instead of recomputing it (which would walk
-        // getAllies a second time per player listener).
-        const teamKey = visibility.teamMaskKey;
-        if (teamKey !== undefined) {
-          let entry = shroudPayloadCache.get(teamKey);
-          if (!entry) {
-            entry = {
-              versionSum: computeTeamShroudVersionSum(input.world, listener.playerId),
-              payload: undefined,
-              built: false,
-            };
-            shroudPayloadCache.set(teamKey, entry);
-          }
-          if (entry.versionSum !== listener.lastSentShroudVersionSum) {
-            if (!entry.built) {
-              entry.payload = entry.versionSum !== 0
-                ? serializeShroudPayload(input.world, listener.playerId)
-                : undefined;
-              entry.built = true;
-            }
-            if (entry.payload) {
-              state.shroud = entry.payload;
-              listener.lastSentShroudVersionSum = entry.versionSum;
-            }
-          }
-        }
       }
       state.serverMeta = serverMeta;
       return state;

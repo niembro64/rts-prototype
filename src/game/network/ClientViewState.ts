@@ -94,13 +94,6 @@ export class ClientViewState {
    *  the snapshot is built so the client never needs to drop them. */
   private scanPulses: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
 
-  /** Latest authoritative shroud bitmap received from the server
-   *  (FOW-11). Set on keyframes when fog is on; the shroud renderer
-   *  OR-s it into its local revealed array so mid-game joins /
-   *  reconnects pick up the explored history they couldn't have
-   *  tracked locally. Stays null when no keyframe has shipped one
-   *  yet OR when the recipient hasn't explored anything. */
-  private pendingShroud: NetworkServerSnapshot['shroud'] | null = null;
   private minimapOverrideStore = new ClientMinimapOverrideStore({
     isSelected: (id) => this.selectionState.has(id),
   });
@@ -691,11 +684,6 @@ export class ClientViewState {
       this.scanPulses.length = 0;
     }
 
-    // Stash any incoming authoritative shroud bitmap so the renderer
-    // can pull it on the next paint. Only keyframes carry it; deltas
-    // leave the previous pending payload in place (already consumed).
-    if (state.shroud) this.pendingShroud = state.shroud;
-
     // Check game over
     if (
       state.gameState?.phase === 'gameOver' &&
@@ -873,9 +861,9 @@ export class ClientViewState {
     return events;
   }
 
-  /** Active scan pulses for this client's team (FOW-14). The
-   *  shroud renderer reads these to clear fog inside each sweep for
-   *  the pulse's remaining lifetime. Returned array is the live
+  /** Active scan pulses for this client's team (FOW-14). The fog shade
+   *  renderer reads these to clear fog inside each sweep for the
+   *  pulse's remaining lifetime. Returned array is the live
    *  store — callers must not mutate it. */
   getScanPulses(): ReadonlyArray<NonNullable<NetworkServerSnapshot['scanPulses']>[number]> {
     return this.scanPulses;
@@ -899,16 +887,6 @@ export class ClientViewState {
       pending ^= lowBit;
     }
     return out;
-  }
-
-  /** Drain the latest authoritative shroud payload (FOW-11). The
-   *  shroud renderer calls this once per paint cycle; returning the
-   *  payload exactly once mirrors the audio-event drain pattern so
-   *  the bitmap doesn't get OR-ed in every frame after a keyframe. */
-  consumePendingShroud(): NetworkServerSnapshot['shroud'] | null {
-    const payload = this.pendingShroud;
-    this.pendingShroud = null;
-    return payload;
   }
 
   getGameOverWinnerId(): PlayerId | null {
@@ -1035,7 +1013,6 @@ export class ClientViewState {
     this.scanPulses.length = 0;
     this.visionPlayerMask = 0;
     this.visionPlayerIds.length = 0;
-    this.pendingShroud = null;
     this.minimapOverrideStore.reset();
     this.gameOverWinnerId = null;
     this.selectionState.reset();

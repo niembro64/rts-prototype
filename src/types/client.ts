@@ -93,6 +93,13 @@ export type ClientBarConfig = {
    *  terrain. This is a presentation/debug overlay only; authoritative
    *  fog filtering still lives on the host. */
   readonly sightBoundary: BooleanSetting;
+  /** Live fog-of-war shade over terrain outside current full vision.
+   *  This is a client presentation toggle only; the DEMO/REAL battle
+   *  FOG control owns whether authoritative fog filtering is active. */
+  readonly fogShade: BooleanSetting;
+  /** Soft fog cloud puffs over unseen terrain. This is a client
+   *  presentation toggle only and does not affect visibility truth. */
+  readonly fogClouds: BooleanSetting;
   /** Per-channel client-side drift EMAs. Position channels select from
    *  snap / fast / medium / slow. Velocity channels also allow ignore.
    *  The rendered entity always stores the most recent snapshot value
