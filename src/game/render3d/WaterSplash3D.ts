@@ -1,23 +1,40 @@
 // WaterSplash3D — droplet burst when a projectile hits water.
 //
-// One InstancedMesh of small spheres serves as the pool. spawnSplash
-// seeds N droplets with reflected, randomized trajectories: the
-// projectile's incoming horizontal momentum carries forward (a shell
-// rakes droplets in its direction of travel), the vertical component
-// is reversed so the spray launches upward, and a per-droplet random
-// cone widens the cluster. Larger / faster shots make more, faster,
-// further-reaching droplets. Each droplet integrates under gravity
-// and is recycled when its altitude drops back to the water surface
-// or its lifetime elapses.
+// One InstancedMesh of stretched ellipsoids serves as the pool. Each
+// droplet is a low-poly sphere whose per-instance matrix is built
+// directly from its velocity vector so the long axis aligns with the
+// direction of travel — real water droplets read as streaks, not as
+// spheres, because surface tension elongates a fast-moving drop
+// along its motion. Drawing them stretched gives the splash visible
+// trajectory without any extra geometry or fill cost.
+//
+// A spawn deposits droplets in three groups so the splash reads as a
+// real impact instead of an isotropic puff:
+//   - vertical jet: a tight column at the impact point launching
+//     near-straight up; this is the iconic central column a heavy
+//     splash throws before falling apart.
+//   - crown: low-angle lateral droplets fanning outward and biased
+//     forward along the projectile's incoming horizontal direction —
+//     a shallow shell rakes the crown downrange rather than tossing a
+//     symmetric umbrella.
+//   - spray: mid-angle droplets filling the cone between the two.
+//
+// Each droplet integrates under gravity per frame; the elongation
+// follows velocity each frame, so arcing droplets visibly bend as
+// they fall. Droplets recycle when they fall back to the water
+// surface or their lifetime elapses. No per-frame allocations.
 
 import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { disposeMesh } from './threeUtils';
 
-const MAX_DROPLETS = 512;
-const GRAVITY = 280; // sim units per second² — slightly arcadey, reads from a moving RTS camera
+const MAX_DROPLETS = 384;
+const GRAVITY = 280; // sim u/s²
+// Per-spawn droplet caps. A single shot dropping in water should
+// never burst more than this; with hundreds of in-flight shots the
+// pool would otherwise drain in a frame.
+const MAX_DROPLETS_PER_SPAWN = 24;
 
-// Sim → three: sim X = three X, sim Y = three Z, sim Z = three Y.
 const VS = `
 attribute float aAlpha;
 varying float vAlpha;
@@ -30,20 +47,22 @@ void main() {
 const FS = `
 varying float vAlpha;
 void main() {
-  // Cool water-droplet white-blue with the per-droplet alpha as the
-  // fade-out track. Additive blend on water reads as a bright pearl.
   gl_FragColor = vec4(0.78, 0.90, 1.0, vAlpha);
 }
 `;
 
 type Droplet = {
   active: boolean;
-  // World-space three.js coords.
+  // World-space three.js coords (sim X → three X, sim Y → three Z).
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   ageMs: number;
   lifetimeMs: number;
-  startRadius: number;
+  // Streak geometry. width is the cross-section radius; lengthScale
+  // multiplies the velocity-aligned long axis on top of speed-derived
+  // stretch (so heavier shots throw fatter, longer streaks).
+  width: number;
+  lengthScale: number;
 };
 
 export class WaterSplash3D {
@@ -61,7 +80,9 @@ export class WaterSplash3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
-    this.geom = new THREE.SphereGeometry(1, 6, 4);
+    // Coarse sphere — each droplet is small on screen and stretched,
+    // so the silhouette only needs to read as a smooth bead.
+    this.geom = new THREE.SphereGeometry(1, 5, 3);
     this.alphaArr = new Float32Array(MAX_DROPLETS);
     this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
     this.alphaAttr.setUsage(THREE.DynamicDrawUsage);
@@ -88,18 +109,18 @@ export class WaterSplash3D {
         x: 0, y: 0, z: 0,
         vx: 0, vy: 0, vz: 0,
         ageMs: 0, lifetimeMs: 0,
-        startRadius: 0,
+        width: 0, lengthScale: 0,
       });
       this.freeSlots.push(i);
     }
   }
 
-  /** Spawn a water-splash droplet burst.
-   *  @param simX simulation X at impact
-   *  @param simY simulation Y at impact (becomes three Z)
+  /** Spawn a water-splash burst.
+   *  @param simX sim X at impact
+   *  @param simY sim Y at impact (becomes three Z)
    *  @param incomingVelX horizontal sim X velocity at impact
    *  @param incomingVelY horizontal sim Y velocity at impact
-   *  @param mass projectile mass surrogate — its collision radius
+   *  @param mass projectile mass surrogate (collision radius)
    */
   spawn(
     simX: number,
@@ -111,71 +132,121 @@ export class WaterSplash3D {
     const horizSpeed = Math.sqrt(
       incomingVelX * incomingVelX + incomingVelY * incomingVelY,
     );
-    // No live data for the incoming vertical component; assume a
-    // typical ballistic descent steeper than horizontal motion so the
-    // splash reads upward rather than sideways. Heavier/faster shots
-    // come in harder.
-    const synthesizedDescentSpeed = Math.max(120, horizSpeed * 1.2) + mass * 6;
+    // Sim ships 2D projectile velocity; synthesize a downward speed
+    // from horizontal motion + mass so the rebound carries believable
+    // vertical energy. Heavier shots come in harder.
+    const descentSpeed = Math.max(140, horizSpeed * 1.2) + mass * 6;
+    const energy = descentSpeed + horizSpeed;
 
-    // Droplet count scales with mass and impact energy, capped so
-    // huge shells don't drain the pool in one event.
-    const energy = synthesizedDescentSpeed + horizSpeed;
-    const count = Math.max(
-      8,
-      Math.min(40, Math.floor(mass * 2 + energy / 60)),
+    // Distribute droplets across the three groups, scaling totals
+    // with energy but capping aggressively for the 5k-unit budget.
+    const total = Math.max(
+      6,
+      Math.min(MAX_DROPLETS_PER_SPAWN, Math.floor(mass * 1.6 + energy / 80)),
     );
+    const jetCount = Math.max(2, Math.floor(total * 0.18));
+    const crownCount = Math.max(2, Math.floor(total * 0.42));
+    const sprayCount = Math.max(0, total - jetCount - crownCount);
 
-    // Speed scale for the rebound spray. The reflective component
-    // (vertical) gets ~60% of the inbound vertical speed back, plus
-    // some random energy proportional to mass; the lateral component
-    // smears forward with the incoming horizontal motion.
-    const reboundUp = synthesizedDescentSpeed * 0.6;
-    const lateralCarry = horizSpeed * 0.45;
-    const radius = Math.max(1.4, mass * 0.45);
+    // Forward direction (where the projectile was traveling) in
+    // three.js coords. Used to bias crown / spray arcs downrange.
+    const hSpeedSafe = horizSpeed > 0.001 ? horizSpeed : 1;
+    const fwdX = incomingVelX / hSpeedSafe;
+    const fwdZ = incomingVelY / hSpeedSafe;
+
+    const reboundUp = descentSpeed * 0.65;
+    const lateralCarry = horizSpeed * 0.55;
+    const widthBase = Math.max(0.35, mass * 0.32);
 
     const threeX = simX;
     const threeZ = simY;
     const threeY = WATER_LEVEL;
 
-    for (let i = 0; i < count; i++) {
-      const slot = this.freeSlots.pop();
-      if (slot === undefined) break;
-      const d = this.droplets[slot];
-      d.active = true;
-
-      // Random cone direction biased upward. theta = pitch angle from
-      // vertical (0 = straight up, π/2 = horizontal). Keep most of
-      // the energy in the upper hemisphere so the splash reads as a
-      // crown rather than a horizontal slap.
-      const theta = Math.random() * (Math.PI * 0.45); // 0..81°
-      const phi = Math.random() * Math.PI * 2;
-      const sinT = Math.sin(theta);
-      const cosT = Math.cos(theta);
-      const dirX = sinT * Math.cos(phi);
-      const dirZ = sinT * Math.sin(phi);
-      const dirY = cosT;
-
-      // Per-droplet speed varies so the crown doesn't collapse into a
-      // single sphere. Heavier shots throw faster droplets.
-      const speedScale = 0.6 + Math.random() * 0.8;
-      const vBase = reboundUp * speedScale;
-
-      // Lateral push: smear droplets forward in the incoming
-      // direction so a low-angle shell rakes the spray downrange.
-      const lateralBias = lateralCarry * (0.5 + Math.random() * 0.7);
-      const lateralX = horizSpeed > 0.001 ? (incomingVelX / horizSpeed) * lateralBias : 0;
-      const lateralZ = horizSpeed > 0.001 ? (incomingVelY / horizSpeed) * lateralBias : 0;
-
-      d.x = threeX + (Math.random() - 0.5) * radius * 0.6;
-      d.y = threeY;
-      d.z = threeZ + (Math.random() - 0.5) * radius * 0.6;
-      d.vx = dirX * vBase + lateralX;
-      d.vy = dirY * vBase;
-      d.vz = dirZ * vBase + lateralZ;
-      d.ageMs = 0;
-      d.lifetimeMs = 600 + Math.random() * 600 + mass * 40;
-      d.startRadius = (0.35 + Math.random() * 0.5) * Math.max(1, mass * 0.55);
+    // --- Vertical jet: a tight near-vertical column at the impact.
+    for (let i = 0; i < jetCount; i++) {
+      if (!this.seed(
+        threeX, threeY, threeZ,
+        // Very narrow cone (≤ ~15° from vertical), boosted speed —
+        // this group makes the central column.
+        Math.random() * 0.26,
+        Math.random() * Math.PI * 2,
+        reboundUp * (1.05 + Math.random() * 0.35),
+        // Negligible lateral carry: the jet rises, the crown carries.
+        fwdX * lateralCarry * 0.1,
+        fwdZ * lateralCarry * 0.1,
+        widthBase * (1.0 + Math.random() * 0.4),
+        1100 + Math.random() * 500,
+        0.5, // jet droplets stretch less — column reads as fat beads
+      )) return;
     }
+
+    // --- Crown: low-angle, asymmetric. Forward side fans wide,
+    // back side is suppressed so the splash visibly leans downrange.
+    for (let i = 0; i < crownCount; i++) {
+      const theta = Math.PI * 0.32 + Math.random() * Math.PI * 0.22;   // 58°–98° from up
+      const phi = forwardBiasedPhi(fwdX, fwdZ);
+      if (!this.seed(
+        threeX, threeY, threeZ,
+        theta, phi,
+        reboundUp * (0.55 + Math.random() * 0.45),
+        fwdX * lateralCarry * (0.6 + Math.random() * 0.9),
+        fwdZ * lateralCarry * (0.6 + Math.random() * 0.9),
+        widthBase * (0.7 + Math.random() * 0.6),
+        700 + Math.random() * 700,
+        1.0,
+      )) return;
+    }
+
+    // --- Spray: fills the mid-angle band; also forward-biased so
+    // the whole burst reads as one directional event.
+    for (let i = 0; i < sprayCount; i++) {
+      const theta = Math.random() * Math.PI * 0.4;                       // 0°–72°
+      const phi = forwardBiasedPhi(fwdX, fwdZ);
+      if (!this.seed(
+        threeX, threeY, threeZ,
+        theta, phi,
+        reboundUp * (0.7 + Math.random() * 0.7),
+        fwdX * lateralCarry * (0.3 + Math.random() * 0.7),
+        fwdZ * lateralCarry * (0.3 + Math.random() * 0.7),
+        widthBase * (0.55 + Math.random() * 0.6),
+        800 + Math.random() * 700,
+        0.9,
+      )) return;
+    }
+  }
+
+  /** Seed one droplet. Returns false when the pool is exhausted. */
+  private seed(
+    px: number, py: number, pz: number,
+    theta: number, phi: number,
+    speed: number,
+    lateralX: number, lateralZ: number,
+    width: number,
+    lifetimeMs: number,
+    lengthScale: number,
+  ): boolean {
+    const slot = this.freeSlots.pop();
+    if (slot === undefined) return false;
+    const d = this.droplets[slot];
+    const sinT = Math.sin(theta);
+    const cosT = Math.cos(theta);
+    const dirX = sinT * Math.cos(phi);
+    const dirZ = sinT * Math.sin(phi);
+    const dirY = cosT;
+    d.active = true;
+    // Small jitter at the impact center so the column doesn't read
+    // as a single co-located point.
+    d.x = px + (Math.random() - 0.5) * width * 0.6;
+    d.y = py;
+    d.z = pz + (Math.random() - 0.5) * width * 0.6;
+    d.vx = dirX * speed + lateralX;
+    d.vy = dirY * speed;
+    d.vz = dirZ * speed + lateralZ;
+    d.ageMs = 0;
+    d.lifetimeMs = lifetimeMs;
+    d.width = width;
+    d.lengthScale = lengthScale;
+    return true;
   }
 
   update(dtMs: number): void {
@@ -192,10 +263,6 @@ export class WaterSplash3D {
       d.x += d.vx * dt;
       d.y += d.vy * dt;
       d.z += d.vz * dt;
-      // Recycle when the droplet falls back to (or below) the water
-      // surface or its lifetime elapses. The first condition is what
-      // makes the spray look anchored to the water — droplets don't
-      // sink through it.
       if (d.ageMs >= d.lifetimeMs || (d.vy < 0 && d.y <= WATER_LEVEL)) {
         d.active = false;
         this.freeSlots.push(i);
@@ -205,17 +272,57 @@ export class WaterSplash3D {
   }
 
   private writeInstances(): void {
+    const e = this.scratch.elements;
     let writeIndex = 0;
     for (let i = 0; i < this.droplets.length; i++) {
       const d = this.droplets[i];
       if (!d.active) continue;
       const t = d.ageMs / d.lifetimeMs;
       const fade = t < 0.15
-        ? t / 0.15            // fade-in
+        ? t / 0.15
         : Math.max(0, 1 - (t - 0.15) / 0.85);
-      const scale = d.startRadius * (1 - t * 0.3);
-      this.scratch.makeScale(scale, scale, scale);
-      this.scratch.setPosition(d.x, d.y, d.z);
+
+      // Velocity-aligned ellipsoid: local +X stretches along the
+      // droplet's direction of travel; the other two axes stay
+      // round. Streak length scales with speed so a fast droplet
+      // reads as a longer streak than a slow one — visible arcs
+      // emerge naturally because the long axis follows velocity.
+      const speed = Math.sqrt(d.vx * d.vx + d.vy * d.vy + d.vz * d.vz);
+      const invSpeed = speed > 0.001 ? 1 / speed : 0;
+      const axX = d.vx * invSpeed;
+      const axY = d.vy * invSpeed;
+      const axZ = d.vz * invSpeed;
+      // Build orthonormal basis with world-up as the seed cross axis.
+      // If the velocity is near-vertical, fall back to world-X.
+      let crossX: number, crossY: number, crossZ: number;
+      if (Math.abs(axY) > 0.97) {
+        // Near-vertical → use world-X as the perpendicular seed.
+        crossX = 0; crossY = 0; crossZ = 1;
+      } else {
+        crossX = 0; crossY = 1; crossZ = 0;
+      }
+      // perp = normalize(cross(crossAxis, ax))
+      let pxAx = crossY * axZ - crossZ * axY;
+      let pyAx = crossZ * axX - crossX * axZ;
+      let pzAx = crossX * axY - crossY * axX;
+      const perpLen = Math.sqrt(pxAx * pxAx + pyAx * pyAx + pzAx * pzAx) || 1;
+      pxAx /= perpLen; pyAx /= perpLen; pzAx /= perpLen;
+      // third = cross(ax, perp)
+      const qxAx = axY * pzAx - axZ * pyAx;
+      const qyAx = axZ * pxAx - axX * pzAx;
+      const qzAx = axX * pyAx - axY * pxAx;
+
+      const streakLen =
+        d.width * (1.4 + speed * 0.012) * d.lengthScale;
+      const w = d.width * (1 - t * 0.35);
+      const longScale = streakLen * (1 - t * 0.2);
+
+      // Column-major: col0 = ax * longScale, col1 = perp * w,
+      // col2 = third * w, col3 = position.
+      e[0] = axX * longScale;  e[1] = axY * longScale;  e[2] = axZ * longScale;  e[3] = 0;
+      e[4] = pxAx * w;          e[5] = pyAx * w;          e[6] = pzAx * w;          e[7] = 0;
+      e[8] = qxAx * w;          e[9] = qyAx * w;          e[10] = qzAx * w;         e[11] = 0;
+      e[12] = d.x;              e[13] = d.y;              e[14] = d.z;              e[15] = 1;
       this.mesh.setMatrixAt(writeIndex, this.scratch);
       this.alphaArr[writeIndex] = Math.min(1, Math.max(0, fade)) * 0.85;
       writeIndex++;
@@ -229,4 +336,19 @@ export class WaterSplash3D {
     disposeMesh(this.mesh);
     this.mat.dispose();
   }
+}
+
+/** Pick a phi angle biased toward the incoming horizontal direction.
+ *  Returned angle is measured in three.js XZ (atan2(z, x)). Uses
+ *  rejection-free sampling: pull a random offset around the forward
+ *  heading with a triangular weighting that favors the forward
+ *  hemisphere. */
+function forwardBiasedPhi(fwdX: number, fwdZ: number): number {
+  const baseHeading = Math.atan2(fwdZ, fwdX);
+  // Bias: 70% of samples within ±90° of forward, 30% spread fully.
+  const r = Math.random();
+  if (r < 0.7) {
+    return baseHeading + (Math.random() - 0.5) * Math.PI;
+  }
+  return Math.random() * Math.PI * 2;
 }
