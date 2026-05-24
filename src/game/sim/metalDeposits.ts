@@ -40,12 +40,18 @@ export function metalDepositContainsGridCell(
   gx: number,
   gy: number,
 ): boolean {
-  return (
-    gx >= deposit.gridX &&
-    gy >= deposit.gridY &&
-    gx < deposit.gridX + deposit.resourceCells &&
-    gy < deposit.gridY + deposit.resourceCells
-  );
+  if (
+    gx < deposit.boundsGridX ||
+    gy < deposit.boundsGridY ||
+    gx >= deposit.boundsGridX + deposit.boundsGridW ||
+    gy >= deposit.boundsGridY + deposit.boundsGridH
+  ) {
+    return false;
+  }
+  for (const cell of deposit.cells) {
+    if (cell.gx === gx && cell.gy === gy) return true;
+  }
+  return false;
 }
 
 export function findDepositContainingPoint(
@@ -59,11 +65,9 @@ export function findDepositContainingPoint(
   return null;
 }
 
-/** True iff the deposit's resource grid square overlaps a building
- *  footprint anchored at (gridX, gridY) with (gridW × gridH) cells.
- *  Two axis-aligned grid rectangles intersect — the binary "extractor
- *  covers any cell of this deposit" test the claim system uses.
- *  No sample-cell sweep, no floating-point math: pure integer AABB. */
+/** True iff at least one generated metal-producing cell overlaps a
+ *  building footprint anchored at (gridX, gridY) with (gridW × gridH)
+ *  cells. */
 export function metalDepositOverlapsBuildingFootprint(
   deposit: MetalDeposit,
   gridX: number,
@@ -71,15 +75,34 @@ export function metalDepositOverlapsBuildingFootprint(
   gridW: number,
   gridH: number,
 ): boolean {
-  const ax0 = deposit.gridX;
-  const ay0 = deposit.gridY;
-  const ax1 = deposit.gridX + deposit.resourceCells;
-  const ay1 = deposit.gridY + deposit.resourceCells;
+  const ax0 = deposit.boundsGridX;
+  const ay0 = deposit.boundsGridY;
+  const ax1 = deposit.boundsGridX + deposit.boundsGridW;
+  const ay1 = deposit.boundsGridY + deposit.boundsGridH;
   const bx0 = gridX;
   const by0 = gridY;
   const bx1 = gridX + gridW;
   const by1 = gridY + gridH;
-  return ax0 < bx1 && ax1 > bx0 && ay0 < by1 && ay1 > by0;
+  if (!(ax0 < bx1 && ax1 > bx0 && ay0 < by1 && ay1 > by0)) return false;
+  return getMetalDepositCoveredCellCount(deposit, gridX, gridY, gridW, gridH) > 0;
+}
+
+export function getMetalDepositCoveredCellCount(
+  deposit: MetalDeposit,
+  gridX: number,
+  gridY: number,
+  gridW: number,
+  gridH: number,
+): number {
+  const bx1 = gridX + gridW;
+  const by1 = gridY + gridH;
+  let count = 0;
+  for (const cell of deposit.cells) {
+    if (cell.gx >= gridX && cell.gx < bx1 && cell.gy >= gridY && cell.gy < by1) {
+      count++;
+    }
+  }
+  return count;
 }
 
 /** Every deposit whose resource cells overlap the building footprint
@@ -108,18 +131,14 @@ export function getMetalDepositGridCells(
 ): MetalDepositGridCell[] {
   out.length = 0;
   for (const deposit of deposits) {
-    for (let dy = 0; dy < deposit.resourceCells; dy++) {
-      for (let dx = 0; dx < deposit.resourceCells; dx++) {
-        const gx = deposit.gridX + dx;
-        const gy = deposit.gridY + dy;
-        out.push({
-          gx,
-          gy,
-          x: gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
-          y: gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
-          depositId: deposit.id,
-        });
-      }
+    for (const cell of deposit.cells) {
+      out.push({
+        gx: cell.gx,
+        gy: cell.gy,
+        x: cell.x,
+        y: cell.y,
+        depositId: deposit.id,
+      });
     }
   }
   return out;

@@ -15,10 +15,12 @@
 // on the same radial spokes without baking a player-count-specific
 // radian value into config.
 //
-// Each deposit owns a square logical resource footprint on the fine
-// build grid. The extractor building reads the same resource-cell
-// config, while terrain flattening reads a separate flat-pad config.
-// Resource coverage is exact and cell-based rather than radius-based.
+// Each deposit owns an irregular connected logical resource footprint
+// on the fine build grid. The authored `resourceCells` value remains
+// the nominal side length used to derive the target cell count
+// (`resourceCells²`), while the generated footprint grows out from
+// one origin build cell within a circular candidate radius. Terrain
+// flattening still reads a separate flat-pad config.
 //
 // Each ring also carries `dTerrainLevels`. When set to an integer it
 // is a signed count of METAL_DEPOSIT_STEP units above/below world
@@ -86,9 +88,11 @@ export type DepositRing = {
  *    - `coinHeight`: full visual coin thickness in world units; the
  *      renderer draws the upper half above the terrain and treats the
  *      equator as the ground contact edge. Purely cosmetic.
- *    - `resourceCells`: square logical metal-producing footprint in
- *      fine building cells. The extractor building footprint and
- *      visual deposit size use this.
+ *    - `resourceCells`: nominal footprint side in fine building cells.
+ *      The generated deposit gets `resourceCells²` connected metal cells
+ *      grown from the center cell inside a circular candidate radius.
+ *    - `resourceRadiusCells`: candidate-circle radius in fine building
+ *      cells for the irregular footprint grow pass.
  *    - `rings`: concentric deposit rings; order doesn't matter — the
  *      renderer and placement validator iterate over all of them. Each
  *      ring carries its own `flatPadCells` and `terrainBlendRadius`. */
@@ -96,22 +100,46 @@ export const METAL_DEPOSIT_CONFIG = {
   edgeMarginPx: rawConfig.edgeMarginPx,
   coinHeight: rawConfig.coinHeight,
   resourceCells: rawConfig.resourceCells,
+  resourceRadiusCells: rawConfig.resourceRadiusCells,
   rings: rawConfig.rings as DepositRing[],
+};
+
+export type MetalDepositResourceCell = {
+  gx: number;
+  gy: number;
+  x: number;
+  y: number;
 };
 
 export type MetalDeposit = {
   /** Stable index — same number across all clients/peers in a session. */
   id: number;
-  /** World-space center shared by the resource square and flat terrain pad. */
+  /** World-space center of the origin resource cell and flat terrain pad. */
   x: number;
   y: number;
-  /** Top-left build cell of the logical resource square. */
+  /** Top-left build cell of the nominal legacy square centered on the origin. */
   gridX: number;
   gridY: number;
-  /** Number of build cells on each side of the logical resource square. */
+  /** Origin build cell from which the connected footprint is grown. */
+  originGx: number;
+  originGy: number;
+  /** Nominal legacy side length. The generated target count is this squared. */
   resourceCells: number;
-  /** Half-size of the logical resource square in world units. */
+  /** Actual connected metal-producing build cells. */
+  cells: MetalDepositResourceCell[];
+  /** Actual count of metal-producing build cells. */
+  resourceCellCount: number;
+  /** Candidate-circle radius, measured from the origin cell in build cells. */
+  resourceRadiusCells: number;
+  /** Tight build-grid bounds around `cells`. */
+  boundsGridX: number;
+  boundsGridY: number;
+  boundsGridW: number;
+  boundsGridH: number;
+  /** Legacy nominal half-size in world units. */
   resourceHalfSize: number;
+  /** Radius enclosing the generated cell footprint in world units. */
+  resourceRadius: number;
   /** Radius of the circular flat terrain pad in world units. */
   flatPadRadius: number;
   /** Signed count of METAL_DEPOSIT_STEP units, taken directly from
@@ -131,8 +159,18 @@ type MetalDepositPlacement = Pick<
   | 'y'
   | 'gridX'
   | 'gridY'
+  | 'originGx'
+  | 'originGy'
   | 'resourceCells'
+  | 'cells'
+  | 'resourceCellCount'
+  | 'resourceRadiusCells'
+  | 'boundsGridX'
+  | 'boundsGridY'
+  | 'boundsGridW'
+  | 'boundsGridH'
   | 'resourceHalfSize'
+  | 'resourceRadius'
   | 'flatPadRadius'
 >;
 
@@ -190,7 +228,7 @@ export function generateMetalDeposits(
     const ringAngularOffset = (ring.sliceOffset ?? 0) * sliceWidth;
     const pushPlacement = (rawX: number, rawY: number): void => {
       placements.push({
-        placement: makeMetalDepositPlacement(rawX, rawY, flatPadCells),
+        placement: makeMetalDepositPlacement(rawX, rawY, flatPadCells, placements.length),
         dTerrainLevels,
         blendRadius,
       });
@@ -287,25 +325,201 @@ function makeMetalDepositPlacement(
   rawX: number,
   rawY: number,
   flatPadCells: number,
+  seedIndex: number,
 ): MetalDepositPlacement {
   const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
+  const resourceCellCount = resourceCells * resourceCells;
+  const resourceRadiusCells = getMetalDepositResourceRadiusCells(resourceCells);
   const resourceHalfSize = (resourceCells * BUILD_GRID_CELL_SIZE) / 2;
+  const resourceRadius = (resourceRadiusCells + 0.5) * BUILD_GRID_CELL_SIZE;
   const flatPadRadius = (flatPadCells * BUILD_GRID_CELL_SIZE) / 2;
-  const resourceHalfDiagonal = Math.SQRT2 * resourceHalfSize;
-  if (flatPadRadius < resourceHalfDiagonal) {
+  if (flatPadRadius < resourceRadius) {
     throw new Error(
-      `Metal deposit ring flatPadCells (${flatPadCells}) must produce a circular radius >= the resource square half-diagonal (${resourceHalfDiagonal.toFixed(2)} world units)`,
+      `Metal deposit ring flatPadCells (${flatPadCells}) must produce a circular radius >= the generated resource footprint radius (${resourceRadius.toFixed(2)} world units)`,
     );
   }
   const snapped = snapBuildingToGrid(rawX, rawY, resourceCells, resourceCells);
+  const originGx = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
+  const originGy = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
+  const cells = growMetalDepositResourceCells(
+    originGx,
+    originGy,
+    resourceCellCount,
+    resourceRadiusCells,
+    hashMetalDepositSeed(originGx, originGy, seedIndex),
+  );
+  const bounds = getMetalDepositCellBounds(cells);
   return {
     x: snapped.x,
     y: snapped.y,
     gridX: snapped.gridX,
     gridY: snapped.gridY,
+    originGx,
+    originGy,
     resourceCells,
+    cells,
+    resourceCellCount: cells.length,
+    resourceRadiusCells,
+    boundsGridX: bounds.gridX,
+    boundsGridY: bounds.gridY,
+    boundsGridW: bounds.gridW,
+    boundsGridH: bounds.gridH,
     resourceHalfSize,
+    resourceRadius,
     flatPadRadius,
+  };
+}
+
+function getMetalDepositResourceRadiusCells(resourceCells: number): number {
+  const targetCellCount = resourceCells * resourceCells;
+  const configured = METAL_DEPOSIT_CONFIG.resourceRadiusCells;
+  const radius = configured ?? Math.max(1, Math.ceil(resourceCells * 0.75));
+  if (!Number.isFinite(radius) || !Number.isInteger(radius) || radius <= 0) {
+    throw new Error(
+      `Metal deposit resourceRadiusCells must be a positive integer; received ${radius}`,
+    );
+  }
+  const candidateCount = countGridCellsInRadius(radius);
+  if (candidateCount < targetCellCount) {
+    throw new Error(
+      `Metal deposit resource radius (${radius}) cannot fit ${targetCellCount} cells`,
+    );
+  }
+  return radius;
+}
+
+function countGridCellsInRadius(radiusCells: number): number {
+  let count = 0;
+  const r2 = radiusCells * radiusCells;
+  for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+      if (dx * dx + dy * dy <= r2) count++;
+    }
+  }
+  return count;
+}
+
+function cellKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
+}
+
+function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
+  return {
+    gx,
+    gy,
+    x: gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+    y: gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
+  };
+}
+
+function hashMetalDepositSeed(gx: number, gy: number, index: number): number {
+  let h = 2166136261 >>> 0;
+  h = Math.imul(h ^ gx, 16777619);
+  h = Math.imul(h ^ gy, 16777619);
+  h = Math.imul(h ^ index, 16777619);
+  return h >>> 0;
+}
+
+function makeSeededRng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function growMetalDepositResourceCells(
+  originGx: number,
+  originGy: number,
+  targetCellCount: number,
+  radiusCells: number,
+  seed: number,
+): MetalDepositResourceCell[] {
+  const rng = makeSeededRng(seed);
+  const selected = new Map<string, MetalDepositResourceCell>();
+  const frontier = new Map<string, MetalDepositResourceCell>();
+  const r2 = radiusCells * radiusCells;
+
+  const addFrontier = (gx: number, gy: number): void => {
+    const dx = gx - originGx;
+    const dy = gy - originGy;
+    if (dx * dx + dy * dy > r2) return;
+    const key = cellKey(gx, gy);
+    if (selected.has(key) || frontier.has(key)) return;
+    frontier.set(key, cellCenter(gx, gy));
+  };
+  const addSelected = (gx: number, gy: number): void => {
+    const key = cellKey(gx, gy);
+    if (selected.has(key)) return;
+    selected.set(key, cellCenter(gx, gy));
+    frontier.delete(key);
+    addFrontier(gx + 1, gy);
+    addFrontier(gx - 1, gy);
+    addFrontier(gx, gy + 1);
+    addFrontier(gx, gy - 1);
+  };
+
+  addSelected(originGx, originGy);
+  while (selected.size < targetCellCount && frontier.size > 0) {
+    let totalWeight = 0;
+    const weighted: Array<{ cell: MetalDepositResourceCell; weight: number }> = [];
+    for (const cell of frontier.values()) {
+      const dx = cell.gx - originGx;
+      const dy = cell.gy - originGy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const neighborCount =
+        (selected.has(cellKey(cell.gx + 1, cell.gy)) ? 1 : 0) +
+        (selected.has(cellKey(cell.gx - 1, cell.gy)) ? 1 : 0) +
+        (selected.has(cellKey(cell.gx, cell.gy + 1)) ? 1 : 0) +
+        (selected.has(cellKey(cell.gx, cell.gy - 1)) ? 1 : 0);
+      const centerBias = 1 - Math.min(1, dist / Math.max(1, radiusCells));
+      const weight =
+        0.45 +
+        neighborCount * 1.75 +
+        centerBias * 2.25 +
+        rng() * 0.35;
+      totalWeight += weight;
+      weighted.push({ cell, weight });
+    }
+
+    let pick = rng() * totalWeight;
+    let chosen = weighted[weighted.length - 1]?.cell;
+    for (const entry of weighted) {
+      pick -= entry.weight;
+      if (pick <= 0) {
+        chosen = entry.cell;
+        break;
+      }
+    }
+    if (!chosen) break;
+    addSelected(chosen.gx, chosen.gy);
+  }
+
+  return Array.from(selected.values()).sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
+}
+
+function getMetalDepositCellBounds(
+  cells: ReadonlyArray<MetalDepositResourceCell>,
+): { gridX: number; gridY: number; gridW: number; gridH: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const cell of cells) {
+    minX = Math.min(minX, cell.gx);
+    minY = Math.min(minY, cell.gy);
+    maxX = Math.max(maxX, cell.gx);
+    maxY = Math.max(maxY, cell.gy);
+  }
+  if (!Number.isFinite(minX)) return { gridX: 0, gridY: 0, gridW: 0, gridH: 0 };
+  return {
+    gridX: minX,
+    gridY: minY,
+    gridW: maxX - minX + 1,
+    gridH: maxY - minY + 1,
   };
 }
 
@@ -336,4 +550,3 @@ function validMetalDepositTerrainBlendRadius(radius: number): number {
   }
   return radius;
 }
-

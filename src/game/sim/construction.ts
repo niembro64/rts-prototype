@@ -72,7 +72,8 @@ export class ConstructionSystem {
 
     // Extractors can be placed ANYWHERE that satisfies the normal
     // building placement rules — there's no longer a "must overlap
-    // a deposit" gate. Production is BINARY per deposit: when the
+    // a deposit" gate. Production is cell-coverage based inside the
+    // claimed irregular deposit: when the
     // extractor finishes building, applyCompletedBuildingEffects
     // tries to claim every deposit its footprint overlaps. Each
     // deposit can be owned by at most one extractor at a time, so

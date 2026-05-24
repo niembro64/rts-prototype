@@ -783,8 +783,8 @@ export type EntityComponentSlots = {
    *  Null = inactive (no metal income, no rotor spin). */
   ownedDepositIds: number[] | null;
   /** For extractors only — actual metal/sec this extractor is
-   *  producing right now: `ownedDepositIds.length × baseProduction`
-   *  when active, 0 when inactive. Kept as a stored field (not
+   *  producing right now: the covered-cell fraction of every owned
+   *  deposit times baseProduction, or 0 when inactive. Kept as a stored field (not
    *  derived) so the renderer's spin animator and the wire format
    *  can read it without re-running the ownership math each frame. */
   metalExtractionRate: number | null;

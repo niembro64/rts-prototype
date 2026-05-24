@@ -1,6 +1,9 @@
 // Metal-deposit ownership — the binary "one extractor per deposit"
 // claim system. A deposit is FREE (not in `world.depositOwners`) or
-// OWNED by exactly one COMPLETED extractor. The claim transitions
+// OWNED by exactly one COMPLETED extractor. Irregular deposits are
+// still claimed as whole deposits, but the owning extractor's rate is
+// scaled by the number of generated metal cells its footprint covers.
+// The claim transitions
 // happen at exactly two points:
 //
 //   1) `claimDepositsForExtractor(world, extractor)` runs when the
@@ -26,7 +29,7 @@
 //     completed extractor entity.
 //   – Every extractor's `ownedDepositIds` matches what
 //     `world.depositOwners` says.
-//   – `metalExtractionRate = ownedDepositIds.length × baseProduction`.
+//   – `metalExtractionRate = sum(coveredCells / depositCells) × baseProduction`.
 //
 // Visual / wire-format consistency falls out automatically:
 // `metalExtractionRate` is wire-serialized and the renderer's
@@ -40,6 +43,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import {
+  getMetalDepositCoveredCellCount,
   getMetalDepositsOverlappingBuildingFootprint,
   metalDepositOverlapsBuildingFootprint,
 } from './metalDeposits';
@@ -67,12 +71,31 @@ function baseProduction(): number {
   return getBuildingConfig('extractor').metalProduction ?? 0;
 }
 
-/** Set the extractor's stored fields to match an `ownedDepositIds`
- *  array. Length 0 → inactive (rate 0). Length N → active at
- *  N × baseProduction. */
-function syncExtractorRate(extractor: Entity): void {
+/** Set the extractor's stored fields to match its owned deposit list
+ *  and current grid-footprint coverage. */
+function syncExtractorRate(world: WorldState, extractor: Entity): void {
   const owned = extractor.ownedDepositIds ?? [];
-  extractor.metalExtractionRate = owned.length * baseProduction();
+  const footprint = getExtractorFootprintGrid(extractor);
+  if (!footprint || owned.length === 0) {
+    extractor.metalExtractionRate = 0;
+    return;
+  }
+  let rate = 0;
+  const base = baseProduction();
+  for (const depositId of owned) {
+    const deposit = world.metalDeposits[depositId];
+    if (!deposit || deposit.resourceCellCount <= 0) continue;
+    const coveredCells = getMetalDepositCoveredCellCount(
+      deposit,
+      footprint.gridX,
+      footprint.gridY,
+      footprint.gridW,
+      footprint.gridH,
+    );
+    if (coveredCells <= 0) continue;
+    rate += base * (coveredCells / deposit.resourceCellCount);
+  }
+  extractor.metalExtractionRate = rate;
 }
 
 /** First-time claim, called from applyCompletedBuildingEffects.
@@ -103,7 +126,7 @@ export function claimDepositsForExtractor(
     owned.push(deposit.id);
   }
   extractor.ownedDepositIds = owned;
-  syncExtractorRate(extractor);
+  syncExtractorRate(world, extractor);
   return extractor.metalExtractionRate ?? 0;
 }
 
@@ -138,8 +161,6 @@ export function releaseDepositsForExtractor(
   }
   const lostIncome = extractor.metalExtractionRate ?? owned.length * baseProduction();
   const ownerId = extractor.ownership.playerId;
-  const cfg = getBuildingConfig('extractor');
-  const perDeposit = cfg.metalProduction ?? 0;
 
   // Surviving completed extractor candidates — built once, scanned
   // per released deposit. We exclude this extractor (it's about to be
@@ -177,20 +198,22 @@ export function releaseDepositsForExtractor(
     }
     if (promoted && promoted.ownership) {
       world.depositOwners.set(depositId, promoted.id);
+      const oldRate = promoted.metalExtractionRate ?? 0;
       const list = promoted.ownedDepositIds ?? (promoted.ownedDepositIds = []);
       if (!list.includes(depositId)) list.push(depositId);
-      // Promoted extractor gains exactly one deposit's worth of
-      // income. Update its stored rate immediately; only credit the
+      // Promoted extractor gains the covered fraction of this irregular
+      // deposit. Update its stored rate immediately; only credit the
       // player when the extractor is currently OPEN — a fortified
       // (closed) extractor accumulates potential rate via
       // `metalExtractionRate` but pays nothing until it reopens, at
       // which point setBuildingProducing(open=true) adds the full rate
       // (including the new deposit) back to the player's tally.
-      syncExtractorRate(promoted);
+      syncExtractorRate(world, promoted);
       world.markSnapshotDirty(promoted.id, ENTITY_CHANGED_BUILDING);
       const activeState = promoted.building === null ? null : promoted.building.activeState;
-      if (activeState === null || activeState.open !== false) {
-        economyManager.addMetalExtraction(promoted.ownership.playerId, perDeposit);
+      const gainedRate = Math.max(0, (promoted.metalExtractionRate ?? 0) - oldRate);
+      if (gainedRate > 0 && (activeState === null || activeState.open !== false)) {
+        economyManager.addMetalExtraction(promoted.ownership.playerId, gainedRate);
       }
     }
   }

@@ -621,7 +621,9 @@ export class TerrainTileRenderer3D {
     this.buildGridMapSizeUniform.value.set(cellsX, cellsY);
 
     const entityVersion = this.clientViewState.getEntitySetVersion();
-    const depositKey = this.metalDeposits.length;
+    const depositKey = this.metalDeposits
+      .map((deposit) => `${deposit.id}:${deposit.resourceCellCount}`)
+      .join(',');
     const key = [
       cellsX,
       cellsY,

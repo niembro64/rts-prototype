@@ -19,9 +19,11 @@ export function getExtractorMetalRate(entity: Entity): number {
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
   if (entity.buildingType === 'extractor' && entity.ownership) {
-    // Binary deposit-claim system. Walk every deposit the extractor
-    // footprint overlaps; each currently-free deposit becomes owned
-    // by this extractor. Already-owned deposits stay where they are.
+    // Binary deposit-claim system with covered-cell output. Walk every
+    // deposit the extractor footprint overlaps; each currently-free
+    // deposit becomes owned by this extractor. Already-owned deposits
+    // stay where they are; the stored extractor rate is the owned
+    // deposits' covered-cell fraction.
     // We DON'T credit income here — initializeBuildingActiveState
     // below starts the extractor CLOSED, and the per-tick driver only
     // calls setBuildingProducing(open=true) once the activation
