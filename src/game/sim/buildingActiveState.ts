@@ -1,26 +1,26 @@
-// Shared "fortifiable" state for producer buildings — solar collectors,
-// wind turbines, and metal extractors.
-//
-// Open/closed (the visible "on"/"off" pose) is purely a damage-survival
-// mechanic and is INDEPENDENT of whether the building produces its
-// resource. Production runs continuously from completion to destruction
-// regardless of the open flag.
+// Shared ON/OFF state for producer buildings — solar collectors, wind
+// turbines, and metal extractors. ON (open) = producing + normal
+// damage; OFF (closed) = not producing + 10× damage resistance. The
+// flag drives both outcomes simultaneously — see "Producer Buildings
+// Are ON/OFF" in design_philosophy.html.
 //
 // Lifecycle:
 //
 //   - At completion (real construction or pre-placed) the building
-//     starts CLOSED and counts down BUILDING_REOPEN_DELAY_MS before
-//     opening for the first time. This is the shared activation
-//     debounce — every on/off producer goes through it, no per-type
-//     variation. Production is already running at this point.
+//     starts OFF (not producing) and counts down BUILDING_REOPEN_DELAY_MS
+//     before flipping ON for the first time. This is the shared
+//     activation debounce — every ON/OFF producer goes through it, no
+//     per-type variation.
+//   - Once ON they produce their resource.
 //   - The first incoming damage hit starts a 2-second grace timer
 //     (state.damageDelayMs counts down from BUILDING_DAMAGE_DELAY_MS).
-//   - When the grace expires the building snaps CLOSED. Incoming
-//     damage is multiplied by BUILDING_CLOSED_DAMAGE_MULTIPLIER
-//     (0.25 = 4× more durable).
+//     During the grace they still take full damage and still produce.
+//   - When the grace expires the building snaps OFF. Production stops
+//     and incoming damage is multiplied by
+//     BUILDING_CLOSED_DAMAGE_MULTIPLIER (0.1 = 10× more durable).
 //   - After BUILDING_REOPEN_DELAY_MS (5 s) of quiet (no further hits)
-//     the building auto-reopens.
-//   - Any hit while closed RESETS the reopen timer to the full 5 s.
+//     the building auto-flips ON and production resumes.
+//   - Any hit while OFF RESETS the reopen timer to the full 5 s.
 
 import { ENTITY_CHANGED_BUILDING } from '../../types/network';
 import { getBuildingConfig } from './buildConfigs';
@@ -33,8 +33,8 @@ import type { BuildingActiveState, BuildingType, Entity } from './types';
 export const BUILDING_DAMAGE_DELAY_MS = 2000;
 /** Auto-reopen timer once closed: must go this long without taking damage. */
 export const BUILDING_REOPEN_DELAY_MS = 5000;
-/** Damage multiplier applied while the building is closed. 0.25 = 4× tougher. */
-export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.25;
+/** Damage multiplier applied while the building is OFF. 0.1 = 10× tougher. */
+export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 
 /** Which building types use the active-state fortify mechanic. */
 export function buildingTypeHasActiveState(type: BuildingType | null | undefined): boolean {
@@ -127,11 +127,11 @@ function setBuildingProducing(entity: Entity, producing: boolean): boolean {
 }
 
 /** Called from applyCompletedBuildingEffects (and the standalone
- *  background-battle spawner) once any on/off producer building is
- *  alive and owned. Puts it into the shared initial pose: CLOSED with
- *  the reopen timer primed to BUILDING_REOPEN_DELAY_MS, while
- *  production starts immediately (production is independent of the
- *  open flag). */
+ *  background-battle spawner) once any ON/OFF producer building is
+ *  alive and owned. Puts it into the shared initial pose: OFF, not
+ *  producing, with the reopen timer primed to BUILDING_REOPEN_DELAY_MS.
+ *  The per-tick driver then counts that down and flips the building
+ *  ON, matching every later OFF→ON transition in the lifecycle. */
 export function initializeBuildingActiveState(world: WorldState, entity: Entity): void {
   const state = ensureBuildingActiveState(entity);
   if (!state || !entity.building || !isEntityActive(entity) || entity.building.hp <= 0) return;
@@ -148,7 +148,7 @@ export function initializeBuildingActiveState(world: WorldState, entity: Entity)
     state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
     changed = true;
   }
-  if (setBuildingProducing(entity, true)) changed = true;
+  if (setBuildingProducing(entity, false)) changed = true;
   if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 
@@ -187,9 +187,8 @@ export function isBuildingActiveStateFortified(entity: Entity): boolean {
     && building.activeState.open === false;
 }
 
-/** Per-tick driver. Counts down the grace timer (open → closed) and
- *  the reopen timer (closed → open). Production runs continuously and
- *  is independent of the open flag. */
+/** Per-tick driver. Counts down the grace timer (ON → OFF) and the
+ *  reopen timer (OFF → ON). Production follows the ON flag. */
 export function updateBuildingActiveStates(world: WorldState, dtMs: number): void {
   for (const entity of world.getActiveStateBuildings()) {
     if (!entity.building) continue;
@@ -219,7 +218,7 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
       }
     }
 
-    setBuildingProducing(entity, true);
+    setBuildingProducing(entity, state.open);
     if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
   }
 }

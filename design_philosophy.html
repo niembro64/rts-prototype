@@ -1168,6 +1168,25 @@
     </section>
 
     <section>
+      <h2>Producer Buildings Are ON/OFF</h2>
+      <p>
+        Solar collectors, wind turbines, and metal extractors carry a single binary state:
+        <code>ON</code> or <code>OFF</code>. The state means exactly one thing and gates two
+        outcomes together:
+      </p>
+      <ul class="rule-list">
+        <li><code>ON</code> &mdash; the building can produce its resource (energy or metal) and takes normal damage.</li>
+        <li><code>OFF</code> &mdash; the building cannot produce, and incoming damage is multiplied by <code>0.1</code> (10&times; more fortified).</li>
+      </ul>
+      <p>
+        Production and survivability are intentionally welded to the same flag so the player tradeoff
+        is legible: keep producing and stay vulnerable, or stop producing and ride out the hit. The
+        ON/OFF state is the single authoritative input for both the renderer&rsquo;s open/closed pose
+        and the economy&rsquo;s production accounting; they must never disagree.
+      </p>
+    </section>
+
+    <section>
       <h2>Materials Are Independent Of Shape</h2>
       <p>
         A surface material is a contract about how a surface interacts with the world: reflectivity,

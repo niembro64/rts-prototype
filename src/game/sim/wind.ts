@@ -57,6 +57,10 @@ export class WindPowerTracker {
     for (const entity of world.getWindBuildings()) {
       if (!entity.ownership || !entity.building || entity.building.hp <= 0) continue;
       if (!isEntityActive(entity)) continue;
+      // OFF (closed) wind turbines stop producing — they're in their
+      // stowed pose with blades folded against the pole.
+      const activeState = entity.building.activeState;
+      if (activeState !== null && activeState.open === false) continue;
       const pid = entity.ownership.playerId;
       nextProductionByPlayer.set(
         pid,
