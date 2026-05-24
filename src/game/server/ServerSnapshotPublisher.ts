@@ -242,6 +242,7 @@ export class ServerSnapshotPublisher {
         snapshotBaselineHandle: listener.snapshotBaselineHandle,
         dirtyEntityIds: this.dirtyIdsBuf,
         dirtyEntityFields: this.dirtyFieldsBuf,
+        removedEntityIds: undefined,
         removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
         visibility,

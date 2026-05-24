@@ -109,7 +109,7 @@ type BeamReflectorPoint = {
   z: number;
   mirrorEntityId: EntityId;
   reflectorKind: BeamReflectorKind;
-  reflectorPlayerId?: PlayerId;
+  reflectorPlayerId: PlayerId | undefined;
   normalX: number;
   normalY: number;
   normalZ: number;

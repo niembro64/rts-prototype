@@ -160,36 +160,36 @@ export type PackedEntitySnapshotWireV1 = {
 
 export type PackedEntitySnapshotWireV2 = {
   v: typeof PACKED_ENTITIES_V2_VERSION;
-  m?: PackedMovementUnitRows;
-  e?: PackedEntityRow[];
+  m: PackedMovementUnitRows | undefined;
+  e: PackedEntityRow[] | undefined;
 };
 
 export type PackedEntitySnapshotWireV3 = {
   v: typeof PACKED_ENTITIES_V3_VERSION;
-  m?: PackedMovementUnitRows;
-  t?: PackedUnitTurretRows;
-  e?: PackedEntityRow[];
+  m: PackedMovementUnitRows | undefined;
+  t: PackedUnitTurretRows | undefined;
+  e: PackedEntityRow[] | undefined;
 };
 
 export type PackedEntitySnapshotWireV4 = {
   v: typeof PACKED_ENTITIES_V4_VERSION;
-  m?: PackedMovementUnitBytes;
-  t?: PackedUnitTurretBytes;
-  e?: PackedEntityRow[];
+  m: PackedMovementUnitBytes | undefined;
+  t: PackedUnitTurretBytes | undefined;
+  e: PackedEntityRow[] | undefined;
 };
 
 export type PackedEntitySnapshotWireV5 = {
   v: typeof PACKED_ENTITIES_V5_VERSION;
-  m?: PackedMovementUnitBytes;
-  t?: PackedUnitTurretBytes;
-  e?: PackedEntityRow[];
+  m: PackedMovementUnitBytes | undefined;
+  t: PackedUnitTurretBytes | undefined;
+  e: PackedEntityRow[] | undefined;
 };
 
 export type PackedEntitySnapshotWireV6 = {
   v: typeof PACKED_ENTITIES_VERSION;
-  m?: PackedMovementUnitBytes;
-  t?: PackedUnitTurretBytes;
-  e?: PackedEntityRow[];
+  m: PackedMovementUnitBytes | undefined;
+  t: PackedUnitTurretBytes | undefined;
+  e: PackedEntityRow[] | undefined;
 };
 
 export type PackedEntitySnapshotWire =
@@ -222,7 +222,12 @@ export function packEntitiesForWire(
       }
     }
 
-    const packed: PackedEntitySnapshotWireV6 = { v: PACKED_ENTITIES_VERSION };
+    const packed: PackedEntitySnapshotWireV6 = {
+      v: PACKED_ENTITIES_VERSION,
+      m: undefined,
+      t: undefined,
+      e: undefined,
+    };
     const movementBytes = finishMovementUnitDeltaRows();
     const turretBytes = finishUnitTurretDeltaRows();
     if (movementBytes !== undefined) packed.m = movementBytes;
@@ -261,7 +266,7 @@ export function unpackEntitiesFromWire(
   const detailRows = packed.e;
   const movementCount = countMovementUnitDeltaRows(movementRows);
   const turretCount = countUnitTurretDeltaRows(turretRows);
-  const detailCount = detailRows?.length ?? 0;
+  const detailCount = detailRows === undefined ? 0 : detailRows.length;
   const out: NetworkServerSnapshotEntity[] = new Array(movementCount + turretCount + detailCount);
   let outIndex = 0;
   if (movementRows !== undefined) {
@@ -571,9 +576,9 @@ function movementUnitDeltaFlags(entity: NetworkServerSnapshotEntity): number {
   let flags = 0;
   const pos = entity.pos;
   const unit = entity.unit;
-  const velocity = unit?.velocity;
-  const orientation = unit?.orientation;
-  const angularVelocity = unit?.angularVelocity3;
+  const velocity = unit === null ? null : unit.velocity;
+  const orientation = unit === null ? null : unit.orientation;
+  const angularVelocity = unit === null ? null : unit.angularVelocity3;
   if (pos !== null) flags |= MOVEMENT_UNIT_FLAG_POS;
   if (entity.rotation !== null) flags |= MOVEMENT_UNIT_FLAG_ROTATION;
   if (velocity !== null && velocity !== undefined) flags |= MOVEMENT_UNIT_FLAG_VELOCITY;
@@ -663,9 +668,9 @@ function writeMovementUnitDeltaPayload(
 ): void {
   const pos = entity.pos;
   const unit = entity.unit;
-  const velocity = unit?.velocity;
-  const orientation = unit?.orientation;
-  const angularVelocity = unit?.angularVelocity3;
+  const velocity = unit === null ? null : unit.velocity;
+  const orientation = unit === null ? null : unit.orientation;
+  const angularVelocity = unit === null ? null : unit.angularVelocity3;
   if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
     rows.writeVarInt(pos!.x);
     rows.writeVarInt(pos!.y);

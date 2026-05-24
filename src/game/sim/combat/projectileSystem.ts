@@ -188,7 +188,7 @@ function copyBeamReflectorMetadata(
   reflector: {
     mirrorEntityId: EntityId;
     reflectorKind: BeamPoint['reflectorKind'];
-    reflectorPlayerId?: BeamPoint['reflectorPlayerId'];
+    reflectorPlayerId: BeamPoint['reflectorPlayerId'] | undefined;
     normalX: number;
     normalY: number;
     normalZ: number;

@@ -147,32 +147,32 @@ export type SerializeGameStateOptions = {
    * Delta histories are per recipient so prev-state/removal bookkeeping
    * does not leak across players.
    */
-  trackingKey?: string | number;
+  trackingKey: string | number | undefined;
   /** Phase 10 D.3f — Rust-side snapshot baseline handle for this
    *  recipient. When present, each emitted entity also gets captured
    *  into the WASM-side baseline so the (future) D.3g diff kernel
    *  can compute the next tick's mask from Rust state. */
-  snapshotBaselineHandle?: number;
-  dirtyEntityIds?: readonly EntityId[];
-  dirtyEntityFields?: readonly number[];
-  removedEntityIds?: readonly EntityId[];
-  removedEntities?: readonly RemovedSnapshotEntity[];
+  snapshotBaselineHandle: number | undefined;
+  dirtyEntityIds: readonly EntityId[] | undefined;
+  dirtyEntityFields: readonly number[] | undefined;
+  removedEntityIds: readonly EntityId[] | undefined;
+  removedEntities: readonly RemovedSnapshotEntity[] | undefined;
   /**
    * Recipient used for owner-aware diff resolution. Owned entities keep
    * baseline precision; observed entities can use coarser thresholds.
    */
-  recipientPlayerId?: PlayerId;
+  recipientPlayerId: PlayerId | undefined;
   /** Monotonic publisher-side emit sequence, shared by all listeners.
    *  Used to stagger high-count remote LOD buckets independently from
    *  simulation tick rate. */
-  snapshotSequence?: number;
-  visibility?: SnapshotVisibility;
+  snapshotSequence: number | undefined;
+  visibility: SnapshotVisibility | undefined;
   /**
    * High-frequency visual detail fields can ride a lower cadence than
    * core movement. Defaults to true for direct serializeGameState
    * callers; ServerSnapshotPublisher sets it per emitted snapshot.
    */
-  emitEntityDetailFields?: boolean;
+  emitEntityDetailFields: boolean | undefined;
   /**
    * When the publisher has already built a team-shared output for this
    * recipient's team (issues.txt FOW-OPT-20), pass the precomputed
@@ -181,10 +181,27 @@ export type SerializeGameStateOptions = {
    * present-but-undefined value (no audio events, empty spray array,
    * minimap disabled) is distinguishable from "no override supplied".
    */
-  audioOverride?: SerializerAudioOverride;
-  sprayOverride?: SerializerSprayOverride;
-  minimapOverride?: SerializerMinimapOverride;
-  emitProjectileDetailFields?: boolean;
+  audioOverride: SerializerAudioOverride | undefined;
+  sprayOverride: SerializerSprayOverride | undefined;
+  minimapOverride: SerializerMinimapOverride | undefined;
+  emitProjectileDetailFields: boolean | undefined;
+};
+
+const DEFAULT_SERIALIZE_GAME_STATE_OPTIONS: SerializeGameStateOptions = {
+  trackingKey: undefined,
+  snapshotBaselineHandle: undefined,
+  dirtyEntityIds: undefined,
+  dirtyEntityFields: undefined,
+  removedEntityIds: undefined,
+  removedEntities: undefined,
+  recipientPlayerId: undefined,
+  snapshotSequence: undefined,
+  visibility: undefined,
+  emitEntityDetailFields: undefined,
+  audioOverride: undefined,
+  sprayOverride: undefined,
+  minimapOverride: undefined,
+  emitProjectileDetailFields: undefined,
 };
 
 export type SerializerAudioOverride = {
@@ -241,8 +258,8 @@ function forgetTrackedEntity(
   tracking: DeltaTrackingState,
   id: EntityId,
   emitRemoval: boolean,
-  baselineSim?: SimWasm,
-  baselineHandle?: number,
+  baselineSim: SimWasm | undefined = undefined,
+  baselineHandle: number | undefined = undefined,
 ): void {
   const wasVisible = tracking.prevEntityIds.delete(id);
   tracking.prevStates.delete(id);
@@ -265,8 +282,8 @@ function processRemovedEntities(
   records: readonly RemovedSnapshotEntity[],
   tracking: DeltaTrackingState,
   visibility: SnapshotVisibility,
-  baselineSim?: SimWasm,
-  baselineHandle?: number,
+  baselineSim: SimWasm | undefined = undefined,
+  baselineHandle: number | undefined = undefined,
 ): void {
   for (let i = 0; i < records.length; i++) {
     const record = records[i];
@@ -307,27 +324,27 @@ export function serializeGameState(
   world: WorldState,
   isDelta: boolean,
   gamePhase: GamePhase,
-  winnerId?: PlayerId,
-  sprayTargets?: SprayTarget[],
-  audioEvents?: SimEvent[],
-  projectileSpawns?: ProjectileSpawnEvent[],
-  projectileDespawns?: ProjectileDespawnEvent[],
-  projectileVelocityUpdates?: ProjectileVelocityUpdateEvent[],
-  gridCells?: NetworkServerSnapshotGridCell[],
-  gridSearchCells?: NetworkServerSnapshotGridCell[],
-  gridCellSize?: number,
-  options?: SerializeGameStateOptions
+  winnerId: PlayerId | undefined = undefined,
+  sprayTargets: SprayTarget[] | undefined = undefined,
+  audioEvents: SimEvent[] | undefined = undefined,
+  projectileSpawns: ProjectileSpawnEvent[] | undefined = undefined,
+  projectileDespawns: ProjectileDespawnEvent[] | undefined = undefined,
+  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined = undefined,
+  gridCells: NetworkServerSnapshotGridCell[] | undefined = undefined,
+  gridSearchCells: NetworkServerSnapshotGridCell[] | undefined = undefined,
+  gridCellSize: number | undefined = undefined,
+  options: SerializeGameStateOptions = DEFAULT_SERIALIZE_GAME_STATE_OPTIONS,
 ): NetworkServerSnapshot {
-  const tracking = getDeltaTrackingState(options?.trackingKey);
-  const recipientPlayerId = options?.recipientPlayerId;
-  const visibility = options?.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
+  const tracking = getDeltaTrackingState(options.trackingKey);
+  const recipientPlayerId = options.recipientPlayerId;
+  const visibility = options.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
   const tick = world.getTick();
   // Phase 10 D.3f — Rust-side baseline sync. Resolved once per
   // listener-tick; per-entity capture happens inside the emit loops
   // when both `sim` and `baselineHandle` are present.
-  const baselineHandle = options?.snapshotBaselineHandle;
+  const baselineHandle = options.snapshotBaselineHandle;
   const baselineSim = baselineHandle === undefined ? undefined : getSimWasm();
-  const emitEntityDetailFields = options?.emitEntityDetailFields !== false;
+  const emitEntityDetailFields = options.emitEntityDetailFields !== false;
 
   // Reset entity pool for this frame
   resetEntitySnapshotPool();
@@ -343,15 +360,15 @@ export function serializeGameState(
   const highCountEntityLodEnabled = deltaEnabled &&
     world.getUnits().length >= SNAPSHOT_CONFIG.highCountEntityLodUnitThreshold &&
     SNAPSHOT_CONFIG.highCountForeignEntitySnapshotCadence > 1;
-  const snapshotSequence = Math.max(0, Math.floor(options?.snapshotSequence ?? tick));
+  const snapshotSequence = Math.max(0, Math.floor(options.snapshotSequence ?? tick));
 
-  if (options?.removedEntities) {
+  if (options.removedEntities !== undefined) {
     processRemovedEntities(options.removedEntities, tracking, visibility, baselineSim, baselineHandle);
   }
 
   if (deltaEnabled) {
-    const removedIds = options?.removedEntityIds;
-    if (options?.removedEntities) {
+    const removedIds = options.removedEntityIds;
+    if (options.removedEntities !== undefined) {
       // Already filtered above with removal metadata.
     } else if (removedIds) {
       for (let i = 0; i < removedIds.length; i++) {
@@ -408,9 +425,9 @@ export function serializeGameState(
       }
     }
 
-    const dirtyIds = options?.dirtyEntityIds;
-    const dirtyFieldsList = options?.dirtyEntityFields;
-    if (!dirtyIds) {
+    const dirtyIds = options.dirtyEntityIds;
+    const dirtyFieldsList = options.dirtyEntityFields;
+    if (dirtyIds === undefined) {
       world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
     }
     const sourceDirtyIds = dirtyIds ?? _dirtyEntityIdsBuf;
@@ -608,11 +625,11 @@ export function serializeGameState(
         }
       }
     }
-    if (!options?.dirtyEntityIds) {
+    if (options.dirtyEntityIds === undefined) {
       world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
     }
 
-    if (!options?.removedEntityIds && !options?.removedEntities) {
+    if (options.removedEntityIds === undefined && options.removedEntities === undefined) {
       world.drainRemovedSnapshotEntityIds(_removedIdsBuf);
     }
 
@@ -640,21 +657,21 @@ export function serializeGameState(
   // Each override wraps the value (which may itself be undefined for
   // "no events / no targets / minimap disabled") so an absent wrapper
   // is distinguishable from a present-but-undefined value.
-  const netMinimapEntities = options?.minimapOverride
+  const netMinimapEntities = options.minimapOverride !== undefined
     ? options.minimapOverride.value
-    : serializeMinimapSnapshotEntities(world, visibility, options?.trackingKey);
+    : serializeMinimapSnapshotEntities(world, visibility, options.trackingKey);
 
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
 
   const netResourceMovements = serializeResourceMovements(world, visibility);
 
-  const netSprayTargets = options?.sprayOverride
+  const netSprayTargets = options.sprayOverride !== undefined
     ? options.sprayOverride.value
-    : serializeSprayTargets(sprayTargets, visibility, options?.trackingKey);
+    : serializeSprayTargets(sprayTargets, visibility, options.trackingKey);
 
-  const netAudioEvents = options?.audioOverride
+  const netAudioEvents = options.audioOverride !== undefined
     ? options.audioOverride.value
-    : serializeAudioEvents(audioEvents, visibility, options?.trackingKey, {
+    : serializeAudioEvents(audioEvents, visibility, options.trackingKey, {
         unitCount: world.getUnits().length,
         snapshotSequence,
       });
@@ -669,7 +686,7 @@ export function serializeGameState(
     world,
     deltaEnabled,
     visibility,
-    emitBeamUpdates: options?.emitProjectileDetailFields !== false,
+    emitBeamUpdates: options.emitProjectileDetailFields !== false,
     snapshotSequence,
     projectileSpawns,
     projectileDespawns,
