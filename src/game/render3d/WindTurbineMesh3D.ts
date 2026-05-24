@@ -13,7 +13,6 @@ import {
   makeBox,
   makeCone,
   makeCylinder,
-  makeSphere,
   makeTurbineBlade,
   windBladeMat,
   windGlassMat,
@@ -125,7 +124,8 @@ export function buildWindTurbineMesh(
   const bladeLen = Math.min(WIND_BUILDING_VISUAL_HEIGHT * 0.42, Math.max(86, minDim * 1.55));
   const bladeW = Math.max(8, minDim * 0.19);
   const bladeThickness = Math.max(1.6, minDim * 0.032);
-  const hub = makeSphere(windNacelleMat, nacelleRadius * 0.78, 0, 0, 0);
+  const hub = makeCylinder(windNacelleMat, nacelleRadius * 1.56, nacelleRadius * 0.6, 0, 0, 0);
+  hub.rotation.x = Math.PI / 2;
   rotor.add(hub);
 
   const nose = makeCone(windNacelleMat, nacelleRadius * 0.74, nacelleRadius * 1.38, 0, 0, nacelleRadius * 0.5);

@@ -47,8 +47,8 @@ export const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_P
 
 export function createWindBladeGeometry(): THREE.BufferGeometry {
   const stations = [
-    { y: 0.06, halfW: 0.34, halfT: 0.46, sweep: -0.02 },
-    { y: 0.48, halfW: 0.18, halfT: 0.28, sweep: -0.08 },
+    { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
+    { y: 0.48, halfW: 0.26, halfT: 0.4, sweep: -0.08 },
     { y: 1.0, halfW: 0.035, halfT: 0.09, sweep: 0.08 },
   ];
   const positions: number[] = [];
