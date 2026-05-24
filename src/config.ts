@@ -923,12 +923,9 @@ export type CameraAnchorMode = 'cursor' | 'screen-center';
  *  the view axis instead. */
 export const CAMERA_ZOOM_IN_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.zoomIn as CameraAnchorMode;
 
-/** Anchor for SCROLL-OUT (wheel deltaY > 0). Defaults to
- *  `'screen-center'` so zooming out reads as a normal pull-back
- *  from the framed scene, not the geometric inverse of the cursor-
- *  anchored zoom-in (which would yank whatever was under the
- *  cursor toward the screen center as the camera receded). The two
- *  defaults intentionally diverge: in to cursor, out from center. */
+/** Anchor for SCROLL-OUT (wheel deltaY > 0). Defaults to cursor so
+ *  a scroll-in followed by a scroll-out is the same anchored operation
+ *  in reverse. */
 export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.zoomOut as CameraAnchorMode;
 
 /** Anchor for ALT + middle-click ORBIT (camera rotation). Defaults
@@ -939,34 +936,11 @@ export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.
  *  pointing at (the previous cursor-anchored behavior). */
 export const CAMERA_ROTATE_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.rotate as CameraAnchorMode;
 
-/** Minimum world-Y gap (sim units) between the camera and the
- *  terrain directly beneath it. Acts as the TRUE "minimum zoom"
- *  rail: the wheel-zoom altitude clamp uses
- *  `terrain(x,z) + CAMERA_MIN_TERRAIN_CLEARANCE` as its floor (not
- *  the flat altitudeMin), so the player can never zoom into a hill
- *  or get pinned between mountains. The same value is also used by
- *  the per-frame camera lift in `OrbitCamera.apply()` as a hard
- *  backstop. Tune up if "minimum zoom" feels too close to terrain;
- *  down if you want the camera able to nuzzle the surface. 80 is
- *  visually safe across the current heightmap (mountains ~750 wu,
- *  TILE_FLOOR_Y = -1200) and well above z-fighting range. */
+/** Minimum 3D clearance (sim units) between the camera and terrain.
+ *  The camera checks terrain around its position and resolves along
+ *  local terrain normals instead of checking only the vertical gap to
+ *  the ground directly beneath it. */
 export const CAMERA_MIN_TERRAIN_CLEARANCE = cameraConfigJson.minTerrainClearance;
-
-/** Half-width (sim units) of the band the orbit-camera target's Y
- *  coordinate is clamped to, measured from the terrain height at
- *  the target's XZ. Bounds cursor-pin's 3D Y drift: every wheel
- *  event blends `target.y` with the cursor's world-point Y, and
- *  zoom-OUT in particular (α > 1) PUSHES target away from the
- *  anchor rather than toward it — so target.y multiplies by
- *  (1 + zoomStepFraction) per click whenever the cursor is below
- *  the target. Across many zoom-in/out cycles target.y can balloon
- *  far above (or below) any real surface, until the altitudeMax/Min
- *  clamps invert the user's zoom direction and the camera gets
- *  stuck at a low effective zoom-out. The band re-anchors target.y
- *  to the actual terrain elevation it's flying over, killing the
- *  drift while still letting cursor-pin work for normal slopes
- *  within ±BAND wu. */
-export const CAMERA_TARGET_TERRAIN_BAND = cameraConfigJson.targetTerrainBand;
 
 /**
  * World padding as a percentage of map dimensions.

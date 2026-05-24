@@ -32,25 +32,24 @@ import * as THREE from 'three';
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
+const TERRAIN_CLEARANCE_NORMAL_EPS = 24;
+const TERRAIN_CLEARANCE_SAMPLE_OFFSETS = [
+  [0, 0],
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [0.7071067811865476, 0.7071067811865476],
+  [-0.7071067811865476, 0.7071067811865476],
+  [0.7071067811865476, -0.7071067811865476],
+  [-0.7071067811865476, -0.7071067811865476],
+] as const;
 
 export type OrbitCameraOptions = {
-  /** Distance clamps act as safety bounds — the wheel-zoom rail
-   *  primarily clamps on `altitudeMin` / `altitudeMax`. Keep
-   *  distance clamps generous because at near-horizontal pitch the
-   *  resulting altitude depends weakly on distance (cos(pitch) → 0),
-   *  so distance is the only thing keeping the orbit math sane. */
+  /** Distance clamps act as broad zoom rails. Terrain collision is
+   *  resolved separately by the 3D clearance check. */
   minDistance?: number;
   maxDistance?: number;
-  /** Camera altitude clamps (world Y, distance from the y=0 ground
-   *  plane). These are what the user actually feels — at altitudeMin
-   *  the camera is grazing the surface, at altitudeMax it's a
-   *  panoramic overview. Replaces distance as the primary wheel-
-   *  zoom rail so the user can't get "stuck on min zoom while close
-   *  to the surface" or "stuck on max zoom while far away" — those
-   *  states arose because distance and altitude diverged after
-   *  cursor-pin shifts and target-y tracking. */
-  altitudeMin?: number;
-  altitudeMax?: number;
   minPitch?: number;
   maxPitch?: number;
   /** Per-wheel-tick zoom fraction. Each scroll-IN moves the
@@ -71,30 +70,19 @@ export type OrbitCameraOptions = {
    *  When unset, we fall back to a flat y=0 plane projection. */
   getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
   /** OPTIONAL terrain-height sampler — if set, the orbit camera
-   *  lifts the rendered camera position so it never dips below the
-   *  terrain plus `minTerrainClearance`. The clamp runs after the
-   *  orbit math computes the position; lookAt(target) is called
-   *  after the lift, so the camera keeps the target framed but
-   *  glides above terrain when the orbit math would have buried it. */
+   *  resolves a small 3D clearance sphere against nearby terrain
+   *  normals so it cannot dip into hills or clip sideways into
+   *  steep terrain. */
   getTerrainHeight?: (x: number, z: number) => number;
-  /** Minimum world-Y gap between the camera and the terrain
-   *  beneath it. Defaults to 30 wu — enough to clear z-fighting and
-   *  still let the camera get genuinely close to a hilltop. */
+  /** Minimum 3D gap between the camera and nearby terrain. */
   minTerrainClearance?: number;
-  /** Half-width of the band `target.y` is clamped to around
-   *  terrain at the target's XZ. Bounds cursor-pin's accumulated
-   *  Y drift across many wheel events. 0 disables the clamp. */
-  targetTerrainBand?: number;
   /** Anchor for the SCROLL-IN gesture — the world point the camera
    *  pulls toward when the wheel rolls forward. `'cursor'` pins the
    *  spot under the mouse; `'screen-center'` pins the spot at the
    *  middle of the canvas. Defaults to `'cursor'`. */
   zoomInAnchor?: CameraAnchorMode;
-  /** Anchor for the SCROLL-OUT gesture. Defaults to
-   *  `'screen-center'` — pulling back from the framed view feels
-   *  more natural than running the cursor-anchored zoom math in
-   *  reverse, which would yank whatever was under the cursor away
-   *  from the screen center as the camera receded. */
+  /** Anchor for the SCROLL-OUT gesture. Defaults to `'cursor'` so
+   *  paired in/out wheel ticks are symmetric. */
   zoomOutAnchor?: CameraAnchorMode;
   /** Anchor for ALT + middle-click ORBIT. Defaults to
    *  `'screen-center'` so the framed view tumbles around itself
@@ -140,17 +128,6 @@ export class OrbitCamera {
 
   private minDistance: number;
   private maxDistance: number;
-  /** Wheel-zoom altitude clamps (camera world Y, distance from the
-   *  y=0 ground plane along its normal). Replaces the previous
-   *  distance-based clamps as the primary "you can't zoom further"
-   *  rail because altitude is the axis the user actually feels — at
-   *  altitudeMin the camera is grazing the surface, at altitudeMax
-   *  it's a panoramic overview. Distance clamps stay as safety
-   *  bounds (near-horizontal pitch makes altitude weakly dependent
-   *  on distance, so a sane distance ceiling protects against
-   *  runaway distance when cos(pitch) ≈ 0). */
-  public altitudeMin: number;
-  public altitudeMax: number;
   private minPitch: number;
   private maxPitch: number;
   private targetMinX = -Infinity;
@@ -162,32 +139,17 @@ export class OrbitCamera {
   private panMultiplier: number;
   private getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
   private getTerrainHeight?: (x: number, z: number) => number;
-  /** Minimum gap (world-Y) between the camera and terrain beneath
-   *  it. The camera position is lifted in `apply()` whenever its
-   *  computed Y would fall below `terrain + this`. */
+  /** Minimum 3D gap between the camera and nearby terrain. */
   public minTerrainClearance = 30;
-  /** Half-width of the band `toTargetY` is clamped to around
-   *  terrain at the target's XZ. The 3D cursor-pin formula
-   *  `target.y = α·oldTargetY + (1-α)·anchorY` is fine for any
-   *  single wheel event but accumulates ghost altitude across many
-   *  events: zoom-OUT (α > 1) PUSHES target away from the anchor,
-   *  multiplying target.y by ~(1+f) per click whenever the cursor
-   *  is below the target. After enough cycles target.y is hundreds
-   *  to thousands of wu off any real surface, and the altitude
-   *  clamps invert the user's zoom direction → "stuck on max zoom
-   *  out at altitude 481". Clamping target.y to terrain ± this
-   *  band re-anchors it to the actual ground while still letting
-   *  cursor-pin track normal slopes. 0 disables the clamp. */
-  public targetTerrainBand = 200;
 
   /** Anchor mode for each gesture. The wheel handler reads
    *  `zoomInAnchor` vs `zoomOutAnchor` based on scroll direction so
-   *  the two halves of the zoom can use different anchors (default:
-   *  in → cursor, out → screen center). The orbit drag uses
+   *  the two halves of the zoom can use different anchors. Defaults
+   *  use cursor for both so paired wheel ticks are inverse. The orbit drag uses
    *  `rotateAnchor`. Touch pinch + twist always use the gesture
    *  centroid, which is conceptually the touch's "cursor". */
   private zoomInAnchor: CameraAnchorMode = 'cursor';
-  private zoomOutAnchor: CameraAnchorMode = 'screen-center';
+  private zoomOutAnchor: CameraAnchorMode = 'cursor';
   private rotateAnchor: CameraAnchorMode = 'screen-center';
 
   private dragMode: 'none' | 'orbit' | 'pan' | 'height-pan' = 'none';
@@ -238,6 +200,9 @@ export class OrbitCamera {
   private _orbitYawQuatTmp = new THREE.Quaternion();
   private _orbitPitchQuatTmp = new THREE.Quaternion();
   private _orbitRightTmp = new THREE.Vector3();
+  private _cameraPosTmp = new THREE.Vector3();
+  private _terrainNormalTmp = new THREE.Vector3();
+  private _terrainPushNormalTmp = new THREE.Vector3();
   private static _ORBIT_WORLD_Y = new THREE.Vector3(0, 1, 0);
 
   private canvas: HTMLElement;
@@ -259,8 +224,6 @@ export class OrbitCamera {
     this.canvas = canvas;
     this.minDistance = opts.minDistance ?? 100;
     this.maxDistance = opts.maxDistance ?? 8000;
-    this.altitudeMin = opts.altitudeMin ?? 50;
-    this.altitudeMax = opts.altitudeMax ?? 5000;
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
@@ -270,9 +233,6 @@ export class OrbitCamera {
     this.getTerrainHeight = opts.getTerrainHeight;
     if (opts.minTerrainClearance !== undefined) {
       this.minTerrainClearance = Math.max(0, opts.minTerrainClearance);
-    }
-    if (opts.targetTerrainBand !== undefined) {
-      this.targetTerrainBand = Math.max(0, opts.targetTerrainBand);
     }
     if (opts.zoomInAnchor !== undefined) this.zoomInAnchor = opts.zoomInAnchor;
     if (opts.zoomOutAnchor !== undefined) this.zoomOutAnchor = opts.zoomOutAnchor;
@@ -291,47 +251,17 @@ export class OrbitCamera {
       //   scroll down (deltaY > 0)  → zoom out
       if (e.deltaY === 0) return;
 
-      // SINGLE-RAIL WHEEL ZOOM. The wheel's only effect is to scale
-      // `toDistance` against the [minDistance, maxDistance] rails;
-      // cursor-pin then shifts `toTarget` toward p0 by the SAME
-      // factor so the cursor pixel stays over its world point.
-      // Per-frame `apply()` lift keeps the rendered camera above
-      // terrain — there's NO altitude clamp in this handler and
-      // there CANNOT be one without re-introducing the "stuck
-      // camera" trap.
-      //
-      // The trap worked like this: the old handler re-solved α
-      // against an altitude floor or ceiling using the cursor-pin
-      // identity `target_y = α·cameraY + (1−α)·anchorY`. When
-      // toTargetY had drifted (cursor-pin's Y blend accumulates
-      // ghost altitude over many wheel events), `cameraY = toTargetY
-      // + d·cosP` could land far outside the [altitudeMin,
-      // altitudeMax] band. Solving for α in those configurations
-      // gave a NEGATIVE actualFactor — a direction REVERSAL of the
-      // user's zoom intent. The downstream `Math.max(minDistance,
-      // wantedDistance)` distance clamp then snapped the negative
-      // wantedDistance to minDistance, and `if (newToDistance ===
-      // toDistance) return` blocked any further input. The user
-      // experienced "I can't zoom in or out anymore — stuck."
-      //
-      // Removing the altitude re-solve makes the wheel monotonic:
-      // every scroll-in shrinks `toDistance` (or no-ops at min),
-      // every scroll-out grows it (or no-ops at max). The camera
-      // can never end up in a state the user can't drive out of.
-      // Geometric "you can't zoom into a hill" is enforced by
-      // apply()'s clearance lift on the rendered Y, NOT by clamping
-      // the orbit math itself — the orbit state stays free, and the
-      // visible camera floats above terrain as needed.
+      // Wheel zoom scales distance against the broad distance rails
+      // and shifts the target by the same factor around the selected
+      // anchor. Terrain never re-solves the wheel factor with a
+      // vertical-only altitude rule; zoom destinations are checked
+      // with the same 3D clearance approximation used at render time.
       const f = this.zoomStepFraction;
       const zoomingIn = e.deltaY < 0;
-      // Each zoom direction gets its own anchor — the defaults
-      // (in → cursor, out → screen-center) intentionally make the
-      // two motions NON-symmetric: zoom-in pulls toward the spot
-      // the player is pointing at, zoom-out pulls back from the
-      // currently-framed view. Pinning zoom-out to the cursor too
-      // would yank whatever was under the cursor toward the screen
-      // center as the camera receded, which reads as the framing
-      // sliding away rather than a clean pull-back.
+      // Each zoom direction still has its own configurable anchor, but
+      // the default is cursor for both directions. That keeps paired
+      // scroll-in / scroll-out ticks symmetric instead of making a
+      // reversal pivot around a different world point.
       const anchorMode = zoomingIn ? this.zoomInAnchor : this.zoomOutAnchor;
       const factor = zoomingIn ? 1 - f : 1 / (1 - f);
       this.zoomByFactorAt(e.clientX, e.clientY, factor, anchorMode);
@@ -603,14 +533,19 @@ export class OrbitCamera {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
     const p0 = this._anchorWorldPoint(clientX, clientY, anchorMode);
     const wantedDistance = this.toDistance * wantFactor;
-    const newToDistance = Math.min(
+    let nextDistance = Math.min(
       this.maxDistance,
       Math.max(this.minDistance, wantedDistance),
     );
-    if (newToDistance === this.toDistance) return; // already at the rail
-    const actualFactor = newToDistance / this.toDistance;
-
-    this.toDistance = newToDistance;
+    if (nextDistance === this.toDistance) return; // already at the rail
+    const actualFactor = nextDistance / this.toDistance;
+    const startDistance = this.toDistance;
+    const startTargetX = this.toTargetX;
+    const startTargetY = this.toTargetY;
+    const startTargetZ = this.toTargetZ;
+    let nextTargetX = startTargetX;
+    let nextTargetY = startTargetY;
+    let nextTargetZ = startTargetZ;
     if (p0) {
       const k = 1 - actualFactor;
       // Blend ALL THREE target axes toward p0 — Y matters because
@@ -620,30 +555,91 @@ export class OrbitCamera {
       // cursor pin drifts vertically by (1-α)·(p0.y - target.y)
       // per scroll / pinch whenever the user zooms over terrain at
       // a different height than target.y.
-      this.toTargetX = actualFactor * this.toTargetX + k * p0.x;
-      this.toTargetY = actualFactor * this.toTargetY + k * p0.y;
-      this.toTargetZ = actualFactor * this.toTargetZ + k * p0.z;
-      // Bound the Y blend's accumulated drift. Without this clamp,
-      // zoom-OUT (α > 1) pushes target.y AWAY from anchor.y by a
-      // factor of ~(1+f) per click, so a few cycles of "zoom in
-      // on a mountain, then zoom out over the valley" can leave
-      // toTargetY hundreds of wu above any real surface. At that
-      // point `cameraY = toTargetY + d·cosP` gets driven into the
-      // altitudeMax/Min clamp at small `d`, which inverts the
-      // user's zoom direction — that's the "stuck at altitude 481
-      // after panning around" symptom. The clamp re-pins target.y
-      // to actual ground each step; cursor-pin still works for
-      // normal slopes within ±band wu.
-      if (this.getTerrainHeight && this.targetTerrainBand > 0) {
-        const ground = this.getTerrainHeight(this.toTargetX, this.toTargetZ);
-        const lo = ground - this.targetTerrainBand;
-        const hi = ground + this.targetTerrainBand;
-        if (this.toTargetY < lo) this.toTargetY = lo;
-        else if (this.toTargetY > hi) this.toTargetY = hi;
-      }
+      nextTargetX = actualFactor * startTargetX + k * p0.x;
+      nextTargetY = actualFactor * startTargetY + k * p0.y;
+      nextTargetZ = actualFactor * startTargetZ + k * p0.z;
     }
 
+    const clearProgress = this.zoomClearProgress(
+      startTargetX,
+      startTargetY,
+      startTargetZ,
+      startDistance,
+      nextTargetX,
+      nextTargetY,
+      nextTargetZ,
+      nextDistance,
+    );
+    if (clearProgress <= 0) return;
+    if (clearProgress < 1) {
+      nextTargetX = startTargetX + (nextTargetX - startTargetX) * clearProgress;
+      nextTargetY = startTargetY + (nextTargetY - startTargetY) * clearProgress;
+      nextTargetZ = startTargetZ + (nextTargetZ - startTargetZ) * clearProgress;
+      nextDistance = startDistance + (nextDistance - startDistance) * clearProgress;
+    }
+
+    this.toTargetX = nextTargetX;
+    this.toTargetY = nextTargetY;
+    this.toTargetZ = nextTargetZ;
+    this.toDistance = nextDistance;
+
     this.applyDestinationIfSnap();
+  }
+
+  private zoomClearProgress(
+    fromTargetX: number,
+    fromTargetY: number,
+    fromTargetZ: number,
+    fromDistance: number,
+    toTargetX: number,
+    toTargetY: number,
+    toTargetZ: number,
+    toDistance: number,
+  ): number {
+    if (!this.getTerrainHeight || this.minTerrainClearance <= 0) return 1;
+    if (this.isCameraStateTerrainClear(toTargetX, toTargetY, toTargetZ, toDistance)) return 1;
+
+    // If the current destination is already invalid, do not trap the
+    // user. Let the destination update and the render-time 3D resolver
+    // push the camera out of terrain.
+    if (!this.isCameraStateTerrainClear(fromTargetX, fromTargetY, fromTargetZ, fromDistance)) {
+      return 1;
+    }
+
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) * 0.5;
+      const targetX = fromTargetX + (toTargetX - fromTargetX) * mid;
+      const targetY = fromTargetY + (toTargetY - fromTargetY) * mid;
+      const targetZ = fromTargetZ + (toTargetZ - fromTargetZ) * mid;
+      const distance = fromDistance + (toDistance - fromDistance) * mid;
+      if (this.isCameraStateTerrainClear(targetX, targetY, targetZ, distance)) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+
+  private isCameraStateTerrainClear(
+    targetX: number,
+    targetY: number,
+    targetZ: number,
+    distance: number,
+  ): boolean {
+    this.cameraPositionForState(
+      targetX,
+      targetY,
+      targetZ,
+      distance,
+      this.yaw,
+      this.pitch,
+      this._cameraPosTmp,
+    );
+    return this.terrainSignedClearance(this._cameraPosTmp, this._terrainPushNormalTmp)
+      >= this.minTerrainClearance;
   }
 
   private capturePanAnchor(clientX: number, clientY: number): void {
@@ -890,56 +886,123 @@ export class OrbitCamera {
     return out;
   }
 
-  /** Recompute camera position from target + yaw + pitch + distance.
-   *
-   *  Terrain clearance: after the orbit math gives a candidate
-   *  camera position, we sample the terrain at the camera's XZ and
-   *  LIFT the camera so it never sits below `terrain +
-   *  minTerrainClearance`. The lookAt(target) below then re-aims the
-   *  camera; the result is a smooth "glide above terrain" — the
-   *  camera always stays above the surface, even when the user has
-   *  pitched it horizontal and the line-of-sight pivot would have
-   *  buried it inside a hill.
-   *
-   *  Pitch persistence: a naive lift (just bumping y) leaves the
-   *  orbit pitch at whatever the user set, so as soon as they zoom
-   *  out and the lift no longer fires, the camera snaps back to the
-   *  flatter view — the steeper "looking down" angle they had when
-   *  close to the ground vanishes. To make that angle stick, when
-   *  lift kicks in we re-derive `pitch` so the orbit math itself
-   *  produces y = minY at the current distance. Subsequent zoom /
-   *  pan operations then use the steeper pitch and the angle carries
-   *  through. We recompute (x, y, z) from the new pitch so this same
-   *  frame already renders the post-lift orbit (no inter-frame snap
-   *  on the next render). */
-  apply(): void {
-    this.constrainTargets();
-    let sinP = Math.sin(this.pitch);
-    let cosP = Math.cos(this.pitch);
-    let x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
-    let y = this.target.y + this.distance * cosP;
-    let z = this.target.z + this.distance * sinP * -Math.cos(this.yaw);
-    if (this.getTerrainHeight) {
-      const groundY = this.getTerrainHeight(x, z);
-      const minY = groundY + this.minTerrainClearance;
-      if (y < minY) {
-        // Solve for the pitch that puts the camera exactly at minY:
-        //   y = target.y + distance · cos(pitch)  →  cos(pitch) = (minY − target.y) / distance.
-        // When (minY − target.y) > distance the camera can't clear
-        // the terrain at this distance even pointed straight up;
-        // clamp to minPitch and let the safety lift below catch it.
-        const cosNeeded = (minY - this.target.y) / this.distance;
-        const newPitch = cosNeeded < 1 ? Math.acos(cosNeeded) : this.minPitch;
-        this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, newPitch));
-        sinP = Math.sin(this.pitch);
-        cosP = Math.cos(this.pitch);
-        x = this.target.x + this.distance * sinP * Math.sin(this.yaw);
-        y = this.target.y + this.distance * cosP;
-        z = this.target.z + this.distance * sinP * -Math.cos(this.yaw);
-        if (y < minY) y = minY;
+  private cameraPositionForState(
+    targetX: number,
+    targetY: number,
+    targetZ: number,
+    distance: number,
+    yaw: number,
+    pitch: number,
+    out: THREE.Vector3,
+  ): THREE.Vector3 {
+    const sinP = Math.sin(pitch);
+    const cosP = Math.cos(pitch);
+    out.set(
+      targetX + distance * sinP * Math.sin(yaw),
+      targetY + distance * cosP,
+      targetZ + distance * sinP * -Math.cos(yaw),
+    );
+    return out;
+  }
+
+  private terrainNormalAt(x: number, z: number, out: THREE.Vector3): THREE.Vector3 {
+    const heightAt = this.getTerrainHeight;
+    if (!heightAt) return out.set(0, 1, 0);
+    const eps = Math.max(TERRAIN_CLEARANCE_NORMAL_EPS, this.minTerrainClearance * 0.25);
+    const hL = heightAt(x - eps, z);
+    const hR = heightAt(x + eps, z);
+    const hD = heightAt(x, z - eps);
+    const hU = heightAt(x, z + eps);
+    out.set(
+      (hL - hR) / (2 * eps),
+      1,
+      (hD - hU) / (2 * eps),
+    );
+    return out.normalize();
+  }
+
+  private terrainSignedClearance(pos: THREE.Vector3, normalOut: THREE.Vector3): number {
+    const heightAt = this.getTerrainHeight;
+    if (!heightAt) return Infinity;
+
+    let best = Infinity;
+    normalOut.set(0, 1, 0);
+    const sampleRadius = Math.max(1, this.minTerrainClearance);
+    for (const [ox, oz] of TERRAIN_CLEARANCE_SAMPLE_OFFSETS) {
+      const sx = pos.x + ox * sampleRadius;
+      const sz = pos.z + oz * sampleRadius;
+      const sy = heightAt(sx, sz);
+      const normal = this.terrainNormalAt(sx, sz, this._terrainNormalTmp);
+      const signed =
+        (pos.x - sx) * normal.x +
+        (pos.y - sy) * normal.y +
+        (pos.z - sz) * normal.z;
+      if (signed < best) {
+        best = signed;
+        normalOut.copy(normal);
       }
     }
-    this.camera.position.set(x, y, z);
+    return best;
+  }
+
+  private resolveTerrainClearance(pos: THREE.Vector3): boolean {
+    if (!this.getTerrainHeight || this.minTerrainClearance <= 0) return false;
+
+    let adjusted = false;
+    for (let i = 0; i < 3; i++) {
+      const signed = this.terrainSignedClearance(pos, this._terrainPushNormalTmp);
+      const deficit = this.minTerrainClearance - signed;
+      if (deficit <= 1e-3) break;
+      pos.addScaledVector(this._terrainPushNormalTmp, deficit);
+      adjusted = true;
+    }
+    return adjusted;
+  }
+
+  /** Recompute camera position from target + yaw + pitch + distance.
+   *
+   *  Terrain clearance is a local 3D camera-sphere approximation:
+   *  sample the heightfield around the candidate camera position,
+   *  measure clearance along each sample's terrain normal, and push
+   *  the camera along the closest normal if needed. This avoids the
+   *  old vertical-only "check the ground directly below me and lift
+   *  upward" bias. */
+  apply(): void {
+    this.constrainTargets();
+    const pos = this.cameraPositionForState(
+      this.target.x,
+      this.target.y,
+      this.target.z,
+      this.distance,
+      this.yaw,
+      this.pitch,
+      this._cameraPosTmp,
+    );
+    if (this.resolveTerrainClearance(pos)) {
+      const offX = pos.x - this.target.x;
+      const offY = pos.y - this.target.y;
+      const offZ = pos.z - this.target.z;
+      const distance = Math.hypot(offX, offY, offZ);
+      if (distance > 1e-6) {
+        this.distance = distance;
+        this.yaw = Math.atan2(offX, -offZ);
+        const pitch = Math.acos(Math.min(1, Math.max(-1, offY / distance)));
+        this.pitch = Math.min(Math.PI - 1e-4, Math.max(1e-4, pitch));
+        const destinationStillClear = this.isCameraStateTerrainClear(
+          this.toTargetX,
+          this.toTargetY,
+          this.toTargetZ,
+          this.toDistance,
+        );
+        if (this.smoothTauSec === 0 || !destinationStillClear) {
+          this.toTargetX = this.target.x;
+          this.toTargetY = this.target.y;
+          this.toTargetZ = this.target.z;
+          this.toDistance = this.distance;
+        }
+      }
+    }
+    this.camera.position.copy(pos);
     this.camera.lookAt(this.target);
   }
 
@@ -1057,8 +1120,8 @@ export class OrbitCamera {
   }
 
   /** Install / replace the terrain-height sampler. While set, every
-   *  apply() lifts the camera above the local terrain by at least
-   *  `minTerrainClearance` — the camera can't dip into geometry. */
+   *  apply() resolves the camera against nearby terrain with the
+   *  configured 3D clearance. */
   setTerrainSampler(
     cb: ((x: number, z: number) => number) | undefined,
   ): void {
