@@ -44,15 +44,16 @@ export class WaterRenderer3D {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.waterGeometry = new THREE.BufferGeometry();
-    // WATER_FULLY_OPAQUE mode swaps the transparent-water material for an
-    // opaque one: no alpha blending, depth writes on. Triangles beneath
-    // the ocean are also culled (see TerrainTileRenderer3D), so the
-    // opaque plane hides what would otherwise be empty space below.
+    // Even when transparent, water is still a real surface for later
+    // transparent effects: writing depth prevents fog/smoke fragments
+    // physically behind the water plane from being composited over it.
+    // WATER_FULLY_OPAQUE additionally disables alpha blending; triangles
+    // beneath the ocean are culled in TerrainTileRenderer3D for that mode.
     this.waterMaterial = new THREE.MeshBasicMaterial({
       color: WATER_RENDER_CONFIG.color,
       transparent: !WATER_FULLY_OPAQUE,
       opacity: WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity,
-      depthWrite: WATER_FULLY_OPAQUE,
+      depthWrite: true,
       depthTest: true,
       polygonOffset: true,
       polygonOffsetFactor: WATER_DEPTH_OFFSET_FACTOR,

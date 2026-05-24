@@ -154,10 +154,19 @@ function infinityWaterOutputRgb(): Rgb01 {
   return mixRgb(shelfOutput, waterOutput, waterOpacity);
 }
 
+function quantizeOutputRgb(color: Rgb01): Rgb01 {
+  return {
+    r: Math.round(clamp01(color.r) * 255) / 255,
+    g: Math.round(clamp01(color.g) * 255) / 255,
+    b: Math.round(clamp01(color.b) * 255) / 255,
+  };
+}
+
 // FogOfWarFog3D uses a custom ShaderMaterial with toneMapped=false, so
 // its instance color is already in final output space. Cache that output
-// color once, then assign it to every puff.
-const INFINITY_WATER_PUFF_RGB = infinityWaterOutputRgb();
+// color once, snapped to the same 8-bit framebuffer precision the water
+// backdrop resolves to, then assign it to every puff.
+const INFINITY_WATER_PUFF_RGB = quantizeOutputRgb(infinityWaterOutputRgb());
 
 function setFogPuffToInfinityWaterColor(fog: FogSphere): void {
   fog.r = INFINITY_WATER_PUFF_RGB.r;

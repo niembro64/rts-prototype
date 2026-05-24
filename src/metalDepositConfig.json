@@ -1,7 +1,7 @@
 {
   "edgeMarginPx": 200,
   "coinHeight": 10,
-  "resourceCells": 5,
+  "resourceCells": 5     ,
   "resourceRadiusCells": 4,
   "rings": [
     {
