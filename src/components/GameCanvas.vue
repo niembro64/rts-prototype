@@ -195,7 +195,7 @@ const showRealLoadingOverlay = computed(
 );
 const loadingNextLabel = computed(() => {
   if (gameStarted.value) return 'ONLINE BATTLE';
-  if (currentBattleMode.value === 'real') return 'LOBBY VISUALIZATION';
+  if (currentBattleMode.value === 'real') return 'LOBBY SIMULATION';
   return 'DEMO BATTLE';
 });
 const lobbyControlsSidebarOpen = ref(false);
