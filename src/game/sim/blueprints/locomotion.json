@@ -402,7 +402,7 @@
     "type": "flying",
     "pathfindingId": "airborneAnywhere",
     "physics": {
-      "driveForce": 40,
+      "driveForce": 50,
       "traction": 1
     },
     "config": {
