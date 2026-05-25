@@ -62,6 +62,7 @@ export class EnvironmentPropRenderer3D {
   >();
   private readonly assets = new Map<string, LoadedEnvironmentAsset>();
   private destroyed = false;
+  private ready = false;
   private loaded = false;
   private lastScopeVersion = -1;
 
@@ -81,6 +82,10 @@ export class EnvironmentPropRenderer3D {
       sampleTerrainHeight: options.sampleTerrainHeight,
     });
     void this.loadAssets();
+  }
+
+  isReady(): boolean {
+    return this.ready || this.destroyed;
   }
 
   update(): void {
@@ -146,6 +151,8 @@ export class EnvironmentPropRenderer3D {
       this.lastScopeVersion = -1;
     } catch (error) {
       console.warn('Failed to load environment asset pack props', error);
+    } finally {
+      this.ready = true;
     }
   }
 

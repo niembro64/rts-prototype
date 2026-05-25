@@ -1050,7 +1050,10 @@ export class NetworkManager {
   }
 
   getConnectedPlayerIds(): PlayerId[] {
-    return Array.from(this.connections.keys()).sort((a, b) => a - b);
+    return Array.from(this.connections.entries())
+      .filter(([, conn]) => conn.open)
+      .map(([playerId]) => playerId)
+      .sort((a, b) => a - b);
   }
 
   getPlayerCount(): number {

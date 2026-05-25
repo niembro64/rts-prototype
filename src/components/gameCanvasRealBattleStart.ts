@@ -256,13 +256,7 @@ export async function startRealBattleWithPlayers(
         rendererWarmupDone = !warming;
         maybeFinishLoading();
       },
-    });
-    foregroundCreated = true;
-    setPlayerClientRenderEnabled(gameInstance, options.playerClientEnabled.value);
-    gameInstance.app.setCameraFovDegrees(options.cameraFovDegrees.value);
-    const scene = gameInstance.getScene();
-    if (scene) {
-      scene.onStartupReady = () => {
+      onStartupReady: () => {
         if (!options.lifecycle.isCurrentStart(startGen) || !options.gameStarted.value) return;
         startupReady = true;
         options.onLoadingProgress(
@@ -272,8 +266,11 @@ export async function startRealBattleWithPlayers(
           rendererWarmupDone ? 'Ready' : 'Applying first snapshot',
         );
         maybeFinishLoading();
-      };
-    }
+      },
+    });
+    foregroundCreated = true;
+    setPlayerClientRenderEnabled(gameInstance, options.playerClientEnabled.value);
+    gameInstance.app.setCameraFovDegrees(options.cameraFovDegrees.value);
     await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
     if (shouldAbortStart()) return;
 

@@ -70,6 +70,7 @@ export async function createBackgroundBattle(
   localPlayerId?: PlayerId,
   onRendererWarmupChange?: (warming: boolean) => void,
   onLoadProgress?: BackgroundBattleLoadProgress,
+  onStartupReady?: () => void,
 ): Promise<BackgroundBattleState> {
   const report = async (progress: number, phase?: string) => {
     if (!onLoadProgress) return;
@@ -225,6 +226,7 @@ export async function createBackgroundBattle(
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
     onRendererWarmupChange,
+    onStartupReady,
   });
   await report(1, 'Creating 3D scene');
 

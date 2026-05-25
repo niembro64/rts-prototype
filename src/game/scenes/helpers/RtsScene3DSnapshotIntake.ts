@@ -133,6 +133,10 @@ export class RtsScene3DSnapshotIntake {
     this.gameConnection.markClientReady();
   }
 
+  hasStartupFullSnapshotApplied(): boolean {
+    return this.startupFullSnapshotApplied;
+  }
+
   getSnapshotStats(): { avgRate: number; worstRate: number } {
     return {
       avgRate: this.snapTracker.getAvg(),

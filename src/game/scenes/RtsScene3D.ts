@@ -122,6 +122,7 @@ export type RtsScene3DConfig = {
    *  don't yet pass it (lobby preview, demo standalones). */
   lookupPlayerName?: (playerId: PlayerId) => string | null;
   onRendererWarmupChange?: (warming: boolean) => void;
+  onStartupReady?: () => void;
 };
 
 type SceneLifecycle = {
@@ -276,6 +277,7 @@ export class RtsScene3D {
     this.playerIds = config.playerIds;
     if (config.lookupPlayerName) this.lookupPlayerName = config.lookupPlayerName;
     this.onRendererWarmupChange = config.onRendererWarmupChange;
+    this.onStartupReady = config.onStartupReady;
     this.centerMagnitude = config.centerMagnitude ?? 0;
     this.dividersMagnitude = config.dividersMagnitude ?? 0;
     this.terrainMapShape = config.terrainMapShape ?? 'circle';
@@ -610,7 +612,6 @@ export class RtsScene3D {
       this.clientViewState,
       this.renderScope,
       this.cameraFootprintSystem,
-      this.snapshotIntake,
       this.selectionSystem,
       {
         entityRenderer: this.entityRenderer,
@@ -668,8 +669,14 @@ export class RtsScene3D {
     const token = ++this.rendererWarmupToken;
     void this.threeApp.precompileShadersAsync().finally(() => {
       if (this.destroyed || token !== this.rendererWarmupToken) return;
+      this.markClientReadyForStartupIfPossible();
       this.setRendererWarmupActive(false);
     });
+  }
+
+  private markClientReadyForStartupIfPossible(): void {
+    if (this.clientRenderEnabled && !this.renderPhase?.isStartupReady()) return;
+    this.snapshotIntake.markClientReadyAfterRender();
   }
 
   update(_time: number, delta: number): void {
@@ -746,6 +753,7 @@ export class RtsScene3D {
       this.logicMsTracker.update(frameMs);
       // Render-disabled branch never runs prediction, so PRED ms is 0.
       this.predMsTracker.update(0);
+      this.markClientReadyForStartupIfPossible();
       SNAPSHOT_CADENCE_REGRESSION.recordFrame({ frameMs, now: frameEnd });
       this.longtaskTracker.tick();
       return;
@@ -782,9 +790,12 @@ export class RtsScene3D {
     });
     if (
       !this.rendererWarmupStarted &&
-      (snapshotResult.appliedSnapshot || this.clientViewState.getTick() > 0)
+      renderPhase.isStartupReady() &&
+      this.snapshotIntake.hasStartupFullSnapshotApplied()
     ) {
       this.startRendererWarmup();
+    } else if (this.rendererWarmupStarted && !this.rendererWarmupActive) {
+      this.markClientReadyForStartupIfPossible();
     }
 
     // UI updates -- throttled like RtsScene. Producing-factory progress
@@ -1456,6 +1467,7 @@ export class RtsScene3D {
     this.onGameOverUI = undefined;
     this.onGameRestart = undefined;
     this.onServerMetaUpdate = undefined;
+    this.onStartupReady = undefined;
     this.onRendererWarmupChange = undefined;
   }
 }

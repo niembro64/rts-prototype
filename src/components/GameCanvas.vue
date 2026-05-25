@@ -198,6 +198,11 @@ const loadingNextLabel = computed(() => {
   if (currentBattleMode.value === 'real') return 'LOBBY VISUALIZATION';
   return 'DEMO BATTLE';
 });
+const lobbyControlsSidebarOpen = ref(false);
+const showLobbyControlsSidebar = computed(() => !isMobile && lobbyModalVisible.value);
+watch(showLobbyControlsSidebar, (visible) => {
+  if (!visible) lobbyControlsSidebarOpen.value = false;
+});
 
 const {
   localUsername,
@@ -1167,6 +1172,36 @@ watchEffect(() => {
 
     </div>
 
+    <div
+      v-if="showLobbyControlsSidebar"
+      class="lobby-controls-sidebar"
+      :class="{ open: lobbyControlsSidebarOpen }"
+    >
+      <button
+        class="lobby-controls-sidebar-toggle"
+        :aria-expanded="lobbyControlsSidebarOpen"
+        :aria-label="lobbyControlsSidebarOpen ? 'Close lobby server and client controls' : 'Open lobby server and client controls'"
+        :title="lobbyControlsSidebarOpen ? 'Close server/client controls' : 'Open server/client controls'"
+        @click="lobbyControlsSidebarOpen = !lobbyControlsSidebarOpen"
+      >
+        <span class="toggle-dot"></span>
+        <span class="toggle-dot"></span>
+        <span class="toggle-dot"></span>
+      </button>
+
+      <aside
+        class="lobby-controls-sidebar-panel"
+        aria-label="Lobby server and client controls"
+        :aria-hidden="!lobbyControlsSidebarOpen"
+      >
+        <GameCanvasServerControlBar
+          v-if="showServerControls"
+          :model="serverControlBarModel"
+        />
+        <GameCanvasClientControlBar :model="clientControlBarModel" />
+      </aside>
+    </div>
+
     <!-- Lobby Modal. On the initial (BUDGET ANNIHILATION) and
          connecting screens it renders full-screen over the
          demo-battle backdrop — exactly the original load-time
@@ -1424,6 +1459,73 @@ watchEffect(() => {
   border-radius: 50%;
   background: currentColor;
   display: block;
+}
+
+.lobby-controls-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3002;
+  width: min(860px, calc(100vw - 40px));
+  pointer-events: none;
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+}
+
+.lobby-controls-sidebar.open {
+  transform: translateX(0);
+}
+
+.lobby-controls-sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: -30px;
+  width: 30px;
+  height: 72px;
+  padding: 0;
+  transform: translateY(-50%);
+  background: rgba(18, 18, 26, 0.94);
+  border: 1px solid #444;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  color: #888;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.lobby-controls-sidebar-toggle:hover {
+  background: rgba(35, 35, 48, 0.98);
+  border-color: #777;
+  color: #bbb;
+}
+
+.lobby-controls-sidebar-toggle:active {
+  background: rgba(12, 12, 18, 0.98);
+  border-color: #666;
+}
+
+.lobby-controls-sidebar-panel {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  overflow-y: auto;
+  background: rgba(10, 12, 18, 0.96);
+  border-left: 1px solid #444;
+  box-shadow: -16px 0 32px rgba(0, 0, 0, 0.36);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.lobby-controls-sidebar:not(.open) .lobby-controls-sidebar-panel {
+  visibility: hidden;
 }
 
 </style>

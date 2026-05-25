@@ -103,6 +103,17 @@ export function useGameCanvasBackgroundBattle({
     }
     await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.overlayPainted, 'Preparing loading screen');
     await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.settingsLoaded, 'Loading battle settings');
+    let createdBattle: BackgroundBattleState | null = null;
+    let startupReadyPending = false;
+    const handleStartupReady = () => {
+      if (myGen !== backgroundBattleGen) return;
+      if (createdBattle === null || backgroundBattle !== createdBattle) {
+        startupReadyPending = true;
+        return;
+      }
+      startupReadyPending = false;
+      onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot, 'Applying first snapshot');
+    };
     const battle = await createBackgroundBattle(
       backgroundContainerRef.value,
       getLocalIpAddress(),
@@ -123,22 +134,16 @@ export function useGameCanvasBackgroundBattle({
           progress * (BACKGROUND_LOAD_PROGRESS.battleCreated - BACKGROUND_LOAD_PROGRESS.settingsLoaded),
         phase ?? 'Creating battle',
       ),
+      handleStartupReady,
     );
     if (myGen !== backgroundBattleGen) {
       destroyBackgroundBattle(battle);
       onRendererWarmupChange(false);
       return;
     }
+    createdBattle = battle;
     backgroundBattle = battle;
-    const scene = battle.gameInstance.getScene();
-    if (scene) {
-      const previousStartupReady = scene.onStartupReady;
-      scene.onStartupReady = () => {
-        if (myGen !== backgroundBattleGen || backgroundBattle !== battle) return;
-        previousStartupReady?.();
-        onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot, 'Applying first snapshot');
-      };
-    }
+    if (startupReadyPending) handleStartupReady();
     await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
     if (myGen !== backgroundBattleGen || backgroundBattle !== battle) {
       if (backgroundBattle === battle) {

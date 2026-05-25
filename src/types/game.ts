@@ -46,6 +46,9 @@ export type GameConfig = {
   /** Emits true while the 3D renderer is warming shader programs for a
    *  newly-created scene, and false once the scene is ready to reveal. */
   onRendererWarmupChange?: (warming: boolean) => void;
+  /** Fired after the server startup gate has opened and the first
+   *  post-start snapshot has been applied. */
+  onStartupReady?: () => void;
 };
 
 export type GameScene = import('../game/scenes/RtsScene3D').RtsScene3D;

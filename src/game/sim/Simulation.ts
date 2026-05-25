@@ -476,6 +476,7 @@ export class Simulation {
   // Check for game over - last commander standing wins
   private checkGameOver(): void {
     if (this.gameOverWinnerId !== null) return; // Already over
+    if (this.playerIds.length < 2) return;
 
     // Count alive commanders without allocating a filtered array
     let aliveCount = 0;

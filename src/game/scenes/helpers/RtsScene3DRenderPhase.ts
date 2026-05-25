@@ -36,7 +36,6 @@ import type { FootprintQuad } from '../../ViewportFootprint';
 import type { ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
-import type { RtsScene3DSnapshotIntake } from './RtsScene3DSnapshotIntake';
 
 export type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
@@ -91,7 +90,6 @@ export class RtsScene3DRenderPhase {
     private readonly clientViewState: ClientViewState,
     private readonly renderScope: ViewportFootprint,
     private readonly cameraFootprintSystem: RtsScene3DCameraFootprintSystem,
-    private readonly snapshotIntake: RtsScene3DSnapshotIntake,
     private readonly selectionSystem: RtsScene3DSelectionSystem,
     private readonly resources: RtsScene3DRenderPhaseResources,
     private readonly getLocalPlayerId: () => PlayerId,
@@ -112,6 +110,10 @@ export class RtsScene3DRenderPhase {
     this.groundPrintAccumMs = 0;
     this.smokeTrailAccumMs = 0;
     this.sprayAccumMs = 0;
+  }
+
+  isStartupReady(): boolean {
+    return this.resources.environmentPropRenderer?.isReady() ?? true;
   }
 
   beginRenderFrame(): { effectDtMs: number } {
@@ -209,7 +211,6 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       renderFrameState,
     );
-    this.snapshotIntake.markClientReadyAfterRender();
 
     const lineProjectiles = this.clientViewState.collectLineProjectiles(this.lineProjectilesScratch);
     const smokeTrailProjectiles = updateEffectsThisFrame
