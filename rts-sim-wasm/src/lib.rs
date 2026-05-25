@@ -51,6 +51,42 @@ pub fn __init() {
 // Generated from src/sharedSimConstants.json by rts-sim-wasm/build.rs.
 include!(concat!(env!("OUT_DIR"), "/shared_sim_constants.rs"));
 
+mod blueprint_tables {
+    #![allow(dead_code)]
+
+    include!(concat!(env!("OUT_DIR"), "/blueprint_tables.rs"));
+}
+
+#[wasm_bindgen]
+pub fn blueprint_unit_count() -> u32 {
+    blueprint_tables::BLUEPRINT_UNITS_COUNT as u32
+}
+
+#[wasm_bindgen]
+pub fn blueprint_building_count() -> u32 {
+    blueprint_tables::BLUEPRINT_BUILDINGS_COUNT as u32
+}
+
+#[wasm_bindgen]
+pub fn blueprint_turret_count() -> u32 {
+    blueprint_tables::BLUEPRINT_TURRETS_COUNT as u32
+}
+
+#[wasm_bindgen]
+pub fn blueprint_shot_count() -> u32 {
+    blueprint_tables::BLUEPRINT_SHOTS_COUNT as u32
+}
+
+#[wasm_bindgen]
+pub fn blueprint_locomotion_count() -> u32 {
+    blueprint_tables::BLUEPRINT_LOCOMOTION_COUNT as u32
+}
+
+#[wasm_bindgen]
+pub fn blueprint_buildable_unit_count() -> u32 {
+    blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT as u32
+}
+
 #[inline]
 fn is_in_contact(penetration: f64) -> bool {
     penetration >= -UNIT_GROUND_CONTACT_EPSILON
@@ -8404,8 +8440,10 @@ fn combat_targeting_view_mask_detects_entity(
     target_slot: usize,
     view_mask: u32,
 ) -> bool {
-    if combat_targeting_view_mask_includes_player(view_mask, pool.entity_owner_player_id[target_slot])
-    {
+    if combat_targeting_view_mask_includes_player(
+        view_mask,
+        pool.entity_owner_player_id[target_slot],
+    ) {
         return true;
     }
     (pool.entity_detector_coverage_mask[target_slot] & view_mask) != 0
@@ -8416,8 +8454,10 @@ fn combat_targeting_view_mask_covers_entity(
     target_slot: usize,
     view_mask: u32,
 ) -> bool {
-    if combat_targeting_view_mask_includes_player(view_mask, pool.entity_owner_player_id[target_slot])
-    {
+    if combat_targeting_view_mask_includes_player(
+        view_mask,
+        pool.entity_owner_player_id[target_slot],
+    ) {
         return true;
     }
     (pool.entity_sensor_coverage_mask[target_slot] & view_mask) != 0
@@ -8438,8 +8478,10 @@ fn combat_targeting_view_mask_observes_entity(
     if (target_flags & CT_ENTITY_FLAG_ALIVE) == 0 {
         return false;
     }
-    if combat_targeting_view_mask_includes_player(view_mask, pool.entity_owner_player_id[target_slot])
-    {
+    if combat_targeting_view_mask_includes_player(
+        view_mask,
+        pool.entity_owner_player_id[target_slot],
+    ) {
         return true;
     }
     if (target_flags & CT_ENTITY_FLAG_CLOAKED) != 0
@@ -17747,6 +17789,20 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
 #[cfg(test)]
 mod sim_kernel_tests {
     use super::*;
+
+    #[test]
+    fn blueprint_manifest_includes_authored_tables() {
+        assert!(blueprint_tables::BLUEPRINT_UNITS_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_BUILDINGS_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_TURRETS_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_SHOTS_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_LOCOMOTION_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_PATHFINDING_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT > 0);
+        assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"jackal"));
+        assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"factory"));
+        assert!(blueprint_tables::BLUEPRINT_TURRET_IDS.contains(&"lightTurret"));
+    }
 
     #[test]
     fn intermediate_waypoints_use_normalized_thrust() {

@@ -128,14 +128,16 @@ BLUEPRINT-01 - parent: the Rust sim cannot consume the blueprint
 ------------------------------------------------------------------------------
 
 Evidence:
-- rts-sim-wasm/build.rs only consumes
-  src/sharedSimConstants.json (universal tuning constants such as
-  GRAVITY). It generates a single Rust constants file.
+- rts-sim-wasm/build.rs consumes src/sharedSimConstants.json
+  (universal tuning constants such as GRAVITY) and now also parses the
+  blueprint JSON tables into a generated Rust blueprint manifest with
+  counts / IDs. That is enough for Rust to track and validate the
+  authored files at build time, but not enough for Rust hot-path code
+  to read the unit / turret / shot fields it needs.
 - The blueprint JSON files (src/game/sim/blueprints/units.json,
   buildings.json, turrets.json, shots.json, locomotion.json,
-  unitRoster.json, fallbacks.json) are not consumed by Rust. There
-  are no include_str! or serde_json calls in
-  rts-sim-wasm/src/lib.rs that load these.
+  unitRoster.json, fallbacks.json) are still consumed by TypeScript
+  loaders for the actual runtime blueprint objects.
 - Type definitions are hand-maintained in TypeScript only
   (src/types/blueprints.ts, ~503 LOC). Rust types are defined
   separately inside lib.rs without a generated bridge.
@@ -176,18 +178,23 @@ BLUEPRINT-01B - child: have rts-sim-wasm consume the blueprint JSON
 ------------------------------------------------------------------------------
 
 Evidence:
-- Rust today knows nothing about units, turrets, shots, buildings,
-  or locomotion; all of that data lives in TS data structures
-  derived from JSON.
+- Rust now knows the authored blueprint table membership at build
+  time: rts-sim-wasm/build.rs parses units, buildings, turrets,
+  shots, locomotion, pathfindingConfig, unitRoster, and fallbacks,
+  validates keyed `id` fields, and emits a Rust manifest included by
+  lib.rs. The manifest does not yet expose generated typed blueprint
+  structs or hot-path lookup tables.
+- Unit, turret, shot, building, and locomotion field data still lives
+  in TS data structures derived from JSON for runtime behavior.
 - rts-sim-wasm/build.rs already demonstrates the include-and-generate
   pattern for sharedSimConstants.json.
 
 Fix direction:
-Extend build.rs to include the blueprint JSON files and emit
-generated Rust constants for each blueprint table, keyed by the
-generated structs from BLUEPRINT-01A. Migrate hot-path lookups in
-lib.rs to read from those tables instead of receiving blueprint
-parameters by argument from JS.
+Extend the generated manifest into schema-generated Rust structs and
+typed constants for each blueprint table, keyed by the generated
+structs from BLUEPRINT-01A. Migrate hot-path lookups in lib.rs to read
+from those tables instead of receiving blueprint parameters by
+argument from JS.
 
 WIRE-PATH HOT ALLOCATIONS (WIRE-PERF-01 family)
 
