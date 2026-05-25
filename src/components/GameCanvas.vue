@@ -383,7 +383,7 @@ const {
   getPreviewLocalPlayerId: () => currentBattleMode.value === 'real'
     ? localPlayerId.value
     : undefined,
-  getPlayerClientEnabled: () => effectivePlayerClientRenderEnabled.value,
+  getPlayerClientEnabled: () => playerClientEnabled.value,
   onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => bindGameSceneUi(scene),
   onRendererWarmupChange: (warming) => {
@@ -393,7 +393,7 @@ const {
     activeConnection = battle.connection;
     hasServer.value = true;
     battleStartTime = Date.now();
-    setPlayerClientRenderEnabled(battle.gameInstance, effectivePlayerClientRenderEnabled.value);
+    setPlayerClientRenderEnabled(battle.gameInstance, playerClientEnabled.value);
     setInstanceCameraFovDegrees(battle.gameInstance, cameraFovDegrees.value);
   },
   onStopped: () => {
@@ -1291,7 +1291,6 @@ watchEffect(() => {
   display: block;
 }
 
-.background-battle-container.loading-active,
 .game-container.loading-active {
   z-index: 3700;
 }
