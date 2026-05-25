@@ -8,7 +8,7 @@ import { BUILDABLE_UNIT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../
 import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
-import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
+import { DEMO_CONFIG } from '../../demoConfig';
 import { getPlayerBaseAngle, normalizePlayerIds } from '../sim/playerLayout';
 import { isFarFromWater } from '../sim/Terrain';
 import {
@@ -16,7 +16,11 @@ import {
   mapOvalPointAt,
   type MapOvalMetrics,
 } from '../sim/mapOval';
-import { expandPathActions, pathTerrainFilterForLocomotion } from '../sim/Pathfinder';
+import {
+  expandMultiLegPathActions,
+  pathTerrainFilterForLocomotion,
+  type MultiLegWaypoint,
+} from '../sim/Pathfinder';
 import { setUnitActions } from '../sim/unitActions';
 import { setUnitFacingYaw } from '../sim/unitOrientation';
 import type { BuildingGrid } from '../sim/buildGrid';
@@ -90,20 +94,23 @@ function selectUnitType(allowedTypes: ReadonlySet<string> | undefined = undefine
   return BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
 }
 
-// Spawn a single unit at a specific position with the configured demo waypoint.
+// Spawn a single unit at a specific position with the configured demo waypoints.
+// `waypoints` may contain one entry (legacy single-target move/fight) or
+// multiple entries (e.g. two 'patrol' points for back-and-forth motion);
+// when any waypoint is 'patrol', the unit's patrolStartIndex is set so
+// the action queue rotates through every patrol-flagged action forever.
 function spawnUnit(
   world: WorldState,
   physics: PhysicsEngine,
   playerId: PlayerId,
   x: number,
   y: number,
-  targetX: number,
-  targetY: number,
+  waypoints: readonly MultiLegWaypoint[],
   buildingGrid: BuildingGrid,
-  waypointType: DemoBattleWaypointType,
   allowedTypes: ReadonlySet<string> | undefined = undefined,
 ): Entity | null {
   if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
+  if (waypoints.length === 0) return null;
 
   const unitType = selectUnitType(allowedTypes);
   // Defensive: only ever spawn from the allowed-types set. If
@@ -114,22 +121,20 @@ function spawnUnit(
   if (!unitType) return null;
   const unit = world.createUnitFromBlueprint(x, y, playerId, unitType);
 
-  setUnitFacingYaw(unit, Math.atan2(targetY - y, targetX - x));
-  aimTurretsToward(unit, targetX, targetY);
+  const firstWp = waypoints[0];
+  setUnitFacingYaw(unit, Math.atan2(firstWp.y - y, firstWp.x - x));
+  aimTurretsToward(unit, firstWp.x, firstWp.y);
 
   if (unit.unit) {
-    // Demo order type is data-driven so initial waves can use cheap
-    // normal move while still keeping the path expansion that routes
-    // around valleys / mountains / building lines.
-    setUnitActions(
-      unit.unit,
-      expandPathActions(
-        x, y, targetX, targetY, waypointType,
-        world.mapWidth, world.mapHeight, buildingGrid,
-        null,
-        pathTerrainFilterForLocomotion(unit.unit.locomotion),
-      ),
+    const { actions, patrolStartIndex } = expandMultiLegPathActions(
+      x, y, waypoints,
+      world.mapWidth, world.mapHeight, buildingGrid,
+      pathTerrainFilterForLocomotion(unit.unit.locomotion),
     );
+    setUnitActions(unit.unit, actions);
+    if (patrolStartIndex !== null) {
+      unit.unit.patrolStartIndex = patrolStartIndex;
+    }
   }
 
   world.addEntity(unit);
@@ -248,13 +253,20 @@ export function spawnBackgroundUnitsStandalone(
         );
         if (!spawn) continue;
 
-        // Waypoint = diametrically opposite point through center.
+        // Two patrol waypoints along the spawn → opposite-through-center
+        // line: units march across, return to their spawn arc, and
+        // repeat. Keeps the front from collapsing into a static knot
+        // once the initial wave makes contact.
         const targetX = cx - (spawn.x - cx);
         const targetY = cy - (spawn.y - cy);
 
         const unit = spawnUnit(
-          world, physics, playerId, spawn.x, spawn.y, targetX, targetY,
-          buildingGrid, DEMO_CONFIG.initialUnitWaypointType, allowedTypes,
+          world, physics, playerId, spawn.x, spawn.y,
+          [
+            { x: targetX, y: targetY, type: 'patrol' },
+            { x: spawn.x, y: spawn.y, type: 'patrol' },
+          ],
+          buildingGrid, allowedTypes,
         );
         if (unit) spawned.push(unit);
       }
@@ -276,8 +288,12 @@ export function spawnBackgroundUnitsStandalone(
       const point = mapOvalPointAt(oval, a, r);
 
       const unit = spawnUnit(
-        world, physics, playerId, point.x, point.y, cx, cy,
-        buildingGrid, DEMO_CONFIG.initialUnitWaypointType, allowedTypes,
+        world, physics, playerId, point.x, point.y,
+        [
+          { x: cx, y: cy, type: 'patrol' },
+          { x: point.x, y: point.y, type: 'patrol' },
+        ],
+        buildingGrid, allowedTypes,
       );
       if (unit) spawned.push(unit);
     }

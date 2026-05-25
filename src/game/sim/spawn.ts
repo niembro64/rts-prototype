@@ -10,7 +10,8 @@ import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { BUILDABLE_UNIT_IDS, getBuildingBlueprint } from './blueprints';
 import { applyEntitySensorBlueprint } from './cloakDetection';
-import { DEMO_CONFIG, type DemoBattleWaypointType } from '../../demoConfig';
+import { DEMO_CONFIG } from '../../demoConfig';
+import type { WaypointType } from '../../types/commandTypes';
 import {
   REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
@@ -41,20 +42,31 @@ export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
 type InitialBaseMode = 'demo' | 'real';
 
 type InitialFactoryWaypointConfig = {
-  type: DemoBattleWaypointType;
-  distance: number;
+  // Ordered list of waypoint legs the freshly-built unit will execute.
+  // Multiple 'patrol' entries cycle indefinitely; a single non-patrol
+  // entry gives the legacy "march to one point and stop" behaviour.
+  legs: readonly { type: WaypointType; distance: number }[];
 };
 
 function getInitialFactoryWaypointConfig(mode: InitialBaseMode): InitialFactoryWaypointConfig {
-  return mode === 'real'
-    ? {
+  if (mode === 'real') {
+    return {
+      legs: [{
         type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
         distance: REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
-      }
-    : {
-        type: DEMO_CONFIG.factoryWaypointType,
-        distance: DEMO_CONFIG.factoryWaypointDistance,
-      };
+      }],
+    };
+  }
+  // Demo battle: two patrol points along the factory → opposite-side
+  // axis so freshly built reinforcements never stall at a single
+  // rally — they shuttle forward across center, back toward base,
+  // and out again.
+  return {
+    legs: DEMO_CONFIG.factoryWaypointDistances.map((distance) => ({
+      type: DEMO_CONFIG.factoryWaypointType,
+      distance,
+    })),
+  };
 }
 
 /**
@@ -223,13 +235,12 @@ function placeCompleteBuilding(
   }
 
   if (buildingType === 'factory') {
-    const wp = computeFactoryWaypoint(
-      center.x,
-      center.y,
-      world.mapWidth,
-      world.mapHeight,
-      factoryWaypoint.distance,
-    );
+    const waypoints = factoryWaypoint.legs.map((leg) => {
+      const p = computeFactoryWaypoint(
+        center.x, center.y, world.mapWidth, world.mapHeight, leg.distance,
+      );
+      return { x: p.x, y: p.y, type: leg.type };
+    });
     const rally = computeFactoryWaypoint(
       center.x,
       center.y,
@@ -244,7 +255,7 @@ function placeCompleteBuilding(
       rallyX: rally.x,
       rallyY: rally.y,
       isProducing: false,
-      waypoints: [{ x: wp.x, y: wp.y, type: factoryWaypoint.type }],
+      waypoints,
       energyRateFraction: 0,
       metalRateFraction: 0,
     };

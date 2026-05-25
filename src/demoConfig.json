@@ -20,8 +20,8 @@
     "fogOfWar": { "radiusFraction": 0.8 }
   },
   "initialUnitWaypointType": "fight",
-  "factoryWaypointType": "fight",
-  "factoryWaypointDistance": 1.22,
+  "factoryWaypointType": "patrol",
+  "factoryWaypointDistances": [0.4, 1.22],
   "aiInverseCostWeighting": true,
   "centerSpawnRadius": 0.2,
   "centerSpawnSectorFraction": 0.6,

@@ -1,7 +1,7 @@
 // Demo game configuration — controls initial base layout for AI battles
 import demoConfig from './demoConfig.json';
 
-export type DemoBattleWaypointType = 'move' | 'fight';
+export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
 
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
@@ -62,20 +62,23 @@ export const DEMO_CONFIG = {
   initialUnitWaypointType: demoConfig.initialUnitWaypointType as DemoBattleWaypointType,
 
   /**
-   * DEMO BATTLE factory/fabricator-produced unit order type. Same
-   * 'fight' default as the initial spawn so reinforcements behave
-   * consistently with the launch waves. Only affects the demo's
-   * prebuilt AI factories; real-battle factories use
+   * DEMO BATTLE factory/fabricator-produced unit order type. 'patrol'
+   * combined with two factoryWaypointDistances entries makes
+   * reinforcements shuttle back and forth instead of stalling at a
+   * single rally point. Only affects the demo's prebuilt AI
+   * factories; real-battle factories use
    * REAL_BATTLE_FACTORY_WAYPOINT_TYPE in config.ts.
    */
   factoryWaypointType: demoConfig.factoryWaypointType as DemoBattleWaypointType,
 
   /**
-   * How far (as a fraction of factory→map-center distance) the default
-   * factory waypoint is placed. 0.5 = halfway to center, 1.0 = center,
-   * 1.5 = past center.
+   * Ordered list of distances (each as a fraction of
+   * factory→map-center) for the demo factory's waypoint legs.
+   * 0.5 = halfway to center, 1.0 = center, 1.5 = past center. With
+   * factoryWaypointType = 'patrol' the unit cycles through every
+   * entry forever, producing back-and-forth motion across the front.
    */
-  factoryWaypointDistance: demoConfig.factoryWaypointDistance,
+  factoryWaypointDistances: demoConfig.factoryWaypointDistances as readonly number[],
 
   /**
    * Whether AI uses inverse-cost weighting when picking units to queue.

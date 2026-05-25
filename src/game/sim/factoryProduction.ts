@@ -1,11 +1,11 @@
 import type { WorldState } from './WorldState';
-import type { Entity, UnitAction } from './types';
+import type { Entity } from './types';
 import type { BuildingGrid } from './buildGrid';
 import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import { COST_MULTIPLIER } from '../../config';
 import {
-  expandPathActions,
+  expandMultiLegPathActions,
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './Pathfinder';
@@ -168,28 +168,15 @@ export class FactoryProductionSystem {
     const spawnX = unit.transform.x;
     const spawnY = unit.transform.y;
     if (unit.unit && factoryComp.waypoints.length > 0) {
-      const actions: UnitAction[] = [];
-      let anchorX = spawnX;
-      let anchorY = spawnY;
-      let patrolStartActionIndex = -1;
-      for (let w = 0; w < factoryComp.waypoints.length; w++) {
-        const wp = factoryComp.waypoints[w];
-        const leg = expandPathActions(
-          anchorX, anchorY, wp.x, wp.y, wp.type,
-          world.mapWidth, world.mapHeight, buildingGrid,
-          wp.z ?? null,
-          pathTerrainFilterForUnit(unit),
-        );
-        if (wp.type === 'patrol' && patrolStartActionIndex === -1) {
-          patrolStartActionIndex = actions.length;
-        }
-        for (let i = 0; i < leg.length; i++) actions.push(leg[i]);
-        anchorX = wp.x;
-        anchorY = wp.y;
-      }
+      const { actions, patrolStartIndex } = expandMultiLegPathActions(
+        spawnX, spawnY,
+        factoryComp.waypoints,
+        world.mapWidth, world.mapHeight, buildingGrid,
+        pathTerrainFilterForUnit(unit),
+      );
       setUnitActions(unit.unit, actions);
-      if (patrolStartActionIndex !== -1) {
-        unit.unit.patrolStartIndex = patrolStartActionIndex;
+      if (patrolStartIndex !== null) {
+        unit.unit.patrolStartIndex = patrolStartIndex;
       }
     }
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
