@@ -41,7 +41,7 @@ import {
   getTerrainVersion,
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
-import type { ActionType, UnitAction, UnitLocomotion } from './types';
+import type { ActionType, UnitAction, UnitLocomotion, Waypoint } from './types';
 
 type Vec2 = { x: number; y: number };
 
@@ -305,9 +305,11 @@ function validatePathDoesNotCrossWater(
 export type MultiLegWaypoint = {
   x: number;
   y: number;
-  z?: number | null;
+  z: number | null;
   type: ActionType;
 };
+
+type MultiLegWaypointInput = MultiLegWaypoint | Waypoint;
 
 /** Plan a sequence of legs from a start position through `waypoints`,
  *  expanding each leg with `expandPathActions` and concatenating the
@@ -319,7 +321,7 @@ export type MultiLegWaypoint = {
  *  point onward. */
 export function expandMultiLegPathActions(
   startX: number, startY: number,
-  waypoints: readonly MultiLegWaypoint[],
+  waypoints: readonly MultiLegWaypointInput[],
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
   terrainFilter: PathTerrainFilter | null,

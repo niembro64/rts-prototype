@@ -263,8 +263,8 @@ export function spawnBackgroundUnitsStandalone(
         const unit = spawnUnit(
           world, physics, playerId, spawn.x, spawn.y,
           [
-            { x: targetX, y: targetY, type: 'patrol' },
-            { x: spawn.x, y: spawn.y, type: 'patrol' },
+            { x: targetX, y: targetY, z: null, type: 'patrol' },
+            { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
           ],
           buildingGrid, allowedTypes,
         );
@@ -290,8 +290,8 @@ export function spawnBackgroundUnitsStandalone(
       const unit = spawnUnit(
         world, physics, playerId, point.x, point.y,
         [
-          { x: cx, y: cy, type: 'patrol' },
-          { x: point.x, y: point.y, type: 'patrol' },
+          { x: cx, y: cy, z: null, type: 'patrol' },
+          { x: point.x, y: point.y, z: null, type: 'patrol' },
         ],
         buildingGrid, allowedTypes,
       );

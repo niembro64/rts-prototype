@@ -116,25 +116,25 @@ EXPLICIT ABSENCE (ABSENCE-01 family)
 
 The "Explicit Absence" section of design_philosophy.html bans `?:`
 property declarations and `?.` access inside our own simulation,
-server, prediction, networking, and entity-state modules. Optional
-property declarations still appear in core types, and optional
-chaining still needs a separate cleanup pass across the in-scope tree.
+server, prediction, networking, and entity-state modules. Compact
+wire payload DTOs may still use optional fields when omission saves
+network bytes; this item tracks internal code state. Optional chaining
+still needs a separate cleanup pass across the in-scope tree.
 
 ==============================================================================
 
 ------------------------------------------------------------------------------
-ABSENCE-01 - parent: optional property declarations remain in
-             src/types/sim.ts, and optional chaining still needs
-             in-scope cleanup.
+ABSENCE-01 - parent: optional chaining still needs in-scope cleanup;
+             internal optional property declarations are clear outside
+             compact wire DTOs.
 ------------------------------------------------------------------------------
 
 Evidence:
-- src/types/network.ts now has 0 `?:` declarations after the
-  2026-05-24 network type pass converted the remaining lobby/transport
-  envelopes, lobby settings, LobbyPlayer, and BattleHandoff fields to
-  explicit `T | undefined`; initialized LobbyPlayer metadata slots
-  through a shared constructor; and made raw state messages carry
-  `compression: undefined`.
+- src/types/network.ts intentionally retains compact wire-payload
+  optionality where omission saves bytes. As of 2026-05-25 the only
+  remaining `?:` in the scoped search is
+  `NetworkServerSnapshotMessage.compression?:`, which is wire metadata
+  omitted from raw snapshot messages.
 - src/types/sim.ts now has 0 `?:` declarations after the 2026-05-24
   sim type pass converted TurretConfig / ProjectileConfig shape
   variance, Turret burst / force-field runtime state, Projectile
@@ -152,7 +152,7 @@ Evidence:
   and `Buildable.healthBuildFraction` to an always-present number.
   The 2026-05-24 combat helper pass converted Projectile.hitEntities
   and Projectile.hasLeftSource to always-present runtime fields.
-- 0 other `?:` declarations remain across src/game/network/*,
+- 0 internal `?:` declarations remain across src/game/network/*,
   src/game/sim/*, and src/game/server/* after the 2026-05-23
   prediction/callback pass converted Simulation callbacks,
   Simulation.aiAllowedUnitTypes, CommandContext.onSimEvent, and
@@ -210,8 +210,12 @@ Evidence:
   stateSerializerEntityDelta to explicit `T | undefined` / explicit
   guards. The 2026-05-24 network type pass converted the remaining
   declarations in src/types/network.ts, and the 2026-05-24 sim type
-  pass converted the remaining declarations in src/types/sim.ts.
-- Optional chaining remains at 296 in the in-scope tree after the
+  pass converted the remaining declarations in src/types/sim.ts. The
+  2026-05-25 internal absence pass converted GameServer and
+  ServerBootstrap startup progress/bootstrapped handoff signatures plus
+  Pathfinder.MultiLegWaypoint.z to explicit `T | undefined` / `T | null`
+  and explicit waypoint normalization.
+- Optional chaining remains at 262 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -264,9 +268,10 @@ Fix direction:
 Address as child PRs, file by file. The migration is intentionally
 gradual ("every file we touch should leave with fewer optional
 properties..."). Optional chaining should continue in small touched-file
-passes. Optional-property declarations are currently clear across
-src/types/sim.ts, src/types/network.ts, src/game/network/*,
-src/game/sim/*, and src/game/server/*.
+passes. Internal optional-property declarations are currently clear
+across src/types/sim.ts, src/game/network/*, src/game/sim/*, and
+src/game/server/*. Compact network DTO optionals in src/types/network.ts
+are allowed when they reduce wire size.
 
 CONFIG IS DATA, NOT CODE (BLUEPRINT-01 family)
 

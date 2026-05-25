@@ -81,11 +81,11 @@ import type { GameServerConfig } from '@/types/game';
 
 export type GameServerStartupProgress = (
   progress: number,
-  phase?: string,
+  phase: string | undefined,
 ) => void | Promise<void>;
 
 export type GameServerCreateOptions = {
-  onProgress?: GameServerStartupProgress;
+  onProgress: GameServerStartupProgress | undefined;
 };
 
 export class GameServer {
@@ -161,10 +161,10 @@ export class GameServer {
    *  promise is usually already resolved (no actual wait). */
   static async create(
     config: GameServerConfig,
-    options: GameServerCreateOptions = {},
+    options: GameServerCreateOptions = { onProgress: undefined },
   ): Promise<GameServer> {
-    const report = async (progress: number, phase?: string) => {
-      if (!options.onProgress) return;
+    const report = async (progress: number, phase: string | undefined) => {
+      if (options.onProgress === undefined) return;
       const clamped = Number.isFinite(progress)
         ? Math.max(0, Math.min(1, progress))
         : 0;
@@ -190,7 +190,7 @@ export class GameServer {
   constructor(
     config: GameServerConfig,
     physics: PhysicsEngine3D | undefined = undefined,
-    bootstrapped?: BootstrappedServerWorld,
+    bootstrapped: BootstrappedServerWorld | undefined = undefined,
   ) {
     this.tickRateHz = 60;
 

@@ -55,7 +55,7 @@ export interface BootstrappedServerWorld {
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
 }
 
-type BootstrapProgress = (progress: number, phase?: string) => void | Promise<void>;
+type BootstrapProgress = (progress: number, phase: string | undefined) => void | Promise<void>;
 
 export class ServerBootstrap {
   static async bootstrapAsync(
@@ -63,7 +63,7 @@ export class ServerBootstrap {
     providedPhysics: PhysicsEngine3D | undefined = undefined,
     onProgress: BootstrapProgress = () => {},
   ): Promise<BootstrappedServerWorld> {
-    const report = async (progress: number, phase?: string) => {
+    const report = async (progress: number, phase: string | undefined) => {
       const clamped = Number.isFinite(progress)
         ? Math.max(0, Math.min(1, progress))
         : 0;
