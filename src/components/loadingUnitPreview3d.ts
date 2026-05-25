@@ -15,6 +15,7 @@ export type LoadingUnitPreviewRuntime = {
 
 export type LoadingUnitPreviewOptions = {
   fullBleed?: boolean;
+  onReady?: () => void;
 };
 
 type PreviewSize = {
@@ -28,6 +29,10 @@ type PreviewDriver = {
   destroy: () => void;
 };
 
+type DriverHooks = {
+  onReady: () => void;
+};
+
 type WorkerPreviewMessage =
   | ({
       type: 'init';
@@ -38,9 +43,9 @@ type WorkerPreviewMessage =
   | ({ type: 'resize' } & PreviewSize)
   | { type: 'destroy' };
 
-type WorkerPreviewResponse = {
-  type: 'destroyed';
-};
+type WorkerPreviewResponse =
+  | { type: 'destroyed' }
+  | { type: 'ready' };
 
 const DPR_CAP = 1.75;
 
@@ -66,12 +71,20 @@ export function mountLoadingUnitPreview(
   host.appendChild(stage);
 
   let destroyed = false;
+  let readyFired = false;
+  const fireReady = (): void => {
+    if (destroyed || readyFired) return;
+    readyFired = true;
+    options.onReady?.();
+  };
+  const hooks: DriverHooks = { onReady: fireReady };
+
   let latestSize = readPreviewSize(host);
-  let driver = createWorkerDriver(canvas, unitId, fullBleed, latestSize);
+  let driver = createWorkerDriver(canvas, unitId, fullBleed, latestSize, hooks);
   let fallbackDriverPromise: Promise<PreviewDriver | null> | null = null;
 
   if (!driver) {
-    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, unitId, fullBleed, latestSize);
+    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, unitId, fullBleed, latestSize, hooks);
     void fallbackDriverPromise.then((resolved) => {
       if (destroyed) {
         resolved?.destroy();
@@ -107,6 +120,7 @@ function createWorkerDriver(
   unitId: BuildableUnitId,
   fullBleed: boolean,
   size: PreviewSize,
+  hooks: DriverHooks,
 ): PreviewDriver | null {
   if (
     typeof Worker === 'undefined' ||
@@ -134,6 +148,7 @@ function createWorkerDriver(
 
   function handleWorkerMessage(event: MessageEvent<WorkerPreviewResponse>): void {
     if (event.data.type === 'destroyed') finishTerminate();
+    else if (event.data.type === 'ready') hooks.onReady();
   }
 
   worker.addEventListener('message', handleWorkerMessage);
@@ -172,15 +187,21 @@ async function createMainThreadFallbackDriver(
   unitId: BuildableUnitId,
   fullBleed: boolean,
   size: PreviewSize,
+  hooks: DriverHooks,
 ): Promise<PreviewDriver | null> {
   const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
   const scene = new LoadingUnitPreviewScene({ canvas, unitId, fullBleed });
   let destroyed = false;
   let rafId = 0;
+  let readyFired = false;
 
   const tick = (now: number): void => {
     if (destroyed) return;
     scene.render(now);
+    if (!readyFired) {
+      readyFired = true;
+      hooks.onReady();
+    }
     rafId = requestAnimationFrame(tick);
   };
 

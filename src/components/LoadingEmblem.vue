@@ -33,6 +33,7 @@ const nextLabelText = computed(() => props.nextLabel.trim());
 const previewHost = ref<HTMLElement | null>(null);
 const previewUnit = pickRandomLoadingUnit();
 const unitInfo = buildLoadingUnitInfo(previewUnit.id);
+const unitPreviewReady = ref(false);
 const allSections = computed(() => [
   ...unitInfo.leftSections,
   ...unitInfo.rightSections,
@@ -44,7 +45,12 @@ onMounted(() => {
   previewRuntime = mountLoadingUnitPreview(
     previewHost.value,
     previewUnit.id,
-    { fullBleed: true },
+    {
+      fullBleed: true,
+      onReady: () => {
+        unitPreviewReady.value = true;
+      },
+    },
   );
 });
 
@@ -60,7 +66,12 @@ onBeforeUnmount(() => {
 
     <div class="loader-body">
       <div class="loader-unit-stage-col">
-        <div ref="previewHost" class="loader-unit-preview" aria-hidden="true"></div>
+        <div
+          ref="previewHost"
+          class="loader-unit-preview"
+          :class="{ ready: unitPreviewReady }"
+          aria-hidden="true"
+        ></div>
       </div>
 
       <div class="loader-info-col">
@@ -229,6 +240,18 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 520ms ease-out;
+}
+
+.loader-unit-preview.ready {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-unit-preview {
+    transition: none;
+  }
 }
 
 .loader-unit-preview :deep(.loader-unit-stage) {

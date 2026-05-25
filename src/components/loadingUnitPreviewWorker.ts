@@ -25,6 +25,10 @@ type DestroyedMessage = {
   type: 'destroyed';
 };
 
+type ReadyMessage = {
+  type: 'ready';
+};
+
 type AnimationScope = typeof self & {
   requestAnimationFrame?: (callback: FrameRequestCallback) => number;
   cancelAnimationFrame?: (handle: number) => void;
@@ -38,6 +42,7 @@ let preview: LoadingUnitPreviewScene | null = null;
 let running = false;
 let frameHandle: number | null = null;
 let timeoutHandle: number | null = null;
+let readySent = false;
 
 self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
   const message = event.data;
@@ -68,6 +73,7 @@ self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
 
 function destroyPreview(): void {
   running = false;
+  readySent = false;
   cancelScheduledFrame();
   preview?.dispose();
   preview = null;
@@ -78,6 +84,10 @@ function tick(now: number): void {
   timeoutHandle = null;
   if (!running) return;
   preview?.render(now);
+  if (!readySent && preview !== null) {
+    readySent = true;
+    self.postMessage({ type: 'ready' } satisfies ReadyMessage);
+  }
   scheduleFrame();
 }
 
