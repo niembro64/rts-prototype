@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Migration: Authoritative-Host-With-Client-Prediction → Deterministic Lockstep</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --ink: #1d1d1f;
+    --muted: #555;
+    --accent: #b8430b;
+    --accent2: #1d6a4f;
+    --rule: #d8d4c8;
+    --code-bg: #ecebe4;
+  }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 24px;
+  }
+  h1 { font-size: 1.9em; border-bottom: 2px solid var(--rule); padding-bottom: 8px; }
+  h2 { margin-top: 2em; color: var(--accent); border-bottom: 1px solid var(--rule); padding-bottom: 4px; }
+  h3 { margin-top: 1.6em; color: var(--accent2); }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-bg); }
+  code { padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+  pre { padding: 10px 14px; border-radius: 4px; overflow-x: auto; font-size: 0.88em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--code-bg); }
+  .meta { color: var(--muted); font-size: 0.92em; }
+  .phase { background: #fff; border: 1px solid var(--rule); border-left: 4px solid var(--accent2); padding: 12px 18px; margin: 14px 0; border-radius: 4px; }
+  .phase h3 { margin-top: 0; }
+  .warn { background: #fff5e6; border-left: 4px solid var(--accent); padding: 10px 14px; margin: 12px 0; border-radius: 4px; }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  .tag { display: inline-block; background: var(--accent2); color: #fff; font-size: 0.75em; padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; }
+  .tag.bar { background: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>Migration: Authoritative-Host-With-Client-Prediction → Deterministic Lockstep</h1>
+<p class="meta">A plan to refactor this project's networking model from a server-authoritative snapshot architecture (think Overwatch / Rocket League) to a deterministic peer-to-peer lockstep architecture (think Age of Empires / StarCraft / Beyond All Reason).</p>
+
+<h2>Projects in scope</h2>
+
+<h3>This project<span class="tag">target of migration</span></h3>
+<ul>
+  <li><strong>Game name:</strong> Budget Annihilation (working title)</li>
+  <li><strong>Repo name:</strong> <code>rts-prototype</code></li>
+  <li><strong>Local path:</strong> <code>/Users/ericniemeyer/code/rts-prototype</code></li>
+  <li><strong>Stack:</strong> Rust simulation crate (<code>rts-sim-wasm/src/lib.rs</code>, ~19k LOC) compiled to WebAssembly; TypeScript + Three.js renderer (<code>src/game/render3d/</code>); Vue 3 shell (<code>src/components/GameCanvas.vue</code>); Tauri desktop wrapper (<code>src-tauri/</code>); WebRTC transport via <code>peerjs</code> with <code>@msgpack/msgpack</code> serialization.</li>
+</ul>
+
+<h3>Reference project<span class="tag bar">model we are emulating</span></h3>
+<ul>
+  <li><strong>Game name:</strong> Beyond All Reason (BAR)</li>
+  <li><strong>Repo name:</strong> <code>Beyond-All-Reason</code> (Lua gamedata only; the engine is separate)</li>
+  <li><strong>Local path:</strong> <code>/Users/ericniemeyer/code/Beyond-All-Reason</code></li>
+  <li><strong>Engine:</strong> Recoil (a maintained fork of the Spring RTS engine, C++). Lives outside this checkout; canonical source is the upstream Recoil engine repo on GitHub. The networking model we want is implemented in the engine, not in the game's Lua scripts.</li>
+</ul>
+
+<h2>Architecture: before vs. after</h2>
+
+<table>
+  <tr><th>Aspect</th><th>Current — "Authoritative Host with Client Prediction"</th><th>Target — "Deterministic Peer-to-Peer Lockstep"</th></tr>
+  <tr>
+    <td><strong>Who simulates?</strong></td>
+    <td>One host runs the authoritative sim (<code>GameServer.ts</code>, 60 Hz). Clients run a predictive copy of the same Rust sim and reconcile against snapshots.</td>
+    <td>Every peer runs the identical simulation. No peer is "authoritative" — they're all simulating the same inputs in the same order and must agree bit-for-bit.</td>
+  </tr>
+  <tr>
+    <td><strong>What goes on the wire?</strong></td>
+    <td>Packed snapshots (entities, projectiles, audio events, minimap, visibility, economy, …) at ~10 Hz from host to each client. Commands flow client → host. Huge codec surface in <code>src/game/network/</code>.</td>
+    <td>Only player commands (build, move, attack, …) tagged with the tick on which they execute. Bandwidth drops by 1–2 orders of magnitude.</td>
+  </tr>
+  <tr>
+    <td><strong>Latency model</strong></td>
+    <td>Local input is instant via prediction; rollbacks/reconciliation hide host RTT. Cheap to feel responsive.</td>
+    <td>Commands are scheduled for tick <code>N + k</code> where <code>k</code> is an input-delay window (≈ slowest RTT in half-ticks). Everyone waits for everyone before advancing.</td>
+  </tr>
+  <tr>
+    <td><strong>Replays / spectate</strong></td>
+    <td>Would require recording snapshots → large files. Not currently implemented end-to-end.</td>
+    <td>Replays are the command log + initial seed. Megabytes for hour-long games. Spectators just run the sim from inputs.</td>
+  </tr>
+  <tr>
+    <td><strong>Cheating surface</strong></td>
+    <td>Host is authoritative; clients see only what the host reveals (fog of war filtered server-side).</td>
+    <td>Every peer has the full game state in memory. Maphacks are easy. Acceptable for friends-only / community RTS; not for ranked competitive without a relay-and-filter server.</td>
+  </tr>
+  <tr>
+    <td><strong>Failure modes</strong></td>
+    <td>Host disconnect = lobby dies (unless host-migration is built). Client desync is rare since host is the ground truth.</td>
+    <td>Any peer can drop and others continue. The new boss is <em>desync</em>: any divergence between peers (a stray <code>HashMap</code> iteration, an <code>f32::sin</code> that differs by 1 ULP) corrupts the game silently.</td>
+  </tr>
+  <tr>
+    <td><strong>Transport</strong></td>
+    <td>WebRTC DataChannels via <code>peerjs</code>; mesh of host↔client connections; large binary snapshots.</td>
+    <td>WebRTC DataChannels, full mesh among peers (or one peer elected as command-relay). Tiny messages, high frequency.</td>
+  </tr>
+  <tr>
+    <td><strong>Tab backgrounding</strong></td>
+    <td>Background clients lag but the authoritative host keeps the world advancing.</td>
+    <td>One backgrounded peer halts the entire game until they catch up. Must run the sim in a Web Worker (workers throttle far less than the main thread).</td>
+  </tr>
+</table>
+
+<h2>Why this is feasible in a browser</h2>
+<ul>
+  <li><strong>WASM gives deterministic floats.</strong> The WebAssembly spec mandates bit-exact IEEE-754 for basic ops across all conforming engines. The classic "lockstep desync from cross-platform float drift" problem that Spring fights with native code is largely free here.</li>
+  <li><strong>The sim is already one crate.</strong> <code>rts-sim-wasm/</code> is already used by both host and client prediction. The "single sim core that runs identically everywhere" prerequisite for lockstep is done.</li>
+  <li><strong>WebRTC DataChannels</strong> are roughly UDP-equivalent and already wired up via <code>NetworkManager.ts</code>.</li>
+</ul>
+
+<div class="warn">
+<strong>Determinism traps that remain even in WASM:</strong>
+<ul>
+  <li><code>f32::sin</code>, <code>cos</code>, <code>tan</code>, <code>exp</code>, <code>ln</code>, <code>pow</code> are <em>not</em> bit-spec'd by WASM. They compile to host libm calls that vary between Chrome (V8 / glibc) and Firefox (SpiderMonkey / fdlibm). Audit <code>rts-sim-wasm/src/lib.rs</code> and replace any transcendentals on the hot path with a deterministic implementation (small Taylor expansions, table lookup, or the <code>libm</code> crate which ships a portable softfloat implementation).</li>
+  <li><code>HashMap</code> / <code>HashSet</code> iteration order is non-deterministic. Use <code>BTreeMap</code>, <code>BTreeSet</code>, or <code>IndexMap</code> for any collection whose iteration affects sim outcomes (and most do — spawn order, projectile resolution order, …).</li>
+  <li><code>SystemTime</code>, <code>Instant</code>, <code>thread_rng()</code> — none of these may leak into the sim. RNG must be a seeded, explicit, in-state <code>SmallRng</code> (or similar) that the sim itself advances.</li>
+  <li>Floating-point reductions whose order is implementation-defined (e.g. SIMD horizontal sums, rayon parallel folds) — keep the sim single-threaded.</li>
+</ul>
+</div>
+
+<h2>Migration phases</h2>
+
+<div class="phase">
+<h3>Phase 0 — Determinism audit (do this before any networking change)</h3>
+<p>Goal: prove the existing Rust sim, when fed the same inputs and seed, produces a bit-identical world hash on every browser. Until this holds, lockstep is impossible.</p>
+<ul>
+  <li>Add a <code>fn world_hash(&amp;self) -&gt; u64</code> to the sim — a stable hash over all sim state (positions, hp, build state, RNG state). Order it deterministically.</li>
+  <li>Add a "replay from inputs" test harness: record a real game's commands + seed; replay them headlessly; assert the per-tick hash is constant across runs.</li>
+  <li>Run the same replay in Chrome, Firefox, Safari (via Playwright). Any divergence → grep the diff to find the offending op (almost always a transcendental or an unordered iteration).</li>
+  <li>Purge transcendentals or swap to <code>libm</code>.</li>
+  <li>Replace any sim-affecting <code>HashMap</code> with <code>BTreeMap</code> / <code>IndexMap</code>.</li>
+  <li>Grep for <code>SystemTime</code>, <code>Instant</code>, <code>thread_rng</code>, <code>random()</code> in sim crate — none allowed.</li>
+</ul>
+<p><strong>Exit criterion:</strong> 10-minute replay produces identical per-tick hashes across all target browsers, run 20× back-to-back.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 1 — Move the sim into a Web Worker</h3>
+<p>Goal: prevent tab-backgrounding from gating the entire match. Also a prerequisite for clean tick gating.</p>
+<ul>
+  <li>Create <code>src/game/sim-wasm/simWorker.ts</code>. Load the WASM module inside the worker.</li>
+  <li>Main thread sends commands; worker sends back a snapshot of <em>view-only</em> state for the renderer per tick (this is local, not network — full state can cross the postMessage boundary cheaply via transferables).</li>
+  <li>This is largely orthogonal to networking; ship it on its own and validate the renderer still works.</li>
+</ul>
+<p><strong>Exit criterion:</strong> background a tab for 30 s, foreground it — sim caught up smoothly, no main-thread starvation.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 2 — Introduce a command-scheduling layer</h3>
+<p>Goal: stop executing commands "now" and start executing them at a designated future tick. This is the philosophical core of lockstep and can be introduced <em>before</em> the network change — running locally, it should be invisible.</p>
+<ul>
+  <li>Define <code>ScheduledCommand { tick: u64, player_id: u8, cmd: Command }</code>.</li>
+  <li>The sim's tick loop pulls all commands tagged with the current tick from a sorted ring buffer and applies them in a deterministic order (sort by <code>(tick, player_id, seq)</code>).</li>
+  <li>Local UI no longer mutates sim state; it enqueues a command for tick <code>current + INPUT_DELAY</code> (start with <code>INPUT_DELAY = 6</code>, i.e. 100 ms at 60 Hz).</li>
+  <li>This will <em>feel laggy in single-player</em>. That's correct — it's the price of the architecture, and you want to feel it now so you can tune it.</li>
+</ul>
+<p><strong>Exit criterion:</strong> single-player still plays correctly. All commands round-trip through the scheduler. The renderer is happy reading a slightly-delayed sim state.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 3 — Two-peer lockstep over the existing WebRTC transport</h3>
+<p>Goal: replace the host-authoritative loop with a peer-symmetric loop for a 1v1 only. Strip nothing yet — run lockstep alongside the existing snapshot code under a feature flag.</p>
+<ul>
+  <li>Add <code>NetworkCommandRelay</code>: every tick, each peer broadcasts <code>{ tick: N + INPUT_DELAY, commands: [...] }</code>, including an empty array if they did nothing.</li>
+  <li>The sim only advances tick <code>N</code> once <em>all</em> peers' command packets for <code>N</code> have arrived. This is the "lockstep barrier".</li>
+  <li>Every K ticks (e.g. K = 60), each peer broadcasts <code>{ tick: N, world_hash: u64 }</code>. If hashes diverge: log everything, pause, surface a desync error. Do not try to recover automatically yet.</li>
+  <li>Keep <code>GameServer.ts</code> alive but disabled when the lockstep flag is set. Do not delete the snapshot codecs yet.</li>
+</ul>
+<p><strong>Exit criterion:</strong> 1v1 LAN game runs for 20 minutes with no desyncs. World hashes match every tick on both peers.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 4 — Adaptive input delay and slowest-peer handling</h3>
+<p>Goal: make lockstep feel acceptable on real networks.</p>
+<ul>
+  <li>Measure RTT to every peer continuously (already partially done by <code>NetworkHeartbeatTracker.ts</code>).</li>
+  <li>Set <code>INPUT_DELAY = ceil(maxRTT / tickInterval) + slack</code>. Renegotiate on big swings (Spring does this via "CommandFrame" adjustments).</li>
+  <li>When the barrier stalls waiting on a peer, show "Waiting for &lt;player&gt;…" overlay. (Spring's classic UX.)</li>
+  <li>Pre-emptively send empty command packets even on idle ticks so the barrier never starves.</li>
+</ul>
+<p><strong>Exit criterion:</strong> playable feel on 80 ms RTT. Acceptable feel on 200 ms RTT. Graceful degradation past that.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 5 — N-peer mesh and command-relay election</h3>
+<p>Goal: scale beyond 1v1.</p>
+<ul>
+  <li>Option A (simple): full WebRTC mesh, every peer sends commands to every other peer.</li>
+  <li>Option B (more BAR-like): elect one peer as command relay. Everyone sends commands to the relay; the relay re-broadcasts the combined per-tick command bundle. Halves bandwidth and removes asymmetric arrival ordering.</li>
+  <li>Recommend Option B once you go past 4 players — it's how Spring/Recoil's autohost works.</li>
+</ul>
+<p><strong>Exit criterion:</strong> 4v4 game runs cleanly.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 6 — Replay capture and load</h3>
+<p>Goal: monetize the architecture's biggest free win.</p>
+<ul>
+  <li>The "wire format" of a game <em>is</em> the replay format. Persist the initial seed + game settings + the full ordered command stream to a file. Should be &lt; 5 MB for an hour-long 8-player game.</li>
+  <li>"Play replay" = boot the sim with the seed and feed the command stream through the scheduler as if it came from the network.</li>
+  <li>Add scrubbing by allowing the sim to re-simulate from start to any chosen tick (since the sim is fast and deterministic, this is cheap up to a few minutes; beyond that, capture periodic state snapshots as resume points).</li>
+</ul>
+<p><strong>Exit criterion:</strong> any completed match can be loaded and watched. Bonus: spectate live mid-game by replaying-then-tailing.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 7 — Decommission the snapshot path</h3>
+<p>Goal: delete the old code with confidence.</p>
+<ul>
+  <li>Remove the feature flag — lockstep is the only path.</li>
+  <li>Delete <code>GameServer.ts</code>, <code>ServerSnapshotPublisher.ts</code>, <code>ServerTickLoop.ts</code>, all snapshot codecs in <code>src/game/network/</code> that no longer serve a purpose (<code>snapshot*.ts</code>, <code>stateSerializer*.ts</code>, the <code>Client*Prediction*</code> reconciliation layer).</li>
+  <li>Keep: <code>NetworkManager.ts</code>, <code>NetworkHeartbeatTracker.ts</code>, <code>NetworkLobbyRoster.ts</code>, <code>NetworkRoomCode.ts</code> — these are still useful. <code>NetworkCommandTransport.ts</code> becomes the <em>only</em> message type, hugely simplified.</li>
+  <li><code>ClientViewState</code> becomes "a view onto the local sim", not "a reconciled view onto a remote sim". Selection/UI state stays local as it already does.</li>
+</ul>
+<p><strong>Exit criterion:</strong> <code>src/game/network/</code> shrinks by at least 60%. <code>git log --stat</code> shows the deletion.</p>
+</div>
+
+<h2>Files that will be touched, roughly</h2>
+<table>
+  <tr><th>File / area</th><th>Fate</th></tr>
+  <tr><td><code>rts-sim-wasm/src/lib.rs</code></td><td><strong>Audit + harden</strong> for determinism (Phase 0). Add <code>world_hash()</code>, swap collections, purge transcendentals.</td></tr>
+  <tr><td><code>src/game/server/GameServer.ts</code> et al.</td><td><strong>Delete</strong> in Phase 7.</td></tr>
+  <tr><td><code>src/game/server/GameConnection.ts</code>, <code>LocalGameConnection.ts</code>, <code>RemoteGameConnection.ts</code></td><td><strong>Collapse</strong> to a single peer-symmetric connection abstraction; no more host/client asymmetry.</td></tr>
+  <tr><td><code>src/game/network/snapshot*</code>, <code>stateSerializer*</code>, <code>Client*Prediction*</code></td><td><strong>Delete</strong> in Phase 7.</td></tr>
+  <tr><td><code>src/game/network/NetworkCommandTransport.ts</code></td><td><strong>Reshape</strong> as the per-tick command bundle channel — this becomes <em>the</em> wire protocol.</td></tr>
+  <tr><td><code>src/game/network/NetworkManager.ts</code>, <code>NetworkHeartbeatTracker.ts</code>, <code>NetworkLobbyRoster.ts</code></td><td><strong>Keep</strong>, mostly unchanged.</td></tr>
+  <tr><td><code>src/game/sim-wasm/</code></td><td><strong>New</strong>: <code>simWorker.ts</code> (Phase 1), <code>commandScheduler.ts</code> (Phase 2), <code>lockstepBarrier.ts</code> (Phase 3), <code>desyncDetector.ts</code> (Phase 3).</td></tr>
+  <tr><td><code>src/components/GameCanvas.vue</code></td><td><strong>Simplify</strong>: no longer orchestrates a server lifecycle; just owns the sim worker + the peer mesh.</td></tr>
+  <tr><td>Replay system</td><td><strong>New</strong> in Phase 6: <code>src/game/replay/</code>.</td></tr>
+</table>
+
+<h2>Risks and explicit non-goals</h2>
+<ul>
+  <li><strong>Risk: an undetected desync source survives Phase 0.</strong> Mitigation: per-tick hash check in dev builds for the entire migration; never ship without it.</li>
+  <li><strong>Risk: input-delay feels worse than the current prediction model.</strong> This is real and unavoidable; the win is elsewhere (replays, unit counts, bandwidth, simplicity). Tune <code>INPUT_DELAY</code> aggressively and consider a small client-side "command hint" animation (e.g. show the move-order flag immediately, even though the unit only starts moving 6 ticks later — Spring does this).</li>
+  <li><strong>Non-goal: rollback netcode (GGPO-style).</strong> That's a different architecture again — predict-and-rollback — and would require the sim to support cheap state save/restore. Out of scope.</li>
+  <li><strong>Non-goal: anti-cheat.</strong> Lockstep is for friendly play. Competitive ranked play would need a server-side observer that also runs the sim and validates command legality — a much later concern.</li>
+</ul>
+
+<h2>What "done" looks like</h2>
+<p>An 8-player game plays smoothly on residential connections. Every peer holds the full game state. Disconnecting any non-relay peer doesn't end the match. A replay of any game is a small file that re-plays bit-identically across browsers and across versions of the sim that haven't broken determinism. The networking directory is half its current size, and the host/client mental model is gone.</p>
+
+</body>
+</html>
