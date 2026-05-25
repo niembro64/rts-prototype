@@ -49,6 +49,7 @@ export type UnitMeshBuildRequest = {
   turrets: readonly Turret[];
   unitGfx: GraphicsConfig;
   unitGraphicsTier: ConcreteGraphicsQuality;
+  unitFrameKey: string;
   unitRenderKey: string;
   unitIsShell: boolean;
   legState?: LegStateSnapshot;
@@ -111,6 +112,7 @@ export class UnitMeshBuilder3D {
       turrets,
       unitGfx,
       unitGraphicsTier,
+      unitFrameKey,
       unitRenderKey,
       unitIsShell,
       legState,
@@ -199,6 +201,9 @@ export class UnitMeshBuilder3D {
       bodyShape,
       turrets: turretMeshes,
       geometryKey: unitRenderKey,
+      unitRenderFrameKey: unitFrameKey,
+      unitRenderOwnerId: ownerId,
+      unitRenderIsShell: unitIsShell,
       smoothChassisSlots,
       polyChassisSlot,
       chassisLift: liftGroup.position.y,

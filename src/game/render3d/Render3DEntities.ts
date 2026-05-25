@@ -26,7 +26,6 @@ import {
 } from './Locomotion3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import {
-  graphicsKey,
   snapshotRenderFrameState,
   type RenderFrameState3D,
 } from './RenderFrameState3D';
@@ -36,7 +35,6 @@ import {
 } from './BuildingShape3D';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
-import { getGraphicsConfig } from '@/clientBarConfig';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
@@ -89,6 +87,7 @@ const AIRBORNE_BANK_MAX = Math.PI * 0.25;
 // banking is a local acceleration-derived embellishment that never
 // travels on the wire.
 const AIRBORNE_BANK_TAU_SEC = 0.18;
+const EMPTY_TURRETS: readonly Turret[] = [];
 
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
@@ -110,6 +109,14 @@ const _invTiltQuat = new THREE.Quaternion();
 // mount.z + radius.body scaled by MIRROR_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
+
+function findPassiveTurret(turrets: readonly Turret[]): Turret | undefined {
+  for (let i = 0; i < turrets.length; i++) {
+    const turret = turrets[i];
+    if (turret.config.passive) return turret;
+  }
+  return undefined;
+}
 
 export class Render3DEntities {
   private world: THREE.Group;
@@ -402,7 +409,7 @@ export class Render3DEntities {
   private updateShellInstanceColors(
     e: Entity,
     m: EntityMesh,
-    turrets: readonly Turret[] = [],
+    turrets: readonly Turret[] = EMPTY_TURRETS,
   ): void {
     this.unitMassInstances.syncColorForEntity(e);
     this.unitDetailInstances.syncShellColors(e, m, turrets);
@@ -439,8 +446,14 @@ export class Render3DEntities {
     const seen = this._seenUnitIds;
     seen.clear();
     const spinDt = this._spinDt;
+    const unitGfx = this.frameState.gfx;
+    const unitGraphicsTier = unitGfx.tier;
+    const unitGeometryKey = this.frameState.key;
+    const mapWidth = this.clientViewState.getMapWidth();
+    const mapHeight = this.clientViewState.getMapHeight();
 
-    for (const e of units) {
+    for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
+      const e = units[unitIndex];
       seen.add(e.id);
       // Hoist transform reads for the per-tick group / yaw write;
       // reading the same prop slot off `e.transform` four+ times for
@@ -449,14 +462,15 @@ export class Render3DEntities {
       const tx = transform.x;
       const ty = transform.y;
       const tRot = transform.rotation;
-      const turrets = e.combat?.turrets ?? [];
+      const turrets = e.combat?.turrets ?? EMPTY_TURRETS;
+      const groundZ = getUnitGroundZ(e);
       // RIGID-BODY POSE TRACKS THE SIM EVERY FRAME. The unit group
       // carries the chassis AND its child turret / mirror groups
       // (both parented to yawGroup), so all pose/detail work below
       // runs at render cadence instead of being scope/camera gated.
       const existing = this.unitMeshes.get(e.id);
       if (existing) {
-        existing.group.position.set(tx, getUnitGroundZ(e), ty);
+        existing.group.position.set(tx, groundZ, ty);
         // Note: the canonical yawGroup orientation write happens later
         // in this iteration after the surface-tilt block (see
         // `m.yawGroup.rotation.set(0, yaw, 0)` and the airborne bank
@@ -484,15 +498,17 @@ export class Render3DEntities {
         ?? 15;
       const pid = e.ownership?.playerId;
       const fullUnitDetail = true;
-      const unitGraphicsTier = this.frameState.gfx.tier;
-      const unitGfx = getGraphicsConfig();
-      const unitGeometryKey = graphicsKey(unitGfx);
       const unitIsShell = isConstructionShell(e);
-      const ownerKey = pid ?? 'neutral';
-      const unitRenderKey = `${unitGeometryKey}|shell:${unitIsShell ? 1 : 0}|owner:${ownerKey}`;
 
       let m = this.unitMeshes.get(e.id);
-      if (m && m.geometryKey !== unitRenderKey) {
+      if (
+        m &&
+        (
+          m.unitRenderFrameKey !== unitGeometryKey ||
+          m.unitRenderIsShell !== unitIsShell ||
+          m.unitRenderOwnerId !== pid
+        )
+      ) {
         // Preserve leg state across the rebuild — feet keep
         // their planted world positions through the teardown so the
         // newly built mesh resumes the gait instead of snapping back
@@ -504,6 +520,8 @@ export class Render3DEntities {
       }
       if (!m) {
         const legSnap = this.legStateCache.get(e.id);
+        const ownerKey = pid ?? 'neutral';
+        const unitRenderKey = `${unitGeometryKey}|shell:${unitIsShell ? 1 : 0}|owner:${ownerKey}`;
         m = this.unitMeshBuilder.build({
           entity: e,
           radius,
@@ -511,6 +529,7 @@ export class Render3DEntities {
           turrets,
           unitGfx,
           unitGraphicsTier,
+          unitFrameKey: unitGeometryKey,
           unitRenderKey,
           unitIsShell,
           legState: legSnap,
@@ -556,7 +575,7 @@ export class Render3DEntities {
       // sim.z - bodyCenterHeight: for a ground-resting unit sim.z is
       // terrain + bodyCenterHeight, so the group sits at the terrain
       // surface and the chassis/turret meshes stack from there.
-      m.group.position.set(e.transform.x, getUnitGroundZ(e), e.transform.y);
+      m.group.position.set(tx, groundZ, ty);
 
       // unitGroup (m.group) carries POSITION + the world-frame TILT.
       // m.yawGroup (the inner group) carries the chassis YAW around
@@ -589,7 +608,7 @@ export class Render3DEntities {
         ? e.unit.surfaceNormal
         : getSurfaceNormal(
             e.transform.x, e.transform.y,
-            this.clientViewState.getMapWidth(), this.clientViewState.getMapHeight(),
+            mapWidth, mapHeight,
             LAND_CELL_SIZE,
           );
       if (airborne || (n.nx === 0 && n.ny === 0)) {
@@ -690,55 +709,55 @@ export class Render3DEntities {
         this._smoothParentQuat,
         this._unitOneVec,
       );
-      this.chassisInstancePose.update({
-        entity: e,
-        mesh: m,
+      this.chassisInstancePose.update(
+        e,
+        m,
         bodyEntry,
         radius,
         fullUnitDetail,
-        parentPosition: this._smoothLiftedPos,
-        parentQuaternion: this._smoothParentQuat,
-        unitDetailInstances: this.unitDetailInstances,
-      });
+        this._smoothLiftedPos,
+        this._smoothParentQuat,
+        this.unitDetailInstances,
+      );
 
       const selected = e.selectable?.selected === true;
       this.selectionOverlays.updateSelectionRing(m, selected, radius * 1.35);
       this.selectionOverlays.updateUnitRadiusRings(m, e);
       this.selectionOverlays.updateRangeRings(m, e);
 
-      this.turretPose.update({
-        entity: e,
-        mesh: m,
+      this.turretPose.update(
+        e,
+        m,
         turrets,
-        parentQuaternion: this._smoothParentQuat,
-        unitChainMat: this._unitChainMat,
-        chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
-        graphicsTier: unitGraphicsTier,
-        barrelSpinEnabled: unitGfx.barrelSpin,
-        spinAngleFor: (turretIdx) => this.barrelSpinState.angleFor(e.id, turretIdx),
-        currentDtMs: this._currentDtMs,
-        unitDetailInstances: this.unitDetailInstances,
-        turretMountCache: this.turretMountCache,
-        constructionVisuals: this.constructionVisuals,
-      });
+        this._smoothParentQuat,
+        this._unitChainMat,
+        chassisTilted ? _invTiltQuat : undefined,
+        unitGraphicsTier,
+        unitGfx.barrelSpin,
+        this.barrelSpinState,
+        this._currentDtMs,
+        this.unitDetailInstances,
+        this.turretMountCache,
+        this.constructionVisuals,
+      );
 
       if (m.mirrors) {
-        const mirrorTurret = turrets.find((turret) => turret.config.passive);
+        const mirrorTurret = findPassiveTurret(turrets);
         this._mirrorPivotLocal.set(
           mirrorTurret?.mount.x ?? 0,
           (mirrorTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),
           mirrorTurret?.mount.y ?? 0,
         );
-        this.mirrorPose.update({
-          entity: e,
-          mirrors: m.mirrors,
-          turrets,
-          pivotLocal: this._mirrorPivotLocal,
-          unitChainMat: this._unitChainMat,
-          chassisTiltInverse: chassisTilted ? _invTiltQuat : undefined,
-          mirrorsEnabled: this.mirrorsEnabled,
-          unitDetailInstances: this.unitDetailInstances,
-        });
+        this.mirrorPose.update(
+          e,
+          m.mirrors,
+          mirrorTurret,
+          this._mirrorPivotLocal,
+          this._unitChainMat,
+          chassisTilted ? _invTiltQuat : undefined,
+          this.mirrorsEnabled,
+          this.unitDetailInstances,
+        );
       }
 
       // Locomotion: spin tread wheels per velocity; legs write per-
@@ -746,8 +765,8 @@ export class Render3DEntities {
       if (m.locomotion) {
         updateLocomotion(
           m.locomotion, e, this._currentDtMs,
-          this.clientViewState.getMapWidth(),
-          this.clientViewState.getMapHeight(),
+          mapWidth,
+          mapHeight,
           this.legRenderer,
           this.hoverSmokeEmitters,
         );

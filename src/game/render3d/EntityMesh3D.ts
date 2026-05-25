@@ -152,6 +152,12 @@ export type EntityMesh = {
   /** Geometry key this unit was built at. Render3DEntities rebuilds
    *  the mesh when graphics-shape settings differ. */
   geometryKey: string;
+  /** Unit render-key components cached separately so the per-frame
+   *  unit loop can compare cheap primitives without rebuilding the
+   *  full template-string key for every unchanged unit. */
+  unitRenderFrameKey?: string;
+  unitRenderOwnerId?: PlayerId;
+  unitRenderIsShell?: boolean;
   /** Smoothed visual bank angle (radians, sim-frame: positive rolls
    *  the body-+Y wing down) for hover/flying chassis. EMA-tracked at
    *  render cadence from body-lateral centripetal acceleration

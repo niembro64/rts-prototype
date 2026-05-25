@@ -4,17 +4,6 @@ import type { BodyGeomEntry } from './BodyShape3D';
 import type { EntityMesh } from './EntityMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
-export type UnitChassisInstancePose3DUpdate = {
-  entity: Entity;
-  mesh: EntityMesh;
-  bodyEntry: BodyGeomEntry;
-  radius: number;
-  fullUnitDetail: boolean;
-  parentPosition: THREE.Vector3;
-  parentQuaternion: THREE.Quaternion;
-  unitDetailInstances: UnitDetailInstanceRenderer3D;
-};
-
 const _PART_ROT_AXIS = new THREE.Vector3(0, 0, 1);
 
 export class UnitChassisInstancePose3D {
@@ -27,18 +16,16 @@ export class UnitChassisInstancePose3D {
   private readonly partQuat = new THREE.Quaternion();
   private readonly identityQuat = new THREE.Quaternion();
 
-  update(options: UnitChassisInstancePose3DUpdate): void {
-    const {
-      entity,
-      mesh,
-      bodyEntry,
-      radius,
-      fullUnitDetail,
-      parentPosition,
-      parentQuaternion,
-      unitDetailInstances,
-    } = options;
-
+  update(
+    entity: Entity,
+    mesh: EntityMesh,
+    bodyEntry: BodyGeomEntry,
+    radius: number,
+    fullUnitDetail: boolean,
+    parentPosition: THREE.Vector3,
+    parentQuaternion: THREE.Quaternion,
+    unitDetailInstances: UnitDetailInstanceRenderer3D,
+  ): void {
     if (!fullUnitDetail) {
       unitDetailInstances.clearChassisSlots(mesh);
       return;

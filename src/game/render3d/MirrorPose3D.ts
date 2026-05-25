@@ -3,17 +3,6 @@ import type { Entity, Turret } from '../sim/types';
 import type { MirrorMesh } from './MirrorMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
-export type MirrorPose3DUpdate = {
-  entity: Entity;
-  mirrors: MirrorMesh;
-  turrets: readonly Turret[];
-  pivotLocal: THREE.Vector3;
-  unitChainMat: THREE.Matrix4;
-  chassisTiltInverse?: THREE.Quaternion;
-  mirrorsEnabled: boolean;
-  unitDetailInstances: UnitDetailInstanceRenderer3D;
-};
-
 export class MirrorPose3D {
   private readonly aimDir = new THREE.Vector3();
   private readonly parentMat = new THREE.Matrix4();
@@ -21,23 +10,20 @@ export class MirrorPose3D {
   private readonly finalMat = new THREE.Matrix4();
   private readonly oneVec = new THREE.Vector3(1, 1, 1);
 
-  update(options: MirrorPose3DUpdate): void {
-    const {
-      entity,
-      mirrors,
-      turrets,
-      pivotLocal,
-      unitChainMat,
-      chassisTiltInverse,
-      mirrorsEnabled,
-      unitDetailInstances,
-    } = options;
-
+  update(
+    entity: Entity,
+    mirrors: MirrorMesh,
+    mirrorTurret: Turret | undefined,
+    pivotLocal: THREE.Vector3,
+    unitChainMat: THREE.Matrix4,
+    chassisTiltInverse: THREE.Quaternion | undefined,
+    mirrorsEnabled: boolean,
+    unitDetailInstances: UnitDetailInstanceRenderer3D,
+  ): void {
     mirrors.root.position.copy(pivotLocal);
     mirrors.root.visible = mirrorsEnabled;
     if (!mirrorsEnabled) return;
 
-    const mirrorTurret = turrets.find((turret) => turret.config.passive);
     const mirrorRot = mirrorTurret?.rotation ?? entity.transform.rotation;
     const mirrorPitch = mirrorTurret?.pitch ?? 0;
     const cosMirrorRot = Math.cos(mirrorRot);

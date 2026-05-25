@@ -8,28 +8,10 @@ import { entityHeadOnlyTurretHeadColorHex } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { buildingTierAtLeast } from './RenderTier3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
+import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
-
-export type UnitTurretPose3DUpdate = {
-  entity: Entity;
-  mesh: EntityMesh;
-  turrets: readonly Turret[];
-  parentQuaternion: THREE.Quaternion;
-  unitChainMat: THREE.Matrix4;
-  chassisTiltInverse?: THREE.Quaternion;
-  graphicsTier: ConcreteGraphicsQuality;
-  barrelSpinEnabled: boolean;
-  /** Per-turret spin angle lookup — multi-barrel turrets on the same
-   *  unit each track their own spin, so this is keyed by the per-unit
-   *  turretIndex. Returns undefined for non-spinning turrets. */
-  spinAngleFor: (turretIdx: number) => number | undefined;
-  currentDtMs: number;
-  unitDetailInstances: UnitDetailInstanceRenderer3D;
-  turretMountCache: TurretMountCache3D;
-  constructionVisuals: ConstructionVisualController3D;
-};
 
 export class UnitTurretPose3D {
   private readonly headMat = new THREE.Matrix4();
@@ -40,23 +22,21 @@ export class UnitTurretPose3D {
   private readonly headWorldPos = new THREE.Vector3();
   private readonly oneVec = new THREE.Vector3(1, 1, 1);
 
-  update(options: UnitTurretPose3DUpdate): void {
-    const {
-      entity,
-      mesh,
-      turrets,
-      parentQuaternion,
-      unitChainMat,
-      chassisTiltInverse,
-      graphicsTier,
-      barrelSpinEnabled,
-      spinAngleFor,
-      currentDtMs,
-      unitDetailInstances,
-      turretMountCache,
-      constructionVisuals,
-    } = options;
-
+  update(
+    entity: Entity,
+    mesh: EntityMesh,
+    turrets: readonly Turret[],
+    parentQuaternion: THREE.Quaternion,
+    unitChainMat: THREE.Matrix4,
+    chassisTiltInverse: THREE.Quaternion | undefined,
+    graphicsTier: ConcreteGraphicsQuality,
+    barrelSpinEnabled: boolean,
+    barrelSpinState: UnitBarrelSpinState3D,
+    currentDtMs: number,
+    unitDetailInstances: UnitDetailInstanceRenderer3D,
+    turretMountCache: TurretMountCache3D,
+    constructionVisuals: ConstructionVisualController3D,
+  ): void {
     for (let turretIdx = 0; turretIdx < mesh.turrets.length && turretIdx < turrets.length; turretIdx++) {
       const turretMesh = mesh.turrets[turretIdx];
       const turret = turrets[turretIdx];
@@ -94,7 +74,7 @@ export class UnitTurretPose3D {
         );
         if (turretMesh.spinGroup) {
           turretMesh.spinGroup.rotation.x = barrelSpinEnabled
-            ? spinAngleFor(turretIdx) ?? 0
+            ? barrelSpinState.angleFor(entity.id, turretIdx) ?? 0
             : 0;
         }
       }
