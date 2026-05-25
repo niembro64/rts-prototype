@@ -196,11 +196,13 @@ function packActionsIntoScratch(
   );
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
+    const pos = action.pos;
+    const grid = action.grid;
     const base = i * api.actionScratchStride;
     view[base + 0] = action.type;
-    view[base + 1] = action.pos !== null ? 1 : 0;
-    view[base + 2] = action.pos?.x ?? 0;
-    view[base + 3] = action.pos?.y ?? 0;
+    view[base + 1] = pos !== null ? 1 : 0;
+    view[base + 2] = pos !== null ? pos.x : 0;
+    view[base + 3] = pos !== null ? pos.y : 0;
     view[base + 4] = action.posZ !== null ? 1 : 0;
     view[base + 5] = action.posZ ?? 0;
     view[base + 6] = action.pathExp === true ? 1 : 0;
@@ -210,9 +212,9 @@ function packActionsIntoScratch(
     view[base + 10] = action.buildingType !== null
       ? stringSlots.get(action.buildingType) ?? 0
       : 0;
-    view[base + 11] = action.grid !== null ? 1 : 0;
-    view[base + 12] = action.grid?.x ?? 0;
-    view[base + 13] = action.grid?.y ?? 0;
+    view[base + 11] = grid !== null ? 1 : 0;
+    view[base + 12] = grid !== null ? grid.x : 0;
+    view[base + 13] = grid !== null ? grid.y : 0;
     view[base + 14] = action.buildingId !== null ? 1 : 0;
     view[base + 15] = action.buildingId ?? 0;
   }
@@ -282,61 +284,66 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
   const orientation = unit.orientation;
   const angularVelocity = unit.angularVelocity3;
   const build = unit.build;
+  const pos = entity.pos;
+  const hp = unit.hp;
+  const velocity = unit.velocity;
+  const radius = unit.radius;
   api.encodeEntityUnit(
     entity.id,
     SNAPSHOT_ENTITY_TYPE_UNIT,
-    entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+    pos !== null ? pos.x : 0, pos !== null ? pos.y : 0, pos !== null ? pos.z : 0,
     entity.rotation ?? 0,
     entity.playerId,
     entity.changedFields !== null ? 1 : 0,
     entity.changedFields ?? 0,
-    unit.hp?.curr ?? 0,
-    unit.hp?.max ?? 0,
-    unit.velocity?.x ?? 0, unit.velocity?.y ?? 0, unit.velocity?.z ?? 0,
+    hp !== null ? hp.curr : 0,
+    hp !== null ? hp.max : 0,
+    velocity !== null ? velocity.x : 0, velocity !== null ? velocity.y : 0, velocity !== null ? velocity.z : 0,
     unit.unitType !== null ? 1 : 0,
     unit.unitType ?? 0,
-    unit.radius !== null ? 1 : 0,
-    unit.radius?.body ?? 0,
-    unit.radius?.shot ?? 0,
-    unit.radius?.push ?? 0,
+    radius !== null ? 1 : 0,
+    radius !== null && radius.body !== null ? radius.body : 0,
+    radius !== null && radius.shot !== null ? radius.shot : 0,
+    radius !== null && radius.push !== null ? radius.push : 0,
     unit.bodyCenterHeight !== null ? 1 : 0,
     unit.bodyCenterHeight ?? 0,
     unit.mass !== null ? 1 : 0,
     unit.mass ?? 0,
     surfaceNormal !== null ? 1 : 0,
-    surfaceNormal?.nx ?? 0,
-    surfaceNormal?.ny ?? 0,
-    surfaceNormal?.nz ?? 0,
+    surfaceNormal !== null ? surfaceNormal.nx : 0,
+    surfaceNormal !== null ? surfaceNormal.ny : 0,
+    surfaceNormal !== null ? surfaceNormal.nz : 0,
     orientation !== null ? 1 : 0,
-    orientation?.x ?? 0,
-    orientation?.y ?? 0,
-    orientation?.z ?? 0,
-    orientation?.w ?? 0,
+    orientation !== null ? orientation.x : 0,
+    orientation !== null ? orientation.y : 0,
+    orientation !== null ? orientation.z : 0,
+    orientation !== null ? orientation.w : 0,
     angularVelocity !== null ? 1 : 0,
-    angularVelocity?.x ?? 0,
-    angularVelocity?.y ?? 0,
-    angularVelocity?.z ?? 0,
+    angularVelocity !== null ? angularVelocity.x : 0,
+    angularVelocity !== null ? angularVelocity.y : 0,
+    angularVelocity !== null ? angularVelocity.z : 0,
     unit.fireEnabled === false ? 1 : 0,
     unit.isCommander === true ? 1 : 0,
     unit.buildTargetIdPresent ? 1 : 0,
     unit.buildTargetId === null ? 1 : 0,
     typeof unit.buildTargetId === 'number' ? unit.buildTargetId : 0,
     actions !== null ? 1 : 0,
-    actions?.length ?? 0,
+    actions !== null ? actions.length : 0,
     turrets !== null ? 1 : 0,
-    turrets?.length ?? 0,
+    turrets !== null ? turrets.length : 0,
     build !== null ? 1 : 0,
-    build?.complete === true ? 1 : 0,
-    build?.paid.energy ?? 0,
-    build?.paid.metal ?? 0,
+    build !== null && build.complete === true ? 1 : 0,
+    build !== null ? build.paid.energy : 0,
+    build !== null ? build.paid.metal : 0,
   );
   return true;
 }
 
 function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
+  const factory = building.factory;
   return (
     (building.type !== null && typeof building.type !== 'number') ||
-    (building.factory?.queue.some((code) => !isUint(code, 0xFFFF_FFFF)) ?? false)
+    (factory !== null && factory.queue.some((code) => !isUint(code, 0xFFFF_FFFF)))
   );
 }
 
@@ -362,36 +369,41 @@ function encodeBuildingEntity(
     packWaypointsIntoScratch(sim, factory.waypoints, stringSlots);
   }
 
+  const pos = entity.pos;
+  const dim = building.dim;
+  const hp = building.hp;
+  const build = building.build;
+  const solar = building.solar;
   api.encodeEntityBuilding(
     entity.id,
-    entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+    pos !== null ? pos.x : 0, pos !== null ? pos.y : 0, pos !== null ? pos.z : 0,
     entity.rotation ?? 0,
     entity.playerId,
     entity.changedFields !== null ? 1 : 0,
     entity.changedFields ?? 0,
     building.type !== null ? 1 : 0,
     building.type ?? 0,
-    building.dim !== null ? 1 : 0,
-    building.dim?.x ?? 0,
-    building.dim?.y ?? 0,
-    building.hp?.curr ?? 0,
-    building.hp?.max ?? 0,
-    building.build?.complete ? 1 : 0,
-    building.build?.paid.energy ?? 0,
-    building.build?.paid.metal ?? 0,
+    dim !== null ? 1 : 0,
+    dim !== null ? dim.x : 0,
+    dim !== null ? dim.y : 0,
+    hp !== null ? hp.curr : 0,
+    hp !== null ? hp.max : 0,
+    build !== null && build.complete ? 1 : 0,
+    build !== null ? build.paid.energy : 0,
+    build !== null ? build.paid.metal : 0,
     building.metalExtractionRate !== null ? 1 : 0,
     building.metalExtractionRate ?? 0,
     building.solar !== null ? 1 : 0,
-    building.solar?.open === true ? 1 : 0,
+    solar !== null && solar.open === true ? 1 : 0,
     turrets !== null ? 1 : 0,
-    turrets?.length ?? 0,
+    turrets !== null ? turrets.length : 0,
     factory !== null ? 1 : 0,
-    factory?.queue.length ?? 0,
-    factory?.progress ?? 0,
-    factory?.producing === true ? 1 : 0,
-    factory?.energyRate ?? 0,
-    factory?.metalRate ?? 0,
-    factory?.waypoints.length ?? 0,
+    factory !== null ? factory.queue.length : 0,
+    factory !== null ? factory.progress : 0,
+    factory !== null && factory.producing === true ? 1 : 0,
+    factory !== null ? factory.energyRate : 0,
+    factory !== null ? factory.metalRate : 0,
+    factory !== null ? factory.waypoints.length : 0,
   );
   return true;
 }
@@ -409,10 +421,11 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
   if (entity.type === 'unit') {
     if (entity.building !== null) return false;
     if (entity.unit !== null) return encodeUnitEntity(sim, entity, entity.unit);
+    const pos = entity.pos;
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,
       SNAPSHOT_ENTITY_TYPE_UNIT,
-      entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+      pos !== null ? pos.x : 0, pos !== null ? pos.y : 0, pos !== null ? pos.z : 0,
       entity.rotation ?? 0,
       entity.playerId,
       entity.changedFields !== null ? 1 : 0,
@@ -423,10 +436,11 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
   if (entity.type === 'building') {
     if (entity.unit !== null) return false;
     if (entity.building !== null) return encodeBuildingEntity(sim, entity, entity.building);
+    const pos = entity.pos;
     sim.snapshotEncode.encodeEntityBasic(
       entity.id,
       SNAPSHOT_ENTITY_TYPE_BUILDING,
-      entity.pos?.x ?? 0, entity.pos?.y ?? 0, entity.pos?.z ?? 0,
+      pos !== null ? pos.x : 0, pos !== null ? pos.y : 0, pos !== null ? pos.z : 0,
       entity.rotation ?? 0,
       entity.playerId,
       entity.changedFields !== null ? 1 : 0,
@@ -983,7 +997,7 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.grid ? 1 : 0,
     unitsAllowed !== undefined ? 1 : 0,
     unitsAllowedSlotStart,
-    unitsAllowed?.length ?? 0,
+    unitsAllowed !== undefined ? unitsAllowed.length : 0,
     meta.units.max !== undefined ? 1 : 0,
     meta.units.max ?? 0,
     meta.units.count !== undefined ? 1 : 0,
@@ -1022,6 +1036,7 @@ function packSprayTargetsIntoScratch(
   );
   for (let i = 0; i < sprays.length; i++) {
     const spray = sprays[i];
+    const targetDim = spray.target.dim;
     const base = i * api.sprayScratchStride;
     view[base + 0] = spray.source.id;
     view[base + 1] = spray.source.pos.x;
@@ -1032,8 +1047,8 @@ function packSprayTargetsIntoScratch(
     view[base + 6] = spray.target.pos.x;
     view[base + 7] = spray.target.pos.y;
     view[base + 8] = spray.target.z ?? 0;
-    view[base + 9] = spray.target.dim?.x ?? 0;
-    view[base + 10] = spray.target.dim?.y ?? 0;
+    view[base + 9] = targetDim !== null ? targetDim.x : 0;
+    view[base + 10] = targetDim !== null ? targetDim.y : 0;
     view[base + 11] = spray.target.radius ?? 0;
     view[base + 12] = spray.intensity;
     view[base + 13] = spray.speed ?? 0;
@@ -1083,7 +1098,8 @@ function packDeathContextsIntoScratch(
     const context = events[i].deathContext;
     if (context === null) continue;
     deathContextCount++;
-    totalPoses += context.turretPoses?.length ?? 0;
+    const turretPoses = context.turretPoses;
+    totalPoses += turretPoses !== undefined ? turretPoses.length : 0;
   }
   if (deathContextCount === 0) return;
 
@@ -1127,7 +1143,8 @@ function packDeathContextsIntoScratch(
     view[base + 13] = context.unitType !== undefined
       ? stringSlots.get(context.unitType) ?? 0
       : 0;
-    view[base + 14] = context.turretPoses?.length ?? 0;
+    const turretPoses = context.turretPoses;
+    view[base + 14] = turretPoses !== undefined ? turretPoses.length : 0;
     let flags = 0;
     if (context.visualRadius !== undefined) flags |= 0x01;
     if (context.pushRadius !== undefined) flags |= 0x02;
@@ -1137,14 +1154,14 @@ function packDeathContextsIntoScratch(
     if (context.turretPoses !== undefined) flags |= 0x20;
     view[base + 15] = flags;
 
-    if (context.turretPoses && poseView) {
-      for (let p = 0; p < context.turretPoses.length; p++) {
-        const pose = context.turretPoses[p];
+    if (turretPoses !== undefined && poseView !== undefined) {
+      for (let p = 0; p < turretPoses.length; p++) {
+        const pose = turretPoses[p];
         const poseBase = (poseOffset + p) * api.turretPoseScratchStride;
         poseView[poseBase + 0] = pose.rotation;
         poseView[poseBase + 1] = pose.pitch;
       }
-      poseOffset += context.turretPoses.length;
+      poseOffset += turretPoses.length;
     }
     deathContextIndex++;
   }
@@ -1202,6 +1219,7 @@ function packAudioEventsIntoScratch(
   );
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
+    const forceFieldImpact = event.forceFieldImpact;
     const base = i * api.audioEventScratchStride;
     view[base + 0] = AUDIO_EVENT_TYPE_CODES[event.type];
     view[base + 1] = event.pos.x;
@@ -1211,10 +1229,10 @@ function packAudioEventsIntoScratch(
     view[base + 5] = event.entityId ?? 0;
     view[base + 6] = event.killerPlayerId ?? 0;
     view[base + 7] = event.victimPlayerId ?? 0;
-    view[base + 8] = event.forceFieldImpact?.normal.x ?? 0;
-    view[base + 9] = event.forceFieldImpact?.normal.y ?? 0;
-    view[base + 10] = event.forceFieldImpact?.normal.z ?? 0;
-    view[base + 11] = event.forceFieldImpact?.playerId ?? 0;
+    view[base + 8] = forceFieldImpact !== null ? forceFieldImpact.normal.x : 0;
+    view[base + 9] = forceFieldImpact !== null ? forceFieldImpact.normal.y : 0;
+    view[base + 10] = forceFieldImpact !== null ? forceFieldImpact.normal.z : 0;
+    view[base + 11] = forceFieldImpact !== null ? forceFieldImpact.playerId : 0;
     view[base + 12] = event.sourceType ? AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] : 0;
     view[base + 13] = stringSlots.get(event.turretId) ?? 0;
     view[base + 14] = event.sourceKey !== null
@@ -1243,7 +1261,10 @@ function emitAudioEvents(sim: SimWasm, events: readonly NetworkServerSnapshotSim
   for (const event of events) {
     strings.push(event.turretId);
     if (event.sourceKey !== null) strings.push(event.sourceKey);
-    if (event.deathContext?.unitType !== undefined) strings.push(event.deathContext.unitType);
+    const deathContext = event.deathContext;
+    if (deathContext !== null && deathContext.unitType !== undefined) {
+      strings.push(deathContext.unitType);
+    }
   }
   const stringSlots = packStringsIntoScratch(sim, strings);
   packAudioEventsIntoScratch(sim, events, stringSlots);
@@ -1460,13 +1481,13 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
   }
   sim.snapshotEncode.emitProjectiles(
     spawns !== undefined ? 1 : 0,
-    spawns?.length ?? 0,
+    spawns !== undefined ? spawns.length : 0,
     despawns !== undefined ? 1 : 0,
-    despawns?.length ?? 0,
+    despawns !== undefined ? despawns.length : 0,
     velocityUpdates !== undefined ? 1 : 0,
-    velocityUpdates?.length ?? 0,
+    velocityUpdates !== undefined ? velocityUpdates.length : 0,
     beamUpdates !== undefined ? 1 : 0,
-    beamUpdates?.length ?? 0,
+    beamUpdates !== undefined ? beamUpdates.length : 0,
   );
 }
 

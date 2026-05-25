@@ -354,17 +354,19 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   prev.y = entity.transform.y;
   prev.z = entity.transform.z;
   prev.rotation = entity.transform.rotation;
-  prev.velocityX = entity.unit?.velocityX ?? 0;
-  prev.velocityY = entity.unit?.velocityY ?? 0;
-  prev.velocityZ = entity.unit?.velocityZ ?? 0;
-  prev.movementAccelX = entity.unit?.movementAccelX ?? 0;
-  prev.movementAccelY = entity.unit?.movementAccelY ?? 0;
-  prev.movementAccelZ = entity.unit?.movementAccelZ ?? 0;
-  prev.hp = entity.unit?.hp ?? entity.building?.hp ?? 0;
-  if (entity.unit) {
-    assertUnitActionHashSynced(entity.unit, `captureEntityState(${entity.id})`);
-    prev.actionCount = entity.unit.actions.length;
-    prev.actionHash = entity.unit.actionHash;
+  const unit = entity.unit;
+  const building = entity.building;
+  prev.velocityX = unit !== null ? unit.velocityX : 0;
+  prev.velocityY = unit !== null ? unit.velocityY : 0;
+  prev.velocityZ = unit !== null ? unit.velocityZ : 0;
+  prev.movementAccelX = unit !== null ? unit.movementAccelX : 0;
+  prev.movementAccelY = unit !== null ? unit.movementAccelY : 0;
+  prev.movementAccelZ = unit !== null ? unit.movementAccelZ : 0;
+  prev.hp = unit !== null ? unit.hp : building !== null ? building.hp : 0;
+  if (unit !== null) {
+    assertUnitActionHashSynced(unit, `captureEntityState(${entity.id})`);
+    prev.actionCount = unit.actions.length;
+    prev.actionHash = unit.actionHash;
   } else {
     prev.actionCount = 0;
     prev.actionHash = 0;
@@ -372,9 +374,10 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
 
   prev.isEngagedBits = 0;
   prev.targetBits = 0;
-  const combatTurrets = entity.combat?.turrets;
-  prev.weaponCount = combatTurrets?.length ?? 0;
-  if (combatTurrets) {
+  const combat = entity.combat;
+  const combatTurrets = combat !== null ? combat.turrets : null;
+  prev.weaponCount = combatTurrets !== null ? combatTurrets.length : 0;
+  if (combatTurrets !== null) {
     while (prev.turretRots.length < combatTurrets.length) {
       prev.turretRots.push(0);
       prev.turretAngVels.push(0);
@@ -402,19 +405,21 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       prev.turretPitches[i] = snapshotAimMotion ? w.pitch : 0;
       prev.turretPitchVels[i] = snapshotAimMotion ? w.pitchVelocity : 0;
       prev.turretTargetIds[i] = targetId;
-      prev.forceFieldRanges[i] = w.forceField?.range ?? 0;
+      prev.forceFieldRanges[i] = w.forceField !== undefined ? w.forceField.range : 0;
     }
   }
 
   prev.buildProgress = entity.buildable ? getBuildFraction(entity.buildable) : 0;
-  prev.solarOpen = entity.building?.activeState?.open === false ? 0 : 1;
-  prev.factoryProgress = entity.factory?.currentBuildProgress ?? 0;
-  prev.isProducing = entity.factory?.isProducing ? 1 : 0;
-  prev.buildQueueLen = entity.factory?.buildQueue.length ?? 0;
-  const sn = entity.unit?.surfaceNormal;
-  prev.normalX = sn?.nx ?? 0;
-  prev.normalY = sn?.ny ?? 0;
-  prev.normalZ = sn?.nz ?? 1;
+  const activeState = building !== null ? building.activeState : null;
+  prev.solarOpen = activeState !== null && activeState.open === false ? 0 : 1;
+  const factory = entity.factory;
+  prev.factoryProgress = factory !== null ? factory.currentBuildProgress : 0;
+  prev.isProducing = factory !== null && factory.isProducing ? 1 : 0;
+  prev.buildQueueLen = factory !== null ? factory.buildQueue.length : 0;
+  const sn = unit !== null ? unit.surfaceNormal : null;
+  prev.normalX = sn !== null ? sn.nx : 0;
+  prev.normalY = sn !== null ? sn.ny : 0;
+  prev.normalZ = sn !== null ? sn.nz : 1;
 }
 
 /** Phase 10 D.3g — compute the Rust-side diff mask for one entity.
@@ -626,20 +631,23 @@ export function getNextEntityState(entity: Entity): PrevEntityState {
 function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
   const slot = spatialGrid.getSlot(e.id);
   if (slot < 0) return;
-  const playerId = e.ownership?.playerId ?? 0;
+  const ownership = e.ownership;
+  const playerId = ownership !== null ? ownership.playerId : 0;
   if (e.unit) {
     const u = e.unit;
     const buildable = e.buildable;
+    const combat = e.combat;
+    const builder = e.builder;
     sim.entityMeta.setUnit(
       slot,
       playerId,
       u.hp, u.maxHp,
-      e.combat?.fireEnabled === false ? 0 : 1,
+      combat !== null && combat.fireEnabled === false ? 0 : 1,
       e.commander ? 1 : 0,
       buildable && !buildable.isComplete ? 0 : 1,
-      buildable?.paid.energy ?? 0,
-      buildable?.paid.metal ?? 0,
-      e.builder?.currentBuildTarget ?? NO_ENTITY_ID,
+      buildable !== null ? buildable.paid.energy : 0,
+      buildable !== null ? buildable.paid.metal : 0,
+      builder !== null ? builder.currentBuildTarget : NO_ENTITY_ID,
       0,
       0,
       buildable ? getBuildFraction(buildable) : 0,
@@ -651,16 +659,17 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       slot,
       playerId,
       b.hp, b.maxHp,
-      f?.isProducing ? 1 : 0,
-      Math.min(f?.buildQueue.length ?? 0, 255),
-      f?.currentBuildProgress ?? 0,
-      b.activeState?.open === false ? 0 : 1,
+      f !== null && f.isProducing ? 1 : 0,
+      Math.min(f !== null ? f.buildQueue.length : 0, 255),
+      f !== null ? f.currentBuildProgress : 0,
+      b.activeState !== null && b.activeState.open === false ? 0 : 1,
       e.buildable ? getBuildFraction(e.buildable) : 1,
     );
   }
 
-  const turrets = e.combat?.turrets;
-  const turretCount = turrets ? turrets.length : 0;
+  const combat = e.combat;
+  const turrets = combat !== null ? combat.turrets : null;
+  const turretCount = turrets !== null ? turrets.length : 0;
   sim.turretPool.setCount(slot, turretCount);
   for (let t = 0; t < turretCount; t++) {
     const w = turrets![t];

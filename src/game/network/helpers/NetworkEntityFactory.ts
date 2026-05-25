@@ -65,8 +65,9 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
   // but the client never receives them and predicts rotation from
   // angular velocity only). Leave the client-side values at the
   // runtimeTurrets default of 0.
+  const forceField = turret.forceField;
   turret.forceField = nw.currentForceFieldRange !== undefined && nw.currentForceFieldRange !== null
-    ? { range: nw.currentForceFieldRange, transition: turret.forceField?.transition ?? 0 }
+    ? { range: nw.currentForceFieldRange, transition: forceField !== undefined ? forceField.transition : 0 }
     : undefined;
 }
 
@@ -106,7 +107,8 @@ export function refreshUnitTurretsFromNetwork(
   unitBodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): void {
-  const previous = entity.combat?.turrets;
+  const existingCombat = entity.combat;
+  const previous = existingCombat !== null ? existingCombat.turrets : undefined;
   const turrets = createTurretsFromNetwork(unitType, unitBodyRadius, netTurrets);
   if (!turrets) {
     entity.combat = null;
@@ -193,19 +195,34 @@ function createUnitFromNetwork(
 ): Entity | null {
   const u = netEntity.unit;
 
-  const unitType = decodeNetworkUnitType(u?.unitType);
+  const unitType = decodeNetworkUnitType(u !== null ? u.unitType : undefined);
   if (!unitType) return null;
-  const actions = decodeNetworkUnitActions(u?.actions);
+  const unitHp = u !== null ? u.hp : null;
+  const unitBuild = u !== null ? u.build : null;
+  const unitOrientation = u !== null ? u.orientation : null;
+  const unitAngularVelocity3 = u !== null ? u.angularVelocity3 : null;
+  const unitTurrets = u !== null ? u.turrets : null;
+  const actions = decodeNetworkUnitActions(u !== null ? u.actions : null);
   const velocity = readNetworkUnitVelocity(u);
   const surfaceNormal = readNetworkUnitSurfaceNormal(u);
   let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
   try {
     unitBlueprint = getUnitBlueprint(unitType);
   } catch { /* unknown unit type fallback handled by existing defaults */ }
+  const blueprintRadius = unitBlueprint !== undefined && unitBlueprint.radius !== undefined
+    ? unitBlueprint.radius
+    : { body: 15, shot: 15, push: 15 };
+  const blueprintMass = unitBlueprint !== undefined && unitBlueprint.mass !== undefined
+    ? unitBlueprint.mass
+    : 25;
   const radius = readNetworkUnitRadius(
     u,
-    unitBlueprint?.radius ?? { body: 15, shot: 15, push: 15 },
+    blueprintRadius,
   );
+  const blueprintBodyCenterHeight = unitBlueprint !== undefined &&
+    unitBlueprint.bodyCenterHeight !== undefined
+    ? unitBlueprint.bodyCenterHeight
+    : radius.push;
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
@@ -215,15 +232,15 @@ function createUnitFromNetwork(
     selectable: { selected: false },
     unit: {
       unitType,
-      hp: u?.hp?.curr ?? 100,
-      maxHp: u?.hp?.max ?? 100,
+      hp: unitHp !== null ? unitHp.curr : 100,
+      maxHp: unitHp !== null ? unitHp.max : 100,
       radius,
       bodyCenterHeight: readNetworkUnitBodyCenterHeight(
         u,
-        unitBlueprint?.bodyCenterHeight ?? radius.push,
+        blueprintBodyCenterHeight,
       ),
       locomotion: getUnitLocomotion(unitType),
-      mass: readNetworkUnitMass(u, unitBlueprint?.mass ?? 25),
+      mass: readNetworkUnitMass(u, blueprintMass),
       actions,
       actionHash: computeUnitActionHash(actions),
       patrolStartIndex: null,
@@ -249,28 +266,30 @@ function createUnitFromNetwork(
       // creations or pre-unit-ground-normal-EMA snapshots don't leave a zero normal
       // for downstream consumers.
       surfaceNormal,
-      suspension: createUnitSuspension(unitBlueprint?.suspension),
+      suspension: createUnitSuspension(
+        unitBlueprint !== undefined ? unitBlueprint.suspension : undefined,
+      ),
       // 3-DOF orientation triad — hydrated from the wire for hover-style
       // units that need roll. Ground units have no orientation field on
       // the wire, so these stay null.
-      orientation: u?.orientation
-        ? { x: u.orientation.x, y: u.orientation.y, z: u.orientation.z, w: u.orientation.w }
+      orientation: unitOrientation !== null
+        ? { x: unitOrientation.x, y: unitOrientation.y, z: unitOrientation.z, w: unitOrientation.w }
         : null,
-      angularVelocity3: u?.angularVelocity3
-        ? { x: u.angularVelocity3.x, y: u.angularVelocity3.y, z: u.angularVelocity3.z }
-        : (u?.orientation ? { x: 0, y: 0, z: 0 } : null),
+      angularVelocity3: unitAngularVelocity3 !== null
+        ? { x: unitAngularVelocity3.x, y: unitAngularVelocity3.y, z: unitAngularVelocity3.z }
+        : (unitOrientation !== null ? { x: 0, y: 0, z: 0 } : null),
       // angularAcceleration3 is sim-only and not on the wire.
-      angularAcceleration3: u?.orientation ? { x: 0, y: 0, z: 0 } : null,
+      angularAcceleration3: unitOrientation !== null ? { x: 0, y: 0, z: 0 } : null,
       hoverHeightSmoothed: null,
       stuckTicks: 0,
     },
   };
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
-  const turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, u?.turrets);
+  const turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, unitTurrets);
   if (turrets) {
     const combat = createCombatComponent(turrets);
-    combat.fireEnabled = u?.fireEnabled !== false;
+    combat.fireEnabled = u === null || u.fireEnabled !== false;
     entity.combat = combat;
   }
   // Cache mirror panels for fast beam collision checks. Same helper
@@ -283,32 +302,34 @@ function createUnitFromNetwork(
     );
   } catch { /* */ }
 
-  if (u?.isCommander) {
-    if (unitBlueprint?.dgun) {
+  if (u !== null && u.isCommander === true) {
+    if (unitBlueprint !== undefined && unitBlueprint.dgun !== undefined && unitBlueprint.dgun !== null) {
+      const dgun = unitBlueprint.dgun;
       entity.commander = {
         isDGunActive: false,
-        dgunEnergyCost: unitBlueprint.dgun.energyCost,
+        dgunEnergyCost: dgun.energyCost,
       };
     }
   }
-  if (unitBlueprint?.builder) {
+  if (unitBlueprint !== undefined && unitBlueprint.builder !== undefined && unitBlueprint.builder !== null) {
+    const builder = unitBlueprint.builder;
     entity.builder = {
-      buildRange: unitBlueprint.builder.buildRange,
-      constructionRate: unitBlueprint.builder.constructionRate,
-      currentBuildTarget: u?.buildTargetId ?? NO_ENTITY_ID,
+      buildRange: builder.buildRange,
+      constructionRate: builder.constructionRate,
+      currentBuildTarget: u !== null && u.buildTargetId !== null ? u.buildTargetId : NO_ENTITY_ID,
     };
   }
 
   // Shell construction state — `required` is re-derived from the
   // blueprint COST_MULTIPLIER product, identical to the server.
-  if (u?.build && !u.build.complete && unitBlueprint) {
+  if (unitBuild !== null && !unitBuild.complete && unitBlueprint !== undefined) {
     entity.buildable = createBuildable(
       {
         energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
         metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
       },
       {
-        paid: u.build.paid,
+        paid: unitBuild.paid,
         isGhost: null,
         healthBuildFraction: null,
       },
@@ -329,8 +350,10 @@ function createBuildingFromNetwork(
   playerId: number
 ): Entity | null {
   const b = netEntity.building;
-  const buildingType = decodeNetworkBuildingType(b?.type);
+  const buildingType = decodeNetworkBuildingType(b !== null ? b.type : undefined);
   if (!b || !buildingType) return null;
+  const buildingHp = b.hp;
+  const buildingSolar = b.solar;
 
   // Static building facts are blueprint-derived on the client. The
   // snapshot overlays only dynamic state (hp, build progress, factory
@@ -350,8 +373,8 @@ function createBuildingFromNetwork(
       width,
       height,
       depth,
-      hp: b.hp?.curr ?? config.hp,
-      maxHp: b.hp?.max ?? config.hp,
+      hp: buildingHp !== null ? buildingHp.curr : config.hp,
+      maxHp: buildingHp !== null ? buildingHp.max : config.hp,
       targetRadius: Math.sqrt(width * width + height * height) / 2,
       // The wire field `solar` carries the shared BuildingActiveState
       // open flag for solar / wind / extractor; map it back into the
@@ -361,7 +384,7 @@ function createBuildingFromNetwork(
         || buildingType === 'wind'
         || buildingType === 'extractor')
         ? {
-            open: b.solar?.open ?? (buildingType !== 'solar'),
+            open: buildingSolar !== null ? buildingSolar.open : buildingType !== 'solar',
             producing: false,
             damageDelayMs: 0,
             reopenDelayMs: 0,
@@ -396,7 +419,7 @@ function createBuildingFromNetwork(
   // for client-side prediction / aim smoothing.
   refreshBuildingTurretsFromNetwork(entity, buildingType, b.turrets);
 
-  const f = b?.factory;
+  const f = b.factory;
   if (f) {
     // waypoints[0] = rally point, rest = user-set waypoints
     const wps = f.waypoints;
@@ -424,8 +447,8 @@ function createBuildingFromNetwork(
       // without looking up the shell.
       currentShellId: null,
       currentBuildProgress: f.progress ?? 0,
-      rallyX: rally?.pos.x ?? x,
-      rallyY: rally?.pos.y ?? y + 100,
+      rallyX: rally !== undefined ? rally.pos.x : x,
+      rallyY: rally !== undefined ? rally.pos.y : y + 100,
       isProducing: f.producing ?? false,
       waypoints,
       energyRateFraction: f.energyRate ?? 0,

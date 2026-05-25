@@ -185,11 +185,14 @@ function writeTurretsToPool(
     const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _snapshotTurretFsm);
     const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : (src.target ?? -1);
     const wireTargetId = targetId === -1 ? null : targetId;
-    dst.targetId = wireTargetId !== null && canReferenceEntityId?.(wireTargetId) === false
+    dst.targetId = wireTargetId !== null &&
+      canReferenceEntityId !== undefined &&
+      canReferenceEntityId(wireTargetId) === false
       ? null
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
-    dst.currentForceFieldRange = src.forceField?.range ?? null;
+    const forceField = src.forceField;
+    dst.currentForceFieldRange = forceField !== undefined ? forceField.range : null;
   }
   return pool.turrets;
 }
@@ -307,11 +310,13 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
   const strings = entityWireSource.actionStrings;
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
+    const pos = action.pos;
+    const grid = action.grid;
     const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
     values[base + 0] = action.type;
-    values[base + 1] = action.pos !== null ? 1 : 0;
-    values[base + 2] = action.pos?.x ?? 0;
-    values[base + 3] = action.pos?.y ?? 0;
+    values[base + 1] = pos !== null ? 1 : 0;
+    values[base + 2] = pos !== null ? pos.x : 0;
+    values[base + 3] = pos !== null ? pos.y : 0;
     values[base + 4] = action.posZ !== null ? 1 : 0;
     values[base + 5] = action.posZ ?? 0;
     values[base + 6] = action.pathExp === true ? 1 : 0;
@@ -320,9 +325,9 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
     values[base + 9] = action.buildingType !== null ? 1 : 0;
     values[base + 10] = action.buildingType !== null ? strings.length : 0;
     if (action.buildingType !== null) strings.push(action.buildingType);
-    values[base + 11] = action.grid !== null ? 1 : 0;
-    values[base + 12] = action.grid?.x ?? 0;
-    values[base + 13] = action.grid?.y ?? 0;
+    values[base + 11] = grid !== null ? 1 : 0;
+    values[base + 12] = grid !== null ? grid.x : 0;
+    values[base + 13] = grid !== null ? grid.y : 0;
     values[base + 14] = action.buildingId !== null ? 1 : 0;
     values[base + 15] = action.buildingId ?? 0;
   }
@@ -392,9 +397,9 @@ function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
   values[base + 1] = entity.type === 'unit'
     ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
     : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
-  values[base + 2] = pos?.x ?? 0;
-  values[base + 3] = pos?.y ?? 0;
-  values[base + 4] = pos?.z ?? 0;
+  values[base + 2] = pos !== null ? pos.x : 0;
+  values[base + 3] = pos !== null ? pos.y : 0;
+  values[base + 4] = pos !== null ? pos.z : 0;
   values[base + 5] = entity.rotation ?? 0;
   values[base + 6] = entity.playerId;
   values[base + 7] = entity.changedFields !== null ? 1 : 0;
@@ -419,23 +424,25 @@ function appendUnitEntityWireRow(
   const buildTargetId = unit.buildTargetId;
   const actions = unit.actions;
   const turrets = unit.turrets;
+  const hp = unit.hp;
+  const velocity = unit.velocity;
   const actionOffset = appendActionWireRows(actions);
   const turretOffset = appendTurretWireRows(turrets);
   const pos = entity.pos;
 
   values[base + 0] = entity.id;
-  values[base + 1] = pos?.x ?? 0;
-  values[base + 2] = pos?.y ?? 0;
-  values[base + 3] = pos?.z ?? 0;
+  values[base + 1] = pos !== null ? pos.x : 0;
+  values[base + 2] = pos !== null ? pos.y : 0;
+  values[base + 3] = pos !== null ? pos.z : 0;
   values[base + 4] = entity.rotation ?? 0;
   values[base + 5] = entity.playerId;
   values[base + 6] = entity.changedFields !== null ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
-  values[base + 8] = unit.hp?.curr ?? 0;
-  values[base + 9] = unit.hp?.max ?? 0;
-  values[base + 10] = unit.velocity?.x ?? 0;
-  values[base + 11] = unit.velocity?.y ?? 0;
-  values[base + 12] = unit.velocity?.z ?? 0;
+  values[base + 8] = hp !== null ? hp.curr : 0;
+  values[base + 9] = hp !== null ? hp.max : 0;
+  values[base + 10] = velocity !== null ? velocity.x : 0;
+  values[base + 11] = velocity !== null ? velocity.y : 0;
+  values[base + 12] = velocity !== null ? velocity.z : 0;
   values[base + 13] = unit.unitType !== null ? 1 : 0;
   values[base + 14] = unit.unitType ?? 0;
   values[base + 15] = radius !== null ? 1 : 0;
@@ -490,14 +497,16 @@ function appendBuildingEntityWireRow(
   const dim = building.dim;
   const solar = building.solar;
   const turrets = building.turrets;
+  const hp = building.hp;
+  const build = building.build;
   const turretOffset = appendTurretWireRows(turrets);
-  const factoryQueueOffset = appendFactoryQueueWireRows(factory?.queue);
-  const factoryWaypointOffset = appendWaypointWireRows(factory?.waypoints);
+  const factoryQueueOffset = appendFactoryQueueWireRows(factory !== null ? factory.queue : undefined);
+  const factoryWaypointOffset = appendWaypointWireRows(factory !== null ? factory.waypoints : undefined);
   const pos = entity.pos;
   values[base + 0] = entity.id;
-  values[base + 1] = pos?.x ?? 0;
-  values[base + 2] = pos?.y ?? 0;
-  values[base + 3] = pos?.z ?? 0;
+  values[base + 1] = pos !== null ? pos.x : 0;
+  values[base + 2] = pos !== null ? pos.y : 0;
+  values[base + 3] = pos !== null ? pos.z : 0;
   values[base + 4] = entity.rotation ?? 0;
   values[base + 5] = entity.playerId;
   values[base + 6] = entity.changedFields !== null ? 1 : 0;
@@ -507,11 +516,11 @@ function appendBuildingEntityWireRow(
   values[base + 10] = dim !== null ? 1 : 0;
   values[base + 11] = dim !== null ? dim.x : 0;
   values[base + 12] = dim !== null ? dim.y : 0;
-  values[base + 13] = building.hp?.curr ?? 0;
-  values[base + 14] = building.hp?.max ?? 0;
-  values[base + 15] = building.build?.complete ? 1 : 0;
-  values[base + 16] = building.build?.paid.energy ?? 0;
-  values[base + 17] = building.build?.paid.metal ?? 0;
+  values[base + 13] = hp !== null ? hp.curr : 0;
+  values[base + 14] = hp !== null ? hp.max : 0;
+  values[base + 15] = build !== null && build.complete ? 1 : 0;
+  values[base + 16] = build !== null ? build.paid.energy : 0;
+  values[base + 17] = build !== null ? build.paid.metal : 0;
   values[base + 18] = building.metalExtractionRate !== null ? 1 : 0;
   values[base + 19] = building.metalExtractionRate ?? 0;
   values[base + 20] = solar !== null ? 1 : 0;
@@ -697,7 +706,8 @@ export function serializeEntitySnapshot(
       }
 
       u.turrets = null;
-      const weapons0 = entity.combat?.turrets;
+      const unitCombat = entity.combat;
+      const weapons0 = unitCombat !== null ? unitCombat.turrets : undefined;
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
         u.turrets = writeTurretsToPool(
           poolEntry,
@@ -782,7 +792,8 @@ export function serializeEntitySnapshot(
         }
       }
 
-      const weapons0 = entity.combat?.turrets;
+      const buildingCombat = entity.combat;
+      const weapons0 = buildingCombat !== null ? buildingCombat.turrets : undefined;
       if (weapons0 && weapons0.length > 0 && (isFull || (changedFields! & ENTITY_CHANGED_TURRETS))) {
         b.turrets = writeTurretsToPool(
           poolEntry,
@@ -807,7 +818,7 @@ export function serializeEntitySnapshot(
 
           if (entity.factory.currentShellId != null) {
             const shell = world.getEntity(entity.factory.currentShellId);
-            f.progress = shell?.buildable
+            f.progress = shell !== undefined && shell.buildable !== null
               ? getBuildFraction(shell.buildable)
               : entity.factory.currentBuildProgress;
           } else {
