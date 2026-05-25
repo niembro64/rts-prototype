@@ -1140,7 +1140,7 @@ watchEffect(() => {
 
     <!-- Bottom control bars (desktop: hidden when lobby modal visible; mobile: toggled) -->
     <div
-      v-if="isMobile ? mobileBarsVisible : !lobbyModalVisible"
+      v-if="!showLoadingOverlay && (isMobile ? mobileBarsVisible : !lobbyModalVisible)"
       class="bottom-controls-shell"
       :class="{ collapsed: !isMobile && bottomBarsCollapsed }"
     >
