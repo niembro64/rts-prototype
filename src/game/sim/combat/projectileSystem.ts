@@ -326,7 +326,9 @@ export function fireTurrets(
 
   for (const unit of units) {
     if (!unit.ownership || !unit.combat) continue;
-    const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
+    const hostHp = unit.unit !== null
+      ? unit.unit.hp
+      : (unit.building !== null ? unit.building.hp : 0);
     if (hostHp <= 0) continue;
     // Inert shells don't fire — every active behavior is gated on
     // buildable.isComplete.
@@ -420,8 +422,9 @@ export function fireTurrets(
         if (hasActiveWeaponBeam(world, unit.id, weaponIndex)) continue;
       } else {
         canFire = readTurretCooldownForFire(unit, weaponIndex) <= 0;
-        canBurstFire = weapon.burst?.remaining !== undefined &&
-          weapon.burst.remaining > 0 &&
+        const activeBurst = weapon.burst;
+        canBurstFire = activeBurst !== undefined &&
+          activeBurst.remaining > 0 &&
           readTurretBurstCooldownForFire(unit, weaponIndex) <= 0;
 
         if (!canFire && !canBurstFire) continue;
@@ -433,20 +436,23 @@ export function fireTurrets(
       // expires (not at fire time), so the gap between shots =
       // beamDuration + cooldown.
       if (shot.type !== 'beam') {
-        if (canBurstFire && weapon.burst?.remaining !== undefined) {
-          weapon.burst!.remaining--;
-          const burstDelay = config.burst?.delay ?? 80;
+        const activeBurst = weapon.burst;
+        if (canBurstFire && activeBurst !== undefined) {
+          activeBurst.remaining--;
+          const burstConfig = config.burst;
+          const burstDelay = burstConfig !== undefined ? burstConfig.delay : 80;
           writeTurretBurstCooldownToSlab(unit, weaponIndex, burstDelay);
-          if (weapon.burst!.remaining <= 0) {
+          if (activeBurst.remaining <= 0) {
             weapon.burst = undefined;
           }
         } else if (canFire && shot.type !== 'laser') {
           writeTurretCooldownToSlab(unit, weaponIndex, config.cooldown);
-          if (config.burst?.count && config.burst.count > 1) {
+          const burstConfig = config.burst;
+          if (burstConfig !== undefined && burstConfig.count > 1) {
             // burst.remaining is JS-only state; burst.cooldown lives
             // on the slab and is stamped via writeTurretBurstCooldownToSlab.
-            const burstDelay = config.burst?.delay ?? 80;
-            weapon.burst = { remaining: config.burst.count - 1, cooldown: burstDelay };
+            const burstDelay = burstConfig.delay;
+            weapon.burst = { remaining: burstConfig.count - 1, cooldown: burstDelay };
             writeTurretBurstCooldownToSlab(unit, weaponIndex, burstDelay);
           }
         }
@@ -459,8 +465,9 @@ export function fireTurrets(
       // Turret mount point in world (full XYZ from the resolver above).
       const mountZ = weaponMount.z;
 
-      const pellets = config.spread?.pelletCount ?? 1;
-      const spreadAngle = config.spread?.angle ?? 0;
+      const spreadConfig = config.spread;
+      const pellets = spreadConfig !== undefined ? spreadConfig.pelletCount : 1;
+      const spreadAngle = spreadConfig !== undefined ? spreadConfig.angle : 0;
       const barrelCount = countBarrels(config);
       const fireBaseIndex = weapon.barrelFireIndex;
 
@@ -609,16 +616,17 @@ export function fireTurrets(
             'projectile',
           );
           projectile.transform.z = spawnZ;
-          if (projectile.projectile) {
-            projectile.projectile.velocityZ = projVz;
-            projectile.projectile.lastSentVelZ = projVz;
+          const projectileComponent = projectile.projectile;
+          if (projectileComponent !== null) {
+            projectileComponent.velocityZ = projVz;
+            projectileComponent.lastSentVelZ = projVz;
           }
           // Set homing properties if weapon has homingTurnRate and weapon has a locked target
-          if (projShot.homingTurnRate && targetingTargetId !== -1) {
-            projectile.projectile!.homingTargetId = targetingTargetId;
-            projectile.projectile!.homingTurnRate = projShot.homingTurnRate;
+          if (projectileComponent !== null && projShot.homingTurnRate && targetingTargetId !== -1) {
+            projectileComponent.homingTargetId = targetingTargetId;
+            projectileComponent.homingTurnRate = projShot.homingTurnRate;
           }
-          const maxLifespan = projectile.projectile?.maxLifespan;
+          const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
 
           newProjectiles.push(projectile);
           spawnEvents.push({
@@ -682,9 +690,9 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
 
   // Pass 1.
   for (let slot = 0; slot < _packedProjectileCount;) {
-    const entity = _packedProjectileEntities[slot];
-    const proj = entity?.projectile;
-    if (!entity || !proj || !isPackedProjectileEligible(entity)) {
+    const entity = _packedProjectileEntities[slot] ?? null;
+    const proj = entity !== null ? entity.projectile : null;
+    if (entity === null || proj === null || !isPackedProjectileEligible(entity)) {
       unregisterPackedProjectile(_packedProjectileIds[slot]);
       continue;
     }
@@ -778,7 +786,10 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     proj.prevY = position.y;
     proj.prevZ = position.z;
 
-    const isDGunWave = proj.projectileType === 'projectile' && entity.dgunProjectile?.isDGun === true;
+    const dgunProjectile = entity.dgunProjectile;
+    const isDGunWave = proj.projectileType === 'projectile' &&
+      dgunProjectile !== null &&
+      dgunProjectile.isDGun === true;
     const projectileGravity = GRAVITY;
 
     // Per-tick acceleration. Gravity and thrust combine before
@@ -883,7 +894,9 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     // ballistic aim solver targets.
     const halfDtSq = 0.5 * dtSec * dtSec;
     if (isDGunWave) {
-      const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
+      const groundOffset = dgunProjectile !== null
+        ? dgunProjectile.groundOffset
+        : DGUN_TERRAIN_FOLLOW_HEIGHT;
       const targetX = position.x + proj.velocityX * dtSec + aNetX * halfDtSq;
       const targetY = position.y + proj.velocityY * dtSec + aNetY * halfDtSq;
       const targetZ = world.getGroundZ(targetX, targetY) + groundOffset;
@@ -985,8 +998,10 @@ export function updateProjectiles(
       const weaponIndex = proj.config.turretIndex ?? 0;
 
       // Remove beam if source is dead, gone, or no longer armed.
-      const sourceHostHp = source?.unit?.hp ?? source?.building?.hp ?? 0;
-      if (!source || sourceHostHp <= 0 || !source.combat) {
+      const sourceHostHp = source !== undefined
+        ? (source.unit !== null ? source.unit.hp : (source.building !== null ? source.building.hp : 0))
+        : 0;
+      if (source === undefined || sourceHostHp <= 0 || source.combat === null) {
         beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
         projectilesToRemove.push(entity.id);
         despawnEvents.push({ id: entity.id });

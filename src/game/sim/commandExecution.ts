@@ -86,10 +86,11 @@ function resetFlyingLoiterToCurrentPosition(entity: Entity, world: WorldState): 
 }
 
 function getCommanderDGunTurretId(commander: Entity): string | null {
-  const unitType = commander.unit?.unitType;
-  if (!unitType) return null;
+  const unit = commander.unit;
+  if (unit === null) return null;
   try {
-    return getUnitBlueprint(unitType).dgun?.turretId ?? null;
+    const dgun = getUnitBlueprint(unit.unitType).dgun;
+    return dgun !== null ? dgun.turretId : null;
   } catch {
     return null;
   }
@@ -293,7 +294,7 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
 function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (!entity?.unit) continue;
+    if (entity === undefined || entity.unit === null) continue;
 
     setUnitActions(entity.unit, []);
     entity.unit.patrolStartIndex = null;
@@ -325,8 +326,8 @@ function clearBuilderTargetIfRemoved(entity: Entity, removedActions: readonly Un
 function executeClearQueuedOrdersCommand(ctx: CommandContext, command: ClearQueuedOrdersCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    const unit = entity?.unit;
-    if (!entity || !unit) continue;
+    const unit = entity !== undefined ? entity.unit : null;
+    if (entity === undefined || unit === null) continue;
 
     const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
     if (activeIntentEnd < 0 || activeIntentEnd === unit.actions.length - 1) continue;
@@ -345,8 +346,8 @@ function executeClearQueuedOrdersCommand(ctx: CommandContext, command: ClearQueu
 function executeRemoveLastQueuedOrderCommand(ctx: CommandContext, command: RemoveLastQueuedOrderCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    const unit = entity?.unit;
-    if (!entity || !unit) continue;
+    const unit = entity !== undefined ? entity.unit : null;
+    if (entity === undefined || unit === null) continue;
 
     const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
     const lastIntentFinalIndex = getLastActionIntentFinalIndex(unit.actions);
@@ -370,9 +371,10 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
 
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (!entity?.unit) continue;
+    if (entity === undefined || entity.unit === null) continue;
     units.push(entity);
-    if (entity.unit.actions[0]?.type !== 'wait') allWaiting = false;
+    const firstAction = entity.unit.actions.length > 0 ? entity.unit.actions[0] : undefined;
+    if (firstAction === undefined || firstAction.type !== 'wait') allWaiting = false;
   }
   if (units.length === 0) return;
 
@@ -388,15 +390,18 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
       continue;
     }
 
-    if (!command.queue && unit.actions[0]?.type === 'wait') continue;
-    const anchor = command.queue ? unit.actions[unit.actions.length - 1] : undefined;
-    const x = anchor?.x ?? entity.transform.x;
-    const y = anchor?.y ?? entity.transform.y;
+    const firstAction = unit.actions.length > 0 ? unit.actions[0] : undefined;
+    if (!command.queue && firstAction !== undefined && firstAction.type === 'wait') continue;
+    const anchor = command.queue && unit.actions.length > 0
+      ? unit.actions[unit.actions.length - 1]
+      : undefined;
+    const x = anchor !== undefined ? anchor.x : entity.transform.x;
+    const y = anchor !== undefined ? anchor.y : entity.transform.y;
     const action: UnitAction = {
       type: 'wait',
       x,
       y,
-      z: anchor?.z ?? ctx.world.getGroundZ(x, y),
+      z: anchor !== undefined && anchor.z !== undefined ? anchor.z : ctx.world.getGroundZ(x, y),
     };
 
     if (command.queue) {
@@ -411,7 +416,12 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
 
 function executeStartBuildCommand(ctx: CommandContext, command: StartBuildCommand): void {
   const builder = ctx.world.getEntity(command.builderId);
-  if (!builder?.builder || !builder.ownership || !builder.unit) return;
+  if (
+    builder === undefined ||
+    builder.builder === null ||
+    builder.ownership === null ||
+    builder.unit === null
+  ) return;
 
   const playerId = builder.ownership.playerId;
 
@@ -456,7 +466,7 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
 
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
-  if (!factory?.factory || !factory.ownership) return;
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
 
   // Repeat-build: the selection persists even at unit cap so production
   // resumes automatically when an existing unit dies. Cap is enforced
@@ -468,7 +478,7 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
 
 function executeCancelQueueItemCommand(ctx: CommandContext, command: CancelQueueItemCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
-  if (!factory?.factory) return;
+  if (factory === undefined || factory.factory === null) return;
 
   // Pass `world` so dequeueing the head with an active shell tears the
   // shell down and refunds the resources already paid in.
@@ -479,7 +489,7 @@ function executeCancelQueueItemCommand(ctx: CommandContext, command: CancelQueue
 
 function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPointCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
-  if (!factory?.factory) return;
+  if (factory === undefined || factory.factory === null) return;
 
   factory.factory.rallyX = command.rallyX;
   factory.factory.rallyY = command.rallyY;
@@ -488,7 +498,7 @@ function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPoint
 
 function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFactoryWaypointsCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
-  if (!factory?.factory) return;
+  if (factory === undefined || factory.factory === null) return;
 
   if (command.queue) {
     // Add to existing waypoints (preserving the click-altitude `z`).
@@ -514,7 +524,12 @@ function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFact
 
 function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
-  if (!commander?.commander || !commander.ownership || !commander.combat) return;
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.ownership === null ||
+    commander.combat === null
+  ) return;
 
   const playerId = commander.ownership.playerId;
   const dx = command.targetX - commander.transform.x;
@@ -606,11 +621,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   );
 
   projectile.transform.z = dgunFireZ;
-  if (projectile.projectile) {
-    projectile.projectile.velocityZ = velocityZ;
-    projectile.projectile.lastSentVelZ = velocityZ;
+  const projectileComponent = projectile.projectile;
+  if (projectileComponent !== null) {
+    projectileComponent.velocityZ = velocityZ;
+    projectileComponent.lastSentVelZ = velocityZ;
   }
-  const maxLifespan = projectile.projectile?.maxLifespan;
+  const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
 
   ctx.world.addEntity(projectile);
 
@@ -650,8 +666,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabledCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    const combat = entity?.combat;
-    if (!entity || !combat) continue;
+    const combat = entity !== undefined ? entity.combat : null;
+    if (entity === undefined || combat === null) continue;
 
     const enabled = command.enabled === true;
     if (combat.fireEnabled === enabled) continue;
@@ -681,7 +697,12 @@ function executeRepairCommand(ctx: CommandContext, command: RepairCommand): void
 
 function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
-  if (!commander?.commander || !commander.unit || !commander.builder) return;
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null
+  ) return;
 
   const radius = clampRepairAreaRadius(command.radius);
   const target = findRepairAreaTarget(
@@ -706,7 +727,7 @@ function clampRepairAreaRadius(radius: number): number {
 }
 
 function isRepairableByCommander(commander: Entity, target: Entity | undefined): target is Entity {
-  if (!commander.ownership || !target?.ownership) return false;
+  if (commander.ownership === null || target === undefined || target.ownership === null) return false;
   if (target.ownership.playerId !== commander.ownership.playerId) return false;
 
   const isIncompleteBuilding = !!target.buildable &&
@@ -773,7 +794,12 @@ function enqueueRepairAction(
   target: Entity | undefined,
   queue: boolean,
 ): void {
-  if (!commander?.commander || !commander.unit || !commander.builder) return;
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null
+  ) return;
   if (!isRepairableByCommander(commander, target)) return;
 
   // The action's z is the target's actual altitude (already correct on
@@ -802,8 +828,14 @@ function enqueueReclaimAction(
   target: Entity | undefined,
   queue: boolean,
 ): void {
-  if (!commander?.commander || !commander.unit || !commander.builder) return;
-  if (commander.id === target?.id || !isReclaimableTarget(target)) return;
+  if (
+    commander === undefined ||
+    commander.commander === null ||
+    commander.unit === null ||
+    commander.builder === null
+  ) return;
+  if (target !== undefined && commander.id === target.id) return;
+  if (!isReclaimableTarget(target)) return;
 
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
@@ -874,11 +906,11 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
 
 function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
   const target = ctx.world.getEntity(command.targetId);
-  if (!target?.ownership) return;
+  if (target === undefined || target.ownership === null) return;
 
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (!entity?.unit || !entity.ownership) continue;
+    if (entity === undefined || entity.unit === null || entity.ownership === null) continue;
     if (entity.id === target.id) continue;
     if (entity.ownership.playerId !== target.ownership.playerId) continue;
 
@@ -899,7 +931,9 @@ function clampAttackAreaRadius(radius: number): number {
 function getCommandUnitPlayerId(ctx: CommandContext, entityIds: readonly number[]): PlayerId | undefined {
   for (let i = 0; i < entityIds.length; i++) {
     const entity = ctx.world.getEntity(entityIds[i]);
-    if (entity?.unit && entity.ownership) return entity.ownership.playerId;
+    if (entity !== undefined && entity.unit !== null && entity.ownership !== null) {
+      return entity.ownership.playerId;
+    }
   }
   return undefined;
 }
@@ -1086,7 +1120,8 @@ function addPathActions(
   if (GAME_DIAGNOSTICS.commandPlans) {
     // Diagnostic: dump the plan for player-issued move commands so we
     // can correlate "I clicked here" -> "the unit got these waypoints".
-    const beforeLen = unit.unit?.actions.length ?? 0;
+    const unitComponent = unit.unit;
+    const beforeLen = unitComponent !== null ? unitComponent.actions.length : 0;
     debugLog(
       true,
       '[plan] unit #%d (%d,%d)->(%d,%d) type=%s queue=%s: prev queue had %d action(s), planner emits %d waypoint(s)',
@@ -1117,7 +1152,8 @@ function addPathActions(
     addActionToUnit(unit, actions[i], i === 0 ? queue : true, ctx.world);
   }
   if (GAME_DIAGNOSTICS.commandPlans) {
-    const afterLen = unit.unit?.actions.length ?? 0;
+    const unitComponent = unit.unit;
+    const afterLen = unitComponent !== null ? unitComponent.actions.length : 0;
     debugLog(true, '  [plan]   unit #%d actions.length now = %d', unit.id, afterLen);
   }
 }

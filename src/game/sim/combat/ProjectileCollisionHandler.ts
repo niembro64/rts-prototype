@@ -424,7 +424,8 @@ function spawnSubmunitions(
       proj.projectile.velocityZ = launchVz;
       proj.projectile.lastSentVelZ = launchVz;
     }
-    const maxLifespan = proj.projectile?.maxLifespan;
+    const projectileComponent = proj.projectile;
+    const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
     outProjectiles.push(proj);
     outSpawnEvents.push({
       id: proj.id,
@@ -494,7 +495,8 @@ export function checkProjectileCollisions(
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
     const damageSourceKey = proj.sourceTurretId ?? shotId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
-    const isDGunProjectile = projEntity.dgunProjectile?.isDGun === true;
+    const dgunProjectile = projEntity.dgunProjectile;
+    const isDGunProjectile = dgunProjectile !== null && dgunProjectile.isDGun === true;
     const profile = config.shotProfile;
     const runtimeProfile = profile.runtime;
     const isRocketShot = runtimeProfile.isRocketLike;
@@ -541,9 +543,13 @@ export function checkProjectileCollisions(
         reflectorNormalY = _reflectorHitNormalY[projectileOrdinal];
         reflectorNormalZ = _reflectorHitNormalZ[projectileOrdinal];
         const reflectorEntityId = _reflectorHitEntityId[projectileOrdinal];
-        reflectorPlayerId = reflectorEntityId >= 0
-          ? world.getEntity(reflectorEntityId)?.ownership?.playerId
-          : undefined;
+        if (reflectorEntityId >= 0) {
+          const reflectorEntity = world.getEntity(reflectorEntityId);
+          const reflectorOwnership = reflectorEntity !== undefined ? reflectorEntity.ownership : null;
+          reflectorPlayerId = reflectorOwnership !== null ? reflectorOwnership.playerId : undefined;
+        } else {
+          reflectorPlayerId = undefined;
+        }
         hitMirrorPanel = reflectorKind === REFLECTOR_HIT_KIND_MIRROR;
         hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
@@ -844,9 +850,9 @@ export function checkProjectileCollisions(
       const beamShot = config.shot as BeamShot | LaserShot;
       const points = proj.points;
       const lastPoint = points && points.length >= 2 ? points[points.length - 1] : undefined;
-      const impactX = lastPoint?.x ?? projEntity.transform.x;
-      const impactY = lastPoint?.y ?? projEntity.transform.y;
-      const impactZ = lastPoint?.z ?? projEntity.transform.z;
+      const impactX = lastPoint !== undefined ? lastPoint.x : projEntity.transform.x;
+      const impactY = lastPoint !== undefined ? lastPoint.y : projEntity.transform.y;
+      const impactZ = lastPoint !== undefined ? lastPoint.z : projEntity.transform.z;
       const dtSec = collisionDtMs / 1000;
 
       const damageSphereRadius = runtimeProfile.damageRadius;
@@ -969,7 +975,7 @@ export function checkProjectileCollisions(
             type: 'swept',
             sourceEntityId: proj.sourceEntityId,
             ownerId: projEntity.ownership.playerId,
-            damage: isDGunProjectile ? (projShot.explosion?.damage ?? 0) : 0,
+            damage: isDGunProjectile && projShot.explosion !== undefined ? projShot.explosion.damage : 0,
             excludeEntities: hitEntities,
             excludeCommanders: isDGunProjectile,
             prev: { x: prevX, y: prevY, z: prevZ },
@@ -1122,7 +1128,7 @@ export function checkProjectileCollisions(
   // Remove expired projectiles (and clean up beam index for any beams)
   for (const id of projectilesToRemove) {
     const entity = world.getEntity(id);
-    if (entity?.projectile && isLineShotType(entity.projectile.projectileType)) {
+    if (entity !== undefined && entity.projectile !== null && isLineShotType(entity.projectile.projectileType)) {
       const proj = entity.projectile;
       const weaponIdx = proj.config.turretIndex ?? 0;
       beamIndex.removeBeam(proj.sourceEntityId, weaponIdx);

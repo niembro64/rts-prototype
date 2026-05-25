@@ -551,15 +551,15 @@ function stampCombatTargetingEntityInto(
   // shipped to the scheduler. The Rust scheduler now reads them from
   // the slab so updateTargetingAndFiringState can shrink to a queue +
   // kernel call + writeback path without per-entity prep.
-  const priorityTargetId = combat?.priorityTargetId ?? null;
-  const priorityPoint = combat?.priorityTargetPoint ?? null;
+  const priorityTargetId = combat !== null ? combat.priorityTargetId : null;
+  const priorityPoint = combat !== null ? combat.priorityTargetPoint : null;
   const priorityPointPresent = priorityPoint === null ? 0 : 1;
-  const priorityPointX = priorityPoint?.x ?? 0;
-  const priorityPointY = priorityPoint?.y ?? 0;
-  const priorityPointZ = priorityPoint?.z ?? 0;
-  const scheduledProbeTick = combat?.nextCombatProbeTick ?? -1;
+  const priorityPointX = priorityPoint !== null ? priorityPoint.x : 0;
+  const priorityPointY = priorityPoint !== null ? priorityPoint.y : 0;
+  const priorityPointZ = priorityPoint !== null ? priorityPoint.z : 0;
+  const scheduledProbeTick = combat !== null ? combat.nextCombatProbeTick : -1;
 
-  const turrets = combat?.turrets;
+  const turrets = combat !== null ? combat.turrets : null;
   const views = getCombatTargetingStateViews(sim);
   const maxTurrets = targeting.maxTurretsPerEntity();
   // Keep the Rust-owned FSM tuple authoritative across input stamping.
@@ -606,10 +606,10 @@ function stampCombatTargetingEntityInto(
     priorityPointPresent,
     priorityPointX, priorityPointY, priorityPointZ,
     scheduledProbeTick,
-    turrets?.length ?? 0,
+    turrets !== null ? turrets.length : 0,
   );
 
-  if (!turrets) return true;
+  if (turrets === null) return true;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const stateCode = preservePreviousFsm
@@ -751,8 +751,9 @@ export function stampMirrorPanelPool(world: WorldState): void {
     if (!unit.unit || unit.unit.hp <= 0) continue;
     const panels = unit.unit.mirrorPanels;
     if (!panels || panels.length === 0) continue;
-    const unitTurrets = unit.combat?.turrets;
-    if (!unitTurrets || unitTurrets.length === 0) continue;
+    const unitCombat = unit.combat;
+    const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
+    if (unitTurrets === null || unitTurrets.length === 0) continue;
 
     const broadRadius = Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot)
       + MIRROR_SIGHT_QUERY_PAD;
