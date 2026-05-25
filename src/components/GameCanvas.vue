@@ -1331,7 +1331,7 @@ watchEffect(() => {
 }
 
 .battle-loading-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 3600;
   display: flex;
