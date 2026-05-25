@@ -159,15 +159,17 @@ function getBuildingPlacementDiagnosticsAtGrid(
         }
       }
 
-      if (!blocking && candidateType === 'extractor') {
+      if (!blocking) {
         const deposit = findDepositContainingPoint(metalDeposits, x, y);
         metalCovered = deposit !== null;
         depositId = deposit === null ? null : deposit.id;
-        if (metalCovered) {
-          reason = 'metal';
-          metalCoveredCells++;
-        } else {
-          reason = 'empty';
+        if (candidateType === 'extractor') {
+          if (metalCovered) {
+            reason = 'metal';
+            metalCoveredCells++;
+          } else {
+            reason = 'empty';
+          }
         }
       }
 

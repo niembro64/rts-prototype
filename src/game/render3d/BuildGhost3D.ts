@@ -291,6 +291,7 @@ export class BuildGhost3D {
 
   private materialForCell(cell: BuildPlacementCellDiagnostic): CellMaterialPair {
     if (cell.blocking) return { fill: this.cellMatBad, border: this.cellBorderMatBad };
+    if (cell.metalCovered) return { fill: this.cellMatMetal, border: this.cellBorderMatMetal };
     return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
