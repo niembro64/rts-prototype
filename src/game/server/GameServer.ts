@@ -885,9 +885,6 @@ export class GameServer {
   setTickRate(hz: number): void {
     if (this.tickRateHz === hz) return;
     this.tickRateHz = hz;
-    this.tpsAvg = 0;
-    this.tpsLow = 0;
-    this.tpsInitialized = false;
     if (this.tickLoop.isRunning()) {
       this.startGameLoop();
     }
