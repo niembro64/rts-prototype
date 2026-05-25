@@ -11,7 +11,7 @@
   "battleDefaults": {
     "demoBattle": {
       "focus": "map-origin-map-height-agnostic",
-      "zoom": 0.4,
+      "zoom": 0.5,
       "autoRotate": false,
       "autoRotateRate": 0.0
     },
