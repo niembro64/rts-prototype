@@ -912,7 +912,7 @@
     "projectileId": "heavyShot",
     "range": 1500,
     "cooldown": 1500,
-    "launchForce": 20000,
+    "launchForce": 30000,
     "turretTurnAccel": 180,
     "turretDrag": 0.15,
     "barrel": {
