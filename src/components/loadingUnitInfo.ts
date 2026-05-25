@@ -6,17 +6,9 @@ import {
   getUnitLocomotion,
 } from '@/game/sim/blueprints';
 import { createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
-import {
-  getTurretBarrelCenterToTipLength,
-  getTurretBarrelDiameter,
-  getTurretHeadRadius,
-} from '@/game/math';
 import type {
-  BarrelShape,
   LocomotionBlueprint,
   ShotBlueprint,
-  UnitBodyShape,
-  UnitBodyShapePart,
   UnitBlueprint,
 } from '@/types/blueprints';
 import type {
@@ -87,7 +79,6 @@ export function buildLoadingUnitInfo(unitId: BuildableUnitId): LoadingUnitInfo {
     leftSections: [
       buildEconomySection(blueprint, buildCost),
       buildMovementSection(blueprint),
-      buildVisualPiecesSection(blueprint),
     ],
     rightSections: [
       buildCombatSummarySection(turrets, firepower, longestRange),
@@ -106,15 +97,10 @@ function buildEconomySection(
     title: 'Unit',
     items: [
       stat('Blueprint', blueprint.id),
-      stat('Short name', blueprint.shortName),
       stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
-      stat('Authored cost', `${fmt(blueprint.cost.energy)}E / ${fmt(blueprint.cost.metal)}M`),
       stat('Hit points', fmt(blueprint.hp)),
       stat('Mass', fmt(blueprint.mass)),
-      stat('Body radius', fmt(blueprint.radius.body)),
-      stat('Hit radius', fmt(blueprint.radius.shot)),
-      stat('Push radius', fmt(blueprint.radius.push)),
-      stat('Body center height', fmt(blueprint.bodyCenterHeight)),
+      stat('Size', fmt(blueprint.radius.body)),
       stat(
         'Fight-move stop',
         blueprint.fightStopEngagedRatio === null
@@ -144,47 +130,7 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
   if (runtime.hoverHeight !== undefined) {
     items.push(stat('Hover height', fmt(runtime.hoverHeight)));
   }
-  if (runtime.hoverHeightRandomizationAmount !== undefined && runtime.hoverHeightRandomizationAmount > 0) {
-    items.push(stat('Altitude jitter', `${fmt(runtime.hoverHeightRandomizationAmount * 100, 1)}%`));
-  }
-  if (runtime.hoverHeightEMA !== undefined && runtime.hoverHeightEMA > 0) {
-    items.push(stat('Altitude EMA', fmt(runtime.hoverHeightEMA, 3)));
-  }
-  if (blueprint.suspension) {
-    items.push(node('Suspension', 'visual body spring', undefined, [
-      stat('Stiffness', fmt(blueprint.suspension.stiffness)),
-      stat('Damping ratio', fmt(blueprint.suspension.dampingRatio, 2)),
-      stat('Mass scale', blueprint.suspension.massScale === undefined ? '1' : fmt(blueprint.suspension.massScale, 2)),
-      stat(
-        'Max offset',
-        blueprint.suspension.maxOffset
-          ? `x ${fmt(blueprint.suspension.maxOffset.x ?? 0)}, y ${fmt(blueprint.suspension.maxOffset.y ?? 0)}, z ${fmt(blueprint.suspension.maxOffset.z ?? 0)}`
-          : 'unclamped',
-      ),
-    ]));
-  }
   return { id: 'movement', title: 'Movement', items };
-}
-
-function buildVisualPiecesSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
-  return {
-    id: 'visual-pieces',
-    title: 'Pieces',
-    items: [
-      describeBodyShape(blueprint.bodyShape, blueprint.radius.body),
-      describeLocomotionPieces(blueprint.locomotion, blueprint.radius.body),
-      node(
-        'Hardpoints',
-        `${blueprint.turrets.length} turret mount${plural(blueprint.turrets.length)}`,
-        undefined,
-        blueprint.turrets.map((mount, index) => node(
-          `Mount ${index + 1}`,
-          mount.turretId,
-          `x ${fmt(mount.mount.x * blueprint.radius.body)}, y ${fmt(mount.mount.y * blueprint.radius.body)}, z ${fmt(mount.mount.z * blueprint.radius.body)}`,
-        )),
-      ),
-    ],
-  };
 }
 
 function buildCombatSummarySection(
@@ -245,8 +191,6 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   const blueprint = getTurretBlueprint(config.id);
   const firepower = computeTurretFirepower(config);
   const children: LoadingUnitInfoNode[] = [
-    stat('Mount', `x ${fmt(turret.mount.x)}, y ${fmt(turret.mount.y)}, z ${fmt(turret.mount.z)}`),
-    stat('Head radius', fmt(getTurretHeadRadius(config))),
     stat('Range', `fire ${rangePair(turret.ranges.fire.max)}${turret.ranges.tracking ? ` / track ${rangePair(turret.ranges.tracking)}` : ''}`),
     stat('Cooldown', config.cooldown > 0 ? ms(config.cooldown) : 'continuous'),
     stat('Firepower', firepower.sustainedDps > 0 ? `${fmt(firepower.sustainedDps, 1)} DPS` : 'utility'),
@@ -265,20 +209,7 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   if (config.groundAimFraction !== undefined) {
     children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
   }
-  if (config.barrel) children.push(describeBarrel(config, config.barrel));
   if (config.shot) children.push(describeShot(config.shot, blueprint.projectileId));
-  if (config.constructionEmitter) {
-    children.push(node('Construction emitter', config.visualVariant ?? config.constructionEmitter.defaultSize, undefined, [
-      stat('Particle speed', fmt(config.constructionEmitter.particleTravelSpeed)),
-      stat('Particle radius', fmt(config.constructionEmitter.particleRadius)),
-    ]));
-  }
-  if (blueprint.mirrorPanels.length > 0) {
-    children.push(node('Mirror panels', fmt(blueprint.mirrorPanels.length), undefined, blueprint.mirrorPanels.map((panel, panelIndex) => stat(
-      `Panel ${panelIndex + 1}`,
-      `offset ${fmt(panel.offsetX)}, lateral ${fmt(panel.offsetY)}, angle ${rad(panel.angle)}`,
-    ))));
-  }
   const exclusions = describeLockOnExclusions(blueprint);
   if (exclusions.length > 0) children.push(node('Lock-on exclusions', undefined, undefined, exclusions));
 
@@ -350,141 +281,10 @@ function describeShot(shot: ShotConfig, projectileId: string | null): LoadingUni
   return node('Shot', label, undefined, children);
 }
 
-function describeBarrel(config: TurretConfig, barrel: BarrelShape): LoadingUnitInfoNode {
-  const baseChildren = [
-    stat('Length', fmt(getTurretBarrelCenterToTipLength(config))),
-    stat('Diameter', fmt(getTurretBarrelDiameter(config))),
-  ];
-  if (barrel.type === 'simpleMultiBarrel') {
-    return node('Barrel', 'parallel cluster', undefined, [
-      stat('Count', fmt(barrel.barrelCount)),
-      stat('Orbit', fmt(barrel.orbitRadius)),
-      stat('Spin', `${fmt(barrel.spin.idle)}-${fmt(barrel.spin.max)} rad/s`),
-      ...baseChildren,
-    ]);
-  }
-  if (barrel.type === 'coneMultiBarrel') {
-    return node('Barrel', 'splayed cluster', undefined, [
-      stat('Count', fmt(barrel.barrelCount)),
-      stat('Base orbit', fmt(barrel.baseOrbit)),
-      stat('Tip orbit', barrel.tipOrbit === undefined ? 'derived from spread' : fmt(barrel.tipOrbit)),
-      stat('Spin', `${fmt(barrel.spin.idle)}-${fmt(barrel.spin.max)} rad/s`),
-      ...baseChildren,
-    ]);
-  }
-  if (barrel.type === 'complexSingleEmitter') {
-    return node('Emitter geometry', barrel.grate.shape, undefined, [
-      stat('Pieces', fmt(barrel.grate.count)),
-      stat('Length', fmt(barrel.grate.length)),
-      stat('Width', fmt(barrel.grate.width)),
-      stat('Taper', fmt(barrel.grate.taper, 2)),
-      stat('Reverse phase', yesNo(barrel.grate.reversePhase)),
-    ]);
-  }
-  return node('Barrel', labelCase(barrel.type), undefined, baseChildren);
-}
-
-function describeBodyShape(shape: UnitBodyShape, radius: number): LoadingUnitInfoNode {
-  if (shape.kind === 'composite') {
-    return node('Body', `${shape.parts.length} authored parts`, undefined, shape.parts.map((part, index) =>
-      describeBodyPart(part, radius, index),
-    ));
-  }
-  return describeBodyShapeLeaf('Body', shape, radius);
-}
-
-function describeBodyShapeLeaf(label: string, shape: Exclude<UnitBodyShape, { kind: 'composite' }>, radius: number): LoadingUnitInfoNode {
-  if (shape.kind === 'circle') {
-    return stat(label, `sphere r ${fmt(shape.radiusFrac * radius)}, y ${fmt((shape.yFrac ?? shape.radiusFrac) * radius)}`);
-  }
-  if (shape.kind === 'oval') {
-    return stat(label, `oval ${fmt(shape.xFrac * radius)} x ${fmt(shape.yFrac * radius)} x ${fmt(shape.zFrac * radius)}`);
-  }
-  if (shape.kind === 'rect') {
-    return stat(label, `box ${fmt(shape.lengthFrac * radius * 2)} x ${fmt(shape.heightFrac * radius)} x ${fmt(shape.widthFrac * radius * 2)}`);
-  }
-  if (shape.kind === 'rhombus') {
-    return stat(label, `rhombus ${fmt(shape.lengthFrac * radius * 2)} x ${fmt(shape.heightFrac * radius)} x ${fmt(shape.widthFrac * radius * 2)}`);
-  }
-  return stat(label, `${shape.sides}-gon r ${fmt(shape.radiusFrac * radius)}, h ${fmt(shape.heightFrac * radius)}, rot ${rad(shape.rotation)}`);
-}
-
-function describeBodyPart(part: UnitBodyShapePart, radius: number, index: number): LoadingUnitInfoNode {
-  const offset = `offset x ${fmt(part.offsetForward * radius)}, z ${fmt((part.offsetLateral ?? 0) * radius)}`;
-  if (part.kind === 'circle') {
-    return stat(`Part ${index + 1}`, `sphere r ${fmt(part.radiusFrac * radius)}; ${offset}`);
-  }
-  if (part.kind === 'oval') {
-    return stat(`Part ${index + 1}`, `oval ${fmt(part.xFrac * radius)} x ${fmt(part.yFrac * radius)} x ${fmt(part.zFrac * radius)}; ${offset}`);
-  }
-  if (part.kind === 'cone') {
-    return stat(`Part ${index + 1}`, `cone len ${fmt(part.lengthFrac * radius)}, r ${fmt(part.radiusFrac * radius)}; ${offset}`);
-  }
-  return stat(`Part ${index + 1}`, `cylinder len ${fmt(part.lengthFrac * radius)}, r ${fmt(part.radiusFrac * radius)}; ${offset}`);
-}
-
-function describeLocomotionPieces(locomotion: LocomotionBlueprint, radius: number): LoadingUnitInfoNode {
-  if (locomotion.type === 'wheels') {
-    const config = locomotion.config;
-    return node('Locomotion pieces', '4 wheels', undefined, [
-      stat('Wheel positions', `x +/-${fmt(config.wheelDistX * radius)}, z +/-${fmt(config.wheelDistY * radius)}`),
-      stat('Wheel radius', fmt(config.wheelRadius * radius)),
-      stat('Tire width', fmt(config.treadWidth * radius)),
-      stat('Spin speed', fmt(config.rotationSpeed)),
-    ]);
-  }
-  if (locomotion.type === 'treads') {
-    const config = locomotion.config;
-    const wheelCount = Math.max(2, Math.round(config.treadLength * 2));
-    return node('Locomotion pieces', '2 tread ribbons', undefined, [
-      stat('Side offset', `+/-${fmt(config.treadOffset * radius)}`),
-      stat('Ribbon size', `${fmt(config.treadLength * radius)} x ${fmt(config.treadWidth * radius)}`),
-      stat('Internal wheels', `${wheelCount * 2} total`),
-      stat('End caps', '4 rounded caps'),
-      stat('Animated cleats', 'full belt loop'),
-    ]);
-  }
-  if (locomotion.type === 'legs') {
-    const config = locomotion.config;
-    return node('Locomotion pieces', `${config.leftSide.length * 2} mirrored legs`, undefined, config.leftSide.map((leg, index) =>
-      node(`Left leg ${index + 1}`, undefined, undefined, [
-        stat('Attach', `x ${fmt(leg.attachOffsetXFrac * radius)}, z ${fmt(leg.attachOffsetYFrac * radius)}`),
-        stat('Upper / lower', `${fmt(leg.upperLegLengthFrac * radius)} / ${fmt(leg.lowerLegLengthFrac * radius)}`),
-        stat('Snap trigger', rad(leg.snapTriggerAngle)),
-        stat('Snap target', rad(leg.snapTargetAngle)),
-      ]),
-    ));
-  }
-  if (locomotion.type === 'hover') {
-    const config = locomotion.config;
-    const fanCount = config.tailFanOffsetX !== undefined
-      ? (config.tailFanRadius !== undefined && config.tailFanRadius > 0 ? 3 : 2)
-      : (config.fanLayout === 'triFront' ? 3 : 4);
-    return node('Locomotion pieces', `${fanCount} ducted fans`, undefined, [
-      stat('Main fan radius', fmt(config.fanRadius * radius)),
-      stat('Ring tube', fmt(config.fanRingTubeRadius * radius)),
-      stat('Fan layout', config.tailFanOffsetX !== undefined ? 'dragonfly' : (config.fanLayout ?? 'quad')),
-      stat('Spin rate', `${fmt(config.fanSpinRadPerSec ?? 42)} rad/s`),
-      ...(config.tailFanRadius !== undefined ? [stat('Tail fan radius', fmt(config.tailFanRadius * radius))] : []),
-    ]);
-  }
-  const config = locomotion.config;
-  return node('Locomotion pieces', 'fixed wing aircraft', undefined, [
-    stat('Primary wings', config.wingEnabled === false ? 'disabled' : wingSummary(config.wingSpan, config.wingChord, radius)),
-    stat('Tail wings', wingSummary(config.tailWingSpan, config.tailWingChord, radius)),
-    stat('Jets', `${config.jetCount ?? 2} nozzle${plural(config.jetCount ?? 2)}`),
-    stat('Jet size', `r ${fmt(config.jetRadius * radius)}, len ${fmt(config.jetLength * radius)}`),
-  ]);
-}
-
 function describeLocomotionConfig(locomotion: LocomotionBlueprint): LoadingUnitInfoNode[] {
   if (locomotion.type === 'hover' || locomotion.type === 'flying') {
     const config = locomotion.config;
-    return [
-      stat('Hover height', fmt(config.hoverHeight)),
-      stat('Randomization', config.hoverHeightRandomizationAmount ? `${fmt(config.hoverHeightRandomizationAmount * 100, 1)}%` : 'none'),
-      stat('EMA smoothing', config.hoverHeightEMA ? fmt(config.hoverHeightEMA, 3) : 'none'),
-    ];
+    return [stat('Hover height', fmt(config.hoverHeight))];
   }
   return [];
 }
@@ -624,7 +424,3 @@ function plural(count: number): string {
   return count === 1 ? '' : 's';
 }
 
-function wingSummary(span: number | undefined, chord: number | undefined, radius: number): string {
-  if (span === undefined || chord === undefined) return 'none';
-  return `span ${fmt(span * radius)}, chord ${fmt(chord * radius)}`;
-}
