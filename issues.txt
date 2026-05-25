@@ -226,6 +226,13 @@ Evidence:
   array. Remaining minimap decode DTO arrays are retained snapshot
   outputs and should not be scratch-pooled until snapshot ownership /
   lifetime is changed.
+- src/game/network/snapshotAudioWirePack.ts still emits the existing
+  packed row-array wire shape for compatibility, but the 2026-05-25
+  audio scratch pass now reuses pack-side string slots and event /
+  death-context / impact-context / turret-pose row arrays instead of
+  allocating fresh nested row arrays every snapshot. Remaining audio
+  decode DTO arrays are retained snapshot outputs and should not be
+  scratch-pooled until snapshot ownership / lifetime is changed.
 - These run on the host per snapshot (5-10 Hz) per remote client,
   so the allocation pressure scales with N_entities × N_clients ×
   SPS. At 5,000 entities the allocator gets a steady drumbeat of

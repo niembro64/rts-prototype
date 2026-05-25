@@ -91,6 +91,43 @@ export type NetworkServerSnapshotWire = Omit<NetworkServerSnapshot, 'audioEvents
   audioEvents: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
 };
 
+const _packStrings: string[] = [];
+const _packStringSlots = new Map<string, number>();
+const _packEventRows: number[][] = [];
+const _packDeathRows: number[][] = [];
+const _packImpactRows: number[][] = [];
+const _packTurretPoseRows: number[][] = [];
+const _packEventRowPool: number[][] = [];
+const _packDeathRowPool: number[][] = [];
+const _packImpactRowPool: number[][] = [];
+const _packTurretPoseRowPool: number[][] = [];
+
+function releaseRows(rows: number[][], pool: number[][]): void {
+  for (let i = 0; i < rows.length; i++) {
+    rows[i].length = 0;
+    pool.push(rows[i]);
+  }
+  rows.length = 0;
+}
+
+function resetAudioPackScratch(): void {
+  _packStrings.length = 0;
+  _packStringSlots.clear();
+  releaseRows(_packEventRows, _packEventRowPool);
+  releaseRows(_packDeathRows, _packDeathRowPool);
+  releaseRows(_packImpactRows, _packImpactRowPool);
+  releaseRows(_packTurretPoseRows, _packTurretPoseRowPool);
+}
+
+function rentRow(pool: number[][]): number[] {
+  const row = pool.pop();
+  if (row !== undefined) {
+    row.length = 0;
+    return row;
+  }
+  return [];
+}
+
 export function packNetworkSnapshotAudioForWire(
   state: NetworkServerSnapshot,
 ): NetworkServerSnapshotWire {
@@ -122,12 +159,13 @@ export function packAudioEventsForWire(
   if (events === undefined) return undefined;
   if (events.length === 0) return undefined;
 
-  const strings: string[] = [];
-  const stringSlots = new Map<string, number>();
-  const eventRows: number[][] = [];
-  const deathRows: number[][] = [];
-  const impactRows: number[][] = [];
-  const turretPoseRows: number[][] = [];
+  resetAudioPackScratch();
+  const strings = _packStrings;
+  const stringSlots = _packStringSlots;
+  const eventRows = _packEventRows;
+  const deathRows = _packDeathRows;
+  const impactRows = _packImpactRows;
+  const turretPoseRows = _packTurretPoseRows;
 
   for (let eventIndex = 0; eventIndex < events.length; eventIndex++) {
     const event = events[eventIndex];
@@ -149,14 +187,15 @@ export function packAudioEventsForWire(
     if (event.deathContext !== null) flags |= EVENT_HAS_DEATH_CONTEXT;
     if (event.impactContext !== null) flags |= EVENT_HAS_IMPACT_CONTEXT;
 
-    const row = [
+    const row = rentRow(_packEventRowPool);
+    row.push(
       typeCode,
       flags,
       stringSlot(strings, stringSlots, event.turretId),
       quantizeProjectilePosition(event.pos.x),
       quantizeProjectilePosition(event.pos.y),
       quantizeProjectilePosition(event.pos.z),
-    ];
+    );
 
     if (event.sourceType !== null) {
       row.push(AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0);
@@ -181,7 +220,8 @@ export function packAudioEventsForWire(
       appendDeathContextRow(event.deathContext, strings, stringSlots, deathRows, turretPoseRows);
     }
     if (event.impactContext !== null) {
-      impactRows.push([
+      const impactRow = rentRow(_packImpactRowPool);
+      impactRow.push(
         quantizeProjectilePosition(event.impactContext.collisionRadius),
         quantizeProjectilePosition(event.impactContext.explosionRadius),
         quantizeProjectilePosition(event.impactContext.projectile.pos.x),
@@ -193,7 +233,8 @@ export function packAudioEventsForWire(
         quantizeProjectilePosition(event.impactContext.entity.collisionRadius),
         quantizeNormal(event.impactContext.penetrationDir.x),
         quantizeNormal(event.impactContext.penetrationDir.y),
-      ]);
+      );
+      impactRows.push(impactRow);
     }
     eventRows.push(row);
   }
@@ -325,7 +366,8 @@ function appendDeathContextRow(
   if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
   if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
 
-  const row = [
+  const row = rentRow(_packDeathRowPool);
+  row.push(
     flags,
     quantizeVelocity(context.unitVel.x),
     quantizeVelocity(context.unitVel.y),
@@ -336,7 +378,7 @@ function appendDeathContextRow(
     context.attackMagnitude,
     quantizeProjectilePosition(context.radius),
     context.color,
-  ];
+  );
 
   if (context.visualRadius !== undefined) row.push(quantizeProjectilePosition(context.visualRadius));
   if (context.pushRadius !== undefined) row.push(quantizeProjectilePosition(context.pushRadius));
@@ -349,10 +391,12 @@ function appendDeathContextRow(
     row.push(context.turretPoses.length);
     for (let i = 0; i < context.turretPoses.length; i++) {
       const pose = context.turretPoses[i];
-      turretPoseRows.push([
+      const poseRow = rentRow(_packTurretPoseRowPool);
+      poseRow.push(
         quantizeRotation(pose.rotation),
         quantizeRotation(pose.pitch),
-      ]);
+      );
+      turretPoseRows.push(poseRow);
     }
   }
 
