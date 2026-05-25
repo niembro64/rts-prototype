@@ -140,8 +140,10 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
   if (!FORCE_JS_SNAPSHOT_WIRE) {
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
+      buildability: 'raw',
       minimapEntities: 'raw',
       projectiles: 'raw',
+      terrain: 'raw',
     });
     const rustResult = encodeNetworkSnapshotWithRustFallback(rustWireState);
     if (rustResult) {
@@ -209,13 +211,18 @@ export function packNetworkSnapshotForWire(
   state: NetworkServerSnapshot,
   options: {
     audioEvents?: 'packed' | 'raw';
+    buildability?: 'packed' | 'raw';
     minimapEntities?: 'packed' | 'raw';
     projectiles?: 'packed' | 'raw';
+    terrain?: 'packed' | 'raw';
   } = {},
 ): NetworkServerSnapshotWire {
   const packedAudioEvents = options.audioEvents === 'raw'
     ? undefined
     : packAudioEventsForWire(state.audioEvents);
+  const packedBuildability = options.buildability === 'raw'
+    ? undefined
+    : packBuildabilityForWire(state.buildability);
   const packedMinimapEntities = options.minimapEntities === 'raw'
     ? undefined
     : packMinimapEntitiesForWire(state.minimapEntities);
@@ -223,8 +230,9 @@ export function packNetworkSnapshotForWire(
     ? undefined
     : packProjectilesForWire(state.projectiles);
   const packedEntities = packEntitiesForWire(state.entities);
-  const packedTerrain = packTerrainForWire(state.terrain);
-  const packedBuildability = packBuildabilityForWire(state.buildability);
+  const packedTerrain = options.terrain === 'raw'
+    ? undefined
+    : packTerrainForWire(state.terrain);
   if (
     packedAudioEvents === undefined &&
     packedMinimapEntities === undefined &&

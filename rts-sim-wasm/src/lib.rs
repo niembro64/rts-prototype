@@ -16786,6 +16786,126 @@ pub fn snapshot_encode_number_scratch_ensure(number_count: u32) {
     }
 }
 
+struct SnapshotEncodePackedStaticScratch {
+    bytes: Vec<u8>,
+}
+
+struct SnapshotEncodePackedStaticScratchHolder(
+    UnsafeCell<Option<SnapshotEncodePackedStaticScratch>>,
+);
+unsafe impl Sync for SnapshotEncodePackedStaticScratchHolder {}
+static SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH: SnapshotEncodePackedStaticScratchHolder =
+    SnapshotEncodePackedStaticScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_packed_static_scratch() -> &'static mut SnapshotEncodePackedStaticScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_PACKED_STATIC_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodePackedStaticScratch {
+                bytes: Vec::with_capacity(4096),
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[inline]
+fn packed_static_write_var_uint(bytes: &mut Vec<u8>, mut value: u64) {
+    while value >= 0x80 {
+        bytes.push(((value % 0x80) as u8) | 0x80);
+        value /= 0x80;
+    }
+    bytes.push(value as u8);
+}
+
+#[inline]
+fn packed_static_write_var_int(bytes: &mut Vec<u8>, value: f64) {
+    let v = value.round() as i64;
+    let encoded = if v < 0 {
+        ((-v) as u64 * 2) - 1
+    } else {
+        (v as u64) * 2
+    };
+    packed_static_write_var_uint(bytes, encoded);
+}
+
+fn write_number_scratch_float32_bin(w: &mut MessagePackWriter, offset: u32, count: u32) {
+    let numbers = snapshot_encode_number_scratch();
+    let scratch = snapshot_encode_packed_static_scratch();
+    let start = offset as usize;
+    let n = count as usize;
+    scratch.bytes.clear();
+    scratch.bytes.reserve(n * 4);
+    for i in 0..n {
+        let value = numbers.buf.get(start + i).copied().unwrap_or(0.0) as f32;
+        scratch.bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    w.write_bin(&scratch.bytes);
+}
+
+fn write_triangle_index_delta_bin(w: &mut MessagePackWriter, offset: u32, count: u32) {
+    let numbers = snapshot_encode_number_scratch();
+    let scratch = snapshot_encode_packed_static_scratch();
+    let start = offset as usize;
+    let triangle_count = (count as usize) / 3;
+    scratch.bytes.clear();
+    scratch.bytes.reserve(1 + triangle_count * 4);
+    packed_static_write_var_uint(&mut scratch.bytes, triangle_count as u64);
+
+    let mut previous_base = 0.0;
+    for tri in 0..triangle_count {
+        let base = start + tri * 3;
+        let a = numbers.buf.get(base).copied().unwrap_or(0.0);
+        let b = numbers.buf.get(base + 1).copied().unwrap_or(0.0);
+        let c = numbers.buf.get(base + 2).copied().unwrap_or(0.0);
+        packed_static_write_var_int(&mut scratch.bytes, a - previous_base);
+        packed_static_write_var_int(&mut scratch.bytes, b - a);
+        packed_static_write_var_int(&mut scratch.bytes, c - a);
+        previous_base = a;
+    }
+
+    w.write_bin(&scratch.bytes);
+}
+
+#[inline]
+fn number_scratch_i32(index: usize) -> i32 {
+    snapshot_encode_number_scratch()
+        .buf
+        .get(index)
+        .copied()
+        .unwrap_or(0.0) as i32
+}
+
+fn buildability_run_count(
+    flags_offset: u32,
+    flags_count: u32,
+    levels_offset: u32,
+    levels_count: u32,
+) -> usize {
+    let count = (flags_count as usize).min(levels_count as usize);
+    if count == 0 {
+        return 0;
+    }
+    let flags_start = flags_offset as usize;
+    let levels_start = levels_offset as usize;
+    let mut runs = 0usize;
+    let mut i = 0usize;
+    while i < count {
+        runs += 1;
+        let flag = number_scratch_i32(flags_start + i);
+        let level = number_scratch_i32(levels_start + i);
+        i += 1;
+        while i < count
+            && number_scratch_i32(flags_start + i) == flag
+            && number_scratch_i32(levels_start + i) == level
+        {
+            i += 1;
+        }
+    }
+    runs
+}
+
 #[inline]
 fn write_number_array_from_scratch(w: &mut MessagePackWriter, offset: u32, count: u32) {
     let scratch = snapshot_encode_number_scratch();
@@ -18348,6 +18468,63 @@ pub fn snapshot_encode_envelope_emit_shroud(
     w.buf.len() as u32
 }
 
+/// Append compact `terrain: { v: 4, m, vc, vh, ti }` from raw
+/// TerrainTileMap arrays already copied into number scratch. This
+/// mirrors snapshotStaticWirePack.ts without running its large JS
+/// packing loops on the Rust send path.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_packed_terrain(
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    subdiv: f64,
+    cells_x: f64,
+    cells_y: f64,
+    vertices_x: f64,
+    vertices_y: f64,
+    version: f64,
+    mesh_vertex_coords_offset: u32,
+    mesh_vertex_coords_count: u32,
+    mesh_vertex_heights_offset: u32,
+    mesh_vertex_heights_count: u32,
+    mesh_triangle_indices_offset: u32,
+    mesh_triangle_indices_count: u32,
+) -> u32 {
+    const PACKED_TERRAIN_VERSION: u64 = 4;
+    const TERRAIN_TRIANGLE_INDICES_DELTA: f64 = 4.0;
+
+    let w = messagepack_writer();
+    w.write_str("terrain");
+    w.write_map_header(5);
+
+    w.write_str("v");
+    w.write_uint(PACKED_TERRAIN_VERSION);
+
+    w.write_str("m");
+    w.write_array_header(10);
+    w.write_number(map_width);
+    w.write_number(map_height);
+    w.write_number(cell_size);
+    w.write_number(subdiv);
+    w.write_number(cells_x);
+    w.write_number(cells_y);
+    w.write_number(vertices_x);
+    w.write_number(vertices_y);
+    w.write_number(version);
+    w.write_number(TERRAIN_TRIANGLE_INDICES_DELTA);
+
+    w.write_str("vc");
+    write_number_scratch_float32_bin(w, mesh_vertex_coords_offset, mesh_vertex_coords_count);
+
+    w.write_str("vh");
+    write_number_scratch_float32_bin(w, mesh_vertex_heights_offset, mesh_vertex_heights_count);
+
+    w.write_str("ti");
+    write_triangle_index_delta_bin(w, mesh_triangle_indices_offset, mesh_triangle_indices_count);
+
+    w.buf.len() as u32
+}
+
 /// Append the static `terrain` top-level snapshot key. Full keyframes
 /// use this to ship the authoritative TerrainTileMap without falling
 /// back to JS object MessagePack encoding.
@@ -18434,6 +18611,69 @@ pub fn snapshot_encode_envelope_emit_terrain(
         mesh_cell_triangle_indices_offset,
         mesh_cell_triangle_indices_count,
     );
+
+    w.buf.len() as u32
+}
+
+/// Append compact `buildability: { v: 1, m, k, r }` from raw
+/// TerrainBuildabilityGrid flags/levels copied into number scratch.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_packed_buildability(
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    cells_x: f64,
+    cells_y: f64,
+    version: f64,
+    config_key_slot: u32,
+    flags_offset: u32,
+    flags_count: u32,
+    levels_offset: u32,
+    levels_count: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    w.write_str("buildability");
+    w.write_map_header(4);
+
+    w.write_str("v");
+    w.write_uint(1);
+
+    w.write_str("m");
+    w.write_array_header(6);
+    w.write_number(map_width);
+    w.write_number(map_height);
+    w.write_number(cell_size);
+    w.write_number(cells_x);
+    w.write_number(cells_y);
+    w.write_number(version);
+
+    w.write_str("k");
+    write_string_from_scratch(w, config_key_slot);
+
+    w.write_str("r");
+    let count = (flags_count as usize).min(levels_count as usize);
+    let flags_start = flags_offset as usize;
+    let levels_start = levels_offset as usize;
+    let run_count = buildability_run_count(flags_offset, flags_count, levels_offset, levels_count);
+    w.write_array_header(run_count * 3);
+
+    let mut i = 0usize;
+    while i < count {
+        let flag = number_scratch_i32(flags_start + i);
+        let level = number_scratch_i32(levels_start + i);
+        let mut run_length = 1usize;
+        i += 1;
+        while i < count
+            && number_scratch_i32(flags_start + i) == flag
+            && number_scratch_i32(levels_start + i) == level
+        {
+            run_length += 1;
+            i += 1;
+        }
+        w.write_number(run_length as f64);
+        w.write_number(flag as f64);
+        w.write_number(level as f64);
+    }
 
     w.buf.len() as u32
 }

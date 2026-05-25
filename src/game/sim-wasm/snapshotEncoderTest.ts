@@ -36,7 +36,9 @@ import {
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
+  snapshot_encode_envelope_emit_packed_terrain,
   snapshot_encode_envelope_emit_terrain,
+  snapshot_encode_envelope_emit_packed_buildability,
   snapshot_encode_envelope_emit_buildability,
   snapshot_encode_number_scratch_ptr,
   snapshot_encode_number_scratch_ensure,
@@ -86,6 +88,10 @@ import {
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { packMinimapEntitiesForWire } from '../network/snapshotMinimapWirePack';
 import { packProjectilesForWire } from '../network/snapshotProjectileWirePack';
+import {
+  packBuildabilityForWire,
+  packTerrainForWire,
+} from '../network/snapshotStaticWirePack';
 
 const TURRET_SCRATCH_STRIDE = 10;
 const ACTION_SCRATCH_STRIDE = 16;
@@ -1943,6 +1949,29 @@ function emitTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFixture)
   );
 }
 
+function emitPackedTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFixture): void {
+  const arrays = [
+    terrain.meshVertexCoords,
+    terrain.meshVertexHeights,
+    terrain.meshTriangleIndices,
+  ] as const;
+  const offsets = packNumberArraysIntoScratch(memory, arrays);
+  snapshot_encode_envelope_emit_packed_terrain(
+    terrain.mapWidth,
+    terrain.mapHeight,
+    terrain.cellSize,
+    terrain.subdiv,
+    terrain.cellsX,
+    terrain.cellsY,
+    terrain.verticesX,
+    terrain.verticesY,
+    terrain.version,
+    offsets[0], terrain.meshVertexCoords.length,
+    offsets[1], terrain.meshVertexHeights.length,
+    offsets[2], terrain.meshTriangleIndices.length,
+  );
+}
+
 type BuildabilityFixture = {
   mapWidth: number;
   mapHeight: number;
@@ -1959,6 +1988,25 @@ function emitBuildabilityFixture(memory: WebAssembly.Memory, buildability: Build
   const offsets = packNumberArraysIntoScratch(memory, [buildability.flags, buildability.levels]);
   packStringsIntoScratch(memory, [buildability.configKey]);
   snapshot_encode_envelope_emit_buildability(
+    buildability.mapWidth,
+    buildability.mapHeight,
+    buildability.cellSize,
+    buildability.cellsX,
+    buildability.cellsY,
+    buildability.version,
+    0,
+    offsets[0], buildability.flags.length,
+    offsets[1], buildability.levels.length,
+  );
+}
+
+function emitPackedBuildabilityFixture(
+  memory: WebAssembly.Memory,
+  buildability: BuildabilityFixture,
+): void {
+  const offsets = packNumberArraysIntoScratch(memory, [buildability.flags, buildability.levels]);
+  packStringsIntoScratch(memory, [buildability.configKey]);
+  snapshot_encode_envelope_emit_packed_buildability(
     buildability.mapWidth,
     buildability.mapHeight,
     buildability.cellSize,
@@ -3443,6 +3491,89 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
   return { passed, failed };
 }
 
+function runPackedStaticCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: {
+    tick: number;
+    label: string;
+    terrain: TerrainFixture;
+    buildability: BuildabilityFixture;
+  }[] = [
+    {
+      tick: 1900,
+      label: 'small static map',
+      terrain: {
+        mapWidth: 400,
+        mapHeight: 300,
+        cellSize: 20,
+        subdiv: 2,
+        cellsX: 20,
+        cellsY: 15,
+        verticesX: 41,
+        verticesY: 31,
+        version: 7,
+        meshVertexCoords: [0, 0, 20, 0, 0, 20, 20, 20],
+        meshVertexHeights: [0, 1.5, -2, 3.25],
+        meshTriangleIndices: [0, 1, 2, 1, 3, 2],
+        meshTriangleLevels: [],
+        meshTriangleNeighborIndices: [],
+        meshTriangleNeighborLevels: [],
+        meshCellTriangleOffsets: [],
+        meshCellTriangleIndices: [],
+      },
+      buildability: {
+        mapWidth: 400,
+        mapHeight: 300,
+        cellSize: 40,
+        cellsX: 10,
+        cellsY: 8,
+        version: 7,
+        configKey: 'plateau-a',
+        flags: [1, 1, 0, 0, 0, 2],
+        levels: [0, 0, 0, 0, 1, 1],
+      },
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  for (const f of fixtures) {
+    const wireFixture = {
+      tick: f.tick,
+      entities: [],
+      economy: {},
+      terrain: packTerrainForWire(f.terrain),
+      buildability: packBuildabilityForWire(f.buildability),
+      isDelta: false,
+    };
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
+    snapshot_encode_envelope_begin(f.tick, 0, 6);
+    snapshot_encode_envelope_emit_economy(0);
+    emitPackedTerrainFixture(memory, f.terrain);
+    emitPackedBuildabilityFixture(memory, f.buildability);
+    snapshot_encode_envelope_continue(0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+    const ptr = messagepack_writer_ptr();
+    const len = messagepack_writer_len();
+    const rustBytes = new Uint8Array(memory.buffer, ptr, len).slice();
+    if (bytesEqual(jsBytes, rustBytes)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(
+        `[snapshot encoder] packed static byte mismatch ${f.label}`,
+        {
+          fixture: f,
+          jsLen: jsBytes.length,
+          rustLen: rustBytes.length,
+          jsHex: hex(jsBytes),
+          rustHex: hex(rustBytes),
+        },
+      );
+    }
+  }
+  return { passed, failed };
+}
+
 export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
@@ -3453,20 +3584,23 @@ export async function runSnapshotEncoderByteEqualityTest(
   const envelope = runEnvelopeCases(memory);
   const packedMinimap = runPackedMinimapCases(memory);
   const packedProjectiles = runPackedProjectileCases(memory);
+  const packedStatic = runPackedStaticCases(memory);
   const passed =
     basic.passed +
     unit.passed +
     building.passed +
     envelope.passed +
     packedMinimap.passed +
-    packedProjectiles.passed;
+    packedProjectiles.passed +
+    packedStatic.passed;
   const failed =
     basic.failed +
     unit.failed +
     building.failed +
     envelope.failed +
     packedMinimap.failed +
-    packedProjectiles.failed;
+    packedProjectiles.failed +
+    packedStatic.failed;
   const total = passed + failed;
   if (failed > 0) {
     throw new Error(

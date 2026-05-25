@@ -80,17 +80,17 @@ Evidence:
   stable enough to land in Rust now (V1-V6 versions are append-only
   and the encoder is bit-deterministic).
 - 2026-05-25: the Rust snapshot send path now emits compact packed
-  audio, minimap V2, and projectile V2 payloads directly from WASM
-  scratch. The TS packers remain for JS fallback, decode,
-  measurement, and the remaining entity/static migration slices.
+  audio, minimap V2, projectile V2, terrain V4, and buildability V1
+  payloads directly from WASM scratch. The TS packers remain for JS
+  fallback, decode, measurement, and the remaining entity migration
+  slice.
 
 Fix direction:
-Migrate the per-entity and remaining static snapshot
-emit loops into the Rust encoder. Keep the JS wrappers only as
-thin call-into-WASM shells. This also cuts the JS/WASM boundary
-crossings the philosophy warns about: today every snapshot copies
-entity slab values from WASM into JS arrays just to be re-packed
-into a wire buffer.
+Migrate the per-entity snapshot emit loop into the Rust encoder. Keep
+the JS wrappers only as thin call-into-WASM shells. This also cuts the
+JS/WASM boundary crossings the philosophy warns about: today every
+snapshot copies entity slab values from WASM into JS arrays just to be
+re-packed into a wire buffer.
 
 ------------------------------------------------------------------------------
 TS-WASM-01E - child: client prediction step body is still a per-unit

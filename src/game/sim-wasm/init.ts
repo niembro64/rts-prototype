@@ -264,7 +264,9 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
+  snapshot_encode_envelope_emit_packed_terrain,
   snapshot_encode_envelope_emit_terrain,
+  snapshot_encode_envelope_emit_packed_buildability,
   snapshot_encode_envelope_emit_buildability,
   snapshot_encode_number_scratch_ptr,
   snapshot_encode_number_scratch_ensure,
@@ -2091,9 +2093,27 @@ export interface SnapshotEncodeApi {
   shroudScratchPtr: () => number;
   /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
   shroudScratchEnsure: (byteCount: number) => void;
-  /** Emit `terrain: TerrainTileMap`. Terrain number arrays must be
-   *  packed into number scratch, with offsets/counts passed for each
-   *  array in TerrainTileMap field order. */
+  /** Emit compact `terrain: {v,m,vc,vh,ti}` from raw TerrainTileMap
+   *  arrays copied into number scratch. */
+  emitPackedTerrain: (
+    mapWidth: number,
+    mapHeight: number,
+    cellSize: number,
+    subdiv: number,
+    cellsX: number,
+    cellsY: number,
+    verticesX: number,
+    verticesY: number,
+    version: number,
+    meshVertexCoordsOffset: number,
+    meshVertexCoordsCount: number,
+    meshVertexHeightsOffset: number,
+    meshVertexHeightsCount: number,
+    meshTriangleIndicesOffset: number,
+    meshTriangleIndicesCount: number,
+  ) => number;
+  /** Emit full `terrain: TerrainTileMap`. Retained for byte-parity
+   *  fixtures and raw DTO fallback diagnostics. */
   emitTerrain: (
     mapWidth: number,
     mapHeight: number,
@@ -2121,8 +2141,23 @@ export interface SnapshotEncodeApi {
     meshCellTriangleIndicesOffset: number,
     meshCellTriangleIndicesCount: number,
   ) => number;
-  /** Emit `buildability: TerrainBuildabilityGrid`. configKey must be
-   *  in string scratch; flags/levels live in number scratch. */
+  /** Emit compact `buildability: {v,m,k,r}` from raw flags/levels
+   *  copied into number scratch. */
+  emitPackedBuildability: (
+    mapWidth: number,
+    mapHeight: number,
+    cellSize: number,
+    cellsX: number,
+    cellsY: number,
+    version: number,
+    configKeySlot: number,
+    flagsOffset: number,
+    flagsCount: number,
+    levelsOffset: number,
+    levelsCount: number,
+  ) => number;
+  /** Emit full `buildability: TerrainBuildabilityGrid`. Retained for
+   *  byte-parity fixtures and raw DTO fallback diagnostics. */
   emitBuildability: (
     mapWidth: number,
     mapHeight: number,
@@ -2810,7 +2845,9 @@ export function initSimWasm(): Promise<SimWasm> {
           emitShroud: snapshot_encode_envelope_emit_shroud,
           shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
           shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
+          emitPackedTerrain: snapshot_encode_envelope_emit_packed_terrain,
           emitTerrain: snapshot_encode_envelope_emit_terrain,
+          emitPackedBuildability: snapshot_encode_envelope_emit_packed_buildability,
           emitBuildability: snapshot_encode_envelope_emit_buildability,
           numberScratchPtr: snapshot_encode_number_scratch_ptr,
           numberScratchEnsure: snapshot_encode_number_scratch_ensure,

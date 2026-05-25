@@ -1654,19 +1654,14 @@ function canEncodeTerrain(terrain: TerrainTileMap): boolean {
   );
 }
 
-function emitTerrain(sim: SimWasm, terrain: TerrainTileMap): void {
+function emitPackedTerrain(sim: SimWasm, terrain: TerrainTileMap): void {
   const arrays = [
     terrain.meshVertexCoords,
     terrain.meshVertexHeights,
     terrain.meshTriangleIndices,
-    terrain.meshTriangleLevels,
-    terrain.meshTriangleNeighborIndices,
-    terrain.meshTriangleNeighborLevels,
-    terrain.meshCellTriangleOffsets,
-    terrain.meshCellTriangleIndices,
   ] as const;
   const offsets = packNumberArraysIntoScratch(sim, arrays);
-  sim.snapshotEncode.emitTerrain(
+  sim.snapshotEncode.emitPackedTerrain(
     terrain.mapWidth,
     terrain.mapHeight,
     terrain.cellSize,
@@ -1679,11 +1674,6 @@ function emitTerrain(sim: SimWasm, terrain: TerrainTileMap): void {
     offsets[0], terrain.meshVertexCoords.length,
     offsets[1], terrain.meshVertexHeights.length,
     offsets[2], terrain.meshTriangleIndices.length,
-    offsets[3], terrain.meshTriangleLevels.length,
-    offsets[4], terrain.meshTriangleNeighborIndices.length,
-    offsets[5], terrain.meshTriangleNeighborLevels.length,
-    offsets[6], terrain.meshCellTriangleOffsets.length,
-    offsets[7], terrain.meshCellTriangleIndices.length,
   );
 }
 
@@ -1701,10 +1691,10 @@ function canEncodeBuildability(buildability: TerrainBuildabilityGrid): boolean {
   );
 }
 
-function emitBuildability(sim: SimWasm, buildability: TerrainBuildabilityGrid): void {
+function emitPackedBuildability(sim: SimWasm, buildability: TerrainBuildabilityGrid): void {
   const offsets = packNumberArraysIntoScratch(sim, [buildability.flags, buildability.levels]);
   packOrderedStringsIntoScratch(sim, [buildability.configKey]);
-  sim.snapshotEncode.emitBuildability(
+  sim.snapshotEncode.emitPackedBuildability(
     buildability.mapWidth,
     buildability.mapHeight,
     buildability.cellSize,
@@ -1831,7 +1821,7 @@ function emitTopLevelKey(
         emitRawKeyValue(api, key, value);
         return;
       }
-      emitTerrain(sim, terrain);
+      emitPackedTerrain(sim, terrain);
       return;
     }
     case 'buildability': {
@@ -1845,7 +1835,7 @@ function emitTopLevelKey(
         emitRawKeyValue(api, key, value);
         return;
       }
-      emitBuildability(sim, buildability);
+      emitPackedBuildability(sim, buildability);
       return;
     }
     default:
