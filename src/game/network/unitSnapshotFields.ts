@@ -62,17 +62,19 @@ export function decodeNetworkUnitType(unitType: unknown): string | null {
 }
 
 function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitAction | null {
-  if (!action.pos) return null;
+  const pos = action.pos;
+  if (pos === null) return null;
+  const grid = action.grid;
   return {
     type: codeToActionType(action.type) as UnitAction['type'],
-    x: action.pos.x,
-    y: action.pos.y,
+    x: pos.x,
+    y: pos.y,
     z: action.posZ ?? undefined,
     isPathExpansion: action.pathExp ?? undefined,
     targetId: action.targetId ?? undefined,
     buildingType: (action.buildingType ?? undefined) as BuildingType | undefined,
-    gridX: action.grid?.x,
-    gridY: action.grid?.y,
+    gridX: grid !== null && grid !== undefined ? grid.x : undefined,
+    gridY: grid !== null && grid !== undefined ? grid.y : undefined,
     buildingId: action.buildingId ?? undefined,
   };
 }
@@ -138,10 +140,20 @@ export function readNetworkUnitRadius(
   src: NetworkUnitSnapshot | undefined | null,
   fallback: number | NetworkUnitRadius,
 ): { body: number; shot: number; push: number } {
+  const radius = src !== null && src !== undefined ? src.radius : null;
   return {
-    body: finiteOr(src?.radius?.body, radiusFallback(fallback, 'body')),
-    shot: finiteOr(src?.radius?.shot, radiusFallback(fallback, 'shot')),
-    push: finiteOr(src?.radius?.push, radiusFallback(fallback, 'push')),
+    body: finiteOr(
+      radius !== null && radius !== undefined ? radius.body : undefined,
+      radiusFallback(fallback, 'body'),
+    ),
+    shot: finiteOr(
+      radius !== null && radius !== undefined ? radius.shot : undefined,
+      radiusFallback(fallback, 'shot'),
+    ),
+    push: finiteOr(
+      radius !== null && radius !== undefined ? radius.push : undefined,
+      radiusFallback(fallback, 'push'),
+    ),
   };
 }
 
@@ -153,34 +165,40 @@ export function readNetworkUnitBodyCenterHeight(
   src: NetworkUnitSnapshot | undefined | null,
   fallback: number,
 ): number {
-  return finiteOr(src?.bodyCenterHeight, finiteOr(src?.radius?.push, fallback));
+  if (src === null || src === undefined) return fallback;
+  const radius = src.radius;
+  return finiteOr(
+    src.bodyCenterHeight,
+    finiteOr(radius !== null && radius !== undefined ? radius.push : undefined, fallback),
+  );
 }
 
 export function readNetworkUnitMass(
   src: NetworkUnitSnapshot | undefined | null,
   fallback: number,
 ): number {
-  return finiteOr(src?.mass, fallback);
+  return src !== null && src !== undefined ? finiteOr(src.mass, fallback) : fallback;
 }
 
 export function readNetworkUnitVelocity(src: NetworkUnitSnapshot | undefined | null): Vec3 {
+  const velocity = src !== null && src !== undefined ? src.velocity : null;
   return {
-    x: deqVel(finiteOr(src?.velocity?.x, 0)),
-    y: deqVel(finiteOr(src?.velocity?.y, 0)),
-    z: deqVel(finiteOr(src?.velocity?.z, 0)),
+    x: deqVel(finiteOr(velocity !== null && velocity !== undefined ? velocity.x : undefined, 0)),
+    y: deqVel(finiteOr(velocity !== null && velocity !== undefined ? velocity.y : undefined, 0)),
+    z: deqVel(finiteOr(velocity !== null && velocity !== undefined ? velocity.z : undefined, 0)),
   };
 }
 
 export function readNetworkUnitSurfaceNormal(
   src: NetworkUnitSnapshot | undefined | null,
 ): { nx: number; ny: number; nz: number } {
-  return src?.surfaceNormal
-    ? {
-        nx: deqNormal(finiteOr(src.surfaceNormal.nx, 0)),
-        ny: deqNormal(finiteOr(src.surfaceNormal.ny, 0)),
-        nz: deqNormal(finiteOr(src.surfaceNormal.nz, 1000)),
-      }
-    : { nx: 0, ny: 0, nz: 1 };
+  const surfaceNormal = src !== null && src !== undefined ? src.surfaceNormal : null;
+  if (surfaceNormal === null || surfaceNormal === undefined) return { nx: 0, ny: 0, nz: 1 };
+  return {
+    nx: deqNormal(finiteOr(surfaceNormal.nx, 0)),
+    ny: deqNormal(finiteOr(surfaceNormal.ny, 0)),
+    nz: deqNormal(finiteOr(surfaceNormal.nz, 1000)),
+  };
 }
 
 export function writeNetworkUnitStaticFields(
@@ -410,12 +428,13 @@ export function applyNetworkUnitDriftFieldsToTarget(
     target.y = deqEntityPos(src.pos.y);
     target.z = deqEntityPos(src.pos.z);
   }
-  if (isFull && isFiniteNumber(src.unit?.bodyCenterHeight)) {
-    target.bodyCenterHeight = src.unit.bodyCenterHeight;
+  const unit = src.unit;
+  if (isFull && unit !== null && unit !== undefined && isFiniteNumber(unit.bodyCenterHeight)) {
+    target.bodyCenterHeight = unit.bodyCenterHeight;
   }
   if (isFull || (cf & ENTITY_CHANGED_NORMAL)) {
-    const sn = src.unit?.surfaceNormal;
-    if (sn) {
+    const sn = unit !== null && unit !== undefined ? unit.surfaceNormal : null;
+    if (sn !== null && sn !== undefined) {
       target.surfaceNormalX = deqNormal(sn.nx);
       target.surfaceNormalY = deqNormal(sn.ny);
       target.surfaceNormalZ = deqNormal(sn.nz);
@@ -425,7 +444,7 @@ export function applyNetworkUnitDriftFieldsToTarget(
     target.rotation = deqRot(src.rotation);
   }
   if (isFull || (cf & ENTITY_CHANGED_VEL)) {
-    const v = src.unit?.velocity;
+    const v = unit !== null && unit !== undefined ? unit.velocity : null;
     if (v !== null && v !== undefined) {
       target.velocityX = deqVel(v.x);
       target.velocityY = deqVel(v.y);
@@ -436,9 +455,8 @@ export function applyNetworkUnitDriftFieldsToTarget(
   // wire field is gated on the entity having one server-side, so
   // ground units never produce these and we leave the cached
   // target fields null.
-  const unit = src.unit;
-  const o = unit !== null ? unit.orientation : null;
-  if (o !== null) {
+  const o = unit !== null && unit !== undefined ? unit.orientation : null;
+  if (o !== null && o !== undefined) {
     let t = target.orientation;
     if (t === null) {
       t = { x: 0, y: 0, z: 0, w: 1 };
@@ -451,8 +469,8 @@ export function applyNetworkUnitDriftFieldsToTarget(
   } else if (isFull) {
     target.orientation = null;
   }
-  const av = unit !== null ? unit.angularVelocity3 : null;
-  if (av !== null) {
+  const av = unit !== null && unit !== undefined ? unit.angularVelocity3 : null;
+  if (av !== null && av !== undefined) {
     target.angularVelocityX = av.x;
     target.angularVelocityY = av.y;
     target.angularVelocityZ = av.z;

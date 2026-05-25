@@ -215,7 +215,7 @@ Evidence:
   ServerBootstrap startup progress/bootstrapped handoff signatures plus
   Pathfinder.MultiLegWaypoint.z to explicit `T | undefined` / `T | null`
   and explicit waypoint normalization.
-- Optional chaining remains at 192 in the in-scope tree after the
+- Optional chaining remains at 145 in the in-scope tree after the
   snapshot-section pass removed it from SnapshotBuffer and one touched
   serializer helper, and the 2026-05-23 server-connection pass removed
   `?:` / `?.` from LocalGameConnection, RemoteGameConnection,
@@ -264,8 +264,11 @@ Evidence:
   turretSystem, terrainTileMap, and turretSnapshotFields. The
   2026-05-25 sim command/combat pass removed optional reads from
   commandExecution, projectileSystem, targetingInputStamping, and
-  ProjectileCollisionHandler; the remaining explicit `?.` sites are
-  now in network serializer/view helper files.
+  ProjectileCollisionHandler. The 2026-05-25 network snapshot/view pass
+  removed the remaining optional reads from unitSnapshotFields and
+  ClientViewState; the remaining explicit `?.` sites are now in
+  stateSerializerEntities, stateSerializerEntityDelta,
+  NetworkEntityFactory, and snapshotRustWireEncoder.
 Why it matters:
 "Pooled objects carry zombie fields between users when those fields
 are T? rather than T | null with an explicit reset on release."

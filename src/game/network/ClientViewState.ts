@@ -159,7 +159,16 @@ export class ClientViewState {
       dirtyUnitRenderIds: this.dirtyUnitRenderIds,
       getMapWidth: () => this.mapWidth,
       getMapHeight: () => this.mapHeight,
-      getServerForceFieldsEnabled: () => this.serverMeta?.forceFieldsEnabled ?? true,
+      getServerForceFieldsEnabled: () => {
+        const serverMeta = this.serverMeta;
+        return (
+          serverMeta !== null &&
+          serverMeta.forceFieldsEnabled !== undefined &&
+          serverMeta.forceFieldsEnabled !== null
+        )
+          ? serverMeta.forceFieldsEnabled
+          : true;
+      },
       setForceFieldsEnabledForPrediction: (enabled) => {
         this.forceFieldsEnabledForPrediction = enabled;
       },
@@ -582,58 +591,66 @@ export class ClientViewState {
       }
     }
 
-    // Process projectile spawn events
-    if (state.projectiles?.spawns) {
-      for (const spawn of state.projectiles.spawns) {
-        if (this.projectileStore.projectileSpawns.shouldSmooth(spawn)) {
-          this.projectileStore.projectileSpawns.enqueue(spawn, now);
-          continue;
-        }
-        this.projectileStore.applySpawn(spawn);
-      }
-    }
+    const projectiles = state.projectiles;
+    if (projectiles !== undefined && projectiles !== null) {
+      const spawns = projectiles.spawns;
 
-    // Server-authored live beam/laser paths. These carry current
-    // start/end/reflection points so the client can draw beams without
-    // running local mirror/unit/building beam traces in applyPrediction.
-    if (state.projectiles?.beamUpdates) {
-      for (const update of state.projectiles.beamUpdates) {
-        this.projectileStore.applyBeamUpdate(update, now);
-      }
-    }
-
-    // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
-    if (state.projectiles?.despawns) {
-      for (const despawn of state.projectiles.despawns) {
-        this.deleteEntityLocalState(despawn.id);
-      }
-    }
-
-    // Process projectile velocity updates (reflection / homing course
-    // correction / despawn-of-target). Each one is a discrete
-    // authoritative event: the new state is exact truth as of the
-    // emitting server tick. Snap the entity state directly instead of
-    // routing through serverTargets + EMA — EMA-blending toward a step
-    // function produces a smoothing ramp that doesn't correspond to any
-    // real trajectory, which used to manifest as wiggly tails on
-    // reflected plasma. After snapping, the dead-reckon loop advances
-    // from the new state cleanly.
-    if (state.projectiles?.velocityUpdates) {
-      for (const vu of state.projectiles.velocityUpdates) {
-        const entity = this.entities.get(vu.id);
-        if (entity?.projectile) {
-          entity.transform.x = deqProjPos(vu.pos.x);
-          entity.transform.y = deqProjPos(vu.pos.y);
-          entity.transform.z = deqProjPos(vu.pos.z);
-          entity.projectile.velocityX = deqVel(vu.velocity.x);
-          entity.projectile.velocityY = deqVel(vu.velocity.y);
-          entity.projectile.velocityZ = deqVel(vu.velocity.z);
-          this.serverTargets.delete(vu.id);
-          if (vu.clearHomingTarget === true) {
-            entity.projectile.homingTargetId = NO_ENTITY_ID;
+      // Process projectile spawn events
+      if (spawns !== undefined && spawns !== null) {
+        for (const spawn of spawns) {
+          if (this.projectileStore.projectileSpawns.shouldSmooth(spawn)) {
+            this.projectileStore.projectileSpawns.enqueue(spawn, now);
+            continue;
           }
-          this.clearTargetPredictionAccum(vu.id);
-          this.projectileStore.markVelocityUpdateActive(entity, vu.id);
+          this.projectileStore.applySpawn(spawn);
+        }
+      }
+
+      // Server-authored live beam/laser paths. These carry current
+      // start/end/reflection points so the client can draw beams without
+      // running local mirror/unit/building beam traces in applyPrediction.
+      const beamUpdates = projectiles.beamUpdates;
+      if (beamUpdates !== undefined && beamUpdates !== null) {
+        for (const update of beamUpdates) {
+          this.projectileStore.applyBeamUpdate(update, now);
+        }
+      }
+
+      // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
+      const despawns = projectiles.despawns;
+      if (despawns !== undefined && despawns !== null) {
+        for (const despawn of despawns) {
+          this.deleteEntityLocalState(despawn.id);
+        }
+      }
+
+      // Process projectile velocity updates (reflection / homing course
+      // correction / despawn-of-target). Each one is a discrete
+      // authoritative event: the new state is exact truth as of the
+      // emitting server tick. Snap the entity state directly instead of
+      // routing through serverTargets + EMA — EMA-blending toward a step
+      // function produces a smoothing ramp that doesn't correspond to any
+      // real trajectory, which used to manifest as wiggly tails on
+      // reflected plasma. After snapping, the dead-reckon loop advances
+      // from the new state cleanly.
+      const velocityUpdates = projectiles.velocityUpdates;
+      if (velocityUpdates !== undefined && velocityUpdates !== null) {
+        for (const vu of velocityUpdates) {
+          const entity = this.entities.get(vu.id);
+          if (entity !== undefined && entity.projectile !== null) {
+            entity.transform.x = deqProjPos(vu.pos.x);
+            entity.transform.y = deqProjPos(vu.pos.y);
+            entity.transform.z = deqProjPos(vu.pos.z);
+            entity.projectile.velocityX = deqVel(vu.velocity.x);
+            entity.projectile.velocityY = deqVel(vu.velocity.y);
+            entity.projectile.velocityZ = deqVel(vu.velocity.z);
+            this.serverTargets.delete(vu.id);
+            if (vu.clearHomingTarget === true) {
+              entity.projectile.homingTargetId = NO_ENTITY_ID;
+            }
+            this.clearTargetPredictionAccum(vu.id);
+            this.projectileStore.markVelocityUpdateActive(entity, vu.id);
+          }
         }
       }
     }
@@ -674,8 +691,8 @@ export class ClientViewState {
         const evt = audioEventsForReflection[i];
         if (evt.type !== 'forceFieldImpact' || evt.entityId === null) continue;
         const entity = this.entities.get(evt.entityId);
-        const proj = entity?.projectile;
-        if (!proj) continue;
+        const proj = entity !== undefined ? entity.projectile : null;
+        if (proj === null) continue;
         proj.pendingReflectionX = evt.pos.x;
         proj.pendingReflectionY = evt.pos.y;
         proj.pendingReflectionZ = evt.pos.z;
@@ -697,30 +714,34 @@ export class ClientViewState {
     }
 
     // Check game over
+    const gameState = state.gameState;
     if (
-      state.gameState?.phase === 'gameOver' &&
-      state.gameState.winnerId !== undefined
+      gameState !== undefined &&
+      gameState !== null &&
+      gameState.phase === 'gameOver' &&
+      gameState.winnerId !== undefined
     ) {
-      this.gameOverWinnerId = state.gameState.winnerId;
+      this.gameOverWinnerId = gameState.winnerId;
     }
 
     // Store spatial grid debug data. The server sends this diagnostic
     // payload on a slower cadence than normal snapshots; keep the last
     // received grid payload until a new one arrives. When the server
     // toggle is off, serverMeta.grid clears the client copy.
+    const serverMeta = state.serverMeta;
     if (state.grid) {
       this.gridCells = state.grid.cells;
       this.gridSearchCells = state.grid.searchCells;
       this.gridCellSize = state.grid.cellSize;
-    } else if (state.serverMeta?.grid === false) {
+    } else if (serverMeta !== undefined && serverMeta !== null && serverMeta.grid === false) {
       this.gridCells = [];
       this.gridSearchCells = [];
       this.gridCellSize = 0;
     }
 
     // Store server metadata
-    if (state.serverMeta) {
-      this.serverMeta = state.serverMeta;
+    if (serverMeta !== undefined && serverMeta !== null) {
+      this.serverMeta = serverMeta;
     }
     this.visionPlayerMask = state.visionPlayerMask ?? 0;
     return applyStats;
@@ -778,12 +799,12 @@ export class ClientViewState {
     out.length = 0;
     for (const id of this.activeEntityPredictionIds) {
       const entity = this.entities.get(id);
-      if (entity?.unit) out.push(entity);
+      if (entity !== undefined && entity.unit !== null) out.push(entity);
     }
     for (const id of this.dirtyUnitRenderIds) {
       if (this.activeEntityPredictionIds.has(id)) continue;
       const entity = this.entities.get(id);
-      if (entity?.unit) out.push(entity);
+      if (entity !== undefined && entity.unit !== null) out.push(entity);
     }
     this.dirtyUnitRenderIds.clear();
     return out;
