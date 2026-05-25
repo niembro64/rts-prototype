@@ -127,7 +127,34 @@
       "count": 5,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
-      "reflectedVelocityDamper": 0.4
+      "reflectedVelocityDamper": 0.2
+    },
+    "homingTurnRate": null,
+    "homingThrust": null,
+    "smokeTrail": null
+  },
+  "megaMortarShot": {
+    "type": "plasma",
+    "id": "megaMortarShot",
+    "mass": 100,
+    "collision": {
+      "radius": 16
+    },
+    "explosion": {
+      "radius": 150,
+      "damage": 300,
+      "force": 20000
+    },
+    "detonateOnExpiry": true,
+    "hitSound": {
+      "$audio": "event.hit.mortarShot"
+    },
+    "submunitions": {
+      "shotId": "mortarShot",
+      "count": 5,
+      "randomSpreadSpeedHorizontal": 200,
+      "randomSpreadSpeedVertical": 80,
+      "reflectedVelocityDamper": 0.2
     },
     "homingTurnRate": null,
     "homingThrust": null,

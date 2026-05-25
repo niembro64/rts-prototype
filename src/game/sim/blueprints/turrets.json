@@ -186,7 +186,7 @@
     "projectileId": "mortarShot",
     "range": 1000,
     "cooldown": 6000,
-    "launchForce": 8000,
+    "launchForce": 20000,
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
@@ -301,7 +301,7 @@
     "projectileId": "mortarShot",
     "range": 2000,
     "cooldown": 500,
-    "launchForce": 10000,
+    "launchForce": 26000,
     "turretTurnAccel": 20,
     "turretDrag": 0.15,
     "barrel": {
@@ -912,7 +912,7 @@
     "projectileId": "heavyShot",
     "range": 1500,
     "cooldown": 1500,
-    "launchForce": 30000,
+    "launchForce": 20000,
     "turretTurnAccel": 180,
     "turretDrag": 0.15,
     "barrel": {

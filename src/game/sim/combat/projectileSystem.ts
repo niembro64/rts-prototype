@@ -496,13 +496,8 @@ export function fireTurrets(
 
         // Firing direction. Two modes:
         //
-        //  Vertical launcher: each rocket launches into a random cone
-        //  around world +Z. α is the deviation from vertical (sampled
-        //  uniformly in [0, spreadAngle]) and φ is a fully-random
-        //  horizontal direction. The resulting velocity vector is
-        //  (sinα·cosφ, sinα·sinφ, cosα) — always has positive Z, so
-        //  every rocket really does launch upward. Homing bends it
-        //  back toward the target from there.
+        //  Vertical launcher: every rocket leaves straight up (+Z).
+        //  Homing bends it back toward the target from there.
         //
         //  Standard turret: use the jittered yaw combined with the
         //  turret's pitch contribution (ballistic arc aim).
@@ -510,12 +505,9 @@ export function fireTurrets(
         let dirY: number;
         let dirZ: number;
         if (config.verticalLauncher) {
-          const alpha = world.rng.next() * spreadAngle;
-          const phi = world.rng.next() * Math.PI * 2;
-          const sinA = Math.sin(alpha);
-          dirX = sinA * Math.cos(phi);
-          dirY = sinA * Math.sin(phi);
-          dirZ = Math.cos(alpha);
+          dirX = 0;
+          dirY = 0;
+          dirZ = 1;
         } else {
           const dirPitchSin = Math.sin(turretPitch);
           const dirPitchCos = Math.cos(turretPitch);
