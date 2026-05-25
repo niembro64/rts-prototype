@@ -652,8 +652,8 @@
     "bodyCenterHeight": 24,
     "mass": 90,
     "cost": {
-      "energy": 190,
-      "metal": 190
+      "energy": 400,
+      "metal": 400
     },
     "turrets": [
       {
