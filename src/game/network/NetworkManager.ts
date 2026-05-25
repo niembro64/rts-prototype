@@ -252,7 +252,8 @@ export class NetworkManager {
       conn.close();
     }
     this.connections.clear();
-    this.peer?.destroy();
+    const existingPeer = this.peer;
+    if (existingPeer !== null) existingPeer.destroy();
     this.peer = null;
     this.gameStarted = false;
     this.snapshotTransport.reset();
@@ -413,7 +414,8 @@ export class NetworkManager {
       this.setupTimeoutId = setTimeout(() => {
         this.setupTimeoutId = null;
         if (resolved || !this.isCurrentSession(generation)) return;
-        this.peer?.destroy();
+        const currentPeer = this.peer;
+        if (currentPeer !== null) currentPeer.destroy();
         this.peer = null;
         settleReject(new Error('Connection timeout - signaling server may be unavailable'));
       }, 10000);
@@ -1091,9 +1093,10 @@ export class NetworkManager {
       .then(async () => {
         if (generation !== this.stateDecodeGeneration) return;
         const hostConn = this.connections.get(1);
+        const hostDataChannel = hostConn !== undefined ? hostConn.dataChannel : undefined;
         const state = await this.snapshotTransport.decodeReceivedState(
           message,
-          hostConn?.dataChannel,
+          hostDataChannel,
         );
         if (generation !== this.stateDecodeGeneration) return;
         if (!this.emitStateReceived(state)) {

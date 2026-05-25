@@ -99,12 +99,12 @@ export function snapClientNonVisualState(
     }
   }
 
-  if (entity.building && sb?.type !== null && sb?.type !== undefined && isFull) {
+  if (entity.building && sb !== null && sb.type !== null && isFull) {
     const buildingType = codeToBuildingType(sb.type);
     if (buildingType) entity.buildingType = buildingType as BuildingType;
   }
 
-  if (entity.building && sb?.turrets) {
+  if (entity.building && sb !== null && sb.turrets !== null) {
     if (isFull && entity.buildingType) {
       refreshBuildingTurretsFromNetwork(entity, entity.buildingType, sb.turrets);
     } else {
@@ -116,13 +116,13 @@ export function snapClientNonVisualState(
     entity.metalExtractionRate = sb.metalExtractionRate ?? null;
   }
 
-  if (entity.building && sb?.hp && (isFull || cf! & ENTITY_CHANGED_HP)) {
+  if (entity.building && sb !== null && sb.hp !== null && (isFull || cf! & ENTITY_CHANGED_HP)) {
     entity.building.hp = sb.hp.curr;
     entity.building.maxHp = sb.hp.max;
     cacheDirty = true;
   }
 
-  if (entity.building && sb?.build && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
+  if (entity.building && sb !== null && sb.build !== null && (isFull || cf! & ENTITY_CHANGED_BUILDING)) {
     cacheDirty = applyNetworkBuildState(
       entity,
       sb.build,
@@ -156,7 +156,7 @@ export function snapClientNonVisualState(
     }
   }
 
-  const sf = sb?.factory;
+  const sf = sb !== null ? sb.factory : null;
   if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
     const dst = entity.factory.buildQueue;
     const src = sf.queue;

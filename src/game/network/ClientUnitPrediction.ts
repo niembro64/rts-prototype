@@ -411,6 +411,7 @@ export function applyClientCombatExpensivePrediction(options: {
   const predictionMode = getPredictionMode();
   const integrateRotation = predictionMode !== 'pos';
   const turrets = entity.combat.turrets;
+  const targetTurrets = target !== undefined ? target.turrets : undefined;
   for (let i = 0; i < turrets.length; i++) {
     const weapon = turrets[i];
     if (weapon.config.visualOnly) continue;
@@ -421,8 +422,8 @@ export function applyClientCombatExpensivePrediction(options: {
       weapon.pitchVelocity = pitchStep.pitchVelocity;
     }
 
-    const tw = target?.turrets?.[i];
-    if (tw) {
+    const tw = targetTurrets !== undefined ? targetTurrets[i] : undefined;
+    if (tw !== undefined) {
       if (integrateRotation) {
         tw.rotation = advanceTurretYaw(tw.rotation, tw.angularVelocity, targetDt);
         const targetPitchStep = advanceTurretPitch(tw.pitch, tw.pitchVelocity, targetDt);
@@ -452,16 +453,18 @@ export function applyClientCombatExpensivePrediction(options: {
     }
 
     const shot = weapon.config.shot;
-    if (!shot || shot.type !== 'force') continue;
+    if (shot === undefined || shot.type !== 'force') continue;
     if (!forceFieldsEnabled) {
-      if (weapon.forceField) {
-        weapon.forceField.range = 0;
-        weapon.forceField.transition = 0;
+      const forceField = weapon.forceField;
+      if (forceField !== undefined) {
+        forceField.range = 0;
+        forceField.transition = 0;
       }
       continue;
     }
     const fieldShot = shot;
-    const cur = weapon.forceField?.range ?? 0;
+    const forceField = weapon.forceField;
+    const cur = forceField !== undefined ? forceField.range : 0;
     const targetProgress = isTurretEngaged(entity, i, weapon.state) ? 1 : 0;
     const progressDelta = dt / (fieldShot.transitionTime / 1000);
     let next = cur;
@@ -474,14 +477,14 @@ export function applyClientCombatExpensivePrediction(options: {
     // The force-field range is a slow visual transition, not a
     // snapshot-drift channel. It rides along with rotation-position
     // correction.
-    const serverRange = tw?.forceFieldRange;
+    const serverRange = tw !== undefined ? tw.forceFieldRange : undefined;
     if (serverRange !== undefined && rotPosBlend >= 0) {
       next = lerp(next, serverRange, rotPosBlend);
     }
-    if (!weapon.forceField) {
+    if (forceField === undefined) {
       weapon.forceField = { range: next, transition: 0 };
     } else {
-      weapon.forceField.range = next;
+      forceField.range = next;
     }
   }
 }
@@ -512,28 +515,34 @@ export function clientUnitPredictionIsSettled(
     }
   }
 
-  const weapons = entity.combat?.turrets;
-  if (!weapons || weapons.length === 0) return true;
+  const combat = entity.combat;
+  const weapons = combat !== null ? combat.turrets : null;
+  if (weapons === null || weapons.length === 0) return true;
+  const targetTurrets = target !== undefined ? target.turrets : undefined;
 
   for (let i = 0; i < weapons.length; i++) {
     const weapon = weapons[i];
     if (weapon.config.visualOnly) continue;
     if (Math.abs(weapon.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
 
-    const tw = target?.turrets?.[i];
-    if (tw) {
+    const tw = targetTurrets !== undefined ? targetTurrets[i] : undefined;
+    if (tw !== undefined) {
       if (Math.abs(tw.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
       if (angleDeltaAbs(weapon.rotation, tw.rotation) > PREDICTION_TURRET_EPSILON) return false;
       if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
       if (forceFieldsEnabled) {
-        const localRange = weapon.forceField?.range ?? 0;
+        const forceField = weapon.forceField;
+        const localRange = forceField !== undefined ? forceField.range : 0;
         const targetRange = tw.forceFieldRange ?? 0;
         if (Math.abs(localRange - targetRange) > PREDICTION_TURRET_EPSILON) return false;
       }
     }
 
-    if (forceFieldsEnabled && weapon.config.shot?.type === 'force') {
-      if ((weapon.forceField?.range ?? 0) > PREDICTION_TURRET_EPSILON) return false;
+    const shot = weapon.config.shot;
+    if (forceFieldsEnabled && shot !== undefined && shot.type === 'force') {
+      const forceField = weapon.forceField;
+      const range = forceField !== undefined ? forceField.range : 0;
+      if (range > PREDICTION_TURRET_EPSILON) return false;
       if (isTurretEngaged(entity, i, weapon.state)) return false;
     }
   }

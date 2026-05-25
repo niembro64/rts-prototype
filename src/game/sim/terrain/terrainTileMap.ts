@@ -1232,7 +1232,8 @@ function markTriangleLeafForSplit(
 ): void {
   const leafIndex = triangleLeafIndices[triangle];
   if (leafIndex === undefined || leafIndex < 0) return;
-  if ((leaves[leafIndex]?.side ?? 1) <= 1) return;
+  const leaf = leaves[leafIndex];
+  if (leaf === undefined || leaf.side <= 1) return;
   splitLeafIndices.add(leafIndex);
 }
 

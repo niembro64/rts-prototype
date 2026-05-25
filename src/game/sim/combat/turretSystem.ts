@@ -54,7 +54,14 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
   for (const unit of units) {
     if (!unit.combat || !unit.ownership) continue;
     const combat = unit.combat;
-    const hostHp = unit.unit?.hp ?? unit.building?.hp ?? 0;
+    const hostUnit = unit.unit;
+    const hostBuilding = unit.building;
+    const hostHp = hostUnit !== null
+      ? hostUnit.hp
+      : hostBuilding !== null
+        ? hostBuilding.hp
+        : 0;
+    const hostSurfaceNormal = hostUnit !== null ? hostUnit.surfaceNormal : undefined;
     if (hostHp <= 0) continue;
     // Inert shells (in-progress buildable) skip combat entirely until
     // every resource bar tops up.
@@ -111,7 +118,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
         const mount = resolveWeaponWorldMount(
           unit, weapon, weaponIndex,
           cos, sin,
-          { currentTick, unitGroundZ, surfaceN: unit.unit?.surfaceNormal },
+          { currentTick, unitGroundZ, surfaceN: hostSurfaceNormal },
           _turretMount,
         );
         const solved = solveTurretAimAtGroundPoint(
@@ -154,7 +161,7 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           const mount = resolveWeaponWorldMount(
             unit, weapon, weaponIndex,
             cos, sin,
-            { currentTick, unitGroundZ, surfaceN: unit.unit?.surfaceNormal },
+            { currentTick, unitGroundZ, surfaceN: hostSurfaceNormal },
             _turretMount,
           );
           const weaponX = mount.x;

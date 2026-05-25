@@ -194,9 +194,12 @@ export function applyClientProjectilePrediction(options: {
   const dt = entityDeltaMs / 1000;
   proj.timeAlive += entityDeltaMs;
 
-  const isDGunWave = entity.dgunProjectile?.isDGun === true;
+  const dgunProjectile = entity.dgunProjectile;
+  const isDGunWave = dgunProjectile !== null && dgunProjectile.isDGun === true;
   const projectileGravity = GRAVITY;
-  const groundOffset = entity.dgunProjectile?.groundOffset ?? DGUN_TERRAIN_FOLLOW_HEIGHT;
+  const groundOffset = dgunProjectile !== null
+    ? dgunProjectile.groundOffset
+    : DGUN_TERRAIN_FOLLOW_HEIGHT;
 
   // Projectiles are deterministic between discrete events: spawn,
   // reflection, homing course correction, despawn. Each event arrives

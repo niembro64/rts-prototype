@@ -148,7 +148,9 @@ export class LocalGameConnection implements GameConnection {
   }
 
   sendCommand(command: Command): void {
-    this.server?.receiveCommand(command, this.commandAuthority());
+    const server = this.server;
+    if (server === null) return;
+    server.receiveCommand(command, this.commandAuthority());
   }
 
   private commandAuthority(): CommandAuthority {
@@ -162,7 +164,9 @@ export class LocalGameConnection implements GameConnection {
   }
 
   markClientReady(): void {
-    this.server?.markSnapshotListenerReady(this.snapshotListenerKey);
+    const server = this.server;
+    if (server === null) return;
+    server.markSnapshotListenerReady(this.snapshotListenerKey);
   }
 
   onSnapshot(callback: SnapshotCallback): void {

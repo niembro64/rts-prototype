@@ -1029,8 +1029,9 @@ export class Simulation {
       const targetId = getUnitActionTargetId(action);
       const removeStart = getActionIntentStart(actions, i);
       spliceUnitActions(unit, removeStart, i - removeStart + 1);
-      if (targetId !== undefined && entity.builder?.currentBuildTarget === targetId) {
-        entity.builder.currentBuildTarget = NO_ENTITY_ID;
+      const builder = entity.builder;
+      if (targetId !== undefined && builder !== null && builder.currentBuildTarget === targetId) {
+        builder.currentBuildTarget = NO_ENTITY_ID;
       }
       changed = true;
       i = removeStart - 1;
@@ -1189,15 +1190,16 @@ export class Simulation {
 
     let turnSign = unit.flyingLoiterTurnSign;
     if (turnSign !== 1 && turnSign !== -1) {
-      const body = entity.body?.physicsBody;
+      const bodyComponent = entity.body;
+      const body = bodyComponent !== null ? bodyComponent.physicsBody : null;
       const radialX = dx / distance;
       const radialY = dy / distance;
       const tangentX = -radialY;
       const tangentY = radialX;
       const forwardX = Math.cos(transform.rotation);
       const forwardY = Math.sin(transform.rotation);
-      const velocityX = body?.vx ?? unit.velocityX ?? forwardX;
-      const velocityY = body?.vy ?? unit.velocityY ?? forwardY;
+      const velocityX = body !== null ? body.vx : unit.velocityX ?? forwardX;
+      const velocityY = body !== null ? body.vy : unit.velocityY ?? forwardY;
       turnSign = velocityX * tangentX + velocityY * tangentY >= 0 ? 1 : -1;
       unit.flyingLoiterTurnSign = turnSign;
     }
@@ -1365,11 +1367,12 @@ export class Simulation {
     const isLastAction = !!unit && unit.actions.length <= 1 && action.type !== 'patrol';
     const arrivalRadius = isLastAction ? ARRIVAL_FINAL_RADIUS : ARRIVAL_RADIUS;
     if (distance >= arrivalRadius) return false;
-    if (unit?.locomotion.type === 'flying') return true;
+    if (unit !== null && unit.locomotion.type === 'flying') return true;
     if (!isLastAction) return true;
-    const body = entity.body?.physicsBody;
-    const vx = body?.vx ?? unit?.velocityX ?? 0;
-    const vy = body?.vy ?? unit?.velocityY ?? 0;
+    const bodyComponent = entity.body;
+    const body = bodyComponent !== null ? bodyComponent.physicsBody : null;
+    const vx = body !== null ? body.vx : unit !== null ? unit.velocityX : 0;
+    const vy = body !== null ? body.vy : unit !== null ? unit.velocityY : 0;
     return magnitude(vx, vy) <= ARRIVAL_FINAL_STOP_SPEED;
   }
 
@@ -1545,8 +1548,9 @@ export class Simulation {
 
   private isSettlingAtFinalWaypoint(entity: Entity): boolean {
     const unit = entity.unit;
-    const action = unit?.actions[0];
-    if (!action || action.isPathExpansion || action.type === 'patrol') return false;
+    if (unit === null) return false;
+    const action = unit.actions[0];
+    if (action === undefined || action.isPathExpansion || action.type === 'patrol') return false;
     if (action.type !== 'move' && action.type !== 'fight') return false;
     const dx = action.x - entity.transform.x;
     const dy = action.y - entity.transform.y;
