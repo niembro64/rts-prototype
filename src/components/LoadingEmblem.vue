@@ -8,12 +8,15 @@ import {
 import { buildLoadingUnitInfo } from './loadingUnitInfo';
 
 const props = withDefaults(defineProps<{
-  compact?: boolean;
   progress?: number;
   phase?: string;
+  nextLabel?: string;
+  showProgress?: boolean;
 }>(), {
   progress: 0,
   phase: 'Preparing battle',
+  nextLabel: '',
+  showProgress: true,
 });
 
 const clampedProgress = computed(() => {
@@ -26,6 +29,7 @@ const progressBarStyle = computed(() => ({
   transform: `scaleX(${clampedProgress.value})`,
 }));
 const phaseText = computed(() => props.phase.trim() || 'Preparing battle');
+const nextLabelText = computed(() => props.nextLabel.trim());
 const previewHost = ref<HTMLElement | null>(null);
 const previewUnit = pickRandomLoadingUnit();
 const unitInfo = buildLoadingUnitInfo(previewUnit.id);
@@ -36,7 +40,7 @@ onMounted(() => {
   previewRuntime = mountLoadingUnitPreview(
     previewHost.value,
     previewUnit.id,
-    { fullBleed: props.compact !== true },
+    { fullBleed: true },
   );
 });
 
@@ -47,9 +51,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="loading-emblem" :class="{ compact: props.compact }">
+  <div class="loading-emblem">
     <div ref="previewHost" class="loader-unit-preview" aria-hidden="true"></div>
-    <div v-if="!props.compact" class="loader-info-panel loader-info-left">
+    <div class="loader-info-panel loader-info-left">
       <section
         v-for="section in unitInfo.leftSections"
         :key="section.id"
@@ -94,7 +98,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
-    <div v-if="!props.compact" class="loader-info-panel loader-info-right">
+    <div class="loader-info-panel loader-info-right">
       <section
         v-for="section in unitInfo.rightSections"
         :key="section.id"
@@ -140,7 +144,7 @@ onBeforeUnmount(() => {
       </section>
     </div>
     <div class="loader-unit-name">{{ previewUnit.name }}</div>
-    <div v-if="!props.compact" class="loader-summary-strip">
+    <div class="loader-summary-strip">
       <div
         v-for="item in unitInfo.summary"
         :key="item.label"
@@ -150,9 +154,10 @@ onBeforeUnmount(() => {
         <strong>{{ item.value }}</strong>
       </div>
     </div>
+    <div v-if="nextLabelText" class="loader-next-label">{{ nextLabelText }}</div>
     <div class="loader-title">BUDGET ANNIHILATION</div>
     <div class="loader-phase">{{ phaseText }}</div>
-    <div class="loader-progress-wrap">
+    <div v-if="props.showProgress" class="loader-progress-wrap">
       <div
         class="loader-progress-track"
         role="progressbar"
@@ -192,42 +197,27 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.loading-emblem:not(.compact)::before,
-.loading-emblem:not(.compact)::after {
+.loading-emblem::before,
+.loading-emblem::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.loading-emblem:not(.compact)::before {
+.loading-emblem::before {
   z-index: 1;
   background:
     linear-gradient(180deg, rgba(5, 7, 10, 0.05) 0%, rgba(5, 7, 10, 0) 34%, rgba(5, 7, 10, 0.62) 100%),
     repeating-linear-gradient(0deg, rgba(237, 243, 255, 0.045) 0 1px, transparent 1px 9px);
 }
 
-.loading-emblem:not(.compact)::after {
+.loading-emblem::after {
   z-index: 0;
   background:
     linear-gradient(90deg, rgba(74, 158, 255, 0.2), transparent 18%, transparent 82%, rgba(110, 242, 207, 0.16)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 45%);
   mix-blend-mode: screen;
-}
-
-.loading-emblem.compact {
-  --loader-size: 58px;
-  --loader-name-size: 9px;
-  --loader-title-size: 12px;
-  --loader-phase-size: 10px;
-  --loader-gap: 5px;
-  --loader-width: min(176px, 82vw);
-  --loader-track-height: 8px;
-  justify-content: center;
-  width: auto;
-  height: auto;
-  padding: 0;
-  overflow: visible;
 }
 
 .loader-unit-preview {
@@ -238,17 +228,6 @@ onBeforeUnmount(() => {
   height: 100%;
   pointer-events: none;
   filter: none;
-}
-
-.loading-emblem.compact .loader-unit-preview {
-  position: relative;
-  inset: auto;
-  z-index: auto;
-  width: var(--loader-size);
-  height: var(--loader-size);
-  filter:
-    drop-shadow(0 0 20px rgba(237, 243, 255, 0.26))
-    drop-shadow(0 0 34px rgba(110, 242, 207, 0.13));
 }
 
 .loader-unit-preview :deep(.loader-unit-stage) {
@@ -391,10 +370,6 @@ onBeforeUnmount(() => {
     0 0 22px rgba(110, 242, 207, 0.16);
 }
 
-.loading-emblem.compact .loader-unit-name {
-  font-size: var(--loader-name-size);
-}
-
 .loader-summary-strip {
   position: relative;
   z-index: 2;
@@ -432,6 +407,21 @@ onBeforeUnmount(() => {
   color: rgba(237, 243, 255, 0.92);
 }
 
+.loader-next-label {
+  position: relative;
+  z-index: 2;
+  font-family: monospace;
+  font-size: clamp(11px, 1.4vw, 16px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(110, 242, 207, 0.92);
+  text-shadow:
+    0 0 12px rgba(110, 242, 207, 0.5),
+    0 0 22px rgba(74, 158, 255, 0.28);
+}
+
 .loader-title {
   position: relative;
   z-index: 2;
@@ -446,10 +436,6 @@ onBeforeUnmount(() => {
     0 0 34px rgba(110, 242, 207, 0.18);
 }
 
-.loading-emblem.compact .loader-title {
-  font-size: var(--loader-title-size);
-}
-
 .loader-phase {
   position: relative;
   z-index: 2;
@@ -461,10 +447,6 @@ onBeforeUnmount(() => {
   line-height: 1.25;
   color: rgba(237, 243, 255, 0.82);
   text-shadow: 0 0 14px rgba(74, 158, 255, 0.42);
-}
-
-.loading-emblem.compact .loader-phase {
-  font-size: var(--loader-phase-size);
 }
 
 .loader-progress-wrap {

@@ -193,6 +193,11 @@ const showDemoLoadingOverlay = computed(
 const showRealLoadingOverlay = computed(
   () => battleLoading.value && gameStarted.value,
 );
+const loadingNextLabel = computed(() => {
+  if (gameStarted.value) return 'ONLINE BATTLE';
+  if (currentBattleMode.value === 'real') return 'LOBBY VISUALIZATION';
+  return 'DEMO BATTLE';
+});
 
 const {
   localUsername,
@@ -228,10 +233,15 @@ function setInstanceCameraFovDegrees(
   instance?.app.setCameraFovDegrees(fov);
 }
 
+const effectivePlayerClientRenderEnabled = computed(
+  () => playerClientEnabled.value && !showLoadingOverlay.value,
+);
 function applyPlayerClientEnabled(): void {
-  setPlayerClientRenderEnabled(getBackgroundBattle()?.gameInstance, playerClientEnabled.value);
-  setPlayerClientRenderEnabled(foregroundGame.getInstance(), playerClientEnabled.value);
+  const enabled = effectivePlayerClientRenderEnabled.value;
+  setPlayerClientRenderEnabled(getBackgroundBattle()?.gameInstance, enabled);
+  setPlayerClientRenderEnabled(foregroundGame.getInstance(), enabled);
 }
+watch(effectivePlayerClientRenderEnabled, () => applyPlayerClientEnabled());
 
 function applyCameraFovDegrees(fov: CameraFovDegrees): void {
   setInstanceCameraFovDegrees(getBackgroundBattle()?.gameInstance, fov);
@@ -373,7 +383,7 @@ const {
   getPreviewLocalPlayerId: () => currentBattleMode.value === 'real'
     ? localPlayerId.value
     : undefined,
-  getPlayerClientEnabled: () => playerClientEnabled.value,
+  getPlayerClientEnabled: () => effectivePlayerClientRenderEnabled.value,
   onLoadingProgress: setLoadingProgress,
   bindSceneUi: (scene) => bindGameSceneUi(scene),
   onRendererWarmupChange: (warming) => {
@@ -383,7 +393,7 @@ const {
     activeConnection = battle.connection;
     hasServer.value = true;
     battleStartTime = Date.now();
-    setPlayerClientRenderEnabled(battle.gameInstance, playerClientEnabled.value);
+    setPlayerClientRenderEnabled(battle.gameInstance, effectivePlayerClientRenderEnabled.value);
     setInstanceCameraFovDegrees(battle.gameInstance, cameraFovDegrees.value);
   },
   onStopped: () => {
@@ -1069,6 +1079,7 @@ watchEffect(() => {
           <LoadingEmblem
             :progress="displayedLoadingProgress"
             :phase="displayedLoadingPhase"
+            :next-label="loadingNextLabel"
           />
         </div>
       </div>
@@ -1089,15 +1100,23 @@ watchEffect(() => {
           <LoadingEmblem
             :progress="displayedLoadingProgress"
             :phase="displayedLoadingPhase"
+            :next-label="loadingNextLabel"
           />
         </div>
       </div>
 
       <div
-        v-if="!playerClientEnabled"
+        v-if="!playerClientEnabled && !showLoadingOverlay"
         class="player-client-off-overlay"
-        aria-hidden="true"
-      ></div>
+        role="status"
+        aria-live="polite"
+      >
+        <LoadingEmblem
+          :show-progress="false"
+          phase="Client paused — toggle CLIENT to resume"
+          :next-label="loadingNextLabel"
+        />
+      </div>
 
       <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
       <template v-if="playerClientEnabled && (isMobile ? mobileBarsVisible : !lobbyModalVisible)">
@@ -1300,7 +1319,12 @@ watchEffect(() => {
   position: absolute;
   inset: 0;
   z-index: 900;
-  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 10, 0.92);
+  color: #edf3ff;
   pointer-events: auto;
 }
 

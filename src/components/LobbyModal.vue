@@ -364,9 +364,9 @@ const terrainSectionVars = computed(() =>
           aria-live="polite"
         >
           <LoadingEmblem
-            compact
             :progress="previewLoadingProgress"
             :phase="previewLoadingPhase"
+            next-label="LOBBY VISUALIZATION"
           />
         </div>
       </div>
