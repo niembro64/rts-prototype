@@ -79,6 +79,10 @@ Evidence:
 - The 2026-05-22 entity packed-row work shows the wire shape is
   stable enough to land in Rust now (V1-V6 versions are append-only
   and the encoder is bit-deterministic).
+- 2026-05-25: the Rust snapshot send path now emits compact packed
+  audio and projectile V2 payloads directly from WASM scratch. The
+  TS packers remain for JS fallback, decode, measurement, and the
+  remaining entity/minimap/static migration slices.
 
 Fix direction:
 Migrate the per-entity / per-projectile / per-minimap / per-audio

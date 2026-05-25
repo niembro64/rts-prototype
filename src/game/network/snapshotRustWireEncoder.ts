@@ -1389,7 +1389,7 @@ function copyUint32WireRowsIntoScratch(
 function packProjectileWireSourceIntoScratch(
   sim: SimWasm,
   source: ProjectileSnapshotWireSource,
-): void {
+): number {
   const api = sim.snapshotEncode;
   const spawns = source.spawns;
   if (spawns.count > 0) {
@@ -1435,6 +1435,7 @@ function packProjectileWireSourceIntoScratch(
       PROJECTILE_BEAM_POINT_WIRE_STRIDE,
     );
   }
+  return beamPoints.count;
 }
 
 function canUseProjectileWireSource(
@@ -1489,8 +1490,8 @@ function packProjVelocityUpdatesIntoScratch(
 function packBeamUpdatesIntoScratch(
   sim: SimWasm,
   updates: readonly NetworkServerSnapshotBeamUpdate[],
-): void {
-  if (updates.length === 0) return;
+): number {
+  if (updates.length === 0) return 0;
   const api = sim.snapshotEncode;
   api.beamUpdateScratchEnsure(updates.length);
   let totalPoints = 0;
@@ -1525,6 +1526,7 @@ function packBeamUpdatesIntoScratch(
     }
     pointOffset += update.points.length;
   }
+  return totalPoints;
 }
 
 function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
@@ -1533,15 +1535,16 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
   const velocityUpdates = projectiles.velocityUpdates;
   const beamUpdates = projectiles.beamUpdates;
   const wireSource = getProjectileSnapshotWireSource(projectiles);
+  let beamPointCount = 0;
   if (canUseProjectileWireSource(wireSource, projectiles)) {
-    packProjectileWireSourceIntoScratch(sim, wireSource);
+    beamPointCount = packProjectileWireSourceIntoScratch(sim, wireSource);
   } else {
     if (spawns) packProjSpawnsIntoScratch(sim, spawns);
     if (despawns) packProjDespawnsIntoScratch(sim, despawns);
     if (velocityUpdates) packProjVelocityUpdatesIntoScratch(sim, velocityUpdates);
-    if (beamUpdates) packBeamUpdatesIntoScratch(sim, beamUpdates);
+    if (beamUpdates) beamPointCount = packBeamUpdatesIntoScratch(sim, beamUpdates);
   }
-  sim.snapshotEncode.emitProjectiles(
+  sim.snapshotEncode.emitPackedProjectiles(
     spawns !== undefined ? 1 : 0,
     spawns !== undefined ? spawns.length : 0,
     despawns !== undefined ? 1 : 0,
@@ -1550,6 +1553,7 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
     velocityUpdates !== undefined ? velocityUpdates.length : 0,
     beamUpdates !== undefined ? 1 : 0,
     beamUpdates !== undefined ? beamUpdates.length : 0,
+    beamPointCount,
   );
 }
 

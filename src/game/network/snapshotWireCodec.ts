@@ -138,7 +138,10 @@ declare global {
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
   if (!FORCE_JS_SNAPSHOT_WIRE) {
-    const rustWireState = packNetworkSnapshotForWire(state, { audioEvents: 'raw' });
+    const rustWireState = packNetworkSnapshotForWire(state, {
+      audioEvents: 'raw',
+      projectiles: 'raw',
+    });
     const rustResult = encodeNetworkSnapshotWithRustFallback(rustWireState);
     if (rustResult) {
       noteRustSnapshotWireResult(rustResult);
@@ -203,13 +206,18 @@ export function measureNetworkSnapshotWireBreakdown(
 
 export function packNetworkSnapshotForWire(
   state: NetworkServerSnapshot,
-  options: { audioEvents?: 'packed' | 'raw' } = {},
+  options: {
+    audioEvents?: 'packed' | 'raw';
+    projectiles?: 'packed' | 'raw';
+  } = {},
 ): NetworkServerSnapshotWire {
   const packedAudioEvents = options.audioEvents === 'raw'
     ? undefined
     : packAudioEventsForWire(state.audioEvents);
   const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
-  const packedProjectiles = packProjectilesForWire(state.projectiles);
+  const packedProjectiles = options.projectiles === 'raw'
+    ? undefined
+    : packProjectilesForWire(state.projectiles);
   const packedEntities = packEntitiesForWire(state.entities);
   const packedTerrain = packTerrainForWire(state.terrain);
   const packedBuildability = packBuildabilityForWire(state.buildability);

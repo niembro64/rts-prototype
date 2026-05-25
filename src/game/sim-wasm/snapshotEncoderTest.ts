@@ -13,6 +13,7 @@ import {
   snapshot_encode_envelope_continue,
   snapshot_encode_envelope_emit_economy,
   snapshot_encode_envelope_emit_minimap,
+  snapshot_encode_envelope_emit_packed_projectiles,
   snapshot_encode_envelope_emit_projectiles,
   snapshot_encode_envelope_emit_spray_targets,
   snapshot_encode_spray_scratch_ptr,
@@ -81,6 +82,8 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
 } from '@/types/network';
+import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+import { packProjectilesForWire } from '../network/snapshotProjectileWirePack';
 
 const TURRET_SCRATCH_STRIDE = 10;
 const ACTION_SCRATCH_STRIDE = 16;
@@ -1341,6 +1344,59 @@ type ProjectilesFixture = {
   beamUpdates?: BeamUpdateFixture[];
 };
 
+type NetworkProjectilesFixture = NonNullable<NetworkServerSnapshot['projectiles']>;
+
+function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProjectilesFixture {
+  return {
+    spawns: projectiles.spawns?.map((spawn) => ({
+      id: spawn.id,
+      pos: spawn.pos,
+      rotation: spawn.rotation,
+      velocity: spawn.velocity,
+      projectileType: spawn.projectileType,
+      maxLifespan: spawn.maxLifespan ?? null,
+      turretId: spawn.turretId,
+      shotId: spawn.shotId ?? null,
+      sourceTurretId: spawn.sourceTurretId ?? null,
+      playerId: spawn.playerId,
+      sourceEntityId: spawn.sourceEntityId,
+      turretIndex: spawn.turretIndex,
+      barrelIndex: spawn.barrelIndex,
+      isDGun: spawn.isDGun ?? null,
+      fromParentDetonation: spawn.fromParentDetonation ?? null,
+      beam: spawn.beam ?? null,
+      targetEntityId: spawn.targetEntityId ?? null,
+      homingTurnRate: spawn.homingTurnRate ?? null,
+    })),
+    despawns: projectiles.despawns?.map((despawn) => ({ id: despawn.id })),
+    velocityUpdates: projectiles.velocityUpdates?.map((update) => ({
+      id: update.id,
+      pos: update.pos,
+      velocity: update.velocity,
+      clearHomingTarget: update.clearHomingTarget ?? null,
+    })),
+    beamUpdates: projectiles.beamUpdates?.map((update) => ({
+      id: update.id,
+      points: update.points.map((point) => ({
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        vx: point.vx,
+        vy: point.vy,
+        vz: point.vz,
+        mirrorEntityId: point.mirrorEntityId ?? null,
+        reflectorKind: point.reflectorKind ?? null,
+        reflectorPlayerId: point.reflectorPlayerId ?? null,
+        normalX: point.normalX ?? null,
+        normalY: point.normalY ?? null,
+        normalZ: point.normalZ ?? null,
+      })),
+      obstructionT: update.obstructionT ?? null,
+      endpointDamageable: update.endpointDamageable ?? null,
+    })),
+  };
+}
+
 const PROJ_SPAWN_SCRATCH_STRIDE = 27;
 const PROJ_VEL_SCRATCH_STRIDE = 8;
 
@@ -1427,8 +1483,8 @@ const BEAM_POINT_STRIDE = 12;
 function packBeamUpdatesIntoScratch(
   memory: WebAssembly.Memory,
   updates: BeamUpdateFixture[],
-): void {
-  if (updates.length === 0) return;
+): number {
+  if (updates.length === 0) return 0;
   snapshot_encode_beam_update_scratch_ensure(updates.length);
   let totalPoints = 0;
   for (const u of updates) totalPoints += u.points.length;
@@ -1483,6 +1539,7 @@ function packBeamUpdatesIntoScratch(
     }
     pointOffset += u.points.length;
   }
+  return totalPoints;
 }
 
 type AudioEventType =
@@ -3085,6 +3142,222 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
   return { passed, failed };
 }
 
+function packProjectilesFixtureIntoScratch(
+  memory: WebAssembly.Memory,
+  projectiles: ProjectilesFixture,
+): number {
+  if (projectiles.spawns !== undefined) {
+    packProjSpawnsIntoScratch(memory, projectiles.spawns);
+  }
+  if (projectiles.despawns !== undefined) {
+    packProjDespawnsIntoScratch(memory, projectiles.despawns.map((d) => d.id));
+  }
+  if (projectiles.velocityUpdates !== undefined) {
+    packProjVelocityUpdatesIntoScratch(memory, projectiles.velocityUpdates);
+  }
+  if (projectiles.beamUpdates !== undefined) {
+    return packBeamUpdatesIntoScratch(memory, projectiles.beamUpdates);
+  }
+  return 0;
+}
+
+function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: { tick: number; label: string; projectiles: ProjectilesFixture }[] = [
+    {
+      tick: 1800,
+      label: 'v-only',
+      projectiles: {},
+    },
+    {
+      tick: 1801,
+      label: 'empty-sections',
+      projectiles: {
+        spawns: [],
+        despawns: [],
+        velocityUpdates: [],
+        beamUpdates: [],
+      },
+    },
+    {
+      tick: 1802,
+      label: 'spawn-groups',
+      projectiles: {
+        spawns: [
+          {
+            id: 100,
+            pos: { x: 10, y: 20, z: 30 },
+            rotation: 4,
+            velocity: { x: 5, y: 6, z: 7 },
+            projectileType: 1,
+            turretId: 2,
+            playerId: 1,
+            sourceEntityId: 500,
+            turretIndex: 0,
+            barrelIndex: 1,
+          },
+          {
+            id: 105,
+            pos: { x: -10, y: 40, z: 70 },
+            rotation: -8,
+            velocity: { x: -5, y: 3, z: 1 },
+            projectileType: 3,
+            maxLifespan: 2500,
+            turretId: 4,
+            shotId: 6,
+            sourceTurretId: 7,
+            playerId: 2,
+            sourceEntityId: 501,
+            turretIndex: 1,
+            barrelIndex: 0,
+            isDGun: false,
+            fromParentDetonation: true,
+            beam: {
+              start: { x: 0, y: 0, z: 10 },
+              end: { x: 200, y: 300, z: 10 },
+            },
+            targetEntityId: 700,
+            homingTurnRate: 9,
+          },
+        ],
+      },
+    },
+    {
+      tick: 1803,
+      label: 'despawns-and-velocity-groups',
+      projectiles: {
+        despawns: [{ id: 1000 }, { id: 1005 }, { id: 1001 }],
+        velocityUpdates: [
+          { id: 2000, pos: { x: 1, y: 2, z: 3 }, velocity: { x: 4, y: 5, z: 6 } },
+          {
+            id: 2004,
+            pos: { x: -1, y: -2, z: -3 },
+            velocity: { x: -4, y: -5, z: -6 },
+            clearHomingTarget: true,
+          },
+          { id: 2005, pos: { x: 7, y: 8, z: 9 }, velocity: { x: 10, y: 11, z: 12 } },
+        ],
+      },
+    },
+    {
+      tick: 1804,
+      label: 'beam-options',
+      projectiles: {
+        beamUpdates: [
+          {
+            id: 3000,
+            points: [
+              { x: 0, y: 0, z: 10, vx: 1, vy: 0, vz: 0 },
+              {
+                x: 100, y: 50, z: 10, vx: 0, vy: 1, vz: 0,
+                mirrorEntityId: 77,
+                reflectorKind: 'forceField',
+                reflectorPlayerId: 3,
+                normalX: -707,
+                normalY: 707,
+                normalZ: 0,
+              },
+              { x: 200, y: 0, z: 10, vx: -1, vy: 0, vz: 0 },
+            ],
+            obstructionT: 640,
+            endpointDamageable: false,
+          },
+          {
+            id: 3010,
+            points: [
+              { x: 5, y: 5, z: 0, vx: 0, vy: 0, vz: 0 },
+              { x: 10, y: 10, z: 0, vx: 0, vy: 0, vz: 0 },
+            ],
+            endpointDamageable: true,
+          },
+        ],
+      },
+    },
+    {
+      tick: 1805,
+      label: 'all-sections',
+      projectiles: {
+        spawns: [{
+          id: 4000,
+          pos: { x: 0, y: 0, z: 0 },
+          rotation: 0,
+          velocity: { x: 1, y: 2, z: 3 },
+          projectileType: 2,
+          turretId: 5,
+          playerId: 1,
+          sourceEntityId: 20,
+          turretIndex: 0,
+          barrelIndex: 0,
+          isDGun: true,
+        }],
+        despawns: [{ id: 3990 }],
+        velocityUpdates: [
+          { id: 4001, pos: { x: 50, y: 60, z: 70 }, velocity: { x: 8, y: 9, z: 10 } },
+        ],
+        beamUpdates: [{
+          id: 4002,
+          points: [
+            { x: 1, y: 2, z: 3, vx: 0, vy: 0, vz: 0 },
+            {
+              x: 4, y: 5, z: 6, vx: 0, vy: 0, vz: 0,
+              mirrorEntityId: 12,
+              reflectorKind: 'mirror',
+            },
+          ],
+        }],
+      },
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  for (const f of fixtures) {
+    const packedProjectiles = packProjectilesForWire(networkProjectilesFixture(f.projectiles));
+    const wireFixture = {
+      tick: f.tick,
+      entities: [],
+      economy: {},
+      projectiles: packedProjectiles,
+      isDelta: true,
+    };
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
+    const beamPointCount = packProjectilesFixtureIntoScratch(memory, f.projectiles);
+    snapshot_encode_envelope_begin(f.tick, 0, 5);
+    snapshot_encode_envelope_emit_economy(0);
+    snapshot_encode_envelope_emit_packed_projectiles(
+      f.projectiles.spawns !== undefined ? 1 : 0,
+      f.projectiles.spawns?.length ?? 0,
+      f.projectiles.despawns !== undefined ? 1 : 0,
+      f.projectiles.despawns?.length ?? 0,
+      f.projectiles.velocityUpdates !== undefined ? 1 : 0,
+      f.projectiles.velocityUpdates?.length ?? 0,
+      f.projectiles.beamUpdates !== undefined ? 1 : 0,
+      f.projectiles.beamUpdates?.length ?? 0,
+      beamPointCount,
+    );
+    snapshot_encode_envelope_continue(0, 0, 0, 0, 1, 0, 0, 0, 0);
+
+    const ptr = messagepack_writer_ptr();
+    const len = messagepack_writer_len();
+    const rustBytes = new Uint8Array(memory.buffer, ptr, len).slice();
+    if (bytesEqual(jsBytes, rustBytes)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(
+        `[snapshot encoder] packed projectile byte mismatch ${f.label}`,
+        {
+          fixture: f,
+          jsLen: jsBytes.length,
+          rustLen: rustBytes.length,
+          jsHex: hex(jsBytes),
+          rustHex: hex(rustBytes),
+        },
+      );
+    }
+  }
+  return { passed, failed };
+}
+
 export async function runSnapshotEncoderByteEqualityTest(
   memory: WebAssembly.Memory,
 ): Promise<void> {
@@ -3093,8 +3366,19 @@ export async function runSnapshotEncoderByteEqualityTest(
   const unit = runEntityUnitCases(memory);
   const building = runEntityBuildingCases(memory);
   const envelope = runEnvelopeCases(memory);
-  const passed = basic.passed + unit.passed + building.passed + envelope.passed;
-  const failed = basic.failed + unit.failed + building.failed + envelope.failed;
+  const packedProjectiles = runPackedProjectileCases(memory);
+  const passed =
+    basic.passed +
+    unit.passed +
+    building.passed +
+    envelope.passed +
+    packedProjectiles.passed;
+  const failed =
+    basic.failed +
+    unit.failed +
+    building.failed +
+    envelope.failed +
+    packedProjectiles.failed;
   const total = passed + failed;
   if (failed > 0) {
     throw new Error(

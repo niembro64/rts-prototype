@@ -15897,6 +15897,364 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
     }
 }
 
+const PACKED_BINARY_ROW_COUNT_BYTES: usize = 4;
+const PACKED_PROJECTILES_VERSION: u64 = 2;
+const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN: u32 = 0x001;
+const PROJECTILE_SPAWN_FLAG_SHOT_ID: u32 = 0x002;
+const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID: u32 = 0x004;
+const PROJECTILE_SPAWN_FLAG_BEAM: u32 = 0x020;
+const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID: u32 = 0x040;
+const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE: u32 = 0x080;
+const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T: u32 = 0x01;
+const PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID: u32 = 0x01;
+const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID: u32 = 0x08;
+const PROJECTILE_BEAM_POINT_FLAG_NORMAL_X: u32 = 0x10;
+const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y: u32 = 0x20;
+const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z: u32 = 0x40;
+const PROJECTILE_VELOCITY_FLAG_CLEAR_HOMING: u32 = 0x01;
+
+#[derive(Default)]
+struct PackedBinaryWriter {
+    buf: Vec<u8>,
+}
+
+impl PackedBinaryWriter {
+    fn reset(&mut self, initial_len: usize) {
+        self.buf.clear();
+        self.buf.resize(initial_len, 0);
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        self.buf.as_slice()
+    }
+
+    fn write_var_uint(&mut self, value: u64) {
+        let mut v = value;
+        while v >= 0x80 {
+            self.buf.push(((v % 0x80) as u8) | 0x80);
+            v /= 0x80;
+        }
+        self.buf.push(v as u8);
+    }
+
+    fn write_var_uint_from_f64(&mut self, value: f64) {
+        self.write_var_uint(f64_floor_u64(value));
+    }
+
+    fn write_var_int(&mut self, value: i64) {
+        let zigzag = if value < 0 {
+            ((-value) as u64).saturating_mul(2).saturating_sub(1)
+        } else {
+            (value as u64).saturating_mul(2)
+        };
+        self.write_var_uint(zigzag);
+    }
+
+    fn write_var_int_from_f64(&mut self, value: f64) {
+        self.write_var_int(f64_round_i64(value));
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) {
+        self.buf.extend_from_slice(bytes);
+    }
+
+    fn set_u32_le(&mut self, offset: usize, value: u32) {
+        if offset + 4 > self.buf.len() {
+            self.buf.resize(offset + 4, 0);
+        }
+        self.buf[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+}
+
+#[derive(Default)]
+struct PackedProjectileGroup {
+    flags: u32,
+    count: u32,
+    last_id: i64,
+    writer: PackedBinaryWriter,
+}
+
+impl PackedProjectileGroup {
+    fn reset(&mut self, flags: u32) {
+        self.flags = flags;
+        self.count = 0;
+        self.last_id = 0;
+        self.writer.reset(0);
+    }
+}
+
+#[derive(Default)]
+struct SnapshotEncodePackedProjectileScratch {
+    out: PackedBinaryWriter,
+    spawn_groups: Vec<PackedProjectileGroup>,
+    spawn_group_count: usize,
+    velocity_groups: Vec<PackedProjectileGroup>,
+    velocity_group_count: usize,
+}
+
+impl SnapshotEncodePackedProjectileScratch {
+    fn reset_spawn_groups(&mut self) {
+        self.spawn_group_count = 0;
+    }
+
+    fn reset_velocity_groups(&mut self) {
+        self.velocity_group_count = 0;
+    }
+
+    fn spawn_group_index(&mut self, flags: u32) -> usize {
+        find_or_create_packed_group(&mut self.spawn_groups, &mut self.spawn_group_count, flags)
+    }
+
+    fn velocity_group_index(&mut self, flags: u32) -> usize {
+        find_or_create_packed_group(
+            &mut self.velocity_groups,
+            &mut self.velocity_group_count,
+            flags,
+        )
+    }
+}
+
+struct SnapshotEncodePackedProjectileScratchHolder(
+    UnsafeCell<Option<SnapshotEncodePackedProjectileScratch>>,
+);
+unsafe impl Sync for SnapshotEncodePackedProjectileScratchHolder {}
+static SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH: SnapshotEncodePackedProjectileScratchHolder =
+    SnapshotEncodePackedProjectileScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_packed_projectile_scratch() -> &'static mut SnapshotEncodePackedProjectileScratch
+{
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_PACKED_PROJECTILE_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodePackedProjectileScratch::default());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+fn find_or_create_packed_group(
+    groups: &mut Vec<PackedProjectileGroup>,
+    active_count: &mut usize,
+    flags: u32,
+) -> usize {
+    for i in 0..*active_count {
+        if groups[i].flags == flags {
+            return i;
+        }
+    }
+    let index = *active_count;
+    if index == groups.len() {
+        groups.push(PackedProjectileGroup::default());
+    }
+    groups[index].reset(flags);
+    *active_count += 1;
+    index
+}
+
+fn f64_round_i64(value: f64) -> i64 {
+    if value.is_finite() {
+        value.round() as i64
+    } else {
+        0
+    }
+}
+
+fn f64_floor_u64(value: f64) -> u64 {
+    if value.is_finite() && value > 0.0 {
+        value.floor() as u64
+    } else {
+        0
+    }
+}
+
+fn pack_projectile_spawns_v2(count: usize) {
+    let rows = snapshot_encode_proj_spawn_scratch();
+    let scratch = snapshot_encode_packed_projectile_scratch();
+    scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    if count == 0 {
+        scratch.out.write_var_uint(0);
+        scratch.out.set_u32_le(0, 0);
+        return;
+    }
+
+    scratch.reset_spawn_groups();
+    for i in 0..count {
+        let base = i * SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE;
+        let flags = rows.buf[base + 26] as u32;
+        let group_index = scratch.spawn_group_index(flags);
+        let group = &mut scratch.spawn_groups[group_index];
+        let id = f64_round_i64(rows.buf[base]);
+        group.writer.write_var_int(id - group.last_id);
+        group.last_id = id;
+        group.writer.write_var_int_from_f64(rows.buf[base + 1]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 2]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 3]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 4]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 5]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 6]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 7]);
+        group.writer.write_var_uint_from_f64(rows.buf[base + 8]);
+        group.writer.write_var_uint_from_f64(rows.buf[base + 10]);
+        group.writer.write_var_uint_from_f64(rows.buf[base + 13]);
+        group.writer.write_var_uint_from_f64(rows.buf[base + 14]);
+        group.writer.write_var_uint_from_f64(rows.buf[base + 15]);
+        group.writer.write_var_uint_from_f64(rows.buf[base + 16]);
+        if (flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) != 0 {
+            group.writer.write_var_uint_from_f64(rows.buf[base + 9]);
+        }
+        if (flags & PROJECTILE_SPAWN_FLAG_SHOT_ID) != 0 {
+            group.writer.write_var_uint_from_f64(rows.buf[base + 11]);
+        }
+        if (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) != 0 {
+            group.writer.write_var_uint_from_f64(rows.buf[base + 12]);
+        }
+        if (flags & PROJECTILE_SPAWN_FLAG_BEAM) != 0 {
+            group.writer.write_var_int_from_f64(rows.buf[base + 17]);
+            group.writer.write_var_int_from_f64(rows.buf[base + 18]);
+            group.writer.write_var_int_from_f64(rows.buf[base + 19]);
+            group.writer.write_var_int_from_f64(rows.buf[base + 20]);
+            group.writer.write_var_int_from_f64(rows.buf[base + 21]);
+            group.writer.write_var_int_from_f64(rows.buf[base + 22]);
+        }
+        if (flags & PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID) != 0 {
+            group.writer.write_var_uint_from_f64(rows.buf[base + 23]);
+        }
+        if (flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) != 0 {
+            group.writer.write_var_int_from_f64(rows.buf[base + 24]);
+        }
+        group.count += 1;
+    }
+
+    let group_count = scratch.spawn_group_count;
+    let out = &mut scratch.out;
+    let groups = &scratch.spawn_groups;
+    out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    out.write_var_uint(group_count as u64);
+    for group in groups.iter().take(group_count) {
+        out.write_var_uint(group.flags as u64);
+        out.write_var_uint(group.count as u64);
+        out.write_bytes(group.writer.as_slice());
+    }
+    out.set_u32_le(0, count as u32);
+}
+
+fn pack_projectile_despawns_v2(count: usize) {
+    let rows = snapshot_encode_proj_despawn_scratch();
+    let scratch = snapshot_encode_packed_projectile_scratch();
+    let out = &mut scratch.out;
+    out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    let mut last_id: i64 = 0;
+    for i in 0..count {
+        let id = rows.buf[i] as i64;
+        out.write_var_int(id - last_id);
+        last_id = id;
+    }
+    out.set_u32_le(0, count as u32);
+}
+
+fn pack_projectile_velocity_updates_v2(count: usize) {
+    let rows = snapshot_encode_proj_vel_scratch();
+    let scratch = snapshot_encode_packed_projectile_scratch();
+    scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    if count == 0 {
+        scratch.out.write_var_uint(0);
+        scratch.out.set_u32_le(0, 0);
+        return;
+    }
+
+    scratch.reset_velocity_groups();
+    for i in 0..count {
+        let base = i * SNAPSHOT_ENCODE_PROJ_VEL_STRIDE;
+        let flags = if rows.buf[base + 7] != 0.0 {
+            PROJECTILE_VELOCITY_FLAG_CLEAR_HOMING
+        } else {
+            0
+        };
+        let group_index = scratch.velocity_group_index(flags);
+        let group = &mut scratch.velocity_groups[group_index];
+        let id = f64_round_i64(rows.buf[base]);
+        group.writer.write_var_int(id - group.last_id);
+        group.last_id = id;
+        group.writer.write_var_int_from_f64(rows.buf[base + 1]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 2]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 3]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 4]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 5]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 6]);
+        group.count += 1;
+    }
+
+    let group_count = scratch.velocity_group_count;
+    let out = &mut scratch.out;
+    let groups = &scratch.velocity_groups;
+    out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    out.write_var_uint(group_count as u64);
+    for group in groups.iter().take(group_count) {
+        out.write_var_uint(group.flags as u64);
+        out.write_var_uint(group.count as u64);
+        out.write_bytes(group.writer.as_slice());
+    }
+    out.set_u32_le(0, count as u32);
+}
+
+fn pack_beam_point_v2(writer: &mut PackedBinaryWriter, point_base: usize) {
+    let points = snapshot_encode_beam_point_scratch();
+    let flags = points.buf[point_base + 6] as u32;
+    writer.write_var_uint(flags as u64);
+    writer.write_var_int_from_f64(points.buf[point_base]);
+    writer.write_var_int_from_f64(points.buf[point_base + 1]);
+    writer.write_var_int_from_f64(points.buf[point_base + 2]);
+    writer.write_var_int_from_f64(points.buf[point_base + 3]);
+    writer.write_var_int_from_f64(points.buf[point_base + 4]);
+    writer.write_var_int_from_f64(points.buf[point_base + 5]);
+    if (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) != 0 {
+        writer.write_var_uint_from_f64(points.buf[point_base + 7]);
+    }
+    if (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) != 0 {
+        writer.write_var_uint_from_f64(points.buf[point_base + 8]);
+    }
+    if (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) != 0 {
+        writer.write_var_int_from_f64(points.buf[point_base + 9]);
+    }
+    if (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) != 0 {
+        writer.write_var_int_from_f64(points.buf[point_base + 10]);
+    }
+    if (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) != 0 {
+        writer.write_var_int_from_f64(points.buf[point_base + 11]);
+    }
+}
+
+fn pack_projectile_beam_updates_v2(count: usize, beam_point_count: usize) {
+    let updates = snapshot_encode_beam_update_scratch();
+    let scratch = snapshot_encode_packed_projectile_scratch();
+    let out = &mut scratch.out;
+    out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    let mut last_beam_id: i64 = 0;
+    let mut point_offset: usize = 0;
+    for i in 0..count {
+        let base = i * SNAPSHOT_ENCODE_BEAM_UPDATE_STRIDE;
+        let id = f64_round_i64(updates.buf[base]);
+        let flags = updates.buf[base + 1] as u32;
+        out.write_var_int(id - last_beam_id);
+        last_beam_id = id;
+        out.write_var_uint(flags as u64);
+        if (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) != 0 {
+            out.write_var_int_from_f64(updates.buf[base + 2]);
+        }
+
+        let requested_point_count = f64_floor_u64(updates.buf[base + 3]) as usize;
+        let available = beam_point_count.saturating_sub(point_offset);
+        let point_count = requested_point_count.min(available);
+        out.write_var_uint(point_count as u64);
+        for p in 0..point_count {
+            pack_beam_point_v2(out, (point_offset + p) * SNAPSHOT_ENCODE_BEAM_POINT_STRIDE);
+        }
+        point_offset += requested_point_count;
+    }
+    out.set_u32_le(0, count as u32);
+}
+
 /// Death-context scratch — 16 f64 per deathContext (one per audio
 /// event that has the has_deathContext flag set). Caller packs in
 /// the same order as the audio events appear; Rust walks audio
@@ -16988,6 +17346,70 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             }
         }
     }
+}
+
+/// Append compact `projectiles: { v: 2, s?, d?, u?, b? }` from the
+/// caller-filled projectile scratches. Matches
+/// snapshotProjectileWirePack.ts V2 while keeping the Rust send path
+/// out of the TypeScript packed-binary writer.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_packed_projectiles(
+    has_spawns: u8,
+    spawn_count: u32,
+    has_despawns: u8,
+    despawn_count: u32,
+    has_velocity_updates: u8,
+    velocity_update_count: u32,
+    has_beam_updates: u8,
+    beam_update_count: u32,
+    beam_point_count: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    let mut packed_key_count: usize = 1; // v
+    if has_spawns != 0 {
+        packed_key_count += 1;
+    }
+    if has_despawns != 0 {
+        packed_key_count += 1;
+    }
+    if has_velocity_updates != 0 {
+        packed_key_count += 1;
+    }
+    if has_beam_updates != 0 {
+        packed_key_count += 1;
+    }
+
+    w.write_str("projectiles");
+    w.write_map_header(packed_key_count);
+    w.write_str("v");
+    w.write_uint(PACKED_PROJECTILES_VERSION);
+
+    if has_spawns != 0 {
+        pack_projectile_spawns_v2(spawn_count as usize);
+        let packed = snapshot_encode_packed_projectile_scratch();
+        w.write_str("s");
+        w.write_bin(packed.out.as_slice());
+    }
+    if has_despawns != 0 {
+        pack_projectile_despawns_v2(despawn_count as usize);
+        let packed = snapshot_encode_packed_projectile_scratch();
+        w.write_str("d");
+        w.write_bin(packed.out.as_slice());
+    }
+    if has_velocity_updates != 0 {
+        pack_projectile_velocity_updates_v2(velocity_update_count as usize);
+        let packed = snapshot_encode_packed_projectile_scratch();
+        w.write_str("u");
+        w.write_bin(packed.out.as_slice());
+    }
+    if has_beam_updates != 0 {
+        pack_projectile_beam_updates_v2(beam_update_count as usize, beam_point_count as usize);
+        let packed = snapshot_encode_packed_projectile_scratch();
+        w.write_str("b");
+        w.write_bin(packed.out.as_slice());
+    }
+
+    w.buf.len() as u32
 }
 
 /// Append the minimapEntities array. Called after the last
