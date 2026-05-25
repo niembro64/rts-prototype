@@ -161,9 +161,10 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 //                             factory state. Turret aim motion is
 //                             threshold-gated on normal deltas.
 //   projectileDetailSnapshotRateHz — upper cadence for live beam path
-//                             corrections on delta snapshots. Beam
-//                             points carry velocity, so clients coast
-//                             between lower-rate authoritative paths.
+//                             corrections on delta snapshots. Keep this
+//                             near snapshot cadence for beam/laser
+//                             turrets; line-shot aim is primary visible
+//                             state, not low-priority detail.
 //   highCountEntityLodUnitThreshold — active-unit count at which remote
 //                             clients begin receiving foreign
 //                             movement/turret deltas in staggered

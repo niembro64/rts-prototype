@@ -161,10 +161,11 @@ function writeTurretsToPool(
     const dst = pool.turrets[i];
     const t = dst.turret;
     t.id = turretIdToCode(src.config.id);
-    // Plain headOnly turrets (beam/rocket) render a head sphere only,
-    // so the client doesn't orient anything from these values. Mirror
-    // panel hosts are different: the panel slab is posed from this
-    // passive turret even though the head/barrel art is hidden.
+    // Head-only turrets with no snapshot-visible aim pose render a
+    // sphere only, so the client doesn't orient anything from these
+    // values. Line weapons and mirror-panel hosts are routed through
+    // turretAimMotionIsSnapshotVisible because their hidden/head-only
+    // aim still drives visible presentation state.
     if (!turretAimMotionIsSnapshotVisible(entity, src)) {
       t.angular.rot = 0;
       t.angular.vel = 0;

@@ -286,11 +286,12 @@ export function getEntityDeltaChangedFields(
       mask |= ENTITY_CHANGED_TURRETS;
     } else {
       let turretsAlreadyChanged = false;
-      // Plain headOnly turrets (beam/rocket) have rotation/pitch/velocity
-      // pre-zeroed by captureEntityState, so the threshold checks here
-      // naturally compare 0 vs 0 and never fire. Mirror-panel hosts are
-      // intentionally not pre-zeroed because the passive turret pose is
-      // visible as mirror slab motion.
+      // Head-only turrets with no snapshot-visible aim pose have
+      // rotation/pitch/velocity pre-zeroed by captureEntityState, so the
+      // threshold checks here naturally compare 0 vs 0 and never fire.
+      // Line weapons and mirror-panel hosts are intentionally not
+      // pre-zeroed because their hidden/head-only pose still drives visible
+      // presentation state.
       for (let i = 0; i < next.weaponCount; i++) {
         if (!turretsAlreadyChanged) {
           const turretRotationChanged = snapshotRotationDeltaExceeded(
@@ -391,10 +392,10 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
       if (stateCode === CT_TURRET_STATE_ENGAGED) prev.isEngagedBits |= (1 << i);
       if (targetId !== -1) prev.targetBits |= (1 << i);
-      // Plain headOnly turrets (beam/rocket) hide their aim motion from
-      // the wire — sim keeps the values for fire direction but the
-      // snapshot contract is "0 always". Mirror-panel hosts are the
-      // exception because the passive turret pose drives the panel slab.
+      // Head-only turrets with no snapshot-visible aim pose hide their
+      // motion from the wire — sim keeps the values for fire direction but
+      // the snapshot contract is "0 always". Line weapons and mirror-panel
+      // hosts are exceptions because their pose drives visible presentation.
       const snapshotAimMotion = turretAimMotionIsSnapshotVisible(entity, w);
       prev.turretRots[i] = snapshotAimMotion ? w.rotation : 0;
       prev.turretAngVels[i] = snapshotAimMotion ? w.angularVelocity : 0;
@@ -665,9 +666,10 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
     const w = turrets![t];
     const hasTargetingFsm = readCombatTargetingTurretFsmFromSimInto(sim, e, t, _deltaTurretFsm);
     const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
-    // Mirror the snapshot contract on the Rust diff side: plain
-    // headOnly turrets pass 0 for aim motion, while mirror-panel hosts
-    // keep the passive turret pose because it is visible geometry.
+    // Mirror the snapshot contract on the Rust diff side: head-only
+    // turrets with no snapshot-visible aim pose pass 0 for aim motion,
+    // while line weapons and mirror-panel hosts keep their pose because
+    // it drives visible presentation.
     const snapshotAimMotion = turretAimMotionIsSnapshotVisible(e, w);
     sim.turretPool.setTurret(
       slot, t,

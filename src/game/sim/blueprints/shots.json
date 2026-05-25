@@ -115,7 +115,7 @@
     },
     "explosion": {
       "radius": 75,
-      "damage": 150,
+      "damage": 20,
       "force": 10000
     },
     "detonateOnExpiry": true,
@@ -127,7 +127,7 @@
       "count": 5,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
-      "reflectedVelocityDamper": 0.2
+      "reflectedVelocityDamper": 0.8
     },
     "homingTurnRate": null,
     "homingThrust": null,
@@ -136,13 +136,13 @@
   "megaMortarShot": {
     "type": "plasma",
     "id": "megaMortarShot",
-    "mass": 100,
+    "mass": 30,
     "collision": {
-      "radius": 16
+      "radius": 10
     },
     "explosion": {
       "radius": 150,
-      "damage": 300,
+      "damage": 20,
       "force": 20000
     },
     "detonateOnExpiry": true,
@@ -152,8 +152,8 @@
     "submunitions": {
       "shotId": "mortarShot",
       "count": 5,
-      "randomSpreadSpeedHorizontal": 200,
-      "randomSpreadSpeedVertical": 80,
+      "randomSpreadSpeedHorizontal": 160,
+      "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.2
     },
     "homingTurnRate": null,

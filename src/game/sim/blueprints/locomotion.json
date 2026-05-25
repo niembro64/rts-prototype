@@ -362,7 +362,7 @@
     "type": "hover",
     "pathfindingId": "airborneAnywhere",
     "physics": {
-      "driveForce": 20,
+      "driveForce": 12,
       "traction": 1
     },
     "config": {

@@ -183,7 +183,7 @@
   },
   "mortarTurret": {
     "id": "mortarTurret",
-    "projectileId": "mortarShot",
+    "projectileId": "megaMortarShot",
     "range": 1000,
     "cooldown": 6000,
     "launchForce": 20000,
@@ -242,7 +242,7 @@
   },
   "droppingMortarTurret": {
     "id": "droppingMortarTurret",
-    "projectileId": "mortarShot",
+    "projectileId": "megaMortarShot",
     "range": 650,
     "cooldown": 3500,
     "launchForce": 3500,
@@ -298,7 +298,7 @@
   },
   "gatlingMortarTurret": {
     "id": "gatlingMortarTurret",
-    "projectileId": "mortarShot",
+    "projectileId": "megaMortarShot",
     "range": 2000,
     "cooldown": 500,
     "launchForce": 26000,
