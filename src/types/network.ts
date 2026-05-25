@@ -270,10 +270,10 @@ export type NetworkServerSnapshotMessage =
       type: 'state';
       gameId: string | undefined;
       data: Uint8Array | ArrayBuffer;
-      compression: {
+      compression?: {
         format: SnapshotCompressionFormat;
         rawBytes: number;
-      } | undefined;
+      } | null;
     }
   | { type: 'playerAssignment'; playerId: PlayerId; gameId: string | undefined }
   | {

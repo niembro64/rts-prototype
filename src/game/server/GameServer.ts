@@ -118,6 +118,7 @@ export class GameServer {
   private gameOverListeners: GameOverCallback[] = [];
   private physicsSyncUnitIdsBuf: EntityId[] = [];
   private unitForceSystem: UnitForceSystem;
+  private stopped = false;
 
   // Game over tracking
   private isGameOver: boolean = false;
@@ -290,6 +291,7 @@ export class GameServer {
 
   // Start the game loop
   start(): void {
+    if (this.stopped) return;
     const now = performance.now();
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
     this.startupGateOpen = this.snapshotListeners.length === 0;
@@ -363,6 +365,8 @@ export class GameServer {
 
   // Stop the game loop
   stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
     this.tickLoop.stop();
     this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;

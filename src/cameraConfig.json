@@ -12,8 +12,8 @@
     "demoBattle": {
       "focus": "map-origin-map-height-agnostic",
       "zoom": 0.4,
-      "autoRotate": true,
-      "autoRotateRate": 0.05
+      "autoRotate": false,
+      "autoRotateRate": 0.0
     },
     "lobbyBattle": {
       "focus": "map-origin-map-height-agnostic",

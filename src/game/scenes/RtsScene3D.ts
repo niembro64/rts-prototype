@@ -1401,6 +1401,7 @@ export class RtsScene3D {
    * renderer swap can reuse the same connection across the new scene.
    */
   public shutdown(opts: { keepConnection?: boolean } = {}): void {
+    if (this.destroyed) return;
     this.destroyed = true;
     this.rendererWarmupToken++;
     this.setRendererWarmupActive(false);

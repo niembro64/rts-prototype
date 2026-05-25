@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { NEUTRAL_PLAYER_COLOR, PLAYER_COLORS, getPlayerColors, setPlayerCountForColors, type PlayerId } from '../game/sim/types';
 import { BATTLE_CONFIG } from '../battleBarConfig';
 import { BAR_THEMES, barVars } from '../barThemes';
@@ -229,12 +229,15 @@ async function exitApp(): Promise<void> {
 
 const joinCode = ref('');
 const codeCopied = ref(false);
+let codeCopiedTimeout: ReturnType<typeof setTimeout> | null = null;
 
 async function copyCode() {
   try {
     await navigator.clipboard.writeText(props.roomCode);
     codeCopied.value = true;
-    setTimeout(() => {
+    if (codeCopiedTimeout !== null) clearTimeout(codeCopiedTimeout);
+    codeCopiedTimeout = setTimeout(() => {
+      codeCopiedTimeout = null;
       codeCopied.value = false;
     }, 2000);
   } catch (err) {
@@ -249,6 +252,11 @@ async function copyCode() {
     }
   }
 }
+
+onBeforeUnmount(() => {
+  if (codeCopiedTimeout !== null) clearTimeout(codeCopiedTimeout);
+  codeCopiedTimeout = null;
+});
 
 // Keep the color wheel divided by however many players are currently
 // in the lobby so the colors and derived names match what the game

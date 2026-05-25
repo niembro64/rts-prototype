@@ -58,17 +58,17 @@ function buildPresets(): readonly BattlePreset[] {
   return [
     {
       name: DEMO_BATTLE_DEFAULT_PRESET_NAME,
-      units: ['formik', 'mosquito', 'dragonfly', 'eagle'],
+      units: ['tarantula', 'widow', 'formik', 'mosquito', 'dragonfly', 'eagle'],
       cap: 81,
       ...SUBSYSTEM_DEFAULTS,
       forceFieldsObstructSight: false,
       fogOfWarEnabled: false,
       converterTax: 0.1,
-      centerMagnitude: 3200,
-      dividersMagnitude: 6400,
+      centerMagnitude: 0,
+      dividersMagnitude: 0,
       terrainMapShape: 'circle',
       terrainDTerrain: 0,
-      metalDepositStep: 200,
+      metalDepositStep: 0,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: true,
@@ -245,9 +245,7 @@ export function presetMatchesCurrent(
   );
 }
 
-export function findMatchingPresetName(
-  c: BattlePresetSnapshot,
-): string | null {
+export function findMatchingPresetName(c: BattlePresetSnapshot): string | null {
   for (const p of BATTLE_PRESETS) {
     if (presetMatchesCurrent(p, c)) return p.name;
   }

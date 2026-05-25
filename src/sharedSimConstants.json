@@ -1,5 +1,5 @@
 {
-  "gravity": 600,
+  "gravity": 300,
   "unitGroundContactEpsilon": 0.001,
   "unitGroundSpringAccelPerWorldUnit": 900,
   "unitGroundSpringDampingRatio": 1,

@@ -1,4 +1,6 @@
 import { nextTick, onMounted, onUnmounted, type Ref } from 'vue';
+import { audioManager } from '../game/audio/AudioManager';
+import { musicPlayer } from '../game/audio/MusicPlayer';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type {
   LobbyPlayer,
@@ -109,6 +111,8 @@ export function useGameCanvasSessionLifecycle({
     network.disconnect();
     stopBackgroundBattle();
     foregroundGame.destroy();
+    musicPlayer.destroy();
+    audioManager.destroy();
   });
 
   return {

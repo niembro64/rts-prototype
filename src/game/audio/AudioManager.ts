@@ -15,6 +15,7 @@ import {
   stopContinuousSound,
   setContinuousAudible,
   updateContinuousZoom,
+  disposeContinuousSound,
   getBeamConfig,
   getForceFieldConfig,
 } from './continuousSounds';
@@ -217,6 +218,17 @@ export class AudioManager {
     this.stopAllForceFieldSounds();
   }
 
+  stopAllContinuousSoundsNow(): void {
+    for (const sound of this.activeLaserSounds.values()) {
+      disposeContinuousSound(sound);
+    }
+    for (const sound of this.activeForceFieldSounds.values()) {
+      disposeContinuousSound(sound);
+    }
+    this.activeLaserSounds.clear();
+    this.activeForceFieldSounds.clear();
+  }
+
   // Get active continuous sounds as [soundId, sourceEntityId] pairs
   getActiveContinuousSounds(): [number, number][] {
     const pairs: [number, number][] = [];
@@ -295,6 +307,22 @@ export class AudioManager {
     if (enabled) return;
     if (category === 'beam') this.stopAllLaserSounds();
     else if (category === 'field') this.stopAllForceFieldSounds();
+  }
+
+  destroy(): void {
+    this.stopAllContinuousSoundsNow();
+    for (const timeout of this.pendingTimeouts) clearTimeout(timeout);
+    this.pendingTimeouts.clear();
+    for (const timeout of this.gainCleanupTimeouts) clearTimeout(timeout);
+    this.gainCleanupTimeouts.clear();
+    try { this.masterGain?.disconnect(); } catch {}
+    const ctx = this.ctx;
+    if (ctx !== null && ctx.state !== 'closed') {
+      void ctx.close().catch(() => {});
+    }
+    this.ctx = null;
+    this.masterGain = null;
+    this.initialized = false;
   }
 }
 

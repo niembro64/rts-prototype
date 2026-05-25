@@ -23,21 +23,18 @@ const props = defineProps<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 
-// Module-shared geometry: every avatar renders the same shape, so
-// there's no point allocating one per instance. Disposed at app
-// teardown isn't strictly needed for module-level state but
-// dropping the reference would let it be GC'd on hot-reload.
-const SHARED_GEOM = new THREE.IcosahedronGeometry(1, 0);
 const AVATAR_COLORS = COLORS.ui.commanderAvatar;
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
+let geometry: THREE.IcosahedronGeometry | null = null;
 let mesh: THREE.Mesh | null = null;
 let material: THREE.MeshLambertMaterial | null = null;
 let rafId = 0;
 
 function start(): void {
+  stop();
   const canvas = canvasRef.value;
   if (!canvas) return;
   const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
@@ -56,7 +53,8 @@ function start(): void {
   camera.position.set(0, 0, 3.5);
 
   material = new THREE.MeshLambertMaterial({ color: props.color });
-  mesh = new THREE.Mesh(SHARED_GEOM, material);
+  geometry = new THREE.IcosahedronGeometry(1, 0);
+  mesh = new THREE.Mesh(geometry, material);
   // Slight forward tilt so the icosahedron's facets read at any
   // rotation phase — straight-on the silhouette can flatten when
   // a vertex points directly at the camera.
@@ -86,11 +84,18 @@ function start(): void {
 function stop(): void {
   cancelAnimationFrame(rafId);
   rafId = 0;
+  scene?.clear();
+  geometry?.dispose();
   material?.dispose();
-  renderer?.dispose();
+  if (renderer) {
+    renderer.renderLists.dispose();
+    renderer.forceContextLoss();
+    renderer.dispose();
+  }
   renderer = null;
   scene = null;
   camera = null;
+  geometry = null;
   mesh = null;
   material = null;
 }

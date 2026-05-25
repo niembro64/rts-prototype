@@ -21,7 +21,7 @@ export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export class LocalGameConnection implements GameConnection {
   readonly sharesAuthoritativeState = true;
 
-  private server: GameServer;
+  private server: GameServer | null;
   private snapshotCallback: SnapshotCallback | null = null;
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
@@ -49,7 +49,7 @@ export class LocalGameConnection implements GameConnection {
     this.commandPlayerId = playerId;
     this.filterPlayerId = playerId;
     this.commandAuthorityMode = commandAuthorityMode;
-    this.snapshotListenerKey = this.subscribeSnapshots(playerId);
+    this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
       const callback = this.gameOverCallback;
@@ -82,22 +82,24 @@ export class LocalGameConnection implements GameConnection {
   }
 
   private rebindFilter(playerId: PlayerId | undefined): void {
+    const server = this.server;
+    if (server === null) return;
     this.snapshotImpairment.clear();
-    this.server.removeSnapshotListener(this.snapshotListenerKey);
+    server.removeSnapshotListener(this.snapshotListenerKey);
     SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(this.snapshotListenerKey, 'local');
     this.filterPlayerId = playerId;
     // Drop any held pending-snapshot from the previous binding — its
     // delta baseline is for the old recipient, so applying it on top
     // of the new view would produce nonsense.
     this.pendingSnapshot = null;
-    this.snapshotListenerKey = this.subscribeSnapshots(playerId);
+    this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
     // Mark the fresh listener ready immediately; we know the client
     // scene is already past startup (only running scenes toggle).
-    this.server.markSnapshotListenerReady(this.snapshotListenerKey);
+    server.markSnapshotListenerReady(this.snapshotListenerKey);
   }
 
-  private subscribeSnapshots(playerId: PlayerId | undefined): string {
-    return this.server.addSnapshotListener((state) => {
+  private subscribeSnapshots(server: GameServer, playerId: PlayerId | undefined): string {
+    return server.addSnapshotListener((state) => {
       this.recordLocalSnapshotWireCost(state);
       this.snapshotImpairment.schedule(
         state,
@@ -146,7 +148,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   sendCommand(command: Command): void {
-    this.server.receiveCommand(command, this.commandAuthority());
+    this.server?.receiveCommand(command, this.commandAuthority());
   }
 
   private commandAuthority(): CommandAuthority {
@@ -160,7 +162,7 @@ export class LocalGameConnection implements GameConnection {
   }
 
   markClientReady(): void {
-    this.server.markSnapshotListenerReady(this.snapshotListenerKey);
+    this.server?.markSnapshotListenerReady(this.snapshotListenerKey);
   }
 
   onSnapshot(callback: SnapshotCallback): void {
@@ -181,10 +183,13 @@ export class LocalGameConnection implements GameConnection {
   }
 
   disconnect(): void {
+    const server = this.server;
+    if (server === null) return;
+    this.server = null;
     this.snapshotImpairment.clear();
-    this.server.removeSnapshotListener(this.snapshotListenerKey);
+    server.removeSnapshotListener(this.snapshotListenerKey);
     SNAPSHOT_ENCODE_INSTRUMENTATION.clearListener(this.snapshotListenerKey, 'local');
-    this.server.removeGameOverListener(this.gameOverListenerRef);
+    server.removeGameOverListener(this.gameOverListenerRef);
     this.snapshotCallback = null;
     this.gameOverCallback = null;
     this.pendingSnapshot = null;

@@ -50,13 +50,21 @@ export function useGameCanvasLobbyActions({
   onLoadingProgress,
   startGameWithPlayers,
 }: GameCanvasLobbyActionsOptions): GameCanvasLobbyActions {
+  let lobbyActionGeneration = 0;
+
+  function isCurrentLobbyAction(generation: number): boolean {
+    return lobbyActionGeneration === generation;
+  }
+
   async function handleHost(): Promise<void> {
+    const generation = ++lobbyActionGeneration;
     try {
       isConnecting.value = true;
       lobbyError.value = null;
       networkNotice.value = null;
 
       await network.hostGame();
+      if (!isCurrentLobbyAction(generation)) return;
       roomCode.value = network.getRoomCode();
       isHost.value = true;
       networkRole.value = 'host';
@@ -70,6 +78,7 @@ export function useGameCanvasLobbyActions({
 
       isConnecting.value = false;
     } catch (err) {
+      if (!isCurrentLobbyAction(generation)) return;
       lobbyError.value = (err as Error).message || 'Failed to host game';
       networkNotice.value = lobbyError.value;
       isConnecting.value = false;
@@ -77,6 +86,7 @@ export function useGameCanvasLobbyActions({
   }
 
   async function handleJoin(code: string): Promise<void> {
+    const generation = ++lobbyActionGeneration;
     try {
       isConnecting.value = true;
       lobbyError.value = null;
@@ -88,6 +98,7 @@ export function useGameCanvasLobbyActions({
       setupNetworkCallbacks();
 
       await network.joinGame(code);
+      if (!isCurrentLobbyAction(generation)) return;
       roomCode.value = network.getRoomCode();
       isHost.value = false;
 
@@ -97,6 +108,7 @@ export function useGameCanvasLobbyActions({
 
       isConnecting.value = false;
     } catch (err) {
+      if (!isCurrentLobbyAction(generation)) return;
       lobbyError.value = (err as Error).message || 'Failed to join game';
       networkNotice.value = lobbyError.value;
       isConnecting.value = false;
@@ -108,6 +120,7 @@ export function useGameCanvasLobbyActions({
   }
 
   function handleLobbyCancel(): void {
+    lobbyActionGeneration++;
     battleLoading.value = false;
     network.disconnect();
     networkRole.value = null;
@@ -120,6 +133,7 @@ export function useGameCanvasLobbyActions({
   }
 
   function handleOffline(): void {
+    lobbyActionGeneration++;
     networkRole.value = null;
     networkNotice.value = null;
     battleLoading.value = true;

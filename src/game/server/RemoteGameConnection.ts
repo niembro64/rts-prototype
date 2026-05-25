@@ -11,14 +11,19 @@ export class RemoteGameConnection implements GameConnection {
   private gameOverCallback: GameOverCallback | null = null;
   private pendingSnapshot: NetworkServerSnapshot | null = null;
   private snapshotImpairment = createSnapshotImpairmentQueue('remote');
+  private disconnected = false;
+  private readonly stateHandler: (state: NetworkServerSnapshot) => void;
 
   constructor() {
     // Wire NetworkManager's state received callback
-    networkManager.onStateReceived = (state: NetworkServerSnapshot) => {
+    this.stateHandler = (state: NetworkServerSnapshot) => {
+      if (this.disconnected) return;
       this.snapshotImpairment.schedule(state, (deliveredState) => {
+        if (this.disconnected) return;
         this.receiveSnapshot(deliveredState);
       });
     };
+    networkManager.onStateReceived = this.stateHandler;
   }
 
   private receiveSnapshot(state: NetworkServerSnapshot): void {
@@ -40,14 +45,17 @@ export class RemoteGameConnection implements GameConnection {
   }
 
   sendCommand(command: Command): void {
+    if (this.disconnected) return;
     networkManager.sendCommand(command);
   }
 
   markClientReady(): void {
+    if (this.disconnected) return;
     networkManager.sendClientReady();
   }
 
   onSnapshot(callback: SnapshotCallback): void {
+    if (this.disconnected) return;
     this.snapshotCallback = callback;
     const pendingFromNetworkManager = networkManager.consumePendingState();
     const pending = !this.pendingSnapshot ||
@@ -63,14 +71,19 @@ export class RemoteGameConnection implements GameConnection {
   }
 
   onGameOver(callback: GameOverCallback): void {
+    if (this.disconnected) return;
     this.gameOverCallback = callback;
   }
 
   disconnect(): void {
+    if (this.disconnected) return;
+    this.disconnected = true;
     this.snapshotImpairment.clear();
     this.snapshotCallback = null;
     this.gameOverCallback = null;
     this.pendingSnapshot = null;
-    networkManager.onStateReceived = undefined;
+    if (networkManager.onStateReceived === this.stateHandler) {
+      networkManager.onStateReceived = undefined;
+    }
   }
 }

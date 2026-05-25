@@ -1,4 +1,4 @@
-import { computed, nextTick, watch, type ComputedRef, type Ref } from 'vue';
+import { computed, nextTick, onUnmounted, watch, type ComputedRef, type Ref } from 'vue';
 import {
   loadStoredCenterMagnitude,
   loadStoredDividersMagnitude,
@@ -53,10 +53,12 @@ export function useGameCanvasLobbyPreview({
   const inGameLobby = computed(
     () => roomCode.value !== '' && lobbyModalVisible.value,
   );
+  let disposed = false;
 
   function restartPreviewBattle(): void {
     stopBackgroundBattle();
     nextTick(() => {
+      if (disposed) return;
       startBackgroundBattle();
     });
   }
@@ -97,6 +99,7 @@ export function useGameCanvasLobbyPreview({
     const container = backgroundContainerRef.value;
     if (!container) return;
     nextTick(() => {
+      if (disposed || !container.isConnected) return;
       if (active) {
         const target = document.getElementById('lobby-preview-target');
         if (target && container.parentElement !== target) {
@@ -109,5 +112,9 @@ export function useGameCanvasLobbyPreview({
         home.appendChild(container);
       }
     });
+  });
+
+  onUnmounted(() => {
+    disposed = true;
   });
 }

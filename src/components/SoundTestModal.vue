@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { onBeforeUnmount, watch } from 'vue';
 import { audioManager } from '../game/audio/AudioManager';
 import { AUDIO } from '../audioConfig';
 import type { SoundEntry } from '../audioConfig';
 
-defineProps<{ visible: boolean }>();
+const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
 // Track which continuous sound is active (for mouseup cleanup)
@@ -86,6 +87,14 @@ function stopContinuous() {
     activeContinuousId = null;
   }
 }
+
+watch(() => props.visible, (visible) => {
+  if (!visible) stopContinuous();
+});
+
+onBeforeUnmount(() => {
+  stopContinuous();
+});
 
 function label(s: UniqueSound): string {
   const ids = s.ids;

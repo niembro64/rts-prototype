@@ -135,7 +135,7 @@ function disconnectNode(node: AudioNode | undefined): void {
   try { node.disconnect(); } catch { /* already disconnected */ }
 }
 
-function disposeContinuousSound(sound: ContinuousSound): void {
+export function disposeContinuousSound(sound: ContinuousSound): void {
   stopSource(sound.lfo);
   stopSource(sound.oscillator);
   stopSource(sound.noiseSource);

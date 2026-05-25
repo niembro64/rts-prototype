@@ -367,6 +367,13 @@ function disposeSceneResources(root: THREE.Scene): void {
   });
 }
 
+function disposeHudView(view: HudView): void {
+  disposeSceneResources(view.scene);
+  view.renderer.renderLists.dispose();
+  view.renderer.forceContextLoss();
+  view.renderer.dispose();
+}
+
 onMounted(() => {
   buildScene();
   if (typeof document !== 'undefined') {
@@ -380,17 +387,16 @@ onUnmounted(() => {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
   }
   if (rafId !== 0) cancelAnimationFrame(rafId);
+  rafId = 0;
   if (throttleTimer) clearTimeout(throttleTimer);
   throttleTimer = null;
   resizeObserver?.disconnect();
   resizeObserver = null;
   if (compassView) {
-    disposeSceneResources(compassView.scene);
-    compassView.renderer.dispose();
+    disposeHudView(compassView);
   }
   if (windView) {
-    disposeSceneResources(windView.scene);
-    windView.renderer.dispose();
+    disposeHudView(windView);
   }
   compassView = null;
   windView = null;

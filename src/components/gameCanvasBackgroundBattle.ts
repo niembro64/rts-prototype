@@ -129,25 +129,35 @@ export function useGameCanvasBackgroundBattle({
       onRendererWarmupChange(false);
       return;
     }
-    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
     backgroundBattle = battle;
     const scene = battle.gameInstance.getScene();
     if (scene) {
       const previousStartupReady = scene.onStartupReady;
       scene.onStartupReady = () => {
+        if (myGen !== backgroundBattleGen || backgroundBattle !== battle) return;
         previousStartupReady?.();
         onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot, 'Applying first snapshot');
       };
+    }
+    await reportLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneCreated, 'Creating 3D scene');
+    if (myGen !== backgroundBattleGen || backgroundBattle !== battle) {
+      if (backgroundBattle === battle) {
+        destroyBackgroundBattle(battle);
+        backgroundBattle = null;
+      }
+      onRendererWarmupChange(false);
+      return;
     }
     onStarted(battle);
 
     checkBgSceneInterval = waitForSceneAndBind(
       () => backgroundBattle?.gameInstance?.getScene(),
       (bgScene) => {
+        checkBgSceneInterval = null;
+        if (myGen !== backgroundBattleGen || backgroundBattle !== battle) return;
         onLoadingProgress(BACKGROUND_LOAD_PROGRESS.sceneBound, 'Binding game UI');
         bgScene.setClientRenderEnabled(getPlayerClientEnabled());
         bindSceneUi(bgScene);
-        checkBgSceneInterval = null;
       },
     );
   }

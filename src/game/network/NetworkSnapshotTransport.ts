@@ -28,6 +28,22 @@ type SnapshotSendTelemetry = {
   unitCount: number | undefined;
   isDelta: boolean;
 };
+type SnapshotCompressionDescriptor = NonNullable<NetworkStateMessage['compression']>;
+
+function isSnapshotCompressionFormat(value: unknown): value is SnapshotCompressionFormat {
+  return value === 'gzip' || value === 'deflate' || value === 'deflate-raw';
+}
+
+function normalizeSnapshotCompression(
+  compression: NetworkStateMessage['compression'] | null,
+): SnapshotCompressionDescriptor | null {
+  if (compression == null) return null;
+  if (!isSnapshotCompressionFormat(compression.format)) return null;
+  return {
+    format: compression.format,
+    rawBytes: Number.isFinite(compression.rawBytes) ? compression.rawBytes : 0,
+  };
+}
 
 export class NetworkSnapshotTransport {
   private snapshotsSent = 0;
@@ -79,7 +95,6 @@ export class NetworkSnapshotTransport {
       type: 'state',
       gameId,
       data: buf,
-      compression: undefined,
     };
   }
 
@@ -100,8 +115,8 @@ export class NetworkSnapshotTransport {
     let payload = message.data instanceof Uint8Array
       ? message.data
       : new Uint8Array(message.data);
-    const compression = message.compression;
-    if (compression !== undefined) {
+    const compression = normalizeSnapshotCompression(message.compression ?? null);
+    if (compression !== null) {
       const decompressStart = performance.now();
       try {
         payload = await decompressSnapshotPayload(payload, compression.format);
@@ -191,7 +206,6 @@ export class NetworkSnapshotTransport {
           type: 'state',
           gameId,
           data: raw,
-          compression: undefined,
         };
       }
 
@@ -236,7 +250,6 @@ export class NetworkSnapshotTransport {
         type: 'state',
         gameId,
         data: raw,
-        compression: undefined,
       };
     } finally {
       this.pendingFullCompressionPlayerIds.delete(playerId);

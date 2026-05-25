@@ -23,6 +23,8 @@ export class MusicPlayer {
   private ctx: AudioContext | null = null;
   private musicGain: GainNode | null = null;
   private playing = false;
+  private wantsPlayback = false;
+  private playbackRequestId = 0;
   private schedulerInterval: ReturnType<typeof setInterval> | null = null;
   private pendingCleanups = new Set<ReturnType<typeof setTimeout>>();
 
@@ -49,11 +51,19 @@ export class MusicPlayer {
 
   start(): void {
     if (this.playing || !this.ctx || !this.musicGain) return;
+    this.wantsPlayback = true;
+    const requestId = ++this.playbackRequestId;
 
     // If MIDI mode requested but not yet loaded, wait for load then start
     if (AUDIO.musicSource === 'midi' && !this.midiState.loaded && this.midiState.loadPromise) {
       this.midiState.loadPromise.then(() => {
-        if (!this.playing) this.beginPlayback();
+        if (
+          this.wantsPlayback &&
+          this.playbackRequestId === requestId &&
+          !this.playing
+        ) {
+          this.beginPlayback();
+        }
       });
       return;
     }
@@ -82,10 +92,18 @@ export class MusicPlayer {
       console.log('[MusicPlayer] Starting procedural playback');
     }
 
-    this.schedulerInterval = setInterval(() => this.scheduleLoop(), SCHEDULER_INTERVAL);
+    if (this.schedulerInterval === null) {
+      this.schedulerInterval = setInterval(() => this.scheduleLoop(), SCHEDULER_INTERVAL);
+    }
   }
 
   stop(): void {
+    this.wantsPlayback = false;
+    this.playbackRequestId++;
+    if (this.schedulerInterval) {
+      clearInterval(this.schedulerInterval);
+      this.schedulerInterval = null;
+    }
     if (!this.playing || !this.ctx || !this.musicGain) return;
     this.playing = false;
 
@@ -93,15 +111,6 @@ export class MusicPlayer {
     this.musicGain.gain.cancelScheduledValues(now);
     this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
     this.musicGain.gain.linearRampToValueAtTime(0.0001, now + 1);
-
-    const fadeTimeout = setTimeout(() => {
-      this.pendingCleanups.delete(fadeTimeout);
-      if (this.schedulerInterval) {
-        clearInterval(this.schedulerInterval);
-        this.schedulerInterval = null;
-      }
-    }, 1100);
-    this.pendingCleanups.add(fadeTimeout);
   }
 
   setVolume(vol: number): void {
@@ -115,6 +124,8 @@ export class MusicPlayer {
   }
 
   destroy(): void {
+    this.wantsPlayback = false;
+    this.playbackRequestId++;
     this.playing = false;
     if (this.schedulerInterval) {
       clearInterval(this.schedulerInterval);
@@ -128,10 +139,12 @@ export class MusicPlayer {
       try { this.musicGain.disconnect(); } catch { /* */ }
       this.musicGain = null;
     }
+    this.procState = null;
     if (this.midiEffects) {
       destroyMidiEffectsChain(this.midiEffects);
       this.midiEffects = null;
     }
+    this.ctx = null;
   }
 
   // ---- Private: scheduling ----

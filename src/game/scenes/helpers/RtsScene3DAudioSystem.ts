@@ -1,4 +1,5 @@
 import { getAudioSmoothing } from '@/clientBarConfig';
+import { audioManager } from '../../audio/AudioManager';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import { AudioEventScheduler } from './AudioEventScheduler';
 import type { RtsScene3DSnapshotAudioOptions } from './RtsScene3DSnapshotIntake';
@@ -33,5 +34,6 @@ export class RtsScene3DAudioSystem {
 
   clear(): void {
     this.scheduler.clear();
+    audioManager.stopAllContinuousSoundsNow();
   }
 }

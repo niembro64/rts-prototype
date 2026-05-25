@@ -118,10 +118,12 @@ export class NetworkManager {
   private signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
   private stateDecodeQueue: Promise<void> = Promise.resolve();
   private stateDecodeGeneration = 0;
+  private sessionGeneration = 0;
   /** 10s connection-setup deadline created by hostGame/joinGame. Held
    *  here so disconnect() can cancel it — otherwise a stale timeout
    *  can fire after the user retries and destroy the new peer. */
   private setupTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private pendingSetupReject: ((error: Error) => void) | null = null;
 
   // Callbacks
   public onPlayerJoined: ((player: LobbyPlayer) => void) | undefined = undefined;
@@ -232,6 +234,37 @@ export class NetworkManager {
     }
   }
 
+  private cancelPendingSetup(reason: string): void {
+    const reject = this.pendingSetupReject;
+    this.pendingSetupReject = null;
+    if (reject !== null) reject(new Error(reason));
+  }
+
+  private beginNetworkSetup(): number {
+    this.cancelPendingSetup('Network setup canceled');
+    this.clearSignalingReconnect();
+    this.clearSetupTimeout();
+    this.signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
+    this.sessionGeneration++;
+    this.heartbeatTracker.stop();
+    this.dataChannelMonitor.clear();
+    for (const conn of this.connections.values()) {
+      conn.close();
+    }
+    this.connections.clear();
+    this.peer?.destroy();
+    this.peer = null;
+    this.gameStarted = false;
+    this.snapshotTransport.reset();
+    this.stateDecodeGeneration++;
+    this.stateDecodeQueue = Promise.resolve();
+    return this.sessionGeneration;
+  }
+
+  private isCurrentSession(generation: number): boolean {
+    return this.sessionGeneration === generation;
+  }
+
   private markSignalingOpen(): void {
     this.clearSignalingReconnect();
     this.signalingReconnectDelayMs = SIGNALING_RECONNECT_INITIAL_DELAY_MS;
@@ -285,12 +318,12 @@ export class NetworkManager {
 
   // Host a new game
   async hostGame(): Promise<string> {
+    const generation = this.beginNetworkSetup();
     this.roomCode = generateRoomCode();
     this.role = 'host';
     this.localPlayerId = 1;
     this.nextPlayerId = 2;
     this.roster.clear();
-    this.connections.clear();
 
     // Add host as player 1. The host IS the local player when hosting,
     // so seed with whatever username is persisted in localStorage (or a
@@ -302,6 +335,75 @@ export class NetworkManager {
 
     return new Promise((resolve, reject) => {
       let resolved = false;
+      const isCurrentPeer = (peer: Peer): boolean =>
+        this.isCurrentSession(generation) && this.peer === peer;
+      const settleResolve = (roomCode: string): void => {
+        if (resolved) return;
+        resolved = true;
+        this.pendingSetupReject = null;
+        this.clearSetupTimeout();
+        resolve(roomCode);
+      };
+      const settleReject = (error: Error): void => {
+        if (resolved) return;
+        resolved = true;
+        this.pendingSetupReject = null;
+        this.clearSetupTimeout();
+        reject(error);
+      };
+      this.pendingSetupReject = settleReject;
+
+      const installHostPeerHandlers = (peer: Peer): void => {
+        peer.on('open', () => {
+          if (!isCurrentPeer(peer)) return;
+          this.markSignalingOpen();
+          this.heartbeatTracker.start();
+          console.log('Host peer opened with ID:', peer.id);
+          settleResolve(this.roomCode);
+        });
+
+        peer.on('connection', (conn) => {
+          if (!isCurrentPeer(peer)) {
+            conn.close();
+            return;
+          }
+          this.handleIncomingConnection(conn, generation);
+        });
+
+        // While the lobby is open, the host must stay registered with
+        // the signaling server so new computers can dial ba-ROOM.
+        // Once a real battle starts, existing WebRTC data channels no
+        // longer need the signaling socket.
+        peer.on('disconnected', () => {
+          if (!isCurrentPeer(peer)) return;
+          console.log('Disconnected from signaling server');
+          this.scheduleHostSignalingReconnect('host peer disconnected');
+        });
+
+        peer.on('error', (err) => {
+          if (!isCurrentPeer(peer)) return;
+          console.error('Peer error:', err);
+          if (err.type === 'unavailable-id') {
+            // Room code already in use, try another
+            peer.destroy();
+            this.roomCode = generateRoomCode();
+            const retryPeer = this.createPeer(this.getUniversalGameId());
+            this.peer = retryPeer;
+            installHostPeerHandlers(retryPeer);
+          } else if (
+            err.type === 'disconnected' ||
+            err.type === 'network' ||
+            err.type === 'server-error' ||
+            err.type === 'socket-error' ||
+            err.type === 'socket-closed'
+          ) {
+            settleReject(new Error('Could not connect to game server. Please try again.'));
+          } else {
+            this.emitError(err.message);
+            settleReject(err);
+          }
+        });
+      };
 
       // Timeout after 10 seconds. Stored on `this` so disconnect()
       // can cancel a setup attempt that's still in flight; without
@@ -310,109 +412,66 @@ export class NetworkManager {
       this.clearSetupTimeout();
       this.setupTimeoutId = setTimeout(() => {
         this.setupTimeoutId = null;
-        if (!resolved) {
-          resolved = true;
-          this.peer?.destroy();
-          reject(new Error('Connection timeout - signaling server may be unavailable'));
-        }
+        if (resolved || !this.isCurrentSession(generation)) return;
+        this.peer?.destroy();
+        this.peer = null;
+        settleReject(new Error('Connection timeout - signaling server may be unavailable'));
       }, 10000);
 
       // Use room code as peer ID prefix for discoverability.
-      this.peer = this.createPeer(this.getUniversalGameId());
-
-      this.peer.on('open', () => {
-        this.markSignalingOpen();
-        if (resolved) return;
-        resolved = true;
-        this.clearSetupTimeout();
-        this.heartbeatTracker.start();
-        console.log('Host peer opened with ID:', this.peer?.id);
-        resolve(this.roomCode);
-      });
-
-      this.peer.on('connection', (conn) => {
-        this.handleIncomingConnection(conn);
-      });
-
-      // While the lobby is open, the host must stay registered with
-      // the signaling server so new computers can dial ba-ROOM.
-      // Once a real battle starts, existing WebRTC data channels no
-      // longer need the signaling socket.
-      this.peer.on('disconnected', () => {
-        console.log('Disconnected from signaling server');
-        this.scheduleHostSignalingReconnect('host peer disconnected');
-      });
-
-      this.peer.on('error', (err) => {
-        console.error('Peer error:', err);
-        if (err.type === 'unavailable-id') {
-          // Room code already in use, try another
-          this.peer?.destroy();
-          this.roomCode = generateRoomCode();
-          this.peer = this.createPeer(this.getUniversalGameId());
-          this.peer.on('open', () => {
-            this.markSignalingOpen();
-            if (resolved) return;
-            resolved = true;
-            this.clearSetupTimeout();
-            this.heartbeatTracker.start();
-            resolve(this.roomCode);
-          });
-          this.peer.on('connection', (conn) => this.handleIncomingConnection(conn));
-          this.peer.on('disconnected', () => {
-            console.log('Disconnected from signaling server');
-            this.scheduleHostSignalingReconnect('host peer disconnected');
-          });
-          this.peer.on('error', (e) => {
-            if (resolved) return;
-            resolved = true;
-            this.clearSetupTimeout();
-            reject(e);
-          });
-        } else if (err.type === 'disconnected' || err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error' || err.type === 'socket-closed') {
-          // Connection to signaling server failed
-          if (!resolved) {
-            resolved = true;
-            this.clearSetupTimeout();
-            reject(new Error('Could not connect to game server. Please try again.'));
-          }
-        } else {
-          if (resolved) return;
-          resolved = true;
-          this.clearSetupTimeout();
-          this.emitError(err.message);
-          reject(err);
-        }
-      });
+      const peer = this.createPeer(this.getUniversalGameId());
+      this.peer = peer;
+      installHostPeerHandlers(peer);
     });
   }
 
   // Join an existing game
   async joinGame(roomCode: string): Promise<void> {
+    const generation = this.beginNetworkSetup();
     this.roomCode = normalizeRoomCode(roomCode);
     this.role = 'client';
     this.roster.clear();
-    this.connections.clear();
 
     return new Promise((resolve, reject) => {
       let opened = false;
+      let settled = false;
+      const isCurrentPeer = (peer: Peer): boolean =>
+        this.isCurrentSession(generation) && this.peer === peer;
+      const settleResolve = (): void => {
+        if (settled) return;
+        settled = true;
+        this.pendingSetupReject = null;
+        this.clearSetupTimeout();
+        resolve();
+      };
+      const settleReject = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        this.pendingSetupReject = null;
+        this.clearSetupTimeout();
+        reject(error);
+      };
+      this.pendingSetupReject = settleReject;
+
       // Generate a random ID for the client
       const clientId = `ba-client-${Math.random().toString(36).substring(2, 10)}`;
-      this.peer = this.createPeer(clientId);
+      const peer = this.createPeer(clientId);
+      this.peer = peer;
 
-      this.peer.on('open', () => {
+      peer.on('open', () => {
+        if (!isCurrentPeer(peer)) return;
         console.log('Client peer opened, connecting to host...');
 
-        const conn = this.peer!.connect(this.getUniversalGameId(), {
+        const conn = peer.connect(this.getUniversalGameId(), {
           reliable: true,
         });
 
         this.connections.set(1, conn); // Host is always player 1
-        this.setupConnectionHandlers(conn, 1);
+        this.setupConnectionHandlers(conn, 1, generation);
 
         conn.on('open', () => {
+          if (!this.isCurrentSession(generation) || this.connections.get(1) !== conn) return;
           opened = true;
-          this.clearSetupTimeout();
           console.log('Connected to host');
           // Track host's heartbeats — if the host stops sending
           // for too long, the check loop closes our side of the
@@ -420,23 +479,25 @@ export class NetworkManager {
           this.heartbeatTracker.track(1);
           this.heartbeatTracker.start();
           this.emitConnected();
-          resolve();
+          settleResolve();
         });
 
         conn.on('error', (err) => {
+          if (!this.isCurrentSession(generation) || this.connections.get(1) !== conn) return;
           console.error('Connection error:', err);
-          this.clearSetupTimeout();
           this.emitError('Failed to connect to host');
-          reject(err);
+          settleReject(err);
         });
       });
 
       // Handle disconnection from signaling server (OK once connected to host)
-      this.peer.on('disconnected', () => {
+      peer.on('disconnected', () => {
+        if (!isCurrentPeer(peer)) return;
         console.log('Client disconnected from signaling server (P2P still works)');
       });
 
-      this.peer.on('error', (err) => {
+      peer.on('error', (err) => {
+        if (!isCurrentPeer(peer)) return;
         console.error('Peer error:', err);
         // Ignore signaling server disconnection errors
         if (err.type === 'disconnected' || err.type === 'network') {
@@ -444,16 +505,14 @@ export class NetworkManager {
           return;
         }
         if (err.type === 'peer-unavailable') {
-          this.clearSetupTimeout();
           this.emitError('Game not found - check the code and try again');
-          this.peer?.destroy();
-          this.peer = null;
-          reject(new Error('Game not found'));
+          peer.destroy();
+          if (this.peer === peer) this.peer = null;
+          settleReject(new Error('Game not found'));
           return;
         }
-        this.clearSetupTimeout();
         this.emitError(err.message);
-        reject(err);
+        settleReject(err);
       });
 
       // Timeout after 10 seconds. Stored on `this` (see hostGame for
@@ -462,18 +521,20 @@ export class NetworkManager {
       this.clearSetupTimeout();
       this.setupTimeoutId = setTimeout(() => {
         this.setupTimeoutId = null;
-        if (!opened) {
-          this.peer?.destroy();
-          this.peer = null;
-          reject(new Error('Connection timeout - room may not exist'));
-        }
+        if (opened || settled || !isCurrentPeer(peer)) return;
+        peer.destroy();
+        if (this.peer === peer) this.peer = null;
+        settleReject(new Error('Connection timeout - room may not exist'));
       }, 10000);
     });
   }
 
   // Handle incoming connection (host only)
-  private handleIncomingConnection(conn: DataConnection): void {
-    if (this.gameStarted) {
+  private handleIncomingConnection(
+    conn: DataConnection,
+    generation = this.sessionGeneration,
+  ): void {
+    if (!this.isCurrentSession(generation) || this.gameStarted) {
       // Reject late joiners
       conn.close();
       return;
@@ -487,9 +548,10 @@ export class NetworkManager {
 
     const playerId = this.nextPlayerId++;
     this.connections.set(playerId, conn);
-    this.setupConnectionHandlers(conn, playerId);
+    this.setupConnectionHandlers(conn, playerId, generation);
 
     conn.on('open', () => {
+      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
       console.log(`Player ${playerId} connected`);
 
       this.heartbeatTracker.track(playerId);
@@ -558,13 +620,19 @@ export class NetworkManager {
   }
 
   // Setup handlers for a connection
-  private setupConnectionHandlers(conn: DataConnection, playerId: PlayerId): void {
+  private setupConnectionHandlers(
+    conn: DataConnection,
+    playerId: PlayerId,
+    generation = this.sessionGeneration,
+  ): void {
     conn.on('data', (data) => {
+      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
       const message = data as NetworkMessage;
       this.handleMessage(message, playerId);
     });
 
     conn.on('close', () => {
+      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
       console.warn(`[NET] Player ${playerId} connection CLOSED (role=${this.role})`);
       this.connections.delete(playerId);
       this.roster.delete(playerId);
@@ -583,6 +651,7 @@ export class NetworkManager {
     });
 
     conn.on('error', (err) => {
+      if (!this.isCurrentSession(generation) || this.connections.get(playerId) !== conn) return;
       console.error(`[NET] Connection error with player ${playerId}:`, err);
     });
 
@@ -870,24 +939,34 @@ export class NetworkManager {
     if (this.role !== 'host') return false;
     const conn = this.connections.get(playerId);
     if (!conn) return false;
+    const generation = this.sessionGeneration;
+    const gameId = this.getUniversalGameId();
     const message = this.snapshotTransport.buildStateMessage(
       playerId,
       conn,
-      this.getUniversalGameId(),
+      gameId,
       state,
     );
     if (message === null) return false;
     if (message instanceof Promise) {
       void message
         .then((resolved) => {
-          if (resolved !== null) this.sendTo(playerId, resolved);
+          if (
+            resolved !== null &&
+            this.isCurrentSession(generation) &&
+            this.role === 'host' &&
+            this.getUniversalGameId() === gameId &&
+            this.connections.get(playerId) === conn
+          ) {
+            this.safeSend(conn, resolved);
+          }
         })
         .catch((err: unknown) => {
           console.warn('[NET] Failed to build compressed snapshot:', err);
         });
       return true;
     }
-    return this.sendTo(playerId, message);
+    return this.safeSend(conn, message);
   }
 
   // Send command to host (client only)
@@ -986,22 +1065,10 @@ export class NetworkManager {
 
   // Disconnect and cleanup
   disconnect(): void {
-    this.clearSignalingReconnect();
-    this.clearSetupTimeout();
-    this.heartbeatTracker.stop();
-    this.dataChannelMonitor.clear();
-    for (const conn of this.connections.values()) {
-      conn.close();
-    }
-    this.connections.clear();
-    this.peer?.destroy();
-    this.peer = null;
+    this.beginNetworkSetup();
     this.role = null;
     this.gameStarted = false;
     this.roster.clear();
-    this.snapshotTransport.reset();
-    this.stateDecodeGeneration++;
-    this.stateDecodeQueue = Promise.resolve();
 
     // Clear all callbacks to release closure references
     this.onPlayerJoined = undefined;

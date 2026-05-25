@@ -98,6 +98,7 @@ export class ThreeApp {
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
   private _renderEnabled = true;
+  private _destroyed = false;
 
   constructor(
     parent: HTMLElement,
@@ -350,6 +351,8 @@ export class ThreeApp {
   }
 
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this.stop();
     this._updateCallback = null;
     this.orbit.destroy();
@@ -362,6 +365,7 @@ export class ThreeApp {
     this._skyTexture?.dispose();
     this._skyTexture = null;
     this.renderer.renderLists.dispose();
+    this.renderer.forceContextLoss();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode) {
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
