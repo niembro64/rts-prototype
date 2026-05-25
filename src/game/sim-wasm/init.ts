@@ -249,6 +249,7 @@ import __wbg_init, {
   snapshot_encode_envelope_continue,
   snapshot_encode_envelope_emit_economy,
   snapshot_encode_envelope_emit_minimap,
+  snapshot_encode_envelope_emit_packed_minimap,
   snapshot_encode_envelope_emit_projectiles,
   snapshot_encode_envelope_emit_packed_projectiles,
   snapshot_encode_minimap_scratch_ptr,
@@ -2029,6 +2030,10 @@ export interface SnapshotEncodeApi {
   /** Emit `minimapEntities: [...]`. Reads `count` entries from the
    *  minimap scratch (6 f64 per entry). */
   emitMinimap: (count: number) => void;
+  /** Emit packed `minimapEntities: { v: 2, b }`. Reads `count`
+   *  entries from the minimap scratch and writes the compact binary
+   *  wire shape used by snapshotMinimapWirePack.ts. */
+  emitPackedMinimap: (count: number) => number;
   /** Emit `projectiles: { spawns?, despawns?, velocityUpdates?,
    *  beamUpdates? }`. Reads spawn DTOs from projSpawnScratch (27 f64
    *  each), despawn ids from projDespawnScratch, velocity-update
@@ -2786,6 +2791,7 @@ export function initSimWasm(): Promise<SimWasm> {
           envelopeContinue: snapshot_encode_envelope_continue,
           emitEconomy: snapshot_encode_envelope_emit_economy,
           emitMinimap: snapshot_encode_envelope_emit_minimap,
+          emitPackedMinimap: snapshot_encode_envelope_emit_packed_minimap,
           emitProjectiles: snapshot_encode_envelope_emit_projectiles,
           emitPackedProjectiles: snapshot_encode_envelope_emit_packed_projectiles,
           minimapScratchPtr: snapshot_encode_minimap_scratch_ptr,

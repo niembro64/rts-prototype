@@ -15898,6 +15898,8 @@ pub fn snapshot_encode_beam_point_scratch_ensure(count: u32) {
 }
 
 const PACKED_BINARY_ROW_COUNT_BYTES: usize = 4;
+const PACKED_MINIMAP_ENTITIES_VERSION: u64 = 2;
+const PACKED_MINIMAP_ENTITY_FLAG_RADAR_ONLY: u32 = 0x01;
 const PACKED_PROJECTILES_VERSION: u64 = 2;
 const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN: u32 = 0x001;
 const PROJECTILE_SPAWN_FLAG_SHOT_ID: u32 = 0x002;
@@ -15964,6 +15966,114 @@ impl PackedBinaryWriter {
         }
         self.buf[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
     }
+}
+
+#[derive(Default)]
+struct PackedMinimapGroup {
+    type_tag: u32,
+    player_id: u32,
+    flags: u32,
+    count: u32,
+    last_id: i64,
+    writer: PackedBinaryWriter,
+}
+
+impl PackedMinimapGroup {
+    fn reset(&mut self, type_tag: u32, player_id: u32, flags: u32) {
+        self.type_tag = type_tag;
+        self.player_id = player_id;
+        self.flags = flags;
+        self.count = 0;
+        self.last_id = 0;
+        self.writer.reset(0);
+    }
+}
+
+#[derive(Default)]
+struct SnapshotEncodePackedMinimapScratch {
+    out: PackedBinaryWriter,
+    groups: Vec<PackedMinimapGroup>,
+    group_count: usize,
+}
+
+impl SnapshotEncodePackedMinimapScratch {
+    fn reset_groups(&mut self) {
+        self.group_count = 0;
+    }
+
+    fn group_index(&mut self, type_tag: u32, player_id: u32, flags: u32) -> usize {
+        for i in 0..self.group_count {
+            let group = &self.groups[i];
+            if group.type_tag == type_tag && group.player_id == player_id && group.flags == flags {
+                return i;
+            }
+        }
+        let index = self.group_count;
+        if index == self.groups.len() {
+            self.groups.push(PackedMinimapGroup::default());
+        }
+        self.groups[index].reset(type_tag, player_id, flags);
+        self.group_count += 1;
+        index
+    }
+}
+
+struct SnapshotEncodePackedMinimapScratchHolder(
+    UnsafeCell<Option<SnapshotEncodePackedMinimapScratch>>,
+);
+unsafe impl Sync for SnapshotEncodePackedMinimapScratchHolder {}
+static SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH: SnapshotEncodePackedMinimapScratchHolder =
+    SnapshotEncodePackedMinimapScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn snapshot_encode_packed_minimap_scratch() -> &'static mut SnapshotEncodePackedMinimapScratch {
+    unsafe {
+        let cell = &mut *SNAPSHOT_ENCODE_PACKED_MINIMAP_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(SnapshotEncodePackedMinimapScratch::default());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+fn pack_minimap_entities_v2(count: usize) {
+    let rows = snapshot_encode_minimap_scratch();
+    let scratch = snapshot_encode_packed_minimap_scratch();
+    scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    scratch.reset_groups();
+
+    for i in 0..count {
+        let base = i * SNAPSHOT_ENCODE_MINIMAP_STRIDE;
+        let type_tag = f64_floor_u64(rows.buf[base + 3]) as u32;
+        let player_id = f64_floor_u64(rows.buf[base + 4]) as u32;
+        let scratch_flags = f64_floor_u64(rows.buf[base + 5]) as u32;
+        let flags = if (scratch_flags & 0x02) != 0 {
+            PACKED_MINIMAP_ENTITY_FLAG_RADAR_ONLY
+        } else {
+            0
+        };
+        let group_index = scratch.group_index(type_tag, player_id, flags);
+        let group = &mut scratch.groups[group_index];
+        let id = f64_round_i64(rows.buf[base]);
+        group.writer.write_var_int(id - group.last_id);
+        group.last_id = id;
+        group.writer.write_var_int_from_f64(rows.buf[base + 1]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 2]);
+        group.count += 1;
+    }
+
+    let group_count = scratch.group_count;
+    let out = &mut scratch.out;
+    let groups = &scratch.groups;
+    out.write_var_uint(group_count as u64);
+    for group in groups.iter().take(group_count) {
+        out.write_var_uint(group.type_tag as u64);
+        out.write_var_uint(group.player_id as u64);
+        out.write_var_uint(group.flags as u64);
+        out.write_var_uint(group.count as u64);
+        out.write_bytes(group.writer.as_slice());
+    }
+    out.set_u32_le(0, count as u32);
 }
 
 #[derive(Default)]
@@ -17460,6 +17570,24 @@ pub fn snapshot_encode_envelope_emit_minimap(count: u32) {
             w.write_bool(radar_value);
         }
     }
+}
+
+/// Append compact `minimapEntities: { v: 2, b }` from the minimap
+/// scratch. Matches snapshotMinimapWirePack.ts V2 while keeping the
+/// Rust snapshot send path out of the TypeScript packed-binary writer.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_packed_minimap(count: u32) -> u32 {
+    let w = messagepack_writer();
+    pack_minimap_entities_v2(count as usize);
+    let packed = snapshot_encode_packed_minimap_scratch();
+
+    w.write_str("minimapEntities");
+    w.write_map_header(2);
+    w.write_str("v");
+    w.write_uint(PACKED_MINIMAP_ENTITIES_VERSION);
+    w.write_str("b");
+    w.write_bin(packed.out.as_slice());
+    w.buf.len() as u32
 }
 
 /// Append the economy key. Sits between minimapEntities and

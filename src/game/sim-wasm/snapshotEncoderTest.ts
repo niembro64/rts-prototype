@@ -13,6 +13,7 @@ import {
   snapshot_encode_envelope_continue,
   snapshot_encode_envelope_emit_economy,
   snapshot_encode_envelope_emit_minimap,
+  snapshot_encode_envelope_emit_packed_minimap,
   snapshot_encode_envelope_emit_packed_projectiles,
   snapshot_encode_envelope_emit_projectiles,
   snapshot_encode_envelope_emit_spray_targets,
@@ -83,6 +84,7 @@ import {
   ENTITY_CHANGED_VEL,
 } from '@/types/network';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+import { packMinimapEntitiesForWire } from '../network/snapshotMinimapWirePack';
 import { packProjectilesForWire } from '../network/snapshotProjectileWirePack';
 
 const TURRET_SCRATCH_STRIDE = 10;
@@ -1292,6 +1294,18 @@ function packMinimapIntoScratch(
     }
     view[base + 5] = packed;
   }
+}
+
+type NetworkMinimapFixture = NonNullable<NetworkServerSnapshot['minimapEntities']>;
+
+function networkMinimapFixture(entries: MinimapEntityFixture[]): NetworkMinimapFixture {
+  return entries.map((entry) => ({
+    id: entry.id,
+    pos: { x: entry.pos.x, y: entry.pos.y },
+    type: entry.type,
+    playerId: entry.playerId as NetworkMinimapFixture[number]['playerId'],
+    radarOnly: entry.radarOnly === undefined ? null : entry.radarOnly,
+  }));
 }
 
 type ProjectileSpawnFixture = {
@@ -3142,6 +3156,77 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
   return { passed, failed };
 }
 
+function runPackedMinimapCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
+  const fixtures: { tick: number; label: string; minimapEntities: MinimapEntityFixture[] }[] = [
+    { tick: 10, label: 'empty minimap', minimapEntities: [] },
+    {
+      tick: 11,
+      label: 'single full-vision unit',
+      minimapEntities: [
+        { id: 1, pos: { x: 100, y: 200 }, type: 'unit', playerId: 1 },
+      ],
+    },
+    {
+      tick: 12,
+      label: 'mixed grouped contacts',
+      minimapEntities: [
+        { id: 3, pos: { x: 100, y: 200 }, type: 'unit', playerId: 1 },
+        { id: 7, pos: { x: 120, y: 210 }, type: 'unit', playerId: 1 },
+        { id: 9, pos: { x: -30, y: 40 }, type: 'building', playerId: 2 },
+        { id: 12, pos: { x: 400, y: -120 }, type: 'unit', playerId: 2, radarOnly: true },
+        { id: 18, pos: { x: 401, y: -122 }, type: 'unit', playerId: 2, radarOnly: true },
+      ],
+    },
+    {
+      tick: 13,
+      label: 'explicit false collapses like JS V2 packer',
+      minimapEntities: [
+        { id: 4, pos: { x: 1, y: 2 }, type: 'unit', playerId: 1, radarOnly: false },
+        { id: 5, pos: { x: 3, y: 4 }, type: 'building', playerId: 1, radarOnly: true },
+      ],
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  for (const f of fixtures) {
+    const packedMinimap = packMinimapEntitiesForWire(networkMinimapFixture(f.minimapEntities));
+    const wireFixture = {
+      tick: f.tick,
+      entities: [],
+      minimapEntities: packedMinimap,
+      economy: {},
+      isDelta: true,
+    };
+    const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
+    packMinimapIntoScratch(memory, f.minimapEntities);
+    snapshot_encode_envelope_begin(f.tick, 0, 5);
+    snapshot_encode_envelope_emit_packed_minimap(f.minimapEntities.length);
+    snapshot_encode_envelope_emit_economy(0);
+    snapshot_encode_envelope_continue(0, 0, 0, 0, 1, 0, 0, 0, 0);
+
+    const ptr = messagepack_writer_ptr();
+    const len = messagepack_writer_len();
+    const rustBytes = new Uint8Array(memory.buffer, ptr, len).slice();
+    if (bytesEqual(jsBytes, rustBytes)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(
+        `[snapshot encoder] packed minimap byte mismatch ${f.label}`,
+        {
+          fixture: f,
+          jsLen: jsBytes.length,
+          rustLen: rustBytes.length,
+          jsHex: hex(jsBytes),
+          rustHex: hex(rustBytes),
+        },
+      );
+    }
+  }
+  return { passed, failed };
+}
+
 function packProjectilesFixtureIntoScratch(
   memory: WebAssembly.Memory,
   projectiles: ProjectilesFixture,
@@ -3366,18 +3451,21 @@ export async function runSnapshotEncoderByteEqualityTest(
   const unit = runEntityUnitCases(memory);
   const building = runEntityBuildingCases(memory);
   const envelope = runEnvelopeCases(memory);
+  const packedMinimap = runPackedMinimapCases(memory);
   const packedProjectiles = runPackedProjectileCases(memory);
   const passed =
     basic.passed +
     unit.passed +
     building.passed +
     envelope.passed +
+    packedMinimap.passed +
     packedProjectiles.passed;
   const failed =
     basic.failed +
     unit.failed +
     building.failed +
     envelope.failed +
+    packedMinimap.failed +
     packedProjectiles.failed;
   const total = passed + failed;
   if (failed > 0) {

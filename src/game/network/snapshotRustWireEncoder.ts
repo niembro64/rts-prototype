@@ -810,12 +810,24 @@ function packMinimapIntoScratch(
   api.minimapScratchEnsure(entries.length);
   const source = getMinimapSnapshotWireSource(entries);
   if (source !== undefined && source.count === entries.length) {
-    copyFloatWireRowsIntoScratch(
-      sim,
+    const src = activeFloat64WireValues(source, MINIMAP_SNAPSHOT_WIRE_STRIDE);
+    const view = new Float64Array(
+      sim.memory.buffer,
       api.minimapScratchPtr(),
-      source,
-      MINIMAP_SNAPSHOT_WIRE_STRIDE,
+      entries.length * api.minimapScratchStride,
     );
+    // The pooled source stores V2 wire flags; the Rust scratch keeps
+    // raw DTO presence/value bits so it can still emit the legacy
+    // minimap array in byte-equality tests.
+    for (let i = 0; i < entries.length; i++) {
+      const base = i * MINIMAP_SNAPSHOT_WIRE_STRIDE;
+      view[base + 0] = src[base + 0];
+      view[base + 1] = src[base + 1];
+      view[base + 2] = src[base + 2];
+      view[base + 3] = src[base + 3];
+      view[base + 4] = src[base + 4];
+      view[base + 5] = src[base + 5] !== 0 ? 0x03 : 0;
+    }
     return;
   }
   const view = new Float64Array(
@@ -1739,7 +1751,7 @@ function emitTopLevelKey(
       }
       const entries = value as NetworkServerSnapshotMinimapEntity[];
       packMinimapIntoScratch(sim, entries);
-      api.emitMinimap(entries.length);
+      api.emitPackedMinimap(entries.length);
       return;
     }
     case 'economy': {

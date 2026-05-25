@@ -140,6 +140,7 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
   if (!FORCE_JS_SNAPSHOT_WIRE) {
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
+      minimapEntities: 'raw',
       projectiles: 'raw',
     });
     const rustResult = encodeNetworkSnapshotWithRustFallback(rustWireState);
@@ -208,13 +209,16 @@ export function packNetworkSnapshotForWire(
   state: NetworkServerSnapshot,
   options: {
     audioEvents?: 'packed' | 'raw';
+    minimapEntities?: 'packed' | 'raw';
     projectiles?: 'packed' | 'raw';
   } = {},
 ): NetworkServerSnapshotWire {
   const packedAudioEvents = options.audioEvents === 'raw'
     ? undefined
     : packAudioEventsForWire(state.audioEvents);
-  const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
+  const packedMinimapEntities = options.minimapEntities === 'raw'
+    ? undefined
+    : packMinimapEntitiesForWire(state.minimapEntities);
   const packedProjectiles = options.projectiles === 'raw'
     ? undefined
     : packProjectilesForWire(state.projectiles);
