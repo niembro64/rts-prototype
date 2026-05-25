@@ -69,6 +69,12 @@ import {
   isPackedBuildabilityGridWire,
   isPackedTerrainTileMapWire,
 } from './snapshotStaticWirePack';
+import {
+  quantizeNormal,
+  quantizeProjectilePosition,
+  quantizeRotation,
+  quantizeVelocity,
+} from './snapshotQuantization';
 import type { NetworkServerSnapshotWire } from './snapshotWireTypes';
 
 const SNAPSHOT_ENCODE_OPTIONS = { ignoreUndefined: true } as const;
@@ -1087,21 +1093,42 @@ const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<string, number> = {
   system: 3,
 };
 
-function packDeathContextsIntoScratch(
+const EVENT_HAS_SOURCE_TYPE = 0x001;
+const EVENT_HAS_SOURCE_KEY = 0x002;
+const EVENT_HAS_PLAYER_ID = 0x004;
+const EVENT_HAS_ENTITY_ID = 0x008;
+const EVENT_HAS_FORCE_FIELD_IMPACT = 0x010;
+const EVENT_HAS_KILLER_PLAYER_ID = 0x020;
+const EVENT_HAS_VICTIM_PLAYER_ID = 0x040;
+const EVENT_HAS_AUDIO_ONLY = 0x080;
+const EVENT_AUDIO_ONLY_VALUE = 0x100;
+const EVENT_HAS_DEATH_CONTEXT = 0x200;
+const EVENT_HAS_IMPACT_CONTEXT = 0x400;
+
+const DEATH_HAS_VISUAL_RADIUS = 0x01;
+const DEATH_HAS_PUSH_RADIUS = 0x02;
+const DEATH_HAS_BASE_Z = 0x04;
+const DEATH_HAS_UNIT_TYPE = 0x08;
+const DEATH_HAS_ROTATION = 0x10;
+const DEATH_HAS_TURRET_POSES = 0x20;
+
+function packPackedDeathContextsIntoScratch(
   sim: SimWasm,
   events: readonly NetworkServerSnapshotSimEvent[],
   stringSlots: Map<string, number>,
-): void {
+): { deathContextCount: number; turretPoseCount: number } {
   let deathContextCount = 0;
-  let totalPoses = 0;
+  let turretPoseCount = 0;
   for (let i = 0; i < events.length; i++) {
     const context = events[i].deathContext;
     if (context === null) continue;
     deathContextCount++;
     const turretPoses = context.turretPoses;
-    totalPoses += turretPoses !== undefined ? turretPoses.length : 0;
+    turretPoseCount += turretPoses !== undefined ? turretPoses.length : 0;
   }
-  if (deathContextCount === 0) return;
+  if (deathContextCount === 0) {
+    return { deathContextCount: 0, turretPoseCount: 0 };
+  }
 
   const api = sim.snapshotEncode;
   api.deathContextScratchEnsure(deathContextCount);
@@ -1112,70 +1139,82 @@ function packDeathContextsIntoScratch(
   );
 
   let poseView: Float64Array | undefined;
-  if (totalPoses > 0) {
-    api.turretPoseScratchEnsure(totalPoses);
+  if (turretPoseCount > 0) {
+    api.turretPoseScratchEnsure(turretPoseCount);
     poseView = new Float64Array(
       sim.memory.buffer,
       api.turretPoseScratchPtr(),
-      totalPoses * api.turretPoseScratchStride,
+      turretPoseCount * api.turretPoseScratchStride,
     );
   }
 
-  let deathContextIndex = 0;
+  let deathIndex = 0;
   let poseOffset = 0;
   for (let i = 0; i < events.length; i++) {
     const context = events[i].deathContext;
     if (context === null) continue;
-    const base = deathContextIndex * api.deathContextScratchStride;
-    view[base + 0] = context.unitVel.x;
-    view[base + 1] = context.unitVel.y;
-    view[base + 2] = context.hitDir.x;
-    view[base + 3] = context.hitDir.y;
-    view[base + 4] = context.projectileVel.x;
-    view[base + 5] = context.projectileVel.y;
-    view[base + 6] = context.attackMagnitude;
-    view[base + 7] = context.radius;
-    view[base + 8] = context.color;
-    view[base + 9] = context.visualRadius ?? 0;
-    view[base + 10] = context.pushRadius ?? 0;
-    view[base + 11] = context.baseZ ?? 0;
-    view[base + 12] = context.rotation ?? 0;
+
+    let flags = 0;
+    if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
+    if (context.pushRadius !== undefined) flags |= DEATH_HAS_PUSH_RADIUS;
+    if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
+    if (context.unitType !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
+    if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
+    if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
+
+    const base = deathIndex * api.deathContextScratchStride;
+    view[base + 0] = flags;
+    view[base + 1] = quantizeVelocity(context.unitVel.x);
+    view[base + 2] = quantizeVelocity(context.unitVel.y);
+    view[base + 3] = quantizeNormal(context.hitDir.x);
+    view[base + 4] = quantizeNormal(context.hitDir.y);
+    view[base + 5] = quantizeVelocity(context.projectileVel.x);
+    view[base + 6] = quantizeVelocity(context.projectileVel.y);
+    view[base + 7] = context.attackMagnitude;
+    view[base + 8] = quantizeProjectilePosition(context.radius);
+    view[base + 9] = context.color;
+    view[base + 10] = context.visualRadius !== undefined
+      ? quantizeProjectilePosition(context.visualRadius)
+      : 0;
+    view[base + 11] = context.pushRadius !== undefined
+      ? quantizeProjectilePosition(context.pushRadius)
+      : 0;
+    view[base + 12] = context.baseZ !== undefined
+      ? quantizeProjectilePosition(context.baseZ)
+      : 0;
     view[base + 13] = context.unitType !== undefined
       ? stringSlots.get(context.unitType) ?? 0
       : 0;
+    view[base + 14] = context.rotation !== undefined
+      ? quantizeRotation(context.rotation)
+      : 0;
     const turretPoses = context.turretPoses;
-    view[base + 14] = turretPoses !== undefined ? turretPoses.length : 0;
-    let flags = 0;
-    if (context.visualRadius !== undefined) flags |= 0x01;
-    if (context.pushRadius !== undefined) flags |= 0x02;
-    if (context.baseZ !== undefined) flags |= 0x04;
-    if (context.unitType !== undefined) flags |= 0x08;
-    if (context.rotation !== undefined) flags |= 0x10;
-    if (context.turretPoses !== undefined) flags |= 0x20;
-    view[base + 15] = flags;
+    view[base + 15] = turretPoses !== undefined ? turretPoses.length : 0;
 
     if (turretPoses !== undefined && poseView !== undefined) {
       for (let p = 0; p < turretPoses.length; p++) {
         const pose = turretPoses[p];
         const poseBase = (poseOffset + p) * api.turretPoseScratchStride;
-        poseView[poseBase + 0] = pose.rotation;
-        poseView[poseBase + 1] = pose.pitch;
+        poseView[poseBase + 0] = quantizeRotation(pose.rotation);
+        poseView[poseBase + 1] = quantizeRotation(pose.pitch);
       }
       poseOffset += turretPoses.length;
     }
-    deathContextIndex++;
+    deathIndex++;
   }
+
+  return { deathContextCount, turretPoseCount };
 }
 
-function packImpactContextsIntoScratch(
+function packPackedImpactContextsIntoScratch(
   sim: SimWasm,
   events: readonly NetworkServerSnapshotSimEvent[],
-): void {
+): number {
   let impactContextCount = 0;
   for (let i = 0; i < events.length; i++) {
     if (events[i].impactContext !== null) impactContextCount++;
   }
-  if (impactContextCount === 0) return;
+  if (impactContextCount === 0) return 0;
 
   const api = sim.snapshotEncode;
   api.impactContextScratchEnsure(impactContextCount);
@@ -1184,27 +1223,28 @@ function packImpactContextsIntoScratch(
     api.impactContextScratchPtr(),
     impactContextCount * api.impactContextScratchStride,
   );
-  let impactContextIndex = 0;
+  let impactIndex = 0;
   for (let i = 0; i < events.length; i++) {
     const context = events[i].impactContext;
     if (context === null) continue;
-    const base = impactContextIndex * api.impactContextScratchStride;
-    view[base + 0] = context.collisionRadius;
-    view[base + 1] = context.explosionRadius;
-    view[base + 2] = context.projectile.pos.x;
-    view[base + 3] = context.projectile.pos.y;
-    view[base + 4] = context.projectile.vel.x;
-    view[base + 5] = context.projectile.vel.y;
-    view[base + 6] = context.entity.vel.x;
-    view[base + 7] = context.entity.vel.y;
-    view[base + 8] = context.entity.collisionRadius;
-    view[base + 9] = context.penetrationDir.x;
-    view[base + 10] = context.penetrationDir.y;
-    impactContextIndex++;
+    const base = impactIndex * api.impactContextScratchStride;
+    view[base + 0] = quantizeProjectilePosition(context.collisionRadius);
+    view[base + 1] = quantizeProjectilePosition(context.explosionRadius);
+    view[base + 2] = quantizeProjectilePosition(context.projectile.pos.x);
+    view[base + 3] = quantizeProjectilePosition(context.projectile.pos.y);
+    view[base + 4] = quantizeVelocity(context.projectile.vel.x);
+    view[base + 5] = quantizeVelocity(context.projectile.vel.y);
+    view[base + 6] = quantizeVelocity(context.entity.vel.x);
+    view[base + 7] = quantizeVelocity(context.entity.vel.y);
+    view[base + 8] = quantizeProjectilePosition(context.entity.collisionRadius);
+    view[base + 9] = quantizeNormal(context.penetrationDir.x);
+    view[base + 10] = quantizeNormal(context.penetrationDir.y);
+    impactIndex++;
   }
+  return impactContextCount;
 }
 
-function packAudioEventsIntoScratch(
+function packPackedAudioEventsIntoScratch(
   sim: SimWasm,
   events: readonly NetworkServerSnapshotSimEvent[],
   stringSlots: Map<string, number>,
@@ -1217,48 +1257,63 @@ function packAudioEventsIntoScratch(
     api.audioEventScratchPtr(),
     events.length * api.audioEventScratchStride,
   );
+
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
     const forceFieldImpact = event.forceFieldImpact;
     const base = i * api.audioEventScratchStride;
+
+    let flags = 0;
+    if (event.sourceType !== null) flags |= EVENT_HAS_SOURCE_TYPE;
+    if (event.sourceKey !== null) flags |= EVENT_HAS_SOURCE_KEY;
+    if (event.playerId !== null) flags |= EVENT_HAS_PLAYER_ID;
+    if (event.entityId !== null) flags |= EVENT_HAS_ENTITY_ID;
+    if (forceFieldImpact !== null) flags |= EVENT_HAS_FORCE_FIELD_IMPACT;
+    if (event.killerPlayerId !== null) flags |= EVENT_HAS_KILLER_PLAYER_ID;
+    if (event.victimPlayerId !== null) flags |= EVENT_HAS_VICTIM_PLAYER_ID;
+    if (event.audioOnly !== null) {
+      flags |= EVENT_HAS_AUDIO_ONLY;
+      if (event.audioOnly) flags |= EVENT_AUDIO_ONLY_VALUE;
+    }
+    if (event.deathContext !== null) flags |= EVENT_HAS_DEATH_CONTEXT;
+    if (event.impactContext !== null) flags |= EVENT_HAS_IMPACT_CONTEXT;
+
     view[base + 0] = AUDIO_EVENT_TYPE_CODES[event.type];
-    view[base + 1] = event.pos.x;
-    view[base + 2] = event.pos.y;
-    view[base + 3] = event.pos.z;
+    view[base + 1] = quantizeProjectilePosition(event.pos.x);
+    view[base + 2] = quantizeProjectilePosition(event.pos.y);
+    view[base + 3] = quantizeProjectilePosition(event.pos.z);
     view[base + 4] = event.playerId ?? 0;
     view[base + 5] = event.entityId ?? 0;
     view[base + 6] = event.killerPlayerId ?? 0;
     view[base + 7] = event.victimPlayerId ?? 0;
-    view[base + 8] = forceFieldImpact !== null ? forceFieldImpact.normal.x : 0;
-    view[base + 9] = forceFieldImpact !== null ? forceFieldImpact.normal.y : 0;
-    view[base + 10] = forceFieldImpact !== null ? forceFieldImpact.normal.z : 0;
+    view[base + 8] = forceFieldImpact !== null
+      ? quantizeNormal(forceFieldImpact.normal.x)
+      : 0;
+    view[base + 9] = forceFieldImpact !== null
+      ? quantizeNormal(forceFieldImpact.normal.y)
+      : 0;
+    view[base + 10] = forceFieldImpact !== null
+      ? quantizeNormal(forceFieldImpact.normal.z)
+      : 0;
     view[base + 11] = forceFieldImpact !== null ? forceFieldImpact.playerId : 0;
-    view[base + 12] = event.sourceType ? AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] : 0;
+    view[base + 12] = event.sourceType !== null
+      ? AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0
+      : 0;
     view[base + 13] = stringSlots.get(event.turretId) ?? 0;
     view[base + 14] = event.sourceKey !== null
       ? stringSlots.get(event.sourceKey) ?? 0
       : 0;
-    let flags = 0;
-    if (event.sourceType !== null) flags |= 0x001;
-    if (event.sourceKey !== null) flags |= 0x002;
-    if (event.playerId !== null) flags |= 0x004;
-    if (event.entityId !== null) flags |= 0x008;
-    if (event.forceFieldImpact !== null) flags |= 0x010;
-    if (event.killerPlayerId !== null) flags |= 0x020;
-    if (event.victimPlayerId !== null) flags |= 0x040;
-    if (event.audioOnly !== null) {
-      flags |= 0x080;
-      if (event.audioOnly) flags |= 0x100;
-    }
-    if (event.deathContext !== null) flags |= 0x200;
-    if (event.impactContext !== null) flags |= 0x400;
     view[base + 15] = flags;
   }
 }
 
-function emitAudioEvents(sim: SimWasm, events: readonly NetworkServerSnapshotSimEvent[]): void {
+function emitPackedAudioEvents(
+  sim: SimWasm,
+  events: readonly NetworkServerSnapshotSimEvent[],
+): void {
   const strings: string[] = [];
-  for (const event of events) {
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
     strings.push(event.turretId);
     if (event.sourceKey !== null) strings.push(event.sourceKey);
     const deathContext = event.deathContext;
@@ -1266,11 +1321,18 @@ function emitAudioEvents(sim: SimWasm, events: readonly NetworkServerSnapshotSim
       strings.push(deathContext.unitType);
     }
   }
+
   const stringSlots = packStringsIntoScratch(sim, strings);
-  packAudioEventsIntoScratch(sim, events, stringSlots);
-  packDeathContextsIntoScratch(sim, events, stringSlots);
-  packImpactContextsIntoScratch(sim, events);
-  sim.snapshotEncode.emitAudioEvents(events.length);
+  packPackedAudioEventsIntoScratch(sim, events, stringSlots);
+  const deathCounts = packPackedDeathContextsIntoScratch(sim, events, stringSlots);
+  const impactContextCount = packPackedImpactContextsIntoScratch(sim, events);
+  sim.snapshotEncode.emitPackedAudioEvents(
+    events.length,
+    stringSlots.size,
+    deathCounts.deathContextCount,
+    impactContextCount,
+    deathCounts.turretPoseCount,
+  );
 }
 
 function canEncodeAudioEvents(events: readonly NetworkServerSnapshotSimEvent[]): boolean {
@@ -1713,7 +1775,7 @@ function emitTopLevelKey(
         emitRawKeyValue(api, key, value);
         return;
       }
-      emitAudioEvents(sim, events);
+      emitPackedAudioEvents(sim, events);
       return;
     }
     case 'projectiles': {
@@ -1867,31 +1929,28 @@ export function encodeNetworkSnapshotWithRustFallback(
   const keys = _snapshotKeys;
   if (keys[0] !== 'tick' || keys[1] !== 'entities') return null;
 
-  // Packed entities ship as a small object, not an array of per-entity
-  // DTOs. The Rust envelope API expects a concrete entity count and
-  // per-entity calls, so when entities are pre-packed by the wire codec
-  // we bail out and let JS msgpack encode the whole snapshot. The
-  // bytes-saved still flows through because the packed shape is what
-  // ultimately hits the wire.
-  if (isPackedEntitySnapshotWire(state.entities)) return null;
-
   const api = sim.snapshotEncode;
-  api.envelopeBegin(state.tick, state.entities.length, keys.length);
-
   let rustEntityCount = 0;
   let rawEntityCount = 0;
-  const entityWireSource = getEntitySnapshotWireSource(state.entities);
-  const useEntityWireSource = canUseEntityWireSource(entityWireSource, state.entities);
-  for (let i = 0; i < state.entities.length; i++) {
-    const entity = state.entities[i];
-    if (
-      (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource!, i)) ||
-      encodeEntity(sim, entity)
-    ) {
-      rustEntityCount++;
-    } else {
-      rawEntityCount++;
-      api.appendRawValue(msgpackEncode(entity, SNAPSHOT_ENCODE_OPTIONS));
+  if (isPackedEntitySnapshotWire(state.entities)) {
+    api.envelopeBeginPackedEntities(state.tick, keys.length);
+    emitRawKeyValue(api, 'entities', state.entities);
+  } else {
+    api.envelopeBegin(state.tick, state.entities.length, keys.length);
+
+    const entityWireSource = getEntitySnapshotWireSource(state.entities);
+    const useEntityWireSource = canUseEntityWireSource(entityWireSource, state.entities);
+    for (let i = 0; i < state.entities.length; i++) {
+      const entity = state.entities[i];
+      if (
+        (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource!, i)) ||
+        encodeEntity(sim, entity)
+      ) {
+        rustEntityCount++;
+      } else {
+        rawEntityCount++;
+        api.appendRawValue(msgpackEncode(entity, SNAPSHOT_ENCODE_OPTIONS));
+      }
     }
   }
 

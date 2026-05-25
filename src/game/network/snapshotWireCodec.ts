@@ -137,12 +137,13 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
-  const wireState = packNetworkSnapshotForWire(state);
   if (!FORCE_JS_SNAPSHOT_WIRE) {
-    const rustResult = encodeNetworkSnapshotWithRustFallback(wireState);
+    const rustWireState = packNetworkSnapshotForWire(state, { audioEvents: 'raw' });
+    const rustResult = encodeNetworkSnapshotWithRustFallback(rustWireState);
     if (rustResult) {
       noteRustSnapshotWireResult(rustResult);
       if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
+        const wireState = packNetworkSnapshotForWire(state);
         const jsBytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
         compareRustSnapshotWireResult(wireState, jsBytes, rustResult);
       }
@@ -152,6 +153,7 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
     noteRustSnapshotWireUnavailable();
   }
 
+  const wireState = packNetworkSnapshotForWire(state);
   const bytes = msgpackEncode(wireState, SNAPSHOT_ENCODE_OPTIONS);
   rustSnapshotWireStats.jsSends++;
   if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED && FORCE_JS_SNAPSHOT_WIRE) {
@@ -201,8 +203,11 @@ export function measureNetworkSnapshotWireBreakdown(
 
 export function packNetworkSnapshotForWire(
   state: NetworkServerSnapshot,
+  options: { audioEvents?: 'packed' | 'raw' } = {},
 ): NetworkServerSnapshotWire {
-  const packedAudioEvents = packAudioEventsForWire(state.audioEvents);
+  const packedAudioEvents = options.audioEvents === 'raw'
+    ? undefined
+    : packAudioEventsForWire(state.audioEvents);
   const packedMinimapEntities = packMinimapEntitiesForWire(state.minimapEntities);
   const packedProjectiles = packProjectilesForWire(state.projectiles);
   const packedEntities = packEntitiesForWire(state.entities);

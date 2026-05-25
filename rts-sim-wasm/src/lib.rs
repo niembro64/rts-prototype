@@ -16122,6 +16122,7 @@ fn audio_event_type_str(code: u8) -> &'static str {
         8 => "ping",
         9 => "attackAlert",
         10 => "projectileExpire",
+        11 => "waterSplash",
         _ => "",
     }
 }
@@ -16423,6 +16424,19 @@ pub fn snapshot_encode_envelope_begin(tick: u32, entity_count: u32, total_key_co
     w.write_uint(tick as u64);
     w.write_str("entities");
     w.write_array_header(entity_count as usize);
+}
+
+/// Open the envelope when the `entities` value is already in a compact
+/// packed wire shape. The caller must emit the `entities` key next via
+/// snapshot_encode_envelope_emit_raw_key_value so key order stays
+/// byte-identical with the JS encoder.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_begin_packed_entities(tick: u32, total_key_count: u32) {
+    let w = messagepack_writer();
+    w.buf.clear();
+    w.write_map_header(total_key_count as usize);
+    w.write_str("tick");
+    w.write_uint(tick as u64);
 }
 
 /// Append a top-level snapshot key whose value has already been
@@ -17408,6 +17422,196 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_bool(audio_only_value);
         }
     }
+    w.buf.len() as u32
+}
+
+/// Append compact `audioEvents: { v, s, e, d?, i?, t? }` from the
+/// caller-filled scratch buffers. This matches snapshotAudioWirePack.ts
+/// byte-for-byte while avoiding transient nested JS row arrays on the
+/// Rust snapshot send path.
+#[wasm_bindgen]
+pub fn snapshot_encode_envelope_emit_packed_audio_events(
+    count: u32,
+    string_count: u32,
+    death_context_count: u32,
+    impact_context_count: u32,
+    turret_pose_count: u32,
+) -> u32 {
+    let w = messagepack_writer();
+    let n = count as usize;
+    let string_n = string_count as usize;
+    let death_n = death_context_count as usize;
+    let impact_n = impact_context_count as usize;
+    let pose_n = turret_pose_count as usize;
+    let scratch = snapshot_encode_audio_event_scratch();
+    let death_scratch = snapshot_encode_death_context_scratch();
+    let impact_scratch = snapshot_encode_impact_context_scratch();
+    let pose_scratch = snapshot_encode_turret_pose_scratch();
+
+    w.write_str("audioEvents");
+    let mut packed_key_count = 3usize; // v, s, e
+    if death_n > 0 {
+        packed_key_count += 1;
+    }
+    if impact_n > 0 {
+        packed_key_count += 1;
+    }
+    if pose_n > 0 {
+        packed_key_count += 1;
+    }
+    w.write_map_header(packed_key_count);
+
+    w.write_str("v");
+    w.write_uint(1);
+
+    w.write_str("s");
+    w.write_array_header(string_n);
+    for slot in 0..string_n {
+        write_string_from_scratch(w, slot as u32);
+    }
+
+    w.write_str("e");
+    w.write_array_header(n);
+    for i in 0..n {
+        let base = i * SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE;
+        let flags = scratch.buf[base + 15] as u32;
+        let mut row_len = 6usize;
+        if (flags & 0x001) != 0 {
+            row_len += 1;
+        }
+        if (flags & 0x002) != 0 {
+            row_len += 1;
+        }
+        if (flags & 0x004) != 0 {
+            row_len += 1;
+        }
+        if (flags & 0x008) != 0 {
+            row_len += 1;
+        }
+        if (flags & 0x010) != 0 {
+            row_len += 4;
+        }
+        if (flags & 0x020) != 0 {
+            row_len += 1;
+        }
+        if (flags & 0x040) != 0 {
+            row_len += 1;
+        }
+        if (flags & 0x080) != 0 {
+            row_len += 1;
+        }
+
+        w.write_array_header(row_len);
+        w.write_number(scratch.buf[base]);
+        w.write_number(flags as f64);
+        w.write_number(scratch.buf[base + 13]);
+        w.write_number(scratch.buf[base + 1]);
+        w.write_number(scratch.buf[base + 2]);
+        w.write_number(scratch.buf[base + 3]);
+        if (flags & 0x001) != 0 {
+            w.write_number(scratch.buf[base + 12]);
+        }
+        if (flags & 0x002) != 0 {
+            w.write_number(scratch.buf[base + 14]);
+        }
+        if (flags & 0x004) != 0 {
+            w.write_number(scratch.buf[base + 4]);
+        }
+        if (flags & 0x008) != 0 {
+            w.write_number(scratch.buf[base + 5]);
+        }
+        if (flags & 0x010) != 0 {
+            w.write_number(scratch.buf[base + 8]);
+            w.write_number(scratch.buf[base + 9]);
+            w.write_number(scratch.buf[base + 10]);
+            w.write_number(scratch.buf[base + 11]);
+        }
+        if (flags & 0x020) != 0 {
+            w.write_number(scratch.buf[base + 6]);
+        }
+        if (flags & 0x040) != 0 {
+            w.write_number(scratch.buf[base + 7]);
+        }
+        if (flags & 0x080) != 0 {
+            w.write_number(if (flags & 0x100) != 0 { 1.0 } else { 0.0 });
+        }
+    }
+
+    if death_n > 0 {
+        w.write_str("d");
+        w.write_array_header(death_n);
+        for i in 0..death_n {
+            let base = i * SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE;
+            let flags = death_scratch.buf[base] as u32;
+            let mut row_len = 10usize;
+            if (flags & 0x01) != 0 {
+                row_len += 1;
+            }
+            if (flags & 0x02) != 0 {
+                row_len += 1;
+            }
+            if (flags & 0x04) != 0 {
+                row_len += 1;
+            }
+            if (flags & 0x08) != 0 {
+                row_len += 1;
+            }
+            if (flags & 0x10) != 0 {
+                row_len += 1;
+            }
+            if (flags & 0x20) != 0 {
+                row_len += 1;
+            }
+
+            w.write_array_header(row_len);
+            w.write_number(flags as f64);
+            for offset in 1..=9 {
+                w.write_number(death_scratch.buf[base + offset]);
+            }
+            if (flags & 0x01) != 0 {
+                w.write_number(death_scratch.buf[base + 10]);
+            }
+            if (flags & 0x02) != 0 {
+                w.write_number(death_scratch.buf[base + 11]);
+            }
+            if (flags & 0x04) != 0 {
+                w.write_number(death_scratch.buf[base + 12]);
+            }
+            if (flags & 0x08) != 0 {
+                w.write_number(death_scratch.buf[base + 13]);
+            }
+            if (flags & 0x10) != 0 {
+                w.write_number(death_scratch.buf[base + 14]);
+            }
+            if (flags & 0x20) != 0 {
+                w.write_number(death_scratch.buf[base + 15]);
+            }
+        }
+    }
+
+    if impact_n > 0 {
+        w.write_str("i");
+        w.write_array_header(impact_n);
+        for i in 0..impact_n {
+            let base = i * SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE;
+            w.write_array_header(SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE);
+            for offset in 0..SNAPSHOT_ENCODE_IMPACT_CONTEXT_STRIDE {
+                w.write_number(impact_scratch.buf[base + offset]);
+            }
+        }
+    }
+
+    if pose_n > 0 {
+        w.write_str("t");
+        w.write_array_header(pose_n);
+        for i in 0..pose_n {
+            let base = i * SNAPSHOT_ENCODE_TURRET_POSE_STRIDE;
+            w.write_array_header(SNAPSHOT_ENCODE_TURRET_POSE_STRIDE);
+            w.write_number(pose_scratch.buf[base]);
+            w.write_number(pose_scratch.buf[base + 1]);
+        }
+    }
+
     w.buf.len() as u32
 }
 

@@ -245,6 +245,7 @@ import __wbg_init, {
   snapshot_encode_entity_unit,
   snapshot_encode_entity_building,
   snapshot_encode_envelope_begin,
+  snapshot_encode_envelope_begin_packed_entities,
   snapshot_encode_envelope_continue,
   snapshot_encode_envelope_emit_economy,
   snapshot_encode_envelope_emit_minimap,
@@ -271,6 +272,7 @@ import __wbg_init, {
   snapshot_encode_economy_scratch_ptr,
   snapshot_encode_economy_scratch_ensure,
   snapshot_encode_envelope_emit_audio_events,
+  snapshot_encode_envelope_emit_packed_audio_events,
   snapshot_encode_audio_event_scratch_ptr,
   snapshot_encode_audio_event_scratch_ensure,
   snapshot_encode_death_context_scratch_ptr,
@@ -1874,11 +1876,11 @@ export interface SnapshotEncodeApi {
    *  by the DP-02 parity flag as a temporary fallback for DTO shapes
    *  that are not fully ported to Rust yet. */
   appendRawValue: (bytes: Uint8Array) => number;
-  /** Raw pointer to the turret scratch buffer. JS fills 12 f64 per
+  /** Raw pointer to the turret scratch buffer. JS fills 10 f64 per
    *  turret (see lib.rs SNAPSHOT_ENCODE_TURRET_STRIDE layout)
    *  before calling encodeEntityUnit with hasTurrets=1. */
   turretScratchPtr: () => number;
-  /** Pre-grow the turret scratch to fit `count` turrets (12 f64 each). */
+  /** Pre-grow the turret scratch to fit `count` turrets (10 f64 each). */
   turretScratchEnsure: (count: number) => void;
   /** Stride per turret in the scratch buffer (f64 count). */
   readonly turretScratchStride: number;
@@ -1955,6 +1957,9 @@ export interface SnapshotEncodeApi {
    *  follow, then emitMinimap/emitEconomy/emitProjectiles in pool
    *  order, then envelopeContinue closes the envelope. */
   envelopeBegin: (tick: number, entityCount: number, totalKeyCount: number) => void;
+  /** Open the snapshot envelope for a pre-packed `entities` value.
+   *  Caller must emit the entities key next with emitRawKeyValue. */
+  envelopeBeginPackedEntities: (tick: number, totalKeyCount: number) => void;
   /** Append a top-level key and an already MessagePack-encoded value.
    *  Transitional DP-02 bridge for low-frequency fields such as
    *  debug grids while their dedicated Rust encoders are still pending. */
@@ -2139,6 +2144,15 @@ export interface SnapshotEncodeApi {
    *  later commits). Caller pre-packs strings into the shared string
    *  scratch and stores their slot indices in the audio scratch. */
   emitAudioEvents: (count: number) => number;
+  /** Emit compact `audioEvents: {v,s,e,d?,i?,t?}` from pre-packed
+   *  audio/death/impact/turret-pose scratches. */
+  emitPackedAudioEvents: (
+    count: number,
+    stringCount: number,
+    deathContextCount: number,
+    impactContextCount: number,
+    turretPoseCount: number,
+  ) => number;
   /** Raw pointer to the audio-event scratch (Float64Array, 16 f64
    *  per event — see lib.rs SNAPSHOT_ENCODE_AUDIO_EVENT_STRIDE). */
   audioEventScratchPtr: () => number;
@@ -2753,6 +2767,7 @@ export function initSimWasm(): Promise<SimWasm> {
           encodeEntityUnit: snapshot_encode_entity_unit,
           encodeEntityBuilding: snapshot_encode_entity_building,
           envelopeBegin: snapshot_encode_envelope_begin,
+          envelopeBeginPackedEntities: snapshot_encode_envelope_begin_packed_entities,
           envelopeContinue: snapshot_encode_envelope_continue,
           emitEconomy: snapshot_encode_envelope_emit_economy,
           emitMinimap: snapshot_encode_envelope_emit_minimap,
@@ -2785,6 +2800,7 @@ export function initSimWasm(): Promise<SimWasm> {
           economyScratchEnsure: snapshot_encode_economy_scratch_ensure,
           economyScratchStride: 11,
           emitAudioEvents: snapshot_encode_envelope_emit_audio_events,
+          emitPackedAudioEvents: snapshot_encode_envelope_emit_packed_audio_events,
           audioEventScratchPtr: snapshot_encode_audio_event_scratch_ptr,
           audioEventScratchEnsure: snapshot_encode_audio_event_scratch_ensure,
           audioEventScratchStride: 16,
@@ -2814,7 +2830,7 @@ export function initSimWasm(): Promise<SimWasm> {
           writerLen: messagepack_writer_len,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
           turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
-          turretScratchStride: 12,
+          turretScratchStride: 10,
           actionScratchPtr: snapshot_encode_action_scratch_ptr,
           actionScratchEnsure: snapshot_encode_action_scratch_ensure,
           actionScratchStride: 16,

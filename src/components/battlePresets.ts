@@ -43,25 +43,6 @@ const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
 function allUnits(): readonly string[] {
   return BUILDABLE_UNIT_IDS;
 }
-function demoUnits(): readonly string[] {
-  return [
-    'lynx',
-    'badger',
-
-
-    'tick',
-
-    'loris',
-
-    'widow',
-
-    'hippo',
-    'mosquito',
-    'dragonfly',
-    'eagle',
-
-  ];
-}
 
 // Shared subsystem toggles that historically lived as inline
 // BATTLE_CONFIG defaults. Folding them into the presets means every
