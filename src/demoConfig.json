@@ -1,11 +1,11 @@
 {
-  "playerCount": 3,
-  "solarCount": 5,
-  "windCount": 4,
-  "megaBeamTowerCount": 2,
-  "cannonTowerCount": 2,
+  "playerCount": 2,
+  "solarCount": 3,
+  "windCount": 2,
+  "megaBeamTowerCount": 1,
+  "cannonTowerCount": 1,
   "radarCount": 1,
-  "resourceConverterCount": 2,
+  "resourceConverterCount": 1,
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {
