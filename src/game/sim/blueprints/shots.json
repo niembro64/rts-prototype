@@ -124,7 +124,7 @@
     },
     "submunitions": {
       "shotId": "mediumShot",
-      "count": 5,
+      "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.8
@@ -151,7 +151,7 @@
     },
     "submunitions": {
       "shotId": "mortarShot",
-      "count": 5,
+      "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
       "reflectedVelocityDamper": 0.2

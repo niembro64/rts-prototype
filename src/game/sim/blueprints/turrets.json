@@ -300,7 +300,7 @@
     "id": "gatlingMortarTurret",
     "projectileId": "megaMortarShot",
     "range": 2000,
-    "cooldown": 500,
+    "cooldown": 900,
     "launchForce": 26000,
     "turretTurnAccel": 20,
     "turretDrag": 0.15,
