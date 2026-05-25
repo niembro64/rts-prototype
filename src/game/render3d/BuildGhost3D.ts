@@ -325,7 +325,9 @@ export class BuildGhost3D {
       mesh.position.set(cell.x, y + CELL_Y, cell.y);
       const materials = this.materialForCell(cell);
       mesh.material = materials.fill;
-      mesh.visible = true;
+      // Skip opaque fill on metal-deposit cells so the deposit visual
+      // underneath stays fully visible — the border alone signals the cell.
+      mesh.visible = !cell.metalCovered || cell.blocking;
       if (border) {
         border.position.set(cell.x, y + CELL_BORDER_Y, cell.y);
         border.material = materials.border;
@@ -361,8 +363,9 @@ export class BuildGhost3D {
         continue;
       }
       const y = this.getGroundHeight(cell.x, cell.y);
-      mesh.position.set(cell.x, y + RESOURCE_CELL_Y, cell.y);
-      mesh.visible = true;
+      // Border-only: skip the opaque fill so the metal deposit
+      // visual underneath stays fully visible.
+      mesh.visible = false;
       if (border) {
         border.position.set(cell.x, y + RESOURCE_CELL_Y + 0.12, cell.y);
         border.visible = true;
