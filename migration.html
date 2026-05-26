@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-01">
-        <h3>LS-01: Finish Old-Architecture Guardrails <span class="tag">docs + comments</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>GameServer.ts</code>, <code>ServerSnapshotPublisher.ts</code>, <code>NetworkSnapshotTransport.ts</code>, <code>LocalGameConnection.ts</code>, <code>RemoteGameConnection.ts</code>, <code>ClientPrediction*</code>, scene snapshot intake helpers.</p>
-        <ul>
-          <li>Audit the entry points that still describe host snapshots, prediction, or reconciliation as normal architecture.</li>
-          <li>Add short migration-debt comments only at module entry points where an agent might otherwise extend the old path.</li>
-          <li>Do not add broad comments inside hot loops or mechanical code; this chunk is about preventing wrong-direction work.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> a reader following the main server, network, scene, and prediction entry points sees the old path labeled as temporary migration debt.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-02">
         <h3>LS-02: Define The Starting Manifest <span class="tag">initial state</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-01. <strong>Touch:</strong> <code>src/types/network.ts</code>, <code>NetworkBattleHandoff.ts</code>, <code>ServerBootstrap.ts</code>, lobby settings, blueprint loaders, <code>rts-sim-wasm</code> version exports.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>src/types/network.ts</code>, <code>NetworkBattleHandoff.ts</code>, <code>ServerBootstrap.ts</code>, lobby settings, blueprint loaders, <code>rts-sim-wasm</code> version exports.</p>
         <ul>
           <li>Create a canonical manifest type for game settings, map seed, player slots, player teams, blueprint version stamps, command schema version, sim version, and initial RNG seed.</li>
           <li>Make battle handoff carry the manifest instead of loosely related startup fields.</li>

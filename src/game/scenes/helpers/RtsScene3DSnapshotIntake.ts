@@ -1,3 +1,7 @@
+// Migration debt: scene-side intake for host snapshots.
+// Lockstep renderer should consume local render packets, while network carries
+// only command bundles and hash diagnostics.
+
 import { EMA_CONFIG, EMA_INITIAL_VALUES, FRAME_TIMING_EMA } from '../../../config';
 import type { ClientViewState } from '../../network/ClientViewState';
 import { CLIENT_PREDICTION_DIAGNOSTICS } from '../../network/ClientPredictionDiagnostics';

@@ -1,4 +1,6 @@
-// RemoteGameConnection - WebRTC bridge for remote clients
+// Migration debt: WebRTC bridge for remote clients hydrating host snapshots.
+// Lockstep removes remote state hydration; peers exchange command bundles and
+// hash diagnostics instead.
 
 import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { Command } from '../sim/commands';

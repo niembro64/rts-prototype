@@ -1,3 +1,8 @@
+// Migration debt: PeerJS manager still couples signaling with host/client
+// gameplay authority and snapshot state transport. Lockstep may keep room,
+// roster, heartbeat, and data-channel plumbing, but gameplay traffic becomes
+// peer-symmetric command bundles plus hashes.
+
 import Peer, { DataConnection, util, type PeerOptions } from 'peerjs';
 import type { PlayerId } from '../sim/types';
 import type { Command } from '../sim/commands';

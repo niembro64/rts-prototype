@@ -1,3 +1,7 @@
+// Migration debt: client-side unit extrapolation against host snapshots.
+// Lockstep renders local sim state with interpolation; pending command hints
+// replace responsiveness tricks, not gameplay prediction.
+
 import {
   getClientUnitGroundNormalEmaMode,
   getMovementPosEmaMode,

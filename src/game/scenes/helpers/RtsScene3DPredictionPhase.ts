@@ -1,3 +1,6 @@
+// Migration debt: scene prediction frame for reconciled snapshot state.
+// Lockstep replaces this with interpolation over local sim render packets.
+
 import type { GraphicsConfig } from '@/types/graphics';
 import type { PerspectiveCamera } from 'three';
 import type { ClientViewState } from '../../network/ClientViewState';

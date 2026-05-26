@@ -1,3 +1,6 @@
+// Migration debt: snapshot target copies used for client drift/reconciliation.
+// Lockstep local render packets should not need remote server targets.
+
 import type { BeamPoint } from '../../types/sim';
 
 // Lightweight copy of server state used for per-frame drift in client prediction.

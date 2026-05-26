@@ -1,3 +1,7 @@
+// Migration debt: buffering for host-snapshot scene intake.
+// Lockstep render packets may still need local event staging, but network
+// snapshots should not survive.
+//
 // Double-buffered snapshot accumulator.
 // PeerJS callback stores snapshots instantly; update() consumes one per frame.
 // One-shot events are accumulated across intermediate snapshots. Critical

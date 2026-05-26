@@ -1,3 +1,6 @@
+// Migration debt: diagnostics for prediction against host snapshots.
+// Desync/hash diagnostics replace this after lockstep owns state.
+
 import { GAME_DIAGNOSTICS } from '../diagnostics';
 import {
   createRunningStats,

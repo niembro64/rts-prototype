@@ -1,4 +1,6 @@
-// Network types extracted from game/network/NetworkTypes.ts
+// Migration debt: canonical host-snapshot wire types.
+// Lockstep command-bundle and manifest types will replace gameplay state
+// messages; existing snapshot rows are not the target protocol.
 
 import {
   BUILDING_TYPE_IDS,

@@ -1,4 +1,6 @@
-// LocalGameConnection - In-memory bridge between GameServer and local client (host)
+// Migration debt: in-memory bridge between GameServer and local host play.
+// Lockstep replaces this with a peer session feeding command bundles to the
+// local sim worker and reading local render packets.
 
 import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
 import type { GameServer } from './GameServer';

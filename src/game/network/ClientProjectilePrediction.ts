@@ -1,3 +1,7 @@
+// Migration debt: client-side projectile extrapolation against host snapshots.
+// Lockstep renders projectiles from local sim render packets with event-aware
+// interpolation instead of remote-state prediction.
+
 import type { Entity, EntityId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import { isLineShotType, type ProjectileShot } from '@/types/sim';

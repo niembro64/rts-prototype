@@ -1,4 +1,6 @@
-// Network type definitions — re-exported from canonical @/types/network
+// Migration debt: re-export surface for host-snapshot network types.
+// Lockstep command-bundle and manifest types will replace gameplay state
+// messages; existing snapshot IDs are not the target protocol.
 
 export type {
   NetworkMessage,

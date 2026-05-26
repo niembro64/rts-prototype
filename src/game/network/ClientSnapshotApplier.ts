@@ -1,3 +1,7 @@
+// Migration debt: applies authoritative snapshot fields into a reconciled
+// client copy. Lockstep deletes this in favor of render packets from the local
+// sim runtime.
+
 import type { Entity, BuildingType } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import type { NetworkServerSnapshotEntity } from './NetworkManager';
