@@ -1,3 +1,7 @@
+// Migration debt: prediction/reconciliation for a remote authoritative
+// host. In lockstep the local sim is the state, so this path is deleted
+// rather than carried forward as a responsiveness feature.
+
 import {
   getMovementPosEmaMode,
   getMovementVelEmaMode,

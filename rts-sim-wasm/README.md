@@ -1,12 +1,15 @@
 # rts-sim-wasm
 
-Bespoke RTS simulation core. Compiled to WebAssembly and loaded by
-**both** the authoritative server tick and the client prediction
-stepper, so client prediction is bit-identical to server motion.
+Bespoke RTS simulation core. Compiled to WebAssembly and being expanded
+into the deterministic lockstep simulation runtime. The current
+prototype still loads this crate from the authoritative host tick and
+client prediction paths, but those paths are migration debt: the target
+is one Rust/WASM sim runtime per peer, fed by the same scheduled command
+bundles.
 
-The phase-by-phase migration log lives in `issues.txt` at the repo
-root. The "what to move and why" principle is in
-`docs/wasm-migration-principle.md`.
+The phase-by-phase lockstep migration plan lives in `migration.html`.
+The engine ownership and determinism principles live in
+`design_philosophy.html`.
 
 ## Building
 

@@ -1,3 +1,7 @@
+// Migration debt: client-to-host command pipe.
+// Lockstep reshapes this into a peer-symmetric per-tick command-bundle
+// transport. PeerJS room/signaling code can stay; gameplay authority cannot.
+
 import type { DataConnection } from 'peerjs';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';

@@ -20,16 +20,16 @@ export type MutableUnitMotion3 = {
 export type UnitGroundHeightSampler = (x: number, y: number) => number;
 export type UnitGroundNormalSampler = (x: number, y: number) => GroundNormal;
 
-// Reusable Float64Array scratch passed to the WASM kernel. Both
-// the server tick and the client prediction stepper call into
-// this module sequentially (never re-entrantly within one
-// JS turn), so a single module-scope scratch buffer is safe and
-// avoids a per-call typed-array allocation.
+// Reusable Float64Array scratch passed to the WASM kernel. Current
+// TypeScript callers enter this module sequentially (never re-entrantly
+// within one JS turn), so a single module-scope scratch buffer is safe
+// and avoids a per-call typed-array allocation. Long term this loop
+// belongs inside the Rust sim runtime, not in TS.
 const _motionBuf = new Float64Array(6);
 
 /**
- * Shared unit-body integrator used by the authoritative server and
- * client visual prediction. It owns only the common physics math:
+ * Shared unit-body integrator used by the current host-snapshot server
+ * and client visual prediction path. It owns only the common physics math:
  * terrain spring, air damping, ground tangent damping, passive rebound
  * limiting, and Euler position integration.
  *

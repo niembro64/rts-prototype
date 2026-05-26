@@ -1,5 +1,6 @@
-// GameServer - Headless simulation server.
-// Owns WorldState, Simulation, PhysicsEngine3D, and runs the game loop via setInterval.
+// Migration debt: authoritative host snapshot server.
+// Target lockstep runtime deletes this ownership model; every peer will
+// run the same Rust/WASM sim and exchange command bundles only.
 
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';

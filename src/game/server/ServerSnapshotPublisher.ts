@@ -1,3 +1,7 @@
+// Migration debt: per-recipient snapshot publisher for the authoritative
+// host path. Lockstep replaces this with local render packets produced by
+// each peer's own sim worker; world state must not cross the network.
+
 import { SNAPSHOT_CONFIG } from '../../config';
 import { snapshotRateHz } from '../../serverBarConfig';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';

@@ -1,4 +1,10 @@
 /**
+ * Migration debt: reconciled client view of remote host snapshots.
+ *
+ * The lockstep target replaces this with a render projection of the
+ * local Rust/WASM sim worker. This class can remain only while the
+ * host-snapshot prototype is still the playable path.
+ *
  * ClientViewState - Manages the "client view" of the game state
  *
  * Uses EMA (Exponential Moving Average) + DEAD RECKONING for smooth rendering:

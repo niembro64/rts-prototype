@@ -1,13 +1,12 @@
 // rts-sim-wasm — bespoke RTS simulation core.
 //
-// Compiled to WebAssembly via wasm-pack, loaded by BOTH the
-// authoritative server tick AND the client prediction stepper.
-// Same numerical kernels run on both sides so client prediction
-// is bit-identical to server authoritative motion.
+// Compiled to WebAssembly via wasm-pack. The current prototype still
+// calls this crate from the host-snapshot server and client prediction
+// paths; the migration target is stricter: this crate becomes the
+// deterministic sim runtime every peer runs against the same scheduled
+// command stream.
 //
-// Phase 1 landed the scaffolding. Phase 2 (this commit) ports
-// the shared unit-motion integrator. Subsequent phases per
-// issues.txt:
+// Earlier WASM-port phases moved shared kernels here:
 //   3  PhysicsEngine3D core    — Body3D SoA + resolvers + sleep
 //   4  quaternion math kernel  — used by hover orientation spring
 //   5  projectile motion       — ballistic + homing + beam paths
@@ -16,6 +15,8 @@
 //   8  terrain sampling        — heightmap in linear memory
 //   9  pathfinder              — A* over the walk grid
 //  10  snapshot serializer     — per-entity quantize + delta path
+// Snapshot-specific exports are migration debt and should disappear
+// once lockstep render packets replace network snapshots.
 
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -1973,10 +1974,10 @@ pub fn solve_kinematic_intercept(
 //
 //  Output buffer (3 f64s): thrustX, thrustY, thrustZ.
 //
-//  Used per-homing-projectile per-tick by both the server projectile
-//  system and the client prediction stepper. Per-call WASM dispatch —
-//  call sites already loop over projectiles individually; batching
-//  would require a substantial caller refactor.
+//  Used per-homing-projectile per-tick by current TS callers. Lockstep
+//  migration moves this behind the Rust sim runtime so projectile loops
+//  do not live in TypeScript long term. Per-call WASM dispatch remains
+//  here until those caller loops are ported.
 // ─────────────────────────────────────────────────────────────────
 
 #[wasm_bindgen]

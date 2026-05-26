@@ -1,9 +1,10 @@
 // rts-sim-wasm init — singleton loader.
 //
-// This module is the ONLY place either the server tick or the
-// client prediction stepper should obtain the WASM handle from.
-// Both await `initSimWasm()`; concurrent awaiters share one fetch
-// + compile via the module-scope Promise cache below.
+// This module is the ONLY place current TypeScript orchestration should
+// obtain the WASM handle from. The host-snapshot server and client
+// prediction paths still await `initSimWasm()` today; lockstep migration
+// moves ownership to a peer-local sim worker. Concurrent awaiters share
+// one fetch + compile via the module-scope Promise cache below.
 //
 // The WASM artifacts under `./pkg/` are produced by
 // `npm run build:wasm` (which calls `wasm-pack build --release

@@ -1,3 +1,7 @@
+// Migration debt: world-state transport for the authoritative host path.
+// Deterministic lockstep must not send entity/projectile/economy/fog
+// snapshots over WebRTC; only command bundles and hash diagnostics survive.
+
 import type { DataConnection } from 'peerjs';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';

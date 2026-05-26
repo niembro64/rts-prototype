@@ -43,22 +43,35 @@ export type {
 
 import type { Command } from '@/types/commands';
 
-// Command queue for processing commands in order
+type QueuedCommand = {
+  command: Command;
+  sequence: number;
+};
+
+// Command queue for processing commands in deterministic local order.
+//
+// Migration note: the current host-snapshot architecture still drains
+// commands with tick <= current tick so late network/UI commands remain
+// playable. Lockstep must replace this with exact scheduled bundle
+// execution once every peer sends per-tick command bundles.
 export class CommandQueue {
-  private commands: Command[] = [];
+  private commands: QueuedCommand[] = [];
+  private nextSequence = 0;
 
   // Add command to queue
   enqueue(command: Command): void {
-    this.commands.push(command);
-    // Sort by tick to ensure deterministic ordering
-    this.commands.sort((a, b) => a.tick - b.tick);
+    this.commands.push({
+      command,
+      sequence: this.nextSequence++,
+    });
+    this.commands.sort(compareQueuedCommands);
   }
 
   // Get commands for a specific tick
   getCommandsForTick(tick: number): Command[] {
     const result: Command[] = [];
-    while (this.commands.length > 0 && this.commands[0].tick <= tick) {
-      result.push(this.commands.shift()!);
+    while (this.commands.length > 0 && this.commands[0].command.tick <= tick) {
+      result.push(this.commands.shift()!.command);
     }
     return result;
   }
@@ -66,15 +79,21 @@ export class CommandQueue {
   // Clear all commands
   clear(): void {
     this.commands = [];
+    this.nextSequence = 0;
   }
 
   // Get all pending commands
   getAll(): Command[] {
-    return [...this.commands];
+    return this.commands.map((entry) => entry.command);
   }
 
   // Get pending command count
   getPendingCount(): number {
     return this.commands.length;
   }
+}
+
+function compareQueuedCommands(a: QueuedCommand, b: QueuedCommand): number {
+  const tickDelta = a.command.tick - b.command.tick;
+  return tickDelta !== 0 ? tickDelta : a.sequence - b.sequence;
 }

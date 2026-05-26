@@ -46,6 +46,10 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
   const tick = sanitizeTick(command.tick);
   if (tick === null) return null;
 
+  // Migration note: this sanitizer is still called inside the host
+  // authority path. Lockstep command validation must move into the
+  // deterministic runtime so every peer accepts or rejects the same
+  // command bundle before advancing a tick.
   switch (command.type) {
     case 'select':
     case 'clearSelection':
