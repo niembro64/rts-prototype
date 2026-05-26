@@ -1,9 +1,17 @@
 // Command types extracted from game/sim/commands.ts
 
-import type { EntityId, WaypointType, BuildingType, PlayerId } from './sim';
-import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
+import type { BuildingType } from './buildingTypes';
+import type { WaypointType } from './commandTypes';
+import type { EntityId, PlayerId } from './entityTypes';
 import type { ForceFieldReflectionMode } from './shotTypes';
-import type { UnitGroundNormalEmaMode } from '../shellConfig';
+
+export const COMMAND_SCHEMA_VERSION = 1 as const;
+
+// Keep command wire types independent of runtime config modules.
+export type SnapshotRate = number | 'none';
+export type KeyframeRatio = number | 'ALL' | 'NONE';
+export type TickRate = number;
+export type UnitGroundNormalEmaMode = 'snap' | 'fast' | 'mid' | 'slow';
 
 export type CommandType =
   | 'select'
@@ -42,6 +50,94 @@ export type CommandType =
   | 'setForceFieldReflectionMode'
   | 'setFogOfWarEnabled'
   | 'setConverterTax';
+
+export const COMMAND_TYPE_IDS = {
+  select: 0,
+  move: 1,
+  stop: 2,
+  clearQueuedOrders: 3,
+  removeLastQueuedOrder: 4,
+  clearSelection: 5,
+  ping: 6,
+  scan: 7,
+  startBuild: 8,
+  queueUnit: 9,
+  cancelQueueItem: 10,
+  setRallyPoint: 11,
+  setFactoryWaypoints: 12,
+  fireDGun: 13,
+  setFireEnabled: 14,
+  repair: 15,
+  repairArea: 16,
+  reclaim: 17,
+  wait: 18,
+  attack: 19,
+  attackGround: 20,
+  attackArea: 21,
+  guard: 22,
+  setSnapshotRate: 23,
+  setKeyframeRatio: 24,
+  setTickRate: 25,
+  setUnitGroundNormalEmaMode: 26,
+  setSendGridInfo: 27,
+  setBackgroundUnitType: 28,
+  setMaxTotalUnits: 29,
+  setMirrorsEnabled: 30,
+  setForceFieldsEnabled: 31,
+  setForceFieldsObstructSight: 32,
+  setForceFieldReflectionMode: 33,
+  setFogOfWarEnabled: 34,
+  setConverterTax: 35,
+} as const satisfies Record<CommandType, number>;
+
+export type CommandTypeId = typeof COMMAND_TYPE_IDS[CommandType];
+
+export const COMMAND_TYPES_BY_ID = [
+  'select',
+  'move',
+  'stop',
+  'clearQueuedOrders',
+  'removeLastQueuedOrder',
+  'clearSelection',
+  'ping',
+  'scan',
+  'startBuild',
+  'queueUnit',
+  'cancelQueueItem',
+  'setRallyPoint',
+  'setFactoryWaypoints',
+  'fireDGun',
+  'setFireEnabled',
+  'repair',
+  'repairArea',
+  'reclaim',
+  'wait',
+  'attack',
+  'attackGround',
+  'attackArea',
+  'guard',
+  'setSnapshotRate',
+  'setKeyframeRatio',
+  'setTickRate',
+  'setUnitGroundNormalEmaMode',
+  'setSendGridInfo',
+  'setBackgroundUnitType',
+  'setMaxTotalUnits',
+  'setMirrorsEnabled',
+  'setForceFieldsEnabled',
+  'setForceFieldsObstructSight',
+  'setForceFieldReflectionMode',
+  'setFogOfWarEnabled',
+  'setConverterTax',
+] as const satisfies readonly CommandType[];
+
+export function commandTypeToId(type: CommandType): CommandTypeId {
+  return COMMAND_TYPE_IDS[type];
+}
+
+export function commandTypeFromId(id: number): CommandType | null {
+  return COMMAND_TYPES_BY_ID[id] ?? null;
+}
 
 export type BaseCommand = {
   type: CommandType;
@@ -341,3 +437,11 @@ export type Command =
   | SetForceFieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
   | SetConverterTaxCommand;
+
+export type CommandBundle = {
+  schemaVersion: typeof COMMAND_SCHEMA_VERSION;
+  targetTick: number;
+  peerId: PlayerId;
+  seq: number;
+  commands: Command[];
+};

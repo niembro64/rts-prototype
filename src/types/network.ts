@@ -184,7 +184,9 @@ export function turretIdToCode(s: string): TurretTypeCode {
 export function codeToTurretId(c: number): TurretId | null {
   return _TURRET_TYPES[c] ?? null;
 }
-import type { Command } from './commands';
+import { COMMAND_SCHEMA_VERSION, type Command } from './commands';
+export { COMMAND_SCHEMA_VERSION };
+export type { CommandBundle } from './commands';
 import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
 import type { ForceFieldReflectionMode } from './shotTypes';
 import type { Vec2, Vec3 } from './vec2';
@@ -198,7 +200,6 @@ import type {
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
 export const BATTLE_MANIFEST_PROTOCOL = 'ba-start-manifest-v1' as const;
 export const BATTLE_MANIFEST_SCHEMA_VERSION = 1 as const;
-export const COMMAND_SCHEMA_VERSION = 1 as const;
 
 export type LobbyPlayerInfoPayload = {
   ipAddress: string | undefined;

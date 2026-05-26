@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-03">
-        <h3>LS-03: Add Command Bundle Types And Codec <span class="tag">wire shape</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>src/types/commands.ts</code>, <code>src/types/network.ts</code>, new command-bundle codec under <code>src/game/network/</code>, command tests or probes.</p>
-        <ul>
-          <li>Define <code>CommandBundle</code> as <code>{ targetTick, peerId, seq, commands }</code> with an explicit empty-bundle representation.</li>
-          <li>Assign stable numeric command IDs and append-only payload layouts. Keep string command types only at UI boundaries if needed.</li>
-          <li>Encode/decode bundles from bytes with duplicate rejection, schema-version checks, and stable command ordering by <code>(targetTick, peerId, seq, commandIndex)</code>.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> tests prove empty bundles round-trip, malformed bundles are rejected, and arrival order cannot change execution order.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-04">
         <h3>LS-04: Introduce Exact-Tick Command Scheduling <span class="tag">scheduler</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-03. <strong>Touch:</strong> <code>CommandQueue</code>, <code>Simulation.update</code>, input command stamping, local/offline command senders.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>CommandQueue</code>, <code>Simulation.update</code>, input command stamping, local/offline command senders.</p>
         <ul>
           <li>Add an exact-tick scheduled queue that executes only commands for tick <code>N</code>, not every command with <code>tick &lt;= N</code>.</li>
           <li>Route new bundle-based paths through the exact queue while keeping any temporary old-path compatibility explicitly named.</li>

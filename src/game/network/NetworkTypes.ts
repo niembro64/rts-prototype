@@ -41,3 +41,4 @@ export {
   BATTLE_MANIFEST_SCHEMA_VERSION,
   COMMAND_SCHEMA_VERSION,
 } from '@/types/network';
+export type { CommandBundle } from '@/types/network';
