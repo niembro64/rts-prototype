@@ -348,7 +348,8 @@ export class Simulation {
     // this tick lands in a clean list.
     this.world.pruneExpiredScanPulses(tick);
 
-    // Process commands for this tick
+    // Process only commands scheduled exactly for this tick. Missing/late
+    // bundle policy is handled by the lockstep scheduler before update().
     const cmdCtx: CommandContext = {
       world: this.world,
       constructionSystem: this.constructionSystem,

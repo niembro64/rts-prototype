@@ -39,21 +39,18 @@ export type {
   SetForceFieldReflectionModeCommand,
   SetFogOfWarEnabledCommand,
   Command,
-} from '@/types/commands';
+} from '../../types/commands';
 
-import type { Command } from '@/types/commands';
+import type { Command } from '../../types/commands';
 
 type QueuedCommand = {
   command: Command;
   sequence: number;
 };
 
-// Command queue for processing commands in deterministic local order.
-//
-// Migration note: the current host-snapshot architecture still drains
-// commands with tick <= current tick so late network/UI commands remain
-// playable. Lockstep must replace this with exact scheduled bundle
-// execution once every peer sends per-tick command bundles.
+// Exact-tick command queue for deterministic execution.
+// Late/missing bundle policy belongs to the lockstep scheduler; this queue only
+// drains commands whose tick exactly matches the tick being simulated.
 export class CommandQueue {
   private commands: QueuedCommand[] = [];
   private nextSequence = 0;
@@ -67,13 +64,43 @@ export class CommandQueue {
     this.commands.sort(compareQueuedCommands);
   }
 
-  // Get commands for a specific tick
+  enqueueMany(commands: readonly Command[]): void {
+    for (const command of commands) {
+      this.commands.push({
+        command,
+        sequence: this.nextSequence++,
+      });
+    }
+    this.commands.sort(compareQueuedCommands);
+  }
+
+  // Get commands scheduled exactly for a specific tick.
   getCommandsForTick(tick: number): Command[] {
     const result: Command[] = [];
-    while (this.commands.length > 0 && this.commands[0].command.tick <= tick) {
-      result.push(this.commands.shift()!.command);
+    const remaining: QueuedCommand[] = [];
+    for (const entry of this.commands) {
+      if (entry.command.tick === tick) {
+        result.push(entry.command);
+      } else {
+        remaining.push(entry);
+      }
     }
+    this.commands = remaining;
     return result;
+  }
+
+  dropCommandsBeforeTick(tick: number): Command[] {
+    const dropped: Command[] = [];
+    const remaining: QueuedCommand[] = [];
+    for (const entry of this.commands) {
+      if (entry.command.tick < tick) {
+        dropped.push(entry.command);
+      } else {
+        remaining.push(entry);
+      }
+    }
+    this.commands = remaining;
+    return dropped;
   }
 
   // Clear all commands

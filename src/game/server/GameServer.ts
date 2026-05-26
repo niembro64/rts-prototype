@@ -562,7 +562,9 @@ export class GameServer {
         return;
     }
     const authorizedCommand = this.authorizeGameplayCommand(sanitizedCommand, authority);
-    if (authorizedCommand) this.commandQueue.enqueue(authorizedCommand);
+    if (authorizedCommand) {
+      this.commandQueue.enqueue(this.retargetHostSnapshotCommandForExactQueue(authorizedCommand));
+    }
   }
 
   private canApplyServerControlCommand(authority: CommandAuthority): boolean {
@@ -635,6 +637,17 @@ export class GameServer {
       default:
         return null;
     }
+  }
+
+  private retargetHostSnapshotCommandForExactQueue(command: Command): Command {
+    const currentTick = this.world.getTick();
+    if (command.tick >= currentTick) return command;
+    // Temporary host-snapshot compatibility: UI/network commands are stamped
+    // from snapshot ticks and may arrive after that tick has passed. The exact
+    // queue must not promote late commands, so the old authority path retargets
+    // them to the next tick the server has not simulated yet. Lockstep bundles
+    // will arrive with an agreed targetTick and bypass this compatibility shim.
+    return { ...command, tick: currentTick } as Command;
   }
 
   private authorizePingCommand(command: PingCommand, playerId: PlayerId): PingCommand | null {
