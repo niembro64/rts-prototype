@@ -175,7 +175,7 @@
       margin-top: 0;
     }
 
-    .phase {
+    .chunk {
       background: var(--panel);
       border: 1px solid var(--rule);
       border-left: 4px solid var(--accent);
@@ -184,13 +184,23 @@
       margin-top: 18px;
     }
 
-    .phase h3 {
+    .chunk h3 {
       margin-top: 0;
     }
 
-    .phase .exit {
+    .chunk .exit {
       color: var(--muted);
       margin-top: 16px;
+    }
+
+    .chunk-meta {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-top: 10px;
+    }
+
+    .chunk-meta strong {
+      color: var(--accent);
     }
 
     .tag {
@@ -257,6 +267,28 @@
       </p>
     </header>
 
+    <section>
+      <h2>How To Work This Plan</h2>
+      <div class="warning">
+        <p>
+          This document is live migration state, not archival notes. Every agent
+          or person who changes code for this migration must delete, update, or
+          split the actionable chunk they touched in the same change. A finished
+          chunk leaves the document. A partially finished chunk is rewritten to
+          describe only the remaining work. A wrong chunk is corrected before or
+          while the code changes land. Newly discovered work is added as a new
+          chunk with dependencies and an exit check.
+        </p>
+      </div>
+      <ol class="rule-list">
+        <li>Start by reading <code>design_philosophy.html</code>, this file, and the code named by the chunk. Check <code>git status</code> before editing so unrelated work is not folded into the migration change.</li>
+        <li>Take one actionable chunk at a time. If the chunk is too broad to finish cleanly, split it into smaller chunks first and commit that doc update with the code or as its own preparation commit.</li>
+        <li>When code or docs change, update this file in the same commit: delete completed chunks, rewrite changed chunks, and add follow-up chunks created by discoveries made during the work.</li>
+        <li>Do not leave stale checklists, checked-off bullets, or completed items in this plan. The source of truth is the remaining actionable work, not a history of what used to be true.</li>
+        <li>Each migration change ends with the relevant verification, <code>git status</code>, a focused <code>git commit</code>, and <code>git push</code>. If the branch has no upstream, push with <code>git push -u origin &lt;branch&gt;</code>.</li>
+      </ol>
+    </section>
+
     <section class="principle-grid" aria-label="Migration principles">
       <div class="principle">
         <b>Delete host truth</b>
@@ -272,9 +304,9 @@
       </div>
       <div class="principle">
         <b>Delete the old path</b>
-        A phase is not complete while the replacement and predecessor both
+        A chunk is not complete while the replacement and predecessor both
         compile as supported gameplay paths. Temporary flags are allowed only
-        with a named removal phase.
+        with a named removal chunk.
       </div>
     </section>
 
@@ -353,169 +385,318 @@
       <ol class="rule-list">
         <li><strong>No new snapshot features.</strong> Snapshot work is limited to bug fixes needed to keep the prototype usable while the replacement lands.</li>
         <li><strong>No new simulation hot paths in TypeScript.</strong> New gameplay, physics, targeting, visibility, command validation, or per-unit loops belong in Rust/WASM unless they are temporary scaffolding with a deletion step.</li>
-        <li><strong>One behavior, one implementation.</strong> When a Rust/WASM path replaces a TypeScript path, the TypeScript path is deleted in the same migration slice.</li>
-        <li><strong>Feature flags expire quickly.</strong> A flag may bridge a risky merge, but the next phase must either delete the old path or delete the new experiment.</li>
-        <li><strong>Every phase has a determinism check.</strong> If the phase changes sim state, it adds or updates a replay/hash test before it is considered complete.</li>
+        <li><strong>One behavior, one implementation.</strong> When a Rust/WASM path replaces a TypeScript path, the TypeScript path is deleted in the same migration chunk.</li>
+        <li><strong>Feature flags expire quickly.</strong> A flag may bridge a risky merge, but the next chunk must either delete the old path or delete the new experiment.</li>
+        <li><strong>Every chunk has a determinism check.</strong> If the chunk changes sim state, it adds or updates a replay/hash test before it is considered complete.</li>
         <li><strong>Every command is data.</strong> Commands use stable numeric IDs, append-only enums, explicit nullability, and schema-validated payloads. No deep JSON object trees for per-tick wire traffic.</li>
         <li><strong>Silence is a packet.</strong> Idle peers send empty bundles. A missing bundle means "cannot advance," not "nothing happened."</li>
       </ol>
     </section>
 
     <section>
-      <h2>Phase Plan</h2>
+      <h2>Actionable Chunks</h2>
+      <p>
+        These chunks are ordered by dependency, but they are not permanent
+        milestones. Work the first chunk that is both useful and unblocked. If a
+        chunk becomes outdated, rewrite it before using it as instructions.
+      </p>
 
-      <div class="phase">
-        <h3>Phase 0: Freeze The Old Architecture <span class="tag">documentation + guardrails</span></h3>
-        <p>
-          Make the destination impossible to misunderstand before code starts
-          moving. The current snapshot stack can keep the prototype playable,
-          but it stops being a place where new architecture lands.
-        </p>
+      <article class="chunk" id="chunk-ls-01">
+        <h3>LS-01: Finish Old-Architecture Guardrails <span class="tag">docs + comments</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>GameServer.ts</code>, <code>ServerSnapshotPublisher.ts</code>, <code>NetworkSnapshotTransport.ts</code>, <code>LocalGameConnection.ts</code>, <code>RemoteGameConnection.ts</code>, <code>ClientPrediction*</code>, scene snapshot intake helpers.</p>
         <ul>
-          <li>Rename references from the deleted long-form migration filename to <code>migration.html</code>.</li>
-          <li>Update stale comments that describe Rust/WASM as serving "authoritative server tick and client prediction" once those areas are touched.</li>
-          <li>Mark <code>NetworkSnapshotTransport</code>, snapshot serializers, client prediction, and server snapshot publishers as migration debt in comments near their entry points.</li>
-          <li>Stop adding snapshot DTO fields unless they unblock active gameplay during the migration.</li>
+          <li>Audit the entry points that still describe host snapshots, prediction, or reconciliation as normal architecture.</li>
+          <li>Add short migration-debt comments only at module entry points where an agent might otherwise extend the old path.</li>
+          <li>Do not add broad comments inside hot loops or mechanical code; this chunk is about preventing wrong-direction work.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> docs and comments no longer present host authority as the target architecture.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> a reader following the main server, network, scene, and prediction entry points sees the old path labeled as temporary migration debt.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 1: Deterministic Fixed-Step Core <span class="tag">before networking</span></h3>
-        <p>
-          Lockstep cannot start from a variable-delta host tick. First, make the
-          local simulation step deterministic and hashable, even while some of
-          the code still lives in TypeScript.
-        </p>
+      <article class="chunk" id="chunk-ls-02">
+        <h3>LS-02: Define The Starting Manifest <span class="tag">initial state</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-01. <strong>Touch:</strong> <code>src/types/network.ts</code>, <code>NetworkBattleHandoff.ts</code>, <code>ServerBootstrap.ts</code>, lobby settings, blueprint loaders, <code>rts-sim-wasm</code> version exports.</p>
         <ul>
-          <li>Replace the sim-facing variable <code>deltaMs</code> contract with fixed tick duration. Wall-clock time may decide how many ticks to run, but the sim receives an integer tick and a constant step.</li>
-          <li>Add <code>world_hash()</code> coverage for all future-affecting state: entities, physics bodies, projectiles, economy, build queues, command queues, targeting state, visibility aggregates, RNG state, and game phase.</li>
-          <li>Add a replay-from-command-log harness that can run headlessly and emit per-tick hashes.</li>
-          <li>Audit <code>rts-sim-wasm/src/lib.rs</code> and TypeScript sim paths for sim-affecting transcendentals, unordered iteration, wall-clock reads, ambient random, and parallel reductions.</li>
-          <li>Current Rust audit items already visible by grep: <code>HashMap</code>/<code>HashSet</code> and <code>sin</code>/<code>cos</code>/<code>pow</code> occur in <code>rts-sim-wasm/src/lib.rs</code>. Delete snapshot-only uses with the snapshot path; route sim-affecting math through deterministic helpers.</li>
-          <li>Make <code>CommandQueue</code> execute exact ticks, not "all commands with tick &lt;= current tick," once delayed scheduling owns missed/late command policy.</li>
+          <li>Create a canonical manifest type for game settings, map seed, player slots, player teams, blueprint version stamps, command schema version, sim version, and initial RNG seed.</li>
+          <li>Make battle handoff carry the manifest instead of loosely related startup fields.</li>
+          <li>Add canonical serialization and a manifest hash so replay and network peers can reject mismatched starts.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> the same 10-minute command log produces identical hashes 20 times in a row in local headless runs.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> local battle startup and network handoff can both produce the same manifest bytes and manifest hash for the same lobby settings.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 2: Rust/WASM Owns The Sim <span class="tag">engine ownership</span></h3>
-        <p>
-          The design philosophy's target is one Rust simulation, not a TypeScript
-          sim with Rust helper kernels. Move ownership behind a Rust runtime
-          boundary before treating network lockstep as solved.
-        </p>
+      <article class="chunk" id="chunk-ls-03">
+        <h3>LS-03: Add Command Bundle Types And Codec <span class="tag">wire shape</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-02. <strong>Touch:</strong> <code>src/types/commands.ts</code>, <code>src/types/network.ts</code>, new command-bundle codec under <code>src/game/network/</code>, command tests or probes.</p>
         <ul>
-          <li>Create a narrow sim runtime API around Rust/WASM: initialize from manifest, enqueue scheduled command bundles, advance one tick, read render packets, read diagnostics, compute <code>world_hash()</code>.</li>
-          <li>Port TypeScript-owned sim systems into Rust in dependency order: world storage, command application, physics body ownership, economy, projectiles, damage, targeting, visibility, construction, pathing, and factory queues.</li>
-          <li>Keep configuration as JSON data validated by shared schema. Rust reads the same blueprints that TypeScript currently imports.</li>
-          <li>Delete TypeScript implementations as their Rust replacements become live. Do not leave "fallback" gameplay code in the tree.</li>
-          <li>Split <code>rts-sim-wasm/src/lib.rs</code> into owned modules as needed; the important part is ownership and determinism, not preserving the monolith.</li>
-          <li>Remove Rust snapshot-baseline and snapshot-encoder exports once render packets replace network snapshots.</li>
+          <li>Define <code>CommandBundle</code> as <code>{ targetTick, peerId, seq, commands }</code> with an explicit empty-bundle representation.</li>
+          <li>Assign stable numeric command IDs and append-only payload layouts. Keep string command types only at UI boundaries if needed.</li>
+          <li>Encode/decode bundles from bytes with duplicate rejection, schema-version checks, and stable command ordering by <code>(targetTick, peerId, seq, commandIndex)</code>.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> a local game can run from a Rust/WASM sim runtime without <code>GameServer</code> owning gameplay truth.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> tests prove empty bundles round-trip, malformed bundles are rejected, and arrival order cannot change execution order.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 3: Worker Runtime And Render Sampling <span class="tag">threading</span></h3>
-        <p>
-          The sim cannot live on the main thread. Backgrounded tabs, rendering
-          stalls, and UI work would otherwise stall the lockstep barrier for
-          every peer.
-        </p>
+      <article class="chunk" id="chunk-ls-04">
+        <h3>LS-04: Introduce Exact-Tick Command Scheduling <span class="tag">scheduler</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-03. <strong>Touch:</strong> <code>CommandQueue</code>, <code>Simulation.update</code>, input command stamping, local/offline command senders.</p>
         <ul>
-          <li>Add a sim worker, likely under <code>src/game/sim-wasm/simWorker.ts</code>, that loads the Rust/WASM runtime and owns tick advancement.</li>
-          <li>Main thread sends input-derived command intents and receives local render packets. These packets are process-local, not network snapshots.</li>
-          <li>Replace <code>ServerTickLoop</code> with a worker tick pump that can run catch-up ticks using fixed step semantics.</li>
-          <li>Renderer interpolation samples adjacent local sim frames or sim-authored render events. It never asks the network for positions.</li>
-          <li>Keep camera, selection, pending command hints, audio spread, and fog presentation outside the deterministic sim unless they affect gameplay.</li>
+          <li>Add an exact-tick scheduled queue that executes only commands for tick <code>N</code>, not every command with <code>tick &lt;= N</code>.</li>
+          <li>Route new bundle-based paths through the exact queue while keeping any temporary old-path compatibility explicitly named.</li>
+          <li>Define late, duplicate, and missing bundle behavior in code comments and tests; missed policy belongs to the lockstep scheduler, not to the sim loop.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> background a tab for 30 seconds, foreground it, and the worker catches up without main-thread starvation or divergent hashes.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> command queue tests cover exact tick execution, stable same-tick order, duplicate handling, and missing bundle stalls.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 4: Commands-Only Local Loop And Replay <span class="tag">wire before wire</span></h3>
-        <p>
-          Build the lockstep protocol locally before using WebRTC. Single-player
-          should already behave as "one peer sending command bundles through the
-          same scheduler the network will use."
-        </p>
+      <article class="chunk" id="chunk-ls-05">
+        <h3>LS-05: Replace Sim-Facing Variable Delta With Fixed Ticks <span class="tag">determinism</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-04. <strong>Touch:</strong> <code>ServerTickLoop.ts</code>, <code>GameServer.tick</code>, <code>Simulation.update</code>, <code>PhysicsEngine3D.step</code>, wind/economy/building systems that consume <code>dtMs</code>.</p>
         <ul>
-          <li>Define command bundle bytes with stable command IDs, append-only enums, peer ID, sequence number, target tick, and explicit empty-bundle representation.</li>
-          <li>All gameplay-affecting changes, including current server-control toggles such as fog, mirrors, force fields, tick rate, and converter tax, become scheduled commands or initial manifest fields.</li>
-          <li>Selection and camera remain local. If a command needs selected IDs, the command payload carries those IDs explicitly.</li>
-          <li>Input delay applies even in local play. Pending command hints render immediately but remain non-sim state.</li>
-          <li>Replay save/load uses the exact starting manifest plus ordered command bundles. No snapshot replay format is introduced.</li>
+          <li>Make sim-facing update code receive integer tick plus constant <code>SIM_STEP_MS</code>. Wall-clock time may decide catch-up count, but not sim math.</li>
+          <li>Remove <code>MAX_TICK_DT_MS</code> as gameplay behavior. If catch-up needs a cap, it pauses or reports load instead of stretching the tick.</li>
+          <li>Update wind, economy, construction, physics, and force systems to use the fixed step consistently.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> local play, replay playback, and headless replay all consume the same command-bundle stream and produce matching hashes.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> local runs at different render frame rates produce the same tick count and same sim-facing timestep sequence.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 5: Two-Peer Lockstep Over WebRTC <span class="tag">first network proof</span></h3>
-        <p>
-          Replace client-to-host commands and host-to-client snapshots with
-          peer-symmetric command exchange for the smallest real case.
-        </p>
+      <article class="chunk" id="chunk-ls-06">
+        <h3>LS-06: Add World Hash V1 <span class="tag">desync detection</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-05. <strong>Touch:</strong> <code>WorldState.ts</code>, <code>Simulation.ts</code>, physics/projectile pools, economy, visibility, command queues, <code>rts-sim-wasm/src/lib.rs</code>.</p>
         <ul>
-          <li>Reshape <code>NetworkCommandTransport.ts</code> into a peer command-bundle channel. It must not ask whether the local process is gameplay host before accepting a command bundle.</li>
-          <li>Keep <code>NetworkManager</code> for PeerJS signaling, room codes, lobby roster, data channel health, and heartbeat, but separate those concerns from gameplay authority.</li>
-          <li>Every peer sends a bundle for every target tick to every other peer, including empty bundles. Start with two peers before relay election.</li>
-          <li>The worker lockstep barrier releases tick <code>N</code> only when every peer's bundle for <code>N</code> is present and validated.</li>
-          <li>Broadcast <code>world_hash()</code> every 60 ticks in dev/test. On mismatch, pause both peers, dump manifest, command log, local hash history, and compact sim state fingerprints.</li>
-          <li>Do not stream snapshots as a rescue path. A desync is a correctness failure, not an invitation to reconcile.</li>
+          <li>Add <code>world_hash()</code> over all fields that affect future ticks: entities, physics bodies, projectiles, economy, build queues, targeting state, visibility aggregates, RNG, game phase, and pending commands.</li>
+          <li>Use stable ordering by IDs or sorted keys. Do not hash object iteration order from <code>Map</code>, <code>Set</code>, <code>HashMap</code>, or <code>HashSet</code> unless that order is made deterministic first.</li>
+          <li>Expose hash history in a dev-readable form so future chunks can compare peers and replay runs.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> a 1v1 LAN game runs for 20 minutes with no desyncs, no network state snapshots, and replayable command logs.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> the same local scenario run repeatedly emits identical per-tick hashes, and a deliberate future-affecting mutation changes the hash.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 6: Delete Snapshot And Prediction Gameplay Paths <span class="tag">no dual stack</span></h3>
-        <p>
-          Once two-peer lockstep can play, remove the old host-snapshot
-          architecture before scaling to more players. This is where the
-          migration becomes real.
-        </p>
+      <article class="chunk" id="chunk-ls-07">
+        <h3>LS-07: Build A Headless Replay Harness <span class="tag">test foundation</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-06. <strong>Touch:</strong> <code>scripts/</code>, npm scripts, manifest and command-bundle codec, sim bootstrap paths.</p>
         <ul>
-          <li>Delete <code>GameServer.ts</code> as gameplay authority. Any reusable bootstrap logic moves behind the Rust sim runtime or manifest builder first.</li>
-          <li>Delete <code>ServerTickLoop.ts</code>, <code>ServerSnapshotPublisher.ts</code>, <code>ServerSnapshotMetaBuilder.ts</code>, and server debug snapshot plumbing.</li>
-          <li>Delete <code>NetworkSnapshotTransport.ts</code>, <code>stateSerializer*.ts</code>, <code>snapshot*.ts</code>, snapshot pool/baseline code, and Rust snapshot encoder exports.</li>
-          <li>Delete <code>ClientPrediction*</code>, <code>ClientUnitPrediction</code>, <code>ClientProjectilePrediction</code>, <code>ClientSnapshotApplier</code>, and reconciliation diagnostics.</li>
-          <li>Replace <code>GameConnection</code>, <code>LocalGameConnection</code>, and <code>RemoteGameConnection</code> with a peer/session abstraction that owns command transport and local sim runtime only.</li>
-          <li>Make <code>ClientViewState</code> either disappear or become a read-only render projection fed by the local sim worker. It must no longer imply "client copy of remote truth."</li>
+          <li>Create a headless runner that loads a manifest plus command bundles, advances fixed ticks, and writes per-tick hashes.</li>
+          <li>Keep the harness independent of DOM, Vue, Three.js, PeerJS, and render code.</li>
+          <li>Add at least one small deterministic fixture and one longer smoke fixture that exercises movement, construction, projectiles, economy, and fog-relevant visibility.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> grepping for snapshot/prediction authority names finds no supported gameplay path, and the app still plays a 1v1 lockstep match.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> a repo command can replay a command log headlessly and fail if any expected hash differs.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 7: N-Peer, Relay Election, And Input Delay <span class="tag">scale</span></h3>
-        <p>
-          Scale only after the old path is gone. More peers amplify every hidden
-          ambiguity in bundle order, timeout policy, and command validation.
-        </p>
+      <article class="chunk" id="chunk-ls-08">
+        <h3>LS-08: Audit And Fence Nondeterminism <span class="tag">correctness</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-07. <strong>Touch:</strong> <code>rts-sim-wasm/src/lib.rs</code>, <code>src/game/sim/**</code>, <code>src/game/server/**</code>, targeted static checks.</p>
         <ul>
-          <li>Start with full mesh up to four players. Every peer still validates every peer's command bundles and hash stream.</li>
-          <li>Add command-relay election for larger rooms. The relay aggregates and rebroadcasts bundles but does not simulate authoritative truth.</li>
-          <li>Measure RTT continuously through the existing heartbeat layer. Set input delay to <code>ceil(max_rtt / tick_ms) + slack</code> and renegotiate on large swings.</li>
-          <li>Show a waiting overlay when the barrier stalls on a peer. Name the peer and tick window; do not hide the stall as local lag.</li>
-          <li>Handle disconnects deterministically: pause for a drop decision, then continue with a new peer manifest or end the match. Do not let each browser improvise.</li>
+          <li>Classify every sim-affecting use of <code>Math.random</code>, <code>Date.now</code>, <code>performance.now</code>, <code>sin</code>, <code>cos</code>, <code>pow</code>, <code>HashMap</code>, and <code>HashSet</code>.</li>
+          <li>Move gameplay randomness to seeded in-state RNG. Keep cosmetic randomness in render/audio code only, with comments where confusion is likely.</li>
+          <li>Route sim-affecting transcendentals through deterministic helpers or authored lookup tables. Replace outcome-affecting unordered iteration with stable structures or sorted traversal.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> 4v4 plays on residential connections with adaptive input delay, no snapshot fallback, and stable replay output.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> grep output has an allow-list for remaining nondeterministic APIs, and the headless replay fixtures remain hash-stable.</p>
+      </article>
 
-      <div class="phase">
-        <h3>Phase 8: Spectate, Replays, And Tooling <span class="tag">free wins</span></h3>
-        <p>
-          After the command log is the source of truth, spectators and replays
-          are no longer special state streams. They are late or offline sim
-          runners.
-        </p>
+      <article class="chunk" id="chunk-ls-09">
+        <h3>LS-09: Create The Rust Sim Runtime API <span class="tag">WASM boundary</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-08. <strong>Touch:</strong> <code>rts-sim-wasm/src/</code>, <code>src/game/sim-wasm/init.ts</code>, generated wasm bindings.</p>
         <ul>
-          <li>Replay files contain manifest, version stamp, command bundles, optional hash checkpoints, and optional state checkpoints for fast seek.</li>
-          <li>Live spectators join by fetching the manifest and command history, replaying forward, then tailing new bundles.</li>
-          <li>Analysis tools read the same command log and can run headless without DOM, Vue, Three.js, or PeerJS.</li>
-          <li>Version compatibility is explicit. If a sim change breaks replay determinism, the replay loader says so instead of pretending.</li>
+          <li>Add a narrow runtime surface: initialize from manifest, enqueue command bundles, advance one tick, read render packets, read diagnostics, and compute <code>world_hash()</code>.</li>
+          <li>Keep TypeScript as the caller and owner of browser APIs only. Do not add new gameplay behavior to TypeScript while creating this boundary.</li>
+          <li>Split Rust modules out of <code>lib.rs</code> when it helps isolate runtime ownership, but avoid refactors not needed by the chunk.</li>
         </ul>
-        <p class="exit"><strong>Exit:</strong> any completed match can be loaded and watched from commands alone; live spectate uses replay-then-tail.</p>
-      </div>
+        <p class="exit"><strong>Exit:</strong> TypeScript can instantiate a Rust runtime object from a manifest and advance a no-op or minimal scenario with a stable hash.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-10">
+        <h3>LS-10: Move World Bootstrap And Storage Behind The Runtime <span class="tag">ownership</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-09. <strong>Touch:</strong> <code>ServerBootstrap.ts</code>, <code>WorldState.ts</code>, spawn/player layout, terrain/deposit generation, Rust world storage.</p>
+        <ul>
+          <li>Make manifest-driven world creation happen behind the Rust runtime for the active path.</li>
+          <li>Port entity IDs, transforms, ownership, teams, health, build state, and initial terrain/deposit facts into runtime-owned storage.</li>
+          <li>Delete or shrink TypeScript bootstrap pieces as Rust ownership takes over. Do not leave a second gameplay world as a supported fallback.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> a local battle can create its initial world from the Rust runtime, and TypeScript reads it only through runtime projections or diagnostics.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-11">
+        <h3>LS-11: Move Command Validation And Application Into Rust <span class="tag">commands</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-10. <strong>Touch:</strong> <code>commandSanitizer.ts</code>, <code>commandAuthority.ts</code>, <code>commandExecution.ts</code>, Rust command modules.</p>
+        <ul>
+          <li>Port command payload validation, ownership checks, and gameplay application into the runtime.</li>
+          <li>Convert server-control toggles that affect gameplay, such as fog, mirrors, force fields, tick rate, and converter tax, into manifest fields or scheduled commands.</li>
+          <li>Keep selection and camera local. Commands that act on selected units must carry explicit IDs.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> command bundles applied by Rust produce the same gameplay effects as the old TypeScript path for covered command fixtures, and the old execution path is removed for those commands.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-12">
+        <h3>LS-12: Port Economy, Construction, And Factory Queues <span class="tag">sim systems</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-11. <strong>Touch:</strong> <code>economy.ts</code>, <code>construction*.ts</code>, <code>factoryProduction.ts</code>, <code>buildingActiveState.ts</code>, Rust runtime modules.</p>
+        <ul>
+          <li>Move income, spending, converter tax, construction progress, factory queue advancement, and building active/open state into Rust-owned tick logic.</li>
+          <li>Hash every future-affecting queue, stockpile, progress, and active-state field.</li>
+          <li>Delete TypeScript implementations for systems fully replaced in the active path.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> build/economy replay fixtures run through Rust-owned systems and match expected hashes without TypeScript gameplay fallback.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-13">
+        <h3>LS-13: Port Physics Body Ownership And Unit Motion <span class="tag">physics</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-12. <strong>Touch:</strong> <code>PhysicsEngine3D.ts</code>, <code>UnitForceSystem.ts</code>, unit motion helpers, Rust body pools.</p>
+        <ul>
+          <li>Make Rust own body creation, force accumulation, gravity, terrain contact, collision, integration, and entity/body sync.</li>
+          <li>Remove the TypeScript server-side physics ownership path as each body category moves.</li>
+          <li>Preserve the design philosophy: mass, force, acceleration, velocity, position, and collision are the source of gameplay motion.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> movement and collision replay fixtures advance through Rust-owned physics and produce stable hashes.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-14">
+        <h3>LS-14: Port Projectiles, Damage, Targeting, And Visibility <span class="tag">combat</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-13. <strong>Touch:</strong> <code>src/game/sim/combat/**</code>, <code>DamageSystem.ts</code>, visibility/sensor systems, Rust combat modules.</p>
+        <ul>
+          <li>Move projectile stepping, collision, damage application, turret targeting, line of sight, radar/sight aggregates, cloak/detection, and scan pulses into Rust-owned tick logic.</li>
+          <li>Make fog of war a local render/query filter over full deterministic state. Do not preserve per-recipient snapshot filtering as gameplay architecture.</li>
+          <li>Hash targeting state, projectile state, pending events, visibility aggregates, and RNG used by combat outcomes.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> combat and fog fixtures run from command bundles through Rust-owned systems with stable hashes and no state-wire dependency.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-15">
+        <h3>LS-15: Define Local Render Packets <span class="tag">render boundary</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-14. <strong>Touch:</strong> Rust runtime render projections, <code>ClientViewState.ts</code>, snapshot intake helpers, renderer scene binding.</p>
+        <ul>
+          <li>Define process-local render packets emitted by the sim runtime for the renderer. They may contain positions, events, visibility tiers, economy display data, and health bars because they never cross the network.</li>
+          <li>Separate render packets from network snapshots in names, types, and module paths.</li>
+          <li>Keep camera, selection, pending command hints, audio spread, and purely visual interpolation outside deterministic state unless they affect gameplay.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> the renderer can consume local render packets for a local game path without asking <code>ServerSnapshotPublisher</code> for world state.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-16">
+        <h3>LS-16: Move The Sim Runtime Into A Worker <span class="tag">threading</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-15. <strong>Touch:</strong> new <code>src/game/sim-wasm/simWorker.ts</code>, worker message types, game canvas lifecycle, runtime initialization.</p>
+        <ul>
+          <li>Load and own the Rust runtime inside a Web Worker. The main thread sends command intents and receives render packets and diagnostics.</li>
+          <li>Implement a fixed-step worker tick pump that can catch up without using main-thread <code>setInterval</code> as sim time.</li>
+          <li>Add lifecycle handling for start, pause, stop, teardown, and manifest mismatch errors.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> a local worker-backed battle runs for 30 seconds, can be backgrounded and foregrounded, and continues without main-thread timing becoming simulation time.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-17">
+        <h3>LS-17: Build Single-Peer Lockstep Locally <span class="tag">wire before wire</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-16. <strong>Touch:</strong> local session orchestration, input helpers, command-bundle scheduler, game canvas handoff.</p>
+        <ul>
+          <li>Make local play send its own commands through the same command-bundle scheduler the network will use.</li>
+          <li>Apply input delay in local play. Render pending command hints immediately, but keep them out of sim state.</li>
+          <li>Emit empty bundles for idle ticks so the barrier semantics exist before WebRTC is involved.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> single-player/offline play advances only from manifest plus command bundles, and headless replay of the same bundles matches local hashes.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-18">
+        <h3>LS-18: Save And Load Command-Log Replays <span class="tag">replay</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-17. <strong>Touch:</strong> replay file types, persistence, headless replay harness, optional UI affordance.</p>
+        <ul>
+          <li>Write replay files containing manifest, sim/command schema versions, ordered command bundles, and optional hash checkpoints.</li>
+          <li>Load replay files by rebuilding the sim from the manifest and replaying command bundles. Do not add snapshot replay truth.</li>
+          <li>Reject incompatible replays explicitly when manifest, blueprint, command, or sim versions do not match.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> any local command-log replay can be loaded headlessly and produces its recorded hash checkpoints.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-19">
+        <h3>LS-19: Reshape WebRTC Command Transport <span class="tag">network</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-18. <strong>Touch:</strong> <code>NetworkCommandTransport.ts</code>, <code>NetworkManager.ts</code>, <code>NetworkTypes.ts</code>, data-channel monitor/heartbeat integration.</p>
+        <ul>
+          <li>Replace client-to-host individual command messages with peer-symmetric command-bundle messages.</li>
+          <li>Keep PeerJS signaling, room codes, lobby roster, data-channel health, and heartbeat. Remove gameplay authority from <code>NetworkRole = 'host' | 'client'</code> paths.</li>
+          <li>Send one bundle per peer per target tick, including empty bundles. Start with two peers and no relay election.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> two connected peers can exchange validated command bundles without sending gameplay state snapshots.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-20">
+        <h3>LS-20: Add Lockstep Barrier And Hash Diagnostics Over WebRTC <span class="tag">network correctness</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-19. <strong>Touch:</strong> worker lockstep scheduler, network diagnostics, hash history, desync artifact writer.</p>
+        <ul>
+          <li>Release tick <code>N</code> only after every peer's validated bundle for tick <code>N</code> is present.</li>
+          <li>Broadcast <code>world_hash()</code> every 60 ticks in dev/test. On mismatch, pause, name the tick, and write manifest, command log, hash history, and compact state fingerprints.</li>
+          <li>Expose barrier wait in UI/diagnostics so a missing peer is visible instead of feeling like silent local lag.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> artificial late, duplicate, and missing bundles produce deterministic barrier behavior and clear diagnostics on both peers.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-21">
+        <h3>LS-21: Prove Two-Peer Lockstep Gameplay <span class="tag">first playable</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-20. <strong>Touch:</strong> battle startup/handoff, worker session lifecycle, network session lifecycle, smoke test scripts.</p>
+        <ul>
+          <li>Run a 1v1 LAN game from the same manifest and command-bundle stream on both peers.</li>
+          <li>Verify no gameplay snapshots, entity rows, projectile rows, minimap rows, visibility payloads, or correction messages cross the network.</li>
+          <li>Record the command log and replay it headlessly to the same hash history.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> a 20-minute 1v1 LAN match runs without desyncs and replays from commands alone.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-22">
+        <h3>LS-22: Delete Snapshot Gameplay Paths <span class="tag">remove old stack</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-21. <strong>Touch:</strong> <code>ServerSnapshotPublisher.ts</code>, <code>NetworkSnapshotTransport.ts</code>, <code>stateSerializer*.ts</code>, <code>snapshot*.ts</code>, Rust snapshot exports.</p>
+        <ul>
+          <li>Delete host-to-client gameplay snapshot transport, serializers, pools, baselines, quantization, clone helpers, and snapshot metadata.</li>
+          <li>Delete Rust snapshot-baseline and snapshot-encoder exports after render packets own local presentation.</li>
+          <li>Keep or rehome only non-gameplay diagnostics that are still useful and do not imply state replication.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> grepping for snapshot transport/serializer modules finds no supported gameplay path, and two-peer lockstep still plays.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-23">
+        <h3>LS-23: Delete Prediction And Reconciliation Paths <span class="tag">remove old stack</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-22. <strong>Touch:</strong> <code>ClientPrediction*</code>, <code>ClientUnitPrediction.ts</code>, <code>ClientProjectilePrediction.ts</code>, <code>ClientSnapshotApplier.ts</code>, <code>RtsScene3DPredictionPhase.ts</code>, drift diagnostics.</p>
+        <ul>
+          <li>Delete client prediction against remote host snapshots and all reconciliation/correction diagnostics.</li>
+          <li>Replace any remaining smoothing with render interpolation between local sim ticks or purely visual effects.</li>
+          <li>Make pending command hints visibly separate from accepted sim state; do not call them prediction.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> the renderer no longer imports or runs prediction/reconciliation modules, and local sim packets are the only gameplay state source.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-24">
+        <h3>LS-24: Replace GameServer And GameConnection Authority <span class="tag">session model</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-23. <strong>Touch:</strong> <code>GameServer.ts</code>, <code>LocalGameConnection.ts</code>, <code>RemoteGameConnection.ts</code>, <code>GameConnection</code> types, game canvas lifecycle.</p>
+        <ul>
+          <li>Replace host/server connection abstractions with a peer session that owns manifest, command transport, local sim worker, render packets, and diagnostics.</li>
+          <li>Rehome reusable bootstrap helpers behind the manifest builder or Rust runtime before deleting the old classes.</li>
+          <li>Remove gameplay meaning from "host" and "client." A peer may still own signaling or relay duties, but not truth.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> the app can start local and two-peer battles without <code>GameServer</code> owning gameplay truth.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-25">
+        <h3>LS-25: Scale To N Peers With Adaptive Input Delay <span class="tag">scale</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-24. <strong>Touch:</strong> network manager/session, heartbeat RTT tracking, lockstep scheduler, lobby roster, waiting UI.</p>
+        <ul>
+          <li>Start with full mesh up to four players. Every peer validates every other peer's command bundles and hash stream.</li>
+          <li>Set input delay from <code>ceil(max_rtt / tick_ms) + slack</code> and renegotiate on large RTT swings.</li>
+          <li>Handle stalls and disconnects deterministically: pause for a named peer/tick, then continue only through an agreed drop manifest or end the match.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> 4-player games run on normal residential connections with adaptive input delay, visible barrier stalls, and replay-stable output.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-26">
+        <h3>LS-26: Add Relay Election Without Relay Authority <span class="tag">scale</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-25. <strong>Touch:</strong> network session, room/lobby protocol, command-bundle routing, diagnostics.</p>
+        <ul>
+          <li>Elect a command relay for larger rooms. The relay aggregates and rebroadcasts bundles, but it does not simulate authoritative truth.</li>
+          <li>Keep bundle validation and hash comparison on every peer.</li>
+          <li>Make relay changes deterministic session events so all peers agree who relays which tick window.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> larger rooms can route command bundles through a relay without reintroducing a gameplay host.</p>
+      </article>
+
+      <article class="chunk" id="chunk-ls-27">
+        <h3>LS-27: Build Spectate And Replay-Then-Tail Tooling <span class="tag">tooling</span></h3>
+        <p class="chunk-meta"><strong>Depends:</strong> LS-26. <strong>Touch:</strong> replay loader, spectator session, command-log storage, analysis tools.</p>
+        <ul>
+          <li>Let live spectators fetch manifest plus command history, replay forward locally, then tail new command bundles.</li>
+          <li>Let offline tools read command logs and run headlessly without DOM, Vue, Three.js, or PeerJS.</li>
+          <li>Add optional state checkpoints only for fast seek. Command logs remain authoritative replay truth.</li>
+        </ul>
+        <p class="exit"><strong>Exit:</strong> completed matches and live spectator sessions both run from manifest plus command bundles, with explicit version compatibility checks.</p>
+      </article>
     </section>
 
     <section>
@@ -591,7 +772,7 @@
         <li><strong>Browser determinism:</strong> the same 10-minute replay in Chrome, Firefox, and Safari via Playwright, 20 times back-to-back.</li>
         <li><strong>Hash coverage regression:</strong> adding a future-affecting field without hashing it fails a targeted test or linter check.</li>
         <li><strong>Transport invariant:</strong> command bundle tests prove empty bundles are emitted, late bundles stall, duplicate bundles are rejected idempotently, and arrival order cannot affect execution order.</li>
-        <li><strong>No-state-wire regression:</strong> once Phase 6 lands, tests or static checks fail if gameplay network messages contain entity, projectile, economy, minimap, or visibility state.</li>
+        <li><strong>No-state-wire regression:</strong> once LS-22 and LS-23 land, tests or static checks fail if gameplay network messages contain entity, projectile, economy, minimap, or visibility state.</li>
         <li><strong>Backgrounding:</strong> a worker sim survives tab backgrounding without main-thread timing becoming simulation time.</li>
         <li><strong>Replay compatibility:</strong> replay loader validates manifest version, blueprint version, command schema version, and sim version before playback.</li>
       </ul>
