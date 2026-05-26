@@ -255,7 +255,7 @@ export const BAR_COLORS = BAR_THEMES;
 //                    LOD begins pessimistically for TPS-driven
 //                    signals instead of assuming a healthy mid-tier.
 //                    TPS/CPU host seeds live in GameServer because
-//                    they depend on the configured tickRateHz.
+//                    they are tied to the fixed simulation cadence.
 export const EMA_CONFIG: Record<string, EmaTierConfig> = emaConfigJson.tiers;
 
 const FRAME_MS_EMA: EmaMsConfig = emaConfigJson.frameMs;
@@ -267,15 +267,6 @@ export const FRAME_TIMING_EMA = {
 };
 
 export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
-
-// =============================================================================
-// SERVER TICK
-// =============================================================================
-
-/** Maximum dt (ms) the server will simulate in a single tick.
- *  Prevents spiral-of-death when a tick takes longer than the interval.
- *  JSON value is 4 frames at 60Hz (~66.7ms). */
-export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
 
 /** Maximum authoritative beam/laser path segments traced per re-path.
  *  Segment 1 is launch origin -> first hit/range, segment 2 is after the

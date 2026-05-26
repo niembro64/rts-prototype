@@ -37,7 +37,6 @@ import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
   DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
-  MAX_TICK_DT_MS,
   type KeyframeRatio,
   type SnapshotRate,
 } from '../../config';
@@ -76,6 +75,11 @@ import {
   type CommandAuthority,
 } from './commandAuthority';
 import { sanitizeCommand } from './commandSanitizer';
+import {
+  FixedStepAccumulator,
+  SIM_STEP_SEC,
+  SIM_TICK_RATE_HZ,
+} from '../sim/fixedStep';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -103,6 +107,7 @@ export class GameServer {
   // Game loop
   private tickLoop = new ServerTickLoop();
   private tickRateHz: number;
+  private fixedStepAccumulator = new FixedStepAccumulator();
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
@@ -193,7 +198,7 @@ export class GameServer {
     physics: PhysicsEngine3D | undefined = undefined,
     bootstrapped: BootstrappedServerWorld | undefined = undefined,
   ) {
-    this.tickRateHz = 60;
+    this.tickRateHz = SIM_TICK_RATE_HZ;
 
     // Start visible host TPS at 0.0 until the first real tick period
     // seeds the EMA. CPU load starts at 0% measured work.
@@ -294,6 +299,7 @@ export class GameServer {
   start(): void {
     if (this.stopped) return;
     const now = performance.now();
+    this.fixedStepAccumulator.reset();
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
     this.startupGateOpen = this.snapshotListeners.length === 0;
     if (!this.startupGateOpen) {
@@ -303,9 +309,9 @@ export class GameServer {
   }
 
   private startGameLoop(): void {
-    // Run simulation at configured tick rate. Snapshot interval is normally
-    // uncapped, which emits once at the end of every server tick.
-    this.tickLoop.start(this.tickRateHz, (tickNow, delta) => {
+    // The timer only wakes the fixed-step accumulator. Gameplay always advances
+    // in SIM_TICK_RATE_HZ steps regardless of wall-clock jitter.
+    this.tickLoop.start(SIM_TICK_RATE_HZ, (tickNow, delta) => {
       // Measure how much CPU the tick body actually consumed, separately
       // from its *period* (which the TPS EMA tracks). Snapshot emission is
       // part of the same setInterval callback, so we include it — remote
@@ -321,16 +327,17 @@ export class GameServer {
         return;
       }
       this.startupGateOpen = true;
-      this.tick(delta);
+      const advancedTicks = this.tick(delta);
 
       const elapsed = tickNow - this.lastSnapshotTime;
       const interval = this.maxSnapshotIntervalMs;
-      if (interval === 0 || elapsed >= interval) {
+      if (advancedTicks > 0 && (interval === 0 || elapsed >= interval)) {
         this.lastSnapshotTime = tickNow;
         this.emitSnapshot();
       }
 
-      this.recordTickWork(performance.now() - workStart);
+      const workMs = performance.now() - workStart;
+      this.recordTickWork(advancedTicks > 0 ? workMs / advancedTicks : workMs);
     });
   }
 
@@ -372,6 +379,7 @@ export class GameServer {
     this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;
     this.commandQueue.clear();
+    this.fixedStepAccumulator.reset();
     this.physicsSyncUnitIdsBuf.length = 0;
 
     // Clear simulation singletons so entity refs don't survive across sessions
@@ -417,39 +425,43 @@ export class GameServer {
     this.simulation.onGameOver = null;
   }
 
-  // Main simulation tick — variable timestep (driven by internal setInterval)
-  private tick(delta: number): void {
-    // Track TPS via EMA
-    if (delta > 0) {
-      const tps = 1000 / delta;
-      if (!this.tpsInitialized) {
-        this.tpsAvg = tps;
-        this.tpsLow = tps;
-        this.tpsInitialized = true;
-      } else {
-        this.tpsAvg = (1 - EMA_CONFIG.tps.avg) * this.tpsAvg + EMA_CONFIG.tps.avg * tps;
-        this.tpsLow = tps < this.tpsLow
-          ? (1 - EMA_CONFIG.tps.low.drop) * this.tpsLow + EMA_CONFIG.tps.low.drop * tps
-          : (1 - EMA_CONFIG.tps.low.recovery) * this.tpsLow + EMA_CONFIG.tps.low.recovery * tps;
-      }
+  // Main simulation tick dispatcher. Wall-clock delta decides how many fixed
+  // ticks to run; it never changes the timestep used by gameplay systems.
+  private tick(deltaMs: number): number {
+    const steps = this.fixedStepAccumulator.consumeDeltaMs(deltaMs);
+    if (steps > 0 && deltaMs > 0) {
+      this.recordTpsSample((steps * 1000) / deltaMs);
     }
+    for (let i = 0; i < steps; i++) this.stepFixedTick();
+    return steps;
+  }
 
-    // Clamp dt to prevent spiral of death
-    const dtMs = Math.min(delta, MAX_TICK_DT_MS);
-    const dtSec = dtMs / 1000;
-
+  private stepFixedTick(): void {
+    const tick = this.world.getTick();
     // Update simulation (calculates thrust velocities, runs combat, etc.)
-    this.simulation.update(dtMs);
+    this.simulation.update(tick);
 
     // Apply thrust + external forces to physics bodies
-    this.unitForceSystem.applyForces(dtSec);
+    this.unitForceSystem.applyForces(SIM_STEP_SEC);
 
     // Step physics (integrate + collisions)
-    this.physics.step(dtSec);
+    this.physics.step(SIM_STEP_SEC);
 
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
+  }
 
+  private recordTpsSample(tps: number): void {
+    if (!this.tpsInitialized) {
+      this.tpsAvg = tps;
+      this.tpsLow = tps;
+      this.tpsInitialized = true;
+      return;
+    }
+    this.tpsAvg = (1 - EMA_CONFIG.tps.avg) * this.tpsAvg + EMA_CONFIG.tps.avg * tps;
+    this.tpsLow = tps < this.tpsLow
+      ? (1 - EMA_CONFIG.tps.low.drop) * this.tpsLow + EMA_CONFIG.tps.low.drop * tps
+      : (1 - EMA_CONFIG.tps.low.recovery) * this.tpsLow + EMA_CONFIG.tps.low.recovery * tps;
   }
 
   // Sync positions and velocities from physics bodies to entities
@@ -895,13 +907,11 @@ export class GameServer {
     this.maxSnapshotIntervalMs = snapshotRateIntervalMs(normalizedRate);
   }
 
-  // Change simulation tick rate (restarts the game loop interval).
-  setTickRate(hz: number): void {
-    if (this.tickRateHz === hz) return;
-    this.tickRateHz = hz;
-    if (this.tickLoop.isRunning()) {
-      this.startGameLoop();
-    }
+  // Legacy HOST SERVER tick-rate control. Lockstep requires a fixed 60 Hz
+  // gameplay cadence, so this remains accepted for compatibility but no longer
+  // changes the simulation timestep or timer interval.
+  setTickRate(_hz: number): void {
+    this.tickRateHz = SIM_TICK_RATE_HZ;
   }
 
   // Get map dimensions (for scene configuration)

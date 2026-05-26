@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-05">
-        <h3>LS-05: Replace Sim-Facing Variable Delta With Fixed Ticks <span class="tag">determinism</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>ServerTickLoop.ts</code>, <code>GameServer.tick</code>, <code>Simulation.update</code>, <code>PhysicsEngine3D.step</code>, wind/economy/building systems that consume <code>dtMs</code>.</p>
-        <ul>
-          <li>Make sim-facing update code receive integer tick plus constant <code>SIM_STEP_MS</code>. Wall-clock time may decide catch-up count, but not sim math.</li>
-          <li>Remove <code>MAX_TICK_DT_MS</code> as gameplay behavior. If catch-up needs a cap, it pauses or reports load instead of stretching the tick.</li>
-          <li>Update wind, economy, construction, physics, and force systems to use the fixed step consistently.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> local runs at different render frame rates produce the same tick count and same sim-facing timestep sequence.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-06">
         <h3>LS-06: Add World Hash V1 <span class="tag">desync detection</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-05. <strong>Touch:</strong> <code>WorldState.ts</code>, <code>Simulation.ts</code>, physics/projectile pools, economy, visibility, command queues, <code>rts-sim-wasm/src/lib.rs</code>.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>WorldState.ts</code>, <code>Simulation.ts</code>, physics/projectile pools, economy, visibility, command queues, <code>rts-sim-wasm/src/lib.rs</code>.</p>
         <ul>
           <li>Add <code>world_hash()</code> over all fields that affect future ticks: entities, physics bodies, projectiles, economy, build queues, targeting state, visibility aggregates, RNG, game phase, and pending commands.</li>
           <li>Use stable ordering by IDs or sorted keys. Do not hash object iteration order from <code>Map</code>, <code>Set</code>, <code>HashMap</code>, or <code>HashSet</code> unless that order is made deterministic first.</li>

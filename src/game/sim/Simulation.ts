@@ -8,6 +8,7 @@ import { magnitude } from '../math';
 import { executeCommand, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
 import { resourceMovementSystem } from './resourceMovement';
+import { SIM_STEP_MS, SIM_STEP_SEC } from './fixedStep';
 import {
   updateTargetingAndFiringState,
   updateTurretRotation,
@@ -332,16 +333,18 @@ export class Simulation {
     return this.windState;
   }
 
-  // Run one simulation step with the given timestep
-  update(dtMs: number): void {
+  // Run one fixed simulation step.
+  update(tick: number): void {
+    if (tick !== this.world.getTick()) {
+      throw new Error(`Simulation tick mismatch: input ${tick}, world ${this.world.getTick()}`);
+    }
     if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
 
     // Replan budget resets each tick — see updateUnits / stuck detection.
     this.replansThisTick = 0;
     resourceMovementSystem.beginTick(this.world);
 
-    this.simElapsedMs += dtMs;
-    const tick = this.world.getTick();
+    this.simElapsedMs += SIM_STEP_MS;
 
     // Prune temporary vision pulses whose duration has elapsed
     // (issues.txt FOW-14). Done before commands so a new scan command
@@ -366,27 +369,27 @@ export class Simulation {
     // fortifiable-producer lifecycle: a 2 s grace timer arms on the
     // first hit, the building snaps closed once it expires, and a
     // 5 s quiet debounce reopens it. Production follows the open flag.
-    updateBuildingActiveStates(this.world, dtMs);
+    updateBuildingActiveStates(this.world, SIM_STEP_MS);
     this.windState = sampleWindState(this.simElapsedMs);
     this.windPowerTracker.update(this.world, this.windState);
 
     // Update economy income and production.
-    economyManager.update(this.world, dtMs, this.windState.speed);
+    economyManager.update(this.world, SIM_STEP_MS, this.windState.speed);
 
     // Resource converters: per-tick metal↔energy conversion governed by
     // world.converterTax. Runs after income so converters operate on
     // post-income stockpiles.
-    economyManager.processConverters(this.world, dtMs);
+    economyManager.processConverters(this.world, SIM_STEP_MS);
 
     // Update each unit's smoothed surface normal BEFORE the systems
     // that read it (commanderAbilitiesSystem, turret kinematics inside
     // updateUnits / the targeting scheduler bridge). The EMA owns the
     // single canonical normal source so the renderer, sim turret
     // mounts, and locomotion can never read disagreeing per-unit normals.
-    updateUnitGroundNormal(this.world, dtMs);
+    updateUnitGroundNormal(this.world, SIM_STEP_MS);
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
-    distributeEnergy(this.world, dtMs, this.energyBuffers);
+    distributeEnergy(this.world, SIM_STEP_MS, this.energyBuffers);
 
     // Shared construction lifecycle for both building shells and
     // factory unit shells: HP growth, paid-full completion, building
@@ -399,7 +402,7 @@ export class Simulation {
 
     // Update factory production
     const productionResult = factoryProductionSystem.update(
-      this.world, dtMs,
+      this.world, SIM_STEP_MS,
       this.constructionSystem.getGrid(),
     );
     // Notify about newly spawned unit shells immediately so their
@@ -416,7 +419,7 @@ export class Simulation {
     }
 
     // Update commander auto-build and auto-heal
-    const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
+    const commanderResult = commanderAbilitiesSystem.update(this.world, SIM_STEP_MS);
     this.currentSprayTargets = commanderResult.sprayTargets;
 
     // Handle completed build/repair actions - advance commander action queues
@@ -436,14 +439,14 @@ export class Simulation {
 
     // Update all units movement (calculates target velocities) and
     // refresh their spatial-grid cells in the same pass.
-    this.updateUnits(dtMs / 1000);
+    this.updateUnits(SIM_STEP_SEC);
 
     // Update non-unit spatial indices. Unit cells are refreshed inside
     // updateUnits() to avoid another full unit walk.
     this.updateSpatialGrid();
 
     // Update combat systems (targeting, firing, projectile collisions)
-    this.updateCombat(dtMs);
+    this.updateCombat(SIM_STEP_MS);
 
     // Finalize force accumulator (sums all contributions)
     this.forceAccumulator.finalize();
