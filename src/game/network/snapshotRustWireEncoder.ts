@@ -923,6 +923,7 @@ function packEconomyIntoScratch(
 }
 
 function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
+  if (meta.worldHash !== undefined) return false;
   if (
     !meta.ticks ||
     !isFiniteNumber(meta.ticks.avg) ||

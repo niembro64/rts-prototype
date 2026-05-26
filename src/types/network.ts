@@ -543,6 +543,16 @@ export type NetworkServerSnapshotGridCell = {
   players: number[];
 };
 
+export type NetworkServerSnapshotWorldHashSample = {
+  tick: number;
+  hash: string;
+};
+
+export type NetworkServerSnapshotWorldHash = {
+  current: NetworkServerSnapshotWorldHashSample | undefined;
+  history: NetworkServerSnapshotWorldHashSample[];
+};
+
 export type NetworkServerSnapshotMeta = {
   ticks: {
     avg: number;
@@ -585,6 +595,7 @@ export type NetworkServerSnapshotMeta = {
    *  unit ground normal bar reflects the host's setting rather than
    *  their own stale localStorage. */
   unitGroundNormalEma: UnitGroundNormalEmaMode | undefined;
+  worldHash: NetworkServerSnapshotWorldHash | undefined;
 };
 
 export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';

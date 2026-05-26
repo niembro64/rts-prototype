@@ -403,6 +403,23 @@ export class SpatialGrid {
     return this.cellSize;
   }
 
+  getHashState(): unknown {
+    const slots = [...this.slotByEntityId.entries()]
+      .map(([entityId, slot]) => ({
+        entityId,
+        slot,
+        kind: slot < this.kindBySlot.length ? this.kindBySlot[slot] : 0,
+      }))
+      .sort((a, b) => a.entityId - b.entityId);
+    return {
+      cellSize: this.cellSize,
+      slots,
+      unitSlots: [...this.unitSlots].sort(compareEntityIds),
+      buildingSlots: [...this.buildingSlots].sort(compareEntityIds),
+      projectileSlots: [...this.projectileSlots].sort(compareEntityIds),
+    };
+  }
+
   /** Per-cell unique-player debug listing. Reusable array; do not
    *  store the reference. */
   getOccupiedCells(): { cell: { x: number; y: number; z: number }; players: number[] }[] {
@@ -429,3 +446,7 @@ export class SpatialGrid {
 
 // Singleton instance for the game
 export const spatialGrid = new SpatialGrid();
+
+function compareEntityIds(a: EntityId, b: EntityId): number {
+  return a - b;
+}

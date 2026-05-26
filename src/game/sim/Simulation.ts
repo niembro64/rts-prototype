@@ -24,8 +24,10 @@ import {
   resetForceFieldBuffers,
   registerPackedProjectile,
   unregisterPackedProjectile,
+  getPackedProjectileHashState,
 } from './combat';
 import {
+  getCombatTargetingHashState,
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
   stampForceFieldPool,
@@ -82,6 +84,10 @@ import {
 import {
   LOCOMOTION_FORCE_SCALE,
 } from './locomotion';
+import {
+  computeSimulationWorldHash,
+  type WorldHashSample,
+} from './worldHash';
 
 // Shared empty array constant (avoids per-call allocation for empty returns)
 const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
@@ -92,6 +98,10 @@ const _combatStopFsm: CombatTargetingTurretFsmOut = {
 
 function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
   return Array.isArray(value) ? value as ProjectileVelocityUpdateEvent[] : EMPTY_VEL_UPDATES;
+}
+
+function comparePlayerIds(a: PlayerId, b: PlayerId): number {
+  return a - b;
 }
 
 // ── Stuck-detection / replanning constants ────────────────────────
@@ -174,6 +184,8 @@ export class Simulation {
    *  grid. Buildings are static, so we only need to rescan them when
    *  one is added or removed instead of every simulation tick. */
   private spatialGridBuildingVersion = -1;
+  private worldHashHistory: WorldHashSample[] = [];
+  private readonly maxWorldHashHistory = 32;
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
@@ -331,6 +343,50 @@ export class Simulation {
 
   getWindState(): WindState {
     return this.windState;
+  }
+
+  recordWorldHash(): WorldHashSample {
+    const sample: WorldHashSample = {
+      tick: this.world.getTick(),
+      hash: computeSimulationWorldHash({
+        world: this.world,
+        commandQueue: this.commandQueue,
+        economyState: economyManager.getHashState(),
+        simulationState: this.getHashState(),
+      }),
+    };
+    this.worldHashHistory.push(sample);
+    if (this.worldHashHistory.length > this.maxWorldHashHistory) {
+      this.worldHashHistory.splice(0, this.worldHashHistory.length - this.maxWorldHashHistory);
+    }
+    return sample;
+  }
+
+  getWorldHashDiagnostics(): { current: WorldHashSample | undefined; history: WorldHashSample[] } {
+    const current = this.worldHashHistory[this.worldHashHistory.length - 1];
+    return {
+      current: current === undefined ? undefined : { ...current },
+      history: this.worldHashHistory.map((sample) => ({ ...sample })),
+    };
+  }
+
+  private getHashState(): unknown {
+    return {
+      simElapsedMs: this.simElapsedMs,
+      windState: this.windState,
+      playerIds: this.playerIds.slice().sort(comparePlayerIds),
+      aiPlayerIds: [...this.aiPlayerIds].sort(comparePlayerIds),
+      aiAllowedUnitTypes: this.aiAllowedUnitTypes === null
+        ? null
+        : [...this.aiAllowedUnitTypes].sort(),
+      replansThisTick: this.replansThisTick,
+      spatialGridBuildingVersion: this.spatialGridBuildingVersion,
+      spatialGrid: spatialGrid.getHashState(),
+      gameOverWinnerId: this.gameOverWinnerId,
+      gamePhase: this.gamePhase,
+      packedProjectiles: getPackedProjectileHashState(),
+      combatTargeting: getCombatTargetingHashState(this.world),
+    };
   }
 
   // Run one fixed simulation step.
@@ -1718,5 +1774,6 @@ export class Simulation {
     resetLaserSoundState();
     resetForceFieldSoundState();
     this.spatialGridBuildingVersion = -1;
+    this.worldHashHistory.length = 0;
   }
 }

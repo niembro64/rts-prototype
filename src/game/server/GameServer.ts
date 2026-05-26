@@ -449,6 +449,8 @@ export class GameServer {
 
     // Sync positions/velocities from physics to entities
     this.syncFromPhysics();
+
+    this.simulation.recordWorldHash();
   }
 
   private recordTpsSample(tps: number): void {

@@ -17,6 +17,8 @@ export type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
+  NetworkServerSnapshotWorldHash,
+  NetworkServerSnapshotWorldHashSample,
   NetworkServerSnapshot,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotAction,

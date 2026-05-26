@@ -44,4 +44,5 @@ export {
   checkProjectileCollisions,
   registerPackedProjectile,
   unregisterPackedProjectile,
+  getPackedProjectileHashState,
 } from './combat/projectileSystem';

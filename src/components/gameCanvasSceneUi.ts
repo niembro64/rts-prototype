@@ -74,6 +74,12 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
     cpu: meta.cpu ? { ...meta.cpu } : undefined,
     wind: meta.wind ? { ...meta.wind } : undefined,
     unitGroundNormalEma: meta.unitGroundNormalEma,
+    worldHash: meta.worldHash
+      ? {
+          current: meta.worldHash.current ? { ...meta.worldHash.current } : undefined,
+          history: meta.worldHash.history.map((sample) => ({ ...sample })),
+        }
+      : undefined,
   };
 }
 

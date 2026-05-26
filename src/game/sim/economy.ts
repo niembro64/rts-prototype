@@ -67,6 +67,24 @@ export class EconomyManager {
     return this.economies.get(playerId)!;
   }
 
+  getHashState(): { playerId: PlayerId; state: EconomyState }[] {
+    return [...this.economies.entries()]
+      .map(([playerId, state]) => ({
+        playerId,
+        state: {
+          stockpile: { curr: state.stockpile.curr, max: state.stockpile.max },
+          income: { base: state.income.base, production: state.income.production },
+          expenditure: state.expenditure,
+          metal: {
+            stockpile: { curr: state.metal.stockpile.curr, max: state.metal.stockpile.max },
+            income: { base: state.metal.income.base, extraction: state.metal.income.extraction },
+            expenditure: state.metal.expenditure,
+          },
+        },
+      }))
+      .sort((a, b) => a.playerId - b.playerId);
+  }
+
   // Set full economy state for a player (used for network sync)
   setEconomyState(playerId: PlayerId, state: EconomyState): void {
     let economy = this.economies.get(playerId);

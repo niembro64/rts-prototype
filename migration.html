@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-06">
-        <h3>LS-06: Add World Hash V1 <span class="tag">desync detection</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>WorldState.ts</code>, <code>Simulation.ts</code>, physics/projectile pools, economy, visibility, command queues, <code>rts-sim-wasm/src/lib.rs</code>.</p>
-        <ul>
-          <li>Add <code>world_hash()</code> over all fields that affect future ticks: entities, physics bodies, projectiles, economy, build queues, targeting state, visibility aggregates, RNG, game phase, and pending commands.</li>
-          <li>Use stable ordering by IDs or sorted keys. Do not hash object iteration order from <code>Map</code>, <code>Set</code>, <code>HashMap</code>, or <code>HashSet</code> unless that order is made deterministic first.</li>
-          <li>Expose hash history in a dev-readable form so future chunks can compare peers and replay runs.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> the same local scenario run repeatedly emits identical per-tick hashes, and a deliberate future-affecting mutation changes the hash.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-07">
         <h3>LS-07: Build A Headless Replay Harness <span class="tag">test foundation</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-06. <strong>Touch:</strong> <code>scripts/</code>, npm scripts, manifest and command-bundle codec, sim bootstrap paths.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>scripts/</code>, npm scripts, manifest and command-bundle codec, sim bootstrap paths.</p>
         <ul>
           <li>Create a headless runner that loads a manifest plus command bundles, advances fixed ticks, and writes per-tick hashes.</li>
           <li>Keep the harness independent of DOM, Vue, Three.js, PeerJS, and render code.</li>

@@ -338,6 +338,61 @@ export function readCombatTargetingTurretFsmFromSimInto(
   return true;
 }
 
+export function getCombatTargetingHashState(world: WorldState): unknown {
+  const sim = getSimWasm();
+  if (sim === undefined) return { initialized: false, entities: [] };
+  const targeting = sim.combatTargeting;
+  const views = getCombatTargetingStateViews(sim);
+  const maxTurrets = targeting.maxTurretsPerEntity();
+  const entities: {
+    id: EntityId;
+    slot: number;
+    stampedEntityId: number;
+    activeTurretMask: number;
+    firingTurretMask: number;
+    turrets: {
+      index: number;
+      state: number;
+      targetId: number;
+      losBlockedTicks: number;
+      cooldown: number;
+      burstCooldown: number;
+      angularVelocity: number;
+      pitchVelocity: number;
+    }[];
+  }[] = [];
+  for (const entity of world.getUnits().concat(world.getBuildings())) {
+    const slot = spatialGrid.getSlot(entity.id);
+    if (slot < 0) continue;
+    const turretCount = targeting.turretCount(slot);
+    const base = slot * maxTurrets;
+    const turrets = [];
+    for (let i = 0; i < turretCount; i++) {
+      const idx = base + i;
+      turrets.push({
+        index: i,
+        state: views.state[idx],
+        targetId: views.targetId[idx],
+        losBlockedTicks: views.losBlockedTicks[idx],
+        cooldown: views.cooldown[idx],
+        burstCooldown: views.burstCooldown[idx],
+        angularVelocity: views.angularVelocity[idx],
+        pitchVelocity: views.pitchVelocity[idx],
+      });
+    }
+    entities.push({
+      id: entity.id,
+      slot,
+      stampedEntityId: views.entityId[slot],
+      activeTurretMask: views.activeTurretMask[slot],
+      firingTurretMask: views.firingTurretMask[slot],
+      turrets,
+    });
+  }
+  entities.sort((a, b) => a.id - b.id);
+  return { initialized: true, maxTurrets, entities };
+}
+
 /** Read the Rust-updated turret mount for this tick. Returns false
  *  when the row is missing or when the scheduler skipped mount
  *  kinematics for that entity this tick; callers should then use the

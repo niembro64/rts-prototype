@@ -48,6 +48,14 @@ type QueuedCommand = {
   sequence: number;
 };
 
+export type CommandQueueHashState = {
+  nextSequence: number;
+  commands: {
+    sequence: number;
+    command: Command;
+  }[];
+};
+
 // Exact-tick command queue for deterministic execution.
 // Late/missing bundle policy belongs to the lockstep scheduler; this queue only
 // drains commands whose tick exactly matches the tick being simulated.
@@ -117,6 +125,16 @@ export class CommandQueue {
   // Get pending command count
   getPendingCount(): number {
     return this.commands.length;
+  }
+
+  getHashState(): CommandQueueHashState {
+    return {
+      nextSequence: this.nextSequence,
+      commands: this.commands.map((entry) => ({
+        sequence: entry.sequence,
+        command: entry.command,
+      })),
+    };
   }
 }
 

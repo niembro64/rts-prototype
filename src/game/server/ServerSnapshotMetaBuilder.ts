@@ -1,4 +1,7 @@
-import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
+import type {
+  NetworkServerSnapshotMeta,
+  NetworkServerSnapshotWorldHash,
+} from '../network/NetworkTypes';
 import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
 import type { ForceFieldReflectionMode } from '../../types/shotTypes';
 import type { UnitGroundNormalEmaMode } from '../../shellConfig';
@@ -30,6 +33,7 @@ export type ServerSnapshotMetaInput = {
     angle: number;
   };
   unitGroundNormalEmaMode: UnitGroundNormalEmaMode;
+  worldHash: NetworkServerSnapshotWorldHash | undefined;
 };
 
 export class ServerSnapshotMetaBuilder {
@@ -80,6 +84,7 @@ export class ServerSnapshotMetaBuilder {
         angle: input.wind.angle,
       },
       unitGroundNormalEma: input.unitGroundNormalEmaMode,
+      worldHash: input.worldHash,
     };
   }
 

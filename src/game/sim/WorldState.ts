@@ -55,6 +55,53 @@ export type RemovedSnapshotEntity = {
   type: 'unit' | 'building';
 };
 
+export type WorldStateHashMetadata = {
+  tick: number;
+  nextEntityId: EntityId;
+  buildingVersion: number;
+  unitSetVersion: number;
+  maxTargetableRadius: number;
+  rngSeed: number;
+  activePlayerId: PlayerId;
+  playerCount: number;
+  mapWidth: number;
+  mapHeight: number;
+  thrustMultiplier: number;
+  maxTotalUnits: number;
+  mirrorsEnabled: boolean;
+  forceFieldsEnabled: boolean;
+  forceFieldsObstructSight: boolean;
+  forceFieldReflectionMode: ForceFieldReflectionMode;
+  fogOfWarEnabled: boolean;
+  converterTax: number;
+  alliesByPlayer: { playerId: PlayerId; allies: PlayerId[] }[];
+  scanPulses: ScanPulse[];
+  pendingDeathCheckIds: EntityId[];
+  metalDeposits: {
+    id: number;
+    x: number;
+    y: number;
+    gridX: number;
+    gridY: number;
+    originGx: number;
+    originGy: number;
+    resourceCells: number;
+    cells: { gx: number; gy: number; x: number; y: number }[];
+    resourceCellCount: number;
+    resourceRadiusCells: number;
+    boundsGridX: number;
+    boundsGridY: number;
+    boundsGridW: number;
+    boundsGridH: number;
+    resourceHalfSize: number;
+    resourceRadius: number;
+    flatPadRadius: number;
+    dTerrainLevels: number | null;
+    height: number;
+    blendRadius: number;
+  }[];
+};
+
 // Seeded random number generator for determinism
 export class SeededRNG {
   private seed: number;
@@ -296,6 +343,66 @@ export class WorldState {
    *  queries slightly wider than strictly needed). */
   getMaxTargetableRadius(): number {
     return this.maxTargetableRadius;
+  }
+
+  getHashMetadata(): WorldStateHashMetadata {
+    return {
+      tick: this.tick,
+      nextEntityId: this.nextEntityId,
+      buildingVersion: this.buildingVersion,
+      unitSetVersion: this.unitSetVersion,
+      maxTargetableRadius: this.maxTargetableRadius,
+      rngSeed: this.rng.getSeed(),
+      activePlayerId: this.activePlayerId,
+      playerCount: this.playerCount,
+      mapWidth: this.mapWidth,
+      mapHeight: this.mapHeight,
+      thrustMultiplier: this.thrustMultiplier,
+      maxTotalUnits: this.maxTotalUnits,
+      mirrorsEnabled: this.mirrorsEnabled,
+      forceFieldsEnabled: this.forceFieldsEnabled,
+      forceFieldsObstructSight: this.forceFieldsObstructSight,
+      forceFieldReflectionMode: this.forceFieldReflectionMode,
+      fogOfWarEnabled: this.fogOfWarEnabled,
+      converterTax: this.converterTax,
+      alliesByPlayer: [...this.alliesByPlayer.entries()]
+        .map(([playerId, allies]) => ({
+          playerId,
+          allies: [...allies].sort(compareNumbers),
+        }))
+        .sort((a, b) => a.playerId - b.playerId),
+      scanPulses: this.scanPulses
+        .map((pulse) => ({ ...pulse }))
+        .sort(compareScanPulses),
+      pendingDeathCheckIds: [...this.pendingDeathCheckIds].sort(compareNumbers),
+      metalDeposits: this.metalDeposits
+        .map((deposit) => ({
+          id: deposit.id,
+          x: deposit.x,
+          y: deposit.y,
+          gridX: deposit.gridX,
+          gridY: deposit.gridY,
+          originGx: deposit.originGx,
+          originGy: deposit.originGy,
+          resourceCells: deposit.resourceCells,
+          cells: deposit.cells
+            .map((cell) => ({ gx: cell.gx, gy: cell.gy, x: cell.x, y: cell.y }))
+            .sort(compareMetalDepositCells),
+          resourceCellCount: deposit.resourceCellCount,
+          resourceRadiusCells: deposit.resourceRadiusCells,
+          boundsGridX: deposit.boundsGridX,
+          boundsGridY: deposit.boundsGridY,
+          boundsGridW: deposit.boundsGridW,
+          boundsGridH: deposit.boundsGridH,
+          resourceHalfSize: deposit.resourceHalfSize,
+          resourceRadius: deposit.resourceRadius,
+          flatPadRadius: deposit.flatPadRadius,
+          dTerrainLevels: deposit.dTerrainLevels,
+          height: deposit.height,
+          blendRadius: deposit.blendRadius,
+        }))
+        .sort((a, b) => a.id - b.id),
+    };
   }
 
   // Remove entity from world
@@ -984,4 +1091,26 @@ export class WorldState {
 
     return entity;
   }
+}
+
+function compareNumbers(a: number, b: number): number {
+  return a - b;
+}
+
+function compareScanPulses(a: ScanPulse, b: ScanPulse): number {
+  return (
+    a.playerId - b.playerId ||
+    a.x - b.x ||
+    a.y - b.y ||
+    a.z - b.z ||
+    a.radius - b.radius ||
+    a.expiresAtTick - b.expiresAtTick
+  );
+}
+
+function compareMetalDepositCells(
+  a: { gx: number; gy: number; x: number; y: number },
+  b: { gx: number; gy: number; x: number; y: number },
+): number {
+  return a.gx - b.gx || a.gy - b.gy || a.x - b.x || a.y - b.y;
 }

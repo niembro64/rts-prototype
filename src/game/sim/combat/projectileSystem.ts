@@ -284,6 +284,40 @@ export function unregisterPackedProjectile(id: EntityId): void {
   _packedProjectileEntities.length = _packedProjectileCount;
 }
 
+export function getPackedProjectileHashState(): unknown {
+  if (_packedProjectileViewsBound) refreshPackedProjectileViews();
+  const projectiles: {
+    id: EntityId;
+    slot: number;
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
+    timeAlive: number;
+  }[] = [];
+  for (let slot = 0; slot < _packedProjectileCount; slot++) {
+    projectiles.push({
+      id: _packedProjectileIds[slot],
+      slot,
+      x: _packedProjectileX[slot],
+      y: _packedProjectileY[slot],
+      z: _packedProjectileZ[slot],
+      vx: _packedProjectileVx[slot],
+      vy: _packedProjectileVy[slot],
+      vz: _packedProjectileVz[slot],
+      timeAlive: _packedProjectileTimeAlive[slot],
+    });
+  }
+  projectiles.sort((a, b) => a.id - b.id);
+  return {
+    count: _packedProjectileCount,
+    capacity: _packedProjectilePoolCapacity,
+    projectiles,
+  };
+}
+
 function isPackedProjectile(id: EntityId): boolean {
   return _packedProjectileSlots.has(id);
 }

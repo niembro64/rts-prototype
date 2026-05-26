@@ -163,6 +163,7 @@ export class ServerSnapshotPublisher {
       tickMsInitialized: input.tickMsInitialized,
       wind,
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
+      worldHash: input.simulation.getWorldHashDiagnostics(),
     });
 
     const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);

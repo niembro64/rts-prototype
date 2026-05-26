@@ -11,6 +11,7 @@ import type {
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotWorldHash,
 } from './NetworkTypes';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
@@ -307,10 +308,20 @@ export class ReusableNetworkSnapshotCloner {
     cpu: undefined,
     wind: undefined,
     unitGroundNormalEma: undefined,
+    worldHash: undefined,
   };
   private serverMetaUnitsAllowed: string[] = [];
   private serverMetaCpu = { avg: 0, hi: 0 };
   private serverMetaWind = { x: 0, y: 0, speed: 0, angle: 0 };
+  private serverMetaWorldHashHistory: NetworkServerSnapshotWorldHash['history'] = [];
+  private serverMetaWorldHashCurrent: NonNullable<NetworkServerSnapshotWorldHash['current']> = {
+    tick: 0,
+    hash: '',
+  };
+  private serverMetaWorldHash: NetworkServerSnapshotWorldHash = {
+    current: undefined,
+    history: this.serverMetaWorldHashHistory,
+  };
   private removedEntityIds: number[] = [];
 
   clear(): void {
@@ -447,6 +458,7 @@ export class ReusableNetworkSnapshotCloner {
       dsm.forceFieldsObstructSight = sm.forceFieldsObstructSight;
       dsm.forceFieldReflectionMode = sm.forceFieldReflectionMode;
       dsm.fogOfWarEnabled = sm.fogOfWarEnabled;
+      dsm.converterTax = sm.converterTax;
       if (sm.cpu) {
         this.serverMetaCpu.avg = sm.cpu.avg;
         this.serverMetaCpu.hi = sm.cpu.hi;
@@ -464,6 +476,26 @@ export class ReusableNetworkSnapshotCloner {
         dsm.wind = undefined;
       }
       dsm.unitGroundNormalEma = sm.unitGroundNormalEma;
+      if (sm.worldHash) {
+        if (sm.worldHash.current) {
+          this.serverMetaWorldHashCurrent.tick = sm.worldHash.current.tick;
+          this.serverMetaWorldHashCurrent.hash = sm.worldHash.current.hash;
+          this.serverMetaWorldHash.current = this.serverMetaWorldHashCurrent;
+        } else {
+          this.serverMetaWorldHash.current = undefined;
+        }
+        this.serverMetaWorldHashHistory.length = sm.worldHash.history.length;
+        for (let i = 0; i < sm.worldHash.history.length; i++) {
+          const src = sm.worldHash.history[i];
+          const dstSample = this.serverMetaWorldHashHistory[i] ?? { tick: 0, hash: '' };
+          dstSample.tick = src.tick;
+          dstSample.hash = src.hash;
+          this.serverMetaWorldHashHistory[i] = dstSample;
+        }
+        dsm.worldHash = this.serverMetaWorldHash;
+      } else {
+        dsm.worldHash = undefined;
+      }
       dst.serverMeta = dsm;
     } else {
       dst.serverMeta = undefined;
