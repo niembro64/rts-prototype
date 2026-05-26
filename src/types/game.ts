@@ -2,7 +2,7 @@
 
 import type { PlayerId } from './sim';
 import type { Command } from './commands';
-import type { NetworkServerSnapshot } from './network';
+import type { BattleManifest, NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
 import type { TerrainMapShape } from './terrain';
 
@@ -106,6 +106,7 @@ export type GameConnection = {
 
 export type GameServerConfig = {
   playerIds: PlayerId[];
+  manifest?: BattleManifest;
   /** Signed CENTER amplitude selected by the host/lobby. */
   centerMagnitude?: number;
   /** Signed DIVIDERS amplitude selected by the host/lobby. */

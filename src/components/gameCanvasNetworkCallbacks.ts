@@ -28,7 +28,11 @@ export type GameCanvasNetworkCallbackOptions = {
     options?: { restartPreview?: boolean },
   ) => void;
   currentLobbySettings: () => LobbySettings;
-  startGameWithPlayers: (playerIds: PlayerId[]) => void | Promise<void>;
+  startGameWithPlayers: (
+    playerIds: PlayerId[],
+    aiPlayerIds?: PlayerId[],
+    handoff?: BattleHandoff,
+  ) => void | Promise<void>;
 };
 
 export function bindGameCanvasNetworkCallbacks({
@@ -78,7 +82,7 @@ export function bindGameCanvasNetworkCallbacks({
     if (handoff.settings) {
       applyLobbySettingsFromHost(handoff.settings, { restartPreview: false });
     }
-    void startGameWithPlayers(handoff.playerIds);
+    void startGameWithPlayers(handoff.playerIds, undefined, handoff);
   };
 
   network.onClientReady = (playerId: PlayerId) => {

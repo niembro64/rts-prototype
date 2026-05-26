@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-02">
-        <h3>LS-02: Define The Starting Manifest <span class="tag">initial state</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>src/types/network.ts</code>, <code>NetworkBattleHandoff.ts</code>, <code>ServerBootstrap.ts</code>, lobby settings, blueprint loaders, <code>rts-sim-wasm</code> version exports.</p>
-        <ul>
-          <li>Create a canonical manifest type for game settings, map seed, player slots, player teams, blueprint version stamps, command schema version, sim version, and initial RNG seed.</li>
-          <li>Make battle handoff carry the manifest instead of loosely related startup fields.</li>
-          <li>Add canonical serialization and a manifest hash so replay and network peers can reject mismatched starts.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> local battle startup and network handoff can both produce the same manifest bytes and manifest hash for the same lobby settings.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-03">
         <h3>LS-03: Add Command Bundle Types And Codec <span class="tag">wire shape</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-02. <strong>Touch:</strong> <code>src/types/commands.ts</code>, <code>src/types/network.ts</code>, new command-bundle codec under <code>src/game/network/</code>, command tests or probes.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>src/types/commands.ts</code>, <code>src/types/network.ts</code>, new command-bundle codec under <code>src/game/network/</code>, command tests or probes.</p>
         <ul>
           <li>Define <code>CommandBundle</code> as <code>{ targetTick, peerId, seq, commands }</code> with an explicit empty-bundle representation.</li>
           <li>Assign stable numeric command IDs and append-only payload layouts. Keep string command types only at UI boundaries if needed.</li>

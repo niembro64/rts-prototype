@@ -10,6 +10,7 @@ export * from './unitRoster';
 export * from './units';
 export * from './buildings';
 export * from './fallbacks';
+export * from './versionStamps';
 
 import type {
   BeamShot,

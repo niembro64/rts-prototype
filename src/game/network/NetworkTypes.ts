@@ -27,8 +27,17 @@ export type {
   LobbyPlayerInfoPayload,
   LobbySettings,
   LobbyPlayer,
+  BattleManifest,
+  BattleManifestSettings,
+  BattleManifestPlayerSlot,
+  BlueprintVersionStamps,
   NetworkRole,
   BattleHandoff,
 } from '@/types/network';
 
-export { BATTLE_HANDOFF_PROTOCOL } from '@/types/network';
+export {
+  BATTLE_HANDOFF_PROTOCOL,
+  BATTLE_MANIFEST_PROTOCOL,
+  BATTLE_MANIFEST_SCHEMA_VERSION,
+  COMMAND_SCHEMA_VERSION,
+} from '@/types/network';

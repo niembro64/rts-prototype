@@ -1,6 +1,7 @@
 import type { Ref } from 'vue';
 import type { GameScene } from '../game/createGame';
 import type {
+  BattleHandoff,
   LobbyPlayer,
   LobbySettings,
   NetworkManager,
@@ -94,6 +95,7 @@ export function useGameCanvasRealBattleHandoff({
   async function startGameWithPlayers(
     playerIds: PlayerId[],
     aiPlayerIds?: PlayerId[],
+    handoff?: BattleHandoff,
   ): Promise<void> {
     await startRealBattleWithPlayers(playerIds, aiPlayerIds, {
       containerRef,
@@ -117,6 +119,8 @@ export function useGameCanvasRealBattleHandoff({
       setActiveConnection,
       setBattleStartTime,
       lookupPlayerName: (pid) => resolvePlayerName(pid, null),
+      currentLobbySettings,
+      battleHandoff: handoff,
       onLoadingProgress,
       bindSceneUi,
     });

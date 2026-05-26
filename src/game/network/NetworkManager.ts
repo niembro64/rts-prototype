@@ -35,6 +35,10 @@ export type {
   NetworkServerSnapshotMeta,
   LobbyPlayer,
   LobbySettings,
+  BattleManifest,
+  BattleManifestSettings,
+  BattleManifestPlayerSlot,
+  BlueprintVersionStamps,
   NetworkRole,
   BattleHandoff,
 } from './NetworkTypes';
@@ -743,20 +747,28 @@ export class NetworkManager {
             this.localPlayerId = message.assignedPlayerId;
             this.emitPlayerAssignment(message.assignedPlayerId);
           }
-          const handoff = normalizeBattleHandoffMessage(
-            {
-              gameId: message.gameId,
-              playerIds: message.playerIds,
-              handoff: message.handoff,
-            },
-            {
-              gameId: this.getUniversalGameId(),
-              roomCode: this.getRoomCode(),
-              playerIds: message.playerIds,
-              players: this.roster.asReadonlyMap(),
-              settings: this.readLobbySettings(),
-            },
-          );
+          let handoff: BattleHandoff;
+          try {
+            handoff = normalizeBattleHandoffMessage(
+              {
+                gameId: message.gameId,
+                playerIds: message.playerIds,
+                handoff: message.handoff,
+              },
+              {
+                gameId: this.getUniversalGameId(),
+                roomCode: this.getRoomCode(),
+                playerIds: message.playerIds,
+                players: this.roster.asReadonlyMap(),
+                settings: this.readLobbySettings(),
+              },
+            );
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            console.warn('[NET] Rejected battle handoff:', err);
+            this.emitError(`Rejected battle start: ${reason}`);
+            return;
+          }
           this.roster.applyBattleHandoff(handoff);
           this.gameStarted = true;
           console.log(`[NET] Game start as player ${this.localPlayerId}; players=${handoff.playerIds.join(',')}`);

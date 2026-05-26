@@ -18,6 +18,8 @@ import {
 import { generateMetalDeposits } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { GameServerConfig } from '@/types/game';
+import type { BattleManifest } from '@/types/network';
+import { DEFAULT_INITIAL_RNG_SEED } from '../network/BattleManifest';
 import { CommandQueue } from '../sim/commands';
 import { Simulation } from '../sim/Simulation';
 import { WorldState } from '../sim/WorldState';
@@ -57,6 +59,29 @@ export interface BootstrappedServerWorld {
 
 type BootstrapProgress = (progress: number, phase: string | undefined) => void | Promise<void>;
 
+function applyManifestTeams(
+  world: WorldState,
+  manifest: BattleManifest | undefined,
+): void {
+  if (manifest === undefined) return;
+  const playerIdsByTeam = new Map<number, PlayerId[]>();
+  for (const slot of manifest.playerSlots) {
+    const teamIds = playerIdsByTeam.get(slot.teamId);
+    if (teamIds === undefined) playerIdsByTeam.set(slot.teamId, [slot.playerId]);
+    else teamIds.push(slot.playerId);
+  }
+  world.alliesByPlayer.clear();
+  for (const teamPlayerIds of playerIdsByTeam.values()) {
+    if (teamPlayerIds.length <= 1) continue;
+    for (const playerId of teamPlayerIds) {
+      world.alliesByPlayer.set(
+        playerId,
+        new Set(teamPlayerIds.filter((otherId) => otherId !== playerId)),
+      );
+    }
+  }
+}
+
 export class ServerBootstrap {
   static async bootstrapAsync(
     config: GameServerConfig,
@@ -71,13 +96,16 @@ export class ServerBootstrap {
     };
 
     await report(0, 'Reading map size');
-    const playerIds = normalizePlayerIds(config.playerIds);
+    const playerIds = normalizePlayerIds(
+      config.manifest?.playerSlots.map((slot) => slot.playerId) ?? config.playerIds,
+    );
     const backgroundMode = config.backgroundMode ?? false;
+    const manifestSettings = config.manifest?.settings;
 
     const mapConfig = getMapSize(
       backgroundMode,
-      config.mapWidthLandCells,
-      config.mapLengthLandCells,
+      manifestSettings?.mapWidthLandCells ?? config.mapWidthLandCells,
+      manifestSettings?.mapLengthLandCells ?? config.mapLengthLandCells,
     );
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
@@ -85,27 +113,28 @@ export class ServerBootstrap {
 
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
-      config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+      manifestSettings?.centerMagnitude ?? config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
     const dividersMagnitude =
-      config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
+      manifestSettings?.dividersMagnitude ?? config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     setTerrainRuntimeConfig({
       centerMagnitude,
       dividersMagnitude,
       terrainDTerrain:
-        config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+        manifestSettings?.terrainDTerrain ?? config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep:
-        config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
+        manifestSettings?.metalDepositStep ?? config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
-    setTerrainMapShape(config.terrainMapShape ?? 'circle');
+    setTerrainMapShape(manifestSettings?.terrainMapShape ?? config.terrainMapShape ?? 'circle');
     await report(0.14, 'Configuring terrain');
 
     const deposits = generateMetalDeposits(
       mapWidth,
       mapHeight,
       playerIds.length,
+      config.manifest?.mapSeed,
     );
     await report(0.24, 'Generating metal deposits');
 
@@ -117,8 +146,13 @@ export class ServerBootstrap {
     await report(0.48, 'Building placement grid');
 
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
-    const world = new WorldState(42, mapWidth, mapHeight);
+    const world = new WorldState(
+      config.manifest?.initialRngSeed ?? DEFAULT_INITIAL_RNG_SEED,
+      mapWidth,
+      mapHeight,
+    );
     world.playerCount = playerIds.length;
+    applyManifestTeams(world, config.manifest);
     world.metalDeposits = deposits;
     physics.setGroundLookup(
       (x, y) => world.getGroundZ(x, y),
@@ -139,8 +173,12 @@ export class ServerBootstrap {
     if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
       world.maxTotalUnits = config.initialMaxTotalUnits;
     }
-    if (config.converterTax !== undefined && Number.isFinite(config.converterTax)) {
-      world.converterTax = config.converterTax;
+    if (manifestSettings?.fogOfWarEnabled !== null && manifestSettings?.fogOfWarEnabled !== undefined) {
+      world.fogOfWarEnabled = manifestSettings.fogOfWarEnabled;
+    }
+    const converterTax = manifestSettings?.converterTax ?? config.converterTax;
+    if (converterTax !== undefined && converterTax !== null && Number.isFinite(converterTax)) {
+      world.converterTax = converterTax;
     }
     const aiPlayerIds = config.aiPlayerIds ?? (backgroundMode ? [...playerIds] : []);
     const spawnDemoInitialState =
@@ -212,13 +250,16 @@ export class ServerBootstrap {
     config: GameServerConfig,
     providedPhysics: PhysicsEngine3D | undefined = undefined,
   ): BootstrappedServerWorld {
-    const playerIds = normalizePlayerIds(config.playerIds);
+    const playerIds = normalizePlayerIds(
+      config.manifest?.playerSlots.map((slot) => slot.playerId) ?? config.playerIds,
+    );
     const backgroundMode = config.backgroundMode ?? false;
+    const manifestSettings = config.manifest?.settings;
 
     const mapConfig = getMapSize(
       backgroundMode,
-      config.mapWidthLandCells,
-      config.mapLengthLandCells,
+      manifestSettings?.mapWidthLandCells ?? config.mapWidthLandCells,
+      manifestSettings?.mapLengthLandCells ?? config.mapLengthLandCells,
     );
     const mapWidth = mapConfig.width;
     const mapHeight = mapConfig.height;
@@ -230,21 +271,21 @@ export class ServerBootstrap {
     // and renderer mesh baking so every consumer reads the same surface.
     const terrainRuntimeConfig = getTerrainRuntimeConfig();
     const centerMagnitude =
-      config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
+      manifestSettings?.centerMagnitude ?? config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
     const dividersMagnitude =
-      config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
+      manifestSettings?.dividersMagnitude ?? config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
     setTerrainRuntimeConfig({
       centerMagnitude,
       dividersMagnitude,
       terrainDTerrain:
-        config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+        manifestSettings?.terrainDTerrain ?? config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep:
-        config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
+        manifestSettings?.metalDepositStep ?? config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
-    setTerrainMapShape(config.terrainMapShape ?? 'circle');
+    setTerrainMapShape(manifestSettings?.terrainMapShape ?? config.terrainMapShape ?? 'circle');
 
     // Metal deposits — same set across all clients (deterministic from
     // map size + player count). `generateMetalDeposits` installs the
@@ -256,6 +297,7 @@ export class ServerBootstrap {
       mapWidth,
       mapHeight,
       playerIds.length,
+      config.manifest?.mapSeed,
     );
     const terrainTileMap = buildTerrainTileMap(mapWidth, mapHeight, LAND_CELL_SIZE);
     setAuthoritativeTerrainTileMap(terrainTileMap);
@@ -263,8 +305,13 @@ export class ServerBootstrap {
 
     // The physics engine is now fully 3D — same module for every path.
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
-    const world = new WorldState(42, mapWidth, mapHeight);
+    const world = new WorldState(
+      config.manifest?.initialRngSeed ?? DEFAULT_INITIAL_RNG_SEED,
+      mapWidth,
+      mapHeight,
+    );
     world.playerCount = playerIds.length;
+    applyManifestTeams(world, config.manifest);
     world.metalDeposits = deposits;
     // Wire the heightmap into physics so ground contacts settle units
     // on top of their terrain cube tile AND project their velocity
@@ -302,8 +349,12 @@ export class ServerBootstrap {
     if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
       world.maxTotalUnits = config.initialMaxTotalUnits;
     }
-    if (config.converterTax !== undefined && Number.isFinite(config.converterTax)) {
-      world.converterTax = config.converterTax;
+    if (manifestSettings?.fogOfWarEnabled !== null && manifestSettings?.fogOfWarEnabled !== undefined) {
+      world.fogOfWarEnabled = manifestSettings.fogOfWarEnabled;
+    }
+    const converterTax = manifestSettings?.converterTax ?? config.converterTax;
+    if (converterTax !== undefined && converterTax !== null && Number.isFinite(converterTax)) {
+      world.converterTax = converterTax;
     }
 
     // AI player configuration

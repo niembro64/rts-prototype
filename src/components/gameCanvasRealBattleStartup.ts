@@ -23,6 +23,7 @@ import { applyStoredBattleServerSettings } from '../game/server/battleServerSett
 import type { GameConnection } from '../game/server/GameConnection';
 import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
+import type { BattleManifest } from '../types/network';
 import type { TerrainMapShape } from '../types/terrain';
 
 export type RealBattleStartupTerrain = {
@@ -36,11 +37,13 @@ export type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
+  manifest?: BattleManifest;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
 };
 
 export type StartRealBattleServerOptions = {
   ipAddress: string;
+  manifest?: BattleManifest;
 };
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
@@ -80,6 +83,7 @@ export async function createRealBattleServer({
   playerIds,
   aiPlayerIds,
   terrain,
+  manifest,
   onLoadingProgress,
 }: CreateRealBattleServerOptions): Promise<GameServer> {
   return GameServer.create(
@@ -94,6 +98,7 @@ export async function createRealBattleServer({
       mapWidthLandCells: terrain.mapDimensions.widthLandCells,
       mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
       converterTax: loadStoredConverterTax('real'),
+      manifest,
     },
     {
       onProgress: onLoadingProgress,
@@ -109,5 +114,29 @@ export function applySettingsAndStartRealBattleServer(
     ipAddress: options.ipAddress,
     maxTotalUnits: loadStoredRealCap(),
   });
+  applyManifestServerSettings(server, options.manifest);
   server.start();
+}
+
+function applyManifestServerSettings(
+  server: GameServer,
+  manifest: BattleManifest | undefined,
+): void {
+  const settings = manifest?.settings;
+  if (settings === undefined) return;
+  const authority = { mode: 'host-admin' } as const;
+  if (settings.fogOfWarEnabled !== null) {
+    server.receiveCommand({
+      type: 'setFogOfWarEnabled',
+      tick: 0,
+      enabled: settings.fogOfWarEnabled,
+    }, authority);
+  }
+  if (settings.converterTax !== null) {
+    server.receiveCommand({
+      type: 'setConverterTax',
+      tick: 0,
+      tax: settings.converterTax,
+    }, authority);
+  }
 }

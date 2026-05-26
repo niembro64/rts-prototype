@@ -203,6 +203,7 @@ export function generateMetalDeposits(
   mapWidth: number,
   mapHeight: number,
   playerCount: number,
+  mapSeed = 0,
 ): MetalDeposit[] {
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
   const halfExtent = ovalMetrics.minDim / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
@@ -228,7 +229,13 @@ export function generateMetalDeposits(
     const ringAngularOffset = (ring.sliceOffset ?? 0) * sliceWidth;
     const pushPlacement = (rawX: number, rawY: number): void => {
       placements.push({
-        placement: makeMetalDepositPlacement(rawX, rawY, flatPadCells, placements.length),
+        placement: makeMetalDepositPlacement(
+          rawX,
+          rawY,
+          flatPadCells,
+          placements.length,
+          mapSeed,
+        ),
         dTerrainLevels,
         blendRadius,
       });
@@ -326,6 +333,7 @@ function makeMetalDepositPlacement(
   rawY: number,
   flatPadCells: number,
   seedIndex: number,
+  mapSeed: number,
 ): MetalDepositPlacement {
   const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
   const resourceCellCount = resourceCells * resourceCells;
@@ -346,7 +354,7 @@ function makeMetalDepositPlacement(
     originGy,
     resourceCellCount,
     resourceRadiusCells,
-    hashMetalDepositSeed(originGx, originGy, seedIndex),
+    hashMetalDepositSeed(originGx, originGy, seedIndex, mapSeed),
   );
   const bounds = getMetalDepositCellBounds(cells);
   return {
@@ -412,11 +420,17 @@ function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
   };
 }
 
-function hashMetalDepositSeed(gx: number, gy: number, index: number): number {
+function hashMetalDepositSeed(
+  gx: number,
+  gy: number,
+  index: number,
+  mapSeed: number,
+): number {
   let h = 2166136261 >>> 0;
   h = Math.imul(h ^ gx, 16777619);
   h = Math.imul(h ^ gy, 16777619);
   h = Math.imul(h ^ index, 16777619);
+  if (mapSeed !== 0) h = Math.imul(h ^ mapSeed, 16777619);
   return h >>> 0;
 }
 

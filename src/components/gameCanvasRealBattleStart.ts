@@ -1,6 +1,16 @@
 import { nextTick, type Ref } from 'vue';
 import type { GameScene } from '../game/createGame';
-import type { NetworkManager, NetworkRole } from '../game/network/NetworkManager';
+import type {
+  BattleHandoff,
+  LobbySettings,
+  NetworkManager,
+  NetworkRole,
+} from '../game/network/NetworkManager';
+import {
+  buildBattleManifest,
+  hashBattleManifest,
+  type BattleManifestPlayerInput,
+} from '../game/network/BattleManifest';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { GameServer } from '../game/server/GameServer';
 import type { PlayerId } from '../game/sim/types';
@@ -48,6 +58,8 @@ export type StartRealBattleWithPlayersOptions = {
   setActiveConnection: (connection: GameConnection | null) => void;
   setBattleStartTime: (time: number) => void;
   lookupPlayerName: (playerId: PlayerId) => string | null;
+  currentLobbySettings: () => LobbySettings;
+  battleHandoff?: BattleHandoff;
   onLoadingProgress: (progress: number, phase?: string) => void;
   bindSceneUi: (scene: GameScene) => void;
 };
@@ -63,6 +75,17 @@ const REAL_BATTLE_LOAD_PROGRESS = {
   shaderWarmup: 0.95,
   done: 1,
 } as const;
+
+function buildStartupManifestPlayers(
+  playerIds: readonly PlayerId[],
+  lookupPlayerName: (playerId: PlayerId) => string | null,
+): BattleManifestPlayerInput[] {
+  return playerIds.map((playerId) => ({
+    playerId,
+    name: lookupPlayerName(playerId) ?? `Player ${playerId}`,
+    isHost: playerId === 1,
+  }));
+}
 
 export async function startRealBattleWithPlayers(
   playerIds: PlayerId[],
@@ -147,6 +170,27 @@ export async function startRealBattleWithPlayers(
     const rect = rectContainer.getBoundingClientRect();
     let gameConnection: GameConnection;
     const realBattleTerrain = loadAndApplyRealBattleTerrain();
+    const battleManifest = options.battleHandoff?.manifest ?? buildBattleManifest({
+      gameId: options.networkRole.value === null
+        ? 'ba-local'
+        : options.network.getUniversalGameId(),
+      roomCode: options.networkRole.value === null ? 'LOCAL' : options.network.getRoomCode(),
+      playerIds,
+      players: buildStartupManifestPlayers(playerIds, options.lookupPlayerName),
+      settings: options.currentLobbySettings(),
+    });
+    const battleManifestHash = hashBattleManifest(battleManifest);
+    if (
+      options.battleHandoff !== undefined &&
+      battleManifestHash !== options.battleHandoff.manifestHash
+    ) {
+      cleanupOwnedStartResources(true);
+      options.onLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.start, 'Manifest mismatch');
+      console.error(
+        `Battle manifest hash changed during startup: expected ${options.battleHandoff.manifestHash}, got ${battleManifestHash}`,
+      );
+      return;
+    }
     await reportLoadingProgress(REAL_BATTLE_LOAD_PROGRESS.terrainLoaded, 'Loading terrain settings');
     if (shouldAbortStart()) return;
 
@@ -155,6 +199,7 @@ export async function startRealBattleWithPlayers(
         playerIds,
         aiPlayerIds,
         terrain: realBattleTerrain,
+        manifest: battleManifest,
         onLoadingProgress: (progress, phase) => reportLoadingProgress(
           REAL_BATTLE_LOAD_PROGRESS.terrainLoaded +
             progress *
@@ -191,6 +236,7 @@ export async function startRealBattleWithPlayers(
 
       applySettingsAndStartRealBattleServer(createdServer, {
         ipAddress: options.localIpAddress.value,
+        manifest: battleManifest,
       });
       if (options.networkRole.value === 'host') {
         options.lifecycle.scheduleRecoveryKeyframes(

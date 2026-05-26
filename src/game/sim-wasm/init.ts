@@ -14,6 +14,8 @@
 // reuses whatever pkg/ already contains, so run `build:wasm`
 // once after a fresh clone and re-run after any Rust edit.
 
+export { SIM_WASM_PACKAGE_VERSION } from './version';
+
 import __wbg_init, {
   version,
   step_unit_motion,

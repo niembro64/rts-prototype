@@ -196,6 +196,9 @@ import type {
 } from './terrain';
 
 export const BATTLE_HANDOFF_PROTOCOL = 'ba-battle-handoff-v1' as const;
+export const BATTLE_MANIFEST_PROTOCOL = 'ba-start-manifest-v1' as const;
+export const BATTLE_MANIFEST_SCHEMA_VERSION = 1 as const;
+export const COMMAND_SCHEMA_VERSION = 1 as const;
 
 export type LobbyPlayerInfoPayload = {
   ipAddress: string | undefined;
@@ -264,6 +267,52 @@ export type LobbySettings = {
   mapLengthLandCells: number;
   fogOfWarEnabled: boolean | undefined;
   converterTax: number | undefined;
+};
+
+export type BattleManifestSettings = {
+  centerMagnitude: number;
+  dividersMagnitude: number;
+  terrainMapShape: TerrainMapShape;
+  terrainDTerrain: number | null;
+  metalDepositStep: number | null;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
+  fogOfWarEnabled: boolean | null;
+  converterTax: number | null;
+};
+
+export type BattleManifestPlayerSlot = {
+  playerId: PlayerId;
+  teamId: number;
+  name: string;
+  isHost: boolean;
+};
+
+export type BlueprintVersionStamps = {
+  ids: string;
+  units: string;
+  buildings: string;
+  turrets: string;
+  shots: string;
+  locomotion: string;
+  pathfinding: string;
+  unitRoster: string;
+  fallbacks: string;
+};
+
+export type BattleManifest = {
+  protocol: typeof BATTLE_MANIFEST_PROTOCOL;
+  schemaVersion: typeof BATTLE_MANIFEST_SCHEMA_VERSION;
+  gameId: string;
+  roomCode: string;
+  hostPlayerId: PlayerId;
+  mapSeed: number;
+  initialRngSeed: number;
+  commandSchemaVersion: typeof COMMAND_SCHEMA_VERSION;
+  simVersion: string;
+  blueprintVersions: BlueprintVersionStamps;
+  settings: BattleManifestSettings;
+  playerSlots: BattleManifestPlayerSlot[];
 };
 
 // Server → Client
@@ -860,6 +909,8 @@ export type BattleHandoff = {
   playerIds: PlayerId[];
   players: LobbyPlayer[];
   settings: LobbySettings | undefined;
+  manifest: BattleManifest;
+  manifestHash: string;
 };
 
 export type NetworkRole = 'host' | 'client';
