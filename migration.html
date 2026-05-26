@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-10">
-        <h3>LS-10: Move World Bootstrap And Storage Behind The Runtime <span class="tag">ownership</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>ServerBootstrap.ts</code>, <code>WorldState.ts</code>, spawn/player layout, terrain/deposit generation, Rust world storage.</p>
-        <ul>
-          <li>Make manifest-driven world creation happen behind the Rust runtime for the active path.</li>
-          <li>Port entity IDs, transforms, ownership, teams, health, build state, and initial terrain/deposit facts into runtime-owned storage.</li>
-          <li>Delete or shrink TypeScript bootstrap pieces as Rust ownership takes over. Do not leave a second gameplay world as a supported fallback.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> a local battle can create its initial world from the Rust runtime, and TypeScript reads it only through runtime projections or diagnostics.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-11">
         <h3>LS-11: Move Command Validation And Application Into Rust <span class="tag">commands</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-10. <strong>Touch:</strong> <code>commandSanitizer.ts</code>, <code>commandAuthority.ts</code>, <code>commandExecution.ts</code>, Rust command modules.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>commandSanitizer.ts</code>, <code>commandAuthority.ts</code>, <code>commandExecution.ts</code>, Rust command modules.</p>
         <ul>
           <li>Port command payload validation, ownership checks, and gameplay application into the runtime.</li>
           <li>Convert server-control toggles that affect gameplay, such as fog, mirrors, force fields, tick rate, and converter tax, into manifest fields or scheduled commands.</li>

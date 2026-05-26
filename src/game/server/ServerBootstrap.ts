@@ -13,16 +13,28 @@
 import {
   LAND_CELL_SIZE,
   UNIT_THRUST_MULTIPLIER_GAME,
+  UNIT_HP_MULTIPLIER,
+  UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
   getMapSize,
 } from '../../config';
 import { generateMetalDeposits } from '../../metalDepositConfig';
+import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { GameServerConfig } from '@/types/game';
-import type { BattleManifest } from '@/types/network';
+import type { BattleManifest, BattleManifestPlayerSlot } from '@/types/network';
 import { DEFAULT_INITIAL_RNG_SEED } from '../network/BattleManifest';
 import { CommandQueue } from '../sim/commands';
 import { Simulation } from '../sim/Simulation';
 import { WorldState } from '../sim/WorldState';
+import {
+  getSimWasm,
+  type SimRuntime,
+  type SimRuntimeBootstrapEntity,
+  type SimRuntimeBootstrapInput,
+  type SimRuntimeBootstrapProjection,
+} from '../sim-wasm/init';
+import { getUnitBlueprint, getUnitLocomotion } from '../sim/blueprints';
+import { economyManager } from '../sim/economy';
 import {
   buildTerrainBuildabilityGrid,
   buildTerrainTileMap,
@@ -36,8 +48,10 @@ import {
 } from '../sim/Terrain';
 import { getTerrainDividerTeamCount, normalizePlayerIds } from '../sim/playerLayout';
 import {
+  getInitialCommanderSpawns,
   spawnInitialBases,
   spawnInitialEntities,
+  spawnCommanderAt,
   spawnMetalExtractorsOnDeposits,
 } from '../sim/spawn';
 import type { Entity, PlayerId } from '../sim/types';
@@ -47,6 +61,7 @@ import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
+  runtime: SimRuntime | null;
   world: WorldState;
   simulation: Simulation;
   commandQueue: CommandQueue;
@@ -64,8 +79,15 @@ function applyManifestTeams(
   manifest: BattleManifest | undefined,
 ): void {
   if (manifest === undefined) return;
+  applyPlayerSlotTeams(world, manifest.playerSlots);
+}
+
+function applyPlayerSlotTeams(
+  world: WorldState,
+  playerSlots: readonly Pick<BattleManifestPlayerSlot, 'playerId' | 'teamId'>[],
+): void {
   const playerIdsByTeam = new Map<number, PlayerId[]>();
-  for (const slot of manifest.playerSlots) {
+  for (const slot of playerSlots) {
     const teamIds = playerIdsByTeam.get(slot.teamId);
     if (teamIds === undefined) playerIdsByTeam.set(slot.teamId, [slot.playerId]);
     else teamIds.push(slot.playerId);
@@ -83,6 +105,127 @@ function applyManifestTeams(
 }
 
 export class ServerBootstrap {
+  private static createRuntime(manifest: BattleManifest | undefined): SimRuntime | null {
+    if (manifest === undefined) return null;
+    const wasm = getSimWasm();
+    if (wasm === undefined) {
+      throw new Error('ServerBootstrap: initSimWasm() must resolve before creating a Rust runtime');
+    }
+    return wasm.createRuntimeFromManifest(manifest);
+  }
+
+  private static installRuntimeBootstrapWorld(
+    runtime: SimRuntime,
+    manifest: BattleManifest,
+    world: WorldState,
+    playerIds: readonly PlayerId[],
+    deposits: readonly MetalDeposit[],
+  ): SimRuntimeBootstrapProjection {
+    const input = ServerBootstrap.buildRuntimeBootstrapInput(
+      manifest,
+      world,
+      playerIds,
+      deposits,
+    );
+    runtime.installBootstrapWorld(input);
+    return runtime.readBootstrapWorld();
+  }
+
+  private static buildRuntimeBootstrapInput(
+    manifest: BattleManifest,
+    world: WorldState,
+    playerIds: readonly PlayerId[],
+    deposits: readonly MetalDeposit[],
+  ): SimRuntimeBootstrapInput {
+    const commanderBlueprint = getUnitBlueprint('commander');
+    const commanderLocomotion = getUnitLocomotion('commander');
+    const bodyCenterHeight = commanderBlueprint.bodyCenterHeight;
+    const spawnCenterHeight =
+      (commanderLocomotion.type === 'hover' || commanderLocomotion.type === 'flying') &&
+      commanderLocomotion.hoverHeight !== undefined &&
+      Number.isFinite(commanderLocomotion.hoverHeight)
+        ? commanderLocomotion.hoverHeight
+        : bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
+    const hp = commanderBlueprint.hp * UNIT_HP_MULTIPLIER;
+    const entities: SimRuntimeBootstrapEntity[] = getInitialCommanderSpawns(
+      world.mapWidth,
+      world.mapHeight,
+      playerIds,
+    ).map((spawn, index) => ({
+      id: (index + 1) as Entity['id'],
+      type: 'unit',
+      unitType: 'commander',
+      playerId: spawn.playerId,
+      x: spawn.x,
+      y: spawn.y,
+      z: world.getGroundZ(spawn.x, spawn.y) + spawnCenterHeight,
+      rotation: spawn.facingAngle,
+      hp,
+      maxHp: hp,
+    }));
+
+    return {
+      mapWidth: world.mapWidth,
+      mapHeight: world.mapHeight,
+      nextEntityId: (entities.length + 1) as Entity['id'],
+      playerIds,
+      playerSlots: manifest.playerSlots.map((slot) => ({
+        playerId: slot.playerId,
+        teamId: slot.teamId,
+      })),
+      entities,
+      metalDeposits: deposits,
+    };
+  }
+
+  private static hydrateRuntimeBootstrapWorld(
+    world: WorldState,
+    projection: SimRuntimeBootstrapProjection,
+  ): Entity[] {
+    if (
+      Math.abs(projection.mapWidth - world.mapWidth) > 1e-6 ||
+      Math.abs(projection.mapHeight - world.mapHeight) > 1e-6
+    ) {
+      throw new Error('Runtime bootstrap projection map dimensions do not match WorldState');
+    }
+
+    world.playerCount = projection.playerIds.length;
+    applyPlayerSlotTeams(world, projection.playerSlots);
+    world.metalDeposits = projection.metalDeposits;
+
+    for (const playerId of projection.playerIds) {
+      economyManager.initPlayer(playerId);
+    }
+
+    const entities: Entity[] = [];
+    for (const projected of projection.entities) {
+      if (projected.type !== 'unit' || projected.unitType !== 'commander') {
+        throw new Error(
+          `Unsupported runtime bootstrap entity type: ${projected.type}/${projected.unitType}`,
+        );
+      }
+      const commander = spawnCommanderAt(
+        world,
+        projected.playerId,
+        projected.x,
+        projected.y,
+        projected.rotation,
+      );
+      if (commander.id !== projected.id) {
+        throw new Error(
+          `Runtime bootstrap entity id mismatch: expected ${projected.id}, got ${commander.id}`,
+        );
+      }
+      commander.transform.z = projected.z;
+      if (commander.unit) {
+        commander.unit.hp = projected.hp;
+        commander.unit.maxHp = projected.maxHp;
+      }
+      entities.push(commander);
+    }
+    return entities;
+  }
+
   static async bootstrapAsync(
     config: GameServerConfig,
     providedPhysics: PhysicsEngine3D | undefined = undefined,
@@ -151,9 +294,10 @@ export class ServerBootstrap {
       mapWidth,
       mapHeight,
     );
+    const runtime = ServerBootstrap.createRuntime(config.manifest);
     world.playerCount = playerIds.length;
     applyManifestTeams(world, config.manifest);
-    world.metalDeposits = deposits;
+    if (runtime === null) world.metalDeposits = deposits;
     physics.setGroundLookup(
       (x, y) => world.getGroundZ(x, y),
       (x, y) => world.getCachedSurfaceNormal(x, y),
@@ -186,6 +330,7 @@ export class ServerBootstrap {
     await report(0.72, 'Preparing spawn rules');
 
     if (spawnDemoInitialState) {
+      world.metalDeposits = deposits;
       const constructionSystem = simulation.getConstructionSystem();
       const entities = spawnInitialBases(
         world,
@@ -217,7 +362,27 @@ export class ServerBootstrap {
         playerIds,
       );
       await report(0.94, 'Demo units ready');
+    } else if (runtime !== null && config.manifest !== undefined) {
+      const projection = ServerBootstrap.installRuntimeBootstrapWorld(
+        runtime,
+        config.manifest,
+        world,
+        playerIds,
+        deposits,
+      );
+      const entities = ServerBootstrap.hydrateRuntimeBootstrapWorld(world, projection);
+      await report(0.82, 'Hydrating runtime world');
+      await ServerBootstrap.createInitialPhysicsBodiesAsync(
+        world,
+        physics,
+        entities,
+        0.82,
+        0.94,
+        'Creating runtime unit physics',
+        report,
+      );
     } else {
+      world.metalDeposits = deposits;
       const entities = spawnInitialEntities(world, playerIds);
       await report(0.82, 'Spawning commanders');
       await ServerBootstrap.createInitialPhysicsBodiesAsync(
@@ -235,6 +400,7 @@ export class ServerBootstrap {
 
     return {
       physics,
+      runtime,
       world,
       simulation,
       commandQueue,
@@ -310,9 +476,10 @@ export class ServerBootstrap {
       mapWidth,
       mapHeight,
     );
+    const runtime = ServerBootstrap.createRuntime(config.manifest);
     world.playerCount = playerIds.length;
     applyManifestTeams(world, config.manifest);
-    world.metalDeposits = deposits;
+    if (runtime === null) world.metalDeposits = deposits;
     // Wire the heightmap into physics so ground contacts settle units
     // on top of their terrain cube tile AND project their velocity
     // onto the slope tangent each tick — keeps units glued to the
@@ -367,6 +534,7 @@ export class ServerBootstrap {
     // start from commanders so their spawn layout matches hosted
     // network games.
     if (spawnDemoInitialState) {
+      world.metalDeposits = deposits;
       const constructionSystem = simulation.getConstructionSystem();
       const entities = spawnInitialBases(
         world,
@@ -385,7 +553,18 @@ export class ServerBootstrap {
         backgroundAllowedTypes,
         playerIds,
       );
+    } else if (runtime !== null && config.manifest !== undefined) {
+      const projection = ServerBootstrap.installRuntimeBootstrapWorld(
+        runtime,
+        config.manifest,
+        world,
+        playerIds,
+        deposits,
+      );
+      const entities = ServerBootstrap.hydrateRuntimeBootstrapWorld(world, projection);
+      ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
     } else {
+      world.metalDeposits = deposits;
       const entities = spawnInitialEntities(world, playerIds);
       ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
     }
@@ -393,6 +572,7 @@ export class ServerBootstrap {
 
     return {
       physics,
+      runtime,
       world,
       simulation,
       commandQueue,

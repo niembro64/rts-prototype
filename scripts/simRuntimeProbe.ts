@@ -24,9 +24,9 @@ const SETTINGS: BattleManifestSettings = {
 };
 
 const EXPECTED_HASHES = {
-  initial: 'fnv1a64:b363cb3c7098488b',
-  afterTick1: 'fnv1a64:ad5aa8d91e5688b0',
-  afterTick2: 'fnv1a64:3fdf4e65e51f47e0',
+  initial: 'fnv1a64:98b0139a11bb4c1a',
+  afterTick1: 'fnv1a64:c422dac498573ff3',
+  afterTick2: 'fnv1a64:ae77aa4fd8721d83',
 };
 
 function assert(condition: boolean, message: string): void {
@@ -60,6 +60,47 @@ function runScenario() {
       runtime.manifestHash === hashBattleManifest(manifest),
       'runtime manifest hash matches TypeScript manifest hash',
     );
+    runtime.installBootstrapWorld({
+      mapWidth: 1400,
+      mapHeight: 1400,
+      nextEntityId: 3,
+      playerIds: [...PLAYER_IDS],
+      playerSlots: manifest.playerSlots.map((slot) => ({
+        playerId: slot.playerId,
+        teamId: slot.teamId,
+      })),
+      entities: [
+        {
+          id: 1,
+          type: 'unit',
+          unitType: 'commander',
+          playerId: 1,
+          x: 350,
+          y: 350,
+          z: 42,
+          rotation: 0.5,
+          hp: 500,
+          maxHp: 500,
+        },
+        {
+          id: 2,
+          type: 'unit',
+          unitType: 'commander',
+          playerId: 2,
+          x: 1050,
+          y: 1050,
+          z: 42,
+          rotation: -2.5,
+          hp: 500,
+          maxHp: 500,
+        },
+      ],
+      metalDeposits: [],
+    });
+    const bootstrap = runtime.readBootstrapWorld();
+    assert(bootstrap.protocol === 'ba-rust-bootstrap-world-v1', 'bootstrap protocol is set');
+    assert(bootstrap.entities.length === 2, 'bootstrap projection reports commander entities');
+    assert(bootstrap.nextEntityId === 3, 'bootstrap projection reports next entity id');
 
     const initial = runtime.worldHash();
 
@@ -82,6 +123,8 @@ function runScenario() {
     assert(diagnostics.protocol === 'ba-rust-sim-runtime-v1', 'diagnostics protocol is set');
     assert(diagnostics.tick === 2, 'diagnostics report current runtime tick');
     assert(diagnostics.playerCount === PLAYER_IDS.length, 'diagnostics report player count');
+    assert(diagnostics.bootstrapInstalled === true, 'diagnostics report bootstrap install');
+    assert(diagnostics.bootstrapEntityCount === 2, 'diagnostics report bootstrap entity count');
     assert(diagnostics.appliedBundleCount === 4, 'diagnostics report applied bundles');
     assert(diagnostics.pendingBundleCount === 0, 'all probe bundles have been applied');
 

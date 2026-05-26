@@ -48,6 +48,13 @@ type InitialFactoryWaypointConfig = {
   legs: readonly { type: WaypointType; distance: number }[];
 };
 
+export type InitialCommanderSpawn = {
+  playerId: PlayerId;
+  x: number;
+  y: number;
+  facingAngle: number;
+};
+
 function getInitialFactoryWaypointConfig(mode: InitialBaseMode): InitialFactoryWaypointConfig {
   if (mode === 'real') {
     return {
@@ -87,7 +94,7 @@ export function computeFactoryWaypoint(
 }
 
 // Spawn a commander for a player
-function spawnCommander(
+export function spawnCommanderAt(
   world: WorldState,
   playerId: PlayerId,
   x: number,
@@ -163,22 +170,33 @@ function getSpawnPositions(
   world: WorldState,
   playerCount: number
 ): { x: number; y: number; facingAngle: number }[] {
-  const cx = world.mapWidth / 2;
-  const cy = world.mapHeight / 2;
-  const oval = makeMapOvalMetrics(world.mapWidth, world.mapHeight);
-  const radius = commanderRadiusForMap(world.mapWidth, world.mapHeight);
-  const positions: { x: number; y: number; facingAngle: number }[] = [];
-  const count = getLayoutPlayerCount(playerCount);
+  return getInitialCommanderSpawns(
+    world.mapWidth,
+    world.mapHeight,
+    Array.from({ length: playerCount }, (_, i) => (i + 1) as PlayerId),
+  ).map(({ x, y, facingAngle }) => ({ x, y, facingAngle }));
+}
+
+export function getInitialCommanderSpawns(
+  mapWidth: number,
+  mapHeight: number,
+  playerIds: readonly PlayerId[],
+): InitialCommanderSpawn[] {
+  const normalizedPlayerIds = normalizePlayerIds(playerIds);
+  const cx = mapWidth / 2;
+  const cy = mapHeight / 2;
+  const count = getLayoutPlayerCount(normalizedPlayerIds.length);
+  const spawns: InitialCommanderSpawn[] = [];
   for (let i = 0; i < count; i++) {
-    const angle = getPlayerBaseAngle(i, count);
-    const point = mapOvalPointAt(oval, angle, radius);
-    positions.push({
+    const point = getSpawnPositionForSeat(i, count, mapWidth, mapHeight);
+    spawns.push({
+      playerId: normalizedPlayerIds[i] ?? ((i + 1) as PlayerId),
       x: point.x,
       y: point.y,
       facingAngle: Math.atan2(cy - point.y, cx - point.x),
     });
   }
-  return positions;
+  return spawns;
 }
 
 // Place a pre-built (complete) building at a world position
@@ -300,7 +318,7 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
   for (let i = 0; i < normalizedPlayerIds.length; i++) {
     const playerId = normalizedPlayerIds[i];
     const pos = spawnPositions[i];
-    const commander = spawnCommander(world, playerId, pos.x, pos.y, pos.facingAngle);
+    const commander = spawnCommanderAt(world, playerId, pos.x, pos.y, pos.facingAngle);
     entities.push(commander);
   }
 
@@ -486,7 +504,7 @@ export function spawnInitialBases(
     // oval, facing the map center.
     const cmdPoint = mapOvalPointAt(oval, baseAngle, commanderRadius);
     const cmdFacing = Math.atan2(cy - cmdPoint.y, cx - cmdPoint.x);
-    const commander = spawnCommander(
+    const commander = spawnCommanderAt(
       world,
       playerId,
       cmdPoint.x,

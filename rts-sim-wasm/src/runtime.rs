@@ -34,6 +34,16 @@ pub struct LockstepRuntime {
     manifest: RuntimeManifest,
     tick: u32,
     rng_state: u32,
+    bootstrap_installed: bool,
+    bootstrap_map_width: f64,
+    bootstrap_map_height: f64,
+    bootstrap_next_entity_id: u32,
+    bootstrap_player_ids: Vec<u32>,
+    bootstrap_player_slots_json: String,
+    bootstrap_entities_json: String,
+    bootstrap_metal_deposits_json: String,
+    bootstrap_entity_count: u32,
+    bootstrap_metal_deposit_count: u32,
     pending_bundles: Vec<RuntimeCommandBundle>,
     total_enqueued_bundle_count: u32,
     total_enqueued_command_count: u32,
@@ -85,6 +95,16 @@ impl LockstepRuntime {
             manifest,
             tick: 0,
             rng_state,
+            bootstrap_installed: false,
+            bootstrap_map_width: 0.0,
+            bootstrap_map_height: 0.0,
+            bootstrap_next_entity_id: 1,
+            bootstrap_player_ids: Vec::new(),
+            bootstrap_player_slots_json: "[]".to_owned(),
+            bootstrap_entities_json: "[]".to_owned(),
+            bootstrap_metal_deposits_json: "[]".to_owned(),
+            bootstrap_entity_count: 0,
+            bootstrap_metal_deposit_count: 0,
             pending_bundles: Vec::new(),
             total_enqueued_bundle_count: 0,
             total_enqueued_command_count: 0,
@@ -101,6 +121,80 @@ impl LockstepRuntime {
 
     pub fn manifest_hash(&self) -> String {
         self.manifest.manifest_hash.clone()
+    }
+
+    pub fn install_bootstrap_world(
+        &mut self,
+        map_width: f64,
+        map_height: f64,
+        next_entity_id: u32,
+        player_ids: &[u32],
+        player_slots_json: String,
+        entities_json: String,
+        metal_deposits_json: String,
+        entity_count: u32,
+        metal_deposit_count: u32,
+    ) -> Result<(), JsValue> {
+        if self.bootstrap_installed {
+            return Err(js_error("runtime bootstrap world is already installed"));
+        }
+        if self.tick != 0 {
+            return Err(js_error(
+                "runtime bootstrap world must be installed at tick 0",
+            ));
+        }
+        if !map_width.is_finite()
+            || !map_height.is_finite()
+            || map_width <= 0.0
+            || map_height <= 0.0
+        {
+            return Err(js_error(
+                "runtime bootstrap map dimensions must be positive finite values",
+            ));
+        }
+        if next_entity_id == 0 {
+            return Err(js_error(
+                "runtime bootstrap next_entity_id must be non-zero",
+            ));
+        }
+        if player_ids.is_empty() {
+            return Err(js_error("runtime bootstrap must include player ids"));
+        }
+        validate_json_array("player_slots_json", &player_slots_json)?;
+        validate_json_array("entities_json", &entities_json)?;
+        validate_json_array("metal_deposits_json", &metal_deposits_json)?;
+
+        self.bootstrap_installed = true;
+        self.bootstrap_map_width = map_width;
+        self.bootstrap_map_height = map_height;
+        self.bootstrap_next_entity_id = next_entity_id;
+        self.bootstrap_player_ids.clear();
+        self.bootstrap_player_ids.extend_from_slice(player_ids);
+        self.bootstrap_player_slots_json = player_slots_json;
+        self.bootstrap_entities_json = entities_json;
+        self.bootstrap_metal_deposits_json = metal_deposits_json;
+        self.bootstrap_entity_count = entity_count;
+        self.bootstrap_metal_deposit_count = metal_deposit_count;
+        Ok(())
+    }
+
+    pub fn bootstrap_world_json(&self) -> Result<String, JsValue> {
+        if !self.bootstrap_installed {
+            return Err(js_error("runtime bootstrap world is not installed"));
+        }
+        Ok(format!(
+            "{{\"protocol\":\"ba-rust-bootstrap-world-v1\",\"runtimeProtocol\":\"{}\",\"manifestHash\":{},\"tick\":{},\"mapWidth\":{},\"mapHeight\":{},\"nextEntityId\":{},\"playerIds\":{},\"playerSlots\":{},\"entities\":{},\"metalDeposits\":{}}}",
+            RUNTIME_PROTOCOL,
+            json_quote(&self.manifest.manifest_hash),
+            self.tick,
+            json_number(self.bootstrap_map_width),
+            json_number(self.bootstrap_map_height),
+            self.bootstrap_next_entity_id,
+            json_u32_array(&self.bootstrap_player_ids),
+            self.bootstrap_player_slots_json,
+            self.bootstrap_entities_json,
+            self.bootstrap_metal_deposits_json,
+        ))
     }
 
     pub fn enqueue_command_bundle(
@@ -191,7 +285,7 @@ impl LockstepRuntime {
 
     pub fn diagnostics_json(&self) -> String {
         format!(
-            "{{\"protocol\":{},\"tick\":{},\"manifestHash\":{},\"gameId\":{},\"roomCode\":{},\"simVersion\":{},\"commandSchemaVersion\":{},\"mapSeed\":{},\"rngState\":{},\"mapWidthLandCells\":{},\"mapLengthLandCells\":{},\"playerCount\":{},\"pendingBundleCount\":{},\"enqueuedBundleCount\":{},\"enqueuedCommandCount\":{},\"appliedBundleCount\":{},\"appliedCommandCount\":{},\"lastAppliedBundleCount\":{},\"lastAppliedCommandCount\":{}}}",
+            "{{\"protocol\":{},\"tick\":{},\"manifestHash\":{},\"gameId\":{},\"roomCode\":{},\"simVersion\":{},\"commandSchemaVersion\":{},\"mapSeed\":{},\"rngState\":{},\"mapWidthLandCells\":{},\"mapLengthLandCells\":{},\"playerCount\":{},\"bootstrapInstalled\":{},\"bootstrapEntityCount\":{},\"bootstrapMetalDepositCount\":{},\"pendingBundleCount\":{},\"enqueuedBundleCount\":{},\"enqueuedCommandCount\":{},\"appliedBundleCount\":{},\"appliedCommandCount\":{},\"lastAppliedBundleCount\":{},\"lastAppliedCommandCount\":{}}}",
             json_quote(RUNTIME_PROTOCOL),
             self.tick,
             json_quote(&self.manifest.manifest_hash),
@@ -204,6 +298,9 @@ impl LockstepRuntime {
             self.manifest.map_width_land_cells,
             self.manifest.map_length_land_cells,
             self.manifest.player_count,
+            self.bootstrap_installed,
+            self.bootstrap_entity_count,
+            self.bootstrap_metal_deposit_count,
             self.pending_bundles.len(),
             self.total_enqueued_bundle_count,
             self.total_enqueued_command_count,
@@ -226,6 +323,21 @@ impl LockstepRuntime {
         hash_update_u32(&mut hash, self.manifest.map_width_land_cells);
         hash_update_u32(&mut hash, self.manifest.map_length_land_cells);
         hash_update_u32(&mut hash, self.manifest.player_count);
+        hash_update_u32(&mut hash, if self.bootstrap_installed { 1 } else { 0 });
+        if self.bootstrap_installed {
+            hash_update_u64(&mut hash, self.bootstrap_map_width.to_bits());
+            hash_update_u64(&mut hash, self.bootstrap_map_height.to_bits());
+            hash_update_u32(&mut hash, self.bootstrap_next_entity_id);
+            hash_update_u32(&mut hash, self.bootstrap_player_ids.len() as u32);
+            for player_id in &self.bootstrap_player_ids {
+                hash_update_u32(&mut hash, *player_id);
+            }
+            hash_update_str(&mut hash, &self.bootstrap_player_slots_json);
+            hash_update_str(&mut hash, &self.bootstrap_entities_json);
+            hash_update_str(&mut hash, &self.bootstrap_metal_deposits_json);
+            hash_update_u32(&mut hash, self.bootstrap_entity_count);
+            hash_update_u32(&mut hash, self.bootstrap_metal_deposit_count);
+        }
         hash_update_u32(&mut hash, self.total_enqueued_bundle_count);
         hash_update_u32(&mut hash, self.total_enqueued_command_count);
         hash_update_u32(&mut hash, self.total_applied_bundle_count);
@@ -265,6 +377,35 @@ fn parse_manifest_hash(value: &str) -> Result<u64, JsValue> {
     }
     u64::from_str_radix(hex, 16)
         .map_err(|_| js_error("battle manifest hash contains invalid hex digits"))
+}
+
+fn validate_json_array(field: &str, value: &str) -> Result<(), JsValue> {
+    let trimmed = value.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        Ok(())
+    } else {
+        Err(js_error(format!("{field} must be a JSON array string")))
+    }
+}
+
+fn json_u32_array(values: &[u32]) -> String {
+    let mut out = String::from("[");
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        let _ = write!(out, "{value}");
+    }
+    out.push(']');
+    out
+}
+
+fn json_number(value: f64) -> String {
+    if value.is_finite() {
+        value.to_string()
+    } else {
+        "null".to_owned()
+    }
 }
 
 fn json_quote(value: &str) -> String {

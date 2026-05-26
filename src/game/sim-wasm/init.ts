@@ -18,6 +18,9 @@ export { SIM_WASM_PACKAGE_VERSION } from './version';
 
 import type { CommandBundle } from '@/types/commands';
 import type { BattleManifest } from '@/types/network';
+import type { EntityId, PlayerId } from '@/types/sim';
+import type { MetalDeposit } from '../../metalDepositConfig';
+import { canonicalStringify } from '../canonicalData';
 import { hashBattleManifest } from '../network/BattleManifest';
 import __wbg_init, {
   LockstepRuntime as WasmLockstepRuntime,
@@ -370,6 +373,9 @@ export type SimRuntimeDiagnostics = {
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   playerCount: number;
+  bootstrapInstalled: boolean;
+  bootstrapEntityCount: number;
+  bootstrapMetalDepositCount: number;
   pendingBundleCount: number;
   enqueuedBundleCount: number;
   enqueuedCommandCount: number;
@@ -379,9 +385,53 @@ export type SimRuntimeDiagnostics = {
   lastAppliedCommandCount: number;
 };
 
+export type SimRuntimeBootstrapEntity = {
+  id: EntityId;
+  type: 'unit';
+  unitType: string;
+  playerId: PlayerId;
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  hp: number;
+  maxHp: number;
+};
+
+export type SimRuntimeBootstrapPlayerSlot = {
+  playerId: PlayerId;
+  teamId: number;
+};
+
+export type SimRuntimeBootstrapInput = {
+  mapWidth: number;
+  mapHeight: number;
+  nextEntityId: EntityId;
+  playerIds: readonly PlayerId[];
+  playerSlots: readonly SimRuntimeBootstrapPlayerSlot[];
+  entities: readonly SimRuntimeBootstrapEntity[];
+  metalDeposits: readonly MetalDeposit[];
+};
+
+export type SimRuntimeBootstrapProjection = {
+  protocol: 'ba-rust-bootstrap-world-v1';
+  runtimeProtocol: 'ba-rust-sim-runtime-v1';
+  manifestHash: string;
+  tick: number;
+  mapWidth: number;
+  mapHeight: number;
+  nextEntityId: EntityId;
+  playerIds: PlayerId[];
+  playerSlots: SimRuntimeBootstrapPlayerSlot[];
+  entities: SimRuntimeBootstrapEntity[];
+  metalDeposits: MetalDeposit[];
+};
+
 export interface SimRuntime {
   readonly manifestHash: string;
   readonly tick: number;
+  installBootstrapWorld(input: SimRuntimeBootstrapInput): void;
+  readBootstrapWorld(): SimRuntimeBootstrapProjection;
   enqueueCommandBundle(bundle: Pick<CommandBundle, 'targetTick' | 'peerId' | 'seq' | 'commands'>): void;
   advanceOneTick(): number;
   readRenderPacket(): SimRuntimeRenderPacket;
@@ -399,6 +449,26 @@ class WasmBackedSimRuntime implements SimRuntime {
 
   get tick(): number {
     return this.inner.tick();
+  }
+
+  installBootstrapWorld(input: SimRuntimeBootstrapInput): void {
+    this.inner.install_bootstrap_world(
+      input.mapWidth,
+      input.mapHeight,
+      input.nextEntityId,
+      Uint32Array.from(input.playerIds),
+      canonicalStringify(input.playerSlots),
+      canonicalStringify(input.entities),
+      canonicalStringify(input.metalDeposits),
+      input.entities.length,
+      input.metalDeposits.length,
+    );
+  }
+
+  readBootstrapWorld(): SimRuntimeBootstrapProjection {
+    return parseRuntimeJson<SimRuntimeBootstrapProjection>(
+      this.inner.bootstrap_world_json(),
+    );
   }
 
   enqueueCommandBundle(
