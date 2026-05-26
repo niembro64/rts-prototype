@@ -340,6 +340,7 @@ import __wbg_init, {
   pool_sleep_ticks_ptr,
   pool_flags_ptr,
   pool_entity_id_ptr,
+  type InitInput,
 } from './pkg/rts_sim_wasm';
 
 
@@ -2417,10 +2418,14 @@ let resolvedHandle: SimWasm | undefined;
 /** Idempotent. Concurrent callers share one fetch + compile of
  *  the wasm module. Resolves once the WASM is instantiated and
  *  the auto-init (#[wasm_bindgen(start)]) panic hook has run. */
-export function initSimWasm(): Promise<SimWasm> {
+export function initSimWasm(
+  moduleOrPath: InitInput | Promise<InitInput> | undefined = undefined,
+): Promise<SimWasm> {
   if (cached === undefined) {
     cached = (async () => {
-      const initOutput = await __wbg_init();
+      const initOutput = await __wbg_init(
+        moduleOrPath === undefined ? undefined : { module_or_path: moduleOrPath },
+      );
 
       // Pre-grow WASM linear memory BEFORE pool_init() so the
       // BodyPool's Vec allocations land in a comfortably-sized
@@ -2474,7 +2479,8 @@ export function initSimWasm(): Promise<SimWasm> {
       // with @msgpack/msgpack on a representative set of envelopes.
       // Dev-only: a regression here means the production encoder
       // would diverge from the wire format as we land more fields.
-      if (import.meta.env.DEV) {
+      const isViteDev = typeof import.meta.env !== 'undefined' && import.meta.env.DEV;
+      if (isViteDev) {
         const { runSnapshotEncoderByteEqualityTest } = await import('./snapshotEncoderTest');
         await runSnapshotEncoderByteEqualityTest(memory);
       }

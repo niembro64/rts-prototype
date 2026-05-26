@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-07">
-        <h3>LS-07: Build A Headless Replay Harness <span class="tag">test foundation</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>scripts/</code>, npm scripts, manifest and command-bundle codec, sim bootstrap paths.</p>
-        <ul>
-          <li>Create a headless runner that loads a manifest plus command bundles, advances fixed ticks, and writes per-tick hashes.</li>
-          <li>Keep the harness independent of DOM, Vue, Three.js, PeerJS, and render code.</li>
-          <li>Add at least one small deterministic fixture and one longer smoke fixture that exercises movement, construction, projectiles, economy, and fog-relevant visibility.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> a repo command can replay a command log headlessly and fail if any expected hash differs.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-08">
         <h3>LS-08: Audit And Fence Nondeterminism <span class="tag">correctness</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-07. <strong>Touch:</strong> <code>rts-sim-wasm/src/lib.rs</code>, <code>src/game/sim/**</code>, <code>src/game/server/**</code>, targeted static checks.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>rts-sim-wasm/src/lib.rs</code>, <code>src/game/sim/**</code>, <code>src/game/server/**</code>, targeted static checks.</p>
         <ul>
           <li>Classify every sim-affecting use of <code>Math.random</code>, <code>Date.now</code>, <code>performance.now</code>, <code>sin</code>, <code>cos</code>, <code>pow</code>, <code>HashMap</code>, and <code>HashSet</code>.</li>
           <li>Move gameplay randomness to seeded in-state RNG. Keep cosmetic randomness in render/audio code only, with comments where confusion is likely.</li>
