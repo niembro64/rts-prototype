@@ -16,7 +16,11 @@
 
 export { SIM_WASM_PACKAGE_VERSION } from './version';
 
+import type { CommandBundle } from '@/types/commands';
+import type { BattleManifest } from '@/types/network';
+import { hashBattleManifest } from '../network/BattleManifest';
 import __wbg_init, {
+  LockstepRuntime as WasmLockstepRuntime,
   version,
   step_unit_motion,
   pool_init,
@@ -344,6 +348,119 @@ import __wbg_init, {
 } from './pkg/rts_sim_wasm';
 
 
+export type SimRuntimeRenderPacket = {
+  protocol: 'ba-rust-render-packet-v1';
+  runtimeProtocol: 'ba-rust-sim-runtime-v1';
+  tick: number;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
+  entities: [];
+};
+
+export type SimRuntimeDiagnostics = {
+  protocol: 'ba-rust-sim-runtime-v1';
+  tick: number;
+  manifestHash: string;
+  gameId: string;
+  roomCode: string;
+  simVersion: string;
+  commandSchemaVersion: number;
+  mapSeed: number;
+  rngState: number;
+  mapWidthLandCells: number;
+  mapLengthLandCells: number;
+  playerCount: number;
+  pendingBundleCount: number;
+  enqueuedBundleCount: number;
+  enqueuedCommandCount: number;
+  appliedBundleCount: number;
+  appliedCommandCount: number;
+  lastAppliedBundleCount: number;
+  lastAppliedCommandCount: number;
+};
+
+export interface SimRuntime {
+  readonly manifestHash: string;
+  readonly tick: number;
+  enqueueCommandBundle(bundle: Pick<CommandBundle, 'targetTick' | 'peerId' | 'seq' | 'commands'>): void;
+  advanceOneTick(): number;
+  readRenderPacket(): SimRuntimeRenderPacket;
+  readDiagnostics(): SimRuntimeDiagnostics;
+  worldHash(): string;
+  free(): void;
+}
+
+class WasmBackedSimRuntime implements SimRuntime {
+  constructor(private readonly inner: WasmLockstepRuntime) {}
+
+  get manifestHash(): string {
+    return this.inner.manifest_hash();
+  }
+
+  get tick(): number {
+    return this.inner.tick();
+  }
+
+  enqueueCommandBundle(
+    bundle: Pick<CommandBundle, 'targetTick' | 'peerId' | 'seq' | 'commands'>,
+  ): void {
+    this.inner.enqueue_command_bundle(
+      bundle.targetTick,
+      bundle.peerId,
+      bundle.seq,
+      bundle.commands.length,
+    );
+  }
+
+  advanceOneTick(): number {
+    return this.inner.advance_one_tick();
+  }
+
+  readRenderPacket(): SimRuntimeRenderPacket {
+    return parseRuntimeJson<SimRuntimeRenderPacket>(this.inner.render_packet_json());
+  }
+
+  readDiagnostics(): SimRuntimeDiagnostics {
+    return parseRuntimeJson<SimRuntimeDiagnostics>(this.inner.diagnostics_json());
+  }
+
+  worldHash(): string {
+    return this.inner.world_hash();
+  }
+
+  free(): void {
+    this.inner.free();
+  }
+}
+
+function createRuntimeFromManifestUnchecked(manifest: BattleManifest): SimRuntime {
+  return new WasmBackedSimRuntime(
+    new WasmLockstepRuntime(
+      hashBattleManifest(manifest),
+      manifest.gameId,
+      manifest.roomCode,
+      manifest.mapSeed,
+      manifest.initialRngSeed,
+      manifest.commandSchemaVersion,
+      manifest.simVersion,
+      manifest.settings.mapWidthLandCells,
+      manifest.settings.mapLengthLandCells,
+      manifest.playerSlots.length,
+    ),
+  );
+}
+
+export function createSimRuntimeFromManifest(manifest: BattleManifest): SimRuntime {
+  if (resolvedHandle === undefined) {
+    throw new Error('initSimWasm() must resolve before creating a Rust sim runtime');
+  }
+  return createRuntimeFromManifestUnchecked(manifest);
+}
+
+function parseRuntimeJson<T>(json: string): T {
+  return JSON.parse(json) as T;
+}
+
 /** Public handle to the loaded WASM module. Re-exported kernels
  *  + the Body3D pool views + per-engine static-cuboid handles all
  *  hang off this. */
@@ -352,6 +469,11 @@ export interface SimWasm {
    *  Useful in dev / startup logs to confirm a fresh wasm-pack
    *  build is being served. */
   readonly version: string;
+  /** LS-09 lockstep runtime constructor. The returned runtime is
+   *  Rust-owned state initialized from a canonical battle manifest;
+   *  TypeScript remains the caller/orchestrator until later chunks
+   *  move world bootstrap, commands, and gameplay systems behind it. */
+  readonly createRuntimeFromManifest: (manifest: BattleManifest) => SimRuntime;
   /** Shared unit-body integrator (Phase 2). Used by both
    *  PhysicsEngine3D.integrate (server authoritative tick) AND
    *  ClientUnitPrediction.advanceSharedUnitMotionPrediction
@@ -2620,6 +2742,7 @@ export function initSimWasm(
 
       const handle: SimWasm = {
         version: version(),
+        createRuntimeFromManifest: createRuntimeFromManifestUnchecked,
         stepUnitMotion: step_unit_motion,
         pool,
         poolStepIntegrate: pool_step_integrate,

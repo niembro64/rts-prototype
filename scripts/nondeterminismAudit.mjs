@@ -6,10 +6,7 @@ const ROOT = process.cwd();
 const SCAN_ROOTS = [
   'src/game/sim',
   'src/game/server',
-];
-
-const SCAN_FILES = [
-  'rts-sim-wasm/src/lib.rs',
+  'rts-sim-wasm/src',
 ];
 
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.mjs', '.rs']);
@@ -143,7 +140,6 @@ function walk(dir, out) {
 function scanFiles() {
   const files = [];
   for (const root of SCAN_ROOTS) walk(root, files);
-  for (const file of SCAN_FILES) files.push(file);
   return files;
 }
 

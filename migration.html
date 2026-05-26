@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-09">
-        <h3>LS-09: Create The Rust Sim Runtime API <span class="tag">WASM boundary</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>rts-sim-wasm/src/</code>, <code>src/game/sim-wasm/init.ts</code>, generated wasm bindings.</p>
-        <ul>
-          <li>Add a narrow runtime surface: initialize from manifest, enqueue command bundles, advance one tick, read render packets, read diagnostics, and compute <code>world_hash()</code>.</li>
-          <li>Keep TypeScript as the caller and owner of browser APIs only. Do not add new gameplay behavior to TypeScript while creating this boundary.</li>
-          <li>Split Rust modules out of <code>lib.rs</code> when it helps isolate runtime ownership, but avoid refactors not needed by the chunk.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> TypeScript can instantiate a Rust runtime object from a manifest and advance a no-op or minimal scenario with a stable hash.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-10">
         <h3>LS-10: Move World Bootstrap And Storage Behind The Runtime <span class="tag">ownership</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-09. <strong>Touch:</strong> <code>ServerBootstrap.ts</code>, <code>WorldState.ts</code>, spawn/player layout, terrain/deposit generation, Rust world storage.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>ServerBootstrap.ts</code>, <code>WorldState.ts</code>, spawn/player layout, terrain/deposit generation, Rust world storage.</p>
         <ul>
           <li>Make manifest-driven world creation happen behind the Rust runtime for the active path.</li>
           <li>Port entity IDs, transforms, ownership, teams, health, build state, and initial terrain/deposit facts into runtime-owned storage.</li>
