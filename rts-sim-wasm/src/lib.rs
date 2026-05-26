@@ -19,6 +19,10 @@
 // once lockstep render packets replace network snapshots.
 
 use std::cell::UnsafeCell;
+// LS-08 determinism fence: HashMap/HashSet remain allowed in this
+// transitional crate only for keyed lookup, broadphase buckets, and
+// query dedup. Gameplay-visible iteration must stay slot-indexed or
+// sorted before data crosses the JS/WASM boundary.
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 

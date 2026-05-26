@@ -401,20 +401,9 @@
         chunk becomes outdated, rewrite it before using it as instructions.
       </p>
 
-      <article class="chunk" id="chunk-ls-08">
-        <h3>LS-08: Audit And Fence Nondeterminism <span class="tag">correctness</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>rts-sim-wasm/src/lib.rs</code>, <code>src/game/sim/**</code>, <code>src/game/server/**</code>, targeted static checks.</p>
-        <ul>
-          <li>Classify every sim-affecting use of <code>Math.random</code>, <code>Date.now</code>, <code>performance.now</code>, <code>sin</code>, <code>cos</code>, <code>pow</code>, <code>HashMap</code>, and <code>HashSet</code>.</li>
-          <li>Move gameplay randomness to seeded in-state RNG. Keep cosmetic randomness in render/audio code only, with comments where confusion is likely.</li>
-          <li>Route sim-affecting transcendentals through deterministic helpers or authored lookup tables. Replace outcome-affecting unordered iteration with stable structures or sorted traversal.</li>
-        </ul>
-        <p class="exit"><strong>Exit:</strong> grep output has an allow-list for remaining nondeterministic APIs, and the headless replay fixtures remain hash-stable.</p>
-      </article>
-
       <article class="chunk" id="chunk-ls-09">
         <h3>LS-09: Create The Rust Sim Runtime API <span class="tag">WASM boundary</span></h3>
-        <p class="chunk-meta"><strong>Depends:</strong> LS-08. <strong>Touch:</strong> <code>rts-sim-wasm/src/</code>, <code>src/game/sim-wasm/init.ts</code>, generated wasm bindings.</p>
+        <p class="chunk-meta"><strong>Depends:</strong> none. <strong>Touch:</strong> <code>rts-sim-wasm/src/</code>, <code>src/game/sim-wasm/init.ts</code>, generated wasm bindings.</p>
         <ul>
           <li>Add a narrow runtime surface: initialize from manifest, enqueue command bundles, advance one tick, read render packets, read diagnostics, and compute <code>world_hash()</code>.</li>
           <li>Keep TypeScript as the caller and owner of browser APIs only. Do not add new gameplay behavior to TypeScript while creating this boundary.</li>

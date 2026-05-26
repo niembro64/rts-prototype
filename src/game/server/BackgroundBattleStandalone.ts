@@ -39,6 +39,8 @@ export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
 let backgroundUnitWeights: { type: string; cumWeight: number }[] = [];
 let cachedWeightSignature = '';
 
+type BackgroundSpawnRng = Pick<WorldState['rng'], 'next' | 'range'>;
+
 /** Stable string signature for an allowedTypes set. Sorting keeps
  *  signature equality independent of insertion order. */
 function signatureFor(allowedTypes: ReadonlySet<string> | undefined = undefined): string {
@@ -72,26 +74,32 @@ function ensureWeightTable(allowedTypes: ReadonlySet<string> | undefined = undef
   }
 }
 
-function selectWeightedUnitType(allowedTypes: ReadonlySet<string> | undefined = undefined): string | null {
+function selectWeightedUnitType(
+  rng: BackgroundSpawnRng,
+  allowedTypes: ReadonlySet<string> | undefined = undefined,
+): string | null {
   ensureWeightTable(allowedTypes);
   if (backgroundUnitWeights.length === 0) return null;
-  const r = Math.random();
+  const r = rng.next();
   for (const entry of backgroundUnitWeights) {
     if (r <= entry.cumWeight) return entry.type;
   }
   return backgroundUnitWeights[backgroundUnitWeights.length - 1].type;
 }
 
-function selectUnitType(allowedTypes: ReadonlySet<string> | undefined = undefined): string | null {
+function selectUnitType(
+  rng: BackgroundSpawnRng,
+  allowedTypes: ReadonlySet<string> | undefined = undefined,
+): string | null {
   // No allowed types → caller will skip the spawn.
   if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
-    return selectWeightedUnitType(allowedTypes);
+    return selectWeightedUnitType(rng, allowedTypes);
   } else if (allowedTypes !== undefined && allowedTypes.size > 0) {
-    const allowed = Array.from(allowedTypes);
-    return allowed[Math.floor(Math.random() * allowed.length)];
+    const allowed = Array.from(allowedTypes).sort();
+    return allowed[Math.floor(rng.next() * allowed.length)];
   }
-  return BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
+  return BACKGROUND_UNIT_TYPES[Math.floor(rng.next() * BACKGROUND_UNIT_TYPES.length)];
 }
 
 // Spawn a single unit at a specific position with the configured demo waypoints.
@@ -112,7 +120,7 @@ function spawnUnit(
   if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
   if (waypoints.length === 0) return null;
 
-  const unitType = selectUnitType(allowedTypes);
+  const unitType = selectUnitType(world.rng, allowedTypes);
   // Defensive: only ever spawn from the allowed-types set. If
   // selectUnitType signalled "nothing valid" (empty set, weight
   // table empty after rebuild), skip the spawn entirely instead of
@@ -161,13 +169,14 @@ function sampleCenterSpawnPoint(
   mapHeight: number,
   waterBuffer: number,
   maxAttempts: number,
+  rng: BackgroundSpawnRng,
 ): { x: number; y: number } | null {
   let dryFallback: { x: number; y: number } | null = null;
   let anyFallback: { x: number; y: number } | null = null;
 
   for (let k = 0; k < maxAttempts; k++) {
-    const spawnAngle = Math.random() * Math.PI * 2;
-    const spawnDist = Math.sqrt(Math.random()) * centerRadius;
+    const spawnAngle = rng.range(0, Math.PI * 2);
+    const spawnDist = Math.sqrt(rng.next()) * centerRadius;
     const point = mapOvalPointAt(oval, spawnAngle, spawnDist);
     anyFallback = point;
     if (!dryFallback && isFarFromWater(point.x, point.y, mapWidth, mapHeight, 0)) {
@@ -250,6 +259,7 @@ export function spawnBackgroundUnitsStandalone(
           mapHeight,
           waterBuffer,
           maxAttempts,
+          world.rng,
         );
         if (!spawn) continue;
 
@@ -282,9 +292,9 @@ export function spawnBackgroundUnitsStandalone(
       const pUnits = world.getUnitsByPlayer(playerId).length;
       if (pUnits >= unitCapPerPlayer) continue;
 
-      const offsetAngle = (Math.random() - 0.5) * sectorAngle;
+      const offsetAngle = (world.rng.next() - 0.5) * sectorAngle;
       const a = baseAngles[p] + offsetAngle;
-      const r = spawnRadius * (0.85 + Math.random() * 0.15);
+      const r = spawnRadius * (0.85 + world.rng.next() * 0.15);
       const point = mapOvalPointAt(oval, a, r);
 
       const unit = spawnUnit(

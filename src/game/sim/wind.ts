@@ -23,7 +23,7 @@ function wave(tSec: number, periodSec: number, phase = 0): number {
   return (tSec / Math.max(1, periodSec)) * TAU + phase;
 }
 
-export function sampleWindState(nowMs = Date.now()): WindState {
+export function sampleWindState(nowMs: number): WindState {
   const t = nowMs / 1000;
   const dirPeriods = WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS;
   const speedPeriods = WIND_SPEED_OSCILLATION_PERIODS_SECONDS;

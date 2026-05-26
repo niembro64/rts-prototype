@@ -370,10 +370,9 @@ function spawnSubmunitions(
     }
   }
 
-  // Sim RNG isn't exposed here, so Math.random() drives the cosmetic
-  // spread — submunition direction doesn't feed back into deterministic
-  // sim state (damage / knockback come from the parent's detonation
-  // and the fragments' own collisions, both of which use sim RNG).
+  // Submunition spread is gameplay-visible because fragment flight can
+  // create later collisions, damage, and knockback. Use the world's
+  // seeded RNG so all lockstep peers consume the same launch vectors.
   // Horizontal and vertical spread magnitudes are independent so a
   // shot can fan WIDE horizontally without launching half its fragments
   // straight up (or vice versa).
@@ -389,9 +388,9 @@ function spawnSubmunitions(
     let jitterDirZ = 0;
     let jitterLen2 = 0;
     do {
-      jitterDirX = Math.random() * 2 - 1;
-      jitterDirY = Math.random() * 2 - 1;
-      jitterDirZ = Math.random() * 2 - 1;
+      jitterDirX = world.rng.next() * 2 - 1;
+      jitterDirY = world.rng.next() * 2 - 1;
+      jitterDirZ = world.rng.next() * 2 - 1;
       jitterLen2 =
         jitterDirX * jitterDirX
         + jitterDirY * jitterDirY
