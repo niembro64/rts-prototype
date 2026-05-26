@@ -12,8 +12,7 @@
 #   (March 2023, also iOS Safari).
 # Older browsers fail at WASM compile time with a clear opcode error.
 # A future dual-build (simd + non-simd .wasm with runtime feature
-# detection) can extend reach to iOS Safari < 16.4 if needed — see
-# the Tier E plan in `issues.txt`.
+# detection) can extend reach to iOS Safari < 16.4 if needed.
 
 [target.wasm32-unknown-unknown]
 rustflags = ["-C", "target-feature=+simd128"]

@@ -38,7 +38,7 @@ export const VISION_CELL_SIZE = 512;
 export const EARSHOT_PAD = 600;
 
 /** Eye-height above transform.z assumed for vision sources when
- *  running the terrain LOS check (issues.txt FOW-04). Constant rather
+ *  running the terrain LOS check (FOW-04). Constant rather
  *  than per-entity-type because the existing transform.z already
  *  encodes ground elevation, so a unit standing on a hill gets the
  *  hill's lift "for free" — this just adds a body/turret-mount offset
@@ -60,7 +60,7 @@ type VisionSource = {
 };
 
 /** Three-way classification returned by classifyPointVisibility
- *  (issues.txt FOW-OPT-08). The audio serializer is the primary
+ *  (FOW-OPT-08). The audio serializer is the primary
  *  consumer: it routes IN_VISION events normally, gates IN_EARSHOT
  *  events through audioOnly forwarding, and drops OUT_OF_RANGE
  *  events (unless authored by the recipient). Numeric literals so
@@ -72,7 +72,7 @@ export type VisibilityClass = 0 | 1 | 2;
 
 /** Per-recipient visibility filter.
  *
- *  Two parallel source pools (issues.txt FOW-03):
+ *  Two parallel source pools (FOW-03):
  *    - fullSources: units and non-radar buildings. Grant FULL info
  *      (entity present in the main snapshot with all fields).
  *    - radarSources: radar buildings. Grant ONLY positional intel —
@@ -103,7 +103,7 @@ export class SnapshotVisibility {
    *  serializer treats allies symmetrically with the recipient:
    *  private fields, kill credit, the lot.
    *
-   *  Stored as a number bitmask (issues.txt FOW-OPT-10) — playerId p
+   *  Stored as a number bitmask (FOW-OPT-10) — playerId p
    *  maps to bit (p - 1), so PlayerIds 1..31 fit. isOwnedByRecipientOrAlly
    *  collapses to a single AND + compare per probe, vs Set.has()'s
    *  hashmap lookup. Same convention already used by
@@ -115,7 +115,7 @@ export class SnapshotVisibility {
    *  recipient" because a recipient can still exist with fog disabled. */
   readonly isFiltered: boolean;
 
-  /** Per-emit memo for isEntityVisible (issues.txt FOW-OPT-09). The
+  /** Per-emit memo for isEntityVisible (FOW-OPT-09). The
    *  same SnapshotVisibility instance is shared across every
    *  teammate via getOrBuildVisibility's per-emit cache (FOW-OPT-01);
    *  within a single emit, the entity serializer also revisits the
@@ -138,11 +138,11 @@ export class SnapshotVisibility {
    *  recipient + allies, rendered as a base-36 string. Two recipients
    *  on the same team share the same key (the mask is just "which
    *  playerIds count as ours"), so the per-emit visibility cache
-   *  (issues.txt FOW-OPT-01) keys off this. Undefined for
+   *  (FOW-OPT-01) keys off this. Undefined for
    *  admin/spectator visibilities (no recipient), which the caches
    *  use to skip caching entirely.
    *  Materialized once in the constructor so callers holding the
-   *  instance don't re-walk getAllies (issues.txt FOW-OPT-21). */
+   *  instance don't re-walk getAllies (FOW-OPT-21). */
   readonly teamMaskKey: string | undefined;
 
   private constructor(
@@ -325,7 +325,7 @@ export class SnapshotVisibility {
   }
 
   /** Combined vision/earshot test in a single bucket walk
-   *  (issues.txt FOW-OPT-08). The audio path used to call
+   *  (FOW-OPT-08). The audio path used to call
    *  isPointVisible AND isPointWithinEarshot in sequence — two
    *  spatial-hash lookups + two walks of the same cell bucket per
    *  fog-hidden event. This single helper returns IN_VISION as
@@ -450,7 +450,7 @@ export class SnapshotVisibility {
 
   /** Wire DTOs for the recipient's team-owned scan pulses, built in
    *  the same pass that seeds the spatial-hash sources
-   *  (issues.txt FOW-OPT-16). Shared across teammates via the
+   *  (FOW-OPT-16). Shared across teammates via the
    *  per-emit visibility cache so two teammates' snapshots ship the
    *  same array reference instead of each walking world.scanPulses
    *  independently to produce identical content. */
@@ -489,7 +489,7 @@ export class SnapshotVisibility {
   }
 
   /** Per-team scan-pulse DTO array built alongside the spatial hash
-   *  (issues.txt FOW-OPT-16). Filtered visibilities only — admin /
+   *  (FOW-OPT-16). Filtered visibilities only — admin /
    *  spectator paths fall back to a full re-walk in
    *  serializeScanPulses. Callers must not mutate the returned
    *  array; it's shared across teammates via the visibility cache. */
@@ -557,7 +557,7 @@ export function canEntityProvideDetectorVision(entity: Entity): boolean {
 }
 
 /** Per-emit cache used to share one SnapshotVisibility across every
- *  recipient on the same team (issues.txt FOW-OPT-01). The publisher
+ *  recipient on the same team (FOW-OPT-01). The publisher
  *  creates one of these at the top of each emit() and threads it into
  *  the per-listener serializer; the rebuild cost — iterating every
  *  team unit + building + scan pulse and inserting them into the
@@ -588,7 +588,7 @@ export function getOrBuildVisibility(
   // Compute the team mask once (one getAllies walk) and use it for
   // both the cache key AND the SnapshotVisibility's viewMask, so a
   // cache miss doesn't pay a second walk in the constructor
-  // (issues.txt FOW-OPT-21).
+  // (FOW-OPT-21).
   let mask = 1 << (recipientPlayerId - 1);
   for (const allyId of world.getAllies(recipientPlayerId)) {
     mask |= 1 << (allyId - 1);
@@ -603,7 +603,7 @@ export function getOrBuildVisibility(
 
 /** Reusable buffer for the admin / spectator path only — filtered
  *  visibilities read from SnapshotVisibility.cachedScanPulseDtos
- *  (issues.txt FOW-OPT-16) which is built once per team during
+ *  (FOW-OPT-16) which is built once per team during
  *  forRecipient's source-merge pass. */
 const _scanPulseBuf: NetworkServerSnapshotScanPulse[] = [];
 

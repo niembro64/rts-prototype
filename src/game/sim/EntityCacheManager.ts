@@ -62,7 +62,7 @@ export class EntityCacheManager {
   private cachedUnitsByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedBuildingsByPlayer: Map<PlayerId, Entity[]> = new Map();
   /** Entities (unit or building) that carry a `detector` component,
-   *  grouped by owning player (issues.txt FOW-OPT-19). cloak-vs-detect
+   *  grouped by owning player (FOW-OPT-19). cloak-vs-detect
    *  checks in targeting + damage routing call canPlayerObserveCloakedEntity
    *  per candidate per victim — without this they walked every owned unit
    *  AND every owned building just to filter out the ~1% with a detector

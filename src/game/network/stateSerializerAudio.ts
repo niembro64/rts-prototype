@@ -26,7 +26,7 @@ export type SerializeAudioEventsOptions = {
 };
 
 /** Per-listener pool of pooled NetworkServerSnapshotSimEvent objects
- *  plus the snapshot's outbound buf (issues.txt FOW-OPT-07). Keyed by
+ *  plus the snapshot's outbound buf (FOW-OPT-07). Keyed by
  *  the listener's tracking key so the returned array stays stable for
  *  any consumer that holds it across the publisher's listener loop;
  *  the shared snapshotPool.ts helper owns the get / advance / reset

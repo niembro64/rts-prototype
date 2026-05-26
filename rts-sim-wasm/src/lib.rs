@@ -5,9 +5,9 @@
 // Same numerical kernels run on both sides so client prediction
 // is bit-identical to server authoritative motion.
 //
-// Phase 1 landed the scaffolding. Phase 2 (this commit) ports
-// the shared unit-motion integrator. Subsequent phases per
-// issues.txt:
+// Phase 1 landed the scaffolding. Phase 2 ported the shared
+// unit-motion integrator. Subsequent phases move the rest of the
+// numerical hot path into this crate:
 //   3  PhysicsEngine3D core    — Body3D SoA + resolvers + sleep
 //   4  quaternion math kernel  — used by hover orientation spring
 //   5  projectile motion       — ballistic + homing + beam paths

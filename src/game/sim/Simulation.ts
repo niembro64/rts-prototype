@@ -344,7 +344,7 @@ export class Simulation {
     const tick = this.world.getTick();
 
     // Prune temporary vision pulses whose duration has elapsed
-    // (issues.txt FOW-14). Done before commands so a new scan command
+    // (FOW-14). Done before commands so a new scan command
     // this tick lands in a clean list.
     this.world.pruneExpiredScanPulses(tick);
 

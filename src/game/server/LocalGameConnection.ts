@@ -37,7 +37,7 @@ export class LocalGameConnection implements GameConnection {
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
    *  commandPlayerId so a true spectator can view-as-N without being
-   *  able to issue orders as N (issues.txt FOW-07). */
+   *  able to issue orders as N (FOW-07). */
   private filterPlayerId: PlayerId | undefined = undefined;
 
   constructor(
@@ -75,7 +75,7 @@ export class LocalGameConnection implements GameConnection {
    *  setSpectatorTarget(N) whenever the user picks a player to follow
    *  — the server filters as if the spectator were N, but sendCommand
    *  still reaches the server with no attribution so the spectator
-   *  cannot order N's units. (issues.txt FOW-07) */
+   *  cannot order N's units. (FOW-07) */
   setSpectatorTarget(playerId: PlayerId | undefined): void {
     if (this.filterPlayerId === playerId) return;
     this.rebindFilter(playerId);

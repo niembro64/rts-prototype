@@ -50,7 +50,7 @@ export class AudioManager {
   public sfxVolume = AUDIO.sfxVolume;
   public muted = true;
 
-  /** Per-category mute gate (issues.txt OTHER-1). Each category maps
+  /** Per-category mute gate (OTHER-1). Each category maps
    *  1:1 to one of the SOUNDS: buttons in the client control bar; when
    *  the button is OFF the matching play method short-circuits before
    *  building any audio nodes. The 'music' category never plays through
@@ -294,7 +294,7 @@ export class AudioManager {
   }
 
   /** Enable / disable a SOUNDS: category from the client control bar
-   *  (issues.txt OTHER-1). Disabling 'beam' or 'field' also stops any
+   *  (OTHER-1). Disabling 'beam' or 'field' also stops any
    *  continuous sound currently playing in that category — without this
    *  a beam that started before the user clicked OFF would keep
    *  looping until its laserStop event eventually arrived. The 'music'

@@ -308,7 +308,7 @@ export function collectKillsAndDeathContexts(
 const _attackAlertSeenVictims = new Set<PlayerId>();
 
 /** Emit one 'attackAlert' SimEvent per (attacker, victim playerId)
- *  pair touched by this damage application (issues.txt FOW-08-followup
+ *  pair touched by this damage application (FOW-08-followup
  *  remainder). The audio serializer routes these strictly by
  *  victimPlayerId — they never leak the attacker's position to a
  *  recipient that wasn't hit. The visual is what tells the player

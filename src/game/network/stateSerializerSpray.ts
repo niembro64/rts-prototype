@@ -11,7 +11,7 @@ import {
 } from './snapshotPool';
 
 /** Per-listener pool of pooled NetworkServerSnapshotSprayTarget DTOs
- *  plus the serializer's outbound buf (issues.txt FOW-OPT-20, mirrors
+ *  plus the serializer's outbound buf (FOW-OPT-20, mirrors
  *  FOW-OPT-07 for audio). The previous module-global pool shared one
  *  buf array across every listener, so the publisher's per-team
  *  output-caching could not safely retain references to the slots:

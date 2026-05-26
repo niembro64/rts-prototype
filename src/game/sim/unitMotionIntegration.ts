@@ -62,7 +62,7 @@ export function advanceUnitMotionPhysicsMutable(
 ): void {
   // Pre-sample ground state JS-side so the WASM kernel never
   // re-enters JS during a step (boundary cost discipline — see
-  // issues.txt Phase 2 notes). The normal is expensive (gradient
+  // Phase 2 notes). The normal is expensive (gradient
   // sample with water exclusion); gate it on the penetration
   // contact check so airborne bodies don't pay for it.
   const groundZ = getGroundZ(motion.x, motion.y);

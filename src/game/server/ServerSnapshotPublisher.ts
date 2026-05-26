@@ -180,7 +180,7 @@ export class ServerSnapshotPublisher {
     );
 
     // Share one SnapshotVisibility per team across the listener loop
-    // (issues.txt FOW-OPT-01). Two teammates merge the same set of
+    // (FOW-OPT-01). Two teammates merge the same set of
     // ally vision sources into the same spatial hash; without this
     // we'd rebuild the same structure once per listener.
     const visibilityCache = createSnapshotVisibilityCache();

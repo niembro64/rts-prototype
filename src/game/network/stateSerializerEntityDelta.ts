@@ -107,7 +107,7 @@ export type DeltaTrackingState = {
    *  snapshot instead of being drained from WorldState and lost. */
   deferredDetailFields: Map<EntityId, number>;
   /** Per-recipient last-seen positions for enemy buildings the client
-   *  has as ghosts (issues.txt FOW-02b). Populated when a building
+   *  has as ghosts (FOW-02b). Populated when a building
    *  exits the recipient's vision or dies out-of-vision; cleared when
    *  the recipient's vision later confirms the position (either the
    *  building is still there → normal delta resumes, or it's gone →

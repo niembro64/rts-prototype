@@ -26,7 +26,7 @@ export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 6;
 export type MinimapSnapshotWireSource = Float64WireRows;
 
 /** Per-listener pool of NetworkServerSnapshotMinimapEntity DTOs
- *  (issues.txt FOW-OPT-20, mirrors FOW-OPT-07 for audio). The previous
+ *  (FOW-OPT-20, mirrors FOW-OPT-07 for audio). The previous
  *  module-global pool meant every listener's serialize call reset the
  *  same buf, so the publisher couldn't safely cache the result and
  *  hand it to multiple teammates — the next listener's reset would

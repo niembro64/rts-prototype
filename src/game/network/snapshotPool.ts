@@ -1,5 +1,5 @@
 // Per-key DTO pool helper shared by the audio / spray / minimap
-// snapshot serializers (issues.txt FOW-OPT-07 + FOW-OPT-20).
+// snapshot serializers (FOW-OPT-07 + FOW-OPT-20).
 //
 // Each serializer maintains a Map<trackingKey, SnapshotPool<T>>: one
 // pool per snapshot listener. The pool grows lazily as the listener

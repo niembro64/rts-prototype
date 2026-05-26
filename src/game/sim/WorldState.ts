@@ -115,7 +115,7 @@ export class WorldState {
   // Number of players in the game (for unit cap calculation)
   public playerCount: number = 2;
 
-  /** Per-player alliance map (issues.txt FOW-06). The set holds the
+  /** Per-player alliance map (FOW-06). The set holds the
    *  OTHER players considered allies — a player is implicitly allied
    *  with themselves and that's never listed here. FFA: every set is
    *  empty (or absent), which is the default for a fresh world. Team
@@ -127,7 +127,7 @@ export class WorldState {
    *  never mutated mid-game (alliances are not currently switchable). */
   public alliesByPlayer: Map<PlayerId, ReadonlySet<PlayerId>> = new Map();
 
-  /** Active temporary vision pulses (issues.txt FOW-14 — Starcraft
+  /** Active temporary vision pulses (FOW-14 — Starcraft
    *  scanner sweep / SupCom recon drone). Each pulse contributes a
    *  full-vision source to its owner's team for the ticks between
    *  spawn and expiresAtTick. Simulation prunes expired entries at
@@ -545,7 +545,7 @@ export class WorldState {
   }
 
   /** Entities (unit + building) owned by `playerId` that carry a
-   *  detector component (issues.txt FOW-OPT-19). Reusable array —
+   *  detector component (FOW-OPT-19). Reusable array —
    *  DO NOT STORE the reference. Offline / construction-shell entries
    *  pass through; callers gate on getEntityDetectorRadius which
    *  reads the live entity state. */

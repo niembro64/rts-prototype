@@ -175,7 +175,7 @@ export type SerializeGameStateOptions = {
   emitEntityDetailFields: boolean | undefined;
   /**
    * When the publisher has already built a team-shared output for this
-   * recipient's team (issues.txt FOW-OPT-20), pass the precomputed
+   * recipient's team (FOW-OPT-20), pass the precomputed
    * value through the matching `*Override` and the per-piece
    * serializer call is skipped. Wrapping is intentional so a
    * present-but-undefined value (no audio events, empty spray array,
@@ -217,7 +217,7 @@ export type SerializerMinimapOverride = {
 };
 
 /** Entity acceptance gate for the per-recipient snapshot pass
- *  (issues.txt FOW-OPT-13 — hoisted from a per-call closure to avoid
+ *  (FOW-OPT-13 — hoisted from a per-call closure to avoid
  *  allocating a fresh arrow function per recipient per snapshot). */
 function acceptsSerializedEntity(
   entity: Entity,
@@ -251,7 +251,7 @@ function shouldDeferForeignHighCountEntityDelta(
 }
 
 /** Forget an entity from delta tracking, optionally emitting a removal
- *  on the wire (issues.txt FOW-OPT-13 — hoisted closure). The removal
+ *  on the wire (FOW-OPT-13 — hoisted closure). The removal
  *  is appended to the module-scope _removedIdsBuf which the active
  *  serializeGameState call drains at the end. */
 function forgetTrackedEntity(
@@ -274,7 +274,7 @@ function forgetTrackedEntity(
 }
 
 /** Apply the world's per-tick removal records to the recipient's
- *  delta-tracking bookkeeping (issues.txt FOW-OPT-13 — hoisted
+ *  delta-tracking bookkeeping (FOW-OPT-13 — hoisted
  *  closure). For each removal: if the recipient could see it,
  *  emit + forget. Otherwise stash the dead position so the FOW-02b
  *  cleanup pass can drop the ghost when the recipient re-scouts. */
@@ -299,13 +299,13 @@ function processRemovedEntities(
     }
     if (record.type === 'building') {
       // Building died out of the recipient's vision but the client
-      // has it as a ghost (issues.txt FOW-02b). Stash the death
+      // has it as a ghost (FOW-02b). Stash the death
       // position so the cleanup pass below can emit a removal once
       // the player's vision later confirms the building is gone.
       tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
       tracking.deferredDetailFields.delete(record.id);
     } else {
-      // Unit died out of the recipient's vision (issues.txt FOW-17).
+      // Unit died out of the recipient's vision (FOW-17).
       // Mobile units don't persist as ghosts — without an emitted
       // removal here the stale entity stays in prevEntityIds and on
       // the client at its last-seen position forever. Emit a
@@ -396,7 +396,7 @@ export function serializeGameState(
           // Re-entered vision: any ghost-position record from a
           // prior out-of-sight stretch is now stale. The dirty loop
           // below will resume normal delta updates against the
-          // existing prevStates baseline (issues.txt FOW-02).
+          // existing prevStates baseline (FOW-02).
           tracking.ghostedBuildingPositions.delete(id);
           continue;
         }

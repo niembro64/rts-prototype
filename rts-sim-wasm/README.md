@@ -4,8 +4,7 @@ Bespoke RTS simulation core. Compiled to WebAssembly and loaded by
 **both** the authoritative server tick and the client prediction
 stepper, so client prediction is bit-identical to server motion.
 
-The phase-by-phase migration log lives in `issues.txt` at the repo
-root. The "what to move and why" principle is in
+The "what to move and why" principle is in
 `docs/wasm-migration-principle.md`.
 
 ## Building
@@ -76,9 +75,8 @@ Required browser versions:
 - Safari 16.4+ / iOS Safari 16.4+ (March 2023)
 
 Older browsers fail at WASM compile time with a clear opcode error.
-If iOS Safari < 16.4 needs to be a target, see the deferred Tier E
-follow-up in `issues.txt` for a dual-build (simd + non-simd) plan
-with runtime feature detection.
+If iOS Safari < 16.4 needs to be a target, the deferred plan is a
+dual-build (simd + non-simd) with runtime feature detection.
 
 ## Architecture invariants
 

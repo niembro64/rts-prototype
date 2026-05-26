@@ -100,7 +100,7 @@ export type GameConnection = {
    *  attribution stays at whatever the connection was constructed
    *  with. A spectator client constructed with playerId=undefined
    *  uses this to follow a specific player's POV without being able
-   *  to issue orders as that player (issues.txt FOW-07). */
+   *  to issue orders as that player (FOW-07). */
   setSpectatorTarget?(playerId: PlayerId | undefined): void;
 };
 

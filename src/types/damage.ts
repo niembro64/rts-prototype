@@ -92,7 +92,7 @@ export type DamageResult = {
   recoil?: RecoilInfo;
   deathContexts: Map<EntityId, DeathContext>;
   /** Per-kill, the playerId of the entity that dealt the killing blow.
-   *  Drives the kill-credit channel (issues.txt FOW-17): the death
+   *  Drives the kill-credit channel (FOW-17): the death
    *  event flows to this player's snapshot even when they don't have
    *  vision of the corpse, so the killer learns "I got it" rather
    *  than the target silently vanishing. Undefined when the killer's
