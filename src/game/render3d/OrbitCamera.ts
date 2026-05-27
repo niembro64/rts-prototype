@@ -597,6 +597,13 @@ export class OrbitCamera {
     toDistance: number,
   ): number {
     if (!this.getTerrainHeight || this.minTerrainClearance <= 0) return 1;
+    // Zoom-OUT never traps. Moving the camera farther from the orbit
+    // target can only put more space between it and the terrain, and
+    // apply()'s render-time clearance + ground floor lift the camera
+    // above any mountain that happens to sit at the destination XZ.
+    // Skip the clip-progress check entirely so the wheel doesn't feel
+    // stuck when a peak crosses the destination orbital shell.
+    if (toDistance >= fromDistance) return 1;
     if (this.isCameraStateTerrainClear(toTargetX, toTargetY, toTargetZ, toDistance)) return 1;
 
     // If the current destination is already invalid, do not trap the
@@ -978,7 +985,21 @@ export class OrbitCamera {
       this.pitch,
       this._cameraPosTmp,
     );
-    if (this.resolveTerrainClearance(pos)) {
+    let resolved = this.resolveTerrainClearance(pos);
+    // Hard vertical floor — guarantees the rendered camera sits at
+    // least minTerrainClearance above the terrain directly under it,
+    // regardless of what the normal-aligned push above did. Catches
+    // the cases the 9-sample clearance disk misses: peaks smaller
+    // than sampleRadius, peaks sitting between sample points, and
+    // any state where the 3-iteration push didn't fully resolve.
+    if (this.getTerrainHeight && this.minTerrainClearance > 0) {
+      const floorY = this.getTerrainHeight(pos.x, pos.z) + this.minTerrainClearance;
+      if (pos.y < floorY) {
+        pos.y = floorY;
+        resolved = true;
+      }
+    }
+    if (resolved) {
       const offX = pos.x - this.target.x;
       const offY = pos.y - this.target.y;
       const offZ = pos.z - this.target.z;
