@@ -123,7 +123,7 @@
         }
       },
       {
-        "turretId": "forceTurret",
+        "turretId": "turretForceFieldSphere",
         "mount": {
           "x": 0,
           "y": 0,
@@ -489,7 +489,7 @@
         }
       },
       {
-        "turretId": "forceTurret",
+        "turretId": "turretForceFieldSphere",
         "mount": {
           "x": 0.3,
           "y": 0,
@@ -657,7 +657,7 @@
     },
     "turrets": [
       {
-        "turretId": "mirrorTurret",
+        "turretId": "turretForceFieldPanel",
         "mount": {
           "x": 0,
           "y": 0,

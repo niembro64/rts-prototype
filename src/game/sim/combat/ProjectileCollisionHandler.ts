@@ -231,9 +231,9 @@ function pushReflectorImpactEvent(
 ): void {
   audioEvents.push({
     type: 'forceFieldImpact',
-    turretId: 'forceTurret',
+    turretId: 'turretForceFieldSphere',
     sourceType: 'turret',
-    sourceKey: hitForceField ? 'forceTurret' : 'mirrorTurret',
+    sourceKey: hitForceField ? 'turretForceFieldSphere' : 'turretForceFieldPanel',
     pos: { x, y, z },
     playerId,
     entityId: projectileEntityId,

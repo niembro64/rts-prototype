@@ -492,8 +492,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "mirrorTurret": {
-    "id": "mirrorTurret",
+  "turretForceFieldPanel": {
+    "id": "turretForceFieldPanel",
     "projectileId": "beamShot",
     "range": 300,
     "cooldown": 0,
@@ -719,8 +719,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "forceTurret": {
-    "id": "forceTurret",
+  "turretForceFieldSphere": {
+    "id": "turretForceFieldSphere",
     "projectileId": null,
     "range": 540,
     "cooldown": 0,
@@ -771,7 +771,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.forceTurret"
+        "$audio": "event.fire.turretForceFieldSphere"
       }
     },
     "verticalLauncher": false,

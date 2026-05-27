@@ -22,7 +22,7 @@
       "miniBeam": { "synth": "laser-zap", "volume": 0.14, "playSpeed": 1 },
       "beamTurret": { "synth": "laser-zap", "volume": 0.2, "playSpeed": 0.7777777777777778 },
       "megaBeamTurret": { "synth": "laser-zap", "volume": 0.35, "playSpeed": 0.2222222222222222 },
-      "forceTurret": { "synth": "force-field", "volume": 0.5, "playSpeed": 1.0 },
+      "turretForceFieldSphere": { "synth": "force-field", "volume": 0.5, "playSpeed": 1.0 },
       "dgunTurret": { "synth": "cannon", "volume": 0.2, "playSpeed": 1.0 },
       "hippoGatlingTurret": { "synth": "burst-rifle", "volume": 0.3, "playSpeed": 0.4 },
       "gatlingMortarTurret": { "synth": "cannon", "volume": 0.3, "playSpeed": 0.7 }
