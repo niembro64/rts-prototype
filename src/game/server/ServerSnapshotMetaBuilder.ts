@@ -14,7 +14,7 @@ export type ServerSnapshotMetaInput = {
   allowedUnits: Iterable<string> | undefined;
   maxUnits: number | undefined;
   unitCount: number | undefined;
-  mirrorsEnabled: boolean | undefined;
+  turretForceFieldPanelsEnabled: boolean | undefined;
   forceFieldsEnabled: boolean | undefined;
   forceFieldsObstructSight: boolean | undefined;
   forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
@@ -66,7 +66,7 @@ export class ServerSnapshotMetaBuilder {
         max: input.maxUnits,
         count: input.unitCount,
       },
-      mirrorsEnabled: input.mirrorsEnabled,
+      turretForceFieldPanelsEnabled: input.turretForceFieldPanelsEnabled,
       forceFieldsEnabled: input.forceFieldsEnabled,
       forceFieldsObstructSight: input.forceFieldsObstructSight,
       forceFieldReflectionMode: input.forceFieldReflectionMode,

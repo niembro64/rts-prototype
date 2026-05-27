@@ -53,7 +53,7 @@ export class EntityCacheManager {
   /** Units with mirror panels (e.g. Loris). Used by the per-projectile
    *  panel-impact check so it doesn't scan every unit looking for a
    *  rare attribute. */
-  private cachedMirrorUnits: Entity[] = [];
+  private cachedForceFieldPanelUnits: Entity[] = [];
   private cachedAll: Entity[] = [];
   /** Units + buildings in one list, no projectiles. UI hot loops
    *  (minimap, name labels) want both kinds with one iteration; without
@@ -100,7 +100,7 @@ export class EntityCacheManager {
     this.cachedBuilderUnits.length = 0;
     this.cachedArmedEntities.length = 0;
     this.cachedBeamUnits.length = 0;
-    this.cachedMirrorUnits.length = 0;
+    this.cachedForceFieldPanelUnits.length = 0;
     this.cachedAll.length = 0;
     this.cachedUnitsAndBuildings.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
@@ -159,8 +159,8 @@ export class EntityCacheManager {
           ) {
             this.cachedDamagedUnits.push(entity);
           }
-          if (entity.unit !== null && entity.unit.mirrorPanels.length > 0) {
-            this.cachedMirrorUnits.push(entity);
+          if (entity.unit !== null && entity.unit.forceFieldPanels.length > 0) {
+            this.cachedForceFieldPanelUnits.push(entity);
           }
           if (entity.commander) this.cachedCommanderUnits.push(entity);
           if (entity.builder) this.cachedBuilderUnits.push(entity);
@@ -346,8 +346,8 @@ export class EntityCacheManager {
     return this.cachedBeamUnits;
   }
 
-  getMirrorUnits(): Entity[] {
-    return this.cachedMirrorUnits;
+  getForceFieldPanelUnits(): Entity[] {
+    return this.cachedForceFieldPanelUnits;
   }
 
   getAll(): Entity[] {

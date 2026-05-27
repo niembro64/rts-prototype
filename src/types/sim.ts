@@ -141,10 +141,10 @@ export type Detector = {
 // angle    — panel-yaw offset relative to mirror turret yaw (zero today;
 //            reserved for future multi-panel mirror configurations).
 // baseY / topY — world-Z (above the unit's ground footprint) defining the
-//                panel's vertical span. Both are derived in mirrorPanelCache
+//                panel's vertical span. Both are derived in forceFieldPanelCache
 //                from `mount.z * unitBodyRadius ± halfSide`, so their
 //                midpoint is the rigid-arm pivot's Z.
-export type CachedMirrorPanel = {
+export type CachedForceFieldPanel = {
   halfWidth: number;
   offsetX: number;
   offsetY: number;
@@ -209,8 +209,8 @@ export type Unit = {
   /** Runtime spring state for the visible chassis relative to the
    *  locomotion anchor. Null means rigid legacy attachment. */
   suspension: UnitSuspensionState | null;
-  mirrorPanels: CachedMirrorPanel[];
-  mirrorBoundRadius: number;
+  forceFieldPanels: CachedForceFieldPanel[];
+  forceFieldBoundRadius: number;
   /** Per-unit smoothed surface normal at the unit's footprint. The
    *  terrain mesh is piecewise-flat at the triangle level, so the raw
    *  normal SNAPS each time the unit crosses a triangle edge. The sim

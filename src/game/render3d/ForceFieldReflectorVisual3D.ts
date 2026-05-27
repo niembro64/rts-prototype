@@ -12,14 +12,14 @@ export const MIRROR_REFLECTOR_PANEL_OPACITY = Math.min(
   FORCE_FIELD_BARRIER.alpha * FORCE_FIELD_OPACITY_BOOST,
 );
 
-export function resolveMirrorReflectorPanelColor(entity: Entity): number {
+export function resolveForceFieldReflectorPanelColor(entity: Entity): number {
   if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   return FORCE_FIELD_VISUAL.colorMode === 'player' && entity.ownership
     ? getPlayerPrimaryColor(entity.ownership.playerId)
     : FORCE_FIELD_VISUAL.fallbackColor;
 }
 
-export function createMirrorReflectorPanelMaterial(): THREE.MeshBasicMaterial {
+export function createForceFieldReflectorPanelMaterial(): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color: MIRROR_REFLECTOR_PANEL_COLOR,
     transparent: true,

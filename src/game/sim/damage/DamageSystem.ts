@@ -22,7 +22,7 @@ import {
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice, getTransformCosSin } from '../../math';
-import { findClosestPanelHit } from '../combat/MirrorPanelHit';
+import { findClosestPanelHit } from '../combat/ForceFieldPanelHit';
 import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import {
@@ -133,7 +133,7 @@ const _segHit = {
   reflectorKind: undefined as BeamReflectorKind | undefined,
   reflectorPlayerId: undefined as PlayerId | undefined,
 };
-const _mirrorPanelPivot = { x: 0, y: 0, z: 0 };
+const _forceFieldPanelPivot = { x: 0, y: 0, z: 0 };
 
 const BEAM_GROUND_HIT_STEPS = 12;
 const BEAM_GROUND_HIT_BISECT_STEPS = 6;
@@ -521,10 +521,10 @@ export class DamageSystem {
       // the unit's bounding radius.
       const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
       const crossSq = (ux * dy - uy * dx);
-      const panels = unit.unit.mirrorPanels;
-      const mirrorsActive = this.world.mirrorsEnabled && panels.length > 0;
+      const panels = unit.unit.forceFieldPanels;
+      const mirrorsActive = this.world.turretForceFieldPanelsEnabled && panels.length > 0;
       const boundR = mirrorsActive
-        ? Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot) + lineWidth
+        ? Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.shot) + lineWidth
         : unit.unit.radius.shot + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
@@ -533,10 +533,10 @@ export class DamageSystem {
         // (yaw + pitch from the mirror turret rotation/pitch).
         const unitCombat = unit.combat;
         const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
-        const mirrorRot = unitTurrets && unitTurrets.length > 0
+        const forceFieldPanelRot = unitTurrets && unitTurrets.length > 0
           ? unitTurrets[0].rotation
           : unit.transform.rotation;
-        const mirrorPitch = unitTurrets && unitTurrets.length > 0
+        const forceFieldPanelPitch = unitTurrets && unitTurrets.length > 0
           ? unitTurrets[0].pitch
           : 0;
         const unitGroundZ = getUnitGroundZ(unit);
@@ -550,12 +550,12 @@ export class DamageSystem {
                 unitGroundZ,
                 surfaceN: unit.unit.surfaceNormal,
               },
-              _mirrorPanelPivot,
+              _forceFieldPanelPivot,
             )
           : undefined;
         const panelExclude = isExcludedEntity ? excludePanelIndex : -1;
         const hit = findClosestPanelHit(
-          panels, mirrorRot, mirrorPitch,
+          panels, forceFieldPanelRot, forceFieldPanelPitch,
           unit.transform.x, unit.transform.y, unitGroundZ,
           startX, startY, startZ, endX, endY, endZ,
           panelExclude,

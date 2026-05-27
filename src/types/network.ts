@@ -509,7 +509,7 @@ export type NetworkServerSnapshotMeta = {
     max: number | undefined;
     count: number | undefined;
   };
-  mirrorsEnabled: boolean | undefined;
+  turretForceFieldPanelsEnabled: boolean | undefined;
   forceFieldsEnabled: boolean | undefined;
   forceFieldsObstructSight: boolean | undefined;
   forceFieldReflectionMode: ForceFieldReflectionMode | undefined;

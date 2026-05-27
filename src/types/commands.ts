@@ -39,8 +39,8 @@ export type CommandType =
   | 'setSendGridInfo'
   | 'setBackgroundUnitType'
   | 'setMaxTotalUnits'
-  | 'setMirrorsEnabled'
-  | 'setForceFieldsEnabled'
+  | 'setTurretForceFieldPanelsEnabled'
+  | 'setTurretForceFieldSpheresEnabled'
   | 'setForceFieldsObstructSight'
   | 'setForceFieldReflectionMode'
   | 'setFogOfWarEnabled'
@@ -306,13 +306,13 @@ export type SetMaxTotalUnitsCommand = BaseCommand & {
   maxTotalUnits: number;
 };
 
-export type SetMirrorsEnabledCommand = BaseCommand & {
-  type: 'setMirrorsEnabled';
+export type SetTurretForceFieldPanelsEnabledCommand = BaseCommand & {
+  type: 'setTurretForceFieldPanelsEnabled';
   enabled: boolean;
 };
 
-export type SetForceFieldsEnabledCommand = BaseCommand & {
-  type: 'setForceFieldsEnabled';
+export type SetTurretForceFieldSpheresEnabledCommand = BaseCommand & {
+  type: 'setTurretForceFieldSpheresEnabled';
   enabled: boolean;
 };
 
@@ -370,8 +370,8 @@ export type Command =
   | SetSendGridInfoCommand
   | SetBackgroundUnitTypeCommand
   | SetMaxTotalUnitsCommand
-  | SetMirrorsEnabledCommand
-  | SetForceFieldsEnabledCommand
+  | SetTurretForceFieldPanelsEnabledCommand
+  | SetTurretForceFieldSpheresEnabledCommand
   | SetForceFieldsObstructSightCommand
   | SetForceFieldReflectionModeCommand
   | SetFogOfWarEnabledCommand

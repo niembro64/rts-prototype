@@ -12,7 +12,7 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { pickTargetAimTurret } from './mirrorTargetPriority';
+import { pickTargetAimTurret } from './forceFieldTargetPriority';
 import {
   readCombatTargetingTurretMountInto,
   readCombatTargetingTurretMountKinematicsInto,

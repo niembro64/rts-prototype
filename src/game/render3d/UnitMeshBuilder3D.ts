@@ -15,7 +15,7 @@ import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { getBodyGeom } from './BodyShape3D';
 import type { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { buildMirrorMesh3D } from './MirrorMesh3D';
+import { buildForceFieldPanelMesh3D } from './ForceFieldPanelMesh3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
@@ -305,24 +305,24 @@ export class UnitMeshBuilder3D {
     ownerId: PlayerId | undefined,
     useDetailedUnitInstancing: boolean,
   ): void {
-    const mirrorPanels = entity.unit?.mirrorPanels;
-    if (!mirrorPanels || mirrorPanels.length === 0 || !entity.unit) return;
+    const forceFieldPanels = entity.unit?.forceFieldPanels;
+    if (!forceFieldPanels || forceFieldPanels.length === 0 || !entity.unit) return;
 
-    const panelHalfSide = mirrorPanels[0].halfWidth;
-    const panelArmLength = mirrorPanels[0].offsetX;
-    const mirrorTurret = turrets.find((turret) => turret.config.passive);
-    const pivotLocalX = mirrorTurret?.mount.x ?? 0;
-    const pivotLocalY = (mirrorTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
+    const panelHalfSide = forceFieldPanels[0].halfWidth;
+    const panelArmLength = forceFieldPanels[0].offsetX;
+    const forceFieldPanelTurret = turrets.find((turret) => turret.config.passive);
+    const pivotLocalX = forceFieldPanelTurret?.mount.x ?? 0;
+    const pivotLocalY = (forceFieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(entity.unit))
       - liftGroup.position.y;
-    const pivotLocalZ = mirrorTurret?.mount.y ?? 0;
-    const panelCount = mirrorPanels.length;
+    const pivotLocalZ = forceFieldPanelTurret?.mount.y ?? 0;
+    const panelCount = forceFieldPanels.length;
     const allocedPanelSlots = useDetailedUnitInstancing && panelCount > 0
-      ? this.unitDetailInstances.allocMirrorPanelSlots(panelCount)
+      ? this.unitDetailInstances.allocForceFieldPanelSlots(panelCount)
       : null;
     const allMirrorAlloc = allocedPanelSlots !== null;
-    mesh.mirrors = buildMirrorMesh3D(
+    mesh.mirrors = buildForceFieldPanelMesh3D(
       liftGroup,
-      mirrorPanels,
+      forceFieldPanels,
       pivotLocalX,
       pivotLocalY,
       pivotLocalZ,

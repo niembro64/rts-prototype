@@ -124,8 +124,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
         : null;
     case 'setMaxTotalUnits':
       return sanitizeMaxTotalUnitsCommand(command, tick);
-    case 'setMirrorsEnabled':
-    case 'setForceFieldsEnabled':
+    case 'setTurretForceFieldPanelsEnabled':
+    case 'setTurretForceFieldSpheresEnabled':
       return typeof command.enabled === 'boolean'
         ? { ...command, tick, enabled: true }
         : null;

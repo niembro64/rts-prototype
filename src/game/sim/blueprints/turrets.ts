@@ -26,7 +26,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'spread',
   'burst',
   'forceField',
-  'mirrorPanels',
+  'forceFieldPanels',
   'audio',
   'verticalLauncher',
   'idlePitch',

@@ -86,8 +86,8 @@ function flushTargetingBatch(
   tick: number,
   dtMs: number,
   maxTurrets: number,
-  mirrorsEnabledFlag: number,
-  forceFieldsEnabledFlag: number,
+  turretForceFieldPanelsEnabledFlag: number,
+  turretForceFieldSpheresEnabledFlag: number,
   forceMaterialSightObstructionActiveFlag: number,
 ): void {
   if (count === 0) return;
@@ -98,8 +98,8 @@ function flushTargetingBatch(
     sourceIds,
     tick,
     dtMs,
-    mirrorsEnabledFlag,
-    forceFieldsEnabledFlag,
+    turretForceFieldPanelsEnabledFlag,
+    turretForceFieldSpheresEnabledFlag,
     forceMaterialSightObstructionActiveFlag,
     COMBAT_LOS_TERRAIN_STEP_LEN,
     COMBAT_LOS_ENTITY_QUERY_WIDTH,
@@ -163,8 +163,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const sourceEntities = getCombatTargetingSourceEntities();
   const targeting = getTargetingKernel();
   const maxTurrets = targeting.maxTurretsPerEntity();
-  const mirrorsEnabledFlag = world.mirrorsEnabled ? 1 : 0;
-  const forceFieldsEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
+  const turretForceFieldPanelsEnabledFlag = world.turretForceFieldPanelsEnabled ? 1 : 0;
+  const turretForceFieldSpheresEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
   // Force-material gate fast-path. Sphere boundaries and mirror-panel
   // blockers are stamped into Rust slabs before the FSM. This flag
   // lets common ticks skip blocker walks when OBSTRUCT SIGHT is off or
@@ -172,7 +172,7 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const forceMaterialSightObstructionActive = world.forceFieldsObstructSight
     && (
       getActiveForceFields().length > 0 ||
-      (world.mirrorsEnabled && world.getMirrorUnits().length > 0)
+      (world.turretForceFieldPanelsEnabled && world.getForceFieldPanelUnits().length > 0)
     );
   const forceMaterialSightObstructionActiveFlag =
     forceMaterialSightObstructionActive ? 1 : 0;
@@ -186,8 +186,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
     tick,
     dtMs,
     maxTurrets,
-    mirrorsEnabledFlag,
-    forceFieldsEnabledFlag,
+    turretForceFieldPanelsEnabledFlag,
+    turretForceFieldSpheresEnabledFlag,
     forceMaterialSightObstructionActiveFlag,
   );
   return _activeCombatUnits;

@@ -534,7 +534,7 @@ export interface SimWasm {
     endZ: Float64Array,
     projectileRadius: Float64Array,
     excludeEntityId: Int32Array,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldReflectionMode: number,
     mirrorQueryPad: number,
@@ -728,7 +728,7 @@ export interface SimWasm {
   /** AIM-08.5 — Mirror-panel input slab. Two parallel pools (per-unit
    *  pose + per-panel geometry) rebuilt each tick so the targeting
    *  gate can compute mirror-panel sightline clearance in Rust. */
-  readonly mirrorPanelPool: MirrorPanelPoolApi;
+  readonly forceFieldPanelPool: ForceFieldPanelPoolApi;
   /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
    *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
    *  no consumer reads from it yet. */
@@ -1205,7 +1205,7 @@ export interface CombatTargetingApi {
     entitySlot: number,
     currentTick: number,
     dtMs: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
   ) => void;
   /** AIM-08.5 — batch Pass 0 mount kinematics over a world-order run
@@ -1215,7 +1215,7 @@ export interface CombatTargetingApi {
     entitySlots: Uint32Array,
     currentTick: number,
     dtMs: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
   ) => void;
   /** AIM-08.5 — slab-backed cloak-observability check. Returns 1 if
@@ -1308,7 +1308,7 @@ export interface CombatTargetingApi {
    *  needs a batched enemy query. */
   readonly prepareAutoScan: (
     entitySlot: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
@@ -1320,23 +1320,23 @@ export interface CombatTargetingApi {
   readonly prepareFireChoiceFsmInputs: (
     entitySlot: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     cachedFireRanks: Uint8Array,
     cachedFireDistSqs: Float64Array,
     applyMask: Uint8Array,
     seedRanks: Uint8Array,
     seedDistSqs: Float64Array,
-    seedMirrorScores: Float64Array,
+    seedForceFieldPanelScores: Float64Array,
   ) => number;
   readonly prepareAcquisitionChoiceFsmInputs: (
     entitySlot: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     applyMask: Uint8Array,
     seedRanks: Uint8Array,
     seedDistSqs: Float64Array,
-    seedMirrorScores: Float64Array,
+    seedForceFieldPanelScores: Float64Array,
   ) => number;
   /** AIM-08.3 — Rust target preference rank helper. `rankMode`: 0 =
    *  fire-only, 1 = acquisition; `edge`: 0 = acquire, 1 = release. */
@@ -1366,16 +1366,16 @@ export interface CombatTargetingApi {
     applyMask: Uint8Array,
     seedRanks: Uint8Array,
     seedDistSqs: Float64Array,
-    seedMirrorScores: Float64Array,
+    seedForceFieldPanelScores: Float64Array,
     candidateCount: number,
     candidateIds: Int32Array,
     candidatePosX: Float64Array,
     candidatePosY: Float64Array,
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
-    candidateMirrorScore: Float64Array,
+    candidateForceFieldPanelScore: Float64Array,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1413,7 +1413,7 @@ export interface CombatTargetingApi {
     pointY: number,
     pointZ: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1430,7 +1430,7 @@ export interface CombatTargetingApi {
     entitySlot: number,
     targetId: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1448,7 +1448,7 @@ export interface CombatTargetingApi {
   readonly computeAndApplyValidateExistingLockFsmBatch: (
     entitySlot: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1498,7 +1498,7 @@ export interface CombatTargetingApi {
   readonly existingLockAndAutoScanTick: (
     entitySlot: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1520,7 +1520,7 @@ export interface CombatTargetingApi {
   readonly autoModeCandidateTick: (
     entitySlot: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1534,7 +1534,7 @@ export interface CombatTargetingApi {
     candidatePosY: Float64Array,
     candidatePosZ: Float64Array,
     candidateRadius: Float64Array,
-    candidateMirrorScore: Float64Array,
+    candidateForceFieldPanelScore: Float64Array,
   ) => void;
   /** AIM-08.5 — auto-mode candidate tick with Rust-owned spatial
    *  broadphase. JS passes the auto-scan radius result and the kernel
@@ -1543,7 +1543,7 @@ export interface CombatTargetingApi {
   readonly autoModeSpatialCandidateTick: (
     entitySlot: number,
     sourceEntityId: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1562,7 +1562,7 @@ export interface CombatTargetingApi {
   readonly autoModeSpatialCandidateTickBatch: (
     entitySlots: Uint32Array,
     sourceEntityIds: Int32Array,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1588,7 +1588,7 @@ export interface CombatTargetingApi {
     priorityPointX: Float64Array,
     priorityPointY: Float64Array,
     priorityPointZ: Float64Array,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1610,7 +1610,7 @@ export interface CombatTargetingApi {
     sourceEntityIds: Int32Array,
     currentTick: number,
     dtMs: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     forceFieldsEnabled: number,
     forceFieldObstructionActive: number,
     terrainStepLen: number,
@@ -1680,7 +1680,7 @@ export interface ForceFieldPoolApi {
  *  lateral offset, panel yaw offset, base/top Y in chassis-local
  *  space, and half-width. The Rust gate kernel walks the pools so
  *  TS no longer has to precompute a per-(turret, candidate) mask. */
-export interface MirrorPanelPoolApi {
+export interface ForceFieldPanelPoolApi {
   clear: () => void;
   setUnitCount: (count: number) => void;
   setPanelCount: (count: number) => void;
@@ -1692,8 +1692,8 @@ export interface MirrorPanelPoolApi {
     unitZ: number,
     unitGroundZ: number,
     unitBroadRadius: number,
-    mirrorYaw: number,
-    mirrorPitch: number,
+    forceFieldPanelYaw: number,
+    forceFieldPanelPitch: number,
     pivotX: number,
     pivotY: number,
     pivotZ: number,
@@ -2007,7 +2007,7 @@ export interface SnapshotEncodeApi {
     hasUnitsCount: number,
     unitsCount: number,
     hasMirrorsEnabled: number,
-    mirrorsEnabled: number,
+    turretForceFieldPanelsEnabled: number,
     hasForceFieldsEnabled: number,
     forceFieldsEnabled: number,
     hasForceFieldsObstructSight: number,
@@ -2811,7 +2811,7 @@ export function initSimWasm(): Promise<SimWasm> {
           clearanceSegment: force_field_clearance_segment,
           clearanceArc: force_field_clearance_arc,
         },
-        mirrorPanelPool: {
+        forceFieldPanelPool: {
           clear: mirror_panel_pool_clear,
           setUnitCount: mirror_panel_pool_set_unit_count,
           setPanelCount: mirror_panel_pool_set_panel_count,

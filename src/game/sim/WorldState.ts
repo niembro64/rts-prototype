@@ -15,8 +15,8 @@ import { cloneUnitLocomotion } from './locomotion';
 import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import {
   MAX_TOTAL_UNITS,
-  DEFAULT_MIRRORS_ENABLED,
-  DEFAULT_FORCE_FIELDS_ENABLED,
+  DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED,
+  DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED,
   DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT,
   DEFAULT_FORCE_FIELD_REFLECTION_MODE,
   UNIT_HP_MULTIPLIER,
@@ -26,7 +26,7 @@ import {
 } from '../../config';
 import type { ForceFieldReflectionMode } from '../../types/shotTypes';
 import { getSurfaceHeight, getSurfaceNormal } from './Terrain';
-import { buildMirrorPanelCache } from './mirrorPanelCache';
+import { buildForceFieldPanelCache } from './forceFieldPanelCache';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { applyEntitySensorBlueprint } from './cloakDetection';
 import { ENTITY_CHANGED_HP } from '../../types/network';
@@ -155,9 +155,9 @@ export class WorldState {
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
   // Whether mirror turrets/panels participate in targeting and reflections
-  public mirrorsEnabled: boolean = DEFAULT_MIRRORS_ENABLED;
+  public turretForceFieldPanelsEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
-  public forceFieldsEnabled: boolean = DEFAULT_FORCE_FIELDS_ENABLED;
+  public forceFieldsEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED;
   // Whether force material between a turret and its target obstructs
   // sight. Symmetric: active force-field sphere boundaries and force
   // mirror panels apply to every turret in either direction, regardless
@@ -462,9 +462,9 @@ export class WorldState {
   }
 
   // Get units with mirror panels (cached - DO NOT MODIFY returned array)
-  getMirrorUnits(): Entity[] {
+  getForceFieldPanelUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
-    return this.cache.getMirrorUnits();
+    return this.cache.getForceFieldPanelUnits();
   }
 
   // Get wind turbine buildings (cached - DO NOT MODIFY returned array)
@@ -732,8 +732,8 @@ export class WorldState {
         thrustDirX: 0,
         thrustDirY: 0,
         suspension: null,
-        mirrorPanels: [],
-        mirrorBoundRadius: 0,
+        forceFieldPanels: [],
+        forceFieldBoundRadius: 0,
         surfaceNormal: { nx: spawnNormal.nx, ny: spawnNormal.ny, nz: spawnNormal.nz },
         // Airborne units carry a full quaternion + ω-vector + α-vector
         // orientation triad so they can express roll (banking into a
@@ -791,8 +791,8 @@ export class WorldState {
     // Cache mirror panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
     // hydrated entities share one canonical rectangle.
-    entity.unit!.mirrorBoundRadius = buildMirrorPanelCache(
-      bp, entity.unit!.mirrorPanels,
+    entity.unit!.forceFieldBoundRadius = buildForceFieldPanelCache(
+      bp, entity.unit!.forceFieldPanels,
     );
 
     // Attach builder component if blueprint specifies it

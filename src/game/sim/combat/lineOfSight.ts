@@ -94,13 +94,13 @@ export function hasForceFieldClearance(
   );
 }
 
-export function hasMirrorPanelClearance(
+export function hasForceFieldPanelClearance(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;
-  return sim.mirrorPanelPool.clearanceSegment(sx, sy, sz, tx, ty, tz) === 1;
+  return sim.forceFieldPanelPool.clearanceSegment(sx, sy, sz, tx, ty, tz) === 1;
 }
 
 /** Fog/entity-visibility sightline policy. This intentionally does not
@@ -122,8 +122,8 @@ export function hasFogOfWarLineOfSight(
     return false;
   }
   if (
-    world.mirrorsEnabled &&
-    !hasMirrorPanelClearance(sx, sy, sz, tx, ty, tz)
+    world.turretForceFieldPanelsEnabled &&
+    !hasForceFieldPanelClearance(sx, sy, sz, tx, ty, tz)
   ) {
     return false;
   }

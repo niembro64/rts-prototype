@@ -20,7 +20,7 @@ import { getBuildingBlueprint, getUnitBlueprint, getUnitLocomotion } from '../..
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
 import { COST_MULTIPLIER } from '../../../config';
-import { buildMirrorPanelCache } from '../../sim/mirrorPanelCache';
+import { buildForceFieldPanelCache } from '../../sim/forceFieldPanelCache';
 import {
   createBuildingRuntimeTurrets,
   createUnitRuntimeTurrets,
@@ -259,8 +259,8 @@ function createUnitFromNetwork(
       movementAccelZ: 0,
       thrustDirX: 0,
       thrustDirY: 0,
-      mirrorPanels: [],
-      mirrorBoundRadius: 0,
+      forceFieldPanels: [],
+      forceFieldBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present
       // (full keyframes always carry it, deltas ship it on
       // ENTITY_CHANGED_NORMAL). Defaults to flat-up so non-keyframe
@@ -298,8 +298,8 @@ function createUnitFromNetwork(
   // hydrated client and the authoritative sim share one rectangle.
   try {
     const bp = unitBlueprint ?? getUnitBlueprint(entity.unit!.unitType);
-    entity.unit!.mirrorBoundRadius = buildMirrorPanelCache(
-      bp, entity.unit!.mirrorPanels,
+    entity.unit!.forceFieldBoundRadius = buildForceFieldPanelCache(
+      bp, entity.unit!.forceFieldPanels,
     );
   } catch { /* */ }
 

@@ -169,7 +169,7 @@ export class ClientViewState {
           ? serverMeta.forceFieldsEnabled
           : true;
       },
-      setForceFieldsEnabledForPrediction: (enabled) => {
+      setTurretForceFieldSpheresEnabledForPrediction: (enabled) => {
         this.forceFieldsEnabledForPrediction = enabled;
       },
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),

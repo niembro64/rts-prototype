@@ -20,10 +20,10 @@
 // pitched up still collided where it was when horizontal.
 
 import { rayTiltedRectIntersectionT } from '../../math';
-import type { CachedMirrorPanel } from '../../../types/sim';
-import { getMirrorArmDirection, getMirrorPanelCenter, getMirrorUprightPivot } from '../mirrorPanelCache';
+import type { CachedForceFieldPanel } from '../../../types/sim';
+import { getMirrorArmDirection, getForceFieldPanelCenter, getMirrorUprightPivot } from '../forceFieldPanelCache';
 
-export type MirrorPanelHit = {
+export type ForceFieldPanelHit = {
   t: number;
   x: number;
   y: number;
@@ -35,7 +35,7 @@ export type MirrorPanelHit = {
   panelIndex: number;
 };
 
-const _result: MirrorPanelHit = {
+const _result: ForceFieldPanelHit = {
   t: 0, x: 0, y: 0, z: 0,
   normalX: 0, normalY: 0, normalZ: 0,
   panelIndex: -1,
@@ -53,7 +53,7 @@ const _panelPivot = { x: 0, y: 0, z: 0 };
  *
  *     n = (cos α · cos β, sin α · cos β, sin β)
  *
- * where α = mirrorRot + panel.angle (yaw) and β = mirrorPitch (pitch).
+ * where α = forceFieldPanelRot + panel.angle (yaw) and β = forceFieldPanelPitch (pitch).
  * The edge axis is the horizontal perpendicular to yaw; the up-in-plane
  * axis is implicitly n × edge so the panel rotates rigidly around its
  * edge as pitch increases.
@@ -68,19 +68,19 @@ const _panelPivot = { x: 0, y: 0, z: 0 };
  * aim solver and renderer.
  */
 export function findClosestPanelHit(
-  panels: readonly CachedMirrorPanel[],
-  mirrorRot: number,
-  mirrorPitch: number,
+  panels: readonly CachedForceFieldPanel[],
+  forceFieldPanelRot: number,
+  forceFieldPanelPitch: number,
   unitX: number, unitY: number, unitGroundZ: number,
   sx: number, sy: number, sz: number,
   ex: number, ey: number, ez: number,
   excludePanelIndex: number,
   pivotOverride: { x: number; y: number; z: number } | undefined = undefined,
-): MirrorPanelHit | null {
+): ForceFieldPanelHit | null {
   if (panels.length === 0) return null;
 
-  const cosRot = Math.cos(mirrorRot);
-  const sinRot = Math.sin(mirrorRot);
+  const cosRot = Math.cos(forceFieldPanelRot);
+  const sinRot = Math.sin(forceFieldPanelRot);
   const perpX = -sinRot;
   const perpY = cosRot;
 
@@ -104,21 +104,21 @@ export function findClosestPanelHit(
     } else {
       getMirrorUprightPivot(unitX, unitY, unitGroundZ, perpX, perpY, panel, _panelPivot);
     }
-    getMirrorPanelCenter(
+    getForceFieldPanelCenter(
       _panelPivot.x, _panelPivot.y, _panelPivot.z,
-      armLength, mirrorRot, mirrorPitch, _panelCenter,
+      armLength, forceFieldPanelRot, forceFieldPanelPitch, _panelCenter,
     );
     const pcx = _panelCenter.x;
     const pcy = _panelCenter.y;
     const pcz = _panelCenter.z;
 
     // Yaw of the panel itself = turret yaw + panel's blueprint angle.
-    const panelYaw = mirrorRot + panel.angle;
+    const panelYaw = forceFieldPanelRot + panel.angle;
 
     // 3D normal = arm direction (panel face perpendicular to arm).
-    // Shared with getMirrorPanelCenter so the hit-test normal can't
+    // Shared with getForceFieldPanelCenter so the hit-test normal can't
     // drift from the arm-extension formula it pairs with.
-    getMirrorArmDirection(panelYaw, mirrorPitch, _panelNormal);
+    getMirrorArmDirection(panelYaw, forceFieldPanelPitch, _panelNormal);
     const nx = _panelNormal.x;
     const ny = _panelNormal.y;
     const nz = _panelNormal.z;

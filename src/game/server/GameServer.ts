@@ -544,13 +544,13 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(authority)) return;
         this.world.maxTotalUnits = sanitizedCommand.maxTotalUnits;
         return;
-      case 'setMirrorsEnabled':
+      case 'setTurretForceFieldPanelsEnabled':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setMirrorsEnabled(sanitizedCommand.enabled);
+        this.setTurretForceFieldPanelsEnabled(sanitizedCommand.enabled);
         return;
-      case 'setForceFieldsEnabled':
+      case 'setTurretForceFieldSpheresEnabled':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setForceFieldsEnabled(sanitizedCommand.enabled);
+        this.setTurretForceFieldSpheresEnabled(sanitizedCommand.enabled);
         return;
       case 'setForceFieldsObstructSight':
         if (!this.canApplyServerControlCommand(authority)) return;
@@ -786,11 +786,11 @@ export class GameServer {
       entity.ownership.playerId === playerId;
   }
 
-  private setMirrorsEnabled(enabled: boolean): void {
-    if (this.world.mirrorsEnabled === enabled) return;
-    this.world.mirrorsEnabled = enabled;
+  private setTurretForceFieldPanelsEnabled(enabled: boolean): void {
+    if (this.world.turretForceFieldPanelsEnabled === enabled) return;
+    this.world.turretForceFieldPanelsEnabled = enabled;
     if (enabled) return;
-    for (const unit of this.world.getMirrorUnits()) {
+    for (const unit of this.world.getForceFieldPanelUnits()) {
       const combat = unit.combat;
       if (!combat) continue;
       const turrets = combat.turrets;
@@ -805,7 +805,7 @@ export class GameServer {
     }
   }
 
-  private setForceFieldsEnabled(enabled: boolean): void {
+  private setTurretForceFieldSpheresEnabled(enabled: boolean): void {
     if (this.world.forceFieldsEnabled === enabled) return;
     this.world.forceFieldsEnabled = enabled;
     if (enabled) return;

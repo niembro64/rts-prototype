@@ -46,7 +46,7 @@ export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './c
  *  to the turret) and WHICH WAY it points (angle relative to turret
  *  forward); the size is regularized so sim collision and 3D mesh
  *  always agree on a single canonical rectangle. */
-export type MirrorPanel = {
+export type ForceFieldPanel = {
   offsetX: number;  // forward offset from unit center (turret-local)
   offsetY: number;  // lateral offset (positive = left, turret-local)
   angle: number;    // rotation of the panel normal relative to turret forward (radians)
@@ -117,7 +117,7 @@ export type TurretBlueprint = {
     transitionTime: number;
     barrier: ForceFieldBarrierRatioConfig | null;
   } | null;
-  mirrorPanels: MirrorPanel[];
+  forceFieldPanels: ForceFieldPanel[];
   audio: { fireSound: SoundEntry } | null;
   radius: TurretRadiusConfig;
   /** Beam/rocket turrets with no visible barrel: only the head sphere

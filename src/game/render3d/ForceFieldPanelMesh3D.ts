@@ -9,12 +9,12 @@
 
 import * as THREE from 'three';
 
-import { getMirrorFrameGeometry } from '../sim/mirrorPanelCache';
+import { getForceFieldFrameGeometry } from '../sim/forceFieldPanelCache';
 
 const CYLINDER_UP = new THREE.Vector3(0, 1, 0);
 const _supportDir = new THREE.Vector3();
 
-export type MirrorMesh = {
+export type ForceFieldPanelMesh = {
   /** The ball-joint. Position is the attachment point in liftGroup's
    *  frame; quaternion is the full yaw+pitch orientation written
    *  per-frame by the EntityRenderer. Children (arms + panels) sit
@@ -27,7 +27,7 @@ export type MirrorMesh = {
    *  way (the per-mirror cap is small, so a few static rails cost
    *  nothing). */
   arms: THREE.Mesh[];
-  /** Slot indices into Render3DEntities.mirrorPanelInstanced when the
+  /** Slot indices into Render3DEntities.forceFieldPanelInstanced when the
    *  panels are routed through the shared InstancedMesh (one slot per
    *  panel, parallel to `panels`). Empty / undefined when the per-Mesh
    *  fallback is in use (cap exhausted). The caller (Render3DEntities)
@@ -39,7 +39,7 @@ export type MirrorMesh = {
   frames: THREE.Mesh[];
 };
 
-export type MirrorPanelMount = {
+export type ForceFieldPanelMount = {
   /** Authored chassis-local offset of the panel center along the
    *  turret's local +X (forward). For the arm-mounted mirror this is
    *  the arm length (= radius.body × MIRROR_ARM_LENGTH_MULT). */
@@ -52,9 +52,9 @@ export type MirrorPanelMount = {
   angle: number;
 };
 
-export function buildMirrorMesh3D(
+export function buildForceFieldPanelMesh3D(
   parent: THREE.Group,
-  panels: readonly MirrorPanelMount[],
+  panels: readonly ForceFieldPanelMount[],
   /** Chassis-local mirror turret pivot in the parent liftGroup frame. */
   pivotLocalX: number,
   pivotLocalY: number,
@@ -79,7 +79,7 @@ export function buildMirrorMesh3D(
    *  always attach per-Mesh; the cap-bound shared instance is for
    *  panels only. */
   skipPerMesh: boolean = false,
-): MirrorMesh {
+): ForceFieldPanelMesh {
   // The mirror is a ball-joint at the authored turret attachment
   // point. Arms and panels live at Y = 0 in root's local frame; the
   // only rotation in the entire mirror assembly is root's own
@@ -91,7 +91,7 @@ export function buildMirrorMesh3D(
   const panelMeshes: THREE.Mesh[] = [];
   const armMeshes: THREE.Mesh[] = [];
   const frameMeshes: THREE.Mesh[] = [];
-  const frame = getMirrorFrameGeometry(panelHalfSide);
+  const frame = getForceFieldFrameGeometry(panelHalfSide);
   const side = frame.side;
   const supportDiameter = frame.supportDiameter;
   const frameSegmentLength = frame.frameSegmentLength;

@@ -3,10 +3,10 @@ import {
   loadStoredConverterTax,
   loadStoredForceFieldReflectionMode,
   loadStoredForceFieldsObstructSight,
-  loadStoredForceFieldsEnabled,
+  loadStoredTurretForceFieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredGrid,
-  loadStoredMirrorsEnabled,
+  loadStoredTurretForceFieldPanelsEnabled,
 } from '../../battleBarConfig';
 import {
   loadStoredKeyframeRatio,
@@ -59,14 +59,14 @@ export function applyStoredBattleServerSettings(
   }
 
   server.receiveCommand({
-    type: 'setMirrorsEnabled',
+    type: 'setTurretForceFieldPanelsEnabled',
     tick: 0,
-    enabled: loadStoredMirrorsEnabled(mode),
+    enabled: loadStoredTurretForceFieldPanelsEnabled(mode),
   }, authority);
   server.receiveCommand({
-    type: 'setForceFieldsEnabled',
+    type: 'setTurretForceFieldSpheresEnabled',
     tick: 0,
-    enabled: loadStoredForceFieldsEnabled(mode),
+    enabled: loadStoredTurretForceFieldSpheresEnabled(mode),
   }, authority);
   server.receiveCommand({
     type: 'setForceFieldsObstructSight',

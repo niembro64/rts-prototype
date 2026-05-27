@@ -148,7 +148,7 @@ export class ServerSnapshotPublisher {
       allowedUnits: input.backgroundMode ? input.backgroundAllowedTypes : undefined,
       maxUnits: input.world.maxTotalUnits,
       unitCount,
-      mirrorsEnabled: input.world.mirrorsEnabled,
+      turretForceFieldPanelsEnabled: input.world.turretForceFieldPanelsEnabled,
       forceFieldsEnabled: input.world.forceFieldsEnabled,
       forceFieldsObstructSight: input.world.forceFieldsObstructSight,
       forceFieldReflectionMode: input.world.forceFieldReflectionMode,

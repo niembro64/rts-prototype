@@ -27,7 +27,7 @@ export type {
   ShotBlueprint,
   SmokeTrailSpec,
   SubmunitionSpec,
-  MirrorPanel,
+  ForceFieldPanel,
   ConstructionEmitterSize,
   ConstructionEmitterVisualSpec,
   TurretAimAngleType,

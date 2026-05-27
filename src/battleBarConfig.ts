@@ -57,7 +57,7 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.cap,
     options: battleBarConfig.cap.options as readonly number[],
   },
-  mirrorsEnabled: { default: _demoPreset.mirrorsEnabled },
+  turretForceFieldPanelsEnabled: { default: _demoPreset.turretForceFieldPanelsEnabled },
   forceFieldsEnabled: { default: _demoPreset.forceFieldsEnabled },
   forceFieldsObstructSight: { default: _demoPreset.forceFieldsObstructSight },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
@@ -134,10 +134,10 @@ const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_GRID = sk.demoGrid;
 const STORAGE_REAL_GRID = sk.realGrid;
-const STORAGE_DEMO_MIRRORS_ENABLED = sk.demoMirrorsEnabled;
-const STORAGE_REAL_MIRRORS_ENABLED = sk.realMirrorsEnabled;
-const STORAGE_DEMO_FORCE_FIELDS_ENABLED = sk.demoForceFieldsEnabled;
-const STORAGE_REAL_FORCE_FIELDS_ENABLED = sk.realForceFieldsEnabled;
+const STORAGE_DEMO_TURRET_FORCE_FIELD_PANELS_ENABLED = sk.demoTurretForceFieldPanelsEnabled;
+const STORAGE_REAL_TURRET_FORCE_FIELD_PANELS_ENABLED = sk.realTurretForceFieldPanelsEnabled;
+const STORAGE_DEMO_TURRET_FORCE_FIELD_SPHERES_ENABLED = sk.demoTurretForceFieldSpheresEnabled;
+const STORAGE_REAL_TURRET_FORCE_FIELD_SPHERES_ENABLED = sk.realTurretForceFieldSpheresEnabled;
 const STORAGE_DEMO_FORCE_FIELDS_OBSTRUCT_SIGHT = sk.demoForceFieldsObstructSight;
 const STORAGE_REAL_FORCE_FIELDS_OBSTRUCT_SIGHT = sk.realForceFieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
@@ -349,28 +349,28 @@ function loadModeBool(
   return defaultValue;
 }
 
-export function loadStoredMirrorsEnabled(_mode: BattleMode): boolean {
-  return BATTLE_CONFIG.mirrorsEnabled.default;
+export function loadStoredTurretForceFieldPanelsEnabled(_mode: BattleMode): boolean {
+  return BATTLE_CONFIG.turretForceFieldPanelsEnabled.default;
 }
 
-export function saveMirrorsEnabled(_enabled: boolean, mode: BattleMode): void {
+export function saveTurretForceFieldPanelsEnabled(_enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_MIRRORS_ENABLED
-      : STORAGE_DEMO_MIRRORS_ENABLED,
-    String(BATTLE_CONFIG.mirrorsEnabled.default),
+      ? STORAGE_REAL_TURRET_FORCE_FIELD_PANELS_ENABLED
+      : STORAGE_DEMO_TURRET_FORCE_FIELD_PANELS_ENABLED,
+    String(BATTLE_CONFIG.turretForceFieldPanelsEnabled.default),
   );
 }
 
-export function loadStoredForceFieldsEnabled(_mode: BattleMode): boolean {
+export function loadStoredTurretForceFieldSpheresEnabled(_mode: BattleMode): boolean {
   return BATTLE_CONFIG.forceFieldsEnabled.default;
 }
 
-export function saveForceFieldsEnabled(_enabled: boolean, mode: BattleMode): void {
+export function saveTurretForceFieldSpheresEnabled(_enabled: boolean, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_FORCE_FIELDS_ENABLED
-      : STORAGE_DEMO_FORCE_FIELDS_ENABLED,
+      ? STORAGE_REAL_TURRET_FORCE_FIELD_SPHERES_ENABLED
+      : STORAGE_DEMO_TURRET_FORCE_FIELD_SPHERES_ENABLED,
     String(BATTLE_CONFIG.forceFieldsEnabled.default),
   );
 }

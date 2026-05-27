@@ -133,7 +133,7 @@ function computeProjectileReflectorHits(
   ensureReflectorBatchCapacity(count);
   _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, count);
 
-  const mirrorsActive = world.mirrorsEnabled && world.getMirrorUnits().length > 0;
+  const mirrorsActive = world.turretForceFieldPanelsEnabled && world.getForceFieldPanelUnits().length > 0;
   const forceFieldsActive = world.forceFieldsEnabled && getActiveForceFields().length > 0;
   if (!mirrorsActive && !forceFieldsActive) return;
 
@@ -519,7 +519,7 @@ export function checkProjectileCollisions(
     // surface with the same vector reflection math beams use; rocket-class
     // behavior is controlled by ROCKET_REFLECTOR_COLLISION_MODE. Beams/lasers
     // are handled by their own line path.
-    let hitMirrorPanel = false;
+    let hitForceFieldPanel = false;
     let hitForceField = false;
     let reflectedProjectile = false;
     let reflectorNormalX: number | undefined;
@@ -550,7 +550,7 @@ export function checkProjectileCollisions(
         } else {
           reflectorPlayerId = undefined;
         }
-        hitMirrorPanel = reflectorKind === REFLECTOR_HIT_KIND_MIRROR;
+        hitForceFieldPanel = reflectorKind === REFLECTOR_HIT_KIND_MIRROR;
         hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
       if (bestT < Infinity) {
@@ -649,7 +649,7 @@ export function checkProjectileCollisions(
     const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
       !reflectedProjectile &&
-      !hitMirrorPanel &&
+      !hitForceFieldPanel &&
       !hitForceField &&
       proj.projectileType === 'projectile' &&
       proj.hasLeftSource &&
@@ -691,7 +691,7 @@ export function checkProjectileCollisions(
     }
 
     // Check if the projectile hit a terminal timeout, ground, or barrier.
-    const terminalReflectorHit = (hitMirrorPanel || hitForceField) && !reflectedProjectile;
+    const terminalReflectorHit = (hitForceFieldPanel || hitForceField) && !reflectedProjectile;
     if (proj.timeAlive >= proj.maxLifespan || hitGround || terminalReflectorHit) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (

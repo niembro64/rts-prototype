@@ -4,7 +4,7 @@ import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { PlayerId } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { TurretMesh } from './TurretMesh3D';
-import type { MirrorMesh } from './MirrorMesh3D';
+import type { ForceFieldPanelMesh } from './ForceFieldPanelMesh3D';
 import type {
   BuildingDetailMesh,
   ExtractorRig,
@@ -83,7 +83,7 @@ export type EntityMesh = {
   bodyShapeKey: string;
   bodyShape?: UnitBodyShape;
   turrets: TurretMesh[];
-  mirrors?: MirrorMesh;
+  mirrors?: ForceFieldPanelMesh;
   locomotion?: Locomotion3DMesh;
   /** Selection ring mesh — material/geometry are owned by
    *  SelectionOverlayRenderer3D, so we don't store a per-unit material

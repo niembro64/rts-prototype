@@ -13,6 +13,6 @@ export function turretAimMotionIsSnapshotVisible(entity: Entity, turret: Turret)
   const shotConfig = turret.config.shot;
   const shotType = shotConfig !== undefined ? shotConfig.type : undefined;
   if (shotType === 'beam' || shotType === 'laser') return true;
-  const mirrorPanelCount = entity.unit !== null ? entity.unit.mirrorPanels.length : 0;
-  return turret.config.passive === true && mirrorPanelCount > 0;
+  const forceFieldPanelCount = entity.unit !== null ? entity.unit.forceFieldPanels.length : 0;
+  return turret.config.passive === true && forceFieldPanelCount > 0;
 }

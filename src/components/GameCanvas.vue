@@ -794,7 +794,7 @@ watchEffect(() => {
   m.activePresetName = findMatchingPresetName({
     units: currentAllowedUnits.value,
     cap: displayUnitCap.value,
-    mirrorsEnabled: BATTLE_CONFIG.mirrorsEnabled.default,
+    turretForceFieldPanelsEnabled: BATTLE_CONFIG.turretForceFieldPanelsEnabled.default,
     forceFieldsEnabled: BATTLE_CONFIG.forceFieldsEnabled.default,
     forceFieldsObstructSight: currentForceFieldsObstructSight.value,
     forceFieldReflectionMode: BATTLE_CONFIG.forceFieldReflectionMode.default,

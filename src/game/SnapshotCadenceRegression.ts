@@ -120,8 +120,8 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setSendGridInfo':
     case 'setBackgroundUnitType':
     case 'setMaxTotalUnits':
-    case 'setMirrorsEnabled':
-    case 'setForceFieldsEnabled':
+    case 'setTurretForceFieldPanelsEnabled':
+    case 'setTurretForceFieldSpheresEnabled':
     case 'setForceFieldsObstructSight':
     case 'setForceFieldReflectionMode':
     case 'setFogOfWarEnabled':

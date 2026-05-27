@@ -44,11 +44,11 @@ import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
-import { createMirrorReflectorPanelMaterial } from './MirrorReflectorVisual3D';
+import { createForceFieldReflectorPanelMaterial } from './ForceFieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
-import { MirrorPose3D } from './MirrorPose3D';
+import { ForceFieldPanelPose3D } from './ForceFieldPanelPose3D';
 import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
@@ -105,8 +105,8 @@ const _tiltQuat = new THREE.Quaternion();
 const _invTiltQuat = new THREE.Quaternion();
 // Mirror panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
-// mirrorPanelCache.ts computes baseY/topY/halfWidth from the turret's
-// mount.z + radius.body scaled by MIRROR_PANEL_SIZE_MULT; both the
+// forceFieldPanelCache.ts computes baseY/topY/halfWidth from the turret's
+// mount.z + radius.body scaled by FORCE_FIELD_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 
@@ -150,7 +150,7 @@ export class Render3DEntities {
   private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
 
   private barrelSpinState = new UnitBarrelSpinState3D();
-  private mirrorPose = new MirrorPose3D();
+  private forceFieldPanelPose = new ForceFieldPanelPose3D();
   private chassisInstancePose = new UnitChassisInstancePose3D();
   private turretPose = new UnitTurretPose3D();
 
@@ -201,7 +201,7 @@ export class Render3DEntities {
   // Mirror panels keep their existing shape and mount, but use the
   // force-field shield treatment so they read as reflector surfaces
   // instead of chrome slabs.
-  private mirrorShinyNeutralMat = createMirrorReflectorPanelMaterial();
+  private mirrorShinyNeutralMat = createForceFieldReflectorPanelMaterial();
   /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
    *  yaw-only quaternion. Module-local axis (`_INST_UP`) drives the yaw
    *  quaternion. */
@@ -230,7 +230,7 @@ export class Render3DEntities {
   private _unitChainMat = new THREE.Matrix4();
   private _mirrorPivotLocal = new THREE.Vector3();
 
-  private mirrorsEnabled = true;
+  private turretForceFieldPanelsEnabled = true;
 
   private getLocalPlayerId: () => PlayerId | undefined;
 
@@ -339,12 +339,12 @@ export class Render3DEntities {
 
   update(
     frameStateOverride?: RenderFrameState3D,
-    featureFlags?: { mirrorsEnabled?: boolean },
+    featureFlags?: { turretForceFieldPanelsEnabled?: boolean },
   ): void {
     // Refresh the single render-detail snapshot once per frame.
     const newFrameState = frameStateOverride ?? snapshotRenderFrameState(this.camera, this.getViewportHeight());
     this.frameState = newFrameState;
-    this.mirrorsEnabled = featureFlags?.mirrorsEnabled ?? true;
+    this.turretForceFieldPanelsEnabled = featureFlags?.turretForceFieldPanelsEnabled ?? true;
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
@@ -742,20 +742,20 @@ export class Render3DEntities {
       );
 
       if (m.mirrors) {
-        const mirrorTurret = findPassiveTurret(turrets);
+        const forceFieldPanelTurret = findPassiveTurret(turrets);
         this._mirrorPivotLocal.set(
-          mirrorTurret?.mount.x ?? 0,
-          (mirrorTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),
-          mirrorTurret?.mount.y ?? 0,
+          forceFieldPanelTurret?.mount.x ?? 0,
+          (forceFieldPanelTurret?.mount.z ?? getUnitBodyCenterHeight(e.unit)) - (m.chassisLift ?? 0),
+          forceFieldPanelTurret?.mount.y ?? 0,
         );
-        this.mirrorPose.update(
+        this.forceFieldPanelPose.update(
           e,
           m.mirrors,
-          mirrorTurret,
+          forceFieldPanelTurret,
           this._mirrorPivotLocal,
           this._unitChainMat,
           chassisTilted ? _invTiltQuat : undefined,
-          this.mirrorsEnabled,
+          this.turretForceFieldPanelsEnabled,
           this.unitDetailInstances,
         );
       }
@@ -796,7 +796,7 @@ export class Render3DEntities {
     // the same `seen` set populated by the unit loop above — no
     // separate sweep needed.
     this.barrelSpinState.prune(seen);
-    this.unitDetailInstances.flush(this.mirrorsEnabled);
+    this.unitDetailInstances.flush(this.turretForceFieldPanelsEnabled);
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group

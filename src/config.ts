@@ -222,8 +222,8 @@ export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;
 export const DEFAULT_SNAPSHOT_RATE = SERVER_CONFIG.snapshot.default;
 export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
-export const DEFAULT_MIRRORS_ENABLED = BATTLE_CONFIG.mirrorsEnabled.default;
-export const DEFAULT_FORCE_FIELDS_ENABLED =
+export const DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED = BATTLE_CONFIG.turretForceFieldPanelsEnabled.default;
+export const DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED =
   BATTLE_CONFIG.forceFieldsEnabled.default;
 export const DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT =
   BATTLE_CONFIG.forceFieldsObstructSight.default;

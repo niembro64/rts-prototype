@@ -67,11 +67,11 @@ export function getUnitHudTopY(unit: Entity): number {
     // Keep the radius fallback for partial/network-only unit records.
   }
 
-  for (const panel of unit.unit.mirrorPanels ?? []) {
+  for (const panel of unit.unit.forceFieldPanels ?? []) {
     topAboveGround = Math.max(topAboveGround, panel.topY);
   }
 
-  const hasMirrors = (unit.unit.mirrorPanels?.length ?? 0) > 0;
+  const hasMirrors = (unit.unit.forceFieldPanels?.length ?? 0) > 0;
   const turrets = unit.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     const turret = turrets[i];

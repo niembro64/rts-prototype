@@ -12,10 +12,10 @@ import {
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
 import {
-  createMirrorReflectorPanelMaterial,
+  createForceFieldReflectorPanelMaterial,
   MIRROR_REFLECTOR_PANEL_COLOR,
-  resolveMirrorReflectorPanelColor,
-} from './MirrorReflectorVisual3D';
+  resolveForceFieldReflectorPanelColor,
+} from './ForceFieldReflectorVisual3D';
 import { disposeMesh } from './threeUtils';
 
 const SMOOTH_CHASSIS_CAP = 16384;
@@ -23,7 +23,7 @@ const POLY_CHASSIS_CAP = 4096;
 const TURRET_HEAD_CAP = 16384;
 const BARREL_CAP = 32768;
 const CONE_BARREL_CAP = 4096;
-const MIRROR_PANEL_CAP = 1024;
+const FORCE_FIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 type PolyChassisPool = {
@@ -75,11 +75,11 @@ export class UnitDetailInstanceRenderer3D {
   private readonly coneBarrelFreeSlots: number[] = [];
   private coneBarrelNextSlot = 0;
 
-  private readonly mirrorPanelInstanced: THREE.InstancedMesh;
-  private readonly mirrorPanelColorKey = new Map<number, number>();
-  private mirrorPanelColorDirty = false;
-  private readonly mirrorPanelFreeSlots: number[] = [];
-  private mirrorPanelNextSlot = 0;
+  private readonly forceFieldPanelInstanced: THREE.InstancedMesh;
+  private readonly forceFieldPanelColorKey = new Map<number, number>();
+  private forceFieldPanelColorDirty = false;
+  private readonly forceFieldPanelFreeSlots: number[] = [];
+  private forceFieldPanelNextSlot = 0;
 
   private readonly scratchColor = new THREE.Color();
 
@@ -114,13 +114,13 @@ export class UnitDetailInstanceRenderer3D {
       COLORS.units.turret.barrel.colorHex,
     );
 
-    this.mirrorPanelInstanced = this.createPool(
+    this.forceFieldPanelInstanced = this.createPool(
       options.mirrorGeom.clone(),
-      createMirrorReflectorPanelMaterial(),
-      MIRROR_PANEL_CAP,
+      createForceFieldReflectorPanelMaterial(),
+      FORCE_FIELD_PANEL_CAP,
       MIRROR_REFLECTOR_PANEL_COLOR,
     );
-    this.mirrorPanelInstanced.renderOrder = 7;
+    this.forceFieldPanelInstanced.renderOrder = 7;
   }
 
   allocSmoothChassisSlots(count: number): number[] | null {
@@ -185,12 +185,12 @@ export class UnitDetailInstanceRenderer3D {
     return slots;
   }
 
-  allocMirrorPanelSlots(count: number): number[] | null {
+  allocForceFieldPanelSlots(count: number): number[] | null {
     const slots: number[] = [];
     for (let i = 0; i < count; i++) {
-      const slot = this.allocMirrorPanelSlot();
+      const slot = this.allocForceFieldPanelSlot();
       if (slot === null) {
-        for (const allocated of slots) this.freeMirrorPanelSlot(allocated);
+        for (const allocated of slots) this.freeForceFieldPanelSlot(allocated);
         return null;
       }
       slots.push(slot);
@@ -214,7 +214,7 @@ export class UnitDetailInstanceRenderer3D {
       }
     }
     if (mesh.mirrors?.panelSlots) {
-      for (const slot of mesh.mirrors.panelSlots) this.freeMirrorPanelSlot(slot);
+      for (const slot of mesh.mirrors.panelSlots) this.freeForceFieldPanelSlot(slot);
     }
   }
 
@@ -224,7 +224,7 @@ export class UnitDetailInstanceRenderer3D {
     this.releaseAllTurretHeadSlots();
     this.releaseAllBarrelSlots();
     this.releaseAllConeBarrelSlots();
-    this.releaseAllMirrorPanelSlots();
+    this.releaseAllForceFieldPanelSlots();
   }
 
   syncShellColors(entity: Entity, mesh: EntityMesh, turrets: readonly Turret[] = []): void {
@@ -287,13 +287,13 @@ export class UnitDetailInstanceRenderer3D {
     }
 
     if (mesh.mirrors?.panelSlots) {
-      const mirrorColorKey = resolveMirrorReflectorPanelColor(entity);
+      const mirrorColorKey = resolveForceFieldReflectorPanelColor(entity);
       this.scratchColor.set(mirrorColorKey);
       for (const slot of mesh.mirrors.panelSlots) {
-        if (this.mirrorPanelColorKey.get(slot) === mirrorColorKey) continue;
-        this.mirrorPanelInstanced.setColorAt(slot, this.scratchColor);
-        this.mirrorPanelColorKey.set(slot, mirrorColorKey);
-        this.mirrorPanelInstanced.instanceColor!.needsUpdate = true;
+        if (this.forceFieldPanelColorKey.get(slot) === mirrorColorKey) continue;
+        this.forceFieldPanelInstanced.setColorAt(slot, this.scratchColor);
+        this.forceFieldPanelColorKey.set(slot, mirrorColorKey);
+        this.forceFieldPanelInstanced.instanceColor!.needsUpdate = true;
       }
     }
   }
@@ -371,18 +371,18 @@ export class UnitDetailInstanceRenderer3D {
     else this.barrelInstanced.setMatrixAt(slot, matrix);
   }
 
-  writeMirrorPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
-    this.mirrorPanelInstanced.setMatrixAt(slot, matrix);
-    const mirrorColorKey = resolveMirrorReflectorPanelColor(entity);
-    if (this.mirrorPanelColorKey.get(slot) !== mirrorColorKey) {
+  writeForceFieldPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
+    this.forceFieldPanelInstanced.setMatrixAt(slot, matrix);
+    const mirrorColorKey = resolveForceFieldReflectorPanelColor(entity);
+    if (this.forceFieldPanelColorKey.get(slot) !== mirrorColorKey) {
       this.scratchColor.set(mirrorColorKey);
-      this.mirrorPanelInstanced.setColorAt(slot, this.scratchColor);
-      this.mirrorPanelColorKey.set(slot, mirrorColorKey);
-      this.mirrorPanelColorDirty = true;
+      this.forceFieldPanelInstanced.setColorAt(slot, this.scratchColor);
+      this.forceFieldPanelColorKey.set(slot, mirrorColorKey);
+      this.forceFieldPanelColorDirty = true;
     }
   }
 
-  flush(mirrorsEnabled: boolean): void {
+  flush(turretForceFieldPanelsEnabled: boolean): void {
     this.smoothChassisNextSlot = this.trimFreeTail(
       this.smoothChassisFreeSlots,
       this.smoothChassisNextSlot,
@@ -399,9 +399,9 @@ export class UnitDetailInstanceRenderer3D {
       this.coneBarrelFreeSlots,
       this.coneBarrelNextSlot,
     );
-    this.mirrorPanelNextSlot = this.trimFreeTail(
-      this.mirrorPanelFreeSlots,
-      this.mirrorPanelNextSlot,
+    this.forceFieldPanelNextSlot = this.trimFreeTail(
+      this.forceFieldPanelFreeSlots,
+      this.forceFieldPanelNextSlot,
     );
 
     this.smoothChassis.count = this.smoothChassisNextSlot;
@@ -440,14 +440,14 @@ export class UnitDetailInstanceRenderer3D {
       this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
     }
 
-    this.mirrorPanelInstanced.count = mirrorsEnabled ? this.mirrorPanelNextSlot : 0;
-    if (this.mirrorPanelNextSlot > 0) {
-      this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
-      if (this.mirrorPanelColorDirty && this.mirrorPanelInstanced.instanceColor) {
-        this.mirrorPanelInstanced.instanceColor.needsUpdate = true;
+    this.forceFieldPanelInstanced.count = turretForceFieldPanelsEnabled ? this.forceFieldPanelNextSlot : 0;
+    if (this.forceFieldPanelNextSlot > 0) {
+      this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
+      if (this.forceFieldPanelColorDirty && this.forceFieldPanelInstanced.instanceColor) {
+        this.forceFieldPanelInstanced.instanceColor.needsUpdate = true;
       }
     }
-    this.mirrorPanelColorDirty = false;
+    this.forceFieldPanelColorDirty = false;
   }
 
   destroy(): void {
@@ -463,7 +463,7 @@ export class UnitDetailInstanceRenderer3D {
       this.turretHeadInstanced,
       this.barrelInstanced,
       this.coneBarrelInstanced,
-      this.mirrorPanelInstanced,
+      this.forceFieldPanelInstanced,
     ]) {
       disposeMesh(mesh);
     }
@@ -570,17 +570,17 @@ export class UnitDetailInstanceRenderer3D {
     this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
   }
 
-  private allocMirrorPanelSlot(): number | null {
-    if (this.mirrorPanelFreeSlots.length > 0) return this.mirrorPanelFreeSlots.pop()!;
-    if (this.mirrorPanelNextSlot >= MIRROR_PANEL_CAP) return null;
-    return this.mirrorPanelNextSlot++;
+  private allocForceFieldPanelSlot(): number | null {
+    if (this.forceFieldPanelFreeSlots.length > 0) return this.forceFieldPanelFreeSlots.pop()!;
+    if (this.forceFieldPanelNextSlot >= FORCE_FIELD_PANEL_CAP) return null;
+    return this.forceFieldPanelNextSlot++;
   }
 
-  private freeMirrorPanelSlot(slot: number): void {
-    this.mirrorPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
-    this.mirrorPanelFreeSlots.push(slot);
-    this.mirrorPanelColorKey.delete(slot);
-    this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
+  private freeForceFieldPanelSlot(slot: number): void {
+    this.forceFieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
+    this.forceFieldPanelFreeSlots.push(slot);
+    this.forceFieldPanelColorKey.delete(slot);
+    this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
   }
 
   private releaseAllSmoothChassisSlots(): void {
@@ -647,16 +647,16 @@ export class UnitDetailInstanceRenderer3D {
     this.coneBarrelInstanced.instanceMatrix.needsUpdate = true;
   }
 
-  private releaseAllMirrorPanelSlots(): void {
-    for (let slot = 0; slot < this.mirrorPanelNextSlot; slot++) {
-      this.mirrorPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
+  private releaseAllForceFieldPanelSlots(): void {
+    for (let slot = 0; slot < this.forceFieldPanelNextSlot; slot++) {
+      this.forceFieldPanelInstanced.setMatrixAt(slot, ZERO_MATRIX);
     }
-    this.mirrorPanelColorKey.clear();
-    this.mirrorPanelFreeSlots.length = 0;
-    this.mirrorPanelNextSlot = 0;
-    this.mirrorPanelColorDirty = false;
-    this.mirrorPanelInstanced.count = 0;
-    this.mirrorPanelInstanced.instanceMatrix.needsUpdate = true;
+    this.forceFieldPanelColorKey.clear();
+    this.forceFieldPanelFreeSlots.length = 0;
+    this.forceFieldPanelNextSlot = 0;
+    this.forceFieldPanelColorDirty = false;
+    this.forceFieldPanelInstanced.count = 0;
+    this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
   }
 
   private trimFreeTail(freeSlots: number[], nextSlot: number): number {

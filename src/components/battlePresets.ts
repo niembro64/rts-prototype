@@ -8,7 +8,7 @@ export type BattlePreset = {
   readonly name: string;
   readonly units: readonly string[];
   readonly cap: number;
-  readonly mirrorsEnabled: boolean;
+  readonly turretForceFieldPanelsEnabled: boolean;
   readonly forceFieldsEnabled: boolean;
   readonly forceFieldsObstructSight: boolean;
   readonly forceFieldReflectionMode: ForceFieldReflectionMode;
@@ -66,7 +66,7 @@ function demoUnits(): readonly string[] {
 // battle bar fallback flows through a preset — the JSON has zero
 // inline defaults.
 const SUBSYSTEM_DEFAULTS = {
-  mirrorsEnabled: true,
+  turretForceFieldPanelsEnabled: true,
   forceFieldsEnabled: true,
   forceFieldReflectionMode: 'both' as ForceFieldReflectionMode,
 };

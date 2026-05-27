@@ -1,5 +1,5 @@
 // Mirror panel cache builder — single source of truth for the
-// per-unit `entity.unit.mirrorPanels` array. Called once at entity
+// per-unit `entity.unit.forceFieldPanels` array. Called once at entity
 // creation by both the authoritative sim (WorldState.createUnitFromBlueprint)
 // and the client-side hydration path (NetworkEntityFactory.createUnitFromNetwork)
 // so beam-vs-mirror collision uses the exact same canonical rectangles
@@ -14,7 +14,7 @@
 // the sim only needs the panel center offset (offsetX = arm length,
 // offsetY = 0) and angle = 0 (panel normal = turret yaw direction).
 
-import type { CachedMirrorPanel } from '../../types/sim';
+import type { CachedForceFieldPanel } from '../../types/sim';
 import type { UnitBlueprint } from '../../types/blueprints';
 import { getTurretBlueprint } from './blueprints';
 
@@ -25,13 +25,13 @@ export const MIRROR_ARM_LENGTH_MULT = 1.8;
 
 /** Mirror panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
- *  Render3DEntities reads `mirrorPanels[0].halfWidth` directly so a
+ *  Render3DEntities reads `forceFieldPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
  *  edit. 1.0 = legacy "panel side = 2 × radius.body". */
-export const MIRROR_PANEL_SIZE_MULT = 2.0;
+export const FORCE_FIELD_PANEL_SIZE_MULT = 2.0;
 
 /** Mirror frame geometry derived from `panelHalfSide` (= radius.body
- *  × MIRROR_PANEL_SIZE_MULT).
+ *  × FORCE_FIELD_PANEL_SIZE_MULT).
  *
  *  - `side`              — full panel edge length (= 2 × halfSide).
  *  - `supportDiameter`   — diameter of the cylindrical side grabbers.
@@ -42,10 +42,10 @@ export const MIRROR_PANEL_SIZE_MULT = 2.0;
  *                          (offset out from the panel face by half the
  *                          support diameter).
  *
- *  Single source of truth shared by `MirrorMesh3D` (live mirror) and
+ *  Single source of truth shared by `ForceFieldPanelMesh3D` (live mirror) and
  *  `Debris3D` (post-death debris) so the dead-mirror tumbling pieces
  *  always match the live silhouette. Past drift bug:
- *  Debris3D fell out of sync when MirrorMesh3D's constants moved. */
+ *  Debris3D fell out of sync when ForceFieldPanelMesh3D's constants moved. */
 export type MirrorFrameGeometry = {
   side: number;
   supportDiameter: number;
@@ -54,7 +54,7 @@ export type MirrorFrameGeometry = {
   frameZ: number;
 };
 
-export function getMirrorFrameGeometry(panelHalfSide: number): MirrorFrameGeometry {
+export function getForceFieldFrameGeometry(panelHalfSide: number): MirrorFrameGeometry {
   const side = panelHalfSide * 2;
   const supportDiameter = Math.max(panelHalfSide * 0.075, 0.34);
   const supportRadius = supportDiameter * 0.5;
@@ -69,7 +69,7 @@ export function getMirrorFrameGeometry(panelHalfSide: number): MirrorFrameGeomet
  *
  *      a(α, β) = (cos α · cos β,  sin α · cos β,  sin β)
  *
- *  where α = mirrorYaw and β = mirrorPitch.
+ *  where α = forceFieldPanelYaw and β = forceFieldPanelPitch.
  *
  *  SINGLE SOURCE OF TRUTH for the rigid-arm extend formula — shared
  *  by the aim solver, the panel hit test (collision), and the debris
@@ -82,16 +82,16 @@ export function getMirrorFrameGeometry(panelHalfSide: number): MirrorFrameGeomet
  *
  *  `out` is mutated and returned to keep this allocation-free in the
  *  per-tick aim-solver loop. */
-export function getMirrorPanelCenter(
+export function getForceFieldPanelCenter(
   pivotX: number, pivotY: number, pivotZ: number,
   armLength: number,
-  mirrorYaw: number, mirrorPitch: number,
+  forceFieldPanelYaw: number, forceFieldPanelPitch: number,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
-  const cosYaw = Math.cos(mirrorYaw);
-  const sinYaw = Math.sin(mirrorYaw);
-  const cosPitch = Math.cos(mirrorPitch);
-  const sinPitch = Math.sin(mirrorPitch);
+  const cosYaw = Math.cos(forceFieldPanelYaw);
+  const sinYaw = Math.sin(forceFieldPanelYaw);
+  const cosPitch = Math.cos(forceFieldPanelPitch);
+  const sinPitch = Math.sin(forceFieldPanelPitch);
   out.x = pivotX + cosYaw * cosPitch * armLength;
   out.y = pivotY + sinYaw * cosPitch * armLength;
   out.z = pivotZ + sinPitch * armLength;
@@ -99,18 +99,18 @@ export function getMirrorPanelCenter(
 }
 
 /** Unit-length arm direction `a(α, β)` from the same `(yaw, pitch)`
- *  pose `getMirrorPanelCenter` extends along. The panel's face normal
+ *  pose `getForceFieldPanelCenter` extends along. The panel's face normal
  *  IS this direction (panel face is perpendicular to the arm), so the
  *  hit test reaches for the same vector instead of recomputing the
  *  components inline. Mutates `out` and returns it. */
 export function getMirrorArmDirection(
-  mirrorYaw: number, mirrorPitch: number,
+  forceFieldPanelYaw: number, forceFieldPanelPitch: number,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
-  const cosYaw = Math.cos(mirrorYaw);
-  const sinYaw = Math.sin(mirrorYaw);
-  const cosPitch = Math.cos(mirrorPitch);
-  const sinPitch = Math.sin(mirrorPitch);
+  const cosYaw = Math.cos(forceFieldPanelYaw);
+  const sinYaw = Math.sin(forceFieldPanelYaw);
+  const cosPitch = Math.cos(forceFieldPanelPitch);
+  const sinPitch = Math.sin(forceFieldPanelPitch);
   out.x = cosYaw * cosPitch;
   out.y = sinYaw * cosPitch;
   out.z = sinPitch;
@@ -120,7 +120,7 @@ export function getMirrorArmDirection(
 /** Upright (slope-IGNORANT) mirror arm pivot — the turret pivot point
  *  the rigid arm extends from, computed from the chassis-local panel
  *  cache + the unit's ground anchor. Used by the hit test
- *  (`MirrorPanelHit.findClosestPanelHit`) when no slope-aware pivot is
+ *  (`ForceFieldPanelHit.findClosestPanelHit`) when no slope-aware pivot is
  *  supplied, plus debris/fallback code.
  *
  *  Live mirror aim and hit-test paths prefer the tilt-aware runtime
@@ -132,7 +132,7 @@ export function getMirrorUprightPivot(
   /** Chassis-perpendicular axis (unit length) — pre-computed by the
    *  caller from the unit yaw to avoid redundant trig. */
   perpX: number, perpY: number,
-  panel: CachedMirrorPanel,
+  panel: CachedForceFieldPanel,
   out: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } {
   out.x = unitX + perpX * panel.offsetY;
@@ -144,31 +144,31 @@ export function getMirrorUprightPivot(
 }
 
 /** Mutates `panelsOut` (push), returns the bound radius the caller
- *  should assign to `unit.mirrorBoundRadius`. Returns 0 when the
+ *  should assign to `unit.forceFieldBoundRadius`. Returns 0 when the
  *  blueprint declares no mirror-bearing turrets. */
-export function buildMirrorPanelCache(
+export function buildForceFieldPanelCache(
   bp: UnitBlueprint,
-  panelsOut: CachedMirrorPanel[],
+  panelsOut: CachedForceFieldPanel[],
 ): number {
   const unitBodyRadius = bp.radius.body;
-  const halfSide = unitBodyRadius * MIRROR_PANEL_SIZE_MULT;
+  const halfSide = unitBodyRadius * FORCE_FIELD_PANEL_SIZE_MULT;
   const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_MULT;
-  let mirrorBoundRadius = 0;
+  let forceFieldBoundRadius = 0;
 
   for (const mount of bp.turrets) {
     const tb = getTurretBlueprint(mount.turretId);
-    if (!tb.mirrorPanels) continue;
+    if (!tb.forceFieldPanels) continue;
     const centerY = mount.mount.z * unitBodyRadius;
     const baseY = centerY - halfSide;
     const topY = centerY + halfSide;
 
-    for (let i = 0; i < tb.mirrorPanels.length; i++) {
+    for (let i = 0; i < tb.forceFieldPanels.length; i++) {
       panelsOut.push({
         halfWidth: halfSide,
         // Panel center sits forward of the turret pivot by armLength
         // along the turret's local +X axis. The world-space yaw of
         // that offset is the mirror turret's rotation, applied at
-        // collision time in MirrorPanelHit.findClosestPanelHit.
+        // collision time in ForceFieldPanelHit.findClosestPanelHit.
         offsetX: armLength,
         offsetY: 0,
         angle: 0,
@@ -180,9 +180,9 @@ export function buildMirrorPanelCache(
       // square. Conservative, but it's only used for broadphase
       // culling so a slight over-estimate is fine.
       const farEdge = armLength + halfSide;
-      if (farEdge > mirrorBoundRadius) mirrorBoundRadius = farEdge;
+      if (farEdge > forceFieldBoundRadius) forceFieldBoundRadius = farEdge;
     }
   }
 
-  return mirrorBoundRadius;
+  return forceFieldBoundRadius;
 }

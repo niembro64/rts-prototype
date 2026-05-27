@@ -32,7 +32,7 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { turretDps } from './mirrorTargetPriority';
+import { turretDps } from './forceFieldTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 import {
   CT_BLUEPRINT_CODE_NONE,
@@ -720,7 +720,7 @@ export function stampCombatTargetingPool(world: WorldState): void {
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
 
-/** Rebuild the mirror panel pool from `world.getMirrorUnits()`. The
+/** Rebuild the mirror panel pool from `world.getForceFieldPanelUnits()`. The
  *  Rust mirror-panel sightline kernel reads this slab during the
  *  targeting FSM, so it must hold the current tick's pose data on
  *  entry. Inactive / dead mirror units are skipped; the slab counts
@@ -731,17 +731,17 @@ const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
  *  is resolved fresh via resolveWeaponWorldMount — same input the
  *  beam tracer / live aim solver uses — so the gate and the
  *  authoritative bounce path agree on where each panel sits. */
-export function stampMirrorPanelPool(world: WorldState): void {
+export function stampForceFieldPanelPool(world: WorldState): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
-  const pool = sim.mirrorPanelPool;
-  if (!world.mirrorsEnabled) {
+  const pool = sim.forceFieldPanelPool;
+  if (!world.turretForceFieldPanelsEnabled) {
     pool.setUnitCount(0);
     pool.setPanelCount(0);
     return;
   }
-  const mirrorUnits = world.getMirrorUnits();
-  if (mirrorUnits.length === 0) {
+  const forceFieldPanelUnits = world.getForceFieldPanelUnits();
+  if (forceFieldPanelUnits.length === 0) {
     pool.setUnitCount(0);
     pool.setPanelCount(0);
     return;
@@ -750,19 +750,19 @@ export function stampMirrorPanelPool(world: WorldState): void {
   const currentTick = world.getTick();
   let unitIdx = 0;
   let panelIdx = 0;
-  for (const unit of mirrorUnits) {
+  for (const unit of forceFieldPanelUnits) {
     if (!unit.unit || unit.unit.hp <= 0) continue;
-    const panels = unit.unit.mirrorPanels;
+    const panels = unit.unit.forceFieldPanels;
     if (!panels || panels.length === 0) continue;
     const unitCombat = unit.combat;
     const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
     if (unitTurrets === null || unitTurrets.length === 0) continue;
 
-    const broadRadius = Math.max(unit.unit.mirrorBoundRadius, unit.unit.radius.shot)
+    const broadRadius = Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.shot)
       + MIRROR_SIGHT_QUERY_PAD;
-    const mirrorTurret = unitTurrets[0];
-    const mirrorRot = mirrorTurret.rotation;
-    const mirrorPitch = mirrorTurret.pitch;
+    const forceFieldPanelTurret = unitTurrets[0];
+    const forceFieldPanelRot = forceFieldPanelTurret.rotation;
+    const forceFieldPanelPitch = forceFieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
     const unitCS = {
       cos: Math.cos(unit.transform.rotation),
@@ -771,7 +771,7 @@ export function stampMirrorPanelPool(world: WorldState): void {
     unit.transform.rotCos = unitCS.cos;
     unit.transform.rotSin = unitCS.sin;
     resolveWeaponWorldMount(
-      unit, mirrorTurret, 0,
+      unit, forceFieldPanelTurret, 0,
       unitCS.cos, unitCS.sin,
       {
         currentTick,
@@ -802,7 +802,7 @@ export function stampMirrorPanelPool(world: WorldState): void {
       unit.transform.x, unit.transform.y, unit.transform.z,
       unitGroundZ,
       broadRadius,
-      mirrorRot, mirrorPitch,
+      forceFieldPanelRot, forceFieldPanelPitch,
       _mirrorStampPivot.x, _mirrorStampPivot.y, _mirrorStampPivot.z,
       panelStart,
       panels.length,
@@ -819,6 +819,6 @@ export function stampMirrorPanelPool(world: WorldState): void {
  *  FSM between them. */
 export function stampTargetingInputSlabs(world: WorldState): void {
   stampForceFieldPool(world);
-  stampMirrorPanelPool(world);
+  stampForceFieldPanelPool(world);
   stampCombatTargetingPool(world);
 }

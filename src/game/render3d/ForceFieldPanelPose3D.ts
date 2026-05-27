@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { Entity, Turret } from '../sim/types';
-import type { MirrorMesh } from './MirrorMesh3D';
+import type { ForceFieldPanelMesh } from './ForceFieldPanelMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
-export class MirrorPose3D {
+export class ForceFieldPanelPose3D {
   private readonly aimDir = new THREE.Vector3();
   private readonly parentMat = new THREE.Matrix4();
   private readonly stepMat = new THREE.Matrix4();
@@ -12,29 +12,29 @@ export class MirrorPose3D {
 
   update(
     entity: Entity,
-    mirrors: MirrorMesh,
-    mirrorTurret: Turret | undefined,
+    mirrors: ForceFieldPanelMesh,
+    forceFieldPanelTurret: Turret | undefined,
     pivotLocal: THREE.Vector3,
     unitChainMat: THREE.Matrix4,
     chassisTiltInverse: THREE.Quaternion | undefined,
-    mirrorsEnabled: boolean,
+    turretForceFieldPanelsEnabled: boolean,
     unitDetailInstances: UnitDetailInstanceRenderer3D,
   ): void {
     mirrors.root.position.copy(pivotLocal);
-    mirrors.root.visible = mirrorsEnabled;
-    if (!mirrorsEnabled) return;
+    mirrors.root.visible = turretForceFieldPanelsEnabled;
+    if (!turretForceFieldPanelsEnabled) return;
 
-    const mirrorRot = mirrorTurret?.rotation ?? entity.transform.rotation;
-    const mirrorPitch = mirrorTurret?.pitch ?? 0;
-    const cosMirrorRot = Math.cos(mirrorRot);
-    const sinMirrorRot = Math.sin(mirrorRot);
-    const cosMirrorPitch = Math.cos(mirrorPitch);
-    const sinMirrorPitch = Math.sin(mirrorPitch);
+    const forceFieldPanelRot = forceFieldPanelTurret?.rotation ?? entity.transform.rotation;
+    const forceFieldPanelPitch = forceFieldPanelTurret?.pitch ?? 0;
+    const cosForceFieldPanelRot = Math.cos(forceFieldPanelRot);
+    const sinForceFieldPanelRot = Math.sin(forceFieldPanelRot);
+    const cosForceFieldPanelPitch = Math.cos(forceFieldPanelPitch);
+    const sinForceFieldPanelPitch = Math.sin(forceFieldPanelPitch);
 
     this.aimDir.set(
-      cosMirrorRot * cosMirrorPitch,
-      sinMirrorPitch,
-      sinMirrorRot * cosMirrorPitch,
+      cosForceFieldPanelRot * cosForceFieldPanelPitch,
+      sinForceFieldPanelPitch,
+      sinForceFieldPanelRot * cosForceFieldPanelPitch,
     );
     if (chassisTiltInverse) this.aimDir.applyQuaternion(chassisTiltInverse);
 
@@ -71,7 +71,7 @@ export class MirrorPose3D {
         panel.scale,
       );
       this.finalMat.multiplyMatrices(this.parentMat, this.stepMat);
-      unitDetailInstances.writeMirrorPanelMatrix(slot, this.finalMat, entity);
+      unitDetailInstances.writeForceFieldPanelMatrix(slot, this.finalMat, entity);
     }
   }
 }

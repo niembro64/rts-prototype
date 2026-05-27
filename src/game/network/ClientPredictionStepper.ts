@@ -37,7 +37,7 @@ type ClientPredictionStepperOptions = {
   getMapWidth: () => number;
   getMapHeight: () => number;
   getServerForceFieldsEnabled: () => boolean;
-  setForceFieldsEnabledForPrediction: (enabled: boolean) => void;
+  setTurretForceFieldSpheresEnabledForPrediction: (enabled: boolean) => void;
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
   deleteEntityLocalState: (id: EntityId) => void;
   markLineProjectilesChanged: () => void;
@@ -207,7 +207,7 @@ export class ClientPredictionStepper {
       getMapWidth,
       getMapHeight,
       getServerForceFieldsEnabled,
-      setForceFieldsEnabledForPrediction,
+      setTurretForceFieldSpheresEnabledForPrediction,
       applyProjectileSpawn,
       deleteEntityLocalState,
       markLineProjectilesChanged,
@@ -230,7 +230,7 @@ export class ClientPredictionStepper {
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const forceFieldsEnabled = getServerForceFieldsEnabled();
-    setForceFieldsEnabledForPrediction(forceFieldsEnabled);
+    setTurretForceFieldSpheresEnabledForPrediction(forceFieldsEnabled);
 
     let beamPathsChanged = false;
     for (const id of activeBeamPathIds) {

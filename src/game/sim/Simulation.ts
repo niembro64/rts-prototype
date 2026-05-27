@@ -28,7 +28,7 @@ import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
   stampForceFieldPool,
-  stampMirrorPanelPool,
+  stampForceFieldPanelPool,
   type CombatTargetingTurretFsmOut,
 } from './combat/targetingInputStamping';
 import {
@@ -516,7 +516,7 @@ export class Simulation {
     // AIM-08.5 — rebuild mirror-panel slab before the FSM. The Rust
     // gate consults this when evaluating mirror sightline clearance,
     // so it must hold current-tick pose data on entry.
-    stampMirrorPanelPool(this.world);
+    stampForceFieldPanelPool(this.world);
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.
@@ -604,7 +604,7 @@ export class Simulation {
       // targeting, but need the post-rotation, post-force-field-update
       // pose for this collision tick.
       stampForceFieldPool(this.world, { includeWhenSightDisabled: true });
-      stampMirrorPanelPool(this.world);
+      stampForceFieldPanelPool(this.world);
 
       // Check projectile collisions and get dead units
       const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);

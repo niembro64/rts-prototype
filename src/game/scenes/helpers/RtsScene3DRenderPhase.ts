@@ -195,7 +195,7 @@ export class RtsScene3DRenderPhase {
     );
     entityRenderer.update(
       renderFrameState,
-      { mirrorsEnabled: serverMeta?.mirrorsEnabled ?? true },
+      { turretForceFieldPanelsEnabled: serverMeta?.turretForceFieldPanelsEnabled ?? true },
     );
     contactShadowRenderer?.update(
       this.clientViewState.getUnits(),

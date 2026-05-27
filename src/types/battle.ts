@@ -10,7 +10,7 @@ export type UnitToggleConfig = {
 export type BattleBarConfig = {
   readonly units: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
-  readonly mirrorsEnabled: BooleanSetting;
+  readonly turretForceFieldPanelsEnabled: BooleanSetting;
   readonly forceFieldsEnabled: BooleanSetting;
   readonly forceFieldsObstructSight: BooleanSetting;
   readonly forceFieldReflectionMode: {
