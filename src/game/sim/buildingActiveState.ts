@@ -36,9 +36,17 @@ export const BUILDING_REOPEN_DELAY_MS = 5000;
 /** Damage multiplier applied while the building is OFF. 0.1 = 10× tougher. */
 export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 
-/** Which building types use the active-state fortify mechanic. */
+/** Which building types use the active-state fortify mechanic.
+ *  Producer buildings (solar/wind/extractor) gate resource income on
+ *  state.open; radar gates sensor coverage on state.open; converter
+ *  gates the energy↔metal swap on state.open. All five fortify
+ *  identically while OFF (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
 export function buildingTypeHasActiveState(type: BuildingType | null | undefined): boolean {
-  return type === 'solar' || type === 'wind' || type === 'extractor';
+  return type === 'solar'
+    || type === 'wind'
+    || type === 'extractor'
+    || type === 'radar'
+    || type === 'resourceConverter';
 }
 
 export function createInitialBuildingActiveState(): BuildingActiveState {
@@ -120,6 +128,22 @@ function setBuildingProducing(entity: Entity, producing: boolean): boolean {
     state.producing = producing;
     if (producing) economyManager.addMetalExtraction(playerId, rate);
     else economyManager.removeMetalExtraction(playerId, rate);
+    return true;
+  }
+
+  if (entity.buildingType === 'radar') {
+    // Radar provides sensor coverage rather than a resource flow; the
+    // coverage seeding path already gates on state.open, so this
+    // setter just tracks the producing flag for the renderer.
+    state.producing = producing;
+    return true;
+  }
+
+  if (entity.buildingType === 'resourceConverter') {
+    // Converter ticks (energy↔metal swap) run through processConverters
+    // in economy.ts and are gated there on state.open. Track the flag
+    // so the renderer / wire stay in sync.
+    state.producing = producing;
     return true;
   }
 

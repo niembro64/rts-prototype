@@ -13,32 +13,5 @@ written; check the code and if the issue is no longer relevant, delete it.
 Please always commit and push before and after any code changes we make. If there was unchecked code before, just commit and push before you start making your edits.
 
 
-================================================================================
-TOWER ENTITY TYPE — FOLLOW-UP WORK
-================================================================================
-
---------------------------------------------------------------------------------
-TOWER-04b — ON/OFF for radar + converter (deferred)
---------------------------------------------------------------------------------
-TOWER-04 landed the ON/OFF button + selfDestruct command for
-solar/wind/extractor (the building types that already carry a
-BuildingActiveState). The design doc says ON/OFF applies to all
-buildings, but radar and converter currently have no active-state
-mechanic: radar coverage is a continuous source-pool input and the
-converter runs whenever there's surplus energy. Adding ON/OFF for
-those needs:
-
-- An active-state shape for each (does ON/OFF gate radar coverage?
-  Does it gate converter ticks? Both should also fortify against
-  damage like producers do.)
-- buildingTypeHasActiveState + ensureBuildingActiveState updated to
-  include them.
-- Renderer pose changes (radar dish stowed when OFF, converter idle
-  pose when OFF) consistent with the design philosophy's "renderer's
-  open/closed pose" contract.
-
-================================================================================
-
-
 RENAME-TURRETS-AND-VARIABLES-1
-Let's fully rename our "mirror turret" to "turretForceFieldPanel", and rename our "force field turret" to "turretForceFieldSphere". 
+Let's fully rename our "mirror turret" to "turretForceFieldPanel", and rename our "force field turret" to "turretForceFieldSphere". Also make sure that our "budget_design_philosophy.html" document refers to these turrets using the new terms (if it references them). 

@@ -381,12 +381,16 @@ function createBuildingFromNetwork(
       maxHp: buildingHp !== null ? buildingHp.max : config.hp,
       targetRadius: Math.sqrt(width * width + height * height) / 2,
       // The wire field `solar` carries the shared BuildingActiveState
-      // open flag for solar / wind / extractor; map it back into the
-      // generic `activeState` slot. Solar starts closed by default;
-      // wind & extractor start open.
+      // open flag for every producer building (solar / wind / extractor
+      // / radar / resourceConverter); map it back into the generic
+      // `activeState` slot. Solar starts closed by default; the others
+      // start in the host's authoritative initial pose, which the wire
+      // ships as soon as the first snapshot for this entity arrives.
       activeState: (buildingType === 'solar'
         || buildingType === 'wind'
-        || buildingType === 'extractor')
+        || buildingType === 'extractor'
+        || buildingType === 'radar'
+        || buildingType === 'resourceConverter')
         ? {
             open: buildingSolar !== null ? buildingSolar.open : buildingType !== 'solar',
             producing: false,

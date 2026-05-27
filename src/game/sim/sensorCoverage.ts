@@ -18,13 +18,18 @@ export function canEntityProvideFullVision(entity: Entity): boolean {
   return true;
 }
 
-/** True when the entity is a radar-class sensor (alive AND finished).
- *  Currently only the radar building qualifies; mobile-radar units can
- *  be added by extending this predicate without touching callers. */
+/** True when the entity is a radar-class sensor (alive AND finished
+ *  AND in its ON / open active state). Currently only the radar
+ *  building qualifies; mobile-radar units can be added by extending
+ *  this predicate without touching callers. A closed (OFF) radar
+ *  provides no coverage — mirrors the "Producer Buildings Are ON/OFF"
+ *  contract in design_philosophy.html. */
 export function canEntityProvideRadarVision(entity: Entity): boolean {
   if (!entity.building || entity.building.hp <= 0) return false;
   if (entity.buildingType !== 'radar') return false;
   if (entity.buildable && !entity.buildable.isComplete) return false;
+  const activeState = entity.building.activeState;
+  if (activeState !== null && activeState.open === false) return false;
   return true;
 }
 

@@ -349,6 +349,11 @@ export class EconomyManager {
       if (!entity.ownership || !entity.building) continue;
       if (entity.building.hp <= 0) continue;
       if (!isEntityActive(entity)) continue;
+      // ON/OFF gate. A closed (OFF) converter pays no energy and
+      // produces no metal, mirroring solar/wind/extractor behavior
+      // (see design_philosophy.html "Producer Buildings Are ON/OFF").
+      const activeState = entity.building.activeState;
+      if (activeState !== null && activeState.open === false) continue;
       const pid = entity.ownership.playerId;
       totalRatePerPlayer.set(pid, (totalRatePerPlayer.get(pid) ?? 0) + ratePerSec);
     }

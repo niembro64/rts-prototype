@@ -402,17 +402,24 @@ export class BuildingAnimationController3D {
         // Ring spin: signed by flow direction so the player can read
         // which way the converter is running from the orbiter motion.
         // Speeds EMA toward target via ROT VEL mode so spin-up matches
-        // every other decorative rotation in the game.
-        const energyMag = resourcePylonRateFraction(energyRate, invBase);
-        const metalMag = resourcePylonRateFraction(metalRate, invBase);
+        // every other decorative rotation in the game. A closed (OFF)
+        // converter parks the rings (target 0) so the renderer's
+        // open/closed pose tracks the same state that gates the
+        // energy↔metal swap.
+        const open = entity.building?.activeState?.open !== false;
+        const energyMag = open ? resourcePylonRateFraction(energyRate, invBase) : 0;
+        const metalMag = open ? resourcePylonRateFraction(metalRate, invBase) : 0;
         const energyDir = energyRate >= 0 ? 1 : -1;
         const metalDir = metalRate >= 0 ? 1 : -1;
-        const energyTarget = energyDir
-          * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * energyMag);
-        const metalTarget = -metalDir
-          * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * metalMag);
-        const accentTarget = CONVERTER_RING_IDLE_RAD_PER_SEC * 0.6
-          + CONVERTER_RING_FULL_RAD_PER_SEC * 0.7 * Math.max(energyMag, metalMag);
+        const energyTarget = open
+          ? energyDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * energyMag)
+          : 0;
+        const metalTarget = open
+          ? -metalDir * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * metalMag)
+          : 0;
+        const accentTarget = open
+          ? (CONVERTER_RING_IDLE_RAD_PER_SEC * 0.6 + CONVERTER_RING_FULL_RAD_PER_SEC * 0.7 * Math.max(energyMag, metalMag))
+          : 0;
 
         const energySpeed = lerp(
           this.converterEnergyRingSpeeds.get(id) ?? 0,
@@ -488,13 +495,19 @@ export class BuildingAnimationController3D {
       const radarSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
       for (const id of this.radarBuildingIds) {
         const mesh = buildingMeshes.get(id);
+        const entity = this.clientViewState.getEntity(id);
         const rig = mesh?.radarRig;
         if (!mesh || !rig || mesh.buildingCachedDetailsReady !== true) continue;
+        // ON/OFF gate: a closed (OFF) radar stops spinning so the
+        // renderer's open/closed pose tracks the same state that gates
+        // sensor coverage (see design_philosophy.html "Producer
+        // Buildings Are ON/OFF").
+        const open = entity?.building?.activeState?.open !== false;
         const seed = id * 0.137;
         let headSpeed = this.radarHeadSpeeds.get(id) ?? 0;
         let sweepSpeed = this.radarSweepSpeeds.get(id) ?? 0;
-        headSpeed = lerp(headSpeed, RADAR_HEAD_RAD_PER_SEC, radarSpeedAlpha);
-        sweepSpeed = lerp(sweepSpeed, -RADAR_SWEEP_RAD_PER_SEC, radarSpeedAlpha);
+        headSpeed = lerp(headSpeed, open ? RADAR_HEAD_RAD_PER_SEC : 0, radarSpeedAlpha);
+        sweepSpeed = lerp(sweepSpeed, open ? -RADAR_SWEEP_RAD_PER_SEC : 0, radarSpeedAlpha);
         let headPhase = this.radarHeadPhases.get(id) ?? seed;
         let sweepPhase = this.radarSweepPhases.get(id) ?? seed * 2.7;
         headPhase += spinDt * headSpeed;

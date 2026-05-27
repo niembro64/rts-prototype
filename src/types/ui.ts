@@ -34,7 +34,7 @@ export type SelectionInfo = {
   fireEnabled: boolean;
   /** True iff the selection contains at least one building whose
    *  BuildingType uses the ON/OFF active-state mechanic
-   *  (solar/wind/extractor). Gates the ON/OFF button. */
+   *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button. */
   hasBuildingActiveControl: boolean;
   /** True when every active-state building in the selection is currently
    *  ON (open). Drives the ON/OFF button label. */

@@ -173,8 +173,8 @@ export class EntityCacheManager {
           // The entity.type discriminator differentiates them for
           // selection-panel UI and combat targeting; everything else
           // reads the building component the same way. The producer
-          // active-state caches (solar/wind/extractor/converter) are
-          // gated on buildingType, so towers naturally don't enter
+          // active-state caches (solar/wind/extractor/radar/converter)
+          // are gated on buildingType, so towers naturally don't enter
           // them. Factories (a tower-class buildingType) still ride
           // the cachedFactoryBuildings list because the production
           // queue lives on the entity.factory component.
@@ -203,6 +203,9 @@ export class EntityCacheManager {
             this.cachedActiveStateBuildings.push(entity);
           } else if (entity.buildingType === 'resourceConverter') {
             this.cachedConverterBuildings.push(entity);
+            this.cachedActiveStateBuildings.push(entity);
+          } else if (entity.buildingType === 'radar') {
+            this.cachedActiveStateBuildings.push(entity);
           }
           if (entity.factory) this.cachedFactoryBuildings.push(entity);
           break;

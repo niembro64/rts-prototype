@@ -789,8 +789,9 @@ export function serializeEntitySnapshot(
         b.build = build;
         if (entity.building.activeState) {
           // Wire field name is `solar` for legacy reasons; semantically
-          // carries the shared BuildingActiveState open flag for solar,
-          // wind, and extractor.
+          // carries the shared BuildingActiveState open flag for every
+          // producer building (solar / wind / extractor / radar /
+          // resourceConverter).
           const s = poolEntry.solarSub;
           s.open = entity.building.activeState.open;
           b.solar = s;
