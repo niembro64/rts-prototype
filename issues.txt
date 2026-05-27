@@ -3,14 +3,151 @@
 BUDGET ANNIHILATION — GAMEPLAY PARITY ISSUES
 
 
-This is "issues.txt" for this game "budget-annihilation" (i.e. "rts-prototype"). 
+This is "issues.txt" for this game "budget-annihilation" (i.e. "rts-prototype").
 
-Your task is to fix the issues documented here. 
+Your task is to fix the issues documented here.
 
 Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. Remember that our code may have changed since the issue was
 written; check the code and if the issue is no longer relevant, delete it.
 
 Please always commit and push before and after any code changes we make. If there was unchecked code before, just commit and push before you start making your edits.
+
+
+================================================================================
+TOWER ENTITY TYPE — FOLLOW-UP WORK
+================================================================================
+
+Context: We landed `tower` as a TS-level peer of `unit` and `building` —
+fabricator + megaBeamTower + cannonTower spawn with entity.type === 'tower',
+the SelectionPanel branches per type, and the wire format folds tower into
+the building path because their structural shape is identical. The deeper
+work below is what's left before the design philosophy is fully realised in
+code.
+
+See design_philosophy.html sections "Towers Are Static Hosts That Lock On
+And Fire", "Selection Menus Are Uniform Per Entity Type", and the
+"Host-directed turrets..." / lock-on-exclusion paragraphs for the spec.
+
+--------------------------------------------------------------------------------
+TOWER-01 — Rust sim: add Tower as a real EntityType peer
+--------------------------------------------------------------------------------
+The Rust sim today only knows about UNIT and BUILDING (see
+rts-sim-wasm/src/lib.rs around lines 6163-6165 and 14194-14195). Towers
+currently ride the BUILDING tag on the wire and through snapshot_baseline.
+Per design philosophy, Rust EntityType should carry Tower as a peer.
+
+Concrete work:
+- Add `ENTITY_META_TYPE_TOWER: u8 = 3` constant.
+- Add `SNAPSHOT_DIFF_KIND_TOWER: u8 = 3` constant.
+- Add `entity_meta_set_tower(...)` setter on EntityMetaPool — same shape as
+  `entity_meta_set_building` plus the unit-side combat fields a tower
+  actually uses (build_target_id, combat-related slots used by armed
+  buildings today).
+- Extend `snapshot_baseline_diff_slot` (lib.rs ~line 14369-14520) with a
+  `kind == SNAPSHOT_DIFF_KIND_TOWER` arm. Towers want the building-side
+  hp/build/factory diff PLUS the combat turret diff that armed entities
+  already exercise. Likely the cleanest move is to share branches and gate
+  velocity-specific code on UNIT only.
+- Decide whether to add a dedicated `snapshot_encode_entity_tower` or share
+  the building encoder. The latter is fine as long as the wire bytes don't
+  diverge.
+- TS-side init.ts (src/game/sim-wasm/init.ts ~lines 955-956 and ~1806-1807)
+  needs to export the new constants.
+- TS-side stateSerializerEntityDelta.ts (~line 458): switch from "anything
+  not unit -> BUILDING" to a 3-way map so towers actually use the
+  TOWER kind. Same for stateSerializer.ts ~line 93.
+
+When this lands, delete the "Towers ride the building wire path..."
+comments added in the TS-level peer-type commit (036bbd79) — they're
+transitional and the design philosophy already says towers are peers.
+
+--------------------------------------------------------------------------------
+TOWER-02 — TurretConfig: add lockOnTowerExcludeMask
+--------------------------------------------------------------------------------
+src/types/sim.ts:401-405 has lockOnRelationshipExcludeMask,
+lockOnEntityFamilyExcludeMask, lockOnBuildingExcludeMask,
+lockOnUnitExcludeMask, lockOnTurretExcludeMask — but no
+lockOnTowerExcludeMask. The design doc (Atomic Gameplay Pieces ->
+exclusion hierarchy bullets) now enumerates `towers` as a level-0 entity
+family AND `exclude_lock_on_level_1_towers` as a level-1 list.
+
+Concrete work:
+- Add lockOnTowerExcludeMask to TurretConfig.
+- Add `'towers'` to the valid `exclude_lock_on_level_0_entities` values
+  in the turret blueprint schema.
+- Add `exclude_lock_on_level_1_towers: string[]` to the turret blueprint
+  schema.
+- Wire the new mask through the blueprint loader / compilation site
+  (search for where lockOnBuildingExcludeMask is populated).
+- Update the targeting kernel: when scanning candidates, candidates with
+  entity.type === 'tower' must be dropped by the new mask, not by the
+  building mask. This affects both the JS targeting paths and any
+  Rust-side acquisition kernel that reads these bits.
+- Update mirror-turret style blueprints (the design doc's example: "a
+  mirror turret that should lock only onto enemy turrets excludes
+  friendly_entities, units, towers, and buildings at level 0") — they
+  may need to grow the towers exclusion explicitly so nothing silently
+  changes behaviour.
+
+--------------------------------------------------------------------------------
+TOWER-03 — Tower selection-panel commands: lock-on + self-destruct
+--------------------------------------------------------------------------------
+SelectionPanel.vue currently shows a tower selection's header + the
+fire-control toggle + (for fabricators) production queues. Per design,
+towers also need:
+
+a) Set Lock-On Target — enter a click-target mode; the next click on an
+   entity-with-an-ID sets the selected tower's host target (writes
+   CombatComponent.priorityTargetId). Right-click / Esc cancels.
+b) Clear Lock-On — drop the priorityTargetId back to NO_ENTITY_ID; tower
+   reverts to autonomous acquisition.
+c) Self-destruct — demolish the tower (resolved via existing damage path
+   or a dedicated removal command).
+
+Each needs:
+- A new wire command type (src/types/commandTypes.ts).
+- Server-side execution (src/game/sim/commandExecution.ts).
+- A new SelectionActions method on the UI side
+  (SelectionPanel.vue / gameCanvasSceneUi.ts SelectionActions impl).
+- Buttons in SelectionPanel.vue gated on towerCount > 0.
+
+Lock-on target picker also needs an InputManager mode similar to
+attack-area / guard so the targeting click is routed correctly.
+
+--------------------------------------------------------------------------------
+TOWER-04 — Building selection-panel commands: ON/OFF + self-destruct
+--------------------------------------------------------------------------------
+Per design philosophy "Producer Buildings Are ON/OFF" and "Selection
+Menus Are Uniform Per Entity Type", buildings need:
+
+a) ON/OFF toggle — the BuildingActiveState ON/OFF state already exists
+   in the sim (src/game/sim/buildingActiveState.ts). Today there is no
+   player-facing wire command to flip it; production/damage handling
+   reads the flag but it has no UI affordance. Add the command + button.
+b) Self-destruct — same shape as TOWER-03(c).
+
+Once these land, flip SelectionPanel.vue's `showPanel` to also open for
+`buildingCount > 0` (today the panel stays hidden on pure-building
+selections because there are no actions to show; an empty panel would be
+worse than no panel).
+
+The design doc says ON/OFF applies to all buildings, including radar +
+converter. Verify whether ON/OFF semantically makes sense for radar
+(active vs passive) and converter (consuming vs idle) before wiring the
+button — these may need their own ON/OFF effect handlers in
+buildingActiveState.ts.
+
+--------------------------------------------------------------------------------
+TOWER-05 — Verify mirror-style turrets still target the right things
+--------------------------------------------------------------------------------
+With towers now being entity.type === 'tower', any turret that today
+filters by `entity.type === 'building'` in its acquisition pass will
+silently skip towers. After TOWER-02 the masks are the right tool; before
+TOWER-02, double-check that the JS targeting paths in
+src/game/sim/combat/ accept tower entities as candidates anywhere they
+accept buildings. Today this works because towers ride the building
+caches, but it's a class of bug worth a deliberate audit when TOWER-02
+changes the exclusion hierarchy.
 
 
 ================================================================================
