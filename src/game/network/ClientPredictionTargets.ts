@@ -76,7 +76,7 @@ function clearBeamPoint(p: BeamPoint): void {
   p.x = 0; p.y = 0; p.z = 0;
   p.vx = 0; p.vy = 0; p.vz = 0;
   p.ax = 0; p.ay = 0; p.az = 0;
-  p.mirrorEntityId = undefined;
+  p.reflectorEntityId = undefined;
   p.reflectorKind = undefined;
   p.reflectorPlayerId = undefined;
   p.normalX = undefined;

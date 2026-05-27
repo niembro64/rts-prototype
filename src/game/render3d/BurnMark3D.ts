@@ -91,7 +91,7 @@ const MIN_SEGMENT_DIST_SQ = 4;
 // How close the beam endpoint's altitude must be to the ground at that
 // (x,y) for the endpoint to count as a ground hit. Beams ending mid-air
 // (on a flying unit, on a building side, at the range circle in the
-// sky, on a mirror reflector above ground) shouldn't leave scorches on
+// sky, on a force-field reflector above ground) shouldn't leave scorches on
 // the dirt below. A few units of slack covers the beam's own half-width
 // and floating-point slop on a sim-authoritative ground hit (which sets
 // endpoint.z = getGroundZ(x, y) exactly).

@@ -9,7 +9,7 @@ export type BattlePreset = {
   readonly units: readonly string[];
   readonly cap: number;
   readonly turretForceFieldPanelsEnabled: boolean;
-  readonly forceFieldsEnabled: boolean;
+  readonly turretForceFieldSpheresEnabled: boolean;
   readonly forceFieldsObstructSight: boolean;
   readonly forceFieldReflectionMode: ForceFieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
@@ -67,7 +67,7 @@ function demoUnits(): readonly string[] {
 // inline defaults.
 const SUBSYSTEM_DEFAULTS = {
   turretForceFieldPanelsEnabled: true,
-  forceFieldsEnabled: true,
+  turretForceFieldSpheresEnabled: true,
   forceFieldReflectionMode: 'both' as ForceFieldReflectionMode,
 };
 

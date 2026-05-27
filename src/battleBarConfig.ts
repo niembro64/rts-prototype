@@ -58,7 +58,7 @@ export const BATTLE_CONFIG = {
     options: battleBarConfig.cap.options as readonly number[],
   },
   turretForceFieldPanelsEnabled: { default: _demoPreset.turretForceFieldPanelsEnabled },
-  forceFieldsEnabled: { default: _demoPreset.forceFieldsEnabled },
+  turretForceFieldSpheresEnabled: { default: _demoPreset.turretForceFieldSpheresEnabled },
   forceFieldsObstructSight: { default: _demoPreset.forceFieldsObstructSight },
   fogOfWarEnabled: { default: _demoPreset.fogOfWarEnabled },
   forceFieldReflectionMode: {
@@ -363,7 +363,7 @@ export function saveTurretForceFieldPanelsEnabled(_enabled: boolean, mode: Battl
 }
 
 export function loadStoredTurretForceFieldSpheresEnabled(_mode: BattleMode): boolean {
-  return BATTLE_CONFIG.forceFieldsEnabled.default;
+  return BATTLE_CONFIG.turretForceFieldSpheresEnabled.default;
 }
 
 export function saveTurretForceFieldSpheresEnabled(_enabled: boolean, mode: BattleMode): void {
@@ -371,7 +371,7 @@ export function saveTurretForceFieldSpheresEnabled(_enabled: boolean, mode: Batt
     mode === 'real'
       ? STORAGE_REAL_TURRET_FORCE_FIELD_SPHERES_ENABLED
       : STORAGE_DEMO_TURRET_FORCE_FIELD_SPHERES_ENABLED,
-    String(BATTLE_CONFIG.forceFieldsEnabled.default),
+    String(BATTLE_CONFIG.turretForceFieldSpheresEnabled.default),
   );
 }
 

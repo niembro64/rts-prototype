@@ -1196,12 +1196,14 @@
       </ul>
       <h3>Where the rule does not apply</h3>
       <p>
-        Mirror turrets and the disruptor cannon stay full-barrel: the mirror panel has to
-        rotate to bisect its targets, and the disruptor is an authored melee gun whose visible
-        barrel is half the read. Construction emitters, force-field turrets, and visual-only
-        hardpoints continue to use their existing dedicated rigs &mdash; <code>headOnly</code>
-        is a strict subset of the &ldquo;straight-line projectile or beam, head sphere is the
-        whole visual&rdquo; category, not a catch-all.
+        <code>turretForceFieldPanel</code> turrets and the disruptor cannon stay
+        full-barrel: the force-field panel has to rotate to bisect its targets,
+        and the disruptor is an authored melee gun whose visible barrel is half
+        the read. Construction emitters, <code>turretForceFieldSphere</code>
+        turrets, and visual-only hardpoints continue to use their existing
+        dedicated rigs &mdash; <code>headOnly</code> is a strict subset of the
+        &ldquo;straight-line projectile or beam, head sphere is the whole
+        visual&rdquo; category, not a catch-all.
       </p>
     </section>
 
@@ -1298,8 +1300,9 @@
         This separation is what lets mixed-role hosts work. A unit guarding a friendly entity can
         keep that friendly entity as its host target; a repair or construction turret may inherit
         it, while a fighting turret that excludes <code>friendly_entities</code> ignores it and
-        searches for enemies normally. A mirror turret can reject the same host target unless it is
-        an allowed enemy turret. Commands belong to the host; lock-on belongs to the turret.
+        searches for enemies normally. A <code>turretForceFieldPanel</code> can
+        reject the same host target unless it is an allowed enemy turret.
+        Commands belong to the host; lock-on belongs to the turret.
       </p>
       <h3>Host-directed turrets carry the host lock-on; fully-autonomous turrets ignore it</h3>
       <p>
@@ -1389,9 +1392,10 @@
         line-of-sight, and scoring then pick the best lock from the survivors. A construction
         turret that should lock only onto friendly entities excludes <code>enemy_entities</code>.
         A fighting turret that should only attack hostile targets excludes
-        <code>friendly_entities</code>. A mirror turret that should lock only onto enemy turrets
-        excludes <code>friendly_entities</code>, <code>units</code>, <code>towers</code>, and
-        <code>buildings</code> at level 0. A normal weapon turret that should ignore turret
+        <code>friendly_entities</code>. A <code>turretForceFieldPanel</code>
+        that should lock only onto enemy turrets excludes
+        <code>friendly_entities</code>, <code>units</code>, <code>towers</code>,
+        and <code>buildings</code> at level 0. A normal weapon turret that should ignore turret
         mounts excludes <code>turrets</code> at level 0. Specialist weapons can then use the
         level-1 lists to skip named units, towers, buildings, or turret blueprints without
         changing the shared target acquisition code.
@@ -1593,28 +1597,33 @@
         it takes.
       </p>
       <p>
-        The canonical example is the mirror surface. The mirror turret&rsquo;s deployed mirror panels
-        and the force-field generator&rsquo;s sphere are <em>the exact same material</em>: same
-        reflectivity, same line-of-sight occlusion rule, same projectile reflection mechanic, same
-        shader, same visual treatment. The turret carries the material as flat panels; the generator
-        carries it as a sphere. Beyond that geometric difference, a player should be unable to tell
-        them apart by behavior or by eye, and there should be no code path that treats them
+        The canonical example is the force-field surface. The
+        <code>turretForceFieldPanel</code>&rsquo;s deployed panels and the
+        <code>turretForceFieldSphere</code>&rsquo;s sphere are <em>the exact
+        same material</em>: same reflectivity, same line-of-sight occlusion
+        rule, same projectile reflection mechanic, same shader, same visual
+        treatment. The panel turret carries the material as flat panels;
+        the sphere turret carries it as a sphere. Beyond that geometric
+        difference, a player should be unable to tell them apart by behavior
+        or by eye, and there should be no code path that treats them
         differently.
       </p>
       <ul class="rule-list">
         <li>A material is defined once, with all of its physical and visual properties &mdash; reflectivity, refraction, occlusion, hit response, sound profile, shader inputs, particle reactions.</li>
-        <li>Shapes carry materials. A flat panel and a sphere can both be made of mirror; a cuboid block and a frozen pond can both be made of ice. Geometry and material are orthogonal axes of composition.</li>
+        <li>Shapes carry materials. A flat panel and a sphere can both be made of the force-field material; a cuboid block and a frozen pond can both be made of ice. Geometry and material are orthogonal axes of composition.</li>
         <li>When a projectile encounters a surface, the material decides what happens to the projectile; the shape decides where the encounter is and what the surface normal looks like. The two questions are answered by different systems.</li>
-        <li>Line-of-sight queries treat every shape carrying the same material the same way. If the mirror panel reflects a sight ray, the mirror sphere reflects it under the same rule. The intersection math reads from the shape; the policy reads from the material.</li>
+        <li>Line-of-sight queries treat every shape carrying the same material the same way. If the <code>turretForceFieldPanel</code>&rsquo;s panel reflects a sight ray, the <code>turretForceFieldSphere</code>&rsquo;s sphere reflects it under the same rule. The intersection math reads from the shape; the policy reads from the material.</li>
         <li>Visual identity is part of the contract. Same shader, same material parameters, same reflection probes, same hit reactions. The player should see immediately that the flat panel and the sphere are made of the same stuff.</li>
       </ul>
       <p>
-        This is <strong>Single Source Of Truth</strong> applied to physics surfaces. If a feature
-        ever seems to require the mirror to behave differently in the turret case than in the
-        force-field case, the right answer is almost always two materials with different parameter
-        values &mdash; not a branch inside one material that switches on which piece owns the
-        surface. Branches inside material behavior are how reflectivity drifts between two
-        surfaces that the player still perceives as identical.
+        This is <strong>Single Source Of Truth</strong> applied to physics
+        surfaces. If a feature ever seems to require the force-field material
+        to behave differently in the panel-turret case than in the sphere-turret
+        case, the right answer is almost always two materials with different
+        parameter values &mdash; not a branch inside one material that switches
+        on which piece owns the surface. Branches inside material behavior are
+        how reflectivity drifts between two surfaces that the player still
+        perceives as identical.
       </p>
     </section>
 
@@ -1983,7 +1992,7 @@
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; turret eligibility is broad by default and narrowed through level-0 friend/enemy plus entity-family exclusions, then level-1 named blueprint exclusions.</li>
-        <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The mirror turret&rsquo;s flat mirror panels and the force-field sphere are the exact same material &mdash; they differ only in geometry.</li>
+        <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretForceFieldPanel</code>&rsquo;s flat panels and the <code>turretForceFieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
         <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as inbound or outbound resource balls. Solar/wind/extractor pull inbound balls from random world directions; construction turrets push outbound balls at a build target; converters run one pylon inbound and one outbound. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>

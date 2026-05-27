@@ -66,7 +66,7 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
       count: meta.units.count,
     },
     turretForceFieldPanelsEnabled: meta.turretForceFieldPanelsEnabled,
-    forceFieldsEnabled: meta.forceFieldsEnabled,
+    turretForceFieldSpheresEnabled: meta.turretForceFieldSpheresEnabled,
     forceFieldsObstructSight: meta.forceFieldsObstructSight,
     forceFieldReflectionMode: meta.forceFieldReflectionMode,
     fogOfWarEnabled: meta.fogOfWarEnabled,

@@ -5,7 +5,7 @@ import type { EntityId, PlayerId } from './entityTypes';
 export type ProjectileShotKind = 'plasma' | 'rocket';
 export type ProjectileTailShape = 'cone' | 'cylinder' | 'none';
 
-/** The set of `shot.type` values that mirror panels reflect. Adding
+/** The set of `shot.type` values that force-field panels reflect. Adding
  *  one here automatically wires the new type into the aim solver,
  *  panel hit collision, and beam-trace reflection. */
 export const LINE_SHOT_TYPES = ['beam', 'laser'] as const;
@@ -285,7 +285,7 @@ export type ShotConfig =
 export type ProjectileType = 'projectile' | 'beam' | 'laser';
 
 /** One vertex of a beam/laser polyline. */
-export type BeamReflectorKind = 'mirror' | 'forceField';
+export type BeamReflectorKind = 'forceFieldPanel' | 'forceFieldSphere';
 
 export type BeamPoint = {
   x: number;
@@ -300,8 +300,9 @@ export type BeamPoint = {
   ax: number;
   ay: number;
   az: number;
-  /** Legacy name: any beam reflector entity, not only mirrors. */
-  mirrorEntityId?: EntityId;
+  /** Any beam reflector entity — force-field panels and spheres both
+   *  use this slot. */
+  reflectorEntityId?: EntityId;
   reflectorKind?: BeamReflectorKind;
   reflectorPlayerId?: PlayerId;
   /** Full 3D reflector surface normal in sim coords. Present on reflector vertices. */

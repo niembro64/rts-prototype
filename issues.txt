@@ -13,5 +13,3 @@ written; check the code and if the issue is no longer relevant, delete it.
 Please always commit and push before and after any code changes we make. If there was unchecked code before, just commit and push before you start making your edits.
 
 
-RENAME-TURRETS-AND-VARIABLES-1
-Let's fully rename our "mirror turret" to "turretForceFieldPanel", and rename our "force field turret" to "turretForceFieldSphere". Also make sure that our "budget_design_philosophy.html" document refers to these turrets using the new terms (if it references them). 

@@ -177,7 +177,7 @@ export function copyBeamInto(
         vx: 0,
         vy: 0,
         vz: 0,
-        mirrorEntityId: null,
+        reflectorEntityId: null,
         reflectorKind: null,
         reflectorPlayerId: null,
         normalX: null,
@@ -188,7 +188,7 @@ export function copyBeamInto(
     }
     dp.x = sp.x; dp.y = sp.y; dp.z = sp.z;
     dp.vx = sp.vx; dp.vy = sp.vy; dp.vz = sp.vz;
-    dp.mirrorEntityId = sp.mirrorEntityId;
+    dp.reflectorEntityId = sp.reflectorEntityId;
     dp.reflectorKind = sp.reflectorKind;
     dp.reflectorPlayerId = sp.reflectorPlayerId;
     dp.normalX = sp.normalX;

@@ -117,7 +117,7 @@ export class ClientViewState {
   private serverMeta: NetworkServerSnapshotMeta | null = null;
   private visionPlayerMask = 0;
   private readonly visionPlayerIds: PlayerId[] = [];
-  private forceFieldsEnabledForPrediction = true;
+  private turretForceFieldSpheresEnabledForPrediction = true;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
@@ -163,14 +163,14 @@ export class ClientViewState {
         const serverMeta = this.serverMeta;
         return (
           serverMeta !== null &&
-          serverMeta.forceFieldsEnabled !== undefined &&
-          serverMeta.forceFieldsEnabled !== null
+          serverMeta.turretForceFieldSpheresEnabled !== undefined &&
+          serverMeta.turretForceFieldSpheresEnabled !== null
         )
-          ? serverMeta.forceFieldsEnabled
+          ? serverMeta.turretForceFieldSpheresEnabled
           : true;
       },
       setTurretForceFieldSpheresEnabledForPrediction: (enabled) => {
-        this.forceFieldsEnabledForPrediction = enabled;
+        this.turretForceFieldSpheresEnabledForPrediction = enabled;
       },
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
       deleteEntityLocalState: (id) => this.deleteEntityLocalState(id),
@@ -301,7 +301,7 @@ export class ClientViewState {
       clientUnitPredictionIsSettled(
         entity,
         this.serverTargets.get(server.id),
-        this.forceFieldsEnabledForPrediction,
+        this.turretForceFieldSpheresEnabledForPrediction,
       )
     ) {
       return;
@@ -683,7 +683,7 @@ export class ClientViewState {
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
 
-    // Stash the exact force-field / mirror-panel contact point on the
+    // Stash the exact force-field / force-field-panel contact point on the
     // reflected projectile so the curved-cone tail renderer can insert
     // it as a forced trail stamp on the next frame. The velocityUpdate
     // above already snapped the head to one-tick-past-bounce; this puts

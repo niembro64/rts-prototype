@@ -103,7 +103,7 @@ const _tiltQuat = new THREE.Quaternion();
 // articulated yaw + pitch can compensate for the chassis tilt and
 // the rendered barrel still points at the sim's world target.
 const _invTiltQuat = new THREE.Quaternion();
-// Mirror panels (reflective mirror-unit armor plates) are square slabs
+// Force-field panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // forceFieldPanelCache.ts computes baseY/topY/halfWidth from the turret's
 // mount.z + radius.body scaled by FORCE_FIELD_PANEL_SIZE_MULT; both the
@@ -175,7 +175,7 @@ export class Render3DEntities {
   // Beam-turret barrels taper to a point at the muzzle (+Y = tip).
   private coneBarrelGeom = new THREE.CylinderGeometry(0, 1, 1, 10);
   private barrelMat = new THREE.MeshLambertMaterial({ color: BARREL_COLOR });
-  // Mirror panel = flat unit square plane. Default orientation: face
+  // Force-field panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
   // (edge → +Z, normal → +X) per panel below. The mesh is a thin BoxGeometry
   // so the mirror reads as a slab with a hint of depth; the slab is
@@ -198,7 +198,7 @@ export class Render3DEntities {
   private primaryMats = new Map<PlayerId, THREE.MeshLambertMaterial>();
   private turretAccentMats = new Map<number, THREE.MeshLambertMaterial>();
   private neutralMat = new THREE.MeshLambertMaterial({ color: COLORS.units.neutral.colorHex });
-  // Mirror panels keep their existing shape and mount, but use the
+  // Force-field panels keep their existing shape and mount, but use the
   // force-field shield treatment so they read as reflector surfaces
   // instead of chrome slabs.
   private mirrorShinyNeutralMat = createForceFieldReflectorPanelMaterial();

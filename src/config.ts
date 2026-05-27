@@ -224,7 +224,7 @@ export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED = BATTLE_CONFIG.turretForceFieldPanelsEnabled.default;
 export const DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED =
-  BATTLE_CONFIG.forceFieldsEnabled.default;
+  BATTLE_CONFIG.turretForceFieldSpheresEnabled.default;
 export const DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT =
   BATTLE_CONFIG.forceFieldsObstructSight.default;
 export const DEFAULT_FORCE_FIELD_REFLECTION_MODE =
@@ -281,13 +281,13 @@ export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
  *  Segment 1 is launch origin -> first hit/range, segment 2 is after the
  *  first reflector, and so on. If the final allowed segment ends on a
  *  reflector, the beam terminates there and does not get endpoint
- *  damage. This prevents mirror/force-field loops from producing
- *  unbounded traces or arbitrary damage spheres. */
+ *  damage. This prevents force-field-panel / force-field-sphere loops
+ *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 
 export type RocketReflectorCollisionMode = 'explode' | 'reflect';
 
-/** Rocket behavior when hitting mirror panels or force-field barriers.
+/** Rocket behavior when hitting force-field panels or force-field barriers.
  *  "explode" detonates at the reflector contact point. "reflect" uses the
  *  same velocity-preserving reflection path as normal projectiles. */
 export const ROCKET_REFLECTOR_COLLISION_MODE: RocketReflectorCollisionMode =
@@ -658,7 +658,7 @@ export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
  *  The burst is a flat tangent-plane pulse at the sphere intersection:
  *  its plane normal is the shield surface normal, so the expanding ring
  *  lies 90 degrees from the impact normal. Ring opacity matches the
- *  force-field / mirror panel transparency:
+ *  force-field / force-field panel transparency:
  *  FORCE_FIELD_BARRIER.alpha (0.05) * FORCE_FIELD_OPACITY_BOOST (2.0) = 0.1. */
 export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
   {

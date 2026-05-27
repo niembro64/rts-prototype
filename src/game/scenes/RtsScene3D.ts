@@ -947,13 +947,13 @@ export class RtsScene3D {
       const vx = ctx ? ctx.projectile.vel.x : 0;
       const vy = ctx ? ctx.projectile.vel.y : 0;
       this.waterSplashRenderer.spawn(event.pos.x, event.pos.y, vx, vy, mass);
-      // Surface ripple — reuse the force-field/mirror impact ring as
+      // Surface ripple — reuse the force-field impact ring as
       // the spreading surface-reflection flash. Same material
       // contract (Materials Are Independent Of Shape): a circular
       // reflective surface flashing under impact reads identically
-      // whether the surface is a mirror, a force-field shell, or a
-      // body of water. The water plane is flat so the surface
-      // normal is straight up; sim is z-up so +Z is the right
+      // whether the surface is a force-field panel, a force-field
+      // sphere, or a body of water. The water plane is flat so the
+      // surface normal is straight up; sim is z-up so +Z is the right
       // normal value.
       this.forceFieldImpactRenderer.spawn(
         event.pos.x,

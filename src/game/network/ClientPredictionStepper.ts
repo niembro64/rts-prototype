@@ -106,7 +106,7 @@ function applyBeamPathPrediction(
       pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
       pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
       pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
-      pp.mirrorEntityId = tp.mirrorEntityId;
+      pp.reflectorEntityId = tp.reflectorEntityId;
       pp.reflectorKind = tp.reflectorKind;
       pp.reflectorPlayerId = tp.reflectorPlayerId;
       pp.normalX = tp.normalX;
@@ -135,7 +135,7 @@ function applyBeamPathPrediction(
       Math.abs(nvx - pvx) > 1e-4 ||
       Math.abs(nvy - pvy) > 1e-4 ||
       Math.abs(nvz - pvz) > 1e-4 ||
-      pp.mirrorEntityId !== tp.mirrorEntityId
+      pp.reflectorEntityId !== tp.reflectorEntityId
       || pp.reflectorKind !== tp.reflectorKind
       || pp.reflectorPlayerId !== tp.reflectorPlayerId
       || pp.normalX !== tp.normalX
@@ -152,7 +152,7 @@ function applyBeamPathPrediction(
     pp.z = nz;
     pp.vx = nvx; pp.vy = nvy; pp.vz = nvz;
     pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
-    pp.mirrorEntityId = tp.mirrorEntityId;
+    pp.reflectorEntityId = tp.reflectorEntityId;
     pp.reflectorKind = tp.reflectorKind;
     pp.reflectorPlayerId = tp.reflectorPlayerId;
     pp.normalX = tp.normalX;
@@ -229,8 +229,8 @@ export class ClientPredictionStepper {
     const beamMovVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
     projectileSpawns.drain(now, applyProjectileSpawn);
 
-    const forceFieldsEnabled = getServerForceFieldsEnabled();
-    setTurretForceFieldSpheresEnabledForPrediction(forceFieldsEnabled);
+    const turretForceFieldSpheresEnabled = getServerForceFieldsEnabled();
+    setTurretForceFieldSpheresEnabledForPrediction(turretForceFieldSpheresEnabled);
 
     let beamPathsChanged = false;
     for (const id of activeBeamPathIds) {
@@ -285,11 +285,11 @@ export class ClientPredictionStepper {
           entity,
           target,
           predictionStep,
-          forceFieldsEnabled,
+          turretForceFieldSpheresEnabled,
         });
       }
 
-      if (clientUnitPredictionIsSettled(entity, target, forceFieldsEnabled)) {
+      if (clientUnitPredictionIsSettled(entity, target, turretForceFieldSpheresEnabled)) {
         activeEntityPredictionIds.delete(id);
         predictionCadence.clear(id);
       }

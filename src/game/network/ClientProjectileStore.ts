@@ -109,7 +109,7 @@ export class ClientProjectileStore {
       dp.x = deqProjPos(sp.x); dp.y = deqProjPos(sp.y); dp.z = deqProjPos(sp.z);
       dp.vx = deqVel(sp.vx); dp.vy = deqVel(sp.vy); dp.vz = deqVel(sp.vz);
       dp.ax = 0; dp.ay = 0; dp.az = 0;
-      dp.mirrorEntityId = sp.mirrorEntityId ?? undefined;
+      dp.reflectorEntityId = sp.reflectorEntityId ?? undefined;
       dp.reflectorKind = sp.reflectorKind ?? undefined;
       dp.reflectorPlayerId = sp.reflectorPlayerId ?? undefined;
       dp.normalX = sp.normalX === null ? undefined : deqNormal(sp.normalX);
@@ -126,7 +126,7 @@ export class ClientProjectileStore {
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
         pp.ax = 0; pp.ay = 0; pp.az = 0;
-        pp.mirrorEntityId = sp.mirrorEntityId;
+        pp.reflectorEntityId = sp.reflectorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
         pp.normalX = sp.normalX;
@@ -152,7 +152,7 @@ export class ClientProjectileStore {
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
         pp.ax = 0; pp.ay = 0; pp.az = 0;
-        pp.mirrorEntityId = sp.mirrorEntityId;
+        pp.reflectorEntityId = sp.reflectorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
         pp.normalX = sp.normalX;

@@ -149,7 +149,7 @@ export class ServerSnapshotPublisher {
       maxUnits: input.world.maxTotalUnits,
       unitCount,
       turretForceFieldPanelsEnabled: input.world.turretForceFieldPanelsEnabled,
-      forceFieldsEnabled: input.world.forceFieldsEnabled,
+      turretForceFieldSpheresEnabled: input.world.turretForceFieldSpheresEnabled,
       forceFieldsObstructSight: input.world.forceFieldsObstructSight,
       forceFieldReflectionMode: input.world.forceFieldReflectionMode,
       fogOfWarEnabled: input.world.fogOfWarEnabled,

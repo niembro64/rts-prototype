@@ -163,7 +163,7 @@ function writeTurretsToPool(
     t.id = turretIdToCode(src.config.id);
     // Head-only turrets with no snapshot-visible aim pose render a
     // sphere only, so the client doesn't orient anything from these
-    // values. Line weapons and mirror-panel hosts are routed through
+    // values. Line weapons and force-field-panel hosts are routed through
     // turretAimMotionIsSnapshotVisible because their hidden/head-only
     // aim still drives visible presentation state.
     if (!turretAimMotionIsSnapshotVisible(entity, src)) {

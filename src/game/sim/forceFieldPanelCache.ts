@@ -1,13 +1,13 @@
-// Mirror panel cache builder — single source of truth for the
+// Force-field panel cache builder — single source of truth for the
 // per-unit `entity.unit.forceFieldPanels` array. Called once at entity
 // creation by both the authoritative sim (WorldState.createUnitFromBlueprint)
 // and the client-side hydration path (NetworkEntityFactory.createUnitFromNetwork)
 // so beam-vs-mirror collision uses the exact same canonical rectangles
 // on host and client.
 //
-// The mirror panel is a square slab sized from radius.body, mounted at
+// The force-field panel is a square slab sized from radius.body, mounted at
 // ARM'S LENGTH from the turret body sphere along the turret's facing
-// direction. Vertical position comes from the mirror turret's
+// direction. Vertical position comes from the turretForceFieldPanel's
 // blueprint-authored 3D mount so panel collision and visuals stay
 // attached to the same pivot as the turret.
 // Visual side support rails are rendered from the same panel sizing;
@@ -21,9 +21,9 @@ import { getTurretBlueprint } from './blueprints';
 /** Forward arm length (from turret body center to panel center) as a
  *  multiple of unit radius.body. 1.0 puts the panel center at the
  *  body edge; bigger values stretch the support rails further out. */
-export const MIRROR_ARM_LENGTH_MULT = 1.8;
+export const FORCE_FIELD_PANEL_ARM_LENGTH_MULT = 1.8;
 
-/** Mirror panel size multiplier. Scales BOTH the sim collision
+/** Force-field panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `forceFieldPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
@@ -152,7 +152,7 @@ export function buildForceFieldPanelCache(
 ): number {
   const unitBodyRadius = bp.radius.body;
   const halfSide = unitBodyRadius * FORCE_FIELD_PANEL_SIZE_MULT;
-  const armLength = unitBodyRadius * MIRROR_ARM_LENGTH_MULT;
+  const armLength = unitBodyRadius * FORCE_FIELD_PANEL_ARM_LENGTH_MULT;
   let forceFieldBoundRadius = 0;
 
   for (const mount of bp.turrets) {
@@ -167,7 +167,7 @@ export function buildForceFieldPanelCache(
         halfWidth: halfSide,
         // Panel center sits forward of the turret pivot by armLength
         // along the turret's local +X axis. The world-space yaw of
-        // that offset is the mirror turret's rotation, applied at
+        // that offset is the turretForceFieldPanel's rotation, applied at
         // collision time in ForceFieldPanelHit.findClosestPanelHit.
         offsetX: armLength,
         offsetY: 0,

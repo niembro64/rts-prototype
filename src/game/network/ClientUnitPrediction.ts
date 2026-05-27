@@ -394,9 +394,9 @@ export function applyClientCombatExpensivePrediction(options: {
   entity: Entity;
   target: UnitPredictionTarget | undefined;
   predictionStep: PredictionStep;
-  forceFieldsEnabled: boolean;
+  turretForceFieldSpheresEnabled: boolean;
 }): void {
-  const { entity, target, predictionStep, forceFieldsEnabled } = options;
+  const { entity, target, predictionStep, turretForceFieldSpheresEnabled } = options;
   if (!entity.combat) return;
   const dt = predictionStep.entityDeltaMs / 1000;
   const targetDt = predictionStep.targetDeltaMs / 1000;
@@ -454,7 +454,7 @@ export function applyClientCombatExpensivePrediction(options: {
 
     const shot = weapon.config.shot;
     if (shot === undefined || shot.type !== 'force') continue;
-    if (!forceFieldsEnabled) {
+    if (!turretForceFieldSpheresEnabled) {
       const forceField = weapon.forceField;
       if (forceField !== undefined) {
         forceField.range = 0;
@@ -492,7 +492,7 @@ export function applyClientCombatExpensivePrediction(options: {
 export function clientUnitPredictionIsSettled(
   entity: Entity,
   target: UnitPredictionTarget | undefined,
-  forceFieldsEnabled: boolean,
+  turretForceFieldSpheresEnabled: boolean,
 ): boolean {
   const unit = entity.unit;
   if (unit) {
@@ -530,7 +530,7 @@ export function clientUnitPredictionIsSettled(
       if (Math.abs(tw.angularVelocity) > PREDICTION_TURRET_EPSILON) return false;
       if (angleDeltaAbs(weapon.rotation, tw.rotation) > PREDICTION_TURRET_EPSILON) return false;
       if (angleDeltaAbs(weapon.pitch, tw.pitch) > PREDICTION_TURRET_EPSILON) return false;
-      if (forceFieldsEnabled) {
+      if (turretForceFieldSpheresEnabled) {
         const forceField = weapon.forceField;
         const localRange = forceField !== undefined ? forceField.range : 0;
         const targetRange = tw.forceFieldRange ?? 0;
@@ -539,7 +539,7 @@ export function clientUnitPredictionIsSettled(
     }
 
     const shot = weapon.config.shot;
-    if (forceFieldsEnabled && shot !== undefined && shot.type === 'force') {
+    if (turretForceFieldSpheresEnabled && shot !== undefined && shot.type === 'force') {
       const forceField = weapon.forceField;
       const range = forceField !== undefined ? forceField.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;

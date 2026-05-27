@@ -448,7 +448,7 @@ export class BeamRenderer3D {
     if (!points || points.length < 2) return false;
     const endPoint = points[points.length - 1];
     return (
-      endPoint.mirrorEntityId === undefined &&
+      endPoint.reflectorEntityId === undefined &&
       endPoint.reflectorKind === undefined
     );
   }

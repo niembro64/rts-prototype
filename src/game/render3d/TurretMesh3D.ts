@@ -260,7 +260,7 @@ export function buildTurretMesh3D(
   // size regardless of which unit mounts it.
   const barrelScale = headRadius;
   const length = getTurretBarrelCenterToTipLength(turret.config);
-  // barrelLength=0 (e.g. mirror panel host) → no visible barrel.
+  // barrelLength=0 (e.g. force-field panel host) → no visible barrel.
   if (length < 1e-4) {
     parent.add(root);
     return { root, head, headRadius: cachedHeadRadius, barrels, pitchGroup, spinGroup };

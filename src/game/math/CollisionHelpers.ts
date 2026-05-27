@@ -137,7 +137,7 @@ export function rayBoxIntersectionT(
  *  the first hit, or null.
  *
  *  The rectangle is "upright" — its plane contains world +Y (up), its
- *  normal is horizontal. Used by the beam tracer for mirror panels,
+ *  normal is horizontal. Used by the beam tracer for force-field panels,
  *  which are vertical slabs attached to unit turrets: normal comes from
  *  the panel's yaw, the edge direction is perpendicular to the normal
  *  in the horizontal plane, and the vertical extent runs from `baseZ`

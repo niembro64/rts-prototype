@@ -1,7 +1,7 @@
 // Terrain/entity line-of-sight gating for direct-fire turrets.
 //
 // High-arc shells lob over hills, force-field emitters are area effects,
-// and mirror panels rotate toward unseen threats — none of those care
+// and force-field panels rotate toward unseen threats — none of those care
 // about world occlusion. Everything else (cannons, beams, lasers,
 // gatlings) needs a clear sightline from its turret head to the target
 // aim point before it can lock on or keep firing. Cross-force-field
@@ -30,10 +30,10 @@ const NO_EXCLUDED_ENTITY = -1;
 /** Sightline-graze epsilon. Hits within FORCE_MATERIAL_GRAZE_EPS of
  *  either endpoint don't count — keeps targeting and projectile
  *  collision in agreement when a turret or target sits on a panel
- *  edge. Mirror-panel and force-field clearance both use this. */
+ *  edge. Force-field-panel and force-field clearance both use this. */
 export const FORCE_MATERIAL_GRAZE_EPS = 1e-6;
-/** Mirror-panel broadphase pad. Stamping adds this to the mirror's
- *  bound radius so the Rust mirror-panel kernel only narrowphase-walks
+/** Force-field-panel broadphase pad. Stamping adds this to the mirror's
+ *  bound radius so the Rust force-field-panel kernel only narrowphase-walks
  *  units whose silhouettes can touch the segment. */
 export const MIRROR_SIGHT_QUERY_PAD = 1;
 
@@ -68,8 +68,8 @@ const NO_EXCLUDED_OWNER = -1;
  *  boundary at any point strictly inside the segment.
  *
  *  Use this for straight visibility checks against force-field spheres.
- *  The targeting gate kernels in Rust layer mirror-panel clearance
- *  on top via the mirror-panel slab for OBSTRUCT SIGHT targeting.
+ *  The targeting gate kernels in Rust layer force-field-panel clearance
+ *  on top via the force-field-panel slab for OBSTRUCT SIGHT targeting.
  *
  *  Implementation: dispatches to the Rust `force_field_clearance_segment`
  *  kernel, which reads the FF pool slab stamped each tick by
@@ -116,7 +116,7 @@ export function hasFogOfWarLineOfSight(
   if (!hasTerrainLineOfSight(world, sx, sy, sz, tx, ty, tz)) return false;
   if (!world.forceFieldsObstructSight) return true;
   if (
-    world.forceFieldsEnabled &&
+    world.turretForceFieldSpheresEnabled &&
     !hasForceFieldClearance(sx, sy, sz, tx, ty, tz)
   ) {
     return false;

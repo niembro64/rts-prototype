@@ -569,10 +569,10 @@ function writeBeamPointV2(
   point: NetworkServerSnapshotBeamPoint,
 ): void {
   let flags = 0;
-  if (point.mirrorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
+  if (point.reflectorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
   if (point.reflectorKind !== null) {
     flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
-    if (point.reflectorKind === 'forceField') {
+    if (point.reflectorKind === 'forceFieldSphere') {
       flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
     }
   }
@@ -588,7 +588,7 @@ function writeBeamPointV2(
   writer.writeVarInt(point.vy);
   writer.writeVarInt(point.vz);
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {
-    writer.writeVarUint(point.mirrorEntityId ?? 0);
+    writer.writeVarUint(point.reflectorEntityId ?? 0);
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
     writer.writeVarUint((point.reflectorPlayerId ?? 0) as number);
@@ -649,7 +649,7 @@ function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamP
     vx: reader.readVarInt(),
     vy: reader.readVarInt(),
     vz: reader.readVarInt(),
-    mirrorEntityId: null,
+    reflectorEntityId: null,
     reflectorKind: null,
     reflectorPlayerId: null,
     normalX: null,
@@ -657,12 +657,12 @@ function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamP
     normalZ: null,
   };
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {
-    point.mirrorEntityId = reader.readVarUint();
+    point.reflectorEntityId = reader.readVarUint();
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
     point.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD) !== 0
-      ? 'forceField'
-      : 'mirror';
+      ? 'forceFieldSphere'
+      : 'forceFieldPanel';
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
     point.reflectorPlayerId = reader.readVarUint() as PlayerId;
@@ -851,7 +851,7 @@ function unpackBeamPointsV1(
       vx: source[base + 3] ?? 0,
       vy: source[base + 4] ?? 0,
       vz: source[base + 5] ?? 0,
-      mirrorEntityId: null,
+      reflectorEntityId: null,
       reflectorKind: null,
       reflectorPlayerId: null,
       normalX: null,
@@ -860,12 +860,12 @@ function unpackBeamPointsV1(
     };
 
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {
-      point.mirrorEntityId = source[base + 7] ?? 0;
+      point.reflectorEntityId = source[base + 7] ?? 0;
     }
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
       point.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD) !== 0
-        ? 'forceField'
-        : 'mirror';
+        ? 'forceFieldSphere'
+        : 'forceFieldPanel';
     }
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
       point.reflectorPlayerId = source[base + 8] as NetworkServerSnapshotBeamPoint['reflectorPlayerId'];

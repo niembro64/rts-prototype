@@ -943,7 +943,7 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isOptionalFiniteNumber(meta.units.max) ||
     !isOptionalFiniteNumber(meta.units.count) ||
     !isOptionalBoolean(meta.turretForceFieldPanelsEnabled) ||
-    !isOptionalBoolean(meta.forceFieldsEnabled) ||
+    !isOptionalBoolean(meta.turretForceFieldSpheresEnabled) ||
     !isOptionalBoolean(meta.forceFieldsObstructSight) ||
     (
       meta.forceFieldReflectionMode !== undefined &&
@@ -1025,8 +1025,8 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     meta.units.count ?? 0,
     meta.turretForceFieldPanelsEnabled !== undefined ? 1 : 0,
     meta.turretForceFieldPanelsEnabled === true ? 1 : 0,
-    meta.forceFieldsEnabled !== undefined ? 1 : 0,
-    meta.forceFieldsEnabled === true ? 1 : 0,
+    meta.turretForceFieldSpheresEnabled !== undefined ? 1 : 0,
+    meta.turretForceFieldSpheresEnabled === true ? 1 : 0,
     meta.forceFieldsObstructSight !== undefined ? 1 : 0,
     meta.forceFieldsObstructSight === true ? 1 : 0,
     meta.forceFieldReflectionMode !== undefined ? 1 : 0,

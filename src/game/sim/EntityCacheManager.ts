@@ -50,7 +50,7 @@ export class EntityCacheManager {
    *  ~few percent of entities that actually fire beams instead of
    *  scanning every entity's turrets every tick. */
   private cachedBeamUnits: Entity[] = [];
-  /** Units with mirror panels (e.g. Loris). Used by the per-projectile
+  /** Units with force-field panels (e.g. Loris). Used by the per-projectile
    *  panel-impact check so it doesn't scan every unit looking for a
    *  rare attribute. */
   private cachedForceFieldPanelUnits: Entity[] = [];

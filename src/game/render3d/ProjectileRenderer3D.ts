@@ -367,7 +367,7 @@ export class ProjectileRenderer3D {
     const pts = stamps.points;
 
     // Forced reflection stamp: ClientViewState parks the exact
-    // force-field / mirror contact point on the projectile after each
+    // force-field-sphere / force-field-panel contact point on the projectile after each
     // bounce. Insert it ahead of the head's regular distance-threshold
     // stamp so the trail kinks at the actual shield surface rather than
     // one tick past it. The pre-bounce stamps shift deeper into the

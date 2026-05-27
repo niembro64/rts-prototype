@@ -1,4 +1,4 @@
-// Mirror-panel hit testing — shared by server beam tracing and
+// Force-field-panel hit testing — shared by server beam tracing and
 // projectile collision. Computes the closest hit of a 3D ray segment
 // against a unit's reflective panels.
 //
@@ -45,7 +45,7 @@ const _panelNormal = { x: 0, y: 0, z: 0 };
 const _panelPivot = { x: 0, y: 0, z: 0 };
 
 /**
- * Find the closest mirror-panel hit on a single unit by a 3D ray
+ * Find the closest force-field-panel hit on a single unit by a 3D ray
  * segment from (sx, sy, sz) → (ex, ey, ez). The returned object is
  * reused — copy out before re-calling.
  *
@@ -62,7 +62,7 @@ const _panelPivot = { x: 0, y: 0, z: 0 };
  * (avoids self-intersection on the next ray segment). Pass -1 to test
  * every panel.
  *
- * `pivotOverride`, when provided, is the mirror turret's real
+ * `pivotOverride`, when provided, is the turretForceFieldPanel's real
  * world-space joint. Callers pass it on slope-aware units so the
  * panel collision plane uses the same turret attachment point as the
  * aim solver and renderer.

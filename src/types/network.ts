@@ -453,8 +453,8 @@ export type NetworkServerSnapshotVelocityUpdate = {
  *  `points = [start, ...reflections, end]`. Each vertex carries its
  *  own instantaneous 3D velocity in the world frame so the client can
  *  extrapolate every vertex independently between snapshots; the
- *  reflector vertices set `mirrorEntityId` to the redirecting reflector
- *  entity (legacy field name; mirrors and force fields both use it).
+ *  reflector vertices set `reflectorEntityId` to the redirecting reflector
+ *  entity (force-field panels and spheres both use this slot).
  *  Position uses PROJECTILE_POSITION_WIRE_SCALE, velocity uses
  *  VELOCITY_WIRE_SCALE, and normals use NORMAL_WIRE_SCALE fixed-point
  *  integers. Start leaves reflector metadata undefined; the end can
@@ -467,8 +467,9 @@ export type NetworkServerSnapshotBeamPoint = {
   vx: number;
   vy: number;
   vz: number;
-  /** Legacy name: any beam reflector entity, not only mirrors. */
-  mirrorEntityId: number | null;
+  /** Any beam reflector entity — force-field panels and spheres both
+   *  use this slot. */
+  reflectorEntityId: number | null;
   reflectorKind: BeamReflectorKind | null;
   reflectorPlayerId: PlayerId | null;
   normalX: number | null;
@@ -510,7 +511,7 @@ export type NetworkServerSnapshotMeta = {
     count: number | undefined;
   };
   turretForceFieldPanelsEnabled: boolean | undefined;
-  forceFieldsEnabled: boolean | undefined;
+  turretForceFieldSpheresEnabled: boolean | undefined;
   forceFieldsObstructSight: boolean | undefined;
   forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
@@ -545,7 +546,7 @@ export type NetworkServerSnapshotProjectiles = {
   velocityUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
   /** Authoritative live beam/laser paths. Sent every snapshot so
    *  clients draw reflected segments directly instead of re-tracing
-   *  mirror/unit/building intersections in the render frame. */
+   *  reflector/unit/building intersections in the render frame. */
   beamUpdates: NetworkServerSnapshotBeamUpdate[] | undefined;
 };
 

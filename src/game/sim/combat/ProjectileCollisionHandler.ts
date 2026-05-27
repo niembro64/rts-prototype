@@ -26,14 +26,14 @@ import { getSimWasm } from '../../sim-wasm/init';
 import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
 
-const MIRROR_PROJECTILE_QUERY_PAD = 96;
+const FORCE_FIELD_PANEL_PROJECTILE_QUERY_PAD = 96;
 const MAX_PROJECTILE_SWEEP_DISTANCE = LAND_CELL_SIZE * 64;
 const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
 const MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS = 96;
 const REFLECTOR_HIT_KIND_NONE = 0;
-const REFLECTOR_HIT_KIND_MIRROR = 1;
-const REFLECTOR_HIT_KIND_FORCE_FIELD = 2;
+const REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL = 1;
+const REFLECTOR_HIT_KIND_FORCE_FIELD_SPHERE = 2;
 const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN = 0;
 const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT = 1;
 const FORCE_FIELD_REFLECTION_MODE_BOTH = 2;
@@ -134,7 +134,7 @@ function computeProjectileReflectorHits(
   _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, count);
 
   const mirrorsActive = world.turretForceFieldPanelsEnabled && world.getForceFieldPanelUnits().length > 0;
-  const forceFieldsActive = world.forceFieldsEnabled && getActiveForceFields().length > 0;
+  const forceFieldsActive = world.turretForceFieldSpheresEnabled && getActiveForceFields().length > 0;
   if (!mirrorsActive && !forceFieldsActive) return;
 
   let enabledCount = 0;
@@ -184,7 +184,7 @@ function computeProjectileReflectorHits(
     mirrorsActive ? 1 : 0,
     forceFieldsActive ? 1 : 0,
     encodeForceFieldReflectionMode(world.forceFieldReflectionMode),
-    MIRROR_PROJECTILE_QUERY_PAD,
+    FORCE_FIELD_PANEL_PROJECTILE_QUERY_PAD,
     _reflectorHitKind.subarray(0, count),
     _reflectorHitEntityId.subarray(0, count),
     _reflectorHitT.subarray(0, count),
@@ -514,7 +514,7 @@ export function checkProjectileCollisions(
       }
     }
 
-    // Reflector contacts — mirror panels and force-field spheres are the
+    // Reflector contacts — force-field panels and force-field spheres are the
     // same reflector material. Normal traveling projectiles skip off the
     // surface with the same vector reflection math beams use; rocket-class
     // behavior is controlled by ROCKET_REFLECTOR_COLLISION_MODE. Beams/lasers
@@ -550,8 +550,8 @@ export function checkProjectileCollisions(
         } else {
           reflectorPlayerId = undefined;
         }
-        hitForceFieldPanel = reflectorKind === REFLECTOR_HIT_KIND_MIRROR;
-        hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
+        hitForceFieldPanel = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL;
+        hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD_SPHERE;
       }
       if (bestT < Infinity) {
         if (isRocketShot && proj.homingTargetId !== NO_ENTITY_ID) {
@@ -876,13 +876,13 @@ export function checkProjectileCollisions(
 
       // Reflected beams: attribute damage/kills to the last reflector
       // entity that redirected the beam (= last polyline vertex with a
-      // mirrorEntityId, a legacy field name). Points layout:
+      // reflectorEntityId, a legacy field name). Points layout:
       // [start, ...reflections, end]; when the max-segment cap is hit,
       // the endpoint itself can be the terminal reflector.
       let lastMirrorEntityId: EntityId | undefined;
       if (points) {
         for (let i = points.length - 1; i >= 1; i--) {
-          const mid = points[i].mirrorEntityId;
+          const mid = points[i].reflectorEntityId;
           if (mid !== undefined) { lastMirrorEntityId = mid; break; }
         }
       }
@@ -905,12 +905,12 @@ export function checkProjectileCollisions(
 
       // Apply beam force (knockback only, no damage) to each reflector entity.
       // Walk segment-by-segment along the polyline; whenever a vertex
-      // carries a mirrorEntityId, the segment ENTERING that vertex is
+      // carries a reflectorEntityId, the segment ENTERING that vertex is
       // the incoming beam direction at that reflector.
       if (points && points.length > 1 && forceAccumulator) {
         for (let i = 1; i < points.length; i++) {
           const refl = points[i];
-          if (refl.mirrorEntityId === undefined) continue;
+          if (refl.reflectorEntityId === undefined) continue;
           const prev = points[i - 1];
           const segDx = refl.x - prev.x;
           const segDy = refl.y - prev.y;
@@ -918,7 +918,7 @@ export function checkProjectileCollisions(
           if (segLen > 0) {
             const dirX = segDx / segLen;
             const dirY = segDy / segLen;
-            forceAccumulator.addForce(refl.mirrorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
+            forceAccumulator.addForce(refl.reflectorEntityId, dirX * tickForce, dirY * tickForce, 'beam');
           }
         }
       }

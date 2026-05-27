@@ -1,4 +1,4 @@
-// Mirror panel mesh builder (3D). The mirror is a SINGLE RIGID
+// Force-field panel mesh builder (3D). The mirror is a SINGLE RIGID
 // assembly attached to the unit at one ball-joint — the turret's
 // authored attachment point. The joint is the `root` THREE.Group:
 // `root.position` lifts to the attachment height, `root.quaternion`
@@ -42,10 +42,10 @@ export type ForceFieldPanelMesh = {
 export type ForceFieldPanelMount = {
   /** Authored chassis-local offset of the panel center along the
    *  turret's local +X (forward). For the arm-mounted mirror this is
-   *  the arm length (= radius.body × MIRROR_ARM_LENGTH_MULT). */
+   *  the arm length (= radius.body × FORCE_FIELD_PANEL_ARM_LENGTH_MULT). */
   offsetX: number;
   /** Lateral chassis-local offset; always 0 for the regularized
-   *  centerline mirror panel. */
+   *  centerline force-field panel. */
   offsetY: number;
   /** Extra panel yaw on top of the turret rotation; always 0 — the
    *  panel face is perpendicular to the arm. */
@@ -55,7 +55,7 @@ export type ForceFieldPanelMount = {
 export function buildForceFieldPanelMesh3D(
   parent: THREE.Group,
   panels: readonly ForceFieldPanelMount[],
-  /** Chassis-local mirror turret pivot in the parent liftGroup frame. */
+  /** Chassis-local turretForceFieldPanel pivot in the parent liftGroup frame. */
   pivotLocalX: number,
   pivotLocalY: number,
   pivotLocalZ: number,

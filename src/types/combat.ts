@@ -166,7 +166,7 @@ export type ProjectileVelocityUpdateEvent = {
   pos: Vec3;
   velocity: Vec3;
   /** Clear the projectile's inherited homing target on clients. Used
-   *  when a rocket reflects off a force-field / mirror reflector. */
+   *  when a rocket reflects off a force-field / force-field reflector. */
   clearHomingTarget?: boolean;
   /** Internal visibility helper: when the target has just been cleared,
    *  this preserves the former target for one snapshot's FOW filtering. */

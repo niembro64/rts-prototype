@@ -38,10 +38,10 @@ export type {
 export { isLineShotBlueprint } from './shotTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 
-/** A reflective mirror panel mount on a turret. The panel itself is a
+/** A reflective force-field panel mount on a turret. The panel itself is a
  *  PERFECT SQUARE flat plane — its side length is derived from the
  *  unit's vertical span (topY - baseY, populated at entity-creation
- *  time from the renderer body height + mirror panel column geometry).
+ *  time from the renderer body height + force-field panel column geometry).
  *  The blueprint specifies only WHERE the panel sits (offset relative
  *  to the turret) and WHICH WAY it points (angle relative to turret
  *  forward); the size is regularized so sim collision and 3D mesh
@@ -126,14 +126,14 @@ export type TurretBlueprint = {
    *  there's no barrel to orient, plain head-only turrets skip per-tick
    *  yaw/pitch pose and rotation/pitch/velocity snapshots — these
    *  turrets never dirty an entity due to aim motion, only on
-   *  target/state transitions. Mirror-panel hosts are the exception
+   *  target/state transitions. Force-field-panel hosts are the exception
    *  because the panel slab uses the hidden passive turret pose. The
    *  sim still tracks rotation/pitch internally to produce the correct
    *  fire direction. */
   headOnly: boolean;
   /** Explicit aiming solver mode:
    *  - angleType: rayDirect for straight-line aim,
-   *    rayBisectTurretAndBody for mirror normals, ballisticArcLow for
+   *    rayBisectTurretAndBody for force-field-panel normals, ballisticArcLow for
    *    lower gravity solutions, ballisticArcLowOnlyUnder for low-arc
    *    drops whose lock-on point must be below the turret mount,
    *    ballisticArcHigh for lofted gravity solutions
@@ -148,7 +148,7 @@ export type TurretBlueprint = {
   /** Spawn pitch in radians, applied once when the turret instance is
    *  created (createUnitRuntimeTurrets/createBuildingRuntimeTurrets).
    *  Default 0 = barrel
-   *  horizontal. Useful for passive / mirror turrets that should rest
+   *  horizontal. Useful for passive / turretForceFieldPanels that should rest
    *  pointed at the sky until they actually acquire a target — once
    *  the aim solver runs, this initial value is overwritten by the
    *  per-tick solution and the damper takes over. Pitch is clamped

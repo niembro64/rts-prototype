@@ -4,7 +4,7 @@ import type { Entity, Turret } from '../sim/types';
  * Head-only turrets normally have no orientable mesh pose to correct on the
  * client. Line weapons are an exception: their yaw/pitch is the live
  * beam/laser presentation state, even when the turret art is only a head
- * sphere. Mirror-panel hosts are another exception: their panel slab is posed
+ * sphere. Force-field-panel hosts are another exception: their panel slab is posed
  * from the passive turret's yaw/pitch even though the turret head/barrel is
  * hidden.
  */

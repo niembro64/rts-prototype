@@ -154,13 +154,13 @@ export class WorldState {
   // Configurable unit cap (can be changed at runtime via command)
   public maxTotalUnits: number = MAX_TOTAL_UNITS;
 
-  // Whether mirror turrets/panels participate in targeting and reflections
+  // Whether turretForceFieldPanels/panels participate in targeting and reflections
   public turretForceFieldPanelsEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_PANELS_ENABLED;
   // Whether force-field turrets participate in targeting, simulation, and rendering
-  public forceFieldsEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED;
+  public turretForceFieldSpheresEnabled: boolean = DEFAULT_TURRET_FORCE_FIELD_SPHERES_ENABLED;
   // Whether force material between a turret and its target obstructs
   // sight. Symmetric: active force-field sphere boundaries and force
-  // mirror panels apply to every turret in either direction, regardless
+  // force-field panels apply to every turret in either direction, regardless
   // of team.
   public forceFieldsObstructSight: boolean = DEFAULT_FORCE_FIELDS_OBSTRUCT_SIGHT;
   // Which force-field boundary crossings reflect shots/beams.
@@ -461,7 +461,7 @@ export class WorldState {
     return this.cache.getBeamUnits();
   }
 
-  // Get units with mirror panels (cached - DO NOT MODIFY returned array)
+  // Get units with force-field panels (cached - DO NOT MODIFY returned array)
   getForceFieldPanelUnits(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getForceFieldPanelUnits();
@@ -788,7 +788,7 @@ export class WorldState {
     // every unit gets a combat component at spawn.
     entity.combat = createCombatComponent(createUnitRuntimeTurrets(unitId, bp.radius.body));
 
-    // Cache mirror panels for fast beam collision checks. Same helper
+    // Cache force-field panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
     // hydrated entities share one canonical rectangle.
     entity.unit!.forceFieldBoundRadius = buildForceFieldPanelCache(

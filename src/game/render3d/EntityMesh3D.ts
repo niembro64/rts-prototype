@@ -42,7 +42,7 @@ export type EntityMesh = {
   yawGroup?: THREE.Group;
   /** Lift subgroup. Sits inside `yawGroup` with a positive Y offset
    *  (`Locomotion3D.getChassisLift(blueprint, unitRadius)`) — chassis,
-   *  turret roots, mirror panels, and force-field meshes all parent
+   *  turret roots, force-field panels, and force-field meshes all parent
    *  here so they ride above the ground at the locomotion's natural
    *  height. Undefined for buildings; for units the offset is fixed
    *  at build time (locomotion config doesn't change) so no per-frame

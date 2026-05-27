@@ -164,8 +164,8 @@ export function updateTargetingAndFiringState(world: WorldState, dtMs: number): 
   const targeting = getTargetingKernel();
   const maxTurrets = targeting.maxTurretsPerEntity();
   const turretForceFieldPanelsEnabledFlag = world.turretForceFieldPanelsEnabled ? 1 : 0;
-  const turretForceFieldSpheresEnabledFlag = world.forceFieldsEnabled ? 1 : 0;
-  // Force-material gate fast-path. Sphere boundaries and mirror-panel
+  const turretForceFieldSpheresEnabledFlag = world.turretForceFieldSpheresEnabled ? 1 : 0;
+  // Force-material gate fast-path. Sphere boundaries and force-field-panel
   // blockers are stamped into Rust slabs before the FSM. This flag
   // lets common ticks skip blocker walks when OBSTRUCT SIGHT is off or
   // no force material is active.

@@ -162,7 +162,7 @@ function isBallisticArcWeapon(weapon: Turret): boolean {
 }
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
-  point.mirrorEntityId = undefined;
+  point.reflectorEntityId = undefined;
   point.reflectorKind = undefined;
   point.reflectorPlayerId = undefined;
   point.normalX = undefined;
@@ -186,7 +186,7 @@ function createBeamPoint(x: number, y: number, z: number): BeamPoint {
 function copyBeamReflectorMetadata(
   point: BeamPoint,
   reflector: {
-    mirrorEntityId: EntityId;
+    reflectorEntityId: EntityId;
     reflectorKind: BeamPoint['reflectorKind'];
     reflectorPlayerId: BeamPoint['reflectorPlayerId'] | undefined;
     normalX: number;
@@ -194,7 +194,7 @@ function copyBeamReflectorMetadata(
     normalZ: number;
   },
 ): void {
-  point.mirrorEntityId = reflector.mirrorEntityId;
+  point.reflectorEntityId = reflector.reflectorEntityId;
   point.reflectorKind = reflector.reflectorKind;
   point.reflectorPlayerId = reflector.reflectorPlayerId;
   point.normalX = reflector.normalX;
@@ -1184,7 +1184,7 @@ export function updateProjectiles(
           if (prevRefs && dtSec > 0) {
             for (let p = 0; p < prevRefs.length; p++) {
               const pr = prevRefs[p];
-              if (pr.mirrorEntityId !== refl.mirrorEntityId) continue;
+              if (pr.reflectorEntityId !== refl.reflectorEntityId) continue;
               const tickDelta = currentTick - pr.tick;
               if (tickDelta > 0) {
                 const inv = 1 / (tickDelta * dtSec);
@@ -1206,14 +1206,14 @@ export function updateProjectiles(
           point.az = az;
         }
 
-        // Cache this trace's reflections (by mirrorEntityId; legacy
+        // Cache this trace's reflections (by reflectorEntityId; legacy
         // field name, now any reflector entity) for
         // the next finite-diff. Reuse the array's slots in place
         // to avoid GC churn on every re-trace.
         const cache = proj.prevReflectionPoints ?? (proj.prevReflectionPoints = []);
         while (cache.length < refs.length) {
           cache.push({
-            mirrorEntityId: 0 as EntityId,
+            reflectorEntityId: 0 as EntityId,
             x: 0, y: 0, z: 0,
             vx: 0, vy: 0, vz: 0,
             tick: 0,
@@ -1223,7 +1223,7 @@ export function updateProjectiles(
         for (let r = 0; r < refs.length; r++) {
           const refl = refs[r];
           const slot = cache[r];
-          slot.mirrorEntityId = refl.mirrorEntityId;
+          slot.reflectorEntityId = refl.reflectorEntityId;
           slot.x = refl.x;
           slot.y = refl.y;
           slot.z = refl.z;

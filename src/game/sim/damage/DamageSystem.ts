@@ -107,7 +107,7 @@ type BeamReflectorPoint = {
   x: number;
   y: number;
   z: number;
-  mirrorEntityId: EntityId;
+  reflectorEntityId: EntityId;
   reflectorKind: BeamReflectorKind;
   reflectorPlayerId: PlayerId | undefined;
   normalX: number;
@@ -228,7 +228,7 @@ export class DamageSystem {
   // range-sphere endpoint is an open ray for visuals, not a physical
   // impact point.
   //
-  // Mirror panels are tilted rectangles; force fields are spherical
+  // Force-field panels are tilted rectangles; force fields are spherical
   // reflectors whose crossing direction comes from battle config. Buildings
   // are 3D AABBs (x/y footprint × z depth), so a high-arc beam can pass
   // over a short building and hit the reflector behind it.
@@ -322,12 +322,12 @@ export class DamageSystem {
         };
       }
 
-      const reflectorKind = hit.reflectorKind ?? 'mirror';
+      const reflectorKind = hit.reflectorKind ?? 'forceFieldPanel';
       const reflection: BeamReflectorPoint = {
         x: hit.x,
         y: hit.y,
         z: hit.z,
-        mirrorEntityId: hit.entityId,
+        reflectorEntityId: hit.entityId,
         reflectorKind,
         reflectorPlayerId: hit.reflectorPlayerId,
         normalX: hit.normalX,
@@ -455,7 +455,7 @@ export class DamageSystem {
     };
   }
 
-  // Find closest beam hit — checks mirror panel rectangles AND regular
+  // Find closest beam hit — checks force-field panel rectangles AND regular
   // entity colliders, all in 3D.
   //   excludeEntityId: on bounce 0 = source (don't hit self), on bounce N = last mirror hit
   //   excludePanelIndex: -1 = exclude entire entity, >= 0 = exclude only that panel
@@ -530,7 +530,7 @@ export class DamageSystem {
 
       if (mirrorsActive) {
         // Mirror unit: 3D ray-vs-tilted-rectangle for each panel
-        // (yaw + pitch from the mirror turret rotation/pitch).
+        // (yaw + pitch from the turretForceFieldPanel rotation/pitch).
         const unitCombat = unit.combat;
         const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
         const forceFieldPanelRot = unitTurrets && unitTurrets.length > 0
@@ -573,7 +573,7 @@ export class DamageSystem {
           _segHit.normalY = hit.normalY;
           _segHit.normalZ = hit.normalZ;
           _segHit.panelIndex = hit.panelIndex;
-          _segHit.reflectorKind = 'mirror';
+          _segHit.reflectorKind = 'forceFieldPanel';
           _segHit.reflectorPlayerId = unit.ownership !== null
             ? unit.ownership.playerId
             : undefined;
@@ -604,7 +604,7 @@ export class DamageSystem {
       }
     }
 
-    if (this.world.forceFieldsEnabled) {
+    if (this.world.turretForceFieldSpheresEnabled) {
       const forceFieldHit = findForceFieldSegmentIntersection(
         this.world,
         startX, startY, startZ,
@@ -622,7 +622,7 @@ export class DamageSystem {
         _segHit.normalY = forceFieldHit.ny;
         _segHit.normalZ = forceFieldHit.nz;
         _segHit.panelIndex = -1;
-        _segHit.reflectorKind = 'forceField';
+        _segHit.reflectorKind = 'forceFieldSphere';
         _segHit.reflectorPlayerId = forceFieldHit.playerId;
       }
     }

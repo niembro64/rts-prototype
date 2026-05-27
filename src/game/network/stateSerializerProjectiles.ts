@@ -156,7 +156,7 @@ function createPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
     vx: 0,
     vy: 0,
     vz: 0,
-    mirrorEntityId: null,
+    reflectorEntityId: null,
     reflectorKind: null,
     reflectorPlayerId: null,
     normalX: null,
@@ -239,7 +239,7 @@ function getPooledBeamPoint(): NetworkServerSnapshotBeamPoint {
     _beamPointPool[_beamPointPoolIndex] = point;
   }
   _beamPointPoolIndex++;
-  point.mirrorEntityId = null;
+  point.reflectorEntityId = null;
   point.reflectorKind = null;
   point.reflectorPlayerId = null;
   point.normalX = null;
@@ -391,10 +391,10 @@ export function writeBeamPointWireRow(
   values[base + 4] = point.vy;
   values[base + 5] = point.vz;
   let flags = 0;
-  if (point.mirrorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
+  if (point.reflectorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
   if (point.reflectorKind !== null) {
     flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
-    if (point.reflectorKind === 'forceField') {
+    if (point.reflectorKind === 'forceFieldSphere') {
       flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
     }
   }
@@ -403,7 +403,7 @@ export function writeBeamPointWireRow(
   if (point.normalY !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
   if (point.normalZ !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
   values[base + 6] = flags;
-  values[base + 7] = point.mirrorEntityId ?? 0;
+  values[base + 7] = point.reflectorEntityId ?? 0;
   values[base + 8] = point.reflectorPlayerId ?? 0;
   values[base + 9] = point.normalX ?? 0;
   values[base + 10] = point.normalY ?? 0;
@@ -833,8 +833,8 @@ export function serializeProjectileSnapshot({
           out.vy = qVel(sp.vy);
           out.vz = qVel(sp.vz);
         }
-        const canReferenceReflector = canReferenceEntityId(world, visibility, sp.mirrorEntityId);
-        out.mirrorEntityId = canReferenceReflector ? sp.mirrorEntityId ?? null : null;
+        const canReferenceReflector = canReferenceEntityId(world, visibility, sp.reflectorEntityId);
+        out.reflectorEntityId = canReferenceReflector ? sp.reflectorEntityId ?? null : null;
         out.reflectorKind = canReferenceReflector ? sp.reflectorKind ?? null : null;
         out.reflectorPlayerId = canReferenceReflector ? sp.reflectorPlayerId ?? null : null;
         out.normalX = canReferenceReflector && sp.normalX !== undefined ? qNormal(sp.normalX) : null;

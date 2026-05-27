@@ -720,8 +720,8 @@ export function stampCombatTargetingPool(world: WorldState): void {
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
 
-/** Rebuild the mirror panel pool from `world.getForceFieldPanelUnits()`. The
- *  Rust mirror-panel sightline kernel reads this slab during the
+/** Rebuild the force-field panel pool from `world.getForceFieldPanelUnits()`. The
+ *  Rust force-field-panel sightline kernel reads this slab during the
  *  targeting FSM, so it must hold the current tick's pose data on
  *  entry. Inactive / dead mirror units are skipped; the slab counts
  *  only the active set, with panel rows packed contiguously by unit.

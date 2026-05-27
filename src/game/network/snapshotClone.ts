@@ -299,7 +299,7 @@ export class ReusableNetworkSnapshotCloner {
     grid: false,
     units: { allowed: undefined, max: undefined, count: undefined },
     turretForceFieldPanelsEnabled: undefined,
-    forceFieldsEnabled: undefined,
+    turretForceFieldSpheresEnabled: undefined,
     forceFieldsObstructSight: undefined,
     forceFieldReflectionMode: undefined,
     fogOfWarEnabled: undefined,
@@ -443,7 +443,7 @@ export class ReusableNetworkSnapshotCloner {
       dunits.max = sm.units.max;
       dunits.count = sm.units.count;
       dsm.turretForceFieldPanelsEnabled = sm.turretForceFieldPanelsEnabled;
-      dsm.forceFieldsEnabled = sm.forceFieldsEnabled;
+      dsm.turretForceFieldSpheresEnabled = sm.turretForceFieldSpheresEnabled;
       dsm.forceFieldsObstructSight = sm.forceFieldsObstructSight;
       dsm.forceFieldReflectionMode = sm.forceFieldReflectionMode;
       dsm.fogOfWarEnabled = sm.fogOfWarEnabled;

@@ -5,7 +5,7 @@
 // come from live beam polyline vertices. In both cases the supplied
 // normal is in sim coordinates; this renderer draws rings in the plane
 // perpendicular to that normal, so the pulse lies tangent to the
-// force-field shell or mirror panel.
+// force-field shell or force-field panel.
 
 import * as THREE from 'three';
 import { FORCE_FIELD_IMPACT_VISUAL } from '../../config';
@@ -288,7 +288,7 @@ export class ForceFieldImpactRenderer3D {
       for (let i = 1; i < points.length; i++) {
         if (written >= ForceFieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP) break;
         const point = points[i];
-        if (point.mirrorEntityId === undefined) continue;
+        if (point.reflectorEntityId === undefined) continue;
         const nx = point.normalX;
         const ny = point.normalY;
         const nz = point.normalZ;

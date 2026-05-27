@@ -15,7 +15,7 @@ export type ServerSnapshotMetaInput = {
   maxUnits: number | undefined;
   unitCount: number | undefined;
   turretForceFieldPanelsEnabled: boolean | undefined;
-  forceFieldsEnabled: boolean | undefined;
+  turretForceFieldSpheresEnabled: boolean | undefined;
   forceFieldsObstructSight: boolean | undefined;
   forceFieldReflectionMode: ForceFieldReflectionMode | undefined;
   fogOfWarEnabled: boolean | undefined;
@@ -67,7 +67,7 @@ export class ServerSnapshotMetaBuilder {
         count: input.unitCount,
       },
       turretForceFieldPanelsEnabled: input.turretForceFieldPanelsEnabled,
-      forceFieldsEnabled: input.forceFieldsEnabled,
+      turretForceFieldSpheresEnabled: input.turretForceFieldSpheresEnabled,
       forceFieldsObstructSight: input.forceFieldsObstructSight,
       forceFieldReflectionMode: input.forceFieldReflectionMode,
       fogOfWarEnabled: input.fogOfWarEnabled,

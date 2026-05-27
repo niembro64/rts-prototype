@@ -513,7 +513,7 @@ export class Simulation {
     // sphere targeting has the same one-tick-stale envelope as
     // projectile collision.
     stampForceFieldPool(this.world);
-    // AIM-08.5 — rebuild mirror-panel slab before the FSM. The Rust
+    // AIM-08.5 — rebuild force-field-panel slab before the FSM. The Rust
     // gate consults this when evaluating mirror sightline clearance,
     // so it must hold current-tick pose data on entry.
     stampForceFieldPanelPool(this.world);
@@ -537,7 +537,7 @@ export class Simulation {
     }
 
     // Update force field sounds based on transition progress (every frame)
-    const forceFieldUnits = this.world.forceFieldsEnabled
+    const forceFieldUnits = this.world.turretForceFieldSpheresEnabled
       ? this.world.getForceFieldUnits()
       : undefined;
     if (forceFieldUnits && forceFieldUnits.length > 0) {
@@ -1380,7 +1380,7 @@ export class Simulation {
   /** True when any non-visual turret is engaged with a target, so the
    *  unit should hold position rather than keep chasing. This uses the
    *  turret FSM directly instead of firingTurretMask so passive combat
-   *  systems like mirror panels can stop during fight/patrol orders. */
+   *  systems like force-field panels can stop during fight/patrol orders. */
   private shouldStopForEngagedCombat(entity: Entity): boolean {
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;

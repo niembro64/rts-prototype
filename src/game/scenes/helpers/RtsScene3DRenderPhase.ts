@@ -303,7 +303,7 @@ export class RtsScene3DRenderPhase {
     const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this.frustum;
 
     forceFieldRenderer.beginFrame(graphicsConfig);
-    if (this.clientViewState.getServerMeta()?.forceFieldsEnabled ?? true) {
+    if (this.clientViewState.getServerMeta()?.turretForceFieldSpheresEnabled ?? true) {
       for (const u of this.clientViewState.getForceFieldUnits()) {
         forceFieldRenderer.perUnit(u);
       }

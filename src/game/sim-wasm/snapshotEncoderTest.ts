@@ -1344,8 +1344,8 @@ type ProjectileVelocityUpdateFixture = {
 type BeamPointFixture = {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
-  mirrorEntityId?: number;
-  reflectorKind?: 'mirror' | 'forceField';
+  reflectorEntityId?: number;
+  reflectorKind?: 'forceFieldPanel' | 'forceFieldSphere';
   reflectorPlayerId?: number;
   normalX?: number;
   normalY?: number;
@@ -1404,7 +1404,7 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
         vx: point.vx,
         vy: point.vy,
         vz: point.vz,
-        mirrorEntityId: point.mirrorEntityId ?? null,
+        reflectorEntityId: point.reflectorEntityId ?? null,
         reflectorKind: point.reflectorKind ?? null,
         reflectorPlayerId: point.reflectorPlayerId ?? null,
         normalX: point.normalX ?? null,
@@ -1541,17 +1541,17 @@ function packBeamUpdatesIntoScratch(
       pointView[pb + 4] = pt.vy;
       pointView[pb + 5] = pt.vz;
       let pflags = 0;
-      if (pt.mirrorEntityId !== undefined) pflags |= 0x01;
+      if (pt.reflectorEntityId !== undefined) pflags |= 0x01;
       if (pt.reflectorKind !== undefined) {
         pflags |= 0x02;
-        if (pt.reflectorKind === 'forceField') pflags |= 0x04;
+        if (pt.reflectorKind === 'forceFieldSphere') pflags |= 0x04;
       }
       if (pt.reflectorPlayerId !== undefined) pflags |= 0x08;
       if (pt.normalX !== undefined) pflags |= 0x10;
       if (pt.normalY !== undefined) pflags |= 0x20;
       if (pt.normalZ !== undefined) pflags |= 0x40;
       pointView[pb + 6] = pflags;
-      pointView[pb + 7] = pt.mirrorEntityId ?? 0;
+      pointView[pb + 7] = pt.reflectorEntityId ?? 0;
       pointView[pb + 8] = pt.reflectorPlayerId ?? 0;
       pointView[pb + 9] = pt.normalX ?? 0;
       pointView[pb + 10] = pt.normalY ?? 0;
@@ -2754,8 +2754,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             { x: 0, y: 0, z: 10, vx: 0, vy: 0, vz: 0 },
             {
               x: 500, y: 500, z: 10, vx: 1, vy: 2, vz: 0,
-              mirrorEntityId: 4242,
-              reflectorKind: 'mirror',
+              reflectorEntityId: 4242,
+              reflectorKind: 'forceFieldPanel',
               reflectorPlayerId: 2,
               normalX: -707, normalY: 707, normalZ: 0,
             },
@@ -2778,8 +2778,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             { x: 50, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
             {
               x: 200, y: 100, z: 0, vx: 0, vy: 0, vz: 0,
-              mirrorEntityId: 7777,
-              reflectorKind: 'forceField',
+              reflectorEntityId: 7777,
+              reflectorKind: 'forceFieldSphere',
               reflectorPlayerId: 3,
             },
             { x: 350, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
@@ -3382,8 +3382,8 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
               { x: 0, y: 0, z: 10, vx: 1, vy: 0, vz: 0 },
               {
                 x: 100, y: 50, z: 10, vx: 0, vy: 1, vz: 0,
-                mirrorEntityId: 77,
-                reflectorKind: 'forceField',
+                reflectorEntityId: 77,
+                reflectorKind: 'forceFieldSphere',
                 reflectorPlayerId: 3,
                 normalX: -707,
                 normalY: 707,
@@ -3432,8 +3432,8 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
             { x: 1, y: 2, z: 3, vx: 0, vy: 0, vz: 0 },
             {
               x: 4, y: 5, z: 6, vx: 0, vy: 0, vz: 0,
-              mirrorEntityId: 12,
-              reflectorKind: 'mirror',
+              reflectorEntityId: 12,
+              reflectorKind: 'forceFieldPanel',
             },
           ],
         }],

@@ -806,8 +806,8 @@ export class GameServer {
   }
 
   private setTurretForceFieldSpheresEnabled(enabled: boolean): void {
-    if (this.world.forceFieldsEnabled === enabled) return;
-    this.world.forceFieldsEnabled = enabled;
+    if (this.world.turretForceFieldSpheresEnabled === enabled) return;
+    this.world.turretForceFieldSpheresEnabled = enabled;
     if (enabled) return;
     for (const unit of this.world.getForceFieldUnits()) {
       const combat = unit.combat;

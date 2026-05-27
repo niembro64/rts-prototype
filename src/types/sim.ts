@@ -130,16 +130,16 @@ export type Detector = {
   radius: number;
 };
 
-// Cached mirror panel geometry (pre-computed from blueprint at entity creation).
+// Cached force-field panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
 //             value is used for both the horizontal-edge half and the
 //             vertical-edge half via `(topY - baseY) / 2`).
 // offsetX  — distance from turret pivot to panel center along the rigid
-//            arm's forward direction (≈ unitBodyRadius * MIRROR_ARM_LENGTH_MULT).
+//            arm's forward direction (≈ unitBodyRadius * FORCE_FIELD_PANEL_ARM_LENGTH_MULT).
 // offsetY  — lateral pivot offset (zero for current single-arm panels;
 //            non-zero would mount the arm off-center on the chassis).
-// angle    — panel-yaw offset relative to mirror turret yaw (zero today;
-//            reserved for future multi-panel mirror configurations).
+// angle    — panel-yaw offset relative to turretForceFieldPanel yaw (zero today;
+//            reserved for future multi-panel force-field-panel configurations).
 // baseY / topY — world-Z (above the unit's ground footprint) defining the
 //                panel's vertical span. Both are derived in forceFieldPanelCache
 //                from `mount.z * unitBodyRadius ± halfSide`, so their
@@ -378,7 +378,7 @@ export type TurretConfig = {
    *  Rendered as a head sphere only; head color shifts halfway toward
    *  white when the turret is engaged. Head-only turrets with no
    *  snapshot-visible aim pose skip yaw/pitch pose and
-   *  rotation/pitch/velocity snapshots; line weapons and mirror-panel
+   *  rotation/pitch/velocity snapshots; line weapons and force-field-panel
    *  hosts are exceptions because their hidden/head-only pose still
    *  drives visible presentation. */
   headOnly: boolean;
@@ -543,7 +543,7 @@ export type Projectile = {
   /** Beam/laser polyline. Index 0 = start (turret mount center), last = end
    *  (range/hit/ground/terminal reflector), middles = reflections.
    *  Reflection vertices carry reflector metadata via the legacy
-   *  mirrorEntityId field plus reflectorKind/normal*. Undefined on
+   *  reflectorEntityId field plus reflectorKind/normal*. Undefined on
    *  non-line projectiles. Mutated in place — each re-trace resizes
    *  the array length and overwrites the per-vertex fields, so the
    *  array reference is stable. */
@@ -575,10 +575,10 @@ export type Projectile = {
    *  the next end-velocity finite difference. Not serialized. */
   prevEndTick: number | undefined;
   /** Internal: previous beam-trace tick's reflection points keyed by
-   *  mirrorEntityId. Used to finite-diff each reflection point's
+   *  reflectorEntityId. Used to finite-diff each reflection point's
    *  velocity. Not serialized. */
   prevReflectionPoints: {
-    mirrorEntityId: EntityId;
+    reflectorEntityId: EntityId;
     x: number;
     y: number;
     z: number;
@@ -604,7 +604,7 @@ export type Projectile = {
   lastSentVelX: number | undefined;
   lastSentVelY: number | undefined;
   lastSentVelZ: number | undefined;
-  /** Client-only one-shot: exact force-field / mirror-panel contact
+  /** Client-only one-shot: exact force-field / force-field-panel contact
    *  point from the most recent reflection, sourced from the
    *  unquantized forceFieldImpact audio event. Consumed by the
    *  curved-cone tail renderer on the next frame as a forced trail

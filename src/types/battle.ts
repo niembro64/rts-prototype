@@ -11,7 +11,7 @@ export type BattleBarConfig = {
   readonly units: Record<string, UnitToggleConfig>;
   readonly cap: OptionsConfig<number>;
   readonly turretForceFieldPanelsEnabled: BooleanSetting;
-  readonly forceFieldsEnabled: BooleanSetting;
+  readonly turretForceFieldSpheresEnabled: BooleanSetting;
   readonly forceFieldsObstructSight: BooleanSetting;
   readonly forceFieldReflectionMode: {
     readonly default: ForceFieldReflectionMode;

@@ -29,7 +29,7 @@ function makeRuntimeTurret(
   const turnAccel = turretConfig.angular.turnAccel;
   const drag = turretConfig.angular.drag;
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
-  // mirror turrets rest pointing straight up at π/2). Once the aim
+  // turretForceFieldPanels rest pointing straight up at π/2). Once the aim
   // solver runs, this is overwritten per-tick and the damper takes
   // over — `idlePitch` only governs the spawn pose.
   return {

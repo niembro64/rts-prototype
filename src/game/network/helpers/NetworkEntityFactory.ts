@@ -293,7 +293,7 @@ function createUnitFromNetwork(
     combat.fireEnabled = u === null || u.fireEnabled !== false;
     entity.combat = combat;
   }
-  // Cache mirror panels for fast beam collision checks. Same helper
+  // Cache force-field panels for fast beam collision checks. Same helper
   // runs on the host (WorldState.createUnitFromBlueprint) so the
   // hydrated client and the authoritative sim share one rectangle.
   try {

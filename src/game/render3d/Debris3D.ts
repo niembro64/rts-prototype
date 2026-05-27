@@ -552,7 +552,7 @@ export class Debris3D {
       this.emitStaticFragment(out, f, resolveColor(f.color));
     }
 
-    // --- Turret heads + barrels + mirror panels ---
+    // --- Turret heads + barrels + force-field panels ---
     // Each barrel / panel is in chassis-local coords assuming the
     // turret was aimed straight ahead. Apply the live (chassisYaw,
     // pitch) per turret so cylinders land at the world pose their
@@ -687,7 +687,7 @@ export class Debris3D {
       }
     }
 
-    // Mirror panels — emit one slab per panel + two broad extruded
+    // Force-field panels — emit one slab per panel + two broad extruded
     // arms + the cylindrical grabbers they attach to.
     const mp = mount.forceFieldPanels;
     if (mp) {

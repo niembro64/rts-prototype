@@ -795,7 +795,7 @@ watchEffect(() => {
     units: currentAllowedUnits.value,
     cap: displayUnitCap.value,
     turretForceFieldPanelsEnabled: BATTLE_CONFIG.turretForceFieldPanelsEnabled.default,
-    forceFieldsEnabled: BATTLE_CONFIG.forceFieldsEnabled.default,
+    turretForceFieldSpheresEnabled: BATTLE_CONFIG.turretForceFieldSpheresEnabled.default,
     forceFieldsObstructSight: currentForceFieldsObstructSight.value,
     forceFieldReflectionMode: BATTLE_CONFIG.forceFieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,

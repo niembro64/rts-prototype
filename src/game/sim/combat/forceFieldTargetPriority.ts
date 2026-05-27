@@ -6,13 +6,13 @@ import {
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 
-export type MirrorTargetTurretPick = {
+export type ForceFieldPanelTargetTurretPick = {
   turret: Turret;
   index: number;
   score: number;
 };
 
-const _mirrorTargetFsm: CombatTargetingTurretFsmOut = {
+const _forceFieldPanelTargetFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_IDLE,
   targetId: -1,
 };
@@ -39,13 +39,13 @@ export function turretDps(turret: Turret): number {
   return 0;
 }
 
-/** A mirror turret only locks onto an enemy turret that is itself
+/** A turretForceFieldPanel only locks onto an enemy turret that is itself
  *  actively locked onto our own unit (target === ourUnitId, non-idle).
  *  Score equals sustained DPS so the most dangerous incoming turret
  *  wins when several enemy turrets target the same unit. Reads the
  *  Rust combat-targeting slab tuple when stamped, falling back to JS
  *  Turret state on non-sim client paths. */
-function scoreMirrorTargetTurretFromTarget(
+function scoreForceFieldPanelTargetTurretFromTarget(
   target: Entity,
   turretIndex: number,
   turret: Turret,
@@ -54,9 +54,9 @@ function scoreMirrorTargetTurretFromTarget(
   if (turret.config.passive) return 0;
   if (turret.config.visualOnly) return 0;
   if (turret.config.isManualFire) return 0;
-  if (readCombatTargetingTurretFsmInto(target, turretIndex, _mirrorTargetFsm)) {
-    if (_mirrorTargetFsm.targetId !== ourUnitId) return 0;
-    if (_mirrorTargetFsm.stateCode === CT_TURRET_STATE_IDLE) return 0;
+  if (readCombatTargetingTurretFsmInto(target, turretIndex, _forceFieldPanelTargetFsm)) {
+    if (_forceFieldPanelTargetFsm.targetId !== ourUnitId) return 0;
+    if (_forceFieldPanelTargetFsm.stateCode === CT_TURRET_STATE_IDLE) return 0;
     return turretDps(turret);
   }
   if (turret.target !== ourUnitId) return 0;
@@ -64,16 +64,16 @@ function scoreMirrorTargetTurretFromTarget(
   return turretDps(turret);
 }
 
-export function pickMirrorTargetTurret(
+export function pickForceFieldPanelTargetTurret(
   target: Entity,
   ourUnitId: number,
-): MirrorTargetTurretPick | null {
+): ForceFieldPanelTargetTurretPick | null {
   if (target.combat === null) return null;
   const turrets = target.combat.turrets;
-  let best: MirrorTargetTurretPick | null = null;
+  let best: ForceFieldPanelTargetTurretPick | null = null;
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];
-    const score = scoreMirrorTargetTurretFromTarget(target, ti, turret, ourUnitId);
+    const score = scoreForceFieldPanelTargetTurretFromTarget(target, ti, turret, ourUnitId);
     if (score <= 0) continue;
     if (best === null || score > best.score) {
       best = { turret, index: ti, score };
@@ -85,16 +85,16 @@ export function pickMirrorTargetTurret(
 export function pickTargetAimTurret(
   target: Entity,
   sourceEntityId: number | undefined = undefined,
-): MirrorTargetTurretPick | null {
+): ForceFieldPanelTargetTurretPick | null {
   if (sourceEntityId !== undefined) {
-    const directThreat = pickMirrorTargetTurret(target, sourceEntityId);
+    const directThreat = pickForceFieldPanelTargetTurret(target, sourceEntityId);
     if (directThreat) return directThreat;
   }
 
   const combat = target.combat;
   if (combat === null) return null;
   const turrets = combat.turrets;
-  let best: MirrorTargetTurretPick | null = null;
+  let best: ForceFieldPanelTargetTurretPick | null = null;
   for (let ti = 0; ti < turrets.length; ti++) {
     const turret = turrets[ti];
     if (turret.config.passive) continue;
@@ -109,7 +109,7 @@ export function pickTargetAimTurret(
   return best;
 }
 
-export function getMirrorTargetScore(target: Entity, ourUnitId: number): number {
-  const pick = pickMirrorTargetTurret(target, ourUnitId);
+export function getForceFieldPanelTargetScore(target: Entity, ourUnitId: number): number {
+  const pick = pickForceFieldPanelTargetTurret(target, ourUnitId);
   return pick !== null ? pick.score : 0;
 }
