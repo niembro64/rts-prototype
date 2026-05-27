@@ -362,6 +362,37 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       </div>
     </div>
 
+    <!-- Tower lock-on. Set Target enters a click-pick mode (the next
+         left-click on any entity with an ID sets the host-level
+         priorityTargetId; right-click / Esc cancels); Clear Target
+         drops the lock and reverts to autonomous acquisition.
+         Per design_philosophy.html "Tower selection panel". -->
+    <div v-if="selection.hasTowerTargetControl" class="button-group">
+      <div class="group-label">Target</div>
+      <div class="buttons">
+        <button
+          class="action-btn"
+          :class="{ active: selection.isTowerTargetMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
+          title="Click an entity to set this tower's lock-on target"
+          @click="actions.setTowerTargetMode()"
+        >
+          <span class="btn-label">Set</span>
+          <span class="btn-key">L</span>
+        </button>
+        <button
+          class="action-btn"
+          :disabled="!selection.hasTowerTargetActive"
+          :style="{ '--btn-color': BUTTON_COLORS.stop }"
+          title="Clear the tower's lock-on target"
+          @click="actions.clearTowerTarget()"
+        >
+          <span class="btn-label">Clear</span>
+          <span class="btn-key">J</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Building ON/OFF. Producer Buildings Are ON/OFF in
          design_philosophy.html: solar/wind/extractor selections expose
          this toggle. ON = producing + normal damage; OFF = not
@@ -402,7 +433,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 
     <!-- Message area (always present to prevent modal resize) -->
     <div class="message-area">
-      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isAttackGroundMode || selection.isGuardMode || selection.isReclaimMode || selection.isPingMode">
+      <span v-if="selection.isBuildMode || selection.isDGunMode || selection.isRepairAreaMode || selection.isAttackAreaMode || selection.isAttackGroundMode || selection.isGuardMode || selection.isReclaimMode || selection.isPingMode || selection.isTowerTargetMode">
         Press ESC or Right-click to cancel
       </span>
       <span v-else>&nbsp;</span>

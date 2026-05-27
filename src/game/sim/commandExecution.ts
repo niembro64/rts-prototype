@@ -23,6 +23,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
+  SetTowerTargetCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -157,6 +158,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'selfDestruct':
       executeSelfDestructCommand(ctx, command);
+      break;
+    case 'setTowerTarget':
+      executeSetTowerTargetCommand(ctx, command);
       break;
     case 'repair':
       executeRepairCommand(ctx, command);
@@ -707,6 +711,33 @@ function executeSetBuildingActiveCommand(
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined || entity.type !== 'building') continue;
     setBuildingActiveOpen(ctx.world, entity, open);
+  }
+}
+
+function executeSetTowerTargetCommand(
+  ctx: CommandContext,
+  command: SetTowerTargetCommand,
+): void {
+  // Resolve the target entity once; null/-1 means "clear the lock".
+  // The lock-on is only honored by host-directed turrets whose
+  // exclusion policy accepts the candidate (see design_philosophy.html
+  // "Host-directed turrets carry the host lock-on...").
+  const target = command.targetId === null
+    ? undefined
+    : ctx.world.getEntity(command.targetId);
+  const resolvedTargetId =
+    target !== undefined && (target.unit?.hp ?? target.building?.hp ?? 0) > 0
+      ? target.id
+      : null;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (entity === undefined || entity.type !== 'tower') continue;
+    const combat = entity.combat;
+    if (combat === null) continue;
+    combat.priorityTargetId = resolvedTargetId;
+    combat.priorityTargetPoint = null;
+    combat.nextCombatProbeTick = -1;
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE);
   }
 }
 

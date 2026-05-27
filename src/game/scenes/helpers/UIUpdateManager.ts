@@ -140,6 +140,16 @@ export function buildSelectionInfo(
     || selectedTowers.length > 0
     || selectedBuildings.length > 0;
 
+  // Tower host lock-on. Set Target / Clear Target are gated on towerCount.
+  let towerWithTarget = false;
+  for (let i = 0; i < selectedTowers.length; i++) {
+    const combat = selectedTowers[i].combat;
+    if (combat && combat.priorityTargetId !== null) {
+      towerWithTarget = true;
+      break;
+    }
+  }
+
   // Get factory queue info if factory is selected
   let factoryQueue: { unitId: string; label: string }[] | undefined;
   let factoryProgress: number | undefined;
@@ -167,6 +177,9 @@ export function buildSelectionInfo(
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
     hasSelfDestructable,
+    hasTowerTargetControl: selectedTowers.length > 0,
+    hasTowerTargetActive: towerWithTarget,
+    isTowerTargetMode: inputState?.isTowerTargetMode ?? false,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     hasQueuedOrders,
     hasFactory: factory !== undefined,

@@ -132,12 +132,14 @@ export class Input3DManager {
   public onGuardModeChange?: (active: boolean) => void;
   public onReclaimModeChange?: (active: boolean) => void;
   public onPingModeChange?: (active: boolean) => void;
+  public onTowerTargetModeChange?: (active: boolean) => void;
   private repairAreaMode = false;
   private attackAreaMode = false;
   private attackGroundMode = false;
   private guardMode = false;
   private reclaimMode = false;
   private pingMode = false;
+  private towerTargetMode = false;
   private hoveredEntityId: EntityId | null = null;
   private hoveredSelectableEntityId: EntityId | null = null;
   private lastHoverRaycastMs = 0;
@@ -306,6 +308,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     if (this.waypointMode === mode) return;
     this.waypointMode = mode;
     this.refreshCursor();
@@ -324,6 +327,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.setWaypointMode('move');
     this.clearHoveredEntities();
     this.refreshCursor();
@@ -339,6 +343,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.mode.enterBuildMode(type);
   }
 
@@ -362,6 +367,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.mode.toggleDGunMode();
   }
 
@@ -393,6 +399,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitGuardMode();
     this.exitReclaimMode();
+    this.exitTowerTargetMode();
     this.pingMode = true;
     this.refreshCursor();
     this.onPingModeChange?.(true);
@@ -423,6 +430,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.attackAreaMode = true;
     this.refreshCursor();
     this.onAttackAreaModeChange?.(true);
@@ -441,6 +449,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.attackGroundMode = true;
     this.refreshCursor();
     this.onAttackGroundModeChange?.(true);
@@ -459,6 +468,7 @@ export class Input3DManager {
     this.exitAttackGroundMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.guardMode = true;
     this.refreshCursor();
     this.onGuardModeChange?.(true);
@@ -477,6 +487,7 @@ export class Input3DManager {
     this.exitGuardMode();
     this.exitReclaimMode();
     this.exitPingMode();
+    this.exitTowerTargetMode();
     this.repairAreaMode = true;
     this.refreshCursor();
     this.onRepairAreaModeChange?.(true);
@@ -615,6 +626,72 @@ export class Input3DManager {
     this.onPingModeChange?.(false);
   }
 
+  private exitTowerTargetMode(): void {
+    if (!this.towerTargetMode) return;
+    this.towerTargetMode = false;
+    this.refreshCursor();
+    this.onTowerTargetModeChange?.(false);
+  }
+
+  toggleTowerTargetMode(): void {
+    if (this.towerTargetMode) {
+      this.exitTowerTargetMode();
+      return;
+    }
+    if (this.getSelectedTowers().length === 0) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitRepairAreaMode();
+    this.exitAttackAreaMode();
+    this.exitAttackGroundMode();
+    this.exitGuardMode();
+    this.exitReclaimMode();
+    this.exitPingMode();
+    this.towerTargetMode = true;
+    this.refreshCursor();
+    this.onTowerTargetModeChange?.(true);
+  }
+
+  clearTowerTarget(): void {
+    this.enqueueSetTowerTargetCommand(null);
+  }
+
+  isInTowerTargetMode(): boolean {
+    return this.towerTargetMode;
+  }
+
+  private getSelectedTowers(): Entity[] {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    const out: Entity[] = [];
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (selectedStatic[i].type === 'tower') out.push(selectedStatic[i]);
+    }
+    return out;
+  }
+
+  private handleTowerTargetClick(e: MouseEvent): void {
+    const entityHitId = this.raycastEntity(e.clientX, e.clientY);
+    if (entityHitId === null) return;
+    // Lock-on selection: anything with an ID is a candidate (per
+    // design_philosophy.html). The turret's exclusion mask decides
+    // whether the lock is honored — JS just routes the click.
+    this.enqueueSetTowerTargetCommand(entityHitId);
+    if (!e.shiftKey) this.exitTowerTargetMode();
+  }
+
+  private enqueueSetTowerTargetCommand(targetId: EntityId | null): void {
+    const towers = this.getSelectedTowers();
+    if (towers.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < towers.length; i++) entityIds.push(towers[i].id);
+    this.localCommandQueue.enqueue({
+      type: 'setTowerTarget',
+      tick: this.context.getTick(),
+      entityIds,
+      targetId,
+    });
+  }
+
   private hasSelectedCommander(): boolean {
     return this.entitySource.getSelectedUnits().some(isCommander);
   }
@@ -698,6 +775,7 @@ export class Input3DManager {
     if (this.guardMode) return 'guard';
     if (this.reclaimMode) return 'reclaim';
     if (this.pingMode) return 'ping';
+    if (this.towerTargetMode) return 'attack';
     if (this.leftDown) return 'select';
     if (this.rightDown) return this.waypointCursorKind();
 
@@ -746,6 +824,9 @@ export class Input3DManager {
     }
     if (this.reclaimMode && !this.hasSelectedCommander()) {
       this.exitReclaimMode();
+    }
+    if (this.towerTargetMode && this.getSelectedTowers().length === 0) {
+      this.exitTowerTargetMode();
     }
     this.refreshCursor();
   }
@@ -819,6 +900,12 @@ export class Input3DManager {
       case 'k':
         this.enqueueSelfDestructCommand();
         break;
+      case 'l':
+        this.toggleTowerTargetMode();
+        break;
+      case 'j':
+        this.clearTowerTarget();
+        break;
       case 'a':
         this.toggleAttackAreaMode();
         break;
@@ -884,6 +971,7 @@ export class Input3DManager {
             { isActive: () => this.guardMode, cancel: () => this.exitGuardMode() },
             { isActive: () => this.reclaimMode, cancel: () => this.exitReclaimMode() },
             { isActive: () => this.pingMode, cancel: () => this.exitPingMode() },
+            { isActive: () => this.towerTargetMode, cancel: () => this.exitTowerTargetMode() },
           ],
           this.localCommandQueue,
           this.context.getTick(),
@@ -1171,7 +1259,8 @@ export class Input3DManager {
       this.attackGroundMode ||
       this.guardMode ||
       this.reclaimMode ||
-      this.pingMode
+      this.pingMode ||
+      this.towerTargetMode
     ) {
       e.preventDefault();
       if (e.button === 0) {
@@ -1182,6 +1271,7 @@ export class Input3DManager {
         else if (this.attackGroundMode) this.handleAttackGroundClick(e);
         else if (this.guardMode) this.handleGuardClick(e);
         else if (this.reclaimMode) this.handleReclaimClick(e);
+        else if (this.towerTargetMode) this.handleTowerTargetClick(e);
         else this.handlePingClick(e);
       } else if (e.button === 2) {
         if (this.mode.isInBuildMode) this.mode.exitBuildMode();
@@ -1191,6 +1281,7 @@ export class Input3DManager {
         else if (this.attackGroundMode) this.exitAttackGroundMode();
         else if (this.guardMode) this.exitGuardMode();
         else if (this.reclaimMode) this.exitReclaimMode();
+        else if (this.towerTargetMode) this.exitTowerTargetMode();
         else this.exitPingMode();
       }
       return;

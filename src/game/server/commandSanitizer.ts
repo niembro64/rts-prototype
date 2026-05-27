@@ -20,6 +20,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
+  SetTowerTargetCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -71,6 +72,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeSetBuildingActiveCommand(command, tick);
     case 'selfDestruct':
       return sanitizeSelfDestructCommand(command, tick);
+    case 'setTowerTarget':
+      return sanitizeSetTowerTargetCommand(command, tick);
     case 'attack':
       return sanitizeAttackCommand(command, tick);
     case 'attackGround':
@@ -293,6 +296,18 @@ function sanitizeSelfDestructCommand(
 ): SelfDestructCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   return entityIds === null ? null : { ...command, tick, entityIds };
+}
+
+function sanitizeSetTowerTargetCommand(
+  command: SetTowerTargetCommand,
+  tick: number,
+): SetTowerTargetCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  if (entityIds === null) return null;
+  // `null` is the canonical "clear lock" sentinel; otherwise the
+  // targetId must be a real entity id.
+  if (command.targetId !== null && !isEntityId(command.targetId)) return null;
+  return { ...command, tick, entityIds, targetId: command.targetId };
 }
 
 function sanitizeAttackCommand(command: AttackCommand, tick: number): AttackCommand | null {

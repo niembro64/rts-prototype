@@ -600,6 +600,9 @@ export class RtsScene3D {
     this.inputManager.onPingModeChange = (active) => {
       this.selectionSystem.setPingMode(active);
     };
+    this.inputManager.onTowerTargetModeChange = (active) => {
+      this.selectionSystem.setTowerTargetMode(active);
+    };
 
     this.renderPhase = new RtsScene3DRenderPhase(
       this.threeApp,
@@ -1257,6 +1260,14 @@ export class RtsScene3D {
 
   public selfDestructSelected(): void {
     this.inputManager?.selfDestructSelected();
+  }
+
+  public toggleTowerTargetMode(): void {
+    this.inputManager?.toggleTowerTargetMode();
+  }
+
+  public clearTowerTarget(): void {
+    this.inputManager?.clearTowerTarget();
   }
 
   public toggleAttackAreaMode(): void {

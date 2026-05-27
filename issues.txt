@@ -62,31 +62,6 @@ comments added in the TS-level peer-type commit (036bbd79) — they're
 transitional and the design philosophy already says towers are peers.
 
 --------------------------------------------------------------------------------
-TOWER-03 — Tower selection-panel commands: lock-on + self-destruct
---------------------------------------------------------------------------------
-SelectionPanel.vue currently shows a tower selection's header + the
-fire-control toggle + (for fabricators) production queues. Per design,
-towers also need:
-
-a) Set Lock-On Target — enter a click-target mode; the next click on an
-   entity-with-an-ID sets the selected tower's host target (writes
-   CombatComponent.priorityTargetId). Right-click / Esc cancels.
-b) Clear Lock-On — drop the priorityTargetId back to NO_ENTITY_ID; tower
-   reverts to autonomous acquisition.
-c) Self-destruct — demolish the tower (resolved via existing damage path
-   or a dedicated removal command).
-
-Each needs:
-- A new wire command type (src/types/commandTypes.ts).
-- Server-side execution (src/game/sim/commandExecution.ts).
-- A new SelectionActions method on the UI side
-  (SelectionPanel.vue / gameCanvasSceneUi.ts SelectionActions impl).
-- Buttons in SelectionPanel.vue gated on towerCount > 0.
-
-Lock-on target picker also needs an InputManager mode similar to
-attack-area / guard so the targeting click is routed correctly.
-
---------------------------------------------------------------------------------
 TOWER-04b — ON/OFF for radar + converter (deferred)
 --------------------------------------------------------------------------------
 TOWER-04 landed the ON/OFF button + selfDestruct command for

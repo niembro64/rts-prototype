@@ -42,6 +42,15 @@ export type SelectionInfo = {
   /** True when any selected entity belongs to the local player and can
    *  be removed by a self-destruct command. */
   hasSelfDestructable: boolean;
+  /** True when the tower section's Set Target / Clear Target buttons
+   *  should appear. Mirrors `towerCount > 0`. */
+  hasTowerTargetControl: boolean;
+  /** True when at least one selected tower has a host-level lock-on
+   *  target set. Enables the Clear Target button. */
+  hasTowerTargetActive: boolean;
+  /** True while the user is in the click-to-pick mode for setting a
+   *  tower's lock-on target. Highlights the Set Target button. */
+  isTowerTargetMode: boolean;
   isWaiting: boolean;
   hasQueuedOrders: boolean;
   hasFactory: boolean;
@@ -74,6 +83,11 @@ export type SelectionActions = {
   toggleBuildingActive: () => void;
   /** Demolish every owned entity in the selection. */
   selfDestructSelected: () => void;
+  /** Enter click-pick mode for setting the host lock-on target on the
+   *  selected towers. Right-click / Esc cancels. */
+  setTowerTargetMode: () => void;
+  /** Clear the host lock-on target on the selected towers. */
+  clearTowerTarget: () => void;
   toggleAttackArea: () => void;
   toggleAttackGround: () => void;
   toggleGuard: () => void;
@@ -172,6 +186,9 @@ export type UIInputState = {
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isPingMode: boolean;
+  /** True while in the click-to-pick mode for setting a tower's host
+   *  lock-on target. Mirrors the attack-area / guard mode pattern. */
+  isTowerTargetMode: boolean;
   controlGroups: ControlGroupInfo[];
 };
 

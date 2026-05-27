@@ -20,6 +20,7 @@ export type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
+  SetTowerTargetCommand,
   RepairCommand,
   RepairAreaCommand,
   ReclaimCommand,

@@ -32,6 +32,7 @@ export class RtsScene3DSelectionSystem {
   private guardActive = false;
   private reclaimActive = false;
   private pingActive = false;
+  private towerTargetActive = false;
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -95,6 +96,11 @@ export class RtsScene3DSelectionSystem {
 
   setPingMode(active: boolean): void {
     this.pingActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setTowerTargetMode(active: boolean): void {
+    this.towerTargetActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -180,6 +186,7 @@ export class RtsScene3DSelectionSystem {
       isGuardMode: this.guardActive,
       isReclaimMode: this.reclaimActive,
       isPingMode: this.pingActive,
+      isTowerTargetMode: this.towerTargetActive,
       controlGroups: this.buildControlGroupInfo(),
     };
   }

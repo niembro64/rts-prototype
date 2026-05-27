@@ -23,6 +23,7 @@ export type CommandType =
   | 'setFireEnabled'
   | 'setBuildingActive'
   | 'selfDestruct'
+  | 'setTowerTarget'
   | 'repair'
   | 'repairArea'
   | 'reclaim'
@@ -190,6 +191,17 @@ export type SelfDestructCommand = BaseCommand & {
   entityIds: EntityId[];
 };
 
+/** Set (or clear) a tower's host-level lock-on target. Writes
+ *  CombatComponent.priorityTargetId directly; host-directed turrets
+ *  inherit the target through the normal acquisition flow, gated by
+ *  their own exclusion masks. `targetId === null` clears the lock-on
+ *  and the tower reverts to autonomous acquisition. */
+export type SetTowerTargetCommand = BaseCommand & {
+  type: 'setTowerTarget';
+  entityIds: EntityId[];
+  targetId: EntityId | null;
+};
+
 export type RepairCommand = BaseCommand & {
   type: 'repair';
   commanderId: EntityId;
@@ -342,6 +354,7 @@ export type Command =
   | SetFireEnabledCommand
   | SetBuildingActiveCommand
   | SelfDestructCommand
+  | SetTowerTargetCommand
   | RepairCommand
   | RepairAreaCommand
   | ReclaimCommand

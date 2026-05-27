@@ -18,6 +18,7 @@ import type {
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
+  SetTowerTargetCommand,
   StopCommand,
   WaitCommand,
 } from '../sim/commands';
@@ -616,6 +617,9 @@ export class GameServer {
       case 'selfDestruct':
         return this.authorizeAnyEntityListCommand(command, playerId);
 
+      case 'setTowerTarget':
+        return this.authorizeSetTowerTargetCommand(command, playerId);
+
       case 'attack':
       case 'attackGround':
       case 'attackArea':
@@ -704,6 +708,35 @@ export class GameServer {
     for (let i = 0; i < sourceIds.length; i++) {
       const id = sourceIds[i];
       if (this.isOwnedUnit(id, playerId)) entityIds.push(id);
+    }
+    if (entityIds.length === 0) return null;
+    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  }
+
+  /** Authorize a tower-target command: every entityId must be an
+   *  owned tower. The lock-on `targetId` itself may name any entity
+   *  in the world that has an ID (friendly or enemy); the
+   *  receiving turret's exclusion policy decides whether to honor it
+   *  (see design_philosophy.html "Lock-on selection: anything with an
+   *  ID is a candidate"). */
+  private authorizeSetTowerTargetCommand(
+    command: SetTowerTargetCommand,
+    playerId: PlayerId,
+  ): SetTowerTargetCommand | null {
+    const sourceIds = command.entityIds;
+    if (sourceIds.length === 0) return null;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < sourceIds.length; i++) {
+      const id = sourceIds[i];
+      const entity = this.world.getEntity(id);
+      if (
+        entity !== undefined
+        && entity.type === 'tower'
+        && entity.ownership !== null
+        && entity.ownership.playerId === playerId
+      ) {
+        entityIds.push(id);
+      }
     }
     if (entityIds.length === 0) return null;
     return entityIds.length === sourceIds.length ? command : { ...command, entityIds };

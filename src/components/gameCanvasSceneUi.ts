@@ -96,6 +96,9 @@ export function useGameCanvasSceneUi({
     hasBuildingActiveControl: false,
     buildingsActive: false,
     hasSelfDestructable: false,
+    hasTowerTargetControl: false,
+    hasTowerTargetActive: false,
+    isTowerTargetMode: false,
     isWaiting: false,
     hasQueuedOrders: false,
     hasFactory: false,
@@ -207,6 +210,12 @@ export function useGameCanvasSceneUi({
     },
     selfDestructSelected: () => {
       getActiveBattleScene()?.selfDestructSelected();
+    },
+    setTowerTargetMode: () => {
+      getActiveBattleScene()?.toggleTowerTargetMode();
+    },
+    clearTowerTarget: () => {
+      getActiveBattleScene()?.clearTowerTarget();
     },
     toggleAttackArea: () => {
       getActiveBattleScene()?.toggleAttackAreaMode();
