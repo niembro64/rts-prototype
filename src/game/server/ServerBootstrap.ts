@@ -95,6 +95,8 @@ export class ServerBootstrap {
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep:
         config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
+      terrainDetail:
+        config.terrainDetail ?? terrainRuntimeConfig.terrainDetail,
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
@@ -240,6 +242,8 @@ export class ServerBootstrap {
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep:
         config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
+      terrainDetail:
+        config.terrainDetail ?? terrainRuntimeConfig.terrainDetail,
     });
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);

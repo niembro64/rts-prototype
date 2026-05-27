@@ -5,6 +5,7 @@ import {
   loadStoredMapLandDimensions,
   loadStoredMetalDepositStep,
   loadStoredTerrainDTerrain,
+  loadStoredTerrainDetail,
   loadStoredTerrainMapShape,
   type BattleMode,
 } from '../battleBarConfig';
@@ -25,6 +26,7 @@ export type GameCanvasLobbyPreviewOptions = {
   terrainMapShape: Ref<TerrainMapShape>;
   terrainDTerrain: Ref<number>;
   metalDepositStep: Ref<number>;
+  terrainDetail: Ref<number>;
   mapWidthLandCells: Ref<number>;
   mapLengthLandCells: Ref<number>;
   stopBackgroundBattle: () => void;
@@ -45,6 +47,7 @@ export function useGameCanvasLobbyPreview({
   terrainMapShape,
   terrainDTerrain,
   metalDepositStep,
+  terrainDetail,
   mapWidthLandCells,
   mapLengthLandCells,
   stopBackgroundBattle,
@@ -69,6 +72,7 @@ export function useGameCanvasLobbyPreview({
     terrainMapShape.value = loadStoredTerrainMapShape(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);
+    terrainDetail.value = loadStoredTerrainDetail(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);
     mapWidthLandCells.value = mapDimensions.widthLandCells;
     mapLengthLandCells.value = mapDimensions.lengthLandCells;

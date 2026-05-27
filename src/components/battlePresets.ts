@@ -19,6 +19,10 @@ export type BattlePreset = {
   readonly terrainMapShape: TerrainMapShape;
   readonly terrainDTerrain: number;
   readonly metalDepositStep: number;
+  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
+   *  per cell, current default); 5/10/15/20 = progressively finer mesh
+   *  detail. Drives `TERRAIN_FINE_TRIANGLE_SUBDIV`. */
+  readonly terrainDetail: number;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
   /** Whether the host's grid-debug overlay is on by default. */
@@ -82,6 +86,7 @@ function buildPresets(): readonly BattlePreset[] {
       terrainMapShape: 'square',
       terrainDTerrain: 0,
       metalDepositStep: 0,
+      terrainDetail: 0,
       mapWidthLandCells: 23,
       mapLengthLandCells: 23,
       grid: true,
@@ -98,8 +103,9 @@ function buildPresets(): readonly BattlePreset[] {
       centerMagnitude: 400,
       dividersMagnitude: 400,
       terrainMapShape: 'circle',
-      terrainDTerrain: 0,
+      terrainDTerrain: 1,
       metalDepositStep: 200,
+      terrainDetail: 5,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
@@ -118,6 +124,7 @@ function buildPresets(): readonly BattlePreset[] {
       terrainMapShape: 'circle',
       terrainDTerrain: 0,
       metalDepositStep: 200,
+      terrainDetail: 5,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
@@ -136,6 +143,7 @@ function buildPresets(): readonly BattlePreset[] {
       terrainMapShape: 'circle',
       terrainDTerrain: 400,
       metalDepositStep: 400,
+      terrainDetail: 10,
       mapWidthLandCells: 79,
       mapLengthLandCells: 53,
       grid: false,
@@ -154,6 +162,7 @@ function buildPresets(): readonly BattlePreset[] {
       terrainMapShape: 'circle',
       terrainDTerrain: 0,
       metalDepositStep: 100,
+      terrainDetail: 5,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
       grid: false,
@@ -172,6 +181,7 @@ function buildPresets(): readonly BattlePreset[] {
       terrainMapShape: 'circle',
       terrainDTerrain: 200,
       metalDepositStep: 200,
+      terrainDetail: 10,
       mapWidthLandCells: 23,
       mapLengthLandCells: 35,
       grid: false,
@@ -190,6 +200,7 @@ function buildPresets(): readonly BattlePreset[] {
       terrainMapShape: 'circle',
       terrainDTerrain: 800,
       metalDepositStep: 800,
+      terrainDetail: 15,
       mapWidthLandCells: 53,
       mapLengthLandCells: 79,
       grid: false,
@@ -253,6 +264,7 @@ export function presetMatchesCurrent(
     p.terrainMapShape === c.terrainMapShape &&
     p.terrainDTerrain === c.terrainDTerrain &&
     p.metalDepositStep === c.metalDepositStep &&
+    p.terrainDetail === c.terrainDetail &&
     p.mapWidthLandCells === c.mapWidthLandCells &&
     p.mapLengthLandCells === c.mapLengthLandCells
   );

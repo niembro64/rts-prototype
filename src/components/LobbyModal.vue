@@ -31,6 +31,7 @@ const props = defineProps<{
   terrainMapShape: TerrainMapShape;
   terrainDTerrain: number;
   metalDepositStep: number;
+  terrainDetail: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   unitTypes: readonly string[];
@@ -55,6 +56,7 @@ const emit = defineEmits<{
   (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
+  (e: 'setTerrainDetail', value: number): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
@@ -74,6 +76,7 @@ const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
+const terrainDetailOptions = BATTLE_CONFIG.terrainDetail.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
 const mapWidthOptions = BATTLE_CONFIG.mapSize.width.options;
 const mapLengthOptions = BATTLE_CONFIG.mapSize.length.options;
@@ -113,6 +116,11 @@ function pickTerrainDTerrain(value: number): void {
 function pickMetalDepositStep(value: number): void {
   if (!props.isHost) return;
   emit('setMetalDepositStep', value);
+}
+
+function pickTerrainDetail(value: number): void {
+  if (!props.isHost) return;
+  emit('setTerrainDetail', value);
 }
 
 function pickMapWidthLandCells(widthLandCells: number): void {
@@ -621,6 +629,23 @@ const terrainSectionVars = computed(() =>
                     :title="isHost ? `Vertical step between metal-extractor pad altitudes: ${opt}` : 'Only the host can change terrain'"
                     @click="pickMetalDepositStep(opt)"
                   >{{ opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>TERRAIN DETAIL:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in terrainDetailOptions"
+                    :key="opt"
+                    :active="terrainDetail === opt"
+                    :title="isHost
+                      ? (opt === 0
+                        ? 'OFF — one triangle per land cell'
+                        : `Fine-triangle subdivisions per land cell: ${opt}`)
+                      : 'Only the host can change terrain'"
+                    @click="pickTerrainDetail(opt)"
+                  >{{ opt === 0 ? 'OFF' : opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <!-- Real-battle config groups. These were previously editable

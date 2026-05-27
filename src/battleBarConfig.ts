@@ -88,6 +88,10 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.metalDepositStep,
     options: battleBarConfig.metalDepositStep.options as readonly number[],
   },
+  terrainDetail: {
+    default: _demoPreset.terrainDetail,
+    options: battleBarConfig.terrainDetail.options as readonly number[],
+  },
   converterTax: {
     default: _demoPreset.converterTax,
     options: battleBarConfig.converterTax.options as readonly number[],
@@ -150,6 +154,8 @@ const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_METAL_DEPOSIT_STEP = sk.demoMetalDepositStep;
 const STORAGE_REAL_METAL_DEPOSIT_STEP = sk.realMetalDepositStep;
+const STORAGE_DEMO_TERRAIN_DETAIL = sk.demoTerrainDetail;
+const STORAGE_REAL_TERRAIN_DETAIL = sk.realTerrainDetail;
 const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
 const STORAGE_REAL_CONVERTER_TAX = sk.realConverterTax;
 const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
@@ -297,6 +303,9 @@ export type BattleTerrainRuntimeConfig = {
   terrainDTerrain: number;
   /** Metal-extractor pad altitude step in world units. */
   metalDepositStep: number;
+  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
+   *  per cell); 5/10/15/20 = progressively finer mesh detail. */
+  terrainDetail: number;
 };
 
 export function getDefaultCap(mode: BattleMode): number {
@@ -477,6 +486,10 @@ export function normalizeTerrainDTerrain(value: number): number {
 
 export function normalizeMetalDepositStep(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.metalDepositStep);
+}
+
+export function normalizeTerrainDetail(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.terrainDetail);
 }
 
 /** Match against the configured options with a small epsilon so float
@@ -697,6 +710,22 @@ export function saveMetalDepositStep(value: number, mode: BattleMode): void {
   );
 }
 
+export function loadStoredTerrainDetail(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_TERRAIN_DETAIL,
+    STORAGE_DEMO_TERRAIN_DETAIL,
+    BATTLE_CONFIG.terrainDetail,
+  );
+}
+
+export function saveTerrainDetail(value: number, mode: BattleMode): void {
+  persist(
+    mode === 'real' ? STORAGE_REAL_TERRAIN_DETAIL : STORAGE_DEMO_TERRAIN_DETAIL,
+    String(normalizeTerrainDetail(value)),
+  );
+}
+
 export function loadStoredTerrainRuntimeConfig(
   mode: BattleMode,
 ): BattleTerrainRuntimeConfig {
@@ -705,6 +734,7 @@ export function loadStoredTerrainRuntimeConfig(
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
     metalDepositStep: loadStoredMetalDepositStep(mode),
+    terrainDetail: loadStoredTerrainDetail(mode),
   };
 }
 

@@ -175,6 +175,21 @@ defineProps<{
           >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel>TERRAIN DETAIL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.terrainDetail.options"
+            :key="opt"
+            :active="model.terrainDetail === opt"
+            :title="opt === 0
+              ? 'OFF — one triangle per land cell'
+              : `Fine-triangle subdivisions per land cell: ${opt}`"
+            @click="model.applyTerrainDetail(opt)"
+          >{{ opt === 0 ? 'OFF' : opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
         <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>

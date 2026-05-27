@@ -23,6 +23,9 @@
   "metalDepositStep": {
     "options": [0, 100, 200, 400, 800]
   },
+  "terrainDetail": {
+    "options": [0, 5, 10, 15, 20]
+  },
   "converterTax": {
     "options": [0.0, 0.1, 0.5]
   },
@@ -53,6 +56,8 @@
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoMetalDepositStep": "demo-battle-metal-deposit-step",
     "realMetalDepositStep": "real-battle-metal-deposit-step",
+    "demoTerrainDetail": "demo-battle-terrain-detail",
+    "realTerrainDetail": "real-battle-terrain-detail",
     "demoConverterTax": "demo-battle-converter-tax",
     "realConverterTax": "real-battle-converter-tax",
     "demoMapLandCells": "demo-battle-map-land-cells",

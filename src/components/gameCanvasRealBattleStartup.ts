@@ -91,6 +91,7 @@ export async function createRealBattleServer({
       terrainMapShape: terrain.terrainMapShape,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
+      terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: terrain.mapDimensions.widthLandCells,
       mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
       converterTax: loadStoredConverterTax('real'),

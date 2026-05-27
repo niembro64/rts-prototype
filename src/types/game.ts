@@ -115,6 +115,9 @@ export type GameServerConfig = {
   terrainDTerrain?: number;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep?: number;
+  /** Fine-triangle subdivisions per land cell. 0 = off; higher values
+   *  refine the terrain mesh inside each cell. */
+  terrainDetail?: number;
   /** Map width in canonical LAND_CELL_SIZE cells. */
   mapWidthLandCells?: number;
   /** Map length/height in canonical LAND_CELL_SIZE cells. */

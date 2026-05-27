@@ -53,6 +53,7 @@ export type GameCanvasBattleSettingsOptions = {
   applyTerrainMapShape: (shape: TerrainMapShape, broadcast?: boolean) => void;
   applyTerrainDTerrain: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
+  applyTerrainDetail: (value: number, broadcast?: boolean) => void;
   applyMapLandDimensions: (
     dimensions: MapLandCellDimensions,
     broadcast?: boolean,
@@ -71,6 +72,7 @@ export function useGameCanvasBattleSettings({
   applyTerrainMapShape,
   applyTerrainDTerrain,
   applyMetalDepositStep,
+  applyTerrainDetail,
   applyMapLandDimensions,
 }: GameCanvasBattleSettingsOptions): GameCanvasBattleSettings {
   const currentAllowedUnits = computed<readonly string[]>(
@@ -180,6 +182,7 @@ export function useGameCanvasBattleSettings({
     applyTerrainMapShape(preset.terrainMapShape, false);
     applyTerrainDTerrain(preset.terrainDTerrain, false);
     applyMetalDepositStep(preset.metalDepositStep, false);
+    applyTerrainDetail(preset.terrainDetail, false);
     applyMapLandDimensions(
       {
         widthLandCells: preset.mapWidthLandCells,

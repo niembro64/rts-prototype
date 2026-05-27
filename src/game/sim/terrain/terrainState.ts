@@ -81,6 +81,7 @@ export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     metalDepositStep: METAL_DEPOSIT_STEP,
+    terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   };
 }
 
@@ -99,6 +100,7 @@ export function setTerrainCenterMagnitude(value: number): void {
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     metalDepositStep: METAL_DEPOSIT_STEP,
+    terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });
   invalidateTerrainConfig();
 }
@@ -111,6 +113,7 @@ export function setTerrainDividersMagnitude(value: number): void {
     dividersMagnitude: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     metalDepositStep: METAL_DEPOSIT_STEP,
+    terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });
   invalidateTerrainConfig();
 }

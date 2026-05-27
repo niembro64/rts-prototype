@@ -38,6 +38,12 @@ export type BattleBarConfig = {
    *  the plateau lattice and the deposit lattice can use different
    *  step sizes. */
   readonly metalDepositStep: OptionsConfig<number>;
+  /** Fine-triangle subdivisions per land cell (TERRAIN DETAIL bar).
+   *  `0` collapses to one triangle per cell (current default — the sim
+   *  clamps the subdivision count to a minimum of 1); higher values
+   *  refine the mesh inside each cell so terrain features become
+   *  smoother at the cost of more triangles. */
+  readonly terrainDetail: OptionsConfig<number>;
   /** Tax (fraction in [0, 1)) applied to a resource converter's
    *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of
    *  the source amount on every conversion. */

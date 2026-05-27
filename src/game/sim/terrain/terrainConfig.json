@@ -1,8 +1,7 @@
 {
   "tileFloorY": -1200,
   "waterLevelFraction": 0.9,
-  "terrainFineTriangleSubdiv": 15,
-  "terrainTriangleMaxSurfaceError": 20,
+  "terrainTriangleMaxSurfaceError": 0,
   "terrainTriangleMaxNormalAngleDegrees": 18,
   "terrainTriangleMaxNeighborLevelDelta": 1,
   "terrainTriangleFinalRepairMaxPasses": 3,

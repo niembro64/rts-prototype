@@ -258,6 +258,9 @@ export type LobbySettings = {
   terrainDTerrain: number | undefined;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep: number | undefined;
+  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
+   *  per cell); higher values refine the mesh. */
+  terrainDetail: number | undefined;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
   fogOfWarEnabled: boolean | undefined;
