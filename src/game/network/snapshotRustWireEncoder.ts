@@ -439,7 +439,10 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
     );
     return true;
   }
-  if (entity.type === 'building') {
+  if (entity.type === 'building' || entity.type === 'tower') {
+    // Towers ride the building wire path. Their structural wire shape
+    // (static + optional combat) is identical to buildings; the type
+    // discriminator is reconstructed on the receive side.
     if (entity.unit !== null) return false;
     if (entity.building !== null) return encodeBuildingEntity(sim, entity, entity.building);
     const pos = entity.pos;

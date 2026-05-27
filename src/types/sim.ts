@@ -831,8 +831,10 @@ export type DGunProjectile = {
   groundOffset: number;
 };
 
-// Entity type discriminator
-export type EntityType = 'unit' | 'building' | 'shot';
+// Entity type discriminator. Towers are the immobile peer of units: they
+// mount turrets and carry a host-level lock-on, but have no locomotion.
+// See design_philosophy.html "Towers Are Static Hosts That Lock On And Fire".
+export type EntityType = 'unit' | 'tower' | 'building' | 'shot';
 
 export type EntityComponentSlots = {
   body: Body | null;

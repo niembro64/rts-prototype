@@ -1,6 +1,7 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId, BuildingType } from './types';
 import { createCombatComponent } from './types';
+import { isTowerBuildingType } from '../../types/buildingTypes';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
@@ -224,6 +225,14 @@ function placeCompleteBuilding(
   );
 
   entity.buildingType = buildingType;
+  // Static turret-carrying entities (fabricator + shooting towers) are
+  // tower-class. Stamp the EntityType discriminator at spawn so UI and
+  // dispatch code can match on entity.type === 'tower' instead of
+  // re-checking buildingType every read. See design_philosophy.html
+  // "Towers Are Static Hosts That Lock On And Fire".
+  if (isTowerBuildingType(buildingType)) {
+    entity.type = 'tower';
+  }
   applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
   if (buildingTypeHasActiveState(buildingType)) {
     ensureBuildingActiveState(entity);

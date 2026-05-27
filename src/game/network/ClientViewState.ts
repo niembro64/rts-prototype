@@ -285,7 +285,9 @@ export class ClientViewState {
     entity: Entity | undefined = undefined,
   ): void {
     const cf = server.changedFields;
-    if (server.type === 'building') {
+    if (server.type === 'building' || server.type === 'tower') {
+      // Towers ride the same building turret-prediction path because
+      // their wire payload (server.building) carries turrets identically.
       const building = server.building;
       if (building !== null && Array.isArray(building.turrets)) {
         this.activeEntityPredictionIds.add(server.id);
@@ -465,7 +467,10 @@ export class ClientViewState {
     for (const netEntity of state.entities) {
       const cf = netEntity.changedFields;
       const isFull = cf == null;
-      const isBuildingUpdate = netEntity.type === 'building';
+      // Towers ride the static-entity wire shape (no velocity, has
+      // turrets through server.building.turrets), so isBuildingUpdate
+      // gates the static branch for both.
+      const isBuildingUpdate = netEntity.type === 'building' || netEntity.type === 'tower';
       const existing = this.entities.get(netEntity.id);
       const previousTarget = this.serverTargets.get(netEntity.id);
       const previousTargetAgeMs = previousTarget !== undefined && previousTarget.updatedAtMs

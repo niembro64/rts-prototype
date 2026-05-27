@@ -113,7 +113,7 @@ export class EntityCacheManager {
       if (
         entity.detector !== null &&
         ownership !== null &&
-        (entity.type === 'unit' || entity.type === 'building')
+        (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower')
       ) {
         this.getOrCreateDetectorsByPlayer(ownership.playerId).push(entity);
       }

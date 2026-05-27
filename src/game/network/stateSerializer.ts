@@ -90,7 +90,11 @@ function captureToRustBaseline(
       next.actionCount, next.actionHash,
       next.isEngagedBits, next.targetBits,
     );
-  } else if (entity.type === 'building') {
+  } else if (entity.type === 'building' || entity.type === 'tower') {
+    // Towers ride the building baseline because their wire shape
+    // matches buildings (static + optional combat). The entity.type
+    // discriminator stays on the entity itself and is read by the
+    // receive side via blueprint lookup.
     sim.snapshotBaseline.captureBuildingSlot(
       handle, slot, tick, baselineChangedFields,
       next.x, next.y, next.z, next.rotation,
@@ -224,7 +228,7 @@ function acceptsSerializedEntity(
   visibility: SnapshotVisibility,
 ): boolean {
   return (
-    (entity.type === 'unit' || entity.type === 'building') &&
+    (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
     visibility.isEntityVisible(entity)
   );
 }
@@ -297,11 +301,11 @@ function processRemovedEntities(
       // clean up.
       continue;
     }
-    if (record.type === 'building') {
-      // Building died out of the recipient's vision but the client
-      // has it as a ghost (FOW-02b). Stash the death
-      // position so the cleanup pass below can emit a removal once
-      // the player's vision later confirms the building is gone.
+    if (record.type === 'building' || record.type === 'tower') {
+      // Building / tower died out of the recipient's vision but the
+      // client has it as a ghost (FOW-02b). Towers ride the same
+      // static-entity ghost path because, like buildings, they're
+      // immobile so the last-seen position remains useful intel.
       tracking.ghostedBuildingPositions.set(record.id, { x: record.x, y: record.y });
       tracking.deferredDetailFields.delete(record.id);
     } else {
@@ -405,7 +409,7 @@ export function serializeGameState(
           // entirely. A stale ghost at a no-longer-current position
           // would be a lie.
           _visibilityHiddenIdsBuf.push(id);
-        } else if (entity.type === 'building') {
+        } else if (entity.type === 'building' || entity.type === 'tower') {
           // Static building out of vision: keep the client's
           // last-seen copy (FOW-02) AND record the position so a
           // future cleanup pass can drop the ghost once the player

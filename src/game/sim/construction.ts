@@ -16,6 +16,7 @@ import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, getInitialBuildHp } from './buildableHelpers';
 import { applyEntitySensorBlueprint } from './cloakDetection';
+import { isTowerBuildingType } from '../../types/buildingTypes';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -104,6 +105,12 @@ export class ConstructionSystem {
 
     // Set building type
     entity.buildingType = buildingType;
+    // Tower-class buildingTypes (fabricator + shooting towers) carry
+    // the 'tower' EntityType discriminator. See design_philosophy.html
+    // "Towers Are Static Hosts That Lock On And Fire".
+    if (isTowerBuildingType(buildingType)) {
+      entity.type = 'tower';
+    }
     applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
     if (buildingTypeHasActiveState(buildingType)) {
       ensureBuildingActiveState(entity);
@@ -196,6 +203,9 @@ export class ConstructionSystem {
     });
 
     entity.buildingType = buildingType;
+    if (isTowerBuildingType(buildingType)) {
+      entity.type = 'tower';
+    }
     applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
     if (buildingTypeHasActiveState(buildingType)) {
       ensureBuildingActiveState(entity);

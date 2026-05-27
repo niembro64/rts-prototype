@@ -552,10 +552,15 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
   }
 
   if (
-    entity.type === 'building' &&
+    (entity.type === 'building' || entity.type === 'tower') &&
     entity.building !== null &&
     entity.unit === null
   ) {
+    // Towers serialize through the building wire path because their
+    // structural shape on the wire (static body + HP + optional combat
+    // + optional factory) matches buildings. The entity.type
+    // discriminator is reconstructed on the receive side from the
+    // blueprint id (isTowerBuildingType). See design_philosophy.html.
     appendBuildingEntityWireRow(entity, entity.building);
     return;
   }
@@ -729,7 +734,7 @@ export function serializeEntitySnapshot(
     }
   }
 
-  if (entity.type === 'building' && entity.building) {
+  if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
     const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
       ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
     const hasBuildingFields = isFull || (changedFields! & buildingFieldMask);

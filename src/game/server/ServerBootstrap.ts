@@ -364,9 +364,10 @@ export class ServerBootstrap {
     physics: PhysicsEngine3D,
     entities: Entity[],
   ): void {
-    // Pass 1: create building bodies
+    // Pass 1: create building bodies (buildings + towers share static
+    // cuboid bodies — towers are buildings-with-turrets structurally).
     for (const entity of entities) {
-      if (entity.type === 'building' && entity.building) {
+      if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
         // baseZ matches WorldState.createBuilding's terrain lookup so
         // the static cuboid body sits where the entity transform says
         // it does — base on the local cube tile top.
@@ -407,7 +408,7 @@ export class ServerBootstrap {
     await report(startProgress, phase);
     const midProgress = startProgress + (endProgress - startProgress) * 0.45;
     for (const entity of entities) {
-      if (entity.type === 'building' && entity.building) {
+      if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
         const baseZ = entity.transform.z - entity.building.depth / 2;
         const body = physics.createBuildingBody(
           entity.transform.x,

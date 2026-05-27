@@ -329,7 +329,10 @@ function packEntityRow(entity: NetworkServerSnapshotEntity): PackedEntityRow {
   if (entity.changedFields !== null) {
     flags |= ENTITY_FLAG_HAS_CHANGED_FIELDS;
   }
-  if (entity.type === 'building') flags |= ENTITY_FLAG_TYPE_BUILDING;
+  // Towers ride the building wire flag (same static structural shape).
+  // The receive side reconstructs entity.type === 'tower' from the
+  // blueprint id via isTowerBuildingType().
+  if (entity.type === 'building' || entity.type === 'tower') flags |= ENTITY_FLAG_TYPE_BUILDING;
   if (entity.unit !== null) flags |= ENTITY_FLAG_HAS_UNIT;
   if (entity.building !== null) flags |= ENTITY_FLAG_HAS_BUILDING;
 

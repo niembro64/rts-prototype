@@ -455,6 +455,9 @@ export function getRustEntityDeltaChangedFields(
     SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold,
   );
 
+  // Towers ride SNAPSHOT_DIFF_KIND_BUILDING: their wire shape (static
+  // + optional combat) matches buildings, and the type discriminator
+  // is reconstructed on the receive side from the blueprint id.
   const kind = entity.type === 'unit' ? SNAPSHOT_DIFF_KIND_UNIT : SNAPSHOT_DIFF_KIND_BUILDING;
   return sim.snapshotBaseline.diffSlot(
     baselineHandle, slot, kind,
@@ -703,7 +706,7 @@ export function captureSnapshotEntityStates(
   capturedNextStatePoolIndex = 0;
 
   const accepts = (e: Entity): boolean =>
-    e.type === 'unit' || e.type === 'building';
+    e.type === 'unit' || e.type === 'building' || e.type === 'tower';
 
   const sim = getSimWasm();
 
