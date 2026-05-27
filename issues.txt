@@ -38,3 +38,7 @@ those needs:
   open/closed pose" contract.
 
 ================================================================================
+
+
+RENAME-TURRETS-AND-VARIABLES-1
+Let's fully rename our "mirror turret" to "turretForceFieldPanel", and rename our "force field turret" to "turretForceFieldSphere". 
