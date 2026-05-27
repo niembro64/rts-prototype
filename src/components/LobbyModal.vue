@@ -13,6 +13,7 @@ import LoadingEmblem from './LoadingEmblem.vue';
 import { getUnitDisplayShortName } from '../game/sim/blueprints/displayRosters';
 import type { TerrainMapShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
+import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
 
 export type { LobbyPlayer } from '@/types/ui';
@@ -43,6 +44,8 @@ const props = defineProps<{
   previewLoading: boolean;
   previewLoadingProgress: number;
   previewLoadingPhase: string;
+  presets: readonly BattlePreset[];
+  activePresetName: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -57,6 +60,7 @@ const emit = defineEmits<{
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setTerrainDetail', value: number): void;
+  (e: 'setPreset', preset: BattlePreset): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
   (e: 'toggleUnit', unitType: string): void;
   (e: 'toggleAllUnits'): void;
@@ -121,6 +125,11 @@ function pickMetalDepositStep(value: number): void {
 function pickTerrainDetail(value: number): void {
   if (!props.isHost) return;
   emit('setTerrainDetail', value);
+}
+
+function pickPreset(preset: BattlePreset): void {
+  if (!props.isHost) return;
+  emit('setPreset', preset);
 }
 
 function pickMapWidthLandCells(widthLandCells: number): void {
@@ -538,6 +547,19 @@ const terrainSectionVars = computed(() =>
             </div>
             <div class="bar-controls">
               <BarControlGroup>
+                <BarLabel>PRESETS:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="preset in presets"
+                    :key="preset.name"
+                    :active="activePresetName === preset.name"
+                    :title="isHost ? `Apply preset: ${preset.name}` : 'Only the host can change battle settings'"
+                    @click="pickPreset(preset)"
+                  >{{ preset.name }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
                 <BarLabel>WIDTH:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
