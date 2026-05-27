@@ -42,6 +42,13 @@ const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
 const RADAR_SWEEP_RAD_PER_SEC = 1.8;
+/** Slow idle drift so an inactive converter still reads as "alive". */
+const CONVERTER_RING_IDLE_RAD_PER_SEC = 0.35;
+/** Additional contribution at full conversion rate. The ring's spin
+ *  signs the conversion direction; orbiter brightness comes for free
+ *  because faster spin distributes the orbiter sphere over more frame
+ *  positions. */
+const CONVERTER_RING_FULL_RAD_PER_SEC = 2.1;
 /** Per-frame blend toward the building's target open/closed pose
  *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
  *  solar petal animator's feel — smooth but not laggy. */
@@ -128,6 +135,15 @@ export class BuildingAnimationController3D {
   private radarSweepPhases = new Map<EntityId, number>();
   private radarHeadSpeeds = new Map<EntityId, number>();
   private radarSweepSpeeds = new Map<EntityId, number>();
+  /** Per-converter ring phases (energy, metal, accent). Accumulated each
+   *  frame from the matching speed map. */
+  private converterEnergyRingPhases = new Map<EntityId, number>();
+  private converterMetalRingPhases = new Map<EntityId, number>();
+  private converterAccentRingPhases = new Map<EntityId, number>();
+  /** Courtesy ROT VEL binding for converter ring spin-up/spin-down. */
+  private converterEnergyRingSpeeds = new Map<EntityId, number>();
+  private converterMetalRingSpeeds = new Map<EntityId, number>();
+  private converterAccentRingSpeeds = new Map<EntityId, number>();
 
   constructor(
     clientViewState: ClientViewState,
@@ -175,6 +191,12 @@ export class BuildingAnimationController3D {
     this.radarSweepPhases.delete(id);
     this.radarHeadSpeeds.delete(id);
     this.radarSweepSpeeds.delete(id);
+    this.converterEnergyRingPhases.delete(id);
+    this.converterMetalRingPhases.delete(id);
+    this.converterAccentRingPhases.delete(id);
+    this.converterEnergyRingSpeeds.delete(id);
+    this.converterMetalRingSpeeds.delete(id);
+    this.converterAccentRingSpeeds.delete(id);
   }
 
   update(
@@ -343,6 +365,8 @@ export class BuildingAnimationController3D {
 
     if (this.converterBuildingIds.length > 0) {
       const rateAlpha = halfLifeBlend(spinDt, BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE]);
+      const ringSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
+      const invBase = INV_CONVERTER_BASE_RATE;
       for (const id of this.converterBuildingIds) {
         const mesh = buildingMeshes.get(id);
         const entity = this.clientViewState.getEntity(id);
@@ -360,7 +384,7 @@ export class BuildingAnimationController3D {
           rig.energyPylon,
           entity,
           mesh.group,
-          resourcePylonRateFraction(energyRate, INV_CONVERTER_BASE_RATE),
+          resourcePylonRateFraction(energyRate, invBase),
           rateAlpha,
           detailsLowReady,
           detailsHighReady,
@@ -369,11 +393,67 @@ export class BuildingAnimationController3D {
           rig.metalPylon,
           entity,
           mesh.group,
-          resourcePylonRateFraction(metalRate, INV_CONVERTER_BASE_RATE),
+          resourcePylonRateFraction(metalRate, invBase),
           rateAlpha,
           detailsLowReady,
           detailsHighReady,
         );
+
+        // Ring spin: signed by flow direction so the player can read
+        // which way the converter is running from the orbiter motion.
+        // Speeds EMA toward target via ROT VEL mode so spin-up matches
+        // every other decorative rotation in the game.
+        const energyMag = resourcePylonRateFraction(energyRate, invBase);
+        const metalMag = resourcePylonRateFraction(metalRate, invBase);
+        const energyDir = energyRate >= 0 ? 1 : -1;
+        const metalDir = metalRate >= 0 ? 1 : -1;
+        const energyTarget = energyDir
+          * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * energyMag);
+        const metalTarget = -metalDir
+          * (CONVERTER_RING_IDLE_RAD_PER_SEC + CONVERTER_RING_FULL_RAD_PER_SEC * metalMag);
+        const accentTarget = CONVERTER_RING_IDLE_RAD_PER_SEC * 0.6
+          + CONVERTER_RING_FULL_RAD_PER_SEC * 0.7 * Math.max(energyMag, metalMag);
+
+        const energySpeed = lerp(
+          this.converterEnergyRingSpeeds.get(id) ?? 0,
+          energyTarget,
+          ringSpeedAlpha,
+        );
+        const metalSpeed = lerp(
+          this.converterMetalRingSpeeds.get(id) ?? 0,
+          metalTarget,
+          ringSpeedAlpha,
+        );
+        const accentSpeed = lerp(
+          this.converterAccentRingSpeeds.get(id) ?? 0,
+          accentTarget,
+          ringSpeedAlpha,
+        );
+        this.converterEnergyRingSpeeds.set(id, energySpeed);
+        this.converterMetalRingSpeeds.set(id, metalSpeed);
+        this.converterAccentRingSpeeds.set(id, accentSpeed);
+
+        const seed = id * 0.137;
+        const energyPhase = (this.converterEnergyRingPhases.get(id) ?? seed) + spinDt * energySpeed;
+        const metalPhase = (this.converterMetalRingPhases.get(id) ?? seed * 1.7) + spinDt * metalSpeed;
+        const accentPhase = (this.converterAccentRingPhases.get(id) ?? seed * 0.6) + spinDt * accentSpeed;
+        this.converterEnergyRingPhases.set(id, energyPhase);
+        this.converterMetalRingPhases.set(id, metalPhase);
+        this.converterAccentRingPhases.set(id, accentPhase);
+
+        // After the static rotation.x (energy: π/2; accent: π/3), Euler
+        // XYZ intrinsic order puts rotation.z spinning around the ring's
+        // donut hole axis — exactly what we want for orbiters on the rim.
+        rig.energyRing.rotation.z = energyPhase;
+        rig.metalRing.rotation.z = metalPhase;
+        rig.accentRing.rotation.z = accentPhase;
+
+        // Soft halo pulse keyed to overall activity. Stays below ±10%
+        // of the base radius so the silhouette doesn't visibly breathe.
+        const haloPulse = 1
+          + 0.04 * Math.sin(timeMs * 0.0035 + seed)
+          + 0.06 * Math.max(energyMag, metalMag);
+        rig.coreHalo.scale.setScalar(rig.coreHaloBaseRadius * haloPulse);
       }
     }
 
@@ -451,6 +531,12 @@ export class BuildingAnimationController3D {
     this.radarSweepPhases.clear();
     this.radarHeadSpeeds.clear();
     this.radarSweepSpeeds.clear();
+    this.converterEnergyRingPhases.clear();
+    this.converterMetalRingPhases.clear();
+    this.converterAccentRingPhases.clear();
+    this.converterEnergyRingSpeeds.clear();
+    this.converterMetalRingSpeeds.clear();
+    this.converterAccentRingSpeeds.clear();
     this.windFanYaw = null;
     this.windVisualSpeed = null;
     this.windRotorPhase = 0;
