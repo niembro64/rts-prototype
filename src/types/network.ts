@@ -263,7 +263,6 @@ export type LobbySettings = {
   terrainDetail: number | undefined;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
-  fogOfWarEnabled: boolean | undefined;
   converterTax: number | undefined;
 };
 

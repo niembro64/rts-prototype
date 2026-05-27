@@ -36,7 +36,6 @@ import { LegInstancedRenderer } from '../render3d/LegInstancedRenderer';
 import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
-import { FogOfWarShroudRenderer3D } from '../render3d/FogOfWarShroudRenderer3D';
 import { FogOfWarFog3D } from '../render3d/FogOfWarFog3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import { Explosion3D } from '../render3d/Explosion3D';
@@ -163,7 +162,6 @@ export class RtsScene3D {
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;
   private smokeTrailRenderer!: SmokeTrail3D;
-  private fogOfWarShroudRenderer!: FogOfWarShroudRenderer3D;
   private fogOfWarFogRenderer!: FogOfWarFog3D;
   private sightBoundaryRenderer!: SightBoundaryRenderer3D;
   private radarBoundaryRenderer!: SightBoundaryRenderer3D;
@@ -513,11 +511,6 @@ export class RtsScene3D {
     );
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
     this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
-    this.fogOfWarShroudRenderer = new FogOfWarShroudRenderer3D(
-      this.threeApp.world,
-      this.mapWidth,
-      this.mapHeight,
-    );
     this.fogOfWarFogRenderer = new FogOfWarFog3D(
       this.threeApp.world,
       this.mapWidth,
@@ -633,7 +626,6 @@ export class RtsScene3D {
         lineDragRenderer: this.lineDragRenderer,
         sprayRenderer: this.sprayRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
-        fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
         fogOfWarFogRenderer: this.fogOfWarFogRenderer,
         sightBoundaryRenderer: this.sightBoundaryRenderer,
         radarBoundaryRenderer: this.radarBoundaryRenderer,
@@ -785,7 +777,6 @@ export class RtsScene3D {
     });
 
     const { cameraQuad, renderMs } = renderPhase.run({
-      deltaMs: delta,
       effectDtMs,
       graphicsConfig,
       renderFrameState,
@@ -1441,7 +1432,6 @@ export class RtsScene3D {
       buildGhostRenderer: this.buildGhostRenderer,
       sprayRenderer: this.sprayRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,
-      fogOfWarShroudRenderer: this.fogOfWarShroudRenderer,
       fogOfWarFogRenderer: this.fogOfWarFogRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
       radarBoundaryRenderer: this.radarBoundaryRenderer,

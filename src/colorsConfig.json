@@ -88,15 +88,9 @@
       "coolResidueColorHex": "#221100"
     },
     "fogOfWar": {
-      "shade": {
-        "colorHex": "#000000",
-        "alpha": 130
-      },
       "cloud": {
         "maxAlpha": 0.2
-      },
-      "gradientStart": "rgb(0, 0, 0)",
-      "gradientEnd": "rgba(0, 0, 0, 0)"
+      }
     }
   },
   "environment": {

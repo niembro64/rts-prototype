@@ -20,6 +20,11 @@ import type { CommandAuthority } from './commandAuthority';
 export type StoredBattleServerSettingsOptions = {
   ipAddress: string | undefined;
   maxTotalUnits: number | undefined;
+  /** When set, overrides the stored fog-of-war value. Lobby preview
+   *  passes `false` and real-battle startup passes `true`; the demo
+   *  battle leaves it undefined so the DEMO BATTLE bar toggle still
+   *  drives the value via stored 'demo' preferences. */
+  fogOfWarEnabled?: boolean;
 };
 
 const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsOptions = {
@@ -76,7 +81,7 @@ export function applyStoredBattleServerSettings(
   server.receiveCommand({
     type: 'setFogOfWarEnabled',
     tick: 0,
-    enabled: loadStoredFogOfWarEnabled(mode),
+    enabled: options.fogOfWarEnabled ?? loadStoredFogOfWarEnabled(mode),
   }, authority);
   server.receiveCommand({
     type: 'setConverterTax',

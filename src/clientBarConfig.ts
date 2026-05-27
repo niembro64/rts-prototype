@@ -46,8 +46,6 @@ type ClientDefaults = {
   readonly buildGridDebug: boolean;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
-  readonly fogShade: boolean;
-  readonly fogClouds: boolean;
   readonly predictionMode: PredictionMode;
   readonly movementPosEma: PositionDriftChannelMode;
   readonly movementVelEma: DriftChannelMode;
@@ -91,8 +89,6 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
     sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
-    fogShade: pickDefault(clientBarConfig.fogShade, mode),
-    fogClouds: pickDefault(clientBarConfig.fogClouds, mode),
     predictionMode: pickDefault(clientBarConfig.predictionMode, mode) as PredictionMode,
     movementPosEma: pickDefault(clientBarConfig.movementPosEma, mode) as PositionDriftChannelMode,
     movementVelEma: pickDefault(clientBarConfig.movementVelEma, mode) as DriftChannelMode,
@@ -139,8 +135,6 @@ export const CLIENT_CONFIG = {
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
   sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
   radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
-  fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
-  fogClouds: { default: DEMO_CLIENT_DEFAULTS.fogClouds },
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
    *  position from the last-seen velocity each frame); 'pos' skips
    *  integration entirely and snaps straight to snapshot position.
@@ -225,8 +219,6 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     buildGridDebug: { default: defaults.buildGridDebug },
     sightBoundary: { default: defaults.sightBoundary },
     radarBoundary: { default: defaults.radarBoundary },
-    fogShade: { default: defaults.fogShade },
-    fogClouds: { default: defaults.fogClouds },
     predictionMode: { ...CLIENT_CONFIG.predictionMode, default: defaults.predictionMode },
     movementPosEma: { ...CLIENT_CONFIG.movementPosEma, default: defaults.movementPosEma },
     movementVelEma: { ...CLIENT_CONFIG.movementVelEma, default: defaults.movementVelEma },
@@ -270,8 +262,6 @@ type ClientStorageKeyName =
   | 'buildGridDebug'
   | 'sightBoundary'
   | 'radarBoundary'
-  | 'fogShade'
-  | 'fogClouds'
   | 'movementPosEma'
   | 'movementVelEma'
   | 'rotationPosEma'
@@ -304,8 +294,6 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'buildGridDebug',
   'sightBoundary',
   'radarBoundary',
-  'fogShade',
-  'fogClouds',
   'movementPosEma',
   'movementVelEma',
   'rotationPosEma',
@@ -389,8 +377,6 @@ let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentRadarBoundary: boolean = _cd.radarBoundary.default;
-let currentFogShade: boolean = _cd.fogShade.default;
-let currentFogClouds: boolean = _cd.fogClouds.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
 let currentMovementVelEma: DriftChannelMode = _cd.movementVelEma.default;
 let currentRotationPosEma: PositionDriftChannelMode = _cd.rotationPosEma.default;
@@ -460,8 +446,6 @@ function applyClientDefaults(mode: ClientMode): void {
   currentBuildGridDebug = cd.buildGridDebug.default;
   currentSightBoundary = cd.sightBoundary.default;
   currentRadarBoundary = cd.radarBoundary.default;
-  currentFogShade = cd.fogShade.default;
-  currentFogClouds = cd.fogClouds.default;
   currentMovementPosEma = cd.movementPosEma.default;
   currentMovementVelEma = cd.movementVelEma.default;
   currentRotationPosEma = cd.rotationPosEma.default;
@@ -539,14 +523,6 @@ function loadFromStorage(mode: ClientMode): void {
   const storedRadarBoundary = readPersisted(keys.radarBoundary);
   if (storedRadarBoundary !== null) {
     currentRadarBoundary = storedRadarBoundary === 'true';
-  }
-  const storedFogShade = readPersisted(keys.fogShade);
-  if (storedFogShade !== null) {
-    currentFogShade = storedFogShade === 'true';
-  }
-  const storedFogClouds = readPersisted(keys.fogClouds);
-  if (storedFogClouds !== null) {
-    currentFogClouds = storedFogClouds === 'true';
   }
   const storedLegsRadius = readPersisted(keys.legsRadius);
   if (storedLegsRadius !== null) {
@@ -849,24 +825,6 @@ export function getRadarBoundary(): boolean {
 export function setRadarBoundary(enabled: boolean): void {
   currentRadarBoundary = enabled;
   persist(activeStorageKeys().radarBoundary, String(enabled));
-}
-
-export function getFogShade(): boolean {
-  return currentFogShade;
-}
-
-export function setFogShade(enabled: boolean): void {
-  currentFogShade = enabled;
-  persist(activeStorageKeys().fogShade, String(enabled));
-}
-
-export function getFogClouds(): boolean {
-  return currentFogClouds;
-}
-
-export function setFogClouds(enabled: boolean): void {
-  currentFogClouds = enabled;
-  persist(activeStorageKeys().fogClouds, String(enabled));
 }
 
 export function getMovementPosEmaMode(): PositionDriftChannelMode {

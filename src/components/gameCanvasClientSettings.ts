@@ -13,8 +13,6 @@ import {
   getClientConfig,
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
-  getFogClouds,
-  getFogShade,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPredictionMode,
@@ -43,8 +41,6 @@ import {
   setClientMode,
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
-  setFogClouds,
-  setFogShade,
   setMovementPosEmaMode,
   setMovementVelEmaMode,
   setPredictionMode,
@@ -105,8 +101,6 @@ export function useGameCanvasClientSettings({
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
-  const fogShade = ref<boolean>(getFogShade());
-  const fogClouds = ref<boolean>(getFogClouds());
   const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
   const movementVelEma = ref<DriftChannelMode>(getMovementVelEmaMode());
   const rotationPosEma = ref<PositionDriftChannelMode>(getRotationPosEmaMode());
@@ -169,8 +163,6 @@ export function useGameCanvasClientSettings({
     buildGridDebug.value = getBuildGridDebug();
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
-    fogShade.value = getFogShade();
-    fogClouds.value = getFogClouds();
     movementPosEma.value = getMovementPosEmaMode();
     movementVelEma.value = getMovementVelEmaMode();
     rotationPosEma.value = getRotationPosEmaMode();
@@ -332,18 +324,6 @@ export function useGameCanvasClientSettings({
     radarBoundary.value = newValue;
   }
 
-  function toggleFogShade(): void {
-    const newValue = !fogShade.value;
-    setFogShade(newValue);
-    fogShade.value = newValue;
-  }
-
-  function toggleFogClouds(): void {
-    const newValue = !fogClouds.value;
-    setFogClouds(newValue);
-    fogClouds.value = newValue;
-  }
-
   function changeMovementPosEma(mode: PositionDriftChannelMode): void {
     setMovementPosEmaMode(mode);
     movementPosEma.value = mode;
@@ -451,10 +431,6 @@ export function useGameCanvasClientSettings({
     sightBoundary.value = cd.sightBoundary.default;
     setRadarBoundary(cd.radarBoundary.default);
     radarBoundary.value = cd.radarBoundary.default;
-    setFogShade(cd.fogShade.default);
-    fogShade.value = cd.fogShade.default;
-    setFogClouds(cd.fogClouds.default);
-    fogClouds.value = cd.fogClouds.default;
     setMovementPosEmaMode(cd.movementPosEma.default);
     movementPosEma.value = cd.movementPosEma.default;
     setMovementVelEmaMode(cd.movementVelEma.default);
@@ -524,8 +500,6 @@ export function useGameCanvasClientSettings({
     buildGridDebug,
     sightBoundary,
     radarBoundary,
-    fogShade,
-    fogClouds,
     movementPosEma,
     movementVelEma,
     rotationPosEma,
@@ -571,8 +545,6 @@ export function useGameCanvasClientSettings({
     toggleBuildGridDebug,
     toggleSightBoundary,
     toggleRadarBoundary,
-    toggleFogShade,
-    toggleFogClouds,
     changeMovementPosEma,
     changeMovementVelEma,
     changeRotationPosEma,

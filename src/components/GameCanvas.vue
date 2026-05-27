@@ -292,8 +292,6 @@ const {
   buildGridDebug,
   sightBoundary,
   radarBoundary,
-  fogShade,
-  fogClouds,
   movementPosEma,
   movementVelEma,
   rotationPosEma,
@@ -339,8 +337,6 @@ const {
   toggleBuildGridDebug,
   toggleSightBoundary,
   toggleRadarBoundary,
-  toggleFogShade,
-  toggleFogClouds,
   changeMovementPosEma,
   changeMovementVelEma,
   changeRotationPosEma,
@@ -917,8 +913,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   buildGridDebug: buildGridDebug.value,
   sightBoundary: sightBoundary.value,
   radarBoundary: radarBoundary.value,
-  fogShade: fogShade.value,
-  fogClouds: fogClouds.value,
   renderMode: renderMode.value,
   audioScope: audioScope.value,
   allSoundsActive: allSoundsActive.value,
@@ -956,8 +950,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleBuildGridDebug,
   toggleSightBoundary,
   toggleRadarBoundary,
-  toggleFogShade,
-  toggleFogClouds,
   changeRenderMode,
   changeAudioScope,
   toggleAllSounds,
@@ -1029,8 +1021,6 @@ watchEffect(() => {
   m.buildGridDebug = buildGridDebug.value;
   m.sightBoundary = sightBoundary.value;
   m.radarBoundary = radarBoundary.value;
-  m.fogShade = fogShade.value;
-  m.fogClouds = fogClouds.value;
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
   m.allSoundsActive = allSoundsActive.value;
@@ -1241,7 +1231,6 @@ watchEffect(() => {
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
       :force-fields-obstruct-sight="currentForceFieldsObstructSight"
-      :fog-of-war-enabled="currentFogOfWarEnabled"
       :converter-tax="currentConverterTax"
       :preview-loading="loadingInLobbyPreview"
       :preview-loading-progress="displayedLoadingProgress"
@@ -1266,7 +1255,6 @@ watchEffect(() => {
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-force-fields-obstruct-sight="(e) => setForceFieldsObstructSight(e)"
-      @set-fog-of-war-enabled="(e) => setFogOfWarEnabled(e)"
       @set-converter-tax="(v) => setConverterTax(v)"
       @set-player-name="onPlayerNameChange"
       @reset-defaults="resetDemoDefaults"

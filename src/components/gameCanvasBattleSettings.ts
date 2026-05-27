@@ -150,9 +150,13 @@ export function useGameCanvasBattleSettings({
   }
 
   function setFogOfWarEnabled(enabled: boolean): void {
+    // Fog of war is user-controllable only from the DEMO BATTLE bar.
+    // Lobby preview is hardcoded off and real battle is hardcoded on,
+    // so any caller in real mode (preset selection in the lobby, etc.)
+    // is silently dropped here rather than mutating shared state.
+    if (currentBattleMode.value !== 'demo') return;
     getActiveConnection()?.sendCommand({ type: 'setFogOfWarEnabled', tick: 0, enabled });
     saveFogOfWarEnabled(enabled, currentBattleMode.value);
-    if (currentBattleMode.value === 'real') broadcastLobbySettingsIfHost();
   }
 
   function setConverterTax(tax: number): void {

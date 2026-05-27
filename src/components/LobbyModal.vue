@@ -39,7 +39,6 @@ const props = defineProps<{
   allowedUnits: readonly string[];
   unitCap: number;
   forceFieldsObstructSight: boolean;
-  fogOfWarEnabled: boolean;
   converterTax: number;
   previewLoading: boolean;
   previewLoadingProgress: number;
@@ -66,7 +65,6 @@ const emit = defineEmits<{
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
   (e: 'setForceFieldsObstructSight', enabled: boolean): void;
-  (e: 'setFogOfWarEnabled', enabled: boolean): void;
   (e: 'setConverterTax', tax: number): void;
   (e: 'setPlayerName', name: string): void;
   (e: 'resetDefaults'): void;
@@ -166,11 +164,6 @@ function pickUnitCap(cap: number): void {
 function pickForceFieldsObstructSight(enabled: boolean): void {
   if (!props.isHost) return;
   emit('setForceFieldsObstructSight', enabled);
-}
-
-function pickFogOfWar(enabled: boolean): void {
-  if (!props.isHost) return;
-  emit('setFogOfWarEnabled', enabled);
 }
 
 function pickConverterTax(value: number): void {
@@ -713,15 +706,6 @@ const terrainSectionVars = computed(() =>
                   :title="isHost ? 'Force fields obstruct turret sight through their boundary (applies to every turret, both directions)' : 'Only the host can change battle settings'"
                   @click="pickForceFieldsObstructSight(!forceFieldsObstructSight)"
                 >OBSTRUCT SIGHT</BarButton>
-              </BarControlGroup>
-              <BarControlGroup>
-                <BarDivider />
-                <BarLabel>FOG OF WAR:</BarLabel>
-                <BarButton
-                  :active="fogOfWarEnabled"
-                  :title="isHost ? 'Enable authoritative player vision, radar coverage, and fog-of-war filtering' : 'Only the host can change battle settings'"
-                  @click="pickFogOfWar(!fogOfWarEnabled)"
-                >{{ fogOfWarEnabled ? 'ON' : 'OFF' }}</BarButton>
               </BarControlGroup>
               <BarControlGroup>
                 <BarDivider />

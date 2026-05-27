@@ -109,6 +109,9 @@ export function applySettingsAndStartRealBattleServer(
   applyStoredBattleServerSettings(server, 'real', {
     ipAddress: options.ipAddress,
     maxTotalUnits: loadStoredRealCap(),
+    // Real battles always run with fog of war on, regardless of any
+    // lingering 'real-battle-fog-of-war-enabled' storage value.
+    fogOfWarEnabled: true,
   });
   server.start();
 }

@@ -26,8 +26,6 @@
   "buildGridDebug": { "demoDefault": false, "realDefault": false },
   "sightBoundary": { "demoDefault": false, "realDefault": false },
   "radarBoundary": { "demoDefault": false, "realDefault": false },
-  "fogShade": { "demoDefault": false, "realDefault": false },
-  "fogClouds": { "demoDefault": false, "realDefault": false },
   "predictionMode": {
     "demoDefault": "vel",
     "realDefault": "vel",
@@ -166,8 +164,6 @@
     "buildGridDebug": "build-grid-debug",
     "sightBoundary": "sight-boundary",
     "radarBoundary": "radar-boundary",
-    "fogShade": "fog-shade",
-    "fogClouds": "fog-clouds",
     "movementPosEma": "movement-pos-ema",
     "movementVelEma": "movement-vel-ema",
     "rotationPosEma": "rotation-pos-ema",

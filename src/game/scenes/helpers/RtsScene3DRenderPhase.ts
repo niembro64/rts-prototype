@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import {
   getBuildGridDebug,
-  getFogClouds,
-  getFogShade,
   getRadarBoundary,
   getSightBoundary,
 } from '@/clientBarConfig';
@@ -30,7 +28,6 @@ import type { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
-import type { FogOfWarShroudRenderer3D } from '../../render3d/FogOfWarShroudRenderer3D';
 import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
@@ -63,7 +60,6 @@ export type RtsScene3DRenderPhaseResources = {
   lineDragRenderer: LineDrag3D;
   sprayRenderer: SprayRenderer3D;
   smokeTrailRenderer: SmokeTrail3D;
-  fogOfWarShroudRenderer: FogOfWarShroudRenderer3D;
   fogOfWarFogRenderer: FogOfWarFog3D;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
@@ -135,12 +131,11 @@ export class RtsScene3DRenderPhase {
   }
 
   run(options: {
-    deltaMs: number;
     effectDtMs: number;
     graphicsConfig: GraphicsConfig;
     renderFrameState: RenderFrameState3D;
   }): RtsScene3DRenderPhaseResult {
-    const { deltaMs, effectDtMs, graphicsConfig, renderFrameState } = options;
+    const { effectDtMs, graphicsConfig, renderFrameState } = options;
     const renderStart = performance.now();
     const {
       entityRenderer,
@@ -161,7 +156,6 @@ export class RtsScene3DRenderPhase {
       lineDragRenderer,
       sprayRenderer,
       smokeTrailRenderer,
-      fogOfWarShroudRenderer,
       fogOfWarFogRenderer,
       sightBoundaryRenderer,
       radarBoundaryRenderer,
@@ -187,12 +181,6 @@ export class RtsScene3DRenderPhase {
 
     const serverMeta = this.clientViewState.getServerMeta();
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
-    fogOfWarShroudRenderer.update(
-      this.clientViewState,
-      this.getLocalPlayerId(),
-      fogOfWarEnabled && getFogShade(),
-      deltaMs,
-    );
     sightBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),
@@ -299,7 +287,7 @@ export class RtsScene3DRenderPhase {
       fogOfWarFogRenderer.update(
         this.clientViewState,
         this.getLocalPlayerId(),
-        fogOfWarEnabled && getFogClouds(),
+        fogOfWarEnabled,
         this.smokeTrailAccumMs,
       );
       this.smokeTrailAccumMs = 0;

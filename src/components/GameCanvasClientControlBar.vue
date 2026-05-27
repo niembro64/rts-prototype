@@ -589,16 +589,6 @@ defineProps<{
           title="RADAR - draw radar-level coverage, including all SIGHT areas plus radar-only sensor areas"
           @click="model.toggleRadarBoundary"
         >RADAR</BarButton>
-        <BarButton
-          :active="model.fogShade"
-          title="SHADE - show the client fog-of-war dark overlay outside current vision when battle FOG is enabled"
-          @click="model.toggleFogShade"
-        >SHADE</BarButton>
-        <BarButton
-          :active="model.fogClouds"
-          title="CLOUD - show soft fog cloud puffs over unseen terrain when battle FOG is enabled"
-          @click="model.toggleFogClouds"
-        >CLOUD</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

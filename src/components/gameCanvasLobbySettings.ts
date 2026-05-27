@@ -3,7 +3,6 @@ import {
   BATTLE_CONFIG,
   getDefaultMapLandDimensions,
   loadStoredConverterTax,
-  loadStoredFogOfWarEnabled,
   normalizeCenterMagnitude,
   normalizeConverterTax,
   normalizeDividersMagnitude,
@@ -14,7 +13,6 @@ import {
   saveConverterTax,
   saveDividersMagnitude,
   saveMapLandDimensions,
-  saveFogOfWarEnabled,
   saveMetalDepositStep,
   saveTerrainDTerrain,
   saveTerrainDetail,
@@ -126,7 +124,6 @@ export function useGameCanvasLobbySettings({
       terrainDetail: terrainDetail.value,
       mapWidthLandCells: mapWidthLandCells.value,
       mapLengthLandCells: mapLengthLandCells.value,
-      fogOfWarEnabled: loadStoredFogOfWarEnabled('real'),
       converterTax: loadStoredConverterTax('real'),
     };
   }
@@ -227,9 +224,6 @@ export function useGameCanvasLobbySettings({
       settings.terrainDetail === undefined
         ? terrainDetail.value
         : normalizeTerrainDetail(settings.terrainDetail);
-    const fogOfWarChanged =
-      settings.fogOfWarEnabled !== undefined &&
-      settings.fogOfWarEnabled !== loadStoredFogOfWarEnabled('real');
     const changed =
       nextCenterMagnitude !== centerMagnitude.value ||
       nextDividersMagnitude !== dividersMagnitude.value ||
@@ -238,8 +232,7 @@ export function useGameCanvasLobbySettings({
       nextMetalDepositStep !== metalDepositStep.value ||
       nextTerrainDetail !== terrainDetail.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
-      settings.mapLengthLandCells !== mapLengthLandCells.value ||
-      fogOfWarChanged;
+      settings.mapLengthLandCells !== mapLengthLandCells.value;
 
     centerMagnitude.value = nextCenterMagnitude;
     dividersMagnitude.value = nextDividersMagnitude;
@@ -262,9 +255,6 @@ export function useGameCanvasLobbySettings({
       },
       'real',
     );
-    if (settings.fogOfWarEnabled !== undefined) {
-      saveFogOfWarEnabled(settings.fogOfWarEnabled, 'real');
-    }
     if (settings.converterTax !== undefined) {
       saveConverterTax(normalizeConverterTax(settings.converterTax), 'real');
     }

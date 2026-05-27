@@ -185,6 +185,11 @@ export async function createBackgroundBattle(
   applyStoredBattleServerSettings(server, mode, {
     ipAddress,
     maxTotalUnits: undefined,
+    // Lobby preview (mode='real') must never show fog of war — the
+    // real battle hardcodes fog on, so the preview deliberately runs
+    // with fog off to differentiate the two. Demo battle keeps its
+    // stored DEMO BATTLE bar toggle value.
+    fogOfWarEnabled: isLobbyPreview ? false : undefined,
   });
   await report(0.7, 'Applying battle settings');
 

@@ -215,11 +215,15 @@ export function presetMatchesCurrent(
   p: BattlePreset,
   c: BattlePresetSnapshot,
 ): boolean {
+  // Fog of war is intentionally excluded from the match: it's hardcoded
+  // in the lobby (off) and in the real battle (on), so comparing the
+  // preset's stored fog value against the current state would always
+  // mismatch in those contexts. The DEMO BATTLE bar still toggles fog
+  // independently of presets.
   return (
     sameUnits(p.units, c.units) &&
     p.cap === c.cap &&
     p.forceFieldsObstructSight === c.forceFieldsObstructSight &&
-    p.fogOfWarEnabled === c.fogOfWarEnabled &&
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&

@@ -33,7 +33,6 @@ export type RtsScene3DRendererResources = {
   buildGhostRenderer?: Destroyable | null;
   sprayRenderer?: Destroyable | null;
   smokeTrailRenderer?: Destroyable | null;
-  fogOfWarShroudRenderer?: Destroyable | null;
   fogOfWarFogRenderer?: Destroyable | null;
   sightBoundaryRenderer?: Destroyable | null;
   radarBoundaryRenderer?: Destroyable | null;
@@ -66,7 +65,6 @@ export function teardownRtsScene3DRenderers(
   resources.buildGhostRenderer?.destroy();
   resources.sprayRenderer?.destroy();
   resources.smokeTrailRenderer?.destroy();
-  resources.fogOfWarShroudRenderer?.destroy();
   resources.fogOfWarFogRenderer?.destroy();
   resources.sightBoundaryRenderer?.destroy();
   resources.radarBoundaryRenderer?.destroy();
