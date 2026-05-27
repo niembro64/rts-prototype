@@ -86,6 +86,7 @@ import __wbg_init, {
   entity_meta_clear,
   entity_meta_set_unit,
   entity_meta_set_building,
+  entity_meta_set_tower,
   entity_meta_unset,
   entity_meta_type,
   entity_meta_type_ptr,
@@ -923,8 +924,16 @@ export interface EntityMetaApi {
     solarOpen: number,
     buildProgress: number,
   ) => void;
+  setTower: (
+    slot: number,
+    playerId: number,
+    hpCurr: number, hpMax: number,
+    factoryIsProducing: number, factoryBuildQueueLen: number, factoryProgress: number,
+    solarOpen: number,
+    buildProgress: number,
+  ) => void;
   unset: (slot: number) => void;
-  /** Returns 0 (unset) / 1 (unit) / 2 (building) for the slot. */
+  /** Returns 0 (unset) / 1 (unit) / 2 (building) / 3 (tower) for the slot. */
   type: (slot: number) => number;
   /** Current per-slot SoA capacity (auto-grows on set*). */
   capacity: () => number;
@@ -954,6 +963,7 @@ export interface EntityMetaApi {
 export const ENTITY_META_TYPE_UNSET = 0;
 export const ENTITY_META_TYPE_UNIT = 1;
 export const ENTITY_META_TYPE_BUILDING = 2;
+export const ENTITY_META_TYPE_TOWER = 3;
 
 /** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
  *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
@@ -1808,6 +1818,7 @@ export interface SnapshotBaselineApi {
  *  SNAPSHOT_DIFF_KIND_* in lib.rs. */
 export const SNAPSHOT_DIFF_KIND_UNIT = 1;
 export const SNAPSHOT_DIFF_KIND_BUILDING = 2;
+export const SNAPSHOT_DIFF_KIND_TOWER = 3;
 
 /** Phase 10 D.3j — entity-DTO encoder kernels. Byte-equal port of
  *  stateSerializerEntities.ts:serializeEntitySnapshot's output as
@@ -2655,6 +2666,7 @@ export function initSimWasm(): Promise<SimWasm> {
           clear: entity_meta_clear,
           setUnit: entity_meta_set_unit,
           setBuilding: entity_meta_set_building,
+          setTower: entity_meta_set_tower,
           unset: entity_meta_unset,
           type: entity_meta_type,
           capacity: entity_meta_capacity,

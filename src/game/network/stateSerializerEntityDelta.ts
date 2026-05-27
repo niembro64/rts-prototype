@@ -11,6 +11,7 @@ import {
   type SimWasm,
   SNAPSHOT_DIFF_KIND_UNIT,
   SNAPSHOT_DIFF_KIND_BUILDING,
+  SNAPSHOT_DIFF_KIND_TOWER,
 } from '../sim-wasm/init';
 import {
   snapshotPositionDeltaExceeded,
@@ -455,10 +456,15 @@ export function getRustEntityDeltaChangedFields(
     SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold,
   );
 
-  // Towers ride SNAPSHOT_DIFF_KIND_BUILDING: their wire shape (static
-  // + optional combat) matches buildings, and the type discriminator
-  // is reconstructed on the receive side from the blueprint id.
-  const kind = entity.type === 'unit' ? SNAPSHOT_DIFF_KIND_UNIT : SNAPSHOT_DIFF_KIND_BUILDING;
+  // 3-way dispatch: unit / building / tower. TOWER and BUILDING diff
+  // through the same kernel path today (their wire shape matches), but
+  // the kind is distinct so future wire-format divergence has a place
+  // to land without churning every caller.
+  const kind = entity.type === 'unit'
+    ? SNAPSHOT_DIFF_KIND_UNIT
+    : entity.type === 'tower'
+      ? SNAPSHOT_DIFF_KIND_TOWER
+      : SNAPSHOT_DIFF_KIND_BUILDING;
   return sim.snapshotBaseline.diffSlot(
     baselineHandle, slot, kind,
     next.x, next.y, next.z, next.rotation,
@@ -658,7 +664,8 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
   } else if (e.building) {
     const b = e.building;
     const f = e.factory;
-    sim.entityMeta.setBuilding(
+    const setStatic = e.type === 'tower' ? sim.entityMeta.setTower : sim.entityMeta.setBuilding;
+    setStatic(
       slot,
       playerId,
       b.hp, b.maxHp,

@@ -556,11 +556,11 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     entity.building !== null &&
     entity.unit === null
   ) {
-    // Towers serialize through the building wire path because their
-    // structural shape on the wire (static body + HP + optional combat
-    // + optional factory) matches buildings. The entity.type
-    // discriminator is reconstructed on the receive side from the
-    // blueprint id (isTowerBuildingType). See design_philosophy.html.
+    // Towers and buildings share the static wire row (same HP /
+    // optional combat / optional factory shape). The TOWER vs
+    // BUILDING discriminator is reconstructed on the receive side
+    // via isTowerBuildingType so the renderer + UI dispatch on the
+    // peer entity-type tag.
     appendBuildingEntityWireRow(entity, entity.building);
     return;
   }

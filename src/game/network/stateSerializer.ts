@@ -91,10 +91,11 @@ function captureToRustBaseline(
       next.isEngagedBits, next.targetBits,
     );
   } else if (entity.type === 'building' || entity.type === 'tower') {
-    // Towers ride the building baseline because their wire shape
-    // matches buildings (static + optional combat). The entity.type
-    // discriminator stays on the entity itself and is read by the
-    // receive side via blueprint lookup.
+    // Towers and buildings share the static baseline storage (no
+    // velocity field, identical HP / build / combat / factory shape).
+    // The TOWER vs BUILDING kind is reasserted at diff time so the
+    // diff kernel's match arms can diverge later if the wire format
+    // ever does.
     sim.snapshotBaseline.captureBuildingSlot(
       handle, slot, tick, baselineChangedFields,
       next.x, next.y, next.z, next.rotation,

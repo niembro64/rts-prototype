@@ -6163,6 +6163,7 @@ pub fn messagepack_self_test() -> u32 {
 const ENTITY_META_TYPE_UNSET: u8 = 0;
 const ENTITY_META_TYPE_UNIT: u8 = 1;
 const ENTITY_META_TYPE_BUILDING: u8 = 2;
+const ENTITY_META_TYPE_TOWER: u8 = 3;
 
 struct EntityMetaPool {
     // Common
@@ -6336,6 +6337,37 @@ pub fn entity_meta_set_unit(
     pool.build_progress[s] = build_progress;
 }
 
+/// Shared building/tower setter. Both entity types share the static
+/// wire shape (hp + optional combat + optional factory + optional
+/// active state), differing only in the EntityType tag. The exported
+/// wasm wrappers below stamp the right tag and forward.
+#[inline]
+fn entity_meta_set_static(
+    slot: u32,
+    type_tag: u8,
+    player_id: u8,
+    hp_curr: f32,
+    hp_max: f32,
+    factory_is_producing: u8,
+    factory_build_queue_len: u8,
+    factory_progress: f32,
+    solar_open: u8,
+    build_progress: f32,
+) {
+    let pool = entity_meta_pool();
+    pool.ensure_capacity(slot);
+    let s = slot as usize;
+    pool.entity_type[s] = type_tag;
+    pool.player_id[s] = player_id;
+    pool.hp_curr[s] = hp_curr;
+    pool.hp_max[s] = hp_max;
+    pool.factory_is_producing[s] = factory_is_producing;
+    pool.factory_build_queue_len[s] = factory_build_queue_len;
+    pool.factory_progress[s] = factory_progress;
+    pool.solar_open[s] = solar_open;
+    pool.build_progress[s] = build_progress;
+}
+
 /// Bulk per-building setter. Building-only fields, plus the shared
 /// HP and player_id.
 #[wasm_bindgen]
@@ -6350,18 +6382,50 @@ pub fn entity_meta_set_building(
     solar_open: u8,
     build_progress: f32,
 ) {
-    let pool = entity_meta_pool();
-    pool.ensure_capacity(slot);
-    let s = slot as usize;
-    pool.entity_type[s] = ENTITY_META_TYPE_BUILDING;
-    pool.player_id[s] = player_id;
-    pool.hp_curr[s] = hp_curr;
-    pool.hp_max[s] = hp_max;
-    pool.factory_is_producing[s] = factory_is_producing;
-    pool.factory_build_queue_len[s] = factory_build_queue_len;
-    pool.factory_progress[s] = factory_progress;
-    pool.solar_open[s] = solar_open;
-    pool.build_progress[s] = build_progress;
+    entity_meta_set_static(
+        slot,
+        ENTITY_META_TYPE_BUILDING,
+        player_id,
+        hp_curr,
+        hp_max,
+        factory_is_producing,
+        factory_build_queue_len,
+        factory_progress,
+        solar_open,
+        build_progress,
+    );
+}
+
+/// Bulk per-tower setter. Towers share the static wire shape with
+/// buildings; the only difference is the EntityType tag. The
+/// fabricator's factory progress / queue rides on the same factory_*
+/// fields buildings use (fabricator is a tower that mounts a factory
+/// component). solar_open is unused for towers and should be passed as
+/// 0 / 1 consistently to avoid producing spurious snapshot diffs.
+#[wasm_bindgen]
+pub fn entity_meta_set_tower(
+    slot: u32,
+    player_id: u8,
+    hp_curr: f32,
+    hp_max: f32,
+    factory_is_producing: u8,
+    factory_build_queue_len: u8,
+    factory_progress: f32,
+    solar_open: u8,
+    build_progress: f32,
+) {
+    entity_meta_set_static(
+        slot,
+        ENTITY_META_TYPE_TOWER,
+        player_id,
+        hp_curr,
+        hp_max,
+        factory_is_producing,
+        factory_build_queue_len,
+        factory_progress,
+        solar_open,
+        build_progress,
+    );
 }
 
 #[wasm_bindgen]
@@ -14208,11 +14272,15 @@ const SNAPSHOT_FULL_ROTATION_RADIANS: f64 = std::f64::consts::PI * 2.0;
 const SNAPSHOT_RATIO_DELTA_EPSILON: f64 = 1e-9;
 
 // Kind tags for snapshot_baseline_diff_slot (mirror EntityType strings
-// 'unit' / 'building' — kept separate from ENTITY_META_TYPE_* because
-// callers may want to diff a unit slot without populating the
-// entity-meta pool first).
+// 'unit' / 'building' / 'tower' — kept separate from ENTITY_META_TYPE_*
+// because callers may want to diff a unit slot without populating the
+// entity-meta pool first). TOWER currently diffs through the same path
+// as BUILDING (they share the static wire shape), but the kind is
+// distinct so future wire-format divergence has a place to land
+// without churning every caller.
 pub const SNAPSHOT_DIFF_KIND_UNIT: u8 = 1;
 pub const SNAPSHOT_DIFF_KIND_BUILDING: u8 = 2;
+pub const SNAPSHOT_DIFF_KIND_TOWER: u8 = 3;
 
 fn snapshot_finite_non_negative(value: f64) -> f64 {
     if value.is_finite() && value > 0.0 {
@@ -14491,7 +14559,7 @@ pub fn snapshot_baseline_diff_slot(
         }
     }
 
-    if kind == SNAPSHOT_DIFF_KIND_BUILDING {
+    if kind == SNAPSHOT_DIFF_KIND_BUILDING || kind == SNAPSHOT_DIFF_KIND_TOWER {
         let meta = entity_meta_pool();
         let cur_hp = if s < meta.hp_curr.len() {
             meta.hp_curr[s]

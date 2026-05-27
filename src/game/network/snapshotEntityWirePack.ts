@@ -329,9 +329,9 @@ function packEntityRow(entity: NetworkServerSnapshotEntity): PackedEntityRow {
   if (entity.changedFields !== null) {
     flags |= ENTITY_FLAG_HAS_CHANGED_FIELDS;
   }
-  // Towers ride the building wire flag (same static structural shape).
-  // The receive side reconstructs entity.type === 'tower' from the
-  // blueprint id via isTowerBuildingType().
+  // Towers and buildings share the same wire row flag (static
+  // structural shape). The TOWER vs BUILDING peer discriminator is
+  // reconstructed on the receive side via isTowerBuildingType().
   if (entity.type === 'building' || entity.type === 'tower') flags |= ENTITY_FLAG_TYPE_BUILDING;
   if (entity.unit !== null) flags |= ENTITY_FLAG_HAS_UNIT;
   if (entity.building !== null) flags |= ENTITY_FLAG_HAS_BUILDING;
