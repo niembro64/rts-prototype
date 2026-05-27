@@ -18883,7 +18883,7 @@ mod sim_kernel_tests {
         assert!(blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"jackal"));
         assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"factory"));
-        assert!(blueprint_tables::BLUEPRINT_TURRET_IDS.contains(&"lightTurret"));
+        assert!(blueprint_tables::BLUEPRINT_TURRET_IDS.contains(&"turretGunLight"));
     }
 
     #[test]

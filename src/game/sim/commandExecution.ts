@@ -558,12 +558,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   // Find the D-gun turret from the unit blueprint; the command path
   // should not know or duplicate the concrete turret id string.
-  const dgunTurretId = getCommanderDGunTurretId(commander);
-  if (!dgunTurretId) return;
+  const turretDisruptorId = getCommanderDGunTurretId(commander);
+  if (!turretDisruptorId) return;
   const turrets = commander.combat.turrets;
-  const dgunIdx = turrets.findIndex(w => w.config.id === dgunTurretId);
+  const dgunIdx = turrets.findIndex(w => w.config.id === turretDisruptorId);
   if (dgunIdx < 0) return;
-  const dgunTurret = turrets[dgunIdx];
+  const turretDisruptor = turrets[dgunIdx];
 
   // Spend energy
   economyManager.spendInstant(ctx.world, playerId, dgunCost, commander.id, null, 'ability');
@@ -572,12 +572,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const fireAngle = Math.atan2(dy, dx);
 
   // Snap dgun turret to target direction
-  dgunTurret.rotation = fireAngle;
-  dgunTurret.pitch = 0;
-  dgunTurret.angularVelocity = 0;
-  dgunTurret.angularAcceleration = 0;
-  dgunTurret.pitchVelocity = 0;
-  dgunTurret.pitchAcceleration = 0;
+  turretDisruptor.rotation = fireAngle;
+  turretDisruptor.pitch = 0;
+  turretDisruptor.angularVelocity = 0;
+  turretDisruptor.angularAcceleration = 0;
+  turretDisruptor.pitchVelocity = 0;
+  turretDisruptor.pitchAcceleration = 0;
   ctx.world.markSnapshotDirty(commander.id, ENTITY_CHANGED_TURRETS);
 
   const { cos, sin } = getTransformCosSin(commander.transform);
@@ -587,7 +587,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // mount doesn't snap when the commander crosses a terrain triangle
   // edge.
   const mount = updateWeaponWorldKinematics(
-    commander, dgunTurret, dgunIdx,
+    commander, turretDisruptor, dgunIdx,
     cos, sin,
     {
       currentTick: ctx.world.getTick(),
@@ -606,7 +606,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Keep horizontal mount-center inheritance so firing from a moving
   // commander still uses the turret's own motion, but never let
   // vertical mount velocity turn it into a ballistic shell.
-  const dgunShot = dgunTurret.config.shot;
+  const dgunShot = turretDisruptor.config.shot;
   if (!dgunShot || dgunShot.type === 'force') {
     throw new Error('D-gun turret must use a projectile, beam, or laser shot');
   }
@@ -618,8 +618,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     // Manual D-gun shots update the same turret kinematics cache used
     // by automated weapons above, so inherited velocity is the turret
     // mount center's own 3D motion.
-    velocityX += dgunTurret.worldVelocity.x;
-    velocityY += dgunTurret.worldVelocity.y;
+    velocityX += turretDisruptor.worldVelocity.x;
+    velocityY += turretDisruptor.worldVelocity.y;
   }
 
   // Create D-gun projectile
@@ -630,7 +630,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     velocityY,
     playerId,
     commander.id,
-    dgunTurret.config
+    turretDisruptor.config
   );
 
   projectile.transform.z = dgunFireZ;
@@ -654,9 +654,9 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
       ? maxLifespan
       : undefined,
-    turretId: dgunTurret.config.id,
+    turretId: turretDisruptor.config.id,
     shotId: dgunShot.id,
-    sourceTurretId: dgunTurret.config.id,
+    sourceTurretId: turretDisruptor.config.id,
     playerId,
     sourceEntityId: commander.id,
     turretIndex: dgunIdx,
@@ -668,7 +668,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const dgunSimEvent: SimEvent = {
     type: 'fire',
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
-    turretId: dgunTurret.config.id,
+    turretId: turretDisruptor.config.id,
     playerId,
     entityId: commander.id,
   };

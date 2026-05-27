@@ -168,7 +168,7 @@ export class ConstructionVisualController3D {
   }
 
   /** Drive a factory's construction emitter (the tower/showers/sprays
-   *  rig mounted on the factory's `constructionTurret`). The rate is
+   *  rig mounted on the factory's `turretConstruction`). The rate is
    *  read directly from the factory's per-resource transfer fractions.
    *  Spray target is the factory's external build spot. */
   updateFactoryConstructionEmitter(

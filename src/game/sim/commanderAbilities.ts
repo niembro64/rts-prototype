@@ -32,18 +32,18 @@ export class CommanderAbilitiesSystem {
       let commanderSprayY = commanderY;
       let commanderSprayZ = commander.transform.z;
       const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
-      let constructionTurretIndex = -1;
+      let turretConstructionIndex = -1;
       if (commanderTurrets !== null) {
-        constructionTurretIndex = commanderTurrets.findIndex(
-          (turret) => turret.config.id === 'constructionTurret',
+        turretConstructionIndex = commanderTurrets.findIndex(
+          (turret) => turret.config.id === 'turretConstruction',
         );
       }
-      if (constructionTurretIndex >= 0 && commanderTurrets !== null) {
+      if (turretConstructionIndex >= 0 && commanderTurrets !== null) {
         const { cos, sin } = getTransformCosSin(commander.transform);
         const mount = updateWeaponWorldKinematics(
           commander,
-          commanderTurrets[constructionTurretIndex],
-          constructionTurretIndex,
+          commanderTurrets[turretConstructionIndex],
+          turretConstructionIndex,
           cos,
           sin,
           {

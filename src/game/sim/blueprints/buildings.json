@@ -73,7 +73,7 @@
     "cloak": null,
     "turrets": [
       {
-        "turretId": "constructionTurret",
+        "turretId": "turretConstruction",
         "mount": {
           "x": 0,
           "y": 0,
@@ -160,7 +160,7 @@
     "cloak": null,
     "turrets": [
       {
-        "turretId": "towerBeamTurret",
+        "turretId": "turretBeamLong",
         "mount": {
           "x": 0,
           "y": 0,
@@ -194,7 +194,7 @@
     "cloak": null,
     "turrets": [
       {
-        "turretId": "towerCannonTurret",
+        "turretId": "turretCannonLong",
         "mount": {
           "x": 0,
           "y": 0,

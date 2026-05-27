@@ -51,9 +51,9 @@ import { TURRET_CONFIGS } from '../sim/turretConfigs';
 const TRAIL_Y = 4;
 const MIN_FLIGHT_SEC = 0.16;
 const DEFAULT_BUILD_PARTICLE_SPEED =
-  TURRET_CONFIGS.constructionTurret.constructionEmitter?.particleTravelSpeed ?? 100;
+  TURRET_CONFIGS.turretConstruction.constructionEmitter?.particleTravelSpeed ?? 100;
 const DEFAULT_BUILD_PARTICLE_RADIUS =
-  TURRET_CONFIGS.constructionTurret.constructionEmitter?.particleRadius ?? 1.5;
+  TURRET_CONFIGS.turretConstruction.constructionEmitter?.particleRadius ?? 1.5;
 const HEAL_PARTICLE_SPEED = 560;
 const HEAL_MAX_FLIGHT_SEC = 0.62;
 const HEAL_PARTICLE_BASE_RADIUS = 2.35;

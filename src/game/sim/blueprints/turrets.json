@@ -1,6 +1,6 @@
 {
-  "lightTurret": {
-    "id": "lightTurret",
+  "turretGunLight": {
+    "id": "turretGunLight",
     "projectileId": "lightShot",
     "range": 200,
     "cooldown": 450,
@@ -33,7 +33,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.lightTurret"
+        "$audio": "event.fire.turretGunLight"
       }
     },
     "verticalLauncher": false,
@@ -56,8 +56,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "pulseTurret": {
-    "id": "pulseTurret",
+  "turretGunBurst": {
+    "id": "turretGunBurst",
     "projectileId": "mediumShot",
     "range": 230,
     "cooldown": 3000,
@@ -101,7 +101,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.pulseTurret"
+        "$audio": "event.fire.turretGunBurst"
       }
     },
     "verticalLauncher": false,
@@ -124,8 +124,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "cannonTurret": {
-    "id": "cannonTurret",
+  "turretCannon": {
+    "id": "turretCannon",
     "projectileId": "heavyShot",
     "range": 1000,
     "cooldown": 2300,
@@ -161,7 +161,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.cannonTurret"
+        "$audio": "event.fire.turretCannon"
       }
     },
     "verticalLauncher": false,
@@ -184,8 +184,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "mortarTurret": {
-    "id": "mortarTurret",
+  "turretMortarSlow": {
+    "id": "turretMortarSlow",
     "projectileId": "megaMortarShot",
     "range": 1000,
     "cooldown": 6000,
@@ -221,7 +221,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.mortarTurret"
+        "$audio": "event.fire.turretMortarSlow"
       }
     },
     "verticalLauncher": false,
@@ -244,8 +244,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "droppingMortarTurret": {
-    "id": "droppingMortarTurret",
+  "turretMortarDrop": {
+    "id": "turretMortarDrop",
     "projectileId": "megaMortarShot",
     "range": 650,
     "cooldown": 3500,
@@ -278,7 +278,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.droppingMortarTurret"
+        "$audio": "event.fire.turretMortarDrop"
       }
     },
     "verticalLauncher": false,
@@ -301,8 +301,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "gatlingMortarTurret": {
-    "id": "gatlingMortarTurret",
+  "turretMortarFast": {
+    "id": "turretMortarFast",
     "projectileId": "megaMortarShot",
     "range": 2000,
     "cooldown": 900,
@@ -346,7 +346,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.gatlingMortarTurret"
+        "$audio": "event.fire.turretMortarFast"
       }
     },
     "verticalLauncher": false,
@@ -369,8 +369,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "hippoGatlingTurret": {
-    "id": "hippoGatlingTurret",
+  "turretGatling": {
+    "id": "turretGatling",
     "projectileId": "mediumShot",
     "range": 300,
     "cooldown": 130,
@@ -414,7 +414,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.hippoGatlingTurret"
+        "$audio": "event.fire.turretGatling"
       }
     },
     "verticalLauncher": false,
@@ -437,8 +437,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "dgunTurret": {
-    "id": "dgunTurret",
+  "turretDisruptor": {
+    "id": "turretDisruptor",
     "projectileId": "disruptorShot",
     "range": 150,
     "cooldown": 0,
@@ -469,7 +469,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.dgunTurret"
+        "$audio": "event.fire.turretDisruptor"
       }
     },
     "verticalLauncher": false,
@@ -554,8 +554,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "beamTurret": {
-    "id": "beamTurret",
+  "turretBeam": {
+    "id": "turretBeam",
     "projectileId": "beamShot",
     "range": 250,
     "cooldown": 0,
@@ -586,7 +586,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.beamTurret"
+        "$audio": "event.fire.turretBeam"
       }
     },
     "verticalLauncher": false,
@@ -609,8 +609,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "miniBeam": {
-    "id": "miniBeam",
+  "turretBeamMini": {
+    "id": "turretBeamMini",
     "projectileId": "miniBeamShot",
     "range": 180,
     "cooldown": 0,
@@ -641,7 +641,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.miniBeam"
+        "$audio": "event.fire.turretBeamMini"
       }
     },
     "verticalLauncher": false,
@@ -664,8 +664,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "megaBeamTurret": {
-    "id": "megaBeamTurret",
+  "turretBeamMega": {
+    "id": "turretBeamMega",
     "projectileId": "megaBeamShot",
     "range": 350,
     "cooldown": 0,
@@ -696,7 +696,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.megaBeamTurret"
+        "$audio": "event.fire.turretBeamMega"
       }
     },
     "verticalLauncher": false,
@@ -794,8 +794,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "constructionTurret": {
-    "id": "constructionTurret",
+  "turretConstruction": {
+    "id": "turretConstruction",
     "projectileId": null,
     "range": 0,
     "cooldown": 0,
@@ -867,8 +867,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "towerBeamTurret": {
-    "id": "towerBeamTurret",
+  "turretBeamLong": {
+    "id": "turretBeamLong",
     "projectileId": "towerBeamShot",
     "range": 350,
     "cooldown": 0,
@@ -899,7 +899,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.megaBeamTurret"
+        "$audio": "event.fire.turretBeamMega"
       }
     },
     "verticalLauncher": false,
@@ -922,8 +922,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "towerCannonTurret": {
-    "id": "towerCannonTurret",
+  "turretCannonLong": {
+    "id": "turretCannonLong",
     "projectileId": "heavyShot",
     "range": 1500,
     "cooldown": 1500,
@@ -960,7 +960,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.cannonTurret"
+        "$audio": "event.fire.turretCannon"
       }
     },
     "verticalLauncher": false,
@@ -983,8 +983,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "salvoRocketTurret": {
-    "id": "salvoRocketTurret",
+  "turretRocketSlow": {
+    "id": "turretRocketSlow",
     "projectileId": "lightRocket",
     "range": 800,
     "cooldown": 2000,
@@ -1029,7 +1029,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.salvoRocketTurret"
+        "$audio": "event.fire.turretRocketSlow"
       }
     },
     "verticalLauncher": true,
@@ -1052,8 +1052,8 @@
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
   },
-  "fastRocketTurret": {
-    "id": "fastRocketTurret",
+  "turretRocketFast": {
+    "id": "turretRocketFast",
     "projectileId": "fastRocket",
     "range": 430,
     "cooldown": 50,
@@ -1086,7 +1086,7 @@
     "mirrorPanels": [],
     "audio": {
       "fireSound": {
-        "$audio": "event.fire.fastRocketTurret"
+        "$audio": "event.fire.turretRocketFast"
       }
     },
     "verticalLauncher": false,

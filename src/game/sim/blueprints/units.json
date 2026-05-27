@@ -17,7 +17,7 @@
     },
     "turrets": [
       {
-        "turretId": "lightTurret",
+        "turretId": "turretGunLight",
         "mount": {
           "x": 0,
           "y": 0,
@@ -67,7 +67,7 @@
     },
     "turrets": [
       {
-        "turretId": "pulseTurret",
+        "turretId": "turretGunBurst",
         "mount": {
           "x": 0,
           "y": 0,
@@ -115,7 +115,7 @@
     },
     "turrets": [
       {
-        "turretId": "beamTurret",
+        "turretId": "turretBeam",
         "mount": {
           "x": 0,
           "y": 0,
@@ -169,7 +169,7 @@
     },
     "turrets": [
       {
-        "turretId": "salvoRocketTurret",
+        "turretId": "turretRocketSlow",
         "mount": {
           "x": 0,
           "y": 0,
@@ -217,7 +217,7 @@
     },
     "turrets": [
       {
-        "turretId": "mortarTurret",
+        "turretId": "turretMortarSlow",
         "mount": {
           "x": 0,
           "y": 0,
@@ -265,7 +265,7 @@
     },
     "turrets": [
       {
-        "turretId": "miniBeam",
+        "turretId": "turretBeamMini",
         "mount": {
           "x": 0,
           "y": 0,
@@ -315,7 +315,7 @@
     },
     "turrets": [
       {
-        "turretId": "cannonTurret",
+        "turretId": "turretCannon",
         "mount": {
           "x": 0,
           "y": 0,
@@ -363,7 +363,7 @@
     },
     "turrets": [
       {
-        "turretId": "gatlingMortarTurret",
+        "turretId": "turretMortarFast",
         "mount": {
           "x": -0.85,
           "y": 0,
@@ -429,7 +429,7 @@
     },
     "turrets": [
       {
-        "turretId": "miniBeam",
+        "turretId": "turretBeamMini",
         "mount": {
           "x": -0.2868272016354705,
           "y": 0.8131727983645295,
@@ -441,7 +441,7 @@
         }
       },
       {
-        "turretId": "miniBeam",
+        "turretId": "turretBeamMini",
         "mount": {
           "x": -1.9131727983645295,
           "y": 0.8131727983645296,
@@ -453,7 +453,7 @@
         }
       },
       {
-        "turretId": "miniBeam",
+        "turretId": "turretBeamMini",
         "mount": {
           "x": -1.91317279836453,
           "y": -0.8131727983645295,
@@ -465,7 +465,7 @@
         }
       },
       {
-        "turretId": "miniBeam",
+        "turretId": "turretBeamMini",
         "mount": {
           "x": -0.2868272016354707,
           "y": -0.8131727983645298,
@@ -477,7 +477,7 @@
         }
       },
       {
-        "turretId": "megaBeamTurret",
+        "turretId": "turretBeamMega",
         "mount": {
           "x": -1.1,
           "y": 0,
@@ -551,7 +551,7 @@
     },
     "turrets": [
       {
-        "turretId": "hippoGatlingTurret",
+        "turretId": "turretGatling",
         "mount": {
           "x": 0.2,
           "y": 0,
@@ -598,7 +598,7 @@
     },
     "turrets": [
       {
-        "turretId": "beamTurret",
+        "turretId": "turretBeam",
         "mount": {
           "x": -0.65,
           "y": 0,
@@ -703,7 +703,7 @@
     },
     "turrets": [
       {
-        "turretId": "miniBeam",
+        "turretId": "turretBeamMini",
         "mount": {
           "x": 0,
           "y": 0,
@@ -749,7 +749,7 @@
     },
     "turrets": [
       {
-        "turretId": "droppingMortarTurret",
+        "turretId": "turretMortarDrop",
         "mount": {
           "x": 1.5,
           "y": 0,
@@ -757,7 +757,7 @@
         }
       },
       {
-        "turretId": "beamTurret",
+        "turretId": "turretBeam",
         "mount": {
           "x": -4.7,
           "y": 0,
@@ -818,7 +818,7 @@
     },
     "turrets": [
       {
-        "turretId": "constructionTurret",
+        "turretId": "turretConstruction",
         "mount": {
           "x": 0,
           "y": 0,
@@ -883,7 +883,7 @@
     },
     "turrets": [
       {
-        "turretId": "fastRocketTurret",
+        "turretId": "turretRocketFast",
         "mount": {
           "x": 0,
           "y": 0,
@@ -936,7 +936,7 @@
     },
     "turrets": [
       {
-        "turretId": "beamTurret",
+        "turretId": "turretBeam",
         "mount": {
           "x": 0.36,
           "y": -0.42,
@@ -944,7 +944,7 @@
         }
       },
       {
-        "turretId": "dgunTurret",
+        "turretId": "turretDisruptor",
         "mount": {
           "x": 0.36,
           "y": 0.42,
@@ -952,7 +952,7 @@
         }
       },
       {
-        "turretId": "constructionTurret",
+        "turretId": "turretConstruction",
         "mount": {
           "x": -0.42,
           "y": 0,
@@ -996,7 +996,7 @@
       "constructionRate": 50
     },
     "dgun": {
-      "turretId": "dgunTurret",
+      "turretId": "turretDisruptor",
       "energyCost": 200
     },
     "cloak": null,

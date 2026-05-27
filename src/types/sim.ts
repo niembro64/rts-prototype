@@ -725,7 +725,7 @@ export type Buildable = {
 
 /** Builder component. Gives a unit the ability to construct
  *  **buildings** (and assist/repair them) anywhere within `buildRange`.
- *  The host visualizes the work through a `constructionTurret` mount.
+ *  The host visualizes the work through a `turretConstruction` mount.
  *
  *  Builder ≠ factory: buildings come from builders, units come from
  *  factories. Currently mounted on commanders; the planned construction
@@ -792,7 +792,7 @@ export type UnitBuildConfig = {
 // while the build spot is blocked). Once the shell flips `isComplete`,
 // it leaves the spot and the factory clears `currentShellId` to take
 // the next queue entry. The host visualizes the work through a
-// `constructionTurret` mount (same emitter rig as builder units).
+// `turretConstruction` mount (same emitter rig as builder units).
 //
 // Factory ≠ builder: factories produce units at a fixed spot; builders
 // (commanders, future construction aircraft) construct buildings at

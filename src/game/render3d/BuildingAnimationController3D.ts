@@ -700,7 +700,7 @@ function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {
 }
 
 /** Locate the construction emitter rig mounted on this building's
- *  `constructionTurret`. Buildings can only carry one (factories do today,
+ *  `turretConstruction`. Buildings can only carry one (factories do today,
  *  cannon towers and the like don't), so the first match wins. */
 function findConstructionEmitterRig(
   mesh: EntityMesh,

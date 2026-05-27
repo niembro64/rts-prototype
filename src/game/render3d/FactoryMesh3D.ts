@@ -24,7 +24,7 @@ import {
  *  build spot (next to the chassis, not on the turret) and shows the
  *  forming unit as a translucent ghost orb with sparks. This is
  *  conceptually separate from the construction emitter rig that lives on
- *  the constructionTurret — the emitter is shared with commanders and
+ *  the turretConstruction — the emitter is shared with commanders and
  *  construction aircraft via the standard turret-mesh path. */
 export type FactoryBuildSpotRig = {
   unitGhost: THREE.Mesh;
@@ -69,7 +69,7 @@ const constructionOrbGeom = new THREE.SphereGeometry(1, 12, 8);
 /** Factory chassis. Just the team-colored primary body and the
  *  build-spot ghost orb / sparks. The factory's construction emitter
  *  (towers + showers + sprays) is NOT created here — it rides on the
- *  factory's `constructionTurret` like any other turret-mounted emitter,
+ *  factory's `turretConstruction` like any other turret-mounted emitter,
  *  built by the standard TurretMesh3D path. */
 export function buildFactoryMesh(
   _width: number,

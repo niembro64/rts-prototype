@@ -1,6 +1,6 @@
 // Construction emitter rig: the pair of resource pylons + showers +
 // build-spray sources that visually communicate "energy/metal flowing
-// out to a construction site". Mounted on a `constructionTurret` and
+// out to a construction site". Mounted on a `turretConstruction` and
 // shared verbatim across hosts — commanders, fabricators, and the future
 // construction aircraft all render through this same rig with only the
 // visualVariant (small/large) and rate-source differing.
