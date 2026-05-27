@@ -32,6 +32,9 @@ const RANGE_Y = 0.6;
 const METAL_DEPOSIT_COIN_TOP_Y = METAL_DEPOSIT_CONFIG.coinHeight * 0.5 + 0.04;
 const METAL_DEPOSIT_CELL_Y = METAL_DEPOSIT_COIN_TOP_Y + 0.45;
 const METAL_DEPOSIT_CELL_BORDER_Y = METAL_DEPOSIT_COIN_TOP_Y + 0.6;
+// Deposit borders draw at this fraction of the cell size so they sit
+// visually inside the green/red footprint border when both apply.
+const METAL_DEPOSIT_BORDER_INSET = 0.72;
 type GroundHeightLookup = (x: number, y: number) => number;
 
 type CellMaterialPair = {
@@ -298,7 +301,10 @@ export class BuildGhost3D {
 
   private materialForCell(cell: BuildPlacementCellDiagnostic): CellMaterialPair {
     if (cell.blocking) return { fill: this.cellMatBad, border: this.cellBorderMatBad };
-    if (cell.metalCovered) return { fill: this.cellMatMetal, border: this.cellBorderMatMetal };
+    // metalCovered cells keep the green buildability border so the player
+    // can read placement state even when every footprint cell is on a
+    // deposit (extractor case). The deposit itself is signalled by the
+    // separate inset blue markers from updateMetalDepositCells.
     return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
@@ -360,7 +366,13 @@ export class BuildGhost3D {
 
       const border = new THREE.LineSegments(this.cellBorderGeom, this.cellBorderMatMetal);
       border.rotation.x = -Math.PI / 2;
-      border.renderOrder = 29;
+      // Inset the deposit border so it nests inside the footprint cell's
+      // full-size green/red border, letting both signals stay visible on
+      // a cell that's both inside the build footprint AND on a deposit.
+      border.scale.setScalar(METAL_DEPOSIT_BORDER_INSET);
+      // Render after the footprint border (31) so the inset blue sits on
+      // top of any same-Y overlap.
+      border.renderOrder = 32;
       this.group.add(border);
       this.depositCellBorders.push(border);
     }

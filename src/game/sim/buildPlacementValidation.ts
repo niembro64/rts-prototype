@@ -211,9 +211,11 @@ function getBuildingPlacementDiagnosticsAtGrid(
     failureReason ??= 'terrain';
   }
 
-  const footprintCellKeys = new Set(cells.map((cell) => cellKey(cell.gx, cell.gy)));
+  // Emit every deposit cell, including those inside the building footprint —
+  // the build ghost renders them as inset blue markers so the player can
+  // still see the green/red buildability border on the footprint cell that
+  // happens to sit on a deposit.
   const metalDepositCells: BuildPlacementCellDiagnostic[] = getMetalDepositGridCells(metalDeposits)
-    .filter((cell) => !footprintCellKeys.has(cellKey(cell.gx, cell.gy)))
     .map((cell) => ({
       gx: cell.gx,
       gy: cell.gy,
