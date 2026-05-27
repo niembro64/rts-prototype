@@ -13,6 +13,7 @@ import type { Entity, BuildingType } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
+import { METAL_DEPOSIT_CONFIG } from '@/metalDepositConfig';
 import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
 import {
   type BuildPlacementCellDiagnostic,
@@ -21,10 +22,16 @@ import {
 } from '../input/helpers';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
-const RESOURCE_CELL_Y = 1.1;
 const CELL_Y = 1.25;
 const CELL_BORDER_Y = 1.38;
 const RANGE_Y = 0.6;
+// The deposit coin top face sits at terrain + 0.04 + coinHeight * 0.5 (see
+// MetalDepositRenderer3D.buildDepositNode + makeDepositCoinGeometry). Raise
+// ghost cells that live on a deposit above that height so the borders/fills
+// aren't eaten by the rim of the coin.
+const METAL_DEPOSIT_COIN_TOP_Y = METAL_DEPOSIT_CONFIG.coinHeight * 0.5 + 0.04;
+const METAL_DEPOSIT_CELL_Y = METAL_DEPOSIT_COIN_TOP_Y + 0.45;
+const METAL_DEPOSIT_CELL_BORDER_Y = METAL_DEPOSIT_COIN_TOP_Y + 0.6;
 type GroundHeightLookup = (x: number, y: number) => number;
 
 type CellMaterialPair = {
@@ -322,14 +329,19 @@ export class BuildGhost3D {
         continue;
       }
       const y = this.getGroundHeight(cell.x, cell.y);
-      mesh.position.set(cell.x, y + CELL_Y, cell.y);
+      // Metal-covered cells sit on top of the raised deposit coin, so
+      // place the ghost above the coin's top face instead of just above
+      // raw terrain. Non-deposit cells keep the original tight offsets.
+      const fillY = cell.metalCovered ? METAL_DEPOSIT_CELL_Y : CELL_Y;
+      const borderY = cell.metalCovered ? METAL_DEPOSIT_CELL_BORDER_Y : CELL_BORDER_Y;
+      mesh.position.set(cell.x, y + fillY, cell.y);
       const materials = this.materialForCell(cell);
       mesh.material = materials.fill;
       // Skip opaque fill on metal-deposit cells so the deposit visual
       // underneath stays fully visible — the border alone signals the cell.
       mesh.visible = !cell.metalCovered || cell.blocking;
       if (border) {
-        border.position.set(cell.x, y + CELL_BORDER_Y, cell.y);
+        border.position.set(cell.x, y + borderY, cell.y);
         border.material = materials.border;
         border.visible = true;
       }
@@ -367,7 +379,7 @@ export class BuildGhost3D {
       // visual underneath stays fully visible.
       mesh.visible = false;
       if (border) {
-        border.position.set(cell.x, y + RESOURCE_CELL_Y + 0.12, cell.y);
+        border.position.set(cell.x, y + METAL_DEPOSIT_CELL_BORDER_Y, cell.y);
         border.visible = true;
       }
     }
