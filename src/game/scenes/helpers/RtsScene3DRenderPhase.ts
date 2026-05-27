@@ -216,15 +216,12 @@ export class RtsScene3DRenderPhase {
       this.renderFrameIndex,
       this.renderScope,
     );
-    // Single source of truth for whether the build-grid visualization is
-    // visible: the DEBUG: BUILD toggle OR an active build mode. Both the
-    // terrain shader overlay (red/green/blue painted on terrain) and the
-    // build ghost's deposit overlay (inset blue markers above the coins)
-    // read from this same flag.
+    // The whole-map build-grid visualization (terrain-shader red/green/blue
+    // overlay + matching blue squares above each deposit coin) is gated
+    // solely to the DEBUG: BUILD toggle. The build-mode hover footprint is
+    // a separate, localized signal owned by BuildGhost3D's setTarget path.
     const inputManager = this.getInputManager();
-    const isInBuildMode = inputManager?.isInBuildMode() === true;
-    terrainTileRenderer.setBuildModeActive(isInBuildMode);
-    buildGhostRenderer.setBuildGridOverlayVisible(getBuildGridDebug() || isInBuildMode);
+    buildGhostRenderer.setBuildGridOverlayVisible(getBuildGridDebug());
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,

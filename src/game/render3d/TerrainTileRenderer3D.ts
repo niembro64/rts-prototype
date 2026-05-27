@@ -267,7 +267,6 @@ export class TerrainTileRenderer3D {
   private buildGridWorldSizeUniform = { value: new THREE.Vector2(1, 1) };
   private buildGridCellSizeUniform = { value: BUILD_GRID_CELL_SIZE };
   private buildGridEnabledUniform = { value: 0 };
-  private buildModeActive = false;
   private buildGridTextureKey = '';
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
   private groundDetailTileWorldSizeUniform = { value: GROUND_DETAIL_TILE_WORLD_SIZE };
@@ -1190,16 +1189,13 @@ export class TerrainTileRenderer3D {
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 
-    // Build-grid overlay is driven by either the explicit DEBUG: BUILD
-    // toggle or by being in build mode — same trigger as the build ghost's
-    // deposit overlay, so the two stay in lockstep.
-    this.refreshBuildGridTexture(getBuildGridDebug() || this.buildModeActive);
-  }
-
-  /** Set by the scene each frame to OR with the DEBUG: BUILD toggle so
-   *  hovering a build target also reveals the grid. */
-  setBuildModeActive(active: boolean): void {
-    this.buildModeActive = active;
+    // Build-grid overlay is driven only by the explicit DEBUG: BUILD
+    // toggle. Entering build mode shows the hover footprint (BuildGhost3D)
+    // and the always-built deposit overlay is also intentionally gated to
+    // the DEBUG toggle, so the whole-map per-cell paint stays a debug
+    // affordance rather than something that splashes every time the
+    // player tries to place a building.
+    this.refreshBuildGridTexture(getBuildGridDebug());
   }
 
   getMesh(): THREE.Mesh {

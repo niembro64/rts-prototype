@@ -550,6 +550,9 @@
       "cellBad": {
         "colorHex": "#770000"
       },
+      "cellWarn": {
+        "colorHex": "#7a5a00"
+      },
       "cellBorderOk": {
         "colorHex": "#00ff00"
       },
@@ -561,6 +564,9 @@
       },
       "cellBorderBad": {
         "colorHex": "#ff0000"
+      },
+      "cellBorderWarn": {
+        "colorHex": "#ffcc00"
       },
       "rangeRing": {
         "colorHex": "#00ff00",
