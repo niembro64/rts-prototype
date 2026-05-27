@@ -200,6 +200,13 @@
         prediction, smoothing, camera-visible detail, audio scheduling, and render-time interpolation.
       </p>
       <p>
+        That split is architectural, not permission for accidental duplicate game loops. A browser
+        runtime may own only one active simulation at a time. Booting a second sim in the same
+        browser is a hard error, whether it comes from a duplicate worker, a second game session, or
+        a stale teardown path. Throw immediately rather than letting two tick loops share input,
+        networking, render state, or authority.
+      </p>
+      <p>
         The preferred implementation is shared code, not shared authority. Physical kernels and
         battlefield contracts should be described once and reused by both the authoritative sim and
         the client prediction sim where that reuse buys correctness: body integration, forces,
