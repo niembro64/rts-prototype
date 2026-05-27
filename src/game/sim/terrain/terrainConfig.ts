@@ -12,11 +12,16 @@ export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 // This is the finest equilateral-triangle edge resolution relative to
 // LAND_CELL_SIZE. The baker groups fine triangles upward into larger
 // authoritative triangles where error allows. Lives as a `let` so the
-// TERRAIN DETAIL battle bar can swap in a new value at battle start;
-// the sim clamps to a minimum of 1 (subdiv=0 ⇒ "off" ⇒ one triangle
-// per cell) in `terrainTileMap` so the picker can offer 0 as the
-// no-detail option.
-export let TERRAIN_FINE_TRIANGLE_SUBDIV = BATTLE_CONFIG.terrainDetail.default;
+// TERRAIN DETAIL battle bar can swap in a new value at battle start.
+// Clamped to a minimum of 1 right here at the source — terrainTileMap
+// divides land-cell size by this value and indexes from `subdiv - 1`,
+// so a zero leaks into NaN coordinates and negative loop bounds. The
+// picker's `0` option becomes 1 internally ("off" = one triangle per
+// cell).
+export let TERRAIN_FINE_TRIANGLE_SUBDIV = Math.max(
+  1,
+  Math.floor(BATTLE_CONFIG.terrainDetail.default),
+);
 
 /** Maximum perpendicular deviation, in world units, allowed when a terrain
  *  triangle is collapsed to a lower subdivision. Measuring error against the
@@ -193,10 +198,10 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     changed = true;
   }
 
-  // Subdivision count of 0 means "off" — the terrain tile baker takes
-  // max(1, subdiv) so the floor stays one triangle per cell. Any
-  // positive integer is allowed; battle bar options are {0,5,10,15,20}.
-  const nextTerrainDetail = Math.max(0, Math.floor(config.terrainDetail));
+  // Subdivision count must stay >= 1 — terrainTileMap divides by it
+  // and indexes from `subdiv - 1`. Battle bar options are {0,5,10,15,20};
+  // 0 lands on 1 internally ("off" = one triangle per land cell).
+  const nextTerrainDetail = Math.max(1, Math.floor(config.terrainDetail));
   if (TERRAIN_FINE_TRIANGLE_SUBDIV !== nextTerrainDetail) {
     TERRAIN_FINE_TRIANGLE_SUBDIV = nextTerrainDetail;
     changed = true;
