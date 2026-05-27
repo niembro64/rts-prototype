@@ -21,6 +21,8 @@ export type CommandType =
   | 'setFactoryWaypoints'
   | 'fireDGun'
   | 'setFireEnabled'
+  | 'setBuildingActive'
+  | 'selfDestruct'
   | 'repair'
   | 'repairArea'
   | 'reclaim'
@@ -168,6 +170,24 @@ export type SetFireEnabledCommand = BaseCommand & {
   type: 'setFireEnabled';
   entityIds: EntityId[];
   enabled: boolean;
+};
+
+/** Producer-building ON/OFF toggle. ON = producing + normal damage;
+ *  OFF = not producing + 10x damage resistance. Targets buildings whose
+ *  BuildingType uses the active-state mechanic (solar/wind/extractor);
+ *  other entity ids in the list are silently skipped. */
+export type SetBuildingActiveCommand = BaseCommand & {
+  type: 'setBuildingActive';
+  entityIds: EntityId[];
+  open: boolean;
+};
+
+/** Demolish the listed entities (units, towers, buildings) on the
+ *  authoritative sim. Sets hp to 0 so the per-tick death/cleanup path
+ *  emits a synthetic death event and removes the entity. */
+export type SelfDestructCommand = BaseCommand & {
+  type: 'selfDestruct';
+  entityIds: EntityId[];
 };
 
 export type RepairCommand = BaseCommand & {
@@ -320,6 +340,8 @@ export type Command =
   | SetFactoryWaypointsCommand
   | FireDGunCommand
   | SetFireEnabledCommand
+  | SetBuildingActiveCommand
+  | SelfDestructCommand
   | RepairCommand
   | RepairAreaCommand
   | ReclaimCommand

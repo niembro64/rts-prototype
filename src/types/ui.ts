@@ -32,6 +32,16 @@ export type SelectionInfo = {
   hasDGun: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;
+  /** True iff the selection contains at least one building whose
+   *  BuildingType uses the ON/OFF active-state mechanic
+   *  (solar/wind/extractor). Gates the ON/OFF button. */
+  hasBuildingActiveControl: boolean;
+  /** True when every active-state building in the selection is currently
+   *  ON (open). Drives the ON/OFF button label. */
+  buildingsActive: boolean;
+  /** True when any selected entity belongs to the local player and can
+   *  be removed by a self-destruct command. */
+  hasSelfDestructable: boolean;
   isWaiting: boolean;
   hasQueuedOrders: boolean;
   hasFactory: boolean;
@@ -60,6 +70,10 @@ export type SelectionActions = {
   removeLastQueuedOrder: () => void;
   toggleSelectedWait: () => void;
   toggleSelectedFire: () => void;
+  /** ON/OFF for producer buildings in the selection. */
+  toggleBuildingActive: () => void;
+  /** Demolish every owned entity in the selection. */
+  selfDestructSelected: () => void;
   toggleAttackArea: () => void;
   toggleAttackGround: () => void;
   toggleGuard: () => void;

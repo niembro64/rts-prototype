@@ -18,6 +18,8 @@ export type {
   SetFactoryWaypointsCommand,
   FireDGunCommand,
   SetFireEnabledCommand,
+  SetBuildingActiveCommand,
+  SelfDestructCommand,
   RepairCommand,
   RepairAreaCommand,
   ReclaimCommand,

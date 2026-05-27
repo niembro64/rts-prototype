@@ -21,6 +21,8 @@ import type {
   SelectCommand,
   SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
+  SetBuildingActiveCommand,
+  SelfDestructCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -40,7 +42,8 @@ import {
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './Pathfinder';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { setBuildingActiveOpen } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
@@ -148,6 +151,12 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setFireEnabled':
       executeSetFireEnabledCommand(ctx, command);
+      break;
+    case 'setBuildingActive':
+      executeSetBuildingActiveCommand(ctx, command);
+      break;
+    case 'selfDestruct':
+      executeSelfDestructCommand(ctx, command);
       break;
     case 'repair':
       executeRepairCommand(ctx, command);
@@ -686,6 +695,36 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
       }
     }
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
+  }
+}
+
+function executeSetBuildingActiveCommand(
+  ctx: CommandContext,
+  command: SetBuildingActiveCommand,
+): void {
+  const open = command.open === true;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (entity === undefined || entity.type !== 'building') continue;
+    setBuildingActiveOpen(ctx.world, entity, open);
+  }
+}
+
+function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCommand): void {
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (entity === undefined) continue;
+    // Set hp to 0 and mark the row dirty on the HP field. The shared
+    // pendingDeathCheck queue picks the row up in the next cleanup
+    // pass, which emits the synthetic death event + removes the entity
+    // through the same path normal damage takes.
+    if (entity.unit !== null && entity.unit.hp > 0) {
+      entity.unit.hp = 0;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+    } else if (entity.building !== null && entity.building.hp > 0) {
+      entity.building.hp = 0;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+    }
   }
 }
 

@@ -16,6 +16,8 @@ import type {
   ScanCommand,
   RemoveLastQueuedOrderCommand,
   SetFireEnabledCommand,
+  SetBuildingActiveCommand,
+  SelfDestructCommand,
   StopCommand,
   WaitCommand,
 } from '../sim/commands';
@@ -604,7 +606,15 @@ export class GameServer {
         return this.authorizeUnitListCommand(command, playerId);
 
       case 'setFireEnabled':
-        return this.authorizeUnitListCommand(command, playerId);
+        // Fire control applies to any owned entity with combat
+        // (units + towers). Towers carry the same host-fire contract
+        // per design_philosophy.html "Selection Menus Are Uniform Per
+        // Entity Type".
+        return this.authorizeAnyEntityListCommand(command, playerId);
+
+      case 'setBuildingActive':
+      case 'selfDestruct':
+        return this.authorizeAnyEntityListCommand(command, playerId);
 
       case 'attack':
       case 'attackGround':
@@ -684,9 +694,9 @@ export class GameServer {
   }
 
   private authorizeUnitListCommand(
-    command: SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
+    command: AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand,
     playerId: PlayerId,
-  ): SetFireEnabledCommand | AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
+  ): AttackCommand | AttackGroundCommand | AttackAreaCommand | GuardCommand | StopCommand | WaitCommand | ClearQueuedOrdersCommand | RemoveLastQueuedOrderCommand | null {
     const sourceIds = command.entityIds;
     if (sourceIds.length === 0) return null;
 
@@ -694,6 +704,25 @@ export class GameServer {
     for (let i = 0; i < sourceIds.length; i++) {
       const id = sourceIds[i];
       if (this.isOwnedUnit(id, playerId)) entityIds.push(id);
+    }
+    if (entityIds.length === 0) return null;
+    return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+  }
+
+  /** Authorize a command whose entityIds may reference any owned entity
+   *  (unit, tower, or building). Used by setFireEnabled (units +
+   *  towers), setBuildingActive (buildings), and selfDestruct (any). */
+  private authorizeAnyEntityListCommand(
+    command: SetFireEnabledCommand | SetBuildingActiveCommand | SelfDestructCommand,
+    playerId: PlayerId,
+  ): SetFireEnabledCommand | SetBuildingActiveCommand | SelfDestructCommand | null {
+    const sourceIds = command.entityIds;
+    if (sourceIds.length === 0) return null;
+
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < sourceIds.length; i++) {
+      const id = sourceIds[i];
+      if (this.isOwnedEntity(id, playerId)) entityIds.push(id);
     }
     if (entityIds.length === 0) return null;
     return entityIds.length === sourceIds.length ? command : { ...command, entityIds };

@@ -1251,6 +1251,14 @@ export class RtsScene3D {
     this.inputManager?.toggleSelectedFire();
   }
 
+  public toggleBuildingActive(): void {
+    this.inputManager?.toggleBuildingActive();
+  }
+
+  public selfDestructSelected(): void {
+    this.inputManager?.selfDestructSelected();
+  }
+
   public toggleAttackAreaMode(): void {
     this.inputManager?.toggleAttackAreaMode();
   }

@@ -6,6 +6,7 @@ import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { isCommander } from '../../sim/combat/combatUtils';
 import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
+import { buildingTypeHasActiveState } from '../../sim/buildingActiveState';
 
 function unitLabel(unitType: string): string {
   try {
@@ -116,6 +117,29 @@ export function buildSelectionInfo(
   // therefore lives on the tower selection, not the building one.
   const factory = selectedTowers.find(b => b.factory !== null);
 
+  // Building ON/OFF (Producer Buildings Are ON/OFF in design_philosophy.html).
+  // Only solar/wind/extractor expose a player-toggleable active state;
+  // radar/converter do not. The button is gated to selections that
+  // contain at least one of those buildings.
+  let activeBuildingCount = 0;
+  let allBuildingsOpen = true;
+  for (let i = 0; i < selectedBuildings.length; i++) {
+    const b = selectedBuildings[i];
+    if (!buildingTypeHasActiveState(b.buildingType)) continue;
+    activeBuildingCount++;
+    const state = b.building !== null ? b.building.activeState : null;
+    if (state === null || state.open === false) allBuildingsOpen = false;
+  }
+
+  // Self-destruct is available whenever any selected entity (unit,
+  // tower, or building) is alive. The command itself only applies to
+  // entities with a unit/building hp slot, which is exactly the same
+  // set the panel can list.
+  const hasSelfDestructable =
+    selectedUnits.length > 0
+    || selectedTowers.length > 0
+    || selectedBuildings.length > 0;
+
   // Get factory queue info if factory is selected
   let factoryQueue: { unitId: string; label: string }[] | undefined;
   let factoryProgress: number | undefined;
@@ -140,6 +164,9 @@ export function buildSelectionInfo(
     hasDGun: dgunner !== undefined,
     hasFireControl: fireControlCount > 0,
     fireEnabled: fireControlCount > 0 && allFireEnabled,
+    hasBuildingActiveControl: activeBuildingCount > 0,
+    buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
+    hasSelfDestructable,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     hasQueuedOrders,
     hasFactory: factory !== undefined,

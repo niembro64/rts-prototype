@@ -18,6 +18,8 @@ import type {
   ScanCommand,
   SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
+  SetBuildingActiveCommand,
+  SelfDestructCommand,
   SetRallyPointCommand,
   StartBuildCommand,
   StopCommand,
@@ -65,6 +67,10 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeWaitCommand(command, tick);
     case 'setFireEnabled':
       return sanitizeSetFireEnabledCommand(command, tick);
+    case 'setBuildingActive':
+      return sanitizeSetBuildingActiveCommand(command, tick);
+    case 'selfDestruct':
+      return sanitizeSelfDestructCommand(command, tick);
     case 'attack':
       return sanitizeAttackCommand(command, tick);
     case 'attackGround':
@@ -269,6 +275,24 @@ function sanitizeSetFireEnabledCommand(command: SetFireEnabledCommand, tick: num
   return entityIds === null || typeof command.enabled !== 'boolean'
     ? null
     : { ...command, tick, entityIds, enabled: command.enabled };
+}
+
+function sanitizeSetBuildingActiveCommand(
+  command: SetBuildingActiveCommand,
+  tick: number,
+): SetBuildingActiveCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || typeof command.open !== 'boolean'
+    ? null
+    : { ...command, tick, entityIds, open: command.open };
+}
+
+function sanitizeSelfDestructCommand(
+  command: SelfDestructCommand,
+  tick: number,
+): SelfDestructCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null ? null : { ...command, tick, entityIds };
 }
 
 function sanitizeAttackCommand(command: AttackCommand, tick: number): AttackCommand | null {

@@ -159,6 +159,37 @@ export function deactivateBuildingActiveState(entity: Entity): void {
   setBuildingProducing(entity, false);
 }
 
+/** Player-driven ON/OFF toggle. Sets `state.open` directly, resets the
+ *  damage/reopen timers so the chosen state is durable for the next
+ *  full cycle, and updates production accounting through
+ *  setBuildingProducing. The auto-flap timer behavior continues to
+ *  run after — manual ON can be auto-closed by sustained damage, and
+ *  manual OFF will auto-reopen after the normal quiet period. */
+export function setBuildingActiveOpen(world: WorldState, entity: Entity, open: boolean): boolean {
+  const state = ensureBuildingActiveState(entity);
+  if (state === null || entity.building === null) return false;
+  if (!isEntityActive(entity) || entity.building.hp <= 0) return false;
+  let changed = false;
+  if (state.open !== open) {
+    state.open = open;
+    changed = true;
+  }
+  if (open) {
+    if (state.damageDelayMs !== 0) {
+      state.damageDelayMs = 0;
+      changed = true;
+    }
+  } else {
+    if (state.reopenDelayMs !== BUILDING_REOPEN_DELAY_MS) {
+      state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
+      changed = true;
+    }
+  }
+  if (setBuildingProducing(entity, open)) changed = true;
+  if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
+  return changed;
+}
+
 /** Single-hit damage notification. While the building is OPEN this
  *  starts the 2-second grace timer if not already running. While the
  *  building is CLOSED this resets the reopen timer to the full 5 s

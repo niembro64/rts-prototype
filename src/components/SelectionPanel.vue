@@ -27,15 +27,14 @@ const hasStoredControlGroups = computed(() =>
 const canStoreControlGroup = computed(() =>
   props.selection.unitCount > 0 || props.selection.hasFactory,
 );
-// Tower selections (fabricator + shooting towers) get the panel for
-// their host-level fire-control + production affordances. Pure-
-// infrastructure building selections currently have no actions wired
-// up (ON/OFF + self-destruct are tracked as a follow-up); the panel
-// stays hidden for those until their commands land.
-// See design_philosophy.html "Selection Menus Are Uniform Per Entity Type".
+// Per design_philosophy.html "Selection Menus Are Uniform Per Entity Type"
+// every entity type carries its own uniform action set. Pure-
+// infrastructure buildings expose ON/OFF + Self-Destruct; the panel
+// opens whenever any owned entity is selected.
 const showPanel = computed(() =>
   props.selection.unitCount > 0
   || props.selection.towerCount > 0
+  || props.selection.buildingCount > 0
   || props.selection.hasFactory
   || hasStoredControlGroups.value,
 );
@@ -359,6 +358,44 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Building ON/OFF. Producer Buildings Are ON/OFF in
+         design_philosophy.html: solar/wind/extractor selections expose
+         this toggle. ON = producing + normal damage; OFF = not
+         producing + 10x damage resistance. -->
+    <div v-if="selection.hasBuildingActiveControl" class="button-group">
+      <div class="group-label">Power</div>
+      <div class="buttons">
+        <button
+          class="action-btn"
+          :class="{ active: selection.buildingsActive }"
+          :style="{ '--btn-color': BUTTON_COLORS.buildingActive }"
+          title="Toggle producer building ON/OFF"
+          @click="actions.toggleBuildingActive()"
+        >
+          <span class="btn-label">{{ selection.buildingsActive ? 'On' : 'Off' }}</span>
+          <span class="btn-key">O</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Self-Destruct. Per "Selection Menus Are Uniform Per Entity Type"
+         every unit / tower / building selection panel exposes a
+         self-destruct affordance. -->
+    <div v-if="selection.hasSelfDestructable" class="button-group">
+      <div class="group-label">Demolish</div>
+      <div class="buttons">
+        <button
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.selfDestruct }"
+          title="Destroy the selection"
+          @click="actions.selfDestructSelected()"
+        >
+          <span class="btn-label">Destroy</span>
+          <span class="btn-key">K</span>
         </button>
       </div>
     </div>

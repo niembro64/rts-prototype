@@ -675,6 +675,8 @@
         "undoQueue": "#b9f1ff",
         "clearQueue": "#c7d0ff",
         "fireControl": "#ff9f5a",
+        "buildingActive": "#ffd66b",
+        "selfDestruct": "#ff4444",
         "repair": "#63e7ff",
         "reclaim": "#d6b45f",
         "build": "#00cc00",

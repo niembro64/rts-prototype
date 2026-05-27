@@ -93,6 +93,9 @@ export function useGameCanvasSceneUi({
     hasDGun: false,
     hasFireControl: false,
     fireEnabled: false,
+    hasBuildingActiveControl: false,
+    buildingsActive: false,
+    hasSelfDestructable: false,
     isWaiting: false,
     hasQueuedOrders: false,
     hasFactory: false,
@@ -198,6 +201,12 @@ export function useGameCanvasSceneUi({
     },
     toggleSelectedFire: () => {
       getActiveBattleScene()?.toggleSelectedFire();
+    },
+    toggleBuildingActive: () => {
+      getActiveBattleScene()?.toggleBuildingActive();
+    },
+    selfDestructSelected: () => {
+      getActiveBattleScene()?.selfDestructSelected();
     },
     toggleAttackArea: () => {
       getActiveBattleScene()?.toggleAttackAreaMode();

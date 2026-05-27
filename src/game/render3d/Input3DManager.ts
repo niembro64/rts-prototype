@@ -59,6 +59,7 @@ import { isWaterAt } from '../sim/Terrain';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { isCommander } from '../sim/combat/combatUtils';
+import { buildingTypeHasActiveState } from '../sim/buildingActiveState';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
@@ -399,6 +400,14 @@ export class Input3DManager {
 
   toggleSelectedFire(): void {
     this.enqueueSetFireEnabledCommand();
+  }
+
+  toggleBuildingActive(): void {
+    this.enqueueSetBuildingActiveCommand();
+  }
+
+  selfDestructSelected(): void {
+    this.enqueueSelfDestructCommand();
   }
 
   toggleAttackAreaMode(): void {
@@ -804,6 +813,12 @@ export class Input3DManager {
       case 'e':
         this.enqueueSetFireEnabledCommand();
         break;
+      case 'o':
+        this.enqueueSetBuildingActiveCommand();
+        break;
+      case 'k':
+        this.enqueueSelfDestructCommand();
+        break;
       case 'a':
         this.toggleAttackAreaMode();
         break;
@@ -968,7 +983,7 @@ export class Input3DManager {
 
   private enqueueSetFireEnabledCommand(): void {
     const selectedUnits = this.entitySource.getSelectedUnits();
-    if (selectedUnits.length === 0) return;
+    const selectedStatic = this.entitySource.getSelectedBuildings();
     const entityIds: EntityId[] = [];
     let allEnabled = true;
     for (let i = 0; i < selectedUnits.length; i++) {
@@ -977,12 +992,56 @@ export class Input3DManager {
       entityIds.push(unit.id);
       if (unit.combat.fireEnabled === false) allEnabled = false;
     }
+    // Towers carry the same host-fire contract as units; include any
+    // tower in the selection whose combat has at least one turret.
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const t = selectedStatic[i];
+      if (t.type !== 'tower') continue;
+      if (!t.combat || t.combat.turrets.length === 0) continue;
+      entityIds.push(t.id);
+      if (t.combat.fireEnabled === false) allEnabled = false;
+    }
     if (entityIds.length === 0) return;
     this.localCommandQueue.enqueue({
       type: 'setFireEnabled',
       tick: this.context.getTick(),
       entityIds,
       enabled: !allEnabled,
+    });
+  }
+
+  private enqueueSetBuildingActiveCommand(): void {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    const entityIds: EntityId[] = [];
+    let allOpen = true;
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const b = selectedStatic[i];
+      if (b.type !== 'building') continue;
+      if (!buildingTypeHasActiveState(b.buildingType)) continue;
+      entityIds.push(b.id);
+      const state = b.building !== null ? b.building.activeState : null;
+      if (state === null || state.open === false) allOpen = false;
+    }
+    if (entityIds.length === 0) return;
+    this.localCommandQueue.enqueue({
+      type: 'setBuildingActive',
+      tick: this.context.getTick(),
+      entityIds,
+      open: !allOpen,
+    });
+  }
+
+  private enqueueSelfDestructCommand(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    for (let i = 0; i < selectedStatic.length; i++) entityIds.push(selectedStatic[i].id);
+    if (entityIds.length === 0) return;
+    this.localCommandQueue.enqueue({
+      type: 'selfDestruct',
+      tick: this.context.getTick(),
+      entityIds,
     });
   }
 
