@@ -745,6 +745,14 @@ export function getDefaultMapLandDimensions(): MapLandCellDimensions {
   };
 }
 
+export function getModeDefaultMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
+  const preset = getModeDefaultPreset(mode);
+  return {
+    widthLandCells: preset.mapWidthLandCells,
+    lengthLandCells: preset.mapLengthLandCells,
+  };
+}
+
 export function loadStoredMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
   ensureBattleMigrations();
   const primary = readStoredMapLandDimensions(
@@ -767,7 +775,7 @@ export function loadStoredMapLandDimensions(mode: BattleMode): MapLandCellDimens
     );
     if (demoFallback !== null) return demoFallback;
   }
-  return getDefaultMapLandDimensions();
+  return getModeDefaultMapLandDimensions(mode);
 }
 
 export function saveMapLandDimensions(

@@ -17,7 +17,7 @@ import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { TerrainMapShape } from '../types/terrain';
 import {
   type BattlePreset,
-  getDefaultPreset,
+  getModeDefaultPreset,
   saveSelectedPresetName,
 } from './battlePresets';
 
@@ -200,7 +200,7 @@ export function useGameCanvasBattleSettings({
   }
 
   function resetDemoDefaults(): void {
-    applyPreset(getDefaultPreset());
+    applyPreset(getModeDefaultPreset(currentBattleMode.value));
   }
 
   return {
