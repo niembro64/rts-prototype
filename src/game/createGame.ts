@@ -1,6 +1,10 @@
 import { RtsScene3D } from './scenes/RtsScene3D';
 import { ThreeApp } from './render3d/ThreeApp';
 import { MAP_BG_COLOR, hexToStr } from '../config';
+import {
+  acquireRendererSlot,
+  releaseRendererSlot,
+} from './lifecycle/sessionSingleton';
 
 export type { GameConfig, GameInstance, GameScene, GameApp } from '@/types/game';
 import type { GameConfig, GameInstance, GameScene } from '@/types/game';
@@ -60,10 +64,12 @@ export function createGame(config: GameConfig): GameInstance {
   };
   wireRestart(scene);
 
-  return {
+  const instance: GameInstance = {
     app,
     getScene: () => currentScene,
   };
+  acquireRendererSlot(instance);
+  return instance;
 }
 
 /**
@@ -82,4 +88,5 @@ export function destroyGame(
     scene.shutdown(opts);
   }
   instance.app.destroy();
+  releaseRendererSlot(instance);
 }

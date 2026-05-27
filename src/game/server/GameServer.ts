@@ -75,6 +75,10 @@ import {
   type CommandAuthority,
 } from './commandAuthority';
 import { sanitizeCommand } from './commandSanitizer';
+import {
+  acquireSimSlot,
+  releaseSimSlot,
+} from '../lifecycle/sessionSingleton';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -292,6 +296,7 @@ export class GameServer {
   // Start the game loop
   start(): void {
     if (this.stopped) return;
+    acquireSimSlot(this);
     const now = performance.now();
     this.lastSnapshotTime = 0; // Ensure first tick always emits a snapshot
     this.startupGateOpen = this.snapshotListeners.length === 0;
@@ -367,6 +372,7 @@ export class GameServer {
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
+    releaseSimSlot(this);
     this.tickLoop.stop();
     this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;
