@@ -78,6 +78,7 @@ function resolveClientHomingThrust(options: {
   const shot = proj.config.shot as ProjectileShot;
   const maxThrustAccel = getHomingMaxThrustAccel(shot);
   if (maxThrustAccel <= 0) return null;
+  const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
 
   if (proj.homingTargetId === NO_ENTITY_ID) {
     return null;
@@ -144,7 +145,7 @@ function resolveClientHomingThrust(options: {
       targetVelocity: _clientHomingTargetState.velocity,
       targetAcceleration: _clientHomingTargetState.acceleration,
       projectileSpeed,
-      gravity: GRAVITY,
+      gravity: projectileGravity,
       preferLateSolution: false,
       maxTimeSec: remainingSec,
     }, _clientHomingIntercept);
@@ -161,7 +162,7 @@ function resolveClientHomingThrust(options: {
     position.x, position.y, position.z,
     proj.homingTurnRate ?? 0,
     maxThrustAccel,
-    GRAVITY,
+    projectileGravity,
     dt,
   );
   _clientThrustResult.x = thrust.thrustX;
@@ -196,7 +197,8 @@ export function applyClientProjectilePrediction(options: {
 
   const dgunProjectile = entity.dgunProjectile;
   const isDGunWave = dgunProjectile !== null && dgunProjectile.isDGun === true;
-  const projectileGravity = GRAVITY;
+  const shot = proj.config.shot as ProjectileShot;
+  const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
   const groundOffset = dgunProjectile !== null
     ? dgunProjectile.groundOffset
     : DGUN_TERRAIN_FOLLOW_HEIGHT;
@@ -241,7 +243,6 @@ export function applyClientProjectilePrediction(options: {
     const targetY = position.y + proj.velocityY * dt + aNetY * halfDtSq;
     const terrainTargetZ =
       getSurfaceHeight(targetX, targetY, mapWidth, mapHeight, LAND_CELL_SIZE) + groundOffset;
-    const shot = proj.config.shot as ProjectileShot;
     aNetZ += computeTerrainFollowVerticalThrustAccel({
       positionZ: position.z,
       velocityZ: proj.velocityZ,

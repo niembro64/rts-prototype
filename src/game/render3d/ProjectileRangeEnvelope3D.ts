@@ -332,7 +332,7 @@ export class ProjectileRangeEnvelope3D {
       targetVelocity: _rangeTargetState.velocity,
       targetAcceleration: _rangeTargetState.acceleration,
       projectileSpeed: speed,
-      gravity: GRAVITY,
+      gravity: GRAVITY * shot.gravityForceMultiplier,
       preferLateSolution: false,
       maxTimeSec: Number.isFinite(lifeMs) ? lifeMs / 1000 : 0,
     }, _rangeIntercept);

@@ -35,8 +35,9 @@ function effectiveBallisticBaseRange(config: TurretConfig): number {
   const shot = config.shot;
   if (!shot || !isProjectileShot(shot) || shot.mass <= 1e-6) return config.range;
   const speed = shot.launchForce / shot.mass;
-  if (!Number.isFinite(speed) || speed <= 1e-6 || GRAVITY <= 0) return config.range;
-  const flatGroundMaxRange = (speed * speed) / GRAVITY;
+  const shotGravity = GRAVITY * shot.gravityForceMultiplier;
+  if (!Number.isFinite(speed) || speed <= 1e-6 || shotGravity <= 0) return config.range;
+  const flatGroundMaxRange = (speed * speed) / shotGravity;
   if (!Number.isFinite(flatGroundMaxRange) || flatGroundMaxRange <= 0) return config.range;
   return Math.min(config.range, flatGroundMaxRange);
 }

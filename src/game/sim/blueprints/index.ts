@@ -390,6 +390,7 @@ function buildShotConfig(
       radius: shotBlueprint.radius,
       width: shotBlueprint.width,
       damageSphere: { radius: shotBlueprint.damageSphere.radius },
+      gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
     };
     return shot;
   }
@@ -405,6 +406,7 @@ function buildShotConfig(
       width: shotBlueprint.width,
       damageSphere: { radius: shotBlueprint.damageSphere.radius },
       duration: shotBlueprint.duration,
+      gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
     };
     return shot;
   }
@@ -423,6 +425,7 @@ function buildShotConfig(
       : undefined,
     homingTurnRate: shotBlueprint.homingTurnRate ?? undefined,
     homingThrust: shotBlueprint.homingThrust ?? undefined,
+    gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
     submunitions: shotBlueprint.submunitions ?? undefined,
     smokeTrail: shotBlueprint.smokeTrail ?? undefined,
   };

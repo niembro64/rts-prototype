@@ -626,7 +626,7 @@ function solveProjectileBallisticAim(
     out.originAcceleration.y,
     out.originAcceleration.z,
     getProjectileLaunchSpeed(shot),
-    GRAVITY,
+    GRAVITY * shot.gravityForceMultiplier,
     getBallisticArcPreference(weapon.config),
     getProjectileMaxTimeSec(shot),
     weapon.rotation,

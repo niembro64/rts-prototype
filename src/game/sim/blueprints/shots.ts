@@ -18,10 +18,11 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'submunitions',
   'homingTurnRate',
   'homingThrust',
+  'gravityForceMultiplier',
   'smokeTrail',
 ] as const;
 
-const LINE_EXPLICIT_FIELDS = ['hitSound'] as const;
+const LINE_EXPLICIT_FIELDS = ['hitSound', 'gravityForceMultiplier'] as const;
 
 export const SHOT_BLUEPRINTS = resolveBlueprintRefs(
   rawShotBlueprints,

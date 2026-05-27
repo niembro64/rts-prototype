@@ -240,6 +240,9 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   const shot = proj.config.shot as ProjectileShot;
   if ((shot.homingTurnRate ?? 0) > 0 || proj.homingTargetId !== NO_ENTITY_ID) return false;
   if (proj.maxHits !== 1) return false;
+  // Packed pool's batch kernel hardcodes GRAVITY; any shot that wants a
+  // different gravity must run through the per-projectile JS path.
+  if (shot.gravityForceMultiplier !== 1) return false;
   return true;
 }
 
@@ -790,7 +793,8 @@ function _updateTravelingProjectilesJS(world: WorldState, dtMs: number, dtSec: n
     const isDGunWave = proj.projectileType === 'projectile' &&
       dgunProjectile !== null &&
       dgunProjectile.isDGun === true;
-    const projectileGravity = GRAVITY;
+    const shotConfig = proj.config.shot as ProjectileShot;
+    const projectileGravity = GRAVITY * shotConfig.gravityForceMultiplier;
 
     // Per-tick acceleration. Gravity and thrust combine before
     // integration so guided / terrain-follow projectiles spend engine

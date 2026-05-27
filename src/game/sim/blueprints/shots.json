@@ -18,6 +18,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "mediumShot": {
@@ -39,6 +40,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "lightRocket": {
@@ -61,6 +63,7 @@
     "submunitions": null,
     "homingTurnRate": 0.7,
     "homingThrust": 5000,
+    "gravityForceMultiplier": 0,
     "smokeTrail": null
   },
   "fastRocket": {
@@ -83,6 +86,7 @@
     "submunitions": null,
     "homingTurnRate": 10,
     "homingThrust": 100000,
+    "gravityForceMultiplier": 0,
     "smokeTrail": null
   },
   "heavyShot": {
@@ -104,6 +108,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "mortarShot": {
@@ -131,6 +136,7 @@
     },
     "homingTurnRate": null,
     "homingThrust": null,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "megaMortarShot": {
@@ -158,6 +164,7 @@
     },
     "homingTurnRate": null,
     "homingThrust": null,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "disruptorShot": {
@@ -179,6 +186,7 @@
     "submunitions": null,
     "homingTurnRate": null,
     "homingThrust": null,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "miniBeamShot": {
@@ -194,7 +202,8 @@
     "width": 3,
     "damageSphere": {
       "radius": 6
-    }
+    },
+    "gravityForceMultiplier": 0
   },
   "beamShot": {
     "type": "beam",
@@ -209,7 +218,8 @@
     "width": 6,
     "damageSphere": {
       "radius": 12
-    }
+    },
+    "gravityForceMultiplier": 0
   },
   "megaBeamShot": {
     "type": "beam",
@@ -224,7 +234,8 @@
     "width": 16,
     "damageSphere": {
       "radius": 32
-    }
+    },
+    "gravityForceMultiplier": 0
   },
   "towerBeamShot": {
     "type": "beam",
@@ -239,6 +250,7 @@
     "width": 16,
     "damageSphere": {
       "radius": 32
-    }
+    },
+    "gravityForceMultiplier": 0
   }
 }
