@@ -1,19 +1,27 @@
 // BuildGhost3D — translucent footprint preview for build mode in the
 // 3D scene. Ground-cell colors describe only placement/resource facts:
-// green = buildable ground, red = blocked/unbuildable ground,
-// blue = unused metal-deposit cells. Builder range is
-// shown separately because the builder can move to the site.
+// green = buildable ground, red = blocked/unbuildable ground. The
+// always-built deposit overlay (a separate group on the same instance)
+// shows the inset blue markers for every metal-deposit cell on the map;
+// its visibility is driven externally by setBuildGridOverlayVisible so
+// the same overlay activates both for build mode and for the DEBUG: BUILD
+// toggle. Builder range is shown separately because the builder can move
+// to the site.
 //
-// Ownership: Input3DManager drives it (call setTarget on mouse move,
-// hide on mode exit). The meshes are parented to the world group so
-// they track camera pan/orbit naturally.
+// Ownership: Input3DManager drives the footprint preview (setTarget on
+// mouse move, hide on mode exit). The scene render phase drives the
+// deposit overlay's visibility every frame. Everything is parented to
+// the world group so it tracks camera pan/orbit naturally.
 
 import * as THREE from 'three';
 import type { Entity, BuildingType } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
-import { METAL_DEPOSIT_CONFIG } from '@/metalDepositConfig';
+import {
+  METAL_DEPOSIT_CONFIG,
+  type MetalDeposit,
+} from '@/metalDepositConfig';
 import { RADAR_VISION_RADIUS } from '../network/stateSerializerVisibility';
 import {
   type BuildPlacementCellDiagnostic,
@@ -45,7 +53,16 @@ type CellMaterialPair = {
 export class BuildGhost3D {
   private world: THREE.Group;
   private getGroundHeight: GroundHeightLookup;
+  /** Footprint preview group — shown only while the player is actively
+   *  hovering a build target (setTarget). */
   private group = new THREE.Group();
+  /** Deposit-cell overlay group — built once from the deposit list at
+   *  construction, visibility flipped externally each frame. Lives outside
+   *  the footprint group so it can be shown without an active build
+   *  target (e.g. while DEBUG: BUILD is on). */
+  private depositOverlayGroup = new THREE.Group();
+  private depositOverlayMat: THREE.LineBasicMaterial | null = null;
+  private depositOverlayGeom: THREE.BufferGeometry | null = null;
 
   /** Flat footprint rectangle (scaled to the current building type). */
   private footprint: THREE.Mesh;
@@ -61,8 +78,6 @@ export class BuildGhost3D {
   private cellBorderGeom: THREE.BufferGeometry;
   private cellMeshes: THREE.Mesh[] = [];
   private cellBorders: THREE.LineSegments[] = [];
-  private depositCellMeshes: THREE.Mesh[] = [];
-  private depositCellBorders: THREE.LineSegments[] = [];
   private lastTargetKey = '';
   private lastDiagnostics?: BuildPlacementDiagnostics;
 
@@ -71,10 +86,8 @@ export class BuildGhost3D {
   private footMatOk: THREE.MeshBasicMaterial;
   private footMatBad: THREE.MeshBasicMaterial;
   private cellMatOk: THREE.MeshBasicMaterial;
-  private cellMatMetal: THREE.MeshBasicMaterial;
   private cellMatBad: THREE.MeshBasicMaterial;
   private cellBorderMatOk: THREE.LineBasicMaterial;
-  private cellBorderMatMetal: THREE.LineBasicMaterial;
   private cellBorderMatBad: THREE.LineBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
   private radarRingMat: THREE.MeshBasicMaterial;
@@ -83,7 +96,11 @@ export class BuildGhost3D {
   // Reusable scratch arrays.
   private _linePositions = new Float32Array(6);
 
-  constructor(world: THREE.Group, getGroundHeight: GroundHeightLookup = () => 0) {
+  constructor(
+    world: THREE.Group,
+    getGroundHeight: GroundHeightLookup = () => 0,
+    deposits: ReadonlyArray<MetalDeposit> = [],
+  ) {
     this.world = world;
     this.getGroundHeight = getGroundHeight;
 
@@ -108,13 +125,6 @@ export class BuildGhost3D {
       side: THREE.DoubleSide,
       toneMapped: false,
     });
-    this.cellMatMetal = new THREE.MeshBasicMaterial({
-      color: COLORS.effects.buildGhost.cellMetal.colorHex,
-      transparent: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
     this.cellMatBad = new THREE.MeshBasicMaterial({
       color: COLORS.effects.buildGhost.cellBad.colorHex,
       transparent: false,
@@ -124,12 +134,6 @@ export class BuildGhost3D {
     });
     this.cellBorderMatOk = new THREE.LineBasicMaterial({
       color: COLORS.effects.buildGhost.cellBorderOk.colorHex,
-      transparent: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    this.cellBorderMatMetal = new THREE.LineBasicMaterial({
-      color: COLORS.effects.buildGhost.cellBorderMetal.colorHex,
       transparent: false,
       depthWrite: false,
       toneMapped: false,
@@ -197,6 +201,59 @@ export class BuildGhost3D {
 
     this.group.visible = false;
     this.world.add(this.group);
+
+    this.buildDepositOverlay(deposits);
+    this.depositOverlayGroup.visible = false;
+    this.world.add(this.depositOverlayGroup);
+  }
+
+  /** Show/hide the always-built deposit-cell overlay. Driven externally
+   *  so the same overlay activates for both build mode and the DEBUG:
+   *  BUILD toggle. */
+  setBuildGridOverlayVisible(visible: boolean): void {
+    if (this.depositOverlayGroup.visible === visible) return;
+    this.depositOverlayGroup.visible = visible;
+  }
+
+  /** Build one merged LineSegments mesh containing the inset blue border
+   *  for every metal-deposit cell on the map. Heights are baked from the
+   *  terrain lookup at construction; deposit terrain is pre-flattened, so
+   *  these heights never change at runtime. */
+  private buildDepositOverlay(deposits: ReadonlyArray<MetalDeposit>): void {
+    if (deposits.length === 0) return;
+    const insetHalf = (BUILD_GRID_CELL_SIZE / 2) * METAL_DEPOSIT_BORDER_INSET;
+    const positions: number[] = [];
+    for (const deposit of deposits) {
+      for (const cell of deposit.cells) {
+        const y = this.getGroundHeight(cell.x, cell.y) + METAL_DEPOSIT_CELL_BORDER_Y;
+        const x = cell.x;
+        const z = cell.y;
+        const xMin = x - insetHalf;
+        const xMax = x + insetHalf;
+        const zMin = z - insetHalf;
+        const zMax = z + insetHalf;
+        positions.push(
+          xMin, y, zMin, xMax, y, zMin,
+          xMax, y, zMin, xMax, y, zMax,
+          xMax, y, zMax, xMin, y, zMax,
+          xMin, y, zMax, xMin, y, zMin,
+        );
+      }
+    }
+    if (positions.length === 0) return;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: COLORS.effects.buildGhost.cellBorderMetal.colorHex,
+      transparent: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const mesh = new THREE.LineSegments(geom, mat);
+    mesh.renderOrder = 32;
+    this.depositOverlayGroup.add(mesh);
+    this.depositOverlayGeom = geom;
+    this.depositOverlayMat = mat;
   }
 
   /** Update the ghost position + styling. Sim y maps to world z on
@@ -303,13 +360,12 @@ export class BuildGhost3D {
     if (cell.blocking) return { fill: this.cellMatBad, border: this.cellBorderMatBad };
     // metalCovered cells keep the green buildability border so the player
     // can read placement state even when every footprint cell is on a
-    // deposit (extractor case). The deposit itself is signalled by the
-    // separate inset blue markers from updateMetalDepositCells.
+    // deposit (extractor case). Deposit markers come from the always-built
+    // overlay (depositOverlayGroup), driven externally.
     return { fill: this.cellMatOk, border: this.cellBorderMatOk };
   }
 
   private updateDiagnosticCells(diagnostics?: BuildPlacementDiagnostics): boolean {
-    this.updateMetalDepositCells(diagnostics?.metalDepositCells);
     const cells = diagnostics?.cells ?? [];
     while (this.cellMeshes.length < cells.length) {
       const mesh = new THREE.Mesh(this.cellGeom, this.cellMatOk);
@@ -355,63 +411,22 @@ export class BuildGhost3D {
     return cells.length > 0;
   }
 
-  private updateMetalDepositCells(cells: BuildPlacementCellDiagnostic[] | null | undefined): void {
-    const depositCells = cells ?? [];
-    while (this.depositCellMeshes.length < depositCells.length) {
-      const mesh = new THREE.Mesh(this.cellGeom, this.cellMatMetal);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.renderOrder = 28;
-      this.group.add(mesh);
-      this.depositCellMeshes.push(mesh);
-
-      const border = new THREE.LineSegments(this.cellBorderGeom, this.cellBorderMatMetal);
-      border.rotation.x = -Math.PI / 2;
-      // Inset the deposit border so it nests inside the footprint cell's
-      // full-size green/red border, letting both signals stay visible on
-      // a cell that's both inside the build footprint AND on a deposit.
-      border.scale.setScalar(METAL_DEPOSIT_BORDER_INSET);
-      // Render after the footprint border (31) so the inset blue sits on
-      // top of any same-Y overlap.
-      border.renderOrder = 32;
-      this.group.add(border);
-      this.depositCellBorders.push(border);
-    }
-
-    for (let i = 0; i < this.depositCellMeshes.length; i++) {
-      const mesh = this.depositCellMeshes[i];
-      const border = this.depositCellBorders[i];
-      const cell = depositCells[i];
-      if (!cell) {
-        mesh.visible = false;
-        if (border) border.visible = false;
-        continue;
-      }
-      const y = this.getGroundHeight(cell.x, cell.y);
-      // Border-only: skip the opaque fill so the metal deposit
-      // visual underneath stays fully visible.
-      mesh.visible = false;
-      if (border) {
-        border.position.set(cell.x, y + METAL_DEPOSIT_CELL_BORDER_Y, cell.y);
-        border.visible = true;
-      }
-    }
-  }
-
   destroy(): void {
     this.world.remove(this.group);
+    this.world.remove(this.depositOverlayGroup);
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
     (this.rangeRing.geometry as THREE.BufferGeometry).dispose();
     (this.radarRangeRing.geometry as THREE.BufferGeometry).dispose();
     this.cellGeom.dispose();
     this.cellBorderGeom.dispose();
     this.rangeLineGeom.dispose();
+    this.depositOverlayGeom?.dispose();
+    this.depositOverlayMat?.dispose();
     this.footMatOk.dispose();
     this.footMatBad.dispose();
     this.cellMatOk.dispose();
-    this.cellMatMetal.dispose();
     this.cellMatBad.dispose();
     this.cellBorderMatOk.dispose();
-    this.cellBorderMatMetal.dispose();
     this.cellBorderMatBad.dispose();
     this.ringMat.dispose();
     this.radarRingMat.dispose();

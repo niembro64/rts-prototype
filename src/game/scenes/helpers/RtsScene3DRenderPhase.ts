@@ -1,5 +1,11 @@
 import * as THREE from 'three';
-import { getFogClouds, getFogShade, getRadarBoundary, getSightBoundary } from '@/clientBarConfig';
+import {
+  getBuildGridDebug,
+  getFogClouds,
+  getFogShade,
+  getRadarBoundary,
+  getSightBoundary,
+} from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
@@ -11,6 +17,7 @@ import type { Input3DManager } from '../../render3d/Input3DManager';
 import type { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import type { ForceFieldRenderer3D } from '../../render3d/ForceFieldRenderer3D';
 import type { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
+import type { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import type { MetalDepositRenderer3D } from '../../render3d/MetalDepositRenderer3D';
 import type { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
 import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
@@ -42,6 +49,7 @@ export type RtsScene3DRenderPhaseResources = {
   beamRenderer: BeamRenderer3D;
   forceFieldRenderer: ForceFieldRenderer3D;
   terrainTileRenderer: TerrainTileRenderer3D;
+  buildGhostRenderer: BuildGhost3D;
   metalDepositRenderer: MetalDepositRenderer3D | null;
   environmentPropRenderer: EnvironmentPropRenderer3D | null;
   contactShadowRenderer: ContactShadowRenderer3D | null;
@@ -139,6 +147,7 @@ export class RtsScene3DRenderPhase {
       beamRenderer,
       forceFieldRenderer,
       terrainTileRenderer,
+      buildGhostRenderer,
       metalDepositRenderer,
       environmentPropRenderer,
       contactShadowRenderer,
@@ -207,6 +216,15 @@ export class RtsScene3DRenderPhase {
       this.renderFrameIndex,
       this.renderScope,
     );
+    // Single source of truth for whether the build-grid visualization is
+    // visible: the DEBUG: BUILD toggle OR an active build mode. Both the
+    // terrain shader overlay (red/green/blue painted on terrain) and the
+    // build ghost's deposit overlay (inset blue markers above the coins)
+    // read from this same flag.
+    const inputManager = this.getInputManager();
+    const isInBuildMode = inputManager?.isInBuildMode() === true;
+    terrainTileRenderer.setBuildModeActive(isInBuildMode);
+    buildGhostRenderer.setBuildGridOverlayVisible(getBuildGridDebug() || isInBuildMode);
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,
@@ -290,7 +308,6 @@ export class RtsScene3DRenderPhase {
       this.smokeTrailAccumMs = 0;
     }
 
-    const inputManager = this.getInputManager();
     if (inputManager) {
       lineDragRenderer.update(inputManager.getLineDragState());
     }

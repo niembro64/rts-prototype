@@ -509,6 +509,7 @@ export class RtsScene3D {
     this.buildGhostRenderer = new BuildGhost3D(
       this.threeApp.world,
       (x, y) => getTerrainMeshHeight(x, y, this.mapWidth, this.mapHeight),
+      this.metalDeposits,
     );
     this.sprayRenderer = new SprayRenderer3D(this.threeApp.world);
     this.smokeTrailRenderer = new SmokeTrail3D(this.threeApp.world);
@@ -618,6 +619,7 @@ export class RtsScene3D {
         beamRenderer: this.beamRenderer,
         forceFieldRenderer: this.forceFieldRenderer,
         terrainTileRenderer: this.terrainTileRenderer,
+        buildGhostRenderer: this.buildGhostRenderer,
         metalDepositRenderer: this.metalDepositRenderer,
         environmentPropRenderer: this.environmentPropRenderer,
         contactShadowRenderer: this.contactShadowRenderer,
