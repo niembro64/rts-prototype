@@ -36,6 +36,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'excludeLockOnLevel0FriendsAndEnemies',
   'excludeLockOnLevel0Entities',
   'excludeLockOnLevel1Buildings',
+  'excludeLockOnLevel1Towers',
   'excludeLockOnLevel1Units',
   'excludeLockOnLevel1Turrets',
   'hostDirected',
@@ -125,6 +126,7 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     TURRET_LOCK_ON_ENTITY_FAMILY_SET,
   );
   assertStringArray(label, 'excludeLockOnLevel1Buildings', blueprint.excludeLockOnLevel1Buildings);
+  assertStringArray(label, 'excludeLockOnLevel1Towers', blueprint.excludeLockOnLevel1Towers);
   assertStringArray(label, 'excludeLockOnLevel1Units', blueprint.excludeLockOnLevel1Units);
   assertStringArray(label, 'excludeLockOnLevel1Turrets', blueprint.excludeLockOnLevel1Turrets);
 }

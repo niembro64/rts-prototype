@@ -6688,6 +6688,7 @@ pub const CT_LOCK_ON_REL_EXCLUDE_ENEMY: u8 = 1 << 1;
 pub const CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS: u8 = 1 << 0;
 pub const CT_LOCK_ON_FAM_EXCLUDE_UNITS: u8 = 1 << 1;
 pub const CT_LOCK_ON_FAM_EXCLUDE_TURRETS: u8 = 1 << 2;
+pub const CT_LOCK_ON_FAM_EXCLUDE_TOWERS: u8 = 1 << 3;
 
 // LOCK-ON-03 — Per-entity family encoding stamped on entity slab rows.
 // Zero is the cleared/unstamped sentinel so a stale row from
@@ -6695,6 +6696,7 @@ pub const CT_LOCK_ON_FAM_EXCLUDE_TURRETS: u8 = 1 << 2;
 pub const CT_ENTITY_FAMILY_NONE: u8 = 0;
 pub const CT_ENTITY_FAMILY_BUILDING: u8 = 1;
 pub const CT_ENTITY_FAMILY_UNIT: u8 = 2;
+pub const CT_ENTITY_FAMILY_TOWER: u8 = 3;
 
 // LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the entity has
 // no stamped blueprint id (unstamped row, or family == NONE). Kernels
@@ -6855,14 +6857,19 @@ struct CombatTargetingPool {
     // LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from
     // each turret blueprint's authored exclusion arrays.
     //   relationship_mask:   CT_LOCK_ON_REL_EXCLUDE_*  (friendly / enemy)
-    //   entity_family_mask:  CT_LOCK_ON_FAM_EXCLUDE_*  (buildings / units / turrets)
-    //   building / unit / turret named masks: bit (1 << wire_code) set
-    //     means "exclude the blueprint with this wire code". With u32
+    //   entity_family_mask:  CT_LOCK_ON_FAM_EXCLUDE_*  (buildings / towers / units / turrets)
+    //   building / tower / unit / turret named masks: bit (1 << wire_code)
+    //     set means "exclude the blueprint with this wire code". With u32
     //     bitmasks the per-family blueprint table is capped at 32 ids;
     //     the JS loader rejects new ids past that limit at startup.
     turret_lockon_relationship_mask: Vec<u8>,
     turret_lockon_entity_family_mask: Vec<u8>,
     turret_lockon_building_mask: Vec<u32>,
+    // Towers share the building wire-code space (a tower's blueprint
+    // name is a BuildingType), so the tower mask uses the same
+    // `entity_blueprint_code` lookup as buildings. The kernel picks
+    // which mask to consult based on the candidate's `entity_family`.
+    turret_lockon_tower_mask: Vec<u32>,
     turret_lockon_unit_mask: Vec<u32>,
     turret_lockon_turret_mask: Vec<u32>,
     // AIM-08.4 ballistic solver outputs. Written by the Rust solver
@@ -6965,6 +6972,7 @@ impl CombatTargetingPool {
             turret_lockon_relationship_mask: Vec::new(),
             turret_lockon_entity_family_mask: Vec::new(),
             turret_lockon_building_mask: Vec::new(),
+            turret_lockon_tower_mask: Vec::new(),
             turret_lockon_unit_mask: Vec::new(),
             turret_lockon_turret_mask: Vec::new(),
             turret_ballistic_has_solution: Vec::new(),
@@ -7072,6 +7080,7 @@ impl CombatTargetingPool {
             self.turret_lockon_entity_family_mask
                 .resize(turret_needed, 0);
             self.turret_lockon_building_mask.resize(turret_needed, 0);
+            self.turret_lockon_tower_mask.resize(turret_needed, 0);
             self.turret_lockon_unit_mask.resize(turret_needed, 0);
             self.turret_lockon_turret_mask.resize(turret_needed, 0);
             self.turret_ballistic_has_solution.resize(turret_needed, 0);
@@ -7422,6 +7431,7 @@ pub fn combat_targeting_set_turret(
     lockon_relationship_mask: u8,
     lockon_entity_family_mask: u8,
     lockon_building_mask: u32,
+    lockon_tower_mask: u32,
     lockon_unit_mask: u32,
     lockon_turret_mask: u32,
 ) {
@@ -7472,6 +7482,7 @@ pub fn combat_targeting_set_turret(
     pool.turret_lockon_relationship_mask[global_idx] = lockon_relationship_mask;
     pool.turret_lockon_entity_family_mask[global_idx] = lockon_entity_family_mask;
     pool.turret_lockon_building_mask[global_idx] = lockon_building_mask;
+    pool.turret_lockon_tower_mask[global_idx] = lockon_tower_mask;
     pool.turret_lockon_unit_mask[global_idx] = lockon_unit_mask;
     pool.turret_lockon_turret_mask[global_idx] = lockon_turret_mask;
     combat_targeting_write_no_ballistic_solution(
@@ -8586,6 +8597,15 @@ fn combat_targeting_turret_lockon_allows_body_entity(
                 == 0
                 && !combat_targeting_level1_mask_excludes(
                     pool.turret_lockon_building_mask[source_turret_idx],
+                    pool.entity_blueprint_code[target_entity_slot],
+                )
+        }
+        CT_ENTITY_FAMILY_TOWER => {
+            (pool.turret_lockon_entity_family_mask[source_turret_idx]
+                & CT_LOCK_ON_FAM_EXCLUDE_TOWERS)
+                == 0
+                && !combat_targeting_level1_mask_excludes(
+                    pool.turret_lockon_tower_mask[source_turret_idx],
                     pool.entity_blueprint_code[target_entity_slot],
                 )
         }

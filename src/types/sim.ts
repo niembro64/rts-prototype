@@ -401,6 +401,7 @@ export type TurretConfig = {
   lockOnRelationshipExcludeMask: number;
   lockOnEntityFamilyExcludeMask: number;
   lockOnBuildingExcludeMask: number;
+  lockOnTowerExcludeMask: number;
   lockOnUnitExcludeMask: number;
   lockOnTurretExcludeMask: number;
 };

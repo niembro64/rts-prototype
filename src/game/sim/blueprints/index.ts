@@ -60,15 +60,18 @@ import {
   CT_LOCK_ON_REL_EXCLUDE_ENEMY,
   CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
   CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS,
+  CT_LOCK_ON_FAM_EXCLUDE_TOWERS,
   CT_LOCK_ON_FAM_EXCLUDE_UNITS,
   CT_LOCK_ON_FAM_EXCLUDE_TURRETS,
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
 } from '../../sim-wasm/init';
+import { isTowerBuildingType, type BuildingType } from '../../../types/buildingTypes';
 
 type LockOnMasks = {
   relationship: number;
   entityFamily: number;
   building: number;
+  tower: number;
   unit: number;
   turret: number;
 };
@@ -115,6 +118,7 @@ function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks
   let entityFamily = 0;
   for (const f of turretBlueprint.excludeLockOnLevel0Entities) {
     if (f === 'buildings') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS;
+    else if (f === 'towers') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TOWERS;
     else if (f === 'units') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_UNITS;
     else if (f === 'turrets') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TURRETS;
     else {
@@ -130,6 +134,19 @@ function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks
     buildingTypeToCode,
     BUILDING_TYPE_UNKNOWN,
     'building',
+  );
+  // Towers share the building wire-code space (a tower's blueprint name is
+  // a BuildingType — e.g. 'factory', 'megaBeamTower'), so the level-1
+  // tower mask uses the same wire-code lookup as buildings. The Rust
+  // kernel reads tower vs. building from the candidate's entity_family
+  // and consults the appropriate mask.
+  const tower = lockOnLevel1Mask(
+    id,
+    'excludeLockOnLevel1Towers',
+    turretBlueprint.excludeLockOnLevel1Towers,
+    buildingTypeToCode,
+    BUILDING_TYPE_UNKNOWN,
+    'tower',
   );
   const unit = lockOnLevel1Mask(
     id,
@@ -147,7 +164,7 @@ function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks
     TURRET_ID_UNKNOWN,
     'turret',
   );
-  return { relationship, entityFamily, building, unit, turret };
+  return { relationship, entityFamily, building, tower, unit, turret };
 }
 
 function validateStableWireIds(
@@ -544,6 +561,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     lockOnRelationshipExcludeMask: lockOn.relationship,
     lockOnEntityFamilyExcludeMask: lockOn.entityFamily,
     lockOnBuildingExcludeMask: lockOn.building,
+    lockOnTowerExcludeMask: lockOn.tower,
     lockOnUnitExcludeMask: lockOn.unit,
     lockOnTurretExcludeMask: lockOn.turret,
   };
@@ -643,7 +661,16 @@ function assertLevel1IdsInSet(
     }
   }
 }
-const KNOWN_BUILDING_IDS: ReadonlySet<string> = new Set(Object.keys(BUILDING_BLUEPRINTS));
+const KNOWN_BUILDING_IDS: ReadonlySet<string> = new Set(
+  Object.keys(BUILDING_BLUEPRINTS).filter(
+    (id) => !isTowerBuildingType(id as BuildingType),
+  ),
+);
+const KNOWN_TOWER_IDS: ReadonlySet<string> = new Set(
+  Object.keys(BUILDING_BLUEPRINTS).filter((id) =>
+    isTowerBuildingType(id as BuildingType),
+  ),
+);
 const KNOWN_UNIT_IDS: ReadonlySet<string> = new Set(Object.keys(UNIT_BLUEPRINTS));
 const KNOWN_TURRET_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
 for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
@@ -653,6 +680,13 @@ for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
     bp.excludeLockOnLevel1Buildings,
     KNOWN_BUILDING_IDS,
     'building',
+  );
+  assertLevel1IdsInSet(
+    id,
+    'excludeLockOnLevel1Towers',
+    bp.excludeLockOnLevel1Towers,
+    KNOWN_TOWER_IDS,
+    'tower',
   );
   assertLevel1IdsInSet(
     id,

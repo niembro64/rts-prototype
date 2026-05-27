@@ -38,6 +38,7 @@ import {
   CT_BLUEPRINT_CODE_NONE,
   CT_ENTITY_FAMILY_BUILDING,
   CT_ENTITY_FAMILY_NONE,
+  CT_ENTITY_FAMILY_TOWER,
   CT_ENTITY_FAMILY_UNIT,
   CT_ENTITY_FLAG_ALIVE,
   CT_ENTITY_FLAG_HAS_COMBAT,
@@ -524,7 +525,8 @@ function stampCombatTargetingEntityInto(
     entityFamily = CT_ENTITY_FAMILY_UNIT;
     entityBlueprintCode = unitTypeToCode(entity.unit.unitType);
   } else if (entity.building) {
-    entityFamily = CT_ENTITY_FAMILY_BUILDING;
+    entityFamily =
+      entity.type === 'tower' ? CT_ENTITY_FAMILY_TOWER : CT_ENTITY_FAMILY_BUILDING;
     const buildingType = entity.buildingType;
     entityBlueprintCode =
       buildingType !== null ? buildingTypeToCode(buildingType) : CT_BLUEPRINT_CODE_NONE;
@@ -672,6 +674,7 @@ function stampCombatTargetingEntityInto(
       t.config.lockOnRelationshipExcludeMask,
       t.config.lockOnEntityFamilyExcludeMask,
       t.config.lockOnBuildingExcludeMask,
+      t.config.lockOnTowerExcludeMask,
       t.config.lockOnUnitExcludeMask,
       t.config.lockOnTurretExcludeMask,
     );

@@ -300,6 +300,9 @@ function describeLockOnExclusions(blueprint: ReturnType<typeof getTurretBlueprin
   if (blueprint.excludeLockOnLevel1Buildings.length > 0) {
     items.push(stat('Buildings', blueprint.excludeLockOnLevel1Buildings.join(', ')));
   }
+  if (blueprint.excludeLockOnLevel1Towers.length > 0) {
+    items.push(stat('Towers', blueprint.excludeLockOnLevel1Towers.join(', ')));
+  }
   if (blueprint.excludeLockOnLevel1Units.length > 0) {
     items.push(stat('Units', blueprint.excludeLockOnLevel1Units.join(', ')));
   }

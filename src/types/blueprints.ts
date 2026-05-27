@@ -84,9 +84,13 @@ export type TurretLockOnRelationshipExclusion =
 export const TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS: readonly TurretLockOnRelationshipExclusion[] =
   ['friendly_entities', 'enemy_entities'];
 
-export type TurretLockOnEntityFamilyExclusion = 'buildings' | 'units' | 'turrets';
+export type TurretLockOnEntityFamilyExclusion =
+  | 'buildings'
+  | 'towers'
+  | 'units'
+  | 'turrets';
 export const TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS: readonly TurretLockOnEntityFamilyExclusion[] =
-  ['buildings', 'units', 'turrets'];
+  ['buildings', 'towers', 'units', 'turrets'];
 
 export type TurretBlueprint = {
   id: TurretId;
@@ -181,6 +185,7 @@ export type TurretBlueprint = {
    *  validated against the corresponding blueprint id set at startup;
    *  unknown ids fail validation rather than silently dropping. */
   excludeLockOnLevel1Buildings: string[];
+  excludeLockOnLevel1Towers: string[];
   excludeLockOnLevel1Units: string[];
   excludeLockOnLevel1Turrets: string[];
   /** Host-directed vs fully-autonomous targeting policy. A

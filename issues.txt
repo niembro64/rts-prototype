@@ -62,34 +62,6 @@ comments added in the TS-level peer-type commit (036bbd79) — they're
 transitional and the design philosophy already says towers are peers.
 
 --------------------------------------------------------------------------------
-TOWER-02 — TurretConfig: add lockOnTowerExcludeMask
---------------------------------------------------------------------------------
-src/types/sim.ts:401-405 has lockOnRelationshipExcludeMask,
-lockOnEntityFamilyExcludeMask, lockOnBuildingExcludeMask,
-lockOnUnitExcludeMask, lockOnTurretExcludeMask — but no
-lockOnTowerExcludeMask. The design doc (Atomic Gameplay Pieces ->
-exclusion hierarchy bullets) now enumerates `towers` as a level-0 entity
-family AND `exclude_lock_on_level_1_towers` as a level-1 list.
-
-Concrete work:
-- Add lockOnTowerExcludeMask to TurretConfig.
-- Add `'towers'` to the valid `exclude_lock_on_level_0_entities` values
-  in the turret blueprint schema.
-- Add `exclude_lock_on_level_1_towers: string[]` to the turret blueprint
-  schema.
-- Wire the new mask through the blueprint loader / compilation site
-  (search for where lockOnBuildingExcludeMask is populated).
-- Update the targeting kernel: when scanning candidates, candidates with
-  entity.type === 'tower' must be dropped by the new mask, not by the
-  building mask. This affects both the JS targeting paths and any
-  Rust-side acquisition kernel that reads these bits.
-- Update mirror-turret style blueprints (the design doc's example: "a
-  mirror turret that should lock only onto enemy turrets excludes
-  friendly_entities, units, towers, and buildings at level 0") — they
-  may need to grow the towers exclusion explicitly so nothing silently
-  changes behaviour.
-
---------------------------------------------------------------------------------
 TOWER-03 — Tower selection-panel commands: lock-on + self-destruct
 --------------------------------------------------------------------------------
 SelectionPanel.vue currently shows a tower selection's header + the
@@ -136,18 +108,6 @@ converter. Verify whether ON/OFF semantically makes sense for radar
 (active vs passive) and converter (consuming vs idle) before wiring the
 button — these may need their own ON/OFF effect handlers in
 buildingActiveState.ts.
-
---------------------------------------------------------------------------------
-TOWER-05 — Verify mirror-style turrets still target the right things
---------------------------------------------------------------------------------
-With towers now being entity.type === 'tower', any turret that today
-filters by `entity.type === 'building'` in its acquisition pass will
-silently skip towers. After TOWER-02 the masks are the right tool; before
-TOWER-02, double-check that the JS targeting paths in
-src/game/sim/combat/ accept tower entities as candidates anywhere they
-accept buildings. Today this works because towers ride the building
-caches, but it's a class of bug worth a deliberate audit when TOWER-02
-changes the exclusion hierarchy.
 
 
 ================================================================================

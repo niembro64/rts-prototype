@@ -1,6 +1,7 @@
 // Network entity creation helpers
 
 import type { Entity, BuildingType, Turret } from '../../sim/types';
+import { isTowerBuildingType } from '../../../types/buildingTypes';
 import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
@@ -362,10 +363,13 @@ function createBuildingFromNetwork(
   const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
   const height = config.gridHeight * BUILD_GRID_CELL_SIZE;
   const depth = config.gridDepth * BUILD_GRID_CELL_SIZE;
+  // Towers ride the building wire flag but carry entity.type === 'tower'
+  // so the client UI / selection / dispatch code can match on the same
+  // discriminator the server stamps in spawn.ts.
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
-    type: 'building',
+    type: isTowerBuildingType(buildingType) ? 'tower' : 'building',
     transform: createTransform(x, y, z, rotation),
     ownership: { playerId },
     selectable: { selected: false },

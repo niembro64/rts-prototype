@@ -51,6 +51,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -118,6 +119,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -177,6 +179,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -236,6 +239,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -292,6 +296,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -359,6 +364,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -426,6 +432,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -480,6 +487,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -539,8 +547,9 @@
       "lockOnType": "lockOnToTurret"
     },
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": ["buildings", "units"],
+    "excludeLockOnLevel0Entities": ["buildings", "towers", "units"],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -595,6 +604,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -649,6 +659,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -703,6 +714,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -777,6 +789,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -849,6 +862,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": [],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -903,6 +917,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -963,6 +978,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -1031,6 +1047,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
@@ -1087,6 +1104,7 @@
     "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
     "excludeLockOnLevel0Entities": [],
     "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
     "hostDirected": true
