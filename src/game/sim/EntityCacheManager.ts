@@ -166,14 +166,23 @@ export class EntityCacheManager {
           if (entity.builder) this.cachedBuilderUnits.push(entity);
           break;
         case 'building':
+        case 'tower':
+          // Towers and buildings share the static-entity caches —
+          // every getBuildings() / getBuildingsByPlayer() / health-bar
+          // / construction-shell consumer treats them identically.
+          // The entity.type discriminator differentiates them for
+          // selection-panel UI and combat targeting; everything else
+          // reads the building component the same way. The producer
+          // active-state caches (solar/wind/extractor/converter) are
+          // gated on buildingType, so towers naturally don't enter
+          // them. Factories (a tower-class buildingType) still ride
+          // the cachedFactoryBuildings list because the production
+          // queue lives on the entity.factory component.
           this.cachedBuildings.push(entity);
           this.cachedUnitsAndBuildings.push(entity);
           if (ownership !== null) {
             this.getOrCreateBuildingsByPlayer(ownership.playerId).push(entity);
           }
-          // Same logic as cachedDamagedUnits: include any construction
-          // shell, plus damaged complete buildings, so the shared
-          // construction lifecycle always has visible progress bars.
           if (
             entity.building
             && (

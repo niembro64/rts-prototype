@@ -27,8 +27,24 @@ const hasStoredControlGroups = computed(() =>
 const canStoreControlGroup = computed(() =>
   props.selection.unitCount > 0 || props.selection.hasFactory,
 );
+// Tower selections (fabricator + shooting towers) get the panel for
+// their host-level fire-control + production affordances. Pure-
+// infrastructure building selections currently have no actions wired
+// up (ON/OFF + self-destruct are tracked as a follow-up); the panel
+// stays hidden for those until their commands land.
+// See design_philosophy.html "Selection Menus Are Uniform Per Entity Type".
 const showPanel = computed(() =>
-  props.selection.unitCount > 0 || props.selection.hasFactory || hasStoredControlGroups.value,
+  props.selection.unitCount > 0
+  || props.selection.towerCount > 0
+  || props.selection.hasFactory
+  || hasStoredControlGroups.value,
+);
+// True iff the selection contains no movable unit at all — used to
+// fold the unit-only action groups (movement, build, commander
+// specials) out of view when only towers are selected.
+const isStaticOnlySelection = computed(() =>
+  props.selection.unitCount === 0
+  && (props.selection.towerCount > 0 || props.selection.buildingCount > 0),
 );
 const SELECTION_PANEL = COLORS.ui.selectionPanel;
 const BUTTON_COLORS = SELECTION_PANEL.buttons;
@@ -83,10 +99,20 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
 <template>
   <!-- OPTIONS PANEL (left side) -->
   <div v-if="showPanel" class="options-panel" :style="selectionPanelStyle">
-    <!-- Unit count display -->
+    <!-- Selection header. Per design_philosophy.html "Selection Menus
+         Are Uniform Per Entity Type": the header reflects the
+         selection's entity type. Commanders read as Commander,
+         fabricator-class towers as Fabricator, other towers as Tower,
+         pure-infrastructure buildings as Building, otherwise N units. -->
     <div class="panel-header">
       <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
       <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
+      <span v-else-if="selection.towerCount > 0 && selection.unitCount === 0" class="unit-type">
+        {{ selection.towerCount }} Tower{{ selection.towerCount > 1 ? 's' : '' }}
+      </span>
+      <span v-else-if="selection.buildingCount > 0 && selection.unitCount === 0 && selection.towerCount === 0" class="unit-type">
+        {{ selection.buildingCount }} Building{{ selection.buildingCount > 1 ? 's' : '' }}
+      </span>
       <span v-else class="unit-type">{{ selection.unitCount }} Unit{{ selection.unitCount > 1 ? 's' : '' }}</span>
     </div>
 
@@ -183,12 +209,22 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
           <span class="btn-label">Clear Q</span>
           <span class="btn-key">X</span>
         </button>
+      </div>
+    </div>
+
+    <!-- Fire control (units + towers). Lives outside the Movement
+         group because towers also expose fire-at-will / hold-fire.
+         See design_philosophy.html "Selection Menus Are Uniform Per
+         Entity Type": both unit and tower selection panels list a
+         fire-control toggle. -->
+    <div v-if="selection.hasFireControl" class="button-group">
+      <div class="group-label">{{ isStaticOnlySelection ? 'Tower' : 'Combat' }}</div>
+      <div class="buttons">
         <button
-          v-if="selection.hasFireControl"
           class="action-btn"
           :class="{ active: selection.fireEnabled }"
           :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
-          title="Toggle whether selected units are allowed to fire automatically"
+          title="Toggle whether the selection is allowed to fire automatically"
           @click="actions.toggleSelectedFire()"
         >
           <span class="btn-label">{{ selection.fireEnabled ? 'Fire' : 'Hold' }}</span>

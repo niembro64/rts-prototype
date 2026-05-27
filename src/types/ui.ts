@@ -16,7 +16,17 @@ export type ControlGroupInfo = {
 };
 
 export type SelectionInfo = {
+  // Per-type selection counts. The action panel branches on these so
+  // each entity type gets its own uniform action set
+  // (see design_philosophy.html "Selection Menus Are Uniform Per
+  // Entity Type"). towerCount counts selected entities whose
+  // entity.type === 'tower' (fabricators + shooting towers);
+  // buildingCount counts selected entities whose
+  // entity.type === 'building' (pure infrastructure: solar, wind,
+  // extractor, radar, converter).
   unitCount: number;
+  towerCount: number;
+  buildingCount: number;
   hasCommander: boolean;
   hasBuilder: boolean;
   hasDGun: boolean;

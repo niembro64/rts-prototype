@@ -65,7 +65,19 @@ export function buildSelectionInfo(
   inputState: InputState | undefined
 ): SelectionInfo {
   const selectedUnits = entitySource.getSelectedUnits();
-  const selectedBuildings = entitySource.getSelectedBuildings();
+  // getSelectedBuildings returns selected entities whose type is
+  // 'building' OR 'tower' (both are cached together). Split them here
+  // so the panel can render the uniform per-type action set required
+  // by design_philosophy.html "Selection Menus Are Uniform Per Entity
+  // Type".
+  const selectedStatic = entitySource.getSelectedBuildings();
+  const selectedTowers: typeof selectedStatic = [];
+  const selectedBuildings: typeof selectedStatic = [];
+  for (let i = 0; i < selectedStatic.length; i++) {
+    const e = selectedStatic[i];
+    if (e.type === 'tower') selectedTowers.push(e);
+    else if (e.type === 'building') selectedBuildings.push(e);
+  }
 
   // Check for capabilities. Every commander has a d-gun, so the
   // commander unit IS the dgunner — no second find call needed.
@@ -87,9 +99,22 @@ export function buildSelectionInfo(
       if (combat.fireEnabled === false) allFireEnabled = false;
     }
   }
+  // Towers carry the same combat/fire-control contract as units.
+  // Count their host-fire state into the same flags so the panel
+  // can toggle hold-fire on a tower selection the same way it does
+  // for a unit selection.
+  for (let i = 0; i < selectedTowers.length; i++) {
+    const combat = selectedTowers[i].combat;
+    if (combat && combat.turrets.length > 0) {
+      fireControlCount++;
+      if (combat.fireEnabled === false) allFireEnabled = false;
+    }
+  }
 
-  // Check for factory
-  const factory = selectedBuildings.find(b => b.factory !== null);
+  // The fabricator-class tower hosts production queues (it owns the
+  // factory component); shooting towers do not. The factory affordance
+  // therefore lives on the tower selection, not the building one.
+  const factory = selectedTowers.find(b => b.factory !== null);
 
   // Get factory queue info if factory is selected
   let factoryQueue: { unitId: string; label: string }[] | undefined;
@@ -108,6 +133,8 @@ export function buildSelectionInfo(
 
   return {
     unitCount: selectedUnits.length,
+    towerCount: selectedTowers.length,
+    buildingCount: selectedBuildings.length,
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
     hasDGun: dgunner !== undefined,
