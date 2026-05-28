@@ -792,10 +792,11 @@ export class Render3DEntities {
         this.barrelSpinState.delete(id);
       }
     }
-    // Drop barrel-spin state for units that no longer exist. Reuses
-    // the same `seen` set populated by the unit loop above — no
-    // separate sweep needed.
+    // Drop barrel-spin state and persisted turret-mount history for
+    // units that no longer exist. Reuses the same `seen` set populated
+    // by the unit loop above — no separate sweep needed.
     this.barrelSpinState.prune(seen);
+    this.turretMountCache.prune(seen);
     this.unitDetailInstances.flush(this.turretForceFieldPanelsEnabled);
   }
 

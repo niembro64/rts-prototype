@@ -140,17 +140,6 @@ SECTION B — MEMORY LEAKS
 balanced listeners/timers, per-id pruning, WebRTC teardown. Only the items below
 grow unbounded over a match.)
 
-B1. [MED] TurretMountCache3D.previous map never prunes dead entities.
-    LOCATION: src/game/render3d/TurretMountCache3D.ts:30 (previous map), written
-      :82-85; reset() at :37-39 clears only `current`. Owned by Render3DEntities
-      (:222), reset per-frame (:352). No prune() and no destroy().
-    LEAK: every distinct (entityId, turretIdx) ever written stays forever; dead
-      units' turret-mount history is never evicted. Grows with total turrets ever
-      spawned over a match.
-    FIX: add prune(seenIds) mirroring UnitBarrelSpinState3D.prune
-      (UnitBarrelSpinState3D.ts:89, called from Render3DEntities.ts:798) and call it
-      each frame against the live-entity set.
-
 B2. [LOW] HealthBar3D._seenEntityFrame grows per distinct entity id.
     LOCATION: src/game/render3d/HealthBar3D.ts:129 (map), set :215,:247; only
       .clear()'d on frame-token rollover :142-144 (~every 0x3fffffff frames ≈ 185
