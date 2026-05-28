@@ -5,7 +5,9 @@
   "defaultBuildingHudLayout": {
     "barsOffsetAboveTop": 12
   },
-  "barStackGapPx": 3,
+  "barStackGap": 3,
   "barStackRows": 3,
-  "nameGapAboveBarsPx": 4
+  "nameGapAboveBars": 4,
+  "fadeStartDistanceFrac": 0.5,
+  "fadeEndDistanceFrac": 0.85
 }

@@ -1046,6 +1046,12 @@ export class OrbitCamera {
     this.apply();
   }
 
+  /** Zoomed-all-the-way-out distance rail. HUD fade keys off this so
+   *  the fade window scales with map size instead of a fixed number. */
+  getMaxDistance(): number {
+    return this.maxDistance;
+  }
+
   setOrbitAngles(yaw: number, pitch: number): void {
     this.yaw = yaw;
     this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, pitch));

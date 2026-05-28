@@ -15,17 +15,11 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
-import { getEntityHudAnchorY, getEntityHudBarsBaseGapPx } from './HudAnchor';
-import type { HudScreenSpace } from './HudScreenSpace';
+import { getBuildingHudNameY, getUnitHudNameY } from './HudAnchor';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
-import { SHELL_BAR_PX_HEIGHT } from '@/shellConfig';
+import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
 import {
-  ENTITY_HUD_BAR_STACK_GAP_PX,
-  ENTITY_HUD_BAR_STACK_ROWS,
-  ENTITY_HUD_NAME_GAP_ABOVE_BARS_PX,
-} from '@/config';
-import {
-  NAME_LABEL_PX_HEIGHT,
+  NAME_LABEL_WORLD_HEIGHT,
   NAME_LABEL_FONT_PX,
   NAME_LABEL_FONT_FAMILY,
   NAME_LABEL_FILL_COLOR,
@@ -39,7 +33,7 @@ import {
 // Local short-name alias for the imported config — keeps call sites
 // terse while every tunable lives in @/nameLabelConfig.
 const STYLE = {
-  pxHeight: NAME_LABEL_PX_HEIGHT,
+  worldHeight: NAME_LABEL_WORLD_HEIGHT,
   fontPx: NAME_LABEL_FONT_PX,
   fontFamily: NAME_LABEL_FONT_FAMILY,
   fillColor: NAME_LABEL_FILL_COLOR,
@@ -53,22 +47,11 @@ const STYLE = {
 const FONT_STRING = `bold ${STYLE.fontPx}px ${STYLE.fontFamily}`;
 const CANVAS_HEIGHT_PX = STYLE.fontPx + 2 * STYLE.canvasPadY;
 
-const HUD_BAR_STACK_ROWS = Math.max(1, Math.floor(ENTITY_HUD_BAR_STACK_ROWS));
-/** Screen-pixels from the bottom bar's bottom edge (the per-blueprint
- *  base gap) up to the name's center: the full fixed bar stack, the
- *  name gap, then half the name height. Fixed-rows so the name doesn't
- *  reflow when resource build bars appear/disappear beneath it. */
-const NAME_CENTER_ABOVE_BASE_PX =
-  HUD_BAR_STACK_ROWS * SHELL_BAR_PX_HEIGHT +
-  (HUD_BAR_STACK_ROWS - 1) * ENTITY_HUD_BAR_STACK_GAP_PX +
-  ENTITY_HUD_NAME_GAP_ABOVE_BARS_PX +
-  NAME_LABEL_PX_HEIGHT / 2;
-
 type LabelState = {
   /** Last-baked text. The canvas re-paints only when this changes. */
   lastText: string;
-  /** Last-baked canvas dimensions in pixels. The sprite's on-screen
-   *  width is `(canvasW / canvasH) × pxHeight`, so character proportions
+  /** Last-baked canvas dimensions in pixels. The sprite's world width
+   *  is `(canvasW / canvasH) × worldHeight`, so character proportions
    *  stay uniform regardless of text length. */
   lastCanvasW: number;
   lastCanvasH: number;
@@ -114,6 +97,10 @@ function repaintLabel(label: Label, text: string): boolean {
 }
 
 export class NameLabel3D {
+  /** Module-shared scratch vector reused for every frustum probe so
+   *  the per-frame loop allocates nothing. */
+  private static readonly _probeVec = new THREE.Vector3();
+
   /** Pool grows on demand. Each label keeps its sprite parented to
    *  `parent` for the life of the renderer — endFrame just hides the
    *  unused tail, beginFrame doesn't tear down sprites. */
@@ -124,8 +111,8 @@ export class NameLabel3D {
   private _seenEntityFrame = new Map<EntityId, number>();
   private _frameToken = 0;
   private _frustum: THREE.Frustum | null = null;
-  /** Per-frame screen-space scaler, set by beginFrame. */
-  private _screen: HudScreenSpace | null = null;
+  /** Per-frame camera-distance fade, set by beginFrame. */
+  private _fade: HudFade | null = null;
 
   constructor(parent: THREE.Group) {
     this.pool = new CanvasSpritePool<LabelState, [string]>({
@@ -143,7 +130,7 @@ export class NameLabel3D {
 
   /** Reset frame state. Caller follows with a series of perEntity
    *  calls and finishes with endFrame. */
-  beginFrame(screen: HudScreenSpace, frustum?: THREE.Frustum): void {
+  beginFrame(fade: HudFade, frustum?: THREE.Frustum): void {
     this._used = 0;
     this._frameToken = (this._frameToken + 1) & 0x3fffffff;
     // Clear the per-frame dedup map each frame so it stays bounded to
@@ -151,7 +138,7 @@ export class NameLabel3D {
     // the ~185-day token rollover, so it retained an entry for every
     // entity id that ever rendered a label.
     this._seenEntityFrame.clear();
-    this._screen = screen;
+    this._fade = fade;
     this._frustum = frustum ?? null;
   }
 
@@ -161,44 +148,46 @@ export class NameLabel3D {
    *  gets a label. */
   perEntity(entity: Entity, text: string | null): void {
     if (!text || text.length === 0) return;
-    const screen = this._screen;
-    if (!screen) return;
     if (this._seenEntityFrame.get(entity.id) === this._frameToken) return;
     this._seenEntityFrame.set(entity.id, this._frameToken);
 
-    if (!entity.unit && !entity.building) return;
+    const isUnit = !!entity.unit;
+    const isBuilding = !!entity.building;
+    if (!isUnit && !isBuilding) return;
 
-    const anchorX = entity.transform.x;
-    const anchorY = getEntityHudAnchorY(entity);
-    const anchorZ = entity.transform.y;
-    const centerPx = getEntityHudBarsBaseGapPx(entity) + NAME_CENTER_ABOVE_BASE_PX;
+    const worldX = entity.transform.x;
+    const worldY = isUnit
+      ? getUnitHudNameY(entity)
+      : getBuildingHudNameY(entity);
+    const worldZ = entity.transform.y;
+    const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
+    if (alpha <= FADE_CULL_ALPHA) return;
 
     const label = this.acquire(this._used++);
     this.repaintIfChanged(label, text);
 
-    // Sprite aspect = canvas aspect, so text proportions stay uniform:
-    // short names render small, long names long, each character the same
-    // on-screen height across all labels.
-    const widthPx = (label.state.lastCanvasW / label.state.lastCanvasH) * STYLE.pxHeight;
-    screen.placeSprite(
-      label.sprite,
-      anchorX,
-      anchorY,
-      anchorZ,
-      centerPx,
-      widthPx,
-      STYLE.pxHeight,
-    );
-    label.sprite.visible = this._frustum
-      ? this._frustum.containsPoint(label.sprite.position)
-      : true;
+    // Sprite's world aspect = canvas aspect, so text proportions stay
+    // uniform: short names render small, long names render long, and
+    // each character claims the same world height across all labels.
+    const worldHeight = STYLE.worldHeight;
+    const worldWidth = (label.state.lastCanvasW / label.state.lastCanvasH) * worldHeight;
+    label.sprite.scale.set(worldWidth, worldHeight, 1);
+    label.sprite.position.set(worldX, worldY, worldZ);
+    label.material.opacity = alpha;
+    if (this._frustum) {
+      const probe = NameLabel3D._probeVec;
+      probe.set(worldX, worldY, worldZ);
+      label.sprite.visible = this._frustum.containsPoint(probe);
+    } else {
+      label.sprite.visible = true;
+    }
   }
 
   /** Hide trailing pool entries past the live prefix. */
   endFrame(): void {
     this.pool.hideUnused(this._used);
     this._frustum = null;
-    this._screen = null;
+    this._fade = null;
   }
 
   destroy(): void {

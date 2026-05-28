@@ -33,9 +33,13 @@ import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRender
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
-import { HudScreenSpace } from '../../render3d/HudScreenSpace';
+import { HudFade } from '../../render3d/HudFade';
 import type { Waypoint3D } from '../../render3d/Waypoint3D';
 import { resolveEntityDisplayName } from '../../render3d/EntityName';
+import {
+  ENTITY_HUD_FADE_START_DISTANCE_FRAC,
+  ENTITY_HUD_FADE_END_DISTANCE_FRAC,
+} from '@/config';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintQuad } from '../../ViewportFootprint';
 import type { ViewportFootprint } from '../../ViewportFootprint';
@@ -89,9 +93,9 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
-  /** Per-frame screen-space scaler shared by the HP bars + name labels
-   *  so both billboard at a constant pixel size / pixel offset. */
-  private readonly hudScreen = new HudScreenSpace();
+  /** Camera-distance fade shared by HP/resource bars + name labels so
+   *  both fade + cull together as the camera zooms out (BAR style). */
+  private readonly hudFade = new HudFade();
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -305,9 +309,14 @@ export class RtsScene3DRenderPhase {
     this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this.frustum;
-    // Refresh the HUD screen-space scaler from the live camera so bars +
-    // names hold their pixel size / offset at the current zoom.
-    this.hudScreen.update(cam, this.threeApp.canvas.clientHeight);
+    // Refresh the HUD fade from the live camera; the fade window scales
+    // with the orbit's max (zoomed-out) distance so it tracks map size.
+    const maxCamDistance = this.threeApp.orbit.getMaxDistance();
+    this.hudFade.update(
+      cam,
+      maxCamDistance * ENTITY_HUD_FADE_START_DISTANCE_FRAC,
+      maxCamDistance * ENTITY_HUD_FADE_END_DISTANCE_FRAC,
+    );
 
     forceFieldRenderer.beginFrame(graphicsConfig);
     if (this.clientViewState.getServerMeta()?.turretForceFieldSpheresEnabled ?? true) {
@@ -319,7 +328,7 @@ export class RtsScene3DRenderPhase {
 
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
     if (healthBar3D) {
-      healthBar3D.beginFrame(this.hudScreen, hudFrustum);
+      healthBar3D.beginFrame(this.hudFade, hudFrustum);
       const damagedUnits = this.clientViewState.getDamagedUnits();
       for (const u of damagedUnits) {
         healthBar3D.perUnit(u);
@@ -337,7 +346,7 @@ export class RtsScene3DRenderPhase {
     }
 
     if (nameLabel3D) {
-      nameLabel3D.beginFrame(this.hudScreen, hudFrustum);
+      nameLabel3D.beginFrame(this.hudFade, hudFrustum);
       const lookup = (pid: PlayerId): string | null =>
         this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
       for (const e of this.clientViewState.getUnitsAndBuildings()) {

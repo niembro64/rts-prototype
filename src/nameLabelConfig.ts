@@ -6,13 +6,12 @@
 import nameLabelConfig from './nameLabelConfig.json';
 import { COLORS } from './colorsConfig';
 
-/** On-screen height of the label sprite, in pixels. Billboarded labels
- *  are rescaled per frame so they hold this pixel height at any zoom
- *  (see HudScreenSpace). The renderer measures each text's pixel width
- *  per-paint, sizes the canvas to fit, and scales the sprite so its
- *  aspect matches the canvas — so characters keep consistent
- *  proportions whether the name is 3 chars or 20. */
-export const NAME_LABEL_PX_HEIGHT = nameLabelConfig.pxHeight;
+/** World-space height of the label sprite. The renderer measures each
+ *  text's pixel width on a per-paint basis, sizes the canvas to fit
+ *  exactly, and scales the sprite so its world aspect matches the
+ *  canvas aspect. That's how characters keep consistent proportions
+ *  whether the name is 3 chars or 20. */
+export const NAME_LABEL_WORLD_HEIGHT = nameLabelConfig.worldHeight;
 
 /** Font: pixel-aligned, no anti-aliasing fuzz. Drawn at 2× canvas
  *  size for retina-clean edges; the sprite scale handles world fit. */

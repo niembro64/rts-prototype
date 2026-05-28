@@ -494,10 +494,9 @@ export type UnitBodyShape =
   | { kind: 'composite'; parts: UnitBodyShapePart[] };
 
 export type EntityHudBlueprint = {
-  /** Screen-pixel gap from the entity's projected HUD anchor (body
-   *  center + push radius) up to the bottom edge of the first bar.
-   *  Pixel-space so the gap is constant on screen at any zoom. Names
-   *  stack above the bars using the global bar/name gaps in config.ts. */
+  /** First bar sprite centerline offset above the computed visual HUD
+   *  top, in world units. Names are derived from this bar anchor plus
+   *  the global bar stack/name gap in config.ts. */
   barsOffsetAboveTop: number;
 };
 
