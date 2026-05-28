@@ -24,13 +24,25 @@ import { NAME_LABEL_WORLD_HEIGHT } from '@/nameLabelConfig';
 
 function getBarrelRadius(turret: Turret): number {
   const barrel = turret.config.barrel;
-  if (!barrel || barrel.type === 'complexSingleEmitter') return 0;
+  if (
+    !barrel ||
+    barrel.type === 'complexSingleEmitter' ||
+    barrel.type === 'forceFieldPanelEmitter'
+  ) {
+    return 0;
+  }
   return getTurretBarrelDiameter(turret.config) / 2;
 }
 
 function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
   const barrel = turret.config.barrel;
-  if (!barrel || barrel.type === 'complexSingleEmitter') return mountY;
+  if (
+    !barrel ||
+    barrel.type === 'complexSingleEmitter' ||
+    barrel.type === 'forceFieldPanelEmitter'
+  ) {
+    return mountY;
+  }
   const pitch = turret.pitch ?? 0;
   const headRadius = getTurretHeadRadius(turret.config);
   const barrelLen = getTurretBarrelCenterToTipLength(turret.config);

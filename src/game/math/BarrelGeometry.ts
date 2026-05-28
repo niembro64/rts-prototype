@@ -84,7 +84,12 @@ export function getTurretBarrelCenterToTipLength(
   config: TurretBarrelSource,
 ): number {
   const barrel = config.barrel;
-  if (!barrel || barrel.type === 'complexSingleEmitter' || barrel.barrelLength <= 0) {
+  if (
+    !barrel ||
+    barrel.type === 'complexSingleEmitter' ||
+    barrel.type === 'forceFieldPanelEmitter' ||
+    barrel.barrelLength <= 0
+  ) {
     return 0;
   }
   return getTurretHeadRadius(config) * (1 + barrel.barrelLength);
@@ -111,6 +116,7 @@ export function countBarrels(config: Pick<TurretConfig, 'barrel'>): number {
   if (b.type === 'singleCylinderBarrel') return 1;
   if (b.type === 'singleConeBarrel') return 1;
   if (b.type === 'complexSingleEmitter') return 1;
+  if (b.type === 'forceFieldPanelEmitter') return 1;
   return b.barrelCount;
 }
 
@@ -177,7 +183,13 @@ export function getTurretBarrelDiameter(
   config: BarrelShotSource,
 ): number {
   const barrel = config.barrel;
-  if (!barrel || barrel.type === 'complexSingleEmitter') return 0;
+  if (
+    !barrel ||
+    barrel.type === 'complexSingleEmitter' ||
+    barrel.type === 'forceFieldPanelEmitter'
+  ) {
+    return 0;
+  }
 
   const shot = config.shot;
   const lineShotWidth = shot && isLineShot(shot) ? shot.width : undefined;
@@ -236,9 +248,13 @@ export function getBarrelTip(
   const sideZ = 0;
 
   const b = config.barrel;
-  if (!b || b.type === 'complexSingleEmitter') {
-    // Force-field emitters and bodies with no barrel at all emit from
-    // the turret pivot itself.
+  if (
+    !b ||
+    b.type === 'complexSingleEmitter' ||
+    b.type === 'forceFieldPanelEmitter'
+  ) {
+    // Force-field emitters (sphere or panel) and bodies with no barrel at
+    // all emit from the turret pivot itself.
     return {
       x: mountX, y: mountY, z: mountZ,
       dirX: fwdX, dirY: fwdY, dirZ: fwdZ,

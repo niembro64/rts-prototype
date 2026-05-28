@@ -569,11 +569,14 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     lockOnTurretExcludeMask: lockOn.turret,
   };
 
-  // Derive barrelThickness from shot size, scaled by global multiplier
+  // Derive barrelThickness from shot size, scaled by global multiplier.
+  // Skip the barrel-less force-field emitters (sphere + panel): they
+  // carry no gun barrel to thicken.
   if (
     turretBlueprint.projectileId !== null &&
     config.barrel &&
-    config.barrel.type !== 'complexSingleEmitter'
+    config.barrel.type !== 'complexSingleEmitter' &&
+    config.barrel.type !== 'forceFieldPanelEmitter'
   ) {
     const shotBlueprint: ShotBlueprint =
       SHOT_BLUEPRINTS[turretBlueprint.projectileId];

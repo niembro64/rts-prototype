@@ -501,8 +501,7 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "singleConeBarrel",
-      "barrelLength": 0
+      "type": "forceFieldPanelEmitter"
     },
     "isManualFire": false,
     "passive": true,

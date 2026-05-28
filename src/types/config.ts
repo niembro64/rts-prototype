@@ -127,7 +127,13 @@ export type SpinConfig = {
 // `barrelThickness` at the base near the head, narrowing to a point at
 // the muzzle. Used by beam/laser turrets so the emitter reads as a
 // focusing cone instead of a tube.
-// `complexSingleEmitter` — non-cylindrical force-field emitter.
+// `complexSingleEmitter` — non-cylindrical force-field SPHERE emitter
+// (the glowing bubble; head hidden, drawn by ForceFieldRenderer3D).
+// `forceFieldPanelEmitter` — force-field PANEL emitter: the turret head
+// stays visible but there is no gun barrel. The reflecting slabs are the
+// emitter and are drawn separately from the turret's `forceFieldPanels`
+// config (ForceFieldPanelPose3D). Distinct from complexSingleEmitter
+// because the panel keeps its head and does NOT use the sphere shader.
 export type BarrelShape =
   | {
       type: 'simpleMultiBarrel';
@@ -192,7 +198,8 @@ export type BarrelShape =
        *  tapers from this radius down to a point at the muzzle. */
       barrelThickness?: number;
     }
-  | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig };
+  | { type: 'complexSingleEmitter'; grate: ForceFieldTurretConfig }
+  | { type: 'forceFieldPanelEmitter' };
 
 export type MapSize = {
   width: number;
