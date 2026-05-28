@@ -174,11 +174,6 @@ C6. [LOW] Per-body terrain sampling crosses the WASM boundary once per body per 
       batch surface exists.
     FIX: add a "sample ground for these slots" batch kernel.
 
-C7. [LOW] Fresh Map allocated per render frame in smoke-trail emission.
-    LOCATION: src/game/render3d/SmokeTrail3D.ts:300
-      (`const emittedByUse = new Map<...>()` inside update()).
-    FIX: hoist to an instance field and clear() each frame.
-
 C8. [LOW] Per-death debris template array + closure allocation.
     LOCATION: src/game/render3d/Debris3D.ts:446 → buildTemplates :526-536 (fresh array,
       one object literal per fragment, resolveColor closure per call).

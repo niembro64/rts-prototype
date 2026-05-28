@@ -160,6 +160,10 @@ export class SmokeTrail3D {
   private readonly _emitPoint = { x: 0, y: 0, z: 0 };
   private _scratchMat = new THREE.Matrix4();
   private emissionCursor = 0;
+  /** Per-frame "puffs emitted per smoke-use" tally. Hoisted to an
+   *  instance field and cleared each emission pass so update() doesn't
+   *  allocate a fresh Map every render frame. */
+  private readonly _emittedByUse = new Map<SmokeUseId, number>();
 
   constructor(worldGroup: THREE.Group) {
     this.root = new THREE.Group();
@@ -297,7 +301,8 @@ export class SmokeTrail3D {
     }
 
     if (eligible.length > 0) {
-      const emittedByUse = new Map<SmokeUseId, number>();
+      const emittedByUse = this._emittedByUse;
+      emittedByUse.clear();
       const start = this.emissionCursor % eligible.length;
       let totalEmitted = 0;
       for (let n = 0; n < eligible.length; n++) {
