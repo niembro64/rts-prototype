@@ -181,16 +181,6 @@ C8. [LOW] Per-death debris template array + closure allocation.
       at once.
     FIX: cache pose-independent templates per unitType; apply only live yaw/pitch.
 
-C9. [LOW] Full O(n) unit/building scans for selection (possibly dead code).
-    LOCATION: ClientViewState.ts:962-993 (findUnitAt/findBuildingAt), :995-1024
-      (findEntitiesInRect, allocates results[]).
-    RULE: "spatial indices instead of full-world scans for ... selection."
-    PROBLEM: input-driven (low frequency) and a grep found no in-tree callers — likely
-      dead/legacy. The only selection path that bypasses the spatial grid.
-    FIX: confirm dead and delete (Delete-Old-Path), or route through the spatial grid if
-      still used.
-
-
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
 ================================================================================
