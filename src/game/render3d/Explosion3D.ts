@@ -131,6 +131,7 @@ class InstancedSpherePool {
 }
 
 export class Explosion3D {
+  static warnedBadInput = false;
   private root: THREE.Group;
   private puffPool: InstancedSpherePool;
   private puffs: Puff[] = [];
@@ -199,6 +200,22 @@ export class Explosion3D {
   ): void {
     if (this.puffs.length >= MAX_PUFFS) return;
     if (this.puffSpawnsThisFrame >= MAX_PUFF_SPAWNS_PER_FRAME) return;
+    if (
+      !Number.isFinite(simX) ||
+      !Number.isFinite(simY) ||
+      !Number.isFinite(simZ) ||
+      !Number.isFinite(lifetimeMs) ||
+      !Number.isFinite(startR) ||
+      !Number.isFinite(endR)
+    ) {
+      if (!Explosion3D.warnedBadInput) {
+        Explosion3D.warnedBadInput = true;
+        console.error('Explosion3D.addPuff dropped puff with non-finite input', {
+          simX, simY, simZ, lifetimeMs, startR, endR,
+        });
+      }
+      return;
+    }
     this.puffSpawnsThisFrame++;
     const { r, g, b } = hexToRgb01(CORE_COLOR);
     this.puffs.push({
