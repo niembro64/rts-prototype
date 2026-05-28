@@ -1,6 +1,5 @@
 import type * as THREE from 'three';
 import type { UnitBodyShape } from '@/types/blueprints';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { PlayerId } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { TurretMesh } from './TurretMesh3D';
@@ -68,14 +67,12 @@ export type EntityMesh = {
   chassisMeshes: THREE.Mesh[];
   /** Slot indices into the renderer's `smoothChassis` InstancedMesh,
    *  one per body part. Present on smooth-body units (arachnid, beam,
-   *  snipe, commander, forceField, loris) at LOW+ tier; undefined for
-   *  polygon / rect bodies (which use polyChassisSlot) and at MIN tier
-   *  (where the LOW-tier `unitInstanced` path takes over entirely). */
+   *  snipe, commander, forceField, loris); undefined for polygon /
+   *  rect bodies, which use polyChassisSlot. */
   smoothChassisSlots?: number[];
   /** Single slot index into the body-shape keyed polygonal-chassis
-   *  InstancedMesh pool. Present on polygon / rect units at LOW+ tier;
-   *  undefined for smooth bodies (which use smoothChassisSlots) and at
-   *  MIN tier. */
+   *  InstancedMesh pool. Present on polygon / rect units; undefined for
+   *  smooth bodies, which use smoothChassisSlots. */
   polyChassisSlot?: number;
   /** Cached body-shape key resolved once at mesh-build time. The unit's
    *  bodyShape is the authored source; this key only identifies the
@@ -128,7 +125,6 @@ export type EntityMesh = {
    *  not be recolored to team primary on ownership updates. */
   buildingPrimaryMaterialLocked?: boolean;
   solarOpenAmount?: number;
-  buildingCachedGraphicsTier?: ConcreteGraphicsQuality;
   buildingCachedOwnerId?: PlayerId;
   buildingCachedProgress?: number;
   buildingCachedSelected?: boolean;

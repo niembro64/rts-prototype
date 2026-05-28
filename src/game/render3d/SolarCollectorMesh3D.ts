@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { SOLAR_BUILDING_VISUAL_HEIGHT } from '../sim/blueprints';
 import {
@@ -455,11 +454,11 @@ function makeSphere(
 
 function detail(
   mesh: THREE.Mesh,
-  minTier: ConcreteGraphicsQuality,
-  maxTier?: ConcreteGraphicsQuality,
+  _legacyVisibility?: unknown,
+  _legacyMaxVisibility?: unknown,
   role: BuildingDetailRole = 'static',
 ): BuildingDetailMesh {
-  return { mesh, minTier, maxTier, role };
+  return { mesh, role };
 }
 
 export function disposeSolarCollectorGeoms(): void {

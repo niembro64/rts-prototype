@@ -9,11 +9,6 @@
   "minimapSnapshotRateHz": 8,
   "entityDetailSnapshotRateHz": 1,
   "projectileDetailSnapshotRateHz": 16,
-  "highCountEntityLodUnitThreshold": 2000,
-  "highCountForeignEntitySnapshotCadence": 16,
-  "highCountForeignProjectileSnapshotCadence": 8,
-  "highCountForeignAudioSnapshotCadence": 8,
-  "highCountMinimapSnapshotRateHz": 1,
   "fullSnapshotCompression": {
     "enabled": false,
     "format": "gzip",

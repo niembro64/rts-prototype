@@ -247,6 +247,40 @@ export function getTerrainHeight(
   includeDeposits = true,
 ): number {
   const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
+  return getTerrainHeightWithMetrics(
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+    includeDeposits,
+  );
+}
+
+export function createTerrainHeightSampler(
+  mapWidth: number,
+  mapHeight: number,
+  includeDeposits = true,
+): (x: number, y: number) => number {
+  const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
+  return (x: number, y: number): number => getTerrainHeightWithMetrics(
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+    includeDeposits,
+  );
+}
+
+function getTerrainHeightWithMetrics(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+  ovalMetrics: MapOvalMetrics,
+  includeDeposits: boolean,
+): number {
   const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
   const natural = getGeneratedNaturalTerrainHeight(
     x,

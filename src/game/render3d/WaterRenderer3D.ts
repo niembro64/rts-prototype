@@ -100,7 +100,7 @@ export class WaterRenderer3D {
     _dtSec: number,
     _graphicsConfig: GraphicsConfig,
     _frameState?: RenderFrameState3D,
-    _sharedLodGrid?: unknown,
+    _sharedRenderGrid?: unknown,
   ): void {
     const opacity = WATER_FULLY_OPAQUE ? 1 : WATER_RENDER_CONFIG.opacity;
     if (opacity <= 0) {

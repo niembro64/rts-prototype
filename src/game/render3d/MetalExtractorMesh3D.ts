@@ -56,10 +56,8 @@ export type ExtractorBladeAnim = {
   closedScale: THREE.Vector3;
 };
 
-/** Per-LOD rotor meshes for the extractor. The detail system gates
- *  visibility by tier so only ONE rotor is on-screen at a time, but
- *  the animator advances the same yaw on every entry — flipping LOD
- *  bands is a free visibility toggle, no rebuild needed. */
+/** Rotor meshes for the extractor. The animator advances one shared
+ *  yaw so rebuilds can never reset the spin phase. */
 export type ExtractorRig = {
   rotors: THREE.Mesh[];
   pylon: ResourcePylonRig;
@@ -116,7 +114,7 @@ export function buildMetalExtractorMesh(
   const bladeRootRadius = Math.max(ratePillarRadius * 2.2, minDim * 0.28);
 
   // Simple rotor — all six blades remain visible and rotating so the
-  // silhouette is stable across LODs. No higher-tier glow/trim variant.
+  // silhouette is stable. No alternate glow/trim variant.
   const simpleRotor = makeExtractorRotor(
     bladeLen, bladeThickness, panelThickness,
     EXTRACTOR_FACE_COUNT, rotorY, bladeRootRadius, 0.5,

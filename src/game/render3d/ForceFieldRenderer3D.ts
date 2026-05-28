@@ -4,10 +4,8 @@
 // a `ForceShot` (shot.type === 'force') configured with a barrier sphere.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
-// One look at every LOD tier: a translucent force-field bubble that
-// fades in with `turret.forceField.range`. Per-LOD variation would just
-// blink the bubble on/off as the camera moves — the minimal / simple /
-// normal / enhanced tiers all render the same.
+// One force-field look: a translucent bubble that fades in with
+// `turret.forceField.range`.
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
@@ -110,7 +108,7 @@ export class ForceFieldRenderer3D {
    *  world position from the unit's parent-chain (group → realYawGroup
    *  → liftGroup) so the bubble follows chassis tilt + yaw exactly.
    *  Returns undefined when the unit's mesh hasn't been built yet
-   *  (off-scope at scene start) or was torn down (LOD flip mid-frame);
+   *  (off-scope at scene start) or was torn down during a rebuild;
    *  in that case we fall back to the unit's transform. */
   private getYawGroup: (eid: EntityId) => THREE.Group | undefined;
 
@@ -207,8 +205,7 @@ export class ForceFieldRenderer3D {
 
   /** Begin a fused per-frame iteration. Caller follows with a series
    *  of perUnit calls and finishes with endFrame. The `graphicsConfig`
-   *  argument is currently unused — the bubble visual ignores tier
-   *  (reads the same at every LOD) — but the parameter is preserved
+   *  argument is currently unused, but the parameter is preserved
    *  so existing callers don't need to change shape. */
   beginFrame(_graphicsConfig: GraphicsConfig = getGraphicsConfig()): void {
     this._seenFieldKeys.clear();
@@ -330,11 +327,11 @@ export class ForceFieldRenderer3D {
           .copy(groupOuter.position)
           .add(this._sphereLocalPos);
       } else {
-        // No liftGroup — unit isn't rendered at rich tier this frame.
+        // No liftGroup — use the fallback unit transform this frame.
         // Rebuild the same base-Y convention Render3DEntities uses:
         // group.y = sim altitude − bodyCenterHeight, then add the
         // cached blueprint chassis lift and this turret's chassis-
-        // local mount Y. Slope tilt lives only on the rich mesh chain;
+        // local mount Y. Slope tilt lives only on the unit mesh chain;
         // yaw and vertical body lift still stay coherent.
         const yaw = unit.transform.rotation;
         const cosYaw = Math.cos(yaw);

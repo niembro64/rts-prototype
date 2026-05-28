@@ -114,7 +114,7 @@ export class ContactShadowRenderer3D {
   update(
     units: readonly Entity[],
     buildings: readonly Entity[],
-    graphics: GraphicsConfig,
+    _graphics: GraphicsConfig,
     frameIndex: number,
     scope: ViewportFootprint,
   ): void {
@@ -123,10 +123,10 @@ export class ContactShadowRenderer3D {
       return;
     }
 
-    const stride = Math.max(1, CONTACT_SHADOW_RENDER_CONFIG.frameStride[graphics.tier] | 0);
+    const stride = Math.max(1, CONTACT_SHADOW_RENDER_CONFIG.frameStride | 0);
     if (!shouldRunOnStride(frameIndex, stride) && this.mesh.count > 0) return;
 
-    const opacity = CONTACT_SHADOW_RENDER_CONFIG.opacity[graphics.tier];
+    const opacity = CONTACT_SHADOW_RENDER_CONFIG.opacity;
     if (opacity !== this.lastOpacity) {
       this.material.opacity = opacity;
       this.material.needsUpdate = true;

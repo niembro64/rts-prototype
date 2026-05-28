@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
@@ -14,7 +13,6 @@ import {
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
 import type { RenderFrameState3D } from './RenderFrameState3D';
-import { buildingDetailVisible } from './RenderTier3D';
 import { BuildingAnimationController3D } from './BuildingAnimationController3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
@@ -290,7 +288,6 @@ export class BuildingEntityRenderer3D {
   }
 
   private updateBuilding(entity: Entity, frameState: RenderFrameState3D): void {
-    const graphicsTier = frameState.gfx.tier;
     const ownerId = entity.ownership?.playerId;
     const width = entity.building?.width ?? 100;
     const depth = entity.building?.height ?? 100;
@@ -324,7 +321,6 @@ export class BuildingEntityRenderer3D {
     const detailsReady = progress >= 1;
     const isGhost = this.isBuildingGhost(entity);
     const renderDirty =
-      mesh.buildingCachedGraphicsTier !== graphicsTier ||
       mesh.buildingCachedOwnerId !== ownerId ||
       mesh.buildingCachedProgress !== progress ||
       mesh.buildingCachedSelected !== selected ||
@@ -340,7 +336,6 @@ export class BuildingEntityRenderer3D {
       this.updateBuildingMesh(
         entity,
         mesh,
-        graphicsTier,
         ownerId,
         width,
         depth,
@@ -361,7 +356,6 @@ export class BuildingEntityRenderer3D {
   private updateBuildingMesh(
     entity: Entity,
     mesh: EntityMesh,
-    graphicsTier: ConcreteGraphicsQuality,
     ownerId: PlayerId | undefined,
     width: number,
     depth: number,
@@ -409,13 +403,12 @@ export class BuildingEntityRenderer3D {
 
     if (mesh.buildingDetails) {
       for (const detail of mesh.buildingDetails) {
-        detail.mesh.visible = detailsReady && buildingDetailVisible(detail, graphicsTier);
+        detail.mesh.visible = detailsReady;
       }
     }
 
     this.selectionOverlays.updateSelectionRing(mesh, selected, Math.hypot(width, depth) * 0.55);
 
-    mesh.buildingCachedGraphicsTier = graphicsTier;
     mesh.buildingCachedOwnerId = ownerId;
     mesh.buildingCachedProgress = progress;
     mesh.buildingCachedSelected = selected;

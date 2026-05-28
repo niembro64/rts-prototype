@@ -37,7 +37,7 @@
 import { getPlayerBaseAngle } from './game/sim/playerLayout';
 import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
 import {
-  getTerrainHeight,
+  createTerrainHeightSampler,
   METAL_DEPOSIT_STEP,
   setMetalDepositFlatZones,
   type TerrainFlatZone,
@@ -272,7 +272,7 @@ export function generateMetalDeposits(
       blendRadius: p.blendRadius,
     });
   }
-  setMetalDepositFlatZones(explicitZones);
+  setMetalDepositFlatZones(explicitZones, false);
 
   // Pass 3: resolve every null-dTerrain pad against the post-blend
   // terrain. `includeDeposits=true` makes getTerrainHeight fold the
@@ -282,16 +282,11 @@ export function generateMetalDeposits(
   // Null pads do NOT see each other (order-dependent feedback);
   // they'll smooth into each other when the full set is installed in
   // pass 4.
+  const postExplicitTerrainHeight = createTerrainHeightSampler(mapWidth, mapHeight);
   for (let i = 0; i < placements.length; i++) {
     const p = placements[i];
     if (p.dTerrainLevels !== null) continue;
-    heights[i] = getTerrainHeight(
-      p.placement.x,
-      p.placement.y,
-      mapWidth,
-      mapHeight,
-      true,
-    );
+    heights[i] = postExplicitTerrainHeight(p.placement.x, p.placement.y);
   }
 
   // Pass 4: emit the final deposit list and install the full flat-zone

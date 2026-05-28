@@ -25,6 +25,7 @@ export {
   type TerrainRuntimeConfig,
 } from './terrain/terrainConfig';
 export {
+  createTerrainHeightSampler,
   getTerrainMapBoundaryFade,
   getTerrainHeight,
 } from './terrain/terrainHeightGenerator';

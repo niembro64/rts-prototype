@@ -23,7 +23,7 @@ import { WAYPOINT_COLORS } from '../uiLabels';
 import { WAYPOINT_GROUND_LIFT } from '../../config';
 
 // Lift values chosen so the preview reads above terrain overlays at
-// every terrain LOD. Keep these tied to the persistent waypoint lift so
+// terrain overlays. Keep these tied to the persistent waypoint lift so
 // issued commands and the drag preview stay visually aligned.
 //
 // The DragState's points / targets carry the click-altitude `z` from

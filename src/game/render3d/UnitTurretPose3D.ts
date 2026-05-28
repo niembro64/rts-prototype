@@ -1,12 +1,10 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getTurretHeadRadius } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { entityHeadOnlyTurretHeadColorHex } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { buildingTierAtLeast } from './RenderTier3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
 import type { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import type { TurretMesh } from './TurretMesh3D';
@@ -29,7 +27,6 @@ export class UnitTurretPose3D {
     parentQuaternion: THREE.Quaternion,
     unitChainMat: THREE.Matrix4,
     chassisTiltInverse: THREE.Quaternion | undefined,
-    graphicsTier: ConcreteGraphicsQuality,
     barrelSpinEnabled: boolean,
     barrelSpinState: UnitBarrelSpinState3D,
     currentDtMs: number,
@@ -48,19 +45,15 @@ export class UnitTurretPose3D {
       this.writeMountCache(entity, turretIdx, mesh, turretMesh, headRadius, parentQuaternion, turretMountCache);
 
       if (turretMesh.constructionEmitter) {
-        const visible = buildingTierAtLeast(graphicsTier, 'low');
-        turretMesh.root.visible = visible;
+        turretMesh.root.visible = true;
         turretMesh.root.rotation.y = 0;
         if (turretMesh.pitchGroup) turretMesh.pitchGroup.rotation.z = 0;
         if (turretMesh.spinGroup) turretMesh.spinGroup.rotation.x = 0;
-        if (visible) {
-          constructionVisuals.updateBuilderConstructionEmitter(
-            turretMesh.constructionEmitter,
-            entity,
-            graphicsTier,
-            currentDtMs,
-          );
-        }
+        constructionVisuals.updateBuilderConstructionEmitter(
+          turretMesh.constructionEmitter,
+          entity,
+          currentDtMs,
+        );
         continue;
       }
 

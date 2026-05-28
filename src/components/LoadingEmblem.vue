@@ -62,7 +62,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="loading-emblem">
-    <div v-if="nextLabelText" class="loader-mode-banner">{{ nextLabelText }}</div>
+    <div class="loader-title">BUDGET ANNIHILATION</div>
 
     <div class="loader-body">
       <div class="loader-unit-stage-col">
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="loader-footer">
-      <div class="loader-title">BUDGET ANNIHILATION</div>
+      <div v-if="nextLabelText" class="loader-mode-banner">{{ nextLabelText }}</div>
       <div class="loader-phase">{{ phaseText }}</div>
       <div v-if="props.showProgress" class="loader-progress-wrap">
         <div

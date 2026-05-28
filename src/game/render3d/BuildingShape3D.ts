@@ -1,7 +1,7 @@
 // BuildingShape3D — per-type 3D geometry for player-built buildings.
 //
 // Each building type gets its own recognizable silhouette, built from a
-// team-colored primary body plus LOD-tagged type-specific accents:
+// team-colored primary body plus type-specific accents:
 //
 //   solar   — static pyramid-flower collector: a wide team-colored
 //             pyramid base, four opened photovoltaic leaves, and a
@@ -20,7 +20,6 @@
 // new allocation pressure.
 
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS, RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
@@ -89,8 +88,6 @@ export type BuildingDetailRole =
 
 export type BuildingDetailMesh = {
   mesh: THREE.Mesh;
-  minTier: ConcreteGraphicsQuality;
-  maxTier?: ConcreteGraphicsQuality;
   role?: BuildingDetailRole;
 };
 
@@ -104,7 +101,7 @@ export type BuildingShape = {
    *  with a team material after ownership changes. */
   primaryMaterialLocked?: boolean;
   /** Decorative accent meshes already positioned relative to the primary
-   *  body. Each declares the client LOD tier range where it should exist. */
+   *  body. */
   details: BuildingDetailMesh[];
   /** The building's render height so the caller can position the
    *  primary body correctly on the ground plane. */

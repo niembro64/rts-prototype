@@ -27,7 +27,6 @@ function isSharedAppModule(srcPath: string): boolean {
     srcPath === 'fogConfig.ts' ||
     srcPath === 'fogConfig.json' ||
     srcPath === 'gamePhase.ts' ||
-    srcPath === 'lodConfig.ts' ||
     srcPath === 'mapSizeConfig.ts' ||
     srcPath === 'persistence.ts' ||
     srcPath === 'playerNamesConfig.ts' ||

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import type { GraphicsConfig } from '@/types/graphics';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
 import { isCommander } from '../sim/combat/combatUtils';
@@ -48,7 +48,6 @@ export type UnitMeshBuildRequest = {
   ownerId: PlayerId | undefined;
   turrets: readonly Turret[];
   unitGfx: GraphicsConfig;
-  unitGraphicsTier: ConcreteGraphicsQuality;
   unitFrameKey: string;
   unitRenderKey: string;
   unitIsShell: boolean;
@@ -111,7 +110,6 @@ export class UnitMeshBuilder3D {
       ownerId,
       turrets,
       unitGfx,
-      unitGraphicsTier,
       unitFrameKey,
       unitRenderKey,
       unitIsShell,
@@ -173,7 +171,7 @@ export class UnitMeshBuilder3D {
     liftGroup.add(chassis);
 
     if (entity.commander) {
-      const commanderKit = this.commanderVisualKit.buildKit(unitGraphicsTier);
+      const commanderKit = this.commanderVisualKit.buildKit();
       commanderKit.userData.entityId = entity.id;
       commanderKit.traverse((obj) => { obj.userData.entityId = entity.id; });
       chassis.add(commanderKit);
@@ -185,7 +183,6 @@ export class UnitMeshBuilder3D {
       turrets,
       ownerId,
       unitGfx,
-      unitGraphicsTier,
       useDetailedUnitInstancing,
       blueprint?.dgun?.turretId,
     );
@@ -244,7 +241,6 @@ export class UnitMeshBuilder3D {
     turrets: readonly Turret[],
     ownerId: PlayerId | undefined,
     unitGfx: GraphicsConfig,
-    unitGraphicsTier: ConcreteGraphicsQuality,
     useDetailedUnitInstancing: boolean,
     commanderDgunTurretId: string | undefined,
   ): TurretMesh[] {
@@ -276,7 +272,6 @@ export class UnitMeshBuilder3D {
         this.commanderVisualKit.decorateTurret(
           turretMesh,
           turret.config.id === commanderDgunTurretId,
-          unitGraphicsTier,
         );
       }
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;

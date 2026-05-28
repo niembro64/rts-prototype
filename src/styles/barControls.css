@@ -71,8 +71,7 @@
  *                 dark muted #556 text. Reads as "not engaged".
  *   2. ACTIVE-LEVEL — `.active-level` only. Default bg, WHITE text.
  *                 The "this signal is participating but not the
- *                 solo driver" indicator (e.g. LOD signals in
- *                 ACTIVE state with no SOLO present).
+ *                 solo driver" indicator for active grouped controls.
  *   3. ACTIVE   — `.active` set. Saturated bg from BAR_THEMES vars
  *                 + white text. The "this is THE selected option"
  *                 indicator (single-pick groups, solo signals). */

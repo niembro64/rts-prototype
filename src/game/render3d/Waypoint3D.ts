@@ -32,7 +32,7 @@ import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 
 const STYLE = {
   /** Vertical lift above the terrain so lines / dots / flags clear
-   *  terrain overlays at every terrain LOD while still getting
+   *  terrain overlays while still getting
    *  depth-occluded by intervening hills. */
   worldLift: WAYPOINT_GROUND_LIFT,
   /** Maximum world-unit length of one line sub-segment. Long lines

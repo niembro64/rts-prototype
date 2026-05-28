@@ -4,7 +4,7 @@
 //   - exposes the discriminated `Locomotion3DMesh` union,
 //   - dispatches to the correct rig at build / update / destroy time,
 //   - resolves chassis-lift from the unit blueprint,
-//   - re-exports the leg LOD-snapshot helpers and TREAD_HEIGHT for
+//   - re-exports the leg state-snapshot helpers and TREAD_HEIGHT for
 //     external consumers.
 //
 // Anything that mixed mesh construction, animation, terrain sampling,

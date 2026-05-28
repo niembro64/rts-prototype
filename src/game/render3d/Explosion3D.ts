@@ -1,8 +1,7 @@
 // Explosion3D - short-lived fire explosion markers for projectile impacts
 // and unit deaths in the 3D view.
 //
-// This renderer intentionally has no fire-explosion LOD tiers. Every impact
-// emits exactly one bright white sphere that expands and fades. Material death
+// Every impact emits exactly one bright white sphere that expands and fades. Material death
 // debris remains separate in Debris3D.
 
 import * as THREE from 'three';

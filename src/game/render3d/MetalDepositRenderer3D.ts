@@ -6,26 +6,16 @@
 // smooths that cell silhouette into a sharp-edged, low coin crown.
 
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality, GraphicsConfig } from '@/types/graphics';
+import type { GraphicsConfig } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getRockDetailTexture } from './RockDetailTexture';
 
-const DEPOSIT_MESH_BY_GRAPHICS_TIER: Record<ConcreteGraphicsQuality, {
-  outlineStep: number;
-  material: 'lambert' | 'standard';
-}> = {
-  // outlineStep samples from the same high-detail smoothed cell-union
-  // perimeter. Lower tiers keep every Nth point; higher tiers add the
-  // skipped points so the coin follows the irregular resource-cell cluster
-  // more closely without changing gameplay.
-  min:    { outlineStep: 8, material: 'lambert' },
-  low:    { outlineStep: 6, material: 'lambert' },
-  medium: { outlineStep: 4, material: 'lambert' },
-  high:   { outlineStep: 3, material: 'standard' },
-  max:    { outlineStep: 2, material: 'standard' },
+const DEPOSIT_MESH_DETAIL = {
+  outlineStep: 2,
+  material: 'standard' as const,
 };
 
 const DEPOSIT_BOUNDARY_SMOOTH_PASSES = 2;
@@ -40,62 +30,44 @@ export class MetalDepositRenderer3D {
   private clusters: ReadonlyArray<MetalDepositVisualCluster>;
   private records: Array<{
     node: THREE.Group;
-    tier: ConcreteGraphicsQuality | null;
   }> = [];
   private materials = new Map<string, THREE.Material>();
 
   constructor(
     parentWorld: THREE.Group,
     deposits: ReadonlyArray<MetalDeposit>,
-    initialTier: ConcreteGraphicsQuality = 'medium',
   ) {
     this.clusters = makeMetalDepositVisualClusters(deposits);
     this.group = new THREE.Group();
     parentWorld.add(this.group);
     this.records = [];
-    this.buildAll(initialTier);
+    this.buildAll();
   }
 
-  update(graphicsConfig: GraphicsConfig): void {
+  update(_graphicsConfig: GraphicsConfig): void {
     if (this.clusters.length === 0) return;
-    const tier = graphicsConfig.tier;
     for (let i = 0; i < this.clusters.length; i++) {
       const record = this.records[i];
-      if (tier !== record.tier) this.setDepositTier(i, tier);
       record.node.visible = true;
-      record.node.userData.graphicsTier = tier;
     }
   }
 
-  private buildAll(tier: ConcreteGraphicsQuality): void {
+  private buildAll(): void {
     for (let i = 0; i < this.clusters.length; i++) {
-      const node = this.buildDepositNode(i, tier);
+      const node = this.buildDepositNode(i);
       node.visible = true;
-      this.records[i] = { node, tier };
+      this.records[i] = { node };
       this.group.add(node);
     }
   }
 
-  private setDepositTier(index: number, tier: ConcreteGraphicsQuality): void {
-    const record = this.records[index];
-    if (record.tier === tier) return;
-    disposeDepositNode(record.node);
-    this.group.remove(record.node);
-    const next = this.buildDepositNode(index, tier);
-    next.visible = true;
-    this.group.add(next);
-    record.node = next;
-    record.tier = tier;
-  }
-
-  private buildDepositNode(index: number, tier: ConcreteGraphicsQuality): THREE.Group {
+  private buildDepositNode(index: number): THREE.Group {
     const cluster = this.clusters[index];
-    const meshDetail = DEPOSIT_MESH_BY_GRAPHICS_TIER[tier];
     const coinHeight = METAL_DEPOSIT_CONFIG.coinHeight;
     const node = new THREE.Group();
     const mesh = new THREE.Mesh(
-      makeDepositCoinGeometry(cluster, meshDetail.outlineStep, coinHeight),
-      this.getMaterial(meshDetail.material),
+      makeDepositCoinGeometry(cluster, DEPOSIT_MESH_DETAIL.outlineStep, coinHeight),
+      this.getMaterial(DEPOSIT_MESH_DETAIL.material),
     );
     node.add(mesh);
     // The mesh contains only the above-ground crown. Relying on the
@@ -103,7 +75,6 @@ export class MetalDepositRenderer3D {
     // camera angles because the terrain is a surface, not a solid mask.
     node.position.set(cluster.x, cluster.height + 0.04, cluster.y);
     node.userData.metalDepositIds = cluster.depositIds;
-    node.userData.graphicsTier = tier;
     return node;
   }
 
@@ -120,7 +91,6 @@ export class MetalDepositRenderer3D {
     for (const record of this.records) {
       disposeDepositNode(record.node);
       this.group.remove(record.node);
-      record.tier = null;
     }
     for (const material of this.materials.values()) material.dispose();
     this.materials.clear();

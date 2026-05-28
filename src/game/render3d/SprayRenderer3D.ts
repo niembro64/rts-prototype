@@ -32,16 +32,12 @@
 // arriving at their stored target point) instead of dying mid-stream
 // when the build target completes.
 //
-// Detail: particle count scales with `fireExplosionStyle` (flash → inferno
-// ≈ 0.15× → 1.0×) — matching the 2D intensity multiplier — so low detail
-// gets a handful of particles and MAX detail gets the full fan. Zero-
-// intensity sprays (idle commanders) skip entirely.
+// Zero-intensity sprays (idle commanders) skip entirely.
 
 import * as THREE from 'three';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import { COLORS } from '@/colorsConfig';
 import { getPlayerPrimaryColor } from '../sim/types';
-import { getGraphicsConfig } from '@/clientBarConfig';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
@@ -59,18 +55,8 @@ const HEAL_MAX_FLIGHT_SEC = 0.62;
 const HEAL_PARTICLE_BASE_RADIUS = 2.35;
 const MAX_PARTICLE_SPAWNS_PER_SPRAY_FRAME = 24;
 
-/** LOD multiplier on the raw per-spray particle count, matching the 2D
- *  `SprayParticles.renderSprayEffect`'s fireExplosionStyle scaling. */
-const LOD_INTENSITY: Record<string, number> = {
-  flash:   0.15,
-  spark:   0.3,
-  burst:   0.5,
-  blaze:   0.8,
-  inferno: 1.0,
-};
-
-/** Max particles per spray at max LOD — keeps the pool bounded even
- *  when every commander on the map is actively building. */
+/** Max particles per spray — keeps the pool bounded even when every
+ *  commander on the map is actively building. */
 const MAX_PARTICLES_PER_SPRAY = 42;
 
 /** Global cap on simultaneous particles across every spray on the
@@ -208,15 +194,12 @@ export class SprayRenderer3D {
     this._time += dtMs;
     const dtSec = Math.max(0, Math.min(dtMs, 100)) / 1000;
 
-    const style = getGraphicsConfig().fireExplosionStyle ?? 'burst';
-    const lodMult = LOD_INTENSITY[style] ?? 0.5;
-
     this.advanceParticles(dtSec);
     this.activeSprayKeys.clear();
 
     for (const spray of sprayTargets) {
       if (spray.intensity <= 0) continue;
-      const scaledIntensity = Math.min(1, spray.intensity) * lodMult;
+      const scaledIntensity = Math.min(1, spray.intensity);
       // Build sprays are intentionally denser than heal sprays because
       // they represent a construction emitter painting a footprint, not
       // a single repair beam.
@@ -441,7 +424,7 @@ export class SprayRenderer3D {
     this.pLife[idx] = life;
     if (spray.type === 'build') {
       // All build particles render at exactly the construction
-      // emitter particle radius — no per-particle jitter, no LOD scaling, no
+      // emitter particle radius — no per-particle jitter, no scaling, no
       // mid-flight growth (see writeParticlesToMesh).
       this.pSize[idx] = this.buildParticleRadius(spray.particleRadius);
       this.pUniformSize[idx] = 1;

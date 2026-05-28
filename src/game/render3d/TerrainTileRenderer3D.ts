@@ -75,8 +75,8 @@ import { getSimWasm } from '../sim-wasm/init';
 import { clamp01 } from '../math';
 
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
-const TERRAIN_LOD_REBUILD_SETTLE_FRAMES = 3;
-const TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING = 24;
+const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
+const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
 const SIDE_WALL_TERRAIN_SHADE = 0.68;
 const BUILD_GRID_COLOR_OK = readRgbaTuple(
@@ -284,11 +284,11 @@ export class TerrainTileRenderer3D {
   private gridCellsX = 0;
   private gridCellsY = 0;
   private gridCellSize = 0;
-  private terrainLodKey = '';
+  private terrainGeometryKey = '';
   private renderFrameIndex = 0;
-  private pendingTerrainLodKey = '';
-  private pendingTerrainLodFrames = 0;
-  private lastGeometryRebuildFrame = -TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING;
+  private pendingTerrainGeometryKey = '';
+  private pendingTerrainGeometryFrames = 0;
+  private lastGeometryRebuildFrame = -TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING;
   private terrainTriangleDebug = false;
   private terrainGeometryReady = false;
 
@@ -691,7 +691,7 @@ export class TerrainTileRenderer3D {
     this.buildGridTextureKey = key;
   }
 
-  private makeTerrainLodKey(
+  private makeTerrainGeometryKey(
     cellsX: number,
     cellsY: number,
     cellSize: number,
@@ -708,7 +708,6 @@ export class TerrainTileRenderer3D {
       TERRAIN_HORIZON_BLEND_CONFIG.boundaryFadeEnd,
       TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeStartDistance,
       TERRAIN_HORIZON_BLEND_CONFIG.rectangularEdgeEndDistance,
-      graphicsConfig.tier,
       graphicsConfig.terrainTileSideWalls ? 1 : 0,
       WATER_FULLY_OPAQUE ? 1 : 0,
       triangleDebug ? 1 : 0,
@@ -753,32 +752,32 @@ export class TerrainTileRenderer3D {
   }
 
   private shouldRebuildTerrainGeometry(nextKey: string, immediate: boolean): boolean {
-    if (this.terrainLodKey === '') return true;
-    if (nextKey === this.terrainLodKey) {
-      this.pendingTerrainLodKey = '';
-      this.pendingTerrainLodFrames = 0;
+    if (this.terrainGeometryKey === '') return true;
+    if (nextKey === this.terrainGeometryKey) {
+      this.pendingTerrainGeometryKey = '';
+      this.pendingTerrainGeometryFrames = 0;
       return false;
     }
     if (immediate) return true;
 
-    if (this.pendingTerrainLodKey !== nextKey) {
-      this.pendingTerrainLodKey = nextKey;
-      this.pendingTerrainLodFrames = 0;
+    if (this.pendingTerrainGeometryKey !== nextKey) {
+      this.pendingTerrainGeometryKey = nextKey;
+      this.pendingTerrainGeometryFrames = 0;
       return false;
     }
 
-    this.pendingTerrainLodFrames++;
+    this.pendingTerrainGeometryFrames++;
     const framesSinceRebuild = this.renderFrameIndex - this.lastGeometryRebuildFrame;
     return (
-      this.pendingTerrainLodFrames >= TERRAIN_LOD_REBUILD_SETTLE_FRAMES &&
-      framesSinceRebuild >= TERRAIN_LOD_REBUILD_MIN_FRAME_SPACING
+      this.pendingTerrainGeometryFrames >= TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES &&
+      framesSinceRebuild >= TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING
     );
   }
 
   private markTerrainGeometryRebuilt(nextKey: string): void {
-    this.terrainLodKey = nextKey;
-    this.pendingTerrainLodKey = '';
-    this.pendingTerrainLodFrames = 0;
+    this.terrainGeometryKey = nextKey;
+    this.pendingTerrainGeometryKey = '';
+    this.pendingTerrainGeometryFrames = 0;
     this.lastGeometryRebuildFrame = this.renderFrameIndex;
   }
 
@@ -835,7 +834,7 @@ export class TerrainTileRenderer3D {
     assertCanonicalLandCellSize('terrain tile cell size', cellSize);
     const cellsX = grid.cellsX;
     const cellsY = grid.cellsY;
-    const nextTerrainLodKey = this.makeTerrainLodKey(
+    const nextTerrainGeometryKey = this.makeTerrainGeometryKey(
       cellsX,
       cellsY,
       cellSize,
@@ -848,18 +847,18 @@ export class TerrainTileRenderer3D {
       cellsY !== this.gridCellsY ||
       cellSize !== this.gridCellSize ||
       triangleDebugChanged;
-    if (!this.shouldRebuildTerrainGeometry(nextTerrainLodKey, structuralChange)) {
+    if (!this.shouldRebuildTerrainGeometry(nextTerrainGeometryKey, structuralChange)) {
       return false;
     }
 
-    const cachedGeometry = this.terrainGeometryCache.get(nextTerrainLodKey);
+    const cachedGeometry = this.terrainGeometryCache.get(nextTerrainGeometryKey);
     if (cachedGeometry) {
       this.gridCellsX = cellsX;
       this.gridCellsY = cellsY;
       this.gridCellSize = cellSize;
       this.terrainTriangleDebug = triangleDebug;
-      this.useTerrainGeometry(nextTerrainLodKey, cachedGeometry.geometry);
-      this.markTerrainGeometryRebuilt(nextTerrainLodKey);
+      this.useTerrainGeometry(nextTerrainGeometryKey, cachedGeometry.geometry);
+      this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
       return true;
     }
 
@@ -1166,8 +1165,8 @@ export class TerrainTileRenderer3D {
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     }
     geometry.computeBoundingSphere();
-    this.cacheTerrainGeometry(nextTerrainLodKey, geometry);
-    this.markTerrainGeometryRebuilt(nextTerrainLodKey);
+    this.cacheTerrainGeometry(nextTerrainGeometryKey, geometry);
+    this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
 
     return true;
   }

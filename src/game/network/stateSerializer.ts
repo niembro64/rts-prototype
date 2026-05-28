@@ -13,14 +13,6 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type { SimEvent } from '../sim/combat';
 import type { ProjectileSpawnEvent, ProjectileDespawnEvent, ProjectileVelocityUpdateEvent } from '../sim/combat';
 import type { GamePhase } from '../../types/network';
-import {
-  ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_NORMAL,
-  ENTITY_CHANGED_POS,
-  ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_TURRETS,
-  ENTITY_CHANGED_VEL,
-} from '../../types/network';
 import { SNAPSHOT_CONFIG } from '../../config';
 import { serializeAudioEvents } from './stateSerializerAudio';
 import { serializeEconomySnapshot } from './stateSerializerEconomy';
@@ -109,14 +101,6 @@ const _visibilityHiddenIdsBuf: EntityId[] = [];
 const _deferredDetailEntityIdsBuf: EntityId[] = [];
 registerEntitySnapshotWireSource(_entityBuf);
 
-const HIGH_COUNT_FOREIGN_THROTTLED_ENTITY_FIELDS =
-  ENTITY_CHANGED_POS |
-  ENTITY_CHANGED_ROT |
-  ENTITY_CHANGED_VEL |
-  ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_NORMAL |
-  ENTITY_CHANGED_HP;
-
 // Pre-allocated sub-objects for nested fields (avoids per-frame allocation)
 const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
@@ -166,10 +150,6 @@ export type SerializeGameStateOptions = {
    * baseline precision; observed entities can use coarser thresholds.
    */
   recipientPlayerId: PlayerId | undefined;
-  /** Monotonic publisher-side emit sequence, shared by all listeners.
-   *  Used to stagger high-count remote LOD buckets independently from
-   *  simulation tick rate. */
-  snapshotSequence: number | undefined;
   visibility: SnapshotVisibility | undefined;
   /**
    * High-frequency visual detail fields can ride a lower cadence than
@@ -199,7 +179,6 @@ const DEFAULT_SERIALIZE_GAME_STATE_OPTIONS: SerializeGameStateOptions = {
   removedEntityIds: undefined,
   removedEntities: undefined,
   recipientPlayerId: undefined,
-  snapshotSequence: undefined,
   visibility: undefined,
   emitEntityDetailFields: undefined,
   audioOverride: undefined,
@@ -231,27 +210,6 @@ function acceptsSerializedEntity(
     (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
     visibility.isEntityVisible(entity)
   );
-}
-
-function shouldDeferForeignHighCountEntityDelta(
-  entity: Entity,
-  changedFields: number | undefined,
-  visibility: SnapshotVisibility | undefined,
-  highCountEntityLodEnabled: boolean,
-  snapshotSequence: number,
-): boolean {
-  if (!highCountEntityLodEnabled || changedFields === undefined || changedFields <= 0) {
-    return false;
-  }
-  if (visibility === undefined || !visibility.hasRecipient) return false;
-  const ownership = entity.ownership;
-  const ownerPlayerId = ownership !== null ? ownership.playerId : undefined;
-  if (visibility.isOwnedByRecipientOrAlly(ownerPlayerId)) return false;
-  if ((changedFields & ~HIGH_COUNT_FOREIGN_THROTTLED_ENTITY_FIELDS) !== 0) return false;
-
-  const cadence = Math.max(1, Math.floor(SNAPSHOT_CONFIG.highCountForeignEntitySnapshotCadence));
-  if (cadence <= 1) return false;
-  return ((entity.id + snapshotSequence) % cadence) !== 0;
 }
 
 /** Forget an entity from delta tracking, optionally emitting a removal
@@ -361,10 +319,6 @@ export function serializeGameState(
   // now module-scope helpers with explicit params, dropping closure
   // allocations per serialize.
   const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
-  const highCountEntityLodEnabled = deltaEnabled &&
-    world.getUnits().length >= SNAPSHOT_CONFIG.highCountEntityLodUnitThreshold &&
-    SNAPSHOT_CONFIG.highCountForeignEntitySnapshotCadence > 1;
-  const snapshotSequence = Math.max(0, Math.floor(options.snapshotSequence ?? tick));
 
   if (options.removedEntities !== undefined) {
     processRemovedEntities(options.removedEntities, tracking, visibility, baselineSim, baselineHandle);
@@ -470,17 +424,6 @@ export function serializeGameState(
           tracking.deferredDetailFields.delete(entity.id);
         }
       }
-      if (
-        shouldDeferForeignHighCountEntityDelta(
-          entity,
-          changedFields,
-          visibility,
-          highCountEntityLodEnabled,
-          snapshotSequence,
-        )
-      ) {
-        continue;
-      }
       if (isNew || changedFields! > 0) {
         const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
         if (netEntity) _entityBuf.push(netEntity);
@@ -523,17 +466,6 @@ export function serializeGameState(
         const changedFields = isNew
           ? undefined
           : rawDeltaMask | pendingDetailFields;
-        if (
-          shouldDeferForeignHighCountEntityDelta(
-            entity,
-            changedFields,
-            visibility,
-            highCountEntityLodEnabled,
-            snapshotSequence,
-          )
-        ) {
-          continue;
-        }
         if (isNew || changedFields! > 0) {
           const netEntity = serializeEntitySnapshot(entity, changedFields, world, visibility);
           if (netEntity) _entityBuf.push(netEntity);
@@ -675,10 +607,7 @@ export function serializeGameState(
 
   const netAudioEvents = options.audioOverride !== undefined
     ? options.audioOverride.value
-    : serializeAudioEvents(audioEvents, visibility, options.trackingKey, {
-        unitCount: world.getUnits().length,
-        snapshotSequence,
-      });
+    : serializeAudioEvents(audioEvents, visibility, options.trackingKey);
 
   const netScanPulses = serializeScanPulses(world, visibility);
 
@@ -691,7 +620,6 @@ export function serializeGameState(
     deltaEnabled,
     visibility,
     emitBeamUpdates: options.emitProjectileDetailFields !== false,
-    snapshotSequence,
     projectileSpawns,
     projectileDespawns,
     projectileVelocityUpdates,

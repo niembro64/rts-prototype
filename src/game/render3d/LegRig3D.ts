@@ -28,7 +28,7 @@ import type {
   LegConfig as BlueprintLegConfig,
   UnitBodyShape,
 } from '@/types/blueprints';
-import type { LegStyle as LegLod } from '@/types/graphics';
+import type { LegStyle } from '@/types/graphics';
 import type { ArachnidLegConfig } from '@/types/render';
 import { getSegmentMidYAt } from '../math/BodyDimensions';
 import { resolveMirroredLegConfigs } from '../math/LegLayout';
@@ -193,11 +193,11 @@ export type LegInstance = {
    *  so the dirty flag overhead is shared. */
   upperSlot: number;
   /** Slot index into the lower-cylinder pool. Only allocated for
-   *  'animated' / 'full' LOD; 'simple' LOD legs are a single
+   *  'animated' / 'full' style; 'simple' legs are a single
    *  upper-cylinder spanning hip → foot directly. */
   lowerSlot: number;
   /** Slot indices into LegInstancedRenderer's joint-sphere pool —
-   *  only allocated at 'full' LOD; -1 elsewhere (or when the pool
+   *  only allocated for the 'full' style; -1 elsewhere (or when the pool
    *  is exhausted, in which case the leg quietly skips that joint).
    *  Both joints across the whole scene draw in a single shared
    *  InstancedMesh call. The radius is baked once at build (joint
@@ -206,7 +206,7 @@ export type LegInstance = {
   hipJointSlot: number;
   kneeJointSlot: number;
   /** Slot into the flattened foot-pad pool. Allocated for every
-   *  rendered leg LOD so the cylinder endpoint can sit above
+   *  rendered leg style so the cylinder endpoint can sit above
    *  terrain even when joints are disabled. */
   footPadSlot: number;
   hipJointRadius: number;
@@ -233,7 +233,7 @@ export type LegMesh = {
   group: THREE.Group;
   legs: LegInstance[];
   config: BlueprintLegConfig;
-  legLod: LegLod;
+  legStyle: LegStyle;
   /** Per-UNIT rest-sphere radius (world units). Every leg on this
    *  unit shares the same sphere size — it scales with the unit's
    *  longest leg so a Daddy gets a much larger stride budget than a
@@ -269,7 +269,7 @@ export type LegStateSnapshot = ReadonlyArray<{
 
 /** Capture per-leg state from a legged locomotion mesh into a plain
  *  array of POJOs the caller can stash across a tear-down/rebuild.
- *  Cost: O(legs.length); called only at LOD-flip time, not per-frame. */
+ *  Cost: O(legs.length); called only at rebuild time, not per-frame. */
 export function captureLegState(loc: LegMesh): LegStateSnapshot {
   const out: LegStateSnapshot[number][] = [];
   for (const leg of loc.legs) {
@@ -290,7 +290,7 @@ export function captureLegState(loc: LegMesh): LegStateSnapshot {
 /** Pour a captured snapshot back into a freshly-built legged mesh,
  *  matching by leg index. Leg COUNT is determined by the unit's
  *  blueprint (leg layout + bodyShape), which doesn't change with
- *  graphics LOD — so the indices line up 1:1 between the old and
+ *  graphics style — so the indices line up 1:1 between the old and
  *  new LegInstance arrays. Slot indices, configs, and per-leg
  *  geometry refs (newly minted by buildLegs) are left untouched;
  *  only the foot-position / lerp / phase fields are overwritten. */
@@ -315,7 +315,7 @@ export function buildLegs(
   entity: Entity,
   r: number,
   cfg: BlueprintLegConfig,
-  legLod: LegLod,
+  legStyle: LegStyle,
   bodyShape: UnitBodyShape,
   chassisLiftY: number,
   legAttachHeightFrac: number | null,
@@ -324,7 +324,7 @@ export function buildLegs(
   legRenderer: LegInstancedRenderer,
   ownerId: PlayerId | undefined,
 ): LegMesh | undefined {
-  if (legLod === 'none') return undefined;
+  if (legStyle === 'none') return undefined;
 
   const { left, all: allConfigs, sides } = resolveMirroredLegConfigs(cfg, r);
   const shellPool = !!(entity.buildable && !entity.buildable.isComplete && !entity.buildable.isGhost);
@@ -403,11 +403,11 @@ export function buildLegs(
     // so a future flush()-time defrag can call back into the leg and
     // update the stored index when a slot is packed downward.
     leg.upperSlot = legRenderer.allocUpper(shellPool, legColor, (s) => { leg.upperSlot = s; });
-    if (legLod === 'animated' || legLod === 'full') {
+    if (legStyle === 'animated' || legStyle === 'full') {
       leg.lowerSlot = legRenderer.allocLower(shellPool, legColor, (s) => { leg.lowerSlot = s; });
     }
     leg.footPadSlot = legRenderer.allocFootPad(shellPool, legColor, (s) => { leg.footPadSlot = s; });
-    if (legLod === 'full') {
+    if (legStyle === 'full') {
       leg.hipJointSlot = legRenderer.allocJoint(shellPool, legColor, (s) => { leg.hipJointSlot = s; });
       leg.kneeJointSlot = legRenderer.allocJoint(shellPool, legColor, (s) => { leg.kneeJointSlot = s; });
     }
@@ -440,7 +440,7 @@ export function buildLegs(
     group,
     legs,
     config: cfg,
-    legLod,
+    legStyle,
     stepRadius,
     maxLegLength,
     visualGrounded: true,
@@ -694,7 +694,7 @@ export function updateLegs(
     // endpoint needs enough clearance for the leg cylinder's radius.
     // Sampling at the current visual XZ keeps sliding feet above
     // hills/ridges between their start and target ground points.
-    const footCylinderRadius = mesh.legLod === 'simple' ? leg.upperThick : leg.lowerThick;
+    const footCylinderRadius = mesh.legStyle === 'simple' ? leg.upperThick : leg.lowerThick;
     const footSurface = sampleLocomotionFootSurface(
       footX,
       footZ,
@@ -921,7 +921,7 @@ function updateAirborneLegPose(
       touchdownLocalX, FOOT_Y, touchdownLocalZ,
       entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
     );
-    const footCylinderRadius = mesh.legLod === 'simple' ? leg.upperThick : leg.lowerThick;
+    const footCylinderRadius = mesh.legStyle === 'simple' ? leg.upperThick : leg.lowerThick;
     const firstSurface = sampleLocomotionFootSurface(
       _worldOut.x,
       _worldOut.z,
@@ -1031,7 +1031,7 @@ function writeLegRenderPose(
   chassisUpZ: number,
 ): void {
   const c = leg.config;
-  if (mesh.legLod === 'simple') {
+  if (mesh.legStyle === 'simple') {
     legRenderer.updateUpper(
       leg.upperSlot,
       hipWorldX, hipWorldY, hipWorldZ,

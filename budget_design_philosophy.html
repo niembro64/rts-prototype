@@ -197,7 +197,7 @@
         The authoritative simulation owns the real world: commands, ownership, economy, construction,
         targeting, damage, projectile hits, physics bodies, collision response, fog of war, victory,
         and persistent state. The client simulation owns presentation: local command feedback,
-        prediction, smoothing, camera-visible detail, audio scheduling, and render-time interpolation.
+        prediction, smoothing, camera-visible presentation, audio scheduling, and render-time interpolation.
       </p>
       <p>
         That split is architectural, not permission for accidental duplicate game loops. A browser
@@ -437,7 +437,7 @@
         The client view should continue to run smoothly whether snapshots arrive at 60 Hz, 10 Hz,
         5 Hz, or briefly not at all. Prediction should use the same motion math as the server
         wherever possible. The current code already points this way with shared TypeScript/WASM unit
-        motion, server targets, drift modes, and prediction LOD. New systems should preserve that
+        motion, server targets, and drift modes. New systems should preserve that
         shape.
       </p>
     </section>
@@ -687,7 +687,7 @@
         The sim uses a real 3D state: horizontal <code>x/y</code>, vertical <code>z</code>, velocity,
         acceleration, gravity, surface normals, sphere and cuboid bodies, terrain contact, building
         collision, unit collision, projectile collision, and hover lift. The renderer
-        can simplify distant visuals, but the authoritative sim should treat altitude and contact as
+        presents that state, but the authoritative sim should treat altitude and contact as
         real gameplay inputs.
       </p>
       <p>
@@ -812,12 +812,12 @@
         state for gameplay ticks.
       </p>
 
-      <h3>LOD is allowed, but it must be honest</h3>
+      <h3>Clean structure comes before visual shortcuts</h3>
       <p>
-        There are two separate concerns: server simulation authority and client visual detail.
-        Server simulation, snapshots, and client prediction run at their normal cadence without
-        camera-distance throttles. Client render LOD may reduce labels, effects, and mesh richness,
-        but it must not change gameplay authority or unit/turret pose update frequency.
+        There are two separate concerns: server simulation authority and client presentation.
+        Server simulation, snapshots, and client prediction must keep explicit ownership and stable
+        cadence. Client rendering should be organized around clear data flow, predictable batches,
+        and readable assets before adding extra representation modes.
       </p>
     </section>
 
@@ -835,7 +835,7 @@
         <li>Serialize snapshots as compact binary payloads. Do not rely on deep JSON object trees for high-frequency state.</li>
         <li>Separate debug overlays from gameplay state and throttle them aggressively.</li>
         <li>Measure TPS, CPU budget, render time, prediction time, snapshot rate, and backpressure continuously.</li>
-        <li>Prefer instancing, shared geometry, shared materials, LOD grids, and GPU-friendly batches over per-unit scene graph complexity.</li>
+        <li>Prefer instancing, shared geometry, shared materials, spatial grouping, and GPU-friendly batches over per-unit scene graph complexity.</li>
       </ul>
     </section>
 
@@ -967,15 +967,16 @@
       <h2>Rendering Philosophy</h2>
       <p>
         The renderer should make huge battles legible without forcing the simulation to become fake.
-        Rich nearby units can have turrets, legs, treads, chassis tilt, beams, labels, decals, and
-        effects. Distant units should collapse to cheaper instanced representations. The object LOD
-        grid is the right shape: classify a region once, then let all renderable objects in that
-        region inherit the tier.
+        Units should have consistent turrets, legs, treads, chassis tilt, beams, labels, decals, and
+        effects because those are the shapes players use to understand the fight. The renderer should
+        organize those shapes into clean render queues, shared resources, and predictable spatial
+        groups before adding new rendering modes.
       </p>
       <p>
         Rendering should never ask the authoritative sim to send more data just because a visual is
-        expensive. If a visual cannot be supported at scale, it should degrade on the client. The sim
-        remains physical; the rendering becomes cheaper.
+        expensive. If a visual cannot be supported at scale, simplify the visual contract or the
+        renderer's structure first. The sim remains physical; rendering stays downstream of that
+        physical truth.
       </p>
     </section>
 
@@ -992,7 +993,7 @@
         This is the right boundary for three reasons. One: the renderer already has the terrain
         heightmap loaded for shading and contact shadows; sampling it under a wheel or foot is
         cheap. Two: per-part terrain queries scale linearly with visible units, not authoritative
-        units &mdash; off-screen and LOD-culled units skip the work for free. Three: it removes a
+        units &mdash; off-screen units skip the work for free. Three: it removes a
         whole class of net-bug, because a chassis can never wedge a wheel under a hill that exists
         only on the client&rsquo;s mesh. The visual rig is downstream of sim authority, never
         upstream.
@@ -1119,7 +1120,7 @@
       <p>
         This is the same boundary as <strong>Locomotion Visuals Are Frontend</strong>: the sim
         publishes a chassis pose the renderer is allowed to enrich, and the rig owns every
-        visual detail that doesn&rsquo;t change targeting truth. Banking is the airborne
+        visual expression that doesn&rsquo;t change targeting truth. Banking is the airborne
         analogue of wheel spin and tread phase &mdash; expressive on the screen, irrelevant to
         the simulation.
       </p>

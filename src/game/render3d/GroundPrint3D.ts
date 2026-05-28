@@ -4,7 +4,7 @@
 //
 // Rewrite goals (vs. the original frame-skip design):
 //
-// 1. NO GAPS. Trails are continuous at every LOD. We sample every
+// 1. NO GAPS. Trails are continuous. We sample every
 //    contact every frame and emit a new quad as soon as the contact
 //    has moved by `spacing` world units since the last emit. The new
 //    quad spans `lastEmit → current` exactly, so segments butt
@@ -16,19 +16,11 @@
 //    plant cycle stamps exactly once. No frame-skip can drop a
 //    plant — we read every frame and look for the edge.
 //
-// 3. NO LOD CULL. Marks die only when their lifetime expires. A tier
-//    flip never deletes in-flight marks; it just slows the rate of
-//    new emission and shortens the lifetime applied to *future*
-//    marks. The visible result is a graceful collective fade-out
-//    instead of the old hard cut. EMA-smoothed density (~300 ms tau)
-//    smooths the transition even further.
+// 3. NO CULL. Marks die only when their lifetime expires.
 //
-// 4. SPACING + LIFETIME = LOD. One density knob (groundPrintDensity)
-//    per LOD tier drives both:
-//      - emit spacing  (tight at MAX, wide at MIN — fewer marks per
-//        unit distance, but always continuous)
-//      - per-mark lifetime (longer at MAX, shorter at MIN — natural
-//        active-count throttle without an explicit cap)
+// 4. SPACING + LIFETIME are driven by one density knob:
+//      - emit spacing  (fewer marks per unit distance, but always continuous)
+//      - per-mark lifetime (natural active-count throttle without an explicit cap)
 //
 // 5. SOFT CAP. There's a hard buffer ceiling (HARD_CAP) for GPU
 //    pre-allocation. When it's hit (only at extreme load), we evict
@@ -74,24 +66,24 @@ const PRINT_LIN = new THREE.Color(PRINT_HEX);
 // ── Lifetime ──
 // Linear alpha decay from PRINT_INITIAL_ALPHA at age 0 → 0 at age
 // PRINT_BASE_LIFETIME_MS × density-derived multiplier. Tweak the
-// base to change how long marks linger at MAX LOD; the multiplier
-// shortens it at lower tiers.
+// base to change how long marks linger; the multiplier shortens it
+// when density is reduced.
 const PRINT_BASE_LIFETIME_MS = 1000;
 const PRINT_INITIAL_ALPHA = COLORS.world.groundPrint.initialAlpha;
 
 const STAMP_CIRCLE_RADIUS_MULT = 1.35;
 
 // At density = 0 lifetime is shrunk to this fraction of the base.
-// MIN tier therefore drains the buffer about 2.5× faster than MAX.
-const LIFETIME_MULT_AT_MIN = 0.4;
+// This drains the buffer about 2.5x faster than full density.
+const LIFETIME_MULT_AT_ZERO_DENSITY = 0.4;
 
 // ── Spacing (distance-based emit) ──
-// At density = 1 we emit a new quad every SPACING_AT_MAX wu of
+// At density = 1 we emit a new quad every SPACING_AT_FULL_DENSITY wu of
 // motion (tight ribbons). At density = 0 the spacing relaxes to
-// SPACING_AT_MIN — fewer quads per unit distance but each quad spans
+// SPACING_AT_ZERO_DENSITY — fewer quads per unit distance but each quad spans
 // more, so the trail stays continuous.
-const SPACING_AT_MAX = 4;
-const SPACING_AT_MIN = 24;
+const SPACING_AT_FULL_DENSITY = 4;
+const SPACING_AT_ZERO_DENSITY = 24;
 
 // ── Stamp dedupe ──
 // A leg sometimes "re-plants" within ~a wu of where it took off
@@ -102,7 +94,7 @@ const STAMP_MIN_DIST_SQ = 4;
 
 // ── Buffer ceiling ──
 // Hard cap on the GPU-side merged geometry. Active count rarely
-// approaches this — at MAX LOD the spacing × lifetime product
+// approaches this — at maximum density the spacing × lifetime product
 // converges to a few thousand marks even in heavy combat. The cap
 // only kicks in at pathological loads (100+ mobile units all
 // sprinting at MAX), at which point we evict oldest-on-emit.
@@ -112,16 +104,15 @@ const HARD_CAP = 16000;
 // near-180° turn doesn't produce an infinite spike.
 const MITER_LIMIT = 3;
 
-// EMA tau (ms) for smoothing the LOD-resolved density. ~300 ms
-// matches BurnMark3D so the two mark systems glide together when
-// the user changes graphics tier mid-frame.
+// EMA tau (ms) for smoothing density. ~300 ms matches BurnMark3D so
+// the two mark systems glide together.
 const DENSITY_EMA_TAU_MS = 300;
 
 // Below this smoothed density we skip the emit pass entirely — no
 // new marks until the smoothed value climbs back above. The age
 // sweep continues regardless so existing marks fade naturally and
-// the buffer drains. Without this floor, density = 0 (MIN tier)
-// would still emit at SPACING_AT_MIN intervals.
+// the buffer drains. Without this floor, density = 0 would still
+// emit at SPACING_AT_ZERO_DENSITY intervals.
 const EMIT_DENSITY_FLOOR = 0.02;
 
 function makeGroundPrintMaterial(): THREE.MeshBasicMaterial {
@@ -255,7 +246,7 @@ export class GroundPrint3D {
   private _activeUnitIds = new Set<EntityId>();
   private _groundedUnitIds = new Set<EntityId>();
 
-  /** EMA-smoothed copy of the LOD-resolved density. -1 = "not
+  /** EMA-smoothed copy of mark density. -1 = "not
    *  initialized yet" so the first update snaps to the resolved
    *  value rather than easing in from 0. */
   private _smoothedDensity = -1;
@@ -319,8 +310,7 @@ export class GroundPrint3D {
     }
 
     // ── Density EMA ──
-    // The LOD-resolved target glides over ~300 ms toward whatever
-    // value the active tier provides. Tier flips never step.
+    // Density glides over ~300 ms instead of stepping.
     const gfx = getGraphicsConfig();
     const target = clamp01(gfx.groundPrintDensity ?? 1);
     if (this._smoothedDensity < 0) {
@@ -331,10 +321,10 @@ export class GroundPrint3D {
     }
     const density = this._smoothedDensity;
 
-    // Lifetime applies to every tier — even when emit is gated off
+    // Lifetime applies even when emit is gated off
     // below, in-flight marks must keep aging.
     const lifeMult =
-      LIFETIME_MULT_AT_MIN + (1 - LIFETIME_MULT_AT_MIN) * density;
+      LIFETIME_MULT_AT_ZERO_DENSITY + (1 - LIFETIME_MULT_AT_ZERO_DENSITY) * density;
     const effLifetimeMs = Math.max(1, PRINT_BASE_LIFETIME_MS * lifeMult);
     const invLifetime = 1 / effLifetimeMs;
 
@@ -370,7 +360,7 @@ export class GroundPrint3D {
     // Spacing for this frame. Squared form for the cheap distance
     // compare in sampleTrail.
     const spacing =
-      SPACING_AT_MAX + (1 - density) * (SPACING_AT_MIN - SPACING_AT_MAX);
+      SPACING_AT_FULL_DENSITY + (1 - density) * (SPACING_AT_ZERO_DENSITY - SPACING_AT_FULL_DENSITY);
     const spacingSq = spacing * spacing;
 
     // ── Sample every contact every frame ──
@@ -474,7 +464,7 @@ export class GroundPrint3D {
   // Always invoked, every frame, every contact. The distance check
   // gates emission; nothing else does. So as long as the contact
   // moves, the trail keeps getting longer with quads butting
-  // edge-to-edge — gap-free regardless of LOD.
+  // edge-to-edge — gap-free regardless of density.
 
   private sampleTrail(
     key: TrailKey,
@@ -640,7 +630,7 @@ export class GroundPrint3D {
       // existing array order is shuffled by swap-pop deletions, so
       // marks[0] isn't guaranteed oldest; we have to look. This is
       // O(n) but only runs when at the cap, which in practice is
-      // rare (max-LOD heavy combat only).
+      // rare (heavy combat only).
       let oldestIdx = 0;
       let oldestAge = -1;
       for (let i = 0; i < this.marks.length; i++) {

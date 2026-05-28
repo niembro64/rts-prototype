@@ -127,7 +127,7 @@ export function getDefaultUnitBodyCenterHeightY(
 /** World-space lift applied to the visible body/chassis above the unit's
  *  ground footprint. This is derived from bodyCenterHeight so the
  *  authored unit center is a hard contract shared by simulation,
- *  targeting, low-LOD imposters, chassis rendering, and locomotion. */
+ *  targeting, chassis rendering, and locomotion. */
 export function getChassisLiftY(
   blueprint: Pick<UnitBlueprint, 'locomotion' | 'bodyShape' | 'bodyCenterHeight'> | undefined,
   unitRadius: number,

@@ -1,9 +1,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getConstructionHazardMaterial } from './BuildingShape3D';
 import type { TurretMesh } from './TurretMesh3D';
-import { buildingTierAtLeast } from './RenderTier3D';
 
 const COMMANDER_ARMOR_COLOR = COLORS.units.commander.armor.colorHex;
 const COMMANDER_TRIM_COLOR = COLORS.units.commander.trim.colorHex;
@@ -22,7 +20,7 @@ export class CommanderVisualKit3D {
     depthWrite: false,
   });
 
-  buildKit(tier: ConcreteGraphicsQuality): THREE.Group {
+  buildKit(): THREE.Group {
     const kit = new THREE.Group();
     const hazardMat = getConstructionHazardMaterial();
     const addBox = (
@@ -47,37 +45,29 @@ export class CommanderVisualKit3D {
     };
 
     addBox(this.armorMat, -0.08, 1.12, 0, 1.04, 0.14, 0.76);
-    if (buildingTierAtLeast(tier, 'low')) {
-      addBox(this.trimMat, 0.44, 1.22, 0, 0.28, 0.12, 0.58);
-      addBox(this.lensMat, 0.64, 1.27, 0, 0.08, 0.11, 0.46);
-    }
-    if (buildingTierAtLeast(tier, 'medium')) {
-      addCylinder(hazardMat, -0.42, 1.34, 0, 0.34, 0.1, 0.34);
-      addCylinder(this.armorMat, 0.34, 1.29, -0.42, 0.24, 0.16, 0.24);
-      addCylinder(this.armorMat, 0.34, 1.29, 0.42, 0.24, 0.16, 0.24);
-    }
-    if (buildingTierAtLeast(tier, 'high')) {
-      addBox(this.trimMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);
-      addBox(this.trimMat, 0.36, 1.42, 0.42, 0.4, 0.055, 0.17);
+    addBox(this.trimMat, 0.44, 1.22, 0, 0.28, 0.12, 0.58);
+    addBox(this.lensMat, 0.64, 1.27, 0, 0.08, 0.11, 0.46);
+    addCylinder(hazardMat, -0.42, 1.34, 0, 0.34, 0.1, 0.34);
+    addCylinder(this.armorMat, 0.34, 1.29, -0.42, 0.24, 0.16, 0.24);
+    addCylinder(this.armorMat, 0.34, 1.29, 0.42, 0.24, 0.16, 0.24);
+    addBox(this.trimMat, 0.36, 1.42, -0.42, 0.4, 0.055, 0.17);
+    addBox(this.trimMat, 0.36, 1.42, 0.42, 0.4, 0.055, 0.17);
 
-      const sensor = new THREE.Mesh(this.domeGeom, this.lensMat);
-      sensor.position.set(0.18, 1.36, 0);
-      sensor.scale.set(0.12, 0.12, 0.12);
-      kit.add(sensor);
-    }
-    if (buildingTierAtLeast(tier, 'max')) {
-      addBox(this.armorMat, -0.28, 1.24, -0.38, 0.36, 0.07, 0.08);
-      addBox(this.armorMat, -0.28, 1.24, 0.38, 0.36, 0.07, 0.08);
-      addBox(this.trimMat, -0.38, 1.31, 0, 0.09, 0.22, 0.12);
-      addBox(this.lensMat, -0.39, 1.43, 0, 0.06, 0.07, 0.08);
-    }
+    const sensor = new THREE.Mesh(this.domeGeom, this.lensMat);
+    sensor.position.set(0.18, 1.36, 0);
+    sensor.scale.set(0.12, 0.12, 0.12);
+    kit.add(sensor);
+
+    addBox(this.armorMat, -0.28, 1.24, -0.38, 0.36, 0.07, 0.08);
+    addBox(this.armorMat, -0.28, 1.24, 0.38, 0.36, 0.07, 0.08);
+    addBox(this.trimMat, -0.38, 1.31, 0, 0.09, 0.22, 0.12);
+    addBox(this.lensMat, -0.39, 1.43, 0, 0.06, 0.07, 0.08);
     return kit;
   }
 
   decorateTurret(
     tm: TurretMesh,
     isDgunTurret: boolean,
-    tier: ConcreteGraphicsQuality,
   ): void {
     const headRadius = tm.headRadius ?? 6;
     const collar = new THREE.Mesh(this.cylinderGeom, this.armorMat);
@@ -89,8 +79,6 @@ export class CommanderVisualKit3D {
     );
     tm.root.add(collar);
 
-    if (!buildingTierAtLeast(tier, 'medium')) return;
-
     const brow = new THREE.Mesh(this.boxGeom, this.armorMat);
     brow.position.set(headRadius * 0.55, headRadius * 1.24, 0);
     brow.scale.set(headRadius * 0.46, headRadius * 0.16, headRadius * 0.86);
@@ -101,7 +89,7 @@ export class CommanderVisualKit3D {
     optic.scale.set(headRadius * 0.08, headRadius * 0.12, headRadius * 0.42);
     tm.root.add(optic);
 
-    if (tm.pitchGroup && buildingTierAtLeast(tier, 'high')) {
+    if (tm.pitchGroup) {
       const sleeve = new THREE.Mesh(this.boxGeom, isDgunTurret ? this.armorMat : this.trimMat);
       sleeve.position.set(headRadius * (isDgunTurret ? 0.72 : 0.55), 0, 0);
       sleeve.scale.set(
@@ -111,12 +99,10 @@ export class CommanderVisualKit3D {
       );
       tm.pitchGroup.add(sleeve);
     }
-    if (buildingTierAtLeast(tier, 'max')) {
-      const crest = new THREE.Mesh(this.boxGeom, this.trimMat);
-      crest.position.set(-headRadius * 0.08, headRadius * 1.34, 0);
-      crest.scale.set(headRadius * 0.1, headRadius * 0.18, headRadius * 0.18);
-      tm.root.add(crest);
-    }
+    const crest = new THREE.Mesh(this.boxGeom, this.trimMat);
+    crest.position.set(-headRadius * 0.08, headRadius * 1.34, 0);
+    crest.scale.set(headRadius * 0.1, headRadius * 0.18, headRadius * 0.18);
+    tm.root.add(crest);
   }
 
   dispose(): void {

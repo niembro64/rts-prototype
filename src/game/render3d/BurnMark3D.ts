@@ -12,8 +12,8 @@
 // draw call. Slots are managed with swap-and-pop on expiry (O(1)) so
 // removing an aged mark doesn't leave gaps.
 //
-// Colors + LOD (tau, cutoff, sample rate) are pulled from the shared
-// config so this stays in lockstep with the 2D BurnMarkSystem.
+// Colors, fade, cutoff, and sample rate are pulled from shared config
+// so this stays in lockstep with the 2D BurnMarkSystem.
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
@@ -56,20 +56,15 @@ const COOL_LIN = new THREE.Color(COOL_COLOR);
 
 // Hard buffer size — never need to reallocate. Memory: ~280 KB for
 // positions + colors, trivial. The active-count cap below sits inside
-// this ceiling and scales with LOD density.
+// this ceiling and scales with mark density.
 const MAX_MARKS = 5000;
 
 // Constant alpha floor below which a mark is invisible enough to
-// reclaim its slot. Decoupled from the LOD tier on purpose: a tier
-// flip used to bump this threshold and instantly cull a chunk of
-// rendered marks (the "abrupt deletion" the user reported). Now the
-// floor is fixed; marks die only when they fade to it via natural
-// rational-exp decay.
+// reclaim its slot. The floor is fixed; marks die only when they fade
+// to it via natural rational-exp decay.
 const BURN_MARK_FADE_FLOOR = 0.01;
 
-// EMA tau (ms) used to smooth the LOD-resolved density so a tier
-// flip glides over half a second of frames instead of stepping on
-// the very next one.
+// EMA tau (ms) used to smooth mark density changes.
 const DENSITY_EMA_TAU_MS = 300;
 
 // Mapping from density (0..1) to derived throttles. The density
@@ -172,7 +167,7 @@ export class BurnMark3D {
   private _seenBeamKeys = new Set<BeamStateKey>();
 
   private _frameCounter = 0;
-  /** EMA-smoothed copy of the LOD-resolved density. Stays around -1
+  /** EMA-smoothed copy of mark density. Stays around -1
    *  until the first update so the first frame snaps to the
    *  resolved value rather than easing in from 0. */
   private _smoothedDensity = -1;
@@ -259,11 +254,7 @@ export class BurnMark3D {
     }
 
     // ── Density resolution (one knob, three throttles) ──
-    // 1) Read the LOD-resolved target density.
-    // 2) EMA-smooth it so a tier flip glides instead of stepping —
-    //    this is the core fix for "marks vanish abruptly" at
-    //    MAX→HIGH. Cap, frame-skip, and lifetime all derive from
-    //    the smoothed value.
+    // Cap, frame-skip, and lifetime all derive from the smoothed value.
     const targetDensity = clamp01(gfx.burnMarkDensity ?? 1);
     if (this._smoothedDensity < 0) {
       this._smoothedDensity = targetDensity;
@@ -363,10 +354,8 @@ export class BurnMark3D {
     }
 
     // ── Age + prune marks ──
-    // Deletion threshold is the constant fade floor, NOT the LOD
-    // tier. So a tier flip (e.g. MAX→HIGH) doesn't suddenly cull
-    // every mark in a wide alpha band — marks always fade out
-    // along the same per-mark curve and only get reclaimed once
+    // Deletion threshold is the constant fade floor. Marks always fade
+    // out along the same per-mark curve and only get reclaimed once
     // they're effectively invisible.
     for (let i = this.marks.length - 1; i >= 0; i--) {
       const mark = this.marks[i];

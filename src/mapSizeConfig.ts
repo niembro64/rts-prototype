@@ -17,7 +17,7 @@ export type MapDimensionAxisConfig = {
 
 // Canonical 2D land partition size. All broad ground-space systems
 // should derive from this: host spatial-grid XY columns, capture
-// tiles, terrain/water tiles, and player-client object LOD cells.
+// tiles, terrain/water tiles, and client spatial groups.
 export const LAND_CELL_SIZE = mapSizeConfig.landCellSize;
 
 /** Single source for map-size option generation. Width and length both use

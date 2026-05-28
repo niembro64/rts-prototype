@@ -11,9 +11,9 @@ import * as THREE from 'three';
 import type { Entity } from '../sim/types';
 import { getLocomotionSurfaceNormal } from './LocomotionTerrainSampler';
 
-/** Per-rig common header. Every locomotion mesh kind carries the LOD
- *  key so the renderer can detect graphics-config changes and rebuild
- *  the rig in place. */
+/** Per-rig common header. Every locomotion mesh kind carries the
+ *  geometry key so the renderer can detect graphics-config changes and
+ *  rebuild the rig in place. */
 export type LocomotionBase = {
   geometryKey: string;
 };

@@ -40,10 +40,8 @@ import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
-import type { UnitRenderMode } from '@/types/graphics';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
-import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { createForceFieldFallbackPanelMaterial } from './ForceFieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
@@ -89,15 +87,6 @@ const AIRBORNE_BANK_MAX = Math.PI * 0.25;
 // travels on the wire.
 const AIRBORNE_BANK_TAU_SEC = 0.18;
 const EMPTY_TURRETS: readonly Turret[] = [];
-
-// C3 — auto render-mode escalation thresholds (live unit count). Escalate-up
-// counts sit above de-escalate-down counts so the effective mode has a dead
-// band and doesn't thrash across a single boundary (each rich<->mass flip
-// rebuilds every unit mesh). Tunable against real frame timings.
-const RENDER_MODE_RICH_TO_HYBRID = 700;
-const RENDER_MODE_HYBRID_TO_RICH = 500;
-const RENDER_MODE_HYBRID_TO_MASS = 2000;
-const RENDER_MODE_MASS_TO_HYBRID = 1700;
 
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
@@ -153,13 +142,7 @@ export class Render3DEntities {
   private selectionOverlays: SelectionOverlayRenderer3D;
   private constructionVisuals: ConstructionVisualController3D;
   private buildingRenderer: BuildingEntityRenderer3D;
-  private unitMassInstances: UnitMassInstanceRenderer3D;
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
-  // C3 — current auto-escalated render mode (hysteresis state). The
-  // configured unitRenderMode is the richness ceiling; this tracks where
-  // the live unit count has pushed the effective mode. Seeded to the
-  // richest tier so a fresh scene starts rich and only escalates on demand.
-  private autoUnitRenderMode: UnitRenderMode = 'rich';
   private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
   private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
@@ -174,8 +157,7 @@ export class Render3DEntities {
   // their world-space planted positions instead of snapping to rest.
   private legStateCache = new Map<EntityId, LegStateSnapshot>();
 
-  // Per-frame graphics state. No frontend camera-distance object tiers are
-  // resolved from this; it is only the single active graphics config.
+  // Per-frame graphics state.
   private frameState: RenderFrameState3D = snapshotRenderFrameState();
 
   // Shared geometries & per-team materials (avoid per-entity allocation).
@@ -229,7 +211,7 @@ export class Render3DEntities {
    *  Without this, smooth-chassis + poly-chassis instances render at
    *  the OLD ground height while per-Mesh chassis (correctly parented
    *  through liftGroup) render lifted — visible mismatch on every
-   *  chassis-instanced unit at LOW+ tier. */
+   *  chassis-instanced unit. */
   private _smoothLiftOffset = new THREE.Vector3();
   private _smoothLiftedPos = new THREE.Vector3();
 
@@ -296,10 +278,6 @@ export class Render3DEntities {
     // player-color generator (sim/types.getPlayerColors) supports any
     // pid, so we don't pre-allocate for a fixed table here.
 
-    this.unitMassInstances = new UnitMassInstanceRenderer3D({
-      world: this.world,
-      clientViewState: this.clientViewState,
-    });
     this.unitDetailInstances = new UnitDetailInstanceRenderer3D({
       world: this.world,
       turretHeadGeom: this.turretHeadGeom,
@@ -380,24 +358,6 @@ export class Render3DEntities {
 
   private _currentDtMs = 0;
 
-  /** Wipe every cached unit mesh so the next updateUnits() rebuilds them. */
-  private rebuildAllUnitsOnLodChange(): void {
-    for (const [id, m] of this.unitMeshes) {
-      // Stash leg state across the rebuild so feet keep their world
-      // positions / gait phase / lerp progress instead of snapping to
-      // rest. captureLegState returns undefined for non-legged units,
-      // so the cache only grows for spider/tick/etc. — cheap.
-      const legSnap = captureLegState(m.locomotion);
-      if (legSnap) this.legStateCache.set(id, legSnap);
-      destroyLocomotion(m.locomotion, this.legRenderer);
-      this.world.remove(m.group);
-      this.disposeWorldParentedOverlays(m);
-    }
-    this.unitMeshes.clear();
-    this.barrelSpinState.clear();
-    this.unitDetailInstances.releaseAllSlots();
-  }
-
   /** Remove every overlay mesh that lives in the world group (not the
    *  unit group) so a teardown/rebuild cycle doesn't leak them into
    *  the scene. TURR CIR circles (per-turret) and the BLD build circle
@@ -426,68 +386,12 @@ export class Render3DEntities {
     m: EntityMesh,
     turrets: readonly Turret[] = EMPTY_TURRETS,
   ): void {
-    this.unitMassInstances.syncColorForEntity(e);
     this.unitDetailInstances.syncShellColors(e, m, turrets);
-  }
-
-  /** C3 — resolve the effective unit render mode from the configured mode
-   *  and the live unit count. The configured mode is the richness CEILING:
-   *  an explicit 'hybrid'/'mass' choice is honored as-is, while the default
-   *  'rich' auto-escalates 'rich' -> 'hybrid' -> 'mass' as the count climbs
-   *  toward the 5,000-unit scale target so the per-unit scene-graph cost of
-   *  'rich' (per-unit Map churn, quaternion composition, material reassign)
-   *  doesn't dominate at scale.
-   *
-   *  Hysteresis is mandatory, not cosmetic: each rich<->mass flip runs
-   *  rebuildAllUnitsOnLodChange (tears down + rebuilds every unit mesh), so a
-   *  count hovering on a single threshold would rebuild every frame. The
-   *  escalate-up counts sit well above the de-escalate-down counts to give a
-   *  dead band. Thresholds are deliberately conservative — typical small
-   *  battles stay 'rich' — and may need tuning against real frame timings. */
-  private resolveUnitRenderMode(configured: UnitRenderMode, unitCount: number): UnitRenderMode {
-    if (configured !== 'rich') {
-      this.autoUnitRenderMode = configured;
-      return configured;
-    }
-    let mode = this.autoUnitRenderMode;
-    // De-escalate first (handles a large count drop or a config flip back to
-    // 'rich' from an explicit 'mass'), then escalate. Sequential checks let a
-    // single big count jump step rich -> hybrid -> mass in one frame.
-    if (mode === 'mass' && unitCount < RENDER_MODE_MASS_TO_HYBRID) mode = 'hybrid';
-    if (mode === 'hybrid' && unitCount < RENDER_MODE_HYBRID_TO_RICH) mode = 'rich';
-    if (mode === 'rich' && unitCount >= RENDER_MODE_RICH_TO_HYBRID) mode = 'hybrid';
-    if (mode === 'hybrid' && unitCount >= RENDER_MODE_HYBRID_TO_MASS) mode = 'mass';
-    this.autoUnitRenderMode = mode;
-    return mode;
   }
 
   private updateUnits(): void {
     this.hoverSmokeEmitters.length = 0;
     const units = this.clientViewState.getUnits();
-    const unitRenderMode = this.resolveUnitRenderMode(
-      this.frameState.gfx.unitRenderMode,
-      units.length,
-    );
-
-    if (unitRenderMode === 'mass') {
-      this.unitMassInstances.clearRichUnits();
-      if (this.unitMeshes.size > 0) {
-        this.rebuildAllUnitsOnLodChange();
-      }
-      this.unitMassInstances.update(this.frameState);
-      return;
-    }
-
-    if (unitRenderMode === 'hybrid') {
-      const richUnits = this.unitMassInstances.update(this.frameState, undefined, true);
-      this.updateUnitMeshes(richUnits);
-      return;
-    }
-
-    if (this.unitMassInstances.hasSlots()) {
-      this.unitMassInstances.releaseAll();
-    }
-    this.unitMassInstances.clearRichUnits();
     this.updateUnitMeshes(units);
   }
 
@@ -496,7 +400,6 @@ export class Render3DEntities {
     seen.clear();
     const spinDt = this._spinDt;
     const unitGfx = this.frameState.gfx;
-    const unitGraphicsTier = unitGfx.tier;
     const unitGeometryKey = this.frameState.key;
     const mapWidth = this.clientViewState.getMapWidth();
     const mapHeight = this.clientViewState.getMapHeight();
@@ -577,7 +480,6 @@ export class Render3DEntities {
           ownerId: pid,
           turrets,
           unitGfx,
-          unitGraphicsTier,
           unitFrameKey: unitGeometryKey,
           unitRenderKey,
           unitIsShell,
@@ -781,7 +683,6 @@ export class Render3DEntities {
         this._smoothParentQuat,
         this._unitChainMat,
         chassisTilted ? _invTiltQuat : undefined,
-        unitGraphicsTier,
         unitGfx.barrelSpin,
         this.barrelSpinState,
         this._currentDtMs,
@@ -903,7 +804,6 @@ export class Render3DEntities {
     this.barrelSpinState.clear();
     this._seenUnitIds.clear();
     this.constructionVisuals.destroy();
-    this.unitMassInstances.destroy();
     this.unitDetailInstances.destroy();
     disposeBodyGeoms();
     disposeBuildingGeoms();

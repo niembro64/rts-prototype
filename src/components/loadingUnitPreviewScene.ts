@@ -35,8 +35,6 @@ export type LoadingUnitPreviewSceneSize = {
 };
 
 const PREVIEW_GFX: GraphicsConfig = {
-  tier: 'max',
-  unitRenderMode: 'rich',
   hudFrameStride: 1,
   effectFrameStride: 1,
   terrainTileFrameStride: 1,

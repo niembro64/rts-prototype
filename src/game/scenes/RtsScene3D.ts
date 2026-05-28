@@ -425,7 +425,6 @@ export class RtsScene3D {
     this.metalDepositRenderer = new MetalDepositRenderer3D(
       this.threeApp.world,
       this.metalDeposits,
-      getGraphicsConfig().tier,
     );
     this.environmentPropRenderer = new EnvironmentPropRenderer3D(
       this.threeApp.world,

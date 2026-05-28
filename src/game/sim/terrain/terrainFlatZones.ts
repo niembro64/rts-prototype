@@ -15,6 +15,9 @@ let depositFlatZoneBuckets = new Map<number, TerrainFlatZone[]>();
 const FLAT_ZONE_BUCKET_SIZE = LAND_CELL_SIZE;
 const FLAT_ZONE_BUCKET_BIAS = 10000;
 const FLAT_ZONE_BUCKET_BASE = 20000;
+const EMPTY_FLAT_ZONES: readonly TerrainFlatZone[] = [];
+const depositOverrideBlendWeights: number[] = [];
+const depositOverrideBlendHeights: number[] = [];
 
 function flatZoneBucketKey(gx: number, gy: number): number {
   return (gx + FLAT_ZONE_BUCKET_BIAS) * FLAT_ZONE_BUCKET_BASE
@@ -47,20 +50,21 @@ function rebuildDepositFlatZoneBuckets(): void {
 
 export function setMetalDepositFlatZones(
   zones: ReadonlyArray<TerrainFlatZone>,
+  invalidate = true,
 ): void {
   depositFlatZones = zones.slice();
   rebuildDepositFlatZoneBuckets();
-  invalidateTerrainConfig();
+  if (invalidate) invalidateTerrainConfig();
 }
 
 function getDepositFlatZoneCandidates(
   x: number,
   y: number,
 ): readonly TerrainFlatZone[] {
-  if (depositFlatZoneBuckets.size === 0) return [];
+  if (depositFlatZoneBuckets.size === 0) return EMPTY_FLAT_ZONES;
   const gx = Math.floor(x / FLAT_ZONE_BUCKET_SIZE);
   const gy = Math.floor(y / FLAT_ZONE_BUCKET_SIZE);
-  return depositFlatZoneBuckets.get(flatZoneBucketKey(gx, gy)) ?? [];
+  return depositFlatZoneBuckets.get(flatZoneBucketKey(gx, gy)) ?? EMPTY_FLAT_ZONES;
 }
 
 export function findDepositFlatZoneAt(x: number, y: number): TerrainFlatZone | null {
@@ -106,8 +110,10 @@ export function depositOverride(
   // build the blend-ring weight list.
   let containing: TerrainFlatZone | null = null;
   let containingD2 = Infinity;
-  const blendWeights: number[] = [];
-  const blendHeights: number[] = [];
+  const blendWeights = depositOverrideBlendWeights;
+  const blendHeights = depositOverrideBlendHeights;
+  blendWeights.length = 0;
+  blendHeights.length = 0;
   for (const z of candidates) {
     const dx = x - z.x;
     const dy = y - z.y;

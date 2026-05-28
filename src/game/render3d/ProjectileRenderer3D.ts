@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { getProjRangeToggle } from '@/clientBarConfig';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId } from '../sim/types';
@@ -44,14 +43,6 @@ const CURVED_CONE_SIN = Array.from(
   { length: CURVED_CONE_RADIAL_SEGMENTS },
   (_, i) => Math.sin((i / CURVED_CONE_RADIAL_SEGMENTS) * Math.PI * 2),
 );
-
-const PROJECTILE_RADIUS_BY_TIER: Record<ConcreteGraphicsQuality, number> = {
-  min: 0.7,
-  low: 0.8,
-  medium: 0.9,
-  high: 1,
-  max: 1,
-};
 
 type ProjectileRadiusMeshes = {
   collision?: THREE.LineSegments;
@@ -187,7 +178,7 @@ export class ProjectileRenderer3D {
     this.world.add(this.finInstanced);
   }
 
-  update(frameState: RenderFrameState3D): void {
+  update(_frameState: RenderFrameState3D): void {
     const projectiles = this.clientViewState.collectTravelingProjectiles(
       this.projectileRenderScratch,
     );
@@ -215,12 +206,9 @@ export class ProjectileRenderer3D {
         continue;
       }
 
-      const projectileGraphicsTier = frameState.gfx.tier;
-      const richProjectile = true;
       const visualProfile = e.projectile?.config.shotProfile.visual;
       const radius = visualProfile?.projectileBodyRadius ?? 4;
-      const radiusScale = PROJECTILE_RADIUS_BY_TIER[projectileGraphicsTier];
-      const visualRadius = radius * radiusScale;
+      const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
 
       this.projPos.set(tx, tz, ty);
@@ -277,11 +265,7 @@ export class ProjectileRenderer3D {
         }
       }
 
-      if (richProjectile) {
-        this.updateProjRadiusMeshes(e, wantCol, wantExp);
-      } else {
-        this.hideProjRadiusMeshes(e.id);
-      }
+      this.updateProjRadiusMeshes(e, wantCol, wantExp);
     }
 
     this.sphereInstanced.count = sphereCount;

@@ -519,7 +519,7 @@ export type UnitBlueprint = {
   radius: { body: number; shot: number; push: number };
   /** World-space height of the authored unit body center above terrain.
    *  Hard vertical contract for the unit: physics rest altitude,
-   *  targeting center, low-LOD imposter center, chassis lift, turret
+   *  targeting center, chassis lift, turret
    *  mounts, and locomotion attachment must all resolve against this
    *  same terrain-up coordinate system. */
   bodyCenterHeight: number;

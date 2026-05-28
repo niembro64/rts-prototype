@@ -40,7 +40,7 @@ export type TurretMesh = {
   head?: THREE.Mesh;
   /** Slot index in Render3DEntities.turretHeadInstanced when the head
    *  is rendered via the shared InstancedMesh. Undefined for hidden
-   *  heads (force-field / min-tier) and for the per-
+   *  heads (force-field / compact effects) and for the per-
    *  Mesh fallback (when the cap is exhausted). The caller assigns
    *  this after buildTurretMesh3D returns. */
   headSlot?: number;

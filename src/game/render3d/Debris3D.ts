@@ -8,9 +8,9 @@
 // the tumble visibly slows to a stop while the color fades toward the map
 // background.
 //
-// Material-explosion LOD is controlled by three explicit PLAYER CLIENT
+// Material-explosion visuals are controlled by three explicit PLAYER CLIENT
 // config fields:
-//   materialExplosionStyle             => visual richness / source thinning
+//   materialExplosionStyle             => shape and source selection
 //   materialExplosionPieceBudget       => max pieces emitted per unit death
 //   materialExplosionPhysicsFramesSkip => debris physics update cadence
 //

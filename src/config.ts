@@ -80,7 +80,7 @@ export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 // 3D waypoint visual lift above the sampled terrain surface. This is
 // render-only: command positions and pathfinding still use the actual
 // terrain height, while dots/lines/flags float this many world units up
-// so terrain LOD and overlay layers do not hide them.
+// so terrain and overlay layers do not hide them.
 export const WAYPOINT_GROUND_LIFT = worldRenderConfigJson.waypointGroundLift;
 
 // Host-server spatial-grid debug snapshots are intentionally throttled
@@ -165,27 +165,6 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 //                             near snapshot cadence for beam/laser
 //                             turrets; line-shot aim is primary visible
 //                             state, not low-priority detail.
-//   highCountEntityLodUnitThreshold — active-unit count at which remote
-//                             clients begin receiving foreign
-//                             movement/turret deltas in staggered
-//                             buckets instead of every delta. Owned
-//                             and allied entities remain full-rate.
-//   highCountForeignEntitySnapshotCadence — number of high-count delta
-//                             snapshots over which foreign
-//                             movement/turret-only entity updates are
-//                             spread.
-//   highCountForeignProjectileSnapshotCadence — number of high-count
-//                             delta snapshots over which foreign
-//                             projectile velocity/beam corrections
-//                             are spread. Spawn/despawn events remain
-//                             immediate.
-//   highCountForeignAudioSnapshotCadence — number of high-count delta
-//                             snapshots over which high-volume foreign
-//                             fire/hit/start/impact events are spread.
-//                             Deaths, attack alerts, pings, and stop
-//                             events remain immediate.
-//   highCountMinimapSnapshotRateHz — minimap cadence cap used only
-//                             after the high-count threshold is met.
 //   fullSnapshotCompression — disabled-by-default experimental
 //                             transport compression for FULLSNAP
 //                             payloads only. Toggle for A/B captures;
@@ -251,8 +230,7 @@ export const BAR_COLORS = BAR_THEMES;
 //   initialValues  — seed values for every EMA. Rate trackers get
 //                    "good = high", ms trackers get "good = low";
 //                    seeding everything at 0 means the bottom bars
-//                    start from an honest empty baseline and auto-
-//                    LOD begins pessimistically for TPS-driven
+//                    start from an honest empty baseline for TPS-driven
 //                    signals instead of assuming a healthy mid-tier.
 //                    TPS/CPU host seeds live in GameServer because
 //                    they depend on the configured tickRateHz.
@@ -629,7 +607,7 @@ export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 
 // Cheap object grounding shadows. This intentionally avoids Three.js
 // shadow maps: all units/buildings write into one transparent instanced
-// contact-shadow mesh and update at LOD-dependent strides.
+// contact-shadow mesh and update at configured strides.
 export const CONTACT_SHADOW_RENDER_CONFIG = worldRenderConfigJson.contactShadow;
 
 // Scorched earth burn mark colors and decay

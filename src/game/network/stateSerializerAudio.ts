@@ -1,7 +1,6 @@
 import type { SimEvent } from '../sim/combat';
 import type { Vec3 } from '../../types/vec2';
 import type { NetworkServerSnapshotSimEvent } from './NetworkManager';
-import { SNAPSHOT_CONFIG } from '../../config';
 import {
   type SnapshotVisibility,
   VISIBILITY_CLASS_IN_VISION,
@@ -18,11 +17,6 @@ import { definePooledScratchProperty } from './snapshotPooledScratch';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
-};
-
-export type SerializeAudioEventsOptions = {
-  unitCount: number;
-  snapshotSequence: number;
 };
 
 /** Per-listener pool of pooled NetworkServerSnapshotSimEvent objects
@@ -87,7 +81,6 @@ export function serializeAudioEvents(
   audioEvents: SimEvent[] | undefined = undefined,
   visibility: SnapshotVisibility | undefined = undefined,
   trackingKey: string | number | undefined = undefined,
-  options: SerializeAudioEventsOptions | undefined = undefined,
 ): NetworkServerSnapshotSimEvent[] | undefined {
   const state = getOrCreateSnapshotPool(audioPools, resolveSnapshotPoolKey(trackingKey));
   state.index = 0;
@@ -145,7 +138,6 @@ export function serializeAudioEvents(
         }
       }
     }
-    if (shouldDeferForeignHighCountAudioEvent(source, visibility, options)) continue;
     const out = getPooledItem(state, createPooledSimEvent) as PooledSimEvent;
     out.type = source.type;
     out.turretId = source.turretId;
@@ -167,57 +159,6 @@ export function serializeAudioEvents(
   return audioBuf.length > 0 ? audioBuf : undefined;
 }
 
-function shouldDeferForeignHighCountAudioEvent(
-  event: SimEvent,
-  visibility: SnapshotVisibility | undefined,
-  options: SerializeAudioEventsOptions | undefined,
-): boolean {
-  if (options === undefined) return false;
-  if (options.unitCount < SNAPSHOT_CONFIG.highCountEntityLodUnitThreshold) return false;
-  if (visibility === undefined || !visibility.hasRecipient) return false;
-  if (!isHighCountThrottledAudioType(event.type)) return false;
-  if (event.playerId === undefined) return false;
-  if (visibility.isOwnedByRecipientOrAlly(event.playerId)) return false;
-
-  const cadence = Math.max(
-    1,
-    Math.floor(SNAPSHOT_CONFIG.highCountForeignAudioSnapshotCadence),
-  );
-  if (cadence <= 1) return false;
-  return ((audioEventStableId(event) + options.snapshotSequence) % cadence) !== 0;
-}
-
-function isHighCountThrottledAudioType(type: SimEvent['type']): boolean {
-  switch (type) {
-    case 'fire':
-    case 'hit':
-    case 'projectileExpire':
-    case 'forceFieldImpact':
-    case 'laserStart':
-    case 'forceFieldStart':
-      return true;
-    default:
-      return false;
-  }
-}
-
 function shouldForwardAudioEventPlayerId(type: SimEvent['type']): boolean {
   return type === 'ping' || type === 'attackAlert';
-}
-
-function audioEventStableId(event: SimEvent): number {
-  if (event.entityId !== undefined) return event.entityId;
-  let hash = 2166136261;
-  hash = hashString(hash, event.type);
-  hash = hashString(hash, event.turretId);
-  hash = Math.imul(hash ^ Math.round(event.pos.x), 16777619);
-  hash = Math.imul(hash ^ Math.round(event.pos.y), 16777619);
-  return hash >>> 0;
-}
-
-function hashString(hash: number, value: string): number {
-  for (let i = 0; i < value.length; i++) {
-    hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
-  }
-  return hash;
 }

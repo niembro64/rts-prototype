@@ -19,7 +19,7 @@ import {
   getTerrainVersion,
   setAuthoritativeTerrainTileMap,
 } from './terrainState';
-import { getTerrainHeight } from './terrainHeightGenerator';
+import { createTerrainHeightSampler, getTerrainHeight } from './terrainHeightGenerator';
 import { buildTerrainCellTriangleIndex } from './terrainCellTriangleIndex';
 
 export { setAuthoritativeTerrainTileMap };
@@ -90,9 +90,10 @@ type TerrainMeshBuildContext = {
   mapHeight: number;
   fineEdge: number;
   fineHeight: number;
-  rootSide: number;
-  heightCache: Map<string, number>;
-  normalCache: Map<string, TerrainNormal>;
+  rootLevel: number;
+  heightSampler: (x: number, z: number) => number;
+  heightCache: Map<number, number>;
+  normalCache: Map<number, TerrainNormal>;
 };
 
 type BuiltTerrainMesh = {
@@ -189,27 +190,29 @@ function latticeKey(i: number, j: number): string {
   return `${i}:${j}`;
 }
 
+function latticeCacheKey(i: number, j: number): number {
+  return (i + 0x100000) * 0x200000 + (j + 0x100000);
+}
+
 function latticePointAt(ctx: TerrainMeshBuildContext, i: number, j: number): MeshPoint {
   const x = ctx.fineEdge * (i + j * 0.5);
   const z = ctx.fineHeight * j;
   return {
     x,
     z,
-    h: terrainHeightAtWorld(ctx, x, z),
+    h: terrainHeightAtLattice(ctx, i, j),
   };
 }
 
 function terrainHeightAtWorld(ctx: TerrainMeshBuildContext, x: number, z: number): number {
-  return getTerrainHeight(
+  return ctx.heightSampler(
     clampToMap(x, ctx.mapWidth),
     clampToMap(z, ctx.mapHeight),
-    ctx.mapWidth,
-    ctx.mapHeight,
   );
 }
 
 function terrainHeightAtLattice(ctx: TerrainMeshBuildContext, i: number, j: number): number {
-  const key = latticeKey(i, j);
+  const key = latticeCacheKey(i, j);
   const cached = ctx.heightCache.get(key);
   if (cached !== undefined) return cached;
   const x = ctx.fineEdge * (i + j * 0.5);
@@ -269,7 +272,7 @@ function terrainNormalAtLattice(
   i: number,
   j: number,
 ): TerrainNormal {
-  const key = latticeKey(i, j);
+  const key = latticeCacheKey(i, j);
   const cached = ctx.normalCache.get(key);
   if (cached !== undefined) return cached;
 
@@ -316,8 +319,8 @@ function terrainTriangleHierarchyLevel(
   ctx: TerrainMeshBuildContext,
   tri: TerrainHierarchyTriangle,
 ): number {
-  const ratio = ctx.rootSide / Math.max(1, tri.side);
-  return Math.max(0, Math.round(Math.log2(ratio)));
+  const sideLevel = 31 - Math.clz32(Math.max(1, tri.side));
+  return Math.max(0, ctx.rootLevel - sideLevel);
 }
 
 function triangleLatticeVertices(tri: TerrainHierarchyTriangle): [LatticePoint, LatticePoint, LatticePoint] {
@@ -349,11 +352,25 @@ function triangleWorldVertices(
 }
 
 function triangleBboxIntersectsMap(ctx: TerrainMeshBuildContext, tri: TerrainHierarchyTriangle): boolean {
-  const [a, b, c] = triangleWorldVertices(ctx, tri);
-  const minX = Math.min(a.x, b.x, c.x);
-  const maxX = Math.max(a.x, b.x, c.x);
-  const minZ = Math.min(a.z, b.z, c.z);
-  const maxZ = Math.max(a.z, b.z, c.z);
+  const { i, j, side } = tri;
+  const z0 = ctx.fineHeight * j;
+  const z1 = ctx.fineHeight * (j + side);
+  let ax: number;
+  let bx: number;
+  let cx: number;
+  if (!tri.down) {
+    ax = ctx.fineEdge * (i + j * 0.5);
+    bx = ctx.fineEdge * (i + side + j * 0.5);
+    cx = ctx.fineEdge * (i + (j + side) * 0.5);
+  } else {
+    ax = ctx.fineEdge * (i + side + j * 0.5);
+    bx = ctx.fineEdge * (i + side + (j + side) * 0.5);
+    cx = ctx.fineEdge * (i + (j + side) * 0.5);
+  }
+  const minX = Math.min(ax, bx, cx);
+  const maxX = Math.max(ax, bx, cx);
+  const minZ = Math.min(z0, z1);
+  const maxZ = Math.max(z0, z1);
   return maxX > 0 && minX < ctx.mapWidth && maxZ > 0 && minZ < ctx.mapHeight;
 }
 
@@ -401,10 +418,16 @@ function forEachFinePointInTriangle(
   visit: (i: number, j: number) => boolean,
 ): boolean {
   const n = tri.side;
+  if (!tri.down) {
+    for (let a = 0; a <= n; a++) {
+      for (let b = 0, maxB = n - a; b <= maxB; b++) {
+        if (visit(tri.i + a, tri.j + b)) return true;
+      }
+    }
+    return false;
+  }
   for (let a = 0; a <= n; a++) {
-    for (let b = 0; b <= n; b++) {
-      const inside = tri.down ? a + b >= n : a + b <= n;
-      if (!inside) continue;
+    for (let b = n - a; b <= n; b++) {
       if (visit(tri.i + a, tri.j + b)) return true;
     }
   }
@@ -1522,9 +1545,10 @@ function buildAdaptiveEquilateralTerrainMesh(
     mapHeight,
     fineEdge,
     fineHeight,
-    rootSide,
-    heightCache: new Map<string, number>(),
-    normalCache: new Map<string, TerrainNormal>(),
+    rootLevel: 31 - Math.clz32(rootSide),
+    heightSampler: createTerrainHeightSampler(mapWidth, mapHeight),
+    heightCache: new Map<number, number>(),
+    normalCache: new Map<number, TerrainNormal>(),
   };
   const rows = Math.ceil(mapHeight / fineHeight);
   const cols = Math.ceil(mapWidth / fineEdge);

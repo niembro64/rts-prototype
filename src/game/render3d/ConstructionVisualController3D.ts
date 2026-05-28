@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import type { SprayTarget } from '@/types/ui';
 import {
   BUILD_BUBBLE_RADIUS_PUSH_MULT,
@@ -29,7 +28,6 @@ import type {
   ConstructionTowerResource,
   ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
-import { buildingTierAtLeast } from './RenderTier3D';
 import { hexStringToRgb } from './colorUtils';
 import { visualAnimBlend } from './visualAnimationEma';
 
@@ -93,7 +91,6 @@ export class ConstructionVisualController3D {
   updateBuilderConstructionEmitter(
     rig: ConstructionEmitterRig,
     builderUnit: Entity,
-    tier: ConcreteGraphicsQuality,
     dtMs: number,
   ): void {
     const dtSec = dtMs / 1000;
@@ -132,11 +129,7 @@ export class ConstructionVisualController3D {
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.applyShowerFromSmoothedRates(rig);
 
-    if (
-      buildingTierAtLeast(tier, 'high')
-      && targetId !== null
-      && builderUnit.ownership
-    ) {
+    if (targetId !== null && builderUnit.ownership) {
       const target = this.clientViewState.getEntity(targetId);
       if (!target) return;
       rig.group.updateWorldMatrix(true, false);
@@ -174,7 +167,6 @@ export class ConstructionVisualController3D {
   updateFactoryConstructionEmitter(
     rig: ConstructionEmitterRig,
     e: Entity,
-    tier: ConcreteGraphicsQuality,
     detailsReady: boolean,
     dtMs: number,
   ): void {
@@ -184,7 +176,7 @@ export class ConstructionVisualController3D {
       && !!factory
       && !!queuedUnitType
       && factory.isProducing;
-    rig.group.visible = buildingTierAtLeast(tier, 'medium');
+    rig.group.visible = detailsReady;
 
     const dtSec = dtMs / 1000;
     const halfLife = BUILD_RATE_EMA_HALF_LIFE_SEC[BUILD_RATE_EMA_MODE];
@@ -196,8 +188,7 @@ export class ConstructionVisualController3D {
     this.blendDisplaySmoothedRates(rig.displaySmoothedRates, rig.smoothedRates, dtSec);
     this.applyShowerFromSmoothedRates(rig);
 
-    if (!active) return;
-    if (!buildingTierAtLeast(tier, 'high') || !e.ownership) return;
+    if (!active || !e.ownership) return;
 
     let buildSpotRadius = 12;
     if (queuedUnitType) {
@@ -233,7 +224,6 @@ export class ConstructionVisualController3D {
   updateFactoryBuildSpot(
     rig: FactoryBuildSpotRig | undefined,
     e: Entity,
-    _tier: ConcreteGraphicsQuality,
     detailsReady: boolean,
     footprintW: number,
     footprintD: number,

@@ -30,7 +30,6 @@ import type {
   ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
 import type { EntityMesh } from './EntityMesh3D';
-import { buildingTierAtLeast } from './RenderTier3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
 import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
@@ -221,10 +220,8 @@ export class BuildingAnimationController3D {
           mesh.group,
           open ? resourcePylonRateFraction(signedRate, INV_SOLAR_BASE_PRODUCTION) : 0,
           rateAlpha,
-          mesh.buildingCachedDetailsReady === true
-            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
-          mesh.buildingCachedDetailsReady === true
-            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
+          mesh.buildingCachedDetailsReady === true,
+          mesh.buildingCachedDetailsReady === true,
         );
       }
     }
@@ -254,10 +251,8 @@ export class BuildingAnimationController3D {
           mesh.group,
           resourcePylonRateFraction(signedRate, INV_WIND_MAX_PRODUCTION) * (1 - close),
           rateAlpha,
-          mesh.buildingCachedDetailsReady === true
-            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
-          mesh.buildingCachedDetailsReady === true
-            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
+          mesh.buildingCachedDetailsReady === true,
+          mesh.buildingCachedDetailsReady === true,
         );
       }
     }
@@ -355,10 +350,8 @@ export class BuildingAnimationController3D {
           mesh.group,
           resourcePylonRateFraction(signedRate, invBase) * (1 - close),
           rateAlpha,
-          mesh.buildingCachedDetailsReady === true
-            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low'),
-          mesh.buildingCachedDetailsReady === true
-            && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high'),
+          mesh.buildingCachedDetailsReady === true,
+          mesh.buildingCachedDetailsReady === true,
         );
       }
     }
@@ -372,10 +365,7 @@ export class BuildingAnimationController3D {
         const entity = this.clientViewState.getEntity(id);
         const rig = mesh?.converterRig;
         if (!mesh || !entity || !rig) continue;
-        const detailsLowReady = mesh.buildingCachedDetailsReady === true
-          && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'low');
-        const detailsHighReady = mesh.buildingCachedDetailsReady === true
-          && buildingTierAtLeast(mesh.buildingCachedGraphicsTier ?? 'min', 'high');
+        const detailsReady = mesh.buildingCachedDetailsReady === true;
         const energyRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_ENERGY);
         const metalRate = this.clientViewState.getResourcePylonSignedRate(id, RESOURCE_KIND_METAL);
         applyResourcePylonDirection(rig.energyPylon, energyRate);
@@ -386,8 +376,8 @@ export class BuildingAnimationController3D {
           mesh.group,
           resourcePylonRateFraction(energyRate, invBase),
           rateAlpha,
-          detailsLowReady,
-          detailsHighReady,
+          detailsReady,
+          detailsReady,
         );
         this.constructionVisuals.updateAmbientResourcePylon(
           rig.metalPylon,
@@ -395,8 +385,8 @@ export class BuildingAnimationController3D {
           mesh.group,
           resourcePylonRateFraction(metalRate, invBase),
           rateAlpha,
-          detailsLowReady,
-          detailsHighReady,
+          detailsReady,
+          detailsReady,
         );
 
         // Ring spin: signed by flow direction so the player can read
@@ -468,14 +458,12 @@ export class BuildingAnimationController3D {
       const mesh = buildingMeshes.get(id);
       const entity = this.clientViewState.getEntity(id);
       if (!mesh || !entity) continue;
-      const tier = mesh.buildingCachedGraphicsTier ?? 'min';
       const detailsReady = mesh.buildingCachedDetailsReady === true;
       const emitterRig = findConstructionEmitterRig(mesh, entity);
       if (emitterRig) {
         this.constructionVisuals.updateFactoryConstructionEmitter(
           emitterRig,
           entity,
-          tier,
           detailsReady,
           currentDtMs,
         );
@@ -483,7 +471,6 @@ export class BuildingAnimationController3D {
       this.constructionVisuals.updateFactoryBuildSpot(
         mesh.factoryBuildSpotRig,
         entity,
-        tier,
         detailsReady,
         mesh.buildingCachedWidth ?? entity.building?.width ?? 100,
         mesh.buildingCachedDepth ?? entity.building?.height ?? 100,

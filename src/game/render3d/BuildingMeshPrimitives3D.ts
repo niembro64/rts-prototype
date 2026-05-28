@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { ConcreteGraphicsQuality } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { BUILDING_PALETTE, SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import type { BuildingDetailMesh, BuildingDetailRole } from './BuildingShape3D';
@@ -208,11 +207,11 @@ export function makeSphere(
 
 export function detail(
   mesh: THREE.Mesh,
-  minTier: ConcreteGraphicsQuality,
-  maxTier?: ConcreteGraphicsQuality,
+  _legacyVisibility?: unknown,
+  _legacyMaxVisibility?: unknown,
   role: BuildingDetailRole = 'static',
 ): BuildingDetailMesh {
-  return { mesh, minTier, maxTier, role };
+  return { mesh, role };
 }
 
 export function disposeBuildingMeshPrimitives(): void {

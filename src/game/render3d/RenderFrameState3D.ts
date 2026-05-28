@@ -1,7 +1,7 @@
 // Per-frame graphics state for the 3D renderer.
 //
 // This snapshots the single active graphics config plus camera view data
-// needed by renderers. It does not resolve camera-distance object tiers.
+// needed by renderers.
 
 import type * as THREE from 'three';
 import { getGraphicsConfig } from '@/clientBarConfig';
@@ -12,8 +12,6 @@ import type { GraphicsConfig } from '@/types/graphics';
  *  were built against equivalent graphics settings. */
 export function graphicsKey(gfx: GraphicsConfig): string {
   return [
-    gfx.tier,
-    gfx.unitRenderMode,
     gfx.unitShape,
     gfx.legs,
     gfx.treadsAnimated ? 'tw' : 'ts',
@@ -21,10 +19,7 @@ export function graphicsKey(gfx: GraphicsConfig): string {
     gfx.turretStyle,
     gfx.forceTurretStyle,
     gfx.paletteShading ? 'ps' : '-',
-    // MED+ flag controlling animated accents that cost setup (e.g. mirror
-    // sparkles). In key so toggling the graphics tier rebuilds affected meshes.
     gfx.barrelSpin ? 'bs' : '-',
-    // MAX-only intensifier (e.g. secondary mirror glint). Same reason.
     gfx.beamGlow ? 'bg' : '-',
   ].join('|');
 }

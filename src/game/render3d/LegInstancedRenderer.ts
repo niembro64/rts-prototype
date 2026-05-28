@@ -3,7 +3,7 @@
 // pools. Replaces the old per-leg THREE.Mesh + per-frame
 // setCylinderBetween() pattern, which produced 2 draw calls per leg
 // → 8 per 4-leg unit → 4000+ at 500 such units. Joints (full-
-// LOD only) and pads similarly collapse into shared InstancedMesh
+// full-style only) and pads similarly collapse into shared InstancedMesh
 // draws.
 //
 // Each leg cylinder is a single instance in one of the two
@@ -587,7 +587,7 @@ export class LegInstancedRenderer {
   allocLower(shell: boolean, color: number, onRelocate: SlotRelocator): number {
     return (shell ? this.shellLower : this.lower).alloc(color, onRelocate);
   }
-  /** Allocate a joint-sphere slot (used at FULL LOD for hip / knee).
+  /** Allocate a joint-sphere slot (used by the full leg style for hip / knee).
    *  Returns -1 if the pool is full. See allocUpper for relocator
    *  semantics. */
   allocJoint(shell: boolean, color: number, onRelocate: SlotRelocator): number {

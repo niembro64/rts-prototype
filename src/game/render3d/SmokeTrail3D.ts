@@ -4,7 +4,7 @@
 //
 // Each projectile samples one puff on selected render frames. The
 // cadence is a frame-skip count, not an elapsed-time accumulator, so a
-// slow frame never dumps a backlog burst and each LOD reads with stable
+// slow frame never dumps a backlog burst and each trail reads with stable
 // visual spacing. A puff is one slot in a single shared InstancedMesh —
 // it stays put in world space as the rocket flies away, grows slightly,
 // and fades to transparent over its configured fade timing.
@@ -12,9 +12,8 @@
 // One material is shared across every puff. Per-puff scale, alpha, and
 // color ride on the InstancedMesh instance matrix + custom
 // InstancedBufferAttributes (aAlpha, aColor). The fragment shader is
-// `gl_FragColor = vec4(vColor, vAlpha);` — no fancy per-tier visual
-// variants. Higher detail just means more puffs; the puffs themselves
-// look identical at every tier.
+// `gl_FragColor = vec4(vColor, vAlpha);` — each puff uses the same
+// visual treatment.
 //
 // One shared instanced pool renders every smoke use. Puff geometry
 // resolution comes from smokeConfig.puffGeometry.
@@ -295,7 +294,7 @@ export class SmokeTrail3D {
 
       const stride = Math.max(1, Math.max(0, spec.emitFramesSkip) + 1);
       // Phase by projectile id so a salvo does not allocate every puff
-      // on the same frame at low LOD.
+      // on the same frame under a sparse emission cadence.
       if ((renderFrameIndex + (e.id % stride)) % stride !== 0) continue;
       eligible.push(e);
     }
