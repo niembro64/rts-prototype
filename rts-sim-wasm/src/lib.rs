@@ -15941,9 +15941,9 @@ pub fn snapshot_encode_beam_update_scratch_ensure(count: u32) {
 ///   [0..3]  x, y, z
 ///   [3..6]  vx, vy, vz
 ///   [6]     flags: bit 0 has_reflectorEntityId, bit 1 has_reflectorKind,
-///           bit 2 reflectorKind_is_forceField (else 'mirror' when
-///           bit 1 set), bit 3 has_reflectorPlayerId, bit 4 has_normalX,
-///           bit 5 has_normalY, bit 6 has_normalZ.
+///           bit 2 reflectorKind_is_forceFieldSphere (else
+///           'forceFieldPanel' when bit 1 set), bit 3 has_reflectorPlayerId,
+///           bit 4 has_normalX, bit 5 has_normalY, bit 6 has_normalZ.
 ///   [7]     reflectorEntityId
 ///   [8]     reflectorPlayerId
 ///   [9..12] normalX, normalY, normalZ
@@ -17571,14 +17571,14 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 let vy = point_scratch.buf[pb + 4];
                 let vz = point_scratch.buf[pb + 5];
                 let pflags = point_scratch.buf[pb + 6] as u32;
-                let has_mirror_id = (pflags & 0x01) != 0;
+                let has_reflector_entity_id = (pflags & 0x01) != 0;
                 let has_reflector_kind = (pflags & 0x02) != 0;
-                let kind_is_force_field = (pflags & 0x04) != 0;
+                let kind_is_sphere = (pflags & 0x04) != 0;
                 let has_reflector_player = (pflags & 0x08) != 0;
                 let has_normal_x = (pflags & 0x10) != 0;
                 let has_normal_y = (pflags & 0x20) != 0;
                 let has_normal_z = (pflags & 0x40) != 0;
-                let mirror_id = point_scratch.buf[pb + 7] as u32;
+                let reflector_entity_id = point_scratch.buf[pb + 7] as u32;
                 let reflector_player = point_scratch.buf[pb + 8] as u32;
                 let nx = point_scratch.buf[pb + 9];
                 let ny = point_scratch.buf[pb + 10];
@@ -17589,7 +17589,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 // intentionally not on the wire; clients extrapolate from
                 // velocity only between path corrections.
                 let mut pf_count: usize = 6;
-                if has_mirror_id {
+                if has_reflector_entity_id {
                     pf_count += 1;
                 }
                 if has_reflector_kind {
@@ -17624,16 +17624,16 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 w.write_number(vy);
                 w.write_str("vz");
                 w.write_number(vz);
-                if has_mirror_id {
+                if has_reflector_entity_id {
                     w.write_str("reflectorEntityId");
-                    w.write_uint(mirror_id as u64);
+                    w.write_uint(reflector_entity_id as u64);
                 }
                 if has_reflector_kind {
                     w.write_str("reflectorKind");
-                    if kind_is_force_field {
-                        w.write_str("forceField");
+                    if kind_is_sphere {
+                        w.write_str("forceFieldSphere");
                     } else {
-                        w.write_str("mirror");
+                        w.write_str("forceFieldPanel");
                     }
                 }
                 if has_reflector_player {
