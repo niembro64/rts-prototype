@@ -1,8 +1,9 @@
 // Shared ON/OFF state for producer buildings — solar collectors, wind
 // turbines, and metal extractors. ON (open) = producing + normal
-// damage; OFF (closed) = not producing + 10× damage resistance. The
-// flag drives both outcomes simultaneously — see "Producer Buildings
-// Are ON/OFF" in design_philosophy.html.
+// damage; OFF (closed) = not producing + 10× damage resistance. A single
+// `open` flag drives both outcomes simultaneously — production gates on
+// it and so does the fortify/pose — so the two can never disagree. See
+// "Producer Buildings Are ON/OFF" in design_philosophy.html.
 //
 // Lifecycle:
 //
@@ -52,7 +53,6 @@ export function buildingTypeHasActiveState(type: BuildingType | null | undefined
 export function createInitialBuildingActiveState(): BuildingActiveState {
   return {
     open: false,
-    producing: false,
     damageDelayMs: 0,
     reopenDelayMs: BUILDING_REOPEN_DELAY_MS,
   };
@@ -75,79 +75,33 @@ function getExtractorMetalRate(entity: Entity): number {
   return entity.metalExtractionRate ?? 0;
 }
 
-/** Drive the per-tick production deltas for the entity according to its
- *  current `producing` flag vs the new desired flag.
+/** Apply the income-RATE-stat delta for a single open↔closed transition.
+ *  Must be called exactly once per real transition (the invariant is
+ *  "rate applied iff state.open"); callers gate on an actual change.
  *
- *  Solar collectors push energy income through economyManager directly.
- *  Wind turbines are aggregated by WindPowerTracker each tick — gated by
- *  the open state at the iteration site — so we only need to track the
- *  flag here (no economy delta). Metal extractors push metal income
- *  through economyManager when they open and remove it when they close;
- *  the covered-cell rate computed at completion is suspended while the
- *  extractor is fortified. */
-function setBuildingProducing(entity: Entity, producing: boolean): boolean {
-  const building = entity.building;
-  if (building === null) return false;
-  const state = building.activeState;
-  if (state === null || state.producing === producing) return false;
+ *  Only solar (energy production) and extractor (metal extraction) feed
+ *  the displayed per-player income-rate stat through economyManager.
+ *  Wind is aggregated per-tick by WindPowerTracker, radar is sensor
+ *  coverage, and the converter swap runs in processConverters — all gate
+ *  directly on `open` at their iteration site and need no rate-stat push.
+ *  Actual per-tick resource crediting is separate (applyProducerIncome in
+ *  economy.ts) and also gates on `open`. */
+function applyProducerRateDelta(entity: Entity, open: boolean): void {
   const ownership = entity.ownership;
-  if (ownership === null) {
-    state.producing = false;
-    return false;
-  }
+  if (ownership === null) return;
   const playerId = ownership.playerId;
 
   if (entity.buildingType === 'solar') {
     const amount = getSolarEnergyProduction();
-    if (amount <= 0) {
-      state.producing = false;
-      return false;
-    }
-    state.producing = producing;
-    if (producing) economyManager.addProduction(playerId, amount);
+    if (amount <= 0) return;
+    if (open) economyManager.addProduction(playerId, amount);
     else economyManager.removeProduction(playerId, amount);
-    return true;
-  }
-
-  if (entity.buildingType === 'wind') {
-    // Wind income is aggregated per-tick by WindPowerTracker, which
-    // filters on state.open at the iteration site. We just record the
-    // flag so the renderer / serializers can see it.
-    state.producing = producing;
-    return true;
-  }
-
-  if (entity.buildingType === 'extractor') {
+  } else if (entity.buildingType === 'extractor') {
     const rate = getExtractorMetalRate(entity);
-    if (rate <= 0) {
-      // Extractor with no covered deposits: nothing to suspend. Track
-      // the flag for the renderer but skip the economy delta.
-      state.producing = producing;
-      return true;
-    }
-    state.producing = producing;
-    if (producing) economyManager.addMetalExtraction(playerId, rate);
+    if (rate <= 0) return;
+    if (open) economyManager.addMetalExtraction(playerId, rate);
     else economyManager.removeMetalExtraction(playerId, rate);
-    return true;
   }
-
-  if (entity.buildingType === 'radar') {
-    // Radar provides sensor coverage rather than a resource flow; the
-    // coverage seeding path already gates on state.open, so this
-    // setter just tracks the producing flag for the renderer.
-    state.producing = producing;
-    return true;
-  }
-
-  if (entity.buildingType === 'resourceConverter') {
-    // Converter ticks (energy↔metal swap) run through processConverters
-    // in economy.ts and are gated there on state.open. Track the flag
-    // so the renderer / wire stay in sync.
-    state.producing = producing;
-    return true;
-  }
-
-  return false;
 }
 
 /** Called from applyCompletedBuildingEffects (and the standalone
@@ -162,6 +116,7 @@ export function initializeBuildingActiveState(world: WorldState, entity: Entity)
   let changed = false;
   if (state.open) {
     state.open = false;
+    applyProducerRateDelta(entity, false);
     changed = true;
   }
   if (state.damageDelayMs !== 0) {
@@ -172,23 +127,26 @@ export function initializeBuildingActiveState(world: WorldState, entity: Entity)
     state.reopenDelayMs = BUILDING_REOPEN_DELAY_MS;
     changed = true;
   }
-  if (setBuildingProducing(entity, false)) changed = true;
   if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
 }
 
-/** Called from removeCompletedBuildingEffects. Stops production without
- *  touching the open/closed flag (we're about to destroy the entity). */
+/** Called from removeCompletedBuildingEffects. Releases the income-rate
+ *  contribution by forcing the building closed before it is destroyed. */
 export function deactivateBuildingActiveState(entity: Entity): void {
-  if (!ensureBuildingActiveState(entity)) return;
-  setBuildingProducing(entity, false);
+  const state = ensureBuildingActiveState(entity);
+  if (state === null) return;
+  if (state.open) {
+    state.open = false;
+    applyProducerRateDelta(entity, false);
+  }
 }
 
-/** Player-driven ON/OFF toggle. Sets `state.open` directly, resets the
- *  damage/reopen timers so the chosen state is durable for the next
- *  full cycle, and updates production accounting through
- *  setBuildingProducing. The auto-flap timer behavior continues to
- *  run after — manual ON can be auto-closed by sustained damage, and
- *  manual OFF will auto-reopen after the normal quiet period. */
+/** Player-driven ON/OFF toggle. Sets `state.open` directly, applies the
+ *  income-rate delta on the transition, and resets the damage/reopen
+ *  timers so the chosen state is durable for the next full cycle. The
+ *  auto-flap timer behavior continues to run after — manual ON can be
+ *  auto-closed by sustained damage, and manual OFF will auto-reopen
+ *  after the normal quiet period. */
 export function setBuildingActiveOpen(world: WorldState, entity: Entity, open: boolean): boolean {
   const state = ensureBuildingActiveState(entity);
   if (state === null || entity.building === null) return false;
@@ -196,6 +154,7 @@ export function setBuildingActiveOpen(world: WorldState, entity: Entity, open: b
   let changed = false;
   if (state.open !== open) {
     state.open = open;
+    applyProducerRateDelta(entity, open);
     changed = true;
   }
   if (open) {
@@ -209,7 +168,6 @@ export function setBuildingActiveOpen(world: WorldState, entity: Entity, open: b
       changed = true;
     }
   }
-  if (setBuildingProducing(entity, open)) changed = true;
   if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
   return changed;
 }
@@ -250,7 +208,15 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
     const state = ensureBuildingActiveState(entity);
     if (!state) continue;
     if (!isEntityActive(entity) || entity.building.hp <= 0) {
-      setBuildingProducing(entity, false);
+      // Dead / not-yet-complete: force closed so the "rate applied iff
+      // open" invariant holds and the income-rate stat is released once.
+      // (An inactive producer is normally already closed, so this only
+      // fires when a live, open building drops to hp<=0.)
+      if (state.open) {
+        state.open = false;
+        applyProducerRateDelta(entity, false);
+        world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
+      }
       continue;
     }
 
@@ -273,7 +239,11 @@ export function updateBuildingActiveStates(world: WorldState, dtMs: number): voi
       }
     }
 
-    setBuildingProducing(entity, state.open);
-    if (changed) world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
+    // `changed` is set iff `open` flipped this tick, so the rate delta
+    // fires exactly once per transition.
+    if (changed) {
+      applyProducerRateDelta(entity, state.open);
+      world.markSnapshotDirty(entity.id, ENTITY_CHANGED_BUILDING);
+    }
   }
 }

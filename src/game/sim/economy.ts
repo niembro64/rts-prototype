@@ -240,7 +240,7 @@ export class EconomyManager {
     const solarRate = getBuildingConfig('solar').energyProduction ?? 0;
     if (solarRate > 0) {
       for (const entity of world.getSolarBuildings()) {
-        if (!this.isProducingActiveStateBuilding(entity)) continue;
+        if (!this.isOpenProducerBuilding(entity)) continue;
         const ownership = entity.ownership;
         if (ownership === null) continue;
         const economy = this.economies.get(ownership.playerId);
@@ -285,7 +285,7 @@ export class EconomyManager {
     }
 
     for (const entity of world.getExtractorBuildings()) {
-      if (!this.isProducingActiveStateBuilding(entity)) continue;
+      if (!this.isOpenProducerBuilding(entity)) continue;
       const ownership = entity.ownership;
       if (ownership === null) continue;
       const metalRate = entity.metalExtractionRate ?? 0;
@@ -305,15 +305,6 @@ export class EconomyManager {
         'production',
       );
     }
-  }
-
-  private isProducingActiveStateBuilding(entity: Entity): boolean {
-    const ownership = entity.ownership;
-    const building = entity.building;
-    if (ownership === null || building === null) return false;
-    if (building.hp <= 0 || !isEntityActive(entity)) return false;
-    const activeState = building.activeState;
-    return activeState !== null && activeState.producing;
   }
 
   private isOpenProducerBuilding(entity: Entity): boolean {

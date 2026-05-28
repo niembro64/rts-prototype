@@ -137,7 +137,6 @@ export function snapClientNonVisualState(
       const activeState = entity.building.activeState;
       entity.building.activeState = {
         open: sb.solar.open,
-        producing: activeState === null ? false : activeState.producing,
         damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
         reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
       };
@@ -149,7 +148,6 @@ export function snapClientNonVisualState(
     ) {
       entity.building.activeState = {
         open: entity.buildingType !== 'solar',
-        producing: false,
         damageDelayMs: 0,
         reopenDelayMs: 0,
       };

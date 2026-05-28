@@ -393,7 +393,6 @@ function createBuildingFromNetwork(
         || buildingType === 'resourceConverter')
         ? {
             open: buildingSolar !== null ? buildingSolar.open : buildingType !== 'solar',
-            producing: false,
             damageDelayMs: 0,
             reopenDelayMs: 0,
           }

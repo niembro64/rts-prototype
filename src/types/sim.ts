@@ -307,12 +307,13 @@ export function createCombatComponent(turrets: Turret[]): CombatComponent {
 /** Shared "fortifiable producer" state for solar collectors, wind
  *  turbines, and metal extractors. See buildingActiveState.ts. */
 export type BuildingActiveState = {
-  /** True while the building is open and producing. False once the
-   *  damage-grace timer has expired or the building started closed. */
+  /** The single ON/OFF flag. ON (true) = producing + normal damage; OFF
+   *  (false) = not producing + fortified. It is the sole authoritative
+   *  input for both production accounting and the renderer's open/closed
+   *  pose — see "Producer Buildings Are ON/OFF" in design_philosophy.html.
+   *  False once the damage-grace timer expires or the building started
+   *  closed. */
   open: boolean;
-  /** Sim-only tracking flag mirroring the open state — drives the
-   *  per-type production deltas in setBuildingProducing. */
-  producing: boolean;
   /** Counts down from BUILDING_DAMAGE_DELAY_MS once the building has
    *  been hit. The transition to closed fires when this reaches zero. */
   damageDelayMs: number;

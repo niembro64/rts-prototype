@@ -24,8 +24,8 @@ export function applyCompletedBuildingEffects(world: WorldState, entity: Entity)
     // how many generated metal cells are under this built footprint.
     // We DON'T credit income here — initializeBuildingActiveState
     // below starts the extractor CLOSED, and the per-tick driver only
-    // calls setBuildingProducing(open=true) once the activation
-    // debounce elapses; that's the single source of truth for "is
+    // flips it open (applying the rate delta) once the activation
+    // debounce elapses; `open` is the single source of truth for "is
     // this extractor's rate currently in the player's tally."
     computeExtractorMetalCoverage(world, entity);
   }
@@ -43,10 +43,10 @@ export function removeCompletedBuildingEffects(world: WorldState, entity: Entity
     factoryProductionSystem.cancelActiveShell(world, entity);
   }
 
-  // Deactivate runs setBuildingProducing(false), which removes the
-  // building's current production (energy for solar, metal-rate for an
-  // open extractor) from its owner's tally. A fortified (closed)
-  // building was already not producing, so this is a no-op for it.
+  // Deactivate forces the building closed, releasing its current
+  // production (energy for solar, metal-rate for an open extractor) from
+  // its owner's tally. A fortified (closed) building was already not
+  // producing, so this is a no-op for it.
   if (
     buildingTypeHasActiveState(entity.buildingType)
     && entity.ownership

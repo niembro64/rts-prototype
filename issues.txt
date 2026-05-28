@@ -81,21 +81,6 @@ A6. [MED] Wire-code / state enums are hand-duplicated in TS and Rust.
       Rust constants from src/sharedSimConstants.json; add the wire/state enums there
       and generate both the TS and Rust sides.
 
-A7. [MED] Producer ON/OFF is carried by two flags (open + producing) instead of one.
-    LOCATION: src/game/sim/buildingActiveState.ts:52-59 (state has both open and
-      producing; producing slaved to open each tick via setBuildingProducing).
-      Damage reads open (isBuildingActiveStateFortified :237-243); solar/extractor
-      income reads producing (economy.ts:316); wind income + renderer pose + converter
-      read open (economy.ts:325, BuildingAnimationController3D.ts:215,240,286).
-    RULE: "Producer Buildings Are ON/OFF" — the ON/OFF state must be the SINGLE
-      authoritative input for BOTH the renderer's open/closed pose AND production
-      accounting; they must never disagree; "not two separate flags."
-    PROBLEM: this is exactly the two-flags-that-could-disagree shape the rule forbids;
-      they only agree because producing is mechanically slaved to open every tick.
-      (The 0.1 OFF damage multiplier is correct: BUILDING_CLOSED_DAMAGE_MULTIPLIER,
-      DamageSystem.ts:1115-1117.)
-    FIX: make all production gate on open (delete producing), so there is one flag.
-
 A8. [LOW] Vestigial acceleration plumbing (no accel reaches the wire, but dead fields
     remain).
     LOCATION: stateSerializerEntityDelta.ts:60-62,363-365,496-498,564-566 +
