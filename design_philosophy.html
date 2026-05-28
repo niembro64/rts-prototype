@@ -1412,6 +1412,112 @@
     </section>
 
     <section>
+      <h2>Universal Runtime Entity IDs</h2>
+      <p>
+        Blueprint IDs identify authored definitions. Runtime entity IDs identify live instances.
+        They are different contracts, and the game needs both. Every addressable thing in the
+        simulation gets a runtime <code>EntityId</code>: units, towers, buildings, mounted
+        turrets, locomotion subentities, in-flight shots, beams, build shells, build sites, and
+        any future resource pylon, sensor, force-field, or utility entity that can be selected,
+        locked onto, damaged, repaired, tracked, serialized, or named by another system. If
+        anything in the game can point at it, remember it, or explain that it came from it, it is
+        not anonymous.
+      </p>
+
+      <h3>Opaque handle, explicit metadata</h3>
+      <p>
+        <code>EntityId</code> is an opaque runtime handle, preferably generation-checked. It is
+        not the place to encode player, team, host, blueprint kind, or storage layout as
+        authoritative meaning. Those values are mutable, contextual, or implementation details;
+        baking them into the numeric ID creates stale IDs when a unit is captured, a team
+        relationship changes, a storage slot is reused, or a projectile outlives the turret that
+        spawned it. The ID resolves through the entity registry into a dense metadata row. The
+        metadata row carries the meaning.
+      </p>
+<pre><code>EntityMeta {
+    id,
+    kind,              // unit, tower, building, turret, locomotion, shot, ...
+    blueprint_kind,
+    blueprint_id,
+    owner_player_id,
+    team_id,
+    parent_id,         // immediate containment parent, if any
+    root_host_id,      // top-level unit/tower/building, or self
+    mount_index,       // turret/locomotion/pylon slot when mounted
+    storage_pool,
+    storage_slot,
+    generation,
+    alive,
+    targetable,
+}</code></pre>
+      <p>
+        Systems may cache storage slots for speed, but the cache is never the identity. Commands,
+        selections, lock-ons, projectile provenance, damage attribution, replay events, resource
+        movements, debug tools, and audio events all speak in <code>EntityId</code> values and
+        resolve them through the same registry.
+      </p>
+
+      <h3>The host hierarchy is complete</h3>
+      <p>
+        Every subentity stores the entities it belongs to. A mounted turret stores its own
+        <code>EntityId</code>, its immediate <code>parent_id</code>, its
+        <code>root_host_id</code>, and its mount index. A locomotion subentity stores the unit it
+        moves. A tower-mounted construction emitter stores the tower that carries it. This
+        hierarchy is not inferred from blueprint order, array index, mesh ownership, or a
+        renderer object tree. It is simulation data, validated at spawn, and available to every
+        hot-path query that needs it.
+      </p>
+      <p>
+        The terms are deliberately narrow. <code>parent_id</code> means immediate containment.
+        <code>root_host_id</code> means the top-level unit, tower, or building that owns the
+        mounted assembly. <code>owner_player_id</code> and <code>team_id</code> describe gameplay
+        ownership. They are stored beside the ID, not inside it.
+      </p>
+
+      <h3>Shots carry immutable source provenance</h3>
+      <p>
+        A shot is not contained by its turret after launch, but it must retain exactly where it
+        came from. Every shot, beam, laser, projectile, submunition, reflected projectile, and
+        spawned child effect carries a source record:
+      </p>
+<pre><code>ShotSource {
+    source_turret_id,
+    source_host_id,
+    source_root_id,
+    source_player_id,
+    source_team_id,
+    source_turret_blueprint_id,
+    source_shot_blueprint_id,
+    spawn_tick,
+    parent_shot_id,
+}</code></pre>
+      <p>
+        Source provenance is immutable for the life of the shot. If the source turret dies, the
+        host is captured, or the owning player is eliminated while the projectile is in flight,
+        the projectile keeps its launch attribution. Damage, friendly-fire decisions, replays,
+        submunition inheritance, audio, and debug traces read the source record; lock-on and
+        collision read the projectile's current entity row.
+      </p>
+
+      <h3>Lock-on resolves entity refs</h3>
+      <p>
+        A turret lock, host target, command target, homing target, assist target, repair target,
+        and build target all store an entity reference, not an array index. The reference is
+        resolved through the registry and generation-checked before use. If the row is gone or
+        the generation no longer matches, the reference is stale and the source drops or
+        reacquires according to its normal rule. Turrets can therefore lock onto any targetable
+        <code>EntityId</code> in the world, while the targeting kernel still gets fast access to
+        kind, blueprint, owner, team, hierarchy, position, radius, and storage row.
+      </p>
+      <p>
+        This is a major design requirement, not a debugging convenience. A universal runtime ID
+        system is the spine that lets targeting, selection, commands, resource flows, projectile
+        inheritance, kill attribution, save/replay, desync diffing, and renderer inspection all
+        talk about the same world without inventing local ID schemes.
+      </p>
+    </section>
+
+    <section>
       <h2>Towers Are Static Hosts That Lock On And Fire</h2>
       <p>
         A <code>tower</code> is the immobile peer of a <code>unit</code>. Like a unit, a tower
@@ -1987,6 +2093,7 @@
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep locomotion, unit, tower, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary.</li>
+        <li>Give every addressable live instance a universal runtime <code>EntityId</code>, and resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and that intent may name any entity that has an ID; each mounted turret may inherit that target only if its own exclusion policy and targeting gates accept it. Buildings have no host target because they mount no turrets.</li>
         <li>Tag every turret mount as <code>host-directed</code> or <code>fully-autonomous</code>. For each kind of turret a host mounts, exactly one of that kind must be host-directed &mdash; the blueprint loader throws at startup on zero (orders cannot land) or two-or-more (ambiguous primary). When the host is locked on to another entity, only host-directed turrets may consider that lock-on; fully-autonomous turrets ignore it and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets. The rule applies identically to units and towers.</li>
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
