@@ -130,10 +130,11 @@ export class NameLabel3D {
   beginFrame(frustum?: THREE.Frustum): void {
     this._used = 0;
     this._frameToken = (this._frameToken + 1) & 0x3fffffff;
-    if (this._frameToken === 0) {
-      this._seenEntityFrame.clear();
-      this._frameToken = 1;
-    }
+    // Clear the per-frame dedup map each frame so it stays bounded to
+    // entities actually drawn this frame. Previously it only cleared on
+    // the ~185-day token rollover, so it retained an entry for every
+    // entity id that ever rendered a label.
+    this._seenEntityFrame.clear();
     this._frustum = frustum ?? null;
   }
 

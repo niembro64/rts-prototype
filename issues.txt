@@ -140,21 +140,6 @@ SECTION B — MEMORY LEAKS
 balanced listeners/timers, per-id pruning, WebRTC teardown. Only the items below
 grow unbounded over a match.)
 
-B2. [LOW] HealthBar3D._seenEntityFrame grows per distinct entity id.
-    LOCATION: src/game/render3d/HealthBar3D.ts:129 (map), set :215,:247; only
-      .clear()'d on frame-token rollover :142-144 (~every 0x3fffffff frames ≈ 185
-      days @60fps).
-    LEAK: within-frame dedup map never deletes dead-entity entries; grows with all
-      distinct ids that ever rendered a bar. Entries tiny (number→number) so impact
-      is modest.
-    FIX: prune against the live-entity set, or clear() each frame.
-
-B3. [LOW] NameLabel3D._seenEntityFrame — same pattern as B2.
-    LOCATION: src/game/render3d/NameLabel3D.ts:110 (map), set :147; clear only on
-      token rollover :133-135.
-    FIX: same as B2.
-
-
 ================================================================================
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
