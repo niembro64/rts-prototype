@@ -81,19 +81,6 @@ A6. [MED] Wire-code / state enums are hand-duplicated in TS and Rust.
       Rust constants from src/sharedSimConstants.json; add the wire/state enums there
       and generate both the TS and Rust sides.
 
-A8. [LOW] Vestigial acceleration plumbing (no accel reaches the wire, but dead fields
-    remain).
-    LOCATION: stateSerializerEntityDelta.ts:60-62,363-365,496-498,564-566 +
-      lib.rs:13793-13795,14067-14069,14470-14475 carry movementAccelX/Y/Z through the
-      diff/baseline ABI and then explicitly discard them (`let _ = movement_accel_x;`).
-      Beam-path points still carry ax/ay/az always-0 slots
-      (ClientPredictionTargets.ts:78,90; ClientProjectileStore.ts:111,128,154).
-    RULE: "Prediction is velocity-based" (no acceleration in snapshot encode/decode) +
-      "Delete The Old Path".
-    PROBLEM: harmless leftover ABI params and slots; never compared, never serialized,
-      never integrated.
-    FIX: remove the movementAccel ABI params and the beam ax/ay/az slots.
-
 A9. [LOW] Sim-relevant tuning still lives in TS modules.
     LOCATION: src/config.ts (~115 exported const tuning objects; some are sim-relevant,
       many are render-only), src/game/sim/blueprints/displayRosters.ts (roster ordering).
