@@ -12,10 +12,11 @@ import {
   setEntityInstanceColor,
 } from './EntityInstanceColor3D';
 import {
-  createForceFieldReflectorPanelMaterial,
-  MIRROR_REFLECTOR_PANEL_COLOR,
-  resolveForceFieldReflectorPanelColor,
+  createForceFieldSurfaceMaterial,
+  FORCE_FIELD_SURFACE_OPACITY,
+  resolveForceFieldSurfaceColor,
 } from './ForceFieldReflectorVisual3D';
+import { writeHexToRgb01Array } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 
 const SMOOTH_CHASSIS_CAP = 16384;
@@ -75,11 +76,25 @@ export class UnitDetailInstanceRenderer3D {
   private readonly coneBarrelFreeSlots: number[] = [];
   private coneBarrelNextSlot = 0;
 
+  // Materials Are Independent Of Shape: the flat panels render through the
+  // same force-field surface material as the sphere bubble, so they feed the
+  // same per-instance aColor + aAlpha attributes rather than a uniform-opacity
+  // material + built-in instanceColor.
   private readonly forceFieldPanelInstanced: THREE.InstancedMesh;
   private readonly forceFieldPanelColorKey = new Map<number, number>();
   private forceFieldPanelColorDirty = false;
   private readonly forceFieldPanelFreeSlots: number[] = [];
   private forceFieldPanelNextSlot = 0;
+  private readonly forceFieldPanelAlphaArr = new Float32Array(FORCE_FIELD_PANEL_CAP);
+  private readonly forceFieldPanelColorArr = new Float32Array(FORCE_FIELD_PANEL_CAP * 3);
+  private readonly forceFieldPanelAlphaAttr = new THREE.InstancedBufferAttribute(
+    this.forceFieldPanelAlphaArr,
+    1,
+  );
+  private readonly forceFieldPanelColorAttr = new THREE.InstancedBufferAttribute(
+    this.forceFieldPanelColorArr,
+    3,
+  );
 
   private readonly scratchColor = new THREE.Color();
 
@@ -114,13 +129,41 @@ export class UnitDetailInstanceRenderer3D {
       COLORS.units.turret.barrel.colorHex,
     );
 
-    this.forceFieldPanelInstanced = this.createPool(
-      options.mirrorGeom.clone(),
-      createForceFieldReflectorPanelMaterial(),
+    // Force-field panels: same instanced-attribute contract as the sphere
+    // bubble (aColor + aAlpha + shared ShaderMaterial), so the two shapes are
+    // one material. Built directly rather than through createPool because that
+    // helper wires the built-in instanceColor the shared shader doesn't read.
+    const mirrorGeom = options.mirrorGeom.clone();
+    this.forceFieldPanelAlphaAttr.setUsage(THREE.DynamicDrawUsage);
+    this.forceFieldPanelColorAttr.setUsage(THREE.DynamicDrawUsage);
+    mirrorGeom.setAttribute('aAlpha', this.forceFieldPanelAlphaAttr);
+    mirrorGeom.setAttribute('aColor', this.forceFieldPanelColorAttr);
+    this.forceFieldPanelInstanced = new THREE.InstancedMesh(
+      mirrorGeom,
+      createForceFieldSurfaceMaterial(),
       FORCE_FIELD_PANEL_CAP,
-      MIRROR_REFLECTOR_PANEL_COLOR,
     );
+    this.forceFieldPanelInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.forceFieldPanelInstanced.frustumCulled = false;
+    for (let i = 0; i < FORCE_FIELD_PANEL_CAP; i++) {
+      this.forceFieldPanelInstanced.setMatrixAt(i, ZERO_MATRIX);
+    }
+    this.forceFieldPanelInstanced.count = 0;
+    this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
     this.forceFieldPanelInstanced.renderOrder = 7;
+    this.world.add(this.forceFieldPanelInstanced);
+  }
+
+  /** Write the force-field surface color + alpha for one panel slot. Both
+   *  panel write paths funnel through here; the colorKey cache skips the
+   *  attribute write when nothing changed. Alpha is the constant surface
+   *  opacity (the panel's fade is carried by its pose, not per-instance). */
+  private writeForceFieldPanelInstanceColor(slot: number, colorKey: number): void {
+    if (this.forceFieldPanelColorKey.get(slot) === colorKey) return;
+    writeHexToRgb01Array(colorKey, this.forceFieldPanelColorArr, slot * 3);
+    this.forceFieldPanelAlphaArr[slot] = FORCE_FIELD_SURFACE_OPACITY;
+    this.forceFieldPanelColorKey.set(slot, colorKey);
+    this.forceFieldPanelColorDirty = true;
   }
 
   allocSmoothChassisSlots(count: number): number[] | null {
@@ -287,13 +330,9 @@ export class UnitDetailInstanceRenderer3D {
     }
 
     if (mesh.mirrors?.panelSlots) {
-      const mirrorColorKey = resolveForceFieldReflectorPanelColor(entity);
-      this.scratchColor.set(mirrorColorKey);
+      const mirrorColorKey = resolveForceFieldSurfaceColor(entity);
       for (const slot of mesh.mirrors.panelSlots) {
-        if (this.forceFieldPanelColorKey.get(slot) === mirrorColorKey) continue;
-        this.forceFieldPanelInstanced.setColorAt(slot, this.scratchColor);
-        this.forceFieldPanelColorKey.set(slot, mirrorColorKey);
-        this.forceFieldPanelInstanced.instanceColor!.needsUpdate = true;
+        this.writeForceFieldPanelInstanceColor(slot, mirrorColorKey);
       }
     }
   }
@@ -373,13 +412,7 @@ export class UnitDetailInstanceRenderer3D {
 
   writeForceFieldPanelMatrix(slot: number, matrix: THREE.Matrix4, entity: Entity): void {
     this.forceFieldPanelInstanced.setMatrixAt(slot, matrix);
-    const mirrorColorKey = resolveForceFieldReflectorPanelColor(entity);
-    if (this.forceFieldPanelColorKey.get(slot) !== mirrorColorKey) {
-      this.scratchColor.set(mirrorColorKey);
-      this.forceFieldPanelInstanced.setColorAt(slot, this.scratchColor);
-      this.forceFieldPanelColorKey.set(slot, mirrorColorKey);
-      this.forceFieldPanelColorDirty = true;
-    }
+    this.writeForceFieldPanelInstanceColor(slot, resolveForceFieldSurfaceColor(entity));
   }
 
   flush(turretForceFieldPanelsEnabled: boolean): void {
@@ -443,8 +476,9 @@ export class UnitDetailInstanceRenderer3D {
     this.forceFieldPanelInstanced.count = turretForceFieldPanelsEnabled ? this.forceFieldPanelNextSlot : 0;
     if (this.forceFieldPanelNextSlot > 0) {
       this.forceFieldPanelInstanced.instanceMatrix.needsUpdate = true;
-      if (this.forceFieldPanelColorDirty && this.forceFieldPanelInstanced.instanceColor) {
-        this.forceFieldPanelInstanced.instanceColor.needsUpdate = true;
+      if (this.forceFieldPanelColorDirty) {
+        this.forceFieldPanelColorAttr.needsUpdate = true;
+        this.forceFieldPanelAlphaAttr.needsUpdate = true;
       }
     }
     this.forceFieldPanelColorDirty = false;

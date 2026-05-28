@@ -11,15 +11,17 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId, Turret } from '../sim/types';
-import { getPlayerPrimaryColor } from '../sim/types';
 import { getChassisLiftY } from '../math/BodyDimensions';
 import { getUnitBlueprint } from '../sim/blueprints';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getGraphicsConfig } from '@/clientBarConfig';
-import { FORCE_FIELD_VISUAL } from '../../config';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
 import { writeHexToRgb01Array } from './colorUtils';
+import {
+  createForceFieldSurfaceMaterial,
+  resolveForceFieldSurfaceColor,
+} from './ForceFieldReflectorVisual3D';
 
 // Opacity multiplier on top of barrier.alpha so the bubble reads more
 // solid in 3D than the 2D translucent fill.
@@ -60,37 +62,6 @@ function forceFieldKey(unitId: number, turretIndex: number): FieldKey {
   }
   return `${unitId}-${turretIndex}`;
 }
-
-function resolveForceFieldColor(playerId: number | undefined): number {
-  return FORCE_FIELD_VISUAL.colorMode === 'player'
-    ? getPlayerPrimaryColor(playerId)
-    : FORCE_FIELD_VISUAL.fallbackColor;
-}
-
-// Shader for the sphereInstanced pool — same shape as
-// SmokeTrail3D / Explosion3D / SprayRenderer3D. Per-instance `aAlpha`
-// + `aColor` ride on InstancedBufferAttributes; the fragment is just
-// `vec4(vColor, vAlpha)`. The bubble writes the force-field color with
-// the fade-in alpha.
-const FIELD_SPHERE_VS = `
-attribute float aAlpha;
-attribute vec3 aColor;
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  vAlpha = aAlpha;
-  vColor = aColor;
-  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-}
-`;
-
-const FIELD_SPHERE_FS = `
-varying float vAlpha;
-varying vec3 vColor;
-void main() {
-  gl_FragColor = vec4(vColor, vAlpha);
-}
-`;
 
 /** Cap on shared sphere instances. Every active force field consumes
  *  one slot for the translucent bubble. 512 is well above any
@@ -162,13 +133,9 @@ export class ForceFieldRenderer3D {
     this.sphereGeom.setAttribute('aAlpha', this.sphereAlphaAttr);
     this.sphereGeom.setAttribute('aColor', this.sphereColorAttr);
 
-    this.sphereInstancedMat = new THREE.ShaderMaterial({
-      vertexShader: FIELD_SPHERE_VS,
-      fragmentShader: FIELD_SPHERE_FS,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,  // bubble visible from inside too
-    });
+    // Materials Are Independent Of Shape: same material as the flat-panel
+    // force-field surface, just carried by sphere geometry here.
+    this.sphereInstancedMat = createForceFieldSurfaceMaterial();
 
     this.sphereInstancedMesh = new THREE.InstancedMesh(
       this.sphereGeom,
@@ -331,7 +298,7 @@ export class ForceFieldRenderer3D {
       const outer = barrier.outerRange;
       if (outer <= 0) continue;
       const fadeIn = Math.min(progress * 3, 1);
-      const fieldColor = resolveForceFieldColor(unit.ownership?.playerId);
+      const fieldColor = resolveForceFieldSurfaceColor(unit);
 
       // Chassis-local mount position. turret.mount is already in world
       // units, baked from the unit blueprint's 3D mount at unit-creation

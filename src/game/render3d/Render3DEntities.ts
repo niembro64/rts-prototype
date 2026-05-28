@@ -44,7 +44,7 @@ import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
-import { createForceFieldReflectorPanelMaterial } from './ForceFieldReflectorVisual3D';
+import { createForceFieldFallbackPanelMaterial } from './ForceFieldReflectorVisual3D';
 import { ProjectileRangeEnvelope3D } from './ProjectileRangeEnvelope3D';
 import { UnitBarrelSpinState3D } from './UnitBarrelSpinState3D';
 import { TurretMountCache3D, type TurretMountEntry } from './TurretMountCache3D';
@@ -201,7 +201,7 @@ export class Render3DEntities {
   // Force-field panels keep their existing shape and mount, but use the
   // force-field shield treatment so they read as reflector surfaces
   // instead of chrome slabs.
-  private mirrorShinyNeutralMat = createForceFieldReflectorPanelMaterial();
+  private mirrorShinyNeutralMat = createForceFieldFallbackPanelMaterial();
   /** Per-frame scratch: combined `tilt · Ry(yaw)` quaternion + scratch
    *  yaw-only quaternion. Module-local axis (`_INST_UP`) drives the yaw
    *  quaternion. */

@@ -4,26 +4,76 @@ import { FORCE_FIELD_BARRIER, FORCE_FIELD_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity } from '../sim/types';
 import { isConstructionShell } from './EntityInstanceColor3D';
 
+// Materials Are Independent Of Shape: the force-field surface is ONE material.
+// The turretForceFieldSphere carries it as a sphere; the turretForceFieldPanel
+// carries it as flat panels. Both render through the single shader + material
+// factory below — the only difference is the instanced geometry feeding it.
+// Per-instance `aColor` (team/shell color) and `aAlpha` (fade) ride on
+// InstancedBufferAttributes; the fragment is just `vec4(vColor, vAlpha)`.
+
 const FORCE_FIELD_OPACITY_BOOST = 2;
 
-export const MIRROR_REFLECTOR_PANEL_COLOR = FORCE_FIELD_VISUAL.fallbackColor;
-export const MIRROR_REFLECTOR_PANEL_OPACITY = Math.min(
+export const FORCE_FIELD_SURFACE_COLOR = FORCE_FIELD_VISUAL.fallbackColor;
+export const FORCE_FIELD_SURFACE_OPACITY = Math.min(
   1,
   FORCE_FIELD_BARRIER.alpha * FORCE_FIELD_OPACITY_BOOST,
 );
 
-export function resolveForceFieldReflectorPanelColor(entity: Entity): number {
+/** Color of the force-field material at this surface — team color when the
+ *  visual config is in player mode, the pale shell color while still a
+ *  construction shell, else the authored fallback. Shape-independent: the
+ *  sphere and the panels resolve their color through the same rule. */
+export function resolveForceFieldSurfaceColor(entity: Entity): number {
   if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   return FORCE_FIELD_VISUAL.colorMode === 'player' && entity.ownership
     ? getPlayerPrimaryColor(entity.ownership.playerId)
     : FORCE_FIELD_VISUAL.fallbackColor;
 }
 
-export function createForceFieldReflectorPanelMaterial(): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    color: MIRROR_REFLECTOR_PANEL_COLOR,
+export const FORCE_FIELD_SURFACE_VS = `
+attribute float aAlpha;
+attribute vec3 aColor;
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  vAlpha = aAlpha;
+  vColor = aColor;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+
+export const FORCE_FIELD_SURFACE_FS = `
+varying float vAlpha;
+varying vec3 vColor;
+void main() {
+  gl_FragColor = vec4(vColor, vAlpha);
+}
+`;
+
+/** The one force-field surface material. Both the sphere renderer and the
+ *  flat-panel renderer build their instanced mesh on top of this — same
+ *  shader, same blending, same depth/side params — so the two shapes are
+ *  visually the same material and only differ in geometry. */
+export function createForceFieldSurfaceMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: FORCE_FIELD_SURFACE_VS,
+    fragmentShader: FORCE_FIELD_SURFACE_FS,
     transparent: true,
-    opacity: MIRROR_REFLECTOR_PANEL_OPACITY,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
+/** Non-instanced fallback for the rare case where the shared panel instance
+ *  pool is exhausted and panels render as per-unit meshes. Same force-field
+ *  surface color + opacity as the instanced material — it simply can't carry
+ *  per-instance attributes, so it stays a plain MeshBasicMaterial. This is a
+ *  rendering-infrastructure fallback, not a per-shape material branch. */
+export function createForceFieldFallbackPanelMaterial(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: FORCE_FIELD_SURFACE_COLOR,
+    transparent: true,
+    opacity: FORCE_FIELD_SURFACE_OPACITY,
     depthWrite: false,
     side: THREE.DoubleSide,
   });

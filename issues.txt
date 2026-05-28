@@ -26,30 +26,19 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A4. [HIGH] Force-field panel and sphere are NOT one material differing only in
-    geometry — they are two parallel subsystems plus two different shaders.
-    LOCATION:
-      - hit-test/occlusion: src/game/sim/combat/ForceFieldPanelHit.ts (ray-vs-rect)
-        vs forceFieldTurret.ts (ray-vs-sphere); lineOfSight.ts:79-104
-        (hasForceFieldClearance vs hasForceFieldPanelClearance, branched at :111-131).
-      - Rust: lib.rs:13716-13744 force_field_panel_projectile_intersection vs
-        force_field_projectile_intersection; separate pools (forceFieldPanelPool vs
-        forceFieldPool); separate REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL/_SPHERE.
-      - render: ForceFieldReflectorVisual3D.ts:22-30 (panel = MeshBasicMaterial)
-        vs ForceFieldRenderer3D.ts:75-93 (sphere = custom ShaderMaterial).
-    RULE: "Materials Are Independent Of Shape" — the panel's flat panels and the
-      sphere are THE EXACT SAME force-field material (same reflectivity, same LOS
-      occlusion rule, same projectile reflection, same shader); they differ ONLY in
-      geometry. No code path may branch material behavior on which piece owns the
-      surface.
-    PROBLEM: the entire intersection + occlusion + shading stack is duplicated and
-      branched on panel-vs-sphere. (Mitigation: the post-hit reflection physics
-      reflectVelocityPreserveSpeed and the impact visual ARE shared and shape-
-      agnostic, so the divergence is in geometry-intersection/occlusion plumbing and
-      rendering, not the response.)
-    FIX: unify into one material/policy that takes a shape (rect | sphere) for the
-      intersection + normal, with one shared shader; collapse the two clearance
-      functions and the two Rust pools.
+A10. [LOW] Beam reflection point still branches its WIRE label + visual on
+    force-field shape (carved out of A4, which unified the surfaces themselves).
+    LOCATION: BeamReflectorKind = 'forceFieldPanel' | 'forceFieldSphere'
+      (src/types/shotTypes.ts:288); set in DamageSystem.ts:576/625; rides a beam-
+      point flag bit (snapshotProjectileWirePack.ts ~575/664, stateSerializerProjectiles.ts
+      ~397), mirrored in the Rust beam encoder, and read by BeamRenderer3D.ts.
+    RULE: "Materials Are Independent Of Shape" — a beam reflecting off the force-field
+      material should look identical regardless of which shape it bounced off.
+    PROBLEM: the two-value enum makes the beam reflection visual + wire bit shape-
+      dependent. It is a cross-language WIRE enum, so this belongs with A6 (route the
+      enum through codegen) rather than the surface unification A4 already landed.
+    FIX: collapse BeamReflectorKind to a single force-field value and drop the
+      panel-vs-sphere wire bit; fold into the A6 enum-codegen pass.
 
 A5. [MED] Snapshot entity encoding has two implementations, and the TS one runs on
     the live Rust path (double entity walk).
