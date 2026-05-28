@@ -11,7 +11,6 @@ import {
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y,
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z,
   PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND,
-  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD,
   PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID,
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
@@ -572,9 +571,6 @@ function writeBeamPointV2(
   if (point.reflectorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
   if (point.reflectorKind !== null) {
     flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
-    if (point.reflectorKind === 'forceFieldSphere') {
-      flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
-    }
   }
   if (point.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
   if (point.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
@@ -660,9 +656,7 @@ function readBeamPointV2(reader: PackedBinaryReader): NetworkServerSnapshotBeamP
     point.reflectorEntityId = reader.readVarUint();
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
-    point.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD) !== 0
-      ? 'forceFieldSphere'
-      : 'forceFieldPanel';
+    point.reflectorKind = 'forceField';
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
     point.reflectorPlayerId = reader.readVarUint() as PlayerId;
@@ -863,9 +857,7 @@ function unpackBeamPointsV1(
       point.reflectorEntityId = source[base + 7] ?? 0;
     }
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0) {
-      point.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD) !== 0
-        ? 'forceFieldSphere'
-        : 'forceFieldPanel';
+      point.reflectorKind = 'forceField';
     }
     if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
       point.reflectorPlayerId = source[base + 8] as NetworkServerSnapshotBeamPoint['reflectorPlayerId'];

@@ -65,7 +65,6 @@ export const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE = 0x04;
 
 export const PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID = 0x01;
 export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND = 0x02;
-export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD = 0x04;
 export const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID = 0x08;
 export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_X = 0x10;
 export const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y = 0x20;
@@ -392,9 +391,6 @@ export function writeBeamPointWireRow(
   if (point.reflectorEntityId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
   if (point.reflectorKind !== null) {
     flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
-    if (point.reflectorKind === 'forceFieldSphere') {
-      flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND_FORCE_FIELD;
-    }
   }
   if (point.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
   if (point.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;

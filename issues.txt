@@ -26,23 +26,6 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A10. [LOW] Beam reflection point still branches its WIRE label + visual on
-    force-field shape (carved out of A4, which unified the surfaces themselves).
-    LOCATION: BeamReflectorKind = 'forceFieldPanel' | 'forceFieldSphere'
-      (src/types/shotTypes.ts:288); set in DamageSystem.ts:576/625; rides a beam-
-      point flag bit (snapshotProjectileWirePack.ts ~575/664, stateSerializerProjectiles.ts
-      ~397), mirrored in the Rust beam encoder, and read by BeamRenderer3D.ts.
-    RULE: "Materials Are Independent Of Shape" — a beam reflecting off the force-field
-      material should look identical regardless of which shape it bounced off.
-    PROBLEM: the two-value enum makes the beam reflection visual + wire bit shape-
-      dependent. The A6 enum-codegen pass landed src/wireEnums.json (single source,
-      TS imports it + Rust generates via build.rs), so a single reflectorKind code
-      now has a home — but collapsing 2 values to 1 and dropping the wire bit is a
-      wire-VALUE change (like A5), verifiable only at runtime, not just a dedup.
-    FIX: add the force-field reflector code to src/wireEnums.json, collapse
-      BeamReflectorKind to a single value, drop the panel-vs-sphere wire bit, and
-      verify with the runtime snapshot compare mode before trusting it in multiplayer.
-
 A5. [MED] Snapshot entity encoding has two implementations, and the TS one runs on
     the live Rust path (double entity walk).
     LOCATION: snapshotEntityWirePack.ts (TS per-entity encoder) vs

@@ -285,7 +285,10 @@ export type ShotConfig =
 export type ProjectileType = 'projectile' | 'beam' | 'laser';
 
 /** One vertex of a beam/laser polyline. */
-export type BeamReflectorKind = 'forceFieldPanel' | 'forceFieldSphere';
+// The force-field material is shape-independent: a beam reflecting off a
+// panel and off a sphere is the same material, so it carries one kind.
+// "Materials Are Independent Of Shape".
+export type BeamReflectorKind = 'forceField';
 
 export type BeamPoint = {
   x: number;

@@ -1345,7 +1345,7 @@ type BeamPointFixture = {
   x: number; y: number; z: number;
   vx: number; vy: number; vz: number;
   reflectorEntityId?: number;
-  reflectorKind?: 'forceFieldPanel' | 'forceFieldSphere';
+  reflectorKind?: 'forceField';
   reflectorPlayerId?: number;
   normalX?: number;
   normalY?: number;
@@ -1544,7 +1544,6 @@ function packBeamUpdatesIntoScratch(
       if (pt.reflectorEntityId !== undefined) pflags |= 0x01;
       if (pt.reflectorKind !== undefined) {
         pflags |= 0x02;
-        if (pt.reflectorKind === 'forceFieldSphere') pflags |= 0x04;
       }
       if (pt.reflectorPlayerId !== undefined) pflags |= 0x08;
       if (pt.normalX !== undefined) pflags |= 0x10;
@@ -2755,7 +2754,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             {
               x: 500, y: 500, z: 10, vx: 1, vy: 2, vz: 0,
               reflectorEntityId: 4242,
-              reflectorKind: 'forceFieldPanel',
+              reflectorKind: 'forceField',
               reflectorPlayerId: 2,
               normalX: -707, normalY: 707, normalZ: 0,
             },
@@ -2767,8 +2766,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       },
       isDelta: true,
     },
-    // beamUpdates: forceField reflector kind exercises the alternate
-    // string branch in the encoder.
+    // beamUpdates: force-field reflector kind on a beam point.
     {
       tick: 902, entities: [], economy: {},
       projectiles: {
@@ -2779,7 +2777,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             {
               x: 200, y: 100, z: 0, vx: 0, vy: 0, vz: 0,
               reflectorEntityId: 7777,
-              reflectorKind: 'forceFieldSphere',
+              reflectorKind: 'forceField',
               reflectorPlayerId: 3,
             },
             { x: 350, y: 50, z: 0, vx: 0, vy: 0, vz: 0 },
@@ -3383,7 +3381,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
               {
                 x: 100, y: 50, z: 10, vx: 0, vy: 1, vz: 0,
                 reflectorEntityId: 77,
-                reflectorKind: 'forceFieldSphere',
+                reflectorKind: 'forceField',
                 reflectorPlayerId: 3,
                 normalX: -707,
                 normalY: 707,
@@ -3433,7 +3431,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
             {
               x: 4, y: 5, z: 6, vx: 0, vy: 0, vz: 0,
               reflectorEntityId: 12,
-              reflectorKind: 'forceFieldPanel',
+              reflectorKind: 'forceField',
             },
           ],
         }],

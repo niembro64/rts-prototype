@@ -15951,9 +15951,8 @@ pub fn snapshot_encode_beam_update_scratch_ensure(count: u32) {
 /// (first update's N1 points, then next update's N2 points, etc.).
 ///   [0..3]  x, y, z
 ///   [3..6]  vx, vy, vz
-///   [6]     flags: bit 0 has_reflectorEntityId, bit 1 has_reflectorKind,
-///           bit 2 reflectorKind_is_forceFieldSphere (else
-///           'forceFieldPanel' when bit 1 set), bit 3 has_reflectorPlayerId,
+///   [6]     flags: bit 0 has_reflectorEntityId, bit 1 has_reflectorKind
+///           (force-field material; bit 2 unused), bit 3 has_reflectorPlayerId,
 ///           bit 4 has_normalX, bit 5 has_normalY, bit 6 has_normalZ.
 ///   [7]     reflectorEntityId
 ///   [8]     reflectorPlayerId
@@ -17584,7 +17583,6 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 let pflags = point_scratch.buf[pb + 6] as u32;
                 let has_reflector_entity_id = (pflags & 0x01) != 0;
                 let has_reflector_kind = (pflags & 0x02) != 0;
-                let kind_is_sphere = (pflags & 0x04) != 0;
                 let has_reflector_player = (pflags & 0x08) != 0;
                 let has_normal_x = (pflags & 0x10) != 0;
                 let has_normal_y = (pflags & 0x20) != 0;
@@ -17641,11 +17639,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 }
                 if has_reflector_kind {
                     w.write_str("reflectorKind");
-                    if kind_is_sphere {
-                        w.write_str("forceFieldSphere");
-                    } else {
-                        w.write_str("forceFieldPanel");
-                    }
+                    w.write_str("forceField");
                 }
                 if has_reflector_player {
                     w.write_str("reflectorPlayerId");

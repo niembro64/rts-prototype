@@ -322,7 +322,7 @@ export class DamageSystem {
         };
       }
 
-      const reflectorKind = hit.reflectorKind ?? 'forceFieldPanel';
+      const reflectorKind = hit.reflectorKind ?? 'forceField';
       const reflection: BeamReflectorPoint = {
         x: hit.x,
         y: hit.y,
@@ -573,7 +573,7 @@ export class DamageSystem {
           _segHit.normalY = hit.normalY;
           _segHit.normalZ = hit.normalZ;
           _segHit.panelIndex = hit.panelIndex;
-          _segHit.reflectorKind = 'forceFieldPanel';
+          _segHit.reflectorKind = 'forceField';
           _segHit.reflectorPlayerId = unit.ownership !== null
             ? unit.ownership.playerId
             : undefined;
@@ -622,7 +622,7 @@ export class DamageSystem {
         _segHit.normalY = forceFieldHit.ny;
         _segHit.normalZ = forceFieldHit.nz;
         _segHit.panelIndex = -1;
-        _segHit.reflectorKind = 'forceFieldSphere';
+        _segHit.reflectorKind = 'forceField';
         _segHit.reflectorPlayerId = forceFieldHit.playerId;
       }
     }
