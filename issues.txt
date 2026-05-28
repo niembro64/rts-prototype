@@ -26,27 +26,6 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A2. [HIGH] turretForceFieldPanel is flagged headOnly:true, directly contradicting
-    the documented "stays full-barrel" rule, and the code papers over it with
-    special cases.
-    LOCATION: turrets.json:495 (turretForceFieldPanel), :543 "headOnly": true,
-      :546 angleType "rayBisectTurretAndBody".
-    RULE: "Beam And Rocket Turrets Render As Heads" §"Where the rule does not
-      apply": turretForceFieldPanel and the disruptor STAY FULL-BARREL — "the
-      force-field panel has to rotate to bisect its targets." headOnly must NOT
-      be set on it.
-    PROBLEM: with headOnly:true the renderer skips applyTurretAimPose3D
-      (UnitTurretPose3D.ts:67) and builds no barrel (TurretMesh3D.ts:184). The
-      panel needs rotation (rayBisect). Two compensating special-cases were added
-      to make it limp along — turretSnapshotFields.ts forces the aim to keep
-      shipping on the wire for force-field-panel hosts, and the panel slab is
-      posed by a separate renderer. This is exactly the special-case branching the
-      headOnly rule was meant to remove.
-    FIX: set headOnly:false on turretForceFieldPanel and let it pose through the
-      normal turret aim path; then remove the force-field-panel exception in
-      turretSnapshotFields.ts. (Or, if head-only-with-rotating-slab is actually
-      desired, update design_philosophy.html — but today doc and code disagree.)
-
 A3. [HIGH] Duplicate unit-motion integrator: full TS copy of the Rust kernel kept
     as a "bit-identical" fallback.
     LOCATION: src/game/sim/unitMotionIntegration.ts:108-151 (TS branch) duplicates

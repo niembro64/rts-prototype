@@ -398,9 +398,9 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       if (targetId !== -1) prev.targetBits |= (1 << i);
       // Head-only turrets with no snapshot-visible aim pose hide their
       // motion from the wire — sim keeps the values for fire direction but
-      // the snapshot contract is "0 always". Line weapons and force-field-panel
-      // hosts are exceptions because their pose drives visible presentation.
-      const snapshotAimMotion = turretAimMotionIsSnapshotVisible(entity, w);
+      // the snapshot contract is "0 always". Line weapons are the exception
+      // because their pose drives visible beam/laser presentation.
+      const snapshotAimMotion = turretAimMotionIsSnapshotVisible(w);
       prev.turretRots[i] = snapshotAimMotion ? w.rotation : 0;
       prev.turretAngVels[i] = snapshotAimMotion ? w.angularVelocity : 0;
       prev.turretPitches[i] = snapshotAimMotion ? w.pitch : 0;
@@ -687,9 +687,9 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
     const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
     // Mirror the snapshot contract on the Rust diff side: head-only
     // turrets with no snapshot-visible aim pose pass 0 for aim motion,
-    // while line weapons and force-field-panel hosts keep their pose because
-    // it drives visible presentation.
-    const snapshotAimMotion = turretAimMotionIsSnapshotVisible(e, w);
+    // while line weapons keep their pose because it drives visible
+    // beam/laser presentation.
+    const snapshotAimMotion = turretAimMotionIsSnapshotVisible(w);
     sim.turretPool.setTurret(
       slot, t,
       snapshotAimMotion ? w.rotation : 0,

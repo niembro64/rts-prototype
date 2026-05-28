@@ -378,9 +378,9 @@ export type TurretConfig = {
    *  Rendered as a head sphere only; head color shifts halfway toward
    *  white when the turret is engaged. Head-only turrets with no
    *  snapshot-visible aim pose skip yaw/pitch pose and
-   *  rotation/pitch/velocity snapshots; line weapons and force-field-panel
-   *  hosts are exceptions because their hidden/head-only pose still
-   *  drives visible presentation. */
+   *  rotation/pitch/velocity snapshots; line weapons (beam/laser) are the
+   *  exception because their head-only pose still drives visible beam
+   *  presentation. */
   headOnly: boolean;
   /** Visual-only turret hardpoints do not acquire targets or fire.
    *  They exist so reusable turret art, such as construction emitters,
