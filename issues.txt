@@ -170,21 +170,6 @@ B3. [LOW] NameLabel3D._seenEntityFrame — same pattern as B2.
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C1. [HIGH] Unit-vs-unit collision broadphase rebuilds a HashMap + bool-vec every
-    physics step.
-    LOCATION: rts-sim-wasm/src/lib.rs:955-976 (pool_resolve_sphere_sphere):
-      `let mut cells: HashMap<u64, Vec<u32>> = HashMap::new();` + `vec![false; count]`.
-      Called from PhysicsEngine3D.ts:893-921 every step.
-    RULE: "Do not allocate in per-frame loops"; use persistent spatial structures.
-    PROBLEM: at 5000 units with 2 solver iterations @60Hz this rebuilds a 5000-entry
-      HashMap (+ per-bucket Vecs + 5000-bool vec) ~120×/sec. PhysicsEngine3D.ts:685-690
-      notes this can trigger memory.grow(), which detaches all JS typed-array views and
-      forces a refreshViews() every step. The sibling cuboid resolver
-      (pool_resolve_sphere_cuboid_full, lib.rs:1405) already uses a persistent
-      EngineStatics.cells grid with a visit-stamp scheme and allocates nothing.
-    FIX: hoist the bucket grid + woke buffer into the persistent pool struct and
-      clear()/reuse, mirroring the cuboid path.
-
 C2. [MED] Client snapshot DECODE allocates fresh per-entity DTOs + nested literals
     every snapshot.
     LOCATION: snapshotEntityWirePack.ts:252,270 (new Array), :901-932 + :1010-1041

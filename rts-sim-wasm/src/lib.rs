@@ -934,6 +934,50 @@ pub fn pool_step_integrate(
     transitions
 }
 
+// Persistent scratch for `pool_resolve_sphere_sphere`. The dynamic-body
+// bucket grid must be rebuilt every physics step (positions change every
+// step), but the *allocations* are reused across calls instead of being
+// freshly made. Buckets are generation-stamped rather than emptied: a
+// bucket whose `gen` doesn't match the current build generation is treated
+// as empty, so the inner `items` Vecs keep their capacity and steady-state
+// allocation is zero. Mirrors the allocation-free persistent-grid
+// discipline of the sphere-vs-cuboid resolver (EngineStatics) — the prior
+// `HashMap::new()` + `vec![false; count]` per call was the only per-step
+// allocation in the contact solver, and it could trigger memory.grow()
+// (which detaches every JS typed-array view and forces a refreshViews()).
+struct SphereContactBucket {
+    gen: u32,
+    items: Vec<u32>,
+}
+
+struct SphereResolveScratch {
+    cells: HashMap<u64, SphereContactBucket>,
+    gen: u32,
+    woke: Vec<bool>,
+}
+
+struct SphereResolveScratchHolder(UnsafeCell<Option<SphereResolveScratch>>);
+unsafe impl Sync for SphereResolveScratchHolder {}
+static SPHERE_RESOLVE_SCRATCH: SphereResolveScratchHolder =
+    SphereResolveScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
+    // SAFETY: WASM is single-threaded; no concurrent access, and only one
+    // pool_resolve_sphere_sphere call is ever active at a time.
+    unsafe {
+        let cell = SPHERE_RESOLVE_SCRATCH.0.get();
+        if (*cell).is_none() {
+            *cell = Some(SphereResolveScratch {
+                cells: HashMap::new(),
+                gen: 0,
+                woke: Vec::new(),
+            });
+        }
+        (*cell).as_mut().unwrap()
+    }
+}
+
 #[wasm_bindgen]
 pub fn pool_resolve_sphere_sphere(
     sphere_slots: &[u32],
@@ -951,8 +995,14 @@ pub fn pool_resolve_sphere_sphere(
     let half_cs = cell_size * 0.5;
 
     // Bucket bodies by center cell; reused across all sub-iterations
-    // — same as PhysicsEngine3D.rebuildContactCells / Phase 3c.
-    let mut cells: HashMap<u64, Vec<u32>> = HashMap::new();
+    // — same as PhysicsEngine3D.rebuildContactCells / Phase 3c. The grid
+    // and the woke buffer live in persistent scratch (see
+    // SphereResolveScratch): bump the generation and stamp each touched
+    // bucket so stale buckets read as empty without freeing their Vecs.
+    let scratch = sphere_resolve_scratch();
+    scratch.gen = scratch.gen.wrapping_add(1);
+    let gen = scratch.gen;
+    let cells = &mut scratch.cells;
     let mut max_radius = 0.0_f64;
     for i in 0..count {
         let slot = sphere_slots[i] as usize;
@@ -967,13 +1017,27 @@ pub fn pool_resolve_sphere_sphere(
         let cy = (y / cell_size).floor() as i32;
         let cz = ((z + half_cs) / cell_size).floor() as i32;
         let key = pack_contact_cell_key(cx, cy, cz);
-        cells.entry(key).or_default().push(i as u32);
+        let bucket = cells
+            .entry(key)
+            .or_insert_with(|| SphereContactBucket { gen, items: Vec::new() });
+        if bucket.gen != gen {
+            bucket.gen = gen;
+            bucket.items.clear();
+        }
+        bucket.items.push(i as u32);
     }
     let range = (((max_radius * 2.0) / cell_size).ceil() as i32).max(1);
 
     // Track "got pushed" per local index so JS can fire wakeBody on
-    // exactly the bodies whose state flipped.
-    let mut woke = vec![false; count];
+    // exactly the bodies whose state flipped. Reused across calls; only
+    // [0, count) is touched, so a longer buffer from a prior call is fine.
+    let woke = &mut scratch.woke;
+    if woke.len() < count {
+        woke.resize(count, false);
+    }
+    for k in 0..count {
+        woke[k] = false;
+    }
 
     for _iter in 0..iterations {
         for i in 0..count {
@@ -991,10 +1055,10 @@ pub fn pool_resolve_sphere_sphere(
                     for dx in -range..=range {
                         let key = pack_contact_cell_key(acx + dx, acy + dy, acz + dz);
                         let bucket = match cells.get(&key) {
-                            Some(b) => b,
-                            None => continue,
+                            Some(b) if b.gen == gen => b,
+                            _ => continue,
                         };
-                        for &j_u32 in bucket.iter() {
+                        for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j <= i {
                                 continue;
