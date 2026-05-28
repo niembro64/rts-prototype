@@ -121,17 +121,6 @@ A9. [LOW] Sim-relevant tuning still lives in TS modules.
     FIX: migrate sim-relevant tables out of config.ts into JSON validated by a shared
       schema; leave render-only constants for later.
 
-A10. [LOW] Optional-chaining that can silently no-op inside sim logic.
-    LOCATION: src/game/sim/commandExecution.ts:729
-      `(target.unit?.hp ?? target.building?.hp ?? 0) > 0`.
-    RULE: "Explicit Absence" — no ?. in our sim/server/prediction/networking code; use
-      T | null with explicit guards.
-    PROBLEM: this is essentially the ONLY risky case left — the rule is otherwise very
-      well honored (only ~2 ?. total across sim/server/network, ~6 field?: at
-      serialization/settings boundaries; core entity-state types have zero). Worth
-      tidying so absence is an explicit decision.
-    FIX: replace with explicit discriminated handling of unit vs building vs neither.
-
 
 ================================================================================
 SECTION B — MEMORY LEAKS

@@ -725,10 +725,17 @@ function executeSetTowerTargetCommand(
   const target = command.targetId === null
     ? undefined
     : ctx.world.getEntity(command.targetId);
-  const resolvedTargetId =
-    target !== undefined && (target.unit?.hp ?? target.building?.hp ?? 0) > 0
-      ? target.id
-      : null;
+  // A valid lock target must exist and still be alive. Units carry hp on
+  // the unit component; towers and buildings carry it on the building
+  // component. Explicit guards (no optional chaining) so "no hp source"
+  // is a deliberate reject rather than a silent 0.
+  let resolvedTargetId: number | null = null;
+  if (target !== undefined) {
+    let targetHp = 0;
+    if (target.unit !== null) targetHp = target.unit.hp;
+    else if (target.building !== null) targetHp = target.building.hp;
+    if (targetHp > 0) resolvedTargetId = target.id;
+  }
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined || entity.type !== 'tower') continue;
