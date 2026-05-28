@@ -10,15 +10,18 @@ import type { ShotId, TurretId } from './blueprintIds';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, EntityType, PlayerId, TurretState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
+// Single source of truth for the wire codes TS and Rust must agree on.
+// Rust generates its constants from this same file via build.rs.
+import wireEnums from '../wireEnums.json';
 
 // ── Bit-packed enum codes for the wire format ─────────────────────
 // String enums compress poorly even after msgpack — every "tracking"
 // is 8 bytes plus a length tag. These ints take 1 byte each.
 
-export const TURRET_STATE_IDLE = 0;
-export const TURRET_STATE_TRACKING = 1;
-export const TURRET_STATE_ENGAGED = 2;
-export type TurretStateCode = 0 | 1 | 2;
+export const TURRET_STATE_IDLE = wireEnums.turretState.idle;
+export const TURRET_STATE_TRACKING = wireEnums.turretState.tracking;
+export const TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
+export type TurretStateCode = number;
 
 const _TURRET_STATE_TO_CODE: Record<TurretState, TurretStateCode> = {
   idle: TURRET_STATE_IDLE,
@@ -682,27 +685,27 @@ export type NetworkServerSnapshotTurret = {
 // MessagePack decodes own `undefined` properties as null, so network
 // clients must accept both absent and null as "full record".
 // When set (delta update), only flagged field groups are populated.
-export const ENTITY_CHANGED_POS       = 1 << 0;
-export const ENTITY_CHANGED_ROT       = 1 << 1;
-export const ENTITY_CHANGED_VEL       = 1 << 2;
-export const ENTITY_CHANGED_HP        = 1 << 3;
-export const ENTITY_CHANGED_ACTIONS   = 1 << 4;
-export const ENTITY_CHANGED_TURRETS   = 1 << 5;
-export const ENTITY_CHANGED_BUILDING  = 1 << 6;
-export const ENTITY_CHANGED_FACTORY   = 1 << 7;
+export const ENTITY_CHANGED_POS       = wireEnums.entityChanged.pos;
+export const ENTITY_CHANGED_ROT       = wireEnums.entityChanged.rot;
+export const ENTITY_CHANGED_VEL       = wireEnums.entityChanged.vel;
+export const ENTITY_CHANGED_HP        = wireEnums.entityChanged.hp;
+export const ENTITY_CHANGED_ACTIONS   = wireEnums.entityChanged.actions;
+export const ENTITY_CHANGED_TURRETS   = wireEnums.entityChanged.turrets;
+export const ENTITY_CHANGED_BUILDING  = wireEnums.entityChanged.building;
+export const ENTITY_CHANGED_FACTORY   = wireEnums.entityChanged.factory;
 /** The unit's smoothed surface normal moved past wire precision while
  *  the unit didn't (e.g. EMA still settling after the unit stopped, or
  *  a unit-ground-normal mode change kicked off fresh drift). Without this bit the
  *  normal could only ride POS-bit deltas, so stationary units would
  *  hold a stale normal until they moved or until the next keyframe. */
-export const ENTITY_CHANGED_NORMAL    = 1 << 8;
+export const ENTITY_CHANGED_NORMAL    = wireEnums.entityChanged.normal;
 // Bits 1 << 9, 1 << 10, and 1 << 11 were previously assigned to
 // retired wire channels (visual suspension, acceleration-on-the-wire,
 // and a vertical-launch actuator, respectively). The bits are
 // intentionally left empty so COMBAT_MODE keeps its existing position
 // rather than renumbering downstream consumers.
 /** Player-controlled combat mode such as fire/hold-fire changed. */
-export const ENTITY_CHANGED_COMBAT_MODE = 1 << 12;
+export const ENTITY_CHANGED_COMBAT_MODE = wireEnums.entityChanged.combatMode;
 
 export type NetworkServerSnapshotEntity = {
   id: number;

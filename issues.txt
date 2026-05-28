@@ -35,10 +35,13 @@ A10. [LOW] Beam reflection point still branches its WIRE label + visual on
     RULE: "Materials Are Independent Of Shape" — a beam reflecting off the force-field
       material should look identical regardless of which shape it bounced off.
     PROBLEM: the two-value enum makes the beam reflection visual + wire bit shape-
-      dependent. It is a cross-language WIRE enum, so this belongs with A6 (route the
-      enum through codegen) rather than the surface unification A4 already landed.
-    FIX: collapse BeamReflectorKind to a single force-field value and drop the
-      panel-vs-sphere wire bit; fold into the A6 enum-codegen pass.
+      dependent. The A6 enum-codegen pass landed src/wireEnums.json (single source,
+      TS imports it + Rust generates via build.rs), so a single reflectorKind code
+      now has a home — but collapsing 2 values to 1 and dropping the wire bit is a
+      wire-VALUE change (like A5), verifiable only at runtime, not just a dedup.
+    FIX: add the force-field reflector code to src/wireEnums.json, collapse
+      BeamReflectorKind to a single value, drop the panel-vs-sphere wire bit, and
+      verify with the runtime snapshot compare mode before trusting it in multiplayer.
 
 A5. [MED] Snapshot entity encoding has two implementations, and the TS one runs on
     the live Rust path (double entity walk).
@@ -55,20 +58,6 @@ A5. [MED] Snapshot entity encoding has two implementations, and the TS one runs 
       maintained in lockstep.
     FIX: make either the TS pack path or the Rust per-entity encoder the single
       owner of entity bytes; stop running packEntitiesForWire on the Rust path.
-
-A6. [MED] Wire-code / state enums are hand-duplicated in TS and Rust.
-    LOCATION: src/types/network.ts (ENTITY_CHANGED_* bits :685+, TURRET_STATE_* :18-46,
-      ACTION_TYPE_*, PROJECTILE_TYPE_*, RESOURCE_KIND_*, RESOURCE_FLOW_*,
-      REFLECTOR_HIT_KIND_*) vs lib.rs (e.g. :6743 CT_TURRET_STATE_ENGAGED,
-      :14258-14266 changed-field bits).
-    RULE: "Config Is Data, Not Code" — wire codes / enum value-name maps both TS and
-      Rust must agree on belong in ONE file, two consumers, zero drift.
-    PROBLEM: these numeric codes must match byte-for-byte across the boundary but are
-      independently hand-written in both languages. (Evidence of the cost: recent
-      commit "Rename Rust beam-encoder reflectorKind strings to match TS".)
-    FIX: route them through the existing codegen — build.rs:22-79 already generates
-      Rust constants from src/sharedSimConstants.json; add the wire/state enums there
-      and generate both the TS and Rust sides.
 
 A9. [LOW] Sim-relevant tuning still lives in TS modules.
     LOCATION: src/config.ts (~115 exported const tuning objects; some are sim-relevant,

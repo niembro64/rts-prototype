@@ -51,6 +51,11 @@ pub fn __init() {
 // Generated from src/sharedSimConstants.json by rts-sim-wasm/build.rs.
 include!(concat!(env!("OUT_DIR"), "/shared_sim_constants.rs"));
 
+// Wire/state enum codes generated from src/wireEnums.json by build.rs.
+// TypeScript imports the same JSON, so these codes can't drift across the
+// JS/WASM boundary. Provides CT_TURRET_STATE_* and ENTITY_CHANGED_*.
+include!(concat!(env!("OUT_DIR"), "/wire_enums.rs"));
+
 mod blueprint_tables {
     #![allow(dead_code)]
 
@@ -6801,10 +6806,8 @@ pub const CT_TURRET_CFG_HAS_TRACKING_RANGE: u16 = 1 << 7;
 /// independent acquisition.
 pub const CT_TURRET_CFG_HOST_DIRECTED: u16 = 1 << 8;
 
-// FSM state encodings — match TurretState string order in TS.
-pub const CT_TURRET_STATE_IDLE: u8 = 0;
-pub const CT_TURRET_STATE_TRACKING: u8 = 1;
-pub const CT_TURRET_STATE_ENGAGED: u8 = 2;
+// FSM state encodings (CT_TURRET_STATE_*) are generated from
+// src/wireEnums.json — see the include! near the top of this file.
 
 // LOCK-ON-03 — Per-turret lock-on exclusion masks. Authored on each
 // turret blueprint; JS compiles the exclusion sets into bitmasks and
@@ -14279,16 +14282,8 @@ pub fn snapshot_baseline_slot_last_tick(handle: u32, slot: u32) -> u32 {
     b.last_tick[s]
 }
 
-// Changed-fields bit constants (mirror src/types/network.ts).
-const ENTITY_CHANGED_POS: u32 = 1 << 0;
-const ENTITY_CHANGED_ROT: u32 = 1 << 1;
-const ENTITY_CHANGED_VEL: u32 = 1 << 2;
-const ENTITY_CHANGED_HP: u32 = 1 << 3;
-const ENTITY_CHANGED_ACTIONS: u32 = 1 << 4;
-const ENTITY_CHANGED_TURRETS: u32 = 1 << 5;
-const ENTITY_CHANGED_BUILDING: u32 = 1 << 6;
-const ENTITY_CHANGED_FACTORY: u32 = 1 << 7;
-const ENTITY_CHANGED_NORMAL: u32 = 1 << 8;
+// Changed-fields bit constants (ENTITY_CHANGED_*) are generated from
+// src/wireEnums.json — see the include! near the top of this file.
 
 const SNAPSHOT_BASELINE_CAPTURE_FULL: u32 = u32::MAX;
 const SNAPSHOT_NORMAL_THRESHOLD: f64 = 0.001;

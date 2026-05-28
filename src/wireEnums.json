@@ -1,0 +1,20 @@
+{
+  "_comment": "Single source of truth for wire/state enum codes that BOTH TypeScript and Rust must agree on byte-for-byte. TypeScript imports this file directly; Rust generates constants from it via rts-sim-wasm/build.rs. One file, two consumers, zero drift. Only enums that genuinely cross the JS/WASM boundary live here — TS-only enums (action/projectile/resource codes) stay in their TS modules.",
+  "turretState": {
+    "idle": 0,
+    "tracking": 1,
+    "engaged": 2
+  },
+  "entityChanged": {
+    "pos": 1,
+    "rot": 2,
+    "vel": 4,
+    "hp": 8,
+    "actions": 16,
+    "turrets": 32,
+    "building": 64,
+    "factory": 128,
+    "normal": 256,
+    "combatMode": 4096
+  }
+}

@@ -13,6 +13,9 @@
 // reuses whatever pkg/ already contains, so run `build:wasm`
 // once after a fresh clone and re-run after any Rust edit.
 
+// Single source of truth for the wire codes TS and Rust must agree on; the
+// Rust crate generates its CT_TURRET_STATE_* constants from this same file.
+import wireEnums from '../../wireEnums.json';
 import __wbg_init, {
   version,
   step_unit_motion,
@@ -1019,10 +1022,13 @@ export const CT_TURRET_CFG_SHOT_IS_FORCE = 1 << 6;
 export const CT_TURRET_CFG_HAS_TRACKING_RANGE = 1 << 7;
 export const CT_TURRET_CFG_HOST_DIRECTED = 1 << 8;
 
-/** AIM-08.1 — FSM state encodings. Mirrors `CT_TURRET_STATE_*`. */
-export const CT_TURRET_STATE_IDLE = 0;
-export const CT_TURRET_STATE_TRACKING = 1;
-export const CT_TURRET_STATE_ENGAGED = 2;
+/** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
+ *  same file Rust generates its CT_TURRET_STATE_* constants from), so the
+ *  TS sim-wasm bridge, the network wire codes, and the Rust kernels can't
+ *  drift. */
+export const CT_TURRET_STATE_IDLE = wireEnums.turretState.idle;
+export const CT_TURRET_STATE_TRACKING = wireEnums.turretState.tracking;
+export const CT_TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
 
 /** LOCK-ON-03 — Per-turret lock-on exclusion masks compiled from each
  *  turret blueprint's authored exclusion arrays. Mirrors
