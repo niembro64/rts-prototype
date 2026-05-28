@@ -40,6 +40,7 @@ import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
+import type { UnitRenderMode } from '@/types/graphics';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { isConstructionShell, turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
 import { UnitMassInstanceRenderer3D } from './UnitMassInstanceRenderer3D';
@@ -88,6 +89,15 @@ const AIRBORNE_BANK_MAX = Math.PI * 0.25;
 // travels on the wire.
 const AIRBORNE_BANK_TAU_SEC = 0.18;
 const EMPTY_TURRETS: readonly Turret[] = [];
+
+// C3 — auto render-mode escalation thresholds (live unit count). Escalate-up
+// counts sit above de-escalate-down counts so the effective mode has a dead
+// band and doesn't thrash across a single boundary (each rich<->mass flip
+// rebuilds every unit mesh). Tunable against real frame timings.
+const RENDER_MODE_RICH_TO_HYBRID = 700;
+const RENDER_MODE_HYBRID_TO_RICH = 500;
+const RENDER_MODE_HYBRID_TO_MASS = 2000;
+const RENDER_MODE_MASS_TO_HYBRID = 1700;
 
 // Shared Y-up axis for manual instanced transform composition.
 const _INST_UP = new THREE.Vector3(0, 1, 0);
@@ -145,6 +155,11 @@ export class Render3DEntities {
   private buildingRenderer: BuildingEntityRenderer3D;
   private unitMassInstances: UnitMassInstanceRenderer3D;
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
+  // C3 — current auto-escalated render mode (hysteresis state). The
+  // configured unitRenderMode is the richness ceiling; this tracks where
+  // the live unit count has pushed the effective mode. Seeded to the
+  // richest tier so a fresh scene starts rich and only escalates on demand.
+  private autoUnitRenderMode: UnitRenderMode = 'rich';
   private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
   private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
@@ -415,9 +430,44 @@ export class Render3DEntities {
     this.unitDetailInstances.syncShellColors(e, m, turrets);
   }
 
+  /** C3 — resolve the effective unit render mode from the configured mode
+   *  and the live unit count. The configured mode is the richness CEILING:
+   *  an explicit 'hybrid'/'mass' choice is honored as-is, while the default
+   *  'rich' auto-escalates 'rich' -> 'hybrid' -> 'mass' as the count climbs
+   *  toward the 5,000-unit scale target so the per-unit scene-graph cost of
+   *  'rich' (per-unit Map churn, quaternion composition, material reassign)
+   *  doesn't dominate at scale.
+   *
+   *  Hysteresis is mandatory, not cosmetic: each rich<->mass flip runs
+   *  rebuildAllUnitsOnLodChange (tears down + rebuilds every unit mesh), so a
+   *  count hovering on a single threshold would rebuild every frame. The
+   *  escalate-up counts sit well above the de-escalate-down counts to give a
+   *  dead band. Thresholds are deliberately conservative — typical small
+   *  battles stay 'rich' — and may need tuning against real frame timings. */
+  private resolveUnitRenderMode(configured: UnitRenderMode, unitCount: number): UnitRenderMode {
+    if (configured !== 'rich') {
+      this.autoUnitRenderMode = configured;
+      return configured;
+    }
+    let mode = this.autoUnitRenderMode;
+    // De-escalate first (handles a large count drop or a config flip back to
+    // 'rich' from an explicit 'mass'), then escalate. Sequential checks let a
+    // single big count jump step rich -> hybrid -> mass in one frame.
+    if (mode === 'mass' && unitCount < RENDER_MODE_MASS_TO_HYBRID) mode = 'hybrid';
+    if (mode === 'hybrid' && unitCount < RENDER_MODE_HYBRID_TO_RICH) mode = 'rich';
+    if (mode === 'rich' && unitCount >= RENDER_MODE_RICH_TO_HYBRID) mode = 'hybrid';
+    if (mode === 'hybrid' && unitCount >= RENDER_MODE_HYBRID_TO_MASS) mode = 'mass';
+    this.autoUnitRenderMode = mode;
+    return mode;
+  }
+
   private updateUnits(): void {
     this.hoverSmokeEmitters.length = 0;
-    const unitRenderMode = this.frameState.gfx.unitRenderMode;
+    const units = this.clientViewState.getUnits();
+    const unitRenderMode = this.resolveUnitRenderMode(
+      this.frameState.gfx.unitRenderMode,
+      units.length,
+    );
 
     if (unitRenderMode === 'mass') {
       this.unitMassInstances.clearRichUnits();
@@ -438,7 +488,6 @@ export class Render3DEntities {
       this.unitMassInstances.releaseAll();
     }
     this.unitMassInstances.clearRichUnits();
-    const units = this.clientViewState.getUnits();
     this.updateUnitMeshes(units);
   }
 

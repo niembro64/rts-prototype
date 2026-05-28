@@ -96,20 +96,6 @@ C2. [MED] Client snapshot DECODE allocates fresh per-entity DTOs + nested litera
       them. (Host/local play skips this.)
     FIX: pool the decode DTOs like the encode side.
 
-C3. [MED] unitRenderMode is a static config value ('rich') and never escalates to the
-    instanced path at scale.
-    LOCATION: src/playerClientGraphicsConfig.json:3 ("unitRenderMode":"rich");
-      consumed Render3DEntities.ts:420-443. The fully-instanced 'mass' path
-      (UnitMassInstanceRenderer3D) exists but is only used when config says so.
-    RULE: "Prefer instancing / LOD grids over per-unit scene-graph complexity."
-    PROBLEM: in 'rich' mode every unit gets a per-unit scene-graph group and
-      updateUnitMeshes does per-unit Map.get/set, quaternion composition, and
-      material-reassignment loops (:553-569) for all units every frame. (Chassis
-      spheres / turret heads / barrels ARE instanced, so this is CPU-per-unit
-      scene-graph + Map churn, not 5000 draw calls.) Nothing switches to 'mass'/
-      'hybrid' as count climbs toward 5000.
-    FIX: add automatic count-based render-mode escalation.
-
 C5. [LOW] Per-unit JS↔WASM boundary crossing in the client prediction loop.
     LOCATION: ClientPredictionStepper.ts:262-296 → ClientUnitPrediction.ts:186 →
       unitMotionIntegration.ts:89 (sim.stepUnitMotion, one call per unit per frame
