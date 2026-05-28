@@ -108,6 +108,14 @@ type BuiltTerrainMesh = {
   cellTriangleIndices: number[];
 };
 
+type TerrainMeshTopology = {
+  vertexCoords: number[];
+  vertexHeights: number[];
+  triangleIndices: number[];
+  triangleLevels: number[];
+  triangleLeafIndices: number[];
+};
+
 type TriangleEdgeOwner = {
   triangle: number;
   edge: number;
@@ -119,6 +127,12 @@ type TriangleEdgeSpan = TriangleEdgeOwner & {
   lineKey: string;
   start: number;
   end: number;
+};
+
+type TerrainMeshEdgeMetadata = {
+  edgeOwners: Map<string, TriangleEdgeOwner[]>;
+  spansByLine: Map<string, TriangleEdgeSpan[]>;
+  edgeSpans: Map<string, TriangleEdgeSpan>;
 };
 
 const SQRT3_OVER_2 = Math.sqrt(3) * 0.5;
@@ -920,6 +934,16 @@ function collectTriangleEdgeSpanIndex(
   return edgeSpans;
 }
 
+function buildTerrainMeshEdgeMetadata(
+  vertexCoords: readonly number[],
+  triangleIndices: readonly number[],
+): TerrainMeshEdgeMetadata {
+  const edgeOwners = collectTriangleEdgeOwners(triangleIndices);
+  const spansByLine = collectTriangleEdgeSpansByLine(vertexCoords, edgeOwners);
+  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+  return { edgeOwners, spansByLine, edgeSpans };
+}
+
 function edgeSpansOverlap(a: TriangleEdgeSpan, b: TriangleEdgeSpan): boolean {
   if (a.triangle === b.triangle || a.lineKey !== b.lineKey) return false;
   return Math.min(a.end, b.end) - Math.max(a.start, b.start) > TERRAIN_MESH_EDGE_EPSILON;
@@ -983,9 +1007,10 @@ function collectMeshEdgeSplitVertices(
   vertexCoords: readonly number[],
   triangleIndices: readonly number[],
 ): Map<number, Set<number>> {
-  const edgeOwners = collectTriangleEdgeOwners(triangleIndices);
-  const spansByLine = collectTriangleEdgeSpansByLine(vertexCoords, edgeOwners);
-  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+  const { edgeOwners, spansByLine, edgeSpans } = buildTerrainMeshEdgeMetadata(
+    vertexCoords,
+    triangleIndices,
+  );
   const splitVerticesByEdge = new Map<number, Set<number>>();
 
   for (const owners of edgeOwners.values()) {
@@ -1199,13 +1224,15 @@ function buildTriangleNeighborMetadata(
   vertexCoords: readonly number[],
   triangleIndices: readonly number[],
   triangleLevels: readonly number[],
+  edgeMetadata: TerrainMeshEdgeMetadata = buildTerrainMeshEdgeMetadata(
+    vertexCoords,
+    triangleIndices,
+  ),
 ): { indices: number[]; levels: number[] } {
   const triangleCount = Math.floor(triangleIndices.length / 3);
   const neighborIndices = new Array<number>(triangleCount * 3).fill(-1);
   const neighborLevels = new Array<number>(triangleCount * 3).fill(-1);
-  const edgeOwners = collectTriangleEdgeOwners(triangleIndices);
-  const spansByLine = collectTriangleEdgeSpansByLine(vertexCoords, edgeOwners);
-  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+  const { edgeOwners, spansByLine, edgeSpans } = edgeMetadata;
 
   for (const owners of edgeOwners.values()) {
     if (owners.length !== 2) continue;
@@ -1281,13 +1308,15 @@ function markCoarserTriangleLeafForSplit(
 function findMeshNeighborDiscrepancyLeafIndices(
   ctx: TerrainMeshBuildContext,
   leaves: readonly TerrainHierarchyTriangle[],
-  mesh: BuiltTerrainMesh,
-): Set<number> {
+  mesh: TerrainMeshTopology,
+): { splitLeafIndices: Set<number>; edgeMetadata: TerrainMeshEdgeMetadata } {
   const splitLeafIndices = new Set<number>();
   const maxDelta = Math.max(0, TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA | 0);
-  const edgeOwners = collectTriangleEdgeOwners(mesh.triangleIndices);
-  const spansByLine = collectTriangleEdgeSpansByLine(mesh.vertexCoords, edgeOwners);
-  const edgeSpans = collectTriangleEdgeSpanIndex(spansByLine);
+  const edgeMetadata = buildTerrainMeshEdgeMetadata(
+    mesh.vertexCoords,
+    mesh.triangleIndices,
+  );
+  const { edgeOwners, spansByLine, edgeSpans } = edgeMetadata;
 
   for (const owners of edgeOwners.values()) {
     if (owners.length === 2) {
@@ -1346,7 +1375,7 @@ function findMeshNeighborDiscrepancyLeafIndices(
     }
   }
 
-  return splitLeafIndices;
+  return { splitLeafIndices, edgeMetadata };
 }
 
 /** Laplacian smoothing of mesh vertex heights using triangle-edge adjacency.
@@ -1388,13 +1417,10 @@ function smoothMeshVertexHeights(
   }
 }
 
-function buildConformingMeshFromLeaves(
+function buildConformingMeshTopologyFromLeaves(
   ctx: TerrainMeshBuildContext,
   leaves: readonly TerrainHierarchyTriangle[],
-  cellsX: number,
-  cellsY: number,
-  cellSize: number,
-): BuiltTerrainMesh {
+): TerrainMeshTopology {
   const leafVertexSet = new Set<string>();
   for (let i = 0; i < leaves.length; i++) {
     const verts = triangleLatticeVertices(leaves[i]);
@@ -1459,29 +1485,48 @@ function buildConformingMeshFromLeaves(
   triangleLevels = resolvedTriangles.triangleLevels;
   triangleLeafIndices = resolvedTriangles.triangleLeafIndices;
 
-  smoothMeshVertexHeights(vertexHeights, triangleIndices);
-
-  const triangleNeighbors = buildTriangleNeighborMetadata(
-    ctx,
-    vertexCoords,
-    triangleIndices,
-    triangleLevels,
-  );
-
-  const { cellTriangleOffsets, cellTriangleIndices } = buildTerrainCellTriangleIndex({
-    cellsX,
-    cellsY,
-    cellSize,
-    vertexCoords,
-    triangleIndices,
-  });
-
   return {
     vertexCoords,
     vertexHeights,
     triangleIndices,
     triangleLevels,
     triangleLeafIndices,
+  };
+}
+
+function finalizeConformingMeshTopology(
+  ctx: TerrainMeshBuildContext,
+  topology: TerrainMeshTopology,
+  cellsX: number,
+  cellsY: number,
+  cellSize: number,
+  edgeMetadata?: TerrainMeshEdgeMetadata,
+): BuiltTerrainMesh {
+  const vertexHeights = [...topology.vertexHeights];
+  smoothMeshVertexHeights(vertexHeights, topology.triangleIndices);
+
+  const triangleNeighbors = buildTriangleNeighborMetadata(
+    ctx,
+    topology.vertexCoords,
+    topology.triangleIndices,
+    topology.triangleLevels,
+    edgeMetadata,
+  );
+
+  const { cellTriangleOffsets, cellTriangleIndices } = buildTerrainCellTriangleIndex({
+    cellsX,
+    cellsY,
+    cellSize,
+    vertexCoords: topology.vertexCoords,
+    triangleIndices: topology.triangleIndices,
+  });
+
+  return {
+    vertexCoords: topology.vertexCoords,
+    vertexHeights,
+    triangleIndices: topology.triangleIndices,
+    triangleLevels: topology.triangleLevels,
+    triangleLeafIndices: topology.triangleLeafIndices,
     triangleNeighborIndices: triangleNeighbors.indices,
     triangleNeighborLevels: triangleNeighbors.levels,
     cellTriangleOffsets,
@@ -1509,19 +1554,47 @@ function buildValidatedConformingMeshFromLeaves(
   );
 
   for (let pass = 0; pass < boundedMaxPasses; pass++) {
-    const mesh = buildConformingMeshFromLeaves(ctx, repairedLeaves, cellsX, cellsY, cellSize);
-    const splitLeafIndices = findMeshNeighborDiscrepancyLeafIndices(ctx, repairedLeaves, mesh);
-    if (splitLeafIndices.size === 0) return mesh;
+    const topology = buildConformingMeshTopologyFromLeaves(ctx, repairedLeaves);
+    const { splitLeafIndices, edgeMetadata } = findMeshNeighborDiscrepancyLeafIndices(
+      ctx,
+      repairedLeaves,
+      topology,
+    );
+    if (splitLeafIndices.size === 0) {
+      return finalizeConformingMeshTopology(
+        ctx,
+        topology,
+        cellsX,
+        cellsY,
+        cellSize,
+        edgeMetadata,
+      );
+    }
 
     const nextLeaves = balanceTerrainTriangleLeaves(
       ctx,
       splitTerrainTriangleLeaves(ctx, repairedLeaves, splitLeafIndices),
     );
-    if (nextLeaves.length === repairedLeaves.length) return mesh;
+    if (nextLeaves.length === repairedLeaves.length) {
+      return finalizeConformingMeshTopology(
+        ctx,
+        topology,
+        cellsX,
+        cellsY,
+        cellSize,
+        edgeMetadata,
+      );
+    }
     repairedLeaves = nextLeaves;
   }
 
-  return buildConformingMeshFromLeaves(ctx, repairedLeaves, cellsX, cellsY, cellSize);
+  return finalizeConformingMeshTopology(
+    ctx,
+    buildConformingMeshTopologyFromLeaves(ctx, repairedLeaves),
+    cellsX,
+    cellsY,
+    cellSize,
+  );
 }
 
 function buildAdaptiveEquilateralTerrainMesh(

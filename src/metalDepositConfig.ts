@@ -394,8 +394,12 @@ function countGridCellsInRadius(radiusCells: number): number {
   return count;
 }
 
-function cellKey(gx: number, gy: number): string {
-  return `${gx},${gy}`;
+const METAL_DEPOSIT_CELL_KEY_BIAS = 0x100000;
+const METAL_DEPOSIT_CELL_KEY_BASE = 0x200000;
+
+function cellKey(gx: number, gy: number): number {
+  return (gx + METAL_DEPOSIT_CELL_KEY_BIAS) * METAL_DEPOSIT_CELL_KEY_BASE
+    + (gy + METAL_DEPOSIT_CELL_KEY_BIAS);
 }
 
 function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
@@ -434,8 +438,8 @@ function growMetalDepositResourceCells(
   seed: number,
 ): MetalDepositResourceCell[] {
   const rng = makeSeededRng(seed);
-  const selected = new Map<string, MetalDepositResourceCell>();
-  const frontier = new Map<string, MetalDepositResourceCell>();
+  const selected = new Map<number, MetalDepositResourceCell>();
+  const frontier = new Map<number, MetalDepositResourceCell>();
   const r2 = radiusCells * radiusCells;
 
   const addFrontier = (gx: number, gy: number): void => {

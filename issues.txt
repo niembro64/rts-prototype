@@ -121,6 +121,93 @@ C8. [LOW] Per-death debris template array + closure allocation.
       at once.
     FIX: cache pose-independent templates per unitType; apply only live yaw/pitch.
 
+C9. [MED] Need an output-stability harness before deeper terrain-generation rewrites.
+    LOCATION: terrain/deposit generation pipeline:
+      src/metalDepositConfig.ts, src/game/sim/terrain/terrainTileMap.ts,
+      src/game/sim/terrain/terrainCellTriangleIndex.ts.
+    RULE: generation optimizations must not change final terrain visuals, sim mesh,
+      deposit positions, deposit heights, resource cells, buildability, or metal-pad
+      interactions unless explicitly intended.
+    PROBLEM: the next optimization tier touches triangle-collapse decisions, edge
+      metadata, repair passes, and cell indexing. These are deterministic but visually
+      sensitive; relying on screenshots or "looks right" will miss small logical drift.
+    FIX: add a harness that generates deposits + terrain for several map sizes,
+      player counts, terrainDetail values, terrain map shapes, and deposit-step/plateau
+      configs, then hashes/compares meshVertexCoords, meshVertexHeights,
+      meshTriangleIndices, meshTriangleLevels, meshTriangleNeighborIndices/Levels,
+      meshCellTriangleOffsets/Indices, metal deposit x/y/height/cells/bounds, and
+      buildability grid flags/levels.
+
+C10. [MED] Terrain triangle collapse check still does avoidable per-sample work.
+    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
+      canCollapseTerrainTriangle / forEachFinePointInTriangle / terrainBarycentricAt.
+    RULE: "TypeScript Coordinates, WASM Computes" / avoid allocation and repeated math
+      in generation hot loops.
+    PROBLEM: collapse testing recomputes world positions, barycentric weights, and
+      source normals across many fine lattice points. Some object-return helpers and
+      generic barycentric math are still in the innermost subdivision decision path.
+    FIX: specialize up/down equilateral triangle lattice scans so interpolation weights
+      come directly from integer offsets; avoid per-sample barycentric objects; precompute
+      repeated edge/plane terms per candidate triangle.
+
+C11. [MED] Terrain mesh edge metadata still allocates string keys in hot generation paths.
+    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
+      collectTriangleEdgeOwners, meshEdgeKey, lineKey creation, edge span indexes,
+      resolveMeshTriangleEdgeSplits, buildTriangleNeighborMetadata.
+    PROBLEM: edge repair/neighbor generation builds many Map entries keyed by strings
+      such as "a:b", line keys, and "triangle:edge". We reduced duplicate edge scans,
+      but the remaining scans still allocate heavily at high terrainDetail.
+    FIX: replace edge and triangle-edge keys with numeric packed keys where safe, and
+      keep line classification numeric. Verify with the C9 output harness before/after.
+
+C12. [MED] Terrain leaf balancing rebuilds unit-edge segment maps each pass.
+    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
+      balanceTerrainTriangleLeaves, forEachTriangleUnitEdgeSegment, latticeSegmentKey.
+    PROBLEM: each balance pass walks every leaf's unit edge segments and keys them with
+      strings. This can dominate startup on high-detail maps, especially around deposit
+      pads and hard terrain transitions.
+    FIX: use numeric lattice segment keys and reusable owner buffers, or cache segment
+      ownership between balance passes when only a known subset of leaves split.
+
+C13. [LOW] Terrain leaf generation creates many short-lived child arrays/objects.
+    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
+      buildTerrainTriangleLeaves, terrainTriangleChildren, splitTerrainTriangleLeaves.
+    PROBLEM: recursive subdivision allocates arrays and small triangle objects repeatedly.
+      This is startup-only, but high detail settings amplify GC pressure.
+    FIX: convert subdivision to stack-based traversal with flat triangle records or
+      push children directly into caller-owned output buffers.
+
+C14. [MED] Buildability-grid generation repeats neighboring terrain samples.
+    LOCATION: src/game/sim/terrain/terrainBuildability.ts:
+      buildTerrainBuildabilityGrid -> evaluateBuildabilityFootprint -> isWaterAt /
+      getTerrainMeshNormal / getTerrainPlateauLevelAt.
+    PROBLEM: every build-grid cell samples nine footprint points, and adjacent cells
+      re-query many of the same height/normal/plateau/water results. This happens right
+      after terrain generation and scales with map area.
+    FIX: cache mesh height/normal/water/plateau samples per build-grid sample point for
+      the duration of buildTerrainBuildabilityGrid, then evaluate footprints from that
+      cache.
+
+C15. [LOW] Metal-deposit resource-footprint growth still scans the full frontier every
+    selected cell.
+    LOCATION: src/metalDepositConfig.ts: growMetalDepositResourceCells.
+    PROBLEM: current footprints are small, so this is not urgent. If resourceCells or
+      resourceRadiusCells grow, each selected cell rebuilds a weighted frontier list and
+      recomputes neighbor counts, distances, and weights for every frontier cell.
+    FIX: precompute candidate offsets/distances for each radius; keep selected/frontier
+      membership numeric; update neighbor counts incrementally. Preserve Map/frontier
+      iteration order or verify with the C9 output harness.
+
+C16. [HIGH] Long-term terrain/deposit baking should move to Rust/WASM.
+    LOCATION: src/game/sim/terrain/*.ts and src/metalDepositConfig.ts.
+    RULE: "TypeScript coordinates, WASM computes" and "shared deterministic kernels".
+    PROBLEM: terrain mesh baking, repair, buildability, and deposit layout are CPU-heavy,
+      deterministic, and sim-critical. Keeping them in TS leaves startup cost and
+      client/server drift risk in the orchestration layer.
+    FIX: after the C9 harness exists, port terrain height sampling, mesh baking,
+      buildability baking, and deposit generation to Rust/WASM in stages, with TS kept
+      as compatibility/diagnostic glue until the old path can be deleted.
+
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
 ================================================================================
