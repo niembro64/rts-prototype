@@ -32,8 +32,11 @@ const MAX_PROJECTILE_SWEEP_DISTANCE_SQ =
   MAX_PROJECTILE_SWEEP_DISTANCE * MAX_PROJECTILE_SWEEP_DISTANCE;
 const MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS = 96;
 const REFLECTOR_HIT_KIND_NONE = 0;
-const REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL = 1;
-const REFLECTOR_HIT_KIND_FORCE_FIELD_SPHERE = 2;
+// Materials Are Independent Of Shape: a projectile reflecting off either the
+// force-field sphere or a flat force-field panel reports one kind. The shape
+// only decided where the hit was and what the normal looks like; the reflection
+// response and impact are identical.
+const REFLECTOR_HIT_KIND_FORCE_FIELD = 1;
 const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN = 0;
 const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT = 1;
 const FORCE_FIELD_REFLECTION_MODE_BOTH = 2;
@@ -219,7 +222,6 @@ function getProjectileHitCount(proj: { hitEntities: Set<EntityId> }): number {
 
 function pushReflectorImpactEvent(
   audioEvents: SimEvent[],
-  hitForceField: boolean,
   projectileEntityId: EntityId,
   x: number,
   y: number,
@@ -229,11 +231,14 @@ function pushReflectorImpactEvent(
   normalZ: number,
   playerId: number | undefined,
 ): void {
+  // Materials Are Independent Of Shape: the force-field material's impact
+  // reaction (sound, particles) is identical whether a projectile reflected
+  // off the sphere shape or a flat-panel shape — one source key for both.
   audioEvents.push({
     type: 'forceFieldImpact',
     turretId: 'turretForceFieldSphere',
     sourceType: 'turret',
-    sourceKey: hitForceField ? 'turretForceFieldSphere' : 'turretForceFieldPanel',
+    sourceKey: 'turretForceFieldSphere',
     pos: { x, y, z },
     playerId,
     entityId: projectileEntityId,
@@ -519,7 +524,6 @@ export function checkProjectileCollisions(
     // surface with the same vector reflection math beams use; rocket-class
     // behavior is controlled by ROCKET_REFLECTOR_COLLISION_MODE. Beams/lasers
     // are handled by their own line path.
-    let hitForceFieldPanel = false;
     let hitForceField = false;
     let reflectedProjectile = false;
     let reflectorNormalX: number | undefined;
@@ -550,8 +554,7 @@ export function checkProjectileCollisions(
         } else {
           reflectorPlayerId = undefined;
         }
-        hitForceFieldPanel = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL;
-        hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD_SPHERE;
+        hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
       if (bestT < Infinity) {
         if (isRocketShot && proj.homingTargetId !== NO_ENTITY_ID) {
@@ -622,7 +625,6 @@ export function checkProjectileCollisions(
             reflectorImpactEvents++;
             pushReflectorImpactEvent(
               audioEvents,
-              hitForceField,
               projEntity.id,
               reflectorHitX, reflectorHitY, reflectorHitZ,
               reflectorNormalX!, reflectorNormalY!, reflectorNormalZ!,
@@ -649,7 +651,6 @@ export function checkProjectileCollisions(
     const groundZAtProj = world.getGroundZ(projEntity.transform.x, projEntity.transform.y);
     const hitGround =
       !reflectedProjectile &&
-      !hitForceFieldPanel &&
       !hitForceField &&
       proj.projectileType === 'projectile' &&
       proj.hasLeftSource &&
@@ -691,7 +692,7 @@ export function checkProjectileCollisions(
     }
 
     // Check if the projectile hit a terminal timeout, ground, or barrier.
-    const terminalReflectorHit = (hitForceFieldPanel || hitForceField) && !reflectedProjectile;
+    const terminalReflectorHit = hitForceField && !reflectedProjectile;
     if (proj.timeAlive >= proj.maxLifespan || hitGround || terminalReflectorHit) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (
@@ -704,7 +705,6 @@ export function checkProjectileCollisions(
         reflectorImpactEvents++;
         pushReflectorImpactEvent(
           audioEvents,
-          hitForceField,
           projEntity.id,
           projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
           reflectorNormalX, reflectorNormalY, reflectorNormalZ,

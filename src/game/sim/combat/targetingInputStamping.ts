@@ -428,40 +428,6 @@ type ForceFieldPoolStampOptions = {
   includeWhenSightDisabled: boolean | undefined;
 };
 
-/** Rebuild the FF pool slab from getActiveForceFields(). Runs BEFORE
- *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels
- *  read current-tick force-field sphere data.
- *
- *  When world.forceFieldsObstructSight is false, the slab is rebuilt
- *  at count=0 instead. The kernels short-circuit on empty pools and
- *  return "clear", matching the JS `_emptyForceFields` substitution.
- *  Projectile collision can opt into stamping the physical shield list
- *  even when sight obstruction is disabled. */
-export function stampForceFieldPool(
-  world: WorldState,
-  options: ForceFieldPoolStampOptions = { includeWhenSightDisabled: undefined },
-): void {
-  const sim = getSimWasm();
-  if (sim === undefined) return;
-  const fields = sim.forceFieldPool;
-  if (!options.includeWhenSightDisabled && !world.forceFieldsObstructSight) {
-    fields.setCount(0);
-    return;
-  }
-  const active = getActiveForceFields();
-  fields.setCount(active.length);
-  for (let i = 0; i < active.length; i++) {
-    const f = active[i];
-    fields.setField(
-      i,
-      f.entityId,
-      f.entityId,
-      f.centerX, f.centerY, f.centerZ,
-      f.radius,
-    );
-  }
-}
-
 function stampCombatTargetingEntityInto(
   sim: SimWasm,
   targeting: CombatTargetingApi,
@@ -720,21 +686,49 @@ export function stampCombatTargetingPool(world: WorldState): void {
 
 const _mirrorStampPivot = { x: 0, y: 0, z: 0 };
 
-/** Rebuild the force-field panel pool from `world.getForceFieldPanelUnits()`. The
- *  Rust force-field-panel sightline kernel reads this slab during the
- *  targeting FSM, so it must hold the current tick's pose data on
- *  entry. Inactive / dead mirror units are skipped; the slab counts
- *  only the active set, with panel rows packed contiguously by unit.
+/** Rebuild the single force-field surface pool. Runs BEFORE
+ *  updateTargetingAndFiringState so the AIM-08.2 clearance kernels and the
+ *  projectile-reflection batch read current-tick surface data.
  *
- *  Runs BEFORE updateTargetingAndFiringState so the gate kernel sees
- *  current data when it walks the slab. The slope-aware turret pivot
- *  is resolved fresh via resolveWeaponWorldMount — same input the
- *  beam tracer / live aim solver uses — so the gate and the
- *  authoritative bounce path agree on where each panel sits. */
-export function stampForceFieldPanelPool(world: WorldState): void {
+ *  Materials Are Independent Of Shape: one pool holds both shapes.
+ *   - Sphere surfaces come from getActiveForceFields(). When
+ *     world.forceFieldsObstructSight is false the sphere group is rebuilt at
+ *     count=0 (kernels short-circuit on empty and return "clear"). Projectile
+ *     collision can opt into stamping the physical shields even when sight
+ *     obstruction is disabled via `includeWhenSightDisabled`.
+ *   - Flat-panel surfaces come from world.getForceFieldPanelUnits(), gated by
+ *     world.turretForceFieldPanelsEnabled. Inactive / dead mirror units are
+ *     skipped; panel rows pack contiguously by unit. The slope-aware turret
+ *     pivot is resolved fresh via resolveWeaponWorldMount — the same input the
+ *     beam tracer / live aim solver uses — so the gate and the authoritative
+ *     bounce path agree on where each panel sits. */
+export function stampForceFieldSurfacePool(
+  world: WorldState,
+  options: ForceFieldPoolStampOptions = { includeWhenSightDisabled: undefined },
+): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
-  const pool = sim.forceFieldPanelPool;
+  const pool = sim.forceFieldSurfacePool;
+
+  // ── Sphere surfaces ──
+  if (!options.includeWhenSightDisabled && !world.forceFieldsObstructSight) {
+    pool.setFieldCount(0);
+  } else {
+    const active = getActiveForceFields();
+    pool.setFieldCount(active.length);
+    for (let i = 0; i < active.length; i++) {
+      const f = active[i];
+      pool.setField(
+        i,
+        f.entityId,
+        f.entityId,
+        f.centerX, f.centerY, f.centerZ,
+        f.radius,
+      );
+    }
+  }
+
+  // ── Flat-panel surfaces ──
   if (!world.turretForceFieldPanelsEnabled) {
     pool.setUnitCount(0);
     pool.setPanelCount(0);
@@ -818,7 +812,6 @@ export function stampForceFieldPanelPool(world: WorldState): void {
  *  back-to-back. Used by callers that don't need to interleave the
  *  FSM between them. */
 export function stampTargetingInputSlabs(world: WorldState): void {
-  stampForceFieldPool(world);
-  stampForceFieldPanelPool(world);
+  stampForceFieldSurfacePool(world);
   stampCombatTargetingPool(world);
 }

@@ -27,8 +27,7 @@ import {
 import {
   readCombatTargetingTurretFsmInto,
   stampCombatTargetingPool,
-  stampForceFieldPool,
-  stampForceFieldPanelPool,
+  stampForceFieldSurfacePool,
   type CombatTargetingTurretFsmOut,
 } from './combat/targetingInputStamping';
 import {
@@ -512,11 +511,9 @@ export class Simulation {
     // produced by the previous tick's updateForceFieldState, so shield
     // sphere targeting has the same one-tick-stale envelope as
     // projectile collision.
-    stampForceFieldPool(this.world);
-    // AIM-08.5 — rebuild force-field-panel slab before the FSM. The Rust
-    // gate consults this when evaluating mirror sightline clearance,
-    // so it must hold current-tick pose data on entry.
-    stampForceFieldPanelPool(this.world);
+    // One material, two shapes: a single pool holds both the sphere and the
+    // flat-panel force-field surfaces, both stamped here before the FSM/gate.
+    stampForceFieldSurfacePool(this.world);
     // AIM-08.5 — rebuild targeting slabs before the FSM. The targeting
     // pass mutates the slab through Rust transition kernels and writes
     // those results back to JS turrets for the remaining consumers.
@@ -603,8 +600,7 @@ export class Simulation {
       // Projectile reflection queries use the same reflector slabs as
       // targeting, but need the post-rotation, post-force-field-update
       // pose for this collision tick.
-      stampForceFieldPool(this.world, { includeWhenSightDisabled: true });
-      stampForceFieldPanelPool(this.world);
+      stampForceFieldSurfacePool(this.world, { includeWhenSightDisabled: true });
 
       // Check projectile collisions and get dead units
       const collisionResult = checkProjectileCollisions(this.world, dtMs, this.damageSystem, this.forceAccumulator);

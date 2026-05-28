@@ -224,12 +224,10 @@ import __wbg_init, {
   force_field_pool_radius_ptr,
   force_field_clearance_segment,
   force_field_clearance_arc,
-  force_field_panel_pool_clear,
   force_field_panel_pool_set_unit_count,
   force_field_panel_pool_set_panel_count,
   force_field_panel_pool_set_unit,
   force_field_panel_pool_set_panel,
-  force_field_panel_clearance_segment_export,
   projectile_reflector_intersections_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
@@ -722,13 +720,12 @@ export interface SimWasm {
    *  still mirrors slab results back to Turret objects for downstream
    *  rendering/firing/snapshot consumers. */
   readonly combatTargeting: CombatTargetingApi;
-  /** AIM-08.1 — Compact list of active force fields rebuilt each
-   *  tick from getActiveForceFields(). */
-  readonly forceFieldPool: ForceFieldPoolApi;
-  /** AIM-08.5 — Force-field-panel input slab. Two parallel pools (per-unit
-   *  pose + per-panel geometry) rebuilt each tick so the targeting
-   *  gate can compute force-field-panel sightline clearance in Rust. */
-  readonly forceFieldPanelPool: ForceFieldPanelPoolApi;
+  /** Materials Are Independent Of Shape — one pool holds every active
+   *  force-field surface, sphere and flat-panel alike, rebuilt each tick.
+   *  Spheres come from getActiveForceFields(); flat panels are stamped
+   *  through the per-unit + per-panel arrays. The clearance / projectile
+   *  kernels read both shapes and apply the same material policy. */
+  readonly forceFieldSurfacePool: ForceFieldSurfacePoolApi;
   /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
    *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
    *  no consumer reads from it yet. */
@@ -1630,10 +1627,18 @@ export interface CombatTargetingApi {
  *  fields, rebuilt from scratch each tick from the JS-side
  *  getActiveForceFields(). Owner entity id sentinels: -1 means the
  *  field is not tied to a stamped entity. */
-export interface ForceFieldPoolApi {
+/** Materials Are Independent Of Shape — one pool, one material, two shapes.
+ *  Sphere surfaces live in the flat per-field arrays (`setField` /
+ *  `setFieldCount`); flat-panel surfaces live in the per-unit + per-panel
+ *  arrays (`setUnit` / `setPanel`). The clearance + projectile kernels read
+ *  both groups and apply the same reflection / occlusion policy. */
+export interface ForceFieldSurfacePoolApi {
+  /** Reset all surfaces (sphere fields + panel units + panels). */
   clear: () => void;
+  /** Number of sphere surfaces currently stamped. */
   count: () => number;
-  setCount: (count: number) => void;
+  /** ── Sphere shape ── */
+  setFieldCount: (count: number) => void;
   setField: (
     idx: number,
     id: number,
@@ -1649,39 +1654,11 @@ export interface ForceFieldPoolApi {
   readonly centerYPtr: () => number;
   readonly centerZPtr: () => number;
   readonly radiusPtr: () => number;
-  /** AIM-08.2 — direct-segment force-field clearance. Returns 1 if
-   *  the segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings`
-   *  field sphere boundaries, 0 otherwise. Pass -1 as
-   *  `excludeOwnerEntityId` to consider every field. Endpoint grazes
-   *  within FORCE_FIELD_GRAZE_EPS don't count. Reads the FF slab
-   *  rebuilt each tick by stampForceFieldPool. */
-  readonly clearanceSegment: (
-    sx: number, sy: number, sz: number,
-    tx: number, ty: number, tz: number,
-    excludeOwnerEntityId: number,
-    maxCrossings: number,
-  ) => number;
-  /** AIM-08.2 — ballistic-arc force-field clearance. Approximates the
-   *  parabola `pos = launch + v·t − 0.5·g·ẑ·t²` from 0..flightTime,
-   *  with the same boundary-crossing rule as the segment kernel.
-   *  Returns 1 if total crossings ≤ `maxCrossings`, 0 otherwise. */
-  readonly clearanceArc: (
-    launchX: number, launchY: number, launchZ: number,
-    launchVx: number, launchVy: number, launchVz: number,
-    flightTime: number,
-    excludeOwnerEntityId: number,
-    maxCrossings: number,
-  ) => number;
-}
-
-/** AIM-08.5 — Force-field-panel input slab. Two parallel pools rebuilt
- *  each tick: per-mirror-unit pose + broad radius + slope-aware
- *  pivot + [panel_start, panel_count) range; per-panel arm-length,
- *  lateral offset, panel yaw offset, base/top Y in chassis-local
- *  space, and half-width. The Rust gate kernel walks the pools so
- *  TS no longer has to precompute a per-(turret, candidate) mask. */
-export interface ForceFieldPanelPoolApi {
-  clear: () => void;
+  /** ── Rect-panel shape ── per-mirror-unit pose + broad radius +
+   *  slope-aware pivot + [panel_start, panel_count) range; per-panel
+   *  arm-length, lateral offset, panel yaw offset, base/top Y in
+   *  chassis-local space, and half-width. The Rust kernels walk these
+   *  so TS no longer precomputes a per-(turret, candidate) mask. */
   setUnitCount: (count: number) => void;
   setPanelCount: (count: number) => void;
   setUnit: (
@@ -1709,11 +1686,31 @@ export interface ForceFieldPanelPoolApi {
     topY: number,
     halfWidth: number,
   ) => void;
-  /** JS-callable force-field-panel sightline clearance probe. Returns 1
-   *  when the segment is clear, 0 when at least one panel blocks. */
+  /** AIM-08.2 — direct-segment force-field clearance. Returns 1 if the
+   *  segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings` force-field
+   *  surface boundaries, 0 otherwise. `includeSpheres` / `includePanels`
+   *  restrict the query to one shape (e.g. a passive panel turret skips
+   *  panels so it can't block its own sightline class). Pass -1 as
+   *  `excludeOwnerEntityId` to consider every surface. Endpoint grazes
+   *  within FORCE_FIELD_GRAZE_EPS don't count. */
   readonly clearanceSegment: (
     sx: number, sy: number, sz: number,
     tx: number, ty: number, tz: number,
+    excludeOwnerEntityId: number,
+    maxCrossings: number,
+    includeSpheres: number,
+    includePanels: number,
+  ) => number;
+  /** AIM-08.2 — ballistic-arc force-field clearance against sphere surfaces.
+   *  Approximates the parabola `pos = launch + v·t − 0.5·g·ẑ·t²` from
+   *  0..flightTime, with the same boundary-crossing rule as the segment
+   *  kernel. Returns 1 if total crossings ≤ `maxCrossings`, 0 otherwise. */
+  readonly clearanceArc: (
+    launchX: number, launchY: number, launchZ: number,
+    launchVx: number, launchVy: number, launchVz: number,
+    flightTime: number,
+    excludeOwnerEntityId: number,
+    maxCrossings: number,
   ) => number;
 }
 
@@ -2794,27 +2791,23 @@ export function initSimWasm(): Promise<SimWasm> {
           tickBatch: combat_targeting_tick_batch,
           scheduleAndTickBatch: combat_targeting_schedule_and_tick_batch,
         },
-        forceFieldPool: {
+        forceFieldSurfacePool: {
           clear: force_field_pool_clear,
           count: force_field_pool_count,
-          setCount: force_field_pool_set_count,
           setField: force_field_pool_set_field,
+          setFieldCount: force_field_pool_set_count,
           idPtr: force_field_pool_id_ptr,
           ownerEntityIdPtr: force_field_pool_owner_entity_id_ptr,
           centerXPtr: force_field_pool_center_x_ptr,
           centerYPtr: force_field_pool_center_y_ptr,
           centerZPtr: force_field_pool_center_z_ptr,
           radiusPtr: force_field_pool_radius_ptr,
-          clearanceSegment: force_field_clearance_segment,
-          clearanceArc: force_field_clearance_arc,
-        },
-        forceFieldPanelPool: {
-          clear: force_field_panel_pool_clear,
           setUnitCount: force_field_panel_pool_set_unit_count,
           setPanelCount: force_field_panel_pool_set_panel_count,
           setUnit: force_field_panel_pool_set_unit,
           setPanel: force_field_panel_pool_set_panel,
-          clearanceSegment: force_field_panel_clearance_segment_export,
+          clearanceSegment: force_field_clearance_segment,
+          clearanceArc: force_field_clearance_arc,
         },
         snapshotBaseline: {
           create: snapshot_baseline_create,

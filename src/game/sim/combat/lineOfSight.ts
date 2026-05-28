@@ -76,31 +76,35 @@ const NO_EXCLUDED_OWNER = -1;
  *  stampForceFieldPool. Endpoint grazes (within FORCE_FIELD_GRAZE_EPS)
  *  don't count, matching the projectile-collision behaviour so lock-on
  *  agrees with what the simulator will actually let through. */
+/** Which force-field shapes a clearance query considers. Materials Are
+ *  Independent Of Shape: spheres and flat panels are one material, so a
+ *  single query answers both — the flags only exist so a caller can
+ *  restrict to one shape (e.g. a battle-bar toggle disabling a turret type,
+ *  or a passive panel turret that must not block its own sightline class). */
+export type ForceFieldShapeMask = {
+  includeSpheres: boolean;
+  includePanels: boolean;
+};
+
 export function hasForceFieldClearance(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
+  shapes: ForceFieldShapeMask,
   options: ForceFieldClearanceOptions = { maxCrossings: undefined },
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return true;
   const maxCrossings = options.maxCrossings ?? 0;
   return (
-    sim.forceFieldPool.clearanceSegment(
+    sim.forceFieldSurfacePool.clearanceSegment(
       sx, sy, sz,
       tx, ty, tz,
       NO_EXCLUDED_OWNER,
       maxCrossings,
+      shapes.includeSpheres ? 1 : 0,
+      shapes.includePanels ? 1 : 0,
     ) === 1
   );
-}
-
-export function hasForceFieldPanelClearance(
-  sx: number, sy: number, sz: number,
-  tx: number, ty: number, tz: number,
-): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return true;
-  return sim.forceFieldPanelPool.clearanceSegment(sx, sy, sz, tx, ty, tz) === 1;
 }
 
 /** Fog/entity-visibility sightline policy. This intentionally does not
@@ -115,15 +119,13 @@ export function hasFogOfWarLineOfSight(
 ): boolean {
   if (!hasTerrainLineOfSight(world, sx, sy, sz, tx, ty, tz)) return false;
   if (!world.forceFieldsObstructSight) return true;
+  // One material, two shapes: a single clearance query answers both the
+  // sphere and the flat-panel surface, each gated by its battle-bar toggle.
   if (
-    world.turretForceFieldSpheresEnabled &&
-    !hasForceFieldClearance(sx, sy, sz, tx, ty, tz)
-  ) {
-    return false;
-  }
-  if (
-    world.turretForceFieldPanelsEnabled &&
-    !hasForceFieldPanelClearance(sx, sy, sz, tx, ty, tz)
+    !hasForceFieldClearance(sx, sy, sz, tx, ty, tz, {
+      includeSpheres: world.turretForceFieldSpheresEnabled,
+      includePanels: world.turretForceFieldPanelsEnabled,
+    })
   ) {
     return false;
   }
@@ -152,7 +154,7 @@ export function hasArcForceFieldClearance(
   if (sim === undefined) return true;
   const maxCrossings = options.maxCrossings ?? 0;
   return (
-    sim.forceFieldPool.clearanceArc(
+    sim.forceFieldSurfacePool.clearanceArc(
       launchX, launchY, launchZ,
       launchVx, launchVy, launchVz,
       flightTime,

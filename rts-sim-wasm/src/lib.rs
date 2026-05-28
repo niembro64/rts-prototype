@@ -9894,21 +9894,17 @@ fn compute_turret_gates_for_aim_point(
         && force_field_obstruction_active != 0
         && (flags & CT_TURRET_CFG_SHOT_IS_FORCE) == 0
     {
-        let ff_seg = force_field_clearance_segment(
-            mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z, -1, 0,
-        );
-        // Passive force-field-panel weapons skip the force-field-panel walk by
-        // contract: a force-field-panel turret cannot block its own sightline
-        // class. Matches the JS-side `weapon.config.passive !== true`
-        // gate in fillCandidateMirrorPanelMask / fillExistingLockGateInputs.
-        let mirror_clear: u8 = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
-            1
-        } else {
-            force_field_panel_clearance_segment(
-                mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z,
-            )
-        };
-        if ff_seg == 0 || mirror_clear == 0 {
+        // Passive force-field-panel weapons skip the panel walk by contract: a
+        // force-field-panel turret cannot block its own sightline class.
+        // Matches the JS-side `weapon.config.passive !== true` gate in
+        // fillCandidateMirrorPanelMask / fillExistingLockGateInputs. Spheres
+        // and panels are one material, so a single clearance call with a shared
+        // crossing budget of 0 answers both shapes at once.
+        let include_panels: u8 = if (flags & CT_TURRET_CFG_PASSIVE) != 0 { 0 } else { 1 };
+        if force_field_clearance_segment(
+            mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z, -1, 0, 1, include_panels,
+        ) == 0
+        {
             force_field_clear = 0;
         }
     }
@@ -12707,7 +12703,14 @@ fn combat_targeting_choose_best_candidate_inner_with_internal_gate(
 // is the entity that emits the field (sentinel -1 if not tied to one).
 // ─────────────────────────────────────────────────────────────────
 
-struct ForceFieldPool {
+// Materials Are Independent Of Shape: a single force-field surface pool holds
+// every active piece of force-field material in the world, regardless of the
+// geometry that carries it. Spheres (turretForceFieldSphere) live in the flat
+// per-field arrays; flat panels (turretForceFieldPanel) live in the per-unit +
+// per-panel arrays. One material, two shapes — the clearance and projectile
+// kernels read both groups and apply the same reflection / occlusion policy.
+struct ForceFieldSurfacePool {
+    // ── Sphere shape (flat per-field) ──
     count: u32,
     id: Vec<i32>,
     owner_entity_id: Vec<i32>,
@@ -12715,9 +12718,36 @@ struct ForceFieldPool {
     center_y: Vec<f64>,
     center_z: Vec<f64>,
     radius: Vec<f64>,
+
+    // ── Rect-panel shape (per-unit) ──
+    // Counts are tracked separately so the backing Vecs can be reused across
+    // ticks; the kernels read only `unit_count` rows.
+    unit_count: u32,
+    unit_id: Vec<i32>,
+    unit_x: Vec<f64>,
+    unit_y: Vec<f64>,
+    unit_z: Vec<f64>,
+    unit_ground_z: Vec<f64>,
+    unit_broad_radius: Vec<f32>,
+    mirror_yaw: Vec<f32>,
+    mirror_pitch: Vec<f32>,
+    pivot_x: Vec<f64>,
+    pivot_y: Vec<f64>,
+    pivot_z: Vec<f64>,
+    panel_start: Vec<u32>,
+    panel_count: Vec<u8>,
+
+    // ── Rect-panel shape (per-panel) ──
+    total_panels: u32,
+    panel_arm_length: Vec<f32>,
+    panel_offset_y: Vec<f32>,
+    panel_angle: Vec<f32>,
+    panel_base_y: Vec<f32>,
+    panel_top_y: Vec<f32>,
+    panel_half_width: Vec<f32>,
 }
 
-impl ForceFieldPool {
+impl ForceFieldSurfacePool {
     fn empty() -> Self {
         Self {
             count: 0,
@@ -12727,6 +12757,27 @@ impl ForceFieldPool {
             center_y: Vec::new(),
             center_z: Vec::new(),
             radius: Vec::new(),
+            unit_count: 0,
+            unit_id: Vec::new(),
+            unit_x: Vec::new(),
+            unit_y: Vec::new(),
+            unit_z: Vec::new(),
+            unit_ground_z: Vec::new(),
+            unit_broad_radius: Vec::new(),
+            mirror_yaw: Vec::new(),
+            mirror_pitch: Vec::new(),
+            pivot_x: Vec::new(),
+            pivot_y: Vec::new(),
+            pivot_z: Vec::new(),
+            panel_start: Vec::new(),
+            panel_count: Vec::new(),
+            total_panels: 0,
+            panel_arm_length: Vec::new(),
+            panel_offset_y: Vec::new(),
+            panel_angle: Vec::new(),
+            panel_base_y: Vec::new(),
+            panel_top_y: Vec::new(),
+            panel_half_width: Vec::new(),
         }
     }
 
@@ -12741,18 +12792,49 @@ impl ForceFieldPool {
             self.radius.resize(needed, 0.0);
         }
     }
+
+    fn ensure_unit_capacity(&mut self, count: u32) {
+        let needed = count as usize;
+        if self.unit_id.len() < needed {
+            self.unit_id.resize(needed, -1);
+            self.unit_x.resize(needed, 0.0);
+            self.unit_y.resize(needed, 0.0);
+            self.unit_z.resize(needed, 0.0);
+            self.unit_ground_z.resize(needed, 0.0);
+            self.unit_broad_radius.resize(needed, 0.0);
+            self.mirror_yaw.resize(needed, 0.0);
+            self.mirror_pitch.resize(needed, 0.0);
+            self.pivot_x.resize(needed, 0.0);
+            self.pivot_y.resize(needed, 0.0);
+            self.pivot_z.resize(needed, 0.0);
+            self.panel_start.resize(needed, 0);
+            self.panel_count.resize(needed, 0);
+        }
+    }
+
+    fn ensure_panel_capacity(&mut self, count: u32) {
+        let needed = count as usize;
+        if self.panel_arm_length.len() < needed {
+            self.panel_arm_length.resize(needed, 0.0);
+            self.panel_offset_y.resize(needed, 0.0);
+            self.panel_angle.resize(needed, 0.0);
+            self.panel_base_y.resize(needed, 0.0);
+            self.panel_top_y.resize(needed, 0.0);
+            self.panel_half_width.resize(needed, 0.0);
+        }
+    }
 }
 
-struct ForceFieldPoolHolder(UnsafeCell<Option<ForceFieldPool>>);
-unsafe impl Sync for ForceFieldPoolHolder {}
-static FORCE_FIELD_POOL: ForceFieldPoolHolder = ForceFieldPoolHolder(UnsafeCell::new(None));
+struct ForceFieldSurfacePoolHolder(UnsafeCell<Option<ForceFieldSurfacePool>>);
+unsafe impl Sync for ForceFieldSurfacePoolHolder {}
+static FORCE_FIELD_POOL: ForceFieldSurfacePoolHolder = ForceFieldSurfacePoolHolder(UnsafeCell::new(None));
 
 #[inline]
-fn force_field_pool() -> &'static mut ForceFieldPool {
+fn force_field_pool() -> &'static mut ForceFieldSurfacePool {
     unsafe {
         let cell = &mut *FORCE_FIELD_POOL.0.get();
         if cell.is_none() {
-            *cell = Some(ForceFieldPool::empty());
+            *cell = Some(ForceFieldSurfacePool::empty());
         }
         cell.as_mut().unwrap()
     }
@@ -12760,7 +12842,10 @@ fn force_field_pool() -> &'static mut ForceFieldPool {
 
 #[wasm_bindgen]
 pub fn force_field_pool_clear() {
-    force_field_pool().count = 0;
+    let pool = force_field_pool();
+    pool.count = 0;
+    pool.unit_count = 0;
+    pool.total_panels = 0;
 }
 
 #[wasm_bindgen]
@@ -12836,8 +12921,11 @@ const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN: u8 = 0;
 const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT: u8 = 1;
 const FORCE_FIELD_REFLECTION_MODE_BOTH: u8 = 2;
 const REFLECTOR_HIT_KIND_NONE: u8 = 0;
-const REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL: u8 = 1;
-const REFLECTOR_HIT_KIND_FORCE_FIELD_SPHERE: u8 = 2;
+// Materials Are Independent Of Shape: the force-field-panel's flat panels and
+// the force-field-sphere's sphere are the EXACT SAME material. A projectile
+// reflecting off either reports one kind; the shape only decided where the
+// hit was and what the normal looks like.
+const REFLECTOR_HIT_KIND_FORCE_FIELD: u8 = 1;
 
 struct ProjectileReflectorHit {
     kind: u8,
@@ -13043,7 +13131,7 @@ fn force_field_projectile_intersection(
         };
         best_t = t;
         best = Some(ProjectileReflectorHit {
-            kind: REFLECTOR_HIT_KIND_FORCE_FIELD_SPHERE,
+            kind: REFLECTOR_HIT_KIND_FORCE_FIELD,
             entity_id: pool.owner_entity_id[i],
             t,
             x: hit_x,
@@ -13058,9 +13146,16 @@ fn force_field_projectile_intersection(
 }
 
 /// Direct-segment force-field clearance. Returns 1 if the segment
-/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` field
-/// sphere boundaries, 0 otherwise. Endpoint grazes (within
+/// (sx, sy, sz) → (tx, ty, tz) crosses at most `max_crossings` force-field
+/// surface boundaries, 0 otherwise. Endpoint grazes (within
 /// FORCE_FIELD_GRAZE_EPS) don't count.
+///
+/// Materials Are Independent Of Shape: this one kernel checks both
+/// force-field shapes against a single crossing budget. Spheres and flat
+/// panels are the same material, so a crossing of either counts the same.
+/// `include_spheres` / `include_panels` let a caller restrict the query to
+/// one shape — used by the targeting gate, where a passive panel turret must
+/// not block its own sightline class (it skips the panel walk).
 #[wasm_bindgen]
 pub fn force_field_clearance_segment(
     sx: f64,
@@ -13071,39 +13166,132 @@ pub fn force_field_clearance_segment(
     tz: f64,
     exclude_owner_entity_id: i32,
     max_crossings: u32,
+    include_spheres: u8,
+    include_panels: u8,
 ) -> u32 {
     let pool = force_field_pool();
-    let count = pool.count as usize;
-    if count == 0 {
-        return 1;
-    }
-    let lo = FORCE_FIELD_GRAZE_EPS;
-    let hi = 1.0 - FORCE_FIELD_GRAZE_EPS;
     let mut crossings: u32 = 0;
-    for i in 0..count {
-        if pool.owner_entity_id[i] == exclude_owner_entity_id {
-            continue;
-        }
-        if force_field_segment_crosses_sphere(
-            sx,
-            sy,
-            sz,
-            tx,
-            ty,
-            tz,
-            pool.center_x[i],
-            pool.center_y[i],
-            pool.center_z[i],
-            pool.radius[i],
-            lo,
-            hi,
-        ) {
-            crossings += 1;
-            if crossings > max_crossings {
-                return 0;
+
+    // ── Sphere surfaces ──
+    if include_spheres != 0 {
+        let count = pool.count as usize;
+        let lo = FORCE_FIELD_GRAZE_EPS;
+        let hi = 1.0 - FORCE_FIELD_GRAZE_EPS;
+        for i in 0..count {
+            if pool.owner_entity_id[i] == exclude_owner_entity_id {
+                continue;
+            }
+            if force_field_segment_crosses_sphere(
+                sx,
+                sy,
+                sz,
+                tx,
+                ty,
+                tz,
+                pool.center_x[i],
+                pool.center_y[i],
+                pool.center_z[i],
+                pool.radius[i],
+                lo,
+                hi,
+            ) {
+                crossings += 1;
+                if crossings > max_crossings {
+                    return 0;
+                }
             }
         }
     }
+
+    // ── Rect-panel surfaces ──
+    if include_panels != 0 {
+        let unit_count = pool.unit_count as usize;
+        for u in 0..unit_count {
+            if pool.unit_id[u] == exclude_owner_entity_id {
+                continue;
+            }
+            let panel_count = pool.panel_count[u] as usize;
+            if panel_count == 0 {
+                continue;
+            }
+            let ux = pool.unit_x[u];
+            let uy = pool.unit_y[u];
+            let uz = pool.unit_z[u];
+            let broad_r = pool.unit_broad_radius[u] as f64;
+            if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
+                continue;
+            }
+
+            let mirror_yaw = pool.mirror_yaw[u] as f64;
+            let mirror_pitch = pool.mirror_pitch[u] as f64;
+            let cos_yaw = mirror_yaw.cos();
+            let sin_yaw = mirror_yaw.sin();
+            let cos_pitch = mirror_pitch.cos();
+            let sin_pitch = mirror_pitch.sin();
+
+            let pivot_x = pool.pivot_x[u];
+            let pivot_y = pool.pivot_y[u];
+            let pivot_z = pool.pivot_z[u];
+
+            let panel_start = pool.panel_start[u] as usize;
+            for pi in panel_start..panel_start + panel_count {
+                // Panel arm extends from pivot along the panel-yaw / pitch
+                // direction (same `a(α, β)` formula MirrorPanelHit.ts uses).
+                // Per-panel lateral pivot offset goes along the chassis-
+                // perpendicular axis, derived from the mirror's yaw on
+                // tick (matches JS `perpX = -sinRot; perpY = cosRot`).
+                let perp_x = -sin_yaw;
+                let perp_y = cos_yaw;
+                let offset_y = pool.panel_offset_y[pi] as f64;
+                let panel_pivot_x = pivot_x + perp_x * offset_y;
+                let panel_pivot_y = pivot_y + perp_y * offset_y;
+                let panel_pivot_z = pivot_z;
+
+                // Per-panel yaw composes the mirror turret yaw with the
+                // panel's authored angle (typically 0).
+                let panel_angle = pool.panel_angle[pi] as f64;
+                let panel_yaw = mirror_yaw + panel_angle;
+                let panel_cos_yaw = panel_yaw.cos();
+                let panel_sin_yaw = panel_yaw.sin();
+
+                let arm_length = pool.panel_arm_length[pi] as f64;
+                let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
+                let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
+                let pcz = panel_pivot_z + sin_pitch * arm_length;
+
+                // Panel face normal = arm direction. Using the panel's
+                // composed yaw + the mirror pitch matches getMirrorArmDirection.
+                let nx = panel_cos_yaw * cos_pitch;
+                let ny = panel_sin_yaw * cos_pitch;
+                let nz = sin_pitch;
+
+                // Horizontal perpendicular to panel yaw (edge axis); pitch
+                // rotates around this axis so it stays in the XY plane.
+                let edx = -panel_sin_yaw;
+                let edy = panel_cos_yaw;
+                let edz = 0.0;
+
+                let half_w = pool.panel_half_width[pi] as f64;
+                let base_y = pool.panel_base_y[pi] as f64;
+                let top_y = pool.panel_top_y[pi] as f64;
+                let half_h = (top_y - base_y) * 0.5;
+
+                let hit_t = ray_tilted_rect_intersection_t(
+                    sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w,
+                    half_h,
+                );
+                if let Some(t) = hit_t {
+                    if t > FORCE_MATERIAL_GRAZE_EPS && t < 1.0 - FORCE_MATERIAL_GRAZE_EPS {
+                        crossings += 1;
+                        if crossings > max_crossings {
+                            return 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     1
 }
 
@@ -13183,9 +13371,11 @@ pub fn force_field_clearance_arc(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// AIM-08.5 — Mirror panel input slab
+// AIM-08.5 — Rect-panel surface setters
 //
-// Two parallel pools rebuilt each tick (analogous to ForceFieldPool):
+// The flat-panel force-field shape is stamped into the same
+// ForceFieldSurfacePool the sphere shape uses, through the per-unit +
+// per-panel arrays:
 //
 //   Per-mirror-unit data: world pose, broadphase radius, slope-aware
 //   mirror turret pivot, and a [panel_start, panel_count) range into
@@ -13194,136 +13384,26 @@ pub fn force_field_clearance_arc(
 //   Per-panel data: panel geometry (arm length, lateral offset, panel
 //   yaw offset, base/top Y in chassis-local space, half-width).
 //
-// The kernel walks every unit's broadphase first, then dispatches to
-// the per-panel ray-tilted-rect test for each panel. Crossings within
-// FORCE_MATERIAL_GRAZE_EPS of either segment endpoint don't count,
-// matching the JS-side `hasForceMirrorPanelClearance` behaviour so
-// turret pose and lock-on point flicker the same way regardless of
-// which path computed the gate.
+// The clearance kernel walks every unit's broadphase first, then
+// dispatches to the per-panel ray-tilted-rect test for each panel.
+// Crossings within FORCE_MATERIAL_GRAZE_EPS of either segment endpoint
+// don't count, matching the JS-side `hasForceMirrorPanelClearance`
+// behaviour so turret pose and lock-on point flicker the same way
+// regardless of which path computed the gate.
 // ─────────────────────────────────────────────────────────────────
 
 const FORCE_MATERIAL_GRAZE_EPS: f64 = 1e-6;
 
-struct ForceFieldPanelPool {
-    // Per-mirror-unit fields. Counts are tracked separately so the
-    // backing Vecs can be reused across ticks; the kernel reads only
-    // `unit_count` rows.
-    unit_count: u32,
-    unit_id: Vec<i32>,
-    unit_x: Vec<f64>,
-    unit_y: Vec<f64>,
-    unit_z: Vec<f64>,
-    unit_ground_z: Vec<f64>,
-    unit_broad_radius: Vec<f32>,
-    mirror_yaw: Vec<f32>,
-    mirror_pitch: Vec<f32>,
-    pivot_x: Vec<f64>,
-    pivot_y: Vec<f64>,
-    pivot_z: Vec<f64>,
-    panel_start: Vec<u32>,
-    panel_count: Vec<u8>,
-
-    // Per-panel fields.
-    total_panels: u32,
-    panel_arm_length: Vec<f32>,
-    panel_offset_y: Vec<f32>,
-    panel_angle: Vec<f32>,
-    panel_base_y: Vec<f32>,
-    panel_top_y: Vec<f32>,
-    panel_half_width: Vec<f32>,
-}
-
-impl ForceFieldPanelPool {
-    fn empty() -> Self {
-        Self {
-            unit_count: 0,
-            unit_id: Vec::new(),
-            unit_x: Vec::new(),
-            unit_y: Vec::new(),
-            unit_z: Vec::new(),
-            unit_ground_z: Vec::new(),
-            unit_broad_radius: Vec::new(),
-            mirror_yaw: Vec::new(),
-            mirror_pitch: Vec::new(),
-            pivot_x: Vec::new(),
-            pivot_y: Vec::new(),
-            pivot_z: Vec::new(),
-            panel_start: Vec::new(),
-            panel_count: Vec::new(),
-            total_panels: 0,
-            panel_arm_length: Vec::new(),
-            panel_offset_y: Vec::new(),
-            panel_angle: Vec::new(),
-            panel_base_y: Vec::new(),
-            panel_top_y: Vec::new(),
-            panel_half_width: Vec::new(),
-        }
-    }
-
-    fn ensure_unit_capacity(&mut self, count: u32) {
-        let needed = count as usize;
-        if self.unit_id.len() < needed {
-            self.unit_id.resize(needed, -1);
-            self.unit_x.resize(needed, 0.0);
-            self.unit_y.resize(needed, 0.0);
-            self.unit_z.resize(needed, 0.0);
-            self.unit_ground_z.resize(needed, 0.0);
-            self.unit_broad_radius.resize(needed, 0.0);
-            self.mirror_yaw.resize(needed, 0.0);
-            self.mirror_pitch.resize(needed, 0.0);
-            self.pivot_x.resize(needed, 0.0);
-            self.pivot_y.resize(needed, 0.0);
-            self.pivot_z.resize(needed, 0.0);
-            self.panel_start.resize(needed, 0);
-            self.panel_count.resize(needed, 0);
-        }
-    }
-
-    fn ensure_panel_capacity(&mut self, count: u32) {
-        let needed = count as usize;
-        if self.panel_arm_length.len() < needed {
-            self.panel_arm_length.resize(needed, 0.0);
-            self.panel_offset_y.resize(needed, 0.0);
-            self.panel_angle.resize(needed, 0.0);
-            self.panel_base_y.resize(needed, 0.0);
-            self.panel_top_y.resize(needed, 0.0);
-            self.panel_half_width.resize(needed, 0.0);
-        }
-    }
-}
-
-struct ForceFieldPanelPoolHolder(UnsafeCell<Option<ForceFieldPanelPool>>);
-unsafe impl Sync for ForceFieldPanelPoolHolder {}
-static FORCE_FIELD_PANEL_POOL: ForceFieldPanelPoolHolder = ForceFieldPanelPoolHolder(UnsafeCell::new(None));
-
-#[inline]
-fn force_field_panel_pool() -> &'static mut ForceFieldPanelPool {
-    unsafe {
-        let cell = &mut *FORCE_FIELD_PANEL_POOL.0.get();
-        if cell.is_none() {
-            *cell = Some(ForceFieldPanelPool::empty());
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn force_field_panel_pool_clear() {
-    let pool = force_field_panel_pool();
-    pool.unit_count = 0;
-    pool.total_panels = 0;
-}
-
 #[wasm_bindgen]
 pub fn force_field_panel_pool_set_unit_count(count: u32) {
-    let pool = force_field_panel_pool();
+    let pool = force_field_pool();
     pool.ensure_unit_capacity(count);
     pool.unit_count = count;
 }
 
 #[wasm_bindgen]
 pub fn force_field_panel_pool_set_panel_count(count: u32) {
-    let pool = force_field_panel_pool();
+    let pool = force_field_pool();
     pool.ensure_panel_capacity(count);
     pool.total_panels = count;
 }
@@ -13345,7 +13425,7 @@ pub fn force_field_panel_pool_set_unit(
     panel_start: u32,
     panel_count: u8,
 ) {
-    let pool = force_field_panel_pool();
+    let pool = force_field_pool();
     pool.ensure_unit_capacity(idx + 1);
     let i = idx as usize;
     pool.unit_id[i] = unit_id;
@@ -13373,7 +13453,7 @@ pub fn force_field_panel_pool_set_panel(
     top_y: f32,
     half_width: f32,
 ) {
-    let pool = force_field_panel_pool();
+    let pool = force_field_pool();
     pool.ensure_panel_capacity(idx + 1);
     let i = idx as usize;
     pool.panel_arm_length[i] = arm_length;
@@ -13475,111 +13555,10 @@ fn ray_tilted_rect_intersection_t(
     Some(t)
 }
 
-/// AIM-08.5 — slab-backed port of `hasForceMirrorPanelClearance`.
-/// Returns 1 when the straight sightline from (sx,sy,sz) → (tx,ty,tz)
-/// does not cross any active force-mirror panel; 0 when at least one
-/// panel blocks the segment. Hits within FORCE_MATERIAL_GRAZE_EPS of
-/// either endpoint don't count (matching the JS path).
-fn force_field_panel_clearance_segment(sx: f64, sy: f64, sz: f64, tx: f64, ty: f64, tz: f64) -> u8 {
-    let pool = force_field_panel_pool();
-    let unit_count = pool.unit_count as usize;
-    if unit_count == 0 {
-        return 1;
-    }
-    for u in 0..unit_count {
-        let panel_count = pool.panel_count[u] as usize;
-        if panel_count == 0 {
-            continue;
-        }
-        let ux = pool.unit_x[u];
-        let uy = pool.unit_y[u];
-        let uz = pool.unit_z[u];
-        let broad_r = pool.unit_broad_radius[u] as f64;
-        if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
-            continue;
-        }
-
-        let mirror_yaw = pool.mirror_yaw[u] as f64;
-        let mirror_pitch = pool.mirror_pitch[u] as f64;
-        let cos_yaw = mirror_yaw.cos();
-        let sin_yaw = mirror_yaw.sin();
-        let cos_pitch = mirror_pitch.cos();
-        let sin_pitch = mirror_pitch.sin();
-
-        let pivot_x = pool.pivot_x[u];
-        let pivot_y = pool.pivot_y[u];
-        let pivot_z = pool.pivot_z[u];
-
-        let panel_start = pool.panel_start[u] as usize;
-        for pi in panel_start..panel_start + panel_count {
-            // Panel arm extends from pivot along the panel-yaw / pitch
-            // direction (same `a(α, β)` formula MirrorPanelHit.ts uses).
-            // Per-panel lateral pivot offset goes along the chassis-
-            // perpendicular axis, derived from the mirror's yaw on
-            // tick (matches JS `perpX = -sinRot; perpY = cosRot`).
-            let perp_x = -sin_yaw;
-            let perp_y = cos_yaw;
-            let offset_y = pool.panel_offset_y[pi] as f64;
-            let panel_pivot_x = pivot_x + perp_x * offset_y;
-            let panel_pivot_y = pivot_y + perp_y * offset_y;
-            let panel_pivot_z = pivot_z;
-
-            // Per-panel yaw composes the mirror turret yaw with the
-            // panel's authored angle (typically 0).
-            let panel_angle = pool.panel_angle[pi] as f64;
-            let panel_yaw = mirror_yaw + panel_angle;
-            let panel_cos_yaw = panel_yaw.cos();
-            let panel_sin_yaw = panel_yaw.sin();
-
-            let arm_length = pool.panel_arm_length[pi] as f64;
-            let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
-            let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
-            let pcz = panel_pivot_z + sin_pitch * arm_length;
-
-            // Panel face normal = arm direction. Using the panel's
-            // composed yaw + the mirror pitch matches getMirrorArmDirection.
-            let nx = panel_cos_yaw * cos_pitch;
-            let ny = panel_sin_yaw * cos_pitch;
-            let nz = sin_pitch;
-
-            // Horizontal perpendicular to panel yaw (edge axis); pitch
-            // rotates around this axis so it stays in the XY plane.
-            let edx = -panel_sin_yaw;
-            let edy = panel_cos_yaw;
-            let edz = 0.0;
-
-            let half_w = pool.panel_half_width[pi] as f64;
-            let base_y = pool.panel_base_y[pi] as f64;
-            let top_y = pool.panel_top_y[pi] as f64;
-            let half_h = (top_y - base_y) * 0.5;
-
-            let hit_t = ray_tilted_rect_intersection_t(
-                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
-            );
-            if let Some(t) = hit_t {
-                if t > FORCE_MATERIAL_GRAZE_EPS && t < 1.0 - FORCE_MATERIAL_GRAZE_EPS {
-                    return 0;
-                }
-            }
-        }
-    }
-    1
-}
-
-/// JS-callable mirror-panel sightline clearance probe. Mirrors
-/// `force_field_clearance_segment` for callers that want the slab
-/// answer without going through the unified gate kernel.
-#[wasm_bindgen]
-pub fn force_field_panel_clearance_segment_export(
-    sx: f64,
-    sy: f64,
-    sz: f64,
-    tx: f64,
-    ty: f64,
-    tz: f64,
-) -> u8 {
-    force_field_panel_clearance_segment(sx, sy, sz, tx, ty, tz)
-}
+// The rect-panel sightline walk now lives inside the unified
+// `force_field_clearance_segment` (gated by `include_panels`); the
+// `point_segment_dist_sq3` + `ray_tilted_rect_intersection_t` helpers above
+// are shared by that kernel and the projectile-intersection kernel below.
 
 #[inline]
 fn force_field_panel_projectile_intersection(
@@ -13594,7 +13573,7 @@ fn force_field_panel_projectile_intersection(
     query_pad: f64,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
-    let pool = force_field_panel_pool();
+    let pool = force_field_pool();
     let unit_count = pool.unit_count as usize;
     if unit_count == 0 {
         return None;
@@ -13676,7 +13655,7 @@ fn force_field_panel_projectile_intersection(
             }
             best_t = t;
             best = Some(ProjectileReflectorHit {
-                kind: REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL,
+                kind: REFLECTOR_HIT_KIND_FORCE_FIELD,
                 entity_id: pool.unit_id[u],
                 t,
                 x: sx + t * dx,
@@ -19055,7 +19034,6 @@ mod lock_on_exclusion_tests {
         spatial_init(200.0, 64);
         combat_targeting_init(64);
         force_field_pool_clear();
-        force_field_panel_pool_clear();
         terrain_clear();
     }
 
