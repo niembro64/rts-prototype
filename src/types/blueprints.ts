@@ -92,8 +92,21 @@ export type TurretLockOnEntityFamilyExclusion =
 export const TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS: readonly TurretLockOnEntityFamilyExclusion[] =
   ['buildings', 'towers', 'units', 'turrets'];
 
+/** The role category a turret advertises. Host commands are routed by
+ *  kind: an attack order lands on the host's primary attack turret, a
+ *  build order on its primary construction turret, and so on. Per the
+ *  "Host-directed turrets carry the host lock-on" rule, every host must
+ *  carry exactly one `hostDirected` mount for each kind it mounts. */
+export type WeaponKind = 'attack' | 'construction' | 'repair';
+export const WEAPON_KINDS: readonly WeaponKind[] = ['attack', 'construction', 'repair'];
+
 export type TurretBlueprint = {
   id: TurretId;
+  /** Role category. See WeaponKind. Used by the blueprint loader to
+   *  group a host's mounts and enforce exactly-one-host-directed-per-kind,
+   *  and to route host commands (attack/build/repair) to the matching
+   *  primary turret. */
+  kind: WeaponKind;
   projectileId: ShotId | null;
   range: number;
   cooldown: number;
@@ -188,18 +201,6 @@ export type TurretBlueprint = {
   excludeLockOnLevel1Towers: string[];
   excludeLockOnLevel1Units: string[];
   excludeLockOnLevel1Turrets: string[];
-  /** Host-directed vs fully-autonomous targeting policy. A
-   *  host-directed turret inherits its host's lock-on (player/AI
-   *  command target) when the host is locked on, applying its own
-   *  exclusion/range/LOS gates on top. When the host has no lock the
-   *  turret falls back to autonomous scanning like any other turret.
-   *  A fully-autonomous turret (`hostDirected: false`) ignores the
-   *  host lock entirely and always runs independent acquisition.
-   *  Fight-move and patrol halt logic also counts only host-directed
-   *  turrets when deciding whether to stop. Every kind of turret a
-   *  host can mount needs at least one host-directed variant so
-   *  commands can land. */
-  hostDirected: boolean;
 };
 
 /** Chassis-local 3D mount offset, authored in body-radius fractions.
@@ -223,6 +224,16 @@ export type UnitTurretMountZResolver = {
 export type TurretMount = {
   turretId: TurretId;
   mount: MountOffset;
+  /** Host-directed vs fully-autonomous targeting policy for THIS mount.
+   *  A host-directed turret inherits its host's lock-on (player/AI
+   *  command target) when the host is locked on, applying its own
+   *  exclusion/range/LOS gates on top; when the host has no lock it
+   *  falls back to autonomous scanning. A fully-autonomous mount
+   *  (`hostDirected: false`) ignores the host lock entirely. Fight-move
+   *  and patrol halt logic counts only host-directed mounts. The
+   *  blueprint loader enforces exactly one host-directed mount per
+   *  turret kind the host carries so commands can land unambiguously. */
+  hostDirected: boolean;
   /** Unit-blueprint authoring hint. The blueprint builder resolves this
    *  into mount.z once both unit and turret blueprints are available. */
   zResolver?: UnitTurretMountZResolver;
@@ -239,6 +250,10 @@ export type TurretMount = {
 export type BuildingTurretMount = {
   turretId: TurretId;
   mount: MountOffset;
+  /** Host-directed vs fully-autonomous targeting policy for THIS mount.
+   *  See TurretMount.hostDirected — towers follow the same primary /
+   *  secondary contract as units. */
+  hostDirected: boolean;
   visualVariant?: ConstructionEmitterSize;
 };
 

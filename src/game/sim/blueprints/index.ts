@@ -545,7 +545,10 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     radius: { ...turretBlueprint.radius },
     headOnly: turretBlueprint.headOnly,
     visualOnly: shot === null,
-    hostDirected: turretBlueprint.hostDirected,
+    // hostDirected is a per-MOUNT tag, not a per-blueprint constant. The
+    // shared TurretConfig defaults to false; the runtime turret factory
+    // (makeRuntimeTurret) overrides it from each mount's hostDirected flag.
+    hostDirected: false,
     constructionEmitter: turretBlueprint.constructionEmitter !== null
       ? {
           defaultSize: turretBlueprint.constructionEmitter.defaultSize,
@@ -641,6 +644,48 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
       );
     }
   }
+}
+
+// Host-directed-per-kind validation. "Host-directed turrets carry the
+// host lock-on" requires that, for each turret KIND a host (unit or
+// tower) mounts, EXACTLY ONE mount is tagged hostDirected — zero means
+// the player's order for that kind has no weapon to land on; two-or-more
+// means the primary is ambiguous. Pure buildings carry no turrets and
+// are no-ops here. Runs at module-load so a bad host throws on import.
+function validateHostDirectedMounts(
+  hostLabel: string,
+  hostId: string,
+  mounts: ReadonlyArray<{ turretId: string; hostDirected: unknown }>,
+): void {
+  const total = new Map<string, number>();
+  const directed = new Map<string, number>();
+  for (let i = 0; i < mounts.length; i++) {
+    const mount = mounts[i];
+    if (typeof mount.hostDirected !== 'boolean') {
+      throw new Error(
+        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretId}: mount must define a boolean hostDirected`,
+      );
+    }
+    const kind = TURRET_BLUEPRINTS[mount.turretId as TurretId].kind;
+    total.set(kind, (total.get(kind) ?? 0) + 1);
+    if (mount.hostDirected) directed.set(kind, (directed.get(kind) ?? 0) + 1);
+  }
+  for (const kind of total.keys()) {
+    const count = directed.get(kind) ?? 0;
+    if (count !== 1) {
+      throw new Error(
+        `Invalid ${hostLabel} ${hostId}: turret kind "${kind}" has ${count} host-directed mount(s); exactly one is required so the host's ${kind} order lands on a single primary turret`,
+      );
+    }
+  }
+}
+
+for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  validateHostDirectedMounts('unit blueprint', bp.id, bp.turrets);
+}
+for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
+  if (!bp.turrets || bp.turrets.length === 0) continue;
+  validateHostDirectedMounts('building blueprint', bp.id, bp.turrets);
 }
 
 // Cross-blueprint lock-on exclusion validation. Each level-1 named

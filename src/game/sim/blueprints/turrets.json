@@ -54,7 +54,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretGunBurst": {
     "id": "turretGunBurst",
@@ -122,7 +122,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretCannon": {
     "id": "turretCannon",
@@ -182,7 +182,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretMortarSlow": {
     "id": "turretMortarSlow",
@@ -242,7 +242,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretMortarDrop": {
     "id": "turretMortarDrop",
@@ -299,7 +299,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretMortarFast": {
     "id": "turretMortarFast",
@@ -367,7 +367,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretGatling": {
     "id": "turretGatling",
@@ -435,7 +435,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretDisruptor": {
     "id": "turretDisruptor",
@@ -490,7 +490,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretForceFieldPanel": {
     "id": "turretForceFieldPanel",
@@ -552,7 +552,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretBeam": {
     "id": "turretBeam",
@@ -607,7 +607,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretBeamMini": {
     "id": "turretBeamMini",
@@ -662,7 +662,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretBeamMega": {
     "id": "turretBeamMega",
@@ -717,7 +717,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretForceFieldSphere": {
     "id": "turretForceFieldSphere",
@@ -792,7 +792,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretConstruction": {
     "id": "turretConstruction",
@@ -865,7 +865,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "construction"
   },
   "turretBeamLong": {
     "id": "turretBeamLong",
@@ -920,7 +920,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretCannonLong": {
     "id": "turretCannonLong",
@@ -981,7 +981,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretRocketSlow": {
     "id": "turretRocketSlow",
@@ -1050,7 +1050,7 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   },
   "turretRocketFast": {
     "id": "turretRocketFast",
@@ -1107,6 +1107,6 @@
     "excludeLockOnLevel1Towers": [],
     "excludeLockOnLevel1Units": [],
     "excludeLockOnLevel1Turrets": [],
-    "hostDirected": true
+    "kind": "attack"
   }
 }

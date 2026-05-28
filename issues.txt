@@ -26,33 +26,6 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A1. [HIGH] Host-directed turret validation is entirely missing, and the schema
-    can't even express it.
-    LOCATION: src/game/sim/blueprints/index.ts (no validation); turrets.json
-      (all 18 turret blueprints have "hostDirected": true); units.json commander
-      lines 937-963, dragonfly lines ~750-767.
-    RULE: "Host-directed turrets carry the host lock-on" — for each KIND of turret
-      a host mounts (attack, construction, repair, ...), EXACTLY ONE must be
-      hostDirected; the loader must THROW at startup on zero (orders can't land)
-      or two-or-more (ambiguous primary).
-    PROBLEM:
-      - There is NO turret "kind" concept in the blueprint schema at all (no
-        WeaponKind / mount-kind field). hostDirected is a static per-turret-
-        blueprint flag, and all 18 turret blueprints set it true — so it can't
-        distinguish a host's primary attack turret from a secondary one.
-      - No grouping-by-kind + count check exists anywhere; the loader never throws
-        on bad host-directed configuration.
-      - Concrete bad configs the rule should reject: commander mounts turretBeam
-        (attack) + turretDisruptor (attack/dgun), BOTH hostDirected → two
-        host-directed attack turrets. dragonfly mounts turretMortarDrop + turretBeam,
-        both hostDirected → same problem.
-    FIX: add a turret "kind" field, make hostDirected a per-mount tag (not a
-      per-blueprint constant), and add a loader pass that groups a host's mounts
-      by kind and throws unless exactly one per kind is hostDirected. (Runtime
-      halves are already correct: Simulation.ts:1411-1436 counts only host-directed
-      turrets for fight-stop; lib.rs:9905,10264 gate lock-on inheritance on the
-      flag — but the data they read is meaningless while every turret is hostDirected.)
-
 A2. [HIGH] turretForceFieldPanel is flagged headOnly:true, directly contradicting
     the documented "stays full-barrel" rule, and the code papers over it with
     special cases.

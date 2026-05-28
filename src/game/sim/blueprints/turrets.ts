@@ -10,6 +10,7 @@ import { isTurretId, type TurretId } from '../../../types/blueprintIds';
 import {
   TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS,
   TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
+  WEAPON_KINDS,
 } from '../../../types/blueprints';
 import rawTurretBlueprints from './turrets.json';
 import { resolveBlueprintRefs } from './jsonRefs';
@@ -39,8 +40,10 @@ const TURRET_EXPLICIT_FIELDS = [
   'excludeLockOnLevel1Towers',
   'excludeLockOnLevel1Units',
   'excludeLockOnLevel1Turrets',
-  'hostDirected',
+  'kind',
 ] as const;
+
+const WEAPON_KIND_SET: ReadonlySet<string> = new Set(WEAPON_KINDS);
 
 const TURRET_LOCK_ON_RELATIONSHIP_SET: ReadonlySet<string> = new Set(
   TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
@@ -103,6 +106,11 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
   assertExplicitFields(`turret blueprint ${id}`, blueprint, TURRET_EXPLICIT_FIELDS);
 
   const label = `turret blueprint ${id}`;
+  if (!WEAPON_KIND_SET.has(blueprint.kind)) {
+    throw new Error(
+      `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...WEAPON_KIND_SET].join(', ')}]`,
+    );
+  }
   assertStringArray(
     label,
     'excludeLockOnLevel0FriendsAndEnemies',

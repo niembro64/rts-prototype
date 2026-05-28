@@ -19,6 +19,7 @@ import { createRuntimeTurretMount } from './turretMounts';
 function makeRuntimeTurret(
   turretId: string,
   mount: { x: number; y: number; z: number },
+  hostDirected: boolean,
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
   const turretConfig = getTurretConfig(turretId);
@@ -28,12 +29,16 @@ function makeRuntimeTurret(
   const ranges = computeTurretRanges(turretConfig);
   const turnAccel = turretConfig.angular.turnAccel;
   const drag = turretConfig.angular.drag;
+  // hostDirected is authored per-mount, not per-turret-blueprint, so the
+  // per-instance config is what carries it. The shared config defaults
+  // false; override it here from this mount's flag.
+  const config = { ...turretConfig, hostDirected };
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
   // turretForceFieldPanels rest pointing straight up at π/2). Once the aim
   // solver runs, this is overwritten per-tick and the damper takes
   // over — `idlePitch` only governs the spawn pose.
   return {
-    config: { ...turretConfig },
+    config,
     target: null,
     ranges,
     state: 'idle',
@@ -66,7 +71,7 @@ export function createUnitRuntimeTurrets(unitId: string, radius: number): Turret
   for (let i = 0; i < bp.turrets.length; i++) {
     const mount = bp.turrets[i];
     const localMount = createRuntimeTurretMount(mount, radius);
-    turrets.push(makeRuntimeTurret(mount.turretId, localMount, mount.visualVariant));
+    turrets.push(makeRuntimeTurret(mount.turretId, localMount, mount.hostDirected, mount.visualVariant));
   }
   return turrets;
 }
@@ -85,6 +90,7 @@ export function createBuildingRuntimeTurrets(buildingType: BuildingType): Turret
     turrets.push(makeRuntimeTurret(
       m.turretId,
       { x: m.mount.x, y: m.mount.y, z: m.mount.z },
+      m.hostDirected,
       m.visualVariant,
     ));
   }

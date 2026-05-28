@@ -79,7 +79,8 @@
           "y": 0,
           "z": 38
         },
-        "visualVariant": "large"
+        "visualVariant": "large",
+        "hostDirected": true
       }
     ],
     "detector": null
@@ -165,7 +166,8 @@
           "x": 0,
           "y": 0,
           "z": 114
-        }
+        },
+        "hostDirected": true
       }
     ],
     "detector": null
@@ -199,7 +201,8 @@
           "x": 0,
           "y": 0,
           "z": 60
-        }
+        },
+        "hostDirected": true
       }
     ],
     "detector": null
