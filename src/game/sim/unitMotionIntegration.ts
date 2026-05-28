@@ -1,8 +1,4 @@
 import {
-  dampVelocityTangentToGroundMutable,
-  getUnitGroundSpringAcceleration,
-  isUnitGroundPenetrationInContact,
-  limitPassiveGroundReboundVelocityMutable,
   UNIT_GROUND_CONTACT_EPSILON,
   type GroundNormal,
 } from './unitGroundPhysics';
@@ -33,17 +29,12 @@ const _motionBuf = new Float64Array(6);
  * terrain spring, air damping, ground tangent damping, passive rebound
  * limiting, and Euler position integration.
  *
- * Runs in the Rust/WASM `step_unit_motion` kernel when the WASM
- * module has finished loading (every tick after the boot
- * `initSimWasm()` resolves). Falls back to the TypeScript
- * implementation below during the first few frames of boot, and
- * during dev when a developer swaps the WASM kernel back to TS
- * via getSimWasm()-returns-undefined for debugging.
- *
- * Numerical contract: WASM and TS branches are kept bit-identical
- * (same f64 math, same operation order, same constants from
- * unitGroundPhysics.ts + config.ts) so swapping mid-session
- * doesn't change motion.
+ * The Rust/WASM `step_unit_motion` kernel is the single owner of this
+ * math — there is no TypeScript fallback. initSimWasm() resolves before
+ * the server tick (GameServer.create awaits it) and before client
+ * prediction has any entity to advance, so getSimWasm() is always
+ * defined here. A missing WASM module is a hard error, never a silent
+ * second physics path.
  */
 export function advanceUnitMotionPhysicsMutable(
   motion: MutableUnitMotion3,
@@ -79,73 +70,34 @@ export function advanceUnitMotionPhysicsMutable(
   }
 
   const sim = getSimWasm();
-  if (sim !== undefined) {
-    _motionBuf[0] = motion.x;
-    _motionBuf[1] = motion.y;
-    _motionBuf[2] = motion.z;
-    _motionBuf[3] = motion.vx;
-    _motionBuf[4] = motion.vy;
-    _motionBuf[5] = motion.vz;
-    sim.stepUnitMotion(
-      _motionBuf,
-      dtSec,
-      groundOffset,
-      ax, ay, az,
-      airDamp, groundDamp,
-      launchAx, launchAy, launchAz,
-      groundZ,
-      normalX, normalY, normalZ,
-    );
-    motion.x = _motionBuf[0];
-    motion.y = _motionBuf[1];
-    motion.z = _motionBuf[2];
-    motion.vx = _motionBuf[3];
-    motion.vy = _motionBuf[4];
-    motion.vz = _motionBuf[5];
-    return;
-  }
-
-  // TS fallback — used during boot (before initSimWasm resolves)
-  // and dev. Kept structurally identical to the Rust kernel so
-  // motion is bit-identical across the two branches.
-  let groundNormal: GroundNormal | undefined;
-  if (isUnitGroundPenetrationInContact(penetration)) {
-    groundNormal = { nx: normalX, ny: normalY, nz: normalZ };
-    const normalVelocity =
-      motion.vx * groundNormal.nx +
-      motion.vy * groundNormal.ny +
-      motion.vz * groundNormal.nz;
-    const springAccel = getUnitGroundSpringAcceleration(
-      penetration,
-      normalVelocity,
-    );
-    ax += groundNormal.nx * springAccel;
-    ay += groundNormal.ny * springAccel;
-    az += groundNormal.nz * springAccel;
-  }
-
-  motion.vx += ax * dtSec;
-  motion.vy += ay * dtSec;
-  motion.vz += az * dtSec;
-  motion.vx *= airDamp;
-  motion.vy *= airDamp;
-  motion.vz *= airDamp;
-
-  if (groundNormal) {
-    dampVelocityTangentToGroundMutable(motion, groundNormal, groundDamp);
-    const launchNormalAccel =
-      launchAx * groundNormal.nx +
-      launchAy * groundNormal.ny +
-      launchAz * groundNormal.nz;
-    limitPassiveGroundReboundVelocityMutable(
-      motion,
-      groundNormal,
-      launchNormalAccel,
-      dtSec,
+  if (sim === undefined) {
+    throw new Error(
+      'advanceUnitMotionPhysicsMutable: sim-wasm not initialised. ' +
+        'await initSimWasm() before stepping unit motion — WASM is the ' +
+        'single owner of unit physics and there is no TypeScript fallback.',
     );
   }
 
-  motion.x += motion.vx * dtSec;
-  motion.y += motion.vy * dtSec;
-  motion.z += motion.vz * dtSec;
+  _motionBuf[0] = motion.x;
+  _motionBuf[1] = motion.y;
+  _motionBuf[2] = motion.z;
+  _motionBuf[3] = motion.vx;
+  _motionBuf[4] = motion.vy;
+  _motionBuf[5] = motion.vz;
+  sim.stepUnitMotion(
+    _motionBuf,
+    dtSec,
+    groundOffset,
+    ax, ay, az,
+    airDamp, groundDamp,
+    launchAx, launchAy, launchAz,
+    groundZ,
+    normalX, normalY, normalZ,
+  );
+  motion.x = _motionBuf[0];
+  motion.y = _motionBuf[1];
+  motion.z = _motionBuf[2];
+  motion.vx = _motionBuf[3];
+  motion.vy = _motionBuf[4];
+  motion.vz = _motionBuf[5];
 }

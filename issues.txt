@@ -26,23 +26,6 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A3. [HIGH] Duplicate unit-motion integrator: full TS copy of the Rust kernel kept
-    as a "bit-identical" fallback.
-    LOCATION: src/game/sim/unitMotionIntegration.ts:108-151 (TS branch) duplicates
-      WASM stepUnitMotion / lib.rs step_unit_motion.
-    RULE: "Delete The Old Path" / "Single Source Of Truth" — the codebase must
-      never contain two implementations of the same behavior split between TS and
-      Rust; no "keep the TS version for safety" parallel path.
-    PROBLEM: lines 108-151 re-implement spring-damper ground contact, air drag,
-      tangent friction, passive-rebound clamp, and position integration in TS,
-      "kept structurally identical to the Rust kernel." initSimWasm is awaited
-      before any tick, so this branch is effectively dead in production yet is a
-      maintained second source of truth for the most fundamental physics in the
-      game; any divergence silently produces inconsistent motion if WASM fails to
-      load.
-    FIX: delete the TS integrator branch and let WASM be the single owner (treat a
-      missing WASM module as a hard error rather than a silent second physics path).
-
 A4. [HIGH] Force-field panel and sphere are NOT one material differing only in
     geometry — they are two parallel subsystems plus two different shaders.
     LOCATION:
