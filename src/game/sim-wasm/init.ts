@@ -1744,8 +1744,8 @@ export interface SnapshotBaselineApi {
   /** D.3c — capture one unit slot's current state into the baseline.
    *  Pulls HP / build / suspension from the entity-meta pool and
    *  per-turret state from the turret pool; takes transform,
-   *  velocity, movement accel, normal, action hash, and turret
-   *  engagement / target bits as parameters. Auto-grows. */
+   *  velocity, normal, action hash, and turret engagement / target
+   *  bits as parameters. Auto-grows. */
   captureUnitSlot: (
     handle: number,
     slot: number,
@@ -1754,7 +1754,6 @@ export interface SnapshotBaselineApi {
     x: number, y: number, z: number,
     rotation: number,
     velocityX: number, velocityY: number, velocityZ: number,
-    movementAccelX: number, movementAccelY: number, movementAccelZ: number,
     normalX: number, normalY: number, normalZ: number,
     actionCount: number,
     actionHash: number,
@@ -1765,9 +1764,8 @@ export interface SnapshotBaselineApi {
    *  baseline. Pulls HP + factory/solar/build progress from the
    *  entity-meta pool and turret state from the turret pool (for
    *  defense-turret buildings); takes transform plus engagement /
-   *  target bits as parameters. Auto-grows. Zeros velocity /
-   *  movementAccel so a stray emit can't pick up stale unit data
-   *  from a slot recycle. */
+   *  target bits as parameters. Auto-grows. Zeros velocity so a
+   *  stray emit can't pick up stale unit data from a slot recycle. */
   captureBuildingSlot: (
     handle: number,
     slot: number,
@@ -1796,7 +1794,6 @@ export interface SnapshotBaselineApi {
     x: number, y: number, z: number,
     rotation: number,
     velocityX: number, velocityY: number, velocityZ: number,
-    movementAccelX: number, movementAccelY: number, movementAccelZ: number,
     normalX: number, normalY: number, normalZ: number,
     actionCount: number,
     actionHash: number,

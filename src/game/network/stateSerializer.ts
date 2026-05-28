@@ -85,7 +85,6 @@ function captureToRustBaseline(
       handle, slot, tick, baselineChangedFields,
       next.x, next.y, next.z, next.rotation,
       next.velocityX, next.velocityY, next.velocityZ,
-      next.movementAccelX, next.movementAccelY, next.movementAccelZ,
       next.normalX, next.normalY, next.normalZ,
       next.actionCount, next.actionHash,
       next.isEngagedBits, next.targetBits,

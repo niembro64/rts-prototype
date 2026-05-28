@@ -57,9 +57,6 @@ export type PrevEntityState = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  movementAccelX: number;
-  movementAccelY: number;
-  movementAccelZ: number;
   hp: number;
   actionCount: number;
   actionHash: number;
@@ -157,7 +154,6 @@ function createPrevEntityState(): PrevEntityState {
   return {
     x: 0, y: 0, z: 0, rotation: 0,
     velocityX: 0, velocityY: 0, velocityZ: 0,
-    movementAccelX: 0, movementAccelY: 0, movementAccelZ: 0,
     hp: 0, actionCount: 0, actionHash: 0,
     isEngagedBits: 0, targetBits: 0,
     weaponCount: 0,
@@ -360,9 +356,6 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   prev.velocityX = unit !== null ? unit.velocityX : 0;
   prev.velocityY = unit !== null ? unit.velocityY : 0;
   prev.velocityZ = unit !== null ? unit.velocityZ : 0;
-  prev.movementAccelX = unit !== null ? unit.movementAccelX : 0;
-  prev.movementAccelY = unit !== null ? unit.movementAccelY : 0;
-  prev.movementAccelZ = unit !== null ? unit.movementAccelZ : 0;
   prev.hp = unit !== null ? unit.hp : building !== null ? building.hp : 0;
   if (unit !== null) {
     assertUnitActionHashSynced(unit, `captureEntityState(${entity.id})`);
@@ -469,7 +462,6 @@ export function getRustEntityDeltaChangedFields(
     baselineHandle, slot, kind,
     next.x, next.y, next.z, next.rotation,
     next.velocityX, next.velocityY, next.velocityZ,
-    next.movementAccelX, next.movementAccelY, next.movementAccelZ,
     next.normalX, next.normalY, next.normalZ,
     next.actionCount, next.actionHash,
     next.isEngagedBits, next.targetBits,
@@ -493,9 +485,6 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
   to.velocityX = from.velocityX;
   to.velocityY = from.velocityY;
   to.velocityZ = from.velocityZ;
-  to.movementAccelX = from.movementAccelX;
-  to.movementAccelY = from.movementAccelY;
-  to.movementAccelZ = from.movementAccelZ;
   to.hp = from.hp;
   to.actionCount = from.actionCount;
   to.actionHash = from.actionHash;
@@ -561,9 +550,6 @@ export function copySentPrevState(
     to.velocityX = from.velocityX;
     to.velocityY = from.velocityY;
     to.velocityZ = from.velocityZ;
-    to.movementAccelX = from.movementAccelX;
-    to.movementAccelY = from.movementAccelY;
-    to.movementAccelZ = from.movementAccelZ;
   }
   if (changedFields & ENTITY_CHANGED_HP) {
     to.hp = from.hp;

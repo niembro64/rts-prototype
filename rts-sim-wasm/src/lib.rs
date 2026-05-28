@@ -13844,9 +13844,9 @@ struct SnapshotBaseline {
     used: Vec<u8>,
     last_tick: Vec<u32>,
     // f64 to match JS PrevEntityState's Number precision exactly.
-    // f32 storage triggered a bit-10 (MOVEMENT_ACCEL) divergence
-    // when JS f64 values straddled an f32 rounding step that the
-    // baseline read flipped on threshold compare.
+    // f32 storage triggered a divergence when JS f64 values straddled
+    // an f32 rounding step that the baseline read flipped on threshold
+    // compare.
     x: Vec<f64>,
     y: Vec<f64>,
     z: Vec<f64>,
@@ -13854,9 +13854,6 @@ struct SnapshotBaseline {
     velocity_x: Vec<f64>,
     velocity_y: Vec<f64>,
     velocity_z: Vec<f64>,
-    movement_accel_x: Vec<f64>,
-    movement_accel_y: Vec<f64>,
-    movement_accel_z: Vec<f64>,
     hp: Vec<f32>,
     action_count: Vec<u16>,
     action_hash: Vec<u32>,
@@ -13898,9 +13895,6 @@ impl SnapshotBaseline {
             velocity_x: Vec::new(),
             velocity_y: Vec::new(),
             velocity_z: Vec::new(),
-            movement_accel_x: Vec::new(),
-            movement_accel_y: Vec::new(),
-            movement_accel_z: Vec::new(),
             hp: Vec::new(),
             action_count: Vec::new(),
             action_hash: Vec::new(),
@@ -13938,9 +13932,6 @@ impl SnapshotBaseline {
         self.velocity_x.resize(needed, 0.0);
         self.velocity_y.resize(needed, 0.0);
         self.velocity_z.resize(needed, 0.0);
-        self.movement_accel_x.resize(needed, 0.0);
-        self.movement_accel_y.resize(needed, 0.0);
-        self.movement_accel_z.resize(needed, 0.0);
         self.hp.resize(needed, 0.0);
         self.action_count.resize(needed, 0);
         self.action_hash.resize(needed, 0);
@@ -14096,9 +14087,6 @@ pub fn snapshot_baseline_capture_unit_slot(
     velocity_x: f64,
     velocity_y: f64,
     velocity_z: f64,
-    movement_accel_x: f64,
-    movement_accel_y: f64,
-    movement_accel_z: f64,
     normal_x: f64,
     normal_y: f64,
     normal_z: f64,
@@ -14128,9 +14116,6 @@ pub fn snapshot_baseline_capture_unit_slot(
         b.velocity_x[s] = velocity_x;
         b.velocity_y[s] = velocity_y;
         b.velocity_z[s] = velocity_z;
-        b.movement_accel_x[s] = movement_accel_x;
-        b.movement_accel_y[s] = movement_accel_y;
-        b.movement_accel_z[s] = movement_accel_z;
     }
     if is_full || (changed_fields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_NORMAL)) != 0 {
         b.normal_x[s] = normal_x;
@@ -14218,9 +14203,6 @@ pub fn snapshot_baseline_capture_building_slot(
         b.velocity_x[s] = 0.0;
         b.velocity_y[s] = 0.0;
         b.velocity_z[s] = 0.0;
-        b.movement_accel_x[s] = 0.0;
-        b.movement_accel_y[s] = 0.0;
-        b.movement_accel_z[s] = 0.0;
     }
 
     // HP + factory/solar/build progress from the entity-meta pool.
@@ -14480,9 +14462,6 @@ pub fn snapshot_baseline_diff_slot(
     velocity_x: f64,
     velocity_y: f64,
     velocity_z: f64,
-    movement_accel_x: f64,
-    movement_accel_y: f64,
-    movement_accel_z: f64,
     normal_x: f64,
     normal_y: f64,
     normal_z: f64,
@@ -14531,12 +14510,6 @@ pub fn snapshot_baseline_diff_slot(
         ) {
             mask |= ENTITY_CHANGED_VEL;
         }
-        // movement_accel_x/y/z params remain on the ABI for now but are
-        // no longer compared against baseline: server stopped shipping
-        // acceleration on the wire, so the per-axis bit is dead.
-        let _ = movement_accel_x;
-        let _ = movement_accel_y;
-        let _ = movement_accel_z;
         let cur_hp = {
             let meta = entity_meta_pool();
             if s < meta.hp_curr.len() {
