@@ -145,17 +145,6 @@ C3. [MED] unitRenderMode is a static config value ('rich') and never escalates t
       'hybrid' as count climbs toward 5000.
     FIX: add automatic count-based render-mode escalation.
 
-C4. [MED] SpatialGrid readback allocates a new Uint32Array view per query.
-    LOCATION: src/game/sim/SpatialGrid.ts:244-247 (readScratch returns
-      `new Uint32Array(sim.memory.buffer, ...)`).
-    RULE: "Pool temp buffers"; "do not allocate in per-tick loops."
-    PROBLEM: every query (queryUnitsInRadius / queryEnemy* / queryEntitiesAlongLine,
-      used by projectile collision broadphase DamageSystem.ts:174,512,632,713,824,949,
-      targeting, capture) allocates a view wrapper — dozens-to-hundreds/tick. Views are
-      cheap (no copy) but still garbage.
-    FIX: cache the view and rebuild it only when sim.memory.buffer changes (the same
-      growth event PhysicsEngine3D already tracks for refreshViews).
-
 C5. [LOW] Per-unit JS↔WASM boundary crossing in the client prediction loop.
     LOCATION: ClientPredictionStepper.ts:262-296 → ClientUnitPrediction.ts:186 →
       unitMotionIntegration.ts:89 (sim.stepUnitMotion, one call per unit per frame
