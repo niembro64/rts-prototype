@@ -3,7 +3,8 @@
     "radiusPushMult": 2
   },
   "shellBar": {
-    "worldHeight": 4,
+    "pxHeight": 7,
+    "pxWidth": 50,
     "canvasWidth": 128,
     "canvasHeight": 16,
     "hideAtFull": true

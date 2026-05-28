@@ -72,10 +72,11 @@ export const SHELL_BAR_BG_COLOR = COLORS.construction.shellBar.background.cssCol
 export const SHELL_BAR_BG_ALPHA = COLORS.construction.shellBar.background.alpha;
 export const SHELL_BAR_FG_ALPHA = COLORS.construction.shellBar.foregroundAlpha;
 
-/** Bar height in world units. Bar width is keyed to the entity's
- *  rendering radius so a bigger unit gets a wider bar — same convention
- *  the legacy HP bar used. */
-export const SHELL_BAR_WORLD_HEIGHT = shellConfig.shellBar.worldHeight;
+/** Bar size in SCREEN pixels. Billboarded bars are rescaled per frame
+ *  so they stay this size on screen at any zoom (see HudScreenSpace);
+ *  width is a flat constant — bars no longer grow with unit footprint. */
+export const SHELL_BAR_PX_HEIGHT = shellConfig.shellBar.pxHeight;
+export const SHELL_BAR_PX_WIDTH = shellConfig.shellBar.pxWidth;
 
 /** Texture canvas resolution per bar. 128×16 keeps memory small while
  *  staying crisp at typical zooms. */

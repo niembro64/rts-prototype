@@ -11,17 +11,19 @@
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';
-import { getBuildingHudBarsY, getUnitHudBarsY } from './HudAnchor';
+import { getEntityHudAnchorY, getEntityHudBarsBaseGapPx } from './HudAnchor';
+import type { HudScreenSpace } from './HudScreenSpace';
 import { getResourceFillRatio } from '../sim/buildableHelpers';
 import type { Buildable } from '../sim/types';
-import { ENTITY_HUD_BAR_STACK_GAP } from '@/config';
+import { ENTITY_HUD_BAR_STACK_GAP_PX } from '@/config';
 import { CanvasSpritePool, type CanvasSpriteSlot } from './CanvasSpritePool';
 import {
   SHELL_BAR_COLORS,
   SHELL_BAR_BG_COLOR,
   SHELL_BAR_BG_ALPHA,
   SHELL_BAR_FG_ALPHA,
-  SHELL_BAR_WORLD_HEIGHT,
+  SHELL_BAR_PX_HEIGHT,
+  SHELL_BAR_PX_WIDTH,
   SHELL_BAR_CANVAS_WIDTH,
   SHELL_BAR_CANVAS_HEIGHT,
   SHELL_BAR_HIDE_AT_FULL,
@@ -31,10 +33,12 @@ import {
   HP_BAR_LOW_THRESHOLD,
 } from '@/shellConfig';
 
-// Bar visuals live in @/shellConfig; vertical placement lives in the
-// unit/building blueprint `hud` blocks read by HudAnchor.
+// Bar visuals live in @/shellConfig; sizes + gaps are SCREEN pixels and
+// HudScreenSpace rescales each sprite per frame so they're zoom-invariant.
+// The vertical anchor + per-blueprint base gap come from HudAnchor.
 const STYLE = {
-  worldHeight: SHELL_BAR_WORLD_HEIGHT,
+  pxHeight: SHELL_BAR_PX_HEIGHT,
+  pxWidth: SHELL_BAR_PX_WIDTH,
   bgColor: SHELL_BAR_BG_COLOR,
   bgAlpha: SHELL_BAR_BG_ALPHA,
   fgColorHigh: HP_BAR_COLOR_HIGH,
@@ -43,7 +47,7 @@ const STYLE = {
   fgColorEnergy: SHELL_BAR_COLORS.energy,
   fgColorMetal: SHELL_BAR_COLORS.metal,
   fgAlpha: SHELL_BAR_FG_ALPHA,
-  worldStackGap: ENTITY_HUD_BAR_STACK_GAP,
+  stackGapPx: ENTITY_HUD_BAR_STACK_GAP_PX,
   lowThreshold: HP_BAR_LOW_THRESHOLD,
   hideAtFull: SHELL_BAR_HIDE_AT_FULL,
   canvasWidth: SHELL_BAR_CANVAS_WIDTH,
@@ -93,10 +97,6 @@ function repaintBar(bar: Bar, ratio: number, mode: BarMode): boolean {
 }
 
 export class HealthBar3D {
-  /** Module-shared scratch vector reused by every frustum probe so
-   *  the per-frame loop allocates nothing. */
-  private static readonly _probeVec = new THREE.Vector3();
-
   private pool: CanvasSpritePool<BarState, [number, BarMode]>;
 
   constructor(parent: THREE.Group) {
@@ -133,10 +133,13 @@ export class HealthBar3D {
    *  draws). Stored on the instance so perUnit / perBuilding don't
    *  have to re-thread it through arguments. */
   private _frustum: THREE.Frustum | null = null;
+  /** Per-frame screen-space scaler, set by beginFrame. Drives the
+   *  zoom-invariant pixel size + pixel offset of every bar. */
+  private _screen: HudScreenSpace | null = null;
 
   /** Fused-iteration entry: reset frame state. Caller follows with a
    *  series of perUnit / perBuilding calls and finishes with endFrame. */
-  beginFrame(frustum?: THREE.Frustum): void {
+  beginFrame(screen: HudScreenSpace, frustum?: THREE.Frustum): void {
     this._used = 0;
     this._frameToken = (this._frameToken + 1) & 0x3fffffff;
     // Clear the per-frame dedup map each frame so it stays bounded to
@@ -144,32 +147,43 @@ export class HealthBar3D {
     // the ~185-day token rollover, so it retained an entry for every
     // entity id that ever rendered a bar.
     this._seenEntityFrame.clear();
+    this._screen = screen;
     this._frustum = frustum ?? null;
   }
 
-  /** Place a single bar at a given world position with `stackIndex`
-   *  vertical offset (0 = bottom row). Returns true if drawn. */
+  /** Place a single bar `stackIndex` rows up the stack (0 = bottom row)
+   *  above the entity's world anchor. Size + the vertical gap are in
+   *  screen pixels, converted to world space at the anchor's depth so
+   *  they're constant on screen at any zoom. */
   private placeBar(
     ratio: number,
     mode: BarMode,
-    worldX: number,
-    worldBaseY: number,
-    worldZ: number,
-    worldWidth: number,
+    anchorX: number,
+    anchorY: number,
+    anchorZ: number,
+    baseGapPx: number,
     stackIndex: number,
   ): void {
+    const screen = this._screen;
+    if (!screen) return;
     const bar = this.acquire(this._used++);
     this.repaintIfChanged(bar, ratio, mode);
-    const yOffset = stackIndex * (STYLE.worldHeight + STYLE.worldStackGap);
-    bar.sprite.scale.set(worldWidth, STYLE.worldHeight, 1);
-    bar.sprite.position.set(worldX, worldBaseY + yOffset, worldZ);
-    if (this._frustum) {
-      const probe = HealthBar3D._probeVec;
-      probe.set(worldX, worldBaseY + yOffset, worldZ);
-      bar.sprite.visible = this._frustum.containsPoint(probe);
-    } else {
-      bar.sprite.visible = true;
-    }
+    const centerPx =
+      baseGapPx +
+      STYLE.pxHeight / 2 +
+      stackIndex * (STYLE.pxHeight + STYLE.stackGapPx);
+    screen.placeSprite(
+      bar.sprite,
+      anchorX,
+      anchorY,
+      anchorZ,
+      centerPx,
+      STYLE.pxWidth,
+      STYLE.pxHeight,
+    );
+    bar.sprite.visible = this._frustum
+      ? this._frustum.containsPoint(bar.sprite.position)
+      : true;
   }
 
   /** Stack the per-resource bars on top of the HP bar when a
@@ -179,18 +193,18 @@ export class HealthBar3D {
    *  HP, energy, metal. Returns the next stack index. */
   private placeResourceBars(
     buildable: Buildable,
-    worldX: number,
-    worldBaseY: number,
-    worldZ: number,
-    worldWidth: number,
+    anchorX: number,
+    anchorY: number,
+    anchorZ: number,
+    baseGapPx: number,
     stackStart: number,
   ): number {
     let stack = stackStart;
     const e = getResourceFillRatio(buildable, 'energy');
-    this.placeBar(e, 'energyBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+    this.placeBar(e, 'energyBar', anchorX, anchorY, anchorZ, baseGapPx, stack);
     stack++;
     const t = getResourceFillRatio(buildable, 'metal');
-    this.placeBar(t, 'metalBar', worldX, worldBaseY, worldZ, worldWidth, stack);
+    this.placeBar(t, 'metalBar', anchorX, anchorY, anchorZ, baseGapPx, stack);
     stack++;
     return stack;
   }
@@ -214,19 +228,19 @@ export class HealthBar3D {
     );
     if (!showHp && !buildable) return;
     this._seenEntityFrame.set(u.id, this._frameToken);
-    const worldX = u.transform.x;
-    const worldY = getUnitHudBarsY(u);
-    const worldZ = u.transform.y;
-    const worldWidth = unit.radius.body * 2;
+    const anchorX = u.transform.x;
+    const anchorY = getEntityHudAnchorY(u);
+    const anchorZ = u.transform.y;
+    const baseGapPx = getEntityHudBarsBaseGapPx(u);
     let stack = 0;
     if (showHp) {
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
-      this.placeBar(ratio, mode, worldX, worldY, worldZ, worldWidth, stack);
+      this.placeBar(ratio, mode, anchorX, anchorY, anchorZ, baseGapPx, stack);
       stack++;
     }
     if (buildable) {
-      this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack);
+      this.placeResourceBars(buildable, anchorX, anchorY, anchorZ, baseGapPx, stack);
     }
   }
 
@@ -246,10 +260,10 @@ export class HealthBar3D {
     );
     if (!showHp && !buildable) return;
     this._seenEntityFrame.set(b.id, this._frameToken);
-    const worldX = b.transform.x;
-    const worldY = getBuildingHudBarsY(b);
-    const worldZ = b.transform.y;
-    const worldWidth = b.building.width;
+    const anchorX = b.transform.x;
+    const anchorY = getEntityHudAnchorY(b);
+    const anchorZ = b.transform.y;
+    const baseGapPx = getEntityHudBarsBaseGapPx(b);
     let stack = 0;
     if (showHp) {
       // HP is its own thing — green/red by ratio, never the legacy
@@ -257,11 +271,11 @@ export class HealthBar3D {
       // bars to be the "build progress", not a combined ratio.
       const ratio = Math.max(0, Math.min(1, hp / maxHp));
       const mode: BarMode = ratio < STYLE.lowThreshold ? 'healthLow' : 'healthHigh';
-      this.placeBar(ratio, mode, worldX, worldY, worldZ, worldWidth, stack);
+      this.placeBar(ratio, mode, anchorX, anchorY, anchorZ, baseGapPx, stack);
       stack++;
     }
     if (buildable) {
-      this.placeResourceBars(buildable, worldX, worldY, worldZ, worldWidth, stack);
+      this.placeResourceBars(buildable, anchorX, anchorY, anchorZ, baseGapPx, stack);
     }
   }
 
@@ -270,20 +284,7 @@ export class HealthBar3D {
   endFrame(): void {
     this.pool.hideUnused(this._used);
     this._frustum = null;
-  }
-
-  /** Legacy all-in-one entry — calls the fused-iteration methods
-   *  internally so the behaviour matches the begin/per/end path
-   *  exactly. Kept for callers not yet migrated to the fused API. */
-  update(
-    units: readonly Entity[],
-    buildings: readonly Entity[],
-    frustum?: THREE.Frustum,
-  ): void {
-    this.beginFrame(frustum);
-    for (const u of units) this.perUnit(u);
-    for (const b of buildings) this.perBuilding(b);
-    this.endFrame();
+    this._screen = null;
   }
 
   destroy(): void {

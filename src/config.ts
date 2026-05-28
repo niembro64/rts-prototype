@@ -784,9 +784,10 @@ export type { SynthId, SoundEntry } from './audioConfig';
 // UI
 // =============================================================================
 
-/** Default per-blueprint HUD bar offsets, in world units above the
- *  entity's visual HUD top. Individual unit/building blueprints can
- *  override this by editing their `hud` block. */
+/** Default per-blueprint HUD bar offsets, in SCREEN pixels above the
+ *  entity's projected anchor (body center + push radius). Individual
+ *  unit/building blueprints can override this by editing their `hud`
+ *  block. Pixel-space so the on-screen gap is zoom-invariant. */
 export const DEFAULT_UNIT_HUD_LAYOUT: EntityHudBlueprint = {
   barsOffsetAboveTop: entityHudConfigJson.defaultUnitHudLayout.barsOffsetAboveTop,
 };
@@ -795,15 +796,15 @@ export const DEFAULT_BUILDING_HUD_LAYOUT: EntityHudBlueprint = {
   barsOffsetAboveTop: entityHudConfigJson.defaultBuildingHudLayout.barsOffsetAboveTop,
 };
 
-/** Distance between stacked HUD bars: HP, energy, metal. */
-export const ENTITY_HUD_BAR_STACK_GAP = entityHudConfigJson.barStackGap;
+/** On-screen gap (pixels) between stacked HUD bars: HP, energy, metal. */
+export const ENTITY_HUD_BAR_STACK_GAP_PX = entityHudConfigJson.barStackGapPx;
 
 /** The full status stack is HP + resource build bars. */
 export const ENTITY_HUD_BAR_STACK_ROWS = entityHudConfigJson.barStackRows;
 
-/** Visual air gap between the top edge of the full bar stack and the
- *  bottom edge of the name label sprite. */
-export const ENTITY_HUD_NAME_GAP_ABOVE_BARS = entityHudConfigJson.nameGapAboveBars;
+/** On-screen gap (pixels) between the top edge of the full bar stack and
+ *  the bottom edge of the name label sprite. */
+export const ENTITY_HUD_NAME_GAP_ABOVE_BARS_PX = entityHudConfigJson.nameGapAboveBarsPx;
 
 // =============================================================================
 // CAMERA & ZOOM

@@ -33,6 +33,7 @@ import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRender
 import type { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D';
 import type { HealthBar3D } from '../../render3d/HealthBar3D';
 import type { NameLabel3D } from '../../render3d/NameLabel3D';
+import { HudScreenSpace } from '../../render3d/HudScreenSpace';
 import type { Waypoint3D } from '../../render3d/Waypoint3D';
 import { resolveEntityDisplayName } from '../../render3d/EntityName';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
@@ -88,6 +89,9 @@ export class RtsScene3DRenderPhase {
   private readonly smokeTrailProjectilesScratch: Entity[] = [];
   private readonly frustum = new THREE.Frustum();
   private readonly frustumMatrix = new THREE.Matrix4();
+  /** Per-frame screen-space scaler shared by the HP bars + name labels
+   *  so both billboard at a constant pixel size / pixel offset. */
+  private readonly hudScreen = new HudScreenSpace();
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -301,6 +305,9 @@ export class RtsScene3DRenderPhase {
     this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this.frustum;
+    // Refresh the HUD screen-space scaler from the live camera so bars +
+    // names hold their pixel size / offset at the current zoom.
+    this.hudScreen.update(cam, this.threeApp.canvas.clientHeight);
 
     forceFieldRenderer.beginFrame(graphicsConfig);
     if (this.clientViewState.getServerMeta()?.turretForceFieldSpheresEnabled ?? true) {
@@ -312,7 +319,7 @@ export class RtsScene3DRenderPhase {
 
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
     if (healthBar3D) {
-      healthBar3D.beginFrame(hudFrustum);
+      healthBar3D.beginFrame(this.hudScreen, hudFrustum);
       const damagedUnits = this.clientViewState.getDamagedUnits();
       for (const u of damagedUnits) {
         healthBar3D.perUnit(u);
@@ -330,7 +337,7 @@ export class RtsScene3DRenderPhase {
     }
 
     if (nameLabel3D) {
-      nameLabel3D.beginFrame(hudFrustum);
+      nameLabel3D.beginFrame(this.hudScreen, hudFrustum);
       const lookup = (pid: PlayerId): string | null =>
         this.lookupPlayerName(pid) ?? getDefaultPlayerName(pid);
       for (const e of this.clientViewState.getUnitsAndBuildings()) {
