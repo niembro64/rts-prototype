@@ -294,12 +294,6 @@ export type BeamPoint = {
   vx: number;
   vy: number;
   vz: number;
-  /** Client-side integration scratch only. Acceleration is not shipped
-   *  on the snapshot wire; clients derive/preserve it locally between
-   *  velocity-carrying beam updates. */
-  ax: number;
-  ay: number;
-  az: number;
   /** Any beam reflector entity — force-field panels and spheres both
    *  use this slot. */
   reflectorEntityId?: EntityId;

@@ -174,13 +174,10 @@ function writeZeroBeamMotion(point: BeamPoint): void {
   point.vx = 0;
   point.vy = 0;
   point.vz = 0;
-  point.ax = 0;
-  point.ay = 0;
-  point.az = 0;
 }
 
 function createBeamPoint(x: number, y: number, z: number): BeamPoint {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
+  return { x, y, z, vx: 0, vy: 0, vz: 0 };
 }
 
 function copyBeamReflectorMetadata(
@@ -1101,28 +1098,12 @@ export function updateProjectiles(
           startPoint.vx = vx;
           startPoint.vy = vy;
           startPoint.vz = vz;
-          if (
-            proj.prevStartVx !== undefined &&
-            proj.prevStartVy !== undefined &&
-            proj.prevStartVz !== undefined
-          ) {
-            startPoint.ax = (vx - proj.prevStartVx) * inv;
-            startPoint.ay = (vy - proj.prevStartVy) * inv;
-            startPoint.az = (vz - proj.prevStartVz) * inv;
-          } else {
-            startPoint.ax = 0;
-            startPoint.ay = 0;
-            startPoint.az = 0;
-          }
         } else {
           writeZeroBeamMotion(startPoint);
         }
         proj.prevStartX = beamStartX;
         proj.prevStartY = beamStartY;
         proj.prevStartZ = beamStartZ;
-        proj.prevStartVx = startPoint.vx;
-        proj.prevStartVy = startPoint.vy;
-        proj.prevStartVz = startPoint.vz;
         startPoint.x = beamStartX;
         startPoint.y = beamStartY;
         startPoint.z = beamStartZ;
@@ -1180,7 +1161,6 @@ export function updateProjectiles(
           point.z = refl.z;
           copyBeamReflectorMetadata(point, refl);
           let vx = 0, vy = 0, vz = 0;
-          let ax = 0, ay = 0, az = 0;
           if (prevRefs && dtSec > 0) {
             for (let p = 0; p < prevRefs.length; p++) {
               const pr = prevRefs[p];
@@ -1191,9 +1171,6 @@ export function updateProjectiles(
                 vx = (refl.x - pr.x) * inv;
                 vy = (refl.y - pr.y) * inv;
                 vz = (refl.z - pr.z) * inv;
-                ax = (vx - pr.vx) * inv;
-                ay = (vy - pr.vy) * inv;
-                az = (vz - pr.vz) * inv;
               }
               break;
             }
@@ -1201,9 +1178,6 @@ export function updateProjectiles(
           point.vx = vx;
           point.vy = vy;
           point.vz = vz;
-          point.ax = ax;
-          point.ay = ay;
-          point.az = az;
         }
 
         // Cache this trace's reflections (by reflectorEntityId; legacy
@@ -1215,7 +1189,6 @@ export function updateProjectiles(
           cache.push({
             reflectorEntityId: 0 as EntityId,
             x: 0, y: 0, z: 0,
-            vx: 0, vy: 0, vz: 0,
             tick: 0,
           });
         }
@@ -1227,9 +1200,6 @@ export function updateProjectiles(
           slot.x = refl.x;
           slot.y = refl.y;
           slot.z = refl.z;
-          slot.vx = points[1 + r].vx;
-          slot.vy = points[1 + r].vy;
-          slot.vz = points[1 + r].vz;
           slot.tick = currentTick;
         }
 
@@ -1251,19 +1221,6 @@ export function updateProjectiles(
             endPoint.vx = vx;
             endPoint.vy = vy;
             endPoint.vz = vz;
-            if (
-              proj.prevEndVx !== undefined &&
-              proj.prevEndVy !== undefined &&
-              proj.prevEndVz !== undefined
-            ) {
-              endPoint.ax = (vx - proj.prevEndVx) * inv;
-              endPoint.ay = (vy - proj.prevEndVy) * inv;
-              endPoint.az = (vz - proj.prevEndVz) * inv;
-            } else {
-              endPoint.ax = 0;
-              endPoint.ay = 0;
-              endPoint.az = 0;
-            }
           } else {
             writeZeroBeamMotion(endPoint);
           }
@@ -1281,9 +1238,6 @@ export function updateProjectiles(
         proj.prevEndX = beamPath.endX;
         proj.prevEndY = beamPath.endY;
         proj.prevEndZ = beamPath.endZ;
-        proj.prevEndVx = endPoint.vx;
-        proj.prevEndVy = endPoint.vy;
-        proj.prevEndVz = endPoint.vz;
         proj.prevEndTick = currentTick;
         proj.obstructionT = beamPath.obstructionT;
         proj.obstructionTick = currentTick;

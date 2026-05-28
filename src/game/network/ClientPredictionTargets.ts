@@ -75,7 +75,6 @@ const _beamPointFreeList: BeamPoint[] = [];
 function clearBeamPoint(p: BeamPoint): void {
   p.x = 0; p.y = 0; p.z = 0;
   p.vx = 0; p.vy = 0; p.vz = 0;
-  p.ax = 0; p.ay = 0; p.az = 0;
   p.reflectorEntityId = undefined;
   p.reflectorKind = undefined;
   p.reflectorPlayerId = undefined;
@@ -87,7 +86,7 @@ function clearBeamPoint(p: BeamPoint): void {
 function acquireBeamPoint(): BeamPoint {
   const pooled = _beamPointFreeList.pop();
   if (pooled) return pooled;
-  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
+  return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
 }
 
 /** Truncate `arr` to `newLength`, returning the trailing point objects

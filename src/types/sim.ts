@@ -556,22 +556,16 @@ export type Projectile = {
   segmentLimitReached: boolean | undefined;
   /** Source barrel index for visual/audio cadence metadata on turret shots. */
   sourceBarrelIndex: number | undefined;
-  /** Internal: previous tick's start position/velocity. Used to
-   *  compute points[0] velocity and acceleration. Not serialized. */
+  /** Internal: previous tick's start position. Used to compute
+   *  points[0] velocity. Not serialized. */
   prevStartX: number | undefined;
   prevStartY: number | undefined;
   prevStartZ: number | undefined;
-  prevStartVx: number | undefined;
-  prevStartVy: number | undefined;
-  prevStartVz: number | undefined;
   /** Internal: previous beam-trace tick's end position. Used to compute
-   *  the end-point velocity/acceleration. Not serialized. */
+   *  the end-point velocity. Not serialized. */
   prevEndX: number | undefined;
   prevEndY: number | undefined;
   prevEndZ: number | undefined;
-  prevEndVx: number | undefined;
-  prevEndVy: number | undefined;
-  prevEndVz: number | undefined;
   /** Internal: tick at which prevEnd* was captured, used as the dt for
    *  the next end-velocity finite difference. Not serialized. */
   prevEndTick: number | undefined;
@@ -583,9 +577,6 @@ export type Projectile = {
     x: number;
     y: number;
     z: number;
-    vx: number;
-    vy: number;
-    vz: number;
     tick: number;
   }[] | undefined;
   targetEntityId: EntityId | undefined;
@@ -630,15 +621,9 @@ export type ProjectileAbsenceSlots = Pick<Projectile,
   | 'prevStartX'
   | 'prevStartY'
   | 'prevStartZ'
-  | 'prevStartVx'
-  | 'prevStartVy'
-  | 'prevStartVz'
   | 'prevEndX'
   | 'prevEndY'
   | 'prevEndZ'
-  | 'prevEndVx'
-  | 'prevEndVy'
-  | 'prevEndVz'
   | 'prevEndTick'
   | 'prevReflectionPoints'
   | 'targetEntityId'
@@ -668,15 +653,9 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   prevStartX: undefined,
   prevStartY: undefined,
   prevStartZ: undefined,
-  prevStartVx: undefined,
-  prevStartVy: undefined,
-  prevStartVz: undefined,
   prevEndX: undefined,
   prevEndY: undefined,
   prevEndZ: undefined,
-  prevEndVx: undefined,
-  prevEndVy: undefined,
-  prevEndVz: undefined,
   prevEndTick: undefined,
   prevReflectionPoints: undefined,
   targetEntityId: undefined,

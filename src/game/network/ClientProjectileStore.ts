@@ -108,7 +108,6 @@ export class ClientProjectileStore {
       const dp = ensureBeamPoint(dstTarget, i);
       dp.x = deqProjPos(sp.x); dp.y = deqProjPos(sp.y); dp.z = deqProjPos(sp.z);
       dp.vx = deqVel(sp.vx); dp.vy = deqVel(sp.vy); dp.vz = deqVel(sp.vz);
-      dp.ax = 0; dp.ay = 0; dp.az = 0;
       dp.reflectorEntityId = sp.reflectorEntityId ?? undefined;
       dp.reflectorKind = sp.reflectorKind ?? undefined;
       dp.reflectorPlayerId = sp.reflectorPlayerId ?? undefined;
@@ -125,7 +124,6 @@ export class ClientProjectileStore {
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.ax = 0; pp.ay = 0; pp.az = 0;
         pp.reflectorEntityId = sp.reflectorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -151,7 +149,6 @@ export class ClientProjectileStore {
         const pp = ensureBeamPoint(projPts, i);
         pp.x = sp.x; pp.y = sp.y; pp.z = sp.z;
         pp.vx = sp.vx; pp.vy = sp.vy; pp.vz = sp.vz;
-        pp.ax = 0; pp.ay = 0; pp.az = 0;
         pp.reflectorEntityId = sp.reflectorEntityId;
         pp.reflectorKind = sp.reflectorKind;
         pp.reflectorPlayerId = sp.reflectorPlayerId;
@@ -286,14 +283,12 @@ export class ClientProjectileStore {
             y: deqProjPos(spawn.beam.start.y),
             z: deqProjPos(spawn.beam.start.z),
             vx: 0, vy: 0, vz: 0,
-            ax: 0, ay: 0, az: 0,
           },
           {
             x: deqProjPos(spawn.beam.end.x),
             y: deqProjPos(spawn.beam.end.y),
             z: deqProjPos(spawn.beam.end.z),
             vx: 0, vy: 0, vz: 0,
-            ax: 0, ay: 0, az: 0,
           },
         ] : undefined,
       },

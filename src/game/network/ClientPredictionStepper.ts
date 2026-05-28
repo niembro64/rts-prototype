@@ -105,7 +105,6 @@ function applyBeamPathPrediction(
       pp = ensureBeamPoint(projPts, i);
       pp.x = tp.x; pp.y = tp.y; pp.z = tp.z;
       pp.vx = tp.vx; pp.vy = tp.vy; pp.vz = tp.vz;
-      pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
       pp.reflectorEntityId = tp.reflectorEntityId;
       pp.reflectorKind = tp.reflectorKind;
       pp.reflectorPlayerId = tp.reflectorPlayerId;
@@ -141,9 +140,6 @@ function applyBeamPathPrediction(
       || pp.normalX !== tp.normalX
       || pp.normalY !== tp.normalY
       || pp.normalZ !== tp.normalZ
-      || pp.ax !== tp.ax
-      || pp.ay !== tp.ay
-      || pp.az !== tp.az
     ) {
       changed = true;
     }
@@ -151,7 +147,6 @@ function applyBeamPathPrediction(
     pp.y = ny;
     pp.z = nz;
     pp.vx = nvx; pp.vy = nvy; pp.vz = nvz;
-    pp.ax = tp.ax; pp.ay = tp.ay; pp.az = tp.az;
     pp.reflectorEntityId = tp.reflectorEntityId;
     pp.reflectorKind = tp.reflectorKind;
     pp.reflectorPlayerId = tp.reflectorPlayerId;
