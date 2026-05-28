@@ -1,15 +1,365 @@
 ================================================================================
 ================================================================================
-BUDGET ANNIHILATION — GAMEPLAY PARITY ISSUES
-
+BUDGET ANNIHILATION — DESIGN / LEAK / PERF ISSUES
 
 This is "issues.txt" for this game "budget-annihilation" (i.e. "rts-prototype").
 
 Your task is to fix the issues documented here.
 
-Errors, Problems, Inconsistences, TODOs, etc will be listed here. As we fix something here we should completely delete it from this file. You should also delete an item if you know for a fact it has been addressed. Remember that our code may have changed since the issue was
-written; check the code and if the issue is no longer relevant, delete it.
+Errors, Problems, Inconsistencies, TODOs, etc are listed here. As we fix
+something we should completely delete it from this file. You should also delete
+an item if you know for a fact it has been addressed. Remember that our code may
+have changed since the issue was written; check the code and if the issue is no
+longer relevant, delete it.
 
-Please always commit and push before and after any code changes we make. If there was unchecked code before, just commit and push before you start making your edits.
+Please always commit and push before and after any code changes we make.
+
+--------------------------------------------------------------------------------
+Generated 2026-05-27 by auditing the code against design_philosophy.html.
+Each item: [SEVERITY] LOCATION — RULE — PROBLEM / FIX.
+File:line refs were correct at audit time; re-verify before editing.
+================================================================================
+================================================================================
 
 
+================================================================================
+SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
+================================================================================
+
+A1. [HIGH] Host-directed turret validation is entirely missing, and the schema
+    can't even express it.
+    LOCATION: src/game/sim/blueprints/index.ts (no validation); turrets.json
+      (all 18 turret blueprints have "hostDirected": true); units.json commander
+      lines 937-963, dragonfly lines ~750-767.
+    RULE: "Host-directed turrets carry the host lock-on" — for each KIND of turret
+      a host mounts (attack, construction, repair, ...), EXACTLY ONE must be
+      hostDirected; the loader must THROW at startup on zero (orders can't land)
+      or two-or-more (ambiguous primary).
+    PROBLEM:
+      - There is NO turret "kind" concept in the blueprint schema at all (no
+        WeaponKind / mount-kind field). hostDirected is a static per-turret-
+        blueprint flag, and all 18 turret blueprints set it true — so it can't
+        distinguish a host's primary attack turret from a secondary one.
+      - No grouping-by-kind + count check exists anywhere; the loader never throws
+        on bad host-directed configuration.
+      - Concrete bad configs the rule should reject: commander mounts turretBeam
+        (attack) + turretDisruptor (attack/dgun), BOTH hostDirected → two
+        host-directed attack turrets. dragonfly mounts turretMortarDrop + turretBeam,
+        both hostDirected → same problem.
+    FIX: add a turret "kind" field, make hostDirected a per-mount tag (not a
+      per-blueprint constant), and add a loader pass that groups a host's mounts
+      by kind and throws unless exactly one per kind is hostDirected. (Runtime
+      halves are already correct: Simulation.ts:1411-1436 counts only host-directed
+      turrets for fight-stop; lib.rs:9905,10264 gate lock-on inheritance on the
+      flag — but the data they read is meaningless while every turret is hostDirected.)
+
+A2. [HIGH] turretForceFieldPanel is flagged headOnly:true, directly contradicting
+    the documented "stays full-barrel" rule, and the code papers over it with
+    special cases.
+    LOCATION: turrets.json:495 (turretForceFieldPanel), :543 "headOnly": true,
+      :546 angleType "rayBisectTurretAndBody".
+    RULE: "Beam And Rocket Turrets Render As Heads" §"Where the rule does not
+      apply": turretForceFieldPanel and the disruptor STAY FULL-BARREL — "the
+      force-field panel has to rotate to bisect its targets." headOnly must NOT
+      be set on it.
+    PROBLEM: with headOnly:true the renderer skips applyTurretAimPose3D
+      (UnitTurretPose3D.ts:67) and builds no barrel (TurretMesh3D.ts:184). The
+      panel needs rotation (rayBisect). Two compensating special-cases were added
+      to make it limp along — turretSnapshotFields.ts forces the aim to keep
+      shipping on the wire for force-field-panel hosts, and the panel slab is
+      posed by a separate renderer. This is exactly the special-case branching the
+      headOnly rule was meant to remove.
+    FIX: set headOnly:false on turretForceFieldPanel and let it pose through the
+      normal turret aim path; then remove the force-field-panel exception in
+      turretSnapshotFields.ts. (Or, if head-only-with-rotating-slab is actually
+      desired, update design_philosophy.html — but today doc and code disagree.)
+
+A3. [HIGH] Duplicate unit-motion integrator: full TS copy of the Rust kernel kept
+    as a "bit-identical" fallback.
+    LOCATION: src/game/sim/unitMotionIntegration.ts:108-151 (TS branch) duplicates
+      WASM stepUnitMotion / lib.rs step_unit_motion.
+    RULE: "Delete The Old Path" / "Single Source Of Truth" — the codebase must
+      never contain two implementations of the same behavior split between TS and
+      Rust; no "keep the TS version for safety" parallel path.
+    PROBLEM: lines 108-151 re-implement spring-damper ground contact, air drag,
+      tangent friction, passive-rebound clamp, and position integration in TS,
+      "kept structurally identical to the Rust kernel." initSimWasm is awaited
+      before any tick, so this branch is effectively dead in production yet is a
+      maintained second source of truth for the most fundamental physics in the
+      game; any divergence silently produces inconsistent motion if WASM fails to
+      load.
+    FIX: delete the TS integrator branch and let WASM be the single owner (treat a
+      missing WASM module as a hard error rather than a silent second physics path).
+
+A4. [HIGH] Force-field panel and sphere are NOT one material differing only in
+    geometry — they are two parallel subsystems plus two different shaders.
+    LOCATION:
+      - hit-test/occlusion: src/game/sim/combat/ForceFieldPanelHit.ts (ray-vs-rect)
+        vs forceFieldTurret.ts (ray-vs-sphere); lineOfSight.ts:79-104
+        (hasForceFieldClearance vs hasForceFieldPanelClearance, branched at :111-131).
+      - Rust: lib.rs:13716-13744 force_field_panel_projectile_intersection vs
+        force_field_projectile_intersection; separate pools (forceFieldPanelPool vs
+        forceFieldPool); separate REFLECTOR_HIT_KIND_FORCE_FIELD_PANEL/_SPHERE.
+      - render: ForceFieldReflectorVisual3D.ts:22-30 (panel = MeshBasicMaterial)
+        vs ForceFieldRenderer3D.ts:75-93 (sphere = custom ShaderMaterial).
+    RULE: "Materials Are Independent Of Shape" — the panel's flat panels and the
+      sphere are THE EXACT SAME force-field material (same reflectivity, same LOS
+      occlusion rule, same projectile reflection, same shader); they differ ONLY in
+      geometry. No code path may branch material behavior on which piece owns the
+      surface.
+    PROBLEM: the entire intersection + occlusion + shading stack is duplicated and
+      branched on panel-vs-sphere. (Mitigation: the post-hit reflection physics
+      reflectVelocityPreserveSpeed and the impact visual ARE shared and shape-
+      agnostic, so the divergence is in geometry-intersection/occlusion plumbing and
+      rendering, not the response.)
+    FIX: unify into one material/policy that takes a shape (rect | sphere) for the
+      intersection + normal, with one shared shader; collapse the two clearance
+      functions and the two Rust pools.
+
+A5. [MED] Snapshot entity encoding has two implementations, and the TS one runs on
+    the live Rust path (double entity walk).
+    LOCATION: snapshotEntityWirePack.ts (TS per-entity encoder) vs
+      snapshotRustWireEncoder.ts (WASM per-entity encoder); wired in
+      snapshotWireCodec.ts:11-21. packEntitiesForWire is called unconditionally at
+      snapshotWireCodec.ts:232; the Rust encoder then re-emits the TS-built blob raw
+      (snapshotRustWireEncoder.ts:1944-1946), bypassing its own
+      encodeEntityUnit/Building kernels for entities.
+    RULE: "Delete The Old Path" / "TypeScript Coordinates, WASM Computes" (no large
+      serialization loops in TS).
+    PROBLEM: a full per-entity TS object-building loop runs every snapshot even when
+      the Rust encoder is active, and a second full DTO→wire implementation is
+      maintained in lockstep.
+    FIX: make either the TS pack path or the Rust per-entity encoder the single
+      owner of entity bytes; stop running packEntitiesForWire on the Rust path.
+
+A6. [MED] Wire-code / state enums are hand-duplicated in TS and Rust.
+    LOCATION: src/types/network.ts (ENTITY_CHANGED_* bits :685+, TURRET_STATE_* :18-46,
+      ACTION_TYPE_*, PROJECTILE_TYPE_*, RESOURCE_KIND_*, RESOURCE_FLOW_*,
+      REFLECTOR_HIT_KIND_*) vs lib.rs (e.g. :6743 CT_TURRET_STATE_ENGAGED,
+      :14258-14266 changed-field bits).
+    RULE: "Config Is Data, Not Code" — wire codes / enum value-name maps both TS and
+      Rust must agree on belong in ONE file, two consumers, zero drift.
+    PROBLEM: these numeric codes must match byte-for-byte across the boundary but are
+      independently hand-written in both languages. (Evidence of the cost: recent
+      commit "Rename Rust beam-encoder reflectorKind strings to match TS".)
+    FIX: route them through the existing codegen — build.rs:22-79 already generates
+      Rust constants from src/sharedSimConstants.json; add the wire/state enums there
+      and generate both the TS and Rust sides.
+
+A7. [MED] Producer ON/OFF is carried by two flags (open + producing) instead of one.
+    LOCATION: src/game/sim/buildingActiveState.ts:52-59 (state has both open and
+      producing; producing slaved to open each tick via setBuildingProducing).
+      Damage reads open (isBuildingActiveStateFortified :237-243); solar/extractor
+      income reads producing (economy.ts:316); wind income + renderer pose + converter
+      read open (economy.ts:325, BuildingAnimationController3D.ts:215,240,286).
+    RULE: "Producer Buildings Are ON/OFF" — the ON/OFF state must be the SINGLE
+      authoritative input for BOTH the renderer's open/closed pose AND production
+      accounting; they must never disagree; "not two separate flags."
+    PROBLEM: this is exactly the two-flags-that-could-disagree shape the rule forbids;
+      they only agree because producing is mechanically slaved to open every tick.
+      (The 0.1 OFF damage multiplier is correct: BUILDING_CLOSED_DAMAGE_MULTIPLIER,
+      DamageSystem.ts:1115-1117.)
+    FIX: make all production gate on open (delete producing), so there is one flag.
+
+A8. [LOW] Vestigial acceleration plumbing (no accel reaches the wire, but dead fields
+    remain).
+    LOCATION: stateSerializerEntityDelta.ts:60-62,363-365,496-498,564-566 +
+      lib.rs:13793-13795,14067-14069,14470-14475 carry movementAccelX/Y/Z through the
+      diff/baseline ABI and then explicitly discard them (`let _ = movement_accel_x;`).
+      Beam-path points still carry ax/ay/az always-0 slots
+      (ClientPredictionTargets.ts:78,90; ClientProjectileStore.ts:111,128,154).
+    RULE: "Prediction is velocity-based" (no acceleration in snapshot encode/decode) +
+      "Delete The Old Path".
+    PROBLEM: harmless leftover ABI params and slots; never compared, never serialized,
+      never integrated.
+    FIX: remove the movementAccel ABI params and the beam ax/ay/az slots.
+
+A9. [LOW] Sim-relevant tuning still lives in TS modules.
+    LOCATION: src/config.ts (~115 exported const tuning objects; some are sim-relevant,
+      many are render-only), src/game/sim/blueprints/displayRosters.ts (roster ordering).
+    RULE: "Config Is Data, Not Code" — Rust cannot import .ts; tuning the sim needs
+      should be JSON.
+    PROBLEM: TS-module tuning tables are a wall for the TS→Rust migration. (Mostly
+      resolved already — unit/turret/shot/locomotion/building blueprints are now JSON
+      consumed by Rust via build.rs embedding; the .ts files in blueprints/ are
+      loaders, not data.)
+    FIX: migrate sim-relevant tables out of config.ts into JSON validated by a shared
+      schema; leave render-only constants for later.
+
+A10. [LOW] Optional-chaining that can silently no-op inside sim logic.
+    LOCATION: src/game/sim/commandExecution.ts:729
+      `(target.unit?.hp ?? target.building?.hp ?? 0) > 0`.
+    RULE: "Explicit Absence" — no ?. in our sim/server/prediction/networking code; use
+      T | null with explicit guards.
+    PROBLEM: this is essentially the ONLY risky case left — the rule is otherwise very
+      well honored (only ~2 ?. total across sim/server/network, ~6 field?: at
+      serialization/settings boundaries; core entity-state types have zero). Worth
+      tidying so absence is an explicit decision.
+    FIX: replace with explicit discriminated handling of unit vs building vs neither.
+
+
+================================================================================
+SECTION B — MEMORY LEAKS
+================================================================================
+(Overall cleanup discipline is strong: fixed-cap instanced pools with destroy(),
+balanced listeners/timers, per-id pruning, WebRTC teardown. Only the items below
+grow unbounded over a match.)
+
+B1. [MED] TurretMountCache3D.previous map never prunes dead entities.
+    LOCATION: src/game/render3d/TurretMountCache3D.ts:30 (previous map), written
+      :82-85; reset() at :37-39 clears only `current`. Owned by Render3DEntities
+      (:222), reset per-frame (:352). No prune() and no destroy().
+    LEAK: every distinct (entityId, turretIdx) ever written stays forever; dead
+      units' turret-mount history is never evicted. Grows with total turrets ever
+      spawned over a match.
+    FIX: add prune(seenIds) mirroring UnitBarrelSpinState3D.prune
+      (UnitBarrelSpinState3D.ts:89, called from Render3DEntities.ts:798) and call it
+      each frame against the live-entity set.
+
+B2. [LOW] HealthBar3D._seenEntityFrame grows per distinct entity id.
+    LOCATION: src/game/render3d/HealthBar3D.ts:129 (map), set :215,:247; only
+      .clear()'d on frame-token rollover :142-144 (~every 0x3fffffff frames ≈ 185
+      days @60fps).
+    LEAK: within-frame dedup map never deletes dead-entity entries; grows with all
+      distinct ids that ever rendered a bar. Entries tiny (number→number) so impact
+      is modest.
+    FIX: prune against the live-entity set, or clear() each frame.
+
+B3. [LOW] NameLabel3D._seenEntityFrame — same pattern as B2.
+    LOCATION: src/game/render3d/NameLabel3D.ts:110 (map), set :147; clear only on
+      token rollover :133-135.
+    FIX: same as B2.
+
+
+================================================================================
+SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
+================================================================================
+
+C1. [HIGH] Unit-vs-unit collision broadphase rebuilds a HashMap + bool-vec every
+    physics step.
+    LOCATION: rts-sim-wasm/src/lib.rs:955-976 (pool_resolve_sphere_sphere):
+      `let mut cells: HashMap<u64, Vec<u32>> = HashMap::new();` + `vec![false; count]`.
+      Called from PhysicsEngine3D.ts:893-921 every step.
+    RULE: "Do not allocate in per-frame loops"; use persistent spatial structures.
+    PROBLEM: at 5000 units with 2 solver iterations @60Hz this rebuilds a 5000-entry
+      HashMap (+ per-bucket Vecs + 5000-bool vec) ~120×/sec. PhysicsEngine3D.ts:685-690
+      notes this can trigger memory.grow(), which detaches all JS typed-array views and
+      forces a refreshViews() every step. The sibling cuboid resolver
+      (pool_resolve_sphere_cuboid_full, lib.rs:1405) already uses a persistent
+      EngineStatics.cells grid with a visit-stamp scheme and allocates nothing.
+    FIX: hoist the bucket grid + woke buffer into the persistent pool struct and
+      clear()/reuse, mirroring the cuboid path.
+
+C2. [MED] Client snapshot DECODE allocates fresh per-entity DTOs + nested literals
+    every snapshot.
+    LOCATION: snapshotEntityWirePack.ts:252,270 (new Array), :901-932 + :1010-1041
+      (createEmptyUnitSub + {x,y,z}/{x,y,z,w} literals per unit); entered from
+      snapshotWireCodec.ts:295.
+    RULE: "Pool snapshot DTOs"; "do not allocate in per-unit loops".
+    PROBLEM: the ENCODE side is exemplary (pooled PooledEntry + typed-array wire rows),
+      but the remote-client DECODE side allocates a fresh entity array plus per-unit
+      sub-object + velocity/orientation/angularVelocity3 literals — ~50k+ short-lived
+      objects/sec at 5000 units @10Hz, discarded after ClientSnapshotApplier consumes
+      them. (Host/local play skips this.)
+    FIX: pool the decode DTOs like the encode side.
+
+C3. [MED] unitRenderMode is a static config value ('rich') and never escalates to the
+    instanced path at scale.
+    LOCATION: src/playerClientGraphicsConfig.json:3 ("unitRenderMode":"rich");
+      consumed Render3DEntities.ts:420-443. The fully-instanced 'mass' path
+      (UnitMassInstanceRenderer3D) exists but is only used when config says so.
+    RULE: "Prefer instancing / LOD grids over per-unit scene-graph complexity."
+    PROBLEM: in 'rich' mode every unit gets a per-unit scene-graph group and
+      updateUnitMeshes does per-unit Map.get/set, quaternion composition, and
+      material-reassignment loops (:553-569) for all units every frame. (Chassis
+      spheres / turret heads / barrels ARE instanced, so this is CPU-per-unit
+      scene-graph + Map churn, not 5000 draw calls.) Nothing switches to 'mass'/
+      'hybrid' as count climbs toward 5000.
+    FIX: add automatic count-based render-mode escalation.
+
+C4. [MED] SpatialGrid readback allocates a new Uint32Array view per query.
+    LOCATION: src/game/sim/SpatialGrid.ts:244-247 (readScratch returns
+      `new Uint32Array(sim.memory.buffer, ...)`).
+    RULE: "Pool temp buffers"; "do not allocate in per-tick loops."
+    PROBLEM: every query (queryUnitsInRadius / queryEnemy* / queryEntitiesAlongLine,
+      used by projectile collision broadphase DamageSystem.ts:174,512,632,713,824,949,
+      targeting, capture) allocates a view wrapper — dozens-to-hundreds/tick. Views are
+      cheap (no copy) but still garbage.
+    FIX: cache the view and rebuild it only when sim.memory.buffer changes (the same
+      growth event PhysicsEngine3D already tracks for refreshViews).
+
+C5. [LOW] Per-unit JS↔WASM boundary crossing in the client prediction loop.
+    LOCATION: ClientPredictionStepper.ts:262-296 → ClientUnitPrediction.ts:186 →
+      unitMotionIntegration.ts:89 (sim.stepUnitMotion, one call per unit per frame
+      with a 6-element scratch marshal).
+    RULE: "TypeScript Coordinates, WASM Computes" — avoid per-unit boundary loops.
+    PROBLEM: the server batches integration via one poolStepIntegrate call, but the
+      client crosses the boundary once per predicted unit per frame (N crossings).
+    FIX: add a batched client prediction step kernel like the server's.
+
+C6. [LOW] Per-body terrain sampling crosses the WASM boundary once per body per tick.
+    LOCATION: PhysicsEngine3D.ts:765-805 (getGroundZ/getGroundNormal per body) →
+      terrainSurface.ts:91-94 (terrainGetSurfaceHeight/Normal per call).
+    RULE: "TypeScript Coordinates, WASM Computes" — batch boundary work.
+    PROBLEM: the integrate kernel is batched but ground sampling is N separate boundary
+      crossings per tick. The integrate kernel already takes pre-sampled arrays, so the
+      batch surface exists.
+    FIX: add a "sample ground for these slots" batch kernel.
+
+C7. [LOW] Fresh Map allocated per render frame in smoke-trail emission.
+    LOCATION: src/game/render3d/SmokeTrail3D.ts:300
+      (`const emittedByUse = new Map<...>()` inside update()).
+    FIX: hoist to an instance field and clear() each frame.
+
+C8. [LOW] Per-death debris template array + closure allocation.
+    LOCATION: src/game/render3d/Debris3D.ts:446 → buildTemplates :526-536 (fresh array,
+      one object literal per fragment, resolveColor closure per call).
+    PROBLEM: event-driven (per death), normally fine, but a mass-death moment spawns many
+      at once.
+    FIX: cache pose-independent templates per unitType; apply only live yaw/pitch.
+
+C9. [LOW] Full O(n) unit/building scans for selection (possibly dead code).
+    LOCATION: ClientViewState.ts:962-993 (findUnitAt/findBuildingAt), :995-1024
+      (findEntitiesInRect, allocates results[]).
+    RULE: "spatial indices instead of full-world scans for ... selection."
+    PROBLEM: input-driven (low frequency) and a grep found no in-tree callers — likely
+      dead/legacy. The only selection path that bypasses the spatial grid.
+    FIX: confirm dead and delete (Delete-Old-Path), or route through the spatial grid if
+      still used.
+
+
+================================================================================
+SECTION D — WATCH ITEMS (info, not yet actionable)
+================================================================================
+
+D1. [WATCH] @dimforge/rapier3d-compat (a 3D physics engine — banned category) is present
+    in node_modules as a transitive runtime dependency of @types/three. It is NOT
+    imported anywhere in src/ (grep clean), so it is dependency-tree pollution, not a
+    code violation — but a full physics engine ships in the lockfile and is one careless
+    import away from re-entering. Keep an eye on it; do not import it.
+
+
+================================================================================
+VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigate)
+================================================================================
+- No acceleration on the wire; PREDICT mode is POS/VEL only; no ACC option.
+- The four EMA channels (movement pos/vel, rotation pos/vel) are each applied to
+  ALL their documented fields (unit transform/velocity, beam point pos/vel, yaw
+  scalar + orientation quat + turret yaw/pitch, angularVelocity3 + turret rates,
+  force-field range visualizer).
+- Travelling projectiles snap on velocityUpdate events (no EMA target populated).
+- Delta thresholds: position uses absolute error, velocity uses relative; the
+  zero-velocity edge is sent; baseline = last value actually sent per recipient.
+- EntityType has Tower as a true peer of Unit/Building; fabricator is a tower, not a
+  building; pure-infra buildings carry no turrets/lock-on.
+- Lock-on exclusion lists use the exact documented field names and are honored
+  subtractively in targeting.
+- Airborne mount invariant (mount.y===0 && mount.z===0, no zResolver) is enforced and
+  throws at startup.
+- Rockets inherit the launch target and never re-acquire; lost target → ballistic.
+- Sensors are capability sources with fixed radii (not derived from weapon range).
+- Resource movement: every stockpile mutation funnels through ResourceMovementSystem
+  credit/debit; renderer drives one shared pylon rig for all resource visuals.
+- Selection panels are gated on entity TYPE capability flags, not per-blueprint buttons.
+- No banned libs (Phaser/Pixi/Matter/cannon/ammo) are imported anywhere in src/.
+- No legacy/old/_unused dirs or .old/.bak files in src/ or rts-sim-wasm/.
