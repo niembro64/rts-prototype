@@ -70,6 +70,19 @@ export class SpatialGrid {
     units: [], buildings: [],
   };
 
+  // Cached typed-array view over the WASM per-query scratch buffer
+  // (Rust `scratch_u32: Vec<u32>`). Rebuilt only when the view goes
+  // stale, which happens two ways: WASM linear memory grew (the old
+  // ArrayBuffer detaches and `sim.memory.buffer` identity changes —
+  // the same event PhysicsEngine3D tracks for refreshViews), or the
+  // scratch Vec reallocated to a larger capacity (its data pointer
+  // moves). Length is grown monotonically to the largest query seen,
+  // so after warmup every query reuses the same view with no
+  // allocation.
+  private _scratchView: Uint32Array | null = null;
+  private _scratchBuffer: ArrayBuffer | null = null;
+  private _scratchPtr: number = -1;
+
   constructor(cellSize: number = LAND_CELL_SIZE) {
     assertCanonicalLandCellSize('SpatialGrid cell size', cellSize);
     this.cellSize = CANONICAL_LAND_CELL_SIZE;
@@ -238,20 +251,31 @@ export class SpatialGrid {
 
   // ===================== Result readback helpers =====================
 
-  /** Construct a Uint32Array view over the WASM scratch buffer for
-   *  the just-completed query. The view is invalidated by the next
-   *  query call — caller consumes immediately. */
-  private readScratch(count: number): Uint32Array {
+  /** A Uint32Array view over the WASM scratch buffer that covers at
+   *  least the first `count` elements written by the just-completed
+   *  query. The returned view may be longer than `count` (it is sized
+   *  to the largest query seen so far); callers must only read indices
+   *  in `[0, count)`. The view is invalidated by the next query call —
+   *  consume immediately. */
+  private scratch(count: number): Uint32Array {
     const sim = getSimWasm()!;
-    return new Uint32Array(sim.memory.buffer, sim.spatial.scratchPtr(), count);
-  }
-
-  private resolveSlots(slots: Uint32Array, out: Entity[]): void {
-    out.length = 0;
-    for (let i = 0; i < slots.length; i++) {
-      const e = this.entityBySlot[slots[i]];
-      if (e) out.push(e);
+    const buffer = sim.memory.buffer;
+    const ptr = sim.spatial.scratchPtr();
+    const view = this._scratchView;
+    if (
+      view === null ||
+      this._scratchBuffer !== buffer ||
+      this._scratchPtr !== ptr ||
+      count > view.length
+    ) {
+      const len = view !== null && view.length > count ? view.length : count;
+      const next = new Uint32Array(buffer, ptr, len);
+      this._scratchView = next;
+      this._scratchBuffer = buffer;
+      this._scratchPtr = ptr;
+      return next;
     }
+    return view;
   }
 
   private resolveSlotsRange(slots: Uint32Array, start: number, end: number, out: Entity[]): void {
@@ -266,13 +290,13 @@ export class SpatialGrid {
 
   queryUnitsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     const count = this.api().queryUnitsInRadius(x, y, z, radius, 0, 0);
-    this.resolveSlots(this.readScratch(count), this.queryResultUnits);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultUnits);
     return this.queryResultUnits;
   }
 
   queryBuildingsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
     const count = this.api().queryBuildingsInRadius(x, y, z, radius, 0, 0);
-    this.resolveSlots(this.readScratch(count), this.queryResultBuildings);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultBuildings);
     return this.queryResultBuildings;
   }
 
@@ -280,7 +304,7 @@ export class SpatialGrid {
     x: number, y: number, z: number, radius: number,
   ): { units: Entity[]; buildings: Entity[] } {
     const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const nUnits = slots[0];
     const nBuildings = slots[1];
     this.resolveSlotsRange(slots, 2, 2 + nUnits, this.queryResultUnits);
@@ -294,7 +318,7 @@ export class SpatialGrid {
     minX: number, maxX: number, minY: number, maxY: number,
   ): { units: Entity[]; buildings: Entity[] } {
     const total = this.api().queryUnitsAndBuildingsInRect2D(minX, maxX, minY, maxY);
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const nUnits = slots[0];
     const nBuildings = slots[1];
     this.resolveSlotsRange(slots, 2, 2 + nUnits, this._rectResult.units);
@@ -304,13 +328,13 @@ export class SpatialGrid {
 
   queryEnemyUnitsInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     const count = this.api().queryEnemyUnitsInRadius(x, y, z, radius, excludePlayerId);
-    this.resolveSlots(this.readScratch(count), this.queryResultUnits);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultUnits);
     return this.queryResultUnits;
   }
 
   queryEnemyProjectilesInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     const count = this.api().queryEnemyProjectilesInRadius(x, y, z, radius, excludePlayerId);
-    this.resolveSlots(this.readScratch(count), this.queryResultProjectiles);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultProjectiles);
     return this.queryResultProjectiles;
   }
 
@@ -318,7 +342,7 @@ export class SpatialGrid {
     x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId,
   ): { units: Entity[]; projectiles: Entity[] } {
     const total = this.api().queryEnemyUnitsAndProjectilesInRadius(x, y, z, radius, excludePlayerId);
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const nUnits = slots[0];
     const nProjectiles = slots[1];
     this.resolveSlotsRange(slots, 2, 2 + nUnits, this.queryResultUnits);
@@ -330,7 +354,7 @@ export class SpatialGrid {
 
   queryEnemyEntitiesInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     const total = this.api().queryEnemyEntitiesInRadius(x, y, z, radius, excludePlayerId);
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const nUnits = slots[0];
     const nBuildings = slots[1];
     // Concatenate units + buildings into queryResultAll to match the
@@ -350,7 +374,7 @@ export class SpatialGrid {
     zMax: number = TERRAIN_MAX_RENDER_Y + this.cellSize * 2,
   ): Entity[] {
     const total = this.api().queryEnemyEntitiesInCircle2D(x, y, radius, excludePlayerId, zMin, zMax);
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const nUnits = slots[0];
     const nBuildings = slots[1];
     this.queryResultAll.length = 0;
@@ -367,7 +391,7 @@ export class SpatialGrid {
     lineWidth: number,
   ): Entity[] {
     const count = this.api().queryUnitsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
-    this.resolveSlots(this.readScratch(count), this.queryResultUnits);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultUnits);
     return this.queryResultUnits;
   }
 
@@ -377,7 +401,7 @@ export class SpatialGrid {
     lineWidth: number,
   ): Entity[] {
     const count = this.api().queryBuildingsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
-    this.resolveSlots(this.readScratch(count), this.queryResultBuildings);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultBuildings);
     return this.queryResultBuildings;
   }
 
@@ -387,7 +411,7 @@ export class SpatialGrid {
     lineWidth: number,
   ): { units: Entity[]; buildings: Entity[] } {
     const total = this.api().queryEntitiesAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const nUnits = slots[0];
     const nBuildings = slots[1];
     this.resolveSlotsRange(slots, 2, 2 + nUnits, this.queryResultUnits);
@@ -407,7 +431,7 @@ export class SpatialGrid {
    *  store the reference. */
   getOccupiedCells(): { cell: { x: number; y: number; z: number }; players: number[] }[] {
     const total = this.api().queryOccupiedCellsDebug();
-    const slots = this.readScratch(total);
+    const slots = this.scratch(total);
     const result: { cell: { x: number; y: number; z: number }; players: number[] }[] = [];
     if (total === 0) return result;
     const nCells = slots[0];
