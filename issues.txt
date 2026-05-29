@@ -37,15 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C6. [LOW] Per-body terrain sampling crosses the WASM boundary once per body per tick.
-    LOCATION: PhysicsEngine3D.ts:765-805 (getGroundZ/getGroundNormal per body) →
-      terrainSurface.ts:91-94 (terrainGetSurfaceHeight/Normal per call).
-    RULE: "TypeScript Coordinates, WASM Computes" — batch boundary work.
-    PROBLEM: the integrate kernel is batched but ground sampling is N separate boundary
-      crossings per tick. The integrate kernel already takes pre-sampled arrays, so the
-      batch surface exists.
-    FIX: add a "sample ground for these slots" batch kernel.
-
 C9. [MED] Need an output-stability harness before deeper terrain-generation rewrites.
     LOCATION: terrain/deposit generation pipeline:
       src/metalDepositConfig.ts, src/game/sim/terrain/terrainTileMap.ts,

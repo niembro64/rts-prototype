@@ -2654,6 +2654,12 @@ type TerrainTriangleSample = (
     f64, // c
 );
 
+#[inline]
+fn terrain_height_from_triangle_sample(sample: TerrainTriangleSample) -> f64 {
+    let (wa, wb, wc, _, _, ah, _, _, bh, _, _, ch) = sample;
+    wa * ah + wb * bh + wc * ch
+}
+
 fn terrain_triangle_sample_at(
     t: &TerrainGrid,
     px: f64,
@@ -2754,10 +2760,7 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
     }
     let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
     match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
-        Some((wa, wb, wc, _, _, ah, _, _, bh, _, _, ch)) => {
-            let h = wa * ah + wb * bh + wc * ch;
-            h.max(TERRAIN_WATER_LEVEL)
-        }
+        Some(sample) => terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL),
         None => f64::NAN,
     }
 }
@@ -2806,10 +2809,8 @@ pub fn terrain_has_line_of_sight(
         // produces a degenerate sample (no triangle found) which
         // we treat as "no blocker" (height = -inf → never blocks).
         let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
-        if let Some((wa, wb, wc, _, _, ah, _, _, bh, _, _, ch)) =
-            terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)
-        {
-            let h = (wa * ah + wb * bh + wc * ch).max(TERRAIN_WATER_LEVEL);
+        if let Some(sample) = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+            let h = terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL);
             if h > ray_z {
                 return 0;
             }
@@ -2923,16 +2924,11 @@ pub fn fog_mark_circle_scanline_rgba(
     )
 }
 
-fn terrain_surface_normal_at(t: &TerrainGrid, x: f64, z: f64) -> Option<(f64, f64, f64)> {
-    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
-    let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
-        Some(s) => s,
-        None => return None,
-    };
-    let (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
-    let h0 = wa * ah + wb * bh + wc * ch;
+fn terrain_normal_from_triangle_sample(sample: TerrainTriangleSample) -> (f64, f64, f64) {
+    let (_, _, _, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
+    let h0 = terrain_height_from_triangle_sample(sample);
     if h0 < TERRAIN_WATER_LEVEL {
-        return Some((0.0, 0.0, 1.0));
+        return (0.0, 0.0, 1.0);
     }
     // Triangle-plane normal — same math as terrainMeshNormalFromSample.
     let ux = bx - ax;
@@ -2952,7 +2948,16 @@ fn terrain_surface_normal_at(t: &TerrainGrid, x: f64, z: f64) -> Option<(f64, f6
     let len_sq = nx * nx + vertical * vertical + nz * nz;
     let len = if len_sq > 0.0 { len_sq.sqrt() } else { 1.0 };
     // Match terrainMeshNormalFromSample's return shape: { nx, ny: nz, nz: vertical }.
-    Some((nx / len, nz / len, vertical / len))
+    (nx / len, nz / len, vertical / len)
+}
+
+fn terrain_surface_normal_at(t: &TerrainGrid, x: f64, z: f64) -> Option<(f64, f64, f64)> {
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+        Some(s) => s,
+        None => return None,
+    };
+    Some(terrain_normal_from_triangle_sample(sample))
 }
 
 /// Sample terrain surface normal at world-space (x, z). Writes
@@ -2976,6 +2981,59 @@ pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
     out_buf[0] = nx;
     out_buf[1] = ny;
     out_buf[2] = nz;
+    1
+}
+
+/// Batch terrain ground samples for pool-backed dynamic body slots.
+/// Writes `ground_z_out[i]` and `ground_normals_out[i * 3..i * 3 + 3]`
+/// for each `body_slots[i]`, using the body's current pool position
+/// and ground offset. Normals are only computed for slots at or near
+/// contact, preserving the JS integrator's "skip normal while airborne"
+/// rule. Returns 1 on a complete WASM sample; returns 0 if no terrain
+/// mesh is installed, a slot is invalid, or any triangle sample
+/// degenerates so JS can fall back to the compatibility sampler.
+#[wasm_bindgen]
+pub fn terrain_sample_ground_for_slots(
+    body_slots: &[u32],
+    ground_z_out: &mut [f64],
+    ground_normals_out: &mut [f64],
+) -> u32 {
+    let count = body_slots.len();
+    debug_assert!(ground_z_out.len() >= count);
+    debug_assert!(ground_normals_out.len() >= 3 * count);
+
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+    let p = pool();
+    for i in 0..count {
+        let slot = body_slots[i] as usize;
+        if slot >= POOL_CAPACITY_USIZE || p.flags[slot] & BODY_FLAG_OCCUPIED == 0 {
+            return 0;
+        }
+
+        let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, p.pos_x[slot], p.pos_y[slot]);
+        let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+            Some(s) => s,
+            None => return 0,
+        };
+        let ground_z = terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL);
+        ground_z_out[i] = ground_z;
+
+        let base = i * 3;
+        let penetration = ground_z - (p.pos_z[slot] - p.ground_offset[slot]);
+        if is_in_contact(penetration) {
+            let (nx, ny, nz) = terrain_normal_from_triangle_sample(sample);
+            ground_normals_out[base] = nx;
+            ground_normals_out[base + 1] = ny;
+            ground_normals_out[base + 2] = nz;
+        } else {
+            ground_normals_out[base] = 0.0;
+            ground_normals_out[base + 1] = 0.0;
+            ground_normals_out[base + 2] = 1.0;
+        }
+    }
     1
 }
 

@@ -50,6 +50,7 @@ import __wbg_init, {
   terrain_is_installed,
   terrain_get_surface_height,
   terrain_get_surface_normal,
+  terrain_sample_ground_for_slots,
   terrain_has_line_of_sight,
   fog_mark_circle_scanline,
   fog_mark_circle_scanline_rgba,
@@ -685,6 +686,17 @@ export interface SimWasm {
    *  mesh is installed or the triangle walk fails. Below-water
    *  samples return (0, 0, 1) — flat water surface normal. */
   readonly terrainGetSurfaceNormal: (x: number, z: number, out: Float64Array) => number;
+  /** Batch terrain ground sampling for pool-backed body slots.
+   *  Writes groundZ[i] and groundNormals[i * 3..i * 3 + 3] for
+   *  each awake body slot, using body positions from the WASM
+   *  BodyPool. Normals are only computed for near-ground slots.
+   *  Returns 1 on complete WASM sampling, 0 when JS should fall
+   *  back to the compatibility terrain sampler. */
+  readonly terrainSampleGroundForSlots: (
+    bodySlots: Uint32Array,
+    groundZ: Float64Array,
+    groundNormals: Float64Array,
+  ) => number;
   /** Phase 6c — segment-vs-terrain line-of-sight test. Returns:
    *    0 = ground blocks the ray
    *    1 = segment clears terrain end to end
@@ -2704,6 +2716,7 @@ export function initSimWasm(): Promise<SimWasm> {
         terrainIsInstalled: terrain_is_installed,
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
+        terrainSampleGroundForSlots: terrain_sample_ground_for_slots,
         terrainHasLineOfSight: terrain_has_line_of_sight,
         fogMarkCircleScanline: fog_mark_circle_scanline,
         fogMarkCircleScanlineRgba: fog_mark_circle_scanline_rgba,

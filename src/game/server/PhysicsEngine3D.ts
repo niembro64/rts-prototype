@@ -79,9 +79,9 @@ const DEFAULT_APPLY_FORCE_OPTIONS: ApplyForceOptions = {
 
 // Phase 3d-2 scratch buffers. Body state lives in the WASM-side
 // BodyPool, so per-tick marshalling shrinks to: a Uint32Array of
-// active slot ids + per-body pre-sampled ground state (terrain
-// stays JS-side until Phase 8) + a Uint32Array sized to the active
-// count for sleep / wake transitions written out by the kernel.
+// active slot ids + batched ground sample output + a Uint32Array
+// sized to the active count for sleep / wake transitions written
+// out by the kernel.
 // All grown on demand; never shrunk to avoid per-tick allocation
 // churn. Single module-scope set is safe because step() is never
 // called re-entrantly within one JS turn.
@@ -726,6 +726,31 @@ export class PhysicsEngine3D {
     }
   }
 
+  private sampleIntegrationGroundFallback(count: number): void {
+    for (let i = 0; i < count; i++) {
+      const slot = _integrateAwakeSlots[i];
+      const b = this.bodyBySlot[slot];
+      if (b === undefined) {
+        throw new Error(`PhysicsEngine3D missing body for slot ${slot}`);
+      }
+      const groundZ = this.getGroundZ(b.x, b.y);
+      const penetration = groundZ - (b.z - b.groundOffset);
+      let nx = 0;
+      let ny = 0;
+      let nz = 1;
+      if (penetration >= -UNIT_GROUND_CONTACT_EPSILON) {
+        const n = this.getGroundNormal(b.x, b.y);
+        nx = n.nx;
+        ny = n.ny;
+        nz = n.nz;
+      }
+      _integrateGroundZ[i] = groundZ;
+      _integrateGroundNormals[i * 3] = nx;
+      _integrateGroundNormals[i * 3 + 1] = ny;
+      _integrateGroundNormals[i * 3 + 2] = nz;
+    }
+  }
+
   /** Explicit-Euler integration with a soft terrain contact model.
    *  Every dynamic unit follows the same path:
    *
@@ -742,8 +767,9 @@ export class PhysicsEngine3D {
    *  Phase 3d-2: state lives in the BodyPool, integration runs in
    *  one Rust/WASM call (`pool_step_integrate`) reading body fields
    *  by slot index. Per-tick boundary traffic is just the awake-
-   *  slot list + pre-sampled ground state + a sleep-transition
-   *  output buffer; no per-body Body3D field marshal.
+   *  slot list + one batched terrain sample call + a sleep-
+   *  transition output buffer; no per-body Body3D field marshal
+   *  and no per-body terrain boundary crossing.
    *
    *  Non-sphere dynamic bodies (none exist today but the path is
    *  defensive) still run free-Euler inline JS-side. */
@@ -782,25 +808,7 @@ export class PhysicsEngine3D {
         b.z += b.vz * dtSec;
         continue;
       }
-      // Pre-sample ground state JS-side. Normal sample is gated on
-      // penetration so airborne bodies skip the expensive gradient
-      // lookup (same optimization as Phase 2's per-body path).
-      const groundZ = this.getGroundZ(b.x, b.y);
-      const penetration = groundZ - (b.z - b.groundOffset);
-      let nx = 0;
-      let ny = 0;
-      let nz = 1;
-      if (penetration >= -UNIT_GROUND_CONTACT_EPSILON) {
-        const n = this.getGroundNormal(b.x, b.y);
-        nx = n.nx;
-        ny = n.ny;
-        nz = n.nz;
-      }
       _integrateAwakeSlots[count] = b.slot;
-      _integrateGroundZ[count] = groundZ;
-      _integrateGroundNormals[count * 3] = nx;
-      _integrateGroundNormals[count * 3 + 1] = ny;
-      _integrateGroundNormals[count * 3 + 2] = nz;
       count++;
     }
     if (count === 0) return;
@@ -811,6 +819,15 @@ export class PhysicsEngine3D {
     const groundZView = _integrateGroundZ.subarray(0, count);
     const groundNormalsView = _integrateGroundNormals.subarray(0, count * 3);
     const transitionsView = _integrateSleepTransitions.subarray(0, count);
+    const groundSampled =
+      sim.terrainSampleGroundForSlots(
+        slotsView,
+        groundZView,
+        groundNormalsView,
+      ) !== 0;
+    if (!groundSampled) {
+      this.sampleIntegrationGroundFallback(count);
+    }
     const transitionCount = sim.poolStepIntegrate(
       slotsView,
       groundZView,
