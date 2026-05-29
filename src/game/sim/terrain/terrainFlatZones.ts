@@ -57,6 +57,10 @@ export function setMetalDepositFlatZones(
   if (invalidate) invalidateTerrainConfig();
 }
 
+export function getMetalDepositFlatZones(): readonly TerrainFlatZone[] {
+  return depositFlatZones;
+}
+
 function getDepositFlatZoneCandidates(
   x: number,
   y: number,

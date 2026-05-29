@@ -56,6 +56,7 @@ import __wbg_init, {
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_sample_ground_for_slots,
+  terrain_bake_buildability_grid,
   terrain_has_line_of_sight,
   fog_mark_circle_scanline,
   fog_mark_circle_scanline_rgba,
@@ -729,6 +730,20 @@ export interface SimWasm {
     bodySlots: Uint32Array,
     groundZ: Float64Array,
     groundNormals: Float64Array,
+  ) => number;
+  /** C16 — bake the static terrain-buildability grid from the
+   *  installed authoritative terrain mesh. TypeScript supplies
+   *  config scalars + flat-zone rows and assembles the public object. */
+  readonly terrainBakeBuildabilityGrid: (
+    mapWidth: number,
+    mapHeight: number,
+    buildCellSize: number,
+    terrainDTerrain: number,
+    shelfHeightTolerance: number,
+    minNormalUp: number,
+    flatZones: Float64Array,
+    flagsOut: Uint8Array,
+    levelsOut: Int32Array,
   ) => number;
   /** Phase 6c — segment-vs-terrain line-of-sight test. Returns:
    *    0 = ground blocks the ray
@@ -2756,6 +2771,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainSampleGroundForSlots: terrain_sample_ground_for_slots,
+        terrainBakeBuildabilityGrid: terrain_bake_buildability_grid,
         terrainHasLineOfSight: terrain_has_line_of_sight,
         fogMarkCircleScanline: fog_mark_circle_scanline,
         fogMarkCircleScanlineRgba: fog_mark_circle_scanline_rgba,

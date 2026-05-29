@@ -3510,6 +3510,179 @@ pub fn terrain_sample_ground_for_slots(
     1
 }
 
+const TERRAIN_FLAT_ZONE_STRIDE: usize = 4;
+
+#[inline]
+fn terrain_flat_zone_height_at(flat_zones: &[f64], x: f64, y: f64) -> Option<f64> {
+    let zone_count = flat_zones.len() / TERRAIN_FLAT_ZONE_STRIDE;
+    for i in 0..zone_count {
+        let base = i * TERRAIN_FLAT_ZONE_STRIDE;
+        let zx = flat_zones[base];
+        let zy = flat_zones[base + 1];
+        let radius = flat_zones[base + 2];
+        let height = flat_zones[base + 3];
+        let dx = x - zx;
+        let dy = y - zy;
+        if dx * dx + dy * dy <= radius * radius {
+            return Some(height);
+        }
+    }
+    None
+}
+
+#[inline]
+fn terrain_js_round_to_i32(value: f64) -> i32 {
+    (value + 0.5).floor() as i32
+}
+
+#[inline]
+fn terrain_plateau_level_for_height(
+    height: f64,
+    d_terrain: f64,
+    shelf_height_tolerance: f64,
+) -> Option<i32> {
+    if d_terrain <= 0.0 {
+        return Some(0);
+    }
+    let level = terrain_js_round_to_i32(height / d_terrain);
+    if (height - level as f64 * d_terrain).abs() <= shelf_height_tolerance {
+        Some(level)
+    } else {
+        None
+    }
+}
+
+fn terrain_sample_buildability(
+    t: &TerrainGrid,
+    flat_zones: &[f64],
+    x: f64,
+    y: f64,
+    d_terrain: f64,
+    shelf_height_tolerance: f64,
+) -> Option<(bool, f64, Option<i32>)> {
+    let flat_height = terrain_flat_zone_height_at(flat_zones, x, y);
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, y);
+    let sample = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)?;
+    let mesh_height = terrain_height_from_triangle_sample(sample);
+    let height = flat_height.unwrap_or(mesh_height);
+    if height < TERRAIN_WATER_LEVEL {
+        return Some((true, 1.0, None));
+    }
+    let (_, _, normal_up) = terrain_normal_from_triangle_sample(sample);
+    Some((
+        false,
+        normal_up,
+        terrain_plateau_level_for_height(height, d_terrain, shelf_height_tolerance),
+    ))
+}
+
+fn terrain_evaluate_buildability_footprint(
+    t: &TerrainGrid,
+    flat_zones: &[f64],
+    center_x: f64,
+    center_y: f64,
+    half_width: f64,
+    half_depth: f64,
+    d_terrain: f64,
+    shelf_height_tolerance: f64,
+    min_normal_up: f64,
+) -> Option<(bool, i32)> {
+    let rx = (half_width - 1.0).max(0.0);
+    let ry = (half_depth - 1.0).max(0.0);
+    let samples = [
+        (center_x, center_y),
+        (center_x - rx, center_y - ry),
+        (center_x + rx, center_y - ry),
+        (center_x - rx, center_y + ry),
+        (center_x + rx, center_y + ry),
+        (center_x, center_y - ry),
+        (center_x, center_y + ry),
+        (center_x - rx, center_y),
+        (center_x + rx, center_y),
+    ];
+
+    let mut footprint_level: Option<i32> = None;
+    for (sx, sy) in samples {
+        let (water, normal_up, plateau_level) =
+            terrain_sample_buildability(t, flat_zones, sx, sy, d_terrain, shelf_height_tolerance)?;
+        if water || normal_up < min_normal_up {
+            return Some((false, 0));
+        }
+        let level = match plateau_level {
+            Some(level) => level,
+            None => return Some((false, 0)),
+        };
+        match footprint_level {
+            Some(existing) if existing != level => return Some((false, 0)),
+            Some(_) => {}
+            None => footprint_level = Some(level),
+        }
+    }
+
+    Some((true, footprint_level.unwrap_or(0)))
+}
+
+/// Bake the static terrain-buildability grid from the installed terrain
+/// mesh. Returns 1 when `flags_out` and `levels_out` are complete; returns
+/// 0 when JS should fall back to the compatibility baker.
+#[wasm_bindgen]
+pub fn terrain_bake_buildability_grid(
+    map_width: f64,
+    map_height: f64,
+    build_cell_size: f64,
+    d_terrain: f64,
+    shelf_height_tolerance: f64,
+    min_normal_up: f64,
+    flat_zones: &[f64],
+    flags_out: &mut [u8],
+    levels_out: &mut [i32],
+) -> u32 {
+    let t = terrain_grid();
+    if !t.installed
+        || !map_width.is_finite()
+        || !map_height.is_finite()
+        || !build_cell_size.is_finite()
+        || build_cell_size <= 0.0
+        || flat_zones.len() % TERRAIN_FLAT_ZONE_STRIDE != 0
+    {
+        return 0;
+    }
+
+    let cells_x = (map_width / build_cell_size).ceil().max(1.0) as usize;
+    let cells_y = (map_height / build_cell_size).ceil().max(1.0) as usize;
+    let count = cells_x.saturating_mul(cells_y);
+    if flags_out.len() < count || levels_out.len() < count {
+        return 0;
+    }
+
+    let half = build_cell_size * 0.5;
+    for gy in 0..cells_y {
+        for gx in 0..cells_x {
+            let x = gx as f64 * build_cell_size + half;
+            let y = gy as f64 * build_cell_size + half;
+            let (buildable, level) = match terrain_evaluate_buildability_footprint(
+                t,
+                flat_zones,
+                x,
+                y,
+                half,
+                half,
+                d_terrain,
+                shelf_height_tolerance,
+                min_normal_up,
+            ) {
+                Some(result) => result,
+                None => return 0,
+            };
+            let index = gy * cells_x + gx;
+            flags_out[index] = if buildable { 1 } else { 0 };
+            levels_out[index] = if buildable { level } else { 0 };
+        }
+    }
+
+    1
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Phase 7 — SpatialGrid: 3D voxel hash in WASM linear memory
 //

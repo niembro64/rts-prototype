@@ -3,10 +3,13 @@ import { BUILD_CONFIG } from '../../../buildConfig';
 import { assertCanonicalLandCellSize } from '../../landGrid';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
+import { getSimWasm } from '../../sim-wasm/init';
 import { TERRAIN_D_TERRAIN, TERRAIN_PLATEAU_CONFIG, WATER_LEVEL } from './terrainConfig';
-import { findDepositFlatZoneAt } from './terrainFlatZones';
+import { findDepositFlatZoneAt, getMetalDepositFlatZones } from './terrainFlatZones';
 import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
 import { getTerrainVersion } from './terrainState';
+
+const TERRAIN_FLAT_ZONE_WASM_STRIDE = 4;
 
 export function getTerrainBuildabilityConfigKey(): string {
   // TERRAIN_D_TERRAIN doubles as the on/off signal — `0` is the
@@ -208,6 +211,15 @@ export function buildTerrainBuildabilityGrid(
 ): TerrainBuildabilityGrid {
   const cellsX = Math.max(1, Math.ceil(mapWidth / cellSize));
   const cellsY = Math.max(1, Math.ceil(mapHeight / cellSize));
+  const wasmGrid = buildTerrainBuildabilityGridFromWasm(
+    mapWidth,
+    mapHeight,
+    cellSize,
+    cellsX,
+    cellsY,
+  );
+  if (wasmGrid !== null) return wasmGrid;
+
   const flags = new Array<number>(cellsX * cellsY);
   const levels = new Array<number>(cellsX * cellsY);
   const sampleCache = new Map<string, BuildabilityTerrainSample>();
@@ -263,4 +275,56 @@ export function buildTerrainBuildabilityGrid(
     flags,
     levels,
   };
+}
+
+function buildTerrainBuildabilityGridFromWasm(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number,
+  cellsX: number,
+  cellsY: number,
+): TerrainBuildabilityGrid | null {
+  const sim = getSimWasm();
+  if (sim === undefined || sim.terrainIsInstalled() === 0) return null;
+
+  const flags = new Uint8Array(cellsX * cellsY);
+  const levels = new Int32Array(cellsX * cellsY);
+  const ok = sim.terrainBakeBuildabilityGrid(
+    mapWidth,
+    mapHeight,
+    cellSize,
+    TERRAIN_D_TERRAIN,
+    TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
+    BUILD_CONFIG.minBuildableSurfaceNormalUp,
+    packTerrainFlatZoneRowsForWasm(),
+    flags,
+    levels,
+  );
+  if (ok === 0) return null;
+
+  return {
+    mapWidth,
+    mapHeight,
+    cellSize,
+    cellsX,
+    cellsY,
+    version: getTerrainVersion(),
+    configKey: getTerrainBuildabilityConfigKey(),
+    flags: Array.from(flags),
+    levels: Array.from(levels),
+  };
+}
+
+function packTerrainFlatZoneRowsForWasm(): Float64Array {
+  const zones = getMetalDepositFlatZones();
+  const rows = new Float64Array(zones.length * TERRAIN_FLAT_ZONE_WASM_STRIDE);
+  for (let i = 0; i < zones.length; i++) {
+    const zone = zones[i];
+    const base = i * TERRAIN_FLAT_ZONE_WASM_STRIDE;
+    rows[base] = zone.x;
+    rows[base + 1] = zone.y;
+    rows[base + 2] = zone.radius;
+    rows[base + 3] = zone.height;
+  }
+  return rows;
 }
