@@ -13,8 +13,8 @@
     "amount": 0.5
   },
   "waterFullyOpaque": false,
-  "terrainCirclePerimeterEdgeFraction": 0.4,
-  "terrainCirclePerimeterTransitionWidthFraction": 0.1,
+  "terrainCircleIslandRadiusFraction": 0.4,
+  "terrainCircleShorelineWidthFraction": 0.1,
   "terrainGenerationEdgeTransitionWidthFraction": 0.04,
   "plateau": {
     "shelfFractionOfStep": 0.99,

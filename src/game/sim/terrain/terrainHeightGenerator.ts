@@ -1,6 +1,6 @@
 import {
-  TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
-  TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION,
+  TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
+  TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION,
   TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
   TERRAIN_D_TERRAIN,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
@@ -74,7 +74,7 @@ function getTerrainCircleEndRadiusForMinDim(minDim: number): number {
     1,
     Math.min(
       maxEndRadius,
-      minDim * TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
+      minDim * TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
     ),
   );
 }
@@ -85,7 +85,7 @@ function getTerrainCircleStartRadiusForMinDim(
 ): number {
   const maxWidth = Math.max(0, endRadius - 1);
   const desiredWidth =
-    minDim * Math.max(0, TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION);
+    minDim * Math.max(0, TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION);
   const width = Math.min(maxWidth, desiredWidth);
   return Math.max(0, endRadius - width);
 }

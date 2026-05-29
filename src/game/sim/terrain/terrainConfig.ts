@@ -142,10 +142,21 @@ export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
  *  lattice. */
 export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
 
-export const TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION =
-  terrainConfig.terrainCirclePerimeterEdgeFraction;
-export const TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION =
-  terrainConfig.terrainCirclePerimeterTransitionWidthFraction;
+/** Round-island TERRAIN GENERATION shape (sim authority, circle maps only):
+ *  the fraction of the map's smaller dimension at which the land has fully
+ *  descended to the seabed floor (`TILE_FLOOR_Y`). Drives the height falloff
+ *  in `getTerrainMapBoundaryFade` and the matching Rust sampler. This is NOT
+ *  a coloring knob — the renderer's outer-ring color/fade is configured
+ *  separately by `terrainHorizonBlend` in worldRenderConfig.json and
+ *  `COLORS.world.terrain.horizonBlend`; the horizon blend merely reads this
+ *  generation boundary so the color seam tracks the land→seabed handoff. */
+export const TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION =
+  terrainConfig.terrainCircleIslandRadiusFraction;
+/** Width (fraction of min dimension) of the shoreline falloff band just
+ *  inside `TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION` over which land ramps down
+ *  to the seabed. Generation shape, not coloring. */
+export const TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION =
+  terrainConfig.terrainCircleShorelineWidthFraction;
 
 /** The terrain height outside the round island. Keep this at the world floor:
  *  water is a separate plane above it, so the island edge visibly descends
