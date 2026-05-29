@@ -37,17 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C14. [MED] Buildability-grid generation repeats neighboring terrain samples.
-    LOCATION: src/game/sim/terrain/terrainBuildability.ts:
-      buildTerrainBuildabilityGrid -> evaluateBuildabilityFootprint -> isWaterAt /
-      getTerrainMeshNormal / getTerrainPlateauLevelAt.
-    PROBLEM: every build-grid cell samples nine footprint points, and adjacent cells
-      re-query many of the same height/normal/plateau/water results. This happens right
-      after terrain generation and scales with map area.
-    FIX: cache mesh height/normal/water/plateau samples per build-grid sample point for
-      the duration of buildTerrainBuildabilityGrid, then evaluate footprints from that
-      cache.
-
 C15. [LOW] Metal-deposit resource-footprint growth still scans the full frontier every
     selected cell.
     LOCATION: src/metalDepositConfig.ts: growMetalDepositResourceCells.
