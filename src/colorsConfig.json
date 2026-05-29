@@ -49,15 +49,19 @@
       "ground": {
         "baseColorHex": "#222b1a",
         "texture": {
-          "blend": 0.5,
+          "sourceFile": "src/game/render3d/GroundDetailTexture.ts",
+          "resolution": 4096,
+          "blend": 0.2,
           "tileWorldSize": 512
         }
       },
       "rock": {
         "baseColorHex": "#38362f",
         "texture": {
+          "sourceFile": "src/game/render3d/RockDetailTexture.ts",
+          "resolution": 8192,
           "blend": 0.1,
-          "tileWorldSize": 4000
+          "tileWorldSize": 10000
         },
         "shadePaletteRgb": [
           "#36322b",
@@ -142,11 +146,11 @@
     },
     "metalDeposit": {
       "baseColorHex": "#272b2e",
-      "darkColorHex": "#111416",
-      "lightColorHex": "#6f7678",
       "rockTexture": {
-        "blend": 1,
-        "tileWorldSize": 1300
+        "sourceFile": "src/game/render3d/RockDetailTexture.ts",
+        "resolution": 8192,
+        "blend": 1.0,
+        "tileWorldSize": 2000
       },
       "lambertMaterial": {
         "colorHex": "#ffffff",

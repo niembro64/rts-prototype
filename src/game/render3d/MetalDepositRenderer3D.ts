@@ -26,8 +26,6 @@ const DEPOSIT_BOUNDARY_SMOOTH_PASSES = 2;
 const DEPOSIT_VISUAL_MARGIN = BUILD_GRID_CELL_SIZE * 0.16;
 
 const DEPOSIT_BASE = new THREE.Color(COLORS.environment.metalDeposit.baseColorHex);
-const DEPOSIT_DARK = new THREE.Color(COLORS.environment.metalDeposit.darkColorHex);
-const DEPOSIT_LIGHT = new THREE.Color(COLORS.environment.metalDeposit.lightColorHex);
 export class MetalDepositRenderer3D {
   private group: THREE.Group;
   private clusters: ReadonlyArray<MetalDepositVisualCluster>;
@@ -368,7 +366,7 @@ function makeDepositCoinGeometry(
     const p = outline[i];
     positions.push(p.x, visibleHeight, p.z);
     pushDepositUv(uvs, p.x, p.z, seed);
-    pushDepositColor(colors, seed, 1000 + i, 0.7 + seededNoise(seed * 521 + i * 31) * 0.18);
+    pushDepositColor(colors);
   }
 
   const groundStart = positions.length / 3;
@@ -376,7 +374,7 @@ function makeDepositCoinGeometry(
     const p = outline[i];
     positions.push(p.x, 0, p.z);
     pushDepositUv(uvs, p.x, p.z, seed);
-    pushDepositColor(colors, seed, 1500 + i, 0.45 + seededNoise(seed * 467 + i * 23) * 0.2);
+    pushDepositColor(colors);
   }
 
   const contour = outline.map((p) => new THREE.Vector2(p.x, p.z));
@@ -636,10 +634,6 @@ function pushDepositUv(uvs: number[], x: number, z: number, seed: number): void 
   );
 }
 
-function pushDepositColor(colors: number[], seed: number, idx: number, height01: number): void {
-  const spot = seededNoise(seed * 719 + idx * 37);
-  const baseMix = 0.18 + Math.max(0, Math.min(1, height01)) * 0.36;
-  const target = spot < 0.28 ? DEPOSIT_DARK : spot > 0.72 ? DEPOSIT_LIGHT : DEPOSIT_BASE;
-  const color = DEPOSIT_BASE.clone().lerp(target, spot < 0.28 || spot > 0.72 ? 0.82 : baseMix);
-  colors.push(color.r, color.g, color.b);
+function pushDepositColor(colors: number[]): void {
+  colors.push(DEPOSIT_BASE.r, DEPOSIT_BASE.g, DEPOSIT_BASE.b);
 }

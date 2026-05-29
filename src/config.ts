@@ -537,6 +537,19 @@ function readPositiveConfigNumber(value: unknown, fieldName: string): number {
   return value;
 }
 
+function readTextureResolutionConfig(value: unknown, fieldName: string): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 256 ||
+    value > 8192 ||
+    (value & (value - 1)) !== 0
+  ) {
+    throw new Error(`${fieldName} must be a power-of-two integer from 256 to 8192`);
+  }
+  return value;
+}
+
 /** The base color flat green ground gets pulled toward before the detail
  *  texture is applied. Defaults to the spruce leaf color so that grass clumps
  *  and tree foliage sit on a matching-color ground patch instead of standing
@@ -557,6 +570,10 @@ export const TERRAIN_GROUND_DETAIL_CONTRAST = readUnitIntervalConfig(
 export const TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
   COLORS.world.terrain.ground.texture.tileWorldSize,
   'colorsConfig.world.terrain.ground.texture.tileWorldSize',
+);
+export const TERRAIN_GROUND_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  COLORS.world.terrain.ground.texture.resolution,
+  'colorsConfig.world.terrain.ground.texture.resolution',
 );
 
 /** World-Y distance from the 0-height plane where the ground detail (the
@@ -607,6 +624,10 @@ export const TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
   COLORS.world.terrain.rock.texture.tileWorldSize,
   'colorsConfig.world.terrain.rock.texture.tileWorldSize',
 );
+export const TERRAIN_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  COLORS.world.terrain.rock.texture.resolution,
+  'colorsConfig.world.terrain.rock.texture.resolution',
+);
 
 /** Metal deposits reuse the rock detail texture, but their mesh material can
  *  blend the texture against the per-vertex ore colors independently from the
@@ -619,6 +640,16 @@ export const METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumb
   COLORS.environment.metalDeposit.rockTexture.tileWorldSize,
   'colorsConfig.environment.metalDeposit.rockTexture.tileWorldSize',
 );
+export const METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+  COLORS.environment.metalDeposit.rockTexture.resolution,
+  'colorsConfig.environment.metalDeposit.rockTexture.resolution',
+);
+if (METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION !== TERRAIN_ROCK_TEXTURE_RESOLUTION) {
+  throw new Error(
+    'colorsConfig.environment.metalDeposit.rockTexture.resolution must match ' +
+      'colorsConfig.world.terrain.rock.texture.resolution because both use RockDetailTexture.ts',
+  );
+}
 
 /** How strongly the procedural tree-leaf / tree-trunk textures override the
  *  prop's solid base color, in [0, 1]. 0 = pure base color (the original

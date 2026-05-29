@@ -15,12 +15,17 @@ import {
   FOREST_SPRUCE2_LEAF_COLOR,
   FOREST_SPRUCE2_WOOD_COLOR,
   TERRAIN_GROUND_BASE_COLOR,
+  TERRAIN_GROUND_TEXTURE_RESOLUTION,
 } from '../../config';
 
 // Texture resolution in pixels (square). Power of two for clean mipmaps.
-// 4096², 64 MB GPU memory. Terrain repetition scale comes from
+// This changes only pixel density inside the same world-space tile. It does
+// not change how much terrain one tile covers; that remains tileWorldSize.
+// Terrain repetition scale comes from
 // colorsConfig.world.terrain.ground.texture.tileWorldSize.
-export const GROUND_DETAIL_TEXTURE_PIXELS = 4096;
+const BASE_TEXTURE_PIXELS = 4096;
+export const GROUND_DETAIL_TEXTURE_PIXELS = TERRAIN_GROUND_TEXTURE_RESOLUTION;
+const TEXTURE_SCALE = GROUND_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // The shader also samples a second rotated+rescaled copy of this texture
 // (see TerrainTileRenderer3D), so the visible repeat period is much larger
 // than this literal tile at normal RTS zoom levels.
@@ -121,7 +126,8 @@ function generateItems(rng: () => number): Item[] {
     // forest-floor distribution.
     const sizeT = rng();
     const size = Math.exp(
-      Math.log(5) + sizeT * sizeT * (Math.log(190) - Math.log(5)),
+      Math.log(5 * TEXTURE_SCALE) +
+        sizeT * sizeT * (Math.log(190 * TEXTURE_SCALE) - Math.log(5 * TEXTURE_SCALE)),
     );
 
     let shapeKind: ShapeKind;
