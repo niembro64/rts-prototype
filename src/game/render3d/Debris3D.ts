@@ -35,6 +35,7 @@ import {
   type DebrisColorRole,
   type DebrisStaticFragment,
   type DebrisTurretMount,
+  type DebrisTurretSlot,
   getDebrisUnitProfile,
 } from './UnitDebrisProfile3D';
 
@@ -118,6 +119,17 @@ const TREAD_COLOR = COLORS.units.debris.tread.colorHex;
 const WHEEL_COLOR = COLORS.units.debris.wheel.colorHex;
 const LEG_COLOR = COLORS.units.debris.leg.colorHex;
 const FORCE_FIELD_PANEL_DEBRIS_COLOR = SHINY_GRAY_METAL_MATERIAL.color;
+
+function resolveDebrisTemplateColor(role: DebrisColorRole, primary: number): number {
+  switch (role) {
+    case 'primary': return primary;
+    case 'tread': return locomotionPieceColorFromPrimary(TREAD_COLOR, primary);
+    case 'wheel': return locomotionPieceColorFromPrimary(WHEEL_COLOR, primary);
+    case 'leg': return locomotionPieceColorFromPrimary(LEG_COLOR, primary);
+    case 'barrel': return blendHexTowardWhite(primary, 0.5);
+    case 'forceFieldPanel': return FORCE_FIELD_PANEL_DEBRIS_COLOR;
+  }
+}
 
 // ── Lambert + per-instance alpha/color shader patch ─────────────
 // We keep MeshLambertMaterial (so debris shades under scene ambient
@@ -301,7 +313,7 @@ type DebrisTemplate =
       x: number; y: number; z: number;
       yaw: number;
       sx: number; sy: number; sz: number;
-      color: number;
+      color: DebrisColorRole;
     }
   | {
       shape: 'cyl';
@@ -311,7 +323,7 @@ type DebrisTemplate =
       bx: number; by: number; bz: number;
       /** Radius scale — the cylinder diameter = 2·thickness after scale. */
       thickness: number;
-      color: number;
+      color: DebrisColorRole;
     }
   | {
       shape: 'sphere';
@@ -319,8 +331,13 @@ type DebrisTemplate =
       x: number; y: number; z: number;
       /** Sphere radius. */
       radius: number;
-      color: number;
+      color: DebrisColorRole;
     };
+
+type CachedUnitDebrisTemplates = {
+  staticTemplates: readonly DebrisTemplate[];
+  turretMounts: readonly DebrisTurretSlot[];
+};
 
 /** All piece state held as flat numbers. Per frame we step physics
  *  + Euler rotation + age, then write the slot's instance matrix +
@@ -370,6 +387,9 @@ export class Debris3D {
   private piecesEmittedThisFrame = 0;
   private physicsFrameIndex = 0;
   private poolFlushPending = false;
+  private readonly templateCache = new Map<string, CachedUnitDebrisTemplates | null>();
+  private readonly fallbackTemplateCache = new Map<number, readonly DebrisTemplate[]>();
+  private readonly templateScratch: DebrisTemplate[] = [];
 
   // Scratch vectors reused per emit — avoids per-piece allocation.
   private _up = new THREE.Vector3(0, 1, 0);
@@ -443,7 +463,7 @@ export class Debris3D {
     // then visual radius, for older snapshots / synthesized events.
     const groundZ = ctx.baseZ ?? (simZ - (ctx.pushRadius ?? r));
 
-    const templates = this.buildTemplates(ctx, r, primary);
+    const templates = this.buildTemplates(ctx, r);
     const candidateCount = Math.ceil(templates.length / stride);
     const remainingFrameBudget = Math.max(
       0,
@@ -482,6 +502,7 @@ export class Debris3D {
         biasZ,
         uvx,
         uvz,
+        primary,
         physicsFrameStride,
       );
     }
@@ -521,35 +542,25 @@ export class Debris3D {
    * unit's pre-derived debris profile + death context. The profile
    * (UnitDebrisProfile3D) owns all blueprint reading; this method only
    * applies the live death-event poses (body yaw, per-turret yaw +
-   * pitch) and resolves color roles to concrete RGB values.
+   * pitch) and reuses cached pose-independent templates.
    */
   private buildTemplates(
     ctx: SimDeathContext,
     r: number,
-    primary: number,
-  ): DebrisTemplate[] {
-    if (!ctx.unitType) return this.fallbackTemplates(r, primary);
+  ): readonly DebrisTemplate[] {
+    const cached = ctx.unitType
+      ? this.getCachedUnitTemplates(ctx.unitType, r)
+      : null;
+    if (cached === null) return this.getFallbackTemplates(r);
 
-    const profile = getDebrisUnitProfile(ctx.unitType, r);
-    if (!profile) return this.fallbackTemplates(r, primary);
-
-    const out: DebrisTemplate[] = [];
-    const resolveColor = (role: DebrisColorRole): number => {
-      switch (role) {
-        case 'primary': return primary;
-        case 'tread': return locomotionPieceColorFromPrimary(TREAD_COLOR, primary);
-        case 'wheel': return locomotionPieceColorFromPrimary(WHEEL_COLOR, primary);
-        case 'leg': return locomotionPieceColorFromPrimary(LEG_COLOR, primary);
-        case 'barrel': return blendHexTowardWhite(primary, 0.5);
-        case 'forceFieldPanel': return FORCE_FIELD_PANEL_DEBRIS_COLOR;
-      }
-    };
+    const out = this.templateScratch;
+    out.length = 0;
 
     // --- Locomotion + body edges (pose-independent fragments) ---
     // Body yaw is applied at debris spawn time, so these go out as-is
     // in chassis-local coords.
-    for (const f of profile.staticFragments) {
-      this.emitStaticFragment(out, f, resolveColor(f.color));
+    for (let i = 0; i < cached.staticTemplates.length; i++) {
+      out.push(cached.staticTemplates[i]);
     }
 
     // --- Turret heads + barrels + force-field panels ---
@@ -560,23 +571,48 @@ export class Debris3D {
     // chassis-local = world − body yaw. Sim convention: +X forward,
     // +Y left, +Z up.
     const bodyYaw = ctx.rotation ?? 0;
-    for (let ti = 0; ti < profile.turretMounts.length; ti++) {
-      const mount = profile.turretMounts[ti];
+    for (let ti = 0; ti < cached.turretMounts.length; ti++) {
+      const mount = cached.turretMounts[ti];
       if (!mount) continue;
       const pose = ctx.turretPoses?.[ti];
       const chassisYaw = pose ? pose.rotation - bodyYaw : 0;
       const pitch = pose ? pose.pitch : 0;
-      this.emitTurretMount(out, mount, chassisYaw, pitch, primary);
+      this.emitTurretMount(out, mount, chassisYaw, pitch);
     }
 
     return out;
+  }
+
+  private getCachedUnitTemplates(
+    unitType: string,
+    r: number,
+  ): CachedUnitDebrisTemplates | null {
+    const key = `${unitType}\0${r}`;
+    if (this.templateCache.has(key)) return this.templateCache.get(key)!;
+
+    const profile = getDebrisUnitProfile(unitType, r);
+    if (!profile) {
+      this.templateCache.set(key, null);
+      return null;
+    }
+
+    const staticTemplates: DebrisTemplate[] = [];
+    for (const fragment of profile.staticFragments) {
+      this.emitStaticFragment(staticTemplates, fragment, fragment.color);
+    }
+    const cached: CachedUnitDebrisTemplates = {
+      staticTemplates,
+      turretMounts: profile.turretMounts,
+    };
+    this.templateCache.set(key, cached);
+    return cached;
   }
 
   /** Push one chassis-local fragment to the template list. */
   private emitStaticFragment(
     out: DebrisTemplate[],
     f: DebrisStaticFragment,
-    color: number,
+    color: DebrisColorRole,
   ): void {
     if (f.kind === 'box') {
       out.push({
@@ -604,12 +640,10 @@ export class Debris3D {
     mount: DebrisTurretMount,
     chassisYaw: number,
     pitch: number,
-    primary: number,
   ): void {
     const tox = mount.mountX;
     const toz = mount.mountZ;
     const shotHeight = mount.shotHeight;
-    const turretAccent = blendHexTowardWhite(primary, 0.5);
 
     if (!mount.isMirrorHost) {
       // Turret head — SPHERE centered at the mount. Pose-independent
@@ -620,7 +654,7 @@ export class Debris3D {
         y: shotHeight,
         z: toz,
         radius: mount.headRadius,
-        color: mount.headOnly ? turretAccent : primary,
+        color: mount.headOnly ? 'barrel' : 'primary',
       });
 
       // Barrels — one cylinder per physical barrel. Each is built as a
@@ -643,7 +677,7 @@ export class Debris3D {
             ax: tox + a.x, ay: shotHeight + a.z, az: toz + a.y,
             bx: tox + b.x, by: shotHeight + b.z, bz: toz + b.y,
             thickness: thick,
-            color: turretAccent,
+            color: 'barrel',
           });
         };
 
@@ -710,7 +744,7 @@ export class Debris3D {
           sx: mp.side,
           sy: mp.side,
           sz: 1,
-          color: FORCE_FIELD_PANEL_DEBRIS_COLOR,
+          color: 'forceFieldPanel',
         });
         // Broad side arms + vertical grabbers — same dimensions as
         // ForceFieldPanelMesh3D. Arms run from the turret pivot to each side
@@ -731,7 +765,7 @@ export class Debris3D {
             sx: railLength,
             sy: mp.frameSegmentLength,
             sz: mp.supportDiameter,
-            color: primary,
+            color: 'primary',
           });
           out.push({
             shape: 'cyl',
@@ -742,7 +776,7 @@ export class Debris3D {
             by: panelCenterY + mp.frameSegmentLength / 2,
             bz: grabberZ,
             thickness: mp.supportRadius,
-            color: primary,
+            color: 'primary',
           });
         }
       }
@@ -751,7 +785,10 @@ export class Debris3D {
 
   /** Fallback when the unit blueprint can't be resolved — a small handful
    *  of primary-colored slabs approximating a generic chassis. */
-  private fallbackTemplates(r: number, primary: number): DebrisTemplate[] {
+  private getFallbackTemplates(r: number): readonly DebrisTemplate[] {
+    const cached = this.fallbackTemplateCache.get(r);
+    if (cached !== undefined) return cached;
+
     const out: DebrisTemplate[] = [];
     const sides = 8;
     const poly = r * 0.7;
@@ -764,9 +801,10 @@ export class Debris3D {
         x: Math.cos(a) * poly, y: fallbackH / 2, z: Math.sin(a) * poly,
         yaw: a + Math.PI / 2,
         sx: edgeLen, sy: fallbackH, sz: Math.max(2, r * 0.08),
-        color: primary,
+        color: 'primary',
       });
     }
+    this.fallbackTemplateCache.set(r, out);
     return out;
   }
 
@@ -785,6 +823,7 @@ export class Debris3D {
     biasZ: number,
     uvx: number,
     uvz: number,
+    primary: number,
     physicsFrameStride: number,
   ): void {
     // --- Allocate slot in the right pool ---
@@ -897,7 +936,9 @@ export class Debris3D {
     // so they don't whip too fast. Clamped so tiny chunks still spin fast.
     const spinScale = Math.max(0.3, Math.min(1.2, 14 / Math.max(maxDim, 1)));
 
-    const { r: baseR, g: baseG, b: baseB } = hexToRgb01(t.color);
+    const { r: baseR, g: baseG, b: baseB } = hexToRgb01(
+      resolveDebrisTemplateColor(t.color, primary),
+    );
     const groundY = this.groundHeightAt(px, pz) + GROUND_BOUNCE_CLEARANCE;
 
     const piece: Piece = {

@@ -26,22 +26,6 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A5. [MED] Snapshot entity encoding has two implementations, and the TS one runs on
-    the live Rust path (double entity walk).
-    LOCATION: snapshotEntityWirePack.ts (TS per-entity encoder) vs
-      snapshotRustWireEncoder.ts (WASM per-entity encoder); wired in
-      snapshotWireCodec.ts:11-21. packEntitiesForWire is called unconditionally at
-      snapshotWireCodec.ts:232; the Rust encoder then re-emits the TS-built blob raw
-      (snapshotRustWireEncoder.ts:1944-1946), bypassing its own
-      encodeEntityUnit/Building kernels for entities.
-    RULE: "Delete The Old Path" / "TypeScript Coordinates, WASM Computes" (no large
-      serialization loops in TS).
-    PROBLEM: a full per-entity TS object-building loop runs every snapshot even when
-      the Rust encoder is active, and a second full DTO→wire implementation is
-      maintained in lockstep.
-    FIX: make either the TS pack path or the Rust per-entity encoder the single
-      owner of entity bytes; stop running packEntitiesForWire on the Rust path.
-
 A9. [LOW] Sim-relevant tuning still lives in TS modules.
     LOCATION: src/config.ts (~115 exported const tuning objects; some are sim-relevant,
       many are render-only), src/game/sim/blueprints/displayRosters.ts (roster ordering).
@@ -83,13 +67,6 @@ C6. [LOW] Per-body terrain sampling crosses the WASM boundary once per body per 
       crossings per tick. The integrate kernel already takes pre-sampled arrays, so the
       batch surface exists.
     FIX: add a "sample ground for these slots" batch kernel.
-
-C8. [LOW] Per-death debris template array + closure allocation.
-    LOCATION: src/game/render3d/Debris3D.ts:446 → buildTemplates :526-536 (fresh array,
-      one object literal per fragment, resolveColor closure per call).
-    PROBLEM: event-driven (per death), normally fine, but a mass-death moment spawns many
-      at once.
-    FIX: cache pose-independent templates per unitType; apply only live yaw/pitch.
 
 C9. [MED] Need an output-stability harness before deeper terrain-generation rewrites.
     LOCATION: terrain/deposit generation pipeline:

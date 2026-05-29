@@ -146,6 +146,7 @@ export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array 
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
       buildability: 'raw',
+      entities: 'raw',
       minimapEntities: 'raw',
       projectiles: 'raw',
       terrain: 'raw',
@@ -217,6 +218,7 @@ export function packNetworkSnapshotForWire(
   options: {
     audioEvents?: 'packed' | 'raw';
     buildability?: 'packed' | 'raw';
+    entities?: 'packed' | 'raw';
     minimapEntities?: 'packed' | 'raw';
     projectiles?: 'packed' | 'raw';
     terrain?: 'packed' | 'raw';
@@ -234,7 +236,9 @@ export function packNetworkSnapshotForWire(
   const packedProjectiles = options.projectiles === 'raw'
     ? undefined
     : packProjectilesForWire(state.projectiles);
-  const packedEntities = packEntitiesForWire(state.entities);
+  const packedEntities = options.entities === 'raw'
+    ? undefined
+    : packEntitiesForWire(state.entities);
   const packedTerrain = options.terrain === 'raw'
     ? undefined
     : packTerrainForWire(state.terrain);
@@ -443,10 +447,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 // A5 parity oracle: compare the Rust V6 entity packer's output against the
 // authoritative TS packEntitiesForWire on real snapshots. Runs only under the
-// dp02rust compare flag; the live path is unchanged until parity is confirmed
-// in-app. The Rust bytes carry a 9-byte `"entities"` MessagePack key prefix
-// (0xA8 + "entities") ahead of the {v,m,t,e} value that packEntitiesForWire
-// encodes, so the prefix is stripped before comparing.
+// dp02rust compare flag. The Rust bytes carry a 9-byte `"entities"`
+// MessagePack key prefix (0xA8 + "entities") ahead of the {v,m,t,e}
+// value that packEntitiesForWire encodes, so the prefix is stripped before
+// comparing.
 const V6_ENTITIES_KEY_PREFIX_BYTES = 9;
 
 type V6EntitiesCompareStats = {

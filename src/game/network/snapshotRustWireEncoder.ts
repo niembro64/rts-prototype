@@ -94,6 +94,7 @@ const _entityWaypointStringGlobalSlots: number[] = [];
 const _economyPlayerIds: number[] = [];
 const _snapshotKeys: string[] = [];
 const EMPTY_STRING_SLOTS = new Map<string, number>();
+const U32_MAX = 0xFFFF_FFFF;
 
 function hasValue<T>(value: T | undefined): value is T {
   return value !== undefined;
@@ -263,18 +264,10 @@ function v6SourceHasRawEntity(source: EntitySnapshotWireSource): boolean {
   return false;
 }
 
-/**
- * Encode the `entities` key + compact V6 `{v,m,t,e}` value into the WASM
- * MessagePack writer and return the resulting bytes (key string + value),
- * or null when the Rust packer can't own the bytes (sim unavailable, a RAW
- * entity kind present, or the kernel reports a fallback). The returned bytes
- * begin with the 9-byte `"entities"` MessagePack key prefix.
- */
-export function encodeEntitiesV6Bytes(
+function fillEntitiesV6Scratch(
+  sim: SimWasm,
   source: EntitySnapshotWireSource,
-): Uint8Array | null {
-  const sim = getSimWasm();
-  if (!sim) return null;
+): { entityCount: number; waypointStringBase: number } | null {
   if (v6SourceHasRawEntity(source)) return null;
 
   const api = sim.snapshotEncode;
@@ -310,10 +303,35 @@ export function encodeEntitiesV6Bytes(
 
   const waypointStringBase = source.actionStrings.length;
   v6PackStrings(sim, source.actionStrings, source.waypointStrings);
+  return { entityCount, waypointStringBase };
+}
 
+function emitEntitiesV6FromSource(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+): number | null {
+  const input = fillEntitiesV6Scratch(sim, source);
+  if (input === null) return null;
+  const result = sim.snapshotEncode.emitEntitiesV6(input.entityCount, input.waypointStringBase);
+  return result === U32_MAX ? null : result;
+}
+
+/**
+ * Encode the `entities` key + compact V6 `{v,m,t,e}` value into the WASM
+ * MessagePack writer and return the resulting bytes (key string + value),
+ * or null when the Rust packer can't own the bytes (sim unavailable, a RAW
+ * entity kind present, or the kernel reports a fallback). The returned bytes
+ * begin with the 9-byte `"entities"` MessagePack key prefix.
+ */
+export function encodeEntitiesV6Bytes(
+  source: EntitySnapshotWireSource,
+): Uint8Array | null {
+  const sim = getSimWasm();
+  if (!sim) return null;
+
+  const api = sim.snapshotEncode;
   api.writerClear();
-  const result = api.emitEntitiesV6(entityCount, waypointStringBase);
-  if (result === 0xFFFF_FFFF) return null;
+  if (emitEntitiesV6FromSource(sim, source) === null) return null;
   return new Uint8Array(sim.memory.buffer, api.writerPtr(), api.writerLen()).slice();
 }
 
@@ -2071,24 +2089,35 @@ export function encodeNetworkSnapshotWithRustFallback(
   const api = sim.snapshotEncode;
   let rustEntityCount = 0;
   let rawEntityCount = 0;
-  if (isPackedEntitySnapshotWire(state.entities)) {
+  const entities = state.entities;
+  if (isPackedEntitySnapshotWire(entities)) {
     api.envelopeBeginPackedEntities(state.tick, keys.length);
-    emitRawKeyValue(api, 'entities', state.entities);
+    emitRawKeyValue(api, 'entities', entities);
   } else {
-    api.envelopeBegin(state.tick, state.entities.length, keys.length);
+    const entityWireSource = getEntitySnapshotWireSource(entities);
+    const useEntityWireSource = canUseEntityWireSource(entityWireSource, entities);
+    let emittedEntitiesV6 = false;
+    if (useEntityWireSource && !v6SourceHasRawEntity(entityWireSource)) {
+      api.envelopeBeginPackedEntities(state.tick, keys.length);
+      if (emitEntitiesV6FromSource(sim, entityWireSource) !== null) {
+        rustEntityCount = entities.length;
+        emittedEntitiesV6 = true;
+      }
+    }
 
-    const entityWireSource = getEntitySnapshotWireSource(state.entities);
-    const useEntityWireSource = canUseEntityWireSource(entityWireSource, state.entities);
-    for (let i = 0; i < state.entities.length; i++) {
-      const entity = state.entities[i];
-      if (
-        (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource!, i)) ||
-        encodeEntity(sim, entity)
-      ) {
-        rustEntityCount++;
-      } else {
-        rawEntityCount++;
-        api.appendRawValue(msgpackEncode(entity, SNAPSHOT_ENCODE_OPTIONS));
+    if (!emittedEntitiesV6) {
+      api.envelopeBegin(state.tick, entities.length, keys.length);
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
+        if (
+          (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource, i)) ||
+          encodeEntity(sim, entity)
+        ) {
+          rustEntityCount++;
+        } else {
+          rawEntityCount++;
+          api.appendRawValue(msgpackEncode(entity, SNAPSHOT_ENCODE_OPTIONS));
+        }
       }
     }
   }
