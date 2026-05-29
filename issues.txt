@@ -37,16 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C11. [MED] Terrain mesh edge metadata still allocates string keys in hot generation paths.
-    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
-      collectTriangleEdgeOwners, meshEdgeKey, lineKey creation, edge span indexes,
-      resolveMeshTriangleEdgeSplits, buildTriangleNeighborMetadata.
-    PROBLEM: edge repair/neighbor generation builds many Map entries keyed by strings
-      such as "a:b", line keys, and "triangle:edge". We reduced duplicate edge scans,
-      but the remaining scans still allocate heavily at high terrainDetail.
-    FIX: replace edge and triangle-edge keys with numeric packed keys where safe, and
-      keep line classification numeric. Verify with the C9 output harness before/after.
-
 C12. [MED] Terrain leaf balancing rebuilds unit-edge segment maps each pass.
     LOCATION: src/game/sim/terrain/terrainTileMap.ts:
       balanceTerrainTriangleLeaves, forEachTriangleUnitEdgeSegment, latticeSegmentKey.

@@ -123,22 +123,27 @@ type TriangleEdgeOwner = {
   b: number;
 };
 
+type TriangleEdgeLineKind = 0 | 1 | 2;
+
 type TriangleEdgeSpan = TriangleEdgeOwner & {
-  lineKey: string;
+  lineKey: number;
+  lineKind: TriangleEdgeLineKind;
   start: number;
   end: number;
 };
 
 type TerrainMeshEdgeMetadata = {
-  edgeOwners: Map<string, TriangleEdgeOwner[]>;
-  spansByLine: Map<string, TriangleEdgeSpan[]>;
-  edgeSpans: Map<string, TriangleEdgeSpan>;
+  edgeOwners: Map<number, TriangleEdgeOwner[]>;
+  spansByLine: Map<number, TriangleEdgeSpan[]>;
+  edgeSpans: Map<number, TriangleEdgeSpan>;
 };
 
 const SQRT3_OVER_2 = Math.sqrt(3) * 0.5;
 const TERRAIN_MESH_EPSILON = 1e-6;
 const TERRAIN_MESH_EDGE_EPSILON = 1e-4;
 const INV_SQRT3 = 1 / Math.sqrt(3);
+const TERRAIN_EDGE_LINE_KEY_BIAS = 0x100000000;
+const TERRAIN_EDGE_LINE_KEY_STRIDE = 0x200000000;
 
 function terrainCellSize(cellSize: number | undefined): number {
   return cellSize !== undefined && cellSize > 0
@@ -849,21 +854,36 @@ function worldVertexKey(x: number, z: number): string {
   return `${Math.round(x * TERRAIN_TRIANGLE_VERTEX_KEY_SCALE)}:${Math.round(z * TERRAIN_TRIANGLE_VERTEX_KEY_SCALE)}`;
 }
 
-function meshEdgeKey(a: number, b: number): string {
-  return a < b ? `${a}:${b}` : `${b}:${a}`;
+function meshEdgeKey(a: number, b: number, vertexKeyBase: number): number {
+  return a < b ? a * vertexKeyBase + b : b * vertexKeyBase + a;
+}
+
+function triangleEdgeKey(triangle: number, edge: number): number {
+  return triangle * 3 + edge;
+}
+
+function terrainEdgeLineKey(kind: TriangleEdgeLineKind, value: number): number {
+  return kind * TERRAIN_EDGE_LINE_KEY_STRIDE
+    + quantizedLineValue(value)
+    + TERRAIN_EDGE_LINE_KEY_BIAS;
 }
 
 function collectTriangleEdgeOwners(
   triangleIndices: readonly number[],
-): Map<string, TriangleEdgeOwner[]> {
-  const edgeOwners = new Map<string, TriangleEdgeOwner[]>();
+): Map<number, TriangleEdgeOwner[]> {
+  let maxVertexId = 0;
+  for (let i = 0; i < triangleIndices.length; i++) {
+    if (triangleIndices[i] > maxVertexId) maxVertexId = triangleIndices[i];
+  }
+  const vertexKeyBase = maxVertexId + 1;
+  const edgeOwners = new Map<number, TriangleEdgeOwner[]>();
   const triangleCount = Math.floor(triangleIndices.length / 3);
   for (let triangle = 0; triangle < triangleCount; triangle++) {
     const triOffset = triangle * 3;
     for (let edge = 0; edge < 3; edge++) {
       const a = triangleIndices[triOffset + edge];
       const b = triangleIndices[triOffset + ((edge + 1) % 3)];
-      const key = meshEdgeKey(a, b);
+      const key = meshEdgeKey(a, b, vertexKeyBase);
       const owners = edgeOwners.get(key);
       const owner = { triangle, edge, a, b };
       if (owners) owners.push(owner);
@@ -914,26 +934,31 @@ function edgeSpanForOwner(
   const bestError = Math.min(horizontalError, diagAError, diagBError);
   if (bestError > TERRAIN_MESH_EDGE_EPSILON) return null;
 
-  let lineKey: string;
+  let lineKind: TriangleEdgeLineKind;
+  let lineValue: number;
   let aCoord: number;
   let bCoord: number;
   if (bestError === horizontalError) {
-    lineKey = `h:${quantizedLineValue((az + bz) * 0.5)}`;
+    lineKind = 0;
+    lineValue = (az + bz) * 0.5;
     aCoord = ax;
     bCoord = bx;
   } else if (bestError === diagAError) {
-    lineKey = `a:${quantizedLineValue((diagA0 + diagA1) * 0.5)}`;
+    lineKind = 1;
+    lineValue = (diagA0 + diagA1) * 0.5;
     aCoord = az;
     bCoord = bz;
   } else {
-    lineKey = `b:${quantizedLineValue((diagB0 + diagB1) * 0.5)}`;
+    lineKind = 2;
+    lineValue = (diagB0 + diagB1) * 0.5;
     aCoord = az;
     bCoord = bz;
   }
 
   return {
     ...owner,
-    lineKey,
+    lineKey: terrainEdgeLineKey(lineKind, lineValue),
+    lineKind,
     start: Math.min(aCoord, bCoord),
     end: Math.max(aCoord, bCoord),
   };
@@ -941,9 +966,9 @@ function edgeSpanForOwner(
 
 function collectTriangleEdgeSpansByLine(
   vertexCoords: readonly number[],
-  edgeOwners: ReadonlyMap<string, readonly TriangleEdgeOwner[]>,
-): Map<string, TriangleEdgeSpan[]> {
-  const spansByLine = new Map<string, TriangleEdgeSpan[]>();
+  edgeOwners: ReadonlyMap<number, readonly TriangleEdgeOwner[]>,
+): Map<number, TriangleEdgeSpan[]> {
+  const spansByLine = new Map<number, TriangleEdgeSpan[]>();
   for (const owners of edgeOwners.values()) {
     for (let i = 0; i < owners.length; i++) {
       const span = edgeSpanForOwner(vertexCoords, owners[i]);
@@ -960,13 +985,13 @@ function collectTriangleEdgeSpansByLine(
 }
 
 function collectTriangleEdgeSpanIndex(
-  spansByLine: ReadonlyMap<string, readonly TriangleEdgeSpan[]>,
-): Map<string, TriangleEdgeSpan> {
-  const edgeSpans = new Map<string, TriangleEdgeSpan>();
+  spansByLine: ReadonlyMap<number, readonly TriangleEdgeSpan[]>,
+): Map<number, TriangleEdgeSpan> {
+  const edgeSpans = new Map<number, TriangleEdgeSpan>();
   for (const spans of spansByLine.values()) {
     for (let i = 0; i < spans.length; i++) {
       const span = spans[i];
-      edgeSpans.set(`${span.triangle}:${span.edge}`, span);
+      edgeSpans.set(triangleEdgeKey(span.triangle, span.edge), span);
     }
   }
   return edgeSpans;
@@ -989,10 +1014,10 @@ function edgeSpansOverlap(a: TriangleEdgeSpan, b: TriangleEdgeSpan): boolean {
 
 function findOverlappingEdgeSpans(
   owner: TriangleEdgeOwner,
-  spansByLine: ReadonlyMap<string, readonly TriangleEdgeSpan[]>,
-  edgeSpans: ReadonlyMap<string, TriangleEdgeSpan>,
+  spansByLine: ReadonlyMap<number, readonly TriangleEdgeSpan[]>,
+  edgeSpans: ReadonlyMap<number, TriangleEdgeSpan>,
 ): TriangleEdgeSpan[] {
-  const ownerSpan = edgeSpans.get(`${owner.triangle}:${owner.edge}`);
+  const ownerSpan = edgeSpans.get(triangleEdgeKey(owner.triangle, owner.edge));
   if (!ownerSpan) return [];
   const candidates = spansByLine.get(ownerSpan.lineKey);
   if (!candidates) return [];
@@ -1007,13 +1032,13 @@ function findOverlappingEdgeSpans(
 }
 
 function edgeCoordinateForLine(
-  lineKey: string,
+  lineKind: TriangleEdgeLineKind,
   vertexCoords: readonly number[],
   vertexId: number,
 ): number {
   const x = vertexCoords[vertexId * 2];
   const z = vertexCoords[vertexId * 2 + 1];
-  return lineKey.startsWith('h:') ? x : z;
+  return lineKind === 0 ? x : z;
 }
 
 function addSplitVertexForEdge(
@@ -1024,14 +1049,14 @@ function addSplitVertexForEdge(
   vertexId: number,
 ): void {
   if (vertexId === owner.a || vertexId === owner.b) return;
-  const coord = edgeCoordinateForLine(ownerSpan.lineKey, vertexCoords, vertexId);
+  const coord = edgeCoordinateForLine(ownerSpan.lineKind, vertexCoords, vertexId);
   if (
     coord <= ownerSpan.start + TERRAIN_MESH_EDGE_EPSILON ||
     coord >= ownerSpan.end - TERRAIN_MESH_EDGE_EPSILON
   ) {
     return;
   }
-  const key = owner.triangle * 3 + owner.edge;
+  const key = triangleEdgeKey(owner.triangle, owner.edge);
   let vertices = splitVerticesByEdge.get(key);
   if (!vertices) {
     vertices = new Set<number>();
@@ -1055,7 +1080,7 @@ function collectMeshEdgeSplitVertices(
     if (owners.length !== 1) continue;
     const owner = owners[0];
     if (meshEdgeIsMapBoundary(ctx, vertexCoords, owner)) continue;
-    const ownerSpan = edgeSpans.get(`${owner.triangle}:${owner.edge}`);
+    const ownerSpan = edgeSpans.get(triangleEdgeKey(owner.triangle, owner.edge));
     if (!ownerSpan) continue;
 
     const overlaps = findOverlappingEdgeSpans(owner, spansByLine, edgeSpans);
