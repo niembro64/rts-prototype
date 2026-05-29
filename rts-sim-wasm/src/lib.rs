@@ -2429,6 +2429,320 @@ pub fn integrate_damped_rotation(
 }
 
 // ─────────────────────────────────────────────────────────────────
+//  C16 — metal-deposit resource footprint growth
+//
+//  Replaces the deterministic connected-cell grow pass from
+//  src/metalDepositConfig.ts. TypeScript still owns ring placement,
+//  height-pass orchestration, and object assembly; Rust owns the dense
+//  numeric candidate layout, seeded frontier weighting, and sorted
+//  output cell list.
+// ─────────────────────────────────────────────────────────────────
+
+const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
+
+#[wasm_bindgen]
+pub fn metal_deposit_count_resource_candidates(radius_cells: i32) -> u32 {
+    if radius_cells <= 0 {
+        return 0;
+    }
+    let r2 = radius_cells * radius_cells;
+    let mut count = 0u32;
+    for dy in -radius_cells..=radius_cells {
+        for dx in -radius_cells..=radius_cells {
+            if dx * dx + dy * dy <= r2 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn metal_deposit_rng_next(seed: &mut u32) -> f64 {
+    *seed = seed.wrapping_add(0x6D2B79F5);
+    let mut t = *seed;
+    t = (t ^ (t >> 15)).wrapping_mul(t | 1);
+    t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
+    ((t ^ (t >> 14)) as f64) / 4294967296.0
+}
+
+fn metal_deposit_lookup_offset(
+    offset_to_index: &[i32],
+    radius_cells: i32,
+    diameter: i32,
+    dx: i32,
+    dy: i32,
+) -> i32 {
+    if dx < -radius_cells || dx > radius_cells || dy < -radius_cells || dy > radius_cells {
+        return -1;
+    }
+    offset_to_index[((dy + radius_cells) * diameter + dx + radius_cells) as usize]
+}
+
+#[wasm_bindgen]
+pub fn metal_deposit_grow_resource_cells(
+    origin_gx: i32,
+    origin_gy: i32,
+    target_cell_count: u32,
+    radius_cells: i32,
+    seed: u32,
+    out_cells: &mut [i32],
+) -> u32 {
+    if target_cell_count == 0 || radius_cells <= 0 {
+        return 0;
+    }
+    let target = target_cell_count as usize;
+    if out_cells.len() < target * 2 {
+        return 0;
+    }
+
+    let diameter = radius_cells * 2 + 1;
+    let mut offset_to_index = vec![-1i32; (diameter * diameter) as usize];
+    let mut dx_values: Vec<i32> = Vec::new();
+    let mut dy_values: Vec<i32> = Vec::new();
+    let mut center_bias: Vec<f64> = Vec::new();
+    let r2 = radius_cells * radius_cells;
+    let radius_scale = (radius_cells.max(1)) as f64;
+    let mut origin_index = -1i32;
+
+    for dy in -radius_cells..=radius_cells {
+        for dx in -radius_cells..=radius_cells {
+            let distance_squared = dx * dx + dy * dy;
+            if distance_squared > r2 {
+                continue;
+            }
+            let index = dx_values.len() as i32;
+            offset_to_index[((dy + radius_cells) * diameter + dx + radius_cells) as usize] = index;
+            dx_values.push(dx);
+            dy_values.push(dy);
+            center_bias.push(1.0 - ((distance_squared as f64).sqrt() / radius_scale).min(1.0));
+            if dx == 0 && dy == 0 {
+                origin_index = index;
+            }
+        }
+    }
+
+    let count = dx_values.len();
+    if origin_index < 0 || count < target {
+        return 0;
+    }
+
+    let mut neighbor_indices = vec![-1i32; count * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT];
+    for i in 0..count {
+        let dx = dx_values[i];
+        let dy = dy_values[i];
+        let base = i * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
+        neighbor_indices[base] =
+            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx + 1, dy);
+        neighbor_indices[base + 1] =
+            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx - 1, dy);
+        neighbor_indices[base + 2] =
+            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx, dy + 1);
+        neighbor_indices[base + 3] =
+            metal_deposit_lookup_offset(&offset_to_index, radius_cells, diameter, dx, dy - 1);
+    }
+
+    let mut selected = vec![0u8; count];
+    let mut frontier = vec![0u8; count];
+    let mut neighbor_counts = vec![0u8; count];
+    let mut frontier_prev = vec![-1i32; count];
+    let mut frontier_next = vec![-1i32; count];
+    let mut weights = vec![0.0f64; count];
+    let mut selected_indices: Vec<usize> = Vec::with_capacity(target);
+    let mut frontier_head = -1i32;
+    let mut frontier_tail = -1i32;
+    let mut frontier_size = 0usize;
+
+    fn remove_frontier(
+        index: usize,
+        frontier: &mut [u8],
+        frontier_prev: &mut [i32],
+        frontier_next: &mut [i32],
+        frontier_head: &mut i32,
+        frontier_tail: &mut i32,
+        frontier_size: &mut usize,
+    ) {
+        if frontier[index] == 0 {
+            return;
+        }
+        let prev = frontier_prev[index];
+        let next = frontier_next[index];
+        if prev >= 0 {
+            frontier_next[prev as usize] = next;
+        } else {
+            *frontier_head = next;
+        }
+        if next >= 0 {
+            frontier_prev[next as usize] = prev;
+        } else {
+            *frontier_tail = prev;
+        }
+        frontier_prev[index] = -1;
+        frontier_next[index] = -1;
+        frontier[index] = 0;
+        *frontier_size -= 1;
+    }
+
+    fn append_frontier(
+        index: i32,
+        selected: &[u8],
+        frontier: &mut [u8],
+        frontier_prev: &mut [i32],
+        frontier_next: &mut [i32],
+        frontier_head: &mut i32,
+        frontier_tail: &mut i32,
+        frontier_size: &mut usize,
+    ) {
+        if index < 0 {
+            return;
+        }
+        let i = index as usize;
+        if selected[i] != 0 || frontier[i] != 0 {
+            return;
+        }
+        frontier[i] = 1;
+        frontier_prev[i] = *frontier_tail;
+        frontier_next[i] = -1;
+        if *frontier_tail >= 0 {
+            frontier_next[*frontier_tail as usize] = index;
+        } else {
+            *frontier_head = index;
+        }
+        *frontier_tail = index;
+        *frontier_size += 1;
+    }
+
+    fn add_selected(
+        index: usize,
+        selected: &mut [u8],
+        frontier: &mut [u8],
+        neighbor_counts: &mut [u8],
+        frontier_prev: &mut [i32],
+        frontier_next: &mut [i32],
+        selected_indices: &mut Vec<usize>,
+        neighbor_indices: &[i32],
+        frontier_head: &mut i32,
+        frontier_tail: &mut i32,
+        frontier_size: &mut usize,
+    ) {
+        if selected[index] != 0 {
+            return;
+        }
+        selected[index] = 1;
+        selected_indices.push(index);
+        remove_frontier(
+            index,
+            frontier,
+            frontier_prev,
+            frontier_next,
+            frontier_head,
+            frontier_tail,
+            frontier_size,
+        );
+
+        let base = index * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
+        for i in 0..METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT {
+            let neighbor_index = neighbor_indices[base + i];
+            if neighbor_index >= 0 {
+                neighbor_counts[neighbor_index as usize] += 1;
+            }
+        }
+        for i in 0..METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT {
+            append_frontier(
+                neighbor_indices[base + i],
+                selected,
+                frontier,
+                frontier_prev,
+                frontier_next,
+                frontier_head,
+                frontier_tail,
+                frontier_size,
+            );
+        }
+    }
+
+    add_selected(
+        origin_index as usize,
+        &mut selected,
+        &mut frontier,
+        &mut neighbor_counts,
+        &mut frontier_prev,
+        &mut frontier_next,
+        &mut selected_indices,
+        &neighbor_indices,
+        &mut frontier_head,
+        &mut frontier_tail,
+        &mut frontier_size,
+    );
+
+    let mut rng_seed = seed;
+    while selected_indices.len() < target && frontier_size > 0 {
+        let mut total_weight = 0.0;
+        let mut last_frontier_index = -1i32;
+        let mut index = frontier_head;
+        while index >= 0 {
+            let i = index as usize;
+            let weight = 0.45
+                + neighbor_counts[i] as f64 * 1.75
+                + center_bias[i] * 2.25
+                + metal_deposit_rng_next(&mut rng_seed) * 0.35;
+            total_weight += weight;
+            weights[i] = weight;
+            last_frontier_index = index;
+            index = frontier_next[i];
+        }
+
+        let mut pick = metal_deposit_rng_next(&mut rng_seed) * total_weight;
+        let mut chosen_index = last_frontier_index;
+        index = frontier_head;
+        while index >= 0 {
+            let i = index as usize;
+            pick -= weights[i];
+            if pick <= 0.0 {
+                chosen_index = index;
+                break;
+            }
+            index = frontier_next[i];
+        }
+        if chosen_index < 0 {
+            break;
+        }
+        add_selected(
+            chosen_index as usize,
+            &mut selected,
+            &mut frontier,
+            &mut neighbor_counts,
+            &mut frontier_prev,
+            &mut frontier_next,
+            &mut selected_indices,
+            &neighbor_indices,
+            &mut frontier_head,
+            &mut frontier_tail,
+            &mut frontier_size,
+        );
+    }
+
+    let mut cells: Vec<(i32, i32)> = selected_indices
+        .iter()
+        .map(|&index| (origin_gx + dx_values[index], origin_gy + dy_values[index]))
+        .collect();
+    cells.sort_by(|a, b| {
+        let by_y = a.1.cmp(&b.1);
+        if by_y == std::cmp::Ordering::Equal {
+            a.0.cmp(&b.0)
+        } else {
+            by_y
+        }
+    });
+
+    for (i, (gx, gy)) in cells.iter().enumerate() {
+        let base = i * 2;
+        out_cells[base] = *gx;
+        out_cells[base + 1] = *gy;
+    }
+    cells.len() as u32
+}
+
+// ─────────────────────────────────────────────────────────────────
 //  Phase 8 — Terrain heightmap in WASM linear memory
 //
 //  Mirrors the read side of src/game/sim/terrain/terrainTileMap.ts:

@@ -239,7 +239,12 @@ async function buildReport() {
   try {
     const terrain = await server.ssrLoadModule('/src/game/sim/Terrain.ts');
     const depositsModule = await server.ssrLoadModule('/src/metalDepositConfig.ts');
+    const simWasm = await server.ssrLoadModule('/src/game/sim-wasm/init.ts');
     const config = await server.ssrLoadModule('/src/config.ts');
+    const wasmBytes = await readFile(
+      path.join(repoRoot, 'src/game/sim-wasm/pkg/rts_sim_wasm_bg.wasm'),
+    );
+    await simWasm.initSimWasm(wasmBytes);
 
     const cases = [];
     for (const testCase of CASES) {

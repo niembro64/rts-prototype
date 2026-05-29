@@ -17,6 +17,7 @@
 // Rust crate generates its CT_TURRET_STATE_* constants from this same file.
 import wireEnums from '../../wireEnums.json';
 import __wbg_init, {
+  type InitInput,
   version,
   step_unit_motion,
   client_predict_unit_motion_batch,
@@ -45,6 +46,8 @@ import __wbg_init, {
   solve_kinematic_intercept,
   compute_homing_thrust,
   integrate_damped_rotation,
+  metal_deposit_count_resource_candidates,
+  metal_deposit_grow_resource_cells,
   terrain_install_mesh,
   terrain_clear,
   terrain_is_installed,
@@ -648,6 +651,18 @@ export interface SimWasm {
     minAngle: number,
     maxAngle: number,
   ) => void;
+  /** C16 — deterministic connected metal-deposit resource footprint.
+   *  TS owns ring placement and object assembly; Rust owns candidate
+   *  counting and seeded frontier growth. */
+  readonly metalDepositCountResourceCandidates: (radiusCells: number) => number;
+  readonly metalDepositGrowResourceCells: (
+    originGx: number,
+    originGy: number,
+    targetCellCount: number,
+    radiusCells: number,
+    seed: number,
+    outCells: Int32Array,
+  ) => number;
   /** Phase 8 — terrain heightmap installed in WASM linear memory.
    *  Called once at world-load (or any time setAuthoritativeTerrainTileMap
    *  receives a new map) from the JS-side terrain state. Arrays are
@@ -2495,10 +2510,12 @@ let resolvedHandle: SimWasm | undefined;
 /** Idempotent. Concurrent callers share one fetch + compile of
  *  the wasm module. Resolves once the WASM is instantiated and
  *  the auto-init (#[wasm_bindgen(start)]) panic hook has run. */
-export function initSimWasm(): Promise<SimWasm> {
+export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Promise<SimWasm> {
   if (cached === undefined) {
     cached = (async () => {
-      const initOutput = await __wbg_init();
+      const initOutput = await __wbg_init(
+        moduleOrPath === undefined ? undefined : { module_or_path: moduleOrPath },
+      );
 
       // Pre-grow WASM linear memory BEFORE pool_init() so the
       // BodyPool's Vec allocations land in a comfortably-sized
@@ -2711,6 +2728,8 @@ export function initSimWasm(): Promise<SimWasm> {
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,
         integrateDampedRotation: integrate_damped_rotation,
+        metalDepositCountResourceCandidates: metal_deposit_count_resource_candidates,
+        metalDepositGrowResourceCells: metal_deposit_grow_resource_cells,
         terrainInstallMesh: terrain_install_mesh,
         terrainClear: terrain_clear,
         terrainIsInstalled: terrain_is_installed,

@@ -43,6 +43,7 @@ import {
   type TerrainFlatZone,
 } from './game/sim/Terrain';
 import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
+import { getSimWasm } from './game/sim-wasm/init';
 import rawConfig from './metalDepositConfig.json';
 
 export type DepositRing = {
@@ -383,8 +384,18 @@ function getMetalDepositResourceRadiusCells(resourceCells: number): number {
   return radius;
 }
 
+function getRequiredSimWasm() {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error(
+      'generateMetalDeposits requires sim-wasm to be initialized before terrain/deposit generation',
+    );
+  }
+  return sim;
+}
+
 function countGridCellsInRadius(radiusCells: number): number {
-  return getMetalDepositResourceCandidateLayout(radiusCells).count;
+  return getRequiredSimWasm().metalDepositCountResourceCandidates(radiusCells);
 }
 
 function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
@@ -396,111 +407,12 @@ function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
   };
 }
 
-type MetalDepositResourceCandidateLayout = {
-  count: number;
-  dx: Int32Array;
-  dy: Int32Array;
-  centerBias: Float64Array;
-  neighborIndices: Int32Array;
-  originIndex: number;
-};
-
-const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT = 4;
-const metalDepositResourceCandidateLayoutCache = new Map<
-  number,
-  MetalDepositResourceCandidateLayout
->();
-
-function getMetalDepositResourceCandidateLayout(
-  radiusCells: number,
-): MetalDepositResourceCandidateLayout {
-  const cached = metalDepositResourceCandidateLayoutCache.get(radiusCells);
-  if (cached !== undefined) return cached;
-
-  const diameter = radiusCells * 2 + 1;
-  const offsetToIndex = new Int32Array(diameter * diameter);
-  offsetToIndex.fill(-1);
-
-  const dxValues: number[] = [];
-  const dyValues: number[] = [];
-  const centerBiasValues: number[] = [];
-  const r2 = radiusCells * radiusCells;
-  const radiusScale = Math.max(1, radiusCells);
-  let originIndex = -1;
-
-  for (let dy = -radiusCells; dy <= radiusCells; dy++) {
-    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
-      const distanceSquared = dx * dx + dy * dy;
-      if (distanceSquared > r2) continue;
-      const index = dxValues.length;
-      offsetToIndex[(dy + radiusCells) * diameter + dx + radiusCells] = index;
-      dxValues.push(dx);
-      dyValues.push(dy);
-      centerBiasValues.push(1 - Math.min(1, Math.sqrt(distanceSquared) / radiusScale));
-      if (dx === 0 && dy === 0) originIndex = index;
-    }
-  }
-
-  const count = dxValues.length;
-  const neighborIndices = new Int32Array(count * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT);
-  neighborIndices.fill(-1);
-  const lookupOffset = (dx: number, dy: number): number => {
-    if (
-      dx < -radiusCells ||
-      dx > radiusCells ||
-      dy < -radiusCells ||
-      dy > radiusCells
-    ) {
-      return -1;
-    }
-    return offsetToIndex[(dy + radiusCells) * diameter + dx + radiusCells];
-  };
-
-  for (let i = 0; i < count; i++) {
-    const dx = dxValues[i];
-    const dy = dyValues[i];
-    const base = i * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
-    neighborIndices[base] = lookupOffset(dx + 1, dy);
-    neighborIndices[base + 1] = lookupOffset(dx - 1, dy);
-    neighborIndices[base + 2] = lookupOffset(dx, dy + 1);
-    neighborIndices[base + 3] = lookupOffset(dx, dy - 1);
-  }
-
-  if (originIndex < 0) {
-    throw new Error(
-      `Metal deposit resource radius (${radiusCells}) did not include the origin cell`,
-    );
-  }
-
-  const layout = {
-    count,
-    dx: Int32Array.from(dxValues),
-    dy: Int32Array.from(dyValues),
-    centerBias: Float64Array.from(centerBiasValues),
-    neighborIndices,
-    originIndex,
-  };
-  metalDepositResourceCandidateLayoutCache.set(radiusCells, layout);
-  return layout;
-}
-
 function hashMetalDepositSeed(gx: number, gy: number, index: number): number {
   let h = 2166136261 >>> 0;
   h = Math.imul(h ^ gx, 16777619);
   h = Math.imul(h ^ gy, 16777619);
   h = Math.imul(h ^ index, 16777619);
   return h >>> 0;
-}
-
-function makeSeededRng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 function growMetalDepositResourceCells(
@@ -510,94 +422,26 @@ function growMetalDepositResourceCells(
   radiusCells: number,
   seed: number,
 ): MetalDepositResourceCell[] {
-  const rng = makeSeededRng(seed);
-  const layout = getMetalDepositResourceCandidateLayout(radiusCells);
-  const selected = new Uint8Array(layout.count);
-  const frontier = new Uint8Array(layout.count);
-  const neighborCounts = new Uint8Array(layout.count);
-  const frontierPrev = new Int32Array(layout.count);
-  const frontierNext = new Int32Array(layout.count);
-  const weights = new Float64Array(layout.count);
-  const selectedIndices: number[] = [];
-  frontierPrev.fill(-1);
-  frontierNext.fill(-1);
-
-  let frontierHead = -1;
-  let frontierTail = -1;
-  let frontierSize = 0;
-
-  const appendFrontier = (index: number): void => {
-    if (index < 0 || selected[index] !== 0 || frontier[index] !== 0) return;
-    frontier[index] = 1;
-    frontierPrev[index] = frontierTail;
-    frontierNext[index] = -1;
-    if (frontierTail >= 0) frontierNext[frontierTail] = index;
-    else frontierHead = index;
-    frontierTail = index;
-    frontierSize++;
-  };
-
-  const removeFrontier = (index: number): void => {
-    if (frontier[index] === 0) return;
-    const prev = frontierPrev[index];
-    const next = frontierNext[index];
-    if (prev >= 0) frontierNext[prev] = next;
-    else frontierHead = next;
-    if (next >= 0) frontierPrev[next] = prev;
-    else frontierTail = prev;
-    frontierPrev[index] = -1;
-    frontierNext[index] = -1;
-    frontier[index] = 0;
-    frontierSize--;
-  };
-
-  const addSelected = (index: number): void => {
-    if (selected[index] !== 0) return;
-    selected[index] = 1;
-    selectedIndices.push(index);
-    removeFrontier(index);
-
-    const base = index * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
-    for (let i = 0; i < METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT; i++) {
-      const neighborIndex = layout.neighborIndices[base + i];
-      if (neighborIndex >= 0) neighborCounts[neighborIndex]++;
-    }
-    for (let i = 0; i < METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT; i++) {
-      appendFrontier(layout.neighborIndices[base + i]);
-    }
-  };
-
-  addSelected(layout.originIndex);
-  while (selectedIndices.length < targetCellCount && frontierSize > 0) {
-    let totalWeight = 0;
-    let lastFrontierIndex = -1;
-    for (let index = frontierHead; index >= 0; index = frontierNext[index]) {
-      const weight =
-        0.45 +
-        neighborCounts[index] * 1.75 +
-        layout.centerBias[index] * 2.25 +
-        rng() * 0.35;
-      totalWeight += weight;
-      weights[index] = weight;
-      lastFrontierIndex = index;
-    }
-
-    let pick = rng() * totalWeight;
-    let chosenIndex = lastFrontierIndex;
-    for (let index = frontierHead; index >= 0; index = frontierNext[index]) {
-      pick -= weights[index];
-      if (pick <= 0) {
-        chosenIndex = index;
-        break;
-      }
-    }
-    if (chosenIndex < 0) break;
-    addSelected(chosenIndex);
+  const outCells = new Int32Array(targetCellCount * 2);
+  const count = getRequiredSimWasm().metalDepositGrowResourceCells(
+    originGx,
+    originGy,
+    targetCellCount,
+    radiusCells,
+    seed,
+    outCells,
+  );
+  if (count !== targetCellCount) {
+    throw new Error(
+      `Metal deposit resource growth returned ${count} cells; expected ${targetCellCount}`,
+    );
   }
-
-  return selectedIndices
-    .map((index) => cellCenter(originGx + layout.dx[index], originGy + layout.dy[index]))
-    .sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
+  const cells: MetalDepositResourceCell[] = new Array(count);
+  for (let i = 0; i < count; i++) {
+    const base = i * 2;
+    cells[i] = cellCenter(outCells[base], outCells[base + 1]);
+  }
+  return cells;
 }
 
 function getMetalDepositCellBounds(

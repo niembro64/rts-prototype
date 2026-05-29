@@ -37,15 +37,17 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C16. [HIGH] Long-term terrain/deposit baking should move to Rust/WASM.
+C16. [HIGH] Remaining terrain/deposit baking should move to Rust/WASM.
     LOCATION: src/game/sim/terrain/*.ts and src/metalDepositConfig.ts.
     RULE: "TypeScript coordinates, WASM computes" and "shared deterministic kernels".
-    PROBLEM: terrain mesh baking, repair, buildability, and deposit layout are CPU-heavy,
-      deterministic, and sim-critical. Keeping them in TS leaves startup cost and
-      client/server drift risk in the orchestration layer.
-    FIX: after the C9 harness exists, port terrain height sampling, mesh baking,
-      buildability baking, and deposit generation to Rust/WASM in stages, with TS kept
-      as compatibility/diagnostic glue until the old path can be deleted.
+    PROBLEM: terrain mesh baking, repair, buildability, and deposit ring/height
+      placement are CPU-heavy, deterministic, and sim-critical. Keeping them in TS
+      leaves startup cost and client/server drift risk in the orchestration layer.
+      Terrain read-side sampling/LOS/pathfinder masks and metal-deposit connected
+      resource footprint growth are now Rust/WASM-owned.
+    FIX: port terrain mesh baking, buildability baking, and the remaining deposit
+      ring/height placement to Rust/WASM in stages, with TS kept as orchestration
+      only until each old path can be deleted.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
