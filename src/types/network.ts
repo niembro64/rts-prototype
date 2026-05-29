@@ -1,12 +1,17 @@
 // Network types extracted from game/network/NetworkTypes.ts
 
 import {
-  BUILDING_TYPE_IDS,
-  SHOT_IDS,
-  TURRET_IDS,
-  UNIT_TYPE_IDS,
+  BUILDING_BLUEPRINT_IDS,
+  SHOT_BLUEPRINT_IDS,
+  TURRET_BLUEPRINT_IDS,
+  UNIT_BLUEPRINT_IDS,
 } from './blueprintIds';
-import type { ShotId, TurretId } from './blueprintIds';
+import type {
+  BuildingBlueprintId,
+  ShotBlueprintId,
+  TurretBlueprintId,
+  UnitBlueprintId,
+} from './blueprintIds';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, EntityType, PlayerId, TurretState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -81,44 +86,50 @@ export function codeToActionType(c: number): string {
   return _CODE_TO_ACTION[c] ?? 'move';
 }
 
-// ── Unit type codes ────────────────────────────────────────────────
-// Stable wire IDs for every unit-type string. Order is append-only:
+// ── Unit blueprint codes ───────────────────────────────────────────
+// Stable wire codes for every unit blueprint id. Order is append-only:
 // new units go at the end so existing replays / cross-version snapshots
 // keep decoding correctly. The string form lives at runtime (entity
-// .unit.unitType) and on the client side after decode — only the
+// .unit.unitBlueprintId) and on the client side after decode — only the
 // serializer / deserializer touches the int form.
-const _UNIT_TYPES = UNIT_TYPE_IDS;
-export function getNetworkUnitTypeIds(): readonly string[] {
-  return _UNIT_TYPES;
+const _UNIT_BLUEPRINT_IDS = UNIT_BLUEPRINT_IDS;
+export type UnitBlueprintCode = number;
+export function getNetworkUnitBlueprintIds(): readonly string[] {
+  return _UNIT_BLUEPRINT_IDS;
 }
-const _UNIT_TYPE_TO_CODE: Record<string, number> = {};
-for (let i = 0; i < _UNIT_TYPES.length; i++) _UNIT_TYPE_TO_CODE[_UNIT_TYPES[i]] = i;
-// Sentinel for "type not in the table". Decoders return null for
+const _UNIT_BLUEPRINT_ID_TO_CODE: Record<string, UnitBlueprintCode> = {};
+for (let i = 0; i < _UNIT_BLUEPRINT_IDS.length; i++) {
+  _UNIT_BLUEPRINT_ID_TO_CODE[_UNIT_BLUEPRINT_IDS[i]] = i;
+}
+// Sentinel for "blueprint id not in the code table". Decoders return null for
 // unknown codes so receivers drop/reject invalid wire data instead of
 // silently turning it into a different real gameplay object.
-export const UNIT_TYPE_UNKNOWN = 0xff;
-export function unitTypeToCode(s: string): number {
-  const code = _UNIT_TYPE_TO_CODE[s];
-  return code === undefined ? UNIT_TYPE_UNKNOWN : code;
+export const UNIT_BLUEPRINT_CODE_UNKNOWN = 0xff;
+export function unitBlueprintIdToCode(s: string): UnitBlueprintCode {
+  const code = _UNIT_BLUEPRINT_ID_TO_CODE[s];
+  return code === undefined ? UNIT_BLUEPRINT_CODE_UNKNOWN : code;
 }
-export function codeToUnitType(c: number): string | null {
-  return _UNIT_TYPES[c] ?? null;
+export function codeToUnitBlueprintId(c: number): UnitBlueprintId | null {
+  return _UNIT_BLUEPRINT_IDS[c] ?? null;
 }
 
-// ── Building type codes ────────────────────────────────────────────
-const _BUILDING_TYPES = BUILDING_TYPE_IDS;
-export function getNetworkBuildingTypeIds(): readonly string[] {
-  return _BUILDING_TYPES;
+// ── Building blueprint codes ───────────────────────────────────────
+const _BUILDING_BLUEPRINT_IDS = BUILDING_BLUEPRINT_IDS;
+export type BuildingBlueprintCode = number;
+export function getNetworkBuildingBlueprintIds(): readonly string[] {
+  return _BUILDING_BLUEPRINT_IDS;
 }
-const _BUILDING_TYPE_TO_CODE: Record<string, number> = {};
-for (let i = 0; i < _BUILDING_TYPES.length; i++) _BUILDING_TYPE_TO_CODE[_BUILDING_TYPES[i]] = i;
-export const BUILDING_TYPE_UNKNOWN = 0xff;
-export function buildingTypeToCode(s: string): number {
-  const code = _BUILDING_TYPE_TO_CODE[s];
-  return code === undefined ? BUILDING_TYPE_UNKNOWN : code;
+const _BUILDING_BLUEPRINT_ID_TO_CODE: Record<string, BuildingBlueprintCode> = {};
+for (let i = 0; i < _BUILDING_BLUEPRINT_IDS.length; i++) {
+  _BUILDING_BLUEPRINT_ID_TO_CODE[_BUILDING_BLUEPRINT_IDS[i]] = i;
 }
-export function codeToBuildingType(c: number): string | null {
-  return _BUILDING_TYPES[c] ?? null;
+export const BUILDING_BLUEPRINT_CODE_UNKNOWN = 0xff;
+export function buildingBlueprintIdToCode(s: string): BuildingBlueprintCode {
+  const code = _BUILDING_BLUEPRINT_ID_TO_CODE[s];
+  return code === undefined ? BUILDING_BLUEPRINT_CODE_UNKNOWN : code;
+}
+export function codeToBuildingBlueprintId(c: number): BuildingBlueprintId | null {
+  return _BUILDING_BLUEPRINT_IDS[c] ?? null;
 }
 
 // ── Projectile type codes ──────────────────────────────────────────
@@ -152,38 +163,42 @@ export function isLineProjectileTypeCode(code: ProjectileTypeCode): boolean {
 
 // ── Shot blueprint codes ───────────────────────────────────────────
 // Append-only, validated against SHOT_BLUEPRINTS at startup.
-const _SHOT_TYPES = SHOT_IDS;
-export type ShotTypeCode = number;
-export const SHOT_ID_UNKNOWN = 0xff;
-export function getNetworkShotIds(): readonly string[] {
-  return _SHOT_TYPES;
+const _SHOT_BLUEPRINT_IDS = SHOT_BLUEPRINT_IDS;
+export type ShotBlueprintCode = number;
+export const SHOT_BLUEPRINT_CODE_UNKNOWN = 0xff;
+export function getNetworkShotBlueprintIds(): readonly string[] {
+  return _SHOT_BLUEPRINT_IDS;
 }
-const _SHOT_TYPE_TO_CODE: Record<string, number> = {};
-for (let i = 0; i < _SHOT_TYPES.length; i++) _SHOT_TYPE_TO_CODE[_SHOT_TYPES[i]] = i;
-export function shotIdToCode(s: string): ShotTypeCode {
-  const code = _SHOT_TYPE_TO_CODE[s];
-  return code === undefined ? SHOT_ID_UNKNOWN : code;
+const _SHOT_BLUEPRINT_ID_TO_CODE: Record<string, ShotBlueprintCode> = {};
+for (let i = 0; i < _SHOT_BLUEPRINT_IDS.length; i++) {
+  _SHOT_BLUEPRINT_ID_TO_CODE[_SHOT_BLUEPRINT_IDS[i]] = i;
 }
-export function codeToShotId(c: number): ShotId | null {
-  return _SHOT_TYPES[c] ?? null;
+export function shotBlueprintIdToCode(s: string): ShotBlueprintCode {
+  const code = _SHOT_BLUEPRINT_ID_TO_CODE[s];
+  return code === undefined ? SHOT_BLUEPRINT_CODE_UNKNOWN : code;
+}
+export function codeToShotBlueprintId(c: number): ShotBlueprintId | null {
+  return _SHOT_BLUEPRINT_IDS[c] ?? null;
 }
 
 // ── Turret blueprint codes ─────────────────────────────────────────
 // Append-only, validated against TURRET_BLUEPRINTS at startup.
-const _TURRET_TYPES = TURRET_IDS;
-export type TurretTypeCode = number;
-export const TURRET_ID_UNKNOWN = 0xff;
-export function getNetworkTurretIds(): readonly string[] {
-  return _TURRET_TYPES;
+const _TURRET_BLUEPRINT_IDS = TURRET_BLUEPRINT_IDS;
+export type TurretBlueprintCode = number;
+export const TURRET_BLUEPRINT_CODE_UNKNOWN = 0xff;
+export function getNetworkTurretBlueprintIds(): readonly string[] {
+  return _TURRET_BLUEPRINT_IDS;
 }
-const _TURRET_TYPE_TO_CODE: Record<string, number> = {};
-for (let i = 0; i < _TURRET_TYPES.length; i++) _TURRET_TYPE_TO_CODE[_TURRET_TYPES[i]] = i;
-export function turretIdToCode(s: string): TurretTypeCode {
-  const code = _TURRET_TYPE_TO_CODE[s];
-  return code === undefined ? TURRET_ID_UNKNOWN : code;
+const _TURRET_BLUEPRINT_ID_TO_CODE: Record<string, TurretBlueprintCode> = {};
+for (let i = 0; i < _TURRET_BLUEPRINT_IDS.length; i++) {
+  _TURRET_BLUEPRINT_ID_TO_CODE[_TURRET_BLUEPRINT_IDS[i]] = i;
 }
-export function codeToTurretId(c: number): TurretId | null {
-  return _TURRET_TYPES[c] ?? null;
+export function turretBlueprintIdToCode(s: string): TurretBlueprintCode {
+  const code = _TURRET_BLUEPRINT_ID_TO_CODE[s];
+  return code === undefined ? TURRET_BLUEPRINT_CODE_UNKNOWN : code;
+}
+export function codeToTurretBlueprintId(c: number): TurretBlueprintId | null {
+  return _TURRET_BLUEPRINT_IDS[c] ?? null;
 }
 import type { Command } from './commands';
 import type { SimEventAudioKey, ImpactContext, SimDeathContext, SimEventSourceType, ForceFieldImpactContext } from './combat';
@@ -327,7 +342,7 @@ export type NetworkServerSnapshotSimEvent = {
     | 'attackAlert'
     | 'projectileExpire'
     | 'waterSplash';
-  turretId: SimEventAudioKey;
+  turretBlueprintId: SimEventAudioKey;
   sourceType: SimEventSourceType | null;
   sourceKey: string | null;
   /** Event origin in 3D sim coords. See SimEvent in types/combat.ts. */
@@ -417,22 +432,22 @@ export type NetworkServerSnapshotProjectileSpawn = {
   projectileType: ProjectileTypeCode;
   /** Resolved finite runtime timeout in ms, when the projectile has one. */
   maxLifespan: number | null;
-  /** Compatibility/source turret wire code. Prefer sourceTurretId + shotId. */
-  turretId: TurretTypeCode;
+  /** Compatibility/source turret blueprint wire code. Prefer sourceTurretBlueprintCode + shotBlueprintCode. */
+  turretBlueprintCode: TurretBlueprintCode;
   /** Actual shot blueprint wire code for client hydration. */
-  shotId: ShotTypeCode | null;
+  shotBlueprintCode: ShotBlueprintCode | null;
   /** Real turret blueprint wire code that authored this projectile. */
-  sourceTurretId: TurretTypeCode | null;
+  sourceTurretBlueprintCode: TurretBlueprintCode | null;
   /** Runtime EntityId of the mounted turret instance that fired this projectile. */
-  sourceTurretInstanceId: number | null;
+  sourceTurretEntityId: number | null;
   playerId: number;
   /** Legacy source-host shortcut. The full immutable source record follows. */
   sourceEntityId: number;
-  sourceHostId: number;
-  sourceRootId: number;
+  sourceHostEntityId: number;
+  sourceRootEntityId: number;
   sourceTeamId: number;
   spawnTick: number;
-  parentShotId: number | null;
+  parentShotEntityId: number | null;
   turretIndex: number;
   /** Barrel selected for visual/audio cadence within the source turret's cluster.
    *  Authoritative shots spawn from the turret mount center. */
@@ -653,7 +668,7 @@ export type NetworkServerSnapshotAction = {
    *  — the renderer treats `undefined` as `false`. */
   pathExp: boolean | null;
   targetId: number | null;
-  buildingType: string | null;
+  buildingBlueprintId: string | null;
   grid: Vec2 | null;
   buildingId: number | null;
 };
@@ -663,7 +678,7 @@ export type NetworkServerSnapshotTurret = {
     /** Turret blueprint wire code for slot validation only. Static authored
      *  data such as ranges/turn acceleration/drag stays client-local
      *  and blueprint-derived. */
-    id: TurretTypeCode;
+    turretBlueprintCode: TurretBlueprintCode;
     /** ROTATION_WIRE_SCALE fixed-point yaw/pitch positions and rates. */
     angular: {
       /** Yaw (horizontal heading, rot around z-axis). */
@@ -731,8 +746,8 @@ export type NetworkServerSnapshotEntity = {
   unit: {
     /** Static fields are present on full records and omitted from
      *  ordinary deltas after the entity has been created.
-     *  Numeric wire ID — see UNIT_TYPE_* / unitTypeToCode helpers. */
-    unitType: number | null;
+     *  Numeric wire code — see unitBlueprintIdToCode helpers. */
+    unitBlueprintCode: UnitBlueprintCode | null;
     hp: { curr: number; max: number } | null;
     /** Unit radii. Static on full records and omitted from ordinary
      *  deltas unless the unit blueprint/runtime radius changes. */
@@ -781,10 +796,10 @@ export type NetworkServerSnapshotEntity = {
     } | null;
   } | null;
   building: {
-    /** type / dim are present on full records and omitted from
+    /** buildingBlueprintCode / dim are present on full records and omitted from
      *  ordinary deltas after the entity has been created.
-     *  Numeric wire ID — see BUILDING_TYPE_* / buildingTypeToCode helpers. */
-    type: number | null;
+     *  Numeric wire code — see buildingBlueprintIdToCode helpers. */
+    buildingBlueprintCode: BuildingBlueprintCode | null;
     /** Footprint in world units — planar xy is dim.x/dim.y. Full
      *  depth (vertical extent) lives on the building entity, not
      *  here — clients re-derive it from the blueprint. */
@@ -808,7 +823,7 @@ export type NetworkServerSnapshotEntity = {
      *  as unit turrets. Static authored data stays blueprint-derived. */
     turrets: NetworkServerSnapshotTurret[] | null;
     factory: {
-      /** Queue of unit type codes (see UNIT_TYPE_* / unitTypeToCode). */
+      /** Queue of unit blueprint wire codes (see unitBlueprintIdToCode). */
       queue: number[];
       /** Average fill of the factory's currentShellId, or 0 if
        *  the factory hasn't spawned a shell yet. The client re-derives

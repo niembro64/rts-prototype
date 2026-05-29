@@ -1,4 +1,4 @@
-import type { Entity, BuildingType } from '../sim/types';
+import type { Entity, BuildingBlueprintId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import type { NetworkServerSnapshotEntity } from './NetworkManager';
 import {
@@ -9,8 +9,8 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
-  codeToBuildingType,
-  codeToUnitType,
+  codeToBuildingBlueprintId,
+  codeToUnitBlueprintId,
 } from '../../types/network';
 import {
   applyNetworkTurretNonVisualState,
@@ -55,7 +55,7 @@ export function snapClientNonVisualState(
       cacheDirty = applyNetworkBuildState(
         entity,
         su.build ?? undefined,
-        getUnitBuildRequired(entity.unit.unitType),
+        getUnitBuildRequired(entity.unit.unitBlueprintId),
       ) || cacheDirty;
     }
     applyNetworkUnitStaticFields(entity.unit, su);
@@ -66,7 +66,7 @@ export function snapClientNonVisualState(
     if (isFull && Array.isArray(su.turrets)) {
       refreshUnitTurretsFromNetwork(
         entity,
-        entity.unit.unitType,
+        entity.unit.unitBlueprintId,
         entity.unit.radius.body,
         su.turrets,
       );
@@ -99,14 +99,14 @@ export function snapClientNonVisualState(
     }
   }
 
-  if (entity.building && sb !== null && sb.type !== null && isFull) {
-    const buildingType = codeToBuildingType(sb.type);
-    if (buildingType) entity.buildingType = buildingType as BuildingType;
+  if (entity.building && sb !== null && sb.buildingBlueprintCode !== null && isFull) {
+    const buildingBlueprintId = codeToBuildingBlueprintId(sb.buildingBlueprintCode);
+    if (buildingBlueprintId) entity.buildingBlueprintId = buildingBlueprintId as BuildingBlueprintId;
   }
 
   if (entity.building && sb !== null && sb.turrets !== null) {
-    if (isFull && entity.buildingType) {
-      refreshBuildingTurretsFromNetwork(entity, entity.buildingType, sb.turrets);
+    if (isFull && entity.buildingBlueprintId) {
+      refreshBuildingTurretsFromNetwork(entity, entity.buildingBlueprintId, sb.turrets);
     } else {
       applyNetworkTurretNonVisualState(entity, sb.turrets);
     }
@@ -126,7 +126,7 @@ export function snapClientNonVisualState(
     cacheDirty = applyNetworkBuildState(
       entity,
       sb.build,
-      getBuildingBuildRequired(entity.buildingType),
+      getBuildingBuildRequired(entity.buildingBlueprintId),
     ) || cacheDirty;
   }
 
@@ -142,12 +142,12 @@ export function snapClientNonVisualState(
       };
     } else if (
       isFull
-      && (entity.buildingType === 'solar'
-        || entity.buildingType === 'wind'
-        || entity.buildingType === 'extractor')
+      && (entity.buildingBlueprintId === 'solar'
+        || entity.buildingBlueprintId === 'wind'
+        || entity.buildingBlueprintId === 'extractor')
     ) {
       entity.building.activeState = {
-        open: entity.buildingType !== 'solar',
+        open: entity.buildingBlueprintId !== 'solar',
         damageDelayMs: 0,
         reopenDelayMs: 0,
       };
@@ -160,8 +160,8 @@ export function snapClientNonVisualState(
     const src = sf.queue;
     dst.length = 0;
     for (let i = 0; i < src.length; i++) {
-      const unitType = codeToUnitType(src[i]);
-      if (unitType) dst.push(unitType);
+      const unitBlueprintId = codeToUnitBlueprintId(src[i]);
+      if (unitBlueprintId) dst.push(unitBlueprintId);
     }
     entity.factory.currentShellId = null;
     entity.factory.currentBuildProgress = sf.progress;

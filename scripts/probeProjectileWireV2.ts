@@ -15,8 +15,8 @@ import {
   PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE,
   PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE,
   PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN,
-  PROJECTILE_SPAWN_FLAG_SHOT_ID,
-  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID,
+  PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
   PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
@@ -52,14 +52,14 @@ function makeSpawn(id: number, withBeam = false, withHoming = false): NetworkSer
     rotation: rand(0, 6283),
     velocity: { x: rand(-300, 300), y: rand(-300, 300), z: rand(-50, 100) },
     projectileType: rand(0, 20),
-    turretId: rand(0, 40),
+    turretBlueprintCode: rand(0, 40),
     playerId: rand(1, 5),
     sourceEntityId: rand(1, 5000),
     turretIndex: rand(0, 4),
     barrelIndex: rand(0, 2),
     maxLifespan: 3000,
-    shotId: rand(0, 30),
-    sourceTurretId: rand(0, 40),
+    shotBlueprintCode: rand(0, 30),
+    sourceTurretBlueprintCode: rand(0, 40),
   };
   if (withBeam) {
     base.beam = {
@@ -193,9 +193,9 @@ function writeSpawnV1(values: number[], base: number, spawn: NetworkServerSnapsh
   values[base + 7] = spawn.velocity.z;
   values[base + 8] = spawn.projectileType;
   values[base + 9] = spawn.maxLifespan ?? 0;
-  values[base + 10] = spawn.turretId;
-  values[base + 11] = spawn.shotId ?? 0;
-  values[base + 12] = spawn.sourceTurretId ?? 0;
+  values[base + 10] = spawn.turretBlueprintCode;
+  values[base + 11] = spawn.shotBlueprintCode ?? 0;
+  values[base + 12] = spawn.sourceTurretBlueprintCode ?? 0;
   values[base + 13] = spawn.playerId;
   values[base + 14] = spawn.sourceEntityId;
   values[base + 15] = spawn.turretIndex;
@@ -212,8 +212,8 @@ function writeSpawnV1(values: number[], base: number, spawn: NetworkServerSnapsh
   values[base + 25] = 0;
   let flags = 0;
   if (spawn.maxLifespan !== undefined) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
-  if (spawn.sourceTurretId !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
+  if (spawn.shotBlueprintCode !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
+  if (spawn.sourceTurretBlueprintCode !== undefined) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
   if (spawn.isDGun) flags |= PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE;
   if (spawn.fromParentDetonation) flags |= PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE;
   if (spawn.beam !== undefined) flags |= PROJECTILE_SPAWN_FLAG_BEAM;

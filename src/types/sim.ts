@@ -1,13 +1,13 @@
 // Simulation entity types extracted from game/sim/types.ts
 
 import type { BarrelShape } from './config';
-import type { ShotId, TurretId } from './blueprintIds';
+import type { ShotBlueprintId, TurretBlueprintId } from './blueprintIds';
 import type { Vec3 } from './vec2';
 import type { TurretAimStyle, TurretRadiusConfig } from './blueprints';
 import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
-  BuildingType,
+  BuildingBlueprintId,
 } from './buildingTypes';
 import type {
   UnitAction,
@@ -29,7 +29,7 @@ import type {
 export type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
-  BuildingType,
+  BuildingBlueprintId,
 } from './buildingTypes';
 export type {
   ActionType,
@@ -169,7 +169,7 @@ export type CachedForceFieldPanel = {
 // velocity prevents the action system from clobbering the velocity
 // field mid-tick before turretSystem's lead math runs.
 export type Unit = {
-  unitType: string;
+  unitBlueprintId: string;
   locomotion: UnitLocomotion;
   /** Unit radii in world units. `body` is the visible chassis/body
    *  authoring radius, `shot` is the projectile-vs-unit collider, and
@@ -338,7 +338,7 @@ export type Building = {
 
 // Turret configuration (compiled turret definition)
 export type TurretConfig = {
-  id: TurretId;
+  turretBlueprintId: TurretBlueprintId;
   range: number;
   cooldown: number;
   color: number;
@@ -415,7 +415,7 @@ export type ProjectileConfig = {
   shot: ActiveProjectileShot;
   shotProfile: ShotProfile;
   /** Real turret blueprint that authored this projectile, when one exists. */
-  sourceTurretId: TurretId | undefined;
+  sourceTurretBlueprintId: TurretBlueprintId | undefined;
   /** Source-turret base range. Active line shots use the live turret's
    *  computed 2D fire circle while retracing; shot-only children keep 0. */
   range: number;
@@ -430,18 +430,18 @@ export type ProjectileConfig = {
 
 export type ShotSource = {
   /** Runtime EntityId of the mounted turret instance that fired this shot. */
-  sourceTurretId: EntityId | null;
+  sourceTurretEntityId: EntityId | null;
   /** Runtime EntityId of the immediate top-level firing host. */
-  sourceHostId: EntityId;
+  sourceHostEntityId: EntityId;
   /** Runtime EntityId of the root host that owns the firing assembly. */
-  sourceRootId: EntityId;
+  sourceRootEntityId: EntityId;
   sourcePlayerId: PlayerId;
   /** Canonical team id at launch time. In FFA this equals sourcePlayerId. */
   sourceTeamId: number;
-  sourceTurretBlueprintId: TurretId | undefined;
-  sourceShotBlueprintId: ShotId;
+  sourceTurretBlueprintId: TurretBlueprintId | undefined;
+  sourceShotBlueprintId: ShotBlueprintId;
   spawnTick: number;
-  parentShotId: EntityId | null;
+  parentShotEntityId: EntityId | null;
 };
 
 // Turret FSM state: idle → tracking → engaged
@@ -456,7 +456,7 @@ export type TurretState = 'idle' | 'tracking' | 'engaged';
 // pitches the barrel upward. `angularVelocity` is the yaw rate only;
 // pitch is set directly each frame from the aim solution.
 export type Turret = {
-  /** Runtime identity for this mounted turret instance. Blueprint id lives on config.id. */
+  /** Runtime identity for this mounted turret instance. Blueprint id lives on config.turretBlueprintId. */
   id: EntityId;
   parentId: EntityId;
   rootHostId: EntityId;
@@ -543,14 +543,14 @@ export type Projectile = {
   /** Legacy host shortcut. The full immutable provenance lives in shotSource. */
   sourceEntityId: EntityId;
   config: ProjectileConfig;
-  /** Actual shot blueprint id. For normal shots this equals config.shot.id;
-   *  for submunitions it is the child shot id. */
-  shotId: ShotId;
-  /** Immutable launch provenance, inherited by submunitions with parentShotId updated. */
+  /** Actual shot blueprint id. For normal shots this equals config.shot.shotBlueprintId;
+   *  for submunitions it is the child shot blueprint id. */
+  shotBlueprintId: ShotBlueprintId;
+  /** Immutable launch provenance, inherited by submunitions with parentShotEntityId updated. */
   shotSource: ShotSource;
   /** Real turret blueprint id that ultimately authored this projectile.
    *  Submunitions inherit this from their parent projectile. */
-  sourceTurretBlueprintId: TurretId | undefined;
+  sourceTurretBlueprintId: TurretBlueprintId | undefined;
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;
@@ -750,7 +750,7 @@ export type Builder = {
 // The sim is fully 3D, so buildings need a real z-extent — it's a
 // first-class property of the shape, not a render-only detail.
 export type BuildingConfig = {
-  id: BuildingType;
+  buildingBlueprintId: BuildingBlueprintId;
   name: string;
   gridWidth: number;
   gridHeight: number;
@@ -776,7 +776,7 @@ export type BuildingConfig = {
 
 // Unit build configuration
 export type UnitBuildConfig = {
-  unitId: string;
+  unitBlueprintId: string;
   name: string;
   cost: ResourceCost;
   radius: { body: number; shot: number; push: number };
@@ -891,7 +891,7 @@ export type EntityComponentSlots = {
   factory: Factory | null;
   commander: Commander | null;
   dgunProjectile: DGunProjectile | null;
-  buildingType: BuildingType | null;
+  buildingBlueprintId: BuildingBlueprintId | null;
   /** For extractors only — every deposit with at least one generated
    *  metal cell under this extractor's fixed build footprint. Output is
    *  computed from the covered metal-cell count, not from whole-deposit
@@ -926,7 +926,7 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     factory: null,
     commander: null,
     dgunProjectile: null,
-    buildingType: null,
+    buildingBlueprintId: null,
     coveredDepositIds: null,
     metalExtractionRate: null,
     _cachedFullVisionRadius: -1,

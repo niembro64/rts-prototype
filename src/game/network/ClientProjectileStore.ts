@@ -11,7 +11,7 @@ import {
   isLineProjectileTypeCode,
 } from '../../types/network';
 import {
-  decodeProjectileSourceTurretId,
+  decodeProjectileSourceTurretBlueprintId,
   ProjectileSpawnQueue,
 } from './ProjectileSpawnQueue';
 import {
@@ -21,7 +21,7 @@ import {
   type BeamPathTarget,
 } from './ClientPredictionTargets';
 import {
-  decodeProjectileShotId,
+  decodeProjectileShotBlueprintId,
   isLineProjectileEntity,
 } from './ClientProjectileUtils';
 import {
@@ -237,10 +237,10 @@ export class ClientProjectileStore {
   private createProjectileFromSpawn(
     spawn: NetworkServerSnapshotProjectileSpawn,
   ): Entity {
-    const sourceTurretId = decodeProjectileSourceTurretId(spawn);
-    const shotId = decodeProjectileShotId(spawn);
+    const sourceTurretBlueprintId = decodeProjectileSourceTurretBlueprintId(spawn);
+    const shotBlueprintId = decodeProjectileShotBlueprintId(spawn);
     const config = {
-      ...getProjectileConfigForSpawn(sourceTurretId, shotId, spawn.turretIndex),
+      ...getProjectileConfigForSpawn(sourceTurretBlueprintId, shotBlueprintId, spawn.turretIndex),
       turretIndex: spawn.turretIndex,
     };
 
@@ -261,19 +261,19 @@ export class ClientProjectileStore {
         ownerId: spawn.playerId,
         sourceEntityId: spawn.sourceEntityId,
         config,
-        shotId: shotId ?? config.shot.id,
+        shotBlueprintId: shotBlueprintId ?? config.shot.shotBlueprintId,
         shotSource: {
-          sourceTurretId: spawn.sourceTurretInstanceId,
-          sourceHostId: spawn.sourceHostId,
-          sourceRootId: spawn.sourceRootId,
+          sourceTurretEntityId: spawn.sourceTurretEntityId,
+          sourceHostEntityId: spawn.sourceHostEntityId,
+          sourceRootEntityId: spawn.sourceRootEntityId,
           sourcePlayerId: spawn.playerId,
           sourceTeamId: spawn.sourceTeamId,
-          sourceTurretBlueprintId: sourceTurretId ?? config.sourceTurretId,
-          sourceShotBlueprintId: shotId ?? config.shot.id,
+          sourceTurretBlueprintId: sourceTurretBlueprintId ?? config.sourceTurretBlueprintId,
+          sourceShotBlueprintId: shotBlueprintId ?? config.shot.shotBlueprintId,
           spawnTick: spawn.spawnTick,
-          parentShotId: spawn.parentShotId,
+          parentShotEntityId: spawn.parentShotEntityId,
         },
-        sourceTurretBlueprintId: sourceTurretId ?? config.sourceTurretId,
+        sourceTurretBlueprintId: sourceTurretBlueprintId ?? config.sourceTurretBlueprintId,
         ...PROJECTILE_ABSENCE_SLOTS,
         sourceBarrelIndex: spawn.barrelIndex,
         projectileType,

@@ -5,7 +5,7 @@ import type { EntityId } from './entityTypes';
 export type UnitPathfindingTerrainMode = 'land' | 'anywhere';
 
 export type UnitPathfindingConfig = {
-  id: string;
+  pathfindingBlueprintId: string;
   terrainMode: UnitPathfindingTerrainMode;
   /** True for profiles that can route over water and steep terrain. */
   ignoreTerrainBlocking: boolean;

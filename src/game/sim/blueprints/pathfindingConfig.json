@@ -1,21 +1,21 @@
 {
   "wheelsLand": {
-    "id": "wheelsLand",
+    "pathfindingBlueprintId": "wheelsLand",
     "terrainMode": "land",
     "maxSlopeDeg": 20
   },
   "treadsLand": {
-    "id": "treadsLand",
+    "pathfindingBlueprintId": "treadsLand",
     "terrainMode": "land",
     "maxSlopeDeg": 30
   },
   "legsLand": {
-    "id": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "terrainMode": "land",
     "maxSlopeDeg": 80
   },
   "airborneAnywhere": {
-    "id": "airborneAnywhere",
+    "pathfindingBlueprintId": "airborneAnywhere",
     "terrainMode": "anywhere",
     "maxSlopeDeg": null
   }

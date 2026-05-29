@@ -4,7 +4,7 @@ import type { Entity, PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import { aimTurretsToward } from '../sim/turretInit';
 import type { PhysicsEngine3D as PhysicsEngine } from './PhysicsEngine3D';
-import { BUILDABLE_UNIT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../sim/blueprints';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS, getUnitBlueprint, getNormalizedUnitCost } from '../sim/blueprints';
 import {
   BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING,
 } from '../../config';
@@ -26,35 +26,35 @@ import { setUnitFacingYaw } from '../sim/unitOrientation';
 import type { BuildingGrid } from '../sim/buildGrid';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
-// Available unit types for background spawning (excludes commander)
-export const BACKGROUND_UNIT_TYPES = [...BUILDABLE_UNIT_IDS];
+// Available unit blueprints for background spawning (excludes commander)
+export const BACKGROUND_UNIT_BLUEPRINT_IDS = [...BUILDABLE_UNIT_BLUEPRINT_IDS];
 
 // Pre-computed inverse-cost weights for background unit selection.
-// Cached across spawn calls but RE-BUILT whenever the allowedTypes
+// Cached across spawn calls but RE-BUILT whenever the allowedUnitBlueprintIds
 // signature changes — without this the original lazy cache would
 // keep picking from a stale type list after a toggle, then those
 // disallowed units would get wiped a tick later by the toggle
-// handler in GameServer.setBackgroundUnitTypeEnabled (which gave
+// handler in GameServer.setBackgroundUnitBlueprintEnabled (which gave
 // the "spawning then despawning the wrong unit" behaviour).
 let backgroundUnitWeights: { type: string; cumWeight: number }[] = [];
 let cachedWeightSignature = '';
 
-/** Stable string signature for an allowedTypes set. Sorting keeps
+/** Stable string signature for an allowedUnitBlueprintIds set. Sorting keeps
  *  signature equality independent of insertion order. */
-function signatureFor(allowedTypes: ReadonlySet<string> | undefined = undefined): string {
-  if (allowedTypes === undefined) return '*';
-  if (allowedTypes.size === 0) return '∅';
-  return [...allowedTypes].sort().join('|');
+function signatureFor(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): string {
+  if (allowedUnitBlueprintIds === undefined) return '*';
+  if (allowedUnitBlueprintIds.size === 0) return '∅';
+  return [...allowedUnitBlueprintIds].sort().join('|');
 }
 
-function ensureWeightTable(allowedTypes: ReadonlySet<string> | undefined = undefined): void {
-  const sig = signatureFor(allowedTypes);
+function ensureWeightTable(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): void {
+  const sig = signatureFor(allowedUnitBlueprintIds);
   if (sig === cachedWeightSignature && backgroundUnitWeights.length > 0) return;
   cachedWeightSignature = sig;
 
-  const types = allowedTypes !== undefined
-    ? BACKGROUND_UNIT_TYPES.filter(t => allowedTypes.has(t))
-    : BACKGROUND_UNIT_TYPES;
+  const types = allowedUnitBlueprintIds !== undefined
+    ? BACKGROUND_UNIT_BLUEPRINT_IDS.filter(t => allowedUnitBlueprintIds.has(t))
+    : BACKGROUND_UNIT_BLUEPRINT_IDS;
   let totalWeight = 0;
   backgroundUnitWeights = [];
   for (const t of types) {
@@ -72,8 +72,8 @@ function ensureWeightTable(allowedTypes: ReadonlySet<string> | undefined = undef
   }
 }
 
-function selectWeightedUnitType(allowedTypes: ReadonlySet<string> | undefined = undefined): string | null {
-  ensureWeightTable(allowedTypes);
+function selectWeightedUnitBlueprintId(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): string | null {
+  ensureWeightTable(allowedUnitBlueprintIds);
   if (backgroundUnitWeights.length === 0) return null;
   const r = Math.random();
   for (const entry of backgroundUnitWeights) {
@@ -82,16 +82,16 @@ function selectWeightedUnitType(allowedTypes: ReadonlySet<string> | undefined = 
   return backgroundUnitWeights[backgroundUnitWeights.length - 1].type;
 }
 
-function selectUnitType(allowedTypes: ReadonlySet<string> | undefined = undefined): string | null {
+function selectUnitBlueprintId(allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined): string | null {
   // No allowed types → caller will skip the spawn.
-  if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
+  if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
   if (BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING) {
-    return selectWeightedUnitType(allowedTypes);
-  } else if (allowedTypes !== undefined && allowedTypes.size > 0) {
-    const allowed = Array.from(allowedTypes);
+    return selectWeightedUnitBlueprintId(allowedUnitBlueprintIds);
+  } else if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size > 0) {
+    const allowed = Array.from(allowedUnitBlueprintIds);
     return allowed[Math.floor(Math.random() * allowed.length)];
   }
-  return BACKGROUND_UNIT_TYPES[Math.floor(Math.random() * BACKGROUND_UNIT_TYPES.length)];
+  return BACKGROUND_UNIT_BLUEPRINT_IDS[Math.floor(Math.random() * BACKGROUND_UNIT_BLUEPRINT_IDS.length)];
 }
 
 // Spawn a single unit at a specific position with the configured demo waypoints.
@@ -107,19 +107,19 @@ function spawnUnit(
   y: number,
   waypoints: readonly MultiLegWaypoint[],
   buildingGrid: BuildingGrid,
-  allowedTypes: ReadonlySet<string> | undefined = undefined,
+  allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity | null {
-  if (allowedTypes !== undefined && allowedTypes.size === 0) return null;
+  if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
   if (waypoints.length === 0) return null;
 
-  const unitType = selectUnitType(allowedTypes);
+  const unitBlueprintId = selectUnitBlueprintId(allowedUnitBlueprintIds);
   // Defensive: only ever spawn from the allowed-types set. If
-  // selectUnitType signalled "nothing valid" (empty set, weight
+  // selectUnitBlueprintId signalled "nothing valid" (empty set, weight
   // table empty after rebuild), skip the spawn entirely instead of
   // creating a unit that would be wiped by the toggle handler a
   // tick later.
-  if (!unitType) return null;
-  const unit = world.createUnitFromBlueprint(x, y, playerId, unitType);
+  if (!unitBlueprintId) return null;
+  const unit = world.createUnitFromBlueprint(x, y, playerId, unitBlueprintId);
 
   const firstWp = waypoints[0];
   setUnitFacingYaw(unit, Math.atan2(firstWp.y - y, firstWp.x - x));
@@ -148,7 +148,7 @@ function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): n
   let count = 0;
   for (const unit of world.getUnitsByPlayer(playerId)) {
     const unitComponent = unit.unit;
-    if (unitComponent !== null && unitComponent.unitType === 'commander') continue;
+    if (unitComponent !== null && unitComponent.unitBlueprintId === 'commander') continue;
     count++;
   }
   return count;
@@ -189,7 +189,7 @@ export function spawnBackgroundUnitsStandalone(
   physics: PhysicsEngine,
   initialSpawn: boolean,
   buildingGrid: BuildingGrid,
-  allowedTypes: ReadonlySet<string> | undefined = undefined,
+  allowedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
   playerIds: readonly PlayerId[] | undefined = undefined,
 ): Entity[] {
   const spawned: Entity[] = [];
@@ -266,7 +266,7 @@ export function spawnBackgroundUnitsStandalone(
             { x: targetX, y: targetY, z: null, type: 'patrol' },
             { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
           ],
-          buildingGrid, allowedTypes,
+          buildingGrid, allowedUnitBlueprintIds,
         );
         if (unit) spawned.push(unit);
       }
@@ -293,7 +293,7 @@ export function spawnBackgroundUnitsStandalone(
           { x: cx, y: cy, z: null, type: 'patrol' },
           { x: point.x, y: point.y, z: null, type: 'patrol' },
         ],
-        buildingGrid, allowedTypes,
+        buildingGrid, allowedUnitBlueprintIds,
       );
       if (unit) spawned.push(unit);
     }

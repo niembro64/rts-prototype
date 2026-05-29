@@ -81,13 +81,13 @@ export function geometryKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
 }
 
-function hoverSmokeUseId(locomotionId: string): HoverSmokeUseId {
-  return locomotionId === 'dragonflyHovercraft'
+function hoverSmokeUseId(locomotionBlueprintId: string): HoverSmokeUseId {
+  return locomotionBlueprintId === 'dragonflyHovercraft'
     ? 'dragonflyHovercraft'
     : 'hovercraft';
 }
 
-function flyingSmokeUseId(_locomotionId: string): FlyingSmokeUseId {
+function flyingSmokeUseId(_locomotionBlueprintId: string): FlyingSmokeUseId {
   return 'eagleFlying';
 }
 
@@ -121,7 +121,7 @@ export function buildLocomotion(
   if (!entity.unit) return undefined;
   let bp;
   try {
-    bp = getUnitBlueprint(entity.unit.unitType);
+    bp = getUnitBlueprint(entity.unit.unitBlueprintId);
   } catch {
     return undefined;
   }
@@ -156,7 +156,7 @@ export function buildLocomotion(
         unitGroup,
         unitRadius,
         loc.config,
-        hoverSmokeUseId(bp.locomotionId),
+        hoverSmokeUseId(bp.locomotionBlueprintId),
         entity.id,
         ownerId,
       );
@@ -168,7 +168,7 @@ export function buildLocomotion(
         unitGroup,
         unitRadius,
         loc.config,
-        flyingSmokeUseId(bp.locomotionId),
+        flyingSmokeUseId(bp.locomotionBlueprintId),
         entity.id,
         ownerId,
       );

@@ -191,7 +191,7 @@ export function packAudioEventsForWire(
     row.push(
       typeCode,
       flags,
-      stringSlot(strings, stringSlots, event.turretId),
+      stringSlot(strings, stringSlots, event.turretBlueprintId),
       quantizeProjectilePosition(event.pos.x),
       quantizeProjectilePosition(event.pos.y),
       quantizeProjectilePosition(event.pos.z),
@@ -270,7 +270,7 @@ export function unpackAudioEventsFromWire(
     let cursor = 6;
     const event: NetworkServerSnapshotSimEvent = {
       type,
-      turretId: (strings[row[2]] ?? '') as NetworkServerSnapshotSimEvent['turretId'],
+      turretBlueprintId: (strings[row[2]] ?? '') as NetworkServerSnapshotSimEvent['turretBlueprintId'],
       sourceType: null,
       sourceKey: null,
       pos: {
@@ -362,7 +362,7 @@ function appendDeathContextRow(
   if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
   if (context.pushRadius !== undefined) flags |= DEATH_HAS_PUSH_RADIUS;
   if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
-  if (context.unitType !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
+  if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
   if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
   if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
 
@@ -383,8 +383,8 @@ function appendDeathContextRow(
   if (context.visualRadius !== undefined) row.push(quantizeProjectilePosition(context.visualRadius));
   if (context.pushRadius !== undefined) row.push(quantizeProjectilePosition(context.pushRadius));
   if (context.baseZ !== undefined) row.push(quantizeProjectilePosition(context.baseZ));
-  if (context.unitType !== undefined) {
-    row.push(stringSlot(strings, stringSlots, context.unitType));
+  if (context.unitBlueprintId !== undefined) {
+    row.push(stringSlot(strings, stringSlots, context.unitBlueprintId));
   }
   if (context.rotation !== undefined) row.push(quantizeRotation(context.rotation));
   if (context.turretPoses !== undefined) {
@@ -443,7 +443,7 @@ function unpackDeathContextRow(
     context.baseZ = dequantizeProjectilePosition(source[cursor++] ?? 0);
   }
   if ((flags & DEATH_HAS_UNIT_TYPE) !== 0) {
-    context.unitType = strings[source[cursor++]] as NonNullable<typeof context.unitType>;
+    context.unitBlueprintId = strings[source[cursor++]] as NonNullable<typeof context.unitBlueprintId>;
   }
   if ((flags & DEATH_HAS_ROTATION) !== 0) {
     context.rotation = dequantizeRotation(source[cursor++] ?? 0);

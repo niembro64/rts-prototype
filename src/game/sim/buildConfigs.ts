@@ -1,11 +1,11 @@
-import type { BuildingConfig, BuildingType, UnitBuildConfig } from './types';
+import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './types';
 import { COST_MULTIPLIER } from '../../config';
-import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_IDS } from './blueprints';
+import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
 
-function buildBuildingConfig(type: BuildingType): BuildingConfig {
-  const bp = BUILDING_BLUEPRINTS[type];
+function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
+  const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
   return {
-    id: bp.id,
+    buildingBlueprintId: bp.buildingBlueprintId,
     name: bp.name,
     gridWidth: bp.gridWidth,
     gridHeight: bp.gridHeight,
@@ -27,7 +27,7 @@ function buildBuildingConfig(type: BuildingType): BuildingConfig {
 }
 
 // Building configurations derived from BUILDING_BLUEPRINTS.
-export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
+export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> = {
   solar: buildBuildingConfig('solar'),
   wind: buildBuildingConfig('wind'),
   factory: buildBuildingConfig('factory'),
@@ -39,17 +39,17 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
 };
 
 // Helper to get building config
-export function getBuildingConfig(type: BuildingType): BuildingConfig {
-  return BUILDING_CONFIGS[type];
+export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): BuildingConfig {
+  return BUILDING_CONFIGS[buildingBlueprintId];
 }
 
 // Helper to get unit build config (now backed by blueprints)
 // Returns a shim matching the old UnitBuildConfig shape for backward compatibility
-export function getUnitBuildConfig(unitId: string): UnitBuildConfig | undefined {
-  const bp = getUnitBlueprint(unitId);
+export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | undefined {
+  const bp = getUnitBlueprint(unitBlueprintId);
   if (!bp) return undefined;
   return {
-    unitId: bp.id,
+    unitBlueprintId: bp.unitBlueprintId,
     name: bp.name,
     cost: {
       energy: bp.cost.energy * COST_MULTIPLIER,
@@ -57,7 +57,7 @@ export function getUnitBuildConfig(unitId: string): UnitBuildConfig | undefined 
     },
     radius: { ...bp.radius },
     bodyCenterHeight: bp.bodyCenterHeight,
-    locomotion: getUnitLocomotion(unitId),
+    locomotion: getUnitLocomotion(unitBlueprintId),
     mass: bp.mass,
     hp: bp.hp,
     fireRange: undefined,
@@ -66,7 +66,7 @@ export function getUnitBuildConfig(unitId: string): UnitBuildConfig | undefined 
 
 // Get list of all buildable units
 export function getBuildableUnits() {
-  return BUILDABLE_UNIT_IDS.map(id => getUnitBuildConfig(id)!);
+  return BUILDABLE_UNIT_BLUEPRINT_IDS.map((unitBlueprintId) => getUnitBuildConfig(unitBlueprintId)!);
 }
 
 // Get list of all buildings

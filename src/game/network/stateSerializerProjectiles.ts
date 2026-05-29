@@ -18,10 +18,10 @@ import type {
 import type { SnapshotVisibility } from './stateSerializerVisibility';
 import {
   PROJECTILE_TYPE_UNKNOWN,
-  TURRET_ID_UNKNOWN,
+  TURRET_BLUEPRINT_CODE_UNKNOWN,
   projectileTypeToCode,
-  shotIdToCode,
-  turretIdToCode,
+  shotBlueprintIdToCode,
+  turretBlueprintIdToCode,
 } from '../../types/network';
 import { definePooledScratchProperty } from './snapshotPooledScratch';
 import {
@@ -49,8 +49,8 @@ export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;
 const PROJECTILE_BEAM_POINT_CAP = 6;
 
 export const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN = 0x001;
-export const PROJECTILE_SPAWN_FLAG_SHOT_ID = 0x002;
-export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID = 0x004;
+export const PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE = 0x002;
+export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE = 0x004;
 export const PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE = 0x008;
 export const PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE = 0x010;
 export const PROJECTILE_SPAWN_FLAG_BEAM = 0x020;
@@ -58,8 +58,8 @@ export const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID = 0x040;
 export const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE = 0x080;
 export const PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE = 0x100;
 export const PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE = 0x200;
-export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID = 0x400;
-export const PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID = 0x800;
+export const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID = 0x400;
+export const PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID = 0x800;
 
 export const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T = 0x01;
 export const PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE = 0x02;
@@ -172,17 +172,17 @@ function createPooledProjectileSpawn(): NetworkServerSnapshotProjectileSpawn {
     velocity: { x: 0, y: 0, z: 0 },
     projectileType: PROJECTILE_TYPE_UNKNOWN,
     maxLifespan: null,
-    turretId: TURRET_ID_UNKNOWN,
-    shotId: null,
-    sourceTurretId: null,
-    sourceTurretInstanceId: null,
+    turretBlueprintCode: TURRET_BLUEPRINT_CODE_UNKNOWN,
+    shotBlueprintCode: null,
+    sourceTurretBlueprintCode: null,
+    sourceTurretEntityId: null,
     playerId: 1,
     sourceEntityId: 0,
-    sourceHostId: 0,
-    sourceRootId: 0,
+    sourceHostEntityId: 0,
+    sourceRootEntityId: 0,
     sourceTeamId: 1,
     spawnTick: 0,
-    parentShotId: null,
+    parentShotEntityId: null,
     turretIndex: 0,
     barrelIndex: 0,
     isDGun: null,
@@ -306,9 +306,9 @@ export function writeProjectileSpawnWireRow(
   values[base + 7] = spawn.velocity.z;
   values[base + 8] = spawn.projectileType;
   values[base + 9] = spawn.maxLifespan ?? 0;
-  values[base + 10] = spawn.turretId;
-  values[base + 11] = spawn.shotId ?? 0;
-  values[base + 12] = spawn.sourceTurretId ?? 0;
+  values[base + 10] = spawn.turretBlueprintCode;
+  values[base + 11] = spawn.shotBlueprintCode ?? 0;
+  values[base + 12] = spawn.sourceTurretBlueprintCode ?? 0;
   values[base + 13] = spawn.playerId;
   values[base + 14] = spawn.sourceEntityId;
   values[base + 15] = spawn.turretIndex;
@@ -322,20 +322,20 @@ export function writeProjectileSpawnWireRow(
   values[base + 22] = beam !== null ? beam.end.z : 0;
   values[base + 23] = spawn.targetEntityId ?? 0;
   values[base + 24] = spawn.homingTurnRate ?? 0;
-  values[base + 25] = spawn.sourceTurretInstanceId ?? 0;
-  values[base + 26] = spawn.sourceHostId;
-  values[base + 27] = spawn.sourceRootId;
+  values[base + 25] = spawn.sourceTurretEntityId ?? 0;
+  values[base + 26] = spawn.sourceHostEntityId;
+  values[base + 27] = spawn.sourceRootEntityId;
   values[base + 28] = spawn.sourceTeamId;
   values[base + 29] = spawn.spawnTick;
-  values[base + 30] = spawn.parentShotId ?? 0;
+  values[base + 30] = spawn.parentShotEntityId ?? 0;
   let flags = 0;
   if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotId !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
-  if (spawn.sourceTurretId !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
-  if (spawn.sourceTurretInstanceId !== null) {
-    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID;
+  if (spawn.shotBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
+  if (spawn.sourceTurretBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
+  if (spawn.sourceTurretEntityId !== null) {
+    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID;
   }
-  if (spawn.parentShotId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID;
+  if (spawn.parentShotEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID;
   if (spawn.isDGun !== null) {
     flags |= spawn.isDGun
       ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
@@ -552,29 +552,29 @@ function copyProjectileSourceProvenance(
   source: {
     playerId: PlayerId;
     sourceEntityId: EntityId;
-    sourceTurretInstanceId?: EntityId | null;
-    sourceHostId?: EntityId | null;
-    sourceRootId?: EntityId | null;
+    sourceTurretEntityId?: EntityId | null;
+    sourceHostEntityId?: EntityId | null;
+    sourceRootEntityId?: EntityId | null;
     sourceTeamId?: number | null;
     spawnTick?: number | null;
-    parentShotId?: EntityId | null;
+    parentShotEntityId?: EntityId | null;
   },
 ): void {
-  const sourceHostId = source.sourceHostId ?? source.sourceEntityId;
-  const sourceRootId = source.sourceRootId ?? sourceHostId;
-  const canReferenceSourceHost = canReferenceEntityId(world, visibility, sourceHostId);
-  const canReferenceSourceRoot = canReferenceEntityId(world, visibility, sourceRootId);
+  const sourceHostEntityId = source.sourceHostEntityId ?? source.sourceEntityId;
+  const sourceRootEntityId = source.sourceRootEntityId ?? sourceHostEntityId;
+  const canReferenceSourceHost = canReferenceEntityId(world, visibility, sourceHostEntityId);
+  const canReferenceSourceRoot = canReferenceEntityId(world, visibility, sourceRootEntityId);
   out.sourceEntityId = canReferenceEntityId(world, visibility, source.sourceEntityId)
     ? source.sourceEntityId
     : 0;
-  out.sourceTurretInstanceId = canReferenceSourceHost
-    ? source.sourceTurretInstanceId ?? null
+  out.sourceTurretEntityId = canReferenceSourceHost
+    ? source.sourceTurretEntityId ?? null
     : null;
-  out.sourceHostId = canReferenceSourceHost ? sourceHostId : 0;
-  out.sourceRootId = canReferenceSourceRoot ? sourceRootId : 0;
+  out.sourceHostEntityId = canReferenceSourceHost ? sourceHostEntityId : 0;
+  out.sourceRootEntityId = canReferenceSourceRoot ? sourceRootEntityId : 0;
   out.sourceTeamId = source.sourceTeamId ?? world.getTeamId(source.playerId);
   out.spawnTick = source.spawnTick ?? world.getTick();
-  out.parentShotId = source.parentShotId ?? null;
+  out.parentShotEntityId = source.parentShotEntityId ?? null;
 }
 
 function resetProjectilePools(): void {
@@ -637,10 +637,10 @@ export function serializeProjectileSnapshot({
         out.maxLifespan = typeof ps.maxLifespan === 'number' && Number.isFinite(ps.maxLifespan)
           ? ps.maxLifespan
           : null;
-        out.turretId = turretIdToCode(ps.turretId);
-        out.shotId = shotIdToCode(ps.shotId);
-        out.sourceTurretId = ps.sourceTurretId !== undefined
-          ? turretIdToCode(ps.sourceTurretId)
+        out.turretBlueprintCode = turretBlueprintIdToCode(ps.turretBlueprintId);
+        out.shotBlueprintCode = shotBlueprintIdToCode(ps.shotBlueprintId);
+        out.sourceTurretBlueprintCode = ps.sourceTurretBlueprintId !== undefined
+          ? turretBlueprintIdToCode(ps.sourceTurretBlueprintId)
           : null;
         out.playerId = ps.playerId;
         copyProjectileSourceProvenance(out, world, visibility, ps);
@@ -700,23 +700,23 @@ export function serializeProjectileSnapshot({
         out.maxLifespan = Number.isFinite(proj.maxLifespan)
           ? proj.maxLifespan
           : null;
-        out.turretId = proj.sourceTurretBlueprintId !== undefined
-          ? turretIdToCode(proj.sourceTurretBlueprintId)
-          : TURRET_ID_UNKNOWN;
-        out.shotId = shotIdToCode(proj.shotId);
-        out.sourceTurretId = proj.sourceTurretBlueprintId !== undefined
-          ? turretIdToCode(proj.sourceTurretBlueprintId)
+        out.turretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+          ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
+          : TURRET_BLUEPRINT_CODE_UNKNOWN;
+        out.shotBlueprintCode = shotBlueprintIdToCode(proj.shotBlueprintId);
+        out.sourceTurretBlueprintCode = proj.sourceTurretBlueprintId !== undefined
+          ? turretBlueprintIdToCode(proj.sourceTurretBlueprintId)
           : null;
         out.playerId = proj.ownerId;
         copyProjectileSourceProvenance(out, world, visibility, {
           playerId: proj.ownerId,
           sourceEntityId: proj.sourceEntityId,
-          sourceTurretInstanceId: proj.shotSource.sourceTurretId,
-          sourceHostId: proj.shotSource.sourceHostId,
-          sourceRootId: proj.shotSource.sourceRootId,
+          sourceTurretEntityId: proj.shotSource.sourceTurretEntityId,
+          sourceHostEntityId: proj.shotSource.sourceHostEntityId,
+          sourceRootEntityId: proj.shotSource.sourceRootEntityId,
           sourceTeamId: proj.shotSource.sourceTeamId,
           spawnTick: proj.shotSource.spawnTick,
-          parentShotId: proj.shotSource.parentShotId,
+          parentShotEntityId: proj.shotSource.parentShotEntityId,
         });
         out.turretIndex = proj.config.turretIndex ?? 0;
         out.barrelIndex = proj.sourceBarrelIndex ?? 0;

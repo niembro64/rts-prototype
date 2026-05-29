@@ -21,7 +21,7 @@ import {
   PROJECTILE_ABSENCE_SLOTS,
 } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import type { ShotId } from '../../types/blueprintIds';
+import type { ShotBlueprintId } from '../../types/blueprintIds';
 import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
@@ -72,8 +72,8 @@ export type RemovedSnapshotEntity = {
 };
 
 export type CreateProjectileProvenance = {
-  /** Runtime shot blueprint for this projectile body. Submunitions use child shot ids here. */
-  shotId?: ShotId | null;
+  /** Runtime shot blueprint for this projectile body. Submunitions use child shot blueprint ids here. */
+  shotBlueprintId?: ShotBlueprintId | null;
   /** Immutable source record. Submunitions pass a copy of their parent's source record. */
   shotSource?: ShotSource | null;
 };
@@ -311,9 +311,9 @@ export class WorldState {
   }
 
   private entityBlueprintId(entity: Entity): string | null {
-    if (entity.unit !== null) return entity.unit.unitType;
-    if (entity.buildingType !== null) return entity.buildingType;
-    if (entity.projectile !== null) return entity.projectile.shotId;
+    if (entity.unit !== null) return entity.unit.unitBlueprintId;
+    if (entity.buildingBlueprintId !== null) return entity.buildingBlueprintId;
+    if (entity.projectile !== null) return entity.projectile.shotBlueprintId;
     return null;
   }
 
@@ -322,7 +322,7 @@ export class WorldState {
     const teamId = ownerPlayerId !== null ? this.getTeamId(ownerPlayerId) : null;
     const entityKind: EntityMetaKind = entity.type;
     const rootHostId = entity.projectile !== null
-      ? entity.projectile.shotSource.sourceRootId
+      ? entity.projectile.shotSource.sourceRootEntityId
       : entity.id;
     this.upsertEntityMeta({
       id: entity.id,
@@ -350,7 +350,7 @@ export class WorldState {
           id: turret.id,
           kind: 'turret',
           blueprintKind: 'turret',
-          blueprintId: turret.config.id,
+          blueprintId: turret.config.turretBlueprintId,
           ownerPlayerId,
           teamId,
           parentId: turret.parentId,
@@ -821,10 +821,10 @@ export class WorldState {
     x: number,
     y: number,
     playerId: PlayerId,
-    unitType: string,
+    unitBlueprintId: string,
     radius: { body: number; shot: number; push: number } = { body: 15, shot: 15, push: 15 },
     bodyCenterHeight: number = radius.push,
-    locomotion: UnitLocomotion = getUnitLocomotion(unitType),
+    locomotion: UnitLocomotion = getUnitLocomotion(unitBlueprintId),
     mass: number = 25,
     hp: number = 100,
   ): Entity {
@@ -857,7 +857,7 @@ export class WorldState {
       selectable: { selected: false },
       ownership: { playerId },
       unit: {
-        unitType,
+        unitBlueprintId,
         locomotion: cloneUnitLocomotion(locomotion, {
           id: this.generateEntityId(),
           parentId: id,
@@ -913,20 +913,20 @@ export class WorldState {
     return entity;
   }
 
-  // Create a unit from blueprint — unified factory for ALL unit types including commander
+  // Create a unit from blueprint — unified factory for ALL unit blueprints including commander
   createUnitFromBlueprint(
     x: number,
     y: number,
     playerId: PlayerId,
-    unitId: string
+    unitBlueprintId: string
   ): Entity {
-    const bp = getUnitBlueprint(unitId);
+    const bp = getUnitBlueprint(unitBlueprintId);
 
     const entity = this.createUnitBase(
-      x, y, playerId, unitId,
+      x, y, playerId, unitBlueprintId,
       bp.radius,
       bp.bodyCenterHeight,
-      getUnitLocomotion(unitId),
+      getUnitLocomotion(unitBlueprintId),
       bp.mass,
       bp.hp * UNIT_HP_MULTIPLIER,
     );
@@ -940,7 +940,7 @@ export class WorldState {
     // blueprint. Every unit blueprint declares at least one turret, so
     // every unit gets a combat component at spawn.
     entity.combat = createCombatComponent(createUnitRuntimeTurrets(
-      unitId,
+      unitBlueprintId,
       bp.radius.body,
       entity.id,
       entity.id,
@@ -1073,21 +1073,21 @@ export class WorldState {
 
     // Always single hit (DGun overrides maxHits to Infinity after creation)
     const maxHits = 1;
-    const shotId = provenance !== null && provenance.shotId !== undefined && provenance.shotId !== null
-      ? provenance.shotId
-      : config.shot.id;
+    const shotBlueprintId = provenance !== null && provenance.shotBlueprintId !== undefined && provenance.shotBlueprintId !== null
+      ? provenance.shotBlueprintId
+      : config.shot.shotBlueprintId;
     const shotSource: ShotSource = provenance !== null && provenance.shotSource !== undefined && provenance.shotSource !== null
       ? { ...provenance.shotSource }
       : {
-        sourceTurretId: null,
-        sourceHostId: sourceEntityId,
-        sourceRootId: sourceEntityId,
+        sourceTurretEntityId: null,
+        sourceHostEntityId: sourceEntityId,
+        sourceRootEntityId: sourceEntityId,
         sourcePlayerId: ownerId,
         sourceTeamId: this.getTeamId(ownerId),
-        sourceTurretBlueprintId: config.sourceTurretId,
-        sourceShotBlueprintId: shotId,
+        sourceTurretBlueprintId: config.sourceTurretBlueprintId,
+        sourceShotBlueprintId: shotBlueprintId,
         spawnTick: this.tick,
-        parentShotId: null,
+        parentShotEntityId: null,
       };
 
     // createProjectile's z/vz defaults to "fired horizontally at
@@ -1098,9 +1098,9 @@ export class WorldState {
       ownerId,
       sourceEntityId,
       config,
-      shotId,
+      shotBlueprintId,
       shotSource,
-      sourceTurretBlueprintId: shotSource.sourceTurretBlueprintId ?? config.sourceTurretId,
+      sourceTurretBlueprintId: shotSource.sourceTurretBlueprintId ?? config.sourceTurretBlueprintId,
       ...PROJECTILE_ABSENCE_SLOTS,
       projectileType,
       velocityX,

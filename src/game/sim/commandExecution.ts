@@ -89,12 +89,12 @@ function resetFlyingLoiterToCurrentPosition(entity: Entity, world: WorldState): 
   unit.flyingLoiterTurnSign = null;
 }
 
-function getCommanderDGunTurretId(commander: Entity): string | null {
+function getCommanderDGunTurretBlueprintId(commander: Entity): string | null {
   const unit = commander.unit;
   if (unit === null) return null;
   try {
-    const dgun = getUnitBlueprint(unit.unitType).dgun;
-    return dgun !== null ? dgun.turretId : null;
+    const dgun = getUnitBlueprint(unit.unitBlueprintId).dgun;
+    return dgun !== null ? dgun.turretBlueprintId : null;
   } catch {
     return null;
   }
@@ -199,7 +199,7 @@ function executePingCommand(ctx: CommandContext, command: PingCommand): void {
   const z = command.targetZ ?? ctx.world.getGroundZ(x, y);
   const event: SimEvent = {
     type: 'ping',
-    turretId: '',
+    turretBlueprintId: '',
     sourceType: 'system',
     sourceKey: 'ping',
     playerId: command.playerId,
@@ -238,7 +238,7 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
   // already team-shares the marker (kept in mind for FOW-06 allies).
   const event: SimEvent = {
     type: 'ping',
-    turretId: '',
+    turretBlueprintId: '',
     sourceType: 'system',
     sourceKey: 'scan',
     playerId: command.playerId,
@@ -441,7 +441,7 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
   // Start the building (creates the ghost/under-construction building)
   const building = ctx.constructionSystem.startBuilding(
     ctx.world,
-    command.buildingType,
+    command.buildingBlueprintId,
     command.gridX,
     command.gridY,
     playerId,
@@ -468,7 +468,7 @@ function executeStartBuildCommand(ctx: CommandContext, command: StartBuildComman
     x: building.transform.x,
     y: building.transform.y,
     z: building.transform.z,
-    buildingType: command.buildingType,
+    buildingBlueprintId: command.buildingBlueprintId,
     gridX: command.gridX,
     gridY: command.gridY,
     buildingId: building.id,
@@ -484,7 +484,7 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   // Repeat-build: the selection persists even at unit cap so production
   // resumes automatically when an existing unit dies. Cap is enforced
   // at shell-spawn time inside the production loop.
-  if (factoryProductionSystem.selectUnit(factory, command.unitId, ctx.world)) {
+  if (factoryProductionSystem.selectUnit(factory, command.unitBlueprintId, ctx.world)) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
 }
@@ -557,11 +557,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   }
 
   // Find the D-gun turret from the unit blueprint; the command path
-  // should not know or duplicate the concrete turret id string.
-  const turretDisruptorId = getCommanderDGunTurretId(commander);
+  // should not know or duplicate the concrete turret blueprint id string.
+  const turretDisruptorId = getCommanderDGunTurretBlueprintId(commander);
   if (!turretDisruptorId) return;
   const turrets = commander.combat.turrets;
-  const dgunIdx = turrets.findIndex(w => w.config.id === turretDisruptorId);
+  const dgunIdx = turrets.findIndex(w => w.config.turretBlueprintId === turretDisruptorId);
   if (dgunIdx < 0) return;
   const turretDisruptor = turrets[dgunIdx];
 
@@ -624,15 +624,15 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   // Create D-gun projectile
   const shotSource: ShotSource = {
-    sourceTurretId: turretDisruptor.id !== NO_ENTITY_ID ? turretDisruptor.id : null,
-    sourceHostId: commander.id,
-    sourceRootId: turretDisruptor.rootHostId !== NO_ENTITY_ID ? turretDisruptor.rootHostId : commander.id,
+    sourceTurretEntityId: turretDisruptor.id !== NO_ENTITY_ID ? turretDisruptor.id : null,
+    sourceHostEntityId: commander.id,
+    sourceRootEntityId: turretDisruptor.rootHostId !== NO_ENTITY_ID ? turretDisruptor.rootHostId : commander.id,
     sourcePlayerId: playerId,
     sourceTeamId: ctx.world.getTeamId(playerId),
-    sourceTurretBlueprintId: turretDisruptor.config.id,
-    sourceShotBlueprintId: dgunShot.id,
+    sourceTurretBlueprintId: turretDisruptor.config.turretBlueprintId,
+    sourceShotBlueprintId: dgunShot.shotBlueprintId,
     spawnTick: ctx.world.getTick(),
-    parentShotId: null,
+    parentShotEntityId: null,
   };
   const projectile = ctx.world.createDGunProjectile(
     spawnX,
@@ -642,7 +642,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     playerId,
     commander.id,
     turretDisruptor.config,
-    { shotId: dgunShot.id, shotSource },
+    { shotBlueprintId: dgunShot.shotBlueprintId, shotSource },
   );
 
   projectile.transform.z = dgunFireZ;
@@ -666,15 +666,15 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
       ? maxLifespan
       : undefined,
-    turretId: turretDisruptor.config.id,
-    shotId: dgunShot.id,
-    sourceTurretId: turretDisruptor.config.id,
-    sourceTurretInstanceId: shotSource.sourceTurretId ?? undefined,
-    sourceHostId: shotSource.sourceHostId,
-    sourceRootId: shotSource.sourceRootId,
+    turretBlueprintId: turretDisruptor.config.turretBlueprintId,
+    shotBlueprintId: dgunShot.shotBlueprintId,
+    sourceTurretBlueprintId: turretDisruptor.config.turretBlueprintId,
+    sourceTurretEntityId: shotSource.sourceTurretEntityId ?? undefined,
+    sourceHostEntityId: shotSource.sourceHostEntityId,
+    sourceRootEntityId: shotSource.sourceRootEntityId,
     sourceTeamId: shotSource.sourceTeamId,
     spawnTick: shotSource.spawnTick,
-    parentShotId: shotSource.parentShotId,
+    parentShotEntityId: shotSource.parentShotEntityId,
     playerId,
     sourceEntityId: commander.id,
     turretIndex: dgunIdx,
@@ -686,7 +686,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const dgunSimEvent: SimEvent = {
     type: 'fire',
     pos: { x: spawnX, y: spawnY, z: dgunFireZ },
-    turretId: turretDisruptor.config.id,
+    turretBlueprintId: turretDisruptor.config.turretBlueprintId,
     playerId,
     entityId: commander.id,
   };
@@ -1255,7 +1255,7 @@ function addPathActions(
 
 /** Plan a path to (goalX, goalY) and enqueue intermediate `move`
  *  waypoints + a single FINAL waypoint that carries the action-
- *  specific type and metadata (targetId / buildingType / buildingId
+ *  specific type and metadata (targetId / buildingBlueprintId / buildingId
  *  / etc). Used by attack / repair / build commands so the unit
  *  runs through the unit's movement filter to reach the action's
  *  target instead of writing a single bee-line action that walks
@@ -1301,7 +1301,7 @@ function addPathActionsWithFinal(
   );
   if (actions.length === 0) return;
   // Promote the LAST waypoint to the original action's type and
-  // copy its metadata across (targetId / buildingType / buildingId
+  // copy its metadata across (targetId / buildingBlueprintId / buildingId
   // / gridX / gridY). The (x, y, z) on the last waypoint were
   // already set by the planner — when the goal was snapped to a
   // reachable cell, we use that cell's centre instead of the
@@ -1310,7 +1310,7 @@ function addPathActionsWithFinal(
   const last = actions[actions.length - 1];
   last.type = finalAction.type;
   if (finalAction.targetId !== undefined) last.targetId = finalAction.targetId;
-  if (finalAction.buildingType !== undefined) last.buildingType = finalAction.buildingType;
+  if (finalAction.buildingBlueprintId !== undefined) last.buildingBlueprintId = finalAction.buildingBlueprintId;
   if (finalAction.buildingId !== undefined) last.buildingId = finalAction.buildingId;
   if (finalAction.gridX !== undefined) last.gridX = finalAction.gridX;
   if (finalAction.gridY !== undefined) last.gridY = finalAction.gridY;

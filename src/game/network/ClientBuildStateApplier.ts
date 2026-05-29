@@ -1,4 +1,4 @@
-import type { Buildable, BuildingType, Entity } from '../sim/types';
+import type { Buildable, BuildingBlueprintId, Entity } from '../sim/types';
 import { COST_MULTIPLIER } from '../../config';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getUnitBlueprint } from '../sim/blueprints';
@@ -10,11 +10,11 @@ export type NetworkBuildState = {
 };
 
 export function getUnitBuildRequired(
-  unitType: string | undefined,
+  unitBlueprintId: string | undefined,
 ): Buildable['required'] | undefined {
-  if (!unitType) return undefined;
+  if (!unitBlueprintId) return undefined;
   try {
-    const bp = getUnitBlueprint(unitType);
+    const bp = getUnitBlueprint(unitBlueprintId);
     return {
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
@@ -25,11 +25,11 @@ export function getUnitBuildRequired(
 }
 
 export function getBuildingBuildRequired(
-  buildingType: BuildingType | null | undefined,
+  buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): Buildable['required'] | undefined {
-  if (!buildingType) return undefined;
+  if (!buildingBlueprintId) return undefined;
   try {
-    return { ...getBuildingConfig(buildingType).cost };
+    return { ...getBuildingConfig(buildingBlueprintId).cost };
   } catch {
     return undefined;
   }

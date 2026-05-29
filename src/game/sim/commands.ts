@@ -34,7 +34,7 @@ export type {
   SetTickRateCommand,
   SetUnitGroundNormalEmaModeCommand,
   SetSendGridInfoCommand,
-  SetBackgroundUnitTypeCommand,
+  SetBackgroundUnitBlueprintEnabledCommand,
   SetMaxTotalUnitsCommand,
   SetTurretForceFieldPanelsEnabledCommand,
   SetTurretForceFieldSpheresEnabledCommand,

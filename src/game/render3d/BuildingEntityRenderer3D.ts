@@ -57,8 +57,8 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
     getPrimaryMat,
     getTurretAccentMat,
   } = options;
-  const shapeType: BuildingShapeType = entity.buildingType
-    ? getBuildingConfig(entity.buildingType).renderProfile
+  const shapeType: BuildingShapeType = entity.buildingBlueprintId
+    ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
     : 'unknown';
   const group = new THREE.Group();
   group.userData.entityId = entity.id;

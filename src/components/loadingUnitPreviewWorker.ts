@@ -1,4 +1,4 @@
-import type { BuildableUnitId } from '@/game/sim/blueprints';
+import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import {
   LoadingUnitPreviewScene,
   type LoadingUnitPreviewSceneSize,
@@ -7,7 +7,7 @@ import {
 type InitMessage = {
   type: 'init';
   canvas: OffscreenCanvas;
-  unitId: BuildableUnitId;
+  unitBlueprintId: BuildableUnitBlueprintId;
   fullBleed: boolean;
 } & LoadingUnitPreviewSceneSize;
 
@@ -50,7 +50,7 @@ self.onmessage = (event: MessageEvent<PreviewWorkerMessage>): void => {
     preview?.dispose();
     preview = new LoadingUnitPreviewScene({
       canvas: message.canvas,
-      unitId: message.unitId,
+      unitBlueprintId: message.unitBlueprintId,
       fullBleed: message.fullBleed,
     });
     preview.resize(message);

@@ -26,12 +26,12 @@ export function getReclaimResourceValue(target: Entity): ResourceCost {
     };
   }
 
-  if (target.buildingType) {
-    return cloneResourceCost(getBuildingConfig(target.buildingType).cost);
+  if (target.buildingBlueprintId) {
+    return cloneResourceCost(getBuildingConfig(target.buildingBlueprintId).cost);
   }
 
   if (target.unit !== null) {
-    const config = getUnitBuildConfig(target.unit.unitType);
+    const config = getUnitBuildConfig(target.unit.unitBlueprintId);
     if (config) return cloneResourceCost(config.cost);
   }
 

@@ -35,7 +35,7 @@ export class CommanderAbilitiesSystem {
       let turretConstructionIndex = -1;
       if (commanderTurrets !== null) {
         turretConstructionIndex = commanderTurrets.findIndex(
-          (turret) => turret.config.id === 'turretConstruction',
+          (turret) => turret.config.turretBlueprintId === 'turretConstruction',
         );
       }
       if (turretConstructionIndex >= 0 && commanderTurrets !== null) {

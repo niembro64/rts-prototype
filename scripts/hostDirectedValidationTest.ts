@@ -1,6 +1,6 @@
 import { validateHostDirectedMounts } from '../src/game/sim/blueprints/index';
 
-type TestMount = { turretId: string; hostDirected: unknown };
+type TestMount = { turretBlueprintId: string; hostDirected: unknown };
 
 function assertThrows(name: string, fn: () => void, pattern: RegExp): void {
   try {
@@ -25,14 +25,14 @@ function assertDoesNotThrow(name: string, mounts: readonly TestMount[]): void {
 }
 
 assertDoesNotThrow('one-primary-per-kind', [
-  { turretId: 'turretGunLight', hostDirected: true },
-  { turretId: 'turretGunLight', hostDirected: false },
+  { turretBlueprintId: 'turretGunLight', hostDirected: true },
+  { turretBlueprintId: 'turretGunLight', hostDirected: false },
 ]);
 
 assertThrows(
   'zero-primary-for-kind',
   () => validateHostDirectedMounts('unit blueprint', 'zero-primary-for-kind', [
-    { turretId: 'turretGunLight', hostDirected: false },
+    { turretBlueprintId: 'turretGunLight', hostDirected: false },
   ]),
   /has 0 host-directed mount\(s\); exactly one is required/,
 );
@@ -40,8 +40,8 @@ assertThrows(
 assertThrows(
   'two-primaries-for-kind',
   () => validateHostDirectedMounts('unit blueprint', 'two-primaries-for-kind', [
-    { turretId: 'turretGunLight', hostDirected: true },
-    { turretId: 'turretGunLight', hostDirected: true },
+    { turretBlueprintId: 'turretGunLight', hostDirected: true },
+    { turretBlueprintId: 'turretGunLight', hostDirected: true },
   ]),
   /has 2 host-directed mount\(s\); exactly one is required/,
 );
@@ -49,7 +49,7 @@ assertThrows(
 assertThrows(
   'missing-host-directed-flag',
   () => validateHostDirectedMounts('unit blueprint', 'missing-host-directed-flag', [
-    { turretId: 'turretGunLight', hostDirected: undefined },
+    { turretBlueprintId: 'turretGunLight', hostDirected: undefined },
   ]),
   /must define a boolean hostDirected/,
 );

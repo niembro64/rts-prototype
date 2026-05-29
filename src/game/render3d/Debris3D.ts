@@ -548,8 +548,8 @@ export class Debris3D {
     ctx: SimDeathContext,
     r: number,
   ): readonly DebrisTemplate[] {
-    const cached = ctx.unitType
-      ? this.getCachedUnitTemplates(ctx.unitType, r)
+    const cached = ctx.unitBlueprintId
+      ? this.getCachedUnitTemplates(ctx.unitBlueprintId, r)
       : null;
     if (cached === null) return this.getFallbackTemplates(r);
 
@@ -584,13 +584,13 @@ export class Debris3D {
   }
 
   private getCachedUnitTemplates(
-    unitType: string,
+    unitBlueprintId: string,
     r: number,
   ): CachedUnitDebrisTemplates | null {
-    const key = `${unitType}\0${r}`;
+    const key = `${unitBlueprintId}\0${r}`;
     if (this.templateCache.has(key)) return this.templateCache.get(key)!;
 
-    const profile = getDebrisUnitProfile(unitType, r);
+    const profile = getDebrisUnitProfile(unitBlueprintId, r);
     if (!profile) {
       this.templateCache.set(key, null);
       return null;

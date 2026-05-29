@@ -6,7 +6,7 @@ import { LocalGameConnection } from '../server/LocalGameConnection';
 import { ClientViewState } from '../network/ClientViewState';
 import { getMapSize } from '../../config';
 import { DEMO_CONFIG } from '../../demoConfig';
-import { BACKGROUND_UNIT_TYPES } from '../server/BackgroundBattleStandalone';
+import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../server/BackgroundBattleStandalone';
 import {
   loadStoredConverterTax,
   loadStoredDemoUnits,
@@ -134,7 +134,7 @@ export async function createBackgroundBattle(
   // Restore stored demo unit selection (fall back to config defaults).
   // We resolve this BEFORE creating the GameServer so the constructor's
   // initial-unit spawn picks only from the user's selected types — if
-  // we passed it through setBackgroundUnitTypeEnabled() afterwards, the
+  // we passed it through setBackgroundUnitBlueprintEnabled() afterwards, the
   // toggle handler would wipe initial units of any disabled type and
   // the player would see far fewer than the cap-derived per-team count.
   // Lobby preview short-circuits this: no AI = no production = the
@@ -143,14 +143,16 @@ export async function createBackgroundBattle(
   const storedDemoUnits = savedDemoUnits && savedDemoUnits.length > 0
     ? savedDemoUnits
     : getDefaultDemoUnits();
-  const initialAllowedTypes = isLobbyPreview
+  const initialAllowedUnitBlueprintIds = isLobbyPreview
     ? new Set<string>()
-    : new Set(BACKGROUND_UNIT_TYPES.filter(ut => storedDemoUnits.includes(ut)));
+    : new Set(BACKGROUND_UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
+        storedDemoUnits.includes(unitBlueprintId),
+      ));
   await report(0.14, 'Choosing unit roster');
 
   // Create a GameServer for background mode (WASM physics).
   //
-  // Both `initialAllowedTypes` AND `initialMaxTotalUnits` MUST be
+  // Both `initialAllowedUnitBlueprintIds` AND `initialMaxTotalUnits` MUST be
   // resolved here from localStorage (with config defaults as fallback)
   // because the GameServer constructor's initial-unit spawn reads them
   // up-front. Anything that arrives via post-construction commands
@@ -169,7 +171,7 @@ export async function createBackgroundBattle(
       mapWidthLandCells: mapDimensions.widthLandCells,
       mapLengthLandCells: mapDimensions.lengthLandCells,
       backgroundMode: true,
-      initialAllowedTypes,
+      initialAllowedUnitBlueprintIds,
       initialMaxTotalUnits: loadStoredDemoCap(),
       converterTax: loadStoredConverterTax(mode),
       aiPlayerIds,
@@ -197,8 +199,8 @@ export async function createBackgroundBattle(
   // already used it for the initial spawn). Skipped in lobby-preview
   // mode — there's no AI to talk to.
   if (!isLobbyPreview) {
-    for (const ut of BACKGROUND_UNIT_TYPES) {
-      server.setBackgroundUnitTypeEnabled(ut, storedDemoUnits.includes(ut));
+    for (const ut of BACKGROUND_UNIT_BLUEPRINT_IDS) {
+      server.setBackgroundUnitBlueprintEnabled(ut, storedDemoUnits.includes(ut));
     }
   }
   await report(0.74, 'Applying unit filters');

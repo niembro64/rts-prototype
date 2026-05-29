@@ -50,15 +50,15 @@ type FieldMesh = {
 type FieldKey = number | string;
 const FIELD_KEY_TURRET_STRIDE = 1024;
 
-function forceFieldKey(unitId: number, turretIndex: number): FieldKey {
+function forceFieldKey(unitEntityId: number, turretIndex: number): FieldKey {
   if (
     turretIndex >= 0 &&
     turretIndex < FIELD_KEY_TURRET_STRIDE &&
-    Number.isSafeInteger(unitId)
+    Number.isSafeInteger(unitEntityId)
   ) {
-    return unitId * FIELD_KEY_TURRET_STRIDE + turretIndex;
+    return unitEntityId * FIELD_KEY_TURRET_STRIDE + turretIndex;
   }
-  return `${unitId}-${turretIndex}`;
+  return `${unitEntityId}-${turretIndex}`;
 }
 
 /** Cap on shared sphere instances. Every active force field consumes
@@ -176,13 +176,13 @@ export class ForceFieldRenderer3D {
     const offsetX = turret.mount.x;
     const offsetY = turret.mount.y;
     const mountZ = turret.mount.z;
-    const unitType = unitData.unitType;
+    const unitBlueprintId = unitData.unitBlueprintId;
     let bp;
-    try { bp = getUnitBlueprint(unitType); }
+    try { bp = getUnitBlueprint(unitBlueprintId); }
     catch { /* keep fallback */ }
     const mountLiftY = getChassisLiftY(bp, unitRadius);
     if (
-      field.mountUnitType === unitType &&
+      field.mountUnitType === unitBlueprintId &&
       field.mountRadius === unitRadius &&
       field.mountOffsetX === offsetX &&
       field.mountOffsetY === offsetY &&
@@ -192,7 +192,7 @@ export class ForceFieldRenderer3D {
       return;
     }
 
-    field.mountUnitType = unitType;
+    field.mountUnitType = unitBlueprintId;
     field.mountRadius = unitRadius;
     field.mountOffsetX = offsetX;
     field.mountOffsetY = offsetY;

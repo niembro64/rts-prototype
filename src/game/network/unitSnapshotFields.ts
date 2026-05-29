@@ -1,4 +1,4 @@
-import type { BuildingType, Entity, Unit, UnitAction } from '../sim/types';
+import type { BuildingBlueprintId, Entity, Unit, UnitAction } from '../sim/types';
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
@@ -11,8 +11,8 @@ import {
   ENTITY_CHANGED_VEL,
   actionTypeToCode,
   codeToActionType,
-  codeToUnitType,
-  unitTypeToCode,
+  codeToUnitBlueprintId,
+  unitBlueprintIdToCode,
 } from '../../types/network';
 import { isFiniteNumber } from '../math';
 import { getUnitLocomotion } from '../sim/blueprints';
@@ -38,7 +38,7 @@ type Quantize = (n: number) => number;
 
 export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
   return {
-    unitType: null,
+    unitBlueprintCode: null,
     hp: { curr: 0, max: 0 },
     radius: null,
     bodyCenterHeight: null,
@@ -57,8 +57,8 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
   };
 }
 
-export function decodeNetworkUnitType(unitType: unknown): string | null {
-  return isFiniteNumber(unitType) ? codeToUnitType(unitType) : null;
+export function decodeNetworkUnitBlueprintId(unitBlueprintCode: unknown): string | null {
+  return isFiniteNumber(unitBlueprintCode) ? codeToUnitBlueprintId(unitBlueprintCode) : null;
 }
 
 function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitAction | null {
@@ -72,7 +72,7 @@ function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitActio
     z: action.posZ ?? undefined,
     isPathExpansion: action.pathExp ?? undefined,
     targetId: action.targetId ?? undefined,
-    buildingType: (action.buildingType ?? undefined) as BuildingType | undefined,
+    buildingBlueprintId: (action.buildingBlueprintId ?? undefined) as BuildingBlueprintId | undefined,
     gridX: grid !== null && grid !== undefined ? grid.x : undefined,
     gridY: grid !== null && grid !== undefined ? grid.y : undefined,
     buildingId: action.buildingId ?? undefined,
@@ -116,10 +116,10 @@ export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapsho
   if (isFiniteNumber(src.bodyCenterHeight)) {
     unit.bodyCenterHeight = src.bodyCenterHeight;
   }
-  const unitType = decodeNetworkUnitType(src.unitType);
-  if (unitType) {
-    unit.unitType = unitType;
-    unit.locomotion = getUnitLocomotion(unitType);
+  const unitBlueprintId = decodeNetworkUnitBlueprintId(src.unitBlueprintCode);
+  if (unitBlueprintId) {
+    unit.unitBlueprintId = unitBlueprintId;
+    unit.locomotion = getUnitLocomotion(unitBlueprintId);
   }
   if (isFiniteNumber(src.mass)) unit.mass = src.mass;
 }
@@ -206,7 +206,7 @@ export function writeNetworkUnitStaticFields(
   unit: Unit,
   unitIsCommander: boolean,
 ): void {
-  dst.unitType = unitTypeToCode(unit.unitType);
+  dst.unitBlueprintCode = unitBlueprintIdToCode(unit.unitBlueprintId);
   dst.radius = null;
   dst.bodyCenterHeight = null;
   dst.mass = null;
@@ -214,7 +214,7 @@ export function writeNetworkUnitStaticFields(
 }
 
 export function clearNetworkUnitStaticFields(dst: NetworkUnitSnapshot): void {
-  dst.unitType = null;
+  dst.unitBlueprintCode = null;
   dst.radius = null;
   dst.bodyCenterHeight = null;
   dst.mass = null;
@@ -286,7 +286,7 @@ export function writeNetworkUnitActions(
     action.targetId = canReferenceEntityId !== undefined && canReferenceEntityId(src.targetId) === false
       ? null
       : src.targetId ?? null;
-    action.buildingType = src.buildingType ?? null;
+    action.buildingBlueprintId = src.buildingBlueprintId ?? null;
     if (src.gridX !== undefined) {
       if (!action.grid) action.grid = { x: 0, y: 0 };
       action.grid.x = src.gridX;
@@ -338,7 +338,7 @@ export function copyNetworkUnitSnapshotInto(
   src: NetworkUnitSnapshot,
   dst: NetworkUnitSnapshot,
 ): NetworkUnitSnapshot {
-  dst.unitType = src.unitType;
+  dst.unitBlueprintCode = src.unitBlueprintCode;
   if (src.hp !== null) {
     const hp = dst.hp ?? (dst.hp = { curr: 0, max: 0 });
     hp.curr = src.hp.curr;

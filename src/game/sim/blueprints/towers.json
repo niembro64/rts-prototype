@@ -1,6 +1,6 @@
 {
   "factory": {
-    "id": "factory",
+    "buildingBlueprintId": "factory",
     "name": "Fabricator",
     "gridWidth": 2,
     "gridHeight": 2,
@@ -23,7 +23,7 @@
     "cloak": null,
     "turrets": [
       {
-        "turretId": "turretConstruction",
+        "turretBlueprintId": "turretConstruction",
         "mount": {
           "x": 0,
           "y": 0,
@@ -42,7 +42,7 @@
     "detector": null
   },
   "megaBeamTower": {
-    "id": "megaBeamTower",
+    "buildingBlueprintId": "megaBeamTower",
     "name": "Beam Tower",
     "gridWidth": 1,
     "gridHeight": 1,
@@ -65,7 +65,7 @@
     "cloak": null,
     "turrets": [
       {
-        "turretId": "turretBeamLong",
+        "turretBlueprintId": "turretBeamLong",
         "mount": {
           "x": 0,
           "y": 0,
@@ -83,7 +83,7 @@
     "detector": null
   },
   "cannonTower": {
-    "id": "cannonTower",
+    "buildingBlueprintId": "cannonTower",
     "name": "Cannon Tower",
     "gridWidth": 4,
     "gridHeight": 4,
@@ -106,7 +106,7 @@
     "cloak": null,
     "turrets": [
       {
-        "turretId": "turretCannonLong",
+        "turretBlueprintId": "turretCannonLong",
         "mount": {
           "x": 0,
           "y": 0,

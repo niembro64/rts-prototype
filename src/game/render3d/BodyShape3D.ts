@@ -242,8 +242,8 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
 
-function getBlueprintBodyShape(unitType: string): UnitBodyShape {
-  try { return getUnitBlueprint(unitType).bodyShape; }
+function getBlueprintBodyShape(unitBlueprintId: string): UnitBodyShape {
+  try { return getUnitBlueprint(unitBlueprintId).bodyShape; }
   catch { return FALLBACK_UNIT_BODY_SHAPE; }
 }
 
@@ -260,8 +260,8 @@ export function getBodyGeom(bodyShape: UnitBodyShape): BodyGeomEntry {
   return entry;
 }
 
-export function getBodyGeomForUnit(unitType: string): BodyGeomEntry {
-  return getBodyGeom(getBlueprintBodyShape(unitType));
+export function getBodyGeomForUnit(unitBlueprintId: string): BodyGeomEntry {
+  return getBodyGeom(getBlueprintBodyShape(unitBlueprintId));
 }
 
 /** World-space Y of the body top AT the chassis-local (mountX, mountZ)

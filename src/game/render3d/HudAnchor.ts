@@ -70,7 +70,7 @@ export function getUnitHudTopY(unit: Entity): number {
   let topAboveGround = unitRadius;
 
   try {
-    const bp = getUnitBlueprint(unit.unit.unitType);
+    const bp = getUnitBlueprint(unit.unit.unitBlueprintId);
     topAboveGround = Math.max(
       topAboveGround,
       getChassisLiftY(bp, unitRadius) + getBodyTopY(bp.bodyShape, unitRadius),
@@ -106,20 +106,20 @@ export function getBuildingHudTopY(building: Entity): number {
 }
 
 function getUnitHudLayout(unit: Entity): EntityHudBlueprint {
-  const unitType = unit.unit?.unitType;
-  if (!unitType) return DEFAULT_UNIT_HUD_LAYOUT;
+  const unitBlueprintId = unit.unit?.unitBlueprintId;
+  if (!unitBlueprintId) return DEFAULT_UNIT_HUD_LAYOUT;
   try {
-    return getUnitBlueprint(unitType).hud ?? DEFAULT_UNIT_HUD_LAYOUT;
+    return getUnitBlueprint(unitBlueprintId).hud ?? DEFAULT_UNIT_HUD_LAYOUT;
   } catch {
     return DEFAULT_UNIT_HUD_LAYOUT;
   }
 }
 
 function getBuildingHudLayout(building: Entity): EntityHudBlueprint {
-  const buildingType = building.buildingType;
-  if (!buildingType) return DEFAULT_BUILDING_HUD_LAYOUT;
+  const buildingBlueprintId = building.buildingBlueprintId;
+  if (!buildingBlueprintId) return DEFAULT_BUILDING_HUD_LAYOUT;
   try {
-    return getBuildingBlueprint(buildingType).hud ?? DEFAULT_BUILDING_HUD_LAYOUT;
+    return getBuildingBlueprint(buildingBlueprintId).hud ?? DEFAULT_BUILDING_HUD_LAYOUT;
   } catch {
     return DEFAULT_BUILDING_HUD_LAYOUT;
   }

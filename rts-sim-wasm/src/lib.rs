@@ -1099,9 +1099,10 @@ pub fn pool_resolve_sphere_sphere(
         let cy = (y / cell_size).floor() as i32;
         let cz = ((z + half_cs) / cell_size).floor() as i32;
         let key = pack_contact_cell_key(cx, cy, cz);
-        let bucket = cells
-            .entry(key)
-            .or_insert_with(|| SphereContactBucket { gen, items: Vec::new() });
+        let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
+            gen,
+            items: Vec::new(),
+        });
         if bucket.gen != gen {
             bucket.gen = gen;
             bucket.items.clear();
@@ -1835,7 +1836,7 @@ struct ProjectilePool {
     vel_y: Vec<f64>,
     vel_z: Vec<f64>,
     time_alive: Vec<f64>,
-    source_turret_id: Vec<i32>,
+    source_turret_entity_id: Vec<i32>,
     source_host_id: Vec<i32>,
     source_root_id: Vec<i32>,
     source_player_id: Vec<i32>,
@@ -1843,7 +1844,7 @@ struct ProjectilePool {
     source_turret_blueprint_code: Vec<u32>,
     source_shot_blueprint_code: Vec<u32>,
     spawn_tick: Vec<u32>,
-    parent_shot_id: Vec<i32>,
+    parent_shot_entity_id: Vec<i32>,
 }
 
 impl ProjectilePool {
@@ -1857,7 +1858,7 @@ impl ProjectilePool {
             vel_y: vec![0.0; cap],
             vel_z: vec![0.0; cap],
             time_alive: vec![0.0; cap],
-            source_turret_id: vec![-1; cap],
+            source_turret_entity_id: vec![-1; cap],
             source_host_id: vec![-1; cap],
             source_root_id: vec![-1; cap],
             source_player_id: vec![-1; cap],
@@ -1865,7 +1866,7 @@ impl ProjectilePool {
             source_turret_blueprint_code: vec![u32::MAX; cap],
             source_shot_blueprint_code: vec![u32::MAX; cap],
             spawn_tick: vec![0; cap],
-            parent_shot_id: vec![-1; cap],
+            parent_shot_entity_id: vec![-1; cap],
         }
     }
 }
@@ -1917,7 +1918,11 @@ projectile_pool_ptr_export!(projectile_pool_vel_x_ptr, vel_x, f64);
 projectile_pool_ptr_export!(projectile_pool_vel_y_ptr, vel_y, f64);
 projectile_pool_ptr_export!(projectile_pool_vel_z_ptr, vel_z, f64);
 projectile_pool_ptr_export!(projectile_pool_time_alive_ptr, time_alive, f64);
-projectile_pool_ptr_export!(projectile_pool_source_turret_id_ptr, source_turret_id, i32);
+projectile_pool_ptr_export!(
+    projectile_pool_source_turret_entity_id_ptr,
+    source_turret_entity_id,
+    i32
+);
 projectile_pool_ptr_export!(projectile_pool_source_host_id_ptr, source_host_id, i32);
 projectile_pool_ptr_export!(projectile_pool_source_root_id_ptr, source_root_id, i32);
 projectile_pool_ptr_export!(projectile_pool_source_player_id_ptr, source_player_id, i32);
@@ -1933,7 +1938,11 @@ projectile_pool_ptr_export!(
     u32
 );
 projectile_pool_ptr_export!(projectile_pool_spawn_tick_ptr, spawn_tick, u32);
-projectile_pool_ptr_export!(projectile_pool_parent_shot_id_ptr, parent_shot_id, i32);
+projectile_pool_ptr_export!(
+    projectile_pool_parent_shot_entity_id_ptr,
+    parent_shot_entity_id,
+    i32
+);
 
 // ─────────────────────────────────────────────────────────────────
 //  Phase 5b — Kinematic intercept solver
@@ -9370,7 +9379,7 @@ struct CombatTargetingPool {
     // CT_ENTITY_FAMILY_*; blueprint code is the network wire code for
     // the unit/building blueprint, or CT_BLUEPRINT_CODE_NONE when the
     // family is NONE. The wire codes for units and buildings fit in
-    // u8 today (UNIT_TYPE_UNKNOWN = BUILDING_TYPE_UNKNOWN = 0xff).
+    // u8 today (UNIT_BLUEPRINT_CODE_UNKNOWN = BUILDING_BLUEPRINT_CODE_UNKNOWN = 0xff).
     entity_family: Vec<u8>,
     entity_blueprint_code: Vec<u8>,
     // LOCK-ON-04 — Per-host lock-on exclusion masks compiled from
@@ -17396,7 +17405,7 @@ pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 /// turret values, then the encoder reads from it when emitting the
 /// turrets array. Layout per turret (10 f64 = 80 bytes):
 ///   [0..4]  qRot(rotation, vel, pitch, pitchVel)
-///   [4]     turret-id code (TurretTypeCode as f64)
+///   [4]     turretBlueprintCode (TurretBlueprintCode as f64)
 ///   [5]     state code (TurretStateCode as f64)
 ///   [6]     has_target_id (0 or 1)
 ///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
@@ -17930,7 +17939,7 @@ pub fn snapshot_encode_entity_unit(
     }
 
     if has_unit_type != 0 {
-        w.write_str("unitType");
+        w.write_str("unitBlueprintCode");
         w.write_uint(unit_type_code as u64);
     }
 
@@ -18041,7 +18050,7 @@ pub fn snapshot_encode_entity_unit(
             let building_id = scratch.buf[base + 15];
 
             // Insertion order in createActionDto: type, pos, posZ,
-            // pathExp, targetId, buildingType, grid, buildingId.
+            // pathExp, targetId, buildingBlueprintId, grid, buildingId.
             // ignoreUndefined drops absent keys.
             let mut action_field_count: usize = 1; // type (always present)
             if has_pos {
@@ -18091,7 +18100,7 @@ pub fn snapshot_encode_entity_unit(
                 w.write_number(target_id);
             }
             if has_building_type {
-                w.write_str("buildingType");
+                w.write_str("buildingBlueprintId");
                 write_string_from_scratch(w, building_type_string_slot);
             }
             if has_grid {
@@ -18120,14 +18129,14 @@ pub fn snapshot_encode_entity_unit(
             let qvel = scratch.buf[base + 1];
             let qpitch = scratch.buf[base + 2];
             let qpitch_vel = scratch.buf[base + 3];
-            let turret_id_code = scratch.buf[base + 4];
+            let turret_blueprint_code = scratch.buf[base + 4];
             let state_code = scratch.buf[base + 5];
             let has_target = scratch.buf[base + 6] != 0.0;
             let target_id_raw = scratch.buf[base + 7];
             let has_ff_range = scratch.buf[base + 8] != 0.0;
             let ff_range_raw = scratch.buf[base + 9];
 
-            // turret DTO: { turret: { id, angular: {4 fields} }, [targetId,]
+            // turret DTO: { turret: { turretBlueprintCode, angular: {4 fields} }, [targetId,]
             // state, [currentForceFieldRange] }
             let mut turret_field_count: usize = 2; // turret + state
             if has_target {
@@ -18139,9 +18148,9 @@ pub fn snapshot_encode_entity_unit(
             w.write_map_header(turret_field_count);
 
             w.write_str("turret");
-            w.write_map_header(2); // id + angular
-            w.write_str("id");
-            w.write_number(turret_id_code);
+            w.write_map_header(2); // turretBlueprintCode + angular
+            w.write_str("turretBlueprintCode");
+            w.write_number(turret_blueprint_code);
             w.write_str("angular");
             w.write_map_header(4);
             w.write_str("rot");
@@ -18274,7 +18283,7 @@ pub fn snapshot_encode_entity_building(
     w.write_map_header(building_field_count);
 
     if has_type != 0 {
-        w.write_str("type");
+        w.write_str("buildingBlueprintCode");
         w.write_number(type_code);
     }
     if has_dim != 0 {
@@ -18329,7 +18338,7 @@ pub fn snapshot_encode_entity_building(
             let qvel = scratch.buf[base + 1];
             let qpitch = scratch.buf[base + 2];
             let qpitch_vel = scratch.buf[base + 3];
-            let turret_id_code = scratch.buf[base + 4];
+            let turret_blueprint_code = scratch.buf[base + 4];
             let state_code = scratch.buf[base + 5];
             let has_target = scratch.buf[base + 6] != 0.0;
             let target_id_raw = scratch.buf[base + 7];
@@ -18347,8 +18356,8 @@ pub fn snapshot_encode_entity_building(
 
             w.write_str("turret");
             w.write_map_header(2);
-            w.write_str("id");
-            w.write_number(turret_id_code);
+            w.write_str("turretBlueprintCode");
+            w.write_number(turret_blueprint_code);
             w.write_str("angular");
             w.write_map_header(4);
             w.write_str("rot");
@@ -18597,9 +18606,9 @@ pub fn snapshot_encode_proj_vel_scratch_ensure(count: u32) {
 ///   [5..8] velocity.x, velocity.y, velocity.z
 ///   [8]    projectileType (code)
 ///   [9]    maxLifespan (gated by flag bit 0)
-///   [10]   turretId (code)
-///   [11]   shotId (gated by flag bit 1)
-///   [12]   sourceTurretId (gated by flag bit 2)
+///   [10]   turretBlueprintCode
+///   [11]   shotBlueprintCode (gated by flag bit 1)
+///   [12]   sourceTurretBlueprintCode (gated by flag bit 2)
 ///   [13]   playerId
 ///   [14]   sourceEntityId
 ///   [15]   turretIndex
@@ -18608,17 +18617,17 @@ pub fn snapshot_encode_proj_vel_scratch_ensure(count: u32) {
 ///   [20..23] beam.end.x/y/z (gated by flag bit 5)
 ///   [23]   targetEntityId (gated by flag bit 6)
 ///   [24]   homingTurnRate (gated by flag bit 7)
-///   [25]   sourceTurretInstanceId (gated by flag bit 10)
-///   [26]   sourceHostId
-///   [27]   sourceRootId
+///   [25]   sourceTurretEntityId (gated by flag bit 10)
+///   [26]   sourceHostEntityId
+///   [27]   sourceRootEntityId
 ///   [28]   sourceTeamId
 ///   [29]   spawnTick
-///   [30]   parentShotId (gated by flag bit 11)
-///   [31]   flags: bit 0 maxLifespan, 1 shotId, 2 sourceTurretId,
+///   [30]   parentShotEntityId (gated by flag bit 11)
+///   [31]   flags: bit 0 maxLifespan, 1 shotBlueprintCode, 2 sourceTurretBlueprintCode,
 ///          3 isDGun(true), 4 fromParentDetonation(true), 5 beam,
 ///          6 targetEntityId, 7 homingTurnRate, 8 isDGun(false),
-///          9 fromParentDetonation(false), 10 sourceTurretInstanceId,
-///          11 parentShotId.
+///          9 fromParentDetonation(false), 10 sourceTurretEntityId,
+///          11 parentShotEntityId.
 const SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE: usize = 32;
 
 struct SnapshotEncodeProjSpawnScratch {
@@ -18755,13 +18764,13 @@ const PACKED_MINIMAP_ENTITIES_VERSION: u64 = 2;
 const PACKED_MINIMAP_ENTITY_FLAG_RADAR_ONLY: u32 = 0x01;
 const PACKED_PROJECTILES_VERSION: u64 = 3;
 const PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN: u32 = 0x001;
-const PROJECTILE_SPAWN_FLAG_SHOT_ID: u32 = 0x002;
-const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID: u32 = 0x004;
+const PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE: u32 = 0x002;
+const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE: u32 = 0x004;
 const PROJECTILE_SPAWN_FLAG_BEAM: u32 = 0x020;
 const PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID: u32 = 0x040;
 const PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE: u32 = 0x080;
-const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID: u32 = 0x400;
-const PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID: u32 = 0x800;
+const PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID: u32 = 0x400;
+const PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID: u32 = 0x800;
 const PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T: u32 = 0x01;
 const PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID: u32 = 0x01;
 const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID: u32 = 0x08;
@@ -19078,16 +19087,16 @@ fn pack_projectile_spawns_v2(count: usize) {
         if (flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) != 0 {
             group.writer.write_var_uint_from_f64(rows.buf[base + 9]);
         }
-        if (flags & PROJECTILE_SPAWN_FLAG_SHOT_ID) != 0 {
+        if (flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) != 0 {
             group.writer.write_var_uint_from_f64(rows.buf[base + 11]);
         }
-        if (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) != 0 {
+        if (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) != 0 {
             group.writer.write_var_uint_from_f64(rows.buf[base + 12]);
         }
-        if (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID) != 0 {
+        if (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) != 0 {
             group.writer.write_var_uint_from_f64(rows.buf[base + 25]);
         }
-        if (flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID) != 0 {
+        if (flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) != 0 {
             group.writer.write_var_uint_from_f64(rows.buf[base + 30]);
         }
         if (flags & PROJECTILE_SPAWN_FLAG_BEAM) != 0 {
@@ -19250,7 +19259,7 @@ fn pack_projectile_beam_updates_v2(count: usize, beam_point_count: usize) {
 ///   [10]    pushRadius (gated by flags bit 1)
 ///   [11]    baseZ (gated by flags bit 2)
 ///   [12]    rotation (gated by flags bit 4)
-///   [13]    unitType string-scratch slot (gated by flags bit 3)
+///   [13]    unitBlueprintId string-scratch slot (gated by flags bit 3)
 ///   [14]    turretPoses_count (gated by flags bit 5)
 ///   [15]    flags: bit 0 has_visualRadius, bit 1 has_pushRadius,
 ///            bit 2 has_baseZ, bit 3 has_unitType, bit 4 has_rotation,
@@ -19400,7 +19409,7 @@ pub fn snapshot_encode_impact_context_scratch_ensure(count: u32) {
 ///   [11]   forceFieldImpact.playerId
 ///   [12]   sourceType_code (gated by flags bit 0; 0='turret', 1='unit',
 ///           2='building', 3='system')
-///   [13]   turretId string-scratch slot (always present — empty
+///   [13]   turretBlueprintId string-scratch slot (always present — empty
 ///           string is a valid value, encoded as fixstr 0xA0)
 ///   [14]   sourceKey string-scratch slot (gated by flags bit 1)
 ///   [15]   flags: bit 0 has_sourceType, bit 1 has_sourceKey,
@@ -19895,7 +19904,7 @@ const V6_ENTITY_FLAG_HAS_BUILDING: u32 = 1 << 5;
 
 const V6_UNIT_FLAG_HP: u32 = 1 << 0;
 const V6_UNIT_FLAG_VELOCITY: u32 = 1 << 1;
-const V6_UNIT_FLAG_UNIT_TYPE: u32 = 1 << 2;
+const V6_UNIT_FLAG_BLUEPRINT_CODE: u32 = 1 << 2;
 const V6_UNIT_FLAG_RADIUS: u32 = 1 << 3;
 const V6_UNIT_FLAG_BODY_CENTER_HEIGHT: u32 = 1 << 4;
 const V6_UNIT_FLAG_MASS: u32 = 1 << 5;
@@ -19911,7 +19920,7 @@ const V6_UNIT_FLAG_TURRETS: u32 = 1 << 16;
 const V6_UNIT_FLAG_BUILD: u32 = 1 << 17;
 const V6_UNIT_FLAG_BUILD_COMPLETE: u32 = 1 << 18;
 
-const V6_BUILDING_FLAG_TYPE: u32 = 1 << 0;
+const V6_BUILDING_FLAG_BLUEPRINT_CODE: u32 = 1 << 0;
 const V6_BUILDING_FLAG_DIM: u32 = 1 << 1;
 const V6_BUILDING_FLAG_HP: u32 = 1 << 2;
 const V6_BUILDING_FLAG_BUILD: u32 = 1 << 3;
@@ -19935,7 +19944,7 @@ const V6_ACTION_FLAG_POS: u32 = 1 << 0;
 const V6_ACTION_FLAG_POS_Z: u32 = 1 << 1;
 const V6_ACTION_FLAG_PATH_EXP: u32 = 1 << 2;
 const V6_ACTION_FLAG_TARGET_ID: u32 = 1 << 3;
-const V6_ACTION_FLAG_BUILDING_TYPE: u32 = 1 << 4;
+const V6_ACTION_FLAG_BUILDING_BLUEPRINT_ID: u32 = 1 << 4;
 const V6_ACTION_FLAG_GRID: u32 = 1 << 5;
 const V6_ACTION_FLAG_BUILDING_ID: u32 = 1 << 6;
 
@@ -20419,7 +20428,7 @@ fn v6_write_detail_action(w: &mut MessagePackWriter, action_buf: &[f64], a_row: 
         flags |= V6_ACTION_FLAG_TARGET_ID;
     }
     if has_building_type {
-        flags |= V6_ACTION_FLAG_BUILDING_TYPE;
+        flags |= V6_ACTION_FLAG_BUILDING_BLUEPRINT_ID;
     }
     if has_grid {
         flags |= V6_ACTION_FLAG_GRID;
@@ -20600,7 +20609,7 @@ fn v6_write_detail_unit(
         flags |= V6_UNIT_FLAG_VELOCITY;
     }
     if has_unit_type {
-        flags |= V6_UNIT_FLAG_UNIT_TYPE;
+        flags |= V6_UNIT_FLAG_BLUEPRINT_CODE;
     }
     if has_radius {
         flags |= V6_UNIT_FLAG_RADIUS;
@@ -20783,7 +20792,7 @@ fn v6_write_detail_building(
 
     let mut flags = 0u32;
     if has_type {
-        flags |= V6_BUILDING_FLAG_TYPE;
+        flags |= V6_BUILDING_FLAG_BLUEPRINT_CODE;
     }
     if has_dim {
         flags |= V6_BUILDING_FLAG_DIM;
@@ -21497,8 +21506,8 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let base = i * SNAPSHOT_ENCODE_PROJ_SPAWN_STRIDE;
             let flags = scratch.buf[base + 31] as u32;
             let has_max_lifespan = (flags & 0x01) != 0;
-            let has_shot_id = (flags & 0x02) != 0;
-            let has_source_turret_id = (flags & 0x04) != 0;
+            let has_shot_blueprint_code = (flags & 0x02) != 0;
+            let has_source_turret_blueprint_code = (flags & 0x04) != 0;
             let has_is_dgun_true = (flags & 0x08) != 0;
             let has_from_parent_true = (flags & 0x10) != 0;
             let has_beam = (flags & 0x20) != 0;
@@ -21506,30 +21515,31 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let has_homing = (flags & 0x80) != 0;
             let has_is_dgun_false = (flags & 0x100) != 0;
             let has_from_parent_false = (flags & 0x200) != 0;
-            let has_source_turret_instance_id =
-                (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID) != 0;
-            let has_parent_shot_id = (flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID) != 0;
+            let has_source_turret_entity_id =
+                (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) != 0;
+            let has_parent_shot_entity_id =
+                (flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) != 0;
             let has_is_dgun = has_is_dgun_true || has_is_dgun_false;
             let has_from_parent = has_from_parent_true || has_from_parent_false;
 
             // Field count = always-present 14 (id, pos, rotation,
-            // velocity, projectileType, turretId, playerId,
-            // sourceEntityId, sourceHostId, sourceRootId,
+            // velocity, projectileType, turretBlueprintCode, playerId,
+            // sourceEntityId, sourceHostEntityId, sourceRootEntityId,
             // sourceTeamId, spawnTick, turretIndex, barrelIndex).
             let mut field_count: usize = 14;
             if has_max_lifespan {
                 field_count += 1;
             }
-            if has_shot_id {
+            if has_shot_blueprint_code {
                 field_count += 1;
             }
-            if has_source_turret_id {
+            if has_source_turret_blueprint_code {
                 field_count += 1;
             }
-            if has_source_turret_instance_id {
+            if has_source_turret_entity_id {
                 field_count += 1;
             }
-            if has_parent_shot_id {
+            if has_parent_shot_entity_id {
                 field_count += 1;
             }
             if has_is_dgun {
@@ -21576,34 +21586,34 @@ pub fn snapshot_encode_envelope_emit_projectiles(
                 w.write_str("maxLifespan");
                 w.write_number(scratch.buf[base + 9]);
             }
-            w.write_str("turretId");
+            w.write_str("turretBlueprintCode");
             w.write_uint(scratch.buf[base + 10] as u64);
-            if has_shot_id {
-                w.write_str("shotId");
+            if has_shot_blueprint_code {
+                w.write_str("shotBlueprintCode");
                 w.write_uint(scratch.buf[base + 11] as u64);
             }
-            if has_source_turret_id {
-                w.write_str("sourceTurretId");
+            if has_source_turret_blueprint_code {
+                w.write_str("sourceTurretBlueprintCode");
                 w.write_uint(scratch.buf[base + 12] as u64);
             }
-            if has_source_turret_instance_id {
-                w.write_str("sourceTurretInstanceId");
+            if has_source_turret_entity_id {
+                w.write_str("sourceTurretEntityId");
                 w.write_uint(scratch.buf[base + 25] as u64);
             }
             w.write_str("playerId");
             w.write_uint(scratch.buf[base + 13] as u64);
             w.write_str("sourceEntityId");
             w.write_uint(scratch.buf[base + 14] as u64);
-            w.write_str("sourceHostId");
+            w.write_str("sourceHostEntityId");
             w.write_uint(scratch.buf[base + 26] as u64);
-            w.write_str("sourceRootId");
+            w.write_str("sourceRootEntityId");
             w.write_uint(scratch.buf[base + 27] as u64);
             w.write_str("sourceTeamId");
             w.write_uint(scratch.buf[base + 28] as u64);
             w.write_str("spawnTick");
             w.write_uint(scratch.buf[base + 29] as u64);
-            if has_parent_shot_id {
-                w.write_str("parentShotId");
+            if has_parent_shot_entity_id {
+                w.write_str("parentShotEntityId");
                 w.write_uint(scratch.buf[base + 30] as u64);
             }
             w.write_str("turretIndex");
@@ -22035,7 +22045,7 @@ pub fn snapshot_encode_envelope_emit_economy(player_count: u32) -> u32 {
 /// Append `audioEvents: [...]`. Sits between sprayTargets and
 /// projectiles in iteration order. Per-event pool-iteration order
 /// matches NetworkServerSnapshotSimEvent / createPooledSimEvent:
-/// type, turretId, sourceType, sourceKey, pos, playerId, entityId,
+/// type, turretBlueprintId, sourceType, sourceKey, pos, playerId, entityId,
 /// deathContext, impactContext, forceFieldImpact, killerPlayerId,
 /// victimPlayerId, audioOnly.
 ///
@@ -22086,7 +22096,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         let has_death_context = (flags & 0x200) != 0;
         let has_impact_context = (flags & 0x400) != 0;
 
-        // Per-event field count: 3 always (type, turretId, pos) +
+        // Per-event field count: 3 always (type, turretBlueprintId, pos) +
         // optionals.
         let mut field_count: usize = 3;
         if has_source_type {
@@ -22124,7 +22134,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
         // Pool-iteration order as documented above.
         w.write_str("type");
         w.write_str(audio_event_type_str(type_code));
-        w.write_str("turretId");
+        w.write_str("turretBlueprintId");
         write_string_from_scratch(w, turret_id_slot);
         if has_source_type {
             w.write_str("sourceType");
@@ -22203,7 +22213,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
 
             // Literal order from damageHelpers.ts: unitVel, hitDir,
             // projectileVel, attackMagnitude, radius, visualRadius,
-            // pushRadius, baseZ, color, unitType, rotation, turretPoses.
+            // pushRadius, baseZ, color, unitBlueprintId, rotation, turretPoses.
             w.write_str("unitVel");
             w.write_map_header(2);
             w.write_str("x");
@@ -22241,7 +22251,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             w.write_str("color");
             w.write_number(color);
             if has_unit_type {
-                w.write_str("unitType");
+                w.write_str("unitBlueprintId");
                 write_string_from_scratch(w, unit_type_slot);
             }
             if has_rotation {
@@ -23055,7 +23065,7 @@ mod sim_kernel_tests {
         assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"jackal"));
         assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"solar"));
         assert!(blueprint_tables::BLUEPRINT_TOWER_IDS.contains(&"factory"));
-        assert!(blueprint_tables::BLUEPRINT_TURRET_IDS.contains(&"turretGunLight"));
+        assert!(blueprint_tables::BLUEPRINT_TURRET_BLUEPRINT_IDS.contains(&"turretGunLight"));
     }
 
     #[test]

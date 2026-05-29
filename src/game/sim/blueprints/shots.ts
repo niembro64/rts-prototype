@@ -6,7 +6,7 @@
  * references and validates the table shape expected by current callers.
  */
 
-import { isShotId, type ShotId } from '../../../types/blueprintIds';
+import { isShotBlueprintId, type ShotBlueprintId } from '../../../types/blueprintIds';
 import rawShotBlueprints from './shots.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
@@ -32,18 +32,18 @@ const FORCE_FIELD_EXPLICIT_FIELDS = [
 
 export const SHOT_BLUEPRINTS = resolveBlueprintRefs(
   rawShotBlueprints,
-) as unknown as Record<ShotId, ShotBlueprint>;
+) as unknown as Record<ShotBlueprintId, ShotBlueprint>;
 
 export function getShotBlueprint(id: string): ShotBlueprint {
-  if (!isShotId(id)) throw new Error(`Unknown shot blueprint: ${id}`);
+  if (!isShotBlueprintId(id)) throw new Error(`Unknown shot blueprint: ${id}`);
   const shotBlueprint = SHOT_BLUEPRINTS[id];
   return shotBlueprint;
 }
 
 for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
-  if (blueprint.id !== id) {
+  if (blueprint.shotBlueprintId !== id) {
     throw new Error(
-      `Shot blueprint key/id mismatch: ${id} contains ${blueprint.id}`,
+      `Shot blueprint key/id mismatch: ${id} contains ${blueprint.shotBlueprintId}`,
     );
   }
   if (blueprint.type === 'plasma' || blueprint.type === 'rocket') {

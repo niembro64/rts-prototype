@@ -10,7 +10,7 @@
 // turret.mount is always a Vec3 in world units relative to the host
 // transform. Unit & building hosts share the same combat code.
 
-import type { Turret, BuildingType } from './types';
+import type { Turret, BuildingBlueprintId } from './types';
 import type { BuildingTurretMount } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
@@ -19,7 +19,7 @@ import { getUnitBlueprint, getBuildingBlueprint } from './blueprints';
 import { createRuntimeTurretMount } from './turretMounts';
 
 function makeRuntimeTurret(
-  turretId: string,
+  turretBlueprintId: string,
   mount: { x: number; y: number; z: number },
   hostDirected: boolean,
   identity: {
@@ -30,7 +30,7 @@ function makeRuntimeTurret(
   },
   visualVariant: BuildingTurretMount['visualVariant'] | undefined = undefined,
 ): Turret {
-  const turretConfig = getTurretConfig(turretId);
+  const turretConfig = getTurretConfig(turretBlueprintId);
   if (visualVariant !== undefined) {
     turretConfig.visualVariant = visualVariant;
   }
@@ -77,7 +77,7 @@ function makeRuntimeTurret(
   };
 }
 
-function anonymousTurretIdentity(mountIndex: number): {
+function anonymousTurretBlueprintIdentity(mountIndex: number): {
   id: EntityId;
   parentId: EntityId;
   rootHostId: EntityId;
@@ -92,21 +92,21 @@ function anonymousTurretIdentity(mountIndex: number): {
 }
 
 export function createUnitRuntimeTurrets(
-  unitId: string,
+  unitBlueprintId: string,
   radius: number,
   parentId: EntityId = NO_ENTITY_ID,
   rootHostId: EntityId = parentId,
   allocateEntityId: (() => EntityId) | null = null,
 ): Turret[] {
-  const bp = getUnitBlueprint(unitId);
+  const bp = getUnitBlueprint(unitBlueprintId);
   const turrets: Turret[] = [];
   for (let i = 0; i < bp.turrets.length; i++) {
     const mount = bp.turrets[i];
     const localMount = createRuntimeTurretMount(mount, radius);
     const identity = allocateEntityId !== null
       ? { id: allocateEntityId(), parentId, rootHostId, mountIndex: i }
-      : anonymousTurretIdentity(i);
-    turrets.push(makeRuntimeTurret(mount.turretId, localMount, mount.hostDirected, identity, mount.visualVariant));
+      : anonymousTurretBlueprintIdentity(i);
+    turrets.push(makeRuntimeTurret(mount.turretBlueprintId, localMount, mount.hostDirected, identity, mount.visualVariant));
   }
   return turrets;
 }
@@ -116,12 +116,12 @@ export function createUnitRuntimeTurrets(
  *  the mount value is copied through verbatim. Returns an empty array
  *  when the blueprint declares no turrets. */
 export function createBuildingRuntimeTurrets(
-  buildingType: BuildingType,
+  buildingBlueprintId: BuildingBlueprintId,
   parentId: EntityId = NO_ENTITY_ID,
   rootHostId: EntityId = parentId,
   allocateEntityId: (() => EntityId) | null = null,
 ): Turret[] {
-  const bp = getBuildingBlueprint(buildingType);
+  const bp = getBuildingBlueprint(buildingBlueprintId);
   const mounts = bp.turrets;
   if (!mounts || mounts.length === 0) return [];
   const turrets: Turret[] = [];
@@ -129,9 +129,9 @@ export function createBuildingRuntimeTurrets(
     const m = mounts[i];
     const identity = allocateEntityId !== null
       ? { id: allocateEntityId(), parentId, rootHostId, mountIndex: i }
-      : anonymousTurretIdentity(i);
+      : anonymousTurretBlueprintIdentity(i);
     turrets.push(makeRuntimeTurret(
-      m.turretId,
+      m.turretBlueprintId,
       { x: m.mount.x, y: m.mount.y, z: m.mount.z },
       m.hostDirected,
       identity,

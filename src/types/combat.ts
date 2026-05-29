@@ -1,13 +1,13 @@
 // Combat system types extracted from game/sim/combat/types.ts
 
 import type { EntityId, PlayerId, Entity } from './sim';
-import type { ShotId, TurretId, UnitTypeId } from './blueprintIds';
+import type { ShotBlueprintId, TurretBlueprintId, UnitBlueprintId } from './blueprintIds';
 import type { DeathContext } from './damage';
 import type { Vec2, Vec3 } from './vec2';
 
-export type TurretAudioId = TurretId;
-export type ShotAudioId = ShotId;
-export type UnitAudioId = UnitTypeId;
+export type TurretAudioId = TurretBlueprintId;
+export type ShotAudioId = ShotBlueprintId;
+export type UnitAudioId = UnitBlueprintId;
 export type SimEventAudioKey = TurretAudioId | ShotAudioId | UnitAudioId | '';
 export type SimEventSourceType = 'turret' | 'unit' | 'building' | 'system';
 
@@ -42,7 +42,7 @@ export type SimDeathContext = {
    *  guessing the third axis from the shot collider. */
   baseZ?: number;
   color: number;
-  unitType?: UnitAudioId;
+  unitBlueprintId?: UnitAudioId;
   rotation?: number;
   /** Per-turret world-frame yaw + pitch at the moment of death,
    *  one entry per entry in the unit's blueprint `turrets` array.
@@ -75,12 +75,12 @@ export type SimEvent = {
     | 'projectileExpire'
     | 'waterSplash';
   /** Legacy wire field for the one-shot audio routing key. Fire,
-   *  laser, and force-field events use turret ids; hit/projectile
-   *  expire events use shot ids; death events may use a unit id. Keep
+   *  laser, and force-field events use turret blueprint ids; hit/projectile
+   *  expire events use shot blueprint ids; death events may use a unit blueprint id. Keep
    *  this as the only allowed blueprint-id union until the wire format
    *  can rename it to `audioKey`. */
-  turretId: SimEventAudioKey;
-  /** Explicit provenance for sim events. `turretId` remains the audio
+  turretBlueprintId: SimEventAudioKey;
+  /** Explicit provenance for sim events. `turretBlueprintId` remains the audio
    *  key; this pair describes what authored the event. */
   sourceType?: SimEventSourceType;
   sourceKey?: string;
@@ -131,23 +131,23 @@ export type ProjectileSpawnEvent = {
   /** Resolved finite runtime timeout in ms. Omitted for ordinary
    *  traveling shots, which terminate through collision/ground physics. */
   maxLifespan?: number;
-  /** Compatibility/source turret id. New code should use
-   *  sourceTurretId for provenance and shotId for projectile config. */
-  turretId: TurretAudioId | '';
+  /** Compatibility/source turret blueprint id. New code should use
+   *  sourceTurretBlueprintId for provenance and shotBlueprintId for projectile config. */
+  turretBlueprintId: TurretAudioId | '';
   /** Actual shot blueprint id that should be hydrated on clients.
    *  This is especially important for submunitions, which are shot
    *  blueprints spawned by another projectile rather than by a turret. */
-  shotId: ShotAudioId;
+  shotBlueprintId: ShotAudioId;
   /** Real turret blueprint id that ultimately authored this projectile,
    *  inherited through submunition chains when applicable. */
-  sourceTurretId?: TurretAudioId;
+  sourceTurretBlueprintId?: TurretAudioId;
   /** Runtime turret EntityId that fired the projectile, if known. */
-  sourceTurretInstanceId?: EntityId;
-  sourceHostId?: EntityId;
-  sourceRootId?: EntityId;
+  sourceTurretEntityId?: EntityId;
+  sourceHostEntityId?: EntityId;
+  sourceRootEntityId?: EntityId;
   sourceTeamId?: number;
   spawnTick?: number;
-  parentShotId?: EntityId | null;
+  parentShotEntityId?: EntityId | null;
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;

@@ -59,9 +59,9 @@ import {
   snapshotVectorVelocityDeltaExceeded,
 } from '../../snapshotDeltaThresholds';
 import {
-  TURRET_ID_UNKNOWN,
-  shotIdToCode,
-  turretIdToCode,
+  TURRET_BLUEPRINT_CODE_UNKNOWN,
+  shotBlueprintIdToCode,
+  turretBlueprintIdToCode,
 } from '../../../types/network';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
@@ -93,7 +93,7 @@ let _packedProjectileVx: Float64Array = new Float64Array(0);
 let _packedProjectileVy: Float64Array = new Float64Array(0);
 let _packedProjectileVz: Float64Array = new Float64Array(0);
 let _packedProjectileTimeAlive: Float64Array = new Float64Array(0);
-let _packedProjectileSourceTurretId: Int32Array = new Int32Array(0);
+let _packedProjectileSourceTurretEntityId: Int32Array = new Int32Array(0);
 let _packedProjectileSourceHostId: Int32Array = new Int32Array(0);
 let _packedProjectileSourceRootId: Int32Array = new Int32Array(0);
 let _packedProjectileSourcePlayerId: Int32Array = new Int32Array(0);
@@ -101,7 +101,7 @@ let _packedProjectileSourceTeamId: Int32Array = new Int32Array(0);
 let _packedProjectileSourceTurretBlueprintCode: Uint32Array = new Uint32Array(0);
 let _packedProjectileSourceShotBlueprintCode: Uint32Array = new Uint32Array(0);
 let _packedProjectileSpawnTick: Uint32Array = new Uint32Array(0);
-let _packedProjectileParentShotId: Int32Array = new Int32Array(0);
+let _packedProjectileParentShotEntityId: Int32Array = new Int32Array(0);
 let _packedProjectilePoolCapacity = 0;
 let _packedProjectileViewsBound = false;
 const _packedProjectileEntities: Entity[] = [];
@@ -124,15 +124,15 @@ function refreshPackedProjectileViews(): void {
   _packedProjectileVy = sim.projectilePool.velY;
   _packedProjectileVz = sim.projectilePool.velZ;
   _packedProjectileTimeAlive = sim.projectilePool.timeAlive;
-  _packedProjectileSourceTurretId = sim.projectilePool.sourceTurretId;
-  _packedProjectileSourceHostId = sim.projectilePool.sourceHostId;
-  _packedProjectileSourceRootId = sim.projectilePool.sourceRootId;
+  _packedProjectileSourceTurretEntityId = sim.projectilePool.sourceTurretEntityId;
+  _packedProjectileSourceHostId = sim.projectilePool.sourceHostEntityId;
+  _packedProjectileSourceRootId = sim.projectilePool.sourceRootEntityId;
   _packedProjectileSourcePlayerId = sim.projectilePool.sourcePlayerId;
   _packedProjectileSourceTeamId = sim.projectilePool.sourceTeamId;
   _packedProjectileSourceTurretBlueprintCode = sim.projectilePool.sourceTurretBlueprintCode;
   _packedProjectileSourceShotBlueprintCode = sim.projectilePool.sourceShotBlueprintCode;
   _packedProjectileSpawnTick = sim.projectilePool.spawnTick;
-  _packedProjectileParentShotId = sim.projectilePool.parentShotId;
+  _packedProjectileParentShotEntityId = sim.projectilePool.parentShotEntityId;
   if (!_packedProjectileViewsBound) {
     _packedProjectilePoolCapacity = sim.projectilePool.capacity;
     _packedProjectileIds = new Int32Array(_packedProjectilePoolCapacity);
@@ -283,19 +283,19 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
   _packedProjectileTimeAlive[slot] = proj.timeAlive;
-  _packedProjectileSourceTurretId[slot] = proj.shotSource.sourceTurretId ?? NO_ENTITY_ID;
-  _packedProjectileSourceHostId[slot] = proj.shotSource.sourceHostId;
-  _packedProjectileSourceRootId[slot] = proj.shotSource.sourceRootId;
+  _packedProjectileSourceTurretEntityId[slot] = proj.shotSource.sourceTurretEntityId ?? NO_ENTITY_ID;
+  _packedProjectileSourceHostId[slot] = proj.shotSource.sourceHostEntityId;
+  _packedProjectileSourceRootId[slot] = proj.shotSource.sourceRootEntityId;
   _packedProjectileSourcePlayerId[slot] = proj.shotSource.sourcePlayerId;
   _packedProjectileSourceTeamId[slot] = proj.shotSource.sourceTeamId;
   _packedProjectileSourceTurretBlueprintCode[slot] =
     proj.shotSource.sourceTurretBlueprintId !== undefined
-      ? turretIdToCode(proj.shotSource.sourceTurretBlueprintId)
-      : TURRET_ID_UNKNOWN;
+      ? turretBlueprintIdToCode(proj.shotSource.sourceTurretBlueprintId)
+      : TURRET_BLUEPRINT_CODE_UNKNOWN;
   _packedProjectileSourceShotBlueprintCode[slot] =
-    shotIdToCode(proj.shotSource.sourceShotBlueprintId);
+    shotBlueprintIdToCode(proj.shotSource.sourceShotBlueprintId);
   _packedProjectileSpawnTick[slot] = proj.shotSource.spawnTick;
-  _packedProjectileParentShotId[slot] = proj.shotSource.parentShotId ?? NO_ENTITY_ID;
+  _packedProjectileParentShotEntityId[slot] = proj.shotSource.parentShotEntityId ?? NO_ENTITY_ID;
 }
 
 export function unregisterPackedProjectile(id: EntityId): void {
@@ -314,7 +314,7 @@ export function unregisterPackedProjectile(id: EntityId): void {
     _packedProjectileVy[slot] = _packedProjectileVy[last];
     _packedProjectileVz[slot] = _packedProjectileVz[last];
     _packedProjectileTimeAlive[slot] = _packedProjectileTimeAlive[last];
-    _packedProjectileSourceTurretId[slot] = _packedProjectileSourceTurretId[last];
+    _packedProjectileSourceTurretEntityId[slot] = _packedProjectileSourceTurretEntityId[last];
     _packedProjectileSourceHostId[slot] = _packedProjectileSourceHostId[last];
     _packedProjectileSourceRootId[slot] = _packedProjectileSourceRootId[last];
     _packedProjectileSourcePlayerId[slot] = _packedProjectileSourcePlayerId[last];
@@ -324,7 +324,7 @@ export function unregisterPackedProjectile(id: EntityId): void {
     _packedProjectileSourceShotBlueprintCode[slot] =
       _packedProjectileSourceShotBlueprintCode[last];
     _packedProjectileSpawnTick[slot] = _packedProjectileSpawnTick[last];
-    _packedProjectileParentShotId[slot] = _packedProjectileParentShotId[last];
+    _packedProjectileParentShotEntityId[slot] = _packedProjectileParentShotEntityId[last];
     if (moved) _packedProjectileSlots.set(moved.id, slot);
   }
   _packedProjectileCount = last;
@@ -352,27 +352,27 @@ export function resetProjectileBuffers(): void {
 
 // Check if a specific weapon has an active beam (by weapon index)
 // Uses O(1) beam index lookup instead of O(n) projectile scan
-function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, turretIndex: number): boolean {
-  return beamIndex.hasActiveBeam(unitId, turretIndex);
+function hasActiveWeaponBeam(_world: WorldState, unitEntityId: EntityId, turretIndex: number): boolean {
+  return beamIndex.hasActiveBeam(unitEntityId, turretIndex);
 }
 
 function createTurretShotSource(
   world: WorldState,
   host: Entity,
   weapon: Turret,
-  shotId: ShotSource['sourceShotBlueprintId'],
+  shotBlueprintId: ShotSource['sourceShotBlueprintId'],
   playerId: ShotSource['sourcePlayerId'],
 ): ShotSource {
   return {
-    sourceTurretId: weapon.id !== NO_ENTITY_ID ? weapon.id : null,
-    sourceHostId: host.id,
-    sourceRootId: weapon.rootHostId !== NO_ENTITY_ID ? weapon.rootHostId : host.id,
+    sourceTurretEntityId: weapon.id !== NO_ENTITY_ID ? weapon.id : null,
+    sourceHostEntityId: host.id,
+    sourceRootEntityId: weapon.rootHostId !== NO_ENTITY_ID ? weapon.rootHostId : host.id,
     sourcePlayerId: playerId,
     sourceTeamId: world.getTeamId(playerId),
-    sourceTurretBlueprintId: weapon.config.id,
-    sourceShotBlueprintId: shotId,
+    sourceTurretBlueprintId: weapon.config.turretBlueprintId,
+    sourceShotBlueprintId: shotBlueprintId,
     spawnTick: world.getTick(),
-    parentShotId: null,
+    parentShotEntityId: null,
   };
 }
 
@@ -561,7 +561,7 @@ export function fireTurrets(
         if (i === 0 && shot.type !== 'beam') {
           audioEvents.push({
             type: 'fire',
-            turretId: config.id,
+            turretBlueprintId: config.turretBlueprintId,
             pos: { x: spawnX, y: spawnY, z: spawnZ },
             playerId,
             entityId: unit.id,
@@ -623,7 +623,7 @@ export function fireTurrets(
 
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
-          const shotSource = createTurretShotSource(world, unit, weapon, shot.id, playerId);
+          const shotSource = createTurretShotSource(world, unit, weapon, shot.shotBlueprintId, playerId);
           const beam = world.createBeam(
             beamStartX,
             beamStartY,
@@ -634,7 +634,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             beamProjectileType,
-            { shotId: shot.id, shotSource },
+            { shotBlueprintId: shot.shotBlueprintId, shotSource },
           );
           if (beam.projectile) {
             beam.projectile.sourceBarrelIndex = barrelIndex;
@@ -652,15 +652,15 @@ export function fireTurrets(
             pos: { x: beamStartX, y: beamStartY, z: beamStartZ }, rotation: yaw,
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
-            turretId: config.id,
-            shotId: shot.id,
-            sourceTurretId: config.id,
-            sourceTurretInstanceId: shotSource.sourceTurretId ?? undefined,
-            sourceHostId: shotSource.sourceHostId,
-            sourceRootId: shotSource.sourceRootId,
+            turretBlueprintId: config.turretBlueprintId,
+            shotBlueprintId: shot.shotBlueprintId,
+            sourceTurretBlueprintId: config.turretBlueprintId,
+            sourceTurretEntityId: shotSource.sourceTurretEntityId ?? undefined,
+            sourceHostEntityId: shotSource.sourceHostEntityId,
+            sourceRootEntityId: shotSource.sourceRootEntityId,
             sourceTeamId: shotSource.sourceTeamId,
             spawnTick: shotSource.spawnTick,
-            parentShotId: shotSource.parentShotId,
+            parentShotEntityId: shotSource.parentShotEntityId,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
@@ -690,7 +690,7 @@ export function fireTurrets(
           projVy += weapon.worldVelocity.y;
           projVz += weapon.worldVelocity.z;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
-          const shotSource = createTurretShotSource(world, unit, weapon, projShot.id, playerId);
+          const shotSource = createTurretShotSource(world, unit, weapon, projShot.shotBlueprintId, playerId);
           const projectile = world.createProjectile(
             spawnX,
             spawnY,
@@ -700,7 +700,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             'projectile',
-            { shotId: projShot.id, shotSource },
+            { shotBlueprintId: projShot.shotBlueprintId, shotSource },
           );
           projectile.transform.z = spawnZ;
           const projectileComponent = projectile.projectile;
@@ -724,15 +724,15 @@ export function fireTurrets(
             maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
               ? maxLifespan
               : undefined,
-            turretId: config.id,
-            shotId: projShot.id,
-            sourceTurretId: config.id,
-            sourceTurretInstanceId: shotSource.sourceTurretId ?? undefined,
-            sourceHostId: shotSource.sourceHostId,
-            sourceRootId: shotSource.sourceRootId,
+            turretBlueprintId: config.turretBlueprintId,
+            shotBlueprintId: projShot.shotBlueprintId,
+            sourceTurretBlueprintId: config.turretBlueprintId,
+            sourceTurretEntityId: shotSource.sourceTurretEntityId ?? undefined,
+            sourceHostEntityId: shotSource.sourceHostEntityId,
+            sourceRootEntityId: shotSource.sourceRootEntityId,
             sourceTeamId: shotSource.sourceTeamId,
             spawnTick: shotSource.spawnTick,
-            parentShotId: shotSource.parentShotId,
+            parentShotEntityId: shotSource.parentShotEntityId,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
@@ -1347,4 +1347,3 @@ export function updateProjectiles(
 
   return { orphanedIds: projectilesToRemove, despawnEvents, velocityUpdates: _homingVelocityUpdates };
 }
-

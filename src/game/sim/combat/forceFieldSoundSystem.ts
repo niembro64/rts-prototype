@@ -35,7 +35,7 @@ export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
     if (!activeForceFieldSoundIds.delete(soundEntityId)) continue;
     _forceFieldStopOwner.push({
       type: 'forceFieldStop',
-      turretId: config.id,
+      turretBlueprintId: config.turretBlueprintId,
       pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
       entityId: soundEntityId,
     });
@@ -70,7 +70,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
         if (!activeForceFieldSoundIds.delete(soundEntityId)) continue;
         _forceFieldSimEvents.push({
           type: 'forceFieldStop',
-          turretId: config.id,
+          turretBlueprintId: config.turretBlueprintId,
           pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           playerId: unit.ownership.playerId,
           entityId: soundEntityId,
@@ -80,7 +80,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
         if (!wasActive || shouldRefreshActive) {
           _forceFieldSimEvents.push({
             type: 'forceFieldStart',
-            turretId: config.id,
+            turretBlueprintId: config.turretBlueprintId,
             pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
             playerId: unit.ownership.playerId,
             entityId: soundEntityId,

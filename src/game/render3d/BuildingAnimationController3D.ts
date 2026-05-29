@@ -154,7 +154,7 @@ export class BuildingAnimationController3D {
 
   register(entity: Entity, mesh: EntityMesh): void {
     const id = entity.id;
-    if (entity.buildingType === 'solar' && mesh.buildingDetails) {
+    if (entity.buildingBlueprintId === 'solar' && mesh.buildingDetails) {
       this.addAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
     }
     if (mesh.windRig) {
@@ -568,7 +568,7 @@ export class BuildingAnimationController3D {
     e: Entity,
     detailsReady: boolean,
   ): void {
-    if (e.buildingType !== 'solar' || !m.buildingDetails || !detailsReady) return;
+    if (e.buildingBlueprintId !== 'solar' || !m.buildingDetails || !detailsReady) return;
     const target = e.building?.activeState?.open === false ? 0 : 1;
     const current = m.solarOpenAmount ?? target;
     const next = Math.abs(target - current) < 0.002

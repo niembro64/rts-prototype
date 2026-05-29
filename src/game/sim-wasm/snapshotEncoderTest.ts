@@ -135,7 +135,7 @@ function packStringsIntoScratch(
 
 type TurretFixture = {
   turret: {
-    id: number;
+    turretBlueprintCode: number;
     angular: {
       rot: number; vel: number;
       pitch: number; pitchVel: number;
@@ -152,7 +152,7 @@ type ActionFixture = {
   posZ?: number;
   pathExp?: true;
   targetId?: number;
-  buildingType?: string;
+  buildingBlueprintId?: string;
   grid?: { x: number; y: number };
   buildingId?: number;
 };
@@ -253,7 +253,7 @@ type UnitFixture = BasicEntityFixture & {
   unit: {
     hp: { curr: number; max: number };
     velocity: { x: number; y: number; z: number };
-    unitType?: number;
+    unitBlueprintCode?: number;
     radius?: { body: number; shot: number; push: number };
     bodyCenterHeight?: number;
     mass?: number;
@@ -306,8 +306,8 @@ function packActionsIntoScratch(
     view[base + 6] = a.pathExp === true ? 1 : 0;
     view[base + 7] = a.targetId !== undefined ? 1 : 0;
     view[base + 8] = a.targetId ?? 0;
-    view[base + 9] = a.buildingType !== undefined ? 1 : 0;
-    view[base + 10] = a.buildingType !== undefined ? (stringSlots.get(a.buildingType) ?? 0) : 0;
+    view[base + 9] = a.buildingBlueprintId !== undefined ? 1 : 0;
+    view[base + 10] = a.buildingBlueprintId !== undefined ? (stringSlots.get(a.buildingBlueprintId) ?? 0) : 0;
     view[base + 11] = a.grid !== undefined ? 1 : 0;
     view[base + 12] = a.grid?.x ?? 0;
     view[base + 13] = a.grid?.y ?? 0;
@@ -329,7 +329,7 @@ function packTurretsIntoScratch(memory: WebAssembly.Memory, turrets: TurretFixtu
     view[base + 1] = t.turret.angular.vel;
     view[base + 2] = t.turret.angular.pitch;
     view[base + 3] = t.turret.angular.pitchVel;
-    view[base + 4] = t.turret.id;
+    view[base + 4] = t.turret.turretBlueprintCode;
     view[base + 5] = t.state;
     view[base + 6] = t.targetId !== undefined ? 1 : 0;
     view[base + 7] = t.targetId ?? 0;
@@ -362,7 +362,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       unit: {
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
-        unitType: 4,
+        unitBlueprintCode: 4,
         radius: { body: 12, shot: 15, push: 18 },
         bodyCenterHeight: 21,
         mass: 35,
@@ -374,7 +374,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       unit: {
         hp: { curr: 5000, max: 5000 },
         velocity: { x: 0, y: 0, z: 0 },
-        unitType: 0,
+        unitBlueprintCode: 0,
         radius: { body: 20, shot: 20, push: 22 },
         bodyCenterHeight: 24,
         mass: 250,
@@ -553,7 +553,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         turrets: [
           {
             turret: {
-              id: 5,
+              turretBlueprintCode: 5,
               angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 },
             },
             state: 0,  // idle
@@ -570,7 +570,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         turrets: [
           {
             turret: {
-              id: 12,
+              turretBlueprintCode: 12,
               angular: { rot: 1.235, vel: 0.5, pitch: 0.3, pitchVel: 0.05 },
             },
             targetId: 887,
@@ -588,7 +588,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         turrets: [
           {
             turret: {
-              id: 33,
+              turretBlueprintCode: 33,
               angular: { rot: 0, vel: 0, pitch: 1.571, pitchVel: 0 },
             },
             targetId: 1234,
@@ -606,16 +606,16 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         velocity: { x: 0, y: 0, z: 0 },
         turrets: [
           {
-            turret: { id: 1, angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 } },
+            turret: { turretBlueprintCode: 1, angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 0,
           },
           {
-            turret: { id: 2, angular: { rot: 1.5, vel: 0.1, pitch: 0.2, pitchVel: 0 } },
+            turret: { turretBlueprintCode: 2, angular: { rot: 1.5, vel: 0.1, pitch: 0.2, pitchVel: 0 } },
             targetId: 999,
             state: 2,
           },
           {
-            turret: { id: 3, angular: { rot: -0.5, vel: 0, pitch: 0, pitchVel: 0 } },
+            turret: { turretBlueprintCode: 3, angular: { rot: -0.5, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 1,
             currentForceFieldRange: 100,
           },
@@ -629,7 +629,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 1000, max: 1000 },
         velocity: { x: 0, y: 0, z: 0 },
         turrets: Array.from({ length: 8 }, (_, i): TurretFixture => ({
-          turret: { id: i, angular: { rot: i * 0.1, vel: 0, pitch: 0, pitchVel: 0 } },
+          turret: { turretBlueprintCode: i, angular: { rot: i * 0.1, vel: 0, pitch: 0, pitchVel: 0 } },
           state: i % 3,
         })),
       },
@@ -678,7 +678,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         ],
       },
     },
-    // Build action with grid + buildingId (no buildingType — string not supported yet)
+    // Build action with grid + buildingId (no buildingBlueprintId — string not supported yet)
     {
       id: 804, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: {
@@ -714,7 +714,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         turrets: [
           {
             turret: {
-              id: 7,
+              turretBlueprintCode: 7,
               angular: { rot: 1.5, vel: 0.2, pitch: 0.1, pitchVel: 0 },
             },
             targetId: 888,
@@ -760,14 +760,14 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         },
       },
     },
-    // Build action with buildingType string
+    // Build action with buildingBlueprintId string
     {
       id: 1000, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: {
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         actions: [
-          { type: 7, buildingType: 'factory', grid: { x: 10, y: 20 } },
+          { type: 7, buildingBlueprintId: 'factory', grid: { x: 10, y: 20 } },
         ],
       },
     },
@@ -778,8 +778,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         actions: [
-          { type: 7, buildingType: 'pylon', grid: { x: 0, y: 0 } },
-          { type: 7, buildingType: 'pylon', grid: { x: 5, y: 5 } },
+          { type: 7, buildingBlueprintId: 'pylon', grid: { x: 0, y: 0 } },
+          { type: 7, buildingBlueprintId: 'pylon', grid: { x: 5, y: 5 } },
         ],
       },
     },
@@ -790,13 +790,13 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         actions: [
-          { type: 7, buildingType: 'commandCenter', grid: { x: 0, y: 0 } },
-          { type: 7, buildingType: 'energyConverter', grid: { x: 10, y: 0 } },
-          { type: 7, buildingType: 'extractor', grid: { x: 20, y: 0 } },
+          { type: 7, buildingBlueprintId: 'commandCenter', grid: { x: 0, y: 0 } },
+          { type: 7, buildingBlueprintId: 'energyConverter', grid: { x: 10, y: 0 } },
+          { type: 7, buildingBlueprintId: 'extractor', grid: { x: 20, y: 0 } },
         ],
       },
     },
-    // buildingType with full action (everything optional present)
+    // buildingBlueprintId with full action (everything optional present)
     {
       id: 1003, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1, changedFields: 0x10,
       unit: {
@@ -808,7 +808,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
             pos: { x: 1234, y: 5678 },
             posZ: 42,
             targetId: 999,
-            buildingType: 'turret_defender',
+            buildingBlueprintId: 'turret_defender',
             grid: { x: 50, y: 100 },
             buildingId: 88888,
           },
@@ -843,7 +843,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
     if (hasActions && actions) {
       const strings: string[] = [];
       for (const a of actions) {
-        if (a.buildingType !== undefined) strings.push(a.buildingType);
+        if (a.buildingBlueprintId !== undefined) strings.push(a.buildingBlueprintId);
       }
       if (strings.length > 0) {
         stringSlots = packStringsIntoScratch(memory, strings);
@@ -869,8 +869,8 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       hasChanged, changed,
       f.unit.hp.curr, f.unit.hp.max,
       f.unit.velocity.x, f.unit.velocity.y, f.unit.velocity.z,
-      f.unit.unitType !== undefined ? 1 : 0,
-      f.unit.unitType ?? 0,
+      f.unit.unitBlueprintCode !== undefined ? 1 : 0,
+      f.unit.unitBlueprintCode ?? 0,
       f.unit.radius !== undefined ? 1 : 0,
       f.unit.radius?.body ?? 0,
       f.unit.radius?.shot ?? 0,
@@ -944,7 +944,7 @@ type BuildingFixture = {
   playerId: number;
   changedFields?: number;
   building: {
-    type?: number;
+    buildingBlueprintCode?: number;
     dim?: { x: number; y: number };
     hp: { curr: number; max: number };
     build: {
@@ -1012,7 +1012,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2001, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 2,
+        buildingBlueprintCode: 2,
         dim: { x: 8, y: 8 },
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, metal: 200 } },
@@ -1022,7 +1022,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2002, type: 'building', pos: { x: 200, y: 300, z: 50 }, rotation: 0, playerId: 2,
       building: {
-        type: 255,
+        buildingBlueprintCode: 255,
         dim: { x: 4, y: 4 },
         hp: { curr: 30, max: 300 },
         build: { complete: false, paid: { energy: 25, metal: 10 } },
@@ -1032,7 +1032,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2003, type: 'building', pos: { x: 100, y: 100, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 3,
+        buildingBlueprintCode: 3,
         dim: { x: 4, y: 4 },
         hp: { curr: 200, max: 200 },
         build: { complete: true, paid: { energy: 50, metal: 100 } },
@@ -1043,7 +1043,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2004, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 0,
+        buildingBlueprintCode: 0,
         dim: { x: 4, y: 4 },
         hp: { curr: 150, max: 150 },
         build: { complete: true, paid: { energy: 0, metal: 80 } },
@@ -1063,14 +1063,14 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2006, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
       building: {
-        type: 255,
+        buildingBlueprintCode: 255,
         dim: { x: 2, y: 2 },
         hp: { curr: 400, max: 400 },
         build: { complete: true, paid: { energy: 100, metal: 100 } },
         turrets: [
           {
             turret: {
-              id: 9,
+              turretBlueprintCode: 9,
               angular: { rot: 1.5, vel: 0.2, pitch: 0.5, pitchVel: 0 },
             },
             targetId: 1234,
@@ -1091,7 +1091,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2008, type: 'building', pos: { x: 5000, y: 5000, z: 100 }, rotation: 0, playerId: 1,
       building: {
-        type: 3,
+        buildingBlueprintCode: 3,
         dim: { x: 6, y: 6 },
         hp: { curr: 880, max: 1000 },
         build: { complete: true, paid: { energy: 200, metal: 300 } },
@@ -1099,7 +1099,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         solar: { open: true },
         turrets: [
           {
-            turret: { id: 1, angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 } },
+            turret: { turretBlueprintCode: 1, angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 } },
             state: 0,
           },
         ],
@@ -1109,7 +1109,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2100, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 2,
+        buildingBlueprintCode: 2,
         dim: { x: 8, y: 8 },
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, metal: 200 } },
@@ -1167,7 +1167,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     {
       id: 2103, type: 'building', pos: { x: 2000, y: 2000, z: 0 }, rotation: 0, playerId: 1,
       building: {
-        type: 255,
+        buildingBlueprintCode: 255,
         dim: { x: 10, y: 10 },
         hp: { curr: 5000, max: 5000 },
         build: { complete: true, paid: { energy: 0, metal: 0 } },
@@ -1217,8 +1217,8 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       f.pos.x, f.pos.y, f.pos.z,
       f.rotation, f.playerId,
       hasChanged, changed,
-      f.building.type !== undefined ? 1 : 0,
-      f.building.type ?? 0,
+      f.building.buildingBlueprintCode !== undefined ? 1 : 0,
+      f.building.buildingBlueprintCode ?? 0,
       f.building.dim !== undefined ? 1 : 0,
       f.building.dim?.x ?? 0, f.building.dim?.y ?? 0,
       f.building.hp.curr, f.building.hp.max,
@@ -1321,17 +1321,17 @@ type ProjectileSpawnFixture = {
   velocity: { x: number; y: number; z: number };
   projectileType: number;
   maxLifespan?: number;
-  turretId: number;
-  shotId?: number;
-  sourceTurretId?: number;
-  sourceTurretInstanceId?: number;
+  turretBlueprintCode: number;
+  shotBlueprintCode?: number;
+  sourceTurretBlueprintCode?: number;
+  sourceTurretEntityId?: number;
   playerId: number;
   sourceEntityId: number;
-  sourceHostId?: number;
-  sourceRootId?: number;
+  sourceHostEntityId?: number;
+  sourceRootEntityId?: number;
   sourceTeamId?: number;
   spawnTick?: number;
-  parentShotId?: number;
+  parentShotEntityId?: number;
   turretIndex: number;
   barrelIndex: number;
   isDGun?: boolean;
@@ -1381,17 +1381,17 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
       velocity: spawn.velocity,
       projectileType: spawn.projectileType,
       maxLifespan: spawn.maxLifespan ?? null,
-      turretId: spawn.turretId,
-      shotId: spawn.shotId ?? null,
-      sourceTurretId: spawn.sourceTurretId ?? null,
-      sourceTurretInstanceId: spawn.sourceTurretInstanceId ?? null,
+      turretBlueprintCode: spawn.turretBlueprintCode,
+      shotBlueprintCode: spawn.shotBlueprintCode ?? null,
+      sourceTurretBlueprintCode: spawn.sourceTurretBlueprintCode ?? null,
+      sourceTurretEntityId: spawn.sourceTurretEntityId ?? null,
       playerId: spawn.playerId,
       sourceEntityId: spawn.sourceEntityId,
-      sourceHostId: spawn.sourceHostId ?? spawn.sourceEntityId,
-      sourceRootId: spawn.sourceRootId ?? spawn.sourceHostId ?? spawn.sourceEntityId,
+      sourceHostEntityId: spawn.sourceHostEntityId ?? spawn.sourceEntityId,
+      sourceRootEntityId: spawn.sourceRootEntityId ?? spawn.sourceHostEntityId ?? spawn.sourceEntityId,
       sourceTeamId: spawn.sourceTeamId ?? spawn.playerId,
       spawnTick: spawn.spawnTick ?? 0,
-      parentShotId: spawn.parentShotId ?? null,
+      parentShotEntityId: spawn.parentShotEntityId ?? null,
       turretIndex: spawn.turretIndex,
       barrelIndex: spawn.barrelIndex,
       isDGun: spawn.isDGun ?? null,
@@ -1450,9 +1450,9 @@ function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: Projectil
     view[base + 7] = s.velocity.z;
     view[base + 8] = s.projectileType;
     view[base + 9] = s.maxLifespan ?? 0;
-    view[base + 10] = s.turretId;
-    view[base + 11] = s.shotId ?? 0;
-    view[base + 12] = s.sourceTurretId ?? 0;
+    view[base + 10] = s.turretBlueprintCode;
+    view[base + 11] = s.shotBlueprintCode ?? 0;
+    view[base + 12] = s.sourceTurretBlueprintCode ?? 0;
     view[base + 13] = s.playerId;
     view[base + 14] = s.sourceEntityId;
     view[base + 15] = s.turretIndex;
@@ -1465,18 +1465,18 @@ function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: Projectil
     view[base + 22] = s.beam?.end.z ?? 0;
     view[base + 23] = s.targetEntityId ?? 0;
     view[base + 24] = s.homingTurnRate ?? 0;
-    view[base + 25] = s.sourceTurretInstanceId ?? 0;
-    view[base + 26] = s.sourceHostId ?? s.sourceEntityId;
-    view[base + 27] = s.sourceRootId ?? s.sourceHostId ?? s.sourceEntityId;
+    view[base + 25] = s.sourceTurretEntityId ?? 0;
+    view[base + 26] = s.sourceHostEntityId ?? s.sourceEntityId;
+    view[base + 27] = s.sourceRootEntityId ?? s.sourceHostEntityId ?? s.sourceEntityId;
     view[base + 28] = s.sourceTeamId ?? s.playerId;
     view[base + 29] = s.spawnTick ?? 0;
-    view[base + 30] = s.parentShotId ?? 0;
+    view[base + 30] = s.parentShotEntityId ?? 0;
     let flags = 0;
     if (s.maxLifespan !== undefined) flags |= 0x01;
-    if (s.shotId !== undefined) flags |= 0x02;
-    if (s.sourceTurretId !== undefined) flags |= 0x04;
-    if (s.sourceTurretInstanceId !== undefined) flags |= 0x400;
-    if (s.parentShotId !== undefined) flags |= 0x800;
+    if (s.shotBlueprintCode !== undefined) flags |= 0x02;
+    if (s.sourceTurretBlueprintCode !== undefined) flags |= 0x04;
+    if (s.sourceTurretEntityId !== undefined) flags |= 0x400;
+    if (s.parentShotEntityId !== undefined) flags |= 0x800;
     if (s.isDGun !== undefined) flags |= s.isDGun ? 0x08 : 0x100;
     if (s.fromParentDetonation !== undefined) flags |= s.fromParentDetonation ? 0x10 : 0x200;
     if (s.beam !== undefined) flags |= 0x20;
@@ -1606,7 +1606,7 @@ type DeathContextFixture = {
   pushRadius?: number;
   baseZ?: number;
   color: number;
-  unitType?: string;
+  unitBlueprintId?: string;
   rotation?: number;
   turretPoses?: Array<{ rotation: number; pitch: number }>;
 };
@@ -1619,7 +1619,7 @@ type ImpactContextFixture = {
 };
 type AudioEventFixture = {
   type: AudioEventType;
-  turretId: string;
+  turretBlueprintId: string;
   sourceType?: AudioEventSourceType;
   sourceKey?: string;
   pos: { x: number; y: number; z: number };
@@ -1677,13 +1677,13 @@ function packDeathContextsIntoScratch(
     view[base + 10] = dc.pushRadius ?? 0;
     view[base + 11] = dc.baseZ ?? 0;
     view[base + 12] = dc.rotation ?? 0;
-    view[base + 13] = dc.unitType !== undefined ? (stringSlots.get(dc.unitType) ?? 0) : 0;
+    view[base + 13] = dc.unitBlueprintId !== undefined ? (stringSlots.get(dc.unitBlueprintId) ?? 0) : 0;
     view[base + 14] = dc.turretPoses?.length ?? 0;
     let flags = 0;
     if (dc.visualRadius !== undefined) flags |= 0x01;
     if (dc.pushRadius !== undefined) flags |= 0x02;
     if (dc.baseZ !== undefined) flags |= 0x04;
-    if (dc.unitType !== undefined) flags |= 0x08;
+    if (dc.unitBlueprintId !== undefined) flags |= 0x08;
     if (dc.rotation !== undefined) flags |= 0x10;
     if (dc.turretPoses !== undefined) flags |= 0x20;
     view[base + 15] = flags;
@@ -1753,7 +1753,7 @@ function packAudioEventsIntoScratch(
     view[base + 10] = e.forceFieldImpact?.normal.z ?? 0;
     view[base + 11] = e.forceFieldImpact?.playerId ?? 0;
     view[base + 12] = e.sourceType ? AUDIO_EVENT_SOURCE_TYPE_CODES[e.sourceType] : 0;
-    view[base + 13] = stringSlots.get(e.turretId) ?? 0;
+    view[base + 13] = stringSlots.get(e.turretBlueprintId) ?? 0;
     view[base + 14] = e.sourceKey !== undefined ? (stringSlots.get(e.sourceKey) ?? 0) : 0;
     let flags = 0;
     if (e.sourceType !== undefined) flags |= 0x001;
@@ -2109,7 +2109,7 @@ function sparseProjectilesFixture(
 function sparseProjectileSpawnFixture(
   spawn: ProjectileSpawnFixture,
 ): ProjectileSpawnFixture {
-  const sourceHostId = spawn.sourceHostId ?? spawn.sourceEntityId;
+  const sourceHostEntityId = spawn.sourceHostEntityId ?? spawn.sourceEntityId;
   const out = {
     id: spawn.id,
     pos: spawn.pos,
@@ -2118,19 +2118,19 @@ function sparseProjectileSpawnFixture(
     projectileType: spawn.projectileType,
   } as ProjectileSpawnFixture;
   if (spawn.maxLifespan !== undefined) out.maxLifespan = spawn.maxLifespan;
-  out.turretId = spawn.turretId;
-  if (spawn.shotId !== undefined) out.shotId = spawn.shotId;
-  if (spawn.sourceTurretId !== undefined) out.sourceTurretId = spawn.sourceTurretId;
-  if (spawn.sourceTurretInstanceId !== undefined) {
-    out.sourceTurretInstanceId = spawn.sourceTurretInstanceId;
+  out.turretBlueprintCode = spawn.turretBlueprintCode;
+  if (spawn.shotBlueprintCode !== undefined) out.shotBlueprintCode = spawn.shotBlueprintCode;
+  if (spawn.sourceTurretBlueprintCode !== undefined) out.sourceTurretBlueprintCode = spawn.sourceTurretBlueprintCode;
+  if (spawn.sourceTurretEntityId !== undefined) {
+    out.sourceTurretEntityId = spawn.sourceTurretEntityId;
   }
   out.playerId = spawn.playerId;
   out.sourceEntityId = spawn.sourceEntityId;
-  out.sourceHostId = sourceHostId;
-  out.sourceRootId = spawn.sourceRootId ?? sourceHostId;
+  out.sourceHostEntityId = sourceHostEntityId;
+  out.sourceRootEntityId = spawn.sourceRootEntityId ?? sourceHostEntityId;
   out.sourceTeamId = spawn.sourceTeamId ?? spawn.playerId;
   out.spawnTick = spawn.spawnTick ?? 0;
-  if (spawn.parentShotId !== undefined) out.parentShotId = spawn.parentShotId;
+  if (spawn.parentShotEntityId !== undefined) out.parentShotEntityId = spawn.parentShotEntityId;
   out.turretIndex = spawn.turretIndex;
   out.barrelIndex = spawn.barrelIndex;
   if (spawn.isDGun !== undefined) out.isDGun = spawn.isDGun;
@@ -2194,7 +2194,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         {
           id: 2, type: 'building', pos: { x: 500, y: 500, z: 0 }, rotation: 0, playerId: 1,
           building: {
-            type: 255,
+            buildingBlueprintCode: 255,
             dim: { x: 4, y: 4 },
             hp: { curr: 300, max: 300 },
             build: { complete: true, paid: { energy: 50, metal: 30 } },
@@ -2338,7 +2338,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           rotation: 0,
           velocity: { x: 0, y: 0, z: 0 },
           projectileType: 1,
-          turretId: 2,
+          turretBlueprintCode: 2,
           playerId: 1,
           sourceEntityId: 500,
           turretIndex: 0,
@@ -2358,17 +2358,17 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           velocity: { x: 100, y: 0, z: 50 },
           projectileType: 3,
           maxLifespan: 5000,
-          turretId: 4,
-          shotId: 7,
-          sourceTurretId: 8,
-          sourceTurretInstanceId: 88,
+          turretBlueprintCode: 4,
+          shotBlueprintCode: 7,
+          sourceTurretBlueprintCode: 8,
+          sourceTurretEntityId: 88,
           playerId: 2,
           sourceEntityId: 600,
-          sourceHostId: 600,
-          sourceRootId: 590,
+          sourceHostEntityId: 600,
+          sourceRootEntityId: 590,
           sourceTeamId: 2,
           spawnTick: 777,
-          parentShotId: 8999,
+          parentShotEntityId: 8999,
           turretIndex: 1,
           barrelIndex: 2,
           isDGun: true,
@@ -2394,7 +2394,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             rotation: 3.14,
             velocity: { x: -50, y: 0, z: 0 },
             projectileType: 2,
-            turretId: 1,
+            turretBlueprintCode: 1,
             playerId: 1,
             sourceEntityId: 0,
             turretIndex: 0,
@@ -2408,7 +2408,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             velocity: { x: 0, y: 100, z: 0 },
             projectileType: 5,
             maxLifespan: 3000,
-            turretId: 6,
+            turretBlueprintCode: 6,
             playerId: 3,
             sourceEntityId: 800,
             turretIndex: 2,
@@ -2430,7 +2430,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           rotation: 0,
           velocity: { x: 50, y: 0, z: 0 },
           projectileType: 1,
-          turretId: 2,
+          turretBlueprintCode: 2,
           playerId: 1,
           sourceEntityId: 100,
           turretIndex: 0,
@@ -2466,7 +2466,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1400, entities: [], economy: {},
       audioEvents: [{
         type: 'fire',
-        turretId: 'turret.cannon',
+        turretBlueprintId: 'turret.cannon',
         pos: { x: 500, y: 500, z: 12 },
       }],
       isDelta: true,
@@ -2476,7 +2476,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1401, entities: [], economy: {},
       audioEvents: [{
         type: 'laserStart',
-        turretId: 'turret.laser',
+        turretBlueprintId: 'turret.laser',
         sourceType: 'turret',
         sourceKey: 'turret.laser#0',
         pos: { x: 100, y: 200, z: 0 },
@@ -2490,7 +2490,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1402, entities: [], economy: {},
       audioEvents: [{
         type: 'forceFieldImpact',
-        turretId: '',  // empty-string turretId is valid (fixstr 0xA0)
+        turretBlueprintId: '',  // empty-string turretBlueprintId is valid (fixstr 0xA0)
         pos: { x: 300, y: 400, z: 50 },
         forceFieldImpact: {
           normal: { x: 0.707, y: 0.707, z: 0 },
@@ -2504,7 +2504,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1403, entities: [], economy: {},
       audioEvents: [{
         type: 'attackAlert',
-        turretId: 'shot.rocket',
+        turretBlueprintId: 'shot.rocket',
         pos: { x: -100, y: -200, z: 0 },
         playerId: 3,
         victimPlayerId: 1,
@@ -2518,7 +2518,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1404, entities: [], economy: {},
       audioEvents: [{
         type: 'death',
-        turretId: 'unit.tank',
+        turretBlueprintId: 'unit.tank',
         sourceType: 'unit',
         pos: { x: 800, y: 800, z: 5 },
         playerId: 2,
@@ -2531,20 +2531,20 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     {
       tick: 1405, entities: [], economy: {},
       audioEvents: [
-        { type: 'fire', turretId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
-        { type: 'hit', turretId: 'shot.shell', pos: { x: 100, y: 100, z: 0 }, entityId: 50 },
-        { type: 'projectileExpire', turretId: 'shot.shell', pos: { x: 200, y: 200, z: 10 } },
-        { type: 'ping', turretId: '', pos: { x: 0, y: 0, z: 0 }, playerId: 1, audioOnly: false },
+        { type: 'fire', turretBlueprintId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
+        { type: 'hit', turretBlueprintId: 'shot.shell', pos: { x: 100, y: 100, z: 0 }, entityId: 50 },
+        { type: 'projectileExpire', turretBlueprintId: 'shot.shell', pos: { x: 200, y: 200, z: 10 } },
+        { type: 'ping', turretBlueprintId: '', pos: { x: 0, y: 0, z: 0 }, playerId: 1, audioOnly: false },
       ],
       isDelta: true,
     },
     // audioEvents — death with deathContext (no turretPoses, no
-    // unitType — building-style death).
+    // unitBlueprintId — building-style death).
     {
       tick: 1410, entities: [], economy: {},
       audioEvents: [{
         type: 'death',
-        turretId: 'unit.pylon',
+        turretBlueprintId: 'unit.pylon',
         sourceType: 'building',
         pos: { x: 1000, y: 1000, z: 0 },
         entityId: 200,
@@ -2568,7 +2568,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1411, entities: [], economy: {},
       audioEvents: [{
         type: 'death',
-        turretId: 'unit.tank',
+        turretBlueprintId: 'unit.tank',
         sourceType: 'unit',
         pos: { x: 500, y: 500, z: 12 },
         entityId: 300,
@@ -2582,7 +2582,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           pushRadius: 30,
           baseZ: 10,
           color: 0xFF0000,
-          unitType: 'tank',
+          unitBlueprintId: 'tank',
           rotation: 1.5708,
           turretPoses: [
             { rotation: 0.5, pitch: 0.2 },
@@ -2598,7 +2598,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 1412, entities: [], economy: {},
       audioEvents: [{
         type: 'hit',
-        turretId: 'shot.shell',
+        turretBlueprintId: 'shot.shell',
         pos: { x: 600, y: 600, z: 5 },
         entityId: 400,
         impactContext: {
@@ -2616,9 +2616,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     {
       tick: 1413, entities: [], economy: {},
       audioEvents: [
-        { type: 'fire', turretId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
+        { type: 'fire', turretBlueprintId: 'turret.cannon', pos: { x: 0, y: 0, z: 0 } },
         {
-          type: 'death', turretId: 'unit.tank', pos: { x: 100, y: 100, z: 5 },
+          type: 'death', turretBlueprintId: 'unit.tank', pos: { x: 100, y: 100, z: 5 },
           deathContext: {
             unitVel: { x: 1, y: 1 },
             hitDir: { x: 1, y: 0 },
@@ -2626,13 +2626,13 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             attackMagnitude: 90,
             radius: 35,
             color: 0xFFFF00,
-            unitType: 'tank',
+            unitBlueprintId: 'tank',
             rotation: 0.5,
             turretPoses: [{ rotation: 0.1, pitch: 0.05 }],
           },
         },
         {
-          type: 'hit', turretId: 'shot.rocket', pos: { x: 200, y: 200, z: 10 },
+          type: 'hit', turretBlueprintId: 'shot.rocket', pos: { x: 200, y: 200, z: 10 },
           impactContext: {
             collisionRadius: 6,
             explosionRadius: 40,
@@ -2642,7 +2642,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
         {
-          type: 'death', turretId: 'unit.commander', pos: { x: 300, y: 300, z: 0 },
+          type: 'death', turretBlueprintId: 'unit.commander', pos: { x: 300, y: 300, z: 0 },
           deathContext: {
             unitVel: { x: 0, y: 0 },
             hitDir: { x: -1, y: 0 },
@@ -2870,7 +2870,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           rotation: 0,
           velocity: { x: 50, y: 0, z: 0 },
           projectileType: 1,
-          turretId: 2,
+          turretBlueprintCode: 2,
           playerId: 1,
           sourceEntityId: 100,
           turretIndex: 0,
@@ -2913,7 +2913,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           rotation: 1.25,
           velocity: { x: 0, y: 5, z: 0 },
           projectileType: 1,
-          turretId: 2,
+          turretBlueprintCode: 2,
           playerId: 1,
           sourceEntityId: 100,
           turretIndex: 0,
@@ -3015,10 +3015,10 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     if (f.gameState?.phase !== undefined) envelopeStrings.push(f.gameState.phase);
     if (hasAudioEvents && f.audioEvents) {
       for (const e of f.audioEvents) {
-        envelopeStrings.push(e.turretId);
+        envelopeStrings.push(e.turretBlueprintId);
         if (e.sourceKey !== undefined) envelopeStrings.push(e.sourceKey);
-        if (e.deathContext?.unitType !== undefined) {
-          envelopeStrings.push(e.deathContext.unitType);
+        if (e.deathContext?.unitBlueprintId !== undefined) {
+          envelopeStrings.push(e.deathContext.unitBlueprintId);
         }
       }
     }
@@ -3076,7 +3076,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         const stringList: string[] = [];
         if (ufActions) {
           for (const a of ufActions) {
-            if (a.buildingType !== undefined) stringList.push(a.buildingType);
+            if (a.buildingBlueprintId !== undefined) stringList.push(a.buildingBlueprintId);
           }
         }
         const stringSlots = stringList.length > 0
@@ -3092,8 +3092,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           hasChanged, u.changedFields ?? 0,
           u.unit.hp.curr, u.unit.hp.max,
           u.unit.velocity.x, u.unit.velocity.y, u.unit.velocity.z,
-          u.unit.unitType !== undefined ? 1 : 0,
-          u.unit.unitType ?? 0,
+          u.unit.unitBlueprintCode !== undefined ? 1 : 0,
+          u.unit.unitBlueprintCode ?? 0,
           u.unit.radius !== undefined ? 1 : 0,
           u.unit.radius?.body ?? 0,
           u.unit.radius?.shot ?? 0,
@@ -3137,8 +3137,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         snapshot_encode_entity_building(
           b.id, b.pos.x, b.pos.y, b.pos.z, b.rotation, b.playerId,
           hasChanged, b.changedFields ?? 0,
-          b.building.type !== undefined ? 1 : 0,
-          b.building.type ?? 0,
+          b.building.buildingBlueprintCode !== undefined ? 1 : 0,
+          b.building.buildingBlueprintCode ?? 0,
           b.building.dim !== undefined ? 1 : 0,
           b.building.dim?.x ?? 0, b.building.dim?.y ?? 0,
           b.building.hp.curr, b.building.hp.max,
@@ -3182,10 +3182,10 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       // input order yields the same slot assignments.
       const audioStrings: string[] = [];
       for (const e of f.audioEvents) {
-        audioStrings.push(e.turretId);
+        audioStrings.push(e.turretBlueprintId);
         if (e.sourceKey !== undefined) audioStrings.push(e.sourceKey);
-        if (e.deathContext?.unitType !== undefined) {
-          audioStrings.push(e.deathContext.unitType);
+        if (e.deathContext?.unitBlueprintId !== undefined) {
+          audioStrings.push(e.deathContext.unitBlueprintId);
         }
       }
       // Re-include envelope strings so gameState.phase stays valid
@@ -3393,7 +3393,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
             rotation: 4,
             velocity: { x: 5, y: 6, z: 7 },
             projectileType: 1,
-            turretId: 2,
+            turretBlueprintCode: 2,
             playerId: 1,
             sourceEntityId: 500,
             turretIndex: 0,
@@ -3406,17 +3406,17 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
             velocity: { x: -5, y: 3, z: 1 },
             projectileType: 3,
             maxLifespan: 2500,
-            turretId: 4,
-            shotId: 6,
-            sourceTurretId: 7,
-            sourceTurretInstanceId: 77,
+            turretBlueprintCode: 4,
+            shotBlueprintCode: 6,
+            sourceTurretBlueprintCode: 7,
+            sourceTurretEntityId: 77,
             playerId: 2,
             sourceEntityId: 501,
-            sourceHostId: 501,
-            sourceRootId: 500,
+            sourceHostEntityId: 501,
+            sourceRootEntityId: 500,
             sourceTeamId: 2,
             spawnTick: 1801,
-            parentShotId: 99,
+            parentShotEntityId: 99,
             turretIndex: 1,
             barrelIndex: 0,
             isDGun: false,
@@ -3492,7 +3492,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
           rotation: 0,
           velocity: { x: 1, y: 2, z: 3 },
           projectileType: 2,
-          turretId: 5,
+          turretBlueprintCode: 5,
           playerId: 1,
           sourceEntityId: 20,
           turretIndex: 0,

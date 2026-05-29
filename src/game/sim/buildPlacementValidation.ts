@@ -1,6 +1,6 @@
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { Entity, BuildingType } from './types';
+import type { Entity, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE, getBuildingCenterFromGrid, snapBuildingToGrid } from './buildGrid';
 import {
@@ -64,7 +64,7 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
   const occupied = new Set<string>();
   for (const b of buildings) {
     if (!b.building) continue;
-    const existingConfig = b.buildingType ? getBuildingConfig(b.buildingType) : undefined;
+    const existingConfig = b.buildingBlueprintId ? getBuildingConfig(b.buildingBlueprintId) : undefined;
     const bw = existingConfig ? existingConfig.gridWidth : Math.max(1, Math.ceil(b.building.width / BUILD_GRID_CELL_SIZE));
     const bh = existingConfig ? existingConfig.gridHeight : Math.max(1, Math.ceil(b.building.height / BUILD_GRID_CELL_SIZE));
     const left = Math.floor((b.transform.x - (bw * BUILD_GRID_CELL_SIZE) / 2) / BUILD_GRID_CELL_SIZE + 1e-6);
@@ -79,7 +79,7 @@ export function getOccupiedBuildingCells(buildings: Entity[]): ReadonlySet<strin
 }
 
 function getBuildingPlacementDiagnosticsAtGrid(
-  candidateType: BuildingType,
+  candidateType: BuildingBlueprintId,
   gridX: number,
   gridY: number,
   mapWidth: number,
@@ -262,7 +262,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
 }
 
 export function getBuildingPlacementDiagnosticsForGrid(
-  candidateType: BuildingType,
+  candidateType: BuildingBlueprintId,
   gridX: number,
   gridY: number,
   mapWidth: number,
@@ -284,7 +284,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
 }
 
 export function getBuildingPlacementDiagnostics(
-  candidateType: BuildingType,
+  candidateType: BuildingBlueprintId,
   centerX: number,
   centerY: number,
   mapWidth: number,
@@ -309,7 +309,7 @@ export function getBuildingPlacementDiagnostics(
 }
 
 export function canPlaceBuildingAt(
-  candidateType: BuildingType,
+  candidateType: BuildingBlueprintId,
   centerX: number,
   centerY: number,
   mapWidth: number,
@@ -331,8 +331,8 @@ export function canPlaceBuildingAt(
 export function getSnappedBuildPosition(
   worldX: number,
   worldY: number,
-  buildingType: BuildingType,
+  buildingBlueprintId: BuildingBlueprintId,
 ): { x: number; y: number; gridX: number; gridY: number } {
-  const config = getBuildingConfig(buildingType);
+  const config = getBuildingConfig(buildingBlueprintId);
   return snapBuildingToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
 }

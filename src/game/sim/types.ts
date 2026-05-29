@@ -22,7 +22,7 @@ export type {
   WaypointType,
   Waypoint,
   ActionType,
-  BuildingType,
+  BuildingBlueprintId,
   BuildingRenderProfile,
   BuildingAnchorProfile,
   UnitAction,

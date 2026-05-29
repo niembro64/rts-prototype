@@ -185,7 +185,7 @@ export class SelectionOverlayRenderer3D {
     const showEngageMinAcquire = getRangeToggle('engageMinAcquire');
     const showEngageMinRelease = getRangeToggle('engageMinRelease');
     const showBuild = getRangeToggle('build');
-    const showRadar = entity.buildingType === 'radar' && entity.selectable?.selected === true;
+    const showRadar = entity.buildingBlueprintId === 'radar' && entity.selectable?.selected === true;
     const showAnyTurretRange =
       showTrackAcquire || showTrackRelease
       || showEngageAcquire || showEngageRelease

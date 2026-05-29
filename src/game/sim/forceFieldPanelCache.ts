@@ -156,7 +156,7 @@ export function buildForceFieldPanelCache(
   let forceFieldBoundRadius = 0;
 
   for (const mount of bp.turrets) {
-    const tb = getTurretBlueprint(mount.turretId);
+    const tb = getTurretBlueprint(mount.turretBlueprintId);
     if (!tb.forceFieldPanels) continue;
     const centerY = mount.mount.z * unitBodyRadius;
     const baseY = centerY - halfSide;

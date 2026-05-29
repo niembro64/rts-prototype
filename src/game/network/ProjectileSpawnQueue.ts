@@ -1,8 +1,8 @@
 import type { EntityId } from '../sim/types';
-import type { TurretId } from '../../types/blueprintIds';
+import type { TurretBlueprintId } from '../../types/blueprintIds';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
-  codeToTurretId,
+  codeToTurretBlueprintId,
   PROJECTILE_TYPE_PROJECTILE,
 } from '../../types/network';
 import { TURRET_CONFIGS } from '../sim/turretConfigs';
@@ -13,14 +13,14 @@ type QueuedProjectileSpawn = {
   playAt: number;
 };
 
-export function decodeProjectileSourceTurretId(
+export function decodeProjectileSourceTurretBlueprintId(
   spawn: NetworkServerSnapshotProjectileSpawn,
-): TurretId | undefined {
-  const sourceTurretId = spawn.sourceTurretId !== null
-    ? codeToTurretId(spawn.sourceTurretId) ?? undefined
+): TurretBlueprintId | undefined {
+  const sourceTurretBlueprintId = spawn.sourceTurretBlueprintCode !== null
+    ? codeToTurretBlueprintId(spawn.sourceTurretBlueprintCode) ?? undefined
     : undefined;
-  if (sourceTurretId) return sourceTurretId;
-  return codeToTurretId(spawn.turretId) ?? undefined;
+  if (sourceTurretBlueprintId) return sourceTurretBlueprintId;
+  return codeToTurretBlueprintId(spawn.turretBlueprintCode) ?? undefined;
 }
 
 export class ProjectileSpawnQueue {
@@ -52,9 +52,9 @@ export class ProjectileSpawnQueue {
   }
 
   shouldSmooth(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
-    const sourceTurretId = decodeProjectileSourceTurretId(spawn);
-    const sourceTurretConfig = sourceTurretId !== undefined
-      ? TURRET_CONFIGS[sourceTurretId]
+    const sourceTurretBlueprintId = decodeProjectileSourceTurretBlueprintId(spawn);
+    const sourceTurretConfig = sourceTurretBlueprintId !== undefined
+      ? TURRET_CONFIGS[sourceTurretBlueprintId]
       : undefined;
     return spawn.projectileType === PROJECTILE_TYPE_PROJECTILE &&
       !spawn.fromParentDetonation &&

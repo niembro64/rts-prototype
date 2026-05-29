@@ -106,7 +106,7 @@ export function useGameCanvasSceneUi({
     commanderId: undefined,
     waypointMode: 'move',
     isBuildMode: false,
-    selectedBuildingType: null,
+    selectedBuildingBlueprintId: null,
     isDGunMode: false,
     isRepairAreaMode: false,
     isAttackAreaMode: false,
@@ -238,8 +238,8 @@ export function useGameCanvasSceneUi({
     recallControlGroup: (index, additive) => {
       getActiveBattleScene()?.recallControlGroup(index, additive);
     },
-    startBuild: (buildingType) => {
-      getActiveBattleScene()?.startBuildMode(buildingType);
+    startBuild: (buildingBlueprintId) => {
+      getActiveBattleScene()?.startBuildMode(buildingBlueprintId);
     },
     cancelBuild: () => {
       getActiveBattleScene()?.cancelBuildMode();
@@ -250,8 +250,8 @@ export function useGameCanvasSceneUi({
     toggleRepairArea: () => {
       getActiveBattleScene()?.toggleRepairAreaMode();
     },
-    queueUnit: (factoryId, unitId) => {
-      getActiveBattleScene()?.queueFactoryUnit(factoryId, unitId);
+    queueUnit: (factoryId, unitBlueprintId) => {
+      getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId);
     },
     cancelQueueItem: (factoryId, index) => {
       getActiveBattleScene()?.cancelFactoryQueueItem(factoryId, index);

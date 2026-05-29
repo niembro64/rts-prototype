@@ -1,6 +1,6 @@
 {
   "solar": {
-    "id": "solar",
+    "buildingBlueprintId": "solar",
     "name": "Solar",
     "gridWidth": 3,
     "gridHeight": 3,
@@ -25,7 +25,7 @@
     "detector": null
   },
   "wind": {
-    "id": "wind",
+    "buildingBlueprintId": "wind",
     "name": "Wind",
     "gridWidth": 2,
     "gridHeight": 2,
@@ -50,7 +50,7 @@
     "detector": null
   },
   "extractor": {
-    "id": "extractor",
+    "buildingBlueprintId": "extractor",
     "name": "Extractor",
     "gridWidth": 5,
     "gridHeight": 5,
@@ -75,7 +75,7 @@
     "detector": null
   },
   "radar": {
-    "id": "radar",
+    "buildingBlueprintId": "radar",
     "name": "Radar",
     "gridWidth": 2,
     "gridHeight": 2,
@@ -102,7 +102,7 @@
     }
   },
   "resourceConverter": {
-    "id": "resourceConverter",
+    "buildingBlueprintId": "resourceConverter",
     "name": "Converter",
     "gridWidth": 3,
     "gridHeight": 3,

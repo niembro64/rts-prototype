@@ -115,11 +115,11 @@ export class AudioManager {
   // ==================== ONE-SHOT SOUNDS ====================
 
   // Generic weapon fire by blueprint ID
-  playWeaponFire(turretId: TurretAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
+  playWeaponFire(turretBlueprintId: TurretAudioId, _pitch: number = 1, volumeMultiplier: number = 1): void {
     if (!this.categoryEnabled.fire) return;
     if (!AUDIO.fireGain) return;
     let entry;
-    try { entry = getTurretBlueprint(turretId).audio?.fireSound; } catch { return; }
+    try { entry = getTurretBlueprint(turretBlueprintId).audio?.fireSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];
@@ -133,11 +133,11 @@ export class AudioManager {
   }
 
   // Generic hit by shot ID.
-  playWeaponHit(shotId: string, volumeMultiplier: number = 1): void {
+  playWeaponHit(shotBlueprintId: string, volumeMultiplier: number = 1): void {
     if (!this.categoryEnabled.hit) return;
     if (!AUDIO.hitGain) return;
     let entry;
-    try { entry = getShotBlueprint(shotId).hitSound; } catch { return; }
+    try { entry = getShotBlueprint(shotBlueprintId).hitSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];
@@ -149,12 +149,12 @@ export class AudioManager {
     fn(tk, entry.playSpeed, volumeMultiplier * entry.volume * AUDIO.hitGain);
   }
 
-  // Death sound based on dying unit type
-  playUnitDeath(unitType: string, volumeMultiplier: number = 1): void {
+  // Death sound based on dying unit blueprint
+  playUnitDeath(unitBlueprintId: string, volumeMultiplier: number = 1): void {
     if (!this.categoryEnabled.dead) return;
     if (!AUDIO.deadGain) return;
     let entry;
-    try { entry = getUnitBlueprint(unitType).deathSound; } catch { return; }
+    try { entry = getUnitBlueprint(unitBlueprintId).deathSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];

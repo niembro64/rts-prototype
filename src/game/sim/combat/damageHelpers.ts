@@ -10,16 +10,16 @@ import { BEAM_EXPLOSION_MAGNITUDE } from '../../../config';
 import type { DeathContext, DamageResult, KnockbackInfo } from '../damage/types';
 import type { Projectile, ProjectileConfig } from '../types';
 import { getUnitBodyCenterHeight } from '../unitGeometry';
-import { isTurretId, isUnitTypeId } from '../../../types/blueprintIds';
+import { isTurretBlueprintId, isUnitBlueprintId } from '../../../types/blueprintIds';
 import { canPlayerObserveCloakedEntity } from '../cloakDetection';
 
 function eventAudioKey(
   sourceKey: string,
   sourceType: SimEventSourceType,
   fallbackUnitType: string | undefined = undefined,
-): SimEvent['turretId'] {
-  if (sourceType === 'turret' && isTurretId(sourceKey)) return sourceKey;
-  if (fallbackUnitType && isUnitTypeId(fallbackUnitType)) return fallbackUnitType;
+): SimEvent['turretBlueprintId'] {
+  if (sourceType === 'turret' && isTurretBlueprintId(sourceKey)) return sourceKey;
+  if (fallbackUnitType && isUnitBlueprintId(fallbackUnitType)) return fallbackUnitType;
   return '';
 }
 
@@ -81,9 +81,9 @@ export function buildImpactContext(
  * kill, safety-net cleanup, and the no-ctx fallback) so the
  * deathContext fields can't drift between paths.
  *
- * `sourceKey` is the turret id that caused the kill for normal combat,
+ * `sourceKey` is the turret blueprint id that caused the kill for normal combat,
  * or the unit/building/system key for non-weapon synthetic deaths.
- * `turretId` stays reserved for weapon/audio routing.
+ * `turretBlueprintId` stays reserved for weapon/audio routing.
  */
 export function buildUnitDeathEvent(
   target: Entity | undefined,
@@ -114,8 +114,8 @@ export function buildUnitDeathEvent(
   const deathY = targetPhysicsBody !== null ? targetPhysicsBody.y : (targetTransform !== null ? targetTransform.y : 0);
   const deathZ = targetPhysicsBody !== null ? targetPhysicsBody.z : (targetTransform !== null ? targetTransform.z : 0);
   const baseZ = target !== undefined ? deathZ - bodyCenterHeight : undefined;
-  const unitType = targetUnit !== null ? targetUnit.unitType : undefined;
-  const deathUnitType = unitType && isUnitTypeId(unitType) ? unitType : undefined;
+  const unitBlueprintId = targetUnit !== null ? targetUnit.unitBlueprintId : undefined;
+  const deathUnitType = unitBlueprintId && isUnitBlueprintId(unitBlueprintId) ? unitBlueprintId : undefined;
   const rotation = targetTransform !== null ? targetTransform.rotation : 0;
   // Per-turret yaw + pitch at death — Debris3D rotates each barrel
   // template by these so the cylinder spawns where the live mesh
@@ -143,7 +143,7 @@ export function buildUnitDeathEvent(
         pushRadius,
         baseZ,
         color: playerColor,
-        unitType: deathUnitType,
+        unitBlueprintId: deathUnitType,
         rotation,
         turretPoses,
       }
@@ -157,13 +157,13 @@ export function buildUnitDeathEvent(
         pushRadius,
         baseZ,
         color: playerColor,
-        unitType: deathUnitType,
+        unitBlueprintId: deathUnitType,
         rotation,
         turretPoses,
       };
   return {
     type: 'death',
-    turretId: eventAudioKey(sourceKey, sourceType, unitType),
+    turretBlueprintId: eventAudioKey(sourceKey, sourceType, unitBlueprintId),
     sourceType,
     sourceKey,
     pos: {
@@ -212,7 +212,7 @@ export function buildBuildingDeathEvent(
   const deathZ = buildingPhysicsBody !== null ? buildingPhysicsBody.z : (buildingTransform !== null ? buildingTransform.z : 0);
   return {
     type: 'death',
-    turretId: eventAudioKey(sourceKey, sourceType),
+    turretBlueprintId: eventAudioKey(sourceKey, sourceType),
     sourceType,
     sourceKey,
     pos: {
@@ -345,7 +345,7 @@ function emitAttackAlerts(
     _attackAlertSeenVictims.add(victimPlayerId);
     audioEvents.push({
       type: 'attackAlert',
-      turretId: '',
+      turretBlueprintId: '',
       sourceType: 'system',
       sourceKey: 'attackAlert',
       pos: {
@@ -396,7 +396,7 @@ export function emitBeamHitAudio(
       const entity = world.getEntity(hitId);
       if (entity) {
         audioEvents.push({
-          type: 'hit', turretId: (config.shot as BeamShot | LaserShot).id,
+          type: 'hit', turretBlueprintId: (config.shot as BeamShot | LaserShot).shotBlueprintId,
           pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
           playerId: proj.ownerId,
           entityId: proj.sourceEntityId,

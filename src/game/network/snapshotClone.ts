@@ -86,7 +86,7 @@ function copyBuildStateInto(
 
 function createReusableBuilding(): ReusableEntityBuilding {
   return {
-    type: null,
+    buildingBlueprintCode: null,
     dim: null,
     hp: { curr: 0, max: 0 },
     build: {
@@ -123,7 +123,7 @@ function copyBuildingInto(
   src: ReusableEntityBuilding,
   dst: ReusableEntityBuilding,
 ): ReusableEntityBuilding {
-  dst.type = src.type;
+  dst.buildingBlueprintCode = src.buildingBlueprintCode;
   if (src.dim) {
     if (!dst.dim) dst.dim = { x: 0, y: 0 };
     dst.dim.x = src.dim.x;

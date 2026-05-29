@@ -56,16 +56,16 @@ defineProps<{
         <BarLabel>UNITS:</BarLabel>
         <BarButton
           :active="model.allDemoUnitsActive"
-          title="Toggle all unit types on/off"
+          title="Toggle all unit blueprints on/off"
           @click="model.toggleAllDemoUnits"
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
-            v-for="ut in model.demoUnitTypes"
+            v-for="ut in model.demoUnitBlueprintIds"
             :key="ut"
             :active="model.currentAllowedUnitsSet.has(ut)"
             :title="`Toggle ${ut} units in demo battle`"
-            @click="model.toggleDemoUnitType(ut)"
+            @click="model.toggleDemoUnitBlueprintId(ut)"
           >{{ getUnitDisplayShortName(ut) }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

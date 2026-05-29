@@ -176,7 +176,7 @@ if (vMarkShape > 0.5) {
 
 type TrailKey = string;
 
-function unitIdFromTrailKey(key: TrailKey): EntityId | undefined {
+function unitEntityIdFromTrailKey(key: TrailKey): EntityId | undefined {
   const firstColon = key.indexOf(':');
   if (firstColon < 0) return undefined;
   const secondColon = key.indexOf(':', firstColon + 1);
@@ -449,11 +449,11 @@ export class GroundPrint3D {
 
   private retireUnavailableContactState<T>(states: Map<TrailKey, T>): void {
     for (const key of states.keys()) {
-      const unitId = unitIdFromTrailKey(key);
+      const unitEntityId = unitEntityIdFromTrailKey(key);
       if (
-        unitId === undefined ||
-        !this._activeUnitIds.has(unitId) ||
-        !this._groundedUnitIds.has(unitId)
+        unitEntityId === undefined ||
+        !this._activeUnitIds.has(unitEntityId) ||
+        !this._groundedUnitIds.has(unitEntityId)
       ) {
         states.delete(key);
       }

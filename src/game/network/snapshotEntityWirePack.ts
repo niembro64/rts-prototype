@@ -28,7 +28,7 @@ type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 
 function createEmptyUnitSub(): UnitSub {
   return {
-    unitType: null,
+    unitBlueprintCode: null,
     hp: null,
     radius: null,
     bodyCenterHeight: null,
@@ -49,7 +49,7 @@ function createEmptyUnitSub(): UnitSub {
 
 function createEmptyBuildingSub(): BuildingSub {
   return {
-    type: null,
+    buildingBlueprintCode: null,
     dim: null,
     hp: null,
     build: null,
@@ -123,7 +123,7 @@ function rentDecodedUnitSub(): UnitSub {
     u = createEmptyUnitSub();
     _unitSubPool[_unitSubPoolIndex] = u;
   } else {
-    u.unitType = null;
+    u.unitBlueprintCode = null;
     u.hp = null;
     u.radius = null;
     u.bodyCenterHeight = null;
@@ -185,7 +185,7 @@ const PACKED_ENTITIES_VERSION = 6;
 // from "present but zero".
 const UNIT_FLAG_HP = 1 << 0;
 const UNIT_FLAG_VELOCITY = 1 << 1;
-const UNIT_FLAG_UNIT_TYPE = 1 << 2;
+const UNIT_FLAG_BLUEPRINT_CODE = 1 << 2;
 const UNIT_FLAG_RADIUS = 1 << 3;
 const UNIT_FLAG_BODY_CENTER_HEIGHT = 1 << 4;
 const UNIT_FLAG_MASS = 1 << 5;
@@ -202,7 +202,7 @@ const UNIT_FLAG_TURRETS = 1 << 16;
 const UNIT_FLAG_BUILD = 1 << 17;
 const UNIT_FLAG_BUILD_COMPLETE = 1 << 18;
 
-const BUILDING_FLAG_TYPE = 1 << 0;
+const BUILDING_FLAG_BLUEPRINT_CODE = 1 << 0;
 const BUILDING_FLAG_DIM = 1 << 1;
 const BUILDING_FLAG_HP = 1 << 2;
 const BUILDING_FLAG_BUILD = 1 << 3;
@@ -238,7 +238,7 @@ const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
 const ACTION_FLAG_PATH_EXP = 1 << 2;
 const ACTION_FLAG_TARGET_ID = 1 << 3;
-const ACTION_FLAG_BUILDING_TYPE = 1 << 4;
+const ACTION_FLAG_BUILDING_BLUEPRINT_ID = 1 << 4;
 const ACTION_FLAG_GRID = 1 << 5;
 const ACTION_FLAG_BUILDING_ID = 1 << 6;
 
@@ -445,7 +445,7 @@ function packEntityRow(entity: NetworkServerSnapshotEntity): PackedEntityRow {
   }
   // Towers and buildings share the same wire row flag (static
   // structural shape). The TOWER vs BUILDING peer discriminator is
-  // reconstructed on the receive side via isTowerBuildingType().
+  // reconstructed on the receive side via isTowerBuildingBlueprintId().
   if (entity.type === 'building' || entity.type === 'tower') flags |= ENTITY_FLAG_TYPE_BUILDING;
   if (entity.unit !== null) flags |= ENTITY_FLAG_HAS_UNIT;
   if (entity.building !== null) flags |= ENTITY_FLAG_HAS_BUILDING;
@@ -626,7 +626,7 @@ function isMovementOnlyUnitDelta(entity: NetworkServerSnapshotEntity): boolean {
   const unit = entity.unit;
   if (unit === null) return true;
   if (unit.hp !== null) return false;
-  if (unit.unitType !== null) return false;
+  if (unit.unitBlueprintCode !== null) return false;
   if (unit.radius !== null) return false;
   if (unit.bodyCenterHeight !== null) return false;
   if (unit.mass !== null) return false;
@@ -660,7 +660,7 @@ function isSplitUnitTurretDelta(entity: NetworkServerSnapshotEntity): boolean {
   const unit = entity.unit;
   if (unit === null || unit.turrets === null) return false;
   if (unit.hp !== null) return false;
-  if (unit.unitType !== null) return false;
+  if (unit.unitBlueprintCode !== null) return false;
   if (unit.radius !== null) return false;
   if (unit.bodyCenterHeight !== null) return false;
   if (unit.mass !== null) return false;
@@ -876,7 +876,7 @@ function writeUnitTurretDeltaPayload(
     if (turret.targetId !== null) flags |= TURRET_FLAG_TARGET_ID;
     if (turret.currentForceFieldRange !== null) flags |= TURRET_FLAG_FORCE_FIELD_RANGE;
     rows.writeVarUint(flags);
-    rows.writeVarUint(turret.turret.id);
+    rows.writeVarUint(turret.turret.turretBlueprintCode);
     rows.writeVarUint(turret.state);
     rows.writeVarInt(angular.rot);
     rows.writeVarInt(angular.vel);
@@ -1148,7 +1148,7 @@ function unpackUnitTurretDeltaRows(
     const turrets: NetworkServerSnapshotTurret[] = new Array(turretCount);
     for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
       const flags = rows[i++] as number;
-      const turretId = rows[i++] as NetworkServerSnapshotTurret['turret']['id'];
+      const turretBlueprintCode = rows[i++] as NetworkServerSnapshotTurret['turret']['turretBlueprintCode'];
       const state = rows[i++] as NetworkServerSnapshotTurret['state'];
       const angular: TurretAngular = {
         rot: rows[i++] as number,
@@ -1157,7 +1157,7 @@ function unpackUnitTurretDeltaRows(
         pitchVel: rows[i++] as number,
       };
       const turret: NetworkServerSnapshotTurret = {
-        turret: { id: turretId, angular },
+        turret: { turretBlueprintCode, angular },
         state,
         targetId: null,
         currentForceFieldRange: null,
@@ -1230,7 +1230,7 @@ function readUnitTurretDeltaByteEntity(
   const turrets: NetworkServerSnapshotTurret[] = new Array(turretCount);
   for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
     const flags = reader.readVarUint();
-    const turretId = reader.readVarUint() as NetworkServerSnapshotTurret['turret']['id'];
+    const turretBlueprintCode = reader.readVarUint() as NetworkServerSnapshotTurret['turret']['turretBlueprintCode'];
     const state = reader.readVarUint() as NetworkServerSnapshotTurret['state'];
     const angular: TurretAngular = {
       rot: reader.readVarInt(),
@@ -1239,7 +1239,7 @@ function readUnitTurretDeltaByteEntity(
       pitchVel: reader.readVarInt(),
     };
     const turret: NetworkServerSnapshotTurret = {
-      turret: { id: turretId, angular },
+      turret: { turretBlueprintCode, angular },
       state,
       targetId: null,
       currentForceFieldRange: null,
@@ -1269,7 +1269,7 @@ function packUnit(unit: UnitSub): unknown[] {
   let flags = 0;
   if (unit.hp !== null) flags |= UNIT_FLAG_HP;
   if (unit.velocity !== null) flags |= UNIT_FLAG_VELOCITY;
-  if (unit.unitType !== null) flags |= UNIT_FLAG_UNIT_TYPE;
+  if (unit.unitBlueprintCode !== null) flags |= UNIT_FLAG_BLUEPRINT_CODE;
   if (unit.radius !== null) flags |= UNIT_FLAG_RADIUS;
   if (unit.bodyCenterHeight !== null) flags |= UNIT_FLAG_BODY_CENTER_HEIGHT;
   if (unit.mass !== null) flags |= UNIT_FLAG_MASS;
@@ -1298,7 +1298,7 @@ function packUnit(unit: UnitSub): unknown[] {
     const v = unit.velocity!;
     row.push(v.x, v.y, v.z);
   }
-  if ((flags & UNIT_FLAG_UNIT_TYPE) !== 0) row.push(unit.unitType!);
+  if ((flags & UNIT_FLAG_BLUEPRINT_CODE) !== 0) row.push(unit.unitBlueprintCode!);
   if ((flags & UNIT_FLAG_RADIUS) !== 0) {
     const r = unit.radius!;
     row.push(r.body ?? 0, r.shot ?? 0, r.push ?? 0);
@@ -1350,8 +1350,8 @@ function unpackUnit(row: unknown[]): UnitSub {
     const z = row[i++] as number;
     unit.velocity = { x, y, z };
   }
-  if ((flags & UNIT_FLAG_UNIT_TYPE) !== 0) {
-    unit.unitType = row[i++] as number;
+  if ((flags & UNIT_FLAG_BLUEPRINT_CODE) !== 0) {
+    unit.unitBlueprintCode = row[i++] as number;
   }
   if ((flags & UNIT_FLAG_RADIUS) !== 0) {
     const body = row[i++] as number;
@@ -1416,7 +1416,7 @@ function unpackUnit(row: unknown[]): UnitSub {
 
 function packBuilding(building: BuildingSub): unknown[] {
   let flags = 0;
-  if (building.type !== null) flags |= BUILDING_FLAG_TYPE;
+  if (building.buildingBlueprintCode !== null) flags |= BUILDING_FLAG_BLUEPRINT_CODE;
   if (building.dim !== null) flags |= BUILDING_FLAG_DIM;
   if (building.hp !== null) flags |= BUILDING_FLAG_HP;
   if (building.build !== null) {
@@ -1435,7 +1435,7 @@ function packBuilding(building: BuildingSub): unknown[] {
   }
 
   const row: unknown[] = [flags];
-  if ((flags & BUILDING_FLAG_TYPE) !== 0) row.push(building.type!);
+  if ((flags & BUILDING_FLAG_BLUEPRINT_CODE) !== 0) row.push(building.buildingBlueprintCode!);
   if ((flags & BUILDING_FLAG_DIM) !== 0) {
     const dim = building.dim!;
     row.push(dim.x, dim.y);
@@ -1464,8 +1464,8 @@ function unpackBuilding(row: unknown[]): BuildingSub {
   let i = 0;
   const flags = row[i++] as number;
   const building = createEmptyBuildingSub();
-  if ((flags & BUILDING_FLAG_TYPE) !== 0) {
-    building.type = row[i++] as number;
+  if ((flags & BUILDING_FLAG_BLUEPRINT_CODE) !== 0) {
+    building.buildingBlueprintCode = row[i++] as number;
   }
   if ((flags & BUILDING_FLAG_DIM) !== 0) {
     const x = row[i++] as number;
@@ -1525,7 +1525,7 @@ function packAction(action: NetworkServerSnapshotAction): unknown[] {
   if (action.posZ !== null) flags |= ACTION_FLAG_POS_Z;
   if (action.pathExp === true) flags |= ACTION_FLAG_PATH_EXP;
   if (action.targetId !== null) flags |= ACTION_FLAG_TARGET_ID;
-  if (action.buildingType !== null) flags |= ACTION_FLAG_BUILDING_TYPE;
+  if (action.buildingBlueprintId !== null) flags |= ACTION_FLAG_BUILDING_BLUEPRINT_ID;
   if (action.grid !== null) flags |= ACTION_FLAG_GRID;
   if (action.buildingId !== null) flags |= ACTION_FLAG_BUILDING_ID;
 
@@ -1536,7 +1536,7 @@ function packAction(action: NetworkServerSnapshotAction): unknown[] {
   }
   if ((flags & ACTION_FLAG_POS_Z) !== 0) row.push(action.posZ!);
   if ((flags & ACTION_FLAG_TARGET_ID) !== 0) row.push(action.targetId!);
-  if ((flags & ACTION_FLAG_BUILDING_TYPE) !== 0) row.push(action.buildingType!);
+  if ((flags & ACTION_FLAG_BUILDING_BLUEPRINT_ID) !== 0) row.push(action.buildingBlueprintId!);
   if ((flags & ACTION_FLAG_GRID) !== 0) {
     const grid = action.grid!;
     row.push(grid.x, grid.y);
@@ -1555,7 +1555,7 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
     posZ: null,
     pathExp: null,
     targetId: null,
-    buildingType: null,
+    buildingBlueprintId: null,
     grid: null,
     buildingId: null,
   };
@@ -1567,7 +1567,7 @@ function unpackAction(row: unknown[]): NetworkServerSnapshotAction {
   if ((flags & ACTION_FLAG_POS_Z) !== 0) action.posZ = row[i++] as number;
   if ((flags & ACTION_FLAG_PATH_EXP) !== 0) action.pathExp = true;
   if ((flags & ACTION_FLAG_TARGET_ID) !== 0) action.targetId = row[i++] as number;
-  if ((flags & ACTION_FLAG_BUILDING_TYPE) !== 0) action.buildingType = row[i++] as string;
+  if ((flags & ACTION_FLAG_BUILDING_BLUEPRINT_ID) !== 0) action.buildingBlueprintId = row[i++] as string;
   if ((flags & ACTION_FLAG_GRID) !== 0) {
     const x = row[i++] as number;
     const y = row[i++] as number;
@@ -1601,7 +1601,7 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
   const angular = t.turret.angular;
   const row: unknown[] = [
     flags,
-    t.turret.id,
+    t.turret.turretBlueprintCode,
     t.state,
     angular.rot,
     angular.vel,
@@ -1615,7 +1615,7 @@ function packTurret(t: NetworkServerSnapshotTurret): unknown[] {
 
 function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
   const flags = row[0] as number;
-  const id = row[1] as NetworkServerSnapshotTurret['turret']['id'];
+  const turretBlueprintCode = row[1] as NetworkServerSnapshotTurret['turret']['turretBlueprintCode'];
   const state = row[2] as NetworkServerSnapshotTurret['state'];
   const angular: TurretAngular = {
     rot: row[3] as number,
@@ -1625,7 +1625,7 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
   };
   let i = 7;
   const turret: NetworkServerSnapshotTurret = {
-    turret: { id, angular },
+    turret: { turretBlueprintCode, angular },
     state,
     targetId: null,
     currentForceFieldRange: null,

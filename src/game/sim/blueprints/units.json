@@ -1,6 +1,6 @@
 {
   "jackal": {
-    "id": "jackal",
+    "unitBlueprintId": "jackal",
     "name": "Jackal",
     "shortName": "JKL",
     "hp": 55,
@@ -17,7 +17,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretGunLight",
+        "turretBlueprintId": "turretGunLight",
         "mount": {
           "x": 0,
           "y": 0,
@@ -54,10 +54,10 @@
       "$audio": "event.death.jackal"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "jackal"
+    "locomotionBlueprintId": "jackal"
   },
   "lynx": {
-    "id": "lynx",
+    "unitBlueprintId": "lynx",
     "name": "Lynx",
     "shortName": "LNX",
     "hp": 60,
@@ -74,7 +74,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretGunBurst",
+        "turretBlueprintId": "turretGunBurst",
         "mount": {
           "x": 0,
           "y": 0,
@@ -109,10 +109,10 @@
       "$audio": "event.death.lynx"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "lynx"
+    "locomotionBlueprintId": "lynx"
   },
   "daddy": {
-    "id": "daddy",
+    "unitBlueprintId": "daddy",
     "name": "Daddy",
     "shortName": "DDY",
     "hp": 200,
@@ -129,7 +129,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretBeam",
+        "turretBlueprintId": "turretBeam",
         "mount": {
           "x": 0,
           "y": 0,
@@ -138,7 +138,7 @@
         "hostDirected": true
       },
       {
-        "turretId": "turretForceFieldSphere",
+        "turretBlueprintId": "turretForceFieldSphere",
         "mount": {
           "x": 0,
           "y": 0,
@@ -171,10 +171,10 @@
       "$audio": "event.death.daddy"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "daddy"
+    "locomotionBlueprintId": "daddy"
   },
   "badger": {
-    "id": "badger",
+    "unitBlueprintId": "badger",
     "name": "Badger",
     "shortName": "BDG",
     "hp": 300,
@@ -191,7 +191,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretRocketSlow",
+        "turretBlueprintId": "turretRocketSlow",
         "mount": {
           "x": 0,
           "y": 0,
@@ -226,10 +226,10 @@
       "$audio": "event.death.badger"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "badger"
+    "locomotionBlueprintId": "badger"
   },
   "mongoose": {
-    "id": "mongoose",
+    "unitBlueprintId": "mongoose",
     "name": "Mongoose",
     "shortName": "MGS",
     "hp": 200,
@@ -246,7 +246,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretMortarSlow",
+        "turretBlueprintId": "turretMortarSlow",
         "mount": {
           "x": 0,
           "y": 0,
@@ -281,10 +281,10 @@
       "$audio": "event.death.mongoose"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "mongoose"
+    "locomotionBlueprintId": "mongoose"
   },
   "tick": {
-    "id": "tick",
+    "unitBlueprintId": "tick",
     "name": "Tick",
     "shortName": "TCK",
     "hp": 55,
@@ -301,7 +301,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretBeamMini",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": 0,
           "y": 0,
@@ -338,10 +338,10 @@
       "$audio": "event.death.tick"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "tick"
+    "locomotionBlueprintId": "tick"
   },
   "mammoth": {
-    "id": "mammoth",
+    "unitBlueprintId": "mammoth",
     "name": "Mammoth",
     "shortName": "MMT",
     "hp": 900,
@@ -358,7 +358,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretCannon",
+        "turretBlueprintId": "turretCannon",
         "mount": {
           "x": 0,
           "y": 0,
@@ -393,10 +393,10 @@
       "$audio": "event.death.mammoth"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "mammoth"
+    "locomotionBlueprintId": "mammoth"
   },
   "formik": {
-    "id": "formik",
+    "unitBlueprintId": "formik",
     "name": "Formik",
     "shortName": "FMK",
     "hp": 3200,
@@ -413,7 +413,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretMortarFast",
+        "turretBlueprintId": "turretMortarFast",
         "mount": {
           "x": -0.85,
           "y": 0,
@@ -466,10 +466,10 @@
       "$audio": "event.death.formik"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "formik"
+    "locomotionBlueprintId": "formik"
   },
   "widow": {
-    "id": "widow",
+    "unitBlueprintId": "widow",
     "name": "Widow",
     "shortName": "WDW",
     "hp": 2400,
@@ -486,7 +486,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretBeamMini",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": -0.2868272016354705,
           "y": 0.8131727983645295,
@@ -499,7 +499,7 @@
         "hostDirected": false
       },
       {
-        "turretId": "turretBeamMini",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": -1.9131727983645295,
           "y": 0.8131727983645296,
@@ -512,7 +512,7 @@
         "hostDirected": false
       },
       {
-        "turretId": "turretBeamMini",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": -1.91317279836453,
           "y": -0.8131727983645295,
@@ -525,7 +525,7 @@
         "hostDirected": false
       },
       {
-        "turretId": "turretBeamMini",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": -0.2868272016354707,
           "y": -0.8131727983645298,
@@ -538,7 +538,7 @@
         "hostDirected": false
       },
       {
-        "turretId": "turretBeamMega",
+        "turretBlueprintId": "turretBeamMega",
         "mount": {
           "x": -1.1,
           "y": 0,
@@ -551,7 +551,7 @@
         "hostDirected": true
       },
       {
-        "turretId": "turretForceFieldSphere",
+        "turretBlueprintId": "turretForceFieldSphere",
         "mount": {
           "x": 0.3,
           "y": 0,
@@ -600,10 +600,10 @@
       "$audio": "event.death.widow"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "widow"
+    "locomotionBlueprintId": "widow"
   },
   "hippo": {
-    "id": "hippo",
+    "unitBlueprintId": "hippo",
     "name": "Hippo",
     "shortName": "HPO",
     "hp": 1500,
@@ -620,7 +620,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretGatling",
+        "turretBlueprintId": "turretGatling",
         "mount": {
           "x": 0.2,
           "y": 0,
@@ -654,10 +654,10 @@
       "$audio": "event.death.hippo"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "hippo"
+    "locomotionBlueprintId": "hippo"
   },
   "tarantula": {
-    "id": "tarantula",
+    "unitBlueprintId": "tarantula",
     "name": "Tarantula",
     "shortName": "TRN",
     "hp": 100,
@@ -674,7 +674,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretBeam",
+        "turretBlueprintId": "turretBeam",
         "mount": {
           "x": -0.65,
           "y": 0,
@@ -720,10 +720,10 @@
       "$audio": "event.death.tarantula"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "tarantula"
+    "locomotionBlueprintId": "tarantula"
   },
   "loris": {
-    "id": "loris",
+    "unitBlueprintId": "loris",
     "name": "Loris",
     "shortName": "LRS",
     "hp": 200,
@@ -740,7 +740,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretForceFieldPanel",
+        "turretBlueprintId": "turretForceFieldPanel",
         "mount": {
           "x": 0,
           "y": 0,
@@ -773,10 +773,10 @@
       "$audio": "event.death.loris"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "loris"
+    "locomotionBlueprintId": "loris"
   },
   "mosquito": {
-    "id": "mosquito",
+    "unitBlueprintId": "mosquito",
     "name": "Mosquito",
     "shortName": "MSQ",
     "hp": 70,
@@ -793,7 +793,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretBeamMini",
+        "turretBlueprintId": "turretBeamMini",
         "mount": {
           "x": 0,
           "y": 0,
@@ -826,10 +826,10 @@
       "$audio": "event.death.mosquito"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "hovercraft"
+    "locomotionBlueprintId": "hovercraft"
   },
   "dragonfly": {
-    "id": "dragonfly",
+    "unitBlueprintId": "dragonfly",
     "name": "Dragonfly",
     "shortName": "DRF",
     "hp": 240,
@@ -846,7 +846,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretMortarDrop",
+        "turretBlueprintId": "turretMortarDrop",
         "mount": {
           "x": 1.5,
           "y": 0,
@@ -855,7 +855,7 @@
         "hostDirected": true
       },
       {
-        "turretId": "turretBeam",
+        "turretBlueprintId": "turretBeam",
         "mount": {
           "x": -4.7,
           "y": 0,
@@ -903,10 +903,10 @@
       "$audio": "event.death.dragonfly"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "dragonflyHovercraft"
+    "locomotionBlueprintId": "dragonflyHovercraft"
   },
   "constructionDrone": {
-    "id": "constructionDrone",
+    "unitBlueprintId": "constructionDrone",
     "name": "Construction Drone",
     "shortName": "CDR",
     "hp": 120,
@@ -923,7 +923,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretConstruction",
+        "turretBlueprintId": "turretConstruction",
         "mount": {
           "x": 0,
           "y": 0,
@@ -975,10 +975,10 @@
       "$audio": "event.death.constructionDrone"
     },
     "fightStopEngagedRatio": null,
-    "locomotionId": "constructionDrone"
+    "locomotionBlueprintId": "constructionDrone"
   },
   "eagle": {
-    "id": "eagle",
+    "unitBlueprintId": "eagle",
     "name": "Eagle",
     "shortName": "EGL",
     "hp": 220,
@@ -995,7 +995,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretRocketFast",
+        "turretBlueprintId": "turretRocketFast",
         "mount": {
           "x": 0,
           "y": 0,
@@ -1035,10 +1035,10 @@
       "$audio": "event.death.eagle"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "eagleFlying"
+    "locomotionBlueprintId": "eagleFlying"
   },
   "commander": {
-    "id": "commander",
+    "unitBlueprintId": "commander",
     "name": "Commander",
     "shortName": "CMD",
     "hp": 500,
@@ -1055,7 +1055,7 @@
     },
     "turrets": [
       {
-        "turretId": "turretBeam",
+        "turretBlueprintId": "turretBeam",
         "mount": {
           "x": 0.36,
           "y": -0.42,
@@ -1064,7 +1064,7 @@
         "hostDirected": true
       },
       {
-        "turretId": "turretDisruptor",
+        "turretBlueprintId": "turretDisruptor",
         "mount": {
           "x": 0.36,
           "y": 0.42,
@@ -1073,7 +1073,7 @@
         "hostDirected": false
       },
       {
-        "turretId": "turretConstruction",
+        "turretBlueprintId": "turretConstruction",
         "mount": {
           "x": -0.42,
           "y": 0,
@@ -1124,7 +1124,7 @@
       "constructionRate": 50
     },
     "dgun": {
-      "turretId": "turretDisruptor",
+      "turretBlueprintId": "turretDisruptor",
       "energyCost": 200
     },
     "cloak": null,
@@ -1135,6 +1135,6 @@
       "$audio": "event.death.commander"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionId": "commander"
+    "locomotionBlueprintId": "commander"
   }
 }

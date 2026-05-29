@@ -1,7 +1,7 @@
 {
   "lightShot": {
     "type": "plasma",
-    "id": "lightShot",
+    "shotBlueprintId": "lightShot",
     "mass": 4,
     "collision": {
       "radius": 2
@@ -23,7 +23,7 @@
   },
   "mediumShot": {
     "type": "plasma",
-    "id": "mediumShot",
+    "shotBlueprintId": "mediumShot",
     "mass": 10,
     "collision": {
       "radius": 3
@@ -45,7 +45,7 @@
   },
   "lightRocket": {
     "type": "rocket",
-    "id": "lightRocket",
+    "shotBlueprintId": "lightRocket",
     "mass": 4,
     "collision": {
       "radius": 2
@@ -68,7 +68,7 @@
   },
   "fastRocket": {
     "type": "rocket",
-    "id": "fastRocket",
+    "shotBlueprintId": "fastRocket",
     "mass": 3,
     "collision": {
       "radius": 2
@@ -91,7 +91,7 @@
   },
   "heavyShot": {
     "type": "plasma",
-    "id": "heavyShot",
+    "shotBlueprintId": "heavyShot",
     "mass": 30,
     "collision": {
       "radius": 4
@@ -113,7 +113,7 @@
   },
   "mortarShot": {
     "type": "plasma",
-    "id": "mortarShot",
+    "shotBlueprintId": "mortarShot",
     "mass": 30,
     "collision": {
       "radius": 8
@@ -128,7 +128,7 @@
       "$audio": "event.hit.mortarShot"
     },
     "submunitions": {
-      "shotId": "mediumShot",
+      "shotBlueprintId": "mediumShot",
       "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
@@ -141,7 +141,7 @@
   },
   "megaMortarShot": {
     "type": "plasma",
-    "id": "megaMortarShot",
+    "shotBlueprintId": "megaMortarShot",
     "mass": 30,
     "collision": {
       "radius": 10
@@ -156,7 +156,7 @@
       "$audio": "event.hit.mortarShot"
     },
     "submunitions": {
-      "shotId": "mortarShot",
+      "shotBlueprintId": "mortarShot",
       "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
@@ -169,7 +169,7 @@
   },
   "disruptorShot": {
     "type": "plasma",
-    "id": "disruptorShot",
+    "shotBlueprintId": "disruptorShot",
     "mass": 20,
     "collision": {
       "radius": 25
@@ -191,7 +191,7 @@
   },
   "miniBeamShot": {
     "type": "beam",
-    "id": "miniBeamShot",
+    "shotBlueprintId": "miniBeamShot",
     "hitSound": {
       "$audio": "event.hit.miniBeamShot"
     },
@@ -207,7 +207,7 @@
   },
   "beamShot": {
     "type": "beam",
-    "id": "beamShot",
+    "shotBlueprintId": "beamShot",
     "hitSound": {
       "$audio": "event.hit.beamShot"
     },
@@ -223,7 +223,7 @@
   },
   "megaBeamShot": {
     "type": "beam",
-    "id": "megaBeamShot",
+    "shotBlueprintId": "megaBeamShot",
     "hitSound": {
       "$audio": "event.hit.megaBeamShot"
     },
@@ -239,7 +239,7 @@
   },
   "towerBeamShot": {
     "type": "beam",
-    "id": "towerBeamShot",
+    "shotBlueprintId": "towerBeamShot",
     "hitSound": {
       "$audio": "event.hit.megaBeamShot"
     },
@@ -255,7 +255,7 @@
   },
   "forceFieldBarrierShot": {
     "type": "forceField",
-    "id": "forceFieldBarrierShot",
+    "shotBlueprintId": "forceFieldBarrierShot",
     "angle": 6.283185307179586,
     "transitionTime": 500,
     "barrier": {

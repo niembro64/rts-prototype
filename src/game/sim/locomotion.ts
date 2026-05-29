@@ -58,7 +58,7 @@ function createRuntimePathfindingConfig(
       throw new Error(`Invalid ${label}: anywhere pathfinding must use maxSlopeDeg=null`);
     }
     return {
-      id: pathfinding.id,
+      pathfindingBlueprintId: pathfinding.pathfindingBlueprintId,
       terrainMode: pathfinding.terrainMode,
       ignoreTerrainBlocking: true,
       maxSlopeDeg: null,
@@ -71,7 +71,7 @@ function createRuntimePathfindingConfig(
   }
   assertSlopeDegrees(`${label}.maxSlopeDeg`, maxSlopeDeg);
   return {
-    id: pathfinding.id,
+    pathfindingBlueprintId: pathfinding.pathfindingBlueprintId,
     terrainMode: pathfinding.terrainMode,
     ignoreTerrainBlocking: false,
     maxSlopeDeg,
@@ -84,7 +84,7 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   assertPositiveFinite(`${type}.driveForce`, physics.driveForce);
   assertPositiveFinite(`${type}.traction`, physics.traction);
   const pathfinding = createRuntimePathfindingConfig(
-    `${type}.pathfinding(${locomotion.pathfindingId})`,
+    `${type}.pathfinding(${locomotion.pathfindingBlueprintId})`,
     locomotion.pathfinding,
   );
   const isAirborne = type === 'hover' || type === 'flying';

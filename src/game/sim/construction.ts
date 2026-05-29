@@ -1,6 +1,6 @@
 import type { WorldState } from './WorldState';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { Entity, EntityId, PlayerId, BuildingType } from './types';
+import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
 import { getBuildingBlueprint } from './blueprints';
 import { BuildingGrid, BUILD_GRID_CELL_SIZE } from './buildGrid';
@@ -11,12 +11,12 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
 import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
-import { buildingTypeHasActiveState, ensureBuildingActiveState } from './buildingActiveState';
+import { buildingBlueprintHasActiveState, ensureBuildingActiveState } from './buildingActiveState';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, getInitialBuildHp } from './buildableHelpers';
 import { applyEntitySensorBlueprint } from './cloakDetection';
-import { isTowerBuildingType } from '../../types/buildingTypes';
+import { isTowerBuildingBlueprintId } from '../../types/buildingTypes';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -50,16 +50,16 @@ export class ConstructionSystem {
   // Start a new building construction
   startBuilding(
     world: WorldState,
-    buildingType: BuildingType,
+    buildingBlueprintId: BuildingBlueprintId,
     gridX: number,
     gridY: number,
     playerId: PlayerId,
     builderId: EntityId
   ): Entity | null {
-    const config = getBuildingConfig(buildingType);
+    const config = getBuildingConfig(buildingBlueprintId);
 
     const diagnostics = getBuildingPlacementDiagnosticsForGrid(
-      buildingType,
+      buildingBlueprintId,
       gridX,
       gridY,
       world.mapWidth,
@@ -103,19 +103,19 @@ export class ConstructionSystem {
     // reaches required.
     entity.buildable = createBuildable(config.cost);
 
-    // Set building type
-    entity.buildingType = buildingType;
+    // Set building blueprint
+    entity.buildingBlueprintId = buildingBlueprintId;
     // Tower-class buildingTypes (fabricator + shooting towers) carry
     // the 'tower' EntityType discriminator. See design_philosophy.html
     // "Towers Are Static Hosts That Lock On And Fire".
-    if (isTowerBuildingType(buildingType)) {
+    if (isTowerBuildingBlueprintId(buildingBlueprintId)) {
       entity.type = 'tower';
     }
-    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
-    if (buildingTypeHasActiveState(buildingType)) {
+    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
+    if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
       ensureBuildingActiveState(entity);
     }
-    if (buildingType === 'extractor') {
+    if (buildingBlueprintId === 'extractor') {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
       // `metalExtractionRate` from the number of metal cells under this
@@ -133,7 +133,7 @@ export class ConstructionSystem {
     }
 
     // Add factory component if it's a factory
-    if (buildingType === 'factory') {
+    if (buildingBlueprintId === 'factory') {
       const wp = computeFactoryWaypoint(
         worldPos.x,
         worldPos.y,
@@ -174,12 +174,12 @@ export class ConstructionSystem {
   // Create a ghost preview for building placement
   createGhost(
     world: WorldState,
-    buildingType: BuildingType,
+    buildingBlueprintId: BuildingBlueprintId,
     worldX: number,
     worldY: number,
     playerId: PlayerId
   ): Entity {
-    const config = getBuildingConfig(buildingType);
+    const config = getBuildingConfig(buildingBlueprintId);
 
     // Snap to grid
     const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
@@ -202,12 +202,12 @@ export class ConstructionSystem {
       healthBuildFraction: null,
     });
 
-    entity.buildingType = buildingType;
-    if (isTowerBuildingType(buildingType)) {
+    entity.buildingBlueprintId = buildingBlueprintId;
+    if (isTowerBuildingBlueprintId(buildingBlueprintId)) {
       entity.type = 'tower';
     }
-    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
-    if (buildingTypeHasActiveState(buildingType)) {
+    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
+    if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
       ensureBuildingActiveState(entity);
     }
 
@@ -215,13 +215,13 @@ export class ConstructionSystem {
   }
 
   // Check if a building can be placed at world coordinates
-  canPlaceAt(worldX: number, worldY: number, buildingType: BuildingType): boolean {
-    const config = getBuildingConfig(buildingType);
+  canPlaceAt(worldX: number, worldY: number, buildingBlueprintId: BuildingBlueprintId): boolean {
+    const config = getBuildingConfig(buildingBlueprintId);
     const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
     const gridX = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
     const gridY = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
     return getBuildingPlacementDiagnosticsForGrid(
-      buildingType,
+      buildingBlueprintId,
       gridX,
       gridY,
       this.mapWidth,
@@ -269,8 +269,8 @@ export class ConstructionSystem {
   }
 
   // Get snap position for building placement
-  getSnapPosition(worldX: number, worldY: number, buildingType: BuildingType): { x: number; y: number } {
-    const config = getBuildingConfig(buildingType);
+  getSnapPosition(worldX: number, worldY: number, buildingBlueprintId: BuildingBlueprintId): { x: number; y: number } {
+    const config = getBuildingConfig(buildingBlueprintId);
     const snapped = this.buildingGrid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
     return {
       x: snapped.x + (config.gridWidth * BUILD_GRID_CELL_SIZE) / 2,

@@ -28,7 +28,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { isEntityActive } from './buildableHelpers';
 import { economyManager } from './economy';
 import type { WorldState } from './WorldState';
-import type { BuildingActiveState, BuildingType, Entity } from './types';
+import type { BuildingActiveState, BuildingBlueprintId, Entity } from './types';
 
 /** Grace period from first hit to the building actually closing. */
 export const BUILDING_DAMAGE_DELAY_MS = 2000;
@@ -37,17 +37,19 @@ export const BUILDING_REOPEN_DELAY_MS = 5000;
 /** Damage multiplier applied while the building is OFF. 0.1 = 10× tougher. */
 export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 
-/** Which building types use the active-state fortify mechanic.
+/** Which building blueprints use the active-state fortify mechanic.
  *  Producer buildings (solar/wind/extractor) gate resource income on
  *  state.open; radar gates sensor coverage on state.open; converter
  *  gates the energy↔metal swap on state.open. All five fortify
  *  identically while OFF (BUILDING_CLOSED_DAMAGE_MULTIPLIER). */
-export function buildingTypeHasActiveState(type: BuildingType | null | undefined): boolean {
-  return type === 'solar'
-    || type === 'wind'
-    || type === 'extractor'
-    || type === 'radar'
-    || type === 'resourceConverter';
+export function buildingBlueprintHasActiveState(
+  buildingBlueprintId: BuildingBlueprintId | null | undefined,
+): boolean {
+  return buildingBlueprintId === 'solar'
+    || buildingBlueprintId === 'wind'
+    || buildingBlueprintId === 'extractor'
+    || buildingBlueprintId === 'radar'
+    || buildingBlueprintId === 'resourceConverter';
 }
 
 export function createInitialBuildingActiveState(): BuildingActiveState {
@@ -60,7 +62,7 @@ export function createInitialBuildingActiveState(): BuildingActiveState {
 
 export function ensureBuildingActiveState(entity: Entity): BuildingActiveState | null {
   if (entity.building === null) return null;
-  if (!buildingTypeHasActiveState(entity.buildingType)) return null;
+  if (!buildingBlueprintHasActiveState(entity.buildingBlueprintId)) return null;
   if (entity.building.activeState === null) {
     entity.building.activeState = createInitialBuildingActiveState();
   }
@@ -91,12 +93,12 @@ function applyProducerRateDelta(entity: Entity, open: boolean): void {
   if (ownership === null) return;
   const playerId = ownership.playerId;
 
-  if (entity.buildingType === 'solar') {
+  if (entity.buildingBlueprintId === 'solar') {
     const amount = getSolarEnergyProduction();
     if (amount <= 0) return;
     if (open) economyManager.addProduction(playerId, amount);
     else economyManager.removeProduction(playerId, amount);
-  } else if (entity.buildingType === 'extractor') {
+  } else if (entity.buildingBlueprintId === 'extractor') {
     const rate = getExtractorMetalRate(entity);
     if (rate <= 0) return;
     if (open) economyManager.addMetalExtraction(playerId, rate);
@@ -194,7 +196,7 @@ export function notifyBuildingActiveStateDamaged(world: WorldState, entity: Enti
  *  BUILDING_CLOSED_DAMAGE_MULTIPLIER when this is true. */
 export function isBuildingActiveStateFortified(entity: Entity): boolean {
   const building = entity.building;
-  return buildingTypeHasActiveState(entity.buildingType)
+  return buildingBlueprintHasActiveState(entity.buildingBlueprintId)
     && building !== null
     && building.activeState !== null
     && building.activeState.open === false;

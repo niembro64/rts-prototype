@@ -26,7 +26,7 @@ import type { CursorGround, SimGroundPoint } from './CursorGround';
 import type { CommandQueue } from '../sim/commands';
 import type { InputContext } from '@/types/input';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
-import type { PlayerId, Entity, EntityId, WaypointType, BuildingType } from '../sim/types';
+import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId } from '../sim/types';
 import {
   findClosestSelectableEntityToPoint,
   selectEntitiesInScreenRect,
@@ -46,8 +46,8 @@ import {
   buildFactoryWaypointCommands,
   handleEscape,
   CommanderModeController,
-  getBuildModeBuildingTypeByIndex,
-  getDefaultBuildModeBuildingType,
+  getBuildModeBuildingBlueprintIdByIndex,
+  getDefaultBuildModeBuildingBlueprintId,
   type BuildPlacementDiagnostics,
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
@@ -59,7 +59,7 @@ import { isWaterAt } from '../sim/Terrain';
 import { generateMetalDeposits, type MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
 import { isCommander } from '../sim/combat/combatUtils';
-import { buildingTypeHasActiveState } from '../sim/buildingActiveState';
+import { buildingBlueprintHasActiveState } from '../sim/buildingActiveState';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
 const HOVER_RAYCAST_INTERVAL_MS = 50;
@@ -124,7 +124,7 @@ export class Input3DManager {
   // dispatch while a mode is active is handled below in
   // handleLeftMouseDown.
   private mode = new CommanderModeController();
-  public onBuildModeChange?: (type: BuildingType | null) => void;
+  public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
   public onAttackAreaModeChange?: (active: boolean) => void;
@@ -254,15 +254,15 @@ export class Input3DManager {
 
     // Forward shared mode events to the scene's UI callbacks; also
     // hide the build ghost whenever build mode exits.
-    this.mode.onBuildModeChange = (type) => {
+    this.mode.onBuildModeChange = (buildingBlueprintId) => {
       this.buildGhostValidationKey = '';
       this.buildGhostCanPlace = false;
       this.buildGhostDiagnostics = undefined;
-      if (type === null) {
+      if (buildingBlueprintId === null) {
         this.buildGhost?.hide();
       }
       this.refreshCursor();
-      this.onBuildModeChange?.(type);
+      this.onBuildModeChange?.(buildingBlueprintId);
     };
     this.mode.onDGunModeChange = (active) => {
       this.refreshCursor();
@@ -333,10 +333,10 @@ export class Input3DManager {
     this.refreshCursor();
   }
 
-  /** Enter build mode with a building type. Called from the UI
+  /** Enter build mode with a building blueprint. Called from the UI
    *  (scene.startBuildMode forwards to here). Next left-click on the
    *  ground will issue a startBuild command for the selected builder. */
-  setBuildMode(type: BuildingType): void {
+  setBuildMode(buildingBlueprintId: BuildingBlueprintId): void {
     this.exitRepairAreaMode();
     this.exitAttackAreaMode();
     this.exitAttackGroundMode();
@@ -344,7 +344,7 @@ export class Input3DManager {
     this.exitReclaimMode();
     this.exitPingMode();
     this.exitTowerTargetMode();
-    this.mode.enterBuildMode(type);
+    this.mode.enterBuildMode(buildingBlueprintId);
   }
 
   /** Exit build mode (from UI or internal flow). No-op if not in build mode. */
@@ -862,15 +862,15 @@ export class Input3DManager {
     // Escape runs the shared cancel-mode-or-clear-selection convention.
     const numericBuildHotkey = /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : -1;
     if (numericBuildHotkey >= 0) {
-      const buildingType = getBuildModeBuildingTypeByIndex(numericBuildHotkey);
-      if (buildingType && (this.mode.isInBuildMode || this.hasSelectedBuilder())) {
+      const buildingBlueprintId = getBuildModeBuildingBlueprintIdByIndex(numericBuildHotkey);
+      if (buildingBlueprintId && (this.mode.isInBuildMode || this.hasSelectedBuilder())) {
         this.exitRepairAreaMode();
         this.exitAttackAreaMode();
         this.exitAttackGroundMode();
         this.exitGuardMode();
         this.exitReclaimMode();
         this.exitPingMode();
-        this.mode.enterBuildMode(buildingType);
+        this.mode.enterBuildMode(buildingBlueprintId);
       }
       return;
     }
@@ -939,8 +939,8 @@ export class Input3DManager {
         this.exitGuardMode();
         this.exitReclaimMode();
         this.exitPingMode();
-        if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingType());
-        else this.mode.cycleBuildingType();
+        if (!this.mode.isInBuildMode) this.mode.enterBuildMode(getDefaultBuildModeBuildingBlueprintId());
+        else this.mode.cycleBuildingBlueprintId();
         break;
       case 'd':
         this.toggleDGunMode();
@@ -1105,7 +1105,7 @@ export class Input3DManager {
     for (let i = 0; i < selectedStatic.length; i++) {
       const b = selectedStatic[i];
       if (b.type !== 'building') continue;
-      if (!buildingTypeHasActiveState(b.buildingType)) continue;
+      if (!buildingBlueprintHasActiveState(b.buildingBlueprintId)) continue;
       entityIds.push(b.id);
       const state = b.building !== null ? b.building.activeState : null;
       if (state === null || state.open === false) allOpen = false;
@@ -1301,7 +1301,7 @@ export class Input3DManager {
 
   /** Fire a startBuild command for the selected builder at the
    *  snapped grid position under the cursor. Stays in build mode if
-   *  shift is held (lets the user place multiple of the same type). */
+   *  shift is held (lets the user place multiple of the same buildingBlueprintId). */
   private handleBuildClick(e: MouseEvent): void {
     const builder = this.getSelectedBuilder();
     if (!builder) {
@@ -1311,13 +1311,13 @@ export class Input3DManager {
     }
     const world = this.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const buildType = this.mode.buildingType;
-    if (buildType === null) return;
-    const diagnostics = this.validateBuildPlacement(buildType, world.x, world.y);
+    const buildingBlueprintId = this.mode.buildingBlueprintId;
+    if (buildingBlueprintId === null) return;
+    const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
     this.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
     if (this.buildGhost) {
       this.buildGhost.setTarget(
-        buildType, world.x, world.y,
+        buildingBlueprintId, world.x, world.y,
         builder,
         diagnostics.canPlace,
         diagnostics,
@@ -1325,7 +1325,7 @@ export class Input3DManager {
     }
     if (!diagnostics.canPlace) {
       debugLog(GAME_DIAGNOSTICS.commandPlans, 'Blocked invalid build placement', {
-        buildingType: buildType,
+        buildingBlueprintId,
         reason: diagnostics.failureReason,
         metalFraction: diagnostics.metalFraction,
       });
@@ -1338,16 +1338,16 @@ export class Input3DManager {
     if (!cmd) return;
     this.localCommandQueue.enqueue(cmd);
 
-    // Shift = keep placing same building type; no-shift = exit build mode.
+    // Shift = keep placing same building blueprint; no-shift = exit build mode.
     if (!e.shiftKey) this.mode.exitBuildMode();
   }
 
   private validateBuildPlacement(
-    buildType: BuildingType,
+    buildingBlueprintId: BuildingBlueprintId,
     worldX: number,
     worldY: number,
   ): BuildPlacementDiagnostics {
-    const snapped = getSnappedBuildPosition(worldX, worldY, buildType);
+    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
     const buildings = this.entitySource.getBuildings();
     const entitySetVersion = this.entitySource.getEntitySetVersion?.() ?? buildings.length;
     const terrainBuildabilityGrid = this.entitySource.getTerrainBuildabilityGrid?.() ?? null;
@@ -1357,7 +1357,7 @@ export class Input3DManager {
       this.buildOccupiedCells = getOccupiedBuildingCells(buildings);
     }
     const validationKey = [
-      buildType,
+      buildingBlueprintId,
       snapped.gridX,
       snapped.gridY,
       this.mapWidth,
@@ -1369,7 +1369,7 @@ export class Input3DManager {
     if (validationKey !== this.buildGhostValidationKey || !this.buildGhostDiagnostics) {
       this.buildGhostValidationKey = validationKey;
       this.buildGhostDiagnostics = getBuildingPlacementDiagnostics(
-        buildType, snapped.x, snapped.y,
+        buildingBlueprintId, snapped.x, snapped.y,
         this.mapWidth, this.mapHeight,
         buildings,
         this.metalDeposits,
@@ -1578,15 +1578,15 @@ export class Input3DManager {
 
     // Live build-ghost preview — only while in build mode. Cursor
     // feedback still works in headless/no-ghost cases.
-    const buildType = this.mode.buildingType;
-    if (buildType !== null) {
+    const buildingBlueprintId = this.mode.buildingBlueprintId;
+    if (buildingBlueprintId !== null) {
       const world = this.raycastGround(e.clientX, e.clientY);
       if (world) {
-        const diagnostics = this.validateBuildPlacement(buildType, world.x, world.y);
+        const diagnostics = this.validateBuildPlacement(buildingBlueprintId, world.x, world.y);
         this.applyCursor(diagnostics.canPlace ? 'build' : 'blocked');
         if (this.buildGhost) {
           this.buildGhost.setTarget(
-            buildType, world.x, world.y,
+            buildingBlueprintId, world.x, world.y,
             this.getSelectedBuilder(),
             this.buildGhostCanPlace,
             diagnostics,

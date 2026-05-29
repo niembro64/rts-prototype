@@ -32,7 +32,7 @@ import {
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
-  buildingTypeHasActiveState,
+  buildingBlueprintHasActiveState,
   isBuildingActiveStateFortified,
   notifyBuildingActiveStateDamaged,
 } from '../buildingActiveState';
@@ -1115,7 +1115,7 @@ export class DamageSystem {
       const effectiveDamage = isBuildingActiveStateFortified(entity)
         ? damage * BUILDING_CLOSED_DAMAGE_MULTIPLIER
         : damage;
-      if (buildingTypeHasActiveState(entity.buildingType)) {
+      if (buildingBlueprintHasActiveState(entity.buildingBlueprintId)) {
         notifyBuildingActiveStateDamaged(this.world, entity);
       }
       entity.building.hp -= effectiveDamage;

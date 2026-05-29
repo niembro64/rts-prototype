@@ -130,13 +130,13 @@ export type GameServerConfig = {
   spawnDemoInitialState?: boolean;
   maxSnapshotsPerSec?: number;
   /** Restrict the demo battle's initial-unit spawn to this set of unit
-   *  types. When omitted the server falls back to "all background unit
-   *  types allowed" — but a caller restoring user-saved demo settings
+   *  blueprint ids. When omitted the server falls back to "all background
+   *  unit blueprints allowed" — but a caller restoring user-saved demo settings
    *  should pass them here so the initial spawn doesn't create units
    *  the user has deselected (which would then be wiped a tick later
-   *  by setBackgroundUnitTypeEnabled, leaving the player with far
+   *  by setBackgroundUnitBlueprintEnabled, leaving the player with far
    *  fewer initial units than the cap-derived per-team count). */
-  initialAllowedTypes?: ReadonlySet<string>;
+  initialAllowedUnitBlueprintIds?: ReadonlySet<string>;
   /** Initial unit cap for the world, applied BEFORE the demo's
    *  initial-spawn pass so the spawn count tracks the user's stored
    *  cap (now that the demo fills `maxTotalUnits / numPlayers` slots

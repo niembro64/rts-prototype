@@ -27,7 +27,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly battleLabel: string;
   readonly battleElapsed: string;
   readonly allDemoUnitsActive: boolean;
-  readonly demoUnitTypes: readonly string[];
+  readonly demoUnitBlueprintIds: readonly string[];
   readonly currentAllowedUnits: readonly string[];
   readonly currentAllowedUnitsSet: ReadonlySet<string>;
   readonly displayUnitCap: number;
@@ -49,7 +49,7 @@ export type GameCanvasBattleControlBarModel = {
   applyPreset(preset: BattlePreset): void;
   resetDemoDefaults(): void;
   toggleAllDemoUnits(): void;
-  toggleDemoUnitType(unitType: string): void;
+  toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   changeMaxTotalUnits(cap: number): void;
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyCenterMagnitude(value: number): void;

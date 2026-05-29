@@ -55,8 +55,8 @@ const selectionPanelStyle = {
   '--selection-panel-label': SELECTION_PANEL.surface.label,
   '--selection-panel-hint': SELECTION_PANEL.surface.hint,
   '--selection-panel-key': SELECTION_PANEL.surface.key,
-  '--selection-panel-commander': SELECTION_PANEL.unitType.commander,
-  '--selection-panel-factory': SELECTION_PANEL.unitType.factory,
+  '--selection-panel-commander': SELECTION_PANEL.unitBlueprintId.commander,
+  '--selection-panel-factory': SELECTION_PANEL.unitBlueprintId.factory,
   '--selection-panel-button-bg': BUTTON_COLORS.background,
   '--selection-panel-button-border': BUTTON_COLORS.border,
   '--selection-panel-button-hover-bg': BUTTON_COLORS.hoverBackground,
@@ -75,10 +75,10 @@ const selectionPanelStyle = {
   '--selection-panel-bot-produce': BUTTON_COLORS.botProduce,
 } as const;
 
-// Repeat-build: queue holds 0-or-1 entries; queue[0] is the unit type
+// Repeat-build: queue holds 0-or-1 entries; queue[0] is the unit blueprint
 // currently being looped. Used to light up the matching button.
-const selectedBuildUnitId = computed(() =>
-  props.selection.factoryQueue?.[0]?.unitId ?? null,
+const selectedBuildUnitBlueprintId = computed(() =>
+  props.selection.factoryQueue?.[0]?.unitBlueprintId ?? null,
 );
 
 const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [
@@ -277,10 +277,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="buttons">
         <button
           v-for="bo in buildingOptions"
-          :key="bo.type"
+          :key="bo.buildingBlueprintId"
           class="action-btn build-btn"
-          :class="{ active: selection.isBuildMode && selection.selectedBuildingType === bo.type }"
-          @click="selection.isBuildMode && selection.selectedBuildingType === bo.type ? actions.cancelBuild() : actions.startBuild(bo.type)"
+          :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
+          @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
         >
           <span class="btn-label">{{ bo.label }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
@@ -334,10 +334,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="buttons">
         <button
           v-for="uo in vehicleOptions"
-          :key="uo.unitId"
+          :key="uo.unitBlueprintId"
           class="action-btn produce-btn vehicle-btn"
-          :class="{ active: selectedBuildUnitId === uo.unitId }"
-          @click="actions.queueUnit(selection.factoryId!, uo.unitId)"
+          :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
+          @click="actions.queueUnit(selection.factoryId!, uo.unitBlueprintId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
@@ -351,10 +351,10 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <div class="buttons">
         <button
           v-for="uo in botOptions"
-          :key="uo.unitId"
+          :key="uo.unitBlueprintId"
           class="action-btn produce-btn bot-btn"
-          :class="{ active: selectedBuildUnitId === uo.unitId }"
-          @click="actions.queueUnit(selection.factoryId!, uo.unitId)"
+          :class="{ active: selectedBuildUnitBlueprintId === uo.unitBlueprintId }"
+          @click="actions.queueUnit(selection.factoryId!, uo.unitBlueprintId)"
         >
           <span class="btn-label">{{ uo.label }}</span>
           <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>

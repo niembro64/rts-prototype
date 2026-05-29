@@ -1,4 +1,4 @@
-import { BUILDABLE_UNIT_IDS } from '../game/sim/blueprints/unitRoster';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster';
 import type { BattleMode } from '../battleBarConfig';
 import { persist, readPersisted } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
@@ -45,7 +45,7 @@ const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
 };
 
 function allUnits(): readonly string[] {
-  return BUILDABLE_UNIT_IDS;
+  return BUILDABLE_UNIT_BLUEPRINT_IDS;
 }
 function demoUnits(): readonly string[] {
   return [

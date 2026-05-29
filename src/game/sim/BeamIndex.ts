@@ -5,7 +5,7 @@ import type { EntityId } from './types';
  * Replaces the O(n) hasActiveWeaponBeam() function.
  */
 export class BeamIndex {
-  // Map<unitId, Map<turretIndex, beamEntityId>>
+  // Map<unitEntityId, Map<turretIndex, beamEntityId>>
   private beamsByTurret: Map<EntityId, Map<number, EntityId>> = new Map();
 
   /**
@@ -30,8 +30,8 @@ export class BeamIndex {
   /**
    * Check if a unit's weapon has an active beam (O(1) lookup)
    */
-  hasActiveBeam(unitId: EntityId, turretIndex: number): boolean {
-    const turretMap = this.beamsByTurret.get(unitId);
+  hasActiveBeam(unitEntityId: EntityId, turretIndex: number): boolean {
+    const turretMap = this.beamsByTurret.get(unitEntityId);
     if (!turretMap) return false;
     return turretMap.has(turretIndex);
   }
@@ -39,8 +39,8 @@ export class BeamIndex {
   /**
    * Get the beam entity ID for a unit's weapon (O(1) lookup)
    */
-  getBeam(unitId: EntityId, turretIndex: number): EntityId | undefined {
-    const turretMap = this.beamsByTurret.get(unitId);
+  getBeam(unitEntityId: EntityId, turretIndex: number): EntityId | undefined {
+    const turretMap = this.beamsByTurret.get(unitEntityId);
     if (!turretMap) return undefined;
     return turretMap.get(turretIndex);
   }

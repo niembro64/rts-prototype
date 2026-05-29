@@ -1,6 +1,6 @@
 // BuildingShape3D — per-type 3D geometry for player-built buildings.
 //
-// Each building type gets its own recognizable silhouette, built from a
+// Each building blueprint gets its own recognizable silhouette, built from a
 // team-colored primary body plus type-specific accents:
 //
 //   solar   — static pyramid-flower collector: a wide team-colored
@@ -69,7 +69,7 @@ export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
 export type { FactoryBuildSpotRig } from './FactoryMesh3D';
 
-/** Short building types we have art for. Unknown types fall back to a
+/** Short building blueprints we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
 export type BuildingShapeType = BuildingRenderProfile;
 

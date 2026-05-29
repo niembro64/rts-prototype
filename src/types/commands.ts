@@ -1,6 +1,6 @@
 // Command types extracted from game/sim/commands.ts
 
-import type { EntityId, WaypointType, BuildingType, PlayerId } from './sim';
+import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId } from './sim';
 import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
 import type { ForceFieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -37,7 +37,7 @@ export type CommandType =
   | 'setTickRate'
   | 'setUnitGroundNormalEmaMode'
   | 'setSendGridInfo'
-  | 'setBackgroundUnitType'
+  | 'setBackgroundUnitBlueprintEnabled'
   | 'setMaxTotalUnits'
   | 'setTurretForceFieldPanelsEnabled'
   | 'setTurretForceFieldSpheresEnabled'
@@ -120,7 +120,7 @@ export type ScanCommand = BaseCommand & {
 export type StartBuildCommand = BaseCommand & {
   type: 'startBuild';
   builderId: EntityId;
-  buildingType: BuildingType;
+  buildingBlueprintId: BuildingBlueprintId;
   gridX: number;
   gridY: number;
   queue: boolean;
@@ -129,7 +129,7 @@ export type StartBuildCommand = BaseCommand & {
 export type QueueUnitCommand = BaseCommand & {
   type: 'queueUnit';
   factoryId: EntityId;
-  unitId: string;
+  unitBlueprintId: string;
 };
 
 export type CancelQueueItemCommand = BaseCommand & {
@@ -175,7 +175,7 @@ export type SetFireEnabledCommand = BaseCommand & {
 
 /** Producer-building ON/OFF toggle. ON = producing + normal damage;
  *  OFF = not producing + 10x damage resistance. Targets buildings whose
- *  BuildingType uses the active-state mechanic (solar/wind/extractor/radar/resourceConverter);
+ *  BuildingBlueprintId uses the active-state mechanic (solar/wind/extractor/radar/resourceConverter);
  *  other entity ids in the list are silently skipped. */
 export type SetBuildingActiveCommand = BaseCommand & {
   type: 'setBuildingActive';
@@ -295,9 +295,9 @@ export type SetSendGridInfoCommand = BaseCommand & {
   enabled: boolean;
 };
 
-export type SetBackgroundUnitTypeCommand = BaseCommand & {
-  type: 'setBackgroundUnitType';
-  unitType: string;
+export type SetBackgroundUnitBlueprintEnabledCommand = BaseCommand & {
+  type: 'setBackgroundUnitBlueprintEnabled';
+  unitBlueprintId: string;
   enabled: boolean;
 };
 
@@ -368,7 +368,7 @@ export type Command =
   | SetTickRateCommand
   | SetUnitGroundNormalEmaModeCommand
   | SetSendGridInfoCommand
-  | SetBackgroundUnitTypeCommand
+  | SetBackgroundUnitBlueprintEnabledCommand
   | SetMaxTotalUnitsCommand
   | SetTurretForceFieldPanelsEnabledCommand
   | SetTurretForceFieldSpheresEnabledCommand

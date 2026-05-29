@@ -18,7 +18,7 @@ import type {
   TurretConfig,
 } from '@/game/sim/types';
 import { isProjectileShot } from '@/game/sim/types';
-import type { BuildableUnitId } from '@/game/sim/blueprints';
+import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 
 export type LoadingUnitInfoNode = {
   label: string;
@@ -44,10 +44,10 @@ type Firepower = {
   sustainedDps: number;
 };
 
-export function buildLoadingUnitInfo(unitId: BuildableUnitId): LoadingUnitInfo {
-  const blueprint = getUnitBlueprint(unitId);
-  const locomotion = getUnitLocomotion(unitId);
-  const turrets = createUnitRuntimeTurrets(unitId, blueprint.radius.body);
+export function buildLoadingUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitInfo {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
+  const locomotion = getUnitLocomotion(unitBlueprintId);
+  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.body);
   const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
   const firepower = turrets.reduce<Firepower>(
     (acc, turret) => {
@@ -96,7 +96,7 @@ function buildEconomySection(
     id: 'economy',
     title: 'Unit',
     items: [
-      stat('Blueprint', blueprint.id),
+      stat('Blueprint', blueprint.unitBlueprintId),
       stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
       stat('Hit points', fmt(blueprint.hp)),
       stat('Mass', fmt(blueprint.mass)),
@@ -112,14 +112,14 @@ function buildEconomySection(
 }
 
 function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
-  const runtime = getUnitLocomotion(blueprint.id);
+  const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
   const locomotion = blueprint.locomotion;
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Profile', blueprint.locomotionId),
+    stat('Profile', blueprint.locomotionBlueprintId),
     stat('Drive force', fmt(runtime.driveForce)),
     stat('Traction', fmt(runtime.traction, 2)),
-    node('Pathfinding', locomotion.pathfindingId, undefined, [
+    node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
       stat('Terrain mode', runtime.pathfinding.terrainMode),
       stat('Ignores blocking', yesNo(runtime.pathfinding.ignoreTerrainBlocking)),
       stat('Max slope', runtime.pathfinding.maxSlopeDeg === null ? 'any' : `${fmt(runtime.pathfinding.maxSlopeDeg)} deg`),
@@ -172,7 +172,7 @@ function buildSystemsSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
     ]));
   }
   if (blueprint.dgun) {
-    items.push(node('D-gun', blueprint.dgun.turretId, undefined, [
+    items.push(node('D-gun', blueprint.dgun.turretBlueprintId, undefined, [
       stat('Energy cost', fmt(blueprint.dgun.energyCost)),
     ]));
   }
@@ -188,7 +188,7 @@ function buildSystemsSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
 
 function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   const config = turret.config;
-  const blueprint = getTurretBlueprint(config.id);
+  const blueprint = getTurretBlueprint(config.turretBlueprintId);
   const firepower = computeTurretFirepower(config);
   const children: LoadingUnitInfoNode[] = [
     stat('Range', `fire ${rangePair(turret.ranges.fire.max)}${turret.ranges.tracking ? ` / track ${rangePair(turret.ranges.tracking)}` : ''}`),
@@ -209,19 +209,19 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   if (config.groundAimFraction !== undefined) {
     children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
   }
-  if (config.shot) children.push(describeShot(config.shot, blueprint.shotId));
+  if (config.shot) children.push(describeShot(config.shot, blueprint.shotBlueprintId));
   const exclusions = describeLockOnExclusions(blueprint);
   if (exclusions.length > 0) children.push(node('Lock-on exclusions', undefined, undefined, exclusions));
 
   return node(
-    `${index + 1}. ${config.id}`,
-    config.visualOnly ? 'visual' : blueprint.shotId ?? 'utility',
+    `${index + 1}. ${config.turretBlueprintId}`,
+    config.visualOnly ? 'visual' : blueprint.shotBlueprintId ?? 'utility',
     undefined,
     children,
   );
 }
 
-function describeShot(shot: ShotConfig, shotId: string | null): LoadingUnitInfoNode {
+function describeShot(shot: ShotConfig, shotBlueprintId: string | null): LoadingUnitInfoNode {
   if (shot.type === 'forceField') {
     return node('Shot', 'force field', undefined, [
       stat('Arc', rad(shot.angle)),
@@ -233,7 +233,7 @@ function describeShot(shot: ShotConfig, shotId: string | null): LoadingUnitInfoN
     ]);
   }
 
-  const label = shotId ?? shot.id;
+  const label = shotBlueprintId ?? shot.shotBlueprintId;
   const children: LoadingUnitInfoNode[] = [stat('Type', shot.type)];
   if (shot.type === 'beam' || shot.type === 'laser') {
     children.push(
@@ -268,7 +268,7 @@ function describeShot(shot: ShotConfig, shotId: string | null): LoadingUnitInfoN
       ]));
     }
     if (shot.submunitions) {
-      children.push(node('Submunitions', `${shot.submunitions.count} x ${shot.submunitions.shotId}`, undefined, [
+      children.push(node('Submunitions', `${shot.submunitions.count} x ${shot.submunitions.shotBlueprintId}`, undefined, [
         stat('Horizontal spread', fmt(shot.submunitions.randomSpreadSpeedHorizontal)),
         stat('Vertical spread', fmt(shot.submunitions.randomSpreadSpeedVertical)),
         stat('Velocity damper', fmt(shot.submunitions.reflectedVelocityDamper ?? 1, 2)),
@@ -344,7 +344,7 @@ function projectileDamageWithSubmunitions(shot: ProjectileShot, depth = 0): numb
   let damage = shot.explosion?.damage ?? 0;
   if (shot.submunitions && depth < 2) {
     try {
-      const childBlueprint = getShotBlueprint(shot.submunitions.shotId);
+      const childBlueprint = getShotBlueprint(shot.submunitions.shotBlueprintId);
       const childDamage = projectileBlueprintDamage(childBlueprint, depth + 1);
       damage += shot.submunitions.count * childDamage;
     } catch {
@@ -362,7 +362,7 @@ function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
   if (shot.submunitions && depth < 2) {
     try {
       damage += shot.submunitions.count * projectileBlueprintDamage(
-        getShotBlueprint(shot.submunitions.shotId),
+        getShotBlueprint(shot.submunitions.shotBlueprintId),
         depth + 1,
       );
     } catch {

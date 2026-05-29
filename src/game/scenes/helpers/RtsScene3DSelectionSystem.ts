@@ -2,7 +2,7 @@ import type { ClientViewState } from '../../network/ClientViewState';
 import type { Command } from '../../sim/commands';
 import { buildSelectionInfo } from './UIUpdateManager';
 import type {
-  BuildingType,
+  BuildingBlueprintId,
   Entity,
   EntityId,
   PlayerId,
@@ -24,7 +24,7 @@ export class RtsScene3DSelectionSystem {
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
   private waypointMode: WaypointType = 'move';
-  private buildType: BuildingType | null = null;
+  private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
   private dgunActive = false;
   private repairAreaActive = false;
   private attackAreaActive = false;
@@ -59,8 +59,8 @@ export class RtsScene3DSelectionSystem {
     this.selectionInfoDirty = true;
   }
 
-  setBuildMode(type: BuildingType | null): void {
-    this.buildType = type;
+  setBuildMode(buildingBlueprintId: BuildingBlueprintId | null): void {
+    this.activeBuildingBlueprintId = buildingBlueprintId;
     this.selectionInfoDirty = true;
   }
 
@@ -177,8 +177,8 @@ export class RtsScene3DSelectionSystem {
   private getInputState(): UIInputState {
     return {
       waypointMode: this.waypointMode,
-      isBuildMode: this.buildType !== null,
-      selectedBuildingType: this.buildType,
+      isBuildMode: this.activeBuildingBlueprintId !== null,
+      selectedBuildingBlueprintId: this.activeBuildingBlueprintId,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
       isAttackAreaMode: this.attackAreaActive,

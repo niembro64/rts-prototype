@@ -61,7 +61,7 @@ export type ServerSnapshotPublisherInput = {
   keyframeRatio: number;
   ipAddress: string;
   backgroundMode: boolean;
-  backgroundAllowedTypes: ReadonlySet<string>;
+  backgroundAllowedUnitBlueprintIds: ReadonlySet<string>;
   tickMsAvg: number;
   tickMsHi: number;
   tickMsInitialized: boolean;
@@ -142,7 +142,7 @@ export class ServerSnapshotPublisher {
       keyframeRatio: input.keyframeRatioDisplay,
       ipAddress: input.ipAddress,
       gridEnabled: input.debugGridPublisher.isEnabled(),
-      allowedUnits: input.backgroundMode ? input.backgroundAllowedTypes : undefined,
+      allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
       maxUnits: input.world.maxTotalUnits,
       unitCount,
       turretForceFieldPanelsEnabled: input.world.turretForceFieldPanelsEnabled,

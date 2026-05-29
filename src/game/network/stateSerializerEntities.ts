@@ -23,10 +23,10 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
-  buildingTypeToCode,
-  turretIdToCode,
+  buildingBlueprintIdToCode,
+  turretBlueprintIdToCode,
   turretStateToCode,
-  unitTypeToCode,
+  unitBlueprintIdToCode,
 } from '../../types/network';
 import {
   createActionDto,
@@ -160,7 +160,7 @@ function writeTurretsToPool(
     const src = weapons[i];
     const dst = pool.turrets[i];
     const t = dst.turret;
-    t.id = turretIdToCode(src.config.id);
+    t.turretBlueprintCode = turretBlueprintIdToCode(src.config.turretBlueprintId);
     // Head-only turrets with no snapshot-visible aim pose render a
     // sphere only, so the client doesn't orient anything from these
     // values. Line weapons are routed through
@@ -231,7 +231,7 @@ function createPooledEntry(): PooledEntry {
     buildingDim: { x: 0, y: 0 },
     solarSub: { open: false },
     buildingSub: {
-      type: null, dim: null, hp: buildingHp,
+      buildingBlueprintCode: null, dim: null, hp: buildingHp,
       build: buildingBuild,
       metalExtractionRate: null,
       solar: null,
@@ -322,9 +322,9 @@ function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | 
     values[base + 6] = action.pathExp === true ? 1 : 0;
     values[base + 7] = action.targetId !== null ? 1 : 0;
     values[base + 8] = action.targetId ?? 0;
-    values[base + 9] = action.buildingType !== null ? 1 : 0;
-    values[base + 10] = action.buildingType !== null ? strings.length : 0;
-    if (action.buildingType !== null) strings.push(action.buildingType);
+    values[base + 9] = action.buildingBlueprintId !== null ? 1 : 0;
+    values[base + 10] = action.buildingBlueprintId !== null ? strings.length : 0;
+    if (action.buildingBlueprintId !== null) strings.push(action.buildingBlueprintId);
     values[base + 11] = grid !== null ? 1 : 0;
     values[base + 12] = grid !== null ? grid.x : 0;
     values[base + 13] = grid !== null ? grid.y : 0;
@@ -347,7 +347,7 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
     values[base + 1] = angular.vel;
     values[base + 2] = angular.pitch;
     values[base + 3] = angular.pitchVel;
-    values[base + 4] = src.turret.id;
+    values[base + 4] = src.turret.turretBlueprintCode;
     values[base + 5] = src.state;
     values[base + 6] = src.targetId !== null ? 1 : 0;
     values[base + 7] = src.targetId ?? 0;
@@ -443,8 +443,8 @@ function appendUnitEntityWireRow(
   values[base + 10] = velocity !== null ? velocity.x : 0;
   values[base + 11] = velocity !== null ? velocity.y : 0;
   values[base + 12] = velocity !== null ? velocity.z : 0;
-  values[base + 13] = unit.unitType !== null ? 1 : 0;
-  values[base + 14] = unit.unitType ?? 0;
+  values[base + 13] = unit.unitBlueprintCode !== null ? 1 : 0;
+  values[base + 14] = unit.unitBlueprintCode ?? 0;
   values[base + 15] = radius !== null ? 1 : 0;
   values[base + 16] = radius !== null && radius.body !== null ? radius.body : 0;
   values[base + 17] = radius !== null && radius.shot !== null ? radius.shot : 0;
@@ -511,8 +511,8 @@ function appendBuildingEntityWireRow(
   values[base + 5] = entity.playerId;
   values[base + 6] = entity.changedFields !== null ? 1 : 0;
   values[base + 7] = entity.changedFields ?? 0;
-  values[base + 8] = building.type !== null ? 1 : 0;
-  values[base + 9] = building.type ?? 0;
+  values[base + 8] = building.buildingBlueprintCode !== null ? 1 : 0;
+  values[base + 9] = building.buildingBlueprintCode ?? 0;
   values[base + 10] = dim !== null ? 1 : 0;
   values[base + 11] = dim !== null ? dim.x : 0;
   values[base + 12] = dim !== null ? dim.y : 0;
@@ -559,7 +559,7 @@ function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void 
     // Towers and buildings share the static wire row (same HP /
     // optional combat / optional factory shape). The TOWER vs
     // BUILDING discriminator is reconstructed on the receive side
-    // via isTowerBuildingType so the renderer + UI dispatch on the
+    // via isTowerBuildingBlueprintId so the renderer + UI dispatch on the
     // peer entity-type tag.
     appendBuildingEntityWireRow(entity, entity.building);
     return;
@@ -752,17 +752,17 @@ export function serializeEntitySnapshot(
         b.dim = poolEntry.buildingDim;
         b.dim.x = entity.building.width;
         b.dim.y = entity.building.height;
-        b.type = entity.buildingType !== null
-          ? buildingTypeToCode(entity.buildingType)
+        b.buildingBlueprintCode = entity.buildingBlueprintId !== null
+          ? buildingBlueprintIdToCode(entity.buildingBlueprintId)
           : null;
-        b.metalExtractionRate = entity.buildingType === 'extractor'
+        b.metalExtractionRate = entity.buildingBlueprintId === 'extractor'
           ? entity.metalExtractionRate ?? 0
           : null;
       } else {
         b.dim = null;
-        b.type = null;
+        b.buildingBlueprintCode = null;
         b.metalExtractionRate = (changedFields! & ENTITY_CHANGED_BUILDING) !== 0 &&
-          entity.buildingType === 'extractor'
+          entity.buildingBlueprintId === 'extractor'
           ? entity.metalExtractionRate ?? 0
           : null;
       }
@@ -818,7 +818,7 @@ export function serializeEntitySnapshot(
           const srcQueue = entity.factory.buildQueue;
           poolEntry.buildQueue.length = srcQueue.length;
           for (let i = 0; i < srcQueue.length; i++) {
-            poolEntry.buildQueue[i] = unitTypeToCode(srcQueue[i]);
+            poolEntry.buildQueue[i] = unitBlueprintIdToCode(srcQueue[i]);
           }
           f.queue = poolEntry.buildQueue;
 

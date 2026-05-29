@@ -16,7 +16,7 @@
 // the world group so it tracks camera pan/orbit naturally.
 
 import * as THREE from 'three';
-import type { Entity, BuildingType } from '../sim/types';
+import type { Entity, BuildingBlueprintId } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
@@ -67,7 +67,7 @@ export class BuildGhost3D {
   private depositOverlayBorderGeom: THREE.BufferGeometry | null = null;
   private depositOverlayBorderMat: THREE.LineBasicMaterial | null = null;
 
-  /** Flat footprint rectangle (scaled to the current building type). */
+  /** Flat footprint rectangle (scaled to the current building blueprint). */
   private footprint: THREE.Mesh;
   /** Builder build-range circle (drawn as a thin ring). */
   private rangeRing: THREE.Mesh;
@@ -318,21 +318,21 @@ export class BuildGhost3D {
    *  with the range ring/line only; it never changes the ground-cell
    *  diagnostic colors. */
   setTarget(
-    buildingType: BuildingType,
+    buildingBlueprintId: BuildingBlueprintId,
     worldX: number,
     worldY: number,
     builder: Entity | null,
     canPlace: boolean,
     diagnostics?: BuildPlacementDiagnostics,
   ): void {
-    const snapped = getSnappedBuildPosition(worldX, worldY, buildingType);
-    const config = getBuildingConfig(buildingType);
+    const snapped = getSnappedBuildPosition(worldX, worldY, buildingBlueprintId);
+    const config = getBuildingConfig(buildingBlueprintId);
     const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
     const depth = config.gridHeight * BUILD_GRID_CELL_SIZE;
     const builderKey = builder?.builder
       ? `${builder.id}:${builder.transform.x}:${builder.transform.y}:${builder.transform.z}:${builder.builder.buildRange}`
       : 'none';
-    const targetKey = `${buildingType}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${builderKey}`;
+    const targetKey = `${buildingBlueprintId}:${snapped.gridX}:${snapped.gridY}:${canPlace ? 1 : 0}:${builderKey}`;
     if (
       this.group.visible &&
       targetKey === this.lastTargetKey &&
@@ -355,10 +355,10 @@ export class BuildGhost3D {
     this.footprint.scale.set(width, depth, 1);
     this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
-    const isExtractor = buildingType === 'extractor';
+    const isExtractor = buildingBlueprintId === 'extractor';
     this.footprint.visible = !this.updateDiagnosticCells(diagnostics, isExtractor);
 
-    if (buildingType === 'radar') {
+    if (buildingBlueprintId === 'radar') {
       this.radarRangeRing.visible = true;
       this.radarRangeRing.position.set(snapped.x, targetGroundY + RANGE_Y, snapped.y);
       this.radarRangeRing.scale.set(RADAR_VISION_RADIUS, RADAR_VISION_RADIUS, 1);

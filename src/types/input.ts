@@ -1,6 +1,6 @@
 // Input system types extracted from game/input/ files
 
-import type { Entity, EntityId, PlayerId, WaypointType, BuildingType } from './sim';
+import type { Entity, EntityId, PlayerId, WaypointType, BuildingBlueprintId } from './sim';
 
 // Point in world space (sim coords). `z` is the altitude of the
 // rendered 3D ground at this XY (from CursorGround.pickSim) and is
@@ -59,7 +59,7 @@ export type InputState = {
   isDrawingLinePath: boolean;
   waypointMode: WaypointType;
   isBuildMode: boolean;
-  selectedBuildingType: BuildingType | null;
+  selectedBuildingBlueprintId: BuildingBlueprintId | null;
   buildGhostX: number;
   buildGhostY: number;
   canPlaceBuilding: boolean;

@@ -19,10 +19,10 @@ export function getBuildingVisualTopAboveGround(entity: Entity): number {
   const building = entity.building;
   const width = building === null ? 100 : building.width;
   const depth = building === null ? 100 : building.height;
-  if (!entity.buildingType) {
+  if (!entity.buildingBlueprintId) {
     return building === null ? DEFAULT_BUILDING_VISUAL_HEIGHT : building.depth;
   }
-  const blueprint = getBuildingBlueprint(entity.buildingType);
+  const blueprint = getBuildingBlueprint(entity.buildingBlueprintId);
   switch (blueprint.anchorProfile) {
     case 'constantVisualTop':
       return blueprint.visualHeight;

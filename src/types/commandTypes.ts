@@ -1,4 +1,4 @@
-import type { BuildingType } from './buildingTypes';
+import type { BuildingBlueprintId } from './buildingTypes';
 import type { EntityId } from './entityTypes';
 
 // Waypoint types for unit movement.
@@ -30,7 +30,7 @@ export type UnitAction = {
   x: number;
   y: number;
   z?: number;
-  buildingType?: BuildingType;
+  buildingBlueprintId?: BuildingBlueprintId;
   gridX?: number;
   gridY?: number;
   buildingId?: EntityId;

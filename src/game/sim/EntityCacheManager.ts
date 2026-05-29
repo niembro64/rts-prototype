@@ -24,7 +24,7 @@ export class EntityCacheManager {
    *  only solar (e.g. completion / spawn helpers). */
   private cachedSolarBuildings: Entity[] = [];
   /** Metal extractors specifically. Used by deposit ownership / income
-   *  helpers that walk only this building type. */
+   *  helpers that walk only this building blueprint. */
   private cachedExtractorBuildings: Entity[] = [];
   /** Resource converters specifically. The per-tick conversion pass
    *  walks only these — no need to scan every building each tick. */
@@ -174,8 +174,8 @@ export class EntityCacheManager {
           // selection-panel UI and combat targeting; everything else
           // reads the building component the same way. The producer
           // active-state caches (solar/wind/extractor/radar/converter)
-          // are gated on buildingType, so towers naturally don't enter
-          // them. Factories (a tower-class buildingType) still ride
+          // are gated on buildingBlueprintId, so towers naturally don't enter
+          // them. Factories (a tower-class buildingBlueprintId) still ride
           // the cachedFactoryBuildings list because the production
           // queue lives on the entity.factory component.
           this.cachedBuildings.push(entity);
@@ -192,19 +192,19 @@ export class EntityCacheManager {
           ) {
             this.cachedHealthBarBuildings.push(entity);
           }
-          if (entity.buildingType === 'wind') {
+          if (entity.buildingBlueprintId === 'wind') {
             this.cachedWindBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingType === 'solar') {
+          } else if (entity.buildingBlueprintId === 'solar') {
             this.cachedSolarBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingType === 'extractor') {
+          } else if (entity.buildingBlueprintId === 'extractor') {
             this.cachedExtractorBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingType === 'resourceConverter') {
+          } else if (entity.buildingBlueprintId === 'resourceConverter') {
             this.cachedConverterBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingType === 'radar') {
+          } else if (entity.buildingBlueprintId === 'radar') {
             this.cachedActiveStateBuildings.push(entity);
           }
           if (entity.factory) this.cachedFactoryBuildings.push(entity);

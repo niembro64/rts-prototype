@@ -23,7 +23,7 @@ import type {
 } from '../types';
 import { isProjectileShot } from '../types';
 import { isLineShotBlueprint } from '@/types/blueprints';
-import type { ShotId, TurretId } from '../../../types/blueprintIds';
+import type { ShotBlueprintId, TurretBlueprintId } from '../../../types/blueprintIds';
 import { SHOT_BLUEPRINTS } from './shots';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
@@ -35,22 +35,22 @@ import type {
   TurretBlueprint,
 } from './types';
 import {
-  buildingTypeToCode,
-  codeToBuildingType,
-  codeToShotId,
-  codeToTurretId,
-  codeToUnitType,
-  getNetworkBuildingTypeIds,
-  getNetworkShotIds,
-  getNetworkTurretIds,
-  getNetworkUnitTypeIds,
-  shotIdToCode,
-  turretIdToCode,
-  unitTypeToCode,
-  BUILDING_TYPE_UNKNOWN,
-  SHOT_ID_UNKNOWN,
-  TURRET_ID_UNKNOWN,
-  UNIT_TYPE_UNKNOWN,
+  buildingBlueprintIdToCode,
+  codeToBuildingBlueprintId,
+  codeToShotBlueprintId,
+  codeToTurretBlueprintId,
+  codeToUnitBlueprintId,
+  getNetworkBuildingBlueprintIds,
+  getNetworkShotBlueprintIds,
+  getNetworkTurretBlueprintIds,
+  getNetworkUnitBlueprintIds,
+  shotBlueprintIdToCode,
+  turretBlueprintIdToCode,
+  unitBlueprintIdToCode,
+  BUILDING_BLUEPRINT_CODE_UNKNOWN,
+  SHOT_BLUEPRINT_CODE_UNKNOWN,
+  TURRET_BLUEPRINT_CODE_UNKNOWN,
+  UNIT_BLUEPRINT_CODE_UNKNOWN,
 } from '../../../types/network';
 
 // LOCK-ON-03 — Compile per-turret lock-on exclusion bitmasks. Reads
@@ -66,7 +66,7 @@ import {
   CT_LOCK_ON_FAM_EXCLUDE_TURRETS,
   CT_LOCK_ON_LEVEL1_MASK_CAPACITY,
 } from '../../sim-wasm/init';
-import { isTowerBuildingType, type BuildingType } from '../../../types/buildingTypes';
+import { isTowerBuildingBlueprintId, type BuildingBlueprintId } from '../../../types/buildingTypes';
 
 export type LockOnMasks = {
   relationship: number;
@@ -131,8 +131,8 @@ function compileLockOnMasks(label: string, policy: LockOnExclusionObject): LockO
     label,
     'excludeLockOnLevel1Buildings',
     policy.excludeLockOnLevel1Buildings,
-    buildingTypeToCode,
-    BUILDING_TYPE_UNKNOWN,
+    buildingBlueprintIdToCode,
+    BUILDING_BLUEPRINT_CODE_UNKNOWN,
     'building',
   );
   // Towers share the static-structure wire-code space with buildings,
@@ -143,31 +143,31 @@ function compileLockOnMasks(label: string, policy: LockOnExclusionObject): LockO
     label,
     'excludeLockOnLevel1Towers',
     policy.excludeLockOnLevel1Towers,
-    buildingTypeToCode,
-    BUILDING_TYPE_UNKNOWN,
+    buildingBlueprintIdToCode,
+    BUILDING_BLUEPRINT_CODE_UNKNOWN,
     'tower',
   );
   const unit = lockOnLevel1Mask(
     label,
     'excludeLockOnLevel1Units',
     policy.excludeLockOnLevel1Units,
-    unitTypeToCode,
-    UNIT_TYPE_UNKNOWN,
+    unitBlueprintIdToCode,
+    UNIT_BLUEPRINT_CODE_UNKNOWN,
     'unit',
   );
   const turret = lockOnLevel1Mask(
     label,
     'excludeLockOnLevel1Turrets',
     policy.excludeLockOnLevel1Turrets,
-    turretIdToCode,
-    TURRET_ID_UNKNOWN,
+    turretBlueprintIdToCode,
+    TURRET_BLUEPRINT_CODE_UNKNOWN,
     'turret',
   );
   return { relationship, entityFamily, building, tower, unit, turret };
 }
 
 function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
-  return compileLockOnMasks(`turret blueprint ${turretBlueprint.id}`, turretBlueprint);
+  return compileLockOnMasks(`turret blueprint ${turretBlueprint.turretBlueprintId}`, turretBlueprint);
 }
 
 export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
@@ -187,12 +187,12 @@ export const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> =
     ]),
   );
 
-export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingType, LockOnMasks>> =
+export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingBlueprintId, LockOnMasks>> =
   Object.fromEntries(
     Object.entries(BUILDING_BLUEPRINTS)
-      .filter(([id]) => isTowerBuildingType(id as BuildingType))
+      .filter(([id]) => isTowerBuildingBlueprintId(id as BuildingBlueprintId))
       .map(([id, blueprint]) => [
-        id as BuildingType,
+        id as BuildingBlueprintId,
         compileLockOnMasks(
           `tower blueprint ${id}`,
           blueprint as typeof blueprint & LockOnExclusionObject,
@@ -200,12 +200,12 @@ export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingType, LockOnMasks>
       ]),
   );
 
-export function getUnitHostLockOnMasks(unitType: string): LockOnMasks {
-  return UNIT_HOST_LOCK_ON_MASKS[unitType] ?? EMPTY_LOCK_ON_MASKS;
+export function getUnitHostLockOnMasks(unitBlueprintId: string): LockOnMasks {
+  return UNIT_HOST_LOCK_ON_MASKS[unitBlueprintId] ?? EMPTY_LOCK_ON_MASKS;
 }
 
-export function getTowerHostLockOnMasks(buildingType: BuildingType): LockOnMasks {
-  return TOWER_HOST_LOCK_ON_MASKS[buildingType] ?? EMPTY_LOCK_ON_MASKS;
+export function getTowerHostLockOnMasks(buildingBlueprintId: BuildingBlueprintId): LockOnMasks {
+  return TOWER_HOST_LOCK_ON_MASKS[buildingBlueprintId] ?? EMPTY_LOCK_ON_MASKS;
 }
 
 function validateStableWireIds(
@@ -252,75 +252,75 @@ function validateStableWireIds(
 validateStableWireIds(
   'unit',
   Object.keys(UNIT_BLUEPRINTS),
-  getNetworkUnitTypeIds(),
-  unitTypeToCode,
-  codeToUnitType,
-  UNIT_TYPE_UNKNOWN,
+  getNetworkUnitBlueprintIds(),
+  unitBlueprintIdToCode,
+  codeToUnitBlueprintId,
+  UNIT_BLUEPRINT_CODE_UNKNOWN,
 );
 
 validateStableWireIds(
   'building',
   Object.keys(BUILDING_BLUEPRINTS),
-  getNetworkBuildingTypeIds(),
-  buildingTypeToCode,
-  codeToBuildingType,
-  BUILDING_TYPE_UNKNOWN,
+  getNetworkBuildingBlueprintIds(),
+  buildingBlueprintIdToCode,
+  codeToBuildingBlueprintId,
+  BUILDING_BLUEPRINT_CODE_UNKNOWN,
 );
 
 validateStableWireIds(
   'shot',
   Object.keys(SHOT_BLUEPRINTS),
-  getNetworkShotIds(),
-  shotIdToCode,
-  codeToShotId,
-  SHOT_ID_UNKNOWN,
+  getNetworkShotBlueprintIds(),
+  shotBlueprintIdToCode,
+  codeToShotBlueprintId,
+  SHOT_BLUEPRINT_CODE_UNKNOWN,
 );
 
 validateStableWireIds(
   'turret',
   Object.keys(TURRET_BLUEPRINTS),
-  getNetworkTurretIds(),
-  turretIdToCode,
-  codeToTurretId,
-  TURRET_ID_UNKNOWN,
+  getNetworkTurretBlueprintIds(),
+  turretBlueprintIdToCode,
+  codeToTurretBlueprintId,
+  TURRET_BLUEPRINT_CODE_UNKNOWN,
 );
 
-resolveUnitTurretMounts((turretId) => {
-  const turretBlueprint = TURRET_BLUEPRINTS[turretId];
+resolveUnitTurretMounts((turretBlueprintId) => {
+  const turretBlueprint = TURRET_BLUEPRINTS[turretBlueprintId];
   if (!turretBlueprint) {
     throw new Error(
-      `Invalid unit turret mount resolver: unknown turretId "${turretId}"`,
+      `Invalid unit turret mount resolver: unknown turretBlueprintId "${turretBlueprintId}"`,
     );
   }
   return turretBlueprint.radius.body;
 });
 
 function assertFiniteRangeMultiplier(
-  turretId: string,
+  turretBlueprintId: string,
   path: string,
   value: number,
 ): void {
   if (!Number.isFinite(value)) {
     throw new Error(
-      `Invalid turret range multiplier for ${turretId}: ${path} must be finite, got ${value}`,
+      `Invalid turret range multiplier for ${turretBlueprintId}: ${path} must be finite, got ${value}`,
     );
   }
 }
 
 function validateTurretRangeMultipliers(
-  turretId: string,
+  turretBlueprintId: string,
   ranges: TurretBlueprint['rangeMultiplierOverrides'],
 ): void {
   const max = ranges.engageRangeMax;
   const min = ranges.engageRangeMin;
   const tracking = ranges.trackingRange;
 
-  assertFiniteRangeMultiplier(turretId, 'engageRangeMax.acquire', max.acquire);
-  assertFiniteRangeMultiplier(turretId, 'engageRangeMax.release', max.release);
+  assertFiniteRangeMultiplier(turretBlueprintId, 'engageRangeMax.acquire', max.acquire);
+  assertFiniteRangeMultiplier(turretBlueprintId, 'engageRangeMax.release', max.release);
 
   if (max.release <= max.acquire) {
     throw new Error(
-      `Invalid turret range multipliers for ${turretId}: engageRangeMax.release (${max.release}) must be greater than engageRangeMax.acquire (${max.acquire})`,
+      `Invalid turret range multipliers for ${turretBlueprintId}: engageRangeMax.release (${max.release}) must be greater than engageRangeMax.acquire (${max.acquire})`,
     );
   }
 
@@ -330,18 +330,18 @@ function validateTurretRangeMultipliers(
   // enemies sit on the inner boundary.
   if (min) {
     assertFiniteRangeMultiplier(
-      turretId,
+      turretBlueprintId,
       'engageRangeMin.acquire',
       min.acquire,
     );
     assertFiniteRangeMultiplier(
-      turretId,
+      turretBlueprintId,
       'engageRangeMin.release',
       min.release,
     );
     if (min.acquire <= min.release) {
       throw new Error(
-        `Invalid turret range multipliers for ${turretId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
+        `Invalid turret range multipliers for ${turretBlueprintId}: engageRangeMin.acquire (${min.acquire}) must be greater than engageRangeMin.release (${min.release})`,
       );
     }
   }
@@ -353,35 +353,35 @@ function validateTurretRangeMultipliers(
   // fire range.
   if (tracking) {
     assertFiniteRangeMultiplier(
-      turretId,
+      turretBlueprintId,
       'trackingRange.acquire',
       tracking.acquire,
     );
     assertFiniteRangeMultiplier(
-      turretId,
+      turretBlueprintId,
       'trackingRange.release',
       tracking.release,
     );
     if (tracking.release <= tracking.acquire) {
       throw new Error(
-        `Invalid turret range multipliers for ${turretId}: trackingRange.release (${tracking.release}) must be greater than trackingRange.acquire (${tracking.acquire})`,
+        `Invalid turret range multipliers for ${turretBlueprintId}: trackingRange.release (${tracking.release}) must be greater than trackingRange.acquire (${tracking.acquire})`,
       );
     }
     if (tracking.acquire <= max.acquire) {
       throw new Error(
-        `Invalid turret range multipliers for ${turretId}: trackingRange.acquire (${tracking.acquire}) must sit OUTSIDE engageRangeMax.acquire (${max.acquire})`,
+        `Invalid turret range multipliers for ${turretBlueprintId}: trackingRange.acquire (${tracking.acquire}) must sit OUTSIDE engageRangeMax.acquire (${max.acquire})`,
       );
     }
     if (tracking.release <= max.release) {
       throw new Error(
-        `Invalid turret range multipliers for ${turretId}: trackingRange.release (${tracking.release}) must sit OUTSIDE engageRangeMax.release (${max.release})`,
+        `Invalid turret range multipliers for ${turretBlueprintId}: trackingRange.release (${tracking.release}) must sit OUTSIDE engageRangeMax.release (${max.release})`,
       );
     }
   }
 }
 
 function validateTurretAimStyle(
-  turretId: string,
+  turretBlueprintId: string,
   turretBlueprint: TurretBlueprint,
   shot: ShotConfig | null,
 ): void {
@@ -391,14 +391,14 @@ function validateTurretAimStyle(
     case 'ballisticArcHigh':
       if (!shot || !isProjectileShot(shot)) {
         throw new Error(
-          `Turret ${turretId} uses aimStyle.angleType "${turretBlueprint.aimStyle.angleType}" without a plasma/rocket shot`,
+          `Turret ${turretBlueprintId} uses aimStyle.angleType "${turretBlueprint.aimStyle.angleType}" without a plasma/rocket shot`,
         );
       }
       return;
     case 'rayBisectTurretAndBody':
       if (turretBlueprint.aimStyle.lockOnType !== 'lockOnToTurret') {
         throw new Error(
-          `Turret ${turretId} uses aimStyle.angleType "rayBisectTurretAndBody" without lockOnType "lockOnToTurret"`,
+          `Turret ${turretBlueprintId} uses aimStyle.angleType "rayBisectTurretAndBody" without lockOnType "lockOnToTurret"`,
         );
       }
       return;
@@ -442,7 +442,7 @@ function buildShotConfig(
   if (shotBlueprint.type === 'forceField') {
     const shot: ForceShot = {
       type: 'forceField',
-      id: shotBlueprint.id,
+      shotBlueprintId: shotBlueprint.shotBlueprintId,
       angle: shotBlueprint.angle,
       transitionTime: shotBlueprint.transitionTime,
       barrier:
@@ -457,7 +457,7 @@ function buildShotConfig(
   if (shotBlueprint.type === 'beam') {
     const shot: BeamShot = {
       type: 'beam',
-      id: shotBlueprint.id,
+      shotBlueprintId: shotBlueprint.shotBlueprintId,
       dps: shotBlueprint.dps,
       force: shotBlueprint.force,
       recoil: shotBlueprint.recoil,
@@ -472,7 +472,7 @@ function buildShotConfig(
   if (shotBlueprint.type === 'laser') {
     const shot: LaserShot = {
       type: 'laser',
-      id: shotBlueprint.id,
+      shotBlueprintId: shotBlueprint.shotBlueprintId,
       dps: shotBlueprint.dps,
       force: shotBlueprint.force,
       recoil: shotBlueprint.recoil,
@@ -488,7 +488,7 @@ function buildShotConfig(
   // Traveling plasma / rocket shot
   const shot: ProjectileShot = {
     type: shotBlueprint.type,
-    id: shotBlueprint.id,
+    shotBlueprintId: shotBlueprint.shotBlueprintId,
     mass: shotBlueprint.mass,
     launchForce,
     collision: shotBlueprint.collision,
@@ -507,20 +507,20 @@ function buildShotConfig(
 }
 
 export function buildProjectileShotConfig(
-  shotId: ShotId,
+  shotBlueprintId: ShotBlueprintId,
   launchForce = 0,
 ): ActiveProjectileShot {
-  const shotBlueprint = SHOT_BLUEPRINTS[shotId];
-  if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotId}`);
+  const shotBlueprint = SHOT_BLUEPRINTS[shotBlueprintId];
+  if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotBlueprintId}`);
   if (shotBlueprint.type === 'forceField') {
     throw new Error(
-      `Shot blueprint ${shotId} cannot build a projectile config`,
+      `Shot blueprint ${shotBlueprintId} cannot build a projectile config`,
     );
   }
   const shot = buildShotConfig(shotBlueprint, launchForce, 0);
   if (shot.type === 'forceField') {
     throw new Error(
-      `Shot blueprint ${shotId} cannot build a projectile config`,
+      `Shot blueprint ${shotBlueprintId} cannot build a projectile config`,
     );
   }
   return shot;
@@ -529,12 +529,12 @@ export function buildProjectileShotConfig(
 /**
  * Build a TurretConfig (for runtime sim) from a TurretBlueprint.
  */
-export function buildTurretConfig(turretId: TurretId): TurretConfig {
-  const turretBlueprint: TurretBlueprint = TURRET_BLUEPRINTS[turretId];
+export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
+  const turretBlueprint: TurretBlueprint = TURRET_BLUEPRINTS[turretBlueprintId];
   if (!turretBlueprint)
-    throw new Error(`Unknown turret blueprint: ${turretId}`);
+    throw new Error(`Unknown turret blueprint: ${turretBlueprintId}`);
   validateTurretRangeMultipliers(
-    turretId,
+    turretBlueprintId,
     turretBlueprint.rangeMultiplierOverrides,
   );
   if (
@@ -542,7 +542,7 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     turretBlueprint.radius.body <= 0
   ) {
     throw new Error(
-      `Turret blueprint ${turretId} must define positive radius.body`,
+      `Turret blueprint ${turretBlueprintId} must define positive radius.body`,
     );
   }
 
@@ -551,11 +551,11 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   // projectiles.
   let shot: ShotConfig | null = null;
 
-  if (turretBlueprint.shotId !== null) {
-    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.shotId];
+  if (turretBlueprint.shotBlueprintId !== null) {
+    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.shotBlueprintId];
     if (!shotBlueprint)
       throw new Error(
-        `Unknown shot in turret ${turretId}: ${turretBlueprint.shotId}`,
+        `Unknown shot in turret ${turretBlueprintId}: ${turretBlueprint.shotBlueprintId}`,
       );
     shot = buildShotConfig(
       shotBlueprint,
@@ -564,15 +564,15 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
     );
   } else if (turretBlueprint.constructionEmitter === null) {
     throw new Error(
-      `Turret ${turretId} has neither shotId nor constructionEmitter`,
+      `Turret ${turretBlueprintId} has neither shotBlueprintId nor constructionEmitter`,
     );
   }
-  validateTurretAimStyle(turretId, turretBlueprint, shot);
+  validateTurretAimStyle(turretBlueprintId, turretBlueprint, shot);
 
   const lockOn = compileTurretLockOnMasks(turretBlueprint);
 
   const config: TurretConfig = {
-    id: turretBlueprint.id,
+    turretBlueprintId: turretBlueprint.turretBlueprintId,
     range: turretBlueprint.range,
     cooldown: turretBlueprint.cooldown ?? 0,
     color: turretBlueprint.color,
@@ -625,13 +625,13 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   // Skip the barrel-less force-field emitters (sphere + panel): they
   // carry no gun barrel to thicken.
   if (
-    turretBlueprint.shotId !== null &&
+    turretBlueprint.shotBlueprintId !== null &&
     config.barrel &&
     config.barrel.type !== 'complexSingleEmitter' &&
     config.barrel.type !== 'forceFieldPanelEmitter'
   ) {
     const shotBlueprint: ShotBlueprint =
-      SHOT_BLUEPRINTS[turretBlueprint.shotId];
+      SHOT_BLUEPRINTS[turretBlueprint.shotBlueprintId];
     let rawThickness: number;
     if (isLineShotBlueprint(shotBlueprint)) {
       rawThickness = shotBlueprint.width;
@@ -661,15 +661,15 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
 /**
  * Build all turret configs from blueprints.
  */
-export function buildAllTurretConfigs(): Record<TurretId, TurretConfig> {
-  const result = {} as Record<TurretId, TurretConfig>;
-  for (const id of Object.keys(TURRET_BLUEPRINTS) as TurretId[]) {
+export function buildAllTurretConfigs(): Record<TurretBlueprintId, TurretConfig> {
+  const result = {} as Record<TurretBlueprintId, TurretConfig>;
+  for (const id of Object.keys(TURRET_BLUEPRINTS) as TurretBlueprintId[]) {
     result[id] = buildTurretConfig(id);
   }
   return result;
 }
 
-// Cross-blueprint validation: every turretId referenced by a unit or
+// Cross-blueprint validation: every turretBlueprintId referenced by a unit or
 // building blueprint must resolve to a real turret blueprint. Runs at
 // module-load so a missing/typoed reference throws immediately on
 // import, not deep inside a runtime call. Leaf blueprint modules keep
@@ -677,32 +677,32 @@ export function buildAllTurretConfigs(): Record<TurretId, TurretConfig> {
 // validation.
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   for (let i = 0; i < bp.turrets.length; i++) {
-    const turretId = bp.turrets[i].turretId;
-    if (!TURRET_BLUEPRINTS[turretId]) {
+    const turretBlueprintId = bp.turrets[i].turretBlueprintId;
+    if (!TURRET_BLUEPRINTS[turretBlueprintId]) {
       throw new Error(
-        `Invalid turret reference for ${bp.id}[${i}]: unknown turretId "${turretId}"`,
+        `Invalid turret reference for ${bp.unitBlueprintId}[${i}]: unknown turretBlueprintId "${turretBlueprintId}"`,
       );
     }
   }
-  if (bp.dgun && !TURRET_BLUEPRINTS[bp.dgun.turretId]) {
+  if (bp.dgun && !TURRET_BLUEPRINTS[bp.dgun.turretBlueprintId]) {
     throw new Error(
-      `Invalid dgun turret reference for ${bp.id}: unknown turretId "${bp.dgun.turretId}"`,
+      `Invalid dgun turret reference for ${bp.unitBlueprintId}: unknown turretBlueprintId "${bp.dgun.turretBlueprintId}"`,
     );
   }
 }
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   const turrets = bp.turrets;
   if (!turrets) continue;
-  if (turrets.length > 0 && !isTowerBuildingType(bp.id)) {
+  if (turrets.length > 0 && !isTowerBuildingBlueprintId(bp.buildingBlueprintId)) {
     throw new Error(
-      `Invalid building blueprint ${bp.id}: non-tower buildings must not declare turrets; move the blueprint to towers.json or remove the turret mounts`,
+      `Invalid building blueprint ${bp.buildingBlueprintId}: non-tower buildings must not declare turrets; move the blueprint to towers.json or remove the turret mounts`,
     );
   }
   for (let i = 0; i < turrets.length; i++) {
-    const turretId = turrets[i].turretId;
-    if (!TURRET_BLUEPRINTS[turretId]) {
+    const turretBlueprintId = turrets[i].turretBlueprintId;
+    if (!TURRET_BLUEPRINTS[turretBlueprintId]) {
       throw new Error(
-        `Invalid building turret reference for ${bp.id}[${i}]: unknown turretId "${turretId}"`,
+        `Invalid building turret reference for ${bp.buildingBlueprintId}[${i}]: unknown turretBlueprintId "${turretBlueprintId}"`,
       );
     }
   }
@@ -717,7 +717,7 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
 export function validateHostDirectedMounts(
   hostLabel: string,
   hostId: string,
-  mounts: ReadonlyArray<{ turretId: string; hostDirected: unknown }>,
+  mounts: ReadonlyArray<{ turretBlueprintId: string; hostDirected: unknown }>,
 ): void {
   const total = new Map<string, number>();
   const directed = new Map<string, number>();
@@ -725,10 +725,10 @@ export function validateHostDirectedMounts(
     const mount = mounts[i];
     if (typeof mount.hostDirected !== 'boolean') {
       throw new Error(
-        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretId}: mount must define a boolean hostDirected`,
+        `Invalid ${hostLabel} ${hostId}[${i}] ${mount.turretBlueprintId}: mount must define a boolean hostDirected`,
       );
     }
-    const kind = TURRET_BLUEPRINTS[mount.turretId as TurretId].kind;
+    const kind = TURRET_BLUEPRINTS[mount.turretBlueprintId as TurretBlueprintId].kind;
     total.set(kind, (total.get(kind) ?? 0) + 1);
     if (mount.hostDirected) directed.set(kind, (directed.get(kind) ?? 0) + 1);
   }
@@ -743,11 +743,11 @@ export function validateHostDirectedMounts(
 }
 
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
-  validateHostDirectedMounts('unit blueprint', bp.id, bp.turrets);
+  validateHostDirectedMounts('unit blueprint', bp.unitBlueprintId, bp.turrets);
 }
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   if (!bp.turrets || bp.turrets.length === 0) continue;
-  validateHostDirectedMounts('building blueprint', bp.id, bp.turrets);
+  validateHostDirectedMounts('building blueprint', bp.buildingBlueprintId, bp.turrets);
 }
 
 // Cross-blueprint lock-on exclusion validation. Each level-1 named
@@ -770,16 +770,16 @@ function assertLevel1IdsInSet(
 }
 const KNOWN_BUILDING_IDS: ReadonlySet<string> = new Set(
   Object.keys(BUILDING_BLUEPRINTS).filter(
-    (id) => !isTowerBuildingType(id as BuildingType),
+    (id) => !isTowerBuildingBlueprintId(id as BuildingBlueprintId),
   ),
 );
 const KNOWN_TOWER_IDS: ReadonlySet<string> = new Set(
   Object.keys(BUILDING_BLUEPRINTS).filter((id) =>
-    isTowerBuildingType(id as BuildingType),
+    isTowerBuildingBlueprintId(id as BuildingBlueprintId),
   ),
 );
 const KNOWN_UNIT_IDS: ReadonlySet<string> = new Set(Object.keys(UNIT_BLUEPRINTS));
-const KNOWN_TURRET_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
+const KNOWN_TURRET_BLUEPRINT_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
 for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
   assertLevel1IdsInSet(
     `turret blueprint ${id}`,
@@ -806,7 +806,7 @@ for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
     `turret blueprint ${id}`,
     'excludeLockOnLevel1Turrets',
     bp.excludeLockOnLevel1Turrets,
-    KNOWN_TURRET_IDS,
+    KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
   );
 }
@@ -836,12 +836,12 @@ for (const [id, bp] of Object.entries(UNIT_BLUEPRINTS)) {
     `unit blueprint ${id}`,
     'excludeLockOnLevel1Turrets',
     bp.excludeLockOnLevel1Turrets,
-    KNOWN_TURRET_IDS,
+    KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
   );
 }
 for (const [id, bp] of Object.entries(BUILDING_BLUEPRINTS)) {
-  if (!isTowerBuildingType(id as BuildingType)) continue;
+  if (!isTowerBuildingBlueprintId(id as BuildingBlueprintId)) continue;
   const tower = bp as typeof bp & LockOnExclusionObject;
   assertLevel1IdsInSet(
     `tower blueprint ${id}`,
@@ -868,7 +868,7 @@ for (const [id, bp] of Object.entries(BUILDING_BLUEPRINTS)) {
     `tower blueprint ${id}`,
     'excludeLockOnLevel1Turrets',
     tower.excludeLockOnLevel1Turrets,
-    KNOWN_TURRET_IDS,
+    KNOWN_TURRET_BLUEPRINT_IDS,
     'turret',
   );
 }

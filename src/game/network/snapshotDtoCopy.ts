@@ -27,7 +27,7 @@ import {
   PROJECTILE_TYPE_UNKNOWN,
   RESOURCE_FLOW_INBOUND,
   RESOURCE_KIND_ENERGY,
-  TURRET_ID_UNKNOWN,
+  TURRET_BLUEPRINT_CODE_UNKNOWN,
 } from '@/types/network';
 import type { PlayerId } from '@/types/sim';
 
@@ -44,18 +44,18 @@ export function createSpawnDto(): NetworkServerSnapshotProjectileSpawn {
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
     projectileType: PROJECTILE_TYPE_UNKNOWN,
-    turretId: TURRET_ID_UNKNOWN,
+    turretBlueprintCode: TURRET_BLUEPRINT_CODE_UNKNOWN,
     maxLifespan: null,
-    shotId: null,
-    sourceTurretId: null,
-    sourceTurretInstanceId: null,
+    shotBlueprintCode: null,
+    sourceTurretBlueprintCode: null,
+    sourceTurretEntityId: null,
     playerId: 1,
     sourceEntityId: 0,
-    sourceHostId: 0,
-    sourceRootId: 0,
+    sourceHostEntityId: 0,
+    sourceRootEntityId: 0,
     sourceTeamId: 1,
     spawnTick: 0,
-    parentShotId: null,
+    parentShotEntityId: null,
     turretIndex: 0,
     barrelIndex: 0,
     isDGun: null,
@@ -80,17 +80,17 @@ export function copySpawnInto(
   dst.velocity.z = src.velocity.z;
   dst.projectileType = src.projectileType;
   dst.maxLifespan = src.maxLifespan;
-  dst.turretId = src.turretId;
-  dst.shotId = src.shotId;
-  dst.sourceTurretId = src.sourceTurretId;
-  dst.sourceTurretInstanceId = src.sourceTurretInstanceId;
+  dst.turretBlueprintCode = src.turretBlueprintCode;
+  dst.shotBlueprintCode = src.shotBlueprintCode;
+  dst.sourceTurretBlueprintCode = src.sourceTurretBlueprintCode;
+  dst.sourceTurretEntityId = src.sourceTurretEntityId;
   dst.playerId = src.playerId;
   dst.sourceEntityId = src.sourceEntityId;
-  dst.sourceHostId = src.sourceHostId;
-  dst.sourceRootId = src.sourceRootId;
+  dst.sourceHostEntityId = src.sourceHostEntityId;
+  dst.sourceRootEntityId = src.sourceRootEntityId;
   dst.sourceTeamId = src.sourceTeamId;
   dst.spawnTick = src.spawnTick;
-  dst.parentShotId = src.parentShotId;
+  dst.parentShotEntityId = src.parentShotEntityId;
   dst.turretIndex = src.turretIndex;
   dst.barrelIndex = src.barrelIndex;
   dst.isDGun = src.isDGun;
@@ -213,7 +213,7 @@ export function copyBeamInto(
 export function createSimEventDto(): NetworkServerSnapshotSimEvent {
   return {
     type: 'fire',
-    turretId: '',
+    turretBlueprintId: '',
     sourceType: null,
     sourceKey: null,
     pos: { x: 0, y: 0, z: 0 },
@@ -233,7 +233,7 @@ export function copySimEventInto(
   dst: NetworkServerSnapshotSimEvent,
 ): NetworkServerSnapshotSimEvent {
   dst.type = src.type;
-  dst.turretId = src.turretId;
+  dst.turretBlueprintId = src.turretBlueprintId;
   dst.sourceType = src.sourceType;
   dst.sourceKey = src.sourceKey;
   dst.pos.x = src.pos.x;
@@ -267,7 +267,7 @@ export function createActionDto(): NetworkServerSnapshotAction {
     posZ: null,
     pathExp: null,
     targetId: null,
-    buildingType: null,
+    buildingBlueprintId: null,
     grid: null,
     buildingId: null,
   };
@@ -288,7 +288,7 @@ export function copyActionInto(
   dst.posZ = src.posZ;
   dst.pathExp = src.pathExp;
   dst.targetId = src.targetId;
-  dst.buildingType = src.buildingType;
+  dst.buildingBlueprintId = src.buildingBlueprintId;
   if (src.grid) {
     if (!dst.grid) dst.grid = { x: 0, y: 0 };
     dst.grid.x = src.grid.x;
@@ -303,7 +303,7 @@ export function copyActionInto(
 export function createTurretDto(): NetworkServerSnapshotTurret {
   return {
     turret: {
-      id: TURRET_ID_UNKNOWN,
+      turretBlueprintCode: TURRET_BLUEPRINT_CODE_UNKNOWN,
       angular: { rot: 0, vel: 0, pitch: 0, pitchVel: 0 },
     },
     targetId: null,
@@ -316,7 +316,7 @@ export function copyTurretInto(
   src: NetworkServerSnapshotTurret,
   dst: NetworkServerSnapshotTurret,
 ): NetworkServerSnapshotTurret {
-  dst.turret.id = src.turret.id;
+  dst.turret.turretBlueprintCode = src.turret.turretBlueprintCode;
   dst.turret.angular.rot = src.turret.angular.rot;
   dst.turret.angular.vel = src.turret.angular.vel;
   dst.turret.angular.pitch = src.turret.angular.pitch;

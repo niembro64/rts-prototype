@@ -251,7 +251,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       ) {
         const remainingCost = getTotalRemainingCost(shell.buildable);
         if (remainingCost > 0) {
-          const config = getBuildingConfig(entity.buildingType!);
+          const config = getBuildingConfig(entity.buildingBlueprintId!);
           const rateCap = (config.constructionRate ?? Infinity) * dtSec;
           addConsumer(
             ownership.playerId,

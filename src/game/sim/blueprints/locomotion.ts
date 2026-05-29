@@ -20,13 +20,16 @@ function buildLocomotionBlueprints(): Record<string, LocomotionBlueprint> {
     if (!blueprint || typeof blueprint.type !== 'string') {
       throw new Error(`Invalid locomotion blueprint ${id}: missing type`);
     }
-    if (typeof blueprint.pathfindingId !== 'string' || blueprint.pathfindingId.length === 0) {
-      throw new Error(`Invalid locomotion blueprint ${id}: missing pathfindingId`);
+    if (
+      typeof blueprint.pathfindingBlueprintId !== 'string' ||
+      blueprint.pathfindingBlueprintId.length === 0
+    ) {
+      throw new Error(`Invalid locomotion blueprint ${id}: missing pathfindingBlueprintId`);
     }
-    const pathfinding = PATHFINDING_BLUEPRINTS[blueprint.pathfindingId];
+    const pathfinding = PATHFINDING_BLUEPRINTS[blueprint.pathfindingBlueprintId];
     if (pathfinding === undefined) {
       throw new Error(
-        `Invalid locomotion blueprint ${id}: unknown pathfindingId "${blueprint.pathfindingId}"`,
+        `Invalid locomotion blueprint ${id}: unknown pathfindingBlueprintId "${blueprint.pathfindingBlueprintId}"`,
       );
     }
     if (

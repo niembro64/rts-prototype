@@ -24,10 +24,10 @@ import {
   PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE,
   PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE,
   PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN,
-  PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID,
-  PROJECTILE_SPAWN_FLAG_SHOT_ID,
-  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID,
-  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID,
+  PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID,
+  PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
 } from './stateSerializerProjectiles';
@@ -230,12 +230,12 @@ function packProjectileSpawnsV2(
 function computeSpawnFlags(spawn: NetworkServerSnapshotProjectileSpawn): number {
   let flags = 0;
   if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
-  if (spawn.shotId !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
-  if (spawn.sourceTurretId !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
-  if (spawn.sourceTurretInstanceId !== null) {
-    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID;
+  if (spawn.shotBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
+  if (spawn.sourceTurretBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
+  if (spawn.sourceTurretEntityId !== null) {
+    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID;
   }
-  if (spawn.parentShotId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID;
+  if (spawn.parentShotEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID;
   if (spawn.isDGun !== null) {
     flags |= spawn.isDGun
       ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
@@ -267,11 +267,11 @@ function writeSpawnRowV2(
   writer.writeVarInt(spawn.velocity.y);
   writer.writeVarInt(spawn.velocity.z);
   writer.writeVarUint(spawn.projectileType);
-  writer.writeVarUint(spawn.turretId);
+  writer.writeVarUint(spawn.turretBlueprintCode);
   writer.writeVarUint(spawn.playerId);
   writer.writeVarUint(spawn.sourceEntityId);
-  writer.writeVarUint(spawn.sourceHostId);
-  writer.writeVarUint(spawn.sourceRootId);
+  writer.writeVarUint(spawn.sourceHostEntityId);
+  writer.writeVarUint(spawn.sourceRootEntityId);
   writer.writeVarUint(spawn.sourceTeamId);
   writer.writeVarUint(spawn.spawnTick);
   writer.writeVarUint(spawn.turretIndex);
@@ -279,17 +279,17 @@ function writeSpawnRowV2(
   if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
     writer.writeVarUint(spawn.maxLifespan ?? 0);
   }
-  if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_ID) !== 0) {
-    writer.writeVarUint(spawn.shotId ?? 0);
+  if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) !== 0) {
+    writer.writeVarUint(spawn.shotBlueprintCode ?? 0);
   }
-  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) !== 0) {
-    writer.writeVarUint(spawn.sourceTurretId ?? 0);
+  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0) {
+    writer.writeVarUint(spawn.sourceTurretBlueprintCode ?? 0);
   }
-  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID) !== 0) {
-    writer.writeVarUint(spawn.sourceTurretInstanceId ?? 0);
+  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) !== 0) {
+    writer.writeVarUint(spawn.sourceTurretEntityId ?? 0);
   }
-  if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID) !== 0) {
-    writer.writeVarUint(spawn.parentShotId ?? 0);
+  if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) !== 0) {
+    writer.writeVarUint(spawn.parentShotEntityId ?? 0);
   }
   if ((flags & PROJECTILE_SPAWN_FLAG_BEAM) !== 0) {
     const beam = spawn.beam!;
@@ -333,11 +333,11 @@ function unpackProjectileSpawnsV2(
       const velY = reader.readVarInt();
       const velZ = reader.readVarInt();
       const projectileType = reader.readVarUint();
-      const turretId = reader.readVarUint();
+      const turretBlueprintCode = reader.readVarUint();
       const playerId = reader.readVarUint();
       const sourceEntityId = reader.readVarUint();
-      const sourceHostId = hasSourceProvenance ? reader.readVarUint() : sourceEntityId;
-      const sourceRootId = hasSourceProvenance ? reader.readVarUint() : sourceHostId;
+      const sourceHostEntityId = hasSourceProvenance ? reader.readVarUint() : sourceEntityId;
+      const sourceRootEntityId = hasSourceProvenance ? reader.readVarUint() : sourceHostEntityId;
       const sourceTeamId = hasSourceProvenance ? reader.readVarUint() : playerId;
       const spawnTick = hasSourceProvenance ? reader.readVarUint() : 0;
       const turretIndex = reader.readVarUint();
@@ -350,17 +350,17 @@ function unpackProjectileSpawnsV2(
         velocity: { x: velX, y: velY, z: velZ },
         projectileType,
         maxLifespan: null,
-        turretId,
-        shotId: null,
-        sourceTurretId: null,
-        sourceTurretInstanceId: null,
+        turretBlueprintCode,
+        shotBlueprintCode: null,
+        sourceTurretBlueprintCode: null,
+        sourceTurretEntityId: null,
         playerId,
         sourceEntityId,
-        sourceHostId,
-        sourceRootId,
+        sourceHostEntityId,
+        sourceRootEntityId,
         sourceTeamId,
         spawnTick,
-        parentShotId: null,
+        parentShotEntityId: null,
         turretIndex,
         barrelIndex,
         isDGun: null,
@@ -373,17 +373,17 @@ function unpackProjectileSpawnsV2(
       if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
         spawn.maxLifespan = reader.readVarUint();
       }
-      if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_ID) !== 0) {
-        spawn.shotId = reader.readVarUint();
+      if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) !== 0) {
+        spawn.shotBlueprintCode = reader.readVarUint();
       }
-      if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) !== 0) {
-        spawn.sourceTurretId = reader.readVarUint();
+      if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0) {
+        spawn.sourceTurretBlueprintCode = reader.readVarUint();
       }
-      if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID) !== 0) {
-        spawn.sourceTurretInstanceId = reader.readVarUint();
+      if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) !== 0) {
+        spawn.sourceTurretEntityId = reader.readVarUint();
       }
-      if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID) !== 0) {
-        spawn.parentShotId = reader.readVarUint();
+      if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) !== 0) {
+        spawn.parentShotEntityId = reader.readVarUint();
       }
       if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE) !== 0) {
         spawn.isDGun = true;
@@ -744,17 +744,17 @@ function unpackProjectileSpawnsV1(
       },
       projectileType: rows[base + 8] ?? 0,
       maxLifespan: null,
-      turretId: rows[base + 10] ?? 0,
-      shotId: null,
-      sourceTurretId: null,
-      sourceTurretInstanceId: null,
+      turretBlueprintCode: rows[base + 10] ?? 0,
+      shotBlueprintCode: null,
+      sourceTurretBlueprintCode: null,
+      sourceTurretEntityId: null,
       playerId,
       sourceEntityId,
-      sourceHostId: sourceEntityId,
-      sourceRootId: sourceEntityId,
+      sourceHostEntityId: sourceEntityId,
+      sourceRootEntityId: sourceEntityId,
       sourceTeamId: playerId,
       spawnTick: 0,
-      parentShotId: null,
+      parentShotEntityId: null,
       turretIndex: rows[base + 15] ?? 0,
       barrelIndex: rows[base + 16] ?? 0,
       isDGun: null,
@@ -767,11 +767,11 @@ function unpackProjectileSpawnsV1(
     if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
       spawn.maxLifespan = rows[base + 9] ?? 0;
     }
-    if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_ID) !== 0) {
-      spawn.shotId = rows[base + 11] ?? 0;
+    if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) !== 0) {
+      spawn.shotBlueprintCode = rows[base + 11] ?? 0;
     }
-    if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) !== 0) {
-      spawn.sourceTurretId = rows[base + 12] ?? 0;
+    if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0) {
+      spawn.sourceTurretBlueprintCode = rows[base + 12] ?? 0;
     }
     if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE) !== 0) {
       spawn.isDGun = true;

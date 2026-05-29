@@ -35,7 +35,7 @@ const props = defineProps<{
   terrainDetail: number;
   mapWidthLandCells: number;
   mapLengthLandCells: number;
-  unitTypes: readonly string[];
+  unitBlueprintIds: readonly string[];
   allowedUnits: readonly string[];
   unitCap: number;
   forceFieldsObstructSight: boolean;
@@ -61,7 +61,7 @@ const emit = defineEmits<{
   (e: 'setTerrainDetail', value: number): void;
   (e: 'setPreset', preset: BattlePreset): void;
   (e: 'setMapLandDimensions', dimensions: MapLandCellDimensions): void;
-  (e: 'toggleUnit', unitType: string): void;
+  (e: 'toggleUnit', unitBlueprintId: string): void;
   (e: 'toggleAllUnits'): void;
   (e: 'setUnitCap', cap: number): void;
   (e: 'setForceFieldsObstructSight', enabled: boolean): void;
@@ -89,8 +89,8 @@ const capOptions = BATTLE_CONFIG.cap.options;
 const allowedUnitsSet = computed(() => new Set(props.allowedUnits));
 const allUnitsActive = computed(() => {
   const allowed = allowedUnitsSet.value;
-  for (let i = 0; i < props.unitTypes.length; i++) {
-    if (!allowed.has(props.unitTypes[i])) return false;
+  for (let i = 0; i < props.unitBlueprintIds.length; i++) {
+    if (!allowed.has(props.unitBlueprintIds[i])) return false;
   }
   return true;
 });
@@ -146,9 +146,9 @@ function pickMapLengthLandCells(lengthLandCells: number): void {
   });
 }
 
-function pickToggleUnit(unitType: string): void {
+function pickToggleUnit(unitBlueprintId: string): void {
   if (!props.isHost) return;
-  emit('toggleUnit', unitType);
+  emit('toggleUnit', unitBlueprintId);
 }
 
 function pickToggleAllUnits(): void {
@@ -171,8 +171,8 @@ function pickConverterTax(value: number): void {
   emit('setConverterTax', value);
 }
 
-function unitShortName(unitType: string): string {
-  return getUnitDisplayShortName(unitType);
+function unitShortName(unitBlueprintId: string): string {
+  return getUnitDisplayShortName(unitBlueprintId);
 }
 
 function pickResetDefaults(): void {
@@ -672,12 +672,12 @@ const terrainSectionVars = computed(() =>
                 <BarLabel>UNITS:</BarLabel>
                 <BarButton
                   :active="allUnitsActive"
-                  :title="isHost ? 'Toggle all unit types on/off' : 'Only the host can change battle settings'"
+                  :title="isHost ? 'Toggle all unit blueprints on/off' : 'Only the host can change battle settings'"
                   @click="pickToggleAllUnits"
                 >ALL</BarButton>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="ut in unitTypes"
+                    v-for="ut in unitBlueprintIds"
                     :key="ut"
                     :active="allowedUnitsSet.has(ut)"
                     :title="isHost ? `Toggle ${ut}` : 'Only the host can change battle settings'"

@@ -87,9 +87,9 @@ export function getDebrisBarrelProfile(
 }
 
 function getLineShotWidth(turret: TurretBlueprint): number | undefined {
-  if (!turret.shotId) return undefined;
+  if (!turret.shotBlueprintId) return undefined;
   try {
-    const shot = getShotBlueprint(turret.shotId);
+    const shot = getShotBlueprint(turret.shotBlueprintId);
     return isLineShotBlueprint(shot) ? shot.width : undefined;
   } catch {
     return undefined;

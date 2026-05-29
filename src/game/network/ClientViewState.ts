@@ -547,7 +547,7 @@ export class ClientViewState {
 
       if (!existing) {
         // Only create entities from full data (keyframes or new-entity entries).
-        // Delta snapshots with changedFields set may be missing unit type, HP, etc.
+        // Delta snapshots with changedFields set may be missing unit blueprint, HP, etc.
         // The entity will be created on the next keyframe.
         if (netEntity.changedFields != null) continue;
 

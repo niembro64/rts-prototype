@@ -1,5 +1,5 @@
 import type { SoundEntry } from './audio';
-import type { ShotId } from './blueprintIds';
+import type { ShotBlueprintId } from './blueprintIds';
 import type { EntityId, PlayerId } from './entityTypes';
 
 export type ProjectileShotKind = 'plasma' | 'rocket';
@@ -52,12 +52,12 @@ export type ShotExplosion = {
 
 /**
  * Cluster / submunition specification. When attached to a projectile
- * shot, the sim spawns `count` copies of `shotId` at the explosion
+ * shot, the sim spawns `count` copies of `shotBlueprintId` at the explosion
  * origin whenever the parent shot explodes.
  */
 export type SubmunitionSpec = {
   /** Shot blueprint ID for each spawned child. Must be a plasma/rocket shot. */
-  shotId: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   /** Number of children spawned per parent explosion. */
   count: number;
   /** Horizontal random-spread magnitude in the XY plane. */
@@ -103,7 +103,7 @@ export type SmokeTrailSpec = {
 
 export type ProjectileShotBlueprint = {
   type: ProjectileShotKind;
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   mass: number;
   collision: ShotCollision;
   /** Null for carrier shots that only release submunitions. */
@@ -141,7 +141,7 @@ export type ProjectileShotBlueprint = {
 
 export type BeamShotBlueprint = {
   type: 'beam';
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   dps: number;
   force: number;
   recoil: number;
@@ -158,7 +158,7 @@ export type BeamShotBlueprint = {
 
 export type LaserShotBlueprint = {
   type: 'laser';
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   dps: number;
   force: number;
   recoil: number;
@@ -176,7 +176,7 @@ export type LaserShotBlueprint = {
 
 export type ForceFieldShotBlueprint = {
   type: 'forceField';
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   angle: number;
   transitionTime: number;
   barrier: ForceFieldBarrierRatioConfig | null;
@@ -210,7 +210,7 @@ export type ForceFieldBarrierConfig = {
 // Projectile shot: fire-and-forget, has mass, single-tick impact.
 export type ProjectileShot = {
   type: ProjectileShotKind;
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   mass: number;
   launchForce: number;
   collision: ShotCollision;
@@ -238,7 +238,7 @@ export type ProjectileShot = {
 // Beam shot: continuous line from turret, per-tick damage.
 export type BeamShot = {
   type: 'beam';
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   dps: number;
   force: number;
   recoil: number;
@@ -254,7 +254,7 @@ export type BeamShot = {
 // Laser shot: pulsed line weapon with duration + cooldown.
 export type LaserShot = {
   type: 'laser';
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   dps: number;
   force: number;
   recoil: number;
@@ -280,7 +280,7 @@ export function isLineShot(shot: ShotConfig): shot is LineShot {
 // Force shot: continuous spherical barrier around turret.
 export type ForceShot = {
   type: 'forceField';
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   angle: number;
   transitionTime: number;
   barrier?: ForceFieldBarrierConfig;
@@ -320,7 +320,7 @@ export type BeamPoint = {
 };
 
 export type ShotRuntimeProfile = {
-  id: ShotId;
+  shotBlueprintId: ShotBlueprintId;
   type: ActiveProjectileShot['type'];
   projectileType: ProjectileType;
   isProjectile: boolean;

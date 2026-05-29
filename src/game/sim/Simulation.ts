@@ -254,7 +254,7 @@ export class Simulation {
 
   // AI player IDs (for auto-production)
   private aiPlayerIds: Set<PlayerId> = new Set();
-  private aiAllowedUnitTypes: ReadonlySet<string> | null = null;
+  private aiAllowedUnitBlueprintIds: ReadonlySet<string> | null = null;
 
   // Set the player IDs for this game
   setPlayerIds(playerIds: PlayerId[]): void {
@@ -266,9 +266,9 @@ export class Simulation {
     this.aiPlayerIds = new Set(ids);
   }
 
-  // Set allowed unit types for AI production (null = all allowed)
-  setAiAllowedUnitTypes(types: ReadonlySet<string> | null | undefined = null): void {
-    this.aiAllowedUnitTypes = types ?? null;
+  // Set allowed unit blueprints for AI production (null = all allowed)
+  setAiAllowedUnitBlueprintIds(types: ReadonlySet<string> | null | undefined = null): void {
+    this.aiAllowedUnitBlueprintIds = types ?? null;
   }
 
   // Get the winner ID (null if game not over)
@@ -393,7 +393,7 @@ export class Simulation {
     this.advanceCompletedConstructionActions(constructionResult.completedBuildings);
 
     // AI auto-queues units at idle factories
-    updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitTypes);
+    updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitBlueprintIds);
 
     // Update factory production
     const productionResult = factoryProductionSystem.update(
@@ -753,15 +753,15 @@ export class Simulation {
   // directly). Delegates to the shared buildUnitDeathEvent /
   // buildBuildingDeathEvent so the shape can't drift from the damage-
   // path kills. There is no turret to credit here, so provenance lives
-  // in sourceType/sourceKey and turretId remains a weapon/audio key.
+  // in sourceType/sourceKey and turretBlueprintId remains a weapon/audio key.
   private emitSyntheticDeathEvent(entity: Entity): void {
     if (entity.unit) {
       this.pendingSimEvents.push(
-        buildUnitDeathEvent(entity, entity.id, entity.unit.unitType ?? '', undefined, 'unit'),
+        buildUnitDeathEvent(entity, entity.id, entity.unit.unitBlueprintId ?? '', undefined, 'unit'),
       );
     } else if (entity.building) {
       this.pendingSimEvents.push(
-        buildBuildingDeathEvent(entity, entity.id, entity.buildingType ?? '', 'building'),
+        buildBuildingDeathEvent(entity, entity.id, entity.buildingBlueprintId ?? '', 'building'),
       );
     }
   }
@@ -1406,7 +1406,7 @@ export class Simulation {
    *  patrol leg. */
   private shouldStopForFightCombat(entity: Entity): boolean {
     if (!entity.unit) return false;
-    const ratio = getUnitBlueprint(entity.unit.unitType).fightStopEngagedRatio;
+    const ratio = getUnitBlueprint(entity.unit.unitBlueprintId).fightStopEngagedRatio;
     if (ratio === null) return false;
     const combat = entity.combat;
     if (!combat || combat.turrets.length === 0) return false;

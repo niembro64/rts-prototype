@@ -122,17 +122,17 @@ export interface DebrisUnitProfile {
   turretMounts: DebrisTurretSlot[];
 }
 
-/** Build the complete debris-fragment derivation for one unit type at
+/** Build the complete debris-fragment derivation for one unit blueprint at
  *  a given visual radius. Returns `null` when the unit blueprint
  *  cannot be resolved — callers should fall back to a generic
  *  scatter pattern. */
 export function getDebrisUnitProfile(
-  unitType: string,
+  unitBlueprintId: string,
   r: number,
 ): DebrisUnitProfile | null {
   let bp;
   try {
-    bp = getUnitBlueprint(unitType);
+    bp = getUnitBlueprint(unitBlueprintId);
   } catch {
     return null;
   }
@@ -229,7 +229,7 @@ export function getDebrisUnitProfile(
     const mount = bp.turrets[ti];
     let tb;
     try {
-      tb = getTurretBlueprint(mount.turretId);
+      tb = getTurretBlueprint(mount.turretBlueprintId);
     } catch {
       // Keep slot aligned with bp.turrets indexing so the consumer can
       // index ctx.turretPoses by `ti`.

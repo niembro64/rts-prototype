@@ -1,11 +1,11 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingType } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId } from './sim';
 import type { Vec2 } from './vec2';
 
 // Selection panel types
 export type QueueItem = {
-  unitId: string;
+  unitBlueprintId: string;
   label: string;
 };
 
@@ -33,7 +33,7 @@ export type SelectionInfo = {
   hasFireControl: boolean;
   fireEnabled: boolean;
   /** True iff the selection contains at least one building whose
-   *  BuildingType uses the ON/OFF active-state mechanic
+   *  BuildingBlueprintId uses the ON/OFF active-state mechanic
    *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button. */
   hasBuildingActiveControl: boolean;
   /** True when every active-state building in the selection is currently
@@ -58,7 +58,7 @@ export type SelectionInfo = {
   commanderId?: number;
   waypointMode: WaypointType;
   isBuildMode: boolean;
-  selectedBuildingType: string | null;
+  selectedBuildingBlueprintId: string | null;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackAreaMode: boolean;
@@ -95,11 +95,11 @@ export type SelectionActions = {
   togglePing: () => void;
   storeControlGroup: (index: number) => void;
   recallControlGroup: (index: number, additive: boolean) => void;
-  startBuild: (buildingType: BuildingType) => void;
+  startBuild: (buildingBlueprintId: BuildingBlueprintId) => void;
   cancelBuild: () => void;
   toggleDGun: () => void;
   toggleRepairArea: () => void;
-  queueUnit: (factoryId: number, unitId: string) => void;
+  queueUnit: (factoryId: number, unitBlueprintId: string) => void;
   cancelQueueItem: (factoryId: number, index: number) => void;
 };
 
@@ -178,7 +178,7 @@ export type UIEntitySource = {
 export type UIInputState = {
   waypointMode: WaypointType;
   isBuildMode: boolean;
-  selectedBuildingType: string | null;
+  selectedBuildingBlueprintId: string | null;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
   isAttackAreaMode: boolean;

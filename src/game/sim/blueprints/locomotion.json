@@ -1,7 +1,7 @@
 {
   "jackal": {
     "type": "wheels",
-    "pathfindingId": "wheelsLand",
+    "pathfindingBlueprintId": "wheelsLand",
     "physics": {
       "driveForce": 300,
       "traction": 0.45
@@ -17,7 +17,7 @@
   },
   "lynx": {
     "type": "treads",
-    "pathfindingId": "treadsLand",
+    "pathfindingBlueprintId": "treadsLand",
     "physics": {
       "driveForce": 170,
       "traction": 0.75
@@ -32,7 +32,7 @@
   },
   "daddy": {
     "type": "legs",
-    "pathfindingId": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "physics": {
       "driveForce": 200,
       "traction": 1
@@ -69,7 +69,7 @@
   },
   "badger": {
     "type": "treads",
-    "pathfindingId": "treadsLand",
+    "pathfindingBlueprintId": "treadsLand",
     "physics": {
       "driveForce": 200,
       "traction": 0.75
@@ -84,7 +84,7 @@
   },
   "mongoose": {
     "type": "wheels",
-    "pathfindingId": "wheelsLand",
+    "pathfindingBlueprintId": "wheelsLand",
     "physics": {
       "driveForce": 220,
       "traction": 0.45
@@ -100,7 +100,7 @@
   },
   "tick": {
     "type": "legs",
-    "pathfindingId": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "physics": {
       "driveForce": 120,
       "traction": 1
@@ -137,7 +137,7 @@
   },
   "mammoth": {
     "type": "treads",
-    "pathfindingId": "treadsLand",
+    "pathfindingBlueprintId": "treadsLand",
     "physics": {
       "driveForce": 60,
       "traction": 0.75
@@ -152,7 +152,7 @@
   },
   "formik": {
     "type": "legs",
-    "pathfindingId": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "physics": {
       "driveForce": 60,
       "traction": 1
@@ -199,7 +199,7 @@
   },
   "widow": {
     "type": "legs",
-    "pathfindingId": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "physics": {
       "driveForce": 70,
       "traction": 1
@@ -236,7 +236,7 @@
   },
   "hippo": {
     "type": "treads",
-    "pathfindingId": "treadsLand",
+    "pathfindingBlueprintId": "treadsLand",
     "physics": {
       "driveForce": 55,
       "traction": 0.75
@@ -251,7 +251,7 @@
   },
   "tarantula": {
     "type": "legs",
-    "pathfindingId": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "physics": {
       "driveForce": 200,
       "traction": 1
@@ -288,7 +288,7 @@
   },
   "loris": {
     "type": "treads",
-    "pathfindingId": "treadsLand",
+    "pathfindingBlueprintId": "treadsLand",
     "physics": {
       "driveForce": 160,
       "traction": 0.75
@@ -303,7 +303,7 @@
   },
   "commander": {
     "type": "legs",
-    "pathfindingId": "legsLand",
+    "pathfindingBlueprintId": "legsLand",
     "physics": {
       "driveForce": 50,
       "traction": 1
@@ -340,7 +340,7 @@
   },
   "hovercraft": {
     "type": "hover",
-    "pathfindingId": "airborneAnywhere",
+    "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
       "driveForce": 30,
       "traction": 1
@@ -360,7 +360,7 @@
   },
   "dragonflyHovercraft": {
     "type": "hover",
-    "pathfindingId": "airborneAnywhere",
+    "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
       "driveForce": 12,
       "traction": 1
@@ -380,7 +380,7 @@
   },
   "constructionDrone": {
     "type": "hover",
-    "pathfindingId": "airborneAnywhere",
+    "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
       "driveForce": 35,
       "traction": 1
@@ -400,7 +400,7 @@
   },
   "eagleFlying": {
     "type": "flying",
-    "pathfindingId": "airborneAnywhere",
+    "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
       "driveForce": 50,
       "traction": 1

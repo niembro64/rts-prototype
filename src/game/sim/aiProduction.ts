@@ -2,7 +2,7 @@
 
 import type { WorldState } from './WorldState';
 import type { PlayerId } from './types';
-import { BUILDABLE_UNIT_IDS, getNormalizedUnitCost, getUnitBlueprint } from './blueprints';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS, getNormalizedUnitCost, getUnitBlueprint } from './blueprints';
 import { factoryProductionSystem } from './factoryProduction';
 import { isEntityActive } from './buildableHelpers';
 import { DEMO_CONFIG } from '../../demoConfig';
@@ -14,7 +14,7 @@ let totalWeight = 0;
 
 function initWeights(): void {
   if (weights.length > 0) return;
-  for (const id of BUILDABLE_UNIT_IDS) {
+  for (const id of BUILDABLE_UNIT_BLUEPRINT_IDS) {
     const w = DEMO_CONFIG.aiInverseCostWeighting
       ? 1 / Math.max(getNormalizedUnitCost(getUnitBlueprint(id)), 0.01)
       : 1;
@@ -23,21 +23,21 @@ function initWeights(): void {
   }
 }
 
-function pickRandomUnit(world: WorldState, allowedTypes: ReadonlySet<string> | null): string {
+function pickRandomUnit(world: WorldState, allowedUnitBlueprintIds: ReadonlySet<string> | null): string {
   initWeights();
 
-  if (allowedTypes && allowedTypes.size > 0) {
+  if (allowedUnitBlueprintIds && allowedUnitBlueprintIds.size > 0) {
     // Filter to allowed types
     let filteredTotal = 0;
     for (const entry of weights) {
-      if (allowedTypes.has(entry.id)) filteredTotal += entry.weight;
+      if (allowedUnitBlueprintIds.has(entry.id)) filteredTotal += entry.weight;
     }
     if (filteredTotal <= 0) return weights[0].id;
 
     const r = world.rng.next() * filteredTotal;
     let cumulative = 0;
     for (const entry of weights) {
-      if (!allowedTypes.has(entry.id)) continue;
+      if (!allowedUnitBlueprintIds.has(entry.id)) continue;
       cumulative += entry.weight;
       if (r <= cumulative) return entry.id;
     }
@@ -64,15 +64,15 @@ function pickRandomUnit(world: WorldState, allowedTypes: ReadonlySet<string> | n
 export function updateAiProduction(
   world: WorldState,
   aiPlayerIds: ReadonlySet<PlayerId>,
-  allowedTypes: ReadonlySet<string> | null,
+  allowedUnitBlueprintIds: ReadonlySet<string> | null,
 ): void {
   if (aiPlayerIds.size === 0) return;
   // Honour an explicit empty selection — when the user has every
-  // unit type disabled, the AI must not produce anything. Without
+  // unit blueprint disabled, the AI must not produce anything. Without
   // this guard pickRandomUnit fell through to the all-weights path
   // and queued a random allowed-by-blueprint type, defeating the
   // toggle.
-  if (allowedTypes && allowedTypes.size === 0) return;
+  if (allowedUnitBlueprintIds && allowedUnitBlueprintIds.size === 0) return;
 
   for (const entity of world.getFactoryBuildings()) {
     if (!entity.factory || !isEntityActive(entity)) continue;
@@ -82,10 +82,10 @@ export function updateAiProduction(
     // Pick a repeat-build type for the factory if it has none set. The
     // production loop now keeps queue[0] for the lifetime of the
     // selection, so each idle AI factory locks onto one type until the
-    // shell completes — in practice that means one unit type per
+    // shell completes — in practice that means one unit blueprint per
     // factory until destruction.
     if (entity.factory.buildQueue.length === 0 && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, allowedTypes), world)) {
+      if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, allowedUnitBlueprintIds), world)) {
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
       }
     }

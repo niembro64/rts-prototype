@@ -1,12 +1,12 @@
 import { COST_MULTIPLIER } from '../../../config';
 import type { ResourceCost } from '@/types/economyTypes';
-import type { BuildingType } from '../types';
+import type { BuildingBlueprintId } from '../types';
 import { BUILDING_BLUEPRINTS } from './buildings';
-import { BUILDABLE_UNIT_IDS } from './unitRoster';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 
 export type UnitRosterDisplay = {
-  unitId: string;
+  unitBlueprintId: string;
   label: string;
   shortName: string;
   cost: number;
@@ -14,7 +14,7 @@ export type UnitRosterDisplay = {
 };
 
 export type BuildingRosterDisplay = {
-  type: BuildingType;
+  buildingBlueprintId: BuildingBlueprintId;
   label: string;
   key: string;
   cost: number;
@@ -28,11 +28,11 @@ function fallbackShortName(id: string): string {
   return id.toUpperCase().slice(0, 3);
 }
 
-export const unitRosterDisplay: UnitRosterDisplay[] = BUILDABLE_UNIT_IDS.map((id) => {
+export const unitRosterDisplay: UnitRosterDisplay[] = BUILDABLE_UNIT_BLUEPRINT_IDS.map((id) => {
   const bp = UNIT_BLUEPRINTS[id];
   if (!bp) {
     return {
-      unitId: id,
+      unitBlueprintId: id,
       label: id,
       shortName: fallbackShortName(id),
       cost: 0,
@@ -40,7 +40,7 @@ export const unitRosterDisplay: UnitRosterDisplay[] = BUILDABLE_UNIT_IDS.map((id
     };
   }
   return {
-    unitId: bp.id,
+    unitBlueprintId: bp.unitBlueprintId,
     label: bp.name,
     shortName: bp.shortName,
     cost: scaledTotalCost(bp.cost),
@@ -49,20 +49,20 @@ export const unitRosterDisplay: UnitRosterDisplay[] = BUILDABLE_UNIT_IDS.map((id
 });
 
 const unitRosterDisplayById = new Map<string, UnitRosterDisplay>(
-  unitRosterDisplay.map((unit) => [unit.unitId, unit]),
+  unitRosterDisplay.map((unit) => [unit.unitBlueprintId, unit]),
 );
 
-export function getUnitDisplayShortName(unitType: string): string {
-  const display = unitRosterDisplayById.get(unitType);
-  return display !== undefined ? display.shortName : fallbackShortName(unitType);
+export function getUnitDisplayShortName(unitBlueprintId: string): string {
+  const display = unitRosterDisplayById.get(unitBlueprintId);
+  return display !== undefined ? display.shortName : fallbackShortName(unitBlueprintId);
 }
 
 export const buildingRosterDisplay: BuildingRosterDisplay[] = (
-  Object.keys(BUILDING_BLUEPRINTS) as BuildingType[]
-).map((type, index) => {
-  const bp = BUILDING_BLUEPRINTS[type];
+  Object.keys(BUILDING_BLUEPRINTS) as BuildingBlueprintId[]
+).map((buildingBlueprintId, index) => {
+  const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
   return {
-    type,
+    buildingBlueprintId,
     label: bp.name,
     key: `${index + 1}`,
     cost: scaledTotalCost(bp.cost),

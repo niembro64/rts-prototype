@@ -52,9 +52,9 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
-  buildingTypeToCode,
-  turretIdToCode,
-  unitTypeToCode,
+  buildingBlueprintIdToCode,
+  turretBlueprintIdToCode,
+  unitBlueprintIdToCode,
 } from '../../types/network';
 
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -647,8 +647,8 @@ function entityMetaBlueprintKindCode(e: Entity): number {
 }
 
 function entityMetaBlueprintCode(e: Entity): number {
-  if (e.unit !== null) return unitTypeToCode(e.unit.unitType);
-  if (e.buildingType !== null) return buildingTypeToCode(e.buildingType);
+  if (e.unit !== null) return unitBlueprintIdToCode(e.unit.unitBlueprintId);
+  if (e.buildingBlueprintId !== null) return buildingBlueprintIdToCode(e.buildingBlueprintId);
   return 0xff;
 }
 
@@ -748,7 +748,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       w.id,
       ENTITY_META_KIND_TURRET,
       ENTITY_META_BLUEPRINT_KIND_TURRET,
-      turretIdToCode(w.config.id),
+      turretBlueprintIdToCode(w.config.turretBlueprintId),
       ownership !== null ? ownership.playerId : -1,
       teamId,
       w.parentId,

@@ -6,7 +6,7 @@ import type {
   SpinConfig,
 } from './config';
 import type { SoundEntry } from './audio';
-import type { ShotId, TurretId, UnitTypeId } from './blueprintIds';
+import type { ShotBlueprintId, TurretBlueprintId, UnitBlueprintId } from './blueprintIds';
 import type { TurretRangeOverrides } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
@@ -110,13 +110,13 @@ export type WeaponKind = 'attack' | 'construction' | 'repair';
 export const WEAPON_KINDS: readonly WeaponKind[] = ['attack', 'construction', 'repair'];
 
 export type TurretBlueprint = {
-  id: TurretId;
+  turretBlueprintId: TurretBlueprintId;
   /** Role category. See WeaponKind. Used by the blueprint loader to
    *  group a host's mounts and enforce exactly-one-host-directed-per-kind,
    *  and to route host commands (attack/build/repair) to the matching
    *  primary turret. */
   kind: WeaponKind;
-  shotId: ShotId | null;
+  shotBlueprintId: ShotBlueprintId | null;
   range: number;
   cooldown: number;
   color: number;
@@ -227,7 +227,7 @@ export type UnitTurretMountZResolver = {
 };
 
 export type TurretMount = {
-  turretId: TurretId;
+  turretBlueprintId: TurretBlueprintId;
   mount: MountOffset;
   /** Host-directed vs fully-autonomous targeting policy for THIS mount.
    *  A host-directed turret inherits its host's lock-on (player/AI
@@ -253,7 +253,7 @@ export type TurretMount = {
  *  This mirrors unit TurretMount semantics after unit mounts have been
  *  multiplied by unit radius. */
 export type BuildingTurretMount = {
-  turretId: TurretId;
+  turretBlueprintId: TurretBlueprintId;
   mount: MountOffset;
   /** Host-directed vs fully-autonomous targeting policy for THIS mount.
    *  See TurretMount.hostDirected — towers follow the same primary /
@@ -319,7 +319,7 @@ export type LocomotionPhysics = {
 export type PathfindingTerrainMode = 'land' | 'anywhere';
 
 export type PathfindingBlueprint = {
-  id: string;
+  pathfindingBlueprintId: string;
   /** `land` uses terrain/water/slope blocking; `anywhere` ignores
    *  terrain blocking while still respecting map bounds and buildings. */
   terrainMode: PathfindingTerrainMode;
@@ -331,7 +331,7 @@ export type PathfindingBlueprint = {
 type LocomotionBlueprintBase = {
   physics: LocomotionPhysics;
   /** Authored reference into pathfindingConfig.json. */
-  pathfindingId: string;
+  pathfindingBlueprintId: string;
   /** Resolved pathfinding profile; filled by the blueprint loader. */
   pathfinding: PathfindingBlueprint;
 };
@@ -513,7 +513,7 @@ export type DetectorBlueprint = {
 };
 
 export type UnitBlueprint = LockOnExclusionObject & {
-  id: UnitTypeId;
+  unitBlueprintId: UnitBlueprintId;
   name: string;
   shortName: string;
   hp: number;
@@ -545,14 +545,14 @@ export type UnitBlueprint = LockOnExclusionObject & {
   /** Authored locomotion blueprint id. Kept alongside the resolved
    *  locomotion object so renderer-side use-specific config can key by
    *  locomotion profile without re-reading unit JSON. */
-  locomotionId: string;
+  locomotionBlueprintId: string;
   locomotion: LocomotionBlueprint;
   /** Optional chassis-vs-locomotion spring. When omitted the unit
    *  body stays rigidly attached to locomotion, matching legacy
    *  behavior. */
   suspension: UnitSuspensionConfig | null;
   builder: { buildRange: number; constructionRate: number } | null;
-  dgun: { turretId: TurretId; energyCost: number } | null;
+  dgun: { turretBlueprintId: TurretBlueprintId; energyCost: number } | null;
   cloak: CloakBlueprint | null;
   detector: DetectorBlueprint | null;
   deathSound: SoundEntry | null;

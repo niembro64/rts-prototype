@@ -362,9 +362,9 @@ function packActionsIntoScratch(
     view[base + 6] = action.pathExp === true ? 1 : 0;
     view[base + 7] = action.targetId !== null ? 1 : 0;
     view[base + 8] = action.targetId ?? 0;
-    view[base + 9] = action.buildingType !== null ? 1 : 0;
-    view[base + 10] = action.buildingType !== null
-      ? stringSlots.get(action.buildingType) ?? 0
+    view[base + 9] = action.buildingBlueprintId !== null ? 1 : 0;
+    view[base + 10] = action.buildingBlueprintId !== null
+      ? stringSlots.get(action.buildingBlueprintId) ?? 0
       : 0;
     view[base + 11] = grid !== null ? 1 : 0;
     view[base + 12] = grid !== null ? grid.x : 0;
@@ -394,7 +394,7 @@ function packTurretsIntoScratch(
     view[base + 1] = angular.vel;
     view[base + 2] = angular.pitch;
     view[base + 3] = angular.pitchVel;
-    view[base + 4] = src.turret.id;
+    view[base + 4] = src.turret.turretBlueprintCode;
     view[base + 5] = src.state;
     view[base + 6] = src.targetId !== null ? 1 : 0;
     view[base + 7] = src.targetId ?? 0;
@@ -405,7 +405,7 @@ function packTurretsIntoScratch(
 
 function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
-    (unit.unitType !== null && !isUint(unit.unitType, 0xFFFF_FFFF)) ||
+    (unit.unitBlueprintCode !== null && !isUint(unit.unitBlueprintCode, 0xFFFF_FFFF)) ||
     (unit.radius !== null && (
       !Number.isFinite(unit.radius.body) ||
       !Number.isFinite(unit.radius.shot) ||
@@ -426,7 +426,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
   const strings: string[] = [];
   if (actions) {
     for (const action of actions) {
-      if (action.buildingType !== null) strings.push(action.buildingType);
+      if (action.buildingBlueprintId !== null) strings.push(action.buildingBlueprintId);
     }
   }
   const stringSlots = packStringsIntoScratch(sim, strings);
@@ -453,8 +453,8 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     hp !== null ? hp.curr : 0,
     hp !== null ? hp.max : 0,
     velocity !== null ? velocity.x : 0, velocity !== null ? velocity.y : 0, velocity !== null ? velocity.z : 0,
-    unit.unitType !== null ? 1 : 0,
-    unit.unitType ?? 0,
+    unit.unitBlueprintCode !== null ? 1 : 0,
+    unit.unitBlueprintCode ?? 0,
     radius !== null ? 1 : 0,
     radius !== null && radius.body !== null ? radius.body : 0,
     radius !== null && radius.shot !== null ? radius.shot : 0,
@@ -496,7 +496,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
 function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
   const factory = building.factory;
   return (
-    (building.type !== null && typeof building.type !== 'number') ||
+    (building.buildingBlueprintCode !== null && typeof building.buildingBlueprintCode !== 'number') ||
     (factory !== null && factory.queue.some((code) => !isUint(code, 0xFFFF_FFFF)))
   );
 }
@@ -535,8 +535,8 @@ function encodeBuildingEntity(
     entity.playerId,
     entity.changedFields !== null ? 1 : 0,
     entity.changedFields ?? 0,
-    building.type !== null ? 1 : 0,
-    building.type ?? 0,
+    building.buildingBlueprintCode !== null ? 1 : 0,
+    building.buildingBlueprintCode ?? 0,
     dim !== null ? 1 : 0,
     dim !== null ? dim.x : 0,
     dim !== null ? dim.y : 0,
@@ -590,7 +590,7 @@ function encodeEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity): boolea
   if (entity.type === 'building' || entity.type === 'tower') {
     // Towers and buildings share the same static wire row. The
     // TOWER vs BUILDING peer discriminator is reconstructed on the
-    // receive side via isTowerBuildingType().
+    // receive side via isTowerBuildingBlueprintId().
     if (entity.unit !== null) return false;
     if (entity.building !== null) return encodeBuildingEntity(sim, entity, entity.building);
     const pos = entity.pos;
@@ -1128,7 +1128,7 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
   const unitsAllowed = meta.units.allowed;
   const unitsAllowedSlotStart = strings.length;
   if (unitsAllowed !== undefined) {
-    for (const unitType of unitsAllowed) pushString(unitType);
+    for (const unitBlueprintId of unitsAllowed) pushString(unitBlueprintId);
   }
 
   const snapsRate = meta.snaps.rate;
@@ -1321,7 +1321,7 @@ function packPackedDeathContextsIntoScratch(
     if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
     if (context.pushRadius !== undefined) flags |= DEATH_HAS_PUSH_RADIUS;
     if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
-    if (context.unitType !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
+    if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
     if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
     if (context.turretPoses !== undefined) flags |= DEATH_HAS_TURRET_POSES;
 
@@ -1345,8 +1345,8 @@ function packPackedDeathContextsIntoScratch(
     view[base + 12] = context.baseZ !== undefined
       ? quantizeProjectilePosition(context.baseZ)
       : 0;
-    view[base + 13] = context.unitType !== undefined
-      ? stringSlots.get(context.unitType) ?? 0
+    view[base + 13] = context.unitBlueprintId !== undefined
+      ? stringSlots.get(context.unitBlueprintId) ?? 0
       : 0;
     view[base + 14] = context.rotation !== undefined
       ? quantizeRotation(context.rotation)
@@ -1462,7 +1462,7 @@ function packPackedAudioEventsIntoScratch(
     view[base + 12] = event.sourceType !== null
       ? AUDIO_EVENT_SOURCE_TYPE_CODES[event.sourceType] ?? 0
       : 0;
-    view[base + 13] = stringSlots.get(event.turretId) ?? 0;
+    view[base + 13] = stringSlots.get(event.turretBlueprintId) ?? 0;
     view[base + 14] = event.sourceKey !== null
       ? stringSlots.get(event.sourceKey) ?? 0
       : 0;
@@ -1477,11 +1477,11 @@ function emitPackedAudioEvents(
   const strings: string[] = [];
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
-    strings.push(event.turretId);
+    strings.push(event.turretBlueprintId);
     if (event.sourceKey !== null) strings.push(event.sourceKey);
     const deathContext = event.deathContext;
-    if (deathContext !== null && deathContext.unitType !== undefined) {
-      strings.push(deathContext.unitType);
+    if (deathContext !== null && deathContext.unitBlueprintId !== undefined) {
+      strings.push(deathContext.unitBlueprintId);
     }
   }
 

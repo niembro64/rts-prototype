@@ -6,7 +6,7 @@
  * language-neutral for the Rust/WASM port.
  */
 
-import { isTurretId, type TurretId } from '../../../types/blueprintIds';
+import { isTurretBlueprintId, type TurretBlueprintId } from '../../../types/blueprintIds';
 import {
   TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS,
   TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
@@ -18,7 +18,7 @@ import { assertExplicitFields } from './jsonValidation';
 import type { TurretBlueprint } from './types';
 
 const TURRET_EXPLICIT_FIELDS = [
-  'shotId',
+  'shotBlueprintId',
   'cooldown',
   'launchForce',
   'isManualFire',
@@ -85,27 +85,27 @@ function assertEnumArray(
 
 export const TURRET_BLUEPRINTS = resolveBlueprintRefs(
   rawTurretBlueprints,
-) as unknown as Record<TurretId, TurretBlueprint>;
+) as unknown as Record<TurretBlueprintId, TurretBlueprint>;
 
 export const CONSTRUCTION_TURRET_HEAD_RADIUS =
   TURRET_BLUEPRINTS.turretConstruction.radius.body;
 
 export function getTurretBlueprint(id: string): TurretBlueprint {
-  if (!isTurretId(id)) throw new Error(`Unknown weapon blueprint: ${id}`);
+  if (!isTurretBlueprintId(id)) throw new Error(`Unknown weapon blueprint: ${id}`);
   const turretBlueprint = TURRET_BLUEPRINTS[id];
   return turretBlueprint;
 }
 
 for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
-  if (blueprint.id !== id) {
+  if (blueprint.turretBlueprintId !== id) {
     throw new Error(
-      `Turret blueprint key/id mismatch: ${id} contains ${blueprint.id}`,
+      `Turret blueprint key/id mismatch: ${id} contains ${blueprint.turretBlueprintId}`,
     );
   }
   assertExplicitFields(`turret blueprint ${id}`, blueprint, TURRET_EXPLICIT_FIELDS);
   if (Object.prototype.hasOwnProperty.call(blueprint, 'forceField')) {
     throw new Error(
-      `Invalid turret blueprint ${id}: forceField emission data belongs in shots.json and must be referenced by shotId`,
+      `Invalid turret blueprint ${id}: forceField emission data belongs in shots.json and must be referenced by shotBlueprintId`,
     );
   }
 

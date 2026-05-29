@@ -729,7 +729,7 @@ export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
   } as ForceFieldImpactVisualConfig;
 
 /**
- * Force field turret (grate) configuration per unit type.
+ * Force field turret (grate) configuration per unit blueprint.
  * All length/width values are multipliers of the unit's collision radius.
  */
 export const FORCE_FIELD_TURRET: Record<string, ForceFieldTurretConfig> =

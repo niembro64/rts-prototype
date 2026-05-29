@@ -1,19 +1,20 @@
 // Stable blueprint ids shared by config, network coding, and event routing.
 // Keep these arrays append-only where they are used for wire codes.
 
-export const UNIT_TYPE_IDS = [
+export const UNIT_BLUEPRINT_IDS = [
   'jackal', 'lynx', 'badger', 'mongoose', 'mammoth',
   'tick', 'tarantula', 'loris', 'daddy', 'widow',
   'formik', 'hippo', 'commander', 'mosquito', 'dragonfly',
   'eagle', 'constructionDrone',
 ] as const;
-export type UnitTypeId = typeof UNIT_TYPE_IDS[number];
+export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
-export const BUILDING_TYPE_IDS = [
+export const BUILDING_BLUEPRINT_IDS = [
   'solar', 'wind', 'factory', 'extractor', 'megaBeamTower', 'cannonTower', 'radar', 'resourceConverter',
 ] as const;
+export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
-export const SHOT_IDS = [
+export const SHOT_BLUEPRINT_IDS = [
   'lightShot',
   'mediumShot',
   'lightRocket',
@@ -28,9 +29,9 @@ export const SHOT_IDS = [
   'megaMortarShot',
   'forceFieldBarrierShot',
 ] as const;
-export type ShotId = typeof SHOT_IDS[number];
+export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];
 
-export const TURRET_IDS = [
+export const TURRET_BLUEPRINT_IDS = [
   'turretGunLight',
   'turretRocketSlow',
   'turretCannon',
@@ -50,20 +51,25 @@ export const TURRET_IDS = [
   'turretMortarDrop',
   'turretRocketFast',
 ] as const;
-export type TurretId = typeof TURRET_IDS[number];
+export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 
-const UNIT_TYPE_ID_SET = new Set<string>(UNIT_TYPE_IDS);
-const SHOT_ID_SET = new Set<string>(SHOT_IDS);
-const TURRET_ID_SET = new Set<string>(TURRET_IDS);
+const UNIT_BLUEPRINT_ID_SET = new Set<string>(UNIT_BLUEPRINT_IDS);
+const BUILDING_BLUEPRINT_ID_SET = new Set<string>(BUILDING_BLUEPRINT_IDS);
+const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
+const TURRET_BLUEPRINT_ID_SET = new Set<string>(TURRET_BLUEPRINT_IDS);
 
-export function isUnitTypeId(value: string): value is UnitTypeId {
-  return UNIT_TYPE_ID_SET.has(value);
+export function isUnitBlueprintId(value: string): value is UnitBlueprintId {
+  return UNIT_BLUEPRINT_ID_SET.has(value);
 }
 
-export function isShotId(value: string): value is ShotId {
-  return SHOT_ID_SET.has(value);
+export function isBuildingBlueprintId(value: string): value is BuildingBlueprintId {
+  return BUILDING_BLUEPRINT_ID_SET.has(value);
 }
 
-export function isTurretId(value: string): value is TurretId {
-  return TURRET_ID_SET.has(value);
+export function isShotBlueprintId(value: string): value is ShotBlueprintId {
+  return SHOT_BLUEPRINT_ID_SET.has(value);
+}
+
+export function isTurretBlueprintId(value: string): value is TurretBlueprintId {
+  return TURRET_BLUEPRINT_ID_SET.has(value);
 }

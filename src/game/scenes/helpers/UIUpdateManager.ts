@@ -6,13 +6,13 @@ import { economyManager } from '../../sim/economy';
 import { getUnitBlueprint } from '../../sim/blueprints';
 import { isCommander } from '../../sim/combat/combatUtils';
 import { hasQueuedActionIntents } from '../../sim/unitActionIntents';
-import { buildingTypeHasActiveState } from '../../sim/buildingActiveState';
+import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
 
-function unitLabel(unitType: string): string {
+function unitLabel(unitBlueprintId: string): string {
   try {
-    return getUnitBlueprint(unitType).name;
+    return getUnitBlueprint(unitBlueprintId).name;
   } catch {
-    return unitType;
+    return unitBlueprintId;
   }
 }
 
@@ -125,7 +125,7 @@ export function buildSelectionInfo(
   let allBuildingsOpen = true;
   for (let i = 0; i < selectedBuildings.length; i++) {
     const b = selectedBuildings[i];
-    if (!buildingTypeHasActiveState(b.buildingType)) continue;
+    if (!buildingBlueprintHasActiveState(b.buildingBlueprintId)) continue;
     activeBuildingCount++;
     const state = b.building !== null ? b.building.activeState : null;
     if (state === null || state.open === false) allBuildingsOpen = false;
@@ -151,15 +151,15 @@ export function buildSelectionInfo(
   }
 
   // Get factory queue info if factory is selected
-  let factoryQueue: { unitId: string; label: string }[] | undefined;
+  let factoryQueue: { unitBlueprintId: string; label: string }[] | undefined;
   let factoryProgress: number | undefined;
   let factoryIsProducing: boolean | undefined;
 
   if (factory?.factory) {
     const f = factory.factory;
-    factoryQueue = f.buildQueue.map(unitType => ({
-      unitId: unitType,
-      label: unitLabel(unitType),
+    factoryQueue = f.buildQueue.map(unitBlueprintId => ({
+      unitBlueprintId: unitBlueprintId,
+      label: unitLabel(unitBlueprintId),
     }));
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;
@@ -187,7 +187,7 @@ export function buildSelectionInfo(
     commanderId: commander?.id,
     waypointMode: inputState?.waypointMode ?? 'move' as WaypointType,
     isBuildMode: inputState?.isBuildMode ?? false,
-    selectedBuildingType: inputState?.selectedBuildingType ?? null,
+    selectedBuildingBlueprintId: inputState?.selectedBuildingBlueprintId ?? null,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
     isAttackAreaMode: inputState?.isAttackAreaMode ?? false,
@@ -218,7 +218,7 @@ export function buildEconomyInfo(
   let factoryCount = 0;
   let extractorCount = 0;
   for (let i = 0; i < playerBuildings.length; i++) {
-    switch (playerBuildings[i].buildingType) {
+    switch (playerBuildings[i].buildingBlueprintId) {
       case 'solar': solarCount++; break;
       case 'wind': windCount++; break;
       case 'factory': factoryCount++; break;

@@ -39,7 +39,7 @@ import {
   spawnMetalExtractorsOnDeposits,
 } from '../sim/spawn';
 import type { Entity, PlayerId } from '../sim/types';
-import { BACKGROUND_UNIT_TYPES, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
+import { BACKGROUND_UNIT_BLUEPRINT_IDS, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
 import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 
@@ -50,7 +50,7 @@ export interface BootstrappedServerWorld {
   commandQueue: CommandQueue;
   playerIds: PlayerId[];
   backgroundMode: boolean;
-  backgroundAllowedTypes: Set<string>;
+  backgroundAllowedUnitBlueprintIds: Set<string>;
   terrainTileMap: TerrainTileMap;
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
 }
@@ -135,8 +135,8 @@ export class ServerBootstrap {
     simulation.setPlayerIds(playerIds);
     await report(0.66, 'Creating simulation');
 
-    const backgroundAllowedTypes = new Set(
-      config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
+    const backgroundAllowedUnitBlueprintIds = new Set(
+      config.initialAllowedUnitBlueprintIds ?? BACKGROUND_UNIT_BLUEPRINT_IDS,
     );
     if (config.initialMaxTotalUnits !== undefined && config.initialMaxTotalUnits > 0) {
       world.maxTotalUnits = config.initialMaxTotalUnits;
@@ -156,7 +156,7 @@ export class ServerBootstrap {
         constructionSystem,
         playerIds,
         'demo',
-        backgroundAllowedTypes,
+        backgroundAllowedUnitBlueprintIds,
       );
       await report(0.78, 'Spawning bases');
 
@@ -177,7 +177,7 @@ export class ServerBootstrap {
       spawnBackgroundUnitsStandalone(
         world, physics, true,
         constructionSystem.getGrid(),
-        backgroundAllowedTypes,
+        backgroundAllowedUnitBlueprintIds,
         playerIds,
       );
       await report(0.94, 'Demo units ready');
@@ -204,7 +204,7 @@ export class ServerBootstrap {
       commandQueue,
       playerIds,
       backgroundMode,
-      backgroundAllowedTypes,
+      backgroundAllowedUnitBlueprintIds,
       terrainTileMap,
       terrainBuildabilityGrid,
     };
@@ -292,8 +292,8 @@ export class ServerBootstrap {
     // initial spawn picks from the restricted set. Otherwise we'd
     // create units of disallowed types and immediately wipe them via
     // the toggle handler.
-    const backgroundAllowedTypes = new Set(
-      config.initialAllowedTypes ?? BACKGROUND_UNIT_TYPES,
+    const backgroundAllowedUnitBlueprintIds = new Set(
+      config.initialAllowedUnitBlueprintIds ?? BACKGROUND_UNIT_BLUEPRINT_IDS,
     );
     // Same ordering rule for the unit cap: the demo spawn now fills
     // `maxTotalUnits / numPlayers` slots per team, so the cap must
@@ -326,7 +326,7 @@ export class ServerBootstrap {
         constructionSystem,
         playerIds,
         'demo',
-        backgroundAllowedTypes,
+        backgroundAllowedUnitBlueprintIds,
       );
       entities.push(...spawnMetalExtractorsOnDeposits(world, constructionSystem, playerIds));
       ServerBootstrap.createInitialPhysicsBodies(world, physics, entities);
@@ -335,7 +335,7 @@ export class ServerBootstrap {
       spawnBackgroundUnitsStandalone(
         world, physics, true,
         constructionSystem.getGrid(),
-        backgroundAllowedTypes,
+        backgroundAllowedUnitBlueprintIds,
         playerIds,
       );
     } else {
@@ -351,7 +351,7 @@ export class ServerBootstrap {
       commandQueue,
       playerIds,
       backgroundMode,
-      backgroundAllowedTypes,
+      backgroundAllowedUnitBlueprintIds,
       terrainTileMap,
       terrainBuildabilityGrid,
     };

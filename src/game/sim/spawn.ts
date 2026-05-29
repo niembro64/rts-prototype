@@ -1,7 +1,7 @@
 import type { WorldState } from './WorldState';
-import type { Entity, PlayerId, BuildingType } from './types';
+import type { Entity, PlayerId, BuildingBlueprintId } from './types';
 import { createCombatComponent } from './types';
-import { isTowerBuildingType } from '../../types/buildingTypes';
+import { isTowerBuildingBlueprintId } from '../../types/buildingTypes';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
@@ -9,7 +9,7 @@ import { setUnitFacingYaw } from './unitOrientation';
 import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
-import { BUILDABLE_UNIT_IDS, getBuildingBlueprint } from './blueprints';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS, getBuildingBlueprint } from './blueprints';
 import { applyEntitySensorBlueprint } from './cloakDetection';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
@@ -19,7 +19,7 @@ import {
 } from '../../config';
 import { isWaterAt } from './Terrain';
 import {
-  buildingTypeHasActiveState,
+  buildingBlueprintHasActiveState,
   ensureBuildingActiveState,
   initializeBuildingActiveState,
 } from './buildingActiveState';
@@ -186,13 +186,13 @@ function getSpawnPositions(
 function placeCompleteBuilding(
   world: WorldState,
   construction: ConstructionSystem,
-  buildingType: BuildingType,
+  buildingBlueprintId: BuildingBlueprintId,
   worldX: number,
   worldY: number,
   playerId: PlayerId,
   factoryWaypoint: InitialFactoryWaypointConfig,
 ): Entity | null {
-  const config = getBuildingConfig(buildingType);
+  const config = getBuildingConfig(buildingBlueprintId);
   const grid = construction.getGrid();
 
   const snapped = grid.snapToGrid(worldX, worldY, config.gridWidth, config.gridHeight);
@@ -224,17 +224,17 @@ function placeCompleteBuilding(
     playerId,
   );
 
-  entity.buildingType = buildingType;
+  entity.buildingBlueprintId = buildingBlueprintId;
   // Static turret-carrying entities (fabricator + shooting towers) are
   // tower-class. Stamp the EntityType discriminator at spawn so UI and
   // dispatch code can match on entity.type === 'tower' instead of
-  // re-checking buildingType every read. See design_philosophy.html
+  // re-checking buildingBlueprintId every read. See design_philosophy.html
   // "Towers Are Static Hosts That Lock On And Fire".
-  if (isTowerBuildingType(buildingType)) {
+  if (isTowerBuildingBlueprintId(buildingBlueprintId)) {
     entity.type = 'tower';
   }
-  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
-  if (buildingTypeHasActiveState(buildingType)) {
+  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
+  if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
     ensureBuildingActiveState(entity);
   }
 
@@ -243,7 +243,7 @@ function placeCompleteBuilding(
     entity.building.maxHp = config.hp;
   }
 
-  if (buildingType === 'factory') {
+  if (buildingBlueprintId === 'factory') {
     const waypoints = factoryWaypoint.legs.map((leg) => {
       const p = computeFactoryWaypoint(
         center.x, center.y, world.mapWidth, world.mapHeight, leg.distance,
@@ -270,7 +270,7 @@ function placeCompleteBuilding(
     };
   }
 
-  if (buildingTypeHasActiveState(buildingType)) {
+  if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
     initializeBuildingActiveState(world, entity);
   }
 
@@ -280,7 +280,7 @@ function placeCompleteBuilding(
   // through the targeting / fire / turret-rotation pipelines on the
   // same code path as armed units.
   const buildingTurrets = createBuildingRuntimeTurrets(
-    buildingType,
+    buildingBlueprintId,
     entity.id,
     entity.id,
     () => world.generateEntityId(),
@@ -330,7 +330,7 @@ export function spawnInitialEntities(world: WorldState, playerIds: PlayerId[] = 
 function placeArcRow(
   world: WorldState,
   construction: ConstructionSystem,
-  buildingType: BuildingType,
+  buildingBlueprintId: BuildingBlueprintId,
   count: number,
   oval: MapOvalMetrics,
   radius: number,
@@ -349,7 +349,7 @@ function placeArcRow(
     const e = placeCompleteBuilding(
       world,
       construction,
-      buildingType,
+      buildingBlueprintId,
       point.x,
       point.y,
       playerId,
@@ -360,24 +360,24 @@ function placeArcRow(
   return entities;
 }
 
-function getAvailableDemoFactoryUnitTypes(
-  availableUnitTypes: ReadonlySet<string> | undefined = undefined,
+function getAvailableDemoFactoryUnitBlueprintIds(
+  availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): string[] {
-  return BUILDABLE_UNIT_IDS.filter((unitType) =>
-    availableUnitTypes ? availableUnitTypes.has(unitType) : true,
+  return BUILDABLE_UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
+    availableUnitBlueprintIds ? availableUnitBlueprintIds.has(unitBlueprintId) : true,
   );
 }
 
-function seedFactoryRepeatBuild(factory: Entity, unitType: string): void {
+function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void {
   if (!factory.factory) return;
   factory.factory.buildQueue.length = 0;
-  factory.factory.buildQueue.push(unitType);
+  factory.factory.buildQueue.push(unitBlueprintId);
 }
 
-function placeFactoryArcRowForUnitTypes(
+function placeFactoryArcRowForUnitBlueprintIds(
   world: WorldState,
   construction: ConstructionSystem,
-  unitTypes: readonly string[],
+  unitBlueprintIds: readonly string[],
   oval: MapOvalMetrics,
   radius: number,
   baseAngle: number,
@@ -385,7 +385,7 @@ function placeFactoryArcRowForUnitTypes(
   playerId: PlayerId,
   factoryWaypoint: InitialFactoryWaypointConfig,
 ): Entity[] {
-  const count = unitTypes.length;
+  const count = unitBlueprintIds.length;
   if (count <= 0) return [];
   const entities: Entity[] = [];
   const startAngle = baseAngle - sectorAngle / 2;
@@ -404,7 +404,7 @@ function placeFactoryArcRowForUnitTypes(
       factoryWaypoint,
     );
     if (!factory) continue;
-    seedFactoryRepeatBuild(factory, unitTypes[j]);
+    seedFactoryRepeatBuild(factory, unitBlueprintIds[j]);
     entities.push(factory);
   }
 
@@ -426,7 +426,7 @@ function placeFactoryArcRowForUnitTypes(
  * Each arc spans the same angular sector for the player, and every
  * building faces the map center. Solar/wind/tower counts and oval radius
  * fractions are controlled by DEMO_CONFIG. Fabricators are derived from the
- * active demo unit roster: one fabricator per available unit type, seeded
+ * active demo unit roster: one fabricator per available unit blueprint, seeded
  * to repeat-build that unit.
  */
 export function spawnInitialBases(
@@ -434,7 +434,7 @@ export function spawnInitialBases(
   construction: ConstructionSystem,
   playerIds: PlayerId[],
   mode: InitialBaseMode = 'demo',
-  availableUnitTypes: ReadonlySet<string> | undefined = undefined,
+  availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): Entity[] {
   const entities: Entity[] = [];
 
@@ -450,7 +450,7 @@ export function spawnInitialBases(
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
-  const factoryUnitTypes = getAvailableDemoFactoryUnitTypes(availableUnitTypes);
+  const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(availableUnitBlueprintIds);
 
   // Concentric radii — outermost to innermost: commander, solar, wind,
   // fabricator, megaBeam tower, cannon tower. Each ring is explicit so
@@ -528,12 +528,12 @@ export function spawnInitialBases(
       oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
-    // Fabricator arc — one fabricator per available demo unit type.
+    // Fabricator arc — one fabricator per available demo unit blueprint.
     // Each fabricator starts with a repeat-build selection matching
-    // its unit type, so the base layout and AI production inventory
+    // its unit blueprint, so the base layout and AI production inventory
     // stay tied to the same unit roster.
-    entities.push(...placeFactoryArcRowForUnitTypes(
-      world, construction, factoryUnitTypes,
+    entities.push(...placeFactoryArcRowForUnitBlueprintIds(
+      world, construction, factoryUnitBlueprintIds,
       oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 

@@ -41,7 +41,7 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
   const explosion = shot.explosion;
   const explosionRadius = explosion === undefined ? 0 : explosion.radius;
   return {
-    id: shot.id,
+    shotBlueprintId: shot.shotBlueprintId,
     type: shot.type,
     projectileType: 'projectile',
     isProjectile: true,
@@ -70,7 +70,7 @@ function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
     projectileFinSizeMult: shot.type === 'rocket' ? ROCKET_FIN_SIZE_MULT : 0,
     debugCollisionRadius: collisionRadius,
     debugExplosionRadius: explosion === undefined ? 0 : explosion.radius,
-    smokeTrail: getProjectileSmokeTrailSpec(shot.id, shot.smokeTrail),
+    smokeTrail: getProjectileSmokeTrailSpec(shot.shotBlueprintId, shot.smokeTrail),
     burnMarkWidth: collisionRadius * 1.5,
     lineRadius: 0,
     lineDamageSphereRadius: 0,
@@ -83,7 +83,7 @@ function buildLineRuntimeProfile(shot: ActiveProjectileShot): ShotRuntimeProfile
     throw new Error(`Cannot build line shot profile for shot.type=${shot.type}`);
   }
   return {
-    id: shot.id,
+    shotBlueprintId: shot.shotBlueprintId,
     type: shot.type,
     projectileType: shot.type,
     isProjectile: false,
@@ -116,7 +116,7 @@ function buildLineVisualProfile(shot: ActiveProjectileShot): ShotVisualProfile {
     lineRadius: shot.radius,
     lineDamageSphereRadius: shot.damageSphere.radius,
     lineEmissionOffset:
-      shot.type === 'beam' ? (BEAM_EMISSION_OFFSET_BY_SHOT[shot.id] ?? 0) : 0,
+      shot.type === 'beam' ? (BEAM_EMISSION_OFFSET_BY_SHOT[shot.shotBlueprintId] ?? 0) : 0,
   };
 }
 

@@ -62,9 +62,9 @@ import {
   type SimWasm,
 } from '../../sim-wasm/init';
 import {
-  buildingTypeToCode,
-  turretIdToCode,
-  unitTypeToCode,
+  buildingBlueprintIdToCode,
+  turretBlueprintIdToCode,
+  unitBlueprintIdToCode,
 } from '../../../types/network';
 import {
   EMPTY_LOCK_ON_MASKS,
@@ -103,9 +103,9 @@ let _stampPrevCooldown = new Float64Array(0);
 let _stampPrevBurstCooldown = new Float64Array(0);
 
 function getHostLockOnMasks(entity: Entity): LockOnMasks {
-  if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitType);
-  if (entity.type === 'tower' && entity.buildingType !== null) {
-    return getTowerHostLockOnMasks(entity.buildingType);
+  if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitBlueprintId);
+  if (entity.type === 'tower' && entity.buildingBlueprintId !== null) {
+    return getTowerHostLockOnMasks(entity.buildingBlueprintId);
   }
   return EMPTY_LOCK_ON_MASKS;
 }
@@ -503,13 +503,13 @@ function stampCombatTargetingEntityInto(
   let entityBlueprintCode: number = CT_BLUEPRINT_CODE_NONE;
   if (entity.unit) {
     entityFamily = CT_ENTITY_FAMILY_UNIT;
-    entityBlueprintCode = unitTypeToCode(entity.unit.unitType);
+    entityBlueprintCode = unitBlueprintIdToCode(entity.unit.unitBlueprintId);
   } else if (entity.building) {
     entityFamily =
       entity.type === 'tower' ? CT_ENTITY_FAMILY_TOWER : CT_ENTITY_FAMILY_BUILDING;
-    const buildingType = entity.buildingType;
+    const buildingBlueprintId = entity.buildingBlueprintId;
     entityBlueprintCode =
-      buildingType !== null ? buildingTypeToCode(buildingType) : CT_BLUEPRINT_CODE_NONE;
+      buildingBlueprintId !== null ? buildingBlueprintIdToCode(buildingBlueprintId) : CT_BLUEPRINT_CODE_NONE;
   }
   const hostLockOn = getHostLockOnMasks(entity);
 
@@ -658,7 +658,7 @@ function stampCombatTargetingEntityInto(
       t.config.groundAimFraction ?? 0,
       angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
       t.config.aimStyle.lockOnType === 'lockOnToTurret' ? 1 : 0,
-      turretIdToCode(t.config.id),
+      turretBlueprintIdToCode(t.config.turretBlueprintId),
       t.config.lockOnRelationshipExcludeMask,
       t.config.lockOnEntityFamilyExcludeMask,
       t.config.lockOnBuildingExcludeMask,

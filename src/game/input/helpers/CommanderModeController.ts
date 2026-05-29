@@ -9,59 +9,61 @@
 // builder selected" for build or "is a commander selected" for D-gun)
 // before calling `enter*`.
 
-import type { Entity, BuildingType } from '../../sim/types';
+import type { Entity, BuildingBlueprintId } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
 import { getAllBuildings } from '../../sim/buildConfigs';
 import { getSnappedBuildPosition } from './BuildPlacementValidator';
 
-const BUILDING_TYPES = getAllBuildings().map((building) => building.id);
-const DEFAULT_BUILDING_TYPE: BuildingType = BUILDING_TYPES[0] ?? 'solar';
+const BUILD_MODE_BUILDING_BLUEPRINT_IDS = getAllBuildings().map(
+  (building) => building.buildingBlueprintId,
+);
+const DEFAULT_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = BUILD_MODE_BUILDING_BLUEPRINT_IDS[0] ?? 'solar';
 
-export function getBuildModeBuildingTypes(): readonly BuildingType[] {
-  return BUILDING_TYPES;
+export function getBuildModeBuildingBlueprintIds(): readonly BuildingBlueprintId[] {
+  return BUILD_MODE_BUILDING_BLUEPRINT_IDS;
 }
 
-export function getDefaultBuildModeBuildingType(): BuildingType {
-  return DEFAULT_BUILDING_TYPE;
+export function getDefaultBuildModeBuildingBlueprintId(): BuildingBlueprintId {
+  return DEFAULT_BUILDING_BLUEPRINT_ID;
 }
 
-export function getBuildModeBuildingTypeByIndex(index: number): BuildingType | null {
-  return BUILDING_TYPES[index] ?? null;
+export function getBuildModeBuildingBlueprintIdByIndex(index: number): BuildingBlueprintId | null {
+  return BUILD_MODE_BUILDING_BLUEPRINT_IDS[index] ?? null;
 }
 
 export class CommanderModeController {
-  private _buildType: BuildingType | null = null;
+  private _buildBuildingBlueprintId: BuildingBlueprintId | null = null;
   private _isDGun = false;
 
   /** Fired when the build mode enters / exits / changes building
-   *  type. Receives the new building type or null. */
-  public onBuildModeChange?: (type: BuildingType | null) => void;
+   *  blueprint id. Receives the new building blueprint id or null. */
+  public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
   /** Fired when D-gun mode toggles. */
   public onDGunModeChange?: (active: boolean) => void;
 
-  get isInBuildMode(): boolean { return this._buildType !== null; }
+  get isInBuildMode(): boolean { return this._buildBuildingBlueprintId !== null; }
   get isInDGunMode(): boolean { return this._isDGun; }
-  get buildingType(): BuildingType | null { return this._buildType; }
+  get buildingBlueprintId(): BuildingBlueprintId | null { return this._buildBuildingBlueprintId; }
 
-  enterBuildMode(type: BuildingType): void {
+  enterBuildMode(buildingBlueprintId: BuildingBlueprintId): void {
     if (this._isDGun) {
       this._isDGun = false;
       this.onDGunModeChange?.(false);
     }
-    if (this._buildType === type) return;
-    this._buildType = type;
-    this.onBuildModeChange?.(type);
+    if (this._buildBuildingBlueprintId === buildingBlueprintId) return;
+    this._buildBuildingBlueprintId = buildingBlueprintId;
+    this.onBuildModeChange?.(buildingBlueprintId);
   }
 
   exitBuildMode(): void {
-    if (this._buildType === null) return;
-    this._buildType = null;
+    if (this._buildBuildingBlueprintId === null) return;
+    this._buildBuildingBlueprintId = null;
     this.onBuildModeChange?.(null);
   }
 
   enterDGunMode(): void {
-    if (this._buildType !== null) {
-      this._buildType = null;
+    if (this._buildBuildingBlueprintId !== null) {
+      this._buildBuildingBlueprintId = null;
       this.onBuildModeChange?.(null);
     }
     if (this._isDGun) return;
@@ -82,21 +84,22 @@ export class CommanderModeController {
     else this.enterDGunMode();
   }
 
-  /** Cycle through the defined building types. No-op if not
+  /** Cycle through the defined building blueprint ids. No-op if not
    *  already in build mode (wouldn't know what to cycle from). */
-  cycleBuildingType(): void {
-    if (this._buildType === null) return;
-    if (BUILDING_TYPES.length === 0) return;
-    const idx = (BUILDING_TYPES.indexOf(this._buildType) + 1) % BUILDING_TYPES.length;
-    const next = BUILDING_TYPES[idx];
-    if (next === this._buildType) return;
-    this._buildType = next;
+  cycleBuildingBlueprintId(): void {
+    if (this._buildBuildingBlueprintId === null) return;
+    if (BUILD_MODE_BUILDING_BLUEPRINT_IDS.length === 0) return;
+    const idx = (BUILD_MODE_BUILDING_BLUEPRINT_IDS.indexOf(this._buildBuildingBlueprintId) + 1) %
+      BUILD_MODE_BUILDING_BLUEPRINT_IDS.length;
+    const next = BUILD_MODE_BUILDING_BLUEPRINT_IDS[idx];
+    if (next === this._buildBuildingBlueprintId) return;
+    this._buildBuildingBlueprintId = next;
     this.onBuildModeChange?.(next);
   }
 
   /** Build a startBuild command for the current build mode's
-   *  building type at the grid-snapped position. Returns null if
-   *  no building type is active. */
+   *  building blueprint at the grid-snapped position. Returns null if
+   *  no building blueprint is active. */
   buildStartBuildCommand(
     builder: Entity,
     worldX: number,
@@ -104,13 +107,13 @@ export class CommanderModeController {
     tick: number,
     queue: boolean,
   ): StartBuildCommand | null {
-    if (this._buildType === null) return null;
-    const snapped = getSnappedBuildPosition(worldX, worldY, this._buildType);
+    if (this._buildBuildingBlueprintId === null) return null;
+    const snapped = getSnappedBuildPosition(worldX, worldY, this._buildBuildingBlueprintId);
     return {
       type: 'startBuild',
       tick,
       builderId: builder.id,
-      buildingType: this._buildType,
+      buildingBlueprintId: this._buildBuildingBlueprintId,
       gridX: snapped.gridX,
       gridY: snapped.gridY,
       queue,

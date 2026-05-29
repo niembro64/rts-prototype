@@ -7,8 +7,8 @@
  * derived runtime config while the blueprint tables themselves are data.
  */
 
-import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
-import { isTowerBuildingType } from '../../../types/buildingTypes';
+import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingBlueprintId, ResourceCost } from '../types';
+import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
 import type {
   BuildingTurretMount,
   DetectorBlueprint,
@@ -22,10 +22,10 @@ import {
   LOCK_ON_EXCLUSION_FIELDS,
   validateLockOnExclusionObject,
 } from './lockOnValidation';
-import { BUILDING_TYPE_IDS } from '../../../types/blueprintIds';
+import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 
 export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
-  id: BuildingType;
+  buildingBlueprintId: BuildingBlueprintId;
   name: string;
   gridWidth: number;
   gridHeight: number;
@@ -58,21 +58,21 @@ export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
 };
 
 export const PURE_BUILDING_BLUEPRINTS =
-  rawBuildingBlueprints as Partial<Record<BuildingType, BuildingBlueprint>>;
+  rawBuildingBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
 export const TOWER_BLUEPRINTS =
-  rawTowerBlueprints as Partial<Record<BuildingType, BuildingBlueprint>>;
+  rawTowerBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
 const STATIC_BLUEPRINTS_BY_ID = {
   ...PURE_BUILDING_BLUEPRINTS,
   ...TOWER_BLUEPRINTS,
-} as Partial<Record<BuildingType, BuildingBlueprint>>;
-for (const id of BUILDING_TYPE_IDS) {
-  if (STATIC_BLUEPRINTS_BY_ID[id as BuildingType] === undefined) {
-    throw new Error(`Missing static blueprint for stable building id ${id}`);
+} as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
+for (const id of BUILDING_BLUEPRINT_IDS) {
+  if (STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId] === undefined) {
+    throw new Error(`Missing static blueprint for stable building blueprint id ${id}`);
   }
 }
 export const BUILDING_BLUEPRINTS = Object.fromEntries(
-  BUILDING_TYPE_IDS.map((id) => [id, STATIC_BLUEPRINTS_BY_ID[id as BuildingType]]),
-) as Record<BuildingType, BuildingBlueprint>;
+  BUILDING_BLUEPRINT_IDS.map((id) => [id, STATIC_BLUEPRINTS_BY_ID[id as BuildingBlueprintId]]),
+) as Record<BuildingBlueprintId, BuildingBlueprint>;
 
 for (const id of Object.keys(rawTowerBlueprints)) {
   if (Object.prototype.hasOwnProperty.call(rawBuildingBlueprints, id)) {
@@ -175,7 +175,7 @@ export function getFactoryBuildingVisualMetrics(
 
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
-  const towerBlueprint = isTowerBuildingType(id as BuildingType);
+  const towerBlueprint = isTowerBuildingBlueprintId(id as BuildingBlueprintId);
   if (towerBlueprint) {
     assertExplicitFields(`tower blueprint ${id}`, blueprint, LOCK_ON_EXCLUSION_FIELDS);
     validateLockOnExclusionObject(
@@ -191,8 +191,10 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       }
     }
   }
-  if (id !== blueprint.id) {
-    throw new Error(`Building blueprint key mismatch: key '${id}' has id '${blueprint.id}'`);
+  if (id !== blueprint.buildingBlueprintId) {
+    throw new Error(
+      `Building blueprint key mismatch: key '${id}' has buildingBlueprintId '${blueprint.buildingBlueprintId}'`,
+    );
   }
   if (!Number.isFinite(blueprint.gridWidth) || blueprint.gridWidth <= 0) {
     throw new Error(`Invalid building blueprint ${id}: gridWidth must be positive`);
@@ -216,8 +218,8 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   }
 }
 
-export function getBuildingBlueprint(type: BuildingType): BuildingBlueprint {
-  return BUILDING_BLUEPRINTS[type];
+export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): BuildingBlueprint {
+  return BUILDING_BLUEPRINTS[buildingBlueprintId];
 }
 
 export function getAllBuildingBlueprints(): BuildingBlueprint[] {

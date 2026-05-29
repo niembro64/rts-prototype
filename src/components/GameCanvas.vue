@@ -22,7 +22,7 @@ import {
   networkManager,
   type NetworkRole,
 } from '../game/network/NetworkManager';
-import { BACKGROUND_UNIT_TYPES } from '../game/server/BackgroundBattleStandalone';
+import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleStandalone';
 import {
   BATTLE_CONFIG,
   loadStoredCap,
@@ -257,8 +257,8 @@ function applyCameraFovDegrees(fov: CameraFovDegrees): void {
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
 
-// Demo battle unit type list (state read from snapshots)
-const demoUnitTypes = BACKGROUND_UNIT_TYPES;
+// Demo battle unit blueprint list (state read from snapshots)
+const demoUnitBlueprintIds = BACKGROUND_UNIT_BLUEPRINT_IDS;
 
 // Terrain-shape selection. Source of truth is localStorage; the
 // refs below mirror it so the battle bar can reactively highlight
@@ -595,7 +595,7 @@ const {
   currentForceFieldsObstructSight,
   currentFogOfWarEnabled,
   currentConverterTax,
-  toggleDemoUnitType,
+  toggleDemoUnitBlueprintId,
   toggleAllDemoUnits,
   changeMaxTotalUnits,
   setForceFieldsObstructSight,
@@ -606,7 +606,7 @@ const {
 } = useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
   currentBattleMode,
-  demoUnitTypes,
+  demoUnitBlueprintIds,
   getActiveConnection: () => activeConnection,
   resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
@@ -723,7 +723,7 @@ const {
 // forcing the child <GameCanvasBattleControlBar> + its 50-odd
 // BarButton children through a full prop diff. With per-field
 // reactivity the only re-evaluations are templates that actually
-// read the changed field. Methods and the demoUnitTypes ref are
+// read the changed field. Methods and the demoUnitBlueprintIds ref are
 // stable references so they sit on the object once at construction.
 const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   isReadonly: serverBarReadonly.value,
@@ -731,7 +731,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   battleLabel: battleLabel.value,
   battleElapsed: battleElapsed.value,
   allDemoUnitsActive: allDemoUnitsActive.value,
-  demoUnitTypes,
+  demoUnitBlueprintIds,
   currentAllowedUnits: currentAllowedUnits.value,
   currentAllowedUnitsSet: currentAllowedUnitsSet.value,
   displayUnitCap: displayUnitCap.value,
@@ -753,7 +753,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPreset,
   resetDemoDefaults,
   toggleAllDemoUnits,
-  toggleDemoUnitType,
+  toggleDemoUnitBlueprintId,
   changeMaxTotalUnits,
   applyMapLandDimensions,
   applyCenterMagnitude,
@@ -1227,7 +1227,7 @@ watchEffect(() => {
       :terrain-detail="terrainDetail"
       :map-width-land-cells="mapWidthLandCells"
       :map-length-land-cells="mapLengthLandCells"
-      :unit-types="demoUnitTypes"
+      :unit-blueprint-ids="demoUnitBlueprintIds"
       :allowed-units="currentAllowedUnits"
       :unit-cap="displayUnitCap"
       :force-fields-obstruct-sight="currentForceFieldsObstructSight"
@@ -1251,7 +1251,7 @@ watchEffect(() => {
       @set-terrain-detail="(v) => applyTerrainDetail(v)"
       @set-preset="(p) => applyPreset(p)"
       @set-map-land-dimensions="(dimensions) => applyMapLandDimensions(dimensions)"
-      @toggle-unit="(ut) => toggleDemoUnitType(ut)"
+      @toggle-unit="(ut) => toggleDemoUnitBlueprintId(ut)"
       @toggle-all-units="toggleAllDemoUnits"
       @set-unit-cap="(c) => changeMaxTotalUnits(c)"
       @set-force-fields-obstruct-sight="(e) => setForceFieldsObstructSight(e)"

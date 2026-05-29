@@ -31,7 +31,7 @@ export type GameCanvasBattleSettings = {
   currentForceFieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
   currentConverterTax: ComputedRef<number>;
-  toggleDemoUnitType(unitType: string): void;
+  toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoUnits(): void;
   changeMaxTotalUnits(value: number): void;
   setForceFieldsObstructSight(enabled: boolean): void;
@@ -44,7 +44,7 @@ export type GameCanvasBattleSettings = {
 export type GameCanvasBattleSettingsOptions = {
   serverMetaFromSnapshot: Ref<NetworkServerSnapshotMeta | null>;
   currentBattleMode: ComputedRef<BattleMode>;
-  demoUnitTypes: readonly string[];
+  demoUnitBlueprintIds: readonly string[];
   getActiveConnection: () => GameConnection | null;
   resetGridInfoToDefault: () => void;
   broadcastLobbySettingsIfHost: () => void;
@@ -63,7 +63,7 @@ export type GameCanvasBattleSettingsOptions = {
 export function useGameCanvasBattleSettings({
   serverMetaFromSnapshot,
   currentBattleMode,
-  demoUnitTypes,
+  demoUnitBlueprintIds,
   getActiveConnection,
   resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
@@ -78,15 +78,15 @@ export function useGameCanvasBattleSettings({
   const currentAllowedUnits = computed<readonly string[]>(
     () =>
       serverMetaFromSnapshot.value?.units.allowed ??
-      demoUnitTypes.filter((unitType) => BATTLE_CONFIG.units[unitType]?.default ?? false),
+      demoUnitBlueprintIds.filter((unitBlueprintId) => BATTLE_CONFIG.units[unitBlueprintId]?.default ?? false),
   );
   const currentAllowedUnitsSet = computed<ReadonlySet<string>>(
     () => new Set(currentAllowedUnits.value),
   );
   const allDemoUnitsActive = computed(() => {
     const allowed = currentAllowedUnitsSet.value;
-    for (let i = 0; i < demoUnitTypes.length; i++) {
-      if (!allowed.has(demoUnitTypes[i])) return false;
+    for (let i = 0; i < demoUnitBlueprintIds.length; i++) {
+      if (!allowed.has(demoUnitBlueprintIds[i])) return false;
     }
     return true;
   });
@@ -106,33 +106,33 @@ export function useGameCanvasBattleSettings({
       loadStoredConverterTax(currentBattleMode.value),
   );
 
-  function toggleDemoUnitType(unitType: string): void {
+  function toggleDemoUnitBlueprintId(unitBlueprintId: string): void {
     const allowed = currentAllowedUnits.value;
-    const current = allowed.includes(unitType);
+    const current = allowed.includes(unitBlueprintId);
     getActiveConnection()?.sendCommand({
-      type: 'setBackgroundUnitType',
+      type: 'setBackgroundUnitBlueprintEnabled',
       tick: 0,
-      unitType,
+      unitBlueprintId,
       enabled: !current,
     });
 
     const newList = current
-      ? allowed.filter((unit) => unit !== unitType)
-      : [...allowed, unitType];
+      ? allowed.filter((unit) => unit !== unitBlueprintId)
+      : [...allowed, unitBlueprintId];
     saveDemoUnits(newList);
   }
 
   function toggleAllDemoUnits(): void {
     const enableAll = !allDemoUnitsActive.value;
-    for (const unitType of demoUnitTypes) {
+    for (const unitBlueprintId of demoUnitBlueprintIds) {
       getActiveConnection()?.sendCommand({
-        type: 'setBackgroundUnitType',
+        type: 'setBackgroundUnitBlueprintEnabled',
         tick: 0,
-        unitType,
+        unitBlueprintId,
         enabled: enableAll,
       });
     }
-    saveDemoUnits(enableAll ? [...demoUnitTypes] : []);
+    saveDemoUnits(enableAll ? [...demoUnitBlueprintIds] : []);
   }
 
   function changeMaxTotalUnits(value: number): void {
@@ -168,12 +168,12 @@ export function useGameCanvasBattleSettings({
 
   function applyPreset(preset: BattlePreset): void {
     const presetSet = new Set(preset.units);
-    for (const unitType of demoUnitTypes) {
+    for (const unitBlueprintId of demoUnitBlueprintIds) {
       getActiveConnection()?.sendCommand({
-        type: 'setBackgroundUnitType',
+        type: 'setBackgroundUnitBlueprintEnabled',
         tick: 0,
-        unitType,
-        enabled: presetSet.has(unitType),
+        unitBlueprintId,
+        enabled: presetSet.has(unitBlueprintId),
       });
     }
     saveDemoUnits([...preset.units]);
@@ -210,7 +210,7 @@ export function useGameCanvasBattleSettings({
     currentForceFieldsObstructSight,
     currentFogOfWarEnabled,
     currentConverterTax,
-    toggleDemoUnitType,
+    toggleDemoUnitBlueprintId,
     toggleAllDemoUnits,
     changeMaxTotalUnits,
     setForceFieldsObstructSight,

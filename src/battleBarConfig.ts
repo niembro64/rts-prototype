@@ -4,8 +4,8 @@ import type { TerrainMapShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
-  BUILDABLE_UNIT_IDS,
-  isBuildableUnitId,
+  BUILDABLE_UNIT_BLUEPRINT_IDS,
+  isBuildableUnitBlueprintId,
   isDemoUnitEnabledByDefault,
 } from './game/sim/blueprints/unitRoster';
 import battleBarConfig from './battleBarConfig.json';
@@ -14,16 +14,16 @@ import { getModeDefaultPreset } from './components/battlePresets';
 // ── Authored data lives in battleBarConfig.json ──
 // The TS shim composes BATTLE_CONFIG by reading the JSON and layering
 // in the two fields that need cross-config references:
-//   - `units`: built dynamically from BUILDABLE_UNIT_IDS (unitRoster.json)
+//   - `units`: built dynamically from BUILDABLE_UNIT_BLUEPRINT_IDS (unitRoster.json)
 //   - `mapSize`: pulled from MAP_DIMENSION_CONFIG (mapSizeConfig.json)
 // Everything else — caps, toggles, terrain options, mode defaults,
 // storage keys, migration table — is pure JSON.
 
 function buildUnitToggleConfig(): Record<string, { default: boolean }> {
   return Object.fromEntries(
-    BUILDABLE_UNIT_IDS.map((unitId) => [
-      unitId,
-      { default: isDemoUnitEnabledByDefault(unitId) },
+    BUILDABLE_UNIT_BLUEPRINT_IDS.map((unitBlueprintId) => [
+      unitBlueprintId,
+      { default: isDemoUnitEnabledByDefault(unitBlueprintId) },
     ]),
   );
 }
@@ -32,12 +32,12 @@ function sanitizeDemoUnitIds(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const result: string[] = [];
   const seen = new Set<string>();
-  for (const unitId of value) {
-    if (typeof unitId !== 'string') continue;
-    if (!isBuildableUnitId(unitId)) continue;
-    if (seen.has(unitId)) continue;
-    seen.add(unitId);
-    result.push(unitId);
+  for (const unitBlueprintId of value) {
+    if (typeof unitBlueprintId !== 'string') continue;
+    if (!isBuildableUnitBlueprintId(unitBlueprintId)) continue;
+    if (seen.has(unitBlueprintId)) continue;
+    seen.add(unitBlueprintId);
+    result.push(unitBlueprintId);
   }
   return result;
 }

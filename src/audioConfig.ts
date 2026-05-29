@@ -15,7 +15,7 @@
 
 export type { SynthId, SoundEntry } from './types/audio';
 import type { SoundEntry } from './types/audio';
-import type { ShotId, TurretId, UnitTypeId } from './types/blueprintIds';
+import type { ShotBlueprintId, TurretBlueprintId, UnitBlueprintId } from './types/blueprintIds';
 import rawConfig from './audioConfig.json';
 
 type AudioConfig = {
@@ -29,9 +29,9 @@ type AudioConfig = {
   fieldGain: number;
   musicGain: number;
   event: {
-    fire: Partial<Record<TurretId, SoundEntry>>;
-    hit: Partial<Record<ShotId, SoundEntry>>;
-    death: Record<UnitTypeId, SoundEntry>;
+    fire: Partial<Record<TurretBlueprintId, SoundEntry>>;
+    hit: Partial<Record<ShotBlueprintId, SoundEntry>>;
+    death: Record<UnitBlueprintId, SoundEntry>;
   };
   continuous: {
     beam: ContinuousSynthConfig;

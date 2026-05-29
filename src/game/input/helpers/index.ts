@@ -37,9 +37,9 @@ export { type ModeCancel, handleEscape } from './EscapeHandler';
 
 export {
   CommanderModeController,
-  getBuildModeBuildingTypeByIndex,
-  getBuildModeBuildingTypes,
-  getDefaultBuildModeBuildingType,
+  getBuildModeBuildingBlueprintIdByIndex,
+  getBuildModeBuildingBlueprintIds,
+  getDefaultBuildModeBuildingBlueprintId,
 } from './CommanderModeController';
 
 export {

@@ -9,7 +9,7 @@ struct BlueprintObjectTable {
     json_const: &'static str,
     ids_const: &'static str,
     count_const: &'static str,
-    validate_entry_id: bool,
+    entry_id_field: Option<&'static str>,
 }
 
 fn main() {
@@ -37,16 +37,46 @@ fn generate_wire_enums(manifest_dir: &Path) {
     // here while still living in the shared JSON.
     let consts: &[(&str, &str, &str, &str)] = &[
         ("/turretState/idle", "CT_TURRET_STATE_IDLE", "u8", "pub "),
-        ("/turretState/tracking", "CT_TURRET_STATE_TRACKING", "u8", "pub "),
-        ("/turretState/engaged", "CT_TURRET_STATE_ENGAGED", "u8", "pub "),
+        (
+            "/turretState/tracking",
+            "CT_TURRET_STATE_TRACKING",
+            "u8",
+            "pub ",
+        ),
+        (
+            "/turretState/engaged",
+            "CT_TURRET_STATE_ENGAGED",
+            "u8",
+            "pub ",
+        ),
         ("/entityChanged/pos", "ENTITY_CHANGED_POS", "u32", ""),
         ("/entityChanged/rot", "ENTITY_CHANGED_ROT", "u32", ""),
         ("/entityChanged/vel", "ENTITY_CHANGED_VEL", "u32", ""),
         ("/entityChanged/hp", "ENTITY_CHANGED_HP", "u32", ""),
-        ("/entityChanged/actions", "ENTITY_CHANGED_ACTIONS", "u32", ""),
-        ("/entityChanged/turrets", "ENTITY_CHANGED_TURRETS", "u32", ""),
-        ("/entityChanged/building", "ENTITY_CHANGED_BUILDING", "u32", ""),
-        ("/entityChanged/factory", "ENTITY_CHANGED_FACTORY", "u32", ""),
+        (
+            "/entityChanged/actions",
+            "ENTITY_CHANGED_ACTIONS",
+            "u32",
+            "",
+        ),
+        (
+            "/entityChanged/turrets",
+            "ENTITY_CHANGED_TURRETS",
+            "u32",
+            "",
+        ),
+        (
+            "/entityChanged/building",
+            "ENTITY_CHANGED_BUILDING",
+            "u32",
+            "",
+        ),
+        (
+            "/entityChanged/factory",
+            "ENTITY_CHANGED_FACTORY",
+            "u32",
+            "",
+        ),
         ("/entityChanged/normal", "ENTITY_CHANGED_NORMAL", "u32", ""),
     ];
 
@@ -58,17 +88,12 @@ fn generate_wire_enums(manifest_dir: &Path) {
         let value = json
             .pointer(pointer)
             .and_then(Value::as_i64)
-            .unwrap_or_else(|| {
-                panic!(
-                    "missing integer {pointer} in {}",
-                    enums_path.display()
-                )
-            });
+            .unwrap_or_else(|| panic!("missing integer {pointer} in {}", enums_path.display()));
         generated.push_str(&format!("{vis}const {name}: {ty} = {value};\n"));
     }
 
-    let out_path = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is required"))
-        .join("wire_enums.rs");
+    let out_path =
+        PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is required")).join("wire_enums.rs");
     fs::write(&out_path, generated)
         .unwrap_or_else(|err| panic!("failed to write {}: {err}", out_path.display()));
 }
@@ -138,56 +163,56 @@ fn generate_blueprint_tables(manifest_dir: &Path) {
             json_const: "BLUEPRINT_UNITS_JSON",
             ids_const: "BLUEPRINT_UNIT_IDS",
             count_const: "BLUEPRINT_UNITS_COUNT",
-            validate_entry_id: true,
+            entry_id_field: Some("unitBlueprintId"),
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/buildings.json",
             json_const: "BLUEPRINT_BUILDINGS_JSON",
             ids_const: "BLUEPRINT_BUILDING_IDS",
             count_const: "BLUEPRINT_BUILDINGS_COUNT",
-            validate_entry_id: true,
+            entry_id_field: Some("buildingBlueprintId"),
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/towers.json",
             json_const: "BLUEPRINT_TOWERS_JSON",
             ids_const: "BLUEPRINT_TOWER_IDS",
             count_const: "BLUEPRINT_TOWERS_COUNT",
-            validate_entry_id: true,
+            entry_id_field: Some("buildingBlueprintId"),
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/turrets.json",
             json_const: "BLUEPRINT_TURRETS_JSON",
-            ids_const: "BLUEPRINT_TURRET_IDS",
+            ids_const: "BLUEPRINT_TURRET_BLUEPRINT_IDS",
             count_const: "BLUEPRINT_TURRETS_COUNT",
-            validate_entry_id: true,
+            entry_id_field: Some("turretBlueprintId"),
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/shots.json",
             json_const: "BLUEPRINT_SHOTS_JSON",
-            ids_const: "BLUEPRINT_SHOT_IDS",
+            ids_const: "BLUEPRINT_SHOT_BLUEPRINT_IDS",
             count_const: "BLUEPRINT_SHOTS_COUNT",
-            validate_entry_id: true,
+            entry_id_field: Some("shotBlueprintId"),
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/locomotion.json",
             json_const: "BLUEPRINT_LOCOMOTION_JSON",
             ids_const: "BLUEPRINT_LOCOMOTION_IDS",
             count_const: "BLUEPRINT_LOCOMOTION_COUNT",
-            validate_entry_id: false,
+            entry_id_field: None,
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/pathfindingConfig.json",
             json_const: "BLUEPRINT_PATHFINDING_JSON",
             ids_const: "BLUEPRINT_PATHFINDING_IDS",
             count_const: "BLUEPRINT_PATHFINDING_COUNT",
-            validate_entry_id: true,
+            entry_id_field: Some("pathfindingBlueprintId"),
         },
         BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/fallbacks.json",
             json_const: "BLUEPRINT_FALLBACKS_JSON",
             ids_const: "BLUEPRINT_FALLBACK_KEYS",
             count_const: "BLUEPRINT_FALLBACKS_COUNT",
-            validate_entry_id: false,
+            entry_id_field: None,
         },
     ];
 
@@ -236,22 +261,25 @@ fn emit_blueprint_object_table(
     let mut ids = object.keys().cloned().collect::<Vec<_>>();
     ids.sort();
 
-    if table.validate_entry_id {
+    if let Some(entry_id_field) = table.entry_id_field {
         for id in &ids {
             let entry = object
                 .get(id)
                 .and_then(Value::as_object)
                 .unwrap_or_else(|| panic!("{} entry {id:?} must be an object", path.display()));
-            let entry_id = entry.get("id").and_then(Value::as_str).unwrap_or_else(|| {
-                panic!(
-                    "{} entry {id:?} must have a string id field",
-                    path.display()
-                )
-            });
+            let entry_id = entry
+                .get(entry_id_field)
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{} entry {id:?} must have a string {entry_id_field} field",
+                        path.display(),
+                    )
+                });
             if entry_id != id {
                 panic!(
-                    "{} entry key {id:?} does not match id field {entry_id:?}",
-                    path.display()
+                    "{} entry key {id:?} does not match {entry_id_field} field {entry_id:?}",
+                    path.display(),
                 );
             }
         }
@@ -293,7 +321,7 @@ fn emit_unit_roster_table(generated: &mut String, manifest_dir: &Path) {
         buildable.len()
     ));
     generated.push_str(&format!(
-        "pub const BLUEPRINT_BUILDABLE_UNIT_IDS: [&str; {}] = {};\n",
+        "pub const BLUEPRINT_BUILDABLE_UNIT_BLUEPRINT_IDS: [&str; {}] = {};\n",
         buildable.len(),
         rust_str_array_literal(&buildable)
     ));
@@ -302,7 +330,7 @@ fn emit_unit_roster_table(generated: &mut String, manifest_dir: &Path) {
         disabled.len()
     ));
     generated.push_str(&format!(
-        "pub const BLUEPRINT_DEFAULT_DISABLED_DEMO_UNIT_IDS: [&str; {}] = {};\n",
+        "pub const BLUEPRINT_DEFAULT_DISABLED_DEMO_UNIT_BLUEPRINT_IDS: [&str; {}] = {};\n",
         disabled.len(),
         rust_str_array_literal(&disabled)
     ));

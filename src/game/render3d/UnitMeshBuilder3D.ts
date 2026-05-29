@@ -184,7 +184,7 @@ export class UnitMeshBuilder3D {
       ownerId,
       unitGfx,
       useDetailedUnitInstancing,
-      blueprint?.dgun?.turretId,
+      blueprint?.dgun?.turretBlueprintId,
     );
 
     this.world.add(group);
@@ -229,7 +229,7 @@ export class UnitMeshBuilder3D {
 
   private getUnitBlueprint(entity: Entity): ReturnType<typeof getUnitBlueprint> | undefined {
     try {
-      return getUnitBlueprint(entity.unit!.unitType);
+      return getUnitBlueprint(entity.unit!.unitBlueprintId);
     } catch {
       return undefined;
     }
@@ -242,7 +242,7 @@ export class UnitMeshBuilder3D {
     ownerId: PlayerId | undefined,
     unitGfx: GraphicsConfig,
     useDetailedUnitInstancing: boolean,
-    commanderDgunTurretId: string | undefined,
+    commanderDgunTurretBlueprintId: string | undefined,
   ): TurretMesh[] {
     const turretMeshes: TurretMesh[] = [];
     const turretOff = unitGfx.turretStyle === 'none';
@@ -271,7 +271,7 @@ export class UnitMeshBuilder3D {
       if (isCommanderUnit && !hideHead) {
         this.commanderVisualKit.decorateTurret(
           turretMesh,
-          turret.config.id === commanderDgunTurretId,
+          turret.config.turretBlueprintId === commanderDgunTurretBlueprintId,
         );
       }
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;

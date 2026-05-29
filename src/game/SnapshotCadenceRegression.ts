@@ -118,7 +118,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setTickRate':
     case 'setUnitGroundNormalEmaMode':
     case 'setSendGridInfo':
-    case 'setBackgroundUnitType':
+    case 'setBackgroundUnitBlueprintEnabled':
     case 'setMaxTotalUnits':
     case 'setTurretForceFieldPanelsEnabled':
     case 'setTurretForceFieldSpheresEnabled':

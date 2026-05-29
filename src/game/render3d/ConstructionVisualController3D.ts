@@ -171,10 +171,10 @@ export class ConstructionVisualController3D {
     dtMs: number,
   ): void {
     const factory = e.factory;
-    const queuedUnitType = factory?.buildQueue[0];
+    const queuedUnitBlueprintId = factory?.buildQueue[0];
     const active = detailsReady
       && !!factory
-      && !!queuedUnitType
+      && !!queuedUnitBlueprintId
       && factory.isProducing;
     rig.group.visible = detailsReady;
 
@@ -191,9 +191,9 @@ export class ConstructionVisualController3D {
     if (!active || !e.ownership) return;
 
     let buildSpotRadius = 12;
-    if (queuedUnitType) {
+    if (queuedUnitBlueprintId) {
       try {
-        buildSpotRadius = getUnitBlueprint(queuedUnitType).radius.push;
+        buildSpotRadius = getUnitBlueprint(queuedUnitBlueprintId).radius.push;
       } catch {
         // Unknown queue ids should not break rendering; keep the default.
       }
@@ -232,11 +232,11 @@ export class ConstructionVisualController3D {
     if (!rig) return;
 
     const factory = e.factory;
-    const queuedUnitType = factory?.buildQueue[0];
+    const queuedUnitBlueprintId = factory?.buildQueue[0];
     const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
     const active = detailsReady
       && !!factory
-      && !!queuedUnitType
+      && !!queuedUnitBlueprintId
       && factory.isProducing;
 
     if (!active) {
@@ -248,9 +248,9 @@ export class ConstructionVisualController3D {
 
     let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
     let buildSpotRadius = blueprintRadius;
-    if (queuedUnitType) {
+    if (queuedUnitBlueprintId) {
       try {
-        const bp = getUnitBlueprint(queuedUnitType);
+        const bp = getUnitBlueprint(queuedUnitBlueprintId);
         blueprintRadius = bp.radius.body;
         buildSpotRadius = bp.radius.push;
       } catch {

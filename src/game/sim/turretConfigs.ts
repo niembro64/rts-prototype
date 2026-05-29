@@ -31,7 +31,7 @@ function effectiveBallisticBaseRange(config: TurretConfig): number {
   // ballistic solver, not by flat-ground reach. The flat-ground clamp
   // would reject targets directly below a high-flying Dragonfly even
   // though a low-force shell can simply fall onto them.
-  if (config.id === 'turretMortarDrop') return config.range;
+  if (config.turretBlueprintId === 'turretMortarDrop') return config.range;
   const shot = config.shot;
   if (!shot || !isProjectileShot(shot) || shot.mass <= 1e-6) return config.range;
   const speed = shot.launchForce / shot.mass;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { BuildableUnitId } from '@/game/sim/blueprints';
+import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import { getUnitBlueprint } from '@/game/sim/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { UnitBlueprint } from '@/types/blueprints';
@@ -24,7 +24,7 @@ type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 
 export type LoadingUnitPreviewSceneOptions = {
   canvas: PreviewCanvas;
-  unitId: BuildableUnitId;
+  unitBlueprintId: BuildableUnitBlueprintId;
   fullBleed: boolean;
 };
 
@@ -109,7 +109,7 @@ export class LoadingUnitPreviewScene {
     this.renderer.setClearColor(0x000000, 0);
     this.scene.add(this.spinRoot);
 
-    const model = buildPreviewUnitModel(options.unitId, this.shellMaterial);
+    const model = buildPreviewUnitModel(options.unitBlueprintId, this.shellMaterial);
     this.centerModel(model);
     this.spinRoot.add(model);
     this.resize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, dpr: 1 });
@@ -178,8 +178,8 @@ export class LoadingUnitPreviewScene {
   }
 }
 
-function buildPreviewUnitModel(unitId: BuildableUnitId, shellMaterial: THREE.Material): THREE.Group {
-  const blueprint = getUnitBlueprint(unitId);
+function buildPreviewUnitModel(unitBlueprintId: BuildableUnitBlueprintId, shellMaterial: THREE.Material): THREE.Group {
+  const blueprint = getUnitBlueprint(unitBlueprintId);
   const radius = blueprint.radius.body;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const root = new THREE.Group();
@@ -193,7 +193,7 @@ function buildPreviewUnitModel(unitId: BuildableUnitId, shellMaterial: THREE.Mat
   yawGroup.add(liftGroup);
 
   buildPreviewBody(liftGroup, blueprint, shellMaterial);
-  buildPreviewTurrets(liftGroup, blueprint, unitId, chassisLift, shellMaterial);
+  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, shellMaterial);
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, shellMaterial);
   applyShellMaterial(root, shellMaterial);
   return root;
@@ -220,11 +220,11 @@ function buildPreviewBody(
 function buildPreviewTurrets(
   liftGroup: THREE.Group,
   blueprint: UnitBlueprint,
-  unitId: BuildableUnitId,
+  unitBlueprintId: BuildableUnitBlueprintId,
   chassisLift: number,
   shellMaterial: THREE.Material,
 ): void {
-  const turrets = createUnitRuntimeTurrets(unitId, blueprint.radius.body);
+  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.body);
   for (const turret of turrets) {
     const turretMesh = buildTurretMesh3D(liftGroup, turret, PREVIEW_GFX, {
       headGeom: turretHeadGeom,
@@ -282,7 +282,7 @@ function buildPreviewMirrors(
   buildForceFieldPanelCache(blueprint, forceFieldPanels);
   if (forceFieldPanels.length === 0) return;
 
-  const turrets = createUnitRuntimeTurrets(blueprint.id, blueprint.radius.body);
+  const turrets = createUnitRuntimeTurrets(blueprint.unitBlueprintId, blueprint.radius.body);
   const forceFieldPanelTurret = turrets.find((turret) => turret.config.passive);
   const panelHalfSide = forceFieldPanels[0].halfWidth;
   const panelArmLength = forceFieldPanels[0].offsetX;

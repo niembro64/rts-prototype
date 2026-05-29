@@ -1,4 +1,4 @@
-import type { ShotId } from './types/blueprintIds';
+import type { ShotBlueprintId } from './types/blueprintIds';
 import type { SmokeTrailSpec } from './types/shotTypes';
 import rawSmokeConfig from './smokeConfig.json';
 
@@ -82,12 +82,12 @@ export function getSmokePuffGeometryConfig(): SmokePuffGeometryConfig {
 }
 
 export function getProjectileSmokeTrailSpec(
-  shotId: ShotId,
+  shotBlueprintId: ShotBlueprintId,
   override?: SmokeTrailSpec,
 ): SmokeTrailSpec | undefined {
-  if (!isSmokeUseId(shotId)) return undefined;
+  if (!isSmokeUseId(shotBlueprintId)) return undefined;
   return {
-    ...getSmokeProfile(shotId),
+    ...getSmokeProfile(shotBlueprintId),
     ...override,
   };
 }

@@ -1,11 +1,11 @@
-import type { BuildableUnitId } from '@/game/sim/blueprints';
+import type { BuildableUnitBlueprintId } from '@/game/sim/blueprints';
 import {
-  BUILDABLE_UNIT_IDS,
+  BUILDABLE_UNIT_BLUEPRINT_IDS,
   getUnitBlueprint,
 } from '@/game/sim/blueprints';
 
 export type LoadingUnitPreviewSelection = {
-  id: BuildableUnitId;
+  id: BuildableUnitBlueprintId;
   name: string;
 };
 
@@ -37,7 +37,7 @@ type WorkerPreviewMessage =
   | ({
       type: 'init';
       canvas: OffscreenCanvas;
-      unitId: BuildableUnitId;
+      unitBlueprintId: BuildableUnitBlueprintId;
       fullBleed: boolean;
     } & PreviewSize)
   | ({ type: 'resize' } & PreviewSize)
@@ -50,15 +50,15 @@ type WorkerPreviewResponse =
 const DPR_CAP = 1.75;
 
 export function pickRandomLoadingUnit(): LoadingUnitPreviewSelection {
-  const unitIds = BUILDABLE_UNIT_IDS;
-  const selected = unitIds[Math.floor(Math.random() * unitIds.length)] ?? unitIds[0];
+  const unitBlueprintIds = BUILDABLE_UNIT_BLUEPRINT_IDS;
+  const selected = unitBlueprintIds[Math.floor(Math.random() * unitBlueprintIds.length)] ?? unitBlueprintIds[0];
   const blueprint = getUnitBlueprint(selected);
   return { id: selected, name: blueprint.name };
 }
 
 export function mountLoadingUnitPreview(
   host: HTMLElement,
-  unitId: BuildableUnitId,
+  unitBlueprintId: BuildableUnitBlueprintId,
   options: LoadingUnitPreviewOptions = {},
 ): LoadingUnitPreviewRuntime {
   const fullBleed = options.fullBleed === true;
@@ -80,11 +80,11 @@ export function mountLoadingUnitPreview(
   const hooks: DriverHooks = { onReady: fireReady };
 
   let latestSize = readPreviewSize(host);
-  let driver = createWorkerDriver(canvas, unitId, fullBleed, latestSize, hooks);
+  let driver = createWorkerDriver(canvas, unitBlueprintId, fullBleed, latestSize, hooks);
   let fallbackDriverPromise: Promise<PreviewDriver | null> | null = null;
 
   if (!driver) {
-    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, unitId, fullBleed, latestSize, hooks);
+    fallbackDriverPromise = createMainThreadFallbackDriver(canvas, unitBlueprintId, fullBleed, latestSize, hooks);
     void fallbackDriverPromise.then((resolved) => {
       if (destroyed) {
         resolved?.destroy();
@@ -117,7 +117,7 @@ export function mountLoadingUnitPreview(
 
 function createWorkerDriver(
   canvas: HTMLCanvasElement,
-  unitId: BuildableUnitId,
+  unitBlueprintId: BuildableUnitBlueprintId,
   fullBleed: boolean,
   size: PreviewSize,
   hooks: DriverHooks,
@@ -156,7 +156,7 @@ function createWorkerDriver(
   const initMessage: WorkerPreviewMessage = {
     type: 'init',
     canvas: offscreen,
-    unitId,
+    unitBlueprintId,
     fullBleed,
     ...size,
   };
@@ -184,13 +184,13 @@ function createWorkerDriver(
 
 async function createMainThreadFallbackDriver(
   canvas: HTMLCanvasElement,
-  unitId: BuildableUnitId,
+  unitBlueprintId: BuildableUnitBlueprintId,
   fullBleed: boolean,
   size: PreviewSize,
   hooks: DriverHooks,
 ): Promise<PreviewDriver | null> {
   const { LoadingUnitPreviewScene } = await import('./loadingUnitPreviewScene');
-  const scene = new LoadingUnitPreviewScene({ canvas, unitId, fullBleed });
+  const scene = new LoadingUnitPreviewScene({ canvas, unitBlueprintId, fullBleed });
   let destroyed = false;
   let rafId = 0;
   let readyFired = false;

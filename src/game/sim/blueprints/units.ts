@@ -2,16 +2,16 @@
  * Unit blueprints.
  *
  * Authored unit facts live in units.json. The only transformation left
- * here is resolving data references such as locomotionId and $audio
+ * here is resolving data references such as locomotionBlueprintId and $audio
  * into the runtime objects current TypeScript callers expect.
  */
 
-import type { TurretId } from '../../../types/blueprintIds';
+import type { TurretBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../locomotion';
-export { BUILDABLE_UNIT_IDS, type BuildableUnitId } from './unitRoster';
-import { BUILDABLE_UNIT_IDS } from './unitRoster';
+export { BUILDABLE_UNIT_BLUEPRINT_IDS, type BuildableUnitBlueprintId } from './unitRoster';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
@@ -22,7 +22,7 @@ import {
 } from './lockOnValidation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion'> & {
-  locomotionId: string;
+  locomotionBlueprintId: string;
 };
 
 const UNIT_EXPLICIT_FIELDS = [
@@ -46,16 +46,16 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
   for (const [id, blueprint] of Object.entries(resolved)) {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
     validateLockOnExclusionObject(`unit blueprint ${id}`, blueprint);
-    const locomotion = UNIT_LOCOMOTION_BLUEPRINTS[blueprint.locomotionId];
+    const locomotion = UNIT_LOCOMOTION_BLUEPRINTS[blueprint.locomotionBlueprintId];
     if (!locomotion) {
       throw new Error(
-        `Invalid unit blueprint ${id}: unknown locomotionId "${blueprint.locomotionId}"`,
+        `Invalid unit blueprint ${id}: unknown locomotionBlueprintId "${blueprint.locomotionBlueprintId}"`,
       );
     }
-    const { locomotionId, ...unitBlueprint } = blueprint;
+    const { locomotionBlueprintId, ...unitBlueprint } = blueprint;
     blueprints[id] = {
       ...unitBlueprint,
-      locomotionId,
+      locomotionBlueprintId,
       locomotion,
     };
   }
@@ -68,13 +68,13 @@ export const UNIT_BLUEPRINTS = buildUnitBlueprints();
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   if (!Number.isFinite(bp.bodyCenterHeight) || bp.bodyCenterHeight < 0) {
     throw new Error(
-      `Invalid bodyCenterHeight for ${bp.id}: bodyCenterHeight must be a finite non-negative number`,
+      `Invalid bodyCenterHeight for ${bp.unitBlueprintId}: bodyCenterHeight must be a finite non-negative number`,
     );
   }
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(
-      `Invalid HUD layout for ${bp.id}: barsOffsetAboveTop must be finite`,
+      `Invalid HUD layout for ${bp.unitBlueprintId}: barsOffsetAboveTop must be finite`,
     );
   }
 
@@ -83,7 +83,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     (!Number.isFinite(bp.detector.radius) || bp.detector.radius <= 0)
   ) {
     throw new Error(
-      `Invalid detector for ${bp.id}: detector radius must be positive`,
+      `Invalid detector for ${bp.unitBlueprintId}: detector radius must be positive`,
     );
   }
 
@@ -91,7 +91,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     const legs = bp.locomotion.config.leftSide;
     if (!Array.isArray(legs) || legs.length === 0) {
       throw new Error(
-        `Invalid leg layout for ${bp.id}: leftSide must define at least one leg`,
+        `Invalid leg layout for ${bp.unitBlueprintId}: leftSide must define at least one leg`,
       );
     }
     for (let i = 0; i < legs.length; i++) {
@@ -109,18 +109,18 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       for (const [name, value] of values) {
         if (!Number.isFinite(value)) {
           throw new Error(
-            `Invalid leg layout for ${bp.id}[${i}]: ${name} must be finite`,
+            `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: ${name} must be finite`,
           );
         }
       }
       if (leg.upperLegLengthFrac <= 0 || leg.lowerLegLengthFrac <= 0) {
         throw new Error(
-          `Invalid leg layout for ${bp.id}[${i}]: leg lengths must be positive`,
+          `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: leg lengths must be positive`,
         );
       }
       if (leg.snapDistanceMultiplier <= 0 || leg.extensionThreshold <= 0) {
         throw new Error(
-          `Invalid leg layout for ${bp.id}[${i}]: snapDistanceMultiplier and extensionThreshold must be positive`,
+          `Invalid leg layout for ${bp.unitBlueprintId}[${i}]: snapDistanceMultiplier and extensionThreshold must be positive`,
         );
       }
     }
@@ -140,7 +140,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       !Number.isFinite(mount.z)
     ) {
       throw new Error(
-        `Invalid turret mount for ${bp.id}[${i}] ${turret.turretId}: mount x/y/z must be finite`,
+        `Invalid turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: mount x/y/z must be finite`,
       );
     }
     // Hover/flying invariant — banking is render-time only, and the
@@ -151,13 +151,13 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     if (isAirborne) {
       if (mount.y !== 0 || mount.z !== 0) {
         throw new Error(
-          `Invalid airborne turret mount for ${bp.id}[${i}] ${turret.turretId}: ` +
+          `Invalid airborne turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
             `hover/flying mounts must sit on the roll axis (y=0, z=0), got y=${mount.y} z=${mount.z}`,
         );
       }
       if (turret.zResolver) {
         throw new Error(
-          `Invalid airborne turret mount for ${bp.id}[${i}] ${turret.turretId}: ` +
+          `Invalid airborne turret mount for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: ` +
             `hover/flying turrets cannot use zResolver — z must be authored as 0`,
         );
       }
@@ -165,9 +165,9 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   }
 
   if (bp.dgun !== null) {
-    if (!bp.turrets.some((turret) => turret.turretId === bp.dgun!.turretId)) {
+    if (!bp.turrets.some((turret) => turret.turretBlueprintId === bp.dgun!.turretBlueprintId)) {
       throw new Error(
-        `Invalid dgun turret for ${bp.id}: ${bp.dgun.turretId} is not mounted on the unit`,
+        `Invalid dgun turret for ${bp.unitBlueprintId}: ${bp.dgun.turretBlueprintId} is not mounted on the unit`,
       );
     }
   }
@@ -176,7 +176,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
 let unitTurretMountsResolved = false;
 
 export function resolveUnitTurretMounts(
-  getTurretBodyRadius: (turretId: TurretId) => number,
+  getTurretBodyRadius: (turretBlueprintId: TurretBlueprintId) => number,
 ): void {
   if (unitTurretMountsResolved) return;
 
@@ -187,13 +187,13 @@ export function resolveUnitTurretMounts(
       if (!resolver) continue;
       if (resolver.kind !== 'topMounted') {
         throw new Error(
-          `Invalid turret mount resolver for ${bp.id}[${i}] ${turret.turretId}: unsupported kind`,
+          `Invalid turret mount resolver for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: unsupported kind`,
         );
       }
-      const turretRadius = getTurretBodyRadius(turret.turretId);
+      const turretRadius = getTurretBodyRadius(turret.turretBlueprintId);
       if (!Number.isFinite(turretRadius) || turretRadius <= 0) {
         throw new Error(
-          `Invalid top-mounted turret for ${bp.id}[${i}] ${turret.turretId}: turret radius.body must be positive`,
+          `Invalid top-mounted turret for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: turret radius.body must be positive`,
         );
       }
       turret.mount.z = resolver.bodyTopZFrac + turretRadius / bp.radius.body;
@@ -239,7 +239,7 @@ function totalCost(c: { energy: number; metal: number }): number {
 function getCostNorm(): { max: number } {
   if (_costNormCache) return _costNormCache;
   let max = 0;
-  for (const id of BUILDABLE_UNIT_IDS) {
+  for (const id of BUILDABLE_UNIT_BLUEPRINT_IDS) {
     const unitBlueprint = UNIT_BLUEPRINTS[id];
     if (!unitBlueprint) continue;
     const t = totalCost(unitBlueprint.cost);

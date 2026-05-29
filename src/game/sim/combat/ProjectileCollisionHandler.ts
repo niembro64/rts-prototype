@@ -235,7 +235,7 @@ function pushReflectorImpactEvent(
   // off the sphere shape or a flat-panel shape — one source key for both.
   audioEvents.push({
     type: 'forceFieldImpact',
-    turretId: 'turretForceFieldSphere',
+    turretBlueprintId: 'turretForceFieldSphere',
     sourceType: 'turret',
     sourceKey: 'turretForceFieldSphere',
     pos: { x, y, z },
@@ -342,7 +342,7 @@ function spawnSubmunitions(
   if (!spec || spec.count <= 0) return;
 
   const sourceTurretBlueprintId = parentShotSource.sourceTurretBlueprintId;
-  const childCfg = createProjectileConfigFromShot(spec.shotId, sourceTurretBlueprintId);
+  const childCfg = createProjectileConfigFromShot(spec.shotBlueprintId, sourceTurretBlueprintId);
 
   // Reflect the parent's velocity across the surface normal:
   //   bounce = V − 2(V·N)N
@@ -420,11 +420,11 @@ function spawnSubmunitions(
       detonationX, detonationY, launchVx, launchVy,
       ownerId, sourceEntityId, childCfg, 'projectile',
       {
-        shotId: spec.shotId,
+        shotBlueprintId: spec.shotBlueprintId,
         shotSource: {
           ...parentShotSource,
           spawnTick: world.getTick(),
-          parentShotId: parentShotEntityId,
+          parentShotEntityId: parentShotEntityId,
         },
       },
     );
@@ -450,17 +450,17 @@ function spawnSubmunitions(
       maxLifespan: typeof maxLifespan === 'number' && Number.isFinite(maxLifespan)
         ? maxLifespan
         : undefined,
-      // Source/provenance remains the real turret; shotId tells the
+      // Source/provenance remains the real turret; shotBlueprintId tells the
       // client which child projectile blueprint to hydrate.
-      turretId: sourceTurretBlueprintId ?? '',
-      shotId: spec.shotId,
-      sourceTurretId: sourceTurretBlueprintId,
-      sourceTurretInstanceId: parentShotSource.sourceTurretId ?? undefined,
-      sourceHostId: parentShotSource.sourceHostId,
-      sourceRootId: parentShotSource.sourceRootId,
+      turretBlueprintId: sourceTurretBlueprintId ?? '',
+      shotBlueprintId: spec.shotBlueprintId,
+      sourceTurretBlueprintId: sourceTurretBlueprintId,
+      sourceTurretEntityId: parentShotSource.sourceTurretEntityId ?? undefined,
+      sourceHostEntityId: parentShotSource.sourceHostEntityId,
+      sourceRootEntityId: parentShotSource.sourceRootEntityId,
       sourceTeamId: parentShotSource.sourceTeamId,
       spawnTick: world.getTick(),
-      parentShotId: parentShotEntityId,
+      parentShotEntityId: parentShotEntityId,
       playerId: ownerId,
       sourceEntityId,
       turretIndex: 0,
@@ -512,8 +512,8 @@ export function checkProjectileCollisions(
     const proj = projEntity.projectile;
     const config = proj.config;
     // Projectile entities always use projectile/beam/laser shot types (never force)
-    const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
-    const damageSourceKey = proj.sourceTurretBlueprintId ?? shotId;
+    const shotBlueprintId = (config.shot as ProjectileShot | BeamShot | LaserShot).shotBlueprintId;
+    const damageSourceKey = proj.sourceTurretBlueprintId ?? shotBlueprintId;
     const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
     const dgunProjectile = projEntity.dgunProjectile;
     const isDGunProjectile = dgunProjectile !== null && dgunProjectile.isDGun === true;
@@ -690,7 +690,7 @@ export function checkProjectileCollisions(
         const projRadius = runtimeProfile.collisionRadius;
         audioEvents.push({
           type: 'waterSplash',
-          turretId: shotId,
+          turretBlueprintId: shotBlueprintId,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           playerId: projEntity.ownership.playerId,
           entityId: projEntity.id,
@@ -776,7 +776,7 @@ export function checkProjectileCollisions(
           // sized by collision.radius.
           audioEvents.push({
             type: 'hit',
-            turretId: shotId,
+            turretBlueprintId: shotBlueprintId,
             pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
             playerId: projEntity.ownership.playerId,
             entityId: projEntity.id,
@@ -837,7 +837,7 @@ export function checkProjectileCollisions(
         const projRadius = runtimeProfile.collisionRadius;
         audioEvents.push({
           type: 'projectileExpire',
-          turretId: shotId,
+          turretBlueprintId: shotBlueprintId,
           pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
           playerId: projEntity.ownership.playerId,
           entityId: projEntity.id,
@@ -1016,7 +1016,7 @@ export function checkProjectileCollisions(
             if (entity && !isDGunProjectile) {
               audioEvents.push({
                 type: 'hit',
-                turretId: shotId,
+                turretBlueprintId: shotBlueprintId,
                 pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
                 playerId: projEntity.ownership.playerId,
                 entityId: projEntity.id,
@@ -1108,7 +1108,7 @@ export function checkProjectileCollisions(
             // Always emit projectileExpire at the projectile's position so it produces a termination explosion
             audioEvents.push({
               type: 'projectileExpire',
-              turretId: shotId,
+              turretBlueprintId: shotBlueprintId,
               pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
               playerId: projEntity.ownership.playerId,
               entityId: projEntity.id,

@@ -60,7 +60,7 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
       if (!activeLaserSoundIds.delete(soundEntityId)) continue;
       _laserStopOwner.push({
         type: 'laserStop',
-        turretId: config.id,
+        turretBlueprintId: config.turretBlueprintId,
         pos: { x: entity.transform.x, y: entity.transform.y, z: entity.transform.z },
         entityId: soundEntityId,
       });
@@ -88,7 +88,7 @@ export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): 
     if (!activeLaserSoundIds.delete(soundEntityId)) continue;
     _laserStopTarget.push({
       type: 'laserStop',
-      turretId: config.id,
+      turretBlueprintId: config.turretBlueprintId,
       pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
       entityId: soundEntityId,
     });
@@ -133,7 +133,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         if (!activeLaserSoundIds.delete(soundEntityId)) continue;
         audioEvents.push({
           type: 'laserStop',
-          turretId: config.id,
+          turretBlueprintId: config.turretBlueprintId,
           pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           playerId: unit.ownership.playerId,
           entityId: soundEntityId,
@@ -156,7 +156,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         if (!wasActive || shouldRefreshActive) {
           audioEvents.push({
             type: 'laserStart',
-            turretId: config.id,
+            turretBlueprintId: config.turretBlueprintId,
             pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
             playerId: unit.ownership.playerId,
             entityId: soundEntityId,
@@ -166,7 +166,7 @@ export function updateLaserSounds(world: WorldState): SimEvent[] {
         if (!activeLaserSoundIds.delete(soundEntityId)) continue;
         audioEvents.push({
           type: 'laserStop',
-          turretId: config.id,
+          turretBlueprintId: config.turretBlueprintId,
           pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
           playerId: unit.ownership.playerId,
           entityId: soundEntityId,

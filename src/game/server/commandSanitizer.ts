@@ -33,9 +33,9 @@ import {
   REPAIR_AREA_MAX_RADIUS,
 } from '../sim/commandLimits';
 import type { WorldState } from '../sim/WorldState';
-import type { BuildingType, EntityId, WaypointType } from '../sim/types';
+import type { BuildingBlueprintId, EntityId, WaypointType } from '../sim/types';
 import { BUILDING_CONFIGS } from '../sim/buildConfigs';
-import { isBuildableUnitId } from '../sim/blueprints/unitRoster';
+import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isForceFieldReflectionMode } from '../../types/shotTypes';
@@ -118,8 +118,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
         : null;
     case 'setSendGridInfo':
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
-    case 'setBackgroundUnitType':
-      return typeof command.enabled === 'boolean' && isBuildableUnitId(command.unitType)
+    case 'setBackgroundUnitBlueprintEnabled':
+      return typeof command.enabled === 'boolean' && isBuildableUnitBlueprintId(command.unitBlueprintId)
         ? { ...command, tick }
         : null;
     case 'setMaxTotalUnits':
@@ -166,7 +166,7 @@ function sanitizeEntityIdArray(value: unknown): EntityId[] | null {
   return ids.length > 0 ? ids : null;
 }
 
-function isBuildingType(value: unknown): value is BuildingType {
+function isBuildingBlueprintId(value: unknown): value is BuildingBlueprintId {
   return typeof value === 'string' &&
     Object.prototype.hasOwnProperty.call(BUILDING_CONFIGS, value);
 }
@@ -370,7 +370,7 @@ function sanitizeGuardCommand(command: GuardCommand, tick: number): GuardCommand
 function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): StartBuildCommand | null {
   if (
     !isEntityId(command.builderId) ||
-    !isBuildingType(command.buildingType) ||
+    !isBuildingBlueprintId(command.buildingBlueprintId) ||
     !Number.isFinite(command.gridX) ||
     !Number.isFinite(command.gridY) ||
     typeof command.queue !== 'boolean'
@@ -381,7 +381,7 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
     type: 'startBuild',
     tick,
     builderId: command.builderId,
-    buildingType: command.buildingType,
+    buildingBlueprintId: command.buildingBlueprintId,
     gridX: Math.floor(command.gridX),
     gridY: Math.floor(command.gridY),
     queue: command.queue,
@@ -389,8 +389,8 @@ function sanitizeStartBuildCommand(command: StartBuildCommand, tick: number): St
 }
 
 function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): QueueUnitCommand | null {
-  return isEntityId(command.factoryId) && isBuildableUnitId(command.unitId)
-    ? { ...command, tick, factoryId: command.factoryId, unitId: command.unitId }
+  return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId)
+    ? { ...command, tick, factoryId: command.factoryId, unitBlueprintId: command.unitBlueprintId }
     : null;
 }
 

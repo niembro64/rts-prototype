@@ -20,7 +20,7 @@
 //
 // Smoke density, velocity, fade timing, size, and per-use caps come
 // from flat smokeConfig entries keyed by the actual smoke producer
-// (shot id or locomotion id).
+// (shot blueprint id or locomotion blueprint id).
 
 import * as THREE from 'three';
 import type { Entity } from '../sim/types';

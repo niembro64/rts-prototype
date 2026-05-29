@@ -37,17 +37,17 @@ export function resolveEntityDisplayName(
 
   if (entity.unit) {
     try {
-      return getUnitBlueprint(entity.unit.unitType).name;
+      return getUnitBlueprint(entity.unit.unitBlueprintId).name;
     } catch {
-      return entity.unit.unitType;
+      return entity.unit.unitBlueprintId;
     }
   }
 
-  if (entity.building && entity.buildingType) {
+  if (entity.building && entity.buildingBlueprintId) {
     try {
-      return getBuildingBlueprint(entity.buildingType).name;
+      return getBuildingBlueprint(entity.buildingBlueprintId).name;
     } catch {
-      return entity.buildingType;
+      return entity.buildingBlueprintId;
     }
   }
 

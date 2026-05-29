@@ -1,6 +1,6 @@
 import { isLineShotType } from '@/types/sim';
-import type { ShotId } from '../../types/blueprintIds';
-import { codeToShotId } from '../../types/network';
+import type { ShotBlueprintId } from '../../types/blueprintIds';
+import { codeToShotBlueprintId } from '../../types/network';
 import type { Entity } from '../sim/types';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 
@@ -8,10 +8,10 @@ export function isLineProjectileEntity(entity: Entity): boolean {
   return entity.projectile !== null && isLineShotType(entity.projectile.projectileType);
 }
 
-export function decodeProjectileShotId(
+export function decodeProjectileShotBlueprintId(
   spawn: NetworkServerSnapshotProjectileSpawn,
-): ShotId | undefined {
-  return spawn.shotId !== null
-    ? codeToShotId(spawn.shotId) ?? undefined
+): ShotBlueprintId | undefined {
+  return spawn.shotBlueprintCode !== null
+    ? codeToShotBlueprintId(spawn.shotBlueprintCode) ?? undefined
     : undefined;
 }

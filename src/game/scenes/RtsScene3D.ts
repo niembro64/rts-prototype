@@ -4,7 +4,7 @@
 import type { ClientViewState } from '../network/ClientViewState';
 import { audioManager } from '../audio/AudioManager';
 import type { SceneCameraState } from '@/types/game';
-import { isShotId, isTurretId, isUnitTypeId } from '@/types/blueprintIds';
+import { isShotBlueprintId, isTurretBlueprintId, isUnitBlueprintId } from '@/types/blueprintIds';
 import type { TerrainMapShape } from '@/types/terrain';
 import { COLORS } from '@/colorsConfig';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
@@ -82,7 +82,7 @@ import type {
   EntityId,
   PlayerId,
   WaypointType,
-  BuildingType,
+  BuildingBlueprintId,
 } from '../sim/types';
 
 import {
@@ -577,8 +577,8 @@ export class RtsScene3D {
     };
     // Keep the SelectionPanel's mode chips (build / D-gun) in sync
     // with the shared CommanderModeController inside Input3DManager.
-    this.inputManager.onBuildModeChange = (type) => {
-      this.selectionSystem.setBuildMode(type);
+    this.inputManager.onBuildModeChange = (buildingBlueprintId) => {
+      this.selectionSystem.setBuildMode(buildingBlueprintId);
     };
     this.inputManager.onDGunModeChange = (active) => {
       this.selectionSystem.setDGunMode(active);
@@ -1026,8 +1026,8 @@ export class RtsScene3D {
           pushRadius,
           baseZ: ent.unit ? getUnitGroundZ(ent) : ent.transform.z - pushRadius,
           color: tcol,
-          unitType: ent.unit?.unitType && isUnitTypeId(ent.unit.unitType)
-            ? ent.unit.unitType
+          unitBlueprintId: ent.unit?.unitBlueprintId && isUnitBlueprintId(ent.unit.unitBlueprintId)
+            ? ent.unit.unitBlueprintId
             : undefined,
           rotation: ent.transform.rotation,
         };
@@ -1109,27 +1109,27 @@ export class RtsScene3D {
   private playSimEventAudio(event: NetworkServerSnapshotSimEvent): void {
     switch (event.type) {
       case 'fire':
-        // turretId on a 'fire' event is the firing turret blueprint id.
+        // turretBlueprintId on a 'fire' event is the firing turret blueprint id.
         // Narrow before passing so we don't accidentally feed a shot
-        // or unit id when the event was authored unexpectedly.
-        if (event.turretId && isTurretId(event.turretId)) {
-          audioManager.playWeaponFire(event.turretId);
+        // or unit blueprint id when the event was authored unexpectedly.
+        if (event.turretBlueprintId && isTurretBlueprintId(event.turretBlueprintId)) {
+          audioManager.playWeaponFire(event.turretBlueprintId);
         }
         return;
       case 'hit':
       case 'projectileExpire':
         // hit / expire audio is keyed by the shot blueprint id. Beam
-        // and laser hits carry a turret id in this same field; the
+        // and laser hits carry a turret blueprint id in this same field; the
         // blueprintId helper distinguishes shot vs turret so we route
         // it through the right AudioManager method.
-        if (event.turretId) {
-          if (isShotId(event.turretId)) audioManager.playWeaponHit(event.turretId);
-          else if (isTurretId(event.turretId)) audioManager.playWeaponFire(event.turretId);
+        if (event.turretBlueprintId) {
+          if (isShotBlueprintId(event.turretBlueprintId)) audioManager.playWeaponHit(event.turretBlueprintId);
+          else if (isTurretBlueprintId(event.turretBlueprintId)) audioManager.playWeaponFire(event.turretBlueprintId);
         }
         return;
       case 'death': {
-        const unitType = event.deathContext?.unitType;
-        if (unitType && isUnitTypeId(unitType)) audioManager.playUnitDeath(unitType);
+        const unitBlueprintId = event.deathContext?.unitBlueprintId;
+        if (unitBlueprintId && isUnitBlueprintId(unitBlueprintId)) audioManager.playUnitDeath(unitBlueprintId);
         return;
       }
       case 'laserStart':
@@ -1301,8 +1301,8 @@ export class RtsScene3D {
 
   /** Enter build mode — forwards to Input3DManager which handles the
    *  left-click-places-building / right-click-cancels flow. */
-  public startBuildMode(buildingType: BuildingType): void {
-    this.inputManager?.setBuildMode(buildingType);
+  public startBuildMode(buildingBlueprintId: BuildingBlueprintId): void {
+    this.inputManager?.setBuildMode(buildingBlueprintId);
   }
 
   public cancelBuildMode(): void {
@@ -1316,7 +1316,7 @@ export class RtsScene3D {
     this.inputManager?.toggleRepairAreaMode();
   }
 
-  public queueFactoryUnit(factoryId: number, unitId: string): void {
+  public queueFactoryUnit(factoryId: number, unitBlueprintId: string): void {
     // Factory build queue is server-authoritative, so this command
     // goes straight through gameConnection (same path the 2D scene's
     // processLocalCommands forwards it to).
@@ -1324,7 +1324,7 @@ export class RtsScene3D {
       type: 'queueUnit',
       tick: this.clientViewState.getTick(),
       factoryId,
-      unitId,
+      unitBlueprintId,
     });
   }
 

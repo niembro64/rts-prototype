@@ -3,31 +3,31 @@
  *  Kept dependency-free so UI config, server spawning, factories, and
  *  selection panels can all derive their unit inventory from the same
  *  source without pulling in the full blueprint/config graph. */
-import { isUnitTypeId, type UnitTypeId } from '../../../types/blueprintIds';
+import { isUnitBlueprintId, type UnitBlueprintId } from '../../../types/blueprintIds';
 import unitRoster from './unitRoster.json';
 
-export type BuildableUnitId = Exclude<UnitTypeId, 'commander'>;
+export type BuildableUnitBlueprintId = Exclude<UnitBlueprintId, 'commander'>;
 
-function readBuildableUnitIds(): BuildableUnitId[] {
-  return unitRoster.buildableUnitIds.map((unitId) => {
-    if (!isUnitTypeId(unitId) || unitId === 'commander') {
-      throw new Error(`Invalid buildable unit id in unitRoster.json: ${unitId}`);
+function readBuildableUnitBlueprintIds(): BuildableUnitBlueprintId[] {
+  return unitRoster.buildableUnitIds.map((unitBlueprintId) => {
+    if (!isUnitBlueprintId(unitBlueprintId) || unitBlueprintId === 'commander') {
+      throw new Error(`Invalid buildable unit blueprint id in unitRoster.json: ${unitBlueprintId}`);
     }
-    return unitId;
+    return unitBlueprintId;
   });
 }
 
-export const BUILDABLE_UNIT_IDS = readBuildableUnitIds();
+export const BUILDABLE_UNIT_BLUEPRINT_IDS = readBuildableUnitBlueprintIds();
 
-const BUILDABLE_UNIT_ID_SET = new Set<string>(BUILDABLE_UNIT_IDS);
-const DEFAULT_DISABLED_DEMO_UNIT_IDS = new Set<string>(
+const BUILDABLE_UNIT_BLUEPRINT_ID_SET = new Set<string>(BUILDABLE_UNIT_BLUEPRINT_IDS);
+const DEFAULT_DISABLED_DEMO_UNIT_BLUEPRINT_IDS = new Set<string>(
   unitRoster.defaultDisabledDemoUnitIds,
 );
 
-export function isDemoUnitEnabledByDefault(unitId: string): boolean {
-  return !DEFAULT_DISABLED_DEMO_UNIT_IDS.has(unitId);
+export function isDemoUnitEnabledByDefault(unitBlueprintId: string): boolean {
+  return !DEFAULT_DISABLED_DEMO_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
 }
 
-export function isBuildableUnitId(unitId: string): unitId is BuildableUnitId {
-  return BUILDABLE_UNIT_ID_SET.has(unitId);
+export function isBuildableUnitBlueprintId(unitBlueprintId: string): unitBlueprintId is BuildableUnitBlueprintId {
+  return BUILDABLE_UNIT_BLUEPRINT_ID_SET.has(unitBlueprintId);
 }

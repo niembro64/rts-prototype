@@ -1,7 +1,7 @@
 // Network entity creation helpers
 
-import type { Entity, BuildingType, Turret } from '../../sim/types';
-import { isTowerBuildingType } from '../../../types/buildingTypes';
+import type { Entity, BuildingBlueprintId, Turret } from '../../sim/types';
+import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
 import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
@@ -11,10 +11,10 @@ import {
 import type { NetworkServerSnapshotEntity, NetworkServerSnapshotTurret } from '../NetworkManager';
 import {
   codeToTurretState,
-  codeToUnitType,
-  codeToBuildingType,
-  buildingTypeToCode,
-  codeToTurretId,
+  codeToUnitBlueprintId,
+  codeToBuildingBlueprintId,
+  buildingBlueprintIdToCode,
+  codeToTurretBlueprintId,
 } from '../../../types/network';
 import { getBuildingBlueprint, getUnitBlueprint, getUnitLocomotion } from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
@@ -36,7 +36,7 @@ import {
 } from '../snapshotQuantization';
 import {
   decodeNetworkUnitActions,
-  decodeNetworkUnitType,
+  decodeNetworkUnitBlueprintId,
   readNetworkUnitBodyCenterHeight,
   readNetworkUnitMass,
   readNetworkUnitRadius,
@@ -44,17 +44,17 @@ import {
   readNetworkUnitVelocity,
 } from '../unitSnapshotFields';
 
-function decodeNetworkBuildingType(buildingType: unknown): BuildingType | null {
-  if (!isFiniteNumber(buildingType)) return null;
-  const decoded = codeToBuildingType(buildingType);
+function decodeNetworkBuildingBlueprintId(buildingBlueprintCode: unknown): BuildingBlueprintId | null {
+  if (!isFiniteNumber(buildingBlueprintCode)) return null;
+  const decoded = codeToBuildingBlueprintId(buildingBlueprintCode);
   if (!decoded) return null;
-  return buildingTypeToCode(decoded) === buildingType ? decoded as BuildingType : null;
+  return buildingBlueprintIdToCode(decoded) === buildingBlueprintCode ? decoded as BuildingBlueprintId : null;
 }
 
 function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret): void {
   const wire = nw.turret;
-  const wireTurretId = codeToTurretId(wire.id);
-  if (wireTurretId !== turret.config.id) return;
+  const wireTurretBlueprintId = codeToTurretBlueprintId(wire.turretBlueprintCode);
+  if (wireTurretBlueprintId !== turret.config.turretBlueprintId) return;
   turret.target = nw.targetId ?? null;
   turret.state = codeToTurretState(nw.state);
   turret.rotation = deqRot(wire.angular.rot);
@@ -85,14 +85,14 @@ export function applyNetworkTurretNonVisualState(
 }
 
 function createTurretsFromNetwork(
-  unitType: string,
+  unitBlueprintId: string,
   unitBodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): Turret[] | undefined {
   if (!Array.isArray(netTurrets) || netTurrets.length === 0) return undefined;
 
   try {
-    const canonical = createUnitRuntimeTurrets(unitType, unitBodyRadius);
+    const canonical = createUnitRuntimeTurrets(unitBlueprintId, unitBodyRadius);
     for (let i = 0; i < netTurrets.length && i < canonical.length; i++) {
       applyNetworkTurretState(canonical[i], netTurrets[i]);
     }
@@ -104,13 +104,13 @@ function createTurretsFromNetwork(
 
 export function refreshUnitTurretsFromNetwork(
   entity: Entity,
-  unitType: string,
+  unitBlueprintId: string,
   unitBodyRadius: number,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): void {
   const existingCombat = entity.combat;
   const previous = existingCombat !== null ? existingCombat.turrets : undefined;
-  const turrets = createTurretsFromNetwork(unitType, unitBodyRadius, netTurrets);
+  const turrets = createTurretsFromNetwork(unitBlueprintId, unitBodyRadius, netTurrets);
   if (!turrets) {
     entity.combat = null;
     return;
@@ -134,12 +134,12 @@ export function refreshUnitTurretsFromNetwork(
 
 export function refreshBuildingTurretsFromNetwork(
   entity: Entity,
-  buildingType: BuildingType,
+  buildingBlueprintId: BuildingBlueprintId,
   netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
 ): void {
   let turrets: Turret[];
   try {
-    turrets = createBuildingRuntimeTurrets(buildingType);
+    turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
   } catch {
     entity.combat = null;
     return;
@@ -196,8 +196,8 @@ function createUnitFromNetwork(
 ): Entity | null {
   const u = netEntity.unit;
 
-  const unitType = decodeNetworkUnitType(u !== null ? u.unitType : undefined);
-  if (!unitType) return null;
+  const unitBlueprintId = decodeNetworkUnitBlueprintId(u !== null ? u.unitBlueprintCode : undefined);
+  if (!unitBlueprintId) return null;
   const unitHp = u !== null ? u.hp : null;
   const unitBuild = u !== null ? u.build : null;
   const unitOrientation = u !== null ? u.orientation : null;
@@ -208,8 +208,8 @@ function createUnitFromNetwork(
   const surfaceNormal = readNetworkUnitSurfaceNormal(u);
   let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
   try {
-    unitBlueprint = getUnitBlueprint(unitType);
-  } catch { /* unknown unit type fallback handled by existing defaults */ }
+    unitBlueprint = getUnitBlueprint(unitBlueprintId);
+  } catch { /* unknown unit blueprint fallback handled by existing defaults */ }
   const blueprintRadius = unitBlueprint !== undefined && unitBlueprint.radius !== undefined
     ? unitBlueprint.radius
     : { body: 15, shot: 15, push: 15 };
@@ -232,7 +232,7 @@ function createUnitFromNetwork(
     ownership: { playerId },
     selectable: { selected: false },
     unit: {
-      unitType,
+      unitBlueprintId,
       hp: unitHp !== null ? unitHp.curr : 100,
       maxHp: unitHp !== null ? unitHp.max : 100,
       radius,
@@ -240,7 +240,7 @@ function createUnitFromNetwork(
         u,
         blueprintBodyCenterHeight,
       ),
-      locomotion: getUnitLocomotion(unitType),
+      locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),
       actions,
       actionHash: computeUnitActionHash(actions),
@@ -287,7 +287,7 @@ function createUnitFromNetwork(
   };
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
-  const turrets = createTurretsFromNetwork(unitType, entity.unit!.radius.body, unitTurrets);
+  const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.body, unitTurrets);
   if (turrets) {
     const combat = createCombatComponent(turrets);
     combat.fireEnabled = u === null || u.fireEnabled !== false;
@@ -297,7 +297,7 @@ function createUnitFromNetwork(
   // runs on the host (WorldState.createUnitFromBlueprint) so the
   // hydrated client and the authoritative sim share one rectangle.
   try {
-    const bp = unitBlueprint ?? getUnitBlueprint(entity.unit!.unitType);
+    const bp = unitBlueprint ?? getUnitBlueprint(entity.unit!.unitBlueprintId);
     entity.unit!.forceFieldBoundRadius = buildForceFieldPanelCache(
       bp, entity.unit!.forceFieldPanels,
     );
@@ -351,15 +351,17 @@ function createBuildingFromNetwork(
   playerId: number
 ): Entity | null {
   const b = netEntity.building;
-  const buildingType = decodeNetworkBuildingType(b !== null ? b.type : undefined);
-  if (!b || !buildingType) return null;
+  const buildingBlueprintId = decodeNetworkBuildingBlueprintId(
+    b !== null ? b.buildingBlueprintCode : undefined,
+  );
+  if (!b || !buildingBlueprintId) return null;
   const buildingHp = b.hp;
   const buildingSolar = b.solar;
 
   // Static building facts are blueprint-derived on the client. The
   // snapshot overlays only dynamic state (hp, build progress, factory
   // queue, solar open state, extraction rate).
-  const config = getBuildingConfig(buildingType);
+  const config = getBuildingConfig(buildingBlueprintId);
   const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
   const height = config.gridHeight * BUILD_GRID_CELL_SIZE;
   const depth = config.gridDepth * BUILD_GRID_CELL_SIZE;
@@ -369,7 +371,7 @@ function createBuildingFromNetwork(
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
-    type: isTowerBuildingType(buildingType) ? 'tower' : 'building',
+    type: isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building',
     transform: createTransform(x, y, z, rotation),
     ownership: { playerId },
     selectable: { selected: false },
@@ -386,28 +388,28 @@ function createBuildingFromNetwork(
       // `activeState` slot. Solar starts closed by default; the others
       // start in the host's authoritative initial pose, which the wire
       // ships as soon as the first snapshot for this entity arrives.
-      activeState: (buildingType === 'solar'
-        || buildingType === 'wind'
-        || buildingType === 'extractor'
-        || buildingType === 'radar'
-        || buildingType === 'resourceConverter')
+      activeState: (buildingBlueprintId === 'solar'
+        || buildingBlueprintId === 'wind'
+        || buildingBlueprintId === 'extractor'
+        || buildingBlueprintId === 'radar'
+        || buildingBlueprintId === 'resourceConverter')
         ? {
-            open: buildingSolar !== null ? buildingSolar.open : buildingType !== 'solar',
+            open: buildingSolar !== null ? buildingSolar.open : buildingBlueprintId !== 'solar',
             damageDelayMs: 0,
             reopenDelayMs: 0,
           }
         : null,
     },
-    buildingType,
-    metalExtractionRate: buildingType === 'extractor'
+    buildingBlueprintId,
+    metalExtractionRate: buildingBlueprintId === 'extractor'
       ? b.metalExtractionRate ?? 0
       : null,
   };
-  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingType));
+  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
 
   if (b.build && !b.build.complete) {
     // required is re-derived from the local building config — it's a
-    // pure function of buildingType and never changes after spawn, so
+    // pure function of buildingBlueprintId and never changes after spawn, so
     // no need to ship it on the wire.
     entity.buildable = createBuildable(config.cost, {
       paid: b.build.paid,
@@ -424,7 +426,7 @@ function createBuildingFromNetwork(
   // (0, 0, 0) in building-local space, hiding the head inside the
   // body slab. Beam updates also reference the source's turret rig
   // for client-side prediction / aim smoothing.
-  refreshBuildingTurretsFromNetwork(entity, buildingType, b.turrets);
+  refreshBuildingTurretsFromNetwork(entity, buildingBlueprintId, b.turrets);
 
   const f = b.factory;
   if (f) {
@@ -443,8 +445,8 @@ function createBuildingFromNetwork(
     }
     const buildQueue: string[] = [];
     for (let i = 0; i < f.queue.length; i++) {
-      const unitType = codeToUnitType(f.queue[i]);
-      if (unitType) buildQueue.push(unitType);
+      const unitBlueprintId = codeToUnitBlueprintId(f.queue[i]);
+      if (unitBlueprintId) buildQueue.push(unitBlueprintId);
     }
     entity.factory = {
       buildQueue,

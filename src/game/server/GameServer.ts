@@ -114,10 +114,10 @@ export class GameServer {
   private lastSnapshotTime: number = 0;
   private keyframeRatioDisplay: KeyframeRatio;
 
-  // Background mode — allowed unit types for AI production & UI toggles.
-  // Initial set comes from GameServerConfig.initialAllowedTypes when the
+  // Background mode — allowed unit blueprints for AI production & UI toggles.
+  // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
   // caller restored saved demo settings; otherwise defaults to "all".
-  private backgroundAllowedTypes: Set<string>;
+  private backgroundAllowedUnitBlueprintIds: Set<string>;
 
   // Snapshot listeners
   private snapshotListeners: SnapshotListenerEntry[] = [];
@@ -228,7 +228,7 @@ export class GameServer {
     this.commandQueue = boot.commandQueue;
     this.playerIds = boot.playerIds;
     this.backgroundMode = boot.backgroundMode;
-    this.backgroundAllowedTypes = boot.backgroundAllowedTypes;
+    this.backgroundAllowedUnitBlueprintIds = boot.backgroundAllowedUnitBlueprintIds;
     this.terrainTileMap = boot.terrainTileMap;
     this.terrainBuildabilityGrid = boot.terrainBuildabilityGrid;
 
@@ -498,7 +498,7 @@ export class GameServer {
       keyframeRatio: this.keyframeRatio,
       ipAddress: this.ipAddress,
       backgroundMode: this.backgroundMode,
-      backgroundAllowedTypes: this.backgroundAllowedTypes,
+      backgroundAllowedUnitBlueprintIds: this.backgroundAllowedUnitBlueprintIds,
       tickMsAvg: this.tickMsAvg,
       tickMsHi: this.tickMsHi,
       tickMsInitialized: this.tickMsInitialized,
@@ -536,9 +536,9 @@ export class GameServer {
         if (!this.canApplyServerControlCommand(authority)) return;
         this.setSendGridInfo(sanitizedCommand.enabled);
         return;
-      case 'setBackgroundUnitType':
+      case 'setBackgroundUnitBlueprintEnabled':
         if (!this.canApplyServerControlCommand(authority)) return;
-        this.setBackgroundUnitTypeEnabled(sanitizedCommand.unitType, sanitizedCommand.enabled);
+        this.setBackgroundUnitBlueprintEnabled(sanitizedCommand.unitBlueprintId, sanitizedCommand.enabled);
         return;
       case 'setMaxTotalUnits':
         if (!this.canApplyServerControlCommand(authority)) return;
@@ -982,25 +982,25 @@ export class GameServer {
     return { avgFps: this.tpsAvg, worstFps: this.tpsLow };
   }
 
-  // Background demo: toggle unit type for AI production
-  setBackgroundUnitTypeEnabled(unitType: string, enabled: boolean): void {
+  // Background demo: toggle unit blueprint for AI production
+  setBackgroundUnitBlueprintEnabled(unitBlueprintId: string, enabled: boolean): void {
     if (enabled) {
-      this.backgroundAllowedTypes.add(unitType);
+      this.backgroundAllowedUnitBlueprintIds.add(unitBlueprintId);
     } else {
-      this.backgroundAllowedTypes.delete(unitType);
+      this.backgroundAllowedUnitBlueprintIds.delete(unitBlueprintId);
       for (const factory of this.world.getFactoryBuildings()) {
         const factoryComp = factory.factory;
         if (!factoryComp) continue;
         let touched = false;
         if (factoryComp.currentShellId !== null) {
           const shell = this.world.getEntity(factoryComp.currentShellId);
-          if (shell !== undefined && shell.unit !== null && shell.unit.unitType === unitType) {
+          if (shell !== undefined && shell.unit !== null && shell.unit.unitBlueprintId === unitBlueprintId) {
             factoryProductionSystem.cancelActiveShell(this.world, factory);
             touched = true;
           }
         }
         for (let i = factoryComp.buildQueue.length - 1; i >= 0; i--) {
-          if (factoryComp.buildQueue[i] !== unitType) continue;
+          if (factoryComp.buildQueue[i] !== unitBlueprintId) continue;
           factoryComp.buildQueue.splice(i, 1);
           touched = true;
         }
@@ -1013,16 +1013,16 @@ export class GameServer {
       }
       // Kill all existing units of this type
       for (const unit of this.world.getUnits()) {
-        if (unit.unit !== null && unit.unit.unitType === unitType) {
+        if (unit.unit !== null && unit.unit.unitBlueprintId === unitBlueprintId) {
           this.world.removeEntity(unit.id);
         }
       }
     }
     // Update AI production filter
-    this.simulation.setAiAllowedUnitTypes(this.backgroundAllowedTypes);
+    this.simulation.setAiAllowedUnitBlueprintIds(this.backgroundAllowedUnitBlueprintIds);
   }
 
-  getBackgroundAllowedTypes(): ReadonlySet<string> {
-    return this.backgroundAllowedTypes;
+  getBackgroundAllowedUnitBlueprintIds(): ReadonlySet<string> {
+    return this.backgroundAllowedUnitBlueprintIds;
   }
 }

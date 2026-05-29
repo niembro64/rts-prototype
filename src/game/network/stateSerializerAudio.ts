@@ -31,7 +31,7 @@ const _attackAlertVictimPlayers = new Set<number>();
 function createPooledSimEvent(): NetworkServerSnapshotSimEvent {
   const event: PooledSimEvent = {
     type: 'fire',
-    turretId: '',
+    turretBlueprintId: '',
     sourceType: null,
     sourceKey: null,
     pos: { x: 0, y: 0, z: 0 },
@@ -140,7 +140,7 @@ export function serializeAudioEvents(
     }
     const out = getPooledItem(state, createPooledSimEvent) as PooledSimEvent;
     out.type = source.type;
-    out.turretId = source.turretId;
+    out.turretBlueprintId = source.turretBlueprintId;
     out.sourceType = source.sourceType ?? null;
     out.sourceKey = source.sourceKey ?? null;
     out._pos.x = source.pos.x;

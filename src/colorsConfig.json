@@ -674,7 +674,7 @@
         "hint": "rgba(255, 255, 255, 0.4)",
         "key": "rgba(255, 255, 255, 0.5)"
       },
-      "unitType": {
+      "unitBlueprintId": {
         "commander": "#ffd700",
         "factory": "#88ff88"
       },
