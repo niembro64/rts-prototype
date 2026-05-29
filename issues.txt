@@ -66,19 +66,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C2. [MED] Client snapshot DECODE allocates fresh per-entity DTOs + nested literals
-    every snapshot.
-    LOCATION: snapshotEntityWirePack.ts:252,270 (new Array), :901-932 + :1010-1041
-      (createEmptyUnitSub + {x,y,z}/{x,y,z,w} literals per unit); entered from
-      snapshotWireCodec.ts:295.
-    RULE: "Pool snapshot DTOs"; "do not allocate in per-unit loops".
-    PROBLEM: the ENCODE side is exemplary (pooled PooledEntry + typed-array wire rows),
-      but the remote-client DECODE side allocates a fresh entity array plus per-unit
-      sub-object + velocity/orientation/angularVelocity3 literals — ~50k+ short-lived
-      objects/sec at 5000 units @10Hz, discarded after ClientSnapshotApplier consumes
-      them. (Host/local play skips this.)
-    FIX: pool the decode DTOs like the encode side.
-
 C5. [LOW] Per-unit JS↔WASM boundary crossing in the client prediction loop.
     LOCATION: ClientPredictionStepper.ts:262-296 → ClientUnitPrediction.ts:186 →
       unitMotionIntegration.ts:89 (sim.stepUnitMotion, one call per unit per frame

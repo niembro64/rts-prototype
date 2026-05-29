@@ -60,6 +60,119 @@ function createEmptyBuildingSub(): BuildingSub {
   };
 }
 
+// Decode-side object pools for the per-unit movement-delta hot path
+// (the dominant decode allocation at thousands of units). Reused across
+// decodes and reset at the top of every unpackEntitiesFromWire.
+//
+// Safe to reuse because a decoded snapshot never outlives its decode:
+// on the normal path it is applied synchronously within the decode's
+// promise tick (consumers copy scalars out, never retaining the DTOs),
+// and the async buffering paths (RemoteGameConnection.pendingSnapshot,
+// the snapshot-impairment delay queue, NetworkSnapshotTransport pending)
+// clone the snapshot into owned objects before holding it. So pooled
+// objects are dead by the next decode.
+type DecodedVec3 = { x: number; y: number; z: number };
+type DecodedQuat = { x: number; y: number; z: number; w: number };
+
+const _entityPool: NetworkServerSnapshotEntity[] = [];
+let _entityPoolIndex = 0;
+const _unitSubPool: UnitSub[] = [];
+let _unitSubPoolIndex = 0;
+const _vec3Pool: DecodedVec3[] = [];
+let _vec3PoolIndex = 0;
+const _quatPool: DecodedQuat[] = [];
+let _quatPoolIndex = 0;
+
+function resetDecodePools(): void {
+  _entityPoolIndex = 0;
+  _unitSubPoolIndex = 0;
+  _vec3PoolIndex = 0;
+  _quatPoolIndex = 0;
+}
+
+function rentDecodedEntity(): NetworkServerSnapshotEntity {
+  let e = _entityPool[_entityPoolIndex];
+  if (e === undefined) {
+    e = {
+      id: 0,
+      type: 'unit',
+      playerId: 0 as PlayerId,
+      changedFields: null,
+      pos: null,
+      rotation: null,
+      unit: null,
+      building: null,
+    };
+    _entityPool[_entityPoolIndex] = e;
+  } else {
+    // Reset the conditionally-populated fields so a reused row can't
+    // carry a zombie sub-object from the previous decode. id, type,
+    // playerId and changedFields are always written by the caller.
+    e.pos = null;
+    e.rotation = null;
+    e.unit = null;
+    e.building = null;
+  }
+  _entityPoolIndex++;
+  return e;
+}
+
+function rentDecodedUnitSub(): UnitSub {
+  let u = _unitSubPool[_unitSubPoolIndex];
+  if (u === undefined) {
+    u = createEmptyUnitSub();
+    _unitSubPool[_unitSubPoolIndex] = u;
+  } else {
+    u.unitType = null;
+    u.hp = null;
+    u.radius = null;
+    u.bodyCenterHeight = null;
+    u.mass = null;
+    u.velocity = null;
+    u.surfaceNormal = null;
+    u.orientation = null;
+    u.angularVelocity3 = null;
+    u.fireEnabled = null;
+    u.isCommander = null;
+    u.buildTargetId = null;
+    u.buildTargetIdPresent = false;
+    u.actions = null;
+    u.turrets = null;
+    u.build = null;
+  }
+  _unitSubPoolIndex++;
+  return u;
+}
+
+function rentDecodedVec3(x: number, y: number, z: number): DecodedVec3 {
+  let v = _vec3Pool[_vec3PoolIndex];
+  if (v === undefined) {
+    v = { x, y, z };
+    _vec3Pool[_vec3PoolIndex] = v;
+  } else {
+    v.x = x;
+    v.y = y;
+    v.z = z;
+  }
+  _vec3PoolIndex++;
+  return v;
+}
+
+function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQuat {
+  let q = _quatPool[_quatPoolIndex];
+  if (q === undefined) {
+    q = { x, y, z, w };
+    _quatPool[_quatPoolIndex] = q;
+  } else {
+    q.x = x;
+    q.y = y;
+    q.z = z;
+    q.w = w;
+  }
+  _quatPoolIndex++;
+  return q;
+}
+
 const PACKED_ENTITIES_V1_VERSION = 1;
 const PACKED_ENTITIES_V2_VERSION = 2;
 const PACKED_ENTITIES_V3_VERSION = 3;
@@ -247,6 +360,7 @@ export function packEntitiesForWire(
 export function unpackEntitiesFromWire(
   packed: PackedEntitySnapshotWire,
 ): NetworkServerSnapshotEntity[] {
+  resetDecodePools();
   if (packed.v === PACKED_ENTITIES_V1_VERSION) {
     const rows = packed.e;
     const out: NetworkServerSnapshotEntity[] = new Array(rows.length);
@@ -869,22 +983,13 @@ function unpackMovementUnitDeltaRows(
     const flags = rows[i++] as number;
     const id = rows[i++] as number;
     const playerId = rows[i++] as PlayerId;
-    const entity: NetworkServerSnapshotEntity = {
-      id,
-      type: 'unit',
-      playerId,
-      changedFields: movementUnitChangedFields(flags),
-      pos: null,
-      rotation: null,
-      unit: null,
-      building: null,
-    };
+    const entity = rentDecodedEntity();
+    entity.id = id;
+    entity.type = 'unit';
+    entity.playerId = playerId;
+    entity.changedFields = movementUnitChangedFields(flags);
     if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
-      entity.pos = {
-        x: rows[i++] as number,
-        y: rows[i++] as number,
-        z: rows[i++] as number,
-      };
+      entity.pos = rentDecodedVec3(rows[i++] as number, rows[i++] as number, rows[i++] as number);
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
       entity.rotation = rows[i++] as number;
@@ -898,36 +1003,28 @@ function unpackMovementUnitDeltaRows(
         MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
       )) !== 0
     ) {
-      const unit = createEmptyUnitSub();
+      const unit = rentDecodedUnitSub();
       if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
-        unit.velocity = {
-          x: rows[i++] as number,
-          y: rows[i++] as number,
-          z: rows[i++] as number,
-        };
+        unit.velocity = rentDecodedVec3(rows[i++] as number, rows[i++] as number, rows[i++] as number);
       }
       if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
-        unit.orientation = {
-          x: rows[i++] as number,
-          y: rows[i++] as number,
-          z: rows[i++] as number,
-          w: rows[i++] as number,
-        };
+        unit.orientation = rentDecodedQuat(
+          rows[i++] as number,
+          rows[i++] as number,
+          rows[i++] as number,
+          rows[i++] as number,
+        );
       }
       if ((flags & MOVEMENT_UNIT_FLAG_YAW_ORIENTATION) !== 0) {
-        const orientation = { x: 0, y: 0, z: 0, w: 1 };
+        const orientation = rentDecodedQuat(0, 0, 0, 1);
         setQuatFromYaw(orientation, deqRot(entity.rotation ?? 0));
         unit.orientation = orientation;
       }
       if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
-        unit.angularVelocity3 = {
-          x: rows[i++] as number,
-          y: rows[i++] as number,
-          z: rows[i++] as number,
-        };
+        unit.angularVelocity3 = rentDecodedVec3(rows[i++] as number, rows[i++] as number, rows[i++] as number);
       }
       if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
-        unit.angularVelocity3 = { x: 0, y: 0, z: rows[i++] as number };
+        unit.angularVelocity3 = rentDecodedVec3(0, 0, rows[i++] as number);
       }
       entity.unit = unit;
     }
@@ -978,22 +1075,13 @@ function readMovementUnitDeltaByteEntity(
   id: number,
   playerId: PlayerId,
 ): NetworkServerSnapshotEntity {
-  const entity: NetworkServerSnapshotEntity = {
-    id,
-    type: 'unit',
-    playerId,
-    changedFields: movementUnitChangedFields(flags),
-    pos: null,
-    rotation: null,
-    unit: null,
-    building: null,
-  };
+  const entity = rentDecodedEntity();
+  entity.id = id;
+  entity.type = 'unit';
+  entity.playerId = playerId;
+  entity.changedFields = movementUnitChangedFields(flags);
   if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
-    entity.pos = {
-      x: reader.readVarInt(),
-      y: reader.readVarInt(),
-      z: reader.readVarInt(),
-    };
+    entity.pos = rentDecodedVec3(reader.readVarInt(), reader.readVarInt(), reader.readVarInt());
   }
   if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
     entity.rotation = reader.readVarInt();
@@ -1007,36 +1095,32 @@ function readMovementUnitDeltaByteEntity(
       MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY
     )) !== 0
   ) {
-      const unit = createEmptyUnitSub();
+    const unit = rentDecodedUnitSub();
     if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
-      unit.velocity = {
-        x: reader.readVarInt(),
-        y: reader.readVarInt(),
-        z: reader.readVarInt(),
-      };
+      unit.velocity = rentDecodedVec3(reader.readVarInt(), reader.readVarInt(), reader.readVarInt());
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
-      unit.orientation = {
-        x: reader.readFloat64(),
-        y: reader.readFloat64(),
-        z: reader.readFloat64(),
-        w: reader.readFloat64(),
-      };
+      unit.orientation = rentDecodedQuat(
+        reader.readFloat64(),
+        reader.readFloat64(),
+        reader.readFloat64(),
+        reader.readFloat64(),
+      );
     }
     if ((flags & MOVEMENT_UNIT_FLAG_YAW_ORIENTATION) !== 0) {
-      const orientation = { x: 0, y: 0, z: 0, w: 1 };
+      const orientation = rentDecodedQuat(0, 0, 0, 1);
       setQuatFromYaw(orientation, deqRot(entity.rotation ?? 0));
       unit.orientation = orientation;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
-      unit.angularVelocity3 = {
-        x: reader.readFloat64(),
-        y: reader.readFloat64(),
-        z: reader.readFloat64(),
-      };
+      unit.angularVelocity3 = rentDecodedVec3(
+        reader.readFloat64(),
+        reader.readFloat64(),
+        reader.readFloat64(),
+      );
     }
     if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
-      unit.angularVelocity3 = { x: 0, y: 0, z: reader.readFloat64() };
+      unit.angularVelocity3 = rentDecodedVec3(0, 0, reader.readFloat64());
     }
     entity.unit = unit;
   }

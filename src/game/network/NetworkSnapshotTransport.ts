@@ -18,6 +18,7 @@ import {
   encodeNetworkSnapshot,
   measureNetworkSnapshotWireBreakdown,
 } from './snapshotWireCodec';
+import { cloneNetworkSnapshot } from './snapshotClone';
 import { setSnapshotWireBytes } from './snapshotWireMetadata';
 
 const SNAPSHOT_BACKPRESSURE_DROP_BYTES = 2 * 1024 * 1024;
@@ -154,7 +155,9 @@ export class NetworkSnapshotTransport {
 
   storePendingState(state: NetworkServerSnapshot): void {
     if (!this.pendingReceivedState || (this.pendingReceivedState.isDelta && !state.isDelta)) {
-      this.pendingReceivedState = state;
+      // Held until a later consume; the next decode reuses pooled DTOs, so
+      // clone into owned objects to keep the buffered snapshot intact.
+      this.pendingReceivedState = cloneNetworkSnapshot(state);
     }
   }
 
