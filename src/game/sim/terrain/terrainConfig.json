@@ -1,7 +1,7 @@
 {
   "tileFloorY": -1200,
   "waterLevelFraction": 0.9,
-  "terrainTriangleMaxSurfaceError": 0,
+  "terrainTriangleMaxSurfaceError": 4,
   "terrainTriangleMaxNormalAngleDegrees": 18,
   "terrainTriangleMaxNeighborLevelDelta": 1,
   "terrainTriangleFinalRepairMaxPasses": 3,
@@ -13,7 +13,7 @@
     "amount": 0.5
   },
   "waterFullyOpaque": false,
-  "terrainCirclePerimeterEdgeFraction": 0.49,
+  "terrainCirclePerimeterEdgeFraction": 0.4,
   "terrainCirclePerimeterTransitionWidthFraction": 0.1,
   "terrainGenerationEdgeTransitionWidthFraction": 0.04,
   "plateau": {
