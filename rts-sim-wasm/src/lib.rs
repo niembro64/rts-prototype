@@ -3444,6 +3444,10 @@ const TERRAIN_WATER_LEVEL: f64 = TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEV
 // Matches terrainTileMap.ts TERRAIN_MESH_EPSILON for the degenerate
 // barycentric guard.
 const TERRAIN_MESH_EPSILON: f64 = 1e-6;
+const TERRAIN_MESH_EDGE_EPSILON: f64 = 1e-4;
+const TERRAIN_INV_SQRT3: f64 = 0.5773502691896258;
+const TERRAIN_EDGE_LINE_KEY_BIAS: i64 = 0x100000000;
+const TERRAIN_EDGE_LINE_KEY_STRIDE: i64 = 0x200000000;
 
 #[inline]
 fn terrain_clamp_cell(value: i32, count: i32) -> i32 {
@@ -3683,6 +3687,516 @@ pub fn terrain_smooth_mesh_vertex_heights(
         }
         vertex_heights.copy_from_slice(&next);
     }
+    1
+}
+
+#[derive(Clone, Copy)]
+struct TerrainTriangleEdgeOwnerRust {
+    triangle: usize,
+    edge: usize,
+    a: usize,
+    b: usize,
+}
+
+#[derive(Clone, Copy)]
+struct TerrainTriangleEdgeSpanRust {
+    triangle: usize,
+    edge: usize,
+    line_key: i64,
+    start: f64,
+    end: f64,
+}
+
+struct TerrainMeshEdgeMetadataRust {
+    edge_owners: HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>>,
+    spans_by_line: HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>>,
+    edge_spans: HashMap<usize, TerrainTriangleEdgeSpanRust>,
+}
+
+#[inline]
+fn terrain_triangle_edge_key(triangle: usize, edge: usize) -> usize {
+    triangle * 3 + edge
+}
+
+#[inline]
+fn terrain_mesh_edge_key(a: usize, b: usize, vertex_key_base: u64) -> Option<u64> {
+    let lo = a.min(b) as u64;
+    let hi = a.max(b) as u64;
+    lo.checked_mul(vertex_key_base)?.checked_add(hi)
+}
+
+fn terrain_collect_triangle_edge_owners(
+    triangle_indices: &[i32],
+) -> Option<HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>>> {
+    if triangle_indices.len() % 3 != 0 {
+        return None;
+    }
+
+    let mut max_vertex_id: usize = 0;
+    for &index in triangle_indices {
+        if index < 0 {
+            return None;
+        }
+        max_vertex_id = max_vertex_id.max(index as usize);
+    }
+    let vertex_key_base = (max_vertex_id as u64).checked_add(1)?;
+    let mut edge_owners: HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>> = HashMap::new();
+
+    let triangle_count = triangle_indices.len() / 3;
+    for triangle in 0..triangle_count {
+        let tri_offset = triangle * 3;
+        for edge in 0..3 {
+            let a = triangle_indices[tri_offset + edge] as usize;
+            let b = triangle_indices[tri_offset + ((edge + 1) % 3)] as usize;
+            let key = terrain_mesh_edge_key(a, b, vertex_key_base)?;
+            edge_owners
+                .entry(key)
+                .or_default()
+                .push(TerrainTriangleEdgeOwnerRust {
+                    triangle,
+                    edge,
+                    a,
+                    b,
+                });
+        }
+    }
+
+    Some(edge_owners)
+}
+
+#[inline]
+fn terrain_quantized_line_value(value: f64, vertex_key_scale: f64) -> Option<i64> {
+    if !value.is_finite() || !vertex_key_scale.is_finite() || vertex_key_scale <= 0.0 {
+        return None;
+    }
+    Some(terrain_js_round(value * vertex_key_scale) as i64)
+}
+
+#[inline]
+fn terrain_edge_line_key(kind: u8, value: f64, vertex_key_scale: f64) -> Option<i64> {
+    let quantized = terrain_quantized_line_value(value, vertex_key_scale)?;
+    (kind as i64)
+        .checked_mul(TERRAIN_EDGE_LINE_KEY_STRIDE)?
+        .checked_add(quantized)?
+        .checked_add(TERRAIN_EDGE_LINE_KEY_BIAS)
+}
+
+fn terrain_edge_span_for_owner(
+    vertex_coords: &[f64],
+    owner: TerrainTriangleEdgeOwnerRust,
+    vertex_key_scale: f64,
+) -> Option<TerrainTriangleEdgeSpanRust> {
+    let ax = *vertex_coords.get(owner.a.checked_mul(2)?)?;
+    let az = *vertex_coords.get(owner.a.checked_mul(2)? + 1)?;
+    let bx = *vertex_coords.get(owner.b.checked_mul(2)?)?;
+    let bz = *vertex_coords.get(owner.b.checked_mul(2)? + 1)?;
+    if !ax.is_finite() || !az.is_finite() || !bx.is_finite() || !bz.is_finite() {
+        return None;
+    }
+
+    let horizontal_error = (az - bz).abs();
+    let diag_a0 = ax - az * TERRAIN_INV_SQRT3;
+    let diag_a1 = bx - bz * TERRAIN_INV_SQRT3;
+    let diag_b0 = ax + az * TERRAIN_INV_SQRT3;
+    let diag_b1 = bx + bz * TERRAIN_INV_SQRT3;
+    let diag_a_error = (diag_a0 - diag_a1).abs();
+    let diag_b_error = (diag_b0 - diag_b1).abs();
+    let best_error = horizontal_error.min(diag_a_error).min(diag_b_error);
+    if best_error > TERRAIN_MESH_EDGE_EPSILON {
+        return None;
+    }
+
+    let (line_kind, line_value, a_coord, b_coord) = if best_error == horizontal_error {
+        (0, (az + bz) * 0.5, ax, bx)
+    } else if best_error == diag_a_error {
+        (1, (diag_a0 + diag_a1) * 0.5, az, bz)
+    } else {
+        (2, (diag_b0 + diag_b1) * 0.5, az, bz)
+    };
+
+    Some(TerrainTriangleEdgeSpanRust {
+        triangle: owner.triangle,
+        edge: owner.edge,
+        line_key: terrain_edge_line_key(line_kind, line_value, vertex_key_scale)?,
+        start: a_coord.min(b_coord),
+        end: a_coord.max(b_coord),
+    })
+}
+
+fn terrain_collect_triangle_edge_spans_by_line(
+    vertex_coords: &[f64],
+    edge_owners: &HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>>,
+    vertex_key_scale: f64,
+) -> HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>> {
+    let mut spans_by_line: HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>> = HashMap::new();
+    for owners in edge_owners.values() {
+        for &owner in owners {
+            let Some(span) = terrain_edge_span_for_owner(vertex_coords, owner, vertex_key_scale)
+            else {
+                continue;
+            };
+            spans_by_line.entry(span.line_key).or_default().push(span);
+        }
+    }
+    for spans in spans_by_line.values_mut() {
+        spans.sort_by(|a, b| {
+            a.start
+                .partial_cmp(&b.start)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    a.end
+                        .partial_cmp(&b.end)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        });
+    }
+    spans_by_line
+}
+
+fn terrain_collect_triangle_edge_span_index(
+    spans_by_line: &HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>>,
+) -> HashMap<usize, TerrainTriangleEdgeSpanRust> {
+    let mut edge_spans: HashMap<usize, TerrainTriangleEdgeSpanRust> = HashMap::new();
+    for spans in spans_by_line.values() {
+        for &span in spans {
+            edge_spans.insert(terrain_triangle_edge_key(span.triangle, span.edge), span);
+        }
+    }
+    edge_spans
+}
+
+fn terrain_build_mesh_edge_metadata(
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+    vertex_key_scale: f64,
+) -> Option<TerrainMeshEdgeMetadataRust> {
+    if !vertex_key_scale.is_finite() || vertex_key_scale <= 0.0 {
+        return None;
+    }
+    let edge_owners = terrain_collect_triangle_edge_owners(triangle_indices)?;
+    let spans_by_line =
+        terrain_collect_triangle_edge_spans_by_line(vertex_coords, &edge_owners, vertex_key_scale);
+    let edge_spans = terrain_collect_triangle_edge_span_index(&spans_by_line);
+    Some(TerrainMeshEdgeMetadataRust {
+        edge_owners,
+        spans_by_line,
+        edge_spans,
+    })
+}
+
+fn terrain_mesh_edge_is_map_boundary(
+    map_width: f64,
+    map_height: f64,
+    vertex_coords: &[f64],
+    owner: TerrainTriangleEdgeOwnerRust,
+) -> bool {
+    let Some(ax) = vertex_coords.get(owner.a * 2).copied() else {
+        return false;
+    };
+    let Some(az) = vertex_coords.get(owner.a * 2 + 1).copied() else {
+        return false;
+    };
+    let Some(bx) = vertex_coords.get(owner.b * 2).copied() else {
+        return false;
+    };
+    let Some(bz) = vertex_coords.get(owner.b * 2 + 1).copied() else {
+        return false;
+    };
+
+    (ax.abs() <= TERRAIN_MESH_EDGE_EPSILON && bx.abs() <= TERRAIN_MESH_EDGE_EPSILON)
+        || ((ax - map_width).abs() <= TERRAIN_MESH_EDGE_EPSILON
+            && (bx - map_width).abs() <= TERRAIN_MESH_EDGE_EPSILON)
+        || (az.abs() <= TERRAIN_MESH_EDGE_EPSILON && bz.abs() <= TERRAIN_MESH_EDGE_EPSILON)
+        || ((az - map_height).abs() <= TERRAIN_MESH_EDGE_EPSILON
+            && (bz - map_height).abs() <= TERRAIN_MESH_EDGE_EPSILON)
+}
+
+#[inline]
+fn terrain_edge_spans_overlap(
+    a: TerrainTriangleEdgeSpanRust,
+    b: TerrainTriangleEdgeSpanRust,
+) -> bool {
+    a.triangle != b.triangle
+        && a.line_key == b.line_key
+        && a.end.min(b.end) - a.start.max(b.start) > TERRAIN_MESH_EDGE_EPSILON
+}
+
+fn terrain_find_overlapping_edge_spans(
+    owner: TerrainTriangleEdgeOwnerRust,
+    spans_by_line: &HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>>,
+    edge_spans: &HashMap<usize, TerrainTriangleEdgeSpanRust>,
+) -> Vec<TerrainTriangleEdgeSpanRust> {
+    let Some(owner_span) = edge_spans
+        .get(&terrain_triangle_edge_key(owner.triangle, owner.edge))
+        .copied()
+    else {
+        return Vec::new();
+    };
+    let Some(candidates) = spans_by_line.get(&owner_span.line_key) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for &candidate in candidates {
+        if candidate.end <= owner_span.start + TERRAIN_MESH_EDGE_EPSILON {
+            continue;
+        }
+        if candidate.start >= owner_span.end - TERRAIN_MESH_EDGE_EPSILON {
+            break;
+        }
+        if terrain_edge_spans_overlap(owner_span, candidate) {
+            out.push(candidate);
+        }
+    }
+    out
+}
+
+fn terrain_validate_triangle_vertices(vertex_coords: &[f64], triangle_indices: &[i32]) -> bool {
+    if triangle_indices.len() % 3 != 0 || vertex_coords.len() % 2 != 0 {
+        return false;
+    }
+    let vertex_count = vertex_coords.len() / 2;
+    for &index in triangle_indices {
+        if index < 0 || index as usize >= vertex_count {
+            return false;
+        }
+    }
+    true
+}
+
+/// Builds the triangle-edge neighbor metadata for a conforming terrain mesh.
+/// Mirrors buildTriangleNeighborMetadata in terrainTileMap.ts. TypeScript keeps
+/// object assembly and compatibility fallback; Rust owns the deterministic
+/// edge-map and overlap walk when available.
+#[wasm_bindgen]
+pub fn terrain_build_triangle_neighbor_metadata(
+    map_width: f64,
+    map_height: f64,
+    vertex_key_scale: f64,
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+    triangle_levels: &[i32],
+    neighbor_indices_out: &mut [i32],
+    neighbor_levels_out: &mut [i32],
+) -> u32 {
+    if !map_width.is_finite()
+        || !map_height.is_finite()
+        || map_width < 0.0
+        || map_height < 0.0
+        || !terrain_validate_triangle_vertices(vertex_coords, triangle_indices)
+    {
+        return 0;
+    }
+    let triangle_count = triangle_indices.len() / 3;
+    let out_len = triangle_count * 3;
+    if neighbor_indices_out.len() < out_len || neighbor_levels_out.len() < out_len {
+        return 0;
+    }
+    for i in 0..out_len {
+        neighbor_indices_out[i] = -1;
+        neighbor_levels_out[i] = -1;
+    }
+
+    let Some(edge_metadata) =
+        terrain_build_mesh_edge_metadata(vertex_coords, triangle_indices, vertex_key_scale)
+    else {
+        return 0;
+    };
+
+    for owners in edge_metadata.edge_owners.values() {
+        if owners.len() != 2 {
+            continue;
+        }
+        let a = owners[0];
+        let b = owners[1];
+        let a_offset = terrain_triangle_edge_key(a.triangle, a.edge);
+        let b_offset = terrain_triangle_edge_key(b.triangle, b.edge);
+        neighbor_indices_out[a_offset] = b.triangle as i32;
+        neighbor_levels_out[a_offset] = triangle_levels.get(b.triangle).copied().unwrap_or(-1);
+        neighbor_indices_out[b_offset] = a.triangle as i32;
+        neighbor_levels_out[b_offset] = triangle_levels.get(a.triangle).copied().unwrap_or(-1);
+    }
+
+    for owners in edge_metadata.edge_owners.values() {
+        for &owner in owners {
+            let owner_offset = terrain_triangle_edge_key(owner.triangle, owner.edge);
+            if neighbor_levels_out[owner_offset] >= 0
+                || terrain_mesh_edge_is_map_boundary(map_width, map_height, vertex_coords, owner)
+            {
+                continue;
+            }
+
+            let overlaps = terrain_find_overlapping_edge_spans(
+                owner,
+                &edge_metadata.spans_by_line,
+                &edge_metadata.edge_spans,
+            );
+            let mut best_triangle: i32 = -1;
+            let mut best_level: i32 = -1;
+            for overlap in overlaps {
+                let level = triangle_levels.get(overlap.triangle).copied().unwrap_or(-1);
+                if level > best_level {
+                    best_level = level;
+                    best_triangle = overlap.triangle as i32;
+                }
+            }
+            if best_triangle >= 0 {
+                neighbor_indices_out[owner_offset] = best_triangle;
+                neighbor_levels_out[owner_offset] = best_level;
+            }
+        }
+    }
+
+    1
+}
+
+fn terrain_mark_triangle_leaf_for_split(
+    leaf_sides: &[i32],
+    triangle_leaf_indices: &[i32],
+    split_leaf_flags_out: &mut [u8],
+    triangle: usize,
+) {
+    let leaf_index = triangle_leaf_indices.get(triangle).copied().unwrap_or(-1);
+    if leaf_index < 0 {
+        return;
+    }
+    let leaf_index = leaf_index as usize;
+    if leaf_index >= leaf_sides.len() || leaf_index >= split_leaf_flags_out.len() {
+        return;
+    }
+    if leaf_sides[leaf_index] <= 1 {
+        return;
+    }
+    split_leaf_flags_out[leaf_index] = 1;
+}
+
+fn terrain_mark_coarser_triangle_leaf_for_split(
+    leaf_sides: &[i32],
+    triangle_leaf_indices: &[i32],
+    triangle_levels: &[i32],
+    split_leaf_flags_out: &mut [u8],
+    a_triangle: usize,
+    b_triangle: usize,
+) {
+    let a_level = triangle_levels.get(a_triangle).copied().unwrap_or(0);
+    let b_level = triangle_levels.get(b_triangle).copied().unwrap_or(0);
+    if a_level <= b_level {
+        terrain_mark_triangle_leaf_for_split(
+            leaf_sides,
+            triangle_leaf_indices,
+            split_leaf_flags_out,
+            a_triangle,
+        );
+    }
+    if b_level <= a_level {
+        terrain_mark_triangle_leaf_for_split(
+            leaf_sides,
+            triangle_leaf_indices,
+            split_leaf_flags_out,
+            b_triangle,
+        );
+    }
+}
+
+/// Marks adaptive terrain leaves that must be split to repair neighbor
+/// discrepancies. Mirrors findMeshNeighborDiscrepancyLeafIndices in
+/// terrainTileMap.ts; TS still owns leaf objects and split orchestration.
+#[wasm_bindgen]
+pub fn terrain_mark_neighbor_discrepancy_leaves(
+    map_width: f64,
+    map_height: f64,
+    vertex_key_scale: f64,
+    max_neighbor_level_delta: i32,
+    leaf_sides: &[i32],
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+    triangle_levels: &[i32],
+    triangle_leaf_indices: &[i32],
+    split_leaf_flags_out: &mut [u8],
+) -> u32 {
+    if !map_width.is_finite()
+        || !map_height.is_finite()
+        || map_width < 0.0
+        || map_height < 0.0
+        || !terrain_validate_triangle_vertices(vertex_coords, triangle_indices)
+        || split_leaf_flags_out.len() < leaf_sides.len()
+    {
+        return 0;
+    }
+    for flag in &mut split_leaf_flags_out[..leaf_sides.len()] {
+        *flag = 0;
+    }
+
+    let Some(edge_metadata) =
+        terrain_build_mesh_edge_metadata(vertex_coords, triangle_indices, vertex_key_scale)
+    else {
+        return 0;
+    };
+    let max_delta = max_neighbor_level_delta.max(0);
+
+    for owners in edge_metadata.edge_owners.values() {
+        if owners.len() == 2 {
+            let a = owners[0];
+            let b = owners[1];
+            let a_level = triangle_levels.get(a.triangle).copied().unwrap_or(0);
+            let b_level = triangle_levels.get(b.triangle).copied().unwrap_or(0);
+            if (a_level - b_level).abs() > max_delta {
+                terrain_mark_coarser_triangle_leaf_for_split(
+                    leaf_sides,
+                    triangle_leaf_indices,
+                    triangle_levels,
+                    split_leaf_flags_out,
+                    a.triangle,
+                    b.triangle,
+                );
+            }
+            continue;
+        }
+
+        if owners.len() > 2 {
+            for &owner in owners {
+                terrain_mark_triangle_leaf_for_split(
+                    leaf_sides,
+                    triangle_leaf_indices,
+                    split_leaf_flags_out,
+                    owner.triangle,
+                );
+            }
+            continue;
+        }
+
+        let owner = owners[0];
+        if terrain_mesh_edge_is_map_boundary(map_width, map_height, vertex_coords, owner) {
+            continue;
+        }
+
+        let overlaps = terrain_find_overlapping_edge_spans(
+            owner,
+            &edge_metadata.spans_by_line,
+            &edge_metadata.edge_spans,
+        );
+        if overlaps.is_empty() {
+            terrain_mark_triangle_leaf_for_split(
+                leaf_sides,
+                triangle_leaf_indices,
+                split_leaf_flags_out,
+                owner.triangle,
+            );
+            continue;
+        }
+
+        for overlap in overlaps {
+            terrain_mark_coarser_triangle_leaf_for_split(
+                leaf_sides,
+                triangle_leaf_indices,
+                triangle_levels,
+                split_leaf_flags_out,
+                owner.triangle,
+                overlap.triangle,
+            );
+        }
+    }
+
     1
 }
 

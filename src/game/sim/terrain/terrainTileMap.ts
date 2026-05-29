@@ -139,6 +139,11 @@ type TerrainMeshEdgeMetadata = {
   edgeSpans: Map<number, TriangleEdgeSpan>;
 };
 
+type TerrainMeshNeighborDiscrepancy = {
+  splitLeafIndices: Set<number>;
+  edgeMetadata?: TerrainMeshEdgeMetadata;
+};
+
 const SQRT3_OVER_2 = Math.sqrt(3) * 0.5;
 const TERRAIN_MESH_EPSILON = 1e-6;
 const TERRAIN_MESH_EDGE_EPSILON = 1e-4;
@@ -1375,15 +1380,23 @@ function buildTriangleNeighborMetadata(
   vertexCoords: readonly number[],
   triangleIndices: readonly number[],
   triangleLevels: readonly number[],
-  edgeMetadata: TerrainMeshEdgeMetadata = buildTerrainMeshEdgeMetadata(
+  edgeMetadata?: TerrainMeshEdgeMetadata,
+): { indices: number[]; levels: number[] } {
+  const wasmMetadata = buildTriangleNeighborMetadataWasm(
+    ctx,
     vertexCoords,
     triangleIndices,
-  ),
-): { indices: number[]; levels: number[] } {
+    triangleLevels,
+  );
+  if (wasmMetadata) return wasmMetadata;
+
   const triangleCount = Math.floor(triangleIndices.length / 3);
   const neighborIndices = new Array<number>(triangleCount * 3).fill(-1);
   const neighborLevels = new Array<number>(triangleCount * 3).fill(-1);
-  const { edgeOwners, spansByLine, edgeSpans } = edgeMetadata;
+  const { edgeOwners, spansByLine, edgeSpans } = edgeMetadata ?? buildTerrainMeshEdgeMetadata(
+    vertexCoords,
+    triangleIndices,
+  );
 
   for (const owners of edgeOwners.values()) {
     if (owners.length !== 2) continue;
@@ -1425,6 +1438,34 @@ function buildTriangleNeighborMetadata(
   return { indices: neighborIndices, levels: neighborLevels };
 }
 
+function buildTriangleNeighborMetadataWasm(
+  ctx: TerrainMeshBuildContext,
+  vertexCoords: readonly number[],
+  triangleIndices: readonly number[],
+  triangleLevels: readonly number[],
+): { indices: number[]; levels: number[] } | null {
+  const sim = getSimWasm();
+  if (sim === undefined) return null;
+  const triangleCount = Math.floor(triangleIndices.length / 3);
+  const neighborIndices = new Int32Array(triangleCount * 3);
+  const neighborLevels = new Int32Array(triangleCount * 3);
+  const ok = sim.terrainBuildTriangleNeighborMetadata(
+    ctx.mapWidth,
+    ctx.mapHeight,
+    TERRAIN_TRIANGLE_VERTEX_KEY_SCALE,
+    Float64Array.from(vertexCoords),
+    Int32Array.from(triangleIndices),
+    Int32Array.from(triangleLevels),
+    neighborIndices,
+    neighborLevels,
+  );
+  if (ok === 0) return null;
+  return {
+    indices: Array.from(neighborIndices),
+    levels: Array.from(neighborLevels),
+  };
+}
+
 function markTriangleLeafForSplit(
   leaves: readonly TerrainHierarchyTriangle[],
   triangleLeafIndices: readonly number[],
@@ -1460,7 +1501,14 @@ function findMeshNeighborDiscrepancyLeafIndices(
   ctx: TerrainMeshBuildContext,
   leaves: readonly TerrainHierarchyTriangle[],
   mesh: TerrainMeshTopology,
-): { splitLeafIndices: Set<number>; edgeMetadata: TerrainMeshEdgeMetadata } {
+): TerrainMeshNeighborDiscrepancy {
+  const wasmDiscrepancy = findMeshNeighborDiscrepancyLeafIndicesWasm(
+    ctx,
+    leaves,
+    mesh,
+  );
+  if (wasmDiscrepancy) return wasmDiscrepancy;
+
   const splitLeafIndices = new Set<number>();
   const maxDelta = Math.max(0, TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA | 0);
   const edgeMetadata = buildTerrainMeshEdgeMetadata(
@@ -1527,6 +1575,37 @@ function findMeshNeighborDiscrepancyLeafIndices(
   }
 
   return { splitLeafIndices, edgeMetadata };
+}
+
+function findMeshNeighborDiscrepancyLeafIndicesWasm(
+  ctx: TerrainMeshBuildContext,
+  leaves: readonly TerrainHierarchyTriangle[],
+  mesh: TerrainMeshTopology,
+): TerrainMeshNeighborDiscrepancy | null {
+  const sim = getSimWasm();
+  if (sim === undefined) return null;
+  const leafSides = new Int32Array(leaves.length);
+  for (let i = 0; i < leaves.length; i++) leafSides[i] = leaves[i].side;
+  const splitLeafFlags = new Uint8Array(leaves.length);
+  const ok = sim.terrainMarkNeighborDiscrepancyLeaves(
+    ctx.mapWidth,
+    ctx.mapHeight,
+    TERRAIN_TRIANGLE_VERTEX_KEY_SCALE,
+    Math.max(0, TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA | 0),
+    leafSides,
+    Float64Array.from(mesh.vertexCoords),
+    Int32Array.from(mesh.triangleIndices),
+    Int32Array.from(mesh.triangleLevels),
+    Int32Array.from(mesh.triangleLeafIndices),
+    splitLeafFlags,
+  );
+  if (ok === 0) return null;
+
+  const splitLeafIndices = new Set<number>();
+  for (let i = 0; i < splitLeafFlags.length; i++) {
+    if (splitLeafFlags[i] !== 0) splitLeafIndices.add(i);
+  }
+  return { splitLeafIndices };
 }
 
 /** Laplacian smoothing of mesh vertex heights using triangle-edge adjacency.

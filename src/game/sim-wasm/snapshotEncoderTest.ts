@@ -2092,7 +2092,55 @@ function sparseEnvelopeFixture(f: EnvelopeFixture): EnvelopeFixture {
         ? sparseUnitFixture(entity as UnitFixture)
         : sparseBuildingFixture(entity as BuildingFixture),
     ),
+    projectiles: sparseProjectilesFixture(f.projectiles),
   };
+}
+
+function sparseProjectilesFixture(
+  projectiles: ProjectilesFixture | undefined,
+): ProjectilesFixture | undefined {
+  if (projectiles === undefined) return undefined;
+  return {
+    ...projectiles,
+    spawns: projectiles.spawns?.map(sparseProjectileSpawnFixture),
+  };
+}
+
+function sparseProjectileSpawnFixture(
+  spawn: ProjectileSpawnFixture,
+): ProjectileSpawnFixture {
+  const sourceHostId = spawn.sourceHostId ?? spawn.sourceEntityId;
+  const out = {
+    id: spawn.id,
+    pos: spawn.pos,
+    rotation: spawn.rotation,
+    velocity: spawn.velocity,
+    projectileType: spawn.projectileType,
+  } as ProjectileSpawnFixture;
+  if (spawn.maxLifespan !== undefined) out.maxLifespan = spawn.maxLifespan;
+  out.turretId = spawn.turretId;
+  if (spawn.shotId !== undefined) out.shotId = spawn.shotId;
+  if (spawn.sourceTurretId !== undefined) out.sourceTurretId = spawn.sourceTurretId;
+  if (spawn.sourceTurretInstanceId !== undefined) {
+    out.sourceTurretInstanceId = spawn.sourceTurretInstanceId;
+  }
+  out.playerId = spawn.playerId;
+  out.sourceEntityId = spawn.sourceEntityId;
+  out.sourceHostId = sourceHostId;
+  out.sourceRootId = spawn.sourceRootId ?? sourceHostId;
+  out.sourceTeamId = spawn.sourceTeamId ?? spawn.playerId;
+  out.spawnTick = spawn.spawnTick ?? 0;
+  if (spawn.parentShotId !== undefined) out.parentShotId = spawn.parentShotId;
+  out.turretIndex = spawn.turretIndex;
+  out.barrelIndex = spawn.barrelIndex;
+  if (spawn.isDGun !== undefined) out.isDGun = spawn.isDGun;
+  if (spawn.fromParentDetonation !== undefined) {
+    out.fromParentDetonation = spawn.fromParentDetonation;
+  }
+  if (spawn.beam !== undefined) out.beam = spawn.beam;
+  if (spawn.targetEntityId !== undefined) out.targetEntityId = spawn.targetEntityId;
+  if (spawn.homingTurnRate !== undefined) out.homingTurnRate = spawn.homingTurnRate;
+  return out;
 }
 
 function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): void {
