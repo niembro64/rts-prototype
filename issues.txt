@@ -37,19 +37,19 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C16. [HIGH] Remaining terrain mesh baking and null-height terrain anchoring should move to Rust/WASM.
-    LOCATION: src/game/sim/terrain/*.ts and src/metalDepositConfig.ts.
+C16. [HIGH] Remaining terrain mesh baking and repair should move to Rust/WASM.
+    LOCATION: src/game/sim/terrain/*.ts.
     RULE: "TypeScript coordinates, WASM computes" and "shared deterministic kernels".
-    PROBLEM: terrain mesh baking, repair, and terrain-anchored deposit height
-      placement are CPU-heavy, deterministic, and sim-critical. Keeping them in TS
-      leaves startup cost and client/server drift risk in the orchestration layer.
+    PROBLEM: terrain mesh baking and repair are CPU-heavy, deterministic, and
+      sim-critical. Keeping them in TS leaves startup cost and client/server drift
+      risk in the orchestration layer.
       Terrain read-side sampling/LOS/pathfinder masks and metal-deposit connected
       resource footprint growth, ring placement, snapped grid placement, and explicit
-      dTerrain height derivation are now Rust/WASM-owned. Static terrain buildability
-      grid baking is also Rust/WASM-owned, with TS kept as object assembly/fallback.
-    FIX: port terrain mesh baking/repair and null-height deposit terrain anchoring to
-      Rust/WASM in stages, with TS kept as orchestration only until each old path can
-      be deleted.
+      dTerrain height derivation are now Rust/WASM-owned. Null-height metal-deposit
+      terrain anchoring and static terrain buildability grid baking are also
+      Rust/WASM-owned, with TS kept as object assembly/fallback.
+    FIX: port terrain mesh baking/repair to Rust/WASM in stages, with TS kept as
+      orchestration only until each old path can be deleted.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

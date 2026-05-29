@@ -189,7 +189,7 @@
       "deposits": {
         "count": 56,
         "resourceCellCount": 1400,
-        "hash": "4d56a581837a37c5"
+        "hash": "74861f0bc29d32ab"
       },
       "terrain": {
         "metadata": {
@@ -208,7 +208,7 @@
         },
         "meshVertexHeights": {
           "length": 17273,
-          "hash": "87bcfc47a8af21e4"
+          "hash": "adea01a20a388342"
         },
         "meshTriangleIndices": {
           "length": 101679,

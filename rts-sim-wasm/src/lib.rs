@@ -2433,18 +2433,427 @@ pub fn integrate_damped_rotation(
 //
 //  Replaces the deterministic ring placement and connected-cell grow
 //  pass from src/metalDepositConfig.ts. TypeScript still owns config
-//  validation, terrain-height pass orchestration, and object assembly;
-//  Rust owns the numeric oval/ring layout, snapped grid placement,
-//  explicit-height derivation, candidate layout, seeded frontier
+//  validation and object assembly; Rust owns the numeric oval/ring
+//  layout, snapped grid placement, explicit-height derivation,
+//  null-height terrain anchoring, candidate layout, seeded frontier
 //  weighting, and sorted output cell list.
 // ─────────────────────────────────────────────────────────────────
 
 const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
+const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
+const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 22;
+const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
     -std::f64::consts::FRAC_PI_2 + std::f64::consts::FRAC_PI_4;
 const METAL_DEPOSIT_D_TERRAIN_NULL: f64 = f64::NAN;
+
+struct MapOvalMetricsRust {
+    cx: f64,
+    cy: f64,
+    min_dim: f64,
+    scale_x: f64,
+    scale_y: f64,
+}
+
+struct MapOvalSampleRust {
+    ox: f64,
+    oy: f64,
+    distance: f64,
+    angle: f64,
+}
+
+struct MetalDepositTerrainConfigRust {
+    center_magnitude: f64,
+    dividers_magnitude: f64,
+    terrain_d_terrain: f64,
+    map_shape_circle: bool,
+    team_count: u32,
+    tile_floor_y: f64,
+    circle_edge_fraction: f64,
+    circle_transition_width_fraction: f64,
+    generation_edge_transition_width_fraction: f64,
+    plateau_shelf_fraction_of_step: f64,
+    plateau_ramp_edge_sharpness: f64,
+    ripple_radius_fraction: f64,
+    ripple_phase: f64,
+    ripple_wavelengths: [f64; 3],
+    ripple_magnitudes: [f64; 3],
+    ridge_inner_radius_fraction: f64,
+    ridge_outer_radius_fraction: f64,
+    ridge_half_width_fraction: f64,
+}
+
+fn metal_deposit_terrain_config_from_slice(
+    values: &[f64],
+) -> Option<MetalDepositTerrainConfigRust> {
+    if values.len() < METAL_DEPOSIT_TERRAIN_CONFIG_LEN {
+        return None;
+    }
+    for value in values.iter().take(METAL_DEPOSIT_TERRAIN_CONFIG_LEN) {
+        if !value.is_finite() {
+            return None;
+        }
+    }
+    Some(MetalDepositTerrainConfigRust {
+        center_magnitude: values[0],
+        dividers_magnitude: values[1],
+        terrain_d_terrain: values[2],
+        map_shape_circle: values[3] >= 0.5,
+        team_count: values[4].max(0.0).floor() as u32,
+        tile_floor_y: values[5],
+        circle_edge_fraction: values[6],
+        circle_transition_width_fraction: values[7],
+        generation_edge_transition_width_fraction: values[8],
+        plateau_shelf_fraction_of_step: values[9],
+        plateau_ramp_edge_sharpness: values[10],
+        ripple_radius_fraction: values[11],
+        ripple_phase: values[12],
+        ripple_wavelengths: [values[13], values[15], values[17]],
+        ripple_magnitudes: [values[14], values[16], values[18]],
+        ridge_inner_radius_fraction: values[19],
+        ridge_outer_radius_fraction: values[20],
+        ridge_half_width_fraction: values[21],
+    })
+}
+
+#[inline]
+fn terrain_clamp01(value: f64) -> f64 {
+    if value <= 0.0 {
+        0.0
+    } else if value >= 1.0 {
+        1.0
+    } else {
+        value
+    }
+}
+
+#[inline]
+fn terrain_smootherstep(t: f64) -> f64 {
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+#[inline]
+fn terrain_js_round(value: f64) -> f64 {
+    (value + 0.5).floor()
+}
+
+fn terrain_make_oval_metrics(
+    map_width: f64,
+    map_height: f64,
+    extent_fraction: f64,
+) -> MapOvalMetricsRust {
+    let fraction = extent_fraction.clamp(0.01, 1.0);
+    let width = (map_width * fraction).max(1.0);
+    let height = (map_height * fraction).max(1.0);
+    let min_dim = width.min(height).max(1.0);
+    MapOvalMetricsRust {
+        cx: map_width * 0.5,
+        cy: map_height * 0.5,
+        min_dim,
+        scale_x: width / min_dim,
+        scale_y: height / min_dim,
+    }
+}
+
+#[inline]
+fn terrain_sample_map_oval_at(metrics: &MapOvalMetricsRust, x: f64, y: f64) -> MapOvalSampleRust {
+    let ox = (x - metrics.cx) / metrics.scale_x;
+    let oy = (y - metrics.cy) / metrics.scale_y;
+    MapOvalSampleRust {
+        ox,
+        oy,
+        distance: (ox * ox + oy * oy).sqrt(),
+        angle: oy.atan2(ox),
+    }
+}
+
+fn terrain_plateau_ramp_curve(t: f64, cfg: &MetalDepositTerrainConfigRust) -> f64 {
+    let smooth = terrain_smootherstep(t);
+    let sharpness = terrain_clamp01(cfg.plateau_ramp_edge_sharpness);
+    smooth + (t - smooth) * sharpness
+}
+
+fn terrain_apply_plateaus(height: f64, cfg: &MetalDepositTerrainConfigRust) -> f64 {
+    if !height.is_finite() {
+        return height;
+    }
+    let step = cfg.terrain_d_terrain;
+    if step <= 0.0 {
+        return height;
+    }
+
+    let flat_half = (cfg.plateau_shelf_fraction_of_step * 0.5)
+        .max(0.0)
+        .min(0.49);
+    let q = height / step;
+    let nearest_level = terrain_js_round(q);
+    let signed_from_nearest = q - nearest_level;
+    let abs_from_nearest = signed_from_nearest.abs();
+    let plateau_level = if abs_from_nearest <= flat_half {
+        nearest_level
+    } else if signed_from_nearest > 0.0 {
+        let ramp_span = (1.0 - flat_half * 2.0).max(1e-6);
+        let ramp_t = (signed_from_nearest - flat_half) / ramp_span;
+        nearest_level + terrain_plateau_ramp_curve(ramp_t, cfg)
+    } else {
+        let ramp_span = (1.0 - flat_half * 2.0).max(1e-6);
+        let ramp_t = (1.0 + signed_from_nearest - flat_half) / ramp_span;
+        nearest_level - 1.0 + terrain_plateau_ramp_curve(ramp_t, cfg)
+    };
+    plateau_level * step
+}
+
+fn terrain_circle_end_radius_for_min_dim(min_dim: f64, cfg: &MetalDepositTerrainConfigRust) -> f64 {
+    let max_end_radius = min_dim * 0.5;
+    (min_dim * cfg.circle_edge_fraction)
+        .min(max_end_radius)
+        .max(1.0)
+}
+
+fn terrain_circle_start_radius_for_min_dim(
+    min_dim: f64,
+    end_radius: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let max_width = (end_radius - 1.0).max(0.0);
+    let desired_width = min_dim * cfg.circle_transition_width_fraction.max(0.0);
+    let width = max_width.min(desired_width);
+    (end_radius - width).max(0.0)
+}
+
+fn terrain_generation_boundary_fade_for_sample(
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let end_radius = metrics.min_dim * 0.5;
+    let width = (end_radius - 1.0)
+        .max(0.0)
+        .min(metrics.min_dim * cfg.generation_edge_transition_width_fraction);
+    let start_radius = (end_radius - width).max(0.0);
+    if oval.distance <= start_radius {
+        return 0.0;
+    }
+    if oval.distance >= end_radius {
+        return 1.0;
+    }
+    terrain_smootherstep(terrain_clamp01(
+        (oval.distance - start_radius) / (end_radius - start_radius).max(1e-6),
+    ))
+}
+
+fn terrain_map_boundary_fade_for_sample(
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    if !cfg.map_shape_circle {
+        return 0.0;
+    }
+    let end_radius = terrain_circle_end_radius_for_min_dim(metrics.min_dim, cfg);
+    let start_radius = terrain_circle_start_radius_for_min_dim(metrics.min_dim, end_radius, cfg);
+    if oval.distance <= start_radius {
+        return 0.0;
+    }
+    if oval.distance >= end_radius {
+        return 1.0;
+    }
+    terrain_smootherstep(terrain_clamp01(
+        (oval.distance - start_radius) / (end_radius - start_radius),
+    ))
+}
+
+fn terrain_apply_map_boundary_for_sample(
+    height: f64,
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let w = terrain_map_boundary_fade_for_sample(metrics, oval, cfg);
+    if w <= 0.0 {
+        return height;
+    }
+    if w >= 1.0 {
+        return cfg.tile_floor_y;
+    }
+    height + (cfg.tile_floor_y - height) * w
+}
+
+fn terrain_generated_natural_height(
+    metrics: &MapOvalMetricsRust,
+    oval: &MapOvalSampleRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let mut ripple = 0.0;
+    let max_dist = metrics.min_dim * cfg.ripple_radius_fraction;
+    if oval.distance < max_dist && max_dist > 0.0 {
+        let fade_t = (oval.distance / max_dist) * (std::f64::consts::PI * 0.5);
+        let fade = fade_t.cos();
+        let a = (oval.distance / cfg.ripple_wavelengths[0]).cos();
+        let b = (oval.distance / cfg.ripple_wavelengths[1] + cfg.ripple_phase).cos();
+        let c = ((oval.ox + oval.oy) / cfg.ripple_wavelengths[2]).sin();
+        let sum = a * cfg.ripple_magnitudes[0]
+            + b * cfg.ripple_magnitudes[1]
+            + c * cfg.ripple_magnitudes[2];
+        let norm = (sum + 1.0) * 0.5;
+        ripple = cfg.center_magnitude * fade * norm;
+    }
+
+    let mut ridge = 0.0;
+    let team_count = cfg.team_count;
+    if team_count > 0 && oval.distance > 0.0 {
+        let cycle = std::f64::consts::TAU / team_count as f64;
+        let mut pos = (oval.angle + std::f64::consts::FRAC_PI_4) % cycle;
+        if pos < 0.0 {
+            pos += cycle;
+        }
+        let barrier_mid = cycle * 0.5;
+        let dist_from_barrier_center = (pos - barrier_mid).abs();
+        let half_width = metrics.min_dim * cfg.ridge_half_width_fraction;
+        let along_dist = oval.distance * dist_from_barrier_center.cos();
+        let perp_dist = oval.distance * dist_from_barrier_center.sin();
+        if along_dist > 0.0 && perp_dist < half_width {
+            let width_t = perp_dist / half_width;
+            let ang_falloff = (1.0 + (width_t * std::f64::consts::PI).cos()) * 0.5;
+            let inner_r = metrics.min_dim * cfg.ridge_inner_radius_fraction;
+            let outer_r = metrics.min_dim * cfg.ridge_outer_radius_fraction;
+            let rad_t = if along_dist >= outer_r {
+                1.0
+            } else if along_dist <= inner_r {
+                0.0
+            } else {
+                let span = outer_r - inner_r;
+                if span > 0.0 {
+                    (along_dist - inner_r) / span
+                } else {
+                    1.0
+                }
+            };
+            ridge = cfg.dividers_magnitude * ang_falloff * rad_t;
+        }
+    }
+
+    let generation_fade = terrain_generation_boundary_fade_for_sample(metrics, oval, cfg);
+    (ripple + ridge) * (1.0 - generation_fade)
+}
+
+fn metal_deposit_flat_zone_blend_weight(
+    x: f64,
+    y: f64,
+    flat_zones: &[f64],
+    base: usize,
+) -> Option<f64> {
+    let zx = flat_zones[base];
+    let zy = flat_zones[base + 1];
+    let radius = flat_zones[base + 2];
+    let blend_radius = flat_zones[base + 4].max(0.0);
+    if blend_radius <= 0.0 {
+        return None;
+    }
+    let dx = x - zx;
+    let dy = y - zy;
+    let d2 = dx * dx + dy * dy;
+    if d2 <= radius * radius {
+        return None;
+    }
+    let d = d2.sqrt();
+    if d >= radius + blend_radius {
+        return None;
+    }
+    let t = (d - radius) / blend_radius;
+    Some((1.0 + (t * std::f64::consts::PI).cos()) * 0.5)
+}
+
+fn metal_deposit_override_from_flat_zone_rows(x: f64, y: f64, flat_zones: &[f64]) -> (f64, f64) {
+    if flat_zones.is_empty() {
+        return (1.0, 0.0);
+    }
+
+    let mut containing_height = 0.0;
+    let mut containing_d2 = f64::INFINITY;
+    let zone_count = flat_zones.len() / METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
+    for zone_index in 0..zone_count {
+        let base = zone_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
+        let dx = x - flat_zones[base];
+        let dy = y - flat_zones[base + 1];
+        let radius = flat_zones[base + 2];
+        let d2 = dx * dx + dy * dy;
+        if d2 <= radius * radius && d2 < containing_d2 {
+            containing_height = flat_zones[base + 3];
+            containing_d2 = d2;
+        }
+    }
+    if containing_d2.is_finite() {
+        return (0.0, containing_height);
+    }
+
+    let mut prod_all = 1.0;
+    let mut blend_count = 0usize;
+    for zone_index in 0..zone_count {
+        let base = zone_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
+        if let Some(wz) = metal_deposit_flat_zone_blend_weight(x, y, flat_zones, base) {
+            prod_all *= 1.0 - wz;
+            blend_count += 1;
+        }
+    }
+    if blend_count == 0 {
+        return (1.0, 0.0);
+    }
+
+    let mut weighted_height_sum = 0.0;
+    let mut effective_sum = 0.0;
+    for zone_index in 0..zone_count {
+        let base = zone_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
+        let Some(wz) = metal_deposit_flat_zone_blend_weight(x, y, flat_zones, base) else {
+            continue;
+        };
+        let one_minus = 1.0 - wz;
+        let ei = if one_minus > 1e-12 {
+            wz * (prod_all / one_minus)
+        } else {
+            let mut prod_excl = 1.0;
+            for other_index in 0..zone_count {
+                if other_index == zone_index {
+                    continue;
+                }
+                let other_base = other_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
+                if let Some(other_wz) =
+                    metal_deposit_flat_zone_blend_weight(x, y, flat_zones, other_base)
+                {
+                    prod_excl *= 1.0 - other_wz;
+                }
+            }
+            wz * prod_excl
+        };
+        weighted_height_sum += ei * flat_zones[base + 3];
+        effective_sum += ei;
+    }
+
+    let total_weight = effective_sum + prod_all;
+    if total_weight <= 0.0 || effective_sum <= 0.0 {
+        return (1.0, 0.0);
+    }
+    (prod_all / total_weight, weighted_height_sum / effective_sum)
+}
+
+fn metal_deposit_terrain_height_with_explicit_zones(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+    explicit_flat_zones: &[f64],
+) -> f64 {
+    let oval = terrain_sample_map_oval_at(metrics, x, y);
+    let natural = terrain_generated_natural_height(metrics, &oval, cfg);
+    let shaped = terrain_apply_map_boundary_for_sample(natural, metrics, &oval, cfg);
+    let terraced = terrain_apply_plateaus(shaped, cfg);
+    let (weight, pad_height) =
+        metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
+    let blended = pad_height * (1.0 - weight) + terraced * weight;
+    blended.max(cfg.tile_floor_y)
+}
 
 #[inline]
 fn metal_deposit_loop_count(limit: f64) -> u32 {
@@ -2597,6 +3006,63 @@ pub fn metal_deposit_generate_placements(
     }
 
     out_count as u32
+}
+
+#[wasm_bindgen]
+pub fn metal_deposit_resolve_terrain_heights(
+    map_width: f64,
+    map_height: f64,
+    extent_fraction: f64,
+    terrain_config: &[f64],
+    explicit_flat_zones: &[f64],
+    height_inputs: &[f64],
+    out_heights: &mut [f64],
+) -> u32 {
+    if !map_width.is_finite()
+        || !map_height.is_finite()
+        || !extent_fraction.is_finite()
+        || height_inputs.len() % METAL_DEPOSIT_HEIGHT_INPUT_STRIDE != 0
+        || explicit_flat_zones.len() % METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE != 0
+    {
+        return 0;
+    }
+    let Some(cfg) = metal_deposit_terrain_config_from_slice(terrain_config) else {
+        return 0;
+    };
+    for value in explicit_flat_zones {
+        if !value.is_finite() {
+            return 0;
+        }
+    }
+
+    let count = height_inputs.len() / METAL_DEPOSIT_HEIGHT_INPUT_STRIDE;
+    if out_heights.len() < count {
+        return 0;
+    }
+    let metrics = terrain_make_oval_metrics(map_width, map_height, extent_fraction);
+    for i in 0..count {
+        let base = i * METAL_DEPOSIT_HEIGHT_INPUT_STRIDE;
+        let x = height_inputs[base];
+        let y = height_inputs[base + 1];
+        let explicit_height = height_inputs[base + 2];
+        if !x.is_finite() || !y.is_finite() {
+            return 0;
+        }
+        out_heights[i] = if explicit_height.is_nan() {
+            metal_deposit_terrain_height_with_explicit_zones(
+                x,
+                y,
+                &metrics,
+                &cfg,
+                explicit_flat_zones,
+            )
+        } else if explicit_height.is_finite() {
+            explicit_height
+        } else {
+            return 0;
+        };
+    }
+    count as u32
 }
 
 #[wasm_bindgen]
@@ -8502,8 +8968,12 @@ pub fn combat_targeting_update_mount_kinematics(
     for turret_idx in 0..turret_count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
         let flags = pool.turret_config_flags[idx];
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
@@ -9605,8 +10075,12 @@ fn combat_targeting_entity_has_turret_that_may_lock_entity_slot(
         if (pool.turret_config_flags[idx] & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
         if combat_targeting_turret_may_lock_entity_slot(pool, source_idx, idx, target_entity_slot) {
@@ -9666,7 +10140,11 @@ fn combat_targeting_is_force_field_panel_target_for_slot(
     target_entity_slot: usize,
     our_entity_id: i32,
 ) -> bool {
-    combat_targeting_force_field_panel_target_score_for_slot(pool, target_entity_slot, our_entity_id) > 0.0
+    combat_targeting_force_field_panel_target_score_for_slot(
+        pool,
+        target_entity_slot,
+        our_entity_id,
+    ) > 0.0
 }
 
 #[inline]
@@ -10203,8 +10681,12 @@ pub fn combat_targeting_prepare_auto_scan(
         cached_fire_dist_sqs[turret_idx] = f64::INFINITY;
 
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
 
@@ -10321,8 +10803,12 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
     let mut result = 0u8;
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
 
@@ -10351,11 +10837,12 @@ pub fn combat_targeting_prepare_fire_choice_fsm_inputs(
         // leave the score at the 0 cleared above.
         if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
             if let Some(&target_slot) = pool.entity_slot_by_id.get(&target_id) {
-                seed_force_field_panel_scores[turret_idx] = combat_targeting_force_field_panel_target_score_for_slot(
-                    pool,
-                    target_slot as usize,
-                    source_entity_id,
-                );
+                seed_force_field_panel_scores[turret_idx] =
+                    combat_targeting_force_field_panel_target_score_for_slot(
+                        pool,
+                        target_slot as usize,
+                        source_entity_id,
+                    );
             }
         }
         result = combat_targeting_choice_prep_result(result, flags);
@@ -10400,8 +10887,12 @@ pub fn combat_targeting_prepare_acquisition_choice_fsm_inputs(
     let mut result = 0u8;
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
 
@@ -10679,9 +11170,22 @@ fn compute_turret_gates_for_aim_point(
         // fillCandidateMirrorPanelMask / fillExistingLockGateInputs. Spheres
         // and panels are one material, so a single clearance call with a shared
         // crossing budget of 0 answers both shapes at once.
-        let include_panels: u8 = if (flags & CT_TURRET_CFG_PASSIVE) != 0 { 0 } else { 1 };
+        let include_panels: u8 = if (flags & CT_TURRET_CFG_PASSIVE) != 0 {
+            0
+        } else {
+            1
+        };
         if force_field_clearance_segment(
-            mount_x, mount_y, mount_z, raw_aim_x, raw_aim_y, raw_aim_z, -1, 0, 1, include_panels,
+            mount_x,
+            mount_y,
+            mount_z,
+            raw_aim_x,
+            raw_aim_y,
+            raw_aim_z,
+            -1,
+            0,
+            1,
+            include_panels,
         ) == 0
         {
             force_field_clear = 0;
@@ -10746,8 +11250,12 @@ pub fn combat_targeting_compute_and_apply_priority_point_fsm_batch(
         }
         // System-disabled weapons have already been reset by the TS
         // resetDisabledWeapon pre-pass; mirror this kernel's skip there.
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
         // Passive force-field-panel weapons never lock onto an attack-ground
@@ -11103,8 +11611,12 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
         if (flags & CT_TURRET_CFG_HOST_DIRECTED) == 0 {
             continue;
         }
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
 
@@ -11275,8 +11787,12 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         if (flags & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
             continue;
         }
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
         // No existing target → nothing to validate; matches the TS
@@ -11327,7 +11843,11 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
         } else {
             target_slot
                 .map(|slot| {
-                    if combat_targeting_is_force_field_panel_target_for_slot(pool, slot, source_entity_id) {
+                    if combat_targeting_is_force_field_panel_target_for_slot(
+                        pool,
+                        slot,
+                        source_entity_id,
+                    ) {
                         1u8
                     } else {
                         0u8
@@ -11344,7 +11864,8 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
 
         // Short-circuit when target invalid or mirror invalid — the
         // FSM will set state idle without consulting gates anyway.
-        let (ballistic_clear, sight_blocked) = if target_valid == 0 || force_field_panel_valid == 0 {
+        let (ballistic_clear, sight_blocked) = if target_valid == 0 || force_field_panel_valid == 0
+        {
             (0u8, 0u8)
         } else {
             let (target_aim_x, target_aim_y, target_aim_z) = if resolve_aim_from_slab {
@@ -11847,8 +12368,12 @@ fn combat_targeting_auto_query_relationships(
     let mut relationship_mask = 0u8;
     for turret_idx in 0..count {
         let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx as u32);
-        if combat_targeting_weapon_system_disabled(pool, idx, turret_force_field_panels_enabled, turret_force_field_spheres_enabled)
-        {
+        if combat_targeting_weapon_system_disabled(
+            pool,
+            idx,
+            turret_force_field_panels_enabled,
+            turret_force_field_spheres_enabled,
+        ) {
             continue;
         }
         if (pool.turret_config_flags[idx] & CT_TURRET_CFG_IS_MANUAL_FIRE) != 0 {
@@ -13064,7 +13589,10 @@ pub fn combat_targeting_compute_and_choose_best_candidates_batch(
     // `prepareAcquisitionChoiceFsmInputs`, but a belt-and-braces
     // check inside the gate helper keeps disabled/manual-fire
     // turrets from running the LOS+ballistic+FF kernels for free.
-    let _ = (turret_force_field_panels_enabled, turret_force_field_spheres_enabled);
+    let _ = (
+        turret_force_field_panels_enabled,
+        turret_force_field_spheres_enabled,
+    );
 
     // Fill per-candidate observability from the slab — same observer
     // (this entity's owner) for every turret on this entity. Stored
@@ -13606,7 +14134,8 @@ impl ForceFieldSurfacePool {
 
 struct ForceFieldSurfacePoolHolder(UnsafeCell<Option<ForceFieldSurfacePool>>);
 unsafe impl Sync for ForceFieldSurfacePoolHolder {}
-static FORCE_FIELD_POOL: ForceFieldSurfacePoolHolder = ForceFieldSurfacePoolHolder(UnsafeCell::new(None));
+static FORCE_FIELD_POOL: ForceFieldSurfacePoolHolder =
+    ForceFieldSurfacePoolHolder(UnsafeCell::new(None));
 
 #[inline]
 fn force_field_pool() -> &'static mut ForceFieldSurfacePool {
@@ -18562,7 +19091,7 @@ fn v6_write_detail_factory(
     w.write_number(building_buf[base + 26]); // progress
     w.write_number(building_buf[base + 28]); // energyRate
     w.write_number(building_buf[base + 29]); // metalRate
-    // waypoints
+                                             // waypoints
     let wp_count = building_buf[base + 30] as usize;
     let wp_offset = building_buf[base + 33] as i64;
     w.write_array_header(wp_count);
@@ -19128,7 +19657,12 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
             {
                 let turret_buf = &snapshot_encode_turret_scratch().buf;
                 let group_writer = &mut work.turret_groups[gi].writer;
-                v6_write_turret_payload(group_writer, turret_buf, turret_offset, turret_count as usize);
+                v6_write_turret_payload(
+                    group_writer,
+                    turret_buf,
+                    turret_offset,
+                    turret_count as usize,
+                );
             }
             work.turret_groups[gi].count += 1;
             work.turret_row_count += 1;
