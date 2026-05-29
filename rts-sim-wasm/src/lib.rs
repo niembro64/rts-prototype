@@ -19,6 +19,7 @@
 
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────
@@ -2498,6 +2499,7 @@ const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
     -std::f64::consts::FRAC_PI_2 + std::f64::consts::FRAC_PI_4;
 const METAL_DEPOSIT_D_TERRAIN_NULL: f64 = f64::NAN;
 
+#[derive(Clone, Copy)]
 struct MapOvalMetricsRust {
     cx: f64,
     cy: f64,
@@ -2513,6 +2515,7 @@ struct MapOvalSampleRust {
     angle: f64,
 }
 
+#[derive(Clone, Copy)]
 struct MetalDepositTerrainConfigRust {
     center_magnitude: f64,
     dividers_magnitude: f64,
@@ -3640,8 +3643,7 @@ fn terrain_push_unique_neighbor(neighbors: &mut Vec<usize>, vertex: usize) {
 /// Laplacian smoothing of mesh vertex heights. This mirrors
 /// smoothMeshVertexHeights in terrainTileMap.ts, including ordered-Set
 /// neighbor insertion so floating-point accumulation order stays stable.
-#[wasm_bindgen]
-pub fn terrain_smooth_mesh_vertex_heights(
+fn terrain_smooth_mesh_vertex_heights(
     vertex_heights: &mut [f64],
     triangle_indices: &[i32],
     max_steps: i32,
@@ -3711,7 +3713,10 @@ struct TerrainTriangleEdgeOwnerRust {
 struct TerrainTriangleEdgeSpanRust {
     triangle: usize,
     edge: usize,
+    a: usize,
+    b: usize,
     line_key: i64,
+    line_kind: u8,
     start: f64,
     end: f64,
 }
@@ -3826,7 +3831,10 @@ fn terrain_edge_span_for_owner(
     Some(TerrainTriangleEdgeSpanRust {
         triangle: owner.triangle,
         edge: owner.edge,
+        a: owner.a,
+        b: owner.b,
         line_key: terrain_edge_line_key(line_kind, line_value, vertex_key_scale)?,
+        line_kind,
         start: a_coord.min(b_coord),
         end: a_coord.max(b_coord),
     })
@@ -3977,8 +3985,7 @@ fn terrain_validate_triangle_vertices(vertex_coords: &[f64], triangle_indices: &
 /// Mirrors buildTriangleNeighborMetadata in terrainTileMap.ts. TypeScript keeps
 /// object assembly and compatibility fallback; Rust owns the deterministic
 /// edge-map and overlap walk when available.
-#[wasm_bindgen]
-pub fn terrain_build_triangle_neighbor_metadata(
+fn terrain_build_triangle_neighbor_metadata(
     map_width: f64,
     map_height: f64,
     vertex_key_scale: f64,
@@ -4110,8 +4117,7 @@ fn terrain_mark_coarser_triangle_leaf_for_split(
 /// Marks adaptive terrain leaves that must be split to repair neighbor
 /// discrepancies. Mirrors findMeshNeighborDiscrepancyLeafIndices in
 /// terrainTileMap.ts; TS still owns leaf objects and split orchestration.
-#[wasm_bindgen]
-pub fn terrain_mark_neighbor_discrepancy_leaves(
+fn terrain_mark_neighbor_discrepancy_leaves(
     map_width: f64,
     map_height: f64,
     vertex_key_scale: f64,
@@ -4207,6 +4213,1518 @@ pub fn terrain_mark_neighbor_discrepancy_leaves(
     }
 
     1
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  C16 — adaptive equilateral terrain mesh build
+//
+//  Full port of the adaptive mesh topology generation + crack-repair
+//  loop from src/game/sim/terrain/terrainTileMap.ts. TypeScript keeps
+//  only object assembly (build the config slice, call this kernel, and
+//  splat the returned arrays into a TerrainTileMap). Vertex heights and
+//  every collapse/normal decision read the same analytic sampler the
+//  metal-deposit kernels use (metal_deposit_terrain_height_with_explicit_zones),
+//  so the mesh and the deposit pads agree by construction and the host
+//  no longer baked terrain topology in JavaScript.
+// ─────────────────────────────────────────────────────────────────
+
+const TERRAIN_SQRT3_OVER_2: f64 = 0.866_025_403_784_438_6;
+
+#[derive(Clone, Copy)]
+struct TerrainHierTri {
+    i: i32,
+    j: i32,
+    side: i32,
+    down: bool,
+}
+
+#[derive(Clone, Copy)]
+struct TerrainMeshPoint {
+    x: f64,
+    z: f64,
+    h: f64,
+}
+
+#[derive(Clone, Copy)]
+struct TerrainMeshNormalRust {
+    nx: f64,
+    ny: f64,
+    nz: f64,
+}
+
+struct TerrainMeshBuildConfig {
+    map_width: f64,
+    map_height: f64,
+    fine_edge: f64,
+    fine_height: f64,
+    root_level: i32,
+    metrics: MapOvalMetricsRust,
+    gen_cfg: MetalDepositTerrainConfigRust,
+    flat_zones: Vec<f64>,
+    max_surface_error: f64,
+    min_normal_dot: f64,
+    max_neighbor_level_delta: i32,
+    preserve_waterline: bool,
+    sample_centroid: bool,
+    water_level: f64,
+    vertex_key_scale: f64,
+    final_repair_max_passes: i32,
+    smoothing_steps: i32,
+    smoothing_amount: f64,
+}
+
+#[derive(Default)]
+struct TerrainMeshHeightCache {
+    heights: HashMap<i64, f64>,
+    normals: HashMap<i64, TerrainMeshNormalRust>,
+}
+
+struct TerrainMeshTopologyRust {
+    vertex_coords: Vec<f64>,
+    vertex_heights: Vec<f64>,
+    triangle_indices: Vec<i32>,
+    triangle_levels: Vec<i32>,
+    triangle_leaf_indices: Vec<i32>,
+}
+
+struct TerrainBuiltMeshRust {
+    vertex_coords: Vec<f64>,
+    vertex_heights: Vec<f64>,
+    triangle_indices: Vec<i32>,
+    triangle_levels: Vec<i32>,
+    neighbor_indices: Vec<i32>,
+    neighbor_levels: Vec<i32>,
+    cell_offsets: Vec<i32>,
+    cell_indices: Vec<i32>,
+}
+
+#[inline]
+fn terrain_mesh_clamp_to_map(value: f64, max: f64) -> f64 {
+    if value <= 0.0 {
+        0.0
+    } else if value >= max {
+        max
+    } else {
+        value
+    }
+}
+
+#[inline]
+fn terrain_lattice_cache_key(i: i32, j: i32) -> i64 {
+    (i as i64 + 0x100000) * 0x200000 + (j as i64 + 0x100000)
+}
+
+#[inline]
+fn terrain_next_power_of_two(value: i64) -> i64 {
+    let mut n: i64 = 1;
+    while n < value {
+        n <<= 1;
+    }
+    n
+}
+
+fn terrain_mesh_height_at_world(c: &TerrainMeshBuildConfig, x: f64, z: f64) -> f64 {
+    let cx = terrain_mesh_clamp_to_map(x, c.map_width);
+    let cz = terrain_mesh_clamp_to_map(z, c.map_height);
+    metal_deposit_terrain_height_with_explicit_zones(cx, cz, &c.metrics, &c.gen_cfg, &c.flat_zones)
+}
+
+fn terrain_mesh_height_at_lattice(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    i: i32,
+    j: i32,
+) -> f64 {
+    let key = terrain_lattice_cache_key(i, j);
+    if let Some(h) = cache.heights.get(&key) {
+        return *h;
+    }
+    let x = c.fine_edge * (i as f64 + j as f64 * 0.5);
+    let z = c.fine_height * j as f64;
+    let h = terrain_mesh_height_at_world(c, x, z);
+    cache.heights.insert(key, h);
+    h
+}
+
+fn terrain_normalize_mesh_normal(nx: f64, ny: f64, nz: f64) -> TerrainMeshNormalRust {
+    let raw = (nx * nx + ny * ny + nz * nz).sqrt();
+    let len = if raw > 0.0 { raw } else { 1.0 };
+    TerrainMeshNormalRust {
+        nx: nx / len,
+        ny: ny / len,
+        nz: nz / len,
+    }
+}
+
+fn terrain_plane_normal(
+    a: TerrainMeshPoint,
+    b: TerrainMeshPoint,
+    c: TerrainMeshPoint,
+) -> TerrainMeshNormalRust {
+    let ux = b.x - a.x;
+    let uy = b.h - a.h;
+    let uz = b.z - a.z;
+    let vx = c.x - a.x;
+    let vy = c.h - a.h;
+    let vz = c.z - a.z;
+    let mut nx = uy * vz - uz * vy;
+    let mut vertical = uz * vx - ux * vz;
+    let mut nz = ux * vy - uy * vx;
+    if vertical < 0.0 {
+        nx = -nx;
+        vertical = -vertical;
+        nz = -nz;
+    }
+    terrain_normalize_mesh_normal(nx, nz, vertical)
+}
+
+fn terrain_normal_at_lattice(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    i: i32,
+    j: i32,
+) -> TerrainMeshNormalRust {
+    let key = terrain_lattice_cache_key(i, j);
+    if let Some(n) = cache.normals.get(&key) {
+        return *n;
+    }
+    let gx = (terrain_mesh_height_at_lattice(c, cache, i + 1, j)
+        - terrain_mesh_height_at_lattice(c, cache, i - 1, j))
+        / (2.0 * c.fine_edge);
+    let hj = terrain_mesh_height_at_lattice(c, cache, i, j + 1)
+        - terrain_mesh_height_at_lattice(c, cache, i, j - 1);
+    let gz = (hj - gx * c.fine_edge) / (2.0 * c.fine_height);
+    let normal = terrain_normalize_mesh_normal(-gx, -gz, 1.0);
+    cache.normals.insert(key, normal);
+    normal
+}
+
+fn terrain_normal_at_world(c: &TerrainMeshBuildConfig, x: f64, z: f64) -> TerrainMeshNormalRust {
+    let eps = c.fine_edge.min(c.fine_height).max(1.0);
+    let x0 = terrain_mesh_clamp_to_map(x - eps, c.map_width);
+    let x1 = terrain_mesh_clamp_to_map(x + eps, c.map_width);
+    let z0 = terrain_mesh_clamp_to_map(z - eps, c.map_height);
+    let z1 = terrain_mesh_clamp_to_map(z + eps, c.map_height);
+    let gx = (terrain_mesh_height_at_world(c, x1, z) - terrain_mesh_height_at_world(c, x0, z))
+        / (x1 - x0).max(TERRAIN_MESH_EPSILON);
+    let gz = (terrain_mesh_height_at_world(c, x, z1) - terrain_mesh_height_at_world(c, x, z0))
+        / (z1 - z0).max(TERRAIN_MESH_EPSILON);
+    terrain_normalize_mesh_normal(-gx, -gz, 1.0)
+}
+
+#[inline]
+fn terrain_normals_exceed_tolerance(
+    a: TerrainMeshNormalRust,
+    b: TerrainMeshNormalRust,
+    min_dot: f64,
+) -> bool {
+    a.nx * b.nx + a.ny * b.ny + a.nz * b.nz < min_dot
+}
+
+#[inline]
+fn terrain_triangle_hierarchy_level(c: &TerrainMeshBuildConfig, side: i32) -> i32 {
+    let side_level = 31 - (side.max(1) as u32).leading_zeros() as i32;
+    (c.root_level - side_level).max(0)
+}
+
+fn terrain_triangle_lattice_vertices(tri: TerrainHierTri) -> [(i32, i32); 3] {
+    let TerrainHierTri { i, j, side, down } = tri;
+    if !down {
+        [(i, j), (i + side, j), (i, j + side)]
+    } else {
+        [(i + side, j), (i + side, j + side), (i, j + side)]
+    }
+}
+
+fn terrain_lattice_point_at(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    i: i32,
+    j: i32,
+) -> TerrainMeshPoint {
+    let x = c.fine_edge * (i as f64 + j as f64 * 0.5);
+    let z = c.fine_height * j as f64;
+    TerrainMeshPoint {
+        x,
+        z,
+        h: terrain_mesh_height_at_lattice(c, cache, i, j),
+    }
+}
+
+fn terrain_triangle_world_vertices(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    tri: TerrainHierTri,
+) -> [TerrainMeshPoint; 3] {
+    let [a, b, cc] = terrain_triangle_lattice_vertices(tri);
+    [
+        terrain_lattice_point_at(c, cache, a.0, a.1),
+        terrain_lattice_point_at(c, cache, b.0, b.1),
+        terrain_lattice_point_at(c, cache, cc.0, cc.1),
+    ]
+}
+
+fn terrain_triangle_bbox_intersects_map(c: &TerrainMeshBuildConfig, tri: TerrainHierTri) -> bool {
+    let TerrainHierTri { i, j, side, down } = tri;
+    let z0 = c.fine_height * j as f64;
+    let z1 = c.fine_height * (j + side) as f64;
+    let (ax, bx, cx) = if !down {
+        (
+            c.fine_edge * (i as f64 + j as f64 * 0.5),
+            c.fine_edge * ((i + side) as f64 + j as f64 * 0.5),
+            c.fine_edge * (i as f64 + (j + side) as f64 * 0.5),
+        )
+    } else {
+        (
+            c.fine_edge * ((i + side) as f64 + j as f64 * 0.5),
+            c.fine_edge * ((i + side) as f64 + (j + side) as f64 * 0.5),
+            c.fine_edge * (i as f64 + (j + side) as f64 * 0.5),
+        )
+    };
+    let min_x = ax.min(bx).min(cx);
+    let max_x = ax.max(bx).max(cx);
+    let min_z = z0.min(z1);
+    let max_z = z0.max(z1);
+    max_x > 0.0 && min_x < c.map_width && max_z > 0.0 && min_z < c.map_height
+}
+
+#[inline]
+fn terrain_point_inside_map(c: &TerrainMeshBuildConfig, x: f64, z: f64) -> bool {
+    x >= -TERRAIN_MESH_EPSILON
+        && z >= -TERRAIN_MESH_EPSILON
+        && x <= c.map_width + TERRAIN_MESH_EPSILON
+        && z <= c.map_height + TERRAIN_MESH_EPSILON
+}
+
+/// One interior/edge sample of the collapse test. Returns false when this
+/// sample's surface error, waterline crossing, or normal divergence is too
+/// large to allow the candidate triangle to collapse.
+#[allow(clippy::too_many_arguments)]
+fn terrain_collapse_sample_ok(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    i: i32,
+    j: i32,
+    plane: TerrainMeshNormalRust,
+    plane_x: f64,
+    plane_z: f64,
+    plane_h: f64,
+    a_h: f64,
+    b_h: f64,
+    c_h: f64,
+    bary_wa_x: f64,
+    bary_wa_z: f64,
+    bary_wb_x: f64,
+    bary_wb_z: f64,
+    bary_origin_x: f64,
+    bary_origin_z: f64,
+    bary_denom: f64,
+) -> bool {
+    let x = c.fine_edge * (i as f64 + j as f64 * 0.5);
+    let z = c.fine_height * j as f64;
+    let bary_x = x - bary_origin_x;
+    let bary_z = z - bary_origin_z;
+    let wa = (bary_wa_x * bary_x + bary_wa_z * bary_z) / bary_denom;
+    let wb = (bary_wb_x * bary_x + bary_wb_z * bary_z) / bary_denom;
+    let wc = 1.0 - wa - wb;
+    let actual = terrain_mesh_height_at_lattice(c, cache, i, j);
+    let approx = wa * a_h + wb * b_h + wc * c_h;
+    if c.preserve_waterline && (actual < c.water_level) != (approx < c.water_level) {
+        return false;
+    }
+    if (plane.nx * (x - plane_x) + plane.ny * (z - plane_z) + plane.nz * (actual - plane_h)).abs()
+        > c.max_surface_error
+    {
+        return false;
+    }
+    if actual >= c.water_level
+        && terrain_normals_exceed_tolerance(
+            terrain_normal_at_lattice(c, cache, i, j),
+            plane,
+            c.min_normal_dot,
+        )
+    {
+        return false;
+    }
+    true
+}
+
+fn terrain_can_collapse_triangle(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    tri: TerrainHierTri,
+) -> bool {
+    let [a, b, cc] = terrain_triangle_world_vertices(c, cache, tri);
+    let plane = terrain_plane_normal(a, b, cc);
+    let n = tri.side;
+    let bary_denom = (b.z - cc.z) * (a.x - cc.x) + (cc.x - b.x) * (a.z - cc.z);
+    if bary_denom.abs() <= TERRAIN_MESH_EPSILON {
+        return false;
+    }
+    let bary_wa_x = b.z - cc.z;
+    let bary_wa_z = cc.x - b.x;
+    let bary_wb_x = cc.z - a.z;
+    let bary_wb_z = a.x - cc.x;
+    let bary_origin_x = cc.x;
+    let bary_origin_z = cc.z;
+    let min_x = -TERRAIN_MESH_EPSILON;
+    let min_z = -TERRAIN_MESH_EPSILON;
+    let max_x = c.map_width + TERRAIN_MESH_EPSILON;
+    let max_z = c.map_height + TERRAIN_MESH_EPSILON;
+    let mut checked: i64 = 0;
+
+    for offset_i in 0..=n {
+        let (lo_j, hi_j) = if !tri.down {
+            (0, n - offset_i)
+        } else {
+            (n - offset_i, n)
+        };
+        for offset_j in lo_j..=hi_j {
+            let i = tri.i + offset_i;
+            let j = tri.j + offset_j;
+            let x = c.fine_edge * (i as f64 + j as f64 * 0.5);
+            let z = c.fine_height * j as f64;
+            if x < min_x || z < min_z || x > max_x || z > max_z {
+                continue;
+            }
+            checked += 1;
+            if !terrain_collapse_sample_ok(
+                c,
+                cache,
+                i,
+                j,
+                plane,
+                a.x,
+                a.z,
+                a.h,
+                a.h,
+                b.h,
+                cc.h,
+                bary_wa_x,
+                bary_wa_z,
+                bary_wb_x,
+                bary_wb_z,
+                bary_origin_x,
+                bary_origin_z,
+                bary_denom,
+            ) {
+                return false;
+            }
+        }
+    }
+
+    if checked == 0 {
+        return true;
+    }
+
+    let centroid_x = (a.x + b.x + cc.x) / 3.0;
+    let centroid_z = (a.z + b.z + cc.z) / 3.0;
+    if c.sample_centroid && terrain_point_inside_map(c, centroid_x, centroid_z) {
+        let actual = terrain_mesh_height_at_world(c, centroid_x, centroid_z);
+        let approx = (a.h + b.h + cc.h) / 3.0;
+        if c.preserve_waterline && (actual < c.water_level) != (approx < c.water_level) {
+            return false;
+        }
+        if (plane.nx * (centroid_x - a.x)
+            + plane.ny * (centroid_z - a.z)
+            + plane.nz * (actual - a.h))
+            .abs()
+            > c.max_surface_error
+        {
+            return false;
+        }
+        if actual >= c.water_level
+            && terrain_normals_exceed_tolerance(
+                terrain_normal_at_world(c, centroid_x, centroid_z),
+                plane,
+                c.min_normal_dot,
+            )
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn terrain_append_triangle_children(tri: TerrainHierTri, out: &mut Vec<TerrainHierTri>) {
+    let half = tri.side >> 1;
+    if half < 1 {
+        return;
+    }
+    let (i, j) = (tri.i, tri.j);
+    if !tri.down {
+        out.push(TerrainHierTri { i, j, side: half, down: false });
+        out.push(TerrainHierTri { i: i + half, j, side: half, down: false });
+        out.push(TerrainHierTri { i, j: j + half, side: half, down: false });
+        out.push(TerrainHierTri { i, j, side: half, down: true });
+    } else {
+        out.push(TerrainHierTri { i: i + half, j, side: half, down: true });
+        out.push(TerrainHierTri { i, j: j + half, side: half, down: true });
+        out.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: true });
+        out.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: false });
+    }
+}
+
+fn terrain_push_children_for_stack(tri: TerrainHierTri, stack: &mut Vec<TerrainHierTri>) {
+    let half = tri.side >> 1;
+    if half < 1 {
+        return;
+    }
+    let (i, j) = (tri.i, tri.j);
+    if !tri.down {
+        stack.push(TerrainHierTri { i, j, side: half, down: true });
+        stack.push(TerrainHierTri { i, j: j + half, side: half, down: false });
+        stack.push(TerrainHierTri { i: i + half, j, side: half, down: false });
+        stack.push(TerrainHierTri { i, j, side: half, down: false });
+    } else {
+        stack.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: false });
+        stack.push(TerrainHierTri { i: i + half, j: j + half, side: half, down: true });
+        stack.push(TerrainHierTri { i, j: j + half, side: half, down: true });
+        stack.push(TerrainHierTri { i: i + half, j, side: half, down: true });
+    }
+}
+
+fn terrain_append_intersecting_children(
+    c: &TerrainMeshBuildConfig,
+    tri: TerrainHierTri,
+    out: &mut Vec<TerrainHierTri>,
+) {
+    let mut children: Vec<TerrainHierTri> = Vec::new();
+    terrain_append_triangle_children(tri, &mut children);
+    for child in children {
+        if terrain_triangle_bbox_intersects_map(c, child) {
+            out.push(child);
+        }
+    }
+}
+
+fn terrain_build_triangle_leaves(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    tri: TerrainHierTri,
+    out: &mut Vec<TerrainHierTri>,
+) {
+    let mut stack: Vec<TerrainHierTri> = vec![tri];
+    while let Some(current) = stack.pop() {
+        if !terrain_triangle_bbox_intersects_map(c, current) {
+            continue;
+        }
+        if current.side <= 1 {
+            out.push(current);
+            continue;
+        }
+        if terrain_can_collapse_triangle(c, cache, current) {
+            out.push(current);
+            continue;
+        }
+        terrain_push_children_for_stack(current, &mut stack);
+    }
+}
+
+fn terrain_lattice_segment_key_from_coords(ai: i32, aj: i32, bi: i32, bj: i32) -> i64 {
+    let orientation: i64;
+    let mut start_i = ai;
+    let mut start_j = aj;
+    if aj == bj {
+        orientation = 0;
+        if bi < ai {
+            start_i = bi;
+            start_j = bj;
+        }
+    } else if ai == bi {
+        orientation = 1;
+        if bj < aj {
+            start_i = bi;
+            start_j = bj;
+        }
+    } else {
+        orientation = 2;
+        if bi < ai {
+            start_i = bi;
+            start_j = bj;
+        }
+    }
+    terrain_lattice_cache_key(start_i, start_j) * 3 + orientation
+}
+
+fn terrain_for_each_unit_segment_on_lattice_edge(
+    ai: i32,
+    aj: i32,
+    bi: i32,
+    bj: i32,
+    visit: &mut dyn FnMut(i64),
+) {
+    let di = bi - ai;
+    let dj = bj - aj;
+    let steps = di.abs().max(dj.abs());
+    if steps <= 0 {
+        return;
+    }
+    let step_i = di / steps;
+    let step_j = dj / steps;
+    for k in 0..steps {
+        let start_i = ai + step_i * k;
+        let start_j = aj + step_j * k;
+        visit(terrain_lattice_segment_key_from_coords(
+            start_i,
+            start_j,
+            start_i + step_i,
+            start_j + step_j,
+        ));
+    }
+}
+
+fn terrain_for_each_triangle_unit_edge_segment_key(
+    tri: TerrainHierTri,
+    visit: &mut dyn FnMut(i64),
+) {
+    let TerrainHierTri { i, j, side, down } = tri;
+    if !down {
+        terrain_for_each_unit_segment_on_lattice_edge(i, j, i + side, j, visit);
+        terrain_for_each_unit_segment_on_lattice_edge(i + side, j, i, j + side, visit);
+        terrain_for_each_unit_segment_on_lattice_edge(i, j + side, i, j, visit);
+    } else {
+        terrain_for_each_unit_segment_on_lattice_edge(i + side, j, i + side, j + side, visit);
+        terrain_for_each_unit_segment_on_lattice_edge(i + side, j + side, i, j + side, visit);
+        terrain_for_each_unit_segment_on_lattice_edge(i, j + side, i + side, j, visit);
+    }
+}
+
+fn terrain_split_triangle_leaves(
+    c: &TerrainMeshBuildConfig,
+    leaves: &[TerrainHierTri],
+    split_leaves: &HashSet<usize>,
+) -> Vec<TerrainHierTri> {
+    let mut next: Vec<TerrainHierTri> = Vec::new();
+    for (i, &leaf) in leaves.iter().enumerate() {
+        if !split_leaves.contains(&i) || leaf.side <= 1 {
+            next.push(leaf);
+            continue;
+        }
+        terrain_append_intersecting_children(c, leaf, &mut next);
+    }
+    next
+}
+
+fn terrain_balance_triangle_leaves(
+    c: &TerrainMeshBuildConfig,
+    leaves: Vec<TerrainHierTri>,
+) -> Vec<TerrainHierTri> {
+    let max_delta = c.max_neighbor_level_delta.max(0);
+    if leaves.len() <= 1 {
+        return leaves;
+    }
+    let mut balanced = leaves;
+    let max_passes = terrain_triangle_hierarchy_level(c, 1) + 1;
+    for _ in 0..max_passes {
+        let mut segment_owners: HashMap<i64, Vec<(usize, i32)>> = HashMap::new();
+        for (leaf_index, &leaf) in balanced.iter().enumerate() {
+            let level = terrain_triangle_hierarchy_level(c, leaf.side);
+            terrain_for_each_triangle_unit_edge_segment_key(leaf, &mut |key| {
+                segment_owners
+                    .entry(key)
+                    .or_default()
+                    .push((leaf_index, level));
+            });
+        }
+
+        let mut split_leaves: HashSet<usize> = HashSet::new();
+        for owners in segment_owners.values() {
+            if owners.len() < 2 {
+                continue;
+            }
+            let mut highest_level = 0;
+            for &(_, level) in owners {
+                highest_level = highest_level.max(level);
+            }
+            for &(leaf_index, level) in owners {
+                if balanced[leaf_index].side > 1 && highest_level - level > max_delta {
+                    split_leaves.insert(leaf_index);
+                }
+            }
+        }
+
+        if split_leaves.is_empty() {
+            return balanced;
+        }
+        balanced = terrain_split_triangle_leaves(c, &balanced, &split_leaves);
+    }
+    balanced
+}
+
+fn terrain_edge_lattice_points(
+    a: (i32, i32),
+    b: (i32, i32),
+    vertex_set: &HashSet<(i32, i32)>,
+    include_start: bool,
+    include_end: bool,
+    out: &mut Vec<(i32, i32)>,
+) {
+    let di = b.0 - a.0;
+    let dj = b.1 - a.1;
+    let steps = di.abs().max(dj.abs());
+    if steps <= 0 {
+        return;
+    }
+    let step_i = di / steps;
+    let step_j = dj / steps;
+    for k in 0..=steps {
+        if k == 0 && !include_start {
+            continue;
+        }
+        if k == steps && !include_end {
+            continue;
+        }
+        let i = a.0 + step_i * k;
+        let j = a.1 + step_j * k;
+        if k == 0 || k == steps || vertex_set.contains(&(i, j)) {
+            out.push((i, j));
+        }
+    }
+}
+
+fn terrain_triangle_boundary_lattice_points(
+    tri: TerrainHierTri,
+    vertex_set: &HashSet<(i32, i32)>,
+    out: &mut Vec<(i32, i32)>,
+) {
+    let [a, b, cc] = terrain_triangle_lattice_vertices(tri);
+    terrain_edge_lattice_points(a, b, vertex_set, true, true, out);
+    terrain_edge_lattice_points(b, cc, vertex_set, false, true, out);
+    terrain_edge_lattice_points(cc, a, vertex_set, false, false, out);
+}
+
+fn terrain_remove_duplicate_mesh_points(points: &[TerrainMeshPoint]) -> Vec<TerrainMeshPoint> {
+    let mut out: Vec<TerrainMeshPoint> = Vec::new();
+    for &p in points {
+        if let Some(prev) = out.last() {
+            if (prev.x - p.x).abs() <= TERRAIN_MESH_EPSILON
+                && (prev.z - p.z).abs() <= TERRAIN_MESH_EPSILON
+            {
+                continue;
+            }
+        }
+        out.push(p);
+    }
+    if out.len() > 1 {
+        let first = out[0];
+        let last = out[out.len() - 1];
+        if (first.x - last.x).abs() <= TERRAIN_MESH_EPSILON
+            && (first.z - last.z).abs() <= TERRAIN_MESH_EPSILON
+        {
+            out.pop();
+        }
+    }
+    out
+}
+
+enum TerrainClipAxis {
+    XMin,
+    XMax,
+    ZMin,
+    ZMax,
+}
+
+#[inline]
+fn terrain_clip_point_inside(p: TerrainMeshPoint, axis: &TerrainClipAxis, bound: f64) -> bool {
+    match axis {
+        TerrainClipAxis::XMin => p.x >= bound,
+        TerrainClipAxis::XMax => p.x <= bound,
+        TerrainClipAxis::ZMin => p.z >= bound,
+        TerrainClipAxis::ZMax => p.z <= bound,
+    }
+}
+
+fn terrain_clip_intersect(
+    c: &TerrainMeshBuildConfig,
+    a: TerrainMeshPoint,
+    b: TerrainMeshPoint,
+    axis: &TerrainClipAxis,
+    bound: f64,
+) -> TerrainMeshPoint {
+    let t = match axis {
+        TerrainClipAxis::XMin | TerrainClipAxis::XMax => {
+            let denom = b.x - a.x;
+            (bound - a.x) / (if denom == 0.0 { 1.0 } else { denom })
+        }
+        TerrainClipAxis::ZMin | TerrainClipAxis::ZMax => {
+            let denom = b.z - a.z;
+            (bound - a.z) / (if denom == 0.0 { 1.0 } else { denom })
+        }
+    };
+    let x = a.x + (b.x - a.x) * t;
+    let z = a.z + (b.z - a.z) * t;
+    TerrainMeshPoint {
+        x,
+        z,
+        h: terrain_mesh_height_at_world(c, x, z),
+    }
+}
+
+fn terrain_clip_polygon_against_boundary(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    axis: TerrainClipAxis,
+    bound: f64,
+) -> Vec<TerrainMeshPoint> {
+    if points.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<TerrainMeshPoint> = Vec::new();
+    let mut prev = points[points.len() - 1];
+    let mut prev_inside = terrain_clip_point_inside(prev, &axis, bound);
+    for &curr in points {
+        let curr_inside = terrain_clip_point_inside(curr, &axis, bound);
+        if curr_inside != prev_inside {
+            out.push(terrain_clip_intersect(c, prev, curr, &axis, bound));
+        }
+        if curr_inside {
+            out.push(curr);
+        }
+        prev = curr;
+        prev_inside = curr_inside;
+    }
+    terrain_remove_duplicate_mesh_points(&out)
+}
+
+fn terrain_clip_polygon_to_map(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+) -> Vec<TerrainMeshPoint> {
+    let mut clipped = terrain_remove_duplicate_mesh_points(points);
+    clipped = terrain_clip_polygon_against_boundary(c, &clipped, TerrainClipAxis::XMin, 0.0);
+    clipped =
+        terrain_clip_polygon_against_boundary(c, &clipped, TerrainClipAxis::XMax, c.map_width);
+    clipped = terrain_clip_polygon_against_boundary(c, &clipped, TerrainClipAxis::ZMin, 0.0);
+    clipped =
+        terrain_clip_polygon_against_boundary(c, &clipped, TerrainClipAxis::ZMax, c.map_height);
+    terrain_remove_duplicate_mesh_points(&clipped)
+}
+
+fn terrain_polygon_signed_area(points: &[TerrainMeshPoint]) -> f64 {
+    let mut area = 0.0;
+    let n = points.len();
+    for i in 0..n {
+        let a = points[i];
+        let b = points[(i + 1) % n];
+        area += a.x * b.z - b.x * a.z;
+    }
+    area * 0.5
+}
+
+#[inline]
+fn terrain_world_vertex_key(x: f64, z: f64, scale: f64) -> (i64, i64) {
+    (
+        terrain_js_round(x * scale) as i64,
+        terrain_js_round(z * scale) as i64,
+    )
+}
+
+#[inline]
+fn terrain_triangle_area_from_vertex_ids(vc: &[f64], a: i32, b: i32, c: i32) -> f64 {
+    let (a, b, c) = (a as usize, b as usize, c as usize);
+    let ax = vc[a * 2];
+    let az = vc[a * 2 + 1];
+    let bx = vc[b * 2];
+    let bz = vc[b * 2 + 1];
+    let cx = vc[c * 2];
+    let cz = vc[c * 2 + 1];
+    (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
+}
+
+fn terrain_polygon_signed_area_from_vertex_ids(vc: &[f64], polygon: &[i32]) -> f64 {
+    let mut area = 0.0;
+    let n = polygon.len();
+    for i in 0..n {
+        let a = polygon[i] as usize;
+        let b = polygon[(i + 1) % n] as usize;
+        area += vc[a * 2] * vc[b * 2 + 1] - vc[b * 2] * vc[a * 2 + 1];
+    }
+    area * 0.5
+}
+
+#[inline]
+fn terrain_push_unique_vertex(out: &mut Vec<i32>, vertex_id: i32) {
+    if out.last() != Some(&vertex_id) {
+        out.push(vertex_id);
+    }
+}
+
+fn terrain_triangulate_convex_polygon(
+    vc: &[f64],
+    polygon: &[i32],
+    level: i32,
+    leaf_index: i32,
+    out_indices: &mut Vec<i32>,
+    out_levels: &mut Vec<i32>,
+    out_leaf_indices: &mut Vec<i32>,
+) {
+    let mut work: Vec<i32> = polygon.to_vec();
+    if work.len() < 3 {
+        return;
+    }
+    if terrain_polygon_signed_area_from_vertex_ids(vc, &work) < 0.0 {
+        work.reverse();
+    }
+
+    let mut guard: i64 = (work.len() * work.len()) as i64;
+    while work.len() > 3 && guard > 0 {
+        guard -= 1;
+        let mut clipped = false;
+        let n = work.len();
+        for i in 0..n {
+            let prev = work[(i + n - 1) % n];
+            let curr = work[i];
+            let next = work[(i + 1) % n];
+            if terrain_triangle_area_from_vertex_ids(vc, prev, curr, next) <= TERRAIN_MESH_EPSILON {
+                continue;
+            }
+            out_indices.push(prev);
+            out_indices.push(curr);
+            out_indices.push(next);
+            out_levels.push(level);
+            out_leaf_indices.push(leaf_index);
+            work.remove(i);
+            clipped = true;
+            break;
+        }
+        if !clipped {
+            return;
+        }
+    }
+
+    if work.len() == 3
+        && terrain_triangle_area_from_vertex_ids(vc, work[0], work[1], work[2])
+            > TERRAIN_MESH_EPSILON
+    {
+        out_indices.push(work[0]);
+        out_indices.push(work[1]);
+        out_indices.push(work[2]);
+        out_levels.push(level);
+        out_leaf_indices.push(leaf_index);
+    }
+}
+
+#[inline]
+fn terrain_edge_coordinate_for_line(line_kind: u8, vc: &[f64], vertex_id: i32) -> f64 {
+    let id = vertex_id as usize;
+    if line_kind == 0 {
+        vc[id * 2]
+    } else {
+        vc[id * 2 + 1]
+    }
+}
+
+fn terrain_add_split_vertex_for_edge(
+    split_vertices_by_edge: &mut HashMap<usize, Vec<i32>>,
+    vc: &[f64],
+    owner: TerrainTriangleEdgeOwnerRust,
+    owner_span: TerrainTriangleEdgeSpanRust,
+    vertex_id: i32,
+) {
+    if vertex_id as usize == owner.a || vertex_id as usize == owner.b {
+        return;
+    }
+    let coord = terrain_edge_coordinate_for_line(owner_span.line_kind, vc, vertex_id);
+    if coord <= owner_span.start + TERRAIN_MESH_EDGE_EPSILON
+        || coord >= owner_span.end - TERRAIN_MESH_EDGE_EPSILON
+    {
+        return;
+    }
+    let key = terrain_triangle_edge_key(owner.triangle, owner.edge);
+    let entry = split_vertices_by_edge.entry(key).or_default();
+    if !entry.contains(&vertex_id) {
+        entry.push(vertex_id);
+    }
+}
+
+fn terrain_collect_mesh_edge_split_vertices(
+    c: &TerrainMeshBuildConfig,
+    vc: &[f64],
+    triangle_indices: &[i32],
+) -> HashMap<usize, Vec<i32>> {
+    let mut split_vertices_by_edge: HashMap<usize, Vec<i32>> = HashMap::new();
+    let Some(meta) = terrain_build_mesh_edge_metadata(vc, triangle_indices, c.vertex_key_scale)
+    else {
+        return split_vertices_by_edge;
+    };
+
+    for owners in meta.edge_owners.values() {
+        if owners.len() != 1 {
+            continue;
+        }
+        let owner = owners[0];
+        if terrain_mesh_edge_is_map_boundary(c.map_width, c.map_height, vc, owner) {
+            continue;
+        }
+        let Some(owner_span) = meta
+            .edge_spans
+            .get(&terrain_triangle_edge_key(owner.triangle, owner.edge))
+            .copied()
+        else {
+            continue;
+        };
+
+        let overlaps =
+            terrain_find_overlapping_edge_spans(owner, &meta.spans_by_line, &meta.edge_spans);
+        for overlap in overlaps {
+            terrain_add_split_vertex_for_edge(
+                &mut split_vertices_by_edge,
+                vc,
+                owner,
+                owner_span,
+                overlap.a as i32,
+            );
+            terrain_add_split_vertex_for_edge(
+                &mut split_vertices_by_edge,
+                vc,
+                owner,
+                owner_span,
+                overlap.b as i32,
+            );
+        }
+    }
+
+    split_vertices_by_edge
+}
+
+fn terrain_sorted_split_vertices_for_triangle_edge(
+    vc: &[f64],
+    a: i32,
+    b: i32,
+    split_vertices: Option<&Vec<i32>>,
+) -> Vec<i32> {
+    let Some(sv) = split_vertices else {
+        return Vec::new();
+    };
+    if sv.is_empty() {
+        return Vec::new();
+    }
+    let (ai, bi) = (a as usize, b as usize);
+    let ax = vc[ai * 2];
+    let az = vc[ai * 2 + 1];
+    let bx = vc[bi * 2];
+    let bz = vc[bi * 2 + 1];
+    let dx = bx - ax;
+    let dz = bz - az;
+    let len_sq = dx * dx + dz * dz;
+    if len_sq <= TERRAIN_MESH_EPSILON {
+        return Vec::new();
+    }
+    let mut out = sv.clone();
+    out.sort_by(|&va, &vb| {
+        let tax = vc[va as usize * 2] - ax;
+        let taz = vc[va as usize * 2 + 1] - az;
+        let tbx = vc[vb as usize * 2] - ax;
+        let tbz = vc[vb as usize * 2 + 1] - az;
+        let pa = (tax * dx + taz * dz) / len_sq;
+        let pb = (tbx * dx + tbz * dz) / len_sq;
+        pa.partial_cmp(&pb).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    out
+}
+
+fn terrain_resolve_mesh_triangle_edge_splits(
+    c: &TerrainMeshBuildConfig,
+    vc: &[f64],
+    triangle_indices: Vec<i32>,
+    triangle_levels: Vec<i32>,
+    triangle_leaf_indices: Vec<i32>,
+) -> (Vec<i32>, Vec<i32>, Vec<i32>) {
+    let mut indices = triangle_indices;
+    let mut levels = triangle_levels;
+    let mut leaf_indices = triangle_leaf_indices;
+    let max_iterations = terrain_triangle_hierarchy_level(c, 1) + 2;
+
+    for _ in 0..max_iterations {
+        let split_vertices_by_edge = terrain_collect_mesh_edge_split_vertices(c, vc, &indices);
+        if split_vertices_by_edge.is_empty() {
+            break;
+        }
+
+        let mut next_indices: Vec<i32> = Vec::new();
+        let mut next_levels: Vec<i32> = Vec::new();
+        let mut next_leaf_indices: Vec<i32> = Vec::new();
+
+        let tri_count = indices.len() / 3;
+        for tri in 0..tri_count {
+            let base = tri * 3;
+            let a = indices[base];
+            let b = indices[base + 1];
+            let cc = indices[base + 2];
+            let mut polygon: Vec<i32> = Vec::new();
+            terrain_push_unique_vertex(&mut polygon, a);
+            for v in terrain_sorted_split_vertices_for_triangle_edge(
+                vc,
+                a,
+                b,
+                split_vertices_by_edge.get(&base),
+            ) {
+                terrain_push_unique_vertex(&mut polygon, v);
+            }
+            terrain_push_unique_vertex(&mut polygon, b);
+            for v in terrain_sorted_split_vertices_for_triangle_edge(
+                vc,
+                b,
+                cc,
+                split_vertices_by_edge.get(&(base + 1)),
+            ) {
+                terrain_push_unique_vertex(&mut polygon, v);
+            }
+            terrain_push_unique_vertex(&mut polygon, cc);
+            for v in terrain_sorted_split_vertices_for_triangle_edge(
+                vc,
+                cc,
+                a,
+                split_vertices_by_edge.get(&(base + 2)),
+            ) {
+                terrain_push_unique_vertex(&mut polygon, v);
+            }
+            if polygon.len() > 1 && polygon[0] == polygon[polygon.len() - 1] {
+                polygon.pop();
+            }
+
+            terrain_triangulate_convex_polygon(
+                vc,
+                &polygon,
+                levels.get(tri).copied().unwrap_or(0),
+                leaf_indices.get(tri).copied().unwrap_or(-1),
+                &mut next_indices,
+                &mut next_levels,
+                &mut next_leaf_indices,
+            );
+        }
+
+        indices = next_indices;
+        levels = next_levels;
+        leaf_indices = next_leaf_indices;
+    }
+
+    (indices, levels, leaf_indices)
+}
+
+fn terrain_build_conforming_topology(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    leaves: &[TerrainHierTri],
+) -> TerrainMeshTopologyRust {
+    let mut leaf_vertex_set: HashSet<(i32, i32)> = HashSet::new();
+    for &leaf in leaves {
+        for v in terrain_triangle_lattice_vertices(leaf) {
+            leaf_vertex_set.insert(v);
+        }
+    }
+
+    let mut vertex_ids: HashMap<(i64, i64), i32> = HashMap::new();
+    let mut vertex_coords: Vec<f64> = Vec::new();
+    let mut vertex_heights: Vec<f64> = Vec::new();
+    let mut triangle_indices: Vec<i32> = Vec::new();
+    let mut triangle_levels: Vec<i32> = Vec::new();
+    let mut triangle_leaf_indices: Vec<i32> = Vec::new();
+
+    let mut boundary: Vec<(i32, i32)> = Vec::new();
+    let mut polygon_pts: Vec<TerrainMeshPoint> = Vec::new();
+    let mut polygon_ids: Vec<i32> = Vec::new();
+
+    for (leaf_index, &leaf) in leaves.iter().enumerate() {
+        let source_level = terrain_triangle_hierarchy_level(c, leaf.side);
+        boundary.clear();
+        terrain_triangle_boundary_lattice_points(leaf, &leaf_vertex_set, &mut boundary);
+        polygon_pts.clear();
+        for &(pi, pj) in &boundary {
+            polygon_pts.push(terrain_lattice_point_at(c, cache, pi, pj));
+        }
+        let mut clipped = terrain_clip_polygon_to_map(c, &polygon_pts);
+        if clipped.len() < 3 {
+            continue;
+        }
+        if terrain_polygon_signed_area(&clipped) < 0.0 {
+            clipped.reverse();
+        }
+        polygon_ids.clear();
+        for &p in &clipped {
+            let x = terrain_mesh_clamp_to_map(p.x, c.map_width);
+            let z = terrain_mesh_clamp_to_map(p.z, c.map_height);
+            let key = terrain_world_vertex_key(x, z, c.vertex_key_scale);
+            let id = if let Some(&existing) = vertex_ids.get(&key) {
+                existing
+            } else {
+                let id = vertex_heights.len() as i32;
+                vertex_ids.insert(key, id);
+                vertex_coords.push(x);
+                vertex_coords.push(z);
+                vertex_heights.push(terrain_mesh_height_at_world(c, x, z));
+                id
+            };
+            polygon_ids.push(id);
+        }
+        terrain_triangulate_convex_polygon(
+            &vertex_coords,
+            &polygon_ids,
+            source_level,
+            leaf_index as i32,
+            &mut triangle_indices,
+            &mut triangle_levels,
+            &mut triangle_leaf_indices,
+        );
+    }
+
+    let (resolved_indices, resolved_levels, resolved_leaf_indices) =
+        terrain_resolve_mesh_triangle_edge_splits(
+            c,
+            &vertex_coords,
+            triangle_indices,
+            triangle_levels,
+            triangle_leaf_indices,
+        );
+
+    TerrainMeshTopologyRust {
+        vertex_coords,
+        vertex_heights,
+        triangle_indices: resolved_indices,
+        triangle_levels: resolved_levels,
+        triangle_leaf_indices: resolved_leaf_indices,
+    }
+}
+
+fn terrain_build_cell_triangle_index(
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+) -> Option<(Vec<i32>, Vec<i32>)> {
+    if cells_x <= 0
+        || cells_y <= 0
+        || !cell_size.is_finite()
+        || cell_size <= 0.0
+        || triangle_indices.len() % 3 != 0
+    {
+        return None;
+    }
+    let cell_count = (cells_x as usize).checked_mul(cells_y as usize)?;
+    let mut offsets = vec![0i32; cell_count + 1];
+    let triangle_count = triangle_indices.len() / 3;
+    for tri in 0..triangle_count {
+        let (min_cx, max_cx, min_cy, max_cy) = terrain_triangle_cell_span(
+            cells_x,
+            cells_y,
+            cell_size,
+            vertex_coords,
+            triangle_indices,
+            tri,
+        )?;
+        for cy in min_cy..=max_cy {
+            for cx in min_cx..=max_cx {
+                offsets[(cy * cells_x + cx) as usize] += 1;
+            }
+        }
+    }
+
+    let mut total: i64 = 0;
+    for offset in offsets.iter_mut().take(cell_count) {
+        let count = *offset as i64;
+        *offset = total as i32;
+        total += count;
+        if total > i32::MAX as i64 {
+            return None;
+        }
+    }
+    offsets[cell_count] = total as i32;
+
+    let mut indices = vec![0i32; total as usize];
+    let mut write_offsets = offsets[..cell_count].to_vec();
+    for tri in 0..triangle_count {
+        let (min_cx, max_cx, min_cy, max_cy) = terrain_triangle_cell_span(
+            cells_x,
+            cells_y,
+            cell_size,
+            vertex_coords,
+            triangle_indices,
+            tri,
+        )?;
+        for cy in min_cy..=max_cy {
+            for cx in min_cx..=max_cx {
+                let cell_index = (cy * cells_x + cx) as usize;
+                let write = write_offsets[cell_index];
+                indices[write as usize] = tri as i32;
+                write_offsets[cell_index] = write + 1;
+            }
+        }
+    }
+
+    Some((offsets, indices))
+}
+
+fn terrain_finalize_conforming_topology(
+    c: &TerrainMeshBuildConfig,
+    topology: TerrainMeshTopologyRust,
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+) -> Option<TerrainBuiltMeshRust> {
+    let mut vertex_heights = topology.vertex_heights.clone();
+    terrain_smooth_mesh_vertex_heights(
+        &mut vertex_heights,
+        &topology.triangle_indices,
+        c.smoothing_steps,
+        c.smoothing_amount,
+    );
+
+    let triangle_count = topology.triangle_indices.len() / 3;
+    let mut neighbor_indices = vec![-1i32; triangle_count * 3];
+    let mut neighbor_levels = vec![-1i32; triangle_count * 3];
+    if terrain_build_triangle_neighbor_metadata(
+        c.map_width,
+        c.map_height,
+        c.vertex_key_scale,
+        &topology.vertex_coords,
+        &topology.triangle_indices,
+        &topology.triangle_levels,
+        &mut neighbor_indices,
+        &mut neighbor_levels,
+    ) == 0
+    {
+        return None;
+    }
+
+    let (cell_offsets, cell_indices) = terrain_build_cell_triangle_index(
+        cells_x,
+        cells_y,
+        cell_size,
+        &topology.vertex_coords,
+        &topology.triangle_indices,
+    )?;
+
+    Some(TerrainBuiltMeshRust {
+        vertex_coords: topology.vertex_coords,
+        vertex_heights,
+        triangle_indices: topology.triangle_indices,
+        triangle_levels: topology.triangle_levels,
+        neighbor_indices,
+        neighbor_levels,
+        cell_offsets,
+        cell_indices,
+    })
+}
+
+fn terrain_find_discrepancy_splits(
+    c: &TerrainMeshBuildConfig,
+    leaves: &[TerrainHierTri],
+    topology: &TerrainMeshTopologyRust,
+) -> Option<HashSet<usize>> {
+    let leaf_sides: Vec<i32> = leaves.iter().map(|l| l.side).collect();
+    let mut flags = vec![0u8; leaves.len()];
+    if terrain_mark_neighbor_discrepancy_leaves(
+        c.map_width,
+        c.map_height,
+        c.vertex_key_scale,
+        c.max_neighbor_level_delta,
+        &leaf_sides,
+        &topology.vertex_coords,
+        &topology.triangle_indices,
+        &topology.triangle_levels,
+        &topology.triangle_leaf_indices,
+        &mut flags,
+    ) == 0
+    {
+        return None;
+    }
+    let mut set: HashSet<usize> = HashSet::new();
+    for (i, &flag) in flags.iter().enumerate() {
+        if flag != 0 {
+            set.insert(i);
+        }
+    }
+    Some(set)
+}
+
+fn terrain_build_validated_conforming_mesh(
+    c: &TerrainMeshBuildConfig,
+    cache: &mut TerrainMeshHeightCache,
+    leaves: Vec<TerrainHierTri>,
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+) -> Option<TerrainBuiltMeshRust> {
+    let mut repaired = leaves;
+    let max_passes = terrain_triangle_hierarchy_level(c, 1) + 2;
+    let bounded = max_passes.min(c.final_repair_max_passes).max(0);
+
+    for _ in 0..bounded {
+        let topology = terrain_build_conforming_topology(c, cache, &repaired);
+        let splits = terrain_find_discrepancy_splits(c, &repaired, &topology)?;
+        if splits.is_empty() {
+            return terrain_finalize_conforming_topology(c, topology, cells_x, cells_y, cell_size);
+        }
+        let next = terrain_balance_triangle_leaves(
+            c,
+            terrain_split_triangle_leaves(c, &repaired, &splits),
+        );
+        if next.len() == repaired.len() {
+            return terrain_finalize_conforming_topology(c, topology, cells_x, cells_y, cell_size);
+        }
+        repaired = next;
+    }
+
+    let topology = terrain_build_conforming_topology(c, cache, &repaired);
+    terrain_finalize_conforming_topology(c, topology, cells_x, cells_y, cell_size)
+}
+
+fn terrain_build_adaptive_mesh_internal(
+    c: &TerrainMeshBuildConfig,
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+) -> Option<TerrainBuiltMeshRust> {
+    let mut cache = TerrainMeshHeightCache::default();
+    let root_side = terrain_next_power_of_two(
+        ((c.map_width / c.fine_edge).max(c.map_height / c.fine_height))
+            .ceil()
+            .max(1.0) as i64,
+    ) as i32;
+    let rows = (c.map_height / c.fine_height).ceil() as i32;
+    let cols = (c.map_width / c.fine_edge).ceil() as i32;
+
+    let mut leaves: Vec<TerrainHierTri> = Vec::new();
+    let mut j = -root_side;
+    while j <= rows + root_side {
+        let mut i = -root_side * 2;
+        while i <= cols + root_side * 2 {
+            terrain_build_triangle_leaves(
+                c,
+                &mut cache,
+                TerrainHierTri { i, j, side: root_side, down: false },
+                &mut leaves,
+            );
+            terrain_build_triangle_leaves(
+                c,
+                &mut cache,
+                TerrainHierTri { i, j, side: root_side, down: true },
+                &mut leaves,
+            );
+            i += root_side;
+        }
+        j += root_side;
+    }
+
+    let balanced = terrain_balance_triangle_leaves(c, leaves);
+    terrain_build_validated_conforming_mesh(c, &mut cache, balanced, cells_x, cells_y, cell_size)
+}
+
+/// Builds the full adaptive equilateral terrain mesh in one call and returns
+/// a flat f64 buffer the TypeScript shell unpacks into a TerrainTileMap.
+///
+/// Layout: `[status, vertexCount, triangleCount, cellOffsetsLen, cellRefsCount,
+///   vertexCoords(2V), vertexHeights(V), triangleIndices(3T), triangleLevels(T),
+///   neighborIndices(3T), neighborLevels(3T), cellOffsets(cellsX*cellsY+1),
+///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
+/// is the 22-value generation slice (see metal_deposit_terrain_config_from_slice);
+/// `flat_zones` is the 5-stride deposit override list; `lod_config` packs the 10
+/// triangle/repair tuning values.
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn terrain_build_adaptive_mesh(
+    map_width: f64,
+    map_height: f64,
+    cell_size: f64,
+    cells_x: i32,
+    cells_y: i32,
+    max_subdiv: i32,
+    extent_fraction: f64,
+    terrain_config: &[f64],
+    flat_zones: &[f64],
+    lod_config: &[f64],
+) -> Vec<f64> {
+    let fail = vec![0.0f64];
+    if !map_width.is_finite()
+        || !map_height.is_finite()
+        || map_width <= 0.0
+        || map_height <= 0.0
+        || !cell_size.is_finite()
+        || cell_size <= 0.0
+        || cells_x <= 0
+        || cells_y <= 0
+        || max_subdiv < 1
+        || !extent_fraction.is_finite()
+        || flat_zones.len() % METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE != 0
+        || lod_config.len() < 10
+    {
+        return fail;
+    }
+    let Some(gen_cfg) = metal_deposit_terrain_config_from_slice(terrain_config) else {
+        return fail;
+    };
+    let metrics = terrain_make_oval_metrics(map_width, map_height, extent_fraction);
+    let fine_edge = cell_size / (max_subdiv.max(1) as f64);
+    let fine_height = fine_edge * TERRAIN_SQRT3_OVER_2;
+    let raw_root = (map_width / fine_edge).max(map_height / fine_height).ceil().max(1.0);
+    let root_side = terrain_next_power_of_two(raw_root as i64) as i32;
+    let root_level = 31 - (root_side.max(1) as u32).leading_zeros() as i32;
+
+    let c = TerrainMeshBuildConfig {
+        map_width,
+        map_height,
+        fine_edge,
+        fine_height,
+        root_level,
+        metrics,
+        gen_cfg,
+        flat_zones: flat_zones.to_vec(),
+        max_surface_error: lod_config[0],
+        min_normal_dot: lod_config[1],
+        max_neighbor_level_delta: lod_config[2] as i32,
+        preserve_waterline: lod_config[3] != 0.0,
+        sample_centroid: lod_config[4] != 0.0,
+        water_level: lod_config[5],
+        vertex_key_scale: lod_config[6],
+        final_repair_max_passes: lod_config[7] as i32,
+        smoothing_steps: lod_config[8] as i32,
+        smoothing_amount: lod_config[9],
+    };
+
+    let Some(mesh) = terrain_build_adaptive_mesh_internal(&c, cells_x, cells_y, cell_size) else {
+        return fail;
+    };
+
+    let v = mesh.vertex_heights.len();
+    let t = mesh.triangle_indices.len() / 3;
+    let cell_offsets_len = mesh.cell_offsets.len();
+    let refs = mesh.cell_indices.len();
+    let mut out: Vec<f64> = Vec::with_capacity(
+        5 + 2 * v + v + 3 * t + t + 3 * t + 3 * t + cell_offsets_len + refs,
+    );
+    out.push(1.0);
+    out.push(v as f64);
+    out.push(t as f64);
+    out.push(cell_offsets_len as f64);
+    out.push(refs as f64);
+    for &value in &mesh.vertex_coords {
+        out.push(value);
+    }
+    for &value in &mesh.vertex_heights {
+        out.push(value);
+    }
+    for &value in &mesh.triangle_indices {
+        out.push(value as f64);
+    }
+    for &value in &mesh.triangle_levels {
+        out.push(value as f64);
+    }
+    for &value in &mesh.neighbor_indices {
+        out.push(value as f64);
+    }
+    for &value in &mesh.neighbor_levels {
+        out.push(value as f64);
+    }
+    for &value in &mesh.cell_offsets {
+        out.push(value as f64);
+    }
+    for &value in &mesh.cell_indices {
+        out.push(value as f64);
+    }
+    out
 }
 
 struct TerrainGrid {
@@ -23051,6 +24569,97 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
 #[cfg(test)]
 mod sim_kernel_tests {
     use super::*;
+
+    #[test]
+    fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {
+        // 22-value generation slice: circular island, 2 teams, ripple + ridge
+        // so the LOD walk actually varies triangle sizes.
+        let terrain_config = [
+            40.0,   // center_magnitude
+            30.0,   // dividers_magnitude
+            0.0,    // terrain_d_terrain (plateau off)
+            1.0,    // map_shape_circle
+            2.0,    // team_count
+            -1200.0, // tile_floor_y
+            0.49,   // circle_edge_fraction
+            0.1,    // circle_transition_width_fraction
+            0.04,   // generation_edge_transition_width_fraction
+            0.99,   // plateau_shelf_fraction_of_step
+            0.0,    // plateau_ramp_edge_sharpness
+            0.4,    // ripple_radius_fraction
+            1.7,    // ripple_phase
+            700.0, 0.9, // ripple component 0 wavelength/magnitude
+            600.0, 0.0, // ripple component 1
+            600.0, 0.0, // ripple component 2
+            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+        ];
+        // 10-value LOD slice mirroring terrainConfig.json defaults.
+        let lod_config = [
+            0.0,    // max_surface_error
+            0.951,  // min_normal_dot (~18 deg)
+            1.0,    // max_neighbor_level_delta
+            1.0,    // preserve_waterline
+            1.0,    // sample_centroid
+            -120.0, // water_level
+            1000.0, // vertex_key_scale
+            3.0,    // final_repair_max_passes
+            0.0,    // smoothing_steps
+            0.5,    // smoothing_amount
+        ];
+        let flat_zones: [f64; 0] = [];
+        let cells = 12i32;
+        let cell_size = 64.0;
+        let map = cells as f64 * cell_size;
+        let extent = 0.92;
+
+        let a = terrain_build_adaptive_mesh(
+            map, map, cell_size, cells, cells, 4, extent, &terrain_config, &flat_zones,
+            &lod_config,
+        );
+        let b = terrain_build_adaptive_mesh(
+            map, map, cell_size, cells, cells, 4, extent, &terrain_config, &flat_zones,
+            &lod_config,
+        );
+
+        assert_eq!(a[0], 1.0, "build reports success");
+        assert_eq!(a, b, "mesh build is deterministic across runs");
+
+        let v = a[1] as usize;
+        let t = a[2] as usize;
+        let cell_offsets_len = a[3] as usize;
+        let refs = a[4] as usize;
+        assert!(v >= 3, "produced vertices");
+        assert!(t >= 1, "produced triangles");
+        assert_eq!(cell_offsets_len, (cells * cells) as usize + 1);
+
+        let header = 5usize;
+        let coords_start = header;
+        let heights_start = coords_start + 2 * v;
+        let tri_start = heights_start + v;
+        let levels_start = tri_start + 3 * t;
+        let neighbor_idx_start = levels_start + t;
+        let neighbor_lvl_start = neighbor_idx_start + 3 * t;
+        let cell_off_start = neighbor_lvl_start + 3 * t;
+        let cell_idx_start = cell_off_start + cell_offsets_len;
+        assert_eq!(
+            a.len(),
+            cell_idx_start + refs,
+            "packed buffer length matches header",
+        );
+
+        for k in 0..v {
+            assert!(a[heights_start + k].is_finite(), "vertex height finite");
+        }
+        for k in 0..(3 * t) {
+            let idx = a[tri_start + k] as i64;
+            assert!(idx >= 0 && (idx as usize) < v, "triangle index in range");
+        }
+        // Every cell-triangle ref points at a real triangle.
+        for k in 0..refs {
+            let tri = a[cell_idx_start + k] as i64;
+            assert!(tri >= 0 && (tri as usize) < t, "cell triangle ref in range");
+        }
+    }
 
     #[test]
     fn blueprint_manifest_includes_authored_tables() {

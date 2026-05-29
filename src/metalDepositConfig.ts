@@ -36,20 +36,14 @@
 
 import { MAP_GENERATION_EXTENT_FRACTION } from './mapSizeConfig';
 import {
-  getTerrainMapShape,
-  getTerrainRuntimeConfig,
-  getTerrainTeamCount,
   METAL_DEPOSIT_STEP,
   setMetalDepositFlatZones,
-  TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION,
-  TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION,
-  TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
-  TERRAIN_PLATEAU_CONFIG,
-  TERRAIN_RIDGE_CONFIG,
-  TERRAIN_RIPPLE_CONFIG,
-  TILE_FLOOR_Y,
   type TerrainFlatZone,
 } from './game/sim/Terrain';
+import {
+  packTerrainFlatZoneRowsForWasm,
+  packTerrainGenerationConfigForWasm,
+} from './game/sim/terrain/terrainGenerationConfig';
 import { BUILD_GRID_CELL_SIZE } from './game/sim/buildGrid';
 import { getSimWasm } from './game/sim-wasm/init';
 import rawConfig from './metalDepositConfig.json';
@@ -193,8 +187,6 @@ type PendingPlacement = {
 const METAL_DEPOSIT_RING_INPUT_STRIDE = 6;
 const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE = 15;
 const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE = 3;
-const METAL_DEPOSIT_TERRAIN_CONFIG_INPUT_LENGTH = 22;
-const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE = 5;
 const METAL_DEPOSIT_D_TERRAIN_NULL = Number.NaN;
 
 /**
@@ -364,8 +356,8 @@ function resolveMetalDepositTerrainHeightsFromWasm(
     mapWidth,
     mapHeight,
     MAP_GENERATION_EXTENT_FRACTION,
-    packMetalDepositTerrainConfigForWasm(),
-    packMetalDepositFlatZoneRowsForWasm(explicitZones),
+    packTerrainGenerationConfigForWasm(),
+    packTerrainFlatZoneRowsForWasm(explicitZones),
     heightInputs,
     outHeights,
   );
@@ -375,51 +367,6 @@ function resolveMetalDepositTerrainHeightsFromWasm(
     );
   }
   return Array.from(outHeights);
-}
-
-function packMetalDepositTerrainConfigForWasm(): Float64Array {
-  const runtime = getTerrainRuntimeConfig();
-  const [r0, r1, r2] = TERRAIN_RIPPLE_CONFIG.components;
-  const rows = new Float64Array(METAL_DEPOSIT_TERRAIN_CONFIG_INPUT_LENGTH);
-  rows[0] = runtime.centerMagnitude;
-  rows[1] = runtime.dividersMagnitude;
-  rows[2] = runtime.terrainDTerrain;
-  rows[3] = getTerrainMapShape() === 'circle' ? 1 : 0;
-  rows[4] = getTerrainTeamCount();
-  rows[5] = TILE_FLOOR_Y;
-  rows[6] = TERRAIN_CIRCLE_PERIMETER_EDGE_FRACTION;
-  rows[7] = TERRAIN_CIRCLE_PERIMETER_TRANSITION_WIDTH_FRACTION;
-  rows[8] = TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION;
-  rows[9] = TERRAIN_PLATEAU_CONFIG.shelfFractionOfStep;
-  rows[10] = TERRAIN_PLATEAU_CONFIG.rampEdgeSharpness;
-  rows[11] = TERRAIN_RIPPLE_CONFIG.radiusFraction;
-  rows[12] = TERRAIN_RIPPLE_CONFIG.phase;
-  rows[13] = r0.wavelength;
-  rows[14] = r0.magnitude;
-  rows[15] = r1.wavelength;
-  rows[16] = r1.magnitude;
-  rows[17] = r2.wavelength;
-  rows[18] = r2.magnitude;
-  rows[19] = TERRAIN_RIDGE_CONFIG.innerRadiusFraction;
-  rows[20] = TERRAIN_RIDGE_CONFIG.outerRadiusFraction;
-  rows[21] = TERRAIN_RIDGE_CONFIG.halfWidthFraction;
-  return rows;
-}
-
-function packMetalDepositFlatZoneRowsForWasm(
-  zones: readonly TerrainFlatZone[],
-): Float64Array {
-  const rows = new Float64Array(zones.length * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE);
-  for (let i = 0; i < zones.length; i++) {
-    const zone = zones[i];
-    const base = i * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
-    rows[base] = zone.x;
-    rows[base + 1] = zone.y;
-    rows[base + 2] = zone.radius;
-    rows[base + 3] = zone.height;
-    rows[base + 4] = zone.blendRadius;
-  }
-  return rows;
 }
 
 function packMetalDepositRingRows(resourceRadius: number): Float64Array {

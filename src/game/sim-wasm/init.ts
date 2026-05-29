@@ -65,9 +65,7 @@ import __wbg_init, {
   terrain_is_installed,
   terrain_count_cell_triangle_refs,
   terrain_fill_cell_triangle_indices,
-  terrain_smooth_mesh_vertex_heights,
-  terrain_build_triangle_neighbor_metadata,
-  terrain_mark_neighbor_discrepancy_leaves,
+  terrain_build_adaptive_mesh,
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_sample_ground_for_slots,
@@ -783,40 +781,23 @@ export interface SimWasm {
     cellTriangleOffsets: Int32Array,
     cellTriangleIndicesOut: Int32Array,
   ) => number;
-  /** C16 — final mesh vertex-height smoothing during terrain bake. */
-  readonly terrainSmoothMeshVertexHeights: (
-    vertexHeights: Float64Array,
-    triangleIndices: Int32Array,
-    maxSteps: number,
-    amount: number,
-  ) => number;
-  /** C16 — triangle-edge neighbor metadata for the adaptive terrain mesh.
-   *  Rust owns the edge-map and overlap walk; TypeScript assembles the
-   *  TerrainTileMap object and keeps the compatibility fallback. */
-  readonly terrainBuildTriangleNeighborMetadata: (
+  /** C16 — full adaptive equilateral terrain mesh build. Rust owns the
+   *  entire topology generation + crack-repair loop; TypeScript only
+   *  assembles the config slice and splats the returned flat buffer into
+   *  a TerrainTileMap. Returns `[status, vertexCount, triangleCount,
+   *  cellOffsetsLen, cellRefsCount, ...sections]`; `[0]` on failure. */
+  readonly terrainBuildAdaptiveMesh: (
     mapWidth: number,
     mapHeight: number,
-    vertexKeyScale: number,
-    vertexCoords: Float64Array,
-    triangleIndices: Int32Array,
-    triangleLevels: Int32Array,
-    neighborIndicesOut: Int32Array,
-    neighborLevelsOut: Int32Array,
-  ) => number;
-  /** C16 — mark leaves requiring split during final adaptive-mesh
-   *  crack repair. TypeScript still owns leaf object orchestration. */
-  readonly terrainMarkNeighborDiscrepancyLeaves: (
-    mapWidth: number,
-    mapHeight: number,
-    vertexKeyScale: number,
-    maxNeighborLevelDelta: number,
-    leafSides: Int32Array,
-    vertexCoords: Float64Array,
-    triangleIndices: Int32Array,
-    triangleLevels: Int32Array,
-    triangleLeafIndices: Int32Array,
-    splitLeafFlagsOut: Uint8Array,
-  ) => number;
+    cellSize: number,
+    cellsX: number,
+    cellsY: number,
+    maxSubdiv: number,
+    extentFraction: number,
+    terrainConfig: Float64Array,
+    flatZones: Float64Array,
+    lodConfig: Float64Array,
+  ) => Float64Array;
   /** Sample terrain surface height at world-space (x, z). Returns
    *  NaN if no mesh is installed or the triangle walk degenerates;
    *  JS callers treat NaN as "fall back to TS sampler" since that
@@ -2996,9 +2977,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainIsInstalled: terrain_is_installed,
         terrainCountCellTriangleRefs: terrain_count_cell_triangle_refs,
         terrainFillCellTriangleIndices: terrain_fill_cell_triangle_indices,
-        terrainSmoothMeshVertexHeights: terrain_smooth_mesh_vertex_heights,
-        terrainBuildTriangleNeighborMetadata: terrain_build_triangle_neighbor_metadata,
-        terrainMarkNeighborDiscrepancyLeaves: terrain_mark_neighbor_discrepancy_leaves,
+        terrainBuildAdaptiveMesh: terrain_build_adaptive_mesh,
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainSampleGroundForSlots: terrain_sample_ground_for_slots,

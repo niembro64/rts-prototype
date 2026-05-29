@@ -48,23 +48,7 @@ grow unbounded over a match.)
 ================================================================================
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
-
-C16. [HIGH] Remaining terrain mesh baking and repair should move to Rust/WASM.
-    LOCATION: src/game/sim/terrain/*.ts.
-    RULE: "TypeScript coordinates, WASM computes" and "shared deterministic kernels".
-    PROBLEM: terrain mesh baking and repair are CPU-heavy, deterministic, and
-      sim-critical. Keeping them in TS leaves startup cost and client/server drift
-      risk in the orchestration layer.
-      Terrain read-side sampling/LOS/pathfinder masks and metal-deposit connected
-      resource footprint growth, ring placement, snapped grid placement, and explicit
-      dTerrain height derivation are now Rust/WASM-owned. Null-height metal-deposit
-      terrain anchoring and static terrain buildability grid baking are also
-      Rust/WASM-owned, with TS kept as object assembly/fallback. Mesh cell-triangle
-      indexing, triangle neighbor metadata, final vertex-height smoothing, and
-      neighbor-discrepancy marking for crack repair are now Rust/WASM-owned.
-    FIX: port the remaining adaptive mesh topology generation and crack-repair
-      passes to Rust/WASM in stages, with TS kept as orchestration only until each
-      old path can be deleted.
+(All audited items addressed — see VERIFIED-CLEAN.)
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
@@ -120,3 +104,13 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
   or derived display code, not authoritative tuning tables.
 - Client unit prediction motion uses a batched Rust/WASM kernel for target extrapolation
   and rendered entity motion; the old TS single-body wrapper path is gone.
+- Adaptive terrain mesh build is fully Rust/WASM-owned (C16 closed). One kernel
+  `terrain_build_adaptive_mesh` runs the whole host bake — hierarchy refine, 2:1
+  balance, conforming T-junction topology, crack-repair loop, vertex-height
+  smoothing, triangle neighbor metadata, and the cell->triangle index — sampling the
+  same analytic height generator the metal-deposit kernels use. TypeScript is pure
+  object assembly (config slice in, TerrainTileMap out); the old TS topology/repair
+  code and the granular neighbor/discrepancy/smoothing WASM bridge fallbacks were
+  deleted (Delete The Old Path). The 22-value generation-config + 5-stride flat-zone
+  packers now live once in terrainGenerationConfig.ts, shared by the mesh baker and
+  metalDepositConfig.ts. Cell-index WASM exports stay (client wire-unpack reuses them).
