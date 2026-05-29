@@ -570,24 +570,67 @@ function canCollapseTerrainTriangle(
   return true;
 }
 
-function terrainTriangleChildren(tri: TerrainHierarchyTriangle): TerrainHierarchyTriangle[] {
+function appendTerrainTriangleChildren(
+  tri: TerrainHierarchyTriangle,
+  out: TerrainHierarchyTriangle[],
+): void {
   const half = tri.side >> 1;
-  if (half < 1) return [];
+  if (half < 1) return;
   const { i, j } = tri;
   if (!tri.down) {
-    return [
+    out.push(
       { i, j, side: half, down: false },
       { i: i + half, j, side: half, down: false },
       { i, j: j + half, side: half, down: false },
       { i, j, side: half, down: true },
-    ];
+    );
+    return;
   }
-  return [
+  out.push(
     { i: i + half, j, side: half, down: true },
     { i, j: j + half, side: half, down: true },
     { i: i + half, j: j + half, side: half, down: true },
     { i: i + half, j: j + half, side: half, down: false },
-  ];
+  );
+}
+
+function pushTerrainTriangleChildrenForStack(
+  tri: TerrainHierarchyTriangle,
+  stack: TerrainHierarchyTriangle[],
+): void {
+  const half = tri.side >> 1;
+  if (half < 1) return;
+  const { i, j } = tri;
+  if (!tri.down) {
+    stack.push(
+      { i, j, side: half, down: true },
+      { i, j: j + half, side: half, down: false },
+      { i: i + half, j, side: half, down: false },
+      { i, j, side: half, down: false },
+    );
+    return;
+  }
+  stack.push(
+    { i: i + half, j: j + half, side: half, down: false },
+    { i: i + half, j: j + half, side: half, down: true },
+    { i, j: j + half, side: half, down: true },
+    { i: i + half, j, side: half, down: true },
+  );
+}
+
+function appendIntersectingTerrainTriangleChildren(
+  ctx: TerrainMeshBuildContext,
+  tri: TerrainHierarchyTriangle,
+  out: TerrainHierarchyTriangle[],
+): void {
+  const childStart = out.length;
+  appendTerrainTriangleChildren(tri, out);
+  for (let c = childStart; c < out.length; c++) {
+    if (!triangleBboxIntersectsMap(ctx, out[c])) {
+      out.splice(c, 1);
+      c--;
+    }
+  }
 }
 
 function buildTerrainTriangleLeaves(
@@ -595,20 +638,21 @@ function buildTerrainTriangleLeaves(
   tri: TerrainHierarchyTriangle,
   out: TerrainHierarchyTriangle[],
 ): void {
-  if (!triangleBboxIntersectsMap(ctx, tri)) return;
-  if (tri.side <= 1) {
-    out.push(tri);
-    return;
-  }
+  const stack: TerrainHierarchyTriangle[] = [tri];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === undefined || !triangleBboxIntersectsMap(ctx, current)) continue;
+    if (current.side <= 1) {
+      out.push(current);
+      continue;
+    }
 
-  if (canCollapseTerrainTriangle(ctx, tri)) {
-    out.push(tri);
-    return;
-  }
+    if (canCollapseTerrainTriangle(ctx, current)) {
+      out.push(current);
+      continue;
+    }
 
-  const children = terrainTriangleChildren(tri);
-  for (let i = 0; i < children.length; i++) {
-    buildTerrainTriangleLeaves(ctx, children[i], out);
+    pushTerrainTriangleChildrenForStack(current, stack);
   }
 }
 
@@ -754,10 +798,7 @@ function splitTerrainTriangleLeaves(
       next.push(leaf);
       continue;
     }
-    const children = terrainTriangleChildren(leaf);
-    for (let c = 0; c < children.length; c++) {
-      if (triangleBboxIntersectsMap(ctx, children[c])) next.push(children[c]);
-    }
+    appendIntersectingTerrainTriangleChildren(ctx, leaf, next);
   }
   return next;
 }

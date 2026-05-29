@@ -37,14 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C13. [LOW] Terrain leaf generation creates many short-lived child arrays/objects.
-    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
-      buildTerrainTriangleLeaves, terrainTriangleChildren, splitTerrainTriangleLeaves.
-    PROBLEM: recursive subdivision allocates arrays and small triangle objects repeatedly.
-      This is startup-only, but high detail settings amplify GC pressure.
-    FIX: convert subdivision to stack-based traversal with flat triangle records or
-      push children directly into caller-owned output buffers.
-
 C14. [MED] Buildability-grid generation repeats neighboring terrain samples.
     LOCATION: src/game/sim/terrain/terrainBuildability.ts:
       buildTerrainBuildabilityGrid -> evaluateBuildabilityFootprint -> isWaterAt /
