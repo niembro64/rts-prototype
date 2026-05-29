@@ -470,7 +470,9 @@ export class RtsScene3D {
       this.mapWidth,
       this.mapHeight,
     );
-    this.threeApp.orbit.setCursorPicker((cx, cy) => this.cursorGround.pickWorld(cx, cy));
+    this.threeApp.orbit.setCursorPicker((cx, cy, terrainMode) =>
+      this.cursorGround.pickWorld(cx, cy, terrainMode)
+    );
     // Camera-clearance sampler — sample the RAW rendered terrain mesh
     // (`getTerrainMeshHeight`) instead of `getSurfaceHeight`. The
     // surface variant clamps up to WATER_LEVEL because that's what

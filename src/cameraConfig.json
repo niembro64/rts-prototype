@@ -2,6 +2,7 @@
   "fovDegrees": 45,
   "panMultiplier": 6.0,
   "minTerrainClearance": 80,
+  "cameraCollidesWithTerrain": true,
   "worldPaddingPercent": 20.0,
   "zoom": {
     "min": 0.2,
@@ -29,8 +30,21 @@
     }
   },
   "anchor": {
-    "zoomIn": "cursor",
-    "zoomOut": "screen-center",
-    "rotate": "screen-center"
+    "zoomIn": {
+      "screen": "cursor",
+      "terrain": "terrain-3d-water"
+    },
+    "zoomOut": {
+      "screen": "screen-center",
+      "terrain": "terrain-3d-water"
+    },
+    "rotate": {
+      "screen": "screen-center",
+      "terrain": "terrain-3d-water"
+    },
+    "pan": {
+      "screen": "cursor",
+      "terrain": "terrain-3d-water"
+    }
   }
 }

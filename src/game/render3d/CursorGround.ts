@@ -1,16 +1,14 @@
-// CursorGround — single canonical "where is the cursor on the actual
-// 3D ground?" service. One camera ray, one authoritative terrain sampler, two lenses:
-// `pickWorld` returns three.js coords (used by OrbitCamera for zoom +
-// pan anchoring), `pickSim` returns sim coords (used by Input3DManager
-// for every command point — waypoints, attack-moves, build clicks,
-// dgun targets, factory rallies, etc.).
+// CursorGround — single canonical screen-ray service for terrain picks.
+// Camera anchors call `pickWorld` with an explicit terrain mode; command
+// inputs call `pickSim`, which keeps the existing command-target water
+// projection behavior.
 //
 // Three coord ↔ sim coord mapping (the project-wide convention):
 //   sim.x  = three.x
 //   sim.y  = three.z
 //   sim.z  = three.y     (altitude / height)
 //
-// SUBMERGED-HIT FALLBACK. The terrain surface is a heightmap that dips
+// COMMAND SUBMERGED-HIT FALLBACK. The terrain surface is a heightmap that dips
 // DOWN to TILE_FLOOR_Y in valley basins. The water plane is a separate
 // translucent mesh layered on top at WATER_LEVEL — it does NOT
 // participate in picking. So for a typical RTS camera pitch
@@ -41,6 +39,7 @@ import {
   TILE_FLOOR_Y,
   WATER_LEVEL,
 } from '../sim/Terrain';
+import type { CameraAnchorTerrain } from '../../types/camera';
 
 export type SimGroundPoint = {
   x: number;
@@ -72,30 +71,34 @@ export class CursorGround {
     this.mapHeight = mapHeight;
   }
 
-  /** Cursor → world point under the cursor, in THREE.JS coords.
+  /** Cursor → camera anchor point in THREE.JS coords.
    *
-   *  Tries the terrain heightfield first; if that hits SUBMERGED
-   *  terrain (three.y < WATER_LEVEL — see file header for the
-   *  reason this is wrong for click commands), falls back to a
-   *  flat ground-plane intersection at three.y = 0. The
-   *  fallback is also used when the heightfield solve misses entirely
-   *  (cursor over sky / past the map edge / terrain mesh not
-   *  yet built) — anything where a command should still be
-   *  issuable based on horizontal cursor position.
+   *  The caller supplies the terrain axis explicitly:
+   *  - plane-2d: project against the flat y=0 building plane.
+   *  - terrain-3d: return the raw rendered terrain hit.
+   *  - terrain-3d-water: return the rendered terrain hit clamped up
+   *    to WATER_LEVEL.
    *
-   *  Returns null only when the cursor's ray is parallel to or
-   *  below the ground plane (degenerate camera pose).
-   *
-   *  The returned Vector3 is a SHARED scratch — read it
-   *  immediately or copy if you need to retain. */
-  pickWorld(clientX: number, clientY: number): THREE.Vector3 | null {
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    this.ndc.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(this.ndc, this.camera);
+   *  The returned Vector3 is a SHARED scratch — read it immediately
+   *  or copy if you need to retain. */
+  pickWorld(
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+  ): THREE.Vector3 | null {
+    if (!this.setRayFromClient(clientX, clientY)) return null;
+    if (terrainMode === 'plane-2d') return this.pickPlaneRay();
+
+    const terrainHit = this.pickTerrainRay();
+    if (!terrainHit) return null;
+    if (terrainMode === 'terrain-3d-water' && terrainHit.y < WATER_LEVEL) {
+      terrainHit.y = WATER_LEVEL;
+    }
+    return terrainHit;
+  }
+
+  private pickCommandWorld(clientX: number, clientY: number): THREE.Vector3 | null {
+    if (!this.setRayFromClient(clientX, clientY)) return null;
 
     // First try the authoritative terrain sampler. Use the hit only if it's
     // ABOVE water level — otherwise the user clicked "through" a
@@ -109,6 +112,21 @@ export class CursorGround {
     // Fall back to flat ground-plane (three.y = 0) projection.
     // This is what the user's cursor was actually pointing at on
     // the playable surface, regardless of any basin dipping below.
+    return this.pickPlaneRay();
+  }
+
+  private setRayFromClient(clientX: number, clientY: number): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    this.ndc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(this.ndc, this.camera);
+    return true;
+  }
+
+  private pickPlaneRay(): THREE.Vector3 | null {
     const ray = this.raycaster.ray;
     if (Math.abs(ray.direction.y) < 1e-6) return null;
     const t = -ray.origin.y / ray.direction.y;
@@ -162,18 +180,17 @@ export class CursorGround {
     return this.worldHit;
   }
 
-  /** Cursor → world point on the rendered terrain mesh, in SIM
-   *  coords (sim.x = three.x, sim.y = three.z, sim.z = three.y).
-   *  This is THE function every command builder should call — it
-   *  guarantees the (x, y) you write into a Move / Build / DGun /
-   *  WaypointTarget / FactoryWaypoint / RallyPoint command is the
-   *  point on the actual 3D ground surface the user clicked, not a
-   *  y=0 plane projection. The z component carries the terrain
-   *  altitude at that XY for renderers / handlers that need it.
+  /** Cursor → command target point in SIM coords
+   *  (sim.x = three.x, sim.y = three.z, sim.z = three.y).
+   *  Land picks use the rendered terrain mesh. Submerged first hits
+   *  use the command-specific flat projection described above so
+   *  far-shore water clicks keep their intended horizontal target.
+   *  The z component carries the chosen altitude for renderers /
+   *  handlers that need it.
    *  Returns null on miss; callers should treat that as "command
    *  cannot be issued from this cursor position". */
   pickSim(clientX: number, clientY: number): SimGroundPoint | null {
-    const w = this.pickWorld(clientX, clientY);
+    const w = this.pickCommandWorld(clientX, clientY);
     if (!w) return null;
     this.simHit.x = w.x;
     this.simHit.y = w.z;

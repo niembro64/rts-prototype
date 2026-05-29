@@ -29,6 +29,10 @@
 // regardless of terrain elevation under it.
 
 import * as THREE from 'three';
+import type {
+  CameraAnchor,
+  CameraAnchorTerrain,
+} from '../../types/camera';
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
@@ -65,10 +69,13 @@ export type OrbitCameraOptions = {
    *  2D CAMERA_PAN_MULTIPLIER so pan feel is consistent across renderers. */
   panMultiplier?: number;
   /** OPTIONAL 3D cursor picker — if set, the orbit camera uses real
-   *  raycasting against the scene to find the world point under the
-   *  cursor. Used for both wheel zoom-to-cursor and pan-around-cursor.
-   *  When unset, we fall back to a flat y=0 plane projection. */
-  getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
+   *  raycasting against the scene to find the configured world anchor.
+   *  Used for wheel zoom, orbit pivots, and pan grab-depth capture. */
+  getCursorWorldPoint?: (
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+  ) => THREE.Vector3 | null;
   /** OPTIONAL terrain-height sampler — if set, the orbit camera
    *  resolves a small 3D clearance sphere against nearby terrain
    *  normals so it cannot dip into hills or clip sideways into
@@ -76,24 +83,17 @@ export type OrbitCameraOptions = {
   getTerrainHeight?: (x: number, z: number) => number;
   /** Minimum 3D gap between the camera and nearby terrain. */
   minTerrainClearance?: number;
-  /** Anchor for the SCROLL-IN gesture — the world point the camera
-   *  pulls toward when the wheel rolls forward. `'cursor'` pins the
-   *  spot under the mouse; `'screen-center'` pins the spot at the
-   *  middle of the canvas. Defaults to `'cursor'`. */
-  zoomInAnchor?: CameraAnchorMode;
-  /** Anchor for the SCROLL-OUT gesture. Defaults to `'cursor'` so
-   *  paired in/out wheel ticks are symmetric. */
-  zoomOutAnchor?: CameraAnchorMode;
-  /** Anchor for ALT + middle-click ORBIT. Defaults to
-   *  `'screen-center'` so the framed view tumbles around itself
-   *  rather than around the cursor's current hover spot. */
-  rotateAnchor?: CameraAnchorMode;
+  /** True keeps the camera outside terrain; false lets it pass through. */
+  cameraCollidesWithTerrain?: boolean;
+  /** Anchor pair for SCROLL-IN. */
+  zoomInAnchor?: CameraAnchor;
+  /** Anchor pair for SCROLL-OUT. */
+  zoomOutAnchor?: CameraAnchor;
+  /** Anchor pair for ALT + middle-click ORBIT. */
+  rotateAnchor?: CameraAnchor;
+  /** Anchor pair for drag-pan depth capture. */
+  panAnchor?: CameraAnchor;
 };
-
-/** Where a camera operation pivots / pins on the world.
- *  - 'cursor':        the ground point under the mouse cursor
- *  - 'screen-center': the ground point at the middle of the canvas */
-export type CameraAnchorMode = 'cursor' | 'screen-center';
 
 export class OrbitCamera {
   public camera: THREE.PerspectiveCamera;
@@ -137,20 +137,27 @@ export class OrbitCamera {
   private zoomStepFraction: number;
   private rotateSpeed: number;
   private panMultiplier: number;
-  private getCursorWorldPoint?: (clientX: number, clientY: number) => THREE.Vector3 | null;
+  private getCursorWorldPoint?: (
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+  ) => THREE.Vector3 | null;
   private getTerrainHeight?: (x: number, z: number) => number;
   /** Minimum 3D gap between the camera and nearby terrain. */
   public minTerrainClearance = 30;
+  private cameraCollidesWithTerrain = true;
 
-  /** Anchor mode for each gesture. The wheel handler reads
+  /** Anchor pair for each gesture. The wheel handler reads
    *  `zoomInAnchor` vs `zoomOutAnchor` based on scroll direction so
    *  the two halves of the zoom can use different anchors. Defaults
-   *  use cursor for both so paired wheel ticks are inverse. The orbit drag uses
-   *  `rotateAnchor`. Touch pinch + twist always use the gesture
-   *  centroid, which is conceptually the touch's "cursor". */
-  private zoomInAnchor: CameraAnchorMode = 'cursor';
-  private zoomOutAnchor: CameraAnchorMode = 'cursor';
-  private rotateAnchor: CameraAnchorMode = 'screen-center';
+   *  use cursor for both so paired wheel ticks are inverse. The
+   *  orbit drag uses `rotateAnchor`, and pan uses `panAnchor` for
+   *  its grab-depth capture. Touch pinch + twist use the gesture
+   *  centroid as the screen point. */
+  private zoomInAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
+  private zoomOutAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
+  private rotateAnchor: CameraAnchor = { screen: 'screen-center', terrain: 'terrain-3d-water' };
+  private panAnchorMode: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
 
   private dragMode: 'none' | 'orbit' | 'pan' | 'height-pan' = 'none';
   private lastMouseX = 0;
@@ -194,8 +201,6 @@ export class OrbitCamera {
 
   // Reusable scratch objects so the wheel handler does no per-event
   // allocations (zoom is the highest-frequency input on a trackpad).
-  private _zoomNdc = new THREE.Vector3();
-  private _zoomGroundOut = new THREE.Vector3();
   private _orbitOffsetTmp = new THREE.Vector3();
   private _orbitYawQuatTmp = new THREE.Quaternion();
   private _orbitPitchQuatTmp = new THREE.Quaternion();
@@ -234,9 +239,13 @@ export class OrbitCamera {
     if (opts.minTerrainClearance !== undefined) {
       this.minTerrainClearance = Math.max(0, opts.minTerrainClearance);
     }
+    if (opts.cameraCollidesWithTerrain !== undefined) {
+      this.cameraCollidesWithTerrain = opts.cameraCollidesWithTerrain;
+    }
     if (opts.zoomInAnchor !== undefined) this.zoomInAnchor = opts.zoomInAnchor;
     if (opts.zoomOutAnchor !== undefined) this.zoomOutAnchor = opts.zoomOutAnchor;
     if (opts.rotateAnchor !== undefined) this.rotateAnchor = opts.rotateAnchor;
+    if (opts.panAnchor !== undefined) this.panAnchorMode = opts.panAnchor;
 
     this.toDistance = this.distance;
     this.toTargetX = this.target.x;
@@ -262,9 +271,9 @@ export class OrbitCamera {
       // the default is cursor for both directions. That keeps paired
       // scroll-in / scroll-out ticks symmetric instead of making a
       // reversal pivot around a different world point.
-      const anchorMode = zoomingIn ? this.zoomInAnchor : this.zoomOutAnchor;
+      const anchor = zoomingIn ? this.zoomInAnchor : this.zoomOutAnchor;
       const factor = zoomingIn ? 1 - f : 1 / (1 - f);
-      this.zoomByFactorAt(e.clientX, e.clientY, factor, anchorMode);
+      this.zoomByFactorAt(e.clientX, e.clientY, factor, anchor);
     };
 
     this.onMouseDown = (e) => {
@@ -528,10 +537,14 @@ export class OrbitCamera {
     clientX: number,
     clientY: number,
     wantFactor: number,
-    anchorMode: CameraAnchorMode = 'cursor',
+    anchor?: CameraAnchor,
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
-    const p0 = this._anchorWorldPoint(clientX, clientY, anchorMode);
+    const p0 = this._anchorWorldPoint(
+      clientX,
+      clientY,
+      anchor ?? (wantFactor < 1 ? this.zoomInAnchor : this.zoomOutAnchor),
+    );
     const wantedDistance = this.toDistance * wantFactor;
     let nextDistance = Math.min(
       this.maxDistance,
@@ -596,7 +609,13 @@ export class OrbitCamera {
     toTargetZ: number,
     toDistance: number,
   ): number {
-    if (!this.getTerrainHeight || this.minTerrainClearance <= 0) return 1;
+    if (
+      !this.cameraCollidesWithTerrain ||
+      !this.getTerrainHeight ||
+      this.minTerrainClearance <= 0
+    ) {
+      return 1;
+    }
     // Zoom-OUT never traps. Moving the camera farther from the orbit
     // target can only put more space between it and the terrain, and
     // apply()'s render-time clearance + ground floor lift the camera
@@ -636,6 +655,7 @@ export class OrbitCamera {
     targetZ: number,
     distance: number,
   ): boolean {
+    if (!this.cameraCollidesWithTerrain) return true;
     this.cameraPositionForState(
       targetX,
       targetY,
@@ -655,7 +675,7 @@ export class OrbitCamera {
     // the drag — bounded at every camera pitch (no blowup at
     // near-horizontal views), and accurate to the depth the user
     // actually grabbed.
-    const hit = this._cursorWorldPoint(clientX, clientY);
+    const hit = this._anchorWorldPoint(clientX, clientY, this.panAnchorMode);
     if (hit) {
       this.panAnchor.copy(hit);
       const dxh = this.camera.position.x - hit.x;
@@ -723,7 +743,10 @@ export class OrbitCamera {
     if (!Number.isFinite(yawDelta) || yawDelta === 0) return;
     const oldYaw = this.yaw;
     const newYaw = oldYaw + yawDelta;
-    const pivot = this._cursorWorldPoint(clientX, clientY);
+    const pivot = this._anchorWorldPoint(clientX, clientY, {
+      screen: 'cursor',
+      terrain: this.rotateAnchor.terrain,
+    });
     if (!pivot) {
       this.yaw = newYaw;
       this.apply();
@@ -827,70 +850,29 @@ export class OrbitCamera {
     }
   }
 
-  /** Cursor → world position. Tries the user-supplied 3D raycaster
-   *  first (CursorGround, which hits the terrain tile mesh — the
-   *  exact surface the user sees on land). If that misses — cursor
-   *  over water / sky / off-map — falls back to a y=0 ground-plane
-   *  projection so the wheel handler always has SOME anchor and
-   *  the zoom keeps tracking the cursor instead of collapsing to
-   *  the orbit target (which the user perceives as "zoom snaps to
-   *  the centre of the map"). The plane projection is exact for
-   *  flat ground and slightly above the water surface for water
-   *  cells — close enough that the cursor stays visually pinned. */
-  private _cursorWorldPoint(clientX: number, clientY: number): THREE.Vector3 | null {
-    if (this.getCursorWorldPoint) {
-      const hit = this.getCursorWorldPoint(clientX, clientY);
-      if (hit) return hit;
-    }
-    return this._cursorWorldPointGroundPlane(clientX, clientY, this._zoomGroundOut);
+  private _worldPointForScreenPoint(
+    clientX: number,
+    clientY: number,
+    terrainMode: CameraAnchorTerrain,
+  ): THREE.Vector3 | null {
+    return this.getCursorWorldPoint?.(clientX, clientY, terrainMode) ?? null;
   }
 
-  /** Resolve the gesture's anchor world point. `'cursor'` returns
-   *  the world hit under the supplied client coords (raycast against
-   *  scene geometry, falling back to a y=0 plane). `'screen-center'`
-   *  swaps the input coords for the canvas's center pixel before
-   *  going through the same picker — so configurable anchors share
-   *  one code path and behave identically with respect to terrain
-   *  hits, water fallback, and degenerate-ray handling. */
+  /** Resolve the gesture's anchor world point from its configured
+   *  screen axis and terrain axis. */
   private _anchorWorldPoint(
     clientX: number,
     clientY: number,
-    mode: CameraAnchorMode,
+    anchor: CameraAnchor,
   ): THREE.Vector3 | null {
-    if (mode === 'cursor') {
-      return this._cursorWorldPoint(clientX, clientY);
+    if (anchor.screen === 'cursor') {
+      return this._worldPointForScreenPoint(clientX, clientY, anchor.terrain);
     }
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const cx = rect.left + rect.width * 0.5;
     const cy = rect.top + rect.height * 0.5;
-    return this._cursorWorldPoint(cx, cy);
-  }
-
-  /** Fallback: project screen-space cursor onto the y=0 ground
-   *  plane. Used only when `getCursorWorldPoint` is not installed. */
-  private _cursorWorldPointGroundPlane(
-    clientX: number,
-    clientY: number,
-    out: THREE.Vector3,
-  ): THREE.Vector3 | null {
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
-    const ndcY = -(((clientY - rect.top) / rect.height) * 2 - 1);
-    this._zoomNdc.set(ndcX, ndcY, 0.5).unproject(this.camera);
-    const dirX = this._zoomNdc.x - this.camera.position.x;
-    const dirY = this._zoomNdc.y - this.camera.position.y;
-    const dirZ = this._zoomNdc.z - this.camera.position.z;
-    if (Math.abs(dirY) < 1e-6) return null;
-    const t = -this.camera.position.y / dirY;
-    if (t < 0) return null; // intersection is behind the camera
-    out.set(
-      this.camera.position.x + t * dirX,
-      0,
-      this.camera.position.z + t * dirZ,
-    );
-    return out;
+    return this._worldPointForScreenPoint(cx, cy, anchor.terrain);
   }
 
   private cameraPositionForState(
@@ -953,7 +935,13 @@ export class OrbitCamera {
   }
 
   private resolveTerrainClearance(pos: THREE.Vector3): boolean {
-    if (!this.getTerrainHeight || this.minTerrainClearance <= 0) return false;
+    if (
+      !this.cameraCollidesWithTerrain ||
+      !this.getTerrainHeight ||
+      this.minTerrainClearance <= 0
+    ) {
+      return false;
+    }
 
     let adjusted = false;
     for (let i = 0; i < 3; i++) {
@@ -992,7 +980,11 @@ export class OrbitCamera {
     // the cases the 9-sample clearance disk misses: peaks smaller
     // than sampleRadius, peaks sitting between sample points, and
     // any state where the 3-iteration push didn't fully resolve.
-    if (this.getTerrainHeight && this.minTerrainClearance > 0) {
+    if (
+      this.cameraCollidesWithTerrain &&
+      this.getTerrainHeight &&
+      this.minTerrainClearance > 0
+    ) {
       const floorY = this.getTerrainHeight(pos.x, pos.z) + this.minTerrainClearance;
       if (pos.y < floorY) {
         pos.y = floorY;
@@ -1141,7 +1133,11 @@ export class OrbitCamera {
    *  this once it has its terrain mesh ready; the orbit camera then
    *  uses the picker for all zoom + pan cursor pinning. */
   setCursorPicker(
-    cb: ((clientX: number, clientY: number) => THREE.Vector3 | null) | undefined,
+    cb: ((
+      clientX: number,
+      clientY: number,
+      terrainMode: CameraAnchorTerrain,
+    ) => THREE.Vector3 | null) | undefined,
   ): void {
     this.getCursorWorldPoint = cb;
   }

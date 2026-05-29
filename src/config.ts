@@ -25,6 +25,11 @@ export type {
   BarrelShape,
   MapSize,
 } from './types/config';
+export type {
+  CameraAnchor,
+  CameraAnchorScreen,
+  CameraAnchorTerrain,
+} from './types/camera';
 
 import type {
   SnapshotConfig,
@@ -37,6 +42,7 @@ import type {
   ForceFieldTurretConfig,
   MapSize,
 } from './types/config';
+import type { CameraAnchor } from './types/camera';
 import {
   LAND_CELL_SIZE,
   MAP_DIMENSION_CONFIG,
@@ -963,46 +969,25 @@ export const CAMERA_BATTLE_DEFAULTS = {
 export const CAMERA_PAN_MULTIPLIER = cameraConfigJson.panMultiplier;
 
 /**
- * Where the wheel-zoom and alt+middle-click rotate operations
- * are anchored on the world.
- *
- *   - 'cursor'        → ground point under the mouse cursor
- *   - 'screen-center' → ground point at the center of the screen
- *
- * Each interaction has its own knob so the three behaviors can be
- * mixed (e.g. zoom in toward cursor but zoom out from the screen
- * center, which feels more like a stable pull-back than an
- * exact-inverse "back along the cursor pin"). The picker for both
- * modes is the same 3D raycast helper — when the chosen point
- * misses geometry, the camera falls back to a y=0 plane projection.
+ * Every world-pinning camera gesture chooses two independent axes:
+ * a screen point and a terrain surface. The screen axis decides which
+ * canvas pixel casts the ray; the terrain axis decides what surface
+ * that ray resolves against.
  */
-export type CameraAnchorMode = 'cursor' | 'screen-center';
-
-/** Anchor for SCROLL-IN (wheel deltaY < 0). Defaults to cursor so
- *  zooming in continues to pull the world toward the spot the
- *  player is pointing at — the existing "zoom toward what I'm
- *  looking at" feel. Set to `'screen-center'` to dolly in along
- *  the view axis instead. */
-export const CAMERA_ZOOM_IN_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.zoomIn as CameraAnchorMode;
-
-/** Anchor for SCROLL-OUT (wheel deltaY > 0). Defaults to cursor so
- *  a scroll-in followed by a scroll-out is the same anchored operation
- *  in reverse. */
-export const CAMERA_ZOOM_OUT_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.zoomOut as CameraAnchorMode;
-
-/** Anchor for ALT + middle-click ORBIT (camera rotation). Defaults
- *  to `'screen-center'` so the framed view rotates around itself
- *  rather than around whichever spot the cursor happens to be
- *  hovering — easier to keep the scene composed while tumbling.
- *  Set to `'cursor'` to pivot around whatever the player is
- *  pointing at (the previous cursor-anchored behavior). */
-export const CAMERA_ROTATE_ANCHOR: CameraAnchorMode = cameraConfigJson.anchor.rotate as CameraAnchorMode;
+export const CAMERA_ZOOM_IN_ANCHOR = cameraConfigJson.anchor.zoomIn as CameraAnchor;
+export const CAMERA_ZOOM_OUT_ANCHOR = cameraConfigJson.anchor.zoomOut as CameraAnchor;
+export const CAMERA_ROTATE_ANCHOR = cameraConfigJson.anchor.rotate as CameraAnchor;
+export const CAMERA_PAN_ANCHOR = cameraConfigJson.anchor.pan as CameraAnchor;
 
 /** Minimum 3D clearance (sim units) between the camera and terrain.
  *  The camera checks terrain around its position and resolves along
  *  local terrain normals instead of checking only the vertical gap to
  *  the ground directly beneath it. */
 export const CAMERA_MIN_TERRAIN_CLEARANCE = cameraConfigJson.minTerrainClearance;
+
+/** True keeps the orbit camera outside terrain by the configured
+ *  clearance; false lets camera motion pass through the heightfield. */
+export const CAMERA_COLLIDES_WITH_TERRAIN = cameraConfigJson.cameraCollidesWithTerrain;
 
 /**
  * World padding as a percentage of map dimensions.

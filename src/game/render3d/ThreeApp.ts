@@ -12,9 +12,11 @@ import { configureSpriteTexture } from './threeUtils';
 import {
   CAMERA_PAN_MULTIPLIER,
   CAMERA_MIN_TERRAIN_CLEARANCE,
+  CAMERA_COLLIDES_WITH_TERRAIN,
   CAMERA_ZOOM_IN_ANCHOR,
   CAMERA_ZOOM_OUT_ANCHOR,
   CAMERA_ROTATE_ANCHOR,
+  CAMERA_PAN_ANCHOR,
   CAMERA_FOV_DEGREES,
   SKY_RENDER_CONFIG,
   ZOOM_STEP_FRACTION,
@@ -184,9 +186,11 @@ export class ThreeApp {
       zoomStepFraction: ZOOM_STEP_FRACTION,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
       minTerrainClearance: CAMERA_MIN_TERRAIN_CLEARANCE,
+      cameraCollidesWithTerrain: CAMERA_COLLIDES_WITH_TERRAIN,
       zoomInAnchor: CAMERA_ZOOM_IN_ANCHOR,
       zoomOutAnchor: CAMERA_ZOOM_OUT_ANCHOR,
       rotateAnchor: CAMERA_ROTATE_ANCHOR,
+      panAnchor: CAMERA_PAN_ANCHOR,
     });
     // Center on map, pulled in for a useful RTS default view
     this.orbit.setState({
