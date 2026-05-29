@@ -57,7 +57,7 @@
         "baseColorHex": "#38362f",
         "texture": {
           "blend": 0.1,
-          "tileWorldSize": 2560
+          "tileWorldSize": 4000
         },
         "shadePaletteRgb": [
           "#36322b",
