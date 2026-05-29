@@ -37,18 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C10. [MED] Terrain triangle collapse check still does avoidable per-sample work.
-    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
-      canCollapseTerrainTriangle / forEachFinePointInTriangle / terrainBarycentricAt.
-    RULE: "TypeScript Coordinates, WASM Computes" / avoid allocation and repeated math
-      in generation hot loops.
-    PROBLEM: collapse testing recomputes world positions, barycentric weights, and
-      source normals across many fine lattice points. Some object-return helpers and
-      generic barycentric math are still in the innermost subdivision decision path.
-    FIX: specialize up/down equilateral triangle lattice scans so interpolation weights
-      come directly from integer offsets; avoid per-sample barycentric objects; precompute
-      repeated edge/plane terms per candidate triangle.
-
 C11. [MED] Terrain mesh edge metadata still allocates string keys in hot generation paths.
     LOCATION: src/game/sim/terrain/terrainTileMap.ts:
       collectTriangleEdgeOwners, meshEdgeKey, lineKey creation, edge span indexes,

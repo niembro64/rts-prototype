@@ -267,20 +267,6 @@ function terrainPlaneNormal(
   return normalizeTerrainNormal(nx, nz, vertical);
 }
 
-function terrainPointPlaneDistance(
-  x: number,
-  z: number,
-  h: number,
-  planePoint: MeshPoint,
-  planeNormal: TerrainNormal,
-): number {
-  return Math.abs(
-    planeNormal.nx * (x - planePoint.x) +
-      planeNormal.ny * (z - planePoint.z) +
-      planeNormal.nz * (h - planePoint.h),
-  );
-}
-
 function terrainNormalAtLattice(
   ctx: TerrainMeshBuildContext,
   i: number,
@@ -427,73 +413,121 @@ function normalizeBarycentricWeights(
   return { wa: ca / sum, wb: cb / sum, wc: cc / sum };
 }
 
-function forEachFinePointInTriangle(
-  tri: TerrainHierarchyTriangle,
-  visit: (i: number, j: number) => boolean,
-): boolean {
-  const n = tri.side;
-  if (!tri.down) {
-    for (let a = 0; a <= n; a++) {
-      for (let b = 0, maxB = n - a; b <= maxB; b++) {
-        if (visit(tri.i + a, tri.j + b)) return true;
-      }
-    }
-    return false;
-  }
-  for (let a = 0; a <= n; a++) {
-    for (let b = n - a; b <= n; b++) {
-      if (visit(tri.i + a, tri.j + b)) return true;
-    }
-  }
-  return false;
-}
-
 function canCollapseTerrainTriangle(
   ctx: TerrainMeshBuildContext,
   tri: TerrainHierarchyTriangle,
 ): boolean {
   const [a, b, c] = triangleWorldVertices(ctx, tri);
   const planeNormal = terrainPlaneNormal(a, b, c);
+  const planeNx = planeNormal.nx;
+  const planeNy = planeNormal.ny;
+  const planeNz = planeNormal.nz;
+  const planeX = a.x;
+  const planeZ = a.z;
+  const planeH = a.h;
+  const n = tri.side;
+  const baryDenom = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+  if (Math.abs(baryDenom) <= TERRAIN_MESH_EPSILON) return false;
+  const baryWaX = b.z - c.z;
+  const baryWaZ = c.x - b.x;
+  const baryWbX = c.z - a.z;
+  const baryWbZ = a.x - c.x;
+  const baryOriginX = c.x;
+  const baryOriginZ = c.z;
+  const minX = -TERRAIN_MESH_EPSILON;
+  const minZ = -TERRAIN_MESH_EPSILON;
+  const maxX = ctx.mapWidth + TERRAIN_MESH_EPSILON;
+  const maxZ = ctx.mapHeight + TERRAIN_MESH_EPSILON;
   let checked = 0;
-  let failed = false;
 
-  forEachFinePointInTriangle(tri, (i, j) => {
-    const x = ctx.fineEdge * (i + j * 0.5);
-    const z = ctx.fineHeight * j;
-    if (!pointInsideMap(ctx, x, z)) return false;
-    const bary = terrainBarycentricAt(x, z, a.x, a.z, b.x, b.z, c.x, c.z);
-    if (!bary) return false;
-    const actual = terrainHeightAtLattice(ctx, i, j);
-    const approx = bary.wa * a.h + bary.wb * b.h + bary.wc * c.h;
-    checked++;
-    if (
-      TERRAIN_TRIANGLE_PRESERVE_WATERLINE &&
-      (actual < WATER_LEVEL) !== (approx < WATER_LEVEL)
-    ) {
-      failed = true;
-      return true;
+  if (!tri.down) {
+    for (let offsetI = 0; offsetI <= n; offsetI++) {
+      for (let offsetJ = 0, maxOffsetJ = n - offsetI; offsetJ <= maxOffsetJ; offsetJ++) {
+        const i = tri.i + offsetI;
+        const j = tri.j + offsetJ;
+        const x = ctx.fineEdge * (i + j * 0.5);
+        const z = ctx.fineHeight * j;
+        if (x < minX || z < minZ || x > maxX || z > maxZ) continue;
+        const baryX = x - baryOriginX;
+        const baryZ = z - baryOriginZ;
+        const wa = (baryWaX * baryX + baryWaZ * baryZ) / baryDenom;
+        const wb = (baryWbX * baryX + baryWbZ * baryZ) / baryDenom;
+        const wc = 1 - wa - wb;
+        const actual = terrainHeightAtLattice(ctx, i, j);
+        const approx = wa * a.h + wb * b.h + wc * c.h;
+        checked++;
+        if (
+          TERRAIN_TRIANGLE_PRESERVE_WATERLINE &&
+          (actual < WATER_LEVEL) !== (approx < WATER_LEVEL)
+        ) {
+          return false;
+        }
+        if (
+          Math.abs(
+            planeNx * (x - planeX) +
+              planeNy * (z - planeZ) +
+              planeNz * (actual - planeH),
+          ) >
+          TERRAIN_TRIANGLE_MAX_SURFACE_ERROR
+        ) {
+          return false;
+        }
+        if (
+          actual >= WATER_LEVEL &&
+          terrainNormalsExceedTolerance(
+            terrainNormalAtLattice(ctx, i, j),
+            planeNormal,
+          )
+        ) {
+          return false;
+        }
+      }
     }
-    if (
-      terrainPointPlaneDistance(x, z, actual, a, planeNormal) >
-      TERRAIN_TRIANGLE_MAX_SURFACE_ERROR
-    ) {
-      failed = true;
-      return true;
+  } else {
+    for (let offsetI = 0; offsetI <= n; offsetI++) {
+      for (let offsetJ = n - offsetI; offsetJ <= n; offsetJ++) {
+        const i = tri.i + offsetI;
+        const j = tri.j + offsetJ;
+        const x = ctx.fineEdge * (i + j * 0.5);
+        const z = ctx.fineHeight * j;
+        if (x < minX || z < minZ || x > maxX || z > maxZ) continue;
+        const baryX = x - baryOriginX;
+        const baryZ = z - baryOriginZ;
+        const wa = (baryWaX * baryX + baryWaZ * baryZ) / baryDenom;
+        const wb = (baryWbX * baryX + baryWbZ * baryZ) / baryDenom;
+        const wc = 1 - wa - wb;
+        const actual = terrainHeightAtLattice(ctx, i, j);
+        const approx = wa * a.h + wb * b.h + wc * c.h;
+        checked++;
+        if (
+          TERRAIN_TRIANGLE_PRESERVE_WATERLINE &&
+          (actual < WATER_LEVEL) !== (approx < WATER_LEVEL)
+        ) {
+          return false;
+        }
+        if (
+          Math.abs(
+            planeNx * (x - planeX) +
+              planeNy * (z - planeZ) +
+              planeNz * (actual - planeH),
+          ) >
+          TERRAIN_TRIANGLE_MAX_SURFACE_ERROR
+        ) {
+          return false;
+        }
+        if (
+          actual >= WATER_LEVEL &&
+          terrainNormalsExceedTolerance(
+            terrainNormalAtLattice(ctx, i, j),
+            planeNormal,
+          )
+        ) {
+          return false;
+        }
+      }
     }
-    if (
-      actual >= WATER_LEVEL &&
-      terrainNormalsExceedTolerance(
-        terrainNormalAtLattice(ctx, i, j),
-        planeNormal,
-      )
-    ) {
-      failed = true;
-      return true;
-    }
-    return false;
-  });
+  }
 
-  if (failed) return false;
   if (checked === 0) return true;
 
   const centroidX = (a.x + b.x + c.x) / 3;
@@ -508,7 +542,11 @@ function canCollapseTerrainTriangle(
       return false;
     }
     if (
-      terrainPointPlaneDistance(centroidX, centroidZ, actual, a, planeNormal) >
+      Math.abs(
+        planeNx * (centroidX - planeX) +
+          planeNy * (centroidZ - planeZ) +
+          planeNz * (actual - planeH),
+      ) >
       TERRAIN_TRIANGLE_MAX_SURFACE_ERROR
     ) {
       return false;
