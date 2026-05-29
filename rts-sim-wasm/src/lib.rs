@@ -22182,6 +22182,12 @@ mod lock_on_exclusion_tests {
         )
     }
 
+    fn read_turret_lock(turret_idx: u32) -> (i32, u8) {
+        let pool = combat_targeting_pool();
+        let idx = combat_targeting_turret_global_idx(SOURCE_SLOT, turret_idx);
+        (pool.turret_target_id[idx], pool.turret_state[idx])
+    }
+
     fn stamp_body_target(slot: u32, entity_id: i32, owner: u8, x: f64, family: u8, code: u8) {
         stamp_entity(slot, entity_id, owner, x, family, code, 0, -1);
     }
@@ -22604,5 +22610,66 @@ mod lock_on_exclusion_tests {
         let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(target_id, 204);
         assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn priority_target_overwrites_host_directed_but_not_fully_autonomous() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_entity(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            2,
+            201,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                state: CT_TURRET_STATE_ENGAGED,
+                target_id: 202,
+                flags: 0,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_turret(SOURCE_SLOT, 1, TurretSpec::default());
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target(
+            2,
+            202,
+            PLAYER_2,
+            30.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+
+        let (_, _, mode) = run_schedule_tick(1);
+        assert_eq!(mode, CT_TARGETING_TICK_MODE_PRIORITY_TARGET);
+
+        let autonomous = read_turret_lock(0);
+        assert_eq!(
+            autonomous.0, 202,
+            "fully-autonomous turret must keep its independent lock"
+        );
+        assert_ne!(autonomous.1, CT_TURRET_STATE_IDLE);
+
+        let host_directed = read_turret_lock(1);
+        assert_eq!(
+            host_directed.0, 201,
+            "host-directed turret must inherit the host priority target"
+        );
+        assert_ne!(host_directed.1, CT_TURRET_STATE_IDLE);
     }
 }

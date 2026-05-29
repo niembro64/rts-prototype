@@ -223,45 +223,7 @@ A13. [HIGH] No per-entity exclusion mask; the host lock-on is filtered only by
       existing hierarchy (lib.rs:10167-10241) can be reused via a host-keyed entry
       point.
 
-A14. [LOW] Exclusion field names differ between code and the design doc.
-    LOCATION: src/types/blueprints.ts:196-204 (camelCase excludeLockOn*);
-      rts-sim-wasm/src/lib.rs:8300-8305 (CT_LOCK_ON_REL_/FAM_EXCLUDE_*); doc uses
-      snake_case exclude_lock_on_*.
-    RULE: "Config Is Data, Not Code" / cross-language identifier agreement.
-    PROBLEM: semantics match exactly (entries friendly_entities/enemy_entities and
-      units/towers/buildings/turrets) but the casing differs from the doc's
-      illustrative snake_case.
-    FIX: no behavior change; treat the doc names as illustrative, or reconcile the
-      doc to the JSON camelCase keys for exactness.
-
 ----- Minor / boundary-enforcement / test gaps (areas that audited mostly clean) -----
-
-A15. [LOW] Host-directed/fully-autonomous turret system is correct but untested.
-    LOCATION: src/game/sim/blueprints/index.ts:658-692 (validateHostDirectedMounts
-      throws on !=1 per kind); rts-sim-wasm/src/lib.rs:11489,11852 (fully-
-      autonomous skip in the priority batches).
-    RULE: "Host-directed vs fully-autonomous turrets".
-    PROBLEM: behavior verified correct end-to-end (tag on the mount, throw on 0 /
-      2+, host overwrite, autonomous fallback, fight-stop ratio) but there is NO
-      test asserting the loader throws on 0 / 2+ host-directed mounts, and no Rust
-      test asserting a fully-autonomous turret's target is NOT overwritten by a
-      host lock.
-    FIX: add a loader test (0-directed and 2-directed hosts assert throw) and a
-      Rust targeting test (host-directed overwritten, fully-autonomous untouched).
-
-A16. [LOW] Host-level lock-on field is gated by turret presence, not entity type.
-    LOCATION: src/types/sim.ts:267-291 (CombatComponent.priorityTargetId at :281);
-      src/game/sim/spawn.ts:281-283 (CombatComponent created only when turrets>0).
-    RULE: "Host intent is not turret lock-on" — units and towers carry a host
-      target; buildings carry none.
-    PROBLEM: the host lock-on lives on CombatComponent, whose presence is gated on
-      "has a turret" rather than on entity.type in {unit,tower}. Equivalent today
-      (pure-infra buildings have no turret -> no CombatComponent -> no host
-      target), but a building blueprint that ever declared a turret would silently
-      receive a host lock-on field; the boundary is data-driven, not type-enforced.
-    FIX: assert at load that no 'building'-typed entity has turrets/CombatComponent
-      (the tower/building boundary), or move the host-target field onto the unit/
-      tower host so the type system enforces it.
 
 A17. [LOW] No separate tower blueprint catalog; tower-vs-building is a runtime
      spawn decision.
@@ -332,15 +294,14 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
 - Lock-on exclusion lists are honored subtractively in targeting FOR TURRETS,
   and candidate enumeration covers the unit/tower/building/turret-mount families.
   CAVEAT: only turrets carry an exclusion object today — units and towers do NOT
-  (see A12/A13), and field names are camelCase excludeLockOn* in code vs the
-  doc's snake_case (see A14). So this is clean for the turret half only.
+  (see A12/A13). So this is clean for the turret half only.
 - Host-directed vs fully-autonomous turret mounts are fully wired: the tag lives
   on the unit/tower MOUNT entry (TurretMount.hostDirected / BuildingTurretMount.
   hostDirected), NOT on the turret blueprint; the loader throws on !=1 host-directed
   per turret kind; a host lock-on overwrites host-directed turrets while
   fully-autonomous turrets run independently; host-directed mounts fall back to
   autonomous when the host has no lock; and the fight-stop ratio counts only
-  host-directed mounts. Only gap is missing tests (see A15).
+  host-directed mounts.
 - Airborne mount invariant (mount.y===0 && mount.z===0, no zResolver) is enforced and
   throws at startup.
 - Rockets inherit the launch target and never re-acquire; lost target → ballistic.

@@ -639,6 +639,11 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   const turrets = bp.turrets;
   if (!turrets) continue;
+  if (turrets.length > 0 && !isTowerBuildingType(bp.id)) {
+    throw new Error(
+      `Invalid building blueprint ${bp.id}: non-tower buildings must not declare turrets; add the type to TOWER_BUILDING_TYPES or remove the turret mounts`,
+    );
+  }
   for (let i = 0; i < turrets.length; i++) {
     const turretId = turrets[i].turretId;
     if (!TURRET_BLUEPRINTS[turretId]) {
@@ -655,7 +660,7 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
 // the player's order for that kind has no weapon to land on; two-or-more
 // means the primary is ambiguous. Pure buildings carry no turrets and
 // are no-ops here. Runs at module-load so a bad host throws on import.
-function validateHostDirectedMounts(
+export function validateHostDirectedMounts(
   hostLabel: string,
   hostId: string,
   mounts: ReadonlyArray<{ turretId: string; hostDirected: unknown }>,
