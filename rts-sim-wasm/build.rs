@@ -148,6 +148,13 @@ fn generate_blueprint_tables(manifest_dir: &Path) {
             validate_entry_id: true,
         },
         BlueprintObjectTable {
+            relative_path: "../src/game/sim/blueprints/towers.json",
+            json_const: "BLUEPRINT_TOWERS_JSON",
+            ids_const: "BLUEPRINT_TOWER_IDS",
+            count_const: "BLUEPRINT_TOWERS_COUNT",
+            validate_entry_id: true,
+        },
+        BlueprintObjectTable {
             relative_path: "../src/game/sim/blueprints/turrets.json",
             json_const: "BLUEPRINT_TURRETS_JSON",
             ids_const: "BLUEPRINT_TURRET_IDS",

@@ -628,7 +628,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     sourceHostId: commander.id,
     sourceRootId: turretDisruptor.rootHostId !== NO_ENTITY_ID ? turretDisruptor.rootHostId : commander.id,
     sourcePlayerId: playerId,
-    sourceTeamId: null,
+    sourceTeamId: ctx.world.getTeamId(playerId),
     sourceTurretBlueprintId: turretDisruptor.config.id,
     sourceShotBlueprintId: dgunShot.id,
     spawnTick: ctx.world.getTick(),

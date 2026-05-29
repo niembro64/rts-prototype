@@ -145,7 +145,7 @@ export type ProjectileSpawnEvent = {
   sourceTurretInstanceId?: EntityId;
   sourceHostId?: EntityId;
   sourceRootId?: EntityId;
-  sourceTeamId?: number | null;
+  sourceTeamId?: number;
   spawnTick?: number;
   parentShotId?: EntityId | null;
   playerId: PlayerId;

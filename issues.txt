@@ -31,56 +31,10 @@ source provenance, lock-on exclusion objects on turrets/units/towers,
 host-directed vs fully-autonomous turrets, and the tower entity type. Some
 original claims have since been fixed in the TypeScript authoritative sim
 (runtime turret/locomotion ids, TS EntityMeta registry, ShotSource provenance);
-remaining refs still need re-verification before editing.
+all actionable A-series refs have now been resolved or moved to VERIFIED-CLEAN.
 
 NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
 entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
-The remaining actionable refs now cluster in shot provenance and the tower
-catalog split.
-
------ Shots carry immutable source provenance -----
-
-A10. [MED] Authoritative projectile state lives in TS, not Rust — provenance has
-     nowhere to migrate.
-    LOCATION: rts-sim-wasm/src/lib.rs:1825-1833 (ProjectilePool = pos/vel/
-      time_alive only); snapshot path lib.rs:20107-20156.
-    RULE: "Shots carry immutable source provenance" + "TypeScript Coordinates,
-      WASM Computes".
-    PROBLEM: the Rust ProjectilePool holds only kinematics; all shot identity and
-      provenance live in the TS Projectile entity. The stated migration direction
-      (projectile sim -> Rust) has no struct field to carry the source record, and
-      the spawn-snapshot wire ships only turretId/sourceTurretId/playerId/
-      sourceEntityId — not root/team/blueprint/spawn_tick/parent.
-    FIX: when projectile motion moves to Rust, add a ShotSource SoA block to
-      ProjectilePool and extend the spawn wire format.
-
-A11. [LOW] source_team_id / EntityMeta.team_id cannot be satisfied — no team model.
-    LOCATION: rts-sim-wasm/src/lib.rs:12261-12334 (relationship = player-id
-      compare); src/game/sim/combat/damageHelpers.ts:342.
-    RULE: "Shots carry immutable source provenance" / "Universal Runtime Entity
-      IDs" (team_id field).
-    PROBLEM: there is no team/alliance concept anywhere; all friend/enemy and
-      friendly-fire checks are pure player-id comparisons, so source_team_id and
-      EntityMeta.team_id have no value to store.
-    FIX: either introduce a team model and capture a frozen source_team_id at
-      spawn, or explicitly scope team_id out of the design until teams exist.
-
------ Minor / boundary-enforcement / test gaps (areas that audited mostly clean) -----
-
-A17. [LOW] No separate tower blueprint catalog; tower-vs-building is a runtime
-     spawn decision.
-    LOCATION: src/game/sim/blueprints/buildings.json (single catalog, no
-      towers.json); src/types/buildingTypes.ts:25-33 (TOWER_BUILDING_TYPES);
-      src/game/sim/spawn.ts:280-285 (isTowerBuildingType); lib.rs:8482-8483
-      ("a tower's blueprint name is a BuildingType").
-    RULE: "Towers Are Static Hosts" — "The blueprint goes in the tower catalog
-      (e.g. towers.json), not the building catalog."
-    PROBLEM: towers (factory, megaBeamTower, cannonTower) live in buildings.json
-      and are split out at spawn time by a hardcoded TOWER_BUILDING_TYPES set;
-      there is no towers.json, and a tower's blueprint name is still a BuildingType.
-    FIX: optional structural alignment — extract a towers.json catalog so the
-      tower/building boundary is authored in data, not a runtime type set.
-      (Behavior is already correct; this is doc-alignment, not a bug.)
 
 ================================================================================
 SECTION B — MEMORY LEAKS

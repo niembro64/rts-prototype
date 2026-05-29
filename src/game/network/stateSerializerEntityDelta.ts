@@ -657,18 +657,19 @@ function entityMetaBlueprintCode(e: Entity): number {
  *  Turret pool population runs for ALL entities with combat (units
  *  AND defense-turret buildings) so the Rust diff sees fresh weapon
  *  state for either category. */
-function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
+function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
   const slot = spatialGrid.getSlot(e.id);
   if (slot < 0) return;
   const ownership = e.ownership;
   const playerId = ownership !== null ? ownership.playerId : 0;
+  const teamId = ownership !== null ? world.getTeamId(ownership.playerId) : -1;
   sim.entityMeta.register(
     e.id,
     entityMetaKindCode(e),
     entityMetaBlueprintKindCode(e),
     entityMetaBlueprintCode(e),
     ownership !== null ? ownership.playerId : -1,
-    -1,
+    teamId,
     NO_ENTITY_ID,
     e.id,
     -1,
@@ -685,7 +686,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       ENTITY_META_BLUEPRINT_KIND_LOCOMOTION,
       0xff,
       ownership !== null ? ownership.playerId : -1,
-      -1,
+      teamId,
       locomotion.parentId,
       locomotion.rootHostId,
       locomotion.mountIndex,
@@ -749,7 +750,7 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
       ENTITY_META_BLUEPRINT_KIND_TURRET,
       turretIdToCode(w.config.id),
       ownership !== null ? ownership.playerId : -1,
-      -1,
+      teamId,
       w.parentId,
       w.rootHostId,
       w.mountIndex,
@@ -804,7 +805,7 @@ export function captureSnapshotEntityStates(
       for (let i = 0; i < src.length; i++) {
         const e = src[i];
         if (!accepts(e)) continue;
-        syncEntityMetaPools(e, sim);
+        syncEntityMetaPools(world, e, sim);
       }
     }
   }

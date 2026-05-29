@@ -319,6 +319,7 @@ export class WorldState {
 
   private registerEntityMetadata(entity: Entity): void {
     const ownerPlayerId = entity.ownership !== null ? entity.ownership.playerId : null;
+    const teamId = ownerPlayerId !== null ? this.getTeamId(ownerPlayerId) : null;
     const entityKind: EntityMetaKind = entity.type;
     const rootHostId = entity.projectile !== null
       ? entity.projectile.shotSource.sourceRootId
@@ -329,7 +330,7 @@ export class WorldState {
       blueprintKind: this.entityBlueprintKind(entity),
       blueprintId: this.entityBlueprintId(entity),
       ownerPlayerId,
-      teamId: null,
+      teamId,
       parentId: null,
       rootHostId,
       mountIndex: null,
@@ -351,7 +352,7 @@ export class WorldState {
           blueprintKind: 'turret',
           blueprintId: turret.config.id,
           ownerPlayerId,
-          teamId: null,
+          teamId,
           parentId: turret.parentId,
           rootHostId: turret.rootHostId,
           mountIndex: turret.mountIndex,
@@ -372,7 +373,7 @@ export class WorldState {
         blueprintKind: 'locomotion',
         blueprintId: locomotion.type,
         ownerPlayerId,
-        teamId: null,
+        teamId,
         parentId: locomotion.parentId,
         rootHostId: locomotion.rootHostId,
         mountIndex: locomotion.mountIndex,
@@ -709,6 +710,17 @@ export class WorldState {
   arePlayersAllied(a: PlayerId, b: PlayerId): boolean {
     if (a === b) return true;
     return this.getAllies(a).has(b);
+  }
+
+  /** Canonical team id for immutable provenance and entity metadata.
+   *  FFA maps each player to their own id; allied players share the
+   *  smallest player id in their alliance component. */
+  getTeamId(playerId: PlayerId): number {
+    let teamId = playerId;
+    for (const allyId of this.getAllies(playerId)) {
+      if (allyId < teamId) teamId = allyId;
+    }
+    return teamId;
   }
 
   /** Push a new scan pulse onto the active list. See FOW-14. */
@@ -1071,7 +1083,7 @@ export class WorldState {
         sourceHostId: sourceEntityId,
         sourceRootId: sourceEntityId,
         sourcePlayerId: ownerId,
-        sourceTeamId: null,
+        sourceTeamId: this.getTeamId(ownerId),
         sourceTurretBlueprintId: config.sourceTurretId,
         sourceShotBlueprintId: shotId,
         spawnTick: this.tick,

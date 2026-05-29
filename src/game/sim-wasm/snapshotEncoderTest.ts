@@ -1324,8 +1324,14 @@ type ProjectileSpawnFixture = {
   turretId: number;
   shotId?: number;
   sourceTurretId?: number;
+  sourceTurretInstanceId?: number;
   playerId: number;
   sourceEntityId: number;
+  sourceHostId?: number;
+  sourceRootId?: number;
+  sourceTeamId?: number;
+  spawnTick?: number;
+  parentShotId?: number;
   turretIndex: number;
   barrelIndex: number;
   isDGun?: boolean;
@@ -1378,8 +1384,14 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
       turretId: spawn.turretId,
       shotId: spawn.shotId ?? null,
       sourceTurretId: spawn.sourceTurretId ?? null,
+      sourceTurretInstanceId: spawn.sourceTurretInstanceId ?? null,
       playerId: spawn.playerId,
       sourceEntityId: spawn.sourceEntityId,
+      sourceHostId: spawn.sourceHostId ?? spawn.sourceEntityId,
+      sourceRootId: spawn.sourceRootId ?? spawn.sourceHostId ?? spawn.sourceEntityId,
+      sourceTeamId: spawn.sourceTeamId ?? spawn.playerId,
+      spawnTick: spawn.spawnTick ?? 0,
+      parentShotId: spawn.parentShotId ?? null,
       turretIndex: spawn.turretIndex,
       barrelIndex: spawn.barrelIndex,
       isDGun: spawn.isDGun ?? null,
@@ -1417,7 +1429,7 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
   };
 }
 
-const PROJ_SPAWN_SCRATCH_STRIDE = 27;
+const PROJ_SPAWN_SCRATCH_STRIDE = 32;
 const PROJ_VEL_SCRATCH_STRIDE = 8;
 
 function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: ProjectileSpawnFixture[]): void {
@@ -1453,17 +1465,24 @@ function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: Projectil
     view[base + 22] = s.beam?.end.z ?? 0;
     view[base + 23] = s.targetEntityId ?? 0;
     view[base + 24] = s.homingTurnRate ?? 0;
-    view[base + 25] = 0;  // reserved
+    view[base + 25] = s.sourceTurretInstanceId ?? 0;
+    view[base + 26] = s.sourceHostId ?? s.sourceEntityId;
+    view[base + 27] = s.sourceRootId ?? s.sourceHostId ?? s.sourceEntityId;
+    view[base + 28] = s.sourceTeamId ?? s.playerId;
+    view[base + 29] = s.spawnTick ?? 0;
+    view[base + 30] = s.parentShotId ?? 0;
     let flags = 0;
     if (s.maxLifespan !== undefined) flags |= 0x01;
     if (s.shotId !== undefined) flags |= 0x02;
     if (s.sourceTurretId !== undefined) flags |= 0x04;
+    if (s.sourceTurretInstanceId !== undefined) flags |= 0x400;
+    if (s.parentShotId !== undefined) flags |= 0x800;
     if (s.isDGun !== undefined) flags |= s.isDGun ? 0x08 : 0x100;
     if (s.fromParentDetonation !== undefined) flags |= s.fromParentDetonation ? 0x10 : 0x200;
     if (s.beam !== undefined) flags |= 0x20;
     if (s.targetEntityId !== undefined) flags |= 0x40;
     if (s.homingTurnRate !== undefined) flags |= 0x80;
-    view[base + 26] = flags;
+    view[base + 31] = flags;
   }
 }
 
@@ -2294,8 +2313,14 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           turretId: 4,
           shotId: 7,
           sourceTurretId: 8,
+          sourceTurretInstanceId: 88,
           playerId: 2,
           sourceEntityId: 600,
+          sourceHostId: 600,
+          sourceRootId: 590,
+          sourceTeamId: 2,
+          spawnTick: 777,
+          parentShotId: 8999,
           turretIndex: 1,
           barrelIndex: 2,
           isDGun: true,
@@ -3336,8 +3361,14 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
             turretId: 4,
             shotId: 6,
             sourceTurretId: 7,
+            sourceTurretInstanceId: 77,
             playerId: 2,
             sourceEntityId: 501,
+            sourceHostId: 501,
+            sourceRootId: 500,
+            sourceTeamId: 2,
+            spawnTick: 1801,
+            parentShotId: 99,
             turretIndex: 1,
             barrelIndex: 0,
             isDGun: false,

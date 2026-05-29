@@ -1,9 +1,10 @@
 /**
  * Building blueprints.
  *
- * Authored building facts live in buildings.json. This module keeps
+ * Authored static facts live in buildings.json (pure infrastructure)
+ * and towers.json (static turret/lock-on hosts). This module keeps
  * the current TypeScript API for validation, renderer helpers, and
- * derived runtime config while the blueprint table itself is data.
+ * derived runtime config while the blueprint tables themselves are data.
  */
 
 import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
@@ -15,11 +16,13 @@ import type {
   LockOnExclusionObject,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
+import rawTowerBlueprints from './towers.json';
 import { assertExplicitFields } from './jsonValidation';
 import {
   LOCK_ON_EXCLUSION_FIELDS,
   validateLockOnExclusionObject,
 } from './lockOnValidation';
+import { BUILDING_TYPE_IDS } from '../../../types/blueprintIds';
 
 export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   id: BuildingType;
@@ -54,8 +57,30 @@ export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   detector: DetectorBlueprint | null;
 };
 
-export const BUILDING_BLUEPRINTS =
-  rawBuildingBlueprints as Record<BuildingType, BuildingBlueprint>;
+export const PURE_BUILDING_BLUEPRINTS =
+  rawBuildingBlueprints as Partial<Record<BuildingType, BuildingBlueprint>>;
+export const TOWER_BLUEPRINTS =
+  rawTowerBlueprints as Partial<Record<BuildingType, BuildingBlueprint>>;
+const STATIC_BLUEPRINTS_BY_ID = {
+  ...PURE_BUILDING_BLUEPRINTS,
+  ...TOWER_BLUEPRINTS,
+} as Partial<Record<BuildingType, BuildingBlueprint>>;
+for (const id of BUILDING_TYPE_IDS) {
+  if (STATIC_BLUEPRINTS_BY_ID[id as BuildingType] === undefined) {
+    throw new Error(`Missing static blueprint for stable building id ${id}`);
+  }
+}
+export const BUILDING_BLUEPRINTS = Object.fromEntries(
+  BUILDING_TYPE_IDS.map((id) => [id, STATIC_BLUEPRINTS_BY_ID[id as BuildingType]]),
+) as Record<BuildingType, BuildingBlueprint>;
+
+for (const id of Object.keys(rawTowerBlueprints)) {
+  if (Object.prototype.hasOwnProperty.call(rawBuildingBlueprints, id)) {
+    throw new Error(
+      `Static blueprint ${id} is authored in both buildings.json and towers.json`,
+    );
+  }
+}
 
 const BUILDING_EXPLICIT_FIELDS = [
   'energyProduction',

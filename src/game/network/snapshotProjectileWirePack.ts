@@ -24,10 +24,11 @@ import {
   PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE,
   PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE,
   PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN,
+  PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID,
   PROJECTILE_SPAWN_FLAG_SHOT_ID,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID,
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
-  PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
 } from './stateSerializerProjectiles';
 import {
@@ -42,6 +43,8 @@ type PlayerId = NetworkServerSnapshotBeamPoint['reflectorPlayerId'];
 
 const PACKED_PROJECTILES_V1_VERSION = 1;
 const PACKED_PROJECTILES_V2_VERSION = 2;
+const PACKED_PROJECTILES_V3_VERSION = 3;
+const PROJECTILE_SPAWN_WIRE_STRIDE_V1 = 27;
 const EMPTY_PROJECTILE_ROWS: readonly number[] = [];
 
 const VELOCITY_FLAG_CLEAR_HOMING = 0x01;
@@ -72,16 +75,25 @@ export type PackedProjectileSnapshotWireV2 = {
   b: Uint8Array | undefined;
 };
 
+export type PackedProjectileSnapshotWireV3 = {
+  v: typeof PACKED_PROJECTILES_V3_VERSION;
+  s: Uint8Array | undefined;
+  d: Uint8Array | undefined;
+  u: Uint8Array | undefined;
+  b: Uint8Array | undefined;
+};
+
 export type PackedProjectileSnapshotWire =
   | PackedProjectileSnapshotWireV1
-  | PackedProjectileSnapshotWireV2;
+  | PackedProjectileSnapshotWireV2
+  | PackedProjectileSnapshotWireV3;
 
 export function packProjectilesForWire(
   projectiles: ProjectileSnapshot | undefined,
-): PackedProjectileSnapshotWireV2 | undefined {
+): PackedProjectileSnapshotWireV3 | undefined {
   if (projectiles === undefined) return undefined;
-  const packed: PackedProjectileSnapshotWireV2 = {
-    v: PACKED_PROJECTILES_V2_VERSION,
+  const packed: PackedProjectileSnapshotWireV3 = {
+    v: PACKED_PROJECTILES_V3_VERSION,
     s: undefined,
     d: undefined,
     u: undefined,
@@ -101,9 +113,11 @@ export function packProjectilesForWire(
 export function unpackProjectilesFromWire(
   packed: PackedProjectileSnapshotWire,
 ): ProjectileSnapshot {
-  if (packed.v === PACKED_PROJECTILES_V2_VERSION) {
+  if (packed.v === PACKED_PROJECTILES_V2_VERSION || packed.v === PACKED_PROJECTILES_V3_VERSION) {
     const projectiles = createEmptyProjectileSnapshot();
-    const spawns = packed.s !== undefined ? unpackProjectileSpawnsV2(packed.s) : undefined;
+    const spawns = packed.s !== undefined
+      ? unpackProjectileSpawnsV2(packed.s, packed.v === PACKED_PROJECTILES_V3_VERSION)
+      : undefined;
     const despawns = packed.d !== undefined ? unpackProjectileDespawnsV2(packed.d) : undefined;
     const velocityUpdates = packed.u !== undefined
       ? unpackProjectileVelocityUpdatesV2(packed.u)
@@ -133,8 +147,8 @@ export function isPackedProjectileSnapshotWire(
 ): value is PackedProjectileSnapshotWire {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Partial<PackedProjectileSnapshotWire>;
-  if (candidate.v === PACKED_PROJECTILES_V2_VERSION) {
-    const v2 = candidate as Partial<PackedProjectileSnapshotWireV2>;
+  if (candidate.v === PACKED_PROJECTILES_V2_VERSION || candidate.v === PACKED_PROJECTILES_V3_VERSION) {
+    const v2 = candidate as Partial<PackedProjectileSnapshotWireV2 | PackedProjectileSnapshotWireV3>;
     return (
       (v2.s === undefined || v2.s instanceof Uint8Array) &&
       (v2.d === undefined || v2.d instanceof Uint8Array) &&
@@ -218,6 +232,10 @@ function computeSpawnFlags(spawn: NetworkServerSnapshotProjectileSpawn): number 
   if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
   if (spawn.shotId !== null) flags |= PROJECTILE_SPAWN_FLAG_SHOT_ID;
   if (spawn.sourceTurretId !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID;
+  if (spawn.sourceTurretInstanceId !== null) {
+    flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID;
+  }
+  if (spawn.parentShotId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID;
   if (spawn.isDGun !== null) {
     flags |= spawn.isDGun
       ? PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE
@@ -252,6 +270,10 @@ function writeSpawnRowV2(
   writer.writeVarUint(spawn.turretId);
   writer.writeVarUint(spawn.playerId);
   writer.writeVarUint(spawn.sourceEntityId);
+  writer.writeVarUint(spawn.sourceHostId);
+  writer.writeVarUint(spawn.sourceRootId);
+  writer.writeVarUint(spawn.sourceTeamId);
+  writer.writeVarUint(spawn.spawnTick);
   writer.writeVarUint(spawn.turretIndex);
   writer.writeVarUint(spawn.barrelIndex);
   if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
@@ -262,6 +284,12 @@ function writeSpawnRowV2(
   }
   if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) !== 0) {
     writer.writeVarUint(spawn.sourceTurretId ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID) !== 0) {
+    writer.writeVarUint(spawn.sourceTurretInstanceId ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID) !== 0) {
+    writer.writeVarUint(spawn.parentShotId ?? 0);
   }
   if ((flags & PROJECTILE_SPAWN_FLAG_BEAM) !== 0) {
     const beam = spawn.beam!;
@@ -282,6 +310,7 @@ function writeSpawnRowV2(
 
 function unpackProjectileSpawnsV2(
   bytes: Uint8Array,
+  hasSourceProvenance: boolean,
 ): NetworkServerSnapshotProjectileSpawn[] {
   const total = readPackedBinaryRowCount(bytes);
   const out: NetworkServerSnapshotProjectileSpawn[] = new Array(total);
@@ -307,6 +336,10 @@ function unpackProjectileSpawnsV2(
       const turretId = reader.readVarUint();
       const playerId = reader.readVarUint();
       const sourceEntityId = reader.readVarUint();
+      const sourceHostId = hasSourceProvenance ? reader.readVarUint() : sourceEntityId;
+      const sourceRootId = hasSourceProvenance ? reader.readVarUint() : sourceHostId;
+      const sourceTeamId = hasSourceProvenance ? reader.readVarUint() : playerId;
+      const spawnTick = hasSourceProvenance ? reader.readVarUint() : 0;
       const turretIndex = reader.readVarUint();
       const barrelIndex = reader.readVarUint();
 
@@ -320,8 +353,14 @@ function unpackProjectileSpawnsV2(
         turretId,
         shotId: null,
         sourceTurretId: null,
+        sourceTurretInstanceId: null,
         playerId,
         sourceEntityId,
+        sourceHostId,
+        sourceRootId,
+        sourceTeamId,
+        spawnTick,
+        parentShotId: null,
         turretIndex,
         barrelIndex,
         isDGun: null,
@@ -339,6 +378,12 @@ function unpackProjectileSpawnsV2(
       }
       if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ID) !== 0) {
         spawn.sourceTurretId = reader.readVarUint();
+      }
+      if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_INSTANCE_ID) !== 0) {
+        spawn.sourceTurretInstanceId = reader.readVarUint();
+      }
+      if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ID) !== 0) {
+        spawn.parentShotId = reader.readVarUint();
       }
       if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE) !== 0) {
         spawn.isDGun = true;
@@ -677,11 +722,13 @@ function unpackProjectileSpawnsV1(
   rows: readonly number[] | undefined,
 ): NetworkServerSnapshotProjectileSpawn[] | undefined {
   if (rows === undefined) return undefined;
-  const count = Math.floor(rows.length / PROJECTILE_SPAWN_WIRE_STRIDE);
+  const count = Math.floor(rows.length / PROJECTILE_SPAWN_WIRE_STRIDE_V1);
   const spawns: NetworkServerSnapshotProjectileSpawn[] = new Array(count);
   for (let i = 0; i < count; i++) {
-    const base = i * PROJECTILE_SPAWN_WIRE_STRIDE;
+    const base = i * PROJECTILE_SPAWN_WIRE_STRIDE_V1;
     const flags = rows[base + 26] ?? 0;
+    const playerId = rows[base + 13] ?? 1;
+    const sourceEntityId = rows[base + 14] ?? 0;
     const spawn: NetworkServerSnapshotProjectileSpawn = {
       id: rows[base + 0] ?? 0,
       pos: {
@@ -700,8 +747,14 @@ function unpackProjectileSpawnsV1(
       turretId: rows[base + 10] ?? 0,
       shotId: null,
       sourceTurretId: null,
-      playerId: rows[base + 13] ?? 1,
-      sourceEntityId: rows[base + 14] ?? 0,
+      sourceTurretInstanceId: null,
+      playerId,
+      sourceEntityId,
+      sourceHostId: sourceEntityId,
+      sourceRootId: sourceEntityId,
+      sourceTeamId: playerId,
+      spawnTick: 0,
+      parentShotId: null,
       turretIndex: rows[base + 15] ?? 0,
       barrelIndex: rows[base + 16] ?? 0,
       isDGun: null,

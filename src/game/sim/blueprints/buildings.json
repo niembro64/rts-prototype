@@ -49,48 +49,6 @@
     "turrets": [],
     "detector": null
   },
-  "factory": {
-    "id": "factory",
-    "name": "Fabricator",
-    "gridWidth": 2,
-    "gridHeight": 2,
-    "gridDepth": 6,
-    "hp": 800,
-    "cost": {
-      "energy": 300,
-      "metal": 300
-    },
-    "energyProduction": null,
-    "metalProduction": null,
-    "constructionRate": 100,
-    "conversionRate": null,
-    "renderProfile": "factory",
-    "visualHeight": 30,
-    "anchorProfile": "factoryTower",
-    "hud": {
-      "barsOffsetAboveTop": 12
-    },
-    "cloak": null,
-    "turrets": [
-      {
-        "turretId": "turretConstruction",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 38
-        },
-        "visualVariant": "large",
-        "hostDirected": true
-      }
-    ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
-    "detector": null
-  },
   "extractor": {
     "id": "extractor",
     "name": "Extractor",
@@ -142,88 +100,6 @@
     "detector": {
       "radius": 1800
     }
-  },
-  "megaBeamTower": {
-    "id": "megaBeamTower",
-    "name": "Beam Tower",
-    "gridWidth": 1,
-    "gridHeight": 1,
-    "gridDepth": 5,
-    "hp": 8000,
-    "cost": {
-      "energy": 1500,
-      "metal": 1500
-    },
-    "energyProduction": null,
-    "metalProduction": null,
-    "constructionRate": null,
-    "conversionRate": null,
-    "renderProfile": "megaBeamTower",
-    "visualHeight": 96,
-    "anchorProfile": "constantVisualTop",
-    "hud": {
-      "barsOffsetAboveTop": 12
-    },
-    "cloak": null,
-    "turrets": [
-      {
-        "turretId": "turretBeamLong",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 114
-        },
-        "hostDirected": true
-      }
-    ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
-    "detector": null
-  },
-  "cannonTower": {
-    "id": "cannonTower",
-    "name": "Cannon Tower",
-    "gridWidth": 4,
-    "gridHeight": 4,
-    "gridDepth": 3,
-    "hp": 8000,
-    "cost": {
-      "energy": 1500,
-      "metal": 1500
-    },
-    "energyProduction": null,
-    "metalProduction": null,
-    "constructionRate": null,
-    "conversionRate": null,
-    "renderProfile": "cannonTower",
-    "visualHeight": 30,
-    "anchorProfile": "constantVisualTop",
-    "hud": {
-      "barsOffsetAboveTop": 12
-    },
-    "cloak": null,
-    "turrets": [
-      {
-        "turretId": "turretCannonLong",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 60
-        },
-        "hostDirected": true
-      }
-    ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
-    "detector": null
   },
   "resourceConverter": {
     "id": "resourceConverter",

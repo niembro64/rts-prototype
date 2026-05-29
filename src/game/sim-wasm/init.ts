@@ -42,6 +42,15 @@ import __wbg_init, {
   projectile_pool_vel_y_ptr,
   projectile_pool_vel_z_ptr,
   projectile_pool_time_alive_ptr,
+  projectile_pool_source_turret_id_ptr,
+  projectile_pool_source_host_id_ptr,
+  projectile_pool_source_root_id_ptr,
+  projectile_pool_source_player_id_ptr,
+  projectile_pool_source_team_id_ptr,
+  projectile_pool_source_turret_blueprint_code_ptr,
+  projectile_pool_source_shot_blueprint_code_ptr,
+  projectile_pool_spawn_tick_ptr,
+  projectile_pool_parent_shot_id_ptr,
   pool_step_packed_projectiles_batch,
   solve_kinematic_intercept,
   compute_homing_thrust,
@@ -2327,7 +2336,7 @@ export interface SnapshotEncodeApi {
     hasBeamUpdates: number,
     beamUpdateCount: number,
   ) => void;
-  /** Emit packed `projectiles: { v: 2, s?, d?, u?, b? }`. Reads the
+  /** Emit packed `projectiles: { v: 3, s?, d?, u?, b? }`. Reads the
    *  same projectile scratches as emitProjectiles, but writes the
    *  compact binary wire shape used by snapshotProjectileWirePack.ts. */
   emitPackedProjectiles: (
@@ -2619,6 +2628,15 @@ export interface ProjectilePoolViews {
   velY: Float64Array;
   velZ: Float64Array;
   timeAlive: Float64Array;
+  sourceTurretId: Int32Array;
+  sourceHostId: Int32Array;
+  sourceRootId: Int32Array;
+  sourcePlayerId: Int32Array;
+  sourceTeamId: Int32Array;
+  sourceTurretBlueprintCode: Uint32Array;
+  sourceShotBlueprintCode: Uint32Array;
+  spawnTick: Uint32Array;
+  parentShotId: Int32Array;
 }
 
 /** Layout stride for `quatHoverOrientationStepBatch`. Mirrors
@@ -2857,6 +2875,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       // memory. Same lifetime/refresh pattern as the body pool.
       const projF64View = (ptr: number): Float64Array =>
         new Float64Array(memory.buffer, ptr, projCapacity);
+      const projI32View = (ptr: number): Int32Array =>
+        new Int32Array(memory.buffer, ptr, projCapacity);
+      const projU32View = (ptr: number): Uint32Array =>
+        new Uint32Array(memory.buffer, ptr, projCapacity);
       const projPtrs = {
         posX: projectile_pool_pos_x_ptr(),
         posY: projectile_pool_pos_y_ptr(),
@@ -2865,6 +2887,15 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         velY: projectile_pool_vel_y_ptr(),
         velZ: projectile_pool_vel_z_ptr(),
         timeAlive: projectile_pool_time_alive_ptr(),
+        sourceTurretId: projectile_pool_source_turret_id_ptr(),
+        sourceHostId: projectile_pool_source_host_id_ptr(),
+        sourceRootId: projectile_pool_source_root_id_ptr(),
+        sourcePlayerId: projectile_pool_source_player_id_ptr(),
+        sourceTeamId: projectile_pool_source_team_id_ptr(),
+        sourceTurretBlueprintCode: projectile_pool_source_turret_blueprint_code_ptr(),
+        sourceShotBlueprintCode: projectile_pool_source_shot_blueprint_code_ptr(),
+        spawnTick: projectile_pool_spawn_tick_ptr(),
+        parentShotId: projectile_pool_parent_shot_id_ptr(),
       };
       const projectilePool: ProjectilePoolViews = {
         capacity: projCapacity,
@@ -2876,6 +2907,16 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           projectilePool.velY = projF64View(projPtrs.velY);
           projectilePool.velZ = projF64View(projPtrs.velZ);
           projectilePool.timeAlive = projF64View(projPtrs.timeAlive);
+          projectilePool.sourceTurretId = projI32View(projPtrs.sourceTurretId);
+          projectilePool.sourceHostId = projI32View(projPtrs.sourceHostId);
+          projectilePool.sourceRootId = projI32View(projPtrs.sourceRootId);
+          projectilePool.sourcePlayerId = projI32View(projPtrs.sourcePlayerId);
+          projectilePool.sourceTeamId = projI32View(projPtrs.sourceTeamId);
+          projectilePool.sourceTurretBlueprintCode =
+            projU32View(projPtrs.sourceTurretBlueprintCode);
+          projectilePool.sourceShotBlueprintCode = projU32View(projPtrs.sourceShotBlueprintCode);
+          projectilePool.spawnTick = projU32View(projPtrs.spawnTick);
+          projectilePool.parentShotId = projI32View(projPtrs.parentShotId);
         },
         posX: projF64View(projPtrs.posX),
         posY: projF64View(projPtrs.posY),
@@ -2884,6 +2925,15 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         velY: projF64View(projPtrs.velY),
         velZ: projF64View(projPtrs.velZ),
         timeAlive: projF64View(projPtrs.timeAlive),
+        sourceTurretId: projI32View(projPtrs.sourceTurretId),
+        sourceHostId: projI32View(projPtrs.sourceHostId),
+        sourceRootId: projI32View(projPtrs.sourceRootId),
+        sourcePlayerId: projI32View(projPtrs.sourcePlayerId),
+        sourceTeamId: projI32View(projPtrs.sourceTeamId),
+        sourceTurretBlueprintCode: projU32View(projPtrs.sourceTurretBlueprintCode),
+        sourceShotBlueprintCode: projU32View(projPtrs.sourceShotBlueprintCode),
+        spawnTick: projU32View(projPtrs.spawnTick),
+        parentShotId: projI32View(projPtrs.parentShotId),
       };
 
       const handle: SimWasm = {
@@ -3190,7 +3240,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           projDespawnScratchEnsure: snapshot_encode_proj_despawn_scratch_ensure,
           projSpawnScratchPtr: snapshot_encode_proj_spawn_scratch_ptr,
           projSpawnScratchEnsure: snapshot_encode_proj_spawn_scratch_ensure,
-          projSpawnScratchStride: 27,
+          projSpawnScratchStride: 32,
           projVelScratchPtr: snapshot_encode_proj_vel_scratch_ptr,
           projVelScratchEnsure: snapshot_encode_proj_vel_scratch_ensure,
           projVelScratchStride: 8,

@@ -48,8 +48,14 @@ export function createSpawnDto(): NetworkServerSnapshotProjectileSpawn {
     maxLifespan: null,
     shotId: null,
     sourceTurretId: null,
+    sourceTurretInstanceId: null,
     playerId: 1,
     sourceEntityId: 0,
+    sourceHostId: 0,
+    sourceRootId: 0,
+    sourceTeamId: 1,
+    spawnTick: 0,
+    parentShotId: null,
     turretIndex: 0,
     barrelIndex: 0,
     isDGun: null,
@@ -77,8 +83,14 @@ export function copySpawnInto(
   dst.turretId = src.turretId;
   dst.shotId = src.shotId;
   dst.sourceTurretId = src.sourceTurretId;
+  dst.sourceTurretInstanceId = src.sourceTurretInstanceId;
   dst.playerId = src.playerId;
   dst.sourceEntityId = src.sourceEntityId;
+  dst.sourceHostId = src.sourceHostId;
+  dst.sourceRootId = src.sourceRootId;
+  dst.sourceTeamId = src.sourceTeamId;
+  dst.spawnTick = src.spawnTick;
+  dst.parentShotId = src.parentShotId;
   dst.turretIndex = src.turretIndex;
   dst.barrelIndex = src.barrelIndex;
   dst.isDGun = src.isDGun;

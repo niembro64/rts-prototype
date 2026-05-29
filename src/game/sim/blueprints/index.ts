@@ -135,11 +135,10 @@ function compileLockOnMasks(label: string, policy: LockOnExclusionObject): LockO
     BUILDING_TYPE_UNKNOWN,
     'building',
   );
-  // Towers share the building wire-code space (a tower's blueprint name is
-  // a BuildingType — e.g. 'factory', 'megaBeamTower'), so the level-1
-  // tower mask uses the same wire-code lookup as buildings. The Rust
-  // kernel reads tower vs. building from the candidate's entity_family
-  // and consults the appropriate mask.
+  // Towers share the static-structure wire-code space with buildings,
+  // so the level-1 tower mask uses the same wire-code lookup. The
+  // Rust kernel reads tower vs. building from the candidate's
+  // entity_family and consults the appropriate mask.
   const tower = lockOnLevel1Mask(
     label,
     'excludeLockOnLevel1Towers',
@@ -683,7 +682,7 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   if (!turrets) continue;
   if (turrets.length > 0 && !isTowerBuildingType(bp.id)) {
     throw new Error(
-      `Invalid building blueprint ${bp.id}: non-tower buildings must not declare turrets; add the type to TOWER_BUILDING_TYPES or remove the turret mounts`,
+      `Invalid building blueprint ${bp.id}: non-tower buildings must not declare turrets; move the blueprint to towers.json or remove the turret mounts`,
     );
   }
   for (let i = 0; i < turrets.length; i++) {

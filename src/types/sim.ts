@@ -436,8 +436,8 @@ export type ShotSource = {
   /** Runtime EntityId of the root host that owns the firing assembly. */
   sourceRootId: EntityId;
   sourcePlayerId: PlayerId;
-  /** Null until team/alliance ownership becomes a first-class sim model. */
-  sourceTeamId: number | null;
+  /** Canonical team id at launch time. In FFA this equals sourcePlayerId. */
+  sourceTeamId: number;
   sourceTurretBlueprintId: TurretId | undefined;
   sourceShotBlueprintId: ShotId;
   spawnTick: number;

@@ -1,5 +1,7 @@
 // Building identifiers and render/anchor classification.
 
+import rawTowerBlueprints from '../game/sim/blueprints/towers.json';
+
 export type BuildingType =
   | 'solar'
   | 'wind'
@@ -22,11 +24,9 @@ export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'coll
 // Entities with a tower-class buildingType are spawned with
 // entity.type === 'tower', so UI/selection code can dispatch on
 // entity.type alone without re-checking the buildingType every time.
-const TOWER_BUILDING_TYPES: ReadonlySet<BuildingType> = new Set<BuildingType>([
-  'factory',
-  'megaBeamTower',
-  'cannonTower',
-]);
+const TOWER_BUILDING_TYPES: ReadonlySet<BuildingType> = new Set(
+  Object.keys(rawTowerBlueprints) as BuildingType[],
+);
 
 export function isTowerBuildingType(t: BuildingType): boolean {
   return TOWER_BUILDING_TYPES.has(t);

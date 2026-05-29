@@ -423,8 +423,16 @@ export type NetworkServerSnapshotProjectileSpawn = {
   shotId: ShotTypeCode | null;
   /** Real turret blueprint wire code that authored this projectile. */
   sourceTurretId: TurretTypeCode | null;
+  /** Runtime EntityId of the mounted turret instance that fired this projectile. */
+  sourceTurretInstanceId: number | null;
   playerId: number;
+  /** Legacy source-host shortcut. The full immutable source record follows. */
   sourceEntityId: number;
+  sourceHostId: number;
+  sourceRootId: number;
+  sourceTeamId: number;
+  spawnTick: number;
+  parentShotId: number | null;
   turretIndex: number;
   /** Barrel selected for visual/audio cadence within the source turret's cluster.
    *  Authoritative shots spawn from the turret mount center. */

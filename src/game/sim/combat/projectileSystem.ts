@@ -58,6 +58,11 @@ import {
   snapshotRotationThresholdRadians,
   snapshotVectorVelocityDeltaExceeded,
 } from '../../snapshotDeltaThresholds';
+import {
+  TURRET_ID_UNKNOWN,
+  shotIdToCode,
+  turretIdToCode,
+} from '../../../types/network';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -88,6 +93,15 @@ let _packedProjectileVx: Float64Array = new Float64Array(0);
 let _packedProjectileVy: Float64Array = new Float64Array(0);
 let _packedProjectileVz: Float64Array = new Float64Array(0);
 let _packedProjectileTimeAlive: Float64Array = new Float64Array(0);
+let _packedProjectileSourceTurretId: Int32Array = new Int32Array(0);
+let _packedProjectileSourceHostId: Int32Array = new Int32Array(0);
+let _packedProjectileSourceRootId: Int32Array = new Int32Array(0);
+let _packedProjectileSourcePlayerId: Int32Array = new Int32Array(0);
+let _packedProjectileSourceTeamId: Int32Array = new Int32Array(0);
+let _packedProjectileSourceTurretBlueprintCode: Uint32Array = new Uint32Array(0);
+let _packedProjectileSourceShotBlueprintCode: Uint32Array = new Uint32Array(0);
+let _packedProjectileSpawnTick: Uint32Array = new Uint32Array(0);
+let _packedProjectileParentShotId: Int32Array = new Int32Array(0);
 let _packedProjectilePoolCapacity = 0;
 let _packedProjectileViewsBound = false;
 const _packedProjectileEntities: Entity[] = [];
@@ -110,6 +124,15 @@ function refreshPackedProjectileViews(): void {
   _packedProjectileVy = sim.projectilePool.velY;
   _packedProjectileVz = sim.projectilePool.velZ;
   _packedProjectileTimeAlive = sim.projectilePool.timeAlive;
+  _packedProjectileSourceTurretId = sim.projectilePool.sourceTurretId;
+  _packedProjectileSourceHostId = sim.projectilePool.sourceHostId;
+  _packedProjectileSourceRootId = sim.projectilePool.sourceRootId;
+  _packedProjectileSourcePlayerId = sim.projectilePool.sourcePlayerId;
+  _packedProjectileSourceTeamId = sim.projectilePool.sourceTeamId;
+  _packedProjectileSourceTurretBlueprintCode = sim.projectilePool.sourceTurretBlueprintCode;
+  _packedProjectileSourceShotBlueprintCode = sim.projectilePool.sourceShotBlueprintCode;
+  _packedProjectileSpawnTick = sim.projectilePool.spawnTick;
+  _packedProjectileParentShotId = sim.projectilePool.parentShotId;
   if (!_packedProjectileViewsBound) {
     _packedProjectilePoolCapacity = sim.projectilePool.capacity;
     _packedProjectileIds = new Int32Array(_packedProjectilePoolCapacity);
@@ -260,6 +283,19 @@ export function registerPackedProjectile(entity: Entity): void {
   _packedProjectileVy[slot] = proj.velocityY;
   _packedProjectileVz[slot] = proj.velocityZ;
   _packedProjectileTimeAlive[slot] = proj.timeAlive;
+  _packedProjectileSourceTurretId[slot] = proj.shotSource.sourceTurretId ?? NO_ENTITY_ID;
+  _packedProjectileSourceHostId[slot] = proj.shotSource.sourceHostId;
+  _packedProjectileSourceRootId[slot] = proj.shotSource.sourceRootId;
+  _packedProjectileSourcePlayerId[slot] = proj.shotSource.sourcePlayerId;
+  _packedProjectileSourceTeamId[slot] = proj.shotSource.sourceTeamId;
+  _packedProjectileSourceTurretBlueprintCode[slot] =
+    proj.shotSource.sourceTurretBlueprintId !== undefined
+      ? turretIdToCode(proj.shotSource.sourceTurretBlueprintId)
+      : TURRET_ID_UNKNOWN;
+  _packedProjectileSourceShotBlueprintCode[slot] =
+    shotIdToCode(proj.shotSource.sourceShotBlueprintId);
+  _packedProjectileSpawnTick[slot] = proj.shotSource.spawnTick;
+  _packedProjectileParentShotId[slot] = proj.shotSource.parentShotId ?? NO_ENTITY_ID;
 }
 
 export function unregisterPackedProjectile(id: EntityId): void {
@@ -278,6 +314,17 @@ export function unregisterPackedProjectile(id: EntityId): void {
     _packedProjectileVy[slot] = _packedProjectileVy[last];
     _packedProjectileVz[slot] = _packedProjectileVz[last];
     _packedProjectileTimeAlive[slot] = _packedProjectileTimeAlive[last];
+    _packedProjectileSourceTurretId[slot] = _packedProjectileSourceTurretId[last];
+    _packedProjectileSourceHostId[slot] = _packedProjectileSourceHostId[last];
+    _packedProjectileSourceRootId[slot] = _packedProjectileSourceRootId[last];
+    _packedProjectileSourcePlayerId[slot] = _packedProjectileSourcePlayerId[last];
+    _packedProjectileSourceTeamId[slot] = _packedProjectileSourceTeamId[last];
+    _packedProjectileSourceTurretBlueprintCode[slot] =
+      _packedProjectileSourceTurretBlueprintCode[last];
+    _packedProjectileSourceShotBlueprintCode[slot] =
+      _packedProjectileSourceShotBlueprintCode[last];
+    _packedProjectileSpawnTick[slot] = _packedProjectileSpawnTick[last];
+    _packedProjectileParentShotId[slot] = _packedProjectileParentShotId[last];
     if (moved) _packedProjectileSlots.set(moved.id, slot);
   }
   _packedProjectileCount = last;
@@ -321,7 +368,7 @@ function createTurretShotSource(
     sourceHostId: host.id,
     sourceRootId: weapon.rootHostId !== NO_ENTITY_ID ? weapon.rootHostId : host.id,
     sourcePlayerId: playerId,
-    sourceTeamId: null,
+    sourceTeamId: world.getTeamId(playerId),
     sourceTurretBlueprintId: weapon.config.id,
     sourceShotBlueprintId: shotId,
     spawnTick: world.getTick(),
