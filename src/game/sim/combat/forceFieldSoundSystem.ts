@@ -2,6 +2,7 @@
 // Mirrors laserSoundSystem.ts pattern: emits forceFieldStart/forceFieldStop lifecycle events
 
 import type { Entity } from '../types';
+import { NO_ENTITY_ID, type EntityId } from '../types';
 import type { SimEvent } from './types';
 
 // Reusable arrays for force field sound events (avoids per-frame allocation)
@@ -10,6 +11,13 @@ const _forceFieldStopOwner: SimEvent[] = [];
 const FORCE_FIELD_SOUND_REFRESH_TICKS = 60;
 const activeForceFieldSoundIds = new Set<number>();
 let forceFieldSoundRefreshTick = 0;
+
+function turretSoundEntityId(entity: Entity, weaponIndex: number): EntityId {
+  const turret = entity.combat?.turrets[weaponIndex];
+  return turret !== undefined && turret.id !== NO_ENTITY_ID
+    ? turret.id
+    : entity.id * 100 + weaponIndex;
+}
 
 // Emit forceFieldStop events for all force field weapons on a dying entity.
 // Must be called before the entity is removed from the world.
@@ -23,7 +31,7 @@ export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
     const shot = config.shot;
     if (shot === undefined || shot.type !== 'force') continue;
 
-    const soundEntityId = entity.id * 100 + i;
+    const soundEntityId = turretSoundEntityId(entity, i);
     if (!activeForceFieldSoundIds.delete(soundEntityId)) continue;
     _forceFieldStopOwner.push({
       type: 'forceFieldStop',
@@ -54,7 +62,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
       const shot = config.shot;
       if (shot === undefined || shot.type !== 'force') continue;
 
-      const soundEntityId = unit.id * 100 + i;
+      const soundEntityId = turretSoundEntityId(unit, i);
       const progress = weapon.forceField !== undefined ? weapon.forceField.transition : 0;
       const wasActive = activeForceFieldSoundIds.has(soundEntityId);
 

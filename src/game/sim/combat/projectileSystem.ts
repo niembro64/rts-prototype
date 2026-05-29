@@ -1,7 +1,7 @@
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, Turret } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamShot, LaserShot, ShotSource, Turret } from '../types';
 import { isLineShot, isLineShotType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -309,6 +309,26 @@ function hasActiveWeaponBeam(_world: WorldState, unitId: EntityId, turretIndex: 
   return beamIndex.hasActiveBeam(unitId, turretIndex);
 }
 
+function createTurretShotSource(
+  world: WorldState,
+  host: Entity,
+  weapon: Turret,
+  shotId: ShotSource['sourceShotBlueprintId'],
+  playerId: ShotSource['sourcePlayerId'],
+): ShotSource {
+  return {
+    sourceTurretId: weapon.id !== NO_ENTITY_ID ? weapon.id : null,
+    sourceHostId: host.id,
+    sourceRootId: weapon.rootHostId !== NO_ENTITY_ID ? weapon.rootHostId : host.id,
+    sourcePlayerId: playerId,
+    sourceTeamId: null,
+    sourceTurretBlueprintId: weapon.config.id,
+    sourceShotBlueprintId: shotId,
+    spawnTick: world.getTick(),
+    parentShotId: null,
+  };
+}
+
 // Fire weapons at targets - unified for all units
 // Each weapon fires independently based on its own state
 export function fireTurrets(
@@ -556,7 +576,19 @@ export function fireTurrets(
 
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
-          const beam = world.createBeam(beamStartX, beamStartY, beamStartZ, endX, endY, playerId, unit.id, projectileConfig, beamProjectileType);
+          const shotSource = createTurretShotSource(world, unit, weapon, shot.id, playerId);
+          const beam = world.createBeam(
+            beamStartX,
+            beamStartY,
+            beamStartZ,
+            endX,
+            endY,
+            playerId,
+            unit.id,
+            projectileConfig,
+            beamProjectileType,
+            { shotId: shot.id, shotSource },
+          );
           if (beam.projectile) {
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
@@ -576,6 +608,12 @@ export function fireTurrets(
             turretId: config.id,
             shotId: shot.id,
             sourceTurretId: config.id,
+            sourceTurretInstanceId: shotSource.sourceTurretId ?? undefined,
+            sourceHostId: shotSource.sourceHostId,
+            sourceRootId: shotSource.sourceRootId,
+            sourceTeamId: shotSource.sourceTeamId,
+            spawnTick: shotSource.spawnTick,
+            parentShotId: shotSource.parentShotId,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,
@@ -605,6 +643,7 @@ export function fireTurrets(
           projVy += weapon.worldVelocity.y;
           projVz += weapon.worldVelocity.z;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
+          const shotSource = createTurretShotSource(world, unit, weapon, projShot.id, playerId);
           const projectile = world.createProjectile(
             spawnX,
             spawnY,
@@ -614,6 +653,7 @@ export function fireTurrets(
             unit.id,
             projectileConfig,
             'projectile',
+            { shotId: projShot.id, shotSource },
           );
           projectile.transform.z = spawnZ;
           const projectileComponent = projectile.projectile;
@@ -640,6 +680,12 @@ export function fireTurrets(
             turretId: config.id,
             shotId: projShot.id,
             sourceTurretId: config.id,
+            sourceTurretInstanceId: shotSource.sourceTurretId ?? undefined,
+            sourceHostId: shotSource.sourceHostId,
+            sourceRootId: shotSource.sourceRootId,
+            sourceTeamId: shotSource.sourceTeamId,
+            spawnTick: shotSource.spawnTick,
+            parentShotId: shotSource.parentShotId,
             playerId,
             sourceEntityId: unit.id,
             turretIndex: weaponIndex,

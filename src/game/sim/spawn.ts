@@ -279,7 +279,12 @@ function placeCompleteBuilding(
   // up via entity.combat (host-agnostic), so armed buildings ride
   // through the targeting / fire / turret-rotation pipelines on the
   // same code path as armed units.
-  const buildingTurrets = createBuildingRuntimeTurrets(buildingType);
+  const buildingTurrets = createBuildingRuntimeTurrets(
+    buildingType,
+    entity.id,
+    entity.id,
+    () => world.generateEntityId(),
+  );
   if (buildingTurrets.length > 0) {
     entity.combat = createCombatComponent(buildingTurrets);
   }

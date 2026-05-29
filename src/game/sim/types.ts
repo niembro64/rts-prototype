@@ -48,6 +48,7 @@ export type {
   TurretState,
   Turret,
   ProjectileType,
+  ShotSource,
   BeamReflectorKind,
   BeamPoint,
   ProjectileAbsenceSlots,
@@ -61,6 +62,10 @@ export type {
   Factory,
   Commander,
   DGunProjectile,
+  EntityMeta,
+  EntityMetaBlueprintKind,
+  EntityMetaKind,
+  EntityMetaStoragePool,
   EntityType,
   Entity,
 } from '@/types/sim';

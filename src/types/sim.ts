@@ -428,6 +428,22 @@ export type ProjectileConfig = {
   turretIndex: number | undefined;
 };
 
+export type ShotSource = {
+  /** Runtime EntityId of the mounted turret instance that fired this shot. */
+  sourceTurretId: EntityId | null;
+  /** Runtime EntityId of the immediate top-level firing host. */
+  sourceHostId: EntityId;
+  /** Runtime EntityId of the root host that owns the firing assembly. */
+  sourceRootId: EntityId;
+  sourcePlayerId: PlayerId;
+  /** Null until team/alliance ownership becomes a first-class sim model. */
+  sourceTeamId: number | null;
+  sourceTurretBlueprintId: TurretId | undefined;
+  sourceShotBlueprintId: ShotId;
+  spawnTick: number;
+  parentShotId: EntityId | null;
+};
+
 // Turret FSM state: idle → tracking → engaged
 export type TurretState = 'idle' | 'tracking' | 'engaged';
 
@@ -440,6 +456,11 @@ export type TurretState = 'idle' | 'tracking' | 'engaged';
 // pitches the barrel upward. `angularVelocity` is the yaw rate only;
 // pitch is set directly each frame from the aim solution.
 export type Turret = {
+  /** Runtime identity for this mounted turret instance. Blueprint id lives on config.id. */
+  id: EntityId;
+  parentId: EntityId;
+  rootHostId: EntityId;
+  mountIndex: number;
   config: TurretConfig;
   target: EntityId | null;
   ranges: TurretRanges;
@@ -519,14 +540,17 @@ export type Turret = {
 // can extrapolate every vertex on the client between snapshots.
 export type Projectile = {
   ownerId: PlayerId;
+  /** Legacy host shortcut. The full immutable provenance lives in shotSource. */
   sourceEntityId: EntityId;
   config: ProjectileConfig;
   /** Actual shot blueprint id. For normal shots this equals config.shot.id;
    *  for submunitions it is the child shot id. */
   shotId: ShotId;
+  /** Immutable launch provenance, inherited by submunitions with parentShotId updated. */
+  shotSource: ShotSource;
   /** Real turret blueprint id that ultimately authored this projectile.
    *  Submunitions inherit this from their parent projectile. */
-  sourceTurretId: TurretId | undefined;
+  sourceTurretBlueprintId: TurretId | undefined;
   projectileType: ProjectileType;
   velocityX: number;
   velocityY: number;
@@ -816,6 +840,37 @@ export type DGunProjectile = {
 // mount turrets and carry a host-level lock-on, but have no locomotion.
 // See design_philosophy.html "Towers Are Static Hosts That Lock On And Fire".
 export type EntityType = 'unit' | 'tower' | 'building' | 'shot';
+
+export type EntityMetaKind = EntityType | 'turret' | 'locomotion';
+export type EntityMetaBlueprintKind =
+  | 'unit'
+  | 'tower'
+  | 'building'
+  | 'turret'
+  | 'locomotion'
+  | 'shot'
+  | 'none';
+export type EntityMetaStoragePool =
+  | 'entities'
+  | 'combat.turrets'
+  | 'unit.locomotion';
+
+export type EntityMeta = {
+  id: EntityId;
+  kind: EntityMetaKind;
+  blueprintKind: EntityMetaBlueprintKind;
+  blueprintId: string | null;
+  ownerPlayerId: PlayerId | null;
+  teamId: number | null;
+  parentId: EntityId | null;
+  rootHostId: EntityId;
+  mountIndex: number | null;
+  storagePool: EntityMetaStoragePool;
+  storageSlot: number;
+  generation: number;
+  alive: boolean;
+  targetable: boolean;
+};
 
 export type EntityComponentSlots = {
   body: Body | null;

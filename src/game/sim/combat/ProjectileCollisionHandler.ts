@@ -1,7 +1,7 @@
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot } from '../types';
+import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, ShotSource } from '../types';
 import { isLineShotType, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -13,7 +13,6 @@ import type {
   ProjectileVelocityUpdateEvent,
   SimEventSourceType,
 } from './types';
-import type { TurretId } from '../../../types/blueprintIds';
 import { beamIndex } from '../BeamIndex';
 import type { DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
@@ -323,6 +322,8 @@ export function resetCollisionBuffers(): void {
 function spawnSubmunitions(
   world: WorldState,
   parentShot: ProjectileShot,
+  parentShotEntityId: EntityId,
+  parentShotSource: ShotSource,
   detonationX: number,
   detonationY: number,
   detonationZ: number,
@@ -334,14 +335,14 @@ function spawnSubmunitions(
   surfaceNormalZ: number | undefined,
   ownerId: number,
   sourceEntityId: EntityId,
-  sourceTurretId: TurretId | undefined,
   outProjectiles: Entity[],
   outSpawnEvents: ProjectileSpawnEvent[],
 ): void {
   const spec = parentShot.submunitions;
   if (!spec || spec.count <= 0) return;
 
-  const childCfg = createProjectileConfigFromShot(spec.shotId, sourceTurretId);
+  const sourceTurretBlueprintId = parentShotSource.sourceTurretBlueprintId;
+  const childCfg = createProjectileConfigFromShot(spec.shotId, sourceTurretBlueprintId);
 
   // Reflect the parent's velocity across the surface normal:
   //   bounce = V − 2(V·N)N
@@ -418,6 +419,14 @@ function spawnSubmunitions(
     const proj = world.createProjectile(
       detonationX, detonationY, launchVx, launchVy,
       ownerId, sourceEntityId, childCfg, 'projectile',
+      {
+        shotId: spec.shotId,
+        shotSource: {
+          ...parentShotSource,
+          spawnTick: world.getTick(),
+          parentShotId: parentShotEntityId,
+        },
+      },
     );
     if (proj.projectile) {
       // Children start outside any source hitbox (parent already exploded).
@@ -443,9 +452,15 @@ function spawnSubmunitions(
         : undefined,
       // Source/provenance remains the real turret; shotId tells the
       // client which child projectile blueprint to hydrate.
-      turretId: sourceTurretId ?? '',
+      turretId: sourceTurretBlueprintId ?? '',
       shotId: spec.shotId,
-      sourceTurretId,
+      sourceTurretId: sourceTurretBlueprintId,
+      sourceTurretInstanceId: parentShotSource.sourceTurretId ?? undefined,
+      sourceHostId: parentShotSource.sourceHostId,
+      sourceRootId: parentShotSource.sourceRootId,
+      sourceTeamId: parentShotSource.sourceTeamId,
+      spawnTick: world.getTick(),
+      parentShotId: parentShotEntityId,
       playerId: ownerId,
       sourceEntityId,
       turretIndex: 0,
@@ -498,8 +513,8 @@ export function checkProjectileCollisions(
     const config = proj.config;
     // Projectile entities always use projectile/beam/laser shot types (never force)
     const shotId = (config.shot as ProjectileShot | BeamShot | LaserShot).id;
-    const damageSourceKey = proj.sourceTurretId ?? shotId;
-    const damageSourceType: SimEventSourceType = proj.sourceTurretId ? 'turret' : 'system';
+    const damageSourceKey = proj.sourceTurretBlueprintId ?? shotId;
+    const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
     const dgunProjectile = projEntity.dgunProjectile;
     const isDGunProjectile = dgunProjectile !== null && dgunProjectile.isDGun === true;
     const profile = config.shotProfile;
@@ -805,10 +820,11 @@ export function checkProjectileCollisions(
             }
             spawnSubmunitions(
               world, projShot,
+              projEntity.id, proj.shotSource,
               projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
               proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
               surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-              projEntity.ownership.playerId, proj.sourceEntityId, proj.sourceTurretId,
+              projEntity.ownership.playerId, proj.sourceEntityId,
               newProjectiles, spawnEvents,
             );
           }
@@ -1077,10 +1093,11 @@ export function checkProjectileCollisions(
               }
               spawnSubmunitions(
                 world, projShot,
+                projEntity.id, proj.shotSource,
                 projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
                 proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
                 surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-                projEntity.ownership.playerId, proj.sourceEntityId, proj.sourceTurretId,
+                projEntity.ownership.playerId, proj.sourceEntityId,
                 newProjectiles, spawnEvents,
               );
             }

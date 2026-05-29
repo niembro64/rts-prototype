@@ -653,12 +653,12 @@ export function serializeProjectileSnapshot({
         out.maxLifespan = Number.isFinite(proj.maxLifespan)
           ? proj.maxLifespan
           : null;
-        out.turretId = proj.sourceTurretId !== undefined
-          ? turretIdToCode(proj.sourceTurretId)
+        out.turretId = proj.sourceTurretBlueprintId !== undefined
+          ? turretIdToCode(proj.sourceTurretBlueprintId)
           : TURRET_ID_UNKNOWN;
         out.shotId = shotIdToCode(proj.shotId);
-        out.sourceTurretId = proj.sourceTurretId !== undefined
-          ? turretIdToCode(proj.sourceTurretId)
+        out.sourceTurretId = proj.sourceTurretBlueprintId !== undefined
+          ? turretIdToCode(proj.sourceTurretBlueprintId)
           : null;
         out.playerId = proj.ownerId;
         out.sourceEntityId = canReferenceEntityId(world, visibility, proj.sourceEntityId)

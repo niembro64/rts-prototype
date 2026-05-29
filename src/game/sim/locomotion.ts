@@ -4,6 +4,7 @@ import type {
   PathfindingBlueprint,
 } from '@/types/blueprints';
 import type { UnitLocomotion } from './types';
+import { NO_ENTITY_ID, type EntityId } from '@/types/entityTypes';
 
 export const LOCOMOTION_TRACTION = {
   wheels: 0.45,
@@ -112,6 +113,10 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     }
   }
   return {
+    id: NO_ENTITY_ID,
+    parentId: NO_ENTITY_ID,
+    rootHostId: NO_ENTITY_ID,
+    mountIndex: 0,
     type,
     driveForce: physics.driveForce,
     traction: physics.traction,
@@ -122,8 +127,20 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
   };
 }
 
-export function cloneUnitLocomotion(locomotion: UnitLocomotion): UnitLocomotion {
+export function cloneUnitLocomotion(
+  locomotion: UnitLocomotion,
+  identity?: {
+    id: EntityId;
+    parentId: EntityId;
+    rootHostId: EntityId;
+    mountIndex?: number;
+  },
+): UnitLocomotion {
   return {
+    id: identity?.id ?? locomotion.id,
+    parentId: identity?.parentId ?? locomotion.parentId,
+    rootHostId: identity?.rootHostId ?? locomotion.rootHostId,
+    mountIndex: identity?.mountIndex ?? locomotion.mountIndex,
     type: locomotion.type,
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,

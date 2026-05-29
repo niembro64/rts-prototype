@@ -141,6 +141,13 @@ export type ProjectileSpawnEvent = {
   /** Real turret blueprint id that ultimately authored this projectile,
    *  inherited through submunition chains when applicable. */
   sourceTurretId?: TurretAudioId;
+  /** Runtime turret EntityId that fired the projectile, if known. */
+  sourceTurretInstanceId?: EntityId;
+  sourceHostId?: EntityId;
+  sourceRootId?: EntityId;
+  sourceTeamId?: number | null;
+  spawnTick?: number;
+  parentShotId?: EntityId | null;
   playerId: PlayerId;
   sourceEntityId: EntityId;
   turretIndex: number;

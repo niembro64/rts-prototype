@@ -1,4 +1,18 @@
-import type { Entity, EntityId, EntityType, PlayerId, TurretConfig, Projectile, ProjectileConfig, ProjectileType, UnitLocomotion } from './types';
+import type {
+  Entity,
+  EntityId,
+  EntityMeta,
+  EntityMetaBlueprintKind,
+  EntityMetaKind,
+  EntityType,
+  PlayerId,
+  ShotSource,
+  TurretConfig,
+  Projectile,
+  ProjectileConfig,
+  ProjectileType,
+  UnitLocomotion,
+} from './types';
 import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
@@ -7,7 +21,7 @@ import {
   PROJECTILE_ABSENCE_SLOTS,
 } from './types';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import type { ShotId, TurretId } from '../../types/blueprintIds';
+import type { ShotId } from '../../types/blueprintIds';
 import type { ResourceMovement } from './resourceMovement';
 import { EntityCacheManager } from './EntityCacheManager';
 import { getUnitBlueprint, getUnitLocomotion } from './blueprints';
@@ -57,6 +71,13 @@ export type RemovedSnapshotEntity = {
   type: 'unit' | 'building' | 'tower';
 };
 
+export type CreateProjectileProvenance = {
+  /** Runtime shot blueprint for this projectile body. Submunitions use child shot ids here. */
+  shotId?: ShotId | null;
+  /** Immutable source record. Submunitions pass a copy of their parent's source record. */
+  shotSource?: ShotSource | null;
+};
+
 // Seeded random number generator for determinism
 export class SeededRNG {
   private seed: number;
@@ -92,6 +113,7 @@ export class SeededRNG {
 // World state holds all entities and game state
 export class WorldState {
   private entities: Map<EntityId, Entity> = new Map();
+  private entityMetaById: Map<EntityId, EntityMeta> = new Map();
   private nextEntityId: EntityId = 1;
   private tick: number = 0;
   private buildingVersion: number = 0;
@@ -267,6 +289,118 @@ export class WorldState {
     return this.nextEntityId++;
   }
 
+  getEntityMeta(id: EntityId): EntityMeta | undefined {
+    return this.entityMetaById.get(id);
+  }
+
+  private upsertEntityMeta(meta: EntityMeta): void {
+    const previous = this.entityMetaById.get(meta.id);
+    this.entityMetaById.set(meta.id, {
+      ...meta,
+      generation: previous?.generation ?? meta.generation,
+      alive: true,
+    });
+  }
+
+  private entityBlueprintKind(entity: Entity): EntityMetaBlueprintKind {
+    if (entity.type === 'unit') return 'unit';
+    if (entity.type === 'tower') return 'tower';
+    if (entity.type === 'building') return 'building';
+    if (entity.type === 'shot') return 'shot';
+    return 'none';
+  }
+
+  private entityBlueprintId(entity: Entity): string | null {
+    if (entity.unit !== null) return entity.unit.unitType;
+    if (entity.buildingType !== null) return entity.buildingType;
+    if (entity.projectile !== null) return entity.projectile.shotId;
+    return null;
+  }
+
+  private registerEntityMetadata(entity: Entity): void {
+    const ownerPlayerId = entity.ownership !== null ? entity.ownership.playerId : null;
+    const entityKind: EntityMetaKind = entity.type;
+    const rootHostId = entity.projectile !== null
+      ? entity.projectile.shotSource.sourceRootId
+      : entity.id;
+    this.upsertEntityMeta({
+      id: entity.id,
+      kind: entityKind,
+      blueprintKind: this.entityBlueprintKind(entity),
+      blueprintId: this.entityBlueprintId(entity),
+      ownerPlayerId,
+      teamId: null,
+      parentId: null,
+      rootHostId,
+      mountIndex: null,
+      storagePool: 'entities',
+      storageSlot: entity.id,
+      generation: 0,
+      alive: true,
+      targetable: entity.type === 'unit' || entity.type === 'tower' || entity.type === 'building',
+    });
+
+    const combat = entity.combat;
+    if (combat !== null) {
+      for (let i = 0; i < combat.turrets.length; i++) {
+        const turret = combat.turrets[i];
+        if (turret.id === NO_ENTITY_ID) continue;
+        this.upsertEntityMeta({
+          id: turret.id,
+          kind: 'turret',
+          blueprintKind: 'turret',
+          blueprintId: turret.config.id,
+          ownerPlayerId,
+          teamId: null,
+          parentId: turret.parentId,
+          rootHostId: turret.rootHostId,
+          mountIndex: turret.mountIndex,
+          storagePool: 'combat.turrets',
+          storageSlot: i,
+          generation: 0,
+          alive: true,
+          targetable: !turret.config.visualOnly,
+        });
+      }
+    }
+
+    const locomotion = entity.unit?.locomotion;
+    if (locomotion !== undefined && locomotion.id !== NO_ENTITY_ID) {
+      this.upsertEntityMeta({
+        id: locomotion.id,
+        kind: 'locomotion',
+        blueprintKind: 'locomotion',
+        blueprintId: locomotion.type,
+        ownerPlayerId,
+        teamId: null,
+        parentId: locomotion.parentId,
+        rootHostId: locomotion.rootHostId,
+        mountIndex: locomotion.mountIndex,
+        storagePool: 'unit.locomotion',
+        storageSlot: 0,
+        generation: 0,
+        alive: true,
+        targetable: false,
+      });
+    }
+  }
+
+  private markMetaDead(id: EntityId): void {
+    this.entityMetaById.delete(id);
+  }
+
+  private markEntityMetadataDead(entity: Entity): void {
+    this.markMetaDead(entity.id);
+    const combat = entity.combat;
+    if (combat !== null) {
+      for (let i = 0; i < combat.turrets.length; i++) {
+        this.markMetaDead(combat.turrets[i].id);
+      }
+    }
+    const locomotion = entity.unit?.locomotion;
+    if (locomotion !== undefined) this.markMetaDead(locomotion.id);
+  }
+
   // Get current tick
   getTick(): number {
     return this.tick;
@@ -280,6 +414,7 @@ export class WorldState {
   // Add entity to world
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
+    this.registerEntityMetadata(entity);
     if (entity.type === 'unit') this.unitSetVersion++;
     // Towers share the buildingVersion bucket because their structural
     // shape (static, footprint, building component) matches buildings;
@@ -321,6 +456,7 @@ export class WorldState {
     this.pendingDeathCheckIds.delete(id);
     this.snapshotDirtyIds.delete(id);
     this.snapshotDirtyFields.delete(id);
+    if (entity !== undefined) this.markEntityMetadataDead(entity);
     this.entities.delete(id);
     this.cache.invalidate();
   }
@@ -710,7 +846,12 @@ export class WorldState {
       ownership: { playerId },
       unit: {
         unitType,
-        locomotion: cloneUnitLocomotion(locomotion),
+        locomotion: cloneUnitLocomotion(locomotion, {
+          id: this.generateEntityId(),
+          parentId: id,
+          rootHostId: id,
+          mountIndex: 0,
+        }),
         radius: { ...radius },
         bodyCenterHeight,
         mass,
@@ -786,7 +927,13 @@ export class WorldState {
     // Create combat component (turrets + per-host bookkeeping) from
     // blueprint. Every unit blueprint declares at least one turret, so
     // every unit gets a combat component at spawn.
-    entity.combat = createCombatComponent(createUnitRuntimeTurrets(unitId, bp.radius.body));
+    entity.combat = createCombatComponent(createUnitRuntimeTurrets(
+      unitId,
+      bp.radius.body,
+      entity.id,
+      entity.id,
+      () => this.generateEntityId(),
+    ));
 
     // Cache force-field panels for fast beam collision checks. Same helper
     // runs on the client (NetworkEntityFactory) so authoritative and
@@ -823,12 +970,14 @@ export class WorldState {
     velocityY: number,
     ownerId: PlayerId,
     sourceEntityId: EntityId,
-    config: TurretConfig
+    config: TurretConfig,
+    provenance: CreateProjectileProvenance | null = null,
   ): Entity {
     const entity = this.createProjectile(
       x, y, velocityX, velocityY, ownerId, sourceEntityId,
       createProjectileConfigFromTurret(config),
       'projectile',
+      provenance,
     );
 
     // Mark as D-gun wave; projectile integration applies gravity plus
@@ -898,7 +1047,7 @@ export class WorldState {
     sourceEntityId: EntityId,
     config: ProjectileConfig,
     projectileType: ProjectileType = 'projectile',
-    provenance: { shotId: ShotId | null; sourceTurretId: TurretId | null } | null = null,
+    provenance: CreateProjectileProvenance | null = null,
   ): Entity {
     const id = this.generateEntityId();
 
@@ -912,6 +1061,22 @@ export class WorldState {
 
     // Always single hit (DGun overrides maxHits to Infinity after creation)
     const maxHits = 1;
+    const shotId = provenance !== null && provenance.shotId !== undefined && provenance.shotId !== null
+      ? provenance.shotId
+      : config.shot.id;
+    const shotSource: ShotSource = provenance !== null && provenance.shotSource !== undefined && provenance.shotSource !== null
+      ? { ...provenance.shotSource }
+      : {
+        sourceTurretId: null,
+        sourceHostId: sourceEntityId,
+        sourceRootId: sourceEntityId,
+        sourcePlayerId: ownerId,
+        sourceTeamId: null,
+        sourceTurretBlueprintId: config.sourceTurretId,
+        sourceShotBlueprintId: shotId,
+        spawnTick: this.tick,
+        parentShotId: null,
+      };
 
     // createProjectile's z/vz defaults to "fired horizontally at
     // source turret height" — M6 (projectile ballistics) will override
@@ -921,10 +1086,9 @@ export class WorldState {
       ownerId,
       sourceEntityId,
       config,
-      shotId: provenance !== null && provenance.shotId !== null ? provenance.shotId : config.shot.id,
-      sourceTurretId: provenance !== null && provenance.sourceTurretId !== null
-        ? provenance.sourceTurretId
-        : config.sourceTurretId,
+      shotId,
+      shotSource,
+      sourceTurretBlueprintId: shotSource.sourceTurretBlueprintId ?? config.sourceTurretId,
       ...PROJECTILE_ABSENCE_SLOTS,
       projectileType,
       velocityX,
@@ -968,9 +1132,10 @@ export class WorldState {
     ownerId: PlayerId,
     sourceEntityId: EntityId,
     config: ProjectileConfig,
-    projectileType: 'beam' | 'laser' = 'beam'
+    projectileType: 'beam' | 'laser' = 'beam',
+    provenance: CreateProjectileProvenance | null = null,
   ): Entity {
-    const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType);
+    const entity = this.createProjectile(startX, startY, 0, 0, ownerId, sourceEntityId, config, projectileType, provenance);
     entity.transform.z = beamZ;
 
     if (entity.projectile) {

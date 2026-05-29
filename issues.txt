@@ -28,10 +28,10 @@ SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 Items A1-A17 added 2026-05-29, auditing the code against
 budget_design_philosophy.html — universal entity IDs + host hierarchy, shot
 source provenance, lock-on exclusion objects on turrets/units/towers,
-host-directed vs fully-autonomous turrets, and the tower entity type. Three
-load-bearing claims were re-verified by hand (runtime Turret has no id;
-Projectile.sourceTurretId is a blueprint id; excludeLockOn* is turret-only);
-the rest cite agent-audit refs — re-verify file:line before editing.
+host-directed vs fully-autonomous turrets, and the tower entity type. Some
+original claims have since been fixed in the TypeScript authoritative sim
+(runtime turret/locomotion ids, TS EntityMeta registry, ShotSource provenance);
+remaining refs still need re-verification before editing.
 
 NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
 entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
@@ -40,49 +40,34 @@ unit/tower exclusion object.
 
 ----- Universal Runtime Entity IDs -----
 
-A1. [HIGH] Mounted turrets have no runtime EntityId of their own.
-    LOCATION: src/types/sim.ts:442-511 (runtime Turret); src/game/sim/
-      runtimeTurrets.ts:68-98; rts-sim-wasm/src/lib.rs:7953-7954,8167-8168
-      (turret SoA indexed entity_slot*MAX_PER_ENTITY + turret_idx).
+A1. [HIGH] Rust targeting/aiming slabs still do not carry mounted-turret
+    runtime EntityIds.
+    LOCATION: rts-sim-wasm/src/lib.rs:7953-7954,8167-8168 (turret SoA indexed
+      entity_slot*MAX_PER_ENTITY + turret_idx).
     RULE: "Universal Runtime Entity IDs" — every mounted turret carries its own
       EntityId + parent_id + root_host_id + mount_index.
-    PROBLEM: a runtime Turret carries only config, target (EntityId|null), and
-      pose/cooldown state — no id, no parent_id/root_host_id/mount_index. Turrets
-      are positional elements of combat.turrets[] built in blueprint order and
-      addressed everywhere by (host, turretIndex) or entity_slot*MAX+idx. No
-      system can reference a specific turret by id. This is the "inferred from
-      array index / blueprint order" anti-pattern the rule rejects, and it is the
-      root cause of A8 (shots can't name a unique source turret) and blocks
-      turret-mounts as lock-on targets.
-    FIX: allocate a runtime EntityId per turret at spawn; store parent_id (host),
-      root_host_id, and mount_index on it; register it through the same registry
-      as top-level entities.
+    PROBLEM: TypeScript runtime Turret objects now have id/parentId/rootHostId/
+      mountIndex and register metadata in WorldState, but Rust-side turret slabs
+      are still positional elements addressed by (host slot, turretIndex) and
+      entity_slot*MAX+idx. Systems inside the slab still cannot name a specific
+      turret by runtime EntityId.
+    FIX: stamp turret EntityId/parent/root/mount metadata into the Rust slabs and
+      expose registry-backed resolution there; keep slot/index only as cached
+      storage addressing.
 
-A2. [HIGH] Locomotion has no runtime EntityId and no back-reference to its unit.
-    LOCATION: src/types/locomotionTypes.ts:18-45; src/types/sim.ts:173
-      (Unit.locomotion).
-    RULE: "Universal Runtime Entity IDs" — a locomotion subentity carries its own
-      EntityId and stores the unit it moves.
-    PROBLEM: UnitLocomotion is a bare sub-object on Unit with no id and no host id.
-    FIX: give locomotion a runtime EntityId with parent_id/root_host_id pointing
-      at its unit; register it.
-
-A3. [HIGH] No entity-metadata registry; the documented EntityMeta fields are absent.
-    LOCATION: src/types/sim.ts:818,882-886 (Entity); src/types/entityTypes.ts:3
-      (EntityId = number); rts-sim-wasm/src/lib.rs:7479-7503 (EntityMetaPool).
+A3. [HIGH] Rust EntityMetaPool still lacks the documented metadata registry.
+    LOCATION: rts-sim-wasm/src/lib.rs:7479-7503 (EntityMetaPool).
     RULE: "Universal Runtime Entity IDs" — the ID resolves through a registry into
       a metadata row: kind, blueprint_kind, blueprint_id, owner_player_id,
       team_id, parent_id, root_host_id, mount_index, storage_pool/slot,
       generation, alive, targetable.
-    PROBLEM: the TS Entity row carries only {id, type, transform} + component
-      slots; the Rust EntityMetaPool carries entity_type/player_id/hp but NONE of
-      blueprint_id, team_id, parent_id, root_host_id, mount_index, storage,
-      generation, alive, targetable. There is no EntityId->metadata registry; the
-      only id->slot map is a local combat-targeting cache (lib.rs:8165, resolver
-      lib.rs:10612-10624).
-    FIX: add an EntityMeta registry row mirroring the documented struct,
-      resolvable by EntityId, populated at spawn (top-level hosts set
-      parent_id=null, root_host_id=self).
+    PROBLEM: TypeScript WorldState now has an EntityId->EntityMeta registry for
+      top-level entities, mounted turrets, and locomotion. Rust EntityMetaPool
+      still carries entity_type/player_id/hp only, with NONE of blueprint_id,
+      team_id, parent_id, root_host_id, mount_index, storage, generation, alive,
+      targetable.
+    FIX: mirror the TS EntityMeta row in Rust and key it by EntityId; populate it
+      from authoritative spawn/stamping data.
 
 A4. [HIGH] Rust EntityMetaPool treats the reusable storage slot AS identity.
     LOCATION: rts-sim-wasm/src/lib.rs:7460-7462 (comment "No separate EntityId<->
@@ -107,57 +92,7 @@ A5. [MED] No generation-checked handles.
     FIX: add a generation field per registry row, bump on slot reuse, validate
       (id, generation) on resolve.
 
-A6. [LOW] Turret audio id encodes mutable meaning (host_id*100 + mount).
-    LOCATION: src/game/sim/combat/laserSoundSystem.ts:51,79,120; src/game/sim/
-      combat/forceFieldSoundSystem.ts:26,57.
-    RULE: "Universal Runtime Entity IDs" — "Do not encode mutable meaning into the
-      numeric ID itself."
-    PROBLEM: turret-level audio identity is synthesized as
-      soundEntityId = entity.id*100 + weaponIndex, baking host id + mount index
-      into a numeric id, and colliding if a host ever mounts >100 turrets.
-    FIX: once turrets have real EntityIds (A1), key audio off the turret's own id.
-
 ----- Shots carry immutable source provenance -----
-
-A7. [HIGH] Shot source record is missing most documented fields.
-    LOCATION: src/types/sim.ts:520-558 (Projectile); src/game/sim/WorldState.ts:
-      892-953 (createProjectile).
-    RULE: "Shots carry immutable source provenance" — ShotSource{source_turret_id,
-      source_host_id, source_root_id, source_player_id, source_team_id,
-      source_turret_blueprint_id, source_shot_blueprint_id, spawn_tick,
-      parent_shot_id}.
-    PROBLEM: a shot carries only ownerId, sourceEntityId (=host), sourceTurretId
-      (a blueprint id — see A8), shotId, sourceBarrelIndex. Missing: source_root_id,
-      a distinct source_turret_blueprint_id, a separate source_shot_blueprint_id,
-      spawn_tick, parent_shot_id. (Existing fields ARE immutable — set once at
-      spawn, survive source death and reflection — so the gap is missing fields,
-      not mutability.)
-    FIX: add the full ShotSource sub-record to Projectile and populate it at every
-      spawn site (WorldState.createProjectile + projectileSystem launch paths).
-
-A8. [HIGH] "Source turret id" is a turret BLUEPRINT id, not a unique instance.
-    LOCATION: src/game/sim/combat/projectileSystem.ts:557-587 (beam),607-651
-      (ballistic) set sourceTurretId=config.id; src/types/sim.ts:527-529 (comment
-      "Real turret blueprint id").
-    RULE: "Shots carry immutable source provenance" — user rule: "shots have both
-      their turret id AND the host id the turret is on."
-    PROBLEM: host id (sourceEntityId = unit.id) is a real unique instance, but the
-      turret id is the turret BLUEPRINT id — two identical turrets on one host, or
-      any two same-type units, produce indistinguishable source-turret ids. The
-      "both ids" rule is only half-met. Root cause is A1 (turrets have no instance
-      id).
-    FIX: once turrets have runtime EntityIds (A1), store the turret INSTANCE id as
-      source_turret_id and keep the blueprint id as source_turret_blueprint_id.
-
-A9. [MED] Submunition provenance inheritance is incomplete.
-    LOCATION: src/game/sim/combat/ProjectileCollisionHandler.ts:323-451.
-    RULE: "Shots carry immutable source provenance" — submunitions and spawned
-      children carry the source record incl. parent_shot_id.
-    PROBLEM: children inherit ownerId/sourceEntityId/sourceTurretId but there is no
-      parent_shot_id link, no spawn_tick, and no source_root_id; a child cannot be
-      traced back to its specific parent shot.
-    FIX: pass parent_shot_id = parent entity id and copy the parent's full
-      ShotSource into the child, overriding only parent_shot_id and spawn_tick.
 
 A10. [MED] Authoritative projectile state lives in TS, not Rust — provenance has
      nowhere to migrate.

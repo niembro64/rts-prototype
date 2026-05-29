@@ -29,7 +29,7 @@ import type {
   StopCommand,
   WaitCommand,
 } from './commands';
-import type { Entity, PlayerId, Unit, UnitAction } from './types';
+import type { Entity, PlayerId, ShotSource, Unit, UnitAction } from './types';
 import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
@@ -623,6 +623,17 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   }
 
   // Create D-gun projectile
+  const shotSource: ShotSource = {
+    sourceTurretId: turretDisruptor.id !== NO_ENTITY_ID ? turretDisruptor.id : null,
+    sourceHostId: commander.id,
+    sourceRootId: turretDisruptor.rootHostId !== NO_ENTITY_ID ? turretDisruptor.rootHostId : commander.id,
+    sourcePlayerId: playerId,
+    sourceTeamId: null,
+    sourceTurretBlueprintId: turretDisruptor.config.id,
+    sourceShotBlueprintId: dgunShot.id,
+    spawnTick: ctx.world.getTick(),
+    parentShotId: null,
+  };
   const projectile = ctx.world.createDGunProjectile(
     spawnX,
     spawnY,
@@ -630,7 +641,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     velocityY,
     playerId,
     commander.id,
-    turretDisruptor.config
+    turretDisruptor.config,
+    { shotId: dgunShot.id, shotSource },
   );
 
   projectile.transform.z = dgunFireZ;
@@ -657,6 +669,12 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     turretId: turretDisruptor.config.id,
     shotId: dgunShot.id,
     sourceTurretId: turretDisruptor.config.id,
+    sourceTurretInstanceId: shotSource.sourceTurretId ?? undefined,
+    sourceHostId: shotSource.sourceHostId,
+    sourceRootId: shotSource.sourceRootId,
+    sourceTeamId: shotSource.sourceTeamId,
+    spawnTick: shotSource.spawnTick,
+    parentShotId: shotSource.parentShotId,
     playerId,
     sourceEntityId: commander.id,
     turretIndex: dgunIdx,
