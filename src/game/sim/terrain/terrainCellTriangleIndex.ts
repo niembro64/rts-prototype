@@ -1,3 +1,5 @@
+import { getSimWasm } from '../../sim-wasm/init';
+
 export type TerrainCellTriangleIndexInput = {
   cellsX: number;
   cellsY: number;
@@ -12,6 +14,50 @@ export type TerrainCellTriangleIndex = {
 };
 
 export function buildTerrainCellTriangleIndex(
+  input: TerrainCellTriangleIndexInput,
+): TerrainCellTriangleIndex {
+  const wasmIndex = buildTerrainCellTriangleIndexWasm(input);
+  if (wasmIndex) return wasmIndex;
+  return buildTerrainCellTriangleIndexTs(input);
+}
+
+function buildTerrainCellTriangleIndexWasm(
+  input: TerrainCellTriangleIndexInput,
+): TerrainCellTriangleIndex | null {
+  const sim = getSimWasm();
+  if (sim === undefined) return null;
+  const { cellsX, cellsY, cellSize, vertexCoords, triangleIndices } = input;
+  const cellCount = Math.max(0, Math.floor(cellsX * cellsY));
+  const cellTriangleOffsets = new Int32Array(cellCount + 1);
+  const wasmVertexCoords = Float64Array.from(vertexCoords);
+  const wasmTriangleIndices = Int32Array.from(triangleIndices);
+  const totalRefs = sim.terrainCountCellTriangleRefs(
+    cellsX,
+    cellsY,
+    cellSize,
+    wasmVertexCoords,
+    wasmTriangleIndices,
+    cellTriangleOffsets,
+  );
+  if (totalRefs < 0) return null;
+  const cellTriangleIndices = new Int32Array(totalRefs);
+  const writtenRefs = sim.terrainFillCellTriangleIndices(
+    cellsX,
+    cellsY,
+    cellSize,
+    wasmVertexCoords,
+    wasmTriangleIndices,
+    cellTriangleOffsets,
+    cellTriangleIndices,
+  );
+  if (writtenRefs !== totalRefs) return null;
+  return {
+    cellTriangleOffsets: Array.from(cellTriangleOffsets),
+    cellTriangleIndices: Array.from(cellTriangleIndices),
+  };
+}
+
+function buildTerrainCellTriangleIndexTs(
   input: TerrainCellTriangleIndexInput,
 ): TerrainCellTriangleIndex {
   const { cellsX, cellsY, cellSize, vertexCoords, triangleIndices } = input;

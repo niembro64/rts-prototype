@@ -47,9 +47,11 @@ C16. [HIGH] Remaining terrain mesh baking and repair should move to Rust/WASM.
       resource footprint growth, ring placement, snapped grid placement, and explicit
       dTerrain height derivation are now Rust/WASM-owned. Null-height metal-deposit
       terrain anchoring and static terrain buildability grid baking are also
-      Rust/WASM-owned, with TS kept as object assembly/fallback.
-    FIX: port terrain mesh baking/repair to Rust/WASM in stages, with TS kept as
-      orchestration only until each old path can be deleted.
+      Rust/WASM-owned, with TS kept as object assembly/fallback. Mesh cell-triangle
+      indexing and final vertex-height smoothing are now Rust/WASM-owned.
+    FIX: port the remaining adaptive mesh topology generation and crack-repair
+      passes to Rust/WASM in stages, with TS kept as orchestration only until each
+      old path can be deleted.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

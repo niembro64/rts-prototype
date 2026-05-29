@@ -54,6 +54,9 @@ import __wbg_init, {
   terrain_install_mesh,
   terrain_clear,
   terrain_is_installed,
+  terrain_count_cell_triangle_refs,
+  terrain_fill_cell_triangle_indices,
+  terrain_smooth_mesh_vertex_heights,
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_sample_ground_for_slots,
@@ -719,6 +722,34 @@ export interface SimWasm {
   readonly terrainClear: () => void;
   /** 1 if a mesh is currently installed, 0 otherwise. */
   readonly terrainIsInstalled: () => number;
+  /** C16 — first pass for terrain mesh cell->triangle index baking.
+   *  Fills prefix offsets and returns the required flat ref count,
+   *  or -1 when TS should keep the compatibility path. */
+  readonly terrainCountCellTriangleRefs: (
+    cellsX: number,
+    cellsY: number,
+    cellSize: number,
+    vertexCoords: Float64Array,
+    triangleIndices: Int32Array,
+    cellTriangleOffsetsOut: Int32Array,
+  ) => number;
+  /** C16 — second pass for terrain mesh cell->triangle index baking. */
+  readonly terrainFillCellTriangleIndices: (
+    cellsX: number,
+    cellsY: number,
+    cellSize: number,
+    vertexCoords: Float64Array,
+    triangleIndices: Int32Array,
+    cellTriangleOffsets: Int32Array,
+    cellTriangleIndicesOut: Int32Array,
+  ) => number;
+  /** C16 — final mesh vertex-height smoothing during terrain bake. */
+  readonly terrainSmoothMeshVertexHeights: (
+    vertexHeights: Float64Array,
+    triangleIndices: Int32Array,
+    maxSteps: number,
+    amount: number,
+  ) => number;
   /** Sample terrain surface height at world-space (x, z). Returns
    *  NaN if no mesh is installed or the triangle walk degenerates;
    *  JS callers treat NaN as "fall back to TS sampler" since that
@@ -2779,6 +2810,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainInstallMesh: terrain_install_mesh,
         terrainClear: terrain_clear,
         terrainIsInstalled: terrain_is_installed,
+        terrainCountCellTriangleRefs: terrain_count_cell_triangle_refs,
+        terrainFillCellTriangleIndices: terrain_fill_cell_triangle_indices,
+        terrainSmoothMeshVertexHeights: terrain_smooth_mesh_vertex_heights,
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainSampleGroundForSlots: terrain_sample_ground_for_slots,

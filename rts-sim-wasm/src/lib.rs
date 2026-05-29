@@ -3405,6 +3405,247 @@ const TERRAIN_WATER_LEVEL: f64 = TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEV
 // barycentric guard.
 const TERRAIN_MESH_EPSILON: f64 = 1e-6;
 
+#[inline]
+fn terrain_clamp_cell(value: i32, count: i32) -> i32 {
+    if count <= 1 {
+        0
+    } else {
+        value.max(0).min(count - 1)
+    }
+}
+
+#[inline]
+fn terrain_triangle_cell_span(
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+    tri: usize,
+) -> Option<(i32, i32, i32, i32)> {
+    let tri_offset = tri.checked_mul(3)?;
+    let ia = *triangle_indices.get(tri_offset)? as usize;
+    let ib = *triangle_indices.get(tri_offset + 1)? as usize;
+    let ic = *triangle_indices.get(tri_offset + 2)? as usize;
+    let ax = *vertex_coords.get(ia.checked_mul(2)?)?;
+    let az = *vertex_coords.get(ia.checked_mul(2)? + 1)?;
+    let bx = *vertex_coords.get(ib.checked_mul(2)?)?;
+    let bz = *vertex_coords.get(ib.checked_mul(2)? + 1)?;
+    let cx = *vertex_coords.get(ic.checked_mul(2)?)?;
+    let cz = *vertex_coords.get(ic.checked_mul(2)? + 1)?;
+    if !ax.is_finite()
+        || !az.is_finite()
+        || !bx.is_finite()
+        || !bz.is_finite()
+        || !cx.is_finite()
+        || !cz.is_finite()
+    {
+        return None;
+    }
+    let min_cell_x = terrain_clamp_cell((ax.min(bx).min(cx) / cell_size).floor() as i32, cells_x);
+    let max_cell_x = terrain_clamp_cell((ax.max(bx).max(cx) / cell_size).floor() as i32, cells_x);
+    let min_cell_y = terrain_clamp_cell((az.min(bz).min(cz) / cell_size).floor() as i32, cells_y);
+    let max_cell_y = terrain_clamp_cell((az.max(bz).max(cz) / cell_size).floor() as i32, cells_y);
+    Some((min_cell_x, max_cell_x, min_cell_y, max_cell_y))
+}
+
+/// First pass for the mesh cell->triangle acceleration structure used by
+/// terrain sampling. Fills `cell_triangle_offsets_out` with prefix offsets
+/// and returns the required number of triangle refs, or -1 when TS should
+/// keep the compatibility path.
+#[wasm_bindgen]
+pub fn terrain_count_cell_triangle_refs(
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+    cell_triangle_offsets_out: &mut [i32],
+) -> i32 {
+    if cells_x <= 0
+        || cells_y <= 0
+        || !cell_size.is_finite()
+        || cell_size <= 0.0
+        || triangle_indices.len() % 3 != 0
+    {
+        return -1;
+    }
+    let cell_count = match (cells_x as usize).checked_mul(cells_y as usize) {
+        Some(count) => count,
+        None => return -1,
+    };
+    if cell_triangle_offsets_out.len() < cell_count + 1 {
+        return -1;
+    }
+    for offset in &mut cell_triangle_offsets_out[..cell_count] {
+        *offset = 0;
+    }
+
+    let triangle_count = triangle_indices.len() / 3;
+    for tri in 0..triangle_count {
+        let (min_cell_x, max_cell_x, min_cell_y, max_cell_y) = match terrain_triangle_cell_span(
+            cells_x,
+            cells_y,
+            cell_size,
+            vertex_coords,
+            triangle_indices,
+            tri,
+        ) {
+            Some(span) => span,
+            None => return -1,
+        };
+        for cy in min_cell_y..=max_cell_y {
+            for cell_x in min_cell_x..=max_cell_x {
+                let cell_index = (cy * cells_x + cell_x) as usize;
+                cell_triangle_offsets_out[cell_index] += 1;
+            }
+        }
+    }
+
+    let mut total_refs: i64 = 0;
+    for i in 0..cell_count {
+        let count = cell_triangle_offsets_out[i] as i64;
+        cell_triangle_offsets_out[i] = total_refs as i32;
+        total_refs += count;
+        if total_refs > i32::MAX as i64 {
+            return -1;
+        }
+    }
+    cell_triangle_offsets_out[cell_count] = total_refs as i32;
+    total_refs as i32
+}
+
+/// Second pass for the terrain mesh cell index. Uses prefix offsets produced
+/// by `terrain_count_cell_triangle_refs` and fills the flat triangle ref list.
+#[wasm_bindgen]
+pub fn terrain_fill_cell_triangle_indices(
+    cells_x: i32,
+    cells_y: i32,
+    cell_size: f64,
+    vertex_coords: &[f64],
+    triangle_indices: &[i32],
+    cell_triangle_offsets: &[i32],
+    cell_triangle_indices_out: &mut [i32],
+) -> i32 {
+    if cells_x <= 0
+        || cells_y <= 0
+        || !cell_size.is_finite()
+        || cell_size <= 0.0
+        || triangle_indices.len() % 3 != 0
+    {
+        return -1;
+    }
+    let cell_count = match (cells_x as usize).checked_mul(cells_y as usize) {
+        Some(count) => count,
+        None => return -1,
+    };
+    if cell_triangle_offsets.len() < cell_count + 1 {
+        return -1;
+    }
+    let total_refs = cell_triangle_offsets[cell_count];
+    if total_refs < 0 || cell_triangle_indices_out.len() < total_refs as usize {
+        return -1;
+    }
+    let mut write_offsets = cell_triangle_offsets[..cell_count].to_vec();
+
+    let triangle_count = triangle_indices.len() / 3;
+    for tri in 0..triangle_count {
+        let (min_cell_x, max_cell_x, min_cell_y, max_cell_y) = match terrain_triangle_cell_span(
+            cells_x,
+            cells_y,
+            cell_size,
+            vertex_coords,
+            triangle_indices,
+            tri,
+        ) {
+            Some(span) => span,
+            None => return -1,
+        };
+        for cy in min_cell_y..=max_cell_y {
+            for cell_x in min_cell_x..=max_cell_x {
+                let cell_index = (cy * cells_x + cell_x) as usize;
+                let write = write_offsets[cell_index];
+                if write < 0 || write >= total_refs {
+                    return -1;
+                }
+                cell_triangle_indices_out[write as usize] = tri as i32;
+                write_offsets[cell_index] = write + 1;
+            }
+        }
+    }
+
+    total_refs
+}
+
+#[inline]
+fn terrain_push_unique_neighbor(neighbors: &mut Vec<usize>, vertex: usize) {
+    if !neighbors.iter().any(|&existing| existing == vertex) {
+        neighbors.push(vertex);
+    }
+}
+
+/// Laplacian smoothing of mesh vertex heights. This mirrors
+/// smoothMeshVertexHeights in terrainTileMap.ts, including ordered-Set
+/// neighbor insertion so floating-point accumulation order stays stable.
+#[wasm_bindgen]
+pub fn terrain_smooth_mesh_vertex_heights(
+    vertex_heights: &mut [f64],
+    triangle_indices: &[i32],
+    max_steps: i32,
+    amount: f64,
+) -> u32 {
+    if triangle_indices.len() % 3 != 0 || !amount.is_finite() {
+        return 0;
+    }
+    let steps = max_steps.max(0) as usize;
+    let amount = amount.clamp(0.0, 1.0);
+    if steps == 0 || amount <= 0.0 || vertex_heights.is_empty() {
+        return 1;
+    }
+
+    let vertex_count = vertex_heights.len();
+    let mut neighbors = vec![Vec::<usize>::new(); vertex_count];
+    for t in (0..triangle_indices.len()).step_by(3) {
+        let a = triangle_indices[t];
+        let b = triangle_indices[t + 1];
+        let c = triangle_indices[t + 2];
+        if a < 0 || b < 0 || c < 0 {
+            return 0;
+        }
+        let a = a as usize;
+        let b = b as usize;
+        let c = c as usize;
+        if a >= vertex_count || b >= vertex_count || c >= vertex_count {
+            return 0;
+        }
+        terrain_push_unique_neighbor(&mut neighbors[a], b);
+        terrain_push_unique_neighbor(&mut neighbors[a], c);
+        terrain_push_unique_neighbor(&mut neighbors[b], a);
+        terrain_push_unique_neighbor(&mut neighbors[b], c);
+        terrain_push_unique_neighbor(&mut neighbors[c], a);
+        terrain_push_unique_neighbor(&mut neighbors[c], b);
+    }
+
+    let mut next = vec![0.0; vertex_count];
+    for _ in 0..steps {
+        for v in 0..vertex_count {
+            let ns = &neighbors[v];
+            if ns.is_empty() {
+                next[v] = vertex_heights[v];
+                continue;
+            }
+            let mut sum = 0.0;
+            for &n in ns {
+                sum += vertex_heights[n];
+            }
+            let avg = sum / ns.len() as f64;
+            next[v] = vertex_heights[v] + (avg - vertex_heights[v]) * amount;
+        }
+        vertex_heights.copy_from_slice(&next);
+    }
+    1
+}
+
 struct TerrainGrid {
     map_width: f64,
     map_height: f64,

@@ -1,6 +1,7 @@
 import type { TerrainTileMap } from '@/types/terrain';
 import { LAND_CELL_SIZE } from '../../../config';
 import { assertCanonicalLandCellSize } from '../../landGrid';
+import { getSimWasm } from '../../sim-wasm/init';
 import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_MESH_HEIGHT_SMOOTHING,
@@ -1539,6 +1540,23 @@ function smoothMeshVertexHeights(
   const steps = Math.max(0, TERRAIN_MESH_HEIGHT_SMOOTHING.maxSteps | 0);
   const amount = Math.max(0, Math.min(1, TERRAIN_MESH_HEIGHT_SMOOTHING.amount));
   if (steps <= 0 || amount <= 0 || vertexHeights.length === 0) return;
+
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    const wasmVertexHeights = Float64Array.from(vertexHeights);
+    const ok = sim.terrainSmoothMeshVertexHeights(
+      wasmVertexHeights,
+      Int32Array.from(triangleIndices),
+      steps,
+      amount,
+    );
+    if (ok !== 0) {
+      for (let i = 0; i < vertexHeights.length; i++) {
+        vertexHeights[i] = wasmVertexHeights[i];
+      }
+      return;
+    }
+  }
 
   const vertexCount = vertexHeights.length;
   const neighborSets = new Array<Set<number>>(vertexCount);
