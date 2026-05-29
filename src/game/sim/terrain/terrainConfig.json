@@ -4,7 +4,7 @@
   "terrainTriangleMaxSurfaceError": 4,
   "terrainTriangleMaxNormalAngleDegrees": 18,
   "terrainTriangleMaxNeighborLevelDelta": 1,
-  "terrainTriangleFinalRepairMaxPasses": 3,
+  "terrainTriangleFinalRepairMaxPasses": 0,
   "terrainTriangleSampleCentroid": true,
   "terrainTrianglePreserveWaterline": true,
   "terrainTriangleVertexKeyScale": 1000,
