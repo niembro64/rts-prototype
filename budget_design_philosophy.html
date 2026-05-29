@@ -1292,8 +1292,8 @@
         <li><code>locomotion</code> owns how a body produces and applies movement forces.</li>
         <li><code>unit</code> owns a <em>mobile</em> entity's body, mass, health, command capabilities, build cost, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, a host-level lock-on target governed by the unit's own lock-on exclusion object, and composition slots.</li>
         <li><code>tower</code> owns an <em>immobile</em> entity's body, mass, health, mounted turrets and the per-mount host-directed/fully-autonomous tag that decides which of them follow the host's lock-on, and a host-level lock-on target governed by the tower's own lock-on exclusion object. A tower has the same turret-and-lock-on contract as a unit, but no locomotion. Anything static that takes action against an entity ID through turrets is a tower &mdash; including fabricators (whose construction turret targets a build site) and defensive shooting towers.</li>
-        <li><code>turret</code> owns lock-on eligibility through its own lock-on exclusion object, aiming, tracking, cooldown, mount behavior, and which shot it emits. It does <em>not</em> own whether it is host-directed or fully-autonomous &mdash; that role is set per mount by the host, so one turret blueprint can be a primary on one host and a secondary on another.</li>
-        <li><code>shot</code> owns projectile, beam, laser, force-field, inherited homing target, recoil, damage, impulse, and collision behavior.</li>
+        <li><code>turret</code> is a standardized emitter: it owns lock-on eligibility through its own lock-on exclusion object, aiming, tracking, cooldown, firing pattern (burst and spread), mount behavior, and a single by-id reference to the one shot it emits. It carries no host-specific data and no inline emission payload &mdash; the shot is named by id, never copied into the turret &mdash; so the same turret blueprint drops onto any host&rsquo;s mount unchanged. It does <em>not</em> own whether it is host-directed or fully-autonomous; that role is set per mount by the host, so one turret blueprint can be a primary on one host and a secondary on another.</li>
+        <li><code>shot</code> is the single umbrella for everything a turret emits, discriminated into variants: <code>projectile</code> (plasma, rocket), <code>beam</code>, <code>laser</code>, and <code>forceField</code>. The variant owns its own travel / line / barrier behavior, inherited homing target, recoil, damage, impulse, reflection, lifetime, submunition payload, and collision behavior. A turret names exactly one shot, by id; the shot is never inlined into the turret, and <code>forceField</code> is a shot variant like any other rather than a special case bolted onto the turret. A force-field shot owns its barrier material and reflection behavior, while the shape it is projected as (a flat panel array or a sphere) is the mount&rsquo;s geometry &mdash; per <strong>Materials Are Independent Of Shape</strong>.</li>
         <li><code>building</code> owns static footprint, construction, production, extraction, storage, or other static infrastructure that does <em>not</em> mount turrets and does <em>not</em> carry a host-level lock-on. Anything that needs a turret or lock-on is a <code>tower</code>, not a building.</li>
       </ul>
 
@@ -1499,12 +1499,21 @@
       <p>
         Blueprint IDs identify authored definitions. Runtime entity IDs identify live instances.
         They are different contracts, and the game needs both. Every addressable thing in the
-        simulation gets a runtime <code>EntityId</code>: units, towers, buildings, mounted
-        turrets, locomotion subentities, in-flight shots, beams, build shells, build sites, and
-        any future resource pylon, sensor, force-field, or utility entity that can be selected,
-        locked onto, damaged, repaired, tracked, serialized, or named by another system. If
-        anything in the game can point at it, remember it, or explain that it came from it, it is
-        not anonymous.
+        simulation gets a runtime <code>EntityId</code>, and the test is <em>addressability, not
+        category</em>: if anything can point at it, remember it, lock onto it, damage it, or
+        explain that it came from it, it is not anonymous. That covers units, towers, and
+        buildings (top-level hosts), every mounted turret, every locomotion subentity, every
+        <em>travelling munition</em> &mdash; a plasma bolt or rocket that has left the barrel and
+        now persists, reflects, spawns submunitions, and can be hit &mdash; and every build site.
+        It does <em>not</em> automatically mint an entity for every emission. A <code>beam</code>
+        or <code>forceField</code> projected by a live turret is a <em>variant of that
+        turret&rsquo;s one shot</em>, recomputed each tick from the turret&rsquo;s aim and bound to
+        its lifetime; it is attributed through the emitting turret&rsquo;s id and the shot&rsquo;s
+        source record, not by allocating a separate id. Transient detail &mdash; a beam&rsquo;s
+        polyline vertices, a force-field&rsquo;s projected surface, resource balls in flight
+        &mdash; stays anonymous for the same reason. Give one of these its own id only when the
+        design genuinely needs to point at that specific instance; the default is to attribute it
+        to its emitter.
       </p>
 
       <h3>Opaque handle, explicit metadata</h3>
@@ -1555,9 +1564,11 @@
         and its mount index.</li>
         <li><strong>Locomotion</strong> &mdash; carries its own <code>EntityId</code> and stores
         the unit it moves as its host.</li>
-        <li><strong>Shot</strong> &mdash; carries its own <code>EntityId</code> and, in its source
-        record, both the turret id that fired it and the host id that turret was mounted on (see
-        <strong>Shots carry immutable source provenance</strong>).</li>
+        <li><strong>Shot</strong> &mdash; a travelling munition (plasma, rocket) carries its own
+        <code>EntityId</code>; a sustained or line emission (beam, laser, force-field) is bound to
+        its emitter and attributed through it rather than minting its own. Either way the
+        shot&rsquo;s source record names both the turret id that fired it and the host id that
+        turret was mounted on (see <strong>Shots carry immutable source provenance</strong>).</li>
       </ul>
       <p>
         A tower-mounted construction emitter, for example, stores both the turret slot it occupies
@@ -1570,6 +1581,20 @@
         <code>root_host_id</code> means the top-level unit, tower, or building that owns the
         mounted assembly. <code>owner_player_id</code> and <code>team_id</code> describe gameplay
         ownership. They are stored beside the ID, not inside it.
+      </p>
+
+      <h3>A build site is the product, carrying its own id from frame one</h3>
+      <p>
+        A unit or building under construction is not a placeholder that later hands off to the
+        &ldquo;real&rdquo; entity. It <em>is</em> the real entity, alive from the first frame in an
+        under-construction state, carrying the <code>EntityId</code> it will keep for its whole
+        life. Health, completion fraction, and buildability ramp up; the id never changes. A
+        construction turret locks onto that id like any other target, the player can select it and
+        queue commands on it, and those selections and orders survive completion because nothing is
+        swapped underneath them. There is no separate &ldquo;build shell&rdquo; id pointing at a
+        &ldquo;product&rdquo; id &mdash; one continuous identity from nanoframe to finished
+        structure. That is what keeps construction, damage, capture, lock-on, and command all
+        speaking about the same entity, with no re-id handoff bug at the instant it completes.
       </p>
 
       <h3>Shots carry immutable source provenance</h3>
@@ -2195,8 +2220,8 @@
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
         <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code> / <code>terrain-3d-water</code>) &mdash; and whether the camera may pass through terrain is a separate boolean. All six anchor behaviors and both collision behaviors must be reachable from config, never from a hardcoded branch in the picker.</li>
-        <li>Keep locomotion, unit, tower, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary.</li>
-        <li>Give every addressable live instance &mdash; unit, tower, building, turret, locomotion, and shot alike &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, subentities store <code>parent_id</code> and <code>root_host_id</code>. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
+        <li>Keep locomotion, unit, tower, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary. Make the turret a standardized emitter that names exactly one shot by id and carries no inline emission payload, so it drops onto any host&rsquo;s mount unchanged; <code>shot</code> is the single umbrella with variants (projectile, beam, laser, force-field), with force-field a shot variant rather than inline turret config.</li>
+        <li>Give every addressable live instance &mdash; unit, tower, building, turret, locomotion, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, subentities store <code>parent_id</code> and <code>root_host_id</code>. Assign ids by addressability, not category: a beam or force-field sustained by a live turret attributes through its emitter instead of minting its own id, and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and may lock onto any entity that has an ID except the ones its own host-level lock-on exclusion object removes; each mounted turret may then inherit that target only if its own exclusion object and targeting gates accept it. Turrets, units, and towers all carry the same subtractive lock-on exclusion object; buildings carry none, and no host target, because they mount no turrets.</li>
         <li>Tag every turret mount as <code>host-directed</code> (host-controlled primary) or <code>fully-autonomous</code> (secondary) on the unit or tower blueprint &mdash; not on the turret blueprint, so the same turret can be host-directed on one host and fully-autonomous on another. For each kind of turret a host mounts, exactly one of that kind must be host-directed &mdash; the blueprint loader throws at startup on zero (orders cannot land) or two-or-more (ambiguous primary). When the host is locked on to another entity, the host-directed turret&rsquo;s lock-on is overwritten by the host&rsquo;s (subject to that turret&rsquo;s exclusion object); fully-autonomous turrets are never overwritten and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic counts only host-directed turrets. The rule applies identically to units and towers.</li>
         <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
