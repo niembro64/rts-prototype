@@ -1,38 +1,52 @@
 {
-  "tileFloorY": -1200,
-  "waterLevelFraction": 0.9,
-  "terrainTriangleMaxSurfaceError": 4,
-  "terrainTriangleMaxNormalAngleDegrees": 18,
-  "terrainTriangleMaxNeighborLevelDelta": 1,
-  "terrainTriangleFinalRepairMaxPasses": 0,
-  "terrainTriangleSampleCentroid": true,
-  "terrainTrianglePreserveWaterline": true,
-  "terrainTriangleVertexKeyScale": 1000,
-  "meshHeightSmoothing": {
-    "maxSteps": 0,
-    "amount": 0.5
+  "world": {
+    "floorY": -1200
   },
-  "waterFullyOpaque": false,
-  "terrainCircleIslandRadiusFraction": 0.4,
-  "terrainCircleShorelineWidthFraction": 0.1,
-  "terrainGenerationEdgeTransitionWidthFraction": 0.04,
-  "plateau": {
-    "shelfFractionOfStep": 0.99,
-    "rampEdgeSharpness": 0,
-    "buildableShelfHeightTolerance": 20
+  "water": {
+    "levelFraction": 0.9,
+    "fullyOpaque": false
   },
-  "ripple": {
-    "radiusFraction": 0.4,
-    "phase": 1.7,
-    "components": [
-      { "wavelength": 700, "magnitude": 0.9 },
-      { "wavelength": 600, "magnitude": 0 },
-      { "wavelength": 600, "magnitude": 0 }
-    ]
+  "generation": {
+    "edgeFadeWidthFraction": 0.04,
+    "circleIsland": {
+      "radiusFraction": 1.3,
+      "shorelineWidthFraction": 0.1
+    },
+    "ripple": {
+      "radiusFraction": 0.4,
+      "phase": 1.7,
+      "components": [
+        { "wavelength": 700, "magnitude": 0.9 },
+        { "wavelength": 600, "magnitude": 0 },
+        { "wavelength": 600, "magnitude": 0 }
+      ]
+    },
+    "ridge": {
+      "innerRadiusFraction": 0.1,
+      "outerRadiusFraction": 0.4,
+      "halfWidthFraction": 0.08
+    },
+    "plateau": {
+      "shelfFractionOfStep": 0.99,
+      "rampEdgeSharpness": 0,
+      "buildableShelfHeightTolerance": 20
+    }
   },
-  "ridge": {
-    "innerRadiusFraction": 0.1,
-    "outerRadiusFraction": 0.4,
-    "halfWidthFraction": 0.08
+  "mesh": {
+    "collapse": {
+      "maxSurfaceError": 4,
+      "maxNormalAngleDegrees": 18,
+      "preserveWaterline": true,
+      "sampleCentroid": true
+    },
+    "balance": {
+      "maxNeighborLevelDelta": 1,
+      "repairMaxPasses": 0
+    },
+    "vertexKeyScale": 1000,
+    "heightSmoothing": {
+      "maxSteps": 0,
+      "amount": 0.5
+    }
   }
 }

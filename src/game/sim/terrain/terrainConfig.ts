@@ -2,10 +2,10 @@ import { BATTLE_CONFIG } from '../../../battleBarConfig';
 import terrainConfig from './terrainConfig.json';
 
 /** Floor of the world's vertical extent: the bottom face of every 3D tile. */
-export const TILE_FLOOR_Y = terrainConfig.tileFloorY;
+export const TILE_FLOOR_Y = terrainConfig.world.floorY;
 
 /** Water surface position between TILE_FLOOR_Y and ground level 0. */
-export const WATER_LEVEL_FRACTION = terrainConfig.waterLevelFraction;
+export const WATER_LEVEL_FRACTION = terrainConfig.water.levelFraction;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
@@ -28,7 +28,7 @@ export let TERRAIN_FINE_TRIANGLE_SUBDIV = Math.max(
  *  candidate plane, rather than only in world-Z height, lets steep-but-planar
  *  terrain simplify without top-down projection bias. */
 export const TERRAIN_TRIANGLE_MAX_SURFACE_ERROR =
-  terrainConfig.terrainTriangleMaxSurfaceError;
+  terrainConfig.mesh.collapse.maxSurfaceError;
 
 /** @deprecated Use TERRAIN_TRIANGLE_MAX_SURFACE_ERROR. The collapse check now
  *  measures perpendicular surface error instead of world-Z height error. */
@@ -38,7 +38,7 @@ export const TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR = TERRAIN_TRIANGLE_MAX_SURFACE_ER
  *  triangle. This catches curved terrain whose sampled points happen to stay
  *  within the positional error tolerance. */
 export const TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES =
-  terrainConfig.terrainTriangleMaxNormalAngleDegrees;
+  terrainConfig.mesh.collapse.maxNormalAngleDegrees;
 export const TERRAIN_TRIANGLE_MIN_NORMAL_DOT = Math.cos(
   Math.max(0, Math.min(180, TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES)) *
     Math.PI / 180,
@@ -47,26 +47,26 @@ export const TERRAIN_TRIANGLE_MIN_NORMAL_DOT = Math.cos(
 /** Maximum hierarchy-level delta allowed across touching triangle edges.
  *  `1` gives a 2:1 balanced transition band around high-detail terrain. */
 export const TERRAIN_TRIANGLE_MAX_NEIGHBOR_LEVEL_DELTA =
-  terrainConfig.terrainTriangleMaxNeighborLevelDelta;
+  terrainConfig.mesh.balance.maxNeighborLevelDelta;
 
 /** Hard cap for final mesh edge repair. Keeps terrain startup bounded even
  *  when a pathological map generates many transition edges. */
 export const TERRAIN_TRIANGLE_FINAL_REPAIR_MAX_PASSES =
-  terrainConfig.terrainTriangleFinalRepairMaxPasses;
+  terrainConfig.mesh.balance.repairMaxPasses;
 
 /** Extra error sample at a triangle centroid catches peaks or valleys that do
  *  not land on the fine lattice points for that candidate triangle. */
 export const TERRAIN_TRIANGLE_SAMPLE_CENTROID =
-  terrainConfig.terrainTriangleSampleCentroid;
+  terrainConfig.mesh.collapse.sampleCentroid;
 
 /** Never collapse a candidate triangle if the simplified plane moves the
  *  waterline classification of any checked point. */
 export const TERRAIN_TRIANGLE_PRESERVE_WATERLINE =
-  terrainConfig.terrainTrianglePreserveWaterline;
+  terrainConfig.mesh.collapse.preserveWaterline;
 
 /** World-space vertex de-duplication precision for clipped triangle borders. */
 export const TERRAIN_TRIANGLE_VERTEX_KEY_SCALE =
-  terrainConfig.terrainTriangleVertexKeyScale;
+  terrainConfig.mesh.vertexKeyScale;
 
 /** Post-bake Laplacian smoothing pass applied to mesh vertex heights at the
  *  very end of terrain generation, before the per-cell triangle index is
@@ -78,8 +78,8 @@ export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
   readonly maxSteps: number;
   readonly amount: number;
 } = {
-  maxSteps: terrainConfig.meshHeightSmoothing.maxSteps,
-  amount: terrainConfig.meshHeightSmoothing.amount,
+  maxSteps: terrainConfig.mesh.heightSmoothing.maxSteps,
+  amount: terrainConfig.mesh.heightSmoothing.amount,
 };
 
 /** Render-only "solid ocean" mode. When true:
@@ -92,7 +92,7 @@ export const TERRAIN_MESH_HEIGHT_SMOOTHING: {
  *        (any vertex above water) are still drawn.
  *  The authoritative mesh — used by the sim for height queries, unit
  *  grounding, and pathing — is untouched. */
-export const WATER_FULLY_OPAQUE = terrainConfig.waterFullyOpaque;
+export const WATER_FULLY_OPAQUE = terrainConfig.water.fullyOpaque;
 
 export type TerrainRuntimeConfig = {
   /** Signed altitude of the central ripple (CENTER bar). */
@@ -151,12 +151,12 @@ export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
  *  `COLORS.world.terrain.horizonBlend`; the horizon blend merely reads this
  *  generation boundary so the color seam tracks the land→seabed handoff. */
 export const TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION =
-  terrainConfig.terrainCircleIslandRadiusFraction;
+  terrainConfig.generation.circleIsland.radiusFraction;
 /** Width (fraction of min dimension) of the shoreline falloff band just
  *  inside `TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION` over which land ramps down
  *  to the seabed. Generation shape, not coloring. */
 export const TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION =
-  terrainConfig.terrainCircleShorelineWidthFraction;
+  terrainConfig.generation.circleIsland.shorelineWidthFraction;
 
 /** The terrain height outside the round island. Keep this at the world floor:
  *  water is a separate plane above it, so the island edge visibly descends
@@ -165,7 +165,7 @@ export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = TILE_FLOOR_Y;
 
 /** Fade authored terrain features to flat before the outer map buffer. */
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
-  terrainConfig.terrainGenerationEdgeTransitionWidthFraction;
+  terrainConfig.generation.edgeFadeWidthFraction;
 
 /** Terracing is enabled iff `TERRAIN_D_TERRAIN > 0` (the D-PLATEAU bar
  *  picks `0` for the "NONE" option). The other fields here remain
@@ -175,9 +175,9 @@ export const TERRAIN_PLATEAU_CONFIG: {
   readonly rampEdgeSharpness: number;
   readonly buildableShelfHeightTolerance: number;
 } = {
-  shelfFractionOfStep: terrainConfig.plateau.shelfFractionOfStep,
-  rampEdgeSharpness: terrainConfig.plateau.rampEdgeSharpness,
-  buildableShelfHeightTolerance: terrainConfig.plateau.buildableShelfHeightTolerance,
+  shelfFractionOfStep: terrainConfig.generation.plateau.shelfFractionOfStep,
+  rampEdgeSharpness: terrainConfig.generation.plateau.rampEdgeSharpness,
+  buildableShelfHeightTolerance: terrainConfig.generation.plateau.buildableShelfHeightTolerance,
 };
 
 export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean {
@@ -229,13 +229,13 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
  *  means slightly different things per component, but magnitude is
  *  uniformly the relative weight. */
 export const TERRAIN_RIPPLE_CONFIG = {
-  radiusFraction: terrainConfig.ripple.radiusFraction,
-  phase: terrainConfig.ripple.phase,
-  components: terrainConfig.ripple.components,
+  radiusFraction: terrainConfig.generation.ripple.radiusFraction,
+  phase: terrainConfig.generation.ripple.phase,
+  components: terrainConfig.generation.ripple.components,
 } as const;
 
 export const TERRAIN_RIDGE_CONFIG = {
-  innerRadiusFraction: terrainConfig.ridge.innerRadiusFraction,
-  outerRadiusFraction: terrainConfig.ridge.outerRadiusFraction,
-  halfWidthFraction: terrainConfig.ridge.halfWidthFraction,
+  innerRadiusFraction: terrainConfig.generation.ridge.innerRadiusFraction,
+  outerRadiusFraction: terrainConfig.generation.ridge.outerRadiusFraction,
+  halfWidthFraction: terrainConfig.generation.ridge.halfWidthFraction,
 } as const;
