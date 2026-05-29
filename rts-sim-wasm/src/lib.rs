@@ -8360,6 +8360,15 @@ struct CombatTargetingPool {
     // u8 today (UNIT_TYPE_UNKNOWN = BUILDING_TYPE_UNKNOWN = 0xff).
     entity_family: Vec<u8>,
     entity_blueprint_code: Vec<u8>,
+    // LOCK-ON-04 — Per-host lock-on exclusion masks compiled from
+    // unit/tower blueprints. These gate host priority targets before
+    // host-directed turrets apply their own per-turret policy.
+    entity_lockon_relationship_mask: Vec<u8>,
+    entity_lockon_entity_family_mask: Vec<u8>,
+    entity_lockon_building_mask: Vec<u32>,
+    entity_lockon_tower_mask: Vec<u32>,
+    entity_lockon_unit_mask: Vec<u32>,
+    entity_lockon_turret_mask: Vec<u32>,
     // Per-entity detector radius. 0 = entity is not a detector. The
     // observability helper walks this array to find detector entities
     // owned by the viewer; storing the radius inline avoids a
@@ -8531,6 +8540,12 @@ impl CombatTargetingPool {
             entity_flags: Vec::new(),
             entity_family: Vec::new(),
             entity_blueprint_code: Vec::new(),
+            entity_lockon_relationship_mask: Vec::new(),
+            entity_lockon_entity_family_mask: Vec::new(),
+            entity_lockon_building_mask: Vec::new(),
+            entity_lockon_tower_mask: Vec::new(),
+            entity_lockon_unit_mask: Vec::new(),
+            entity_lockon_turret_mask: Vec::new(),
             entity_detector_radius: Vec::new(),
             entity_full_vision_radius: Vec::new(),
             entity_radar_radius: Vec::new(),
@@ -8633,6 +8648,14 @@ impl CombatTargetingPool {
                 .resize(entity_needed, CT_ENTITY_FAMILY_NONE);
             self.entity_blueprint_code
                 .resize(entity_needed, CT_BLUEPRINT_CODE_NONE);
+            self.entity_lockon_relationship_mask
+                .resize(entity_needed, 0);
+            self.entity_lockon_entity_family_mask
+                .resize(entity_needed, 0);
+            self.entity_lockon_building_mask.resize(entity_needed, 0);
+            self.entity_lockon_tower_mask.resize(entity_needed, 0);
+            self.entity_lockon_unit_mask.resize(entity_needed, 0);
+            self.entity_lockon_turret_mask.resize(entity_needed, 0);
             self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_full_vision_radius.resize(entity_needed, 0.0);
             self.entity_radar_radius.resize(entity_needed, 0.0);
@@ -8921,6 +8944,12 @@ pub fn combat_targeting_set_entity(
     flags: u8,
     family: u8,
     blueprint_code: u8,
+    lockon_relationship_mask: u8,
+    lockon_entity_family_mask: u8,
+    lockon_building_mask: u32,
+    lockon_tower_mask: u32,
+    lockon_unit_mask: u32,
+    lockon_turret_mask: u32,
     detector_radius: f32,
     full_vision_radius: f32,
     radar_radius: f32,
@@ -8969,6 +8998,12 @@ pub fn combat_targeting_set_entity(
     pool.entity_flags[s] = flags;
     pool.entity_family[s] = family;
     pool.entity_blueprint_code[s] = blueprint_code;
+    pool.entity_lockon_relationship_mask[s] = lockon_relationship_mask;
+    pool.entity_lockon_entity_family_mask[s] = lockon_entity_family_mask;
+    pool.entity_lockon_building_mask[s] = lockon_building_mask;
+    pool.entity_lockon_tower_mask[s] = lockon_tower_mask;
+    pool.entity_lockon_unit_mask[s] = lockon_unit_mask;
+    pool.entity_lockon_turret_mask[s] = lockon_turret_mask;
     pool.entity_detector_radius[s] = detector_radius;
     pool.entity_full_vision_radius[s] = full_vision_radius;
     pool.entity_radar_radius[s] = radar_radius;
@@ -10151,8 +10186,7 @@ fn combat_targeting_level1_mask_excludes(mask: u32, code: u8) -> bool {
 }
 
 #[inline]
-fn combat_targeting_turret_allowed_relationships(pool: &CombatTargetingPool, idx: usize) -> u8 {
-    let exclude = pool.turret_lockon_relationship_mask[idx];
+fn combat_targeting_allowed_relationships_from_exclusions(exclude: u8) -> u8 {
     let mut relationships = 0u8;
     if (exclude & CT_LOCK_ON_REL_EXCLUDE_FRIENDLY) == 0 {
         relationships |= CT_TARGETING_CANDIDATE_REL_FRIENDLY;
@@ -10164,11 +10198,18 @@ fn combat_targeting_turret_allowed_relationships(pool: &CombatTargetingPool, idx
 }
 
 #[inline]
-fn combat_targeting_owner_relationship_allowed(
+fn combat_targeting_turret_allowed_relationships(pool: &CombatTargetingPool, idx: usize) -> u8 {
+    combat_targeting_allowed_relationships_from_exclusions(
+        pool.turret_lockon_relationship_mask[idx],
+    )
+}
+
+#[inline]
+fn combat_targeting_owner_relationship_allowed_by_mask(
     pool: &CombatTargetingPool,
-    idx: usize,
     source_entity_slot: usize,
     target_entity_slot: usize,
+    allowed_relationships: u8,
 ) -> bool {
     if source_entity_slot >= pool.entity_owner_player_id.len()
         || target_entity_slot >= pool.entity_owner_player_id.len()
@@ -10182,7 +10223,69 @@ fn combat_targeting_owner_relationship_allowed(
     } else {
         CT_TARGETING_CANDIDATE_REL_ENEMY
     };
-    (combat_targeting_turret_allowed_relationships(pool, idx) & relationship) != 0
+    (allowed_relationships & relationship) != 0
+}
+
+#[inline]
+fn combat_targeting_turret_owner_relationship_allowed(
+    pool: &CombatTargetingPool,
+    idx: usize,
+    source_entity_slot: usize,
+    target_entity_slot: usize,
+) -> bool {
+    combat_targeting_owner_relationship_allowed_by_mask(
+        pool,
+        source_entity_slot,
+        target_entity_slot,
+        combat_targeting_turret_allowed_relationships(pool, idx),
+    )
+}
+
+#[inline]
+fn combat_targeting_lockon_masks_allow_target_turret(
+    entity_family_mask: u8,
+    turret_mask: u32,
+    target_turret_code: u8,
+) -> bool {
+    if (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_TURRETS) != 0 {
+        return false;
+    }
+    !combat_targeting_level1_mask_excludes(turret_mask, target_turret_code)
+}
+
+#[inline]
+fn combat_targeting_lockon_masks_allow_body_entity(
+    pool: &CombatTargetingPool,
+    entity_family_mask: u8,
+    building_mask: u32,
+    tower_mask: u32,
+    unit_mask: u32,
+    target_entity_slot: usize,
+) -> bool {
+    match pool.entity_family[target_entity_slot] {
+        CT_ENTITY_FAMILY_BUILDING => {
+            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS) == 0
+                && !combat_targeting_level1_mask_excludes(
+                    building_mask,
+                    pool.entity_blueprint_code[target_entity_slot],
+                )
+        }
+        CT_ENTITY_FAMILY_TOWER => {
+            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_TOWERS) == 0
+                && !combat_targeting_level1_mask_excludes(
+                    tower_mask,
+                    pool.entity_blueprint_code[target_entity_slot],
+                )
+        }
+        CT_ENTITY_FAMILY_UNIT => {
+            (entity_family_mask & CT_LOCK_ON_FAM_EXCLUDE_UNITS) == 0
+                && !combat_targeting_level1_mask_excludes(
+                    unit_mask,
+                    pool.entity_blueprint_code[target_entity_slot],
+                )
+        }
+        _ => true,
+    }
 }
 
 #[inline]
@@ -10191,12 +10294,8 @@ fn combat_targeting_turret_lockon_allows_target_turret(
     source_turret_idx: usize,
     target_turret_idx: usize,
 ) -> bool {
-    if (pool.turret_lockon_entity_family_mask[source_turret_idx] & CT_LOCK_ON_FAM_EXCLUDE_TURRETS)
-        != 0
-    {
-        return false;
-    }
-    !combat_targeting_level1_mask_excludes(
+    combat_targeting_lockon_masks_allow_target_turret(
+        pool.turret_lockon_entity_family_mask[source_turret_idx],
         pool.turret_lockon_turret_mask[source_turret_idx],
         pool.turret_blueprint_code[target_turret_idx],
     )
@@ -10208,36 +10307,60 @@ fn combat_targeting_turret_lockon_allows_body_entity(
     source_turret_idx: usize,
     target_entity_slot: usize,
 ) -> bool {
-    match pool.entity_family[target_entity_slot] {
-        CT_ENTITY_FAMILY_BUILDING => {
-            (pool.turret_lockon_entity_family_mask[source_turret_idx]
-                & CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS)
-                == 0
-                && !combat_targeting_level1_mask_excludes(
-                    pool.turret_lockon_building_mask[source_turret_idx],
-                    pool.entity_blueprint_code[target_entity_slot],
-                )
-        }
-        CT_ENTITY_FAMILY_TOWER => {
-            (pool.turret_lockon_entity_family_mask[source_turret_idx]
-                & CT_LOCK_ON_FAM_EXCLUDE_TOWERS)
-                == 0
-                && !combat_targeting_level1_mask_excludes(
-                    pool.turret_lockon_tower_mask[source_turret_idx],
-                    pool.entity_blueprint_code[target_entity_slot],
-                )
-        }
-        CT_ENTITY_FAMILY_UNIT => {
-            (pool.turret_lockon_entity_family_mask[source_turret_idx]
-                & CT_LOCK_ON_FAM_EXCLUDE_UNITS)
-                == 0
-                && !combat_targeting_level1_mask_excludes(
-                    pool.turret_lockon_unit_mask[source_turret_idx],
-                    pool.entity_blueprint_code[target_entity_slot],
-                )
-        }
-        _ => true,
+    combat_targeting_lockon_masks_allow_body_entity(
+        pool,
+        pool.turret_lockon_entity_family_mask[source_turret_idx],
+        pool.turret_lockon_building_mask[source_turret_idx],
+        pool.turret_lockon_tower_mask[source_turret_idx],
+        pool.turret_lockon_unit_mask[source_turret_idx],
+        target_entity_slot,
+    )
+}
+
+#[inline]
+fn combat_targeting_entity_allowed_relationships(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+) -> u8 {
+    if source_entity_slot >= pool.entity_lockon_relationship_mask.len() {
+        return 0;
     }
+    combat_targeting_allowed_relationships_from_exclusions(
+        pool.entity_lockon_relationship_mask[source_entity_slot],
+    )
+}
+
+#[inline]
+fn combat_targeting_entity_may_lock_entity_slot(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+    target_entity_slot: usize,
+) -> bool {
+    if source_entity_slot >= pool.entity_id.len()
+        || target_entity_slot >= pool.entity_id.len()
+        || source_entity_slot == target_entity_slot
+        || pool.entity_id[source_entity_slot] < 0
+        || pool.entity_id[target_entity_slot] < 0
+        || !combat_targeting_entity_alive(pool, target_entity_slot)
+    {
+        return false;
+    }
+    if !combat_targeting_owner_relationship_allowed_by_mask(
+        pool,
+        source_entity_slot,
+        target_entity_slot,
+        combat_targeting_entity_allowed_relationships(pool, source_entity_slot),
+    ) {
+        return false;
+    }
+    combat_targeting_lockon_masks_allow_body_entity(
+        pool,
+        pool.entity_lockon_entity_family_mask[source_entity_slot],
+        pool.entity_lockon_building_mask[source_entity_slot],
+        pool.entity_lockon_tower_mask[source_entity_slot],
+        pool.entity_lockon_unit_mask[source_entity_slot],
+        target_entity_slot,
+    )
 }
 
 #[inline]
@@ -10257,7 +10380,7 @@ fn combat_targeting_turret_may_lock_entity_slot(
     {
         return false;
     }
-    if !combat_targeting_owner_relationship_allowed(
+    if !combat_targeting_turret_owner_relationship_allowed(
         pool,
         source_turret_idx,
         source_entity_slot,
@@ -11803,6 +11926,7 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
         if let Some(slot) = target_slot {
             if combat_targeting_entity_alive(pool, slot)
                 && combat_targeting_view_mask_observes_entity(pool, slot, source_view_mask)
+                && combat_targeting_entity_may_lock_entity_slot(pool, entity_idx, slot)
             {
                 (
                     1u8,
@@ -13241,6 +13365,11 @@ pub fn combat_targeting_schedule_and_tick_batch(
             match combat_targeting_entity_slot_for_id(pool, priority_target_id) {
                 Some(target_slot) => {
                     combat_targeting_view_mask_observes_entity(pool, target_slot, source_view_mask)
+                        && combat_targeting_entity_may_lock_entity_slot(
+                            pool,
+                            entity_slot as usize,
+                            target_slot,
+                        )
                         && combat_targeting_entity_has_turret_that_may_lock_entity_slot(
                             pool,
                             entity_slot,
@@ -22018,7 +22147,7 @@ mod lock_on_exclusion_tests {
         flags
     }
 
-    fn stamp_entity(
+    fn stamp_entity_with_host_lockon(
         slot: u32,
         entity_id: i32,
         owner: u8,
@@ -22027,6 +22156,12 @@ mod lock_on_exclusion_tests {
         blueprint_code: u8,
         turret_count: u8,
         priority_target_id: i32,
+        lockon_relationship_mask: u8,
+        lockon_entity_family_mask: u8,
+        lockon_building_mask: u32,
+        lockon_tower_mask: u32,
+        lockon_unit_mask: u32,
+        lockon_turret_mask: u32,
     ) {
         let radius = 2.0;
         let (hx, hy, hz) = if family == CT_ENTITY_FAMILY_BUILDING {
@@ -22062,6 +22197,12 @@ mod lock_on_exclusion_tests {
             entity_flags(turret_count > 0),
             family,
             blueprint_code,
+            lockon_relationship_mask,
+            lockon_entity_family_mask,
+            lockon_building_mask,
+            lockon_tower_mask,
+            lockon_unit_mask,
+            lockon_turret_mask,
             0.0,
             200.0,
             0.0,
@@ -22081,6 +22222,34 @@ mod lock_on_exclusion_tests {
         } else {
             spatial_set_unit(slot, x, 0.0, 0.0, 1.0, radius, owner, 1);
         }
+    }
+
+    fn stamp_entity(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        family: u8,
+        blueprint_code: u8,
+        turret_count: u8,
+        priority_target_id: i32,
+    ) {
+        stamp_entity_with_host_lockon(
+            slot,
+            entity_id,
+            owner,
+            x,
+            family,
+            blueprint_code,
+            turret_count,
+            priority_target_id,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
     }
 
     fn stamp_source(priority_target_id: i32) {
@@ -22610,6 +22779,75 @@ mod lock_on_exclusion_tests {
         let (target_id, state, _) = run_schedule_tick(1);
         assert_eq!(target_id, 204);
         assert_ne!(state, CT_TURRET_STATE_IDLE);
+    }
+
+    #[test]
+    fn priority_target_respects_host_level_exclusions() {
+        let _guard = lock_tests();
+
+        reset_pools();
+        stamp_entity_with_host_lockon(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            201,
+            CT_LOCK_ON_REL_EXCLUDE_ENEMY,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (_, _, mode) = run_schedule_tick(1);
+        assert_eq!(
+            mode, CT_TARGETING_TICK_MODE_AUTO,
+            "host relationship exclusions must prevent priority-target mode"
+        );
+
+        reset_pools();
+        stamp_entity_with_host_lockon(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            202,
+            0,
+            CT_LOCK_ON_FAM_EXCLUDE_UNITS,
+            0,
+            0,
+            0,
+            0,
+        );
+        stamp_turret(SOURCE_SLOT, 0, TurretSpec::default());
+        stamp_body_target(
+            1,
+            202,
+            PLAYER_2,
+            20.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        let (_, _, mode) = run_schedule_tick(1);
+        assert_eq!(
+            mode, CT_TARGETING_TICK_MODE_AUTO,
+            "host family exclusions must prevent priority-target mode"
+        );
     }
 
     #[test]

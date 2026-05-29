@@ -83,6 +83,12 @@
         "hostDirected": true
       }
     ],
+    "excludeLockOnLevel0FriendsAndEnemies": [],
+    "excludeLockOnLevel0Entities": [],
+    "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
+    "excludeLockOnLevel1Units": [],
+    "excludeLockOnLevel1Turrets": [],
     "detector": null
   },
   "extractor": {
@@ -170,6 +176,12 @@
         "hostDirected": true
       }
     ],
+    "excludeLockOnLevel0FriendsAndEnemies": [],
+    "excludeLockOnLevel0Entities": [],
+    "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
+    "excludeLockOnLevel1Units": [],
+    "excludeLockOnLevel1Turrets": [],
     "detector": null
   },
   "cannonTower": {
@@ -205,6 +217,12 @@
         "hostDirected": true
       }
     ],
+    "excludeLockOnLevel0FriendsAndEnemies": [],
+    "excludeLockOnLevel0Entities": [],
+    "excludeLockOnLevel1Buildings": [],
+    "excludeLockOnLevel1Towers": [],
+    "excludeLockOnLevel1Units": [],
+    "excludeLockOnLevel1Turrets": [],
     "detector": null
   },
   "resourceConverter": {

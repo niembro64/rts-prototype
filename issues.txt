@@ -35,8 +35,8 @@ remaining refs still need re-verification before editing.
 
 NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
 entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
-The real holes cluster in entity IDs, shot provenance, and the missing
-unit/tower exclusion object.
+The real holes now cluster in entity IDs, shot provenance, and the remaining
+tower catalog split.
 
 ----- Universal Runtime Entity IDs -----
 
@@ -119,45 +119,6 @@ A11. [LOW] source_team_id / EntityMeta.team_id cannot be satisfied — no team m
     FIX: either introduce a team model and capture a frozen source_team_id at
       spawn, or explicitly scope team_id out of the design until teams exist.
 
------ Lock-on exclusion objects (turret / unit / tower) -----
-
-A12. [HIGH] Units and towers have no host-level lock-on exclusion object.
-    LOCATION: src/types/blueprints.ts:196-204 (turret-only exclusion fields);
-      src/types/blueprints.ts:511-564 (UnitBlueprint — none); src/game/sim/
-      blueprints/buildings.ts:18-49 (BuildingBlueprint — none); confirmed zero
-      excludeLockOn* in units.json/buildings.json.
-    RULE: "Lock-on exclusion objects" — all THREE locker kinds (turret, unit,
-      tower) carry their OWN subtractive exclusion object; user restated "all
-      exclusion logic applies to turrets, units AND towers."
-    PROBLEM: the five exclusion sets exist only on TurretBlueprint. Units and
-      towers carry no host-level exclusion object, so the requirement is unmet for
-      two of the three locker kinds.
-    FIX: add the same exclusion object (level-0 friends/enemies + entities, level-1
-      buildings/towers/units/turrets) to the unit and tower (building) blueprints,
-      governing the host-level lock-on.
-
-A13. [HIGH] No per-entity exclusion mask; the host lock-on is filtered only by
-     each turret's policy, never a host exclusion object.
-    LOCATION: rts-sim-wasm/src/lib.rs:8895-8988 (combat_targeting_set_entity — no
-      exclusion params); lib.rs:8479-8488 (masks stored at turret granularity
-      only); src/game/sim/combat/targetingInputStamping.ts:560-578 (setEntity
-      passes no exclusion masks); lib.rs:10244 (eligibility keyed on
-      source_turret_idx); src/game/sim/commandExecution.ts:717-748 (host lock set
-      via combat.priorityTargetId).
-    RULE: "Lock-on exclusion objects" + "Host intent is not turret lock-on" — the
-      host exclusion object gates what may BECOME the host target; the turret
-      exclusion object gates inheritance.
-    PROBLEM: CombatTargetingPool stores lock-on masks only per turret, and
-      combat_targeting_turret_may_lock_entity_slot evaluates only the source
-      turret's masks. The host-level lock-on (priorityTargetId) is filtered purely
-      by each turret's policy, with no host-level gate — a host can be commanded to
-      lock anything its turrets individually allow.
-    FIX: add entity_lockon_* mask fields + setEntity params stamped from the
-      unit/tower blueprint; evaluate the host's own exclusion object at
-      host-lock-acquisition time, then keep per-turret subtraction on top. The
-      existing hierarchy (lib.rs:10167-10241) can be reused via a host-keyed entry
-      point.
-
 ----- Minor / boundary-enforcement / test gaps (areas that audited mostly clean) -----
 
 A17. [LOW] No separate tower blueprint catalog; tower-vs-building is a runtime
@@ -226,10 +187,9 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
   zero-velocity edge is sent; baseline = last value actually sent per recipient.
 - EntityType has Tower as a true peer of Unit/Building; fabricator is a tower, not a
   building; pure-infra buildings carry no turrets/lock-on.
-- Lock-on exclusion lists are honored subtractively in targeting FOR TURRETS,
-  and candidate enumeration covers the unit/tower/building/turret-mount families.
-  CAVEAT: only turrets carry an exclusion object today — units and towers do NOT
-  (see A12/A13). So this is clean for the turret half only.
+- Lock-on exclusion lists are honored subtractively in targeting for turrets and
+  host-level unit/tower lock-on; candidate enumeration covers the
+  unit/tower/building/turret-mount families.
 - Host-directed vs fully-autonomous turret mounts are fully wired: the tag lives
   on the unit/tower MOUNT entry (TurretMount.hostDirected / BuildingTurretMount.
   hostDirected), NOT on the turret blueprint; the loader throws on !=1 host-directed

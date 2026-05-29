@@ -67,6 +67,12 @@ import {
   unitTypeToCode,
 } from '../../../types/network';
 import {
+  EMPTY_LOCK_ON_MASKS,
+  getTowerHostLockOnMasks,
+  getUnitHostLockOnMasks,
+  type LockOnMasks,
+} from '../blueprints';
+import {
   getEntityDetectionPadding,
   getEntityDetectorRadius,
   isEntityCloaked,
@@ -95,6 +101,14 @@ let _stampPrevFsmTarget = new Int32Array(0);
 let _stampPrevLosBlockedTicks = new Uint16Array(0);
 let _stampPrevCooldown = new Float64Array(0);
 let _stampPrevBurstCooldown = new Float64Array(0);
+
+function getHostLockOnMasks(entity: Entity): LockOnMasks {
+  if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitType);
+  if (entity.type === 'tower' && entity.buildingType !== null) {
+    return getTowerHostLockOnMasks(entity.buildingType);
+  }
+  return EMPTY_LOCK_ON_MASKS;
+}
 
 export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
@@ -497,6 +511,7 @@ function stampCombatTargetingEntityInto(
     entityBlueprintCode =
       buildingType !== null ? buildingTypeToCode(buildingType) : CT_BLUEPRINT_CODE_NONE;
   }
+  const hostLockOn = getHostLockOnMasks(entity);
 
   // Detector + padding stamped per-entity so the Rust observability
   // helper can walk the slab itself (replaces the per-player
@@ -569,6 +584,9 @@ function stampCombatTargetingEntityInto(
     aabbHalfX, aabbHalfY, aabbHalfZ,
     hp, entityFlags,
     entityFamily, entityBlueprintCode,
+    hostLockOn.relationship, hostLockOn.entityFamily,
+    hostLockOn.building, hostLockOn.tower,
+    hostLockOn.unit, hostLockOn.turret,
     detectorRadius, fullVisionRadius, radarRadius, detectionPadding,
     priorityTargetId === null ? -1 : priorityTargetId,
     priorityPointPresent,

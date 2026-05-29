@@ -33,6 +33,7 @@ export type {
   TurretAimAngleType,
   TurretAimLockOnType,
   TurretAimStyle,
+  LockOnExclusionObject,
   TurretLockOnRelationshipExclusion,
   TurretLockOnEntityFamilyExclusion,
   TurretRadiusConfig,

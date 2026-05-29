@@ -31,6 +31,7 @@ import { BUILDING_BLUEPRINTS } from './buildings';
 import type {
   ShotBlueprint,
   ForceFieldBarrierRatioConfig,
+  LockOnExclusionObject,
   TurretBlueprint,
 } from './types';
 import {
@@ -67,7 +68,7 @@ import {
 } from '../../sim-wasm/init';
 import { isTowerBuildingType, type BuildingType } from '../../../types/buildingTypes';
 
-type LockOnMasks = {
+export type LockOnMasks = {
   relationship: number;
   entityFamily: number;
   building: number;
@@ -77,7 +78,7 @@ type LockOnMasks = {
 };
 
 function lockOnLevel1Mask(
-  turretId: string,
+  label: string,
   field: string,
   names: readonly string[],
   toCode: (s: string) => number,
@@ -90,12 +91,12 @@ function lockOnLevel1Mask(
     const code = toCode(name);
     if (code === unknownCode) {
       throw new Error(
-        `Invalid turret blueprint ${turretId}: ${field}[${i}] = "${name}" has no network ${kindLabel} code`,
+        `Invalid ${label}: ${field}[${i}] = "${name}" has no network ${kindLabel} code`,
       );
     }
     if (code >= CT_LOCK_ON_LEVEL1_MASK_CAPACITY) {
       throw new Error(
-        `Invalid turret blueprint ${turretId}: ${field}[${i}] = "${name}" has ${kindLabel} wire code ${code} >= bitmask capacity ${CT_LOCK_ON_LEVEL1_MASK_CAPACITY}; widen the lockon level-1 masks before adding more ${kindLabel} blueprints`,
+        `Invalid ${label}: ${field}[${i}] = "${name}" has ${kindLabel} wire code ${code} >= bitmask capacity ${CT_LOCK_ON_LEVEL1_MASK_CAPACITY}; widen the lockon level-1 masks before adding more ${kindLabel} blueprints`,
       );
     }
     mask |= 1 << code;
@@ -103,34 +104,33 @@ function lockOnLevel1Mask(
   return mask >>> 0;
 }
 
-function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
-  const id = turretBlueprint.id;
+function compileLockOnMasks(label: string, policy: LockOnExclusionObject): LockOnMasks {
   let relationship = 0;
-  for (const r of turretBlueprint.excludeLockOnLevel0FriendsAndEnemies) {
+  for (const r of policy.excludeLockOnLevel0FriendsAndEnemies) {
     if (r === 'friendly_entities') relationship |= CT_LOCK_ON_REL_EXCLUDE_FRIENDLY;
     else if (r === 'enemy_entities') relationship |= CT_LOCK_ON_REL_EXCLUDE_ENEMY;
     else {
       throw new Error(
-        `Invalid turret blueprint ${id}: excludeLockOnLevel0FriendsAndEnemies entry "${r}" is not a known relationship — turrets.ts validation should have rejected this`,
+        `Invalid ${label}: excludeLockOnLevel0FriendsAndEnemies entry "${r}" is not a known relationship`,
       );
     }
   }
   let entityFamily = 0;
-  for (const f of turretBlueprint.excludeLockOnLevel0Entities) {
+  for (const f of policy.excludeLockOnLevel0Entities) {
     if (f === 'buildings') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS;
     else if (f === 'towers') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TOWERS;
     else if (f === 'units') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_UNITS;
     else if (f === 'turrets') entityFamily |= CT_LOCK_ON_FAM_EXCLUDE_TURRETS;
     else {
       throw new Error(
-        `Invalid turret blueprint ${id}: excludeLockOnLevel0Entities entry "${f}" is not a known family — turrets.ts validation should have rejected this`,
+        `Invalid ${label}: excludeLockOnLevel0Entities entry "${f}" is not a known family`,
       );
     }
   }
   const building = lockOnLevel1Mask(
-    id,
+    label,
     'excludeLockOnLevel1Buildings',
-    turretBlueprint.excludeLockOnLevel1Buildings,
+    policy.excludeLockOnLevel1Buildings,
     buildingTypeToCode,
     BUILDING_TYPE_UNKNOWN,
     'building',
@@ -141,30 +141,72 @@ function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks
   // kernel reads tower vs. building from the candidate's entity_family
   // and consults the appropriate mask.
   const tower = lockOnLevel1Mask(
-    id,
+    label,
     'excludeLockOnLevel1Towers',
-    turretBlueprint.excludeLockOnLevel1Towers,
+    policy.excludeLockOnLevel1Towers,
     buildingTypeToCode,
     BUILDING_TYPE_UNKNOWN,
     'tower',
   );
   const unit = lockOnLevel1Mask(
-    id,
+    label,
     'excludeLockOnLevel1Units',
-    turretBlueprint.excludeLockOnLevel1Units,
+    policy.excludeLockOnLevel1Units,
     unitTypeToCode,
     UNIT_TYPE_UNKNOWN,
     'unit',
   );
   const turret = lockOnLevel1Mask(
-    id,
+    label,
     'excludeLockOnLevel1Turrets',
-    turretBlueprint.excludeLockOnLevel1Turrets,
+    policy.excludeLockOnLevel1Turrets,
     turretIdToCode,
     TURRET_ID_UNKNOWN,
     'turret',
   );
   return { relationship, entityFamily, building, tower, unit, turret };
+}
+
+function compileTurretLockOnMasks(turretBlueprint: TurretBlueprint): LockOnMasks {
+  return compileLockOnMasks(`turret blueprint ${turretBlueprint.id}`, turretBlueprint);
+}
+
+export const EMPTY_LOCK_ON_MASKS: LockOnMasks = Object.freeze({
+  relationship: 0,
+  entityFamily: 0,
+  building: 0,
+  tower: 0,
+  unit: 0,
+  turret: 0,
+});
+
+export const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> =
+  Object.fromEntries(
+    Object.entries(UNIT_BLUEPRINTS).map(([id, blueprint]) => [
+      id,
+      compileLockOnMasks(`unit blueprint ${id}`, blueprint),
+    ]),
+  );
+
+export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingType, LockOnMasks>> =
+  Object.fromEntries(
+    Object.entries(BUILDING_BLUEPRINTS)
+      .filter(([id]) => isTowerBuildingType(id as BuildingType))
+      .map(([id, blueprint]) => [
+        id as BuildingType,
+        compileLockOnMasks(
+          `tower blueprint ${id}`,
+          blueprint as typeof blueprint & LockOnExclusionObject,
+        ),
+      ]),
+  );
+
+export function getUnitHostLockOnMasks(unitType: string): LockOnMasks {
+  return UNIT_HOST_LOCK_ON_MASKS[unitType] ?? EMPTY_LOCK_ON_MASKS;
+}
+
+export function getTowerHostLockOnMasks(buildingType: BuildingType): LockOnMasks {
+  return TOWER_HOST_LOCK_ON_MASKS[buildingType] ?? EMPTY_LOCK_ON_MASKS;
 }
 
 function validateStableWireIds(
@@ -700,7 +742,7 @@ for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
 // exclusion list must reference real blueprint ids; unknown names are
 // authoring mistakes, not silent drops.
 function assertLevel1IdsInSet(
-  turretId: string,
+  label: string,
   field: string,
   ids: readonly string[],
   validSet: ReadonlySet<string>,
@@ -709,7 +751,7 @@ function assertLevel1IdsInSet(
   for (let i = 0; i < ids.length; i++) {
     if (!validSet.has(ids[i])) {
       throw new Error(
-        `Invalid turret blueprint ${turretId}: ${field}[${i}] = "${ids[i]}" is not a known ${kindLabel} id`,
+        `Invalid ${label}: ${field}[${i}] = "${ids[i]}" is not a known ${kindLabel} id`,
       );
     }
   }
@@ -728,30 +770,92 @@ const KNOWN_UNIT_IDS: ReadonlySet<string> = new Set(Object.keys(UNIT_BLUEPRINTS)
 const KNOWN_TURRET_IDS: ReadonlySet<string> = new Set(Object.keys(TURRET_BLUEPRINTS));
 for (const [id, bp] of Object.entries(TURRET_BLUEPRINTS)) {
   assertLevel1IdsInSet(
-    id,
+    `turret blueprint ${id}`,
     'excludeLockOnLevel1Buildings',
     bp.excludeLockOnLevel1Buildings,
     KNOWN_BUILDING_IDS,
     'building',
   );
   assertLevel1IdsInSet(
-    id,
+    `turret blueprint ${id}`,
     'excludeLockOnLevel1Towers',
     bp.excludeLockOnLevel1Towers,
     KNOWN_TOWER_IDS,
     'tower',
   );
   assertLevel1IdsInSet(
-    id,
+    `turret blueprint ${id}`,
     'excludeLockOnLevel1Units',
     bp.excludeLockOnLevel1Units,
     KNOWN_UNIT_IDS,
     'unit',
   );
   assertLevel1IdsInSet(
-    id,
+    `turret blueprint ${id}`,
     'excludeLockOnLevel1Turrets',
     bp.excludeLockOnLevel1Turrets,
+    KNOWN_TURRET_IDS,
+    'turret',
+  );
+}
+for (const [id, bp] of Object.entries(UNIT_BLUEPRINTS)) {
+  assertLevel1IdsInSet(
+    `unit blueprint ${id}`,
+    'excludeLockOnLevel1Buildings',
+    bp.excludeLockOnLevel1Buildings,
+    KNOWN_BUILDING_IDS,
+    'building',
+  );
+  assertLevel1IdsInSet(
+    `unit blueprint ${id}`,
+    'excludeLockOnLevel1Towers',
+    bp.excludeLockOnLevel1Towers,
+    KNOWN_TOWER_IDS,
+    'tower',
+  );
+  assertLevel1IdsInSet(
+    `unit blueprint ${id}`,
+    'excludeLockOnLevel1Units',
+    bp.excludeLockOnLevel1Units,
+    KNOWN_UNIT_IDS,
+    'unit',
+  );
+  assertLevel1IdsInSet(
+    `unit blueprint ${id}`,
+    'excludeLockOnLevel1Turrets',
+    bp.excludeLockOnLevel1Turrets,
+    KNOWN_TURRET_IDS,
+    'turret',
+  );
+}
+for (const [id, bp] of Object.entries(BUILDING_BLUEPRINTS)) {
+  if (!isTowerBuildingType(id as BuildingType)) continue;
+  const tower = bp as typeof bp & LockOnExclusionObject;
+  assertLevel1IdsInSet(
+    `tower blueprint ${id}`,
+    'excludeLockOnLevel1Buildings',
+    tower.excludeLockOnLevel1Buildings,
+    KNOWN_BUILDING_IDS,
+    'building',
+  );
+  assertLevel1IdsInSet(
+    `tower blueprint ${id}`,
+    'excludeLockOnLevel1Towers',
+    tower.excludeLockOnLevel1Towers,
+    KNOWN_TOWER_IDS,
+    'tower',
+  );
+  assertLevel1IdsInSet(
+    `tower blueprint ${id}`,
+    'excludeLockOnLevel1Units',
+    tower.excludeLockOnLevel1Units,
+    KNOWN_UNIT_IDS,
+    'unit',
+  );
+  assertLevel1IdsInSet(
+    `tower blueprint ${id}`,
+    'excludeLockOnLevel1Turrets',
+    tower.excludeLockOnLevel1Turrets,
     KNOWN_TURRET_IDS,
     'turret',
   );

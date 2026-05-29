@@ -16,12 +16,17 @@ import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
+import {
+  LOCK_ON_EXCLUSION_FIELDS,
+  validateLockOnExclusionObject,
+} from './lockOnValidation';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion'> & {
   locomotionId: string;
 };
 
 const UNIT_EXPLICIT_FIELDS = [
+  ...LOCK_ON_EXCLUSION_FIELDS,
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -40,6 +45,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
 
   for (const [id, blueprint] of Object.entries(resolved)) {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
+    validateLockOnExclusionObject(`unit blueprint ${id}`, blueprint);
     const locomotion = UNIT_LOCOMOTION_BLUEPRINTS[blueprint.locomotionId];
     if (!locomotion) {
       throw new Error(

@@ -7,15 +7,21 @@
  */
 
 import type { BuildingAnchorProfile, BuildingRenderProfile, BuildingType, ResourceCost } from '../types';
+import { isTowerBuildingType } from '../../../types/buildingTypes';
 import type {
   BuildingTurretMount,
   DetectorBlueprint,
   EntityHudBlueprint,
+  LockOnExclusionObject,
 } from '../../../types/blueprints';
 import rawBuildingBlueprints from './buildings.json';
 import { assertExplicitFields } from './jsonValidation';
+import {
+  LOCK_ON_EXCLUSION_FIELDS,
+  validateLockOnExclusionObject,
+} from './lockOnValidation';
 
-export type BuildingBlueprint = {
+export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   id: BuildingType;
   name: string;
   gridWidth: number;
@@ -144,6 +150,22 @@ export function getFactoryBuildingVisualMetrics(
 
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
+  const towerBlueprint = isTowerBuildingType(id as BuildingType);
+  if (towerBlueprint) {
+    assertExplicitFields(`tower blueprint ${id}`, blueprint, LOCK_ON_EXCLUSION_FIELDS);
+    validateLockOnExclusionObject(
+      `tower blueprint ${id}`,
+      blueprint as BuildingBlueprint & LockOnExclusionObject,
+    );
+  } else {
+    for (const field of LOCK_ON_EXCLUSION_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(blueprint, field)) {
+        throw new Error(
+          `Invalid building blueprint ${id}: pure buildings do not carry lock-on exclusion field "${field}"`,
+        );
+      }
+    }
+  }
   if (id !== blueprint.id) {
     throw new Error(`Building blueprint key mismatch: key '${id}' has id '${blueprint.id}'`);
   }

@@ -72,12 +72,12 @@ export type TurretAimStyle = {
   lockOnType: TurretAimLockOnType;
 };
 
-/** Turret lock-on policy is broad by default: with no exclusions, a
- *  turret may lock onto any living, observable building, unit, or
- *  turret regardless of ownership. The exclusion sets below subtract
- *  candidates from that broad default. They are evaluated in order
- *  (relationship → entity family → level-1 named exclusions) before
- *  range / LOS / scoring run. */
+/** Lock-on policy is broad by default: with no exclusions, a turret,
+ *  unit host, or tower host may lock onto any living, observable
+ *  building, tower, unit, or turret regardless of ownership. The
+ *  exclusion sets below subtract candidates from that broad default.
+ *  They are evaluated in order (relationship -> entity family ->
+ *  level-1 named exclusions) before range / LOS / scoring run. */
 export type TurretLockOnRelationshipExclusion =
   | 'friendly_entities'
   | 'enemy_entities';
@@ -91,6 +91,15 @@ export type TurretLockOnEntityFamilyExclusion =
   | 'turrets';
 export const TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS: readonly TurretLockOnEntityFamilyExclusion[] =
   ['buildings', 'towers', 'units', 'turrets'];
+
+export type LockOnExclusionObject = {
+  excludeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipExclusion[];
+  excludeLockOnLevel0Entities: TurretLockOnEntityFamilyExclusion[];
+  excludeLockOnLevel1Buildings: string[];
+  excludeLockOnLevel1Towers: string[];
+  excludeLockOnLevel1Units: string[];
+  excludeLockOnLevel1Turrets: string[];
+};
 
 /** The role category a turret advertises. Host commands are routed by
  *  kind: an attack order lands on the host's primary attack turret, a
@@ -508,7 +517,7 @@ export type DetectorBlueprint = {
   radius: number;
 };
 
-export type UnitBlueprint = {
+export type UnitBlueprint = LockOnExclusionObject & {
   id: UnitTypeId;
   name: string;
   shortName: string;
