@@ -18,15 +18,12 @@ import {
 } from '../../config';
 
 // Texture resolution in pixels (square). Power of two for clean mipmaps.
-// 4096² @ 8 px/world = 512 world unit tile; 64 MB GPU memory.
+// 4096², 64 MB GPU memory. Terrain repetition scale comes from
+// colorsConfig.world.terrain.ground.texture.tileWorldSize.
 export const GROUND_DETAIL_TEXTURE_PIXELS = 4096;
-// How many world units one tile spans. The shader also samples a second
-// rotated+rescaled copy of this texture (see TerrainTileRenderer3D), so the
-// *visible* repeat period is the LCM of two co-prime scales on top of this
-// literal tile — effectively unbounded at normal RTS zoom levels.
-export const GROUND_DETAIL_TILE_WORLD_SIZE = 512;
-// Item count scales with tile area (16× area vs the original 128-unit /
-// 1024-px tile) so per-world-unit density stays constant.
+// The shader also samples a second rotated+rescaled copy of this texture
+// (see TerrainTileRenderer3D), so the visible repeat period is much larger
+// than this literal tile at normal RTS zoom levels.
 const ITEM_COUNT = 83200;
 
 type ShapeKind = 'box' | 'tri' | 'circle' | 'hex' | 'rosette';

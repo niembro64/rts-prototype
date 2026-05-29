@@ -523,6 +523,20 @@ export const TERRAIN_HORIZON_BLEND_CONFIG = {
 export const TERRAIN_GROUND_DETAIL_ENABLED =
   worldRenderConfigJson.terrainGroundDetail.enabled;
 
+function readUnitIntervalConfig(value: unknown, fieldName: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`${fieldName} must be a finite number from 0 to 1`);
+  }
+  return value;
+}
+
+function readPositiveConfigNumber(value: unknown, fieldName: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${fieldName} must be a finite positive number`);
+  }
+  return value;
+}
+
 /** The base color flat green ground gets pulled toward before the detail
  *  texture is applied. Defaults to the spruce leaf color so that grass clumps
  *  and tree foliage sit on a matching-color ground patch instead of standing
@@ -532,7 +546,18 @@ export const TERRAIN_GROUND_BASE_COLOR = COLORS.world.terrain.ground.baseColorHe
 /** How strongly the generated detail PNG overrides the base ground color in
  *  flat green areas, in [0, 1]. 0 = pure base color (clean, props rooted in
  *  a single color), 1 = full texture influence (noisy / busy). */
-export const TERRAIN_GROUND_DETAIL_CONTRAST = COLORS.world.terrain.ground.detailContrast;
+export const TERRAIN_GROUND_DETAIL_CONTRAST = readUnitIntervalConfig(
+  COLORS.world.terrain.ground.texture.blend,
+  'colorsConfig.world.terrain.ground.texture.blend',
+);
+
+/** World units covered by one complete grass/sticks texture tile. Smaller
+ *  values make the texture repeat more often and read finer; larger values
+ *  stretch each repeat across more terrain. */
+export const TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.world.terrain.ground.texture.tileWorldSize,
+  'colorsConfig.world.terrain.ground.texture.tileWorldSize',
+);
 
 /** World-Y distance from the 0-height plane where the ground detail (the
  *  green base-color pull *and* the sticks-and-grass texture, both gated by
@@ -569,16 +594,36 @@ export const TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF =
 /** Same idea as the ground detail texture, but applied to every surface that
  *  is NOT part of the base 0-height flat zone — cliffs, mountain faces,
  *  plateaus. Sampled triplanar in the shader so vertical surfaces render
- *  correctly. Toggle, base color, and contrast knob mirror the ground set. */
+ *  correctly. Toggle, base color, blend, and tile-size knobs mirror the
+ *  ground set. */
 export const TERRAIN_ROCK_DETAIL_ENABLED =
   worldRenderConfigJson.terrainRockDetail.enabled;
 export const TERRAIN_ROCK_BASE_COLOR = COLORS.world.terrain.rock.baseColorHex;
-export const TERRAIN_ROCK_DETAIL_CONTRAST = COLORS.world.terrain.rock.detailContrast;
+export const TERRAIN_ROCK_DETAIL_CONTRAST = readUnitIntervalConfig(
+  COLORS.world.terrain.rock.texture.blend,
+  'colorsConfig.world.terrain.rock.texture.blend',
+);
+export const TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.world.terrain.rock.texture.tileWorldSize,
+  'colorsConfig.world.terrain.rock.texture.tileWorldSize',
+);
+
+/** Metal deposits reuse the rock detail texture, but their mesh material can
+ *  blend the texture against the per-vertex ore colors independently from the
+ *  terrain rock settings. */
+export const METAL_DEPOSIT_ROCK_TEXTURE_BLEND = readUnitIntervalConfig(
+  COLORS.environment.metalDeposit.rockTexture.blend,
+  'colorsConfig.environment.metalDeposit.rockTexture.blend',
+);
+export const METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.environment.metalDeposit.rockTexture.tileWorldSize,
+  'colorsConfig.environment.metalDeposit.rockTexture.tileWorldSize',
+);
 
 /** How strongly the procedural tree-leaf / tree-trunk textures override the
  *  prop's solid base color, in [0, 1]. 0 = pure base color (the original
  *  flat green / brown look), 1 = full texture variation. Same semantics as
- *  the terrain detail contrast knobs above, but baked into the canvas at
+ *  the terrain texture blend knobs above, but baked into the canvas at
  *  texture-generation time (trees use stock MeshLambertMaterial so there's
  *  nowhere to mix at shader time). Changing this value requires a reload —
  *  the textures are generated once and cached. */

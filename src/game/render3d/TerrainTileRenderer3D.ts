@@ -25,19 +25,15 @@ import {
   TERRAIN_GROUND_DETAIL_HEIGHT_MIN,
   TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_FALLOFF,
   TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS,
+  TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE,
   TERRAIN_HORIZON_BLEND_CONFIG,
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_DETAIL_CONTRAST,
   TERRAIN_ROCK_DETAIL_ENABLED,
+  TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
-import {
-  getGroundDetailTexture,
-  GROUND_DETAIL_TILE_WORLD_SIZE,
-} from './GroundDetailTexture';
-import {
-  getRockDetailTexture,
-  ROCK_DETAIL_TILE_WORLD_SIZE,
-} from './RockDetailTexture';
+import { getGroundDetailTexture } from './GroundDetailTexture';
+import { getRockDetailTexture } from './RockDetailTexture';
 import {
   getTerrainMapBoundaryFade,
   getTerrainMeshSample,
@@ -269,14 +265,14 @@ export class TerrainTileRenderer3D {
   private buildGridEnabledUniform = { value: 0 };
   private buildGridTextureKey = '';
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
-  private groundDetailTileWorldSizeUniform = { value: GROUND_DETAIL_TILE_WORLD_SIZE };
+  private groundDetailTileWorldSizeUniform = { value: TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE };
   private groundDetailEnabledUniform = { value: 0 };
   private groundBaseColorUniform = { value: rawSrgbVec3(TERRAIN_GROUND_BASE_COLOR) };
   private groundDetailContrastUniform = { value: TERRAIN_GROUND_DETAIL_CONTRAST };
   private groundDetailHeightMinUniform = { value: TERRAIN_GROUND_DETAIL_HEIGHT_MIN };
   private groundDetailHeightMaxUniform = { value: TERRAIN_GROUND_DETAIL_HEIGHT_MAX };
   private rockDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
-  private rockDetailTileWorldSizeUniform = { value: ROCK_DETAIL_TILE_WORLD_SIZE };
+  private rockDetailTileWorldSizeUniform = { value: TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE };
   private rockDetailEnabledUniform = { value: 0 };
   private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
   private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };

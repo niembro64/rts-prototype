@@ -10,6 +10,10 @@ import type { GraphicsConfig } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { METAL_DEPOSIT_CONFIG } from '../../metalDepositConfig';
+import {
+  METAL_DEPOSIT_ROCK_TEXTURE_BLEND,
+  METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE,
+} from '../../config';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getRockDetailTexture } from './RockDetailTexture';
 
@@ -20,7 +24,6 @@ const DEPOSIT_MESH_DETAIL = {
 
 const DEPOSIT_BOUNDARY_SMOOTH_PASSES = 2;
 const DEPOSIT_VISUAL_MARGIN = BUILD_GRID_CELL_SIZE * 0.16;
-const DEPOSIT_ROCK_UV_WORLD_SIZE = 360;
 
 const DEPOSIT_BASE = new THREE.Color(COLORS.environment.metalDeposit.baseColorHex);
 const DEPOSIT_DARK = new THREE.Color(COLORS.environment.metalDeposit.darkColorHex);
@@ -111,9 +114,9 @@ function seededNoise(seed: number): number {
 }
 
 function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
-  const rockMap = getRockDetailTexture();
+  const rockMap = METAL_DEPOSIT_ROCK_TEXTURE_BLEND > 0 ? getRockDetailTexture() : null;
   if (kind === 'standard') {
-    return new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshStandardMaterial({
       color: COLORS.environment.metalDeposit.standardMaterial.colorHex,
       map: rockMap,
       vertexColors: true,
@@ -121,13 +124,48 @@ function makeDepositMaterial(kind: 'lambert' | 'standard'): THREE.Material {
       metalness: COLORS.environment.metalDeposit.standardMaterial.metalness,
       roughness: COLORS.environment.metalDeposit.standardMaterial.roughness,
     });
+    installDepositTextureBlendShader(material);
+    return material;
   }
-  return new THREE.MeshLambertMaterial({
+  const material = new THREE.MeshLambertMaterial({
     color: COLORS.environment.metalDeposit.lambertMaterial.colorHex,
     map: rockMap,
     vertexColors: true,
     flatShading: COLORS.environment.metalDeposit.lambertMaterial.flatShading,
   });
+  installDepositTextureBlendShader(material);
+  return material;
+}
+
+function installDepositTextureBlendShader(
+  material: THREE.MeshLambertMaterial | THREE.MeshStandardMaterial,
+): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uMetalDepositTextureBlend = { value: METAL_DEPOSIT_ROCK_TEXTURE_BLEND };
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        [
+          'uniform float uMetalDepositTextureBlend;',
+          '#include <common>',
+        ].join('\n'),
+      )
+      .replace(
+        '#include <map_fragment>',
+        [
+          '#ifdef USE_MAP',
+          '  vec4 sampledDiffuseColor = texture2D(map, vMapUv);',
+          '  #ifdef DECODE_VIDEO_TEXTURE',
+          '    sampledDiffuseColor = sRGBTransferEOTF(sampledDiffuseColor);',
+          '  #endif',
+          '  float textureBlend = clamp(uMetalDepositTextureBlend, 0.0, 1.0);',
+          '  diffuseColor.rgb *= mix(vec3(1.0), sampledDiffuseColor.rgb, textureBlend);',
+          '  diffuseColor.a *= sampledDiffuseColor.a;',
+          '#endif',
+        ].join('\n'),
+      );
+  };
+  material.customProgramCacheKey = () => 'metalDepositTextureBlend';
 }
 
 type DepositOutlinePoint = { x: number; z: number };
@@ -593,8 +631,8 @@ function pushDepositUv(uvs: number[], x: number, z: number, seed: number): void 
   const offsetU = seededNoise(seed * 101 + 7);
   const offsetV = seededNoise(seed * 163 + 19);
   uvs.push(
-    x / DEPOSIT_ROCK_UV_WORLD_SIZE + offsetU,
-    z / DEPOSIT_ROCK_UV_WORLD_SIZE + offsetV,
+    x / METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE + offsetU,
+    z / METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE + offsetV,
   );
 }
 

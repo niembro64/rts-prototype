@@ -48,11 +48,17 @@
       },
       "ground": {
         "baseColorHex": "#222b1a",
-        "detailContrast": 0.5
+        "texture": {
+          "blend": 0.5,
+          "tileWorldSize": 512
+        }
       },
       "rock": {
         "baseColorHex": "#38362f",
-        "detailContrast": 0.1,
+        "texture": {
+          "blend": 0.1,
+          "tileWorldSize": 2560
+        },
         "shadePaletteRgb": [
           "#36322b",
           "#4e483e",
@@ -138,6 +144,10 @@
       "baseColorHex": "#272b2e",
       "darkColorHex": "#111416",
       "lightColorHex": "#6f7678",
+      "rockTexture": {
+        "blend": 1,
+        "tileWorldSize": 1300
+      },
       "lambertMaterial": {
         "colorHex": "#ffffff",
         "flatShading": true

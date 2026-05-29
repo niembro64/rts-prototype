@@ -7,7 +7,7 @@
     "spawnAttemptsPerFog": 32,
     "fadeInMs": 2000,
     "fadeOutMs": 2000,
-    "radius": 2000,
+    "radius": 1000,
     "transparentOuterFraction": 0.4,
     "zMin": -500,
     "zRange": 1600
