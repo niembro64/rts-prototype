@@ -437,7 +437,23 @@ function computeBarrierConfig(
 function buildShotConfig(
   shotBlueprint: ShotBlueprint,
   launchForce: number,
+  range: number,
 ): ShotConfig {
+  if (shotBlueprint.type === 'forceField') {
+    const shot: ForceShot = {
+      type: 'forceField',
+      id: shotBlueprint.id,
+      angle: shotBlueprint.angle,
+      transitionTime: shotBlueprint.transitionTime,
+      barrier:
+        computeBarrierConfig(
+          shotBlueprint.barrier,
+          range,
+        ) ?? undefined,
+    };
+    return shot;
+  }
+
   if (shotBlueprint.type === 'beam') {
     const shot: BeamShot = {
       type: 'beam',
@@ -496,8 +512,13 @@ export function buildProjectileShotConfig(
 ): ActiveProjectileShot {
   const shotBlueprint = SHOT_BLUEPRINTS[shotId];
   if (!shotBlueprint) throw new Error(`Unknown shot blueprint: ${shotId}`);
-  const shot = buildShotConfig(shotBlueprint, launchForce);
-  if (shot.type === 'force') {
+  if (shotBlueprint.type === 'forceField') {
+    throw new Error(
+      `Shot blueprint ${shotId} cannot build a projectile config`,
+    );
+  }
+  const shot = buildShotConfig(shotBlueprint, launchForce, 0);
+  if (shot.type === 'forceField') {
     throw new Error(
       `Shot blueprint ${shotId} cannot build a projectile config`,
     );
@@ -530,30 +551,20 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   // projectiles.
   let shot: ShotConfig | null = null;
 
-  if (turretBlueprint.forceField) {
-    // Force field turret: build a classic projectile barrier.
-    const fieldShot: ForceShot = {
-      type: 'force',
-      angle: turretBlueprint.forceField.angle,
-      transitionTime: turretBlueprint.forceField.transitionTime,
-      barrier:
-        computeBarrierConfig(
-          turretBlueprint.forceField.barrier,
-          turretBlueprint.range,
-        ) ?? undefined,
-    };
-    shot = fieldShot;
-  } else if (turretBlueprint.projectileId !== null) {
-    // Projectile or beam turret
-    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.projectileId];
+  if (turretBlueprint.shotId !== null) {
+    const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.shotId];
     if (!shotBlueprint)
       throw new Error(
-        `Unknown projectile in turret ${turretId}: ${turretBlueprint.projectileId}`,
+        `Unknown shot in turret ${turretId}: ${turretBlueprint.shotId}`,
       );
-    shot = buildShotConfig(shotBlueprint, turretBlueprint.launchForce);
+    shot = buildShotConfig(
+      shotBlueprint,
+      turretBlueprint.launchForce,
+      turretBlueprint.range,
+    );
   } else if (turretBlueprint.constructionEmitter === null) {
     throw new Error(
-      `Turret ${turretId} has neither projectileId, forceField, nor constructionEmitter`,
+      `Turret ${turretId} has neither shotId nor constructionEmitter`,
     );
   }
   validateTurretAimStyle(turretId, turretBlueprint, shot);
@@ -614,16 +625,18 @@ export function buildTurretConfig(turretId: TurretId): TurretConfig {
   // Skip the barrel-less force-field emitters (sphere + panel): they
   // carry no gun barrel to thicken.
   if (
-    turretBlueprint.projectileId !== null &&
+    turretBlueprint.shotId !== null &&
     config.barrel &&
     config.barrel.type !== 'complexSingleEmitter' &&
     config.barrel.type !== 'forceFieldPanelEmitter'
   ) {
     const shotBlueprint: ShotBlueprint =
-      SHOT_BLUEPRINTS[turretBlueprint.projectileId];
+      SHOT_BLUEPRINTS[turretBlueprint.shotId];
     let rawThickness: number;
     if (isLineShotBlueprint(shotBlueprint)) {
       rawThickness = shotBlueprint.width;
+    } else if (shotBlueprint.type === 'forceField') {
+      rawThickness = 2;
     } else {
       rawThickness =
         shotBlueprint.collision.radius > 0

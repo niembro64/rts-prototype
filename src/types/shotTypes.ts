@@ -174,10 +174,20 @@ export type LaserShotBlueprint = {
   hitSound: SoundEntry | null;
 };
 
+export type ForceFieldShotBlueprint = {
+  type: 'forceField';
+  id: ShotId;
+  angle: number;
+  transitionTime: number;
+  barrier: ForceFieldBarrierRatioConfig | null;
+  hitSound: SoundEntry | null;
+};
+
 export type ShotBlueprint =
   | ProjectileShotBlueprint
   | BeamShotBlueprint
-  | LaserShotBlueprint;
+  | LaserShotBlueprint
+  | ForceFieldShotBlueprint;
 export type LineShotBlueprint = BeamShotBlueprint | LaserShotBlueprint;
 
 /** Blueprint-side counterpart of `isLineShot`. */
@@ -269,7 +279,8 @@ export function isLineShot(shot: ShotConfig): shot is LineShot {
 
 // Force shot: continuous spherical barrier around turret.
 export type ForceShot = {
-  type: 'force';
+  type: 'forceField';
+  id: ShotId;
   angle: number;
   transitionTime: number;
   barrier?: ForceFieldBarrierConfig;

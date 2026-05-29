@@ -32,66 +32,11 @@ host-directed vs fully-autonomous turrets, and the tower entity type. Some
 original claims have since been fixed in the TypeScript authoritative sim
 (runtime turret/locomotion ids, TS EntityMeta registry, ShotSource provenance);
 the original A1-A17 refs have all been resolved or moved to VERIFIED-CLEAN. A
-follow-on 2026-05-29 emission/id-abstraction audit then added A18-A20 below
-(shot/turret separation of concerns — make turrets fully swappable emitters).
+follow-on 2026-05-29 emission/id-abstraction audit added A18-A20; those have
+also been resolved or moved to VERIFIED-CLEAN.
 
 NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
 entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
-
------ Shot/turret emission abstraction + addressable ids -----
-
-A18. [MED] Force-field is the one emission configured inline on the turret, not a shot referenced by id.
-    LOCATION: src/types/blueprints.ts:137-142 (TurretBlueprint.forceField +
-      forceFieldPanels, inline); src/types/shotTypes.ts:177-180 (ShotBlueprint =
-      projectile|beam|laser, NO force variant); src/game/sim/blueprints/index.ts:
-      533-558 (three-way resolve: forceField inline / projectileId lookup /
-      constructionEmitter).
-    RULE: "Atomic Gameplay Pieces" — shot is one umbrella with variants {projectile,
-      beam, laser, forceField}; a turret names exactly one shot BY ID and carries no
-      inline emission payload, so it stays swappable between hosts.
-    PROBLEM: beam/laser/plasma/rocket resolve through SHOT_BLUEPRINTS[projectileId]
-      (turret -> ShotId), but force-field is built inline from
-      TurretBlueprint.forceField{angle,transitionTime,barrier} + forceFieldPanels.
-      The runtime ForceShot exists (shotTypes.ts:271) yet there is no
-      ForceFieldShotBlueprint and no ShotId path for it, so force-field turrets are a
-      special case that breaks the "turret = standardized swappable emitter" contract.
-    FIX: add a ForceFieldShotBlueprint variant to the ShotBlueprint union; move the
-      barrier/material config onto it; reference it via the turret's shot id; collapse
-      the three-way branch into one uniform SHOT_BLUEPRINTS[shotId] lookup. Keep the
-      projected geometry (panel array vs sphere) on the mount per "Materials Are
-      Independent Of Shape".
-
-A19. [LOW] The turret's single emission reference is named projectileId but resolves beams/lasers too.
-    LOCATION: src/types/blueprints.ts:119 (projectileId: ShotId | null);
-      src/game/sim/blueprints/index.ts:546-553 (comment "Projectile or beam turret");
-      src/game/sim/blueprints/turrets.ts:21 ('projectileId' in field list).
-    RULE: "Atomic Gameplay Pieces" + fully-abstractable names — a turret names the one
-      shot it emits; the field name must not bias toward a single variant.
-    PROBLEM: the lone emission reference is projectileId, but
-      SHOT_BLUEPRINTS[projectileId] returns ProjectileShotBlueprint | BeamShotBlueprint
-      | LaserShotBlueprint — the name already lies for beam/laser turrets, and will lie
-      harder once force-field becomes a shot (A18).
-    FIX: rename projectileId -> shotId (or emitsShotId) across blueprints.ts, the
-      loader (blueprints/index.ts, turrets.ts), and the turret JSON.
-
-A20. [MED] No first-class build-site entity carrying the product's id from frame one.
-    LOCATION: src/game/sim/commandExecution.ts:460-463 (only positional "build site"
-      pathing refs); no buildShell/buildSite entity in src/types/sim.ts (grep clean).
-    RULE: "Universal Runtime Entity IDs" / "A build site is the product, carrying its
-      own id from frame one" — the under-construction unit/building IS the real entity
-      from spawn, with one continuous EntityId it keeps through completion; no
-      shell -> product re-id handoff.
-    PROBLEM: there is no build-shell/build-site entity in the TS sim. Construction
-      appears to reference a site positionally / by command, not as a first-class
-      entity the construction turret locks onto by id, the player selects, and that
-      survives completion unchanged. Without it, selection + queued orders + lock-on
-      cannot persist across the finish, and provenance cannot name the in-progress
-      target.
-    FIX: model the under-construction unit/building as the real entity from spawn
-      (nanoframe state: HP + completion-fraction ramp), allocate its final EntityId at
-      construction start, and target/select/queue/lock against that id through
-      completion. NB: construction path audited THIN, not confirmed-absent — re-verify
-      before editing.
 
 ================================================================================
 SECTION B — MEMORY LEAKS
@@ -145,6 +90,13 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
   zero-velocity edge is sent; baseline = last value actually sent per recipient.
 - EntityType has Tower as a true peer of Unit/Building; fabricator is a tower, not a
   building; pure-infra buildings carry no turrets/lock-on.
+- Turrets name one neutral `shotId`; force-field spheres use a `forceField`
+  ShotBlueprint (`forceFieldBarrierShot`) instead of inline turret emission data,
+  while panel/sphere projection geometry stays on the mount side.
+- Build sites and factory unit shells are the real product entities from spawn:
+  `construction.startBuilding` and factory shell creation allocate the final
+  EntityId up front, attach `buildable`, and completion removes that component
+  without replacing or re-id'ing the entity.
 - Lock-on exclusion lists are honored subtractively in targeting for turrets and
   host-level unit/tower lock-on; candidate enumeration covers the
   unit/tower/building/turret-mount families.

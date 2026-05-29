@@ -209,20 +209,20 @@ function describeTurret(turret: Turret, index: number): LoadingUnitInfoNode {
   if (config.groundAimFraction !== undefined) {
     children.push(stat('Ground aim', `${fmt(config.groundAimFraction * 100)}% range`));
   }
-  if (config.shot) children.push(describeShot(config.shot, blueprint.projectileId));
+  if (config.shot) children.push(describeShot(config.shot, blueprint.shotId));
   const exclusions = describeLockOnExclusions(blueprint);
   if (exclusions.length > 0) children.push(node('Lock-on exclusions', undefined, undefined, exclusions));
 
   return node(
     `${index + 1}. ${config.id}`,
-    config.visualOnly ? 'visual' : blueprint.projectileId ?? 'utility',
+    config.visualOnly ? 'visual' : blueprint.shotId ?? 'utility',
     undefined,
     children,
   );
 }
 
-function describeShot(shot: ShotConfig, projectileId: string | null): LoadingUnitInfoNode {
-  if (shot.type === 'force') {
+function describeShot(shot: ShotConfig, shotId: string | null): LoadingUnitInfoNode {
+  if (shot.type === 'forceField') {
     return node('Shot', 'force field', undefined, [
       stat('Arc', rad(shot.angle)),
       stat('Transition', ms(shot.transitionTime)),
@@ -233,7 +233,7 @@ function describeShot(shot: ShotConfig, projectileId: string | null): LoadingUni
     ]);
   }
 
-  const label = projectileId ?? shot.id;
+  const label = shotId ?? shot.id;
   const children: LoadingUnitInfoNode[] = [stat('Type', shot.type)];
   if (shot.type === 'beam' || shot.type === 'laser') {
     children.push(
@@ -357,6 +357,7 @@ function projectileDamageWithSubmunitions(shot: ProjectileShot, depth = 0): numb
 function projectileBlueprintDamage(shot: ShotBlueprint, depth: number): number {
   if (shot.type === 'beam') return shot.dps;
   if (shot.type === 'laser') return shot.dps * (shot.duration / 1000);
+  if (shot.type === 'forceField') return 0;
   let damage = shot.explosion?.damage ?? 0;
   if (shot.submunitions && depth < 2) {
     try {
@@ -426,4 +427,3 @@ function labelCase(value: string): string {
 function plural(count: number): string {
   return count === 1 ? '' : 's';
 }
-

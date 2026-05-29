@@ -815,7 +815,7 @@ export class GameServer {
       const turrets = combat.turrets;
       for (const turret of turrets) {
         const shot = turret.config.shot;
-        if (shot === undefined || shot.type !== 'force') continue;
+        if (shot === undefined || shot.type !== 'forceField') continue;
         turret.target = null;
         turret.state = 'idle';
         resetDisabledTurretJsOnlyFields(turret);

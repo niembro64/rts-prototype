@@ -1,7 +1,7 @@
 // ForceFieldRenderer3D — 3D visualization for force-field turrets.
 //
 // A force-field turret uses the `complexSingleEmitter` barrel type and carries
-// a `ForceShot` (shot.type === 'force') configured with a barrier sphere.
+// a `ForceShot` (shot.type === 'forceField') configured with a barrier sphere.
 // It animates per-tick via `turret.forceField.range` (0 → 1 progress).
 //
 // One force-field look: a translucent bubble that fades in with
@@ -278,7 +278,7 @@ export class ForceFieldRenderer3D {
       const progress = turret.forceField?.range ?? 0;
 
       const shot = turret.config.shot;
-      if (!shot || shot.type !== 'force' || !shot.barrier) continue;
+      if (!shot || shot.type !== 'forceField' || !shot.barrier) continue;
 
       const key = forceFieldKey(unit.id, ti);
       seen.add(key);

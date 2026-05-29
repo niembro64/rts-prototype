@@ -509,7 +509,7 @@ export function applyClientCombatExpensivePrediction(options: {
     }
 
     const shot = weapon.config.shot;
-    if (shot === undefined || shot.type !== 'force') continue;
+    if (shot === undefined || shot.type !== 'forceField') continue;
     if (!turretForceFieldSpheresEnabled) {
       const forceField = weapon.forceField;
       if (forceField !== undefined) {
@@ -595,7 +595,7 @@ export function clientUnitPredictionIsSettled(
     }
 
     const shot = weapon.config.shot;
-    if (turretForceFieldSpheresEnabled && shot !== undefined && shot.type === 'force') {
+    if (turretForceFieldSpheresEnabled && shot !== undefined && shot.type === 'forceField') {
       const forceField = weapon.forceField;
       const range = forceField !== undefined ? forceField.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;

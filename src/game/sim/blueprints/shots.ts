@@ -1,5 +1,5 @@
 /**
- * Projectile blueprints.
+ * Shot blueprints.
  *
  * Authored data lives in shots.json so the same shot table can be read
  * by TypeScript today and Rust/WASM later. This module only resolves
@@ -23,13 +23,19 @@ const PROJECTILE_EXPLICIT_FIELDS = [
 ] as const;
 
 const LINE_EXPLICIT_FIELDS = ['hitSound', 'gravityForceMultiplier'] as const;
+const FORCE_FIELD_EXPLICIT_FIELDS = [
+  'angle',
+  'transitionTime',
+  'barrier',
+  'hitSound',
+] as const;
 
 export const SHOT_BLUEPRINTS = resolveBlueprintRefs(
   rawShotBlueprints,
 ) as unknown as Record<ShotId, ShotBlueprint>;
 
 export function getShotBlueprint(id: string): ShotBlueprint {
-  if (!isShotId(id)) throw new Error(`Unknown projectile blueprint: ${id}`);
+  if (!isShotId(id)) throw new Error(`Unknown shot blueprint: ${id}`);
   const shotBlueprint = SHOT_BLUEPRINTS[id];
   return shotBlueprint;
 }
@@ -73,6 +79,20 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     ) {
       throw new Error(
         `Shot blueprint ${id} has invalid maxLifespan: expected positive finite milliseconds`,
+      );
+    }
+  } else if (blueprint.type === 'forceField') {
+    assertExplicitFields(
+      `shot blueprint ${id}`,
+      blueprint,
+      FORCE_FIELD_EXPLICIT_FIELDS,
+    );
+    if (
+      !Number.isFinite(blueprint.transitionTime) ||
+      blueprint.transitionTime <= 0
+    ) {
+      throw new Error(
+        `Shot blueprint ${id} must define positive transitionTime`,
       );
     }
   } else {

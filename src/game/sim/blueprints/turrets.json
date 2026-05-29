@@ -1,7 +1,7 @@
 {
   "turretGunLight": {
     "id": "turretGunLight",
-    "projectileId": "lightShot",
+    "shotId": "lightShot",
     "range": 200,
     "cooldown": 450,
     "launchForce": 2000,
@@ -29,7 +29,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -58,7 +57,7 @@
   },
   "turretGunBurst": {
     "id": "turretGunBurst",
-    "projectileId": "mediumShot",
+    "shotId": "mediumShot",
     "range": 230,
     "cooldown": 3000,
     "launchForce": 5000,
@@ -97,7 +96,6 @@
       "count": 4,
       "delay": 100
     },
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -126,7 +124,7 @@
   },
   "turretCannon": {
     "id": "turretCannon",
-    "projectileId": "heavyShot",
+    "shotId": "heavyShot",
     "range": 1000,
     "cooldown": 2300,
     "launchForce": 10000,
@@ -157,7 +155,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -186,7 +183,7 @@
   },
   "turretMortarSlow": {
     "id": "turretMortarSlow",
-    "projectileId": "megaMortarShot",
+    "shotId": "megaMortarShot",
     "range": 1000,
     "cooldown": 6000,
     "launchForce": 20000,
@@ -217,7 +214,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -246,7 +242,7 @@
   },
   "turretMortarDrop": {
     "id": "turretMortarDrop",
-    "projectileId": "megaMortarShot",
+    "shotId": "megaMortarShot",
     "range": 650,
     "cooldown": 3500,
     "launchForce": 3500,
@@ -274,7 +270,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -303,7 +298,7 @@
   },
   "turretMortarFast": {
     "id": "turretMortarFast",
-    "projectileId": "megaMortarShot",
+    "shotId": "megaMortarShot",
     "range": 2000,
     "cooldown": 900,
     "launchForce": 26000,
@@ -342,7 +337,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -371,7 +365,7 @@
   },
   "turretGatling": {
     "id": "turretGatling",
-    "projectileId": "mediumShot",
+    "shotId": "mediumShot",
     "range": 300,
     "cooldown": 130,
     "launchForce": 8000,
@@ -410,7 +404,6 @@
       "count": 1,
       "delay": 80
     },
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -439,7 +432,7 @@
   },
   "turretDisruptor": {
     "id": "turretDisruptor",
-    "projectileId": "disruptorShot",
+    "shotId": "disruptorShot",
     "range": 150,
     "cooldown": 0,
     "launchForce": 8400,
@@ -465,7 +458,6 @@
     "color": 16746496,
     "spread": null,
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -494,7 +486,7 @@
   },
   "turretForceFieldPanel": {
     "id": "turretForceFieldPanel",
-    "projectileId": "beamShot",
+    "shotId": "beamShot",
     "range": 300,
     "cooldown": 0,
     "launchForce": 0,
@@ -524,7 +516,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [
       {
         "offsetX": 0,
@@ -555,7 +546,7 @@
   },
   "turretBeam": {
     "id": "turretBeam",
-    "projectileId": "beamShot",
+    "shotId": "beamShot",
     "range": 250,
     "cooldown": 0,
     "launchForce": 0,
@@ -581,7 +572,6 @@
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -610,7 +600,7 @@
   },
   "turretBeamMini": {
     "id": "turretBeamMini",
-    "projectileId": "miniBeamShot",
+    "shotId": "miniBeamShot",
     "range": 180,
     "cooldown": 0,
     "launchForce": 0,
@@ -636,7 +626,6 @@
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -665,7 +654,7 @@
   },
   "turretBeamMega": {
     "id": "turretBeamMega",
-    "projectileId": "megaBeamShot",
+    "shotId": "megaBeamShot",
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
@@ -691,7 +680,6 @@
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -720,7 +708,7 @@
   },
   "turretForceFieldSphere": {
     "id": "turretForceFieldSphere",
-    "projectileId": null,
+    "shotId": "forceFieldBarrierShot",
     "range": 540,
     "cooldown": 0,
     "launchForce": 0,
@@ -755,18 +743,6 @@
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "forceField": {
-      "angle": 6.283185307179586,
-      "transitionTime": 500,
-      "barrier": {
-        "outerRatio": 0.8,
-        "originOffsetRadiusRatio": 0.3,
-        "color": 16777215,
-        "alpha": 0.05,
-        "particleAlpha": 0.2,
-        "rimWidth": null
-      }
-    },
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -795,7 +771,7 @@
   },
   "turretConstruction": {
     "id": "turretConstruction",
-    "projectileId": null,
+    "shotId": null,
     "range": 0,
     "cooldown": 0,
     "launchForce": 0,
@@ -823,7 +799,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
@@ -868,7 +843,7 @@
   },
   "turretBeamLong": {
     "id": "turretBeamLong",
-    "projectileId": "towerBeamShot",
+    "shotId": "towerBeamShot",
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
@@ -894,7 +869,6 @@
     "color": 16777215,
     "spread": null,
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -923,7 +897,7 @@
   },
   "turretCannonLong": {
     "id": "turretCannonLong",
-    "projectileId": "heavyShot",
+    "shotId": "heavyShot",
     "range": 1500,
     "cooldown": 1500,
     "launchForce": 30000,
@@ -955,7 +929,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -984,7 +957,7 @@
   },
   "turretRocketSlow": {
     "id": "turretRocketSlow",
-    "projectileId": "lightRocket",
+    "shotId": "lightRocket",
     "range": 800,
     "cooldown": 2000,
     "launchForce": 500,
@@ -1024,7 +997,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {
@@ -1053,7 +1025,7 @@
   },
   "turretRocketFast": {
     "id": "turretRocketFast",
-    "projectileId": "fastRocket",
+    "shotId": "fastRocket",
     "range": 430,
     "cooldown": 50,
     "launchForce": 5000,
@@ -1081,7 +1053,6 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceField": null,
     "forceFieldPanels": [],
     "audio": {
       "fireSound": {

@@ -132,12 +132,12 @@ export class AudioManager {
     fn(tk, entry.playSpeed * variation, volumeMultiplier * entry.volume * AUDIO.fireGain);
   }
 
-  // Generic hit by projectile type ID
-  playWeaponHit(projectileId: string, volumeMultiplier: number = 1): void {
+  // Generic hit by shot ID.
+  playWeaponHit(shotId: string, volumeMultiplier: number = 1): void {
     if (!this.categoryEnabled.hit) return;
     if (!AUDIO.hitGain) return;
     let entry;
-    try { entry = getShotBlueprint(projectileId).hitSound; } catch { return; }
+    try { entry = getShotBlueprint(shotId).hitSound; } catch { return; }
     if (!entry || !entry.volume) return;
 
     const fn = SYNTH_DISPATCH[entry.synth];

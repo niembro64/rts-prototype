@@ -417,7 +417,7 @@ export function fireTurrets(
       if (config.visualOnly) continue;
       const shot = config.shot;
       if (!shot) continue;
-      if (shot.type === 'force') continue; // Force fields don't create projectiles
+      if (shot.type === 'forceField') continue; // Force fields don't create projectiles
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isLineShot(shot);
       const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);

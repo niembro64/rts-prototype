@@ -23,6 +23,7 @@ export type {
   ProjectileShotBlueprint,
   BeamShotBlueprint,
   LaserShotBlueprint,
+  ForceFieldShotBlueprint,
   LineShotBlueprint,
   ShotBlueprint,
   SmokeTrailSpec,

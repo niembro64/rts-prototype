@@ -131,7 +131,7 @@ export class EntityCacheManager {
           const shot = turrets[i].config.shot;
           if (shot === undefined) continue;
           const t = shot.type;
-          if (t === 'force') hasForceField = true;
+          if (t === 'forceField') hasForceField = true;
           else if (t === 'beam') hasBeam = true;
           if (hasForceField && hasBeam) break;
         }

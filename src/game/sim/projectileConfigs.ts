@@ -19,7 +19,7 @@ export function createProjectileConfigFromTurret(
   turretIndex: number | undefined = undefined,
 ): ProjectileConfig {
   const shot = turretConfig.shot;
-  if (!shot || shot.type === 'force') {
+  if (!shot || shot.type === 'forceField') {
     // Force-field emitters and visual-only construction emitters never
     // spawn projectile entities through this path. The firing pipeline
     // keeps them out at runtime; the type guard here mirrors that
@@ -80,7 +80,7 @@ export function getProjectileConfigForSpawn(
     if (
       source &&
       source.shot &&
-      source.shot.type !== 'force'
+      source.shot.type !== 'forceField'
     ) {
       if (!validShotId || source.shot.id === validShotId) {
         return createProjectileConfigFromTurret(source, turretIndex);

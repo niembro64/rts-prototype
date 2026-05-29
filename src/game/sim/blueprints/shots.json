@@ -252,5 +252,20 @@
       "radius": 32
     },
     "gravityForceMultiplier": 0
+  },
+  "forceFieldBarrierShot": {
+    "type": "forceField",
+    "id": "forceFieldBarrierShot",
+    "angle": 6.283185307179586,
+    "transitionTime": 500,
+    "barrier": {
+      "outerRatio": 0.8,
+      "originOffsetRadiusRatio": 0.3,
+      "color": 16777215,
+      "alpha": 0.05,
+      "particleAlpha": 0.2,
+      "rimWidth": null
+    },
+    "hitSound": null
   }
 }

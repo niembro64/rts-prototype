@@ -18,7 +18,7 @@ import { assertExplicitFields } from './jsonValidation';
 import type { TurretBlueprint } from './types';
 
 const TURRET_EXPLICIT_FIELDS = [
-  'projectileId',
+  'shotId',
   'cooldown',
   'launchForce',
   'isManualFire',
@@ -26,7 +26,6 @@ const TURRET_EXPLICIT_FIELDS = [
   'requiresNonObstructedLineOfSight',
   'spread',
   'burst',
-  'forceField',
   'forceFieldPanels',
   'audio',
   'verticalLauncher',
@@ -104,6 +103,11 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
     );
   }
   assertExplicitFields(`turret blueprint ${id}`, blueprint, TURRET_EXPLICIT_FIELDS);
+  if (Object.prototype.hasOwnProperty.call(blueprint, 'forceField')) {
+    throw new Error(
+      `Invalid turret blueprint ${id}: forceField emission data belongs in shots.json and must be referenced by shotId`,
+    );
+  }
 
   const label = `turret blueprint ${id}`;
   if (!WEAPON_KIND_SET.has(blueprint.kind)) {

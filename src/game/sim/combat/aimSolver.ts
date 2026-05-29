@@ -536,7 +536,7 @@ function weaponUsesNormalAim(weapon: Turret): boolean {
   if (config.verticalLauncher) return false;
   if (config.isManualFire) return false;
   const shot = config.shot;
-  if (shot !== undefined && shot.type === 'force') return false;
+  if (shot !== undefined && shot.type === 'forceField') return false;
   return true;
 }
 

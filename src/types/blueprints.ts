@@ -10,7 +10,6 @@ import type { ShotId, TurretId, UnitTypeId } from './blueprintIds';
 import type { TurretRangeOverrides } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 import type { ResourceCost } from './economyTypes';
-import type { ForceFieldBarrierRatioConfig } from './shotTypes';
 import type { UnitSuspensionConfig } from './locomotionTypes';
 
 // Re-export for consumers
@@ -25,6 +24,7 @@ export type {
 export type {
   BeamShotBlueprint,
   ForceFieldBarrierRatioConfig,
+  ForceFieldShotBlueprint,
   LaserShotBlueprint,
   LineShotBlueprint,
   ProjectileShotBlueprint,
@@ -116,7 +116,7 @@ export type TurretBlueprint = {
    *  and to route host commands (attack/build/repair) to the matching
    *  primary turret. */
   kind: WeaponKind;
-  projectileId: ShotId | null;
+  shotId: ShotId | null;
   range: number;
   cooldown: number;
   color: number;
@@ -134,11 +134,6 @@ export type TurretBlueprint = {
   requiresNonObstructedLineOfSight: boolean;
   spread: { angle: number; pelletCount: number } | null;
   burst: { count: number; delay: number } | null;
-  forceField: {
-    angle: number;
-    transitionTime: number;
-    barrier: ForceFieldBarrierRatioConfig | null;
-  } | null;
   forceFieldPanels: ForceFieldPanel[];
   audio: { fireSound: SoundEntry } | null;
   radius: TurretRadiusConfig;

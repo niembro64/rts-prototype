@@ -425,7 +425,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.isManualFire === true) f |= CT_TURRET_CFG_IS_MANUAL_FIRE;
   if (turret.config.passive === true) f |= CT_TURRET_CFG_PASSIVE;
   if (turret.config.visualOnly === true) f |= CT_TURRET_CFG_VISUAL_ONLY;
-  if (turret.config.shot && turret.config.shot.type === 'force') {
+  if (turret.config.shot && turret.config.shot.type === 'forceField') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
   if (ranges.tracking) f |= CT_TURRET_CFG_HAS_TRACKING_RANGE;
