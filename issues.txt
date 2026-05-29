@@ -35,62 +35,8 @@ remaining refs still need re-verification before editing.
 
 NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
 entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
-The real holes now cluster in entity IDs, shot provenance, and the remaining
-tower catalog split.
-
------ Universal Runtime Entity IDs -----
-
-A1. [HIGH] Rust targeting/aiming slabs still do not carry mounted-turret
-    runtime EntityIds.
-    LOCATION: rts-sim-wasm/src/lib.rs:7953-7954,8167-8168 (turret SoA indexed
-      entity_slot*MAX_PER_ENTITY + turret_idx).
-    RULE: "Universal Runtime Entity IDs" — every mounted turret carries its own
-      EntityId + parent_id + root_host_id + mount_index.
-    PROBLEM: TypeScript runtime Turret objects now have id/parentId/rootHostId/
-      mountIndex and register metadata in WorldState, but Rust-side turret slabs
-      are still positional elements addressed by (host slot, turretIndex) and
-      entity_slot*MAX+idx. Systems inside the slab still cannot name a specific
-      turret by runtime EntityId.
-    FIX: stamp turret EntityId/parent/root/mount metadata into the Rust slabs and
-      expose registry-backed resolution there; keep slot/index only as cached
-      storage addressing.
-
-A3. [HIGH] Rust EntityMetaPool still lacks the documented metadata registry.
-    LOCATION: rts-sim-wasm/src/lib.rs:7479-7503 (EntityMetaPool).
-    RULE: "Universal Runtime Entity IDs" — the ID resolves through a registry into
-      a metadata row: kind, blueprint_kind, blueprint_id, owner_player_id,
-      team_id, parent_id, root_host_id, mount_index, storage_pool/slot,
-      generation, alive, targetable.
-    PROBLEM: TypeScript WorldState now has an EntityId->EntityMeta registry for
-      top-level entities, mounted turrets, and locomotion. Rust EntityMetaPool
-      still carries entity_type/player_id/hp only, with NONE of blueprint_id,
-      team_id, parent_id, root_host_id, mount_index, storage, generation, alive,
-      targetable.
-    FIX: mirror the TS EntityMeta row in Rust and key it by EntityId; populate it
-      from authoritative spawn/stamping data.
-
-A4. [HIGH] Rust EntityMetaPool treats the reusable storage slot AS identity.
-    LOCATION: rts-sim-wasm/src/lib.rs:7460-7462 (comment "No separate EntityId<->
-      slot map needed"), 7479-7503.
-    RULE: "Universal Runtime Entity IDs" — "Systems may cache storage slots for
-      speed, but the cache is never the identity."
-    PROBLEM: EntityMetaPool is keyed by the reusable spatial-grid slot, and the
-      design comment explicitly equates slot with identity. Slot reuse can alias a
-      freed entity to a new one with no generation guard.
-    FIX: key the registry by EntityId; keep storage_pool/storage_slot as cached
-      fields validated by generation, never as the identity.
-
-A5. [MED] No generation-checked handles.
-    LOCATION: rts-sim-wasm/src/lib.rs:10612-10624 (id-equality re-check, the only
-      stale guard; the lone "generation" symbol at lib.rs:1077 is an unrelated
-      spatial-bucket gen).
-    RULE: "Universal Runtime Entity IDs" — EntityId is an opaque, preferably
-      generation-checked handle.
-    PROBLEM: stale refs are caught only by an id-equality re-check inside the
-      combat pool's id->slot resolver, and only there. No generation counter
-      exists, so any other system caching a slot has no stale-ref protection.
-    FIX: add a generation field per registry row, bump on slot reuse, validate
-      (id, generation) on resolve.
+The remaining actionable refs now cluster in shot provenance and the tower
+catalog split.
 
 ----- Shots carry immutable source provenance -----
 

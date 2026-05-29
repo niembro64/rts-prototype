@@ -7,6 +7,19 @@ import { SNAPSHOT_CONFIG } from '../../config';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   CT_TURRET_STATE_ENGAGED,
+  ENTITY_META_BLUEPRINT_KIND_BUILDING,
+  ENTITY_META_BLUEPRINT_KIND_LOCOMOTION,
+  ENTITY_META_BLUEPRINT_KIND_TOWER,
+  ENTITY_META_BLUEPRINT_KIND_TURRET,
+  ENTITY_META_BLUEPRINT_KIND_UNIT,
+  ENTITY_META_KIND_BUILDING,
+  ENTITY_META_KIND_LOCOMOTION,
+  ENTITY_META_KIND_TOWER,
+  ENTITY_META_KIND_TURRET,
+  ENTITY_META_KIND_UNIT,
+  ENTITY_META_STORAGE_COMBAT_TURRETS,
+  ENTITY_META_STORAGE_ENTITIES,
+  ENTITY_META_STORAGE_UNIT_LOCOMOTION,
   getSimWasm,
   type SimWasm,
   SNAPSHOT_DIFF_KIND_UNIT,
@@ -39,6 +52,9 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
+  buildingTypeToCode,
+  turretIdToCode,
+  unitTypeToCode,
 } from '../../types/network';
 
 const MAX_WEAPONS_PER_ENTITY = 8;
@@ -618,6 +634,24 @@ export function getNextEntityState(entity: Entity): PrevEntityState {
   return next;
 }
 
+function entityMetaKindCode(e: Entity): number {
+  if (e.type === 'unit') return ENTITY_META_KIND_UNIT;
+  if (e.type === 'tower') return ENTITY_META_KIND_TOWER;
+  return ENTITY_META_KIND_BUILDING;
+}
+
+function entityMetaBlueprintKindCode(e: Entity): number {
+  if (e.type === 'unit') return ENTITY_META_BLUEPRINT_KIND_UNIT;
+  if (e.type === 'tower') return ENTITY_META_BLUEPRINT_KIND_TOWER;
+  return ENTITY_META_BLUEPRINT_KIND_BUILDING;
+}
+
+function entityMetaBlueprintCode(e: Entity): number {
+  if (e.unit !== null) return unitTypeToCode(e.unit.unitType);
+  if (e.buildingType !== null) return buildingTypeToCode(e.buildingType);
+  return 0xff;
+}
+
 /** Phase 10 D.3a — mirror the snapshot-relevant scalars + per-turret
  *  state of one entity into the WASM-side entity-meta + turret pools.
  *  Turret pool population runs for ALL entities with combat (units
@@ -628,6 +662,39 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
   if (slot < 0) return;
   const ownership = e.ownership;
   const playerId = ownership !== null ? ownership.playerId : 0;
+  sim.entityMeta.register(
+    e.id,
+    entityMetaKindCode(e),
+    entityMetaBlueprintKindCode(e),
+    entityMetaBlueprintCode(e),
+    ownership !== null ? ownership.playerId : -1,
+    -1,
+    NO_ENTITY_ID,
+    e.id,
+    -1,
+    ENTITY_META_STORAGE_ENTITIES,
+    slot,
+    e.type === 'unit' || e.type === 'tower' || e.type === 'building' ? 1 : 0,
+  );
+
+  const locomotion = e.unit?.locomotion;
+  if (locomotion !== undefined && locomotion.id !== NO_ENTITY_ID) {
+    sim.entityMeta.register(
+      locomotion.id,
+      ENTITY_META_KIND_LOCOMOTION,
+      ENTITY_META_BLUEPRINT_KIND_LOCOMOTION,
+      0xff,
+      ownership !== null ? ownership.playerId : -1,
+      -1,
+      locomotion.parentId,
+      locomotion.rootHostId,
+      locomotion.mountIndex,
+      ENTITY_META_STORAGE_UNIT_LOCOMOTION,
+      slot,
+      0,
+    );
+  }
+
   if (e.unit) {
     const u = e.unit;
     const buildable = e.buildable;
@@ -676,8 +743,26 @@ function syncEntityMetaPools(e: Entity, sim: SimWasm): void {
     // while line weapons keep their pose because it drives visible
     // beam/laser presentation.
     const snapshotAimMotion = turretAimMotionIsSnapshotVisible(w);
+    sim.entityMeta.register(
+      w.id,
+      ENTITY_META_KIND_TURRET,
+      ENTITY_META_BLUEPRINT_KIND_TURRET,
+      turretIdToCode(w.config.id),
+      ownership !== null ? ownership.playerId : -1,
+      -1,
+      w.parentId,
+      w.rootHostId,
+      w.mountIndex,
+      ENTITY_META_STORAGE_COMBAT_TURRETS,
+      slot * MAX_WEAPONS_PER_ENTITY + t,
+      w.config.visualOnly ? 0 : 1,
+    );
     sim.turretPool.setTurret(
       slot, t,
+      w.id,
+      w.parentId,
+      w.rootHostId,
+      w.mountIndex,
       snapshotAimMotion ? w.rotation : 0,
       snapshotAimMotion ? w.angularVelocity : 0,
       snapshotAimMotion ? w.angularAcceleration : 0,

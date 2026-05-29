@@ -99,6 +99,12 @@ import __wbg_init, {
   messagepack_self_test,
   entity_meta_init,
   entity_meta_clear,
+  entity_meta_register,
+  entity_meta_unregister,
+  entity_meta_unregister_root,
+  entity_meta_resolve_row,
+  entity_meta_generation,
+  entity_meta_resolve_storage_slot,
   entity_meta_set_unit,
   entity_meta_set_building,
   entity_meta_set_tower,
@@ -122,6 +128,21 @@ import __wbg_init, {
   entity_meta_solar_open_ptr,
   entity_meta_build_progress_ptr,
   entity_meta_capacity,
+  entity_meta_registry_entity_id_ptr,
+  entity_meta_registry_kind_ptr,
+  entity_meta_registry_blueprint_kind_ptr,
+  entity_meta_registry_blueprint_code_ptr,
+  entity_meta_registry_owner_player_id_ptr,
+  entity_meta_registry_team_id_ptr,
+  entity_meta_registry_parent_id_ptr,
+  entity_meta_registry_root_host_id_ptr,
+  entity_meta_registry_mount_index_ptr,
+  entity_meta_registry_storage_pool_ptr,
+  entity_meta_registry_storage_slot_ptr,
+  entity_meta_registry_generation_ptr,
+  entity_meta_registry_alive_ptr,
+  entity_meta_registry_targetable_ptr,
+  entity_meta_registry_capacity,
   turret_pool_init,
   turret_pool_clear,
   turret_pool_max_per_entity,
@@ -131,6 +152,10 @@ import __wbg_init, {
   turret_pool_count,
   turret_pool_entity_capacity,
   turret_pool_count_per_entity_ptr,
+  turret_pool_entity_id_ptr,
+  turret_pool_parent_id_ptr,
+  turret_pool_root_host_id_ptr,
+  turret_pool_mount_index_ptr,
   turret_pool_rotation_ptr,
   turret_pool_angular_velocity_ptr,
   turret_pool_angular_acceleration_ptr,
@@ -168,6 +193,10 @@ import __wbg_init, {
   combat_targeting_entity_active_turret_mask_ptr,
   combat_targeting_entity_firing_turret_mask_ptr,
   combat_targeting_turret_count_per_entity_ptr,
+  combat_targeting_turret_entity_id_ptr,
+  combat_targeting_turret_parent_id_ptr,
+  combat_targeting_turret_root_host_id_ptr,
+  combat_targeting_turret_mount_index_ptr,
   combat_targeting_turret_mount_x_ptr,
   combat_targeting_turret_mount_y_ptr,
   combat_targeting_turret_mount_z_ptr,
@@ -1036,6 +1065,27 @@ export interface SpatialApi {
 export interface EntityMetaApi {
   init: (initialCapacity: number) => void;
   clear: () => void;
+  /** Register/refresh a runtime EntityId metadata row. Returns the
+   *  row generation; (id,generation) is the stale-ref checked handle. */
+  register: (
+    id: number,
+    kind: number,
+    blueprintKind: number,
+    blueprintCode: number,
+    ownerPlayerId: number,
+    teamId: number,
+    parentId: number,
+    rootHostId: number,
+    mountIndex: number,
+    storagePool: number,
+    storageSlot: number,
+    targetable: number,
+  ) => number;
+  unregister: (id: number) => void;
+  unregisterRoot: (rootId: number) => void;
+  resolveRow: (id: number, generation: number) => number;
+  generation: (id: number) => number;
+  resolveStorageSlot: (id: number, generation: number) => number;
   setUnit: (
     slot: number,
     playerId: number,
@@ -1089,6 +1139,21 @@ export interface EntityMetaApi {
   readonly factoryProgressPtr: () => number;
   readonly solarOpenPtr: () => number;
   readonly buildProgressPtr: () => number;
+  readonly registryEntityIdPtr: () => number;
+  readonly registryKindPtr: () => number;
+  readonly registryBlueprintKindPtr: () => number;
+  readonly registryBlueprintCodePtr: () => number;
+  readonly registryOwnerPlayerIdPtr: () => number;
+  readonly registryTeamIdPtr: () => number;
+  readonly registryParentIdPtr: () => number;
+  readonly registryRootHostIdPtr: () => number;
+  readonly registryMountIndexPtr: () => number;
+  readonly registryStoragePoolPtr: () => number;
+  readonly registryStorageSlotPtr: () => number;
+  readonly registryGenerationPtr: () => number;
+  readonly registryAlivePtr: () => number;
+  readonly registryTargetablePtr: () => number;
+  readonly registryCapacity: () => number;
 }
 
 /** Entity-meta type tag values (mirrors lib.rs ENTITY_META_TYPE_*). */
@@ -1096,6 +1161,24 @@ export const ENTITY_META_TYPE_UNSET = 0;
 export const ENTITY_META_TYPE_UNIT = 1;
 export const ENTITY_META_TYPE_BUILDING = 2;
 export const ENTITY_META_TYPE_TOWER = 3;
+export const ENTITY_META_KIND_NONE = 0;
+export const ENTITY_META_KIND_UNIT = 1;
+export const ENTITY_META_KIND_TOWER = 2;
+export const ENTITY_META_KIND_BUILDING = 3;
+export const ENTITY_META_KIND_SHOT = 4;
+export const ENTITY_META_KIND_TURRET = 5;
+export const ENTITY_META_KIND_LOCOMOTION = 6;
+export const ENTITY_META_BLUEPRINT_KIND_NONE = 0;
+export const ENTITY_META_BLUEPRINT_KIND_UNIT = 1;
+export const ENTITY_META_BLUEPRINT_KIND_TOWER = 2;
+export const ENTITY_META_BLUEPRINT_KIND_BUILDING = 3;
+export const ENTITY_META_BLUEPRINT_KIND_TURRET = 4;
+export const ENTITY_META_BLUEPRINT_KIND_LOCOMOTION = 5;
+export const ENTITY_META_BLUEPRINT_KIND_SHOT = 6;
+export const ENTITY_META_STORAGE_NONE = 0;
+export const ENTITY_META_STORAGE_ENTITIES = 1;
+export const ENTITY_META_STORAGE_COMBAT_TURRETS = 2;
+export const ENTITY_META_STORAGE_UNIT_LOCOMOTION = 3;
 
 /** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
  *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
@@ -1111,6 +1194,10 @@ export interface TurretPoolApi {
   setTurret: (
     entitySlot: number,
     turretIdx: number,
+    entityId: number,
+    parentId: number,
+    rootHostId: number,
+    mountIndex: number,
     rotation: number,
     angularVelocity: number,
     angularAcceleration: number,
@@ -1124,6 +1211,10 @@ export interface TurretPoolApi {
   count: (entitySlot: number) => number;
   entityCapacity: () => number;
   readonly countPerEntityPtr: () => number;
+  readonly entityIdPtr: () => number;
+  readonly parentIdPtr: () => number;
+  readonly rootHostIdPtr: () => number;
+  readonly mountIndexPtr: () => number;
   readonly rotationPtr: () => number;
   readonly angularVelocityPtr: () => number;
   readonly angularAccelerationPtr: () => number;
@@ -1279,6 +1370,10 @@ export interface CombatTargetingApi {
   setTurret: (
     entitySlot: number,
     turretIdx: number,
+    turretEntityId: number,
+    turretParentId: number,
+    turretRootHostId: number,
+    turretMountIndex: number,
     mountX: number,
     mountY: number,
     mountZ: number,
@@ -1381,6 +1476,10 @@ export interface CombatTargetingApi {
   readonly entityActiveTurretMaskPtr: () => number;
   readonly entityFiringTurretMaskPtr: () => number;
   readonly turretCountPerEntityPtr: () => number;
+  readonly turretEntityIdPtr: () => number;
+  readonly turretParentIdPtr: () => number;
+  readonly turretRootHostIdPtr: () => number;
+  readonly turretMountIndexPtr: () => number;
   readonly turretMountXPtr: () => number;
   readonly turretMountYPtr: () => number;
   readonly turretMountZPtr: () => number;
@@ -2839,6 +2938,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         entityMeta: {
           init: entity_meta_init,
           clear: entity_meta_clear,
+          register: entity_meta_register,
+          unregister: entity_meta_unregister,
+          unregisterRoot: entity_meta_unregister_root,
+          resolveRow: entity_meta_resolve_row,
+          generation: entity_meta_generation,
+          resolveStorageSlot: entity_meta_resolve_storage_slot,
           setUnit: entity_meta_set_unit,
           setBuilding: entity_meta_set_building,
           setTower: entity_meta_set_tower,
@@ -2862,6 +2967,21 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           factoryProgressPtr: entity_meta_factory_progress_ptr,
           solarOpenPtr: entity_meta_solar_open_ptr,
           buildProgressPtr: entity_meta_build_progress_ptr,
+          registryEntityIdPtr: entity_meta_registry_entity_id_ptr,
+          registryKindPtr: entity_meta_registry_kind_ptr,
+          registryBlueprintKindPtr: entity_meta_registry_blueprint_kind_ptr,
+          registryBlueprintCodePtr: entity_meta_registry_blueprint_code_ptr,
+          registryOwnerPlayerIdPtr: entity_meta_registry_owner_player_id_ptr,
+          registryTeamIdPtr: entity_meta_registry_team_id_ptr,
+          registryParentIdPtr: entity_meta_registry_parent_id_ptr,
+          registryRootHostIdPtr: entity_meta_registry_root_host_id_ptr,
+          registryMountIndexPtr: entity_meta_registry_mount_index_ptr,
+          registryStoragePoolPtr: entity_meta_registry_storage_pool_ptr,
+          registryStorageSlotPtr: entity_meta_registry_storage_slot_ptr,
+          registryGenerationPtr: entity_meta_registry_generation_ptr,
+          registryAlivePtr: entity_meta_registry_alive_ptr,
+          registryTargetablePtr: entity_meta_registry_targetable_ptr,
+          registryCapacity: entity_meta_registry_capacity,
         },
         turretPool: {
           init: turret_pool_init,
@@ -2873,6 +2993,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           count: turret_pool_count,
           entityCapacity: turret_pool_entity_capacity,
           countPerEntityPtr: turret_pool_count_per_entity_ptr,
+          entityIdPtr: turret_pool_entity_id_ptr,
+          parentIdPtr: turret_pool_parent_id_ptr,
+          rootHostIdPtr: turret_pool_root_host_id_ptr,
+          mountIndexPtr: turret_pool_mount_index_ptr,
           rotationPtr: turret_pool_rotation_ptr,
           angularVelocityPtr: turret_pool_angular_velocity_ptr,
           angularAccelerationPtr: turret_pool_angular_acceleration_ptr,
@@ -2912,6 +3036,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           entityActiveTurretMaskPtr: combat_targeting_entity_active_turret_mask_ptr,
           entityFiringTurretMaskPtr: combat_targeting_entity_firing_turret_mask_ptr,
           turretCountPerEntityPtr: combat_targeting_turret_count_per_entity_ptr,
+          turretEntityIdPtr: combat_targeting_turret_entity_id_ptr,
+          turretParentIdPtr: combat_targeting_turret_parent_id_ptr,
+          turretRootHostIdPtr: combat_targeting_turret_root_host_id_ptr,
+          turretMountIndexPtr: combat_targeting_turret_mount_index_ptr,
           turretMountXPtr: combat_targeting_turret_mount_x_ptr,
           turretMountYPtr: combat_targeting_turret_mount_y_ptr,
           turretMountZPtr: combat_targeting_turret_mount_z_ptr,

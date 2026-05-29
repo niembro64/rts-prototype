@@ -625,6 +625,10 @@ function stampCombatTargetingEntityInto(
 
     targeting.setTurret(
       slot, i,
+      t.id,
+      t.parentId,
+      t.rootHostId,
+      t.mountIndex,
       t.worldPos.x, t.worldPos.y, t.worldPos.z,
       t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
       t.rotation, t.pitch,

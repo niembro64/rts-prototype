@@ -137,6 +137,7 @@ export class SpatialGrid {
     // fields from the previous occupant.
     const sim = getSimWasm();
     if (sim !== undefined) {
+      sim.entityMeta.unregisterRoot(id);
       sim.entityMeta.unset(slot);
       sim.turretPool.unsetEntity(slot);
     }

@@ -7689,7 +7689,7 @@ pub fn messagepack_self_test() -> u32 {
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  Phase 10 D.1 — Entity-meta SoA pool
+//  Phase 10 D.1 — Entity-meta SoA pool + runtime registry
 //
 //  Per-entity scalar fields the snapshot serializer reads. Position,
 //  velocity, orientation, etc. already live in BodyPool / projectile
@@ -7698,9 +7698,10 @@ pub fn messagepack_self_test() -> u32 {
 //  suspension kinematics, factory/solar booleans, build target
 //  reference.
 //
-//  Slot space is shared with SpatialGrid (Phase 7) — JS resolves the
-//  entity's slot via spatial.allocSlot(); both systems read/write the
-//  same slot id. No separate EntityId↔slot map needed.
+//  The snapshot fields below are cached by SpatialGrid slot for
+//  hot-path reads only. Runtime identity lives in the registry rows
+//  keyed by EntityId; storage slots are cached metadata and are always
+//  validated through the row generation before use.
 //
 //  This commit ships the data layout + setters + lifecycle. JS-side
 //  population (the per-tick capture from WorldState into the pool)
@@ -7717,8 +7718,42 @@ const ENTITY_META_TYPE_UNIT: u8 = 1;
 const ENTITY_META_TYPE_BUILDING: u8 = 2;
 const ENTITY_META_TYPE_TOWER: u8 = 3;
 
+pub const ENTITY_META_KIND_NONE: u8 = 0;
+pub const ENTITY_META_KIND_UNIT: u8 = 1;
+pub const ENTITY_META_KIND_TOWER: u8 = 2;
+pub const ENTITY_META_KIND_BUILDING: u8 = 3;
+pub const ENTITY_META_KIND_SHOT: u8 = 4;
+pub const ENTITY_META_KIND_TURRET: u8 = 5;
+pub const ENTITY_META_KIND_LOCOMOTION: u8 = 6;
+
+pub const ENTITY_META_BLUEPRINT_KIND_NONE: u8 = 0;
+pub const ENTITY_META_BLUEPRINT_KIND_UNIT: u8 = 1;
+pub const ENTITY_META_BLUEPRINT_KIND_TOWER: u8 = 2;
+pub const ENTITY_META_BLUEPRINT_KIND_BUILDING: u8 = 3;
+pub const ENTITY_META_BLUEPRINT_KIND_TURRET: u8 = 4;
+pub const ENTITY_META_BLUEPRINT_KIND_LOCOMOTION: u8 = 5;
+pub const ENTITY_META_BLUEPRINT_KIND_SHOT: u8 = 6;
+
+pub const ENTITY_META_STORAGE_NONE: u8 = 0;
+pub const ENTITY_META_STORAGE_ENTITIES: u8 = 1;
+pub const ENTITY_META_STORAGE_COMBAT_TURRETS: u8 = 2;
+pub const ENTITY_META_STORAGE_UNIT_LOCOMOTION: u8 = 3;
+
+const ENTITY_META_NO_ID: i32 = -1;
+const ENTITY_META_NO_INDEX: i32 = -1;
+const ENTITY_META_BLUEPRINT_CODE_NONE: u32 = u32::MAX;
+
+#[inline]
+fn entity_meta_storage_key(storage_pool: u8, storage_slot: u32) -> Option<u64> {
+    if storage_pool == ENTITY_META_STORAGE_NONE {
+        None
+    } else {
+        Some(((storage_pool as u64) << 32) | (storage_slot as u64))
+    }
+}
+
 struct EntityMetaPool {
-    // Common
+    // Slot-indexed snapshot scalars.
     entity_type: Vec<u8>,
     player_id: Vec<u8>,
     hp_curr: Vec<f32>,
@@ -7741,6 +7776,26 @@ struct EntityMetaPool {
     factory_progress: Vec<f32>,
     solar_open: Vec<u8>,
     build_progress: Vec<f32>,
+
+    // EntityId-indexed runtime registry. Row index is an internal dense
+    // registry row, not a storage identity.
+    registry_entity_id: Vec<i32>,
+    registry_kind: Vec<u8>,
+    registry_blueprint_kind: Vec<u8>,
+    registry_blueprint_code: Vec<u32>,
+    registry_owner_player_id: Vec<i32>,
+    registry_team_id: Vec<i32>,
+    registry_parent_id: Vec<i32>,
+    registry_root_host_id: Vec<i32>,
+    registry_mount_index: Vec<i32>,
+    registry_storage_pool: Vec<u8>,
+    registry_storage_slot: Vec<u32>,
+    registry_generation: Vec<u32>,
+    registry_alive: Vec<u8>,
+    registry_targetable: Vec<u8>,
+    registry_row_by_entity_id: HashMap<i32, u32>,
+    registry_row_by_storage: HashMap<u64, u32>,
+    registry_free_rows: Vec<u32>,
 }
 
 impl EntityMetaPool {
@@ -7763,6 +7818,23 @@ impl EntityMetaPool {
             factory_progress: Vec::new(),
             solar_open: Vec::new(),
             build_progress: Vec::new(),
+            registry_entity_id: Vec::new(),
+            registry_kind: Vec::new(),
+            registry_blueprint_kind: Vec::new(),
+            registry_blueprint_code: Vec::new(),
+            registry_owner_player_id: Vec::new(),
+            registry_team_id: Vec::new(),
+            registry_parent_id: Vec::new(),
+            registry_root_host_id: Vec::new(),
+            registry_mount_index: Vec::new(),
+            registry_storage_pool: Vec::new(),
+            registry_storage_slot: Vec::new(),
+            registry_generation: Vec::new(),
+            registry_alive: Vec::new(),
+            registry_targetable: Vec::new(),
+            registry_row_by_entity_id: HashMap::new(),
+            registry_row_by_storage: HashMap::new(),
+            registry_free_rows: Vec::new(),
         }
     }
 
@@ -7788,6 +7860,218 @@ impl EntityMetaPool {
         self.factory_progress.resize(needed, 0.0);
         self.solar_open.resize(needed, 0);
         self.build_progress.resize(needed, 0.0);
+    }
+
+    fn ensure_registry_row(&mut self, row: u32) {
+        let needed = (row as usize) + 1;
+        if self.registry_entity_id.len() >= needed {
+            return;
+        }
+        self.registry_entity_id.resize(needed, ENTITY_META_NO_ID);
+        self.registry_kind.resize(needed, ENTITY_META_KIND_NONE);
+        self.registry_blueprint_kind
+            .resize(needed, ENTITY_META_BLUEPRINT_KIND_NONE);
+        self.registry_blueprint_code
+            .resize(needed, ENTITY_META_BLUEPRINT_CODE_NONE);
+        self.registry_owner_player_id
+            .resize(needed, ENTITY_META_NO_ID);
+        self.registry_team_id.resize(needed, ENTITY_META_NO_ID);
+        self.registry_parent_id.resize(needed, ENTITY_META_NO_ID);
+        self.registry_root_host_id.resize(needed, ENTITY_META_NO_ID);
+        self.registry_mount_index
+            .resize(needed, ENTITY_META_NO_INDEX);
+        self.registry_storage_pool
+            .resize(needed, ENTITY_META_STORAGE_NONE);
+        self.registry_storage_slot.resize(needed, 0);
+        self.registry_generation.resize(needed, 0);
+        self.registry_alive.resize(needed, 0);
+        self.registry_targetable.resize(needed, 0);
+    }
+
+    fn unregister_registry_row(&mut self, row: u32) {
+        let r = row as usize;
+        if r >= self.registry_alive.len() || self.registry_alive[r] == 0 {
+            return;
+        }
+        let old_id = self.registry_entity_id[r];
+        if old_id >= 0 {
+            self.registry_row_by_entity_id.remove(&old_id);
+        }
+        if let Some(key) =
+            entity_meta_storage_key(self.registry_storage_pool[r], self.registry_storage_slot[r])
+        {
+            if self.registry_row_by_storage.get(&key) == Some(&row) {
+                self.registry_row_by_storage.remove(&key);
+            }
+        }
+        self.registry_alive[r] = 0;
+        self.registry_targetable[r] = 0;
+        self.registry_entity_id[r] = ENTITY_META_NO_ID;
+        self.registry_kind[r] = ENTITY_META_KIND_NONE;
+        self.registry_blueprint_kind[r] = ENTITY_META_BLUEPRINT_KIND_NONE;
+        self.registry_blueprint_code[r] = ENTITY_META_BLUEPRINT_CODE_NONE;
+        self.registry_owner_player_id[r] = ENTITY_META_NO_ID;
+        self.registry_team_id[r] = ENTITY_META_NO_ID;
+        self.registry_parent_id[r] = ENTITY_META_NO_ID;
+        self.registry_root_host_id[r] = ENTITY_META_NO_ID;
+        self.registry_mount_index[r] = ENTITY_META_NO_INDEX;
+        self.registry_storage_pool[r] = ENTITY_META_STORAGE_NONE;
+        self.registry_storage_slot[r] = 0;
+        self.registry_free_rows.push(row);
+    }
+
+    fn clear_registry(&mut self) {
+        for alive in self.registry_alive.iter_mut() {
+            *alive = 0;
+        }
+        for targetable in self.registry_targetable.iter_mut() {
+            *targetable = 0;
+        }
+        self.registry_row_by_entity_id.clear();
+        self.registry_row_by_storage.clear();
+        self.registry_free_rows.clear();
+        for row in 0..self.registry_entity_id.len() {
+            self.registry_free_rows.push(row as u32);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register(
+        &mut self,
+        id: i32,
+        kind: u8,
+        blueprint_kind: u8,
+        blueprint_code: u32,
+        owner_player_id: i32,
+        team_id: i32,
+        parent_id: i32,
+        root_host_id: i32,
+        mount_index: i32,
+        storage_pool: u8,
+        storage_slot: u32,
+        targetable: u8,
+    ) -> u32 {
+        if id < 0 {
+            return 0;
+        }
+
+        let storage_key = entity_meta_storage_key(storage_pool, storage_slot);
+        if let Some(row) = self.registry_row_by_entity_id.get(&id).copied() {
+            let r = row as usize;
+            let old_storage_key = entity_meta_storage_key(
+                self.registry_storage_pool[r],
+                self.registry_storage_slot[r],
+            );
+            if old_storage_key != storage_key {
+                if let Some(key) = old_storage_key {
+                    if self.registry_row_by_storage.get(&key) == Some(&row) {
+                        self.registry_row_by_storage.remove(&key);
+                    }
+                }
+            }
+            if let Some(key) = storage_key {
+                if let Some(other_row) = self.registry_row_by_storage.get(&key).copied() {
+                    if other_row != row {
+                        self.unregister_registry_row(other_row);
+                    }
+                }
+                self.registry_row_by_storage.insert(key, row);
+            }
+            self.registry_kind[r] = kind;
+            self.registry_blueprint_kind[r] = blueprint_kind;
+            self.registry_blueprint_code[r] = blueprint_code;
+            self.registry_owner_player_id[r] = owner_player_id;
+            self.registry_team_id[r] = team_id;
+            self.registry_parent_id[r] = parent_id;
+            self.registry_root_host_id[r] = root_host_id;
+            self.registry_mount_index[r] = mount_index;
+            self.registry_storage_pool[r] = storage_pool;
+            self.registry_storage_slot[r] = storage_slot;
+            self.registry_alive[r] = 1;
+            self.registry_targetable[r] = if targetable != 0 { 1 } else { 0 };
+            return self.registry_generation[r];
+        }
+
+        if let Some(key) = storage_key {
+            if let Some(old_row) = self.registry_row_by_storage.get(&key).copied() {
+                self.unregister_registry_row(old_row);
+            }
+        }
+
+        let row = match self.registry_free_rows.pop() {
+            Some(row) => row,
+            None => self.registry_entity_id.len() as u32,
+        };
+        self.ensure_registry_row(row);
+        let r = row as usize;
+        let generation = self.registry_generation[r].wrapping_add(1).max(1);
+        self.registry_generation[r] = generation;
+        self.registry_entity_id[r] = id;
+        self.registry_kind[r] = kind;
+        self.registry_blueprint_kind[r] = blueprint_kind;
+        self.registry_blueprint_code[r] = blueprint_code;
+        self.registry_owner_player_id[r] = owner_player_id;
+        self.registry_team_id[r] = team_id;
+        self.registry_parent_id[r] = parent_id;
+        self.registry_root_host_id[r] = root_host_id;
+        self.registry_mount_index[r] = mount_index;
+        self.registry_storage_pool[r] = storage_pool;
+        self.registry_storage_slot[r] = storage_slot;
+        self.registry_alive[r] = 1;
+        self.registry_targetable[r] = if targetable != 0 { 1 } else { 0 };
+        self.registry_row_by_entity_id.insert(id, row);
+        if let Some(key) = storage_key {
+            self.registry_row_by_storage.insert(key, row);
+        }
+        generation
+    }
+
+    fn unregister_entity_id(&mut self, id: i32) {
+        let Some(row) = self.registry_row_by_entity_id.get(&id).copied() else {
+            return;
+        };
+        self.unregister_registry_row(row);
+    }
+
+    fn unregister_root(&mut self, root_id: i32) {
+        if root_id < 0 {
+            return;
+        }
+        let rows = self
+            .registry_entity_id
+            .iter()
+            .enumerate()
+            .filter_map(|(row, &id)| {
+                if self.registry_alive[row] != 0
+                    && (id == root_id || self.registry_root_host_id[row] == root_id)
+                {
+                    Some(row as u32)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        for row in rows {
+            self.unregister_registry_row(row);
+        }
+    }
+
+    fn resolve_row(&self, id: i32, generation: u32) -> i32 {
+        if id < 0 || generation == 0 {
+            return -1;
+        }
+        let Some(row) = self.registry_row_by_entity_id.get(&id).copied() else {
+            return -1;
+        };
+        let r = row as usize;
+        if r >= self.registry_alive.len()
+            || self.registry_alive[r] == 0
+            || self.registry_generation[r] != generation
+        {
+            -1
+        } else {
+            row as i32
+        }
     }
 
     fn unset_slot(&mut self, slot: u32) {
@@ -7838,6 +8122,7 @@ pub fn entity_meta_init(initial_capacity: u32) {
     for k in pool.entity_type.iter_mut() {
         *k = ENTITY_META_TYPE_UNSET;
     }
+    pool.clear_registry();
 }
 
 #[wasm_bindgen]
@@ -7848,6 +8133,81 @@ pub fn entity_meta_clear() {
     }
     // Other fields stay at their resize-defaults; tag check gates
     // any future read.
+    pool.clear_registry();
+}
+
+/// Register or refresh one runtime EntityId metadata row. Null-ish
+/// ids use -1 for owner/team/parent/root/mount. Returns the row's
+/// generation; callers store (id, generation) for stale-ref checks.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn entity_meta_register(
+    id: i32,
+    kind: u8,
+    blueprint_kind: u8,
+    blueprint_code: u32,
+    owner_player_id: i32,
+    team_id: i32,
+    parent_id: i32,
+    root_host_id: i32,
+    mount_index: i32,
+    storage_pool: u8,
+    storage_slot: u32,
+    targetable: u8,
+) -> u32 {
+    entity_meta_pool().register(
+        id,
+        kind,
+        blueprint_kind,
+        blueprint_code,
+        owner_player_id,
+        team_id,
+        parent_id,
+        root_host_id,
+        mount_index,
+        storage_pool,
+        storage_slot,
+        targetable,
+    )
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_unregister(id: i32) {
+    entity_meta_pool().unregister_entity_id(id);
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_unregister_root(root_id: i32) {
+    entity_meta_pool().unregister_root(root_id);
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_resolve_row(id: i32, generation: u32) -> i32 {
+    entity_meta_pool().resolve_row(id, generation)
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_generation(id: i32) -> u32 {
+    let pool = entity_meta_pool();
+    let Some(row) = pool.registry_row_by_entity_id.get(&id).copied() else {
+        return 0;
+    };
+    let r = row as usize;
+    if r >= pool.registry_generation.len() || pool.registry_alive[r] == 0 {
+        0
+    } else {
+        pool.registry_generation[r]
+    }
+}
+
+#[wasm_bindgen]
+pub fn entity_meta_resolve_storage_slot(id: i32, generation: u32) -> i32 {
+    let pool = entity_meta_pool();
+    let row = pool.resolve_row(id, generation);
+    if row < 0 {
+        return -1;
+    }
+    pool.registry_storage_slot[row as usize] as i32
 }
 
 /// Bulk per-unit setter. JS calls this once per dirty unit per
@@ -8047,6 +8407,58 @@ pub fn entity_meta_capacity() -> u32 {
     entity_meta_pool().entity_type.len() as u32
 }
 
+entity_meta_ptr_export!(entity_meta_registry_entity_id_ptr, registry_entity_id, i32);
+entity_meta_ptr_export!(entity_meta_registry_kind_ptr, registry_kind, u8);
+entity_meta_ptr_export!(
+    entity_meta_registry_blueprint_kind_ptr,
+    registry_blueprint_kind,
+    u8
+);
+entity_meta_ptr_export!(
+    entity_meta_registry_blueprint_code_ptr,
+    registry_blueprint_code,
+    u32
+);
+entity_meta_ptr_export!(
+    entity_meta_registry_owner_player_id_ptr,
+    registry_owner_player_id,
+    i32
+);
+entity_meta_ptr_export!(entity_meta_registry_team_id_ptr, registry_team_id, i32);
+entity_meta_ptr_export!(entity_meta_registry_parent_id_ptr, registry_parent_id, i32);
+entity_meta_ptr_export!(
+    entity_meta_registry_root_host_id_ptr,
+    registry_root_host_id,
+    i32
+);
+entity_meta_ptr_export!(
+    entity_meta_registry_mount_index_ptr,
+    registry_mount_index,
+    i32
+);
+entity_meta_ptr_export!(
+    entity_meta_registry_storage_pool_ptr,
+    registry_storage_pool,
+    u8
+);
+entity_meta_ptr_export!(
+    entity_meta_registry_storage_slot_ptr,
+    registry_storage_slot,
+    u32
+);
+entity_meta_ptr_export!(
+    entity_meta_registry_generation_ptr,
+    registry_generation,
+    u32
+);
+entity_meta_ptr_export!(entity_meta_registry_alive_ptr, registry_alive, u8);
+entity_meta_ptr_export!(entity_meta_registry_targetable_ptr, registry_targetable, u8);
+
+#[wasm_bindgen]
+pub fn entity_meta_registry_capacity() -> u32 {
+    entity_meta_pool().registry_entity_id.len() as u32
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Phase 10 D.1b — Turret sub-pool
 //
@@ -8072,6 +8484,10 @@ struct TurretPool {
     // count_per_entity[i] = number of turrets used by entity slot i.
     count_per_entity: Vec<u8>,
     // Per-turret state, indexed by (entity_slot * MAX + turret_idx).
+    entity_id: Vec<i32>,
+    parent_id: Vec<i32>,
+    root_host_id: Vec<i32>,
+    mount_index: Vec<i32>,
     rotation: Vec<f32>,
     angular_velocity: Vec<f32>,
     angular_acceleration: Vec<f32>,
@@ -8086,6 +8502,10 @@ impl TurretPool {
     fn empty() -> Self {
         Self {
             count_per_entity: Vec::new(),
+            entity_id: Vec::new(),
+            parent_id: Vec::new(),
+            root_host_id: Vec::new(),
+            mount_index: Vec::new(),
             rotation: Vec::new(),
             angular_velocity: Vec::new(),
             angular_acceleration: Vec::new(),
@@ -8104,6 +8524,10 @@ impl TurretPool {
         }
         let turret_needed = entity_needed * (TURRET_POOL_MAX_PER_ENTITY as usize);
         if self.rotation.len() < turret_needed {
+            self.entity_id.resize(turret_needed, ENTITY_META_NO_ID);
+            self.parent_id.resize(turret_needed, ENTITY_META_NO_ID);
+            self.root_host_id.resize(turret_needed, ENTITY_META_NO_ID);
+            self.mount_index.resize(turret_needed, ENTITY_META_NO_INDEX);
             self.rotation.resize(turret_needed, 0.0);
             self.angular_velocity.resize(turret_needed, 0.0);
             self.angular_acceleration.resize(turret_needed, 0.0);
@@ -8121,7 +8545,18 @@ impl TurretPool {
             return;
         }
         self.count_per_entity[s] = 0;
-        // Per-turret fields stay at last value; consumers gate on count.
+        let base = s * (TURRET_POOL_MAX_PER_ENTITY as usize);
+        for t in 0..(TURRET_POOL_MAX_PER_ENTITY as usize) {
+            let idx = base + t;
+            if idx >= self.entity_id.len() {
+                break;
+            }
+            self.entity_id[idx] = ENTITY_META_NO_ID;
+            self.parent_id[idx] = ENTITY_META_NO_ID;
+            self.root_host_id[idx] = ENTITY_META_NO_ID;
+            self.mount_index[idx] = ENTITY_META_NO_INDEX;
+        }
+        // Other per-turret fields stay at last value; consumers gate on count.
     }
 }
 
@@ -8171,6 +8606,18 @@ pub fn turret_pool_set_count(entity_slot: u32, count: u8) {
     pool.ensure_entity_capacity(entity_slot);
     let max = TURRET_POOL_MAX_PER_ENTITY as u8;
     let clamped = if count > max { max } else { count };
+    let s = entity_slot as usize;
+    let previous = pool.count_per_entity[s];
+    if clamped < previous {
+        let base = s * (TURRET_POOL_MAX_PER_ENTITY as usize);
+        for t in (clamped as usize)..(previous as usize) {
+            let idx = base + t;
+            pool.entity_id[idx] = ENTITY_META_NO_ID;
+            pool.parent_id[idx] = ENTITY_META_NO_ID;
+            pool.root_host_id[idx] = ENTITY_META_NO_ID;
+            pool.mount_index[idx] = ENTITY_META_NO_INDEX;
+        }
+    }
     pool.count_per_entity[entity_slot as usize] = clamped;
 }
 
@@ -8179,6 +8626,10 @@ pub fn turret_pool_set_count(entity_slot: u32, count: u8) {
 pub fn turret_pool_set_turret(
     entity_slot: u32,
     turret_idx: u32,
+    entity_id: i32,
+    parent_id: i32,
+    root_host_id: i32,
+    mount_index: i32,
     rotation: f32,
     angular_velocity: f32,
     angular_acceleration: f32,
@@ -8193,6 +8644,10 @@ pub fn turret_pool_set_turret(
     debug_assert!(turret_idx < TURRET_POOL_MAX_PER_ENTITY);
     let global_idx =
         (entity_slot as usize) * (TURRET_POOL_MAX_PER_ENTITY as usize) + (turret_idx as usize);
+    pool.entity_id[global_idx] = entity_id;
+    pool.parent_id[global_idx] = parent_id;
+    pool.root_host_id[global_idx] = root_host_id;
+    pool.mount_index[global_idx] = mount_index;
     pool.rotation[global_idx] = rotation;
     pool.angular_velocity[global_idx] = angular_velocity;
     pool.angular_acceleration[global_idx] = angular_acceleration;
@@ -8227,6 +8682,10 @@ macro_rules! turret_pool_ptr_export {
 }
 
 turret_pool_ptr_export!(turret_pool_count_per_entity_ptr, count_per_entity, u8);
+turret_pool_ptr_export!(turret_pool_entity_id_ptr, entity_id, i32);
+turret_pool_ptr_export!(turret_pool_parent_id_ptr, parent_id, i32);
+turret_pool_ptr_export!(turret_pool_root_host_id_ptr, root_host_id, i32);
+turret_pool_ptr_export!(turret_pool_mount_index_ptr, mount_index, i32);
 turret_pool_ptr_export!(turret_pool_rotation_ptr, rotation, f32);
 turret_pool_ptr_export!(turret_pool_angular_velocity_ptr, angular_velocity, f32);
 turret_pool_ptr_export!(
@@ -8415,7 +8874,13 @@ struct CombatTargetingPool {
     entity_slot_by_id: HashMap<i32, u32>,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
+    // Runtime EntityIds make the turret addressable; slot/index remain
+    // cached storage coordinates only.
     turret_count_per_entity: Vec<u8>,
+    turret_entity_id: Vec<i32>,
+    turret_parent_id: Vec<i32>,
+    turret_root_host_id: Vec<i32>,
+    turret_mount_index: Vec<i32>,
     turret_mount_x: Vec<f64>,
     turret_mount_y: Vec<f64>,
     turret_mount_z: Vec<f64>,
@@ -8562,6 +9027,10 @@ impl CombatTargetingPool {
             entity_firing_turret_mask: Vec::new(),
             entity_slot_by_id: HashMap::new(),
             turret_count_per_entity: Vec::new(),
+            turret_entity_id: Vec::new(),
+            turret_parent_id: Vec::new(),
+            turret_root_host_id: Vec::new(),
+            turret_mount_index: Vec::new(),
             turret_mount_x: Vec::new(),
             turret_mount_y: Vec::new(),
             turret_mount_z: Vec::new(),
@@ -8674,6 +9143,14 @@ impl CombatTargetingPool {
         }
         let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
         if self.turret_mount_x.len() < turret_needed {
+            self.turret_entity_id
+                .resize(turret_needed, ENTITY_META_NO_ID);
+            self.turret_parent_id
+                .resize(turret_needed, ENTITY_META_NO_ID);
+            self.turret_root_host_id
+                .resize(turret_needed, ENTITY_META_NO_ID);
+            self.turret_mount_index
+                .resize(turret_needed, ENTITY_META_NO_INDEX);
             self.turret_mount_x.resize(turret_needed, 0.0);
             self.turret_mount_y.resize(turret_needed, 0.0);
             self.turret_mount_z.resize(turret_needed, 0.0);
@@ -8746,6 +9223,18 @@ impl CombatTargetingPool {
         for c in self.turret_count_per_entity.iter_mut() {
             *c = 0;
         }
+        for id in self.turret_entity_id.iter_mut() {
+            *id = ENTITY_META_NO_ID;
+        }
+        for id in self.turret_parent_id.iter_mut() {
+            *id = ENTITY_META_NO_ID;
+        }
+        for id in self.turret_root_host_id.iter_mut() {
+            *id = ENTITY_META_NO_ID;
+        }
+        for mount_index in self.turret_mount_index.iter_mut() {
+            *mount_index = ENTITY_META_NO_INDEX;
+        }
         self.entity_slot_by_id.clear();
         for has_solution in self.turret_ballistic_has_solution.iter_mut() {
             *has_solution = 0;
@@ -8765,6 +9254,17 @@ impl CombatTargetingPool {
         self.entity_sensor_coverage_mask[s] = 0;
         self.entity_detector_coverage_mask[s] = 0;
         self.turret_count_per_entity[s] = 0;
+        let base = s * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
+        for t in 0..(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize) {
+            let idx = base + t;
+            if idx >= self.turret_entity_id.len() {
+                break;
+            }
+            self.turret_entity_id[idx] = ENTITY_META_NO_ID;
+            self.turret_parent_id[idx] = ENTITY_META_NO_ID;
+            self.turret_root_host_id[idx] = ENTITY_META_NO_ID;
+            self.turret_mount_index[idx] = ENTITY_META_NO_INDEX;
+        }
     }
 }
 
@@ -9041,6 +9541,10 @@ pub fn combat_targeting_unset_entity(entity_slot: u32) {
 pub fn combat_targeting_set_turret(
     entity_slot: u32,
     turret_idx: u32,
+    turret_entity_id: i32,
+    turret_parent_id: i32,
+    turret_root_host_id: i32,
+    turret_mount_index: i32,
     mount_x: f64,
     mount_y: f64,
     mount_z: f64,
@@ -9088,6 +9592,10 @@ pub fn combat_targeting_set_turret(
     pool.ensure_entity_capacity(entity_slot);
     debug_assert!(turret_idx < COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY);
     let global_idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
+    pool.turret_entity_id[global_idx] = turret_entity_id;
+    pool.turret_parent_id[global_idx] = turret_parent_id;
+    pool.turret_root_host_id[global_idx] = turret_root_host_id;
+    pool.turret_mount_index[global_idx] = turret_mount_index;
     pool.turret_mount_x[global_idx] = mount_x;
     pool.turret_mount_y[global_idx] = mount_y;
     pool.turret_mount_z[global_idx] = mount_z;
@@ -9413,6 +9921,18 @@ combat_targeting_ptr_export!(
     combat_targeting_turret_count_per_entity_ptr,
     turret_count_per_entity,
     u8
+);
+combat_targeting_ptr_export!(combat_targeting_turret_entity_id_ptr, turret_entity_id, i32);
+combat_targeting_ptr_export!(combat_targeting_turret_parent_id_ptr, turret_parent_id, i32);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_root_host_id_ptr,
+    turret_root_host_id,
+    i32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_turret_mount_index_ptr,
+    turret_mount_index,
+    i32
 );
 combat_targeting_ptr_export!(combat_targeting_turret_mount_x_ptr, turret_mount_x, f64);
 combat_targeting_ptr_export!(combat_targeting_turret_mount_y_ptr, turret_mount_y, f64);
@@ -22134,9 +22654,56 @@ mod lock_on_exclusion_tests {
 
     fn reset_pools() {
         spatial_init(200.0, 64);
+        entity_meta_init(64);
         combat_targeting_init(64);
         force_field_pool_clear();
         terrain_clear();
+    }
+
+    #[test]
+    fn entity_meta_registry_generation_guards_storage_reuse() {
+        let _guard = lock_tests();
+        entity_meta_init(8);
+
+        let gen_a = entity_meta_register(
+            10,
+            ENTITY_META_KIND_UNIT,
+            ENTITY_META_BLUEPRINT_KIND_UNIT,
+            3,
+            1,
+            ENTITY_META_NO_ID,
+            ENTITY_META_NO_ID,
+            10,
+            ENTITY_META_NO_INDEX,
+            ENTITY_META_STORAGE_ENTITIES,
+            2,
+            1,
+        );
+        assert!(gen_a > 0);
+        assert!(entity_meta_resolve_row(10, gen_a) >= 0);
+        assert_eq!(entity_meta_resolve_storage_slot(10, gen_a), 2);
+
+        entity_meta_unregister(10);
+        assert_eq!(entity_meta_resolve_row(10, gen_a), -1);
+
+        let gen_b = entity_meta_register(
+            11,
+            ENTITY_META_KIND_UNIT,
+            ENTITY_META_BLUEPRINT_KIND_UNIT,
+            4,
+            1,
+            ENTITY_META_NO_ID,
+            ENTITY_META_NO_ID,
+            11,
+            ENTITY_META_NO_INDEX,
+            ENTITY_META_STORAGE_ENTITIES,
+            2,
+            1,
+        );
+        assert!(gen_b > gen_a);
+        assert_eq!(entity_meta_resolve_row(10, gen_a), -1);
+        assert_eq!(entity_meta_resolve_storage_slot(11, gen_a), -1);
+        assert_eq!(entity_meta_resolve_storage_slot(11, gen_b), 2);
     }
 
     fn entity_flags(has_combat: bool) -> u8 {
@@ -22267,9 +22834,23 @@ mod lock_on_exclusion_tests {
 
     fn stamp_turret(entity_slot: u32, turret_idx: u32, spec: TurretSpec) {
         let range = 120.0;
+        let parent_id = {
+            let pool = combat_targeting_pool();
+            let s = entity_slot as usize;
+            if s < pool.entity_id.len() {
+                pool.entity_id[s]
+            } else {
+                ENTITY_META_NO_ID
+            }
+        };
+        let turret_entity_id = 1_000_000 + parent_id.max(0) * 16 + turret_idx as i32;
         combat_targeting_set_turret(
             entity_slot,
             turret_idx,
+            turret_entity_id,
+            parent_id,
+            parent_id,
+            turret_idx as i32,
             0.0,
             0.0,
             0.0,
@@ -22395,6 +22976,42 @@ mod lock_on_exclusion_tests {
                 },
             );
         }
+    }
+
+    #[test]
+    fn turret_slabs_store_runtime_identity() {
+        let _guard = lock_tests();
+        reset_pools();
+
+        turret_pool_init(8);
+        turret_pool_set_count(2, 2);
+        turret_pool_set_turret(2, 1, 700, 55, 55, 1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 12.0, -1);
+        let snapshot_idx = (2usize * (TURRET_POOL_MAX_PER_ENTITY as usize)) + 1;
+        {
+            let pool = turret_pool();
+            assert_eq!(pool.entity_id[snapshot_idx], 700);
+            assert_eq!(pool.parent_id[snapshot_idx], 55);
+            assert_eq!(pool.root_host_id[snapshot_idx], 55);
+            assert_eq!(pool.mount_index[snapshot_idx], 1);
+        }
+
+        stamp_entity(
+            5,
+            55,
+            PLAYER_1,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            -1,
+        );
+        stamp_turret(5, 0, TurretSpec::default());
+        let targeting_idx = combat_targeting_turret_global_idx(5, 0);
+        let targeting = combat_targeting_pool();
+        assert_eq!(targeting.turret_entity_id[targeting_idx], 1_000_880);
+        assert_eq!(targeting.turret_parent_id[targeting_idx], 55);
+        assert_eq!(targeting.turret_root_host_id[targeting_idx], 55);
+        assert_eq!(targeting.turret_mount_index[targeting_idx], 0);
     }
 
     #[test]
