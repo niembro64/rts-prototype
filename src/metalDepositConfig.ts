@@ -384,22 +384,7 @@ function getMetalDepositResourceRadiusCells(resourceCells: number): number {
 }
 
 function countGridCellsInRadius(radiusCells: number): number {
-  let count = 0;
-  const r2 = radiusCells * radiusCells;
-  for (let dy = -radiusCells; dy <= radiusCells; dy++) {
-    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
-      if (dx * dx + dy * dy <= r2) count++;
-    }
-  }
-  return count;
-}
-
-const METAL_DEPOSIT_CELL_KEY_BIAS = 0x100000;
-const METAL_DEPOSIT_CELL_KEY_BASE = 0x200000;
-
-function cellKey(gx: number, gy: number): number {
-  return (gx + METAL_DEPOSIT_CELL_KEY_BIAS) * METAL_DEPOSIT_CELL_KEY_BASE
-    + (gy + METAL_DEPOSIT_CELL_KEY_BIAS);
+  return getMetalDepositResourceCandidateLayout(radiusCells).count;
 }
 
 function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
@@ -409,6 +394,94 @@ function cellCenter(gx: number, gy: number): MetalDepositResourceCell {
     x: gx * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
     y: gy * BUILD_GRID_CELL_SIZE + BUILD_GRID_CELL_SIZE / 2,
   };
+}
+
+type MetalDepositResourceCandidateLayout = {
+  count: number;
+  dx: Int32Array;
+  dy: Int32Array;
+  centerBias: Float64Array;
+  neighborIndices: Int32Array;
+  originIndex: number;
+};
+
+const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT = 4;
+const metalDepositResourceCandidateLayoutCache = new Map<
+  number,
+  MetalDepositResourceCandidateLayout
+>();
+
+function getMetalDepositResourceCandidateLayout(
+  radiusCells: number,
+): MetalDepositResourceCandidateLayout {
+  const cached = metalDepositResourceCandidateLayoutCache.get(radiusCells);
+  if (cached !== undefined) return cached;
+
+  const diameter = radiusCells * 2 + 1;
+  const offsetToIndex = new Int32Array(diameter * diameter);
+  offsetToIndex.fill(-1);
+
+  const dxValues: number[] = [];
+  const dyValues: number[] = [];
+  const centerBiasValues: number[] = [];
+  const r2 = radiusCells * radiusCells;
+  const radiusScale = Math.max(1, radiusCells);
+  let originIndex = -1;
+
+  for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared > r2) continue;
+      const index = dxValues.length;
+      offsetToIndex[(dy + radiusCells) * diameter + dx + radiusCells] = index;
+      dxValues.push(dx);
+      dyValues.push(dy);
+      centerBiasValues.push(1 - Math.min(1, Math.sqrt(distanceSquared) / radiusScale));
+      if (dx === 0 && dy === 0) originIndex = index;
+    }
+  }
+
+  const count = dxValues.length;
+  const neighborIndices = new Int32Array(count * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT);
+  neighborIndices.fill(-1);
+  const lookupOffset = (dx: number, dy: number): number => {
+    if (
+      dx < -radiusCells ||
+      dx > radiusCells ||
+      dy < -radiusCells ||
+      dy > radiusCells
+    ) {
+      return -1;
+    }
+    return offsetToIndex[(dy + radiusCells) * diameter + dx + radiusCells];
+  };
+
+  for (let i = 0; i < count; i++) {
+    const dx = dxValues[i];
+    const dy = dyValues[i];
+    const base = i * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
+    neighborIndices[base] = lookupOffset(dx + 1, dy);
+    neighborIndices[base + 1] = lookupOffset(dx - 1, dy);
+    neighborIndices[base + 2] = lookupOffset(dx, dy + 1);
+    neighborIndices[base + 3] = lookupOffset(dx, dy - 1);
+  }
+
+  if (originIndex < 0) {
+    throw new Error(
+      `Metal deposit resource radius (${radiusCells}) did not include the origin cell`,
+    );
+  }
+
+  const layout = {
+    count,
+    dx: Int32Array.from(dxValues),
+    dy: Int32Array.from(dyValues),
+    centerBias: Float64Array.from(centerBiasValues),
+    neighborIndices,
+    originIndex,
+  };
+  metalDepositResourceCandidateLayoutCache.set(radiusCells, layout);
+  return layout;
 }
 
 function hashMetalDepositSeed(gx: number, gy: number, index: number): number {
@@ -438,66 +511,93 @@ function growMetalDepositResourceCells(
   seed: number,
 ): MetalDepositResourceCell[] {
   const rng = makeSeededRng(seed);
-  const selected = new Map<number, MetalDepositResourceCell>();
-  const frontier = new Map<number, MetalDepositResourceCell>();
-  const r2 = radiusCells * radiusCells;
+  const layout = getMetalDepositResourceCandidateLayout(radiusCells);
+  const selected = new Uint8Array(layout.count);
+  const frontier = new Uint8Array(layout.count);
+  const neighborCounts = new Uint8Array(layout.count);
+  const frontierPrev = new Int32Array(layout.count);
+  const frontierNext = new Int32Array(layout.count);
+  const weights = new Float64Array(layout.count);
+  const selectedIndices: number[] = [];
+  frontierPrev.fill(-1);
+  frontierNext.fill(-1);
 
-  const addFrontier = (gx: number, gy: number): void => {
-    const dx = gx - originGx;
-    const dy = gy - originGy;
-    if (dx * dx + dy * dy > r2) return;
-    const key = cellKey(gx, gy);
-    if (selected.has(key) || frontier.has(key)) return;
-    frontier.set(key, cellCenter(gx, gy));
-  };
-  const addSelected = (gx: number, gy: number): void => {
-    const key = cellKey(gx, gy);
-    if (selected.has(key)) return;
-    selected.set(key, cellCenter(gx, gy));
-    frontier.delete(key);
-    addFrontier(gx + 1, gy);
-    addFrontier(gx - 1, gy);
-    addFrontier(gx, gy + 1);
-    addFrontier(gx, gy - 1);
+  let frontierHead = -1;
+  let frontierTail = -1;
+  let frontierSize = 0;
+
+  const appendFrontier = (index: number): void => {
+    if (index < 0 || selected[index] !== 0 || frontier[index] !== 0) return;
+    frontier[index] = 1;
+    frontierPrev[index] = frontierTail;
+    frontierNext[index] = -1;
+    if (frontierTail >= 0) frontierNext[frontierTail] = index;
+    else frontierHead = index;
+    frontierTail = index;
+    frontierSize++;
   };
 
-  addSelected(originGx, originGy);
-  while (selected.size < targetCellCount && frontier.size > 0) {
+  const removeFrontier = (index: number): void => {
+    if (frontier[index] === 0) return;
+    const prev = frontierPrev[index];
+    const next = frontierNext[index];
+    if (prev >= 0) frontierNext[prev] = next;
+    else frontierHead = next;
+    if (next >= 0) frontierPrev[next] = prev;
+    else frontierTail = prev;
+    frontierPrev[index] = -1;
+    frontierNext[index] = -1;
+    frontier[index] = 0;
+    frontierSize--;
+  };
+
+  const addSelected = (index: number): void => {
+    if (selected[index] !== 0) return;
+    selected[index] = 1;
+    selectedIndices.push(index);
+    removeFrontier(index);
+
+    const base = index * METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT;
+    for (let i = 0; i < METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT; i++) {
+      const neighborIndex = layout.neighborIndices[base + i];
+      if (neighborIndex >= 0) neighborCounts[neighborIndex]++;
+    }
+    for (let i = 0; i < METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT; i++) {
+      appendFrontier(layout.neighborIndices[base + i]);
+    }
+  };
+
+  addSelected(layout.originIndex);
+  while (selectedIndices.length < targetCellCount && frontierSize > 0) {
     let totalWeight = 0;
-    const weighted: Array<{ cell: MetalDepositResourceCell; weight: number }> = [];
-    for (const cell of frontier.values()) {
-      const dx = cell.gx - originGx;
-      const dy = cell.gy - originGy;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const neighborCount =
-        (selected.has(cellKey(cell.gx + 1, cell.gy)) ? 1 : 0) +
-        (selected.has(cellKey(cell.gx - 1, cell.gy)) ? 1 : 0) +
-        (selected.has(cellKey(cell.gx, cell.gy + 1)) ? 1 : 0) +
-        (selected.has(cellKey(cell.gx, cell.gy - 1)) ? 1 : 0);
-      const centerBias = 1 - Math.min(1, dist / Math.max(1, radiusCells));
+    let lastFrontierIndex = -1;
+    for (let index = frontierHead; index >= 0; index = frontierNext[index]) {
       const weight =
         0.45 +
-        neighborCount * 1.75 +
-        centerBias * 2.25 +
+        neighborCounts[index] * 1.75 +
+        layout.centerBias[index] * 2.25 +
         rng() * 0.35;
       totalWeight += weight;
-      weighted.push({ cell, weight });
+      weights[index] = weight;
+      lastFrontierIndex = index;
     }
 
     let pick = rng() * totalWeight;
-    let chosen = weighted[weighted.length - 1]?.cell;
-    for (const entry of weighted) {
-      pick -= entry.weight;
+    let chosenIndex = lastFrontierIndex;
+    for (let index = frontierHead; index >= 0; index = frontierNext[index]) {
+      pick -= weights[index];
       if (pick <= 0) {
-        chosen = entry.cell;
+        chosenIndex = index;
         break;
       }
     }
-    if (!chosen) break;
-    addSelected(chosen.gx, chosen.gy);
+    if (chosenIndex < 0) break;
+    addSelected(chosenIndex);
   }
 
-  return Array.from(selected.values()).sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
+  return selectedIndices
+    .map((index) => cellCenter(originGx + layout.dx[index], originGy + layout.dy[index]))
+    .sort((a, b) => (a.gy - b.gy) || (a.gx - b.gx));
 }
 
 function getMetalDepositCellBounds(

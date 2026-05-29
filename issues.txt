@@ -37,16 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C15. [LOW] Metal-deposit resource-footprint growth still scans the full frontier every
-    selected cell.
-    LOCATION: src/metalDepositConfig.ts: growMetalDepositResourceCells.
-    PROBLEM: current footprints are small, so this is not urgent. If resourceCells or
-      resourceRadiusCells grow, each selected cell rebuilds a weighted frontier list and
-      recomputes neighbor counts, distances, and weights for every frontier cell.
-    FIX: precompute candidate offsets/distances for each radius; keep selected/frontier
-      membership numeric; update neighbor counts incrementally. Preserve Map/frontier
-      iteration order or verify with the C9 output harness.
-
 C16. [HIGH] Long-term terrain/deposit baking should move to Rust/WASM.
     LOCATION: src/game/sim/terrain/*.ts and src/metalDepositConfig.ts.
     RULE: "TypeScript coordinates, WASM computes" and "shared deterministic kernels".
