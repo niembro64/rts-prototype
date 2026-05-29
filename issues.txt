@@ -25,6 +25,258 @@ File:line refs were correct at audit time; re-verify before editing.
 ================================================================================
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
+Items A1-A17 added 2026-05-29, auditing the code against
+budget_design_philosophy.html — universal entity IDs + host hierarchy, shot
+source provenance, lock-on exclusion objects on turrets/units/towers,
+host-directed vs fully-autonomous turrets, and the tower entity type. Three
+load-bearing claims were re-verified by hand (runtime Turret has no id;
+Projectile.sourceTurretId is a blueprint id; excludeLockOn* is turret-only);
+the rest cite agent-audit refs — re-verify file:line before editing.
+
+NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
+entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
+The real holes cluster in entity IDs, shot provenance, and the missing
+unit/tower exclusion object.
+
+----- Universal Runtime Entity IDs -----
+
+A1. [HIGH] Mounted turrets have no runtime EntityId of their own.
+    LOCATION: src/types/sim.ts:442-511 (runtime Turret); src/game/sim/
+      runtimeTurrets.ts:68-98; rts-sim-wasm/src/lib.rs:7953-7954,8167-8168
+      (turret SoA indexed entity_slot*MAX_PER_ENTITY + turret_idx).
+    RULE: "Universal Runtime Entity IDs" — every mounted turret carries its own
+      EntityId + parent_id + root_host_id + mount_index.
+    PROBLEM: a runtime Turret carries only config, target (EntityId|null), and
+      pose/cooldown state — no id, no parent_id/root_host_id/mount_index. Turrets
+      are positional elements of combat.turrets[] built in blueprint order and
+      addressed everywhere by (host, turretIndex) or entity_slot*MAX+idx. No
+      system can reference a specific turret by id. This is the "inferred from
+      array index / blueprint order" anti-pattern the rule rejects, and it is the
+      root cause of A8 (shots can't name a unique source turret) and blocks
+      turret-mounts as lock-on targets.
+    FIX: allocate a runtime EntityId per turret at spawn; store parent_id (host),
+      root_host_id, and mount_index on it; register it through the same registry
+      as top-level entities.
+
+A2. [HIGH] Locomotion has no runtime EntityId and no back-reference to its unit.
+    LOCATION: src/types/locomotionTypes.ts:18-45; src/types/sim.ts:173
+      (Unit.locomotion).
+    RULE: "Universal Runtime Entity IDs" — a locomotion subentity carries its own
+      EntityId and stores the unit it moves.
+    PROBLEM: UnitLocomotion is a bare sub-object on Unit with no id and no host id.
+    FIX: give locomotion a runtime EntityId with parent_id/root_host_id pointing
+      at its unit; register it.
+
+A3. [HIGH] No entity-metadata registry; the documented EntityMeta fields are absent.
+    LOCATION: src/types/sim.ts:818,882-886 (Entity); src/types/entityTypes.ts:3
+      (EntityId = number); rts-sim-wasm/src/lib.rs:7479-7503 (EntityMetaPool).
+    RULE: "Universal Runtime Entity IDs" — the ID resolves through a registry into
+      a metadata row: kind, blueprint_kind, blueprint_id, owner_player_id,
+      team_id, parent_id, root_host_id, mount_index, storage_pool/slot,
+      generation, alive, targetable.
+    PROBLEM: the TS Entity row carries only {id, type, transform} + component
+      slots; the Rust EntityMetaPool carries entity_type/player_id/hp but NONE of
+      blueprint_id, team_id, parent_id, root_host_id, mount_index, storage,
+      generation, alive, targetable. There is no EntityId->metadata registry; the
+      only id->slot map is a local combat-targeting cache (lib.rs:8165, resolver
+      lib.rs:10612-10624).
+    FIX: add an EntityMeta registry row mirroring the documented struct,
+      resolvable by EntityId, populated at spawn (top-level hosts set
+      parent_id=null, root_host_id=self).
+
+A4. [HIGH] Rust EntityMetaPool treats the reusable storage slot AS identity.
+    LOCATION: rts-sim-wasm/src/lib.rs:7460-7462 (comment "No separate EntityId<->
+      slot map needed"), 7479-7503.
+    RULE: "Universal Runtime Entity IDs" — "Systems may cache storage slots for
+      speed, but the cache is never the identity."
+    PROBLEM: EntityMetaPool is keyed by the reusable spatial-grid slot, and the
+      design comment explicitly equates slot with identity. Slot reuse can alias a
+      freed entity to a new one with no generation guard.
+    FIX: key the registry by EntityId; keep storage_pool/storage_slot as cached
+      fields validated by generation, never as the identity.
+
+A5. [MED] No generation-checked handles.
+    LOCATION: rts-sim-wasm/src/lib.rs:10612-10624 (id-equality re-check, the only
+      stale guard; the lone "generation" symbol at lib.rs:1077 is an unrelated
+      spatial-bucket gen).
+    RULE: "Universal Runtime Entity IDs" — EntityId is an opaque, preferably
+      generation-checked handle.
+    PROBLEM: stale refs are caught only by an id-equality re-check inside the
+      combat pool's id->slot resolver, and only there. No generation counter
+      exists, so any other system caching a slot has no stale-ref protection.
+    FIX: add a generation field per registry row, bump on slot reuse, validate
+      (id, generation) on resolve.
+
+A6. [LOW] Turret audio id encodes mutable meaning (host_id*100 + mount).
+    LOCATION: src/game/sim/combat/laserSoundSystem.ts:51,79,120; src/game/sim/
+      combat/forceFieldSoundSystem.ts:26,57.
+    RULE: "Universal Runtime Entity IDs" — "Do not encode mutable meaning into the
+      numeric ID itself."
+    PROBLEM: turret-level audio identity is synthesized as
+      soundEntityId = entity.id*100 + weaponIndex, baking host id + mount index
+      into a numeric id, and colliding if a host ever mounts >100 turrets.
+    FIX: once turrets have real EntityIds (A1), key audio off the turret's own id.
+
+----- Shots carry immutable source provenance -----
+
+A7. [HIGH] Shot source record is missing most documented fields.
+    LOCATION: src/types/sim.ts:520-558 (Projectile); src/game/sim/WorldState.ts:
+      892-953 (createProjectile).
+    RULE: "Shots carry immutable source provenance" — ShotSource{source_turret_id,
+      source_host_id, source_root_id, source_player_id, source_team_id,
+      source_turret_blueprint_id, source_shot_blueprint_id, spawn_tick,
+      parent_shot_id}.
+    PROBLEM: a shot carries only ownerId, sourceEntityId (=host), sourceTurretId
+      (a blueprint id — see A8), shotId, sourceBarrelIndex. Missing: source_root_id,
+      a distinct source_turret_blueprint_id, a separate source_shot_blueprint_id,
+      spawn_tick, parent_shot_id. (Existing fields ARE immutable — set once at
+      spawn, survive source death and reflection — so the gap is missing fields,
+      not mutability.)
+    FIX: add the full ShotSource sub-record to Projectile and populate it at every
+      spawn site (WorldState.createProjectile + projectileSystem launch paths).
+
+A8. [HIGH] "Source turret id" is a turret BLUEPRINT id, not a unique instance.
+    LOCATION: src/game/sim/combat/projectileSystem.ts:557-587 (beam),607-651
+      (ballistic) set sourceTurretId=config.id; src/types/sim.ts:527-529 (comment
+      "Real turret blueprint id").
+    RULE: "Shots carry immutable source provenance" — user rule: "shots have both
+      their turret id AND the host id the turret is on."
+    PROBLEM: host id (sourceEntityId = unit.id) is a real unique instance, but the
+      turret id is the turret BLUEPRINT id — two identical turrets on one host, or
+      any two same-type units, produce indistinguishable source-turret ids. The
+      "both ids" rule is only half-met. Root cause is A1 (turrets have no instance
+      id).
+    FIX: once turrets have runtime EntityIds (A1), store the turret INSTANCE id as
+      source_turret_id and keep the blueprint id as source_turret_blueprint_id.
+
+A9. [MED] Submunition provenance inheritance is incomplete.
+    LOCATION: src/game/sim/combat/ProjectileCollisionHandler.ts:323-451.
+    RULE: "Shots carry immutable source provenance" — submunitions and spawned
+      children carry the source record incl. parent_shot_id.
+    PROBLEM: children inherit ownerId/sourceEntityId/sourceTurretId but there is no
+      parent_shot_id link, no spawn_tick, and no source_root_id; a child cannot be
+      traced back to its specific parent shot.
+    FIX: pass parent_shot_id = parent entity id and copy the parent's full
+      ShotSource into the child, overriding only parent_shot_id and spawn_tick.
+
+A10. [MED] Authoritative projectile state lives in TS, not Rust — provenance has
+     nowhere to migrate.
+    LOCATION: rts-sim-wasm/src/lib.rs:1825-1833 (ProjectilePool = pos/vel/
+      time_alive only); snapshot path lib.rs:20107-20156.
+    RULE: "Shots carry immutable source provenance" + "TypeScript Coordinates,
+      WASM Computes".
+    PROBLEM: the Rust ProjectilePool holds only kinematics; all shot identity and
+      provenance live in the TS Projectile entity. The stated migration direction
+      (projectile sim -> Rust) has no struct field to carry the source record, and
+      the spawn-snapshot wire ships only turretId/sourceTurretId/playerId/
+      sourceEntityId — not root/team/blueprint/spawn_tick/parent.
+    FIX: when projectile motion moves to Rust, add a ShotSource SoA block to
+      ProjectilePool and extend the spawn wire format.
+
+A11. [LOW] source_team_id / EntityMeta.team_id cannot be satisfied — no team model.
+    LOCATION: rts-sim-wasm/src/lib.rs:12261-12334 (relationship = player-id
+      compare); src/game/sim/combat/damageHelpers.ts:342.
+    RULE: "Shots carry immutable source provenance" / "Universal Runtime Entity
+      IDs" (team_id field).
+    PROBLEM: there is no team/alliance concept anywhere; all friend/enemy and
+      friendly-fire checks are pure player-id comparisons, so source_team_id and
+      EntityMeta.team_id have no value to store.
+    FIX: either introduce a team model and capture a frozen source_team_id at
+      spawn, or explicitly scope team_id out of the design until teams exist.
+
+----- Lock-on exclusion objects (turret / unit / tower) -----
+
+A12. [HIGH] Units and towers have no host-level lock-on exclusion object.
+    LOCATION: src/types/blueprints.ts:196-204 (turret-only exclusion fields);
+      src/types/blueprints.ts:511-564 (UnitBlueprint — none); src/game/sim/
+      blueprints/buildings.ts:18-49 (BuildingBlueprint — none); confirmed zero
+      excludeLockOn* in units.json/buildings.json.
+    RULE: "Lock-on exclusion objects" — all THREE locker kinds (turret, unit,
+      tower) carry their OWN subtractive exclusion object; user restated "all
+      exclusion logic applies to turrets, units AND towers."
+    PROBLEM: the five exclusion sets exist only on TurretBlueprint. Units and
+      towers carry no host-level exclusion object, so the requirement is unmet for
+      two of the three locker kinds.
+    FIX: add the same exclusion object (level-0 friends/enemies + entities, level-1
+      buildings/towers/units/turrets) to the unit and tower (building) blueprints,
+      governing the host-level lock-on.
+
+A13. [HIGH] No per-entity exclusion mask; the host lock-on is filtered only by
+     each turret's policy, never a host exclusion object.
+    LOCATION: rts-sim-wasm/src/lib.rs:8895-8988 (combat_targeting_set_entity — no
+      exclusion params); lib.rs:8479-8488 (masks stored at turret granularity
+      only); src/game/sim/combat/targetingInputStamping.ts:560-578 (setEntity
+      passes no exclusion masks); lib.rs:10244 (eligibility keyed on
+      source_turret_idx); src/game/sim/commandExecution.ts:717-748 (host lock set
+      via combat.priorityTargetId).
+    RULE: "Lock-on exclusion objects" + "Host intent is not turret lock-on" — the
+      host exclusion object gates what may BECOME the host target; the turret
+      exclusion object gates inheritance.
+    PROBLEM: CombatTargetingPool stores lock-on masks only per turret, and
+      combat_targeting_turret_may_lock_entity_slot evaluates only the source
+      turret's masks. The host-level lock-on (priorityTargetId) is filtered purely
+      by each turret's policy, with no host-level gate — a host can be commanded to
+      lock anything its turrets individually allow.
+    FIX: add entity_lockon_* mask fields + setEntity params stamped from the
+      unit/tower blueprint; evaluate the host's own exclusion object at
+      host-lock-acquisition time, then keep per-turret subtraction on top. The
+      existing hierarchy (lib.rs:10167-10241) can be reused via a host-keyed entry
+      point.
+
+A14. [LOW] Exclusion field names differ between code and the design doc.
+    LOCATION: src/types/blueprints.ts:196-204 (camelCase excludeLockOn*);
+      rts-sim-wasm/src/lib.rs:8300-8305 (CT_LOCK_ON_REL_/FAM_EXCLUDE_*); doc uses
+      snake_case exclude_lock_on_*.
+    RULE: "Config Is Data, Not Code" / cross-language identifier agreement.
+    PROBLEM: semantics match exactly (entries friendly_entities/enemy_entities and
+      units/towers/buildings/turrets) but the casing differs from the doc's
+      illustrative snake_case.
+    FIX: no behavior change; treat the doc names as illustrative, or reconcile the
+      doc to the JSON camelCase keys for exactness.
+
+----- Minor / boundary-enforcement / test gaps (areas that audited mostly clean) -----
+
+A15. [LOW] Host-directed/fully-autonomous turret system is correct but untested.
+    LOCATION: src/game/sim/blueprints/index.ts:658-692 (validateHostDirectedMounts
+      throws on !=1 per kind); rts-sim-wasm/src/lib.rs:11489,11852 (fully-
+      autonomous skip in the priority batches).
+    RULE: "Host-directed vs fully-autonomous turrets".
+    PROBLEM: behavior verified correct end-to-end (tag on the mount, throw on 0 /
+      2+, host overwrite, autonomous fallback, fight-stop ratio) but there is NO
+      test asserting the loader throws on 0 / 2+ host-directed mounts, and no Rust
+      test asserting a fully-autonomous turret's target is NOT overwritten by a
+      host lock.
+    FIX: add a loader test (0-directed and 2-directed hosts assert throw) and a
+      Rust targeting test (host-directed overwritten, fully-autonomous untouched).
+
+A16. [LOW] Host-level lock-on field is gated by turret presence, not entity type.
+    LOCATION: src/types/sim.ts:267-291 (CombatComponent.priorityTargetId at :281);
+      src/game/sim/spawn.ts:281-283 (CombatComponent created only when turrets>0).
+    RULE: "Host intent is not turret lock-on" — units and towers carry a host
+      target; buildings carry none.
+    PROBLEM: the host lock-on lives on CombatComponent, whose presence is gated on
+      "has a turret" rather than on entity.type in {unit,tower}. Equivalent today
+      (pure-infra buildings have no turret -> no CombatComponent -> no host
+      target), but a building blueprint that ever declared a turret would silently
+      receive a host lock-on field; the boundary is data-driven, not type-enforced.
+    FIX: assert at load that no 'building'-typed entity has turrets/CombatComponent
+      (the tower/building boundary), or move the host-target field onto the unit/
+      tower host so the type system enforces it.
+
+A17. [LOW] No separate tower blueprint catalog; tower-vs-building is a runtime
+     spawn decision.
+    LOCATION: src/game/sim/blueprints/buildings.json (single catalog, no
+      towers.json); src/types/buildingTypes.ts:25-33 (TOWER_BUILDING_TYPES);
+      src/game/sim/spawn.ts:280-285 (isTowerBuildingType); lib.rs:8482-8483
+      ("a tower's blueprint name is a BuildingType").
+    RULE: "Towers Are Static Hosts" — "The blueprint goes in the tower catalog
+      (e.g. towers.json), not the building catalog."
+    PROBLEM: towers (factory, megaBeamTower, cannonTower) live in buildings.json
+      and are split out at spawn time by a hardcoded TOWER_BUILDING_TYPES set;
+      there is no towers.json, and a tower's blueprint name is still a BuildingType.
+    FIX: optional structural alignment — extract a towers.json catalog so the
+      tower/building boundary is authored in data, not a runtime type set.
+      (Behavior is already correct; this is doc-alignment, not a bug.)
 
 ================================================================================
 SECTION B — MEMORY LEAKS
@@ -77,8 +329,18 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
   zero-velocity edge is sent; baseline = last value actually sent per recipient.
 - EntityType has Tower as a true peer of Unit/Building; fabricator is a tower, not a
   building; pure-infra buildings carry no turrets/lock-on.
-- Lock-on exclusion lists use the exact documented field names and are honored
-  subtractively in targeting.
+- Lock-on exclusion lists are honored subtractively in targeting FOR TURRETS,
+  and candidate enumeration covers the unit/tower/building/turret-mount families.
+  CAVEAT: only turrets carry an exclusion object today — units and towers do NOT
+  (see A12/A13), and field names are camelCase excludeLockOn* in code vs the
+  doc's snake_case (see A14). So this is clean for the turret half only.
+- Host-directed vs fully-autonomous turret mounts are fully wired: the tag lives
+  on the unit/tower MOUNT entry (TurretMount.hostDirected / BuildingTurretMount.
+  hostDirected), NOT on the turret blueprint; the loader throws on !=1 host-directed
+  per turret kind; a host lock-on overwrites host-directed turrets while
+  fully-autonomous turrets run independently; host-directed mounts fall back to
+  autonomous when the host has no lock; and the fight-stop ratio counts only
+  host-directed mounts. Only gap is missing tests (see A15).
 - Airborne mount invariant (mount.y===0 && mount.z===0, no zResolver) is enforced and
   throws at startup.
 - Rockets inherit the launch target and never re-acquire; lost target → ballistic.
