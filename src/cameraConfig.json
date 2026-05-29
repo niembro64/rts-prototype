@@ -30,7 +30,7 @@
   },
   "anchor": {
     "zoomIn": "cursor",
-    "zoomOut": "cursor",
+    "zoomOut": "screen-center",
     "rotate": "screen-center"
   }
 }
