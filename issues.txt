@@ -26,19 +26,6 @@ File:line refs were correct at audit time; re-verify before editing.
 SECTION A — DESIGN-PHILOSOPHY INCONSISTENCIES
 ================================================================================
 
-A9. [LOW] Sim-relevant tuning still lives in TS modules.
-    LOCATION: src/config.ts (~115 exported const tuning objects; some are sim-relevant,
-      many are render-only), src/game/sim/blueprints/displayRosters.ts (roster ordering).
-    RULE: "Config Is Data, Not Code" — Rust cannot import .ts; tuning the sim needs
-      should be JSON.
-    PROBLEM: TS-module tuning tables are a wall for the TS→Rust migration. (Mostly
-      resolved already — unit/turret/shot/locomotion/building blueprints are now JSON
-      consumed by Rust via build.rs embedding; the .ts files in blueprints/ are
-      loaders, not data.)
-    FIX: migrate sim-relevant tables out of config.ts into JSON validated by a shared
-      schema; leave render-only constants for later.
-
-
 ================================================================================
 SECTION B — MEMORY LEAKS
 ================================================================================
@@ -49,15 +36,6 @@ grow unbounded over a match.)
 ================================================================================
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
-
-C5. [LOW] Per-unit JS↔WASM boundary crossing in the client prediction loop.
-    LOCATION: ClientPredictionStepper.ts:262-296 → ClientUnitPrediction.ts:186 →
-      unitMotionIntegration.ts:89 (sim.stepUnitMotion, one call per unit per frame
-      with a 6-element scratch marshal).
-    RULE: "TypeScript Coordinates, WASM Computes" — avoid per-unit boundary loops.
-    PROBLEM: the server batches integration via one poolStepIntegrate call, but the
-      client crosses the boundary once per predicted unit per frame (N crossings).
-    FIX: add a batched client prediction step kernel like the server's.
 
 C6. [LOW] Per-body terrain sampling crosses the WASM boundary once per body per tick.
     LOCATION: PhysicsEngine3D.ts:765-805 (getGroundZ/getGroundNormal per body) →
@@ -190,3 +168,7 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
 - Selection panels are gated on entity TYPE capability flags, not per-blueprint buttons.
 - No banned libs (Phaser/Pixi/Matter/cannon/ammo) are imported anywhere in src/.
 - No legacy/old/_unused dirs or .old/.bak files in src/ or rts-sim-wasm/.
+- Sim-relevant top-level config exports are JSON-backed; remaining TS files are loaders
+  or derived display code, not authoritative tuning tables.
+- Client unit prediction motion uses a batched Rust/WASM kernel for target extrapolation
+  and rendered entity motion; the old TS single-body wrapper path is gone.

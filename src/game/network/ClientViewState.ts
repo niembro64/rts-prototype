@@ -315,7 +315,7 @@ export class ClientViewState {
         // Reactivate prediction when only the surface normal moved
         // (host's unit ground normal EMA is still settling on a stationary unit, or
         // the host flipped normal mode). Otherwise the new target.normal
-        // would land but applyClientUnitVisualPrediction's EMA — which
+        // would land but the client unit visual prediction EMA — which
         // owns the entity.unit.surfaceNormal lerp — wouldn't run.
         ENTITY_CHANGED_NORMAL
       )) !== 0 ||

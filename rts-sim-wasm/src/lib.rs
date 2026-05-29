@@ -299,6 +299,78 @@ pub fn step_unit_motion(
     );
 }
 
+#[wasm_bindgen]
+pub fn client_predict_unit_motion_batch(
+    count: u32,
+    motions: &mut [f64],
+    ground_offsets: &[f64],
+    ground_z: &[f64],
+    ground_normals: &[f64],
+    dt_sec: f64,
+    air_damp: f64,
+    ground_damp: f64,
+    rest_penetration_epsilon: f64,
+    rest_speed_sq: f64,
+) {
+    let count = count as usize;
+    debug_assert!(motions.len() >= count * 6);
+    debug_assert!(ground_offsets.len() >= count);
+    debug_assert!(ground_z.len() >= count);
+    debug_assert!(ground_normals.len() >= count * 3);
+
+    for i in 0..count {
+        let base = i * 6;
+        let ground_offset = ground_offsets[i];
+        let g_z = ground_z[i];
+        let penetration = g_z - (motions[base + 2] - ground_offset);
+        if is_in_contact(penetration) && penetration <= rest_penetration_epsilon {
+            let vx = motions[base + 3];
+            let vy = motions[base + 4];
+            let vz = motions[base + 5];
+            let speed_sq = vx * vx + vy * vy + vz * vz;
+            if speed_sq <= rest_speed_sq {
+                motions[base + 2] = g_z + ground_offset;
+                motions[base + 3] = 0.0;
+                motions[base + 4] = 0.0;
+                motions[base + 5] = 0.0;
+                continue;
+            }
+        }
+
+        let mut motion = [
+            motions[base],
+            motions[base + 1],
+            motions[base + 2],
+            motions[base + 3],
+            motions[base + 4],
+            motions[base + 5],
+        ];
+        integrate_unit_motion_inline(
+            &mut motion,
+            dt_sec,
+            ground_offset,
+            0.0,
+            0.0,
+            0.0,
+            air_damp,
+            ground_damp,
+            0.0,
+            0.0,
+            0.0,
+            g_z,
+            ground_normals[i * 3],
+            ground_normals[i * 3 + 1],
+            ground_normals[i * 3 + 2],
+        );
+        motions[base] = motion[0];
+        motions[base + 1] = motion[1];
+        motions[base + 2] = motion[2];
+        motions[base + 3] = motion[3];
+        motions[base + 4] = motion[4];
+        motions[base + 5] = motion[5];
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────
 //  Buffer-based step_unit_motions_batch (Phase 3a) and
 //  resolve_sphere_sphere_contacts (Phase 3c) were superseded by
@@ -20324,6 +20396,72 @@ mod sim_kernel_tests {
         let (nx, ny, nz) = compute_unit_ground_normal_step(0.0, 0.0, 1.0, 0.25, 0.5, 0.75, 1.0);
         assert_eq!((nx, ny, nz), (0.25, 0.5, 0.75));
     }
+
+    #[test]
+    fn client_prediction_batch_matches_inline_motion_step() {
+        let dt = 1.0 / 60.0;
+        let mut expected = [10.0, 20.0, 8.0, 30.0, -10.0, 2.0];
+        integrate_unit_motion_inline(
+            &mut expected,
+            dt,
+            3.0,
+            0.0,
+            0.0,
+            0.0,
+            0.98,
+            0.85,
+            0.0,
+            0.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+        );
+
+        let mut motions = vec![10.0, 20.0, 8.0, 30.0, -10.0, 2.0];
+        let ground_offsets = vec![3.0];
+        let ground_z = vec![4.0];
+        let ground_normals = vec![0.0, 0.0, 1.0];
+        client_predict_unit_motion_batch(
+            1,
+            &mut motions,
+            &ground_offsets,
+            &ground_z,
+            &ground_normals,
+            dt,
+            0.98,
+            0.85,
+            0.1,
+            0.0001,
+        );
+
+        for i in 0..6 {
+            assert!((motions[i] - expected[i]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn client_prediction_batch_snaps_settled_ground_contacts() {
+        let mut motions = vec![0.0, 0.0, 1.0005, 0.001, 0.0, 0.0];
+        let ground_offsets = vec![1.0];
+        let ground_z = vec![0.0];
+        let ground_normals = vec![0.0, 0.0, 1.0];
+        client_predict_unit_motion_batch(
+            1,
+            &mut motions,
+            &ground_offsets,
+            &ground_z,
+            &ground_normals,
+            1.0 / 60.0,
+            0.98,
+            0.85,
+            0.1,
+            0.0001,
+        );
+
+        assert_eq!(motions, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
+    }
 }
 
 #[cfg(test)]
@@ -20523,6 +20661,7 @@ mod lock_on_exclusion_tests {
             spec.relationship_mask,
             spec.family_mask,
             spec.building_mask,
+            0,
             spec.unit_mask,
             spec.turret_mask,
         );

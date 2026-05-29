@@ -9,7 +9,7 @@ import { getChannelBlend } from './driftEma';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
 import {
   applyClientCombatExpensivePrediction,
-  applyClientUnitVisualPrediction,
+  applyClientUnitVisualPredictionBatch,
   clientUnitPredictionIsSettled,
 } from './ClientUnitPrediction';
 import { applyClientProjectilePrediction } from './ClientProjectilePrediction';
@@ -177,6 +177,9 @@ function applyBeamPathPrediction(
 
 export class ClientPredictionStepper {
   private frameCounter = 0;
+  private readonly unitPredictionEntities: Entity[] = [];
+  private readonly unitPredictionTargets: Array<ServerTarget | undefined> = [];
+  private readonly entitySettlementIds: EntityId[] = [];
 
   constructor(private readonly options: ClientPredictionStepperOptions) {}
 
@@ -254,6 +257,13 @@ export class ClientPredictionStepper {
     }
     if (beamPathsChanged) markLineProjectilesChanged();
 
+    const unitPredictionEntities = this.unitPredictionEntities;
+    const unitPredictionTargets = this.unitPredictionTargets;
+    const entitySettlementIds = this.entitySettlementIds;
+    unitPredictionEntities.length = 0;
+    unitPredictionTargets.length = 0;
+    entitySettlementIds.length = 0;
+
     for (const id of activeEntityPredictionIds) {
       const entity = entities.get(id);
       if (entity === undefined || (entity.unit === null && entity.combat === null)) {
@@ -265,13 +275,8 @@ export class ClientPredictionStepper {
       const target = serverTargets.get(id);
       noteTargetAge(targetAgeStats, target === undefined ? undefined : target.updatedAtMs, now);
       if (entity.unit) {
-        applyClientUnitVisualPrediction({
-          entity,
-          target,
-          deltaMs,
-          mapWidth: getMapWidth(),
-          mapHeight: getMapHeight(),
-        });
+        unitPredictionEntities.push(entity);
+        unitPredictionTargets.push(target);
         dirtyUnitRenderIds.add(id);
       }
       if (entity.combat && entity.combat.turrets.length > 0) {
@@ -284,6 +289,26 @@ export class ClientPredictionStepper {
         });
       }
 
+      entitySettlementIds.push(id);
+    }
+
+    applyClientUnitVisualPredictionBatch({
+      entities: unitPredictionEntities,
+      targets: unitPredictionTargets,
+      deltaMs,
+      mapWidth: getMapWidth(),
+      mapHeight: getMapHeight(),
+    });
+
+    for (let i = 0; i < entitySettlementIds.length; i++) {
+      const id = entitySettlementIds[i];
+      const entity = entities.get(id);
+      if (entity === undefined || (entity.unit === null && entity.combat === null)) {
+        activeEntityPredictionIds.delete(id);
+        predictionCadence.clear(id);
+        continue;
+      }
+      const target = serverTargets.get(id);
       if (clientUnitPredictionIsSettled(entity, target, turretForceFieldSpheresEnabled)) {
         activeEntityPredictionIds.delete(id);
         predictionCadence.clear(id);

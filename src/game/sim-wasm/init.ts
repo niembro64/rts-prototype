@@ -19,6 +19,7 @@ import wireEnums from '../../wireEnums.json';
 import __wbg_init, {
   version,
   step_unit_motion,
+  client_predict_unit_motion_batch,
   pool_init,
   pool_capacity,
   pool_alloc_slot,
@@ -362,11 +363,10 @@ export interface SimWasm {
    *  Useful in dev / startup logs to confirm a fresh wasm-pack
    *  build is being served. */
   readonly version: string;
-  /** Shared unit-body integrator (Phase 2). Used by both
-   *  PhysicsEngine3D.integrate (server authoritative tick) AND
-   *  ClientUnitPrediction.advanceSharedUnitMotionPrediction
-   *  (client visual prediction). Same kernel → bit-identical
-   *  motion → client prediction stops drifting from the server.
+  /** Shared single-body unit integrator (Phase 2). Kept for
+   *  diagnostics and one-off callers; the server hot path uses
+   *  poolStepIntegrate and the client prediction hot path uses
+   *  clientPredictUnitMotionBatch.
    *
    *  `motion` is a Float64Array of length 6: [x, y, z, vx, vy, vz]
    *  read AND written in place. Caller pre-samples ground state
@@ -390,6 +390,25 @@ export interface SimWasm {
     normalX: number,
     normalY: number,
     normalZ: number,
+  ) => void;
+  /** Client visual-prediction unit-motion batch. Runs the same
+   *  velocity-only motion contract that ClientUnitPrediction used to
+   *  execute one body at a time: zero authored acceleration, no
+   *  launch impulse, and the client-side rest snap before integration.
+   *  JS still samples terrain because terrain baking has not moved to
+   *  WASM yet, but all predicted units cross the boundary in one call
+   *  for target extrapolation and one call for rendered entity motion. */
+  readonly clientPredictUnitMotionBatch: (
+    count: number,
+    motions: Float64Array,
+    groundOffsets: Float64Array,
+    groundZ: Float64Array,
+    groundNormals: Float64Array,
+    dtSec: number,
+    airDamp: number,
+    groundDamp: number,
+    restPenetrationEpsilon: number,
+    restSpeedSq: number,
   ) => void;
   /** Body3D SoA pool — Phase 3d. Linear-memory-backed storage
    *  for every numeric body field. Slots are stable for a body's
@@ -2662,6 +2681,7 @@ export function initSimWasm(): Promise<SimWasm> {
       const handle: SimWasm = {
         version: version(),
         stepUnitMotion: step_unit_motion,
+        clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,
         poolStepIntegrate: pool_step_integrate,
         poolResolveSphereSphere: pool_resolve_sphere_sphere,

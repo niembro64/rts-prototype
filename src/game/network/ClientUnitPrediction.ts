@@ -22,8 +22,7 @@ import type { PredictionStep } from './ClientPredictionCadence';
 import { advanceUnitSuspension } from '../sim/unitSuspension';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import {
-  advanceUnitMotionPhysicsMutable,
-  type MutableUnitMotion3,
+  advanceUnitMotionPredictionBatchMutable,
 } from '../sim/unitMotionIntegration';
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
@@ -44,6 +43,8 @@ const PREDICTION_TURRET_EPSILON = 0.001;
 const PREDICTION_GROUND_REST_PENETRATION_EPSILON = 0.1;
 const TURRET_PITCH_MIN = -Math.PI / 2;
 const TURRET_PITCH_MAX = Math.PI / 2;
+const MOTION_STRIDE = 6;
+const INITIAL_BATCH_CAPACITY = 64;
 
 type UnitPredictionTarget = ServerTarget;
 
@@ -89,26 +90,14 @@ function advanceTurretPitch(
   return turretPitchStepScratch;
 }
 
-const motionScratch: MutableUnitMotion3 = {
-  x: 0,
-  y: 0,
-  z: 0,
-  vx: 0,
-  vy: 0,
-  vz: 0,
-};
-
-const targetMotionScratch: MutableUnitMotion3 = {
-  x: 0,
-  y: 0,
-  z: 0,
-  vx: 0,
-  vy: 0,
-  vz: 0,
-};
-
 let predictionMapWidth = 2000;
 let predictionMapHeight = 2000;
+let motionBatch = new Float64Array(0);
+let groundOffsetBatch = new Float64Array(0);
+let groundZBatch = new Float64Array(0);
+let groundNormalBatch = new Float64Array(0);
+let contactBatch = new Uint8Array(0);
+const targetBatchRefs: UnitPredictionTarget[] = [];
 
 function getPredictionGroundZ(x: number, y: number): number {
   return getSurfaceHeight(
@@ -133,20 +122,76 @@ function getPredictionGroundNormal(
   );
 }
 
-function motionVelocitySq(motion: MutableUnitMotion3): number {
-  const vx = motion.vx;
-  const vy = motion.vy;
-  const vz = motion.vz;
-  return vx * vx + vy * vy + vz * vz;
+function ensurePredictionBatchCapacity(count: number): void {
+  if (motionBatch.length >= count * MOTION_STRIDE) return;
+  let capacity = Math.max(
+    INITIAL_BATCH_CAPACITY,
+    motionBatch.length / MOTION_STRIDE,
+    1,
+  );
+  while (capacity < count) capacity *= 2;
+  motionBatch = new Float64Array(capacity * MOTION_STRIDE);
+  groundOffsetBatch = new Float64Array(capacity);
+  groundZBatch = new Float64Array(capacity);
+  groundNormalBatch = new Float64Array(capacity * 3);
+  contactBatch = new Uint8Array(capacity);
 }
 
-function advanceSharedUnitMotionPrediction(
-  motion: MutableUnitMotion3,
+function sampleInitialGroundBatch(count: number): void {
+  for (let i = 0; i < count; i++) {
+    const base = i * MOTION_STRIDE;
+    const x = motionBatch[base];
+    const y = motionBatch[base + 1];
+    const groundZ = getPredictionGroundZ(x, y);
+    const penetration = groundZ - (motionBatch[base + 2] - groundOffsetBatch[i]);
+    groundZBatch[i] = groundZ;
+    let nx = 0;
+    let ny = 0;
+    let nz = 1;
+    if (isUnitGroundPenetrationInContact(penetration)) {
+      const normal = getPredictionGroundNormal(x, y);
+      nx = normal.nx;
+      ny = normal.ny;
+      nz = normal.nz;
+    }
+    groundNormalBatch[i * 3] = nx;
+    groundNormalBatch[i * 3 + 1] = ny;
+    groundNormalBatch[i * 3 + 2] = nz;
+  }
+}
+
+function snapContactMotionBatch(count: number): void {
+  for (let i = 0; i < count; i++) {
+    const base = i * MOTION_STRIDE;
+    const penetration = groundZBatch[i] - (motionBatch[base + 2] - groundOffsetBatch[i]);
+    const contact = isUnitGroundPenetrationInContact(penetration);
+    contactBatch[i] = contact ? 1 : 0;
+    if (contact) {
+      motionBatch[base + 2] = groundZBatch[i] + groundOffsetBatch[i];
+    }
+  }
+}
+
+function updateCurrentMotionContacts(count: number): void {
+  for (let i = 0; i < count; i++) {
+    const base = i * MOTION_STRIDE;
+    const nextGroundZ = getPredictionGroundZ(motionBatch[base], motionBatch[base + 1]);
+    contactBatch[i] = isUnitGroundPenetrationInContact(
+      nextGroundZ - (motionBatch[base + 2] - groundOffsetBatch[i]),
+    ) ? 1 : 0;
+  }
+}
+
+function advancePackedMotionBatch(
+  count: number,
+  predictionMode: ReturnType<typeof getPredictionMode>,
   dt: number,
-  groundOffset: number,
   airDamp: number,
   groundDamp: number,
-): boolean {
+): void {
+  if (count <= 0) return;
+  sampleInitialGroundBatch(count);
+
   // PLAYER CLIENT bar: PREDICT mode gates how aggressively the
   // client extrapolates motion between snapshots.
   //   'pos' — no integration. The per-channel drift lerp downstream
@@ -155,148 +200,111 @@ function advanceSharedUnitMotionPrediction(
   //   'vel' — integrate position from the last-seen velocity each
   //            frame. Acceleration is never on the wire (the client
   //            ships velocity, not forces), so there is no ACC mode.
-  const mode = getPredictionMode();
-  const groundZ = getPredictionGroundZ(motion.x, motion.y);
-  const penetration = groundZ - (motion.z - groundOffset);
-  const contact = isUnitGroundPenetrationInContact(penetration);
-
-  if (mode === 'pos') {
-    if (contact) {
-      motion.z = groundZ + groundOffset;
-    }
-    return contact;
+  if (predictionMode === 'pos') {
+    snapContactMotionBatch(count);
+    return;
   }
 
-  if (
-    contact &&
-    penetration <= PREDICTION_GROUND_REST_PENETRATION_EPSILON &&
-    motionVelocitySq(motion) <= PREDICTION_VEL_EPSILON_SQ
-  ) {
-    motion.z = groundZ + groundOffset;
-    motion.vx = 0;
-    motion.vy = 0;
-    motion.vz = 0;
-    return true;
-  }
-
-  // Powered acceleration intentionally zero: the client receives
-  // velocity-only and integrates that forward. Gravity is owned by the
-  // server-side force solver — re-applying it here would stale-double
-  // the pull against the velocity already encoded in the snapshot.
-  advanceUnitMotionPhysicsMutable(
-    motion,
+  advanceUnitMotionPredictionBatchMutable(
+    count,
+    motionBatch,
+    groundOffsetBatch,
+    groundZBatch,
+    groundNormalBatch,
     dt,
-    groundOffset,
-    0,
-    0,
-    0,
     airDamp,
     groundDamp,
-    0,
-    0,
-    0,
-    getPredictionGroundZ,
-    getPredictionGroundNormal,
+    PREDICTION_GROUND_REST_PENETRATION_EPSILON,
+    PREDICTION_VEL_EPSILON_SQ,
   );
-
-  const nextGroundZ = getPredictionGroundZ(motion.x, motion.y);
-  return isUnitGroundPenetrationInContact(
-    nextGroundZ - (motion.z - groundOffset),
-  );
+  updateCurrentMotionContacts(count);
 }
 
-function advanceTargetExtrapolation(
-  target: UnitPredictionTarget,
-  dt: number,
-  airDamp: number,
-  groundDamp: number,
+function packTargetPredictionBatch(
+  targets: Array<UnitPredictionTarget | undefined>,
+  count: number,
+): number {
+  targetBatchRefs.length = 0;
+  let batchCount = 0;
+  for (let i = 0; i < count; i++) {
+    const target = targets[i];
+    if (target === undefined) continue;
+    const base = batchCount * MOTION_STRIDE;
+    motionBatch[base] = target.x;
+    motionBatch[base + 1] = target.y;
+    motionBatch[base + 2] = target.z;
+    motionBatch[base + 3] = target.velocityX ?? 0;
+    motionBatch[base + 4] = target.velocityY ?? 0;
+    motionBatch[base + 5] = target.velocityZ ?? 0;
+    groundOffsetBatch[batchCount] = target.bodyCenterHeight;
+    targetBatchRefs[batchCount] = target;
+    batchCount++;
+  }
+  return batchCount;
+}
+
+function writeTargetPredictionBatch(count: number): void {
+  for (let i = 0; i < count; i++) {
+    const target = targetBatchRefs[i];
+    const base = i * MOTION_STRIDE;
+    target.x = motionBatch[base];
+    target.y = motionBatch[base + 1];
+    target.z = motionBatch[base + 2];
+    target.velocityX = motionBatch[base + 3];
+    target.velocityY = motionBatch[base + 4];
+    target.velocityZ = motionBatch[base + 5];
+    target.predictedGroundContact = contactBatch[i] !== 0;
+  }
+  targetBatchRefs.length = 0;
+}
+
+function packEntityPredictionBatch(entities: Entity[], count: number): void {
+  for (let i = 0; i < count; i++) {
+    const entity = entities[i];
+    const unit = entity.unit;
+    const base = i * MOTION_STRIDE;
+    motionBatch[base] = entity.transform.x;
+    motionBatch[base + 1] = entity.transform.y;
+    motionBatch[base + 2] = entity.transform.z;
+    motionBatch[base + 3] = unit?.velocityX ?? 0;
+    motionBatch[base + 4] = unit?.velocityY ?? 0;
+    motionBatch[base + 5] = unit?.velocityZ ?? 0;
+    groundOffsetBatch[i] = unit?.bodyCenterHeight ?? 0;
+  }
+}
+
+function writeEntityPredictionBatch(
+  entities: Entity[],
+  count: number,
+  deltaMs: number,
 ): void {
-  targetMotionScratch.x = target.x;
-  targetMotionScratch.y = target.y;
-  targetMotionScratch.z = target.z;
-  targetMotionScratch.vx = target.velocityX ?? 0;
-  targetMotionScratch.vy = target.velocityY ?? 0;
-  targetMotionScratch.vz = target.velocityZ ?? 0;
-
-  target.predictedGroundContact = advanceSharedUnitMotionPrediction(
-    targetMotionScratch,
-    dt,
-    target.bodyCenterHeight,
-    airDamp,
-    groundDamp,
-  );
-
-  target.x = targetMotionScratch.x;
-  target.y = targetMotionScratch.y;
-  target.z = targetMotionScratch.z;
-  target.velocityX = targetMotionScratch.vx;
-  target.velocityY = targetMotionScratch.vy;
-  target.velocityZ = targetMotionScratch.vz;
-}
-
-function advanceUnitMotionState(
-  unit: NonNullable<Entity['unit']>,
-  motion: MutableUnitMotion3,
-  dt: number,
-  airDamp: number,
-  groundDamp: number,
-): boolean {
-  return advanceSharedUnitMotionPrediction(
-    motion,
-    dt,
-    unit.bodyCenterHeight,
-    airDamp,
-    groundDamp,
-  );
-}
-
-export function applyClientUnitVisualPrediction(options: {
-  entity: Entity;
-  target: UnitPredictionTarget | undefined;
-  deltaMs: number;
-  mapWidth: number;
-  mapHeight: number;
-}): void {
-  const { entity, target, deltaMs, mapWidth, mapHeight } = options;
-  if (!entity.unit) return;
-  const dt = deltaMs / 1000;
-  const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
-  const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
-  const rotPosBlend = getChannelBlend(getRotationPosEmaMode(), dt);
-  const rotVelBlend = getChannelBlend(getRotationVelEmaMode(), dt);
-  const airDamp = getUnitAirFrictionDamp(dt);
-  const groundDamp = getUnitGroundFrictionDamp(dt);
-  predictionMapWidth = mapWidth;
-  predictionMapHeight = mapHeight;
-
-  if (target) {
-    // Unit body motion is a visual contract, not an optional detail.
-    // Keep this smooth at render cadence.
-    advanceTargetExtrapolation(target, dt, airDamp, groundDamp);
+  for (let i = 0; i < count; i++) {
+    const entity = entities[i];
+    const unit = entity.unit;
+    if (!unit) continue;
+    const base = i * MOTION_STRIDE;
+    entity.transform.x = motionBatch[base];
+    entity.transform.y = motionBatch[base + 1];
+    entity.transform.z = motionBatch[base + 2];
+    unit.velocityX = motionBatch[base + 3];
+    unit.velocityY = motionBatch[base + 4];
+    unit.velocityZ = motionBatch[base + 5];
+    advanceUnitSuspension(unit, entity.transform.rotation, deltaMs, {
+      legContact: contactBatch[i] !== 0,
+    });
   }
+}
 
-  motionScratch.x = entity.transform.x;
-  motionScratch.y = entity.transform.y;
-  motionScratch.z = entity.transform.z;
-  motionScratch.vx = entity.unit.velocityX ?? 0;
-  motionScratch.vy = entity.unit.velocityY ?? 0;
-  motionScratch.vz = entity.unit.velocityZ ?? 0;
-  const legContact = advanceUnitMotionState(
-    entity.unit,
-    motionScratch,
-    dt,
-    airDamp,
-    groundDamp,
-  );
-  entity.transform.x = motionScratch.x;
-  entity.transform.y = motionScratch.y;
-  entity.transform.z = motionScratch.z;
-  entity.unit.velocityX = motionScratch.vx;
-  entity.unit.velocityY = motionScratch.vy;
-  entity.unit.velocityZ = motionScratch.vz;
-  advanceUnitSuspension(entity.unit, entity.transform.rotation, deltaMs, { legContact });
-
-  if (!target) return;
+function applyClientUnitVisualDrift(
+  entity: Entity,
+  target: UnitPredictionTarget | undefined,
+  movPosBlend: number,
+  movVelBlend: number,
+  rotPosBlend: number,
+  rotVelBlend: number,
+  normalAlpha: number,
+): void {
+  if (!entity.unit || !target) return;
 
   // Movement position channel — snap / EMA.
   if (movPosBlend >= 0) {
@@ -373,10 +381,6 @@ export function applyClientUnitVisualPrediction(options: {
   // Unit Ground Normal EMA is its own knob — orthogonal to the per-channel snapshot
   // drift — because it smooths a SERVER-side EMA's output (slope
   // normal), not a snapshot drift correction. Always applied.
-  const normalAlpha = halfLifeBlend(
-    dt,
-    UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[getClientUnitGroundNormalEmaMode()],
-  );
   const sn = entity.unit.surfaceNormal;
   const tnx = sn.nx + (target.surfaceNormalX - sn.nx) * normalAlpha;
   const tny = sn.ny + (target.surfaceNormalY - sn.ny) * normalAlpha;
@@ -387,6 +391,58 @@ export function applyClientUnitVisualPrediction(options: {
     sn.nx = tnx * inv;
     sn.ny = tny * inv;
     sn.nz = tnz * inv;
+  }
+}
+
+export function applyClientUnitVisualPredictionBatch(options: {
+  entities: Entity[];
+  targets: Array<UnitPredictionTarget | undefined>;
+  deltaMs: number;
+  mapWidth: number;
+  mapHeight: number;
+}): void {
+  const { entities, targets, deltaMs, mapWidth, mapHeight } = options;
+  const count = entities.length;
+  if (count === 0) return;
+
+  const dt = deltaMs / 1000;
+  const movPosBlend = getChannelBlend(getMovementPosEmaMode(), dt);
+  const movVelBlend = getChannelBlend(getMovementVelEmaMode(), dt);
+  const rotPosBlend = getChannelBlend(getRotationPosEmaMode(), dt);
+  const rotVelBlend = getChannelBlend(getRotationVelEmaMode(), dt);
+  const normalAlpha = halfLifeBlend(
+    dt,
+    UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[getClientUnitGroundNormalEmaMode()],
+  );
+  const airDamp = getUnitAirFrictionDamp(dt);
+  const groundDamp = getUnitGroundFrictionDamp(dt);
+  const predictionMode = getPredictionMode();
+  predictionMapWidth = mapWidth;
+  predictionMapHeight = mapHeight;
+  ensurePredictionBatchCapacity(count);
+
+  // Unit body motion is a visual contract, not an optional detail.
+  // Keep both the stored server target and the rendered entity moving
+  // smoothly at render cadence while crossing JS/WASM only twice per
+  // frame for all predicted units.
+  const targetCount = packTargetPredictionBatch(targets, count);
+  advancePackedMotionBatch(targetCount, predictionMode, dt, airDamp, groundDamp);
+  writeTargetPredictionBatch(targetCount);
+
+  packEntityPredictionBatch(entities, count);
+  advancePackedMotionBatch(count, predictionMode, dt, airDamp, groundDamp);
+  writeEntityPredictionBatch(entities, count, deltaMs);
+
+  for (let i = 0; i < count; i++) {
+    applyClientUnitVisualDrift(
+      entities[i],
+      targets[i],
+      movPosBlend,
+      movVelBlend,
+      rotPosBlend,
+      rotVelBlend,
+      normalAlpha,
+    );
   }
 }
 
