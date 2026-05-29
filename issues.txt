@@ -37,15 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C12. [MED] Terrain leaf balancing rebuilds unit-edge segment maps each pass.
-    LOCATION: src/game/sim/terrain/terrainTileMap.ts:
-      balanceTerrainTriangleLeaves, forEachTriangleUnitEdgeSegment, latticeSegmentKey.
-    PROBLEM: each balance pass walks every leaf's unit edge segments and keys them with
-      strings. This can dominate startup on high-detail maps, especially around deposit
-      pads and hard terrain transitions.
-    FIX: use numeric lattice segment keys and reusable owner buffers, or cache segment
-      ownership between balance passes when only a known subset of leaves split.
-
 C13. [LOW] Terrain leaf generation creates many short-lived child arrays/objects.
     LOCATION: src/game/sim/terrain/terrainTileMap.ts:
       buildTerrainTriangleLeaves, terrainTriangleChildren, splitTerrainTriangleLeaves.

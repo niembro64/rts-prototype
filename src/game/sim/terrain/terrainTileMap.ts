@@ -612,32 +612,79 @@ function buildTerrainTriangleLeaves(
   }
 }
 
-function latticeSegmentKey(a: LatticePoint, b: LatticePoint): string {
-  const ak = latticeKey(a.i, a.j);
-  const bk = latticeKey(b.i, b.j);
-  return ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
+function latticeSegmentPointKey(i: number, j: number): number {
+  return latticeCacheKey(i, j);
 }
 
-function forEachTriangleUnitEdgeSegment(
-  tri: TerrainHierarchyTriangle,
-  visit: (a: LatticePoint, b: LatticePoint) => void,
-): void {
-  const verts = triangleLatticeVertices(tri);
-  for (let edge = 0; edge < 3; edge++) {
-    const a = verts[edge];
-    const b = verts[(edge + 1) % 3];
-    const di = b.i - a.i;
-    const dj = b.j - a.j;
-    const steps = Math.max(Math.abs(di), Math.abs(dj));
-    if (steps <= 0) continue;
-    const stepI = di / steps;
-    const stepJ = dj / steps;
-    for (let k = 0; k < steps; k++) {
-      visit(
-        { i: a.i + stepI * k, j: a.j + stepJ * k },
-        { i: a.i + stepI * (k + 1), j: a.j + stepJ * (k + 1) },
-      );
+function latticeSegmentKeyFromCoords(
+  ai: number,
+  aj: number,
+  bi: number,
+  bj: number,
+): number {
+  let orientation = 0;
+  let startI = ai;
+  let startJ = aj;
+  if (aj === bj) {
+    orientation = 0;
+    if (bi < ai) {
+      startI = bi;
+      startJ = bj;
     }
+  } else if (ai === bi) {
+    orientation = 1;
+    if (bj < aj) {
+      startI = bi;
+      startJ = bj;
+    }
+  } else {
+    orientation = 2;
+    if (bi < ai) {
+      startI = bi;
+      startJ = bj;
+    }
+  }
+  return latticeSegmentPointKey(startI, startJ) * 3 + orientation;
+}
+
+function forEachUnitSegmentOnLatticeEdge(
+  ai: number,
+  aj: number,
+  bi: number,
+  bj: number,
+  visit: (key: number) => void,
+): void {
+  const di = bi - ai;
+  const dj = bj - aj;
+  const steps = Math.max(Math.abs(di), Math.abs(dj));
+  if (steps <= 0) return;
+  const stepI = di / steps;
+  const stepJ = dj / steps;
+  for (let k = 0; k < steps; k++) {
+    const startI = ai + stepI * k;
+    const startJ = aj + stepJ * k;
+    visit(latticeSegmentKeyFromCoords(
+      startI,
+      startJ,
+      startI + stepI,
+      startJ + stepJ,
+    ));
+  }
+}
+
+function forEachTriangleUnitEdgeSegmentKey(
+  tri: TerrainHierarchyTriangle,
+  visit: (key: number) => void,
+): void {
+  const { i, j, side } = tri;
+  if (!tri.down) {
+    forEachUnitSegmentOnLatticeEdge(i, j, i + side, j, visit);
+    forEachUnitSegmentOnLatticeEdge(i + side, j, i, j + side, visit);
+    forEachUnitSegmentOnLatticeEdge(i, j + side, i, j, visit);
+  } else {
+    forEachUnitSegmentOnLatticeEdge(i + side, j, i + side, j + side, visit);
+    forEachUnitSegmentOnLatticeEdge(i + side, j + side, i, j + side, visit);
+    forEachUnitSegmentOnLatticeEdge(i, j + side, i + side, j, visit);
   }
 }
 
@@ -657,12 +704,11 @@ function balanceTerrainTriangleLeaves(
   }) + 1;
 
   for (let pass = 0; pass < maxPasses; pass++) {
-    const segmentOwners = new Map<string, Array<{ leafIndex: number; level: number }>>();
+    const segmentOwners = new Map<number, Array<{ leafIndex: number; level: number }>>();
     for (let leafIndex = 0; leafIndex < balanced.length; leafIndex++) {
       const leaf = balanced[leafIndex];
       const level = terrainTriangleHierarchyLevel(ctx, leaf);
-      forEachTriangleUnitEdgeSegment(leaf, (a, b) => {
-        const key = latticeSegmentKey(a, b);
+      forEachTriangleUnitEdgeSegmentKey(leaf, (key) => {
         const owners = segmentOwners.get(key);
         if (owners) {
           owners.push({ leafIndex, level });
