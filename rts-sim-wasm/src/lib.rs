@@ -2429,16 +2429,175 @@ pub fn integrate_damped_rotation(
 }
 
 // ─────────────────────────────────────────────────────────────────
-//  C16 — metal-deposit resource footprint growth
+//  C16 — metal-deposit placement + resource footprint growth
 //
-//  Replaces the deterministic connected-cell grow pass from
-//  src/metalDepositConfig.ts. TypeScript still owns ring placement,
-//  height-pass orchestration, and object assembly; Rust owns the dense
-//  numeric candidate layout, seeded frontier weighting, and sorted
-//  output cell list.
+//  Replaces the deterministic ring placement and connected-cell grow
+//  pass from src/metalDepositConfig.ts. TypeScript still owns config
+//  validation, terrain-height pass orchestration, and object assembly;
+//  Rust owns the numeric oval/ring layout, snapped grid placement,
+//  explicit-height derivation, candidate layout, seeded frontier
+//  weighting, and sorted output cell list.
 // ─────────────────────────────────────────────────────────────────
 
+const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
+const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
+const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
+    -std::f64::consts::FRAC_PI_2 + std::f64::consts::FRAC_PI_4;
+const METAL_DEPOSIT_D_TERRAIN_NULL: f64 = f64::NAN;
+
+#[inline]
+fn metal_deposit_loop_count(limit: f64) -> u32 {
+    if !limit.is_finite() || limit <= 0.0 {
+        return 0;
+    }
+    limit.ceil() as u32
+}
+
+#[wasm_bindgen]
+pub fn metal_deposit_count_placements(player_count: u32, rings: &[f64]) -> u32 {
+    if rings.len() % METAL_DEPOSIT_RING_INPUT_STRIDE != 0 {
+        return 0;
+    }
+    let players = player_count.max(1);
+    let mut count = 0u32;
+    let ring_count = rings.len() / METAL_DEPOSIT_RING_INPUT_STRIDE;
+    for ring_index in 0..ring_count {
+        let base = ring_index * METAL_DEPOSIT_RING_INPUT_STRIDE;
+        let radius_fraction = rings[base];
+        if radius_fraction <= 1e-6 {
+            count = count.saturating_add(1);
+            continue;
+        }
+        count =
+            count.saturating_add(players.saturating_mul(metal_deposit_loop_count(rings[base + 1])));
+    }
+    count
+}
+
+#[allow(clippy::too_many_arguments)]
+#[wasm_bindgen]
+pub fn metal_deposit_generate_placements(
+    map_width: f64,
+    map_height: f64,
+    player_count: u32,
+    extent_fraction: f64,
+    edge_margin_px: f64,
+    build_grid_cell_size: f64,
+    metal_deposit_step: f64,
+    resource_cells: u32,
+    resource_radius_cells: i32,
+    rings: &[f64],
+    out_placements: &mut [f64],
+) -> u32 {
+    if rings.len() % METAL_DEPOSIT_RING_INPUT_STRIDE != 0
+        || !map_width.is_finite()
+        || !map_height.is_finite()
+        || !extent_fraction.is_finite()
+        || !edge_margin_px.is_finite()
+        || !build_grid_cell_size.is_finite()
+        || build_grid_cell_size <= 0.0
+        || !metal_deposit_step.is_finite()
+        || resource_cells == 0
+        || resource_radius_cells <= 0
+    {
+        return 0;
+    }
+
+    let expected = metal_deposit_count_placements(player_count, rings) as usize;
+    if out_placements.len() < expected * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE {
+        return 0;
+    }
+
+    let fraction = extent_fraction.clamp(0.01, 1.0);
+    let width = (map_width * fraction).max(1.0);
+    let height = (map_height * fraction).max(1.0);
+    let min_dim = width.min(height).max(1.0);
+    let cx = map_width * 0.5;
+    let cy = map_height * 0.5;
+    let scale_x = width / min_dim;
+    let scale_y = height / min_dim;
+    let half_extent = min_dim * 0.5 - edge_margin_px;
+    let players = player_count.max(1);
+    let players_f64 = players as f64;
+    let slice_width = std::f64::consts::TAU / players_f64;
+    let resource_cells_f64 = resource_cells as f64;
+    let resource_cell_count = resource_cells.saturating_mul(resource_cells);
+    let resource_half_size = (resource_cells_f64 * build_grid_cell_size) * 0.5;
+    let resource_radius = (resource_radius_cells as f64 + 0.5) * build_grid_cell_size;
+    let grid_half_cells = (resource_cells / 2) as i32;
+
+    let mut out_count = 0usize;
+    let mut push_placement =
+        |raw_x: f64, raw_y: f64, flat_pad_cells: f64, d_terrain_levels: f64, blend_radius: f64| {
+            let center_gx = (raw_x / build_grid_cell_size).floor() as i32;
+            let center_gy = (raw_y / build_grid_cell_size).floor() as i32;
+            let grid_x = center_gx - grid_half_cells;
+            let grid_y = center_gy - grid_half_cells;
+            let snapped_x = grid_x as f64 * build_grid_cell_size + resource_half_size;
+            let snapped_y = grid_y as f64 * build_grid_cell_size + resource_half_size;
+            let origin_gx = (snapped_x / build_grid_cell_size).floor() as i32;
+            let origin_gy = (snapped_y / build_grid_cell_size).floor() as i32;
+            let flat_pad_radius = (flat_pad_cells * build_grid_cell_size) * 0.5;
+            let explicit_height = if d_terrain_levels.is_nan() {
+                METAL_DEPOSIT_D_TERRAIN_NULL
+            } else {
+                d_terrain_levels * metal_deposit_step
+            };
+
+            let base = out_count * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
+            out_placements[base] = snapped_x;
+            out_placements[base + 1] = snapped_y;
+            out_placements[base + 2] = grid_x as f64;
+            out_placements[base + 3] = grid_y as f64;
+            out_placements[base + 4] = origin_gx as f64;
+            out_placements[base + 5] = origin_gy as f64;
+            out_placements[base + 6] = resource_cells_f64;
+            out_placements[base + 7] = resource_cell_count as f64;
+            out_placements[base + 8] = resource_radius_cells as f64;
+            out_placements[base + 9] = resource_half_size;
+            out_placements[base + 10] = resource_radius;
+            out_placements[base + 11] = flat_pad_radius;
+            out_placements[base + 12] = d_terrain_levels;
+            out_placements[base + 13] = blend_radius;
+            out_placements[base + 14] = explicit_height;
+            out_count += 1;
+        };
+
+    let ring_count = rings.len() / METAL_DEPOSIT_RING_INPUT_STRIDE;
+    for ring_index in 0..ring_count {
+        let base = ring_index * METAL_DEPOSIT_RING_INPUT_STRIDE;
+        let radius_fraction = rings[base];
+        let count_per_player_raw = rings[base + 1];
+        let count_per_player = metal_deposit_loop_count(count_per_player_raw);
+        let slice_offset = rings[base + 2];
+        let d_terrain_levels = rings[base + 3];
+        let flat_pad_cells = rings[base + 4];
+        let blend_radius = rings[base + 5];
+        let ring_radius = radius_fraction * half_extent;
+        let ring_angular_offset = slice_offset * slice_width;
+
+        if radius_fraction <= 1e-6 {
+            push_placement(cx, cy, flat_pad_cells, d_terrain_levels, blend_radius);
+            continue;
+        }
+
+        for player_index in 0..players {
+            let slice_center = (player_index as f64 / players_f64) * std::f64::consts::TAU
+                + METAL_DEPOSIT_FIRST_PLAYER_ANGLE;
+            for j in 0..count_per_player {
+                let t = (j as f64 + 0.5) / count_per_player_raw;
+                let angle_in_slice = -slice_width * 0.5 + t * slice_width;
+                let angle = slice_center + angle_in_slice + ring_angular_offset;
+                let raw_x = cx + angle.cos() * ring_radius * scale_x;
+                let raw_y = cy + angle.sin() * ring_radius * scale_y;
+                push_placement(raw_x, raw_y, flat_pad_cells, d_terrain_levels, blend_radius);
+            }
+        }
+    }
+
+    out_count as u32
+}
 
 #[wasm_bindgen]
 pub fn metal_deposit_count_resource_candidates(radius_cells: i32) -> u32 {

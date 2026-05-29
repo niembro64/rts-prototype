@@ -34,15 +34,14 @@
 // Special case — `radiusFraction: 0` is the map center: a single
 // deposit is placed at (cx, cy) regardless of countPerPlayer / playerCount.
 
-import { getPlayerBaseAngle } from './game/sim/playerLayout';
-import { makeMapOvalMetrics, mapOvalPointAt } from './game/sim/mapOval';
+import { MAP_GENERATION_EXTENT_FRACTION } from './mapSizeConfig';
 import {
   createTerrainHeightSampler,
   METAL_DEPOSIT_STEP,
   setMetalDepositFlatZones,
   type TerrainFlatZone,
 } from './game/sim/Terrain';
-import { BUILD_GRID_CELL_SIZE, snapBuildingToGrid } from './game/sim/buildGrid';
+import { BUILD_GRID_CELL_SIZE } from './game/sim/buildGrid';
 import { getSimWasm } from './game/sim-wasm/init';
 import rawConfig from './metalDepositConfig.json';
 
@@ -179,7 +178,12 @@ type PendingPlacement = {
   placement: MetalDepositPlacement;
   dTerrainLevels: number | null;
   blendRadius: number;
+  explicitHeight: number | null;
 };
+
+const METAL_DEPOSIT_RING_INPUT_STRIDE = 6;
+const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE = 15;
+const METAL_DEPOSIT_D_TERRAIN_NULL = Number.NaN;
 
 /**
  * Compute the deterministic deposit list for a map of given size and
@@ -205,55 +209,14 @@ export function generateMetalDeposits(
   mapHeight: number,
   playerCount: number,
 ): MetalDeposit[] {
-  const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
-  const halfExtent = ovalMetrics.minDim / 2 - METAL_DEPOSIT_CONFIG.edgeMarginPx;
-  const cx = ovalMetrics.cx;
-  const cy = ovalMetrics.cy;
-  const players = Math.max(1, playerCount);
-  const sliceWidth = (2 * Math.PI) / players;
-
   // Pass 1: lay out every deposit's xy + per-ring metadata. No
   // heights yet — those depend on whether the ring is explicit-height
   // (immediate) or null (sampled after explicit pads are installed).
-  const placements: PendingPlacement[] = [];
-  for (const ring of METAL_DEPOSIT_CONFIG.rings) {
-    const ringRadius = ring.radiusFraction * halfExtent;
-    const flatPadCells = validMetalDepositFlatPadCells(ring.flatPadCells);
-    const blendRadius = validMetalDepositTerrainBlendRadius(
-      ring.terrainBlendRadius,
-    );
-    const dTerrainLevels = validMetalDepositDTerrainLevels(ring.dTerrainLevels);
-    // Slice-fraction offset: scaled by the player's slice width so the
-    // configured value means the same thing (a fraction of one slice)
-    // regardless of how many players are dividing the map.
-    const ringAngularOffset = (ring.sliceOffset ?? 0) * sliceWidth;
-    const pushPlacement = (rawX: number, rawY: number): void => {
-      placements.push({
-        placement: makeMetalDepositPlacement(rawX, rawY, flatPadCells, placements.length),
-        dTerrainLevels,
-        blendRadius,
-      });
-    };
-
-    // Center: one deposit, regardless of countPerPlayer.
-    if (ring.radiusFraction <= 1e-6) {
-      pushPlacement(cx, cy);
-      continue;
-    }
-
-    for (let p = 0; p < players; p++) {
-      const sliceCenter = getPlayerBaseAngle(p, players);
-      for (let j = 0; j < ring.countPerPlayer; j++) {
-        // Sub-slice midpoints: countPerPlayer=1 → t=0.5 → angle=sliceCenter;
-        // countPerPlayer=2 → t=0.25, 0.75 → angles at ±sliceWidth/4 around centre.
-        const t = (j + 0.5) / ring.countPerPlayer;
-        const angleInSlice = -sliceWidth / 2 + t * sliceWidth;
-        const angle = sliceCenter + angleInSlice + ringAngularOffset;
-        const point = mapOvalPointAt(ovalMetrics, angle, ringRadius);
-        pushPlacement(point.x, point.y);
-      }
-    }
-  }
+  const placements = generateMetalDepositPlacementsFromWasm(
+    mapWidth,
+    mapHeight,
+    playerCount,
+  );
 
   // Pass 2: heights for explicit-dTerrain rings, and install those
   // pads so the null-ring sampler in pass 3 sees the terrain already
@@ -262,8 +225,8 @@ export function generateMetalDeposits(
   const explicitZones: TerrainFlatZone[] = [];
   for (let i = 0; i < placements.length; i++) {
     const p = placements[i];
-    if (p.dTerrainLevels === null) continue;
-    const height = p.dTerrainLevels * METAL_DEPOSIT_STEP;
+    if (p.explicitHeight === null) continue;
+    const height = p.explicitHeight;
     heights[i] = height;
     explicitZones.push({
       x: p.placement.x,
@@ -317,26 +280,109 @@ export function generateMetalDeposits(
   return deposits;
 }
 
-function makeMetalDepositPlacement(
-  rawX: number,
-  rawY: number,
-  flatPadCells: number,
-  seedIndex: number,
-): MetalDepositPlacement {
+function generateMetalDepositPlacementsFromWasm(
+  mapWidth: number,
+  mapHeight: number,
+  playerCount: number,
+): PendingPlacement[] {
+  const sim = getRequiredSimWasm();
   const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
-  const resourceCellCount = resourceCells * resourceCells;
   const resourceRadiusCells = getMetalDepositResourceRadiusCells(resourceCells);
-  const resourceHalfSize = (resourceCells * BUILD_GRID_CELL_SIZE) / 2;
   const resourceRadius = (resourceRadiusCells + 0.5) * BUILD_GRID_CELL_SIZE;
-  const flatPadRadius = (flatPadCells * BUILD_GRID_CELL_SIZE) / 2;
-  if (flatPadRadius < resourceRadius) {
+  const ringRows = packMetalDepositRingRows(resourceRadius);
+  const players = Math.max(1, Math.floor(playerCount));
+  const placementCount = sim.metalDepositCountPlacements(players, ringRows);
+  const placementRows = new Float64Array(
+    placementCount * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE,
+  );
+  const written = sim.metalDepositGeneratePlacements(
+    mapWidth,
+    mapHeight,
+    players,
+    MAP_GENERATION_EXTENT_FRACTION,
+    METAL_DEPOSIT_CONFIG.edgeMarginPx,
+    BUILD_GRID_CELL_SIZE,
+    METAL_DEPOSIT_STEP,
+    resourceCells,
+    resourceRadiusCells,
+    ringRows,
+    placementRows,
+  );
+  if (written !== placementCount) {
     throw new Error(
-      `Metal deposit ring flatPadCells (${flatPadCells}) must produce a circular radius >= the generated resource footprint radius (${resourceRadius.toFixed(2)} world units)`,
+      `Metal deposit placement kernel returned ${written} placements; expected ${placementCount}`,
     );
   }
-  const snapped = snapBuildingToGrid(rawX, rawY, resourceCells, resourceCells);
-  const originGx = Math.floor(snapped.x / BUILD_GRID_CELL_SIZE);
-  const originGy = Math.floor(snapped.y / BUILD_GRID_CELL_SIZE);
+
+  const placements: PendingPlacement[] = new Array(written);
+  for (let i = 0; i < written; i++) {
+    const base = i * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
+    const dTerrainRaw = placementRows[base + 12];
+    const explicitHeightRaw = placementRows[base + 14];
+    placements[i] = {
+      placement: makeMetalDepositPlacementFromWasmRow(placementRows, base, i),
+      dTerrainLevels: Number.isNaN(dTerrainRaw)
+        ? null
+        : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
+      blendRadius: placementRows[base + 13],
+      explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
+    };
+  }
+
+  return placements;
+}
+
+function packMetalDepositRingRows(resourceRadius: number): Float64Array {
+  const ringRows = new Float64Array(
+    METAL_DEPOSIT_CONFIG.rings.length * METAL_DEPOSIT_RING_INPUT_STRIDE,
+  );
+  for (let i = 0; i < METAL_DEPOSIT_CONFIG.rings.length; i++) {
+    const ring = METAL_DEPOSIT_CONFIG.rings[i];
+    const flatPadCells = validMetalDepositFlatPadCells(ring.flatPadCells);
+    const flatPadRadius = (flatPadCells * BUILD_GRID_CELL_SIZE) / 2;
+    if (flatPadRadius < resourceRadius) {
+      throw new Error(
+        `Metal deposit ring flatPadCells (${flatPadCells}) must produce a circular radius >= the generated resource footprint radius (${resourceRadius.toFixed(2)} world units)`,
+      );
+    }
+    const base = i * METAL_DEPOSIT_RING_INPUT_STRIDE;
+    ringRows[base] = ring.radiusFraction;
+    ringRows[base + 1] = ring.countPerPlayer;
+    ringRows[base + 2] = ring.sliceOffset ?? 0;
+    ringRows[base + 3] =
+      validMetalDepositDTerrainLevels(ring.dTerrainLevels) ??
+      METAL_DEPOSIT_D_TERRAIN_NULL;
+    ringRows[base + 4] = flatPadCells;
+    ringRows[base + 5] = validMetalDepositTerrainBlendRadius(
+      ring.terrainBlendRadius,
+    );
+  }
+  return ringRows;
+}
+
+function makeMetalDepositPlacementFromWasmRow(
+  rows: Float64Array,
+  base: number,
+  seedIndex: number,
+): MetalDepositPlacement {
+  const x = rows[base];
+  const y = rows[base + 1];
+  const gridX = finiteInteger(rows[base + 2], 'metal deposit gridX');
+  const gridY = finiteInteger(rows[base + 3], 'metal deposit gridY');
+  const originGx = finiteInteger(rows[base + 4], 'metal deposit originGx');
+  const originGy = finiteInteger(rows[base + 5], 'metal deposit originGy');
+  const resourceCells = finiteInteger(rows[base + 6], 'metal deposit resourceCells');
+  const resourceCellCount = finiteInteger(
+    rows[base + 7],
+    'metal deposit resourceCellCount',
+  );
+  const resourceRadiusCells = finiteInteger(
+    rows[base + 8],
+    'metal deposit resourceRadiusCells',
+  );
+  const resourceHalfSize = rows[base + 9];
+  const resourceRadius = rows[base + 10];
+  const flatPadRadius = rows[base + 11];
   const cells = growMetalDepositResourceCells(
     originGx,
     originGy,
@@ -346,10 +392,10 @@ function makeMetalDepositPlacement(
   );
   const bounds = getMetalDepositCellBounds(cells);
   return {
-    x: snapped.x,
-    y: snapped.y,
-    gridX: snapped.gridX,
-    gridY: snapped.gridY,
+    x,
+    y,
+    gridX,
+    gridY,
     originGx,
     originGy,
     resourceCells,
@@ -364,6 +410,13 @@ function makeMetalDepositPlacement(
     resourceRadius,
     flatPadRadius,
   };
+}
+
+function finiteInteger(value: number, label: string): number {
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new Error(`${label} must be a finite integer; received ${value}`);
+  }
+  return value;
 }
 
 function getMetalDepositResourceRadiusCells(resourceCells: number): number {

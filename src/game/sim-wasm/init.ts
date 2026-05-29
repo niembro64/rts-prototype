@@ -46,6 +46,8 @@ import __wbg_init, {
   solve_kinematic_intercept,
   compute_homing_thrust,
   integrate_damped_rotation,
+  metal_deposit_count_placements,
+  metal_deposit_generate_placements,
   metal_deposit_count_resource_candidates,
   metal_deposit_grow_resource_cells,
   terrain_install_mesh,
@@ -651,9 +653,25 @@ export interface SimWasm {
     minAngle: number,
     maxAngle: number,
   ) => void;
-  /** C16 — deterministic connected metal-deposit resource footprint.
-   *  TS owns ring placement and object assembly; Rust owns candidate
-   *  counting and seeded frontier growth. */
+  /** C16 — deterministic metal-deposit placement and connected
+   *  resource footprint. TS owns config validation, terrain-height
+   *  pass orchestration, and object assembly; Rust owns oval/ring
+   *  layout, snapped grid placement, explicit-height derivation,
+   *  candidate counting, and seeded frontier growth. */
+  readonly metalDepositCountPlacements: (playerCount: number, rings: Float64Array) => number;
+  readonly metalDepositGeneratePlacements: (
+    mapWidth: number,
+    mapHeight: number,
+    playerCount: number,
+    extentFraction: number,
+    edgeMarginPx: number,
+    buildGridCellSize: number,
+    metalDepositStep: number,
+    resourceCells: number,
+    resourceRadiusCells: number,
+    rings: Float64Array,
+    outPlacements: Float64Array,
+  ) => number;
   readonly metalDepositCountResourceCandidates: (radiusCells: number) => number;
   readonly metalDepositGrowResourceCells: (
     originGx: number,
@@ -2728,6 +2746,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,
         integrateDampedRotation: integrate_damped_rotation,
+        metalDepositCountPlacements: metal_deposit_count_placements,
+        metalDepositGeneratePlacements: metal_deposit_generate_placements,
         metalDepositCountResourceCandidates: metal_deposit_count_resource_candidates,
         metalDepositGrowResourceCells: metal_deposit_grow_resource_cells,
         terrainInstallMesh: terrain_install_mesh,
