@@ -7,8 +7,10 @@ import type {
 } from './NetworkTypes';
 import {
   encodeNetworkSnapshotWithRustFallback,
+  encodeEntitiesV6Bytes,
   type RustSnapshotEncodeResult,
 } from './snapshotRustWireEncoder';
+import { getEntitySnapshotWireSource } from './stateSerializerEntities';
 import {
   packAudioEventsForWire,
   unpackAudioEventsFromWire,
@@ -137,6 +139,9 @@ declare global {
 }
 
 export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
+  if (RUST_SNAPSHOT_WIRE_COMPARE_ENABLED) {
+    compareV6Entities(state);
+  }
   if (!FORCE_JS_SNAPSHOT_WIRE) {
     const rustWireState = packNetworkSnapshotForWire(state, {
       audioEvents: 'raw',
@@ -434,6 +439,60 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+// A5 parity oracle: compare the Rust V6 entity packer's output against the
+// authoritative TS packEntitiesForWire on real snapshots. Runs only under the
+// dp02rust compare flag; the live path is unchanged until parity is confirmed
+// in-app. The Rust bytes carry a 9-byte `"entities"` MessagePack key prefix
+// (0xA8 + "entities") ahead of the {v,m,t,e} value that packEntitiesForWire
+// encodes, so the prefix is stripped before comparing.
+const V6_ENTITIES_KEY_PREFIX_BYTES = 9;
+
+type V6EntitiesCompareStats = {
+  attempts: number;
+  matches: number;
+  mismatches: number;
+  fallbacks: number;
+};
+
+const v6EntitiesCompareStats: V6EntitiesCompareStats = {
+  attempts: 0,
+  matches: 0,
+  mismatches: 0,
+  fallbacks: 0,
+};
+
+function compareV6Entities(state: NetworkServerSnapshot): void {
+  const source = getEntitySnapshotWireSource(state.entities);
+  if (source === undefined) return;
+  const jsPacked = packEntitiesForWire(state.entities);
+  if (jsPacked === undefined) return;
+  const rustBytes = encodeEntitiesV6Bytes(source);
+  if (rustBytes === null) {
+    v6EntitiesCompareStats.fallbacks++;
+    return;
+  }
+  v6EntitiesCompareStats.attempts++;
+  const jsValueBytes = msgpackEncode(jsPacked, SNAPSHOT_ENCODE_OPTIONS);
+  const rustValueBytes = rustBytes.subarray(V6_ENTITIES_KEY_PREFIX_BYTES);
+  if (bytesEqual(rustValueBytes, jsValueBytes)) {
+    v6EntitiesCompareStats.matches++;
+    if (v6EntitiesCompareStats.matches === 1 || v6EntitiesCompareStats.matches % 300 === 0) {
+      console.info('[A5] V6 entities parity OK', { ...v6EntitiesCompareStats });
+    }
+    return;
+  }
+  v6EntitiesCompareStats.mismatches++;
+  if (v6EntitiesCompareStats.mismatches <= 10 || v6EntitiesCompareStats.mismatches % 100 === 0) {
+    console.error('[A5] V6 entities byte mismatch', {
+      tick: state.tick,
+      entityCount: source.kinds.length,
+      rustValueBytes: rustValueBytes.byteLength,
+      jsValueBytes: jsValueBytes.byteLength,
+      stats: { ...v6EntitiesCompareStats },
+    });
+  }
 }
 
 function noteRustSnapshotWireResult(result: RustSnapshotEncodeResult): void {

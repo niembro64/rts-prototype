@@ -299,6 +299,17 @@ import __wbg_init, {
   snapshot_encode_turret_scratch_ensure,
   snapshot_encode_action_scratch_ptr,
   snapshot_encode_action_scratch_ensure,
+  snapshot_encode_emit_entities_v6,
+  snapshot_encode_v6_kinds_scratch_ptr,
+  snapshot_encode_v6_kinds_scratch_ensure,
+  snapshot_encode_v6_row_indices_scratch_ptr,
+  snapshot_encode_v6_row_indices_scratch_ensure,
+  snapshot_encode_v6_basic_scratch_ptr,
+  snapshot_encode_v6_basic_scratch_ensure,
+  snapshot_encode_v6_unit_scratch_ptr,
+  snapshot_encode_v6_unit_scratch_ensure,
+  snapshot_encode_v6_building_scratch_ptr,
+  snapshot_encode_v6_building_scratch_ensure,
   snapshot_encode_string_scratch_bytes_ptr,
   snapshot_encode_string_scratch_table_ptr,
   snapshot_encode_string_scratch_ensure_bytes,
@@ -312,6 +323,7 @@ import __wbg_init, {
   messagepack_writer_append_raw_value,
   messagepack_writer_ptr,
   messagepack_writer_len,
+  messagepack_writer_clear,
   arrival_control_step_batch,
   unit_ground_normal_step_pool,
   pool_pos_x_ptr,
@@ -1890,6 +1902,8 @@ export interface SnapshotEncodeApi {
   /** Bytes currently in the D.2 scratch (matches the last encoder
    *  call's return value). */
   writerLen: () => number;
+  /** Clear the MessagePack writer scratch (length back to 0). */
+  writerClear: () => void;
   /** Append an already MessagePack-encoded value to the writer. Used
    *  by the DP-02 parity flag as a temporary fallback for DTO shapes
    *  that are not fully ported to Rust yet. */
@@ -1982,6 +1996,28 @@ export interface SnapshotEncodeApi {
    *  Transitional DP-02 bridge for low-frequency fields such as
    *  debug grids while their dedicated Rust encoders are still pending. */
   emitRawKeyValue: (key: string, value: Uint8Array) => number;
+  /** Emit the `entities` key + compact V6 `{v,m,t,e}` value (issue A5).
+   *  Caller must first bulk-fill the V6 input scratches (kinds /
+   *  rowIndices / basic / unit / building) + the shared turret / action /
+   *  waypoint / factoryQueue / string scratches from entityWireSource.
+   *  `waypointStringBase` is the slot where waypoint-type strings begin in
+   *  the (action ++ waypoint) ordered string scratch. Returns the writer
+   *  length, or 0xFFFFFFFF if a RAW entity kind is present (caller falls
+   *  back to the TS packer). */
+  emitEntitiesV6: (entityCount: number, waypointStringBase: number) => number;
+  v6KindsScratchPtr: () => number;
+  v6KindsScratchEnsure: (count: number) => void;
+  v6RowIndicesScratchPtr: () => number;
+  v6RowIndicesScratchEnsure: (count: number) => void;
+  v6BasicScratchPtr: () => number;
+  v6BasicScratchEnsure: (rowCount: number) => void;
+  readonly v6BasicScratchStride: number;
+  v6UnitScratchPtr: () => number;
+  v6UnitScratchEnsure: (rowCount: number) => void;
+  readonly v6UnitScratchStride: number;
+  v6BuildingScratchPtr: () => number;
+  v6BuildingScratchEnsure: (rowCount: number) => void;
+  readonly v6BuildingScratchStride: number;
   /** Emit `serverMeta: {...}` in ServerSnapshotMetaBuilder field
    *  order. String values must already be packed into string scratch;
    *  the `units.allowed` array uses contiguous string slots beginning
@@ -2896,8 +2932,23 @@ export function initSimWasm(): Promise<SimWasm> {
           appendRawValue: messagepack_writer_append_raw_value,
           emitServerMeta: snapshot_encode_envelope_emit_server_meta,
           emitRawKeyValue: snapshot_encode_envelope_emit_raw_key_value,
+          emitEntitiesV6: snapshot_encode_emit_entities_v6,
+          v6KindsScratchPtr: snapshot_encode_v6_kinds_scratch_ptr,
+          v6KindsScratchEnsure: snapshot_encode_v6_kinds_scratch_ensure,
+          v6RowIndicesScratchPtr: snapshot_encode_v6_row_indices_scratch_ptr,
+          v6RowIndicesScratchEnsure: snapshot_encode_v6_row_indices_scratch_ensure,
+          v6BasicScratchPtr: snapshot_encode_v6_basic_scratch_ptr,
+          v6BasicScratchEnsure: snapshot_encode_v6_basic_scratch_ensure,
+          v6BasicScratchStride: 9,
+          v6UnitScratchPtr: snapshot_encode_v6_unit_scratch_ptr,
+          v6UnitScratchEnsure: snapshot_encode_v6_unit_scratch_ensure,
+          v6UnitScratchStride: 51,
+          v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
+          v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
+          v6BuildingScratchStride: 34,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
+          writerClear: messagepack_writer_clear,
           turretScratchPtr: snapshot_encode_turret_scratch_ptr,
           turretScratchEnsure: snapshot_encode_turret_scratch_ensure,
           turretScratchStride: 10,

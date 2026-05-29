@@ -187,6 +187,136 @@ function packOrderedStringsIntoScratch(sim: SimWasm, strings: readonly string[])
   writeStringsIntoScratch(sim, utf8Bytes, totalBytes);
 }
 
+// --- V6 entity packer transport (issue A5) ---------------------------------
+// Bulk-copies the entity SoA (built free by stateSerializerEntities.ts during
+// snapshot construction) into WASM scratch, then calls the Rust V6 packer so
+// WASM owns entity bytes without the per-snapshot TS object-building loop.
+const V6_KIND_RAW = 0;
+
+function v6FillF64Scratch(
+  sim: SimWasm,
+  ensure: (rowCount: number) => void,
+  ptr: () => number,
+  rows: Float64WireRows,
+  stride: number,
+): void {
+  const rowCount = rows.count;
+  ensure(rowCount);
+  if (rowCount === 0) return;
+  const valueCount = rowCount * stride;
+  const view = new Float64Array(sim.memory.buffer, ptr(), valueCount);
+  view.set(rows.values.subarray(0, valueCount));
+}
+
+function v6FillU32FromArray(
+  sim: SimWasm,
+  ensure: (count: number) => void,
+  ptr: () => number,
+  src: ArrayLike<number>,
+  count: number,
+): void {
+  ensure(count);
+  if (count === 0) return;
+  const view = new Uint32Array(sim.memory.buffer, ptr(), count);
+  for (let i = 0; i < count; i++) view[i] = src[i];
+}
+
+function v6FillU32Rows(
+  sim: SimWasm,
+  ensure: (count: number) => void,
+  ptr: () => number,
+  rows: Uint32WireRows,
+): void {
+  const count = rows.count;
+  ensure(count);
+  if (count === 0) return;
+  const view = new Uint32Array(sim.memory.buffer, ptr(), count);
+  view.set(rows.values.subarray(0, count));
+}
+
+function v6PackStrings(
+  sim: SimWasm,
+  actionStrings: readonly string[],
+  waypointStrings: readonly string[],
+): void {
+  if (actionStrings.length === 0 && waypointStrings.length === 0) return;
+  const utf8Bytes: Uint8Array[] = [];
+  let totalBytes = 0;
+  for (let i = 0; i < actionStrings.length; i++) {
+    const bytes = _utf8.encode(actionStrings[i]);
+    utf8Bytes.push(bytes);
+    totalBytes += bytes.length;
+  }
+  for (let i = 0; i < waypointStrings.length; i++) {
+    const bytes = _utf8.encode(waypointStrings[i]);
+    utf8Bytes.push(bytes);
+    totalBytes += bytes.length;
+  }
+  writeStringsIntoScratch(sim, utf8Bytes, totalBytes);
+}
+
+function v6SourceHasRawEntity(source: EntitySnapshotWireSource): boolean {
+  const kinds = source.kinds;
+  for (let i = 0; i < kinds.length; i++) {
+    if (kinds[i] === V6_KIND_RAW) return true;
+  }
+  return false;
+}
+
+/**
+ * Encode the `entities` key + compact V6 `{v,m,t,e}` value into the WASM
+ * MessagePack writer and return the resulting bytes (key string + value),
+ * or null when the Rust packer can't own the bytes (sim unavailable, a RAW
+ * entity kind present, or the kernel reports a fallback). The returned bytes
+ * begin with the 9-byte `"entities"` MessagePack key prefix.
+ */
+export function encodeEntitiesV6Bytes(
+  source: EntitySnapshotWireSource,
+): Uint8Array | null {
+  const sim = getSimWasm();
+  if (!sim) return null;
+  if (v6SourceHasRawEntity(source)) return null;
+
+  const api = sim.snapshotEncode;
+  const entityCount = source.kinds.length;
+
+  v6FillU32FromArray(sim, api.v6KindsScratchEnsure, api.v6KindsScratchPtr, source.kinds, entityCount);
+  v6FillU32FromArray(
+    sim,
+    api.v6RowIndicesScratchEnsure,
+    api.v6RowIndicesScratchPtr,
+    source.rowIndices,
+    entityCount,
+  );
+  v6FillF64Scratch(sim, api.v6BasicScratchEnsure, api.v6BasicScratchPtr, source.basicRows, api.v6BasicScratchStride);
+  v6FillF64Scratch(sim, api.v6UnitScratchEnsure, api.v6UnitScratchPtr, source.unitRows, api.v6UnitScratchStride);
+  v6FillF64Scratch(
+    sim,
+    api.v6BuildingScratchEnsure,
+    api.v6BuildingScratchPtr,
+    source.buildingRows,
+    api.v6BuildingScratchStride,
+  );
+  v6FillF64Scratch(sim, api.turretScratchEnsure, api.turretScratchPtr, source.turretRows, api.turretScratchStride);
+  v6FillF64Scratch(sim, api.actionScratchEnsure, api.actionScratchPtr, source.actionRows, api.actionScratchStride);
+  v6FillF64Scratch(
+    sim,
+    api.waypointScratchEnsure,
+    api.waypointScratchPtr,
+    source.waypointRows,
+    api.waypointScratchStride,
+  );
+  v6FillU32Rows(sim, api.factoryQueueScratchEnsure, api.factoryQueueScratchPtr, source.factoryQueueRows);
+
+  const waypointStringBase = source.actionStrings.length;
+  v6PackStrings(sim, source.actionStrings, source.waypointStrings);
+
+  api.writerClear();
+  const result = api.emitEntitiesV6(entityCount, waypointStringBase);
+  if (result === 0xFFFF_FFFF) return null;
+  return new Uint8Array(sim.memory.buffer, api.writerPtr(), api.writerLen()).slice();
+}
+
 function packActionsIntoScratch(
   sim: SimWasm,
   actions: readonly NetworkServerSnapshotAction[],
