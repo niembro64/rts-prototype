@@ -37,23 +37,6 @@ grow unbounded over a match.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 
-C9. [MED] Need an output-stability harness before deeper terrain-generation rewrites.
-    LOCATION: terrain/deposit generation pipeline:
-      src/metalDepositConfig.ts, src/game/sim/terrain/terrainTileMap.ts,
-      src/game/sim/terrain/terrainCellTriangleIndex.ts.
-    RULE: generation optimizations must not change final terrain visuals, sim mesh,
-      deposit positions, deposit heights, resource cells, buildability, or metal-pad
-      interactions unless explicitly intended.
-    PROBLEM: the next optimization tier touches triangle-collapse decisions, edge
-      metadata, repair passes, and cell indexing. These are deterministic but visually
-      sensitive; relying on screenshots or "looks right" will miss small logical drift.
-    FIX: add a harness that generates deposits + terrain for several map sizes,
-      player counts, terrainDetail values, terrain map shapes, and deposit-step/plateau
-      configs, then hashes/compares meshVertexCoords, meshVertexHeights,
-      meshTriangleIndices, meshTriangleLevels, meshTriangleNeighborIndices/Levels,
-      meshCellTriangleOffsets/Indices, metal deposit x/y/height/cells/bounds, and
-      buildability grid flags/levels.
-
 C10. [MED] Terrain triangle collapse check still does avoidable per-sample work.
     LOCATION: src/game/sim/terrain/terrainTileMap.ts:
       canCollapseTerrainTriangle / forEachFinePointInTriangle / terrainBarycentricAt.
