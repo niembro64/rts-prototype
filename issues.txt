@@ -240,6 +240,76 @@ A17. [LOW] No separate tower blueprint catalog; tower-vs-building is a runtime
       tower/building boundary is authored in data, not a runtime type set.
       (Behavior is already correct; this is doc-alignment, not a bug.)
 
+----- Camera anchoring (screen axis × terrain axis) -----
+
+Items A18-A21 added 2026-05-29, auditing src/game/render3d/OrbitCamera.ts +
+CursorGround.ts + cameraConfig.json against the new "Camera Anchoring Is Two
+Orthogonal Axes" rule in budget_design_philosophy.html. The SCREEN axis (cursor
+vs screen-center) already exists and is per-gesture configurable; the holes are
+the entire TERRAIN axis, the always-on terrain collision, and pan's missing
+anchor config. Re-verify file:line before editing.
+
+A18. [MED] The camera anchor has only a screen axis; the terrain axis does not exist.
+    LOCATION: src/game/render3d/OrbitCamera.ts:96 (CameraAnchorMode =
+      'cursor'|'screen-center'); src/config.ts:979 (same type); src/cameraConfig.json
+      (anchor.{zoomIn,zoomOut,rotate} are single strings).
+    RULE: "Camera Anchoring Is Two Orthogonal Axes" — a gesture's anchor is the
+      product of anchorPointCameraScreen × anchorPointCameraTerrain, and both are data.
+    PROBLEM: CameraAnchorMode encodes ONLY the screen axis (cursor vs screen-center).
+      There is no anchorPointCameraTerrain type anywhere, and each gesture's config is
+      a single string, so the surface the anchor resolves against can never be set —
+      five of the six required (screen, terrain) behaviors are unreachable.
+    FIX: add an anchorPointCameraTerrain enum
+      ('plane-2d'|'terrain-3d'|'terrain-3d-water'); make each gesture's anchor a
+      (screen, terrain) pair in cameraConfig.json + config.ts; thread the terrain axis
+      through _anchorWorldPoint alongside the existing screen axis.
+
+A19. [MED] Terrain-axis resolution is an ad-hoc hybrid that matches none of the three modes.
+    LOCATION: src/game/render3d/CursorGround.ts:91-122 (pickWorld);
+      src/game/render3d/OrbitCamera.ts:840-894 (_cursorWorldPoint /
+      _cursorWorldPointGroundPlane).
+    RULE: "Camera Anchoring Is Two Orthogonal Axes" — plane-2d, terrain-3d, and
+      terrain-3d-water must each be reachable, resolved by one shared path.
+    PROBLEM: pickWorld raycasts the 3D mesh, keeps the hit only if y>=WATER_LEVEL,
+      else falls back to a flat y=0 plane (= "building zero", which is neither
+      WATER_LEVEL nor the basin floor). That "3d above water, y=0 below" hybrid is a
+      FOURTH ad-hoc behavior: there is no pure plane-2d, terrain-3d special-cases water
+      away instead of returning the real bed, and the water case lands on y=0 rather
+      than max(height, WATER_LEVEL), so terrain-3d-water is unrepresented.
+      OrbitCamera._cursorWorldPointGroundPlane is a second, independent y=0 fallback.
+    FIX: replace the WATER_LEVEL branch with explicit selection on
+      anchorPointCameraTerrain — plane-2d = ground-plane project, terrain-3d = raw mesh
+      hit, terrain-3d-water = clamp the sampled terrain to max(height, WATER_LEVEL);
+      fold the two separate y=0 fallbacks into the single plane-2d path.
+
+A20. [LOW] No config for whether the camera may pass through terrain; clearance is always on.
+    LOCATION: src/game/render3d/OrbitCamera.ts:955-967 (resolveTerrainClearance),
+      977-1028 (apply(), hard vertical floor at 995-1001), 589-631 (zoomClearProgress);
+      minTerrainClearance from cameraConfig.json (CAMERA_MIN_TERRAIN_CLEARANCE,
+      config.ts:1005).
+    RULE: "Camera Anchoring Is Two Orthogonal Axes" — passing through terrain is its
+      OWN boolean; collide-with-clearance vs clip-through are both data.
+    PROBLEM: whenever a terrain sampler is installed the camera is unconditionally kept
+      out of terrain (normal-push + hard floor + zoom clip-progress). There is no toggle
+      to let the camera move through hills / below ground for a free-look or cinematic
+      framing.
+    FIX: add a boolean config (e.g. cameraCollidesWithTerrain) to cameraConfig.json +
+      config.ts; when clipping is allowed, skip resolveTerrainClearance, the apply()
+      floor, and the zoomClearProgress gate.
+
+A21. [LOW] The pan gesture has no anchor config; it is implicitly cursor + the hybrid terrain.
+    LOCATION: src/game/render3d/OrbitCamera.ts:652-670 (capturePanAnchor →
+      _cursorWorldPoint); cameraConfig.json anchor block (zoomIn/zoomOut/rotate only,
+      no pan).
+    RULE: "Camera Anchoring Is Two Orthogonal Axes" — every operation that pins on the
+      world, pan included, is described by a (screen, terrain) pair.
+    PROBLEM: the anchor config covers zoomIn/zoomOut/rotate; pan hardcodes the cursor
+      screen spot (correct for a grab-drag) AND the CursorGround terrain hybrid, so the
+      surface it grabs — and thus the pan depth/rate — can't be retargeted like the
+      other gestures.
+    FIX: give pan its own terrain-axis entry (screen stays cursor for a grab-pan) and
+      route capturePanAnchor through the shared two-axis resolver from A19.
+
 ================================================================================
 SECTION B — MEMORY LEAKS
 ================================================================================

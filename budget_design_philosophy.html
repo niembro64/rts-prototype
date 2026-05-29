@@ -981,6 +981,60 @@
     </section>
 
     <section>
+      <h2>Camera Anchoring Is Two Orthogonal Axes</h2>
+      <p>
+        The camera is pure client presentation. It lives in the renderer, samples the client
+        terrain mesh, and never crosses the wire &mdash; like locomotion visuals it is downstream of
+        sim authority and feeds nothing back upstream. Because it is frontend, how it anchors and
+        how it treats terrain are presentation choices, and presentation choices in this codebase
+        are data, exhaustively enumerated, not policy hardcoded inside a picker.
+      </p>
+      <p>
+        Every camera operation that pivots or pins on the world &mdash; wheel zoom-in, wheel
+        zoom-out, orbit rotate, and drag pan &mdash; needs exactly one anchor point in 3D space.
+        That point is the answer to two independent questions, and each question is its own config
+        axis. Collapsing them into a single mode enum, or hardcoding either one, is the drift this
+        rule exists to prevent.
+      </p>
+
+      <h3>Axis one &mdash; where on the screen (<code>anchorPointCameraScreen</code>)</h3>
+      <ul class="rule-list">
+        <li><code>cursor</code> &mdash; the spot directly under the mouse cursor.</li>
+        <li><code>screen-center</code> &mdash; the spot at the middle of the canvas.</li>
+      </ul>
+
+      <h3>Axis two &mdash; which surface in the world (<code>anchorPointCameraTerrain</code>)</h3>
+      <p>
+        The screen spot defines a ray into the world; this axis decides which surface that ray
+        resolves against.
+      </p>
+      <ul class="rule-list">
+        <li><code>plane-2d</code> &mdash; the original flat ground plane (building-zero). Elevation is ignored; the anchor is the horizontal point only, exactly as a flat 2D camera would read it.</li>
+        <li><code>terrain-3d</code> &mdash; the actual rendered terrain heightfield, including the real basin floor below water. The anchor follows hills and valleys exactly as drawn.</li>
+        <li><code>terrain-3d-water</code> &mdash; the terrain heightfield clamped up to water level, <code>max(terrainHeight, WATER_LEVEL)</code>. Over a lake the anchor sits on the water surface the player sees, not the submerged bed &mdash; the same surface units walk on.</li>
+      </ul>
+      <p>
+        The two axes are orthogonal: two screen choices times three terrain choices is six anchor
+        behaviors, and all six must be reachable by setting the two configs &mdash; never by adding
+        a seventh special-case branch. A gesture&rsquo;s anchor is fully described by its
+        <code>(screen, terrain)</code> pair, and one shared resolver takes that pair and returns the
+        point. Each gesture names its own pair, so a reversal or a tumble can anchor differently
+        from a dolly.
+      </p>
+
+      <h3>Passing through terrain is its own config, not an always-on law</h3>
+      <p>
+        Whether the camera may move through the terrain is a separate boolean, independent of where
+        it anchors. One mode keeps the orbit camera outside the terrain by a minimum clearance: it
+        is pushed back along the surface normal and floored above any peak beneath it, so a zoom or
+        pan can never bury the view inside a hill. The other lets the camera pass freely through
+        hills and below the ground, which is what a free-look or cinematic sweep wants. Both the
+        clearance distance and the collide-versus-clip choice are data; neither is a constant welded
+        into the controller.
+      </p>
+    </section>
+
+    <section>
       <h2>Locomotion Visuals Are Frontend</h2>
       <p>
         Authority owns chassis position. The renderer owns where the parts of the chassis appear
@@ -2140,6 +2194,7 @@
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
+        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code> / <code>terrain-3d-water</code>) &mdash; and whether the camera may pass through terrain is a separate boolean. All six anchor behaviors and both collision behaviors must be reachable from config, never from a hardcoded branch in the picker.</li>
         <li>Keep locomotion, unit, tower, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary.</li>
         <li>Give every addressable live instance &mdash; unit, tower, building, turret, locomotion, and shot alike &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, subentities store <code>parent_id</code> and <code>root_host_id</code>. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and may lock onto any entity that has an ID except the ones its own host-level lock-on exclusion object removes; each mounted turret may then inherit that target only if its own exclusion object and targeting gates accept it. Turrets, units, and towers all carry the same subtractive lock-on exclusion object; buildings carry none, and no host target, because they mount no turrets.</li>
