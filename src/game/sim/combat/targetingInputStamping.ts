@@ -165,6 +165,8 @@ let _combatTargetingSourceIds = new Int32Array(0);
 let _combatTargetingSourceCount = 0;
 let _combatTargetingSensorSourceSlots = new Uint32Array(0);
 let _combatTargetingSensorSourceCount = 0;
+const _stampViewMaskByPlayer = new Uint32Array(32);
+let _stampViewMaskComputedBits = 0;
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -174,10 +176,14 @@ function playerMaskBit(playerId: number): number {
 function getEntityViewMask(world: WorldState, playerId: number): number {
   let mask = playerMaskBit(playerId);
   if (mask === 0) return 0;
+  if ((_stampViewMaskComputedBits & mask) !== 0) return _stampViewMaskByPlayer[playerId];
   for (const allyId of world.getAllies(playerId as PlayerId)) {
     mask |= playerMaskBit(allyId);
   }
-  return mask >>> 0;
+  mask >>>= 0;
+  _stampViewMaskByPlayer[playerId] = mask;
+  _stampViewMaskComputedBits |= playerMaskBit(playerId);
+  return mask;
 }
 
 function ensureStampPrevFsmCapacity(count: number): void {
@@ -678,6 +684,7 @@ function stampCombatTargetingEntityInto(
  *  does not need its own armed-entity traversal. */
 export function stampCombatTargetingPool(world: WorldState): void {
   resetCombatTargetingSources();
+  _stampViewMaskComputedBits = 0;
   const sim = getSimWasm();
   if (sim === undefined) return;
   const targeting = sim.combatTargeting;

@@ -10904,6 +10904,7 @@ struct CombatTargetingPool {
     // Per-entity, indexed by spatial-grid slot.
     entity_id: Vec<i32>,
     entity_owner_player_id: Vec<u8>,
+    entity_owner_bit: Vec<u32>,
     entity_view_mask: Vec<u32>,
     entity_pos_x: Vec<f64>,
     entity_pos_y: Vec<f64>,
@@ -11108,6 +11109,7 @@ impl CombatTargetingPool {
         Self {
             entity_id: Vec::new(),
             entity_owner_player_id: Vec::new(),
+            entity_owner_bit: Vec::new(),
             entity_view_mask: Vec::new(),
             entity_pos_x: Vec::new(),
             entity_pos_y: Vec::new(),
@@ -11221,6 +11223,7 @@ impl CombatTargetingPool {
         if self.entity_id.len() < entity_needed {
             self.entity_id.resize(entity_needed, -1);
             self.entity_owner_player_id.resize(entity_needed, 0);
+            self.entity_owner_bit.resize(entity_needed, 0);
             self.entity_view_mask.resize(entity_needed, 0);
             self.entity_pos_x.resize(entity_needed, 0.0);
             self.entity_pos_y.resize(entity_needed, 0.0);
@@ -11475,7 +11478,6 @@ fn combat_targeting_candidate_observable_scratch() -> &'static mut Vec<u8> {
 // and then re-stamped them into parallel candidate arrays.
 #[derive(Default)]
 struct CombatTargetingSpatialCandidateScratch {
-    slots: Vec<u32>,
     ids: Vec<i32>,
     pos_x: Vec<f64>,
     pos_y: Vec<f64>,
@@ -11486,7 +11488,6 @@ struct CombatTargetingSpatialCandidateScratch {
 
 impl CombatTargetingSpatialCandidateScratch {
     fn clear(&mut self) {
-        self.slots.clear();
         self.ids.clear();
         self.pos_x.clear();
         self.pos_y.clear();
@@ -11503,7 +11504,6 @@ unsafe impl Sync for CombatTargetingSpatialCandidateScratchHolder {}
 static COMBAT_TARGETING_SPATIAL_CANDIDATE_SCRATCH: CombatTargetingSpatialCandidateScratchHolder =
     CombatTargetingSpatialCandidateScratchHolder(UnsafeCell::new(
         CombatTargetingSpatialCandidateScratch {
-            slots: Vec::new(),
             ids: Vec::new(),
             pos_x: Vec::new(),
             pos_y: Vec::new(),
@@ -11605,6 +11605,7 @@ pub fn combat_targeting_set_entity(
         pool.entity_slot_by_id.insert(entity_id, entity_slot);
     }
     pool.entity_owner_player_id[s] = owner_player_id;
+    pool.entity_owner_bit[s] = combat_targeting_player_bit(owner_player_id);
     pool.entity_view_mask[s] = view_mask;
     pool.entity_pos_x[s] = pos_x;
     pool.entity_pos_y[s] = pos_y;
@@ -12549,11 +12550,6 @@ fn combat_targeting_player_bit(player_id: u8) -> u32 {
 }
 
 #[inline]
-fn combat_targeting_view_mask_includes_player(view_mask: u32, player_id: u8) -> bool {
-    (view_mask & combat_targeting_player_bit(player_id)) != 0
-}
-
-#[inline]
 fn combat_targeting_entity_online_for_sensors(pool: &CombatTargetingPool, slot: usize) -> bool {
     slot < pool.entity_flags.len()
         && pool.entity_id[slot] >= 0
@@ -12612,7 +12608,7 @@ fn combat_targeting_rebuild_observation_index(pool: &mut CombatTargetingPool) {
 fn combat_targeting_mark_observed_slot(
     target_slot: usize,
     entity_id: &[i32],
-    entity_owner_player_id: &[u8],
+    entity_owner_bit: &[u32],
     entity_pos_x: &[f64],
     entity_pos_y: &[f64],
     entity_flags: &[u8],
@@ -12624,7 +12620,7 @@ fn combat_targeting_mark_observed_slot(
     owner_bit: u32,
 ) {
     if target_slot >= entity_id.len()
-        || target_slot >= entity_owner_player_id.len()
+        || target_slot >= entity_owner_bit.len()
         || target_slot >= entity_pos_x.len()
         || target_slot >= entity_pos_y.len()
         || target_slot >= entity_flags.len()
@@ -12635,7 +12631,7 @@ fn combat_targeting_mark_observed_slot(
     {
         return;
     }
-    let target_owner_bit = combat_targeting_player_bit(entity_owner_player_id[target_slot]);
+    let target_owner_bit = entity_owner_bit[target_slot];
     if target_owner_bit == owner_bit {
         return;
     }
@@ -12679,7 +12675,7 @@ fn combat_targeting_mark_observation_circle(
     let min_cy = combat_targeting_observation_cell_coord(source_y - query_radius);
     let max_cy = combat_targeting_observation_cell_coord(source_y + query_radius);
     let entity_id = &pool.entity_id;
-    let entity_owner_player_id = &pool.entity_owner_player_id;
+    let entity_owner_bit = &pool.entity_owner_bit;
     let entity_pos_x = &pool.entity_pos_x;
     let entity_pos_y = &pool.entity_pos_y;
     let entity_flags = &pool.entity_flags;
@@ -12701,7 +12697,7 @@ fn combat_targeting_mark_observation_circle(
                 combat_targeting_mark_observed_slot(
                     slot as usize,
                     entity_id,
-                    entity_owner_player_id,
+                    entity_owner_bit,
                     entity_pos_x,
                     entity_pos_y,
                     entity_flags,
@@ -12725,7 +12721,7 @@ fn combat_targeting_mark_observation_from_source_slot(
     if !combat_targeting_entity_online_for_sensors(pool, source_slot) {
         return;
     }
-    let owner_bit = combat_targeting_player_bit(pool.entity_owner_player_id[source_slot]);
+    let owner_bit = pool.entity_owner_bit[source_slot];
     if owner_bit == 0 {
         return;
     }
@@ -12822,10 +12818,7 @@ fn combat_targeting_view_mask_detects_entity(
     target_slot: usize,
     view_mask: u32,
 ) -> bool {
-    if combat_targeting_view_mask_includes_player(
-        view_mask,
-        pool.entity_owner_player_id[target_slot],
-    ) {
+    if (view_mask & pool.entity_owner_bit[target_slot]) != 0 {
         return true;
     }
     (pool.entity_detector_coverage_mask[target_slot] & view_mask) != 0
@@ -12836,10 +12829,7 @@ fn combat_targeting_view_mask_covers_entity(
     target_slot: usize,
     view_mask: u32,
 ) -> bool {
-    if combat_targeting_view_mask_includes_player(
-        view_mask,
-        pool.entity_owner_player_id[target_slot],
-    ) {
+    if (view_mask & pool.entity_owner_bit[target_slot]) != 0 {
         return true;
     }
     (pool.entity_sensor_coverage_mask[target_slot] & view_mask) != 0
@@ -12860,10 +12850,7 @@ fn combat_targeting_view_mask_observes_entity(
     if (target_flags & CT_ENTITY_FLAG_ALIVE) == 0 {
         return false;
     }
-    if combat_targeting_view_mask_includes_player(
-        view_mask,
-        pool.entity_owner_player_id[target_slot],
-    ) {
+    if (view_mask & pool.entity_owner_bit[target_slot]) != 0 {
         return true;
     }
     if (target_flags & CT_ENTITY_FLAG_CLOAKED) != 0
@@ -15337,105 +15324,6 @@ pub fn combat_targeting_auto_mode_candidate_tick(
     );
 }
 
-#[inline]
-fn combat_targeting_spatial_slot_matches_relationship(
-    state: &SpatialGridState,
-    slot: u32,
-    source_player: u8,
-    relationship_mask: u8,
-) -> bool {
-    let s = slot as usize;
-    if s >= state.slot_owner_player.len() {
-        return false;
-    }
-    let relationship = if state.slot_owner_player[s] == source_player {
-        CT_TARGETING_CANDIDATE_REL_FRIENDLY
-    } else {
-        CT_TARGETING_CANDIDATE_REL_ENEMY
-    };
-    (relationship_mask & relationship) != 0
-}
-
-fn combat_targeting_query_entities_in_circle_2d_by_relationship(
-    x: f64,
-    y: f64,
-    radius: f64,
-    source_player: u8,
-    relationship_mask: u8,
-    z_min: f64,
-    z_max: f64,
-) -> usize {
-    if relationship_mask == 0 {
-        return 0;
-    }
-
-    let state = spatial_grid();
-    state.scratch_u32.clear();
-    state.scratch_u32.push(0);
-    state.scratch_u32.push(0);
-    state.dedup.clear();
-    spatial_collect_cells_in_circle2d(
-        state,
-        x,
-        y,
-        radius + SPATIAL_MAX_UNIT_SHOT_RADIUS,
-        z_min,
-        z_max,
-    );
-    let radius_sq = radius * radius;
-    let nearby = std::mem::take(&mut state.nearby_cells);
-    let mut buf = std::mem::take(&mut state.scratch_u32);
-    let mut dedup = std::mem::take(&mut state.dedup);
-
-    let unit_start = buf.len();
-    for key in &nearby {
-        if let Some(bucket) = state.cells.get(key) {
-            for &slot in &bucket.units {
-                if !combat_targeting_spatial_slot_matches_relationship(
-                    state,
-                    slot,
-                    source_player,
-                    relationship_mask,
-                ) {
-                    continue;
-                }
-                spatial_push_unit_if_in_radius(
-                    state, &mut buf, slot, x, y, 0.0, radius, radius_sq, 0, true, true, true,
-                );
-            }
-        }
-    }
-    let n_units = (buf.len() - unit_start) as u32;
-
-    let bldg_start = buf.len();
-    for key in &nearby {
-        if let Some(bucket) = state.cells.get(key) {
-            for &slot in &bucket.buildings {
-                if !combat_targeting_spatial_slot_matches_relationship(
-                    state,
-                    slot,
-                    source_player,
-                    relationship_mask,
-                ) {
-                    continue;
-                }
-                spatial_push_building_if_in_radius(
-                    state, &mut dedup, &mut buf, slot, x, y, 0.0, radius_sq, 0, true, true,
-                );
-            }
-        }
-    }
-    let n_buildings = (buf.len() - bldg_start) as u32;
-
-    buf[0] = n_units;
-    buf[1] = n_buildings;
-    let total = 2 + n_units as usize + n_buildings as usize;
-    state.scratch_u32 = buf;
-    state.nearby_cells = nearby;
-    state.dedup = dedup;
-    total
-}
-
 fn combat_targeting_auto_query_relationships(
     pool: &CombatTargetingPool,
     entity_slot: u32,
@@ -15489,75 +15377,96 @@ fn combat_targeting_fill_spatial_candidate_scratch(
         return 0;
     }
 
-    let (source_x, source_y, source_z, source_player, relationship_mask) = {
-        let pool = combat_targeting_pool();
-        let source_slot = entity_slot as usize;
-        if source_slot >= pool.entity_id.len()
-            || pool.entity_id[source_slot] < 0
-            || !combat_targeting_entity_alive(pool, source_slot)
-        {
-            return 0;
-        }
-        (
-            pool.entity_pos_x[source_slot],
-            pool.entity_pos_y[source_slot],
-            pool.entity_pos_z[source_slot],
-            pool.entity_owner_player_id[source_slot],
-            combat_targeting_auto_query_relationships(
-                pool,
-                entity_slot,
-                turret_force_field_panels_enabled,
-                turret_force_field_spheres_enabled,
-            ),
-        )
-    };
+    let pool = combat_targeting_pool();
+    let source_slot = entity_slot as usize;
+    if source_slot >= pool.entity_id.len()
+        || pool.entity_id[source_slot] < 0
+        || !combat_targeting_entity_alive(pool, source_slot)
+    {
+        return 0;
+    }
+    let source_x = pool.entity_pos_x[source_slot];
+    let source_y = pool.entity_pos_y[source_slot];
+    let source_z = pool.entity_pos_z[source_slot];
+    let source_player = pool.entity_owner_player_id[source_slot];
+    let relationship_mask = combat_targeting_auto_query_relationships(
+        pool,
+        entity_slot,
+        turret_force_field_panels_enabled,
+        turret_force_field_spheres_enabled,
+    );
     if relationship_mask == 0 {
         return 0;
     }
-
-    let total = combat_targeting_query_entities_in_circle_2d_by_relationship(
-        source_x,
-        source_y,
-        batch_radius,
-        source_player,
-        relationship_mask,
-        source_z - batch_radius,
-        source_z + batch_radius,
-    );
-
-    {
-        let spatial = spatial_grid();
-        let end = total.min(spatial.scratch_u32.len());
-        if end <= 2 {
-            return 0;
-        }
-        scratch.slots.reserve(end - 2);
-        for i in 2..end {
-            scratch.slots.push(spatial.scratch_u32[i]);
-        }
+    if pool.observation_cell_keys.is_empty() {
+        combat_targeting_rebuild_observation_index(pool);
     }
 
-    let pool = combat_targeting_pool();
-    scratch.ids.reserve(scratch.slots.len());
-    scratch.pos_x.reserve(scratch.slots.len());
-    scratch.pos_y.reserve(scratch.slots.len());
-    scratch.pos_z.reserve(scratch.slots.len());
-    scratch.radius.reserve(scratch.slots.len());
-    scratch.force_field_panel_score.reserve(scratch.slots.len());
-    for &slot_u32 in &scratch.slots {
-        let slot = slot_u32 as usize;
-        if slot >= pool.entity_id.len()
-            || pool.entity_id[slot] < 0
-            || !combat_targeting_entity_alive(pool, slot)
-        {
-            continue;
+    let query_radius = batch_radius + SPATIAL_MAX_UNIT_SHOT_RADIUS;
+    let min_cx = combat_targeting_observation_cell_coord(source_x - query_radius);
+    let max_cx = combat_targeting_observation_cell_coord(source_x + query_radius);
+    let min_cy = combat_targeting_observation_cell_coord(source_y - query_radius);
+    let max_cy = combat_targeting_observation_cell_coord(source_y + query_radius);
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            let key = combat_targeting_observation_cell_key(cx, cy);
+            let Some(bucket) = pool.observation_cells.get(&key) else {
+                continue;
+            };
+            for &slot_u32 in bucket {
+                let slot = slot_u32 as usize;
+                if slot >= pool.entity_id.len()
+                    || slot == source_slot
+                    || pool.entity_id[slot] < 0
+                    || !combat_targeting_entity_alive(pool, slot)
+                {
+                    continue;
+                }
+                let relationship = if pool.entity_owner_player_id[slot] == source_player {
+                    CT_TARGETING_CANDIDATE_REL_FRIENDLY
+                } else {
+                    CT_TARGETING_CANDIDATE_REL_ENEMY
+                };
+                if (relationship_mask & relationship) == 0 {
+                    continue;
+                }
+                let dx = pool.entity_pos_x[slot] - source_x;
+                let dy = pool.entity_pos_y[slot] - source_y;
+                let target_z_radius = pool.entity_radius_shot[slot].max(pool.entity_aabb_half_z[slot]);
+                if (pool.entity_pos_z[slot] - source_z).abs() > batch_radius + target_z_radius {
+                    continue;
+                }
+                let in_range = match pool.entity_family[slot] {
+                    CT_ENTITY_FAMILY_UNIT => {
+                        let shot = pool.entity_radius_shot[slot];
+                        shot > 0.0 && {
+                            let r = batch_radius + shot;
+                            dx * dx + dy * dy <= r * r
+                        }
+                    }
+                    CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => {
+                        spatial_dist_sq_to_aabb2(
+                            pool.entity_pos_x[slot],
+                            pool.entity_pos_y[slot],
+                            pool.entity_aabb_half_x[slot],
+                            pool.entity_aabb_half_y[slot],
+                            source_x,
+                            source_y,
+                        ) <= batch_radius * batch_radius
+                    }
+                    _ => false,
+                };
+                if !in_range {
+                    continue;
+                }
+                scratch.ids.push(pool.entity_id[slot]);
+                scratch.pos_x.push(pool.entity_pos_x[slot]);
+                scratch.pos_y.push(pool.entity_pos_y[slot]);
+                scratch.pos_z.push(pool.entity_pos_z[slot]);
+                scratch.radius.push(pool.entity_radius_shot[slot]);
+                scratch.force_field_panel_score.push(0.0);
+            }
         }
-        scratch.ids.push(pool.entity_id[slot]);
-        scratch.pos_x.push(pool.entity_pos_x[slot]);
-        scratch.pos_y.push(pool.entity_pos_y[slot]);
-        scratch.pos_z.push(pool.entity_pos_z[slot]);
-        scratch.radius.push(pool.entity_radius_shot[slot]);
-        scratch.force_field_panel_score.push(0.0);
     }
 
     scratch.ids.len() as u32
