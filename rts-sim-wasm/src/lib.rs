@@ -63,6 +63,8 @@ mod blueprint_tables {
     include!(concat!(env!("OUT_DIR"), "/blueprint_tables.rs"));
 }
 
+mod generated_blueprint_schema;
+
 #[wasm_bindgen]
 pub fn blueprint_unit_count() -> u32 {
     blueprint_tables::BLUEPRINT_UNITS_COUNT as u32

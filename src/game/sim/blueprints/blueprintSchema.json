@@ -1,0 +1,1208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "budget-annihilation-blueprint-schema",
+  "title": "Budget Annihilation Blueprint Schema",
+  "description": "Canonical schema for blueprint and shot TypeScript/Rust type generation.",
+  "$defs": {
+    "UnitBlueprintId": {
+      "type": "string",
+      "x-codegen": {
+        "tsImport": { "module": "./blueprintIds", "name": "UnitBlueprintId" },
+        "rustType": "String"
+      }
+    },
+    "TurretBlueprintId": {
+      "type": "string",
+      "x-codegen": {
+        "tsImport": { "module": "./blueprintIds", "name": "TurretBlueprintId" },
+        "rustType": "String"
+      }
+    },
+    "ShotBlueprintId": {
+      "type": "string",
+      "x-codegen": {
+        "tsImport": { "module": "./blueprintIds", "name": "ShotBlueprintId" },
+        "rustType": "String"
+      }
+    },
+    "ForceFieldMaterialId": {
+      "type": "string",
+      "x-codegen": {
+        "tsImport": { "module": "./blueprintIds", "name": "ForceFieldMaterialId" },
+        "rustType": "String"
+      }
+    },
+    "SoundEntry": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": { "module": "./audio", "name": "SoundEntry" },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
+    "BarrelShape": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": { "module": "./config", "name": "BarrelShape" },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
+    "TurretRangeOverrides": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": { "module": "./combatTypes", "name": "TurretRangeOverrides" },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
+    "ConstructionEmitterSize": {
+      "type": "string",
+      "x-codegen": {
+        "tsImport": { "module": "./constructionTypes", "name": "ConstructionEmitterSize" },
+        "rustType": "String"
+      }
+    },
+    "ConstructionEmitterVisualSpec": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": { "module": "./constructionTypes", "name": "ConstructionEmitterVisualSpec" },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
+    "ResourceCost": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": { "module": "./economyTypes", "name": "ResourceCost" },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
+    "UnitSuspensionConfig": {
+      "type": "object",
+      "x-codegen": {
+        "tsImport": { "module": "./locomotionTypes", "name": "UnitSuspensionConfig" },
+        "rustType": "BlueprintJsonValue"
+      }
+    },
+    "EntityId": {
+      "type": "integer",
+      "x-codegen": {
+        "tsImport": { "module": "./entityTypes", "name": "EntityId" },
+        "rustType": "i32"
+      }
+    },
+    "PlayerId": {
+      "type": "integer",
+      "x-codegen": {
+        "tsImport": { "module": "./entityTypes", "name": "PlayerId" },
+        "rustType": "i32"
+      }
+    },
+
+    "ProjectileShotKind": {
+      "enum": ["plasma", "rocket"]
+    },
+    "LineShotType": {
+      "enum": ["beam", "laser"]
+    },
+    "ForceFieldSurfaceResponse": {
+      "enum": ["reflect", "absorb", "passThrough"]
+    },
+    "ForceFieldReflectionMode": {
+      "enum": ["outside-in", "inside-out", "both"]
+    },
+    "ForceFieldBarrierRatioConfig": {
+      "type": "object",
+      "properties": {
+        "outerRatio": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "rimWidth": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "originOffsetRadiusRatio": { "oneOf": [{ "type": "number" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldMaterialVisualConfig": {
+      "type": "object",
+      "required": ["color", "alpha", "particleAlpha"],
+      "properties": {
+        "color": { "type": "number" },
+        "alpha": { "type": "number" },
+        "particleAlpha": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldMaterialReflectionConfig": {
+      "type": "object",
+      "required": ["mode", "reflectivity"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/ForceFieldReflectionMode" },
+        "reflectivity": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldMaterialOcclusionConfig": {
+      "type": "object",
+      "required": ["blocksLineOfSight"],
+      "properties": {
+        "blocksLineOfSight": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldMaterialProjectileResponseConfig": {
+      "type": "object",
+      "required": ["plasma", "rocket", "beam", "laser"],
+      "properties": {
+        "plasma": { "$ref": "#/$defs/ForceFieldSurfaceResponse" },
+        "rocket": { "$ref": "#/$defs/ForceFieldSurfaceResponse" },
+        "beam": { "$ref": "#/$defs/ForceFieldSurfaceResponse" },
+        "laser": { "$ref": "#/$defs/ForceFieldSurfaceResponse" }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldMaterialHitReactionConfig": {
+      "type": "object",
+      "required": ["impactEvent", "sound"],
+      "properties": {
+        "impactEvent": { "const": "forceFieldImpact" },
+        "sound": { "oneOf": [{ "$ref": "#/$defs/SoundEntry" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldMaterialBlueprint": {
+      "type": "object",
+      "required": ["materialId", "reflection", "occlusion", "projectileResponse", "hitReaction", "visual"],
+      "properties": {
+        "materialId": { "$ref": "#/$defs/ForceFieldMaterialId" },
+        "reflection": { "$ref": "#/$defs/ForceFieldMaterialReflectionConfig" },
+        "occlusion": { "$ref": "#/$defs/ForceFieldMaterialOcclusionConfig" },
+        "projectileResponse": { "$ref": "#/$defs/ForceFieldMaterialProjectileResponseConfig" },
+        "hitReaction": { "$ref": "#/$defs/ForceFieldMaterialHitReactionConfig" },
+        "visual": { "$ref": "#/$defs/ForceFieldMaterialVisualConfig" }
+      },
+      "additionalProperties": false
+    },
+    "ShotCollision": {
+      "type": "object",
+      "required": ["radius"],
+      "properties": {
+        "radius": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ShotExplosion": {
+      "type": "object",
+      "required": ["radius", "damage", "force"],
+      "properties": {
+        "radius": { "type": "number" },
+        "damage": { "type": "number" },
+        "force": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "SubmunitionSpec": {
+      "type": "object",
+      "required": ["shotBlueprintId", "count", "randomSpreadSpeedHorizontal", "randomSpreadSpeedVertical"],
+      "properties": {
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "count": { "type": "integer" },
+        "randomSpreadSpeedHorizontal": { "type": "number" },
+        "randomSpreadSpeedVertical": { "type": "number" },
+        "reflectedVelocityDamper": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "SmokeTrailSpec": {
+      "type": "object",
+      "required": ["capPolicy"],
+      "properties": {
+        "useId": { "type": "string" },
+        "maxPoolSize": { "type": "number" },
+        "capPolicy": { "enum": ["evictOldest", "skipWhenFull"] },
+        "emitFramesSkip": { "type": "number" },
+        "exhaustSpeed": { "type": "number" },
+        "startRadius": { "type": "number" },
+        "endRadiusMultiplier": { "type": "number" },
+        "fadeInMs": { "type": "number" },
+        "fadeOutMs": { "type": "number" },
+        "maxAlpha": { "type": "number" },
+        "color": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ProjectileShotBlueprint": {
+      "type": "object",
+      "required": [
+        "type",
+        "shotBlueprintId",
+        "mass",
+        "collision",
+        "explosion",
+        "detonateOnExpiry",
+        "hitSound",
+        "submunitions",
+        "homingTurnRate",
+        "homingThrust",
+        "gravityForceMultiplier",
+        "smokeTrail"
+      ],
+      "properties": {
+        "type": { "$ref": "#/$defs/ProjectileShotKind" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "mass": { "type": "number" },
+        "collision": { "$ref": "#/$defs/ShotCollision" },
+        "explosion": { "oneOf": [{ "$ref": "#/$defs/ShotExplosion" }, { "type": "null" }] },
+        "detonateOnExpiry": { "type": "boolean" },
+        "maxLifespan": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "hitSound": { "oneOf": [{ "$ref": "#/$defs/SoundEntry" }, { "type": "null" }] },
+        "submunitions": { "oneOf": [{ "$ref": "#/$defs/SubmunitionSpec" }, { "type": "null" }] },
+        "homingTurnRate": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "homingThrust": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "gravityForceMultiplier": { "type": "number" },
+        "smokeTrail": { "oneOf": [{ "$ref": "#/$defs/SmokeTrailSpec" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "BeamShotBlueprint": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "dps", "force", "recoil", "radius", "width", "damageSphere", "gravityForceMultiplier", "hitSound"],
+      "properties": {
+        "type": { "const": "beam" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "dps": { "type": "number" },
+        "force": { "type": "number" },
+        "recoil": { "type": "number" },
+        "radius": { "type": "number" },
+        "width": { "type": "number" },
+        "damageSphere": { "$ref": "#/$defs/ShotCollision" },
+        "gravityForceMultiplier": { "type": "number" },
+        "hitSound": { "oneOf": [{ "$ref": "#/$defs/SoundEntry" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "LaserShotBlueprint": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "dps", "force", "recoil", "radius", "width", "damageSphere", "duration", "gravityForceMultiplier", "hitSound"],
+      "properties": {
+        "type": { "const": "laser" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "dps": { "type": "number" },
+        "force": { "type": "number" },
+        "recoil": { "type": "number" },
+        "radius": { "type": "number" },
+        "width": { "type": "number" },
+        "damageSphere": { "$ref": "#/$defs/ShotCollision" },
+        "duration": { "type": "number" },
+        "gravityForceMultiplier": { "type": "number" },
+        "hitSound": { "oneOf": [{ "$ref": "#/$defs/SoundEntry" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "ForceFieldShotBlueprint": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "materialId", "angle", "transitionTime", "barrier", "hitSound"],
+      "properties": {
+        "type": { "const": "forceField" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "materialId": { "$ref": "#/$defs/ForceFieldMaterialId" },
+        "angle": { "type": "number" },
+        "transitionTime": { "type": "number" },
+        "barrier": { "oneOf": [{ "$ref": "#/$defs/ForceFieldBarrierRatioConfig" }, { "type": "null" }] },
+        "hitSound": { "oneOf": [{ "$ref": "#/$defs/SoundEntry" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "ShotBlueprint": {
+      "oneOf": [
+        { "$ref": "#/$defs/ProjectileShotBlueprint" },
+        { "$ref": "#/$defs/BeamShotBlueprint" },
+        { "$ref": "#/$defs/LaserShotBlueprint" },
+        { "$ref": "#/$defs/ForceFieldShotBlueprint" }
+      ]
+    },
+    "LineShotBlueprint": {
+      "oneOf": [
+        { "$ref": "#/$defs/BeamShotBlueprint" },
+        { "$ref": "#/$defs/LaserShotBlueprint" }
+      ]
+    },
+    "ProjectileTailShape": {
+      "enum": ["cone", "cylinder", "none"]
+    },
+    "ForceFieldBarrierConfig": {
+      "type": "object",
+      "required": ["innerRange", "outerRange", "originOffsetZ", "color", "alpha", "particleAlpha"],
+      "properties": {
+        "innerRange": { "type": "number" },
+        "outerRange": { "type": "number" },
+        "originOffsetZ": { "type": "number" },
+        "color": { "type": "number" },
+        "alpha": { "type": "number" },
+        "particleAlpha": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ProjectileShot": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "mass", "launchForce", "collision", "gravityForceMultiplier"],
+      "properties": {
+        "type": { "$ref": "#/$defs/ProjectileShotKind" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "mass": { "type": "number" },
+        "launchForce": { "type": "number" },
+        "collision": { "$ref": "#/$defs/ShotCollision" },
+        "explosion": { "$ref": "#/$defs/ShotExplosion" },
+        "detonateOnExpiry": { "type": "boolean" },
+        "maxLifespan": { "type": "number" },
+        "homingTurnRate": { "type": "number" },
+        "homingThrust": { "type": "number" },
+        "gravityForceMultiplier": { "type": "number" },
+        "trailLength": { "type": "number" },
+        "submunitions": { "$ref": "#/$defs/SubmunitionSpec" },
+        "smokeTrail": { "$ref": "#/$defs/SmokeTrailSpec" }
+      },
+      "additionalProperties": false
+    },
+    "BeamShot": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "dps", "force", "recoil", "radius", "width", "damageSphere", "gravityForceMultiplier"],
+      "properties": {
+        "type": { "const": "beam" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "dps": { "type": "number" },
+        "force": { "type": "number" },
+        "recoil": { "type": "number" },
+        "radius": { "type": "number" },
+        "width": { "type": "number" },
+        "damageSphere": { "$ref": "#/$defs/ShotCollision" },
+        "gravityForceMultiplier": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "LaserShot": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "dps", "force", "recoil", "radius", "width", "damageSphere", "duration", "gravityForceMultiplier"],
+      "properties": {
+        "type": { "const": "laser" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "dps": { "type": "number" },
+        "force": { "type": "number" },
+        "recoil": { "type": "number" },
+        "radius": { "type": "number" },
+        "width": { "type": "number" },
+        "damageSphere": { "$ref": "#/$defs/ShotCollision" },
+        "duration": { "type": "number" },
+        "gravityForceMultiplier": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "LineShot": {
+      "oneOf": [
+        { "$ref": "#/$defs/BeamShot" },
+        { "$ref": "#/$defs/LaserShot" }
+      ]
+    },
+    "ActiveProjectileShot": {
+      "oneOf": [
+        { "$ref": "#/$defs/ProjectileShot" },
+        { "$ref": "#/$defs/BeamShot" },
+        { "$ref": "#/$defs/LaserShot" }
+      ]
+    },
+    "ForceShot": {
+      "type": "object",
+      "required": ["type", "shotBlueprintId", "material", "angle", "transitionTime"],
+      "properties": {
+        "type": { "const": "forceField" },
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "material": { "$ref": "#/$defs/ForceFieldMaterialBlueprint" },
+        "angle": { "type": "number" },
+        "transitionTime": { "type": "number" },
+        "barrier": { "$ref": "#/$defs/ForceFieldBarrierConfig" }
+      },
+      "additionalProperties": false
+    },
+    "ShotConfig": {
+      "oneOf": [
+        { "$ref": "#/$defs/ProjectileShot" },
+        { "$ref": "#/$defs/BeamShot" },
+        { "$ref": "#/$defs/LaserShot" },
+        { "$ref": "#/$defs/ForceShot" }
+      ]
+    },
+    "ProjectileType": {
+      "enum": ["projectile", "beam", "laser"]
+    },
+    "BeamReflectorKind": {
+      "enum": ["forceField"]
+    },
+    "BeamPoint": {
+      "type": "object",
+      "required": ["x", "y", "z", "vx", "vy", "vz"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "vx": { "type": "number" },
+        "vy": { "type": "number" },
+        "vz": { "type": "number" },
+        "reflectorEntityId": { "$ref": "#/$defs/EntityId" },
+        "reflectorKind": { "$ref": "#/$defs/BeamReflectorKind" },
+        "reflectorPlayerId": { "$ref": "#/$defs/PlayerId" },
+        "normalX": { "type": "number" },
+        "normalY": { "type": "number" },
+        "normalZ": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ShotRuntimeType": {
+      "enum": ["plasma", "rocket", "beam", "laser"]
+    },
+    "ShotRuntimeProfile": {
+      "type": "object",
+      "required": [
+        "shotBlueprintId",
+        "type",
+        "projectileType",
+        "isProjectile",
+        "isLine",
+        "isRocketLike",
+        "collisionRadius",
+        "impactRadius",
+        "explosionRadius",
+        "damageRadius",
+        "maxLifespan",
+        "detonateOnExpiry",
+        "hasExplosion",
+        "hasSubmunitions"
+      ],
+      "properties": {
+        "shotBlueprintId": { "$ref": "#/$defs/ShotBlueprintId" },
+        "type": { "$ref": "#/$defs/ShotRuntimeType" },
+        "projectileType": { "$ref": "#/$defs/ProjectileType" },
+        "isProjectile": { "type": "boolean" },
+        "isLine": { "type": "boolean" },
+        "isRocketLike": { "type": "boolean" },
+        "collisionRadius": { "type": "number" },
+        "impactRadius": { "type": "number" },
+        "explosionRadius": { "type": "number" },
+        "damageRadius": { "type": "number" },
+        "maxLifespan": { "type": "number" },
+        "detonateOnExpiry": { "type": "boolean" },
+        "hasExplosion": { "type": "boolean" },
+        "hasSubmunitions": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "ShotVisualProfile": {
+      "type": "object",
+      "required": [
+        "projectileBodyRadius",
+        "projectileTailShape",
+        "projectileTailLengthMult",
+        "projectileTailRadiusMult",
+        "projectileFinSizeMult",
+        "debugCollisionRadius",
+        "debugExplosionRadius",
+        "burnMarkWidth",
+        "lineRadius",
+        "lineDamageSphereRadius",
+        "lineEmissionOffset"
+      ],
+      "properties": {
+        "projectileBodyRadius": { "type": "number" },
+        "projectileTailShape": { "$ref": "#/$defs/ProjectileTailShape" },
+        "projectileTailLengthMult": { "type": "number" },
+        "projectileTailRadiusMult": { "type": "number" },
+        "projectileFinSizeMult": { "type": "number" },
+        "debugCollisionRadius": { "type": "number" },
+        "debugExplosionRadius": { "type": "number" },
+        "smokeTrail": { "$ref": "#/$defs/SmokeTrailSpec" },
+        "burnMarkWidth": { "type": "number" },
+        "lineRadius": { "type": "number" },
+        "lineDamageSphereRadius": { "type": "number" },
+        "lineEmissionOffset": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "ShotProfile": {
+      "type": "object",
+      "required": ["runtime", "visual"],
+      "properties": {
+        "runtime": { "$ref": "#/$defs/ShotRuntimeProfile" },
+        "visual": { "$ref": "#/$defs/ShotVisualProfile" }
+      },
+      "additionalProperties": false
+    },
+
+    "ForceFieldPanel": {
+      "type": "object",
+      "required": ["offsetX", "offsetY", "angle"],
+      "properties": {
+        "offsetX": { "type": "number" },
+        "offsetY": { "type": "number" },
+        "angle": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "TurretRadiusConfig": {
+      "type": "object",
+      "required": ["body"],
+      "properties": {
+        "body": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "TurretAimAngleType": {
+      "enum": ["rayDirect", "rayBisectTurretAndBody", "ballisticArcLow", "ballisticArcLowOnlyUnder", "ballisticArcHigh"]
+    },
+    "TurretAimLockOnType": {
+      "enum": ["lockOnToTurret", "lockOnToBody"]
+    },
+    "TurretAimStyle": {
+      "type": "object",
+      "required": ["angleType", "lockOnType"],
+      "properties": {
+        "angleType": { "$ref": "#/$defs/TurretAimAngleType" },
+        "lockOnType": { "$ref": "#/$defs/TurretAimLockOnType" }
+      },
+      "additionalProperties": false
+    },
+    "TurretLockOnRelationshipExclusion": {
+      "enum": ["friendly_entities", "enemy_entities"]
+    },
+    "TurretLockOnEntityFamilyExclusion": {
+      "enum": ["buildings", "towers", "units", "turrets"]
+    },
+    "LockOnExclusionObject": {
+      "type": "object",
+      "required": [
+        "excludeLockOnLevel0FriendsAndEnemies",
+        "excludeLockOnLevel0Entities",
+        "excludeLockOnLevel1Buildings",
+        "excludeLockOnLevel1Towers",
+        "excludeLockOnLevel1Units",
+        "excludeLockOnLevel1Turrets"
+      ],
+      "properties": {
+        "excludeLockOnLevel0FriendsAndEnemies": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnRelationshipExclusion" } },
+        "excludeLockOnLevel0Entities": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnEntityFamilyExclusion" } },
+        "excludeLockOnLevel1Buildings": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Towers": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Units": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "WeaponKind": {
+      "enum": ["attack", "construction", "repair"]
+    },
+    "TurretSpreadConfig": {
+      "type": "object",
+      "required": ["angle", "pelletCount"],
+      "properties": {
+        "angle": { "type": "number" },
+        "pelletCount": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "TurretBurstConfig": {
+      "type": "object",
+      "required": ["count", "delay"],
+      "properties": {
+        "count": { "type": "integer" },
+        "delay": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "TurretAudioConfig": {
+      "type": "object",
+      "required": ["fireSound"],
+      "properties": {
+        "fireSound": { "$ref": "#/$defs/SoundEntry" }
+      },
+      "additionalProperties": false
+    },
+    "TurretBlueprint": {
+      "type": "object",
+      "required": [
+        "turretBlueprintId",
+        "kind",
+        "shotBlueprintId",
+        "range",
+        "cooldown",
+        "color",
+        "turretTurnAccel",
+        "turretDrag",
+        "barrel",
+        "rangeMultiplierOverrides",
+        "eventsSmooth",
+        "launchForce",
+        "isManualFire",
+        "passive",
+        "requiresNonObstructedLineOfSight",
+        "spread",
+        "burst",
+        "forceFieldPanels",
+        "audio",
+        "radius",
+        "headOnly",
+        "aimStyle",
+        "verticalLauncher",
+        "idlePitch",
+        "groundAimFraction",
+        "constructionEmitter",
+        "excludeLockOnLevel0FriendsAndEnemies",
+        "excludeLockOnLevel0Entities",
+        "excludeLockOnLevel1Buildings",
+        "excludeLockOnLevel1Towers",
+        "excludeLockOnLevel1Units",
+        "excludeLockOnLevel1Turrets"
+      ],
+      "properties": {
+        "turretBlueprintId": { "$ref": "#/$defs/TurretBlueprintId" },
+        "kind": { "$ref": "#/$defs/WeaponKind" },
+        "shotBlueprintId": { "oneOf": [{ "$ref": "#/$defs/ShotBlueprintId" }, { "type": "null" }] },
+        "range": { "type": "number" },
+        "cooldown": { "type": "number" },
+        "color": { "type": "number" },
+        "turretTurnAccel": { "type": "number" },
+        "turretDrag": { "type": "number" },
+        "barrel": { "$ref": "#/$defs/BarrelShape" },
+        "rangeMultiplierOverrides": { "$ref": "#/$defs/TurretRangeOverrides" },
+        "eventsSmooth": { "type": "boolean" },
+        "launchForce": { "type": "number" },
+        "isManualFire": { "type": "boolean" },
+        "passive": { "type": "boolean" },
+        "requiresNonObstructedLineOfSight": { "type": "boolean" },
+        "spread": { "oneOf": [{ "$ref": "#/$defs/TurretSpreadConfig" }, { "type": "null" }] },
+        "burst": { "oneOf": [{ "$ref": "#/$defs/TurretBurstConfig" }, { "type": "null" }] },
+        "forceFieldPanels": { "type": "array", "items": { "$ref": "#/$defs/ForceFieldPanel" } },
+        "audio": { "oneOf": [{ "$ref": "#/$defs/TurretAudioConfig" }, { "type": "null" }] },
+        "radius": { "$ref": "#/$defs/TurretRadiusConfig" },
+        "headOnly": { "type": "boolean" },
+        "aimStyle": { "$ref": "#/$defs/TurretAimStyle" },
+        "verticalLauncher": { "type": "boolean" },
+        "idlePitch": { "type": "number" },
+        "groundAimFraction": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "constructionEmitter": { "oneOf": [{ "$ref": "#/$defs/ConstructionEmitterVisualSpec" }, { "type": "null" }] },
+        "excludeLockOnLevel0FriendsAndEnemies": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnRelationshipExclusion" } },
+        "excludeLockOnLevel0Entities": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnEntityFamilyExclusion" } },
+        "excludeLockOnLevel1Buildings": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Towers": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Units": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+
+    "MountOffset": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitTurretMountZResolver": {
+      "type": "object",
+      "required": ["kind", "bodyTopZFrac"],
+      "properties": {
+        "kind": { "const": "topMounted" },
+        "bodyTopZFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "TurretMount": {
+      "type": "object",
+      "required": ["turretBlueprintId", "mount", "hostDirected"],
+      "properties": {
+        "turretBlueprintId": { "$ref": "#/$defs/TurretBlueprintId" },
+        "mount": { "$ref": "#/$defs/MountOffset" },
+        "forceFieldPanels": { "type": "array", "items": { "$ref": "#/$defs/ForceFieldPanel" } },
+        "hostDirected": { "type": "boolean" },
+        "zResolver": { "$ref": "#/$defs/UnitTurretMountZResolver" },
+        "visualVariant": { "$ref": "#/$defs/ConstructionEmitterSize" }
+      },
+      "additionalProperties": false
+    },
+    "BuildingTurretMount": {
+      "type": "object",
+      "required": ["turretBlueprintId", "mount", "hostDirected"],
+      "properties": {
+        "turretBlueprintId": { "$ref": "#/$defs/TurretBlueprintId" },
+        "mount": { "$ref": "#/$defs/MountOffset" },
+        "forceFieldPanels": { "type": "array", "items": { "$ref": "#/$defs/ForceFieldPanel" } },
+        "hostDirected": { "type": "boolean" },
+        "visualVariant": { "$ref": "#/$defs/ConstructionEmitterSize" }
+      },
+      "additionalProperties": false
+    },
+
+    "WheelConfig": {
+      "type": "object",
+      "required": ["wheelDistX", "wheelDistY", "treadLength", "treadWidth", "wheelRadius", "rotationSpeed"],
+      "properties": {
+        "wheelDistX": { "type": "number" },
+        "wheelDistY": { "type": "number" },
+        "treadLength": { "type": "number" },
+        "treadWidth": { "type": "number" },
+        "wheelRadius": { "type": "number" },
+        "rotationSpeed": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "TreadConfig": {
+      "type": "object",
+      "required": ["treadOffset", "treadLength", "treadWidth", "wheelRadius", "rotationSpeed"],
+      "properties": {
+        "treadOffset": { "type": "number" },
+        "treadLength": { "type": "number" },
+        "treadWidth": { "type": "number" },
+        "wheelRadius": { "type": "number" },
+        "rotationSpeed": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "LegLayoutEntry": {
+      "type": "object",
+      "required": [
+        "attachOffsetXFrac",
+        "attachOffsetYFrac",
+        "upperLegLengthFrac",
+        "lowerLegLengthFrac",
+        "snapTriggerAngle",
+        "snapTargetAngle",
+        "snapDistanceMultiplier",
+        "extensionThreshold"
+      ],
+      "properties": {
+        "attachOffsetXFrac": { "type": "number" },
+        "attachOffsetYFrac": { "type": "number" },
+        "upperLegLengthFrac": { "type": "number" },
+        "lowerLegLengthFrac": { "type": "number" },
+        "snapTriggerAngle": { "type": "number" },
+        "snapTargetAngle": { "type": "number" },
+        "snapDistanceMultiplier": { "type": "number" },
+        "extensionThreshold": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "LegConfig": {
+      "type": "object",
+      "required": ["upperThickness", "lowerThickness", "hipRadius", "kneeRadius", "lerpDuration", "leftSide"],
+      "properties": {
+        "upperThickness": { "type": "number" },
+        "lowerThickness": { "type": "number" },
+        "hipRadius": { "type": "number" },
+        "kneeRadius": { "type": "number" },
+        "lerpDuration": { "type": "number" },
+        "leftSide": { "type": "array", "items": { "$ref": "#/$defs/LegLayoutEntry" } }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionPhysics": {
+      "type": "object",
+      "required": ["driveForce", "traction"],
+      "properties": {
+        "driveForce": { "type": "number" },
+        "traction": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "PathfindingTerrainMode": {
+      "enum": ["land", "anywhere"]
+    },
+    "PathfindingBlueprint": {
+      "type": "object",
+      "required": ["pathfindingBlueprintId", "terrainMode", "maxSlopeDeg"],
+      "properties": {
+        "pathfindingBlueprintId": { "type": "string" },
+        "terrainMode": { "$ref": "#/$defs/PathfindingTerrainMode" },
+        "maxSlopeDeg": { "oneOf": [{ "type": "number" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    },
+    "HoverConfig": {
+      "type": "object",
+      "required": ["gravityCounterUpwardForceRatio", "hoverHeightUpwardForce", "fanDistX", "fanDistY", "fanRadius", "fanRingTubeRadius"],
+      "properties": {
+        "gravityCounterUpwardForceRatio": { "type": "number" },
+        "hoverHeightUpwardForce": { "type": "number" },
+        "hoverHeightUpwardForceRandomizationAmount": { "type": "number" },
+        "hoverHeightUpwardForceEMA": { "type": "number" },
+        "fanDistX": { "type": "number" },
+        "fanDistY": { "type": "number" },
+        "fanLayout": { "enum": ["quad", "triFront"] },
+        "fanRadius": { "type": "number" },
+        "fanRingTubeRadius": { "type": "number" },
+        "fanOutwardAngleDeg": { "type": "number" },
+        "fanSpinRadPerSec": { "type": "number" },
+        "tailFanOffsetX": { "type": "number" },
+        "tailFanRadius": { "type": "number" },
+        "tailFanRingTubeRadius": { "type": "number" },
+        "tailFanBackAngleDeg": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "FlyingConfig": {
+      "type": "object",
+      "required": [
+        "gravityCounterUpwardForceRatio",
+        "hoverHeightUpwardForce",
+        "jetOffsetX",
+        "jetOffsetY",
+        "jetOffsetZ",
+        "jetRadius",
+        "jetLength"
+      ],
+      "properties": {
+        "gravityCounterUpwardForceRatio": { "type": "number" },
+        "hoverHeightUpwardForce": { "type": "number" },
+        "hoverHeightUpwardForceRandomizationAmount": { "type": "number" },
+        "hoverHeightUpwardForceEMA": { "type": "number" },
+        "wingEnabled": { "type": "boolean" },
+        "wingSpan": { "type": "number" },
+        "wingChord": { "type": "number" },
+        "wingOffsetX": { "type": "number" },
+        "wingHeight": { "type": "number" },
+        "wingThickness": { "type": "number" },
+        "wingDihedralDeg": { "type": "number" },
+        "wingSweepFrac": { "type": "number" },
+        "tailWingSpan": { "type": "number" },
+        "tailWingChord": { "type": "number" },
+        "tailWingOffsetX": { "type": "number" },
+        "tailWingHeight": { "type": "number" },
+        "tailWingThickness": { "type": "number" },
+        "tailWingDihedralDeg": { "type": "number" },
+        "tailWingSweepFrac": { "type": "number" },
+        "tailWingMirrorX": { "type": "boolean" },
+        "jetOffsetX": { "type": "number" },
+        "jetOffsetY": { "type": "number" },
+        "jetOffsetZ": { "type": "number" },
+        "jetRadius": { "type": "number" },
+        "jetLength": { "type": "number" },
+        "jetCount": { "enum": [1, 2] }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionBlueprintWheels": {
+      "type": "object",
+      "required": ["type", "physics", "pathfindingBlueprintId", "pathfinding", "config"],
+      "properties": {
+        "type": { "const": "wheels" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/WheelConfig" }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionBlueprintTreads": {
+      "type": "object",
+      "required": ["type", "physics", "pathfindingBlueprintId", "pathfinding", "config"],
+      "properties": {
+        "type": { "const": "treads" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/TreadConfig" }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionBlueprintLegs": {
+      "type": "object",
+      "required": ["type", "physics", "pathfindingBlueprintId", "pathfinding", "config"],
+      "properties": {
+        "type": { "const": "legs" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/LegConfig" }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionBlueprintHover": {
+      "type": "object",
+      "required": ["type", "physics", "pathfindingBlueprintId", "pathfinding", "config"],
+      "properties": {
+        "type": { "const": "hover" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/HoverConfig" }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionBlueprintFlying": {
+      "type": "object",
+      "required": ["type", "physics", "pathfindingBlueprintId", "pathfinding", "config"],
+      "properties": {
+        "type": { "const": "flying" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/FlyingConfig" }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionBlueprint": {
+      "oneOf": [
+        { "$ref": "#/$defs/LocomotionBlueprintWheels" },
+        { "$ref": "#/$defs/LocomotionBlueprintTreads" },
+        { "$ref": "#/$defs/LocomotionBlueprintLegs" },
+        { "$ref": "#/$defs/LocomotionBlueprintHover" },
+        { "$ref": "#/$defs/LocomotionBlueprintFlying" }
+      ]
+    },
+
+    "UnitBodyShapePartCircle": {
+      "type": "object",
+      "required": ["kind", "offsetForward", "radiusFrac"],
+      "properties": {
+        "kind": { "const": "circle" },
+        "offsetForward": { "type": "number" },
+        "offsetLateral": { "type": "number" },
+        "radiusFrac": { "type": "number" },
+        "yFrac": { "type": "number" },
+        "centerYFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapePartOval": {
+      "type": "object",
+      "required": ["kind", "offsetForward", "xFrac", "yFrac", "zFrac"],
+      "properties": {
+        "kind": { "const": "oval" },
+        "offsetForward": { "type": "number" },
+        "offsetLateral": { "type": "number" },
+        "xFrac": { "type": "number" },
+        "yFrac": { "type": "number" },
+        "zFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapePartCylinder": {
+      "type": "object",
+      "required": ["kind", "offsetForward", "lengthFrac", "radiusFrac"],
+      "properties": {
+        "kind": { "const": "cylinder" },
+        "offsetForward": { "type": "number" },
+        "offsetLateral": { "type": "number" },
+        "lengthFrac": { "type": "number" },
+        "radiusFrac": { "type": "number" },
+        "centerYFrac": { "type": "number" },
+        "pitchRad": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapePartCone": {
+      "type": "object",
+      "required": ["kind", "offsetForward", "lengthFrac", "radiusFrac"],
+      "properties": {
+        "kind": { "const": "cone" },
+        "offsetForward": { "type": "number" },
+        "offsetLateral": { "type": "number" },
+        "lengthFrac": { "type": "number" },
+        "radiusFrac": { "type": "number" },
+        "centerYFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapePart": {
+      "oneOf": [
+        { "$ref": "#/$defs/UnitBodyShapePartCircle" },
+        { "$ref": "#/$defs/UnitBodyShapePartOval" },
+        { "$ref": "#/$defs/UnitBodyShapePartCylinder" },
+        { "$ref": "#/$defs/UnitBodyShapePartCone" }
+      ]
+    },
+    "UnitBodyShapePolygon": {
+      "type": "object",
+      "required": ["kind", "sides", "radiusFrac", "heightFrac", "rotation"],
+      "properties": {
+        "kind": { "const": "polygon" },
+        "sides": { "type": "integer" },
+        "radiusFrac": { "type": "number" },
+        "heightFrac": { "type": "number" },
+        "rotation": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapeRect": {
+      "type": "object",
+      "required": ["kind", "lengthFrac", "widthFrac", "heightFrac"],
+      "properties": {
+        "kind": { "const": "rect" },
+        "lengthFrac": { "type": "number" },
+        "widthFrac": { "type": "number" },
+        "heightFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapeRhombus": {
+      "type": "object",
+      "required": ["kind", "lengthFrac", "widthFrac", "heightFrac"],
+      "properties": {
+        "kind": { "const": "rhombus" },
+        "lengthFrac": { "type": "number" },
+        "widthFrac": { "type": "number" },
+        "heightFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapeCircle": {
+      "type": "object",
+      "required": ["kind", "radiusFrac"],
+      "properties": {
+        "kind": { "const": "circle" },
+        "radiusFrac": { "type": "number" },
+        "yFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapeOval": {
+      "type": "object",
+      "required": ["kind", "xFrac", "yFrac", "zFrac"],
+      "properties": {
+        "kind": { "const": "oval" },
+        "xFrac": { "type": "number" },
+        "yFrac": { "type": "number" },
+        "zFrac": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShapeComposite": {
+      "type": "object",
+      "required": ["kind", "parts"],
+      "properties": {
+        "kind": { "const": "composite" },
+        "parts": { "type": "array", "items": { "$ref": "#/$defs/UnitBodyShapePart" } }
+      },
+      "additionalProperties": false
+    },
+    "UnitBodyShape": {
+      "oneOf": [
+        { "$ref": "#/$defs/UnitBodyShapePolygon" },
+        { "$ref": "#/$defs/UnitBodyShapeRect" },
+        { "$ref": "#/$defs/UnitBodyShapeRhombus" },
+        { "$ref": "#/$defs/UnitBodyShapeCircle" },
+        { "$ref": "#/$defs/UnitBodyShapeOval" },
+        { "$ref": "#/$defs/UnitBodyShapeComposite" }
+      ]
+    },
+    "EntityHudBlueprint": {
+      "type": "object",
+      "required": ["barsOffsetAboveTop"],
+      "properties": {
+        "barsOffsetAboveTop": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "CloakBlueprint": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "DetectorBlueprint": {
+      "type": "object",
+      "required": ["radius"],
+      "properties": {
+        "radius": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitRadiusConfig": {
+      "type": "object",
+      "required": ["body", "shot", "push"],
+      "properties": {
+        "body": { "type": "number" },
+        "shot": { "type": "number" },
+        "push": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBuilderConfig": {
+      "type": "object",
+      "required": ["buildRange", "constructionRate"],
+      "properties": {
+        "buildRange": { "type": "number" },
+        "constructionRate": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitDgunConfig": {
+      "type": "object",
+      "required": ["turretBlueprintId", "energyCost"],
+      "properties": {
+        "turretBlueprintId": { "$ref": "#/$defs/TurretBlueprintId" },
+        "energyCost": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "UnitBlueprint": {
+      "type": "object",
+      "required": [
+        "unitBlueprintId",
+        "name",
+        "shortName",
+        "hp",
+        "radius",
+        "bodyCenterHeight",
+        "fullVisionRadius",
+        "mass",
+        "cost",
+        "turrets",
+        "bodyShape",
+        "hud",
+        "legAttachHeightFrac",
+        "locomotionBlueprintId",
+        "locomotion",
+        "suspension",
+        "builder",
+        "dgun",
+        "cloak",
+        "detector",
+        "deathSound",
+        "fightStopEngagedRatio",
+        "excludeLockOnLevel0FriendsAndEnemies",
+        "excludeLockOnLevel0Entities",
+        "excludeLockOnLevel1Buildings",
+        "excludeLockOnLevel1Towers",
+        "excludeLockOnLevel1Units",
+        "excludeLockOnLevel1Turrets"
+      ],
+      "properties": {
+        "unitBlueprintId": { "$ref": "#/$defs/UnitBlueprintId" },
+        "name": { "type": "string" },
+        "shortName": { "type": "string" },
+        "hp": { "type": "number" },
+        "radius": { "$ref": "#/$defs/UnitRadiusConfig" },
+        "bodyCenterHeight": { "type": "number" },
+        "fullVisionRadius": { "type": "number" },
+        "mass": { "type": "number" },
+        "cost": { "$ref": "#/$defs/ResourceCost" },
+        "turrets": { "type": "array", "items": { "$ref": "#/$defs/TurretMount" } },
+        "bodyShape": { "$ref": "#/$defs/UnitBodyShape" },
+        "hud": { "$ref": "#/$defs/EntityHudBlueprint" },
+        "legAttachHeightFrac": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "locomotionBlueprintId": { "type": "string" },
+        "locomotion": { "$ref": "#/$defs/LocomotionBlueprint" },
+        "suspension": { "oneOf": [{ "$ref": "#/$defs/UnitSuspensionConfig" }, { "type": "null" }] },
+        "builder": { "oneOf": [{ "$ref": "#/$defs/UnitBuilderConfig" }, { "type": "null" }] },
+        "dgun": { "oneOf": [{ "$ref": "#/$defs/UnitDgunConfig" }, { "type": "null" }] },
+        "cloak": { "oneOf": [{ "$ref": "#/$defs/CloakBlueprint" }, { "type": "null" }] },
+        "detector": { "oneOf": [{ "$ref": "#/$defs/DetectorBlueprint" }, { "type": "null" }] },
+        "deathSound": { "oneOf": [{ "$ref": "#/$defs/SoundEntry" }, { "type": "null" }] },
+        "fightStopEngagedRatio": { "oneOf": [{ "type": "number" }, { "type": "null" }] },
+        "excludeLockOnLevel0FriendsAndEnemies": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnRelationshipExclusion" } },
+        "excludeLockOnLevel0Entities": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnEntityFamilyExclusion" } },
+        "excludeLockOnLevel1Buildings": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Towers": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Units": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}
