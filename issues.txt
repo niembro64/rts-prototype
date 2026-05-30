@@ -52,14 +52,15 @@ Rust blueprint/shot type surfaces from one schema.
 File:line refs were correct at audit time; re-verify before editing.
 
 --------------------------------------------------------------------------------
-Items A37-A42 added 2026-05-30 alongside a design-direction expansion of
+Items A37-A43 added 2026-05-30 alongside a design-direction expansion of
 budget_design_philosophy.html (new/edited sections: "Every entity shares one base
-ledger", "Pieces have their own health and die independently", "Shots are
-destructible bodies too", "Hosts build from the ground up, one piece at a time",
-and a rewrite of the lock-on eligibility default to "universal by default,
-subtractive from there"). A37 has since been resolved; the remaining items
-describe where the CODE does not yet meet the expanded philosophy. They are
-forward work, not regressions.
+ledger", "Entity geometry is three radii", "Pieces have their own health and die
+independently", "Every piece is an agent; the player commands only hosts", "Every
+death is an explosion", "Shots are destructible bodies too", "Hosts build from the
+ground up, one piece at a time", and a rewrite of the lock-on eligibility default
+to "universal by default, subtractive from there"). A37 has since been resolved;
+the remaining items describe where the CODE does not yet meet the expanded
+philosophy. They are forward work, not regressions.
 File:line refs were correct at audit time; re-verify before editing.
 
 A38. [HIGH] No uniform entity base ledger — id/cost{metal,energy}/mass/health are not a shared
@@ -88,7 +89,11 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     FIX: route damage to the specific sub-entity hit; on turret death detach/explode it and keep
     the host alive with that weapon's capability removed; on locomotion death stop movement (no
     pathfind/arrival) but keep body+turrets; cascade to full death only when body health hits
-    zero. (Depends on A38 per-piece health; mirror of A41.)
+    zero. A piece that DETACHES while still alive (e.g. a turret that survives the host's death
+    blast, or one a bomb-unit launches) stays a live, fully-autonomous agent — it keeps acquiring
+    and firing on its own until its OWN health hits zero; detachment removes it from the host
+    control hierarchy ("Every piece is an agent; the player commands only hosts") but does not end
+    its life or agency. (Depends on A38 per-piece health; mirror of A41.)
 
 A40. [MEDIUM] Shots have no health and cannot be shot down; collision is a removal flag, not a
     zero-health detonation.
@@ -151,6 +156,37 @@ A42. [MEDIUM] Entities do not detonate a death explosion (radius + force + damag
     a real outcome rather than a no-op); let blueprints override radius/force/damage for bomb-style
     units. Unify shot splash and entity death onto one blast path. (Depends on A38 base ledger +
     A39 per-piece destructibility; pairs with A40 shot detonation.)
+
+A43. [MEDIUM] Body radii are ad-hoc and per-kind, not one role-named vocabulary shared by all
+    entities; "body"/"shot"/"push" mislabel their roles and "collision" would mean two things.
+    src/game/sim/blueprints/units.json (radius: {body, shot, push}),
+    src/game/sim/blueprints/blueprintSchema.json (shot radii collisionRadius/impactRadius/
+    explosionRadius/damageRadius/projectileBodyRadius ~465-518; TurretRadiusConfig ~543),
+    the generated schema + TS bridge (src/game/sim-wasm/init.ts passes radiusBody/radiusShot/
+    radiusPush ~558/965/2126-2128), rts-sim-wasm/src/lib.rs kernel params,
+    src/game/scenes/RtsScene3D.ts (radius.body read as visualRadius ~1013), and the guard/attack
+    target-proximity helpers that also read radius.body (GuardTargetHelper.ts:33,
+    AttackTargetHelper.ts:36). —
+    RULE: new "Entity geometry is three radii" + "Every entity shares one base ledger" (A38) —
+    geometry is base-ledger: every entity carries exactly three role-named radii — radiusVisual
+    (drawn size), radiusHitbox (damage-receiving hurtbox), radiusCollision (body-vs-body no-overlap
+    contact) — and the same three names mean the same things on units/towers/buildings/turrets/
+    locomotion/shots. The death explosion's own radius stays separate (A42); "push" is reserved for
+    a future sustained push-field capability. —
+    PROBLEM: units use radius:{body, shot, push} while shots use a different ad-hoc set
+    (collisionRadius/damageRadius/explosionRadius/projectileBodyRadius). "body" is really the visual
+    radius (and is also misused for target-proximity), "shot" is really the hitbox, and "push" is
+    really hard collision; meanwhile shots ALSO carry a collisionRadius meaning projectile-vs-world
+    collision, so the word "collision" would mean two different things across kinds. One vocabulary
+    does not exist. —
+    FIX: rename to the role vocabulary and unify across kinds — radiusVisual (was unit body / shot
+    projectileBodyRadius), radiusHitbox (was unit shot), radiusCollision (was unit push; fold shot
+    collisionRadius into it). Keep the nested radius:{visual, hitbox, collision} shape. Land it in
+    the shared schema so TS and Rust cannot drift (the A38 schema-generation path). Keep
+    explosion/damage radii on the death-explosion field (A42), NOT in this trio. While renaming,
+    move guard/attack target-proximity off radiusVisual onto radiusHitbox or radiusCollision (the
+    current coupling is a latent bug). Reserve the name "pushField" for the future sustained-shove
+    capability. (Part of A38 base ledger; touches A40/A42 radii.)
 
 
 ================================================================================

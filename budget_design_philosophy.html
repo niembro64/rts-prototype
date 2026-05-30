@@ -1324,6 +1324,10 @@
         outward force and damage to everything caught in it. Defaults are tuned so a host&rsquo;s own
         death blast usually destroys its locomotion and turrets, and a blueprint may author a
         deliberately enormous one.</li>
+        <li><strong>geometry</strong> &mdash; three radii, one per physical role: a
+        <code>radiusVisual</code> (drawn size), a <code>radiusHitbox</code> (the damage-receiving
+        hurtbox), and a <code>radiusCollision</code> (body-versus-body no-overlap contact). See
+        <strong>Entity geometry is three radii</strong>.</li>
       </ul>
       <p>
         Treating cost, mass, and health as a shared base &mdash; not as per-kind bolt-ons &mdash; is
@@ -1331,6 +1335,42 @@
         onto&rdquo; only means something because every entity has health to remove; &ldquo;mass must
         matter&rdquo; only holds because nothing on the field is massless; &ldquo;build it from the
         ground up&rdquo; only parses because every piece has its own cost and health to ramp.
+      </p>
+
+      <h3>Entity geometry is three radii</h3>
+      <p>
+        Geometry is part of the base ledger too, and it is exactly three radii &mdash; one per
+        physical role &mdash; carried by every entity of every kind. Keeping them as three named,
+        single-purpose radii, rather than one &ldquo;size&rdquo; doing triple duty, is what lets a
+        body be drawn large, hit on a tighter core, and kept apart at a wider stand-off without any of
+        the three lying about the others:
+      </p>
+      <ul class="rule-list">
+        <li><strong><code>radiusVisual</code></strong> &mdash; the drawn size. Presentation only: how
+        big the body reads on screen. It has no say in damage or physics.</li>
+        <li><strong><code>radiusHitbox</code></strong> &mdash; the damage-receiving volume (the
+        hurtbox). A shot, beam, or explosion that reaches inside this radius deals damage to the
+        entity; everything that tests &ldquo;did this hit?&rdquo; tests against it.</li>
+        <li><strong><code>radiusCollision</code></strong> &mdash; the body-versus-body contact
+        radius: how close two solid bodies may get before they resist sharing space. This is the
+        radius that keeps units out of each other and that a body collides on. It is hard contact,
+        not a force at a distance.</li>
+      </ul>
+      <p>
+        The same three names mean the same three things on a unit, a tower, a building, a turret, a
+        locomotion, and a shot &mdash; one vocabulary, not a per-kind grab-bag of ad-hoc radius
+        fields, so the collision and damage kernels read one contract for everything they touch. The
+        death explosion&rsquo;s own <code>radius</code> (inside its <code>{ radius, force, damage }</code>
+        field) is a fourth, separate thing &mdash; it is the blast the entity throws on death, not a
+        property of the standing body &mdash; and must not be folded into these three.
+      </p>
+      <p>
+        <code>radiusCollision</code> is deliberately named for hard contact so that the word
+        <strong>push</strong> stays reserved for a future <em>push field</em> capability: an optional,
+        authored, sustained force that shoves other bodies at a distance &mdash; a heavy unit&rsquo;s
+        bow-wave, or a launched piece plowing through a crowd. That is a force-over-distance, not a
+        no-overlap radius; when it is added it will be its own capability layered on top of
+        <code>radiusCollision</code>, never a rename of it.
       </p>
 
       <h3>Pieces have their own health and die independently</h3>
@@ -1358,6 +1398,48 @@
         turrets is trying to disarm it; one that locks onto its locomotion is trying to immobilize it;
         one that locks onto the body is trying to kill it outright. The same shared targeting kernel
         expresses all three &mdash; only the exclusion object differs.
+      </p>
+
+      <h3>Every piece is an agent; the player commands only hosts</h3>
+      <p>
+        Every entity is an agent &mdash; it has its own health, its own death, and, where its kind
+        allows, its own behavior &mdash; but agency and <em>command</em> are different things. The
+        player issues orders to exactly three kinds: <strong>units</strong>, <strong>towers</strong>,
+        and <strong>buildings</strong>. Those are the hosts. Everything mounted below a host is driven
+        by that host, never by the player&rsquo;s cursor directly. Control runs down a chain:
+      </p>
+      <ul class="rule-list">
+        <li>The <strong>player</strong> controls <strong>units</strong>, <strong>towers</strong>, and
+        <strong>buildings</strong> &mdash; the orders on each type&rsquo;s action panel (move, fight,
+        build, set lock-on, ON/OFF, and so on).</li>
+        <li>A <strong>unit</strong> controls its own <strong>locomotion</strong> and its own
+        <strong>turrets</strong>: the player&rsquo;s order to the unit becomes thrust through the
+        locomotion and a host lock-on offered to the turrets.</li>
+        <li>A <strong>tower</strong> controls its own <strong>turrets</strong> the same way, minus
+        locomotion (it has none).</li>
+        <li>A <strong>turret</strong> controls the one <strong>shot</strong> it emits. Whether the
+        turret takes its aim from its host or finds its own is the host-directed / fully-autonomous
+        distinction &mdash; see <strong>Host-directed turrets carry the host lock-on</strong>. Either
+        way the turret is commanded by its host, not by the player.</li>
+        <li>A <strong>shot</strong>, once fired, runs itself &mdash; ballistic or homing toward its
+        inherited target, detonating on contact or at zero health. Nothing commands it after
+        launch.</li>
+      </ul>
+      <p>
+        So the player never reaches <em>past</em> a host to puppet a locomotion, a turret, or a shot
+        directly. You command the unit; the unit commands its parts; a turret is either
+        host-controlled (a host-directed mount carrying the host&rsquo;s lock-on) or independent (a
+        fully-autonomous mount running its own acquisition), but the line of control always runs
+        through the host that carries it.
+      </p>
+      <p>
+        Because each piece is its own agent, the chain survives losing links in it. A turret blown off
+        its chassis does not become inert debris: it is still a living, fully-autonomous agent that
+        keeps acquiring and firing on its own until <em>its</em> health reaches zero, then detonates
+        like anything else. A locomotion torn loose still exists as its own entity until it dies.
+        Detachment removes a piece from its host&rsquo;s control hierarchy; it does not end the
+        piece&rsquo;s life or its agency &mdash; the piece simply keeps running as the independent
+        agent it always was underneath, now with no host above it.
       </p>
 
       <h3>Every death is an explosion</h3>
@@ -2383,6 +2465,8 @@
         <li>Keep locomotion, unit, tower, turret, shot, and building definitions atomic, swappable, and free of overlapping responsibility. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary. Make the turret a standardized emitter that names exactly one shot by id and carries no inline emission payload, so it drops onto any host&rsquo;s mount unchanged; <code>shot</code> is the single umbrella with variants (projectile, beam, laser, force-field), with force-field a shot variant rather than inline turret config.</li>
         <li>Give every entity, of every kind, the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, tower, building, turret, locomotion, and shot all meet &mdash; a sub-part&rsquo;s cost and health are its own line items, so a host&rsquo;s totals are the sum of its pieces, not one opaque number.</li>
         <li>Make every death an explosion. When any entity&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; default unit/building blasts are tuned to usually destroy their own locomotion and turrets (that is the physical reason killing the body takes the assembly), and a blueprint may author a deliberately huge blast &mdash; a suicide unit that launches its own turrets into the air.</li>
+        <li>Name entity geometry by physical role, not by ad-hoc size: every entity carries three radii &mdash; <code>radiusVisual</code> (drawn size), <code>radiusHitbox</code> (the damage-receiving hurtbox), and <code>radiusCollision</code> (body-vs-body no-overlap contact) &mdash; with the same three names meaning the same things on units, towers, buildings, turrets, locomotion, and shots. Keep the death explosion&rsquo;s own radius separate from this trio, and keep the word &ldquo;push&rdquo; reserved for a future sustained push-field capability rather than this hard-contact radius.</li>
+        <li>Keep agency and command distinct: every entity is an agent with its own health and death, but the player commands only the three host kinds (units, towers, buildings). A unit controls its locomotion and turrets; a tower controls its turrets; a turret controls the one shot it emits and is either host-directed or fully-autonomous; a fired shot runs itself. Control runs down that chain, never past a host to puppet a part directly. A detached piece stays a live agent until it dies &mdash; a blown-off turret keeps firing autonomously.</li>
         <li>Let pieces live and die on their own health. A turret can explode and detach while its unit fights on; a locomotion can be destroyed so the unit drops and can no longer move while its body and turrets survive; only killing the body kills the whole assembly, via its death explosion. Construction runs the same dependency order in reverse &mdash; build a unit&rsquo;s locomotion, then its body, then its turrets; build a tower&rsquo;s body, then its turret &mdash; each piece an under-construction real entity with health ramping from zero.</li>
         <li>Make shots destructible bodies: every shot carries a tiny health pool and detonates the instant it reaches zero, running its normal explosion/splash/submunition path. Contact with the ground, another shot, or any solid body forces that health to zero on the spot; a force field is the only thing a shot touches that reflects it instead of killing it. Small-but-real shot health is what lets a point-defense turret shoot incoming munitions out of the air.</li>
         <li>Give every addressable live instance &mdash; unit, tower, building, turret, locomotion, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, subentities store <code>parent_id</code> and <code>root_host_id</code>. Assign ids by addressability, not category: a beam or force-field sustained by a live turret attributes through its emitter instead of minting its own id, and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
