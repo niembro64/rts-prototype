@@ -50,10 +50,14 @@ const TERRAIN_CLEARANCE_SAMPLE_OFFSETS = [
 ] as const;
 
 export type OrbitCameraOptions = {
-  /** Distance clamps act as broad zoom rails. Terrain collision is
-   *  resolved separately by the 3D clearance check. */
+  /** Closest-approach zoom-in rail. Terrain collision is resolved
+   *  separately by the 3D clearance check. There is no zoom-OUT rail:
+   *  dolly distance is only bounded below (zoom-in), never above. */
   minDistance?: number;
-  maxDistance?: number;
+  /** Reference far distance for HUD fade scaling — NOT a zoom-out cap.
+   *  The camera can dolly past it freely; HUD elements key off this so
+   *  the fade window tracks map size. */
+  farReferenceDistance?: number;
   minPitch?: number;
   maxPitch?: number;
   /** Per-wheel-tick zoom fraction. Each scroll-IN moves the
@@ -127,7 +131,8 @@ export class OrbitCamera {
   public smoothTauSec = 0;
 
   private minDistance: number;
-  private maxDistance: number;
+  /** HUD-fade far reference (see getFarReferenceDistance). Not a clamp. */
+  private farReferenceDistance: number;
   private minPitch: number;
   private maxPitch: number;
   private targetMinX = -Infinity;
@@ -228,7 +233,7 @@ export class OrbitCamera {
     this.camera = camera;
     this.canvas = canvas;
     this.minDistance = opts.minDistance ?? 100;
-    this.maxDistance = opts.maxDistance ?? 8000;
+    this.farReferenceDistance = opts.farReferenceDistance ?? 8000;
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
@@ -546,11 +551,11 @@ export class OrbitCamera {
       anchor ?? (wantFactor < 1 ? this.zoomInAnchor : this.zoomOutAnchor),
     );
     const wantedDistance = this.toDistance * wantFactor;
-    let nextDistance = Math.min(
-      this.maxDistance,
-      Math.max(this.minDistance, wantedDistance),
-    );
-    if (nextDistance === this.toDistance) return; // already at the rail
+    // Bounded below by the zoom-in rail only. Zoom-OUT is unbounded so
+    // the wheel can never stick against a far rail (and the render-time
+    // terrain clearance always has room to lift the camera clear).
+    let nextDistance = Math.max(this.minDistance, wantedDistance);
+    if (nextDistance === this.toDistance) return; // already at the zoom-in rail
     const actualFactor = nextDistance / this.toDistance;
     const startDistance = this.toDistance;
     const startTargetX = this.toTargetX;
@@ -1032,16 +1037,18 @@ export class OrbitCamera {
   }
 
   setDistance(distance: number): void {
-    const d = Math.min(this.maxDistance, Math.max(this.minDistance, distance));
+    const d = Math.max(this.minDistance, distance);
     this.distance = d;
     this.toDistance = d;
     this.apply();
   }
 
-  /** Zoomed-all-the-way-out distance rail. HUD fade keys off this so
-   *  the fade window scales with map size instead of a fixed number. */
-  getMaxDistance(): number {
-    return this.maxDistance;
+  /** Far reference distance for HUD fade — keyed to map size so the fade
+   *  window scales instead of using a fixed number. This is not a zoom
+   *  rail: the camera can dolly past it; HUD elements are just fully
+   *  faded by the time it reaches here. */
+  getFarReferenceDistance(): number {
+    return this.farReferenceDistance;
   }
 
   setOrbitAngles(yaw: number, pitch: number): void {
@@ -1070,7 +1077,7 @@ export class OrbitCamera {
     this.toTargetX = state.targetX;
     this.toTargetY = state.targetY;
     this.toTargetZ = state.targetZ;
-    this.distance = Math.min(this.maxDistance, Math.max(this.minDistance, state.distance));
+    this.distance = Math.max(this.minDistance, state.distance);
     this.toDistance = this.distance;
     this.yaw = state.yaw;
     this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, state.pitch));

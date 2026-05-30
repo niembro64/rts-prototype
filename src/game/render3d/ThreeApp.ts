@@ -20,8 +20,8 @@ import {
   CAMERA_FOV_DEGREES,
   SKY_RENDER_CONFIG,
   ZOOM_STEP_FRACTION,
-  ZOOM_MIN,
   ZOOM_MAX,
+  CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
 
 const MOBILE_PIXEL_RATIO_CAP = 2;
@@ -176,13 +176,14 @@ export class ThreeApp {
     pmrem.dispose();
 
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
-    // region of the map as the 2D camera at its default zoom. Min/max distance
-    // are derived from ZOOM_MIN/ZOOM_MAX so "zoomed in" / "zoomed out" bounds
-    // match the 2D limits.
+    // region of the map as the 2D camera at its default zoom. The zoom-IN rail
+    // (minDistance) is derived from ZOOM_MAX so "zoomed in" matches the 2D
+    // limit. There is no zoom-OUT rail — dolly distance is unbounded above. The
+    // far reference distance (map-scaled) only drives HUD fade, not a cap.
     const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
       minDistance: baseDistance / ZOOM_MAX,
-      maxDistance: baseDistance / ZOOM_MIN,
+      farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       zoomStepFraction: ZOOM_STEP_FRACTION,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
       minTerrainClearance: CAMERA_MIN_TERRAIN_CLEARANCE,

@@ -310,12 +310,14 @@ export class RtsScene3DRenderPhase {
     this.frustum.setFromProjectionMatrix(this.frustumMatrix);
     const hudFrustum = this.renderScope.getMode() === 'all' ? undefined : this.frustum;
     // Refresh the HUD fade from the live camera; the fade window scales
-    // with the orbit's max (zoomed-out) distance so it tracks map size.
-    const maxCamDistance = this.threeApp.orbit.getMaxDistance();
+    // with the orbit's map-scaled far reference distance so it tracks map
+    // size. (Zoom-out is unbounded; HUD elements are simply fully faded by
+    // the time the camera reaches the far reference.)
+    const farRefDistance = this.threeApp.orbit.getFarReferenceDistance();
     this.hudFade.update(
       cam,
-      maxCamDistance * ENTITY_HUD_FADE_START_DISTANCE_FRAC,
-      maxCamDistance * ENTITY_HUD_FADE_END_DISTANCE_FRAC,
+      farRefDistance * ENTITY_HUD_FADE_START_DISTANCE_FRAC,
+      farRefDistance * ENTITY_HUD_FADE_END_DISTANCE_FRAC,
     );
 
     forceFieldRenderer.beginFrame(graphicsConfig);

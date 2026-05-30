@@ -5,10 +5,10 @@
   "cameraCollidesWithTerrain": true,
   "worldPaddingPercent": 20.0,
   "zoom": {
-    "min": 0.2,
     "max": 40.0,
     "stepFraction": 0.2
   },
+  "farReferenceDistanceFactor": 5.0,
   "battleDefaults": {
     "demoBattle": {
       "focus": "map-origin-map-height-agnostic",

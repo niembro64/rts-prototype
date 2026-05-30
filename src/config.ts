@@ -904,11 +904,18 @@ export const ENTITY_HUD_FADE_END_DISTANCE_FRAC = entityHudConfigJson.fadeEndDist
  *  camera's pitch angle against the terrain. */
 export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegrees;
 
-/** Minimum zoom level (zoomed out) */
-export const ZOOM_MIN = cameraConfigJson.zoom.min;
-
-/** Maximum zoom level (zoomed in) */
+/** Maximum zoom level (zoomed in). There is intentionally no minimum
+ *  zoom level — zoom-out is unbounded (the old max-zoom-out rail was
+ *  removed because it wedged the camera against terrain). */
 export const ZOOM_MAX = cameraConfigJson.zoom.max;
+
+/** Far-distance reference for HUD fade, expressed as a multiple of the
+ *  base framing distance (max(mapW, mapH) * 0.35). Entity HUD elements
+ *  (health bars, name tags) finish fading out by this distance, so the
+ *  fade window tracks map size. This is NOT a zoom-out cap: the camera
+ *  can dolly past it freely; HUD elements are simply fully faded there. */
+export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
+  cameraConfigJson.farReferenceDistanceFactor;
 
 /**
  * Per-wheel-tick zoom fraction. Each scroll-IN moves the camera
