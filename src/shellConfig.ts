@@ -32,8 +32,8 @@ export const SHELL_PALE_HEX = COLORS.construction.shell.pale.colorHex;
 // spot — outer ghost shell, inner glowing core, travelling pulses
 // from the nozzle, orbiting sparks. Per user direction the palette is
 // strictly whitish / grayish (no team color, no amber, no cyan
-// glass), and the outer ghost shell sizes off the queued unit's PUSH
-// collider (not its body radius).
+// glass), and the outer ghost shell sizes off the queued unit's collision
+// radius (not its visual radius).
 
 /** Outer ghost shell — the big translucent bubble centered on the
  *  build spot. */
@@ -58,10 +58,10 @@ export const BUILD_BUBBLE_SPARK_COLOR_HEX =
 export const BUILD_BUBBLE_SPARK_OPACITY = COLORS.construction.buildBubble.spark.opacity;
 
 /** Outer-ghost-shell radius as a multiplier of the queued unit's
- *  PUSH collider radius. The bubble grows toward this size with build
+ *  collision radius. The bubble grows toward this size with build
  *  progress (eased), with a small pulse modulation for life. */
-export const BUILD_BUBBLE_RADIUS_PUSH_MULT =
-  shellConfig.buildBubble.radiusPushMult;
+export const BUILD_BUBBLE_RADIUS_COLLISION_MULT =
+  shellConfig.buildBubble.radiusCollisionMult;
 
 /** Bar palette + layout. Both the HP bar (with its build-mode overlay)
  *  and the construction-resource bars (energy / metal)

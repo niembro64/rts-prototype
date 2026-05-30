@@ -733,19 +733,19 @@ defineProps<{
         <BarButtonGroup>
           <BarButton
             :active="model.unitRadiusToggles.visual"
-            title="Show unit body sphere (unit.radius.body - visible chassis size)"
+            title="Show unit body sphere (unit.radius.visual - visible chassis size)"
             @click="model.toggleUnitRadius('visual')"
           >BODY</BarButton>
           <BarButton
-            :active="model.unitRadiusToggles.shot"
-            title="Show unit shot sphere (radius.shot - projectile/beam hit detection)"
-            @click="model.toggleUnitRadius('shot')"
-          >SHOT</BarButton>
+            :active="model.unitRadiusToggles.hitbox"
+            title="Show unit hitbox sphere (radius.hitbox - projectile/beam hit detection)"
+            @click="model.toggleUnitRadius('hitbox')"
+          >HIT</BarButton>
           <BarButton
-            :active="model.unitRadiusToggles.push"
-            title="Show unit push sphere (radius.push - unit-unit push physics, ground-click selection fallback)"
-            @click="model.toggleUnitRadius('push')"
-          >PUSH</BarButton>
+            :active="model.unitRadiusToggles.collision"
+            title="Show unit collision sphere (radius.collision - unit-unit collision physics, ground-click selection fallback)"
+            @click="model.toggleUnitRadius('collision')"
+          >COL</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

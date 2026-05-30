@@ -412,9 +412,9 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
     (unit.unitBlueprintCode !== null && !isUint(unit.unitBlueprintCode, 0xFFFF_FFFF)) ||
     (unit.radius !== null && (
-      !Number.isFinite(unit.radius.body) ||
-      !Number.isFinite(unit.radius.shot) ||
-      !Number.isFinite(unit.radius.push)
+      !Number.isFinite(unit.radius.visual) ||
+      !Number.isFinite(unit.radius.hitbox) ||
+      !Number.isFinite(unit.radius.collision)
     )) ||
     (unit.bodyCenterHeight !== null && !Number.isFinite(unit.bodyCenterHeight)) ||
     (unit.mass !== null && !Number.isFinite(unit.mass)) ||
@@ -461,9 +461,9 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     unit.unitBlueprintCode !== null ? 1 : 0,
     unit.unitBlueprintCode ?? 0,
     radius !== null ? 1 : 0,
-    radius !== null && radius.body !== null ? radius.body : 0,
-    radius !== null && radius.shot !== null ? radius.shot : 0,
-    radius !== null && radius.push !== null ? radius.push : 0,
+    radius !== null && radius.visual !== null ? radius.visual : 0,
+    radius !== null && radius.hitbox !== null ? radius.hitbox : 0,
+    radius !== null && radius.collision !== null ? radius.collision : 0,
     unit.bodyCenterHeight !== null ? 1 : 0,
     unit.bodyCenterHeight ?? 0,
     unit.mass !== null ? 1 : 0,
@@ -1269,7 +1269,7 @@ const EVENT_HAS_DEATH_CONTEXT = 0x200;
 const EVENT_HAS_IMPACT_CONTEXT = 0x400;
 
 const DEATH_HAS_VISUAL_RADIUS = 0x01;
-const DEATH_HAS_PUSH_RADIUS = 0x02;
+const DEATH_HAS_COLLISION_RADIUS = 0x02;
 const DEATH_HAS_BASE_Z = 0x04;
 const DEATH_HAS_UNIT_TYPE = 0x08;
 const DEATH_HAS_ROTATION = 0x10;
@@ -1319,7 +1319,7 @@ function packPackedDeathContextsIntoScratch(
 
     let flags = 0;
     if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
-    if (context.pushRadius !== undefined) flags |= DEATH_HAS_PUSH_RADIUS;
+    if (context.collisionRadius !== undefined) flags |= DEATH_HAS_COLLISION_RADIUS;
     if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
     if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
     if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
@@ -1339,8 +1339,8 @@ function packPackedDeathContextsIntoScratch(
     view[base + 10] = context.visualRadius !== undefined
       ? quantizeProjectilePosition(context.visualRadius)
       : 0;
-    view[base + 11] = context.pushRadius !== undefined
-      ? quantizeProjectilePosition(context.pushRadius)
+    view[base + 11] = context.collisionRadius !== undefined
+      ? quantizeProjectilePosition(context.collisionRadius)
       : 0;
     view[base + 12] = context.baseZ !== undefined
       ? quantizeProjectilePosition(context.baseZ)

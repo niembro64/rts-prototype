@@ -44,7 +44,7 @@ export function buildImpactContext(
     if (unit !== null) {
       entityVelX = unit.velocityX;
       entityVelY = unit.velocityY;
-      entityCollisionRadius = unit.radius.shot;
+      entityCollisionRadius = unit.radius.hitbox;
     } else if (building !== null) {
       entityCollisionRadius = building.width / 2;
     }
@@ -106,10 +106,10 @@ export function buildUnitDeathEvent(
     y: targetPhysicsBody !== null ? targetPhysicsBody.vy : 0,
   };
   const collider = targetUnit !== null ? targetUnit.radius : undefined;
-  const visualRadius = targetUnit !== null ? targetUnit.radius.body : (collider !== undefined ? collider.shot : 15);
-  const pushRadius = collider !== undefined ? (collider.push ?? collider.shot) : visualRadius;
+  const visualRadius = targetUnit !== null ? targetUnit.radius.visual : (collider !== undefined ? collider.hitbox : 15);
+  const collisionRadius = collider !== undefined ? (collider.collision ?? collider.hitbox) : visualRadius;
   const bodyCenterHeight = getUnitBodyCenterHeight(targetUnit);
-  const radius = collider !== undefined ? collider.shot : visualRadius;
+  const radius = collider !== undefined ? collider.hitbox : visualRadius;
   const deathX = targetPhysicsBody !== null ? targetPhysicsBody.x : (targetTransform !== null ? targetTransform.x : 0);
   const deathY = targetPhysicsBody !== null ? targetPhysicsBody.y : (targetTransform !== null ? targetTransform.y : 0);
   const deathZ = targetPhysicsBody !== null ? targetPhysicsBody.z : (targetTransform !== null ? targetTransform.z : 0);
@@ -140,7 +140,7 @@ export function buildUnitDeathEvent(
         attackMagnitude: ctx.attackMagnitude,
         radius,
         visualRadius,
-        pushRadius,
+        collisionRadius,
         baseZ,
         color: playerColor,
         unitBlueprintId: deathUnitType,
@@ -154,7 +154,7 @@ export function buildUnitDeathEvent(
         attackMagnitude: 25,
         radius,
         visualRadius,
-        pushRadius,
+        collisionRadius,
         baseZ,
         color: playerColor,
         unitBlueprintId: deathUnitType,
@@ -228,7 +228,7 @@ export function buildBuildingDeathEvent(
       attackMagnitude: 50,
       radius: footprintRadius,
       visualRadius: footprintRadius,
-      pushRadius: buildingComponent !== null ? buildingComponent.depth : footprintRadius,
+      collisionRadius: buildingComponent !== null ? buildingComponent.depth : footprintRadius,
       baseZ,
       color: playerColor,
     },

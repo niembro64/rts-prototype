@@ -40,7 +40,7 @@ const STYLE = {
 };
 
 const STYLE_BY_MODE = {
-  sight: COLORS.effects.selectionOverlay.radiusScale,
+  sight: COLORS.effects.selectionOverlay.radiusVisual,
   radar: COLORS.effects.selectionOverlay.radar,
 } as const;
 

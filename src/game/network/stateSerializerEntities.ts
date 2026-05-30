@@ -434,9 +434,9 @@ function appendUnitEntityWireRow(
   values[base + 13] = unit.unitBlueprintCode !== null ? 1 : 0;
   values[base + 14] = unit.unitBlueprintCode ?? 0;
   values[base + 15] = radius !== null ? 1 : 0;
-  values[base + 16] = radius !== null && radius.body !== null ? radius.body : 0;
-  values[base + 17] = radius !== null && radius.shot !== null ? radius.shot : 0;
-  values[base + 18] = radius !== null && radius.push !== null ? radius.push : 0;
+  values[base + 16] = radius !== null && radius.visual !== null ? radius.visual : 0;
+  values[base + 17] = radius !== null && radius.hitbox !== null ? radius.hitbox : 0;
+  values[base + 18] = radius !== null && radius.collision !== null ? radius.collision : 0;
   values[base + 19] = unit.bodyCenterHeight !== null ? 1 : 0;
   values[base + 20] = unit.bodyCenterHeight ?? 0;
   values[base + 21] = unit.mass !== null ? 1 : 0;

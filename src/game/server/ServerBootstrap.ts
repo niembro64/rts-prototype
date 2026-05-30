@@ -390,7 +390,7 @@ export class ServerBootstrap {
       if (entity.type === 'unit' && entity.unit) {
         createPhysicsBodyForUnit(world, physics, entity, {
           ignoreOverlappingBuildings: true,
-          overlapPadding: entity.unit.radius.push,
+          overlapPadding: entity.unit.radius.collision,
         });
       }
     }
@@ -428,7 +428,7 @@ export class ServerBootstrap {
       if (entity.type === 'unit' && entity.unit) {
         createPhysicsBodyForUnit(world, physics, entity, {
           ignoreOverlappingBuildings: true,
-          overlapPadding: entity.unit.radius.push,
+          overlapPadding: entity.unit.radius.collision,
         });
       }
     }

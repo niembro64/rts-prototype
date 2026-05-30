@@ -514,8 +514,8 @@ function stampCombatTargetingEntityInto(
   const suspensionOffsetX = suspension ? suspension.offsetX : 0;
   const suspensionOffsetY = suspension ? suspension.offsetY : 0;
   const suspensionOffsetZ = suspension ? suspension.offsetZ : 0;
-  const radiusShot = entity.unit
-    ? entity.unit.radius.shot
+  const radiusHitbox = entity.unit
+    ? entity.unit.radius.hitbox
     : (entity.building
       ? entity.building.targetRadius
       : (entity.projectile && isProjectileShot(entity.projectile.config.shot)
@@ -630,7 +630,7 @@ function stampCombatTargetingEntityInto(
     rotCos, rotSin,
     surfaceNx, surfaceNy, surfaceNz,
     suspensionOffsetX, suspensionOffsetY, suspensionOffsetZ,
-    radiusShot,
+    radiusHitbox,
     aabbHalfX, aabbHalfY, aabbHalfZ,
     hp, entityFlags,
     entityFamily, entityBlueprintCode,
@@ -766,7 +766,7 @@ function stampUnitLocomotionTargetInto(
     suspension ? suspension.offsetX : 0,
     suspension ? suspension.offsetY : 0,
     suspension ? suspension.offsetZ : 0,
-    unit.radius.push,
+    unit.radius.collision,
     0,
     0,
     0,
@@ -923,7 +923,7 @@ export function stampForceFieldSurfacePool(
     const unitTurrets = unitCombat !== null ? unitCombat.turrets : null;
     if (unitTurrets === null || unitTurrets.length === 0) continue;
 
-    const broadRadius = Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.shot)
+    const broadRadius = Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.hitbox)
       + MIRROR_SIGHT_QUERY_PAD;
     const forceFieldPanelTurret = unitTurrets[0];
     const panelShot = forceFieldPanelTurret.config.shot;

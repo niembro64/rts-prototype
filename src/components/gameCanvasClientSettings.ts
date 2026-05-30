@@ -133,8 +133,8 @@ export function useGameCanvasClientSettings({
   });
   const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
     visual: getUnitRadiusToggle('visual'),
-    shot: getUnitRadiusToggle('shot'),
-    push: getUnitRadiusToggle('push'),
+    hitbox: getUnitRadiusToggle('hitbox'),
+    collision: getUnitRadiusToggle('collision'),
   });
   const legsRadiusToggle = ref(getLegsRadiusToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());

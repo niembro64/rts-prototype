@@ -188,7 +188,7 @@ export class SpatialGrid {
     this.api().setUnit(
       slot,
       entity.transform.x, entity.transform.y, entity.transform.z,
-      entity.unit.radius.push, entity.unit.radius.shot,
+      entity.unit.radius.collision, entity.unit.radius.hitbox,
       playerId,
       1,
     );

@@ -332,7 +332,7 @@ resolveUnitTurretMounts((turretBlueprintId) => {
       `Invalid unit turret mount resolver: unknown turretBlueprintId "${turretBlueprintId}"`,
     );
   }
-  return turretBlueprint.radius.body;
+  return turretBlueprint.radius.visual;
 });
 
 function assertFiniteRangeMultiplier(
@@ -582,11 +582,11 @@ export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretC
     turretBlueprint.rangeMultiplierOverrides,
   );
   if (
-    !Number.isFinite(turretBlueprint.radius.body) ||
-    turretBlueprint.radius.body <= 0
+    !Number.isFinite(turretBlueprint.radius.visual) ||
+    turretBlueprint.radius.visual <= 0
   ) {
     throw new Error(
-      `Turret blueprint ${turretBlueprintId} must define positive radius.body`,
+      `Turret blueprint ${turretBlueprintId} must define positive radius.visual`,
     );
   }
 

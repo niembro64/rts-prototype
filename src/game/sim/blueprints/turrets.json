@@ -39,7 +39,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 3
+      "visual": 3,
+      "hitbox": 3,
+      "collision": 3
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -100,7 +102,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 9
+      "visual": 9,
+      "hitbox": 9,
+      "collision": 9
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -153,7 +157,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 10
+      "visual": 10,
+      "hitbox": 10,
+      "collision": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -206,7 +212,9 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "body": 12
+      "visual": 12,
+      "hitbox": 12,
+      "collision": 12
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -256,7 +264,9 @@
     "idlePitch": -1.5707963267948966,
     "groundAimFraction": 1,
     "radius": {
-      "body": 9
+      "visual": 9,
+      "hitbox": 9,
+      "collision": 9
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -317,7 +327,9 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "body": 32
+      "visual": 32,
+      "hitbox": 32,
+      "collision": 32
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -378,7 +390,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 16
+      "visual": 16,
+      "hitbox": 16,
+      "collision": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -426,7 +440,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 8
+      "visual": 8,
+      "hitbox": 8,
+      "collision": 8
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -474,7 +490,9 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
     "radius": {
-      "body": 8
+      "visual": 8,
+      "hitbox": 8,
+      "collision": 8
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -522,7 +540,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 6
+      "visual": 6,
+      "hitbox": 6,
+      "collision": 6
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -570,7 +590,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 3
+      "visual": 3,
+      "hitbox": 3,
+      "collision": 3
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -618,7 +640,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 15
+      "visual": 15,
+      "hitbox": 15,
+      "collision": 15
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -675,7 +699,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 12
+      "visual": 12,
+      "hitbox": 12,
+      "collision": 12
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -721,7 +747,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 8
+      "visual": 8,
+      "hitbox": 8,
+      "collision": 8
     },
     "headOnly": false,
     "constructionEmitter": {
@@ -789,7 +817,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 16
+      "visual": 16,
+      "hitbox": 16,
+      "collision": 16
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -843,7 +873,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 16
+      "visual": 16,
+      "hitbox": 16,
+      "collision": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -905,7 +937,9 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
     "radius": {
-      "body": 8
+      "visual": 8,
+      "hitbox": 8,
+      "collision": 8
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -955,7 +989,9 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "body": 4
+      "visual": 4,
+      "hitbox": 4,
+      "collision": 4
     },
     "headOnly": true,
     "constructionEmitter": null,

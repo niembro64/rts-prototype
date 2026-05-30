@@ -429,7 +429,7 @@ export class WorldState {
     if (entity.type === 'building' || entity.type === 'tower') this.buildingVersion++;
     if (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') {
       const r = entity.unit
-        ? entity.unit.radius.shot
+        ? entity.unit.radius.hitbox
         : (entity.building ? entity.building.targetRadius : 0);
       if (r > this.maxTargetableRadius) this.maxTargetableRadius = r;
     }
@@ -828,8 +828,8 @@ export class WorldState {
     y: number,
     playerId: PlayerId,
     unitBlueprintId: string,
-    radius: { body: number; shot: number; push: number } = { body: 15, shot: 15, push: 15 },
-    bodyCenterHeight: number = radius.push,
+    radius: { visual: number; hitbox: number; collision: number } = { visual: 15, hitbox: 15, collision: 15 },
+    bodyCenterHeight: number = radius.collision,
     fullVisionRadius: number = 1200,
     locomotion: UnitLocomotion = getUnitLocomotion(unitBlueprintId),
     mass: number = 25,
@@ -954,7 +954,7 @@ export class WorldState {
     // every unit gets a combat component at spawn.
     entity.combat = createCombatComponent(createUnitRuntimeTurrets(
       unitBlueprintId,
-      bp.radius.body,
+      bp.radius.visual,
       entity.id,
       entity.id,
       () => this.generateEntityId(),

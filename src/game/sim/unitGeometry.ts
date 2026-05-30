@@ -6,7 +6,7 @@ export function getUnitBodyCenterHeight(
   unit: UnitBodyCenterSource | null | undefined = null,
 ): number {
   if (unit === null || unit === undefined) return 0;
-  return unit.bodyCenterHeight ?? unit.radius.push;
+  return unit.bodyCenterHeight ?? unit.radius.collision;
 }
 
 /** World Z of the host's footprint base — the height the host sits on

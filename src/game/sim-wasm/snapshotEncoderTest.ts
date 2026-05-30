@@ -254,7 +254,7 @@ type UnitFixture = BasicEntityFixture & {
     hp: { curr: number; max: number };
     velocity: { x: number; y: number; z: number };
     unitBlueprintCode?: number;
-    radius?: { body: number; shot: number; push: number };
+    radius?: { visual: number; hitbox: number; collision: number };
     bodyCenterHeight?: number;
     mass?: number;
     surfaceNormal?: { nx: number; ny: number; nz: number };
@@ -363,7 +363,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         unitBlueprintCode: 4,
-        radius: { body: 12, shot: 15, push: 18 },
+        radius: { visual: 12, hitbox: 15, collision: 18 },
         bodyCenterHeight: 21,
         mass: 35,
       },
@@ -375,7 +375,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 5000, max: 5000 },
         velocity: { x: 0, y: 0, z: 0 },
         unitBlueprintCode: 0,
-        radius: { body: 20, shot: 20, push: 22 },
+        radius: { visual: 20, hitbox: 20, collision: 22 },
         bodyCenterHeight: 24,
         mass: 250,
         isCommander: true,
@@ -872,9 +872,9 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       f.unit.unitBlueprintCode !== undefined ? 1 : 0,
       f.unit.unitBlueprintCode ?? 0,
       f.unit.radius !== undefined ? 1 : 0,
-      f.unit.radius?.body ?? 0,
-      f.unit.radius?.shot ?? 0,
-      f.unit.radius?.push ?? 0,
+      f.unit.radius?.visual ?? 0,
+      f.unit.radius?.hitbox ?? 0,
+      f.unit.radius?.collision ?? 0,
       f.unit.bodyCenterHeight !== undefined ? 1 : 0,
       f.unit.bodyCenterHeight ?? 0,
       f.unit.mass !== undefined ? 1 : 0,
@@ -1591,7 +1591,7 @@ type DeathContextFixture = {
   attackMagnitude: number;
   radius: number;
   visualRadius?: number;
-  pushRadius?: number;
+  collisionRadius?: number;
   baseZ?: number;
   color: number;
   unitBlueprintId?: string;
@@ -1662,14 +1662,14 @@ function packDeathContextsIntoScratch(
     view[base + 7] = dc.radius;
     view[base + 8] = dc.color;
     view[base + 9] = dc.visualRadius ?? 0;
-    view[base + 10] = dc.pushRadius ?? 0;
+    view[base + 10] = dc.collisionRadius ?? 0;
     view[base + 11] = dc.baseZ ?? 0;
     view[base + 12] = dc.rotation ?? 0;
     view[base + 13] = dc.unitBlueprintId !== undefined ? (stringSlots.get(dc.unitBlueprintId) ?? 0) : 0;
     view[base + 14] = dc.turretPoses?.length ?? 0;
     let flags = 0;
     if (dc.visualRadius !== undefined) flags |= 0x01;
-    if (dc.pushRadius !== undefined) flags |= 0x02;
+    if (dc.collisionRadius !== undefined) flags |= 0x02;
     if (dc.baseZ !== undefined) flags |= 0x04;
     if (dc.unitBlueprintId !== undefined) flags |= 0x08;
     if (dc.rotation !== undefined) flags |= 0x10;
@@ -2543,7 +2543,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           attackMagnitude: 50,
           radius: 80,
           visualRadius: 80,
-          pushRadius: 4,
+          collisionRadius: 4,
           baseZ: 0,
           color: 0xFF8800,
         },
@@ -2567,7 +2567,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           attackMagnitude: 120,
           radius: 40,
           visualRadius: 35,
-          pushRadius: 30,
+          collisionRadius: 30,
           baseZ: 10,
           color: 0xFF0000,
           unitBlueprintId: 'tank',
@@ -3083,9 +3083,9 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           u.unit.unitBlueprintCode !== undefined ? 1 : 0,
           u.unit.unitBlueprintCode ?? 0,
           u.unit.radius !== undefined ? 1 : 0,
-          u.unit.radius?.body ?? 0,
-          u.unit.radius?.shot ?? 0,
-          u.unit.radius?.push ?? 0,
+          u.unit.radius?.visual ?? 0,
+          u.unit.radius?.hitbox ?? 0,
+          u.unit.radius?.collision ?? 0,
           u.unit.bodyCenterHeight !== undefined ? 1 : 0,
           u.unit.bodyCenterHeight ?? 0,
           u.unit.mass !== undefined ? 1 : 0,

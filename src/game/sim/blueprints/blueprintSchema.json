@@ -540,13 +540,18 @@
       },
       "additionalProperties": false
     },
-    "TurretRadiusConfig": {
+    "EntityRadiusConfig": {
       "type": "object",
-      "required": ["body"],
+      "required": ["visual", "hitbox", "collision"],
       "properties": {
-        "body": { "type": "number" }
+        "visual": { "type": "number" },
+        "hitbox": { "type": "number" },
+        "collision": { "type": "number" }
       },
       "additionalProperties": false
+    },
+    "TurretRadiusConfig": {
+      "$ref": "#/$defs/EntityRadiusConfig"
     },
     "TurretAimAngleType": {
       "enum": ["rayDirect", "rayBisectTurretAndBody", "ballisticArcLow", "ballisticArcLowOnlyUnder", "ballisticArcHigh"]
@@ -1121,14 +1126,7 @@
       "additionalProperties": false
     },
     "UnitRadiusConfig": {
-      "type": "object",
-      "required": ["body", "shot", "push"],
-      "properties": {
-        "body": { "type": "number" },
-        "shot": { "type": "number" },
-        "push": { "type": "number" }
-      },
-      "additionalProperties": false
+      "$ref": "#/$defs/EntityRadiusConfig"
     },
     "UnitBuilderConfig": {
       "type": "object",

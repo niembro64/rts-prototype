@@ -66,7 +66,7 @@ export type RangeType =
   | 'engageMinRelease'
   | 'build';
 export type ProjRangeType = 'collision' | 'explosion';
-export type UnitRadiusType = 'visual' | 'shot' | 'push';
+export type UnitRadiusType = 'visual' | 'hitbox' | 'collision';
 
 export type SoundDefaults = Record<SoundCategory, boolean>;
 

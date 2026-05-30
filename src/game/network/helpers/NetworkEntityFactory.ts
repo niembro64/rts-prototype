@@ -212,7 +212,7 @@ function createUnitFromNetwork(
   } catch { /* unknown unit blueprint fallback handled by existing defaults */ }
   const blueprintRadius = unitBlueprint !== undefined && unitBlueprint.radius !== undefined
     ? unitBlueprint.radius
-    : { body: 15, shot: 15, push: 15 };
+    : { visual: 15, hitbox: 15, collision: 15 };
   const blueprintMass = unitBlueprint !== undefined && unitBlueprint.mass !== undefined
     ? unitBlueprint.mass
     : 25;
@@ -223,7 +223,7 @@ function createUnitFromNetwork(
   const blueprintBodyCenterHeight = unitBlueprint !== undefined &&
     unitBlueprint.bodyCenterHeight !== undefined
     ? unitBlueprint.bodyCenterHeight
-    : radius.push;
+    : radius.collision;
   const fullVisionRadius = unitBlueprint !== undefined &&
     unitBlueprint.fullVisionRadius !== undefined
     ? unitBlueprint.fullVisionRadius
@@ -292,7 +292,7 @@ function createUnitFromNetwork(
   };
   if (unitBlueprint) applyEntitySensorBlueprint(entity, unitBlueprint);
 
-  const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.body, unitTurrets);
+  const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.visual, unitTurrets);
   if (turrets) {
     const combat = createCombatComponent(turrets);
     combat.fireEnabled = u === null || u.fireEnabled !== false;

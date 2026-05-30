@@ -36,9 +36,9 @@ const BARREL_ORBIT_CLAMP_FRAC = {
 } as const;
 
 /** Radius of the spherical turret body. Read directly from the turret
- *  blueprint's `radius.body`; turrets are unit-agnostic by contract,
+ *  blueprint's `radius.visual`; turrets are unit-agnostic by contract,
  *  so the host unit's body radius does NOT factor in. */
-type TurretRadiusSource = { id?: string; radius?: { body?: number } };
+type TurretRadiusSource = { id?: string; radius?: { visual?: number } };
 type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
 type BarrelShotSource = TurretBarrelSource & {
   shot?: ShotConfig | ActiveProjectileShot;
@@ -46,18 +46,18 @@ type BarrelShotSource = TurretBarrelSource & {
 };
 
 function getTurretBodyRadius(config: TurretRadiusSource): number {
-  const r = config.radius?.body;
+  const r = config.radius?.visual;
   if (r === undefined || r <= 0) {
     const id = config.id ?? 'unknown-source';
     throw new Error(
-      `Turret config '${id}' must define a positive radius.body`,
+      `Turret config '${id}' must define a positive radius.visual`,
     );
   }
   return r;
 }
 
 /** Legacy name retained for the existing turret mesh/HUD vocabulary:
- *  the visible turret "head" is the same sphere as `radius.body`. */
+ *  the visible turret "head" is the same sphere as `radius.visual`. */
 export function getTurretHeadRadius(config: TurretRadiusSource): number {
   return getTurretBodyRadius(config);
 }
@@ -65,9 +65,9 @@ export function getTurretHeadRadius(config: TurretRadiusSource): number {
 export function turretBodyRadiusFromRadius(
   radius: TurretRadiusSource['radius'] | undefined,
 ): number {
-  const body = radius?.body;
+  const body = radius?.visual;
   if (body === undefined || body <= 0) {
-    throw new Error('Turret radius.body must be a positive number');
+    throw new Error('Turret radius.visual must be a positive number');
   }
   return body;
 }
@@ -210,7 +210,7 @@ export function getTurretBarrelDiameter(
 /** Compute the 3D tip position and firing direction for a specific
  *  barrel on a turret. Unit-agnostic: the host unit's body radius
  *  is intentionally NOT a parameter. Barrel dimensions are derived
- *  from the turret blueprint's own `radius.body`, so a turret of a
+ *  from the turret blueprint's own `radius.visual`, so a turret of a
  *  given blueprint fires from the same offset on every host that
  *  mounts it.
  *

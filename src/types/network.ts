@@ -773,7 +773,7 @@ export type NetworkServerSnapshotEntity = {
     hp: { curr: number; max: number } | null;
     /** Unit radii. Static on full records and omitted from ordinary
      *  deltas unless the unit blueprint/runtime radius changes. */
-    radius: { body: number | null; shot: number | null; push: number | null } | null;
+    radius: { visual: number | null; hitbox: number | null; collision: number | null } | null;
     bodyCenterHeight: number | null;
     mass: number | null;
     /** VELOCITY_WIRE_SCALE fixed-point linear velocity. */

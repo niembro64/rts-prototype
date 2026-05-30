@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { SprayTarget } from '@/types/ui';
 import {
-  BUILD_BUBBLE_RADIUS_PUSH_MULT,
+  BUILD_BUBBLE_RADIUS_COLLISION_MULT,
   BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC,
   BUILD_RATE_DISPLAY_EMA_MODE,
   BUILD_RATE_EMA_HALF_LIFE_SEC,
@@ -140,8 +140,8 @@ export class ConstructionVisualController3D {
         halfHeight = b.depth * 0.5;
         sphereRadius = Math.hypot(b.width, b.height, b.depth) * 0.5;
       } else if (target.unit) {
-        halfHeight = target.unit.radius.body;
-        sphereRadius = target.unit.radius.body;
+        halfHeight = target.unit.radius.visual;
+        sphereRadius = target.unit.radius.visual;
       }
       this._factorySprayTargetWorld.set(
         target.transform.x,
@@ -193,7 +193,7 @@ export class ConstructionVisualController3D {
     let buildSpotRadius = 12;
     if (selectedUnitBlueprintId) {
       try {
-        buildSpotRadius = getUnitBlueprint(selectedUnitBlueprintId).radius.push;
+        buildSpotRadius = getUnitBlueprint(selectedUnitBlueprintId).radius.collision;
       } catch {
         // Unknown selection ids should not break rendering; keep the default.
       }
@@ -251,14 +251,14 @@ export class ConstructionVisualController3D {
     if (selectedUnitBlueprintId) {
       try {
         const bp = getUnitBlueprint(selectedUnitBlueprintId);
-        blueprintRadius = bp.radius.body;
-        buildSpotRadius = bp.radius.push;
+        blueprintRadius = bp.radius.visual;
+        buildSpotRadius = bp.radius.collision;
       } catch {
         // Unknown selection ids should not break rendering; keep the generic bay ghost.
       }
     }
 
-    const targetGhostRadius = Math.max(8, buildSpotRadius * BUILD_BUBBLE_RADIUS_PUSH_MULT);
+    const targetGhostRadius = Math.max(8, buildSpotRadius * BUILD_BUBBLE_RADIUS_COLLISION_MULT);
     const easedProgress = progress * progress * (3 - 2 * progress);
     const ghostScaleProgress = 0.28 + easedProgress * 0.72;
     const timeSec = timeMs / 1000;

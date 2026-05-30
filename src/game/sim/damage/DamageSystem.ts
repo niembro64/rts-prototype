@@ -182,7 +182,7 @@ export class DamageSystem {
       const t = lineCircleIntersectionT(
         startX, startY, endX, endY,
         unit.transform.x, unit.transform.y,
-        unit.unit.radius.shot + lineWidth / 2
+        unit.unit.radius.hitbox + lineWidth / 2
       );
 
       if (t !== null && t < closestT) {
@@ -540,8 +540,8 @@ export class DamageSystem {
       const panels = unit.unit.forceFieldPanels;
       const mirrorsActive = this.world.turretForceFieldPanelsEnabled && panels.length > 0;
       const boundR = mirrorsActive
-        ? Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.shot) + lineWidth
-        : unit.unit.radius.shot + lineWidth / 2;
+        ? Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.hitbox) + lineWidth
+        : unit.unit.radius.hitbox + lineWidth / 2;
       if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
       if (mirrorsActive) {
@@ -602,7 +602,7 @@ export class DamageSystem {
           startX, startY, startZ,
           endX, endY, endZ,
           unit.transform.x, unit.transform.y, unit.transform.z,
-          unit.unit.radius.shot + lineWidth / 2
+          unit.unit.radius.hitbox + lineWidth / 2
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
@@ -744,7 +744,7 @@ export class DamageSystem {
         source.start.x, source.start.y, source.start.z,
         source.end.x, source.end.y, source.end.z,
         unit.transform.x, unit.transform.y, unit.transform.z,
-        unit.unit.radius.shot + source.width / 2
+        unit.unit.radius.hitbox + source.width / 2
       );
 
       if (t !== null && t < bestT) {
@@ -853,7 +853,7 @@ export class DamageSystem {
       if (source.excludeCommanders && unit.commander) continue;
       if (!unit.unit || unit.unit.hp <= 0) continue;
 
-      const combinedRadius = source.radius + unit.unit.radius.shot;
+      const combinedRadius = source.radius + unit.unit.radius.hitbox;
       const t = lineSphereIntersectionT(
         source.prev.x, source.prev.y, source.prev.z,
         source.current.x, source.current.y, source.current.z,
@@ -980,7 +980,7 @@ export class DamageSystem {
       const dx = unit.transform.x - source.center.x;
       const dy = unit.transform.y - source.center.y;
       const dz = unit.transform.z - source.center.z;
-      const targetRadius = unit.unit.radius.shot;
+      const targetRadius = unit.unit.radius.hitbox;
 
       // Cheap squared-distance rejection before sqrt
       const distSq = dx * dx + dy * dy + dz * dz;

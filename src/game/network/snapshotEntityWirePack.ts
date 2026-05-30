@@ -1301,7 +1301,7 @@ function packUnit(unit: UnitSub): unknown[] {
   if ((flags & UNIT_FLAG_BLUEPRINT_CODE) !== 0) row.push(unit.unitBlueprintCode!);
   if ((flags & UNIT_FLAG_RADIUS) !== 0) {
     const r = unit.radius!;
-    row.push(r.body ?? 0, r.shot ?? 0, r.push ?? 0);
+    row.push(r.visual ?? 0, r.hitbox ?? 0, r.collision ?? 0);
   }
   if ((flags & UNIT_FLAG_BODY_CENTER_HEIGHT) !== 0) row.push(unit.bodyCenterHeight!);
   if ((flags & UNIT_FLAG_MASS) !== 0) row.push(unit.mass!);
@@ -1354,10 +1354,10 @@ function unpackUnit(row: unknown[]): UnitSub {
     unit.unitBlueprintCode = row[i++] as number;
   }
   if ((flags & UNIT_FLAG_RADIUS) !== 0) {
-    const body = row[i++] as number;
-    const shot = row[i++] as number;
-    const push = row[i++] as number;
-    unit.radius = { body, shot, push };
+    const visual = row[i++] as number;
+    const hitbox = row[i++] as number;
+    const collision = row[i++] as number;
+    unit.radius = { visual, hitbox, collision };
   }
   if ((flags & UNIT_FLAG_BODY_CENTER_HEIGHT) !== 0) {
     unit.bodyCenterHeight = row[i++] as number;

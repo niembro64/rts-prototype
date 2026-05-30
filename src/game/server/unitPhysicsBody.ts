@@ -20,7 +20,7 @@ export function createPhysicsBodyForUnit(
   const body = physics.createUnitBody(
     entity.transform.x,
     entity.transform.y,
-    entity.unit.radius.push,
+    entity.unit.radius.collision,
     entity.unit.bodyCenterHeight,
     entity.unit.mass,
     `unit_${entity.id}`,

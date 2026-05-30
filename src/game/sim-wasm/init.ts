@@ -196,7 +196,7 @@ import __wbg_init, {
   combat_targeting_entity_vel_x_ptr,
   combat_targeting_entity_vel_y_ptr,
   combat_targeting_entity_vel_z_ptr,
-  combat_targeting_entity_radius_shot_ptr,
+  combat_targeting_entity_radius_hitbox_ptr,
   combat_targeting_entity_hp_ptr,
   combat_targeting_entity_flags_ptr,
   combat_targeting_entity_active_turret_mask_ptr,
@@ -555,7 +555,7 @@ export interface SimWasm {
     dx: Float64Array,
     dy: Float64Array,
     distance: Float64Array,
-    radiusPush: Float64Array,
+    radiusCollision: Float64Array,
     driveForce: Float64Array,
     traction: Float64Array,
     mass: Float64Array,
@@ -957,12 +957,12 @@ export interface SpatialApi {
   setEntityId: (slot: number, entityId: number) => void;
   /** Insert or update a unit at slot. owner_player=0 means "no owner".
    *  hp_alive=0 unsets the slot from the grid (matches updateUnit's
-   *  dead-unit fast path). radius_push is currently unused by queries
+   *  dead-unit fast path). radius_collision is currently unused by queries
    *  but kept in the per-slot SoA for future use. */
   setUnit: (
     slot: number,
     x: number, y: number, z: number,
-    radiusPush: number, radiusShot: number,
+    radiusCollision: number, radiusHitbox: number,
     ownerPlayer: number,
     hpAlive: number,
   ) => void;
@@ -1347,7 +1347,7 @@ export interface CombatTargetingApi {
     suspensionOffsetX: number,
     suspensionOffsetY: number,
     suspensionOffsetZ: number,
-    radiusShot: number,
+    radiusHitbox: number,
     aabbHalfX: number,
     aabbHalfY: number,
     aabbHalfZ: number,
@@ -1497,7 +1497,7 @@ export interface CombatTargetingApi {
   readonly entityVelXPtr: () => number;
   readonly entityVelYPtr: () => number;
   readonly entityVelZPtr: () => number;
-  readonly entityRadiusShotPtr: () => number;
+  readonly entityRadiusHitboxPtr: () => number;
   readonly entityHpPtr: () => number;
   readonly entityFlagsPtr: () => number;
   readonly entityActiveTurretMaskPtr: () => number;
@@ -2123,9 +2123,9 @@ export interface SnapshotEncodeApi {
     hasUnitType: number,
     unitTypeCode: number,
     hasRadius: number,
-    radiusBody: number,
-    radiusShot: number,
-    radiusPush: number,
+    radiusVisual: number,
+    radiusHitbox: number,
+    radiusCollision: number,
     hasBodyCenterHeight: number,
     bodyCenterHeight: number,
     hasMass: number,
@@ -3101,7 +3101,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           entityVelXPtr: combat_targeting_entity_vel_x_ptr,
           entityVelYPtr: combat_targeting_entity_vel_y_ptr,
           entityVelZPtr: combat_targeting_entity_vel_z_ptr,
-          entityRadiusShotPtr: combat_targeting_entity_radius_shot_ptr,
+          entityRadiusHitboxPtr: combat_targeting_entity_radius_hitbox_ptr,
           entityHpPtr: combat_targeting_entity_hp_ptr,
           entityFlagsPtr: combat_targeting_entity_flags_ptr,
           entityActiveTurretMaskPtr: combat_targeting_entity_active_turret_mask_ptr,

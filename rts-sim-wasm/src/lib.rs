@@ -685,7 +685,7 @@ fn compute_arrival_control_thrust(
     distance: f64,
     body_vx: f64,
     body_vy: f64,
-    radius_push: f64,
+    radius_collision: f64,
     drive_force: f64,
     traction: f64,
     mass: f64,
@@ -719,7 +719,7 @@ fn compute_arrival_control_thrust(
         return (dx * inv_distance, dy * inv_distance, 1);
     }
 
-    let control_radius = control_radius_min.max(radius_push * 8.0);
+    let control_radius = control_radius_min.max(radius_collision * 8.0);
     let position_gain = max_accel / control_radius;
     let velocity_gain = 2.0 * position_gain.sqrt();
     let response_gain = if dt_sec > 0.0 {
@@ -751,7 +751,7 @@ pub fn arrival_control_step_batch(
     dx: &[f64],
     dy: &[f64],
     distance: &[f64],
-    radius_push: &[f64],
+    radius_collision: &[f64],
     drive_force: &[f64],
     traction: &[f64],
     mass: &[f64],
@@ -771,7 +771,7 @@ pub fn arrival_control_step_batch(
     debug_assert!(dx.len() >= count);
     debug_assert!(dy.len() >= count);
     debug_assert!(distance.len() >= count);
-    debug_assert!(radius_push.len() >= count);
+    debug_assert!(radius_collision.len() >= count);
     debug_assert!(drive_force.len() >= count);
     debug_assert!(traction.len() >= count);
     debug_assert!(mass.len() >= count);
@@ -790,7 +790,7 @@ pub fn arrival_control_step_batch(
             distance[i],
             p.vel_x[slot],
             p.vel_y[slot],
-            radius_push[i],
+            radius_collision[i],
             drive_force[i],
             traction[i],
             mass[i],
@@ -6539,8 +6539,8 @@ struct SpatialGridState {
     slot_x: Vec<f64>,
     slot_y: Vec<f64>,
     slot_z: Vec<f64>,
-    slot_radius_push: Vec<f64>,
-    slot_radius_shot: Vec<f64>,
+    slot_radius_collision: Vec<f64>,
+    slot_radius_hitbox: Vec<f64>,
     slot_aabb_hx: Vec<f64>,
     slot_aabb_hy: Vec<f64>,
     slot_aabb_hz: Vec<f64>,
@@ -6577,8 +6577,8 @@ impl SpatialGridState {
             slot_x: Vec::new(),
             slot_y: Vec::new(),
             slot_z: Vec::new(),
-            slot_radius_push: Vec::new(),
-            slot_radius_shot: Vec::new(),
+            slot_radius_collision: Vec::new(),
+            slot_radius_hitbox: Vec::new(),
             slot_aabb_hx: Vec::new(),
             slot_aabb_hy: Vec::new(),
             slot_aabb_hz: Vec::new(),
@@ -6808,10 +6808,10 @@ pub fn spatial_init(cell_size: f64, initial_slot_capacity: u32) {
     state.slot_y.resize(cap, 0.0);
     state.slot_z.clear();
     state.slot_z.resize(cap, 0.0);
-    state.slot_radius_push.clear();
-    state.slot_radius_push.resize(cap, 0.0);
-    state.slot_radius_shot.clear();
-    state.slot_radius_shot.resize(cap, 0.0);
+    state.slot_radius_collision.clear();
+    state.slot_radius_collision.resize(cap, 0.0);
+    state.slot_radius_hitbox.clear();
+    state.slot_radius_hitbox.resize(cap, 0.0);
     state.slot_aabb_hx.clear();
     state.slot_aabb_hx.resize(cap, 0.0);
     state.slot_aabb_hy.clear();
@@ -6863,8 +6863,8 @@ fn spatial_ensure_slot_capacity(state: &mut SpatialGridState, slot: u32) {
     state.slot_x.resize(needed, 0.0);
     state.slot_y.resize(needed, 0.0);
     state.slot_z.resize(needed, 0.0);
-    state.slot_radius_push.resize(needed, 0.0);
-    state.slot_radius_shot.resize(needed, 0.0);
+    state.slot_radius_collision.resize(needed, 0.0);
+    state.slot_radius_hitbox.resize(needed, 0.0);
     state.slot_aabb_hx.resize(needed, 0.0);
     state.slot_aabb_hy.resize(needed, 0.0);
     state.slot_aabb_hz.resize(needed, 0.0);
@@ -6914,8 +6914,8 @@ pub fn spatial_set_unit(
     x: f64,
     y: f64,
     z: f64,
-    radius_push: f64,
-    radius_shot: f64,
+    radius_collision: f64,
+    radius_hitbox: f64,
     owner_player: u8,
     hp_alive: u8,
 ) {
@@ -6934,8 +6934,8 @@ pub fn spatial_set_unit(
     state.slot_x[s] = x;
     state.slot_y[s] = y;
     state.slot_z[s] = z;
-    state.slot_radius_push[s] = radius_push;
-    state.slot_radius_shot[s] = radius_shot;
+    state.slot_radius_collision[s] = radius_collision;
+    state.slot_radius_hitbox[s] = radius_hitbox;
     if prev_kind == SPATIAL_KIND_UNIT {
         let old_key = state.slot_cube_key[s];
         if old_key != new_key {
@@ -7307,7 +7307,7 @@ fn spatial_push_unit_if_in_radius(
 
     let mut check_radius_sq = radius_sq;
     if include_shot_radius {
-        let shot = state.slot_radius_shot[s];
+        let shot = state.slot_radius_hitbox[s];
         // JS path: `if (shotRadius === undefined) return;` We treat
         // 0.0 as "no shot radius" since units always set it positively.
         if shot <= 0.0 {
@@ -8057,7 +8057,7 @@ fn spatial_has_entity_line_of_sight(
                     state.slot_x[s],
                     state.slot_y[s],
                     state.slot_z[s],
-                    state.slot_radius_push[s],
+                    state.slot_radius_collision[s],
                 ) {
                     state.nearby_cells = nearby;
                     state.dedup = dedup;
@@ -8114,7 +8114,7 @@ fn spatial_has_entity_line_of_sight(
 /// AIM-08.LOS — full combat line-of-sight gate. One WASM dispatch
 /// checks terrain first, then live unit/building blockers from the
 /// spatial slab. Returns 1 when clear and 0 when any terrain sample,
-/// unit push sphere, or building AABB blocks the segment. A missing
+/// unit collision sphere, or building AABB blocks the segment. A missing
 /// terrain mesh is treated as terrain-clear; normal server/client
 /// boot installs the mesh before combat ticks, and this keeps the
 /// kernel usable in low-level tests that only populate blockers.
@@ -10931,7 +10931,7 @@ struct CombatTargetingPool {
     entity_suspension_offset_x: Vec<f64>,
     entity_suspension_offset_y: Vec<f64>,
     entity_suspension_offset_z: Vec<f64>,
-    entity_radius_shot: Vec<f64>,
+    entity_radius_hitbox: Vec<f64>,
     // AABB half-extents for AABB-shaped targets (buildings). Zero on
     // sphere-shaped targets (units / projectiles) so aim-point
     // resolution can clamp uniformly without branching on entity
@@ -10985,7 +10985,7 @@ struct CombatTargetingPool {
     observation_max_detection_padding: f64,
     // Per-entity detection padding the cloak-observability walk adds
     // when this entity is the *target*. Matches the JS
-    // `getEntityDetectionPadding` value (max body/shot/push radius for
+    // `getEntityDetectionPadding` value (max body/shot/collision radius for
     // units; max half-extent for buildings).
     entity_detection_padding: Vec<f32>,
     // Per-entity targeting inputs that were JS scratch arrays before
@@ -11140,7 +11140,7 @@ impl CombatTargetingPool {
             entity_suspension_offset_x: Vec::new(),
             entity_suspension_offset_y: Vec::new(),
             entity_suspension_offset_z: Vec::new(),
-            entity_radius_shot: Vec::new(),
+            entity_radius_hitbox: Vec::new(),
             entity_aabb_half_x: Vec::new(),
             entity_aabb_half_y: Vec::new(),
             entity_aabb_half_z: Vec::new(),
@@ -11261,7 +11261,7 @@ impl CombatTargetingPool {
             self.entity_suspension_offset_x.resize(entity_needed, 0.0);
             self.entity_suspension_offset_y.resize(entity_needed, 0.0);
             self.entity_suspension_offset_z.resize(entity_needed, 0.0);
-            self.entity_radius_shot.resize(entity_needed, 0.0);
+            self.entity_radius_hitbox.resize(entity_needed, 0.0);
             self.entity_aabb_half_x.resize(entity_needed, 0.0);
             self.entity_aabb_half_y.resize(entity_needed, 0.0);
             self.entity_aabb_half_z.resize(entity_needed, 0.0);
@@ -11621,7 +11621,7 @@ pub fn combat_targeting_set_entity(
     suspension_offset_x: f64,
     suspension_offset_y: f64,
     suspension_offset_z: f64,
-    radius_shot: f64,
+    radius_hitbox: f64,
     aabb_half_x: f64,
     aabb_half_y: f64,
     aabb_half_z: f64,
@@ -11682,7 +11682,7 @@ pub fn combat_targeting_set_entity(
     pool.entity_suspension_offset_x[s] = suspension_offset_x;
     pool.entity_suspension_offset_y[s] = suspension_offset_y;
     pool.entity_suspension_offset_z[s] = suspension_offset_z;
-    pool.entity_radius_shot[s] = radius_shot;
+    pool.entity_radius_hitbox[s] = radius_hitbox;
     pool.entity_aabb_half_x[s] = aabb_half_x;
     pool.entity_aabb_half_y[s] = aabb_half_y;
     pool.entity_aabb_half_z[s] = aabb_half_z;
@@ -12085,8 +12085,8 @@ combat_targeting_ptr_export!(combat_targeting_entity_vel_x_ptr, entity_vel_x, f6
 combat_targeting_ptr_export!(combat_targeting_entity_vel_y_ptr, entity_vel_y, f64);
 combat_targeting_ptr_export!(combat_targeting_entity_vel_z_ptr, entity_vel_z, f64);
 combat_targeting_ptr_export!(
-    combat_targeting_entity_radius_shot_ptr,
-    entity_radius_shot,
+    combat_targeting_entity_radius_hitbox_ptr,
+    entity_radius_hitbox,
     f64
 );
 combat_targeting_ptr_export!(
@@ -13612,7 +13612,7 @@ fn combat_targeting_current_fire_target_rank_sq(
         turret_idx,
         true,
         dist_sq,
-        pool.entity_radius_shot[target_slot],
+        pool.entity_radius_hitbox[target_slot],
     );
     (rank, dist_sq)
 }
@@ -14589,7 +14589,7 @@ pub fn combat_targeting_apply_priority_target_fsm_batch(
         0
     };
     let target_radius = target_slot
-        .map(|slot| pool.entity_radius_shot[slot])
+        .map(|slot| pool.entity_radius_hitbox[slot])
         .unwrap_or(0.0);
     let count = (pool.turret_count_per_entity[entity_idx] as usize)
         .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize)
@@ -14721,7 +14721,7 @@ pub fn combat_targeting_validate_existing_lock_fsm_batch(
             0
         };
         let target_radius = target_slot
-            .map(|slot| pool.entity_radius_shot[slot])
+            .map(|slot| pool.entity_radius_hitbox[slot])
             .unwrap_or(0.0);
         let dist_sq = target_slot
             .map(|slot| combat_targeting_dist_sq_to_entity_slot(pool, idx, slot))
@@ -14771,7 +14771,7 @@ fn combat_targeting_compute_and_apply_priority_target_fsm_batch_inner(
             {
                 (
                     1u8,
-                    pool.entity_radius_shot[slot],
+                    pool.entity_radius_hitbox[slot],
                     pool.entity_vel_x[slot],
                     pool.entity_vel_y[slot],
                     pool.entity_vel_z[slot],
@@ -15024,7 +15024,7 @@ fn combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
                 if combat_targeting_entity_alive(pool, slot) {
                     (
                         1u8,
-                        pool.entity_radius_shot[slot],
+                        pool.entity_radius_hitbox[slot],
                         pool.entity_vel_x[slot],
                         pool.entity_vel_y[slot],
                         pool.entity_vel_z[slot],
@@ -15622,13 +15622,13 @@ fn combat_targeting_collect_spatial_candidate_cell(
         }
         let dx = pool.entity_pos_x[slot] - source_x;
         let dy = pool.entity_pos_y[slot] - source_y;
-        let target_z_radius = pool.entity_radius_shot[slot].max(pool.entity_aabb_half_z[slot]);
+        let target_z_radius = pool.entity_radius_hitbox[slot].max(pool.entity_aabb_half_z[slot]);
         if (pool.entity_pos_z[slot] - source_z).abs() > batch_radius + target_z_radius {
             continue;
         }
         let in_range = match pool.entity_family[slot] {
             CT_ENTITY_FAMILY_UNIT | CT_ENTITY_FAMILY_LOCOMOTION | CT_ENTITY_FAMILY_SHOT => {
-                let shot = pool.entity_radius_shot[slot];
+                let shot = pool.entity_radius_hitbox[slot];
                 shot > 0.0 && {
                     let r = batch_radius + shot;
                     dx * dx + dy * dy <= r * r
@@ -15669,7 +15669,7 @@ fn combat_targeting_collect_spatial_candidate_cell(
         scratch.pos_x.push(pool.entity_pos_x[slot]);
         scratch.pos_y.push(pool.entity_pos_y[slot]);
         scratch.pos_z.push(pool.entity_pos_z[slot]);
-        scratch.radius.push(pool.entity_radius_shot[slot]);
+        scratch.radius.push(pool.entity_radius_hitbox[slot]);
         scratch.force_field_panel_score.push(0.0);
     }
 }
@@ -19814,9 +19814,9 @@ pub fn snapshot_encode_entity_unit(
     has_unit_type: u8,
     unit_type_code: u32,
     has_radius: u8,
-    radius_body: f64,
-    radius_shot: f64,
-    radius_push: f64,
+    radius_visual: f64,
+    radius_hitbox: f64,
+    radius_collision: f64,
     has_body_center_height: u8,
     body_center_height: f64,
     has_mass: u8,
@@ -19948,12 +19948,12 @@ pub fn snapshot_encode_entity_unit(
     if has_radius != 0 {
         w.write_str("radius");
         w.write_map_header(3);
-        w.write_str("body");
-        w.write_number(radius_body);
-        w.write_str("shot");
-        w.write_number(radius_shot);
-        w.write_str("push");
-        w.write_number(radius_push);
+        w.write_str("visual");
+        w.write_number(radius_visual);
+        w.write_str("hitbox");
+        w.write_number(radius_hitbox);
+        w.write_str("collision");
+        w.write_number(radius_collision);
     }
 
     if has_body_center_height != 0 {
@@ -21256,12 +21256,12 @@ fn pack_projectile_beam_updates_v2(count: usize, beam_point_count: usize) {
 ///   [7]     radius
 ///   [8]     color
 ///   [9]     visualRadius (gated by flags bit 0)
-///   [10]    pushRadius (gated by flags bit 1)
+///   [10]    collisionRadius (gated by flags bit 1)
 ///   [11]    baseZ (gated by flags bit 2)
 ///   [12]    rotation (gated by flags bit 4)
 ///   [13]    unitBlueprintId string-scratch slot (gated by flags bit 3)
 ///   [14]    turretPoses_count (gated by flags bit 5)
-///   [15]    flags: bit 0 has_visualRadius, bit 1 has_pushRadius,
+///   [15]    flags: bit 0 has_visualRadius, bit 1 has_collisionRadius,
 ///            bit 2 has_baseZ, bit 3 has_unitType, bit 4 has_rotation,
 ///            bit 5 has_turretPoses
 const SNAPSHOT_ENCODE_DEATH_CONTEXT_STRIDE: usize = 16;
@@ -24170,7 +24170,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             let radius = death_scratch.buf[db + 7];
             let color = death_scratch.buf[db + 8];
             let visual_radius = death_scratch.buf[db + 9];
-            let push_radius = death_scratch.buf[db + 10];
+            let death_collision_radius = death_scratch.buf[db + 10];
             let base_z = death_scratch.buf[db + 11];
             let rotation = death_scratch.buf[db + 12];
             let unit_type_slot = death_scratch.buf[db + 13] as u32;
@@ -24178,7 +24178,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             let dflags = death_scratch.buf[db + 15] as u32;
 
             let has_visual_radius = (dflags & 0x01) != 0;
-            let has_push_radius = (dflags & 0x02) != 0;
+            let has_collision_radius = (dflags & 0x02) != 0;
             let has_base_z = (dflags & 0x04) != 0;
             let has_unit_type = (dflags & 0x08) != 0;
             let has_rotation = (dflags & 0x10) != 0;
@@ -24190,7 +24190,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
             if has_visual_radius {
                 dc_field_count += 1;
             }
-            if has_push_radius {
+            if has_collision_radius {
                 dc_field_count += 1;
             }
             if has_base_z {
@@ -24211,7 +24211,7 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
 
             // Literal order from damageHelpers.ts: unitVel, hitDir,
             // projectileVel, attackMagnitude, radius, visualRadius,
-            // pushRadius, baseZ, color, unitBlueprintId, rotation, turretPoses.
+            // collisionRadius, baseZ, color, unitBlueprintId, rotation, turretPoses.
             w.write_str("unitVel");
             w.write_map_header(2);
             w.write_str("x");
@@ -24238,9 +24238,9 @@ pub fn snapshot_encode_envelope_emit_audio_events(count: u32) -> u32 {
                 w.write_str("visualRadius");
                 w.write_number(visual_radius);
             }
-            if has_push_radius {
-                w.write_str("pushRadius");
-                w.write_number(push_radius);
+            if has_collision_radius {
+                w.write_str("collisionRadius");
+                w.write_number(death_collision_radius);
             }
             if has_base_z {
                 w.write_str("baseZ");

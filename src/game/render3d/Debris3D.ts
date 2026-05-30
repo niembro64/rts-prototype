@@ -437,7 +437,7 @@ export class Debris3D {
    *  (simX, simY) is the horizontal footprint, simZ is the unit's sim
    *  center altitude at death. Debris templates are local to the
    *  rendered body/base, so the vertical origin must be the same base
-   *  Y used by Render3DEntities: transform.z - pushRadius. New death
+   *  Y used by Render3DEntities: transform.z - collisionRadius. New death
    *  contexts carry that as `baseZ`; older contexts fall back to the
    *  previous radius-derived estimate. */
   spawn(
@@ -459,9 +459,9 @@ export class Debris3D {
     const primary = ctx.color ?? COLORS.units.locomotion.hover.smoke.colorHex;
     const rotation = ctx.rotation ?? 0;
     // Vertical lift of the piece's local-y. Prefer the exact rendered
-    // base altitude from the death context; fall back to push radius,
+    // base altitude from the death context; fall back to collision radius,
     // then visual radius, for older snapshots / synthesized events.
-    const groundZ = ctx.baseZ ?? (simZ - (ctx.pushRadius ?? r));
+    const groundZ = ctx.baseZ ?? (simZ - (ctx.collisionRadius ?? r));
 
     const templates = this.buildTemplates(ctx, r);
     const candidateCount = Math.ceil(templates.length / stride);

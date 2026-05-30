@@ -65,7 +65,7 @@ function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
 
 export function getUnitHudTopY(unit: Entity): number {
   if (!unit.unit) return unit.transform.z;
-  const unitRadius = unit.unit.radius.body;
+  const unitRadius = unit.unit.radius.visual;
   const groundY = getUnitGroundZ(unit);
   let topAboveGround = unitRadius;
 

@@ -58,7 +58,7 @@ export function buildForceFieldPanelMesh3D(
   pivotLocalX: number,
   pivotLocalY: number,
   pivotLocalZ: number,
-  /** Half the square's edge length (= radius.body). Same value the sim
+  /** Half the square's edge length (= radius.visual). Same value the sim
    *  cache stores in halfWidth/halfHeight. */
   panelHalfSide: number,
   /** Forward arm length from the turret body sphere center to the

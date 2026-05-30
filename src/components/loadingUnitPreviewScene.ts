@@ -180,7 +180,7 @@ export class LoadingUnitPreviewScene {
 
 function buildPreviewUnitModel(unitBlueprintId: BuildableUnitBlueprintId, shellMaterial: THREE.Material): THREE.Group {
   const blueprint = getUnitBlueprint(unitBlueprintId);
-  const radius = blueprint.radius.body;
+  const radius = blueprint.radius.visual;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const root = new THREE.Group();
   const yawGroup = new THREE.Group();
@@ -213,7 +213,7 @@ function buildPreviewBody(
     if (part.rotZ) mesh.rotation.z = part.rotZ;
     chassis.add(mesh);
   }
-  chassis.scale.setScalar(blueprint.radius.body);
+  chassis.scale.setScalar(blueprint.radius.visual);
   liftGroup.add(chassis);
 }
 
@@ -224,7 +224,7 @@ function buildPreviewTurrets(
   chassisLift: number,
   shellMaterial: THREE.Material,
 ): void {
-  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.body);
+  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
   for (const turret of turrets) {
     const turretMesh = buildTurretMesh3D(liftGroup, turret, PREVIEW_GFX, {
       headGeom: turretHeadGeom,
@@ -252,7 +252,7 @@ function buildPreviewLocomotion(
 ): void {
   const locomotion = blueprint.locomotion;
   if (!locomotion) return;
-  const radius = blueprint.radius.body;
+  const radius = blueprint.radius.visual;
   switch (locomotion.type) {
     case 'treads':
       buildTreads(yawGroup, radius, locomotion.config, true, undefined);
@@ -282,7 +282,7 @@ function buildPreviewMirrors(
   buildForceFieldPanelCache(blueprint, forceFieldPanels);
   if (forceFieldPanels.length === 0) return;
 
-  const turrets = createUnitRuntimeTurrets(blueprint.unitBlueprintId, blueprint.radius.body);
+  const turrets = createUnitRuntimeTurrets(blueprint.unitBlueprintId, blueprint.radius.visual);
   const forceFieldPanelTurret = turrets.find((turret) => turret.config.passive);
   const panelHalfSide = forceFieldPanels[0].halfWidth;
   const panelArmLength = forceFieldPanels[0].offsetX;
@@ -310,7 +310,7 @@ function buildPreviewLegs(
 ): void {
   const locomotion = blueprint.locomotion;
   if (!locomotion || locomotion.type !== 'legs') return;
-  const radius = blueprint.radius.body;
+  const radius = blueprint.radius.visual;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const { all } = resolveMirroredLegConfigs(locomotion.config, radius);
   const upperRadius = Math.max(locomotion.config.upperThickness, 1) * 0.6;

@@ -1200,7 +1200,7 @@ export class Simulation {
       unit.flyingLoiterTurnSign = turnSign;
     }
 
-    const radius = Math.max(FLYING_LOITER_MIN_RADIUS, unit.radius.push * FLYING_LOITER_RADIUS_MULT);
+    const radius = Math.max(FLYING_LOITER_MIN_RADIUS, unit.radius.collision * FLYING_LOITER_RADIUS_MULT);
     const radialX = dx / distance;
     const radialY = dy / distance;
     const tangentX = -radialY * turnSign;
@@ -1248,9 +1248,9 @@ export class Simulation {
     const distance = new Float64Array(next);
     distance.set(this._arrivalDistanceBuf);
     this._arrivalDistanceBuf = distance;
-    const radiusPush = new Float64Array(next);
-    radiusPush.set(this._arrivalRadiusPushBuf);
-    this._arrivalRadiusPushBuf = radiusPush;
+    const radiusCollision = new Float64Array(next);
+    radiusCollision.set(this._arrivalRadiusPushBuf);
+    this._arrivalRadiusPushBuf = radiusCollision;
     const driveForce = new Float64Array(next);
     driveForce.set(this._arrivalDriveForceBuf);
     this._arrivalDriveForceBuf = driveForce;
@@ -1302,7 +1302,7 @@ export class Simulation {
     this._arrivalDxBuf[index] = dx;
     this._arrivalDyBuf[index] = dy;
     this._arrivalDistanceBuf[index] = distance;
-    this._arrivalRadiusPushBuf[index] = unit.radius.push;
+    this._arrivalRadiusPushBuf[index] = unit.radius.collision;
     this._arrivalDriveForceBuf[index] = unit.locomotion.driveForce;
     this._arrivalTractionBuf[index] = unit.locomotion.traction;
     this._arrivalMassBuf[index] = unit.mass;

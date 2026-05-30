@@ -1,6 +1,6 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
-// - Units:        cylinder (radius from unit.radius.body, height ∝ radius)
+// - Units:        cylinder (radius from unit.radius.visual, height ∝ radius)
 // - Turrets:      one per entry in entity.combat.turrets, positioned at the
 //                 blueprint-authored chassis-local 3D mount, rotated to
 //                 the turret's firing angle, with white barrel cylinders.
@@ -105,7 +105,7 @@ const _invTiltQuat = new THREE.Quaternion();
 // Force-field panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // forceFieldPanelCache.ts computes baseY/topY/halfWidth from the turret's
-// mount.z + radius.body scaled by FORCE_FIELD_PANEL_SIZE_MULT; both the
+// mount.z + radius.visual scaled by FORCE_FIELD_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 
@@ -182,7 +182,7 @@ export class Render3DEntities {
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
-  // Unit-radius indicator wireframe spheres (BODY/SHOT/PUSH). Unit
+  // Unit-radius indicator wireframe spheres (VISUAL/HITBOX/COLLISION). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
   // the debug viz is a matching 3D wireframe sphere (not a flat
@@ -363,7 +363,7 @@ export class Render3DEntities {
    *  the scene. TURR CIR circles (per-turret) and the BLD build circle
    *  are the only ones in this category — they represent absolute
    *  horizontal ranges keyed to the turret mount / unit center. UNIT
-   *  SPH spheres (BODY/SHOT/PUSH) ride the unit group and leave
+   *  SPH spheres (VISUAL/HITBOX/COLLISION) ride the unit group and leave
    *  alongside m.group. */
   private disposeWorldParentedOverlays(m: EntityMesh): void {
     this.selectionOverlays.removeWorldParentedOverlays(m);
@@ -445,8 +445,8 @@ export class Render3DEntities {
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
       // whatever height the body resolves to.
-      const radius = e.unit?.radius.body
-        ?? e.unit?.radius.shot
+      const radius = e.unit?.radius.visual
+        ?? e.unit?.radius.hitbox
         ?? 15;
       const pid = e.ownership?.playerId;
       const fullUnitDetail = true;

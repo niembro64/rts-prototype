@@ -401,9 +401,13 @@ pub struct ForceFieldPanel {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TurretRadiusConfig {
-    pub body: f64,
+pub struct EntityRadiusConfig {
+    pub visual: f64,
+    pub hitbox: f64,
+    pub collision: f64,
 }
+
+pub type TurretRadiusConfig = EntityRadiusConfig;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TurretAimAngleType {
@@ -831,12 +835,7 @@ pub struct DetectorBlueprint {
     pub radius: f64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct UnitRadiusConfig {
-    pub body: f64,
-    pub shot: f64,
-    pub push: f64,
-}
+pub type UnitRadiusConfig = EntityRadiusConfig;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitBuilderConfig {

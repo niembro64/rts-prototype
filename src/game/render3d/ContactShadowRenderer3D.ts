@@ -141,8 +141,8 @@ export class ContactShadowRenderer3D {
       const entity = units[i];
       const unit = entity.unit;
       if (!unit || unit.hp <= 0) continue;
-      const radius = unit.radius.shot * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
-      const restHeight = Math.max(1, unit.bodyCenterHeight ?? unit.radius.body);
+      const radius = unit.radius.hitbox * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
+      const restHeight = Math.max(1, unit.bodyCenterHeight ?? unit.radius.visual);
       const groundZ = getLocomotionSurfaceHeight(
         entity.transform.x,
         entity.transform.y,

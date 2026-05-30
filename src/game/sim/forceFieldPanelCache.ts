@@ -5,7 +5,7 @@
 // so beam-vs-mirror collision uses the exact same canonical rectangles
 // on host and client.
 //
-// The force-field panel is a square slab sized from radius.body and mounted
+// The force-field panel is a square slab sized from radius.visual and mounted
 // from the host's turret mount. The material lives on the force-field shot;
 // this cache only materializes the mount-authored geometry into runtime units.
 // Visual side support rails are rendered from the same panel sizing;
@@ -15,7 +15,7 @@ import type { CachedForceFieldPanel } from '../../types/sim';
 import type { UnitBlueprint } from '../../types/blueprints';
 
 /** Forward arm length (from turret body center to panel center) as a
- *  multiple of unit radius.body. 1.0 puts the panel center at the
+ *  multiple of unit radius.visual. 1.0 puts the panel center at the
  *  body edge; bigger values stretch the support rails further out. */
 export const FORCE_FIELD_PANEL_ARM_LENGTH_MULT = 1.8;
 
@@ -23,10 +23,10 @@ export const FORCE_FIELD_PANEL_ARM_LENGTH_MULT = 1.8;
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `forceFieldPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
- *  edit. 1.0 = legacy "panel side = 2 × radius.body". */
+ *  edit. 1.0 = legacy "panel side = 2 × radius.visual". */
 export const FORCE_FIELD_PANEL_SIZE_MULT = 2.0;
 
-/** Mirror frame geometry derived from `panelHalfSide` (= radius.body
+/** Mirror frame geometry derived from `panelHalfSide` (= radius.visual
  *  × FORCE_FIELD_PANEL_SIZE_MULT).
  *
  *  - `side`              — full panel edge length (= 2 × halfSide).
@@ -146,7 +146,7 @@ export function buildForceFieldPanelCache(
   bp: UnitBlueprint,
   panelsOut: CachedForceFieldPanel[],
 ): number {
-  const unitBodyRadius = bp.radius.body;
+  const unitBodyRadius = bp.radius.visual;
   const halfSide = unitBodyRadius * FORCE_FIELD_PANEL_SIZE_MULT;
   let forceFieldBoundRadius = 0;
 

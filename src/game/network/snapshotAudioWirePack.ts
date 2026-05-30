@@ -28,7 +28,7 @@ const EVENT_HAS_DEATH_CONTEXT = 0x200;
 const EVENT_HAS_IMPACT_CONTEXT = 0x400;
 
 const DEATH_HAS_VISUAL_RADIUS = 0x01;
-const DEATH_HAS_PUSH_RADIUS = 0x02;
+const DEATH_HAS_COLLISION_RADIUS = 0x02;
 const DEATH_HAS_BASE_Z = 0x04;
 const DEATH_HAS_UNIT_TYPE = 0x08;
 const DEATH_HAS_ROTATION = 0x10;
@@ -360,7 +360,7 @@ function appendDeathContextRow(
 ): void {
   let flags = 0;
   if (context.visualRadius !== undefined) flags |= DEATH_HAS_VISUAL_RADIUS;
-  if (context.pushRadius !== undefined) flags |= DEATH_HAS_PUSH_RADIUS;
+  if (context.collisionRadius !== undefined) flags |= DEATH_HAS_COLLISION_RADIUS;
   if (context.baseZ !== undefined) flags |= DEATH_HAS_BASE_Z;
   if (context.unitBlueprintId !== undefined) flags |= DEATH_HAS_UNIT_TYPE;
   if (context.rotation !== undefined) flags |= DEATH_HAS_ROTATION;
@@ -381,7 +381,7 @@ function appendDeathContextRow(
   );
 
   if (context.visualRadius !== undefined) row.push(quantizeProjectilePosition(context.visualRadius));
-  if (context.pushRadius !== undefined) row.push(quantizeProjectilePosition(context.pushRadius));
+  if (context.collisionRadius !== undefined) row.push(quantizeProjectilePosition(context.collisionRadius));
   if (context.baseZ !== undefined) row.push(quantizeProjectilePosition(context.baseZ));
   if (context.unitBlueprintId !== undefined) {
     row.push(stringSlot(strings, stringSlots, context.unitBlueprintId));
@@ -436,8 +436,8 @@ function unpackDeathContextRow(
   if ((flags & DEATH_HAS_VISUAL_RADIUS) !== 0) {
     context.visualRadius = dequantizeProjectilePosition(source[cursor++] ?? 0);
   }
-  if ((flags & DEATH_HAS_PUSH_RADIUS) !== 0) {
-    context.pushRadius = dequantizeProjectilePosition(source[cursor++] ?? 0);
+  if ((flags & DEATH_HAS_COLLISION_RADIUS) !== 0) {
+    context.collisionRadius = dequantizeProjectilePosition(source[cursor++] ?? 0);
   }
   if ((flags & DEATH_HAS_BASE_Z) !== 0) {
     context.baseZ = dequantizeProjectilePosition(source[cursor++] ?? 0);

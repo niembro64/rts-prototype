@@ -280,9 +280,13 @@ export type ForceFieldPanel = {
   angle: number;
 };
 
-export type TurretRadiusConfig = {
-  body: number;
+export type EntityRadiusConfig = {
+  visual: number;
+  hitbox: number;
+  collision: number;
 };
+
+export type TurretRadiusConfig = EntityRadiusConfig;
 
 export type TurretAimAngleType = 'rayDirect' | 'rayBisectTurretAndBody' | 'ballisticArcLow' | 'ballisticArcLowOnlyUnder' | 'ballisticArcHigh';
 
@@ -621,11 +625,7 @@ export type DetectorBlueprint = {
   radius: number;
 };
 
-export type UnitRadiusConfig = {
-  body: number;
-  shot: number;
-  push: number;
-};
+export type UnitRadiusConfig = EntityRadiusConfig;
 
 export type UnitBuilderConfig = {
   buildRange: number;

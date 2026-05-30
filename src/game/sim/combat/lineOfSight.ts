@@ -24,7 +24,7 @@ const LOS_STEP_FRAC = 0.5;
 export const COMBAT_LOS_TERRAIN_STEP_LEN = LAND_CELL_SIZE * LOS_STEP_FRAC;
 export const COMBAT_LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE + 2 * Math.max(
   0,
-  ...Object.values(UNIT_BLUEPRINTS).map((bp) => bp.radius.push),
+  ...Object.values(UNIT_BLUEPRINTS).map((bp) => bp.radius.collision),
 );
 const NO_EXCLUDED_ENTITY = -1;
 /** Sightline-graze epsilon. Hits within FORCE_MATERIAL_GRAZE_EPS of

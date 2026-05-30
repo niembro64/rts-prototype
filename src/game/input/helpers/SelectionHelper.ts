@@ -17,7 +17,7 @@ type ClosestEntityOptions = {
    *  recognize any live unit/building under the cursor. */
   playerId?: PlayerId;
   /** Small floor for very small units. The actual selectable footprint
-   *  is the unit's push radius so click-selection matches spacing and
+   *  is the unit's collision radius so click-selection matches spacing and
    *  collision expectations, not cosmetic body art. */
   minUnitRadius?: number;
 };
@@ -49,7 +49,7 @@ export function findClosestSelectableEntityToPoint(
     if (!canUseUnit(entity, playerId)) continue;
     const dx = entity.transform.x - worldX;
     const dy = entity.transform.y - worldY;
-    const radius = Math.max(minUnitRadius, entity.unit!.radius.push);
+    const radius = Math.max(minUnitRadius, entity.unit!.radius.collision);
     const distSq = dx * dx + dy * dy;
     if (distSq <= radius * radius && (!closest || distSq < closest.distSq)) {
       closest = { id: entity.id, distSq };

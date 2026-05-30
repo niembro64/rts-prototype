@@ -47,7 +47,7 @@ type Firepower = {
 export function buildLoadingUnitInfo(unitBlueprintId: BuildableUnitBlueprintId): LoadingUnitInfo {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
-  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.body);
+  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
   const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
   const firepower = turrets.reduce<Firepower>(
     (acc, turret) => {
@@ -100,7 +100,7 @@ function buildEconomySection(
       stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
       stat('Hit points', fmt(blueprint.hp)),
       stat('Mass', fmt(blueprint.mass)),
-      stat('Size', fmt(blueprint.radius.body)),
+      stat('Size', fmt(blueprint.radius.visual)),
       stat(
         'Fight-move stop',
         blueprint.fightStopEngagedRatio === null

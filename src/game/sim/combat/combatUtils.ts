@@ -43,7 +43,7 @@ export function turretMaskIncludes(mask: number | undefined, index: number): boo
 // change), so this is a property read, not a per-call sqrt.
 export function getTargetRadius(target: Entity): number {
   if (target.unit) {
-    return target.unit.radius.shot;
+    return target.unit.radius.hitbox;
   } else if (target.building) {
     return target.building.targetRadius;
   }
@@ -347,7 +347,7 @@ export function updateProjectileSourceClearance(
   const dx = pointX - sourcePosition.x;
   const dy = pointY - sourcePosition.y;
   const dz = pointZ - sourcePosition.z;
-  const clearance = sourceUnit.radius.shot + Math.max(0, pointRadius) + 2;
+  const clearance = sourceUnit.radius.hitbox + Math.max(0, pointRadius) + 2;
   if (dx * dx + dy * dy + dz * dz > clearance * clearance) {
     projectile.hasLeftSource = true;
     return true;

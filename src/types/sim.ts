@@ -130,6 +130,12 @@ export type Detector = {
   radius: number;
 };
 
+export type EntityRadii = {
+  visual: number;
+  hitbox: number;
+  collision: number;
+};
+
 // Cached force-field panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
 //             value is used for both the horizontal-edge half and the
@@ -171,10 +177,10 @@ export type CachedForceFieldPanel = {
 export type Unit = {
   unitBlueprintId: string;
   locomotion: UnitLocomotion;
-  /** Unit radii in world units. `body` is the visible chassis/body
-   *  authoring radius, `shot` is the projectile-vs-unit collider, and
-   *  `push` is the unit-vs-unit physics/selection spacing radius. */
-  radius: { body: number; shot: number; push: number };
+  /** Unit radii in world units. `visual` is the drawn chassis/body
+   *  authoring radius, `hitbox` is the damage collider, and `collision`
+   *  is the unit-vs-unit physics/selection spacing radius. */
+  radius: EntityRadii;
   /** World-space height of the unit's authored body center above terrain. */
   bodyCenterHeight: number;
   /** Authored full-sight sensor radius for this unit. Separate from
@@ -789,7 +795,7 @@ export type UnitBuildConfig = {
   unitBlueprintId: string;
   name: string;
   cost: ResourceCost;
-  radius: { body: number; shot: number; push: number };
+  radius: EntityRadii;
   bodyCenterHeight: number;
   locomotion: UnitLocomotion;
   mass: number;

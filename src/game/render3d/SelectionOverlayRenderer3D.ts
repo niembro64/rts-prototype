@@ -52,22 +52,22 @@ export class SelectionOverlayRenderer3D {
   private readonly radiusSphereGeom: THREE.BufferGeometry;
 
   private readonly ringGeom = new THREE.TorusGeometry(1.0, 0.06, 8, 36);
-  private readonly radiusMatScale = new THREE.LineBasicMaterial({
-    color: COLORS.effects.selectionOverlay.radiusScale.colorHex,
+  private readonly radiusMatVisual = new THREE.LineBasicMaterial({
+    color: COLORS.effects.selectionOverlay.radiusVisual.colorHex,
     transparent: true,
-    opacity: COLORS.effects.selectionOverlay.radiusScale.opacity,
+    opacity: COLORS.effects.selectionOverlay.radiusVisual.opacity,
     depthWrite: false,
   });
-  private readonly radiusMatShot = new THREE.LineBasicMaterial({
-    color: COLORS.effects.selectionOverlay.radiusShot.colorHex,
+  private readonly radiusMatHitbox = new THREE.LineBasicMaterial({
+    color: COLORS.effects.selectionOverlay.radiusHitbox.colorHex,
     transparent: true,
-    opacity: COLORS.effects.selectionOverlay.radiusShot.opacity,
+    opacity: COLORS.effects.selectionOverlay.radiusHitbox.opacity,
     depthWrite: false,
   });
-  private readonly radiusMatPush = new THREE.LineBasicMaterial({
-    color: COLORS.effects.selectionOverlay.radiusPush.colorHex,
+  private readonly radiusMatCollision = new THREE.LineBasicMaterial({
+    color: COLORS.effects.selectionOverlay.radiusCollision.colorHex,
     transparent: true,
-    opacity: COLORS.effects.selectionOverlay.radiusPush.opacity,
+    opacity: COLORS.effects.selectionOverlay.radiusCollision.opacity,
     depthWrite: false,
   });
   private readonly ringMatTrackAcquire = makeRangeCircleMaterial(
@@ -136,14 +136,14 @@ export class SelectionOverlayRenderer3D {
   }
 
   updateUnitRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
-    const showScale = getUnitRadiusToggle('visual');
-    const showShot = getUnitRadiusToggle('shot');
-    const showPush = getUnitRadiusToggle('push');
-    if (!showScale && !showShot && !showPush) {
+    const showVisual = getUnitRadiusToggle('visual');
+    const showHitbox = getUnitRadiusToggle('hitbox');
+    const showCollision = getUnitRadiusToggle('collision');
+    if (!showVisual && !showHitbox && !showCollision) {
       if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.scale) m.radiusRings.scale.visible = false;
-        if (m.radiusRings.shot) m.radiusRings.shot.visible = false;
-        if (m.radiusRings.push) m.radiusRings.push.visible = false;
+        if (m.radiusRings.visual) m.radiusRings.visual.visible = false;
+        if (m.radiusRings.hitbox) m.radiusRings.hitbox.visible = false;
+        if (m.radiusRings.collision) m.radiusRings.collision.visible = false;
       }
       m.radiusRingsVisible = false;
       return;
@@ -156,16 +156,16 @@ export class SelectionOverlayRenderer3D {
     const centerY = getUnitBodyCenterHeight(entity.unit);
 
     this.setUnitRadiusSphere(
-      rings, 'scale', showScale, m.group,
-      centerY, entity.unit.radius.body, this.radiusMatScale,
+      rings, 'visual', showVisual, m.group,
+      centerY, entity.unit.radius.visual, this.radiusMatVisual,
     );
     this.setUnitRadiusSphere(
-      rings, 'shot', showShot, m.group,
-      centerY, collider.shot, this.radiusMatShot,
+      rings, 'hitbox', showHitbox, m.group,
+      centerY, collider.hitbox, this.radiusMatHitbox,
     );
     this.setUnitRadiusSphere(
-      rings, 'push', showPush, m.group,
-      centerY, collider.push, this.radiusMatPush,
+      rings, 'collision', showCollision, m.group,
+      centerY, collider.collision, this.radiusMatCollision,
     );
     m.radiusRingsVisible = true;
   }
@@ -325,9 +325,9 @@ export class SelectionOverlayRenderer3D {
 
   dispose(): void {
     this.ringGeom.dispose();
-    this.radiusMatScale.dispose();
-    this.radiusMatShot.dispose();
-    this.radiusMatPush.dispose();
+    this.radiusMatVisual.dispose();
+    this.radiusMatHitbox.dispose();
+    this.radiusMatCollision.dispose();
     this.ringMatTrackAcquire.dispose();
     this.ringMatTrackRelease.dispose();
     this.ringMatEngageAcquire.dispose();
@@ -341,7 +341,7 @@ export class SelectionOverlayRenderer3D {
 
   private setUnitRadiusSphere(
     rings: RadiusRingMeshes,
-    key: 'scale' | 'shot' | 'push',
+    key: 'visual' | 'hitbox' | 'collision',
     want: boolean,
     parent: THREE.Group,
     centerY: number,

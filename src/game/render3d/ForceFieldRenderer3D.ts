@@ -172,7 +172,7 @@ export class ForceFieldRenderer3D {
 
   private updateMountCache(field: FieldMesh, unit: Entity, turret: Turret): void {
     const unitData = unit.unit!;
-    const unitRadius = unitData.radius.body;
+    const unitRadius = unitData.radius.visual;
     const offsetX = turret.mount.x;
     const offsetY = turret.mount.y;
     const mountZ = turret.mount.z;

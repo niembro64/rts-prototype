@@ -22,10 +22,10 @@ export function getGuardFollowRadius(entity: Entity, target: Entity): number {
   const unit = entity.unit;
   const targetUnit = target.unit;
   const targetBuilding = target.building;
-  const unitRadius = unit === null ? 0 : unit.radius.body;
+  const unitRadius = unit === null ? 0 : unit.radius.collision;
   let targetRadius = 0;
   if (targetUnit !== null) {
-    targetRadius = targetUnit.radius.body;
+    targetRadius = targetUnit.radius.collision;
   } else if (targetBuilding !== null) {
     targetRadius = targetBuilding.targetRadius ??
       Math.max(targetBuilding.width, targetBuilding.height) / 2;

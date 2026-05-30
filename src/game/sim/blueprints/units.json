@@ -5,9 +5,9 @@
     "shortName": "JKL",
     "hp": 55,
     "radius": {
-      "body": 8,
-      "shot": 6,
-      "push": 9.6
+      "visual": 8,
+      "hitbox": 6,
+      "collision": 9.6
     },
     "bodyCenterHeight": 5.680000000000001,
     "fullVisionRadius": 1200,
@@ -57,9 +57,9 @@
     "shortName": "LNX",
     "hp": 60,
     "radius": {
-      "body": 10,
-      "shot": 7,
-      "push": 13
+      "visual": 10,
+      "hitbox": 7,
+      "collision": 13
     },
     "bodyCenterHeight": 11.5,
     "fullVisionRadius": 1200,
@@ -107,9 +107,9 @@
     "shortName": "DDY",
     "hp": 200,
     "radius": {
-      "body": 13,
-      "shot": 9,
-      "push": 15
+      "visual": 13,
+      "hitbox": 9,
+      "collision": 15
     },
     "bodyCenterHeight": 58.5,
     "fullVisionRadius": 1200,
@@ -164,9 +164,9 @@
     "shortName": "BDG",
     "hp": 300,
     "radius": {
-      "body": 16,
-      "shot": 13,
-      "push": 22.4
+      "visual": 16,
+      "hitbox": 13,
+      "collision": 22.4
     },
     "bodyCenterHeight": 12.4,
     "fullVisionRadius": 1200,
@@ -214,9 +214,9 @@
     "shortName": "MGS",
     "hp": 200,
     "radius": {
-      "body": 20,
-      "shot": 12,
-      "push": 24
+      "visual": 20,
+      "hitbox": 12,
+      "collision": 24
     },
     "bodyCenterHeight": 11.8,
     "fullVisionRadius": 1200,
@@ -264,9 +264,9 @@
     "shortName": "TCK",
     "hp": 55,
     "radius": {
-      "body": 10,
-      "shot": 8,
-      "push": 12.100000000000001
+      "visual": 10,
+      "hitbox": 8,
+      "collision": 12.100000000000001
     },
     "bodyCenterHeight": 8,
     "fullVisionRadius": 1200,
@@ -316,9 +316,9 @@
     "shortName": "MMT",
     "hp": 900,
     "radius": {
-      "body": 24,
-      "shot": 24,
-      "push": 36
+      "visual": 24,
+      "hitbox": 24,
+      "collision": 36
     },
     "bodyCenterHeight": 13.6,
     "fullVisionRadius": 1200,
@@ -366,9 +366,9 @@
     "shortName": "FMK",
     "hp": 3200,
     "radius": {
-      "body": 40,
-      "shot": 50,
-      "push": 65
+      "visual": 40,
+      "hitbox": 50,
+      "collision": 65
     },
     "bodyCenterHeight": 54,
     "fullVisionRadius": 1200,
@@ -434,9 +434,9 @@
     "shortName": "WDW",
     "hp": 2400,
     "radius": {
-      "body": 30,
-      "shot": 40,
-      "push": 52
+      "visual": 30,
+      "hitbox": 40,
+      "collision": 52
     },
     "bodyCenterHeight": 49.5,
     "fullVisionRadius": 1200,
@@ -563,9 +563,9 @@
     "shortName": "HPO",
     "hp": 1500,
     "radius": {
-      "body": 30,
-      "shot": 27,
-      "push": 54
+      "visual": 30,
+      "hitbox": 27,
+      "collision": 54
     },
     "bodyCenterHeight": 19,
     "fullVisionRadius": 1200,
@@ -612,9 +612,9 @@
     "shortName": "TRN",
     "hp": 100,
     "radius": {
-      "body": 11,
-      "shot": 13,
-      "push": 19.8
+      "visual": 11,
+      "hitbox": 13,
+      "collision": 19.8
     },
     "bodyCenterHeight": 14.025,
     "fullVisionRadius": 1200,
@@ -673,9 +673,9 @@
     "shortName": "LRS",
     "hp": 200,
     "radius": {
-      "body": 10,
-      "shot": 8,
-      "push": 24
+      "visual": 10,
+      "hitbox": 8,
+      "collision": 24
     },
     "bodyCenterHeight": 24,
     "fullVisionRadius": 1200,
@@ -728,9 +728,9 @@
     "shortName": "MSQ",
     "hp": 70,
     "radius": {
-      "body": 9,
-      "shot": 8,
-      "push": 10.799999999999999
+      "visual": 9,
+      "hitbox": 8,
+      "collision": 10.799999999999999
     },
     "bodyCenterHeight": 1.3499999999999999,
     "fullVisionRadius": 1200,
@@ -776,9 +776,9 @@
     "shortName": "DRF",
     "hp": 240,
     "radius": {
-      "body": 16,
-      "shot": 40,
-      "push": 50
+      "visual": 16,
+      "hitbox": 40,
+      "collision": 50
     },
     "bodyCenterHeight": 3.2,
     "fullVisionRadius": 1200,
@@ -848,9 +848,9 @@
     "shortName": "CDR",
     "hp": 120,
     "radius": {
-      "body": 11,
-      "shot": 10,
-      "push": 14
+      "visual": 11,
+      "hitbox": 10,
+      "collision": 14
     },
     "bodyCenterHeight": 3.3,
     "fullVisionRadius": 1200,
@@ -915,9 +915,9 @@
     "shortName": "EGL",
     "hp": 220,
     "radius": {
-      "body": 18,
-      "shot": 15,
-      "push": 21.6
+      "visual": 18,
+      "hitbox": 15,
+      "collision": 21.6
     },
     "bodyCenterHeight": 5.4,
     "fullVisionRadius": 1200,
@@ -970,9 +970,9 @@
     "shortName": "CMD",
     "hp": 500,
     "radius": {
-      "body": 20,
-      "shot": 20,
-      "push": 20
+      "visual": 20,
+      "hitbox": 20,
+      "collision": 20
     },
     "bodyCenterHeight": 22.4,
     "fullVisionRadius": 1600,

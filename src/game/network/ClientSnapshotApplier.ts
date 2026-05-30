@@ -67,7 +67,7 @@ export function snapClientNonVisualState(
       refreshUnitTurretsFromNetwork(
         entity,
         entity.unit.unitBlueprintId,
-        entity.unit.radius.body,
+        entity.unit.radius.visual,
         su.turrets,
       );
     }

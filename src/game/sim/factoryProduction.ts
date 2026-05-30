@@ -133,7 +133,7 @@ export class FactoryProductionSystem {
   private spawnUnitShell(world: WorldState, factory: Entity, unitBlueprintId: string): Entity | null {
     if (!factory.ownership) return null;
     const bp = getUnitBlueprint(unitBlueprintId);
-    const spawn = getFactoryBuildSpot(factory, bp.radius.push, {
+    const spawn = getFactoryBuildSpot(factory, bp.radius.collision, {
       mapWidth: world.mapWidth,
       mapHeight: world.mapHeight,
       clampRadius: null,

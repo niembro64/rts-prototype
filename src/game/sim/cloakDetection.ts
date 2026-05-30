@@ -48,9 +48,9 @@ export function getEntityDetectorRadius(entity: Entity): number {
 export function getEntityDetectionPadding(entity: Entity): number {
   if (entity.unit) {
     return Math.max(
-      entity.unit.radius.body,
-      entity.unit.radius.shot,
-      entity.unit.radius.push,
+      entity.unit.radius.visual,
+      entity.unit.radius.hitbox,
+      entity.unit.radius.collision,
     );
   }
   if (entity.building) {

@@ -109,9 +109,9 @@ export function applyNetworkUnitActions(
 export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapshot): void {
   const radius = src.radius;
   if (radius) {
-    if (isFiniteNumber(radius.body)) unit.radius.body = radius.body;
-    if (isFiniteNumber(radius.shot)) unit.radius.shot = radius.shot;
-    if (isFiniteNumber(radius.push)) unit.radius.push = radius.push;
+    if (isFiniteNumber(radius.visual)) unit.radius.visual = radius.visual;
+    if (isFiniteNumber(radius.hitbox)) unit.radius.hitbox = radius.hitbox;
+    if (isFiniteNumber(radius.collision)) unit.radius.collision = radius.collision;
   }
   if (isFiniteNumber(src.bodyCenterHeight)) {
     unit.bodyCenterHeight = src.bodyCenterHeight;
@@ -139,20 +139,20 @@ function finiteOr(value: unknown, fallback: number): number {
 export function readNetworkUnitRadius(
   src: NetworkUnitSnapshot | undefined | null,
   fallback: number | NetworkUnitRadius,
-): { body: number; shot: number; push: number } {
+): { visual: number; hitbox: number; collision: number } {
   const radius = src !== null && src !== undefined ? src.radius : null;
   return {
-    body: finiteOr(
-      radius !== null && radius !== undefined ? radius.body : undefined,
-      radiusFallback(fallback, 'body'),
+    visual: finiteOr(
+      radius !== null && radius !== undefined ? radius.visual : undefined,
+      radiusFallback(fallback, 'visual'),
     ),
-    shot: finiteOr(
-      radius !== null && radius !== undefined ? radius.shot : undefined,
-      radiusFallback(fallback, 'shot'),
+    hitbox: finiteOr(
+      radius !== null && radius !== undefined ? radius.hitbox : undefined,
+      radiusFallback(fallback, 'hitbox'),
     ),
-    push: finiteOr(
-      radius !== null && radius !== undefined ? radius.push : undefined,
-      radiusFallback(fallback, 'push'),
+    collision: finiteOr(
+      radius !== null && radius !== undefined ? radius.collision : undefined,
+      radiusFallback(fallback, 'collision'),
     ),
   };
 }
@@ -169,7 +169,7 @@ export function readNetworkUnitBodyCenterHeight(
   const radius = src.radius;
   return finiteOr(
     src.bodyCenterHeight,
-    finiteOr(radius !== null && radius !== undefined ? radius.push : undefined, fallback),
+    finiteOr(radius !== null && radius !== undefined ? radius.collision : undefined, fallback),
   );
 }
 
@@ -347,10 +347,10 @@ export function copyNetworkUnitSnapshotInto(
     dst.hp = null;
   }
   if (src.radius !== null) {
-    const radius = dst.radius ?? (dst.radius = { body: 0, shot: 0, push: 0 });
-    radius.body = src.radius.body;
-    radius.shot = src.radius.shot;
-    radius.push = src.radius.push;
+    const radius = dst.radius ?? (dst.radius = { visual: 0, hitbox: 0, collision: 0 });
+    radius.visual = src.radius.visual;
+    radius.hitbox = src.radius.hitbox;
+    radius.collision = src.radius.collision;
   } else {
     dst.radius = null;
   }

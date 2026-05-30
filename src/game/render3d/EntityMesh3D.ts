@@ -15,9 +15,9 @@ import type {
 import type { SolarRig } from './SolarCollectorMesh3D';
 
 export type RadiusRingMeshes = {
-  scale?: THREE.LineSegments;
-  shot?: THREE.LineSegments;
-  push?: THREE.LineSegments;
+  visual?: THREE.LineSegments;
+  hitbox?: THREE.LineSegments;
+  collision?: THREE.LineSegments;
 };
 
 export type RangeRingMesh = THREE.Mesh & {
@@ -89,15 +89,14 @@ export type EntityMesh = {
   ring?: THREE.Mesh;
   /** UNIT SPH wireframe spheres. All three channels are now 3D in
    *  the sim:
-   *    - body  → unit.radius.body, the visible body footprint and
-   *      ground-click selection fallback radius.
-   *    - shot  → 3D swept + area-damage check (lineSphereIntersectionT
+   *    - visual    → unit.radius.visual, the drawn body footprint.
+   *    - hitbox    → 3D swept + area-damage check (lineSphereIntersectionT
    *      + sqrt(dx²+dy²+dz²) in DamageSystem).
-   *    - push  → full 3D sphere-vs-sphere push in PhysicsEngine3D.
+   *    - collision → full 3D sphere-vs-sphere contact in PhysicsEngine3D.
    *
    *  Meshes are created lazily on first show and hidden (not destroyed)
    *  when toggled off. All three parent to the unit group at local
-   *  y = push radius so the sphere center sits on the unit's sim
+   *  y = collision radius so the sphere center sits on the unit's sim
    *  sphere center and rides along with altitude changes. */
   radiusRings?: RadiusRingMeshes;
   radiusRingsVisible?: boolean;

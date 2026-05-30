@@ -150,7 +150,7 @@
     "build"
   ],
   "projRangeTypes": ["collision", "explosion"],
-  "unitRadiusTypes": ["visual", "shot", "push"],
+  "unitRadiusTypes": ["visual", "hitbox", "collision"],
 
   "storageKeySuffixes": {
     "renderMode": "render-mode",
