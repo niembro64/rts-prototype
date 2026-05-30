@@ -127,8 +127,14 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
     ]),
     ...describeLocomotionConfig(locomotion),
   ];
-  if (runtime.hoverHeight !== undefined) {
-    items.push(stat('Hover height', fmt(runtime.hoverHeight)));
+  if (
+    runtime.gravityCounterUpwardForceRatio !== undefined &&
+    runtime.hoverHeightUpwardForce !== undefined
+  ) {
+    const gravityDeficit = 1 - runtime.gravityCounterUpwardForceRatio;
+    if (gravityDeficit > 0) {
+      items.push(stat('Stable altitude', fmt(runtime.hoverHeightUpwardForce / gravityDeficit)));
+    }
   }
   return { id: 'movement', title: 'Movement', items };
 }
@@ -284,7 +290,10 @@ function describeShot(shot: ShotConfig, shotBlueprintId: string | null): Loading
 function describeLocomotionConfig(locomotion: LocomotionBlueprint): LoadingUnitInfoNode[] {
   if (locomotion.type === 'hover' || locomotion.type === 'flying') {
     const config = locomotion.config;
-    return [stat('Hover height', fmt(config.hoverHeight))];
+    return [
+      stat('Counter-gravity', `${fmt(config.gravityCounterUpwardForceRatio * 100)}%`),
+      stat('Ground-effect lift', fmt(config.hoverHeightUpwardForce)),
+    ];
   }
   return [];
 }

@@ -833,16 +833,20 @@ export class WorldState {
     // Initial altitude = local terrain + the unit's stable spawn
     // center height. Ground units start just above their authored
     // body-center height so gravity/terrain spring settle them through
-    // the same physics path. Hover units start at their authored
-    // equilibrium hover height; dropping them at ground height makes
-    // the inverse-distance lift kick violently on the first tick.
+    // the same physics path. Airborne units start at the equilibrium
+    // implied by their constant counter-gravity and inverse-distance
+    // ground-effect lift; dropping them at ground height makes the
+    // inverse-distance lift kick violently on the first tick.
     const groundZ = this.getGroundZ(x, y);
     const isAirborneLocomotion =
       locomotion.type === 'hover' || locomotion.type === 'flying';
     const spawnCenterHeight = isAirborneLocomotion &&
-      locomotion.hoverHeight !== undefined &&
-      Number.isFinite(locomotion.hoverHeight)
-      ? locomotion.hoverHeight
+      locomotion.gravityCounterUpwardForceRatio !== undefined &&
+      Number.isFinite(locomotion.gravityCounterUpwardForceRatio) &&
+      locomotion.gravityCounterUpwardForceRatio < 1 &&
+      locomotion.hoverHeightUpwardForce !== undefined &&
+      Number.isFinite(locomotion.hoverHeightUpwardForce)
+      ? locomotion.hoverHeightUpwardForce / (1 - locomotion.gravityCounterUpwardForceRatio)
       : bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
     // Seed the per-unit smoothed normal with the raw normal at the
     // spawn position so the first tick after spawn doesn't snap from
@@ -903,7 +907,7 @@ export class WorldState {
         angularAcceleration3: isAirborneLocomotion
           ? { x: 0, y: 0, z: 0 }
           : null,
-        hoverHeightSmoothed: null,
+        hoverHeightUpwardForceSmoothed: null,
         stuckTicks: 0,
       },
       // combat is attached by the caller (createUnitFromBlueprint) once

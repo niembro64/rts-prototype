@@ -179,15 +179,20 @@ export class UnitForceSystem {
       let thrustForceZ = 0;
 
       // Airborne locomotion (hovercraft and flying units). No ground
-      // contact, no slope projection. Lift force is inversely
-      // proportional to the distance from the ground directly below
-      // the unit:
+      // contact, no slope projection. Lift has two upward force terms:
+      // a constant counter-gravity ratio that applies at every altitude,
+      // and an inverse-distance ground-effect force that grows near
+      // terrain:
       //
-      //   F_up = K / altitude,  K = m · g · hoverHeight
+      //   F_up = m · g · r + K / altitude
+      //   K    = m · g · hoverHeightUpwardForce
       //
-      // The equilibrium altitude (where F_up = m·g) is exactly
-      // hoverHeight. Below it the lift grows large and pushes the
-      // unit up; above it the lift drops and gravity pulls it back.
+      // The equilibrium altitude (where F_up = m·g) is:
+      //   hoverHeightUpwardForce / (1 - r)
+      //
+      // Below it the ground-effect lift grows large and pushes the
+      // unit up; above it the constant counter-gravity term keeps
+      // reducing fall speed even when terrain is far away.
       // A near-zero floor on altitude keeps the force finite when the
       // unit clips into terrain during a violent push.
       //
@@ -211,43 +216,48 @@ export class UnitForceSystem {
 
         const groundZ = this.world.getGroundZ(body.x, body.y);
         const altitude = Math.max(body.z - groundZ, 0.5);
-        const baseHoverHeight = entity.unit.locomotion.hoverHeight ?? altitude;
-        // Per-tick uniform jitter on the lift target so hover/flying
-        // units bob slightly instead of holding a perfectly fixed
-        // altitude. Sampled from the deterministic sim RNG so replays
-        // stay reproducible. With amount=a the multiplier is in
-        // [1-a, 1+a]; amount must be < 1 to keep hoverHeight positive.
-        const randAmount = entity.unit.locomotion.hoverHeightRandomizationAmount ?? 0;
-        const rawHoverHeight = randAmount > 0
-          ? baseHoverHeight * (1 + (this.world.rng.next() * 2 - 1) * randAmount)
-          : baseHoverHeight;
-        // EMA-smooth the per-tick (jittered) hoverHeight so the lift
-        // target drifts instead of teleporting each tick. With weight α
-        // ∈ [0,1):  smoothed = α·prev + (1−α)·raw.  α = 0 (or undefined)
-        // skips smoothing and uses the raw sample directly. The first
-        // tick seeds the accumulator from the raw sample so there's no
-        // settling transient on spawn.
-        const emaWeight = entity.unit.locomotion.hoverHeightEMA ?? 0;
-        let hoverHeight: number;
+        const gravityCounterUpwardForceRatio =
+          entity.unit.locomotion.gravityCounterUpwardForceRatio ?? 0;
+        const gravityDeficitRatio = 1 - gravityCounterUpwardForceRatio;
+        const baseHoverHeightUpwardForce =
+          entity.unit.locomotion.hoverHeightUpwardForce ?? altitude * gravityDeficitRatio;
+        // Per-tick uniform jitter on the ground-effect coefficient so
+        // hover/flying units bob slightly instead of holding a perfectly
+        // fixed altitude. Sampled from the deterministic sim RNG so
+        // replays stay reproducible. With amount=a the multiplier is in
+        // [1-a, 1+a]; amount must be < 1 to keep the coefficient positive.
+        const randAmount =
+          entity.unit.locomotion.hoverHeightUpwardForceRandomizationAmount ?? 0;
+        const rawHoverHeightUpwardForce = randAmount > 0
+          ? baseHoverHeightUpwardForce * (1 + (this.world.rng.next() * 2 - 1) * randAmount)
+          : baseHoverHeightUpwardForce;
+        // EMA-smooth the per-tick (jittered) ground-effect coefficient
+        // so the lift target drifts instead of teleporting each tick.
+        // With weight α ∈ [0,1):
+        //   smoothed = α·prev + (1−α)·raw
+        // α = 0 (or undefined) skips smoothing and uses the raw sample
+        // directly. The first tick seeds the accumulator from the raw
+        // sample so there's no settling transient on spawn.
+        const emaWeight = entity.unit.locomotion.hoverHeightUpwardForceEMA ?? 0;
+        let hoverHeightUpwardForce: number;
         if (emaWeight > 0) {
-          const prev = entity.unit.hoverHeightSmoothed;
-          hoverHeight = prev === null
-            ? rawHoverHeight
-            : emaWeight * prev + (1 - emaWeight) * rawHoverHeight;
-          entity.unit.hoverHeightSmoothed = hoverHeight;
+          const prev = entity.unit.hoverHeightUpwardForceSmoothed;
+          hoverHeightUpwardForce = prev === null
+            ? rawHoverHeightUpwardForce
+            : emaWeight * prev + (1 - emaWeight) * rawHoverHeightUpwardForce;
+          entity.unit.hoverHeightUpwardForceSmoothed = hoverHeightUpwardForce;
         } else {
-          hoverHeight = rawHoverHeight;
-          entity.unit.hoverHeightSmoothed = null;
+          hoverHeightUpwardForce = rawHoverHeightUpwardForce;
+          entity.unit.hoverHeightUpwardForceSmoothed = null;
         }
-        // F_up = K / altitude  −  c · vz
-        // K   = m · g · hoverHeight   (raw force)
-        // c   = 2 · m · √(g / hoverHeight)  ≈ critical damping for the
-        //   linearized oscillator near equilibrium. Without this the
-        //   pure inverse-distance lift is an undamped harmonic
-        //   oscillator at ω = √(g / hoverHeight) — a ~3-second period
-        //   at hoverHeight=120, which feels like the drone is bouncing.
-        //   Critical damping settles within ~1 period instead of
-        //   relying on the slow global air-friction multiplier.
+        // F_up = m·g·r + K / altitude − c · vz
+        // K    = m · g · hoverHeightUpwardForce
+        // c    = 2 · m · √(g · (1 - r) / stableAltitude)
+        //
+        // The damping term is critical damping for the linearized
+        // oscillator near the current equilibrium. When r=0 it reduces
+        // to the previous pure inverse-distance damping term:
+        //   2 · m · √(g / hoverHeightUpwardForce)
         //
         // applyForce below multiplies thrustForceZ by 1e6 (Matter.js
         // ms² → sec² conversion) and then divides by mass internally,
@@ -262,9 +272,17 @@ export class UnitForceSystem {
         // acceleration in the integrator, so hover lift must produce
         // body.mass * GRAVITY at equilibrium.
         const mass = body.mass;
-        const liftK = mass * GRAVITY * hoverHeight;
-        const vzDampPerMass = 2 * Math.sqrt(GRAVITY / hoverHeight);
-        thrustForceZ = (liftK / altitude - mass * vzDampPerMass * body.vz) / 1e6;
+        const stableAltitude = hoverHeightUpwardForce / gravityDeficitRatio;
+        const counterGravityForce = mass * GRAVITY * gravityCounterUpwardForceRatio;
+        const liftK = mass * GRAVITY * hoverHeightUpwardForce;
+        const vzDampPerMass = 2 * Math.sqrt(
+          (GRAVITY * gravityDeficitRatio) / stableAltitude,
+        );
+        thrustForceZ = (
+          counterGravityForce +
+          liftK / altitude -
+          mass * vzDampPerMass * body.vz
+        ) / 1e6;
 
         if (airHasDriveDir) {
           const locomotionForce = getLocomotionForceProfile(

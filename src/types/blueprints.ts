@@ -336,24 +336,31 @@ type LocomotionBlueprintBase = {
   pathfinding: PathfindingBlueprint;
 };
 
-/** Hover locomotion (drones, gunships) — no ground contact. The
- *  hoverHeight specifies the target altitude above the terrain
- *  directly under the unit; fan fields drive the visible ducted
- *  rotors that push smoke downward and slightly outward. */
+/** Hover locomotion (drones, gunships) — no ground contact. Constant
+ *  counter-gravity lift applies at any altitude, while ground-effect
+ *  lift scales as 1 / distance to terrain. The stable altitude is:
+ *    hoverHeightUpwardForce / (1 - gravityCounterUpwardForceRatio)
+ *  Fan fields drive the visible ducted rotors that push smoke downward
+ *  and slightly outward. */
 export type HoverConfig = {
-  hoverHeight: number;
-  /** Per-tick randomization of `hoverHeight` as a fraction of itself.
-   *  e.g. 0.1 → each tick samples a hover target in
-   *  [hoverHeight * 0.9, hoverHeight * 1.1] for the lift force. Omit
-   *  or 0 for a perfectly steady hover. */
-  hoverHeightRandomizationAmount?: number;
-  /** EMA smoothing weight applied to the per-tick (jittered) hoverHeight
-   *  before it feeds the lift force. In [0, 1):
+  /** Constant upward force as a ratio of gravity. Must be in [0, 1)
+   *  for a finite terrain-following equilibrium. */
+  gravityCounterUpwardForceRatio: number;
+  /** Inverse-distance ground-effect lift coefficient, in world units.
+   *  The force term is m·g·hoverHeightUpwardForce / distanceToGround. */
+  hoverHeightUpwardForce: number;
+  /** Per-tick randomization of `hoverHeightUpwardForce` as a fraction of
+   *  itself. e.g. 0.1 → each tick samples a ground-effect coefficient in
+   *  [hoverHeightUpwardForce * 0.9, hoverHeightUpwardForce * 1.1].
+   *  Omit or 0 for a perfectly steady hover. */
+  hoverHeightUpwardForceRandomizationAmount?: number;
+  /** EMA smoothing weight applied to the per-tick (jittered)
+   *  hoverHeightUpwardForce before it feeds the lift force. In [0, 1):
    *    smoothed = α · smoothed_prev + (1 − α) · raw
    *  0 (or omitted) = use the raw jittered sample directly; values close
    *  to 1 produce a slow drift that hides high-frequency noise from
-   *  `hoverHeightRandomizationAmount`. */
-  hoverHeightEMA?: number;
+   *  `hoverHeightUpwardForceRandomizationAmount`. */
+  hoverHeightUpwardForceEMA?: number;
   fanDistX: number;
   fanDistY: number;
   /** Visual fan placement. Omit for the legacy four-corner quad. */
@@ -387,11 +394,14 @@ export type HoverConfig = {
  *  continuously drives forward and renders wings plus rear jet exhaust
  *  instead of downward hover fans. Dimensions are in unit-radius fractions. */
 export type FlyingConfig = {
-  hoverHeight: number;
-  /** Same semantics as `HoverConfig.hoverHeightRandomizationAmount`. */
-  hoverHeightRandomizationAmount?: number;
-  /** Same semantics as `HoverConfig.hoverHeightEMA`. */
-  hoverHeightEMA?: number;
+  /** Same semantics as `HoverConfig.gravityCounterUpwardForceRatio`. */
+  gravityCounterUpwardForceRatio: number;
+  /** Same semantics as `HoverConfig.hoverHeightUpwardForce`. */
+  hoverHeightUpwardForce: number;
+  /** Same semantics as `HoverConfig.hoverHeightUpwardForceRandomizationAmount`. */
+  hoverHeightUpwardForceRandomizationAmount?: number;
+  /** Same semantics as `HoverConfig.hoverHeightUpwardForceEMA`. */
+  hoverHeightUpwardForceEMA?: number;
   /** Allows a flying profile to suppress the primary/front wing pair
    *  while keeping its rear wing pair and jets. Defaults to true. When
    *  false, the wing* dimension fields can be omitted. */

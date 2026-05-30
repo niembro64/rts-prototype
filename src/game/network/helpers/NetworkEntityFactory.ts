@@ -281,7 +281,7 @@ function createUnitFromNetwork(
         : (unitOrientation !== null ? { x: 0, y: 0, z: 0 } : null),
       // angularAcceleration3 is sim-only and not on the wire.
       angularAcceleration3: unitOrientation !== null ? { x: 0, y: 0, z: 0 } : null,
-      hoverHeightSmoothed: null,
+      hoverHeightUpwardForceSmoothed: null,
       stuckTicks: 0,
     },
   };

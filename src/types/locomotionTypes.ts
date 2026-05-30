@@ -32,23 +32,25 @@ export type UnitLocomotion = {
   traction: number;
   /** Named pathfinding profile resolved from pathfindingConfig.json. */
   pathfinding: UnitPathfindingConfig;
-  /** Hover-only: target altitude above the ground directly below the
-   *  unit, in world units. The hover physics integrator uses this to
-   *  size the inverse-distance lift force so that the equilibrium
-   *  height (where F_up = m·g) sits at hoverHeight. Undefined for
-   *  ground locomotion. */
-  hoverHeight?: number;
-  /** Hover/flying-only: per-tick uniform randomization of `hoverHeight`
-   *  expressed as a fraction. Each tick the lift force uses
-   *  hoverHeight * (1 + U(-amount, +amount)). Undefined or 0 means no
-   *  randomization. */
-  hoverHeightRandomizationAmount?: number;
+  /** Hover/flying-only: constant upward force as a ratio of gravity.
+   *  0.8 means the locomotion cancels 80% of gravity at every altitude.
+   *  Must be < 1 for a finite terrain-following equilibrium. */
+  gravityCounterUpwardForceRatio?: number;
+  /** Hover/flying-only: inverse-distance ground-effect lift coefficient,
+   *  in world units. The force term is m·g·hoverHeightUpwardForce / d,
+   *  where d is altitude above terrain. Undefined for ground locomotion. */
+  hoverHeightUpwardForce?: number;
+  /** Hover/flying-only: per-tick uniform randomization of
+   *  `hoverHeightUpwardForce` expressed as a fraction. Each tick the
+   *  lift force uses hoverHeightUpwardForce * (1 + U(-amount, +amount)).
+   *  Undefined or 0 means no randomization. */
+  hoverHeightUpwardForceRandomizationAmount?: number;
   /** Hover/flying-only: EMA smoothing weight on the per-tick (jittered)
-   *  hoverHeight. In [0, 1):
+   *  hoverHeightUpwardForce. In [0, 1):
    *    smoothed = α · smoothed_prev + (1 − α) · raw
    *  0 (or undefined) disables smoothing. Pairs with the per-unit
-   *  `Unit.hoverHeightSmoothed` accumulator. */
-  hoverHeightEMA?: number;
+   *  `Unit.hoverHeightUpwardForceSmoothed` accumulator. */
+  hoverHeightUpwardForceEMA?: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

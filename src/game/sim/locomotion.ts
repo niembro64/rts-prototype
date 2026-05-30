@@ -28,6 +28,12 @@ function assertPositiveFinite(label: string, value: number): void {
   }
 }
 
+function assertCounterGravityRatio(label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0 || value >= 1) {
+    throw new Error(`Invalid locomotion ${label}: expected finite ratio in [0, 1), got ${value}`);
+  }
+}
+
 function assertSlopeDegrees(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0 || value >= 90) {
     throw new Error(`Invalid locomotion ${label}: expected finite degrees in (0, 90), got ${value}`);
@@ -88,28 +94,37 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     locomotion.pathfinding,
   );
   const isAirborne = type === 'hover' || type === 'flying';
-  const hoverHeight = isAirborne ? locomotion.config.hoverHeight : undefined;
-  let hoverHeightRandomizationAmount: number | undefined;
-  let hoverHeightEMA: number | undefined;
+  const gravityCounterUpwardForceRatio = isAirborne
+    ? locomotion.config.gravityCounterUpwardForceRatio
+    : undefined;
+  const hoverHeightUpwardForce = isAirborne
+    ? locomotion.config.hoverHeightUpwardForce
+    : undefined;
+  let hoverHeightUpwardForceRandomizationAmount: number | undefined;
+  let hoverHeightUpwardForceEMA: number | undefined;
   if (isAirborne) {
-    assertPositiveFinite(`${type}.hoverHeight`, hoverHeight ?? NaN);
-    const raw = locomotion.config.hoverHeightRandomizationAmount;
+    assertCounterGravityRatio(
+      `${type}.gravityCounterUpwardForceRatio`,
+      gravityCounterUpwardForceRatio ?? NaN,
+    );
+    assertPositiveFinite(`${type}.hoverHeightUpwardForce`, hoverHeightUpwardForce ?? NaN);
+    const raw = locomotion.config.hoverHeightUpwardForceRandomizationAmount;
     if (raw !== undefined) {
       if (!Number.isFinite(raw) || raw < 0 || raw >= 1) {
         throw new Error(
-          `Invalid locomotion ${type}.hoverHeightRandomizationAmount: expected finite [0,1), got ${raw}`,
+          `Invalid locomotion ${type}.hoverHeightUpwardForceRandomizationAmount: expected finite [0,1), got ${raw}`,
         );
       }
-      hoverHeightRandomizationAmount = raw > 0 ? raw : undefined;
+      hoverHeightUpwardForceRandomizationAmount = raw > 0 ? raw : undefined;
     }
-    const rawEMA = locomotion.config.hoverHeightEMA;
+    const rawEMA = locomotion.config.hoverHeightUpwardForceEMA;
     if (rawEMA !== undefined) {
       if (!Number.isFinite(rawEMA) || rawEMA < 0 || rawEMA >= 1) {
         throw new Error(
-          `Invalid locomotion ${type}.hoverHeightEMA: expected finite [0,1), got ${rawEMA}`,
+          `Invalid locomotion ${type}.hoverHeightUpwardForceEMA: expected finite [0,1), got ${rawEMA}`,
         );
       }
-      hoverHeightEMA = rawEMA > 0 ? rawEMA : undefined;
+      hoverHeightUpwardForceEMA = rawEMA > 0 ? rawEMA : undefined;
     }
   }
   return {
@@ -121,9 +136,10 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     driveForce: physics.driveForce,
     traction: physics.traction,
     pathfinding,
-    hoverHeight,
-    hoverHeightRandomizationAmount,
-    hoverHeightEMA,
+    gravityCounterUpwardForceRatio,
+    hoverHeightUpwardForce,
+    hoverHeightUpwardForceRandomizationAmount,
+    hoverHeightUpwardForceEMA,
   };
 }
 
@@ -145,9 +161,11 @@ export function cloneUnitLocomotion(
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,
     pathfinding: { ...locomotion.pathfinding },
-    hoverHeight: locomotion.hoverHeight,
-    hoverHeightRandomizationAmount: locomotion.hoverHeightRandomizationAmount,
-    hoverHeightEMA: locomotion.hoverHeightEMA,
+    gravityCounterUpwardForceRatio: locomotion.gravityCounterUpwardForceRatio,
+    hoverHeightUpwardForce: locomotion.hoverHeightUpwardForce,
+    hoverHeightUpwardForceRandomizationAmount:
+      locomotion.hoverHeightUpwardForceRandomizationAmount,
+    hoverHeightUpwardForceEMA: locomotion.hoverHeightUpwardForceEMA,
   };
 }
 
