@@ -39,182 +39,36 @@ NB: the host-directed/fully-autonomous turret system and the Tower-as-peer
 entity type both audited essentially CLEAN — see VERIFIED-CLEAN at the bottom.
 
 --------------------------------------------------------------------------------
-Items A21-A37 added 2026-05-30 by a fresh multi-agent audit of the code against
-budget_design_philosophy.html (every design-philosophy section). Each candidate
-was adversarially re-read by an independent verifier against the live code; 21
-candidates were refuted (mostly auditor misreads of already-correct code) and
-are NOT listed. The 17 below survived verification. File:line refs were correct
-at audit time; re-verify before editing. (The 18th confirmed finding — the dual
-TypeScript/Rust authoritative sim — is filed under SECTION C as C1 because it is
-the TS-Coordinates/WASM-Computes scale/architecture umbrella.)
+Items A21-A36 added 2026-05-30 by a fresh multi-agent audit of the code against
+budget_design_philosophy.html (every design-philosophy section). 39 candidate
+findings were produced; each was adversarially re-read by an INDEPENDENT verifier
+against the live code, and 21 candidates were refuted (auditor misreads of
+already-correct code — e.g. the host-directed one-per-kind loader throw, the
+level-1 lock-on exclusions, hover anti-gravity, config-is-data, and the resource
+pylon channel all re-verified CLEAN; see VERIFIED-CLEAN). The 16 design items
+below survived verification (numbered A21-A36 in audit order). A 17th confirmed
+item — PhysicsEngine3D's stale file header — is filed in SECTION D (doc drift,
+not a behavior gap) as D2; the 18th — the dual TypeScript/Rust authoritative-sim
+duplication — is filed in SECTION C as C1.
+File:line refs were correct at audit time; re-verify before editing.
 
-A21. [HIGH] src/game/sim/blueprints/lockOnValidation.ts + the unit/tower blueprint
-    loader path —
-    RULE: "Host-directed turrets…" (philosophy lines 1403-1418): "This is a hard
-    validation rule… For each kind that appears on the host, exactly one of those
-    mount entries must carry hostDirected: true… The loader must throw at startup…
-    Zero… is a configuration error… Two or more… is also an error." —
-    PROBLEM: the blueprint loader does NOT enforce the exactly-one-hostDirected-
-    per-turret-kind rule. hostDirected is read per mount (units.ts:194,201) but no
-    loader pass groups a host's mounts by turret kind (attack/construction/repair/…)
-    and throws on zero or duplicate host-directed mounts of a kind, so a misauthored
-    host fails silently at runtime instead of loudly at load. —
-    FIX: add a loader validation pass that, per unit/tower blueprint, groups mounts
-    by turret kind and throws at startup unless exactly one mount of each PRESENT
-    kind has hostDirected:true; skip buildings. Add fixtures covering the zero-case
-    and the two-or-more case.
-
-A22. [HIGH] src/game/sim/combat/ targeting kernel + rts-sim-wasm/src/lib.rs
-    (schema present in src/game/sim/blueprints/exclusionLockOnConfig.json) —
-    RULE: lock-on exclusion hierarchy (philosophy lines 1459-1485): the level-1
-    lists (excludeLockOnLevel1Units / Towers / Buildings / Turrets) remove
-    individual authored blueprint names from the surviving candidates; "Specialist
-    weapons can then use the level-1 lists to skip named units, towers, buildings,
-    or turret blueprints." —
-    PROBLEM: level-0 exclusions (friend/enemy + entity family) are applied, but the
-    level-1 named-blueprint exclusion lists are parsed/validated yet never consulted
-    in the targeting kernel, so a level-1 exclusion silently has no effect. —
-    FIX: apply level-1 named exclusions in the shared targeting kernel AFTER the
-    level-0 family pass — skip a candidate whose blueprint name is in the relevant
-    excludeLockOnLevel1* list. Add a targeting test proving a named blueprint is
-    excluded while its siblings are not.
-
-A23. [HIGH] rts-sim-wasm/src/lib.rs (no such accessors exist); callers in
-    src/game/math/Ballistics.ts, src/game/math/HomingSteering.ts,
-    src/game/sim/combat/aimSolver.ts —
-    RULE: "Full 3D, not decorative altitude" (philosophy lines 695-699):
-    "Kinematic calculations must read entity position, velocity, and acceleration
-    through the explicit accessors getEntityPosition3d, getEntityVelocity3d, and
-    getEntityAcceleration3d… targeting/ballistic solvers must receive raw kinematic
-    values plus the universal gravity constant instead of entity IDs." —
-    PROBLEM: the three mandated named accessors do not exist; kinematic reads happen
-    via direct field access. (The spirit — solvers receive raw values + gravity, not
-    entity IDs — is already met, so this is a contract/naming gap, not a logic bug.) —
-    FIX: either introduce getEntityPosition3d/Velocity3d/Acceleration3d (or clearly-
-    named Rust equivalents) and route kinematic reads through them, or amend the doc
-    to describe the actual accessor shape the Rust sim uses.
-
-A24. [MEDIUM] src/serverBarConfig.json:6-7 (hostSnapshotRate.demoDefault /
+A21. [MEDIUM] src/serverBarConfig.json:6-7 (hostSnapshotRate.demoDefault /
     realDefault = 16); consumed at src/serverBarConfig.ts:25-26
     (HOST_SNAPSHOT_RATE_DEFAULT) and src/game/server/GameServer.ts:211-214 —
-    RULE: "Snapshots flow downward" (philosophy line 306): "Normal target cadence is
-    5 to 10 snapshots per second"; line 300: snapshots are corrections, not per-frame
+    RULE: "Snapshots flow downward" (philosophy line 306) "Normal target cadence is
+    5 to 10 snapshots per second"; line 300 snapshots are corrections, not per-frame
     animation. —
     PROBLEM: the shipped default host snapshot rate is 16/sec for BOTH demo and real
-    modes — above the 5-10 normal band, and sitting exactly at the config's own
-    diagnosticMin so serverBarConfig.ts's predicates self-classify the default as a
-    "Diagnostic snapshot cap… for low-unit-count testing." The config contradicts
-    itself and the doc. —
-    FIX: set demoDefault/realDefault back into 5-10 (e.g. 10) in serverBarConfig.json;
-    OR, if 16 is an intentional playtest choice, raise normalMax and update the doc so
-    the normal/diagnostic split stops contradicting the shipped default. JSON-only
-    change; no engine code.
+    modes — above the 5-10 normal band AND sitting exactly at the config's own
+    diagnosticMin, so serverBarConfig.ts's own predicates self-classify the shipped
+    default as a "Diagnostic snapshot cap… for low-unit-count testing." The config
+    contradicts itself and the doc. —
+    FIX: set demoDefault/realDefault into 5-10 (e.g. 10) in serverBarConfig.json; OR,
+    if 16 is an intentional playtest choice, raise normalMax and update the doc so the
+    normal/diagnostic split stops contradicting the shipped default. JSON-only change,
+    no engine code.
 
-A25. [MEDIUM] src/game/network/ClientProjectilePrediction.ts (dead-reckon path) +
-    ClientProjectileStore.ts (event application) —
-    RULE: "Ballistic projectiles are event-driven" (philosophy lines 636-659): "When
-    a velocityUpdate arrives, the client snaps entity.transform.x/y/z and
-    proj.velocityX/Y/Z directly to the event's values and never populates a drift
-    target." —
-    PROBLEM: travelling-projectile velocityUpdate handling diverges from the snap-and-
-    never-drift contract for at least some correction events, risking the EMA-ramp /
-    tail-wiggle the doc explicitly calls out. —
-    FIX: ensure velocityUpdate application writes transform + velocity directly (snap)
-    and clears any drift target; add a focused test that a reflected/homing projectile
-    shows no EMA ramp after the event.
-
-A26. [MEDIUM] src/game/server/PhysicsEngine3D.ts:954-972 (clampToMapBounds) and the
-    ground-contact handling in step() —
-    RULE: "Mass must matter" (philosophy line 716): "Ground contact is spring and
-    friction behavior against terrain, not a clamp disguised as physics." —
-    PROBLEM: map-bounds / ground handling in the TS PhysicsEngine3D uses a hard
-    positional clamp rather than spring+friction contact. —
-    FIX: first determine whether PhysicsEngine3D is still on the authoritative path
-    (the Rust sim may own real ground contact — see C1). If live, replace the hard
-    clamp with spring+friction terrain contact; if dead, delete it per Delete The Old
-    Path. (Tied to C1.)
-
-A27. [MEDIUM] src/game/sim/blueprints/shots.json (rocket entries: gravityForceMultiplier
-    = 0); field def in src/types/shotTypes.ts; consumed in the Rust homing/projectile
-    stepping —
-    RULE: "Gravity is universal; thrust answers it" (philosophy lines 751-777): "No
-    ignoresGravity shortcut, no projectile-class exemption, no flat-trajectory flag
-    that bypasses integration. Guided projectiles add a counter-gravity thrust term
-    inside the same homing/steering update." —
-    PROBLEM: guided rockets zero out gravity via gravityForceMultiplier=0 — exactly the
-    "flat-trajectory flag that bypasses integration" the doc forbids — instead of
-    flying level by adding a counter-gravity thrust term. —
-    FIX: remove the gravityForceMultiplier=0 exemption; keep gravity universal and have
-    the homing update add a bounded counter-gravity thrust term (g·m, clamped to
-    available thrust) so rockets fly level by thrusting and SAG when guidance/thrust is
-    lost.
-
-A28. [MEDIUM] src/game/network/ClientUnitPrediction.ts (turret snapshot fields) +
-    src/game/sim/blueprints/turrets.ts (headOnly flag); turret angular-field serializer —
-    RULE: "Beam And Rocket Turrets Render As Heads" (philosophy lines 1223-1241):
-    marking a turret headOnly:true means the snapshot serializer pins the wire's
-    rotation / angular-velocity / pitch / pitch-velocity slots to zero. —
-    PROBLEM: for headOnly turrets the serializer does not zero ALL FOUR angular wire
-    fields, so aim-motion traffic the doc says should be collapsed out of the diff path
-    still rides the wire (and can dirty the entity row every frame). —
-    FIX: in the turret snapshot serializer, when the blueprint is headOnly, force
-    rotation, angularVelocity, pitch, and pitchVelocity to zero on the wire; add a test
-    asserting headOnly turrets emit zero angular fields.
-
-A29. [MEDIUM] rts-sim-wasm/src/lib.rs (projectile struct + spawn/reflection/submunition
-    paths) —
-    RULE: "Shots carry immutable source provenance" (philosophy lines 1600-1623): every
-    shot/submunition/reflected projectile carries the full ShotSource record
-    (source_turret_id, source_host_id, source_root_id, player/team, turret/shot
-    blueprint ids, spawn_tick, parent_shot_id), immutable for the life of the shot. —
-    PROBLEM: the projectile provenance record does not carry the full ShotSource field
-    set and/or is not fully propagated into submunitions and reflected projectiles, so
-    attribution is partial. —
-    FIX: extend the provenance struct to the full ShotSource field set and copy it (with
-    parent_shot_id set) into every submunition and reflected projectile at spawn; test
-    that provenance survives reflection and submunition spawning.
-
-A30. [MEDIUM] rts-sim-wasm/src/lib.rs (locomotion state stored inline on the unit) +
-    src/game/sim/locomotion.ts —
-    RULE: "Universal Runtime Entity IDs" (philosophy lines 1498-1516, 1558-1572):
-    "every locomotion subentity" is addressable and "carries its own EntityId and stores
-    the unit it moves as its host." —
-    PROBLEM: locomotion is modeled as inline unit state, not as an addressable subentity
-    with its own EntityId + host backref. —
-    FIX: decide intent. If locomotion subentities ever need to be addressed (targeted,
-    attributed), mint EntityIds + host backrefs for them; otherwise amend the doc to
-    scope EntityIds to addressable things and explicitly exclude inline locomotion state.
-
-A31. [MEDIUM] src/game/sim/buildingActiveState.ts + the damage path in
-    src/game/sim/damage/DamageSystem.ts + factory production —
-    RULE: "Producer Buildings Are ON/OFF" (philosophy lines 1805-1820, 1738-1741):
-    producers carry a single binary ON/OFF; OFF multiplies incoming damage by 0.1;
-    production and survivability are welded to one flag that is the single authoritative
-    input for both the renderer pose and the economy. —
-    PROBLEM: the producer ON/OFF contract is not fully met — the OFF = 0.1× damage
-    coupling and/or the single-binary-state semantics diverge from the doc (e.g. the
-    damage multiplier is not applied, or the flag is not the single authoritative
-    input). —
-    FIX: ensure OFF state multiplies incoming damage by 0.1 in the damage system and that
-    the same ON/OFF flag is the single authoritative input for both production accounting
-    and the renderer open/closed pose; add a damage test for OFF buildings.
-
-A32. [MEDIUM] src/game/sim/* TS modules holding authoritative numeric tuning —
-    src/game/sim/projectileConfigs.ts, src/game/sim/buildConfigs.ts,
-    src/game/sim/shotProfiles.ts, src/game/sim/combat/* constants —
-    RULE: "Config Is Data, Not Code" (philosophy lines 1996-2053): tuning tables (mass,
-    friction, hover constants, ranges, costs, damage curves) belong in language-neutral
-    JSON validated by schema, not TS modules, so the Rust sim can read them directly. —
-    PROBLEM: authoritative gameplay tuning constants still live in TypeScript modules,
-    keeping TS in the simulation data path and blocking the Rust/WASM sim from reading
-    them. (The VERIFIED-CLEAN "top-level config exports are JSON-backed" claim remains
-    true for the top-level *Config.json files; this is the REMAINING TS-resident tuning
-    inside src/game/sim/.) —
-    FIX: move authoritative tuning tables from TS modules into schema-validated JSON
-    consumed by both TS and Rust; leave TS as a thin loader. Prioritize tables the Rust
-    sim needs.
-
-A33. [LOW] src/game/sim/sensorCoverage.ts:43-45 (getEntityFullVisionRadius, builder
+A22. [LOW] src/game/sim/sensorCoverage.ts:43-45 (getEntityFullVisionRadius, builder
     branch) —
     RULE: philosophy line 381 "Weapon range, tracking range, unit sight, radar range,
     and detector range are separate envelopes. Sharing a number between them should be
@@ -222,14 +76,14 @@ A33. [LOW] src/game/sim/sensorCoverage.ts:43-45 (getEntityFullVisionRadius, buil
     capability. —
     PROBLEM: a builder/fabricator's full-vision radius is derived BY DEFAULT from
     builder.buildRange + BUILDER_VISION_PAD (an action-reach number) rather than an
-    authored sight field — a default envelope coupling. (Distinct from, and does NOT
-    falsify, the VERIFIED-CLEAN "sensors not derived from WEAPON range" claim: weapon/
-    fire range is genuinely never consulted here; this is build-reach, not weapon-reach.) —
+    authored sight field — a default envelope coupling. (Does NOT falsify the
+    VERIFIED-CLEAN "sensors not derived from WEAPON range" claim: weapon/fire range is
+    genuinely never consulted here; this is build-reach, not weapon-reach.) —
     FIX: give builders an authored sight field instead of deriving from buildRange, OR
-    add a code comment marking the max() as a deliberate authored coupling so it is not
-    read as the forbidden default. No functional bug.
+    add a comment marking the max() as a deliberate authored coupling so it is not read
+    as the forbidden default. No functional bug.
 
-A34. [LOW] src/game/network/ClientUnitPrediction.ts:46, 261-296, 352-379 (vs turret
+A23. [LOW] src/game/network/ClientUnitPrediction.ts:46, 261-296, 352-379 (vs turret
     integration 474-488) —
     RULE: "What each EMA channel applies to" → Rotation velocity (philosophy lines
     570-581): unit.angularVelocity3.{x,y,z} (with turret yaw/pitch rates) "are the
@@ -237,45 +91,212 @@ A34. [LOW] src/game/network/ClientUnitPrediction.ts:46, 261-296, 352-379 (vs tur
     target." —
     PROBLEM: unit body angularVelocity3 is only EMA-blended toward the snapshot, never
     integrated into the orientation quaternion — so unlike turret yaw/pitch rates it is
-    correction-only, contradicting the doc's claim that it is an integrated derivative. —
-    FIX: either add an orientation dead-reckon step that advances unit.orientation by
-    angularVelocity3 each prediction tick when predictionMode !== 'pos' (matching turret
-    yaw/pitch), or amend the doc to record body angularVelocity3 as a correction-only
-    channel if that is the intended behavior.
+    correction-only, contradicting the doc's claim it is an integrated derivative. —
+    FIX: either (a) add an orientation dead-reckon step that advances
+    entity.unit.orientation by angularVelocity3 each prediction tick when
+    predictionMode !== 'pos' (matching turret yaw/pitch), or (b) amend the doc so
+    angularVelocity3 is recorded as a correction-only channel if that is intended.
 
-A35. [LOW] src/game/network/ClientProjectilePrediction.ts —
-    RULE: "Ballistic projectiles are event-driven" (philosophy lines 615-659): client
-    and server run the same kernel against the same inputs; between events the client
-    dead-reckons under gravity + per-shot thrust with no correction loop. —
-    PROBLEM: the client projectile dead-reckoning path may apply gravity/thrust
-    differently from the shared Rust kernel the server uses, risking client/server
-    divergence between events. —
-    FIX: route client projectile stepping through the same Rust/WASM kernel the server
-    uses (or verify numeric parity), so dead-reckoning matches exactly between events.
-    (Relates to C1.)
+A24. [WATCH] src/game/server/PhysicsEngine3D.ts:954-972 (clampToMapBounds), invoked
+    from step() at line 703 immediately after the force/integration pass —
+    RULE: "Mass must matter" (philosophy line 716): "Ground contact is spring and
+    friction behavior against terrain, not a clamp disguised as physics" — the
+    force-first principle is the spirit for world boundaries too. —
+    PROBLEM: map-edge containment directly clamps body.position (and zeroes the inbound
+    velocity component) rather than applying a boundary force — a "clamp disguised as
+    physics" at the world edge. The doc's clamp prohibition is explicitly about ground
+    contact, so this is an edge-case extension of the principle, not a named rule —
+    hence WATCH. —
+    FIX: if strict force-purity at the world edge is wanted, replace the positional
+    clamp with a stiff boundary spring + damping; otherwise leave as-is (cheap, stable,
+    perimeter-only) and treat as an accepted deviation. Low urgency.
 
-A36. [LOW] rts-sim-wasm/src/lib.rs (hover/altitude handling) +
-    src/game/server/UnitForceSystem.ts (hover lift) —
-    RULE: philosophy line 776: "Hover and any other 'defies gravity' behavior follows
-    the same shape: a force that fights g·m, not a conditional that skips it." —
-    PROBLEM: hover lift appears implemented as a proportional-derivative pull to a target
-    altitude rather than an explicit anti-gravity force term fighting g·m. Borderline
-    physics-purity deviation (gravity itself is NOT skipped — see refuted candidate). —
-    FIX: express hover as gravity (always applied) plus a lift force that explicitly
-    counters g·m with damping, so the same F=ma path produces hover.
+A25. [LOW] rts-sim-wasm/src/lib.rs compute_arrival_control_thrust (~681-808), the
+    ARRIVAL_FLAG_FLYING branch —
+    RULE: "Locomotion is arrival control, not waypoint seeking" (philosophy lines
+    719-749): every locomotion profile computes force from BOTH position error AND
+    velocity error; hovercraft and air "use the same high-level arrival controller;
+    they differ only by mass, thrust, friction, damping, turn authority, contact
+    model, and vertical constraints." —
+    PROBLEM: for FLYING units the arrival controller takes a position-only branch (seeks
+    the waypoint without the braking/velocity-error term ground and hover units use), so
+    air units can overshoot/orbit — the exact failure the rule exists to prevent. Ground
+    and hover paths correctly use position+velocity error with thrust saturation (audited
+    CLEAN). —
+    FIX: route flying units through the same velocity-aware arrival term (position error +
+    velocity-error braking, saturated against thrust), differing only by the flying unit's
+    physical limits, instead of a position-only seek branch.
 
-A37. [LOW] src/game/sim/resourceMovement.ts + src/game/render3d/ (pylon rig) —
-    RULE: "Resource Movement Flows Through Pylons" (philosophy lines 1864-1992): every
-    resource-affecting host mounts the pylons for the resources it touches; "There is no
-    'small enough to skip' exception" (upkeep, ammo-on-fire, reclaim return, repair
-    drain all surface through pylons). —
-    PROBLEM: pylon COVERAGE is incomplete — some resource-affecting hosts/flows (e.g.
-    repair drain, reclaim return, upkeep) lack the mandated pylons, even though the sim
-    credit/debit channel itself is the single source of truth (the side-channel-mutation
-    candidate was REFUTED — see VERIFIED-CLEAN). —
-    FIX: audit each resource-affecting host (solar/wind/extractor/converter/construction/
-    repair/reclaim) and ensure each mounts the pylons for the resources it touches; route
-    any remaining flow through the pylon channel + rig.
+A26. [MEDIUM] src/game/sim/blueprints/shots.json (lightRocket ~:66, fastRocket ~:89,
+    and the other rocket/guided entries that set gravityForceMultiplier:0); field
+    consumed in the Rust projectile gravity integration —
+    RULE: "Gravity is universal; thrust answers it" (philosophy lines 751-777): "No
+    ignoresGravity shortcut, no projectile-class exemption, no 'flat trajectory' flag
+    that bypasses integration. Guided projectiles add a counter-gravity thrust term
+    inside the same homing/steering update." —
+    PROBLEM: guided rockets set gravityForceMultiplier:0 — exactly the "flat trajectory
+    flag that bypasses integration" the doc forbids. They fly level by switching gravity
+    OFF rather than by adding a bounded counter-gravity thrust term in the homing update,
+    so a spent/failed rocket would not SAG the way the doc requires. (Confirmed:
+    grep of shots.json shows gravityForceMultiplier:0 on the rocket entries; non-guided
+    shots correctly use 1.) —
+    FIX: set gravityForceMultiplier back to 1 for guided rockets and have the homing
+    update add a vertical counter-gravity thrust term (bounded by available thrust) so
+    flight looks flat while gravity stays integrated; when guidance/thrust is lost the
+    rocket sags ballistically. (Pairs with A27.)
+
+A27. [LOW] src/types/shotTypes.ts (gravityForceMultiplier field def, ~:136/155/173/
+    230/251/268) and shots.json values —
+    RULE: "Gravity is universal; thrust answers it" (philosophy line 772): "No
+    ignoresGravity shortcut, no projectile-class exemption, no 'flat trajectory' flag
+    that bypasses integration." —
+    PROBLEM: the schema exposes gravityForceMultiplier as a free scalar with no
+    constraint, so ANY shot can set it to 0 and opt out of universal gravity — a
+    generalized version of the banned flat-trajectory flag, even though gravity is
+    correctly integrated for multiplier=1 shots. —
+    FIX: remove gravityForceMultiplier (keep gravity universal at 1× and express
+    "flies-flat" via thrust); or, if a multiplier must stay, constrain/document it so it
+    can never disable the gravity pass (clamp >0, or recast it as a drag/buoyancy term
+    that never zeroes gravity). (Pairs with A26.)
+
+A28. [MEDIUM] src/game/sim/blueprints/turrets.json (turretForceFieldPanel: shotId
+    points at a beam shot; force-field behavior carried by a turret-side
+    forceFieldPanels/panel config) + src/game/sim/combat/forceFieldTurret.ts,
+    ForceFieldPanelHit.ts —
+    RULE: Atomic Gameplay Pieces (philosophy lines 1296, 1508-1516): shot is the single
+    umbrella (projectile/beam/laser/forceField); "forceField is a shot variant like any
+    other rather than a special case bolted onto the turret"; a turret names exactly one
+    shot by id and carries no inline emission payload. —
+    PROBLEM: the force-field PANEL barrier is modeled as turret-side configuration (the
+    turret names a beam shot and carries panel/force-field data) instead of the turret
+    naming a single forceField shot variant that owns the barrier — the "special case
+    bolted onto the turret" the doc calls out. The force-field SPHERE path DOES use a
+    forceField shot (forceFieldBarrierShot), so the two force-field turrets are modeled
+    inconsistently. —
+    FIX: model the panel force-field as a forceField shot variant (like the sphere), have
+    turretForceFieldPanel name it by id, and move the barrier material/reflection data off
+    the turret onto the shot; keep only panel geometry on the mount per "Materials Are
+    Independent Of Shape".
+
+A29. [LOW] src/types/shotTypes.ts (forceField shot "material" = color/alpha/visual only)
+    and the reflection logic in src/game/sim/combat/ (reflection governed by world/global
+    settings rather than a per-material contract) —
+    RULE: "Materials Are Independent Of Shape" (philosophy lines 1824-1860) + shot variant
+    owns "barrier material and reflection behavior" (line 1296): a material is a physical
+    + visual contract (reflectivity, occlusion, projectile response, hit reaction) defined
+    once and shared across shapes. —
+    PROBLEM: the force-field "material" on the shot is purely visual (color/alpha); the
+    actual barrier behavior (reflection) is driven from world/global settings, and
+    absorption / damping / pass-through / per-shot-type response are unmodeled — so a
+    material is not the single shape-independent physical+visual contract the doc
+    describes. —
+    FIX: promote the force-field material to a real contract object (reflectivity,
+    occlusion, per-shot-type response, hit reaction, plus visual params) defined once and
+    referenced by both panel and sphere shots; drive reflection from that material instead
+    of world settings, so panel and sphere behave identically by construction.
+
+A30. [LOW] rts-sim-wasm + the EntityMeta construction/registry (generation set to 0 at
+    creation and never incremented on slot reuse; alive set true at spawn, never set false
+    on death; death removes the row) —
+    RULE: "Opaque handle, explicit metadata" (philosophy lines 1519-1544): EntityId is
+    "preferably generation-checked"; EntityMeta carries generation + alive, and lock-on
+    refs are "resolved through the registry and generation-checked before use" (lines
+    1625-1634). —
+    PROBLEM: generation is always 0 and never incremented, and alive is never set false
+    (death deletes the row), so the generation-checked stale-handle protection the doc
+    describes is not actually functioning — a reused id/slot cannot be distinguished from
+    the original via generation. In practice stale refs are caught by row-absence, not by
+    the generation check. —
+    FIX: either implement generation bumping on slot reuse + set alive=false on death and
+    have ref resolution generation-check (matching the doc), or, if row-absence is deemed
+    sufficient, update the doc to drop the generation-checked guarantee. The field exists
+    but is currently inert.
+
+A31. [WATCH] src/game/sim/factoryProduction.ts (multi-item queue array + dequeue/splice
+    by index) and the factory production command/wire path —
+    RULE: "Producer Buildings Are ON/OFF" (philosophy lines 1805-1820) + Selection menus
+    (lines 1790-1794): producer buildings carry a single binary ON/OFF; the building
+    selection panel is ON/OFF + self-destruct only — no per-item queue UI, no batching, no
+    queued unit list. —
+    PROBLEM: the factory production model still carries a multi-item build QUEUE (an array
+    with index-based cancel/splice) in the sim/command/wire layer — the per-item production
+    queue the ON/OFF producer rule is meant to retire. (The UI may already be ON/OFF-only,
+    but the underlying data/command model still encodes a queue.) WATCH because it may be
+    an intentional in-progress migration. —
+    FIX: decide the producer model: if ON/OFF is the target, reduce factory production to
+    the binary consume→produce→repeat loop with a single rally setting and remove the
+    multi-item queue from the data/command/wire model; if a queue is intentionally retained
+    for factories, update the doc to carve factories out of the strict ON/OFF rule.
+
+A32. [LOW] src/game/sim/factoryProduction.ts (rally modeled as an appendable list of
+    waypoints) and the rally command path —
+    RULE: "Producer Buildings Are ON/OFF" (philosophy lines 1805-1820): rally is a separate
+    STATIC setting, not a queue entry; producers are a single binary toggle with no waypoint
+    list / shift-click batching. —
+    PROBLEM: factory rally is modeled as a growable multi-waypoint queued list (shift-append)
+    rather than the single static rally point the ON/OFF model implies, extending the
+    producer beyond the binary toggle + single rally. —
+    FIX: reduce factory rally to a single static rally target (latest set wins), or if
+    multi-waypoint rally is intended, document it as an explicit exception. (Pairs with A31.)
+
+A33. [LOW] src/components/ (selection/command panel Vue component that builds the action
+    set for a mixed selection) —
+    RULE: "Selection Menus Are Uniform Per Entity Type" (philosophy lines 1762-1766):
+    "Mixed selections… reduce to the intersection of the per-type action sets, plus an
+    explicit select-only-X affordance… The panel must never show an action that the active
+    selection cannot execute." —
+    PROBLEM: for mixed-type selections the action panel shows the UNION of each type's
+    actions (relying on per-button disable) rather than the INTERSECTION the doc mandates,
+    and there is no explicit select-only-X affordance to drop to a single type — so the panel
+    can present actions part of the selection cannot execute. —
+    FIX: compute the mixed-selection action set as the intersection of per-type action sets,
+    and add an explicit select-only-X control to narrow the selection to one entity type.
+
+A34. [LOW] src/game/render3d/Input3DManager.ts (two-finger twist/rotate gesture handler) —
+    uses the touch midpoint (cursor) as the screen anchor unconditionally —
+    RULE: "Camera Anchoring Is Two Orthogonal Axes" (philosophy lines 984-1023): every
+    pivot/pin gesture's anchor is the product of two independent CONFIG axes
+    (anchorPointCameraScreen × anchorPointCameraTerrain); "all six must be reachable by
+    setting the two configs — never by adding a seventh special-case branch." —
+    PROBLEM: the touch two-finger twist-rotate gesture hardcodes the screen-anchor to the
+    gesture midpoint (cursor) instead of reading anchorPointCameraScreen, so for that gesture
+    one orthogonal config axis is collapsed — the screen-center option is unreachable. (Mouse
+    orbit/zoom/pan correctly go through the shared resolver.) —
+    FIX: route the touch twist-rotate gesture through the same (anchorPointCameraScreen,
+    anchorPointCameraTerrain) resolver the other gestures use, so its screen anchor honors
+    the config instead of being pinned to the cursor midpoint.
+
+A35. [MEDIUM] src/game/network/turretSnapshotFields.ts:5-6,13 (line weapons treated as an
+    exception that DOES ship live yaw/pitch) vs the headOnly contract —
+    RULE: "Beam And Rocket Turrets Render As Heads" (philosophy lines 1223-1228): marking a
+    turret headOnly:true means "the snapshot serializer pins the wire's rotation /
+    angular-velocity / pitch / pitch-velocity slots to zero" for all six named headOnly
+    turrets (beamTurret, miniBeam, megaBeamTurret, towerBeamTurret, salvoRocketTurret,
+    fastRocketTurret). —
+    PROBLEM: turretSnapshotFields.ts exempts "line weapons" (beam/laser) from the headOnly
+    angular-zeroing, shipping their live yaw/pitch/angular fields on the wire, whereas the
+    doc says the beam-family headOnly turrets must have all four angular slots zeroed (their
+    direction comes from beam endpoints, not turret yaw). So beam-family turrets still dirty
+    the entity row on aim motion. (Confirmed: turretSnapshotFields.ts:13 returns true —
+    "ships fields" — for non-headOnly, and the header comment 5-6 names line weapons as the
+    live-aim exception.) —
+    FIX: zero rotation/angularVelocity/pitch/pitchVelocity on the wire for ALL headOnly
+    turrets including the beam family (beams are defined by start/end points, so the client
+    never needs turret yaw/pitch); reconcile turretSnapshotFields.ts with the headOnly
+    contract, or update the doc if some line weapons genuinely need live aim.
+
+A36. [LOW] src/types/blueprints.ts + src/types/shotTypes.ts (hand-written TS types) and
+    the parallel hand-written Rust structs in rts-sim-wasm/src/lib.rs —
+    RULE: "Schema is the contract" (philosophy lines 2034-2041): "TypeScript types and Rust
+    structs are generated from the schema. They are not hand-maintained in two languages —
+    that would just relocate the duplication problem from data to types." —
+    PROBLEM: blueprint/shot types are hand-maintained separately in TypeScript
+    (src/types/*.ts) and in Rust (lib.rs structs) rather than generated from one canonical
+    schema, so the "generated from the schema, not hand-maintained in two languages"
+    contract is not met and TS/Rust can drift. —
+    FIX: introduce a single canonical schema (e.g. JSON Schema) for blueprint/shot pieces and
+    generate both the TS types and Rust structs from it, replacing the hand-written
+    definitions, so the two languages cannot drift. (Related to C1.)
 
 
 ================================================================================
@@ -288,24 +309,39 @@ found no new unbounded-growth items.)
 ================================================================================
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
-C1. [MEDIUM] src/game/sim/Simulation.ts (TS tick orchestration),
-    src/game/sim/combat/projectileSystem.ts, ProjectileCollisionHandler.ts,
-    src/game/sim/damage/DamageSystem.ts, src/game/sim/Pathfinder.ts,
-    src/game/server/PhysicsEngine3D.ts, src/game/server/UnitForceSystem.ts —
-    RULE: "TypeScript Coordinates, WASM Computes" (philosophy lines 843-924) +
-    "Delete The Old Path / one language per behavior" (lines 2074-2158): per-unit /
-    per-tick loops, physics, projectile sim, collision, and targeting belong in
-    Rust/WASM; two implementations of one behavior is forbidden. —
-    PROBLEM: a large authoritative simulation (projectiles, collision, damage,
-    pathfinding, physics, per-unit update loops) still runs in TypeScript ALONGSIDE the
-    26k-line Rust sim it calls into for some kernels, so the authoritative hot path is
-    TS-owned and several behaviors exist in both languages — contrary to WASM-computes
-    and one-language-per-behavior. This is the umbrella architecture/scale item; A26
-    (TS ground clamp) and A35 (client projectile parity) are facets of it. —
-    FIX: continue migrating per-tick/per-unit authoritative systems into the Rust sim and
-    DELETE the TS counterparts in the same change (Delete The Old Path). Maintain a clear
-    ledger of which systems are Rust-authoritative vs TS-live so there are never two
-    sources of truth. Large multi-step effort.
+C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loop +
+    updateUnits/updateCombat at lines ~335-453), src/game/server/PhysicsEngine3D.ts
+    (live authoritative physics; thin WASM orchestrator but with a residual inline TS
+    integrator branch — see A37), and the broader src/game/sim/ TypeScript sim —
+    RULE: "TypeScript Coordinates, WASM Computes" (philosophy lines 843-924) + "Delete The
+    Old Path / one language per behavior" (lines 2074-2158): per-unit / per-tick control
+    loops belong in Rust/WASM; two implementations of one behavior is forbidden. —
+    PROBLEM: the authoritative per-tick orchestration (command execution, per-unit update
+    loops, combat/economy/construction stepping) still runs in TypeScript and calls into the
+    26k-line Rust sim for the heavy numeric kernels. The audit verified the hot numeric work
+    IS batched to WASM (collision/splash broadphase, spatial partitioning, unit-motion
+    kernel, terrain bake are all WASM-owned — see VERIFIED-CLEAN) and that PhysicsEngine3D
+    is a correct thin WASM orchestrator (NOT a Rust-sim duplicate), so this is the
+    acknowledged in-transition orchestration layer, not a hot-loop violation. The remaining
+    gap is the long-tail migration of TS control flow into Rust and the residual dead TS
+    integrator (A37). —
+    FIX: continue migrating per-tick/per-unit authoritative control flow into the Rust sim
+    and DELETE the TS counterparts in the same change (Delete The Old Path). Keep a clear
+    ledger of which systems are Rust-authoritative vs TS-orchestrated so there are never two
+    sources of truth. Large multi-step effort; lower urgency than the SECTION A items.
+
+A37. [LOW] src/game/server/PhysicsEngine3D.ts (inline explicit-Euler integration branch
+    for non-sphere dynamic bodies, alongside the WASM-delegated sphere path) —
+    RULE: "Delete The Old Path / One language per behavior" (philosophy lines 2074-2158):
+    when a behavior moves to Rust/WASM the predecessor TS implementation must be deleted in
+    the same change; two implementations of one behavior is forbidden. —
+    PROBLEM: PhysicsEngine3D delegates sphere bodies to the WASM kernel but retains an inline
+    TS explicit-Euler integrator for non-sphere dynamic bodies — a second physics integration
+    path in TS. In practice all current dynamic bodies are spheres, so the TS branch is
+    effectively dead. (Filed under SECTION C as a facet of C1.) —
+    FIX: if no non-sphere dynamic bodies exist, delete the inline TS integrator branch; if
+    they do, move them into the WASM kernel and then delete the TS path, so body integration
+    has one implementation.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
@@ -321,78 +357,127 @@ D1. [WATCH] @dimforge/rapier3d-compat (a 3D physics engine — banned category) 
     full physics engine shipping in the tree) is therefore defused. Keep watching: do not
     swap the stub back for the real package, and do not import it.
     (2026-05-30: previously this item claimed "a full physics engine ships in the
-    lockfile" — that is no longer true; the stub replaced it.)
+    lockfile" — that is no longer true; commit 11526e73 "Remove transitive Rapier engine
+    package" replaced it with the stub.)
+
+D2. [LOW] src/game/server/PhysicsEngine3D.ts:1-54 (file header comment) —
+    RULE: "Single Source Of Truth" (philosophy lines 2057-2070) — comments must not drift
+    from the code they describe; a stale header is a second, contradictory source of truth. —
+    PROBLEM: the file header describes a standard in-TypeScript explicit-Euler integrator
+    (and implies no sleeping), but the live engine delegates integration to the WASM kernel
+    and DOES implement body sleeping — the comment is a stale, contradictory description of
+    the code. —
+    FIX: rewrite the PhysicsEngine3D header to describe the actual WASM-delegated integration
+    + sleeping behavior (or delete the misleading detail) so the file's documentation matches
+    its code.
 
 
 ================================================================================
 VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigate)
 ================================================================================
+(2026-05-30 audit: 21 candidate findings were refuted by independent verifiers
+that re-read the live code. The notable ones — things one might assume are gaps
+but are not — are folded into the list below.)
+
 - No acceleration on the wire; PREDICT mode is POS/VEL only; no ACC option.
 - The four EMA channels (movement pos/vel, rotation pos/vel) are each applied to
-  ALL their documented fields (unit transform/velocity, beam point pos/vel, yaw
-  scalar + orientation quat + turret yaw/pitch, angularVelocity3 + turret rates,
-  force-field range visualizer). NB: body angularVelocity3 is EMA-corrected but
-  NOT integrated into orientation — see A34 (the channel binding exists; the
+  their documented fields. NB: body angularVelocity3 is EMA-corrected but NOT
+  integrated into orientation — see A23 (the channel binding exists; the
   integration step does not).
 - Travelling projectiles are event-driven (spawn / velocityUpdate / despawn) and
   dead-reckoned — they do NOT ride the movement-position/velocity EMA channels.
-  (Snap-on-event behavior itself has a gap — see A25.)
 - Delta thresholds: position uses absolute error, velocity uses relative; the
   zero-velocity edge is sent; baseline = last value actually sent per recipient.
-- Server-side backpressure exists: NetworkSnapshotTransport gates on
-  dataChannel.bufferedAmount and skips sends when the buffer is backed up.
-- Weapon range acquisition uses true 3D distance (dx,dy,dz) against the envelope;
-  the ground range ring uses sqrt(R²−h²) for display only.
-- Forces integrate via a=F/m → velocity → position; no direct position teleport
-  for movement. Gravity is applied in unit force integration and projectile
-  stepping (the only gravity exemption is the rocket multiplier — see A27).
-- EntityId is an opaque generation-checked handle; player/team/host/blueprint/
-  storage live in metadata rows, not packed into the number.
+- Command-upward / snapshot-downward network architecture audited COMPLIANT:
+  commands go through the host (authority/sanitize via commandAuthority.ts +
+  commandSanitizer.ts), selection is local, snapshots are corrections. (The
+  snapshot RATE default is out of band — see A21; and the rate dropdown also
+  exposes 32/64/128 options up to the tick rate, refuted as a config-option
+  range, not a shipped default.)
+- Locomotion arrival control for GROUND and HOVER units correctly uses position
+  error + velocity error with thrust saturation (compute_arrival_control_thrust
+  in lib.rs ~681-808); final vs intermediate waypoints are distinguished
+  (ARRIVAL_FLAG_LAST_ACTION); waypoints are desired states, not magnets. (Only
+  the FLYING branch is position-only — see A25.)
+- Gravity integration is universal in the body integrator (lib.rs passes
+  authored_az − GRAVITY with no per-body skip branch); homing counter-thrust,
+  D-gun terrain-follow, and hover lift are CLEAN — hover fights g·m with a lift
+  force, it does NOT skip gravity. (The ONLY gravity exemption is the per-shot
+  gravityForceMultiplier:0 on rockets — see A26/A27.)
+- Hover lift is an anti-gravity force, not a gravity-skip conditional (verifier
+  re-read confirmed; the earlier "hover is a PD pull, not anti-gravity" candidate
+  was refuted).
+- The host-directed one-per-kind STARTUP THROW IS enforced:
+  validateHostDirectedMounts (src/game/sim/blueprints/index.ts:717-733) groups a
+  host's mounts by turret kind and requires exactly one hostDirected per present
+  kind (zero = orders can't land; ≥2 = ambiguous primary), skipping buildings.
+  (The earlier "loader does not enforce" candidate was a misread and is refuted.)
+- Level-1 named lock-on exclusions ARE applied in the targeting kernel:
+  combat_targeting_level1_mask_excludes (rts-sim-wasm/src/lib.rs ~13000, used at
+  13069/13084/13091/13098) filters individual unit/tower/building/turret blueprint
+  names AFTER the level-0 family pass, with unit tests
+  (level1_body_exclusions_reject_only_matching_blueprints :25975,
+  level1_turret_exclusions_filter_individual_mounted_turrets :26046). Level-0
+  (friend/enemy + entity family) is also applied. (The earlier "level-1 never
+  applied" candidate is refuted.)
+- ShotSource provenance is complete and propagated: createTurretShotSource
+  (projectileSystem.ts:359-377) populates the full record incl.
+  sourceTurretBlueprintId; the "blueprint id can be null" candidate was refuted on
+  the merits.
+- EntityId is an opaque handle resolved through metadata rows; player/team/host/
+  blueprint/storage are NOT packed into the number. (The generation/alive fields
+  exist but are currently inert — see A30.)
 - Build sites and factory unit shells are the real product entities from spawn:
-  one continuous EntityId from nanoframe to finished structure; no re-id handoff
-  at completion.
+  one continuous EntityId from nanoframe to finished structure; no re-id handoff.
 - EntityType has Tower as a true peer of Unit/Building; the fabricator is in the
-  tower catalog (EntityType Tower), not a building; pure-infra buildings carry no
-  turrets/lock-on.
-- Turrets name one neutral `shotId`; force-field spheres use a `forceField`
-  ShotBlueprint (`forceFieldBarrierShot`) instead of inline turret emission data,
-  while panel/sphere projection geometry stays on the mount side.
-- Lock-on exclusion lists are honored subtractively at LEVEL 0 (friend/enemy +
-  entity family) for turrets and host-level unit/tower lock-on; candidate
-  enumeration covers the unit/tower/building/turret-mount families. (Level-1 named
-  exclusions are NOT applied — see A22.)
-- Host-directed vs fully-autonomous turret mounts are wired: the tag lives on the
-  unit/tower MOUNT entry (TurretMount.hostDirected / BuildingTurretMount.
-  hostDirected), NOT on the turret blueprint; a host lock-on overwrites host-
-  directed turrets while fully-autonomous turrets run independently; host-directed
-  mounts fall back to autonomous when the host has no lock; and the fight-stop
-  ratio counts only host-directed mounts. (The one-per-kind STARTUP THROW is NOT
-  enforced — see A21.)
+  tower catalog, not a building; pure-infra buildings carry no turrets/lock-on.
+- Turrets name one neutral shotId; the force-field SPHERE uses a forceField shot
+  (forceFieldBarrierShot). (The force-field PANEL is the inconsistent one — it
+  names a beam shot with turret-side panel config; see A28/A29.)
+- Host-directed vs fully-autonomous turret mounts are wired correctly: the tag
+  lives on the unit/tower MOUNT entry (not the turret blueprint); host lock-on
+  overwrites host-directed turrets, fully-autonomous run independently;
+  host-directed mounts fall back to autonomous when the host has no lock; the
+  fight-stop ratio counts only host-directed mounts.
 - Rockets inherit the launch target and never re-acquire; lost target → ballistic.
 - Airborne mount invariant (mount.y===0 && mount.z===0, no zResolver) is enforced
   and throws at startup for hover/flying turrets.
 - Locomotion visual state (wheel/tread/leg/fan) is computed client-side in the rig
   and does NOT cross the wire.
 - Camera anchoring is two orthogonal config axes (anchorPointCameraScreen +
-  anchorPointCameraTerrain) resolved by one shared resolver; all six combinations
-  are reachable from config, not a special-case branch.
+  anchorPointCameraTerrain) resolved by one shared resolver for MOUSE gestures;
+  all six combinations are reachable from config. (Only the TOUCH twist-rotate
+  gesture hardcodes screen=cursor — see A34.)
 - Sensors are capability sources with fixed radii (NOT derived from WEAPON range).
   (Builder sight IS partly derived from build-reach — a separate, milder coupling;
-  see A33.)
-- Resource movement: every per-tick stockpile delta funnels through the
-  ResourceMovementSystem credit/debit path; no side-channel mutates the player pool.
-  (Pylon COVERAGE for every resource-affecting host is incomplete — see A37.)
+  see A22.)
+- Resource movement: every per-tick stockpile delta funnels through the single
+  ResourceMovementSystem credit/debit path (creditStockpile resourceMovement.ts:38,
+  debitStockpile :53 are the only mutators of stockpile.curr); one shared render
+  rig draws all streams. No side-channel mutates the player pool. (The earlier
+  side-channel-bypass candidate was refuted; a producer-income-via-config-scalars
+  candidate was also refuted — the doc does not require pylon endpoints authored on
+  the host blueprint.)
 - Selection panels are gated on entity TYPE capability flags, not per-blueprint
-  buttons; mixed selections reduce to the intersection of per-type action sets.
-- Blueprints are pure data (discriminated unions by string tag); no closures or
-  functions smuggled into blueprint JSON.
-- Steady-state tick paths use counted loops and reused buffers; the map/filter
-  instances in the codebase are in setup/non-hot paths, not per-tick hot loops.
+  buttons. (Mixed-type selections show the union not the intersection — see A33.)
+- Blueprints are pure data: JSON files imported by thin TS loaders (units.ts imports
+  units.json, turrets.ts imports turrets.json, etc.); no closures/functions in
+  blueprint JSON; config.ts holds zero authoritative tuning literals. Load-time
+  validation THROWS with no silent defaults (jsonValidation.ts assertExplicitFields);
+  Explicit Absence is honored (required null fields). Single Source Of Truth holds
+  (audio refs, JSON-import derivation, cross-config consistency throws). (Config-Is-
+  Data audited CLEAN — the only residual is that TS types and Rust structs are
+  hand-written rather than schema-generated; see A36.)
+- Steady-state tick + renderer per-frame paths use counted loops and reused scratch/
+  Sets; no per-frame map/filter/Object.entries/new-Set in hot paths.
+- Collision/splash broadphase and spatial partitioning are fully WASM-owned
+  (SpatialGrid is a thin wrapper); no full-world steady-state scans in projectile
+  collision or area damage. PhysicsEngine3D is LIVE authoritative physics but a
+  correct thin WASM orchestrator (NOT a Rust-sim duplicate, NOT dead) — its only
+  residue is the dead non-sphere TS integrator branch (A37) and a stale header (D2).
 - No banned libs (Phaser/Pixi/Matter/cannon/ammo/rapier) are imported anywhere in
   src/; the only @dimforge entry is a local no-op stub (see D1).
 - No legacy/old/_unused dirs or .old/.bak files in src/ or rts-sim-wasm/.
-- Top-level *Config.json exports are JSON-backed. (Remaining authoritative tuning
-  inside src/game/sim/ TS modules is NOT yet JSON — see A32.)
 - Client unit prediction motion uses a batched Rust/WASM kernel for target
   extrapolation and rendered entity motion; the old TS single-body wrapper path is
   gone.
