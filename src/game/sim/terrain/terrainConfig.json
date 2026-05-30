@@ -1,15 +1,15 @@
 {
   "world": {
-    "floorY": -1200
+    "floorY": -600
   },
   "water": {
     "levelFraction": 0.9,
     "fullyOpaque": false
   },
   "generation": {
-    "edgeFadeWidthFraction": 0.04,
+    "edgeFadeWidthFraction": 0.01,
     "circleIsland": {
-      "radiusFraction": 1.3,
+      "radiusFraction": 0.99,
       "shorelineWidthFraction": 0.1
     },
     "ripple": {
