@@ -36,18 +36,6 @@ import type {
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
-const TERRAIN_CLEARANCE_NORMAL_EPS = 24;
-const TERRAIN_CLEARANCE_SAMPLE_OFFSETS = [
-  [0, 0],
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-  [0.7071067811865476, 0.7071067811865476],
-  [-0.7071067811865476, 0.7071067811865476],
-  [0.7071067811865476, -0.7071067811865476],
-  [-0.7071067811865476, -0.7071067811865476],
-] as const;
 
 export type OrbitCameraOptions = {
   /** Closest-approach zoom-in rail. Terrain collision is resolved
@@ -211,8 +199,6 @@ export class OrbitCamera {
   private _orbitPitchQuatTmp = new THREE.Quaternion();
   private _orbitRightTmp = new THREE.Vector3();
   private _cameraPosTmp = new THREE.Vector3();
-  private _terrainNormalTmp = new THREE.Vector3();
-  private _terrainPushNormalTmp = new THREE.Vector3();
   private static _ORBIT_WORLD_Y = new THREE.Vector3(0, 1, 0);
 
   private canvas: HTMLElement;
@@ -557,7 +543,6 @@ export class OrbitCamera {
     let nextDistance = Math.max(this.minDistance, wantedDistance);
     if (nextDistance === this.toDistance) return; // already at the zoom-in rail
     const actualFactor = nextDistance / this.toDistance;
-    const startDistance = this.toDistance;
     const startTargetX = this.toTargetX;
     const startTargetY = this.toTargetY;
     const startTargetZ = this.toTargetZ;
@@ -578,100 +563,16 @@ export class OrbitCamera {
       nextTargetZ = actualFactor * startTargetZ + k * p0.z;
     }
 
-    const clearProgress = this.zoomClearProgress(
-      startTargetX,
-      startTargetY,
-      startTargetZ,
-      startDistance,
-      nextTargetX,
-      nextTargetY,
-      nextTargetZ,
-      nextDistance,
-    );
-    if (clearProgress <= 0) return;
-    if (clearProgress < 1) {
-      nextTargetX = startTargetX + (nextTargetX - startTargetX) * clearProgress;
-      nextTargetY = startTargetY + (nextTargetY - startTargetY) * clearProgress;
-      nextTargetZ = startTargetZ + (nextTargetZ - startTargetZ) * clearProgress;
-      nextDistance = startDistance + (nextDistance - startDistance) * clearProgress;
-    }
-
+    // No terrain clip-test throttle on zoom. The render-time floor in
+    // apply() lifts the camera above any terrain it would dive into, so
+    // the wheel stays smooth instead of stalling near hills, and the
+    // orbit state is never rewritten by terrain.
     this.toTargetX = nextTargetX;
     this.toTargetY = nextTargetY;
     this.toTargetZ = nextTargetZ;
     this.toDistance = nextDistance;
 
     this.applyDestinationIfSnap();
-  }
-
-  private zoomClearProgress(
-    fromTargetX: number,
-    fromTargetY: number,
-    fromTargetZ: number,
-    fromDistance: number,
-    toTargetX: number,
-    toTargetY: number,
-    toTargetZ: number,
-    toDistance: number,
-  ): number {
-    if (
-      !this.cameraCollidesWithTerrain ||
-      !this.getTerrainHeight ||
-      this.minTerrainClearance <= 0
-    ) {
-      return 1;
-    }
-    // Zoom-OUT never traps. Moving the camera farther from the orbit
-    // target can only put more space between it and the terrain, and
-    // apply()'s render-time clearance + ground floor lift the camera
-    // above any mountain that happens to sit at the destination XZ.
-    // Skip the clip-progress check entirely so the wheel doesn't feel
-    // stuck when a peak crosses the destination orbital shell.
-    if (toDistance >= fromDistance) return 1;
-    if (this.isCameraStateTerrainClear(toTargetX, toTargetY, toTargetZ, toDistance)) return 1;
-
-    // If the current destination is already invalid, do not trap the
-    // user. Let the destination update and the render-time 3D resolver
-    // push the camera out of terrain.
-    if (!this.isCameraStateTerrainClear(fromTargetX, fromTargetY, fromTargetZ, fromDistance)) {
-      return 1;
-    }
-
-    let lo = 0;
-    let hi = 1;
-    for (let i = 0; i < 12; i++) {
-      const mid = (lo + hi) * 0.5;
-      const targetX = fromTargetX + (toTargetX - fromTargetX) * mid;
-      const targetY = fromTargetY + (toTargetY - fromTargetY) * mid;
-      const targetZ = fromTargetZ + (toTargetZ - fromTargetZ) * mid;
-      const distance = fromDistance + (toDistance - fromDistance) * mid;
-      if (this.isCameraStateTerrainClear(targetX, targetY, targetZ, distance)) {
-        lo = mid;
-      } else {
-        hi = mid;
-      }
-    }
-    return lo;
-  }
-
-  private isCameraStateTerrainClear(
-    targetX: number,
-    targetY: number,
-    targetZ: number,
-    distance: number,
-  ): boolean {
-    if (!this.cameraCollidesWithTerrain) return true;
-    this.cameraPositionForState(
-      targetX,
-      targetY,
-      targetZ,
-      distance,
-      this.yaw,
-      this.pitch,
-      this._cameraPosTmp,
-    );
-    return this.terrainSignedClearance(this._cameraPosTmp, this._terrainPushNormalTmp)
-      >= this.minTerrainClearance;
   }
 
   private capturePanAnchor(clientX: number, clientY: number): void {
@@ -899,74 +800,20 @@ export class OrbitCamera {
     return out;
   }
 
-  private terrainNormalAt(x: number, z: number, out: THREE.Vector3): THREE.Vector3 {
-    const heightAt = this.getTerrainHeight;
-    if (!heightAt) return out.set(0, 1, 0);
-    const eps = Math.max(TERRAIN_CLEARANCE_NORMAL_EPS, this.minTerrainClearance * 0.25);
-    const hL = heightAt(x - eps, z);
-    const hR = heightAt(x + eps, z);
-    const hD = heightAt(x, z - eps);
-    const hU = heightAt(x, z + eps);
-    out.set(
-      (hL - hR) / (2 * eps),
-      1,
-      (hD - hU) / (2 * eps),
-    );
-    return out.normalize();
-  }
-
-  private terrainSignedClearance(pos: THREE.Vector3, normalOut: THREE.Vector3): number {
-    const heightAt = this.getTerrainHeight;
-    if (!heightAt) return Infinity;
-
-    let best = Infinity;
-    normalOut.set(0, 1, 0);
-    const sampleRadius = Math.max(1, this.minTerrainClearance);
-    for (const [ox, oz] of TERRAIN_CLEARANCE_SAMPLE_OFFSETS) {
-      const sx = pos.x + ox * sampleRadius;
-      const sz = pos.z + oz * sampleRadius;
-      const sy = heightAt(sx, sz);
-      const normal = this.terrainNormalAt(sx, sz, this._terrainNormalTmp);
-      const signed =
-        (pos.x - sx) * normal.x +
-        (pos.y - sy) * normal.y +
-        (pos.z - sz) * normal.z;
-      if (signed < best) {
-        best = signed;
-        normalOut.copy(normal);
-      }
-    }
-    return best;
-  }
-
-  private resolveTerrainClearance(pos: THREE.Vector3): boolean {
-    if (
-      !this.cameraCollidesWithTerrain ||
-      !this.getTerrainHeight ||
-      this.minTerrainClearance <= 0
-    ) {
-      return false;
-    }
-
-    let adjusted = false;
-    for (let i = 0; i < 3; i++) {
-      const signed = this.terrainSignedClearance(pos, this._terrainPushNormalTmp);
-      const deficit = this.minTerrainClearance - signed;
-      if (deficit <= 1e-3) break;
-      pos.addScaledVector(this._terrainPushNormalTmp, deficit);
-      adjusted = true;
-    }
-    return adjusted;
-  }
-
-  /** Recompute camera position from target + yaw + pitch + distance.
+  /** Recompute the rendered camera position from the orbit state
+   *  (target + yaw + pitch + distance) and aim it at the target.
    *
-   *  Terrain clearance is a local 3D camera-sphere approximation:
-   *  sample the heightfield around the candidate camera position,
-   *  measure clearance along each sample's terrain normal, and push
-   *  the camera along the closest normal if needed. This avoids the
-   *  old vertical-only "check the ground directly below me and lift
-   *  upward" bias. */
+   *  Terrain clearance is a pure render-time floor: when the computed
+   *  camera position would sit below the terrain directly beneath it,
+   *  its height is lifted to `terrainHeight + minTerrainClearance`.
+   *
+   *  This deliberately NEVER writes back into the orbit state. An
+   *  earlier version pushed the camera along terrain normals and then
+   *  recovered yaw / pitch / distance from the collision-adjusted
+   *  position — which made the view spin and ratchet its zoom outward
+   *  as the camera brushed hills while panning. The orbit state stays
+   *  the user's single source of truth; a pure vertical lift leaves yaw
+   *  untouched, so the framing never rotates on its own near terrain. */
   apply(): void {
     this.constrainTargets();
     const pos = this.cameraPositionForState(
@@ -978,46 +825,17 @@ export class OrbitCamera {
       this.pitch,
       this._cameraPosTmp,
     );
-    let resolved = this.resolveTerrainClearance(pos);
-    // Hard vertical floor — guarantees the rendered camera sits at
-    // least minTerrainClearance above the terrain directly under it,
-    // regardless of what the normal-aligned push above did. Catches
-    // the cases the 9-sample clearance disk misses: peaks smaller
-    // than sampleRadius, peaks sitting between sample points, and
-    // any state where the 3-iteration push didn't fully resolve.
     if (
       this.cameraCollidesWithTerrain &&
       this.getTerrainHeight &&
       this.minTerrainClearance > 0
     ) {
+      // NaN-safe: if the sampler returns NaN (off-map / before terrain
+      // loads) the comparison is false, so the camera is left where the
+      // orbit state put it rather than snapping to a garbage floor.
       const floorY = this.getTerrainHeight(pos.x, pos.z) + this.minTerrainClearance;
       if (pos.y < floorY) {
         pos.y = floorY;
-        resolved = true;
-      }
-    }
-    if (resolved) {
-      const offX = pos.x - this.target.x;
-      const offY = pos.y - this.target.y;
-      const offZ = pos.z - this.target.z;
-      const distance = Math.hypot(offX, offY, offZ);
-      if (distance > 1e-6) {
-        this.distance = distance;
-        this.yaw = Math.atan2(offX, -offZ);
-        const pitch = Math.acos(Math.min(1, Math.max(-1, offY / distance)));
-        this.pitch = Math.min(Math.PI - 1e-4, Math.max(1e-4, pitch));
-        const destinationStillClear = this.isCameraStateTerrainClear(
-          this.toTargetX,
-          this.toTargetY,
-          this.toTargetZ,
-          this.toDistance,
-        );
-        if (this.smoothTauSec === 0 || !destinationStillClear) {
-          this.toTargetX = this.target.x;
-          this.toTargetY = this.target.y;
-          this.toTargetZ = this.target.z;
-          this.toDistance = this.distance;
-        }
       }
     }
     this.camera.position.copy(pos);
