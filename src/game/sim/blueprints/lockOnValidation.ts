@@ -19,6 +19,8 @@ export const LOCK_ON_EXCLUSION_FIELDS = [
   'excludeLockOnLevel1Towers',
   'excludeLockOnLevel1Units',
   'excludeLockOnLevel1Turrets',
+  'excludeLockOnLevel1Locomotions',
+  'excludeLockOnLevel1Shots',
 ] as const;
 
 export function assertNoInlineLockOnExclusionFields(
@@ -99,6 +101,12 @@ export function validateLockOnExclusionObject(
   assertStringArray(label, 'excludeLockOnLevel1Towers', value.excludeLockOnLevel1Towers);
   assertStringArray(label, 'excludeLockOnLevel1Units', value.excludeLockOnLevel1Units);
   assertStringArray(label, 'excludeLockOnLevel1Turrets', value.excludeLockOnLevel1Turrets);
+  assertStringArray(
+    label,
+    'excludeLockOnLevel1Locomotions',
+    value.excludeLockOnLevel1Locomotions,
+  );
+  assertStringArray(label, 'excludeLockOnLevel1Shots', value.excludeLockOnLevel1Shots);
 }
 
 export function validateLockOnExclusionConfigSection(
@@ -127,5 +135,7 @@ export function cloneLockOnExclusionObject(
     excludeLockOnLevel1Towers: [...value.excludeLockOnLevel1Towers],
     excludeLockOnLevel1Units: [...value.excludeLockOnLevel1Units],
     excludeLockOnLevel1Turrets: [...value.excludeLockOnLevel1Turrets],
+    excludeLockOnLevel1Locomotions: [...value.excludeLockOnLevel1Locomotions],
+    excludeLockOnLevel1Shots: [...value.excludeLockOnLevel1Shots],
   };
 }

@@ -5,6 +5,7 @@ import type {
 } from '@/types/blueprints';
 import type { UnitLocomotion } from './types';
 import { NO_ENTITY_ID, type EntityId } from '@/types/entityTypes';
+import type { LocomotionBlueprintId } from '@/types/blueprintIds';
 
 export const LOCOMOTION_TRACTION = {
   wheels: 0.45,
@@ -85,7 +86,10 @@ function createRuntimePathfindingConfig(
   };
 }
 
-export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocomotion {
+export function createUnitLocomotion(
+  locomotion: LocomotionBlueprint,
+  blueprintId: LocomotionBlueprintId,
+): UnitLocomotion {
   const { type, physics } = locomotion;
   assertPositiveFinite(`${type}.driveForce`, physics.driveForce);
   assertPositiveFinite(`${type}.traction`, physics.traction);
@@ -132,6 +136,7 @@ export function createUnitLocomotion(locomotion: LocomotionBlueprint): UnitLocom
     parentId: NO_ENTITY_ID,
     rootHostId: NO_ENTITY_ID,
     mountIndex: 0,
+    blueprintId,
     type,
     driveForce: physics.driveForce,
     traction: physics.traction,
@@ -157,6 +162,7 @@ export function cloneUnitLocomotion(
     parentId: identity?.parentId ?? locomotion.parentId,
     rootHostId: identity?.rootHostId ?? locomotion.rootHostId,
     mountIndex: identity?.mountIndex ?? locomotion.mountIndex,
+    blueprintId: locomotion.blueprintId,
     type: locomotion.type,
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,

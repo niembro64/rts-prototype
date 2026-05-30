@@ -52,44 +52,15 @@ Rust blueprint/shot type surfaces from one schema.
 File:line refs were correct at audit time; re-verify before editing.
 
 --------------------------------------------------------------------------------
-Items A37-A41 added 2026-05-30 alongside a design-direction expansion of
+Items A37-A42 added 2026-05-30 alongside a design-direction expansion of
 budget_design_philosophy.html (new/edited sections: "Every entity shares one base
 ledger", "Pieces have their own health and die independently", "Shots are
 destructible bodies too", "Hosts build from the ground up, one piece at a time",
 and a rewrite of the lock-on eligibility default to "universal by default,
-subtractive from there"). These describe where the CODE does not yet meet the
-expanded philosophy. They are forward work, not regressions.
+subtractive from there"). A37 has since been resolved; the remaining items
+describe where the CODE does not yet meet the expanded philosophy. They are
+forward work, not regressions.
 File:line refs were correct at audit time; re-verify before editing.
-
-A37. [HIGH] Turret/host lock-on cannot target every entity kind — only units/buildings/
-    towers/turrets are candidates; shots and locomotion are never lockable.
-    rts-sim-wasm/src/lib.rs: entity families are only CT_ENTITY_FAMILY_{NONE,BUILDING,UNIT,
-    TOWER} (~10888); lock-on family-exclude bits only EXCLUDE_{BUILDINGS,UNITS,TURRETS,TOWERS}
-    (~10880); candidate gather combat_targeting_collect_spatial_candidate_cell (~15583) matches
-    only UNIT/BUILDING/TOWER and rejects everything else with `_ => false`. TypeScript:
-    src/game/sim/combat/targetingInputStamping.ts stampCombatTargetingPool stamps only
-    world.getUnits()+getBuildings(); projectiles stamp CT_ENTITY_FAMILY_NONE (~502) and are
-    never put in the targeting index. The exclusion schema (src/types/blueprints.ts +
-    blueprintSchema) has no `locomotions` or `shots` family at level 0 and no level-1 lists for
-    them. —
-    RULE: rewritten "Lock-on eligibility" (philosophy) — a locker with no exclusions can lock
-    onto ANY living entity with an ID, OF ANY KIND (unit, tower, building, turret, locomotion,
-    shot); lock-on is universal by default and exclusions are subtractive opt-outs. Reinforced by
-    Universal Runtime Entity IDs ("if anything can lock onto it ... every travelling munition")
-    and "Pieces have their own health and die independently". —
-    PROBLEM: the kernel structurally cannot lock onto shots or locomotion, so point-defense
-    (lock onto shots), cripplers (lock onto locomotion), and disarmers (lock onto turrets only)
-    are unreachable, and the doc's "lock onto anything by default" is false in code. This is the
-    gap the 2026-05-30 lock-on audit was checking for; it did NOT previously exist as a tracked
-    issue. NB this does not contradict the VERIFIED-CLEAN level-1 entry — level-1 names are
-    correctly applied WITHIN the units/towers/buildings/turrets families; the gap is that shots
-    and locomotion are not families at all. —
-    FIX: add CT_ENTITY_FAMILY_{LOCOMOTION,SHOT} + matching EXCLUDE bits; stamp shot and
-    locomotion sub-entities into the combat targeting index; make the default candidate set any
-    targetable entity of any kind (default-exclude nothing); add `locomotions`+`shots` to
-    excludeLockOnLevel0Entities and add excludeLockOnLevel1Locomotions / excludeLockOnLevel1Shots.
-    Most ordinary weapons will then AUTHOR exclusions for shots+locomotions so they spend fire on
-    bodies — that is the turret opting out, not the kernel withholding. (Pairs with A39/A40.)
 
 A38. [HIGH] No uniform entity base ledger — id/cost{metal,energy}/mass/health are not a shared
     floor every kind carries.
@@ -135,8 +106,8 @@ A40. [MEDIUM] Shots have no health and cannot be shot down; collision is a remov
     as health. —
     FIX: add a tiny health field to the shot; on contact with ground/shot/solid set health=0 and
     run the existing detonation path; route incoming weapon damage to shot health so point-defense
-    turrets (A37) can shoot shots down; keep force-field reflection as the one non-damaging
-    contact. (Pairs with A37 point-defense and A38 base ledger.)
+    turrets can shoot shots down; keep force-field reflection as the one non-damaging
+    contact. (Pairs with A38 base ledger.)
 
 A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     src/game/sim (factory/fabricator construction + host spawn) + build-site creation. —

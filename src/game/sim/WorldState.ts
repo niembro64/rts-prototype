@@ -334,7 +334,11 @@ export class WorldState {
       storageSlot: entity.id,
       generation: 0,
       alive: true,
-      targetable: entity.type === 'unit' || entity.type === 'tower' || entity.type === 'building',
+      targetable:
+        entity.type === 'unit' ||
+        entity.type === 'tower' ||
+        entity.type === 'building' ||
+        entity.type === 'shot',
     });
 
     const combat = entity.combat;
@@ -367,7 +371,7 @@ export class WorldState {
         id: locomotion.id,
         kind: 'locomotion',
         blueprintKind: 'locomotion',
-        blueprintId: locomotion.type,
+        blueprintId: locomotion.blueprintId,
         ownerPlayerId,
         teamId,
         parentId: locomotion.parentId,
@@ -377,7 +381,7 @@ export class WorldState {
         storageSlot: 0,
         generation: 0,
         alive: true,
-        targetable: false,
+        targetable: true,
       });
     }
   }

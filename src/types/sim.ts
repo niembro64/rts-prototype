@@ -407,6 +407,8 @@ export type TurretConfig = {
   lockOnTowerExcludeMask: number;
   lockOnUnitExcludeMask: number;
   lockOnTurretExcludeMask: number;
+  lockOnLocomotionExcludeMask: number;
+  lockOnShotExcludeMask: number;
 };
 
 // Runtime projectile configuration. This is intentionally smaller than

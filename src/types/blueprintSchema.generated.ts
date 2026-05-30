@@ -295,7 +295,7 @@ export type TurretAimStyle = {
 
 export type TurretLockOnRelationshipExclusion = 'friendly_entities' | 'enemy_entities';
 
-export type TurretLockOnEntityFamilyExclusion = 'buildings' | 'towers' | 'units' | 'turrets';
+export type TurretLockOnEntityFamilyExclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'locomotions' | 'shots';
 
 export type LockOnExclusionObject = {
   excludeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipExclusion[];
@@ -304,6 +304,8 @@ export type LockOnExclusionObject = {
   excludeLockOnLevel1Towers: string[];
   excludeLockOnLevel1Units: string[];
   excludeLockOnLevel1Turrets: string[];
+  excludeLockOnLevel1Locomotions: string[];
+  excludeLockOnLevel1Shots: string[];
 };
 
 export type WeaponKind = 'attack' | 'construction' | 'repair';
@@ -355,6 +357,8 @@ export type TurretBlueprint = {
   excludeLockOnLevel1Towers: string[];
   excludeLockOnLevel1Units: string[];
   excludeLockOnLevel1Turrets: string[];
+  excludeLockOnLevel1Locomotions: string[];
+  excludeLockOnLevel1Shots: string[];
 };
 
 export type MountOffset = {
@@ -662,4 +666,6 @@ export type UnitBlueprint = {
   excludeLockOnLevel1Towers: string[];
   excludeLockOnLevel1Units: string[];
   excludeLockOnLevel1Turrets: string[];
+  excludeLockOnLevel1Locomotions: string[];
+  excludeLockOnLevel1Shots: string[];
 };

@@ -53,6 +53,7 @@ import {
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
   buildingBlueprintIdToCode,
+  locomotionBlueprintIdToCode,
   turretBlueprintIdToCode,
   unitBlueprintIdToCode,
 } from '../../types/network';
@@ -674,7 +675,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
     -1,
     ENTITY_META_STORAGE_ENTITIES,
     slot,
-    e.type === 'unit' || e.type === 'tower' || e.type === 'building' ? 1 : 0,
+    e.type === 'unit' || e.type === 'tower' || e.type === 'building' || e.type === 'shot' ? 1 : 0,
   );
 
   const locomotion = e.unit?.locomotion;
@@ -683,7 +684,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       locomotion.id,
       ENTITY_META_KIND_LOCOMOTION,
       ENTITY_META_BLUEPRINT_KIND_LOCOMOTION,
-      0xff,
+      locomotionBlueprintIdToCode(locomotion.blueprintId),
       ownership !== null ? ownership.playerId : -1,
       teamId,
       locomotion.parentId,
@@ -691,7 +692,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       locomotion.mountIndex,
       ENTITY_META_STORAGE_UNIT_LOCOMOTION,
       slot,
-      0,
+      1,
     );
   }
 

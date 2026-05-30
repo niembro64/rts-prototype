@@ -567,7 +567,7 @@
       "enum": ["friendly_entities", "enemy_entities"]
     },
     "TurretLockOnEntityFamilyExclusion": {
-      "enum": ["buildings", "towers", "units", "turrets"]
+      "enum": ["buildings", "towers", "units", "turrets", "locomotions", "shots"]
     },
     "LockOnExclusionObject": {
       "type": "object",
@@ -577,7 +577,9 @@
         "excludeLockOnLevel1Buildings",
         "excludeLockOnLevel1Towers",
         "excludeLockOnLevel1Units",
-        "excludeLockOnLevel1Turrets"
+        "excludeLockOnLevel1Turrets",
+        "excludeLockOnLevel1Locomotions",
+        "excludeLockOnLevel1Shots"
       ],
       "properties": {
         "excludeLockOnLevel0FriendsAndEnemies": { "type": "array", "items": { "$ref": "#/$defs/TurretLockOnRelationshipExclusion" } },
@@ -585,7 +587,9 @@
         "excludeLockOnLevel1Buildings": { "type": "array", "items": { "type": "string" } },
         "excludeLockOnLevel1Towers": { "type": "array", "items": { "type": "string" } },
         "excludeLockOnLevel1Units": { "type": "array", "items": { "type": "string" } },
-        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } }
+        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Locomotions": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Shots": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false
     },
@@ -652,7 +656,9 @@
         "excludeLockOnLevel1Buildings",
         "excludeLockOnLevel1Towers",
         "excludeLockOnLevel1Units",
-        "excludeLockOnLevel1Turrets"
+        "excludeLockOnLevel1Turrets",
+        "excludeLockOnLevel1Locomotions",
+        "excludeLockOnLevel1Shots"
       ],
       "properties": {
         "turretBlueprintId": { "$ref": "#/$defs/TurretBlueprintId" },
@@ -686,7 +692,9 @@
         "excludeLockOnLevel1Buildings": { "type": "array", "items": { "type": "string" } },
         "excludeLockOnLevel1Towers": { "type": "array", "items": { "type": "string" } },
         "excludeLockOnLevel1Units": { "type": "array", "items": { "type": "string" } },
-        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } }
+        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Locomotions": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Shots": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false
     },
@@ -1170,7 +1178,9 @@
         "excludeLockOnLevel1Buildings",
         "excludeLockOnLevel1Towers",
         "excludeLockOnLevel1Units",
-        "excludeLockOnLevel1Turrets"
+        "excludeLockOnLevel1Turrets",
+        "excludeLockOnLevel1Locomotions",
+        "excludeLockOnLevel1Shots"
       ],
       "properties": {
         "unitBlueprintId": { "$ref": "#/$defs/UnitBlueprintId" },
@@ -1200,7 +1210,9 @@
         "excludeLockOnLevel1Buildings": { "type": "array", "items": { "type": "string" } },
         "excludeLockOnLevel1Towers": { "type": "array", "items": { "type": "string" } },
         "excludeLockOnLevel1Units": { "type": "array", "items": { "type": "string" } },
-        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } }
+        "excludeLockOnLevel1Turrets": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Locomotions": { "type": "array", "items": { "type": "string" } },
+        "excludeLockOnLevel1Shots": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false
     }

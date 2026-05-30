@@ -10,6 +10,7 @@ import type { TurretBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../locomotion';
+import type { LocomotionBlueprintId } from '../../../types/blueprintIds';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS, type BuildableUnitBlueprintId } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
@@ -230,7 +231,11 @@ export function getUnitBlueprint(id: string): UnitBlueprint {
 }
 
 export function getUnitLocomotion(id: string): UnitLocomotion {
-  return createUnitLocomotion(getUnitBlueprint(id).locomotion);
+  const unitBlueprint = getUnitBlueprint(id);
+  return createUnitLocomotion(
+    unitBlueprint.locomotion,
+    unitBlueprint.locomotionBlueprintId as LocomotionBlueprintId,
+  );
 }
 
 export function getAllUnitBlueprints(): UnitBlueprint[] {

@@ -2,12 +2,14 @@
 
 import {
   BUILDING_BLUEPRINT_IDS,
+  LOCOMOTION_BLUEPRINT_IDS,
   SHOT_BLUEPRINT_IDS,
   TURRET_BLUEPRINT_IDS,
   UNIT_BLUEPRINT_IDS,
 } from './blueprintIds';
 import type {
   BuildingBlueprintId,
+  LocomotionBlueprintId,
   ShotBlueprintId,
   TurretBlueprintId,
   UnitBlueprintId,
@@ -111,6 +113,26 @@ export function unitBlueprintIdToCode(s: string): UnitBlueprintCode {
 }
 export function codeToUnitBlueprintId(c: number): UnitBlueprintId | null {
   return _UNIT_BLUEPRINT_IDS[c] ?? null;
+}
+
+// ── Locomotion blueprint codes ────────────────────────────────────
+// Append-only, validated against locomotion blueprints at startup.
+const _LOCOMOTION_BLUEPRINT_IDS = LOCOMOTION_BLUEPRINT_IDS;
+export type LocomotionBlueprintCode = number;
+export function getNetworkLocomotionBlueprintIds(): readonly string[] {
+  return _LOCOMOTION_BLUEPRINT_IDS;
+}
+const _LOCOMOTION_BLUEPRINT_ID_TO_CODE: Record<string, LocomotionBlueprintCode> = {};
+for (let i = 0; i < _LOCOMOTION_BLUEPRINT_IDS.length; i++) {
+  _LOCOMOTION_BLUEPRINT_ID_TO_CODE[_LOCOMOTION_BLUEPRINT_IDS[i]] = i;
+}
+export const LOCOMOTION_BLUEPRINT_CODE_UNKNOWN = 0xff;
+export function locomotionBlueprintIdToCode(s: string): LocomotionBlueprintCode {
+  const code = _LOCOMOTION_BLUEPRINT_ID_TO_CODE[s];
+  return code === undefined ? LOCOMOTION_BLUEPRINT_CODE_UNKNOWN : code;
+}
+export function codeToLocomotionBlueprintId(c: number): LocomotionBlueprintId | null {
+  return _LOCOMOTION_BLUEPRINT_IDS[c] ?? null;
 }
 
 // ── Building blueprint codes ───────────────────────────────────────

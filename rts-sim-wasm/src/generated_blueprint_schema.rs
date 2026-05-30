@@ -438,6 +438,8 @@ pub enum TurretLockOnEntityFamilyExclusion {
     Towers,
     Units,
     Turrets,
+    Locomotions,
+    Shots,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -448,6 +450,8 @@ pub struct LockOnExclusionObject {
     pub excludeLockOnLevel1Towers: Vec<String>,
     pub excludeLockOnLevel1Units: Vec<String>,
     pub excludeLockOnLevel1Turrets: Vec<String>,
+    pub excludeLockOnLevel1Locomotions: Vec<String>,
+    pub excludeLockOnLevel1Shots: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -508,6 +512,8 @@ pub struct TurretBlueprint {
     pub excludeLockOnLevel1Towers: Vec<String>,
     pub excludeLockOnLevel1Units: Vec<String>,
     pub excludeLockOnLevel1Turrets: Vec<String>,
+    pub excludeLockOnLevel1Locomotions: Vec<String>,
+    pub excludeLockOnLevel1Shots: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -874,4 +880,6 @@ pub struct UnitBlueprint {
     pub excludeLockOnLevel1Towers: Vec<String>,
     pub excludeLockOnLevel1Units: Vec<String>,
     pub excludeLockOnLevel1Turrets: Vec<String>,
+    pub excludeLockOnLevel1Locomotions: Vec<String>,
+    pub excludeLockOnLevel1Shots: Vec<String>,
 }

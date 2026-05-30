@@ -318,6 +318,12 @@ function describeLockOnExclusions(blueprint: ReturnType<typeof getTurretBlueprin
   if (blueprint.excludeLockOnLevel1Turrets.length > 0) {
     items.push(stat('Turrets', blueprint.excludeLockOnLevel1Turrets.join(', ')));
   }
+  if (blueprint.excludeLockOnLevel1Locomotions.length > 0) {
+    items.push(stat('Locomotions', blueprint.excludeLockOnLevel1Locomotions.join(', ')));
+  }
+  if (blueprint.excludeLockOnLevel1Shots.length > 0) {
+    items.push(stat('Shots', blueprint.excludeLockOnLevel1Shots.join(', ')));
+  }
   return items;
 }
 

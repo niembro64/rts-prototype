@@ -1,6 +1,7 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
 import type { EntityId } from './entityTypes';
+import type { LocomotionBlueprintId } from './blueprintIds';
 
 export type UnitPathfindingTerrainMode = 'land' | 'anywhere';
 
@@ -23,6 +24,7 @@ export type UnitLocomotion = {
   parentId: EntityId;
   rootHostId: EntityId;
   mountIndex: number;
+  blueprintId: LocomotionBlueprintId;
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
   /** Authored propulsion scalar supplied by the locomotion blueprint. */
   driveForce: number;

@@ -1281,6 +1281,8 @@ export const CT_LOCK_ON_FAM_EXCLUDE_BUILDINGS = 1 << 0;
 export const CT_LOCK_ON_FAM_EXCLUDE_UNITS = 1 << 1;
 export const CT_LOCK_ON_FAM_EXCLUDE_TURRETS = 1 << 2;
 export const CT_LOCK_ON_FAM_EXCLUDE_TOWERS = 1 << 3;
+export const CT_LOCK_ON_FAM_EXCLUDE_LOCOMOTIONS = 1 << 4;
+export const CT_LOCK_ON_FAM_EXCLUDE_SHOTS = 1 << 5;
 
 /** LOCK-ON-03 — Per-entity family encoding. Mirrors
  *  `CT_ENTITY_FAMILY_*` in Rust. NONE is the cleared/unstamped sentinel
@@ -1289,6 +1291,8 @@ export const CT_ENTITY_FAMILY_NONE = 0;
 export const CT_ENTITY_FAMILY_BUILDING = 1;
 export const CT_ENTITY_FAMILY_UNIT = 2;
 export const CT_ENTITY_FAMILY_TOWER = 3;
+export const CT_ENTITY_FAMILY_LOCOMOTION = 4;
+export const CT_ENTITY_FAMILY_SHOT = 5;
 
 /** LOCK-ON-03 — Sentinel for `entity_blueprint_code` when the family is
  *  NONE. Mirrors `CT_BLUEPRINT_CODE_NONE` in Rust. */
@@ -1357,6 +1361,8 @@ export interface CombatTargetingApi {
     lockOnTowerExcludeMask: number,
     lockOnUnitExcludeMask: number,
     lockOnTurretExcludeMask: number,
+    lockOnLocomotionExcludeMask: number,
+    lockOnShotExcludeMask: number,
     detectorRadius: number,
     fullVisionRadius: number,
     radarRadius: number,
@@ -1435,6 +1441,8 @@ export interface CombatTargetingApi {
     lockonTowerMask: number,
     lockonUnitMask: number,
     lockonTurretMask: number,
+    lockonLocomotionMask: number,
+    lockonShotMask: number,
   ) => void;
   /** AIM-08.5 — Refresh the slab's per-entity active/firing turret
    *  masks for `entitySlot`. Reads slab FSM target/state + angular/
