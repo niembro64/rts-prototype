@@ -77,6 +77,12 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     );
   }
 
+  if (!Number.isFinite(bp.fullVisionRadius) || bp.fullVisionRadius <= 0) {
+    throw new Error(
+      `Invalid fullVisionRadius for ${bp.unitBlueprintId}: fullVisionRadius must be a finite positive number`,
+    );
+  }
+
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(
       `Invalid HUD layout for ${bp.unitBlueprintId}: barsOffsetAboveTop must be finite`,

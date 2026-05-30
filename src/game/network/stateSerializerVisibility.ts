@@ -16,11 +16,8 @@ import {
 } from '../sim/sensorCoverage';
 
 export {
-  BUILDER_VISION_PAD,
   BUILDING_VISION_RADIUS,
-  COMMANDER_VISION_RADIUS,
   RADAR_VISION_RADIUS,
-  UNIT_VISION_RADIUS,
   canEntityProvideFullVision,
   canEntityProvideRadarVision,
   getEntityFullVisionRadius,

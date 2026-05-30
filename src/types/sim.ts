@@ -177,6 +177,9 @@ export type Unit = {
   radius: { body: number; shot: number; push: number };
   /** World-space height of the unit's authored body center above terrain. */
   bodyCenterHeight: number;
+  /** Authored full-sight sensor radius for this unit. Separate from
+   *  weapon, tracking, detector, radar, and builder action range. */
+  fullVisionRadius: number;
   mass: number;
   hp: number;
   maxHp: number;

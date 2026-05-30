@@ -29,7 +29,11 @@ import {
   getUnitGroundFrictionDamp,
   isUnitGroundPenetrationInContact,
 } from '../sim/unitGroundPhysics';
-import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
+import {
+  CT_TURRET_STATE_ENGAGED,
+  getSimWasm,
+  QUAT_HOVER_BATCH_STRIDE,
+} from '../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -47,6 +51,7 @@ const MOTION_STRIDE = 6;
 const INITIAL_BATCH_CAPACITY = 64;
 
 type UnitPredictionTarget = ServerTarget;
+type UnitOrientationTarget = NonNullable<UnitPredictionTarget['orientation']>;
 
 // Slab-first read of the per-turret engaged state. On the host the
 // targeting Rust kernel is the authoritative source; on a remote
@@ -98,6 +103,9 @@ let groundZBatch = new Float64Array(0);
 let groundNormalBatch = new Float64Array(0);
 let contactBatch = new Uint8Array(0);
 const targetBatchRefs: UnitPredictionTarget[] = [];
+let orientationBatch = new Float64Array(0);
+const entityOrientationBatchRefs: Entity[] = [];
+const targetOrientationBatchRefs: UnitPredictionTarget[] = [];
 
 function getPredictionGroundZ(x: number, y: number): number {
   return getSurfaceHeight(
@@ -135,6 +143,144 @@ function ensurePredictionBatchCapacity(count: number): void {
   groundZBatch = new Float64Array(capacity);
   groundNormalBatch = new Float64Array(capacity * 3);
   contactBatch = new Uint8Array(capacity);
+}
+
+function ensureOrientationBatchCapacity(count: number): void {
+  if (orientationBatch.length >= count * QUAT_HOVER_BATCH_STRIDE) return;
+  let capacity = Math.max(
+    INITIAL_BATCH_CAPACITY,
+    orientationBatch.length / QUAT_HOVER_BATCH_STRIDE,
+    1,
+  );
+  while (capacity < count) capacity *= 2;
+  orientationBatch = new Float64Array(capacity * QUAT_HOVER_BATCH_STRIDE);
+}
+
+function packOrientationPredictionEntry(
+  base: number,
+  orientation: UnitOrientationTarget,
+  omegaX: number,
+  omegaY: number,
+  omegaZ: number,
+): void {
+  orientationBatch[base] = Number.isFinite(orientation.x) ? orientation.x : 0;
+  orientationBatch[base + 1] = Number.isFinite(orientation.y) ? orientation.y : 0;
+  orientationBatch[base + 2] = Number.isFinite(orientation.z) ? orientation.z : 0;
+  orientationBatch[base + 3] = Number.isFinite(orientation.w) ? orientation.w : 1;
+  orientationBatch[base + 4] = Number.isFinite(omegaX) ? omegaX : 0;
+  orientationBatch[base + 5] = Number.isFinite(omegaY) ? omegaY : 0;
+  orientationBatch[base + 6] = Number.isFinite(omegaZ) ? omegaZ : 0;
+  orientationBatch[base + 7] = 0;
+  orientationBatch[base + 8] = 0;
+  orientationBatch[base + 9] = 0;
+}
+
+function advancePackedOrientationBatch(count: number, dt: number): void {
+  if (count <= 0 || !Number.isFinite(dt) || dt <= 0) return;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('advancePackedOrientationBatch: sim-wasm is not initialized');
+  }
+  sim.quatHoverOrientationStepBatch(
+    orientationBatch.subarray(0, count * QUAT_HOVER_BATCH_STRIDE),
+    count,
+    0,
+    0,
+    dt,
+  );
+}
+
+function packEntityOrientationPredictionBatch(
+  entities: Entity[],
+  count: number,
+): number {
+  entityOrientationBatchRefs.length = 0;
+  let batchCount = 0;
+  for (let i = 0; i < count; i++) {
+    const entity = entities[i];
+    const unit = entity.unit;
+    if (unit === null || unit.orientation === null || unit.angularVelocity3 === null) continue;
+    const base = batchCount * QUAT_HOVER_BATCH_STRIDE;
+    packOrientationPredictionEntry(
+      base,
+      unit.orientation,
+      unit.angularVelocity3.x,
+      unit.angularVelocity3.y,
+      unit.angularVelocity3.z,
+    );
+    entityOrientationBatchRefs[batchCount] = entity;
+    batchCount++;
+  }
+  return batchCount;
+}
+
+function writeEntityOrientationPredictionBatch(count: number): void {
+  for (let i = 0; i < count; i++) {
+    const entity = entityOrientationBatchRefs[i];
+    const unit = entity.unit;
+    if (unit === null || unit.orientation === null || unit.angularVelocity3 === null) continue;
+    const base = i * QUAT_HOVER_BATCH_STRIDE;
+    const orientation = unit.orientation;
+    orientation.x = orientationBatch[base];
+    orientation.y = orientationBatch[base + 1];
+    orientation.z = orientationBatch[base + 2];
+    orientation.w = orientationBatch[base + 3];
+    const omega = unit.angularVelocity3;
+    omega.x = orientationBatch[base + 4];
+    omega.y = orientationBatch[base + 5];
+    omega.z = orientationBatch[base + 6];
+    entity.transform.rotation = normalizeAngle(orientationBatch[base + 13]);
+  }
+  entityOrientationBatchRefs.length = 0;
+}
+
+function packTargetOrientationPredictionBatch(
+  targets: Array<UnitPredictionTarget | undefined>,
+  count: number,
+): number {
+  targetOrientationBatchRefs.length = 0;
+  let batchCount = 0;
+  for (let i = 0; i < count; i++) {
+    const target = targets[i];
+    if (
+      target === undefined ||
+      target.orientation === null ||
+      target.angularVelocityX === null ||
+      target.angularVelocityY === null ||
+      target.angularVelocityZ === null
+    ) {
+      continue;
+    }
+    const base = batchCount * QUAT_HOVER_BATCH_STRIDE;
+    packOrientationPredictionEntry(
+      base,
+      target.orientation,
+      target.angularVelocityX,
+      target.angularVelocityY,
+      target.angularVelocityZ,
+    );
+    targetOrientationBatchRefs[batchCount] = target;
+    batchCount++;
+  }
+  return batchCount;
+}
+
+function writeTargetOrientationPredictionBatch(count: number): void {
+  for (let i = 0; i < count; i++) {
+    const target = targetOrientationBatchRefs[i];
+    const orientation = target.orientation;
+    if (orientation === null) continue;
+    const base = i * QUAT_HOVER_BATCH_STRIDE;
+    orientation.x = orientationBatch[base];
+    orientation.y = orientationBatch[base + 1];
+    orientation.z = orientationBatch[base + 2];
+    orientation.w = orientationBatch[base + 3];
+    target.angularVelocityX = orientationBatch[base + 4];
+    target.angularVelocityY = orientationBatch[base + 5];
+    target.angularVelocityZ = orientationBatch[base + 6];
+    target.rotation = normalizeAngle(orientationBatch[base + 13]);
+  }
+  targetOrientationBatchRefs.length = 0;
 }
 
 function sampleInitialGroundBatch(count: number): void {
@@ -420,6 +566,7 @@ export function applyClientUnitVisualPredictionBatch(options: {
   predictionMapWidth = mapWidth;
   predictionMapHeight = mapHeight;
   ensurePredictionBatchCapacity(count);
+  ensureOrientationBatchCapacity(count);
 
   // Unit body motion is a visual contract, not an optional detail.
   // Keep both the stored server target and the rendered entity moving
@@ -432,6 +579,16 @@ export function applyClientUnitVisualPredictionBatch(options: {
   packEntityPredictionBatch(entities, count);
   advancePackedMotionBatch(count, predictionMode, dt, airDamp, groundDamp);
   writeEntityPredictionBatch(entities, count, deltaMs);
+
+  if (predictionMode !== 'pos') {
+    const targetOrientationCount = packTargetOrientationPredictionBatch(targets, count);
+    advancePackedOrientationBatch(targetOrientationCount, dt);
+    writeTargetOrientationPredictionBatch(targetOrientationCount);
+
+    const entityOrientationCount = packEntityOrientationPredictionBatch(entities, count);
+    advancePackedOrientationBatch(entityOrientationCount, dt);
+    writeEntityOrientationPredictionBatch(entityOrientationCount);
+  }
 
   for (let i = 0; i < count; i++) {
     applyClientUnitVisualDrift(

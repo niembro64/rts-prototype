@@ -537,6 +537,9 @@ export type UnitBlueprint = LockOnExclusionObject & {
    *  mounts, and locomotion attachment must all resolve against this
    *  same terrain-up coordinate system. */
   bodyCenterHeight: number;
+  /** Authored full-sight sensor radius. This is deliberately separate
+   *  from weapon, tracking, detector, radar, and builder action range. */
+  fullVisionRadius: number;
   mass: number;
   /** Per-resource build cost (authored). BUILDING/UNIT configs apply
    *  COST_MULTIPLIER on top. Each construction resource fills its own bar

@@ -3,8 +3,8 @@
     "normalMin": 5,
     "normalMax": 10,
     "diagnosticMin": 16,
-    "demoDefault": 16,
-    "realDefault": 16,
+    "demoDefault": 10,
+    "realDefault": 10,
     "options": [1, 4, 5, 8, 10, 16, 32, 64, 128],
     "legacyUncappedFallback": 60
   },

@@ -224,6 +224,10 @@ function createUnitFromNetwork(
     unitBlueprint.bodyCenterHeight !== undefined
     ? unitBlueprint.bodyCenterHeight
     : radius.push;
+  const fullVisionRadius = unitBlueprint !== undefined &&
+    unitBlueprint.fullVisionRadius !== undefined
+    ? unitBlueprint.fullVisionRadius
+    : 1200;
   const entity: Entity = {
     ...createEmptyEntityComponentSlots(),
     id,
@@ -240,6 +244,7 @@ function createUnitFromNetwork(
         u,
         blueprintBodyCenterHeight,
       ),
+      fullVisionRadius,
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),
       actions,

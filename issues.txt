@@ -45,57 +45,12 @@ findings were produced; each was adversarially re-read by an INDEPENDENT verifie
 against the live code, and 21 candidates were refuted (auditor misreads of
 already-correct code — e.g. the host-directed one-per-kind loader throw, the
 level-1 lock-on exclusions, hover anti-gravity, config-is-data, and the resource
-pylon channel all re-verified CLEAN; see VERIFIED-CLEAN). The 16 design items
-below survived verification (numbered A21-A36 in audit order). A 17th confirmed
+pylon channel all re-verified CLEAN; see VERIFIED-CLEAN). The remaining design
+items from that audit are tracked below under their original numbers. A 17th confirmed
 item — PhysicsEngine3D's stale file header — is filed in SECTION D (doc drift,
 not a behavior gap) as D2; the 18th — the dual TypeScript/Rust authoritative-sim
 duplication — is filed in SECTION C as C1.
 File:line refs were correct at audit time; re-verify before editing.
-
-A21. [MEDIUM] src/serverBarConfig.json:6-7 (hostSnapshotRate.demoDefault /
-    realDefault = 16); consumed at src/serverBarConfig.ts:25-26
-    (HOST_SNAPSHOT_RATE_DEFAULT) and src/game/server/GameServer.ts:211-214 —
-    RULE: "Snapshots flow downward" (philosophy line 306) "Normal target cadence is
-    5 to 10 snapshots per second"; line 300 snapshots are corrections, not per-frame
-    animation. —
-    PROBLEM: the shipped default host snapshot rate is 16/sec for BOTH demo and real
-    modes — above the 5-10 normal band AND sitting exactly at the config's own
-    diagnosticMin, so serverBarConfig.ts's own predicates self-classify the shipped
-    default as a "Diagnostic snapshot cap… for low-unit-count testing." The config
-    contradicts itself and the doc. —
-    FIX: set demoDefault/realDefault into 5-10 (e.g. 10) in serverBarConfig.json; OR,
-    if 16 is an intentional playtest choice, raise normalMax and update the doc so the
-    normal/diagnostic split stops contradicting the shipped default. JSON-only change,
-    no engine code.
-
-A22. [LOW] src/game/sim/sensorCoverage.ts:43-45 (getEntityFullVisionRadius, builder
-    branch) —
-    RULE: philosophy line 381 "Weapon range, tracking range, unit sight, radar range,
-    and detector range are separate envelopes. Sharing a number between them should be
-    an authored choice, not a default coupling"; lines 1300-1316 sight is a sensor
-    capability. —
-    PROBLEM: a builder/fabricator's full-vision radius is derived BY DEFAULT from
-    builder.buildRange + BUILDER_VISION_PAD (an action-reach number) rather than an
-    authored sight field — a default envelope coupling. (Does NOT falsify the
-    VERIFIED-CLEAN "sensors not derived from WEAPON range" claim: weapon/fire range is
-    genuinely never consulted here; this is build-reach, not weapon-reach.) —
-    FIX: give builders an authored sight field instead of deriving from buildRange, OR
-    add a comment marking the max() as a deliberate authored coupling so it is not read
-    as the forbidden default. No functional bug.
-
-A23. [LOW] src/game/network/ClientUnitPrediction.ts:46, 261-296, 352-379 (vs turret
-    integration 474-488) —
-    RULE: "What each EMA channel applies to" → Rotation velocity (philosophy lines
-    570-581): unit.angularVelocity3.{x,y,z} (with turret yaw/pitch rates) "are the
-    derivatives the client integrates while drifting toward the rotation-position
-    target." —
-    PROBLEM: unit body angularVelocity3 is only EMA-blended toward the snapshot, never
-    integrated into the orientation quaternion — so unlike turret yaw/pitch rates it is
-    correction-only, contradicting the doc's claim it is an integrated derivative. —
-    FIX: either (a) add an orientation dead-reckon step that advances
-    entity.unit.orientation by angularVelocity3 each prediction tick when
-    predictionMode !== 'pos' (matching turret yaw/pitch), or (b) amend the doc so
-    angularVelocity3 is recorded as a correction-only channel if that is intended.
 
 A24. [WATCH] src/game/server/PhysicsEngine3D.ts:954-972 (clampToMapBounds), invoked
     from step() at line 703 immediately after the force/integration pass —

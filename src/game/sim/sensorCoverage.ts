@@ -1,11 +1,8 @@
 import type { Entity } from './types';
 import { getEntityDetectionPadding } from './cloakDetection';
 
-export const UNIT_VISION_RADIUS = 1200;
-export const COMMANDER_VISION_RADIUS = 1600;
 export const BUILDING_VISION_RADIUS = 1000;
 export const RADAR_VISION_RADIUS = 4200;
-export const BUILDER_VISION_PAD = 250;
 
 /** True when the entity contributes a normal line-of-sight source
  *  (units, non-radar buildings — alive AND finished). Radar buildings
@@ -35,15 +32,7 @@ export function canEntityProvideRadarVision(entity: Entity): boolean {
 
 export function getEntityFullVisionRadius(entity: Entity): number {
   if (!canEntityProvideFullVision(entity)) return 0;
-  // Full sight is sensor capability, not weapon reach.
-  let radius = entity.unit
-    ? (entity.commander ? COMMANDER_VISION_RADIUS : UNIT_VISION_RADIUS)
-    : BUILDING_VISION_RADIUS;
-
-  if (entity.builder) {
-    radius = Math.max(radius, entity.builder.buildRange + BUILDER_VISION_PAD);
-  }
-  return radius;
+  return entity.unit ? entity.unit.fullVisionRadius : BUILDING_VISION_RADIUS;
 }
 
 export function getEntityRadarRadius(entity: Entity): number {
