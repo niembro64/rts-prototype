@@ -13,6 +13,25 @@
       "treadWidth": 0.15,
       "wheelRadius": 0.28,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionJackal",
+    "base": {
+      "cost": {
+        "energy": 5,
+        "metal": 5
+      },
+      "mass": 7.5,
+      "health": 19.25,
+      "deathExplosion": {
+        "radius": 7.344,
+        "force": 450,
+        "damage": 8.663
+      },
+      "radius": {
+        "visual": 6.8,
+        "hitbox": 5.1,
+        "collision": 8.16
+      }
     }
   },
   "locomotionLynx": {
@@ -28,6 +47,25 @@
       "treadWidth": 0.45,
       "wheelRadius": 0.12,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionLynx",
+    "base": {
+      "cost": {
+        "energy": 9,
+        "metal": 9
+      },
+      "mass": 10,
+      "health": 21,
+      "deathExplosion": {
+        "radius": 9.945,
+        "force": 600,
+        "damage": 9.45
+      },
+      "radius": {
+        "visual": 8.5,
+        "hitbox": 5.95,
+        "collision": 11.05
+      }
     }
   },
   "locomotionDaddy": {
@@ -65,6 +103,25 @@
           "extensionThreshold": 0.99
         }
       ]
+    },
+    "locomotionBlueprintId": "locomotionDaddy",
+    "base": {
+      "cost": {
+        "energy": 35,
+        "metal": 35
+      },
+      "mass": 7.5,
+      "health": 70,
+      "deathExplosion": {
+        "radius": 11.475,
+        "force": 450,
+        "damage": 31.5
+      },
+      "radius": {
+        "visual": 11.05,
+        "hitbox": 7.65,
+        "collision": 12.75
+      }
     }
   },
   "locomotionBadger": {
@@ -80,6 +137,25 @@
       "treadWidth": 0.55,
       "wheelRadius": 0.12,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionBadger",
+    "base": {
+      "cost": {
+        "energy": 30,
+        "metal": 30
+      },
+      "mass": 75,
+      "health": 105,
+      "deathExplosion": {
+        "radius": 17.136,
+        "force": 4500,
+        "damage": 47.25
+      },
+      "radius": {
+        "visual": 13.6,
+        "hitbox": 11.05,
+        "collision": 19.04
+      }
     }
   },
   "locomotionMongoose": {
@@ -96,6 +172,25 @@
       "treadWidth": 0.3,
       "wheelRadius": 0.22,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionMongoose",
+    "base": {
+      "cost": {
+        "energy": 22,
+        "metal": 22
+      },
+      "mass": 50,
+      "health": 70,
+      "deathExplosion": {
+        "radius": 18.36,
+        "force": 3000,
+        "damage": 31.5
+      },
+      "radius": {
+        "visual": 17,
+        "hitbox": 10.2,
+        "collision": 20.4
+      }
     }
   },
   "locomotionTick": {
@@ -133,6 +228,25 @@
           "extensionThreshold": 0.99
         }
       ]
+    },
+    "locomotionBlueprintId": "locomotionTick",
+    "base": {
+      "cost": {
+        "energy": 3.5,
+        "metal": 3.5
+      },
+      "mass": 5,
+      "health": 19.25,
+      "deathExplosion": {
+        "radius": 9.257,
+        "force": 300,
+        "damage": 8.663
+      },
+      "radius": {
+        "visual": 8.5,
+        "hitbox": 6.8,
+        "collision": 10.285
+      }
     }
   },
   "locomotionMammoth": {
@@ -148,6 +262,25 @@
       "treadWidth": 0.6,
       "wheelRadius": 0.175,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionMammoth",
+    "base": {
+      "cost": {
+        "energy": 120,
+        "metal": 120
+      },
+      "mass": 250,
+      "health": 315,
+      "deathExplosion": {
+        "radius": 27.54,
+        "force": 15000,
+        "damage": 141.75
+      },
+      "radius": {
+        "visual": 20.4,
+        "hitbox": 20.4,
+        "collision": 30.6
+      }
     }
   },
   "locomotionFormik": {
@@ -195,6 +328,25 @@
           "extensionThreshold": 0.99
         }
       ]
+    },
+    "locomotionBlueprintId": "locomotionFormik",
+    "base": {
+      "cost": {
+        "energy": 400,
+        "metal": 400
+      },
+      "mass": 625,
+      "health": 1120,
+      "deathExplosion": {
+        "radius": 49.725,
+        "force": 37500,
+        "damage": 504
+      },
+      "radius": {
+        "visual": 34,
+        "hitbox": 42.5,
+        "collision": 55.25
+      }
     }
   },
   "locomotionWidow": {
@@ -232,6 +384,25 @@
           "extensionThreshold": 0.99
         }
       ]
+    },
+    "locomotionBlueprintId": "locomotionWidow",
+    "base": {
+      "cost": {
+        "energy": 300,
+        "metal": 300
+      },
+      "mass": 250,
+      "health": 840,
+      "deathExplosion": {
+        "radius": 39.78,
+        "force": 15000,
+        "damage": 378
+      },
+      "radius": {
+        "visual": 25.5,
+        "hitbox": 34,
+        "collision": 44.2
+      }
     }
   },
   "locomotionHippo": {
@@ -247,6 +418,25 @@
       "treadWidth": 0.55,
       "wheelRadius": 0.2,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionHippo",
+    "base": {
+      "cost": {
+        "energy": 250,
+        "metal": 250
+      },
+      "mass": 375,
+      "health": 525,
+      "deathExplosion": {
+        "radius": 41.31,
+        "force": 22500,
+        "damage": 236.25
+      },
+      "radius": {
+        "visual": 25.5,
+        "hitbox": 22.95,
+        "collision": 45.9
+      }
     }
   },
   "locomotionTarantula": {
@@ -284,6 +474,25 @@
           "extensionThreshold": 0.99
         }
       ]
+    },
+    "locomotionBlueprintId": "locomotionTarantula",
+    "base": {
+      "cost": {
+        "energy": 30,
+        "metal": 30
+      },
+      "mass": 7.5,
+      "health": 35,
+      "deathExplosion": {
+        "radius": 15.147,
+        "force": 450,
+        "damage": 15.75
+      },
+      "radius": {
+        "visual": 9.35,
+        "hitbox": 11.05,
+        "collision": 16.83
+      }
     }
   },
   "locomotionLoris": {
@@ -299,6 +508,25 @@
       "treadWidth": 0.5,
       "wheelRadius": 0.12,
       "rotationSpeed": 1
+    },
+    "locomotionBlueprintId": "locomotionLoris",
+    "base": {
+      "cost": {
+        "energy": 40,
+        "metal": 40
+      },
+      "mass": 22.5,
+      "health": 70,
+      "deathExplosion": {
+        "radius": 18.36,
+        "force": 1350,
+        "damage": 31.5
+      },
+      "radius": {
+        "visual": 8.5,
+        "hitbox": 6.8,
+        "collision": 20.4
+      }
     }
   },
   "locomotionCommander": {
@@ -336,6 +564,25 @@
           "extensionThreshold": 0.99
         }
       ]
+    },
+    "locomotionBlueprintId": "locomotionCommander",
+    "base": {
+      "cost": {
+        "energy": 40,
+        "metal": 40
+      },
+      "mass": 75,
+      "health": 175,
+      "deathExplosion": {
+        "radius": 15.3,
+        "force": 4500,
+        "damage": 78.75
+      },
+      "radius": {
+        "visual": 17,
+        "hitbox": 17,
+        "collision": 17
+      }
     }
   },
   "locomotionHovercraft": {
@@ -357,6 +604,25 @@
       "fanRingTubeRadius": 0.035,
       "fanOutwardAngleDeg": 14,
       "fanSpinRadPerSec": -10
+    },
+    "locomotionBlueprintId": "locomotionHovercraft",
+    "base": {
+      "cost": {
+        "energy": 12,
+        "metal": 12
+      },
+      "mass": 6.25,
+      "health": 24.5,
+      "deathExplosion": {
+        "radius": 8.262,
+        "force": 375,
+        "damage": 11.025
+      },
+      "radius": {
+        "visual": 7.65,
+        "hitbox": 6.8,
+        "collision": 9.18
+      }
     }
   },
   "locomotionDragonflyHovercraft": {
@@ -378,6 +644,25 @@
       "fanOutwardAngleDeg": 18,
       "fanSpinRadPerSec": -10,
       "tailFanOffsetX": -4.7
+    },
+    "locomotionBlueprintId": "locomotionDragonflyHovercraft",
+    "base": {
+      "cost": {
+        "energy": 36,
+        "metal": 36
+      },
+      "mass": 22.5,
+      "health": 84,
+      "deathExplosion": {
+        "radius": 38.25,
+        "force": 1350,
+        "damage": 37.8
+      },
+      "radius": {
+        "visual": 13.6,
+        "hitbox": 34,
+        "collision": 42.5
+      }
     }
   },
   "locomotionConstructionDrone": {
@@ -399,6 +684,25 @@
       "fanRingTubeRadius": 0.035,
       "fanOutwardAngleDeg": 12,
       "fanSpinRadPerSec": -9
+    },
+    "locomotionBlueprintId": "locomotionConstructionDrone",
+    "base": {
+      "cost": {
+        "energy": 17,
+        "metal": 17
+      },
+      "mass": 11.25,
+      "health": 42,
+      "deathExplosion": {
+        "radius": 10.71,
+        "force": 675,
+        "damage": 18.9
+      },
+      "radius": {
+        "visual": 9.35,
+        "hitbox": 8.5,
+        "collision": 11.9
+      }
     }
   },
   "locomotionEagleFlying": {
@@ -428,6 +732,25 @@
       "jetRadius": 0.22,
       "jetLength": 0.6,
       "jetCount": 2
+    },
+    "locomotionBlueprintId": "locomotionEagleFlying",
+    "base": {
+      "cost": {
+        "energy": 52,
+        "metal": 52
+      },
+      "mass": 23.75,
+      "health": 77,
+      "deathExplosion": {
+        "radius": 16.524,
+        "force": 1425,
+        "damage": 34.65
+      },
+      "radius": {
+        "visual": 15.3,
+        "hitbox": 12.75,
+        "collision": 18.36
+      }
     }
   }
 }

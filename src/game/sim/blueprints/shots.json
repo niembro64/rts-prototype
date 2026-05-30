@@ -20,7 +20,25 @@
     "homingTurnRate": null,
     "homingThrust": null,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 4,
+      "health": 2,
+      "deathExplosion": {
+        "radius": 15,
+        "force": 500,
+        "damage": 6
+      },
+      "radius": {
+        "visual": 2,
+        "hitbox": 2,
+        "collision": 2
+      }
+    }
   },
   "shotPlasmaMedium": {
     "type": "plasma",
@@ -43,7 +61,25 @@
     "homingTurnRate": null,
     "homingThrust": null,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 10,
+      "health": 4,
+      "deathExplosion": {
+        "radius": 24,
+        "force": 1000,
+        "damage": 12
+      },
+      "radius": {
+        "visual": 3,
+        "hitbox": 3,
+        "collision": 3
+      }
+    }
   },
   "shotRocketLight": {
     "type": "rocket",
@@ -67,7 +103,25 @@
     "homingTurnRate": 0.7,
     "homingThrust": 5000,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 4,
+      "health": 6,
+      "deathExplosion": {
+        "radius": 50,
+        "force": 3000,
+        "damage": 100
+      },
+      "radius": {
+        "visual": 2,
+        "hitbox": 2,
+        "collision": 2
+      }
+    }
   },
   "shotRocketFast": {
     "type": "rocket",
@@ -91,7 +145,25 @@
     "homingTurnRate": 10,
     "homingThrust": 100000,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 3,
+      "health": 4,
+      "deathExplosion": {
+        "radius": 50,
+        "force": 3000,
+        "damage": 40
+      },
+      "radius": {
+        "visual": 2,
+        "hitbox": 2,
+        "collision": 2
+      }
+    }
   },
   "shotPlasmaHeavy": {
     "type": "plasma",
@@ -114,7 +186,25 @@
     "homingTurnRate": null,
     "homingThrust": null,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 30,
+      "health": 10,
+      "deathExplosion": {
+        "radius": 75,
+        "force": 7000,
+        "damage": 150
+      },
+      "radius": {
+        "visual": 4,
+        "hitbox": 4,
+        "collision": 4
+      }
+    }
   },
   "shotMortarMedium": {
     "type": "plasma",
@@ -143,7 +233,25 @@
     "homingTurnRate": null,
     "homingThrust": null,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 30,
+      "health": 8,
+      "deathExplosion": {
+        "radius": 75,
+        "force": 10000,
+        "damage": 20
+      },
+      "radius": {
+        "visual": 8,
+        "hitbox": 8,
+        "collision": 8
+      }
+    }
   },
   "shotMortarHeavy": {
     "type": "plasma",
@@ -172,7 +280,25 @@
     "homingTurnRate": null,
     "homingThrust": null,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 30,
+      "health": 12,
+      "deathExplosion": {
+        "radius": 150,
+        "force": 20000,
+        "damage": 20
+      },
+      "radius": {
+        "visual": 10,
+        "hitbox": 10,
+        "collision": 10
+      }
+    }
   },
   "shotPlasmaDisruptor": {
     "type": "plasma",
@@ -195,7 +321,25 @@
     "homingTurnRate": null,
     "homingThrust": null,
     "gravityForceMultiplier": 1,
-    "smokeTrail": null
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 20,
+      "health": 30,
+      "deathExplosion": {
+        "radius": 120,
+        "force": 2499750,
+        "damage": 999999
+      },
+      "radius": {
+        "visual": 25,
+        "hitbox": 25,
+        "collision": 25
+      }
+    }
   },
   "shotBeamMini": {
     "type": "beam",

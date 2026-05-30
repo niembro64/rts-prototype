@@ -12,6 +12,7 @@ import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
 import type {
   BuildingTurretMount,
   DetectorBlueprint,
+  EntityBaseLedger,
   EntityHudBlueprint,
   LockOnExclusionObject,
 } from '../../../types/blueprints';
@@ -28,6 +29,13 @@ import {
   getTowerLockOnExclusions,
 } from './lockOnConfig';
 import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
+import { TURRET_BLUEPRINTS } from './turrets';
+import {
+  addResourceCosts,
+  assertNumberEquals,
+  assertResourceCostEquals,
+  assertValidEntityBaseLedger,
+} from './entityBaseLedger';
 
 export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   buildingBlueprintId: BuildingBlueprintId;
@@ -35,6 +43,7 @@ export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   gridWidth: number;
   gridHeight: number;
   gridDepth: number;
+  base: EntityBaseLedger;
   hp: number;
   /** Authored per-resource build cost. BUILDING_CONFIGS applies
    *  COST_MULTIPLIER. Each construction bar fills independently from the
@@ -105,6 +114,7 @@ for (const id of Object.keys(rawTowerBlueprints)) {
 }
 
 const BUILDING_EXPLICIT_FIELDS = [
+  'base',
   'energyProduction',
   'metalProduction',
   'constructionRate',
@@ -218,6 +228,27 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       `Building blueprint key mismatch: key '${id}' has buildingBlueprintId '${blueprint.buildingBlueprintId}'`,
     );
   }
+  assertValidEntityBaseLedger(`${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`, blueprint.base);
+  assertNumberEquals(
+    `${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`,
+    'health',
+    blueprint.hp,
+    blueprint.base.health,
+  );
+  const mountedTurretCosts = blueprint.turrets.map((mount) => {
+    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+    if (!turretBlueprint) {
+      throw new Error(
+        `Invalid ${towerBlueprint ? 'tower' : 'building'} blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
+      );
+    }
+    return turretBlueprint.base.cost;
+  });
+  assertResourceCostEquals(
+    `${towerBlueprint ? 'tower' : 'building'} blueprint ${id}`,
+    blueprint.cost,
+    addResourceCosts(blueprint.base.cost, ...mountedTurretCosts),
+  );
   if (!Number.isFinite(blueprint.gridWidth) || blueprint.gridWidth <= 0) {
     throw new Error(`Invalid building blueprint ${id}: gridWidth must be positive`);
   }

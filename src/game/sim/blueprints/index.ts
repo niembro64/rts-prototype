@@ -533,6 +533,7 @@ function buildShotConfig(
   const shot: ProjectileShot = {
     type: shotBlueprint.type,
     shotBlueprintId: shotBlueprint.shotBlueprintId,
+    base: shotBlueprint.base,
     mass: shotBlueprint.mass,
     health: shotBlueprint.health,
     launchForce,

@@ -15,8 +15,14 @@ import rawShotBlueprints from './shots.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
 import type { ShotBlueprint } from './types';
+import {
+  assertNumberEquals,
+  assertRadiusEquals,
+  assertValidEntityBaseLedger,
+} from './entityBaseLedger';
 
 const PROJECTILE_EXPLICIT_FIELDS = [
+  'base',
   'health',
   'explosion',
   'hitSound',
@@ -58,6 +64,24 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       blueprint,
       PROJECTILE_EXPLICIT_FIELDS,
     );
+    assertValidEntityBaseLedger(`shot blueprint ${id}`, blueprint.base);
+    assertNumberEquals(`shot blueprint ${id}`, 'mass', blueprint.mass, blueprint.base.mass);
+    assertNumberEquals(`shot blueprint ${id}`, 'health', blueprint.health, blueprint.base.health);
+    assertRadiusEquals(
+      `shot blueprint ${id}`,
+      {
+        visual: blueprint.collision.radius,
+        hitbox: blueprint.collision.radius,
+        collision: blueprint.collision.radius,
+      },
+      blueprint.base.radius,
+    );
+    if (blueprint.explosion !== null) {
+      const blast = blueprint.base.deathExplosion;
+      assertNumberEquals(`shot blueprint ${id}`, 'deathExplosion.radius', blueprint.explosion.radius, blast.radius);
+      assertNumberEquals(`shot blueprint ${id}`, 'deathExplosion.force', blueprint.explosion.force, blast.force);
+      assertNumberEquals(`shot blueprint ${id}`, 'deathExplosion.damage', blueprint.explosion.damage, blast.damage);
+    }
     // Homing is "rate + thrust" — both fields must be set together or
     // neither. A turn rate without a thrust budget would be steering
     // without an engine; a thrust budget without a turn rate would be
@@ -104,6 +128,11 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       );
     }
   } else if (blueprint.type === 'forceField') {
+    if ('base' in blueprint) {
+      throw new Error(
+        `Invalid shot blueprint ${id}: force-field emissions are not entities and must not carry base`,
+      );
+    }
     assertExplicitFields(
       `shot blueprint ${id}`,
       blueprint,
@@ -123,6 +152,11 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       );
     }
   } else {
+    if ('base' in blueprint) {
+      throw new Error(
+        `Invalid shot blueprint ${id}: line emissions are not entities and must not carry base`,
+      );
+    }
     assertExplicitFields(`shot blueprint ${id}`, blueprint, LINE_EXPLICIT_FIELDS);
     if (blueprint.gravityForceMultiplier !== 0) {
       throw new Error(

@@ -49,7 +49,25 @@
       "$audio": "event.death.unitJackal"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionJackal"
+    "locomotionBlueprintId": "locomotionJackal",
+    "base": {
+      "cost": {
+        "energy": 39,
+        "metal": 39
+      },
+      "mass": 30,
+      "health": 55,
+      "deathExplosion": {
+        "radius": 11.04,
+        "force": 2700,
+        "damage": 44
+      },
+      "radius": {
+        "visual": 8,
+        "hitbox": 6,
+        "collision": 9.6
+      }
+    }
   },
   "unitLynx": {
     "unitBlueprintId": "unitLynx",
@@ -99,7 +117,25 @@
       "$audio": "event.death.unitLynx"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionLynx"
+    "locomotionBlueprintId": "locomotionLynx",
+    "base": {
+      "cost": {
+        "energy": 63,
+        "metal": 63
+      },
+      "mass": 40,
+      "health": 60,
+      "deathExplosion": {
+        "radius": 14.95,
+        "force": 3600,
+        "damage": 48
+      },
+      "radius": {
+        "visual": 10,
+        "hitbox": 7,
+        "collision": 13
+      }
+    }
   },
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
@@ -156,7 +192,25 @@
       "$audio": "event.death.unitDaddy"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionDaddy"
+    "locomotionBlueprintId": "locomotionDaddy",
+    "base": {
+      "cost": {
+        "energy": 279,
+        "metal": 279
+      },
+      "mass": 30,
+      "health": 200,
+      "deathExplosion": {
+        "radius": 17.25,
+        "force": 2700,
+        "damage": 160
+      },
+      "radius": {
+        "visual": 13,
+        "hitbox": 9,
+        "collision": 15
+      }
+    }
   },
   "unitBadger": {
     "unitBlueprintId": "unitBadger",
@@ -206,7 +260,25 @@
       "$audio": "event.death.unitBadger"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionBadger"
+    "locomotionBlueprintId": "locomotionBadger",
+    "base": {
+      "cost": {
+        "energy": 254,
+        "metal": 254
+      },
+      "mass": 300,
+      "health": 300,
+      "deathExplosion": {
+        "radius": 25.76,
+        "force": 27000,
+        "damage": 240
+      },
+      "radius": {
+        "visual": 16,
+        "hitbox": 13,
+        "collision": 22.4
+      }
+    }
   },
   "unitMongoose": {
     "unitBlueprintId": "unitMongoose",
@@ -256,7 +328,25 @@
       "$audio": "event.death.unitMongoose"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionMongoose"
+    "locomotionBlueprintId": "locomotionMongoose",
+    "base": {
+      "cost": {
+        "energy": 174,
+        "metal": 174
+      },
+      "mass": 200,
+      "health": 200,
+      "deathExplosion": {
+        "radius": 27.6,
+        "force": 18000,
+        "damage": 160
+      },
+      "radius": {
+        "visual": 20,
+        "hitbox": 12,
+        "collision": 24
+      }
+    }
   },
   "unitTick": {
     "unitBlueprintId": "unitTick",
@@ -308,7 +398,25 @@
       "$audio": "event.death.unitTick"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionTick"
+    "locomotionBlueprintId": "locomotionTick",
+    "base": {
+      "cost": {
+        "energy": 25.5,
+        "metal": 25.5
+      },
+      "mass": 20,
+      "health": 55,
+      "deathExplosion": {
+        "radius": 13.915,
+        "force": 1800,
+        "damage": 44
+      },
+      "radius": {
+        "visual": 10,
+        "hitbox": 8,
+        "collision": 12.1
+      }
+    }
   },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
@@ -358,7 +466,25 @@
       "$audio": "event.death.unitMammoth"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionMammoth"
+    "locomotionBlueprintId": "locomotionMammoth",
+    "base": {
+      "cost": {
+        "energy": 1060,
+        "metal": 1060
+      },
+      "mass": 1000,
+      "health": 900,
+      "deathExplosion": {
+        "radius": 41.4,
+        "force": 90000,
+        "damage": 720
+      },
+      "radius": {
+        "visual": 24,
+        "hitbox": 24,
+        "collision": 36
+      }
+    }
   },
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
@@ -426,7 +552,25 @@
       "$audio": "event.death.unitFormik"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionFormik"
+    "locomotionBlueprintId": "locomotionFormik",
+    "base": {
+      "cost": {
+        "energy": 3536,
+        "metal": 3536
+      },
+      "mass": 2500,
+      "health": 3200,
+      "deathExplosion": {
+        "radius": 74.75,
+        "force": 225000,
+        "damage": 2560
+      },
+      "radius": {
+        "visual": 40,
+        "hitbox": 50,
+        "collision": 65
+      }
+    }
   },
   "unitWidow": {
     "unitBlueprintId": "unitWidow",
@@ -555,7 +699,25 @@
       "$audio": "event.death.unitWidow"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionWidow"
+    "locomotionBlueprintId": "locomotionWidow",
+    "base": {
+      "cost": {
+        "energy": 2622,
+        "metal": 2622
+      },
+      "mass": 1000,
+      "health": 2400,
+      "deathExplosion": {
+        "radius": 59.8,
+        "force": 90000,
+        "damage": 1920
+      },
+      "radius": {
+        "visual": 30,
+        "hitbox": 40,
+        "collision": 52
+      }
+    }
   },
   "unitHippo": {
     "unitBlueprintId": "unitHippo",
@@ -604,7 +766,25 @@
       "$audio": "event.death.unitHippo"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionHippo"
+    "locomotionBlueprintId": "locomotionHippo",
+    "base": {
+      "cost": {
+        "energy": 2218,
+        "metal": 2218
+      },
+      "mass": 1500,
+      "health": 1500,
+      "deathExplosion": {
+        "radius": 62.1,
+        "force": 135000,
+        "damage": 1200
+      },
+      "radius": {
+        "visual": 30,
+        "hitbox": 27,
+        "collision": 54
+      }
+    }
   },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
@@ -665,7 +845,25 @@
       "$audio": "event.death.unitTarantula"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionTarantula"
+    "locomotionBlueprintId": "locomotionTarantula",
+    "base": {
+      "cost": {
+        "energy": 258,
+        "metal": 258
+      },
+      "mass": 30,
+      "health": 100,
+      "deathExplosion": {
+        "radius": 22.77,
+        "force": 2700,
+        "damage": 80
+      },
+      "radius": {
+        "visual": 11,
+        "hitbox": 13,
+        "collision": 19.8
+      }
+    }
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
@@ -720,7 +918,25 @@
       "$audio": "event.death.unitLoris"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionLoris"
+    "locomotionBlueprintId": "locomotionLoris",
+    "base": {
+      "cost": {
+        "energy": 344,
+        "metal": 344
+      },
+      "mass": 90,
+      "health": 200,
+      "deathExplosion": {
+        "radius": 27.6,
+        "force": 8100,
+        "damage": 160
+      },
+      "radius": {
+        "visual": 10,
+        "hitbox": 8,
+        "collision": 24
+      }
+    }
   },
   "unitMosquito": {
     "unitBlueprintId": "unitMosquito",
@@ -768,7 +984,25 @@
       "$audio": "event.death.unitMosquito"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionHovercraft"
+    "locomotionBlueprintId": "locomotionHovercraft",
+    "base": {
+      "cost": {
+        "energy": 102,
+        "metal": 102
+      },
+      "mass": 25,
+      "health": 70,
+      "deathExplosion": {
+        "radius": 12.42,
+        "force": 2250,
+        "damage": 56
+      },
+      "radius": {
+        "visual": 9,
+        "hitbox": 8,
+        "collision": 10.8
+      }
+    }
   },
   "unitDragonfly": {
     "unitBlueprintId": "unitDragonfly",
@@ -840,7 +1074,25 @@
       "$audio": "event.death.unitDragonfly"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionDragonflyHovercraft"
+    "locomotionBlueprintId": "locomotionDragonflyHovercraft",
+    "base": {
+      "cost": {
+        "energy": 294,
+        "metal": 294
+      },
+      "mass": 90,
+      "health": 240,
+      "deathExplosion": {
+        "radius": 57.5,
+        "force": 8100,
+        "damage": 192
+      },
+      "radius": {
+        "visual": 16,
+        "hitbox": 40,
+        "collision": 50
+      }
+    }
   },
   "unitConstructionDrone": {
     "unitBlueprintId": "unitConstructionDrone",
@@ -907,7 +1159,25 @@
       "$audio": "event.death.unitConstructionDrone"
     },
     "fightStopEngagedRatio": null,
-    "locomotionBlueprintId": "locomotionConstructionDrone"
+    "locomotionBlueprintId": "locomotionConstructionDrone",
+    "base": {
+      "cost": {
+        "energy": 147,
+        "metal": 127
+      },
+      "mass": 45,
+      "health": 120,
+      "deathExplosion": {
+        "radius": 16.1,
+        "force": 4050,
+        "damage": 96
+      },
+      "radius": {
+        "visual": 11,
+        "hitbox": 10,
+        "collision": 14
+      }
+    }
   },
   "unitEagle": {
     "unitBlueprintId": "unitEagle",
@@ -962,7 +1232,25 @@
       "$audio": "event.death.unitEagle"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionEagleFlying"
+    "locomotionBlueprintId": "locomotionEagleFlying",
+    "base": {
+      "cost": {
+        "energy": 460,
+        "metal": 460
+      },
+      "mass": 95,
+      "health": 220,
+      "deathExplosion": {
+        "radius": 24.84,
+        "force": 8550,
+        "damage": 176
+      },
+      "radius": {
+        "visual": 18,
+        "hitbox": 15,
+        "collision": 21.6
+      }
+    }
   },
   "unitCommander": {
     "unitBlueprintId": "unitCommander",
@@ -1057,6 +1345,24 @@
       "$audio": "event.death.unitCommander"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "locomotionCommander"
+    "locomotionBlueprintId": "locomotionCommander",
+    "base": {
+      "cost": {
+        "energy": 316,
+        "metal": 316
+      },
+      "mass": 300,
+      "health": 500,
+      "deathExplosion": {
+        "radius": 23,
+        "force": 27000,
+        "damage": 400
+      },
+      "radius": {
+        "visual": 20,
+        "hitbox": 20,
+        "collision": 20
+      }
+    }
   }
 }

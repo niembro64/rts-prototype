@@ -65,21 +65,6 @@ since been resolved; the remaining items describe where the CODE does not yet me
 the expanded philosophy. They are forward work, not regressions.
 File:line refs were correct at audit time; re-verify before editing.
 
-A38. [HIGH] No uniform entity base ledger — id/cost{metal,energy}/mass/health are not a shared
-    floor every kind carries.
-    src/types/* (unitTypes/combatTypes/locomotionTypes/shotTypes) + the generated blueprint
-    schema + rts-sim-wasm/src/lib.rs entity/pool structs. —
-    RULE: new "Every entity shares one base ledger" — before it is any kind, every entity carries
-    id, a {metal,energy} cost, a mass, and a health pool; a sub-part's cost and health are its own
-    line items, so a host's totals are the sum of its pieces, not one opaque number. —
-    PROBLEM: cost/mass/health are not carried uniformly across kinds. Turrets and locomotion
-    sub-entities do not carry their own cost/health as independent line items. Shots now carry
-    health, but the base is still implicit and per-kind rather than one shared contract. —
-    FIX: define one shared entity base (id, cost{metal,energy}, mass, health) that every kind
-    extends; give turrets and locomotion their own cost+health line items; derive host totals
-    as the sum of piece costs. Put the base in the shared schema so TS and Rust cannot drift
-    (the A36 schema-generation path is the place to land it).
-
 A39. [HIGH] Sub-entities are not independently destructible; the host does not degrade per piece.
     rts-sim-wasm/src/lib.rs + src/game/sim (unit/turret/locomotion damage + death paths). —
     RULE: new "Pieces have their own health and die independently" — a turret can explode/detach

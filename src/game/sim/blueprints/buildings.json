@@ -22,7 +22,25 @@
     },
     "cloak": null,
     "turrets": [],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 100,
+        "metal": 100
+      },
+      "mass": 200,
+      "health": 200,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 12000,
+        "damage": 150
+      },
+      "radius": {
+        "visual": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      }
+    }
   },
   "buildingWind": {
     "buildingBlueprintId": "buildingWind",
@@ -47,7 +65,25 @@
     },
     "cloak": null,
     "turrets": [],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 60,
+        "metal": 60
+      },
+      "mass": 100,
+      "health": 100,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 6000,
+        "damage": 75
+      },
+      "radius": {
+        "visual": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
+      }
+    }
   },
   "buildingExtractor": {
     "buildingBlueprintId": "buildingExtractor",
@@ -72,7 +108,25 @@
     },
     "cloak": null,
     "turrets": [],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 80,
+        "metal": 80
+      },
+      "mass": 250,
+      "health": 250,
+      "deathExplosion": {
+        "radius": 84.853,
+        "force": 15000,
+        "damage": 187.5
+      },
+      "radius": {
+        "visual": 70.711,
+        "hitbox": 70.711,
+        "collision": 70.711
+      }
+    }
   },
   "buildingRadar": {
     "buildingBlueprintId": "buildingRadar",
@@ -99,6 +153,24 @@
     "turrets": [],
     "detector": {
       "radius": 1800
+    },
+    "base": {
+      "cost": {
+        "energy": 400,
+        "metal": 280
+      },
+      "mass": 450,
+      "health": 450,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 27000,
+        "damage": 337.5
+      },
+      "radius": {
+        "visual": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
+      }
     }
   },
   "buildingResourceConverter": {
@@ -124,6 +196,24 @@
     },
     "cloak": null,
     "turrets": [],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 120,
+        "metal": 120
+      },
+      "mass": 240,
+      "health": 240,
+      "deathExplosion": {
+        "radius": 50.912,
+        "force": 14400,
+        "damage": 180
+      },
+      "radius": {
+        "visual": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426
+      }
+    }
   }
 }

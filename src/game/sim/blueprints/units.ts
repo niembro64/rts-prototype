@@ -14,6 +14,7 @@ import type { LocomotionBlueprintId } from '../../../types/blueprintIds';
 export { BUILDABLE_UNIT_BLUEPRINT_IDS, type BuildableUnitBlueprintId } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
+import { TURRET_BLUEPRINTS } from './turrets';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
@@ -25,12 +26,20 @@ import {
   assertUnitLockOnExclusionConfigIds,
   getUnitLockOnExclusions,
 } from './lockOnConfig';
+import {
+  addResourceCosts,
+  assertNumberEquals,
+  assertRadiusEquals,
+  assertResourceCostEquals,
+  assertValidEntityBaseLedger,
+} from './entityBaseLedger';
 
 type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnExclusionObject> & {
   locomotionBlueprintId: string;
 };
 
 const UNIT_EXPLICIT_FIELDS = [
+  'base',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -57,6 +66,24 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
         `Invalid unit blueprint ${id}: unknown locomotionBlueprintId "${blueprint.locomotionBlueprintId}"`,
       );
     }
+    assertValidEntityBaseLedger(`unit blueprint ${id}`, blueprint.base);
+    assertRadiusEquals(`unit blueprint ${id}`, blueprint.radius, blueprint.base.radius);
+    assertNumberEquals(`unit blueprint ${id}`, 'mass', blueprint.mass, blueprint.base.mass);
+    assertNumberEquals(`unit blueprint ${id}`, 'health', blueprint.hp, blueprint.base.health);
+    const mountedTurretCosts = blueprint.turrets.map((mount) => {
+      const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+      if (!turretBlueprint) {
+        throw new Error(
+          `Invalid unit blueprint ${id}: unknown turretBlueprintId "${mount.turretBlueprintId}"`,
+        );
+      }
+      return turretBlueprint.base.cost;
+    });
+    assertResourceCostEquals(
+      `unit blueprint ${id}`,
+      blueprint.cost,
+      addResourceCosts(blueprint.base.cost, locomotion.base.cost, ...mountedTurretCosts),
+    );
     const { locomotionBlueprintId, ...unitBlueprint } = blueprint;
     blueprints[id] = {
       ...unitBlueprint,

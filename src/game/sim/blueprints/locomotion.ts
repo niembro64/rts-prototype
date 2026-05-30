@@ -9,6 +9,8 @@
 import rawLocomotionBlueprints from './locomotion.json';
 import type { LocomotionBlueprint } from './types';
 import { PATHFINDING_BLUEPRINTS } from './pathfinding';
+import { isLocomotionBlueprintId } from '../../../types/blueprintIds';
+import { assertValidEntityBaseLedger } from './entityBaseLedger';
 
 type JsonLocomotionBlueprint = Omit<LocomotionBlueprint, 'pathfinding'>;
 
@@ -20,6 +22,15 @@ function buildLocomotionBlueprints(): Record<string, LocomotionBlueprint> {
     if (!blueprint || typeof blueprint.type !== 'string') {
       throw new Error(`Invalid locomotion blueprint ${id}: missing type`);
     }
+    if (!isLocomotionBlueprintId(id)) {
+      throw new Error(`Invalid locomotion blueprint ${id}: id is not in stable blueprintIds`);
+    }
+    if (blueprint.locomotionBlueprintId !== id) {
+      throw new Error(
+        `Locomotion blueprint key/id mismatch: ${id} contains ${blueprint.locomotionBlueprintId}`,
+      );
+    }
+    assertValidEntityBaseLedger(`locomotion blueprint ${id}`, blueprint.base);
     if (
       typeof blueprint.pathfindingBlueprintId !== 'string' ||
       blueprint.pathfindingBlueprintId.length === 0

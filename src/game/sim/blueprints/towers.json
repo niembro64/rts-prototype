@@ -33,7 +33,25 @@
         "hostDirected": true
       }
     ],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 284,
+        "metal": 284
+      },
+      "mass": 800,
+      "health": 800,
+      "deathExplosion": {
+        "radius": 33.941,
+        "force": 48000,
+        "damage": 600
+      },
+      "radius": {
+        "visual": 28.284,
+        "hitbox": 28.284,
+        "collision": 28.284
+      }
+    }
   },
   "towerBeamMega": {
     "buildingBlueprintId": "towerBeamMega",
@@ -68,7 +86,25 @@
         "hostDirected": true
       }
     ],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 1468,
+        "metal": 1468
+      },
+      "mass": 8000,
+      "health": 8000,
+      "deathExplosion": {
+        "radius": 16.971,
+        "force": 480000,
+        "damage": 6000
+      },
+      "radius": {
+        "visual": 14.142,
+        "hitbox": 14.142,
+        "collision": 14.142
+      }
+    }
   },
   "towerCannon": {
     "buildingBlueprintId": "towerCannon",
@@ -103,6 +139,24 @@
         "hostDirected": true
       }
     ],
-    "detector": null
+    "detector": null,
+    "base": {
+      "cost": {
+        "energy": 1468,
+        "metal": 1468
+      },
+      "mass": 8000,
+      "health": 8000,
+      "deathExplosion": {
+        "radius": 67.882,
+        "force": 480000,
+        "damage": 6000
+      },
+      "radius": {
+        "visual": 56.569,
+        "hitbox": 56.569,
+        "collision": 56.569
+      }
+    }
   }
 }

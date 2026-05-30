@@ -20,6 +20,8 @@ pub type UnitBlueprintId = String;
 
 pub type TurretBlueprintId = String;
 
+pub type LocomotionBlueprintId = String;
+
 pub type ShotBlueprintId = String;
 
 pub type ForceFieldMaterialId = String;
@@ -157,6 +159,7 @@ pub struct SmokeTrailSpec {
 pub struct ProjectileShotBlueprint {
     pub r#type: ProjectileShotKind,
     pub shotBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub mass: f64,
     pub health: f64,
     pub collision: ShotCollision,
@@ -246,6 +249,7 @@ pub struct ForceFieldBarrierConfig {
 pub struct ProjectileShot {
     pub r#type: ProjectileShotKind,
     pub shotBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub mass: f64,
     pub health: f64,
     pub launchForce: f64,
@@ -409,6 +413,22 @@ pub struct EntityRadiusConfig {
     pub collision: f64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct EntityDeathExplosion {
+    pub radius: f64,
+    pub force: f64,
+    pub damage: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EntityBaseLedger {
+    pub cost: BlueprintJsonValue,
+    pub mass: f64,
+    pub health: f64,
+    pub deathExplosion: EntityDeathExplosion,
+    pub radius: EntityRadiusConfig,
+}
+
 pub type TurretRadiusConfig = EntityRadiusConfig;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -487,6 +507,7 @@ pub struct TurretAudioConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TurretBlueprint {
     pub turretBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub kind: WeaponKind,
     pub shotBlueprintId: Option<String>,
     pub range: f64,
@@ -666,6 +687,8 @@ pub struct FlyingConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintWheels {
     pub r#type: String,
+    pub locomotionBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -675,6 +698,8 @@ pub struct LocomotionBlueprintWheels {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintTreads {
     pub r#type: String,
+    pub locomotionBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -684,6 +709,8 @@ pub struct LocomotionBlueprintTreads {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintLegs {
     pub r#type: String,
+    pub locomotionBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -693,6 +720,8 @@ pub struct LocomotionBlueprintLegs {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintHover {
     pub r#type: String,
+    pub locomotionBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -702,6 +731,8 @@ pub struct LocomotionBlueprintHover {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintFlying {
     pub r#type: String,
+    pub locomotionBlueprintId: String,
+    pub base: EntityBaseLedger,
     pub physics: LocomotionPhysics,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
@@ -856,6 +887,7 @@ pub struct UnitBlueprint {
     pub unitBlueprintId: String,
     pub name: String,
     pub shortName: String,
+    pub base: EntityBaseLedger,
     pub hp: f64,
     pub radius: UnitRadiusConfig,
     pub bodyCenterHeight: f64,
