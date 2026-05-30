@@ -66,54 +66,6 @@ A24. [WATCH] src/game/server/PhysicsEngine3D.ts:954-972 (clampToMapBounds), invo
     clamp with a stiff boundary spring + damping; otherwise leave as-is (cheap, stable,
     perimeter-only) and treat as an accepted deviation. Low urgency.
 
-A25. [LOW] rts-sim-wasm/src/lib.rs compute_arrival_control_thrust (~681-808), the
-    ARRIVAL_FLAG_FLYING branch —
-    RULE: "Locomotion is arrival control, not waypoint seeking" (philosophy lines
-    719-749): every locomotion profile computes force from BOTH position error AND
-    velocity error; hovercraft and air "use the same high-level arrival controller;
-    they differ only by mass, thrust, friction, damping, turn authority, contact
-    model, and vertical constraints." —
-    PROBLEM: for FLYING units the arrival controller takes a position-only branch (seeks
-    the waypoint without the braking/velocity-error term ground and hover units use), so
-    air units can overshoot/orbit — the exact failure the rule exists to prevent. Ground
-    and hover paths correctly use position+velocity error with thrust saturation (audited
-    CLEAN). —
-    FIX: route flying units through the same velocity-aware arrival term (position error +
-    velocity-error braking, saturated against thrust), differing only by the flying unit's
-    physical limits, instead of a position-only seek branch.
-
-A26. [MEDIUM] src/game/sim/blueprints/shots.json (lightRocket ~:66, fastRocket ~:89,
-    and the other rocket/guided entries that set gravityForceMultiplier:0); field
-    consumed in the Rust projectile gravity integration —
-    RULE: "Gravity is universal; thrust answers it" (philosophy lines 751-777): "No
-    ignoresGravity shortcut, no projectile-class exemption, no 'flat trajectory' flag
-    that bypasses integration. Guided projectiles add a counter-gravity thrust term
-    inside the same homing/steering update." —
-    PROBLEM: guided rockets set gravityForceMultiplier:0 — exactly the "flat trajectory
-    flag that bypasses integration" the doc forbids. They fly level by switching gravity
-    OFF rather than by adding a bounded counter-gravity thrust term in the homing update,
-    so a spent/failed rocket would not SAG the way the doc requires. (Confirmed:
-    grep of shots.json shows gravityForceMultiplier:0 on the rocket entries; non-guided
-    shots correctly use 1.) —
-    FIX: set gravityForceMultiplier back to 1 for guided rockets and have the homing
-    update add a vertical counter-gravity thrust term (bounded by available thrust) so
-    flight looks flat while gravity stays integrated; when guidance/thrust is lost the
-    rocket sags ballistically. (Pairs with A27.)
-
-A27. [LOW] src/types/shotTypes.ts (gravityForceMultiplier field def, ~:136/155/173/
-    230/251/268) and shots.json values —
-    RULE: "Gravity is universal; thrust answers it" (philosophy line 772): "No
-    ignoresGravity shortcut, no projectile-class exemption, no 'flat trajectory' flag
-    that bypasses integration." —
-    PROBLEM: the schema exposes gravityForceMultiplier as a free scalar with no
-    constraint, so ANY shot can set it to 0 and opt out of universal gravity — a
-    generalized version of the banned flat-trajectory flag, even though gravity is
-    correctly integrated for multiplier=1 shots. —
-    FIX: remove gravityForceMultiplier (keep gravity universal at 1× and express
-    "flies-flat" via thrust); or, if a multiplier must stay, constrain/document it so it
-    can never disable the gravity pass (clamp >0, or recast it as a drag/buoyancy term
-    that never zeroes gravity). (Pairs with A26.)
-
 A28. [MEDIUM] src/game/sim/blueprints/turrets.json (turretForceFieldPanel: shotId
     points at a beam shot; force-field behavior carried by a turret-side
     forceFieldPanels/panel config) + src/game/sim/combat/forceFieldTurret.ts,
@@ -349,16 +301,17 @@ but are not — are folded into the list below.)
   snapshot RATE default is out of band — see A21; and the rate dropdown also
   exposes 32/64/128 options up to the tick rate, refuted as a config-option
   range, not a shipped default.)
-- Locomotion arrival control for GROUND and HOVER units correctly uses position
-  error + velocity error with thrust saturation (compute_arrival_control_thrust
-  in lib.rs ~681-808); final vs intermediate waypoints are distinguished
-  (ARRIVAL_FLAG_LAST_ACTION); waypoints are desired states, not magnets. (Only
-  the FLYING branch is position-only — see A25.)
+- Locomotion arrival control for GROUND, HOVER, and FLYING units correctly uses
+  position error + velocity error with thrust saturation for final waypoints
+  (compute_arrival_control_thrust in lib.rs ~681-808); final vs intermediate
+  waypoints are distinguished (ARRIVAL_FLAG_LAST_ACTION); waypoints are desired
+  states, not magnets.
 - Gravity integration is universal in the body integrator (lib.rs passes
   authored_az − GRAVITY with no per-body skip branch); homing counter-thrust,
   D-gun terrain-follow, and hover lift are CLEAN — hover fights g·m with a lift
-  force, it does NOT skip gravity. (The ONLY gravity exemption is the per-shot
-  gravityForceMultiplier:0 on rockets — see A26/A27.)
+  force, it does NOT skip gravity. Projectile shots now validate a positive
+  gravityForceMultiplier; line weapons still use 0 because they are line traces,
+  not ballistic bodies.
 - Hover lift is an anti-gravity force, not a gravity-skip conditional (verifier
   re-read confirmed; the earlier "hover is a PD pull, not anti-gravity" candidate
   was refuted).

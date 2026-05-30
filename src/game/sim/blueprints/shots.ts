@@ -63,6 +63,14 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
         `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
       );
     }
+    if (
+      !Number.isFinite(blueprint.gravityForceMultiplier) ||
+      blueprint.gravityForceMultiplier <= 0
+    ) {
+      throw new Error(
+        `Shot blueprint ${id} has invalid gravityForceMultiplier: projectile shots must keep gravity enabled with a positive finite multiplier.`,
+      );
+    }
     if (blueprint.type === 'rocket') {
       if (
         !Number.isFinite(blueprint.maxLifespan) ||
@@ -97,5 +105,10 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     }
   } else {
     assertExplicitFields(`shot blueprint ${id}`, blueprint, LINE_EXPLICIT_FIELDS);
+    if (blueprint.gravityForceMultiplier !== 0) {
+      throw new Error(
+        `Shot blueprint ${id} has invalid gravityForceMultiplier: line weapons must use 0 because they are not ballistic projectile bodies.`,
+      );
+    }
   }
 }

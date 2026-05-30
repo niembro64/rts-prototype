@@ -63,7 +63,7 @@
     "submunitions": null,
     "homingTurnRate": 0.7,
     "homingThrust": 5000,
-    "gravityForceMultiplier": 0,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "fastRocket": {
@@ -86,7 +86,7 @@
     "submunitions": null,
     "homingTurnRate": 10,
     "homingThrust": 100000,
-    "gravityForceMultiplier": 0,
+    "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
   "heavyShot": {

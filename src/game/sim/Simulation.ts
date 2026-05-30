@@ -139,7 +139,6 @@ const ARRIVAL_FINAL_STOP_SPEED = 10;
 const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
-const ARRIVAL_BATCH_FLAG_FLYING = 1 << 0;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const FLYING_LOITER_RADIUS_MULT = 8;
 const FLYING_LOITER_MIN_RADIUS = 80;
@@ -1307,9 +1306,7 @@ export class Simulation {
     this._arrivalDriveForceBuf[index] = unit.locomotion.driveForce;
     this._arrivalTractionBuf[index] = unit.locomotion.traction;
     this._arrivalMassBuf[index] = unit.mass;
-    this._arrivalFlagsBuf[index] =
-      (unit.locomotion.type === 'flying' ? ARRIVAL_BATCH_FLAG_FLYING : 0) |
-      (isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0);
+    this._arrivalFlagsBuf[index] = isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0;
   }
 
   private flushArrivalThrust(movingUnits: Entity[], dtSec: number): void {

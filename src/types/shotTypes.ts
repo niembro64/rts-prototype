@@ -128,11 +128,12 @@ export type ProjectileShotBlueprint = {
    *  holding altitude. A weak engine sags; it does not skip integration.
    *  Null for non-homing shots. */
   homingThrust: number | null;
-  /** Per-shot multiplier on the global GRAVITY constant. 1 = full
-   *  gravity (ballistic plasma); 0 = no gravity (rockets fly straight,
-   *  line weapons skip ballistics entirely). Sim, client prediction,
-   *  aim solver, and range envelope all read this so a shot's
-   *  trajectory math agrees everywhere it's computed. */
+  /** Per-shot multiplier on the global GRAVITY constant. Projectile
+   *  shots must keep this positive and finite; guided projectiles hold
+   *  altitude by spending homing thrust on counter-gravity, not by
+   *  disabling gravity integration. Sim, client prediction, aim solver,
+   *  and range envelope all read this so a shot's trajectory math
+   *  agrees everywhere it's computed. */
   gravityForceMultiplier: number;
   /** Legacy/per-shot cosmetic smoke override. Current shared shot
    *  smoke profiles live in smokeConfig.json. Sim-side: no effect. */
@@ -150,8 +151,8 @@ export type BeamShotBlueprint = {
   width: number;
   /** Endpoint damage sphere radius. */
   damageSphere: { radius: number };
-  /** Always 0 for line weapons; carried so every shot blueprint
-   *  exposes the same gravity knob. */
+  /** Always 0 for line weapons; they are line traces, not ballistic
+   *  projectile bodies. */
   gravityForceMultiplier: number;
   hitSound: SoundEntry | null;
 };
@@ -168,8 +169,8 @@ export type LaserShotBlueprint = {
   /** Endpoint damage sphere radius. */
   damageSphere: { radius: number };
   duration: number;
-  /** Always 0 for line weapons; carried so every shot blueprint
-   *  exposes the same gravity knob. */
+  /** Always 0 for line weapons; they are line traces, not ballistic
+   *  projectile bodies. */
   gravityForceMultiplier: number;
   hitSound: SoundEntry | null;
 };
@@ -224,9 +225,8 @@ export type ProjectileShot = {
   /** In-flight thrust budget in world-unit-newtons. Steering acceleration
    *  is bounded by `homingThrust / mass`. Undefined for non-homing shots. */
   homingThrust?: number;
-  /** Per-shot scale on global GRAVITY for this shot's ballistic
-   *  integration, aim solve, and range envelope. Mirrored from the
-   *  blueprint. */
+  /** Positive finite scale on global GRAVITY for ballistic integration,
+   *  aim solve, and range envelope. Mirrored from the blueprint. */
   gravityForceMultiplier: number;
   trailLength?: number;
   /** Cluster / flak-burst behavior. */
@@ -247,7 +247,8 @@ export type BeamShot = {
   width: number;
   /** Endpoint damage sphere. */
   damageSphere: { radius: number };
-  /** Always 0; line weapons skip ballistic integration. */
+  /** Always 0; line weapons skip ballistic integration because they are
+   *  line traces, not projectile bodies. */
   gravityForceMultiplier: number;
 };
 
@@ -264,7 +265,8 @@ export type LaserShot = {
   /** Endpoint damage sphere. */
   damageSphere: { radius: number };
   duration: number;
-  /** Always 0; line weapons skip ballistic integration. */
+  /** Always 0; line weapons skip ballistic integration because they are
+   *  line traces, not projectile bodies. */
   gravityForceMultiplier: number;
 };
 

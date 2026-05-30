@@ -656,7 +656,6 @@ pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
 pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
 
-const ARRIVAL_FLAG_FLYING: u8 = 1 << 0;
 const ARRIVAL_FLAG_LAST_ACTION: u8 = 1 << 1;
 
 #[inline]
@@ -702,10 +701,6 @@ fn compute_arrival_control_thrust(
     }
 
     let inv_distance = 1.0 / distance;
-    if flags & ARRIVAL_FLAG_FLYING != 0 {
-        return (dx * inv_distance, dy * inv_distance, 1);
-    }
-
     if flags & ARRIVAL_FLAG_LAST_ACTION == 0 {
         return (dx * inv_distance, dy * inv_distance, 1);
     }
@@ -25150,6 +25145,36 @@ mod sim_kernel_tests {
         );
         assert_eq!(active, 1);
         assert!(x < 0.0, "arrival should thrust opposite overshoot velocity");
+        assert!(y.abs() < 1e-12);
+    }
+
+    #[test]
+    fn flying_final_waypoints_use_velocity_aware_arrival() {
+        let legacy_flying_flag = 1 << 0;
+        let (x, y, active) = compute_arrival_control_thrust(
+            10.0,
+            0.0,
+            10.0,
+            20.0,
+            0.0,
+            10.0,
+            100.0,
+            1.0,
+            100.0,
+            legacy_flying_flag | ARRIVAL_FLAG_LAST_ACTION,
+            1.0 / 30.0,
+            8.0,
+            150_000.0,
+            50.0,
+            20.0,
+            0.22,
+            0.001,
+        );
+        assert_eq!(active, 1);
+        assert!(
+            x < 0.0,
+            "flying arrival should brake against overshoot velocity"
+        );
         assert!(y.abs() < 1e-12);
     }
 
