@@ -633,9 +633,7 @@ export class GameServer {
         return this.isOwnedEntity(command.builderId, playerId) ? command : null;
 
       case 'queueUnit':
-      case 'cancelQueueItem':
       case 'setRallyPoint':
-      case 'setFactoryWaypoints':
         return this.isOwnedFactory(command.factoryId, playerId) ? command : null;
 
       case 'fireDGun':
@@ -999,16 +997,13 @@ export class GameServer {
             touched = true;
           }
         }
-        for (let i = factoryComp.buildQueue.length - 1; i >= 0; i--) {
-          if (factoryComp.buildQueue[i] !== unitBlueprintId) continue;
-          factoryComp.buildQueue.splice(i, 1);
+        if (factoryComp.selectedUnitBlueprintId === unitBlueprintId) {
+          factoryComp.selectedUnitBlueprintId = null;
           touched = true;
         }
         if (!touched) continue;
-        if (factoryComp.buildQueue.length === 0) {
-          factoryComp.isProducing = false;
-          factoryComp.currentBuildProgress = 0;
-        }
+        factoryComp.isProducing = false;
+        factoryComp.currentBuildProgress = 0;
         this.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       }
       // Kill all existing units of this type

@@ -36,10 +36,11 @@ function pathTerrainFilterForUnit(unit: Entity): PathTerrainFilter | null {
 // Factory production system
 export class FactoryProductionSystem {
   // Update all factories. The factory's job is now (a) spawning a
-  // shell of the queued unit at its build spot when work begins, and
-  // (b) detecting completion of the shell and finishing the activation
-  // (waypoints + turret aim). Resource transfer into the shell is
-  // handled by energyDistribution, the same path that funds buildings.
+  // shell of the selected repeat-build unit at its build spot when work
+  // begins, and (b) detecting completion of the shell and finishing the
+  // activation (static rally + turret aim). Resource transfer into the
+  // shell is handled by energyDistribution, the same path that funds
+  // buildings.
   update(world: WorldState, _dtMs: number, buildingGrid: BuildingGrid): FactoryProductionResult {
     const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
@@ -65,11 +66,9 @@ export class FactoryProductionSystem {
         }
         factoryComp.currentBuildProgress = shell.buildable ? getBuildFraction(shell.buildable) : 1;
         if (!shell.buildable || shell.buildable.isComplete) {
-          // Activation: copy waypoints, aim turrets, mark dirty.
-          // The queue head is intentionally NOT popped — repeat-build
-          // mode keeps the selected unit blueprint until the player toggles
-          // it off, so the next tick will spawn another shell from
-          // queue[0].
+          // Activation: stamp the static rally, aim turrets, mark dirty.
+          // The selected blueprint is intentionally NOT cleared: repeat-
+          // build mode keeps producing it until the player toggles it off.
           this.activateShell(world, factory, shell, buildingGrid);
           completedUnits.push(shell);
           factoryComp.currentShellId = null;
@@ -82,8 +81,9 @@ export class FactoryProductionSystem {
         continue;
       }
 
-      // (2) No shell in progress — try to spawn the head of the queue.
-      if (factoryComp.buildQueue.length === 0) {
+      // (2) No shell in progress — try to spawn the selected unit.
+      const currentUnitBlueprintId = factoryComp.selectedUnitBlueprintId;
+      if (currentUnitBlueprintId === null) {
         if (factoryComp.isProducing) {
           factoryComp.isProducing = false;
           factoryComp.currentBuildProgress = 0;
@@ -91,7 +91,6 @@ export class FactoryProductionSystem {
         }
         continue;
       }
-      const currentUnitBlueprintId = factoryComp.buildQueue[0];
       let bp;
       try {
         bp = getUnitBlueprint(currentUnitBlueprintId);
@@ -99,8 +98,8 @@ export class FactoryProductionSystem {
         bp = undefined;
       }
       if (!bp) {
-        // Invalid unit, drop it.
-        factoryComp.buildQueue.shift();
+        // Invalid selection, drop it.
+        factoryComp.selectedUnitBlueprintId = null;
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
         continue;
       }
@@ -155,8 +154,8 @@ export class FactoryProductionSystem {
     return unit;
   }
 
-  // Called when a unit shell completes. Stamps the rally waypoints
-  // onto the unit (expanded into pathfinder legs) and aims the turret.
+  // Called when a unit shell completes. Stamps the static factory rally
+  // onto the unit and aims the turret.
   private activateShell(
     world: WorldState,
     factory: Entity,
@@ -167,10 +166,15 @@ export class FactoryProductionSystem {
     const factoryComp = factory.factory;
     const spawnX = unit.transform.x;
     const spawnY = unit.transform.y;
-    if (unit.unit && factoryComp.waypoints.length > 0) {
+    if (unit.unit) {
       const { actions, patrolStartIndex } = expandMultiLegPathActions(
         spawnX, spawnY,
-        factoryComp.waypoints,
+        [{
+          x: factoryComp.rallyX,
+          y: factoryComp.rallyY,
+          z: factoryComp.rallyZ ?? undefined,
+          type: factoryComp.rallyType,
+        }],
         world.mapWidth, world.mapHeight, buildingGrid,
         pathTerrainFilterForUnit(unit),
       );
@@ -187,8 +191,8 @@ export class FactoryProductionSystem {
   // currently-building blueprint clears the selection and cancels the
   // in-progress shell; selecting a different type cancels the current
   // shell (refunding paid resources) and replaces the selection. The
-  // production loop never pops queue[0], so the selected type is rebuilt
-  // forever until the player toggles it off.
+  // production loop keeps selectedUnitBlueprintId until the player toggles
+  // it off, so the selected type repeats forever.
   selectUnit(factory: Entity, unitBlueprintId: string, world: WorldState): boolean {
     if (!factory.factory || !isEntityActive(factory)) {
       return false;
@@ -199,58 +203,24 @@ export class FactoryProductionSystem {
       return false;
     }
     const factoryComp = factory.factory;
-    const current = factoryComp.buildQueue[0] ?? null;
+    const current = factoryComp.selectedUnitBlueprintId;
     if (current === unitBlueprintId) {
       // Toggle off — cancel active shell, clear selection.
       this.cancelActiveShell(world, factory);
-      factoryComp.buildQueue.length = 0;
+      factoryComp.selectedUnitBlueprintId = null;
       factoryComp.isProducing = false;
     } else {
       // Replace — cancel any active shell of the previous type, then
       // swap the selection. The production loop spawns a fresh shell
       // of the new type next tick.
       this.cancelActiveShell(world, factory);
-      factoryComp.buildQueue.length = 0;
-      factoryComp.buildQueue.push(unitBlueprintId);
+      factoryComp.selectedUnitBlueprintId = unitBlueprintId;
     }
-    return true;
-  }
-
-  // Remove a unit from factory's build queue. Removing the head
-  // (index 0) when a shell is already spawned destroys the shell and
-  // refunds the resources already paid into it.
-  dequeueUnit(factory: Entity, index: number, world: WorldState | undefined = undefined): boolean {
-    if (!factory.factory) return false;
-    const factoryComp = factory.factory;
-    if (index < 0 || index >= factoryComp.buildQueue.length) {
-      return false;
-    }
-    if (index === 0 && factoryComp.currentShellId !== null && world) {
-      this.cancelCurrentShell(world, factory);
-    }
-    factoryComp.buildQueue.splice(index, 1);
-    if (index === 0) {
-      factoryComp.isProducing = factoryComp.buildQueue.length > 0;
-      if (!factoryComp.isProducing) factoryComp.currentBuildProgress = 0;
-    }
-    return true;
-  }
-
-  // Cancel current production (destroys the shell, refunds paid).
-  cancelCurrent(factory: Entity, world: WorldState | undefined = undefined): boolean {
-    if (!factory.factory || !factory.factory.isProducing) return false;
-    if (factory.factory.currentShellId !== null && world) {
-      this.cancelCurrentShell(world, factory);
-    }
-    factory.factory.buildQueue.shift();
-    factory.factory.isProducing = false;
-    factory.factory.currentShellId = null;
-    factory.factory.currentBuildProgress = 0;
     return true;
   }
 
   // Tear down the in-progress shell and refund 100% of paid resources
-  // back to the player's stockpiles. Used by queue cancellation and
+  // back to the player's stockpiles. Used by selection changes and
   // factory destruction so shell cleanup has a single owner.
   cancelActiveShell(world: WorldState, factory: Entity): void {
     const factoryComp = factory.factory!;
@@ -270,26 +240,6 @@ export class FactoryProductionSystem {
     }
     factoryComp.currentShellId = null;
     factoryComp.currentBuildProgress = 0;
-  }
-
-  private cancelCurrentShell(world: WorldState, factory: Entity): void {
-    this.cancelActiveShell(world, factory);
-  }
-
-  // Get build queue for display. The head's progress comes from the
-  // shell entity (average of the resource bars).
-  getBuildQueue(factory: Entity, world: WorldState | undefined = undefined): { unitBlueprintId: string; progress: number }[] {
-    if (!factory.factory) return [];
-    return factory.factory.buildQueue.map((unitBlueprintId, index) => {
-      if (index !== 0 || factory.factory!.currentShellId === null || !world) {
-        return { unitBlueprintId, progress: 0 };
-      }
-      const shell = world.getEntity(factory.factory!.currentShellId);
-      const progress = shell !== undefined && shell.buildable !== null
-        ? getBuildFraction(shell.buildable)
-        : 0;
-      return { unitBlueprintId, progress };
-    });
   }
 }
 

@@ -4,7 +4,7 @@ import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId } fr
 import type { Vec2 } from './vec2';
 
 // Selection panel types
-export type QueueItem = {
+export type FactorySelectionItem = {
   unitBlueprintId: string;
   label: string;
 };
@@ -68,7 +68,7 @@ export type SelectionInfo = {
   isGuardMode: boolean;
   isReclaimMode: boolean;
   isPingMode: boolean;
-  factoryQueue?: QueueItem[];
+  factorySelectedUnit?: FactorySelectionItem | null;
   factoryProgress?: number;
   factoryIsProducing?: boolean;
   controlGroups: ControlGroupInfo[];
@@ -104,7 +104,6 @@ export type SelectionActions = {
   toggleDGun: () => void;
   toggleRepairArea: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string) => void;
-  cancelQueueItem: (factoryId: number, index: number) => void;
 };
 
 // Economy info

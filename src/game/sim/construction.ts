@@ -130,13 +130,14 @@ export class ConstructionSystem {
         REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
       );
       entity.factory = {
-        buildQueue: [],
+        selectedUnitBlueprintId: null,
         currentShellId: null,
         currentBuildProgress: 0,
         rallyX: wp.x,
         rallyY: wp.y,
+        rallyZ: null,
+        rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
         isProducing: false,
-        waypoints: [{ x: wp.x, y: wp.y, type: REAL_BATTLE_FACTORY_WAYPOINT_TYPE }],
         energyRateFraction: 0,
         metalRateFraction: 0,
       };
@@ -149,7 +150,7 @@ export class ConstructionSystem {
     // Add to world
     world.addEntity(entity);
 
-    // Assign builder (only for non-commanders - commanders use their buildQueue instead)
+    // Assign builder (only for non-commanders - commanders use their own action queue)
     const builder = world.getEntity(builderId);
     if (builder !== undefined && builder.builder !== null && builder.commander === null) {
       builder.builder.currentBuildTarget = entity.id;

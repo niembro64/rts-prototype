@@ -823,12 +823,12 @@ export type NetworkServerSnapshotEntity = {
      *  as unit turrets. Static authored data stays blueprint-derived. */
     turrets: NetworkServerSnapshotTurret[] | null;
     factory: {
-      /** Queue of unit blueprint wire codes (see unitBlueprintIdToCode). */
-      queue: number[];
+      /** Selected repeat-build unit blueprint wire code, or null for off. */
+      selectedUnitBlueprintCode: number | null;
       /** Average fill of the factory's currentShellId, or 0 if
        *  the factory hasn't spawned a shell yet. The client re-derives
        *  per-resource bars from the shell entity itself; this field is
-       *  kept as a convenience for the build-queue UI strip. */
+       *  kept as a convenience for the production progress UI. */
       progress: number;
       producing: boolean;
       /** Per-resource transfer rate this tick (0..1 fraction of the
@@ -836,10 +836,9 @@ export type NetworkServerSnapshotEntity = {
        *  around the factory's pylons. */
       energyRate: number;
       metalRate: number;
-      /** `posZ` carries the click-altitude of the player-issued
-       *  factory waypoint; absent for synthetic / legacy waypoints
-       *  (renderers fall back to terrain sample). */
-      waypoints: { pos: Vec2; posZ: number | null; type: string }[];
+      /** Static rally point. `posZ` carries the click-altitude of the
+       *  player-issued rally; null falls back to terrain sample. */
+      rally: { pos: Vec2; posZ: number | null; type: string };
     } | null;
   } | null;
 };

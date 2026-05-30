@@ -1,4 +1,4 @@
-// AI auto-production: queues random units at idle factories for AI players
+// AI auto-production: selects repeat-build units at idle factories for AI players
 
 import type { WorldState } from './WorldState';
 import type { PlayerId } from './types';
@@ -53,7 +53,7 @@ function pickRandomUnit(world: WorldState, allowedUnitBlueprintIds: ReadonlySet<
 }
 
 /**
- * For each AI player, find idle factories and queue a random unit.
+ * For each AI player, find idle factories and select a random repeat-build unit.
  * Called once per tick from Simulation.update().
  *
  * Iterates the cached factory subset rather than every building. AI
@@ -79,12 +79,8 @@ export function updateAiProduction(
     if (!entity.ownership) continue;
     if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
 
-    // Pick a repeat-build type for the factory if it has none set. The
-    // production loop now keeps queue[0] for the lifetime of the
-    // selection, so each idle AI factory locks onto one type until the
-    // shell completes — in practice that means one unit blueprint per
-    // factory until destruction.
-    if (entity.factory.buildQueue.length === 0 && world.canPlayerQueueUnit(entity.ownership.playerId)) {
+    // Pick a repeat-build type for the factory if it has none set.
+    if (entity.factory.selectedUnitBlueprintId === null && world.canPlayerQueueUnit(entity.ownership.playerId)) {
       if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, allowedUnitBlueprintIds), world)) {
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
       }

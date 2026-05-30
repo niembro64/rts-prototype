@@ -114,7 +114,7 @@ export function useGameCanvasSceneUi({
     isGuardMode: false,
     isReclaimMode: false,
     isPingMode: false,
-    factoryQueue: [],
+    factorySelectedUnit: null,
     factoryProgress: 0,
     factoryIsProducing: false,
     controlGroups: [],
@@ -255,9 +255,6 @@ export function useGameCanvasSceneUi({
     },
     queueUnit: (factoryId, unitBlueprintId) => {
       getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId);
-    },
-    cancelQueueItem: (factoryId, index) => {
-      getActiveBattleScene()?.cancelFactoryQueueItem(factoryId, index);
     },
   };
 

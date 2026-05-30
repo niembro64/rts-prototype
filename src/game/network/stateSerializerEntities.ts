@@ -66,7 +66,6 @@ import {
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
 const MAX_ACTIONS_PER_ENTITY = 16;
-const MAX_WAYPOINTS_PER_ENTITY = 16;
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -105,7 +104,7 @@ export type EntitySnapshotWireSource = {
   actionRows: Float64WireRows;
   actionStrings: string[];
   turretRows: Float64WireRows;
-  factoryQueueRows: Uint32WireRows;
+  factorySelectedUnitRows: Uint32WireRows;
   waypointRows: Float64WireRows;
   waypointStrings: string[];
 };
@@ -128,8 +127,7 @@ type PooledEntry = {
   factorySub: FactorySub;
   turrets: NetworkServerSnapshotTurret[];
   actions: NetworkServerSnapshotAction[];
-  waypoints: WaypointDto[];
-  buildQueue: number[];
+  rally: WaypointDto;
 };
 
 const entityWireSource: EntitySnapshotWireSource = {
@@ -141,7 +139,7 @@ const entityWireSource: EntitySnapshotWireSource = {
   actionRows: createFloat64WireRows(),
   actionStrings: [],
   turretRows: createFloat64WireRows(),
-  factoryQueueRows: createUint32WireRows(),
+  factorySelectedUnitRows: createUint32WireRows(),
   waypointRows: createFloat64WireRows(),
   waypointStrings: [],
 };
@@ -200,8 +198,7 @@ function createPooledEntry(): PooledEntry {
   for (let i = 0; i < MAX_WEAPONS_PER_ENTITY; i++) turrets.push(createTurretDto());
   const actions: NetworkServerSnapshotAction[] = [];
   for (let i = 0; i < MAX_ACTIONS_PER_ENTITY; i++) actions.push(createActionDto());
-  const waypoints: WaypointDto[] = [];
-  for (let i = 0; i < MAX_WAYPOINTS_PER_ENTITY; i++) waypoints.push(createWaypointDto());
+  const rally = createWaypointDto();
   const entityPos = { x: 0, y: 0, z: 0 };
   const unitSub = createNetworkUnitSnapshot();
   const unitHp = unitSub.hp ?? (unitSub.hp = { curr: 0, max: 0 });
@@ -239,14 +236,13 @@ function createPooledEntry(): PooledEntry {
     buildingHp,
     buildingBuild,
     factorySub: {
-      queue: [], progress: 0, producing: false,
+      selectedUnitBlueprintCode: null, progress: 0, producing: false,
       energyRate: 0, metalRate: 0,
-      waypoints: [],
+      rally,
     },
     turrets,
     actions,
-    waypoints,
-    buildQueue: [],
+    rally,
   };
 }
 
@@ -290,7 +286,7 @@ function resetEntitySnapshotWireSource(): void {
   entityWireSource.actionRows.count = 0;
   entityWireSource.actionStrings.length = 0;
   entityWireSource.turretRows.count = 0;
-  entityWireSource.factoryQueueRows.count = 0;
+  entityWireSource.factorySelectedUnitRows.count = 0;
   entityWireSource.waypointRows.count = 0;
   entityWireSource.waypointStrings.length = 0;
 }
@@ -355,33 +351,27 @@ function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | 
   return offset;
 }
 
-function appendFactoryQueueWireRows(queue: readonly number[] | undefined): number {
-  if (queue === undefined || queue.length === 0) return -1;
-  const rows = entityWireSource.factoryQueueRows;
-  const offset = reserveUint32WireRows(rows, queue.length, 1);
-  const values = rows.values;
-  for (let i = 0; i < queue.length; i++) {
-    values[offset + i] = queue[i];
-  }
+function appendFactorySelectedUnitWireRow(selectedUnitBlueprintCode: number | null | undefined): number {
+  if (selectedUnitBlueprintCode === undefined || selectedUnitBlueprintCode === null) return -1;
+  const rows = entityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, 1, 1);
+  rows.values[offset] = selectedUnitBlueprintCode;
   return offset;
 }
 
-function appendWaypointWireRows(waypoints: readonly FactorySub['waypoints'][number][] | undefined): number {
-  if (waypoints === undefined || waypoints.length === 0) return -1;
+function appendFactoryRallyWireRow(rally: FactorySub['rally'] | undefined): number {
+  if (rally === undefined) return -1;
   const rows = entityWireSource.waypointRows;
-  const offset = reserveFloat64WireRows(rows, waypoints.length, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
+  const offset = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
   const values = rows.values;
   const strings = entityWireSource.waypointStrings;
-  for (let i = 0; i < waypoints.length; i++) {
-    const waypoint = waypoints[i];
-    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
-    values[base + 0] = waypoint.pos.x;
-    values[base + 1] = waypoint.pos.y;
-    values[base + 2] = waypoint.posZ !== null ? 1 : 0;
-    values[base + 3] = waypoint.posZ ?? 0;
-    values[base + 4] = strings.length;
-    strings.push(waypoint.type);
-  }
+  const base = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+  values[base + 0] = rally.pos.x;
+  values[base + 1] = rally.pos.y;
+  values[base + 2] = rally.posZ !== null ? 1 : 0;
+  values[base + 3] = rally.posZ ?? 0;
+  values[base + 4] = strings.length;
+  strings.push(rally.type);
   return offset;
 }
 
@@ -498,8 +488,10 @@ function appendBuildingEntityWireRow(
   const hp = building.hp;
   const build = building.build;
   const turretOffset = appendTurretWireRows(turrets);
-  const factoryQueueOffset = appendFactoryQueueWireRows(factory !== null ? factory.queue : undefined);
-  const factoryWaypointOffset = appendWaypointWireRows(factory !== null ? factory.waypoints : undefined);
+  const factorySelectedUnitOffset = appendFactorySelectedUnitWireRow(
+    factory !== null ? factory.selectedUnitBlueprintCode : undefined,
+  );
+  const factoryRallyOffset = appendFactoryRallyWireRow(factory !== null ? factory.rally : undefined);
   const pos = entity.pos;
   values[base + 0] = entity.id;
   values[base + 1] = pos !== null ? pos.x : 0;
@@ -526,15 +518,15 @@ function appendBuildingEntityWireRow(
   values[base + 22] = turrets !== null ? 1 : 0;
   values[base + 23] = turrets !== null ? turrets.length : 0;
   values[base + 24] = factory !== null ? 1 : 0;
-  values[base + 25] = factory !== null ? factory.queue.length : 0;
+  values[base + 25] = factory !== null && factory.selectedUnitBlueprintCode !== null ? 1 : 0;
   values[base + 26] = factory !== null ? factory.progress : 0;
   values[base + 27] = factory !== null && factory.producing === true ? 1 : 0;
   values[base + 28] = factory !== null ? factory.energyRate : 0;
   values[base + 29] = factory !== null ? factory.metalRate : 0;
-  values[base + 30] = factory !== null ? factory.waypoints.length : 0;
+  values[base + 30] = factory !== null ? 1 : 0;
   values[base + 31] = turretOffset;
-  values[base + 32] = factoryQueueOffset;
-  values[base + 33] = factoryWaypointOffset;
+  values[base + 32] = factorySelectedUnitOffset;
+  values[base + 33] = factoryRallyOffset;
   entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
   entityWireSource.rowIndices.push(rowIndex);
 }
@@ -813,12 +805,9 @@ export function serializeEntitySnapshot(
           const f = poolEntry.factorySub;
           b.factory = f;
 
-          const srcQueue = entity.factory.buildQueue;
-          poolEntry.buildQueue.length = srcQueue.length;
-          for (let i = 0; i < srcQueue.length; i++) {
-            poolEntry.buildQueue[i] = unitBlueprintIdToCode(srcQueue[i]);
-          }
-          f.queue = poolEntry.buildQueue;
+          f.selectedUnitBlueprintCode = entity.factory.selectedUnitBlueprintId === null
+            ? null
+            : unitBlueprintIdToCode(entity.factory.selectedUnitBlueprintId);
 
           if (entity.factory.currentShellId != null) {
             const shell = world.getEntity(entity.factory.currentShellId);
@@ -832,21 +821,11 @@ export function serializeEntitySnapshot(
           f.energyRate = entity.factory.energyRateFraction;
           f.metalRate = entity.factory.metalRateFraction;
 
-          const wps = entity.factory.waypoints;
-          const wpCount = 1 + wps.length;
-          while (poolEntry.waypoints.length < wpCount) poolEntry.waypoints.push(createWaypointDto());
-          poolEntry.waypoints.length = wpCount;
-          poolEntry.waypoints[0].pos.x = entity.factory.rallyX;
-          poolEntry.waypoints[0].pos.y = entity.factory.rallyY;
-          poolEntry.waypoints[0].posZ = null;
-          poolEntry.waypoints[0].type = 'move';
-          for (let i = 0; i < wps.length; i++) {
-            poolEntry.waypoints[i + 1].pos.x = wps[i].x;
-            poolEntry.waypoints[i + 1].pos.y = wps[i].y;
-            poolEntry.waypoints[i + 1].posZ = wps[i].z ?? null;
-            poolEntry.waypoints[i + 1].type = wps[i].type;
-          }
-          f.waypoints = poolEntry.waypoints;
+          poolEntry.rally.pos.x = entity.factory.rallyX;
+          poolEntry.rally.pos.y = entity.factory.rallyY;
+          poolEntry.rally.posZ = entity.factory.rallyZ;
+          poolEntry.rally.type = entity.factory.rallyType;
+          f.rally = poolEntry.rally;
         }
       }
     }

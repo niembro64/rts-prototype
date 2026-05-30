@@ -299,7 +299,12 @@ function fillEntitiesV6Scratch(
     source.waypointRows,
     api.waypointScratchStride,
   );
-  v6FillU32Rows(sim, api.factoryQueueScratchEnsure, api.factoryQueueScratchPtr, source.factoryQueueRows);
+  v6FillU32Rows(
+    sim,
+    api.factorySelectedUnitScratchEnsure,
+    api.factorySelectedUnitScratchPtr,
+    source.factorySelectedUnitRows,
+  );
 
   const waypointStringBase = source.actionStrings.length;
   v6PackStrings(sim, source.actionStrings, source.waypointStrings);
@@ -497,7 +502,9 @@ function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
   const factory = building.factory;
   return (
     (building.buildingBlueprintCode !== null && typeof building.buildingBlueprintCode !== 'number') ||
-    (factory !== null && factory.queue.some((code) => !isUint(code, 0xFFFF_FFFF)))
+    (factory !== null &&
+      factory.selectedUnitBlueprintCode !== null &&
+      !isUint(factory.selectedUnitBlueprintCode, 0xFFFF_FFFF))
   );
 }
 
@@ -515,12 +522,10 @@ function encodeBuildingEntity(
   const factory = building.factory;
   if (factory) {
     _buildingWaypointTypeStrings.length = 0;
-    for (let i = 0; i < factory.waypoints.length; i++) {
-      _buildingWaypointTypeStrings.push(factory.waypoints[i].type);
-    }
+    _buildingWaypointTypeStrings.push(factory.rally.type);
     const stringSlots = packStringsIntoScratch(sim, _buildingWaypointTypeStrings);
-    packFactoryQueueIntoScratch(sim, factory.queue);
-    packWaypointsIntoScratch(sim, factory.waypoints, stringSlots);
+    packFactorySelectedUnitIntoScratch(sim, factory.selectedUnitBlueprintCode);
+    packFactoryRallyIntoScratch(sim, factory.rally, stringSlots);
   }
 
   const pos = entity.pos;
@@ -552,12 +557,12 @@ function encodeBuildingEntity(
     turrets !== null ? 1 : 0,
     turrets !== null ? turrets.length : 0,
     factory !== null ? 1 : 0,
-    factory !== null ? factory.queue.length : 0,
+    factory !== null && factory.selectedUnitBlueprintCode !== null ? 1 : 0,
     factory !== null ? factory.progress : 0,
     factory !== null && factory.producing === true ? 1 : 0,
     factory !== null ? factory.energyRate : 0,
     factory !== null ? factory.metalRate : 0,
-    factory !== null ? factory.waypoints.length : 0,
+    factory !== null ? 1 : 0,
   );
   return true;
 }
@@ -711,7 +716,7 @@ function encodeEntityWireRow(
     if (!copyEntityTurretRowsIntoScratch(sim, source, values[base + 31], values[base + 23])) {
       return false;
     }
-    if (!copyEntityFactoryQueueRowsIntoScratch(sim, source, values[base + 32], values[base + 25])) {
+    if (!copyEntityFactorySelectedUnitRowsIntoScratch(sim, source, values[base + 32], values[base + 25])) {
       return false;
     }
     if (!copyEntityWaypointRowsIntoScratch(sim, source, values[base + 33], values[base + 30])) {
@@ -853,19 +858,19 @@ function copyEntityTurretRowsIntoScratch(
   return true;
 }
 
-function copyEntityFactoryQueueRowsIntoScratch(
+function copyEntityFactorySelectedUnitRowsIntoScratch(
   sim: SimWasm,
   source: EntitySnapshotWireSource,
   offset: number,
   count: number,
 ): boolean {
   if (count <= 0) return true;
-  if (offset < 0 || offset + count > source.factoryQueueRows.count) return false;
+  if (offset < 0 || offset + count > source.factorySelectedUnitRows.count) return false;
 
   const api = sim.snapshotEncode;
-  api.factoryQueueScratchEnsure(count);
-  const view = new Uint32Array(sim.memory.buffer, api.factoryQueueScratchPtr(), count);
-  const src = source.factoryQueueRows.values;
+  api.factorySelectedUnitScratchEnsure(count);
+  const view = new Uint32Array(sim.memory.buffer, api.factorySelectedUnitScratchPtr(), count);
+  const src = source.factorySelectedUnitRows.values;
   for (let i = 0; i < count; i++) {
     view[i] = src[offset + i];
   }
@@ -920,36 +925,31 @@ function copyEntityWaypointRowsIntoScratch(
   return true;
 }
 
-function packFactoryQueueIntoScratch(sim: SimWasm, queue: readonly number[]): void {
-  if (queue.length === 0) return;
+function packFactorySelectedUnitIntoScratch(sim: SimWasm, selectedUnitBlueprintCode: number | null): void {
+  if (selectedUnitBlueprintCode === null) return;
   const api = sim.snapshotEncode;
-  api.factoryQueueScratchEnsure(queue.length);
-  const view = new Uint32Array(sim.memory.buffer, api.factoryQueueScratchPtr(), queue.length);
-  for (let i = 0; i < queue.length; i++) view[i] = queue[i];
+  api.factorySelectedUnitScratchEnsure(1);
+  const view = new Uint32Array(sim.memory.buffer, api.factorySelectedUnitScratchPtr(), 1);
+  view[0] = selectedUnitBlueprintCode;
 }
 
-function packWaypointsIntoScratch(
+function packFactoryRallyIntoScratch(
   sim: SimWasm,
-  waypoints: NonNullable<SnapshotBuilding['factory']>['waypoints'],
+  rally: NonNullable<SnapshotBuilding['factory']>['rally'],
   stringSlots: Map<string, number>,
 ): void {
-  if (waypoints.length === 0) return;
   const api = sim.snapshotEncode;
-  api.waypointScratchEnsure(waypoints.length);
+  api.waypointScratchEnsure(1);
   const view = new Float64Array(
     sim.memory.buffer,
     api.waypointScratchPtr(),
-    waypoints.length * api.waypointScratchStride,
+    api.waypointScratchStride,
   );
-  for (let i = 0; i < waypoints.length; i++) {
-    const waypoint = waypoints[i];
-    const base = i * api.waypointScratchStride;
-    view[base + 0] = waypoint.pos.x;
-    view[base + 1] = waypoint.pos.y;
-    view[base + 2] = waypoint.posZ !== null ? 1 : 0;
-    view[base + 3] = waypoint.posZ ?? 0;
-    view[base + 4] = stringSlots.get(waypoint.type) ?? 0;
-  }
+  view[0] = rally.pos.x;
+  view[1] = rally.pos.y;
+  view[2] = rally.posZ !== null ? 1 : 0;
+  view[3] = rally.posZ ?? 0;
+  view[4] = stringSlots.get(rally.type) ?? 0;
 }
 
 function packMinimapIntoScratch(

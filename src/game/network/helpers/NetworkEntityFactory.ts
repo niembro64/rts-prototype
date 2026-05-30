@@ -435,36 +435,22 @@ function createBuildingFromNetwork(
 
   const f = b.factory;
   if (f) {
-    // waypoints[0] = rally point, rest = user-set waypoints
-    const wps = f.waypoints;
-    const rally = wps[0];
-    const waypoints: { x: number; y: number; z: number | undefined; type: 'move' | 'fight' | 'patrol' }[] = [];
-    for (let i = 1; i < wps.length; i++) {
-      const wp = wps[i];
-      waypoints.push({
-        x: wp.pos.x,
-        y: wp.pos.y,
-        z: wp.posZ ?? undefined,
-        type: wp.type as 'move' | 'fight' | 'patrol',
-      });
-    }
-    const buildQueue: string[] = [];
-    for (let i = 0; i < f.queue.length; i++) {
-      const unitBlueprintId = codeToUnitBlueprintId(f.queue[i]);
-      if (unitBlueprintId) buildQueue.push(unitBlueprintId);
-    }
+    const selectedUnitBlueprintId = f.selectedUnitBlueprintCode === null
+      ? null
+      : codeToUnitBlueprintId(f.selectedUnitBlueprintCode);
     entity.factory = {
-      buildQueue,
+      selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
       // Client-side currentShellId stays null — the actual shell entity
       // is in the world separately. currentBuildProgress mirrors the
-      // wire's avg-fill so the UI can draw the build-queue strip
+      // wire's avg-fill so the UI can draw the production progress
       // without looking up the shell.
       currentShellId: null,
       currentBuildProgress: f.progress ?? 0,
-      rallyX: rally !== undefined ? rally.pos.x : x,
-      rallyY: rally !== undefined ? rally.pos.y : y + 100,
+      rallyX: f.rally.pos.x,
+      rallyY: f.rally.pos.y,
+      rallyZ: f.rally.posZ,
+      rallyType: f.rally.type as 'move' | 'fight' | 'patrol',
       isProducing: f.producing ?? false,
-      waypoints,
       energyRateFraction: f.energyRate ?? 0,
       metalRateFraction: f.metalRate ?? 0,
     };

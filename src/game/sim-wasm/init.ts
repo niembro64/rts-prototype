@@ -2189,7 +2189,7 @@ export interface SnapshotEncodeApi {
     hasTurrets: number,
     turretCount: number,
     hasFactory: number,
-    factoryQueueCount: number,
+    factorySelectedUnitCount: number,
     factoryProgress: number,
     factoryProducing: number,
     factoryEnergyRate: number,
@@ -2215,12 +2215,13 @@ export interface SnapshotEncodeApi {
   stringScratchEnsureBytes: (byteCount: number) => void;
   /** Pre-grow the offset/length table to fit `slotCount` strings. */
   stringScratchEnsureTable: (slotCount: number) => void;
-  /** Raw pointer to the factory queue scratch (Uint32Array of unit
-   *  type codes). JS fills before encodeEntityBuilding with
-   *  hasFactory=1; encoder reads factoryQueueCount entries. */
-  factoryQueueScratchPtr: () => number;
-  /** Pre-grow the factory queue scratch to hold `count` codes. */
-  factoryQueueScratchEnsure: (count: number) => void;
+  /** Raw pointer to the factory selected-unit scratch (Uint32Array with
+   *  one unit type code when production is on). JS fills before
+   *  encodeEntityBuilding with hasFactory=1; encoder reads
+   *  factorySelectedUnitCount entries. */
+  factorySelectedUnitScratchPtr: () => number;
+  /** Pre-grow the factory selected-unit scratch to hold `count` codes. */
+  factorySelectedUnitScratchEnsure: (count: number) => void;
   /** Raw pointer to the waypoint scratch (Float64Array, 5 f64
    *  per waypoint — see SNAPSHOT_ENCODE_WAYPOINT_STRIDE in lib.rs).
    *  type field is a string-scratch slot index. */
@@ -2245,7 +2246,7 @@ export interface SnapshotEncodeApi {
   /** Emit the `entities` key + compact V6 `{v,m,t,e}` value (issue A5).
    *  Caller must first bulk-fill the V6 input scratches (kinds /
    *  rowIndices / basic / unit / building) + the shared turret / action /
-   *  waypoint / factoryQueue / string scratches from entityWireSource.
+   *  waypoint / factory selected-unit / string scratches from entityWireSource.
    *  `waypointStringBase` is the slot where waypoint-type strings begin in
    *  the (action ++ waypoint) ordered string scratch. Returns the writer
    *  length, or 0xFFFFFFFF if a RAW entity kind is present (caller falls
@@ -3289,8 +3290,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           stringScratchTablePtr: snapshot_encode_string_scratch_table_ptr,
           stringScratchEnsureBytes: snapshot_encode_string_scratch_ensure_bytes,
           stringScratchEnsureTable: snapshot_encode_string_scratch_ensure_table,
-          factoryQueueScratchPtr: snapshot_encode_factory_queue_scratch_ptr,
-          factoryQueueScratchEnsure: snapshot_encode_factory_queue_scratch_ensure,
+          factorySelectedUnitScratchPtr: snapshot_encode_factory_queue_scratch_ptr,
+          factorySelectedUnitScratchEnsure: snapshot_encode_factory_queue_scratch_ensure,
           waypointScratchPtr: snapshot_encode_waypoint_scratch_ptr,
           waypointScratchEnsure: snapshot_encode_waypoint_scratch_ensure,
           waypointScratchStride: 5,

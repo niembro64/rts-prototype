@@ -7,4 +7,3 @@ import commandLimits from './commandLimits.json';
 
 export const REPAIR_AREA_MAX_RADIUS = commandLimits.repairAreaMaxRadius;
 export const ATTACK_AREA_MAX_RADIUS = commandLimits.attackAreaMaxRadius;
-export const MAX_FACTORY_WAYPOINTS_PER_COMMAND = commandLimits.maxFactoryWaypointsPerCommand;

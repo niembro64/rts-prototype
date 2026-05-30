@@ -52,19 +52,12 @@ export function getFactoryWaypointDirection(factory: Entity): { x: number; y: nu
 
 function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: number }): void {
   const factoryComp = factory.factory;
-  const waypoint = factoryComp === null || factoryComp.waypoints.length === 0
-    ? null
-    : factoryComp.waypoints[0];
-  const targetX = waypoint !== null
-    ? waypoint.x
-    : factoryComp === null
-      ? factory.transform.x + 1
-      : factoryComp.rallyX;
-  const targetY = waypoint !== null
-    ? waypoint.y
-    : factoryComp === null
-      ? factory.transform.y
-      : factoryComp.rallyY;
+  const targetX = factoryComp === null
+    ? factory.transform.x + 1
+    : factoryComp.rallyX;
+  const targetY = factoryComp === null
+    ? factory.transform.y
+    : factoryComp.rallyY;
   let dx = targetX - factory.transform.x;
   let dy = targetY - factory.transform.y;
   let len = Math.hypot(dx, dy);

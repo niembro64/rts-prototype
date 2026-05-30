@@ -171,10 +171,10 @@ export class ConstructionVisualController3D {
     dtMs: number,
   ): void {
     const factory = e.factory;
-    const queuedUnitBlueprintId = factory?.buildQueue[0];
+    const selectedUnitBlueprintId = factory?.selectedUnitBlueprintId;
     const active = detailsReady
       && !!factory
-      && !!queuedUnitBlueprintId
+      && !!selectedUnitBlueprintId
       && factory.isProducing;
     rig.group.visible = detailsReady;
 
@@ -191,11 +191,11 @@ export class ConstructionVisualController3D {
     if (!active || !e.ownership) return;
 
     let buildSpotRadius = 12;
-    if (queuedUnitBlueprintId) {
+    if (selectedUnitBlueprintId) {
       try {
-        buildSpotRadius = getUnitBlueprint(queuedUnitBlueprintId).radius.push;
+        buildSpotRadius = getUnitBlueprint(selectedUnitBlueprintId).radius.push;
       } catch {
-        // Unknown queue ids should not break rendering; keep the default.
+        // Unknown selection ids should not break rendering; keep the default.
       }
     }
     const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
@@ -232,11 +232,11 @@ export class ConstructionVisualController3D {
     if (!rig) return;
 
     const factory = e.factory;
-    const queuedUnitBlueprintId = factory?.buildQueue[0];
+    const selectedUnitBlueprintId = factory?.selectedUnitBlueprintId;
     const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
     const active = detailsReady
       && !!factory
-      && !!queuedUnitBlueprintId
+      && !!selectedUnitBlueprintId
       && factory.isProducing;
 
     if (!active) {
@@ -248,13 +248,13 @@ export class ConstructionVisualController3D {
 
     let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
     let buildSpotRadius = blueprintRadius;
-    if (queuedUnitBlueprintId) {
+    if (selectedUnitBlueprintId) {
       try {
-        const bp = getUnitBlueprint(queuedUnitBlueprintId);
+        const bp = getUnitBlueprint(selectedUnitBlueprintId);
         blueprintRadius = bp.radius.body;
         buildSpotRadius = bp.radius.push;
       } catch {
-        // Unknown queue ids should not break rendering; keep the generic bay ghost.
+        // Unknown selection ids should not break rendering; keep the generic bay ghost.
       }
     }
 

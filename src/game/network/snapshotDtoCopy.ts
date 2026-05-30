@@ -31,11 +31,11 @@ import {
 } from '@/types/network';
 import type { PlayerId } from '@/types/sim';
 
-/** Factory waypoint wire shape — anonymous in the snapshot type, lifted
- *  here so the centralized waypoint helpers can name it. */
+/** Factory rally wire shape — anonymous in the snapshot type, lifted
+ *  here so the centralized copy helpers can name it. */
 export type WaypointDto = NonNullable<
   NonNullable<NetworkServerSnapshotEntity['building']>['factory']
->['waypoints'][number];
+>['rally'];
 
 export function createSpawnDto(): NetworkServerSnapshotProjectileSpawn {
   return {

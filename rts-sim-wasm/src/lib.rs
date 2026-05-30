@@ -19521,9 +19521,9 @@ pub fn snapshot_encode_string_scratch_ensure_table(slot_count: u32) {
     }
 }
 
-/// Factory queue scratch — flat Uint32Array of unit-type codes that
-/// the encoder reads when emitting `factory.queue`. JS pre-fills
-/// before calling encode_entity_building with has_factory=1.
+/// Factory selected-unit scratch — one unit-type code when the factory
+/// has a repeat-build selection. JS pre-fills before calling
+/// encode_entity_building with has_factory=1.
 struct SnapshotEncodeFactoryQueueScratch {
     buf: Vec<u32>,
 }
@@ -20340,16 +20340,15 @@ pub fn snapshot_encode_entity_building(
 
     if has_factory != 0 {
         w.write_str("factory");
-        w.write_map_header(6); // queue, progress, producing, energyRate, metalRate, waypoints
+        w.write_map_header(6); // selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, rally
 
         let qc = factory_queue_count as usize;
-        w.write_str("queue");
-        w.write_array_header(qc);
+        w.write_str("selectedUnitBlueprintCode");
         if qc > 0 {
             let q = snapshot_encode_factory_queue_scratch();
-            for i in 0..qc {
-                w.write_uint(q.buf[i] as u64);
-            }
+            w.write_uint(q.buf[0] as u64);
+        } else {
+            w.write_nil();
         }
 
         w.write_str("progress");
@@ -20365,33 +20364,32 @@ pub fn snapshot_encode_entity_building(
         w.write_number(factory_metal_rate);
 
         let wpc = factory_waypoint_count as usize;
-        w.write_str("waypoints");
-        w.write_array_header(wpc);
+        w.write_str("rally");
         if wpc > 0 {
             let wp = snapshot_encode_waypoint_scratch();
-            for i in 0..wpc {
-                let base = i * SNAPSHOT_ENCODE_WAYPOINT_STRIDE;
-                let pos_x = wp.buf[base];
-                let pos_y = wp.buf[base + 1];
-                let has_pos_z = wp.buf[base + 2] != 0.0;
-                let pos_z = wp.buf[base + 3];
-                let type_slot = wp.buf[base + 4] as u32;
+            let base = 0;
+            let pos_x = wp.buf[base];
+            let pos_y = wp.buf[base + 1];
+            let has_pos_z = wp.buf[base + 2] != 0.0;
+            let pos_z = wp.buf[base + 3];
+            let type_slot = wp.buf[base + 4] as u32;
 
-                let wp_field_count = if has_pos_z { 3 } else { 2 };
-                w.write_map_header(wp_field_count);
-                w.write_str("pos");
-                w.write_map_header(2);
-                w.write_str("x");
-                w.write_number(pos_x);
-                w.write_str("y");
-                w.write_number(pos_y);
-                if has_pos_z {
-                    w.write_str("posZ");
-                    w.write_number(pos_z);
-                }
-                w.write_str("type");
-                write_string_from_scratch(w, type_slot);
+            let wp_field_count = if has_pos_z { 3 } else { 2 };
+            w.write_map_header(wp_field_count);
+            w.write_str("pos");
+            w.write_map_header(2);
+            w.write_str("x");
+            w.write_number(pos_x);
+            w.write_str("y");
+            w.write_number(pos_y);
+            if has_pos_z {
+                w.write_str("posZ");
+                w.write_number(pos_z);
             }
+            w.write_str("type");
+            write_string_from_scratch(w, type_slot);
+        } else {
+            w.write_nil();
         }
     }
 
@@ -22505,28 +22503,26 @@ fn v6_write_detail_factory(
     waypoint_string_base: u32,
 ) {
     w.write_array_header(5);
-    // queue: array of unit-type codes
+    // selectedUnitBlueprintCode: code or nil
     let queue_count = building_buf[base + 25] as usize;
     let queue_offset = building_buf[base + 32] as i64;
-    w.write_array_header(queue_count);
-    if queue_offset >= 0 {
+    if queue_count > 0 && queue_offset >= 0 {
         let off = queue_offset as usize;
-        for q in 0..queue_count {
-            w.write_number(queue_buf[off + q] as f64);
-        }
+        w.write_number(queue_buf[off] as f64);
+    } else {
+        w.write_nil();
     }
     w.write_number(building_buf[base + 26]); // progress
     w.write_number(building_buf[base + 28]); // energyRate
     w.write_number(building_buf[base + 29]); // metalRate
-                                             // waypoints
+                                             // rally
     let wp_count = building_buf[base + 30] as usize;
     let wp_offset = building_buf[base + 33] as i64;
-    w.write_array_header(wp_count);
-    if wp_offset >= 0 {
+    if wp_count > 0 && wp_offset >= 0 {
         let off = wp_offset as usize;
-        for wi in 0..wp_count {
-            v6_write_detail_waypoint(w, waypoint_buf, off + wi, waypoint_string_base);
-        }
+        v6_write_detail_waypoint(w, waypoint_buf, off, waypoint_string_base);
+    } else {
+        w.write_nil();
     }
 }
 

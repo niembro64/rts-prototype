@@ -47,7 +47,7 @@ export {
   buildRepairCommandAt,
   buildReclaimCommandAt,
   buildReclaimCommandForTarget,
-  buildFactoryWaypointCommands,
+  buildFactoryRallyCommands,
 } from './CommanderCommands';
 
 export {

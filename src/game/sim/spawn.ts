@@ -230,27 +230,22 @@ function placeCompleteBuilding(
   }
 
   if (buildingBlueprintId === 'towerFabricator') {
-    const waypoints = factoryWaypoint.legs.map((leg) => {
-      const p = computeFactoryWaypoint(
-        center.x, center.y, world.mapWidth, world.mapHeight, leg.distance,
-      );
-      return { x: p.x, y: p.y, type: leg.type };
-    });
     const rally = computeFactoryWaypoint(
       center.x,
       center.y,
       world.mapWidth,
       world.mapHeight,
-      REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
+      factoryWaypoint.legs[0]?.distance ?? REAL_BATTLE_FACTORY_WAYPOINT_DISTANCE,
     );
     entity.factory = {
-      buildQueue: [],
+      selectedUnitBlueprintId: null,
       currentShellId: null,
       currentBuildProgress: 0,
       rallyX: rally.x,
       rallyY: rally.y,
+      rallyZ: null,
+      rallyType: factoryWaypoint.legs[0]?.type ?? REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       isProducing: false,
-      waypoints,
       energyRateFraction: 0,
       metalRateFraction: 0,
     };
@@ -341,8 +336,7 @@ function getAvailableDemoFactoryUnitBlueprintIds(
 
 function seedFactoryRepeatBuild(factory: Entity, unitBlueprintId: string): void {
   if (!factory.factory) return;
-  factory.factory.buildQueue.length = 0;
-  factory.factory.buildQueue.push(unitBlueprintId);
+  factory.factory.selectedUnitBlueprintId = unitBlueprintId;
 }
 
 function placeFactoryArcRowForUnitBlueprintIds(

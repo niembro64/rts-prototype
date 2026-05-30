@@ -102,7 +102,7 @@ export type PrevEntityState = {
   solarOpen: number;
   factoryProgress: number;
   isProducing: number;
-  buildQueueLen: number;
+  factorySelectedUnitCode: number;
 };
 
 export type GhostedBuildingPosition = {
@@ -177,7 +177,7 @@ function createPrevEntityState(): PrevEntityState {
     turretPitchVels, turretTargetIds,
     forceFieldRanges,
     normalX: 0, normalY: 0, normalZ: 1,
-    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, buildQueueLen: 0,
+    buildProgress: 0, solarOpen: 0, factoryProgress: 0, isProducing: 0, factorySelectedUnitCode: -1,
   };
 }
 
@@ -351,7 +351,7 @@ export function getEntityDeltaChangedFields(
     if (entity.factory) {
       if (next.factoryProgress !== prev.factoryProgress ||
           next.isProducing !== prev.isProducing ||
-          next.buildQueueLen !== prev.buildQueueLen) {
+          next.factorySelectedUnitCode !== prev.factorySelectedUnitCode) {
         mask |= ENTITY_CHANGED_FACTORY;
       }
     }
@@ -422,7 +422,9 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
   const factory = entity.factory;
   prev.factoryProgress = factory !== null ? factory.currentBuildProgress : 0;
   prev.isProducing = factory !== null && factory.isProducing ? 1 : 0;
-  prev.buildQueueLen = factory !== null ? factory.buildQueue.length : 0;
+  prev.factorySelectedUnitCode = factory !== null && factory.selectedUnitBlueprintId !== null
+    ? unitBlueprintIdToCode(factory.selectedUnitBlueprintId)
+    : -1;
   const sn = unit !== null ? unit.surfaceNormal : null;
   prev.normalX = sn !== null ? sn.nx : 0;
   prev.normalY = sn !== null ? sn.ny : 0;
@@ -535,7 +537,7 @@ export function copyPrevState(from: PrevEntityState, to: PrevEntityState): void 
   to.solarOpen = from.solarOpen;
   to.factoryProgress = from.factoryProgress;
   to.isProducing = from.isProducing;
-  to.buildQueueLen = from.buildQueueLen;
+  to.factorySelectedUnitCode = from.factorySelectedUnitCode;
   to.normalX = from.normalX;
   to.normalY = from.normalY;
   to.normalZ = from.normalZ;
@@ -607,7 +609,7 @@ export function copySentPrevState(
   if (changedFields & ENTITY_CHANGED_FACTORY) {
     to.factoryProgress = from.factoryProgress;
     to.isProducing = from.isProducing;
-    to.buildQueueLen = from.buildQueueLen;
+    to.factorySelectedUnitCode = from.factorySelectedUnitCode;
   }
   if (changedFields & ENTITY_CHANGED_NORMAL) {
     to.normalX = from.normalX;
@@ -721,7 +723,7 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
       playerId,
       b.hp, b.maxHp,
       f !== null && f.isProducing ? 1 : 0,
-      Math.min(f !== null ? f.buildQueue.length : 0, 255),
+      f !== null && f.selectedUnitBlueprintId !== null ? 1 : 0,
       f !== null ? f.currentBuildProgress : 0,
       b.activeState !== null && b.activeState.open === false ? 0 : 1,
       e.buildable ? getBuildFraction(e.buildable) : 1,

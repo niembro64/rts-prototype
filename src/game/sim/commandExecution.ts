@@ -5,7 +5,6 @@ import type {
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
-  CancelQueueItemCommand,
   ClearQueuedOrdersCommand,
   Command,
   FireDGunCommand,
@@ -19,7 +18,6 @@ import type {
   RepairCommand,
   RemoveLastQueuedOrderCommand,
   SelectCommand,
-  SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
@@ -138,14 +136,8 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'queueUnit':
       executeQueueUnitCommand(ctx, command);
       break;
-    case 'cancelQueueItem':
-      executeCancelQueueItemCommand(ctx, command);
-      break;
     case 'setRallyPoint':
       executeSetRallyPointCommand(ctx, command);
-      break;
-    case 'setFactoryWaypoints':
-      executeSetFactoryWaypointsCommand(ctx, command);
       break;
     case 'fireDGun':
       executeFireDGunCommand(ctx, command);
@@ -489,49 +481,14 @@ function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand)
   }
 }
 
-function executeCancelQueueItemCommand(ctx: CommandContext, command: CancelQueueItemCommand): void {
-  const factory = ctx.world.getEntity(command.factoryId);
-  if (factory === undefined || factory.factory === null) return;
-
-  // Pass `world` so dequeueing the head with an active shell tears the
-  // shell down and refunds the resources already paid in.
-  if (factoryProductionSystem.dequeueUnit(factory, command.index, ctx.world)) {
-    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-  }
-}
-
 function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPointCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null) return;
 
   factory.factory.rallyX = command.rallyX;
   factory.factory.rallyY = command.rallyY;
-  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
-}
-
-function executeSetFactoryWaypointsCommand(ctx: CommandContext, command: SetFactoryWaypointsCommand): void {
-  const factory = ctx.world.getEntity(command.factoryId);
-  if (factory === undefined || factory.factory === null) return;
-
-  if (command.queue) {
-    // Add to existing waypoints (preserving the click-altitude `z`).
-    for (const wp of command.waypoints) {
-      factory.factory.waypoints.push({ x: wp.x, y: wp.y, z: wp.z, type: wp.type });
-    }
-  } else {
-    // Replace waypoints (reuse array)
-    factory.factory.waypoints.length = command.waypoints.length;
-    for (let i = 0; i < command.waypoints.length; i++) {
-      const wp = command.waypoints[i];
-      factory.factory.waypoints[i] = { x: wp.x, y: wp.y, z: wp.z, type: wp.type };
-    }
-  }
-
-  // Update rally point to first waypoint
-  if (command.waypoints.length > 0) {
-    factory.factory.rallyX = command.waypoints[0].x;
-    factory.factory.rallyY = command.waypoints[0].y;
-  }
+  factory.factory.rallyZ = command.rallyZ ?? null;
+  factory.factory.rallyType = command.waypointType;
   ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 

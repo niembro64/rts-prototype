@@ -392,39 +392,26 @@ export class Waypoint3D {
       }
     }
 
-    // Per-factory rally chains (with a flag at the final waypoint).
+    // Per-factory static rally point.
     for (const b of selectedBuildings) {
-      const wps = b.factory?.waypoints;
-      if (!wps || wps.length === 0) continue;
+      const factory = b.factory;
+      if (!factory) continue;
+      const color = WAYPOINT_COLORS[factory.rallyType as keyof typeof WAYPOINT_COLORS]
+        ?? COLORS.units.turret.barrel.colorHex;
       let prevX = b.transform.x;
       let prevY = b.transform.y;
       let prevZ: number | undefined = b.transform.z;
-      for (let i = 0; i < wps.length; i++) {
-        const w = wps[i];
-        const color = WAYPOINT_COLORS[w.type] ?? COLORS.units.turret.barrel.colorHex;
-        this.pushTerrainLine(prevX, prevY, w.x, w.y, color, STYLE.lineAlpha, prevZ, w.z);
-        this.pushDot(state, w.x, w.y, color, w.z);
-        if (i === wps.length - 1) {
-          this.acquireFlag(flagCount++, color, w.x, w.y, w.z);
-        }
-        prevX = w.x;
-        prevY = w.y;
-        prevZ = w.z;
-      }
-      // Factory patrol return arc.
-      if (wps.length > 0) {
-        const last = wps[wps.length - 1];
-        if (last.type === 'patrol') {
-          const firstIdx = wps.findIndex((w) => w.type === 'patrol');
-          if (firstIdx >= 0) {
-            const first = wps[firstIdx];
-            this.pushTerrainLine(
-              last.x, last.y, first.x, first.y,
-              WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
-              last.z, first.z,
-            );
-          }
-        }
+      const z = factory.rallyZ ?? undefined;
+      this.pushTerrainLine(prevX, prevY, factory.rallyX, factory.rallyY, color, STYLE.lineAlpha, prevZ, z);
+      this.pushDot(state, factory.rallyX, factory.rallyY, color, z);
+      this.acquireFlag(flagCount++, color, factory.rallyX, factory.rallyY, z);
+      // Single-point patrol loops back to the factory.
+      if (factory.rallyType === 'patrol') {
+        this.pushTerrainLine(
+          factory.rallyX, factory.rallyY, prevX, prevY,
+          WAYPOINT_COLORS['patrol'], STYLE.patrolReturnAlpha,
+          z, prevZ,
+        );
       }
     }
 

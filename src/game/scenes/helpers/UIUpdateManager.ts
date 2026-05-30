@@ -150,17 +150,19 @@ export function buildSelectionInfo(
     }
   }
 
-  // Get factory queue info if factory is selected
-  let factoryQueue: { unitBlueprintId: string; label: string }[] | undefined;
+  // Get factory repeat-build selection if a factory is selected.
+  let factorySelectedUnit: { unitBlueprintId: string; label: string } | null | undefined;
   let factoryProgress: number | undefined;
   let factoryIsProducing: boolean | undefined;
 
   if (factory?.factory) {
     const f = factory.factory;
-    factoryQueue = f.buildQueue.map(unitBlueprintId => ({
-      unitBlueprintId: unitBlueprintId,
-      label: unitLabel(unitBlueprintId),
-    }));
+    factorySelectedUnit = f.selectedUnitBlueprintId === null
+      ? null
+      : {
+          unitBlueprintId: f.selectedUnitBlueprintId,
+          label: unitLabel(f.selectedUnitBlueprintId),
+        };
     factoryProgress = f.currentBuildProgress;
     factoryIsProducing = f.isProducing;
   }
@@ -198,7 +200,7 @@ export function buildSelectionInfo(
     isGuardMode: inputState?.isGuardMode ?? false,
     isReclaimMode: inputState?.isReclaimMode ?? false,
     isPingMode: inputState?.isPingMode ?? false,
-    factoryQueue,
+    factorySelectedUnit,
     factoryProgress,
     factoryIsProducing,
     controlGroups: inputState?.controlGroups ?? [],

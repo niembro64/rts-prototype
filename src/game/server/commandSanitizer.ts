@@ -2,10 +2,8 @@ import type {
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
-  CancelQueueItemCommand,
   ClearQueuedOrdersCommand,
   Command,
-  FactoryWaypoint,
   FireDGunCommand,
   GuardCommand,
   MoveCommand,
@@ -16,7 +14,6 @@ import type {
   RepairCommand,
   RemoveLastQueuedOrderCommand,
   ScanCommand,
-  SetFactoryWaypointsCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
   SelfDestructCommand,
@@ -29,7 +26,6 @@ import type {
 } from '../sim/commands';
 import {
   ATTACK_AREA_MAX_RADIUS,
-  MAX_FACTORY_WAYPOINTS_PER_COMMAND,
   REPAIR_AREA_MAX_RADIUS,
 } from '../sim/commandLimits';
 import type { WorldState } from '../sim/WorldState';
@@ -86,12 +82,8 @@ export function sanitizeCommand(command: Command, world: WorldState): Command | 
       return sanitizeStartBuildCommand(command, tick);
     case 'queueUnit':
       return sanitizeQueueUnitCommand(command, tick);
-    case 'cancelQueueItem':
-      return sanitizeCancelQueueItemCommand(command, tick);
     case 'setRallyPoint':
       return sanitizeSetRallyPointCommand(command, world, tick);
-    case 'setFactoryWaypoints':
-      return sanitizeSetFactoryWaypointsCommand(command, world, tick);
     case 'fireDGun':
       return sanitizeFireDgunCommand(command, world, tick);
     case 'repair':
@@ -197,14 +189,6 @@ function sanitizeWaypointTarget(world: WorldState, target: unknown): WaypointTar
   const record = target as Record<string, unknown>;
   const point = sanitizeGroundPoint(world, record.x, record.y, record.z);
   return point === null ? null : point;
-}
-
-function sanitizeFactoryWaypoint(world: WorldState, waypoint: unknown): FactoryWaypoint | null {
-  if (!waypoint || typeof waypoint !== 'object') return null;
-  const record = waypoint as Record<string, unknown>;
-  const point = sanitizeGroundPoint(world, record.x, record.y, record.z);
-  const type = sanitizeWaypointType(record.type);
-  return point === null || type === null ? null : { ...point, type };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -394,39 +378,24 @@ function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): Queu
     : null;
 }
 
-function sanitizeCancelQueueItemCommand(command: CancelQueueItemCommand, tick: number): CancelQueueItemCommand | null {
-  return isEntityId(command.factoryId) && Number.isInteger(command.index) && command.index >= 0
-    ? { ...command, tick, factoryId: command.factoryId, index: command.index }
-    : null;
-}
-
 function sanitizeSetRallyPointCommand(
   command: SetRallyPointCommand,
   world: WorldState,
   tick: number,
 ): SetRallyPointCommand | null {
-  const point = sanitizeGroundPoint(world, command.rallyX, command.rallyY);
-  return !isEntityId(command.factoryId) || point === null
+  const point = sanitizeGroundPoint(world, command.rallyX, command.rallyY, command.rallyZ);
+  const waypointType = sanitizeWaypointType(command.waypointType);
+  return !isEntityId(command.factoryId) || point === null || waypointType === null
     ? null
-    : { type: 'setRallyPoint', tick, factoryId: command.factoryId, rallyX: point.x, rallyY: point.y };
-}
-
-function sanitizeSetFactoryWaypointsCommand(
-  command: SetFactoryWaypointsCommand,
-  world: WorldState,
-  tick: number,
-): SetFactoryWaypointsCommand | null {
-  if (!isEntityId(command.factoryId) || !Array.isArray(command.waypoints) || typeof command.queue !== 'boolean') {
-    return null;
-  }
-  const count = Math.min(command.waypoints.length, MAX_FACTORY_WAYPOINTS_PER_COMMAND);
-  const waypoints: FactoryWaypoint[] = [];
-  for (let i = 0; i < count; i++) {
-    const waypoint = sanitizeFactoryWaypoint(world, command.waypoints[i]);
-    if (waypoint === null) return null;
-    waypoints.push(waypoint);
-  }
-  return { type: 'setFactoryWaypoints', tick, factoryId: command.factoryId, waypoints, queue: command.queue };
+    : {
+        type: 'setRallyPoint',
+        tick,
+        factoryId: command.factoryId,
+        rallyX: point.x,
+        rallyY: point.y,
+        rallyZ: point.z,
+        waypointType,
+      };
 }
 
 function sanitizeFireDgunCommand(

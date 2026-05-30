@@ -7,7 +7,7 @@ import {
   unitRosterDisplay,
 } from '../game/sim/blueprints/displayRosters';
 
-export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
+export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
   ControlGroupInfo,
   SelectionEntityType,
@@ -123,10 +123,10 @@ const selectionPanelStyle = {
   '--selection-panel-bot-produce': BUTTON_COLORS.botProduce,
 } as const;
 
-// Repeat-build: queue holds 0-or-1 entries; queue[0] is the unit blueprint
-// currently being looped. Used to light up the matching button.
+// Repeat-build: selected unit blueprint currently being looped. Used to
+// light up the matching button.
 const selectedBuildUnitBlueprintId = computed(() =>
-  props.selection.factoryQueue?.[0]?.unitBlueprintId ?? null,
+  props.selection.factorySelectedUnit?.unitBlueprintId ?? null,
 );
 
 const waypointModes: { mode: WaypointType; label: string; key: string; color: string }[] = [

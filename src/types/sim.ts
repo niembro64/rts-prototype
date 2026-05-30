@@ -11,7 +11,7 @@ import type {
 } from './buildingTypes';
 import type {
   UnitAction,
-  Waypoint,
+  WaypointType,
 } from './commandTypes';
 import type { TurretRangeOverrides, TurretRanges } from './combatTypes';
 import type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
@@ -795,34 +795,35 @@ export type UnitBuildConfig = {
   fireRange: number | undefined;
 };
 
-// Factory component. The host (today: the fabricator building) produces
+// Factory component. The host (today: the fabricator tower) produces
 // **units** at a fixed build spot adjacent to its footprint. The factory
-// spawns the head of `buildQueue` as a shell entity at its build spot
-// the moment production starts; the shell then absorbs resources from
-// the player's stockpiles via energyDistribution. `currentShellId` is
-// the shell currently being funded (null while the queue is empty or
-// while the build spot is blocked). Once the shell flips `isComplete`,
-// it leaves the spot and the factory clears `currentShellId` to take
-// the next queue entry. The host visualizes the work through a
-// `turretConstruction` mount (same emitter rig as builder units).
+// carries one repeat-build selection: `selectedUnitBlueprintId` is either
+// the unit blueprint to produce forever or null for off. The factory
+// spawns that selected unit as a shell at its build spot; the shell then
+// absorbs resources from the player's stockpiles via energyDistribution.
+// `currentShellId` is the shell currently being funded (null while no
+// unit is selected or while the build spot is blocked). Once the shell
+// flips `isComplete`, it leaves the spot and the factory clears
+// `currentShellId` so the same selected unit can repeat.
 //
 // Factory ≠ builder: factories produce units at a fixed spot; builders
 // (commanders, future construction aircraft) construct buildings at
 // chosen locations.
 //
 // `currentBuildProgress` is the average fill ratio of that shell,
-// kept as a pure UI/snapshot mirror so the build-queue strip can draw a
+// kept as a pure UI/snapshot mirror so the production button can draw a
 // single progress fraction without looking up the shell entity. On the
 // server it is refreshed when resources flow into the shell; on the
 // client it is populated from the wire's f.progress field.
 export type Factory = {
-  buildQueue: string[];
+  selectedUnitBlueprintId: string | null;
   currentShellId: EntityId | null;
   currentBuildProgress: number;
   rallyX: number;
   rallyY: number;
+  rallyZ: number | null;
+  rallyType: WaypointType;
   isProducing: boolean;
-  waypoints: Waypoint[];
   /** Per-resource transfer rate this tick, expressed as a fraction
    *  (0..1) of the factory's `maxResourcePerTick` cap for the active
    *  shell. Drives the vertical "shower" cylinders around the

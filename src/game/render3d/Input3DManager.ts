@@ -43,7 +43,7 @@ import {
   buildReclaimCommandForTarget,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
-  buildFactoryWaypointCommands,
+  buildFactoryRallyCommands,
   handleEscape,
   CommanderModeController,
   getBuildModeBuildingBlueprintIdByIndex,
@@ -2016,7 +2016,7 @@ export class Input3DManager {
       return;
     }
 
-    // No units: finalize factory waypoints if factories are selected.
+    // No units: set a factory rally point if factories are selected.
     const factories = this.getSelectedFactories();
     if (factories.length > 0 && points.length > 0) {
       const finalPoint = points[points.length - 1];
@@ -2027,9 +2027,9 @@ export class Input3DManager {
         finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
         factories.length,
       );
-      const cmds = buildFactoryWaypointCommands(
+      const cmds = buildFactoryRallyCommands(
         factories, finalPoint.x, finalPoint.y,
-        this.waypointMode, tick, shiftHeld, finalPoint.z,
+        this.waypointMode, tick, finalPoint.z,
       );
       for (const cmd of cmds) this.localCommandQueue.enqueue(cmd);
     }

@@ -51,50 +51,6 @@ item — the dual TypeScript/Rust authoritative-sim duplication — is filed in
 SECTION C as C1.
 File:line refs were correct at audit time; re-verify before editing.
 
-A30. [LOW] rts-sim-wasm + the EntityMeta construction/registry (generation set to 0 at
-    creation and never incremented on slot reuse; alive set true at spawn, never set false
-    on death; death removes the row) —
-    RULE: "Opaque handle, explicit metadata" (philosophy lines 1519-1544): EntityId is
-    "preferably generation-checked"; EntityMeta carries generation + alive, and lock-on
-    refs are "resolved through the registry and generation-checked before use" (lines
-    1625-1634). —
-    PROBLEM: generation is always 0 and never incremented, and alive is never set false
-    (death deletes the row), so the generation-checked stale-handle protection the doc
-    describes is not actually functioning — a reused id/slot cannot be distinguished from
-    the original via generation. In practice stale refs are caught by row-absence, not by
-    the generation check. —
-    FIX: either implement generation bumping on slot reuse + set alive=false on death and
-    have ref resolution generation-check (matching the doc), or, if row-absence is deemed
-    sufficient, update the doc to drop the generation-checked guarantee. The field exists
-    but is currently inert.
-
-A31. [WATCH] src/game/sim/factoryProduction.ts (multi-item queue array + dequeue/splice
-    by index) and the factory production command/wire path —
-    RULE: "Producer Buildings Are ON/OFF" (philosophy lines 1805-1820) + Selection menus
-    (lines 1790-1794): producer buildings carry a single binary ON/OFF; the building
-    selection panel is ON/OFF + self-destruct only — no per-item queue UI, no batching, no
-    queued unit list. —
-    PROBLEM: the factory production model still carries a multi-item build QUEUE (an array
-    with index-based cancel/splice) in the sim/command/wire layer — the per-item production
-    queue the ON/OFF producer rule is meant to retire. (The UI may already be ON/OFF-only,
-    but the underlying data/command model still encodes a queue.) WATCH because it may be
-    an intentional in-progress migration. —
-    FIX: decide the producer model: if ON/OFF is the target, reduce factory production to
-    the binary consume→produce→repeat loop with a single rally setting and remove the
-    multi-item queue from the data/command/wire model; if a queue is intentionally retained
-    for factories, update the doc to carve factories out of the strict ON/OFF rule.
-
-A32. [LOW] src/game/sim/factoryProduction.ts (rally modeled as an appendable list of
-    waypoints) and the rally command path —
-    RULE: "Producer Buildings Are ON/OFF" (philosophy lines 1805-1820): rally is a separate
-    STATIC setting, not a queue entry; producers are a single binary toggle with no waypoint
-    list / shift-click batching. —
-    PROBLEM: factory rally is modeled as a growable multi-waypoint queued list (shift-append)
-    rather than the single static rally point the ON/OFF model implies, extending the
-    producer beyond the binary toggle + single rally. —
-    FIX: reduce factory rally to a single static rally target (latest set wins), or if
-    multi-waypoint rally is intended, document it as an explicit exception. (Pairs with A31.)
-
 A36. [LOW] src/types/blueprints.ts + src/types/shotTypes.ts (hand-written TS types) and
     the parallel hand-written Rust structs in rts-sim-wasm/src/lib.rs —
     RULE: "Schema is the contract" (philosophy lines 2034-2041): "TypeScript types and Rust
@@ -209,8 +165,9 @@ but are not — are folded into the list below.)
   sourceTurretBlueprintId; the "blueprint id can be null" candidate was refuted on
   the merits.
 - EntityId is an opaque handle resolved through metadata rows; player/team/host/
-  blueprint/storage are NOT packed into the number. (The generation/alive fields
-  exist but are currently inert — see A30.)
+  blueprint/storage are NOT packed into the number. EntityMeta generation/alive
+  are active: the Rust registry generation-checks refs and the TypeScript mirror
+  retains dead rows with alive=false.
 - Build sites and factory unit shells are the real product entities from spawn:
   one continuous EntityId from nanoframe to finished structure; no re-id handoff.
 - EntityType has Tower as a true peer of Unit/Building; the fabricator is in the
@@ -245,6 +202,9 @@ but are not — are folded into the list below.)
 - Selection panels are gated on entity TYPE capability flags, not per-blueprint
   buttons; mixed-type selections show the action-set intersection plus explicit
   select-only controls for narrowing the active type.
+- Factory production is a single repeat-build selection plus one static rally:
+  no multi-item build queue, no index cancel command, no waypoint append path,
+  and the snapshot DTO carries selectedUnitBlueprintCode + rally.
 - Blueprints are pure data: JSON files imported by thin TS loaders (units.ts imports
   units.json, turrets.ts imports turrets.json, etc.); no closures/functions in
   blueprint JSON; config.ts holds zero authoritative tuning literals. Load-time

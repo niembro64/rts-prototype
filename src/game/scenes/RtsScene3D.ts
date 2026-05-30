@@ -1333,15 +1333,6 @@ export class RtsScene3D {
     });
   }
 
-  public cancelFactoryQueueItem(factoryId: number, index: number): void {
-    this.sendAuthoritativeCommand({
-      type: 'cancelQueueItem',
-      tick: this.clientViewState.getTick(),
-      factoryId,
-      index,
-    });
-  }
-
   public centerCameraOn(x: number, y: number): void {
     this.cameraControl.centerOn(x, y);
   }

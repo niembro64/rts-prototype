@@ -259,23 +259,10 @@ export class WorldState {
     return currentUnitCount < this.getUnitCapPerPlayer();
   }
 
-  // Check if player can queue another unit (accounts for existing units + all queued units)
+  // Check if player can select another repeat-build unit. Repeat-build is
+  // not a queue, so only live/shell units count against the cap.
   canPlayerQueueUnit(playerId: PlayerId): boolean {
-    const currentUnits = this.getUnitsByPlayer(playerId).length;
-    const queuedUnits = this.getQueuedUnitCount(playerId);
-    return (currentUnits + queuedUnits) < this.getUnitCapPerPlayer();
-  }
-
-  // Count units in factory build queues for a player
-  getQueuedUnitCount(playerId: PlayerId): number {
-    this.rebuildCachesIfNeeded();
-    let count = 0;
-    for (const entity of this.cache.getBuildings()) {
-      if (!entity.factory || !entity.ownership) continue;
-      if (entity.ownership.playerId !== playerId) continue;
-      count += entity.factory.buildQueue.length;
-    }
-    return count;
+    return this.canPlayerBuildUnit(playerId);
   }
 
   // Get remaining unit capacity for a player
@@ -295,11 +282,20 @@ export class WorldState {
 
   private upsertEntityMeta(meta: EntityMeta): void {
     const previous = this.entityMetaById.get(meta.id);
+    const generation = previous !== undefined && previous.alive
+      ? previous.generation
+      : (previous?.generation ?? 0) + 1;
     this.entityMetaById.set(meta.id, {
       ...meta,
-      generation: previous?.generation ?? meta.generation,
+      generation,
       alive: true,
     });
+  }
+
+  resolveEntityMeta(id: EntityId, generation: number): EntityMeta | undefined {
+    const meta = this.entityMetaById.get(id);
+    if (meta === undefined || !meta.alive || meta.generation !== generation) return undefined;
+    return meta;
   }
 
   private entityBlueprintKind(entity: Entity): EntityMetaBlueprintKind {
@@ -387,7 +383,13 @@ export class WorldState {
   }
 
   private markMetaDead(id: EntityId): void {
-    this.entityMetaById.delete(id);
+    const previous = this.entityMetaById.get(id);
+    if (previous === undefined || !previous.alive) return;
+    this.entityMetaById.set(id, {
+      ...previous,
+      alive: false,
+      targetable: false,
+    });
   }
 
   private markEntityMetadataDead(entity: Entity): void {

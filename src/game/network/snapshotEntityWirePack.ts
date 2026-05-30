@@ -23,7 +23,7 @@ import {
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
 type FactorySub = NonNullable<BuildingSub['factory']>;
-type WaypointSub = FactorySub['waypoints'][number];
+type WaypointSub = FactorySub['rally'];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 
 function createEmptyUnitSub(): UnitSub {
@@ -1638,30 +1638,22 @@ function unpackTurret(row: unknown[]): NetworkServerSnapshotTurret {
 }
 
 function packFactory(factory: FactorySub): unknown[] {
-  const waypointRows: unknown[] = new Array(factory.waypoints.length);
-  for (let i = 0; i < factory.waypoints.length; i++) {
-    waypointRows[i] = packWaypoint(factory.waypoints[i]);
-  }
   return [
-    factory.queue,
+    factory.selectedUnitBlueprintCode,
     factory.progress,
     factory.energyRate,
     factory.metalRate,
-    waypointRows,
+    packWaypoint(factory.rally),
   ];
 }
 
 function unpackFactory(row: unknown[], producing: boolean): FactorySub {
-  const queue = row[0] as number[];
+  const selectedUnitBlueprintCode = row[0] as number | null;
   const progress = row[1] as number;
   const energyRate = row[2] as number;
   const metalRate = row[3] as number;
-  const waypointRows = row[4] as unknown[];
-  const waypoints: WaypointSub[] = new Array(waypointRows.length);
-  for (let i = 0; i < waypointRows.length; i++) {
-    waypoints[i] = unpackWaypoint(waypointRows[i] as unknown[]);
-  }
-  return { queue, progress, producing, energyRate, metalRate, waypoints };
+  const rally = unpackWaypoint(row[4] as unknown[]);
+  return { selectedUnitBlueprintCode, progress, producing, energyRate, metalRate, rally };
 }
 
 function packWaypoint(waypoint: WaypointSub): unknown[] {

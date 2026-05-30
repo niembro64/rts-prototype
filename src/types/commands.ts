@@ -16,9 +16,7 @@ export type CommandType =
   | 'scan'
   | 'startBuild'
   | 'queueUnit'
-  | 'cancelQueueItem'
   | 'setRallyPoint'
-  | 'setFactoryWaypoints'
   | 'fireDGun'
   | 'setFireEnabled'
   | 'setBuildingActive'
@@ -132,31 +130,13 @@ export type QueueUnitCommand = BaseCommand & {
   unitBlueprintId: string;
 };
 
-export type CancelQueueItemCommand = BaseCommand & {
-  type: 'cancelQueueItem';
-  factoryId: EntityId;
-  index: number;
-};
-
 export type SetRallyPointCommand = BaseCommand & {
   type: 'setRallyPoint';
   factoryId: EntityId;
   rallyX: number;
   rallyY: number;
-};
-
-export type FactoryWaypoint = {
-  x: number;
-  y: number;
-  z?: number;
-  type: WaypointType;
-};
-
-export type SetFactoryWaypointsCommand = BaseCommand & {
-  type: 'setFactoryWaypoints';
-  factoryId: EntityId;
-  waypoints: FactoryWaypoint[];
-  queue: boolean;
+  rallyZ?: number;
+  waypointType: WaypointType;
 };
 
 export type FireDGunCommand = BaseCommand & {
@@ -347,9 +327,7 @@ export type Command =
   | ScanCommand
   | StartBuildCommand
   | QueueUnitCommand
-  | CancelQueueItemCommand
   | SetRallyPointCommand
-  | SetFactoryWaypointsCommand
   | FireDGunCommand
   | SetFireEnabledCommand
   | SetBuildingActiveCommand

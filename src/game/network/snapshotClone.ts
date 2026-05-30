@@ -101,21 +101,12 @@ function createReusableBuilding(): ReusableEntityBuilding {
 }
 
 function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFactory {
-  dst.queue.length = src.queue.length;
-  for (let i = 0; i < src.queue.length; i++) dst.queue[i] = src.queue[i];
+  dst.selectedUnitBlueprintCode = src.selectedUnitBlueprintCode;
   dst.progress = src.progress;
   dst.producing = src.producing;
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
-  dst.waypoints.length = src.waypoints.length;
-  for (let i = 0; i < src.waypoints.length; i++) {
-    let dw = dst.waypoints[i];
-    if (!dw) {
-      dw = createWaypointDto();
-      dst.waypoints[i] = dw;
-    }
-    copyWaypointInto(src.waypoints[i], dw);
-  }
+  copyWaypointInto(src.rally, dst.rally);
   return dst;
 }
 
@@ -166,12 +157,12 @@ function copyBuildingInto(
   if (src.factory) {
     if (!dst.factory) {
       dst.factory = {
-        queue: [],
+        selectedUnitBlueprintCode: null,
         progress: 0,
         producing: false,
         energyRate: 0,
         metalRate: 0,
-        waypoints: [],
+        rally: createWaypointDto(),
       };
     }
     copyFactoryInto(src.factory, dst.factory);

@@ -928,12 +928,12 @@ type WaypointFixture = {
 };
 
 type FactoryFixture = {
-  queue: number[];
+  selectedUnitBlueprintCode: number | null;
   progress: number;
   producing: boolean;
   energyRate: number;
   metalRate: number;
-  waypoints: WaypointFixture[];
+  rally: WaypointFixture;
 };
 
 type BuildingFixture = {
@@ -970,32 +970,30 @@ function sparseBuildingFixture(f: BuildingFixture): BuildingFixture {
   } as BuildingFixture;
 }
 
-function packFactoryQueueIntoScratch(memory: WebAssembly.Memory, queue: number[]): void {
-  if (queue.length === 0) return;
-  snapshot_encode_factory_queue_scratch_ensure(queue.length);
+function packFactorySelectedUnitIntoScratch(
+  memory: WebAssembly.Memory,
+  selectedUnitBlueprintCode: number | null,
+): void {
+  if (selectedUnitBlueprintCode === null) return;
+  snapshot_encode_factory_queue_scratch_ensure(1);
   const ptr = snapshot_encode_factory_queue_scratch_ptr();
-  const view = new Uint32Array(memory.buffer, ptr, queue.length);
-  for (let i = 0; i < queue.length; i++) view[i] = queue[i];
+  const view = new Uint32Array(memory.buffer, ptr, 1);
+  view[0] = selectedUnitBlueprintCode;
 }
 
-function packWaypointsIntoScratch(
+function packFactoryRallyIntoScratch(
   memory: WebAssembly.Memory,
-  waypoints: WaypointFixture[],
+  rally: WaypointFixture,
   stringSlots: Map<string, number>,
 ): void {
-  if (waypoints.length === 0) return;
-  snapshot_encode_waypoint_scratch_ensure(waypoints.length);
+  snapshot_encode_waypoint_scratch_ensure(1);
   const ptr = snapshot_encode_waypoint_scratch_ptr();
-  const view = new Float64Array(memory.buffer, ptr, waypoints.length * WAYPOINT_SCRATCH_STRIDE);
-  for (let i = 0; i < waypoints.length; i++) {
-    const w = waypoints[i];
-    const base = i * WAYPOINT_SCRATCH_STRIDE;
-    view[base + 0] = w.pos.x;
-    view[base + 1] = w.pos.y;
-    view[base + 2] = w.posZ !== undefined ? 1 : 0;
-    view[base + 3] = w.posZ ?? 0;
-    view[base + 4] = stringSlots.get(w.type) ?? 0;
-  }
+  const view = new Float64Array(memory.buffer, ptr, WAYPOINT_SCRATCH_STRIDE);
+  view[0] = rally.pos.x;
+  view[1] = rally.pos.y;
+  view[2] = rally.posZ !== undefined ? 1 : 0;
+  view[3] = rally.posZ ?? 0;
+  view[4] = stringSlots.get(rally.type) ?? 0;
 }
 
 function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
@@ -1105,7 +1103,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         ],
       },
     },
-    // Idle factory (empty queue, default rally point only)
+    // Idle factory (no selected unit, default rally point only)
     {
       id: 2100, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       building: {
@@ -1114,14 +1112,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, metal: 200 } },
         factory: {
-          queue: [],
+          selectedUnitBlueprintCode: null,
           progress: 0,
           producing: false,
           energyRate: 0,
           metalRate: 0,
-          waypoints: [
-            { pos: { x: 100, y: 100 }, type: 'move' },
-          ],
+          rally: { pos: { x: 100, y: 100 }, type: 'move' },
         },
       },
     },
@@ -1132,34 +1128,28 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, metal: 200 } },
         factory: {
-          queue: [3, 7, 12],
+          selectedUnitBlueprintCode: 3,
           progress: 0.42,
           producing: true,
           energyRate: 0.85,
           metalRate: 0.5,
-          waypoints: [
-            { pos: { x: 200, y: 200 }, type: 'move' },
-          ],
+          rally: { pos: { x: 200, y: 200 }, type: 'move' },
         },
       },
     },
-    // Factory with multi-step rally (rally point + player waypoints with posZ)
+    // Factory with a player-set rally carrying posZ
     {
       id: 2102, type: 'building', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 2,
       building: {
         hp: { curr: 1000, max: 1000 },
         build: { complete: true, paid: { energy: 500, metal: 200 } },
         factory: {
-          queue: [1],
+          selectedUnitBlueprintCode: 1,
           progress: 0.05,
           producing: true,
           energyRate: 0.3,
           metalRate: 0.3,
-          waypoints: [
-            { pos: { x: 100, y: 100 }, type: 'move' },
-            { pos: { x: 500, y: 500 }, posZ: 50, type: 'move' },
-            { pos: { x: 1000, y: 800 }, posZ: 75, type: 'patrol' },
-          ],
+          rally: { pos: { x: 1000, y: 800 }, posZ: 75, type: 'patrol' },
         },
       },
     },
@@ -1172,14 +1162,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
         hp: { curr: 5000, max: 5000 },
         build: { complete: true, paid: { energy: 0, metal: 0 } },
         factory: {
-          queue: [99, 100, 101, 102],
+          selectedUnitBlueprintCode: 99,
           progress: 0.9,
           producing: true,
           energyRate: 1.0,
           metalRate: 0.7,
-          waypoints: [
-            { pos: { x: 2200, y: 2200 }, type: 'move' },
-          ],
+          rally: { pos: { x: 2200, y: 2200 }, type: 'move' },
         },
       },
     },
@@ -1194,7 +1182,7 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     const changed = f.changedFields ?? 0;
     const stringList: string[] = [];
     if (f.building.factory !== undefined) {
-      for (const wp of f.building.factory.waypoints) stringList.push(wp.type);
+      stringList.push(f.building.factory.rally.type);
     }
     const stringSlots = stringList.length > 0
       ? packStringsIntoScratch(memory, stringList)
@@ -1208,8 +1196,8 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
     const factory = f.building.factory;
     const hasFactory = factory !== undefined ? 1 : 0;
     if (factory) {
-      packFactoryQueueIntoScratch(memory, factory.queue);
-      packWaypointsIntoScratch(memory, factory.waypoints, stringSlots);
+      packFactorySelectedUnitIntoScratch(memory, factory.selectedUnitBlueprintCode);
+      packFactoryRallyIntoScratch(memory, factory.rally, stringSlots);
     }
     messagepack_writer_clear();
     snapshot_encode_entity_building(
@@ -1232,12 +1220,12 @@ function runEntityBuildingCases(memory: WebAssembly.Memory): { passed: number; f
       hasTurrets,
       turretCount,
       hasFactory,
-      factory?.queue.length ?? 0,
+      factory !== undefined && factory.selectedUnitBlueprintCode !== null ? 1 : 0,
       factory?.progress ?? 0,
       factory?.producing === true ? 1 : 0,
       factory?.energyRate ?? 0,
       factory?.metalRate ?? 0,
-      factory?.waypoints.length ?? 0,
+      factory !== undefined ? 1 : 0,
     );
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
@@ -3121,7 +3109,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         const b = e as BuildingFixture;
         const stringList: string[] = [];
         if (b.building.factory) {
-          for (const wp of b.building.factory.waypoints) stringList.push(wp.type);
+          stringList.push(b.building.factory.rally.type);
         }
         const stringSlots = stringList.length > 0
           ? packStringsIntoScratch(memory, stringList)
@@ -3130,8 +3118,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         if (bTurrets) packTurretsIntoScratch(memory, bTurrets);
         const factory = b.building.factory;
         if (factory) {
-          packFactoryQueueIntoScratch(memory, factory.queue);
-          packWaypointsIntoScratch(memory, factory.waypoints, stringSlots);
+          packFactorySelectedUnitIntoScratch(memory, factory.selectedUnitBlueprintCode);
+          packFactoryRallyIntoScratch(memory, factory.rally, stringSlots);
         }
         const hasChanged = b.changedFields !== undefined ? 1 : 0;
         snapshot_encode_entity_building(
@@ -3151,12 +3139,12 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           b.building.solar?.open === true ? 1 : 0,
           bTurrets !== undefined ? 1 : 0, bTurrets?.length ?? 0,
           factory !== undefined ? 1 : 0,
-          factory?.queue.length ?? 0,
+          factory !== undefined && factory.selectedUnitBlueprintCode !== null ? 1 : 0,
           factory?.progress ?? 0,
           factory?.producing === true ? 1 : 0,
           factory?.energyRate ?? 0,
           factory?.metalRate ?? 0,
-          factory?.waypoints.length ?? 0,
+          factory !== undefined ? 1 : 0,
         );
       }
     }

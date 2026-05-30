@@ -156,32 +156,19 @@ export function snapClientNonVisualState(
 
   const sf = sb !== null ? sb.factory : null;
   if (entity.factory && sf && (isFull || cf! & ENTITY_CHANGED_FACTORY)) {
-    const dst = entity.factory.buildQueue;
-    const src = sf.queue;
-    dst.length = 0;
-    for (let i = 0; i < src.length; i++) {
-      const unitBlueprintId = codeToUnitBlueprintId(src[i]);
-      if (unitBlueprintId) dst.push(unitBlueprintId);
-    }
+    const selectedUnitBlueprintId = sf.selectedUnitBlueprintCode === null
+      ? null
+      : codeToUnitBlueprintId(sf.selectedUnitBlueprintCode);
+    entity.factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
     entity.factory.currentShellId = null;
     entity.factory.currentBuildProgress = sf.progress;
     entity.factory.isProducing = sf.producing;
     entity.factory.energyRateFraction = sf.energyRate ?? 0;
     entity.factory.metalRateFraction = sf.metalRate ?? 0;
-    const wps = sf.waypoints;
-    if (wps.length > 0) {
-      entity.factory.rallyX = wps[0].pos.x;
-      entity.factory.rallyY = wps[0].pos.y;
-    }
-    entity.factory.waypoints.length = Math.max(0, wps.length - 1);
-    for (let i = 1; i < wps.length; i++) {
-      entity.factory.waypoints[i - 1] = {
-        x: wps[i].pos.x,
-        y: wps[i].pos.y,
-        z: wps[i].posZ ?? undefined,
-        type: wps[i].type as 'move' | 'fight' | 'patrol',
-      };
-    }
+    entity.factory.rallyX = sf.rally.pos.x;
+    entity.factory.rallyY = sf.rally.pos.y;
+    entity.factory.rallyZ = sf.rally.posZ;
+    entity.factory.rallyType = sf.rally.type as 'move' | 'fight' | 'patrol';
   }
 
   return cacheDirty;

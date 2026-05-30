@@ -9,7 +9,7 @@ import type {
   ReclaimCommand,
   RepairAreaCommand,
   RepairCommand,
-  SetFactoryWaypointsCommand,
+  SetRallyPointCommand,
 } from '../../sim/commands';
 import { findRepairTargetAt } from './RepairTargetHelper';
 import type { RepairEntitySource } from './RepairTargetHelper';
@@ -94,33 +94,34 @@ export function buildReclaimCommandAt(
   return buildReclaimCommandForTarget(target, commander, tick, queue);
 }
 
-/** Build one SetFactoryWaypointsCommand per selected factory at the
+/** Build one SetRallyPointCommand per selected factory at the
  *  given world point. Used when the user right-clicks with no units
- *  selected but one or more factories — each factory inherits the
- *  same single-waypoint list. `worldZ` is the click altitude from
+ *  selected but one or more factories — each factory stores the same
+ *  static rally point. `worldZ` is the click altitude from
  *  CursorGround.pickSim; carried through so factory-spawned units
  *  use the player's clicked 3D ground point as the waypoint goal
  *  instead of a re-sampled terrain altitude. Callers filter
  *  factories beforehand (only truthy .factory + owned by active
  *  player). */
-export function buildFactoryWaypointCommands(
+export function buildFactoryRallyCommands(
   factories: readonly Entity[],
   worldX: number,
   worldY: number,
   mode: WaypointType,
   tick: number,
-  queue: boolean,
   worldZ?: number,
-): SetFactoryWaypointsCommand[] {
-  const cmds: SetFactoryWaypointsCommand[] = [];
+): SetRallyPointCommand[] {
+  const cmds: SetRallyPointCommand[] = [];
   for (const f of factories) {
     if (!f.factory) continue;
     cmds.push({
-      type: 'setFactoryWaypoints',
+      type: 'setRallyPoint',
       tick,
       factoryId: f.id,
-      waypoints: [{ x: worldX, y: worldY, z: worldZ, type: mode }],
-      queue,
+      rallyX: worldX,
+      rallyY: worldY,
+      rallyZ: worldZ,
+      waypointType: mode,
     });
   }
   return cmds;
