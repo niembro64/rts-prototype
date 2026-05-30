@@ -31,7 +31,6 @@ import {
   getUnitBlueprint,
 } from '../sim/blueprints';
 import {
-  FORCE_FIELD_PANEL_ARM_LENGTH_MULT,
   FORCE_FIELD_PANEL_SIZE_MULT,
   getForceFieldFrameGeometry,
 } from '../sim/forceFieldPanelCache';
@@ -250,7 +249,8 @@ export function getDebrisUnitProfile(
     // vertical offsets.
     const headRadius = turretBodyRadiusFromRadius(tb.radius);
     const shotHeight = localMount.z * r;
-    const isMirrorHost = (tb.forceFieldPanels?.length ?? 0) > 0;
+    const mountForceFieldPanels = mount.forceFieldPanels ?? [];
+    const isMirrorHost = mountForceFieldPanels.length > 0;
 
     // Mirror-host turrets skip their head + barrels — the visible body
     // is the panels themselves. Render3DEntities does the same skip.
@@ -259,12 +259,12 @@ export function getDebrisUnitProfile(
       : getDebrisBarrelProfile(tb, headRadius);
 
     let forceFieldPanels: DebrisForceFieldPanelProfile | null = null;
-    if (tb.forceFieldPanels && tb.forceFieldPanels.length > 0) {
+    if (mountForceFieldPanels.length > 0) {
       // Match the live forceFieldPanelCache sizing so debris panels tumble
       // at the same scale they had while alive — bumping
       // FORCE_FIELD_PANEL_SIZE_MULT in forceFieldPanelCache feeds through here
       // automatically.
-      const armLength = r * FORCE_FIELD_PANEL_ARM_LENGTH_MULT;
+      const armLength = mountForceFieldPanels[0].offsetX * r;
       const panelHalfSide = r * FORCE_FIELD_PANEL_SIZE_MULT;
       const frame = getForceFieldFrameGeometry(panelHalfSide);
       // Same liftGroup convention as Render3DEntities: subtract
@@ -272,7 +272,7 @@ export function getDebrisUnitProfile(
       // turretForceFieldPanel mount after debris adds chassisLiftY.
       const panelCenterY = localMount.z * r - chassisLiftY;
       forceFieldPanels = {
-        panelCount: tb.forceFieldPanels.length,
+        panelCount: mountForceFieldPanels.length,
         armLength,
         side: frame.side,
         supportDiameter: frame.supportDiameter,

@@ -83,6 +83,11 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
       `Invalid turret blueprint ${id}: forceField emission data belongs in shots.json and must be referenced by shotBlueprintId`,
     );
   }
+  if (blueprint.forceFieldPanels.length > 0) {
+    throw new Error(
+      `Invalid turret blueprint ${id}: force-field panel geometry belongs on the host mount, not the turret blueprint`,
+    );
+  }
 
   const label = `turret blueprint ${id}`;
   if (!WEAPON_KIND_SET.has(blueprint.kind)) {

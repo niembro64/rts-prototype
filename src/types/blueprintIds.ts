@@ -28,8 +28,14 @@ export const SHOT_BLUEPRINT_IDS = [
   'fastRocket',
   'megaMortarShot',
   'forceFieldBarrierShot',
+  'forceFieldPanelShot',
 ] as const;
 export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];
+
+export const FORCE_FIELD_MATERIAL_IDS = [
+  'reflectiveForceField',
+] as const;
+export type ForceFieldMaterialId = typeof FORCE_FIELD_MATERIAL_IDS[number];
 
 export const TURRET_BLUEPRINT_IDS = [
   'turretGunLight',
@@ -56,6 +62,7 @@ export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 const UNIT_BLUEPRINT_ID_SET = new Set<string>(UNIT_BLUEPRINT_IDS);
 const BUILDING_BLUEPRINT_ID_SET = new Set<string>(BUILDING_BLUEPRINT_IDS);
 const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
+const FORCE_FIELD_MATERIAL_ID_SET = new Set<string>(FORCE_FIELD_MATERIAL_IDS);
 const TURRET_BLUEPRINT_ID_SET = new Set<string>(TURRET_BLUEPRINT_IDS);
 
 export function isUnitBlueprintId(value: string): value is UnitBlueprintId {
@@ -68,6 +75,10 @@ export function isBuildingBlueprintId(value: string): value is BuildingBlueprint
 
 export function isShotBlueprintId(value: string): value is ShotBlueprintId {
   return SHOT_BLUEPRINT_ID_SET.has(value);
+}
+
+export function isForceFieldMaterialId(value: string): value is ForceFieldMaterialId {
+  return FORCE_FIELD_MATERIAL_ID_SET.has(value);
 }
 
 export function isTurretBlueprintId(value: string): value is TurretBlueprintId {

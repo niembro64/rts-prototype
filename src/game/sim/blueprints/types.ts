@@ -17,6 +17,8 @@ export type {
 // Re-export all blueprint types
 export type {
   ForceFieldBarrierRatioConfig,
+  ForceFieldMaterialBlueprint,
+  ForceFieldMaterialVisualConfig,
   ShotCollision,
   ShotExplosion,
   ProjectileShotKind,
@@ -24,6 +26,7 @@ export type {
   BeamShotBlueprint,
   LaserShotBlueprint,
   ForceFieldShotBlueprint,
+  ForceFieldSurfaceResponse,
   LineShotBlueprint,
   ShotBlueprint,
   SmokeTrailSpec,
@@ -57,4 +60,9 @@ export type {
   DetectorBlueprint,
   LocomotionBlueprint,
   UnitBlueprint,
+} from '@/types/blueprints';
+
+export {
+  FORCE_FIELD_SURFACE_RESPONSES,
+  isForceFieldReflectionMode,
 } from '@/types/blueprints';

@@ -51,42 +51,6 @@ item — the dual TypeScript/Rust authoritative-sim duplication — is filed in
 SECTION C as C1.
 File:line refs were correct at audit time; re-verify before editing.
 
-A28. [MEDIUM] src/game/sim/blueprints/turrets.json (turretForceFieldPanel: shotId
-    points at a beam shot; force-field behavior carried by a turret-side
-    forceFieldPanels/panel config) + src/game/sim/combat/forceFieldTurret.ts,
-    ForceFieldPanelHit.ts —
-    RULE: Atomic Gameplay Pieces (philosophy lines 1296, 1508-1516): shot is the single
-    umbrella (projectile/beam/laser/forceField); "forceField is a shot variant like any
-    other rather than a special case bolted onto the turret"; a turret names exactly one
-    shot by id and carries no inline emission payload. —
-    PROBLEM: the force-field PANEL barrier is modeled as turret-side configuration (the
-    turret names a beam shot and carries panel/force-field data) instead of the turret
-    naming a single forceField shot variant that owns the barrier — the "special case
-    bolted onto the turret" the doc calls out. The force-field SPHERE path DOES use a
-    forceField shot (forceFieldBarrierShot), so the two force-field turrets are modeled
-    inconsistently. —
-    FIX: model the panel force-field as a forceField shot variant (like the sphere), have
-    turretForceFieldPanel name it by id, and move the barrier material/reflection data off
-    the turret onto the shot; keep only panel geometry on the mount per "Materials Are
-    Independent Of Shape".
-
-A29. [LOW] src/types/shotTypes.ts (forceField shot "material" = color/alpha/visual only)
-    and the reflection logic in src/game/sim/combat/ (reflection governed by world/global
-    settings rather than a per-material contract) —
-    RULE: "Materials Are Independent Of Shape" (philosophy lines 1824-1860) + shot variant
-    owns "barrier material and reflection behavior" (line 1296): a material is a physical
-    + visual contract (reflectivity, occlusion, projectile response, hit reaction) defined
-    once and shared across shapes. —
-    PROBLEM: the force-field "material" on the shot is purely visual (color/alpha); the
-    actual barrier behavior (reflection) is driven from world/global settings, and
-    absorption / damping / pass-through / per-shot-type response are unmodeled — so a
-    material is not the single shape-independent physical+visual contract the doc
-    describes. —
-    FIX: promote the force-field material to a real contract object (reflectivity,
-    occlusion, per-shot-type response, hit reaction, plus visual params) defined once and
-    referenced by both panel and sphere shots; drive reflection from that material instead
-    of world settings, so panel and sphere behave identically by construction.
-
 A30. [LOW] rts-sim-wasm + the EntityMeta construction/registry (generation set to 0 at
     creation and never incremented on slot reuse; alive set true at spawn, never set false
     on death; death removes the row) —
@@ -251,9 +215,10 @@ but are not — are folded into the list below.)
   one continuous EntityId from nanoframe to finished structure; no re-id handoff.
 - EntityType has Tower as a true peer of Unit/Building; the fabricator is in the
   tower catalog, not a building; pure-infra buildings carry no turrets/lock-on.
-- Turrets name one neutral shotId; the force-field SPHERE uses a forceField shot
-  (forceFieldBarrierShot). (The force-field PANEL is the inconsistent one — it
-  names a beam shot with turret-side panel config; see A28/A29.)
+- Turrets name one neutral shotId; force-field PANEL and SPHERE both use
+  forceField shots (forceFieldPanelShot / forceFieldBarrierShot) that reference
+  the shared reflectiveForceField material. Panel geometry lives on the host
+  mount, while material behavior/visuals live on the material.
 - Host-directed vs fully-autonomous turret mounts are wired correctly: the tag
   lives on the unit/tower MOUNT entry (not the turret blueprint); host lock-on
   overwrites host-directed turrets, fully-autonomous run independently;

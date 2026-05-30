@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { SHELL_PALE_HEX } from '@/shellConfig';
-import { FORCE_FIELD_BARRIER, FORCE_FIELD_VISUAL } from '../../config';
+import { FORCE_FIELD_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity } from '../sim/types';
+import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../sim/blueprints/forceFieldMaterials';
 import { isConstructionShell } from './EntityInstanceColor3D';
 
 // Materials Are Independent Of Shape: the force-field surface is ONE material.
@@ -13,10 +14,10 @@ import { isConstructionShell } from './EntityInstanceColor3D';
 
 const FORCE_FIELD_OPACITY_BOOST = 2;
 
-export const FORCE_FIELD_SURFACE_COLOR = FORCE_FIELD_VISUAL.fallbackColor;
+export const FORCE_FIELD_SURFACE_COLOR = REFLECTIVE_FORCE_FIELD_MATERIAL.visual.color;
 export const FORCE_FIELD_SURFACE_OPACITY = Math.min(
   1,
-  FORCE_FIELD_BARRIER.alpha * FORCE_FIELD_OPACITY_BOOST,
+  REFLECTIVE_FORCE_FIELD_MATERIAL.visual.alpha * FORCE_FIELD_OPACITY_BOOST,
 );
 
 /** Color of the force-field material at this surface — team color when the
@@ -27,7 +28,7 @@ export function resolveForceFieldSurfaceColor(entity: Entity): number {
   if (isConstructionShell(entity)) return SHELL_PALE_HEX;
   return FORCE_FIELD_VISUAL.colorMode === 'player' && entity.ownership
     ? getPlayerPrimaryColor(entity.ownership.playerId)
-    : FORCE_FIELD_VISUAL.fallbackColor;
+    : REFLECTIVE_FORCE_FIELD_MATERIAL.visual.color;
 }
 
 export const FORCE_FIELD_SURFACE_VS = `

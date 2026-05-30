@@ -4,6 +4,7 @@
 
 export * from './types';
 export * from './shots';
+export * from './forceFieldMaterials';
 export * from './turrets';
 export * from './locomotion';
 export * from './unitRoster';
@@ -25,6 +26,7 @@ import { isProjectileShot } from '../types';
 import { isLineShotBlueprint } from '@/types/blueprints';
 import type { ShotBlueprintId, TurretBlueprintId } from '../../../types/blueprintIds';
 import { SHOT_BLUEPRINTS } from './shots';
+import { getForceFieldMaterial } from './forceFieldMaterials';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS, resolveUnitTurretMounts } from './units';
 import { BUILDING_BLUEPRINTS } from './buildings';
@@ -411,6 +413,7 @@ function validateTurretAimStyle(
 function computeBarrierConfig(
   barrier: ForceFieldBarrierRatioConfig | null,
   range: number,
+  material: ForceShot['material'],
 ): ForceFieldBarrierConfig | null {
   if (!barrier) return null;
   const outerRange =
@@ -422,9 +425,9 @@ function computeBarrierConfig(
     innerRange: 0,
     outerRange,
     originOffsetZ,
-    color: barrier.color,
-    alpha: barrier.alpha,
-    particleAlpha: barrier.particleAlpha,
+    color: material.visual.color,
+    alpha: material.visual.alpha,
+    particleAlpha: material.visual.particleAlpha,
   };
 }
 
@@ -440,15 +443,18 @@ function buildShotConfig(
   range: number,
 ): ShotConfig {
   if (shotBlueprint.type === 'forceField') {
+    const material = getForceFieldMaterial(shotBlueprint.materialId);
     const shot: ForceShot = {
       type: 'forceField',
       shotBlueprintId: shotBlueprint.shotBlueprintId,
+      material,
       angle: shotBlueprint.angle,
       transitionTime: shotBlueprint.transitionTime,
       barrier:
         computeBarrierConfig(
           shotBlueprint.barrier,
           range,
+          material,
         ) ?? undefined,
     };
     return shot;

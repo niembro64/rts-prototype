@@ -256,16 +256,23 @@
   "forceFieldBarrierShot": {
     "type": "forceField",
     "shotBlueprintId": "forceFieldBarrierShot",
+    "materialId": "reflectiveForceField",
     "angle": 6.283185307179586,
     "transitionTime": 500,
     "barrier": {
       "outerRatio": 0.8,
       "originOffsetRadiusRatio": 0.3,
-      "color": 16777215,
-      "alpha": 0.05,
-      "particleAlpha": 0.2,
       "rimWidth": null
     },
+    "hitSound": null
+  },
+  "forceFieldPanelShot": {
+    "type": "forceField",
+    "shotBlueprintId": "forceFieldPanelShot",
+    "materialId": "reflectiveForceField",
+    "angle": 0,
+    "transitionTime": 500,
+    "barrier": null,
     "hitSound": null
   }
 }

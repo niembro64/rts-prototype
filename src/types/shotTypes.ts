@@ -1,5 +1,5 @@
 import type { SoundEntry } from './audio';
-import type { ShotBlueprintId } from './blueprintIds';
+import type { ForceFieldMaterialId, ShotBlueprintId } from './blueprintIds';
 import type { EntityId, PlayerId } from './entityTypes';
 
 export type ProjectileShotKind = 'plasma' | 'rocket';
@@ -22,6 +22,12 @@ export type ForceFieldBarrierRatioConfig = {
   rimWidth?: number | null;         // fixed world-space outer radius
   /** Downward sphere-center offset as a multiple of the computed outer radius. */
   originOffsetRadiusRatio?: number | null;
+};
+
+export const FORCE_FIELD_SURFACE_RESPONSES = ['reflect', 'absorb', 'passThrough'] as const;
+export type ForceFieldSurfaceResponse = typeof FORCE_FIELD_SURFACE_RESPONSES[number];
+
+export type ForceFieldMaterialVisualConfig = {
   color: number;
   alpha: number;
   particleAlpha: number;
@@ -33,6 +39,29 @@ export type ForceFieldReflectionMode = typeof FORCE_FIELD_REFLECTION_MODES[numbe
 export function isForceFieldReflectionMode(value: unknown): value is ForceFieldReflectionMode {
   return value === 'outside-in' || value === 'inside-out' || value === 'both';
 }
+
+export type ForceFieldMaterialBlueprint = {
+  materialId: ForceFieldMaterialId;
+  reflection: {
+    mode: ForceFieldReflectionMode;
+    /** 1 = fully elastic reflection; lower values can damp reflected velocity. */
+    reflectivity: number;
+  };
+  occlusion: {
+    blocksLineOfSight: boolean;
+  };
+  projectileResponse: {
+    plasma: ForceFieldSurfaceResponse;
+    rocket: ForceFieldSurfaceResponse;
+    beam: ForceFieldSurfaceResponse;
+    laser: ForceFieldSurfaceResponse;
+  };
+  hitReaction: {
+    impactEvent: 'forceFieldImpact';
+    sound: SoundEntry | null;
+  };
+  visual: ForceFieldMaterialVisualConfig;
+};
 
 export type ShotCollision = {
   /** Sphere radius for swept-collision and area-damage centering.
@@ -178,6 +207,7 @@ export type LaserShotBlueprint = {
 export type ForceFieldShotBlueprint = {
   type: 'forceField';
   shotBlueprintId: ShotBlueprintId;
+  materialId: ForceFieldMaterialId;
   angle: number;
   transitionTime: number;
   barrier: ForceFieldBarrierRatioConfig | null;
@@ -283,6 +313,7 @@ export function isLineShot(shot: ShotConfig): shot is LineShot {
 export type ForceShot = {
   type: 'forceField';
   shotBlueprintId: ShotBlueprintId;
+  material: ForceFieldMaterialBlueprint;
   angle: number;
   transitionTime: number;
   barrier?: ForceFieldBarrierConfig;

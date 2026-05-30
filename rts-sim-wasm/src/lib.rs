@@ -13581,7 +13581,9 @@ fn combat_targeting_weapon_system_disabled(
     let flags = pool.turret_config_flags[idx];
     (flags & CT_TURRET_CFG_VISUAL_ONLY) != 0
         || ((flags & CT_TURRET_CFG_PASSIVE) != 0 && turret_force_field_panels_enabled == 0)
-        || ((flags & CT_TURRET_CFG_SHOT_IS_FORCE) != 0 && turret_force_field_spheres_enabled == 0)
+        || ((flags & CT_TURRET_CFG_SHOT_IS_FORCE) != 0
+            && (flags & CT_TURRET_CFG_PASSIVE) == 0
+            && turret_force_field_spheres_enabled == 0)
 }
 
 #[inline]
@@ -17415,6 +17417,7 @@ struct ForceFieldSurfacePool {
     center_y: Vec<f64>,
     center_z: Vec<f64>,
     radius: Vec<f64>,
+    field_reflection_mode: Vec<u8>,
 
     // ── Rect-panel shape (per-unit) ──
     // Counts are tracked separately so the backing Vecs can be reused across
@@ -17442,6 +17445,7 @@ struct ForceFieldSurfacePool {
     panel_base_y: Vec<f32>,
     panel_top_y: Vec<f32>,
     panel_half_width: Vec<f32>,
+    panel_reflection_mode: u8,
 }
 
 impl ForceFieldSurfacePool {
@@ -17454,6 +17458,7 @@ impl ForceFieldSurfacePool {
             center_y: Vec::new(),
             center_z: Vec::new(),
             radius: Vec::new(),
+            field_reflection_mode: Vec::new(),
             unit_count: 0,
             unit_id: Vec::new(),
             unit_x: Vec::new(),
@@ -17475,6 +17480,7 @@ impl ForceFieldSurfacePool {
             panel_base_y: Vec::new(),
             panel_top_y: Vec::new(),
             panel_half_width: Vec::new(),
+            panel_reflection_mode: FORCE_FIELD_REFLECTION_MODE_BOTH,
         }
     }
 
@@ -17487,6 +17493,8 @@ impl ForceFieldSurfacePool {
             self.center_y.resize(needed, 0.0);
             self.center_z.resize(needed, 0.0);
             self.radius.resize(needed, 0.0);
+            self.field_reflection_mode
+                .resize(needed, FORCE_FIELD_REFLECTION_MODE_BOTH);
         }
     }
 
@@ -17567,6 +17575,7 @@ pub fn force_field_pool_set_field(
     center_y: f64,
     center_z: f64,
     radius: f64,
+    reflection_mode: u8,
 ) {
     let pool = force_field_pool();
     pool.ensure_capacity(idx + 1);
@@ -17577,6 +17586,7 @@ pub fn force_field_pool_set_field(
     pool.center_y[i] = center_y;
     pool.center_z[i] = center_z;
     pool.radius[i] = radius;
+    pool.field_reflection_mode[i] = reflection_mode;
 }
 
 macro_rules! force_field_pool_ptr_export {
@@ -17781,7 +17791,6 @@ fn force_field_projectile_intersection(
     end_x: f64,
     end_y: f64,
     end_z: f64,
-    reflection_mode: u8,
     max_t: f64,
 ) -> Option<ProjectileReflectorHit> {
     let pool = force_field_pool();
@@ -17807,7 +17816,7 @@ fn force_field_projectile_intersection(
             pool.center_y[i],
             pool.center_z[i],
             pool.radius[i],
-            reflection_mode,
+            pool.field_reflection_mode[i],
         );
         let Some(t) = t else {
             continue;
@@ -18162,6 +18171,11 @@ pub fn force_field_panel_pool_set_panel(
     pool.panel_half_width[i] = half_width;
 }
 
+#[wasm_bindgen]
+pub fn force_field_panel_pool_set_material_mode(reflection_mode: u8) {
+    force_field_pool().panel_reflection_mode = reflection_mode;
+}
+
 /// Squared distance from a point to a 3D segment, used by the
 /// mirror-panel broadphase. Mirrors `pointSegmentDistanceSq3` in
 /// lineOfSight.ts byte-for-byte.
@@ -18348,6 +18362,13 @@ fn force_field_panel_projectile_intersection(
             let Some(t) = hit_t else {
                 continue;
             };
+            let normal_velocity = dx * nx + dy * ny + dz * nz;
+            if !force_field_reflection_mode_allows_crossing(
+                pool.panel_reflection_mode,
+                normal_velocity,
+            ) {
+                continue;
+            }
             if t >= best_t {
                 continue;
             }
@@ -18390,7 +18411,6 @@ pub fn projectile_reflector_intersections_batch(
     exclude_entity_id: &[i32],
     turret_force_field_panels_enabled: u8,
     turret_force_field_spheres_enabled: u8,
-    force_field_reflection_mode: u8,
     force_field_panel_query_pad: f64,
     out_kind: &mut [u8],
     out_entity_id: &mut [i32],
@@ -18477,7 +18497,6 @@ pub fn projectile_reflector_intersections_batch(
                 tx,
                 ty,
                 tz,
-                force_field_reflection_mode,
                 max_t,
             ) {
                 best = Some(force_hit);

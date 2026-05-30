@@ -269,14 +269,6 @@ export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 
-export type RocketReflectorCollisionMode = 'explode' | 'reflect';
-
-/** Rocket behavior when hitting force-field panels or force-field barriers.
- *  "explode" detonates at the reflector contact point. "reflect" uses the
- *  same velocity-preserving reflection path as normal projectiles. */
-export const ROCKET_REFLECTOR_COLLISION_MODE: RocketReflectorCollisionMode =
-  combatConfigJson.rocketReflectorCollisionMode as RocketReflectorCollisionMode;
-
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
 // =============================================================================
@@ -707,14 +699,6 @@ export const BURN_COLOR_HOT = COLORS.world.burnMark.hotColorHex; // bright red s
 export const BURN_COLOR_TAU = worldRenderConfigJson.burnMark.colorTauMs; // color decay: red → black (ms), fast
 export const BURN_COOL_TAU = worldRenderConfigJson.burnMark.coolTauMs; // color decay: black → background (ms), slow
 
-export const FORCE_FIELD_BARRIER: import('./game/sim/blueprints/types').ForceFieldBarrierRatioConfig =
-  {
-    ...forceFieldVisualConfigJson.barrier,
-    color: COLORS.effects.forceField.barrier.colorHex,
-    alpha: COLORS.effects.forceField.barrier.alpha,
-    particleAlpha: COLORS.effects.forceField.barrier.particleAlpha,
-  };
-
 /** Force-field shield visual configuration. The bubble renders at
  *  every tier; the MAX-tier orbital rings are tuned via RING_*
  *  constants inside ForceFieldRenderer3D rather than here. */
@@ -728,8 +712,7 @@ export const FORCE_FIELD_VISUAL: ForceFieldVisualConfig =
  *  The burst is a flat tangent-plane pulse at the sphere intersection:
  *  its plane normal is the shield surface normal, so the expanding ring
  *  lies 90 degrees from the impact normal. Ring opacity matches the
- *  force-field / force-field panel transparency:
- *  FORCE_FIELD_BARRIER.alpha (0.05) * FORCE_FIELD_OPACITY_BOOST (2.0) = 0.1. */
+ *  force-field / force-field panel transparency. */
 export const FORCE_FIELD_IMPACT_VISUAL: ForceFieldImpactVisualConfig =
   {
     ...forceFieldVisualConfigJson.impact,

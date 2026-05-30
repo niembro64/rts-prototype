@@ -5,18 +5,14 @@
 // so beam-vs-mirror collision uses the exact same canonical rectangles
 // on host and client.
 //
-// The force-field panel is a square slab sized from radius.body, mounted at
-// ARM'S LENGTH from the turret body sphere along the turret's facing
-// direction. Vertical position comes from the turretForceFieldPanel's
-// blueprint-authored 3D mount so panel collision and visuals stay
-// attached to the same pivot as the turret.
+// The force-field panel is a square slab sized from radius.body and mounted
+// from the host's turret mount. The material lives on the force-field shot;
+// this cache only materializes the mount-authored geometry into runtime units.
 // Visual side support rails are rendered from the same panel sizing;
-// the sim only needs the panel center offset (offsetX = arm length,
-// offsetY = 0) and angle = 0 (panel normal = turret yaw direction).
+// the sim only needs the panel center offset and angle.
 
 import type { CachedForceFieldPanel } from '../../types/sim';
 import type { UnitBlueprint } from '../../types/blueprints';
-import { getTurretBlueprint } from './blueprints';
 
 /** Forward arm length (from turret body center to panel center) as a
  *  multiple of unit radius.body. 1.0 puts the panel center at the
@@ -152,26 +148,24 @@ export function buildForceFieldPanelCache(
 ): number {
   const unitBodyRadius = bp.radius.body;
   const halfSide = unitBodyRadius * FORCE_FIELD_PANEL_SIZE_MULT;
-  const armLength = unitBodyRadius * FORCE_FIELD_PANEL_ARM_LENGTH_MULT;
   let forceFieldBoundRadius = 0;
 
   for (const mount of bp.turrets) {
-    const tb = getTurretBlueprint(mount.turretBlueprintId);
-    if (!tb.forceFieldPanels) continue;
+    const panels = mount.forceFieldPanels ?? [];
+    if (panels.length === 0) continue;
     const centerY = mount.mount.z * unitBodyRadius;
     const baseY = centerY - halfSide;
     const topY = centerY + halfSide;
 
-    for (let i = 0; i < tb.forceFieldPanels.length; i++) {
+    for (let i = 0; i < panels.length; i++) {
+      const panel = panels[i];
+      const panelArmLength = panel.offsetX * unitBodyRadius;
+      const panelOffsetY = panel.offsetY * unitBodyRadius;
       panelsOut.push({
         halfWidth: halfSide,
-        // Panel center sits forward of the turret pivot by armLength
-        // along the turret's local +X axis. The world-space yaw of
-        // that offset is the turretForceFieldPanel's rotation, applied at
-        // collision time in ForceFieldPanelHit.findClosestPanelHit.
-        offsetX: armLength,
-        offsetY: 0,
-        angle: 0,
+        offsetX: panelArmLength,
+        offsetY: panelOffsetY,
+        angle: panel.angle,
         baseY,
         topY,
       });
@@ -179,7 +173,7 @@ export function buildForceFieldPanelCache(
       // the far edge of the panel: arm length + half-diagonal of the
       // square. Conservative, but it's only used for broadphase
       // culling so a slight over-estimate is fine.
-      const farEdge = armLength + halfSide;
+      const farEdge = panelArmLength + Math.abs(panelOffsetY) + halfSide;
       if (farEdge > forceFieldBoundRadius) forceFieldBoundRadius = farEdge;
     }
   }

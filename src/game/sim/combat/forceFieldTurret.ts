@@ -27,6 +27,7 @@ export type ActiveForceFieldRef = {
   centerY: number;
   centerZ: number;
   radius: number;
+  reflectionMode: ForceFieldReflectionMode;
   playerId: number;
   entityId: number;
 };
@@ -88,9 +89,14 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
       // forceField.range (0→1).
       weapon.forceField.range = weapon.forceField.transition;
 
-      if (weapon.forceField.transition > 0 && unit.unit && unit.unit.hp > 0) {
+      if (
+        weapon.forceField.transition > 0 &&
+        unit.unit &&
+        unit.unit.hp > 0 &&
+        fieldShot.barrier !== undefined
+      ) {
         const barrier = fieldShot.barrier;
-        const radius = barrier !== undefined ? barrier.outerRange : config.range;
+        const radius = barrier.outerRange;
         if (radius <= 0) continue;
         const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
         const mount = updateWeaponWorldKinematics(
@@ -104,13 +110,14 @@ export function updateForceFieldState(world: WorldState, dtMs: number): void {
           },
           _forceFieldMount,
         );
-        const originOffsetZ = barrier !== undefined ? barrier.originOffsetZ : 0;
+        const originOffsetZ = barrier.originOffsetZ;
         const playerId = unit.ownership !== null ? unit.ownership.playerId : 0;
         _activeForceFields.push({
           centerX: mount.x,
           centerY: mount.y,
           centerZ: mount.z - originOffsetZ,
           radius,
+          reflectionMode: fieldShot.material.reflection.mode,
           playerId,
           entityId: unit.id,
         });
@@ -139,6 +146,18 @@ function forceFieldModeAllowsCrossing(
   if (radialVelocity < -eps) return mode === 'outside-in' || mode === 'both';
   if (radialVelocity > eps) return mode === 'inside-out' || mode === 'both';
   return false;
+}
+
+export function encodeForceFieldReflectionMode(mode: ForceFieldReflectionMode): number {
+  switch (mode) {
+    case 'outside-in':
+      return 0;
+    case 'inside-out':
+      return 1;
+    case 'both':
+      return 2;
+  }
+  return 2;
 }
 
 function intersectForceFieldSphere(
@@ -219,11 +238,10 @@ export function findForceFieldSegmentIntersection(
   endZ: number,
 ): ForceFieldProjectileIntersection | null {
   // Intentionally no projectile-owner/player filter here: a force-field
-  // barrier is purely geometric. The world setting decides whether it
+  // barrier is material-owned. The surface material decides whether it
   // reflects incoming, outgoing, or both boundary crossings.
   const activeFields = _activeForceFields;
   if (activeFields.length === 0) return null;
-  const reflectionMode = _world.forceFieldReflectionMode;
   let bestT = Infinity;
   let bestX = 0;
   let bestY = 0;
@@ -241,7 +259,7 @@ export function findForceFieldSegmentIntersection(
       endX, endY, endZ,
       active.centerX, active.centerY, active.centerZ,
       active.radius,
-      reflectionMode,
+      active.reflectionMode,
     );
     if (t === null || t >= bestT) continue;
 

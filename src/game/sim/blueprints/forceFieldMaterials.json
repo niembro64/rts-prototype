@@ -1,0 +1,27 @@
+{
+  "reflectiveForceField": {
+    "materialId": "reflectiveForceField",
+    "reflection": {
+      "mode": "both",
+      "reflectivity": 1
+    },
+    "occlusion": {
+      "blocksLineOfSight": true
+    },
+    "projectileResponse": {
+      "plasma": "reflect",
+      "rocket": "reflect",
+      "beam": "reflect",
+      "laser": "reflect"
+    },
+    "hitReaction": {
+      "impactEvent": "forceFieldImpact",
+      "sound": null
+    },
+    "visual": {
+      "color": 16777215,
+      "alpha": 0.05,
+      "particleAlpha": 0.2
+    }
+  }
+}

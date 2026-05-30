@@ -692,6 +692,13 @@
           "y": 0,
           "z": 2.4
         },
+        "forceFieldPanels": [
+          {
+            "offsetX": 1.8,
+            "offsetY": 0,
+            "angle": 0
+          }
+        ],
         "hostDirected": true
       }
     ],

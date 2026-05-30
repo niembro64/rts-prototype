@@ -135,7 +135,7 @@ export type Detector = {
 //             value is used for both the horizontal-edge half and the
 //             vertical-edge half via `(topY - baseY) / 2`).
 // offsetX  — distance from turret pivot to panel center along the rigid
-//            arm's forward direction (≈ unitBodyRadius * FORCE_FIELD_PANEL_ARM_LENGTH_MULT).
+//            arm's forward direction, resolved from mount-authored geometry.
 // offsetY  — lateral pivot offset (zero for current single-arm panels;
 //            non-zero would mount the arm off-center on the chassis).
 // angle    — panel-yaw offset relative to turretForceFieldPanel yaw (zero today;

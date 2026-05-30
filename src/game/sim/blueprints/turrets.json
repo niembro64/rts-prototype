@@ -438,7 +438,7 @@
   },
   "turretForceFieldPanel": {
     "turretBlueprintId": "turretForceFieldPanel",
-    "shotBlueprintId": "beamShot",
+    "shotBlueprintId": "forceFieldPanelShot",
     "range": 300,
     "cooldown": 0,
     "launchForce": 0,
@@ -468,13 +468,7 @@
       "pelletCount": 1
     },
     "burst": null,
-    "forceFieldPanels": [
-      {
-        "offsetX": 0,
-        "offsetY": 0,
-        "angle": 0
-      }
-    ],
+    "forceFieldPanels": [],
     "audio": null,
     "verticalLauncher": false,
     "idlePitch": 1.5707963267948966,

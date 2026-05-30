@@ -281,6 +281,7 @@ import __wbg_init, {
   force_field_panel_pool_set_panel_count,
   force_field_panel_pool_set_unit,
   force_field_panel_pool_set_panel,
+  force_field_panel_pool_set_material_mode,
   projectile_reflector_intersections_batch,
   snapshot_baseline_create,
   snapshot_baseline_destroy,
@@ -617,7 +618,6 @@ export interface SimWasm {
     excludeEntityId: Int32Array,
     turretForceFieldPanelsEnabled: number,
     turretForceFieldSpheresEnabled: number,
-    forceFieldReflectionMode: number,
     mirrorQueryPad: number,
     outKind: Uint8Array,
     outEntityId: Int32Array,
@@ -1909,6 +1909,7 @@ export interface ForceFieldSurfacePoolApi {
     centerY: number,
     centerZ: number,
     radius: number,
+    reflectionMode: number,
   ) => void;
   readonly idPtr: () => number;
   readonly ownerEntityIdPtr: () => number;
@@ -1948,6 +1949,7 @@ export interface ForceFieldSurfacePoolApi {
     topY: number,
     halfWidth: number,
   ) => void;
+  setPanelMaterialMode: (reflectionMode: number) => void;
   /** AIM-08.2 — direct-segment force-field clearance. Returns 1 if the
    *  segment (sx,sy,sz)→(tx,ty,tz) crosses at most `maxCrossings` force-field
    *  surface boundaries, 0 otherwise. `includeSpheres` / `includePanels`
@@ -3175,6 +3177,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setPanelCount: force_field_panel_pool_set_panel_count,
           setUnit: force_field_panel_pool_set_unit,
           setPanel: force_field_panel_pool_set_panel,
+          setPanelMaterialMode: force_field_panel_pool_set_material_mode,
           clearanceSegment: force_field_clearance_segment,
           clearanceArc: force_field_clearance_arc,
         },

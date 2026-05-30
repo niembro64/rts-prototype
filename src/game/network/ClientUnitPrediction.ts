@@ -752,7 +752,12 @@ export function clientUnitPredictionIsSettled(
     }
 
     const shot = weapon.config.shot;
-    if (turretForceFieldSpheresEnabled && shot !== undefined && shot.type === 'forceField') {
+    if (
+      turretForceFieldSpheresEnabled &&
+      shot !== undefined &&
+      shot.type === 'forceField' &&
+      shot.barrier !== undefined
+    ) {
       const forceField = weapon.forceField;
       const range = forceField !== undefined ? forceField.range : 0;
       if (range > PREDICTION_TURRET_EPSILON) return false;

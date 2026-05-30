@@ -19,8 +19,9 @@ import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, c
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt } from '../Terrain';
 import { spatialGrid } from '../SpatialGrid';
-import { LAND_CELL_SIZE, ROCKET_REFLECTOR_COLLISION_MODE } from '../../../config';
+import { LAND_CELL_SIZE } from '../../../config';
 import { getActiveForceFields } from './forceFieldTurret';
+import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../blueprints/forceFieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
 import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
@@ -36,9 +37,6 @@ const REFLECTOR_HIT_KIND_NONE = 0;
 // only decided where the hit was and what the normal looks like; the reflection
 // response and impact are identical.
 const REFLECTOR_HIT_KIND_FORCE_FIELD = 1;
-const FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN = 0;
-const FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT = 1;
-const FORCE_FIELD_REFLECTION_MODE_BOTH = 2;
 
 function isValidProjectileSweep(
   prevX: number, prevY: number, prevZ: number,
@@ -54,20 +52,6 @@ function isValidProjectileSweep(
   const dy = currentY - prevY;
   const dz = currentZ - prevZ;
   return dx * dx + dy * dy + dz * dz <= MAX_PROJECTILE_SWEEP_DISTANCE_SQ;
-}
-
-function encodeForceFieldReflectionMode(
-  mode: WorldState['forceFieldReflectionMode'],
-): number {
-  switch (mode) {
-    case 'outside-in':
-      return FORCE_FIELD_REFLECTION_MODE_OUTSIDE_IN;
-    case 'inside-out':
-      return FORCE_FIELD_REFLECTION_MODE_INSIDE_OUT;
-    case 'both':
-      return FORCE_FIELD_REFLECTION_MODE_BOTH;
-  }
-  return FORCE_FIELD_REFLECTION_MODE_BOTH;
 }
 
 // Reusable containers for checkProjectileCollisions (avoid per-frame allocations)
@@ -185,7 +169,6 @@ function computeProjectileReflectorHits(
     _reflectorExcludeEntityId.subarray(0, count),
     mirrorsActive ? 1 : 0,
     forceFieldsActive ? 1 : 0,
-    encodeForceFieldReflectionMode(world.forceFieldReflectionMode),
     FORCE_FIELD_PANEL_PROJECTILE_QUERY_PAD,
     _reflectorHitKind.subarray(0, count),
     _reflectorHitEntityId.subarray(0, count),
@@ -197,6 +180,13 @@ function computeProjectileReflectorHits(
     _reflectorHitNormalY.subarray(0, count),
     _reflectorHitNormalZ.subarray(0, count),
   );
+}
+
+function forceFieldMaterialReflectsProjectile(isRocketShot: boolean): boolean {
+  const response = isRocketShot
+    ? REFLECTIVE_FORCE_FIELD_MATERIAL.projectileResponse.rocket
+    : REFLECTIVE_FORCE_FIELD_MATERIAL.projectileResponse.plasma;
+  return response === 'reflect';
 }
 
 // Reusable empty set for additive area damage (avoids allocating new Set per frame)
@@ -255,6 +245,7 @@ function reflectVelocityPreserveSpeed(
   normalX: number,
   normalY: number,
   normalZ: number,
+  reflectivity: number,
 ): { x: number; y: number; z: number } | null {
   // Inline sqrt over 3-arg Math.hypot: V8 const-folds and inlines the
   // squared expression aggressively; Math.hypot adds overflow-safe
@@ -272,7 +263,7 @@ function reflectVelocityPreserveSpeed(
   let rz = vz - 2 * dot * nz;
   const rLen = Math.sqrt(rx * rx + ry * ry + rz * rz);
   if (rLen <= 1e-9) return null;
-  const scale = speed / rLen;
+  const scale = (speed * reflectivity) / rLen;
   rx *= scale;
   ry *= scale;
   rz *= scale;
@@ -536,9 +527,9 @@ export function checkProjectileCollisions(
 
     // Reflector contacts — force-field panels and force-field spheres are the
     // same reflector material. Normal traveling projectiles skip off the
-    // surface with the same vector reflection math beams use; rocket-class
-    // behavior is controlled by ROCKET_REFLECTOR_COLLISION_MODE. Beams/lasers
-    // are handled by their own line path.
+    // surface with the same vector reflection math beams use; per-shot-type
+    // behavior comes from the force-field material. Beams/lasers are handled
+    // by their own line path.
     let hitForceField = false;
     let reflectedProjectile = false;
     let reflectorNormalX: number | undefined;
@@ -571,8 +562,7 @@ export function checkProjectileCollisions(
         hitForceField = reflectorKind === REFLECTOR_HIT_KIND_FORCE_FIELD;
       }
       if (bestT < Infinity) {
-        const shouldReflectProjectile =
-          !isRocketShot || ROCKET_REFLECTOR_COLLISION_MODE === 'reflect';
+        const shouldReflectProjectile = forceFieldMaterialReflectsProjectile(isRocketShot);
         const reflected = shouldReflectProjectile &&
           reflectorNormalX !== undefined &&
           reflectorNormalY !== undefined &&
@@ -580,6 +570,7 @@ export function checkProjectileCollisions(
           ? reflectVelocityPreserveSpeed(
               proj.velocityX, proj.velocityY, proj.velocityZ,
               reflectorNormalX, reflectorNormalY, reflectorNormalZ,
+              REFLECTIVE_FORCE_FIELD_MATERIAL.reflection.reflectivity,
             )
           : null;
         if (reflected) {

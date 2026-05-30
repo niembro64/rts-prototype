@@ -41,8 +41,7 @@ export type ForceFieldPanelMesh = {
 
 export type ForceFieldPanelMount = {
   /** Authored chassis-local offset of the panel center along the
-   *  turret's local +X (forward). For the arm-mounted mirror this is
-   *  the arm length (= radius.body × FORCE_FIELD_PANEL_ARM_LENGTH_MULT). */
+   *  turret's local +X (forward), resolved from the host mount geometry. */
   offsetX: number;
   /** Lateral chassis-local offset; always 0 for the regularized
    *  centerline force-field panel. */

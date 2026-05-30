@@ -3,7 +3,7 @@
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { BeamReflectorKind, Entity, EntityId, PlayerId } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, LineShotType, PlayerId } from '../types';
 import { NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
@@ -24,6 +24,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { magnitude, lineCircleIntersectionT, lineSphereIntersectionT, lineRectIntersectionT, rayBoxIntersectionT, isPointInSlice, getTransformCosSin } from '../../math';
 import { findClosestPanelHit } from '../combat/ForceFieldPanelHit';
 import { findForceFieldSegmentIntersection } from '../combat/forceFieldTurret';
+import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../blueprints/forceFieldMaterials';
 import { getTargetRadius, resolveWeaponWorldMount } from '../combat/combatUtils';
 import {
   distanceToLineShotRangeSphere,
@@ -229,7 +230,7 @@ export class DamageSystem {
   // impact point.
   //
   // Force-field panels are tilted rectangles; force fields are spherical
-  // reflectors whose crossing direction comes from battle config. Buildings
+  // reflectors whose response comes from their shared material. Buildings
   // are 3D AABBs (x/y footprint × z depth), so a high-arc beam can pass
   // over a short building and hit the reflector behind it.
   findBeamPath(
@@ -237,6 +238,7 @@ export class DamageSystem {
     endX: number, endY: number, endZ: number,
     sourceEntityId: EntityId,
     lineWidth: number,
+    lineShotType: LineShotType = 'beam',
     maxSegments: number = 4,
     rangeSphere: LineShotRangeSphere | undefined = undefined,
   ): {
@@ -335,6 +337,19 @@ export class DamageSystem {
         normalZ: hit.normalZ,
       };
 
+      if (REFLECTIVE_FORCE_FIELD_MATERIAL.projectileResponse[lineShotType] !== 'reflect') {
+        return {
+          endX: hit.x,
+          endY: hit.y,
+          endZ: hit.z,
+          obstructionT: undefined,
+          reflections,
+          terminalReflection: reflection,
+          endpointDamageable: false,
+          segmentLimitReached: false,
+        };
+      }
+
       if (segmentIndex === segmentLimit - 1) {
         return {
           endX: hit.x,
@@ -428,7 +443,8 @@ export class DamageSystem {
         curEZ = hit.z + reflDirZ * sphereDistance;
       } else {
         const travelled = Math.max(0, Math.min(segLen, segLen * hit.t));
-        remainingRange = Math.max(0, remainingRange - travelled);
+        remainingRange = Math.max(0, remainingRange - travelled)
+          * REFLECTIVE_FORCE_FIELD_MATERIAL.reflection.reflectivity;
         if (remainingRange <= 1e-6) {
           curEX = hit.x;
           curEY = hit.y;

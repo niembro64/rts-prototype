@@ -21,7 +21,8 @@
 
 import type { WorldState } from '../WorldState';
 import { spatialGrid } from '../SpatialGrid';
-import { getActiveForceFields } from './forceFieldTurret';
+import { encodeForceFieldReflectionMode, getActiveForceFields } from './forceFieldTurret';
+import { REFLECTIVE_FORCE_FIELD_MATERIAL } from '../blueprints/forceFieldMaterials';
 import {
   MIRROR_SIGHT_QUERY_PAD,
   weaponRequiresNonObstructedLineOfSight,
@@ -752,6 +753,7 @@ export function stampForceFieldSurfacePool(
         f.entityId,
         f.centerX, f.centerY, f.centerZ,
         f.radius,
+        encodeForceFieldReflectionMode(f.reflectionMode),
       );
     }
   }
@@ -770,6 +772,9 @@ export function stampForceFieldSurfacePool(
   }
 
   const currentTick = world.getTick();
+  let panelReflectionMode = encodeForceFieldReflectionMode(
+    REFLECTIVE_FORCE_FIELD_MATERIAL.reflection.mode,
+  );
   let unitIdx = 0;
   let panelIdx = 0;
   for (const unit of forceFieldPanelUnits) {
@@ -783,6 +788,10 @@ export function stampForceFieldSurfacePool(
     const broadRadius = Math.max(unit.unit.forceFieldBoundRadius, unit.unit.radius.shot)
       + MIRROR_SIGHT_QUERY_PAD;
     const forceFieldPanelTurret = unitTurrets[0];
+    const panelShot = forceFieldPanelTurret.config.shot;
+    if (panelShot !== undefined && panelShot.type === 'forceField') {
+      panelReflectionMode = encodeForceFieldReflectionMode(panelShot.material.reflection.mode);
+    }
     const forceFieldPanelRot = forceFieldPanelTurret.rotation;
     const forceFieldPanelPitch = forceFieldPanelTurret.pitch;
     const unitGroundZ = getUnitGroundZ(unit);
@@ -834,6 +843,7 @@ export function stampForceFieldSurfacePool(
 
   pool.setUnitCount(unitIdx);
   pool.setPanelCount(panelIdx);
+  pool.setPanelMaterialMode(panelReflectionMode);
 }
 
 /** Convenience wrapper that runs all input-slab stamping passes

@@ -24,7 +24,10 @@ export type {
 export type {
   BeamShotBlueprint,
   ForceFieldBarrierRatioConfig,
+  ForceFieldMaterialBlueprint,
+  ForceFieldMaterialVisualConfig,
   ForceFieldShotBlueprint,
+  ForceFieldSurfaceResponse,
   LaserShotBlueprint,
   LineShotBlueprint,
   ProjectileShotBlueprint,
@@ -35,7 +38,11 @@ export type {
   SmokeTrailSpec,
   SubmunitionSpec,
 } from './shotTypes';
-export { isLineShotBlueprint } from './shotTypes';
+export {
+  FORCE_FIELD_SURFACE_RESPONSES,
+  isForceFieldReflectionMode,
+  isLineShotBlueprint,
+} from './shotTypes';
 export type { ConstructionEmitterSize, ConstructionEmitterVisualSpec } from './constructionTypes';
 
 /** A reflective force-field panel mount on a turret. The panel itself is a
@@ -134,6 +141,8 @@ export type TurretBlueprint = {
   requiresNonObstructedLineOfSight: boolean;
   spread: { angle: number; pelletCount: number } | null;
   burst: { count: number; delay: number } | null;
+  /** Deprecated explicit absence field. Panel geometry is authored on
+   *  TurretMount.forceFieldPanels; turret blueprints must keep this empty. */
   forceFieldPanels: ForceFieldPanel[];
   audio: { fireSound: SoundEntry } | null;
   radius: TurretRadiusConfig;
@@ -229,6 +238,10 @@ export type UnitTurretMountZResolver = {
 export type TurretMount = {
   turretBlueprintId: TurretBlueprintId;
   mount: MountOffset;
+  /** Shape geometry projected by this mount when the referenced turret emits
+   *  a force-field panel shot. Materials live on the shot; these entries only
+   *  describe panel placement relative to the mount. */
+  forceFieldPanels?: ForceFieldPanel[];
   /** Host-directed vs fully-autonomous targeting policy for THIS mount.
    *  A host-directed turret inherits its host's lock-on (player/AI
    *  command target) when the host is locked on, applying its own
@@ -255,6 +268,8 @@ export type TurretMount = {
 export type BuildingTurretMount = {
   turretBlueprintId: TurretBlueprintId;
   mount: MountOffset;
+  /** Optional force-field panel geometry for tower-mounted panel emitters. */
+  forceFieldPanels?: ForceFieldPanel[];
   /** Host-directed vs fully-autonomous targeting policy for THIS mount.
    *  See TurretMount.hostDirected — towers follow the same primary /
    *  secondary contract as units. */

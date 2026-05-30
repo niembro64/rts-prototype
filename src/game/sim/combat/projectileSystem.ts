@@ -1229,6 +1229,7 @@ export function updateProjectiles(
           fullEndX, fullEndY, fullEndZ,
           proj.sourceEntityId,
           collisionRadius,
+          proj.projectileType === 'laser' ? 'laser' : 'beam',
           BEAM_MAX_SEGMENTS,
           rangeSphere,
         );

@@ -6,7 +6,11 @@
  * references and validates the table shape expected by current callers.
  */
 
-import { isShotBlueprintId, type ShotBlueprintId } from '../../../types/blueprintIds';
+import {
+  isForceFieldMaterialId,
+  isShotBlueprintId,
+  type ShotBlueprintId,
+} from '../../../types/blueprintIds';
 import rawShotBlueprints from './shots.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
@@ -24,6 +28,7 @@ const PROJECTILE_EXPLICIT_FIELDS = [
 
 const LINE_EXPLICIT_FIELDS = ['hitSound', 'gravityForceMultiplier'] as const;
 const FORCE_FIELD_EXPLICIT_FIELDS = [
+  'materialId',
   'angle',
   'transitionTime',
   'barrier',
@@ -101,6 +106,11 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     ) {
       throw new Error(
         `Shot blueprint ${id} must define positive transitionTime`,
+      );
+    }
+    if (!isForceFieldMaterialId(blueprint.materialId)) {
+      throw new Error(
+        `Shot blueprint ${id} references unknown force-field material: ${blueprint.materialId}`,
       );
     }
   } else {

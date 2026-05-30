@@ -29,7 +29,7 @@ export function emitForceFieldStopsForEntity(entity: Entity): SimEvent[] {
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
     const shot = config.shot;
-    if (shot === undefined || shot.type !== 'forceField') continue;
+    if (shot === undefined || shot.type !== 'forceField' || shot.barrier === undefined) continue;
 
     const soundEntityId = turretSoundEntityId(entity, i);
     if (!activeForceFieldSoundIds.delete(soundEntityId)) continue;
@@ -60,7 +60,7 @@ export function updateForceFieldSounds(units: Entity[]): SimEvent[] {
       const weapon = turrets[i];
       const config = weapon.config;
       const shot = config.shot;
-      if (shot === undefined || shot.type !== 'forceField') continue;
+      if (shot === undefined || shot.type !== 'forceField' || shot.barrier === undefined) continue;
 
       const soundEntityId = turretSoundEntityId(unit, i);
       const progress = weapon.forceField !== undefined ? weapon.forceField.transition : 0;
