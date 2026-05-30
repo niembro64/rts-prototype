@@ -20,8 +20,13 @@ import rawTowerBlueprints from './towers.json';
 import { assertExplicitFields } from './jsonValidation';
 import {
   LOCK_ON_EXCLUSION_FIELDS,
+  assertNoInlineLockOnExclusionFields,
   validateLockOnExclusionObject,
 } from './lockOnValidation';
+import {
+  assertTowerLockOnExclusionConfigIds,
+  getTowerLockOnExclusions,
+} from './lockOnConfig';
 import { BUILDING_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 
 export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
@@ -57,10 +62,27 @@ export type BuildingBlueprint = Partial<LockOnExclusionObject> & {
   detector: DetectorBlueprint | null;
 };
 
+type JsonTowerBlueprint = Omit<BuildingBlueprint, keyof LockOnExclusionObject>;
+
 export const PURE_BUILDING_BLUEPRINTS =
   rawBuildingBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
-export const TOWER_BLUEPRINTS =
-  rawTowerBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
+const RAW_TOWER_BLUEPRINTS =
+  rawTowerBlueprints as Partial<Record<BuildingBlueprintId, JsonTowerBlueprint>>;
+
+assertTowerLockOnExclusionConfigIds(Object.keys(RAW_TOWER_BLUEPRINTS));
+
+export const TOWER_BLUEPRINTS = Object.fromEntries(
+  Object.entries(RAW_TOWER_BLUEPRINTS).map(([id, blueprint]) => {
+    assertNoInlineLockOnExclusionFields(`tower blueprint ${id}`, blueprint);
+    return [
+      id,
+      {
+        ...blueprint,
+        ...getTowerLockOnExclusions(id),
+      },
+    ];
+  }),
+) as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
 const STATIC_BLUEPRINTS_BY_ID = {
   ...PURE_BUILDING_BLUEPRINTS,
   ...TOWER_BLUEPRINTS,

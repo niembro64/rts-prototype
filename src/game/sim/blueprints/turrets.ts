@@ -8,14 +8,17 @@
 
 import { isTurretBlueprintId, type TurretBlueprintId } from '../../../types/blueprintIds';
 import {
-  TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS,
-  TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
   WEAPON_KINDS,
 } from '../../../types/blueprints';
 import rawTurretBlueprints from './turrets.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
-import type { TurretBlueprint } from './types';
+import type { LockOnExclusionObject, TurretBlueprint } from './types';
+import { assertNoInlineLockOnExclusionFields } from './lockOnValidation';
+import {
+  assertTurretLockOnExclusionConfigIds,
+  getTurretLockOnExclusions,
+} from './lockOnConfig';
 
 const TURRET_EXPLICIT_FIELDS = [
   'shotBlueprintId',
@@ -33,59 +36,31 @@ const TURRET_EXPLICIT_FIELDS = [
   'groundAimFraction',
   'headOnly',
   'constructionEmitter',
-  'excludeLockOnLevel0FriendsAndEnemies',
-  'excludeLockOnLevel0Entities',
-  'excludeLockOnLevel1Buildings',
-  'excludeLockOnLevel1Towers',
-  'excludeLockOnLevel1Units',
-  'excludeLockOnLevel1Turrets',
   'kind',
 ] as const;
 
 const WEAPON_KIND_SET: ReadonlySet<string> = new Set(WEAPON_KINDS);
 
-const TURRET_LOCK_ON_RELATIONSHIP_SET: ReadonlySet<string> = new Set(
-  TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
-);
-const TURRET_LOCK_ON_ENTITY_FAMILY_SET: ReadonlySet<string> = new Set(
-  TURRET_LOCK_ON_ENTITY_FAMILY_EXCLUSIONS,
-);
+type JsonTurretBlueprint = Omit<TurretBlueprint, keyof LockOnExclusionObject>;
 
-function assertStringArray(
-  label: string,
-  field: string,
-  value: unknown,
-): asserts value is string[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`Invalid ${label}: ${field} must be an array`);
-  }
-  for (let i = 0; i < value.length; i++) {
-    if (typeof value[i] !== 'string') {
-      throw new Error(
-        `Invalid ${label}: ${field}[${i}] must be a string, got ${typeof value[i]}`,
-      );
-    }
-  }
-}
-
-function assertEnumArray(
-  label: string,
-  field: string,
-  value: string[],
-  allowed: ReadonlySet<string>,
-): void {
-  for (let i = 0; i < value.length; i++) {
-    if (!allowed.has(value[i])) {
-      throw new Error(
-        `Invalid ${label}: ${field}[${i}] = "${value[i]}" is not one of [${[...allowed].join(', ')}]`,
-      );
-    }
-  }
-}
-
-export const TURRET_BLUEPRINTS = resolveBlueprintRefs(
+const RESOLVED_TURRET_BLUEPRINTS = resolveBlueprintRefs(
   rawTurretBlueprints,
-) as unknown as Record<TurretBlueprintId, TurretBlueprint>;
+) as unknown as Record<TurretBlueprintId, JsonTurretBlueprint>;
+
+assertTurretLockOnExclusionConfigIds(Object.keys(RESOLVED_TURRET_BLUEPRINTS));
+
+export const TURRET_BLUEPRINTS = Object.fromEntries(
+  Object.entries(RESOLVED_TURRET_BLUEPRINTS).map(([id, blueprint]) => {
+    assertNoInlineLockOnExclusionFields(`turret blueprint ${id}`, blueprint);
+    return [
+      id,
+      {
+        ...blueprint,
+        ...getTurretLockOnExclusions(id),
+      },
+    ];
+  }),
+) as Record<TurretBlueprintId, TurretBlueprint>;
 
 export const CONSTRUCTION_TURRET_HEAD_RADIUS =
   TURRET_BLUEPRINTS.turretConstruction.radius.body;
@@ -115,30 +90,4 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
       `Invalid ${label}: kind "${blueprint.kind}" is not one of [${[...WEAPON_KIND_SET].join(', ')}]`,
     );
   }
-  assertStringArray(
-    label,
-    'excludeLockOnLevel0FriendsAndEnemies',
-    blueprint.excludeLockOnLevel0FriendsAndEnemies,
-  );
-  assertEnumArray(
-    label,
-    'excludeLockOnLevel0FriendsAndEnemies',
-    blueprint.excludeLockOnLevel0FriendsAndEnemies,
-    TURRET_LOCK_ON_RELATIONSHIP_SET,
-  );
-  assertStringArray(
-    label,
-    'excludeLockOnLevel0Entities',
-    blueprint.excludeLockOnLevel0Entities,
-  );
-  assertEnumArray(
-    label,
-    'excludeLockOnLevel0Entities',
-    blueprint.excludeLockOnLevel0Entities,
-    TURRET_LOCK_ON_ENTITY_FAMILY_SET,
-  );
-  assertStringArray(label, 'excludeLockOnLevel1Buildings', blueprint.excludeLockOnLevel1Buildings);
-  assertStringArray(label, 'excludeLockOnLevel1Towers', blueprint.excludeLockOnLevel1Towers);
-  assertStringArray(label, 'excludeLockOnLevel1Units', blueprint.excludeLockOnLevel1Units);
-  assertStringArray(label, 'excludeLockOnLevel1Turrets', blueprint.excludeLockOnLevel1Turrets);
 }

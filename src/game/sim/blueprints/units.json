@@ -26,12 +26,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "polygon",
       "sides": 4,
@@ -83,12 +77,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "polygon",
       "sides": 3,
@@ -147,12 +135,6 @@
         "hostDirected": false
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "circle",
       "radiusFrac": 0.12,
@@ -200,12 +182,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "polygon",
       "sides": 4,
@@ -255,12 +231,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "polygon",
       "sides": 6,
@@ -310,12 +280,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "circle",
       "radiusFrac": 0.12,
@@ -367,12 +331,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "polygon",
       "sides": 5,
@@ -422,12 +380,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -564,12 +516,6 @@
         "hostDirected": false
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -629,12 +575,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "rect",
       "lengthFrac": 0.7,
@@ -683,12 +623,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -749,12 +683,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "circle",
       "radiusFrac": 0.12,
@@ -802,12 +730,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "circle",
       "radiusFrac": 0.12,
@@ -864,12 +786,6 @@
         "hostDirected": false
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -933,12 +849,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -1004,12 +914,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [
@@ -1083,12 +987,6 @@
         "hostDirected": true
       }
     ],
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "bodyShape": {
       "kind": "composite",
       "parts": [

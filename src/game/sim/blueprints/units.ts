@@ -16,17 +16,20 @@ import { UNIT_LOCOMOTION_BLUEPRINTS } from './locomotion';
 import rawUnitBlueprints from './units.json';
 import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields } from './jsonValidation';
+import type { LockOnExclusionObject } from './types';
 import {
-  LOCK_ON_EXCLUSION_FIELDS,
-  validateLockOnExclusionObject,
+  assertNoInlineLockOnExclusionFields,
 } from './lockOnValidation';
+import {
+  assertUnitLockOnExclusionConfigIds,
+  getUnitLockOnExclusions,
+} from './lockOnConfig';
 
-type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion'> & {
+type JsonUnitBlueprint = Omit<UnitBlueprint, 'locomotion' | keyof LockOnExclusionObject> & {
   locomotionBlueprintId: string;
 };
 
 const UNIT_EXPLICIT_FIELDS = [
-  ...LOCK_ON_EXCLUSION_FIELDS,
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -41,11 +44,12 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
   const resolved = resolveBlueprintRefs(
     rawUnitBlueprints,
   ) as unknown as Record<string, JsonUnitBlueprint>;
+  assertUnitLockOnExclusionConfigIds(Object.keys(resolved));
   const blueprints: Record<string, UnitBlueprint> = {};
 
   for (const [id, blueprint] of Object.entries(resolved)) {
     assertExplicitFields(`unit blueprint ${id}`, blueprint, UNIT_EXPLICIT_FIELDS);
-    validateLockOnExclusionObject(`unit blueprint ${id}`, blueprint);
+    assertNoInlineLockOnExclusionFields(`unit blueprint ${id}`, blueprint);
     const locomotion = UNIT_LOCOMOTION_BLUEPRINTS[blueprint.locomotionBlueprintId];
     if (!locomotion) {
       throw new Error(
@@ -55,6 +59,7 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
     const { locomotionBlueprintId, ...unitBlueprint } = blueprint;
     blueprints[id] = {
       ...unitBlueprint,
+      ...getUnitLockOnExclusions(id),
       locomotionBlueprintId,
       locomotion,
     };

@@ -47,12 +47,6 @@
       "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretGunBurst": {
@@ -114,12 +108,6 @@
       "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretCannon": {
@@ -173,12 +161,6 @@
       "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretMortarSlow": {
@@ -232,12 +214,6 @@
       "angleType": "ballisticArcHigh",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretMortarDrop": {
@@ -288,12 +264,6 @@
       "angleType": "ballisticArcLowOnlyUnder",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretMortarFast": {
@@ -355,12 +325,6 @@
       "angleType": "ballisticArcHigh",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretGatling": {
@@ -422,12 +386,6 @@
       "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretDisruptor": {
@@ -476,12 +434,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretForceFieldPanel": {
@@ -536,12 +488,6 @@
       "angleType": "rayBisectTurretAndBody",
       "lockOnType": "lockOnToTurret"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": ["buildings", "towers", "units"],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretBeam": {
@@ -590,12 +536,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretBeamMini": {
@@ -644,12 +584,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretBeamMega": {
@@ -698,12 +632,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretForceFieldSphere": {
@@ -761,12 +689,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretConstruction": {
@@ -833,12 +755,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": [],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "construction"
   },
   "turretBeamLong": {
@@ -887,12 +803,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretCannonLong": {
@@ -947,12 +857,6 @@
       "angleType": "ballisticArcLow",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretRocketSlow": {
@@ -1015,12 +919,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   },
   "turretRocketFast": {
@@ -1071,12 +969,6 @@
       "angleType": "rayDirect",
       "lockOnType": "lockOnToBody"
     },
-    "excludeLockOnLevel0FriendsAndEnemies": ["friendly_entities"],
-    "excludeLockOnLevel0Entities": [],
-    "excludeLockOnLevel1Buildings": [],
-    "excludeLockOnLevel1Towers": [],
-    "excludeLockOnLevel1Units": [],
-    "excludeLockOnLevel1Turrets": [],
     "kind": "attack"
   }
 }

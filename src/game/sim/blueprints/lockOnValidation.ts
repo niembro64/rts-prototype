@@ -3,6 +3,7 @@ import {
   TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
   type LockOnExclusionObject,
 } from '../../../types/blueprints';
+import { assertExplicitFields, isObject } from './jsonValidation';
 
 const LOCK_ON_RELATIONSHIP_SET: ReadonlySet<string> = new Set(
   TURRET_LOCK_ON_RELATIONSHIP_EXCLUSIONS,
@@ -19,6 +20,22 @@ export const LOCK_ON_EXCLUSION_FIELDS = [
   'excludeLockOnLevel1Units',
   'excludeLockOnLevel1Turrets',
 ] as const;
+
+export function assertNoInlineLockOnExclusionFields(
+  label: string,
+  value: unknown,
+): void {
+  if (!isObject(value)) {
+    throw new Error(`Invalid ${label}: expected object`);
+  }
+  for (const field of LOCK_ON_EXCLUSION_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(value, field)) {
+      throw new Error(
+        `Invalid ${label}: lock-on exclusion field "${field}" belongs in exclusionLockOnConfig.json`,
+      );
+    }
+  }
+}
 
 function assertStringArray(
   label: string,
@@ -82,4 +99,33 @@ export function validateLockOnExclusionObject(
   assertStringArray(label, 'excludeLockOnLevel1Towers', value.excludeLockOnLevel1Towers);
   assertStringArray(label, 'excludeLockOnLevel1Units', value.excludeLockOnLevel1Units);
   assertStringArray(label, 'excludeLockOnLevel1Turrets', value.excludeLockOnLevel1Turrets);
+}
+
+export function validateLockOnExclusionConfigSection(
+  sectionLabel: string,
+  value: unknown,
+): asserts value is Record<string, LockOnExclusionObject> {
+  if (!isObject(value)) {
+    throw new Error(`Invalid lock-on exclusion config: "${sectionLabel}" must be an object`);
+  }
+  for (const [id, exclusions] of Object.entries(value)) {
+    const label = `lock-on exclusion config ${sectionLabel}.${id}`;
+    assertExplicitFields(label, exclusions, LOCK_ON_EXCLUSION_FIELDS);
+    validateLockOnExclusionObject(label, exclusions as LockOnExclusionObject);
+  }
+}
+
+export function cloneLockOnExclusionObject(
+  value: LockOnExclusionObject,
+): LockOnExclusionObject {
+  return {
+    excludeLockOnLevel0FriendsAndEnemies: [
+      ...value.excludeLockOnLevel0FriendsAndEnemies,
+    ],
+    excludeLockOnLevel0Entities: [...value.excludeLockOnLevel0Entities],
+    excludeLockOnLevel1Buildings: [...value.excludeLockOnLevel1Buildings],
+    excludeLockOnLevel1Towers: [...value.excludeLockOnLevel1Towers],
+    excludeLockOnLevel1Units: [...value.excludeLockOnLevel1Units],
+    excludeLockOnLevel1Turrets: [...value.excludeLockOnLevel1Turrets],
+  };
 }

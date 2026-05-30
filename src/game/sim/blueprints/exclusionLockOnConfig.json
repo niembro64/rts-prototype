@@ -1,0 +1,350 @@
+{
+  "units": {
+    "jackal": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "lynx": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "daddy": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "badger": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "mongoose": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "tick": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "mammoth": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "formik": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "widow": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "hippo": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "tarantula": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "loris": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "mosquito": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "dragonfly": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "constructionDrone": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "eagle": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "commander": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    }
+  },
+  "turrets": {
+    "turretGunLight": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretGunBurst": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretCannon": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretMortarSlow": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretMortarDrop": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretMortarFast": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretGatling": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretDisruptor": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretForceFieldPanel": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [
+        "buildings",
+        "towers",
+        "units"
+      ],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretBeam": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretBeamMini": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretBeamMega": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretForceFieldSphere": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretConstruction": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretBeamLong": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretCannonLong": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretRocketSlow": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "turretRocketFast": {
+      "excludeLockOnLevel0FriendsAndEnemies": [
+        "friendly_entities"
+      ],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    }
+  },
+  "towers": {
+    "factory": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "megaBeamTower": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    },
+    "cannonTower": {
+      "excludeLockOnLevel0FriendsAndEnemies": [],
+      "excludeLockOnLevel0Entities": [],
+      "excludeLockOnLevel1Buildings": [],
+      "excludeLockOnLevel1Towers": [],
+      "excludeLockOnLevel1Units": [],
+      "excludeLockOnLevel1Turrets": []
+    }
+  }
+}
