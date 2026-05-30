@@ -469,6 +469,7 @@ export class RtsScene3D {
       this.threeApp.renderer.domElement,
       this.mapWidth,
       this.mapHeight,
+      this.terrainTileRenderer.getMesh(),
     );
     this.threeApp.orbit.setCursorPicker((cx, cy, terrainMode) =>
       this.cursorGround.pickWorld(cx, cy, terrainMode)

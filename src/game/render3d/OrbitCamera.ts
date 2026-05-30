@@ -199,6 +199,7 @@ export class OrbitCamera {
   private _orbitPitchQuatTmp = new THREE.Quaternion();
   private _orbitRightTmp = new THREE.Vector3();
   private _cameraPosTmp = new THREE.Vector3();
+  private _cameraLookAtTmp = new THREE.Vector3();
   private static _ORBIT_WORLD_Y = new THREE.Vector3(0, 1, 0);
 
   private canvas: HTMLElement;
@@ -805,15 +806,17 @@ export class OrbitCamera {
    *
    *  Terrain clearance is a pure render-time floor: when the computed
    *  camera position would sit below the terrain directly beneath it,
-   *  its height is lifted to `terrainHeight + minTerrainClearance`.
+   *  both the rendered camera and rendered look-at point are lifted by
+   *  the same vertical delta.
    *
    *  This deliberately NEVER writes back into the orbit state. An
    *  earlier version pushed the camera along terrain normals and then
    *  recovered yaw / pitch / distance from the collision-adjusted
    *  position — which made the view spin and ratchet its zoom outward
-   *  as the camera brushed hills while panning. The orbit state stays
-   *  the user's single source of truth; a pure vertical lift leaves yaw
-   *  untouched, so the framing never rotates on its own near terrain. */
+   *  as the camera brushed hills while panning. Lifting the look-at
+   *  point with the eye preserves the authored yaw/pitch/distance for
+   *  the rendered frame too, so terrain clearance cannot silently tilt
+   *  the camera down into the ground. */
   apply(): void {
     this.constrainTargets();
     const pos = this.cameraPositionForState(
@@ -825,6 +828,7 @@ export class OrbitCamera {
       this.pitch,
       this._cameraPosTmp,
     );
+    const lookAt = this._cameraLookAtTmp.copy(this.target);
     if (
       this.cameraCollidesWithTerrain &&
       this.getTerrainHeight &&
@@ -835,11 +839,12 @@ export class OrbitCamera {
       // orbit state put it rather than snapping to a garbage floor.
       const floorY = this.getTerrainHeight(pos.x, pos.z) + this.minTerrainClearance;
       if (pos.y < floorY) {
+        lookAt.y += floorY - pos.y;
         pos.y = floorY;
       }
     }
     this.camera.position.copy(pos);
-    this.camera.lookAt(this.target);
+    this.camera.lookAt(lookAt);
   }
 
   /** Set orbit target (and the to-target) without changing

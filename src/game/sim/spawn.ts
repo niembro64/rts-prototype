@@ -1,16 +1,12 @@
 import type { WorldState } from './WorldState';
 import type { Entity, PlayerId, BuildingBlueprintId } from './types';
-import { createCombatComponent } from './types';
-import { isTowerBuildingBlueprintId } from '../../types/buildingTypes';
 import type { ConstructionSystem } from './construction';
 import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
-import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
-import { BUILDABLE_UNIT_BLUEPRINT_IDS, getBuildingBlueprint } from './blueprints';
-import { applyEntitySensorBlueprint } from './cloakDetection';
+import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
 import {
@@ -20,10 +16,10 @@ import {
 import { isWaterAt } from './Terrain';
 import {
   buildingBlueprintHasActiveState,
-  ensureBuildingActiveState,
   initializeBuildingActiveState,
 } from './buildingActiveState';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
+import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import {
   getLayoutPlayerCount,
   getPlayerBaseAngle,
@@ -224,19 +220,9 @@ function placeCompleteBuilding(
     playerId,
   );
 
-  entity.buildingBlueprintId = buildingBlueprintId;
-  // Static turret-carrying entities (fabricator + shooting towers) are
-  // tower-class. Stamp the EntityType discriminator at spawn so UI and
-  // dispatch code can match on entity.type === 'tower' instead of
-  // re-checking buildingBlueprintId every read. See design_philosophy.html
-  // "Towers Are Static Hosts That Lock On And Fire".
-  if (isTowerBuildingBlueprintId(buildingBlueprintId)) {
-    entity.type = 'tower';
-  }
-  applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
-  if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
-    ensureBuildingActiveState(entity);
-  }
+  applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
+    allocateEntityId: () => world.generateEntityId(),
+  });
 
   if (entity.building) {
     entity.building.hp = config.hp;
@@ -272,21 +258,6 @@ function placeCompleteBuilding(
 
   if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
     initializeBuildingActiveState(world, entity);
-  }
-
-  // Buildings whose blueprint declares turrets get a CombatComponent
-  // at spawn — the same shape units carry. The cache filter picks them
-  // up via entity.combat (host-agnostic), so armed buildings ride
-  // through the targeting / fire / turret-rotation pipelines on the
-  // same code path as armed units.
-  const buildingTurrets = createBuildingRuntimeTurrets(
-    buildingBlueprintId,
-    entity.id,
-    entity.id,
-    () => world.generateEntityId(),
-  );
-  if (buildingTurrets.length > 0) {
-    entity.combat = createCombatComponent(buildingTurrets);
   }
 
   grid.place(gx, gy, config.gridWidth, config.gridHeight, entity.id, playerId);

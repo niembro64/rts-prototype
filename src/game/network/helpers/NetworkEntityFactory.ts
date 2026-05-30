@@ -178,7 +178,7 @@ export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity):
     return createUnitFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 
-  if (type === 'building') {
+  if (type === 'building' || type === 'tower') {
     return createBuildingFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 

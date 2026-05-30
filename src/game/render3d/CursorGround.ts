@@ -1,37 +1,20 @@
 // CursorGround — single canonical screen-ray service for terrain picks.
 // Camera anchors call `pickWorld` with an explicit terrain mode; command
-// inputs call `pickSim`, which keeps the existing command-target water
-// projection behavior.
+// inputs call `pickSim`. Both paths resolve through the same first-surface
+// raycast so a click on a mountain top cannot skip through to terrain behind
+// the mountain.
 //
 // Three coord ↔ sim coord mapping (the project-wide convention):
 //   sim.x  = three.x
 //   sim.y  = three.z
 //   sim.z  = three.y     (altitude / height)
 //
-// COMMAND SUBMERGED-HIT FALLBACK. The terrain surface is a heightmap that dips
-// DOWN to TILE_FLOOR_Y in valley basins. The water plane is a separate
-// translucent mesh layered on top at WATER_LEVEL — it does NOT
-// participate in picking. So for a typical RTS camera pitch
-// (~50°), a click on what visually appears to be the FAR shore of a
-// valley casts a ray that enters the basin from above and hits the
-// near-side SUBMERGED basin slope FIRST (it's closer to the camera
-// than the far shore). The terrain hit's three.y is below
-// WATER_LEVEL — literally underground. If we returned that point,
-// move commands resolve to a goal cell INSIDE the valley, the
-// pathfinder snaps it to the nearest open cell (often the unit's
-// own side of the valley), and the unit walks a tiny distance instead
-// of crossing.
-//
-// Fix: when the terrain hit is submerged, fall back to a flat-ground
-// plane projection at three.y = 0 (= sim.z = 0, the world's
-// "building zero"). The plane projection gives the horizontal
-// (x, z) where the cursor's ray would land if no terrain dipped
-// below it — i.e. the actual horizontal target the user pointed at.
-// Far-shore clicks resolve to far-shore coordinates; clicks ON water
-// resolve to a horizontal point at the visible water surface (the
-// flat-plane at y=0 is close enough to the water plane at
-// WATER_LEVEL=-480 for command purposes; the pathfinder doesn't
-// care about altitude).
+// The terrain is not monotonic along an oblique camera ray. A ray can enter a
+// mountain, leave it over a valley, then hit later terrain behind it. The
+// resolver therefore never binary-searches a camera→world-floor interval
+// directly. It asks the authoritative terrain mesh for sorted intersections
+// first, then falls back to a forward scan that brackets the FIRST clearance
+// sign change before refining it.
 
 import * as THREE from 'three';
 import {
@@ -40,6 +23,9 @@ import {
   WATER_LEVEL,
 } from '../sim/Terrain';
 import type { CameraAnchorTerrain } from '../../types/camera';
+
+const TERRAIN_RAY_FALLBACK_STEP = 20;
+const TERRAIN_RAY_FALLBACK_MAX_STEPS = 8192;
 
 export type SimGroundPoint = {
   x: number;
@@ -52,23 +38,27 @@ export class CursorGround {
   private canvas: HTMLElement;
   private mapWidth: number;
   private mapHeight: number;
+  private terrainMesh?: THREE.Object3D;
 
   // Reusable scratch — never allocate per-call on hot input paths.
   private raycaster = new THREE.Raycaster();
   private ndc = new THREE.Vector2();
   private worldHit = new THREE.Vector3();
   private simHit: SimGroundPoint = { x: 0, y: 0, z: 0 };
+  private terrainHits: THREE.Intersection[] = [];
 
   constructor(
     camera: THREE.PerspectiveCamera,
     canvas: HTMLElement,
     mapWidth: number,
     mapHeight: number,
+    terrainMesh?: THREE.Object3D,
   ) {
     this.camera = camera;
     this.canvas = canvas;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+    this.terrainMesh = terrainMesh;
   }
 
   /** Cursor → camera anchor point in THREE.JS coords.
@@ -87,32 +77,7 @@ export class CursorGround {
     terrainMode: CameraAnchorTerrain,
   ): THREE.Vector3 | null {
     if (!this.setRayFromClient(clientX, clientY)) return null;
-    if (terrainMode === 'plane-2d') return this.pickPlaneRay();
-
-    const terrainHit = this.pickTerrainRay();
-    if (!terrainHit) return null;
-    if (terrainMode === 'terrain-3d-water' && terrainHit.y < WATER_LEVEL) {
-      terrainHit.y = WATER_LEVEL;
-    }
-    return terrainHit;
-  }
-
-  private pickCommandWorld(clientX: number, clientY: number): THREE.Vector3 | null {
-    if (!this.setRayFromClient(clientX, clientY)) return null;
-
-    // First try the authoritative terrain sampler. Use the hit only if it's
-    // ABOVE water level — otherwise the user clicked "through" a
-    // valley and the hit is on the near-side basin floor, which is
-    // not what they were pointing at.
-    const terrainHit = this.pickTerrainRay();
-    if (terrainHit && terrainHit.y >= WATER_LEVEL) {
-      return terrainHit;
-    }
-
-    // Fall back to flat ground-plane (three.y = 0) projection.
-    // This is what the user's cursor was actually pointing at on
-    // the playable surface, regardless of any basin dipping below.
-    return this.pickPlaneRay();
+    return this.pickWorldFromCurrentRay(terrainMode);
   }
 
   private setRayFromClient(clientX: number, clientY: number): boolean {
@@ -139,7 +104,31 @@ export class CursorGround {
     return this.worldHit;
   }
 
-  private pickTerrainRay(): THREE.Vector3 | null {
+  private pickWorldFromCurrentRay(terrainMode: CameraAnchorTerrain): THREE.Vector3 | null {
+    if (terrainMode === 'plane-2d') return this.pickPlaneRay();
+
+    const terrainHit = this.pickFirstTerrainSurfaceRay();
+    if (!terrainHit) return null;
+    if (terrainMode === 'terrain-3d-water' && terrainHit.y < WATER_LEVEL) {
+      terrainHit.y = WATER_LEVEL;
+    }
+    return terrainHit;
+  }
+
+  private pickFirstTerrainSurfaceRay(): THREE.Vector3 | null {
+    if (this.terrainMesh) {
+      this.terrainHits.length = 0;
+      this.raycaster.intersectObject(this.terrainMesh, false, this.terrainHits);
+      const hit = this.terrainHits[0];
+      if (hit) {
+        this.worldHit.copy(hit.point);
+        return this.worldHit;
+      }
+    }
+    return this.pickFirstTerrainSurfaceBySampling();
+  }
+
+  private pickFirstTerrainSurfaceBySampling(): THREE.Vector3 | null {
     const ray = this.raycaster.ray;
     if (ray.direction.y >= -1e-6) return null;
 
@@ -149,27 +138,52 @@ export class CursorGround {
       this.mapWidth,
       this.mapHeight,
     );
-    let lo = 0;
-    const loClearance = ray.origin.y - heightAt(lo);
-    if (loClearance <= 0) return null;
+    if (ray.origin.y - heightAt(0) <= 0) return null;
 
-    let hi = (TILE_FLOOR_Y - ray.origin.y) / ray.direction.y;
-    if (!Number.isFinite(hi) || hi <= 0) return null;
-    let hiClearance = ray.origin.y + hi * ray.direction.y - heightAt(hi);
-    if (hiClearance > 0) return null;
+    const maxT = (TILE_FLOOR_Y - ray.origin.y) / ray.direction.y;
+    if (!Number.isFinite(maxT) || maxT <= 0) return null;
 
+    const horizontalRate = Math.hypot(ray.direction.x, ray.direction.z);
+    const verticalRate = Math.abs(ray.direction.y);
+    const horizontalStep = horizontalRate > 1e-6
+      ? TERRAIN_RAY_FALLBACK_STEP / horizontalRate
+      : Infinity;
+    const verticalStep = verticalRate > 1e-6
+      ? TERRAIN_RAY_FALLBACK_STEP / verticalRate
+      : Infinity;
+    const desiredStep = Math.min(horizontalStep, verticalStep);
+    const step = Number.isFinite(desiredStep) && desiredStep > 0
+      ? Math.max(desiredStep, maxT / TERRAIN_RAY_FALLBACK_MAX_STEPS)
+      : maxT / TERRAIN_RAY_FALLBACK_MAX_STEPS;
+
+    let hitLo = 0;
+    let hitHi = 0;
+    let found = false;
+    for (let t = Math.min(step, maxT); t <= maxT + 1e-6; t += step) {
+      const clampedT = Math.min(t, maxT);
+      const clearance = ray.origin.y + clampedT * ray.direction.y - heightAt(clampedT);
+      if (clearance <= 0) {
+        hitLo = Math.max(0, clampedT - step);
+        hitHi = clampedT;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return null;
+
+    let hiClearance = ray.origin.y + hitHi * ray.direction.y - heightAt(hitHi);
     for (let i = 0; i < 12; i++) {
-      const mid = (lo + hi) * 0.5;
+      const mid = (hitLo + hitHi) * 0.5;
       const clearance = ray.origin.y + mid * ray.direction.y - heightAt(mid);
       if (clearance > 0) {
-        lo = mid;
+        hitLo = mid;
       } else {
-        hi = mid;
+        hitHi = mid;
         hiClearance = clearance;
       }
     }
 
-    const t = hiClearance <= 0 ? hi : lo;
+    const t = hiClearance <= 0 ? hitHi : hitLo;
     const x = ray.origin.x + t * ray.direction.x;
     const z = ray.origin.z + t * ray.direction.z;
     this.worldHit.set(
@@ -182,15 +196,16 @@ export class CursorGround {
 
   /** Cursor → command target point in SIM coords
    *  (sim.x = three.x, sim.y = three.z, sim.z = three.y).
-   *  Land picks use the rendered terrain mesh. Submerged first hits
-   *  use the command-specific flat projection described above so
-   *  far-shore water clicks keep their intended horizontal target.
+   *  Commands use the same first rendered terrain hit as camera
+   *  anchors, then clamp submerged terrain up to the visible water
+   *  surface for the returned altitude.
    *  The z component carries the chosen altitude for renderers /
    *  handlers that need it.
    *  Returns null on miss; callers should treat that as "command
    *  cannot be issued from this cursor position". */
   pickSim(clientX: number, clientY: number): SimGroundPoint | null {
-    const w = this.pickCommandWorld(clientX, clientY);
+    if (!this.setRayFromClient(clientX, clientY)) return null;
+    const w = this.pickWorldFromCurrentRay('terrain-3d-water');
     if (!w) return null;
     this.simHit.x = w.x;
     this.simHit.y = w.z;

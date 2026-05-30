@@ -2,7 +2,6 @@ import type { WorldState } from './WorldState';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from './types';
 import { getBuildingConfig } from './buildConfigs';
-import { getBuildingBlueprint } from './blueprints';
 import { BuildingGrid, BUILD_GRID_CELL_SIZE } from './buildGrid';
 import { computeFactoryWaypoint } from './spawn';
 import { getBuildingPlacementDiagnosticsForGrid } from './buildPlacementValidation';
@@ -11,12 +10,10 @@ import {
   REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
 } from '../../config';
 import { ENTITY_CHANGED_ACTIONS } from '../../types/network';
-import { buildingBlueprintHasActiveState, ensureBuildingActiveState } from './buildingActiveState';
 import { removeCompletedBuildingEffects } from './buildingCompletion';
 import { isBuildTargetInRange } from './builderRange';
 import { createBuildable, getInitialBuildHp } from './buildableHelpers';
-import { applyEntitySensorBlueprint } from './cloakDetection';
-import { isTowerBuildingBlueprintId } from '../../types/buildingTypes';
+import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 
 // Construction system - authoritative building placement and footprint grid.
 // Runtime resource/HP/completion semantics live in constructionLifecycle.ts.
@@ -103,18 +100,9 @@ export class ConstructionSystem {
     // reaches required.
     entity.buildable = createBuildable(config.cost);
 
-    // Set building blueprint
-    entity.buildingBlueprintId = buildingBlueprintId;
-    // Tower-class buildingTypes (fabricator + shooting towers) carry
-    // the 'tower' EntityType discriminator. See design_philosophy.html
-    // "Towers Are Static Hosts That Lock On And Fire".
-    if (isTowerBuildingBlueprintId(buildingBlueprintId)) {
-      entity.type = 'tower';
-    }
-    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
-    if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
-      ensureBuildingActiveState(entity);
-    }
+    applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
+      allocateEntityId: () => world.generateEntityId(),
+    });
     if (buildingBlueprintId === 'extractor') {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
@@ -202,14 +190,7 @@ export class ConstructionSystem {
       healthBuildFraction: null,
     });
 
-    entity.buildingBlueprintId = buildingBlueprintId;
-    if (isTowerBuildingBlueprintId(buildingBlueprintId)) {
-      entity.type = 'tower';
-    }
-    applyEntitySensorBlueprint(entity, getBuildingBlueprint(buildingBlueprintId));
-    if (buildingBlueprintHasActiveState(buildingBlueprintId)) {
-      ensureBuildingActiveState(entity);
-    }
+    applyBuildingBlueprintRuntime(entity, buildingBlueprintId);
 
     return entity;
   }

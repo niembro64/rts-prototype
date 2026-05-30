@@ -11,13 +11,13 @@
   "farReferenceDistanceFactor": 5.0,
   "battleDefaults": {
     "demoBattle": {
-      "focus": "map-origin-map-height-agnostic",
+      "focus": "map-origin-use-map-height",
       "zoom": 5,
       "autoRotate": false,
       "autoRotateRate": 0.0
     },
     "lobbyBattle": {
-      "focus": "map-origin-map-height-agnostic",
+      "focus": "map-origin-use-map-height",
       "zoom": 0.4,
       "autoRotate": true,
       "autoRotateRate": 0.05
