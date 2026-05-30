@@ -2,33 +2,33 @@
 // Keep these arrays append-only where they are used for wire codes.
 
 export const UNIT_BLUEPRINT_IDS = [
-  'jackal', 'lynx', 'badger', 'mongoose', 'mammoth',
-  'tick', 'tarantula', 'loris', 'daddy', 'widow',
-  'formik', 'hippo', 'commander', 'mosquito', 'dragonfly',
-  'eagle', 'constructionDrone',
+  'unitJackal', 'unitLynx', 'unitBadger', 'unitMongoose', 'unitMammoth',
+  'unitTick', 'unitTarantula', 'unitLoris', 'unitDaddy', 'unitWidow',
+  'unitFormik', 'unitHippo', 'unitCommander', 'unitMosquito', 'unitDragonfly',
+  'unitEagle', 'unitConstructionDrone',
 ] as const;
 export type UnitBlueprintId = typeof UNIT_BLUEPRINT_IDS[number];
 
 export const BUILDING_BLUEPRINT_IDS = [
-  'solar', 'wind', 'factory', 'extractor', 'megaBeamTower', 'cannonTower', 'radar', 'resourceConverter',
+  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
 export const SHOT_BLUEPRINT_IDS = [
-  'lightShot',
-  'mediumShot',
-  'lightRocket',
-  'heavyShot',
-  'mortarShot',
-  'disruptorShot',
-  'beamShot',
-  'megaBeamShot',
-  'towerBeamShot',
-  'miniBeamShot',
-  'fastRocket',
-  'megaMortarShot',
-  'forceFieldBarrierShot',
-  'forceFieldPanelShot',
+  'shotPlasmaLight',
+  'shotPlasmaMedium',
+  'shotRocketLight',
+  'shotPlasmaHeavy',
+  'shotMortarMedium',
+  'shotPlasmaDisruptor',
+  'shotBeamMedium',
+  'shotBeamHeavy',
+  'shotBeamMega',
+  'shotBeamMini',
+  'shotRocketFast',
+  'shotMortarHeavy',
+  'shotForceFieldSphere',
+  'shotForceFieldPanel',
 ] as const;
 export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];
 

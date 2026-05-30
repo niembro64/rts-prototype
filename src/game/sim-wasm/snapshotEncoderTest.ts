@@ -767,7 +767,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         actions: [
-          { type: 7, buildingBlueprintId: 'factory', grid: { x: 10, y: 20 } },
+          { type: 7, buildingBlueprintId: 'towerFabricator', grid: { x: 10, y: 20 } },
         ],
       },
     },
@@ -792,7 +792,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         actions: [
           { type: 7, buildingBlueprintId: 'commandCenter', grid: { x: 0, y: 0 } },
           { type: 7, buildingBlueprintId: 'energyConverter', grid: { x: 10, y: 0 } },
-          { type: 7, buildingBlueprintId: 'extractor', grid: { x: 20, y: 0 } },
+          { type: 7, buildingBlueprintId: 'buildingExtractor', grid: { x: 20, y: 0 } },
         ],
       },
     },

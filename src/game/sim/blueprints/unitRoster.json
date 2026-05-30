@@ -1,21 +1,21 @@
 {
   "buildableUnitIds": [
-    "jackal",
-    "lynx",
-    "badger",
-    "mongoose",
-    "mammoth",
-    "tick",
-    "tarantula",
-    "loris",
-    "daddy",
-    "widow",
-    "formik",
-    "hippo",
-    "mosquito",
-    "dragonfly",
-    "eagle",
-    "constructionDrone"
+    "unitJackal",
+    "unitLynx",
+    "unitBadger",
+    "unitMongoose",
+    "unitMammoth",
+    "unitTick",
+    "unitTarantula",
+    "unitLoris",
+    "unitDaddy",
+    "unitWidow",
+    "unitFormik",
+    "unitHippo",
+    "unitMosquito",
+    "unitDragonfly",
+    "unitEagle",
+    "unitConstructionDrone"
   ],
   "defaultDisabledDemoUnitIds": []
 }

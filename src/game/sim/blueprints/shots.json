@@ -1,7 +1,7 @@
 {
-  "lightShot": {
+  "shotPlasmaLight": {
     "type": "plasma",
-    "shotBlueprintId": "lightShot",
+    "shotBlueprintId": "shotPlasmaLight",
     "mass": 4,
     "collision": {
       "radius": 2
@@ -13,7 +13,7 @@
     },
     "detonateOnExpiry": true,
     "hitSound": {
-      "$audio": "event.hit.lightShot"
+      "$audio": "event.hit.shotPlasmaLight"
     },
     "submunitions": null,
     "homingTurnRate": null,
@@ -21,9 +21,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "mediumShot": {
+  "shotPlasmaMedium": {
     "type": "plasma",
-    "shotBlueprintId": "mediumShot",
+    "shotBlueprintId": "shotPlasmaMedium",
     "mass": 10,
     "collision": {
       "radius": 3
@@ -35,7 +35,7 @@
     },
     "detonateOnExpiry": true,
     "hitSound": {
-      "$audio": "event.hit.mediumShot"
+      "$audio": "event.hit.shotPlasmaMedium"
     },
     "submunitions": null,
     "homingTurnRate": null,
@@ -43,9 +43,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "lightRocket": {
+  "shotRocketLight": {
     "type": "rocket",
-    "shotBlueprintId": "lightRocket",
+    "shotBlueprintId": "shotRocketLight",
     "mass": 4,
     "collision": {
       "radius": 2
@@ -58,7 +58,7 @@
     "detonateOnExpiry": true,
     "maxLifespan": 10000,
     "hitSound": {
-      "$audio": "event.hit.lightRocket"
+      "$audio": "event.hit.shotRocketLight"
     },
     "submunitions": null,
     "homingTurnRate": 0.7,
@@ -66,9 +66,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "fastRocket": {
+  "shotRocketFast": {
     "type": "rocket",
-    "shotBlueprintId": "fastRocket",
+    "shotBlueprintId": "shotRocketFast",
     "mass": 3,
     "collision": {
       "radius": 2
@@ -81,7 +81,7 @@
     "detonateOnExpiry": true,
     "maxLifespan": 1000,
     "hitSound": {
-      "$audio": "event.hit.fastRocket"
+      "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
     "homingTurnRate": 10,
@@ -89,9 +89,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "heavyShot": {
+  "shotPlasmaHeavy": {
     "type": "plasma",
-    "shotBlueprintId": "heavyShot",
+    "shotBlueprintId": "shotPlasmaHeavy",
     "mass": 30,
     "collision": {
       "radius": 4
@@ -103,7 +103,7 @@
     },
     "detonateOnExpiry": true,
     "hitSound": {
-      "$audio": "event.hit.heavyShot"
+      "$audio": "event.hit.shotPlasmaHeavy"
     },
     "submunitions": null,
     "homingTurnRate": null,
@@ -111,9 +111,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "mortarShot": {
+  "shotMortarMedium": {
     "type": "plasma",
-    "shotBlueprintId": "mortarShot",
+    "shotBlueprintId": "shotMortarMedium",
     "mass": 30,
     "collision": {
       "radius": 8
@@ -125,10 +125,10 @@
     },
     "detonateOnExpiry": true,
     "hitSound": {
-      "$audio": "event.hit.mortarShot"
+      "$audio": "event.hit.shotMortarMedium"
     },
     "submunitions": {
-      "shotBlueprintId": "mediumShot",
+      "shotBlueprintId": "shotPlasmaMedium",
       "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
@@ -139,9 +139,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "megaMortarShot": {
+  "shotMortarHeavy": {
     "type": "plasma",
-    "shotBlueprintId": "megaMortarShot",
+    "shotBlueprintId": "shotMortarHeavy",
     "mass": 30,
     "collision": {
       "radius": 10
@@ -153,10 +153,10 @@
     },
     "detonateOnExpiry": true,
     "hitSound": {
-      "$audio": "event.hit.mortarShot"
+      "$audio": "event.hit.shotMortarMedium"
     },
     "submunitions": {
-      "shotBlueprintId": "mortarShot",
+      "shotBlueprintId": "shotMortarMedium",
       "count": 3,
       "randomSpreadSpeedHorizontal": 160,
       "randomSpreadSpeedVertical": 50,
@@ -167,9 +167,9 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "disruptorShot": {
+  "shotPlasmaDisruptor": {
     "type": "plasma",
-    "shotBlueprintId": "disruptorShot",
+    "shotBlueprintId": "shotPlasmaDisruptor",
     "mass": 20,
     "collision": {
       "radius": 25
@@ -181,7 +181,7 @@
     },
     "detonateOnExpiry": true,
     "hitSound": {
-      "$audio": "event.hit.disruptorShot"
+      "$audio": "event.hit.shotPlasmaDisruptor"
     },
     "submunitions": null,
     "homingTurnRate": null,
@@ -189,11 +189,11 @@
     "gravityForceMultiplier": 1,
     "smokeTrail": null
   },
-  "miniBeamShot": {
+  "shotBeamMini": {
     "type": "beam",
-    "shotBlueprintId": "miniBeamShot",
+    "shotBlueprintId": "shotBeamMini",
     "hitSound": {
-      "$audio": "event.hit.miniBeamShot"
+      "$audio": "event.hit.shotBeamMini"
     },
     "dps": 15,
     "force": 100,
@@ -205,11 +205,11 @@
     },
     "gravityForceMultiplier": 0
   },
-  "beamShot": {
+  "shotBeamMedium": {
     "type": "beam",
-    "shotBlueprintId": "beamShot",
+    "shotBlueprintId": "shotBeamMedium",
     "hitSound": {
-      "$audio": "event.hit.beamShot"
+      "$audio": "event.hit.shotBeamMedium"
     },
     "dps": 30,
     "force": 200,
@@ -221,11 +221,11 @@
     },
     "gravityForceMultiplier": 0
   },
-  "megaBeamShot": {
+  "shotBeamHeavy": {
     "type": "beam",
-    "shotBlueprintId": "megaBeamShot",
+    "shotBlueprintId": "shotBeamHeavy",
     "hitSound": {
-      "$audio": "event.hit.megaBeamShot"
+      "$audio": "event.hit.shotBeamHeavy"
     },
     "dps": 300,
     "force": 2000,
@@ -237,11 +237,11 @@
     },
     "gravityForceMultiplier": 0
   },
-  "towerBeamShot": {
+  "shotBeamMega": {
     "type": "beam",
-    "shotBlueprintId": "towerBeamShot",
+    "shotBlueprintId": "shotBeamMega",
     "hitSound": {
-      "$audio": "event.hit.megaBeamShot"
+      "$audio": "event.hit.shotBeamHeavy"
     },
     "dps": 1000,
     "force": 3000,
@@ -253,9 +253,9 @@
     },
     "gravityForceMultiplier": 0
   },
-  "forceFieldBarrierShot": {
+  "shotForceFieldSphere": {
     "type": "forceField",
-    "shotBlueprintId": "forceFieldBarrierShot",
+    "shotBlueprintId": "shotForceFieldSphere",
     "materialId": "reflectiveForceField",
     "angle": 6.283185307179586,
     "transitionTime": 500,
@@ -266,9 +266,9 @@
     },
     "hitSound": null
   },
-  "forceFieldPanelShot": {
+  "shotForceFieldPanel": {
     "type": "forceField",
-    "shotBlueprintId": "forceFieldPanelShot",
+    "shotBlueprintId": "shotForceFieldPanel",
     "materialId": "reflectiveForceField",
     "angle": 0,
     "transitionTime": 500,

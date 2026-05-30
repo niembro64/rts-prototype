@@ -91,7 +91,7 @@ function spawnCommander(
   y: number,
   facingAngle: number
 ): Entity {
-  const commander = world.createUnitFromBlueprint(x, y, playerId, 'commander');
+  const commander = world.createUnitFromBlueprint(x, y, playerId, 'unitCommander');
   setUnitFacingYaw(commander, facingAngle);
   aimTurretsToward(commander, world.mapWidth / 2, world.mapHeight / 2);
   world.addEntity(commander);
@@ -111,7 +111,7 @@ function getDemoOval(world: WorldState): { oval: MapOvalMetrics; radius: number 
 function commanderRadiusFromOuterSpawnRadius(spawnRadius: number): number {
   return demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.commander.radiusFraction,
+    DEMO_CONFIG.baseRings.unitCommander.radiusFraction,
   );
 }
 
@@ -124,7 +124,7 @@ function demoBaseRingRadiusFromOuterSpawnRadius(
 
 /** Commander placement radius for a map of the given dimensions.
  *  DEMO BATTLE and REAL BATTLE intentionally share
- *  `DEMO_CONFIG.baseRings.commander.radiusFraction`, so changing the demo
+ *  `DEMO_CONFIG.baseRings.unitCommander.radiusFraction`, so changing the demo
  *  commander ring changes the real-battle ring and camera pre-framing
  *  at the same time. */
 function commanderRadiusForMap(mapWidth: number, mapHeight: number): number {
@@ -155,7 +155,7 @@ export function getSpawnPositionForSeat(
 
 // Calculate spawn positions on the spawn oval for N players. Used
 // for the REAL BATTLE flow (just commanders). The commander ring is
-// shared with demo battle through DEMO_CONFIG.baseRings.commander.
+// shared with demo battle through DEMO_CONFIG.baseRings.unitCommander.
 function getSpawnPositions(
   world: WorldState,
   playerCount: number
@@ -229,7 +229,7 @@ function placeCompleteBuilding(
     entity.building.maxHp = config.hp;
   }
 
-  if (buildingBlueprintId === 'factory') {
+  if (buildingBlueprintId === 'towerFabricator') {
     const waypoints = factoryWaypoint.legs.map((leg) => {
       const p = computeFactoryWaypoint(
         center.x, center.y, world.mapWidth, world.mapHeight, leg.distance,
@@ -368,7 +368,7 @@ function placeFactoryArcRowForUnitBlueprintIds(
     const factory = placeCompleteBuilding(
       world,
       construction,
-      'factory',
+      'towerFabricator',
       point.x,
       point.y,
       playerId,
@@ -429,31 +429,31 @@ export function spawnInitialBases(
   const commanderRadius = commanderRadiusFromOuterSpawnRadius(spawnRadius);
   const solarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.solar.radiusFraction,
+    DEMO_CONFIG.baseRings.buildingSolar.radiusFraction,
   );
   const windRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.wind.radiusFraction,
+    DEMO_CONFIG.baseRings.buildingWind.radiusFraction,
   );
   const factoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.fabricator.radiusFraction,
+    DEMO_CONFIG.baseRings.towerFabricator.radiusFraction,
   );
   const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.radar.radiusFraction,
+    DEMO_CONFIG.baseRings.buildingRadar.radiusFraction,
   );
   const megaBeamTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.megaBeamTower.radiusFraction,
+    DEMO_CONFIG.baseRings.towerBeamMega.radiusFraction,
   );
   const cannonTowerRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.cannonTower.radiusFraction,
+    DEMO_CONFIG.baseRings.towerCannon.radiusFraction,
   );
   const resourceConverterRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
-    DEMO_CONFIG.baseRings.resourceConverter.radiusFraction,
+    DEMO_CONFIG.baseRings.buildingResourceConverter.radiusFraction,
   );
 
   // Each player's slice of the spawn oval is ONE HALF of the
@@ -482,20 +482,20 @@ export function spawnInitialBases(
 
     // Solar collector arc.
     entities.push(...placeArcRow(
-      world, construction, 'solar', DEMO_CONFIG.solarCount,
+      world, construction, 'buildingSolar', DEMO_CONFIG.buildingSolarCount,
       oval, solarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Wind turbine arc — independent radius so its silhouette reads on
     // its own ring, not interleaved with the solars.
     entities.push(...placeArcRow(
-      world, construction, 'wind', DEMO_CONFIG.windCount,
+      world, construction, 'buildingWind', DEMO_CONFIG.buildingWindCount,
       oval, windRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Radar arc — long sensor coverage without adding more weapons.
     entities.push(...placeArcRow(
-      world, construction, 'radar', DEMO_CONFIG.radarCount,
+      world, construction, 'buildingRadar', DEMO_CONFIG.buildingRadarCount,
       oval, radarRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
@@ -511,21 +511,21 @@ export function spawnInitialBases(
     // megaBeam tower arc — covers the approach to the base from the
     // map center.
     entities.push(...placeArcRow(
-      world, construction, 'megaBeamTower', DEMO_CONFIG.megaBeamTowerCount,
+      world, construction, 'towerBeamMega', DEMO_CONFIG.towerBeamMegaCount,
       oval, megaBeamTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Cannon tower arc — companion static-defense ring for long-range
     // heavy shots.
     entities.push(...placeArcRow(
-      world, construction, 'cannonTower', DEMO_CONFIG.cannonTowerCount,
+      world, construction, 'towerCannon', DEMO_CONFIG.towerCannonCount,
       oval, cannonTowerRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
 
     // Resource converter arc — economy buildings on their own ring
     // between fabricators and the static-defense rings.
     entities.push(...placeArcRow(
-      world, construction, 'resourceConverter', DEMO_CONFIG.resourceConverterCount,
+      world, construction, 'buildingResourceConverter', DEMO_CONFIG.buildingResourceConverterCount,
       oval, resourceConverterRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,
     ));
   }
@@ -555,7 +555,7 @@ export function spawnMetalExtractorsOnDeposits(
   if (playerIds.length === 0 || world.metalDeposits.length === 0) return [];
   const entities: Entity[] = [];
   const grid = construction.getGrid();
-  const config = getBuildingConfig('extractor');
+  const config = getBuildingConfig('buildingExtractor');
 
   for (const deposit of world.metalDeposits) {
     const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
@@ -563,7 +563,7 @@ export function spawnMetalExtractorsOnDeposits(
     const gridPos = grid.worldToGrid(snapped.x, snapped.y);
     const extractor = construction.startBuilding(
       world,
-      'extractor',
+      'buildingExtractor',
       gridPos.gx,
       gridPos.gy,
       ownerId,

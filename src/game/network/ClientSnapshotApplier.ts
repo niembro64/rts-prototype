@@ -142,12 +142,12 @@ export function snapClientNonVisualState(
       };
     } else if (
       isFull
-      && (entity.buildingBlueprintId === 'solar'
-        || entity.buildingBlueprintId === 'wind'
-        || entity.buildingBlueprintId === 'extractor')
+      && (entity.buildingBlueprintId === 'buildingSolar'
+        || entity.buildingBlueprintId === 'buildingWind'
+        || entity.buildingBlueprintId === 'buildingExtractor')
     ) {
       entity.building.activeState = {
-        open: entity.buildingBlueprintId !== 'solar',
+        open: entity.buildingBlueprintId !== 'buildingSolar',
         damageDelayMs: 0,
         reopenDelayMs: 0,
       };

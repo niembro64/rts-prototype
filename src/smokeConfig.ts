@@ -3,16 +3,16 @@ import type { SmokeTrailSpec } from './types/shotTypes';
 import rawSmokeConfig from './smokeConfig.json';
 
 export const SMOKE_USE_IDS = [
-  'lightRocket',
-  'fastRocket',
-  'hovercraft',
-  'dragonflyHovercraft',
-  'eagleFlying',
+  'shotRocketLight',
+  'shotRocketFast',
+  'locomotionHovercraft',
+  'locomotionDragonflyHovercraft',
+  'locomotionEagleFlying',
 ] as const;
 
 export type SmokeUseId = typeof SMOKE_USE_IDS[number];
-export type HoverSmokeUseId = Extract<SmokeUseId, 'hovercraft' | 'dragonflyHovercraft'>;
-export type FlyingSmokeUseId = Extract<SmokeUseId, 'eagleFlying'>;
+export type HoverSmokeUseId = Extract<SmokeUseId, 'locomotionHovercraft' | 'locomotionDragonflyHovercraft'>;
+export type FlyingSmokeUseId = Extract<SmokeUseId, 'locomotionEagleFlying'>;
 
 export type SmokePuffGeometryConfig = {
   widthSegments: number;

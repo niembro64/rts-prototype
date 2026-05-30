@@ -25109,9 +25109,9 @@ mod sim_kernel_tests {
         assert!(blueprint_tables::BLUEPRINT_LOCOMOTION_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_PATHFINDING_COUNT > 0);
         assert!(blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT > 0);
-        assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"jackal"));
-        assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"solar"));
-        assert!(blueprint_tables::BLUEPRINT_TOWER_IDS.contains(&"factory"));
+        assert!(blueprint_tables::BLUEPRINT_UNIT_IDS.contains(&"unitJackal"));
+        assert!(blueprint_tables::BLUEPRINT_BUILDING_IDS.contains(&"buildingSolar"));
+        assert!(blueprint_tables::BLUEPRINT_TOWER_IDS.contains(&"towerFabricator"));
         assert!(blueprint_tables::BLUEPRINT_TURRET_BLUEPRINT_IDS.contains(&"turretGunLight"));
     }
 

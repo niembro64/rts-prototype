@@ -50,7 +50,7 @@ export class WindPowerTracker {
   private nextProductionByPlayer = new Map<PlayerId, number>();
 
   update(world: WorldState, wind: WindState): void {
-    const baseProduction = getBuildingConfig('wind').energyProduction ?? 0;
+    const baseProduction = getBuildingConfig('buildingWind').energyProduction ?? 0;
     const nextProductionByPlayer = this.nextProductionByPlayer;
     nextProductionByPlayer.clear();
 

@@ -10,7 +10,7 @@ export const RADAR_VISION_RADIUS = 4200;
 export function canEntityProvideFullVision(entity: Entity): boolean {
   if (entity.unit) return entity.unit.hp > 0;
   if (!entity.building || entity.building.hp <= 0) return false;
-  if (entity.buildingBlueprintId === 'radar') return false;
+  if (entity.buildingBlueprintId === 'buildingRadar') return false;
   if (entity.buildable && !entity.buildable.isComplete) return false;
   return true;
 }
@@ -23,7 +23,7 @@ export function canEntityProvideFullVision(entity: Entity): boolean {
  *  contract in design_philosophy.html. */
 export function canEntityProvideRadarVision(entity: Entity): boolean {
   if (!entity.building || entity.building.hp <= 0) return false;
-  if (entity.buildingBlueprintId !== 'radar') return false;
+  if (entity.buildingBlueprintId !== 'buildingRadar') return false;
   if (entity.buildable && !entity.buildable.isComplete) return false;
   const activeState = entity.building.activeState;
   if (activeState !== null && activeState.open === false) return false;

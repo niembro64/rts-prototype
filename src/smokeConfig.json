@@ -3,7 +3,7 @@
     "widthSegments": 12,
     "heightSegments": 8
   },
-  "lightRocket": {
+  "shotRocketLight": {
     "maxPoolSize": 100000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -14,7 +14,7 @@
     "endRadiusMultiplier": 6,
     "maxAlpha": 0.2
   },
-  "fastRocket": {
+  "shotRocketFast": {
     "maxPoolSize": 100000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -25,7 +25,7 @@
     "endRadiusMultiplier": 5,
     "maxAlpha": 0.2
   },
-  "hovercraft": {
+  "locomotionHovercraft": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -36,7 +36,7 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
-  "dragonflyHovercraft": {
+  "locomotionDragonflyHovercraft": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
@@ -47,7 +47,7 @@
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
   },
-  "eagleFlying": {
+  "locomotionEagleFlying": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,

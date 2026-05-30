@@ -28,14 +28,14 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
 
 // Building configurations derived from BUILDING_BLUEPRINTS.
 export const BUILDING_CONFIGS: Record<BuildingBlueprintId, BuildingConfig> = {
-  solar: buildBuildingConfig('solar'),
-  wind: buildBuildingConfig('wind'),
-  factory: buildBuildingConfig('factory'),
-  extractor: buildBuildingConfig('extractor'),
-  radar: buildBuildingConfig('radar'),
-  megaBeamTower: buildBuildingConfig('megaBeamTower'),
-  cannonTower: buildBuildingConfig('cannonTower'),
-  resourceConverter: buildBuildingConfig('resourceConverter'),
+  buildingSolar: buildBuildingConfig('buildingSolar'),
+  buildingWind: buildBuildingConfig('buildingWind'),
+  towerFabricator: buildBuildingConfig('towerFabricator'),
+  buildingExtractor: buildBuildingConfig('buildingExtractor'),
+  buildingRadar: buildBuildingConfig('buildingRadar'),
+  towerBeamMega: buildBuildingConfig('towerBeamMega'),
+  towerCannon: buildBuildingConfig('towerCannon'),
+  buildingResourceConverter: buildBuildingConfig('buildingResourceConverter'),
 };
 
 // Helper to get building config

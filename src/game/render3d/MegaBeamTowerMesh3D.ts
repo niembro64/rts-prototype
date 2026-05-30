@@ -16,16 +16,16 @@ import {
 const megaBeamTowerBodyGeom = createHexFrustumGeometry(0.18, 0.3);
 const cannonTowerBodyGeom = createHexFrustumGeometry(0.44, 0.54);
 const beamTowerTrimMat = new THREE.MeshStandardMaterial({
-  color: COLORS.buildings.materials.megaBeamTowerTrim.colorHex,
-  emissive: COLORS.buildings.materials.megaBeamTowerTrim.emissiveHex,
-  emissiveIntensity: COLORS.buildings.materials.megaBeamTowerTrim.emissiveIntensity,
-  metalness: COLORS.buildings.materials.megaBeamTowerTrim.metalness,
-  roughness: COLORS.buildings.materials.megaBeamTowerTrim.roughness,
+  color: COLORS.buildings.materials.towerBeamMegaTrim.colorHex,
+  emissive: COLORS.buildings.materials.towerBeamMegaTrim.emissiveHex,
+  emissiveIntensity: COLORS.buildings.materials.towerBeamMegaTrim.emissiveIntensity,
+  metalness: COLORS.buildings.materials.towerBeamMegaTrim.metalness,
+  roughness: COLORS.buildings.materials.towerBeamMegaTrim.roughness,
 });
-const cannonTowerTrimMat = new THREE.MeshStandardMaterial({
-  color: COLORS.buildings.materials.cannonTowerTrim.colorHex,
-  metalness: COLORS.buildings.materials.cannonTowerTrim.metalness,
-  roughness: COLORS.buildings.materials.cannonTowerTrim.roughness,
+const towerCannonTrimMat = new THREE.MeshStandardMaterial({
+  color: COLORS.buildings.materials.towerCannonTrim.colorHex,
+  metalness: COLORS.buildings.materials.towerCannonTrim.metalness,
+  roughness: COLORS.buildings.materials.towerCannonTrim.roughness,
 });
 
 type DefenseTowerMeshProfile = {
@@ -88,7 +88,7 @@ const cannonTowerProfile: DefenseTowerMeshProfile = {
   socketRadiusFactor: 0.43,
   socketHeight: 6,
   socketY: CANNON_TOWER_VISUAL_HEIGHT + 3,
-  trimMaterial: cannonTowerTrimMat,
+  trimMaterial: towerCannonTrimMat,
 };
 
 /** Static beam tower — thin cyan-trimmed spine, narrow base, and a
@@ -214,5 +214,5 @@ export function disposeMegaBeamTowerMeshGeoms(): void {
   megaBeamTowerBodyGeom.dispose();
   cannonTowerBodyGeom.dispose();
   beamTowerTrimMat.dispose();
-  cannonTowerTrimMat.dispose();
+  towerCannonTrimMat.dispose();
 }

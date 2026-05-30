@@ -99,9 +99,9 @@ const topBarStyle = computed(() => ({
   '--resource-empty-shell-bg': TOP_BAR.resource.emptyShellBackground,
   '--resource-empty-shell-border': TOP_BAR.resource.emptyShellBorder,
   '--resource-empty-shell-shadow': TOP_BAR.resource.emptyShellShadow,
-  '--building-solar-color': TOP_BAR.buildings.solar,
-  '--building-wind-color': TOP_BAR.buildings.wind,
-  '--building-factory-color': TOP_BAR.buildings.factory,
+  '--building-solar-color': TOP_BAR.buildings.buildingSolar,
+  '--building-wind-color': TOP_BAR.buildings.buildingWind,
+  '--building-factory-color': TOP_BAR.buildings.towerFabricator,
   '--unit-cap-full': TOP_BAR.unitCap.full,
 }));
 

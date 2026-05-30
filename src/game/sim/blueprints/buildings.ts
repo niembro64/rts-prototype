@@ -115,16 +115,16 @@ const BUILDING_EXPLICIT_FIELDS = [
 ] as const;
 
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
-export const SOLAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.solar.visualHeight;
-export const WIND_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.wind.visualHeight;
-export const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.factory.visualHeight;
+export const SOLAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSolar.visualHeight;
+export const WIND_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingWind.visualHeight;
+export const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.towerFabricator.visualHeight;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT =
-  BUILDING_BLUEPRINTS.extractor.visualHeight;
-export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.radar.visualHeight;
+  BUILDING_BLUEPRINTS.buildingExtractor.visualHeight;
+export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.visualHeight;
 export const MEGA_BEAM_TOWER_VISUAL_HEIGHT =
-  BUILDING_BLUEPRINTS.megaBeamTower.visualHeight;
+  BUILDING_BLUEPRINTS.towerBeamMega.visualHeight;
 export const CANNON_TOWER_VISUAL_HEIGHT =
-  BUILDING_BLUEPRINTS.cannonTower.visualHeight;
+  BUILDING_BLUEPRINTS.towerCannon.visualHeight;
 
 function firstTurretMountZ(
   blueprint: BuildingBlueprint,
@@ -135,14 +135,14 @@ function firstTurretMountZ(
 }
 
 export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.factory, FACTORY_BASE_VISUAL_HEIGHT);
+  firstTurretMountZ(BUILDING_BLUEPRINTS.towerFabricator, FACTORY_BASE_VISUAL_HEIGHT);
 /** Pivot height for the megaBeam turret on the tower — head sits just
  *  above the body socket so the barrel clears the tapered hex shaft. */
 export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.megaBeamTower, MEGA_BEAM_TOWER_VISUAL_HEIGHT);
+  firstTurretMountZ(BUILDING_BLUEPRINTS.towerBeamMega, MEGA_BEAM_TOWER_VISUAL_HEIGHT);
 /** Pivot height for the cannon tower's heavier static turret head. */
 export const CANNON_TOWER_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.cannonTower, CANNON_TOWER_VISUAL_HEIGHT);
+  firstTurretMountZ(BUILDING_BLUEPRINTS.towerCannon, CANNON_TOWER_VISUAL_HEIGHT);
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;

@@ -78,7 +78,7 @@ export function buildFactoryMesh(
 ): BuildingShape {
   const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingShape['details'] = [];
-  const blueprint = getBuildingBlueprint('factory');
+  const blueprint = getBuildingBlueprint('towerFabricator');
 
   // Build-spot visuals. These follow the FORMING UNIT (not the tower)
   // so they stay even after the central tower pieces were removed.

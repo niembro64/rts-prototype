@@ -355,10 +355,10 @@ export class BuildGhost3D {
     this.footprint.scale.set(width, depth, 1);
     this.footprint.position.set(snapped.x, targetGroundY + GHOST_Y, snapped.y);
     this.footprint.material = okVisually ? this.footMatOk : this.footMatBad;
-    const isExtractor = buildingBlueprintId === 'extractor';
+    const isExtractor = buildingBlueprintId === 'buildingExtractor';
     this.footprint.visible = !this.updateDiagnosticCells(diagnostics, isExtractor);
 
-    if (buildingBlueprintId === 'radar') {
+    if (buildingBlueprintId === 'buildingRadar') {
       this.radarRangeRing.visible = true;
       this.radarRangeRing.position.set(snapped.x, targetGroundY + RANGE_Y, snapped.y);
       this.radarRangeRing.scale.set(RADAR_VISION_RADIUS, RADAR_VISION_RADIUS, 1);

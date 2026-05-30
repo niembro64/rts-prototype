@@ -163,7 +163,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
         const deposit = findDepositContainingPoint(metalDeposits, x, y);
         metalCovered = deposit !== null;
         depositId = deposit === null ? null : deposit.id;
-        if (candidateType === 'extractor') {
+        if (candidateType === 'buildingExtractor') {
           if (metalCovered) {
             reason = 'metal';
             metalCoveredCells++;
@@ -232,7 +232,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }));
   let metalFraction: number | null = null;
   let metalTotalCells: number | null = null;
-  if (candidateType === 'extractor') {
+  if (candidateType === 'buildingExtractor') {
     const coverage = getMetalDepositFootprintCoverage(
       metalDeposits,
       center.x,
@@ -255,7 +255,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     cells,
     failureReason,
     metalFraction,
-    metalCoveredCells: candidateType === 'extractor' ? metalCoveredCells : null,
+    metalCoveredCells: candidateType === 'buildingExtractor' ? metalCoveredCells : null,
     metalTotalCells,
     metalDepositCells,
   };

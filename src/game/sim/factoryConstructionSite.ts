@@ -32,7 +32,7 @@ const FACTORY_BUILD_RADIUS_FRACTION = 0.72;
 const _buildSpotDir = { x: 0, y: 0 };
 
 export function getFactoryFootprintDimensions(): FactoryFootprintDimensions {
-  const cfg = getBuildingConfig('factory');
+  const cfg = getBuildingConfig('towerFabricator');
   return {
     footprintWidth: cfg.gridWidth * BUILD_GRID_CELL_SIZE,
     footprintHeight: cfg.gridHeight * BUILD_GRID_CELL_SIZE,

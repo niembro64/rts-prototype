@@ -192,19 +192,19 @@ export class EntityCacheManager {
           ) {
             this.cachedHealthBarBuildings.push(entity);
           }
-          if (entity.buildingBlueprintId === 'wind') {
+          if (entity.buildingBlueprintId === 'buildingWind') {
             this.cachedWindBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'solar') {
+          } else if (entity.buildingBlueprintId === 'buildingSolar') {
             this.cachedSolarBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'extractor') {
+          } else if (entity.buildingBlueprintId === 'buildingExtractor') {
             this.cachedExtractorBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'resourceConverter') {
+          } else if (entity.buildingBlueprintId === 'buildingResourceConverter') {
             this.cachedConverterBuildings.push(entity);
             this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'radar') {
+          } else if (entity.buildingBlueprintId === 'buildingRadar') {
             this.cachedActiveStateBuildings.push(entity);
           }
           if (entity.factory) this.cachedFactoryBuildings.push(entity);

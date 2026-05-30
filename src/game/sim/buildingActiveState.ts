@@ -45,11 +45,11 @@ export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 export function buildingBlueprintHasActiveState(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): boolean {
-  return buildingBlueprintId === 'solar'
-    || buildingBlueprintId === 'wind'
-    || buildingBlueprintId === 'extractor'
-    || buildingBlueprintId === 'radar'
-    || buildingBlueprintId === 'resourceConverter';
+  return buildingBlueprintId === 'buildingSolar'
+    || buildingBlueprintId === 'buildingWind'
+    || buildingBlueprintId === 'buildingExtractor'
+    || buildingBlueprintId === 'buildingRadar'
+    || buildingBlueprintId === 'buildingResourceConverter';
 }
 
 export function createInitialBuildingActiveState(): BuildingActiveState {
@@ -70,7 +70,7 @@ export function ensureBuildingActiveState(entity: Entity): BuildingActiveState |
 }
 
 function getSolarEnergyProduction(): number {
-  return getBuildingConfig('solar').energyProduction ?? 0;
+  return getBuildingConfig('buildingSolar').energyProduction ?? 0;
 }
 
 function getExtractorMetalRate(entity: Entity): number {
@@ -93,12 +93,12 @@ function applyProducerRateDelta(entity: Entity, open: boolean): void {
   if (ownership === null) return;
   const playerId = ownership.playerId;
 
-  if (entity.buildingBlueprintId === 'solar') {
+  if (entity.buildingBlueprintId === 'buildingSolar') {
     const amount = getSolarEnergyProduction();
     if (amount <= 0) return;
     if (open) economyManager.addProduction(playerId, amount);
     else economyManager.removeProduction(playerId, amount);
-  } else if (entity.buildingBlueprintId === 'extractor') {
+  } else if (entity.buildingBlueprintId === 'buildingExtractor') {
     const rate = getExtractorMetalRate(entity);
     if (rate <= 0) return;
     if (open) economyManager.addMetalExtraction(playerId, rate);

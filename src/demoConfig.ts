@@ -8,25 +8,25 @@ export const DEMO_CONFIG = {
   playerCount: demoConfig.playerCount,
 
   /** Number of solar collectors per player on the dedicated solar arc. */
-  solarCount: demoConfig.solarCount,
+  buildingSolarCount: demoConfig.buildingSolarCount,
 
   /** Number of wind turbines per player on the dedicated wind arc.
    *  Solar and wind used to share one ring with alternating placements;
    *  they now occupy independent radii so each silhouette reads on its
    *  own ring. */
-  windCount: demoConfig.windCount,
+  buildingWindCount: demoConfig.buildingWindCount,
 
   /** Number of megaBeam defense towers per player on the beam tower ring. */
-  megaBeamTowerCount: demoConfig.megaBeamTowerCount,
+  towerBeamMegaCount: demoConfig.towerBeamMegaCount,
 
   /** Number of cannon defense towers per player on the cannon tower ring. */
-  cannonTowerCount: demoConfig.cannonTowerCount,
+  towerCannonCount: demoConfig.towerCannonCount,
 
   /** Number of radar towers per player on the sensor ring. */
-  radarCount: demoConfig.radarCount,
+  buildingRadarCount: demoConfig.buildingRadarCount,
 
   /** Number of resource converters per player on the converter arc. */
-  resourceConverterCount: demoConfig.resourceConverterCount,
+  buildingResourceConverterCount: demoConfig.buildingResourceConverterCount,
 
   /**
    * Fraction of each player's TEAM slice (180°/N wide, half of the

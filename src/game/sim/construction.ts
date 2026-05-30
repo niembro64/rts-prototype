@@ -103,7 +103,7 @@ export class ConstructionSystem {
     applyBuildingBlueprintRuntime(entity, buildingBlueprintId, {
       allocateEntityId: () => world.generateEntityId(),
     });
-    if (buildingBlueprintId === 'extractor') {
+    if (buildingBlueprintId === 'buildingExtractor') {
       // Inactive at construction start. The completion handler runs
       // computeExtractorMetalCoverage fills `coveredDepositIds` and sets
       // `metalExtractionRate` from the number of metal cells under this
@@ -121,7 +121,7 @@ export class ConstructionSystem {
     }
 
     // Add factory component if it's a factory
-    if (buildingBlueprintId === 'factory') {
+    if (buildingBlueprintId === 'towerFabricator') {
       const wp = computeFactoryWaypoint(
         worldPos.x,
         worldPos.y,

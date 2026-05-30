@@ -26,7 +26,7 @@ export const ECONOMY_CONSTANTS = {
   maxMetal: MAX_METAL,
   baseMetalIncome: BASE_METAL_PER_SECOND,
   startingMetal: STARTING_METAL,
-  dgunCost: getUnitBlueprint('commander').dgun!.energyCost,
+  dgunCost: getUnitBlueprint('unitCommander').dgun!.energyCost,
 };
 
 // Create initial economy state for a player
@@ -237,7 +237,7 @@ export class EconomyManager {
   }
 
   private applyProducerIncome(world: WorldState, dtSec: number, windSpeed: number): void {
-    const solarRate = getBuildingConfig('solar').energyProduction ?? 0;
+    const solarRate = getBuildingConfig('buildingSolar').energyProduction ?? 0;
     if (solarRate > 0) {
       for (const entity of world.getSolarBuildings()) {
         if (!this.isOpenProducerBuilding(entity)) continue;
@@ -260,7 +260,7 @@ export class EconomyManager {
       }
     }
 
-    const windRateBase = getBuildingConfig('wind').energyProduction ?? 0;
+    const windRateBase = getBuildingConfig('buildingWind').energyProduction ?? 0;
     const windRate = windRateBase * windSpeed;
     if (windRate > 0) {
       for (const entity of world.getWindBuildings()) {
@@ -332,7 +332,7 @@ export class EconomyManager {
     const dtSec = dtMs / 1000;
     if (dtSec <= 0) return;
     const tax = world.converterTax;
-    const ratePerSec = getBuildingConfig('resourceConverter').conversionRate ?? 0;
+    const ratePerSec = getBuildingConfig('buildingResourceConverter').conversionRate ?? 0;
     if (ratePerSec <= 0) return;
 
     const totalRatePerPlayer = new Map<PlayerId, number>();

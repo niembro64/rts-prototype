@@ -222,10 +222,10 @@ export function buildEconomyInfo(
   let extractorCount = 0;
   for (let i = 0; i < playerBuildings.length; i++) {
     switch (playerBuildings[i].buildingBlueprintId) {
-      case 'solar': solarCount++; break;
-      case 'wind': windCount++; break;
-      case 'factory': factoryCount++; break;
-      case 'extractor': extractorCount++; break;
+      case 'buildingSolar': solarCount++; break;
+      case 'buildingWind': windCount++; break;
+      case 'towerFabricator': factoryCount++; break;
+      case 'buildingExtractor': extractorCount++; break;
     }
   }
 

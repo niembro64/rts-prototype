@@ -34,8 +34,8 @@ function getExtractorFootprintGrid(entity: Entity): {
   gridW: number;
   gridH: number;
 } | null {
-  if (entity.buildingBlueprintId !== 'extractor' || !entity.building) return null;
-  const cfg = getBuildingConfig('extractor');
+  if (entity.buildingBlueprintId !== 'buildingExtractor' || !entity.building) return null;
+  const cfg = getBuildingConfig('buildingExtractor');
   const halfW = (cfg.gridWidth * BUILD_GRID_CELL_SIZE) / 2;
   const halfH = (cfg.gridHeight * BUILD_GRID_CELL_SIZE) / 2;
   const gridX = Math.floor((entity.transform.x - halfW) / BUILD_GRID_CELL_SIZE + 1e-6);
@@ -44,7 +44,7 @@ function getExtractorFootprintGrid(entity: Entity): {
 }
 
 function baseProduction(): number {
-  return getBuildingConfig('extractor').metalProduction ?? 0;
+  return getBuildingConfig('buildingExtractor').metalProduction ?? 0;
 }
 
 function perMetalCellProduction(): number {
@@ -97,7 +97,7 @@ export function computeExtractorMetalCoverage(
   world: WorldState,
   extractor: Entity,
 ): number {
-  if (extractor.buildingBlueprintId !== 'extractor' || !extractor.ownership) return 0;
+  if (extractor.buildingBlueprintId !== 'buildingExtractor' || !extractor.ownership) return 0;
   syncExtractorRateFromCoveredCells(world, extractor);
   return extractor.metalExtractionRate ?? 0;
 }
@@ -110,7 +110,7 @@ export function clearExtractorMetalCoverage(
   extractor: Entity,
 ): number {
   void world;
-  if (extractor.buildingBlueprintId !== 'extractor' || !extractor.ownership) return 0;
+  if (extractor.buildingBlueprintId !== 'buildingExtractor' || !extractor.ownership) return 0;
   const lostIncome = extractor.metalExtractionRate ?? 0;
   extractor.coveredDepositIds = [];
   extractor.metalExtractionRate = 0;

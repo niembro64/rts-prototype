@@ -148,7 +148,7 @@ function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): n
   let count = 0;
   for (const unit of world.getUnitsByPlayer(playerId)) {
     const unitComponent = unit.unit;
-    if (unitComponent !== null && unitComponent.unitBlueprintId === 'commander') continue;
+    if (unitComponent !== null && unitComponent.unitBlueprintId === 'unitCommander') continue;
     count++;
   }
   return count;

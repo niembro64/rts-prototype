@@ -393,20 +393,20 @@ function createBuildingFromNetwork(
       // `activeState` slot. Solar starts closed by default; the others
       // start in the host's authoritative initial pose, which the wire
       // ships as soon as the first snapshot for this entity arrives.
-      activeState: (buildingBlueprintId === 'solar'
-        || buildingBlueprintId === 'wind'
-        || buildingBlueprintId === 'extractor'
-        || buildingBlueprintId === 'radar'
-        || buildingBlueprintId === 'resourceConverter')
+      activeState: (buildingBlueprintId === 'buildingSolar'
+        || buildingBlueprintId === 'buildingWind'
+        || buildingBlueprintId === 'buildingExtractor'
+        || buildingBlueprintId === 'buildingRadar'
+        || buildingBlueprintId === 'buildingResourceConverter')
         ? {
-            open: buildingSolar !== null ? buildingSolar.open : buildingBlueprintId !== 'solar',
+            open: buildingSolar !== null ? buildingSolar.open : buildingBlueprintId !== 'buildingSolar',
             damageDelayMs: 0,
             reopenDelayMs: 0,
           }
         : null,
     },
     buildingBlueprintId,
-    metalExtractionRate: buildingBlueprintId === 'extractor'
+    metalExtractionRate: buildingBlueprintId === 'buildingExtractor'
       ? b.metalExtractionRate ?? 0
       : null,
   };

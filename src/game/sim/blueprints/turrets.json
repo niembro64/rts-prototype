@@ -1,7 +1,7 @@
 {
   "turretGunLight": {
     "turretBlueprintId": "turretGunLight",
-    "shotBlueprintId": "lightShot",
+    "shotBlueprintId": "shotPlasmaLight",
     "range": 200,
     "cooldown": 450,
     "launchForce": 2000,
@@ -51,7 +51,7 @@
   },
   "turretGunBurst": {
     "turretBlueprintId": "turretGunBurst",
-    "shotBlueprintId": "mediumShot",
+    "shotBlueprintId": "shotPlasmaMedium",
     "range": 230,
     "cooldown": 3000,
     "launchForce": 5000,
@@ -112,7 +112,7 @@
   },
   "turretCannon": {
     "turretBlueprintId": "turretCannon",
-    "shotBlueprintId": "heavyShot",
+    "shotBlueprintId": "shotPlasmaHeavy",
     "range": 1000,
     "cooldown": 2300,
     "launchForce": 10000,
@@ -165,7 +165,7 @@
   },
   "turretMortarSlow": {
     "turretBlueprintId": "turretMortarSlow",
-    "shotBlueprintId": "megaMortarShot",
+    "shotBlueprintId": "shotMortarHeavy",
     "range": 1000,
     "cooldown": 6000,
     "launchForce": 20000,
@@ -218,7 +218,7 @@
   },
   "turretMortarDrop": {
     "turretBlueprintId": "turretMortarDrop",
-    "shotBlueprintId": "megaMortarShot",
+    "shotBlueprintId": "shotMortarHeavy",
     "range": 650,
     "cooldown": 3500,
     "launchForce": 3500,
@@ -268,7 +268,7 @@
   },
   "turretMortarFast": {
     "turretBlueprintId": "turretMortarFast",
-    "shotBlueprintId": "megaMortarShot",
+    "shotBlueprintId": "shotMortarHeavy",
     "range": 2000,
     "cooldown": 900,
     "launchForce": 26000,
@@ -329,7 +329,7 @@
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",
-    "shotBlueprintId": "mediumShot",
+    "shotBlueprintId": "shotPlasmaMedium",
     "range": 300,
     "cooldown": 130,
     "launchForce": 8000,
@@ -390,7 +390,7 @@
   },
   "turretDisruptor": {
     "turretBlueprintId": "turretDisruptor",
-    "shotBlueprintId": "disruptorShot",
+    "shotBlueprintId": "shotPlasmaDisruptor",
     "range": 150,
     "cooldown": 0,
     "launchForce": 8400,
@@ -438,7 +438,7 @@
   },
   "turretForceFieldPanel": {
     "turretBlueprintId": "turretForceFieldPanel",
-    "shotBlueprintId": "forceFieldPanelShot",
+    "shotBlueprintId": "shotForceFieldPanel",
     "range": 300,
     "cooldown": 0,
     "launchForce": 0,
@@ -486,7 +486,7 @@
   },
   "turretBeam": {
     "turretBlueprintId": "turretBeam",
-    "shotBlueprintId": "beamShot",
+    "shotBlueprintId": "shotBeamMedium",
     "range": 250,
     "cooldown": 0,
     "launchForce": 0,
@@ -534,7 +534,7 @@
   },
   "turretBeamMini": {
     "turretBlueprintId": "turretBeamMini",
-    "shotBlueprintId": "miniBeamShot",
+    "shotBlueprintId": "shotBeamMini",
     "range": 180,
     "cooldown": 0,
     "launchForce": 0,
@@ -582,7 +582,7 @@
   },
   "turretBeamMega": {
     "turretBlueprintId": "turretBeamMega",
-    "shotBlueprintId": "megaBeamShot",
+    "shotBlueprintId": "shotBeamHeavy",
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
@@ -630,7 +630,7 @@
   },
   "turretForceFieldSphere": {
     "turretBlueprintId": "turretForceFieldSphere",
-    "shotBlueprintId": "forceFieldBarrierShot",
+    "shotBlueprintId": "shotForceFieldSphere",
     "range": 540,
     "cooldown": 0,
     "launchForce": 0,
@@ -753,7 +753,7 @@
   },
   "turretBeamLong": {
     "turretBlueprintId": "turretBeamLong",
-    "shotBlueprintId": "towerBeamShot",
+    "shotBlueprintId": "shotBeamMega",
     "range": 350,
     "cooldown": 0,
     "launchForce": 0,
@@ -801,7 +801,7 @@
   },
   "turretCannonLong": {
     "turretBlueprintId": "turretCannonLong",
-    "shotBlueprintId": "heavyShot",
+    "shotBlueprintId": "shotPlasmaHeavy",
     "range": 1500,
     "cooldown": 1500,
     "launchForce": 30000,
@@ -855,7 +855,7 @@
   },
   "turretRocketSlow": {
     "turretBlueprintId": "turretRocketSlow",
-    "shotBlueprintId": "lightRocket",
+    "shotBlueprintId": "shotRocketLight",
     "range": 800,
     "cooldown": 2000,
     "launchForce": 500,
@@ -917,7 +917,7 @@
   },
   "turretRocketFast": {
     "turretBlueprintId": "turretRocketFast",
-    "shotBlueprintId": "fastRocket",
+    "shotBlueprintId": "shotRocketFast",
     "range": 430,
     "cooldown": 50,
     "launchForce": 5000,

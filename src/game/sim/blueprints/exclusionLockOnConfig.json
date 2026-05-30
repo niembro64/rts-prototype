@@ -1,6 +1,6 @@
 {
   "units": {
-    "jackal": {
+    "unitJackal": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -8,7 +8,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "lynx": {
+    "unitLynx": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -16,7 +16,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "daddy": {
+    "unitDaddy": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -24,7 +24,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "badger": {
+    "unitBadger": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -32,7 +32,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "mongoose": {
+    "unitMongoose": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -40,7 +40,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "tick": {
+    "unitTick": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -48,7 +48,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "mammoth": {
+    "unitMammoth": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -56,7 +56,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "formik": {
+    "unitFormik": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -64,7 +64,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "widow": {
+    "unitWidow": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -72,7 +72,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "hippo": {
+    "unitHippo": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -80,7 +80,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "tarantula": {
+    "unitTarantula": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -88,7 +88,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "loris": {
+    "unitLoris": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -96,7 +96,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "mosquito": {
+    "unitMosquito": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -104,7 +104,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "dragonfly": {
+    "unitDragonfly": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -112,7 +112,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "constructionDrone": {
+    "unitConstructionDrone": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -120,7 +120,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "eagle": {
+    "unitEagle": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -128,7 +128,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "commander": {
+    "unitCommander": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -322,7 +322,7 @@
     }
   },
   "towers": {
-    "factory": {
+    "towerFabricator": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -330,7 +330,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "megaBeamTower": {
+    "towerBeamMega": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],
@@ -338,7 +338,7 @@
       "excludeLockOnLevel1Units": [],
       "excludeLockOnLevel1Turrets": []
     },
-    "cannonTower": {
+    "towerCannon": {
       "excludeLockOnLevel0FriendsAndEnemies": [],
       "excludeLockOnLevel0Entities": [],
       "excludeLockOnLevel1Buildings": [],

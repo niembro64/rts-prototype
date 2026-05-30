@@ -6,11 +6,11 @@
 import { isUnitBlueprintId, type UnitBlueprintId } from '../../../types/blueprintIds';
 import unitRoster from './unitRoster.json';
 
-export type BuildableUnitBlueprintId = Exclude<UnitBlueprintId, 'commander'>;
+export type BuildableUnitBlueprintId = Exclude<UnitBlueprintId, 'unitCommander'>;
 
 function readBuildableUnitBlueprintIds(): BuildableUnitBlueprintId[] {
   return unitRoster.buildableUnitIds.map((unitBlueprintId) => {
-    if (!isUnitBlueprintId(unitBlueprintId) || unitBlueprintId === 'commander') {
+    if (!isUnitBlueprintId(unitBlueprintId) || unitBlueprintId === 'unitCommander') {
       throw new Error(`Invalid buildable unit blueprint id in unitRoster.json: ${unitBlueprintId}`);
     }
     return unitBlueprintId;

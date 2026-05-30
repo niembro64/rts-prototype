@@ -1,30 +1,51 @@
 {
   "playerCount": 5,
-  "solarCount": 3,
-  "windCount": 2,
-  "megaBeamTowerCount": 1,
-  "cannonTowerCount": 1,
-  "radarCount": 1,
-  "resourceConverterCount": 1,
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {
-    "solar": { "radiusFraction": 0.8 },
-    "wind": { "radiusFraction": 0.75 },
-    "commander": { "radiusFraction": 0.7 },
-    "radar": { "radiusFraction": 0.62 },
-    "fabricator": { "radiusFraction": 0.6 },
-    "resourceConverter": { "radiusFraction": 0.55 },
-    "cannonTower": { "radiusFraction": 0.45 },
-    "megaBeamTower": { "radiusFraction": 0.4 },
-    "fogOfWar": { "radiusFraction": 0.8 }
+    "buildingSolar": {
+      "radiusFraction": 0.8
+    },
+    "buildingWind": {
+      "radiusFraction": 0.75
+    },
+    "unitCommander": {
+      "radiusFraction": 0.7
+    },
+    "buildingRadar": {
+      "radiusFraction": 0.62
+    },
+    "towerFabricator": {
+      "radiusFraction": 0.6
+    },
+    "buildingResourceConverter": {
+      "radiusFraction": 0.55
+    },
+    "towerCannon": {
+      "radiusFraction": 0.45
+    },
+    "towerBeamMega": {
+      "radiusFraction": 0.4
+    },
+    "fogOfWar": {
+      "radiusFraction": 0.8
+    }
   },
   "initialUnitWaypointType": "fight",
   "factoryWaypointType": "patrol",
-  "factoryWaypointDistances": [0.4, 1.22],
+  "factoryWaypointDistances": [
+    0.4,
+    1.22
+  ],
   "aiInverseCostWeighting": true,
   "centerSpawnRadius": 0.2,
   "centerSpawnSectorFraction": 0.6,
   "centerSpawnWaterBufferPx": 40,
-  "centerSpawnWaterMaxAttempts": 32
+  "centerSpawnWaterMaxAttempts": 32,
+  "buildingSolarCount": 3,
+  "buildingWindCount": 2,
+  "towerBeamMegaCount": 1,
+  "towerCannonCount": 1,
+  "buildingRadarCount": 1,
+  "buildingResourceConverterCount": 1
 }

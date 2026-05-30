@@ -753,14 +753,14 @@ export function serializeEntitySnapshot(
         b.buildingBlueprintCode = entity.buildingBlueprintId !== null
           ? buildingBlueprintIdToCode(entity.buildingBlueprintId)
           : null;
-        b.metalExtractionRate = entity.buildingBlueprintId === 'extractor'
+        b.metalExtractionRate = entity.buildingBlueprintId === 'buildingExtractor'
           ? entity.metalExtractionRate ?? 0
           : null;
       } else {
         b.dim = null;
         b.buildingBlueprintCode = null;
         b.metalExtractionRate = (changedFields! & ENTITY_CHANGED_BUILDING) !== 0 &&
-          entity.buildingBlueprintId === 'extractor'
+          entity.buildingBlueprintId === 'buildingExtractor'
           ? entity.metalExtractionRate ?? 0
           : null;
       }

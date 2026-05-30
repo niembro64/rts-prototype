@@ -1,5 +1,5 @@
 {
-  "jackal": {
+  "locomotionJackal": {
     "type": "wheels",
     "pathfindingBlueprintId": "wheelsLand",
     "physics": {
@@ -15,7 +15,7 @@
       "rotationSpeed": 1
     }
   },
-  "lynx": {
+  "locomotionLynx": {
     "type": "treads",
     "pathfindingBlueprintId": "treadsLand",
     "physics": {
@@ -30,7 +30,7 @@
       "rotationSpeed": 1
     }
   },
-  "daddy": {
+  "locomotionDaddy": {
     "type": "legs",
     "pathfindingBlueprintId": "legsLand",
     "physics": {
@@ -67,7 +67,7 @@
       ]
     }
   },
-  "badger": {
+  "locomotionBadger": {
     "type": "treads",
     "pathfindingBlueprintId": "treadsLand",
     "physics": {
@@ -82,7 +82,7 @@
       "rotationSpeed": 1
     }
   },
-  "mongoose": {
+  "locomotionMongoose": {
     "type": "wheels",
     "pathfindingBlueprintId": "wheelsLand",
     "physics": {
@@ -98,7 +98,7 @@
       "rotationSpeed": 1
     }
   },
-  "tick": {
+  "locomotionTick": {
     "type": "legs",
     "pathfindingBlueprintId": "legsLand",
     "physics": {
@@ -135,7 +135,7 @@
       ]
     }
   },
-  "mammoth": {
+  "locomotionMammoth": {
     "type": "treads",
     "pathfindingBlueprintId": "treadsLand",
     "physics": {
@@ -150,7 +150,7 @@
       "rotationSpeed": 1
     }
   },
-  "formik": {
+  "locomotionFormik": {
     "type": "legs",
     "pathfindingBlueprintId": "legsLand",
     "physics": {
@@ -197,7 +197,7 @@
       ]
     }
   },
-  "widow": {
+  "locomotionWidow": {
     "type": "legs",
     "pathfindingBlueprintId": "legsLand",
     "physics": {
@@ -234,7 +234,7 @@
       ]
     }
   },
-  "hippo": {
+  "locomotionHippo": {
     "type": "treads",
     "pathfindingBlueprintId": "treadsLand",
     "physics": {
@@ -249,7 +249,7 @@
       "rotationSpeed": 1
     }
   },
-  "tarantula": {
+  "locomotionTarantula": {
     "type": "legs",
     "pathfindingBlueprintId": "legsLand",
     "physics": {
@@ -286,7 +286,7 @@
       ]
     }
   },
-  "loris": {
+  "locomotionLoris": {
     "type": "treads",
     "pathfindingBlueprintId": "treadsLand",
     "physics": {
@@ -301,7 +301,7 @@
       "rotationSpeed": 1
     }
   },
-  "commander": {
+  "locomotionCommander": {
     "type": "legs",
     "pathfindingBlueprintId": "legsLand",
     "physics": {
@@ -338,7 +338,7 @@
       ]
     }
   },
-  "hovercraft": {
+  "locomotionHovercraft": {
     "type": "hover",
     "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
@@ -359,7 +359,7 @@
       "fanSpinRadPerSec": -10
     }
   },
-  "dragonflyHovercraft": {
+  "locomotionDragonflyHovercraft": {
     "type": "hover",
     "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
@@ -380,7 +380,7 @@
       "tailFanOffsetX": -4.7
     }
   },
-  "constructionDrone": {
+  "locomotionConstructionDrone": {
     "type": "hover",
     "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {
@@ -401,7 +401,7 @@
       "fanSpinRadPerSec": -9
     }
   },
-  "eagleFlying": {
+  "locomotionEagleFlying": {
     "type": "flying",
     "pathfindingBlueprintId": "airborneAnywhere",
     "physics": {

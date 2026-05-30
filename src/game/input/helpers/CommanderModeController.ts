@@ -17,7 +17,7 @@ import { getSnappedBuildPosition } from './BuildPlacementValidator';
 const BUILD_MODE_BUILDING_BLUEPRINT_IDS = getAllBuildings().map(
   (building) => building.buildingBlueprintId,
 );
-const DEFAULT_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = BUILD_MODE_BUILDING_BLUEPRINT_IDS[0] ?? 'solar';
+const DEFAULT_BUILDING_BLUEPRINT_ID: BuildingBlueprintId = BUILD_MODE_BUILDING_BLUEPRINT_IDS[0] ?? 'buildingSolar';
 
 export function getBuildModeBuildingBlueprintIds(): readonly BuildingBlueprintId[] {
   return BUILD_MODE_BUILDING_BLUEPRINT_IDS;

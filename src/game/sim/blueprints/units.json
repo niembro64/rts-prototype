@@ -1,6 +1,6 @@
 {
-  "jackal": {
-    "unitBlueprintId": "jackal",
+  "unitJackal": {
+    "unitBlueprintId": "unitJackal",
     "name": "Jackal",
     "shortName": "JKL",
     "hp": 55,
@@ -46,13 +46,13 @@
       "radius": 900
     },
     "deathSound": {
-      "$audio": "event.death.jackal"
+      "$audio": "event.death.unitJackal"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "jackal"
+    "locomotionBlueprintId": "locomotionJackal"
   },
-  "lynx": {
-    "unitBlueprintId": "lynx",
+  "unitLynx": {
+    "unitBlueprintId": "unitLynx",
     "name": "Lynx",
     "shortName": "LNX",
     "hp": 60,
@@ -96,13 +96,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.lynx"
+      "$audio": "event.death.unitLynx"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "lynx"
+    "locomotionBlueprintId": "locomotionLynx"
   },
-  "daddy": {
-    "unitBlueprintId": "daddy",
+  "unitDaddy": {
+    "unitBlueprintId": "unitDaddy",
     "name": "Daddy",
     "shortName": "DDY",
     "hp": 200,
@@ -153,13 +153,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.daddy"
+      "$audio": "event.death.unitDaddy"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "daddy"
+    "locomotionBlueprintId": "locomotionDaddy"
   },
-  "badger": {
-    "unitBlueprintId": "badger",
+  "unitBadger": {
+    "unitBlueprintId": "unitBadger",
     "name": "Badger",
     "shortName": "BDG",
     "hp": 300,
@@ -203,13 +203,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.badger"
+      "$audio": "event.death.unitBadger"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "badger"
+    "locomotionBlueprintId": "locomotionBadger"
   },
-  "mongoose": {
-    "unitBlueprintId": "mongoose",
+  "unitMongoose": {
+    "unitBlueprintId": "unitMongoose",
     "name": "Mongoose",
     "shortName": "MGS",
     "hp": 200,
@@ -253,13 +253,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.mongoose"
+      "$audio": "event.death.unitMongoose"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "mongoose"
+    "locomotionBlueprintId": "locomotionMongoose"
   },
-  "tick": {
-    "unitBlueprintId": "tick",
+  "unitTick": {
+    "unitBlueprintId": "unitTick",
     "name": "Tick",
     "shortName": "TCK",
     "hp": 55,
@@ -305,13 +305,13 @@
       "radius": 200
     },
     "deathSound": {
-      "$audio": "event.death.tick"
+      "$audio": "event.death.unitTick"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "tick"
+    "locomotionBlueprintId": "locomotionTick"
   },
-  "mammoth": {
-    "unitBlueprintId": "mammoth",
+  "unitMammoth": {
+    "unitBlueprintId": "unitMammoth",
     "name": "Mammoth",
     "shortName": "MMT",
     "hp": 900,
@@ -355,13 +355,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.mammoth"
+      "$audio": "event.death.unitMammoth"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "mammoth"
+    "locomotionBlueprintId": "locomotionMammoth"
   },
-  "formik": {
-    "unitBlueprintId": "formik",
+  "unitFormik": {
+    "unitBlueprintId": "unitFormik",
     "name": "Formik",
     "shortName": "FMK",
     "hp": 3200,
@@ -423,13 +423,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.formik"
+      "$audio": "event.death.unitFormik"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "formik"
+    "locomotionBlueprintId": "locomotionFormik"
   },
-  "widow": {
-    "unitBlueprintId": "widow",
+  "unitWidow": {
+    "unitBlueprintId": "unitWidow",
     "name": "Widow",
     "shortName": "WDW",
     "hp": 2400,
@@ -552,13 +552,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.widow"
+      "$audio": "event.death.unitWidow"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "widow"
+    "locomotionBlueprintId": "locomotionWidow"
   },
-  "hippo": {
-    "unitBlueprintId": "hippo",
+  "unitHippo": {
+    "unitBlueprintId": "unitHippo",
     "name": "Hippo",
     "shortName": "HPO",
     "hp": 1500,
@@ -601,13 +601,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.hippo"
+      "$audio": "event.death.unitHippo"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "hippo"
+    "locomotionBlueprintId": "locomotionHippo"
   },
-  "tarantula": {
-    "unitBlueprintId": "tarantula",
+  "unitTarantula": {
+    "unitBlueprintId": "unitTarantula",
     "name": "Tarantula",
     "shortName": "TRN",
     "hp": 100,
@@ -662,13 +662,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.tarantula"
+      "$audio": "event.death.unitTarantula"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "tarantula"
+    "locomotionBlueprintId": "locomotionTarantula"
   },
-  "loris": {
-    "unitBlueprintId": "loris",
+  "unitLoris": {
+    "unitBlueprintId": "unitLoris",
     "name": "Loris",
     "shortName": "LRS",
     "hp": 200,
@@ -717,13 +717,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.loris"
+      "$audio": "event.death.unitLoris"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "loris"
+    "locomotionBlueprintId": "locomotionLoris"
   },
-  "mosquito": {
-    "unitBlueprintId": "mosquito",
+  "unitMosquito": {
+    "unitBlueprintId": "unitMosquito",
     "name": "Mosquito",
     "shortName": "MSQ",
     "hp": 70,
@@ -765,13 +765,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.mosquito"
+      "$audio": "event.death.unitMosquito"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "hovercraft"
+    "locomotionBlueprintId": "locomotionHovercraft"
   },
-  "dragonfly": {
-    "unitBlueprintId": "dragonfly",
+  "unitDragonfly": {
+    "unitBlueprintId": "unitDragonfly",
     "name": "Dragonfly",
     "shortName": "DRF",
     "hp": 240,
@@ -837,13 +837,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.dragonfly"
+      "$audio": "event.death.unitDragonfly"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "dragonflyHovercraft"
+    "locomotionBlueprintId": "locomotionDragonflyHovercraft"
   },
-  "constructionDrone": {
-    "unitBlueprintId": "constructionDrone",
+  "unitConstructionDrone": {
+    "unitBlueprintId": "unitConstructionDrone",
     "name": "Construction Drone",
     "shortName": "CDR",
     "hp": 120,
@@ -904,13 +904,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.constructionDrone"
+      "$audio": "event.death.unitConstructionDrone"
     },
     "fightStopEngagedRatio": null,
-    "locomotionBlueprintId": "constructionDrone"
+    "locomotionBlueprintId": "locomotionConstructionDrone"
   },
-  "eagle": {
-    "unitBlueprintId": "eagle",
+  "unitEagle": {
+    "unitBlueprintId": "unitEagle",
     "name": "Eagle",
     "shortName": "EGL",
     "hp": 220,
@@ -959,13 +959,13 @@
     "cloak": null,
     "detector": null,
     "deathSound": {
-      "$audio": "event.death.eagle"
+      "$audio": "event.death.unitEagle"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "eagleFlying"
+    "locomotionBlueprintId": "locomotionEagleFlying"
   },
-  "commander": {
-    "unitBlueprintId": "commander",
+  "unitCommander": {
+    "unitBlueprintId": "unitCommander",
     "name": "Commander",
     "shortName": "CMD",
     "hp": 500,
@@ -1054,9 +1054,9 @@
       "radius": 1100
     },
     "deathSound": {
-      "$audio": "event.death.commander"
+      "$audio": "event.death.unitCommander"
     },
     "fightStopEngagedRatio": 0.5,
-    "locomotionBlueprintId": "commander"
+    "locomotionBlueprintId": "locomotionCommander"
   }
 }

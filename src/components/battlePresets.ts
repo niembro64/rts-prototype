@@ -49,15 +49,15 @@ function allUnits(): readonly string[] {
 }
 function demoUnits(): readonly string[] {
   return [
-    'lynx',
-    'badger',
-    'tick',
-    'loris',
-    'widow',
-    'hippo',
-    'mosquito',
-    'dragonfly',
-    'eagle',
+    'unitLynx',
+    'unitBadger',
+    'unitTick',
+    'unitLoris',
+    'unitWidow',
+    'unitHippo',
+    'unitMosquito',
+    'unitDragonfly',
+    'unitEagle',
   ];
 }
 

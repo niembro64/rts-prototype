@@ -63,20 +63,20 @@ const _windBladeQuat = new THREE.Quaternion();
  *  instead of dividing each entity's `metalExtractionRate` by the
  *  base rate every frame. */
 const INV_EXTRACTOR_BASE_PRODUCTION = (() => {
-  const base = getBuildingConfig('extractor').metalProduction ?? 0;
+  const base = getBuildingConfig('buildingExtractor').metalProduction ?? 0;
   return base > 0 ? 1 / base : 0;
 })();
 const INV_SOLAR_BASE_PRODUCTION = (() => {
-  const base = getBuildingConfig('solar').energyProduction ?? 0;
+  const base = getBuildingConfig('buildingSolar').energyProduction ?? 0;
   return base > 0 ? 1 / base : 0;
 })();
 const INV_WIND_MAX_PRODUCTION = (() => {
-  const base = getBuildingConfig('wind').energyProduction ?? 0;
+  const base = getBuildingConfig('buildingWind').energyProduction ?? 0;
   const maxRate = base * WIND_SPEED_MAX;
   return maxRate > 0 ? 1 / maxRate : 0;
 })();
 const INV_CONVERTER_BASE_RATE = (() => {
-  const base = getBuildingConfig('resourceConverter').conversionRate ?? 0;
+  const base = getBuildingConfig('buildingResourceConverter').conversionRate ?? 0;
   return base > 0 ? 1 / base : 0;
 })();
 
@@ -154,7 +154,7 @@ export class BuildingAnimationController3D {
 
   register(entity: Entity, mesh: EntityMesh): void {
     const id = entity.id;
-    if (entity.buildingBlueprintId === 'solar' && mesh.buildingDetails) {
+    if (entity.buildingBlueprintId === 'buildingSolar' && mesh.buildingDetails) {
       this.addAnimatedBuilding(this.solarBuildingIds, this.solarBuildingIdSet, id);
     }
     if (mesh.windRig) {
@@ -568,7 +568,7 @@ export class BuildingAnimationController3D {
     e: Entity,
     detailsReady: boolean,
   ): void {
-    if (e.buildingBlueprintId !== 'solar' || !m.buildingDetails || !detailsReady) return;
+    if (e.buildingBlueprintId !== 'buildingSolar' || !m.buildingDetails || !detailsReady) return;
     const target = e.building?.activeState?.open === false ? 0 : 1;
     const current = m.solarOpenAmount ?? target;
     const next = Math.abs(target - current) < 0.002

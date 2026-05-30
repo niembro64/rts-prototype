@@ -11,7 +11,7 @@
 //   factory — compact radial construction tower. Produced units are
 //             assembled outside the tower footprint by spray particles.
 //   extractor — squat metal pump with a rotating top extractor head.
-//   cannonTower — static defense tower with a heavy cannon mount.
+//   towerCannon — static defense tower with a heavy cannon mount.
 //
 // Shapes are additive — the caller owns a `THREE.Group` containing the
 // whole building and plugs in the primary + detail meshes returned by
@@ -201,21 +201,21 @@ export function buildBuildingShape(
   primaryMat: THREE.Material,
 ): BuildingShape {
   switch (type) {
-    case 'solar':
+    case 'buildingSolar':
       return buildSolarCollector(width, depth, primaryMat);
-    case 'wind':
+    case 'buildingWind':
       return buildWindTurbineMesh(width, depth, primaryMat);
-    case 'factory':
+    case 'towerFabricator':
       return buildFactoryMesh(width, depth, primaryMat);
-    case 'extractor':
+    case 'buildingExtractor':
       return buildMetalExtractorMesh(width, depth, primaryMat);
-    case 'radar':
+    case 'buildingRadar':
       return buildRadarMesh(width, depth, primaryMat);
-    case 'megaBeamTower':
+    case 'towerBeamMega':
       return buildMegaBeamTowerMesh(primaryMat);
-    case 'cannonTower':
+    case 'towerCannon':
       return buildCannonTowerMesh(primaryMat);
-    case 'resourceConverter':
+    case 'buildingResourceConverter':
       return buildResourceConverterMesh(width, depth, primaryMat);
     case 'unknown':
       return buildUnknown(primaryMat);

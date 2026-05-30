@@ -261,10 +261,10 @@ function buildPreviewLocomotion(
       buildWheels(yawGroup, radius, locomotion.config, undefined);
       break;
     case 'hover':
-      buildHoverFans(yawGroup, radius, locomotion.config, 'hovercraft', SHELL_ENTITY_ID, undefined);
+      buildHoverFans(yawGroup, radius, locomotion.config, 'locomotionHovercraft', SHELL_ENTITY_ID, undefined);
       break;
     case 'flying':
-      buildFlyingRig(yawGroup, radius, locomotion.config, 'eagleFlying', SHELL_ENTITY_ID, undefined);
+      buildFlyingRig(yawGroup, radius, locomotion.config, 'locomotionEagleFlying', SHELL_ENTITY_ID, undefined);
       break;
     case 'legs':
       buildPreviewLegs(yawGroup, blueprint, shellMaterial);

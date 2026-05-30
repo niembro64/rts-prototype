@@ -149,7 +149,7 @@
       "rockTexture": {
         "sourceFile": "src/game/render3d/RockDetailTexture.ts",
         "resolution": 8192,
-        "blend": 1.0,
+        "blend": 1,
         "tileWorldSize": 2000
       },
       "lambertMaterial": {
@@ -233,18 +233,6 @@
         "metalness": 0.72,
         "roughness": 0.2
       },
-      "megaBeamTowerTrim": {
-        "colorHex": "#82dce9",
-        "emissiveHex": "#73ddeb",
-        "emissiveIntensity": 0.28,
-        "metalness": 0.56,
-        "roughness": 0.18
-      },
-      "cannonTowerTrim": {
-        "colorHex": "#172331",
-        "metalness": 0.72,
-        "roughness": 0.24
-      },
       "solarCell": {
         "colorHex": "#123a58",
         "metalness": 1,
@@ -260,6 +248,18 @@
       "invisible": {
         "colorHex": "#000000",
         "opacity": 0
+      },
+      "towerBeamMegaTrim": {
+        "colorHex": "#82dce9",
+        "emissiveHex": "#73ddeb",
+        "emissiveIntensity": 0.28,
+        "metalness": 0.56,
+        "roughness": 0.18
+      },
+      "towerCannonTrim": {
+        "colorHex": "#172331",
+        "metalness": 0.72,
+        "roughness": 0.24
       }
     }
   },
@@ -327,7 +327,7 @@
         "colorHex": "#ffffff"
       }
     },
-    "commander": {
+    "unitCommander": {
       "armor": {
         "colorHex": "#232830"
       },
@@ -527,7 +527,7 @@
         "colorHex": "#44ff44",
         "opacity": 0.65
       },
-      "radar": {
+      "buildingRadar": {
         "colorHex": "#ff0000",
         "opacity": 0.72
       },
@@ -659,9 +659,9 @@
         "emptyShellShadow": "rgba(255, 45, 45, 0.38)"
       },
       "buildings": {
-        "solar": "#ffcc00",
-        "wind": "#bde7ff",
-        "factory": "#88ccff"
+        "buildingSolar": "#ffcc00",
+        "buildingWind": "#bde7ff",
+        "towerFabricator": "#88ccff"
       }
     },
     "selectionPanel": {
@@ -675,8 +675,8 @@
         "key": "rgba(255, 255, 255, 0.5)"
       },
       "unitBlueprintId": {
-        "commander": "#ffd700",
-        "factory": "#88ff88"
+        "unitCommander": "#ffd700",
+        "towerFabricator": "#88ff88"
       },
       "buttons": {
         "default": "#888888",
@@ -752,7 +752,7 @@
           "specularHex": "#ffffff",
           "shininess": 58
         },
-        "wind": {
+        "buildingWind": {
           "colorHex": "#9be8ff",
           "specularHex": "#ffffff",
           "shininess": 70

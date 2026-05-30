@@ -82,13 +82,13 @@ export function geometryKeyFor(gfx: GraphicsConfig): string {
 }
 
 function hoverSmokeUseId(locomotionBlueprintId: string): HoverSmokeUseId {
-  return locomotionBlueprintId === 'dragonflyHovercraft'
-    ? 'dragonflyHovercraft'
-    : 'hovercraft';
+  return locomotionBlueprintId === 'locomotionDragonflyHovercraft'
+    ? 'locomotionDragonflyHovercraft'
+    : 'locomotionHovercraft';
 }
 
 function flyingSmokeUseId(_locomotionBlueprintId: string): FlyingSmokeUseId {
-  return 'eagleFlying';
+  return 'locomotionEagleFlying';
 }
 
 /** Capture per-leg state from a legged locomotion mesh into a plain

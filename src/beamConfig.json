@@ -14,15 +14,15 @@
     "minRadius": 0.1,
     "color": "#ffffff",
     "emissionOffset": {
-      "miniBeamShot": 8,
-      "beamShot": 18,
-      "megaBeamShot": 50,
-      "towerBeamShot": 60
+      "shotBeamMini": 8,
+      "shotBeamMedium": 18,
+      "shotBeamHeavy": 50,
+      "shotBeamMega": 60
     }
   },
   "startPointTorus": [
     {
-      "radiusMultiplier": 2.0,
+      "radiusMultiplier": 2,
       "tubeRadiusMultiplier": 0.3,
       "offsetAlongBeam": -0.6,
       "alpha": 0.5

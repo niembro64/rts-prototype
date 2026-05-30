@@ -1,6 +1,6 @@
 {
-  "factory": {
-    "buildingBlueprintId": "factory",
+  "towerFabricator": {
+    "buildingBlueprintId": "towerFabricator",
     "name": "Fabricator",
     "gridWidth": 2,
     "gridHeight": 2,
@@ -14,7 +14,7 @@
     "metalProduction": null,
     "constructionRate": 100,
     "conversionRate": null,
-    "renderProfile": "factory",
+    "renderProfile": "towerFabricator",
     "visualHeight": 30,
     "anchorProfile": "factoryTower",
     "hud": {
@@ -35,8 +35,8 @@
     ],
     "detector": null
   },
-  "megaBeamTower": {
-    "buildingBlueprintId": "megaBeamTower",
+  "towerBeamMega": {
+    "buildingBlueprintId": "towerBeamMega",
     "name": "Beam Tower",
     "gridWidth": 1,
     "gridHeight": 1,
@@ -50,7 +50,7 @@
     "metalProduction": null,
     "constructionRate": null,
     "conversionRate": null,
-    "renderProfile": "megaBeamTower",
+    "renderProfile": "towerBeamMega",
     "visualHeight": 96,
     "anchorProfile": "constantVisualTop",
     "hud": {
@@ -70,8 +70,8 @@
     ],
     "detector": null
   },
-  "cannonTower": {
-    "buildingBlueprintId": "cannonTower",
+  "towerCannon": {
+    "buildingBlueprintId": "towerCannon",
     "name": "Cannon Tower",
     "gridWidth": 4,
     "gridHeight": 4,
@@ -85,7 +85,7 @@
     "metalProduction": null,
     "constructionRate": null,
     "conversionRate": null,
-    "renderProfile": "cannonTower",
+    "renderProfile": "towerCannon",
     "visualHeight": 30,
     "anchorProfile": "constantVisualTop",
     "hud": {
