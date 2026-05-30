@@ -211,6 +211,9 @@ export function useGameCanvasSceneUi({
     selfDestructSelected: () => {
       getActiveBattleScene()?.selfDestructSelected();
     },
+    selectOnlyEntityType: (entityType) => {
+      getActiveBattleScene()?.selectOnlyEntityType(entityType);
+    },
     setTowerTargetMode: () => {
       getActiveBattleScene()?.toggleTowerTargetMode();
     },

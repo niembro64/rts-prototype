@@ -334,6 +334,16 @@ export const UNIT_GROUND_SPRING_DAMPING_RATIO =
 export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED =
   sharedSimConstants.unitGroundPassiveReboundMaxSpeed;
 
+/** Map-edge boundary spring acceleration per world-unit of penetration.
+ *  The engine applies this as an inward spring before the WASM integration
+ *  step, so world bounds are a force response rather than a post-step clamp. */
+export const UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT =
+  sharedSimConstants.unitWorldBoundarySpringAccelPerWorldUnit;
+
+/** Damping ratio for the map-edge boundary spring along the inward normal. */
+export const UNIT_WORLD_BOUNDARY_SPRING_DAMPING_RATIO =
+  sharedSimConstants.unitWorldBoundarySpringDampingRatio;
+
 /** Body sleep transition tick threshold shared with the WASM integrator. */
 export const BODY_SLEEP_TICKS = sharedSimConstants.bodySleepTicks;
 

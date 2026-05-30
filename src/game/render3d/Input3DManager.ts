@@ -417,6 +417,29 @@ export class Input3DManager {
     this.enqueueSelfDestructCommand();
   }
 
+  selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
+    const entityIds: EntityId[] = [];
+    if (entityType === 'unit') {
+      const selectedUnits = this.entitySource.getSelectedUnits();
+      for (let i = 0; i < selectedUnits.length; i++) {
+        entityIds.push(selectedUnits[i].id);
+      }
+    } else {
+      const selectedStatic = this.entitySource.getSelectedBuildings();
+      for (let i = 0; i < selectedStatic.length; i++) {
+        const entity = selectedStatic[i];
+        if (entity.type === entityType) entityIds.push(entity.id);
+      }
+    }
+    if (entityIds.length === 0) return;
+    this.localCommandQueue.enqueue({
+      type: 'select',
+      tick: this.context.getTick(),
+      entityIds,
+      additive: false,
+    });
+  }
+
   toggleAttackAreaMode(): void {
     if (this.attackAreaMode) {
       this.exitAttackAreaMode();

@@ -299,12 +299,10 @@ export function getEntityDeltaChangedFields(
       mask |= ENTITY_CHANGED_TURRETS;
     } else {
       let turretsAlreadyChanged = false;
-      // Head-only turrets with no snapshot-visible aim pose have
-      // rotation/pitch/velocity pre-zeroed by captureEntityState, so the
-      // threshold checks here naturally compare 0 vs 0 and never fire.
-      // Line weapons and force-field-panel hosts are intentionally not
-      // pre-zeroed because their hidden/head-only pose still drives visible
-      // presentation state.
+      // Head-only turrets have rotation/pitch/velocity pre-zeroed by
+      // captureEntityState, so the threshold checks here naturally compare
+      // 0 vs 0 and never fire. Non-head-only force-field-panel hosts still
+      // ship aim because their authored panel emitter rotates visibly.
       for (let i = 0; i < next.weaponCount; i++) {
         if (!turretsAlreadyChanged) {
           const turretRotationChanged = snapshotRotationDeltaExceeded(
@@ -405,10 +403,9 @@ export function captureEntityState(entity: Entity, prev: PrevEntityState): void 
       const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
       if (stateCode === CT_TURRET_STATE_ENGAGED) prev.isEngagedBits |= (1 << i);
       if (targetId !== -1) prev.targetBits |= (1 << i);
-      // Head-only turrets with no snapshot-visible aim pose hide their
-      // motion from the wire — sim keeps the values for fire direction but
-      // the snapshot contract is "0 always". Line weapons are the exception
-      // because their pose drives visible beam/laser presentation.
+      // Head-only turrets hide their motion from the wire — sim keeps the
+      // values for fire direction but the snapshot contract is "0 always".
+      // Beam/laser paths are serialized through projectile beam updates.
       const snapshotAimMotion = turretAimMotionIsSnapshotVisible(w);
       prev.turretRots[i] = snapshotAimMotion ? w.rotation : 0;
       prev.turretAngVels[i] = snapshotAimMotion ? w.angularVelocity : 0;
@@ -739,10 +736,8 @@ function syncEntityMetaPools(world: WorldState, e: Entity, sim: SimWasm): void {
     const w = turrets![t];
     const hasTargetingFsm = readCombatTargetingTurretFsmFromSimInto(sim, e, t, _deltaTurretFsm);
     const targetId = hasTargetingFsm ? _deltaTurretFsm.targetId : (w.target ?? -1);
-    // Mirror the snapshot contract on the Rust diff side: head-only
-    // turrets with no snapshot-visible aim pose pass 0 for aim motion,
-    // while line weapons keep their pose because it drives visible
-    // beam/laser presentation.
+    // Mirror the snapshot contract on the Rust diff side: head-only turrets
+    // pass 0 for aim motion. Beam/laser paths are serialized separately.
     const snapshotAimMotion = turretAimMotionIsSnapshotVisible(w);
     sim.entityMeta.register(
       w.id,

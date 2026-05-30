@@ -172,7 +172,10 @@ export function buildSelectionInfo(
     hasCommander: commander !== undefined,
     hasBuilder: builder !== undefined,
     hasDGun: dgunner !== undefined,
-    hasFireControl: fireControlCount > 0,
+    hasFireControl:
+      fireControlCount > 0
+      && fireControlCount === selectedUnits.length + selectedTowers.length
+      && selectedBuildings.length === 0,
     fireEnabled: fireControlCount > 0 && allFireEnabled,
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,

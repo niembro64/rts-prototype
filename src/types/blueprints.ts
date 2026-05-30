@@ -143,11 +143,11 @@ export type TurretBlueprint = {
    *  there's no barrel to orient, plain head-only turrets skip per-tick
    *  yaw/pitch pose and rotation/pitch/velocity snapshots — these
    *  turrets never dirty an entity due to aim motion, only on
-   *  target/state transitions. Line weapons (beam/laser) keep their aim
-   *  on the wire because it drives the live beam presentation. The sim
-   *  still tracks rotation/pitch internally to produce the correct fire
-   *  direction. turretForceFieldPanel is NOT head-only — its authored
-   *  barrel rotates to bisect targets through the normal aim path. */
+   *  target/state transitions. Beam/laser presentation travels through
+   *  beam endpoint updates, not turret aim fields. The sim still tracks
+   *  rotation/pitch internally to produce the correct fire direction.
+   *  turretForceFieldPanel is NOT head-only — its authored barrel rotates
+   *  to bisect targets through the normal aim path. */
   headOnly: boolean;
   /** Explicit aiming solver mode:
    *  - angleType: rayDirect for straight-line aim,

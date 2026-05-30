@@ -8,7 +8,12 @@ import {
 } from '../game/sim/blueprints/displayRosters';
 
 export type { QueueItem, SelectionInfo, SelectionActions } from '@/types/ui';
-import type { ControlGroupInfo, SelectionInfo, SelectionActions } from '@/types/ui';
+import type {
+  ControlGroupInfo,
+  SelectionEntityType,
+  SelectionInfo,
+  SelectionActions,
+} from '@/types/ui';
 
 const props = defineProps<{
   selection: SelectionInfo;
@@ -38,6 +43,49 @@ const showPanel = computed(() =>
   || props.selection.hasFactory
   || hasStoredControlGroups.value,
 );
+const selectedEntityTypeCount = computed(() =>
+  (props.selection.unitCount > 0 ? 1 : 0)
+  + (props.selection.towerCount > 0 ? 1 : 0)
+  + (props.selection.buildingCount > 0 ? 1 : 0),
+);
+const hasMixedEntityTypes = computed(() => selectedEntityTypeCount.value > 1);
+const isPureUnitSelection = computed(() =>
+  props.selection.unitCount > 0
+  && props.selection.towerCount === 0
+  && props.selection.buildingCount === 0,
+);
+const isPureTowerSelection = computed(() =>
+  props.selection.towerCount > 0
+  && props.selection.unitCount === 0
+  && props.selection.buildingCount === 0,
+);
+const isPureBuildingSelection = computed(() =>
+  props.selection.buildingCount > 0
+  && props.selection.unitCount === 0
+  && props.selection.towerCount === 0,
+);
+const showUnitActions = computed(() => isPureUnitSelection.value);
+const showTowerActions = computed(() => isPureTowerSelection.value);
+const showBuildingActions = computed(() => isPureBuildingSelection.value);
+const showCombatActions = computed(() =>
+  props.selection.hasFireControl && props.selection.buildingCount === 0,
+);
+const selectOnlyOptions = computed<
+  { entityType: SelectionEntityType; label: string; count: number }[]
+>(() => {
+  if (!hasMixedEntityTypes.value) return [];
+  const options: { entityType: SelectionEntityType; label: string; count: number }[] = [];
+  if (props.selection.unitCount > 0) {
+    options.push({ entityType: 'unit', label: 'Units', count: props.selection.unitCount });
+  }
+  if (props.selection.towerCount > 0) {
+    options.push({ entityType: 'tower', label: 'Towers', count: props.selection.towerCount });
+  }
+  if (props.selection.buildingCount > 0) {
+    options.push({ entityType: 'building', label: 'Buildings', count: props.selection.buildingCount });
+  }
+  return options;
+});
 // True iff the selection contains no movable unit at all — used to
 // fold the unit-only action groups (movement, build, commander
 // specials) out of view when only towers are selected.
@@ -115,8 +163,24 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
       <span v-else class="unit-type">{{ selection.unitCount }} Unit{{ selection.unitCount > 1 ? 's' : '' }}</span>
     </div>
 
+    <div v-if="selectOnlyOptions.length > 0" class="button-group">
+      <div class="group-label">Select</div>
+      <div class="buttons">
+        <button
+          v-for="option in selectOnlyOptions"
+          :key="option.entityType"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.groupAccent }"
+          @click="actions.selectOnlyEntityType(option.entityType)"
+        >
+          <span class="btn-label">{{ option.label }}</span>
+          <span class="btn-key">{{ option.count }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Movement mode buttons (for units) -->
-    <div v-if="selection.unitCount > 0" class="button-group">
+    <div v-if="showUnitActions" class="button-group">
       <div class="group-label">Movement</div>
       <div class="buttons">
         <button
@@ -216,7 +280,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
          See design_philosophy.html "Selection Menus Are Uniform Per
          Entity Type": both unit and tower selection panels list a
          fire-control toggle. -->
-    <div v-if="selection.hasFireControl" class="button-group">
+    <div v-if="showCombatActions" class="button-group">
       <div class="group-label">{{ isStaticOnlySelection ? 'Tower' : 'Combat' }}</div>
       <div class="buttons">
         <button
@@ -272,7 +336,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
     </div>
 
     <!-- Build options (for units with builder capability) -->
-    <div v-if="selection.hasBuilder" class="button-group">
+    <div v-if="selection.hasBuilder && showUnitActions" class="button-group">
       <div class="group-label">Build</div>
       <div class="buttons">
         <button
@@ -290,7 +354,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
     </div>
 
     <!-- Commander specials -->
-    <div v-if="selection.hasDGun || selection.hasCommander" class="button-group">
+    <div v-if="(selection.hasDGun || selection.hasCommander) && showUnitActions" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons">
         <button
@@ -329,7 +393,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
     </div>
 
     <!-- Vehicle production (for factory) -->
-    <div v-if="selection.hasFactory && selection.factoryId" class="button-group">
+    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
       <div class="group-label">Vehicles</div>
       <div class="buttons">
         <button
@@ -346,7 +410,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
     </div>
 
     <!-- Bot production (for factory) -->
-    <div v-if="selection.hasFactory && selection.factoryId" class="button-group">
+    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
       <div class="group-label">Bots</div>
       <div class="buttons">
         <button
@@ -367,7 +431,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
          priorityTargetId; right-click / Esc cancels); Clear Target
          drops the lock and reverts to autonomous acquisition.
          Per design_philosophy.html "Tower selection panel". -->
-    <div v-if="selection.hasTowerTargetControl" class="button-group">
+    <div v-if="selection.hasTowerTargetControl && showTowerActions" class="button-group">
       <div class="group-label">Target</div>
       <div class="buttons">
         <button
@@ -397,7 +461,7 @@ const botOptions = unitOptions.filter((unit) => unit.locomotion === 'legs');
          design_philosophy.html: solar/wind/extractor selections expose
          this toggle. ON = producing + normal damage; OFF = not
          producing + 10x damage resistance. -->
-    <div v-if="selection.hasBuildingActiveControl" class="button-group">
+    <div v-if="selection.hasBuildingActiveControl && showBuildingActions" class="button-group">
       <div class="group-label">Power</div>
       <div class="buttons">
         <button

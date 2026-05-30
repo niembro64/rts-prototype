@@ -1264,6 +1264,10 @@ export class RtsScene3D {
     this.inputManager?.selfDestructSelected();
   }
 
+  public selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
+    this.inputManager?.selectOnlyEntityType(entityType);
+  }
+
   public toggleTowerTargetMode(): void {
     this.inputManager?.toggleTowerTargetMode();
   }

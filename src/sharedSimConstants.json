@@ -4,6 +4,8 @@
   "unitGroundSpringAccelPerWorldUnit": 900,
   "unitGroundSpringDampingRatio": 1,
   "unitGroundPassiveReboundMaxSpeed": 5,
+  "unitWorldBoundarySpringAccelPerWorldUnit": 900,
+  "unitWorldBoundarySpringDampingRatio": 1,
   "unitAirFrictionPer60HzFrame": 0.02,
   "unitGroundFrictionPer60HzFrame": 0.15,
   "bodySleepSpeedSq": 0.25,

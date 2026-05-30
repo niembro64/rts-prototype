@@ -145,9 +145,8 @@ export class OrbitCamera {
    *  `zoomInAnchor` vs `zoomOutAnchor` based on scroll direction so
    *  the two halves of the zoom can use different anchors. Defaults
    *  use cursor for both so paired wheel ticks are inverse. The
-   *  orbit drag uses `rotateAnchor`, and pan uses `panAnchor` for
-   *  its grab-depth capture. Touch pinch + twist use the gesture
-   *  centroid as the screen point. */
+   *  orbit drag and touch twist use `rotateAnchor`, and pan uses
+   *  `panAnchor` for its grab-depth capture. */
   private zoomInAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
   private zoomOutAnchor: CameraAnchor = { screen: 'cursor', terrain: 'terrain-3d-water' };
   private rotateAnchor: CameraAnchor = { screen: 'screen-center', terrain: 'terrain-3d-water' };
@@ -665,10 +664,7 @@ export class OrbitCamera {
     if (!Number.isFinite(yawDelta) || yawDelta === 0) return;
     const oldYaw = this.yaw;
     const newYaw = oldYaw + yawDelta;
-    const pivot = this._anchorWorldPoint(clientX, clientY, {
-      screen: 'cursor',
-      terrain: this.rotateAnchor.terrain,
-    });
+    const pivot = this._anchorWorldPoint(clientX, clientY, this.rotateAnchor);
     if (!pivot) {
       this.yaw = newYaw;
       this.apply();
@@ -687,9 +683,9 @@ export class OrbitCamera {
 
     this._orbitYawQuatTmp.setFromAxisAngle(OrbitCamera._ORBIT_WORLD_Y, -yawDelta);
 
-    // Rotate the rendered camera around the terrain point under the
-    // two-finger centroid, then synthesize the target that preserves
-    // that new camera pose for the normal orbit state.
+    // Rotate the rendered camera around the configured rotate anchor,
+    // then synthesize the target that preserves that new camera pose
+    // for the normal orbit state.
     this._orbitOffsetTmp.copy(this.camera.position).sub(pivot);
     this._orbitOffsetTmp.applyQuaternion(this._orbitYawQuatTmp);
     const camX = pivot.x + this._orbitOffsetTmp.x;

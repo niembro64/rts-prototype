@@ -15,6 +15,8 @@ export type ControlGroupInfo = {
   active: boolean;
 };
 
+export type SelectionEntityType = 'unit' | 'tower' | 'building';
+
 export type SelectionInfo = {
   // Per-type selection counts. The action panel branches on these so
   // each entity type gets its own uniform action set
@@ -83,6 +85,8 @@ export type SelectionActions = {
   toggleBuildingActive: () => void;
   /** Demolish every owned entity in the selection. */
   selfDestructSelected: () => void;
+  /** Narrow a mixed selection to one entity type. */
+  selectOnlyEntityType: (entityType: SelectionEntityType) => void;
   /** Enter click-pick mode for setting the host lock-on target on the
    *  selected towers. Right-click / Esc cancels. */
   setTowerTargetMode: () => void;

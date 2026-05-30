@@ -1,14 +1,11 @@
-// 3D physics engine — full rewrite of PhysicsEngine.ts with the third
-// dimension as a first-class citizen, not an afterthought. No 2.5D
-// tricks; the sim lives in genuine 3D and this engine owns the truth
-// of where every body is and how it moves.
+// 3D authoritative physics orchestration. Body state lives in the
+// WASM-side BodyPool; this TypeScript class owns allocation, terrain
+// sampling, static broadphase handles, and engine-side bookkeeping while
+// Rust/WASM owns dynamic-body integration and contact kernels.
 //
 // Convention: (x, y) is the horizontal ground plane, z is altitude
-// (positive = up). Gravity accelerates -z. The ground is an implicit
-// infinite plane at z=0. That convention lets the 2D top-down client
-// keep reading (x, y) untouched while the 3D client maps (sim.x,
-// sim.z, sim.y) → Three.js (x, y, z). The third dimension costs the
-// 2D renderer literally zero changes.
+// (positive = up). Gravity accelerates -z. The 3D client maps
+// (sim.x, sim.z, sim.y) → Three.js (x, y, z).
 //
 // Body shapes:
 //   sphere — units. Radius + center. Rolls-free movement on the
@@ -34,26 +31,26 @@
 //   projectile hits  — full 3D; handled OUTSIDE this engine by
 //                      DamageSystem / ProjectileCollisionHandler.
 //
-// The engine runs a standard explicit-Euler integrator at the
-// simulation's fixed tick rate. Integration order per step:
+// Step order per tick:
 //
-//   1. Apply accumulated external forces + gravity → velocity
-//   2. Terrain spring adds normal force when the locomotion ground
-//      point is below terrain height
-//   3. Air drag damps velocity equally on x/y/z
-//   4. Ground friction damps velocity tangent to the terrain only
-//      while the locomotion ground point is at/below terrain height
-//   5. Integrate position from velocity
-//   6. Resolve sphere-cuboid (unit-vs-building) contacts
-//   7. Resolve sphere-sphere (unit-vs-unit) contacts, iterated
-//   8. Clear per-step force accumulator
+//   1. Add map-edge boundary spring/damping acceleration.
+//   2. WASM integrates sphere bodies from accumulated acceleration,
+//      gravity, terrain spring contact, air drag, ground friction, and
+//      fixed dt; it also emits sleep transitions.
+//   3. WASM resolves sphere-cuboid and sphere-sphere contacts.
+//   4. Clear per-step acceleration accumulators.
 //
-// Contact resolution is position-level (push bodies apart) + velocity
-// reflection with restitution. No constraint solver, no sleeping —
-// for an RTS with a few hundred units this is enough and keeps the
-// code small enough to audit at a glance.
+// Current dynamic bodies are spheres (units). Cuboids are static
+// buildings. Adding a new dynamic shape requires adding it to the WASM
+// integration/contact path first; there is no TypeScript fallback
+// integrator.
 
-import { BODY_SLEEP_TICKS, UNIT_MASS_MULTIPLIER, GRAVITY } from '../../config';
+import {
+  BODY_SLEEP_TICKS,
+  UNIT_MASS_MULTIPLIER,
+  UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
+  UNIT_WORLD_BOUNDARY_SPRING_DAMPING_RATIO,
+} from '../../config';
 import { getUnitAirFrictionDamp } from '../sim/unitAirFriction';
 import {
   getUnitGroundFrictionDamp,
@@ -335,6 +332,12 @@ const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 // common query to the immediate 3x3x3 neighborhood while the dynamic
 // range below still handles future oversized bodies correctly.
 const CONTACT_CELL_SIZE = 160;
+const WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED =
+  UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT > 0
+    ? 2
+      * Math.sqrt(UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT)
+      * Math.max(0, UNIT_WORLD_BOUNDARY_SPRING_DAMPING_RATIO)
+    : 0;
 // BODY_SLEEP_TICKS is still consumed by the JS-side `sleepBody`
 // (initial counter value when JS triggers a manual sleep). The
 // TS-side thresholds (SPEED_SQ, ACCEL_SQ, GROUND_PENETRATION_EPS)
@@ -497,6 +500,11 @@ export class PhysicsEngine3D {
   }
 
   private addBody(body: Body3D): void {
+    if (!body.isStatic && body.shape !== 'sphere') {
+      throw new Error(
+        `PhysicsEngine3D dynamic body ${body.label} uses unsupported shape ${body.shape}; add the shape to the WASM integrator before spawning it`,
+      );
+    }
     this.bodies.push(body);
     this.bodyBySlot[body.slot] = body;
     if (body.isStatic) {
@@ -694,13 +702,13 @@ export class PhysicsEngine3D {
     if (this.awakeDynamicBodyCount <= 0) return;
     this.collectAwakeStepSyncEntities();
     this.clearDynamicSurfaceContacts();
+    this.applyMapBoundaryForces();
     this.integrate(dtSec);
-    // Bodies touched this step still need final contact/clamp cleanup
-    // even if integration just put the last awake body to sleep.
+    // Bodies touched this step still need final contact cleanup even
+    // if integration just put the last awake body to sleep.
     this.resolveSphereCuboidContacts();
     const sphereIterations = this.getSphereIterationBudget();
     this.resolveSphereSphereContacts(sphereIterations);
-    this.clampToMapBounds();
     this.collectAwakeStepSyncEntities();
     // Clear per-step force accumulator.
     for (const body of this.dynamicBodies) {
@@ -771,8 +779,9 @@ export class PhysicsEngine3D {
    *  transition output buffer; no per-body Body3D field marshal
    *  and no per-body terrain boundary crossing.
    *
-   *  Non-sphere dynamic bodies (none exist today but the path is
-   *  defensive) still run free-Euler inline JS-side. */
+   *  Dynamic bodies are required to be spheres; addBody() throws for any
+   *  unsupported dynamic shape so integration cannot silently split back
+   *  into a TypeScript fallback path. */
   private integrate(dtSec: number): void {
     const airDamp = getUnitAirFrictionDamp(dtSec);
     const groundDamp = getUnitGroundFrictionDamp(dtSec);
@@ -791,23 +800,6 @@ export class PhysicsEngine3D {
     for (let i = 0; i < this.dynamicBodies.length; i++) {
       const b = this.dynamicBodies[i];
       if (b.sleeping) continue;
-      if (b.shape !== 'sphere') {
-        // Free-Euler for non-sphere dynamics — matches the original
-        // PhysicsEngine3D.ts non-sphere branch exactly.
-        const ax = b.ax;
-        const ay = b.ay;
-        const az = b.az - GRAVITY;
-        b.vx += ax * dtSec;
-        b.vy += ay * dtSec;
-        b.vz += az * dtSec;
-        b.vx *= airDamp;
-        b.vy *= airDamp;
-        b.vz *= airDamp;
-        b.x += b.vx * dtSec;
-        b.y += b.vy * dtSec;
-        b.z += b.vz * dtSec;
-        continue;
-      }
       _integrateAwakeSlots[count] = b.slot;
       count++;
     }
@@ -950,24 +942,44 @@ export class PhysicsEngine3D {
     }
   }
 
-
-  /** Hard-clamp horizontal position to the map AABB so units can't
-   *  fly off the world. Vertical bounds are bounded below by the
-   *  ground plane and above implicitly by gravity. */
-  private clampToMapBounds(): void {
+  /** Apply an inward spring/damper at the map AABB edge. This keeps
+   *  perimeter containment in the same force/acceleration language as
+   *  terrain contact instead of editing positions after integration. */
+  private applyMapBoundaryForces(): void {
+    const springAccel = UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT;
+    if (springAccel <= 0) return;
     for (const b of this.dynamicBodies) {
-      if (!this.shouldProcessBodyThisStep(b)) continue;
       if (b.shape !== 'sphere') continue;
-      if (b.x < b.radius) { b.x = b.radius; if (b.vx < 0) b.vx = 0; }
-      else if (b.x > this.mapWidth - b.radius) {
-        b.x = this.mapWidth - b.radius;
-        if (b.vx > 0) b.vx = 0;
+      let ax = 0;
+      let ay = 0;
+      const minX = b.radius;
+      const maxX = this.mapWidth - b.radius;
+      const minY = b.radius;
+      const maxY = this.mapHeight - b.radius;
+      if (b.x < minX) {
+        ax += this.computeBoundaryAccel(minX - b.x, b.vx);
+      } else if (b.x > maxX) {
+        ax -= this.computeBoundaryAccel(b.x - maxX, -b.vx);
       }
-      if (b.y < b.radius) { b.y = b.radius; if (b.vy < 0) b.vy = 0; }
-      else if (b.y > this.mapHeight - b.radius) {
-        b.y = this.mapHeight - b.radius;
-        if (b.vy > 0) b.vy = 0;
+      if (b.y < minY) {
+        ay += this.computeBoundaryAccel(minY - b.y, b.vy);
+      } else if (b.y > maxY) {
+        ay -= this.computeBoundaryAccel(b.y - maxY, -b.vy);
       }
+      if (ax === 0 && ay === 0) continue;
+      this.wakeBody(b);
+      b.ax += ax;
+      b.ay += ay;
     }
+  }
+
+  private computeBoundaryAccel(
+    penetration: number,
+    inwardVelocity: number,
+  ): number {
+    const spring =
+      UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT * Math.max(0, penetration);
+    const damped = spring - WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED * inwardVelocity;
+    return Number.isFinite(damped) ? Math.max(0, damped) : 0;
   }
 }

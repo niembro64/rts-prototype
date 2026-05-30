@@ -47,24 +47,9 @@ already-correct code — e.g. the host-directed one-per-kind loader throw, the
 level-1 lock-on exclusions, hover anti-gravity, config-is-data, and the resource
 pylon channel all re-verified CLEAN; see VERIFIED-CLEAN). The remaining design
 items from that audit are tracked below under their original numbers. A 17th confirmed
-item — PhysicsEngine3D's stale file header — is filed in SECTION D (doc drift,
-not a behavior gap) as D2; the 18th — the dual TypeScript/Rust authoritative-sim
-duplication — is filed in SECTION C as C1.
+item — the dual TypeScript/Rust authoritative-sim duplication — is filed in
+SECTION C as C1.
 File:line refs were correct at audit time; re-verify before editing.
-
-A24. [WATCH] src/game/server/PhysicsEngine3D.ts:954-972 (clampToMapBounds), invoked
-    from step() at line 703 immediately after the force/integration pass —
-    RULE: "Mass must matter" (philosophy line 716): "Ground contact is spring and
-    friction behavior against terrain, not a clamp disguised as physics" — the
-    force-first principle is the spirit for world boundaries too. —
-    PROBLEM: map-edge containment directly clamps body.position (and zeroes the inbound
-    velocity component) rather than applying a boundary force — a "clamp disguised as
-    physics" at the world edge. The doc's clamp prohibition is explicitly about ground
-    contact, so this is an edge-case extension of the principle, not a named rule —
-    hence WATCH. —
-    FIX: if strict force-purity at the world edge is wanted, replace the positional
-    clamp with a stiff boundary spring + damping; otherwise leave as-is (cheap, stable,
-    perimeter-only) and treat as an accepted deviation. Low urgency.
 
 A28. [MEDIUM] src/game/sim/blueprints/turrets.json (turretForceFieldPanel: shotId
     points at a beam shot; force-field behavior carried by a turret-side
@@ -146,52 +131,6 @@ A32. [LOW] src/game/sim/factoryProduction.ts (rally modeled as an appendable lis
     FIX: reduce factory rally to a single static rally target (latest set wins), or if
     multi-waypoint rally is intended, document it as an explicit exception. (Pairs with A31.)
 
-A33. [LOW] src/components/ (selection/command panel Vue component that builds the action
-    set for a mixed selection) —
-    RULE: "Selection Menus Are Uniform Per Entity Type" (philosophy lines 1762-1766):
-    "Mixed selections… reduce to the intersection of the per-type action sets, plus an
-    explicit select-only-X affordance… The panel must never show an action that the active
-    selection cannot execute." —
-    PROBLEM: for mixed-type selections the action panel shows the UNION of each type's
-    actions (relying on per-button disable) rather than the INTERSECTION the doc mandates,
-    and there is no explicit select-only-X affordance to drop to a single type — so the panel
-    can present actions part of the selection cannot execute. —
-    FIX: compute the mixed-selection action set as the intersection of per-type action sets,
-    and add an explicit select-only-X control to narrow the selection to one entity type.
-
-A34. [LOW] src/game/render3d/Input3DManager.ts (two-finger twist/rotate gesture handler) —
-    uses the touch midpoint (cursor) as the screen anchor unconditionally —
-    RULE: "Camera Anchoring Is Two Orthogonal Axes" (philosophy lines 984-1023): every
-    pivot/pin gesture's anchor is the product of two independent CONFIG axes
-    (anchorPointCameraScreen × anchorPointCameraTerrain); "all six must be reachable by
-    setting the two configs — never by adding a seventh special-case branch." —
-    PROBLEM: the touch two-finger twist-rotate gesture hardcodes the screen-anchor to the
-    gesture midpoint (cursor) instead of reading anchorPointCameraScreen, so for that gesture
-    one orthogonal config axis is collapsed — the screen-center option is unreachable. (Mouse
-    orbit/zoom/pan correctly go through the shared resolver.) —
-    FIX: route the touch twist-rotate gesture through the same (anchorPointCameraScreen,
-    anchorPointCameraTerrain) resolver the other gestures use, so its screen anchor honors
-    the config instead of being pinned to the cursor midpoint.
-
-A35. [MEDIUM] src/game/network/turretSnapshotFields.ts:5-6,13 (line weapons treated as an
-    exception that DOES ship live yaw/pitch) vs the headOnly contract —
-    RULE: "Beam And Rocket Turrets Render As Heads" (philosophy lines 1223-1228): marking a
-    turret headOnly:true means "the snapshot serializer pins the wire's rotation /
-    angular-velocity / pitch / pitch-velocity slots to zero" for all six named headOnly
-    turrets (beamTurret, miniBeam, megaBeamTurret, towerBeamTurret, salvoRocketTurret,
-    fastRocketTurret). —
-    PROBLEM: turretSnapshotFields.ts exempts "line weapons" (beam/laser) from the headOnly
-    angular-zeroing, shipping their live yaw/pitch/angular fields on the wire, whereas the
-    doc says the beam-family headOnly turrets must have all four angular slots zeroed (their
-    direction comes from beam endpoints, not turret yaw). So beam-family turrets still dirty
-    the entity row on aim motion. (Confirmed: turretSnapshotFields.ts:13 returns true —
-    "ships fields" — for non-headOnly, and the header comment 5-6 names line weapons as the
-    live-aim exception.) —
-    FIX: zero rotation/angularVelocity/pitch/pitchVelocity on the wire for ALL headOnly
-    turrets including the beam family (beams are defined by start/end points, so the client
-    never needs turret yaw/pitch); reconcile turretSnapshotFields.ts with the headOnly
-    contract, or update the doc if some line weapons genuinely need live aim.
-
 A36. [LOW] src/types/blueprints.ts + src/types/shotTypes.ts (hand-written TS types) and
     the parallel hand-written Rust structs in rts-sim-wasm/src/lib.rs —
     RULE: "Schema is the contract" (philosophy lines 2034-2041): "TypeScript types and Rust
@@ -217,9 +156,8 @@ found no new unbounded-growth items.)
 SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 ================================================================================
 C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loop +
-    updateUnits/updateCombat at lines ~335-453), src/game/server/PhysicsEngine3D.ts
-    (live authoritative physics; thin WASM orchestrator but with a residual inline TS
-    integrator branch — see A37), and the broader src/game/sim/ TypeScript sim —
+    updateUnits/updateCombat at lines ~335-453) and the broader src/game/sim/
+    TypeScript sim —
     RULE: "TypeScript Coordinates, WASM Computes" (philosophy lines 843-924) + "Delete The
     Old Path / one language per behavior" (lines 2074-2158): per-unit / per-tick control
     loops belong in Rust/WASM; two implementations of one behavior is forbidden. —
@@ -230,25 +168,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     kernel, terrain bake are all WASM-owned — see VERIFIED-CLEAN) and that PhysicsEngine3D
     is a correct thin WASM orchestrator (NOT a Rust-sim duplicate), so this is the
     acknowledged in-transition orchestration layer, not a hot-loop violation. The remaining
-    gap is the long-tail migration of TS control flow into Rust and the residual dead TS
-    integrator (A37). —
+    gap is the long-tail migration of TS control flow into Rust. —
     FIX: continue migrating per-tick/per-unit authoritative control flow into the Rust sim
     and DELETE the TS counterparts in the same change (Delete The Old Path). Keep a clear
     ledger of which systems are Rust-authoritative vs TS-orchestrated so there are never two
     sources of truth. Large multi-step effort; lower urgency than the SECTION A items.
-
-A37. [LOW] src/game/server/PhysicsEngine3D.ts (inline explicit-Euler integration branch
-    for non-sphere dynamic bodies, alongside the WASM-delegated sphere path) —
-    RULE: "Delete The Old Path / One language per behavior" (philosophy lines 2074-2158):
-    when a behavior moves to Rust/WASM the predecessor TS implementation must be deleted in
-    the same change; two implementations of one behavior is forbidden. —
-    PROBLEM: PhysicsEngine3D delegates sphere bodies to the WASM kernel but retains an inline
-    TS explicit-Euler integrator for non-sphere dynamic bodies — a second physics integration
-    path in TS. In practice all current dynamic bodies are spheres, so the TS branch is
-    effectively dead. (Filed under SECTION C as a facet of C1.) —
-    FIX: if no non-sphere dynamic bodies exist, delete the inline TS integrator branch; if
-    they do, move them into the WASM kernel and then delete the TS path, so body integration
-    has one implementation.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)
@@ -266,18 +190,6 @@ D1. [WATCH] @dimforge/rapier3d-compat (a 3D physics engine — banned category) 
     (2026-05-30: previously this item claimed "a full physics engine ships in the
     lockfile" — that is no longer true; commit 11526e73 "Remove transitive Rapier engine
     package" replaced it with the stub.)
-
-D2. [LOW] src/game/server/PhysicsEngine3D.ts:1-54 (file header comment) —
-    RULE: "Single Source Of Truth" (philosophy lines 2057-2070) — comments must not drift
-    from the code they describe; a stale header is a second, contradictory source of truth. —
-    PROBLEM: the file header describes a standard in-TypeScript explicit-Euler integrator
-    (and implies no sleeping), but the live engine delegates integration to the WASM kernel
-    and DOES implement body sleeping — the comment is a stale, contradictory description of
-    the code. —
-    FIX: rewrite the PhysicsEngine3D header to describe the actual WASM-delegated integration
-    + sleeping behavior (or delete the misleading detail) so the file's documentation matches
-    its code.
-
 
 ================================================================================
 VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigate)
@@ -353,9 +265,8 @@ but are not — are folded into the list below.)
 - Locomotion visual state (wheel/tread/leg/fan) is computed client-side in the rig
   and does NOT cross the wire.
 - Camera anchoring is two orthogonal config axes (anchorPointCameraScreen +
-  anchorPointCameraTerrain) resolved by one shared resolver for MOUSE gestures;
-  all six combinations are reachable from config. (Only the TOUCH twist-rotate
-  gesture hardcodes screen=cursor — see A34.)
+  anchorPointCameraTerrain) resolved by one shared resolver for mouse and touch
+  rotate/zoom/pan gestures; all six combinations are reachable from config.
 - Sensors are capability sources with fixed radii (NOT derived from WEAPON range).
   (Builder sight IS partly derived from build-reach — a separate, milder coupling;
   see A22.)
@@ -367,7 +278,8 @@ but are not — are folded into the list below.)
   candidate was also refuted — the doc does not require pylon endpoints authored on
   the host blueprint.)
 - Selection panels are gated on entity TYPE capability flags, not per-blueprint
-  buttons. (Mixed-type selections show the union not the intersection — see A33.)
+  buttons; mixed-type selections show the action-set intersection plus explicit
+  select-only controls for narrowing the active type.
 - Blueprints are pure data: JSON files imported by thin TS loaders (units.ts imports
   units.json, turrets.ts imports turrets.json, etc.); no closures/functions in
   blueprint JSON; config.ts holds zero authoritative tuning literals. Load-time
@@ -381,8 +293,7 @@ but are not — are folded into the list below.)
 - Collision/splash broadphase and spatial partitioning are fully WASM-owned
   (SpatialGrid is a thin wrapper); no full-world steady-state scans in projectile
   collision or area damage. PhysicsEngine3D is LIVE authoritative physics but a
-  correct thin WASM orchestrator (NOT a Rust-sim duplicate, NOT dead) — its only
-  residue is the dead non-sphere TS integrator branch (A37) and a stale header (D2).
+  correct thin WASM orchestrator (NOT a Rust-sim duplicate, NOT dead).
 - No banned libs (Phaser/Pixi/Matter/cannon/ammo/rapier) are imported anywhere in
   src/; the only @dimforge entry is a local no-op stub (see D1).
 - No legacy/old/_unused dirs or .old/.bak files in src/ or rts-sim-wasm/.

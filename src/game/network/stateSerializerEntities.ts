@@ -161,11 +161,9 @@ function writeTurretsToPool(
     const dst = pool.turrets[i];
     const t = dst.turret;
     t.turretBlueprintCode = turretBlueprintIdToCode(src.config.turretBlueprintId);
-    // Head-only turrets with no snapshot-visible aim pose render a
-    // sphere only, so the client doesn't orient anything from these
-    // values. Line weapons are routed through
-    // turretAimMotionIsSnapshotVisible because their head-only aim still
-    // drives visible beam/laser presentation state.
+    // Head-only turrets render a sphere only, so the client doesn't orient
+    // anything from these values. Beam/laser presentation travels as beam
+    // endpoint updates instead of turret yaw/pitch on the entity row.
     if (!turretAimMotionIsSnapshotVisible(src)) {
       t.angular.rot = 0;
       t.angular.vel = 0;
