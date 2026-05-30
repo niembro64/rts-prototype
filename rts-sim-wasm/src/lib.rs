@@ -6500,11 +6500,13 @@ const SPATIAL_KIND_PROJECTILE: u8 = 3;
 // cell sweep for enemy-entities queries so units near the radius +
 // shot-collider boundary aren't culled by cell-level rejection.
 const SPATIAL_MAX_UNIT_SHOT_RADIUS: f64 = 45.0;
+const SPATIAL_MAX_CIRCLE2D_QUERY_CELLS: i64 = 4096;
 const SPATIAL_MAX_LINE_QUERY_CELLS: i64 = 4096;
 const SPATIAL_MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS: usize = 8192;
 
-// Z-band defaults for ground-plane queries — match TILE_FLOOR_Y and
-// TERRAIN_MAX_RENDER_Y in src/game/sim/terrain/terrainConfig.ts.
+// Z-band fallback defaults for ground-plane queries. Terrain height is
+// runtime-configurable on the TS side, so combat observation uses stamped
+// live-entity bounds instead of relying on these values.
 const SPATIAL_TILE_FLOOR_Y: f64 = -1200.0;
 const SPATIAL_TERRAIN_MAX_RENDER_Y: f64 = 1600.0; // TERRAIN_SHAPE_MAGNITUDE(800) * 2
 
@@ -7116,14 +7118,42 @@ fn spatial_collect_cells_in_circle2d(
     z_max: f64,
 ) {
     state.nearby_cells.clear();
+    if !x.is_finite()
+        || !y.is_finite()
+        || !radius.is_finite()
+        || !z_min.is_finite()
+        || !z_max.is_finite()
+        || radius < 0.0
+    {
+        return;
+    }
     let cs = state.cell_size;
     let hcs = state.half_cell_size;
-    let min_cx = ((x - radius) / cs).floor() as i32;
-    let max_cx = ((x + radius) / cs).floor() as i32;
-    let min_cy = ((y - radius) / cs).floor() as i32;
-    let max_cy = ((y + radius) / cs).floor() as i32;
-    let min_cz = ((z_min + hcs) / cs).floor() as i32;
-    let max_cz = ((z_max + hcs) / cs).floor() as i32;
+    let min_x = x - radius;
+    let max_x = x + radius;
+    let min_y = y - radius;
+    let max_y = y + radius;
+    let min_z = z_min.min(z_max);
+    let max_z = z_min.max(z_max);
+    let min_cx = (min_x / cs).floor() as i32;
+    let max_cx = (max_x / cs).floor() as i32;
+    let min_cy = (min_y / cs).floor() as i32;
+    let max_cy = (max_y / cs).floor() as i32;
+    let min_cz = ((min_z + hcs) / cs).floor() as i32;
+    let max_cz = ((max_z + hcs) / cs).floor() as i32;
+    let cells_x = (max_cx - min_cx + 1) as i64;
+    let cells_y = (max_cy - min_cy + 1) as i64;
+    let cells_z = (max_cz - min_cz + 1) as i64;
+    if cells_x <= 0 || cells_y <= 0 || cells_z <= 0 {
+        return;
+    }
+    let cell_count = cells_x * cells_y * cells_z;
+    if cell_count > SPATIAL_MAX_CIRCLE2D_QUERY_CELLS
+        && cell_count as usize > state.cells.len()
+    {
+        spatial_fill_occupied_cells_in_bounds(state, min_x, max_x, min_y, max_y, min_z, max_z);
+        return;
+    }
     for cx in min_cx..=max_cx {
         for cy in min_cy..=max_cy {
             for cz in min_cz..=max_cz {
@@ -7204,11 +7234,25 @@ fn spatial_fill_occupied_cells_for_line(
     if state.cells.len() > SPATIAL_MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS {
         return false;
     }
+    spatial_fill_occupied_cells_in_bounds(state, min_x, max_x, min_y, max_y, min_z, max_z);
+    true
+}
+
+fn spatial_fill_occupied_cells_in_bounds(
+    state: &mut SpatialGridState,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    min_z: f64,
+    max_z: f64,
+) {
+    state.nearby_cells.clear();
     let cs = state.cell_size;
     let hcs = state.half_cell_size;
-    // Iterate without holding state.cells immutably while we push.
-    let keys: Vec<u64> = state.cells.keys().copied().collect();
-    for key in keys {
+    let cells = &state.cells;
+    let nearby_cells = &mut state.nearby_cells;
+    for &key in cells.keys() {
         // Unpack cube key — same layout as pack_contact_cell_key.
         let czb = (key & 0xFFFF) as i64;
         let cyb = ((key >> 16) & 0xFFFF) as i64;
@@ -7231,9 +7275,8 @@ fn spatial_fill_occupied_cells_for_line(
         if cell_max_z < min_z || cell_min_z > max_z {
             continue;
         }
-        state.nearby_cells.push(key);
+        nearby_cells.push(key);
     }
-    true
 }
 
 // ===================== Query result helpers =====================
@@ -10927,6 +10970,9 @@ struct CombatTargetingPool {
     // targets; it does not grant position by itself.
     entity_sensor_coverage_mask: Vec<u32>,
     entity_detector_coverage_mask: Vec<u32>,
+    observation_cells: HashMap<u64, Vec<u32>>,
+    observation_cell_keys: Vec<u64>,
+    observation_max_detection_padding: f64,
     // Per-entity detection padding the cloak-observability walk adds
     // when this entity is the *target*. Matches the JS
     // `getEntityDetectionPadding` value (max body/shot/push radius for
@@ -11097,6 +11143,9 @@ impl CombatTargetingPool {
             entity_radar_radius: Vec::new(),
             entity_sensor_coverage_mask: Vec::new(),
             entity_detector_coverage_mask: Vec::new(),
+            observation_cells: HashMap::new(),
+            observation_cell_keys: Vec::new(),
+            observation_max_detection_padding: 0.0,
             entity_detection_padding: Vec::new(),
             entity_priority_target_id: Vec::new(),
             entity_priority_point_present: Vec::new(),
@@ -11317,6 +11366,7 @@ impl CombatTargetingPool {
             *mount_index = ENTITY_META_NO_INDEX;
         }
         self.entity_slot_by_id.clear();
+        combat_targeting_clear_observation_index(self);
         for has_solution in self.turret_ballistic_has_solution.iter_mut() {
             *has_solution = 0;
         }
@@ -12439,6 +12489,7 @@ const TARGETING_FALLBACK_LOS_BUDGET: u32 = 12;
 // broadphase pad conservative so a large unit straddling a sensor rim
 // still reaches the precise distance check.
 const COMBAT_TARGETING_SENSOR_QUERY_PAD: f64 = 128.0;
+const COMBAT_TARGETING_OBSERVATION_CELL_SIZE: f64 = 512.0;
 const CT_TARGETING_PREP_HAS_APPLY: u8 = 1;
 const CT_TARGETING_PREP_HAS_PASSIVE_APPLY: u8 = 1 << 1;
 const CT_TARGETING_TICK_MODE_AUTO: u8 = 0;
@@ -12511,36 +12562,97 @@ fn combat_targeting_entity_online_for_sensors(pool: &CombatTargetingPool, slot: 
 }
 
 #[inline]
+fn combat_targeting_observation_cell_coord(value: f64) -> i32 {
+    (value / COMBAT_TARGETING_OBSERVATION_CELL_SIZE).floor() as i32
+}
+
+#[inline]
+fn combat_targeting_observation_cell_key(cx: i32, cy: i32) -> u64 {
+    pack_contact_cell_key(cx, cy, 0)
+}
+
+fn combat_targeting_clear_observation_index(pool: &mut CombatTargetingPool) {
+    for key in pool.observation_cell_keys.drain(..) {
+        if let Some(bucket) = pool.observation_cells.get_mut(&key) {
+            bucket.clear();
+        }
+    }
+    pool.observation_max_detection_padding = 0.0;
+}
+
+fn combat_targeting_rebuild_observation_index(pool: &mut CombatTargetingPool) {
+    combat_targeting_clear_observation_index(pool);
+    let n = pool.entity_flags.len();
+    for slot in 0..n {
+        if pool.entity_id[slot] < 0 || !combat_targeting_entity_alive(pool, slot) {
+            continue;
+        }
+        let x = pool.entity_pos_x[slot];
+        let y = pool.entity_pos_y[slot];
+        if !x.is_finite() || !y.is_finite() {
+            continue;
+        }
+        let padding = (pool.entity_detection_padding[slot] as f64).max(0.0);
+        if padding.is_finite() {
+            pool.observation_max_detection_padding =
+                pool.observation_max_detection_padding.max(padding);
+        }
+        let cx = combat_targeting_observation_cell_coord(x);
+        let cy = combat_targeting_observation_cell_coord(y);
+        let key = combat_targeting_observation_cell_key(cx, cy);
+        let bucket = pool.observation_cells.entry(key).or_insert_with(Vec::new);
+        if bucket.is_empty() {
+            pool.observation_cell_keys.push(key);
+        }
+        bucket.push(slot as u32);
+    }
+}
+
+#[inline]
 fn combat_targeting_mark_observed_slot(
-    pool: &mut CombatTargetingPool,
     target_slot: usize,
+    entity_id: &[i32],
+    entity_owner_player_id: &[u8],
+    entity_pos_x: &[f64],
+    entity_pos_y: &[f64],
+    entity_flags: &[u8],
+    entity_detection_padding: &[f32],
+    coverage_mask: &mut [u32],
     source_x: f64,
     source_y: f64,
     radius: f64,
     owner_bit: u32,
-    detector: bool,
 ) {
-    if target_slot >= pool.entity_id.len()
-        || pool.entity_id[target_slot] < 0
-        || !combat_targeting_entity_alive(pool, target_slot)
+    if target_slot >= entity_id.len()
+        || target_slot >= entity_owner_player_id.len()
+        || target_slot >= entity_pos_x.len()
+        || target_slot >= entity_pos_y.len()
+        || target_slot >= entity_flags.len()
+        || target_slot >= entity_detection_padding.len()
+        || target_slot >= coverage_mask.len()
+        || entity_id[target_slot] < 0
+        || (entity_flags[target_slot] & CT_ENTITY_FLAG_ALIVE) == 0
     {
         return;
     }
-    let padding = pool.entity_detection_padding[target_slot] as f64;
+    let target_owner_bit = combat_targeting_player_bit(entity_owner_player_id[target_slot]);
+    if target_owner_bit == owner_bit {
+        return;
+    }
+    if (coverage_mask[target_slot] & owner_bit) != 0 {
+        return;
+    }
+    let padding = entity_detection_padding[target_slot] as f64;
     let r = radius + padding;
     if r <= 0.0 || !r.is_finite() {
         return;
     }
-    let dx = pool.entity_pos_x[target_slot] - source_x;
-    let dy = pool.entity_pos_y[target_slot] - source_y;
+    let dx = entity_pos_x[target_slot] - source_x;
+    let dy = entity_pos_y[target_slot] - source_y;
     if dx * dx + dy * dy > r * r {
         return;
     }
-    if detector {
-        pool.entity_detector_coverage_mask[target_slot] |= owner_bit;
-    } else {
-        pool.entity_sensor_coverage_mask[target_slot] |= owner_bit;
-    }
+    coverage_mask[target_slot] |= owner_bit;
 }
 
 fn combat_targeting_mark_observation_circle(
@@ -12558,55 +12670,51 @@ fn combat_targeting_mark_observation_circle(
         return;
     }
 
-    let state = spatial_grid();
-    if state.cell_size <= 0.0 {
-        return;
-    }
-    let z_min = SPATIAL_TILE_FLOOR_Y - state.cell_size;
-    let z_max = SPATIAL_TERRAIN_MAX_RENDER_Y + state.cell_size * 2.0;
-    state.dedup.clear();
-    spatial_collect_cells_in_circle2d(
-        state,
-        source_x,
-        source_y,
-        radius + COMBAT_TARGETING_SENSOR_QUERY_PAD,
-        z_min,
-        z_max,
-    );
-
-    let nearby = std::mem::take(&mut state.nearby_cells);
-    let mut dedup = std::mem::take(&mut state.dedup);
-    for key in &nearby {
-        if let Some(bucket) = state.cells.get(key) {
-            for &slot in &bucket.units {
+    let query_radius = radius
+        + pool
+            .observation_max_detection_padding
+            .max(COMBAT_TARGETING_SENSOR_QUERY_PAD);
+    let min_cx = combat_targeting_observation_cell_coord(source_x - query_radius);
+    let max_cx = combat_targeting_observation_cell_coord(source_x + query_radius);
+    let min_cy = combat_targeting_observation_cell_coord(source_y - query_radius);
+    let max_cy = combat_targeting_observation_cell_coord(source_y + query_radius);
+    let entity_id = &pool.entity_id;
+    let entity_owner_player_id = &pool.entity_owner_player_id;
+    let entity_pos_x = &pool.entity_pos_x;
+    let entity_pos_y = &pool.entity_pos_y;
+    let entity_flags = &pool.entity_flags;
+    let entity_detection_padding = &pool.entity_detection_padding;
+    let observation_cells = &pool.observation_cells;
+    let coverage_mask = if detector {
+        &mut pool.entity_detector_coverage_mask
+    } else {
+        &mut pool.entity_sensor_coverage_mask
+    };
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            let key = combat_targeting_observation_cell_key(cx, cy);
+            let bucket = match observation_cells.get(&key) {
+                Some(bucket) => bucket,
+                None => continue,
+            };
+            for &slot in bucket {
                 combat_targeting_mark_observed_slot(
-                    pool,
                     slot as usize,
+                    entity_id,
+                    entity_owner_player_id,
+                    entity_pos_x,
+                    entity_pos_y,
+                    entity_flags,
+                    entity_detection_padding,
+                    coverage_mask,
                     source_x,
                     source_y,
                     radius,
                     owner_bit,
-                    detector,
-                );
-            }
-            for &slot in &bucket.buildings {
-                if !dedup.insert(slot) {
-                    continue;
-                }
-                combat_targeting_mark_observed_slot(
-                    pool,
-                    slot as usize,
-                    source_x,
-                    source_y,
-                    radius,
-                    owner_bit,
-                    detector,
                 );
             }
         }
     }
-    state.nearby_cells = nearby;
-    state.dedup = dedup;
 }
 
 #[inline]
@@ -12632,23 +12740,27 @@ fn combat_targeting_mark_observation_from_source_slot(
         radar_radius
     };
     let detector_radius = pool.entity_detector_radius[source_slot] as f64;
-    combat_targeting_mark_observation_circle(
-        pool,
-        source_x,
-        source_y,
-        sensor_radius,
-        owner_bit,
-        false,
-    );
+    if sensor_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            sensor_radius,
+            owner_bit,
+            false,
+        );
+    }
 
-    combat_targeting_mark_observation_circle(
-        pool,
-        source_x,
-        source_y,
-        detector_radius,
-        owner_bit,
-        true,
-    );
+    if detector_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            detector_radius,
+            owner_bit,
+            true,
+        );
+    }
 }
 
 /// Rebuilds per-target radar-level and detector coverage masks from
@@ -12666,6 +12778,7 @@ pub fn combat_targeting_rebuild_observation_masks() {
         *mask = 0;
     }
 
+    combat_targeting_rebuild_observation_index(pool);
     let n = pool.entity_flags.len();
     for source_slot in 0..n {
         combat_targeting_mark_observation_from_source_slot(pool, source_slot);
@@ -12679,6 +12792,7 @@ pub fn combat_targeting_rebuild_observation_masks() {
 #[wasm_bindgen]
 pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u32]) {
     let pool = combat_targeting_pool();
+    combat_targeting_rebuild_observation_index(pool);
     for &source_slot in source_slots {
         combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
     }
@@ -12697,6 +12811,9 @@ pub fn combat_targeting_add_sensor_observation_circle(
 ) {
     let owner_bit = combat_targeting_player_bit(owner_player_id);
     let pool = combat_targeting_pool();
+    if pool.observation_cell_keys.is_empty() {
+        combat_targeting_rebuild_observation_index(pool);
+    }
     combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, false);
 }
 
@@ -24933,11 +25050,12 @@ mod lock_on_exclusion_tests {
         flags
     }
 
-    fn stamp_entity_with_host_lockon(
+    fn stamp_entity_with_host_lockon_at_z(
         slot: u32,
         entity_id: i32,
         owner: u8,
         x: f64,
+        z: f64,
         family: u8,
         blueprint_code: u8,
         turret_count: u8,
@@ -24962,11 +25080,11 @@ mod lock_on_exclusion_tests {
             combat_targeting_player_bit(owner),
             x,
             0.0,
+            z,
             0.0,
             0.0,
             0.0,
-            0.0,
-            0.0,
+            z,
             1.0,
             0.0,
             0.0,
@@ -25004,10 +25122,45 @@ mod lock_on_exclusion_tests {
 
         spatial_set_entity_id(slot, entity_id);
         if family == CT_ENTITY_FAMILY_BUILDING {
-            spatial_set_building(slot, x, 0.0, 0.0, hx, hy, hz, owner, 1, 1);
+            spatial_set_building(slot, x, 0.0, z, hx, hy, hz, owner, 1, 1);
         } else {
-            spatial_set_unit(slot, x, 0.0, 0.0, 1.0, radius, owner, 1);
+            spatial_set_unit(slot, x, 0.0, z, 1.0, radius, owner, 1);
         }
+    }
+
+    fn stamp_entity_with_host_lockon(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        family: u8,
+        blueprint_code: u8,
+        turret_count: u8,
+        priority_target_id: i32,
+        lockon_relationship_mask: u8,
+        lockon_entity_family_mask: u8,
+        lockon_building_mask: u32,
+        lockon_tower_mask: u32,
+        lockon_unit_mask: u32,
+        lockon_turret_mask: u32,
+    ) {
+        stamp_entity_with_host_lockon_at_z(
+            slot,
+            entity_id,
+            owner,
+            x,
+            0.0,
+            family,
+            blueprint_code,
+            turret_count,
+            priority_target_id,
+            lockon_relationship_mask,
+            lockon_entity_family_mask,
+            lockon_building_mask,
+            lockon_tower_mask,
+            lockon_unit_mask,
+            lockon_turret_mask,
+        );
     }
 
     fn stamp_entity(
@@ -25038,6 +25191,36 @@ mod lock_on_exclusion_tests {
         );
     }
 
+    fn stamp_entity_at_z(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        z: f64,
+        family: u8,
+        blueprint_code: u8,
+        turret_count: u8,
+        priority_target_id: i32,
+    ) {
+        stamp_entity_with_host_lockon_at_z(
+            slot,
+            entity_id,
+            owner,
+            x,
+            z,
+            family,
+            blueprint_code,
+            turret_count,
+            priority_target_id,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+    }
+
     fn stamp_source(priority_target_id: i32) {
         stamp_entity(
             SOURCE_SLOT,
@@ -25053,13 +25236,13 @@ mod lock_on_exclusion_tests {
 
     fn stamp_turret(entity_slot: u32, turret_idx: u32, spec: TurretSpec) {
         let range = 120.0;
-        let parent_id = {
+        let (parent_id, parent_z) = {
             let pool = combat_targeting_pool();
             let s = entity_slot as usize;
             if s < pool.entity_id.len() {
-                pool.entity_id[s]
+                (pool.entity_id[s], pool.entity_pos_z[s])
             } else {
-                ENTITY_META_NO_ID
+                (ENTITY_META_NO_ID, 0.0)
             }
         };
         let turret_entity_id = 1_000_000 + parent_id.max(0) * 16 + turret_idx as i32;
@@ -25072,7 +25255,7 @@ mod lock_on_exclusion_tests {
             turret_idx as i32,
             0.0,
             0.0,
-            0.0,
+            parent_z,
             0.0,
             0.0,
             0.0,
@@ -25159,6 +25342,18 @@ mod lock_on_exclusion_tests {
 
     fn stamp_body_target(slot: u32, entity_id: i32, owner: u8, x: f64, family: u8, code: u8) {
         stamp_entity(slot, entity_id, owner, x, family, code, 0, -1);
+    }
+
+    fn stamp_body_target_at_z(
+        slot: u32,
+        entity_id: i32,
+        owner: u8,
+        x: f64,
+        z: f64,
+        family: u8,
+        code: u8,
+    ) {
+        stamp_entity_at_z(slot, entity_id, owner, x, z, family, code, 0, -1);
     }
 
     fn stamp_turret_target(
@@ -25302,6 +25497,62 @@ mod lock_on_exclusion_tests {
             assert_eq!(target_id, 201, "{label}");
             assert_ne!(state, CT_TURRET_STATE_IDLE, "{label}");
         }
+    }
+
+    #[test]
+    fn observation_masks_include_targets_above_legacy_terrain_cap() {
+        let _guard = lock_tests();
+        reset_pools();
+        let high_z = SPATIAL_TERRAIN_MAX_RENDER_Y + 3_000.0;
+
+        stamp_entity_at_z(
+            SOURCE_SLOT,
+            SOURCE_ID,
+            PLAYER_1,
+            0.0,
+            high_z,
+            CT_ENTITY_FAMILY_UNIT,
+            SOURCE_UNIT_CODE,
+            1,
+            -1,
+        );
+        stamp_turret(
+            SOURCE_SLOT,
+            0,
+            TurretSpec {
+                relationship_mask: CT_LOCK_ON_REL_EXCLUDE_FRIENDLY,
+                ..TurretSpec::default()
+            },
+        );
+        stamp_body_target_at_z(
+            1,
+            201,
+            PLAYER_2,
+            20.0,
+            high_z,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_A,
+        );
+        stamp_body_target_at_z(
+            2,
+            202,
+            PLAYER_2,
+            1_000.0,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            BODY_UNIT_CODE_B,
+        );
+
+        combat_targeting_rebuild_observation_masks_for_sources(&[SOURCE_SLOT]);
+        assert_eq!(
+            combat_targeting_can_player_observe_entity(201, PLAYER_1),
+            1,
+            "fast-path sensor rebuild must cover stamped entities above the old fixed Z cap",
+        );
+
+        let (target_id, state, _) = run_schedule_tick(1);
+        assert_eq!(target_id, 201);
+        assert_ne!(state, CT_TURRET_STATE_IDLE);
     }
 
     #[test]

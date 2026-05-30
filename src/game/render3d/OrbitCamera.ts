@@ -5,7 +5,7 @@
 //   - Alt + middle drag   → orbit (yaw + pitch)
 //   - Middle drag         → pan (slide target on the world ground)
 //   - Ctrl + middle drag  → height pan (left/right on ground, up/down in world height)
-//   - Shift + middle drag → pan (alias)
+//   - Shift held          → fine camera control (1/10 movement)
 //   - Touch 1 finger      → pan
 //   - Touch 2 fingers     → centroid pan + pinch zoom + twist rotate
 //
@@ -36,6 +36,7 @@ import type {
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
+const SHIFT_CAMERA_INPUT_SCALE = 0.1;
 
 export type OrbitCameraOptions = {
   /** Closest-approach zoom-in rail. Terrain collision is resolved
@@ -248,17 +249,22 @@ export class OrbitCamera {
 
     this.onWheel = (e) => {
       e.preventDefault();
-      //   scroll up   (deltaY < 0)  → zoom in
-      //   scroll down (deltaY > 0)  → zoom out
-      if (e.deltaY === 0) return;
+      //   scroll up   (delta < 0)  → zoom in
+      //   scroll down (delta > 0)  → zoom out
+      //
+      // Browsers commonly remap Shift + wheel into horizontal
+      // deltaX scrolling. Treat that as the same wheel gesture so
+      // Shift remains fine zoom instead of making zoom appear dead.
+      const wheelDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      if (wheelDelta === 0) return;
 
       // Wheel zoom scales distance against the broad distance rails
       // and shifts the target by the same factor around the selected
       // anchor. Terrain never re-solves the wheel factor with a
       // vertical-only altitude rule; zoom destinations are checked
       // with the same 3D clearance approximation used at render time.
-      const f = this.zoomStepFraction;
-      const zoomingIn = e.deltaY < 0;
+      const f = this.zoomStepFraction * this.modifierInputScale(e);
+      const zoomingIn = wheelDelta < 0;
       // Each zoom direction still has its own configurable anchor, but
       // the default is cursor for both directions. That keeps paired
       // scroll-in / scroll-out ticks symmetric instead of making a
@@ -321,6 +327,9 @@ export class OrbitCamera {
       this.lastMouseY = e.clientY;
 
       if (this.dragMode === 'orbit') {
+        const inputScale = this.modifierInputScale(e);
+        const scaledDx = dx * inputScale;
+        const scaledDy = dy * inputScale;
         // RIGID TUMBLE around the cursor's 3D ground pivot. The
         // total yaw/pitch deltas since drag-start are applied as a
         // single rigid rotation of the camera around `orbitPivot`:
@@ -349,8 +358,8 @@ export class OrbitCamera {
         // exactly under the same screen pixel through the whole
         // drag.
         if (this.orbitPivotActive) {
-          this.orbitYawAccum -= dx * this.rotateSpeed;
-          this.orbitPitchAccum += dy * this.rotateSpeed;
+          this.orbitYawAccum -= scaledDx * this.rotateSpeed;
+          this.orbitPitchAccum += scaledDy * this.rotateSpeed;
           // Clamp the EFFECTIVE pitch (start + accum) to the orbit
           // range so the camera can't flip upside-down.
           let newPitch = this.orbitStartPitch + this.orbitPitchAccum;
@@ -418,15 +427,17 @@ export class OrbitCamera {
         } else {
           // Fallback: no pivot — orbit around the existing target
           // exactly the way the camera always did before this fix.
-          this.yaw -= dx * this.rotateSpeed;
-          this.pitch += dy * this.rotateSpeed;
+          this.yaw -= scaledDx * this.rotateSpeed;
+          this.pitch += scaledDy * this.rotateSpeed;
           this.pitch = Math.min(this.maxPitch, Math.max(this.minPitch, this.pitch));
           this.apply();
         }
       } else if (this.dragMode === 'pan') {
-        this.panByScreenDelta(dx, dy);
+        const inputScale = this.modifierInputScale(e);
+        this.panByScreenDelta(dx * inputScale, dy * inputScale);
       } else if (this.dragMode === 'height-pan') {
-        this.panHeightByScreenDelta(dx, dy);
+        const inputScale = this.modifierInputScale(e);
+        this.panHeightByScreenDelta(dx * inputScale, dy * inputScale);
       }
     };
 
@@ -523,6 +534,10 @@ export class OrbitCamera {
     this.target.y = this.toTargetY;
     this.target.z = this.toTargetZ;
     this.apply();
+  }
+
+  private modifierInputScale(e: Pick<MouseEvent | WheelEvent, 'shiftKey'>): number {
+    return e.shiftKey ? SHIFT_CAMERA_INPUT_SCALE : 1;
   }
 
   private zoomByFactorAt(
