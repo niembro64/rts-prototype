@@ -11000,6 +11000,9 @@ struct CombatTargetingPool {
     entity_active_turret_mask: Vec<u32>,
     entity_firing_turret_mask: Vec<u32>,
     entity_slot_by_id: HashMap<i32, u32>,
+    active_entity_slots: Vec<u32>,
+    entity_stamp_epoch: Vec<u32>,
+    stamp_epoch: u32,
 
     // Per-turret, indexed by entity_slot * MAX_PER_ENTITY + turret_idx.
     // Runtime EntityIds make the turret addressable; slot/index remain
@@ -11158,6 +11161,9 @@ impl CombatTargetingPool {
             entity_active_turret_mask: Vec::new(),
             entity_firing_turret_mask: Vec::new(),
             entity_slot_by_id: HashMap::new(),
+            active_entity_slots: Vec::new(),
+            entity_stamp_epoch: Vec::new(),
+            stamp_epoch: 1,
             turret_count_per_entity: Vec::new(),
             turret_entity_id: Vec::new(),
             turret_parent_id: Vec::new(),
@@ -11272,6 +11278,7 @@ impl CombatTargetingPool {
             self.entity_scheduled_probe_tick.resize(entity_needed, -1);
             self.entity_active_turret_mask.resize(entity_needed, 0);
             self.entity_firing_turret_mask.resize(entity_needed, 0);
+            self.entity_stamp_epoch.resize(entity_needed, 0);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
         let turret_needed = entity_needed * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -11344,35 +11351,44 @@ impl CombatTargetingPool {
     }
 
     fn clear_all(&mut self) {
-        for f in self.entity_flags.iter_mut() {
-            *f = 0;
+        let max_turrets = COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize;
+        let active_len = self.active_entity_slots.len();
+        for i in 0..active_len {
+            let s = self.active_entity_slots[i] as usize;
+            if s >= self.entity_flags.len() {
+                continue;
+            }
+            self.entity_flags[s] = 0;
+            self.entity_sensor_coverage_mask[s] = 0;
+            self.entity_detector_coverage_mask[s] = 0;
+            self.entity_active_turret_mask[s] = 0;
+            self.entity_firing_turret_mask[s] = 0;
+
+            let turret_count = (self.turret_count_per_entity[s] as usize).min(max_turrets);
+            self.turret_count_per_entity[s] = 0;
+            let base = s * max_turrets;
+            for t in 0..turret_count {
+                let idx = base + t;
+                if idx >= self.turret_entity_id.len() {
+                    break;
+                }
+                self.turret_entity_id[idx] = ENTITY_META_NO_ID;
+                self.turret_parent_id[idx] = ENTITY_META_NO_ID;
+                self.turret_root_host_id[idx] = ENTITY_META_NO_ID;
+                self.turret_mount_index[idx] = ENTITY_META_NO_INDEX;
+                self.turret_ballistic_has_solution[idx] = 0;
+            }
         }
-        for mask in self.entity_sensor_coverage_mask.iter_mut() {
-            *mask = 0;
-        }
-        for mask in self.entity_detector_coverage_mask.iter_mut() {
-            *mask = 0;
-        }
-        for c in self.turret_count_per_entity.iter_mut() {
-            *c = 0;
-        }
-        for id in self.turret_entity_id.iter_mut() {
-            *id = ENTITY_META_NO_ID;
-        }
-        for id in self.turret_parent_id.iter_mut() {
-            *id = ENTITY_META_NO_ID;
-        }
-        for id in self.turret_root_host_id.iter_mut() {
-            *id = ENTITY_META_NO_ID;
-        }
-        for mount_index in self.turret_mount_index.iter_mut() {
-            *mount_index = ENTITY_META_NO_INDEX;
+        self.active_entity_slots.clear();
+        self.stamp_epoch = self.stamp_epoch.wrapping_add(1);
+        if self.stamp_epoch == 0 {
+            for epoch in self.entity_stamp_epoch.iter_mut() {
+                *epoch = 0;
+            }
+            self.stamp_epoch = 1;
         }
         self.entity_slot_by_id.clear();
         combat_targeting_clear_observation_index(self);
-        for has_solution in self.turret_ballistic_has_solution.iter_mut() {
-            *has_solution = 0;
-        }
     }
 
     fn unset_entity(&mut self, entity_slot: u32) {
@@ -11596,6 +11612,10 @@ pub fn combat_targeting_set_entity(
     let pool = combat_targeting_pool();
     pool.ensure_entity_capacity(entity_slot);
     let s = entity_slot as usize;
+    if pool.entity_stamp_epoch[s] != pool.stamp_epoch {
+        pool.entity_stamp_epoch[s] = pool.stamp_epoch;
+        pool.active_entity_slots.push(entity_slot);
+    }
     let old_entity_id = pool.entity_id[s];
     if old_entity_id >= 0 && old_entity_id != entity_id {
         pool.entity_slot_by_id.remove(&old_entity_id);
@@ -11652,6 +11672,7 @@ pub fn combat_targeting_set_entity(
     } else {
         turret_count
     };
+    combat_targeting_insert_observation_index_slot(pool, s);
 }
 
 #[wasm_bindgen]
@@ -12576,31 +12597,38 @@ fn combat_targeting_clear_observation_index(pool: &mut CombatTargetingPool) {
     pool.observation_max_detection_padding = 0.0;
 }
 
+fn combat_targeting_insert_observation_index_slot(pool: &mut CombatTargetingPool, slot: usize) {
+    if slot >= pool.entity_flags.len()
+        || pool.entity_id[slot] < 0
+        || !combat_targeting_entity_alive(pool, slot)
+    {
+        return;
+    }
+    let x = pool.entity_pos_x[slot];
+    let y = pool.entity_pos_y[slot];
+    if !x.is_finite() || !y.is_finite() {
+        return;
+    }
+    let padding = (pool.entity_detection_padding[slot] as f64).max(0.0);
+    if padding.is_finite() {
+        pool.observation_max_detection_padding =
+            pool.observation_max_detection_padding.max(padding);
+    }
+    let cx = combat_targeting_observation_cell_coord(x);
+    let cy = combat_targeting_observation_cell_coord(y);
+    let key = combat_targeting_observation_cell_key(cx, cy);
+    let bucket = pool.observation_cells.entry(key).or_insert_with(Vec::new);
+    if bucket.is_empty() {
+        pool.observation_cell_keys.push(key);
+    }
+    bucket.push(slot as u32);
+}
+
 fn combat_targeting_rebuild_observation_index(pool: &mut CombatTargetingPool) {
     combat_targeting_clear_observation_index(pool);
     let n = pool.entity_flags.len();
     for slot in 0..n {
-        if pool.entity_id[slot] < 0 || !combat_targeting_entity_alive(pool, slot) {
-            continue;
-        }
-        let x = pool.entity_pos_x[slot];
-        let y = pool.entity_pos_y[slot];
-        if !x.is_finite() || !y.is_finite() {
-            continue;
-        }
-        let padding = (pool.entity_detection_padding[slot] as f64).max(0.0);
-        if padding.is_finite() {
-            pool.observation_max_detection_padding =
-                pool.observation_max_detection_padding.max(padding);
-        }
-        let cx = combat_targeting_observation_cell_coord(x);
-        let cy = combat_targeting_observation_cell_coord(y);
-        let key = combat_targeting_observation_cell_key(cx, cy);
-        let bucket = pool.observation_cells.entry(key).or_insert_with(Vec::new);
-        if bucket.is_empty() {
-            pool.observation_cell_keys.push(key);
-        }
-        bucket.push(slot as u32);
+        combat_targeting_insert_observation_index_slot(pool, slot);
     }
 }
 
@@ -12788,7 +12816,6 @@ pub fn combat_targeting_rebuild_observation_masks() {
 #[wasm_bindgen]
 pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u32]) {
     let pool = combat_targeting_pool();
-    combat_targeting_rebuild_observation_index(pool);
     for &source_slot in source_slots {
         combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
     }
@@ -12807,9 +12834,6 @@ pub fn combat_targeting_add_sensor_observation_circle(
 ) {
     let owner_bit = combat_targeting_player_bit(owner_player_id);
     let pool = combat_targeting_pool();
-    if pool.observation_cell_keys.is_empty() {
-        combat_targeting_rebuild_observation_index(pool);
-    }
     combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, false);
 }
 
@@ -15397,9 +15421,6 @@ fn combat_targeting_fill_spatial_candidate_scratch(
     );
     if relationship_mask == 0 {
         return 0;
-    }
-    if pool.observation_cell_keys.is_empty() {
-        combat_targeting_rebuild_observation_index(pool);
     }
 
     let query_radius = batch_radius + SPATIAL_MAX_UNIT_SHOT_RADIUS;

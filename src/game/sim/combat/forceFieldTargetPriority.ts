@@ -1,5 +1,4 @@
 import type { Entity, Turret } from '../types';
-import { isProjectileShot } from '../types';
 import { CT_TURRET_STATE_IDLE } from '../../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
@@ -17,26 +16,11 @@ const _forceFieldPanelTargetFsm: CombatTargetingTurretFsmOut = {
   targetId: -1,
 };
 
-/** Sustained DPS for a turret based on its compiled shot config and
- *  cooldown. Beams sustain their authored `dps` continuously; lasers
- *  pulse for `duration` out of every `cooldown` window; plasma/rocket
- *  shots deliver `explosion.damage` per `cooldown` ms. Force shots
- *  and turrets without a damaging shot return 0 and are filtered out. */
+/** Sustained DPS for a turret, precomputed from its static shot config
+ *  at runtime-turret construction. Force shots and turrets without a
+ *  damaging shot return 0 and are filtered out. */
 export function turretDps(turret: Turret): number {
-  const shot = turret.config.shot;
-  if (!shot) return 0;
-  if (shot.type === 'beam') return shot.dps;
-  if (shot.type === 'laser') {
-    const period = Math.max(shot.duration, turret.config.cooldown);
-    return period > 0 ? (shot.dps * shot.duration) / period : 0;
-  }
-  if (isProjectileShot(shot)) {
-    const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
-    return turret.config.cooldown > 0
-      ? (damage * 1000) / turret.config.cooldown
-      : 0;
-  }
-  return 0;
+  return turret.sustainedDps;
 }
 
 /** A turretForceFieldPanel only locks onto an enemy turret that is itself

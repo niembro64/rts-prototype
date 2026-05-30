@@ -490,6 +490,12 @@ export type Turret = {
    *  the owning unit blueprint's `turrets[i].mount` and used as the
    *  source of truth for sim targeting/firing and client rendering. */
   mount: Vec3;
+  /** Cached XY distance from host origin to `mount`. Immutable after
+   *  construction; targeting stamping reads this every tick. */
+  mountOffset2d: number;
+  /** Sustained damage rate for target-priority scoring. Immutable
+   *  after construction because shot config and cooldown are static. */
+  sustainedDps: number;
   /** Cached authoritative world-space mount position, written by the
    *  targeting slab's Rust Pass 0 or by updateWeaponWorldKinematics
    *  fallback callers. Always-present (initialized to zero at turret

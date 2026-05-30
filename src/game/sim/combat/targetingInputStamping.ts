@@ -32,7 +32,6 @@ import {
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
-import { turretDps } from './forceFieldTargetPriority';
 import { getUnitGroundZ } from '../unitGeometry';
 import {
   CT_BLUEPRINT_CODE_NONE,
@@ -652,12 +651,12 @@ function stampCombatTargetingEntityInto(
       fireMinAcq, fireMinRel,
       trackingAcq, trackingRel,
       outermostAcq,
-      Math.hypot(t.mount.x, t.mount.y),
+      t.mountOffset2d,
       t.mount.x, t.mount.y, t.mount.z,
       t.worldPosTick,
       preservePreviousFsm ? _stampPrevLosBlockedTicks[i] : 0,
       encodeTurretConfigFlags(t, ranges),
-      turretDps(t),
+      t.sustainedDps,
       projectileSpeed,
       angleType === 'ballisticArcHigh' ? BALLISTIC_ARC_HIGH : BALLISTIC_ARC_LOW,
       maxTimeSec,

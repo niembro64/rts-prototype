@@ -10,7 +10,7 @@
 // turret.mount is always a Vec3 in world units relative to the host
 // transform. Unit & building hosts share the same combat code.
 
-import type { Turret, BuildingBlueprintId } from './types';
+import { isProjectileShot, type Turret, type TurretConfig, type BuildingBlueprintId } from './types';
 import type { BuildingTurretMount } from '../../types/blueprints';
 import type { EntityId } from '../../types/entityTypes';
 import { NO_ENTITY_ID } from '../../types/entityTypes';
@@ -41,6 +41,8 @@ function makeRuntimeTurret(
   // per-instance config is what carries it. The shared config defaults
   // false; override it here from this mount's flag.
   const config = { ...turretConfig, hostDirected };
+  const mountOffset2d = Math.hypot(mount.x, mount.y);
+  const sustainedDps = computeTurretSustainedDps(config);
   // Initial pitch comes from the blueprint's `idlePitch` knob (e.g.
   // turretForceFieldPanels rest pointing straight up at π/2). Once the aim
   // solver runs, this is overwritten per-tick and the damper takes
@@ -63,6 +65,8 @@ function makeRuntimeTurret(
     turnAccel,
     drag,
     mount,
+    mountOffset2d,
+    sustainedDps,
     worldPos: { x: 0, y: 0, z: 0 },
     worldVelocity: { x: 0, y: 0, z: 0 },
     worldPosTick: -1,
@@ -75,6 +79,21 @@ function makeRuntimeTurret(
     forceField: undefined,
     barrelFireIndex: 0,
   };
+}
+
+function computeTurretSustainedDps(config: TurretConfig): number {
+  const shot = config.shot;
+  if (!shot) return 0;
+  if (shot.type === 'beam') return shot.dps;
+  if (shot.type === 'laser') {
+    const period = Math.max(shot.duration, config.cooldown);
+    return period > 0 ? (shot.dps * shot.duration) / period : 0;
+  }
+  if (isProjectileShot(shot)) {
+    const damage = shot.explosion !== undefined ? shot.explosion.damage : 0;
+    return config.cooldown > 0 ? (damage * 1000) / config.cooldown : 0;
+  }
+  return 0;
 }
 
 function anonymousTurretBlueprintIdentity(mountIndex: number): {
