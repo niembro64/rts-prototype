@@ -198,8 +198,8 @@ but are not — are folded into the list below.)
   validation THROWS with no silent defaults (jsonValidation.ts assertExplicitFields);
   Explicit Absence is honored (required null fields). Single Source Of Truth holds
   (audio refs, JSON-import derivation, cross-config consistency throws). (Config-Is-
-  Data audited CLEAN — the only residual is that TS types and Rust structs are
-  hand-written rather than schema-generated; see A36.)
+  Data audited CLEAN; the TS/Rust blueprint and shot type surfaces are now
+  schema-generated.)
 - Steady-state tick + renderer per-frame paths use counted loops and reused scratch/
   Sets; no per-frame map/filter/Object.entries/new-Set in hot paths.
 - Collision/splash broadphase and spatial partitioning are fully WASM-owned
