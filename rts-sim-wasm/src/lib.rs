@@ -7828,6 +7828,45 @@ pub fn spatial_query_buildings_along_line(
 }
 
 #[wasm_bindgen]
+pub fn spatial_query_projectiles_along_line(
+    x1: f64,
+    y1: f64,
+    z1: f64,
+    x2: f64,
+    y2: f64,
+    z2: f64,
+    line_width: f64,
+) -> u32 {
+    let state = spatial_grid();
+    state.scratch_u32.clear();
+    if !spatial_collect_cells_along_line(state, x1, y1, z1, x2, y2, z2, line_width) {
+        return 0;
+    }
+    state.dedup.clear();
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut buf = std::mem::take(&mut state.scratch_u32);
+    let mut dedup = std::mem::take(&mut state.dedup);
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.projectiles {
+                let s = slot as usize;
+                if state.slot_proj_is_projectile_type[s] == 0 {
+                    continue;
+                }
+                if dedup.insert(slot) {
+                    buf.push(slot);
+                }
+            }
+        }
+    }
+    let count = buf.len() as u32;
+    state.scratch_u32 = buf;
+    state.nearby_cells = nearby;
+    state.dedup = dedup;
+    count
+}
+
+#[wasm_bindgen]
 pub fn spatial_query_entities_along_line(
     x1: f64,
     y1: f64,

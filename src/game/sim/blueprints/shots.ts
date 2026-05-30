@@ -17,6 +17,7 @@ import { assertExplicitFields } from './jsonValidation';
 import type { ShotBlueprint } from './types';
 
 const PROJECTILE_EXPLICIT_FIELDS = [
+  'health',
   'explosion',
   'hitSound',
   'submunitions',
@@ -66,6 +67,14 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     if (hasRate !== hasThrust) {
       throw new Error(
         `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
+      );
+    }
+    if (
+      !Number.isFinite(blueprint.health) ||
+      blueprint.health <= 0
+    ) {
+      throw new Error(
+        `Shot blueprint ${id} has invalid health: projectile shots must define positive finite health.`,
       );
     }
     if (

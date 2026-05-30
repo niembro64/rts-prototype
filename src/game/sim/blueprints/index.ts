@@ -534,6 +534,7 @@ function buildShotConfig(
     type: shotBlueprint.type,
     shotBlueprintId: shotBlueprint.shotBlueprintId,
     mass: shotBlueprint.mass,
+    health: shotBlueprint.health,
     launchForce,
     collision: shotBlueprint.collision,
     explosion: shotBlueprint.explosion ?? undefined,

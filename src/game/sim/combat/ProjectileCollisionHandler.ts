@@ -2,7 +2,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId, ProjectileShot, BeamShot, LaserShot, ShotSource } from '../types';
-import { isLineShotType } from '../types';
+import { isLineShotType, isProjectileShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -14,7 +14,7 @@ import type {
   SimEventSourceType,
 } from './types';
 import { beamIndex } from '../BeamIndex';
-import type { DeathContext } from '../damage/types';
+import type { DamageResult, DeathContext } from '../damage/types';
 import { buildImpactContext, applyKnockbackForces, collectKillsWithDeathAudio, collectKillsAndDeathContexts, emitBeamHitAudio } from './damageHelpers';
 import { createProjectileConfigFromShot } from '../projectileConfigs';
 import { getSurfaceNormal, isWaterAt } from '../Terrain';
@@ -59,6 +59,7 @@ const _collisionUnitsToRemove = new Set<EntityId>();
 const _collisionBuildingsToRemove = new Set<EntityId>();
 const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
+const _collisionProjectileRemoveIds = new Set<EntityId>();
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
@@ -84,6 +85,17 @@ let _reflectorHitZ = new Float64Array(0);
 let _reflectorHitNormalX = new Float64Array(0);
 let _reflectorHitNormalY = new Float64Array(0);
 let _reflectorHitNormalZ = new Float64Array(0);
+
+function queueProjectileRemoval(
+  id: EntityId,
+  projectilesToRemove: EntityId[],
+  despawnEvents: ProjectileDespawnEvent[],
+): void {
+  if (_collisionProjectileRemoveIds.has(id)) return;
+  _collisionProjectileRemoveIds.add(id);
+  projectilesToRemove.push(id);
+  despawnEvents.push({ id });
+}
 
 function ensureReflectorBatchCapacity(count: number): void {
   if (count <= _reflectorBatchCapacity) return;
@@ -277,6 +289,7 @@ export function resetCollisionBuffers(): void {
   _collisionBuildingsToRemove.clear();
   _collisionDeathContexts.clear();
   _collisionProjectilesToRemove.length = 0;
+  _collisionProjectileRemoveIds.clear();
   _collisionDespawnEvents.length = 0;
   _collisionSimEvents.length = 0;
   _collisionNewProjectiles.length = 0;
@@ -463,6 +476,154 @@ function spawnSubmunitions(
   }
 }
 
+function processKilledProjectileShots(
+  result: DamageResult,
+  world: WorldState,
+  damageSystem: DamageSystem,
+  forceAccumulator: ForceAccumulator | undefined,
+  unitsToRemove: Set<EntityId>,
+  buildingsToRemove: Set<EntityId>,
+  audioEvents: SimEvent[],
+  deathContexts: Map<EntityId, DeathContext>,
+  newProjectiles: Entity[],
+  spawnEvents: ProjectileSpawnEvent[],
+  projectilesToRemove: EntityId[],
+  despawnEvents: ProjectileDespawnEvent[],
+  depth: number = 0,
+): void {
+  if (result.killedProjectileIds.size === 0) return;
+  const killedProjectileIds = [...result.killedProjectileIds];
+  for (let i = 0; i < killedProjectileIds.length; i++) {
+    const projectileEntity = world.getEntity(killedProjectileIds[i]);
+    if (projectileEntity === undefined) continue;
+    detonateKilledProjectileShot(
+      projectileEntity,
+      world,
+      damageSystem,
+      forceAccumulator,
+      unitsToRemove,
+      buildingsToRemove,
+      audioEvents,
+      deathContexts,
+      newProjectiles,
+      spawnEvents,
+      projectilesToRemove,
+      despawnEvents,
+      depth,
+    );
+  }
+}
+
+function detonateKilledProjectileShot(
+  projEntity: Entity,
+  world: WorldState,
+  damageSystem: DamageSystem,
+  forceAccumulator: ForceAccumulator | undefined,
+  unitsToRemove: Set<EntityId>,
+  buildingsToRemove: Set<EntityId>,
+  audioEvents: SimEvent[],
+  deathContexts: Map<EntityId, DeathContext>,
+  newProjectiles: Entity[],
+  spawnEvents: ProjectileSpawnEvent[],
+  projectilesToRemove: EntityId[],
+  despawnEvents: ProjectileDespawnEvent[],
+  depth: number,
+): void {
+  const proj = projEntity.projectile;
+  const shot = proj?.config.shot;
+  if (
+    proj === null ||
+    projEntity.ownership === null ||
+    proj.projectileType !== 'projectile' ||
+    shot === undefined ||
+    !isProjectileShot(shot)
+  ) {
+    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+    return;
+  }
+  if (proj.hasExploded) {
+    queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+    return;
+  }
+
+  const config = proj.config;
+  const projShot = shot;
+  const runtimeProfile = config.shotProfile.runtime;
+  const shotBlueprintId = projShot.shotBlueprintId;
+  const damageSourceKey = proj.sourceTurretBlueprintId ?? shotBlueprintId;
+  const damageSourceType: SimEventSourceType = proj.sourceTurretBlueprintId ? 'turret' : 'system';
+  let firstSplashHit: Entity | undefined;
+
+  proj.hp = 0;
+  proj.hasExploded = true;
+
+  if (runtimeProfile.hasExplosion && projShot.explosion) {
+    const splashResult = damageSystem.applyDamage({
+      type: 'area',
+      sourceEntityId: proj.sourceEntityId,
+      ownerId: projEntity.ownership.playerId,
+      damage: projShot.explosion.damage,
+      excludeEntities: getSplashExcludes(proj),
+      center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+      radius: projShot.explosion.radius,
+      knockbackForce: projShot.explosion.force,
+    });
+    applyKnockbackForces(splashResult.knockbacks, forceAccumulator);
+    collectKillsAndDeathContexts(
+      splashResult, world, damageSourceKey, damageSourceType,
+      unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+      proj.sourceEntityId,
+    );
+    firstSplashHit = splashResult.hitEntityIds.length > 0
+      ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined
+      : undefined;
+    if (depth < 8) {
+      processKilledProjectileShots(
+        splashResult,
+        world,
+        damageSystem,
+        forceAccumulator,
+        unitsToRemove,
+        buildingsToRemove,
+        audioEvents,
+        deathContexts,
+        newProjectiles,
+        spawnEvents,
+        projectilesToRemove,
+        despawnEvents,
+        depth + 1,
+      );
+    }
+  }
+
+  audioEvents.push({
+    type: 'hit',
+    turretBlueprintId: shotBlueprintId,
+    pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+    playerId: projEntity.ownership.playerId,
+    entityId: projEntity.id,
+    impactContext: buildImpactContext(
+      config, projEntity.transform.x, projEntity.transform.y,
+      proj.velocityX ?? 0, proj.velocityY ?? 0,
+      runtimeProfile.collisionRadius, firstSplashHit,
+    ),
+  });
+
+  if (runtimeProfile.hasSubmunitions) {
+    spawnSubmunitions(
+      world, projShot,
+      projEntity.id, proj.shotSource,
+      projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+      proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
+      undefined, undefined, undefined,
+      projEntity.ownership.playerId, proj.sourceEntityId,
+      newProjectiles, spawnEvents,
+    );
+  }
+
+  queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
+}
+
 // Check projectile collisions and apply damage
 // Friendly fire is enabled - projectiles hit ALL units and buildings
 // Uses DamageSystem for unified collision detection (swept volumes, line damage, etc.)
@@ -474,6 +635,7 @@ export function checkProjectileCollisions(
 ): CollisionResult {
   // Reuse module-level containers (cleared each call)
   _collisionProjectilesToRemove.length = 0;
+  _collisionProjectileRemoveIds.clear();
   _collisionDespawnEvents.length = 0;
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
@@ -519,8 +681,7 @@ export function checkProjectileCollisions(
         sweepPrevX, sweepPrevY, sweepPrevZ,
         projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
       )) {
-        projectilesToRemove.push(projEntity.id);
-        despawnEvents.push({ id: projEntity.id });
+        queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
         continue;
       }
     }
@@ -656,6 +817,7 @@ export function checkProjectileCollisions(
       projEntity.transform.z <= groundZAtProj;
     if (hitGround) {
       projEntity.transform.z = groundZAtProj;
+      proj.hp = 0;
     }
 
     // Water hit — silent terminal (no explosion, no submunitions, no
@@ -685,14 +847,15 @@ export function checkProjectileCollisions(
           ),
         });
       }
-      projectilesToRemove.push(projEntity.id);
-      despawnEvents.push({ id: projEntity.id });
+      queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
       continue;
     }
 
     // Check if the projectile hit a terminal timeout, ground, or barrier.
     const terminalReflectorHit = hitForceField && !reflectedProjectile;
-    if (proj.timeAlive >= proj.maxLifespan || hitGround || terminalReflectorHit) {
+    const healthZero = proj.projectileType === 'projectile' && proj.hp <= 0;
+    const expired = proj.timeAlive >= proj.maxLifespan;
+    if (expired || hitGround || terminalReflectorHit || healthZero) {
       // Beam audio is handled by updateLaserSounds based on targeting state
       if (
         terminalReflectorHit &&
@@ -715,7 +878,12 @@ export function checkProjectileCollisions(
       // shot has something to do there (an explosion, submunitions, or
       // both). A pure carrier (no explosion, only submunitions) still
       // fragments here.
-      if (runtimeProfile.detonateOnExpiry && proj.hasLeftSource && !proj.hasExploded) {
+      const shouldDetonate =
+        healthZero ||
+        hitGround ||
+        terminalReflectorHit ||
+        (expired && runtimeProfile.detonateOnExpiry);
+      if (shouldDetonate && proj.hasLeftSource && !proj.hasExploded) {
         const projShot = config.shot as ProjectileShot;
         const hasSplash = runtimeProfile.hasExplosion;
         const hasSubs = runtimeProfile.hasSubmunitions;
@@ -748,6 +916,20 @@ export function checkProjectileCollisions(
             );
             splashHitCount = splashResult.hitEntityIds.length;
             firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
+            processKilledProjectileShots(
+              splashResult,
+              world,
+              damageSystem,
+              forceAccumulator,
+              unitsToRemove,
+              buildingsToRemove,
+              audioEvents,
+              deathContexts,
+              newProjectiles,
+              spawnEvents,
+              projectilesToRemove,
+              despawnEvents,
+            );
           }
 
           // Detonation audio + explosion FX. Always emit when the
@@ -833,8 +1015,7 @@ export function checkProjectileCollisions(
         });
       }
 
-      projectilesToRemove.push(projEntity.id);
-      despawnEvents.push({ id: projEntity.id });
+      queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
       continue;
     }
 
@@ -930,6 +1111,20 @@ export function checkProjectileCollisions(
           unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
           proj.sourceEntityId,
         );
+        processKilledProjectileShots(
+          result,
+          world,
+          damageSystem,
+          forceAccumulator,
+          unitsToRemove,
+          buildingsToRemove,
+          audioEvents,
+          deathContexts,
+          newProjectiles,
+          spawnEvents,
+          projectilesToRemove,
+          despawnEvents,
+        );
       }
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state
@@ -965,6 +1160,8 @@ export function checkProjectileCollisions(
           proj.collisionStartZ = currentZ;
         } else {
           const hitEntities = proj.hitEntities;
+          const hadSelfExclusion = hitEntities.has(projEntity.id);
+          hitEntities.add(projEntity.id);
 
           // 3D swept: capsule from prev→current (the projectile's flight
           // path this tick) vs each unit sphere. Normal projectiles keep
@@ -985,6 +1182,9 @@ export function checkProjectileCollisions(
             velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
             projectileMass: projShot.mass,
           });
+          if (!hadSelfExclusion) {
+            hitEntities.delete(projEntity.id);
+          }
 
           // Apply knockback from projectile hit
           applyKnockbackForces(result.knockbacks, forceAccumulator);
@@ -997,6 +1197,14 @@ export function checkProjectileCollisions(
             // Add hit audio event with impact context for directional flame explosions
             // Position at the projectile's location (not the unit's center)
             const entity = world.getEntity(hitId);
+            if (
+              entity?.projectile &&
+              entity.projectile.projectileType === 'projectile' &&
+              isProjectileShot(entity.projectile.config.shot)
+            ) {
+              entity.projectile.hp = 0;
+              result.killedProjectileIds.add(entity.id);
+            }
             if (entity && !isDGunProjectile) {
               audioEvents.push({
                 type: 'hit',
@@ -1015,10 +1223,30 @@ export function checkProjectileCollisions(
 
           // Handle deaths from direct hit BEFORE splash (result is reusable singleton)
           const hadHits = result.hitEntityIds.length > 0;
+          const firstDirectHit = hadHits
+            ? world.getEntity(result.hitEntityIds[0])
+            : undefined;
+          if (hadHits) {
+            proj.hp = 0;
+          }
           collectKillsWithDeathAudio(
             result, world, damageSourceKey, damageSourceType,
             unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
             proj.sourceEntityId,
+          );
+          processKilledProjectileShots(
+            result,
+            world,
+            damageSystem,
+            forceAccumulator,
+            unitsToRemove,
+            buildingsToRemove,
+            audioEvents,
+            deathContexts,
+            newProjectiles,
+            spawnEvents,
+            projectilesToRemove,
+            despawnEvents,
           );
 
           // Detonate on direct hit when the shot has either an explosion
@@ -1052,6 +1280,20 @@ export function checkProjectileCollisions(
                 unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
                 proj.sourceEntityId,
               );
+              processKilledProjectileShots(
+                splash,
+                world,
+                damageSystem,
+                forceAccumulator,
+                unitsToRemove,
+                buildingsToRemove,
+                audioEvents,
+                deathContexts,
+                newProjectiles,
+                spawnEvents,
+                projectilesToRemove,
+                despawnEvents,
+              );
             }
 
             // Cluster flak: spawn submunitions on detonation. Surface
@@ -1066,9 +1308,7 @@ export function checkProjectileCollisions(
               let surfaceNormalX: number | undefined;
               let surfaceNormalY: number | undefined;
               let surfaceNormalZ: number | undefined;
-              const hitEntity = result.hitEntityIds.length > 0
-                ? world.getEntity(result.hitEntityIds[0])
-                : undefined;
+              const hitEntity = firstDirectHit;
               if (hitEntity) {
                 // Outward normal at the hit point = unit-center → projectile.
                 surfaceNormalX = projEntity.transform.x - hitEntity.transform.x;
@@ -1102,8 +1342,7 @@ export function checkProjectileCollisions(
                 projRadius,
               ),
             });
-            projectilesToRemove.push(projEntity.id);
-            despawnEvents.push({ id: projEntity.id });
+            queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
             continue;
           }
           proj.collisionStartX = currentX;
@@ -1121,8 +1360,7 @@ export function checkProjectileCollisions(
       projEntity.transform.y < -margin ||
       projEntity.transform.y > world.mapHeight + margin
     ) {
-      projectilesToRemove.push(projEntity.id);
-      despawnEvents.push({ id: projEntity.id });
+      queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
     }
   }
 

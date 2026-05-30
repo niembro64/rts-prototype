@@ -95,6 +95,7 @@ export type ProjectileShotBlueprint = {
   type: ProjectileShotKind;
   shotBlueprintId: ShotBlueprintId;
   mass: number;
+  health: number;
   collision: ShotCollision;
   explosion: ShotExplosion | null;
   detonateOnExpiry: boolean;
@@ -163,6 +164,7 @@ export type ProjectileShot = {
   type: ProjectileShotKind;
   shotBlueprintId: ShotBlueprintId;
   mass: number;
+  health: number;
   launchForce: number;
   collision: ShotCollision;
   explosion?: ShotExplosion;

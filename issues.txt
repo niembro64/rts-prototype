@@ -73,12 +73,12 @@ A38. [HIGH] No uniform entity base ledger — id/cost{metal,energy}/mass/health 
     id, a {metal,energy} cost, a mass, and a health pool; a sub-part's cost and health are its own
     line items, so a host's totals are the sum of its pieces, not one opaque number. —
     PROBLEM: cost/mass/health are not carried uniformly across kinds. Turrets and locomotion
-    sub-entities do not carry their own cost/health as independent line items; shots carry no
-    health at all (see A40). The base is implicit and per-kind rather than one shared contract. —
+    sub-entities do not carry their own cost/health as independent line items. Shots now carry
+    health, but the base is still implicit and per-kind rather than one shared contract. —
     FIX: define one shared entity base (id, cost{metal,energy}, mass, health) that every kind
-    extends; give turrets and locomotion their own cost+health line items; give shots a health
-    field; derive host totals as the sum of piece costs. Put the base in the shared schema so TS
-    and Rust cannot drift (the A36 schema-generation path is the place to land it).
+    extends; give turrets and locomotion their own cost+health line items; derive host totals
+    as the sum of piece costs. Put the base in the shared schema so TS and Rust cannot drift
+    (the A36 schema-generation path is the place to land it).
 
 A39. [HIGH] Sub-entities are not independently destructible; the host does not degrade per piece.
     rts-sim-wasm/src/lib.rs + src/game/sim (unit/turret/locomotion damage + death paths). —
@@ -96,26 +96,6 @@ A39. [HIGH] Sub-entities are not independently destructible; the host does not d
     and firing on its own until its OWN health hits zero; detachment removes it from the host
     control hierarchy ("Every piece is an agent; the player commands only hosts") but does not end
     its life or agency. (Depends on A38 per-piece health; mirror of A41.)
-
-A40. [MEDIUM] Shots have no health and cannot be shot down; collision is a removal flag, not a
-    zero-health detonation.
-    src/game/sim/combat/projectileSystem.ts (projectilesToRemove path ~1062/1100/1110/1134),
-    src/game/sim/combat/ProjectileCollisionHandler.ts (mid-air detonation ~289-304),
-    src/types/shotTypes.ts + src/game/sim/blueprints/shots.json. —
-    RULE: new "Shots are destructible bodies too" — every shot has a tiny health pool and
-    detonates at zero (normal explosion/splash/submunition path). Contact with ground / another
-    shot / any solid body forces health to zero on the spot; SHIELDS (formerly "force fields"; see
-    A44) ARE THE SOLE EXCEPTION (reflect, do not damage). Small-but-real health lets a point-defense
-    turret whittle a round
-    down and pop it mid-air. —
-    PROBLEM: shots have no health field; collision removal is a separate flag rather than a
-    zero-health detonation; shots take no weapon damage, so they cannot be intercepted.
-    Shield reflection already leaves the shot intact (correct), but the rest is not modelled
-    as health. —
-    FIX: add a tiny health field to the shot; on contact with ground/shot/solid set health=0 and
-    run the existing detonation path; route incoming weapon damage to shot health so point-defense
-    turrets can shoot shots down; keep shield reflection as the one non-damaging
-    contact. (Pairs with A38 base ledger; shields are emitter-bound emissions, not shots — see A44.)
 
 A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     src/game/sim (factory/fabricator construction + host spawn) + build-site creation. —
@@ -158,7 +138,7 @@ A42. [MEDIUM] Entities do not detonate a death explosion (radius + force + damag
     building blasts to usually destroy their own locomotion+turrets (A39 per-piece health makes that
     a real outcome rather than a no-op); let blueprints override radius/force/damage for bomb-style
     units. Unify shot splash and entity death onto one blast path. (Depends on A38 base ledger +
-    A39 per-piece destructibility; pairs with A40 shot detonation.)
+    A39 per-piece destructibility; pairs with the shot detonation path.)
 
 A43. [MEDIUM] Shot radii still use an ad-hoc runtime/visual vocabulary instead of the shared
     role-named entity radii.
@@ -177,11 +157,11 @@ A43. [MEDIUM] Shot radii still use an ad-hoc runtime/visual vocabulary instead o
     renamed to collisionRadius, and guard/attack/repair/reclaim targeting no longer read the visual
     radius. The remaining drift is shots: shot profiles still expose collisionRadius, damageRadius,
     explosionRadius, and projectileBodyRadius instead of the nested role vocabulary, and splash /
-    impact radii still need to be separated from standing-body geometry per A40/A42. —
+    impact radii still need to be separated from standing-body geometry per A42. —
     FIX: fold shot standing geometry into radius:{visual, hitbox, collision}; map projectileBodyRadius
     to radius.visual and projectile collision to radius.collision; keep splash/explosion radii on
     the shot detonation/death-explosion path rather than in the entity-radius trio; update renderer,
-    collision, and wire context names accordingly. (Part of A38 base ledger; touches A40/A42 radii.)
+    collision, and wire context names accordingly. (Part of A38 base ledger; touches A42 radii.)
 
 A44. [MEDIUM] Rays (beams/lasers) and shields ("force fields") are modelled as "shot" variants, but
     the new design makes a shot a destructible BODY — rays/shields are sustained emissions with no
@@ -200,10 +180,10 @@ A44. [MEDIUM] Rays (beams/lasers) and shields ("force fields") are modelled as "
     continuous "beam" and timed "laser" — no body/mass/health/id, attributed through its emitter;
     rays.json), and shield (a sustained barrier emission, formerly "force field" — no
     body/mass/health/id; shields.json + shieldMaterials.json). Only the shot is a body and obeys the
-    base ledger (A38/A40); rays and shields are emitter-bound emissions. ("Every entity shares one
+    base ledger (A38); rays and shields are emitter-bound emissions. ("Every entity shares one
     base ledger" now explicitly excludes ray/shield.) —
     PROBLEM: shotTypes.ts lumps projectile/beam/laser/forceField under one ShotConfig umbrella, so
-    the A40 "every shot has health and detonates at zero" rule would nonsensically demand health and
+    the "every shot has health and detonates at zero" rule would nonsensically demand health and
     mass on a ray of light or a wall of energy. The barrier variant is named forceField across ~30
     files, beam/laser have no shared "ray" grouping, and all three emission families live in one
     shots.json. —
@@ -217,9 +197,9 @@ A44. [MEDIUM] Rays (beams/lasers) and shields ("force fields") are modelled as "
     forceFieldPanelShot/forceFieldBarrierShot -> shield*, reflectiveForceField -> reflectiveShield),
     files (forceFieldMaterials.json -> shieldMaterials.json, forceFieldVisualConfig.json ->
     shieldVisualConfig.json), and the config/audio/color keys. (3) introduce the "ray" kind grouping
-    beam+laser (LINE_SHOT_TYPES) with rays.json; keep beam/laser as the two ray variants. (4) give
-    shots health (A40) but NOT rays/shields. Land the type changes in the shared schema (A38
-    generation path) so TS and Rust cannot drift. (Pairs with A40 shot health and A38 base ledger.)
+    beam+laser (LINE_SHOT_TYPES) with rays.json; keep beam/laser as the two ray variants. (4) keep
+    projectile-shot health on shots but NOT rays/shields. Land the type changes in the shared schema
+    (A38 generation path) so TS and Rust cannot drift. (Pairs with A38 base ledger.)
 
 
 ================================================================================

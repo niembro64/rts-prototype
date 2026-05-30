@@ -91,6 +91,7 @@ import __wbg_init, {
   spatial_query_enemy_entities_in_circle_2d,
   spatial_query_units_along_line,
   spatial_query_buildings_along_line,
+  spatial_query_projectiles_along_line,
   spatial_query_entities_along_line,
   spatial_query_enemy_units_in_radius,
   spatial_query_enemy_projectiles_in_radius,
@@ -1031,6 +1032,12 @@ export interface SpatialApi {
   ) => number;
   /** Buildings whose cell overlaps the line's swept AABB. */
   queryBuildingsAlongLine: (
+    sx: number, sy: number, sz: number,
+    tx: number, ty: number, tz: number,
+    lineWidth: number,
+  ) => number;
+  /** Travelling projectiles whose cell overlaps the line's swept AABB. */
+  queryProjectilesAlongLine: (
     sx: number, sy: number, sz: number,
     tx: number, ty: number, tz: number,
     lineWidth: number,
@@ -3322,6 +3329,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           queryEnemyEntitiesInCircle2D: spatial_query_enemy_entities_in_circle_2d,
           queryUnitsAlongLine: spatial_query_units_along_line,
           queryBuildingsAlongLine: spatial_query_buildings_along_line,
+          queryProjectilesAlongLine: spatial_query_projectiles_along_line,
           queryEntitiesAlongLine: spatial_query_entities_along_line,
           queryEnemyUnitsInRadius: spatial_query_enemy_units_in_radius,
           queryEnemyProjectilesInRadius: spatial_query_enemy_projectiles_in_radius,

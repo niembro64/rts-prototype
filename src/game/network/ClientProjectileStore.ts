@@ -1,5 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
-import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
+import { createEmptyEntityComponentSlots, createTransform, isProjectileShot, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
 import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
@@ -250,6 +250,7 @@ export class ClientProjectileStore {
 
     const projectileType = codeToProjectileType(spawn.projectileType);
     if (!projectileType) throw new Error(`Unknown projectile type code: ${spawn.projectileType}`);
+    const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
 
     const entity: Entity = {
       ...createEmptyEntityComponentSlots(),
@@ -277,6 +278,8 @@ export class ClientProjectileStore {
         ...PROJECTILE_ABSENCE_SLOTS,
         sourceBarrelIndex: spawn.barrelIndex,
         projectileType,
+        hp: shotHealth,
+        maxHp: shotHealth,
         velocityX: deqVel(spawn.velocity.x),
         velocityY: deqVel(spawn.velocity.y),
         velocityZ: deqVel(spawn.velocity.z),

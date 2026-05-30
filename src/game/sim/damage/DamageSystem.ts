@@ -4,7 +4,7 @@
 
 import type { WorldState } from '../WorldState';
 import type { BeamReflectorKind, Entity, EntityId, LineShotType, PlayerId } from '../types';
-import { NO_ENTITY_ID } from '../types';
+import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
   LineDamageSource,
@@ -45,6 +45,7 @@ const _reusableResult: DamageResult = {
   hitEntityIds: [],
   killedUnitIds: new Set(),
   killedBuildingIds: new Set(),
+  killedProjectileIds: new Set(),
   knockbacks: [],
   deathContexts: new Map(),
   killerPlayerIds: new Map(),
@@ -78,6 +79,7 @@ function resetResult(): DamageResult {
   _reusableResult.hitEntityIds.length = 0;
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
+  _reusableResult.killedProjectileIds.clear();
   _reusableResult.truncationT = undefined;
   // Recycle prior tick's knockback entries before clearing the array.
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
@@ -97,6 +99,7 @@ export function resetDamageBuffers(): void {
   _reusableResult.hitEntityIds.length = 0;
   _reusableResult.killedUnitIds.clear();
   _reusableResult.killedBuildingIds.clear();
+  _reusableResult.killedProjectileIds.clear();
   for (const k of _reusableResult.knockbacks) _knockbackPool.push(k);
   _reusableResult.knockbacks.length = 0;
   _reusableResult.deathContexts.clear();
@@ -683,6 +686,41 @@ export class DamageSystem {
       }
     }
 
+    const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
+      startX, startY, startZ, endX, endY, endZ, lineWidth + 60,
+    );
+    for (const projectile of nearbyProjectiles) {
+      if (projectile.id === excludeEntityId) continue;
+      const proj = projectile.projectile;
+      if (
+        proj === null ||
+        proj.projectileType !== 'projectile' ||
+        proj.hp <= 0 ||
+        !isProjectileShot(proj.config.shot)
+      ) {
+        continue;
+      }
+      const t = lineSphereIntersectionT(
+        startX, startY, startZ,
+        endX, endY, endZ,
+        projectile.transform.x, projectile.transform.y, projectile.transform.z,
+        proj.config.shotProfile.runtime.collisionRadius + lineWidth / 2,
+      );
+      if (t !== null && t < bestT) {
+        bestT = t; found = true;
+        _segHit.t = t;
+        _segHit.x = startX + t * dx;
+        _segHit.y = startY + t * dy;
+        _segHit.z = startZ + t * dz;
+        _segHit.entityId = projectile.id;
+        _segHit.isMirror = false;
+        _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
+        _segHit.panelIndex = -1;
+        _segHit.reflectorKind = undefined;
+        _segHit.reflectorPlayerId = undefined;
+      }
+    }
+
     const groundT = this.findGroundSegmentT(startX, startY, startZ, endX, endY, endZ);
     if (groundT !== null && groundT < bestT) {
       bestT = groundT; found = true;
@@ -730,6 +768,10 @@ export class DamageSystem {
         source.start.x, source.start.y, source.start.z,
         source.end.x, source.end.y, source.end.z, source.width + 100,
       );
+    const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
+      source.start.x, source.start.y, source.start.z,
+      source.end.x, source.end.y, source.end.z, source.width + 100,
+    );
 
     // Check units — 3D segment-vs-sphere: the beam is a line in 3D
     // space; a unit takes a hit when its sphere intersects that line
@@ -778,6 +820,32 @@ export class DamageSystem {
       if (t !== null && t < bestT) {
         bestT = t;
         bestEntityId = building.id;
+        bestIsUnit = false;
+      }
+    }
+
+    for (const projectile of nearbyProjectiles) {
+      if (source.excludeEntities.has(projectile.id)) continue;
+      const proj = projectile.projectile;
+      if (
+        proj === null ||
+        proj.projectileType !== 'projectile' ||
+        proj.hp <= 0 ||
+        !isProjectileShot(proj.config.shot)
+      ) {
+        continue;
+      }
+
+      const t = lineSphereIntersectionT(
+        source.start.x, source.start.y, source.start.z,
+        source.end.x, source.end.y, source.end.z,
+        projectile.transform.x, projectile.transform.y, projectile.transform.z,
+        proj.config.shotProfile.runtime.collisionRadius + source.width / 2,
+      );
+
+      if (t !== null && t < bestT) {
+        bestT = t;
+        bestEntityId = projectile.id;
         bestIsUnit = false;
       }
     }
@@ -841,6 +909,10 @@ export class DamageSystem {
         source.prev.x, source.prev.y, source.prev.z,
         source.current.x, source.current.y, source.current.z, source.radius + 100,
       );
+    const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
+      source.prev.x, source.prev.y, source.prev.z,
+      source.current.x, source.current.y, source.current.z, source.radius + 100,
+    );
 
     // Check units using swept 3D collision — segment prev→current vs a
     // sphere with the combined radius at unit.transform (full 3D: x, y,
@@ -862,7 +934,7 @@ export class DamageSystem {
       );
 
       if (t !== null) {
-        hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false });
+        hits.push({ entityId: unit.id, t, isUnit: true, isBuilding: false, isProjectile: false });
       }
     }
 
@@ -887,7 +959,32 @@ export class DamageSystem {
       );
 
       if (t !== null) {
-        hits.push({ entityId: building.id, t, isUnit: false, isBuilding: true });
+        hits.push({ entityId: building.id, t, isUnit: false, isBuilding: true, isProjectile: false });
+      }
+    }
+
+    for (const projectile of nearbyProjectiles) {
+      if (source.excludeEntities.has(projectile.id)) continue;
+      const proj = projectile.projectile;
+      if (
+        proj === null ||
+        proj.projectileType !== 'projectile' ||
+        proj.hp <= 0 ||
+        !isProjectileShot(proj.config.shot)
+      ) {
+        continue;
+      }
+
+      const combinedRadius = source.radius + proj.config.shotProfile.runtime.collisionRadius;
+      const t = lineSphereIntersectionT(
+        source.prev.x, source.prev.y, source.prev.z,
+        source.current.x, source.current.y, source.current.z,
+        projectile.transform.x, projectile.transform.y, projectile.transform.z,
+        combinedRadius,
+      );
+
+      if (t !== null) {
+        hits.push({ entityId: projectile.id, t, isUnit: false, isBuilding: false, isProjectile: true });
       }
     }
 
@@ -967,6 +1064,9 @@ export class DamageSystem {
     );
     const nearbyUnits = nearby.units;
     const nearbyBuildings = nearby.buildings;
+    const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
+      source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
+    );
 
     // Check units — full 3D sphere-vs-sphere: the AOE sphere around
     // source.center must overlap the unit's collision sphere. A mortar
@@ -1031,6 +1131,32 @@ export class DamageSystem {
       if (force > 0 && dist > 0) {
         pushKnockback(result, unit.id, forceX, forceY, forceZ);
       }
+    }
+
+    // Travelling shots are small damageable bodies. Sustained beams
+    // and shields are not inserted as projectile-type bodies, so this
+    // only lets weapons chip down real munitions.
+    for (const projectile of nearbyProjectiles) {
+      if (source.excludeEntities.has(projectile.id)) continue;
+      const proj = projectile.projectile;
+      if (
+        proj === null ||
+        proj.projectileType !== 'projectile' ||
+        proj.hp <= 0 ||
+        !isProjectileShot(proj.config.shot)
+      ) {
+        continue;
+      }
+
+      const dx = projectile.transform.x - source.center.x;
+      const dy = projectile.transform.y - source.center.y;
+      const dz = projectile.transform.z - source.center.z;
+      const targetRadius = proj.config.shotProfile.runtime.collisionRadius;
+      const maxDist = source.radius + targetRadius;
+      if (dx * dx + dy * dy + dz * dz > maxDist * maxDist) continue;
+
+      this.applyDamageToEntity(projectile, source.damage, result, source.sourceEntityId);
+      result.hitEntityIds.push(projectile.id);
     }
 
     // Check buildings — full 3D. Buildings are axis-aligned boxes
@@ -1139,6 +1265,16 @@ export class DamageSystem {
       if (entity.building.hp <= 0 && !result.killedBuildingIds.has(entity.id)) {
         result.killedBuildingIds.add(entity.id);
         this.recordKiller(result, entity.id, sourceEntityId);
+      }
+    } else if (
+      entity.projectile &&
+      entity.projectile.projectileType === 'projectile' &&
+      entity.projectile.hp > 0 &&
+      isProjectileShot(entity.projectile.config.shot)
+    ) {
+      entity.projectile.hp -= damage;
+      if (entity.projectile.hp <= 0 && !result.killedProjectileIds.has(entity.id)) {
+        result.killedProjectileIds.add(entity.id);
       }
     }
   }

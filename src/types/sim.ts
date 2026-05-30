@@ -568,6 +568,10 @@ export type Projectile = {
    *  Submunitions inherit this from their parent projectile. */
   sourceTurretBlueprintId: TurretBlueprintId | undefined;
   projectileType: ProjectileType;
+  /** Travelling shot health. Beams/lasers are sustained emissions and
+   *  keep this at 0 so they are not damageable shot bodies. */
+  hp: number;
+  maxHp: number;
   velocityX: number;
   velocityY: number;
   velocityZ: number;

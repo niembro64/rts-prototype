@@ -17,6 +17,7 @@ import {
   createCombatComponent,
   createEmptyEntityComponentSlots,
   createTransform,
+  isProjectileShot,
   NO_ENTITY_ID,
   PROJECTILE_ABSENCE_SLOTS,
 } from './types';
@@ -1083,6 +1084,7 @@ export class WorldState {
     // terminate through collision/ground physics. Line shots still use
     // this runtime timeout for laser pulse duration.
     const maxLifespan = config.shotProfile.runtime.maxLifespan;
+    const shotHealth = isProjectileShot(config.shot) ? config.shot.health : 0;
 
     // Always single hit (DGun overrides maxHits to Infinity after creation)
     const maxHits = 1;
@@ -1116,6 +1118,8 @@ export class WorldState {
       sourceTurretBlueprintId: shotSource.sourceTurretBlueprintId ?? config.sourceTurretBlueprintId,
       ...PROJECTILE_ABSENCE_SLOTS,
       projectileType,
+      hp: shotHealth,
+      maxHp: shotHealth,
       velocityX,
       velocityY,
       velocityZ: 0,

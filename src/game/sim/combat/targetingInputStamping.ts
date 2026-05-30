@@ -529,7 +529,11 @@ function stampCombatTargetingEntityInto(
   const aabbHalfZ = entity.building ? entity.building.depth * 0.5 : 0;
   const hp = entity.unit
     ? entity.unit.hp
-    : (entity.building ? entity.building.hp : (entity.projectile ? 1 : 0));
+    : (entity.building
+      ? entity.building.hp
+      : (entity.projectile && isProjectileShot(entity.projectile.config.shot)
+        ? entity.projectile.hp
+        : 0));
 
   let entityFlags = 0;
   if (combat) entityFlags |= CT_ENTITY_FLAG_HAS_COMBAT;

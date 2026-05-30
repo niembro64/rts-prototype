@@ -406,6 +406,16 @@ export class SpatialGrid {
     return this.queryResultBuildings;
   }
 
+  queryProjectilesAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): Entity[] {
+    const count = this.api().queryProjectilesAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultProjectiles);
+    return this.queryResultProjectiles;
+  }
+
   queryEntitiesAlongLine(
     x1: number, y1: number, z1: number,
     x2: number, y2: number, z2: number,
