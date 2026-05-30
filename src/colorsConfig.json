@@ -527,7 +527,7 @@
         "colorHex": "#44ff44",
         "opacity": 0.65
       },
-      "buildingRadar": {
+      "radar": {
         "colorHex": "#ff0000",
         "opacity": 0.72
       },
