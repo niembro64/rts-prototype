@@ -52,15 +52,16 @@ Rust blueprint/shot type surfaces from one schema.
 File:line refs were correct at audit time; re-verify before editing.
 
 --------------------------------------------------------------------------------
-Items A37-A43 added 2026-05-30 alongside a design-direction expansion of
+Items A37-A44 added 2026-05-30 alongside a design-direction expansion of
 budget_design_philosophy.html (new/edited sections: "Every entity shares one base
 ledger", "Entity geometry is three radii", "Pieces have their own health and die
 independently", "Every piece is an agent; the player commands only hosts", "Every
 death is an explosion", "Shots are destructible bodies too", "Hosts build from the
-ground up, one piece at a time", and a rewrite of the lock-on eligibility default
-to "universal by default, subtractive from there"). A37 has since been resolved;
-the remaining items describe where the CODE does not yet meet the expanded
-philosophy. They are forward work, not regressions.
+ground up, one piece at a time", the Atomic Gameplay Pieces split of emissions into
+shot/beam/shield with "force field" renamed "shield", and a rewrite of the lock-on
+eligibility default to "universal by default, subtractive from there"). A37 has
+since been resolved; the remaining items describe where the CODE does not yet meet
+the expanded philosophy. They are forward work, not regressions.
 File:line refs were correct at audit time; re-verify before editing.
 
 A38. [HIGH] No uniform entity base ledger — id/cost{metal,energy}/mass/health are not a shared
@@ -102,17 +103,18 @@ A40. [MEDIUM] Shots have no health and cannot be shot down; collision is a remov
     src/types/shotTypes.ts + src/game/sim/blueprints/shots.json. —
     RULE: new "Shots are destructible bodies too" — every shot has a tiny health pool and
     detonates at zero (normal explosion/splash/submunition path). Contact with ground / another
-    shot / any solid body forces health to zero on the spot; FORCE FIELDS ARE THE SOLE EXCEPTION
-    (reflect, do not damage). Small-but-real health lets a point-defense turret whittle a round
+    shot / any solid body forces health to zero on the spot; SHIELDS (formerly "force fields"; see
+    A44) ARE THE SOLE EXCEPTION (reflect, do not damage). Small-but-real health lets a point-defense
+    turret whittle a round
     down and pop it mid-air. —
     PROBLEM: shots have no health field; collision removal is a separate flag rather than a
     zero-health detonation; shots take no weapon damage, so they cannot be intercepted.
-    Force-field reflection already leaves the shot intact (correct), but the rest is not modelled
+    Shield reflection already leaves the shot intact (correct), but the rest is not modelled
     as health. —
     FIX: add a tiny health field to the shot; on contact with ground/shot/solid set health=0 and
     run the existing detonation path; route incoming weapon damage to shot health so point-defense
-    turrets can shoot shots down; keep force-field reflection as the one non-damaging
-    contact. (Pairs with A38 base ledger.)
+    turrets can shoot shots down; keep shield reflection as the one non-damaging
+    contact. (Pairs with A38 base ledger; shields are emitter-bound emissions, not shots — see A44.)
 
 A41. [MEDIUM] Hosts spawn whole, not built bottom-up piece by piece.
     src/game/sim (factory/fabricator construction + host spawn) + build-site creation. —
@@ -179,6 +181,42 @@ A43. [MEDIUM] Shot radii still use an ad-hoc runtime/visual vocabulary instead o
     to radius.visual and projectile collision to radius.collision; keep splash/explosion radii on
     the shot detonation/death-explosion path rather than in the entity-radius trio; update renderer,
     collision, and wire context names accordingly. (Part of A38 base ledger; touches A40/A42 radii.)
+
+A44. [MEDIUM] Beams and shields ("force fields") are modelled as "shot" variants, but the new
+    design makes a shot a destructible BODY — beams/shields are sustained emissions with no mass or
+    health and cannot be shots. Also rename "force field" -> "shield" and split each emission kind
+    into its own blueprint file.
+    src/types/shotTypes.ts (one ShotConfig umbrella: plasma/rocket projectiles, beam/laser line
+    shots via LINE_SHOT_TYPES, and the forceField barrier variant; ForceField* types ~2-23),
+    src/game/sim/blueprints/shots.json (all three families share one file),
+    src/game/sim/blueprints/forceFieldMaterials.json, src/forceFieldVisualConfig.json, and the
+    ~30 files referencing forceField (colorsConfig.json, battleBarConfig, audioConfig,
+    RtsScene3D.ts, init.ts, stateSerializer*, ClientViewState.ts, blueprintSchema.generated.ts,
+    rts-sim-wasm/src/lib.rs, etc. — grep "forceField"). —
+    RULE: new "Atomic Gameplay Pieces" split — a turret emits exactly one of THREE separate kinds,
+    each in its own blueprint file: shot (a travelling munition that IS a body: mass, health, death
+    explosion, own EntityId; shots.json), beam (a sustained line emission — continuous beam or timed
+    laser — no body/mass/health/id, attributed through its emitter; beams.json), and shield (a
+    sustained barrier emission, formerly "force field" — no body/mass/health/id; shields.json +
+    shieldMaterials.json). Only the shot is a body and obeys the base ledger (A38/A40); beams and
+    shields are emitter-bound emissions. ("Every entity shares one base ledger" now explicitly
+    excludes beam/shield.) —
+    PROBLEM: shotTypes.ts lumps projectile/beam/laser/forceField under one ShotConfig umbrella, so
+    the A40 "every shot has health and detonates at zero" rule would nonsensically demand health and
+    mass on a beam of light or a wall of energy. The barrier variant is named forceField across ~30
+    files, and all three emission families live in one shots.json. —
+    FIX: (1) split the umbrella into three top-level emission kinds; move the line emissions (beam,
+    laser) into beams.json and the barrier into shields.json, leaving only plasma/rocket in
+    shots.json. (2) rename forceField -> shield everywhere: type names (ForceFieldShotBlueprint ->
+    ShieldBlueprint, ForceFieldBarrierConfig -> ShieldBarrierConfig, ForceFieldReflectionMode ->
+    ShieldReflectionMode, ForceFieldMaterialBlueprint -> ShieldMaterialBlueprint, ...), the shot-type
+    discriminator 'forceField' -> 'shield', blueprint ids (turretForceFieldPanel -> turretShieldPanel,
+    turretForceFieldSphere -> turretShieldSphere, forceFieldPanelShot/forceFieldBarrierShot ->
+    shield*, reflectiveForceField -> reflectiveShield), files (forceFieldMaterials.json ->
+    shieldMaterials.json, forceFieldVisualConfig.json -> shieldVisualConfig.json), and the
+    config/audio/color keys. (3) give shots health (A40) but NOT beams/shields. Land the type changes
+    in the shared schema (A38 generation path) so TS and Rust cannot drift. (Pairs with A40 shot
+    health and A38 base ledger.)
 
 
 ================================================================================
