@@ -18,14 +18,15 @@
   "dependencies": {
     "@msgpack/msgpack": "^3.1.3",
     "@tonejs/midi": "^2.0.28",
-    "@types/three": "^0.184.0",
     "peerjs": "^1.5.5",
     "three": "^0.184.0",
     "vue": "^3.4.21"
   },
   "devDependencies": {
+    "@dimforge/rapier3d-compat": "file:vendor/npm-stubs/rapier3d-compat",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/cli": "^2.10.1",
+    "@types/three": "^0.184.0",
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "^5.4.3",
     "vite": "^5.2.6",

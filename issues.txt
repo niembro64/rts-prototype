@@ -51,17 +51,6 @@ SECTION C — PERFORMANCE / SCALE (target: 5,000 units)
 (All audited items addressed — see VERIFIED-CLEAN.)
 
 ================================================================================
-SECTION D — WATCH ITEMS (info, not yet actionable)
-================================================================================
-
-D1. [WATCH] @dimforge/rapier3d-compat (a 3D physics engine — banned category) is present
-    in node_modules as a transitive runtime dependency of @types/three. It is NOT
-    imported anywhere in src/ (grep clean), so it is dependency-tree pollution, not a
-    code violation — but a full physics engine ships in the lockfile and is one careless
-    import away from re-entering. Keep an eye on it; do not import it.
-
-
-================================================================================
 VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigate)
 ================================================================================
 - No acceleration on the wire; PREDICT mode is POS/VEL only; no ACC option.
@@ -102,6 +91,9 @@ VERIFIED-CLEAN (audited, no action needed — recorded so we don't re-investigat
 - No legacy/old/_unused dirs or .old/.bak files in src/ or rts-sim-wasm/.
 - Sim-relevant top-level config exports are JSON-backed; remaining TS files are loaders
   or derived display code, not authoritative tuning tables.
+- @dimforge/rapier3d-compat no longer ships as the registry physics engine package:
+  @types/three is dev-only, its transitive Rapier type dependency is satisfied by a
+  local throwing stub, and source imports remain grep-clean.
 - Client unit prediction motion uses a batched Rust/WASM kernel for target extrapolation
   and rendered entity motion; the old TS single-body wrapper path is gone.
 - Adaptive terrain mesh build is fully Rust/WASM-owned (C16 closed). One kernel
