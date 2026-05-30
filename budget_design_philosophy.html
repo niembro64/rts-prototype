@@ -2167,15 +2167,17 @@
         </li>
         <li>
           A pylon&rsquo;s direction encodes the local physical flow of the resource at the
-          pylon&rsquo;s position on the host. <strong>Inbound balls</strong> mean the pylon is
-          absorbing the resource at that point &mdash; a solar collector pulling energy from the
-          sun, an extractor pulling metal from a deposit, a converter draining its consumed
-          resource out of the player&rsquo;s pool. <strong>Outbound balls</strong> mean the pylon
-          is projecting the resource away from that point &mdash; a construction turret sending
-          energy and metal to a build site, a converter releasing its produced resource back into
-          the player&rsquo;s pool. The net effect on the player&rsquo;s stockpile is recovered from
-          the host&rsquo;s role plus the pylon direction; it is not encoded by some second
-          orthogonal field on the pylon.
+          pylon&rsquo;s <em>tip</em> &mdash; the head, where the pylon meets the world.
+          <strong>Inbound balls</strong> mean the world is feeding the tip and the resource then
+          rides <em>down</em> the tube into the pool &mdash; a solar collector pulling energy from
+          the sun, an extractor pulling metal from the deposit beneath it, a converter&rsquo;s metal
+          tip catching the metal its energy tip just made. <strong>Outbound balls</strong> mean the
+          resource first rises <em>up</em> the tube from the pool and the tip then projects it into
+          the world &mdash; a construction turret sending energy and metal to a build site, a
+          converter&rsquo;s energy tip ejecting the energy it is consuming. Down the tube is always
+          gaining and up the tube is always spending, so the net effect on the player&rsquo;s
+          stockpile is recovered from the host&rsquo;s role plus this single direction; it is not
+          encoded by some second orthogonal field on the pylon.
         </li>
         <li>
           A pylon that has a discrete target &mdash; a construction-emitter pylon spraying a
@@ -2186,6 +2188,40 @@
         </li>
       </ul>
 
+      <h3>A pylon is a conduit: root, tube, head</h3>
+      <p>
+        A pylon is not a point; it is a <em>conduit</em> with two ends and a tube between them. The
+        <strong>root</strong> is the bottom, where the pylon taps the player&rsquo;s shared resource
+        pool. The <strong>head</strong> &mdash; the <em>tip</em> &mdash; is the top, where the pylon
+        meets the physical world: the sky, the wind, a metal deposit, a build site. The
+        <strong>tube</strong> is the visible shaft the resource balls travel along between the two.
+        Inbound and outbound, defined above at the tip, are simply the two ends of one journey:
+        <strong>balls travelling down the tube mean the host is gaining that resource</strong>
+        (production, reclaim, conversion output), and <strong>balls travelling up the tube mean the
+        host is spending it</strong> (construction, repair, conversion input, upkeep).
+      </p>
+      <p>
+        The tip conserves. It is a pass-through, never a spawn and never a sink:
+        <strong>every ball that travels up the tube must leave through the tip, and every ball that
+        enters the tip must travel down the tube</strong>. Resource balls are created and destroyed
+        only at the two real endpoints &mdash; the root, where they fade into or out of the abstract
+        pool, and the world point (deposit, sky, build target) on the far side of the tip. So a
+        producer ball&rsquo;s whole life is <em>world-source &rarr; into the tip &rarr; down the tube
+        &rarr; gone at the root</em>, and a consumer ball&rsquo;s whole life is <em>born at the root
+        &rarr; up the tube &rarr; out the tip &rarr; onto the target</em>. Nothing appears or vanishes
+        at the tip itself; if a ball reaches the tip, it has somewhere it must go. Every ball is
+        accounted for before and after the tip.
+      </p>
+      <p>
+        Because the moving stream now carries both direction (which way along the tube) and magnitude
+        (how densely the balls flow), <strong>the flowing balls are the resource indicator</strong>;
+        the standalone resource-usage indicators they replace should be retired. The pylon&rsquo;s
+        vertical <em>shower</em> bar survives only as a cheap at-a-glance magnitude cue and as the
+        level-of-detail stand-in when a pylon is too distant, off-screen, or over the particle budget
+        to draw individual balls (see <strong>Scale Target</strong>) &mdash; not as a second,
+        independent readout.
+      </p>
+
       <h3>Who carries which pylons</h3>
       <p>
         Every host that affects a resource pool must mount the pylons that match what it does.
@@ -2193,29 +2229,35 @@
       </p>
       <ul class="rule-list">
         <li>
-          <strong>Solar collector</strong> &mdash; one energy pylon, inbound balls from random
-          sky-side directions; shower height tracks current production rate.
+          <strong>Solar collector</strong> &mdash; one energy pylon, inbound: balls fall in from the
+          sun/sky direction, enter the tip, and ride down the tube into the pool; rate tracks current
+          production.
         </li>
         <li>
-          <strong>Wind turbine</strong> &mdash; one energy pylon, inbound balls; rate scales with
-          wind speed and the open/closed state.
+          <strong>Wind turbine</strong> &mdash; one energy pylon, inbound: balls stream in horizontally
+          from the upwind direction (the same wind vector that drives turbine rate), through the tip
+          and down the tube; rate scales with wind speed and the open/closed state.
         </li>
         <li>
-          <strong>Metal extractor</strong> &mdash; one metal pylon, inbound balls; rate scales
-          with deposit coverage.
+          <strong>Metal extractor</strong> &mdash; one metal pylon, inbound: balls rise from the metal
+          deposit cells beneath it, into the tip, and down the tube; rate scales with deposit coverage.
         </li>
         <li>
           <strong>Construction turret</strong> (on commanders, fabricators, future construction
-          aircraft) &mdash; one energy pylon and one metal pylon, both outbound toward the build
-          target; shower heights match the per-resource throughput the builder or factory is
-          actually paying this tick.
+          aircraft) &mdash; one energy pylon and one metal pylon, both outbound: balls rise up each
+          tube from the pool, leave the tip, and fly onto the build target &mdash; ideally onto the
+          sub-piece currently under construction (locomotion, then body, then turrets) as it is built
+          bottom-up, rather than a single undifferentiated volume. Shower heights match the
+          per-resource throughput the builder or factory is actually paying this tick.
         </li>
         <li>
-          <strong>Resource converter</strong> &mdash; one energy pylon and one metal pylon, in
-          opposing directions. While the converter is consuming surplus energy and emitting
-          metal, the energy pylon shows inbound balls and the metal pylon shows outbound balls;
-          when the surplus flips, the directions flip with it. There is no separate "converter
-          art" &mdash; the converter <em>is</em> two pylons running in opposing modes.
+          <strong>Resource converter</strong> &mdash; one energy pylon and one metal pylon running
+          as a back-to-back consumer and producer. Converting energy&rarr;metal, the energy pylon
+          runs <em>outbound</em> (balls up its tube, out its tip) and the metal pylon runs
+          <em>inbound</em> (balls in at its tip, down its tube), joined by a taxed arc that recolors
+          energy into metal in flight (see <strong>The converter is two tubes and a taxed arc</strong>).
+          There is no separate "converter art" &mdash; the converter <em>is</em> two pylons running
+          in opposing modes, and the same rig reversed would be a future metal&rarr;energy converter.
         </li>
         <li>
           Any new building, unit, or turret that touches a resource pool gets pylons for the
@@ -2224,6 +2266,27 @@
           through pylons. There is no "small enough to skip" exception.
         </li>
       </ul>
+
+      <h3>The converter is two tubes and a taxed arc</h3>
+      <p>
+        A resource converter is the clearest test of the conduit model, because it is a consumer and
+        a producer bolted back to back. Running energy&rarr;metal, its <strong>energy pylon</strong>
+        draws balls up from the pool and ejects them out its tip in every direction (an outbound,
+        consuming tip); its <strong>metal pylon</strong> receives balls at its tip and sends them down
+        into the pool (an inbound, producing tip). The metal pylon therefore reads exactly like an
+        extractor and the energy pylon exactly like a builder &mdash; same rig, opposing modes.
+      </p>
+      <p>
+        What ties the two tips together is a single <em>taxed arc</em>. Of the energy balls thrown
+        from the energy tip, only the fraction set by the conversion ratio <em>after tax</em> arcs
+        across to the metal tip; the remainder disperse into the air and are gone. The balls that
+        cross <strong>change resource in flight</strong>, lerping from the energy color to the metal
+        color in mid-air, and arrive at the metal tip to ride down its tube into the pool. The visible
+        ratio of crossing-and-recoloring balls to dispersing balls <em>is</em> the conversion
+        efficiency made physical &mdash; the tax is something the player can watch leak away. The arc
+        still obeys tip conservation: a recolored ball that reaches the metal tip goes down that tube,
+        and a ball that disperses never entered a tip to begin with.
+      </p>
 
       <h3>One channel in the sim, one rig in the renderer</h3>
       <p>
@@ -2499,7 +2562,7 @@
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as a subtractive exclusion object carried by turrets, units, and towers alike. Rockets inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>universal by default</strong> &mdash; any living entity with an ID, of any kind, including locomotion subentities and travelling shots &mdash; and narrowed only by subtraction: level-0 friend/enemy and entity-family exclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>locomotions</code>, <code>shots</code>), then level-1 named blueprint exclusions. Excluding everything but one family is how a turret specializes &mdash; point-defense keeps only <code>shots</code>, a crippler keeps only <code>locomotions</code>, a disarmer keeps only <code>turrets</code>.</li>
         <li>Treat surface materials as shape-independent contracts: a material defines reflectivity, occlusion, hit response, and shader treatment once, and every shape that mounts it must look and behave identically. The <code>turretShieldPanel</code>&rsquo;s flat panels and the <code>turretShieldSphere</code>&rsquo;s sphere are the exact same material &mdash; they differ only in geometry.</li>
-        <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as inbound or outbound resource balls. Solar/wind/extractor pull inbound balls from random world directions; construction turrets push outbound balls at a build target; converters run one pylon inbound and one outbound. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
+        <li>Route every resource movement &mdash; production, consumption, construction payment, conversion, repair drain, future ammo costs &mdash; through one shared pylon abstraction in both simulation and renderer. One typed channel publishes <code>(resource, amount, direction, source, optional target)</code>; one rig renders magnitude as shower height and direction as resource balls flowing through a conduit. A pylon is a tube between a <em>root</em> (the pool tap) and a <em>tip</em> (the world); balls down the tube mean gaining, up the tube mean spending, and the tip conserves &mdash; every ball up the tube exits the tip, every ball into the tip goes down the tube, and balls are spawned or sunk only at the root and the world point, never at the tip. Producers source balls at the physical world point (deposit, sun, upwind) and run them down the tube; construction turrets run balls up the tube and out the tip onto the build target; the converter joins its two tips with a taxed arc that recolors energy into metal in flight, the unconverted fraction visibly dispersing. The flowing balls are the indicator; standalone usage readouts are retired and the shower bar survives only as a magnitude cue and LOD fallback. No parallel resource paths in the sim, no special-case &ldquo;production trickle&rdquo; or &ldquo;converter visual&rdquo; in the renderer.</li>
         <li>Keep every atomic action and rule in one source-of-truth module, then import it everywhere it is needed.</li>
         <li>When a replacement lands &mdash; a WASM kernel for a JS loop, owned shaders for a framework helper, a raw renderer path for a Three.js abstraction, a removed library &mdash; delete the predecessor in the same change. Migration is not done until the old path is gone from the tree.</li>
         <li>Prefer explicit <code>null</code> (or numeric sentinels) over optional properties and optional chaining in our own code; treat every file you touch as an opportunity to migrate fields off <code>?:</code> and <code>?.</code>.</li>
