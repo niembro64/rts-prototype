@@ -277,7 +277,7 @@
       }
     },
     "verticalLauncher": false,
-    "idlePitch": 1.5707963267948966,
+    "idlePitch": -1.5707963267948966,
     "groundAimFraction": 1,
     "radius": {
       "body": 9
