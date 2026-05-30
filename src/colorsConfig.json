@@ -752,7 +752,7 @@
           "specularHex": "#ffffff",
           "shininess": 58
         },
-        "buildingWind": {
+        "wind": {
           "colorHex": "#9be8ff",
           "specularHex": "#ffffff",
           "shininess": 70
