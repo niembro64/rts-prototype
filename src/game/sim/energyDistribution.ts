@@ -14,7 +14,6 @@ import { getBuildingConfig } from './buildConfigs';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
 import {
-  getBuildFraction,
   getRemainingResource,
   getTotalRemainingCost,
   isEntityActive,
@@ -55,7 +54,23 @@ let consumerMetalRemaining = new Float64Array(32);
 let consumerCaps = new Float64Array(32);
 let consumerEnergySpent = new Float64Array(32);
 let consumerMetalSpent = new Float64Array(32);
+let consumerTypeCodes = new Uint8Array(32);
+let consumerPaidEnergy = new Float64Array(32);
+let consumerPaidMetal = new Float64Array(32);
+let consumerRequiredEnergy = new Float64Array(32);
+let consumerRequiredMetal = new Float64Array(32);
+let consumerHp = new Float64Array(32);
+let consumerMaxHp = new Float64Array(32);
+let consumerBuildProgress = new Float64Array(32);
+let consumerEnergyRateFraction = new Float64Array(32);
+let consumerMetalRateFraction = new Float64Array(32);
+let consumerChangedMask = new Uint8Array(32);
 const consumerDebitTotals = new Float64Array(2);
+const CONSTRUCTION_CONSUMER_BUILD_CODE = 1;
+const CONSTRUCTION_CONSUMER_HEAL_CODE = 2;
+const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE = 1;
+const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE = 2;
+const HEAL_COST_PER_HP = 0.5;
 
 function ensureConsumerDebitCapacity(count: number): void {
   if (count <= consumerEnergyRemaining.length) return;
@@ -67,6 +82,17 @@ function ensureConsumerDebitCapacity(count: number): void {
   consumerCaps = new Float64Array(nextCapacity);
   consumerEnergySpent = new Float64Array(nextCapacity);
   consumerMetalSpent = new Float64Array(nextCapacity);
+  consumerTypeCodes = new Uint8Array(nextCapacity);
+  consumerPaidEnergy = new Float64Array(nextCapacity);
+  consumerPaidMetal = new Float64Array(nextCapacity);
+  consumerRequiredEnergy = new Float64Array(nextCapacity);
+  consumerRequiredMetal = new Float64Array(nextCapacity);
+  consumerHp = new Float64Array(nextCapacity);
+  consumerMaxHp = new Float64Array(nextCapacity);
+  consumerBuildProgress = new Float64Array(nextCapacity);
+  consumerEnergyRateFraction = new Float64Array(nextCapacity);
+  consumerMetalRateFraction = new Float64Array(nextCapacity);
+  consumerChangedMask = new Uint8Array(nextCapacity);
 }
 
 function addConstructionSource(
@@ -192,6 +218,29 @@ function applyConsumerDebitLane(
     totalSpent: consumerDebitTotals[0],
     nextStockpile: consumerDebitTotals[1],
   };
+}
+
+function applyConsumerSpendResults(sim: SimWasm, count: number): void {
+  if (sim.constructionApplyConsumerSpends(
+    consumerTypeCodes,
+    consumerPaidEnergy,
+    consumerPaidMetal,
+    consumerRequiredEnergy,
+    consumerRequiredMetal,
+    consumerHp,
+    consumerMaxHp,
+    consumerEnergySpent,
+    consumerMetalSpent,
+    consumerCaps,
+    count,
+    HEAL_COST_PER_HP,
+    consumerBuildProgress,
+    consumerEnergyRateFraction,
+    consumerMetalRateFraction,
+    consumerChangedMask,
+  ) === 0) {
+    throw new Error('distributeEnergy: construction_apply_consumer_spends rejected its buffers');
+  }
 }
 
 // Distribute resources to active consumers (one player at a time).
@@ -357,9 +406,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         }
       }
     } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
-      const healCostPerHp = 0.5;
       const hpToHeal = target.unit.maxHp - target.unit.hp;
-      const remaining = hpToHeal * healCostPerHp;
+      const remaining = hpToHeal * HEAL_COST_PER_HP;
       if (remaining > 0) {
         addConsumer(
           commander.ownership.playerId,
@@ -406,9 +454,24 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       consumerCaps[i] = c.maxResourcePerTick;
       if (c.type === 'build') {
         const buildable = c.entity.buildable;
+        consumerTypeCodes[i] = buildable === null ? 0 : CONSTRUCTION_CONSUMER_BUILD_CODE;
+        consumerPaidEnergy[i] = buildable === null ? 0 : buildable.paid.energy;
+        consumerPaidMetal[i] = buildable === null ? 0 : buildable.paid.metal;
+        consumerRequiredEnergy[i] = buildable === null ? 0 : buildable.required.energy;
+        consumerRequiredMetal[i] = buildable === null ? 0 : buildable.required.metal;
+        consumerHp[i] = 0;
+        consumerMaxHp[i] = 0;
         consumerEnergyRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'energy');
         consumerMetalRemaining[i] = buildable === null ? 0 : getRemainingResource(buildable, 'metal');
       } else {
+        const unit = c.entity.unit;
+        consumerTypeCodes[i] = unit === null ? 0 : CONSTRUCTION_CONSUMER_HEAL_CODE;
+        consumerPaidEnergy[i] = 0;
+        consumerPaidMetal[i] = 0;
+        consumerRequiredEnergy[i] = 0;
+        consumerRequiredMetal[i] = 0;
+        consumerHp[i] = unit === null ? 0 : unit.hp;
+        consumerMaxHp[i] = unit === null ? 0 : unit.maxHp;
         consumerEnergyRemaining[i] = c.remainingCost;
         consumerMetalRemaining[i] = 0;
       }
@@ -436,6 +499,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     );
     economy.metal.stockpile.curr = metalDebit.nextStockpile;
 
+    applyConsumerSpendResults(sim, indices.length);
+
     for (let i = 0; i < indices.length; i++) {
       const c = consumers[indices[i]];
       if (c.type === 'build') {
@@ -445,26 +510,17 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         const spendT = consumerMetalSpent[i];
         recordResourceSpendForConsumer(world, buffers, c, 'energy', spendE, dtSec);
         recordResourceSpendForConsumer(world, buffers, c, 'metal', spendT, dtSec);
-        if (spendE > 0) buildable.paid.energy += spendE;
-        if (spendT > 0) buildable.paid.metal += spendT;
-        if (spendE > 0 || spendT > 0) {
+        if ((consumerChangedMask[i] & CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE) !== 0) {
+          buildable.paid.energy = consumerPaidEnergy[i];
+          buildable.paid.metal = consumerPaidMetal[i];
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
           if (c.sourceEntityId !== null) {
             const factory = world.getEntity(c.sourceEntityId);
             const factoryComp = factory === undefined ? null : factory.factory;
             if (factory !== undefined && factoryComp !== null && factoryComp.currentShellId === c.entity.id) {
-              factoryComp.currentBuildProgress = getBuildFraction(buildable);
-              // Per-resource transfer-rate fractions for the 3D
-              // resource-ball flow. spendX <= maxResourcePerTick by
-              // construction so the divide is always 0..1.
-              const cap = c.maxResourcePerTick;
-              if (cap > 0) {
-                factoryComp.energyRateFraction = spendE / cap;
-                factoryComp.metalRateFraction = spendT / cap;
-              } else {
-                factoryComp.energyRateFraction = 0;
-                factoryComp.metalRateFraction = 0;
-              }
+              factoryComp.currentBuildProgress = consumerBuildProgress[i];
+              factoryComp.energyRateFraction = consumerEnergyRateFraction[i];
+              factoryComp.metalRateFraction = consumerMetalRateFraction[i];
               world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
             }
           }
@@ -473,11 +529,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         // Healing — energy only.
         const energyToSpend = consumerEnergySpent[i];
         recordResourceSpendForConsumer(world, buffers, c, 'energy', energyToSpend, dtSec);
-        const hpHealed = energyToSpend / 0.5;
         const unit = c.entity.unit!;
-        const nextHp = Math.min(unit.hp + hpHealed, unit.maxHp);
-        if (nextHp !== unit.hp) {
-          unit.hp = nextHp;
+        if ((consumerChangedMask[i] & CONSTRUCTION_CONSUMER_CHANGED_HP_CODE) !== 0) {
+          unit.hp = consumerHp[i];
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_HP);
         }
       }

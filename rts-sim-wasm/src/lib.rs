@@ -316,6 +316,10 @@ fn economy_normalized_cap(cap: f64) -> f64 {
 const ECONOMY_RESOURCE_NONE_CODE: u32 = 0;
 const ECONOMY_RESOURCE_ENERGY_CODE: u32 = 1;
 const ECONOMY_RESOURCE_METAL_CODE: u32 = 2;
+const CONSTRUCTION_CONSUMER_BUILD_CODE: u8 = 1;
+const CONSTRUCTION_CONSUMER_HEAL_CODE: u8 = 2;
+const CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE: u8 = 1;
+const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE: u8 = 2;
 
 #[inline]
 fn economy_compute_converter_transfer_value(
@@ -544,6 +548,120 @@ pub fn economy_apply_equal_consumer_debits(
 
     out_totals[0] = total_spent;
     out_totals[1] = current.max(0.0);
+    1
+}
+
+#[inline]
+fn construction_resource_fill_ratio(paid: f64, required: f64) -> f64 {
+    if required <= 0.0 {
+        1.0
+    } else {
+        js_min(1.0, js_max(0.0, paid / required))
+    }
+}
+
+#[inline]
+fn construction_build_fraction(
+    paid_energy: f64,
+    paid_metal: f64,
+    required_energy: f64,
+    required_metal: f64,
+) -> f64 {
+    (construction_resource_fill_ratio(paid_energy, required_energy)
+        + construction_resource_fill_ratio(paid_metal, required_metal))
+        * 0.5
+}
+
+#[wasm_bindgen]
+pub fn construction_apply_consumer_spends(
+    consumer_types: &[u8],
+    paid_energy: &mut [f64],
+    paid_metal: &mut [f64],
+    required_energy: &[f64],
+    required_metal: &[f64],
+    hp: &mut [f64],
+    max_hp: &[f64],
+    spend_energy: &[f64],
+    spend_metal: &[f64],
+    caps: &[f64],
+    count: u32,
+    heal_cost_per_hp: f64,
+    out_build_progress: &mut [f64],
+    out_energy_rate_fraction: &mut [f64],
+    out_metal_rate_fraction: &mut [f64],
+    out_changed_mask: &mut [u8],
+) -> u32 {
+    let n = count as usize;
+    if n > consumer_types.len()
+        || n > paid_energy.len()
+        || n > paid_metal.len()
+        || n > required_energy.len()
+        || n > required_metal.len()
+        || n > hp.len()
+        || n > max_hp.len()
+        || n > spend_energy.len()
+        || n > spend_metal.len()
+        || n > caps.len()
+        || n > out_build_progress.len()
+        || n > out_energy_rate_fraction.len()
+        || n > out_metal_rate_fraction.len()
+        || n > out_changed_mask.len()
+    {
+        return 0;
+    }
+
+    for i in 0..n {
+        out_build_progress[i] = 0.0;
+        out_energy_rate_fraction[i] = 0.0;
+        out_metal_rate_fraction[i] = 0.0;
+        out_changed_mask[i] = 0;
+
+        match consumer_types[i] {
+            CONSTRUCTION_CONSUMER_BUILD_CODE => {
+                let spend_e = economy_normalized_amount(spend_energy[i]);
+                let spend_m = economy_normalized_amount(spend_metal[i]);
+                let mut changed = 0u8;
+
+                if spend_e > 0.0 {
+                    paid_energy[i] += spend_e;
+                    changed |= CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE;
+                }
+                if spend_m > 0.0 {
+                    paid_metal[i] += spend_m;
+                    changed |= CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE;
+                }
+
+                out_build_progress[i] = construction_build_fraction(
+                    paid_energy[i],
+                    paid_metal[i],
+                    required_energy[i],
+                    required_metal[i],
+                );
+
+                let cap = caps[i];
+                if cap > 0.0 {
+                    out_energy_rate_fraction[i] = spend_e / cap;
+                    out_metal_rate_fraction[i] = spend_m / cap;
+                }
+
+                out_changed_mask[i] = changed;
+            }
+            CONSTRUCTION_CONSUMER_HEAL_CODE => {
+                let spend_e = economy_normalized_amount(spend_energy[i]);
+                if spend_e <= 0.0 || heal_cost_per_hp <= 0.0 || !heal_cost_per_hp.is_finite() {
+                    continue;
+                }
+
+                let next_hp = js_min(hp[i] + spend_e / heal_cost_per_hp, max_hp[i]);
+                if next_hp != hp[i] {
+                    hp[i] = next_hp;
+                    out_changed_mask[i] = CONSTRUCTION_CONSUMER_CHANGED_HP_CODE;
+                }
+            }
+            _ => {}
+        }
+    }
+
     1
 }
 
@@ -26055,6 +26173,92 @@ mod sim_kernel_tests {
                 30.0,
                 &mut short,
                 &mut totals,
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn construction_apply_consumer_spends_updates_paid_hp_and_progress() {
+        let consumer_types = [
+            CONSTRUCTION_CONSUMER_BUILD_CODE,
+            CONSTRUCTION_CONSUMER_HEAL_CODE,
+            CONSTRUCTION_CONSUMER_BUILD_CODE,
+            0,
+        ];
+        let mut paid_energy = [10.0, 0.0, 20.0, 5.0];
+        let mut paid_metal = [0.0, 0.0, 1.0, 5.0];
+        let required_energy = [20.0, 0.0, 20.0, 0.0];
+        let required_metal = [10.0, 0.0, 5.0, 0.0];
+        let mut hp = [0.0, 8.0, 0.0, 0.0];
+        let max_hp = [0.0, 10.0, 0.0, 0.0];
+        let spend_energy = [5.0, 2.0, 0.0, 99.0];
+        let spend_metal = [3.0, 0.0, 4.0, 99.0];
+        let caps = [10.0, 4.0, f64::INFINITY, 1.0];
+        let mut build_progress = [99.0; 4];
+        let mut energy_rate_fraction = [99.0; 4];
+        let mut metal_rate_fraction = [99.0; 4];
+        let mut changed_mask = [99; 4];
+
+        assert_eq!(
+            construction_apply_consumer_spends(
+                &consumer_types,
+                &mut paid_energy,
+                &mut paid_metal,
+                &required_energy,
+                &required_metal,
+                &mut hp,
+                &max_hp,
+                &spend_energy,
+                &spend_metal,
+                &caps,
+                4,
+                0.5,
+                &mut build_progress,
+                &mut energy_rate_fraction,
+                &mut metal_rate_fraction,
+                &mut changed_mask,
+            ),
+            1
+        );
+
+        assert_eq!(paid_energy, [15.0, 0.0, 20.0, 5.0]);
+        assert_eq!(paid_metal, [3.0, 0.0, 5.0, 5.0]);
+        assert_eq!(hp, [0.0, 10.0, 0.0, 0.0]);
+        assert!((build_progress[0] - 0.525).abs() < 1e-12);
+        assert_eq!(build_progress[1], 0.0);
+        assert_eq!(build_progress[2], 1.0);
+        assert_eq!(energy_rate_fraction, [0.5, 0.0, 0.0, 0.0]);
+        assert_eq!(metal_rate_fraction, [0.3, 0.0, 0.0, 0.0]);
+        assert_eq!(
+            changed_mask,
+            [
+                CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE,
+                CONSTRUCTION_CONSUMER_CHANGED_HP_CODE,
+                CONSTRUCTION_CONSUMER_CHANGED_BUILD_CODE,
+                0,
+            ]
+        );
+
+        let mut short = [0.0; 3];
+        assert_eq!(
+            construction_apply_consumer_spends(
+                &consumer_types,
+                &mut paid_energy,
+                &mut paid_metal,
+                &required_energy,
+                &required_metal,
+                &mut hp,
+                &max_hp,
+                &spend_energy,
+                &spend_metal,
+                &caps,
+                4,
+                0.5,
+                &mut short,
+                &mut energy_rate_fraction,
+                &mut metal_rate_fraction,
+                &mut changed_mask,
             ),
             0
         );

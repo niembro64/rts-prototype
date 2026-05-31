@@ -159,7 +159,13 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     2026-05-31 progress: construction and repair equal-share resource debit
     allocation moved from energyDistribution.ts TypeScript math into the
     Rust/WASM economy_apply_equal_consumer_debits helper. TypeScript still
-    gathers build/repair consumers, writes buildable HP/payment state, and
+    gathers build/repair consumers and records renderer-facing pylon movement
+    attribution.
+    2026-05-31 progress: construction/repair consumer spend application
+    moved from energyDistribution.ts TypeScript math into the Rust/WASM
+    construction_apply_consumer_spends helper. Rust now applies buildable
+    paid counters, repair HP, factory progress, and per-resource rate
+    fractions; TypeScript scatters returned values to entity objects and
     records renderer-facing pylon movement attribution.
     2026-05-31 progress: factory construction-site placement geometry moved
     from factoryConstructionSite.ts TypeScript math into the Rust/WASM
