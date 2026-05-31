@@ -166,6 +166,44 @@ pub fn economy_accumulate_player_rates(
 }
 
 #[inline]
+fn economy_normalized_amount(amount: f64) -> f64 {
+    if amount.is_finite() {
+        amount.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+#[wasm_bindgen]
+pub fn economy_credit_stockpile(curr: f64, max: f64, amount: f64, out: &mut [f64]) -> u32 {
+    if out.len() < 2 {
+        return 0;
+    }
+
+    let current = if curr.is_finite() { curr } else { 0.0 };
+    let maximum = if max.is_finite() { max } else { current };
+    let requested = economy_normalized_amount(amount);
+    let accepted = requested.min((maximum - current).max(0.0));
+    out[0] = accepted;
+    out[1] = current + accepted;
+    1
+}
+
+#[wasm_bindgen]
+pub fn economy_debit_stockpile(curr: f64, amount: f64, out: &mut [f64]) -> u32 {
+    if out.len() < 2 {
+        return 0;
+    }
+
+    let current = if curr.is_finite() { curr.max(0.0) } else { 0.0 };
+    let requested = economy_normalized_amount(amount);
+    let spent = requested.min(current);
+    out[0] = spent;
+    out[1] = current - spent;
+    1
+}
+
+#[inline]
 fn is_in_contact(penetration: f64) -> bool {
     penetration >= -UNIT_GROUND_CONTACT_EPSILON
 }
@@ -25199,6 +25237,27 @@ mod sim_kernel_tests {
             0
         );
         assert_eq!(out, [0.0; 5]);
+    }
+
+    #[test]
+    fn economy_stockpile_credit_debit_clamp_and_normalize_amounts() {
+        let mut out = [0.0; 2];
+
+        assert_eq!(economy_credit_stockpile(95.0, 100.0, 20.0, &mut out), 1);
+        assert_eq!(out, [5.0, 100.0]);
+
+        assert_eq!(economy_credit_stockpile(20.0, 100.0, f64::NAN, &mut out), 1);
+        assert_eq!(out, [0.0, 20.0]);
+
+        assert_eq!(economy_debit_stockpile(12.0, 20.0, &mut out), 1);
+        assert_eq!(out, [12.0, 0.0]);
+
+        assert_eq!(economy_debit_stockpile(12.0, -4.0, &mut out), 1);
+        assert_eq!(out, [0.0, 12.0]);
+
+        let mut short = [0.0; 1];
+        assert_eq!(economy_credit_stockpile(1.0, 2.0, 1.0, &mut short), 0);
+        assert_eq!(economy_debit_stockpile(1.0, 1.0, &mut short), 0);
     }
 
     #[test]

@@ -21,6 +21,8 @@ import __wbg_init, {
   version,
   wind_sample_state,
   economy_accumulate_player_rates,
+  economy_credit_stockpile,
+  economy_debit_stockpile,
   step_unit_motion,
   client_predict_unit_motion_batch,
   pool_init,
@@ -422,6 +424,17 @@ export interface SimWasm {
     rates: Float64Array,
     count: number,
     outRatesByPlayer: Float64Array,
+  ) => number;
+  readonly economyCreditStockpile: (
+    curr: number,
+    max: number,
+    amount: number,
+    out: Float64Array,
+  ) => number;
+  readonly economyDebitStockpile: (
+    curr: number,
+    amount: number,
+    out: Float64Array,
   ) => number;
   /** Shared single-body unit integrator (Phase 2). Kept for
    *  diagnostics and one-off callers; the server hot path uses
@@ -2977,6 +2990,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         version: version(),
         windSampleState: wind_sample_state,
         economyAccumulatePlayerRates: economy_accumulate_player_rates,
+        economyCreditStockpile: economy_credit_stockpile,
+        economyDebitStockpile: economy_debit_stockpile,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,

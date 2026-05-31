@@ -127,6 +127,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     from a TypeScript Map loop to the Rust/WASM economy_accumulate_player_rates
     batch helper. Producer stockpile crediting and resource movement accounting
     remain TypeScript-orchestrated under this item.
+    2026-05-31 progress: shared stockpile credit/debit clamp accounting moved
+    from ResourceMovementSystem's TypeScript math into Rust/WASM helpers
+    economy_credit_stockpile and economy_debit_stockpile. Resource-movement
+    event recording remains TypeScript-side because it feeds renderer pylon
+    visuals; converter/factory/construction orchestration remains under C1.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

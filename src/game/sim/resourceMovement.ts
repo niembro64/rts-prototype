@@ -1,4 +1,5 @@
 import type { EconomyState, EntityId, PlayerId } from './types';
+import { getSimWasm } from '../sim-wasm/init';
 
 export type ResourceKind = 'energy' | 'metal';
 export type ResourceMovementDirection = 'inbound' | 'outbound';
@@ -43,8 +44,14 @@ function getStockpile(economy: EconomyState, resource: ResourceKind): { curr: nu
   return resource === 'energy' ? economy.stockpile : economy.metal.stockpile;
 }
 
-function normalizeAmount(amount: number): number {
-  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+const _stockpileOut = new Float64Array(2);
+
+function requireSimWasm(context: string) {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error(`${context}: sim-wasm is not initialized`);
+  }
+  return sim;
 }
 
 export class ResourceMovementSystem {
@@ -53,23 +60,27 @@ export class ResourceMovementSystem {
   }
 
   credit(economy: EconomyState, sink: ResourceMovementSink, request: ResourceMovementRequest): number {
-    const requested = normalizeAmount(request.amount);
-    if (requested <= 0) return 0;
     const stockpile = getStockpile(economy, request.resource);
-    const accepted = Math.max(0, Math.min(requested, stockpile.max - stockpile.curr));
+    const sim = requireSimWasm('ResourceMovementSystem.credit');
+    if (sim.economyCreditStockpile(stockpile.curr, stockpile.max, request.amount, _stockpileOut) === 0) {
+      throw new Error('ResourceMovementSystem.credit: economy_credit_stockpile rejected its output buffer');
+    }
+    const accepted = _stockpileOut[0];
     if (accepted <= 0) return 0;
-    stockpile.curr += accepted;
+    stockpile.curr = _stockpileOut[1];
     this.record(sink, request, accepted, accepted);
     return accepted;
   }
 
   debit(economy: EconomyState, sink: ResourceMovementSink, request: ResourceMovementRequest): number {
-    const requested = normalizeAmount(request.amount);
-    if (requested <= 0) return 0;
     const stockpile = getStockpile(economy, request.resource);
-    const spent = Math.max(0, Math.min(requested, stockpile.curr));
+    const sim = requireSimWasm('ResourceMovementSystem.debit');
+    if (sim.economyDebitStockpile(stockpile.curr, request.amount, _stockpileOut) === 0) {
+      throw new Error('ResourceMovementSystem.debit: economy_debit_stockpile rejected its output buffer');
+    }
+    const spent = _stockpileOut[0];
     if (spent <= 0) return 0;
-    stockpile.curr -= spent;
+    stockpile.curr = _stockpileOut[1];
     this.record(sink, request, spent, -spent);
     return spent;
   }
