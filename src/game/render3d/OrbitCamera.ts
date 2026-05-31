@@ -39,10 +39,10 @@ const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
 const SHIFT_CAMERA_INPUT_SCALE = 0.1;
 
 export type OrbitCameraOptions = {
-  /** Closest-approach zoom-in rail. The zoom-OUT side has no fixed
-   *  rail; it is bounded dynamically by terrain — the camera dollies
-   *  back only as far as it can without driving the eye into a hill
-   *  behind it (see terrainClearedDistance). */
+  /** Closest-approach zoom-in rail. Terrain clearance is resolved
+   *  separately as a render-time eye floor that never alters the orbit
+   *  state, so there is no zoom-OUT rail and the zoom limits stay
+   *  absolute (history-independent). */
   minDistance?: number;
   /** Reference far distance for HUD fade scaling — NOT a zoom-out cap.
    *  The camera can dolly past it freely; HUD elements key off this so
@@ -553,25 +553,13 @@ export class OrbitCamera {
       anchor ?? (wantFactor < 1 ? this.zoomInAnchor : this.zoomOutAnchor),
     );
     const wantedDistance = this.toDistance * wantFactor;
-    // Zoom-IN is bounded below by the zoom-in rail. Zoom-OUT is bounded
-    // above by terrain: dollying further back would drive the eye into a
-    // hill behind the camera, so clamp to the largest distance that
-    // keeps the eye clear. Bounding the *state* here (not just the
-    // render) means a later zoom-IN responds on the first tick instead
-    // of first unwinding a phantom over-zoomed distance. The clamp is
-    // recomputed from live geometry every input, so panning/orbiting off
-    // the hill frees the dolly again.
+    // Zoom limits are ABSOLUTE and history-independent: bounded below by
+    // the zoom-in rail, unbounded above. Terrain is NEVER allowed to feed
+    // back into the dolly distance — it is resolved purely as a render-
+    // time eye floor in apply() that leaves the orbit state untouched. So
+    // hitting a mountain can't cache a different zoom-in/out limit.
     let nextDistance = Math.max(this.minDistance, wantedDistance);
-    if (nextDistance > this.toDistance) {
-      const maxClear = this.terrainClearedDistance(
-        this.toTargetX,
-        this.toTargetY,
-        this.toTargetZ,
-        nextDistance,
-      );
-      nextDistance = Math.max(this.toDistance, maxClear);
-    }
-    if (nextDistance === this.toDistance) return; // at a rail (zoom-in or terrain)
+    if (nextDistance === this.toDistance) return; // already at the zoom-in rail
     const actualFactor = nextDistance / this.toDistance;
     const startTargetX = this.toTargetX;
     const startTargetY = this.toTargetY;
@@ -593,10 +581,10 @@ export class OrbitCamera {
       nextTargetZ = actualFactor * startTargetZ + k * p0.z;
     }
 
-    // The zoom-OUT dolly was already clamped to terrain above; the
-    // render-time clamp in apply() is the final guarantee that the eye
-    // never dips below the ground (covering pan/orbit too). The orbit
-    // state's yaw/pitch/target are never rewritten by terrain.
+    // No terrain clip-test on zoom. The render-time eye floor in apply()
+    // lifts the camera over any terrain it would dive into, so the wheel
+    // stays smooth instead of stalling near hills, and the orbit state is
+    // never rewritten by terrain — zoom limits stay absolute.
     this.toTargetX = nextTargetX;
     this.toTargetY = nextTargetY;
     this.toTargetZ = nextTargetZ;
@@ -827,130 +815,50 @@ export class OrbitCamera {
     return out;
   }
 
-  /** Largest dolly distance ≤ requestedDist along the current view ray
-   *  (from the given target, using the live yaw/pitch) that keeps the
-   *  eye at least minTerrainClearance above the terrain beneath it.
-   *
-   *  When the eye at requestedDist already clears — or the sampler
-   *  returns NaN (off-map / before terrain loads) — requestedDist is
-   *  returned unchanged. Otherwise the eye is marched straight back
-   *  toward the target until it clears, the terrain surface is bracketed
-   *  and binary-searched, and the cleared distance is returned (never
-   *  below the zoom-in rail). Pure read — never mutates camera state. */
-  private terrainClearedDistance(
-    targetX: number,
-    targetY: number,
-    targetZ: number,
-    requestedDist: number,
-  ): number {
-    const sample = this.getTerrainHeight;
-    if (
-      !this.cameraCollidesWithTerrain ||
-      !sample ||
-      this.minTerrainClearance <= 0
-    ) {
-      return requestedDist;
-    }
-    const sinP = Math.sin(this.pitch);
-    const cosP = Math.cos(this.pitch);
-    const dirX = sinP * Math.sin(this.yaw);
-    const dirY = cosP;
-    const dirZ = sinP * -Math.cos(this.yaw);
-    // clearance(t) = eyeY − (terrain beneath eye + clearance). ≥0 clears,
-    // <0 penetrates. NaN (off-map) propagates and is treated as clearing
-    // by every `!(c < 0)` test below, matching the old NaN-safe floor.
-    const clearance = (t: number): number => {
-      const ex = targetX + t * dirX;
-      const ez = targetZ + t * dirZ;
-      const ey = targetY + t * dirY;
-      return ey - (sample(ex, ez) + this.minTerrainClearance);
-    };
-    if (!(clearance(requestedDist) < 0)) return requestedDist;
-
-    // The eye penetrates at requestedDist. March inward (toward the
-    // target) until it clears, bracketing the terrain surface. Bounded
-    // below by the zoom-in rail so we never pull in past it.
-    const minT = this.minDistance;
-    if (requestedDist <= minT) return minT;
-    const STEPS = 32;
-    const step = (requestedDist - minT) / STEPS;
-    let blocked = requestedDist; // clearance < 0 here
-    let cleared = -1;
-    for (let i = 1; i <= STEPS; i++) {
-      const t = requestedDist - i * step;
-      if (!(clearance(t) < 0)) {
-        cleared = t;
-        break;
-      }
-      blocked = t;
-    }
-    if (cleared < 0) return minT; // penetrates the whole way to the rail
-
-    let lo = cleared; // clears
-    let hi = blocked; // penetrates
-    for (let i = 0; i < 12; i++) {
-      const mid = (lo + hi) * 0.5;
-      if (!(clearance(mid) < 0)) lo = mid;
-      else hi = mid;
-    }
-    return lo;
-  }
-
   /** Recompute the rendered camera position from the orbit state
    *  (target + yaw + pitch + distance) and aim it at the target.
    *
-   *  Terrain clearance is a pure render-time dolly clamp: when the eye
-   *  at the authored distance would sit below the terrain beneath it,
-   *  the rendered distance is shortened (eye pulled back toward the
-   *  target along the view ray) just enough to clear. The look-at stays
-   *  exactly on the target, so yaw / pitch / target are all preserved
-   *  for the rendered frame and the focus point never drifts.
+   *  Terrain clearance is a pure render-time floor on the EYE only: when
+   *  the computed camera position would sit below the terrain directly
+   *  beneath it, the eye's Y is raised to the clearance height. The
+   *  look-at stays pinned exactly on the target, and NOTHING is written
+   *  back into the orbit state — the lift is a function of live geometry
+   *  alone. Because the dolly distance is never touched, zoom-in/out
+   *  limits stay absolute and history-independent: brushing a mountain
+   *  cannot cache a different limit. The eye climbs over the hill while
+   *  the focus stays put, so the view tilts down toward the target
+   *  rather than craning the whole frame up off it.
    *
-   *  This deliberately NEVER writes back into the orbit state. An
-   *  earlier version pushed the camera along terrain normals and then
-   *  recovered yaw / pitch / distance from the collision-adjusted
-   *  position — which made the view spin and ratchet its zoom outward
-   *  as the camera brushed hills while panning. Clamping only the
-   *  rendered distance keeps the authored orbit state intact while
-   *  guaranteeing the eye never dips below the ground. */
+   *  pos.y = max(naturalY, floorY) is continuous in the eye's position,
+   *  so riding up and over a ridge has no pop — only the focus-dragging
+   *  look-at lift of an earlier version did.
+   *
+   *  An even earlier version pushed the camera along terrain normals and
+   *  recovered yaw / pitch / distance from the adjusted position — which
+   *  made the view spin and ratchet its zoom as the camera brushed hills
+   *  while panning. Never reintroduce terrain → orbit-state write-back. */
   apply(): void {
     this.constrainTargets();
-    // Resolve terrain penetration by dollying the eye straight back
-    // along the view ray (toward the target) until it clears, rather
-    // than lifting the whole frame. The look-at stays pinned exactly on
-    // the target, so brushing a hill behind the camera can no longer
-    // crane the framing up off the focus point — the camera simply
-    // can't pull back past the obstruction.
-    const dist = this.terrainClearedDistance(
-      this.target.x,
-      this.target.y,
-      this.target.z,
-      this.distance,
-    );
     const pos = this.cameraPositionForState(
       this.target.x,
       this.target.y,
       this.target.z,
-      dist,
+      this.distance,
       this.yaw,
       this.pitch,
       this._cameraPosTmp,
     );
-    // Last-resort floor: if the dolly bottomed out at the zoom-in rail
-    // and the eye is STILL under terrain (target buried in a steep
-    // peak), bump only the eye's Y clear of the ground. The look-at
-    // stays on the target, so this can slightly steepen pitch in that
-    // extreme edge but never craned the focus point off — far better
-    // than letting the camera see through the hill. Gated on the rail so
-    // the common path keeps a single terrain sample per frame.
     if (
-      dist <= this.minDistance &&
       this.cameraCollidesWithTerrain &&
       this.getTerrainHeight &&
       this.minTerrainClearance > 0
     ) {
+      // NaN-safe: a NaN sample (off-map / before terrain loads) makes the
+      // comparison false, so the eye is left where the orbit state put it.
+      // Lift the EYE only — never the look-at — so the focus stays on the
+      // target and no terrain state is cached into the orbit.
       const floorY = this.getTerrainHeight(pos.x, pos.z) + this.minTerrainClearance;
-      if (pos.y < floorY) pos.y = floorY; // NaN floor → comparison false, no-op
+      if (pos.y < floorY) pos.y = floorY;
     }
     this.camera.position.copy(pos);
     this.camera.lookAt(this._cameraLookAtTmp.copy(this.target));

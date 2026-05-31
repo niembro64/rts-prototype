@@ -178,9 +178,9 @@ export class ThreeApp {
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
     // region of the map as the 2D camera at its default zoom. The zoom-IN rail
     // (minDistance) is derived from ZOOM_MAX so "zoomed in" matches the 2D
-    // limit. There is no fixed zoom-OUT rail — dolly distance is unbounded
-    // above except where terrain behind the camera dynamically clamps it (see
-    // OrbitCamera.terrainClearedDistance). The far reference distance
+    // limit. There is no zoom-OUT rail — dolly distance is unbounded above;
+    // terrain is handled by a render-time eye floor that never touches the
+    // orbit state, so zoom limits stay absolute. The far reference distance
     // (map-scaled) only drives HUD fade, not a cap.
     const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
