@@ -250,6 +250,173 @@ D1. [WATCH] @dimforge/rapier3d-compat (a 3D physics engine — banned category) 
 
 
 ================================================================================
+SECTION E — ENTITY STATE REPORTING (HP / RESOURCES / NAMES)
+================================================================================
+Items E1-E6 added 2026-05-31 by tracing the current-health / current-metal /
+current-energy / entity-name pipeline end to end (Rust serialize → wire →
+ClientSnapshotApplier/ClientBuildStateApplier → ClientViewState → EntityName +
+HealthBar3D + NameLabel3D, driven by RtsScene3DRenderPhase.drawEntityHud and the
+clientBarConfig entityHud toggles). Reported symptoms: "names super random and
+randomly changing", and "can't ever see resource bars" with NAME/HP/RES on for
+all types and ENTITY HUD SEL: ALL. File:line refs were correct at audit time;
+re-verify before editing.
+
+E1. [HIGH] "RES" element renders only construction progress and disappears the
+    instant a build completes — so in a normal (already-built) battle it is never
+    visible, exactly as reported.
+    LOCATION:
+      - src/game/network/ClientBuildStateApplier.ts:45-48 — on build.complete the
+        client sets entity.buildable = null (the whole component is dropped, not
+        just flagged).
+      - src/game/render3d/HealthBar3D.ts:266-272, 286-288, 303-309, 325-327,
+        373-377, 412-417 — every resource-bar path gates on
+        isBuildInProgress(buildable) / piece !== null.
+      - src/game/scenes/helpers/RtsScene3DRenderPhase.ts:445-449, 496-499,
+        528-532 — showResources is computed from buildInProgress =
+        isBuildInProgress(e.buildable); the comment at 445-446 even says "once
+        complete the buildable is gone and they read full -> hidden".
+      - src/game/sim/buildableHelpers.ts:169-171 — isBuildInProgress requires
+        !isComplete (and !isGhost/!isInterrupted).
+    RULE: a HUD toggle should mean what its label says; "RES" reads as "current
+    resources", not "construction progress".
+    PROBLEM: the ENERGY/METAL bars are paid/required construction-fill bars shown
+    ONLY while a buildable is mid-construction. On completion the buildable is
+    deleted, so resource bars vanish forever. With ENTITY HUD SEL: ALL and RES on
+    for every type, a player whose units are already built sees no resource bars
+    at all — the reported symptom. The label also implies a per-entity "current
+    resources" concept that does not exist (see E2).
+    FIX: decide what RES means. Either (a) rename to BUILD / construction-progress
+    and document that it is only meaningful while building, or (b) if a real
+    per-entity resource readout is wanted, add that state to the wire and give it
+    a distinct bar mode. Do not ship a toggle that reads as "current resources"
+    but can only ever show transient build fill.
+
+E2. [HIGH] There is no per-entity current-metal / current-energy state; economy
+    is player-wide only — so "current metal/energy per entity" cannot be reported.
+    LOCATION:
+      - src/types/sim.ts:731-740 — EconomyState (per-PLAYER stockpile {curr,max},
+        income, expenditure). This is the only place metal/energy "current"
+        values live.
+      - src/types/sim.ts:958 — metalExtractionRate is the ONLY per-entity
+        resource-ish field, and it is a RATE, not a stored amount; it is never
+        surfaced as a bar.
+    RULE: UI/labels must not imply state the data model does not carry.
+    PROBLEM: entities carry no stored metal/energy, so any expectation of
+    "current metal, current energy" per entity has nothing to read. This is the
+    root cause behind E1's mislabeled RES toggle and the "inconsistent way we
+    pass current metal/energy" framing — it is not passed per entity at all.
+    FIX: either implement per-entity resource state and wire it (extractor yield,
+    converter throughput, storage fill — whatever is intended), or strike the
+    "per-entity current resources" expectation from UI, labels, and docs.
+
+E3. [MEDIUM] "Current health" is passed three different ways across piece kinds;
+    sub-piece max can desync and dead pieces can momentarily read full.
+    LOCATION:
+      - Unit body: hp.curr + hp.max both shipped, gated by ENTITY_CHANGED_HP —
+        src/game/network/ClientSnapshotApplier.ts:49-52.
+      - Building body: hp.curr + hp.max both shipped —
+        src/game/network/ClientSnapshotApplier.ts:130-133.
+      - Locomotion: only locomotionHpCurr shipped (no max); max is blueprint-
+        derived and never corrected; on a full snap with hp<=0 it is force-set to
+        maxHp (reads FULL) — src/game/network/ClientSnapshotApplier.ts:62-72.
+      - Turret: only hpCurr shipped (src/game/network/snapshotEntityWirePack.ts:
+        900-903, 1189-1190); max blueprint-derived; fallback sets hp=maxHp when
+        hpCurr missing and hp<=0 — src/game/network/helpers/NetworkEntityFactory.ts:
+        62, 71-72, 104-106.
+      - Projectile/shot: proj.hp/maxHp drive perShot HP bars
+        (src/game/render3d/HealthBar3D.ts:438-456) but are NOT serialized anywhere
+        in the network layer — the bar reads spawn-time blueprint hp and never
+        reflects server damage.
+    RULE: current health should be reported the same authoritative way for every
+    damageable piece (philosophy: pieces have their own health and die
+    independently).
+    PROBLEM: body pieces get authoritative curr+max each change; turret and
+    locomotion get curr-only with a client-derived max that can drift from the
+    server and is never corrected; projectiles get neither. The maxHp>0 sentinel
+    in HealthBar3D means any piece whose max ends up 0 silently shows no bar, and
+    the "hp<=0 -> hp=maxHp" fallbacks can show a dead/at-spawn sub-piece at full
+    health for a frame.
+    FIX: ship hp.max alongside hp.curr for turret + locomotion (mirror the body
+    path), OR document that sub-piece max is blueprint-immutable and delete the
+    desync/fallback paths. If shot HP bars are wanted, serialize projectile hp;
+    otherwise remove the perShot HP toggle so it can't display stale values.
+
+E4. [MEDIUM] Entity NAMEs are resolved through six inconsistent paths — human
+    names, raw blueprint ids, and player names mixed together — which reads as
+    "super random" with NAME on for all types.
+    LOCATION: src/game/render3d/EntityName.ts —
+      - unit body  -> getUnitBlueprint(id).name (human, e.g. "Peewee"), catch
+        falls back to the RAW id (43-50)
+      - building   -> getBuildingBlueprint(id).name, catch -> raw id (52-59)
+      - turret     -> turret.config.turretBlueprintId  (RAW camelCase id) (86-95)
+      - locomotion -> loco.blueprintId                 (RAW id) (98-108)
+      - shot       -> proj.shotBlueprintId             (RAW id) (112-122)
+      - commander  -> owning player's name (funny demo name or real username),
+        silently overriding the blueprint label (71-82)
+    RULE: one "NAME" toggle should label every piece with the same KIND of name.
+    PROBLEM: with NAME on for all types + SEL ALL, the field shows a chaotic mix
+    of human names (bodies), raw camelCase blueprint ids (turrets/locomotion/
+    shots), and silly player names (commanders). That is the "super random" look.
+    The body path is itself two-faced: a human name normally, the raw id whenever
+    the blueprint lookup throws.
+    FIX: give turret/locomotion/shot blueprints authored display `name` fields and
+    resolve them the same way as units/buildings; make the commander/player-name
+    label an explicit, visually distinct treatment rather than a silent override;
+    standardize the body fallback so it never flips between a human name and a raw
+    id.
+
+E5. [MEDIUM / INVESTIGATE] "Randomly changing" names: confirmed non-flicker
+    causes documented; a true per-frame text flip could not be reproduced from
+    static reading and needs in-app confirmation.
+    LOCATION:
+      - Commander labels: in REAL battle lookupPlayerName returns null until the
+        roster loads, then the real name — one funny->real transition per player
+        (src/components/gameCanvasRealBattleHandoff.ts:119; EntityName.ts:71-82;
+        render-phase fallback src/game/scenes/helpers/RtsScene3DRenderPhase.ts:
+        424-425). In DEMO, lookupPlayerName is unwired (default () => null,
+        src/game/scenes/RtsScene3D.ts:190) so commanders show a DETERMINISTIC
+        funny name (getDefaultPlayerName = pickFunnyName(playerId),
+        src/playerNamesConfig.ts:29-33, 92-94) — stable per id, but reads as
+        random/silly.
+      - Visibility churn (not text change): the not-full / selection-mode /
+        camera-fade / frustum rules pop labels in and out frame to frame
+        (RtsScene3DRenderPhase.ts:386-399, 416-474), which presents as "changing".
+      - Blueprint codes ship only on FULL/creation snapshots and are nulled on
+        deltas; the apply is conditional so an EXISTING entity keeps its id
+        (stable) — src/game/network/unitSnapshotFields.ts:121-125, 206-224. New
+        entity ids arriving on a delta are skipped until a keyframe
+        (src/game/network/ClientViewState.ts:578-593). Blueprint-id->name decode
+        is a deterministic index table (src/types/network.ts:97-115, 139-154), so
+        a stable entity's name is stable.
+    RULE: a label for a given entity must not change unless its identity changed.
+    PROBLEM: the "super random" half is E4. The "randomly changing" half is, from
+    code, (a) the one-time commander funny->real transition and (b) label pop-in/
+    pop-out — NOT a per-frame flip of a single entity's text. A genuine flicker of
+    one persistent entity's body label would most plausibly require entity-id
+    reuse landing on a delta (blueprint code absent) before a keyframe, or a
+    packed piece-key dedup collision in the pooled label renderer.
+    FIX/NEXT: confirm in-app whether a SINGLE persistent entity's body label
+    actually changes TEXT over time (vs labels appearing/disappearing). If it
+    does, temporarily log entity.id + unitBlueprintId/code beside the label and
+    watch for id reuse / stale id. If it does not, this reduces to E4 + expected
+    visibility behavior — fix via E4 and by making commander labels visually
+    distinct from blueprint names.
+
+E6. [LOW] Construction `required` cost is re-derived on the client, not shipped,
+    so the energy/metal fill ratio can misreport under config/version skew.
+    LOCATION: src/game/network/ClientBuildStateApplier.ts:14-38, 51-69 —
+    getUnitBuildRequired/getBuildingBuildRequired rebuild `required` from blueprint
+    cost x COST_MULTIPLIER; only `paid` (curr) + `complete` ride the wire (unit
+    build state copy in src/game/network/unitSnapshotFields.ts:330-339).
+    RULE: a ratio bar should use the server's own numerator AND denominator.
+    PROBLEM: the construction bars compute paid/required where `paid` is
+    authoritative but `required` is reconstructed client-side; if client and
+    server disagree on blueprint cost or COST_MULTIPLIER the bar misreports
+    progress even though the underlying build is correct.
+    FIX: ship `required` with the build state, or treat the client re-derivation
+    as authoritative-by-contract and document the coupling.
+
+================================================================================
 OTHER
 ================================================================================
 
