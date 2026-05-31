@@ -40,6 +40,7 @@ import {
 import { getUnitGroundZ } from '../unitGeometry';
 import { setUnitMovementAcceleration } from '../unitMovementAcceleration';
 import { refreshUnitActionHash } from '../unitActions';
+import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -1486,6 +1487,17 @@ export class DamageSystem {
     turret.pitchAcceleration = 0;
     turret.burst = undefined;
     turret.shield = undefined;
+    if (host.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID && host.building !== null) {
+      host.building.hp = 0;
+      this.world.markSubEntityMetadataDead(turret.id);
+      this.world.markSnapshotDirty(host.id, ENTITY_CHANGED_HP | ENTITY_CHANGED_TURRETS);
+      if (!result.killedBuildingIds.has(host.id)) {
+        result.killedBuildingIds.add(host.id);
+        this.recordKiller(result, host.id, sourceEntityId);
+        if (deathContext) result.deathContexts.set(host.id, deathContext);
+      }
+      return;
+    }
     this.world.markSubEntityMetadataDead(turret.id);
     result.killedTurretIds.add(turret.id);
     this.recordKiller(result, turret.id, sourceEntityId);

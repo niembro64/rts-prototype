@@ -62,6 +62,7 @@ import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_TURRETS,
 } from '@/types/network';
+import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '@/types/buildingTypes';
 import { UNIT_MASS_MULTIPLIER } from '../../config';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
@@ -945,6 +946,26 @@ export class Simulation {
       };
     }
     if (entity.building !== null && entity.buildingBlueprintId !== null) {
+      if (entity.buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) {
+        const turret = entity.combat?.turrets[0];
+        if (turret !== undefined) {
+          const turretBlueprintId = turret.config.turretBlueprintId;
+          const blast = getTurretBlueprint(turretBlueprintId).base.deathExplosion;
+          return {
+            radius: blast.radius,
+            force: blast.force,
+            damage: blast.damage,
+            sourceKey: turretBlueprintId,
+            sourceType: 'turret',
+            sourceEntityId: entity.id,
+            center: {
+              x: turret.worldPosTick >= 0 ? turret.worldPos.x : entity.transform.x,
+              y: turret.worldPosTick >= 0 ? turret.worldPos.y : entity.transform.y,
+              z: turret.worldPosTick >= 0 ? turret.worldPos.z : entity.transform.z,
+            },
+          };
+        }
+      }
       const buildingBlueprintId = entity.buildingBlueprintId;
       const blast = getBuildingBlueprint(buildingBlueprintId).base.deathExplosion;
       return {

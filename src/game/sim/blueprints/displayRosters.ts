@@ -4,6 +4,7 @@ import type { BuildingBlueprintId } from '../types';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
+import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
 
 export type UnitRosterDisplay = {
   unitBlueprintId: string;
@@ -59,12 +60,13 @@ export function getUnitDisplayShortName(unitBlueprintId: string): string {
 
 export const buildingRosterDisplay: BuildingRosterDisplay[] = (
   Object.keys(BUILDING_BLUEPRINTS) as BuildingBlueprintId[]
-).map((buildingBlueprintId, index) => {
-  const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
-  return {
-    buildingBlueprintId,
-    label: bp.name,
-    key: `${index + 1}`,
-    cost: scaledTotalCost(bp.cost),
-  };
-});
+).filter((buildingBlueprintId) => buildingBlueprintId !== DETACHED_TURRET_TOWER_BLUEPRINT_ID)
+  .map((buildingBlueprintId, index) => {
+    const bp = BUILDING_BLUEPRINTS[buildingBlueprintId];
+    return {
+      buildingBlueprintId,
+      label: bp.name,
+      key: `${index + 1}`,
+      cost: scaledTotalCost(bp.cost),
+    };
+  });

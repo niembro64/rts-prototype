@@ -23,6 +23,7 @@ import { COST_MULTIPLIER } from '../../../config';
 import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
 import {
   createBuildingRuntimeTurrets,
+  createDetachedRuntimeTurret,
   createUnitRuntimeTurrets,
 } from '../../sim/runtimeTurrets';
 import { createBuildable, getBuildFraction } from '../../sim/buildableHelpers';
@@ -44,6 +45,7 @@ import {
   readNetworkUnitSurfaceNormal,
   readNetworkUnitVelocity,
 } from '../unitSnapshotFields';
+import { DETACHED_TURRET_TOWER_BLUEPRINT_ID } from '../../../types/buildingTypes';
 
 function decodeNetworkBuildingBlueprintId(buildingBlueprintCode: unknown): BuildingBlueprintId | null {
   if (!isFiniteNumber(buildingBlueprintCode)) return null;
@@ -140,7 +142,11 @@ export function refreshBuildingTurretsFromNetwork(
 ): void {
   let turrets: Turret[];
   try {
-    turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
+    if (buildingBlueprintId === DETACHED_TURRET_TOWER_BLUEPRINT_ID) {
+      turrets = createDetachedTurretsFromNetwork(netTurrets);
+    } else {
+      turrets = createBuildingRuntimeTurrets(buildingBlueprintId);
+    }
   } catch {
     entity.combat = null;
     return;
@@ -160,6 +166,21 @@ export function refreshBuildingTurretsFromNetwork(
   entity.combat = entity.combat
     ? { ...entity.combat, turrets }
     : createCombatComponent(turrets);
+}
+
+function createDetachedTurretsFromNetwork(
+  netTurrets: NetworkServerSnapshotTurret[] | undefined | null,
+): Turret[] {
+  if (!Array.isArray(netTurrets) || netTurrets.length === 0) return [];
+  const turrets: Turret[] = [];
+  for (let i = 0; i < netTurrets.length; i++) {
+    const turretBlueprintId = codeToTurretBlueprintId(netTurrets[i].turret.turretBlueprintCode);
+    if (turretBlueprintId === null) continue;
+    const turret = createDetachedRuntimeTurret(turretBlueprintId);
+    applyNetworkTurretState(turret, netTurrets[i]);
+    turrets.push(turret);
+  }
+  return turrets;
 }
 
 /**

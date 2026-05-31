@@ -31,7 +31,7 @@ export const LOCOMOTION_BLUEPRINT_IDS = [
 export type LocomotionBlueprintId = typeof LOCOMOTION_BLUEPRINT_IDS[number];
 
 export const BUILDING_BLUEPRINT_IDS = [
-  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter',
+  'buildingSolar', 'buildingWind', 'towerFabricator', 'buildingExtractor', 'towerBeamMega', 'towerCannon', 'buildingRadar', 'buildingResourceConverter', 'towerDetachedTurret',
 ] as const;
 export type BuildingBlueprintId = typeof BUILDING_BLUEPRINT_IDS[number];
 
