@@ -103,6 +103,7 @@ import __wbg_init, {
   spatial_set_entity_id,
   spatial_set_unit,
   spatial_set_projectile,
+  spatial_set_projectiles_batch,
   spatial_set_building,
   spatial_unset_slot,
   spatial_query_units_in_radius,
@@ -1270,6 +1271,17 @@ export interface SpatialApi {
     ownerPlayer: number,
     isProjectileType: number,
   ) => void;
+  /** Batch insert/update projectile slots. All arrays must contain at
+   *  least `count` rows; returns `count` when applied. */
+  setProjectilesBatch: (
+    count: number,
+    slots: Uint32Array,
+    xs: Float64Array,
+    ys: Float64Array,
+    zs: Float64Array,
+    ownerPlayers: Uint8Array,
+    projectileTypeFlags: Uint8Array,
+  ) => number;
   /** Insert / re-insert a building at slot. The grid buckets the
    *  building into every cell its (hx, hy, hz) half-extents touch. */
   setBuilding: (
@@ -3636,6 +3648,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setEntityId: spatial_set_entity_id,
           setUnit: spatial_set_unit,
           setProjectile: spatial_set_projectile,
+          setProjectilesBatch: spatial_set_projectiles_batch,
           setBuilding: spatial_set_building,
           unsetSlot: spatial_unset_slot,
           queryUnitsInRadius: spatial_query_units_in_radius,

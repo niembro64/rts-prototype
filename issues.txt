@@ -225,6 +225,11 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     projectile_integrate_step_batch helper. D-gun terrain-follow vertical
     thrust also moved into Rust/WASM, and the old TypeScript homing-thrust
     fallback was deleted so guided thrust has one implementation.
+    2026-05-31 progress: traveling projectile spatial-grid position sync
+    moved from one TypeScript-to-WASM call per projectile into the Rust/WASM
+    spatial_set_projectiles_batch helper. TypeScript now only packs live
+    projectile slots and fields; Rust owns the per-projectile bucket update
+    loop used by broadphase projectile queries.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

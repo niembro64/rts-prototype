@@ -17,7 +17,7 @@ When moving a row from `TypeScript-orchestrated` or `Transitional` to `Rust/WASM
 | System | Current owner | TypeScript role |
 | --- | --- | --- |
 | Dynamic body integration, gravity, terrain spring contact, air drag, ground friction, and unit/building collision response | `rts-sim-wasm/src/lib.rs` body pool and contact kernels | `src/game/server/PhysicsEngine3D.ts` allocates slots, samples terrain inputs where needed, calls step kernels, and syncs body results back to entities |
-| Spatial partitioning and broadphase query kernels for units, buildings, and projectiles | `rts-sim-wasm/src/lib.rs` spatial grid | `src/game/sim/SpatialGrid.ts` maps entity ids to slots and resolves query slot ids back to live entity objects |
+| Spatial partitioning and broadphase query kernels for units, buildings, and projectiles | `rts-sim-wasm/src/lib.rs` spatial grid | `src/game/sim/SpatialGrid.ts` maps entity ids to slots, packs traveling projectile slot updates into one WASM batch, and resolves query slot ids back to live entity objects |
 | Terrain adaptive mesh build, terrain surface sampling, terrain line of sight, terrain cell index, and buildability bake fast paths | `rts-sim-wasm/src/lib.rs` terrain kernels | `src/game/sim/terrain/*` assembles inputs, installs mesh data, and keeps JS fallback/read helpers for non-authoritative setup paths |
 | Snapshot binary entity/detail encoding hot loops | `rts-sim-wasm/src/lib.rs` snapshot encoder | `src/game/network/snapshotRustWireEncoder.ts` packs arguments and owns network transport |
 | Blueprint/shot schema surfaces | `src/game/sim/blueprints/blueprintSchema.json` via `scripts/generateBlueprintSchemaTypes.mjs` and `rts-sim-wasm/build.rs` | TypeScript and Rust consume generated surfaces from one schema |

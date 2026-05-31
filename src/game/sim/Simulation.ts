@@ -544,9 +544,7 @@ export class Simulation {
 
     // Update traveling projectile positions for projectile broadphase
     // queries. Beam/laser line shots are handled by beam pathing.
-    for (const proj of this.world.getTravelingProjectiles()) {
-      spatialGrid.updateProjectile(proj);
-    }
+    spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
   }
 
   // Check for game over - last commander standing wins

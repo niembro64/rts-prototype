@@ -70,6 +70,14 @@ export class SpatialGrid {
     units: [], buildings: [],
   };
 
+  private _projectileBatchCapacity = 0;
+  private _projectileBatchSlots = new Uint32Array(0);
+  private _projectileBatchX = new Float64Array(0);
+  private _projectileBatchY = new Float64Array(0);
+  private _projectileBatchZ = new Float64Array(0);
+  private _projectileBatchOwnerPlayers = new Uint8Array(0);
+  private _projectileBatchTypeFlags = new Uint8Array(0);
+
   // Cached typed-array view over the WASM per-query scratch buffer
   // (Rust `scratch_u32: Vec<u32>`). Rebuilt only when the view goes
   // stale, which happens two ways: WASM linear memory grew (the old
@@ -104,6 +112,38 @@ export class SpatialGrid {
     const next = new Uint8Array(cap);
     next.set(this.kindBySlot);
     this.kindBySlot = next;
+  }
+
+  private ensureProjectileBatchCapacity(required: number): void {
+    if (required <= this._projectileBatchCapacity) return;
+    let cap = Math.max(32, this._projectileBatchCapacity);
+    while (cap < required) cap *= 2;
+
+    const slots = new Uint32Array(cap);
+    slots.set(this._projectileBatchSlots);
+    this._projectileBatchSlots = slots;
+
+    const xs = new Float64Array(cap);
+    xs.set(this._projectileBatchX);
+    this._projectileBatchX = xs;
+
+    const ys = new Float64Array(cap);
+    ys.set(this._projectileBatchY);
+    this._projectileBatchY = ys;
+
+    const zs = new Float64Array(cap);
+    zs.set(this._projectileBatchZ);
+    this._projectileBatchZ = zs;
+
+    const owners = new Uint8Array(cap);
+    owners.set(this._projectileBatchOwnerPlayers);
+    this._projectileBatchOwnerPlayers = owners;
+
+    const flags = new Uint8Array(cap);
+    flags.set(this._projectileBatchTypeFlags);
+    this._projectileBatchTypeFlags = flags;
+
+    this._projectileBatchCapacity = cap;
   }
 
   private slotFor(entity: Entity): number {
@@ -210,6 +250,42 @@ export class SpatialGrid {
       entity.projectile.ownerId ?? 0,
       entity.projectile.projectileType === 'projectile' ? 1 : 0,
     );
+  }
+
+  updateProjectiles(entities: readonly Entity[]): void {
+    let count = 0;
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      const projectile = entity.projectile;
+      if (!projectile) continue;
+
+      this.ensureProjectileBatchCapacity(count + 1);
+      const slot = this.slotFor(entity);
+      this.kindBySlot[slot] = SPATIAL_KIND_PROJECTILE;
+      this.projectileSlots.add(entity.id);
+
+      this._projectileBatchSlots[count] = slot;
+      this._projectileBatchX[count] = entity.transform.x;
+      this._projectileBatchY[count] = entity.transform.y;
+      this._projectileBatchZ[count] = entity.transform.z;
+      this._projectileBatchOwnerPlayers[count] = projectile.ownerId ?? 0;
+      this._projectileBatchTypeFlags[count] = projectile.projectileType === 'projectile' ? 1 : 0;
+      count++;
+    }
+
+    if (count === 0) return;
+    const updated = this.api().setProjectilesBatch(
+      count,
+      this._projectileBatchSlots.subarray(0, count),
+      this._projectileBatchX.subarray(0, count),
+      this._projectileBatchY.subarray(0, count),
+      this._projectileBatchZ.subarray(0, count),
+      this._projectileBatchOwnerPlayers.subarray(0, count),
+      this._projectileBatchTypeFlags.subarray(0, count),
+    );
+    if (updated !== count) {
+      throw new Error(`SpatialGrid.updateProjectiles: batch updated ${updated}/${count} projectiles`);
+    }
   }
 
   removeProjectile(id: EntityId): void {

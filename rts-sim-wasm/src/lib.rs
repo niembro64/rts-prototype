@@ -8698,8 +8698,9 @@ pub fn spatial_set_unit(
     }
 }
 
-#[wasm_bindgen]
-pub fn spatial_set_projectile(
+#[inline]
+fn spatial_set_projectile_inner(
+    state: &mut SpatialGridState,
     slot: u32,
     x: f64,
     y: f64,
@@ -8707,7 +8708,6 @@ pub fn spatial_set_projectile(
     owner_player: u8,
     is_projectile_type: u8,
 ) {
-    let state = spatial_grid();
     let s = slot as usize;
     spatial_ensure_slot_capacity(state, slot);
     let prev_kind = state.slot_kind[s];
@@ -8733,6 +8733,55 @@ pub fn spatial_set_projectile(
             .push(slot);
         state.slot_cube_key[s] = new_key;
     }
+}
+
+#[wasm_bindgen]
+pub fn spatial_set_projectile(
+    slot: u32,
+    x: f64,
+    y: f64,
+    z: f64,
+    owner_player: u8,
+    is_projectile_type: u8,
+) {
+    let state = spatial_grid();
+    spatial_set_projectile_inner(state, slot, x, y, z, owner_player, is_projectile_type);
+}
+
+#[wasm_bindgen]
+pub fn spatial_set_projectiles_batch(
+    count: u32,
+    slots: &[u32],
+    xs: &[f64],
+    ys: &[f64],
+    zs: &[f64],
+    owner_players: &[u8],
+    projectile_type_flags: &[u8],
+) -> u32 {
+    let n = count as usize;
+    if slots.len() < n
+        || xs.len() < n
+        || ys.len() < n
+        || zs.len() < n
+        || owner_players.len() < n
+        || projectile_type_flags.len() < n
+    {
+        return 0;
+    }
+
+    let state = spatial_grid();
+    for i in 0..n {
+        spatial_set_projectile_inner(
+            state,
+            slots[i],
+            xs[i],
+            ys[i],
+            zs[i],
+            owner_players[i],
+            projectile_type_flags[i],
+        );
+    }
+    count
 }
 
 /// Insert a building (idempotent — second call with the same slot
