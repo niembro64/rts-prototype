@@ -30,12 +30,12 @@ export const ECONOMY_CONSTANTS = {
   dgunCost: getUnitBlueprint('unitCommander').dgun!.energyCost,
 };
 
-const CONVERTER_RESOURCE_ENERGY = 1;
-const CONVERTER_RESOURCE_METAL = 2;
+const ECONOMY_RESOURCE_ENERGY_CODE = 1;
+const ECONOMY_RESOURCE_METAL_CODE = 2;
 
-function converterResourceKindFromCode(code: number): ResourceKind | null {
-  if (code === CONVERTER_RESOURCE_ENERGY) return 'energy';
-  if (code === CONVERTER_RESOURCE_METAL) return 'metal';
+function economyResourceKindFromCode(code: number): ResourceKind | null {
+  if (code === ECONOMY_RESOURCE_ENERGY_CODE) return 'energy';
+  if (code === ECONOMY_RESOURCE_METAL_CODE) return 'metal';
   return null;
 }
 
@@ -56,6 +56,15 @@ export function createEconomyState(): EconomyState {
 // Economy manager - handles all player economies
 export class EconomyManager {
   private economies: Map<PlayerId, EconomyState> = new Map();
+  private producerPlayerIds = new Uint32Array(32);
+  private producerResourceCodes = new Uint32Array(32);
+  private producerRates = new Float64Array(32);
+  private producerEntityIds = new Float64Array(32);
+  private producerEnergyCurrByPlayer = new Float64Array(8);
+  private producerEnergyMaxByPlayer = new Float64Array(8);
+  private producerMetalCurrByPlayer = new Float64Array(8);
+  private producerMetalMaxByPlayer = new Float64Array(8);
+  private producerAccepted = new Float64Array(32);
   private converterPlayerIds = new Uint32Array(16);
   private converterRates = new Float64Array(16);
   private converterRatesByPlayer = new Float64Array(8);
@@ -252,26 +261,21 @@ export class EconomyManager {
   }
 
   private applyProducerIncome(world: WorldState, dtSec: number, windSpeed: number): void {
+    let producerCount = 0;
+    let maxPlayerId = 0;
+
     const solarRate = getBuildingConfig('buildingSolar').energyProduction ?? 0;
     if (solarRate > 0) {
       for (const entity of world.getSolarBuildings()) {
-        if (!this.isOpenProducerBuilding(entity)) continue;
-        const ownership = entity.ownership;
-        if (ownership === null) continue;
-        const economy = this.economies.get(ownership.playerId);
-        if (!economy) continue;
-        this.creditResource(
-          world,
-          economy,
-          ownership.playerId,
-          'energy',
-          solarRate * dtSec,
+        const playerId = this.queueProducerCredit(
+          entity,
+          ECONOMY_RESOURCE_ENERGY_CODE,
           solarRate,
-          entity.id,
-          null,
-          'inbound',
-          'production',
+          producerCount,
         );
+        if (playerId === 0) continue;
+        producerCount++;
+        if (playerId > maxPlayerId) maxPlayerId = playerId;
       }
     }
 
@@ -279,47 +283,124 @@ export class EconomyManager {
     const windRate = windRateBase * windSpeed;
     if (windRate > 0) {
       for (const entity of world.getWindBuildings()) {
-        if (!this.isOpenProducerBuilding(entity)) continue;
-        const ownership = entity.ownership;
-        if (ownership === null) continue;
-        const economy = this.economies.get(ownership.playerId);
-        if (!economy) continue;
-        this.creditResource(
-          world,
-          economy,
-          ownership.playerId,
-          'energy',
-          windRate * dtSec,
+        const playerId = this.queueProducerCredit(
+          entity,
+          ECONOMY_RESOURCE_ENERGY_CODE,
           windRate,
-          entity.id,
-          null,
-          'inbound',
-          'production',
+          producerCount,
         );
+        if (playerId === 0) continue;
+        producerCount++;
+        if (playerId > maxPlayerId) maxPlayerId = playerId;
       }
     }
 
     for (const entity of world.getExtractorBuildings()) {
-      if (!this.isOpenProducerBuilding(entity)) continue;
-      const ownership = entity.ownership;
-      if (ownership === null) continue;
       const metalRate = entity.metalExtractionRate ?? 0;
       if (metalRate <= 0) continue;
-      const economy = this.economies.get(ownership.playerId);
-      if (!economy) continue;
-      this.creditResource(
-        world,
-        economy,
-        ownership.playerId,
-        'metal',
-        metalRate * dtSec,
+      const playerId = this.queueProducerCredit(
+        entity,
+        ECONOMY_RESOURCE_METAL_CODE,
         metalRate,
-        entity.id,
-        null,
-        'inbound',
-        'production',
+        producerCount,
+      );
+      if (playerId === 0) continue;
+      producerCount++;
+      if (playerId > maxPlayerId) maxPlayerId = playerId;
+    }
+
+    if (producerCount <= 0) return;
+    this.ensureProducerPlayerCapacity(maxPlayerId);
+    for (let playerId = 1; playerId <= maxPlayerId; playerId++) {
+      const economy = this.economies.get(playerId as PlayerId);
+      if (economy === undefined) {
+        this.producerEnergyCurrByPlayer[playerId] = 0;
+        this.producerEnergyMaxByPlayer[playerId] = 0;
+        this.producerMetalCurrByPlayer[playerId] = 0;
+        this.producerMetalMaxByPlayer[playerId] = 0;
+        continue;
+      }
+      this.producerEnergyCurrByPlayer[playerId] = economy.stockpile.curr;
+      this.producerEnergyMaxByPlayer[playerId] = economy.stockpile.max;
+      this.producerMetalCurrByPlayer[playerId] = economy.metal.stockpile.curr;
+      this.producerMetalMaxByPlayer[playerId] = economy.metal.stockpile.max;
+    }
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('EconomyManager.applyProducerIncome: sim-wasm is not initialized');
+    }
+    const maxExclusive = sim.economyApplyProducerCredits(
+      this.producerPlayerIds,
+      this.producerResourceCodes,
+      this.producerRates,
+      producerCount,
+      dtSec,
+      this.producerEnergyCurrByPlayer,
+      this.producerEnergyMaxByPlayer,
+      this.producerMetalCurrByPlayer,
+      this.producerMetalMaxByPlayer,
+      this.producerAccepted,
+    );
+    if (maxExclusive === 0) {
+      throw new Error('EconomyManager.applyProducerIncome: economy_apply_producer_credits rejected its buffers');
+    }
+
+    for (let playerId = 1; playerId < maxExclusive; playerId++) {
+      const economy = this.economies.get(playerId as PlayerId);
+      if (economy === undefined) continue;
+      economy.stockpile.curr = this.producerEnergyCurrByPlayer[playerId];
+      economy.metal.stockpile.curr = this.producerMetalCurrByPlayer[playerId];
+    }
+
+    for (let i = 0; i < producerCount; i++) {
+      const accepted = this.producerAccepted[i];
+      if (accepted <= 0) continue;
+      const resource = economyResourceKindFromCode(this.producerResourceCodes[i]);
+      if (resource === null) {
+        throw new Error('EconomyManager.applyProducerIncome: unknown producer resource code');
+      }
+      const requested = this.producerRates[i] * dtSec;
+      resourceMovementSystem.recordAppliedCredit(
+        world,
+        {
+          playerId: this.producerPlayerIds[i] as PlayerId,
+          sourceEntityId: this.producerEntityIds[i] as EntityId,
+          targetEntityId: null,
+          resource,
+          amount: requested,
+          amountPerSecond: this.producerRates[i],
+          direction: 'inbound',
+          reason: 'production',
+        },
+        accepted,
       );
     }
+  }
+
+  private queueProducerCredit(
+    entity: Entity,
+    resourceCode: number,
+    ratePerSecond: number,
+    index: number,
+  ): PlayerId | 0 {
+    if (
+      !Number.isFinite(ratePerSecond)
+      || ratePerSecond <= 0
+      || !this.isOpenProducerBuilding(entity)
+    ) {
+      return 0;
+    }
+    const ownership = entity.ownership;
+    if (ownership === null) return 0;
+    if (!this.economies.has(ownership.playerId)) return 0;
+
+    this.ensureProducerCapacity(index + 1);
+    this.producerPlayerIds[index] = ownership.playerId;
+    this.producerResourceCodes[index] = resourceCode;
+    this.producerRates[index] = ratePerSecond;
+    this.producerEntityIds[index] = entity.id;
+    return ownership.playerId;
   }
 
   private isOpenProducerBuilding(entity: Entity): boolean {
@@ -406,8 +487,8 @@ export class EconomyManager {
       const consumed = this.converterTransferOut[0];
       const acceptedOutput = this.converterTransferOut[1];
       if (consumed <= 0 || acceptedOutput <= 0) continue;
-      const consumedResource = converterResourceKindFromCode(this.converterTransferOut[2]);
-      const outputResource = converterResourceKindFromCode(this.converterTransferOut[3]);
+      const consumedResource = economyResourceKindFromCode(this.converterTransferOut[2]);
+      const outputResource = economyResourceKindFromCode(this.converterTransferOut[3]);
       if (consumedResource === null || outputResource === null) {
         throw new Error('EconomyManager.processConverters: economy_compute_converter_transfer returned an unknown resource code');
       }
@@ -504,6 +585,42 @@ export class EconomyManager {
     const nextRates = new Float64Array(nextCapacity);
     nextRates.set(this.converterRates);
     this.converterRates = nextRates;
+  }
+
+  private ensureProducerCapacity(count: number): void {
+    if (count <= this.producerPlayerIds.length) return;
+    let nextCapacity = this.producerPlayerIds.length;
+    while (nextCapacity < count) nextCapacity *= 2;
+
+    const nextPlayerIds = new Uint32Array(nextCapacity);
+    nextPlayerIds.set(this.producerPlayerIds);
+    this.producerPlayerIds = nextPlayerIds;
+
+    const nextResourceCodes = new Uint32Array(nextCapacity);
+    nextResourceCodes.set(this.producerResourceCodes);
+    this.producerResourceCodes = nextResourceCodes;
+
+    const nextRates = new Float64Array(nextCapacity);
+    nextRates.set(this.producerRates);
+    this.producerRates = nextRates;
+
+    const nextEntityIds = new Float64Array(nextCapacity);
+    nextEntityIds.set(this.producerEntityIds);
+    this.producerEntityIds = nextEntityIds;
+
+    const nextAccepted = new Float64Array(nextCapacity);
+    nextAccepted.set(this.producerAccepted);
+    this.producerAccepted = nextAccepted;
+  }
+
+  private ensureProducerPlayerCapacity(playerId: number): void {
+    if (playerId < this.producerEnergyCurrByPlayer.length) return;
+    let nextCapacity = this.producerEnergyCurrByPlayer.length;
+    while (nextCapacity <= playerId) nextCapacity *= 2;
+    this.producerEnergyCurrByPlayer = new Float64Array(nextCapacity);
+    this.producerEnergyMaxByPlayer = new Float64Array(nextCapacity);
+    this.producerMetalCurrByPlayer = new Float64Array(nextCapacity);
+    this.producerMetalMaxByPlayer = new Float64Array(nextCapacity);
   }
 
   private ensureConverterPlayerRateCapacity(playerId: number): void {

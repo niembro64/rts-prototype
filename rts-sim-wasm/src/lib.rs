@@ -177,6 +177,8 @@ fn economy_normalized_amount(amount: f64) -> f64 {
 const ECONOMY_RESOURCE_NONE: f64 = 0.0;
 const ECONOMY_RESOURCE_ENERGY: f64 = 1.0;
 const ECONOMY_RESOURCE_METAL: f64 = 2.0;
+const ECONOMY_RESOURCE_ENERGY_CODE: u32 = 1;
+const ECONOMY_RESOURCE_METAL_CODE: u32 = 2;
 
 #[wasm_bindgen]
 pub fn economy_compute_converter_transfer(
@@ -269,12 +271,9 @@ pub fn economy_credit_stockpile(curr: f64, max: f64, amount: f64, out: &mut [f64
         return 0;
     }
 
-    let current = if curr.is_finite() { curr } else { 0.0 };
-    let maximum = if max.is_finite() { max } else { current };
-    let requested = economy_normalized_amount(amount);
-    let accepted = requested.min((maximum - current).max(0.0));
+    let (accepted, next_curr) = economy_credit_stockpile_value(curr, max, amount);
     out[0] = accepted;
-    out[1] = current + accepted;
+    out[1] = next_curr;
     1
 }
 
@@ -290,6 +289,91 @@ pub fn economy_debit_stockpile(curr: f64, amount: f64, out: &mut [f64]) -> u32 {
     out[0] = spent;
     out[1] = current - spent;
     1
+}
+
+#[inline]
+fn economy_credit_stockpile_value(curr: f64, max: f64, amount: f64) -> (f64, f64) {
+    let current = if curr.is_finite() { curr } else { 0.0 };
+    let maximum = if max.is_finite() { max } else { current };
+    let requested = economy_normalized_amount(amount);
+    let accepted = requested.min((maximum - current).max(0.0));
+    (accepted, current + accepted)
+}
+
+#[wasm_bindgen]
+pub fn economy_apply_producer_credits(
+    player_ids: &[u32],
+    resource_codes: &[u32],
+    rates_per_sec: &[f64],
+    count: u32,
+    dt_sec: f64,
+    energy_curr_by_player: &mut [f64],
+    energy_max_by_player: &[f64],
+    metal_curr_by_player: &mut [f64],
+    metal_max_by_player: &[f64],
+    out_accepted: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if n > player_ids.len()
+        || n > resource_codes.len()
+        || n > rates_per_sec.len()
+        || n > out_accepted.len()
+    {
+        return 0;
+    }
+
+    for accepted in out_accepted.iter_mut().take(n) {
+        *accepted = 0.0;
+    }
+
+    let dt = economy_normalized_amount(dt_sec);
+    let mut max_exclusive = 0usize;
+    for i in 0..n {
+        let player_id = player_ids[i] as usize;
+        if player_id == 0 {
+            continue;
+        }
+        let amount = economy_normalized_amount(rates_per_sec[i]) * dt;
+        if amount <= 0.0 {
+            continue;
+        }
+
+        match resource_codes[i] {
+            ECONOMY_RESOURCE_ENERGY_CODE => {
+                if player_id >= energy_curr_by_player.len()
+                    || player_id >= energy_max_by_player.len()
+                {
+                    continue;
+                }
+                let (accepted, next_curr) = economy_credit_stockpile_value(
+                    energy_curr_by_player[player_id],
+                    energy_max_by_player[player_id],
+                    amount,
+                );
+                energy_curr_by_player[player_id] = next_curr;
+                out_accepted[i] = accepted;
+                max_exclusive = max_exclusive.max(player_id + 1);
+            }
+            ECONOMY_RESOURCE_METAL_CODE => {
+                if player_id >= metal_curr_by_player.len()
+                    || player_id >= metal_max_by_player.len()
+                {
+                    continue;
+                }
+                let (accepted, next_curr) = economy_credit_stockpile_value(
+                    metal_curr_by_player[player_id],
+                    metal_max_by_player[player_id],
+                    amount,
+                );
+                metal_curr_by_player[player_id] = next_curr;
+                out_accepted[i] = accepted;
+                max_exclusive = max_exclusive.max(player_id + 1);
+            }
+            _ => {}
+        }
+    }
+
+    max_exclusive as u32
 }
 
 #[inline]
@@ -25347,6 +25431,60 @@ mod sim_kernel_tests {
         let mut short = [0.0; 1];
         assert_eq!(economy_credit_stockpile(1.0, 2.0, 1.0, &mut short), 0);
         assert_eq!(economy_debit_stockpile(1.0, 1.0, &mut short), 0);
+    }
+
+    #[test]
+    fn economy_apply_producer_credits_batches_by_resource_and_caps_in_order() {
+        let players = [1, 1, 2, 1, 0];
+        let resources = [
+            ECONOMY_RESOURCE_ENERGY_CODE,
+            ECONOMY_RESOURCE_ENERGY_CODE,
+            ECONOMY_RESOURCE_METAL_CODE,
+            ECONOMY_RESOURCE_METAL_CODE,
+            ECONOMY_RESOURCE_ENERGY_CODE,
+        ];
+        let rates = [4.0, 4.0, 3.0, 8.0, 99.0];
+        let mut energy_curr = [0.0, 95.0, 10.0];
+        let energy_max = [0.0, 100.0, 100.0];
+        let mut metal_curr = [0.0, 20.0, 48.0];
+        let metal_max = [0.0, 50.0, 50.0];
+        let mut accepted = [99.0; 5];
+
+        assert_eq!(
+            economy_apply_producer_credits(
+                &players,
+                &resources,
+                &rates,
+                5,
+                1.0,
+                &mut energy_curr,
+                &energy_max,
+                &mut metal_curr,
+                &metal_max,
+                &mut accepted,
+            ),
+            3
+        );
+        assert_eq!(accepted, [4.0, 1.0, 2.0, 8.0, 0.0]);
+        assert_eq!(energy_curr, [0.0, 100.0, 10.0]);
+        assert_eq!(metal_curr, [0.0, 28.0, 50.0]);
+
+        let mut short = [0.0; 4];
+        assert_eq!(
+            economy_apply_producer_credits(
+                &players,
+                &resources,
+                &rates,
+                5,
+                1.0,
+                &mut energy_curr,
+                &energy_max,
+                &mut metal_curr,
+                &metal_max,
+                &mut short,
+            ),
+            0
+        );
     }
 
     #[test]

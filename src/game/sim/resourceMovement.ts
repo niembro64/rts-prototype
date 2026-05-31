@@ -85,6 +85,15 @@ export class ResourceMovementSystem {
     return spent;
   }
 
+  recordAppliedCredit(
+    sink: ResourceMovementSink,
+    request: ResourceMovementRequest,
+    actualAmount: number,
+  ): void {
+    if (actualAmount <= 0) return;
+    this.record(sink, request, actualAmount, actualAmount);
+  }
+
   private record(
     sink: ResourceMovementSink,
     request: ResourceMovementRequest,
