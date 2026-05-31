@@ -29,6 +29,7 @@ export type {
   CameraAnchor,
   CameraAnchorScreen,
   CameraAnchorTerrain,
+  CameraTerrainCollisionMode,
 } from './types/camera';
 
 import type {
@@ -42,7 +43,10 @@ import type {
   ShieldTurretConfig,
   MapSize,
 } from './types/config';
-import type { CameraAnchor } from './types/camera';
+import type {
+  CameraAnchor,
+  CameraTerrainCollisionMode,
+} from './types/camera';
 import {
   LAND_CELL_SIZE,
   MAP_DIMENSION_CONFIG,
@@ -985,9 +989,12 @@ export const CAMERA_PAN_ANCHOR = cameraConfigJson.anchor.pan as CameraAnchor;
  *  the ground directly beneath it. */
 export const CAMERA_MIN_TERRAIN_CLEARANCE = cameraConfigJson.minTerrainClearance;
 
-/** True keeps the orbit camera outside terrain by the configured
- *  clearance; false lets camera motion pass through the heightfield. */
-export const CAMERA_COLLIDES_WITH_TERRAIN = cameraConfigJson.cameraCollidesWithTerrain;
+/** How the orbit camera resolves frames where the eye would dip below
+ *  terrain — see CameraTerrainCollisionMode. 'none' lets the camera pass
+ *  through the heightfield; 'raiseEye' lifts the eye straight up to clear;
+ *  'clampPitch' steepens the orbit arc to clear instead. */
+export const CAMERA_TERRAIN_COLLISION_MODE =
+  cameraConfigJson.terrainCollisionMode as CameraTerrainCollisionMode;
 
 /**
  * World padding as a percentage of map dimensions.

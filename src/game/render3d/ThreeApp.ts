@@ -12,7 +12,7 @@ import { configureSpriteTexture } from './threeUtils';
 import {
   CAMERA_PAN_MULTIPLIER,
   CAMERA_MIN_TERRAIN_CLEARANCE,
-  CAMERA_COLLIDES_WITH_TERRAIN,
+  CAMERA_TERRAIN_COLLISION_MODE,
   CAMERA_ZOOM_IN_ANCHOR,
   CAMERA_ZOOM_OUT_ANCHOR,
   CAMERA_ROTATE_ANCHOR,
@@ -189,7 +189,7 @@ export class ThreeApp {
       zoomStepFraction: ZOOM_STEP_FRACTION,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
       minTerrainClearance: CAMERA_MIN_TERRAIN_CLEARANCE,
-      cameraCollidesWithTerrain: CAMERA_COLLIDES_WITH_TERRAIN,
+      terrainCollisionMode: CAMERA_TERRAIN_COLLISION_MODE,
       zoomInAnchor: CAMERA_ZOOM_IN_ANCHOR,
       zoomOutAnchor: CAMERA_ZOOM_OUT_ANCHOR,
       rotateAnchor: CAMERA_ROTATE_ANCHOR,

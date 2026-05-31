@@ -32,6 +32,7 @@ import * as THREE from 'three';
 import type {
   CameraAnchor,
   CameraAnchorTerrain,
+  CameraTerrainCollisionMode,
 } from '../../types/camera';
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
@@ -77,8 +78,9 @@ export type OrbitCameraOptions = {
   getTerrainHeight?: (x: number, z: number) => number;
   /** Minimum 3D gap between the camera and nearby terrain. */
   minTerrainClearance?: number;
-  /** True keeps the camera outside terrain; false lets it pass through. */
-  cameraCollidesWithTerrain?: boolean;
+  /** How the camera resolves a frame where the eye would dip below
+   *  terrain — see CameraTerrainCollisionMode. Defaults to 'raiseEye'. */
+  terrainCollisionMode?: CameraTerrainCollisionMode;
   /** Anchor pair for SCROLL-IN. */
   zoomInAnchor?: CameraAnchor;
   /** Anchor pair for SCROLL-OUT. */
@@ -140,7 +142,7 @@ export class OrbitCamera {
   private getTerrainHeight?: (x: number, z: number) => number;
   /** Minimum 3D gap between the camera and nearby terrain. */
   public minTerrainClearance = 30;
-  private cameraCollidesWithTerrain = true;
+  private terrainCollisionMode: CameraTerrainCollisionMode = 'raiseEye';
 
   /** Anchor pair for each gesture. The wheel handler reads
    *  `zoomInAnchor` vs `zoomOutAnchor` based on scroll direction so
@@ -232,8 +234,8 @@ export class OrbitCamera {
     if (opts.minTerrainClearance !== undefined) {
       this.minTerrainClearance = Math.max(0, opts.minTerrainClearance);
     }
-    if (opts.cameraCollidesWithTerrain !== undefined) {
-      this.cameraCollidesWithTerrain = opts.cameraCollidesWithTerrain;
+    if (opts.terrainCollisionMode !== undefined) {
+      this.terrainCollisionMode = opts.terrainCollisionMode;
     }
     if (opts.zoomInAnchor !== undefined) this.zoomInAnchor = opts.zoomInAnchor;
     if (opts.zoomOutAnchor !== undefined) this.zoomOutAnchor = opts.zoomOutAnchor;
@@ -815,49 +817,118 @@ export class OrbitCamera {
     return out;
   }
 
+  /** Largest pitch ≤ the authored pitch (i.e. closest to it, steepening
+   *  toward minPitch) at which the eye — held on the orbit sphere at the
+   *  given distance — clears terrain by minTerrainClearance.
+   *
+   *  When the authored pitch already clears, or the sampler returns NaN
+   *  (off-map / before terrain loads), the authored pitch is returned
+   *  unchanged. Steepening (decreasing pitch toward straight-down) both
+   *  raises the eye and pulls its footprint toward the target, so it
+   *  trends toward clearing; we march down from the authored pitch to the
+   *  first clearing sample, then binary-search the surface. Bottoms out at
+   *  minPitch in the degenerate case (target buried in a peak). Pure read
+   *  — never mutates camera state. */
+  private clearedPitch(
+    sample: (x: number, z: number) => number,
+    distance: number,
+    yaw: number,
+    pitch: number,
+  ): number {
+    const sinYaw = Math.sin(yaw);
+    const cosYaw = Math.cos(yaw);
+    // clearance(p) = eyeY(p) − (terrain beneath eye(p) + clearance). ≥0
+    // clears, <0 penetrates; NaN propagates and counts as clearing via
+    // every `!(c < 0)` test below.
+    const clearance = (p: number): number => {
+      const sinP = Math.sin(p);
+      const ex = this.target.x + distance * sinP * sinYaw;
+      const ez = this.target.z + distance * sinP * -cosYaw;
+      const ey = this.target.y + distance * Math.cos(p);
+      return ey - (sample(ex, ez) + this.minTerrainClearance);
+    };
+    if (!(clearance(pitch) < 0)) return pitch;
+
+    const loP = this.minPitch;
+    if (pitch <= loP) return loP;
+    const STEPS = 24;
+    const step = (pitch - loP) / STEPS;
+    let blocked = pitch; // penetrates here (shallower / less steep)
+    let cleared = -1;
+    for (let i = 1; i <= STEPS; i++) {
+      const p = pitch - i * step;
+      if (!(clearance(p) < 0)) {
+        cleared = p;
+        break;
+      }
+      blocked = p;
+    }
+    if (cleared < 0) return loP; // even straight-down can't clear
+
+    // Refine between the steeper clearing pitch and the shallower blocked
+    // one. lo clears, hi penetrates; converge to the largest (least
+    // steepened) pitch that still clears.
+    let lo = cleared;
+    let hi = blocked;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (!(clearance(mid) < 0)) lo = mid;
+      else hi = mid;
+    }
+    return lo;
+  }
+
   /** Recompute the rendered camera position from the orbit state
    *  (target + yaw + pitch + distance) and aim it at the target.
    *
-   *  Terrain clearance is a pure render-time floor on the EYE only: when
-   *  the computed camera position would sit below the terrain directly
-   *  beneath it, the eye's Y is raised to the clearance height. The
-   *  look-at stays pinned exactly on the target, and NOTHING is written
-   *  back into the orbit state — the lift is a function of live geometry
-   *  alone. Because the dolly distance is never touched, zoom-in/out
-   *  limits stay absolute and history-independent: brushing a mountain
-   *  cannot cache a different limit. The eye climbs over the hill while
-   *  the focus stays put, so the view tilts down toward the target
-   *  rather than craning the whole frame up off it.
+   *  Terrain clearance is resolved per `terrainCollisionMode`, always as
+   *  a pure render-time override that NEVER writes back into the orbit
+   *  state — so zoom-in/out limits stay absolute and history-independent
+   *  (brushing a mountain cannot cache a different limit), and the camera
+   *  always looks at the target:
    *
-   *  pos.y = max(naturalY, floorY) is continuous in the eye's position,
-   *  so riding up and over a ridge has no pop — only the focus-dragging
-   *  look-at lift of an earlier version did.
+   *  - 'none'       — render the eye exactly where the orbit state puts
+   *                   it; it may pass under the heightfield.
+   *  - 'raiseEye'   — lift only the eye's Y to the clearance height. The
+   *                   eye keeps its horizontal footprint and leaves the
+   *                   orbit sphere (true distance grows, view steepens).
+   *                   pos.y = max(naturalY, floorY) is continuous, so
+   *                   riding over a ridge has no pop.
+   *  - 'clampPitch' — steepen the pitch so the eye stays ON the orbit
+   *                   sphere at the stored distance; only the effective
+   *                   pitch diverges from the stored pitch.
    *
-   *  An even earlier version pushed the camera along terrain normals and
+   *  An earlier version pushed the camera along terrain normals and
    *  recovered yaw / pitch / distance from the adjusted position — which
    *  made the view spin and ratchet its zoom as the camera brushed hills
    *  while panning. Never reintroduce terrain → orbit-state write-back. */
   apply(): void {
     this.constrainTargets();
+    // Resolve the sampler once; undefined disables clearance (mode 'none',
+    // no sampler installed, or zero clearance).
+    const sample =
+      this.terrainCollisionMode !== 'none' && this.minTerrainClearance > 0
+        ? this.getTerrainHeight
+        : undefined;
+    // clampPitch resolves BEFORE building the eye (it changes the angle).
+    const renderPitch =
+      sample && this.terrainCollisionMode === 'clampPitch'
+        ? this.clearedPitch(sample, this.distance, this.yaw, this.pitch)
+        : this.pitch;
     const pos = this.cameraPositionForState(
       this.target.x,
       this.target.y,
       this.target.z,
       this.distance,
       this.yaw,
-      this.pitch,
+      renderPitch,
       this._cameraPosTmp,
     );
-    if (
-      this.cameraCollidesWithTerrain &&
-      this.getTerrainHeight &&
-      this.minTerrainClearance > 0
-    ) {
-      // NaN-safe: a NaN sample (off-map / before terrain loads) makes the
-      // comparison false, so the eye is left where the orbit state put it.
-      // Lift the EYE only — never the look-at — so the focus stays on the
-      // target and no terrain state is cached into the orbit.
-      const floorY = this.getTerrainHeight(pos.x, pos.z) + this.minTerrainClearance;
+    // raiseEye resolves AFTER building the eye (it lifts only Y). NaN-safe:
+    // a NaN sample (off-map / before terrain loads) makes the comparison
+    // false, so the eye is left where the orbit state put it.
+    if (sample && this.terrainCollisionMode === 'raiseEye') {
+      const floorY = sample(pos.x, pos.z) + this.minTerrainClearance;
       if (pos.y < floorY) pos.y = floorY;
     }
     this.camera.position.copy(pos);

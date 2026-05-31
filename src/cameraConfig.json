@@ -2,7 +2,7 @@
   "fovDegrees": 45,
   "panMultiplier": 6.0,
   "minTerrainClearance": 80,
-  "cameraCollidesWithTerrain": true,
+  "terrainCollisionMode": "raiseEye",
   "worldPaddingPercent": 20.0,
   "zoom": {
     "max": 40.0,
