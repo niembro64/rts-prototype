@@ -86,7 +86,7 @@ import {
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
-import { WindPowerTracker, sampleWindState, type WindState } from './wind';
+import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
 import { isReclaimableTarget } from './reclaim';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
@@ -405,7 +405,7 @@ export class Simulation {
     // first hit, the building snaps closed once it expires, and a
     // 5 s quiet debounce reopens it. Production follows the open flag.
     updateBuildingActiveStates(this.world, dtMs);
-    this.windState = sampleWindState(this.simElapsedMs);
+    sampleWindStateInto(this.windState, this.simElapsedMs);
     this.windPowerTracker.update(this.world, this.windState);
 
     // Update economy income and production.

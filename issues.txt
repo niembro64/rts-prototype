@@ -120,6 +120,10 @@ C1. [MEDIUM] src/game/sim/Simulation.ts (per-tick orchestration: per-command loo
     src/game/sim/AUTHORITY_LEDGER.md current as rows move from TypeScript-orchestrated to
     transitional to Rust/WASM-owned, so there are never two sources of truth. Large multi-step
     effort; lower urgency than the SECTION A items.
+    2026-05-31 progress: the deterministic wind oscillator moved from TypeScript to
+    rts-sim-wasm, with Rust constants generated from src/windConfig.json and the old TS
+    waveform implementation deleted. Wind producer aggregation and stockpile/resource
+    movement accounting remain TypeScript-orchestrated under this item.
 
 ================================================================================
 SECTION D — WATCH ITEMS (info, not yet actionable)

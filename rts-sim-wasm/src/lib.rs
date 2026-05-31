@@ -52,6 +52,9 @@ pub fn __init() {
 // Generated from src/sharedSimConstants.json by rts-sim-wasm/build.rs.
 include!(concat!(env!("OUT_DIR"), "/shared_sim_constants.rs"));
 
+// Generated from src/windConfig.json by rts-sim-wasm/build.rs.
+include!(concat!(env!("OUT_DIR"), "/wind_config.rs"));
+
 // Wire/state enum codes generated from src/wireEnums.json by build.rs.
 // TypeScript imports the same JSON, so these codes can't drift across the
 // JS/WASM boundary. Provides CT_TURRET_STATE_* and ENTITY_CHANGED_*.
@@ -98,6 +101,34 @@ pub fn blueprint_locomotion_count() -> u32 {
 #[wasm_bindgen]
 pub fn blueprint_buildable_unit_count() -> u32 {
     blueprint_tables::BLUEPRINT_BUILDABLE_UNIT_COUNT as u32
+}
+
+#[inline]
+fn wind_wave(t_sec: f64, period_sec: f64, phase: f64) -> f64 {
+    (t_sec / period_sec.max(1.0)) * std::f64::consts::TAU + phase
+}
+
+#[wasm_bindgen]
+pub fn wind_sample_state(now_ms: f64, out: &mut [f64]) -> u32 {
+    if out.len() < 4 || !now_ms.is_finite() {
+        return 0;
+    }
+
+    let t = now_ms / 1000.0;
+    let angle = wind_wave(t, WIND_DIRECTION_PERIOD_PRIMARY, 0.0).sin() * 1.1
+        + wind_wave(t, WIND_DIRECTION_PERIOD_SECONDARY, 0.8).cos() * 0.7
+        + wind_wave(t, WIND_DIRECTION_PERIOD_TERTIARY, 2.4).sin() * 0.45;
+    let raw_speed = 0.92
+        + wind_wave(t, WIND_SPEED_PERIOD_PRIMARY, 1.7).sin() * 0.28
+        + wind_wave(t, WIND_SPEED_PERIOD_SECONDARY, 0.2).cos() * 0.22
+        + wind_wave(t, WIND_SPEED_PERIOD_TERTIARY, 4.1).sin() * 0.13;
+    let speed = raw_speed.max(WIND_SPEED_MIN).min(WIND_SPEED_MAX);
+
+    out[0] = angle.cos() * speed;
+    out[1] = angle.sin() * speed;
+    out[2] = speed;
+    out[3] = angle;
+    1
 }
 
 #[inline]
@@ -25101,6 +25132,21 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
 #[cfg(test)]
 mod sim_kernel_tests {
     use super::*;
+
+    #[test]
+    fn wind_sample_state_writes_deterministic_vector() {
+        let mut a = [0.0; 4];
+        let mut b = [0.0; 4];
+        assert_eq!(wind_sample_state(12_345.0, &mut a), 1);
+        assert_eq!(wind_sample_state(12_345.0, &mut b), 1);
+        assert_eq!(a, b);
+        assert!(a[2] >= WIND_SPEED_MIN);
+        assert!(a[2] <= WIND_SPEED_MAX);
+
+        let mut short = [0.0; 3];
+        assert_eq!(wind_sample_state(0.0, &mut short), 0);
+        assert_eq!(wind_sample_state(f64::NAN, &mut a), 0);
+    }
 
     #[test]
     fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {

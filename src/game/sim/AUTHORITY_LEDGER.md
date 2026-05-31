@@ -21,6 +21,7 @@ When moving a row from `TypeScript-orchestrated` or `Transitional` to `Rust/WASM
 | Terrain adaptive mesh build, terrain surface sampling, terrain line of sight, terrain cell index, and buildability bake fast paths | `rts-sim-wasm/src/lib.rs` terrain kernels | `src/game/sim/terrain/*` assembles inputs, installs mesh data, and keeps JS fallback/read helpers for non-authoritative setup paths |
 | Snapshot binary entity/detail encoding hot loops | `rts-sim-wasm/src/lib.rs` snapshot encoder | `src/game/network/snapshotRustWireEncoder.ts` packs arguments and owns network transport |
 | Blueprint/shot schema surfaces | `src/game/sim/blueprints/blueprintSchema.json` via `scripts/generateBlueprintSchemaTypes.mjs` and `rts-sim-wasm/build.rs` | TypeScript and Rust consume generated surfaces from one schema |
+| Deterministic wind oscillator | `rts-sim-wasm/src/lib.rs` `wind_sample_state`, with constants generated from `src/windConfig.json` | `src/game/sim/wind.ts` calls the kernel and copies the four scalar outputs into the live wind state |
 
 ## Transitional
 
@@ -40,7 +41,7 @@ These rows are the remaining C1 migration surface. Each row should leave this li
 | --- | --- | --- |
 | Tick sequencing and command dispatch | `src/game/sim/Simulation.ts` and `commandExecution.ts` | Keep browser/network command collection in TypeScript, but move per-tick authoritative execution state into Rust once the ECS state lives there |
 | Unit action queues, path-intent promotion, stuck detection, replanning, fight/guard/attack halt policy | `Simulation.updateUnits` plus `Pathfinder.ts` | Arrival math is already batched to WASM; queue semantics and per-unit control flow are still TypeScript |
-| Economy, resource movement, converter tax, wind/solar/extractor production | `economy.ts`, `energyDistribution.ts`, `resourceMovement.ts`, `wind.ts` | Resource movement visuals can stay renderer-side; stockpile truth should migrate with economy state |
+| Economy, resource movement, converter tax, wind/solar/extractor production | `economy.ts`, `energyDistribution.ts`, `resourceMovement.ts`, `wind.ts` | Resource movement visuals can stay renderer-side; stockpile truth should migrate with economy state; the wind oscillator itself is now Rust/WASM-owned |
 | Construction lifecycle, factory production, build placement validation, build-piece activation | `construction*.ts`, `factoryProduction.ts`, `buildPlacementValidation.ts` | Preserve one continuous entity id from shell to finished product |
 | Commander build/repair/reclaim/D-gun ability orchestration | `commanderAbilities.ts`, `commandExecution.ts` | Dense numeric spray or targeting kernels can move before full command orchestration does |
 | Damage routing, death events, death explosions, detachment promotion, kill credit | `damage/DamageSystem.ts`, `combat/damageHelpers.ts`, `Simulation.ts`, `WorldState.ts` | Piece-health semantics are implemented; the authoritative damage/death loop still runs in TypeScript |

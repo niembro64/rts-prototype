@@ -19,6 +19,7 @@ import wireEnums from '../../wireEnums.json';
 import __wbg_init, {
   type InitInput,
   version,
+  wind_sample_state,
   step_unit_motion,
   client_predict_unit_motion_batch,
   pool_init,
@@ -414,6 +415,7 @@ export interface SimWasm {
    *  Useful in dev / startup logs to confirm a fresh wasm-pack
    *  build is being served. */
   readonly version: string;
+  readonly windSampleState: (nowMs: number, out: Float64Array) => number;
   /** Shared single-body unit integrator (Phase 2). Kept for
    *  diagnostics and one-off callers; the server hot path uses
    *  poolStepIntegrate and the client prediction hot path uses
@@ -2966,6 +2968,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
 
       const handle: SimWasm = {
         version: version(),
+        windSampleState: wind_sample_state,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,
