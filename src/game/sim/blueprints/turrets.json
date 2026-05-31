@@ -1195,17 +1195,9 @@
     "turretTurnAccel": 200,
     "turretDrag": 0.15,
     "barrel": {
-      "type": "coneMultiBarrel",
-      "barrelCount": 1,
-      "barrelLength": 0.1,
-      "baseOrbit": 0,
-      "tipOrbit": 1,
-      "spin": {
-        "idle": 2,
-        "max": 13,
-        "accel": 10,
-        "decel": 5
-      }
+      "type": "singleCylinderBarrel",
+      "barrelLength": 2,
+      "barrelThickness": 9
     },
     "isManualFire": false,
     "passive": false,
