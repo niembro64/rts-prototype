@@ -39,6 +39,7 @@ import {
 } from '../buildingActiveState';
 import { getUnitGroundZ } from '../unitGeometry';
 import { setUnitMovementAcceleration } from '../unitMovementAcceleration';
+import { refreshUnitActionHash } from '../unitActions';
 
 
 // Reusable DamageResult to avoid per-call allocations
@@ -1507,6 +1508,7 @@ export class DamageSystem {
     const unit = host.unit;
     if (unit !== null) {
       unit.actions.length = 0;
+      refreshUnitActionHash(unit);
       unit.thrustDirX = 0;
       unit.thrustDirY = 0;
       setUnitMovementAcceleration(unit, 0, 0, 0);
